@@ -71,8 +71,7 @@
       "bundler": "metro"
     },
     "plugins": [
-      "expo-router",
-      "./modules/maglev-engine"
+      "expo-router"
     ],
     "experiments": {
       "typedRoutes": true
