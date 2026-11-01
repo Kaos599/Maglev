@@ -1,7 +1,11 @@
 package com.maglev.engine
 
+import android.net.Uri
 import android.util.Base64
+import com.maglev.engine.network.NetworkGovernanceManager
+import com.maglev.engine.power.PowerGovernanceManager
 import com.maglev.engine.service.MaglevTorrentService
+import com.maglev.engine.storage.SafStorageManager
 import com.maglev.engine.storage.StorageManager
 import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
@@ -32,6 +36,9 @@ class MaglevEngineModule : Module() {
         }
     }
 
+    private var networkManager: NetworkGovernanceManager? = null
+    private var powerManager: PowerGovernanceManager? = null
+
     // Native JNI external declarations
     private external fun nativeInit(storageDir: String, listenPort: Int): Boolean
     private external fun nativeStartTorrent(magnetUri: String, savePath: String, sequential: Boolean): String
@@ -43,6 +50,10 @@ class MaglevEngineModule : Module() {
     private external fun nativeGetTrackers(infoHash: String): String
     private external fun nativeAddTracker(infoHash: String, trackerUrl: String): Boolean
     private external fun nativeStartHttpStream(infoHash: String, fileIndex: Int): String
+    private external fun nativeSetRateLimits(downBytes: Long, upBytes: Long)
+    private external fun nativeUpdateNetworkGovernance(json: String): Boolean
+    private external fun nativeUpdatePowerGovernance(json: String): Boolean
+    private external fun nativeLoadIpFilter(datData: String): Int
     private external fun nativeStopEngine()
 
     override fun definition() = ModuleDefinition {
@@ -52,9 +63,41 @@ class MaglevEngineModule : Module() {
 
         OnCreate {
             instance = this@MaglevEngineModule
+            val context = appContext.reactContext
+            if (context != null) {
+                networkManager = NetworkGovernanceManager(context).apply {
+                    setListener(object : NetworkGovernanceManager.NetworkStateListener {
+                        override fun onNetworkStateChanged(networkType: String, ssid: String?, socketsClamped: Boolean) {
+                            if (isNativeLoaded) {
+                                val json = """{"network_type":"$networkType","current_ssid":${if (ssid != null) "\"$ssid\"" else "null"}}"""
+                                nativeUpdateNetworkGovernance(json)
+                            }
+                        }
+                    })
+                    startMonitoring()
+                }
+
+                powerManager = PowerGovernanceManager(context).apply {
+                    setListener(object : PowerGovernanceManager.PowerStateListener {
+                        override fun onPowerStateChanged(isCharging: Boolean, batteryPercent: Int, shouldPause: Boolean) {
+                            if (isNativeLoaded) {
+                                val json = """{"is_charging":$isCharging,"battery_percentage":$batteryPercent}"""
+                                nativeUpdatePowerGovernance(json)
+                            }
+                        }
+
+                        override fun onAutoExitTriggered() {
+                            MaglevTorrentService.stopService(context)
+                        }
+                    })
+                    startMonitoring()
+                }
+            }
         }
 
         OnDestroy {
+            networkManager?.stopMonitoring()
+            powerManager?.stopMonitoring()
             if (instance == this@MaglevEngineModule) {
                 instance = null
             }
@@ -128,6 +171,42 @@ class MaglevEngineModule : Module() {
         AsyncFunction("startHttpStream") { infoHash: String, fileIndex: Int ->
             if (!isNativeLoaded) return@AsyncFunction ""
             nativeStartHttpStream(infoHash, fileIndex)
+        }
+
+        AsyncFunction("applySettings") { settingsJson: String ->
+            if (isNativeLoaded) {
+                // Apply network and power governance to native module
+                nativeUpdateNetworkGovernance(settingsJson)
+                nativeUpdatePowerGovernance(settingsJson)
+            }
+        }
+
+        AsyncFunction("setRateLimits") { downBytes: Long, upBytes: Long ->
+            if (isNativeLoaded) {
+                nativeSetRateLimits(downBytes, upBytes)
+            }
+        }
+
+        AsyncFunction("loadIpFilter") { datContent: String ->
+            if (isNativeLoaded) {
+                nativeLoadIpFilter(datContent)
+            } else {
+                0
+            }
+        }
+
+        AsyncFunction("moveCompletedPayload") { sourcePath: String, destPath: String ->
+            SafStorageManager.moveCompletedPayload(sourcePath, destPath)
+        }
+
+        AsyncFunction("takePersistableSafPermission") { uriStr: String ->
+            val context = appContext.reactContext ?: return@AsyncFunction false
+            try {
+                SafStorageManager.takePersistablePermission(context, Uri.parse(uriStr))
+                true
+            } catch (e: Exception) {
+                false
+            }
         }
 
         AsyncFunction("updateServiceTelemetry") { activeDown: Int, activeUp: Int, downSpeed: Long, upSpeed: Long ->

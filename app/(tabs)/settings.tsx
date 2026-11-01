@@ -1,115 +1,979 @@
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, Switch, TouchableOpacity } from 'react-native';
+import React, { useState, useCallback } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  Switch,
+  TouchableOpacity,
+  TextInput,
+  Modal,
+} from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { TOKENS } from '../../constants/tokens';
+import { TOKENS, formatSpeed } from '../../constants/tokens';
 import { HeaderBar } from '../../components/HeaderBar';
+import { useSettings } from '../../context/SettingsContext';
 import { useMaglevEngine } from '../../context/EngineContext';
+import {
+  BatteryCutoffThreshold,
+  EncryptionMode,
+  ProxyScope,
+  ProxyType,
+  SeedingDurationLimit,
+  SeedingRatioLimit,
+  SpeedPreset,
+  StorageMode,
+  ThemeMode,
+} from 'maglev-engine';
 
 export default function SettingsScreen() {
   const insets = useSafeAreaInsets();
-  const { defaultStoragePath, isNative } = useMaglevEngine();
+  const { isNative } = useMaglevEngine();
+  const {
+    settings,
+    isOledBlack,
+    backgroundColor,
+    cardBackgroundColor,
+    updateSettings,
+    setSpeedPreset,
+    loadIpFilter,
+  } = useSettings();
 
-  const [pureBlackOled, setPureBlackOled] = useState(true);
-  const [wifiOnly, setWifiOnly] = useState(false);
-  const [upnpEnabled, setUpnpEnabled] = useState(true);
-  const [chargeOnly, setChargeOnly] = useState(false);
+  // Local state for modals & inputs
+  const [customSpeedModal, setCustomSpeedModal] = useState<'download' | 'upload' | null>(null);
+  const [customSpeedInput, setCustomSpeedInput] = useState('');
+  const [newSsidInput, setNewSsidInput] = useState('');
+  const [showAddSsid, setShowAddSsid] = useState(false);
+  const [showProxyConfig, setShowProxyConfig] = useState(false);
+  const [filterMessage, setFilterMessage] = useState<string | null>(null);
+
+  // Speed Limit Helpers
+  const handleSelectPreset = useCallback(
+    (type: 'download' | 'upload', preset: SpeedPreset) => {
+      if (preset === 'CUSTOM') {
+        setCustomSpeedModal(type);
+        setCustomSpeedInput('');
+      } else {
+        setSpeedPreset(type, preset);
+      }
+    },
+    [setSpeedPreset]
+  );
+
+  const applyCustomSpeed = useCallback(() => {
+    if (!customSpeedModal) return;
+    const kbps = parseInt(customSpeedInput, 10);
+    if (!isNaN(kbps) && kbps > 0) {
+      setSpeedPreset(customSpeedModal, 'CUSTOM', kbps * 1024);
+    }
+    setCustomSpeedModal(null);
+  }, [customSpeedModal, customSpeedInput, setSpeedPreset]);
+
+  // SSID Helpers
+  const handleAddSsid = useCallback(() => {
+    const trimmed = newSsidInput.trim();
+    if (trimmed && !settings.network.allowedSsids.includes(trimmed)) {
+      updateSettings((prev) => ({
+        network: {
+          ...prev.network,
+          allowedSsids: [...prev.network.allowedSsids, trimmed],
+        },
+      }));
+      setNewSsidInput('');
+      setShowAddSsid(false);
+    }
+  }, [newSsidInput, settings.network.allowedSsids, updateSettings]);
+
+  const handleRemoveSsid = useCallback(
+    (ssidToRemove: string) => {
+      updateSettings((prev) => ({
+        network: {
+          ...prev.network,
+          allowedSsids: prev.network.allowedSsids.filter((s) => s !== ssidToRemove),
+        },
+      }));
+    },
+    [updateSettings]
+  );
+
+  // Quick-load default IP filter sample
+  const handleLoadSampleIpFilter = useCallback(async () => {
+    const sample = `
+# Sample PeerGuardian / eMule Blocklist
+Bad Peels:10.0.0.0-10.0.0.255
+Malicious Range:198.51.100.0-198.51.100.255
+Untrusted Scanners:203.0.113.0-203.0.113.255
+`;
+    const count = await loadIpFilter(sample);
+    setFilterMessage(`Loaded ${count} blocked IP ranges`);
+    setTimeout(() => setFilterMessage(null), 3000);
+  }, [loadIpFilter]);
+
+  const speedPresets: SpeedPreset[] = ['UNLIMITED', '1MB', '2MB', '5MB', '10MB', 'CUSTOM'];
+  const ratioPresets: SeedingRatioLimit[] = [0, 1.0, 1.5, 2.0, 3.0];
+  const durationPresets: { label: string; value: SeedingDurationLimit }[] = [
+    { label: 'Off', value: 0 },
+    { label: '1h', value: 3600 },
+    { label: '6h', value: 21600 },
+    { label: '24h', value: 86400 },
+  ];
+  const batteryThresholds: BatteryCutoffThreshold[] = [0, 15, 20, 30];
 
   return (
-    <View style={[styles.container, { paddingTop: insets.top }]}>
+    <View style={[styles.container, { backgroundColor, paddingTop: insets.top }]}>
       <HeaderBar />
 
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-        {/* Appearance Section */}
-        <Text style={styles.sectionHeader}>Appearance</Text>
-        <View style={styles.settingsGroup}>
+        {/* 1. APPEARANCE SECTION */}
+        <Text style={styles.sectionHeader}>APPEARANCE</Text>
+        <View style={[styles.settingsGroup, { backgroundColor: cardBackgroundColor }]}>
+          <View style={styles.settingBlock}>
+            <Text style={styles.settingTitle}>Theme Mode</Text>
+            <Text style={styles.settingSubtitle}>Choose between tactical cyber contrast and true OLED #000000</Text>
+            <View style={styles.chipRow}>
+              <TouchableOpacity
+                style={[
+                  styles.chip,
+                  settings.appearance.theme === 'TACTICAL_DARK' ? styles.chipActive : styles.chipInactive,
+                ]}
+                onPress={() => updateSettings({ appearance: { ...settings.appearance, theme: 'TACTICAL_DARK' } })}
+                accessibilityRole="button"
+                accessibilityLabel="Tactical Dark Theme"
+              >
+                <Text
+                  style={[
+                    styles.chipText,
+                    settings.appearance.theme === 'TACTICAL_DARK' ? styles.chipTextActive : styles.chipTextInactive,
+                  ]}
+                >
+                  Tactical Dark (#05070A)
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[
+                  styles.chip,
+                  settings.appearance.theme === 'PURE_OLED' ? styles.chipActive : styles.chipInactive,
+                ]}
+                onPress={() => updateSettings({ appearance: { ...settings.appearance, theme: 'PURE_OLED' } })}
+                accessibilityRole="button"
+                accessibilityLabel="Pure Black OLED Theme"
+              >
+                <Text
+                  style={[
+                    styles.chipText,
+                    settings.appearance.theme === 'PURE_OLED' ? styles.chipTextActive : styles.chipTextInactive,
+                  ]}
+                >
+                  Pure Black OLED (#000000)
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+
+          <View style={styles.settingBlock}>
+            <Text style={styles.settingTitle}>Telemetry Density</Text>
+            <Text style={styles.settingSubtitle}>Display detailed peer metrics or clean compact speed overview</Text>
+            <View style={styles.chipRow}>
+              {(['COMPACT', 'VERBOSE'] as const).map((density) => (
+                <TouchableOpacity
+                  key={density}
+                  style={[
+                    styles.chip,
+                    settings.appearance.telemetryDensity === density ? styles.chipActive : styles.chipInactive,
+                  ]}
+                  onPress={() => updateSettings({ appearance: { ...settings.appearance, telemetryDensity: density } })}
+                  accessibilityRole="button"
+                >
+                  <Text
+                    style={[
+                      styles.chipText,
+                      settings.appearance.telemetryDensity === density ? styles.chipTextActive : styles.chipTextInactive,
+                    ]}
+                  >
+                    {density === 'COMPACT' ? 'Compact Overview' : 'Verbose Swarm Telemetry'}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+        </View>
+
+        {/* 2. DOWNLOADS & STORAGE SECTION */}
+        <Text style={styles.sectionHeader}>DOWNLOADS & STORAGE</Text>
+        <View style={[styles.settingsGroup, { backgroundColor: cardBackgroundColor }]}>
+          <View style={styles.settingBlock}>
+            <View style={styles.rowBetween}>
+              <Text style={styles.settingTitle}>Storage Mode</Text>
+              <View style={styles.badgeCyan}>
+                <Text style={styles.badgeCyanText}>
+                  {settings.storage.storageMode === 'POSIX' ? 'POSIX Native Direct I/O' : 'SAF Scoped Tree'}
+                </Text>
+              </View>
+            </View>
+            <Text style={styles.settingPathText}>{settings.storage.defaultPath}</Text>
+
+            <View style={styles.chipRow}>
+              <TouchableOpacity
+                style={[
+                  styles.chip,
+                  settings.storage.storageMode === 'POSIX' ? styles.chipActive : styles.chipInactive,
+                ]}
+                onPress={() => updateSettings({ storage: { ...settings.storage, storageMode: 'POSIX' } })}
+                accessibilityRole="button"
+              >
+                <Text
+                  style={[
+                    styles.chipText,
+                    settings.storage.storageMode === 'POSIX' ? styles.chipTextActive : styles.chipTextInactive,
+                  ]}
+                >
+                  App-Specific POSIX (Zero-Copy)
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[
+                  styles.chip,
+                  settings.storage.storageMode === 'SAF' ? styles.chipActive : styles.chipInactive,
+                ]}
+                onPress={() => updateSettings({ storage: { ...settings.storage, storageMode: 'SAF' } })}
+                accessibilityRole="button"
+              >
+                <Text
+                  style={[
+                    styles.chipText,
+                    settings.storage.storageMode === 'SAF' ? styles.chipTextActive : styles.chipTextInactive,
+                  ]}
+                >
+                  Custom SAF Directory
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+
           <View style={styles.settingRow}>
             <View style={styles.settingTextContainer}>
-              <Text style={styles.settingTitle}>Tactical OLED Black</Text>
-              <Text style={styles.settingSubtitle}>Enforce true OLED #05070A for battery preservation</Text>
+              <Text style={styles.settingTitle}>Auto-Move Completed Downloads</Text>
+              <Text style={styles.settingSubtitle}>
+                Relocate finished files to secondary destination or SD card
+              </Text>
+              {settings.storage.autoMoveCompleted && (
+                <Text style={styles.destinationPathText}>
+                  Target: {settings.storage.autoMoveDestinationPath}
+                </Text>
+              )}
             </View>
             <Switch
-              value={pureBlackOled}
-              onValueChange={setPureBlackOled}
+              value={settings.storage.autoMoveCompleted}
+              onValueChange={(val) =>
+                updateSettings({ storage: { ...settings.storage, autoMoveCompleted: val } })
+              }
               trackColor={{ false: '#161B22', true: TOKENS.colors.accentLime }}
-              thumbColor={pureBlackOled ? '#000000' : TOKENS.colors.textMuted}
+              thumbColor={settings.storage.autoMoveCompleted ? '#000000' : TOKENS.colors.textMuted}
+            />
+          </View>
+
+          <View style={styles.settingRow}>
+            <View style={styles.settingTextContainer}>
+              <Text style={styles.settingTitle}>Disk Pre-Allocation</Text>
+              <Text style={styles.settingSubtitle}>
+                Pre-allocate blocks via posix_fallocate (prevents filesystem fragmentation)
+              </Text>
+            </View>
+            <Switch
+              value={settings.storage.preAllocateDisk}
+              onValueChange={(val) =>
+                updateSettings({ storage: { ...settings.storage, preAllocateDisk: val } })
+              }
+              trackColor={{ false: '#161B22', true: TOKENS.colors.accentLime }}
+              thumbColor={settings.storage.preAllocateDisk ? '#000000' : TOKENS.colors.textMuted}
             />
           </View>
         </View>
 
-        {/* Transfers & Storage Section */}
-        <Text style={styles.sectionHeader}>Downloads & Storage</Text>
-        <View style={styles.settingsGroup}>
-          <View style={styles.settingRow}>
-            <View style={styles.settingTextContainer}>
-              <Text style={styles.settingTitle}>App-Specific POSIX Storage</Text>
-              <Text style={styles.settingSubtitle}>{defaultStoragePath}</Text>
+        {/* 3. BANDWIDTH & LIMITS SECTION */}
+        <Text style={styles.sectionHeader}>BANDWIDTH & LIMITS</Text>
+        <View style={[styles.settingsGroup, { backgroundColor: cardBackgroundColor }]}>
+          {/* Download Speed Presets */}
+          <View style={styles.settingBlock}>
+            <View style={styles.rowBetween}>
+              <Text style={styles.settingTitle}>Download Rate Limit</Text>
+              <Text style={styles.telemetryValue}>
+                {settings.bandwidth.downloadLimitBytesPerSec > 0
+                  ? formatSpeed(settings.bandwidth.downloadLimitBytesPerSec)
+                  : 'Unlimited'}
+              </Text>
+            </View>
+            <View style={styles.chipRowWrap}>
+              {speedPresets.map((preset) => {
+                const isActive = settings.bandwidth.downloadPreset === preset;
+                const label = preset === 'UNLIMITED' ? 'Unlimited' : preset === 'CUSTOM' ? 'Custom' : `${preset}/s`;
+                return (
+                  <TouchableOpacity
+                    key={`down_${preset}`}
+                    style={[styles.chipSmall, isActive ? styles.chipActive : styles.chipInactive]}
+                    onPress={() => handleSelectPreset('download', preset)}
+                    accessibilityRole="button"
+                  >
+                    <Text style={[styles.chipText, isActive ? styles.chipTextActive : styles.chipTextInactive]}>
+                      {label}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
             </View>
           </View>
-          <View style={styles.settingRow}>
-            <View style={styles.settingTextContainer}>
-              <Text style={styles.settingTitle}>Download Only While Charging</Text>
-              <Text style={styles.settingSubtitle}>Automatically pause transfers when running on battery</Text>
+
+          {/* Upload Speed Presets */}
+          <View style={styles.settingBlock}>
+            <View style={styles.rowBetween}>
+              <Text style={styles.settingTitle}>Upload Rate Limit</Text>
+              <Text style={styles.telemetryValue}>
+                {settings.bandwidth.uploadLimitBytesPerSec > 0
+                  ? formatSpeed(settings.bandwidth.uploadLimitBytesPerSec)
+                  : 'Unlimited'}
+              </Text>
             </View>
-            <Switch
-              value={chargeOnly}
-              onValueChange={setChargeOnly}
-              trackColor={{ false: '#161B22', true: TOKENS.colors.accentLime }}
-              thumbColor={chargeOnly ? '#000000' : TOKENS.colors.textMuted}
-            />
+            <View style={styles.chipRowWrap}>
+              {speedPresets.map((preset) => {
+                const isActive = settings.bandwidth.uploadPreset === preset;
+                const label = preset === 'UNLIMITED' ? 'Unlimited' : preset === 'CUSTOM' ? 'Custom' : `${preset}/s`;
+                return (
+                  <TouchableOpacity
+                    key={`up_${preset}`}
+                    style={[styles.chipSmall, isActive ? styles.chipActive : styles.chipInactive]}
+                    onPress={() => handleSelectPreset('upload', preset)}
+                    accessibilityRole="button"
+                  >
+                    <Text style={[styles.chipText, isActive ? styles.chipTextActive : styles.chipTextInactive]}>
+                      {label}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          </View>
+
+          {/* Active Torrent Caps */}
+          <View style={styles.settingBlock}>
+            <Text style={styles.settingTitle}>Active Queue Caps</Text>
+            <Text style={styles.settingSubtitle}>Maximum concurrent downloads & uploads</Text>
+            <View style={styles.capsRow}>
+              <View style={styles.capItem}>
+                <Text style={styles.capLabel}>Downloads</Text>
+                <View style={styles.chipRow}>
+                  {[1, 3, 5, 10].map((num) => (
+                    <TouchableOpacity
+                      key={`max_down_${num}`}
+                      style={[
+                        styles.chipMini,
+                        settings.bandwidth.maxActiveDownloads === num ? styles.chipActive : styles.chipInactive,
+                      ]}
+                      onPress={() =>
+                        updateSettings({ bandwidth: { ...settings.bandwidth, maxActiveDownloads: num } })
+                      }
+                      accessibilityRole="button"
+                    >
+                      <Text
+                        style={[
+                          styles.chipText,
+                          settings.bandwidth.maxActiveDownloads === num ? styles.chipTextActive : styles.chipTextInactive,
+                        ]}
+                      >
+                        {num}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </View>
+
+              <View style={styles.capItem}>
+                <Text style={styles.capLabel}>Uploads</Text>
+                <View style={styles.chipRow}>
+                  {[1, 3, 5, 10].map((num) => (
+                    <TouchableOpacity
+                      key={`max_up_${num}`}
+                      style={[
+                        styles.chipMini,
+                        settings.bandwidth.maxActiveUploads === num ? styles.chipActive : styles.chipInactive,
+                      ]}
+                      onPress={() =>
+                        updateSettings({ bandwidth: { ...settings.bandwidth, maxActiveUploads: num } })
+                      }
+                      accessibilityRole="button"
+                    >
+                      <Text
+                        style={[
+                          styles.chipText,
+                          settings.bandwidth.maxActiveUploads === num ? styles.chipTextActive : styles.chipTextInactive,
+                        ]}
+                      >
+                        {num}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </View>
+            </View>
+          </View>
+
+          {/* Seeding Governance Limits */}
+          <View style={styles.settingBlock}>
+            <Text style={styles.settingTitle}>Seeding Ratio Limit</Text>
+            <Text style={styles.settingSubtitle}>Automatically stop seeding when ratio limit is reached</Text>
+            <View style={styles.chipRowWrap}>
+              {ratioPresets.map((r) => {
+                const isActive = settings.bandwidth.seedingRatioLimit === r;
+                return (
+                  <TouchableOpacity
+                    key={`ratio_${r}`}
+                    style={[styles.chipSmall, isActive ? styles.chipActive : styles.chipInactive]}
+                    onPress={() =>
+                      updateSettings({ bandwidth: { ...settings.bandwidth, seedingRatioLimit: r } })
+                    }
+                    accessibilityRole="button"
+                  >
+                    <Text style={[styles.chipText, isActive ? styles.chipTextActive : styles.chipTextInactive]}>
+                      {r === 0 ? 'Off' : `${r.toFixed(1)}x`}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          </View>
+
+          <View style={styles.settingBlock}>
+            <Text style={styles.settingTitle}>Seeding Duration Limit</Text>
+            <Text style={styles.settingSubtitle}>Automatically pause seeding after elapsed duration</Text>
+            <View style={styles.chipRowWrap}>
+              {durationPresets.map(({ label, value }) => {
+                const isActive = settings.bandwidth.seedingDurationLimitSeconds === value;
+                return (
+                  <TouchableOpacity
+                    key={`dur_${value}`}
+                    style={[styles.chipSmall, isActive ? styles.chipActive : styles.chipInactive]}
+                    onPress={() =>
+                      updateSettings({ bandwidth: { ...settings.bandwidth, seedingDurationLimitSeconds: value } })
+                    }
+                    accessibilityRole="button"
+                  >
+                    <Text style={[styles.chipText, isActive ? styles.chipTextActive : styles.chipTextInactive]}>
+                      {label}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
           </View>
         </View>
 
-        {/* Network & Swarm Section */}
-        <Text style={styles.sectionHeader}>Network & Swarm</Text>
-        <View style={styles.settingsGroup}>
+        {/* 4. NETWORK & PROXY SECTION */}
+        <Text style={styles.sectionHeader}>NETWORK & PROXY</Text>
+        <View style={[styles.settingsGroup, { backgroundColor: cardBackgroundColor }]}>
+          {/* Wi-Fi Only Switch */}
           <View style={styles.settingRow}>
             <View style={styles.settingTextContainer}>
               <Text style={styles.settingTitle}>Download on Wi-Fi Only</Text>
-              <Text style={styles.settingSubtitle}>Clamp transfer sockets when cellular data is active</Text>
+              <Text style={styles.settingSubtitle}>
+                Clamp sockets immediately when cellular data is active (&lt;300ms)
+              </Text>
             </View>
             <Switch
-              value={wifiOnly}
-              onValueChange={setWifiOnly}
+              value={settings.network.wifiOnly}
+              onValueChange={(val) =>
+                updateSettings({ network: { ...settings.network, wifiOnly: val } })
+              }
               trackColor={{ false: '#161B22', true: TOKENS.colors.accentLime }}
-              thumbColor={wifiOnly ? '#000000' : TOKENS.colors.textMuted}
+              thumbColor={settings.network.wifiOnly ? '#000000' : TOKENS.colors.textMuted}
             />
+          </View>
+
+          {/* SSID Whitelist */}
+          <View style={styles.settingBlock}>
+            <View style={styles.rowBetween}>
+              <View style={styles.settingTextContainer}>
+                <Text style={styles.settingTitle}>SSID Whitelist</Text>
+                <Text style={styles.settingSubtitle}>
+                  Restrict transfers strictly to authorized Wi-Fi networks
+                </Text>
+              </View>
+              <Switch
+                value={settings.network.ssidWhitelistEnabled}
+                onValueChange={(val) =>
+                  updateSettings({ network: { ...settings.network, ssidWhitelistEnabled: val } })
+                }
+                trackColor={{ false: '#161B22', true: TOKENS.colors.accentLime }}
+                thumbColor={settings.network.ssidWhitelistEnabled ? '#000000' : TOKENS.colors.textMuted}
+              />
+            </View>
+
+            {settings.network.ssidWhitelistEnabled && (
+              <View style={styles.ssidContainer}>
+                <Text style={styles.currentSsidBadge}>
+                  Current: {settings.network.currentSsid || 'None'}
+                </Text>
+                <View style={styles.ssidTagsRow}>
+                  {settings.network.allowedSsids.map((ssid) => (
+                    <View key={ssid} style={styles.ssidTag}>
+                      <Text style={styles.ssidTagText}>{ssid}</Text>
+                      <TouchableOpacity
+                        style={styles.ssidTagRemove}
+                        onPress={() => handleRemoveSsid(ssid)}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Remove ${ssid}`}
+                      >
+                        <Ionicons name="close" size={12} color="#000000" />
+                      </TouchableOpacity>
+                    </View>
+                  ))}
+                  <TouchableOpacity
+                    style={styles.addSsidButton}
+                    onPress={() => setShowAddSsid(!showAddSsid)}
+                    accessibilityRole="button"
+                  >
+                    <Text style={styles.addSsidButtonText}>+ Add SSID</Text>
+                  </TouchableOpacity>
+                </View>
+
+                {showAddSsid && (
+                  <View style={styles.addSsidRow}>
+                    <TextInput
+                      style={styles.ssidTextInput}
+                      placeholder="Enter network SSID"
+                      placeholderTextColor={TOKENS.colors.textMuted}
+                      value={newSsidInput}
+                      onChangeText={setNewSsidInput}
+                    />
+                    <TouchableOpacity style={styles.confirmSsidButton} onPress={handleAddSsid}>
+                      <Text style={styles.confirmSsidButtonText}>Add</Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
+              </View>
+            )}
+          </View>
+
+          {/* UPnP Port Forwarding */}
+          <View style={styles.settingRow}>
+            <View style={styles.settingTextContainer}>
+              <View style={styles.rowAlign}>
+                <Text style={styles.settingTitle}>UPnP / NAT-PMP Port Forwarding</Text>
+                <View style={styles.portBadge}>
+                  <Text style={styles.portBadgeText}>
+                    {settings.network.upnpEnabled ? 'Mapped: 6881' : 'Disabled'}
+                  </Text>
+                </View>
+              </View>
+              <Text style={styles.settingSubtitle}>
+                Automatically negotiate router port mapping (BEP 55)
+              </Text>
+            </View>
+            <Switch
+              value={settings.network.upnpEnabled}
+              onValueChange={(val) =>
+                updateSettings({ network: { ...settings.network, upnpEnabled: val } })
+              }
+              trackColor={{ false: '#161B22', true: TOKENS.colors.accentLime }}
+              thumbColor={settings.network.upnpEnabled ? '#000000' : TOKENS.colors.textMuted}
+            />
+          </View>
+
+          {/* Protocol Encryption */}
+          <View style={styles.settingBlock}>
+            <Text style={styles.settingTitle}>Protocol Encryption (PE / MSE)</Text>
+            <Text style={styles.settingSubtitle}>
+              Prevent mobile ISP Deep Packet Inspection (DPI) bandwidth throttling
+            </Text>
+            <View style={styles.chipRow}>
+              {(['REQUIRED', 'PREFERRED', 'DISABLED'] as const).map((enc) => (
+                <TouchableOpacity
+                  key={enc}
+                  style={[
+                    styles.chip,
+                    settings.network.encryption === enc ? styles.chipActive : styles.chipInactive,
+                  ]}
+                  onPress={() => updateSettings({ network: { ...settings.network, encryption: enc } })}
+                  accessibilityRole="button"
+                >
+                  <Text
+                    style={[
+                      styles.chipText,
+                      settings.network.encryption === enc ? styles.chipTextActive : styles.chipTextInactive,
+                    ]}
+                  >
+                    {enc === 'REQUIRED' ? 'Required' : enc === 'PREFERRED' ? 'Preferred' : 'Disabled'}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+
+          {/* Swarm Discovery */}
+          <View style={styles.settingBlock}>
+            <Text style={styles.settingTitle}>Swarm Discovery Toggles</Text>
+            <Text style={styles.settingSubtitle}>
+              BEP 27 private flag strictly suppresses discovery on private swarms
+            </Text>
+
+            <View style={styles.subRow}>
+              <Text style={styles.subRowLabel}>DHT (BEP 5 Kademlia)</Text>
+              <Switch
+                value={settings.network.dhtEnabled}
+                onValueChange={(val) =>
+                  updateSettings({ network: { ...settings.network, dhtEnabled: val } })
+                }
+                trackColor={{ false: '#161B22', true: TOKENS.colors.accentLime }}
+                thumbColor={settings.network.dhtEnabled ? '#000000' : TOKENS.colors.textMuted}
+              />
+            </View>
+
+            <View style={styles.subRow}>
+              <Text style={styles.subRowLabel}>PeX (BEP 11 Peer Exchange)</Text>
+              <Switch
+                value={settings.network.pexEnabled}
+                onValueChange={(val) =>
+                  updateSettings({ network: { ...settings.network, pexEnabled: val } })
+                }
+                trackColor={{ false: '#161B22', true: TOKENS.colors.accentLime }}
+                thumbColor={settings.network.pexEnabled ? '#000000' : TOKENS.colors.textMuted}
+              />
+            </View>
+
+            <View style={styles.subRow}>
+              <Text style={styles.subRowLabel}>LSD (BEP 14 Local Discovery)</Text>
+              <Switch
+                value={settings.network.lsdEnabled}
+                onValueChange={(val) =>
+                  updateSettings({ network: { ...settings.network, lsdEnabled: val } })
+                }
+                trackColor={{ false: '#161B22', true: TOKENS.colors.accentLime }}
+                thumbColor={settings.network.lsdEnabled ? '#000000' : TOKENS.colors.textMuted}
+              />
+            </View>
+          </View>
+
+          {/* SOCKS5 / HTTP Proxy Tunneling */}
+          <View style={styles.settingBlock}>
+            <View style={styles.rowBetween}>
+              <View style={styles.settingTextContainer}>
+                <Text style={styles.settingTitle}>SOCKS5 & HTTP Proxy Tunnel</Text>
+                <Text style={styles.settingSubtitle}>
+                  Route sockets through tunnel with RFC 1928 remote DNS resolution
+                </Text>
+              </View>
+              <Switch
+                value={settings.network.proxy.enabled}
+                onValueChange={(val) =>
+                  updateSettings({
+                    network: {
+                      ...settings.network,
+                      proxy: { ...settings.network.proxy, enabled: val },
+                    },
+                  })
+                }
+                trackColor={{ false: '#161B22', true: TOKENS.colors.accentLime }}
+                thumbColor={settings.network.proxy.enabled ? '#000000' : TOKENS.colors.textMuted}
+              />
+            </View>
+
+            {settings.network.proxy.enabled && (
+              <View style={styles.proxyDetailsBox}>
+                <View style={styles.chipRow}>
+                  {(['SOCKS5', 'HTTP'] as const).map((type) => (
+                    <TouchableOpacity
+                      key={type}
+                      style={[
+                        styles.chipSmall,
+                        settings.network.proxy.type === type ? styles.chipActive : styles.chipInactive,
+                      ]}
+                      onPress={() =>
+                        updateSettings({
+                          network: {
+                            ...settings.network,
+                            proxy: { ...settings.network.proxy, type },
+                          },
+                        })
+                      }
+                      accessibilityRole="button"
+                    >
+                      <Text
+                        style={[
+                          styles.chipText,
+                          settings.network.proxy.type === type ? styles.chipTextActive : styles.chipTextInactive,
+                        ]}
+                      >
+                        {type}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+
+                <View style={styles.inputPairRow}>
+                  <TextInput
+                    style={[styles.proxyInput, { flex: 2 }]}
+                    placeholder="Proxy Host (e.g. 127.0.0.1)"
+                    placeholderTextColor={TOKENS.colors.textMuted}
+                    value={settings.network.proxy.host}
+                    onChangeText={(val) =>
+                      updateSettings({
+                        network: {
+                          ...settings.network,
+                          proxy: { ...settings.network.proxy, host: val },
+                        },
+                      })
+                    }
+                  />
+                  <TextInput
+                    style={[styles.proxyInput, { flex: 1 }]}
+                    placeholder="Port"
+                    placeholderTextColor={TOKENS.colors.textMuted}
+                    keyboardType="numeric"
+                    value={settings.network.proxy.port.toString()}
+                    onChangeText={(val) =>
+                      updateSettings({
+                        network: {
+                          ...settings.network,
+                          proxy: { ...settings.network.proxy, port: parseInt(val, 10) || 1080 },
+                        },
+                      })
+                    }
+                  />
+                </View>
+
+                {/* Proxy Scoping */}
+                <Text style={styles.proxySublabel}>Proxy Scope</Text>
+                <View style={styles.chipRow}>
+                  {(['ALL', 'TRACKERS_ONLY', 'PEERS_ONLY'] as const).map((scope) => (
+                    <TouchableOpacity
+                      key={scope}
+                      style={[
+                        styles.chipSmall,
+                        settings.network.proxy.scope === scope ? styles.chipActive : styles.chipInactive,
+                      ]}
+                      onPress={() =>
+                        updateSettings({
+                          network: {
+                            ...settings.network,
+                            proxy: { ...settings.network.proxy, scope },
+                          },
+                        })
+                      }
+                      accessibilityRole="button"
+                    >
+                      <Text
+                        style={[
+                          styles.chipText,
+                          settings.network.proxy.scope === scope ? styles.chipTextActive : styles.chipTextInactive,
+                        ]}
+                      >
+                        {scope === 'ALL' ? 'All Traffic' : scope === 'TRACKERS_ONLY' ? 'Trackers' : 'Peers'}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+
+                {/* Remote DNS Toggle */}
+                <View style={styles.subRow}>
+                  <Text style={styles.subRowLabel}>RFC 1928 Remote DNS Resolution</Text>
+                  <Switch
+                    value={settings.network.proxy.remoteDns}
+                    onValueChange={(val) =>
+                      updateSettings({
+                        network: {
+                          ...settings.network,
+                          proxy: { ...settings.network.proxy, remoteDns: val },
+                        },
+                      })
+                    }
+                    trackColor={{ false: '#161B22', true: TOKENS.colors.accentLime }}
+                    thumbColor={settings.network.proxy.remoteDns ? '#000000' : TOKENS.colors.textMuted}
+                  />
+                </View>
+              </View>
+            )}
+          </View>
+
+          {/* IP Filtering / Blocklist */}
+          <View style={styles.settingBlock}>
+            <View style={styles.rowBetween}>
+              <View style={styles.settingTextContainer}>
+                <Text style={styles.settingTitle}>IP Filtering / Blocklist</Text>
+                <Text style={styles.settingSubtitle}>
+                  Reject untrusted IP ranges (PeerGuardian / eMule .dat)
+                </Text>
+              </View>
+              <Switch
+                value={settings.network.ipFilterEnabled}
+                onValueChange={(val) =>
+                  updateSettings({ network: { ...settings.network, ipFilterEnabled: val } })
+                }
+                trackColor={{ false: '#161B22', true: TOKENS.colors.accentLime }}
+                thumbColor={settings.network.ipFilterEnabled ? '#000000' : TOKENS.colors.textMuted}
+              />
+            </View>
+
+            <View style={styles.ipFilterInfoRow}>
+              <View style={styles.badgeLime}>
+                <Text style={styles.badgeLimeText}>
+                  {settings.network.ipFilterRulesCount > 0
+                    ? `${settings.network.ipFilterRulesCount} ranges active`
+                    : 'No rules loaded'}
+                </Text>
+              </View>
+
+              <TouchableOpacity
+                style={styles.loadBlocklistBtn}
+                onPress={handleLoadSampleIpFilter}
+                accessibilityRole="button"
+              >
+                <Text style={styles.loadBlocklistBtnText}>Load Default Blocklist</Text>
+              </TouchableOpacity>
+            </View>
+
+            {filterMessage && <Text style={styles.filterSuccessMsg}>{filterMessage}</Text>}
+          </View>
+        </View>
+
+        {/* 5. POWER & BATTERY SECTION */}
+        <Text style={styles.sectionHeader}>POWER & BATTERY</Text>
+        <View style={[styles.settingsGroup, { backgroundColor: cardBackgroundColor }]}>
+          <View style={styles.settingRow}>
+            <View style={styles.settingTextContainer}>
+              <Text style={styles.settingTitle}>Download Only While Charging</Text>
+              <Text style={styles.settingSubtitle}>
+                Pause active transfers and release WakeLock when running on battery
+              </Text>
+            </View>
+            <Switch
+              value={settings.power.downloadOnlyWhileCharging}
+              onValueChange={(val) =>
+                updateSettings({ power: { ...settings.power, downloadOnlyWhileCharging: val } })
+              }
+              trackColor={{ false: '#161B22', true: TOKENS.colors.accentLime }}
+              thumbColor={settings.power.downloadOnlyWhileCharging ? '#000000' : TOKENS.colors.textMuted}
+            />
+          </View>
+
+          <View style={styles.settingBlock}>
+            <Text style={styles.settingTitle}>Battery Cutoff Threshold</Text>
+            <Text style={styles.settingSubtitle}>
+              Auto-pause transfers and release WakeLock (&lt;500ms) when battery falls below
+            </Text>
+            <View style={styles.chipRow}>
+              {batteryThresholds.map((threshold) => {
+                const isActive = settings.power.batteryCutoffThreshold === threshold;
+                return (
+                  <TouchableOpacity
+                    key={`cutoff_${threshold}`}
+                    style={[styles.chip, isActive ? styles.chipActive : styles.chipInactive]}
+                    onPress={() =>
+                      updateSettings({ power: { ...settings.power, batteryCutoffThreshold: threshold } })
+                    }
+                    accessibilityRole="button"
+                  >
+                    <Text style={[styles.chipText, isActive ? styles.chipTextActive : styles.chipTextInactive]}>
+                      {threshold === 0 ? 'Disabled' : `${threshold}%`}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
           </View>
 
           <View style={styles.settingRow}>
             <View style={styles.settingTextContainer}>
-              <Text style={styles.settingTitle}>UPnP / NAT-PMP Port Forwarding</Text>
-              <Text style={styles.settingSubtitle}>Automatically open router port (BEP 55)</Text>
+              <Text style={styles.settingTitle}>Auto-Exit on Complete</Text>
+              <Text style={styles.settingSubtitle}>
+                Release all system locks and stop foreground service when queue finishes
+              </Text>
             </View>
             <Switch
-              value={upnpEnabled}
-              onValueChange={setUpnpEnabled}
+              value={settings.power.autoExitOnComplete}
+              onValueChange={(val) =>
+                updateSettings({ power: { ...settings.power, autoExitOnComplete: val } })
+              }
               trackColor={{ false: '#161B22', true: TOKENS.colors.accentLime }}
-              thumbColor={upnpEnabled ? '#000000' : TOKENS.colors.textMuted}
+              thumbColor={settings.power.autoExitOnComplete ? '#000000' : TOKENS.colors.textMuted}
             />
           </View>
         </View>
 
-        {/* About Section */}
-        <Text style={styles.sectionHeader}>About</Text>
-        <View style={styles.settingsGroup}>
+        {/* 6. ABOUT SECTION */}
+        <Text style={styles.sectionHeader}>ABOUT</Text>
+        <View style={[styles.settingsGroup, { backgroundColor: cardBackgroundColor }]}>
           <View style={styles.settingRow}>
             <View style={styles.settingTextContainer}>
               <Text style={styles.settingTitle}>Maglev Engine</Text>
               <Text style={styles.settingSubtitle}>
-                Mode: {isNative ? 'Native Rust librqbit (.so)' : 'High-Fidelity Telemetry Simulator'}
+                {isNative ? 'Native Rust librqbit 0.1.0 (.so JNI)' : 'High-Fidelity Telemetry Simulator'}
               </Text>
             </View>
           </View>
 
           <View style={styles.settingRow}>
             <View style={styles.settingTextContainer}>
+              <Text style={styles.settingTitle}>License</Text>
+              <Text style={styles.settingSubtitle}>MIT / Apache-2.0 (Zero Bloat, Zero Jargon)</Text>
+            </View>
+          </View>
+
+          <View style={styles.settingRow}>
+            <View style={styles.settingTextContainer}>
+              <Text style={styles.settingTitle}>Repository</Text>
+              <Text style={styles.settingSubtitle}>github.com/Kaos599/Maglev</Text>
+            </View>
+          </View>
+
+          <View style={styles.settingRow}>
+            <View style={styles.settingTextContainer}>
               <Text style={styles.settingTitle}>Version</Text>
-              <Text style={styles.settingSubtitle}>Maglev 0.1.0-alpha</Text>
+              <Text style={styles.settingSubtitle}>Maglev 0.1.0 (Phase 2 Governance)</Text>
             </View>
           </View>
         </View>
       </ScrollView>
+
+      {/* Custom Speed Numeric Modal */}
+      <Modal visible={customSpeedModal !== null} transparent animationType="fade">
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalCard, { backgroundColor: cardBackgroundColor }]}>
+            <Text style={styles.modalTitle}>
+              Custom {customSpeedModal === 'download' ? 'Download' : 'Upload'} Limit
+            </Text>
+            <Text style={styles.modalSubtitle}>Enter maximum transfer ceiling in KB/s</Text>
+
+            <TextInput
+              style={styles.modalInput}
+              placeholder="e.g. 2500 for 2.5 MB/s"
+              placeholderTextColor={TOKENS.colors.textMuted}
+              keyboardType="numeric"
+              value={customSpeedInput}
+              onChangeText={setCustomSpeedInput}
+              autoFocus
+            />
+
+            <View style={styles.modalActionsRow}>
+              <TouchableOpacity
+                style={styles.modalCancelBtn}
+                onPress={() => setCustomSpeedModal(null)}
+                accessibilityRole="button"
+              >
+                <Text style={styles.modalCancelText}>Cancel</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.modalApplyBtn}
+                onPress={applyCustomSpeed}
+                accessibilityRole="button"
+              >
+                <Text style={styles.modalApplyText}>Apply Limit</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -117,28 +981,27 @@ export default function SettingsScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: TOKENS.colors.bgOled,
   },
   scrollContent: {
     paddingHorizontal: 16,
     paddingTop: 8,
-    paddingBottom: 40,
+    paddingBottom: 48,
   },
   sectionHeader: {
     color: TOKENS.colors.textMuted,
     fontSize: 11,
     fontWeight: '700',
     fontFamily: 'monospace',
-    marginTop: 18,
+    marginTop: 20,
     marginBottom: 8,
-    letterSpacing: 0.5,
+    letterSpacing: 0.8,
   },
   settingsGroup: {
-    backgroundColor: TOKENS.colors.surfaceCard,
     borderWidth: 1,
     borderColor: TOKENS.colors.surfaceBorder,
     borderRadius: 12,
     overflow: 'hidden',
+    marginBottom: 4,
   },
   settingRow: {
     flexDirection: 'row',
@@ -149,6 +1012,12 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: TOKENS.colors.surfaceBorder,
     minHeight: TOKENS.touchTarget.minHeight,
+  },
+  settingBlock: {
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: TOKENS.colors.surfaceBorder,
   },
   settingTextContainer: {
     flex: 1,
@@ -164,5 +1033,357 @@ const styles = StyleSheet.create({
     color: TOKENS.colors.textMuted,
     fontSize: 11,
     lineHeight: 16,
+  },
+  settingPathText: {
+    color: TOKENS.colors.accentCyan,
+    fontSize: 11,
+    fontFamily: 'monospace',
+    marginVertical: 6,
+  },
+  destinationPathText: {
+    color: TOKENS.colors.accentLime,
+    fontSize: 11,
+    fontFamily: 'monospace',
+    marginTop: 4,
+  },
+  rowBetween: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  rowAlign: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  telemetryValue: {
+    color: TOKENS.colors.accentLime,
+    fontSize: 12,
+    fontFamily: 'monospace',
+    fontWeight: '700',
+  },
+  chipRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginTop: 10,
+  },
+  chipRowWrap: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+    marginTop: 10,
+  },
+  chip: {
+    flex: 1,
+    minHeight: TOKENS.touchTarget.minHeight,
+    minWidth: 120,
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+  },
+  chipSmall: {
+    minHeight: TOKENS.touchTarget.minHeight,
+    minWidth: 64,
+    paddingHorizontal: 10,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+  },
+  chipMini: {
+    minHeight: TOKENS.touchTarget.minHeight,
+    minWidth: TOKENS.touchTarget.minWidth,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+  },
+  chipActive: {
+    backgroundColor: TOKENS.colors.accentLime,
+    borderColor: TOKENS.colors.accentLime,
+  },
+  chipInactive: {
+    backgroundColor: '#11161F',
+    borderColor: TOKENS.colors.surfaceBorder,
+  },
+  chipText: {
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  chipTextActive: {
+    color: '#000000',
+  },
+  chipTextInactive: {
+    color: TOKENS.colors.textPrimary,
+  },
+  capsRow: {
+    flexDirection: 'row',
+    gap: 16,
+    marginTop: 10,
+  },
+  capItem: {
+    flex: 1,
+  },
+  capLabel: {
+    color: TOKENS.colors.textMuted,
+    fontSize: 11,
+    fontWeight: '600',
+    marginBottom: 4,
+  },
+  badgeCyan: {
+    backgroundColor: '#003344',
+    borderColor: TOKENS.colors.accentCyan,
+    borderWidth: 1,
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+  },
+  badgeCyanText: {
+    color: TOKENS.colors.accentCyan,
+    fontSize: 10,
+    fontWeight: '700',
+  },
+  badgeLime: {
+    backgroundColor: '#223300',
+    borderColor: TOKENS.colors.accentLime,
+    borderWidth: 1,
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  badgeLimeText: {
+    color: TOKENS.colors.accentLime,
+    fontSize: 10,
+    fontWeight: '700',
+  },
+  portBadge: {
+    backgroundColor: '#002B33',
+    borderColor: TOKENS.colors.accentCyan,
+    borderWidth: 1,
+    borderRadius: 6,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+  },
+  portBadgeText: {
+    color: TOKENS.colors.accentCyan,
+    fontSize: 10,
+    fontWeight: '700',
+    fontFamily: 'monospace',
+  },
+  ssidContainer: {
+    marginTop: 8,
+  },
+  currentSsidBadge: {
+    color: TOKENS.colors.accentCyan,
+    fontSize: 11,
+    fontFamily: 'monospace',
+    marginBottom: 6,
+  },
+  ssidTagsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    alignItems: 'center',
+  },
+  ssidTag: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: TOKENS.colors.accentLime,
+    borderRadius: 6,
+    paddingLeft: 8,
+    paddingRight: 4,
+    height: 32,
+  },
+  ssidTagText: {
+    color: '#000000',
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  ssidTagRemove: {
+    width: 24,
+    height: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: 4,
+  },
+  addSsidButton: {
+    minHeight: TOKENS.touchTarget.minHeight,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    backgroundColor: '#11161F',
+    borderWidth: 1,
+    borderColor: TOKENS.colors.surfaceBorder,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  addSsidButtonText: {
+    color: TOKENS.colors.accentCyan,
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  addSsidRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 8,
+  },
+  ssidTextInput: {
+    flex: 1,
+    height: TOKENS.touchTarget.minHeight,
+    backgroundColor: '#11161F',
+    borderColor: TOKENS.colors.surfaceBorder,
+    borderWidth: 1,
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    color: TOKENS.colors.textPrimary,
+    fontSize: 12,
+  },
+  confirmSsidButton: {
+    height: TOKENS.touchTarget.minHeight,
+    paddingHorizontal: 16,
+    backgroundColor: TOKENS.colors.accentLime,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  confirmSsidButtonText: {
+    color: '#000000',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  subRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 8,
+    borderTopWidth: 1,
+    borderTopColor: '#161B22',
+    marginTop: 8,
+    minHeight: TOKENS.touchTarget.minHeight,
+  },
+  subRowLabel: {
+    color: TOKENS.colors.textPrimary,
+    fontSize: 12,
+  },
+  proxyDetailsBox: {
+    backgroundColor: '#07090D',
+    borderWidth: 1,
+    borderColor: TOKENS.colors.surfaceBorder,
+    borderRadius: 8,
+    padding: 12,
+    marginTop: 10,
+  },
+  inputPairRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 10,
+  },
+  proxyInput: {
+    height: TOKENS.touchTarget.minHeight,
+    backgroundColor: '#11161F',
+    borderColor: TOKENS.colors.surfaceBorder,
+    borderWidth: 1,
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    color: TOKENS.colors.textPrimary,
+    fontSize: 12,
+  },
+  proxySublabel: {
+    color: TOKENS.colors.textMuted,
+    fontSize: 11,
+    fontWeight: '600',
+    marginTop: 10,
+  },
+  ipFilterInfoRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 10,
+  },
+  loadBlocklistBtn: {
+    minHeight: TOKENS.touchTarget.minHeight,
+    paddingHorizontal: 14,
+    backgroundColor: '#11161F',
+    borderWidth: 1,
+    borderColor: TOKENS.colors.surfaceBorder,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  loadBlocklistBtnText: {
+    color: TOKENS.colors.accentCyan,
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  filterSuccessMsg: {
+    color: TOKENS.colors.accentLime,
+    fontSize: 11,
+    marginTop: 6,
+    fontFamily: 'monospace',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.85)',
+    justifyContent: 'center',
+    padding: 24,
+  },
+  modalCard: {
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: TOKENS.colors.surfaceBorder,
+    padding: 20,
+  },
+  modalTitle: {
+    color: TOKENS.colors.textPrimary,
+    fontSize: 16,
+    fontWeight: '700',
+    marginBottom: 4,
+  },
+  modalSubtitle: {
+    color: TOKENS.colors.textMuted,
+    fontSize: 12,
+    marginBottom: 16,
+  },
+  modalInput: {
+    height: 48,
+    backgroundColor: '#11161F',
+    borderColor: TOKENS.colors.surfaceBorder,
+    borderWidth: 1,
+    borderRadius: 8,
+    paddingHorizontal: 14,
+    color: TOKENS.colors.textPrimary,
+    fontSize: 14,
+    marginBottom: 20,
+  },
+  modalActionsRow: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: 12,
+  },
+  modalCancelBtn: {
+    minHeight: TOKENS.touchTarget.minHeight,
+    paddingHorizontal: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modalCancelText: {
+    color: TOKENS.colors.textMuted,
+    fontSize: 13,
+  },
+  modalApplyBtn: {
+    minHeight: TOKENS.touchTarget.minHeight,
+    paddingHorizontal: 20,
+    backgroundColor: TOKENS.colors.accentLime,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modalApplyText: {
+    color: '#000000',
+    fontSize: 13,
+    fontWeight: '700',
   },
 });

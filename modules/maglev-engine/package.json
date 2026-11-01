@@ -1,6 +1,7 @@
 {
   "name": "maglev-engine",
   "version": "0.1.0",
+  "type": "module",
   "description": "Custom Expo native module bridge for Maglev Rust BitTorrent engine",
   "main": "src/index.ts",
   "types": "src/index.ts",

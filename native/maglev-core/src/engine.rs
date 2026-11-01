@@ -5,10 +5,12 @@
 //! - Max 40 active peer sockets per torrent
 //! - Clamped 16 MB write cache
 //! - Telemetry aggregation piped through MPSC queue at 500ms cadence
+//! - Phase 2 system governance: Token-bucket limiter, UPnP, SOCKS5 proxy, IP filter, power/battery cutoff
 
 use std::collections::HashMap;
+use std::net::Ipv4Addr;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -18,6 +20,8 @@ use tokio::runtime::{Builder, Runtime};
 use tokio::sync::mpsc;
 use tracing::{error, info, warn};
 
+use crate::governance::{NetworkGovernance, PowerGovernance, ProxyConfig, SeedingGovernance, TokenBucketLimiter};
+use crate::ip_filter::IpFilterEngine;
 use crate::simd::{downsample_bitfield, MATRIX_SIZE};
 use crate::storage::AndroidDiskAllocator;
 use crate::streaming::StreamServer;
@@ -41,6 +45,7 @@ pub struct TorrentTelemetry {
     pub peers_total: usize,
     pub seeds_connected: usize,
     pub ratio: f32,
+    pub seed_duration_seconds: u64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -87,6 +92,7 @@ struct TorrentHandle {
     bitfield_raw: Vec<u8>,
     trackers: Vec<TrackerInfo>,
     files: Vec<TorrentFileInfo>,
+    seed_duration_secs: u64,
 }
 
 pub struct MaglevEngine {
@@ -97,6 +103,16 @@ pub struct MaglevEngine {
     torrents: Arc<RwLock<HashMap<String, TorrentHandle>>>,
     telemetry_tx: mpsc::Sender<AggregatedTelemetry>,
     stream_server: Arc<RwLock<Option<StreamServer>>>,
+
+    // Phase 2 Governance subsystems
+    pub down_limiter: Arc<TokenBucketLimiter>,
+    pub up_limiter: Arc<TokenBucketLimiter>,
+    pub network_gov: Arc<RwLock<NetworkGovernance>>,
+    pub power_gov: Arc<RwLock<PowerGovernance>>,
+    pub seeding_gov: Arc<RwLock<SeedingGovernance>>,
+    pub ip_filter: Arc<RwLock<IpFilterEngine>>,
+    pub max_active_downloads: AtomicUsize,
+    pub max_connections_per_torrent: AtomicUsize,
 }
 
 impl MaglevEngine {
@@ -121,6 +137,15 @@ impl MaglevEngine {
             torrents: Arc::new(RwLock::new(HashMap::new())),
             telemetry_tx,
             stream_server: Arc::new(RwLock::new(None)),
+
+            down_limiter: Arc::new(TokenBucketLimiter::new(0)),
+            up_limiter: Arc::new(TokenBucketLimiter::new(0)),
+            network_gov: Arc::new(RwLock::new(NetworkGovernance::default())),
+            power_gov: Arc::new(RwLock::new(PowerGovernance::default())),
+            seeding_gov: Arc::new(RwLock::new(SeedingGovernance::default())),
+            ip_filter: Arc::new(RwLock::new(IpFilterEngine::new())),
+            max_active_downloads: AtomicUsize::new(3),
+            max_connections_per_torrent: AtomicUsize::new(DEFAULT_MAX_PEERS),
         };
 
         // Start background telemetry dispatcher loop (500ms cadence)
@@ -129,15 +154,45 @@ impl MaglevEngine {
         Ok(engine)
     }
 
+    pub fn set_rate_limits(&self, down_bytes: u64, up_bytes: u64) {
+        self.down_limiter.set_rate_limit(down_bytes);
+        self.up_limiter.set_rate_limit(up_bytes);
+    }
+
+    pub fn update_network_governance(&self, gov: NetworkGovernance) {
+        *self.network_gov.write() = gov;
+    }
+
+    pub fn update_power_governance(&self, gov: PowerGovernance) {
+        *self.power_gov.write() = gov;
+    }
+
+    pub fn update_seeding_governance(&self, gov: SeedingGovernance) {
+        *self.seeding_gov.write() = gov;
+    }
+
+    pub fn load_ip_filter(&self, dat_content: &str) -> usize {
+        self.ip_filter.write().parse_dat(dat_content)
+    }
+
     fn spawn_telemetry_loop(&self) {
         let running = Arc::clone(&self.running);
         let torrents = Arc::clone(&self.torrents);
         let tx = self.telemetry_tx.clone();
+        let down_limiter = Arc::clone(&self.down_limiter);
+        let up_limiter = Arc::clone(&self.up_limiter);
+        let network_gov = Arc::clone(&self.network_gov);
+        let power_gov = Arc::clone(&self.power_gov);
+        let seeding_gov = Arc::clone(&self.seeding_gov);
+        let max_conn = self.max_connections_per_torrent.load(Ordering::Relaxed);
 
         self.runtime.spawn(async move {
             let mut interval = tokio::time::interval(Duration::from_millis(500));
             while running.load(Ordering::Relaxed) {
                 interval.tick().await;
+
+                let should_clamp = network_gov.read().should_clamp_sockets();
+                let should_pause = power_gov.read().should_pause_transfers();
 
                 let mut total_down: u64 = 0;
                 let mut total_up: u64 = 0;
@@ -146,14 +201,49 @@ impl MaglevEngine {
                 let mut items = Vec::new();
 
                 {
-                    let map = torrents.read();
-                    for t in map.values() {
-                        if t.state == "DOWNLOADING" {
-                            total_down += t.down_speed;
-                            active_down += 1;
-                        } else if t.state == "SEEDING" {
-                            total_up += t.up_speed;
-                            active_up += 1;
+                    let mut map = torrents.write();
+                    for t in map.values_mut() {
+                        if should_clamp || should_pause {
+                            t.down_speed = 0;
+                            t.up_speed = 0;
+                        } else {
+                            if t.state == "DOWNLOADING" {
+                                let requested = 12_500_000;
+                                let clamped = down_limiter.consume(requested);
+                                t.down_speed = clamped;
+                                total_down += clamped;
+                                active_down += 1;
+
+                                // Advance bytes
+                                let delta = clamped / 2;
+                                t.downloaded = (t.downloaded + delta).min(t.total_size);
+                                if t.downloaded >= t.total_size {
+                                    t.state = "SEEDING".to_string();
+                                    t.down_speed = 0;
+                                    t.up_speed = 3_400_000;
+                                }
+                            } else if t.state == "SEEDING" {
+                                t.seed_duration_secs += 1;
+                                let ratio = if t.downloaded > 0 {
+                                    t.uploaded as f32 / t.downloaded as f32
+                                } else {
+                                    0.0
+                                };
+
+                                // Check seeding ratio limits
+                                if seeding_gov.read().should_stop_seeding(ratio, t.seed_duration_secs) {
+                                    t.state = "PAUSED".to_string();
+                                    t.down_speed = 0;
+                                    t.up_speed = 0;
+                                } else {
+                                    let requested = 3_400_000;
+                                    let clamped = up_limiter.consume(requested);
+                                    t.up_speed = clamped;
+                                    total_up += clamped;
+                                    active_up += 1;
+                                    t.uploaded += clamped / 2;
+                                }
+                            }
                         }
 
                         let progress = if t.total_size > 0 {
@@ -185,10 +275,11 @@ impl MaglevEngine {
                             uploaded_bytes: t.uploaded,
                             total_size_bytes: t.total_size,
                             eta_seconds: eta,
-                            peers_connected: t.peers,
-                            peers_total: DEFAULT_MAX_PEERS,
+                            peers_connected: t.peers.min(max_conn),
+                            peers_total: max_conn,
                             seeds_connected: t.seeds,
                             ratio,
+                            seed_duration_seconds: t.seed_duration_secs,
                         });
                     }
                 }
@@ -230,7 +321,7 @@ impl MaglevEngine {
         }
 
         let total_pieces = 512;
-        let mut handle = TorrentHandle {
+        let handle = TorrentHandle {
             id: id.clone(),
             name,
             state: "DOWNLOADING".to_string(),
@@ -238,12 +329,13 @@ impl MaglevEngine {
             total_size: 1024 * 1024 * 500, // 500 MB mock
             downloaded: 0,
             uploaded: 0,
-            down_speed: 12_500_000, // 12.5 MB/s
+            down_speed: 12_500_000,
             up_speed: 850_000,
             peers: 24,
             seeds: 12,
             total_pieces,
             bitfield_raw: vec![0; (total_pieces + 7) / 8],
+            seed_duration_secs: 0,
             trackers: vec![
                 TrackerInfo {
                     url: "udp://tracker.opentrackr.org:1337/announce".to_string(),

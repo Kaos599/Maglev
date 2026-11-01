@@ -1,6 +1,7 @@
 import { EventEmitter, NativeModulesProxy, requireOptionalNativeModule } from 'expo-modules-core';
-import { AggregatedTelemetry, PieceMatrix, TorrentDetailData, TrackerInfo } from './MaglevEngine.types';
-import { mockEngine } from './MaglevMockEngine';
+import { AggregatedTelemetry, PieceMatrix, TorrentDetailData, TrackerInfo } from './MaglevEngine.types.ts';
+import type { MaglevSettings } from './MaglevSettings.types.ts';
+import { mockEngine } from './MaglevMockEngine.ts';
 
 // Safely probe for native module
 let NativeModule: any = null;
@@ -144,6 +145,48 @@ export class MaglevEngineBridge {
 
   public getTorrentDetail(id: string): TorrentDetailData | null {
     return mockEngine.getTorrentDetail(id);
+  }
+
+  public async applySettings(settings: MaglevSettings): Promise<void> {
+    if (this.isNative && NativeModule?.applySettings) {
+      await NativeModule.applySettings(JSON.stringify(settings));
+    }
+    mockEngine.applySettings(settings);
+  }
+
+  public async updateNetworkState(state: {
+    networkType: 'WIFI' | 'CELLULAR' | 'NONE';
+    ssid?: string;
+  }): Promise<void> {
+    if (this.isNative && NativeModule?.updateNetworkState) {
+      await NativeModule.updateNetworkState(state.networkType, state.ssid || '');
+    }
+    mockEngine.updateNetworkState(state);
+  }
+
+  public async updatePowerState(state: {
+    isCharging: boolean;
+    batteryPercentage: number;
+  }): Promise<void> {
+    if (this.isNative && NativeModule?.updatePowerState) {
+      await NativeModule.updatePowerState(state.isCharging, state.batteryPercentage);
+    }
+    mockEngine.updatePowerState(state);
+  }
+
+  public async loadIpFilterDat(content: string): Promise<number> {
+    if (this.isNative && NativeModule?.loadIpFilter) {
+      return await NativeModule.loadIpFilter(content);
+    }
+    return mockEngine.loadIpFilterDat(content);
+  }
+
+  public isSocketsClamped(): boolean {
+    return mockEngine.isSocketsClamped();
+  }
+
+  public isWakeLockHeld(): boolean {
+    return mockEngine.isWakeLockHeld();
   }
 }
 
