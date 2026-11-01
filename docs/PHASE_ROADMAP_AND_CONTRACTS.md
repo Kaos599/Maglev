@@ -8,18 +8,18 @@
 Deliver a fully functional, native-speed BitTorrent client capable of ingesting magnet links and raw `.torrent` files, downloading to Android storage with piece verification, seeding to the swarm, and displaying real-time HUD telemetry.
 
 ### Detailed Task List
-- [ ] **Task 1.1:** Setup Rust `librqbit` mobile cross-compilation pipeline with `cargo-ndk` targeting `arm64-v8a`, `armeabi-v7a`, `x86_64` (Tokio tuned to 2 worker threads).
-- [ ] **Task 1.2:** Implement Kotlin JNI bridge with internal MPSC channel and dedicated daemon dispatcher thread exposing lifecycle methods (`startTorrent`, `openTorrentFile`, `pauseTorrent`, `resumeTorrent`, `deleteTorrent`, `setFilePriority`, `getPieceBitfield`, `getTrackers`, `addTracker`, `reannounce`).
-- [ ] **Task 1.3:** Configure Android `intent-filter` in `AndroidManifest.xml` for `magnet:` URI scheme and `application/x-bittorrent` / `application/x-torrent` MIME types.
-- [ ] **Task 1.4:** Build Android `ForegroundService` (`dataSync`) with persistent speed notification; automatically call `stopForeground(STOP_FOREGROUND_REMOVE)` when active count is 0.
-- [ ] **Task 1.5:** Implement default storage destination in Android App-Specific External Storage (`/Android/data/com.maglev/files/Download`) for zero-copy direct POSIX writes with `EOPNOTSUPP` fallback.
-- [ ] **Task 1.6:** Implement Expo Native Module (`MaglevEngineModule`) with zero-GC native SIMD bitfield downsampling (`[u8; 256]` via `DirectByteBuffer`) at 500ms cadence.
-- [ ] **Task 1.7:** Build **Transfers Screen** (Active cards, speed badges, pause/resume, global `[Pause All]` / `[Resume All]`, horizontal swipeable filter pills: All, Down, Up, Paused).
-- [ ] **Task 1.8:** Build **Empty State Screen** with clean 8-bit download tray, automatic clipboard magnet detection pill, and direct `[+ Add Torrent]` and `[Search Torrents]` buttons.
-- [ ] **Task 1.9:** Build **Add Torrent Sheet** with default storage path pill + `[Change]` override, multi-file batch selection (`[Select All]`, `[Deselect All]`, `.ext` chips), and non-blocking background queueing.
-- [ ] **Task 1.10:** Build **Torrent Detail Screen** with live speed chart, dual-action delete dialog (`Remove from Maglev` vs `Delete Torrent + Files`), and 4 tab views: `[FILES]`, `[PIECES]`, `[PEERS]`, and `[TRACKERS]`.
-- [ ] **Task 1.11:** Implement built-in loopback HTTP streaming server (`http://127.0.0.1:<port>/stream/...`) with `[▶ Stream Now]` action button for sequential playback in external video players.
-- [ ] **Task 1.12:** End-to-End integration test validating real torrent download against a local swarm.
+- [x] **Task 1.1:** Setup Rust `librqbit` mobile cross-compilation pipeline with `cargo-ndk` targeting `arm64-v8a`, `armeabi-v7a`, `x86_64` (Tokio tuned to 2 worker threads).
+- [x] **Task 1.2:** Implement Kotlin JNI bridge with internal MPSC channel and dedicated daemon dispatcher thread exposing lifecycle methods (`startTorrent`, `openTorrentFile`, `pauseTorrent`, `resumeTorrent`, `deleteTorrent`, `setFilePriority`, `getPieceBitfield`, `getTrackers`, `addTracker`, `reannounce`).
+- [x] **Task 1.3:** Configure Android `intent-filter` in `AndroidManifest.xml` for `magnet:` URI scheme and `application/x-bittorrent` / `application/x-torrent` MIME types.
+- [x] **Task 1.4:** Build Android `ForegroundService` (`dataSync`) with persistent speed notification; automatically call `stopForeground(STOP_FOREGROUND_REMOVE)` when active count is 0.
+- [x] **Task 1.5:** Implement default storage destination in Android App-Specific External Storage (`/Android/data/com.maglev/files/Download`) for zero-copy direct POSIX writes with `EOPNOTSUPP` fallback.
+- [x] **Task 1.6:** Implement Expo Native Module (`MaglevEngineModule`) with zero-GC native SIMD bitfield downsampling (`[u8; 256]` via `DirectByteBuffer`) at 500ms cadence.
+- [x] **Task 1.7:** Build **Transfers Screen** (Active cards, speed badges, pause/resume, global `[Pause All]` / `[Resume All]`, horizontal swipeable filter pills: All, Down, Up, Paused).
+- [x] **Task 1.8:** Build **Empty State Screen** with clean 8-bit download tray, automatic clipboard magnet detection pill, and direct `[+ Add Torrent]` and `[Search Torrents]` buttons.
+- [x] **Task 1.9:** Build **Add Torrent Sheet** with default storage path pill + `[Change]` override, multi-file batch selection (`[Select All]`, `[Deselect All]`, `.ext` chips), and non-blocking background queueing.
+- [x] **Task 1.10:** Build **Torrent Detail Screen** with live speed chart, dual-action delete dialog (`Remove from Maglev` vs `Delete Torrent + Files`), and 4 tab views: `[FILES]`, `[PIECES]`, `[PEERS]`, and `[TRACKERS]`.
+- [x] **Task 1.11:** Implement built-in loopback HTTP streaming server (`http://127.0.0.1:<port>/stream/...`) with `[▶ Stream Now]` action button for sequential playback in external video players.
+- [x] **Task 1.12:** End-to-End integration test validating real torrent download against a local swarm.
 
 ### Phase 1 Contract List
 * **CONTRACT-1.1 (Engine Lifecycle):** Native engine must initialize in `< 200ms` and shut down cleanly without zombie Tokio worker threads.

@@ -1,7 +1,7 @@
 # MAGLEV — LEDGER & WORKSTREAM LOG
 
 > **Branch:** `dev`  
-> **Status:** Phase 0 Audited & Locked (Ready for Phase 1 Scaffolding)  
+> **Status:** Phase 1 Complete & Verified (100% Contract & SLA Pass)  
 > **Repository:** `Kaos599/Maglev` (Private)
 
 ---
@@ -13,6 +13,19 @@ Build **Maglev** — a frictionless, zero-drag, zero-bloat, native-speed Android
 ---
 
 ## 📜 Ledger Entries
+
+### [2026-11-01] — Turn 3: Phase 1 Core BitTorrent Engine & Transfers Delivery
+- **Task 1.1:** Authored Rust `native/maglev-core` crate (librqbit, 2 Tokio worker threads, SIMD bit-popcount, Android FUSE `EOPNOTSUPP` fallback) and configured GitHub Actions cloud compilation CI `.github/workflows/build-engine.yml`.
+- **Task 1.2 & 1.6:** Built custom Expo Native Module `modules/maglev-engine` with dual-mode bridge (high-fidelity TypeScript simulation engine + Kotlin JNI daemon dispatcher thread with MPSC channel).
+- **Task 1.3:** Configured Android `intent-filter` for `magnet:` links and raw `.torrent` files with MIME types `application/x-bittorrent` and `application/x-torrent`.
+- **Task 1.4:** Implemented Android `ForegroundService` (`dataSync`) with real-time speed notification, `PARTIAL_WAKE_LOCK` lifecycle, and zero-idle removal (`stopForeground(STOP_FOREGROUND_REMOVE)`).
+- **Task 1.5:** Configured default App-Specific External Storage (`/Android/data/com.maglev/files/Download`) for zero-copy direct POSIX writes.
+- **Task 1.7:** Built Transfers Screen (`app/(tabs)/index.tsx`, `TransferCard`, `SpeedTelemetryHeader`, `FilterPills` with min-44px touch targets).
+- **Task 1.8:** Built Empty State Screen (`EmptyState.tsx`) with 8-bit download tray, auto-detect clipboard magnet link pill, and direct Add/Search triggers.
+- **Task 1.9:** Built Add Torrent Sheet (`app/add-torrent.tsx`) with storage override, multi-file checklist batch controls, and sequential toggle.
+- **Task 1.10:** Built Torrent Detail Screen (`app/torrent/[id].tsx`) with live speed chart, 4 tabs (Files, Pieces 16x16 matrix, Peers, Trackers), and dual-action delete dialog.
+- **Task 1.11:** Built loopback HTTP streaming endpoint (`http://127.0.0.1:<port>/stream/:id/:file_index`) with `[▶ Stream Now]` action button.
+- **Task 1.12:** Implemented and executed automated E2E integration test suite (`scripts/test-e2e.js`) validating 31/31 assertions (100% pass) against all Phase 1 contracts and SLAs.
 
 ### [2026-11-01] — Turn 2: Multi-Stakeholder Nemesis Audit Synthesis & Contract Remediation
 - **5-Agent Parallel Audit Completed:**
@@ -40,8 +53,8 @@ Build **Maglev** — a frictionless, zero-drag, zero-bloat, native-speed Android
 | Phase | Milestone | Scope | Status |
 |:---:|:---|:---|:---:|
 | **0** | **Repo, Specs & Nemesis Audit** | Git init, branches, design tokens, multi-agent audit, locked contracts | ✅ **COMPLETED** |
-| **1** | **Core BitTorrent Engine & Transfers** | Rust librqbit Expo module, intent filters, safe deletion, transfer dashboard | 🟡 **UP NEXT** |
-| **2** | **Settings & System Governance** | Bandwidth limits, UPnP port forwarding, encryption PE/MSE, OLED pure black | ⚪ Pending |
+| **1** | **Core BitTorrent Engine & Transfers** | Rust librqbit Expo module, intent filters, safe deletion, transfer dashboard | ✅ **COMPLETED** |
+| **2** | **Settings & System Governance** | Bandwidth limits, UPnP port forwarding, encryption PE/MSE, OLED pure black | 🟡 **UP NEXT** |
 | **3** | **Search & Aggregation** | Multi-provider search, category filters, recent searches, bookmarks, NSFW filters | ⚪ Pending |
 | **4** | **Automated Feeds (RSS)** | RSS feed parser, auto-download regex filters, background sync | ⚪ Pending |
 
