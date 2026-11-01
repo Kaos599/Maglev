@@ -43,31 +43,53 @@ Deliver a fully functional, native-speed BitTorrent client capable of ingesting 
 ## ⚙️ Phase 2: Configuration & System Governance
 
 ### Objective
-Empower users with granular control over networking, bandwidth limits, storage targets, power preservation, and visual theming without introducing bloat.
+Empower users with granular, professional-grade control over networking, bandwidth limits, storage targets, power preservation, proxy tunnels, and visual theming without introducing bloat. Synthesizes field-tested capabilities from top Android BitTorrent architectures (Flud, LibreTorrent) into Maglev's zero-bloat, cyber-retro ethos.
 
 ### Detailed Task List
-- [ ] **Task 2.1:** Implement persistent Settings State Store (MMKV / encrypted local storage).
-- [ ] **Task 2.2:** Implement Network Listener in Kotlin (`ConnectivityManager.NetworkCallback`) for real-time Wi-Fi vs Cellular detection.
-- [ ] **Task 2.3:** Implement UPnP and NAT-PMP port forwarding in native engine with toggle in Settings.
-- [ ] **Task 2.4:** Implement Protocol Encryption toggle (PE / MSE: Preferred, Required, Disabled).
-- [ ] **Task 2.5:** Implement Bandwidth Throttling in Rust engine with speed preset chips (`Unlimited`, `1 MB/s`, `5 MB/s`, `10 MB/s`, `Custom`).
-- [ ] **Task 2.6:** Implement Seeding Governance limits (Stop seeding at ratio 1.0x, 1.5x, 2.0x or after set time limit).
-- [ ] **Task 2.7:** Build **General Theming Section** (Tactical Dark `#05070A`, Pure Black OLED `#000000`, Light Theme toggle).
-- [ ] **Task 2.8:** Build **Transfers & Network Section** (Storage directory picker via SAF, Download/Upload limits, Active torrent cap, Wi-Fi only toggle, "Download only while charging" toggle).
-- [ ] **Task 2.9:** Build **Content & Privacy Section** (Enable adult search toggle, Blur adult images toggle, Save/Clear search history).
-- [ ] **Task 2.10:** Build **About Section** (Version display, Engine build tag, License, Source repo link).
+- [ ] **Task 2.1:** Implement persistent Settings State Store (MMKV / encrypted local key-value store) with reactive listener bridge to Rust engine and Kotlin service.
+- [ ] **Task 2.2:** Implement Network Listener in Kotlin (`ConnectivityManager.NetworkCallback`) for real-time Wi-Fi vs Cellular detection and SSID whitelisting.
+- [ ] **Task 2.3:** Implement SOCKS5 / HTTP Proxy Tunneling in native engine (supports proxying peers and trackers, authentication, and DNS leak prevention).
+- [ ] **Task 2.4:** Implement UPnP and NAT-PMP (BEP 55) automatic port forwarding in Rust engine with live mapping status badge.
+- [ ] **Task 2.5:** Implement Protocol Encryption toggle (PE / MSE: `Required` [Drop unencrypted], `Preferred` [Try encrypted, fallback], `Disabled`).
+- [ ] **Task 2.6:** Implement Peer Discovery toggles (DHT [BEP 5], PeX [BEP 11], LSD [BEP 14], with strict BEP 27 private flag enforcement).
+- [ ] **Task 2.7:** Implement Bandwidth Throttling in Rust engine via token-bucket rate limiter with preset chips (`Unlimited`, `1 MB/s`, `2 MB/s`, `5 MB/s`, `10 MB/s`, `Custom`).
+- [ ] **Task 2.8:** Implement Power & Battery Governance:
+  - "Download only while charging" toggle (AC / wireless power).
+  - Battery Level Cutoff Threshold (auto-pause if battery < `15%`, `20%`, `30%`).
+  - Auto-Shutdown / Exit on complete (release all locks and stop foreground service).
+- [ ] **Task 2.9:** Implement Seeding Governance limits (Stop seeding at ratio `1.0x`, `1.5x`, `2.0x`, `3.0x` or after time limit: `1h`, `6h`, `24h`, `Manual`).
+- [ ] **Task 2.10:** Implement Swarm Connection Caps (Max active downloads, max active uploads, max connections per torrent clamped to 40, global peer cap).
+- [ ] **Task 2.11:** Implement Advanced Storage Management:
+  - Custom storage directory picker via SAF (`ACTION_OPEN_DOCUMENT_TREE`).
+  - Auto-Move completed downloads to a designated folder / external SD card.
+  - Disk pre-allocation mode (`posix_fallocate` with `ftruncate` fallback).
+- [ ] **Task 2.12:** Implement IP Filtering / Blocklist engine (supports PeerGuardian / eMule `.dat` format to block untrusted IP ranges).
+- [ ] **Task 2.13:** Build **System Settings Screen (SCR-07)** with 6 clean grouped sections:
+  1. *Appearance* (Tactical Dark `#05070A`, Pure Black OLED `#000000`, Compact/Verbose telemetry).
+  2. *Downloads & Storage* (App-Specific POSIX vs Custom SAF, Auto-move completed, Pre-allocation).
+  3. *Bandwidth & Limits* (Download/Upload limits, Active torrent caps, Seeding ratio limits).
+  4. *Network & Proxy* (Wi-Fi only, SSID whitelist, SOCKS5 proxy, UPnP port forwarding, Encryption).
+  5. *Power & Battery* (Charge-only, Battery % threshold, Auto-exit on finish).
+  6. *About* (Engine build tag, License, Source link, Version).
+- [ ] **Task 2.14:** End-to-End integration test suite for Phase 2 contracts, SLA thresholds, and settings persistence.
 
 ### Phase 2 Contract List
-* **CONTRACT-2.1 (Wi-Fi Safety):** When "Download on Wi-Fi only" is enabled, transferring over mobile data is physically impossible at the native socket level.
-* **CONTRACT-2.2 (Bandwidth Clamping):** Configured download/upload limits must cap transfer rates within `±5%` of configured ceiling.
-* **CONTRACT-2.3 (Theme Persistence):** Switching theme to Pure Black OLED must apply instantly without activity recreation.
+* **CONTRACT-2.1 (Wi-Fi & Network Safety):** When "Download on Wi-Fi only" is enabled, transferring over mobile data is physically impossible at the native socket level within `< 300ms` of network transition.
+* **CONTRACT-2.2 (Bandwidth Clamping Precision):** Configured download and upload limits must clamp transfer rates within `±5%` of the configured ceiling without inducing socket bufferbloat.
+* **CONTRACT-2.3 (Battery Threshold Governance):** When battery level drops below the user-configured cutoff (e.g. 20%) while running on battery, transfers pause and WakeLock is released within `< 500ms`.
+* **CONTRACT-2.4 (SOCKS5 Proxy Integrity):** When proxy tunneling is enabled, all tracker and peer TCP sockets route strictly through the proxy tunnel without DNS or IP leaks.
+* **CONTRACT-2.5 (Seeding Ratio Precision):** Torrents stop seeding within 1 piece verification window of reaching configured target ratio.
+* **CONTRACT-2.6 (Theme & State Persistence):** Reading and writing configuration values must take `< 10ms`, and theme toggling between Tactical Dark and Pure Black OLED applies instantly without activity recreation.
 
 ### Phase 2 Minimum SLA List
 | Metric | Threshold | Verification Method |
 |---|---|---|
-| Settings Read/Write Latency | `< 10 ms` | MMKV benchmark |
-| Network Switch Reaction Time | `< 300 ms` | Connectivity switch test |
-| Bandwidth Enforcement Accuracy | `±5%` of target | Throughput telemetry benchmark |
+| Settings Read/Write Latency | `< 10 ms` | MMKV / KV-store benchmark |
+| Network Switch Reaction Time | `< 300 ms` | ConnectivityManager network switch callback test |
+| Bandwidth Enforcement Accuracy | `±5%` of target | Throughput telemetry clamping benchmark |
+| Battery Threshold Reaction Time | `< 500 ms` | BatteryManager mock intent trigger |
+| Proxy Leak Resistance | `0 leaks` (100% routed) | Socket route audit & IP leak test |
+| Theme Switch Reaction | `< 16 ms` (Instant) | React state dispatch / frame inspection |
 
 ---
 

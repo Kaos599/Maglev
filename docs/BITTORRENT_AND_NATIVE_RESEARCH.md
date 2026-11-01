@@ -31,6 +31,17 @@ BitTorrent is a distributed content delivery protocol operating over TCP and UDP
 ### 1.4 Port Forwarding & Encryption (BEP 55, PE/MSE)
 * **UPnP / NAT-PMP (BEP 55):** Automatically opens an external listening port on home Wi-Fi routers, preventing passive/firewalled mode and doubling discoverable peers.
 * **Protocol Encryption (PE/MSE):** Encrypts handshakes and payloads to prevent mobile ISP Deep Packet Inspection (DPI) throttling.
+  * *Required:* Rejects all incoming/outgoing unencrypted handshakes.
+  * *Preferred:* Attempts encrypted handshake; falls back to plaintext if peer does not support MSE.
+  * *Disabled:* Plaintext standard BEP 3 wire handshakes.
+
+### 1.5 Proxy & SOCKS5 Tunneling (RFC 1928, RFC 7231)
+* **SOCKS5 with Remote DNS:** Routes all peer TCP streams through a SOCKS5 proxy using domain addresses (`0x03` address type in RFC 1928) to ensure DNS queries are resolved by the remote proxy server rather than leaking over local mobile ISP DNS.
+* **Tracker vs Peer Scoping:** Supports routing only tracker announcements over proxy while allowing direct P2P connections, or forcing full-tunnel encapsulation for zero IP leaks.
+
+### 1.6 Token-Bucket Bandwidth Shaping
+* **Leaky/Token Bucket Algorithm:** Clamps upload and download throughput in the Rust asynchronous engine without causing TCP connection stalls.
+* **Bufferbloat Prevention:** Smooths bursty chunk transmissions, preventing high latency on interactive mobile apps running on the same network interface.
 
 ---
 
@@ -65,6 +76,10 @@ val defaultDir = context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS)
 * **Zero-Idle Notification:** Call `stopForeground(STOP_FOREGROUND_REMOVE)` immediately when all transfers pause or complete.
 * **WakeLock Management:** `PowerManager.PARTIAL_WAKE_LOCK` held strictly while transfers run; released in `< 500 ms` when paused or finished.
 * **Doze Mode & Connectivity State:** When network is firewalled during Doze, `ConnectivityManager.NetworkCallback` signals the native engine to enter a low-power `DORMANT` state, halting DHT queries to conserve battery.
+
+### 3.3 Battery Level Protection & Cutoff Thresholds
+* **`BatteryManager` BroadcastReceiver:** Listens for `Intent.ACTION_BATTERY_CHANGED`.
+* **Cutoff Protection:** When running on battery without AC/wireless power, if battery percentage drops below the user-configured limit (e.g. 20%), the Android service issues an immediate `pauseAll()` and releases the `WakeLock` within `< 500ms`, shielding the device from unexpected battery shutdowns.
 
 ---
 

@@ -12,7 +12,7 @@
 | **SCR-04** | **Torrent Detail Screen** | `/torrent/:id` | Header metadata pill, live speed chart, and 4 tab views: `[FILES]`, `[PIECES]`, `[PEERS]`, and `[TRACKERS]`. Dual-action trash button. |
 | **SCR-05** | **Search & Browse Screen** | `/search` | Search box with clear action, horizontal category pills (9 categories), recent searches chips, bookmark icon, search result cards with instant `+ Add` trigger. |
 | **SCR-06** | **Automated Feeds Screen** | `/feeds` | Feed channel pills (`All Feeds`, `Linux Distros`, `EZTV`, etc.), `+ Add Feed` button, feed release items with 1-touch download and auto-download badges. |
-| **SCR-07** | **System Settings** | `/settings` | 5 grouped sections: Transfers & Network, General Theming (Pure Black/Dark/Light), Content & Privacy (NSFW toggle/blur), Search & Feeds, About. |
+| **SCR-07** | **System Settings** | `/settings` | 6 grouped sections: Appearance (OLED Black/Dark), Downloads & Storage (POSIX/SAF/Pre-allocation), Bandwidth & Limits (Speed presets, active caps), Network & Proxy (Wi-Fi only, SSID whitelist, SOCKS5, UPnP, Encryption), Power & Battery (Charge only, battery % cutoff, auto-exit), About. |
 
 ---
 
@@ -93,6 +93,96 @@ stateDiagram-v2
     ServiceStopped --> ServiceDestroyed: User exits app / OS stops service
 ```
 
+### 2.3 Network & Connectivity Governance State Machine
+Controls network interfaces, Wi-Fi constraints, SOCKS5 proxy routing, and Android Doze dormancy.
+
+```mermaid
+stateDiagram-v2
+    [*] --> EvaluatingNetwork
+    
+    EvaluatingNetwork --> WifiConnected: Wi-Fi interface detected
+    EvaluatingNetwork --> CellularConnected: Cellular interface active
+    EvaluatingNetwork --> Disconnected: No network route
+    
+    state WifiConnected {
+        [*] --> CheckSSID
+        CheckSSID --> AllowedSSID: SSID matches whitelist (or whitelist disabled)
+        CheckSSID --> BlockedSSID: SSID not in whitelist
+        
+        AllowedSSID --> DirectSwarm: Proxy disabled
+        AllowedSSID --> SOCKS5Tunnel: SOCKS5 proxy enabled
+        
+        BlockedSSID --> SocketsClamped: Pause transfers & drop sockets
+    }
+    
+    state CellularConnected {
+        [*] --> CheckWifiOnlyRule
+        CheckWifiOnlyRule --> SocketsClamped: "Wi-Fi Only" = ON
+        CheckWifiOnlyRule --> MeteredTransfer: "Wi-Fi Only" = OFF
+    }
+    
+    state Disconnected {
+        [*] --> EngineDormant: Halt DHT, freeze timers, sleep worker threads
+    }
+    
+    SocketsClamped --> AllowedSSID: Reconnected to authorized Wi-Fi (<300ms)
+    EngineDormant --> EvaluatingNetwork: Network connectivity restored
+```
+
+### 2.4 Power & Battery Protection State Machine
+Controls battery-level cutoff, charging-only rules, and auto-shutdown on transfer completion.
+
+```mermaid
+stateDiagram-v2
+    [*] --> MonitorPowerState
+    
+    state MonitorPowerState {
+        [*] --> CheckCharger
+        CheckCharger --> PowerConnected: Charger attached (AC/Wireless)
+        CheckCharger --> OnBatteryPower: Device running on battery
+        
+        state OnBatteryPower {
+            [*] --> CheckBatteryLevel
+            CheckBatteryLevel --> BatteryNormal: Level >= Threshold (e.g. 20%)
+            CheckBatteryLevel --> BatteryCutoff: Level < Threshold
+            
+            BatteryNormal --> TransfersPermitted: "Charging Only" = OFF
+            BatteryNormal --> TransfersHalted: "Charging Only" = ON
+            BatteryCutoff --> TransfersHalted: Auto-pause & release WakeLock (<500ms)
+        }
+        
+        PowerConnected --> TransfersPermitted: WakeLock held, active throughput
+    }
+    
+    TransfersPermitted --> AllTransfersDone: Downloaded 100% & Seeding limits met
+    AllTransfersDone --> AutoExitSequence: "Auto-Exit on Complete" = ON
+    AllTransfersDone --> ServiceIdle: "Auto-Exit on Complete" = OFF
+    
+    AutoExitSequence --> ServiceDestroyed: stopForeground(STOP_FOREGROUND_REMOVE) & kill process
+```
+
+### 2.5 Seeding & Share Ratio Governance State Machine
+Controls upload limits, seed time expiration, and swarm etiquette.
+
+```mermaid
+stateDiagram-v2
+    [*] --> VerificationComplete: Torrent reaches 100% verified pieces
+    
+    VerificationComplete --> SeedingActive: Enter Seeding state
+    
+    state SeedingActive {
+        [*] --> TrackingTelemetry: Track uploaded bytes and active time
+        TrackingTelemetry --> TrackingTelemetry: Update ratio = uploaded / downloaded
+        
+        TrackingTelemetry --> RatioLimitMet: ratio >= configured limit (e.g. 1.5x)
+        TrackingTelemetry --> TimeLimitMet: seed_duration >= configured duration (e.g. 6h)
+    }
+    
+    RatioLimitMet --> SeedingHalted: Transition to PAUSED, drop peer uploads
+    TimeLimitMet --> SeedingHalted: Transition to PAUSED, drop peer uploads
+    SeedingHalted --> [*]: Notify user with completion pill
+```
+
 ---
 
 ## 3. Micro Component-Level State Machines
@@ -133,3 +223,19 @@ stateDiagram-v2
   * `CHECKED`: Acid Lime border & fill with black pixel cross `[X]`. File will be allocated and downloaded.
   * `UNCHECKED`: Dark charcoal box `[ ]`. File will be set to download priority `0` (skipped).
   * `DOWNLOAD_PRIORITY`: Long-press opens priority popup: `High`, `Normal`, `Low`.
+
+### 3.6 Settings Toggle & Speed Preset Chips
+* **Purpose:** Quick-tap rate limiting and configuration controls in System Settings.
+* **Touch Target:** Minimum 44×44px hit bounds (`min-h-[44px]`).
+* **States per Preset Chip:**
+  * `ACTIVE_PRESET`: Solid Acid Lime (`#CCFF00`) background, black text. Speed ceiling applied immediately in Rust token bucket.
+  * `INACTIVE_PRESET`: Card surface `#0D1117`, 1px border `#1F2937`, muted text. Tapping switches active preset within `< 10ms`.
+  * `CUSTOM_INPUT`: Tapping `Custom` opens numeric keypad bottom sheet for arbitrary KB/s or MB/s entry.
+
+### 3.7 Storage Directory Selector (POSIX vs SAF)
+* **Purpose:** Configure where torrent payloads are written.
+* **States:**
+  * `STATE_APP_SPECIFIC_POSIX` (Default): Points to `/Android/data/com.maglev/files/Download`. Zero-copy, no runtime permissions, highest I/O throughput.
+  * `STATE_SAF_PENDING`: User taps `[Browse Directory]`. Fires `ACTION_OPEN_DOCUMENT_TREE` intent to Android file picker.
+  * `STATE_SAF_GRANTED`: Detached file descriptor (`pfd.detachFd()`) passed to Rust JNI bridge with persistable URI permission (`takePersistableUriPermission`).
+  * `STATE_AUTO_MOVE_ENABLED`: Completed torrent payloads are automatically relocated to secondary storage without blocking active transfers.

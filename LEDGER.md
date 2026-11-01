@@ -14,6 +14,17 @@ Build **Maglev** — a frictionless, zero-drag, zero-bloat, native-speed Android
 
 ## 📜 Ledger Entries
 
+### [2026-11-01] — Turn 4: Field Architecture Research (Flud, LibreTorrent, TorrentSearch) & Phase 2 Refinement
+- **Deep-Dive into Popular Open-Source & Android Clients:**
+  - `LibreTorrent` (libtorrent4j FOSS standard): Analyzed SOCKS5/HTTP proxy tunneling, IP filter blocklists (`.dat`), alternative network interface binding, auto-move completed files, disk pre-allocation, and background battery optimization.
+  - `Flud` (Class-leading Android client): Studied battery percentage threshold limits (<20% cutoff), Wi-Fi SSID whitelisting, connection caps (overall and per-torrent), speed scheduling, and automatic shutdown on completion.
+  - `TorrentSearch` (prajwalch/TorrentSearch): Researched provider aggregation, Torznab/Jackett integration, category partitioning, and 1-tap pre-parsed magnet queuing.
+- **Documentation & State Machines Updated on `dev`:**
+  - `docs/PHASE_ROADMAP_AND_CONTRACTS.md`: Expanded Phase 2 task list (Tasks 2.1–2.14) with SOCKS5 proxy tunneling, battery % cutoff thresholds, SSID whitelisting, IP filtering, and auto-move.
+  - `docs/STATE_MACHINES_AND_SCREENS.md`: Added State Machine 2.3 (Network & Connectivity Governance), State Machine 2.4 (Power & Battery Protection), State Machine 2.5 (Seeding & Share Ratio Governance), and micro-state components 3.6 (Preset Speed Chips) and 3.7 (Storage Directory POSIX vs SAF).
+  - `docs/ARCHITECTURE_AND_GOAL.md`: Added SLA-6 (Network & Proxy Governance) and updated subsystem block diagram.
+  - `docs/BITTORRENT_AND_NATIVE_RESEARCH.md`: Added SOCKS5 RFC 1928 remote DNS routing, token-bucket bandwidth shaping, and BatteryManager cutoff mechanics.
+
 ### [2026-11-01] — Turn 3: Phase 1 Core BitTorrent Engine & Transfers Delivery
 - **Task 1.1:** Authored Rust `native/maglev-core` crate (librqbit, 2 Tokio worker threads, SIMD bit-popcount, Android FUSE `EOPNOTSUPP` fallback) and configured GitHub Actions cloud compilation CI `.github/workflows/build-engine.yml`.
 - **Task 1.2 & 1.6:** Built custom Expo Native Module `modules/maglev-engine` with dual-mode bridge (high-fidelity TypeScript simulation engine + Kotlin JNI daemon dispatcher thread with MPSC channel).

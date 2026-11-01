@@ -19,12 +19,16 @@ Unlike mainstream commercial torrent apps that suffer from battery drain, ad tra
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │                 React Native / Expo UI Layer                │
-│  (Transfers Dashboard, Pieces Matrix, Search, Feeds, Settings)
+│  - Transfers Dashboard, Pieces Matrix, Search, Feeds, Settings
+│  - MMKV Persistent Settings Store (<10ms read/write)        │
+│  - Reactive System Governance Subscriptions                 │
 └──────────────────────────────┬──────────────────────────────┘
                                │ JSI / Native Events (500ms Throttled)
 ┌──────────────────────────────▼──────────────────────────────┐
 │           Maglev Native Module (Expo Module / Kotlin)       │
 │  - Android ForegroundService (FOREGROUND_SERVICE_TYPE_DATA_SYNC)
+│  - NetworkCallback (Wi-Fi vs Cellular detection & SSID check)│
+│  - BatteryManager Monitor (Charging state & battery % cutoff)│
 │  - App-Specific Storage Resolver (/Android/data/com.maglev) │
 │  - JNI Dispatcher Thread (draining Rust MPSC telemetry queue)│
 │  - PartialWakeLock Manager (Acquire on leech / Release on idle)│
@@ -34,6 +38,8 @@ Unlike mainstream commercial torrent apps that suffer from battery drain, ad tra
 │           Native Rust BitTorrent Engine (librqbit)          │
 │  - BEP 3 (Wire), BEP 5 (DHT), BEP 9/10 (Metadata), BEP 55   │
 │  - Asynchronous Tokio Runtime (2 Worker Threads)            │
+│  - Token-Bucket Bandwidth Throttler (±5% ceiling clamping)   │
+│  - SOCKS5 / HTTP Proxy Tunneling (Zero DNS/IP leaks)        │
 │  - Direct POSIX Disk I/O (16-32MB Clamped Disk Cache)       │
 │  - SIMD Piece Bitfield Downsampling ([u8; 256])             │
 └─────────────────────────────────────────────────────────────┘
@@ -58,14 +64,21 @@ Unlike mainstream commercial torrent apps that suffer from battery drain, ad tra
 * **Android Service Type:** Implements `android.app.Service` declared with `android:foregroundServiceType="dataSync"` (Android 14+ compatible).
 * **WakeLock Discipline:** `PARTIAL_WAKE_LOCK` is acquired **only** when at least one torrent is in an active `DOWNLOADING` or `SEEDING` state. Upon all transfers pausing or completing, the lock is released within `500 ms`.
 * **Zero-Idle Notification:** When active transfers reach 0, call `stopForeground(STOP_FOREGROUND_REMOVE)` immediately. No persistent "Idle" notifications clutter the status shade.
+* **Battery Level Threshold:** Auto-pause active transfers and release WakeLock within `< 500ms` when battery level drops below the configured cutoff (e.g. 20%) while running on battery.
 * **Network Doze & Connectivity State:** When network connectivity is lost or firewalled during Doze (detected via `ConnectivityManager.NetworkCallback`), Maglev transitions the Rust engine to a low-power `DORMANT` state—halting DHT queries, freezing timers, and avoiding futile battery-draining retries.
 
 ### SLA-4: Storage & Native I/O Contract
 * **Primary Target (App-Specific Storage):** Default download directory is set to `/storage/emulated/0/Android/data/com.maglev/files/Download`. Retains **100% direct POSIX file path access** (`open`, `pwrite64`, `pread64`) without SAF permissions, without Binder IPC overhead, and without FUSE permission dialogs on Android 11–15.
 * **Secondary Target (SAF Custom Directory):** If the user selects a custom external directory via `ACTION_OPEN_DOCUMENT_TREE`, an async JNI storage adapter requests file descriptors on-demand only after BEP-9 metadata resolves, strictly detaching descriptors (`pfd.detachFd()`) before handing integer handles to Rust.
 * **Filesystem Allocation Fallback:** Rust disk I/O catches `EOPNOTSUPP` from `posix_fallocate` on Android FUSE emulation and falls back to `ftruncate` / sparse chunk writes.
+* **Auto-Move Relocation:** Completed files are automatically moved to destination directories using atomic renames or zero-blocking background I/O streams.
 
 ### SLA-5: Code Quality & Anti-Slop Contract
 * **Zero Jargon:** No hex dump identifiers, no confusing version codes like "050406", no meaningless text like "Swarm Idle".
 * **Visual Clarity:** Every screen must be comprehensible within 2 seconds. Use pixel icons where icons communicate better than words.
 * **Pixel Aesthetics:** Authentic 8-bit glyphs (`Silkscreen`), crisp monospaced telemetry (`JetBrains Mono`), and clean sans copy (`Inter`).
+
+### SLA-6: Network & Proxy Governance Contract
+* **Socket Level Clamping:** When "Wi-Fi Only" is toggled ON, any cellular data transfer is rejected at the native socket level within `< 300ms` of network interface transition.
+* **Proxy Route Isolation:** When SOCKS5 proxy is configured, all TCP traffic (peers and trackers) routes through the proxy tunnel; direct outbound connections are disallowed to ensure 0 IP or DNS leaks.
+* **Rate Limiter Accuracy:** Bandwidth ceilings enforced by the Rust token-bucket rate limiter remain clamped within `±5%` of the user's ceiling under maximum network pressure.
