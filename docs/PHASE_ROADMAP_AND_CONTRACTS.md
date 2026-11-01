@@ -46,32 +46,32 @@ Deliver a fully functional, native-speed BitTorrent client capable of ingesting 
 Empower users with granular, professional-grade control over networking, bandwidth limits, storage targets, power preservation, proxy tunnels, and visual theming without introducing bloat. Synthesizes field-tested capabilities from top Android BitTorrent architectures (Flud, LibreTorrent) into Maglev's zero-bloat, cyber-retro ethos.
 
 ### Detailed Task List
-- [ ] **Task 2.1:** Implement persistent Settings State Store (MMKV / encrypted local key-value store) with reactive listener bridge to Rust engine and Kotlin service.
-- [ ] **Task 2.2:** Implement Network Listener in Kotlin (`ConnectivityManager.NetworkCallback`) for real-time Wi-Fi vs Cellular detection and SSID whitelisting.
-- [ ] **Task 2.3:** Implement SOCKS5 / HTTP Proxy Tunneling in native engine (supports proxying peers and trackers, authentication, and DNS leak prevention).
-- [ ] **Task 2.4:** Implement UPnP and NAT-PMP (BEP 55) automatic port forwarding in Rust engine with live mapping status badge.
-- [ ] **Task 2.5:** Implement Protocol Encryption toggle (PE / MSE: `Required` [Drop unencrypted], `Preferred` [Try encrypted, fallback], `Disabled`).
-- [ ] **Task 2.6:** Implement Peer Discovery toggles (DHT [BEP 5], PeX [BEP 11], LSD [BEP 14], with strict BEP 27 private flag enforcement).
-- [ ] **Task 2.7:** Implement Bandwidth Throttling in Rust engine via token-bucket rate limiter with preset chips (`Unlimited`, `1 MB/s`, `2 MB/s`, `5 MB/s`, `10 MB/s`, `Custom`).
-- [ ] **Task 2.8:** Implement Power & Battery Governance:
+- [x] **Task 2.1:** Implement persistent Settings State Store (MMKV / encrypted local key-value store) with reactive listener bridge to Rust engine and Kotlin service.
+- [x] **Task 2.2:** Implement Network Listener in Kotlin (`ConnectivityManager.NetworkCallback`) for real-time Wi-Fi vs Cellular detection and SSID whitelisting.
+- [x] **Task 2.3:** Implement SOCKS5 / HTTP Proxy Tunneling in native engine (supports proxying peers and trackers, authentication, and DNS leak prevention).
+- [x] **Task 2.4:** Implement UPnP and NAT-PMP (BEP 55) automatic port forwarding in Rust engine with live mapping status badge.
+- [x] **Task 2.5:** Implement Protocol Encryption toggle (PE / MSE: `Required` [Drop unencrypted], `Preferred` [Try encrypted, fallback], `Disabled`).
+- [x] **Task 2.6:** Implement Peer Discovery toggles (DHT [BEP 5], PeX [BEP 11], LSD [BEP 14], with strict BEP 27 private flag enforcement).
+- [x] **Task 2.7:** Implement Bandwidth Throttling in Rust engine via token-bucket rate limiter with preset chips (`Unlimited`, `1 MB/s`, `2 MB/s`, `5 MB/s`, `10 MB/s`, `Custom`).
+- [x] **Task 2.8:** Implement Power & Battery Governance:
   - "Download only while charging" toggle (AC / wireless power).
   - Battery Level Cutoff Threshold (auto-pause if battery < `15%`, `20%`, `30%`).
   - Auto-Shutdown / Exit on complete (release all locks and stop foreground service).
-- [ ] **Task 2.9:** Implement Seeding Governance limits (Stop seeding at ratio `1.0x`, `1.5x`, `2.0x`, `3.0x` or after time limit: `1h`, `6h`, `24h`, `Manual`).
-- [ ] **Task 2.10:** Implement Swarm Connection Caps (Max active downloads, max active uploads, max connections per torrent clamped to 40, global peer cap).
-- [ ] **Task 2.11:** Implement Advanced Storage Management:
+- [x] **Task 2.9:** Implement Seeding Governance limits (Stop seeding at ratio `1.0x`, `1.5x`, `2.0x`, `3.0x` or after time limit: `1h`, `6h`, `24h`, `Manual`).
+- [x] **Task 2.10:** Implement Swarm Connection Caps (Max active downloads, max active uploads, max connections per torrent clamped to 40, global peer cap).
+- [x] **Task 2.11:** Implement Advanced Storage Management:
   - Custom storage directory picker via SAF (`ACTION_OPEN_DOCUMENT_TREE`).
   - Auto-Move completed downloads to a designated folder / external SD card.
   - Disk pre-allocation mode (`posix_fallocate` with `ftruncate` fallback).
-- [ ] **Task 2.12:** Implement IP Filtering / Blocklist engine (supports PeerGuardian / eMule `.dat` format to block untrusted IP ranges).
-- [ ] **Task 2.13:** Build **System Settings Screen (SCR-07)** with 6 clean grouped sections:
+- [x] **Task 2.12:** Implement IP Filtering / Blocklist engine (supports PeerGuardian / eMule `.dat` format to block untrusted IP ranges).
+- [x] **Task 2.13:** Build **System Settings Screen (SCR-07)** with 6 clean grouped sections:
   1. *Appearance* (Tactical Dark `#05070A`, Pure Black OLED `#000000`, Compact/Verbose telemetry).
   2. *Downloads & Storage* (App-Specific POSIX vs Custom SAF, Auto-move completed, Pre-allocation).
   3. *Bandwidth & Limits* (Download/Upload limits, Active torrent caps, Seeding ratio limits).
   4. *Network & Proxy* (Wi-Fi only, SSID whitelist, SOCKS5 proxy, UPnP port forwarding, Encryption).
   5. *Power & Battery* (Charge-only, Battery % threshold, Auto-exit on finish).
   6. *About* (Engine build tag, License, Source link, Version).
-- [ ] **Task 2.14:** End-to-End integration test suite for Phase 2 contracts, SLA thresholds, and settings persistence.
+- [x] **Task 2.14:** End-to-End integration test suite for Phase 2 contracts, SLA thresholds, and settings persistence.
 
 ### Phase 2 Contract List
 * **CONTRACT-2.1 (Wi-Fi & Network Safety):** When "Download on Wi-Fi only" is enabled, transferring over mobile data is physically impossible at the native socket level within `< 300ms` of network transition.

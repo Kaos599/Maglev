@@ -3,6 +3,7 @@
 //! Provides thread-safe communication between Kotlin and the native Rust engine.
 //! Dispatches 500ms telemetry batches via a dedicated daemon dispatcher thread
 //! attached via `AttachCurrentThreadAsDaemon` to prevent Tokio thread panics.
+//! Exposes Phase 2 governance controls (rate limits, network, power, IP filtering).
 
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -10,12 +11,13 @@ use std::sync::Arc;
 use std::thread;
 
 use jni::objects::{JClass, JObject, JString};
-use jni::sys::{jboolean, jint, jobject, jstring};
+use jni::sys::{jboolean, jint, jlong, jobject, jstring};
 use jni::{JNIEnv, JavaVM};
 use parking_lot::Mutex;
 use tokio::sync::mpsc;
 
 use crate::engine::{AggregatedTelemetry, MaglevEngine};
+use crate::governance::{NetworkGovernance, PowerGovernance};
 use crate::simd::MATRIX_SIZE;
 
 static ENGINE: Mutex<Option<Arc<MaglevEngine>>> = Mutex::new(None);
@@ -105,24 +107,28 @@ pub extern "system" fn Java_com_maglev_engine_MaglevEngineModule_nativeStartTorr
     save_path: JString,
     sequential: jboolean,
 ) -> jstring {
-    let magnet: String = match env.get_string(&magnet_uri) {
+    let uri: String = match env.get_string(&magnet_uri) {
         Ok(s) => s.into(),
         Err(_) => return env.new_string("").unwrap().into_raw(),
     };
 
-    let path_str: String = env.get_string(&save_path).map(|s| s.into()).unwrap_or_default();
-    let save_override = if path_str.is_empty() {
-        None
-    } else {
+    let path_str: String = match env.get_string(&save_path) {
+        Ok(s) => s.into(),
+        Err(_) => String::new(),
+    };
+
+    let save_path_opt = if !path_str.is_empty() {
         Some(std::path::Path::new(&path_str))
+    } else {
+        None
     };
 
     let lock = ENGINE.lock();
     if let Some(ref engine) = *lock {
-        match engine.start_torrent(&magnet, save_override, sequential != 0) {
+        match engine.start_torrent(&uri, save_path_opt, sequential != 0) {
             Ok(id) => env.new_string(id).unwrap().into_raw(),
             Err(e) => {
-                tracing::error!("Start torrent error: {}", e);
+                tracing::error!("Failed to start torrent: {}", e);
                 env.new_string("").unwrap().into_raw()
             }
         }
@@ -221,19 +227,21 @@ pub extern "system" fn Java_com_maglev_engine_MaglevEngineModule_nativeGetPieceB
         Err(_) => return JObject::null().into_raw(),
     };
 
+    let engine_lock = ENGINE.lock();
     let mut buf_lock = PIECE_BUFFERS.lock();
-    let eng_lock = ENGINE.lock();
 
-    if let (Some(ref mut buffer), Some(ref engine)) = (buf_lock.as_mut(), eng_lock.as_ref()) {
-        engine.get_piece_matrix(&hash, buffer.as_mut());
-        unsafe {
-            env.new_direct_byte_buffer(buffer.as_mut_ptr(), MATRIX_SIZE)
-                .map(|b| b.into_raw())
-                .unwrap_or_else(|_| JObject::null().into_raw())
+    if let (Some(ref engine), Some(ref mut buf)) = (engine_lock.as_ref(), buf_lock.as_mut()) {
+        if engine.get_piece_matrix(&hash, buf.as_mut()) {
+            unsafe {
+                let direct_buf = env.new_direct_byte_buffer(buf.as_mut_ptr(), MATRIX_SIZE);
+                match direct_buf {
+                    Ok(b) => return b.into_raw(),
+                    Err(_) => return JObject::null().into_raw(),
+                }
+            }
         }
-    } else {
-        JObject::null().into_raw()
     }
+    JObject::null().into_raw()
 }
 
 #[no_mangle]
@@ -302,6 +310,80 @@ pub extern "system" fn Java_com_maglev_engine_MaglevEngineModule_nativeStartHttp
     } else {
         env.new_string("").unwrap().into_raw()
     }
+}
+
+#[no_mangle]
+pub extern "system" fn Java_com_maglev_engine_MaglevEngineModule_nativeSetRateLimits(
+    _env: JNIEnv,
+    _class: JClass,
+    down_bytes: jlong,
+    up_bytes: jlong,
+) {
+    let lock = ENGINE.lock();
+    if let Some(ref engine) = *lock {
+        engine.set_rate_limits(down_bytes as u64, up_bytes as u64);
+    }
+}
+
+#[no_mangle]
+pub extern "system" fn Java_com_maglev_engine_MaglevEngineModule_nativeUpdateNetworkGovernance(
+    mut env: JNIEnv,
+    _class: JClass,
+    json_str: JString,
+) -> jboolean {
+    let json: String = match env.get_string(&json_str) {
+        Ok(s) => s.into(),
+        Err(_) => return 0,
+    };
+
+    if let Ok(gov) = serde_json::from_str::<NetworkGovernance>(&json) {
+        let lock = ENGINE.lock();
+        if let Some(ref engine) = *lock {
+            engine.update_network_governance(gov);
+            return 1;
+        }
+    }
+    0
+}
+
+#[no_mangle]
+pub extern "system" fn Java_com_maglev_engine_MaglevEngineModule_nativeUpdatePowerGovernance(
+    mut env: JNIEnv,
+    _class: JClass,
+    json_str: JString,
+) -> jboolean {
+    let json: String = match env.get_string(&json_str) {
+        Ok(s) => s.into(),
+        Err(_) => return 0,
+    };
+
+    if let Ok(gov) = serde_json::from_str::<PowerGovernance>(&json) {
+        let lock = ENGINE.lock();
+        if let Some(ref engine) = *lock {
+            engine.update_power_governance(gov);
+            return 1;
+        }
+    }
+    0
+}
+
+#[no_mangle]
+pub extern "system" fn Java_com_maglev_engine_MaglevEngineModule_nativeLoadIpFilter(
+    mut env: JNIEnv,
+    _class: JClass,
+    dat_content: JString,
+) -> jint {
+    let content: String = match env.get_string(&dat_content) {
+        Ok(s) => s.into(),
+        Err(_) => return 0,
+    };
+
+    let lock = ENGINE.lock();
+    if let Some(ref engine) = *lock {
+        let count = engine.load_ip_filter(&content);
+        return count as jint;
+    }
+    0
 }
 
 #[no_mangle]

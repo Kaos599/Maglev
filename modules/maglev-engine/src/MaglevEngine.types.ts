@@ -1,5 +1,7 @@
 export type TorrentState = 'DOWNLOADING' | 'SEEDING' | 'PAUSED' | 'ERROR';
 
+export * from './MaglevSettings.types.ts';
+
 export interface TorrentTelemetry {
   id: string;
   name: string;
@@ -16,6 +18,7 @@ export interface TorrentTelemetry {
   seedsConnected: number;
   ratio: number;
   sequential?: boolean;
+  seedDurationSeconds?: number;
 }
 
 export interface AggregatedTelemetry {

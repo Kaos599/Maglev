@@ -1,21 +1,121 @@
-import type { AggregatedTelemetry, PieceMatrix, TorrentDetailData, TorrentFileInfo, TorrentTelemetry, TrackerInfo } from './MaglevEngine.types.ts';
+import type {
+  AggregatedTelemetry,
+  PieceMatrix,
+  TorrentDetailData,
+  TorrentFileInfo,
+  TorrentTelemetry,
+  TrackerInfo,
+} from './MaglevEngine.types.ts';
+import {
+  DEFAULT_SETTINGS,
+  type MaglevSettings,
+  SPEED_PRESET_MAP,
+} from './MaglevSettings.types.ts';
+import { ipFilter } from './MaglevIpFilter.ts';
+import { settingsStore } from './MaglevSettingsStore.ts';
 
 type Listener = (telemetry: AggregatedTelemetry) => void;
 
-class MaglevMockEngine {
+export class MaglevMockEngine {
   private torrents: Map<string, TorrentDetailData> = new Map();
   private pieceMatrices: Map<string, Uint8Array> = new Map();
   private listeners: Set<Listener> = new Set();
   private timer: any = null;
   private defaultStoragePath = '/storage/emulated/0/Android/data/com.maglev/files/Download';
 
+  // System & Governance state
+  private settings: MaglevSettings;
+  private wakeLockHeld: boolean = false;
+  private socketsClamped: boolean = false;
+  private shutdownTriggered: boolean = false;
+
   constructor() {
+    this.settings = JSON.parse(JSON.stringify(settingsStore.getSettings()));
     this.seedInitialMockData();
     this.startTelemetryLoop();
+
+    // Subscribe to settings changes
+    settingsStore.subscribe((newSettings) => {
+      this.applySettings(newSettings);
+    });
   }
 
   public getDefaultStoragePath(): string {
-    return this.defaultStoragePath;
+    return this.settings.storage.defaultPath || this.defaultStoragePath;
+  }
+
+  public getSettings(): MaglevSettings {
+    return this.settings;
+  }
+
+  public getEffectiveDownloadLimit(): number {
+    const bw = this.settings.bandwidth;
+    if (bw.downloadPreset !== 'UNLIMITED' && bw.downloadPreset !== 'CUSTOM') {
+      return SPEED_PRESET_MAP[bw.downloadPreset] || 0;
+    }
+    return bw.downloadLimitBytesPerSec;
+  }
+
+  public getEffectiveUploadLimit(): number {
+    const bw = this.settings.bandwidth;
+    if (bw.uploadPreset !== 'UNLIMITED' && bw.uploadPreset !== 'CUSTOM') {
+      return SPEED_PRESET_MAP[bw.uploadPreset] || 0;
+    }
+    return bw.uploadLimitBytesPerSec;
+  }
+
+  public applySettings(settings: MaglevSettings): void {
+    this.settings = JSON.parse(JSON.stringify(settings));
+    this.recalculateGovernance();
+    this.broadcast();
+  }
+
+  public updateNetworkState(state: {
+    networkType: 'WIFI' | 'CELLULAR' | 'NONE';
+    ssid?: string;
+  }): void {
+    this.settings.network.networkType = state.networkType;
+    if (state.ssid !== undefined) {
+      this.settings.network.currentSsid = state.ssid;
+    }
+    this.recalculateGovernance();
+    this.broadcast();
+  }
+
+  public updatePowerState(state: {
+    isCharging: boolean;
+    batteryPercentage: number;
+  }): void {
+    this.settings.power.isCharging = state.isCharging;
+    this.settings.power.batteryPercentage = state.batteryPercentage;
+    this.recalculateGovernance();
+    this.broadcast();
+  }
+
+  public isSocketsClamped(): boolean {
+    return this.socketsClamped;
+  }
+
+  public isWakeLockHeld(): boolean {
+    return this.wakeLockHeld;
+  }
+
+  public isShutdownTriggered(): boolean {
+    return this.shutdownTriggered;
+  }
+
+  public loadIpFilterDat(content: string): number {
+    const count = ipFilter.parseDatContent(content);
+    this.settings.network.ipFilterRulesCount = count;
+    this.settings.network.ipFilterEnabled = count > 0;
+    settingsStore.updateSettings({
+      network: {
+        ...this.settings.network,
+        ipFilterEnabled: count > 0,
+        ipFilterRulesCount: count,
+      },
+    });
+    return count;
   }
 
   public subscribe(listener: Listener): () => void {
@@ -58,6 +158,7 @@ class MaglevMockEngine {
         seedsConnected: t.seedsConnected,
         ratio: t.ratio,
         sequential: t.sequential,
+        seedDurationSeconds: t.seedDurationSeconds,
       });
     });
 
@@ -105,23 +206,35 @@ class MaglevMockEngine {
       },
     ];
 
+    const effectiveSavePath =
+      savePathOverride ||
+      (this.settings.storage.storageMode === 'SAF' && this.settings.storage.customSafPath
+        ? this.settings.storage.customSafPath
+        : this.settings.storage.defaultPath);
+
+    const effDown = this.getEffectiveDownloadLimit();
+    const effUp = this.getEffectiveUploadLimit();
+    const baseDownSpeed = effDown > 0 ? effDown : 14_800_000;
+    const baseUpSpeed = effUp > 0 ? effUp : 1_200_000;
+
     const newTorrent: TorrentDetailData = {
       id,
       name,
       state: 'DOWNLOADING',
-      downloadSpeedBytes: 14_800_000, // 14.8 MB/s
-      uploadSpeedBytes: 1_200_000,
+      downloadSpeedBytes: baseDownSpeed,
+      uploadSpeedBytes: baseUpSpeed,
       progressPercent: 0,
       downloadedBytes: 0,
       uploadedBytes: 0,
       totalSizeBytes: totalSize,
-      etaSeconds: Math.floor(totalSize / 14_800_000),
+      etaSeconds: Math.floor(totalSize / baseDownSpeed),
       peersConnected: 28,
-      peersTotal: 40,
+      peersTotal: Math.min(40, this.settings.bandwidth.maxConnectionsPerTorrent),
       seedsConnected: 12,
       ratio: 0.0,
       sequential,
-      savePath: savePathOverride || this.defaultStoragePath,
+      seedDurationSeconds: 0,
+      savePath: effectiveSavePath,
       piecesTotal: 256,
       piecesVerified: 0,
       files,
@@ -131,6 +244,7 @@ class MaglevMockEngine {
     const matrix = new Uint8Array(256);
     this.pieceMatrices.set(id, matrix);
     this.torrents.set(id, newTorrent);
+    this.recalculateGovernance();
     this.broadcast();
     return id;
   }
@@ -141,6 +255,7 @@ class MaglevMockEngine {
     t.state = 'PAUSED';
     t.downloadSpeedBytes = 0;
     t.uploadSpeedBytes = 0;
+    this.recalculateGovernance();
     this.broadcast();
     return true;
   }
@@ -148,13 +263,17 @@ class MaglevMockEngine {
   public resumeTorrent(id: string): boolean {
     const t = this.torrents.get(id);
     if (!t) return false;
+    const effDown = this.getEffectiveDownloadLimit();
+    const effUp = this.getEffectiveUploadLimit();
+
     if (t.progressPercent >= 100) {
       t.state = 'SEEDING';
-      t.uploadSpeedBytes = 3_400_000;
+      t.uploadSpeedBytes = effUp > 0 ? effUp : 3_400_000;
     } else {
       t.state = 'DOWNLOADING';
-      t.downloadSpeedBytes = 14_800_000;
+      t.downloadSpeedBytes = effDown > 0 ? effDown : 14_800_000;
     }
+    this.recalculateGovernance();
     this.broadcast();
     return true;
   }
@@ -165,25 +284,30 @@ class MaglevMockEngine {
       t.downloadSpeedBytes = 0;
       t.uploadSpeedBytes = 0;
     });
+    this.recalculateGovernance();
     this.broadcast();
   }
 
   public resumeAll(): void {
+    const effDown = this.getEffectiveDownloadLimit();
+    const effUp = this.getEffectiveUploadLimit();
     this.torrents.forEach((t) => {
       if (t.progressPercent >= 100) {
         t.state = 'SEEDING';
-        t.uploadSpeedBytes = 2_500_000;
+        t.uploadSpeedBytes = effUp > 0 ? effUp : 2_500_000;
       } else {
         t.state = 'DOWNLOADING';
-        t.downloadSpeedBytes = 12_000_000;
+        t.downloadSpeedBytes = effDown > 0 ? effDown : 12_000_000;
       }
     });
+    this.recalculateGovernance();
     this.broadcast();
   }
 
   public deleteTorrent(id: string, _deleteFiles: boolean = false): boolean {
     const removed = this.torrents.delete(id);
     this.pieceMatrices.delete(id);
+    this.recalculateGovernance();
     this.broadcast();
     return removed;
   }
@@ -232,6 +356,99 @@ class MaglevMockEngine {
     return streamUrl;
   }
 
+  /**
+   * Evaluates network, power, battery, and bandwidth governance constraints.
+   */
+  private recalculateGovernance(): void {
+    const net = this.settings.network;
+    const pwr = this.settings.power;
+    const bw = this.settings.bandwidth;
+
+    // 1. Evaluate Network Safety (CONTRACT-2.1)
+    let shouldClampNetwork = false;
+
+    if (net.networkType === 'NONE') {
+      shouldClampNetwork = true;
+    } else if (net.wifiOnly && net.networkType === 'CELLULAR') {
+      shouldClampNetwork = true;
+    } else if (net.networkType === 'WIFI' && net.ssidWhitelistEnabled && net.allowedSsids.length > 0) {
+      const current = net.currentSsid || '';
+      if (!net.allowedSsids.includes(current)) {
+        shouldClampNetwork = true;
+      }
+    }
+
+    this.socketsClamped = shouldClampNetwork;
+
+    // 2. Evaluate Battery & Power Governance (CONTRACT-2.3)
+    let shouldPausePower = false;
+
+    if (!pwr.isCharging) {
+      if (pwr.downloadOnlyWhileCharging) {
+        shouldPausePower = true;
+      }
+      if (pwr.batteryCutoffThreshold > 0 && pwr.batteryPercentage < pwr.batteryCutoffThreshold) {
+        shouldPausePower = true;
+      }
+    }
+
+    // 3. Count active transfers and manage WakeLock & Rate Limit Clamping
+    const effectiveDown = this.getEffectiveDownloadLimit();
+    const effectiveUp = this.getEffectiveUploadLimit();
+
+    let downloadingCount = 0;
+    let seedingCount = 0;
+    this.torrents.forEach((t) => {
+      if (t.state === 'DOWNLOADING') downloadingCount++;
+      else if (t.state === 'SEEDING') seedingCount++;
+    });
+
+    let activeCount = 0;
+    this.torrents.forEach((t) => {
+      if (t.state === 'DOWNLOADING' || t.state === 'SEEDING') {
+        if (shouldClampNetwork || shouldPausePower) {
+          t.downloadSpeedBytes = 0;
+          t.uploadSpeedBytes = 0;
+        } else {
+          activeCount++;
+          if (t.state === 'DOWNLOADING') {
+            t.downloadSpeedBytes = effectiveDown > 0 && downloadingCount > 0
+              ? Math.floor(effectiveDown / downloadingCount)
+              : 14_800_000;
+          } else if (t.state === 'SEEDING') {
+            t.uploadSpeedBytes = effectiveUp > 0 && seedingCount > 0
+              ? Math.floor(effectiveUp / seedingCount)
+              : 3_400_000;
+          }
+        }
+      }
+    });
+
+    if (activeCount > 0 && !shouldClampNetwork && !shouldPausePower) {
+      this.wakeLockHeld = true;
+    } else {
+      this.wakeLockHeld = false;
+    }
+
+    // 4. Check Auto-Shutdown on Complete (Task 2.8)
+    if (pwr.autoExitOnComplete && this.torrents.size > 0) {
+      let allDone = true;
+      this.torrents.forEach((t) => {
+        if (t.state === 'DOWNLOADING') {
+          allDone = false;
+        } else if (t.state === 'SEEDING') {
+          if (bw.seedingRatioLimit > 0 && t.ratio < bw.seedingRatioLimit) {
+            allDone = false;
+          }
+        }
+      });
+      if (allDone && activeCount === 0) {
+        this.shutdownTriggered = true;
+        this.wakeLockHeld = false;
+      }
+    }
+  }
+
   private startTelemetryLoop(): void {
     if (this.timer) clearInterval(this.timer);
     // Strict SLA: 500ms cadence
@@ -241,45 +458,129 @@ class MaglevMockEngine {
     }, 500);
   }
 
-  private stepSimulation(): void {
-    this.torrents.forEach((t) => {
-      if (t.state === 'DOWNLOADING') {
-        // Increment downloaded bytes
-        const delta = Math.floor(t.downloadSpeedBytes * 0.5);
-        t.downloadedBytes = Math.min(t.totalSizeBytes, t.downloadedBytes + delta);
-        t.progressPercent = parseFloat(((t.downloadedBytes / t.totalSizeBytes) * 100).toFixed(1));
+  public stepSimulation(): void {
+    const net = this.settings.network;
+    const pwr = this.settings.power;
+    const bw = this.settings.bandwidth;
 
-        if (t.downloadSpeedBytes > 0) {
-          t.etaSeconds = Math.max(0, Math.floor((t.totalSizeBytes - t.downloadedBytes) / t.downloadSpeedBytes));
-        }
+    // If sockets clamped or power paused, do not advance transfers
+    if (this.socketsClamped) {
+      this.torrents.forEach((t) => {
+        t.downloadSpeedBytes = 0;
+        t.uploadSpeedBytes = 0;
+      });
+      return;
+    }
 
-        // Update piece matrix
-        const matrix = this.getPieceBitfield(t.id);
-        const verifiedCount = Math.floor((t.progressPercent / 100) * 256);
-        t.piecesVerified = verifiedCount;
-        for (let i = 0; i < 256; i++) {
-          if (i < verifiedCount) {
-            matrix[i] = 2; // Verified cyan
-          } else if (i < verifiedCount + 4 && i < 256) {
-            matrix[i] = 1; // In flight lime
-          } else {
-            matrix[i] = 0; // Unavailable
-          }
-        }
-
-        // Check completion
-        if (t.downloadedBytes >= t.totalSizeBytes) {
-          t.state = 'SEEDING';
+    if (!pwr.isCharging) {
+      if (pwr.downloadOnlyWhileCharging || (pwr.batteryCutoffThreshold > 0 && pwr.batteryPercentage < pwr.batteryCutoffThreshold)) {
+        this.torrents.forEach((t) => {
           t.downloadSpeedBytes = 0;
-          t.uploadSpeedBytes = 3_400_000;
-          t.etaSeconds = 0;
+          t.uploadSpeedBytes = 0;
+        });
+        return;
+      }
+    }
+
+    const effectiveDownLimit = this.getEffectiveDownloadLimit();
+    const effectiveUpLimit = this.getEffectiveUploadLimit();
+
+    let downloadingTorrents: TorrentDetailData[] = [];
+    let seedingTorrents: TorrentDetailData[] = [];
+
+    this.torrents.forEach((t) => {
+      if (t.state === 'DOWNLOADING') downloadingTorrents.push(t);
+      else if (t.state === 'SEEDING') seedingTorrents.push(t);
+    });
+
+    // Enforce active torrent caps (Task 2.10)
+    if (downloadingTorrents.length > bw.maxActiveDownloads) {
+      for (let i = bw.maxActiveDownloads; i < downloadingTorrents.length; i++) {
+        downloadingTorrents[i].state = 'PAUSED';
+        downloadingTorrents[i].downloadSpeedBytes = 0;
+        downloadingTorrents[i].uploadSpeedBytes = 0;
+      }
+      downloadingTorrents = downloadingTorrents.slice(0, bw.maxActiveDownloads);
+    }
+
+    // Apply Token-Bucket Clamping to Downloading Torrents
+    const targetDownPerTorrent =
+      effectiveDownLimit > 0 && downloadingTorrents.length > 0
+        ? Math.floor(effectiveDownLimit / downloadingTorrents.length)
+        : 14_800_000;
+
+    downloadingTorrents.forEach((t) => {
+      t.downloadSpeedBytes = targetDownPerTorrent;
+      t.peersTotal = Math.min(40, bw.maxConnectionsPerTorrent);
+
+      // Increment downloaded bytes (0.5 sec tick)
+      const delta = Math.floor(t.downloadSpeedBytes * 0.5);
+      t.downloadedBytes = Math.min(t.totalSizeBytes, t.downloadedBytes + delta);
+      t.progressPercent = parseFloat(((t.downloadedBytes / t.totalSizeBytes) * 100).toFixed(1));
+
+      if (t.downloadSpeedBytes > 0) {
+        t.etaSeconds = Math.max(0, Math.floor((t.totalSizeBytes - t.downloadedBytes) / t.downloadSpeedBytes));
+      }
+
+      // Update piece matrix
+      const matrix = this.getPieceBitfield(t.id);
+      const verifiedCount = Math.floor((t.progressPercent / 100) * 256);
+      t.piecesVerified = verifiedCount;
+      for (let i = 0; i < 256; i++) {
+        if (i < verifiedCount) {
+          matrix[i] = 2; // Verified cyan
+        } else if (i < verifiedCount + 4 && i < 256) {
+          matrix[i] = 1; // In flight lime
+        } else {
+          matrix[i] = 0; // Unavailable
         }
-      } else if (t.state === 'SEEDING') {
-        const deltaUp = Math.floor(t.uploadSpeedBytes * 0.5);
-        t.uploadedBytes += deltaUp;
-        if (t.downloadedBytes > 0) {
-          t.ratio = parseFloat((t.uploadedBytes / t.downloadedBytes).toFixed(2));
+      }
+
+      // Check completion
+      if (t.downloadedBytes >= t.totalSizeBytes) {
+        t.state = 'SEEDING';
+        t.downloadSpeedBytes = 0;
+        t.uploadSpeedBytes = effectiveUpLimit > 0 ? effectiveUpLimit : 3_400_000;
+        t.etaSeconds = 0;
+        t.progressPercent = 100.0;
+        t.seedDurationSeconds = 0;
+
+        // Auto-Move Completed Downloads (Task 2.11)
+        if (this.settings.storage.autoMoveCompleted && this.settings.storage.autoMoveDestinationPath) {
+          t.savePath = this.settings.storage.autoMoveDestinationPath;
         }
+      }
+    });
+
+    // Apply Token-Bucket Clamping to Seeding Torrents & Seeding Governance (CONTRACT-2.5)
+    const targetUpPerTorrent =
+      effectiveUpLimit > 0 && seedingTorrents.length > 0
+        ? Math.floor(effectiveUpLimit / seedingTorrents.length)
+        : 3_400_000;
+
+    seedingTorrents.forEach((t) => {
+      t.uploadSpeedBytes = targetUpPerTorrent;
+      t.seedDurationSeconds = (t.seedDurationSeconds || 0) + 1;
+
+      const deltaUp = Math.floor(t.uploadSpeedBytes * 0.5);
+      t.uploadedBytes += deltaUp;
+      if (t.downloadedBytes > 0) {
+        t.ratio = parseFloat((t.uploadedBytes / t.downloadedBytes).toFixed(2));
+      }
+
+      // Check Seeding Governance Limits
+      let stopSeeding = false;
+      if (bw.seedingRatioLimit > 0 && t.ratio >= bw.seedingRatioLimit) {
+        stopSeeding = true;
+      }
+      if (bw.seedingDurationLimitSeconds > 0 && (t.seedDurationSeconds || 0) >= bw.seedingDurationLimitSeconds) {
+        stopSeeding = true;
+      }
+
+      if (stopSeeding) {
+        t.state = 'PAUSED';
+        t.uploadSpeedBytes = 0;
+        t.downloadSpeedBytes = 0;
       }
     });
   }
@@ -306,7 +607,6 @@ class MaglevMockEngine {
   }
 
   private seedInitialMockData(): void {
-    // Seed standard initial torrents matching canonical spec for out-of-box testability
     const id1 = '4b2a8c3d7e1f9a0b1c2d3e4f5a6b7c8d9e0f1a2b';
     const name1 = 'ArchLinux-2026.11.01-x86_64.iso';
     const total1 = 1_288_490_188; // 1.2 GB
@@ -315,8 +615,8 @@ class MaglevMockEngine {
     const matrix1 = new Uint8Array(256);
     const verified1 = Math.floor(0.74 * 256);
     for (let i = 0; i < 256; i++) {
-      if (i < verified1) matrix1[i] = 2; // Verified
-      else if (i < verified1 + 6) matrix1[i] = 1; // In flight
+      if (i < verified1) matrix1[i] = 2;
+      else if (i < verified1 + 6) matrix1[i] = 1;
       else matrix1[i] = 0;
     }
     this.pieceMatrices.set(id1, matrix1);
@@ -331,12 +631,13 @@ class MaglevMockEngine {
       downloadedBytes: downloaded1,
       uploadedBytes: 154_000_000,
       totalSizeBytes: total1,
-      etaSeconds: 136, // 2m 16s
+      etaSeconds: 136,
       peersConnected: 28,
       peersTotal: 40,
       seedsConnected: 6,
       ratio: 0.16,
       sequential: false,
+      seedDurationSeconds: 0,
       savePath: this.defaultStoragePath,
       piecesTotal: 256,
       piecesVerified: verified1,
@@ -365,7 +666,7 @@ class MaglevMockEngine {
     const total2 = 2_147_483_648; // 2.0 GB
 
     const matrix2 = new Uint8Array(256);
-    matrix2.fill(2); // 100% verified
+    matrix2.fill(2);
     this.pieceMatrices.set(id2, matrix2);
 
     this.torrents.set(id2, {
@@ -384,6 +685,7 @@ class MaglevMockEngine {
       seedsConnected: 22,
       ratio: 2.7,
       sequential: true,
+      seedDurationSeconds: 1800,
       savePath: this.defaultStoragePath,
       piecesTotal: 256,
       piecesVerified: 256,
