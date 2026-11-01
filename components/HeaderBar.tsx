@@ -2,6 +2,7 @@ import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { useRouter } from 'expo-router';
 import { TOKENS } from '../constants/tokens';
+import { triggerHaptic } from '../constants/haptics';
 import { PixelSearchIcon } from './PixelIcons';
 
 interface HeaderBarProps {
@@ -11,6 +12,15 @@ interface HeaderBarProps {
 
 export const HeaderBar: React.FC<HeaderBarProps> = ({ onSearchPress, isSearchActive }) => {
   const router = useRouter();
+
+  const handlePress = () => {
+    triggerHaptic('light');
+    if (onSearchPress) {
+      onSearchPress();
+    } else {
+      router.push('/search');
+    }
+  };
 
   return (
     <View style={styles.container}>
@@ -23,7 +33,7 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({ onSearchPress, isSearchAct
 
       <TouchableOpacity
         style={styles.searchTouchArea}
-        onPress={onSearchPress || (() => router.push('/search'))}
+        onPress={handlePress}
         accessibilityRole="button"
         accessibilityLabel="Search torrents"
         activeOpacity={0.7}

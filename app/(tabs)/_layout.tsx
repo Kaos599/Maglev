@@ -1,7 +1,8 @@
-import React from 'react';
-import { View, StyleSheet } from 'react-native';
+import React, { useEffect, useRef } from 'react';
+import { View, StyleSheet, Animated } from 'react-native';
 import { Tabs } from 'expo-router';
 import { TOKENS } from '../../constants/tokens';
+import { triggerHaptic } from '../../constants/haptics';
 import {
   PixelNavTransfersIcon,
   PixelNavSearchIcon,
@@ -9,9 +10,39 @@ import {
   PixelNavConfigIcon,
 } from '../../components/PixelIcons';
 
+interface AnimatedTabIconProps {
+  focused: boolean;
+  children: React.ReactNode;
+}
+
+const AnimatedTabIcon: React.FC<AnimatedTabIconProps> = ({ focused, children }) => {
+  const scaleAnim = useRef(new Animated.Value(focused ? 1.08 : 1)).current;
+
+  useEffect(() => {
+    Animated.spring(scaleAnim, {
+      toValue: focused ? 1.1 : 1,
+      useNativeDriver: true,
+      friction: 6,
+      tension: 120,
+    }).start();
+  }, [focused, scaleAnim]);
+
+  return (
+    <Animated.View style={[styles.iconContainer, { transform: [{ scale: scaleAnim }] }]}>
+      {children}
+      {focused && <View style={styles.neonDot} />}
+    </Animated.View>
+  );
+};
+
 export default function TabLayout() {
   return (
     <Tabs
+      screenListeners={{
+        tabPress: () => {
+          triggerHaptic('selection');
+        },
+      }}
       screenOptions={{
         headerShown: false,
         tabBarStyle: {
@@ -37,10 +68,9 @@ export default function TabLayout() {
         options={{
           title: 'TRANSFERS',
           tabBarIcon: ({ color, focused }) => (
-            <View style={styles.iconContainer}>
+            <AnimatedTabIcon focused={focused}>
               <PixelNavTransfersIcon size={20} color={focused ? TOKENS.colors.accentLime : color} />
-              {focused && <View style={styles.neonDot} />}
-            </View>
+            </AnimatedTabIcon>
           ),
         }}
       />
@@ -49,10 +79,9 @@ export default function TabLayout() {
         options={{
           title: 'SEARCH',
           tabBarIcon: ({ color, focused }) => (
-            <View style={styles.iconContainer}>
+            <AnimatedTabIcon focused={focused}>
               <PixelNavSearchIcon size={20} color={focused ? TOKENS.colors.accentLime : color} />
-              {focused && <View style={styles.neonDot} />}
-            </View>
+            </AnimatedTabIcon>
           ),
         }}
       />
@@ -61,10 +90,9 @@ export default function TabLayout() {
         options={{
           title: 'FEEDS',
           tabBarIcon: ({ color, focused }) => (
-            <View style={styles.iconContainer}>
+            <AnimatedTabIcon focused={focused}>
               <PixelNavFeedsIcon size={20} color={focused ? TOKENS.colors.accentLime : color} />
-              {focused && <View style={styles.neonDot} />}
-            </View>
+            </AnimatedTabIcon>
           ),
         }}
       />
@@ -73,10 +101,9 @@ export default function TabLayout() {
         options={{
           title: 'CONFIG',
           tabBarIcon: ({ color, focused }) => (
-            <View style={styles.iconContainer}>
+            <AnimatedTabIcon focused={focused}>
               <PixelNavConfigIcon size={20} color={focused ? TOKENS.colors.accentLime : color} />
-              {focused && <View style={styles.neonDot} />}
-            </View>
+            </AnimatedTabIcon>
           ),
         }}
       />

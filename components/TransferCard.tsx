@@ -1,8 +1,9 @@
-import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import React, { useRef } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, Animated } from 'react-native';
 import { useRouter } from 'expo-router';
 import { TorrentTelemetry } from 'maglev-engine';
 import { formatBytes, formatEta, formatSpeed, TOKENS } from '../constants/tokens';
+import { triggerHaptic } from '../constants/haptics';
 import { useMaglevEngine } from '../context/EngineContext';
 import {
   PixelClockIcon,
@@ -22,17 +23,38 @@ export const TransferCard: React.FC<TransferCardProps> = ({ torrent }) => {
   const router = useRouter();
   const { pauseTorrent, resumeTorrent } = useMaglevEngine();
 
+  const buttonScale = useRef(new Animated.Value(1)).current;
+
   const isDownloading = torrent.state === 'DOWNLOADING';
   const isSeeding = torrent.state === 'SEEDING';
   const isPaused = torrent.state === 'PAUSED';
 
   const handleAction = async (e: any) => {
     e.stopPropagation?.();
+    triggerHaptic(isDownloading ? 'light' : 'medium');
     if (isDownloading || isSeeding) {
       await pauseTorrent(torrent.id);
     } else {
       await resumeTorrent(torrent.id);
     }
+  };
+
+  const handleButtonPressIn = () => {
+    Animated.spring(buttonScale, {
+      toValue: 0.88,
+      useNativeDriver: true,
+      friction: 7,
+      tension: 220,
+    }).start();
+  };
+
+  const handleButtonPressOut = () => {
+    Animated.spring(buttonScale, {
+      toValue: 1,
+      useNativeDriver: true,
+      friction: 4,
+      tension: 200,
+    }).start();
   };
 
   const getProgressBarColor = () => {
@@ -158,13 +180,15 @@ export const TransferCard: React.FC<TransferCardProps> = ({ torrent }) => {
       <TouchableOpacity
         style={styles.actionColumn}
         onPress={handleAction}
+        onPressIn={handleButtonPressIn}
+        onPressOut={handleButtonPressOut}
         accessibilityRole="button"
         accessibilityLabel={`${actionLabel} ${torrent.name}`}
-        activeOpacity={0.7}
+        activeOpacity={0.85}
       >
-        <View style={styles.actionIconWrapper}>
+        <Animated.View style={[styles.actionIconWrapper, { transform: [{ scale: buttonScale }] }]}>
           {icon}
-        </View>
+        </Animated.View>
       </TouchableOpacity>
     );
   };
@@ -175,7 +199,10 @@ export const TransferCard: React.FC<TransferCardProps> = ({ torrent }) => {
       <TouchableOpacity
         style={styles.mainContent}
         activeOpacity={0.85}
-        onPress={() => router.push(`/torrent/${torrent.id}` as any)}
+        onPress={() => {
+          triggerHaptic('light');
+          router.push(`/torrent/${torrent.id}` as any);
+        }}
         accessibilityRole="button"
         accessibilityLabel={`View detail for ${torrent.name}`}
       >

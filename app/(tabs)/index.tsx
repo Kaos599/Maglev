@@ -6,6 +6,9 @@ import {
   FlatList,
   TextInput,
   TouchableOpacity,
+  LayoutAnimation,
+  Platform,
+  UIManager,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -16,7 +19,12 @@ import { EmptyState } from '../../components/EmptyState';
 import { FloatingActionButton } from '../../components/FloatingActionButton';
 import { PixelSearchIcon } from '../../components/PixelIcons';
 import { TOKENS } from '../../constants/tokens';
+import { triggerHaptic } from '../../constants/haptics';
 import { useMaglevEngine } from '../../context/EngineContext';
+
+if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
+  UIManager.setLayoutAnimationEnabledExperimental(true);
+}
 
 export default function TransfersScreen() {
   const insets = useSafeAreaInsets();
@@ -26,6 +34,7 @@ export default function TransfersScreen() {
   const [searchQuery, setSearchQuery] = useState('');
 
   const handleToggleSearch = useCallback(() => {
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
     setIsSearchOpen((prev) => {
       if (prev) {
         setSearchQuery('');
@@ -66,7 +75,10 @@ export default function TransfersScreen() {
             {searchQuery.length > 0 && (
               <TouchableOpacity
                 style={styles.clearSearchTouch}
-                onPress={() => setSearchQuery('')}
+                onPress={() => {
+                  triggerHaptic('light');
+                  setSearchQuery('');
+                }}
                 accessibilityRole="button"
                 accessibilityLabel="Clear search input"
               >
@@ -88,7 +100,10 @@ export default function TransfersScreen() {
             </Text>
             <TouchableOpacity
               style={styles.clearFilterButton}
-              onPress={() => setSearchQuery('')}
+              onPress={() => {
+                triggerHaptic('light');
+                setSearchQuery('');
+              }}
               accessibilityRole="button"
               accessibilityLabel="Clear search filter"
             >

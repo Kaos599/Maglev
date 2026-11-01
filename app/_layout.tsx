@@ -19,19 +19,31 @@ function AppNavigation() {
           headerShown: false,
           contentStyle: { backgroundColor },
           animation: 'slide_from_right',
+          animationDuration: 200, // Snappy 200ms screen switch
+          gestureEnabled: true,
         }}
       >
-        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+        <Stack.Screen
+          name="(tabs)"
+          options={{
+            headerShown: false,
+          }}
+        />
         <Stack.Screen
           name="add-torrent"
           options={{
             presentation: 'modal',
+            animation: 'slide_from_bottom',
+            animationDuration: 220,
             headerShown: false,
           }}
         />
         <Stack.Screen
           name="torrent/[id]"
           options={{
+            animation: 'slide_from_right',
+            animationDuration: 200,
+            gestureEnabled: true,
             headerShown: false,
           }}
         />

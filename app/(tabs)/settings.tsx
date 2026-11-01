@@ -12,6 +12,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { TOKENS, formatSpeed } from '../../constants/tokens';
+import { triggerHaptic } from '../../constants/haptics';
 import { HeaderBar } from '../../components/HeaderBar';
 import { useSettings } from '../../context/SettingsContext';
 import { useMaglevEngine } from '../../context/EngineContext';
@@ -50,6 +51,7 @@ export default function SettingsScreen() {
   // Speed Limit Helpers
   const handleSelectPreset = useCallback(
     (type: 'download' | 'upload', preset: SpeedPreset) => {
+      triggerHaptic('selection');
       if (preset === 'CUSTOM') {
         setCustomSpeedModal(type);
         setCustomSpeedInput('');
@@ -64,6 +66,7 @@ export default function SettingsScreen() {
     if (!customSpeedModal) return;
     const kbps = parseInt(customSpeedInput, 10);
     if (!isNaN(kbps) && kbps > 0) {
+      triggerHaptic('medium');
       setSpeedPreset(customSpeedModal, 'CUSTOM', kbps * 1024);
     }
     setCustomSpeedModal(null);

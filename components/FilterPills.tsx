@@ -1,6 +1,7 @@
-import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import React, { useRef } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, Animated } from 'react-native';
 import { TOKENS } from '../constants/tokens';
+import { triggerHaptic } from '../constants/haptics';
 import { FilterCategory, useMaglevEngine } from '../context/EngineContext';
 import {
   PixelGridIcon,
@@ -8,6 +9,63 @@ import {
   PixelArrowUpIcon,
   PixelPauseBarsIcon,
 } from './PixelIcons';
+
+interface FilterButtonProps {
+  isActive: boolean;
+  onPress: () => void;
+  label: string;
+  count: number;
+  icon: React.ReactNode;
+}
+
+const FilterButton: React.FC<FilterButtonProps> = ({ isActive, onPress, label, count, icon }) => {
+  const scaleAnim = useRef(new Animated.Value(1)).current;
+
+  const handlePressIn = () => {
+    Animated.spring(scaleAnim, {
+      toValue: 0.93,
+      useNativeDriver: true,
+      friction: 7,
+      tension: 180,
+    }).start();
+  };
+
+  const handlePressOut = () => {
+    Animated.spring(scaleAnim, {
+      toValue: 1,
+      useNativeDriver: true,
+      friction: 5,
+      tension: 180,
+    }).start();
+  };
+
+  return (
+    <Animated.View style={[styles.buttonWrapper, { transform: [{ scale: scaleAnim }] }]}>
+      <TouchableOpacity
+        style={[styles.button, isActive ? styles.buttonActive : styles.buttonInactive]}
+        onPress={() => {
+          triggerHaptic('selection');
+          onPress();
+        }}
+        onPressIn={handlePressIn}
+        onPressOut={handlePressOut}
+        accessibilityRole="button"
+        accessibilityLabel={`${label} filter (${count})`}
+        activeOpacity={0.9}
+      >
+        {icon}
+        <Text
+          style={[
+            styles.countText,
+            isActive ? styles.countTextActive : styles.countTextInactive,
+          ]}
+        >
+          {count}
+        </Text>
+      </TouchableOpacity>
+    </Animated.View>
+  );
+};
 
 export const FilterPills: React.FC = () => {
   const { activeFilter, setActiveFilter, telemetry } = useMaglevEngine();
@@ -54,24 +112,14 @@ export const FilterPills: React.FC = () => {
       {filters.map((f) => {
         const isActive = activeFilter === f.id;
         return (
-          <TouchableOpacity
+          <FilterButton
             key={f.id}
-            style={[styles.button, isActive ? styles.buttonActive : styles.buttonInactive]}
+            isActive={isActive}
             onPress={() => setActiveFilter(f.id)}
-            accessibilityRole="button"
-            accessibilityLabel={`${f.label} filter (${f.count})`}
-            activeOpacity={0.8}
-          >
-            {f.icon(isActive)}
-            <Text
-              style={[
-                styles.countText,
-                isActive ? styles.countTextActive : styles.countTextInactive,
-              ]}
-            >
-              {f.count}
-            </Text>
-          </TouchableOpacity>
+            label={f.label}
+            count={f.count}
+            icon={f.icon(isActive)}
+          />
         );
       })}
     </View>
@@ -86,8 +134,11 @@ const styles = StyleSheet.create({
     paddingBottom: 10,
     gap: 8,
   },
-  button: {
+  buttonWrapper: {
     flex: 1,
+  },
+  button: {
+    width: '100%',
     minHeight: TOKENS.touchTarget.minHeight,
     borderRadius: 8,
     flexDirection: 'row',
