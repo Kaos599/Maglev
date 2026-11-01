@@ -1,149 +1,126 @@
 import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { TOKENS } from '../constants/tokens';
 import { FilterCategory, useMaglevEngine } from '../context/EngineContext';
-
-interface FilterPillItem {
-  id: FilterCategory;
-  label: string;
-}
-
-const PILLS: FilterPillItem[] = [
-  { id: 'ALL', label: 'All' },
-  { id: 'DOWN', label: 'Down' },
-  { id: 'UP', label: 'Up' },
-  { id: 'PAUSED', label: 'Paused' },
-];
+import {
+  PixelGridIcon,
+  PixelArrowDownIcon,
+  PixelArrowUpIcon,
+  PixelPauseBarsIcon,
+} from './PixelIcons';
 
 export const FilterPills: React.FC = () => {
   const { activeFilter, setActiveFilter, telemetry } = useMaglevEngine();
 
-  const getCount = (filter: FilterCategory): number => {
-    switch (filter) {
-      case 'DOWN':
-        return telemetry.torrents.filter((t) => t.state === 'DOWNLOADING').length;
-      case 'UP':
-        return telemetry.torrents.filter((t) => t.state === 'SEEDING').length;
-      case 'PAUSED':
-        return telemetry.torrents.filter((t) => t.state === 'PAUSED').length;
-      case 'ALL':
-      default:
-        return telemetry.torrents.length;
-    }
-  };
+  const allCount = telemetry.torrents.length;
+  const downCount = telemetry.torrents.filter((t) => t.state === 'DOWNLOADING').length;
+  const upCount = telemetry.torrents.filter((t) => t.state === 'SEEDING').length;
+  const pausedCount = telemetry.torrents.filter((t) => t.state === 'PAUSED').length;
+
+  const filters: Array<{
+    id: FilterCategory;
+    icon: (isActive: boolean) => React.ReactNode;
+    count: number;
+    label: string;
+  }> = [
+    {
+      id: 'ALL',
+      icon: (active) => <PixelGridIcon size={14} color={active ? '#000000' : '#CCFF00'} />,
+      count: allCount,
+      label: 'All',
+    },
+    {
+      id: 'DOWN',
+      icon: (active) => <PixelArrowDownIcon size={14} color={active ? '#000000' : '#00E5FF'} />,
+      count: downCount,
+      label: 'Downloading',
+    },
+    {
+      id: 'UP',
+      icon: (active) => <PixelArrowUpIcon size={14} color={active ? '#000000' : '#CCFF00'} />,
+      count: upCount,
+      label: 'Seeding',
+    },
+    {
+      id: 'PAUSED',
+      icon: (active) => <PixelPauseBarsIcon size={14} color={active ? '#000000' : '#8B949E'} />,
+      count: pausedCount,
+      label: 'Paused',
+    },
+  ];
 
   return (
-    <View style={styles.wrapper}>
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.container}
-      >
-        {PILLS.map((pill) => {
-          const isActive = activeFilter === pill.id;
-          const count = getCount(pill.id);
-
-          return (
-            <TouchableOpacity
-              key={pill.id}
+    <View style={styles.container}>
+      {filters.map((f) => {
+        const isActive = activeFilter === f.id;
+        return (
+          <TouchableOpacity
+            key={f.id}
+            style={[styles.button, isActive ? styles.buttonActive : styles.buttonInactive]}
+            onPress={() => setActiveFilter(f.id)}
+            accessibilityRole="button"
+            accessibilityLabel={`${f.label} filter (${f.count})`}
+            activeOpacity={0.8}
+          >
+            {f.icon(isActive)}
+            <Text
               style={[
-                styles.pill,
-                isActive ? styles.pillActive : styles.pillInactive,
+                styles.countText,
+                isActive ? styles.countTextActive : styles.countTextInactive,
               ]}
-              onPress={() => setActiveFilter(pill.id)}
-              accessibilityRole="button"
-              accessibilityLabel={`${pill.label} transfers (${count})`}
             >
-              <Text
-                style={[
-                  styles.pillText,
-                  isActive ? styles.pillTextActive : styles.pillTextInactive,
-                ]}
-              >
-                {pill.label}
-              </Text>
-              <View
-                style={[
-                  styles.badge,
-                  isActive ? styles.badgeActive : styles.badgeInactive,
-                ]}
-              >
-                <Text
-                  style={[
-                    styles.badgeText,
-                    isActive ? styles.badgeTextActive : styles.badgeTextInactive,
-                  ]}
-                >
-                  {count}
-                </Text>
-              </View>
-            </TouchableOpacity>
-          );
-        })}
-      </ScrollView>
+              {f.count}
+            </Text>
+          </TouchableOpacity>
+        );
+      })}
     </View>
   );
 };
 
 const styles = StyleSheet.create({
-  wrapper: {
-    marginVertical: 4,
-  },
   container: {
-    paddingHorizontal: 16,
     flexDirection: 'row',
+    paddingHorizontal: 16,
+    paddingTop: 14,
+    paddingBottom: 10,
     gap: 8,
   },
-  pill: {
+  button: {
+    flex: 1,
     minHeight: TOKENS.touchTarget.minHeight,
-    paddingHorizontal: 16,
-    borderRadius: 10,
+    borderRadius: 8,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
+    gap: 6,
+    paddingHorizontal: 8,
   },
-  pillActive: {
+  buttonActive: {
     backgroundColor: TOKENS.colors.accentLime,
-  },
-  pillInactive: {
-    backgroundColor: TOKENS.colors.surfaceCard,
+    borderColor: TOKENS.colors.accentLime,
     borderWidth: 1,
-    borderColor: TOKENS.colors.surfaceBorder,
+    elevation: 4,
+    shadowColor: TOKENS.colors.accentLime,
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.45,
+    shadowRadius: 10,
   },
-  pillText: {
-    fontSize: TOKENS.typography.pillButton.fontSize,
-    fontWeight: TOKENS.typography.pillButton.fontWeight,
-    fontFamily: 'monospace',
-    marginRight: 6,
-  },
-  pillTextActive: {
-    color: '#000000',
-  },
-  pillTextInactive: {
-    color: TOKENS.colors.textMuted,
-  },
-  badge: {
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 6,
-  },
-  badgeActive: {
-    backgroundColor: '#000000',
-  },
-  badgeInactive: {
-    backgroundColor: TOKENS.colors.surfacePill,
+  buttonInactive: {
+    backgroundColor: '#0D1117',
+    borderColor: '#1F2937',
     borderWidth: 1,
-    borderColor: TOKENS.colors.surfaceBorder,
   },
-  badgeText: {
+  countText: {
+    fontFamily: 'Silkscreen',
     fontSize: 10,
     fontWeight: '700',
-    fontFamily: 'monospace',
+    lineHeight: 12,
   },
-  badgeTextActive: {
-    color: TOKENS.colors.accentLime,
+  countTextActive: {
+    color: '#000000',
   },
-  badgeTextInactive: {
-    color: TOKENS.colors.textMuted,
+  countTextInactive: {
+    color: '#D1D5DB',
   },
 });

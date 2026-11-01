@@ -32,7 +32,8 @@ export class MaglevMockEngine {
   constructor() {
     this.settings = JSON.parse(JSON.stringify(settingsStore.getSettings()));
     this.seedInitialMockData();
-    this.startTelemetryLoop();
+    this.recalculateGovernance();
+    this.broadcast();
 
     // Subscribe to settings changes
     settingsStore.subscribe((newSettings) => {
@@ -607,13 +608,13 @@ export class MaglevMockEngine {
   }
 
   private seedInitialMockData(): void {
-    const id1 = '4b2a8c3d7e1f9a0b1c2d3e4f5a6b7c8d9e0f1a2b';
-    const name1 = 'ArchLinux-2026.11.01-x86_64.iso';
-    const total1 = 1_288_490_188; // 1.2 GB
-    const downloaded1 = 953_482_739; // ~74%
+    const id1 = 'card-ubuntu';
+    const name1 = 'Ubuntu-26.04-Desktop.iso';
+    const total1 = 4_509_715_660; // 4.2 GB
+    const downloaded1 = 3_328_599_654; // 74.2%
 
     const matrix1 = new Uint8Array(256);
-    const verified1 = Math.floor(0.74 * 256);
+    const verified1 = Math.floor(0.742 * 256);
     for (let i = 0; i < 256; i++) {
       if (i < verified1) matrix1[i] = 2;
       else if (i < verified1 + 6) matrix1[i] = 1;
@@ -627,44 +628,27 @@ export class MaglevMockEngine {
       state: 'DOWNLOADING',
       downloadSpeedBytes: 14_800_000,
       uploadSpeedBytes: 850_000,
-      progressPercent: 74.0,
+      progressPercent: 74.2,
       downloadedBytes: downloaded1,
       uploadedBytes: 154_000_000,
       totalSizeBytes: total1,
-      etaSeconds: 136,
+      etaSeconds: 135, // 2m 15s
       peersConnected: 28,
       peersTotal: 40,
       seedsConnected: 6,
-      ratio: 0.16,
+      ratio: 0.05,
       sequential: false,
       seedDurationSeconds: 0,
       savePath: this.defaultStoragePath,
       piecesTotal: 256,
       piecesVerified: verified1,
-      files: [
-        {
-          index: 0,
-          name: name1,
-          path: name1,
-          length: total1,
-          progress: 74.0,
-          priority: 1,
-        },
-      ],
-      trackers: [
-        {
-          url: 'udp://tracker.archlinux.org:6969/announce',
-          status: 'Working',
-          seeds: 34,
-          peers: 68,
-        },
-      ],
+      files: [{ index: 0, name: name1, path: name1, length: total1, progress: 74.2, priority: 1 }],
+      trackers: [{ url: 'udp://tracker.ubuntu.com:6969/announce', status: 'Working', seeds: 48, peers: 92 }],
     });
 
-    const id2 = '9f8e7d6c5b4a3f2e1d0c9b8a7f6e5d4c3b2a1f0e';
-    const name2 = 'Big_Buck_Bunny_4K_HDR.mkv';
-    const total2 = 2_147_483_648; // 2.0 GB
-
+    const id2 = 'card-blender';
+    const name2 = 'Blender-5.2-Linux.tar.xz';
+    const total2 = 1_932_735_283; // 1.8 GB
     const matrix2 = new Uint8Array(256);
     matrix2.fill(2);
     this.pieceMatrices.set(id2, matrix2);
@@ -677,37 +661,57 @@ export class MaglevMockEngine {
       uploadSpeedBytes: 3_400_000,
       progressPercent: 100.0,
       downloadedBytes: total2,
-      uploadedBytes: 5_798_205_850,
+      uploadedBytes: 5_447_453_900,
       totalSizeBytes: total2,
       etaSeconds: 0,
       peersConnected: 14,
       peersTotal: 40,
       seedsConnected: 22,
-      ratio: 2.7,
+      ratio: 2.82,
       sequential: true,
-      seedDurationSeconds: 1800,
+      seedDurationSeconds: 3600,
       savePath: this.defaultStoragePath,
       piecesTotal: 256,
       piecesVerified: 256,
       streamUrl: `http://127.0.0.1:8080/stream/${id2}/0`,
-      files: [
-        {
-          index: 0,
-          name: name2,
-          path: name2,
-          length: total2,
-          progress: 100.0,
-          priority: 1,
-        },
-      ],
-      trackers: [
-        {
-          url: 'udp://tracker.opentrackr.org:1337/announce',
-          status: 'Working',
-          seeds: 56,
-          peers: 41,
-        },
-      ],
+      files: [{ index: 0, name: name2, path: name2, length: total2, progress: 100.0, priority: 1 }],
+      trackers: [{ url: 'udp://tracker.blender.org:6969/announce', status: 'Working', seeds: 35, peers: 28 }],
+    });
+
+    const id3 = 'card-arch';
+    const name3 = 'archlinux-2025.02.01-x86_64.iso';
+    const total3 = 956_301_312; // 912 MB
+    const downloaded3 = 432_013_312; // 412 MB (45.2%)
+    const matrix3 = new Uint8Array(256);
+    const verified3 = Math.floor(0.452 * 256);
+    for (let i = 0; i < 256; i++) {
+      if (i < verified3) matrix3[i] = 2;
+      else matrix3[i] = 0;
+    }
+    this.pieceMatrices.set(id3, matrix3);
+
+    this.torrents.set(id3, {
+      id: id3,
+      name: name3,
+      state: 'PAUSED',
+      downloadSpeedBytes: 0,
+      uploadSpeedBytes: 0,
+      progressPercent: 45.2,
+      downloadedBytes: downloaded3,
+      uploadedBytes: 12_000_000,
+      totalSizeBytes: total3,
+      etaSeconds: 0,
+      peersConnected: 0,
+      peersTotal: 40,
+      seedsConnected: 0,
+      ratio: 0.03,
+      sequential: false,
+      seedDurationSeconds: 0,
+      savePath: this.defaultStoragePath,
+      piecesTotal: 256,
+      piecesVerified: verified3,
+      files: [{ index: 0, name: name3, path: name3, length: total3, progress: 45.2, priority: 1 }],
+      trackers: [{ url: 'udp://tracker.archlinux.org:6969/announce', status: 'Paused', seeds: 0, peers: 0 }],
     });
   }
 }

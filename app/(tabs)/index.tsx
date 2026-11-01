@@ -2,7 +2,6 @@ import React from 'react';
 import { View, StyleSheet, FlatList } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { HeaderBar } from '../../components/HeaderBar';
-import { SpeedTelemetryHeader } from '../../components/SpeedTelemetryHeader';
 import { FilterPills } from '../../components/FilterPills';
 import { TransferCard } from '../../components/TransferCard';
 import { EmptyState } from '../../components/EmptyState';
@@ -17,7 +16,6 @@ export default function TransfersScreen() {
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
       <HeaderBar />
-      <SpeedTelemetryHeader />
       <FilterPills />
 
       {filteredTorrents.length === 0 ? (

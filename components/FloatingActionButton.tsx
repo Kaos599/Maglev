@@ -1,7 +1,8 @@
 import React from 'react';
-import { StyleSheet, TouchableOpacity, View, Text } from 'react-native';
+import { StyleSheet, TouchableOpacity } from 'react-native';
 import { useRouter } from 'expo-router';
 import { TOKENS } from '../constants/tokens';
+import { PixelPlusFabIcon } from './PixelIcons';
 
 export const FloatingActionButton: React.FC = () => {
   const router = useRouter();
@@ -14,7 +15,7 @@ export const FloatingActionButton: React.FC = () => {
       accessibilityRole="button"
       accessibilityLabel="Add Torrent"
     >
-      <Text style={styles.fabGlyph}>+</Text>
+      <PixelPlusFabIcon size={24} color="#000000" />
     </TouchableOpacity>
   );
 };
@@ -26,23 +27,17 @@ const styles = StyleSheet.create({
     bottom: 80,
     width: 48,
     height: 48,
-    borderRadius: 12,
+    borderRadius: 14,
     backgroundColor: TOKENS.colors.accentLime,
+    borderColor: '#efff80',
+    borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    elevation: 6,
+    elevation: 8,
     shadowColor: TOKENS.colors.accentLime,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.5,
+    shadowRadius: 16,
     zIndex: 99,
-  },
-  fabGlyph: {
-    color: '#000000',
-    fontSize: 28,
-    fontWeight: '900',
-    lineHeight: 30,
-    textAlign: 'center',
-    fontFamily: 'monospace',
   },
 });

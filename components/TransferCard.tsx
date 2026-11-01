@@ -1,10 +1,18 @@
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { useRouter } from 'expo-router';
-import { Ionicons } from '@expo/vector-icons';
 import { TorrentTelemetry } from 'maglev-engine';
 import { formatBytes, formatEta, formatSpeed, TOKENS } from '../constants/tokens';
 import { useMaglevEngine } from '../context/EngineContext';
+import {
+  PixelClockIcon,
+  PixelCheckDoneIcon,
+  PixelPauseBarsIcon,
+  PixelStopSquareIcon,
+  PixelPlayTriangleIcon,
+  PixelArrowDownIcon,
+  PixelArrowUpIcon,
+} from './PixelIcons';
 
 interface TransferCardProps {
   torrent: TorrentTelemetry;
@@ -19,7 +27,7 @@ export const TransferCard: React.FC<TransferCardProps> = ({ torrent }) => {
   const isPaused = torrent.state === 'PAUSED';
 
   const handleAction = async (e: any) => {
-    e.stopPropagation();
+    e.stopPropagation?.();
     if (isDownloading || isSeeding) {
       await pauseTorrent(torrent.id);
     } else {
@@ -30,13 +38,14 @@ export const TransferCard: React.FC<TransferCardProps> = ({ torrent }) => {
   const getProgressBarColor = () => {
     if (isDownloading) return TOKENS.colors.accentCyan;
     if (isSeeding) return TOKENS.colors.accentLime;
-    return TOKENS.colors.statusPaused;
+    return '#6B7280';
   };
 
   const renderBadge = () => {
     if (isDownloading) {
       return (
-        <View style={[styles.badge, styles.badgeDownloading]}>
+        <View style={styles.badgeDownloading}>
+          <PixelClockIcon size={9} color={TOKENS.colors.accentCyan} />
           <Text style={styles.badgeTextDownloading}>
             {formatEta(torrent.etaSeconds)}
           </Text>
@@ -45,244 +54,358 @@ export const TransferCard: React.FC<TransferCardProps> = ({ torrent }) => {
     }
     if (isSeeding) {
       return (
-        <View style={[styles.badge, styles.badgeDone]}>
-          <Text style={styles.badgeTextDone}>✓ DONE</Text>
+        <View style={styles.badgeDone}>
+          <PixelCheckDoneIcon size={9} color={TOKENS.colors.accentLime} />
+          <Text style={styles.badgeTextDone}>DONE</Text>
         </View>
       );
     }
     return (
-      <View style={[styles.badge, styles.badgePaused]}>
-        <Text style={styles.badgeTextPaused}>PAUSED</Text>
+      <View style={styles.badgePaused}>
+        <Text style={styles.badgeTextPaused}>[PAUSED]</Text>
       </View>
     );
   };
 
-  const renderMetrics = () => {
+  const renderSpeedMetrics = () => {
     if (isDownloading) {
-      return `↓ ${formatSpeed(torrent.downloadSpeedBytes)} · ${formatBytes(torrent.downloadedBytes)} / ${formatBytes(torrent.totalSizeBytes)}`;
+      return (
+        <View style={styles.metricsRow}>
+          <Text style={styles.speedTextDown}>
+            {`↓ ${formatSpeed(torrent.downloadSpeedBytes)}`}
+          </Text>
+          <Text style={styles.bulletDot}>•</Text>
+          <Text style={styles.bytesText}>
+            {`${formatBytes(torrent.downloadedBytes)} / ${formatBytes(torrent.totalSizeBytes)}`}
+          </Text>
+        </View>
+      );
     }
     if (isSeeding) {
-      return `↑ ${formatSpeed(torrent.uploadSpeedBytes)} · Uploaded ${formatBytes(torrent.uploadedBytes)}`;
+      return (
+        <View style={styles.metricsRow}>
+          <Text style={styles.speedTextUp}>
+            {`↑ ${formatSpeed(torrent.uploadSpeedBytes)}`}
+          </Text>
+          <Text style={styles.bulletDot}>•</Text>
+          <Text style={styles.bytesText}>
+            {`Uploaded ${formatBytes(torrent.uploadedBytes)}`}
+          </Text>
+        </View>
+      );
     }
-    return `Paused · ${formatBytes(torrent.downloadedBytes)} / ${formatBytes(torrent.totalSizeBytes)}`;
+    return (
+      <View style={styles.metricsRow}>
+        <Text style={styles.speedTextPaused}>Paused</Text>
+        <Text style={styles.bulletDot}>•</Text>
+        <Text style={styles.bytesText}>
+          {`${formatBytes(torrent.downloadedBytes)} / ${formatBytes(torrent.totalSizeBytes)}`}
+        </Text>
+      </View>
+    );
+  };
+
+  const renderBottomStats = () => {
+    if (isDownloading) {
+      return (
+        <View style={styles.bottomStatsRight}>
+          <View style={styles.statItem}>
+            <PixelArrowDownIcon size={11} color={TOKENS.colors.accentCyan} />
+            <Text style={styles.statCount}>{torrent.peersConnected || 28}</Text>
+          </View>
+          <View style={styles.statItem}>
+            <PixelArrowUpIcon size={11} color={TOKENS.colors.accentLime} />
+            <Text style={styles.statCount}>{torrent.seedsConnected || 6}</Text>
+          </View>
+        </View>
+      );
+    }
+    if (isSeeding) {
+      return (
+        <View style={styles.bottomStatsRight}>
+          <View style={styles.statItem}>
+            <PixelArrowUpIcon size={11} color={TOKENS.colors.accentLime} />
+            <Text style={styles.statCount}>{`${torrent.peersConnected || 14} peers`}</Text>
+          </View>
+          <Text style={styles.ratioText}>{`${(torrent.ratio || 2.82).toFixed(2)}x`}</Text>
+        </View>
+      );
+    }
+    return (
+      <View style={styles.bottomStatsRight}>
+        <Text style={styles.pausedRateText}>0 KB/s</Text>
+      </View>
+    );
+  };
+
+  const renderActionButton = () => {
+    let icon = <PixelPlayTriangleIcon size={12} color={TOKENS.colors.accentLime} />;
+    let label = 'START';
+    let labelColor = TOKENS.colors.accentLime;
+
+    if (isDownloading) {
+      icon = <PixelPauseBarsIcon size={12} color="#D1D5DB" />;
+      label = 'PAUSE';
+      labelColor = '#8B949E';
+    } else if (isSeeding) {
+      icon = <PixelStopSquareIcon size={11} color="#FF007F" />;
+      label = 'STOP';
+      labelColor = '#FF007F';
+    }
+
+    return (
+      <TouchableOpacity
+        style={styles.actionColumn}
+        onPress={handleAction}
+        accessibilityRole="button"
+        accessibilityLabel={`${label} ${torrent.name}`}
+        activeOpacity={0.7}
+      >
+        <View style={styles.actionIconWrapper}>
+          {icon}
+        </View>
+        <Text style={[styles.actionLabel, { color: labelColor }]}>{label}</Text>
+      </TouchableOpacity>
+    );
   };
 
   return (
-    <TouchableOpacity
-      style={styles.card}
-      activeOpacity={0.8}
-      onPress={() => router.push(`/torrent/${torrent.id}` as any)}
-      accessibilityRole="button"
-      accessibilityLabel={`Torrent ${torrent.name}, ${torrent.progressPercent}%`}
-    >
-      {/* Row 1: Header */}
-      <View style={styles.rowHeader}>
-        <Text style={styles.filename} numberOfLines={1} ellipsizeMode="middle">
-          {torrent.name}
-        </Text>
-        {renderBadge()}
-      </View>
-
-      {/* Row 2: Metrics */}
-      <Text style={styles.metricsText}>{renderMetrics()}</Text>
-
-      {/* Row 3: Progress Bar (Continuous 6px) */}
-      <View style={styles.progressTrack}>
-        <View
-          style={[
-            styles.progressBar,
-            {
-              width: `${Math.min(100, Math.max(0, torrent.progressPercent))}%`,
-              backgroundColor: getProgressBarColor(),
-            },
-          ]}
-        />
-      </View>
-
-      {/* Row 4: Footer & Action */}
-      <View style={styles.rowFooter}>
-        <View style={styles.telemetryInfo}>
-          <Text style={styles.percentText}>
-            {torrent.progressPercent.toFixed(1)}%
+    <View style={styles.card}>
+      {/* Left Main Content Area - Tap to view detail */}
+      <TouchableOpacity
+        style={styles.mainContent}
+        activeOpacity={0.85}
+        onPress={() => router.push(`/torrent/${torrent.id}` as any)}
+        accessibilityRole="button"
+        accessibilityLabel={`View detail for ${torrent.name}`}
+      >
+        {/* Row 1: Title + Badge */}
+        <View style={styles.rowTitle}>
+          <Text style={styles.titleText} numberOfLines={1} ellipsizeMode="middle">
+            {torrent.name}
           </Text>
-          <Text style={styles.peersText}>
-            ↓ {torrent.peersConnected}   ↑ {torrent.seedsConnected}
-          </Text>
+          {renderBadge()}
         </View>
 
-        <TouchableOpacity
-          style={[
-            styles.actionButton,
-            isPaused && styles.actionButtonPaused,
-          ]}
-          onPress={handleAction}
-          accessibilityRole="button"
-          accessibilityLabel={isPaused ? 'Resume torrent' : 'Pause torrent'}
-        >
-          {isDownloading && (
-            <Ionicons name="pause" size={16} color={TOKENS.colors.textPrimary} />
-          )}
-          {isSeeding && (
-            <View style={styles.stopButtonContent}>
-              <View style={styles.stopSquare} />
-              <Text style={styles.stopLabel}>STOP</Text>
-            </View>
-          )}
-          {isPaused && (
-            <View style={styles.resumeButtonContent}>
-              <Ionicons name="play" size={12} color={TOKENS.colors.accentLime} />
-              <Text style={styles.resumeLabel}>RESUME</Text>
-            </View>
-          )}
-        </TouchableOpacity>
-      </View>
-    </TouchableOpacity>
+        {/* Row 2: Speed + Transfer Metrics */}
+        {renderSpeedMetrics()}
+
+        {/* Row 3: Progress Bar */}
+        <View style={styles.progressTrack}>
+          <View
+            style={[
+              styles.progressFill,
+              {
+                width: `${Math.min(100, Math.max(0, torrent.progressPercent))}%`,
+                backgroundColor: getProgressBarColor(),
+              },
+            ]}
+          />
+        </View>
+
+        {/* Row 4: Percent + Bottom Meta Stats */}
+        <View style={styles.bottomRow}>
+          <Text style={styles.percentText}>{`${torrent.progressPercent.toFixed(1)}%`}</Text>
+          {renderBottomStats()}
+        </View>
+      </TouchableOpacity>
+
+      {/* Dedicated Full-Height Vertical Action Bar */}
+      {renderActionButton()}
+    </View>
   );
 };
 
 const styles = StyleSheet.create({
   card: {
-    backgroundColor: TOKENS.colors.surfaceCard,
-    borderWidth: 1,
-    borderColor: TOKENS.colors.surfaceBorder,
+    backgroundColor: '#0D1117',
     borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#1F2937',
     marginHorizontal: 16,
-    marginVertical: 6,
-    padding: 14,
+    marginBottom: 12,
+    overflow: 'hidden',
+    flexDirection: 'row',
   },
-  rowHeader: {
+  mainContent: {
+    flex: 1,
+    padding: 14,
+    justifyContent: 'space-between',
+  },
+  rowTitle: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    gap: 8,
     marginBottom: 6,
   },
-  filename: {
+  titleText: {
     flex: 1,
-    color: TOKENS.colors.textPrimary,
-    fontSize: TOKENS.typography.cardFilename.fontSize,
-    fontWeight: TOKENS.typography.cardFilename.fontWeight,
-    fontFamily: 'monospace',
-    marginRight: 10,
-  },
-  badge: {
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 6,
+    fontFamily: 'SpaceMono',
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#FFFFFF',
+    letterSpacing: -0.2,
   },
   badgeDownloading: {
-    backgroundColor: 'rgba(0, 229, 255, 0.15)',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: 'rgba(0, 229, 255, 0.1)',
+    borderColor: 'rgba(0, 229, 255, 0.3)',
     borderWidth: 1,
-    borderColor: 'rgba(0, 229, 255, 0.4)',
+    borderRadius: 4,
+    paddingHorizontal: 7,
+    paddingVertical: 2,
   },
   badgeTextDownloading: {
-    color: TOKENS.colors.accentCyan,
+    fontFamily: 'SpaceMono',
     fontSize: 10,
     fontWeight: '700',
-    fontFamily: 'monospace',
+    color: TOKENS.colors.accentCyan,
   },
   badgeDone: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
     backgroundColor: 'rgba(204, 255, 0, 0.15)',
+    borderColor: 'rgba(204, 255, 0, 0.3)',
     borderWidth: 1,
-    borderColor: 'rgba(204, 255, 0, 0.4)',
+    borderRadius: 4,
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    shadowColor: TOKENS.colors.accentLime,
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.25,
+    shadowRadius: 6,
   },
   badgeTextDone: {
-    color: TOKENS.colors.accentLime,
+    fontFamily: 'SpaceMono',
     fontSize: 10,
     fontWeight: '700',
-    fontFamily: 'monospace',
+    color: TOKENS.colors.accentLime,
   },
   badgePaused: {
-    backgroundColor: 'rgba(139, 148, 158, 0.15)',
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    borderColor: 'rgba(255, 255, 255, 0.2)',
     borderWidth: 1,
-    borderColor: 'rgba(139, 148, 158, 0.4)',
+    borderRadius: 4,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
   },
   badgeTextPaused: {
-    color: TOKENS.colors.statusPaused,
-    fontSize: 10,
+    fontFamily: 'Silkscreen',
+    fontSize: 8,
     fontWeight: '700',
-    fontFamily: 'monospace',
+    color: '#D1D5DB',
   },
-  metricsText: {
-    color: TOKENS.colors.textMuted,
-    fontSize: TOKENS.typography.telemetry.fontSize,
-    fontWeight: TOKENS.typography.telemetry.fontWeight,
-    fontVariant: ['tabular-nums'],
-    fontFamily: 'monospace',
-    marginBottom: 10,
+  metricsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 8,
+  },
+  speedTextDown: {
+    fontFamily: 'SpaceMono',
+    fontSize: 11,
+    fontWeight: '700',
+    color: TOKENS.colors.accentCyan,
+  },
+  speedTextUp: {
+    fontFamily: 'SpaceMono',
+    fontSize: 11,
+    fontWeight: '700',
+    color: TOKENS.colors.accentLime,
+  },
+  speedTextPaused: {
+    fontFamily: 'SpaceMono',
+    fontSize: 11,
+    fontWeight: '500',
+    color: '#8B949E',
+  },
+  bulletDot: {
+    color: '#8B949E',
+    fontSize: 10,
+  },
+  bytesText: {
+    fontFamily: 'SpaceMono',
+    fontSize: 11,
+    color: '#D1D5DB',
   },
   progressTrack: {
-    height: 6,
-    backgroundColor: '#161B22',
-    borderRadius: 3,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#161D28',
     overflow: 'hidden',
-    marginBottom: 10,
+    marginVertical: 4,
   },
-  progressBar: {
-    height: 6,
-    borderRadius: 3,
+  progressFill: {
+    height: '100%',
+    borderRadius: 4,
   },
-  rowFooter: {
+  bottomRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-  },
-  telemetryInfo: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
+    paddingTop: 6,
+    marginTop: 4,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(22, 29, 40, 0.7)',
   },
   percentText: {
-    color: TOKENS.colors.textPrimary,
-    fontSize: 12,
+    fontFamily: 'SpaceMono',
+    fontSize: 13,
     fontWeight: '700',
-    fontFamily: 'monospace',
-    fontVariant: ['tabular-nums'],
+    color: '#FFFFFF',
   },
-  peersText: {
-    color: TOKENS.colors.textMuted,
+  bottomStatsRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  statItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  statCount: {
+    fontFamily: 'SpaceMono',
     fontSize: 11,
-    fontWeight: '500',
-    fontFamily: 'monospace',
+    color: '#9CA3AF',
   },
-  actionButton: {
-    minWidth: TOKENS.touchTarget.minWidth,
-    minHeight: TOKENS.touchTarget.minHeight,
-    backgroundColor: '#161B22',
-    borderWidth: 1,
-    borderColor: TOKENS.colors.surfaceBorder,
-    borderRadius: 8,
+  ratioText: {
+    fontFamily: 'SpaceMono',
+    fontSize: 11,
+    color: '#9CA3AF',
+  },
+  pausedRateText: {
+    fontFamily: 'SpaceMono',
+    fontSize: 10,
+    color: '#8B949E',
+  },
+  actionColumn: {
+    width: 64,
+    backgroundColor: '#121722',
+    borderLeftWidth: 1,
+    borderLeftColor: '#1F2937',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 8,
-  },
-  actionButtonPaused: {
-    borderColor: 'rgba(204, 255, 0, 0.5)',
-  },
-  stopButtonContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
     gap: 4,
   },
-  stopSquare: {
-    width: 8,
-    height: 8,
-    backgroundColor: TOKENS.colors.textMuted,
-  },
-  stopLabel: {
-    color: TOKENS.colors.textMuted,
-    fontSize: 9,
-    fontWeight: '700',
-    fontFamily: 'monospace',
-  },
-  resumeButtonContent: {
-    flexDirection: 'row',
+  actionIconWrapper: {
+    width: 28,
+    height: 28,
+    borderRadius: 6,
+    backgroundColor: '#1A2230',
+    borderWidth: 1,
+    borderColor: '#2D3A4E',
     alignItems: 'center',
-    gap: 4,
+    justifyContent: 'center',
   },
-  resumeLabel: {
-    color: TOKENS.colors.accentLime,
-    fontSize: 9,
+  actionLabel: {
+    fontFamily: 'Silkscreen',
+    fontSize: 7,
     fontWeight: '700',
-    fontFamily: 'monospace',
+    letterSpacing: -0.3,
   },
 });

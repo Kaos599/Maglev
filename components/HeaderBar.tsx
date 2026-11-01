@@ -1,8 +1,8 @@
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { useRouter } from 'expo-router';
-import { Ionicons } from '@expo/vector-icons';
 import { TOKENS } from '../constants/tokens';
+import { PixelSearchIcon } from './PixelIcons';
 
 interface HeaderBarProps {
   onSearchPress?: () => void;
@@ -25,9 +25,10 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({ onSearchPress }) => {
         onPress={onSearchPress || (() => router.push('/search'))}
         accessibilityRole="button"
         accessibilityLabel="Search torrents"
+        activeOpacity={0.7}
       >
         <View style={styles.searchButton}>
-          <Ionicons name="search" size={16} color={TOKENS.colors.accentCyan} />
+          <PixelSearchIcon size={16} color="#D1D5DB" />
         </View>
       </TouchableOpacity>
     </View>
@@ -37,15 +38,18 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({ onSearchPress }) => {
 const styles = StyleSheet.create({
   container: {
     height: 52,
-    backgroundColor: TOKENS.colors.bgOled,
+    backgroundColor: '#070A0F',
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#161D28',
   },
   brandRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    gap: 10,
   },
   logoTile: {
     width: 28,
@@ -54,19 +58,20 @@ const styles = StyleSheet.create({
     borderRadius: 6,
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 10,
   },
   logoText: {
     color: '#000000',
-    fontSize: 16,
-    fontWeight: '900',
-    fontFamily: 'monospace',
+    fontSize: 13,
+    fontWeight: '700',
+    fontFamily: 'Silkscreen',
+    lineHeight: 14,
   },
   brandTitle: {
-    color: TOKENS.colors.textPrimary,
-    fontSize: TOKENS.typography.appTitle.fontSize,
-    fontWeight: TOKENS.typography.appTitle.fontWeight,
-    letterSpacing: TOKENS.typography.appTitle.letterSpacing,
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '700',
+    fontFamily: 'Silkscreen',
+    letterSpacing: -0.28,
   },
   searchTouchArea: {
     minWidth: TOKENS.touchTarget.minWidth,
