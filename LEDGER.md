@@ -14,6 +14,17 @@ Build **Maglev** — a frictionless, zero-drag, zero-bloat, native-speed Android
 
 ## 📜 Ledger Entries
 
+### [2026-11-01] — Turn 7: UI 1:1 Reference Alignment, Typography & Simplification Directive
+- **1:1 Visual Alignment:** Rebuilt header, 4-column filter grid, FAB, and bottom navigation with authentic 8-bit vector SVGs (`components/PixelIcons.tsx`). Loaded Google Fonts `Silkscreen` and `Space Mono` via `expo-font`. Upgraded to Expo SDK 58 & React 19.
+- **Simulation Stabilization:** Removed runaway 500ms auto-mutation timer in `MaglevMockEngine.ts`; transfers now preserve stable initial states and respond strictly to user actions (Play/Pause/Stop, filters).
+- **Simplification & Human Language Directives Logged:**
+  1. *Action Buttons:* Remove redundant text labels (`PAUSE`, `STOP`, `START`); enlarge touchable icon targets to $\ge 44\text{px}$.
+  2. *Card Metrics:* Standardize card information architecture across all states (show clear downloaded/total sizes, speeds, and clean peer numbers; eliminate confusing ratio labels like `2.82x` or `Uploaded X` on main cards).
+  3. *Local Transfer Search:* Transform the header search icon from an external `/search` redirect into an in-screen expandable search filter for local transfers.
+  4. *Anti-Jargon Overhaul on Settings:* Eradicate engineering jargon ("Tactical Dark", "POSIX", "custom SAF", "Token-bucket") in favor of clear human language ("Dark", "True Black", "Default App Storage", "Choose Folder").
+  5. *Remove Overexplaining:* Strip redundant explanatory subtext on obvious settings items, retaining brief explanations only for advanced technical settings (SOCKS5/Proxy).
+- **Target Feature Branch:** `feature/p2-ui-simplification`
+
 ### [2026-11-01] — Turn 6: Nemesis Review & GitHub Actions Cloud Engine Compilation
 - **Adversarial Nemesis Audit (4 Perspectives):** Conducted deep audit across Performance & Memory SLAs, Security & Leaks (SOCKS5/DNS/SAF), Mobile Usability & Ergonomics, and Adversarial Edge Cases. Audit recorded in `AUDIT_PHASE_2_NEMESIS.md`.
 - **Cloud Rust NDK Compilation (`.github/workflows/build-engine.yml`):**
