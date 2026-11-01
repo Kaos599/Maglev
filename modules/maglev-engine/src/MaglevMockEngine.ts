@@ -1,4 +1,4 @@
-import { AggregatedTelemetry, PieceMatrix, TorrentDetailData, TorrentFileInfo, TorrentTelemetry, TrackerInfo } from './MaglevEngine.types';
+import type { AggregatedTelemetry, PieceMatrix, TorrentDetailData, TorrentFileInfo, TorrentTelemetry, TrackerInfo } from './MaglevEngine.types.ts';
 
 type Listener = (telemetry: AggregatedTelemetry) => void;
 

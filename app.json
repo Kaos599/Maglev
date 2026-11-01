@@ -1,0 +1,81 @@
+{
+  "expo": {
+    "name": "Maglev",
+    "slug": "maglev",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "scheme": "maglev",
+    "userInterfaceStyle": "dark",
+    "newArchEnabled": true,
+    "splash": {
+      "backgroundColor": "#05070A",
+      "resizeMode": "contain"
+    },
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.maglev.client"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#05070A"
+      },
+      "package": "com.maglev",
+      "permissions": [
+        "INTERNET",
+        "ACCESS_NETWORK_STATE",
+        "WAKE_LOCK",
+        "FOREGROUND_SERVICE",
+        "FOREGROUND_SERVICE_DATA_SYNC",
+        "POST_NOTIFICATIONS"
+      ],
+      "intentFilters": [
+        {
+          "action": "VIEW",
+          "data": [
+            {
+              "scheme": "magnet"
+            }
+          ],
+          "category": [
+            "BROWSABLE",
+            "DEFAULT"
+          ]
+        },
+        {
+          "action": "VIEW",
+          "data": [
+            {
+              "mimeType": "application/x-bittorrent"
+            },
+            {
+              "mimeType": "application/x-torrent"
+            },
+            {
+              "scheme": "file",
+              "pathPattern": ".*\\.torrent"
+            },
+            {
+              "scheme": "content",
+              "pathPattern": ".*\\.torrent"
+            }
+          ],
+          "category": [
+            "BROWSABLE",
+            "DEFAULT"
+          ]
+        }
+      ]
+    },
+    "web": {
+      "bundler": "metro"
+    },
+    "plugins": [
+      "expo-router",
+      "./modules/maglev-engine"
+    ],
+    "experiments": {
+      "typedRoutes": true
+    }
+  }
+}
