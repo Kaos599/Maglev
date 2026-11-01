@@ -63,6 +63,8 @@ jobs:
     name: Commit & Bundle Native Binaries
     needs: build-android-so
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     if: github.ref == 'refs/heads/dev' && github.event_name == 'push'
     steps:
       - name: Checkout repository

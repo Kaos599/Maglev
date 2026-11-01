@@ -14,6 +14,22 @@ Build **Maglev** — a frictionless, zero-drag, zero-bloat, native-speed Android
 
 ## 📜 Ledger Entries
 
+### [2026-11-01] — Turn 6: Nemesis Review & GitHub Actions Cloud Engine Compilation
+- **Adversarial Nemesis Audit (4 Perspectives):** Conducted deep audit across Performance & Memory SLAs, Security & Leaks (SOCKS5/DNS/SAF), Mobile Usability & Ergonomics, and Adversarial Edge Cases. Audit recorded in `AUDIT_PHASE_2_NEMESIS.md`.
+- **Cloud Rust NDK Compilation (`.github/workflows/build-engine.yml`):**
+  - Resolved `librqbit` cargo feature naming (`rust-tls`).
+  - GitHub Actions Workflow Run `41321534201` successfully cross-compiled stripped `libmaglev_core.so` binaries for all 3 target architectures:
+    * `arm64-v8a`: `828,544 bytes` (~809 KB)
+    * `armeabi-v7a`: `575,312 bytes` (~561 KB)
+    * `x86_64`: `897,496 bytes` (~876 KB)
+  - All architectures strictly within memory/size budget (< 4 MB SLA threshold).
+  - Bundled native `.so` binaries into `modules/maglev-engine/android/src/main/jniLibs/`.
+  - Configured `permissions: contents: write` for automated binary commit pushing on `dev`.
+- **Expo Cloud Build (EAS) Setup:**
+  - Configured `eas.json` with `preview` (standalone APK build) and `production` profiles.
+  - Zero local Rust/NDK installation required on host machine — fully adhering to Rule 0 & AGENTS.md Section 5.
+- **E2E Test Verification:** 66/66 integration tests passed (100%).
+
 ### [2026-11-01] — Turn 5: Phase 2 Configuration & System Governance Delivery
 - **Task 2.1 (Settings State Store):** Built `MaglevSettingsStore.ts` with sub-10ms read/write latency (<0.5ms measured) and reactive event dispatch to both TypeScript simulator and native engine.
 - **Task 2.2 (Network Governance):** Built `NetworkGovernanceManager.kt` (`ConnectivityManager.NetworkCallback`) and engine simulator enforcing Wi-Fi vs Cellular socket-level clamping within `< 300ms` and SSID whitelisting.
