@@ -455,6 +455,57 @@ Bad Peer Range: 203.0.113.10 - 203.0.113.200 , 000 , Bad Peer Range
   assert(settingsUi.includes('POWER & BATTERY'), 'SCR-07: Section 5 POWER & BATTERY present');
   assert(settingsUi.includes('ABOUT'), 'SCR-07: Section 6 ABOUT present');
 
+  // --- TEST 16: UI Simplification, Card Telemetry & Settings De-Jargoning Audit ---
+  console.log('\n▶ [Test 16] UI Simplification, Card Telemetry & Settings De-Jargoning Audit');
+  const transferCardSrc = fs.readFileSync(path.join(__dirname, '../components/TransferCard.tsx'), 'utf8');
+  const indexSrc = fs.readFileSync(path.join(__dirname, '../app/(tabs)/index.tsx'), 'utf8');
+  const headerBarSrc = fs.readFileSync(path.join(__dirname, '../components/HeaderBar.tsx'), 'utf8');
+
+  // 1. Transfer Card Action Button Simplification
+  assert(!transferCardSrc.includes('styles.actionLabel'), 'Transfer Card: Action button text labels (PAUSE/STOP/START) removed');
+  assert(transferCardSrc.includes('width: 44') && transferCardSrc.includes('height: 44'), 'Transfer Card: Action icon touch target enlarged to >= 44x44px');
+  assert(
+    transferCardSrc.includes('PixelPauseBarsIcon') &&
+    transferCardSrc.includes('PixelStopSquareIcon') &&
+    transferCardSrc.includes('PixelPlayTriangleIcon'),
+    'Transfer Card: Clean 8-bit pixel glyphs used for actions'
+  );
+
+  // 2. Card Telemetry & Standardization
+  assert(!transferCardSrc.includes('ratioText'), 'Transfer Card: Confusing ratio (e.g. 2.82x) removed from primary cards');
+  assert(!transferCardSrc.includes('Uploaded ${formatBytes'), 'Transfer Card: Uploaded ratio numbers removed from primary cards');
+  assert(transferCardSrc.includes('DONE') && transferCardSrc.includes('peers'), 'Transfer Card: Seeding micro-state displays DONE badge and peer count');
+  assert(transferCardSrc.includes('[PAUSED]') && transferCardSrc.includes('0 KB/s'), 'Transfer Card: Paused micro-state displays [PAUSED] badge and 0 KB/s');
+  assert(transferCardSrc.includes('formatEta') && transferCardSrc.includes('peersConnected'), 'Transfer Card: Downloading micro-state displays ETA badge and peers');
+
+  // 3. In-Screen Local Transfer Search
+  assert(indexSrc.includes('onSearchPress={handleToggleSearch}'), 'Transfers Screen: Search icon toggles in-screen search without /search redirection');
+  assert(indexSrc.includes('Filter transfers by name...'), 'Transfers Screen: In-line expandable search input present');
+  assert(indexSrc.includes('filteredTorrents.filter'), 'Transfers Screen: Local torrent list dynamically filtered by filename');
+  assert(headerBarSrc.includes('isSearchActive'), 'HeaderBar: Search button visual state reflects active search toggle');
+
+  // 4. Settings De-Jargoning (SCR-07 Human Language)
+  assert(
+    settingsUi.includes('Dark') && settingsUi.includes('True Black (OLED)'),
+    'Settings: Theme de-jargoned to Dark / True Black (OLED)'
+  );
+  assert(!settingsUi.includes('Tactical Dark (#05070A)'), 'Settings: Tactical Dark jargon eradicated');
+  assert(
+    settingsUi.includes('Default App Storage') && settingsUi.includes('Choose Custom Folder'),
+    'Settings: Storage de-jargoned to Default App Storage / Choose Custom Folder'
+  );
+  assert(!settingsUi.includes('POSIX Native Direct I/O'), 'Settings: POSIX Direct I/O jargon eradicated');
+  assert(
+    settingsUi.includes('Require Encrypted Connections') && settingsUi.includes('Allow Both'),
+    'Settings: Encryption de-jargoned to Require Encrypted Connections / Allow Both / Off'
+  );
+  assert(!settingsUi.includes('Deep Packet Inspection'), 'Settings: Deep Packet Inspection jargon eradicated');
+  assert(
+    settingsUi.includes('Only download while charging') && settingsUi.includes('Pause when battery drops below 20%'),
+    'Settings: Power governance de-jargoned to human battery and charger terms'
+  );
+  assert(!settingsUi.includes('WakeLock discipline'), 'Settings: WakeLock discipline jargon eradicated');
+
   // --- FINAL REPORT ---
   console.log('\n================================================================');
   console.log(`   MAGLEV UNIFIED TEST RESULTS: ${passedTests} / ${totalTests} PASSED (100%)`);

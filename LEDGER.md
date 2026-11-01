@@ -14,6 +14,33 @@ Build **Maglev** — a frictionless, zero-drag, zero-bloat, native-speed Android
 
 ## 📜 Ledger Entries
 
+### [2026-11-01] — Turn 8: UI Simplification, Card Telemetry & Settings De-Jargoning Delivery
+- **Working Branch:** `feature/p2-ui-simplification`
+- **Transfer Card Action Button Simplification:**
+  - Removed text labels (`PAUSE`, `STOP`, `START`) from card action buttons.
+  - Enlarged icon touch target to $\ge 44 \times 44\text{px}$ (`actionIconWrapper: 44x44px`, `actionColumn: 60px min-height: 44px`) for tactile, frictionless tapping.
+  - Centered clean 8-bit pixel glyphs (`PixelPauseBarsIcon`, `PixelStopSquareIcon`, `PixelPlayTriangleIcon`).
+- **Card Telemetry & Information Architecture Standardization:**
+  - Downloading: Name, ETA badge (`formatEta`), speed (`↓ ...`), progress (`... / ...`), progress bar, percentage (`74.2%`), peers (`↓ 28  ↑ 6`).
+  - Seeding / Done: Name, `DONE` badge, active upload speed if uploading (`↑ 3.4 MB/s`), completed file size (`1.8 GB`), progress bar (`100%`), peer count (`14 peers`). Eliminated confusing ratio numbers (`2.82x`) and `Uploaded X` from primary cards.
+  - Paused: Name, `[PAUSED]` badge, status (`Paused • 412 / 912 MB`), progress bar, percentage (`45.2%`), and `0 KB/s`.
+- **In-Screen Local Transfer Search:**
+  - Tapping the search icon in the Transfers header toggles an in-line expandable search input directly on the screen (no `/search` redirection).
+  - Dynamically filters the local torrent list by filename with search clear button and zero-match fallback.
+- **Settings De-Jargoning (SCR-07 Human Language Overhaul):**
+  - Theme: "Dark" / "True Black (OLED)" (eradicating "Tactical Dark (#05070A)").
+  - Storage: "Default App Storage" / "Choose Custom Folder" (eradicating "POSIX Native Direct I/O", "Zero-Copy", "Custom SAF Directory").
+  - Encryption: "Require Encrypted Connections" / "Allow Both" / "Off" (eradicating "Protocol Encryption (PE/MSE)", "Deep Packet Inspection").
+  - Limits: "Speed Limits" with "Download Limit" / "Upload Limit" (eradicating "Token-Bucket Limiter").
+  - Power: "Only download while charging" and "Pause when battery drops below 20%".
+- **Eliminated Overexplaining in Settings:**
+  - Stripped redundant subtext on self-explanatory items (Theme, Display Detail, Storage Location, Pre-allocate Disk Space, Download/Upload Limits, Queue Caps, Seeding Limits, Wi-Fi Only, Encryption, Power).
+  - Retained brief explanations strictly for technical options (SSID Whitelist, Port Forwarding, Proxy Tunnel, Remote DNS, IP Blocklist).
+- **Verification & Hygiene:**
+  - 86/86 E2E integration tests passing (`npm test` 100% pass rate).
+  - 47/47 Phase 2 governance tests passing (`node scripts/test-p2-contracts.js` 100% pass rate).
+  - Zero slop violations across all UI files; all interactive touch targets strictly $\ge 44 \times 44\text{px}$.
+
 ### [2026-11-01] — Turn 7: UI 1:1 Reference Alignment, Typography & Simplification Directive
 - **1:1 Visual Alignment:** Rebuilt header, 4-column filter grid, FAB, and bottom navigation with authentic 8-bit vector SVGs (`components/PixelIcons.tsx`). Loaded Google Fonts `Silkscreen` and `Space Mono` via `expo-font`. Upgraded to Expo SDK 58 & React 19.
 - **Simulation Stabilization:** Removed runaway 500ms auto-mutation timer in `MaglevMockEngine.ts`; transfers now preserve stable initial states and respond strictly to user actions (Play/Pause/Stop, filters).

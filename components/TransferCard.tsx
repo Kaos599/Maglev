@@ -82,14 +82,19 @@ export const TransferCard: React.FC<TransferCardProps> = ({ torrent }) => {
       );
     }
     if (isSeeding) {
+      const hasUploadSpeed = torrent.uploadSpeedBytes > 0;
       return (
         <View style={styles.metricsRow}>
-          <Text style={styles.speedTextUp}>
-            {`↑ ${formatSpeed(torrent.uploadSpeedBytes)}`}
-          </Text>
-          <Text style={styles.bulletDot}>•</Text>
+          {hasUploadSpeed && (
+            <>
+              <Text style={styles.speedTextUp}>
+                {`↑ ${formatSpeed(torrent.uploadSpeedBytes)}`}
+              </Text>
+              <Text style={styles.bulletDot}>•</Text>
+            </>
+          )}
           <Text style={styles.bytesText}>
-            {`Uploaded ${formatBytes(torrent.uploadedBytes)}`}
+            {formatBytes(torrent.totalSizeBytes)}
           </Text>
         </View>
       );
@@ -127,7 +132,6 @@ export const TransferCard: React.FC<TransferCardProps> = ({ torrent }) => {
             <PixelArrowUpIcon size={11} color={TOKENS.colors.accentLime} />
             <Text style={styles.statCount}>{`${torrent.peersConnected || 14} peers`}</Text>
           </View>
-          <Text style={styles.ratioText}>{`${(torrent.ratio || 2.82).toFixed(2)}x`}</Text>
         </View>
       );
     }
@@ -139,18 +143,15 @@ export const TransferCard: React.FC<TransferCardProps> = ({ torrent }) => {
   };
 
   const renderActionButton = () => {
-    let icon = <PixelPlayTriangleIcon size={12} color={TOKENS.colors.accentLime} />;
-    let label = 'START';
-    let labelColor = TOKENS.colors.accentLime;
+    let icon = <PixelPlayTriangleIcon size={14} color={TOKENS.colors.accentLime} />;
+    let actionLabel = 'Resume';
 
     if (isDownloading) {
-      icon = <PixelPauseBarsIcon size={12} color="#D1D5DB" />;
-      label = 'PAUSE';
-      labelColor = '#8B949E';
+      icon = <PixelPauseBarsIcon size={14} color="#D1D5DB" />;
+      actionLabel = 'Pause';
     } else if (isSeeding) {
-      icon = <PixelStopSquareIcon size={11} color="#FF007F" />;
-      label = 'STOP';
-      labelColor = '#FF007F';
+      icon = <PixelStopSquareIcon size={13} color="#FF3366" />;
+      actionLabel = 'Stop';
     }
 
     return (
@@ -158,13 +159,12 @@ export const TransferCard: React.FC<TransferCardProps> = ({ torrent }) => {
         style={styles.actionColumn}
         onPress={handleAction}
         accessibilityRole="button"
-        accessibilityLabel={`${label} ${torrent.name}`}
+        accessibilityLabel={`${actionLabel} ${torrent.name}`}
         activeOpacity={0.7}
       >
         <View style={styles.actionIconWrapper}>
           {icon}
         </View>
-        <Text style={[styles.actionLabel, { color: labelColor }]}>{label}</Text>
       </TouchableOpacity>
     );
   };
@@ -373,39 +373,28 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: '#9CA3AF',
   },
-  ratioText: {
-    fontFamily: 'SpaceMono',
-    fontSize: 11,
-    color: '#9CA3AF',
-  },
   pausedRateText: {
     fontFamily: 'SpaceMono',
     fontSize: 10,
     color: '#8B949E',
   },
   actionColumn: {
-    width: 64,
+    width: 60,
     backgroundColor: '#121722',
     borderLeftWidth: 1,
     borderLeftColor: '#1F2937',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 4,
+    minHeight: TOKENS.touchTarget.minHeight,
   },
   actionIconWrapper: {
-    width: 28,
-    height: 28,
-    borderRadius: 6,
+    width: 44,
+    height: 44,
+    borderRadius: 8,
     backgroundColor: '#1A2230',
     borderWidth: 1,
     borderColor: '#2D3A4E',
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  actionLabel: {
-    fontFamily: 'Silkscreen',
-    fontSize: 7,
-    fontWeight: '700',
-    letterSpacing: -0.3,
   },
 });

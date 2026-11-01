@@ -6,9 +6,10 @@ import { PixelSearchIcon } from './PixelIcons';
 
 interface HeaderBarProps {
   onSearchPress?: () => void;
+  isSearchActive?: boolean;
 }
 
-export const HeaderBar: React.FC<HeaderBarProps> = ({ onSearchPress }) => {
+export const HeaderBar: React.FC<HeaderBarProps> = ({ onSearchPress, isSearchActive }) => {
   const router = useRouter();
 
   return (
@@ -27,8 +28,11 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({ onSearchPress }) => {
         accessibilityLabel="Search torrents"
         activeOpacity={0.7}
       >
-        <View style={styles.searchButton}>
-          <PixelSearchIcon size={16} color="#D1D5DB" />
+        <View style={[styles.searchButton, isSearchActive && styles.searchButtonActive]}>
+          <PixelSearchIcon
+            size={16}
+            color={isSearchActive ? TOKENS.colors.accentCyan : "#D1D5DB"}
+          />
         </View>
       </TouchableOpacity>
     </View>
@@ -88,5 +92,9 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  searchButtonActive: {
+    borderColor: TOKENS.colors.accentCyan,
+    backgroundColor: 'rgba(0, 229, 255, 0.12)',
   },
 });

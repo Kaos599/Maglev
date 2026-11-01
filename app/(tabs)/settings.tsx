@@ -45,7 +45,6 @@ export default function SettingsScreen() {
   const [customSpeedInput, setCustomSpeedInput] = useState('');
   const [newSsidInput, setNewSsidInput] = useState('');
   const [showAddSsid, setShowAddSsid] = useState(false);
-  const [showProxyConfig, setShowProxyConfig] = useState(false);
   const [filterMessage, setFilterMessage] = useState<string | null>(null);
 
   // Speed Limit Helpers
@@ -101,7 +100,7 @@ export default function SettingsScreen() {
   const handleLoadSampleIpFilter = useCallback(async () => {
     const sample = `
 # Sample PeerGuardian / eMule Blocklist
-Bad Peels:10.0.0.0-10.0.0.255
+Bad Peers:10.0.0.0-10.0.0.255
 Malicious Range:198.51.100.0-198.51.100.255
 Untrusted Scanners:203.0.113.0-203.0.113.255
 `;
@@ -129,8 +128,7 @@ Untrusted Scanners:203.0.113.0-203.0.113.255
         <Text style={styles.sectionHeader}>APPEARANCE</Text>
         <View style={[styles.settingsGroup, { backgroundColor: cardBackgroundColor }]}>
           <View style={styles.settingBlock}>
-            <Text style={styles.settingTitle}>Theme Mode</Text>
-            <Text style={styles.settingSubtitle}>Choose between tactical cyber contrast and true OLED #000000</Text>
+            <Text style={styles.settingTitle}>Theme</Text>
             <View style={styles.chipRow}>
               <TouchableOpacity
                 style={[
@@ -139,7 +137,7 @@ Untrusted Scanners:203.0.113.0-203.0.113.255
                 ]}
                 onPress={() => updateSettings({ appearance: { ...settings.appearance, theme: 'TACTICAL_DARK' } })}
                 accessibilityRole="button"
-                accessibilityLabel="Tactical Dark Theme"
+                accessibilityLabel="Dark Theme"
               >
                 <Text
                   style={[
@@ -147,7 +145,7 @@ Untrusted Scanners:203.0.113.0-203.0.113.255
                     settings.appearance.theme === 'TACTICAL_DARK' ? styles.chipTextActive : styles.chipTextInactive,
                   ]}
                 >
-                  Tactical Dark (#05070A)
+                  Dark
                 </Text>
               </TouchableOpacity>
 
@@ -158,7 +156,7 @@ Untrusted Scanners:203.0.113.0-203.0.113.255
                 ]}
                 onPress={() => updateSettings({ appearance: { ...settings.appearance, theme: 'PURE_OLED' } })}
                 accessibilityRole="button"
-                accessibilityLabel="Pure Black OLED Theme"
+                accessibilityLabel="True Black OLED Theme"
               >
                 <Text
                   style={[
@@ -166,15 +164,14 @@ Untrusted Scanners:203.0.113.0-203.0.113.255
                     settings.appearance.theme === 'PURE_OLED' ? styles.chipTextActive : styles.chipTextInactive,
                   ]}
                 >
-                  Pure Black OLED (#000000)
+                  True Black (OLED)
                 </Text>
               </TouchableOpacity>
             </View>
           </View>
 
           <View style={styles.settingBlock}>
-            <Text style={styles.settingTitle}>Telemetry Density</Text>
-            <Text style={styles.settingSubtitle}>Display detailed peer metrics or clean compact speed overview</Text>
+            <Text style={styles.settingTitle}>Display Detail</Text>
             <View style={styles.chipRow}>
               {(['COMPACT', 'VERBOSE'] as const).map((density) => (
                 <TouchableOpacity
@@ -192,7 +189,7 @@ Untrusted Scanners:203.0.113.0-203.0.113.255
                       settings.appearance.telemetryDensity === density ? styles.chipTextActive : styles.chipTextInactive,
                     ]}
                   >
-                    {density === 'COMPACT' ? 'Compact Overview' : 'Verbose Swarm Telemetry'}
+                    {density === 'COMPACT' ? 'Compact' : 'Detailed'}
                   </Text>
                 </TouchableOpacity>
               ))}
@@ -204,14 +201,7 @@ Untrusted Scanners:203.0.113.0-203.0.113.255
         <Text style={styles.sectionHeader}>DOWNLOADS & STORAGE</Text>
         <View style={[styles.settingsGroup, { backgroundColor: cardBackgroundColor }]}>
           <View style={styles.settingBlock}>
-            <View style={styles.rowBetween}>
-              <Text style={styles.settingTitle}>Storage Mode</Text>
-              <View style={styles.badgeCyan}>
-                <Text style={styles.badgeCyanText}>
-                  {settings.storage.storageMode === 'POSIX' ? 'POSIX Native Direct I/O' : 'SAF Scoped Tree'}
-                </Text>
-              </View>
-            </View>
+            <Text style={styles.settingTitle}>Storage Location</Text>
             <Text style={styles.settingPathText}>{settings.storage.defaultPath}</Text>
 
             <View style={styles.chipRow}>
@@ -222,6 +212,7 @@ Untrusted Scanners:203.0.113.0-203.0.113.255
                 ]}
                 onPress={() => updateSettings({ storage: { ...settings.storage, storageMode: 'POSIX' } })}
                 accessibilityRole="button"
+                accessibilityLabel="Default App Storage"
               >
                 <Text
                   style={[
@@ -229,7 +220,7 @@ Untrusted Scanners:203.0.113.0-203.0.113.255
                     settings.storage.storageMode === 'POSIX' ? styles.chipTextActive : styles.chipTextInactive,
                   ]}
                 >
-                  App-Specific POSIX (Zero-Copy)
+                  Default App Storage
                 </Text>
               </TouchableOpacity>
 
@@ -240,6 +231,7 @@ Untrusted Scanners:203.0.113.0-203.0.113.255
                 ]}
                 onPress={() => updateSettings({ storage: { ...settings.storage, storageMode: 'SAF' } })}
                 accessibilityRole="button"
+                accessibilityLabel="Choose Custom Folder"
               >
                 <Text
                   style={[
@@ -247,7 +239,7 @@ Untrusted Scanners:203.0.113.0-203.0.113.255
                     settings.storage.storageMode === 'SAF' ? styles.chipTextActive : styles.chipTextInactive,
                   ]}
                 >
-                  Custom SAF Directory
+                  Choose Custom Folder
                 </Text>
               </TouchableOpacity>
             </View>
@@ -255,9 +247,9 @@ Untrusted Scanners:203.0.113.0-203.0.113.255
 
           <View style={styles.settingRow}>
             <View style={styles.settingTextContainer}>
-              <Text style={styles.settingTitle}>Auto-Move Completed Downloads</Text>
+              <Text style={styles.settingTitle}>Auto-Move Completed</Text>
               <Text style={styles.settingSubtitle}>
-                Relocate finished files to secondary destination or SD card
+                Move finished files to a separate folder
               </Text>
               {settings.storage.autoMoveCompleted && (
                 <Text style={styles.destinationPathText}>
@@ -277,10 +269,7 @@ Untrusted Scanners:203.0.113.0-203.0.113.255
 
           <View style={styles.settingRow}>
             <View style={styles.settingTextContainer}>
-              <Text style={styles.settingTitle}>Disk Pre-Allocation</Text>
-              <Text style={styles.settingSubtitle}>
-                Pre-allocate blocks via posix_fallocate (prevents filesystem fragmentation)
-              </Text>
+              <Text style={styles.settingTitle}>Pre-allocate Disk Space</Text>
             </View>
             <Switch
               value={settings.storage.preAllocateDisk}
@@ -299,7 +288,7 @@ Untrusted Scanners:203.0.113.0-203.0.113.255
           {/* Download Speed Presets */}
           <View style={styles.settingBlock}>
             <View style={styles.rowBetween}>
-              <Text style={styles.settingTitle}>Download Rate Limit</Text>
+              <Text style={styles.settingTitle}>Download Limit</Text>
               <Text style={styles.telemetryValue}>
                 {settings.bandwidth.downloadLimitBytesPerSec > 0
                   ? formatSpeed(settings.bandwidth.downloadLimitBytesPerSec)
@@ -329,7 +318,7 @@ Untrusted Scanners:203.0.113.0-203.0.113.255
           {/* Upload Speed Presets */}
           <View style={styles.settingBlock}>
             <View style={styles.rowBetween}>
-              <Text style={styles.settingTitle}>Upload Rate Limit</Text>
+              <Text style={styles.settingTitle}>Upload Limit</Text>
               <Text style={styles.telemetryValue}>
                 {settings.bandwidth.uploadLimitBytesPerSec > 0
                   ? formatSpeed(settings.bandwidth.uploadLimitBytesPerSec)
@@ -359,7 +348,6 @@ Untrusted Scanners:203.0.113.0-203.0.113.255
           {/* Active Torrent Caps */}
           <View style={styles.settingBlock}>
             <Text style={styles.settingTitle}>Active Queue Caps</Text>
-            <Text style={styles.settingSubtitle}>Maximum concurrent downloads & uploads</Text>
             <View style={styles.capsRow}>
               <View style={styles.capItem}>
                 <Text style={styles.capLabel}>Downloads</Text>
@@ -422,7 +410,6 @@ Untrusted Scanners:203.0.113.0-203.0.113.255
           {/* Seeding Governance Limits */}
           <View style={styles.settingBlock}>
             <Text style={styles.settingTitle}>Seeding Ratio Limit</Text>
-            <Text style={styles.settingSubtitle}>Automatically stop seeding when ratio limit is reached</Text>
             <View style={styles.chipRowWrap}>
               {ratioPresets.map((r) => {
                 const isActive = settings.bandwidth.seedingRatioLimit === r;
@@ -445,8 +432,7 @@ Untrusted Scanners:203.0.113.0-203.0.113.255
           </View>
 
           <View style={styles.settingBlock}>
-            <Text style={styles.settingTitle}>Seeding Duration Limit</Text>
-            <Text style={styles.settingSubtitle}>Automatically pause seeding after elapsed duration</Text>
+            <Text style={styles.settingTitle}>Seeding Time Limit</Text>
             <View style={styles.chipRowWrap}>
               {durationPresets.map(({ label, value }) => {
                 const isActive = settings.bandwidth.seedingDurationLimitSeconds === value;
@@ -476,9 +462,6 @@ Untrusted Scanners:203.0.113.0-203.0.113.255
           <View style={styles.settingRow}>
             <View style={styles.settingTextContainer}>
               <Text style={styles.settingTitle}>Download on Wi-Fi Only</Text>
-              <Text style={styles.settingSubtitle}>
-                Clamp sockets immediately when cellular data is active (&lt;300ms)
-              </Text>
             </View>
             <Switch
               value={settings.network.wifiOnly}
@@ -494,9 +477,9 @@ Untrusted Scanners:203.0.113.0-203.0.113.255
           <View style={styles.settingBlock}>
             <View style={styles.rowBetween}>
               <View style={styles.settingTextContainer}>
-                <Text style={styles.settingTitle}>SSID Whitelist</Text>
+                <Text style={styles.settingTitle}>Wi-Fi Network Whitelist</Text>
                 <Text style={styles.settingSubtitle}>
-                  Restrict transfers strictly to authorized Wi-Fi networks
+                  Restrict downloads strictly to approved Wi-Fi networks
                 </Text>
               </View>
               <Switch
@@ -523,8 +506,9 @@ Untrusted Scanners:203.0.113.0-203.0.113.255
                         onPress={() => handleRemoveSsid(ssid)}
                         accessibilityRole="button"
                         accessibilityLabel={`Remove ${ssid}`}
+                        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                       >
-                        <Ionicons name="close" size={12} color="#000000" />
+                        <Ionicons name="close" size={14} color="#000000" />
                       </TouchableOpacity>
                     </View>
                   ))}
@@ -559,7 +543,7 @@ Untrusted Scanners:203.0.113.0-203.0.113.255
           <View style={styles.settingRow}>
             <View style={styles.settingTextContainer}>
               <View style={styles.rowAlign}>
-                <Text style={styles.settingTitle}>UPnP / NAT-PMP Port Forwarding</Text>
+                <Text style={styles.settingTitle}>Port Forwarding (UPnP)</Text>
                 <View style={styles.portBadge}>
                   <Text style={styles.portBadgeText}>
                     {settings.network.upnpEnabled ? 'Mapped: 6881' : 'Disabled'}
@@ -567,7 +551,7 @@ Untrusted Scanners:203.0.113.0-203.0.113.255
                 </View>
               </View>
               <Text style={styles.settingSubtitle}>
-                Automatically negotiate router port mapping (BEP 55)
+                Automatically forward router ports for faster peer connections
               </Text>
             </View>
             <Switch
@@ -582,10 +566,7 @@ Untrusted Scanners:203.0.113.0-203.0.113.255
 
           {/* Protocol Encryption */}
           <View style={styles.settingBlock}>
-            <Text style={styles.settingTitle}>Protocol Encryption (PE / MSE)</Text>
-            <Text style={styles.settingSubtitle}>
-              Prevent mobile ISP Deep Packet Inspection (DPI) bandwidth throttling
-            </Text>
+            <Text style={styles.settingTitle}>Require Encrypted Connections</Text>
             <View style={styles.chipRow}>
               {(['REQUIRED', 'PREFERRED', 'DISABLED'] as const).map((enc) => (
                 <TouchableOpacity
@@ -603,7 +584,7 @@ Untrusted Scanners:203.0.113.0-203.0.113.255
                       settings.network.encryption === enc ? styles.chipTextActive : styles.chipTextInactive,
                     ]}
                   >
-                    {enc === 'REQUIRED' ? 'Required' : enc === 'PREFERRED' ? 'Preferred' : 'Disabled'}
+                    {enc === 'REQUIRED' ? 'Required' : enc === 'PREFERRED' ? 'Allow Both' : 'Off'}
                   </Text>
                 </TouchableOpacity>
               ))}
@@ -612,13 +593,10 @@ Untrusted Scanners:203.0.113.0-203.0.113.255
 
           {/* Swarm Discovery */}
           <View style={styles.settingBlock}>
-            <Text style={styles.settingTitle}>Swarm Discovery Toggles</Text>
-            <Text style={styles.settingSubtitle}>
-              BEP 27 private flag strictly suppresses discovery on private swarms
-            </Text>
+            <Text style={styles.settingTitle}>Peer Discovery</Text>
 
             <View style={styles.subRow}>
-              <Text style={styles.subRowLabel}>DHT (BEP 5 Kademlia)</Text>
+              <Text style={styles.subRowLabel}>DHT (Kademlia)</Text>
               <Switch
                 value={settings.network.dhtEnabled}
                 onValueChange={(val) =>
@@ -630,7 +608,7 @@ Untrusted Scanners:203.0.113.0-203.0.113.255
             </View>
 
             <View style={styles.subRow}>
-              <Text style={styles.subRowLabel}>PeX (BEP 11 Peer Exchange)</Text>
+              <Text style={styles.subRowLabel}>PeX (Peer Exchange)</Text>
               <Switch
                 value={settings.network.pexEnabled}
                 onValueChange={(val) =>
@@ -642,7 +620,7 @@ Untrusted Scanners:203.0.113.0-203.0.113.255
             </View>
 
             <View style={styles.subRow}>
-              <Text style={styles.subRowLabel}>LSD (BEP 14 Local Discovery)</Text>
+              <Text style={styles.subRowLabel}>LSD (Local Peer Discovery)</Text>
               <Switch
                 value={settings.network.lsdEnabled}
                 onValueChange={(val) =>
@@ -658,9 +636,9 @@ Untrusted Scanners:203.0.113.0-203.0.113.255
           <View style={styles.settingBlock}>
             <View style={styles.rowBetween}>
               <View style={styles.settingTextContainer}>
-                <Text style={styles.settingTitle}>SOCKS5 & HTTP Proxy Tunnel</Text>
+                <Text style={styles.settingTitle}>Proxy Tunnel</Text>
                 <Text style={styles.settingSubtitle}>
-                  Route sockets through tunnel with RFC 1928 remote DNS resolution
+                  Route BitTorrent traffic through a private proxy server
                 </Text>
               </View>
               <Switch
@@ -776,7 +754,12 @@ Untrusted Scanners:203.0.113.0-203.0.113.255
 
                 {/* Remote DNS Toggle */}
                 <View style={styles.subRow}>
-                  <Text style={styles.subRowLabel}>RFC 1928 Remote DNS Resolution</Text>
+                  <View style={styles.settingTextContainer}>
+                    <Text style={styles.subRowLabel}>Remote DNS Resolution</Text>
+                    <Text style={styles.settingSubtitle}>
+                      Resolve hostnames via proxy to prevent DNS leaks
+                    </Text>
+                  </View>
                   <Switch
                     value={settings.network.proxy.remoteDns}
                     onValueChange={(val) =>
@@ -799,9 +782,9 @@ Untrusted Scanners:203.0.113.0-203.0.113.255
           <View style={styles.settingBlock}>
             <View style={styles.rowBetween}>
               <View style={styles.settingTextContainer}>
-                <Text style={styles.settingTitle}>IP Filtering / Blocklist</Text>
+                <Text style={styles.settingTitle}>IP Blocklist</Text>
                 <Text style={styles.settingSubtitle}>
-                  Reject untrusted IP ranges (PeerGuardian / eMule .dat)
+                  Filter out known untrusted peer IP ranges
                 </Text>
               </View>
               <Switch
@@ -841,10 +824,7 @@ Untrusted Scanners:203.0.113.0-203.0.113.255
         <View style={[styles.settingsGroup, { backgroundColor: cardBackgroundColor }]}>
           <View style={styles.settingRow}>
             <View style={styles.settingTextContainer}>
-              <Text style={styles.settingTitle}>Download Only While Charging</Text>
-              <Text style={styles.settingSubtitle}>
-                Pause active transfers and release WakeLock when running on battery
-              </Text>
+              <Text style={styles.settingTitle}>Only download while charging</Text>
             </View>
             <Switch
               value={settings.power.downloadOnlyWhileCharging}
@@ -857,10 +837,7 @@ Untrusted Scanners:203.0.113.0-203.0.113.255
           </View>
 
           <View style={styles.settingBlock}>
-            <Text style={styles.settingTitle}>Battery Cutoff Threshold</Text>
-            <Text style={styles.settingSubtitle}>
-              Auto-pause transfers and release WakeLock (&lt;500ms) when battery falls below
-            </Text>
+            <Text style={styles.settingTitle}>Pause when battery drops below 20%</Text>
             <View style={styles.chipRow}>
               {batteryThresholds.map((threshold) => {
                 const isActive = settings.power.batteryCutoffThreshold === threshold;
@@ -874,7 +851,7 @@ Untrusted Scanners:203.0.113.0-203.0.113.255
                     accessibilityRole="button"
                   >
                     <Text style={[styles.chipText, isActive ? styles.chipTextActive : styles.chipTextInactive]}>
-                      {threshold === 0 ? 'Disabled' : `${threshold}%`}
+                      {threshold === 0 ? 'Off' : `${threshold}%`}
                     </Text>
                   </TouchableOpacity>
                 );
@@ -886,7 +863,7 @@ Untrusted Scanners:203.0.113.0-203.0.113.255
             <View style={styles.settingTextContainer}>
               <Text style={styles.settingTitle}>Auto-Exit on Complete</Text>
               <Text style={styles.settingSubtitle}>
-                Release all system locks and stop foreground service when queue finishes
+                Close app when all downloads finish
               </Text>
             </View>
             <Switch
@@ -1033,6 +1010,7 @@ const styles = StyleSheet.create({
     color: TOKENS.colors.textMuted,
     fontSize: 11,
     lineHeight: 16,
+    marginTop: 2,
   },
   settingPathText: {
     color: TOKENS.colors.accentCyan,
@@ -1133,19 +1111,6 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '600',
     marginBottom: 4,
-  },
-  badgeCyan: {
-    backgroundColor: '#003344',
-    borderColor: TOKENS.colors.accentCyan,
-    borderWidth: 1,
-    borderRadius: 6,
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-  },
-  badgeCyanText: {
-    color: TOKENS.colors.accentCyan,
-    fontSize: 10,
-    fontWeight: '700',
   },
   badgeLime: {
     backgroundColor: '#223300',
