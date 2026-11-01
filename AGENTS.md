@@ -23,6 +23,7 @@ Maglev is an ultra-fast, zero-bloat Android torrent client powered by **React Na
 
 ```
 g:\Stuff\Study\Programs\Maglev\
+├── .github/workflows/        # Cloud compilation CI (Rust NDK .so build)
 ├── .gitignore
 ├── README.md                 # Public overview and high-level identity
 ├── AGENTS.md                 # THIS FILE (Master agent instructions)
@@ -36,7 +37,7 @@ g:\Stuff\Study\Programs\Maglev\
 ├── app/                      # Expo / React Native UI codebase (Phase 1+)
 ├── modules/maglev-engine/    # Custom Expo Native Module (Kotlin + JNI bindings)
 │   ├── android/              # Native Android service, JNI bridge, notifications
-│   └── src/                  # TypeScript interface and event subscriptions
+│   └── src/                  # TypeScript interface, mock engine, event subscriptions
 └── native/maglev-core/       # Rust librqbit native dynamic library (Cargo workspace)
     ├── Cargo.toml
     └── src/                  # Tokio runtime, SIMD piece downsampling, POSIX I/O
@@ -72,11 +73,24 @@ Any code, PR, or subagent work containing any of the following will be **immedia
 
 ---
 
-## 5. Git Workflow & Branching Strategy
+## 5. Host Machine & Cloud-Compilation Policy (Strict Zero-Bloat Mandate)
+
+To protect the user's host machine from gigabytes of compiler bloat, the following rules are **strictly mandatory**:
+1. **NO Local Rust or Android NDK Installation:** Never prompt the user to install Rust, Cargo, or Android NDK, and never attempt to install them on the local Windows machine.
+2. **Local Environment Boundary:** The local machine runs **strictly Node.js & npm** (~250MB Expo dependencies).
+3. **Cloud Rust Cross-Compilation:** Native Rust compilation (`native/maglev-core`) is handled via **GitHub Actions CI** in `.github/workflows/build-engine.yml`. GitHub's free runners have Rust, Cargo, and Android NDK pre-installed. The compiled stripped `.so` binaries (`~4 MB` each) are placed into `modules/maglev-engine/android/src/main/jniLibs/`.
+4. **Dual-Mode Engine Bridge:** `modules/maglev-engine` must provide:
+   - **Mock/Simulator Mode:** High-fidelity simulated telemetry engine running in TypeScript, allowing full UI/UX testing in **Expo Go** or browser with zero native compilation.
+   - **Native Engine Mode:** Loads the JNI/Rust `.so` binary when running in a standalone Android APK.
+5. **Cloud APK Builds:** Standalone APKs are built using **Expo EAS Cloud Build** (`npx eas-cli build -p android --profile preview`), with zero local Android Studio or NDK compilation required.
+
+---
+
+## 6. Git Workflow & Branching Strategy
 
 All work must follow strict git hygiene:
 
-### 5.1 Branching Rules
+### 6.1 Branching Rules
 * `main` is protected: only tagged releases and production milestones are merged here.
 * `dev` is the integration trunk: all completed feature branches merge into `dev`.
 * Feature branches branch off `dev`:
@@ -84,10 +98,10 @@ All work must follow strict git hygiene:
   git checkout dev
   git pull origin dev
   git checkout -b feature/<phase>-<task-name>
-  # Example: feature/p1-engine-bridge
+  # Example: feature/p1-transfers-ui
   ```
 
-### 5.2 Commit Conventions (Atomic & Logical)
+### 6.2 Commit Conventions (Atomic & Logical)
 Commits must be atomic, logical, and follow Conventional Commits:
 * `feat(<scope>): <description>` — New user-facing feature or native module capability
 * `fix(<scope>): <description>` — Bug fix or contract violation resolution
@@ -95,29 +109,24 @@ Commits must be atomic, logical, and follow Conventional Commits:
 * `test(<scope>): <description>` — Adding or updating integration/E2E tests
 * `docs(<scope>): <description>` — Updating architecture or design specs
 
-*Example:*
-```bash
-git commit -m "feat(engine): implement SIMD piece bitfield downsampling in Rust"
-```
-
-### 5.3 Merge & Ledger Update
+### 6.3 Merge & Ledger Update
 1. Feature branches are merged into `dev` only after the phase SLA and contract tests pass.
 2. Immediately record the completed task and commit hash in `LEDGER.md`.
 3. Push to `origin dev`.
 
 ---
 
-## 6. Subagent Task Execution Protocol
+## 7. Subagent Task Execution Protocol
 
 When spawning subagents for implementation:
 1. **Single Contract Scope:** Assign **strictly one task** from `docs/PHASE_ROADMAP_AND_CONTRACTS.md` per subagent.
 2. **State Machine Grounding:** Supply the exact state machine from `docs/STATE_MACHINES_AND_SCREENS.md`.
 3. **End-to-End Verification:** Subagents must run and pass the designated integration test before reporting completion.
-4. **No Assumptions:** If a dependency or toolchain is missing, report the exact missing binary or path rather than fabricating mocks.
+4. **No Assumptions:** Never assume local compilers exist. Follow Section 5 (Cloud Compilation & Simulator Bridge).
 
 ---
 
-## 7. Recommended Skills to Use
+## 8. Recommended Skills to Use
 
 | Skill | When to Use |
 |---|---|
