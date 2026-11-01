@@ -4,7 +4,6 @@
     "slug": "maglev",
     "version": "0.1.0",
     "orientation": "portrait",
-    "icon": "./assets/icon.png",
     "scheme": "maglev",
     "userInterfaceStyle": "dark",
     "newArchEnabled": true,
