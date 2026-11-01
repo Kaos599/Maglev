@@ -1,4 +1,4 @@
-# MAGLEV — BitTorrent & Native Architecture Research
+# MAGLEV — BitTorrent & Native Architecture Research (Audited & Locked)
 
 ---
 
@@ -20,102 +20,69 @@ BitTorrent is a distributed content delivery protocol operating over TCP and UDP
 ### 1.2 Metadata Transfer & Magnet Links (BEP 9 & BEP 10)
 * Magnet links (`magnet:?xt=urn:btih:<hex/base32>&dn=<name>&tr=<tracker>`) contain only the 20-byte `info_hash` without file layout metadata.
 * **BEP 10 (Extension Protocol):** Adds message type `20` (extended) with an ID dictionary to negotiate capabilities.
-* **BEP 9 (ut_metadata):** Allows downloading the torrent `.torrent` metadata file directly from swarm peers in 16 KB slices over BEP 10, resolving metadata within seconds without querying web servers.
+* **BEP 9 (ut_metadata):** Downloads torrent metadata directly from swarm peers in 16 KB slices over BEP 10, resolving file layout within seconds without web servers.
+* **Multi-Tracker Tiers & Fallbacks:** Maglev extracts all `tr=` parameters into an ordered tracker list and injects fallback public tiers if no valid trackers exist.
 
-### 1.3 Distributed Hash Table / DHT (BEP 5)
-* Serverless peer discovery implementing the Kademlia distributed routing algorithm over UDP.
-* Nodes store routing tables based on XOR metric distance.
-* Queries: `ping`, `find_node`, `get_peers`, `announce_peer`. Maglev connects to public bootstrap nodes (`router.bittorrent.com`, `dht.transmissionbt.com`).
+### 1.3 Distributed Hash Table / DHT (BEP 5) & Local Peer Discovery (BEP 14)
+* **DHT (BEP 5):** Serverless peer discovery implementing Kademlia over UDP. Connects to bootstrap nodes (`router.bittorrent.com`, `dht.transmissionbt.com`).
+* **LSD (BEP 14):** Local Peer Discovery over multicast UDP to discover peers on the same local Wi-Fi subnet and transfer at wire speeds (1 Gbps+).
+* **Private Torrents (BEP 27):** When a torrent contains `private = 1`, DHT, PEX, and LSD are **strictly suppressed** to preserve private tracker integrity.
 
-### 1.4 Peer Exchange / PEX (BEP 11)
-* Peers regularly share recently discovered active swarm IP/ports via `ut_pex`, accelerating swarm density without overloading centralized trackers.
-
----
-
-## 2. BitTorrent Engine Evaluation: Rust (`librqbit`) vs C++ (`libtorrent-rasterbar`)
-
-| Criterion | C++ (`libtorrent-rasterbar`) | Rust (`librqbit`) | Maglev Selection |
-|---|---|---|:---:|
-| **Memory Footprint** | 80MB–140MB RSS (bulky Boost.Asio allocator) | **18MB–35MB RSS** (jemalloc / system malloc) | **Rust (`librqbit`)** |
-| **NDK Build Complexity** | Extreme (OpenSSL, Boost, complex CMake) | **Single `cargo ndk` command** generating `.so` | **Rust (`librqbit`)** |
-| **Async Runtime** | C++ boost threads (heavy on mobile) | **Rust Tokio async runtime** (cooperative lightweight tasks) | **Rust (`librqbit`)** |
-| **Crash & Memory Safety**| Vulnerable to JNI buffer overruns / segfaults | **100% memory-safe**, zero undefined behavior | **Rust (`librqbit`)** |
-| **Direct Streaming API** | Complex alert queue pump | **Clean async channel callbacks & UniFFI bridge** | **Rust (`librqbit`)** |
-
-**Conclusion:** `librqbit` is selected as Maglev's engine core. It provides full BEP 3, 5, 9, 10, 11 support, built-in Tokio concurrency, and produces tiny native binaries (`~4 MB` stripped).
+### 1.4 Port Forwarding & Encryption (BEP 55, PE/MSE)
+* **UPnP / NAT-PMP (BEP 55):** Automatically opens an external listening port on home Wi-Fi routers, preventing passive/firewalled mode and doubling discoverable peers.
+* **Protocol Encryption (PE/MSE):** Encrypts handshakes and payloads to prevent mobile ISP Deep Packet Inspection (DPI) throttling.
 
 ---
 
-## 3. Android Native Architecture & Constraints
+## 2. BitTorrent Engine: Rust (`librqbit`) Architecture
 
-### 3.1 ForegroundService & Android 14+ Restrictions
-Starting in Android 14 (API 34), foreground services require an explicit runtime type:
+`librqbit` is selected as Maglev's engine core:
+* **Memory Safety:** 100% Rust, zero memory corruption, zero segfaults.
+* **Asynchronous Tokio Runtime:** Mobile-tuned with **2 worker threads** (`max_blocking_threads = 4`).
+* **Binary Footprint:** Stripped `.so` size is only `~4 MB` per architecture (`arm64-v8a`, `armeabi-v7a`, `x86_64`).
+* **Socket Buffer Clamping:** Default maximum of **40 active peer sockets** per torrent, preventing socket buffer memory explosion on mobile.
+
+---
+
+## 3. Android Native Architecture & Storage Mechanics
+
+### 3.1 App-Specific External Storage (Primary Zero-Copy Target)
+Android 11–15 enforces Scoped Storage. Standard POSIX paths to `/sdcard/Download` are blocked by SAF. However, Android provides:
+```kotlin
+val defaultDir = context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS)
+// Path: /storage/emulated/0/Android/data/com.maglev/files/Download
+```
+* **Direct POSIX Path Access:** This directory retains **100% direct native POSIX filesystem access** (`open`, `pwrite64`, `pread64`) without runtime permissions, without Binder IPC overhead, and without FUSE permission prompts.
+* **`posix_fallocate` Fallback:** Rust disk I/O catches `EOPNOTSUPP` from `posix_fallocate` on Android FUSE emulation layers and falls back to `ftruncate` / sparse chunk writes.
+
+### 3.2 ForegroundService & Battery Governance
 ```xml
 <service
     android:name=".service.MaglevTorrentService"
     android:foregroundServiceType="dataSync"
     android:exported="false" />
 ```
-* **Persistent Notification:** Uses a custom low-overhead notification layout displaying live Down/Up speeds and active transfer count.
-* **WakeLock Management:** `PowerManager.PARTIAL_WAKE_LOCK` held strictly while transfers run:
-  ```kotlin
-  if (hasActiveTransfers && !wakeLock.isHeld) {
-      wakeLock.acquire(4 * 60 * 60 * 1000L) // 4h safety timeout
-  } else if (!hasActiveTransfers && wakeLock.isHeld) {
-      wakeLock.release()
-  }
-  ```
-
-### 3.2 Storage Access Framework (SAF) & File Descriptors
-Android 11+ enforces Scoped Storage. Direct filesystem paths to `/sdcard/Download` trigger permission failures. Maglev resolves this via:
-1. `Intent(Intent.ACTION_OPEN_DOCUMENT_TREE)` lets the user grant a persistent folder URI.
-2. `DocumentsContract.createFile()` creates file slots.
-3. `contentResolver.openFileDescriptor(uri, "rw")` extracts a native Linux `ParcelFileDescriptor`.
-4. The integer `fd` is passed directly into Rust's POSIX file writer (`File::from_raw_fd(fd)`), achieving zero-copy I/O without JVM memory copies.
+* **Zero-Idle Notification:** Call `stopForeground(STOP_FOREGROUND_REMOVE)` immediately when all transfers pause or complete.
+* **WakeLock Management:** `PowerManager.PARTIAL_WAKE_LOCK` held strictly while transfers run; released in `< 500 ms` when paused or finished.
+* **Doze Mode & Connectivity State:** When network is firewalled during Doze, `ConnectivityManager.NetworkCallback` signals the native engine to enter a low-power `DORMANT` state, halting DHT queries to conserve battery.
 
 ---
 
 ## 4. Expo & React Native Bridge Integration
 
-Maglev utilizes the modern **Expo Native Modules API** (`expo-modules-core`):
+### 4.1 JNI Dispatcher Thread (Thread-Safety Architecture)
+Tokio worker threads must never touch JNI directly. Maglev implements an internal thread-safe pipeline:
+1. Tokio async tasks push telemetry structs into a Rust `tokio::sync::mpsc::channel`.
+2. A single dedicated native JNI dispatcher thread (attached to the JVM via `AttachCurrentThreadAsDaemon`) drains this channel at the **500 ms** cadence.
+3. Fires a single batch `onTelemetryUpdate` event across JSI to React Native.
 
-```kotlin
-class MaglevModule : Module() {
-    override fun definition() = ModuleDefinition {
-        Name("MaglevEngine")
+### 4.2 Zero-GC SIMD Piece Map Downsampling
+* A 40GB torrent with 20,000 pieces is downsampled natively in Rust using SIMD bit-popcount (`u64::count_ones()`).
+* Generates a fixed **256-byte binary payload** (`[u8; 256]`) mapping directly to the 16×16 visualizer matrix.
+* Exposed to Kotlin and React Native via a JNI `DirectByteBuffer` without creating temporary heap allocations or triggering Garbage Collection stutters.
 
-        Function("startTorrent") { magnetUri: String, downloadDir: String ->
-            MaglevNativeBridge.startTorrent(magnetUri, downloadDir)
-        }
-
-        Function("pauseTorrent") { infoHash: String ->
-            MaglevNativeBridge.pauseTorrent(infoHash)
-        }
-
-        Events("onTelemetryUpdate", "onTorrentAdded", "onTorrentFinished")
-    }
-}
-```
-
-### Telemetry Throttle Design
-The engine receives hundreds of block updates per second. Sending these across JSI will block React Native's JS event loop. 
-* Maglev implements a native 500ms throttle timer in Kotlin.
-* Aggregates live speeds, peer counts, and bitfield snapshots.
-* Fires a single batch `onTelemetryUpdate` event per tick.
-
----
-
-## 5. End-to-End Testing Strategy
-
-Rather than relying on isolated unit test mocks, Maglev uses an **End-to-End (E2E) Verification Harness**:
-
-1. **Local Test Swarm Container:** A lightweight Docker/local mock tracker and seed container hosting a known payload (Ubuntu mini ISO).
-2. **Deterministic Test Cases:**
-   - E2E-1: Ingest magnet link -> Metadata resolves within `< 3.0s`.
-   - E2E-2: Connect to local seed -> Download 10MB payload -> SHA-1 verifies 100%.
-   - E2E-3: Trigger pause -> Down speed drops to `0 KB/s` within `< 500ms`, WakeLock released.
-   - E2E-4: Trigger resume -> Swarm reconnects -> Download finishes.
-3. **Automated UI Flow Verification:** **Maestro** test scripts validate user journeys:
-   - Magnet ingestion modal opens, displays file tree, taps Start.
-   - Active card appears with cyan progress bar.
-   - Detail screen opens, displays 16×16 piece map with illuminated cyan blocks.
+### 4.3 In-App Sequential Media Streaming
+* `librqbit` features a built-in local loopback HTTP server.
+* When sequential streaming is enabled, Maglev exposes an internal stream endpoint:  
+  `http://127.0.0.1:<port>/stream/:torrent_id/:file_index`
+* Once head pieces (first 2% and file metadata index) are verified, Maglev provides a `[▶ Stream Now]` action that launches an Android `Intent.ACTION_VIEW` (`video/*`) directed to external media players (VLC, Just Player, or system player).
