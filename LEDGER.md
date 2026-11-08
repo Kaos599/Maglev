@@ -14,6 +14,34 @@ Build **Maglev** — a frictionless, zero-drag, zero-bloat, native-speed Android
 
 ## 📜 Ledger Entries
 
+### [2026-11-08] — Turn 9: Tier List Features Delivery & State Machine Parity
+- **Working Branch:** `feature/p2-ui-simplification`
+- **Commit:** `ffa1a53` (pushed to `origin/feature/p2-ui-simplification`)
+- **Add Torrent Sheet File Selection & Priority Ingestion:**
+  - Forwarded `selectedFileIndices` mask from `add-torrent.tsx` into `startTorrent(uri, path, sequential, selectedFileIndices)` across `EngineContext`, `MaglevNativeBridge`, and `MaglevMockEngine`.
+  - Added interactive priority cycling on each file row (`NORMAL` $\to$ `HIGH` $\to$ `SKIP` $\to$ `NORMAL`) with $\ge 44 \times 44\text{px}$ touch targets and haptic feedback.
+  - Linked unselected files to priority `0` (Skip) in the engine; included files default to `1` (Normal) or `2` (High).
+  - Dynamically extracts and resolves display name from magnet `dn=` parameters into the file list.
+- **Interactive File Priority in Torrent Detail (`/torrent/:id`):**
+  - Replaced static text badge with a touchable priority button ($\ge 44 \times 44\text{px}$) on each payload file.
+  - Tapping cycles `NORMAL` $\to$ `HIGH` $\to$ `SKIP` with immediate reactive state update and native engine call `setFilePriority`.
+  - Visual distinction: `[HIGH]` (Acid Lime), `[NORMAL]` (Muted Gray), `[SKIP]` (Crimson with strikethrough filename text).
+- **Tracker Management in Torrent Detail:**
+  - Implemented `addTrackerVisible` modal in `app/torrent/[id].tsx` with URL validation and direct submission.
+  - Exposed `addTracker` on `EngineContext`; newly added trackers reflect immediately in the active tracker list.
+- **Swarm Search Screen (`/search`):**
+  - Built real-time search engine over public swarm repository across 8 categories (`All`, `Anime`, `Apps`, `Books`, `Games`, `Movies`, `Music`, `Others`).
+  - Search cards display title, category, formatted size, seeders (`↑ ...`), peers (`↓ ...`), and health status.
+  - 1-tap `+ ADD` button ($\ge 44 \times 44\text{px}$) begins download in Maglev and displays `ADDED ✓` with haptic feedback.
+- **Automated Feeds Screen (`/feeds`):**
+  - Built automated feeds screen with channel pills (`All Feeds`, `Linux Distros`, `Blender Releases`, `Open Media`).
+  - Release cards display channel tag, auto-download status, size, and published time.
+  - 1-touch `+ DOWNLOAD` button starts download immediately.
+  - Interactive `+ FEED` modal allows subscribing to custom RSS/Atom feed URLs with auto-download toggles.
+- **E2E Test Verification:**
+  - Expanded `scripts/test-e2e.js` with multi-file priority assertions, selective file masking, and tracker addition.
+  - **95/95 E2E integration tests passing (100% pass rate).**
+
 ### [2026-11-01] — Turn 8: UI Simplification, Card Telemetry & Settings De-Jargoning Delivery
 - **Working Branch:** `feature/p2-ui-simplification`
 - **Transfer Card Action Button Simplification:**
