@@ -13,18 +13,20 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { formatBytes, TOKENS } from '../constants/tokens';
 import { useMaglevEngine } from '../context/EngineContext';
+import { triggerHaptic } from '../constants/haptics';
 
 interface MockFileItem {
   id: number;
   name: string;
   size: number;
   selected: boolean;
+  priority: 0 | 1 | 2; // 0 = skip, 1 = normal, 2 = high
 }
 
 export default function AddTorrentSheet() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { defaultStoragePath, startTorrent } = useMaglevEngine();
+  const { defaultStoragePath, startTorrent, setFilePriority } = useMaglevEngine();
 
   const [magnetInput, setMagnetInput] = useState('');
   const [customPath, setCustomPath] = useState('');
@@ -33,35 +35,89 @@ export default function AddTorrentSheet() {
 
   // Multi-file selection mock items
   const [files, setFiles] = useState<MockFileItem[]>([
-    { id: 0, name: 'ArchLinux-2026.11.01-x86_64.iso', size: 1_288_490_188, selected: true },
-    { id: 1, name: 'sha256sums.txt', size: 1024, selected: true },
-    { id: 2, name: 'release-notes.txt', size: 4096, selected: true },
+    { id: 0, name: 'ArchLinux-2026.11.01-x86_64.iso', size: 1_288_490_188, selected: true, priority: 1 },
+    { id: 1, name: 'sha256sums.txt', size: 1024, selected: true, priority: 1 },
+    { id: 2, name: 'release-notes.txt', size: 4096, selected: true, priority: 1 },
   ]);
 
+  const onMagnetChange = (text: string) => {
+    setMagnetInput(text);
+    const match = text.match(/dn=([^&]+)/);
+    if (match && match[1]) {
+      const decodedName = decodeURIComponent(match[1].replace(/\+/g, ' '));
+      setFiles((prev) =>
+        prev.map((f) => (f.id === 0 ? { ...f, name: decodedName } : f))
+      );
+    }
+  };
+
   const toggleFile = (id: number) => {
+    triggerHaptic('light');
     setFiles((prev) =>
-      prev.map((f) => (f.id === id ? { ...f, selected: !f.selected } : f))
+      prev.map((f) => {
+        if (f.id !== id) return f;
+        const nextSelected = !f.selected;
+        return {
+          ...f,
+          selected: nextSelected,
+          priority: nextSelected ? 1 : 0,
+        };
+      })
+    );
+  };
+
+  const cyclePriority = (id: number) => {
+    triggerHaptic('medium');
+    setFiles((prev) =>
+      prev.map((f) => {
+        if (f.id !== id) return f;
+        // Cycle: Normal (1) -> High (2) -> Skip (0) -> Normal (1)
+        const nextPriority: 0 | 1 | 2 = f.priority === 1 ? 2 : f.priority === 2 ? 0 : 1;
+        return {
+          ...f,
+          priority: nextPriority,
+          selected: nextPriority > 0,
+        };
+      })
     );
   };
 
   const selectAll = () => {
-    setFiles((prev) => prev.map((f) => ({ ...f, selected: true })));
+    triggerHaptic('light');
+    setFiles((prev) => prev.map((f) => ({ ...f, selected: true, priority: f.priority === 0 ? 1 : f.priority })));
   };
 
   const deselectAll = () => {
-    setFiles((prev) => prev.map((f) => ({ ...f, selected: false })));
+    triggerHaptic('light');
+    setFiles((prev) => prev.map((f) => ({ ...f, selected: false, priority: 0 })));
   };
 
   const filterByExt = (ext: string) => {
+    triggerHaptic('light');
     setFiles((prev) =>
-      prev.map((f) => ({ ...f, selected: f.name.toLowerCase().endsWith(ext) }))
+      prev.map((f) => {
+        const matches = f.name.toLowerCase().endsWith(ext);
+        return {
+          ...f,
+          selected: matches,
+          priority: matches ? 1 : 0,
+        };
+      })
     );
   };
 
   const handleStartDownload = async () => {
+    triggerHaptic('medium');
     const uri = magnetInput.trim() || 'magnet:?xt=urn:btih:arch2026linux&dn=ArchLinux-2026.11.01-x86_64.iso';
     const finalPath = customPath.trim() || defaultStoragePath;
-    await startTorrent(uri, finalPath, sequential);
+    const selectedIndices = files.filter((f) => f.selected && f.priority > 0).map((f) => f.id);
+    const newId = await startTorrent(uri, finalPath, sequential, selectedIndices);
+    // Apply High priorities if configured
+    for (const file of files) {
+      if (file.priority === 2) {
+        await setFilePriority(newId, file.id, 2);
+      }
+    }
     router.back();
   };
 
@@ -89,7 +145,7 @@ export default function AddTorrentSheet() {
             placeholder="magnet:?xt=urn:btih:..."
             placeholderTextColor={TOKENS.colors.textMuted}
             value={magnetInput}
-            onChangeText={setMagnetInput}
+            onChangeText={onMagnetChange}
             multiline
             numberOfLines={2}
           />
@@ -182,11 +238,37 @@ export default function AddTorrentSheet() {
                 {file.selected && <Text style={styles.checkmark}>✕</Text>}
               </View>
               <View style={styles.fileInfo}>
-                <Text style={styles.fileName} numberOfLines={1}>
+                <Text
+                  style={[
+                    styles.fileName,
+                    (!file.selected || file.priority === 0) && styles.fileNameDisabled,
+                  ]}
+                  numberOfLines={1}
+                >
                   {file.name}
                 </Text>
                 <Text style={styles.fileSize}>{formatBytes(file.size)}</Text>
               </View>
+              <TouchableOpacity
+                style={[
+                  styles.priorityBtn,
+                  file.priority === 2 && styles.priorityBtnHigh,
+                  file.priority === 0 && styles.priorityBtnSkip,
+                ]}
+                onPress={() => cyclePriority(file.id)}
+                accessibilityRole="button"
+                accessibilityLabel={`Cycle priority for ${file.name}. Current: ${file.priority === 2 ? 'High' : file.priority === 1 ? 'Normal' : 'Skip'}`}
+              >
+                <Text
+                  style={[
+                    styles.priorityBtnText,
+                    file.priority === 2 && styles.priorityBtnTextHigh,
+                    file.priority === 0 && styles.priorityBtnTextSkip,
+                  ]}
+                >
+                  {file.priority === 2 ? 'HIGH' : file.priority === 1 ? 'NORMAL' : 'SKIP'}
+                </Text>
+              </TouchableOpacity>
             </TouchableOpacity>
           ))}
         </View>
@@ -420,10 +502,47 @@ const styles = StyleSheet.create({
     fontFamily: 'monospace',
     marginBottom: 2,
   },
+  fileNameDisabled: {
+    color: TOKENS.colors.textMuted,
+    textDecorationLine: 'line-through',
+    opacity: 0.6,
+  },
   fileSize: {
     color: TOKENS.colors.textMuted,
     fontSize: 10,
     fontFamily: 'monospace',
+  },
+  priorityBtn: {
+    minWidth: 56,
+    minHeight: TOKENS.touchTarget.minHeight,
+    paddingHorizontal: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: TOKENS.colors.surfaceBorder,
+    backgroundColor: TOKENS.colors.surfacePill,
+    marginLeft: 8,
+  },
+  priorityBtnHigh: {
+    borderColor: TOKENS.colors.accentLime,
+    backgroundColor: 'rgba(204, 255, 0, 0.1)',
+  },
+  priorityBtnSkip: {
+    borderColor: TOKENS.colors.statusDanger,
+    backgroundColor: 'rgba(255, 51, 102, 0.1)',
+  },
+  priorityBtnText: {
+    color: TOKENS.colors.textMuted,
+    fontSize: 10,
+    fontWeight: '700',
+    fontFamily: 'monospace',
+  },
+  priorityBtnTextHigh: {
+    color: TOKENS.colors.accentLime,
+  },
+  priorityBtnTextSkip: {
+    color: TOKENS.colors.statusDanger,
   },
   toggleRow: {
     flexDirection: 'row',

@@ -63,12 +63,20 @@ export class MaglevEngineBridge {
   public async startTorrent(
     magnetUri: string,
     savePathOverride?: string,
-    sequential: boolean = false
+    sequential: boolean = false,
+    selectedFileIndices?: number[]
   ): Promise<string> {
     if (this.isNative && NativeModule) {
-      return await NativeModule.startTorrent(magnetUri, savePathOverride || null, sequential);
+      const id = await NativeModule.startTorrent(magnetUri, savePathOverride || null, sequential);
+      if (selectedFileIndices && selectedFileIndices.length > 0) {
+        for (let i = 0; i < 3; i++) {
+          const priority = selectedFileIndices.includes(i) ? 1 : 0;
+          await NativeModule.setFilePriority(id, i, priority);
+        }
+      }
+      return id;
     }
-    return mockEngine.startTorrent(magnetUri, savePathOverride, sequential);
+    return mockEngine.startTorrent(magnetUri, savePathOverride, sequential, selectedFileIndices);
   }
 
   public async pauseTorrent(id: string): Promise<boolean> {

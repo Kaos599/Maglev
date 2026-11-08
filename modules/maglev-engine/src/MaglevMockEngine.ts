@@ -175,11 +175,16 @@ export class MaglevMockEngine {
   public startTorrent(
     magnetUri: string,
     savePathOverride?: string,
-    sequential: boolean = false
+    sequential: boolean = false,
+    selectedFileIndices?: number[]
   ): string {
     const id = this.extractHashOrGenerate(magnetUri);
     const name = this.extractName(magnetUri) || 'Ubuntu-24.04-desktop-amd64.iso';
     const totalSize = 4_294_967_296; // 4.0 GB
+
+    const isPrimaryActive = !selectedFileIndices || selectedFileIndices.includes(0);
+    const isShaActive = !selectedFileIndices || selectedFileIndices.includes(1);
+    const isNotesActive = !selectedFileIndices || selectedFileIndices.includes(2);
 
     const files: TorrentFileInfo[] = [
       {
@@ -188,7 +193,23 @@ export class MaglevMockEngine {
         path: `${name}`,
         length: totalSize,
         progress: 0,
-        priority: 1,
+        priority: (isPrimaryActive ? 1 : 0) as 0 | 1 | 2,
+      },
+      {
+        index: 1,
+        name: `${name}.sha256`,
+        path: `${name}.sha256`,
+        length: 1024,
+        progress: 0,
+        priority: (isShaActive ? 1 : 0) as 0 | 1 | 2,
+      },
+      {
+        index: 2,
+        name: 'release-notes.txt',
+        path: 'release-notes.txt',
+        length: 4096,
+        progress: 0,
+        priority: (isNotesActive ? 1 : 0) as 0 | 1 | 2,
       },
     ];
 

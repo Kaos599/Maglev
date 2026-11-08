@@ -71,6 +71,28 @@ async function runTests() {
   assert(detail.name === 'Debian-12.8.0-netinst.iso', `Correctly parsed torrent display name: ${detail.name}`);
   assert(detail.totalSizeBytes > 0, `Total payload size defined: ${detail.totalSizeBytes} bytes`);
   assert(detail.state === 'DOWNLOADING', `Initial state is DOWNLOADING (got ${detail.state})`);
+  assert(Array.isArray(detail.files) && detail.files.length >= 3, `Payload contains multiple files (got ${detail.files.length})`);
+  assert(detail.files[0].priority === 1, 'Default file priority is NORMAL (1)');
+
+  // Test interactive priority assignment
+  mockEngine.setFilePriority(torrentId, 0, 2);
+  assert(detail.files[0].priority === 2, 'Assigned HIGH (2) priority to primary file');
+  mockEngine.setFilePriority(torrentId, 1, 0);
+  assert(detail.files[1].priority === 0, 'Assigned SKIP (0) priority to secondary file');
+
+  // Test selected files mask on startTorrent
+  const selectiveId = mockEngine.startTorrent('magnet:?xt=urn:btih:selective123&dn=Selective.iso', '/tmp/sel', false, [0]);
+  const selectiveDetail = mockEngine.getTorrentDetail(selectiveId);
+  assert(selectiveDetail.files[0].priority === 1, 'Included file has priority NORMAL (1)');
+  assert(selectiveDetail.files[1].priority === 0, 'Excluded file has priority SKIP (0)');
+  assert(selectiveDetail.files[2].priority === 0, 'Excluded file has priority SKIP (0)');
+  mockEngine.deleteTorrent(selectiveId, false);
+
+  // Test tracker addition
+  const trackerCountBefore = detail.trackers.length;
+  mockEngine.addTracker(torrentId, 'udp://tracker.maglev-test.org:1337/announce');
+  assert(detail.trackers.length === trackerCountBefore + 1, 'Tracker successfully added to torrent session');
+  assert(detail.trackers[detail.trackers.length - 1].url === 'udp://tracker.maglev-test.org:1337/announce', 'Added tracker URL preserved correctly');
 
   // --- TEST 3: SIMD 256-Byte Bitfield Downsampling ---
   console.log('\n▶ [Test 3] CONTRACT-1.3: SIMD 256-Byte Piece Map Downsampling');

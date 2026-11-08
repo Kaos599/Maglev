@@ -15,8 +15,10 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { formatBytes, formatEta, formatSpeed, TOKENS } from '../../constants/tokens';
 import { useMaglevEngine } from '../../context/EngineContext';
+import { triggerHaptic } from '../../constants/haptics';
 import { SpeedChart } from '../../components/SpeedChart';
 import { PiecesMatrix } from '../../components/PiecesMatrix';
+import type { TorrentFileInfo, TrackerInfo } from 'maglev-engine';
 
 type DetailTab = 'FILES' | 'PIECES' | 'PEERS' | 'TRACKERS';
 
@@ -30,6 +32,8 @@ export default function TorrentDetailScreen() {
     getPieceBitfield,
     deleteTorrent,
     startHttpStream,
+    setFilePriority,
+    addTracker,
   } = useMaglevEngine();
 
   const [activeTab, setActiveTab] = useState<DetailTab>('PIECES');
@@ -41,6 +45,47 @@ export default function TorrentDetailScreen() {
 
   const torrentSummary = telemetry.torrents.find((t) => t.id === id);
   const detailData = getTorrentDetail(id || '');
+
+  const [files, setFiles] = useState<TorrentFileInfo[]>(detailData?.files || []);
+  const [trackers, setTrackers] = useState<TrackerInfo[]>(detailData?.trackers || []);
+
+  useEffect(() => {
+    if (detailData?.files) {
+      setFiles(detailData.files);
+    }
+    if (detailData?.trackers) {
+      setTrackers(detailData.trackers);
+    }
+  }, [detailData]);
+
+  const handleCyclePriority = async (fileIndex: number, currentPriority: 0 | 1 | 2) => {
+    triggerHaptic('medium');
+    const nextPriority: 0 | 1 | 2 = currentPriority === 1 ? 2 : currentPriority === 2 ? 0 : 1;
+    setFiles((prev) =>
+      prev.map((f) => (f.index === fileIndex ? { ...f, priority: nextPriority } : f))
+    );
+    if (id) {
+      await setFilePriority(id, fileIndex, nextPriority);
+    }
+  };
+
+  const handleConfirmAddTracker = async () => {
+    const url = newTrackerUrl.trim();
+    if (!url || !id) return;
+    triggerHaptic('medium');
+    await addTracker(id, url);
+    setTrackers((prev) => [
+      ...prev,
+      {
+        url,
+        status: 'Working',
+        seeds: 0,
+        peers: 0,
+      },
+    ]);
+    setNewTrackerUrl('');
+    setAddTrackerVisible(false);
+  };
 
   // Load and refresh piece bitfield at 500ms cadence
   useEffect(() => {
@@ -213,20 +258,55 @@ export default function TorrentDetailScreen() {
         {activeTab === 'FILES' && (
           <View style={styles.tabContentCard}>
             <Text style={styles.contentHeader}>Files in Payload</Text>
-            {(detailData?.files || []).map((file) => (
+            {files.map((file) => (
               <View key={file.index} style={styles.fileDetailRow}>
-                <Ionicons name="document-text-outline" size={16} color={TOKENS.colors.accentCyan} />
+                <Ionicons
+                  name={file.priority === 0 ? 'close-circle-outline' : 'document-text-outline'}
+                  size={16}
+                  color={
+                    file.priority === 2
+                      ? TOKENS.colors.accentLime
+                      : file.priority === 0
+                      ? TOKENS.colors.statusDanger
+                      : TOKENS.colors.accentCyan
+                  }
+                />
                 <View style={styles.fileDetailInfo}>
-                  <Text style={styles.fileDetailName} numberOfLines={1}>
+                  <Text
+                    style={[
+                      styles.fileDetailName,
+                      file.priority === 0 && styles.fileDetailNameSkip,
+                    ]}
+                    numberOfLines={1}
+                  >
                     {file.name}
                   </Text>
                   <Text style={styles.fileDetailMeta}>
                     {formatBytes(file.length)} · {file.progress.toFixed(0)}%
                   </Text>
                 </View>
-                <View style={styles.priorityBadge}>
-                  <Text style={styles.priorityText}>NORMAL</Text>
-                </View>
+                <TouchableOpacity
+                  style={[
+                    styles.priorityBadge,
+                    file.priority === 2 && styles.priorityBadgeHigh,
+                    file.priority === 0 && styles.priorityBadgeSkip,
+                  ]}
+                  onPress={() => handleCyclePriority(file.index, file.priority)}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Change priority for ${file.name}. Current: ${
+                    file.priority === 2 ? 'High' : file.priority === 1 ? 'Normal' : 'Skip'
+                  }`}
+                >
+                  <Text
+                    style={[
+                      styles.priorityText,
+                      file.priority === 2 && styles.priorityTextHigh,
+                      file.priority === 0 && styles.priorityTextSkip,
+                    ]}
+                  >
+                    {file.priority === 2 ? 'HIGH' : file.priority === 1 ? 'NORMAL' : 'SKIP'}
+                  </Text>
+                </TouchableOpacity>
               </View>
             ))}
           </View>
@@ -262,11 +342,13 @@ export default function TorrentDetailScreen() {
               <TouchableOpacity
                 style={styles.addTrackerAction}
                 onPress={() => setAddTrackerVisible(true)}
+                accessibilityRole="button"
+                accessibilityLabel="Add Tracker"
               >
                 <Text style={styles.addTrackerActionText}>+ Add Tracker</Text>
               </TouchableOpacity>
             </View>
-            {(detailData?.trackers || []).map((tr, idx) => (
+            {trackers.map((tr, idx) => (
               <View key={idx} style={styles.trackerRow}>
                 <View style={styles.trackerLeft}>
                   <Text style={styles.trackerUrl} numberOfLines={1}>
@@ -319,6 +401,51 @@ export default function TorrentDetailScreen() {
             <TouchableOpacity
               style={styles.modalCancel}
               onPress={() => setDeleteModalVisible(false)}
+              accessibilityRole="button"
+              accessibilityLabel="Cancel"
+            >
+              <Text style={styles.modalCancelText}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Add Tracker Modal */}
+      <Modal
+        visible={addTrackerVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setAddTrackerVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>Add Tracker</Text>
+            <Text style={styles.modalSubtitle}>
+              Enter a valid BitTorrent announcement URL (UDP, HTTP, or WSS).
+            </Text>
+
+            <TextInput
+              style={styles.trackerInput}
+              placeholder="udp://tracker.opentrackr.org:1337/announce"
+              placeholderTextColor={TOKENS.colors.textMuted}
+              value={newTrackerUrl}
+              onChangeText={setNewTrackerUrl}
+              autoCapitalize="none"
+              autoCorrect={false}
+            />
+
+            <TouchableOpacity
+              style={styles.modalOptionAddTracker}
+              onPress={handleConfirmAddTracker}
+              accessibilityRole="button"
+              accessibilityLabel="Confirm Add Tracker"
+            >
+              <Text style={styles.modalOptionAddTrackerText}>Add Tracker</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.modalCancel}
+              onPress={() => setAddTrackerVisible(false)}
               accessibilityRole="button"
               accessibilityLabel="Cancel"
             >
@@ -508,24 +635,46 @@ const styles = StyleSheet.create({
     fontFamily: 'monospace',
     marginBottom: 2,
   },
+  fileDetailNameSkip: {
+    color: TOKENS.colors.textMuted,
+    textDecorationLine: 'line-through',
+    opacity: 0.6,
+  },
   fileDetailMeta: {
     color: TOKENS.colors.textMuted,
     fontSize: 10,
     fontFamily: 'monospace',
   },
   priorityBadge: {
+    minWidth: 56,
+    minHeight: TOKENS.touchTarget.minHeight,
     paddingHorizontal: 8,
-    paddingVertical: 3,
+    alignItems: 'center',
+    justifyContent: 'center',
     backgroundColor: TOKENS.colors.surfacePill,
-    borderRadius: 4,
+    borderRadius: 6,
     borderWidth: 1,
     borderColor: TOKENS.colors.surfaceBorder,
   },
+  priorityBadgeHigh: {
+    borderColor: TOKENS.colors.accentLime,
+    backgroundColor: 'rgba(204, 255, 0, 0.1)',
+  },
+  priorityBadgeSkip: {
+    borderColor: TOKENS.colors.statusDanger,
+    backgroundColor: 'rgba(255, 51, 102, 0.1)',
+  },
   priorityText: {
-    color: TOKENS.colors.accentLime,
-    fontSize: 9,
+    color: TOKENS.colors.textMuted,
+    fontSize: 10,
     fontWeight: '700',
     fontFamily: 'monospace',
+  },
+  priorityTextHigh: {
+    color: TOKENS.colors.accentLime,
+  },
+  priorityTextSkip: {
+    color: TOKENS.colors.statusDanger,
   },
   peerRow: {
     flexDirection: 'row',
@@ -650,6 +799,32 @@ const styles = StyleSheet.create({
   modalOptionDesc: {
     color: TOKENS.colors.textMuted,
     fontSize: 10,
+  },
+  trackerInput: {
+    minHeight: TOKENS.touchTarget.minHeight,
+    backgroundColor: TOKENS.colors.surfacePill,
+    borderWidth: 1,
+    borderColor: TOKENS.colors.surfaceBorder,
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    color: TOKENS.colors.textPrimary,
+    fontSize: 12,
+    fontFamily: 'monospace',
+    marginBottom: 16,
+  },
+  modalOptionAddTracker: {
+    minHeight: TOKENS.touchTarget.minHeight,
+    backgroundColor: TOKENS.colors.accentLime,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 12,
+  },
+  modalOptionAddTrackerText: {
+    color: '#000000',
+    fontSize: 12,
+    fontWeight: '700',
+    fontFamily: 'monospace',
   },
   modalCancel: {
     minHeight: TOKENS.touchTarget.minHeight,

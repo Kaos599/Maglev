@@ -17,8 +17,14 @@ interface EngineContextType {
   pauseAll: () => Promise<void>;
   resumeAll: () => Promise<void>;
   deleteTorrent: (id: string, deleteFiles: boolean) => Promise<boolean>;
-  startTorrent: (magnetUri: string, savePath?: string, sequential?: boolean) => Promise<string>;
+  startTorrent: (
+    magnetUri: string,
+    savePath?: string,
+    sequential?: boolean,
+    selectedFileIndices?: number[]
+  ) => Promise<string>;
   setFilePriority: (id: string, fileIndex: number, priority: 0 | 1 | 2) => Promise<boolean>;
+  addTracker: (id: string, trackerUrl: string) => Promise<boolean>;
   getPieceBitfield: (id: string) => Promise<Uint8Array>;
   getTorrentDetail: (id: string) => TorrentDetailData | null;
   startHttpStream: (id: string, fileIndex: number) => Promise<string>;
@@ -104,12 +110,24 @@ export const EngineProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     return await maglevEngine.deleteTorrent(id, deleteFiles);
   }, []);
 
-  const startTorrent = useCallback(async (magnetUri: string, savePath?: string, sequential: boolean = false) => {
-    return await maglevEngine.startTorrent(magnetUri, savePath, sequential);
-  }, []);
+  const startTorrent = useCallback(
+    async (
+      magnetUri: string,
+      savePath?: string,
+      sequential: boolean = false,
+      selectedFileIndices?: number[]
+    ) => {
+      return await maglevEngine.startTorrent(magnetUri, savePath, sequential, selectedFileIndices);
+    },
+    []
+  );
 
   const setFilePriority = useCallback(async (id: string, fileIndex: number, priority: 0 | 1 | 2) => {
     return await maglevEngine.setFilePriority(id, fileIndex, priority);
+  }, []);
+
+  const addTracker = useCallback(async (id: string, trackerUrl: string) => {
+    return await maglevEngine.addTracker(id, trackerUrl);
   }, []);
 
   const getPieceBitfield = useCallback(async (id: string) => {
@@ -144,6 +162,7 @@ export const EngineProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         deleteTorrent,
         startTorrent,
         setFilePriority,
+        addTracker,
         getPieceBitfield,
         getTorrentDetail,
         startHttpStream,
