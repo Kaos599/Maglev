@@ -9,7 +9,7 @@ import android.os.BatteryManager
 class PowerGovernanceManager(private val context: Context) {
 
     interface PowerStateListener {
-        fun onPowerStateChanged(isCharging: boolean_type, batteryPercent: Int, shouldPause: boolean_type)
+        fun onPowerStateChanged(isCharging: Boolean, batteryPercent: Int, shouldPause: Boolean)
         fun onAutoExitTriggered()
     }
 

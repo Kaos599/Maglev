@@ -34,6 +34,13 @@ class MaglevEngineModule : Module() {
                 mod.sendEvent("onTelemetryUpdate", mapOf("payload" to jsonStr))
             }
         }
+
+        @JvmStatic
+        fun onPauseAllRequested() {
+            instance?.let { mod ->
+                mod.sendEvent("onPauseAllRequested", emptyMap<String, Any>())
+            }
+        }
     }
 
     private var networkManager: NetworkGovernanceManager? = null
@@ -59,7 +66,7 @@ class MaglevEngineModule : Module() {
     override fun definition() = ModuleDefinition {
         Name("MaglevEngine")
 
-        Events("onTelemetryUpdate")
+        Events("onTelemetryUpdate", "onPauseAllRequested")
 
         OnCreate {
             instance = this@MaglevEngineModule
@@ -210,13 +217,15 @@ class MaglevEngineModule : Module() {
         }
 
         AsyncFunction("updateServiceTelemetry") { activeDown: Int, activeUp: Int, downSpeed: Long, upSpeed: Long ->
-            val context = appContext.reactContext ?: return@AsyncFunction
+            val context = appContext.reactContext ?: return@AsyncFunction false
             MaglevTorrentService.updateService(context, activeDown, activeUp, downSpeed, upSpeed)
+            true
         }
 
         AsyncFunction("stopService") {
-            val context = appContext.reactContext ?: return@AsyncFunction
+            val context = appContext.reactContext ?: return@AsyncFunction false
             MaglevTorrentService.stopService(context)
+            true
         }
     }
 }

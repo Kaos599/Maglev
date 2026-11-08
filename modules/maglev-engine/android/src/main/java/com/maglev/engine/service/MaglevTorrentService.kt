@@ -20,6 +20,7 @@ class MaglevTorrentService : Service() {
 
         const val ACTION_UPDATE_TELEMETRY = "com.maglev.engine.ACTION_UPDATE_TELEMETRY"
         const val ACTION_STOP_SERVICE = "com.maglev.engine.ACTION_STOP_SERVICE"
+        const val ACTION_PAUSE_ALL = "com.maglev.engine.ACTION_PAUSE_ALL"
 
         const val EXTRA_ACTIVE_DOWNLOADS = "extra_active_downloads"
         const val EXTRA_ACTIVE_UPLOADS = "extra_active_uploads"
@@ -69,7 +70,13 @@ class MaglevTorrentService : Service() {
         if (intent == null) return START_NOT_STICKY
 
         when (intent.action) {
+            ACTION_PAUSE_ALL -> {
+                com.maglev.engine.MaglevEngineModule.onPauseAllRequested()
+                return START_STICKY
+            }
+
             ACTION_STOP_SERVICE -> {
+                com.maglev.engine.MaglevEngineModule.onPauseAllRequested()
                 releaseWakeLock()
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
                     stopForeground(STOP_FOREGROUND_REMOVE)
@@ -157,6 +164,26 @@ class MaglevTorrentService : Service() {
         val upFormatted = formatSpeed(upSpeedBytes)
         val content = "↓ $downFormatted  •  ↑ $upFormatted  ($activeDown active)"
 
+        val pauseAllIntent = Intent(this, MaglevTorrentService::class.java).apply {
+            action = ACTION_PAUSE_ALL
+        }
+        val pauseAllPendingIntent = PendingIntent.getService(
+            this,
+            1,
+            pauseAllIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        val stopAllIntent = Intent(this, MaglevTorrentService::class.java).apply {
+            action = ACTION_STOP_SERVICE
+        }
+        val stopAllPendingIntent = PendingIntent.getService(
+            this,
+            2,
+            stopAllIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle("Maglev Transfers")
             .setContentText(content)
@@ -165,6 +192,8 @@ class MaglevTorrentService : Service() {
             .setOnlyAlertOnce(true)
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .setContentIntent(pendingIntent)
+            .addAction(android.R.drawable.ic_media_pause, "Pause All", pauseAllPendingIntent)
+            .addAction(android.R.drawable.ic_menu_close_clear_cancel, "Stop All", stopAllPendingIntent)
             .build()
     }
 
