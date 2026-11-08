@@ -14,6 +14,9 @@ jobs:
   build-apk:
     name: Build Android APK
     runs-on: ubuntu-latest
+    env:
+      ANDROID_HOME: /usr/local/lib/android/sdk
+      GRADLE_OPTS: "-Dorg.gradle.jvmargs=-Xmx4g -Dorg.gradle.daemon=false"
 
     steps:
       - name: Checkout repository
@@ -33,11 +36,12 @@ jobs:
           node-version: 20
           cache: 'npm'
 
-      - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
+      - name: Accept Android SDK Licenses
+        run: |
+          yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses 2>/dev/null || true
 
       - name: Install dependencies
-        run: npm ci --legacy-peer-deps
+        run: npm ci --legacy-peer-deps || npm install --legacy-peer-deps
 
       - name: Prebuild Android project
         run: npx expo prebuild --platform android --clean
@@ -46,7 +50,7 @@ jobs:
         run: |
           cd android
           chmod +x gradlew
-          ./gradlew assembleDebug --no-daemon
+          ./gradlew assembleDebug --stacktrace
 
       - name: Copy & Name APK
         run: |
@@ -63,14 +67,14 @@ jobs:
             
             Ultra-fast, zero-bloat Android BitTorrent client powered by **React Native**, **Expo (SDK 58)**, and **Rust (`librqbit`)**.
             
-            ### 📱 Download & Installation
+            ### Installation
             1. Download **`Maglev-v0.1-beta.apk`** from the Assets list below.
             2. Open the downloaded APK on your Android device to install.
             3. Grant notification & storage permissions when prompted.
             
-            ### ⚡ Included in this Release
+            ### Included in this Release
             * **Rust Engine Core:** Cross-compiled `libmaglev_core.so` (ARM64, ARMv7, x86_64).
-            * **Cyber-Retro UI:** True OLED black (`#05070A`) & Electric Lime (`#CCFF00`) with tactile $\ge 44 \times 44\text{px}$ touch targets.
+            * **Cyber-Retro UI:** True OLED black (`#05070A`) & Electric Lime (`#CCFF00`) with tactile >= 44x44px touch targets.
             * **Full Protocol Parity:** Multi-file selection, priority controls (`HIGH`, `NORMAL`, `SKIP`), clipboard magnet detection, and in-flight sequential media streaming to VLC.
             * **Search & Feeds:** In-app public swarm search and automated RSS release monitoring.
             * **System Governance:** Wi-Fi only, SSID whitelist, battery cutoff (<20%), SOCKS5 proxy, and IP filter.
