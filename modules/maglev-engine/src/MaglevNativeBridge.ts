@@ -17,6 +17,7 @@ const eventEmitter = NativeModule ? new EventEmitter(NativeModule) : null;
 
 export class MaglevEngineBridge {
   private isNative: boolean = isNativeActive;
+  private _lastServiceUpdateMs: number = 0;
   private latestTelemetry: AggregatedTelemetry = {
     totalDownloadSpeedBytes: 0,
     totalUploadSpeedBytes: 0,

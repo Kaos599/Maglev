@@ -2,9 +2,9 @@
  * Maglev Torrent Metadata & Bencode Engine
  *
  * Provides:
- * 1. Zero-dependency fast Bencode parser (BEP 0003)
+ * 1. Zero-dependency fast Bencode parser (BEP 0003) with binary hash protection
  * 2. Magnet URI parser & parameter extractor (BEP 0009)
- * 3. Swarm metadata resolution via public torrent caches & DHT gateways
+ * 3. Concurrent swarm metadata resolution via public torrent caches & DHT gateways
  */
 
 export interface ParsedTorrentFile {
@@ -28,7 +28,7 @@ export interface ResolvedMetadata {
 }
 
 /**
- * Parses a magnet URI into components (infoHash, name, size, trackers).
+ * Parses a magnet URI or raw info-hash into components (infoHash, name, size, trackers).
  */
 export function parseMagnetUri(uri: string): {
   infoHash: string;
@@ -42,8 +42,20 @@ export function parseMagnetUri(uri: string): {
   let exactLength: number | undefined;
   const trackers: string[] = [];
 
-  // Match xt=urn:btih:<hash>
-  const xtMatch = clean.match(/xt=urn:btih:([a-zA-Z0-9]+)/i);
+  // Direct 40-character hex hash support
+  if (/^[a-fA-F0-9]{40}$/.test(clean)) {
+    infoHash = clean.toLowerCase();
+    return { infoHash, name: `Torrent_${infoHash.slice(0, 8)}`, trackers };
+  }
+
+  // Direct 32-character base32 hash support
+  if (/^[2-7a-zA-Z]{32}$/.test(clean)) {
+    infoHash = base32ToHex(clean);
+    return { infoHash, name: `Torrent_${infoHash.slice(0, 8)}`, trackers };
+  }
+
+  // Match xt=urn:btih:<hash> or xt=urn%3Abtih%3A<hash> or xt=urn:btmh:<hash>
+  const xtMatch = clean.match(/xt=urn(?:%3A|:)(?:btih|btmh)(?:%3A|:)([a-zA-Z0-9]+)/i);
   if (xtMatch && xtMatch[1]) {
     infoHash = xtMatch[1].toLowerCase();
     // If base32 (32 chars), convert to 40 char hex
@@ -68,7 +80,7 @@ export function parseMagnetUri(uri: string): {
     exactLength = parseInt(xlMatch[1], 10);
   }
 
-  // Match all tr=<tracker>
+  // Match all tr=<tracker> (supporting URL-encoded or raw)
   const trMatches = clean.matchAll(/tr=([^&]+)/gi);
   for (const match of trMatches) {
     if (match[1]) {
@@ -99,7 +111,9 @@ function base32ToHex(base32: string): string {
   const upper = base32.toUpperCase();
   for (let i = 0; i < upper.length; i++) {
     const val = alphabet.indexOf(upper.charAt(i));
-    if (val === -1) continue;
+    if (val === -1) {
+      throw new Error(`Invalid Base32 character at index ${i}: ${upper.charAt(i)}`);
+    }
     bits += val.toString(2).padStart(5, '0');
   }
   let hex = '';
@@ -111,15 +125,25 @@ function base32ToHex(base32: string): string {
 }
 
 /**
- * Fast zero-dependency Bencode Decoder.
+ * Fast zero-dependency Bencode Decoder (BEP 0003 compliant).
+ * Preserves binary piece hashes as Uint8Array without UTF-8 corruption.
+ * Protects against infinite loops on malformed inputs.
  */
 export function decodeBencode(data: Uint8Array): any {
   let pos = 0;
 
-  function decode(): any {
-    if (pos >= data.length) return null;
+  function decode(keyContext?: string): any {
+    if (pos >= data.length) {
+      throw new Error('Unexpected EOF while decoding bencode');
+    }
 
+    const startPos = pos;
     const byte = data[pos];
+
+    // End marker: 'e' (0x65)
+    if (byte === 0x65) {
+      return null;
+    }
 
     // Integer: i<num>e
     if (byte === 0x69) { // 'i'
@@ -127,6 +151,9 @@ export function decodeBencode(data: Uint8Array): any {
       let start = pos;
       while (pos < data.length && data[pos] !== 0x65) { // 'e'
         pos++;
+      }
+      if (pos >= data.length) {
+        throw new Error('Unterminated integer in bencode');
       }
       const str = bytesToString(data.subarray(start, pos));
       pos++; // skip 'e'
@@ -138,7 +165,15 @@ export function decodeBencode(data: Uint8Array): any {
       pos++;
       const list: any[] = [];
       while (pos < data.length && data[pos] !== 0x65) {
-        list.push(decode());
+        const itemStart = pos;
+        const item = decode();
+        list.push(item);
+        if (pos === itemStart) {
+          throw new Error(`Infinite loop detected in bencode list at offset ${pos}`);
+        }
+      }
+      if (pos >= data.length) {
+        throw new Error('Unterminated list in bencode');
       }
       pos++; // skip 'e'
       return list;
@@ -149,11 +184,20 @@ export function decodeBencode(data: Uint8Array): any {
       pos++;
       const dict: Record<string, any> = {};
       while (pos < data.length && data[pos] !== 0x65) {
+        const keyStart = pos;
         const key = decode();
-        const value = decode();
-        if (typeof key === 'string') {
-          dict[key] = value;
+        if (pos === keyStart || typeof key !== 'string') {
+          throw new Error(`Invalid dictionary key at offset ${pos}`);
         }
+        const valStart = pos;
+        const value = decode(key);
+        if (pos === valStart) {
+          throw new Error(`Infinite loop detected in bencode dictionary value for key "${key}" at offset ${pos}`);
+        }
+        dict[key] = value;
+      }
+      if (pos >= data.length) {
+        throw new Error('Unterminated dictionary in bencode');
       }
       pos++; // skip 'e'
       return dict;
@@ -165,21 +209,33 @@ export function decodeBencode(data: Uint8Array): any {
       while (pos < data.length && data[pos] !== 0x3a) { // ':'
         pos++;
       }
+      if (pos >= data.length) {
+        throw new Error('Unterminated string length in bencode');
+      }
       const lenStr = bytesToString(data.subarray(start, pos));
       const len = parseInt(lenStr, 10);
       pos++; // skip ':'
+      if (pos + len > data.length) {
+        throw new Error(`String length ${len} exceeds bencode data bounds at offset ${pos}`);
+      }
       const strBytes = data.subarray(pos, pos + len);
       pos += len;
 
-      // Try UTF-8 string decode, fallback to raw string
+      // Crucial: preserve binary SHA-1 piece hashes as Uint8Array
+      if (keyContext === 'pieces') {
+        return strBytes;
+      }
+
+      // Try UTF-8 string decode with strict validation
       try {
-        return new TextDecoder('utf-8', { fatal: false }).decode(strBytes);
+        return new TextDecoder('utf-8', { fatal: true }).decode(strBytes);
       } catch {
+        // Fallback for non-strict strings or binary data
         return bytesToString(strBytes);
       }
     }
 
-    return null;
+    throw new Error(`Unexpected bencode byte 0x${byte.toString(16)} at offset ${startPos}`);
   }
 
   return decode();
@@ -206,7 +262,12 @@ export function parseTorrentData(bencodedData: Uint8Array, defaultHash?: string)
   const name = info['name.utf-8'] || info.name || 'Torrent Download';
   const pieceLength = info['piece length'] || 262144;
   const pieces = info.pieces;
-  const pieceCount = typeof pieces === 'string' ? Math.floor(pieces.length / 20) : 256;
+  const pieceCount =
+    pieces instanceof Uint8Array
+      ? Math.floor(pieces.length / 20)
+      : typeof pieces === 'string'
+      ? Math.floor(pieces.length / 20)
+      : 256;
 
   const files: ParsedTorrentFile[] = [];
   let totalSize = 0;
@@ -278,7 +339,7 @@ export function parseTorrentData(bencodedData: Uint8Array, defaultHash?: string)
 
 /**
  * Resolves metadata for a magnet URI.
- * First extracts magnet tags. Then queries public torrent caches with a fast timeout.
+ * Concurrently races public torrent caches with DHT fallback.
  */
 export async function resolveMagnetMetadata(magnetUri: string): Promise<ResolvedMetadata> {
   const { infoHash, name, exactLength, trackers } = parseMagnetUri(magnetUri);
@@ -300,29 +361,32 @@ export async function resolveMagnetMetadata(magnetUri: string): Promise<Resolved
     `https://cache.torrentstorage.encryp.ch/${infoHash.toUpperCase()}.torrent`,
   ];
 
-  for (const url of cacheUrls) {
+  // Race cache mirrors in parallel for fastest response
+  const probeMirror = async (url: string): Promise<ResolvedMetadata> => {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 3000); // 3s parallel race
     try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 2500); // 2.5s quick probe
-
       const response = await fetch(url, {
         signal: controller.signal,
         headers: { 'User-Agent': 'Maglev/0.1.0' },
       });
       clearTimeout(timeoutId);
-
-      if (response.ok) {
-        const arrayBuffer = await response.arrayBuffer();
-        if (arrayBuffer.byteLength > 100) {
-          const parsed = parseTorrentData(new Uint8Array(arrayBuffer), infoHash);
-          if (parsed.files.length > 0) {
-            return parsed;
-          }
-        }
-      }
-    } catch {
-      // Cache miss or network timeout, continue to fallback
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const arrayBuffer = await response.arrayBuffer();
+      if (arrayBuffer.byteLength < 100) throw new Error('Buffer too small');
+      const parsed = parseTorrentData(new Uint8Array(arrayBuffer), infoHash);
+      if (parsed.files.length === 0) throw new Error('No files in torrent');
+      return parsed;
+    } finally {
+      clearTimeout(timeoutId);
     }
+  };
+
+  try {
+    const resolved = await Promise.any(cacheUrls.map(probeMirror));
+    return resolved;
+  } catch {
+    // Both cache mirrors missed or timed out - fall back to nominal magnet metadata
   }
 
   // Fallback: Use magnet URI parameters

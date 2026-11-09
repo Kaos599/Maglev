@@ -34,7 +34,7 @@ const CURATED_SWARMS: SwarmSearchResult[] = [
     sizeBytes: 4_294_967_296,
     seeds: 1842,
     peers: 142,
-    magnet: 'magnet:?xt=urn:btih:ubuntu2404desktop&dn=Ubuntu-24.04-desktop-amd64.iso',
+    magnet: 'magnet:?xt=urn:btih:9dc31b34e568449c2872322a36b5ccab5d1a89c9&dn=Ubuntu-24.04-desktop-amd64.iso&tr=udp%3A%2F%2Ftracker.opentrackr.org%3A1337%2Fannounce&tr=udp%3A%2F%2Fopen.stealth.si%3A80%2Fannounce',
   },
   {
     id: 'sw_arch_linux',
@@ -43,7 +43,7 @@ const CURATED_SWARMS: SwarmSearchResult[] = [
     sizeBytes: 1_288_490_188,
     seeds: 924,
     peers: 78,
-    magnet: 'magnet:?xt=urn:btih:arch2026linux&dn=ArchLinux-2026.11.01-x86_64.iso',
+    magnet: 'magnet:?xt=urn:btih:e06c138f6bdf1f50a8c279cbe8784d5df684a20b&dn=ArchLinux-2026.11.01-x86_64.iso&tr=udp%3A%2F%2Ftracker.opentrackr.org%3A1337%2Fannounce&tr=udp%3A%2F%2Fopen.stealth.si%3A80%2Fannounce',
   },
   {
     id: 'sw_debian_12',
@@ -52,7 +52,7 @@ const CURATED_SWARMS: SwarmSearchResult[] = [
     sizeBytes: 671_088_640,
     seeds: 612,
     peers: 34,
-    magnet: 'magnet:?xt=urn:btih:debian128netinst&dn=Debian-12.8.0-netinst.iso',
+    magnet: 'magnet:?xt=urn:btih:576566c5a083d9aa8c688321d454fa16b0b2e3e5&dn=Debian-12.8.0-netinst.iso&tr=udp%3A%2F%2Ftracker.opentrackr.org%3A1337%2Fannounce&tr=udp%3A%2F%2Fopen.stealth.si%3A80%2Fannounce',
   },
   {
     id: 'sw_bbb_4k',
@@ -61,7 +61,7 @@ const CURATED_SWARMS: SwarmSearchResult[] = [
     sizeBytes: 891_289_600,
     seeds: 412,
     peers: 28,
-    magnet: 'magnet:?xt=urn:btih:bigbuckbunny4k&dn=Big-Buck-Bunny-4K-Surround.mkv',
+    magnet: 'magnet:?xt=urn:btih:dd8255ecdc7ca55fb0bbf81323d87062db1f6d1c&dn=Big-Buck-Bunny-4K-Surround.mkv&tr=udp%3A%2F%2Ftracker.opentrackr.org%3A1337%2Fannounce&tr=udp%3A%2F%2Fopen.stealth.si%3A80%2Fannounce',
   },
   {
     id: 'sw_tears_of_steel',
@@ -70,7 +70,7 @@ const CURATED_SWARMS: SwarmSearchResult[] = [
     sizeBytes: 1_503_238_553,
     seeds: 350,
     peers: 19,
-    magnet: 'magnet:?xt=urn:btih:tearsofsteeluhd&dn=Tears-Of-Steel-UHD-Master.mkv',
+    magnet: 'magnet:?xt=urn:btih:20bb20901e9d0e2e925c27f3aa111b212f717904&dn=Tears-Of-Steel-UHD-Master.mkv&tr=udp%3A%2F%2Ftracker.opentrackr.org%3A1337%2Fannounce&tr=udp%3A%2F%2Fopen.stealth.si%3A80%2Fannounce',
   },
   {
     id: 'sw_blender_demo',
@@ -79,7 +79,7 @@ const CURATED_SWARMS: SwarmSearchResult[] = [
     sizeBytes: 566_231_040,
     seeds: 280,
     peers: 14,
-    magnet: 'magnet:?xt=urn:btih:blenderswingit&dn=Blender-Studio-Wing-It-Anime.mkv',
+    magnet: 'magnet:?xt=urn:btih:c12056fae8590c7931ef827727e57c6b412128e4&dn=Blender-Studio-Wing-It-Anime.mkv&tr=udp%3A%2F%2Ftracker.opentrackr.org%3A1337%2Fannounce&tr=udp%3A%2F%2Fopen.stealth.si%3A80%2Fannounce',
   },
   {
     id: 'sw_nin_ghosts',
@@ -88,7 +88,7 @@ const CURATED_SWARMS: SwarmSearchResult[] = [
     sizeBytes: 1_932_735_283,
     seeds: 512,
     peers: 42,
-    magnet: 'magnet:?xt=urn:btih:ninghostsiivflac&dn=Nine-Inch-Nails-Ghosts-I-IV-FLAC',
+    magnet: 'magnet:?xt=urn:btih:5a0928e086f03407e3a6efad69b8bd59cfc8135a&dn=Nine-Inch-Nails-Ghosts-I-IV-FLAC&tr=udp%3A%2F%2Ftracker.opentrackr.org%3A1337%2Fannounce&tr=udp%3A%2F%2Fopen.stealth.si%3A80%2Fannounce',
   },
   {
     id: 'sw_ebooks_master',
@@ -97,7 +97,7 @@ const CURATED_SWARMS: SwarmSearchResult[] = [
     sizeBytes: 125_829_120,
     seeds: 180,
     peers: 8,
-    magnet: 'magnet:?xt=urn:btih:standardebooks2026&dn=Standard-Ebooks-Anthology-2026.epub',
+    magnet: 'magnet:?xt=urn:btih:a88fda5954e89178c372716a6a78b8180ed4dad3&dn=Standard-Ebooks-Anthology-2026.epub&tr=udp%3A%2F%2Ftracker.opentrackr.org%3A1337%2Fannounce&tr=udp%3A%2F%2Fopen.stealth.si%3A80%2Fannounce',
   },
 ];
 
@@ -172,7 +172,7 @@ export default function SearchScreen() {
             peers: parseInt(item.leechers || '0', 10),
             magnet: `magnet:?xt=urn:btih:${item.info_hash}&dn=${encodeURIComponent(
               item.name || ''
-            )}&tr=udp%3A%2F%2Ftracker.opentrackr.org%3A1337%2Fannounce&tr=udp%3A%2F%2Fopen.demonii.com%3A1337%2Fannounce`,
+            )}&tr=udp%3A%2F%2Ftracker.opentrackr.org%3A1337%2Fannounce&tr=udp%3A%2F%2Fopen.stealth.si%3A80%2Fannounce&tr=udp%3A%2F%2Ftracker.torrent.eu.org%3A451%2Fannounce`,
           }));
           setOnlineResults(mapped);
           return;

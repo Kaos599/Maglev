@@ -43,7 +43,7 @@ const INITIAL_FALLBACK_FEEDS: FeedItem[] = [
     sizeBytes: 4_294_967_296,
     published: 'Today',
     autoDownload: true,
-    magnet: 'magnet:?xt=urn:btih:ubuntu2404desktop&dn=Ubuntu-24.04.1-LTS-Desktop-x86_64.iso',
+    magnet: 'magnet:?xt=urn:btih:9dc31b34e568449c2872322a36b5ccab5d1a89c9&dn=Ubuntu-24.04.1-LTS-Desktop-x86_64.iso&tr=udp%3A%2F%2Ftracker.opentrackr.org%3A1337%2Fannounce',
   },
   {
     id: 'f_arch',
@@ -52,7 +52,7 @@ const INITIAL_FALLBACK_FEEDS: FeedItem[] = [
     sizeBytes: 1_288_490_188,
     published: 'Yesterday',
     autoDownload: false,
-    magnet: 'magnet:?xt=urn:btih:arch2026linux&dn=Arch-Linux-2026.11.01-Dual.iso',
+    magnet: 'magnet:?xt=urn:btih:e06c138f6bdf1f50a8c279cbe8784d5df684a20b&dn=Arch-Linux-2026.11.01-Dual.iso&tr=udp%3A%2F%2Ftracker.opentrackr.org%3A1337%2Fannounce',
   },
   {
     id: 'f_blender',
@@ -61,7 +61,7 @@ const INITIAL_FALLBACK_FEEDS: FeedItem[] = [
     sizeBytes: 450_887_680,
     published: '3d ago',
     autoDownload: false,
-    magnet: 'magnet:?xt=urn:btih:blender430daily&dn=Blender-4.3.0-Daily-Snapshot.tar.xz',
+    magnet: 'magnet:?xt=urn:btih:c12056fae8590c7931ef827727e57c6b412128e4&dn=Blender-4.3.0-Daily-Snapshot.tar.xz&tr=udp%3A%2F%2Ftracker.opentrackr.org%3A1337%2Fannounce',
   },
   {
     id: 'f_tears',
@@ -70,7 +70,7 @@ const INITIAL_FALLBACK_FEEDS: FeedItem[] = [
     sizeBytes: 1_824_522_240,
     published: '4d ago',
     autoDownload: true,
-    magnet: 'magnet:?xt=urn:btih:tearsofsteel4kmaster&dn=Tears-Of-Steel-4K-Master-CC.mkv',
+    magnet: 'magnet:?xt=urn:btih:20bb20901e9d0e2e925c27f3aa111b212f717904&dn=Tears-Of-Steel-4K-Master-CC.mkv&tr=udp%3A%2F%2Ftracker.opentrackr.org%3A1337%2Fannounce',
   },
   {
     id: 'f_debian',
@@ -79,7 +79,7 @@ const INITIAL_FALLBACK_FEEDS: FeedItem[] = [
     sizeBytes: 671_088_640,
     published: '5d ago',
     autoDownload: false,
-    magnet: 'magnet:?xt=urn:btih:debian128netinst&dn=Debian-12.8.0-netinst-amd64.iso',
+    magnet: 'magnet:?xt=urn:btih:576566c5a083d9aa8c688321d454fa16b0b2e3e5&dn=Debian-12.8.0-netinst-amd64.iso&tr=udp%3A%2F%2Ftracker.opentrackr.org%3A1337%2Fannounce',
   },
 ];
 

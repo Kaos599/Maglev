@@ -42,6 +42,15 @@ pub extern "system" fn Java_com_maglev_engine_MaglevEngineModule_nativeInit(
         Err(_) => return 0,
     };
 
+    // If dispatcher already running, reset it cleanly
+    if DISPATCHER_RUNNING.load(Ordering::SeqCst) {
+        DISPATCHER_RUNNING.store(false, Ordering::SeqCst);
+        if let Some(engine) = ENGINE.lock().take() {
+        engine.stop();
+    }
+    *MODULE_CLASS.lock() = None;
+}
+
     let (tx, rx) = mpsc::channel::<AggregatedTelemetry>(32);
 
     let engine = match MaglevEngine::new(PathBuf::from(dir_str), listen_port as u16, tx) {
@@ -84,24 +93,26 @@ fn start_jni_dispatcher(jvm: JavaVM, mut rx: mpsc::Receiver<AggregatedTelemetry>
             while DISPATCHER_RUNNING.load(Ordering::Relaxed) {
                 if let Some(telemetry) = rx.blocking_recv() {
                     if let Ok(json_str) = serde_json::to_string(&telemetry) {
-                        // Deliver telemetry to Kotlin callback:
-                        // MaglevEngineModule.onTelemetryUpdate(jsonStr)
-                        if let Ok(j_str) = env.new_string(&json_str) {
+                        // Scope local JNI references to this single tick so they don't leak in the ART table (max 512)
+                        let _ = env.with_local_frame(16, |env| {
+                            let j_str = env.new_string(&json_str)?;
                             let class_name = "com/maglev/engine/MaglevEngineModule";
-                            let cls_res = if let Some(ref g) = *MODULE_CLASS.lock() {
-                                Ok(JClass::from(g.as_obj()))
+                            let cls = if let Some(ref g) = *MODULE_CLASS.lock() {
+                                JClass::from(g.as_obj())
                             } else {
-                                env.find_class(class_name)
+                                env.find_class(class_name)?
                             };
-                            if let Ok(cls) = cls_res {
-                                let _ = env.call_static_method(
-                                    cls,
-                                    "onTelemetryUpdate",
-                                    "(Ljava/lang/String;)V",
-                                    &[(&j_str).into()],
-                                );
+                            let _ = env.call_static_method(
+                                cls,
+                                "onTelemetryUpdate",
+                                "(Ljava/lang/String;)V",
+                                &[(&j_str).into()],
+                            );
+                            if env.exception_check()? {
+                                let _ = env.exception_clear();
                             }
-                        }
+                            Ok(JObject::null())
+                        });
                     }
                 } else {
                     break;

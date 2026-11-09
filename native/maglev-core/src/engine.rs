@@ -345,7 +345,7 @@ impl MaglevEngine {
                     last_error: None,
                 },
                 TrackerInfo {
-                    url: "udp://open.demonii.com:1337/announce".to_string(),
+                    url: "udp://open.stealth.si:80/announce".to_string(),
                     status: "Working".to_string(),
                     seeds: 14,
                     peers: 22,

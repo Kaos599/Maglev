@@ -36,57 +36,22 @@ class MaglevTorrentService : Service() {
             downSpeedBytes: Long,
             upSpeedBytes: Long
         ) {
-            val intent = Intent(context, MaglevTorrentService::class.java).apply {
-                action = ACTION_UPDATE_TELEMETRY
-                putExtra(EXTRA_ACTIVE_DOWNLOADS, activeDown)
-                putExtra(EXTRA_ACTIVE_UPLOADS, activeUp)
-                putExtra(EXTRA_DOWN_SPEED, downSpeedBytes)
-                putExtra(EXTRA_UP_SPEED, upSpeedBytes)
-            }
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                context.startForegroundService(intent)
-            } else {
-                context.startService(intent)
-            }
-        }
-
-        fun stopService(context: Context) {
-            val intent = Intent(context, MaglevTorrentService::class.java).apply {
-                action = ACTION_STOP_SERVICE
-            }
-            context.startService(intent)
-        }
-    }
-
-    private lateinit var notificationManager: NotificationManager
-
-    override fun onCreate() {
-        super.onCreate()
-        notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        createNotificationChannel()
-    }
-
-    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        if (intent == null) return START_NOT_STICKY
-
-        when (intent.action) {
-            ACTION_PAUSE_ALL -> {
-                com.maglev.engine.MaglevEngineModule.onPauseAllRequested()
-                return START_STICKY
-            }
-
-            ACTION_STOP_SERVICE -> {
-                com.maglev.engine.MaglevEngineModule.onPauseAllRequested()
-                releaseWakeLock()
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-                    stopForeground(STOP_FOREGROUND_REMOVE)
-                } else {
-                    @Suppress("DEPRECATION")
-                    stopForeground(true)
+            val totalActive = activeDown + activeUp
+            if (totalActive <= 0) {
+                    // SLA CONTRACT: When active count is 0, immediately release WakeLock
+                    // Satisfy Android 8+ foreground service requirements before stopping
+                    releaseWakeLock()
+                    val notification = buildTelemetryNotification(0, 0, 0L, 0L)
+                    startForeground(NOTIFICATION_ID, notification)
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                        stopForeground(STOP_FOREGROUND_REMOVE)
+                    } else {
+                        @Suppress("DEPRECATION")
+                        stopForeground(true)
+                    }
+                    stopSelf()
+                    return START_NOT_STICKY
                 }
-                stopSelf()
-                return START_NOT_STICKY
-            }
 
             ACTION_UPDATE_TELEMETRY -> {
                 val activeDown = intent.getIntExtra(EXTRA_ACTIVE_DOWNLOADS, 0)

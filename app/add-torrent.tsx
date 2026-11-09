@@ -71,6 +71,9 @@ export default function AddTorrentSheet() {
 
     return () => {
       isMounted = false;
+      if (resolveDebounceRef.current) {
+        clearTimeout(resolveDebounceRef.current);
+      }
     };
   }, [searchParams]);
 
@@ -127,21 +130,25 @@ export default function AddTorrentSheet() {
   }, []);
 
   const onMagnetChange = (text: string) => {
-    setMagnetInput(text);
+    let effectiveText = text.trim();
+    if (/^[a-fA-F0-9]{40}$/.test(effectiveText) || /^[2-7a-zA-Z]{32}$/.test(effectiveText)) {
+      effectiveText = `magnet:?xt=urn:btih:${effectiveText}`;
+    }
+    setMagnetInput(effectiveText);
 
     if (resolveDebounceRef.current) {
       clearTimeout(resolveDebounceRef.current);
     }
 
-    if (text.trim().startsWith('magnet:?xt=')) {
-      const quickParsed = parseMagnetUri(text);
+    if (effectiveText.startsWith('magnet:?xt=')) {
+      const quickParsed = parseMagnetUri(effectiveText);
       setInfoHash(quickParsed.infoHash);
       setResolvedName(quickParsed.name);
       setTrackerCount(quickParsed.trackers.length);
 
       // Debounce network probe for cache metadata
       resolveDebounceRef.current = setTimeout(() => {
-        handleResolveMagnet(text);
+        handleResolveMagnet(effectiveText);
       }, 400);
     } else {
       setFiles([]);
@@ -184,15 +191,13 @@ export default function AddTorrentSheet() {
           setIsPendingSwarm(false);
           triggerHaptic('medium');
         } catch (readErr) {
-          // Fallback if raw bencode read fails
-          const fileName = asset.name || 'custom.torrent';
-          const cleanName = fileName.replace(/\.torrent$/i, '');
-          const fileSize = asset.size || 1_073_741_824;
-          setMagnetInput(`file://${asset.uri}`);
-          setResolvedName(cleanName);
-          setFiles([
-            { id: 0, name: cleanName, path: cleanName, size: fileSize, selected: true, priority: 1 },
-          ]);
+          Alert.alert(
+            'Invalid Torrent File',
+            'The selected file could not be parsed as a valid BitTorrent file.'
+          );
+          setFiles([]);
+          setResolvedName('');
+          setInfoHash('');
         } finally {
           setIsResolving(false);
         }
@@ -263,8 +268,9 @@ export default function AddTorrentSheet() {
     .filter((f) => f.selected && f.priority > 0)
     .reduce((acc, f) => acc + f.size, 0);
 
-  const hasEnoughSpace = freeDiskBytes >= selectedPayloadBytes;
-  const storageDeficitBytes = Math.max(0, selectedPayloadBytes - freeDiskBytes);
+  const SAFETY_BUFFER_BYTES = 250 * 1024 * 1024; // 250 MB OS headroom
+  const hasEnoughSpace = freeDiskBytes >= selectedPayloadBytes + SAFETY_BUFFER_BYTES;
+  const storageDeficitBytes = Math.max(0, selectedPayloadBytes + SAFETY_BUFFER_BYTES - freeDiskBytes);
 
   const handleStartDownload = async () => {
     triggerHaptic('medium');
@@ -286,25 +292,36 @@ export default function AddTorrentSheet() {
       return;
     }
 
-    // Check Android permissions
-    const permStatus = await checkMaglevPermissions();
-    if (!permStatus.isPermissionGranted) {
-      await requestMaglevPermissions();
-    }
-
-    const finalPath = customPath.trim() || defaultStoragePath;
-    const selectedIndices = files.filter((f) => f.selected && f.priority > 0).map((f) => f.id);
-
-    const newId = await startTorrent(uri, finalPath, sequential, selectedIndices);
-
-    // Apply High priorities if configured
-    for (const file of files) {
-      if (file.priority === 2) {
-        await setFilePriority(newId, file.id, 2);
+    try {
+      // Check Android permissions
+      const permStatus = await checkMaglevPermissions();
+      if (!permStatus.isPermissionGranted) {
+        const granted = await requestMaglevPermissions();
+        if (!granted) {
+          Alert.alert(
+            'Permissions Required',
+            'Maglev requires storage and notification permissions to manage torrent transfers. Please enable them in device settings.'
+          );
+          return;
+        }
       }
-    }
 
-    router.back();
+      const finalPath = customPath.trim() || defaultStoragePath;
+      const selectedIndices = files.filter((f) => f.selected && f.priority > 0).map((f) => f.id);
+
+      const newId = await startTorrent(uri, finalPath, sequential, selectedIndices);
+
+      // Apply High priorities if configured
+      for (const file of files) {
+        if (file.priority === 2) {
+          await setFilePriority(newId, file.id, 2);
+        }
+      }
+
+      router.back();
+    } catch (err: any) {
+      Alert.alert('Transfer Start Failed', err?.message || 'Could not initiate torrent download.');
+    }
   };
 
   return (
@@ -601,6 +618,7 @@ export default function AddTorrentSheet() {
             !hasEnoughSpace && styles.startBtnDisabled,
             files.length === 0 && styles.startBtnDisabled,
           ]}
+          disabled={!hasEnoughSpace || files.length === 0 || isResolving}
           onPress={handleStartDownload}
           accessibilityRole="button"
           accessibilityLabel={
@@ -686,7 +704,10 @@ const styles = StyleSheet.create({
     minHeight: 44,
   },
   clearBtn: {
-    padding: 6,
+    minWidth: 44,
+    minHeight: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   browseFileRow: {
     marginBottom: 16,
@@ -823,10 +844,13 @@ const styles = StyleSheet.create({
     padding: 0,
   },
   changePathBtn: {
-    paddingHorizontal: 10,
-    paddingVertical: 6,
+    minHeight: 44,
+    minWidth: 44,
+    paddingHorizontal: 12,
     backgroundColor: '#161B22',
     borderRadius: 6,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   changePathText: {
     color: TOKENS.colors.accentLime,
@@ -923,11 +947,12 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   batchBtn: {
-    minHeight: 32,
-    paddingHorizontal: 8,
+    minHeight: 44,
+    paddingHorizontal: 10,
     backgroundColor: '#161B22',
-    borderRadius: 4,
+    borderRadius: 6,
     justifyContent: 'center',
+    alignItems: 'center',
   },
   batchBtnText: {
     color: TOKENS.colors.textMuted,
@@ -935,13 +960,14 @@ const styles = StyleSheet.create({
     fontFamily: 'monospace',
   },
   batchBtnChip: {
-    minHeight: 32,
-    paddingHorizontal: 8,
+    minHeight: 44,
+    paddingHorizontal: 10,
     backgroundColor: '#0F1B26',
     borderWidth: 1,
     borderColor: 'rgba(0, 229, 255, 0.2)',
-    borderRadius: 4,
+    borderRadius: 6,
     justifyContent: 'center',
+    alignItems: 'center',
   },
   batchBtnChipText: {
     color: TOKENS.colors.accentCyan,
@@ -1007,10 +1033,10 @@ const styles = StyleSheet.create({
   },
   priorityBtn: {
     minWidth: 54,
-    minHeight: 32,
+    minHeight: 44,
     paddingHorizontal: 8,
     backgroundColor: '#161B22',
-    borderRadius: 4,
+    borderRadius: 6,
     alignItems: 'center',
     justifyContent: 'center',
   },

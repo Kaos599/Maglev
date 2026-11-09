@@ -16,6 +16,7 @@ class MaglevEngineModule : Module() {
     companion object {
         var isNativeLoaded = false
         var instance: MaglevEngineModule? = null
+        @Volatile
         var latestTelemetryJson: String = ""
 
         init {
@@ -32,15 +33,23 @@ class MaglevEngineModule : Module() {
         @JvmStatic
         fun onTelemetryUpdate(jsonStr: String) {
             latestTelemetryJson = jsonStr
-            instance?.let { mod ->
-                mod.sendEvent("onTelemetryUpdate", mapOf("payload" to jsonStr))
+            try {
+                instance?.let { mod ->
+                    mod.sendEvent("onTelemetryUpdate", mapOf("payload" to jsonStr))
+                }
+            } catch (e: Exception) {
+                // Prevent exception from reaching JNI layer and crashing ART
             }
         }
 
         @JvmStatic
         fun onPauseAllRequested() {
-            instance?.let { mod ->
-                mod.sendEvent("onPauseAllRequested", emptyMap<String, Any>())
+            try {
+                instance?.let { mod ->
+                    mod.sendEvent("onPauseAllRequested", emptyMap<String, Any>())
+                }
+            } catch (e: Exception) {
+                // Safe ignore
             }
         }
     }
