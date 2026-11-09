@@ -315,6 +315,12 @@ impl MaglevEngine {
             format!("mg_{:x}", std::time::SystemTime::now().elapsed().unwrap_or_default().as_millis())
         });
 
+        // Concurrency guard: return existing ID if session already registered
+        if self.torrents.read().contains_key(&id) {
+            info!("Torrent {} already registered in session; returning existing ID", id);
+            return Ok(id);
+        }
+
         let mut name = "Torrent Transfer".to_string();
         if let Some(dn) = extract_magnet_name(magnet_uri) {
             name = dn;
@@ -465,7 +471,11 @@ impl MaglevEngine {
     pub fn start_http_stream(&self, id: &str, file_index: usize) -> Result<String, String> {
         let mut server_lock = self.stream_server.write();
         if server_lock.is_none() {
-            let mut server = StreamServer::new(0);
+            let torrents = Arc::clone(&self.torrents);
+            let validator = Arc::new(move |id: &str| -> bool {
+                torrents.read().contains_key(id)
+            });
+            let mut server = StreamServer::new(0, Some(validator));
             let port = self.runtime.block_on(async {
                 server.start().await
             }).map_err(|e| format!("Failed to start stream server: {}", e))?;

@@ -179,6 +179,10 @@ export class MaglevMockEngine {
     selectedFileIndices?: number[]
   ): string {
     const id = this.extractHashOrGenerate(magnetUri);
+    // Concurrency guard: return existing session if already registered
+    if (this.torrents.has(id)) {
+      return id;
+    }
     const name = this.extractName(magnetUri) || 'Ubuntu-24.04-desktop-amd64.iso';
     const totalSize = 4_294_967_296; // 4.0 GB
 

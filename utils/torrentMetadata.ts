@@ -40,7 +40,21 @@ export function parseMagnetUri(uri: string): {
   let infoHash = '';
   let name = '';
   let exactLength: number | undefined;
-  const trackers: string[] = [];
+  const trackerSet = new Set<string>();
+
+  // Match all tr=<tracker> (supporting URL-encoded or raw, deduplicating via Set)
+  const trMatches = clean.matchAll(/tr=([^&]+)/gi);
+  for (const match of trMatches) {
+    if (match[1]) {
+      try {
+        const decoded = decodeURIComponent(match[1]);
+        trackerSet.add(decoded);
+      } catch {
+        trackerSet.add(match[1]);
+      }
+    }
+  }
+  const trackers: string[] = Array.from(trackerSet);
 
   // Direct 40-character hex hash support
   if (/^[a-fA-F0-9]{40}$/.test(clean)) {
@@ -50,17 +64,25 @@ export function parseMagnetUri(uri: string): {
 
   // Direct 32-character base32 hash support
   if (/^[2-7a-zA-Z]{32}$/.test(clean)) {
-    infoHash = base32ToHex(clean);
-    return { infoHash, name: `Torrent_${infoHash.slice(0, 8)}`, trackers };
+    try {
+      infoHash = base32ToHex(clean);
+      return { infoHash, name: `Torrent_${infoHash.slice(0, 8)}`, trackers };
+    } catch {
+      return { infoHash: '', name: 'Invalid Magnet Hash', trackers };
+    }
   }
 
   // Match xt=urn:btih:<hash> or xt=urn%3Abtih%3A<hash> or xt=urn:btmh:<hash>
   const xtMatch = clean.match(/xt=urn(?:%3A|:)(?:btih|btmh)(?:%3A|:)([a-zA-Z0-9]+)/i);
   if (xtMatch && xtMatch[1]) {
     infoHash = xtMatch[1].toLowerCase();
-    // If base32 (32 chars), convert to 40 char hex
+    // If base32 (32 chars), safely convert to 40 char hex, catching invalid characters
     if (infoHash.length === 32) {
-      infoHash = base32ToHex(infoHash);
+      try {
+        infoHash = base32ToHex(infoHash);
+      } catch {
+        infoHash = '';
+      }
     }
   }
 
@@ -80,23 +102,10 @@ export function parseMagnetUri(uri: string): {
     exactLength = parseInt(xlMatch[1], 10);
   }
 
-  // Match all tr=<tracker> (supporting URL-encoded or raw)
-  const trMatches = clean.matchAll(/tr=([^&]+)/gi);
-  for (const match of trMatches) {
-    if (match[1]) {
-      try {
-        const decoded = decodeURIComponent(match[1]);
-        if (!trackers.includes(decoded)) {
-          trackers.push(decoded);
-        }
-      } catch {
-        trackers.push(match[1]);
-      }
-    }
-  }
-
   if (!name && infoHash) {
     name = `Torrent_${infoHash.slice(0, 8)}`;
+  } else if (!name && !infoHash) {
+    name = 'Invalid Magnet Link';
   }
 
   return { infoHash, name, exactLength, trackers };

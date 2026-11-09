@@ -4,24 +4,27 @@
 //! direct video playback in external players (VLC, Just Player, ExoPlayer)
 //! using HTTP Range requests.
 
-use std::convert::Infallible;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use tokio::net::TcpListener;
 use tokio::sync::broadcast;
 use tracing::{error, info};
 
+pub type TorrentValidator = Arc<dyn Fn(&str) -> bool + Send + Sync>;
+
 pub struct StreamServer {
     port: u16,
     shutdown_tx: broadcast::Sender<()>,
+    validator: Option<TorrentValidator>,
 }
 
 impl StreamServer {
-    pub fn new(requested_port: u16) -> Self {
+    pub fn new(requested_port: u16, validator: Option<TorrentValidator>) -> Self {
         let (shutdown_tx, _) = broadcast::channel(1);
         Self {
             port: requested_port,
             shutdown_tx,
+            validator,
         }
     }
 
@@ -39,6 +42,7 @@ impl StreamServer {
         info!("Loopback HTTP stream server bound to 127.0.0.1:{}", actual_port);
 
         let mut shutdown_rx = self.shutdown_tx.subscribe();
+        let validator = self.validator.clone();
 
         tokio::spawn(async move {
             loop {
@@ -46,8 +50,9 @@ impl StreamServer {
                     accept_res = listener.accept() => {
                         match accept_res {
                             Ok((socket, remote_addr)) => {
+                                let val_clone = validator.clone();
                                 tokio::spawn(async move {
-                                    handle_stream_connection(socket, remote_addr).await;
+                                    handle_stream_connection(socket, remote_addr, val_clone).await;
                                 });
                             }
                             Err(e) => {
@@ -75,6 +80,7 @@ impl StreamServer {
 async fn handle_stream_connection(
     mut socket: tokio::net::TcpStream,
     _remote_addr: SocketAddr,
+    validator: Option<TorrentValidator>,
 ) {
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
@@ -93,7 +99,7 @@ async fn handle_stream_connection(
 
     let parts: Vec<&str> = request_line.split_whitespace().collect();
     if parts.len() < 2 || parts[0] != "GET" {
-        let resp = "HTTP/1.1 405 Method Not Allowed\r\nContent-Length: 0\r\n\r\n";
+        let resp = "HTTP/1.1 405 Method Not Allowed\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
         let _ = socket.write_all(resp.as_bytes()).await;
         return;
     }
@@ -101,9 +107,23 @@ async fn handle_stream_connection(
     let uri = parts[1];
     // URI format: /stream/:id/:file_index
     if !uri.starts_with("/stream/") {
-        let resp = "HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\n\r\n";
+        let resp = "HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
         let _ = socket.write_all(resp.as_bytes()).await;
         return;
+    }
+
+    // Mid-Flight Deletion & Existence Check: Validate torrent exists in session
+    let uri_parts: Vec<&str> = uri.split('/').collect();
+    if uri_parts.len() >= 3 {
+        let torrent_id = uri_parts[2];
+        if let Some(ref val_fn) = validator {
+            if !val_fn(torrent_id) {
+                // Torrent was deleted or does not exist: terminate cleanly with HTTP 404
+                let resp = "HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
+                let _ = socket.write_all(resp.as_bytes()).await;
+                return;
+            }
+        }
     }
 
     // Check for Range header

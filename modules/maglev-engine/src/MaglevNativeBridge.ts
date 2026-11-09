@@ -97,7 +97,8 @@ export class MaglevEngineBridge {
     if (this.isNative && NativeModule) {
       const id = await NativeModule.startTorrent(magnetUri, savePathOverride || null, sequential);
       if (selectedFileIndices && selectedFileIndices.length > 0) {
-        for (let i = 0; i < 3; i++) {
+        const maxIndex = Math.max(...selectedFileIndices, 2);
+        for (let i = 0; i <= maxIndex; i++) {
           const priority = selectedFileIndices.includes(i) ? 1 : 0;
           await NativeModule.setFilePriority(id, i, priority);
         }
@@ -109,7 +110,7 @@ export class MaglevEngineBridge {
           id,
           name,
           state: 'DOWNLOADING' as const,
-          downloadSpeedBytes: 12_500_000,
+          downloadSpeedBytes: 0,
           uploadSpeedBytes: 850_000,
           progressPercent: 0,
           downloadedBytes: 0,

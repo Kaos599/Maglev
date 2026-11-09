@@ -47,6 +47,8 @@ export default function AddTorrentSheet() {
 
   /* Payload files state */
   const [files, setFiles] = useState<ParsedTorrentFile[]>([]);
+  const [isStarting, setIsStarting] = useState(false);
+  const isSubmittingRef = useRef(false);
   const resolveDebounceRef = useRef<NodeJS.Timeout | null>(null);
 
   // Initial Disk Free Space & Incoming Magnet Detection
@@ -273,11 +275,18 @@ export default function AddTorrentSheet() {
   const storageDeficitBytes = Math.max(0, selectedPayloadBytes + SAFETY_BUFFER_BYTES - freeDiskBytes);
 
   const handleStartDownload = async () => {
+    // Re-entrancy and rapid-tap concurrency guard
+    if (isSubmittingRef.current || isStarting) return;
+    isSubmittingRef.current = true;
+    setIsStarting(true);
+
     triggerHaptic('medium');
 
     const uri = magnetInput.trim();
     if (!uri) {
       Alert.alert('Missing Magnet Link', 'Please enter a magnet link or select a .torrent file.');
+      isSubmittingRef.current = false;
+      setIsStarting(false);
       return;
     }
 
@@ -289,6 +298,8 @@ export default function AddTorrentSheet() {
           freeDiskBytes
         )} is free on device. Deficit: ${formatBytes(storageDeficitBytes)}. Please free up disk space first.`
       );
+      isSubmittingRef.current = false;
+      setIsStarting(false);
       return;
     }
 
@@ -302,6 +313,8 @@ export default function AddTorrentSheet() {
             'Permissions Required',
             'Maglev requires storage and notification permissions to manage torrent transfers. Please enable them in device settings.'
           );
+          isSubmittingRef.current = false;
+          setIsStarting(false);
           return;
         }
       }
@@ -321,6 +334,9 @@ export default function AddTorrentSheet() {
       router.back();
     } catch (err: any) {
       Alert.alert('Transfer Start Failed', err?.message || 'Could not initiate torrent download.');
+    } finally {
+      isSubmittingRef.current = false;
+      setIsStarting(false);
     }
   };
 
@@ -618,7 +634,7 @@ export default function AddTorrentSheet() {
             !hasEnoughSpace && styles.startBtnDisabled,
             files.length === 0 && styles.startBtnDisabled,
           ]}
-          disabled={!hasEnoughSpace || files.length === 0 || isResolving}
+          disabled={!hasEnoughSpace || files.length === 0 || isResolving || isStarting}
           onPress={handleStartDownload}
           accessibilityRole="button"
           accessibilityLabel={

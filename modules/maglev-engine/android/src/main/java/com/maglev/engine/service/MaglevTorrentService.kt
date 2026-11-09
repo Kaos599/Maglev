@@ -11,6 +11,7 @@ import android.os.Build
 import android.os.IBinder
 import android.os.PowerManager
 import androidx.core.app.NotificationCompat
+import com.maglev.engine.MaglevEngineModule
 
 class MaglevTorrentService : Service() {
 
@@ -38,20 +39,80 @@ class MaglevTorrentService : Service() {
         ) {
             val totalActive = activeDown + activeUp
             if (totalActive <= 0) {
-                    // SLA CONTRACT: When active count is 0, immediately release WakeLock
-                    // Satisfy Android 8+ foreground service requirements before stopping
-                    releaseWakeLock()
-                    val notification = buildTelemetryNotification(0, 0, 0L, 0L)
-                    startForeground(NOTIFICATION_ID, notification)
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-                        stopForeground(STOP_FOREGROUND_REMOVE)
-                    } else {
-                        @Suppress("DEPRECATION")
-                        stopForeground(true)
-                    }
-                    stopSelf()
-                    return START_NOT_STICKY
+                stopService(context)
+                return
+            }
+
+            val intent = Intent(context, MaglevTorrentService::class.java).apply {
+                action = ACTION_UPDATE_TELEMETRY
+                putExtra(EXTRA_ACTIVE_DOWNLOADS, activeDown)
+                putExtra(EXTRA_ACTIVE_UPLOADS, activeUp)
+                putExtra(EXTRA_DOWN_SPEED, downSpeedBytes)
+                putExtra(EXTRA_UP_SPEED, upSpeedBytes)
+            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                context.startForegroundService(intent)
+            } else {
+                context.startService(intent)
+            }
+        }
+
+        fun stopService(context: Context) {
+            val stopIntent = Intent(context, MaglevTorrentService::class.java).apply {
+                action = ACTION_STOP_SERVICE
+            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                context.startForegroundService(stopIntent)
+            } else {
+                context.startService(stopIntent)
+            }
+        }
+    }
+
+    private val notificationManager by lazy {
+        getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+    }
+
+    override fun onCreate() {
+        super.onCreate()
+        createNotificationChannel()
+    }
+
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        if (intent == null) return START_NOT_STICKY
+
+        when (intent.action) {
+            ACTION_STOP_SERVICE -> {
+                // SLA CONTRACT: When active count is 0 or stop requested,
+                // immediately release WakeLock and satisfy Android 8+ foreground service
+                // requirements before stopping self
+                releaseWakeLock()
+                val notification = buildTelemetryNotification(0, 0, 0L, 0L)
+                startForeground(NOTIFICATION_ID, notification)
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                    stopForeground(STOP_FOREGROUND_REMOVE)
+                } else {
+                    @Suppress("DEPRECATION")
+                    stopForeground(true)
                 }
+                stopSelf()
+                return START_NOT_STICKY
+            }
+
+            ACTION_PAUSE_ALL -> {
+                MaglevEngineModule.onPauseAllRequested()
+                releaseWakeLock()
+                val notification = buildTelemetryNotification(0, 0, 0L, 0L)
+                startForeground(NOTIFICATION_ID, notification)
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                    stopForeground(STOP_FOREGROUND_REMOVE)
+                } else {
+                    @Suppress("DEPRECATION")
+                    stopForeground(true)
+                }
+                stopSelf()
+                return START_NOT_STICKY
+            }
 
             ACTION_UPDATE_TELEMETRY -> {
                 val activeDown = intent.getIntExtra(EXTRA_ACTIVE_DOWNLOADS, 0)
@@ -62,6 +123,8 @@ class MaglevTorrentService : Service() {
                     // SLA CONTRACT: When active count is 0, immediately release WakeLock
                     // and remove foreground notification without leaving idle clutter
                     releaseWakeLock()
+                    val notification = buildTelemetryNotification(0, 0, 0L, 0L)
+                    startForeground(NOTIFICATION_ID, notification)
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
                         stopForeground(STOP_FOREGROUND_REMOVE)
                     } else {
