@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   View,
   Text,
@@ -6,6 +6,7 @@ import {
   TextInput,
   TouchableOpacity,
   ScrollView,
+  ActivityIndicator,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -15,7 +16,7 @@ import { HeaderBar } from '../../components/HeaderBar';
 import { useMaglevEngine } from '../../context/EngineContext';
 import { triggerHaptic } from '../../constants/haptics';
 
-interface SwarmSearchResult {
+export interface SwarmSearchResult {
   id: string;
   title: string;
   category: string;
@@ -25,7 +26,7 @@ interface SwarmSearchResult {
   magnet: string;
 }
 
-const PUBLIC_SWARMS: SwarmSearchResult[] = [
+const CURATED_SWARMS: SwarmSearchResult[] = [
   {
     id: 'sw_ubuntu_24',
     title: 'Ubuntu-24.04-desktop-amd64.iso',
@@ -111,6 +112,16 @@ const CATEGORIES = [
   'Others',
 ];
 
+function mapCategory(catNum: string | number): string {
+  const n = typeof catNum === 'number' ? catNum : parseInt(catNum, 10);
+  if (n >= 100 && n < 200) return 'Music';
+  if (n >= 200 && n < 300) return 'Movies';
+  if (n >= 300 && n < 400) return 'Apps';
+  if (n >= 400 && n < 500) return 'Games';
+  if (n >= 600 && n < 700) return 'Books';
+  return 'Others';
+}
+
 export default function SearchScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
@@ -119,6 +130,88 @@ export default function SearchScreen() {
   const [query, setQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('All');
   const [addedIds, setAddedIds] = useState<string[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [onlineResults, setOnlineResults] = useState<SwarmSearchResult[] | null>(null);
+  const debounceRef = useRef<NodeJS.Timeout | null>(null);
+
+  const fetchLiveSwarms = useCallback(async (searchQuery: string, category: string) => {
+    if (!searchQuery.trim()) {
+      setOnlineResults(null);
+      return;
+    }
+
+    setIsLoading(true);
+
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 4000);
+
+      // Query public BitTorrent indexer API (apibay)
+      let apiUrl = `https://apibay.org/q.php?q=${encodeURIComponent(searchQuery.trim())}`;
+      if (category === 'Movies') apiUrl += '&cat=200';
+      else if (category === 'Music') apiUrl += '&cat=100';
+      else if (category === 'Apps') apiUrl += '&cat=300';
+      else if (category === 'Games') apiUrl += '&cat=400';
+      else if (category === 'Books') apiUrl += '&cat=601';
+
+      const res = await fetch(apiUrl, {
+        signal: controller.signal,
+        headers: { 'User-Agent': 'Maglev-Client/1.0' },
+      });
+      clearTimeout(timeoutId);
+
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data) && data.length > 0 && data[0].id !== '0' && data[0].name !== 'No results returned') {
+          const mapped: SwarmSearchResult[] = data.map((item: any) => ({
+            id: item.info_hash || `sw_${Math.random()}`,
+            title: item.name || 'Unknown Swarm',
+            category: mapCategory(item.category),
+            sizeBytes: parseInt(item.size || '0', 10),
+            seeds: parseInt(item.seeders || '0', 10),
+            peers: parseInt(item.leechers || '0', 10),
+            magnet: `magnet:?xt=urn:btih:${item.info_hash}&dn=${encodeURIComponent(
+              item.name || ''
+            )}&tr=udp%3A%2F%2Ftracker.opentrackr.org%3A1337%2Fannounce&tr=udp%3A%2F%2Fopen.demonii.com%3A1337%2Fannounce`,
+          }));
+          setOnlineResults(mapped);
+          return;
+        }
+      }
+      setOnlineResults([]);
+    } catch {
+      // Offline fallback
+      setOnlineResults(null);
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  const handleQueryChange = (text: string) => {
+    setQuery(text);
+
+    if (debounceRef.current) {
+      clearTimeout(debounceRef.current);
+    }
+
+    if (!text.trim()) {
+      setOnlineResults(null);
+      setIsLoading(false);
+      return;
+    }
+
+    debounceRef.current = setTimeout(() => {
+      fetchLiveSwarms(text, selectedCategory);
+    }, 450);
+  };
+
+  const handleSelectCategory = (cat: string) => {
+    triggerHaptic('light');
+    setSelectedCategory(cat);
+    if (query.trim()) {
+      fetchLiveSwarms(query, cat);
+    }
+  };
 
   const handleAddSwarm = async (item: SwarmSearchResult) => {
     triggerHaptic('medium');
@@ -126,14 +219,14 @@ export default function SearchScreen() {
     setAddedIds((prev) => [...prev, item.id]);
   };
 
-  const filteredResults = PUBLIC_SWARMS.filter((item) => {
-    const matchesCategory =
-      selectedCategory === 'All' || item.category === selectedCategory;
-    const matchesQuery =
-      query.trim().length === 0 ||
-      item.title.toLowerCase().includes(query.trim().toLowerCase());
-    return matchesCategory && matchesQuery;
-  });
+  // Determine active display list
+  const activeResults: SwarmSearchResult[] = onlineResults !== null
+    ? onlineResults.filter((item) => selectedCategory === 'All' || item.category === selectedCategory)
+    : CURATED_SWARMS.filter((item) => {
+        const matchesCategory = selectedCategory === 'All' || item.category === selectedCategory;
+        const matchesQuery = query.trim().length === 0 || item.title.toLowerCase().includes(query.trim().toLowerCase());
+        return matchesCategory && matchesQuery;
+      });
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
@@ -149,13 +242,15 @@ export default function SearchScreen() {
           />
           <TextInput
             style={styles.searchInput}
-            placeholder="Search torrent swarms..."
+            placeholder="Search public torrent swarms..."
             placeholderTextColor={TOKENS.colors.textMuted}
             value={query}
-            onChangeText={setQuery}
+            onChangeText={handleQueryChange}
+            autoCapitalize="none"
+            autoCorrect={false}
           />
           {query.length > 0 && (
-            <TouchableOpacity onPress={() => setQuery('')} style={styles.clearBtn}>
+            <TouchableOpacity onPress={() => handleQueryChange('')} style={styles.clearBtn} accessibilityRole="button" accessibilityLabel="Clear search query">
               <Ionicons name="close-circle" size={16} color={TOKENS.colors.textMuted} />
             </TouchableOpacity>
           )}
@@ -178,12 +273,9 @@ export default function SearchScreen() {
                   styles.catPill,
                   isSelected ? styles.catPillActive : styles.catPillInactive,
                 ]}
-                onPress={() => {
-                  triggerHaptic('light');
-                  setSelectedCategory(cat);
-                }}
+                onPress={() => handleSelectCategory(cat)}
                 accessibilityRole="button"
-                accessibilityLabel={`Category ${cat}`}
+                accessibilityLabel={`Filter by ${cat}`}
               >
                 <Text
                   style={[
@@ -199,14 +291,22 @@ export default function SearchScreen() {
         </ScrollView>
       </View>
 
+      {/* Live Indexer Loading Indicator */}
+      {isLoading && (
+        <View style={styles.indexerLoaderRow}>
+          <ActivityIndicator size="small" color={TOKENS.colors.accentCyan} />
+          <Text style={styles.indexerLoaderText}>QUERYING PUBLIC SWARMS IN REAL TIME...</Text>
+        </View>
+      )}
+
       {/* Search Results List or Empty State */}
       <ScrollView
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.resultsScroll}
       >
-        {filteredResults.length > 0 ? (
+        {activeResults.length > 0 ? (
           <View style={styles.resultsList}>
-            {filteredResults.map((item) => {
+            {activeResults.map((item) => {
               const isAdded = addedIds.includes(item.id);
               return (
                 <View key={item.id} style={styles.resultCard}>
@@ -225,7 +325,9 @@ export default function SearchScreen() {
                     <View style={styles.swarmMeta}>
                       <Text style={styles.metaSeeds}>↑ {item.seeds}</Text>
                       <Text style={styles.metaPeers}>↓ {item.peers}</Text>
-                      <Text style={styles.metaHealth}>HEALTHY</Text>
+                      <Text style={styles.metaHealth}>
+                        {item.seeds >= 50 ? 'HEALTHY' : item.seeds > 0 ? 'ACTIVE' : 'LOW PEERS'}
+                      </Text>
                     </View>
 
                     <TouchableOpacity
@@ -247,9 +349,11 @@ export default function SearchScreen() {
         ) : (
           <View style={styles.emptyContainer}>
             <Ionicons name="compass-outline" size={48} color={TOKENS.colors.surfaceBorder} />
-            <Text style={styles.emptyTitle}>No Matching Swarms</Text>
+            <Text style={styles.emptyTitle}>No Matching Swarms Found</Text>
             <Text style={styles.emptySubtitle}>
-              Try searching for a different keyword or selecting another category filter.
+              {query.trim().length > 0
+                ? `Zero public seeds detected for "${query}". Try different terms or categories.`
+                : 'Enter a search keyword to query public BitTorrent swarms.'}
             </Text>
           </View>
         )}
@@ -322,6 +426,23 @@ const styles = StyleSheet.create({
   },
   catPillTextInactive: {
     color: TOKENS.colors.textMuted,
+  },
+  indexerLoaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 20,
+    paddingVertical: 8,
+    backgroundColor: '#09131C',
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(0, 229, 255, 0.2)',
+  },
+  indexerLoaderText: {
+    color: TOKENS.colors.accentCyan,
+    fontSize: 10,
+    fontWeight: '700',
+    fontFamily: 'monospace',
+    letterSpacing: 0.5,
   },
   resultsScroll: {
     paddingHorizontal: 16,

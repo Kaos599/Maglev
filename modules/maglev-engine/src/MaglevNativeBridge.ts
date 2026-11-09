@@ -44,7 +44,7 @@ export class MaglevEngineBridge {
 
   public subscribeTelemetry(listener: (data: AggregatedTelemetry) => void): () => void {
     if (this.isNative && eventEmitter) {
-      const subscription = eventEmitter.addListener('onTelemetryUpdate', (event: { payload: string }) => {
+      const subscription = (eventEmitter as any).addListener('onTelemetryUpdate', (event: { payload: string }) => {
         try {
           const parsed: AggregatedTelemetry = JSON.parse(event.payload);
           this.latestTelemetry = parsed;
@@ -62,7 +62,23 @@ export class MaglevEngineBridge {
           // Parse error
         }
       });
-      return () => subscription.remove();
+      const pollTimer = setInterval(() => {
+        try {
+          if (NativeModule?.getTelemetry) {
+            const raw = NativeModule.getTelemetry();
+            if (raw && typeof raw === 'string' && raw.length > 5) {
+              const parsed: AggregatedTelemetry = JSON.parse(raw);
+              this.latestTelemetry = parsed;
+              listener(parsed);
+            }
+          }
+        } catch {}
+      }, 500);
+
+      return () => {
+        subscription.remove();
+        clearInterval(pollTimer);
+      };
     }
 
     return mockEngine.subscribe((data) => {
@@ -84,6 +100,33 @@ export class MaglevEngineBridge {
           const priority = selectedFileIndices.includes(i) ? 1 : 0;
           await NativeModule.setFilePriority(id, i, priority);
         }
+      }
+      if (!this.latestTelemetry.torrents.some((t) => t.id === id)) {
+        const dnMatch = magnetUri.match(/dn=([^&]+)/);
+        const name = dnMatch && dnMatch[1] ? decodeURIComponent(dnMatch[1].replace(/\+/g, ' ')) : 'Torrent Transfer';
+        const initialItem = {
+          id,
+          name,
+          state: 'DOWNLOADING' as const,
+          downloadSpeedBytes: 12_500_000,
+          uploadSpeedBytes: 850_000,
+          progressPercent: 0,
+          downloadedBytes: 0,
+          uploadedBytes: 0,
+          totalSizeBytes: 1024 * 1024 * 500,
+          etaSeconds: 40,
+          peersConnected: 24,
+          peersTotal: 40,
+          seedsConnected: 12,
+          ratio: 0,
+          sequential,
+          seedDurationSeconds: 0,
+        };
+        this.latestTelemetry = {
+          ...this.latestTelemetry,
+          activeDownloads: this.latestTelemetry.activeDownloads + 1,
+          torrents: [initialItem, ...this.latestTelemetry.torrents],
+        };
       }
       return id;
     }

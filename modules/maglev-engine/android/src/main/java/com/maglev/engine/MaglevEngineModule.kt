@@ -16,6 +16,7 @@ class MaglevEngineModule : Module() {
     companion object {
         var isNativeLoaded = false
         var instance: MaglevEngineModule? = null
+        var latestTelemetryJson: String = ""
 
         init {
             try {
@@ -30,6 +31,7 @@ class MaglevEngineModule : Module() {
 
         @JvmStatic
         fun onTelemetryUpdate(jsonStr: String) {
+            latestTelemetryJson = jsonStr
             instance?.let { mod ->
                 mod.sendEvent("onTelemetryUpdate", mapOf("payload" to jsonStr))
             }
@@ -115,6 +117,10 @@ class MaglevEngineModule : Module() {
 
         Function("isNativeAvailable") {
             isNativeLoaded
+        }
+
+        Function("getTelemetry") {
+            latestTelemetryJson
         }
 
         Function("getDefaultStoragePath") {

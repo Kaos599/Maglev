@@ -13,7 +13,7 @@ function AppNavigation() {
 
   return (
     <>
-      <StatusBar style="light" backgroundColor={backgroundColor} />
+      <StatusBar style="light" />
       <Stack
         screenOptions={{
           headerShown: false,

@@ -3,7 +3,7 @@ import Svg, { Rect } from 'react-native-svg';
 
 interface IconProps {
   size?: number;
-  color?: string;
+  color?: string | any;
 }
 
 // 1. 8-Bit Pixel Grid (ALL Filter)

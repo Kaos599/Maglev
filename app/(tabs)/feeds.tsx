@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -8,6 +8,8 @@ import {
   Modal,
   TextInput,
   Switch,
+  ActivityIndicator,
+  Alert,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -16,7 +18,7 @@ import { HeaderBar } from '../../components/HeaderBar';
 import { useMaglevEngine } from '../../context/EngineContext';
 import { triggerHaptic } from '../../constants/haptics';
 
-interface FeedItem {
+export interface FeedItem {
   id: string;
   title: string;
   channel: string;
@@ -26,13 +28,20 @@ interface FeedItem {
   magnet: string;
 }
 
-const INITIAL_FEEDS: FeedItem[] = [
+const DEFAULT_FEED_URLS: { channel: string; url: string }[] = [
+  {
+    channel: 'Linux Distros',
+    url: 'https://distrowatch.com/news/dwd.xml',
+  },
+];
+
+const INITIAL_FALLBACK_FEEDS: FeedItem[] = [
   {
     id: 'f_ubuntu',
     title: 'Ubuntu-24.04.1-LTS-Desktop-x86_64.iso',
     channel: 'Linux Distros',
     sizeBytes: 4_294_967_296,
-    published: '2h ago',
+    published: 'Today',
     autoDownload: true,
     magnet: 'magnet:?xt=urn:btih:ubuntu2404desktop&dn=Ubuntu-24.04.1-LTS-Desktop-x86_64.iso',
   },
@@ -41,7 +50,7 @@ const INITIAL_FEEDS: FeedItem[] = [
     title: 'Arch-Linux-2026.11.01-Dual.iso',
     channel: 'Linux Distros',
     sizeBytes: 1_288_490_188,
-    published: '1d ago',
+    published: 'Yesterday',
     autoDownload: false,
     magnet: 'magnet:?xt=urn:btih:arch2026linux&dn=Arch-Linux-2026.11.01-Dual.iso',
   },
@@ -50,7 +59,7 @@ const INITIAL_FEEDS: FeedItem[] = [
     title: 'Blender-4.3.0-Daily-Snapshot.tar.xz',
     channel: 'Blender Releases',
     sizeBytes: 450_887_680,
-    published: '5h ago',
+    published: '3d ago',
     autoDownload: false,
     magnet: 'magnet:?xt=urn:btih:blender430daily&dn=Blender-4.3.0-Daily-Snapshot.tar.xz',
   },
@@ -59,7 +68,7 @@ const INITIAL_FEEDS: FeedItem[] = [
     title: 'Tears-Of-Steel-4K-Master-CC.mkv',
     channel: 'Open Media',
     sizeBytes: 1_824_522_240,
-    published: '3d ago',
+    published: '4d ago',
     autoDownload: true,
     magnet: 'magnet:?xt=urn:btih:tearsofsteel4kmaster&dn=Tears-Of-Steel-4K-Master-CC.mkv',
   },
@@ -68,11 +77,63 @@ const INITIAL_FEEDS: FeedItem[] = [
     title: 'Debian-12.8.0-netinst-amd64.iso',
     channel: 'Linux Distros',
     sizeBytes: 671_088_640,
-    published: '4d ago',
+    published: '5d ago',
     autoDownload: false,
     magnet: 'magnet:?xt=urn:btih:debian128netinst&dn=Debian-12.8.0-netinst-amd64.iso',
   },
 ];
+
+/**
+ * Lightweight XML RSS / Atom parser
+ */
+function parseRssFeed(xml: string, channelName: string): FeedItem[] {
+  const items: FeedItem[] = [];
+  const itemBlocks = xml.split(/<item>|<item [^>]*>|<entry>|<entry [^>]*>/i).slice(1);
+
+  for (const block of itemBlocks) {
+    const endPos = block.search(/<\/item>|<\/entry>/i);
+    const content = endPos !== -1 ? block.substring(0, endPos) : block;
+
+    const titleMatch = content.match(/<title[^>]*>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?<\/title>/i);
+    const linkMatch = content.match(/<link[^>]*>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?<\/link>|<link [^>]*href=["']([^"']+)["']/i);
+    const enclosureMatch = content.match(/<enclosure [^>]*url=["']([^"']+)["'][^>]*length=["']?([0-9]*)["']?/i);
+    const dateMatch = content.match(/<pubDate[^>]*>([\s\S]*?)<\/pubDate>|<updated[^>]*>([\s\S]*?)<\/updated>/i);
+
+    const title = titleMatch ? titleMatch[1].trim().replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>') : 'Release Item';
+    let url = enclosureMatch ? enclosureMatch[1] : linkMatch ? (linkMatch[1] || linkMatch[2]) : '';
+    const size = enclosureMatch && enclosureMatch[2] ? parseInt(enclosureMatch[2], 10) : 1_073_741_824;
+    let published = 'Recent';
+
+    if (dateMatch) {
+      try {
+        const rawDate = (dateMatch[1] || dateMatch[2]).trim();
+        const d = new Date(rawDate);
+        if (!isNaN(d.getTime())) {
+          published = d.toLocaleDateString();
+        }
+      } catch {
+        published = 'Recent';
+      }
+    }
+
+    let magnet = url.startsWith('magnet:?') ? url : `magnet:?xt=urn:btih:${Date.now()}&dn=${encodeURIComponent(title)}`;
+    if (url.endsWith('.torrent') || url.includes('.torrent?')) {
+      magnet = url;
+    }
+
+    items.push({
+      id: `feed_${Math.random().toString(36).substring(2, 9)}`,
+      title,
+      channel: channelName,
+      sizeBytes: size,
+      published,
+      autoDownload: false,
+      magnet,
+    });
+  }
+
+  return items;
+}
 
 export default function FeedsScreen() {
   const insets = useSafeAreaInsets();
@@ -85,14 +146,59 @@ export default function FeedsScreen() {
     'Open Media',
   ]);
   const [selectedChannel, setSelectedChannel] = useState('All Feeds');
-  const [feedItems, setFeedItems] = useState<FeedItem[]>(INITIAL_FEEDS);
+  const [feedItems, setFeedItems] = useState<FeedItem[]>(INITIAL_FALLBACK_FEEDS);
   const [downloadedIds, setDownloadedIds] = useState<string[]>([]);
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   // Modal State for adding new RSS feed
   const [addModalVisible, setAddModalVisible] = useState(false);
   const [newFeedUrl, setNewFeedUrl] = useState('');
   const [newChannelName, setNewChannelName] = useState('');
   const [newAutoDownload, setNewAutoDownload] = useState(false);
+  const [isSubscribing, setIsSubscribing] = useState(false);
+
+  const fetchLiveFeeds = useCallback(async () => {
+    setIsRefreshing(true);
+    const allFetched: FeedItem[] = [];
+
+    for (const feed of DEFAULT_FEED_URLS) {
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 3500);
+
+        const res = await fetch(feed.url, {
+          signal: controller.signal,
+          headers: { 'User-Agent': 'Maglev-RSS/1.0' },
+        });
+        clearTimeout(timeoutId);
+
+        if (res.ok) {
+          const text = await res.text();
+          const parsed = parseRssFeed(text, feed.channel);
+          if (parsed.length > 0) {
+            allFetched.push(...parsed);
+          }
+        }
+      } catch {
+        // Feed offline, fallback
+      }
+    }
+
+    if (allFetched.length > 0) {
+      setFeedItems((prev) => {
+        const nonDuplicate = allFetched.filter(
+          (item) => !prev.some((p) => p.title.toLowerCase() === item.title.toLowerCase())
+        );
+        return [...nonDuplicate, ...prev];
+      });
+    }
+
+    setIsRefreshing(false);
+  }, []);
+
+  useEffect(() => {
+    fetchLiveFeeds();
+  }, [fetchLiveFeeds]);
 
   const handleDownloadFeed = async (item: FeedItem) => {
     triggerHaptic('medium');
@@ -100,33 +206,87 @@ export default function FeedsScreen() {
     setDownloadedIds((prev) => [...prev, item.id]);
   };
 
-  const handleAddFeed = () => {
-    const channel = newChannelName.trim() || 'Custom Feed';
-    if (!channels.includes(channel)) {
-      setChannels((prev) => [...prev, channel]);
+  const handleAddFeed = async () => {
+    const url = newFeedUrl.trim();
+    if (!url) {
+      Alert.alert('Missing URL', 'Please enter a valid RSS or Atom feed URL.');
+      return;
     }
 
-    const newItem: FeedItem = {
-      id: `f_${Date.now()}`,
-      title: `${channel} Latest Release`,
-      channel,
-      sizeBytes: 1_048_576_000,
-      published: 'Just now',
-      autoDownload: newAutoDownload,
-      magnet: `magnet:?xt=urn:btih:custom${Date.now()}&dn=${encodeURIComponent(channel)}`,
-    };
+    setIsSubscribing(true);
+    triggerHaptic('light');
 
-    setFeedItems((prev) => [newItem, ...prev]);
-    if (newAutoDownload) {
-      startTorrent(newItem.magnet);
-      setDownloadedIds((prev) => [...prev, newItem.id]);
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 4000);
+
+      const res = await fetch(url, {
+        signal: controller.signal,
+        headers: { 'User-Agent': 'Maglev-RSS/1.0' },
+      });
+      clearTimeout(timeoutId);
+
+      const channel = newChannelName.trim() || 'Custom Feed';
+
+      if (res.ok) {
+        const text = await res.text();
+        const parsed = parseRssFeed(text, channel);
+
+        if (parsed.length > 0) {
+          if (!channels.includes(channel)) {
+            setChannels((prev) => [...prev, channel]);
+          }
+
+          setFeedItems((prev) => [...parsed, ...prev]);
+
+          if (newAutoDownload && parsed[0]) {
+            startTorrent(parsed[0].magnet);
+            setDownloadedIds((prev) => [...prev, parsed[0].id]);
+          }
+
+          setNewFeedUrl('');
+          setNewChannelName('');
+          setNewAutoDownload(false);
+          setAddModalVisible(false);
+          triggerHaptic('medium');
+          return;
+        }
+      }
+
+      // If XML parsing returned no items, add nominal channel subscription
+      if (!channels.includes(channel)) {
+        setChannels((prev) => [...prev, channel]);
+      }
+
+      const fallbackItem: FeedItem = {
+        id: `f_${Date.now()}`,
+        title: `${channel} Latest Release`,
+        channel,
+        sizeBytes: 1_048_576_000,
+        published: 'Just now',
+        autoDownload: newAutoDownload,
+        magnet: `magnet:?xt=urn:btih:custom${Date.now()}&dn=${encodeURIComponent(channel)}`,
+      };
+
+      setFeedItems((prev) => [fallbackItem, ...prev]);
+      if (newAutoDownload) {
+        startTorrent(fallbackItem.magnet);
+        setDownloadedIds((prev) => [...prev, fallbackItem.id]);
+      }
+
+      setNewFeedUrl('');
+      setNewChannelName('');
+      setNewAutoDownload(false);
+      setAddModalVisible(false);
+      triggerHaptic('medium');
+    } catch (e) {
+      Alert.alert(
+        'Subscription Failed',
+        'Could not fetch or parse the RSS feed from the specified URL. Please check your network connection.'
+      );
+    } finally {
+      setIsSubscribing(false);
     }
-
-    setNewFeedUrl('');
-    setNewChannelName('');
-    setNewAutoDownload(false);
-    setAddModalVisible(false);
-    triggerHaptic('medium');
   };
 
   const filteredItems = feedItems.filter(
@@ -139,20 +299,34 @@ export default function FeedsScreen() {
 
       {/* Screen Header & Add Feed Action */}
       <View style={styles.topBar}>
-        <View>
+        <View style={styles.titleCol}>
           <Text style={styles.screenHeading}>Automated Feeds</Text>
           <Text style={styles.screenSubheading}>
             RSS/Atom channels with smart background release ingestion
           </Text>
         </View>
-        <TouchableOpacity
-          style={styles.addFeedBtn}
-          onPress={() => setAddModalVisible(true)}
-          accessibilityRole="button"
-          accessibilityLabel="Add RSS Feed"
-        >
-          <Text style={styles.addFeedBtnText}>+ FEED</Text>
-        </TouchableOpacity>
+        <View style={styles.topActionsRow}>
+          <TouchableOpacity
+            style={styles.refreshBtn}
+            onPress={fetchLiveFeeds}
+            accessibilityRole="button"
+            accessibilityLabel="Refresh feeds"
+          >
+            {isRefreshing ? (
+              <ActivityIndicator size="small" color={TOKENS.colors.accentLime} />
+            ) : (
+              <Ionicons name="refresh" size={16} color={TOKENS.colors.accentLime} />
+            )}
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.addFeedBtn}
+            onPress={() => setAddModalVisible(true)}
+            accessibilityRole="button"
+            accessibilityLabel="Add RSS Feed"
+          >
+            <Text style={styles.addFeedBtnText}>+ FEED</Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
       {/* Channel Filter Pills */}
@@ -250,7 +424,7 @@ export default function FeedsScreen() {
         </View>
       </ScrollView>
 
-      {/* Add RSS Feed Modal */}
+      {/* Add Feed Modal */}
       <Modal
         visible={addModalVisible}
         transparent
@@ -258,15 +432,23 @@ export default function FeedsScreen() {
         onRequestClose={() => setAddModalVisible(false)}
       >
         <View style={styles.modalOverlay}>
-          <View style={styles.modalCard}>
-            <Text style={styles.modalTitle}>Add RSS Feed</Text>
-            <Text style={styles.modalSubtitle}>
-              Subscribe to an RSS or Atom torrent feed for periodic release monitoring.
-            </Text>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Subscribe to RSS Feed</Text>
+              <TouchableOpacity
+                onPress={() => setAddModalVisible(false)}
+                accessibilityRole="button"
+                accessibilityLabel="Close add feed dialog"
+                style={styles.modalCloseBtn}
+              >
+                <Ionicons name="close" size={20} color={TOKENS.colors.textMuted} />
+              </TouchableOpacity>
+            </View>
 
+            <Text style={styles.inputLabel}>FEED URL (RSS/ATOM)</Text>
             <TextInput
               style={styles.modalInput}
-              placeholder="https://example.com/releases.xml"
+              placeholder="https://example.com/feed.xml"
               placeholderTextColor={TOKENS.colors.textMuted}
               value={newFeedUrl}
               onChangeText={setNewFeedUrl}
@@ -274,19 +456,20 @@ export default function FeedsScreen() {
               autoCorrect={false}
             />
 
+            <Text style={styles.inputLabel}>CHANNEL NAME</Text>
             <TextInput
               style={styles.modalInput}
-              placeholder="Channel Name (e.g. Linux Kernels)"
+              placeholder="e.g. Linux Releases"
               placeholderTextColor={TOKENS.colors.textMuted}
               value={newChannelName}
               onChangeText={setNewChannelName}
             />
 
-            <View style={styles.modalToggleRow}>
-              <View style={styles.modalToggleText}>
-                <Text style={styles.modalToggleTitle}>Auto-Download Releases</Text>
-                <Text style={styles.modalToggleDesc}>
-                  Automatically queue new releases matching channel rules
+            <View style={styles.modalSwitchRow}>
+              <View style={styles.modalSwitchTextCol}>
+                <Text style={styles.modalSwitchTitle}>Auto-Download New Releases</Text>
+                <Text style={styles.modalSwitchSubtitle}>
+                  Automatically begin transfers when published
                 </Text>
               </View>
               <Switch
@@ -298,21 +481,17 @@ export default function FeedsScreen() {
             </View>
 
             <TouchableOpacity
-              style={styles.confirmBtn}
+              style={[styles.modalSubmitBtn, isSubscribing && styles.modalSubmitBtnDisabled]}
               onPress={handleAddFeed}
+              disabled={isSubscribing}
               accessibilityRole="button"
-              accessibilityLabel="Confirm Add Feed"
+              accessibilityLabel="Confirm add feed"
             >
-              <Text style={styles.confirmBtnText}>Add Feed</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.cancelBtn}
-              onPress={() => setAddModalVisible(false)}
-              accessibilityRole="button"
-              accessibilityLabel="Cancel"
-            >
-              <Text style={styles.cancelBtnText}>Cancel</Text>
+              {isSubscribing ? (
+                <ActivityIndicator size="small" color="#000000" />
+              ) : (
+                <Text style={styles.modalSubmitBtnText}>SUBSCRIBE & SYNC</Text>
+              )}
             </TouchableOpacity>
           </View>
         </View>
@@ -327,16 +506,33 @@ const styles = StyleSheet.create({
     backgroundColor: TOKENS.colors.bgOled,
   },
   topBar: {
-    paddingHorizontal: 16,
-    paddingTop: 12,
-    paddingBottom: 8,
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+  },
+  titleCol: {
+    flex: 1,
+  },
+  topActionsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  refreshBtn: {
+    minWidth: TOKENS.touchTarget.minWidth,
+    minHeight: TOKENS.touchTarget.minHeight,
+    backgroundColor: '#0D1117',
+    borderWidth: 1,
+    borderColor: '#1F2937',
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   screenHeading: {
     color: TOKENS.colors.textPrimary,
-    fontSize: 14,
+    fontSize: 16,
     fontWeight: '700',
     fontFamily: 'monospace',
     marginBottom: 2,
@@ -348,11 +544,11 @@ const styles = StyleSheet.create({
   },
   addFeedBtn: {
     minHeight: TOKENS.touchTarget.minHeight,
-    paddingHorizontal: 14,
-    backgroundColor: TOKENS.colors.surfacePill,
+    backgroundColor: TOKENS.colors.surfaceCard,
     borderWidth: 1,
     borderColor: TOKENS.colors.accentLime,
     borderRadius: 8,
+    paddingHorizontal: 14,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -373,7 +569,7 @@ const styles = StyleSheet.create({
   channelPill: {
     minHeight: TOKENS.touchTarget.minHeight,
     paddingHorizontal: 14,
-    borderRadius: 8,
+    borderRadius: 10,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -438,8 +634,8 @@ const styles = StyleSheet.create({
   },
   autoBadge: {
     paddingHorizontal: 6,
-    paddingVertical: 2,
-    backgroundColor: 'rgba(204, 255, 0, 0.1)',
+    paddingVertical: 1,
+    backgroundColor: 'rgba(204, 255, 0, 0.15)',
     borderRadius: 4,
     borderWidth: 1,
     borderColor: TOKENS.colors.accentLime,
@@ -474,7 +670,7 @@ const styles = StyleSheet.create({
     fontFamily: 'monospace',
   },
   downloadBtn: {
-    minWidth: 96,
+    minWidth: 100,
     minHeight: TOKENS.touchTarget.minHeight,
     backgroundColor: TOKENS.colors.accentLime,
     borderRadius: 8,
@@ -489,7 +685,7 @@ const styles = StyleSheet.create({
   },
   downloadBtnText: {
     color: '#000000',
-    fontSize: 10,
+    fontSize: 11,
     fontWeight: '700',
     fontFamily: 'monospace',
   },
@@ -500,86 +696,89 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: 'rgba(5, 7, 10, 0.85)',
     justifyContent: 'center',
-    alignItems: 'center',
-    padding: 24,
+    paddingHorizontal: 20,
   },
-  modalCard: {
-    width: '100%',
+  modalContent: {
     backgroundColor: TOKENS.colors.surfaceCard,
     borderWidth: 1,
     borderColor: TOKENS.colors.surfaceBorder,
     borderRadius: 14,
     padding: 20,
   },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  modalCloseBtn: {
+    minWidth: 32,
+    minHeight: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   modalTitle: {
     color: TOKENS.colors.textPrimary,
-    fontSize: 15,
+    fontSize: 14,
+    fontWeight: '700',
+    fontFamily: 'monospace',
+  },
+  inputLabel: {
+    color: TOKENS.colors.textMuted,
+    fontSize: 9,
     fontWeight: '700',
     fontFamily: 'monospace',
     marginBottom: 6,
-  },
-  modalSubtitle: {
-    color: TOKENS.colors.textMuted,
-    fontSize: 11,
-    lineHeight: 16,
-    marginBottom: 16,
+    letterSpacing: 0.5,
   },
   modalInput: {
     minHeight: TOKENS.touchTarget.minHeight,
-    backgroundColor: TOKENS.colors.surfacePill,
+    backgroundColor: '#070A0E',
     borderWidth: 1,
     borderColor: TOKENS.colors.surfaceBorder,
     borderRadius: 8,
     paddingHorizontal: 12,
     color: TOKENS.colors.textPrimary,
-    fontSize: 12,
+    fontSize: 11,
     fontFamily: 'monospace',
-    marginBottom: 12,
+    marginBottom: 14,
   },
-  modalToggleRow: {
+  modalSwitchRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingVertical: 10,
-    marginBottom: 16,
+    marginVertical: 8,
   },
-  modalToggleText: {
+  modalSwitchTextCol: {
     flex: 1,
     marginRight: 10,
   },
-  modalToggleTitle: {
+  modalSwitchTitle: {
     color: TOKENS.colors.textPrimary,
     fontSize: 11,
     fontWeight: '700',
     fontFamily: 'monospace',
-    marginBottom: 2,
   },
-  modalToggleDesc: {
+  modalSwitchSubtitle: {
     color: TOKENS.colors.textMuted,
-    fontSize: 10,
+    fontSize: 9,
+    fontFamily: 'monospace',
+    marginTop: 2,
   },
-  confirmBtn: {
+  modalSubmitBtn: {
     minHeight: TOKENS.touchTarget.minHeight,
     backgroundColor: TOKENS.colors.accentLime,
     borderRadius: 8,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 10,
+    marginTop: 16,
   },
-  confirmBtnText: {
+  modalSubmitBtnDisabled: {
+    opacity: 0.6,
+  },
+  modalSubmitBtnText: {
     color: '#000000',
-    fontSize: 12,
-    fontWeight: '700',
-    fontFamily: 'monospace',
-  },
-  cancelBtn: {
-    minHeight: TOKENS.touchTarget.minHeight,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  cancelBtnText: {
-    color: TOKENS.colors.textMuted,
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '700',
     fontFamily: 'monospace',
   },

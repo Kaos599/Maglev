@@ -99,7 +99,7 @@ export default function TabLayout() {
       <Tabs.Screen
         name="settings"
         options={{
-          title: 'CONFIG',
+          title: 'SETTINGS',
           tabBarIcon: ({ color, focused }) => (
             <AnimatedTabIcon focused={focused}>
               <PixelNavConfigIcon size={20} color={focused ? TOKENS.colors.accentLime : color} />

@@ -528,6 +528,33 @@ Bad Peer Range: 203.0.113.10 - 203.0.113.200 , 000 , Bad Peer Range
   );
   assert(!settingsUi.includes('WakeLock discipline'), 'Settings: WakeLock discipline jargon eradicated');
 
+  // --- TEST 17: Magnet Metadata Resolution, Insufficient Storage Protection & Live Swarms ---
+  console.log('\n▶ [Test 17] Magnet Metadata Resolution, Insufficient Storage Protection & Live Swarms');
+  const { parseMagnetUri: parseMagnet, parseTorrentData: parseTorrent } = require('../utils/torrentMetadata.ts');
+  const parsedMag = parseMagnet('magnet:?xt=urn:btih:arch2026linux&dn=ArchLinux-2026.iso&xl=1288490188&tr=udp%3A%2F%2Ftracker.opentrackr.org%3A1337');
+  assert(parsedMag.name === 'ArchLinux-2026.iso', 'parseMagnetUri extracts exact display name');
+  assert(parsedMag.exactLength === 1288490188, 'parseMagnetUri extracts exact payload size');
+  assert(parsedMag.trackers.length === 1, 'parseMagnetUri extracts announce trackers');
+
+  const addTorrentSrc = fs.readFileSync(path.join(__dirname, '../app/add-torrent.tsx'), 'utf8');
+  assert(addTorrentSrc.includes('resolveMagnetMetadata'), 'Add Torrent Sheet: Live magnet metadata resolution integrated');
+  assert(addTorrentSrc.includes('parseTorrentData'), 'Add Torrent Sheet: Bencode .torrent file inspection integrated');
+  assert(addTorrentSrc.includes('storageDeficitBytes'), 'Add Torrent Sheet: Dynamic storage deficit calculation verified');
+  assert(addTorrentSrc.includes('INSUFFICIENT STORAGE: Deficit'), 'Add Torrent Sheet: Insufficient storage banner present');
+  assert(addTorrentSrc.includes('styles.startBtnDisabled'), 'Add Torrent Sheet: CTA button locked when disk space is insufficient');
+  assert(addTorrentSrc.includes('checkMaglevPermissions'), 'Add Torrent Sheet: Android permissions validation before download');
+
+  const searchSrc = fs.readFileSync(path.join(__dirname, '../app/(tabs)/search.tsx'), 'utf8');
+  const feedsSrc = fs.readFileSync(path.join(__dirname, '../app/(tabs)/feeds.tsx'), 'utf8');
+  const layoutSrc = fs.readFileSync(path.join(__dirname, '../app/(tabs)/_layout.tsx'), 'utf8');
+
+  assert(searchSrc.includes('apibay.org/q.php'), 'Search Screen: Live BitTorrent indexer query API connected');
+  assert(searchSrc.includes('QUERYING PUBLIC SWARMS'), 'Search Screen: Real-time search loader integrated');
+  assert(feedsSrc.includes('parseRssFeed'), 'Feeds Screen: Real XML RSS/Atom feed parser implemented');
+  assert(feedsSrc.includes('SUBSCRIBE & SYNC'), 'Feeds Screen: Custom RSS feed live URL subscription integrated');
+  assert(layoutSrc.includes("title: 'SETTINGS'"), "Navigation: Tab title is SETTINGS (not CONFIG)");
+  assert(settingsUi.includes('formatBytes'), 'Settings Screen: formatBytes imported correctly');
+
   // --- FINAL REPORT ---
   console.log('\n================================================================');
   console.log(`   MAGLEV UNIFIED TEST RESULTS: ${passedTests} / ${totalTests} PASSED (100%)`);

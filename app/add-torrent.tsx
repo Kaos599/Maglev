@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   View,
   Text,
@@ -7,8 +7,10 @@ import {
   TouchableOpacity,
   ScrollView,
   Switch,
+  ActivityIndicator,
+  Alert,
 } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as DocumentPicker from 'expo-document-picker';
@@ -16,26 +18,38 @@ import * as FileSystem from 'expo-file-system';
 import { formatBytes, TOKENS } from '../constants/tokens';
 import { useMaglevEngine } from '../context/EngineContext';
 import { triggerHaptic } from '../constants/haptics';
-
-interface MockFileItem {
-  id: number;
-  name: string;
-  size: number;
-  selected: boolean;
-  priority: 0 | 1 | 2; // 0 = skip, 1 = normal, 2 = high
-}
+import {
+  ParsedTorrentFile,
+  parseTorrentData,
+  resolveMagnetMetadata,
+  parseMagnetUri,
+} from '../utils/torrentMetadata';
+import { checkMaglevPermissions, requestMaglevPermissions } from '../utils/permissions';
 
 export default function AddTorrentSheet() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const searchParams = useLocalSearchParams<{ uri?: string; magnet?: string }>();
   const { defaultStoragePath, startTorrent, setFilePriority } = useMaglevEngine();
 
   const [magnetInput, setMagnetInput] = useState('');
   const [customPath, setCustomPath] = useState('');
   const [isEditingPath, setIsEditingPath] = useState(false);
   const [sequential, setSequential] = useState(false);
-  const [freeDiskBytes, setFreeDiskBytes] = useState<number>(51_539_607_552); // Default 48 GB
+  const [freeDiskBytes, setFreeDiskBytes] = useState<number>(51_539_607_552); // Default 48 GB fallback
 
+  // Metadata Resolution States
+  const [isResolving, setIsResolving] = useState(false);
+  const [resolvedName, setResolvedName] = useState<string>('');
+  const [infoHash, setInfoHash] = useState<string>('');
+  const [trackerCount, setTrackerCount] = useState<number>(0);
+  const [isPendingSwarm, setIsPendingSwarm] = useState(false);
+
+  /* Payload files state */
+  const [files, setFiles] = useState<ParsedTorrentFile[]>([]);
+  const resolveDebounceRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Initial Disk Free Space & Incoming Magnet Detection
   useEffect(() => {
     let isMounted = true;
     (async () => {
@@ -45,13 +59,98 @@ export default function AddTorrentSheet() {
           setFreeDiskBytes(free);
         }
       } catch {
-        // Fallback
+        // Fallback disk query
       }
     })();
+
+    // Handle incoming search or clipboard param
+    const incomingUri = searchParams.uri || searchParams.magnet;
+    if (incomingUri && typeof incomingUri === 'string') {
+      onMagnetChange(incomingUri);
+    }
+
     return () => {
       isMounted = false;
     };
+  }, [searchParams]);
+
+  const handleResolveMagnet = useCallback(async (uri: string) => {
+    const trimmed = uri.trim();
+    if (!trimmed.startsWith('magnet:?xt=')) return;
+
+    setIsResolving(true);
+    triggerHaptic('light');
+
+    try {
+      const parsed = parseMagnetUri(trimmed);
+      setInfoHash(parsed.infoHash);
+      setResolvedName(parsed.name);
+      setTrackerCount(parsed.trackers.length);
+
+      const metadata = await resolveMagnetMetadata(trimmed);
+      setInfoHash(metadata.infoHash);
+      setResolvedName(metadata.name);
+      setTrackerCount(metadata.trackers.length);
+      setIsPendingSwarm(metadata.isPendingSwarm);
+
+      if (metadata.files && metadata.files.length > 0) {
+        setFiles(metadata.files);
+      } else {
+        setFiles([
+          {
+            id: 0,
+            name: metadata.name || 'Transfer Payload',
+            path: metadata.name || 'Transfer Payload',
+            size: metadata.totalSize || 1_073_741_824,
+            selected: true,
+            priority: 1,
+          },
+        ]);
+      }
+      triggerHaptic('medium');
+    } catch (err) {
+      // Resolution fallback
+      const parsed = parseMagnetUri(trimmed);
+      setFiles([
+        {
+          id: 0,
+          name: parsed.name || 'Transfer Payload',
+          path: parsed.name || 'Transfer Payload',
+          size: parsed.exactLength || 1_073_741_824,
+          selected: true,
+          priority: 1,
+        },
+      ]);
+    } finally {
+      setIsResolving(false);
+    }
   }, []);
+
+  const onMagnetChange = (text: string) => {
+    setMagnetInput(text);
+
+    if (resolveDebounceRef.current) {
+      clearTimeout(resolveDebounceRef.current);
+    }
+
+    if (text.trim().startsWith('magnet:?xt=')) {
+      const quickParsed = parseMagnetUri(text);
+      setInfoHash(quickParsed.infoHash);
+      setResolvedName(quickParsed.name);
+      setTrackerCount(quickParsed.trackers.length);
+
+      // Debounce network probe for cache metadata
+      resolveDebounceRef.current = setTimeout(() => {
+        handleResolveMagnet(text);
+      }, 400);
+    } else {
+      setFiles([]);
+      setResolvedName('');
+      setInfoHash('');
+      setTrackerCount(0);
+      setIsPendingSwarm(false);
+    }
+  };
 
   const handleBrowseTorrentFile = async () => {
     triggerHaptic('light');
@@ -60,38 +159,46 @@ export default function AddTorrentSheet() {
         type: ['*/*', 'application/x-bittorrent'],
         copyToCacheDirectory: true,
       });
+
       if (!res.canceled && res.assets && res.assets.length > 0) {
         const asset = res.assets[0];
-        const fileName = asset.name || 'custom.torrent';
-        const cleanName = fileName.replace(/\.torrent$/i, '');
-        const fileSize = asset.size || 2_147_483_648;
-        setMagnetInput(`file://${asset.uri}`);
-        setFiles([
-          { id: 0, name: cleanName, size: fileSize, selected: true, priority: 1 },
-          { id: 1, name: `${cleanName}.sha256`, size: 1024, selected: true, priority: 1 },
-        ]);
-        triggerHaptic('medium');
+        setIsResolving(true);
+
+        try {
+          // Read actual bytes from local file
+          const base64 = await FileSystem.readAsStringAsync(asset.uri, {
+            encoding: FileSystem.EncodingType.Base64,
+          });
+
+          const binaryStr = atob(base64);
+          const bytes = new Uint8Array(binaryStr.length);
+          for (let i = 0; i < binaryStr.length; i++) {
+            bytes[i] = binaryStr.charCodeAt(i);
+          }
+
+          const parsed = parseTorrentData(bytes);
+          setMagnetInput(`file://${asset.uri}`);
+          setResolvedName(parsed.name);
+          setFiles(parsed.files);
+          setTrackerCount(parsed.trackers.length);
+          setIsPendingSwarm(false);
+          triggerHaptic('medium');
+        } catch (readErr) {
+          // Fallback if raw bencode read fails
+          const fileName = asset.name || 'custom.torrent';
+          const cleanName = fileName.replace(/\.torrent$/i, '');
+          const fileSize = asset.size || 1_073_741_824;
+          setMagnetInput(`file://${asset.uri}`);
+          setResolvedName(cleanName);
+          setFiles([
+            { id: 0, name: cleanName, path: cleanName, size: fileSize, selected: true, priority: 1 },
+          ]);
+        } finally {
+          setIsResolving(false);
+        }
       }
     } catch {
       // User cancelled
-    }
-  };
-
-  // Multi-file selection mock items
-  const [files, setFiles] = useState<MockFileItem[]>([
-    { id: 0, name: 'ArchLinux-2026.11.01-x86_64.iso', size: 1_288_490_188, selected: true, priority: 1 },
-    { id: 1, name: 'sha256sums.txt', size: 1024, selected: true, priority: 1 },
-    { id: 2, name: 'release-notes.txt', size: 4096, selected: true, priority: 1 },
-  ]);
-
-  const onMagnetChange = (text: string) => {
-    setMagnetInput(text);
-    const match = text.match(/dn=([^&]+)/);
-    if (match && match[1]) {
-      const decodedName = decodeURIComponent(match[1].replace(/\+/g, ' '));
-      setFiles((prev) =>
-        prev.map((f) => (f.id === 0 ? { ...f, name: decodedName } : f))
-      );
     }
   };
 
@@ -128,7 +235,9 @@ export default function AddTorrentSheet() {
 
   const selectAll = () => {
     triggerHaptic('light');
-    setFiles((prev) => prev.map((f) => ({ ...f, selected: true, priority: f.priority === 0 ? 1 : f.priority })));
+    setFiles((prev) =>
+      prev.map((f) => ({ ...f, selected: true, priority: f.priority === 0 ? 1 : f.priority }))
+    );
   };
 
   const deselectAll = () => {
@@ -140,7 +249,7 @@ export default function AddTorrentSheet() {
     triggerHaptic('light');
     setFiles((prev) =>
       prev.map((f) => {
-        const matches = f.name.toLowerCase().endsWith(ext);
+        const matches = f.name.toLowerCase().endsWith(ext.toLowerCase());
         return {
           ...f,
           selected: matches,
@@ -150,26 +259,53 @@ export default function AddTorrentSheet() {
     );
   };
 
+  const selectedPayloadBytes = files
+    .filter((f) => f.selected && f.priority > 0)
+    .reduce((acc, f) => acc + f.size, 0);
+
+  const hasEnoughSpace = freeDiskBytes >= selectedPayloadBytes;
+  const storageDeficitBytes = Math.max(0, selectedPayloadBytes - freeDiskBytes);
+
   const handleStartDownload = async () => {
     triggerHaptic('medium');
-    const uri = magnetInput.trim() || 'magnet:?xt=urn:btih:arch2026linux&dn=ArchLinux-2026.11.01-x86_64.iso';
+
+    const uri = magnetInput.trim();
+    if (!uri) {
+      Alert.alert('Missing Magnet Link', 'Please enter a magnet link or select a .torrent file.');
+      return;
+    }
+
+    // Check disk storage space before proceeding
+    if (!hasEnoughSpace) {
+      Alert.alert(
+        'Insufficient Disk Storage',
+        `This payload requires ${formatBytes(selectedPayloadBytes)}, but only ${formatBytes(
+          freeDiskBytes
+        )} is free on device. Deficit: ${formatBytes(storageDeficitBytes)}. Please free up disk space first.`
+      );
+      return;
+    }
+
+    // Check Android permissions
+    const permStatus = await checkMaglevPermissions();
+    if (!permStatus.isPermissionGranted) {
+      await requestMaglevPermissions();
+    }
+
     const finalPath = customPath.trim() || defaultStoragePath;
     const selectedIndices = files.filter((f) => f.selected && f.priority > 0).map((f) => f.id);
+
     const newId = await startTorrent(uri, finalPath, sequential, selectedIndices);
+
     // Apply High priorities if configured
     for (const file of files) {
       if (file.priority === 2) {
         await setFilePriority(newId, file.id, 2);
       }
     }
+
     router.back();
   };
-
-  const selectedPayloadBytes = files
-    .filter((f) => f.selected && f.priority > 0)
-    .reduce((acc, f) => acc + f.size, 0);
-
-  const hasEnoughSpace = freeDiskBytes >= selectedPayloadBytes;
 
   return (
     <View style={[styles.container, { paddingTop: insets.top + 10, paddingBottom: insets.bottom + 10 }]}>
@@ -202,7 +338,9 @@ export default function AddTorrentSheet() {
           {magnetInput.length > 0 && (
             <TouchableOpacity
               style={styles.clearBtn}
-              onPress={() => setMagnetInput('')}
+              onPress={() => onMagnetChange('')}
+              accessibilityRole="button"
+              accessibilityLabel="Clear magnet link"
             >
               <Ionicons name="close-circle" size={16} color={TOKENS.colors.textMuted} />
             </TouchableOpacity>
@@ -222,6 +360,44 @@ export default function AddTorrentSheet() {
             <Text style={styles.browseFileText}>BROWSE .TORRENT FILE</Text>
           </TouchableOpacity>
         </View>
+
+        {/* Live Swarm Metadata Resolution Banner */}
+        {isResolving && (
+          <View style={styles.metadataResolvingCard}>
+            <ActivityIndicator size="small" color={TOKENS.colors.accentLime} />
+            <View style={styles.resolvingTextCol}>
+              <Text style={styles.resolvingTitle}>SCANNING SWARM METADATA...</Text>
+              <Text style={styles.resolvingSubtitle}>
+                {infoHash ? `Hash: ${infoHash.slice(0, 16)}... • Querying caches & DHT` : 'Reading torrent dictionary'}
+              </Text>
+            </View>
+          </View>
+        )}
+
+        {/* Resolved Torrent HUD */}
+        {resolvedName.length > 0 && !isResolving && (
+          <View style={styles.resolvedHudCard}>
+            <View style={styles.resolvedHeaderRow}>
+              <View style={styles.resolvedDot} />
+              <Text style={styles.resolvedNameText} numberOfLines={1}>
+                {resolvedName}
+              </Text>
+            </View>
+            <View style={styles.resolvedMetaRow}>
+              {infoHash ? (
+                <Text style={styles.resolvedHashText}>
+                  HASH: {infoHash.slice(0, 12)}...
+                </Text>
+              ) : null}
+              <Text style={styles.resolvedTrackerText}>
+                {trackerCount > 0 ? `${trackerCount} TRACKERS FOUND` : 'DHT SWARM DISCOVERY'}
+              </Text>
+              {isPendingSwarm && (
+                <Text style={styles.resolvedPendingBadge}>METADATA RESOLVING</Text>
+              )}
+            </View>
+          </View>
+        )}
 
         {/* Destination Path Pill */}
         <Text style={styles.sectionLabel}>Storage Destination</Text>
@@ -283,7 +459,9 @@ export default function AddTorrentSheet() {
           {!hasEnoughSpace ? (
             <View style={styles.storageAlertBox}>
               <Ionicons name="warning-outline" size={14} color="#FF3366" />
-              <Text style={styles.storageAlertText}>Insufficient storage space on destination volume</Text>
+              <Text style={styles.storageAlertText}>
+                {`INSUFFICIENT STORAGE: Deficit ${formatBytes(storageDeficitBytes)}. Free up space to continue.`}
+              </Text>
             </View>
           ) : (
             <Text style={styles.storageHintText}>
@@ -293,94 +471,117 @@ export default function AddTorrentSheet() {
         </View>
 
         {/* Batch File Controls */}
-        <View style={styles.filesHeaderRow}>
-          <Text style={styles.sectionLabel}>Files & Contents</Text>
-          <View style={styles.batchControls}>
-            <TouchableOpacity
-              style={styles.batchBtn}
-              onPress={selectAll}
-              accessibilityRole="button"
-              accessibilityLabel="Select all files"
-            >
-              <Text style={styles.batchBtnText}>Select All</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.batchBtn}
-              onPress={deselectAll}
-              accessibilityRole="button"
-              accessibilityLabel="Deselect all files"
-            >
-              <Text style={styles.batchBtnText}>Deselect</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.batchBtnChip}
-              onPress={() => filterByExt('.iso')}
-            >
-              <Text style={styles.batchBtnChipText}>.iso</Text>
-            </TouchableOpacity>
+        {files.length > 0 && (
+          <View style={styles.filesHeaderRow}>
+            <Text style={styles.sectionLabel}>
+              {`Files & Contents (${files.filter((f) => f.selected).length}/${files.length})`}
+            </Text>
+            <View style={styles.batchControls}>
+              <TouchableOpacity
+                style={styles.batchBtn}
+                onPress={selectAll}
+                accessibilityRole="button"
+                accessibilityLabel="Select all files"
+              >
+                <Text style={styles.batchBtnText}>Select All</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.batchBtn}
+                onPress={deselectAll}
+                accessibilityRole="button"
+                accessibilityLabel="Deselect all files"
+              >
+                <Text style={styles.batchBtnText}>Deselect</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.batchBtnChip}
+                onPress={() => filterByExt('.iso')}
+              >
+                <Text style={styles.batchBtnChipText}>.iso</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.batchBtnChip}
+                onPress={() => filterByExt('.mkv')}
+              >
+                <Text style={styles.batchBtnChipText}>.mkv</Text>
+              </TouchableOpacity>
+            </View>
           </View>
-        </View>
+        )}
 
         {/* Files Checklist */}
-        <View style={styles.filesList}>
-          {files.map((file) => (
-            <TouchableOpacity
-              key={file.id}
-              style={styles.fileRow}
-              onPress={() => toggleFile(file.id)}
-              accessibilityRole="checkbox"
-              accessibilityState={{ checked: file.selected }}
-            >
-              <View
-                style={[
-                  styles.checkbox,
-                  file.selected ? styles.checkboxSelected : styles.checkboxUnselected,
-                ]}
-              >
-                {file.selected && <Text style={styles.checkmark}>✕</Text>}
-              </View>
-              <View style={styles.fileInfo}>
-                <Text
-                  style={[
-                    styles.fileName,
-                    (!file.selected || file.priority === 0) && styles.fileNameDisabled,
-                  ]}
-                  numberOfLines={1}
-                >
-                  {file.name}
-                </Text>
-                <Text style={styles.fileSize}>{formatBytes(file.size)}</Text>
-              </View>
+        {files.length > 0 ? (
+          <View style={styles.filesList}>
+            {files.map((file) => (
               <TouchableOpacity
-                style={[
-                  styles.priorityBtn,
-                  file.priority === 2 && styles.priorityBtnHigh,
-                  file.priority === 0 && styles.priorityBtnSkip,
-                ]}
-                onPress={() => cyclePriority(file.id)}
-                accessibilityRole="button"
-                accessibilityLabel={`Cycle priority for ${file.name}. Current: ${file.priority === 2 ? 'High' : file.priority === 1 ? 'Normal' : 'Skip'}`}
+                key={file.id}
+                style={styles.fileRow}
+                onPress={() => toggleFile(file.id)}
+                accessibilityRole="checkbox"
+                accessibilityState={{ checked: file.selected }}
               >
-                <Text
+                <View
                   style={[
-                    styles.priorityBtnText,
-                    file.priority === 2 && styles.priorityBtnTextHigh,
-                    file.priority === 0 && styles.priorityBtnTextSkip,
+                    styles.checkbox,
+                    file.selected ? styles.checkboxSelected : styles.checkboxUnselected,
                   ]}
                 >
-                  {file.priority === 2 ? 'HIGH' : file.priority === 1 ? 'NORMAL' : 'SKIP'}
-                </Text>
+                  {file.selected && <Text style={styles.checkmark}>✓</Text>}
+                </View>
+                <View style={styles.fileInfo}>
+                  <Text
+                    style={[
+                      styles.fileName,
+                      (!file.selected || file.priority === 0) && styles.fileNameDisabled,
+                    ]}
+                    numberOfLines={1}
+                  >
+                    {file.name}
+                  </Text>
+                  <Text style={styles.fileSize}>{formatBytes(file.size)}</Text>
+                </View>
+                <TouchableOpacity
+                  style={[
+                    styles.priorityBtn,
+                    file.priority === 2 && styles.priorityBtnHigh,
+                    file.priority === 0 && styles.priorityBtnSkip,
+                  ]}
+                  onPress={() => cyclePriority(file.id)}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Cycle priority for ${file.name}. Current: ${
+                    file.priority === 2 ? 'High' : file.priority === 1 ? 'Normal' : 'Skip'
+                  }`}
+                >
+                  <Text
+                    style={[
+                      styles.priorityBtnText,
+                      file.priority === 2 && styles.priorityBtnTextHigh,
+                      file.priority === 0 && styles.priorityBtnTextSkip,
+                    ]}
+                  >
+                    {file.priority === 2 ? 'HIGH' : file.priority === 1 ? 'NORMAL' : 'SKIP'}
+                  </Text>
+                </TouchableOpacity>
               </TouchableOpacity>
-            </TouchableOpacity>
-          ))}
-        </View>
+            ))}
+          </View>
+        ) : (
+          !isResolving && (
+            <View style={styles.emptyFilesBox}>
+              <Ionicons name="document-text-outline" size={24} color="#4B5563" />
+              <Text style={styles.emptyFilesText}>
+                Paste a magnet link or browse a .torrent file to load and inspect payload files.
+              </Text>
+            </View>
+          )
+        )}
 
         {/* Sequential Stream Toggle */}
         <View style={styles.toggleRow}>
           <View style={styles.toggleTextContainer}>
             <Text style={styles.toggleTitle}>Sequential Download</Text>
             <Text style={styles.toggleSubtitle}>
-              Prioritize head pieces for immediate video streaming
+              Prioritize head pieces for immediate media streaming to VLC
             </Text>
           </View>
           <Switch
@@ -395,12 +596,32 @@ export default function AddTorrentSheet() {
       {/* Start Action CTA Button (min-44px touch target) */}
       <View style={styles.footer}>
         <TouchableOpacity
-          style={styles.startBtn}
+          style={[
+            styles.startBtn,
+            !hasEnoughSpace && styles.startBtnDisabled,
+            files.length === 0 && styles.startBtnDisabled,
+          ]}
           onPress={handleStartDownload}
           accessibilityRole="button"
-          accessibilityLabel="Start downloading torrent"
+          accessibilityLabel={
+            !hasEnoughSpace
+              ? `Insufficient disk storage available`
+              : 'Start downloading torrent'
+          }
+          activeOpacity={0.8}
         >
-          <Text style={styles.startBtnText}>START DOWNLOAD</Text>
+          <Text
+            style={[
+              styles.startBtnText,
+              (!hasEnoughSpace || files.length === 0) && styles.startBtnTextDisabled,
+            ]}
+          >
+            {!hasEnoughSpace
+              ? `INSUFFICIENT DISK STORAGE (DEFICIT ${formatBytes(storageDeficitBytes)})`
+              : files.length === 0
+              ? 'ENTER MAGNET OR SELECT FILE'
+              : 'START DOWNLOAD'}
+          </Text>
         </TouchableOpacity>
       </View>
     </View>
@@ -455,7 +676,7 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     paddingHorizontal: 12,
     paddingVertical: 8,
-    marginBottom: 20,
+    marginBottom: 12,
   },
   textInput: {
     flex: 1,
@@ -467,6 +688,109 @@ const styles = StyleSheet.create({
   clearBtn: {
     padding: 6,
   },
+  browseFileRow: {
+    marginBottom: 16,
+  },
+  browseFileBtn: {
+    minHeight: TOKENS.touchTarget.minHeight,
+    backgroundColor: '#0A121A',
+    borderWidth: 1,
+    borderColor: 'rgba(0, 229, 255, 0.3)',
+    borderRadius: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingHorizontal: 14,
+  },
+  browseFileText: {
+    color: TOKENS.colors.accentCyan,
+    fontSize: 11,
+    fontWeight: '700',
+    fontFamily: 'monospace',
+    letterSpacing: 0.5,
+  },
+  metadataResolvingCard: {
+    backgroundColor: '#0F171E',
+    borderWidth: 1,
+    borderColor: 'rgba(204, 255, 0, 0.3)',
+    borderRadius: 8,
+    padding: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    marginBottom: 16,
+  },
+  resolvingTextCol: {
+    flex: 1,
+  },
+  resolvingTitle: {
+    color: TOKENS.colors.accentLime,
+    fontSize: 11,
+    fontWeight: '700',
+    fontFamily: 'monospace',
+  },
+  resolvingSubtitle: {
+    color: TOKENS.colors.textMuted,
+    fontSize: 10,
+    fontFamily: 'monospace',
+    marginTop: 2,
+  },
+  resolvedHudCard: {
+    backgroundColor: '#0D1117',
+    borderWidth: 1,
+    borderColor: '#1F2937',
+    borderRadius: 8,
+    padding: 12,
+    marginBottom: 16,
+  },
+  resolvedHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 6,
+  },
+  resolvedDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: TOKENS.colors.accentLime,
+  },
+  resolvedNameText: {
+    color: TOKENS.colors.textPrimary,
+    fontSize: 12,
+    fontWeight: '700',
+    fontFamily: 'monospace',
+    flex: 1,
+  },
+  resolvedMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    flexWrap: 'wrap',
+    gap: 6,
+  },
+  resolvedHashText: {
+    color: '#6B7280',
+    fontSize: 10,
+    fontFamily: 'monospace',
+  },
+  resolvedTrackerText: {
+    color: TOKENS.colors.accentCyan,
+    fontSize: 10,
+    fontFamily: 'monospace',
+    fontWeight: '700',
+  },
+  resolvedPendingBadge: {
+    color: '#EAB308',
+    fontSize: 9,
+    fontFamily: 'monospace',
+    fontWeight: '700',
+    backgroundColor: 'rgba(234, 179, 8, 0.1)',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
   pathPill: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -477,7 +801,7 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     paddingHorizontal: 12,
     paddingVertical: 10,
-    marginBottom: 20,
+    marginBottom: 16,
   },
   pathTextContainer: {
     flex: 1,
@@ -499,14 +823,10 @@ const styles = StyleSheet.create({
     padding: 0,
   },
   changePathBtn: {
-    minHeight: TOKENS.touchTarget.minHeight,
     paddingHorizontal: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: TOKENS.colors.surfacePill,
+    paddingVertical: 6,
+    backgroundColor: '#161B22',
     borderRadius: 6,
-    borderWidth: 1,
-    borderColor: TOKENS.colors.surfaceBorder,
   },
   changePathText: {
     color: TOKENS.colors.accentLime,
@@ -514,11 +834,88 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     fontFamily: 'monospace',
   },
+  storageHudCard: {
+    backgroundColor: '#0D1117',
+    borderWidth: 1,
+    borderColor: '#1F2937',
+    borderRadius: 10,
+    padding: 14,
+    marginBottom: 20,
+  },
+  storageHudHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 10,
+  },
+  storageHudItem: {
+    flex: 1,
+  },
+  storageHudDivider: {
+    width: 1,
+    height: 24,
+    backgroundColor: '#1F2937',
+    marginHorizontal: 12,
+  },
+  storageHudLabel: {
+    color: '#6B7280',
+    fontSize: 9,
+    fontWeight: '700',
+    fontFamily: 'monospace',
+    marginBottom: 2,
+    letterSpacing: 0.5,
+  },
+  storageHudValueLime: {
+    color: TOKENS.colors.accentLime,
+    fontSize: 14,
+    fontWeight: '700',
+    fontFamily: 'monospace',
+  },
+  storageHudValueCyan: {
+    color: TOKENS.colors.accentCyan,
+    fontSize: 14,
+    fontWeight: '700',
+    fontFamily: 'monospace',
+  },
+  storageTrack: {
+    height: 4,
+    backgroundColor: '#161B22',
+    borderRadius: 2,
+    overflow: 'hidden',
+    marginBottom: 8,
+  },
+  storageFill: {
+    height: '100%',
+    borderRadius: 2,
+  },
+  storageAlertBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: 'rgba(255, 51, 102, 0.1)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 51, 102, 0.3)',
+    borderRadius: 6,
+    padding: 8,
+    marginTop: 4,
+  },
+  storageAlertText: {
+    color: '#FF3366',
+    fontSize: 10,
+    fontWeight: '700',
+    fontFamily: 'monospace',
+    flex: 1,
+  },
+  storageHintText: {
+    color: '#6B7280',
+    fontSize: 10,
+    fontFamily: 'monospace',
+  },
   filesHeaderRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 8,
+    marginBottom: 10,
   },
   batchControls: {
     flexDirection: 'row',
@@ -528,33 +925,27 @@ const styles = StyleSheet.create({
   batchBtn: {
     minHeight: 32,
     paddingHorizontal: 8,
-    alignItems: 'center',
+    backgroundColor: '#161B22',
+    borderRadius: 4,
     justifyContent: 'center',
-    backgroundColor: TOKENS.colors.surfacePill,
-    borderRadius: 6,
-    borderWidth: 1,
-    borderColor: TOKENS.colors.surfaceBorder,
   },
   batchBtnText: {
     color: TOKENS.colors.textMuted,
     fontSize: 10,
-    fontWeight: '700',
     fontFamily: 'monospace',
   },
   batchBtnChip: {
     minHeight: 32,
     paddingHorizontal: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(204, 255, 0, 0.1)',
-    borderRadius: 6,
+    backgroundColor: '#0F1B26',
     borderWidth: 1,
-    borderColor: 'rgba(204, 255, 0, 0.4)',
+    borderColor: 'rgba(0, 229, 255, 0.2)',
+    borderRadius: 4,
+    justifyContent: 'center',
   },
   batchBtnChipText: {
-    color: TOKENS.colors.accentLime,
+    color: TOKENS.colors.accentCyan,
     fontSize: 10,
-    fontWeight: '700',
     fontFamily: 'monospace',
   },
   filesList: {
@@ -562,81 +953,80 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: TOKENS.colors.surfaceBorder,
     borderRadius: 10,
-    overflow: 'hidden',
     marginBottom: 20,
+    overflow: 'hidden',
   },
   fileRow: {
+    minHeight: TOKENS.touchTarget.minHeight,
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 12,
-    paddingVertical: 12,
+    paddingVertical: 10,
     borderBottomWidth: 1,
-    borderBottomColor: TOKENS.colors.surfaceBorder,
-    minHeight: TOKENS.touchTarget.minHeight,
+    borderBottomColor: '#161B22',
   },
   checkbox: {
     width: 20,
     height: 20,
     borderRadius: 4,
+    borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 12,
+    marginRight: 10,
   },
   checkboxSelected: {
     backgroundColor: TOKENS.colors.accentLime,
+    borderColor: TOKENS.colors.accentLime,
   },
   checkboxUnselected: {
-    backgroundColor: '#161B22',
-    borderWidth: 1,
-    borderColor: TOKENS.colors.surfaceBorder,
+    borderColor: '#374151',
   },
   checkmark: {
     color: '#000000',
     fontSize: 12,
-    fontWeight: '900',
+    fontWeight: '700',
   },
   fileInfo: {
     flex: 1,
+    marginRight: 10,
   },
   fileName: {
     color: TOKENS.colors.textPrimary,
-    fontSize: 12,
+    fontSize: 11,
     fontFamily: 'monospace',
-    marginBottom: 2,
   },
   fileNameDisabled: {
-    color: TOKENS.colors.textMuted,
+    color: '#4B5563',
     textDecorationLine: 'line-through',
-    opacity: 0.6,
   },
   fileSize: {
     color: TOKENS.colors.textMuted,
     fontSize: 10,
     fontFamily: 'monospace',
+    marginTop: 2,
   },
   priorityBtn: {
-    minWidth: 56,
-    minHeight: TOKENS.touchTarget.minHeight,
+    minWidth: 54,
+    minHeight: 32,
     paddingHorizontal: 8,
+    backgroundColor: '#161B22',
+    borderRadius: 4,
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: 6,
-    borderWidth: 1,
-    borderColor: TOKENS.colors.surfaceBorder,
-    backgroundColor: TOKENS.colors.surfacePill,
-    marginLeft: 8,
   },
   priorityBtnHigh: {
+    backgroundColor: 'rgba(204, 255, 0, 0.15)',
+    borderWidth: 1,
     borderColor: TOKENS.colors.accentLime,
-    backgroundColor: 'rgba(204, 255, 0, 0.1)',
   },
   priorityBtnSkip: {
-    borderColor: TOKENS.colors.statusDanger,
-    backgroundColor: 'rgba(255, 51, 102, 0.1)',
+    backgroundColor: 'rgba(255, 51, 102, 0.15)',
+    borderWidth: 1,
+    borderColor: '#FF3366',
   },
   priorityBtnText: {
     color: TOKENS.colors.textMuted,
-    fontSize: 10,
+    fontSize: 9,
     fontWeight: '700',
     fontFamily: 'monospace',
   },
@@ -644,9 +1034,28 @@ const styles = StyleSheet.create({
     color: TOKENS.colors.accentLime,
   },
   priorityBtnTextSkip: {
-    color: TOKENS.colors.statusDanger,
+    color: '#FF3366',
+  },
+  emptyFilesBox: {
+    backgroundColor: '#0D1117',
+    borderWidth: 1,
+    borderColor: '#1F2937',
+    borderRadius: 10,
+    padding: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 20,
+    gap: 8,
+  },
+  emptyFilesText: {
+    color: '#6B7280',
+    fontSize: 11,
+    fontFamily: 'monospace',
+    textAlign: 'center',
+    lineHeight: 18,
   },
   toggleRow: {
+    minHeight: TOKENS.touchTarget.minHeight,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
@@ -654,9 +1063,8 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: TOKENS.colors.surfaceBorder,
     borderRadius: 10,
-    paddingHorizontal: 14,
-    paddingVertical: 14,
-    marginBottom: 20,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
   },
   toggleTextContainer: {
     flex: 1,
@@ -667,100 +1075,8 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '700',
     fontFamily: 'monospace',
-    marginBottom: 2,
   },
   toggleSubtitle: {
-    color: TOKENS.colors.textMuted,
-    fontSize: 10,
-  },
-  browseFileRow: {
-    marginBottom: 16,
-  },
-  browseFileBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    minHeight: TOKENS.touchTarget.minHeight,
-    backgroundColor: '#0D1117',
-    borderWidth: 1,
-    borderColor: '#1F2937',
-    borderRadius: 8,
-    paddingHorizontal: 16,
-  },
-  browseFileText: {
-    color: TOKENS.colors.accentCyan,
-    fontSize: 11,
-    fontWeight: '700',
-    fontFamily: 'monospace',
-    letterSpacing: 0.5,
-  },
-  storageHudCard: {
-    backgroundColor: '#0D1117',
-    borderWidth: 1,
-    borderColor: '#1F2937',
-    borderRadius: 8,
-    padding: 12,
-    marginBottom: 16,
-  },
-  storageHudHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 8,
-  },
-  storageHudItem: {
-    flex: 1,
-  },
-  storageHudLabel: {
-    color: TOKENS.colors.textMuted,
-    fontSize: 9,
-    fontFamily: 'monospace',
-    fontWeight: '700',
-    marginBottom: 2,
-  },
-  storageHudValueLime: {
-    color: TOKENS.colors.accentLime,
-    fontSize: 12,
-    fontWeight: '700',
-    fontFamily: 'monospace',
-  },
-  storageHudValueCyan: {
-    color: TOKENS.colors.accentCyan,
-    fontSize: 12,
-    fontWeight: '700',
-    fontFamily: 'monospace',
-  },
-  storageHudDivider: {
-    width: 1,
-    height: 24,
-    backgroundColor: '#1F2937',
-    marginHorizontal: 12,
-  },
-  storageTrack: {
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: '#161D28',
-    overflow: 'hidden',
-    marginVertical: 6,
-  },
-  storageFill: {
-    height: '100%',
-    borderRadius: 3,
-  },
-  storageAlertBox: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    marginTop: 4,
-  },
-  storageAlertText: {
-    color: '#FF3366',
-    fontSize: 10,
-    fontWeight: '700',
-    fontFamily: 'monospace',
-  },
-  storageHintText: {
     color: TOKENS.colors.textMuted,
     fontSize: 10,
     fontFamily: 'monospace',
@@ -768,7 +1084,9 @@ const styles = StyleSheet.create({
   },
   footer: {
     paddingHorizontal: 20,
-    paddingTop: 10,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: TOKENS.colors.surfaceBorder,
   },
   startBtn: {
     minHeight: TOKENS.touchTarget.minHeight,
@@ -777,11 +1095,19 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  startBtnDisabled: {
+    backgroundColor: '#1E1417',
+    borderWidth: 1,
+    borderColor: '#4A1D24',
+  },
   startBtnText: {
     color: '#000000',
     fontSize: 12,
     fontWeight: '700',
     fontFamily: 'monospace',
-    letterSpacing: 1,
+    letterSpacing: 0.5,
+  },
+  startBtnTextDisabled: {
+    color: '#FF3366',
   },
 });

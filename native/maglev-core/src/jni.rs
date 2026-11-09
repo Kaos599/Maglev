@@ -23,6 +23,7 @@ use crate::simd::MATRIX_SIZE;
 static ENGINE: Mutex<Option<Arc<MaglevEngine>>> = Mutex::new(None);
 static PIECE_BUFFERS: Mutex<Option<Box<[u8; MATRIX_SIZE]>>> = Mutex::new(None);
 static DISPATCHER_RUNNING: AtomicBool = AtomicBool::new(false);
+static MODULE_CLASS: Mutex<Option<jni::objects::GlobalRef>> = Mutex::new(None);
 
 #[no_mangle]
 pub extern "system" fn Java_com_maglev_engine_MaglevEngineModule_nativeInit(
@@ -54,6 +55,12 @@ pub extern "system" fn Java_com_maglev_engine_MaglevEngineModule_nativeInit(
     *ENGINE.lock() = Some(Arc::clone(&engine));
     *PIECE_BUFFERS.lock() = Some(Box::new([0u8; MATRIX_SIZE]));
 
+    if let Ok(cls) = env.find_class("com/maglev/engine/MaglevEngineModule") {
+        if let Ok(g_ref) = env.new_global_ref(cls) {
+            *MODULE_CLASS.lock() = Some(g_ref);
+        }
+    }
+
     // Spawn dedicated JNI telemetry dispatcher thread
     start_jni_dispatcher(jvm, rx);
 
@@ -81,7 +88,12 @@ fn start_jni_dispatcher(jvm: JavaVM, mut rx: mpsc::Receiver<AggregatedTelemetry>
                         // MaglevEngineModule.onTelemetryUpdate(jsonStr)
                         if let Ok(j_str) = env.new_string(&json_str) {
                             let class_name = "com/maglev/engine/MaglevEngineModule";
-                            if let Ok(cls) = env.find_class(class_name) {
+                            let cls_res = if let Some(ref g) = *MODULE_CLASS.lock() {
+                                Ok(JClass::from(g.as_obj()))
+                            } else {
+                                env.find_class(class_name)
+                            };
+                            if let Ok(cls) = cls_res {
                                 let _ = env.call_static_method(
                                     cls,
                                     "onTelemetryUpdate",

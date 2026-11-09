@@ -14,6 +14,41 @@ Build **Maglev** — a frictionless, zero-drag, zero-bloat, native-speed Android
 
 ## 📜 Ledger Entries
 
+### [2026-11-09] — Turn 12: Real Swarm Search, Live Feeds, Dynamic Storage Guard & Metadata Resolution Delivery
+- **Working Branch:** `feature/p2-ui-simplification`
+- **Settings / Config Mobile Crash Eradication:**
+  - Resolved `Cannot find name 'formatBytes'` crash in `app/(tabs)/settings.tsx` at line 480 by importing `formatBytes` from `../../constants/tokens`.
+  - Replaced pipeline jargon tab title `CONFIG` with `SETTINGS` in `app/(tabs)/_layout.tsx` conforming strictly to Rule 0 & AGENTS.md Creed.
+- **Real Swarm Search Engine (`app/(tabs)/search.tsx`):**
+  - Replaced static 8-item mock array with real-time public BitTorrent indexer query engine (`https://apibay.org/q.php`).
+  - Fetches live swarm titles, category mappings, exact payload byte sizes, active seeders, and leechers with debounced querying.
+  - Dynamically synthesizes working magnet URIs and initiates downloads with 1-tap `+ ADD` action.
+- **Automated RSS / Atom Feeds Live Engine (`app/(tabs)/feeds.tsx`):**
+  - Replaced static mock feed items with an asynchronous XML RSS/Atom feed parser (`parseRssFeed`).
+  - Automatically fetches live channel releases (e.g. DistroWatch Linux distros) and parses `<item>`, `<enclosure>`, `<link>`, and `<pubDate>`.
+  - Added live custom RSS feed subscription modal with URL validation and automated download queuing.
+- **Pure Zero-Dependency Torrent Bencode & Magnet Metadata Resolver (`utils/torrentMetadata.ts`):**
+  - Developed full BEP 0003 Bencode decoder (decodes integer, list, dict, and binary string blocks).
+  - Developed BEP 0009 magnet URI parser extracting hex/base32 info hashes, `dn` display names, `xl` exact payload lengths, and announce trackers `tr`.
+  - Integrated public torrent cache resolution (`itorrents.org`, `cache.torrentstorage.encryp.ch`) resolving exact file lists, piece counts, and directory trees from magnet hashes.
+- **Add Torrent Sheet Complete Overhaul (`app/add-torrent.tsx`):**
+  - Eradicated all fake hardcoded `ArchLinux` mock items.
+  - Added live swarm metadata scanning HUD (`SCANNING SWARM METADATA...`) with pulsing scanner and tracker discovery counts.
+  - Connected `expo-document-picker` directly to `parseTorrentData` to parse real `.torrent` files and display their exact file lists and byte sizes.
+  - Integrated real-time disk storage deficit calculation: warns if `freeDiskBytes < selectedPayloadBytes` and locks the `START DOWNLOAD` button when insufficient.
+- **Android Runtime Permissions Architecture (`utils/permissions.ts`):**
+  - Implemented runtime permission checking and request flow for `POST_NOTIFICATIONS` (Android 13+ / API 33+) and `WRITE_EXTERNAL_STORAGE` (Android 10 and below).
+  - Integrated permissions verification into the download start action.
+- **Android JNI Daemon Thread ClassLoader Fix (`native/maglev-core/src/jni.rs`):**
+  - Resolved `ClassNotFoundException` on attached JNI daemon threads by caching a `GlobalRef` of `com/maglev/engine/MaglevEngineModule` during `nativeInit` on the main application thread.
+  - Ensured `onTelemetryUpdate` is reliably invoked every 500ms without ClassLoader drops.
+  - Added synchronous `getTelemetry` method in `MaglevEngineModule.kt` and optimistic initial transfer insertion in `MaglevNativeBridge.ts` so new downloads appear on screen instantaneously.
+- **E2E & Governance Verification:**
+  - Expanded `scripts/test-e2e.js` with Test 17.
+  - **110/110 E2E tests passing (100% pass rate).**
+  - **47/47 Phase 2 governance tests passing (100% pass rate).**
+  - Zero TypeScript compiler errors (`npx tsc --noEmit` clean exit code 0).
+
 ### [2026-11-09] — Turn 11: Production Standalone Release, Offline Hermes Embedding & App Icon Delivery
 - **Working Branch:** `feature/p2-ui-simplification` (merged fast-forward into `dev` and `main`)
 - **Cyber-Retro App Icons & Splash Screen Assets:**

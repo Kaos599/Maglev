@@ -11,7 +11,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { TOKENS, formatSpeed } from '../../constants/tokens';
+import { TOKENS, formatSpeed, formatBytes } from '../../constants/tokens';
 import { triggerHaptic } from '../../constants/haptics';
 import { HeaderBar } from '../../components/HeaderBar';
 import { useSettings } from '../../context/SettingsContext';

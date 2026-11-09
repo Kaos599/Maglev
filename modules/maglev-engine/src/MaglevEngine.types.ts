@@ -31,7 +31,7 @@ export interface AggregatedTelemetry {
 
 export interface TrackerInfo {
   url: string;
-  status: 'Working' | 'Announcing' | 'Error';
+  status: 'Working' | 'Announcing' | 'Error' | 'Paused';
   seeds: number;
   peers: number;
   lastError?: string;
