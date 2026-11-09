@@ -50,7 +50,7 @@ jobs:
         run: |
           cd android
           chmod +x gradlew
-          ./gradlew assembleDebug --stacktrace -x checkDebugAarMetadata
+          ./gradlew assembleDebug --stacktrace
 
       - name: Copy & Name APK
         run: |
