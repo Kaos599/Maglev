@@ -17,6 +17,13 @@ const eventEmitter = NativeModule ? new EventEmitter(NativeModule) : null;
 
 export class MaglevEngineBridge {
   private isNative: boolean = isNativeActive;
+  private latestTelemetry: AggregatedTelemetry = {
+    totalDownloadSpeedBytes: 0,
+    totalUploadSpeedBytes: 0,
+    activeDownloads: 0,
+    activeUploads: 0,
+    torrents: [],
+  };
 
   constructor() {
     if (this.isNative && NativeModule) {
@@ -39,7 +46,8 @@ export class MaglevEngineBridge {
     if (this.isNative && eventEmitter) {
       const subscription = eventEmitter.addListener('onTelemetryUpdate', (event: { payload: string }) => {
         try {
-          const parsed = JSON.parse(event.payload);
+          const parsed: AggregatedTelemetry = JSON.parse(event.payload);
+          this.latestTelemetry = parsed;
           listener(parsed);
           // Sync foreground service notification
           if (NativeModule?.updateServiceTelemetry) {
@@ -57,7 +65,10 @@ export class MaglevEngineBridge {
       return () => subscription.remove();
     }
 
-    return mockEngine.subscribe(listener);
+    return mockEngine.subscribe((data) => {
+      this.latestTelemetry = data;
+      listener(data);
+    });
   }
 
   public async startTorrent(
@@ -94,11 +105,27 @@ export class MaglevEngineBridge {
   }
 
   public async pauseAll(): Promise<void> {
-    mockEngine.pauseAll();
+    if (this.isNative) {
+      for (const t of this.latestTelemetry.torrents) {
+        if (t.state === 'DOWNLOADING' || t.state === 'SEEDING') {
+          await this.pauseTorrent(t.id);
+        }
+      }
+    } else {
+      mockEngine.pauseAll();
+    }
   }
 
   public async resumeAll(): Promise<void> {
-    mockEngine.resumeAll();
+    if (this.isNative) {
+      for (const t of this.latestTelemetry.torrents) {
+        if (t.state === 'PAUSED' || t.state === 'QUEUED') {
+          await this.resumeTorrent(t.id);
+        }
+      }
+    } else {
+      mockEngine.resumeAll();
+    }
   }
 
   public async deleteTorrent(id: string, deleteFiles: boolean = false): Promise<boolean> {
@@ -106,6 +133,14 @@ export class MaglevEngineBridge {
       return await NativeModule.deleteTorrent(id, deleteFiles);
     }
     return mockEngine.deleteTorrent(id, deleteFiles);
+  }
+
+  public moveTorrentUp(id: string): boolean {
+    return mockEngine.moveTorrentUp(id);
+  }
+
+  public moveTorrentDown(id: string): boolean {
+    return mockEngine.moveTorrentDown(id);
   }
 
   public async setFilePriority(id: string, fileIndex: number, priority: 0 | 1 | 2): Promise<boolean> {
@@ -152,6 +187,28 @@ export class MaglevEngineBridge {
   }
 
   public getTorrentDetail(id: string): TorrentDetailData | null {
+    if (this.isNative) {
+      const summary = this.latestTelemetry.torrents.find((t) => t.id === id);
+      if (summary) {
+        return {
+          ...summary,
+          savePath: this.getDefaultStoragePath(),
+          piecesTotal: 256,
+          piecesVerified: Math.floor((summary.progressPercent / 100) * 256),
+          files: [
+            {
+              index: 0,
+              name: summary.name,
+              path: summary.name,
+              length: summary.totalSizeBytes,
+              progress: summary.progressPercent,
+              priority: 1,
+            },
+          ],
+          trackers: [],
+        };
+      }
+    }
     return mockEngine.getTorrentDetail(id);
   }
 

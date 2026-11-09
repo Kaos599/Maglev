@@ -334,6 +334,56 @@ export class MaglevMockEngine {
     return removed;
   }
 
+  public moveTorrentUp(id: string): boolean {
+    const keys = Array.from(this.torrents.keys());
+    const idx = keys.indexOf(id);
+    if (idx > 0) {
+      const prevKey = keys[idx - 1];
+      const prevVal = this.torrents.get(prevKey)!;
+      const currVal = this.torrents.get(id)!;
+      const newMap = new Map<string, TorrentDetailData>();
+      for (const k of keys) {
+        if (k === prevKey) {
+          newMap.set(id, currVal);
+        } else if (k === id) {
+          newMap.set(prevKey, prevVal);
+        } else {
+          newMap.set(k, this.torrents.get(k)!);
+        }
+      }
+      this.torrents = newMap;
+      this.recalculateGovernance();
+      this.broadcast();
+      return true;
+    }
+    return false;
+  }
+
+  public moveTorrentDown(id: string): boolean {
+    const keys = Array.from(this.torrents.keys());
+    const idx = keys.indexOf(id);
+    if (idx !== -1 && idx < keys.length - 1) {
+      const nextKey = keys[idx + 1];
+      const nextVal = this.torrents.get(nextKey)!;
+      const currVal = this.torrents.get(id)!;
+      const newMap = new Map<string, TorrentDetailData>();
+      for (const k of keys) {
+        if (k === id) {
+          newMap.set(nextKey, nextVal);
+        } else if (k === nextKey) {
+          newMap.set(id, currVal);
+        } else {
+          newMap.set(k, this.torrents.get(k)!);
+        }
+      }
+      this.torrents = newMap;
+      this.recalculateGovernance();
+      this.broadcast();
+      return true;
+    }
+    return false;
+  }
+
   public setFilePriority(id: string, fileIndex: number, priority: 0 | 1 | 2): boolean {
     const t = this.torrents.get(id);
     if (!t || !t.files[fileIndex]) return false;
@@ -417,6 +467,30 @@ export class MaglevMockEngine {
     // 3. Count active transfers and manage WakeLock & Rate Limit Clamping
     const effectiveDown = this.getEffectiveDownloadLimit();
     const effectiveUp = this.getEffectiveUploadLimit();
+    const maxActive = bw.maxActiveDownloads > 0 ? bw.maxActiveDownloads : 3;
+
+    // Enforce active queue cap: demote excess DOWNLOADING to QUEUED
+    let activeDownCount = 0;
+    this.torrents.forEach((t) => {
+      if (t.state === 'DOWNLOADING') {
+        activeDownCount++;
+        if (activeDownCount > maxActive) {
+          t.state = 'QUEUED';
+          t.downloadSpeedBytes = 0;
+          t.uploadSpeedBytes = 0;
+        }
+      }
+    });
+
+    // Auto-promote QUEUED torrents when active download slots open
+    if (activeDownCount < maxActive) {
+      this.torrents.forEach((t) => {
+        if (t.state === 'QUEUED' && activeDownCount < maxActive) {
+          t.state = 'DOWNLOADING';
+          activeDownCount++;
+        }
+      });
+    }
 
     let downloadingCount = 0;
     let seedingCount = 0;

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -11,6 +11,8 @@ import {
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import * as DocumentPicker from 'expo-document-picker';
+import * as FileSystem from 'expo-file-system';
 import { formatBytes, TOKENS } from '../constants/tokens';
 import { useMaglevEngine } from '../context/EngineContext';
 import { triggerHaptic } from '../constants/haptics';
@@ -32,6 +34,48 @@ export default function AddTorrentSheet() {
   const [customPath, setCustomPath] = useState('');
   const [isEditingPath, setIsEditingPath] = useState(false);
   const [sequential, setSequential] = useState(false);
+  const [freeDiskBytes, setFreeDiskBytes] = useState<number>(51_539_607_552); // Default 48 GB
+
+  useEffect(() => {
+    let isMounted = true;
+    (async () => {
+      try {
+        const free = await FileSystem.getFreeDiskStorageAsync();
+        if (isMounted && typeof free === 'number' && free > 0) {
+          setFreeDiskBytes(free);
+        }
+      } catch {
+        // Fallback
+      }
+    })();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  const handleBrowseTorrentFile = async () => {
+    triggerHaptic('light');
+    try {
+      const res = await DocumentPicker.getDocumentAsync({
+        type: ['*/*', 'application/x-bittorrent'],
+        copyToCacheDirectory: true,
+      });
+      if (!res.canceled && res.assets && res.assets.length > 0) {
+        const asset = res.assets[0];
+        const fileName = asset.name || 'custom.torrent';
+        const cleanName = fileName.replace(/\.torrent$/i, '');
+        const fileSize = asset.size || 2_147_483_648;
+        setMagnetInput(`file://${asset.uri}`);
+        setFiles([
+          { id: 0, name: cleanName, size: fileSize, selected: true, priority: 1 },
+          { id: 1, name: `${cleanName}.sha256`, size: 1024, selected: true, priority: 1 },
+        ]);
+        triggerHaptic('medium');
+      }
+    } catch {
+      // User cancelled
+    }
+  };
 
   // Multi-file selection mock items
   const [files, setFiles] = useState<MockFileItem[]>([
@@ -121,6 +165,12 @@ export default function AddTorrentSheet() {
     router.back();
   };
 
+  const selectedPayloadBytes = files
+    .filter((f) => f.selected && f.priority > 0)
+    .reduce((acc, f) => acc + f.size, 0);
+
+  const hasEnoughSpace = freeDiskBytes >= selectedPayloadBytes;
+
   return (
     <View style={[styles.container, { paddingTop: insets.top + 10, paddingBottom: insets.bottom + 10 }]}>
       {/* Modal Header */}
@@ -159,6 +209,20 @@ export default function AddTorrentSheet() {
           )}
         </View>
 
+        {/* Browse .torrent file button */}
+        <View style={styles.browseFileRow}>
+          <TouchableOpacity
+            style={styles.browseFileBtn}
+            onPress={handleBrowseTorrentFile}
+            accessibilityRole="button"
+            accessibilityLabel="Browse .torrent file from local storage"
+            activeOpacity={0.8}
+          >
+            <Ionicons name="document-attach-outline" size={16} color={TOKENS.colors.accentCyan} />
+            <Text style={styles.browseFileText}>BROWSE .TORRENT FILE</Text>
+          </TouchableOpacity>
+        </View>
+
         {/* Destination Path Pill */}
         <Text style={styles.sectionLabel}>Storage Destination</Text>
         <View style={styles.pathPill}>
@@ -188,6 +252,44 @@ export default function AddTorrentSheet() {
               {isEditingPath ? 'DONE' : 'CHANGE'}
             </Text>
           </TouchableOpacity>
+        </View>
+
+        {/* Storage Space Allocation HUD */}
+        <View style={styles.storageHudCard}>
+          <View style={styles.storageHudHeader}>
+            <View style={styles.storageHudItem}>
+              <Text style={styles.storageHudLabel}>PAYLOAD SIZE</Text>
+              <Text style={styles.storageHudValueLime}>{formatBytes(selectedPayloadBytes)}</Text>
+            </View>
+            <View style={styles.storageHudDivider} />
+            <View style={styles.storageHudItem}>
+              <Text style={styles.storageHudLabel}>FREE DISK SPACE</Text>
+              <Text style={styles.storageHudValueCyan}>{formatBytes(freeDiskBytes)}</Text>
+            </View>
+          </View>
+
+          <View style={styles.storageTrack}>
+            <View
+              style={[
+                styles.storageFill,
+                {
+                  width: `${Math.min(100, Math.max(3, (selectedPayloadBytes / (freeDiskBytes || 1)) * 100))}%`,
+                  backgroundColor: hasEnoughSpace ? TOKENS.colors.accentCyan : '#FF3366',
+                },
+              ]}
+            />
+          </View>
+
+          {!hasEnoughSpace ? (
+            <View style={styles.storageAlertBox}>
+              <Ionicons name="warning-outline" size={14} color="#FF3366" />
+              <Text style={styles.storageAlertText}>Insufficient storage space on destination volume</Text>
+            </View>
+          ) : (
+            <Text style={styles.storageHintText}>
+              {`${formatBytes(Math.max(0, freeDiskBytes - selectedPayloadBytes))} will remain available after download`}
+            </Text>
+          )}
         </View>
 
         {/* Batch File Controls */}
@@ -570,6 +672,99 @@ const styles = StyleSheet.create({
   toggleSubtitle: {
     color: TOKENS.colors.textMuted,
     fontSize: 10,
+  },
+  browseFileRow: {
+    marginBottom: 16,
+  },
+  browseFileBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    minHeight: TOKENS.touchTarget.minHeight,
+    backgroundColor: '#0D1117',
+    borderWidth: 1,
+    borderColor: '#1F2937',
+    borderRadius: 8,
+    paddingHorizontal: 16,
+  },
+  browseFileText: {
+    color: TOKENS.colors.accentCyan,
+    fontSize: 11,
+    fontWeight: '700',
+    fontFamily: 'monospace',
+    letterSpacing: 0.5,
+  },
+  storageHudCard: {
+    backgroundColor: '#0D1117',
+    borderWidth: 1,
+    borderColor: '#1F2937',
+    borderRadius: 8,
+    padding: 12,
+    marginBottom: 16,
+  },
+  storageHudHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
+  storageHudItem: {
+    flex: 1,
+  },
+  storageHudLabel: {
+    color: TOKENS.colors.textMuted,
+    fontSize: 9,
+    fontFamily: 'monospace',
+    fontWeight: '700',
+    marginBottom: 2,
+  },
+  storageHudValueLime: {
+    color: TOKENS.colors.accentLime,
+    fontSize: 12,
+    fontWeight: '700',
+    fontFamily: 'monospace',
+  },
+  storageHudValueCyan: {
+    color: TOKENS.colors.accentCyan,
+    fontSize: 12,
+    fontWeight: '700',
+    fontFamily: 'monospace',
+  },
+  storageHudDivider: {
+    width: 1,
+    height: 24,
+    backgroundColor: '#1F2937',
+    marginHorizontal: 12,
+  },
+  storageTrack: {
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: '#161D28',
+    overflow: 'hidden',
+    marginVertical: 6,
+  },
+  storageFill: {
+    height: '100%',
+    borderRadius: 3,
+  },
+  storageAlertBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 4,
+  },
+  storageAlertText: {
+    color: '#FF3366',
+    fontSize: 10,
+    fontWeight: '700',
+    fontFamily: 'monospace',
+  },
+  storageHintText: {
+    color: TOKENS.colors.textMuted,
+    fontSize: 10,
+    fontFamily: 'monospace',
+    marginTop: 2,
   },
   footer: {
     paddingHorizontal: 20,

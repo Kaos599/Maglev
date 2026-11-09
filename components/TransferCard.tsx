@@ -1,5 +1,5 @@
 import React, { useRef } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Animated } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Animated, Linking } from 'react-native';
 import { useRouter } from 'expo-router';
 import { TorrentTelemetry } from 'maglev-engine';
 import { formatBytes, formatEta, formatSpeed, TOKENS } from '../constants/tokens';
@@ -21,13 +21,27 @@ interface TransferCardProps {
 
 export const TransferCard: React.FC<TransferCardProps> = ({ torrent }) => {
   const router = useRouter();
-  const { pauseTorrent, resumeTorrent } = useMaglevEngine();
+  const { pauseTorrent, resumeTorrent, startHttpStream } = useMaglevEngine();
 
   const buttonScale = useRef(new Animated.Value(1)).current;
 
   const isDownloading = torrent.state === 'DOWNLOADING';
   const isSeeding = torrent.state === 'SEEDING';
   const isPaused = torrent.state === 'PAUSED';
+  const isQueued = torrent.state === 'QUEUED';
+
+  const handleOpenPlay = async (e: any) => {
+    e.stopPropagation?.();
+    triggerHaptic('medium');
+    try {
+      const streamUrl = await startHttpStream(torrent.id, 0);
+      if (streamUrl) {
+        await Linking.openURL(streamUrl);
+      }
+    } catch {
+      // Stream launch fallback
+    }
+  };
 
   const handleAction = async (e: any) => {
     e.stopPropagation?.();
@@ -82,6 +96,13 @@ export const TransferCard: React.FC<TransferCardProps> = ({ torrent }) => {
         </View>
       );
     }
+    if (isQueued) {
+      return (
+        <View style={styles.badgeQueued}>
+          <Text style={styles.badgeTextQueued}>[QUEUED]</Text>
+        </View>
+      );
+    }
     return (
       <View style={styles.badgePaused}>
         <Text style={styles.badgeTextPaused}>[PAUSED]</Text>
@@ -115,6 +136,17 @@ export const TransferCard: React.FC<TransferCardProps> = ({ torrent }) => {
               <Text style={styles.bulletDot}>•</Text>
             </>
           )}
+          <Text style={styles.bytesText}>
+            {formatBytes(torrent.totalSizeBytes)}
+          </Text>
+        </View>
+      );
+    }
+    if (isQueued) {
+      return (
+        <View style={styles.metricsRow}>
+          <Text style={styles.speedTextQueued}>Waiting in queue</Text>
+          <Text style={styles.bulletDot}>•</Text>
           <Text style={styles.bytesText}>
             {formatBytes(torrent.totalSizeBytes)}
           </Text>
@@ -157,6 +189,13 @@ export const TransferCard: React.FC<TransferCardProps> = ({ torrent }) => {
         </View>
       );
     }
+    if (isQueued) {
+      return (
+        <View style={styles.bottomStatsRight}>
+          <Text style={styles.pausedRateText}>Slot pending</Text>
+        </View>
+      );
+    }
     return (
       <View style={styles.bottomStatsRight}>
         <Text style={styles.pausedRateText}>0 KB/s</Text>
@@ -165,31 +204,55 @@ export const TransferCard: React.FC<TransferCardProps> = ({ torrent }) => {
   };
 
   const renderActionButton = () => {
+    if (isSeeding) {
+      return (
+        <View style={styles.actionColumnDual}>
+          <TouchableOpacity
+            style={styles.actionIconWrapper}
+            onPress={handleOpenPlay}
+            accessibilityRole="button"
+            accessibilityLabel={`Open or Play ${torrent.name}`}
+            activeOpacity={0.85}
+          >
+            <PixelPlayTriangleIcon size={14} color={TOKENS.colors.accentLime} />
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.actionIconWrapper}
+            onPress={handleAction}
+            accessibilityRole="button"
+            accessibilityLabel={`Stop seeding ${torrent.name}`}
+            activeOpacity={0.85}
+          >
+            <PixelStopSquareIcon size={12} color="#FF3366" />
+          </TouchableOpacity>
+        </View>
+      );
+    }
+
     let icon = <PixelPlayTriangleIcon size={14} color={TOKENS.colors.accentLime} />;
     let actionLabel = 'Resume';
 
     if (isDownloading) {
       icon = <PixelPauseBarsIcon size={14} color="#D1D5DB" />;
       actionLabel = 'Pause';
-    } else if (isSeeding) {
-      icon = <PixelStopSquareIcon size={13} color="#FF3366" />;
-      actionLabel = 'Stop';
     }
 
     return (
-      <TouchableOpacity
-        style={styles.actionColumn}
-        onPress={handleAction}
-        onPressIn={handleButtonPressIn}
-        onPressOut={handleButtonPressOut}
-        accessibilityRole="button"
-        accessibilityLabel={`${actionLabel} ${torrent.name}`}
-        activeOpacity={0.85}
-      >
-        <Animated.View style={[styles.actionIconWrapper, { transform: [{ scale: buttonScale }] }]}>
-          {icon}
-        </Animated.View>
-      </TouchableOpacity>
+      <View style={styles.actionColumn}>
+        <TouchableOpacity
+          style={styles.actionIconWrapper}
+          onPress={handleAction}
+          onPressIn={handleButtonPressIn}
+          onPressOut={handleButtonPressOut}
+          accessibilityRole="button"
+          accessibilityLabel={`${actionLabel} ${torrent.name}`}
+          activeOpacity={0.85}
+        >
+          <Animated.View style={{ transform: [{ scale: buttonScale }] }}>
+            {icon}
+          </Animated.View>
+        </TouchableOpacity>
+      </View>
     );
   };
 
@@ -320,6 +383,20 @@ const styles = StyleSheet.create({
     paddingHorizontal: 6,
     paddingVertical: 2,
   },
+  badgeQueued: {
+    backgroundColor: 'rgba(0, 229, 255, 0.08)',
+    borderColor: 'rgba(0, 229, 255, 0.25)',
+    borderWidth: 1,
+    borderRadius: 4,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+  },
+  badgeTextQueued: {
+    fontFamily: 'Silkscreen',
+    fontSize: 8,
+    fontWeight: '700',
+    color: TOKENS.colors.accentCyan,
+  },
   badgeTextPaused: {
     fontFamily: 'Silkscreen',
     fontSize: 8,
@@ -349,6 +426,12 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '500',
     color: '#8B949E',
+  },
+  speedTextQueued: {
+    fontFamily: 'SpaceMono',
+    fontSize: 11,
+    fontWeight: '500',
+    color: TOKENS.colors.accentCyan,
   },
   bulletDot: {
     color: '#8B949E',
@@ -412,6 +495,17 @@ const styles = StyleSheet.create({
     borderLeftColor: '#1F2937',
     alignItems: 'center',
     justifyContent: 'center',
+    minHeight: TOKENS.touchTarget.minHeight,
+  },
+  actionColumnDual: {
+    width: 60,
+    backgroundColor: '#121722',
+    borderLeftWidth: 1,
+    borderLeftColor: '#1F2937',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 8,
     minHeight: TOKENS.touchTarget.minHeight,
   },
   actionIconWrapper: {

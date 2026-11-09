@@ -17,6 +17,8 @@ interface EngineContextType {
   pauseAll: () => Promise<void>;
   resumeAll: () => Promise<void>;
   deleteTorrent: (id: string, deleteFiles: boolean) => Promise<boolean>;
+  moveTorrentUp: (id: string) => boolean;
+  moveTorrentDown: (id: string) => boolean;
   startTorrent: (
     magnetUri: string,
     savePath?: string,
@@ -79,7 +81,7 @@ export const EngineProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const filteredTorrents = React.useMemo(() => {
     switch (activeFilter) {
       case 'DOWN':
-        return telemetry.torrents.filter((t) => t.state === 'DOWNLOADING');
+        return telemetry.torrents.filter((t) => t.state === 'DOWNLOADING' || t.state === 'QUEUED');
       case 'UP':
         return telemetry.torrents.filter((t) => t.state === 'SEEDING');
       case 'PAUSED':
@@ -108,6 +110,14 @@ export const EngineProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
   const deleteTorrent = useCallback(async (id: string, deleteFiles: boolean) => {
     return await maglevEngine.deleteTorrent(id, deleteFiles);
+  }, []);
+
+  const moveTorrentUp = useCallback((id: string) => {
+    return maglevEngine.moveTorrentUp(id);
+  }, []);
+
+  const moveTorrentDown = useCallback((id: string) => {
+    return maglevEngine.moveTorrentDown(id);
   }, []);
 
   const startTorrent = useCallback(
@@ -160,6 +170,8 @@ export const EngineProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         pauseAll,
         resumeAll,
         deleteTorrent,
+        moveTorrentUp,
+        moveTorrentDown,
         startTorrent,
         setFilePriority,
         addTracker,

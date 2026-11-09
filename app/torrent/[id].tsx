@@ -13,6 +13,7 @@ import {
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import * as Clipboard from 'expo-clipboard';
 import { formatBytes, formatEta, formatSpeed, TOKENS } from '../../constants/tokens';
 import { useMaglevEngine } from '../../context/EngineContext';
 import { triggerHaptic } from '../../constants/haptics';
@@ -42,12 +43,26 @@ export default function TorrentDetailScreen() {
   const [streamUrl, setStreamUrl] = useState<string | null>(null);
   const [newTrackerUrl, setNewTrackerUrl] = useState('');
   const [addTrackerVisible, setAddTrackerVisible] = useState(false);
+  const [copiedMagnet, setCopiedMagnet] = useState(false);
 
   const torrentSummary = telemetry.torrents.find((t) => t.id === id);
   const detailData = getTorrentDetail(id || '');
 
   const [files, setFiles] = useState<TorrentFileInfo[]>(detailData?.files || []);
   const [trackers, setTrackers] = useState<TrackerInfo[]>(detailData?.trackers || []);
+
+  const handleCopyMagnet = async () => {
+    if (!id) return;
+    triggerHaptic('medium');
+    const magnetUri = `magnet:?xt=urn:btih:${id}&dn=${encodeURIComponent(detailData?.name || torrentSummary?.name || 'torrent')}`;
+    try {
+      await Clipboard.setStringAsync(magnetUri);
+      setCopiedMagnet(true);
+      setTimeout(() => setCopiedMagnet(false), 2500);
+    } catch {
+      // Ignored
+    }
+  };
 
   useEffect(() => {
     if (detailData?.files) {
@@ -176,14 +191,29 @@ export default function TorrentDetailScreen() {
           {name}
         </Text>
 
-        <TouchableOpacity
-          style={styles.navAction}
-          onPress={() => setDeleteModalVisible(true)}
-          accessibilityRole="button"
-          accessibilityLabel="Delete Torrent"
-        >
-          <Ionicons name="trash-outline" size={18} color={TOKENS.colors.statusDanger} />
-        </TouchableOpacity>
+        <View style={styles.navRightGroup}>
+          <TouchableOpacity
+            style={styles.navAction}
+            onPress={handleCopyMagnet}
+            accessibilityRole="button"
+            accessibilityLabel="Copy Magnet Link"
+          >
+            <Ionicons
+              name={copiedMagnet ? "checkmark-outline" : "share-social-outline"}
+              size={18}
+              color={copiedMagnet ? TOKENS.colors.accentLime : TOKENS.colors.accentCyan}
+            />
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.navAction}
+            onPress={() => setDeleteModalVisible(true)}
+            accessibilityRole="button"
+            accessibilityLabel="Delete Torrent"
+          >
+            <Ionicons name="trash-outline" size={18} color={TOKENS.colors.statusDanger} />
+          </TouchableOpacity>
+        </View>
       </View>
 
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
@@ -197,6 +227,24 @@ export default function TorrentDetailScreen() {
               <Text style={styles.statusBadgeText}>{state}</Text>
             </View>
           </View>
+
+          {/* Quick Magnet Copy Pill */}
+          <TouchableOpacity
+            style={styles.copyMagnetPill}
+            onPress={handleCopyMagnet}
+            accessibilityRole="button"
+            accessibilityLabel="Copy Magnet URI"
+            activeOpacity={0.8}
+          >
+            <Ionicons
+              name={copiedMagnet ? "checkmark-circle" : "link-outline"}
+              size={14}
+              color={copiedMagnet ? TOKENS.colors.accentLime : TOKENS.colors.accentCyan}
+            />
+            <Text style={[styles.copyMagnetPillText, copiedMagnet && { color: TOKENS.colors.accentLime }]}>
+              {copiedMagnet ? 'MAGNET COPIED TO CLIPBOARD' : 'COPY MAGNET LINK'}
+            </Text>
+          </TouchableOpacity>
 
           <View style={styles.telemetryGrid}>
             <View style={styles.telemetryItem}>
@@ -486,6 +534,11 @@ const styles = StyleSheet.create({
     fontFamily: 'monospace',
     marginHorizontal: 8,
   },
+  navRightGroup: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
   scrollContent: {
     paddingHorizontal: 16,
     paddingTop: 12,
@@ -533,6 +586,26 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontWeight: '700',
     fontFamily: 'monospace',
+  },
+  copyMagnetPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    minHeight: 40,
+    backgroundColor: '#161B22',
+    borderWidth: 1,
+    borderColor: '#1F2937',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    marginBottom: 12,
+  },
+  copyMagnetPillText: {
+    color: TOKENS.colors.accentCyan,
+    fontSize: 10,
+    fontWeight: '700',
+    fontFamily: 'monospace',
+    letterSpacing: 0.5,
   },
   telemetryGrid: {
     flexDirection: 'row',

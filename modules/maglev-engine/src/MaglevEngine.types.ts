@@ -1,4 +1,4 @@
-export type TorrentState = 'DOWNLOADING' | 'SEEDING' | 'PAUSED' | 'ERROR';
+export type TorrentState = 'DOWNLOADING' | 'SEEDING' | 'PAUSED' | 'QUEUED' | 'ERROR';
 
 export * from './MaglevSettings.types.ts';
 
