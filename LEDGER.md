@@ -16,7 +16,9 @@ Build **Maglev** — a frictionless, zero-drag, zero-bloat, native-speed Android
 
 ### [2026-11-09] — Turn 10: Missing Features Delivery, Real End-to-End Native Wiring & CI Release Pipeline
 - **Working Branch:** `feature/p2-ui-simplification` (merged fast-forward into `dev` and `main`)
-- **Commits:** `900da88`, `f1bc2e2`
+- **Commits:** `900da88`, `f1bc2e2`, `5a920a7`
+- **Release v0.1-beta APK Asset:** https://github.com/Kaos599/Maglev/releases/tag/v0.1-beta
+- **APK Download URL:** https://github.com/Kaos599/Maglev/releases/download/v0.1-beta/Maglev-v0.1-beta.apk
 - **Missing Tier List & Usability Features Implemented:**
   1. **One-Tap "Open / Play Completed File" Button:**
      - Integrated directly into completed transfer cards (`DONE` and `SEEDING`) in `components/TransferCard.tsx`.
