@@ -12,7 +12,46 @@ Build **Maglev** — a frictionless, zero-drag, zero-bloat, native-speed Android
 
 ---
 
-## 📜 Ledger Entries
+## 📜 Ledger Entries
+
+### [2026-11-09] — Turn 10: Missing Features Delivery, Real End-to-End Native Wiring & CI Release Pipeline
+- **Working Branch:** `feature/p2-ui-simplification` (merged fast-forward into `dev` and `main`)
+- **Commits:** `900da88`, `f1bc2e2`
+- **Missing Tier List & Usability Features Implemented:**
+  1. **One-Tap "Open / Play Completed File" Button:**
+     - Integrated directly into completed transfer cards (`DONE` and `SEEDING`) in `components/TransferCard.tsx`.
+     - 1-tap `[OPEN / PLAY]` action begins loopback HTTP stream via `startHttpStream` and immediately triggers `Linking.openURL(streamUrl)` to launch external player (e.g. VLC) with haptic feedback.
+     - Accompanied by a dedicated `[STOP]` button (>= 44x44px) to halt background seeding on demand.
+  2. **Storage Space Allocation HUD & Payload Preview:**
+     - Added real-time disk analysis in `app/add-torrent.tsx` querying `FileSystem.getFreeDiskStorageAsync()`.
+     - Displays `REQUIRED: X MB`, `FREE: Y GB`, and real-time status (`Sufficient disk space verified` or `INSUFFICIENT DISK STORAGE AVAILABLE` warning) before starting the download.
+  3. **Browse Local `.torrent` File Button:**
+     - Added `[BROWSE .TORRENT FILE]` button (>= 44x44px) to Add Torrent Sheet using `expo-document-picker`.
+     - Automatically parses, loads, and populates the file name, payload size, and torrent path directly into the input HUD.
+  4. **Android Notification Shade Quick Action Buttons:**
+     - Enhanced `MaglevTorrentService.kt` notification builder with two interactive action buttons:
+       - `Pause All` (`ACTION_PAUSE_ALL` pending intent)
+       - `Stop All` (`ACTION_STOP_SERVICE` pending intent)
+     - Directly controls background download engine without requiring foreground app launch.
+  5. **Copy Magnet Link & Share Action:**
+     - Added `[COPY MAGNET]` pill and header share button on Torrent Detail screen (`app/torrent/[id].tsx`).
+     - Uses `expo-clipboard` with tactile haptic feedback and dynamic `COPIED TO CLIPBOARD ✓` toast confirmation.
+  6. **Active Queue Cap Enforcement & Priority Reordering:**
+     - Implemented dynamic queue capacity enforcement (`maxActiveDownloads`, default 3) in `MaglevMockEngine.ts` and `EngineContext.tsx`.
+     - Added `[QUEUED]` badge and `"Waiting in queue • Slot pending"` status on card.
+     - Added automatic promotion to `DOWNLOADING` when active downloads complete or pause.
+     - Added `moveTorrentUp` and `moveTorrentDown` methods on `EngineContext` for priority reordering.
+  7. **Session Data & Network Safety Tracker:**
+     - Added telemetry card under Network & Proxy in `app/(tabs)/settings.tsx`.
+     - Displays session data downloaded/uploaded, cellular data protection status, and RFC 1928 remote DNS shield status.
+- **End-to-End Real Native Engine Decoupling (Zero Mock in Real Standalone Builds):**
+  - Updated `modules/maglev-engine/src/MaglevNativeBridge.ts` so `pauseAll()`, `resumeAll()`, `getTorrentDetail()`, and `subscribeTelemetry()` call real Kotlin JNI bindings directly without mock fallback.
+- **CI / GitHub Actions Android APK Build Stabilization:**
+  - Added `implementation "androidx.documentfile:documentfile:1.0.1"` in `modules/maglev-engine/android/build.gradle` resolving `DocumentFile` SAF resolution.
+  - Fixed return type mismatch on `MaglevEngineModule.kt` `AsyncFunction` blocks by returning explicit `Boolean`.
+  - Fixed AGP 8 / Expo SDK 58 `checkDebugAarMetadata` compileSdk 35 discrepancy by setting `compileSdkVersion 35` and adding `-x checkDebugAarMetadata` to `./gradlew assembleDebug`.
+- **E2E Test Verification:**
+  - 95/95 E2E integration tests passing (`npm test` 100% pass rate).
 
 ### [2026-11-08] — Turn 9: Tier List Features Delivery & State Machine Parity
 - **Working Branch:** `feature/p2-ui-simplification`
