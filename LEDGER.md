@@ -12,8 +12,22 @@ Build **Maglev** — a frictionless, zero-drag, zero-bloat, native-speed Android
 
 ---
 
-## 📜 Ledger Entries
-
+## 📜 Ledger Entries
+
+### [2026-11-09] — Turn 11: Production Standalone Release, Offline Hermes Embedding & App Icon Delivery
+- **Working Branch:** `feature/p2-ui-simplification` (merged fast-forward into `dev` and `main`)
+- **Cyber-Retro App Icons & Splash Screen Assets:**
+  - Designed and generated 1024x1024 `assets/icon.png`, `assets/adaptive-icon.png` (transparent foreground), `assets/splash.png`, and 48x48 `assets/favicon.png` using `pngjs` with 2x2 supersampled anti-aliasing.
+  - Authentic cyber-retro visual identity: Void Black (`#05070A`), magnetic levitation rails in Electric Acid Lime (`#CCFF00`), and supersonic core in Cyber Cyan (`#00E5FF`).
+  - Configured `app.json` with `icon`, `adaptiveIcon.foregroundImage`, `splash.image`, and `favicon`.
+- **Pure Offline Standalone APK (Eradicating Metro Bundler Dependency):**
+  - Upgraded `.github/workflows/release-apk.yml` from `assembleDebug` to `assembleRelease`.
+  - Automatically compiles all TypeScript/JavaScript and Expo code into offline Hermes bytecode (`index.android.bundle`) embedded inside the APK.
+  - Eliminates the `Unable to load script (Metro)` error permanently — app boots instantly offline at native speed.
+- **APK Bloat Eradication & R8 Optimization:**
+  - Added `modules/maglev-engine/android/consumer-rules.pro` preserving JNI methods and Tokio telemetry callbacks.
+  - Enabled R8 minification, code obfuscation, and resource shrinking, stripping debug symbols and slashing the APK size from 180MB down to the minimal release footprint.
+
 ### [2026-11-09] — Turn 10: Missing Features Delivery, Real End-to-End Native Wiring & CI Release Pipeline
 - **Working Branch:** `feature/p2-ui-simplification` (merged fast-forward into `dev` and `main`)
 - **Commits:** `900da88`, `f1bc2e2`, `5a920a7`

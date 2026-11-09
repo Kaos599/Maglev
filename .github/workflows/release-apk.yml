@@ -46,16 +46,17 @@ jobs:
       - name: Prebuild Android project
         run: npx expo prebuild --platform android --clean
 
-      - name: Build Android Debug APK
+      - name: Build Android Release APK
         run: |
           cd android
           chmod +x gradlew
-          ./gradlew assembleDebug --stacktrace
+          ./gradlew assembleRelease --stacktrace
 
       - name: Copy & Name APK
         run: |
           mkdir -p build-artifacts
-          cp android/app/build/outputs/apk/debug/app-debug.apk build-artifacts/Maglev-v0.1-beta.apk
+          cp android/app/build/outputs/apk/release/app-release.apk build-artifacts/Maglev-v0.1-beta.apk
+          ls -lh build-artifacts/Maglev-v0.1-beta.apk
 
       - name: Create GitHub Release & Upload APK
         uses: softprops/action-gh-release@v2
@@ -73,8 +74,9 @@ jobs:
             3. Grant notification & storage permissions when prompted.
             
             ### Included in this Release
+            * **Embedded Offline Hermes Engine:** Pure native offline execution with zero Metro server dependency.
             * **Rust Engine Core:** Cross-compiled `libmaglev_core.so` (ARM64, ARMv7, x86_64).
-            * **Cyber-Retro UI:** True OLED black (`#05070A`) & Electric Lime (`#CCFF00`) with tactile >= 44x44px touch targets.
+            * **Cyber-Retro UI & App Icon:** Authentic OLED black (`#05070A`) & Electric Lime (`#CCFF00`) with tactile >= 44x44px touch targets.
             * **Full Protocol Parity:** Multi-file selection, priority controls (`HIGH`, `NORMAL`, `SKIP`), clipboard magnet detection, and in-flight sequential media streaming to VLC.
             * **Search & Feeds:** In-app public swarm search and automated RSS release monitoring.
             * **System Governance:** Wi-Fi only, SSID whitelist, battery cutoff (<20%), SOCKS5 proxy, and IP filter.
