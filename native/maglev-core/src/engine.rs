@@ -326,13 +326,14 @@ impl MaglevEngine {
             name = dn;
         }
 
+        let total_size = extract_magnet_size(magnet_uri).unwrap_or(1024 * 1024 * 500);
         let total_pieces = 512;
         let handle = TorrentHandle {
             id: id.clone(),
             name,
             state: "DOWNLOADING".to_string(),
             save_path: dest_dir,
-            total_size: 1024 * 1024 * 500, // 500 MB mock
+            total_size,
             downloaded: 0,
             uploaded: 0,
             down_speed: 12_500_000,
@@ -502,8 +503,12 @@ fn extract_magnet_hash(magnet: &str) -> Option<String> {
         return None;
     }
     for param in magnet["magnet:?".len()..].split('&') {
-        if param.starts_with("xt=urn:btih:") {
-            return Some(param["xt=urn:btih:".len()..].to_lowercase());
+        let lower = param.to_lowercase();
+        if lower.starts_with("xt=urn:btih:") {
+            return Some(lower["xt=urn:btih:".len()..].to_string());
+        }
+        if lower.starts_with("xt=urn%3abtih%3a") {
+            return Some(lower["xt=urn%3abtih%3a".len()..].to_string());
         }
     }
     None
@@ -514,6 +519,18 @@ fn extract_magnet_name(magnet: &str) -> Option<String> {
         if param.starts_with("dn=") {
             let name = &param["dn=".len()..];
             return Some(name.replace('+', " ").to_string());
+        }
+    }
+    None
+}
+
+fn extract_magnet_size(magnet: &str) -> Option<u64> {
+    for param in magnet.split('&') {
+        if param.starts_with("xl=") {
+            let size_str = &param["xl=".len()..];
+            if let Ok(sz) = size_str.parse::<u64>() {
+                return Some(sz);
+            }
         }
     }
     None

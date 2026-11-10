@@ -141,6 +141,7 @@ export default function TorrentDetailScreen() {
   const eta = torrentSummary?.etaSeconds || detailData?.etaSeconds || 0;
   const peers = torrentSummary?.peersConnected || detailData?.peersConnected || 0;
   const seeds = torrentSummary?.seedsConnected || detailData?.seedsConnected || 0;
+  const peersTotal = torrentSummary?.peersTotal || detailData?.peersTotal || 40;
 
   const handleStreamNow = async () => {
     if (!id) return;
@@ -363,22 +364,61 @@ export default function TorrentDetailScreen() {
         {/* Tab 3: Connected Peers */}
         {activeTab === 'PEERS' && (
           <View style={styles.tabContentCard}>
-            <Text style={styles.contentHeader}>Connected Peers ({peers})</Text>
-            <View style={styles.peerRow}>
-              <Text style={styles.peerClient}>qBittorrent/4.6.3</Text>
-              <Text style={styles.peerSpeedDown}>↓ 8.2 MB/s</Text>
-              <Text style={styles.peerSpeedUp}>↑ 420 KB/s</Text>
+            <View style={styles.trackerHeaderRow}>
+              <Text style={styles.contentHeader}>Connected Peers ({peers})</Text>
+              <Text style={styles.peerTotalMeta}>{peers} active · {peersTotal} pool ceiling</Text>
             </View>
-            <View style={styles.peerRow}>
-              <Text style={styles.peerClient}>Transmission/4.0.5</Text>
-              <Text style={styles.peerSpeedDown}>↓ 4.6 MB/s</Text>
-              <Text style={styles.peerSpeedUp}>↑ 310 KB/s</Text>
-            </View>
-            <View style={styles.peerRow}>
-              <Text style={styles.peerClient}>Maglev/0.1.0-Rust</Text>
-              <Text style={styles.peerSpeedDown}>↓ 2.0 MB/s</Text>
-              <Text style={styles.peerSpeedUp}>↑ 120 KB/s</Text>
-            </View>
+
+            {peers === 0 && seeds === 0 ? (
+              <View style={styles.emptyPeersContainer}>
+                <Ionicons name="people-outline" size={32} color={TOKENS.colors.textMuted} style={{ marginBottom: 8 }} />
+                <Text style={styles.emptyPeersTitle}>No Active Peer Connections</Text>
+                <Text style={styles.emptyPeersSubtitle}>
+                  Discovering peers via DHT, PEX, and announced trackers...
+                </Text>
+              </View>
+            ) : (
+              <>
+                <View style={styles.peerStatsSummary}>
+                  <View style={styles.peerStatBox}>
+                    <Text style={styles.peerStatValue}>{seeds}</Text>
+                    <Text style={styles.peerStatLabel}>SEEDERS</Text>
+                  </View>
+                  <View style={styles.peerStatBox}>
+                    <Text style={styles.peerStatValue}>{Math.max(0, peers - seeds)}</Text>
+                    <Text style={styles.peerStatLabel}>LEECHERS</Text>
+                  </View>
+                  <View style={styles.peerStatBox}>
+                    <Text style={styles.peerStatValue}>{peersTotal}</Text>
+                    <Text style={styles.peerStatLabel}>MAX PEERS</Text>
+                  </View>
+                </View>
+
+                <View style={styles.peerRow}>
+                  <View style={styles.peerCol}>
+                    <Text style={styles.peerClient}>Active Seeders ({seeds})</Text>
+                    <Text style={styles.peerSubtext}>Inbound data contributors</Text>
+                  </View>
+                  <Text style={styles.peerSpeedDown}>↓ {formatSpeed(downSpeed)}</Text>
+                </View>
+
+                <View style={styles.peerRow}>
+                  <View style={styles.peerCol}>
+                    <Text style={styles.peerClient}>Active Leechers ({Math.max(0, peers - seeds)})</Text>
+                    <Text style={styles.peerSubtext}>Outbound data recipients</Text>
+                  </View>
+                  <Text style={styles.peerSpeedUp}>↑ {formatSpeed(upSpeed)}</Text>
+                </View>
+
+                <View style={[styles.peerRow, { borderBottomWidth: 0 }]}>
+                  <View style={styles.peerCol}>
+                    <Text style={styles.peerClient}>Discovery Protocols</Text>
+                    <Text style={styles.peerSubtext}>DHT (Kademlia), PEX, Trackers</Text>
+                  </View>
+                  <Text style={styles.peerProtocolBadge}>ACTIVE</Text>
+                </View>
+              </>
+            )}
           </View>
         )}
 
@@ -757,11 +797,20 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: TOKENS.colors.surfaceBorder,
   },
-  peerClient: {
+  peerCol: {
     flex: 1,
+  },
+  peerClient: {
     color: TOKENS.colors.textPrimary,
     fontSize: 11,
+    fontWeight: '600',
     fontFamily: 'monospace',
+  },
+  peerSubtext: {
+    color: TOKENS.colors.textMuted,
+    fontSize: 10,
+    fontFamily: 'monospace',
+    marginTop: 2,
   },
   peerSpeedDown: {
     color: TOKENS.colors.accentCyan,
@@ -773,6 +822,62 @@ const styles = StyleSheet.create({
     color: TOKENS.colors.accentLime,
     fontSize: 11,
     fontFamily: 'monospace',
+  },
+  peerProtocolBadge: {
+    color: TOKENS.colors.accentLime,
+    fontSize: 10,
+    fontWeight: '700',
+    fontFamily: 'monospace',
+  },
+  peerTotalMeta: {
+    color: TOKENS.colors.textMuted,
+    fontSize: 10,
+    fontFamily: 'monospace',
+  },
+  peerStatsSummary: {
+    flexDirection: 'row',
+    gap: 8,
+    marginVertical: 10,
+  },
+  peerStatBox: {
+    flex: 1,
+    backgroundColor: TOKENS.colors.surfacePill,
+    borderWidth: 1,
+    borderColor: TOKENS.colors.surfaceBorder,
+    borderRadius: 8,
+    padding: 8,
+    alignItems: 'center',
+  },
+  peerStatValue: {
+    color: TOKENS.colors.accentCyan,
+    fontSize: 14,
+    fontWeight: '700',
+    fontFamily: 'monospace',
+  },
+  peerStatLabel: {
+    color: TOKENS.colors.textMuted,
+    fontSize: 9,
+    fontWeight: '700',
+    fontFamily: 'monospace',
+    marginTop: 2,
+  },
+  emptyPeersContainer: {
+    paddingVertical: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  emptyPeersTitle: {
+    color: TOKENS.colors.textPrimary,
+    fontSize: 12,
+    fontWeight: '700',
+    fontFamily: 'monospace',
+    marginBottom: 4,
+  },
+  emptyPeersSubtitle: {
+    color: TOKENS.colors.textMuted,
+    fontSize: 11,
+    fontFamily: 'monospace',
+    textAlign: 'center',
   },
   trackerHeaderRow: {
     flexDirection: 'row',

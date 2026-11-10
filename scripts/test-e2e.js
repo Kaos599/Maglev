@@ -297,6 +297,7 @@ async function runTests() {
 
   // --- TEST 10: CONTRACT-2.3: Battery Threshold & Power Governance (< 500ms) ---
   console.log('\n▶ [Test 10] CONTRACT-2.3: Battery Threshold & Power Governance');
+  const pwrTestId = mockEngine.startTorrent(magnet, '/tmp/test_power', false);
   settingsStore.updateSettings({
     power: {
       ...settingsStore.getSettings().power,
@@ -324,6 +325,8 @@ async function runTests() {
   assert(!mockEngine.isWakeLockHeld(), 'Transfers paused when unplugged with "Download Only While Charging"');
   mockEngine.updatePowerState({ isCharging: true, batteryPercentage: 80 });
   assert(mockEngine.isWakeLockHeld(), 'Transfers resumed when plugged in');
+
+  mockEngine.deleteTorrent(pwrTestId, false);
 
   settingsStore.updateSettings({
     power: { ...settingsStore.getSettings().power, downloadOnlyWhileCharging: false, batteryCutoffThreshold: 20 },

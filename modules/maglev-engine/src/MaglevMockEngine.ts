@@ -31,7 +31,7 @@ export class MaglevMockEngine {
 
   constructor() {
     this.settings = JSON.parse(JSON.stringify(settingsStore.getSettings()));
-    this.seedInitialMockData();
+    // Starts with 0 torrents. Clean empty transfer list by default.
     this.recalculateGovernance();
     this.broadcast();
 
@@ -39,6 +39,16 @@ export class MaglevMockEngine {
     settingsStore.subscribe((newSettings) => {
       this.applySettings(newSettings);
     });
+  }
+
+  /**
+   * Explicit test/demo helper to seed sample torrents.
+   * Not called in production so the user begins with a clean empty state.
+   */
+  public seedMockTorrents(): void {
+    this.seedInitialMockData();
+    this.recalculateGovernance();
+    this.broadcast();
   }
 
   public getDefaultStoragePath(): string {

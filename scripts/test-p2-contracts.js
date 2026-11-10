@@ -188,6 +188,7 @@ async function runPhase2Tests() {
   console.log('\n▶ [Test 4] CONTRACT-2.3: Battery Threshold & Power Governance');
 
   // Configure 20% cutoff threshold
+  const pwrTestId = mockEngine.startTorrent(testMagnet, '/tmp/test_power', false);
   settingsStore.updateSettings({
     power: {
       ...settingsStore.getSettings().power,
@@ -229,6 +230,8 @@ async function runPhase2Tests() {
 
   mockEngine.updatePowerState({ isCharging: true, batteryPercentage: 80 });
   assert(mockEngine.isWakeLockHeld(), 'Transfers resumed when charger plugged back in');
+
+  mockEngine.deleteTorrent(pwrTestId, false);
 
   // Reset power settings
   settingsStore.updateSettings({
