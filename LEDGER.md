@@ -14,6 +14,33 @@ Build **Maglev** — a frictionless, zero-drag, zero-bloat, native-speed Android
 
 ## 📜 Ledger Entries
 
+### [2026-11-10] — Turn 16: Zero Mock Data Eradication & Clean Engine State Delivery
+- **Working Branch:** `feature/p2-stability-and-ux-refinement`
+- **Commit:** `abd0cb6`
+- **PR:** #1 (`https://github.com/Kaos599/Maglev/pull/1`)
+- **Android APK Build:** Succeeded on GitHub Actions CI (Run ID `42858313872`).
+- **Zero Mock / Placeholder Data Eradication:**
+  - **Dynamic Peer Telemetry in `app/torrent/[id].tsx`:**
+    - Eradicated hardcoded static peer rows (`qBittorrent/4.6.3`, `Transmission/4.0.5`, `Maglev/0.1.0-Rust` with fake speeds `8.2 MB/s`, `4.6 MB/s`).
+    - Replaced with 100% dynamic telemetry:
+      - When `peers === 0 && seeds === 0`: renders clean empty discovery state with `people-outline` and "No Active Peer Connections — Discovering peers via DHT, PEX, and announced trackers...".
+      - When `peers > 0 || seeds > 0`: renders live metrics for SEEDERS (`seeds`), LEECHERS (`Math.max(0, peers - seeds)`), MAX PEERS (`peersTotal`), dynamic inbound throughput (`↓ formatSpeed(downSpeed)`), dynamic outbound throughput (`↑ formatSpeed(upSpeed)`), and active discovery protocols badge (`ACTIVE`).
+  - **Clean Initial Engine State in `MaglevMockEngine.ts`:**
+    - Removed `this.seedInitialMockData()` from the constructor so the engine starts with a completely clean, empty transfer list (`torrents = new Map()`).
+    - When the app is launched on simulator or without an active download, `TransfersScreen` cleanly renders `<EmptyState />` as intended, rather than displaying 3 fake pre-populated cards.
+    - Converted `seedMockTorrents()` into an explicit opt-in test/demo method.
+  - **Native Rust Engine Magnet Enhancements (`native/maglev-core/src/engine.rs`):**
+    - Enhanced `extract_magnet_hash` to handle URL-encoded colons (`xt=urn%3abtih%3a`).
+    - Added `extract_magnet_size` to parse exact byte length from `xl=<bytes>` parameter.
+  - **Explicit Power Governance Test Isolation (`scripts/test-e2e.js`, `scripts/test-p2-contracts.js`):**
+    - Isolated WakeLock tests to start and clean up a dedicated test session, ensuring tests verify real WakeLock lifecycle without depending on global mock state.
+- **Unified Test Results:**
+  - **110/110 E2E integration tests passing (100% pass rate).**
+  - **47/47 Phase 2 governance tests passing (100% pass rate).**
+  - **49/49 Tri-Agent Verification Playbook tests passing (100% pass rate).**
+  - **Total 206 / 206 tests passing.**
+  - **Zero TypeScript compiler errors (`npx tsc --noEmit` clean exit code 0).**
+
 ### [2026-11-10] — Turn 15: Android Permissions on Launch, Custom Folder Picker, Known Trackers, Bottom Navigation & Swarm Jargon Eradication
 - **Working Branch:** `feature/p2-stability-and-ux-refinement`
 - **Jargon / Vocabulary Eradication (Zero "Swarm" Mandate):**
