@@ -124,6 +124,20 @@ When spawning subagents for implementation:
 3. **End-to-End Verification:** Subagents must run and pass the designated integration test before reporting completion.
 4. **No Assumptions:** Never assume local compilers exist. Follow Section 5 (Cloud Compilation & Simulator Bridge).
 
+### 7.1 Real-World Verification & Anti-Tautology Creed (Non-Negotiable)
+To prevent simulated test runners and subagents from giving false positives on broken native features:
+1. ❌ **NO Tautological Tests:** Never write test assertions that merely check whether a function exists (`typeof fn === 'function'`) or whether source code contains a string (`source.includes('...')`). Tests must transpile and execute the code against concrete runtime inputs and assert on outputs.
+2. ❌ **NO `as any` Type-Blinding:** Never cast core platform SDKs, native bridges, or filesystem modules to `any` (e.g. `(FileSystem as any)`). If a property or method is missing, resolve the correct typed import (e.g. `'expo-file-system/legacy'`) rather than blinding the TypeScript compiler.
+3. ❌ **NO Silent Fallthroughs Masked as "Graceful Degradation":** Never write code that silently catches an undefined native API and defaults to an emergency text box or placeholder. Fallbacks must be distinct, explicit user choices (e.g., [BROWSE] vs [EDIT]), never an invisible catch.
+4. ❌ **NO Node-Only OS Assumptions:** All OS-level logic (permissions, SAF DocumentTree, Scoped Storage) must be verified against simulated Android version matrices:
+   - **Android 13+ (API 33–35):** `POST_NOTIFICATIONS` + `READ_MEDIA_IMAGES`, `READ_MEDIA_VIDEO`, `READ_MEDIA_AUDIO`.
+   - **Android 11–12 (API 30–32):** `MANAGE_EXTERNAL_STORAGE` / All Files Access.
+   - **Legacy Android <= 10 (API <= 29):** `READ_EXTERNAL_STORAGE` + `WRITE_EXTERNAL_STORAGE`.
+5. 🛡️ **Physical Device Smoke Gate:** No feature or milestone may be declared complete without passing physical Android hardware smoke checks:
+   - Fresh install permission prompt appears on boot.
+   - Native file manager (`ACTION_OPEN_DOCUMENT_TREE`) opens when browsing folders.
+   - Local `.torrent` files are binary parsed without runtime deprecation exceptions.
+
 ---
 
 ## 8. Recommended Skills to Use

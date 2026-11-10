@@ -10,6 +10,7 @@
 const fs = require('fs');
 const path = require('path');
 const http = require('http');
+const ts = require('typescript');
 
 let totalTests = 0;
 let passedTests = 0;
@@ -138,15 +139,120 @@ async function runPlaybook() {
     '250MB OS safety buffer (SAFETY_BUFFER_BYTES) enforced before download start'
   );
 
-  // 1.3.2 Permissions Denial & SecurityException Prevention
-  const permSource = fs.readFileSync(path.join(__dirname, '../utils/permissions.ts'), 'utf8');
+  // 1.3.2 Behavioral Android OS Permission Matrix & SecurityException Prevention
+  const permRaw = fs.readFileSync(path.join(__dirname, '../utils/permissions.ts'), 'utf8')
+    .replace(/import\s+{[^}]+}\s+from\s+'react-native';/, '')
+    .replace(/import\s+{[^}]+}\s+from\s+'maglev-engine';/, '');
+  const permJs = ts.transpileModule(permRaw, {
+    compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
+  }).outputText;
+
+  function simulateAndroidOS(version, grants = {}) {
+    let requested = [];
+    const Platform = { OS: 'android', Version: version };
+    const PermissionsAndroid = {
+      PERMISSIONS: {
+        POST_NOTIFICATIONS: 'android.permission.POST_NOTIFICATIONS',
+        READ_MEDIA_IMAGES: 'android.permission.READ_MEDIA_IMAGES',
+        READ_MEDIA_VIDEO: 'android.permission.READ_MEDIA_VIDEO',
+        READ_MEDIA_AUDIO: 'android.permission.READ_MEDIA_AUDIO',
+        READ_EXTERNAL_STORAGE: 'android.permission.READ_EXTERNAL_STORAGE',
+        WRITE_EXTERNAL_STORAGE: 'android.permission.WRITE_EXTERNAL_STORAGE',
+      },
+      RESULTS: { GRANTED: 'granted', DENIED: 'denied' },
+      check: async (perm) => Boolean(grants[perm]),
+      requestMultiple: async (perms) => {
+        requested = perms;
+        const res = {};
+        perms.forEach((p) => {
+          res[p] = grants[p] ? 'granted' : 'denied';
+        });
+        return res;
+      },
+    };
+    const maglevEngine = {
+      isAllFilesAccessGranted: () => Boolean(grants['all_files']),
+      requestAllFilesAccess: async () => true,
+    };
+    const exports = {};
+    const fn = new Function('exports', 'Platform', 'PermissionsAndroid', 'maglevEngine', permJs);
+    fn(exports, Platform, PermissionsAndroid, maglevEngine);
+    return {
+      request: () => exports.requestMaglevPermissions().then((status) => ({ requested, status })),
+      check: () => exports.checkMaglevPermissions(),
+    };
+  }
+
+  // A: Android 14 (API 34) must request POST_NOTIFICATIONS and granular READ_MEDIA_* permissions
+  const sim34 = simulateAndroidOS(34, {
+    'android.permission.POST_NOTIFICATIONS': true,
+    'android.permission.READ_MEDIA_IMAGES': true,
+  });
+  const res34 = await sim34.request();
   assert(
-    permSource.includes('checkMaglevPermissions') && permSource.includes('requestMaglevPermissions'),
-    'Android permissions verification functions exported in utils/permissions.ts'
+    res34.requested.includes('android.permission.POST_NOTIFICATIONS') &&
+      res34.requested.includes('android.permission.READ_MEDIA_IMAGES') &&
+      res34.requested.includes('android.permission.READ_MEDIA_VIDEO') &&
+      res34.requested.includes('android.permission.READ_MEDIA_AUDIO'),
+    'Android 13+ (API 33/34) behavioral contract: strictly requests POST_NOTIFICATIONS and READ_MEDIA_*'
   );
   assert(
-    addTorrentSource.includes('checkMaglevPermissions()') && addTorrentSource.includes('requestMaglevPermissions()'),
-    'Add Torrent Sheet guards startDownload behind permission checks before starting native service'
+    res34.status.hasStoragePermission === true && res34.status.hasNotificationPermission === true,
+    'Android 13+ permission evaluator correctly grants storage when media permission is active'
+  );
+
+  // B: Android 14 Denied must cleanly report false without crashes
+  const sim34Denied = simulateAndroidOS(34, {});
+  const res34Denied = await sim34Denied.request();
+  assert(
+    res34Denied.status.hasStoragePermission === false && res34Denied.status.hasNotificationPermission === false,
+    'Android 13+ permission evaluator correctly detects denied state'
+  );
+
+  // C: Android <= 10 (API 28) must request READ_EXTERNAL_STORAGE and WRITE_EXTERNAL_STORAGE
+  const sim28 = simulateAndroidOS(28, {
+    'android.permission.READ_EXTERNAL_STORAGE': true,
+    'android.permission.WRITE_EXTERNAL_STORAGE': true,
+  });
+  const res28 = await sim28.request();
+  assert(
+    res28.requested.includes('android.permission.READ_EXTERNAL_STORAGE') &&
+      res28.requested.includes('android.permission.WRITE_EXTERNAL_STORAGE'),
+    'Legacy Android (API <= 29) behavioral contract: strictly requests READ/WRITE_EXTERNAL_STORAGE'
+  );
+
+  // D: Manifest parity audit (app.json vs AndroidManifest.xml)
+  const appJson = JSON.parse(fs.readFileSync(path.join(__dirname, '../app.json'), 'utf8'));
+  const manifestXml = fs.readFileSync(
+    path.join(__dirname, '../modules/maglev-engine/android/src/main/AndroidManifest.xml'),
+    'utf8'
+  );
+  const requiredPermissions = [
+    'POST_NOTIFICATIONS',
+    'READ_EXTERNAL_STORAGE',
+    'WRITE_EXTERNAL_STORAGE',
+    'MANAGE_EXTERNAL_STORAGE',
+    'READ_MEDIA_IMAGES',
+    'READ_MEDIA_VIDEO',
+    'READ_MEDIA_AUDIO',
+  ];
+  const allManifestPermsPresent = requiredPermissions.every(
+    (p) => appJson.expo.android.permissions.includes(p) && manifestXml.includes(`android.permission.${p}`)
+  );
+  assert(
+    allManifestPermsPresent,
+    'Manifest Parity Gate: All 7 modern storage & notification permissions declared in app.json and AndroidManifest.xml'
+  );
+
+  // E: Zero "as any" type-blinding audit on filesystem imports
+  const settingsSource = fs.readFileSync(path.join(__dirname, '../app/(tabs)/settings.tsx'), 'utf8');
+  assert(
+    !settingsSource.includes('(FileSystem as any)') && !addTorrentSource.includes('(FileSystem as any)'),
+    'Type-Safety Gate: Zero "as any" workarounds on FileSystem imports (strictly typed)'
+  );
+  assert(
+    settingsSource.includes("from 'expo-file-system/legacy'") && addTorrentSource.includes("from 'expo-file-system/legacy'"),
+    'Storage Architecture Gate: FileSystem strictly imports from expo-file-system/legacy preventing SAF deprecation throw'
   );
 
   console.log('\n▶ [Agent 1: Nemesis] 1.4 Concurrency & Rapid Tap Race Conditions');
