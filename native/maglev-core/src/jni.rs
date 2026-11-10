@@ -64,10 +64,11 @@ pub extern "system" fn Java_com_maglev_engine_MaglevEngineModule_nativeInit(
     *ENGINE.lock() = Some(Arc::clone(&engine));
     *PIECE_BUFFERS.lock() = Some(Box::new([0u8; MATRIX_SIZE]));
 
-    if let Ok(cls) = env.find_class("com/maglev/engine/MaglevEngineModule") {
-        if let Ok(g_ref) = env.new_global_ref(cls) {
-            *MODULE_CLASS.lock() = Some(g_ref);
-        }
+    let g_res = env.new_global_ref(&_class).or_else(|_| {
+        env.find_class("com/maglev/engine/MaglevEngineModule").and_then(|cls| env.new_global_ref(&cls))
+    });
+    if let Ok(g_ref) = g_res {
+        *MODULE_CLASS.lock() = Some(g_ref);
     }
 
     // Spawn dedicated JNI telemetry dispatcher thread
@@ -97,10 +98,13 @@ fn start_jni_dispatcher(jvm: JavaVM, mut rx: mpsc::Receiver<AggregatedTelemetry>
                         let _ = env.with_local_frame(16, |env| {
                             let j_str = env.new_string(&json_str)?;
                             let class_name = "com/maglev/engine/MaglevEngineModule";
-                            let cls = if let Some(ref g) = *MODULE_CLASS.lock() {
-                                JClass::from(g.as_obj())
+                            let lock = MODULE_CLASS.lock();
+                            let fallback_class;
+                            let cls: &JClass = if let Some(ref g) = *lock {
+                                <&JClass>::from(g.as_obj())
                             } else {
-                                env.find_class(class_name)?
+                                fallback_class = env.find_class(class_name)?;
+                                &fallback_class
                             };
                             let _ = env.call_static_method(
                                 cls,
@@ -418,4 +422,5 @@ pub extern "system" fn Java_com_maglev_engine_MaglevEngineModule_nativeStopEngin
     if let Some(engine) = ENGINE.lock().take() {
         engine.stop();
     }
+    *MODULE_CLASS.lock() = None;
 }

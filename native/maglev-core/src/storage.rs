@@ -4,8 +4,8 @@
 //! filesystems where `posix_fallocate` returns `EOPNOTSUPP`.
 
 use std::fs::{self, File, OpenOptions};
-use std::io::{self, Seek, SeekFrom, Write};
-use std::path::{Path, PathBuf};
+use std::io::{self, Write};
+use std::path::Path;
 
 #[derive(Debug, thiserror::Error)]
 pub enum StorageError {
