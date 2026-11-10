@@ -24,6 +24,7 @@ export interface ResolvedMetadata {
   trackers: string[];
   pieceLength?: number;
   pieceCount?: number;
+  isPendingPeers: boolean;
   isPendingSwarm: boolean;
 }
 
@@ -342,6 +343,7 @@ export function parseTorrentData(bencodedData: Uint8Array, defaultHash?: string)
     trackers,
     pieceLength,
     pieceCount,
+    isPendingPeers: false,
     isPendingSwarm: false,
   };
 }
@@ -360,6 +362,7 @@ export async function resolveMagnetMetadata(magnetUri: string): Promise<Resolved
       totalSize: exactLength || 0,
       files: [],
       trackers,
+      isPendingPeers: true,
       isPendingSwarm: true,
     };
   }
@@ -416,6 +419,7 @@ export async function resolveMagnetMetadata(magnetUri: string): Promise<Resolved
     totalSize: exactLength || 1_073_741_824,
     files,
     trackers,
+    isPendingPeers: true,
     isPendingSwarm: true,
   };
 }

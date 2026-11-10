@@ -93,22 +93,57 @@ export const EngineProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   }, [telemetry.torrents, activeFilter]);
 
   const pauseTorrent = useCallback(async (id: string) => {
+    setTelemetry((prev) => ({
+      ...prev,
+      activeDownloads: Math.max(0, prev.activeDownloads - 1),
+      torrents: prev.torrents.map((t) =>
+        t.id === id ? { ...t, state: 'PAUSED', downloadSpeedBytes: 0, uploadSpeedBytes: 0 } : t
+      ),
+    }));
     return await maglevEngine.pauseTorrent(id);
   }, []);
 
   const resumeTorrent = useCallback(async (id: string) => {
+    setTelemetry((prev) => ({
+      ...prev,
+      activeDownloads: prev.activeDownloads + 1,
+      torrents: prev.torrents.map((t) =>
+        t.id === id ? { ...t, state: 'DOWNLOADING' } : t
+      ),
+    }));
     return await maglevEngine.resumeTorrent(id);
   }, []);
 
   const pauseAll = useCallback(async () => {
+    setTelemetry((prev) => ({
+      ...prev,
+      activeDownloads: 0,
+      activeUploads: 0,
+      totalDownloadSpeedBytes: 0,
+      totalUploadSpeedBytes: 0,
+      torrents: prev.torrents.map((t) => ({
+        ...t,
+        state: 'PAUSED',
+        downloadSpeedBytes: 0,
+        uploadSpeedBytes: 0,
+      })),
+    }));
     await maglevEngine.pauseAll();
   }, []);
 
   const resumeAll = useCallback(async () => {
+    setTelemetry((prev) => ({
+      ...prev,
+      torrents: prev.torrents.map((t) => ({ ...t, state: 'DOWNLOADING' })),
+    }));
     await maglevEngine.resumeAll();
   }, []);
 
   const deleteTorrent = useCallback(async (id: string, deleteFiles: boolean) => {
+    setTelemetry((prev) => ({
+      ...prev,
+      torrents: prev.torrents.filter((t) => t.id !== id),
+    }));
     return await maglevEngine.deleteTorrent(id, deleteFiles);
   }, []);
 
@@ -127,7 +162,8 @@ export const EngineProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       sequential: boolean = false,
       selectedFileIndices?: number[]
     ) => {
-      return await maglevEngine.startTorrent(magnetUri, savePath, sequential, selectedFileIndices);
+      const id = await maglevEngine.startTorrent(magnetUri, savePath, sequential, selectedFileIndices);
+      return id;
     },
     []
   );

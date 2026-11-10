@@ -51,7 +51,7 @@ const styles = StyleSheet.create({
   fabContainer: {
     position: 'absolute',
     right: 16,
-    bottom: 80,
+    bottom: 16,
     zIndex: 99,
   },
   fab: {

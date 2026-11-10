@@ -360,10 +360,10 @@ export default function TorrentDetailScreen() {
           </View>
         )}
 
-        {/* Tab 3: Swarm Peers */}
+        {/* Tab 3: Connected Peers */}
         {activeTab === 'PEERS' && (
           <View style={styles.tabContentCard}>
-            <Text style={styles.contentHeader}>Connected Swarm Peers ({peers})</Text>
+            <Text style={styles.contentHeader}>Connected Peers ({peers})</Text>
             <View style={styles.peerRow}>
               <Text style={styles.peerClient}>qBittorrent/4.6.3</Text>
               <Text style={styles.peerSpeedDown}>↓ 8.2 MB/s</Text>

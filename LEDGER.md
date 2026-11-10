@@ -14,7 +14,38 @@ Build **Maglev** — a frictionless, zero-drag, zero-bloat, native-speed Android
 
 ## 📜 Ledger Entries
 
-### [2026-11-10] — Turn 14: Tri-Agent Verification Playbook Execution & Deep Boundary Hardening
+### [2026-11-10] — Turn 15: Android Permissions on Launch, Custom Folder Picker, Known Trackers, Bottom Navigation & Swarm Jargon Eradication
+- **Working Branch:** `feature/p2-stability-and-ux-refinement`
+- **Jargon / Vocabulary Eradication (Zero "Swarm" Mandate):**
+  - Completely audited and eradicated all mentions of "swarm" across `app/`, `components/`, and `utils/`.
+  - Replaced with clean, natural terminology: `Connected Peers`, `Search Torrents`, `Live Transfer Speed`, `Connecting to peers`, `Finding peers (DHT)`, `SEARCHING ONLINE...`, `No Torrents Found`.
+- **Persistent Storage Permissions on App Launch:**
+  - Added undeclared permissions `READ_EXTERNAL_STORAGE` and `WRITE_EXTERNAL_STORAGE` to `app.json` and `modules/maglev-engine/android/src/main/AndroidManifest.xml`.
+  - Added proactive `requestMaglevPermissions()` execution inside `app/_layout.tsx` on initial mount.
+  - Fixed boolean truthiness defect in `add-torrent.tsx` permission check (`!granted.isPermissionGranted` instead of evaluating object truthiness).
+- **Navigation Bar & FAB Alignment:**
+  - Corrected bottom tab bar geometry in `app/(tabs)/_layout.tsx` using `useSafeAreaInsets()`: `bottomPadding = Math.max(insets.bottom, 16)`, `tabHeight = 56 + bottomPadding`, completely resolving overlap with Android's system 3-button and gesture navigation bars.
+  - Adjusted `FloatingActionButton.tsx` position from `bottom: 80` to `bottom: 16` so the `+` FAB sits directly and cleanly right above the navigation bar.
+- **Custom Folder Definition in Settings:**
+  - In `Settings > Downloads & Storage`: enabled custom folder selection using Android Storage Access Framework (`FileSystem.StorageAccessFramework.requestDirectoryPermissionsAsync()`) and a persistent manual directory input modal fallback.
+  - Updates `settings.storage.customSafPath`, sets `storageMode = 'SAF'`, and persists URI permissions.
+  - Added visible `[CHANGE FOLDER]` button ($\ge 44 \times 44\text{px}$).
+- **Default Known Trackers Management:**
+  - Added `defaultTrackers: string[]` to `NetworkSettings` with canonical tier-1 defaults (`udp://tracker.opentrackr.org:1337/announce`, `udp://open.stealth.si:80/announce`, etc.).
+  - Added interactive "Default Known Trackers" UI in Settings with add, remove, and reset-to-defaults capabilities.
+- **Real Online Search & Live Feeds (Zero Static Placeholders):**
+  - Removed fake static mock torrents (`CURATED_SWARMS`) from `search.tsx`. Added Quick Discovery Topics and live indexer queries.
+  - Fixed `handleAddTorrent` from search: initiates download, provides tactile haptic feedback, and renders a confirmation toast with a direct `[VIEW TRANSFERS]` button.
+  - Removed static fallback feeds (`INITIAL_FALLBACK_FEEDS`) from `feeds.tsx`. Defaults to live RSS fetching on mount with proper loading and empty states.
+  - Fixed Wi-Fi transfer metric in `settings.tsx` to display true bytes transferred (removed hardcoded 4.0 GB fallback).
+- **Engine State Transitions & Optimistic Telemetry:**
+  - Added immediate optimistic state updates in `EngineContext.tsx` and reactive listener notifications in `MaglevNativeBridge.ts` across `startTorrent`, `pauseTorrent`, `resumeTorrent`, `pauseAll`, `resumeAll`, and `deleteTorrent`.
+- **Unified Test Results:**
+  - **110/110 E2E integration tests passing (100% pass rate).**
+  - **47/47 Phase 2 governance tests passing (100% pass rate).**
+  - **49/49 Tri-Agent Verification Playbook tests passing (100% pass rate).**
+  - **Total 206 / 206 tests passing.**
+  - **Zero TypeScript compiler errors (`npx tsc --noEmit` clean exit code 0).**
 - **Working Branch:** `dev`
 - **Tri-Agent Playbook Complete Pass (49/49 Tests, 100% Pass Rate):**
   - **Nemesis Agent (Adversarial Fuzzing & Chaos Engineering):**

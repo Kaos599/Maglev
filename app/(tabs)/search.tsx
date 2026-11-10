@@ -16,7 +16,7 @@ import { HeaderBar } from '../../components/HeaderBar';
 import { useMaglevEngine } from '../../context/EngineContext';
 import { triggerHaptic } from '../../constants/haptics';
 
-export interface SwarmSearchResult {
+export interface SearchResult {
   id: string;
   title: string;
   category: string;
@@ -26,79 +26,15 @@ export interface SwarmSearchResult {
   magnet: string;
 }
 
-const CURATED_SWARMS: SwarmSearchResult[] = [
-  {
-    id: 'sw_ubuntu_24',
-    title: 'Ubuntu-24.04-desktop-amd64.iso',
-    category: 'Apps',
-    sizeBytes: 4_294_967_296,
-    seeds: 1842,
-    peers: 142,
-    magnet: 'magnet:?xt=urn:btih:9dc31b34e568449c2872322a36b5ccab5d1a89c9&dn=Ubuntu-24.04-desktop-amd64.iso&tr=udp%3A%2F%2Ftracker.opentrackr.org%3A1337%2Fannounce&tr=udp%3A%2F%2Fopen.stealth.si%3A80%2Fannounce',
-  },
-  {
-    id: 'sw_arch_linux',
-    title: 'ArchLinux-2026.11.01-x86_64.iso',
-    category: 'Apps',
-    sizeBytes: 1_288_490_188,
-    seeds: 924,
-    peers: 78,
-    magnet: 'magnet:?xt=urn:btih:e06c138f6bdf1f50a8c279cbe8784d5df684a20b&dn=ArchLinux-2026.11.01-x86_64.iso&tr=udp%3A%2F%2Ftracker.opentrackr.org%3A1337%2Fannounce&tr=udp%3A%2F%2Fopen.stealth.si%3A80%2Fannounce',
-  },
-  {
-    id: 'sw_debian_12',
-    title: 'Debian-12.8.0-netinst.iso',
-    category: 'Apps',
-    sizeBytes: 671_088_640,
-    seeds: 612,
-    peers: 34,
-    magnet: 'magnet:?xt=urn:btih:576566c5a083d9aa8c688321d454fa16b0b2e3e5&dn=Debian-12.8.0-netinst.iso&tr=udp%3A%2F%2Ftracker.opentrackr.org%3A1337%2Fannounce&tr=udp%3A%2F%2Fopen.stealth.si%3A80%2Fannounce',
-  },
-  {
-    id: 'sw_bbb_4k',
-    title: 'Big-Buck-Bunny-4K-Surround.mkv',
-    category: 'Movies',
-    sizeBytes: 891_289_600,
-    seeds: 412,
-    peers: 28,
-    magnet: 'magnet:?xt=urn:btih:dd8255ecdc7ca55fb0bbf81323d87062db1f6d1c&dn=Big-Buck-Bunny-4K-Surround.mkv&tr=udp%3A%2F%2Ftracker.opentrackr.org%3A1337%2Fannounce&tr=udp%3A%2F%2Fopen.stealth.si%3A80%2Fannounce',
-  },
-  {
-    id: 'sw_tears_of_steel',
-    title: 'Tears-Of-Steel-UHD-Master.mkv',
-    category: 'Movies',
-    sizeBytes: 1_503_238_553,
-    seeds: 350,
-    peers: 19,
-    magnet: 'magnet:?xt=urn:btih:20bb20901e9d0e2e925c27f3aa111b212f717904&dn=Tears-Of-Steel-UHD-Master.mkv&tr=udp%3A%2F%2Ftracker.opentrackr.org%3A1337%2Fannounce&tr=udp%3A%2F%2Fopen.stealth.si%3A80%2Fannounce',
-  },
-  {
-    id: 'sw_blender_demo',
-    title: 'Blender-Studio-Wing-It-Anime.mkv',
-    category: 'Anime',
-    sizeBytes: 566_231_040,
-    seeds: 280,
-    peers: 14,
-    magnet: 'magnet:?xt=urn:btih:c12056fae8590c7931ef827727e57c6b412128e4&dn=Blender-Studio-Wing-It-Anime.mkv&tr=udp%3A%2F%2Ftracker.opentrackr.org%3A1337%2Fannounce&tr=udp%3A%2F%2Fopen.stealth.si%3A80%2Fannounce',
-  },
-  {
-    id: 'sw_nin_ghosts',
-    title: 'Nine-Inch-Nails-Ghosts-I-IV-FLAC',
-    category: 'Music',
-    sizeBytes: 1_932_735_283,
-    seeds: 512,
-    peers: 42,
-    magnet: 'magnet:?xt=urn:btih:5a0928e086f03407e3a6efad69b8bd59cfc8135a&dn=Nine-Inch-Nails-Ghosts-I-IV-FLAC&tr=udp%3A%2F%2Ftracker.opentrackr.org%3A1337%2Fannounce&tr=udp%3A%2F%2Fopen.stealth.si%3A80%2Fannounce',
-  },
-  {
-    id: 'sw_ebooks_master',
-    title: 'Standard-Ebooks-Anthology-2026.epub',
-    category: 'Books',
-    sizeBytes: 125_829_120,
-    seeds: 180,
-    peers: 8,
-    magnet: 'magnet:?xt=urn:btih:a88fda5954e89178c372716a6a78b8180ed4dad3&dn=Standard-Ebooks-Anthology-2026.epub&tr=udp%3A%2F%2Ftracker.opentrackr.org%3A1337%2Fannounce&tr=udp%3A%2F%2Fopen.stealth.si%3A80%2Fannounce',
-  },
+const QUICK_TOPICS = [
+  'Ubuntu',
+  'Arch Linux',
+  'Debian',
+  'Blender',
+  'Big Buck Bunny',
+  'Tears of Steel',
+  'Alpine',
+  'Open Source',
 ];
 
 const CATEGORIES = [
@@ -131,10 +67,11 @@ export default function SearchScreen() {
   const [selectedCategory, setSelectedCategory] = useState('All');
   const [addedIds, setAddedIds] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(false);
-  const [onlineResults, setOnlineResults] = useState<SwarmSearchResult[] | null>(null);
+  const [onlineResults, setOnlineResults] = useState<SearchResult[] | null>(null);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
   const debounceRef = useRef<NodeJS.Timeout | null>(null);
 
-  const fetchLiveSwarms = useCallback(async (searchQuery: string, category: string) => {
+  const fetchLiveResults = useCallback(async (searchQuery: string, category: string) => {
     if (!searchQuery.trim()) {
       setOnlineResults(null);
       return;
@@ -163,9 +100,9 @@ export default function SearchScreen() {
       if (res.ok) {
         const data = await res.json();
         if (Array.isArray(data) && data.length > 0 && data[0].id !== '0' && data[0].name !== 'No results returned') {
-          const mapped: SwarmSearchResult[] = data.map((item: any) => ({
-            id: item.info_hash || `sw_${Math.random()}`,
-            title: item.name || 'Unknown Swarm',
+          const mapped: SearchResult[] = data.map((item: any) => ({
+            id: item.info_hash || `tor_${Math.random()}`,
+            title: item.name || 'Unknown Torrent',
             category: mapCategory(item.category),
             sizeBytes: parseInt(item.size || '0', 10),
             seeds: parseInt(item.seeders || '0', 10),
@@ -181,7 +118,7 @@ export default function SearchScreen() {
       setOnlineResults([]);
     } catch {
       // Offline fallback
-      setOnlineResults(null);
+      setOnlineResults([]);
     } finally {
       setIsLoading(false);
     }
@@ -201,7 +138,7 @@ export default function SearchScreen() {
     }
 
     debounceRef.current = setTimeout(() => {
-      fetchLiveSwarms(text, selectedCategory);
+      fetchLiveResults(text, selectedCategory);
     }, 450);
   };
 
@@ -209,24 +146,21 @@ export default function SearchScreen() {
     triggerHaptic('light');
     setSelectedCategory(cat);
     if (query.trim()) {
-      fetchLiveSwarms(query, cat);
+      fetchLiveResults(query, cat);
     }
   };
 
-  const handleAddSwarm = async (item: SwarmSearchResult) => {
+  const handleAddTorrent = async (item: SearchResult) => {
     triggerHaptic('medium');
     await startTorrent(item.magnet);
     setAddedIds((prev) => [...prev, item.id]);
+    setToastMessage(`Added "${item.title}" to Downloads`);
   };
 
   // Determine active display list
-  const activeResults: SwarmSearchResult[] = onlineResults !== null
+  const activeResults: SearchResult[] = onlineResults !== null
     ? onlineResults.filter((item) => selectedCategory === 'All' || item.category === selectedCategory)
-    : CURATED_SWARMS.filter((item) => {
-        const matchesCategory = selectedCategory === 'All' || item.category === selectedCategory;
-        const matchesQuery = query.trim().length === 0 || item.title.toLowerCase().includes(query.trim().toLowerCase());
-        return matchesCategory && matchesQuery;
-      });
+    : [];
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
@@ -242,7 +176,7 @@ export default function SearchScreen() {
           />
           <TextInput
             style={styles.searchInput}
-            placeholder="Search public torrent swarms..."
+            placeholder="Search torrents..."
             placeholderTextColor={TOKENS.colors.textMuted}
             value={query}
             onChangeText={handleQueryChange}
@@ -295,7 +229,7 @@ export default function SearchScreen() {
       {isLoading && (
         <View style={styles.indexerLoaderRow}>
           <ActivityIndicator size="small" color={TOKENS.colors.accentCyan} />
-          <Text style={styles.indexerLoaderText}>QUERYING PUBLIC SWARMS IN REAL TIME...</Text>
+          <Text style={styles.indexerLoaderText}>SEARCHING ONLINE...</Text>
         </View>
       )}
 
@@ -304,7 +238,32 @@ export default function SearchScreen() {
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.resultsScroll}
       >
-        {activeResults.length > 0 ? (
+        {query.trim().length === 0 && onlineResults === null ? (
+          <View style={styles.discoveryContainer}>
+            <Text style={styles.discoveryHeading}>POPULAR SEARCHES</Text>
+            <View style={styles.topicChipsGrid}>
+              {QUICK_TOPICS.map((topic) => (
+                <TouchableOpacity
+                  key={topic}
+                  style={styles.topicChip}
+                  onPress={() => {
+                    triggerHaptic('selection');
+                    setQuery(topic);
+                    fetchLiveResults(topic, selectedCategory);
+                  }}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Search topic ${topic}`}
+                >
+                  <Ionicons name="search" size={12} color={TOKENS.colors.accentCyan} style={{ marginRight: 6 }} />
+                  <Text style={styles.topicChipText}>{topic}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+            <Text style={styles.discoveryHint}>
+              Select a quick search topic or enter keywords above.
+            </Text>
+          </View>
+        ) : activeResults.length > 0 ? (
           <View style={styles.resultsList}>
             {activeResults.map((item) => {
               const isAdded = addedIds.includes(item.id);
@@ -322,17 +281,17 @@ export default function SearchScreen() {
                   </Text>
 
                   <View style={styles.cardFooterRow}>
-                    <View style={styles.swarmMeta}>
+                    <View style={styles.resultMeta}>
                       <Text style={styles.metaSeeds}>↑ {item.seeds}</Text>
                       <Text style={styles.metaPeers}>↓ {item.peers}</Text>
                       <Text style={styles.metaHealth}>
-                        {item.seeds >= 50 ? 'HEALTHY' : item.seeds > 0 ? 'ACTIVE' : 'LOW PEERS'}
+                        {item.seeds >= 50 ? 'HEALTHY' : item.seeds > 0 ? 'ACTIVE' : 'FEW PEERS'}
                       </Text>
                     </View>
 
                     <TouchableOpacity
                       style={[styles.addBtn, isAdded && styles.addBtnDone]}
-                      onPress={() => !isAdded && handleAddSwarm(item)}
+                      onPress={() => !isAdded && handleAddTorrent(item)}
                       disabled={isAdded}
                       accessibilityRole="button"
                       accessibilityLabel={isAdded ? `Already added ${item.title}` : `Add ${item.title}`}
@@ -349,15 +308,38 @@ export default function SearchScreen() {
         ) : (
           <View style={styles.emptyContainer}>
             <Ionicons name="compass-outline" size={48} color={TOKENS.colors.surfaceBorder} />
-            <Text style={styles.emptyTitle}>No Matching Swarms Found</Text>
+            <Text style={styles.emptyTitle}>No Torrents Found</Text>
             <Text style={styles.emptySubtitle}>
               {query.trim().length > 0
                 ? `Zero public seeds detected for "${query}". Try different terms or categories.`
-                : 'Enter a search keyword to query public BitTorrent swarms.'}
+                : 'Enter a search keyword to query public BitTorrent indexers.'}
             </Text>
           </View>
         )}
       </ScrollView>
+
+      {/* Added Confirmation Banner */}
+      {toastMessage && (
+        <View style={styles.toastBanner}>
+          <View style={styles.toastLeft}>
+            <Ionicons name="checkmark-circle" size={16} color={TOKENS.colors.accentLime} style={{ marginRight: 8 }} />
+            <Text style={styles.toastText} numberOfLines={1}>
+              {toastMessage}
+            </Text>
+          </View>
+          <TouchableOpacity
+            style={styles.toastActionBtn}
+            onPress={() => {
+              triggerHaptic('light');
+              router.push('/(tabs)');
+            }}
+            accessibilityRole="button"
+            accessibilityLabel="View in Transfers"
+          >
+            <Text style={styles.toastActionText}>VIEW TRANSFERS</Text>
+          </TouchableOpacity>
+        </View>
+      )}
     </View>
   );
 }
@@ -497,7 +479,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
   },
-  swarmMeta: {
+  resultMeta: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
@@ -544,6 +526,45 @@ const styles = StyleSheet.create({
   addBtnTextDone: {
     color: TOKENS.colors.accentLime,
   },
+  discoveryContainer: {
+    paddingVertical: 24,
+    paddingHorizontal: 8,
+  },
+  discoveryHeading: {
+    fontFamily: 'Silkscreen',
+    fontSize: 11,
+    fontWeight: '700',
+    color: TOKENS.colors.textMuted,
+    marginBottom: 12,
+    letterSpacing: 0.8,
+  },
+  topicChipsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: 16,
+  },
+  topicChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    minHeight: TOKENS.touchTarget.minHeight,
+    backgroundColor: '#11161F',
+    borderWidth: 1,
+    borderColor: TOKENS.colors.surfaceBorder,
+    borderRadius: 22,
+    paddingHorizontal: 14,
+  },
+  topicChipText: {
+    fontFamily: 'SpaceMono',
+    fontSize: 11,
+    color: TOKENS.colors.textPrimary,
+  },
+  discoveryHint: {
+    fontFamily: 'SpaceMono',
+    fontSize: 11,
+    color: TOKENS.colors.textMuted,
+    lineHeight: 18,
+  },
   emptyContainer: {
     paddingVertical: 60,
     alignItems: 'center',
@@ -563,5 +584,52 @@ const styles = StyleSheet.create({
     fontSize: 12,
     textAlign: 'center',
     lineHeight: 18,
+  },
+  toastBanner: {
+    position: 'absolute',
+    bottom: 16,
+    left: 16,
+    right: 16,
+    backgroundColor: '#161B22',
+    borderWidth: 1,
+    borderColor: TOKENS.colors.accentLime,
+    borderRadius: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 14,
+    minHeight: 52,
+    elevation: 6,
+    shadowColor: TOKENS.colors.accentLime,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
+  },
+  toastLeft: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginRight: 10,
+  },
+  toastText: {
+    flex: 1,
+    fontFamily: 'SpaceMono',
+    fontSize: 11,
+    color: TOKENS.colors.textPrimary,
+  },
+  toastActionBtn: {
+    minHeight: TOKENS.touchTarget.minHeight,
+    minWidth: 80,
+    backgroundColor: TOKENS.colors.accentLime,
+    borderRadius: 6,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 10,
+  },
+  toastActionText: {
+    fontFamily: 'Silkscreen',
+    fontSize: 9,
+    fontWeight: '700',
+    color: '#000000',
   },
 });

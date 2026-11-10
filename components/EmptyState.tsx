@@ -28,7 +28,7 @@ export const EmptyState: React.FC = () => {
 
       <Text style={styles.title}>No active transfers</Text>
       <Text style={styles.subtitle}>
-        Add a magnet link, open a .torrent file, or search the swarm to begin downloading.
+        Add a magnet link, open a .torrent file, or search for torrents to begin downloading.
       </Text>
 
       {/* Auto-detect clipboard magnet link pill */}

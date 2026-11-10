@@ -43,7 +43,7 @@ export default function AddTorrentSheet() {
   const [resolvedName, setResolvedName] = useState<string>('');
   const [infoHash, setInfoHash] = useState<string>('');
   const [trackerCount, setTrackerCount] = useState<number>(0);
-  const [isPendingSwarm, setIsPendingSwarm] = useState(false);
+  const [isPendingPeers, setIsPendingPeers] = useState(false);
 
   /* Payload files state */
   const [files, setFiles] = useState<ParsedTorrentFile[]>([]);
@@ -96,7 +96,7 @@ export default function AddTorrentSheet() {
       setInfoHash(metadata.infoHash);
       setResolvedName(metadata.name);
       setTrackerCount(metadata.trackers.length);
-      setIsPendingSwarm(metadata.isPendingSwarm);
+      setIsPendingPeers(metadata.isPendingPeers);
 
       if (metadata.files && metadata.files.length > 0) {
         setFiles(metadata.files);
@@ -157,7 +157,7 @@ export default function AddTorrentSheet() {
       setResolvedName('');
       setInfoHash('');
       setTrackerCount(0);
-      setIsPendingSwarm(false);
+      setIsPendingPeers(false);
     }
   };
 
@@ -190,7 +190,7 @@ export default function AddTorrentSheet() {
           setResolvedName(parsed.name);
           setFiles(parsed.files);
           setTrackerCount(parsed.trackers.length);
-          setIsPendingSwarm(false);
+          setIsPendingPeers(false);
           triggerHaptic('medium');
         } catch (readErr) {
           Alert.alert(
@@ -308,10 +308,10 @@ export default function AddTorrentSheet() {
       const permStatus = await checkMaglevPermissions();
       if (!permStatus.isPermissionGranted) {
         const granted = await requestMaglevPermissions();
-        if (!granted) {
+        if (!granted.isPermissionGranted) {
           Alert.alert(
             'Permissions Required',
-            'Maglev requires storage and notification permissions to manage torrent transfers. Please enable them in device settings.'
+            'Maglev requires storage access to download and write files. Please enable storage permissions in device settings.'
           );
           isSubmittingRef.current = false;
           setIsStarting(false);
@@ -323,6 +323,15 @@ export default function AddTorrentSheet() {
       const selectedIndices = files.filter((f) => f.selected && f.priority > 0).map((f) => f.id);
 
       const newId = await startTorrent(uri, finalPath, sequential, selectedIndices);
+      if (!newId) {
+        Alert.alert(
+          'Download Failed',
+          'Could not start torrent download. Please verify storage permissions and selected directory.'
+        );
+        isSubmittingRef.current = false;
+        setIsStarting(false);
+        return;
+      }
 
       // Apply High priorities if configured
       for (const file of files) {
@@ -394,14 +403,14 @@ export default function AddTorrentSheet() {
           </TouchableOpacity>
         </View>
 
-        {/* Live Swarm Metadata Resolution Banner */}
+        {/* Live Metadata Resolution Banner */}
         {isResolving && (
           <View style={styles.metadataResolvingCard}>
             <ActivityIndicator size="small" color={TOKENS.colors.accentLime} />
             <View style={styles.resolvingTextCol}>
-              <Text style={styles.resolvingTitle}>SCANNING SWARM METADATA...</Text>
+              <Text style={styles.resolvingTitle}>FETCHING TORRENT DETAILS...</Text>
               <Text style={styles.resolvingSubtitle}>
-                {infoHash ? `Hash: ${infoHash.slice(0, 16)}... • Querying caches & DHT` : 'Reading torrent dictionary'}
+                {infoHash ? `Hash: ${infoHash.slice(0, 16)}... • Connecting to peers` : 'Reading torrent dictionary'}
               </Text>
             </View>
           </View>
@@ -423,10 +432,10 @@ export default function AddTorrentSheet() {
                 </Text>
               ) : null}
               <Text style={styles.resolvedTrackerText}>
-                {trackerCount > 0 ? `${trackerCount} TRACKERS FOUND` : 'DHT SWARM DISCOVERY'}
+                {trackerCount > 0 ? `${trackerCount} TRACKERS FOUND` : 'FINDING PEERS (DHT)'}
               </Text>
-              {isPendingSwarm && (
-                <Text style={styles.resolvedPendingBadge}>METADATA RESOLVING</Text>
+              {isPendingPeers && (
+                <Text style={styles.resolvedPendingBadge}>CONNECTING TO PEERS</Text>
               )}
             </View>
           </View>

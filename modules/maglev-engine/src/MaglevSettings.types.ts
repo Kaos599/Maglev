@@ -39,6 +39,7 @@ export interface NetworkSettings {
   ipFilterEnabled: boolean;
   ipFilterRulesCount: number;
   ipFilterPath?: string;
+  defaultTrackers?: string[];
 }
 
 export interface BandwidthSettings {
@@ -94,6 +95,14 @@ export const SPEED_PRESET_MAP: Record<SpeedPreset, number> = {
   CUSTOM: 0,
 };
 
+export const DEFAULT_TRACKERS: string[] = [
+  'udp://tracker.opentrackr.org:1337/announce',
+  'udp://open.stealth.si:80/announce',
+  'udp://tracker.torrent.eu.org:451/announce',
+  'udp://tracker.moeking.me:6969/announce',
+  'udp://explodie.org:6969/announce',
+];
+
 export const DEFAULT_SETTINGS: MaglevSettings = {
   appearance: {
     theme: 'TACTICAL_DARK',
@@ -123,7 +132,7 @@ export const DEFAULT_SETTINGS: MaglevSettings = {
     ssidWhitelistEnabled: false,
     allowedSsids: [],
     networkType: 'WIFI',
-    currentSsid: 'Home-5G',
+    currentSsid: '',
     upnpEnabled: true,
     portForwardingStatus: 'MAPPED',
     listeningPort: 6881,
@@ -143,6 +152,7 @@ export const DEFAULT_SETTINGS: MaglevSettings = {
     ipFilterEnabled: false,
     ipFilterRulesCount: 0,
     ipFilterPath: '',
+    defaultTrackers: DEFAULT_TRACKERS,
   },
   power: {
     downloadOnlyWhileCharging: false,

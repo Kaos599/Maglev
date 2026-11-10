@@ -1,6 +1,7 @@
 import React, { useEffect, useRef } from 'react';
 import { View, StyleSheet, Animated } from 'react-native';
 import { Tabs } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { TOKENS } from '../../constants/tokens';
 import { triggerHaptic } from '../../constants/haptics';
 import {
@@ -36,6 +37,10 @@ const AnimatedTabIcon: React.FC<AnimatedTabIconProps> = ({ focused, children }) 
 };
 
 export default function TabLayout() {
+  const insets = useSafeAreaInsets();
+  const bottomPadding = Math.max(insets.bottom, 12);
+  const tabHeight = 54 + bottomPadding;
+
   return (
     <Tabs
       screenListeners={{
@@ -49,9 +54,9 @@ export default function TabLayout() {
           backgroundColor: '#070A0E',
           borderTopWidth: 1,
           borderTopColor: '#161C26',
-          height: 60,
-          paddingBottom: 8,
-          paddingTop: 6,
+          height: tabHeight,
+          paddingBottom: bottomPadding,
+          paddingTop: 8,
         },
         tabBarActiveTintColor: TOKENS.colors.accentLime,
         tabBarInactiveTintColor: 'rgba(139, 148, 158, 0.7)',

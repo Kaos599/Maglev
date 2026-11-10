@@ -35,54 +35,6 @@ const DEFAULT_FEED_URLS: { channel: string; url: string }[] = [
   },
 ];
 
-const INITIAL_FALLBACK_FEEDS: FeedItem[] = [
-  {
-    id: 'f_ubuntu',
-    title: 'Ubuntu-24.04.1-LTS-Desktop-x86_64.iso',
-    channel: 'Linux Distros',
-    sizeBytes: 4_294_967_296,
-    published: 'Today',
-    autoDownload: true,
-    magnet: 'magnet:?xt=urn:btih:9dc31b34e568449c2872322a36b5ccab5d1a89c9&dn=Ubuntu-24.04.1-LTS-Desktop-x86_64.iso&tr=udp%3A%2F%2Ftracker.opentrackr.org%3A1337%2Fannounce',
-  },
-  {
-    id: 'f_arch',
-    title: 'Arch-Linux-2026.11.01-Dual.iso',
-    channel: 'Linux Distros',
-    sizeBytes: 1_288_490_188,
-    published: 'Yesterday',
-    autoDownload: false,
-    magnet: 'magnet:?xt=urn:btih:e06c138f6bdf1f50a8c279cbe8784d5df684a20b&dn=Arch-Linux-2026.11.01-Dual.iso&tr=udp%3A%2F%2Ftracker.opentrackr.org%3A1337%2Fannounce',
-  },
-  {
-    id: 'f_blender',
-    title: 'Blender-4.3.0-Daily-Snapshot.tar.xz',
-    channel: 'Blender Releases',
-    sizeBytes: 450_887_680,
-    published: '3d ago',
-    autoDownload: false,
-    magnet: 'magnet:?xt=urn:btih:c12056fae8590c7931ef827727e57c6b412128e4&dn=Blender-4.3.0-Daily-Snapshot.tar.xz&tr=udp%3A%2F%2Ftracker.opentrackr.org%3A1337%2Fannounce',
-  },
-  {
-    id: 'f_tears',
-    title: 'Tears-Of-Steel-4K-Master-CC.mkv',
-    channel: 'Open Media',
-    sizeBytes: 1_824_522_240,
-    published: '4d ago',
-    autoDownload: true,
-    magnet: 'magnet:?xt=urn:btih:20bb20901e9d0e2e925c27f3aa111b212f717904&dn=Tears-Of-Steel-4K-Master-CC.mkv&tr=udp%3A%2F%2Ftracker.opentrackr.org%3A1337%2Fannounce',
-  },
-  {
-    id: 'f_debian',
-    title: 'Debian-12.8.0-netinst-amd64.iso',
-    channel: 'Linux Distros',
-    sizeBytes: 671_088_640,
-    published: '5d ago',
-    autoDownload: false,
-    magnet: 'magnet:?xt=urn:btih:576566c5a083d9aa8c688321d454fa16b0b2e3e5&dn=Debian-12.8.0-netinst-amd64.iso&tr=udp%3A%2F%2Ftracker.opentrackr.org%3A1337%2Fannounce',
-  },
-];
-
 /**
  * Lightweight XML RSS / Atom parser
  */
@@ -142,13 +94,11 @@ export default function FeedsScreen() {
   const [channels, setChannels] = useState<string[]>([
     'All Feeds',
     'Linux Distros',
-    'Blender Releases',
-    'Open Media',
   ]);
   const [selectedChannel, setSelectedChannel] = useState('All Feeds');
-  const [feedItems, setFeedItems] = useState<FeedItem[]>(INITIAL_FALLBACK_FEEDS);
+  const [feedItems, setFeedItems] = useState<FeedItem[]>([]);
   const [downloadedIds, setDownloadedIds] = useState<string[]>([]);
-  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(true);
 
   // Modal State for adding new RSS feed
   const [addModalVisible, setAddModalVisible] = useState(false);
@@ -371,57 +321,72 @@ export default function FeedsScreen() {
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.feedScroll}
       >
-        <View style={styles.feedList}>
-          {filteredItems.map((item) => {
-            const isDownloaded = downloadedIds.includes(item.id);
-            return (
-              <View key={item.id} style={styles.feedCard}>
-                <View style={styles.cardHeaderRow}>
-                  <View style={styles.channelBadge}>
-                    <Text style={styles.channelBadgeText}>{item.channel}</Text>
+        {isRefreshing && feedItems.length === 0 ? (
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="small" color={TOKENS.colors.accentLime} style={{ marginBottom: 12 }} />
+            <Text style={styles.loadingText}>FETCHING LIVE RSS FEEDS...</Text>
+          </View>
+        ) : filteredItems.length === 0 ? (
+          <View style={styles.emptyContainer}>
+            <Ionicons name="newspaper-outline" size={36} color={TOKENS.colors.textMuted} style={{ marginBottom: 12 }} />
+            <Text style={styles.emptyTitle}>No Feeds Available</Text>
+            <Text style={styles.emptySubtitle}>
+              Tap '+ FEED' to subscribe to a live BitTorrent RSS release channel.
+            </Text>
+          </View>
+        ) : (
+          <View style={styles.feedList}>
+            {filteredItems.map((item) => {
+              const isDownloaded = downloadedIds.includes(item.id);
+              return (
+                <View key={item.id} style={styles.feedCard}>
+                  <View style={styles.cardHeaderRow}>
+                    <View style={styles.channelBadge}>
+                      <Text style={styles.channelBadgeText}>{item.channel}</Text>
+                    </View>
+                    <View style={styles.metaRight}>
+                      {item.autoDownload && (
+                        <View style={styles.autoBadge}>
+                          <Text style={styles.autoBadgeText}>AUTO</Text>
+                        </View>
+                      )}
+                      <Text style={styles.publishedText}>{item.published}</Text>
+                    </View>
                   </View>
-                  <View style={styles.metaRight}>
-                    {item.autoDownload && (
-                      <View style={styles.autoBadge}>
-                        <Text style={styles.autoBadgeText}>AUTO</Text>
-                      </View>
-                    )}
-                    <Text style={styles.publishedText}>{item.published}</Text>
-                  </View>
-                </View>
 
-                <Text style={styles.feedTitle} numberOfLines={2}>
-                  {item.title}
-                </Text>
+                  <Text style={styles.feedTitle} numberOfLines={2}>
+                    {item.title}
+                  </Text>
 
-                <View style={styles.cardFooterRow}>
-                  <Text style={styles.sizeText}>{formatBytes(item.sizeBytes)}</Text>
+                  <View style={styles.cardFooterRow}>
+                    <Text style={styles.sizeText}>{formatBytes(item.sizeBytes)}</Text>
 
-                  <TouchableOpacity
-                    style={[styles.downloadBtn, isDownloaded && styles.downloadBtnDone]}
-                    onPress={() => !isDownloaded && handleDownloadFeed(item)}
-                    disabled={isDownloaded}
-                    accessibilityRole="button"
-                    accessibilityLabel={
-                      isDownloaded
-                        ? `Already downloading ${item.title}`
-                        : `Download ${item.title}`
-                    }
-                  >
-                    <Text
-                      style={[
-                        styles.downloadBtnText,
-                        isDownloaded && styles.downloadBtnTextDone,
-                      ]}
+                    <TouchableOpacity
+                      style={[styles.downloadBtn, isDownloaded && styles.downloadBtnDone]}
+                      onPress={() => !isDownloaded && handleDownloadFeed(item)}
+                      disabled={isDownloaded}
+                      accessibilityRole="button"
+                      accessibilityLabel={
+                        isDownloaded
+                          ? `Already downloading ${item.title}`
+                          : `Download ${item.title}`
+                      }
                     >
-                      {isDownloaded ? 'ADDED ✓' : '+ DOWNLOAD'}
-                    </Text>
-                  </TouchableOpacity>
+                      <Text
+                        style={[
+                          styles.downloadBtnText,
+                          isDownloaded && styles.downloadBtnTextDone,
+                        ]}
+                      >
+                        {isDownloaded ? 'ADDED ✓' : '+ DOWNLOAD'}
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
                 </View>
-              </View>
-            );
-          })}
-        </View>
+              );
+            })}
+          </View>
+        )}
       </ScrollView>
 
       {/* Add Feed Modal */}
@@ -781,5 +746,36 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '700',
     fontFamily: 'monospace',
+  },
+  loadingContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 64,
+  },
+  loadingText: {
+    fontFamily: 'SpaceMono',
+    fontSize: 11,
+    color: TOKENS.colors.accentLime,
+    letterSpacing: 1,
+  },
+  emptyContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 64,
+    paddingHorizontal: 24,
+  },
+  emptyTitle: {
+    fontFamily: 'Silkscreen',
+    fontSize: 14,
+    color: TOKENS.colors.textPrimary,
+    marginBottom: 6,
+    textAlign: 'center',
+  },
+  emptySubtitle: {
+    fontFamily: 'SpaceMono',
+    fontSize: 11,
+    color: TOKENS.colors.textMuted,
+    textAlign: 'center',
+    lineHeight: 18,
   },
 });

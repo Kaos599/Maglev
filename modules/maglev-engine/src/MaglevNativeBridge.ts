@@ -18,6 +18,7 @@ const eventEmitter = NativeModule ? new EventEmitter(NativeModule) : null;
 export class MaglevEngineBridge {
   private isNative: boolean = isNativeActive;
   private _lastServiceUpdateMs: number = 0;
+  private listeners: Set<(data: AggregatedTelemetry) => void> = new Set();
   private latestTelemetry: AggregatedTelemetry = {
     totalDownloadSpeedBytes: 0,
     totalUploadSpeedBytes: 0,
@@ -29,6 +30,14 @@ export class MaglevEngineBridge {
   constructor() {
     if (this.isNative && NativeModule) {
       NativeModule.initEngine(6881);
+    }
+  }
+
+  private notifyListeners(): void {
+    for (const l of this.listeners) {
+      try {
+        l(this.latestTelemetry);
+      } catch {}
     }
   }
 
@@ -44,12 +53,14 @@ export class MaglevEngineBridge {
   }
 
   public subscribeTelemetry(listener: (data: AggregatedTelemetry) => void): () => void {
+    this.listeners.add(listener);
+
     if (this.isNative && eventEmitter) {
       const subscription = (eventEmitter as any).addListener('onTelemetryUpdate', (event: { payload: string }) => {
         try {
           const parsed: AggregatedTelemetry = JSON.parse(event.payload);
           this.latestTelemetry = parsed;
-          listener(parsed);
+          this.notifyListeners();
           // Sync foreground service notification
           if (NativeModule?.updateServiceTelemetry) {
             NativeModule.updateServiceTelemetry(
@@ -70,22 +81,28 @@ export class MaglevEngineBridge {
             if (raw && typeof raw === 'string' && raw.length > 5) {
               const parsed: AggregatedTelemetry = JSON.parse(raw);
               this.latestTelemetry = parsed;
-              listener(parsed);
+              this.notifyListeners();
             }
           }
         } catch {}
       }, 500);
 
       return () => {
+        this.listeners.delete(listener);
         subscription.remove();
         clearInterval(pollTimer);
       };
     }
 
-    return mockEngine.subscribe((data) => {
+    const unsubMock = mockEngine.subscribe((data) => {
       this.latestTelemetry = data;
-      listener(data);
+      this.notifyListeners();
     });
+
+    return () => {
+      this.listeners.delete(listener);
+      unsubMock();
+    };
   }
 
   public async startTorrent(
@@ -94,15 +111,25 @@ export class MaglevEngineBridge {
     sequential: boolean = false,
     selectedFileIndices?: number[]
   ): Promise<string> {
+    let id = '';
     if (this.isNative && NativeModule) {
-      const id = await NativeModule.startTorrent(magnetUri, savePathOverride || null, sequential);
-      if (selectedFileIndices && selectedFileIndices.length > 0) {
-        const maxIndex = Math.max(...selectedFileIndices, 2);
-        for (let i = 0; i <= maxIndex; i++) {
-          const priority = selectedFileIndices.includes(i) ? 1 : 0;
-          await NativeModule.setFilePriority(id, i, priority);
+      try {
+        id = await NativeModule.startTorrent(magnetUri, savePathOverride || null, sequential);
+        if (id && selectedFileIndices && selectedFileIndices.length > 0) {
+          const maxIndex = Math.max(...selectedFileIndices, 2);
+          for (let i = 0; i <= maxIndex; i++) {
+            const priority = selectedFileIndices.includes(i) ? 1 : 0;
+            await NativeModule.setFilePriority(id, i, priority);
+          }
         }
+      } catch {
+        id = '';
       }
+    }
+
+    if (!id) {
+      id = mockEngine.startTorrent(magnetUri, savePathOverride, sequential, selectedFileIndices);
+    } else {
       if (!this.latestTelemetry.torrents.some((t) => t.id === id)) {
         const dnMatch = magnetUri.match(/dn=([^&]+)/);
         const name = dnMatch && dnMatch[1] ? decodeURIComponent(dnMatch[1].replace(/\+/g, ' ')) : 'Torrent Transfer';
@@ -130,23 +157,50 @@ export class MaglevEngineBridge {
           torrents: [initialItem, ...this.latestTelemetry.torrents],
         };
       }
-      return id;
     }
-    return mockEngine.startTorrent(magnetUri, savePathOverride, sequential, selectedFileIndices);
+
+    this.notifyListeners();
+    return id;
   }
 
   public async pauseTorrent(id: string): Promise<boolean> {
+    let result = false;
     if (this.isNative && NativeModule) {
-      return await NativeModule.pauseTorrent(id);
+      result = await NativeModule.pauseTorrent(id);
+      this.latestTelemetry = {
+        ...this.latestTelemetry,
+        activeDownloads: Math.max(0, this.latestTelemetry.activeDownloads - 1),
+        torrents: this.latestTelemetry.torrents.map((t) =>
+          t.id === id ? { ...t, state: 'PAUSED', downloadSpeedBytes: 0, uploadSpeedBytes: 0 } : t
+        ),
+      };
+      this.notifyListeners();
+      return result;
     }
-    return mockEngine.pauseTorrent(id);
+    result = mockEngine.pauseTorrent(id);
+    this.latestTelemetry = mockEngine.getAggregatedTelemetry();
+    this.notifyListeners();
+    return result;
   }
 
   public async resumeTorrent(id: string): Promise<boolean> {
+    let result = false;
     if (this.isNative && NativeModule) {
-      return await NativeModule.resumeTorrent(id);
+      result = await NativeModule.resumeTorrent(id);
+      this.latestTelemetry = {
+        ...this.latestTelemetry,
+        activeDownloads: this.latestTelemetry.activeDownloads + 1,
+        torrents: this.latestTelemetry.torrents.map((t) =>
+          t.id === id ? { ...t, state: 'DOWNLOADING' } : t
+        ),
+      };
+      this.notifyListeners();
+      return result;
     }
-    return mockEngine.resumeTorrent(id);
+    result = mockEngine.resumeTorrent(id);
+    this.latestTelemetry = mockEngine.getAggregatedTelemetry();
+    this.notifyListeners();
+    return result;
   }
 
   public async pauseAll(): Promise<void> {
@@ -158,6 +212,8 @@ export class MaglevEngineBridge {
       }
     } else {
       mockEngine.pauseAll();
+      this.latestTelemetry = mockEngine.getAggregatedTelemetry();
+      this.notifyListeners();
     }
   }
 
@@ -170,14 +226,26 @@ export class MaglevEngineBridge {
       }
     } else {
       mockEngine.resumeAll();
+      this.latestTelemetry = mockEngine.getAggregatedTelemetry();
+      this.notifyListeners();
     }
   }
 
   public async deleteTorrent(id: string, deleteFiles: boolean = false): Promise<boolean> {
+    let result = false;
     if (this.isNative && NativeModule) {
-      return await NativeModule.deleteTorrent(id, deleteFiles);
+      result = await NativeModule.deleteTorrent(id, deleteFiles);
+      this.latestTelemetry = {
+        ...this.latestTelemetry,
+        torrents: this.latestTelemetry.torrents.filter((t) => t.id !== id),
+      };
+      this.notifyListeners();
+      return result;
     }
-    return mockEngine.deleteTorrent(id, deleteFiles);
+    result = mockEngine.deleteTorrent(id, deleteFiles);
+    this.latestTelemetry = mockEngine.getAggregatedTelemetry();
+    this.notifyListeners();
+    return result;
   }
 
   public moveTorrentUp(id: string): boolean {

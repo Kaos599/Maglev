@@ -8,7 +8,10 @@ import {
   TouchableOpacity,
   TextInput,
   Modal,
+  Platform,
+  Alert,
 } from 'react-native';
+import * as FileSystem from 'expo-file-system';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { TOKENS, formatSpeed, formatBytes } from '../../constants/tokens';
@@ -26,6 +29,7 @@ import {
   SpeedPreset,
   StorageMode,
   ThemeMode,
+  DEFAULT_TRACKERS,
 } from 'maglev-engine';
 
 export default function SettingsScreen() {
@@ -52,6 +56,98 @@ export default function SettingsScreen() {
   const [newSsidInput, setNewSsidInput] = useState('');
   const [showAddSsid, setShowAddSsid] = useState(false);
   const [filterMessage, setFilterMessage] = useState<string | null>(null);
+
+  // Custom folder state
+  const [customFolderModalVisible, setCustomFolderModalVisible] = useState(false);
+  const [customFolderPathInput, setCustomFolderPathInput] = useState(
+    settings.storage.customSafPath || '/storage/emulated/0/Download/Torrents'
+  );
+
+  // Known trackers state
+  const [newTrackerInput, setNewTrackerInput] = useState('');
+
+  /* Folder selection logic */
+  const handleChooseCustomFolder = useCallback(async () => {
+    triggerHaptic('medium');
+    const saf = (FileSystem as any).StorageAccessFramework;
+    if (Platform.OS === 'android' && saf) {
+      try {
+        const permissions = await saf.requestDirectoryPermissionsAsync();
+        if (permissions.granted) {
+          const uri = permissions.directoryUri;
+          const displayPath = decodeURIComponent(uri.split('document/')[1] || uri);
+          updateSettings({
+            storage: {
+              ...settings.storage,
+              storageMode: 'SAF',
+              customSafUri: uri,
+              customSafPath: displayPath,
+            },
+          });
+          return;
+        }
+      } catch {
+        // Fallback to manual folder path input modal
+      }
+    }
+    setCustomFolderPathInput(settings.storage.customSafPath || '/storage/emulated/0/Download/Torrents');
+    setCustomFolderModalVisible(true);
+  }, [settings.storage, updateSettings]);
+
+  const handleSaveCustomFolderPath = useCallback(() => {
+    const trimmed = customFolderPathInput.trim();
+    if (trimmed) {
+      updateSettings({
+        storage: {
+          ...settings.storage,
+          storageMode: 'SAF',
+          customSafPath: trimmed,
+        },
+      });
+    }
+    setCustomFolderModalVisible(false);
+  }, [customFolderPathInput, settings.storage, updateSettings]);
+
+  // Known Trackers Handlers
+  const handleAddTracker = useCallback(() => {
+    const trimmed = newTrackerInput.trim();
+    if (!trimmed) return;
+    triggerHaptic('medium');
+    const current = settings.network.defaultTrackers || DEFAULT_TRACKERS;
+    if (!current.includes(trimmed)) {
+      updateSettings({
+        network: {
+          ...settings.network,
+          defaultTrackers: [...current, trimmed],
+        },
+      });
+    }
+    setNewTrackerInput('');
+  }, [newTrackerInput, settings.network, updateSettings]);
+
+  const handleRemoveTracker = useCallback(
+    (trackerToRemove: string) => {
+      triggerHaptic('light');
+      const current = settings.network.defaultTrackers || DEFAULT_TRACKERS;
+      updateSettings({
+        network: {
+          ...settings.network,
+          defaultTrackers: current.filter((t) => t !== trackerToRemove),
+        },
+      });
+    },
+    [settings.network, updateSettings]
+  );
+
+  const handleResetTrackers = useCallback(() => {
+    triggerHaptic('medium');
+    updateSettings({
+      network: {
+        ...settings.network,
+        defaultTrackers: DEFAULT_TRACKERS,
+      },
+    });
+  }, [settings.network, updateSettings]);
 
   // Speed Limit Helpers
   const handleSelectPreset = useCallback(
@@ -210,7 +306,11 @@ Untrusted Scanners:203.0.113.0-203.0.113.255
         <View style={[styles.settingsGroup, { backgroundColor: cardBackgroundColor }]}>
           <View style={styles.settingBlock}>
             <Text style={styles.settingTitle}>Storage Location</Text>
-            <Text style={styles.settingPathText}>{settings.storage.defaultPath}</Text>
+            <Text style={styles.settingPathText}>
+              {settings.storage.storageMode === 'SAF'
+                ? settings.storage.customSafPath || 'No custom folder selected'
+                : settings.storage.defaultPath}
+            </Text>
 
             <View style={styles.chipRow}>
               <TouchableOpacity
@@ -237,7 +337,7 @@ Untrusted Scanners:203.0.113.0-203.0.113.255
                   styles.chip,
                   settings.storage.storageMode === 'SAF' ? styles.chipActive : styles.chipInactive,
                 ]}
-                onPress={() => updateSettings({ storage: { ...settings.storage, storageMode: 'SAF' } })}
+                onPress={handleChooseCustomFolder}
                 accessibilityRole="button"
                 accessibilityLabel="Choose Custom Folder"
               >
@@ -251,6 +351,20 @@ Untrusted Scanners:203.0.113.0-203.0.113.255
                 </Text>
               </TouchableOpacity>
             </View>
+
+            {settings.storage.storageMode === 'SAF' && (
+              <TouchableOpacity
+                style={styles.changeFolderButton}
+                onPress={handleChooseCustomFolder}
+                accessibilityRole="button"
+                accessibilityLabel="Select or change custom folder"
+              >
+                <Ionicons name="folder-open-outline" size={16} color={TOKENS.colors.accentLime} style={{ marginRight: 8 }} />
+                <Text style={styles.changeFolderButtonText}>
+                  {settings.storage.customSafPath ? 'CHANGE FOLDER' : 'SELECT FOLDER'}
+                </Text>
+              </TouchableOpacity>
+            )}
           </View>
 
           <View style={styles.settingRow}>
@@ -477,7 +591,7 @@ Untrusted Scanners:203.0.113.0-203.0.113.255
             <View style={styles.safetyStatsGrid}>
               <View style={styles.safetyStatCol}>
                 <Text style={styles.safetyStatLabel}>WI-FI TRANSFERRED</Text>
-                <Text style={styles.safetyStatValLime}>{formatBytes(totalTransferred || 4_294_967_296)}</Text>
+                <Text style={styles.safetyStatValLime}>{formatBytes(totalTransferred)}</Text>
               </View>
               <View style={styles.safetyStatDivider} />
               <View style={styles.safetyStatCol}>
@@ -627,7 +741,7 @@ Untrusted Scanners:203.0.113.0-203.0.113.255
             </View>
           </View>
 
-          {/* Swarm Discovery */}
+          {/* Peer Discovery */}
           <View style={styles.settingBlock}>
             <Text style={styles.settingTitle}>Peer Discovery</Text>
 
@@ -665,6 +779,65 @@ Untrusted Scanners:203.0.113.0-203.0.113.255
                 trackColor={{ false: '#161B22', true: TOKENS.colors.accentLime }}
                 thumbColor={settings.network.lsdEnabled ? '#000000' : TOKENS.colors.textMuted}
               />
+            </View>
+          </View>
+
+          {/* Default Known Trackers */}
+          <View style={styles.settingBlock}>
+            <View style={styles.rowBetween}>
+              <View style={styles.settingTextContainer}>
+                <Text style={styles.settingTitle}>Default Known Trackers</Text>
+                <Text style={styles.settingSubtitle}>
+                  Trackers automatically injected into all downloads
+                </Text>
+              </View>
+              <TouchableOpacity
+                style={styles.resetTrackersButton}
+                onPress={handleResetTrackers}
+                accessibilityRole="button"
+                accessibilityLabel="Reset trackers to defaults"
+              >
+                <Text style={styles.resetTrackersText}>RESET</Text>
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.trackersListContainer}>
+              {(settings.network.defaultTrackers || DEFAULT_TRACKERS).map((tracker, idx) => (
+                <View key={`${tracker}-${idx}`} style={styles.trackerItemRow}>
+                  <Ionicons name="radio-outline" size={13} color={TOKENS.colors.accentLime} style={{ marginRight: 8 }} />
+                  <Text style={styles.trackerItemText} numberOfLines={1} ellipsizeMode="middle">
+                    {tracker}
+                  </Text>
+                  <TouchableOpacity
+                    style={styles.removeTrackerTouch}
+                    onPress={() => handleRemoveTracker(tracker)}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Remove tracker ${tracker}`}
+                  >
+                    <Ionicons name="trash-outline" size={15} color={TOKENS.colors.statusDanger} />
+                  </TouchableOpacity>
+                </View>
+              ))}
+            </View>
+
+            <View style={styles.addTrackerRow}>
+              <TextInput
+                style={styles.trackerTextInput}
+                placeholder="udp://tracker.example.com:1337/announce"
+                placeholderTextColor={TOKENS.colors.textMuted}
+                value={newTrackerInput}
+                onChangeText={setNewTrackerInput}
+                autoCapitalize="none"
+                autoCorrect={false}
+              />
+              <TouchableOpacity
+                style={styles.confirmTrackerButton}
+                onPress={handleAddTracker}
+                accessibilityRole="button"
+                accessibilityLabel="Add Tracker"
+              >
+                <Text style={styles.confirmTrackerButtonText}>+ ADD</Text>
+              </TouchableOpacity>
             </View>
           </View>
 
@@ -982,6 +1155,47 @@ Untrusted Scanners:203.0.113.0-203.0.113.255
                 accessibilityRole="button"
               >
                 <Text style={styles.modalApplyText}>Apply Limit</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Custom Folder Path Modal */}
+      <Modal visible={customFolderModalVisible} transparent animationType="fade">
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalCard, { backgroundColor: cardBackgroundColor }]}>
+            <Text style={styles.modalTitle}>Custom Download Folder</Text>
+            <Text style={styles.modalSubtitle}>Enter target directory path for completed files</Text>
+
+            <TextInput
+              style={styles.modalInput}
+              placeholder="/storage/emulated/0/Download/Torrents"
+              placeholderTextColor={TOKENS.colors.textMuted}
+              value={customFolderPathInput}
+              onChangeText={setCustomFolderPathInput}
+              autoCapitalize="none"
+              autoCorrect={false}
+              autoFocus
+            />
+
+            <View style={styles.modalActionsRow}>
+              <TouchableOpacity
+                style={styles.modalCancelBtn}
+                onPress={() => setCustomFolderModalVisible(false)}
+                accessibilityRole="button"
+                accessibilityLabel="Cancel folder change"
+              >
+                <Text style={styles.modalCancelText}>Cancel</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.modalApplyBtn}
+                onPress={handleSaveCustomFolderPath}
+                accessibilityRole="button"
+                accessibilityLabel="Save custom folder path"
+              >
+                <Text style={styles.modalApplyText}>Save Folder</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -1473,5 +1687,103 @@ const styles = StyleSheet.create({
     color: '#000000',
     fontSize: 13,
     fontWeight: '700',
+  },
+  changeFolderButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: TOKENS.touchTarget.minHeight,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    backgroundColor: '#161B22',
+    borderWidth: 1,
+    borderColor: '#30363D',
+    borderRadius: 8,
+    marginTop: 12,
+  },
+  changeFolderButtonText: {
+    fontFamily: 'SpaceMono',
+    fontSize: 12,
+    fontWeight: '700',
+    color: TOKENS.colors.accentLime,
+    letterSpacing: 0.5,
+  },
+  resetTrackersButton: {
+    minHeight: TOKENS.touchTarget.minHeight,
+    minWidth: 50,
+    paddingHorizontal: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#161B22',
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: '#30363D',
+  },
+  resetTrackersText: {
+    fontFamily: 'SpaceMono',
+    fontSize: 11,
+    fontWeight: '700',
+    color: TOKENS.colors.textMuted,
+  },
+  trackersListContainer: {
+    marginTop: 10,
+    marginBottom: 10,
+    gap: 6,
+  },
+  trackerItemRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#11161F',
+    borderWidth: 1,
+    borderColor: TOKENS.colors.surfaceBorder,
+    borderRadius: 6,
+    paddingLeft: 10,
+    paddingRight: 4,
+    minHeight: TOKENS.touchTarget.minHeight,
+  },
+  trackerItemText: {
+    flex: 1,
+    fontFamily: 'SpaceMono',
+    fontSize: 11,
+    color: TOKENS.colors.textPrimary,
+  },
+  removeTrackerTouch: {
+    minWidth: TOKENS.touchTarget.minWidth,
+    minHeight: TOKENS.touchTarget.minHeight,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  addTrackerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 6,
+  },
+  trackerTextInput: {
+    flex: 1,
+    height: 44,
+    backgroundColor: '#11161F',
+    borderWidth: 1,
+    borderColor: TOKENS.colors.surfaceBorder,
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    fontFamily: 'SpaceMono',
+    fontSize: 11,
+    color: TOKENS.colors.textPrimary,
+  },
+  confirmTrackerButton: {
+    minHeight: TOKENS.touchTarget.minHeight,
+    minWidth: 64,
+    paddingHorizontal: 14,
+    backgroundColor: TOKENS.colors.accentLime,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  confirmTrackerButtonText: {
+    fontFamily: 'SpaceMono',
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#000000',
   },
 });

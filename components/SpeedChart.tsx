@@ -27,7 +27,7 @@ export const SpeedChart: React.FC<SpeedChartProps> = ({ currentDownSpeed, curren
   return (
     <View style={styles.container}>
       <View style={styles.header}>
-        <Text style={styles.title}>Live Swarm Throughput</Text>
+        <Text style={styles.title}>Live Transfer Speed</Text>
         <View style={styles.indicators}>
           <View style={styles.indicator}>
             <Text style={styles.downDot}>●</Text>

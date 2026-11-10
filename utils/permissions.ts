@@ -29,12 +29,16 @@ export async function checkMaglevPermissions(): Promise<PermissionStatus> {
       );
     }
 
-    // Android 10 (API 29) and below requires WRITE_EXTERNAL_STORAGE for custom paths
-    if (Platform.Version < 30) {
-      const writeStorage = await PermissionsAndroid.check(
-        PermissionsAndroid.PERMISSIONS.WRITE_EXTERNAL_STORAGE
+    // Android 12 (API 32) and below checks storage permissions
+    if (Platform.Version < 33) {
+      const readStorage = await PermissionsAndroid.check(
+        PermissionsAndroid.PERMISSIONS.READ_EXTERNAL_STORAGE
       );
-      hasStorage = writeStorage;
+      const writeStorage =
+        Platform.Version < 30
+          ? await PermissionsAndroid.check(PermissionsAndroid.PERMISSIONS.WRITE_EXTERNAL_STORAGE)
+          : true;
+      hasStorage = readStorage && writeStorage;
     }
   } catch {
     // If check fails, default to permissive
@@ -43,7 +47,7 @@ export async function checkMaglevPermissions(): Promise<PermissionStatus> {
   return {
     hasNotificationPermission: hasNotification,
     hasStoragePermission: hasStorage,
-    isPermissionGranted: hasNotification && hasStorage,
+    isPermissionGranted: hasStorage,
   };
 }
 
@@ -69,11 +73,11 @@ export async function requestMaglevPermissions(): Promise<PermissionStatus> {
       permissionsToRequest.push(PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS);
     }
 
-    if (Platform.Version < 30) {
-      permissionsToRequest.push(
-        PermissionsAndroid.PERMISSIONS.WRITE_EXTERNAL_STORAGE,
-        PermissionsAndroid.PERMISSIONS.READ_EXTERNAL_STORAGE
-      );
+    if (Platform.Version < 33) {
+      permissionsToRequest.push(PermissionsAndroid.PERMISSIONS.READ_EXTERNAL_STORAGE);
+      if (Platform.Version < 30) {
+        permissionsToRequest.push(PermissionsAndroid.PERMISSIONS.WRITE_EXTERNAL_STORAGE);
+      }
     }
 
     if (permissionsToRequest.length > 0) {
@@ -85,10 +89,16 @@ export async function requestMaglevPermissions(): Promise<PermissionStatus> {
           PermissionsAndroid.RESULTS.GRANTED;
       }
 
-      if (Platform.Version < 30) {
-        hasStorage =
-          results[PermissionsAndroid.PERMISSIONS.WRITE_EXTERNAL_STORAGE] ===
+      if (Platform.Version < 33) {
+        const readGranted =
+          results[PermissionsAndroid.PERMISSIONS.READ_EXTERNAL_STORAGE] ===
           PermissionsAndroid.RESULTS.GRANTED;
+        const writeGranted =
+          Platform.Version < 30
+            ? results[PermissionsAndroid.PERMISSIONS.WRITE_EXTERNAL_STORAGE] ===
+              PermissionsAndroid.RESULTS.GRANTED
+            : true;
+        hasStorage = readGranted && writeGranted;
       }
     }
   } catch {
@@ -98,6 +108,6 @@ export async function requestMaglevPermissions(): Promise<PermissionStatus> {
   return {
     hasNotificationPermission: hasNotification,
     hasStoragePermission: hasStorage,
-    isPermissionGranted: hasNotification && hasStorage,
+    isPermissionGranted: hasStorage,
   };
 }

@@ -7,9 +7,15 @@ import { useFonts } from 'expo-font';
 import { SettingsProvider, useSettings } from '../context/SettingsContext';
 import { EngineProvider } from '../context/EngineContext';
 import { TOKENS } from '../constants/tokens';
+import { requestMaglevPermissions } from '../utils/permissions';
 
 function AppNavigation() {
   const { backgroundColor } = useSettings();
+
+  React.useEffect(() => {
+    // Proactively request storage and notification permissions on first app launch
+    requestMaglevPermissions();
+  }, []);
 
   return (
     <>

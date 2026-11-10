@@ -549,7 +549,7 @@ Bad Peer Range: 203.0.113.10 - 203.0.113.200 , 000 , Bad Peer Range
   const layoutSrc = fs.readFileSync(path.join(__dirname, '../app/(tabs)/_layout.tsx'), 'utf8');
 
   assert(searchSrc.includes('apibay.org/q.php'), 'Search Screen: Live BitTorrent indexer query API connected');
-  assert(searchSrc.includes('QUERYING PUBLIC SWARMS'), 'Search Screen: Real-time search loader integrated');
+  assert(searchSrc.includes('SEARCHING ONLINE'), 'Search Screen: Real-time search loader integrated');
   assert(feedsSrc.includes('parseRssFeed'), 'Feeds Screen: Real XML RSS/Atom feed parser implemented');
   assert(feedsSrc.includes('SUBSCRIBE & SYNC'), 'Feeds Screen: Custom RSS feed live URL subscription integrated');
   assert(layoutSrc.includes("title: 'SETTINGS'"), "Navigation: Tab title is SETTINGS (not CONFIG)");
