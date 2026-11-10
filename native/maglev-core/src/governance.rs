@@ -7,7 +7,7 @@
 //! - Seeding ratio & duration governance
 //! - Power & battery threshold tracking
 
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use parking_lot::RwLock;
@@ -24,7 +24,7 @@ pub enum ProxyScope {
 /// SOCKS5 & HTTP Proxy Tunnel Configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProxyConfig {
-    pub enabled: boolean_flag,
+    pub enabled: bool,
     pub proxy_type: String, // "SOCKS5" or "HTTP"
     pub host: String,
     pub port: u16,
@@ -33,8 +33,6 @@ pub struct ProxyConfig {
     pub scope: ProxyScope,
     pub remote_dns: bool, // RFC 1928 0x03 domain address to prevent DNS leaks
 }
-
-type boolean_flag = bool;
 
 impl Default for ProxyConfig {
     fn default() -> Self {

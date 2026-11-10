@@ -8,7 +8,6 @@
 //! - Phase 2 system governance: Token-bucket limiter, UPnP, SOCKS5 proxy, IP filter, power/battery cutoff
 
 use std::collections::HashMap;
-use std::net::Ipv4Addr;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::Arc;
@@ -18,9 +17,9 @@ use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
 use tokio::runtime::{Builder, Runtime};
 use tokio::sync::mpsc;
-use tracing::{error, info, warn};
+use tracing::info;
 
-use crate::governance::{NetworkGovernance, PowerGovernance, ProxyConfig, SeedingGovernance, TokenBucketLimiter};
+use crate::governance::{NetworkGovernance, PowerGovernance, SeedingGovernance, TokenBucketLimiter};
 use crate::ip_filter::IpFilterEngine;
 use crate::simd::{downsample_bitfield, MATRIX_SIZE};
 use crate::storage::AndroidDiskAllocator;

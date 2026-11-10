@@ -95,7 +95,7 @@ fn start_jni_dispatcher(jvm: JavaVM, mut rx: mpsc::Receiver<AggregatedTelemetry>
                 if let Some(telemetry) = rx.blocking_recv() {
                     if let Ok(json_str) = serde_json::to_string(&telemetry) {
                         // Scope local JNI references to this single tick so they don't leak in the ART table (max 512)
-                        let _ = env.with_local_frame(16, |env| {
+                        let _: Result<JObject, jni::errors::Error> = env.with_local_frame(16, |env| {
                             let j_str = env.new_string(&json_str)?;
                             let class_name = "com/maglev/engine/MaglevEngineModule";
                             let lock = MODULE_CLASS.lock();
