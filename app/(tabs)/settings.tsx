@@ -11,7 +11,7 @@ import {
   Platform,
   Alert,
 } from 'react-native';
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { TOKENS, formatSpeed, formatBytes } from '../../constants/tokens';
@@ -19,6 +19,7 @@ import { triggerHaptic } from '../../constants/haptics';
 import { HeaderBar } from '../../components/HeaderBar';
 import { useSettings } from '../../context/SettingsContext';
 import { useMaglevEngine } from '../../context/EngineContext';
+import { checkMaglevPermissions, requestMaglevPermissions } from '../../utils/permissions';
 import {
   BatteryCutoffThreshold,
   EncryptionMode,
@@ -34,7 +35,7 @@ import {
 
 export default function SettingsScreen() {
   const insets = useSafeAreaInsets();
-  const { isNative, telemetry } = useMaglevEngine();
+  const { isNative, telemetry, takePersistableSafPermission, requestAllFilesAccess } = useMaglevEngine();
   const {
     settings,
     isOledBlack,
@@ -44,6 +45,14 @@ export default function SettingsScreen() {
     setSpeedPreset,
     loadIpFilter,
   } = useSettings();
+
+  const [hasStoragePerm, setHasStoragePerm] = useState(true);
+
+  React.useEffect(() => {
+    checkMaglevPermissions().then((status) => {
+      setHasStoragePerm(status.hasStoragePermission);
+    });
+  }, []);
 
   const totalTransferred = telemetry?.torrents?.reduce(
     (acc, t) => acc + (t.downloadedBytes || 0) + (t.uploadedBytes || 0),
@@ -69,13 +78,30 @@ export default function SettingsScreen() {
   /* Folder selection logic */
   const handleChooseCustomFolder = useCallback(async () => {
     triggerHaptic('medium');
-    const saf = (FileSystem as any).StorageAccessFramework;
+    const saf = FileSystem.StorageAccessFramework;
     if (Platform.OS === 'android' && saf) {
       try {
         const permissions = await saf.requestDirectoryPermissionsAsync();
-        if (permissions.granted) {
+        if (permissions && permissions.granted) {
           const uri = permissions.directoryUri;
-          const displayPath = decodeURIComponent(uri.split('document/')[1] || uri);
+          let displayPath = uri;
+          try {
+            const decoded = decodeURIComponent(uri);
+            if (decoded.includes('primary:')) {
+              displayPath = '/storage/emulated/0/' + decoded.split('primary:')[1];
+            } else if (decoded.includes('document/')) {
+              displayPath = decoded.split('document/')[1];
+            } else {
+              displayPath = decoded;
+            }
+          } catch {
+            displayPath = uri;
+          }
+
+          if (takePersistableSafPermission) {
+            await takePersistableSafPermission(uri);
+          }
+
           updateSettings({
             storage: {
               ...settings.storage,
@@ -85,14 +111,17 @@ export default function SettingsScreen() {
             },
           });
           return;
+        } else {
+          // User cancelled file manager, do not open text modal
+          return;
         }
       } catch {
-        // Fallback to manual folder path input modal
+        // Fallback to manual folder path input modal if SAF threw
       }
     }
     setCustomFolderPathInput(settings.storage.customSafPath || '/storage/emulated/0/Download/Torrents');
     setCustomFolderModalVisible(true);
-  }, [settings.storage, updateSettings]);
+  }, [settings.storage, updateSettings, takePersistableSafPermission]);
 
   const handleSaveCustomFolderPath = useCallback(() => {
     const trimmed = customFolderPathInput.trim();
@@ -353,18 +382,70 @@ Untrusted Scanners:203.0.113.0-203.0.113.255
             </View>
 
             {settings.storage.storageMode === 'SAF' && (
-              <TouchableOpacity
-                style={styles.changeFolderButton}
-                onPress={handleChooseCustomFolder}
-                accessibilityRole="button"
-                accessibilityLabel="Select or change custom folder"
-              >
-                <Ionicons name="folder-open-outline" size={16} color={TOKENS.colors.accentLime} style={{ marginRight: 8 }} />
-                <Text style={styles.changeFolderButtonText}>
-                  {settings.storage.customSafPath ? 'CHANGE FOLDER' : 'SELECT FOLDER'}
-                </Text>
-              </TouchableOpacity>
+              <View style={{ flexDirection: 'row', gap: 8, marginTop: 10 }}>
+                <TouchableOpacity
+                  style={[styles.changeFolderButton, { flex: 1, marginTop: 0 }]}
+                  onPress={handleChooseCustomFolder}
+                  accessibilityRole="button"
+                  accessibilityLabel="Browse custom folder in file manager"
+                >
+                  <Ionicons name="folder-open-outline" size={16} color={TOKENS.colors.accentLime} style={{ marginRight: 6 }} />
+                  <Text style={styles.changeFolderButtonText}>
+                    {settings.storage.customSafPath ? 'BROWSE FOLDER' : 'SELECT FOLDER'}
+                  </Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[styles.changeFolderButton, { flex: 1, marginTop: 0, backgroundColor: '#161B22', borderColor: '#30363D' }]}
+                  onPress={() => {
+                    triggerHaptic('light');
+                    setCustomFolderPathInput(settings.storage.customSafPath || '/storage/emulated/0/Download/Torrents');
+                    setCustomFolderModalVisible(true);
+                  }}
+                  accessibilityRole="button"
+                  accessibilityLabel="Enter custom folder path manually"
+                >
+                  <Ionicons name="create-outline" size={16} color={TOKENS.colors.accentCyan} style={{ marginRight: 6 }} />
+                  <Text style={[styles.changeFolderButtonText, { color: TOKENS.colors.accentCyan }]}>
+                    MANUAL PATH
+                  </Text>
+                </TouchableOpacity>
+              </View>
             )}
+          </View>
+
+          <View style={styles.settingRow}>
+            <View style={styles.settingTextContainer}>
+              <Text style={styles.settingTitle}>Storage Permission</Text>
+              <Text style={styles.settingSubtitle}>
+                {hasStoragePerm ? 'Full access granted to device storage' : 'Storage permission is required to save downloads'}
+              </Text>
+            </View>
+            <TouchableOpacity
+              style={[
+                styles.chip,
+                hasStoragePerm ? styles.chipActive : { borderColor: TOKENS.colors.statusDanger, backgroundColor: 'rgba(255, 51, 102, 0.1)' },
+              ]}
+              onPress={async () => {
+                triggerHaptic('medium');
+                const res = await requestMaglevPermissions();
+                setHasStoragePerm(res.hasStoragePermission);
+                if (!res.hasStoragePermission && requestAllFilesAccess) {
+                  await requestAllFilesAccess();
+                }
+              }}
+              accessibilityRole="button"
+              accessibilityLabel="Storage Permission Status"
+            >
+              <Text
+                style={[
+                  styles.chipText,
+                  hasStoragePerm ? styles.chipTextActive : { color: TOKENS.colors.statusDanger },
+                ]}
+              >
+                {hasStoragePerm ? 'GRANTED ✓' : 'GRANT'}
+              </Text>
+            </TouchableOpacity>
           </View>
 
           <View style={styles.settingRow}>

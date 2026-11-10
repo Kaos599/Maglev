@@ -32,6 +32,9 @@ interface EngineContextType {
   startHttpStream: (id: string, fileIndex: number) => Promise<string>;
   isNative: boolean;
   defaultStoragePath: string;
+  takePersistableSafPermission: (uriStr: string) => Promise<boolean>;
+  isAllFilesAccessGranted: () => boolean;
+  requestAllFilesAccess: () => Promise<boolean>;
 }
 
 const defaultTelemetry: AggregatedTelemetry = {
@@ -216,6 +219,9 @@ export const EngineProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         startHttpStream,
         isNative,
         defaultStoragePath,
+        takePersistableSafPermission: (uriStr: string) => maglevEngine.takePersistableSafPermission(uriStr),
+        isAllFilesAccessGranted: () => maglevEngine.isAllFilesAccessGranted(),
+        requestAllFilesAccess: () => maglevEngine.requestAllFilesAccess(),
       }}
     >
       {children}

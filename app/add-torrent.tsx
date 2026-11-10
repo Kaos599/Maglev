@@ -9,12 +9,13 @@ import {
   Switch,
   ActivityIndicator,
   Alert,
+  Platform,
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as DocumentPicker from 'expo-document-picker';
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
 import { formatBytes, TOKENS } from '../constants/tokens';
 import { useMaglevEngine } from '../context/EngineContext';
 import { triggerHaptic } from '../constants/haptics';
@@ -240,6 +241,33 @@ export default function AddTorrentSheet() {
     );
   };
 
+  const handleBrowseFolder = useCallback(async () => {
+    triggerHaptic('light');
+    const saf = FileSystem.StorageAccessFramework;
+    if (Platform.OS === 'android' && saf) {
+      try {
+        const permissions = await saf.requestDirectoryPermissionsAsync();
+        if (permissions && permissions.granted) {
+          const uri = permissions.directoryUri;
+          let displayPath = uri;
+          try {
+            const decoded = decodeURIComponent(uri);
+            if (decoded.includes('primary:')) {
+              displayPath = '/storage/emulated/0/' + decoded.split('primary:')[1];
+            } else if (decoded.includes('document/')) {
+              displayPath = decoded.split('document/')[1];
+            } else {
+              displayPath = decoded;
+            }
+          } catch {
+            displayPath = uri;
+          }
+          setCustomPath(displayPath);
+        }
+      } catch {}
+    }
+  }, []);
+
   const selectAll = () => {
     triggerHaptic('light');
     setFiles((prev) =>
@@ -460,16 +488,27 @@ export default function AddTorrentSheet() {
               </Text>
             )}
           </View>
-          <TouchableOpacity
-            style={styles.changePathBtn}
-            onPress={() => setIsEditingPath(!isEditingPath)}
-            accessibilityRole="button"
-            accessibilityLabel="Change destination storage path"
-          >
-            <Text style={styles.changePathText}>
-              {isEditingPath ? 'DONE' : 'CHANGE'}
-            </Text>
-          </TouchableOpacity>
+          <View style={{ flexDirection: 'row', gap: 6 }}>
+            <TouchableOpacity
+              style={styles.changePathBtn}
+              onPress={handleBrowseFolder}
+              accessibilityRole="button"
+              accessibilityLabel="Browse destination folder"
+            >
+              <Ionicons name="folder-open-outline" size={13} color={TOKENS.colors.accentLime} style={{ marginRight: 4 }} />
+              <Text style={styles.changePathText}>BROWSE</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.changePathBtn, { backgroundColor: '#161B22' }]}
+              onPress={() => setIsEditingPath(!isEditingPath)}
+              accessibilityRole="button"
+              accessibilityLabel="Edit destination storage path manually"
+            >
+              <Text style={styles.changePathText}>
+                {isEditingPath ? 'DONE' : 'EDIT'}
+              </Text>
+            </TouchableOpacity>
+          </View>
         </View>
 
         {/* Storage Space Allocation HUD */}

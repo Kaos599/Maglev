@@ -823,6 +823,18 @@ export class MaglevMockEngine {
       trackers: [{ url: 'udp://tracker.archlinux.org:6969/announce', status: 'Paused', seeds: 0, peers: 0 }],
     });
   }
+
+  public async takePersistableSafPermission(uriStr: string): Promise<boolean> {
+    return true;
+  }
+
+  public isAllFilesAccessGranted(): boolean {
+    return true;
+  }
+
+  public async requestAllFilesAccess(): Promise<boolean> {
+    return true;
+  }
 }
 
 export const mockEngine = new MaglevMockEngine();

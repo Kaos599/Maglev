@@ -1,6 +1,10 @@
 package com.maglev.engine
 
+import android.content.Intent
 import android.net.Uri
+import android.os.Build
+import android.os.Environment
+import android.provider.Settings
 import android.util.Base64
 import com.maglev.engine.network.NetworkGovernanceManager
 import com.maglev.engine.power.PowerGovernanceManager
@@ -228,6 +232,44 @@ class MaglevEngineModule : Module() {
                 true
             } catch (e: Exception) {
                 false
+            }
+        }
+
+        Function("isAllFilesAccessGranted") {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                Environment.isExternalStorageManager()
+            } else {
+                true
+            }
+        }
+
+        AsyncFunction("requestAllFilesAccess") {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                val context = appContext.reactContext ?: return@AsyncFunction false
+                try {
+                    val intent = Intent(
+                        Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION,
+                        Uri.parse("package:" + context.packageName)
+                    ).apply {
+                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    }
+                    context.startActivity(intent)
+                    true
+                } catch (e: Exception) {
+                    try {
+                        val genericIntent = Intent(
+                            Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION
+                        ).apply {
+                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        }
+                        context.startActivity(genericIntent)
+                        true
+                    } catch (e2: Exception) {
+                        false
+                    }
+                }
+            } else {
+                true
             }
         }
 

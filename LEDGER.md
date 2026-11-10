@@ -14,6 +14,36 @@ Build **Maglev** — a frictionless, zero-drag, zero-bloat, native-speed Android
 
 ## 📜 Ledger Entries
 
+### [2026-11-10] — Turn 18: Storage Access Framework File Explorer & Modern Android Storage Permissions
+- **Working Branch:** `feature/p2-stability-and-ux-refinement`
+- **PR:** #1 (`https://github.com/Kaos599/Maglev/pull/1`)
+- **Root Cause & Technical Remediation:**
+  1. **Storage Access Framework (SAF) Native Directory Picker:**
+     - *Issue:* Tapping "Choose Custom Folder" opened a fallback manual text input box instead of the Android system file explorer (`ACTION_OPEN_DOCUMENT_TREE`).
+     - *Root Cause:* In Expo SDK 54–58, `StorageAccessFramework` and legacy filesystem methods (`getFreeDiskStorageAsync`, `readAsStringAsync`) were moved to `'expo-file-system/legacy'`. Calling them on `'expo-file-system'` either returned `undefined` or threw `errorOnLegacyMethodUse`, causing `handleChooseCustomFolder` to skip SAF and default to the text input modal.
+     - *Fix:*
+       - Switched to `import * as FileSystem from 'expo-file-system/legacy'`.
+       - `saf.requestDirectoryPermissionsAsync()` now opens the native Android system file manager (`ACTION_OPEN_DOCUMENT_TREE`).
+       - Successfully decodes `primary:...` paths to human-readable `/storage/emulated/0/...` paths.
+       - Invokes `takePersistableSafPermission(uri)` so URI permissions persist across phone reboots.
+       - User cancellation on the system file explorer no longer opens the text modal.
+       - Added explicit "MANUAL PATH" button in Settings and "BROWSE" / "EDIT" buttons in Add Torrent Sheet for full flexibility.
+  2. **Comprehensive Android Storage Permissions (Android 11–15+):**
+     - *Issue:* App did not prompt for storage permission on launch.
+     - *Root Cause:* In `utils/permissions.ts`, storage checks were guarded behind `if (Platform.Version < 33)`. On modern Android (Android 13/14/15, API 33+), only `POST_NOTIFICATIONS` was queued, completely omitting storage permissions. Furthermore, `app.json` and `AndroidManifest.xml` lacked `MANAGE_EXTERNAL_STORAGE` and `READ_MEDIA_*`.
+     - *Fix:*
+       - Declared `MANAGE_EXTERNAL_STORAGE`, `READ_MEDIA_IMAGES`, `READ_MEDIA_VIDEO`, `READ_MEDIA_AUDIO` in `app.json` and `modules/maglev-engine/android/src/main/AndroidManifest.xml`.
+       - Updated `utils/permissions.ts` to request granular media permissions on API 33+ and standard storage permissions on API < 33.
+       - Implemented native `isAllFilesAccessGranted()` and `requestAllFilesAccess()` in `MaglevEngineModule.kt` and `MaglevNativeBridge.ts`.
+       - Added a cyber-retro storage permission banner to `TransfersScreen` with a 44px min-height "GRANT ACCESS" button when storage permissions are missing.
+       - Added a dedicated "Storage Permission" status row in `SettingsScreen` showing "GRANTED ✓" in Acid Lime (`#CCFF00`) or "GRANT" if action is required.
+  3. **Real Disk Space & Torrent Parsing Fix:**
+     - `FileSystem.getFreeDiskStorageAsync()` and `FileSystem.readAsStringAsync()` now execute flawlessly without runtime deprecation exceptions, accurately detecting device storage headroom and parsing local `.torrent` binary files.
+- **Verification & SLA Testing:**
+  - `npx tsc --noEmit` — 0 errors (Exit Code: 0).
+  - `npm run test:all` — 206 / 206 tests passing (100%).
+  - Tri-Agent Playbook — 49 / 49 tests passing (100%).
+
 ### [2026-11-10] — Turn 17: CI Cloud Build Resolution & Rust JNI Cross-Compilation Green
 - **Working Branch:** `feature/p2-stability-and-ux-refinement`
 - **Commit:** `01b6039`

@@ -21,6 +21,7 @@ import { PixelSearchIcon } from '../../components/PixelIcons';
 import { TOKENS } from '../../constants/tokens';
 import { triggerHaptic } from '../../constants/haptics';
 import { useMaglevEngine } from '../../context/EngineContext';
+import { checkMaglevPermissions, requestMaglevPermissions } from '../../utils/permissions';
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
@@ -32,6 +33,19 @@ export default function TransfersScreen() {
 
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [hasStoragePerm, setHasStoragePerm] = useState(true);
+
+  React.useEffect(() => {
+    checkMaglevPermissions().then((status) => {
+      setHasStoragePerm(status.hasStoragePermission);
+    });
+  }, []);
+
+  const handleGrantPermission = useCallback(async () => {
+    triggerHaptic('medium');
+    const status = await requestMaglevPermissions();
+    setHasStoragePerm(status.hasStoragePermission);
+  }, []);
 
   const handleToggleSearch = useCallback(() => {
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
@@ -90,6 +104,28 @@ export default function TransfersScreen() {
       )}
 
       <FilterPills />
+
+      {!hasStoragePerm && (
+        <View style={styles.permissionCard}>
+          <View style={styles.permissionContent}>
+            <Ionicons name="folder-outline" size={20} color={TOKENS.colors.accentLime} style={{ marginRight: 10 }} />
+            <View style={{ flex: 1 }}>
+              <Text style={styles.permissionTitle}>STORAGE PERMISSION REQUIRED</Text>
+              <Text style={styles.permissionDesc}>
+                Storage access is needed to save torrent downloads and monitor free disk space.
+              </Text>
+            </View>
+          </View>
+          <TouchableOpacity
+            style={styles.permissionBtn}
+            onPress={handleGrantPermission}
+            accessibilityRole="button"
+            accessibilityLabel="Grant storage permission"
+          >
+            <Text style={styles.permissionBtnText}>GRANT ACCESS</Text>
+          </TouchableOpacity>
+        </View>
+      )}
 
       {displayedTorrents.length === 0 ? (
         searchQuery.trim() ? (
@@ -207,5 +243,47 @@ const styles = StyleSheet.create({
   },
   listContent: {
     paddingBottom: 90,
+  },
+  permissionCard: {
+    marginHorizontal: 16,
+    marginBottom: 10,
+    padding: 12,
+    backgroundColor: '#0D1117',
+    borderWidth: 1,
+    borderColor: '#1F2937',
+    borderRadius: 8,
+  },
+  permissionContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  permissionTitle: {
+    fontFamily: 'SpaceMono',
+    fontSize: 10,
+    fontWeight: '700',
+    color: TOKENS.colors.accentLime,
+    letterSpacing: 0.5,
+    marginBottom: 2,
+  },
+  permissionDesc: {
+    fontFamily: 'SpaceMono',
+    fontSize: 10,
+    color: '#8B949E',
+    lineHeight: 14,
+  },
+  permissionBtn: {
+    marginTop: 10,
+    minHeight: 44,
+    backgroundColor: TOKENS.colors.accentLime,
+    borderRadius: 6,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  permissionBtnText: {
+    fontFamily: 'SpaceMono',
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#05070A',
+    letterSpacing: 0.5,
   },
 });

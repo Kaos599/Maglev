@@ -366,6 +366,39 @@ export class MaglevEngineBridge {
   public isWakeLockHeld(): boolean {
     return mockEngine.isWakeLockHeld();
   }
+
+  public async takePersistableSafPermission(uriStr: string): Promise<boolean> {
+    if (this.isNative && NativeModule?.takePersistableSafPermission) {
+      try {
+        return await NativeModule.takePersistableSafPermission(uriStr);
+      } catch {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  public isAllFilesAccessGranted(): boolean {
+    if (this.isNative && NativeModule?.isAllFilesAccessGranted) {
+      try {
+        return Boolean(NativeModule.isAllFilesAccessGranted());
+      } catch {
+        return true;
+      }
+    }
+    return true;
+  }
+
+  public async requestAllFilesAccess(): Promise<boolean> {
+    if (this.isNative && NativeModule?.requestAllFilesAccess) {
+      try {
+        return await NativeModule.requestAllFilesAccess();
+      } catch {
+        return false;
+      }
+    }
+    return true;
+  }
 }
 
 function decodeBase64ToUint8Array(base64: string): Uint8Array {
