@@ -14,6 +14,30 @@ Build **Maglev** — a frictionless, zero-drag, zero-bloat, native-speed Android
 
 ## 📜 Ledger Entries
 
+### [2026-11-10] — Turn 17: CI Cloud Build Resolution & Rust JNI Cross-Compilation Green
+- **Working Branch:** `feature/p2-stability-and-ux-refinement`
+- **Commit:** `01b6039`
+- **PR:** #1 (`https://github.com/Kaos599/Maglev/pull/1`)
+- **CI Build Status:** **100% GREEN (All Jobs Passed)**
+  - Workflow: **Build Native Engine (librqbit)** — [Run #42870437234](https://github.com/Kaos599/Maglev/actions/runs/42870437234)
+  - `arm64-v8a` (`aarch64-linux-android`): **PASS** (4m40s)
+  - `armeabi-v7a` (`armv7-linux-androideabi`): **PASS** (5m7s)
+  - `x86_64` (`x86_64-linux-android`): **PASS** (4m29s)
+- **Root Cause & Technical Remediation:**
+  1. **JClass Trait Bound Resolution in `src/jni.rs`:**
+     - JNI crate v0.21 dropped `Copy`/`Clone` on reference wrappers and does not implement `From<&JObject>` for `JClass`.
+     - Replaced `JClass::from(g.as_obj())` with `<&JClass>::from(g.as_obj())` to borrow directly from `GlobalRef`.
+     - Cached `MODULE_CLASS` directly from `&_class` passed into `nativeInit`.
+  2. **Type Inference Resolution in `with_local_frame`:**
+     - Explicitly annotated `Result<JObject, jni::errors::Error>` on `env.with_local_frame`, satisfying the `E: From<jni::errors::Error>` trait bound.
+  3. **Compiler Warnings Eradication:**
+     - Removed unused imports across `src/storage.rs`, `src/engine.rs`, and `src/governance.rs`.
+     - Standardized `ProxyConfig.enabled` from `boolean_flag` to native `bool`.
+- **Quality Gates & Verification:**
+  - **All 206 / 206 local tests passing (100%).**
+  - **Zero TypeScript compilation errors (`npx tsc --noEmit` exit 0).**
+  - **All PR #1 status checks green.**
+
 ### [2026-11-10] — Turn 16: Zero Mock Data Eradication & Clean Engine State Delivery
 - **Working Branch:** `feature/p2-stability-and-ux-refinement`
 - **Commit:** `abd0cb6`
