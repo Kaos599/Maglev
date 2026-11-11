@@ -52,7 +52,7 @@ export function RemoveFilesSheet({ visible, count, bytes, busy, error, onClose, 
     <Sheet visible={visible} onClose={onClose} title={`Remove ${count} ${count === 1 ? 'file' : 'files'}?`}>
       {error ? <Banner tone="danger" title="Couldn't remove" body={error} /> : null}
       <Text style={styles.hint}>
-        {`Deletes ${formatBytes(bytes)} from your phone and stops downloading them. Other files keep going.`}
+        {`Deletes ${formatBytes(bytes)} from your phone and stops downloading ${count === 1 ? 'it' : 'them'}. Other files keep going.`}
       </Text>
       <View style={styles.stack}>
         <Button label="Remove" icon="trash" variant="danger" fullWidth loading={busy} onPress={onConfirm} />

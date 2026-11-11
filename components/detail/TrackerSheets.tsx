@@ -1,6 +1,5 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useMemo } from 'react';
 import { StyleSheet, Text, TextInput, View } from 'react-native';
-import { checkTrackerText } from 'maglev-engine';
 import { useTheme } from '../../context/ThemeContext';
 import { ThemeColors, radius, spacing, touch, type } from '../../constants/theme';
 import { Button, Sheet } from '../ui';
@@ -8,28 +7,22 @@ import { Button, Sheet } from '../ui';
 interface AddProps {
   visible: boolean;
   onClose: () => void;
+  /** True while `addTrackers` is in flight. */
   busy: boolean;
-  /** A message from the engine for the last try, shown under the field. */
+  /** The text in the box. The machine owns it (SM-28). */
+  text: string;
+  onTextChange: (text: string) => void;
+  /** The message under the field: a bad line, an empty paste, or the engine's answer. */
   error: string | null;
-  /** Called with one address per entry once every line has passed the check. */
-  onSubmit: (urls: string[]) => void;
+  /** How many addresses the paste holds that will be added. */
+  count: number;
+  onSubmit: () => void;
 }
 
 /** Add tracker (NATIVE_CONTRACT 15): paste one address per line. A bad line names itself and blocks the whole add. */
-export function AddTrackerSheet({ visible, onClose, busy, error, onSubmit }: AddProps) {
+export function AddTrackerSheet({ visible, onClose, busy, text, onTextChange, error, count, onSubmit }: AddProps) {
   const { colors } = useTheme();
   const s = useMemo(() => makeStyles(colors), [colors]);
-  const [text, setText] = useState('');
-
-  useEffect(() => {
-    if (visible) setText('');
-  }, [visible]);
-
-  const blank = text.trim().length === 0;
-  const checked = useMemo(() => (blank ? null : checkTrackerText(text)), [blank, text]);
-  const problem = checked && !checked.ok ? checked.message : null;
-  const message = problem ?? error;
-  const canAdd = !busy && checked !== null && checked.ok;
 
   return (
     <Sheet
@@ -40,8 +33,8 @@ export function AddTrackerSheet({ visible, onClose, busy, error, onSubmit }: Add
     >
       <TextInput
         value={text}
-        onChangeText={setText}
-        style={[s.input, message ? { borderColor: colors.danger } : null]}
+        onChangeText={onTextChange}
+        style={[s.input, error ? { borderColor: colors.danger } : null]}
         multiline
         autoFocus
         autoCapitalize="none"
@@ -54,19 +47,14 @@ export function AddTrackerSheet({ visible, onClose, busy, error, onSubmit }: Add
         textAlignVertical="top"
         accessibilityLabel="Tracker addresses, one per line"
       />
-      {message ? (
+      {error ? (
         <Text style={s.error} accessibilityLiveRegion="polite">
-          {message}
+          {error}
         </Text>
       ) : null}
       <View style={s.actions}>
         <Button label="Cancel" variant="ghost" disabled={busy} onPress={onClose} />
-        <Button
-          label={checked && checked.ok && checked.urls.length > 1 ? `Add ${checked.urls.length}` : 'Add'}
-          loading={busy}
-          disabled={!canAdd}
-          onPress={() => checked && checked.ok && onSubmit(checked.urls)}
-        />
+        <Button label={count > 1 ? `Add ${count}` : 'Add'} loading={busy} disabled={busy} onPress={onSubmit} />
       </View>
     </Sheet>
   );
@@ -82,15 +70,16 @@ interface RemoveProps {
   onRemove: () => void;
 }
 
-/** Confirm before a tracker goes (NATIVE_CONTRACT 15). */
+/** Confirm before a tracker goes (NATIVE_CONTRACT 15, SM-28). */
 export function RemoveTrackerSheet({ url, last, busy, onClose, onRemove }: RemoveProps) {
   const { colors } = useTheme();
   const s = useMemo(() => makeStyles(colors), [colors]);
   return (
-    <Sheet visible={url !== null} onClose={() => !busy && onClose()} title="Remove tracker?" subtitle={url ?? undefined}>
+    <Sheet visible={url !== null} onClose={() => !busy && onClose()} title="Remove this tracker?">
+      <Text style={s.body}>{url ?? ''}</Text>
       <Text style={s.body}>
         {last
-          ? "This is the last tracker. Peers can still be found without it, but it may take longer."
+          ? 'This is the last tracker. Peers can still be found without it, but it may take longer.'
           : 'Maglev stops asking this tracker for peers. The other trackers keep working.'}
       </Text>
       <View style={s.stack}>
