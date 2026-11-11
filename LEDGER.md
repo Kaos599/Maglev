@@ -363,6 +363,31 @@ Build **Maglev** — a frictionless, zero-drag, zero-bloat, native-speed Android
   - HTTPS trackers need verifier init (`NATIVE_CONTRACT.md` §7).
   - The adversarial boundary review is pending.
 
+### 2026-11-11 — Search, visual QA, APK size
+
+- **Commits:**
+  - `75055b8`: HTTPS trackers through a webpki-roots verifier shim.
+  - `ecab741`: glyphs and the themed Android nav bar.
+  - `579891c`: the search contract.
+  - `cf4f79c`: visual QA fixes and the download colour token.
+  - `9ef330c`: compressed `.so` plus R8 and resource shrinking.
+  - `3309538`: the search engine.
+  - `1187d85`: the search UI.
+  - `5b69a00`: CI on Node 22 with plugin and search tests.
+- **Contracts:**
+  - C-SEARCH-1 passes, with 77 of 77 offline fixture tests.
+  - Locally 22 of 23 contracts pass. C-ENG-2 fails only because stale local simulator `.so` files are on disk.
+  - `tsc` is clean.
+- **Search:**
+  - 9 built-in providers: Knaben, Torrents-CSV, Internet Archive, Nyaa and YTS on by default; TPB (Unsafe), BitSearch, LinuxTracker and Sukebei (adult) off.
+  - Torznab indexers are supported.
+  - Each provider can be limited to chosen categories.
+  - Results are merged by info-hash, and failing providers are paused by health tracking.
+- **APK size:** the estimate is arm64 38 → about 19 MB, not yet confirmed by CI.
+- **Open:**
+  - Run a device smoke test of a release APK. R8 is now on, so check that the JNI bridge and the service still work.
+  - Knaben POST, TPB categories, BitSearch selectors and Torznab have not been checked against live servers.
+
 ## 📋 Master Workstream Checklist
 
 | Phase | Milestone | Scope | Status |
@@ -370,7 +395,7 @@ Build **Maglev** — a frictionless, zero-drag, zero-bloat, native-speed Android
 | **0** | **Repo, Specs & Nemesis Audit** | Git init, branches, design tokens, multi-agent audit, locked contracts | ✅ **COMPLETED** |
 | **1** | **Core BitTorrent Engine & Transfers** | Rust librqbit Expo module, intent filters, safe deletion, transfer dashboard | 🔴 **REOPENED 2026-11-11.** The Rust core is a simulator and librqbit is never called. See `docs/GAP_AUDIT_AND_TASKS.md` Phase R. |
 | **2** | **Settings & System Governance** | Bandwidth limits, UPnP port forwarding, encryption PE/MSE, OLED pure black, SOCKS5 proxy, IP filter | 🟡 **UI ONLY.** Settings do not persist and do not reach the engine (contracts C-PERSIST-1, C-SET-1). |
-| **3** | **Search & Aggregation** | Multi-provider search, category filters, recent searches, bookmarks, NSFW filters | 🟡 **UP NEXT** |
+| **3** | **Search & Aggregation** | Multi-provider search, category filters, recent searches, bookmarks, NSFW filters | 🟡 **BUILT 2026-11-11.** Needs a device test (C-SEARCH-1 passes). |
 | **4** | **Automated Feeds (RSS)** | RSS feed parser, auto-download regex filters, background sync | ⚪ Pending |
 
 ---
