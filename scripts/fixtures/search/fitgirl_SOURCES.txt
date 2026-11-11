@@ -1,0 +1,3 @@
+Fetched live with curl (browser-like User-Agent) on 2026-11-12. Unedited.
+fitgirl_search.html  https://fitgirl-repacks.site/?s=witcher
+fitgirl_detail.html  https://fitgirl-repacks.site/the-witcher-3-wild-hunt-remastered/
