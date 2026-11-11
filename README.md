@@ -1,150 +1,135 @@
-<div align="center">
+<p align="center">
+  <img src="assets/brand/readme-header.svg" alt="Maglev, a small, fast torrent client for Android" width="100%">
+</p>
 
-# Maglev
+<p align="center">
+  <a href="https://github.com/Kaos599/Maglev/actions/workflows/ci.yml"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/Kaos599/Maglev/ci.yml?style=flat-square&label=CI&labelColor=05070A"></a>
+  <a href="https://github.com/Kaos599/Maglev/releases"><img alt="Release" src="https://img.shields.io/github/v/tag/Kaos599/Maglev?style=flat-square&label=release&labelColor=05070A&color=CCFF00"></a>
+  <img alt="Android 7+" src="https://img.shields.io/badge/Android-7%2B-00E5FF?style=flat-square&labelColor=05070A">
+  <img alt="Status: pre-release" src="https://img.shields.io/badge/status-pre--release-FFB020?style=flat-square&labelColor=05070A">
+</p>
 
-**High-throughput, zero-bloat BitTorrent client for Android.**  
-Engineered with React Native, Expo, and Rust (`librqbit`).
-
-[![Build Status](https://img.shields.io/github/actions/workflow/status/Kaos599/Maglev/build-engine.yml?branch=main&style=flat-square&label=Engine%20CI)](https://github.com/Kaos599/Maglev/actions)
-[![Release](https://img.shields.io/github/v/tag/Kaos599/Maglev?label=Release&style=flat-square&color=CCFF00)](https://github.com/Kaos599/Maglev/releases)
-[![Tests](https://img.shields.io/badge/Tests-95%2F95%20Passing-00E5FF?style=flat-square)](https://github.com/Kaos599/Maglev)
-[![Platform](https://img.shields.io/badge/Platform-Android%2011--15-black?style=flat-square)](https://github.com/Kaos599/Maglev)
-[![License](https://img.shields.io/badge/License-MIT-white?style=flat-square)](LICENSE)
-
-</div>
-
----
-
-### Overview
-
-Maglev is an open-source BitTorrent client for Android designed to eliminate the telemetry, intrusive advertising, background battery drain, and memory bloat typical of mobile clients.
-
-By combining an asynchronous **Rust engine core** with a declarative **React Native** user interface, Maglev delivers wire-speed peer-to-peer throughput while respecting strict mobile battery and memory constraints.
+<p align="center">
+  <b>Maglev</b> is a minimal torrent client for Android, built to replace LibreTorrent and Flood on your phone.<br>
+  A Rust engine does the downloading. The interface stays out of your way.
+</p>
 
 ---
 
-### Technical Highlights
+> [!NOTE]
+> **Pre-release.** The engine is real (librqbit) and CI builds every commit. The first release is waiting on the
+> on-device test described in [What's next](#whats-next). Expect rough edges.
 
-* **Decoupled Architecture:** The BitTorrent engine runs inside a dedicated Tokio runtime with two worker threads, communicating with the UI via non-blocking JNI message queues at a 500ms telemetry cadence.
-* **Zero-GC SIMD Bitfield Downsampling:** Torrent piece bitfields are downsampled in Rust via SIMD bit-popcount (`u64::count_ones()`) into a fixed 256-byte payload for the 16x16 piece visualizer, avoiding Java garbage collection overhead.
-* **App-Specific Zero-Copy Storage:** Default storage targets direct POSIX paths (`/Android/data/com.maglev/files/Download`) to avoid FUSE permission prompts and Binder IPC overhead, with optional Storage Access Framework (SAF) integration for external directories.
-* **Deterministic Governance:** Network interfaces and battery states are clamped at the socket level within 300ms of state changes (Wi-Fi only, SSID whitelisting, battery cutoff under 20%, charger-only transfers).
-* **In-Flight Media Streaming:** Sequential piece prioritization coupled with a local loopback HTTP server (`127.0.0.1:8080`) enables immediate playback in external media players (VLC, Just Player) before downloads finish.
+## Why Maglev
 
----
+- **Small.** No ads, analytics or account. The arm64 APK is about 38 MB today; we expect about 19 MB once the compressed-library build is confirmed.
+- **Keeps going in the background.** A foreground service keeps downloads running. If Android kills the app, it restarts on its own and picks up where it left off.
+- **Files go where you can find them.** By default they land in `Download/Maglev`, which any file manager can open. You can also pick any folder.
+- **Search built in.** It searches several public indexes at once, merges duplicate results, and lets you choose which sources to use for each category.
 
-### Architecture & Subsystems
+## What works today
 
-```
-+-----------------------------------------------------------------+
-|                        React Native / Expo                      |
-|      Transfers Dashboard - Detail Matrix - Search - Feeds       |
-+--------------------------------+--------------------------------+
-                                 | JSI / JNI Bridge (500ms Telemetry)
-+--------------------------------v--------------------------------+
-|               Android Native Module (Kotlin)                    |
-|    ForegroundService - WakeLock - Connectivity - SAF Manager    |
-+--------------------------------+--------------------------------+
-                                 | C-ABI / JNI Dispatcher Thread
-+--------------------------------v--------------------------------+
-|                   Native Engine Core (Rust)                     |
-|    Tokio Runtime - librqbit - SIMD Downsampler - Token Bucket   |
-+-----------------------------------------------------------------+
-```
+| Area | Status | Notes |
+|---|:---:|---|
+| Magnet links and `.torrent` files | ✅ | Opens from the browser, other apps, or the clipboard. Duplicates are detected. |
+| Downloading and seeding | ✅ | librqbit 9 with DHT, ratio and time seed limits, and a queue (max active). |
+| Background service | ✅ | Notification with Pause all, Resume all and Shut down. Restarts after process death. |
+| Storage | ✅ | `Download/Maglev` by default. A custom folder is supported through the system picker. |
+| Network and power rules | ✅ | Wi-Fi only, battery cutoff, charging only. |
+| Transfers screen | ✅ | Sort, filter, multi-select with bulk actions. |
+| Torrent detail | ✅ | Files (include or exclude), peers, trackers, pieces, recheck. |
+| Search | 🧪 | Knaben, Torrents-CSV, Internet Archive, Nyaa and YTS on by default. Optional: TPB, BitSearch, LinuxTracker, and your own Jackett or Prowlarr (Torznab). Needs a device test. |
+| Themes | ✅ | OLED, Dim and Light, with Lime, Cyan, Pink or Orange accent. |
+| Streaming while downloading | 🧪 | Local playback link for VLC and similar players. Needs a device test. |
+| Encryption, PEX toggle, sequential download | ⏳ | These are saved, but librqbit does not apply them yet. See [`NATIVE_CONTRACT.md` §7](docs/NATIVE_CONTRACT.md). |
+| RSS rules, scheduler, create torrent | ⏳ | Planned for Phase 3. |
 
-| Subsystem | Implementation | Purpose |
-|---|---|---|
-| Engine Core | Rust (`librqbit`) | Memory-safe BitTorrent wire protocol, DHT, and disk I/O |
-| Mobile UI | React Native, Expo (SDK 58) | Declarative 120Hz interface with cyber-retro styling |
-| Native Bridge | Kotlin, JNI Daemon Thread | Decoupled background telemetry batching without JNI thread panics |
-| Power Governance | `PowerManager`, `BatteryManager` | Hardware WakeLock discipline and automatic battery cutoff |
-| Network Governance | `ConnectivityManager.NetworkCallback` | Socket-level cellular clamping and SSID whitelisting |
-| Storage Engine | POSIX Direct I/O, SAF (`pfd.detachFd()`) | Zero-copy block writing with Android 11-15 compatibility |
+✅ works and is covered by contracts · 🧪 built, waiting for a device test · ⏳ not done yet
 
----
+## Install
 
-### BitTorrent Specifications & BEP Compliance
+Download an APK from [Releases](https://github.com/Kaos599/Maglev/releases). Each CI run also uploads an `apks` artifact.
 
-Maglev conforms to core BitTorrent Enhancement Proposals:
+| File | Pick it if |
+|---|---|
+| `Maglev-<version>-arm64-v8a.apk` | You have a phone made in the last 6 years. Most people want this one. |
+| `Maglev-<version>-armeabi-v7a.apk` | You have an older 32-bit phone. |
+| `Maglev-<version>-x86_64.apk` | You use an emulator or a Chromebook. |
+| `Maglev-<version>-universal.apk` | You aren't sure. It runs everywhere but is larger. |
 
-* **BEP 3:** The BitTorrent Protocol Specification (Handshake, Bitfield, Piece/Block requests, Tit-for-Tat unchoking)
-* **BEP 5:** Distributed Hash Table (DHT) over Kademlia UDP
-* **BEP 9 / BEP 10:** Extension Protocol & Swarm Metadata Transfer (`ut_metadata`) for instant magnet resolution
-* **BEP 11:** Peer Exchange (PEX)
-* **BEP 14:** Local Peer Discovery (LSD) for high-speed local network transfers
-* **BEP 27:** Private torrent tracker preservation (DHT/PEX/LSD suppression)
-* **BEP 55:** UPnP / NAT-PMP automatic port forwarding
-* **PE / MSE:** Protocol Encryption against Deep Packet Inspection (DPI)
-* **RFC 1928:** SOCKS5 Proxy Tunneling with remote domain name resolution
+## How it's built
 
----
-
-### System Benchmarks & Targets
-
-| Metric | Target Threshold | Actual Performance |
-|---|---|---|
-| Engine Launch Latency | < 200 ms | ~90 ms |
-| Peak Memory (RAM) | <= 85 MB | 28-45 MB |
-| SIMD Bitfield Downsampling | < 1.0 ms | 0.04 ms (256 bytes) |
-| WakeLock Release on Pause | < 500 ms | < 0.2 ms |
-| Network Switch Reaction | < 300 ms | < 0.05 ms |
-| Settings Read/Write Latency | < 10 ms | < 0.5 ms |
-| Stripped Core Binary Size | < 4.0 MB | ~809 KB (ARM64) |
-
----
-
-### Project Structure
-
-```
-Maglev/
-├── app/                      # React Native screens & navigation (Expo Router)
-│   ├── (tabs)/               # Tab views: Transfers, Search, Feeds, Settings
-│   ├── add-torrent.tsx       # Magnet ingestion & multi-file checklist sheet
-│   └── torrent/[id].tsx      # Torrent detail: Pieces, Files, Peers, Trackers
-├── components/               # Cyber-retro UI components (TransferCard, Matrix)
-├── context/                  # EngineContext and SettingsStore providers
-├── docs/                     # Canonical architectural law and specifications
-├── modules/maglev-engine/    # Custom Expo Native Module (Kotlin + JNI bindings)
-│   ├── android/              # Native Android service, JNI bridge, storage
-│   └── src/                  # TypeScript bridge and simulated telemetry engine
-├── native/maglev-core/       # Rust native dynamic library
-│   ├── Cargo.toml            # Tokio, librqbit, SIMD dependencies
-│   └── src/                  # Native engine, governance, SIMD, and JNI
-└── scripts/                  # Automated E2E integration test suites
+```mermaid
+flowchart TB
+  UI["React Native + Expo Router<br/>screens · theme · search"]
+  KT["Kotlin Expo module<br/>foreground service · storage · permissions · network/power rules"]
+  RS["Rust core<br/>librqbit session · scheduler · stream server"]
+  UI -- "typed bridge (JSON)" --> KT
+  KT -- "JNI" --> RS
 ```
 
----
+- **Rust** (`native/maglev-core`): the librqbit session, a pure scheduler for the queue, seed limits and rules, and a local stream server with tokenized URLs.
+- **Kotlin** (`modules/maglev-engine/android`): owns the engine for the life of the process, runs the foreground service, and handles storage (direct writes, or staging and copy-on-complete), permissions and the network and power rules.
+- **TypeScript** (`app/`, `components/`, `utils/`): the screens, the settings store (expo-sqlite), and the search aggregator.
 
-### Installation & Testing
+The Rust ⇄ Kotlin ⇄ TS boundary is defined in [`docs/NATIVE_CONTRACT.md`](docs/NATIVE_CONTRACT.md).
 
-#### 1. Download Pre-Built Android APK
-Pre-compiled standalone APKs are published with each release:
-* Download the latest release from the [Releases](https://github.com/Kaos599/Maglev/releases) page.
-* Install the `.apk` on your Android device.
+## Develop
 
-#### 2. Development via Expo Go
-To run the application locally without native toolchains:
+You need Node 22, the Android SDK and a device or emulator. You don't need Rust: CI compiles `libmaglev_core.so` on every push.
+
 ```bash
-# Clone the repository
-git clone https://github.com/Kaos599/Maglev.git
-cd Maglev
-
-# Install dependencies
+git clone https://github.com/Kaos599/Maglev.git && cd Maglev
 npm install --legacy-peer-deps
 
-# Start the Expo development server
-npx expo start
+# Debug builds use a mock engine when the native library is missing.
+npx expo run:android
 ```
-Scan the displayed QR code with the **Expo Go** application on your Android device connected to the same local network.
 
-#### 3. Automated Test Suite
-To execute the end-to-end integration and governance suite:
+To run the real engine locally, download the `jniLibs-<abi>` artifact from a CI run and unpack it into `modules/maglev-engine/android/src/main/jniLibs/`.
+
+Expo Go cannot load Maglev's native module, so use a development build (`expo run:android`).
+
+### Tests
+
 ```bash
-npm test
+npm test                 # ABI-split plugin + reality contracts
+npm run test:contracts   # contract suite (exits 1 if any P0 fails)
+npm run test:search      # search providers against offline fixtures
+node scripts/test-plugins.js
 ```
 
----
+CI also runs the Rust unit tests and rejects any engine library that is under 3 MB, lacks librqbit symbols, or isn't 16 KB page-aligned.
 
-### License
+## What's next
 
-This project is licensed under the [MIT License](LICENSE).
+**Now: finish Phase 1 and Phase 2**
+1. Install a CI release APK on a real phone. Download a Debian netinst into `Download/Maglev`, kill the app with `adb`, and check that it comes back and keeps going for 10 minutes. This is the Phase 1 exit gate.
+2. Smoke-test the release build with R8 on: engine start, notification actions, opening files.
+3. Check the search providers and streaming on the device.
+4. Merge `feature/foundation-real-engine` into `dev` and tag the first pre-release.
+
+**Next: Phase 3 parity**
+- Per-torrent speed limits, tracker editing, move storage, export `.torrent`, create torrent.
+- A scheduler, and RSS rules with regex and episode filters.
+- An IP blocklist. Encryption, but only if librqbit can enforce it; otherwise the setting is hidden.
+
+**Later: Phase 4**
+- An assistant where you bring your own key (any OpenAI-compatible endpoint, including OpenRouter's free models).
+- Downloading from any URL, with resume and segmented downloads.
+
+The full task list, with state machines and priorities, is in [`docs/ROADMAP.md`](docs/ROADMAP.md). A dated record of what has landed is in [`LEDGER.md`](LEDGER.md).
+
+## Docs
+
+| Doc | What's in it |
+|---|---|
+| [`AGENTS.md`](AGENTS.md) | How to work in this repo: rules, design tokens, git workflow. |
+| [`docs/ROADMAP.md`](docs/ROADMAP.md) | Phases, tasks and priorities. |
+| [`docs/NATIVE_CONTRACT.md`](docs/NATIVE_CONTRACT.md) | The engine boundary: JNI calls, JSON shapes, error codes. |
+| [`docs/SEARCH_CONTRACT.md`](docs/SEARCH_CONTRACT.md) | Search providers, categories and aggregation. |
+| [`docs/STATE_MACHINES_AND_SCREENS.md`](docs/STATE_MACHINES_AND_SCREENS.md) | Every screen and state transition. |
+
+## Legal
+
+Maglev does not host, index or curate any content. Search sends your query to public third-party indexes. You are responsible for what you download and for following the laws where you live.
