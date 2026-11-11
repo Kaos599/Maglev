@@ -15,7 +15,7 @@ import { buildExtraProviders, loadExtraProviders } from '../../components/search
 import { CATEGORY_LABEL, formatAge, providerMap } from '../../components/search/meta';
 import { riskySources } from '../../utils/search/safety';
 import { addRecentSearch, clearRecentSearches, getSearchPrefs, useSearchPrefs } from '../../utils/prefs/search';
-import { availableCategories, eligibleProviders, mergeInto, rerunProvider, searchAll } from '../../utils/search/aggregate';
+import { availableCategories, eligibleProviders, mergeInto, rerunProvider, resolveResult, searchAll } from '../../utils/search/aggregate';
 import { CloudflareSolverSheet } from '../../components/search/CloudflareSolverSheet';
 import type { Category, MergedResult, SearchUpdate } from '../../utils/search/types';
 
@@ -175,14 +175,19 @@ export default function SearchScreen() {
     async (r: MergedResult) => {
       setBusyHash(r.infoHash);
       remember(trimmed);
+      const wait = new AbortController();
+      const timer = setTimeout(() => wait.abort(), 15000);
       try {
-        await startTorrent(r.magnet);
+        // Some sources only show the magnet on a detail page: read it now.
+        const ready = await resolveResult(r, wait.signal);
+        await startTorrent(ready.magnet);
         setSessionAdded((prev) => new Set(prev).add(r.infoHash));
       } catch (e) {
         const { duplicate, notice: n } = addErrorNotice(e);
         if (duplicate) setSessionAdded((prev) => new Set(prev).add(r.infoHash));
         show(n);
       } finally {
+        clearTimeout(timer);
         setBusyHash(null);
       }
     },

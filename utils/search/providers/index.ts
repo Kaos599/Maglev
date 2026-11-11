@@ -11,8 +11,9 @@ import { sukebei } from './sukebei.ts';
 import { eztv } from './eztv.ts';
 import { subsplease } from './subsplease.ts';
 import { animetosho } from './animetosho.ts';
+import { x1337 } from './x1337.ts';
 
 /** Built-in providers, in default priority order. */
-export const PROVIDERS: SearchProvider[] = [knaben, torrentscsv, archive, nyaa, yts, tpb, bitsearch, linuxtracker, sukebei, eztv, subsplease, animetosho];
+export const PROVIDERS: SearchProvider[] = [knaben, torrentscsv, archive, nyaa, yts, tpb, bitsearch, linuxtracker, sukebei, eztv, subsplease, animetosho, x1337];
 
-export { knaben, torrentscsv, archive, nyaa, yts, tpb, bitsearch, linuxtracker, sukebei, eztv, subsplease, animetosho };
+export { knaben, torrentscsv, archive, nyaa, yts, tpb, bitsearch, linuxtracker, sukebei, eztv, subsplease, animetosho, x1337 };

@@ -454,6 +454,72 @@ async function main() {
   const forgot = prefsMod.clearSiteChecks();
   check('Clear site checks: forgets every host and returns them for cookie removal', forgot.length === 1 && clr.listClearances().length === 0 && forgot[0].host === 'a.test');
 
+  // 1337x: list page without magnets, magnet on the detail page, Cloudflare challenge.
+  console.log('\n[1337x]');
+  const x = await import('../utils/search/providers/x1337.ts');
+  const xSafety = await import('../utils/search/safety.ts');
+  const xNow = Date.UTC(2025, 0, 1);
+  const xCtx = (over = {}) => ({ baseUrl: 'https://1337x.to', category: 'all', hideAdult: true, limit: 50, ...over });
+  const xRows = x.parse(fx('x1337_search.html'), xCtx(), xNow);
+  check('1337x: 20 rows from the recorded page', xRows.length === 20, String(xRows.length));
+  check('1337x: first row name, seeders, leechers, size, date', xRows[0].name === 'Ubuntu MATE 16.04.2 [MATE][armhf][img.xz][Uzerus]' && xRows[0].seeders === 260 && xRows[0].leechers === 2 && xRows[0].sizeBytes === 1.1e9 && xRows[0].publishedAt === Date.UTC(2017, 2, 7), JSON.stringify(xRows[0]));
+  check('1337x: detail link is absolute on the mirror', xRows[0].detailUrl === 'https://1337x.to/torrent/2099267/Ubuntu-MATE-16-04-2-MATE-armhf-img-xz-Uzerus/', xRows[0].detailUrl);
+  check('1337x: size with a thousands comma', xRows.find((r) => r.name.startsWith('Ubuntu Server 22.04 Fundamentals')).sizeBytes === 1004.8e6);
+  check('1337x: ampersand in a name kept', xRows.some((r) => r.name.endsWith('Ubuntu Linux & Linux Scripting')));
+  check('1337x: rows carry no magnet and a stand-in key, never a fake hash', xRows.every((r) => r.magnet === '' && r.infoHash.startsWith('x1337:') && !/^[0-9a-f]{40}$/.test(r.infoHash)));
+  check('1337x: limit respected', x.parse(fx('x1337_search.html'), xCtx({ limit: 3 })).length === 3);
+  const xEmpty = fx('x1337_search.html').replace(/<tbody>[\s\S]*<\/tbody>/, '<tbody></tbody>');
+  check('1337x: page with an empty table -> empty list', xEmpty !== fx('x1337_search.html') && x.parse(xEmpty, xCtx()).length === 0);
+  check('1337x: date without a year uses this year, or last year when ahead', x.parseDate('10:41am Dec. 24th', Date.UTC(2025, 0, 5)) === Date.UTC(2024, 11, 24) && x.parseDate('1am Jan. 2nd', Date.UTC(2025, 0, 5)) === Date.UTC(2025, 0, 2));
+  check('1337x: search URLs', x.searchUrl('https://1337x.to/', 'big buck', 'all', 2) === 'https://1337x.to/search/big%20buck/2/' && x.searchUrl('https://1337x.to', 'x', 'tv', 1) === 'https://1337x.to/category-search/x/TV/1/' && x.searchUrl('https://1337x.to', 'x', 'books', 1).includes('/Other/'));
+  const xm = x.parseMagnet(fx('x1337_detail.html'));
+  check('1337x: magnet and hash from the detail page', xm.infoHash === 'd0f23c109d8662a3fe9338f75839af8d57e5d4a9' && xm.magnet.startsWith('magnet:?xt=urn:btih:D0F23C10') && xm.magnet.includes('dn=Ubuntu+MATE'), xm.infoHash);
+  let noMagnet = null;
+  try {
+    x.parseMagnet('<html><body>nothing</body></html>');
+  } catch (e) {
+    noMagnet = e;
+  }
+  check('1337x: detail page without a magnet -> parse error', noMagnet && noMagnet.kind === 'parse');
+  check('1337x: off by default, flagged risky, has the solver URL, registered', x.x1337.enabledByDefault === false && !!x.x1337.unsafeReason && x.x1337.cloudflare.solverUrl === 'https://1337x.to/' && agg.PROVIDERS.some((p) => p.id === 'x1337'));
+  check('1337x: risky only while 1337x is the only source', xSafety.riskySources({ sources: ['x1337'] }, new Map([['x1337', x.x1337]]), true)?.[0] === '1337x' && xSafety.riskySources({ sources: ['x1337', 'knaben'] }, new Map([['x1337', x.x1337], ['knaben', { name: 'Knaben' }]]), true) === null);
+
+  clr.clearAllClearances();
+  health.resetHealth();
+  globalThis.fetch = async () => new Response(cfBody, { status: 403, headers: cfHeaders });
+  const xOut = await agg.rerunProvider('x1337', 'ubuntu', 'all', { enabled: ['x1337'], waitSeconds: 2 });
+  check('1337x: recorded 403 -> state challenge with the check message', xOut.status.state === 'challenge' && xOut.status.message === 'Needs a quick check', xOut.status.state);
+
+  // Deferred magnet: resolveResult reads the detail page on add and fills in the real hash.
+  const xSeen = [];
+  globalThis.fetch = async (url) => {
+    xSeen.push(String(url));
+    return new Response(fx('x1337_detail.html'), { status: 200, headers: { 'content-type': 'text/html' } });
+  };
+  const xCtl = new AbortController();
+  const xDone = await agg.resolveResult({ ...xRows[0], sources: ['x1337'] }, xCtl.signal);
+  check('resolveResult: fetches detailUrl and sets magnet + real info hash', xSeen.length === 1 && xSeen[0] === xRows[0].detailUrl && xDone.infoHash === xm.infoHash && xDone.magnet === xm.magnet && xDone.sources[0] === 'x1337');
+  xSeen.length = 0;
+  const xReady = { providerId: 'knaben', name: 'a', infoHash: 'b'.repeat(40), magnet: `magnet:?xt=urn:btih:${'b'.repeat(40)}` };
+  const xSame = await agg.resolveResult(xReady, xCtl.signal);
+  check('resolveResult: a row that already has a magnet is returned untouched, no request', xSame === xReady && xSeen.length === 0);
+  let noHook = null;
+  try {
+    await agg.resolveResult({ ...xReady, magnet: '' }, xCtl.signal);
+  } catch (e) {
+    noHook = e;
+  }
+  check('resolveResult: provider without the hook -> parse error', noHook && noHook.kind === 'parse');
+  globalThis.fetch = async () => new Response(cfBody, { status: 403, headers: cfHeaders });
+  let chal = null;
+  try {
+    await agg.resolveResult({ ...xRows[0] }, xCtl.signal);
+  } catch (e) {
+    chal = e;
+  }
+  check('resolveResult: challenge on the detail page surfaces as a challenge error', chal && chal.kind === 'challenge');
+  clr.clearAllClearances();
+
   console.log(`\n${passed} passed, ${failed} failed`);
   process.exit(failed ? 1 : 0);
 }
