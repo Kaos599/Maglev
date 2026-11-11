@@ -20,8 +20,9 @@ const root = path.resolve(__dirname, '..');
 const assets = path.join(root, 'assets');
 const ICON_SVG = path.join(assets, 'brand', 'maglev-icon.svg');
 const MARK_SVG = path.join(assets, 'brand', 'maglev-mark.svg');
-const MARK_W = 152; // viewBox of maglev-mark.svg
-const MARK_H = 200;
+const MARK_W = 107; // viewBox of maglev-mark.svg (scripts/build-logo.py)
+const MARK_H = 44;
+const TILE = '#05070A';
 
 const magick = (...args) => execFileSync('magick', args, { stdio: 'inherit' });
 
@@ -35,17 +36,17 @@ function rasterize(svg, viewH, height, out) {
 // Flattened on the tile colour: square, no alpha (iOS rejects alpha, Android applies its own mask).
 const iconOut = path.join(assets, 'icon.png');
 rasterize(ICON_SVG, 1024, 1024, iconOut);
-magick(iconOut, '-background', '#282828', '-alpha', 'remove', '-alpha', 'off', iconOut);
+magick(iconOut, '-background', TILE, '-alpha', 'remove', '-alpha', 'off', iconOut);
 
-// 2. Adaptive foreground: mark height 500px keeps the diagonal (~630px) inside the 676px safe circle
+// 2. Adaptive foreground: the wide mark at 560px keeps its far points (nose tip, longest speed line) inside the 676px safe circle
 const adaptiveMark = path.join(assets, '.adaptive-mark.tmp.png');
-rasterize(MARK_SVG, MARK_H, 500, adaptiveMark);
+rasterize(MARK_SVG, MARK_H, Math.round((560 * MARK_H) / MARK_W), adaptiveMark);
 magick('-size', '1024x1024', 'xc:none', adaptiveMark, '-gravity', 'center', '-composite',
   path.join(assets, 'adaptive-icon.png'));
 
-// 3. Splash: mark 288px wide on a transparent portrait canvas
+// 3. Splash: mark 420px wide on a transparent portrait canvas
 const splashMark = path.join(assets, '.splash-mark.tmp.png');
-rasterize(MARK_SVG, MARK_H, Math.round((288 * MARK_H) / MARK_W), splashMark);
+rasterize(MARK_SVG, MARK_H, Math.round((420 * MARK_H) / MARK_W), splashMark);
 magick('-size', '1284x2778', 'xc:none', splashMark, '-gravity', 'center', '-composite',
   path.join(assets, 'splash.png'));
 
