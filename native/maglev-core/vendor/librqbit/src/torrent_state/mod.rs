@@ -206,6 +206,9 @@ pub struct ManagedTorrentShared {
 
     /// The web seeds (BEP 19) of the torrent.
     pub(crate) web_seeds: crate::webseed::WebSeeds, // MAGLEV PATCH (webseed backport)
+    // MAGLEV PATCH (T1): tracker list edited by the user (see MAGLEV_PATCH.md).
+    // `trackers` above never changes; `None` here means "use `trackers`".
+    pub(crate) trackers_override: parking_lot::Mutex<Option<HashSet<url::Url>>>,
 }
 
 impl ManagedTorrentShared {
@@ -288,6 +291,30 @@ impl ManagedTorrent {
         if let Some(live) = self.live() {
             live.set_ratelimits(cfg);
         }
+    }
+
+    /// MAGLEV PATCH (T3): the announce URLs this torrent uses now, sorted. It is the edited list when
+    /// `set_trackers` was called, otherwise the list the torrent was added with.
+    pub fn trackers(&self) -> Vec<String> {
+        let mut v: Vec<String> = match &*self.shared.trackers_override.lock() {
+            Some(set) => set.iter().map(|u| u.to_string()).collect(),
+            None => self.shared.trackers.iter().map(|u| u.to_string()).collect(),
+        };
+        v.sort();
+        v
+    }
+
+    /// MAGLEV PATCH (T3): replaces the announce URLs. Entries that do not parse as URLs are dropped.
+    ///
+    /// The new list is read by `Session::make_peer_rx_managed_torrent` (T4), which runs each time the
+    /// torrent is started or unpaused. A torrent that is live keeps announcing to the old list until it
+    /// is paused and unpaused; the caller does that when it wants the change to take effect at once.
+    pub fn set_trackers(&self, urls: Vec<String>) {
+        let set: HashSet<url::Url> = urls
+            .iter()
+            .filter_map(|u| url::Url::parse(u).ok())
+            .collect();
+        *self.shared.trackers_override.lock() = Some(set);
     }
 
     pub fn with_state<R>(&self, f: impl FnOnce(&ManagedTorrentState) -> R) -> R {

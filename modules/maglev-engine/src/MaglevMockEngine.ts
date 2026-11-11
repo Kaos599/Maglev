@@ -25,11 +25,13 @@ import type {
   TelemetryEvent,
   TorrentCompletedEvent,
   TorrentDetailData,
+  TorrentExport,
   TorrentFileInfo,
   TorrentLimits,
   TorrentState,
   TorrentTelemetry,
   TrackerInfo,
+  TrackersAdded,
   Unsubscribe,
 } from './MaglevEngine.types.ts';
 import {
@@ -40,6 +42,7 @@ import {
 import { ipFilter } from './MaglevIpFilter.ts';
 import { settingsStore } from './MaglevSettingsStore.ts';
 import { parseSource, pseudoHash } from './magnet.ts';
+import { checkTrackerLines, trackerKey } from './trackerUrl.ts';
 import { restartReasons, toNativeConfig } from './toNativeConfig.ts';
 
 const GOVERNANCE_TAGS: ReadonlySet<PausedBy | null> = new Set<PausedBy | null>(['wifi_only', 'battery', 'charging_only']);
@@ -496,18 +499,6 @@ export class MaglevMockEngine implements MaglevEngineApi {
     return this.torrents.get(id) || null;
   }
 
-  public addTracker(id: string, trackerUrl: string): boolean {
-    const t = this.torrents.get(id);
-    if (!t) return false;
-    t.trackers.push({
-      url: trackerUrl,
-      status: 'Announcing',
-      seeds: 0,
-      peers: 0,
-    });
-    return true;
-  }
-
   public startHttpStream(id: string, fileIndex: number): string {
     const t = this.torrents.get(id);
     if (t) {
@@ -816,6 +807,60 @@ export class MaglevMockEngine implements MaglevEngineApi {
     }
     this.lastReannounce.set(id, now);
     return ok();
+  }
+
+  public async addTrackers(id: string, urls: string[]): Promise<EngineResult<TrackersAdded>> {
+    const checked = checkTrackerLines(urls);
+    if (!checked.ok) return fail('INVALID_ARGUMENT', checked.message);
+    const t = this.torrents.get(id);
+    if (!t) return fail('NOT_FOUND', 'Torrent not found.');
+    if (t.state === 'MOVING') return fail('UNSUPPORTED', 'Wait for the move to finish.');
+    const have = new Set(t.trackers.map((tr) => trackerKey(tr.url)));
+    const fresh = checked.urls.filter((u) => !have.has(trackerKey(u)));
+    for (const url of fresh) t.trackers.push({ url, status: 'Announcing', seeds: 0, peers: 0 });
+    if (fresh.length > 0) this.broadcast();
+    return {
+      ok: true,
+      added: fresh.length,
+      skipped: checked.urls.length - fresh.length,
+      announced: fresh.length > 0 && (t.state === 'DOWNLOADING' || t.state === 'SEEDING'),
+    };
+  }
+
+  public async removeTracker(id: string, url: string): Promise<EngineResult<{ announced: boolean }>> {
+    if (!url.trim()) return fail('INVALID_ARGUMENT', 'Choose which tracker to remove');
+    const t = this.torrents.get(id);
+    if (!t) return fail('NOT_FOUND', 'Torrent not found.');
+    if (t.state === 'MOVING') return fail('UNSUPPORTED', 'Wait for the move to finish.');
+    const key = trackerKey(url);
+    const at = t.trackers.findIndex((tr) => trackerKey(tr.url) === key);
+    if (at < 0) return fail('NOT_FOUND', "That tracker isn't in the list");
+    t.trackers.splice(at, 1);
+    this.broadcast();
+    return { ok: true, announced: t.state === 'DOWNLOADING' || t.state === 'SEEDING' };
+  }
+
+  public async exportTorrent(id: string): Promise<EngineResult<TorrentExport>> {
+    const t = this.torrents.get(id);
+    if (!t) return fail('NOT_FOUND', 'Torrent not found.');
+    if (t.state === 'INITIALIZING') {
+      return fail('NOT_READY', "Maglev is still getting this torrent's details. Try again in a moment.");
+    }
+    if (t.state === 'MOVING') return fail('UNSUPPORTED', 'Wait for the move to finish.');
+    const cleaned = t.name
+      .replace(/[\\/:*?"<>|\u0000-\u001f]/g, '_')
+      .trim()
+      .replace(/^\.+|\.+$/g, '')
+      .slice(0, 120)
+      .trim();
+    const name = `${cleaned || 'torrent'}.torrent`;
+    return { ok: true, path: `/storage/emulated/0/Download/Maglev/${name}`, name, folder: 'Download/Maglev', bytes: 4096 };
+  }
+
+  public async shareExportedTorrent(path: string): Promise<EngineResult> {
+    return path.toLowerCase().endsWith('.torrent')
+      ? ok()
+      : fail('NOT_FOUND', "The saved file isn't there any more. Save it again.");
   }
 
   public async getFreeSpace(): Promise<EngineResult<FreeSpace>> {

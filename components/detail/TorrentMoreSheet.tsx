@@ -13,6 +13,7 @@ interface Props {
   onReannounce: () => void;
   onCopyMagnet: () => void;
   onShareMagnet: () => void;
+  onSaveTorrent: () => void;
   onSpeedLimit: () => void;
   onMove: () => void;
   /** Short summary of the per-torrent limit, or undefined when none is set. */
@@ -34,6 +35,7 @@ export function TorrentMoreSheet({
   onReannounce,
   onCopyMagnet,
   onShareMagnet,
+  onSaveTorrent,
   onSpeedLimit,
   onMove,
   limitSummary,
@@ -68,7 +70,14 @@ export function TorrentMoreSheet({
       />
       <ListRow title="Copy magnet" icon="magnet" onPress={onCopyMagnet} />
       <ListRow title="Share magnet link" icon="share" onPress={onShareMagnet} />
-      <ListRow title="Speed limit" subtitle={limitSummary ?? 'No limit'} icon="speed-limit" onPress={onSpeedLimit} />
+      <ListRow
+        title="Save .torrent file"
+        subtitle={state === 'INITIALIZING' ? 'Available once the torrent details load' : 'Keeps the current trackers'}
+        icon="file"
+        disabled={state === 'INITIALIZING' || state === 'MOVING'}
+        onPress={onSaveTorrent}
+      />
+      <ListRow title="Speed limit"subtitle={limitSummary ?? 'No limit'} icon="speed-limit" onPress={onSpeedLimit} />
       <ListRow
         title="Move to…"
         subtitle={state === 'MOVING' ? 'Moving now' : busy ? 'Wait for the current step to finish' : undefined}

@@ -9,6 +9,8 @@ import type {
   FeedAutomationStatus,
   FilePriorityEntry,
   FreeSpace,
+  TorrentExport,
+  TrackersAdded,
   GovernanceConfig,
   MaglevEngineApi,
   Metadata,
@@ -325,6 +327,18 @@ export class MaglevEngineBridge implements MaglevEngineApi {
   }
   public reannounce(id: string): Promise<EngineResult<{ retryAfterSecs?: number }>> {
     return this.route('reannounce', id);
+  }
+  public addTrackers(id: string, urls: string[]): Promise<EngineResult<TrackersAdded>> {
+    return this.route('addTrackers', id, urls);
+  }
+  public removeTracker(id: string, url: string): Promise<EngineResult<{ announced: boolean }>> {
+    return this.route('removeTracker', id, url);
+  }
+  public exportTorrent(id: string): Promise<EngineResult<TorrentExport>> {
+    return this.route('exportTorrent', id);
+  }
+  public shareExportedTorrent(path: string): Promise<EngineResult> {
+    return this.route('shareExportedTorrent', path);
   }
   public getFreeSpace(): Promise<EngineResult<FreeSpace>> {
     return this.route('getFreeSpace');

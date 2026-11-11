@@ -177,3 +177,33 @@ that file's bytes there; the file is not selected, so nothing else is downloaded
 
 To rebase on a new librqbit version: re-apply hunks 1-12 and 24 (`grep -rn "MAGLEV PATCH" src`) and hunks 13-23 (web seed
 files are whole files; diff them against the PR or its merged form).
+
+## Live tracker list (hunks T1-T4, Wave 6, contract section 15)
+
+How librqbit holds trackers (checked, v9.1.0): `ManagedTorrentShared.trackers: HashSet<url::Url>` (`src/torrent_state/mod.rs:186`) is
+filled once in `add_torrent` (`src/session.rs:1358`, from the .torrent announce list, the magnet `tr=` params and
+`AddTorrentOptions.trackers`) and is never mutated. It is read each time a peer stream is built:
+`Session::make_peer_rx_managed_torrent` (`src/session.rs:1528`, called from `unpause` at `:1635`) passes it to `make_peer_rx`, which hands
+the set to `TrackerComms::start` (`:1595`) as a fixed set; each tracker gets its own announce task for the life of that peer stream.
+So there is no API to change trackers on a torrent, live or not, and a live torrent keeps announcing to the set it started with.
+The new list therefore takes effect when the peer stream is rebuilt, which is what pause + unpause does (the `nativeReannounce` mechanism, contract 10.2).
+
+The hunks keep `trackers` as it is (it stays the list the torrent was added with) and add an override next to it, the same way hunks 1-3 and 7-9 do:
+
+T1. `src/torrent_state/mod.rs:207-209` (struct `ManagedTorrentShared`)
+    New field `pub(crate) trackers_override: parking_lot::Mutex<Option<HashSet<url::Url>>>`. `None` keeps `trackers`; `Some(empty)` means no trackers.
+T2. `src/session.rs:1381` (the only constructor of `ManagedTorrentShared`, in `add_torrent`)
+    Adds `trackers_override: Default::default()`.
+T3. `src/torrent_state/mod.rs:294-316` (`impl ManagedTorrent`)
+    New public `trackers(&self) -> Vec<String>` (the override if set, else `trackers`; sorted) and `set_trackers(&self, urls: Vec<String>)`
+    (parses each with `url::Url::parse`, drops the ones that fail, stores the set). Strings are used so maglev-core needs no `url` dependency.
+    `set_trackers` does not touch a live torrent: it only changes what the next peer stream is built from.
+T4. `src/session.rs:1534-1541` (`make_peer_rx_managed_torrent`)
+    Reads the override when there is one, otherwise `trackers`, before calling `make_peer_rx`.
+
+Not patched: `session_persistence/json.rs:139` still writes the original set, so after a restart librqbit brings back the original list. Maglev keeps
+its own edits in `<sessionDir>/maglev-trackers.json` (`native/maglev-core/src/trackers.rs`) and applies them again after every restore, recheck and move
+(`engine.rs` `apply_saved_trackers`). The session-wide `SessionOptions.trackers` still apply on top (`make_peer_rx`, `src/session.rs:1588`).
+A private torrent uses only one tracker, picked from the set (`src/session.rs:1581-1586`), so Maglev refuses to edit the list of a private torrent.
+
+To rebase on a new librqbit version: re-apply the twelve hunks above and T1-T4 (`grep -rn "MAGLEV PATCH" src`).

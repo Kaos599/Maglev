@@ -48,6 +48,21 @@ object FileActions {
         return start(context, chooser, "Sharing is not available")
     }
 
+    /** Shares a file at a POSIX path the FileProvider covers. Returns null on success or a plain-English error. */
+    fun shareLocalFile(context: Context, file: File, mime: String): String? {
+        val uri = try {
+            FileProvider.getUriForFile(context, authority(context), file)
+        } catch (_: IllegalArgumentException) {
+            return "Sharing is not available for this folder"
+        }
+        val send = Intent(Intent.ACTION_SEND)
+            .setType(mime)
+            .putExtra(Intent.EXTRA_STREAM, uri)
+            .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        val chooser = Intent.createChooser(send, null).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        return start(context, chooser, "Sharing is not available")
+    }
+
     /** Opens the folder in a file manager, falling back to the system Downloads view. */
     fun openFolder(context: Context, outputFolder: String): String? {
         val docUri = folderDocumentUri(context, outputFolder)

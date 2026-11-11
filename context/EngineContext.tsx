@@ -101,8 +101,6 @@ interface EngineContextType {
   reannounce: (id: string) => Promise<EngineResult<{ retryAfterSecs?: number }>>;
   getFreeSpace: () => Promise<EngineResult<FreeSpace>>;
   openLiveUpdateSettings: () => Promise<void>;
-  /** Not supported by the engine contract; always resolves false. */
-  addTracker: (id: string, trackerUrl: string) => Promise<boolean>;
   /** 256 cells, contract values: 0 missing, 1 have, 2 partial. */
   getPieceBitfield: (id: string) => Promise<Uint8Array>;
   /** Cached detail. An uncached id triggers a one-off fetch; use `watchDetail` for live updates. */
@@ -689,8 +687,6 @@ export const EngineProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const getFreeSpace = useCallback(() => maglevEngine.getFreeSpace(), []);
   const openLiveUpdateSettings = useCallback(() => maglevEngine.openLiveUpdateSettings(), []);
 
-  const addTracker = useCallback(async (_id: string, _trackerUrl: string) => false, []);
-
   const getPieceBitfield = useCallback(async (id: string) => {
     const cells = await maglevEngine.getPieceBitfield(id);
     const out = new Uint8Array(256);
@@ -762,7 +758,6 @@ export const EngineProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         reannounce,
         getFreeSpace,
         openLiveUpdateSettings,
-        addTracker,
         getPieceBitfield,
         getTorrentDetail,
         watchDetail,

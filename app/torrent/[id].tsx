@@ -17,7 +17,8 @@ import { PiecesMatrix } from '../../components/PiecesMatrix';
 import { StateBadge } from '../../components/detail/StateBadge';
 import { StatGrid } from '../../components/detail/StatGrid';
 import { PeerRow, TrackerRow } from '../../components/detail/rows';
-import { DeleteSheet, FileActionsSheet, RemoveFilesSheet } from '../../components/detail/sheets';
+import { DeleteSheet, FileActionsSheet, RemoveFilesSheet, SavedTorrentSheet } from '../../components/detail/sheets';
+import { AddTrackerSheet, RemoveTrackerSheet } from '../../components/detail/TrackerSheets';
 import { FileListRow } from '../../components/detail/FileListRow';
 import { PrioritySheet } from '../../components/detail/PrioritySheet';
 import { TorrentMoreSheet } from '../../components/detail/TorrentMoreSheet';
@@ -68,6 +69,14 @@ export default function TorrentDetailScreen() {
   const [moveOpen, setMoveOpen] = useState(false);
   const [moveBusy, setMoveBusy] = useState(false);
   const [moveError, setMoveError] = useState<{ text: string; pickAgain: boolean } | null>(null);
+  const [addTrackerOpen, setAddTrackerOpen] = useState(false);
+  const [addTrackerBusy, setAddTrackerBusy] = useState(false);
+  const [addTrackerError, setAddTrackerError] = useState<string | null>(null);
+  const [removeTrackerUrl, setRemoveTrackerUrl] = useState<string | null>(null);
+  const [removeTrackerBusy, setRemoveTrackerBusy] = useState(false);
+  /** Trackers removed a moment ago, hidden until the next detail read stops listing them. */
+  const [hiddenTrackers, setHiddenTrackers] = useState<string[]>([]);
+  const [savedTorrent, setSavedTorrent] = useState<{ path: string; name: string; folder: string } | null>(null);
   const [resumesAt, setResumesAt] = useState<string | null>(null);
   const [retryUntil, setRetryUntil] = useState(0);
   const [now, setNow] = useState(() => Date.now());
@@ -105,6 +114,19 @@ export default function TorrentDetailScreen() {
   }, [detail]);
 
   const snap = detail?.snapshot ?? null;
+
+  // Forget a hidden tracker once the engine no longer lists it.
+  useEffect(() => {
+    if (!detail) return;
+    setHiddenTrackers((prev) => {
+      const next = prev.filter((u) => detail.trackers.some((t) => t.url === u));
+      return next.length === prev.length ? prev : next;
+    });
+  }, [detail]);
+  const trackers = useMemo(
+    () => (detail ? detail.trackers.filter((t) => !hiddenTrackers.includes(t.url)) : []),
+    [detail, hiddenTrackers],
+  );
 
   // Drop the optimistic limit once the engine reports the same values.
   useEffect(() => {
@@ -266,6 +288,70 @@ export default function TorrentDetailScreen() {
       showNotice({ tone: 'danger', text: "Couldn't share the magnet link." });
     }
   }, [id, snap, showNotice]);
+
+  const handleSaveTorrent = useCallback(async () => {
+    setMoreOpen(false);
+    if (!id) return;
+    const res = await maglevEngine.exportTorrent(id);
+    if (res.ok) {
+      triggerHaptic('success');
+      setSavedTorrent({ path: res.path, name: res.name, folder: res.folder });
+    } else {
+      showNotice({ tone: 'danger', text: res.message || "Couldn't save the .torrent file." });
+    }
+  }, [id, showNotice]);
+
+  const handleAddTrackers = useCallback(
+    async (urls: string[]) => {
+      if (!id) return;
+      setAddTrackerBusy(true);
+      setAddTrackerError(null);
+      try {
+        const res = await maglevEngine.addTrackers(id, urls);
+        if (res.ok) {
+          setAddTrackerOpen(false);
+          triggerHaptic('success');
+          showNotice({
+            tone: 'info',
+            text:
+              res.added === 0
+                ? 'Those trackers are already in the list.'
+                : `Added ${res.added} ${res.added === 1 ? 'tracker' : 'trackers'}.${res.announced ? ' Asking them for peers now.' : ''}`,
+          });
+        } else {
+          setAddTrackerError(res.message || "Couldn't add the trackers.");
+          triggerHaptic('warning');
+        }
+      } catch {
+        setAddTrackerError("Couldn't add the trackers. Try again.");
+      } finally {
+        setAddTrackerBusy(false);
+      }
+    },
+    [id, showNotice],
+  );
+
+  const handleRemoveTracker = useCallback(async () => {
+    const url = removeTrackerUrl;
+    if (!id || !url) return;
+    setRemoveTrackerBusy(true);
+    try {
+      const res = await maglevEngine.removeTracker(id, url);
+      setRemoveTrackerUrl(null);
+      if (res.ok) {
+        setHiddenTrackers((h) => [...h, url]);
+        triggerHaptic('warning');
+        showNotice({ tone: 'info', text: 'Tracker removed.' });
+      } else {
+        showNotice({ tone: 'danger', text: res.message || "Couldn't remove the tracker." });
+      }
+    } catch {
+      setRemoveTrackerUrl(null);
+      showNotice({ tone: 'danger', text: "Couldn't remove the tracker." });
+    } finally {
+      setRemoveTrackerBusy(false);
+    }
+  }, [id, removeTrackerUrl, showNotice]);
 
   const handleLimits = useCallback(
     async (next: TorrentLimits) => {
@@ -476,6 +562,21 @@ export default function TorrentDetailScreen() {
       <View style={styles.tabs}>
         <SegmentedControl options={TABS} value={tab} onChange={setTab} accessibilityLabel="Detail section" />
       </View>
+      {tab === 'trackers' ? (
+        <View style={styles.block}>
+          <Button
+            label="Add tracker"
+            icon="plus"
+            variant="secondary"
+            fullWidth
+            disabled={moving}
+            onPress={() => {
+              setAddTrackerError(null);
+              setAddTrackerOpen(true);
+            }}
+          />
+        </View>
+      ) : null}
     </View>
   );
 
@@ -486,11 +587,12 @@ export default function TorrentDetailScreen() {
       return <EmptyBlock icon="peers" title="Peer details aren't available yet" body={`${snap.peersLive} connected. The list fills in shortly.`} />;
     if (tab === 'peers')
       return <EmptyBlock icon="peers" title="No peers connected" body="Peers show up while the torrent is running." />;
-    if (tab === 'trackers') return <EmptyBlock icon="tracker" title="No trackers" body="This torrent doesn't list any trackers." />;
+    if (tab === 'trackers')
+      return <EmptyBlock icon="tracker" title="No trackers" body="Peers can still be found without one. Add a tracker to look for more." />;
     return null;
   };
 
-  const data: unknown[] = tab === 'files' ? files : tab === 'peers' ? detail.peers : tab === 'trackers' ? detail.trackers : [];
+  const data: unknown[] = tab === 'files' ? files : tab === 'peers' ? detail.peers : tab === 'trackers' ? trackers : [];
 
   return (
     <Screen title={snap.name || 'Torrent'} onBack={goBack} actions={headerActions}>
@@ -519,7 +621,7 @@ export default function TorrentDetailScreen() {
               />
             );
           if (tab === 'peers') return <PeerRow peer={item as never} />;
-          return <TrackerRow tracker={item as never} />;
+          return <TrackerRow tracker={item as never} onRemove={moving ? undefined : (t) => setRemoveTrackerUrl(t.url)} />;
         }}
         ListHeaderComponent={header}
         ListEmptyComponent={tab === 'pieces' ? undefined : (emptyFor() ?? undefined)}
@@ -612,6 +714,7 @@ export default function TorrentDetailScreen() {
         onReannounce={handleReannounce}
         onCopyMagnet={handleCopyMagnet}
         onShareMagnet={handleShareMagnet}
+        onSaveTorrent={handleSaveTorrent}
         limitSummary={limitSummary}
         onSpeedLimit={() => {
           setMoreOpen(false);
@@ -638,6 +741,21 @@ export default function TorrentDetailScreen() {
         onRemove={() => handleDelete(false)}
         onDeleteFiles={() => handleDelete(true)}
       />
+      <AddTrackerSheet
+        visible={addTrackerOpen}
+        onClose={() => setAddTrackerOpen(false)}
+        busy={addTrackerBusy}
+        error={addTrackerError}
+        onSubmit={handleAddTrackers}
+      />
+      <RemoveTrackerSheet
+        url={removeTrackerUrl}
+        last={trackers.length <= 1}
+        busy={removeTrackerBusy}
+        onClose={() => setRemoveTrackerUrl(null)}
+        onRemove={handleRemoveTracker}
+      />
+      <SavedTorrentSheet saved={savedTorrent} onClose={() => setSavedTorrent(null)} />
       <SpeedLimitSheet visible={limitOpen} onClose={() => setLimitOpen(false)} limits={limits} onChange={handleLimits} />
       <MoveSheet
         visible={moveOpen}

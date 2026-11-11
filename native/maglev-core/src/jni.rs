@@ -328,6 +328,54 @@ pub extern "system" fn Java_com_maglev_engine_NativeCore_nativeReannounce(
 }
 
 #[no_mangle]
+pub extern "system" fn Java_com_maglev_engine_NativeCore_nativeAddTrackers(
+    mut env: JNIEnv,
+    _class: JClass,
+    id: JString,
+    urls_json: JString,
+) -> jstring {
+    let out = match (read_str(&mut env, &id), read_str(&mut env, &urls_json)) {
+        (Some(id), Some(urls)) => guarded(|| {
+            with_engine(|e| result_envelope(e.add_trackers(&id, &urls)))
+        }),
+        _ => bad_argument(),
+    };
+    reply(&mut env, &out)
+}
+
+#[no_mangle]
+pub extern "system" fn Java_com_maglev_engine_NativeCore_nativeRemoveTracker(
+    mut env: JNIEnv,
+    _class: JClass,
+    id: JString,
+    url: JString,
+) -> jstring {
+    let out = match (read_str(&mut env, &id), read_str(&mut env, &url)) {
+        (Some(id), Some(url)) => guarded(|| {
+            with_engine(|e| result_envelope(e.remove_tracker(&id, &url)))
+        }),
+        _ => bad_argument(),
+    };
+    reply(&mut env, &out)
+}
+
+#[no_mangle]
+pub extern "system" fn Java_com_maglev_engine_NativeCore_nativeExportTorrent(
+    mut env: JNIEnv,
+    _class: JClass,
+    id: JString,
+    dest_path: JString,
+) -> jstring {
+    let out = match (read_str(&mut env, &id), read_str(&mut env, &dest_path)) {
+        (Some(id), Some(dest)) => guarded(|| {
+            with_engine(|e| result_envelope(e.export_torrent(&id, &dest)))
+        }),
+        _ => bad_argument(),
+    };
+    reply(&mut env, &out)
+}
+
+#[no_mangle]
 pub extern "system" fn Java_com_maglev_engine_NativeCore_nativeSetGlobalLimits(
     mut env: JNIEnv,
     _class: JClass,
