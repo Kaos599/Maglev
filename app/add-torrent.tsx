@@ -16,16 +16,13 @@ import { AddFileRow } from '../components/add/AddFileRow';
 import { SpaceStrip } from '../components/add/SpaceStrip';
 import { PrioritySheet } from '../components/detail/PrioritySheet';
 import { fileExt } from '../components/detail/torrentLabels';
+import { admit, type AdmissionOutcome } from '../utils/admission';
 
 /** SM-9 add flow states. */
 type Phase = 'input' | 'validating' | 'invalid' | 'resolving' | 'timeout' | 'error' | 'duplicate' | 'preview' | 'adding' | 'added';
 
 const RESOLVE_TIMEOUT_MS = 60_000;
 const INVALID_TEXT = "That isn't a magnet link or torrent file.";
-/** NATIVE_CONTRACT 10.3: keep this much free for the system. */
-const RESERVE_BYTES = 200 * 1024 * 1024;
-/** Warn when less than this would be left after the download. */
-const LOW_SPACE_BYTES = 1024 * 1024 * 1024;
 /** Android hands VIEW intents over as file:// or content:// URIs; Kotlin reads both. */
 const LOCAL_SOURCE = /^(file|content):\/\//i;
 /** The same file with its scheme stripped on the way in: an absolute path ending in .torrent. */
@@ -269,7 +266,7 @@ export default function AddTorrentScreen() {
     }
   };
 
-  const doAdd = async (onlyAll: boolean) => {
+  const doAdd = async (onlyAll: boolean, paused = false) => {
     setAddError(null);
     setPhase('adding');
     const onlyFiles = !onlyAll && meta && selected.size < meta.files.length ? [...selected].sort((a, b) => a - b) : null;
@@ -282,7 +279,7 @@ export default function AddTorrentScreen() {
         : null;
     let res;
     try {
-      res = await maglevEngine.addTorrent(sourceRef.current, { onlyFiles, filePriorities, outputFolder: null /* Kotlin fills output_folder from the persisted target set by pickDownloadFolder (handles direct + staging) */ });
+      res = await maglevEngine.addTorrent(sourceRef.current, { onlyFiles, filePriorities, paused, outputFolder: null /* Kotlin fills output_folder from the persisted target set by pickDownloadFolder (handles direct + staging) */ });
     } catch (e) {
       setAddError(e instanceof Error ? e.message : 'Something went wrong.');
       setPhase(meta ? 'preview' : 'timeout');
@@ -383,8 +380,22 @@ export default function AddTorrentScreen() {
     const freeBytes = freeSpace
       ? Math.min(freeSpace.freeBytes, freeSpace.targetFreeBytes ?? freeSpace.freeBytes)
       : null;
-    const notEnough = freeBytes !== null && selectedBytes > 0 && selectedBytes > freeBytes - RESERVE_BYTES;
-    const lowSpace = freeBytes !== null && !notEnough && selectedBytes > 0 && freeBytes - selectedBytes < LOW_SPACE_BYTES;
+    // TODO(SM-35): TorrentTelemetry has no "included bytes" field yet, so each torrent counts 0 until one exists.
+    const includedBytes = 0;
+    const pendingNeed = telemetry.torrents.reduce(
+      (n, t) => (t.finished ? n : n + Math.max(0, includedBytes - t.downloadedBytes)),
+      0,
+    );
+    const admission: AdmissionOutcome | null =
+      freeBytes !== null && selectedBytes > 0
+        ? admit({
+            freeBytes,
+            pendingNeed,
+            stagingFactor: freeSpace?.mode === 'staging' ? 2 : 1,
+            selectionBytes: selectedBytes,
+          })
+        : null;
+    const doesntFit = admission?.result === 'DoesntFit';
     const prioFile = prioIndex === null ? null : meta.files.find((f) => f.index === prioIndex) ?? null;
 
     const header = (
@@ -413,15 +424,7 @@ export default function AddTorrentScreen() {
             ))}
           </View>
         ) : null}
-        <SpaceStrip selectedBytes={selectedBytes} totalBytes={meta.totalBytes} free={freeSpace} tooBig={notEnough} />
-        {notEnough ? (
-          <Banner
-            tone="danger"
-            title={`Not enough space. Free up ${formatBytes(selectedBytes - (freeBytes! - RESERVE_BYTES))} or deselect files.`}
-          />
-        ) : lowSpace ? (
-          <Banner tone="warning" title={`Only ${formatBytes(freeBytes! - selectedBytes)} will be left on your device.`} />
-        ) : null}
+        <SpaceStrip selectedBytes={selectedBytes} totalBytes={meta.totalBytes} free={freeSpace} tooBig={doesntFit} />
         <View style={styles.selectRow}>
           <Text style={styles.meta}>
             {selected.size} of {meta.files.length} selected · {formatBytes(selectedBytes)}
@@ -472,19 +475,24 @@ export default function AddTorrentScreen() {
           windowSize={7}
         />
         <View style={[styles.bar, { paddingBottom: Math.max(insets.bottom, spacing.md) }]}>
+          {admission?.result === 'DoesntFit' ? (
+            <Text style={styles.caption}>{`Needs ${formatBytes(admission.need)}, ${formatBytes(admission.budget)} free`}</Text>
+          ) : admission?.result === 'Tight' ? (
+            <Text style={styles.caption}>{`Leaves ${formatBytes(admission.leftAfter)} free`}</Text>
+          ) : null}
           <Button
             label={
               selected.size === 0
                 ? 'Select a file to start'
-                : notEnough
-                  ? 'Not enough space'
+                : doesntFit
+                  ? 'Add paused'
                   : `Start download · ${formatBytes(selectedBytes)}`
             }
             size="lg"
             fullWidth
             loading={adding}
-            disabled={selected.size === 0 || notEnough}
-            onPress={() => doAdd(false)}
+            disabled={selected.size === 0}
+            onPress={() => doAdd(false, doesntFit)}
           />
         </View>
         <PrioritySheet
@@ -647,6 +655,7 @@ const makeStyles = (c: ThemeColors) =>
     },
     destText: { flex: 1 },
     dest: { ...type.mono, fontSize: type.size.md, color: c.text, marginTop: 2 },
+    caption: { ...type.mono, fontSize: type.size.sm, color: c.textMuted, marginBottom: spacing.sm },
     bar: {
       paddingHorizontal: spacing.lg,
       paddingTop: spacing.md,
