@@ -22,7 +22,7 @@
     "test:admission": "node scripts/test-admission.js",
     "test:remove-files": "node scripts/test-remove-files.js",
     "test:tracker-edit": "node scripts/test-tracker-edit.js",
-    "test:assistant": "node scripts/test-assistant-card.js && node scripts/test-assistant-plan.js && node scripts/test-assistant-session.js && node scripts/test-assistant-sanitize.js && node scripts/test-assistant-sse.js && node scripts/test-assistant-prefs.js && node scripts/test-assistant-provider.js && node scripts/test-assistant-safety.js && node scripts/test-assistant-context.js && node scripts/test-assistant-release.js && node scripts/test-assistant-tools.js && node scripts/test-assistant-glossary.js"
+    "test:assistant": "node scripts/test-assistant-card.js && node scripts/test-assistant-plan.js && node scripts/test-assistant-session.js && node scripts/test-assistant-sanitize.js && node scripts/test-assistant-sse.js && node scripts/test-assistant-prefs.js && node scripts/test-assistant-provider.js && node scripts/test-assistant-safety.js && node scripts/test-assistant-context.js && node scripts/test-assistant-release.js && node scripts/test-assistant-tools.js && node scripts/test-assistant-glossary.js && node scripts/test-assistant-playback.js"
   },
   "dependencies": {
     "@expo-google-fonts/inter": "^0.4.2",
