@@ -112,22 +112,25 @@ pub fn parse_range(header: Option<&str>, len: u64) -> RangeSpec {
         Err(_) => return RangeSpec::Full,
     };
     let end = if b.is_empty() {
-        len - 1
+        None
     } else {
         match b.parse::<u64>() {
-            Ok(e) => e,
+            Ok(e) => Some(e),
             Err(_) => return RangeSpec::Full,
         }
     };
-    if end < start {
+    // RFC 9110 14.1.2: last-pos < first-pos is invalid syntax, so the header is ignored.
+    // An open-ended range has no last-pos to compare.
+    if end.is_some_and(|e| e < start) {
         return RangeSpec::Full;
     }
+    // RFC 9110 14.1.2 / 15.5.17: first-pos >= length is unsatisfiable (416).
     if start >= len {
         return RangeSpec::Unsatisfiable;
     }
     RangeSpec::Partial {
         start,
-        end: end.min(len - 1),
+        end: end.map_or(len - 1, |e| e.min(len - 1)),
     }
 }
 
@@ -367,6 +370,8 @@ mod tests {
         assert_eq!(parse_range(Some("bytes=1000-"), len), RangeSpec::Unsatisfiable);
         assert_eq!(parse_range(Some("bytes=-0"), len), RangeSpec::Unsatisfiable);
         assert_eq!(parse_range(Some("bytes=9-3"), len), RangeSpec::Full);
+        assert_eq!(parse_range(Some("bytes=1000-1005"), len), RangeSpec::Unsatisfiable);
+        assert_eq!(parse_range(Some("bytes=5000-"), len), RangeSpec::Unsatisfiable);
         assert_eq!(parse_range(Some("items=0-3"), len), RangeSpec::Full);
         assert_eq!(parse_range(Some("bytes=abc"), len), RangeSpec::Full);
         assert_eq!(parse_range(Some("bytes=0-5"), 0), RangeSpec::Full);
