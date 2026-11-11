@@ -1033,8 +1033,9 @@ const makeStyles = (c: ThemeColors) =>
       backgroundColor: c.bg,
     },
     selectHead: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
-    selectActions: { flexDirection: 'row', gap: spacing.sm },
-    selectAction: { flex: 1 },
+    // Two per row: four buttons in one row cut the icons and labels off on a phone.
+    selectActions: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
+    selectAction: { flexGrow: 1, flexBasis: '40%' },
     selectCount: { ...type.bodyStrong, fontSize: type.size.lg, color: c.text, flex: 1 },
     muted: { ...type.body, fontSize: type.size.md, color: c.textMuted },
   });
