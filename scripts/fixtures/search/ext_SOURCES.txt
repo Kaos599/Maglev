@@ -1,0 +1,12 @@
+Provenance of ext_* fixtures. Nothing was edited or written by hand.
+
+Live ext.to answers a Cloudflare challenge (403) to a plain client, so the page is a raw Wayback Machine
+capture (the "id_" URL form returns the original bytes).
+
+ext_search.html
+  https://web.archive.org/web/20260211073615id_/https://ext.to/browse/?age=4&cat=1&sort=age&order=desc
+  Capture of 2026-02-11 of the browse list (same table as /browse/?q=). 50 rows.
+
+There is NO detail-page fixture: the Wayback Machine has no 2026 capture of an ext.to detail page (404 on 6 tries).
+Ext.parseDetailPage (csrf meta, window.pageToken, a.detail-magnet-link data-id) follows the TorrentSearch
+selectors and is not verified against a real page.

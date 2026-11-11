@@ -1,0 +1,10 @@
+Titles and descriptions replaced with neutral text; structure unchanged.
+Provenance of xxxclub_* fixtures (adult content). Nothing was edited or written by hand.
+
+xxxclub_search.html
+  https://xxxclub.to/torrents/search/all/1080p  (live curl, browser User-Agent, 2026-11-11)
+
+xxxclub_detail.html
+  https://xxxclub.to/torrents/details/~-2644067365565603279  (live curl, 2026-11-11)
+  First row of the search fixture. Its magnet hash 6b2ae9c3...584a equals the id="#i<hash>" on the
+  row's details link in the list, which is how the parser gets the hash without a second request.

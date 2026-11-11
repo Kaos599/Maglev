@@ -51,3 +51,17 @@ import { torrent9 } from './torrent9.ts';
 PROVIDERS.push(fitgirl, blueroms, audiobookbay, epublibre, rutor, megapeer, oxtorrent, torrent9);
 
 export { fitgirl, blueroms, audiobookbay, epublibre, rutor, megapeer, oxtorrent, torrent9 };
+
+// General and adult providers ported from prajwalch/TorrentSearch (MIT).
+import { limetorrents } from './limetorrents.ts';
+import { torrentdownloads } from './torrentdownloads.ts';
+import { torrentdownload } from './torrentdownload.ts';
+import { therarbg } from './therarbg.ts';
+import { ext } from './ext.ts';
+import { mypornclub } from './mypornclub.ts';
+import { xxxclub } from './xxxclub.ts';
+import { xxxtracker } from './xxxtracker.ts';
+
+PROVIDERS.push(limetorrents, torrentdownloads, torrentdownload, therarbg, ext, mypornclub, xxxclub, xxxtracker);
+
+export { limetorrents, torrentdownloads, torrentdownload, therarbg, ext, mypornclub, xxxclub, xxxtracker };

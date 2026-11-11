@@ -1,0 +1,8 @@
+Provenance of therarbg_* fixtures. Nothing was edited or written by hand.
+
+therarbg_search.html
+  https://therarbg.com/get-posts/keywords:ubuntu/  (live curl, browser User-Agent, 2026-11-11)
+
+therarbg_detail.html
+  https://therarbg.com/post-detail/8a6ee9/ubuntu-24-04-1-desktop-amd64-iso/  (live curl, 2026-11-11)
+  First row of the search fixture. Magnet hash 4A3F5E08...0599.

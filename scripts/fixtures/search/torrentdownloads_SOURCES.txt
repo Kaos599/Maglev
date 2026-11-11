@@ -1,0 +1,13 @@
+Provenance of torrentdownloads_* fixtures. Nothing was edited or written by hand.
+
+Live torrentdownloads.pro answers a Cloudflare challenge (403) to a plain client, so both pages are raw
+Wayback Machine captures (the "id_" URL form returns the original bytes).
+
+torrentdownloads_search.html
+  https://web.archive.org/web/20240430104314id_/https://www.torrentdownloads.pro/search/all/%20Doctor_Who_2005%202012_Christmas_Special%20The_Snowmen%20HDTV_x264-FoV/
+  Capture of 2024-04-30. The URL form is the old /search/all/<query>/ one (the app uses /search/?s_cat=&search=);
+  the result markup (div.grey_bar3 rows in the last div.inner_container) is what the TorrentSearch parser reads. 9 results.
+
+torrentdownloads_detail.html
+  https://web.archive.org/web/20240430104314id_/https://www.torrentdownloads.pro/torrent/1654831469/-Doctor-Who-2005-2012-Christmas-Special-The-Snowmen-HDTV-x264-FoV
+  Capture of 2024-04-30, first result of the search fixture. Magnet hash 2745A8CB...213C.
