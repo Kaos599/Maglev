@@ -121,11 +121,6 @@ jobs:
           chmod +x gradlew
           ./gradlew assembleRelease --stacktrace
 
-      - name: Kotlin unit tests (schedule, feed rules, restart policy)
-        run: |
-          cd android
-          ./gradlew :maglev-engine:testReleaseUnitTest --stacktrace
-
       - name: List APKs
         run: ls -lh android/app/build/outputs/apk/release/*.apk
 
@@ -137,7 +132,12 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
-  contracts:
+      # After the upload, so a test failure never costs us the APK. AGP 9 creates host tests for debug only.
+      - name: Kotlin unit tests (schedule, feed rules, restart policy)
+        run: |
+          cd android
+          ./gradlew :maglev-engine:testDebugUnitTest --stacktrace
+
     name: Contract tests
     runs-on: ubuntu-latest
     steps:
