@@ -342,6 +342,78 @@ object Notifications {
         )
     }
 
+    const val ID_STORAGE_FULL = 4104
+    const val ID_SD_REMOVED = 4105
+    const val ID_CONTINUE = 4106
+    const val GROUP_ERRORS = "maglev_errors"
+    const val ID_ERRORS_SUMMARY = 4998
+
+    /** SM-33: "Storage full · 2 downloads paused" and "SD card removed · 2 downloads paused". Tap opens the app. */
+    fun notifyStorage(context: Context, id: Int, title: String) {
+        post(
+            context, id,
+            NotificationCompat.Builder(context, CH_REMINDERS)
+                .setSmallIcon(android.R.drawable.stat_sys_warning)
+                .setContentTitle(title)
+                .setAutoCancel(true)
+                .setOnlyAlertOnce(true)
+                .setCategory(NotificationCompat.CATEGORY_STATUS)
+                .setContentIntent(contentIntent(context))
+                .build(),
+        )
+    }
+
+    /** SM-34: the background start was not possible. Tapping opens the app, which starts the service. */
+    fun notifyContinue(context: Context, count: Int) {
+        post(
+            context, ID_CONTINUE,
+            NotificationCompat.Builder(context, CH_REMINDERS)
+                .setSmallIcon(android.R.drawable.stat_sys_download)
+                .setContentTitle(com.maglev.engine.RestartEntryPolicy.reminderTitle(count))
+                .setAutoCancel(true)
+                .setCategory(NotificationCompat.CATEGORY_REMINDER)
+                .setContentIntent(contentIntent(context))
+                .build(),
+        )
+    }
+
+    /** SM-36: "{name} stopped: {message}" on the Completed channel, grouped. Tap opens the torrent. */
+    fun notifyTorrentError(context: Context, id: String, title: String) {
+        val nid = 7000 + (id.hashCode() and 0xFFFF)
+        post(
+            context, nid,
+            NotificationCompat.Builder(context, CH_COMPLETED)
+                .setSmallIcon(android.R.drawable.stat_sys_warning)
+                .setContentTitle(title)
+                .setAutoCancel(true)
+                .setCategory(NotificationCompat.CATEGORY_ERROR)
+                .setGroup(GROUP_ERRORS)
+                .setContentIntent(contentIntent(context, id))
+                .build(),
+        )
+        try {
+            val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            val count = nm.activeNotifications.count {
+                it.notification.group == GROUP_ERRORS && it.id != ID_ERRORS_SUMMARY && it.id != nid
+            } + 1
+            if (count < 2) return
+            post(
+                context, ID_ERRORS_SUMMARY,
+                NotificationCompat.Builder(context, CH_COMPLETED)
+                    .setSmallIcon(android.R.drawable.stat_sys_warning)
+                    .setContentTitle("$count downloads stopped")
+                    .setGroup(GROUP_ERRORS)
+                    .setGroupSummary(true)
+                    .setGroupAlertBehavior(NotificationCompat.GROUP_ALERT_CHILDREN)
+                    .setAutoCancel(true)
+                    .setContentIntent(contentIntent(context))
+                    .build(),
+            )
+        } catch (_: Exception) {
+            // The summary is cosmetic.
+        }
+    }
+
     fun cancel(context: Context, id: Int) {
         try {
             NotificationManagerCompat.from(context).cancel(id)

@@ -60,6 +60,8 @@ export interface PowerSettings {
   downloadOnlyWhileCharging: boolean;
   batteryCutoffThreshold: BatteryCutoffThreshold;
   autoExitOnComplete: boolean;
+  /** SM-34: continue downloads after the phone restarts or Maglev updates. Read headless in Kotlin. */
+  resumeAfterRestart: boolean;
   isCharging: boolean;
   batteryPercentage: number;
 }
@@ -172,6 +174,7 @@ export const DEFAULT_SETTINGS: MaglevSettings = {
     downloadOnlyWhileCharging: false,
     batteryCutoffThreshold: 20,
     autoExitOnComplete: false,
+    resumeAfterRestart: true,
     isCharging: true,
     batteryPercentage: 85,
   },

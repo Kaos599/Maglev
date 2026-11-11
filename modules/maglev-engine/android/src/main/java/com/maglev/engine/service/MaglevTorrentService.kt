@@ -14,6 +14,8 @@ import android.os.SystemClock
 import android.util.Log
 import androidx.core.app.ServiceCompat
 import com.maglev.engine.EngineHost
+import com.maglev.engine.RestartEntry
+import com.maglev.engine.RestartEntryKind
 
 /**
  * Foreground service (type dataSync) that keeps the process alive while torrents run.
@@ -31,6 +33,10 @@ class MaglevTorrentService : Service() {
         const val ACTION_SCHEDULE_RESUME = "com.maglev.engine.action.SCHEDULE_RESUME"
         /** Worker or notification tap: add queued feed matches (contract 11.6). */
         const val ACTION_DRAIN_FEED_ADDS = "com.maglev.engine.action.DRAIN_FEED_ADDS"
+        /** Boot, package update or app-open check: start the engine headless (contract 19). */
+        const val ACTION_RESTART = "com.maglev.engine.action.RESTART"
+        /** Hourly worker or network change: clear no_peers tags (contract 20). */
+        const val ACTION_RESOLVE_RETRY = "com.maglev.engine.action.RESOLVE_RETRY"
 
         /**
          * API 34+ foreground type. specialUse has no 6-hour cap (dataSync does on Android 15).
@@ -69,6 +75,7 @@ class MaglevTorrentService : Service() {
         instance = this
         EngineHost.attach(applicationContext)
         Notifications.ensureChannels(this)
+        StorageHealthDriver.start(this)
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -79,10 +86,13 @@ class MaglevTorrentService : Service() {
         }
         // A null intent means Android restarted us after the process died. No JS is running.
         if (intent == null) {
+            RestartEntry.run(this, RestartEntryKind.StickyRestart)
             EngineHost.headlessStart()
             return START_STICKY
         }
         when (intent.action) {
+            ACTION_RESTART -> EngineHost.headlessStart(countKill = false)
+            ACTION_RESOLVE_RETRY -> EngineHost.resolveRetry()
             ACTION_PAUSE_ALL -> EngineHost.pauseAllFromNotification()
             ACTION_RESUME_ALL -> EngineHost.resumeAllFromNotification()
             ACTION_SHUTDOWN -> EngineHost.shutdownFromNotification()
@@ -181,6 +191,7 @@ class MaglevTorrentService : Service() {
 
     override fun onDestroy() {
         handler.removeCallbacksAndMessages(null)
+        StorageHealthDriver.stop(this)
         releaseLocks()
         isForeground = false
         instance = null
