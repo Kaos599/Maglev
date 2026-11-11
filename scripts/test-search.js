@@ -58,6 +58,9 @@ async function main() {
   const bits = await import('../utils/search/providers/bitsearch.ts');
   const lt = await import('../utils/search/providers/linuxtracker.ts');
   const tz = await import('../utils/search/providers/torznab.ts');
+  const ez = await import('../utils/search/providers/eztv.ts');
+  const sp = await import('../utils/search/providers/subsplease.ts');
+  const at = await import('../utils/search/providers/animetosho.ts');
   const kn = await import('../utils/search/providers/knaben.ts');
 
   const ctx = (category = 'all', over = {}) => ({ baseUrl: 'https://example.test', category, hideAdult: true, limit: 50, ...over });
@@ -75,6 +78,9 @@ async function main() {
     ['linuxtracker', lt.parse(fx('linuxtracker.html'), ctx()), 2],
     ['sukebei', suke.parse(fx('sukebei.xml'), ctx('adult', { hideAdult: false })), 1],
     ['torznab', tz.parse(fx('torznab.xml'), ctx()), 2],
+    ['eztv', ez.parse(fx('eztv.json'), ctx()), 3],
+    ['subsplease', sp.parse(fx('subsplease.json'), ctx()), 4],
+    ['animetosho', at.parse(fx('animetosho.html'), ctx()), 3],
   ];
   for (const [name, rows, min] of cases) {
     check(`${name}: ${rows.length} results, all valid`, rows.length >= min && rows.every(validResult), `got ${rows.length}`);
@@ -103,8 +109,27 @@ async function main() {
   check('torznab: leechers = peers - seeders', tzRows[0].leechers === 8);
   check('torznab: hash taken from magnet link; item with no hash skipped', tzRows[1].infoHash.startsWith('e8cbdb') && tzRows.length === 2);
 
+  const ezRows = ez.parse(fx('eztv.json'), ctx());
+  check('eztv: uppercase hash lowercased, tv category, name without site tag', ezRows[0].infoHash === '1697fa425af41580da18a07b3dd0bc6b589c51a0' && ezRows[0].category === 'tv' && !/eztv/i.test(ezRows[0].name), ezRows[0].name);
+  check('eztv: size, seeders, peers and date', ezRows[0].sizeBytes === 924303336 && ezRows[0].seeders === 0 && ezRows[0].leechers === 2 && ezRows[0].publishedAt === 1556999716000);
+  check('eztv: IMDb suggestion picks the series, not the person row', ez.parseImdbSuggestion(fx('imdb_suggest.json')) === '0903747');
+  check('eztv: no series in suggestions -> null', ez.parseImdbSuggestion('{"d":[{"id":"tt1","qid":"movie"}]}') === null);
+  const ezCalls = installFetch({
+    'v2.sg.media-imdb.com': () => jsonRes(fx('imdb_suggest.json')),
+    'eztv.test': () => jsonRes(fx('eztv.json')),
+  });
+  const ezSearch = await ez.eztv.search('breaking bad', 'tv', 1, { baseUrl: 'https://eztv.test', signal: new AbortController().signal, hideAdult: true, limit: 50 });
+  check('eztv: search = IMDb lookup then EZTV by imdb_id', ezSearch.length === 3 && ezCalls.length === 2 && ezCalls[1].url.includes('imdb_id=0903747') && ezCalls[0].url.includes('/suggestion/b/breaking%20bad.json'), ezCalls.map((c) => c.url).join(' | '));
+  const spRows = sp.parse(fx('subsplease.json'), ctx());
+  check('subsplease: base32 hash converted, name from dn, size from xl', HEX40.test(spRows[0].infoHash) && spRows[0].name.startsWith('[SubsPlease]') && spRows[0].sizeBytes === 3895551825, JSON.stringify(spRows[0]));
+  check('subsplease: no seeders reported, anime', spRows.every((r) => r.seeders === undefined && r.category === 'anime'));
+  check('subsplease: empty search ([]) -> empty list', sp.parse('[]', ctx()).length === 0);
+  const atRows = at.parse(fx('animetosho.html'), ctx());
+  check('animetosho: title, size, seeders, date', atRows[0].name.includes('Frieren') && atRows[0].sizeBytes === 33343733854 && atRows[0].seeders === 1 && atRows[0].leechers === 242 && atRows[0].publishedAt === Date.UTC(2026, 4, 5, 20, 50), JSON.stringify(atRows[0]));
+  check('animetosho: page with no entries -> empty list', at.parse('<html><body><p>No results</p></body></html>', ctx()).length === 0);
+
   // Malformed input becomes a ProviderError, not a crash.
-  for (const [name, mod, bad] of [['knaben', kn, '<html>oops</html>'], ['nyaa', nyaa, 'not xml'], ['yts', yts, '[]'], ['tpb', tpb, '{"a":1}']]) {
+  for (const [name, mod, bad] of [['knaben', kn, '<html>oops</html>'], ['nyaa', nyaa, 'not xml'], ['yts', yts, '[]'], ['tpb', tpb, '{"a":1}'], ['eztv', ez, '<html>oops</html>'], ['subsplease', sp, '<html>oops</html>']]) {
     let kind = null;
     try {
       mod.parse(bad, ctx());

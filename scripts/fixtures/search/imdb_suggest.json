@@ -1,0 +1,23 @@
+{
+ "d": [
+  {
+   "id": "tt0903747",
+   "l": "Breaking Bad",
+   "q": "TV series",
+   "qid": "tvSeries",
+   "y": 2008
+  },
+  {
+   "id": "in0000274",
+   "l": "Breaking Bad"
+  },
+  {
+   "id": "tt9243946",
+   "l": "El Camino",
+   "q": "feature",
+   "qid": "movie",
+   "y": 2019
+  }
+ ],
+ "q": "breaking bad"
+}

@@ -1,0 +1,50 @@
+{
+ "imdb_id": "0903747",
+ "torrents_count": 77,
+ "limit": 3,
+ "page": 1,
+ "torrents": [
+  {
+   "id": 1330749,
+   "hash": "1697fa425af41580da18a07b3dd0bc6b589c51a0",
+   "filename": "Breaking.Brad.S02E02.Doom.II.Ultra.Violence.Part.02.REPACK.480p.x264-mSD[eztv].mkv",
+   "magnet_url": "magnet:?xt=urn:btih:1697fa425af41580da18a07b3dd0bc6b589c51a0&dn=Breaking.Brad.S02E02.Doom.II.Ultra.Violence.Part.02.REPACK.480p.x264-mSD%5Beztvx.to%5D&tr=udp://tracker.opentrackr.org:1337/announce&tr=udp://open.stealth.si:80/announce&tr=udp://tracker.torrent.eu.org:451/announce&tr=udp://tracker.dler.org:6969/announce&tr=https://tracker.moeblog.cn:443/announce&tr=https://tracker.zhuqiy.com:443/announce&tr=udp://open.dstud.io:6969/announce",
+   "title": "Breaking Brad S02E02 Doom II Ultra Violence Part 02 REPACK 480p x264-mSD EZTV",
+   "imdb_id": "0903747",
+   "season": "2",
+   "episode": "2",
+   "seeds": 0,
+   "peers": 2,
+   "date_released_unix": 1556999716,
+   "size_bytes": "924303336"
+  },
+  {
+   "id": 1330747,
+   "hash": "738424f563462969f67887e154713ef3d943ac23",
+   "filename": "Breaking.Brad.S09E02.The.Student.Becomes.The.Master.Part.02.480p.x264-mSD[eztv].mkv",
+   "magnet_url": "magnet:?xt=urn:btih:738424f563462969f67887e154713ef3d943ac23&dn=Breaking.Brad.S09E02.The.Student.Becomes.The.Master.Part.02.480p.x264-mSD%5Beztvx.to%5D&tr=udp://tracker.opentrackr.org:1337/announce&tr=udp://open.stealth.si:80/announce&tr=udp://tracker.torrent.eu.org:451/announce&tr=udp://tracker.dler.org:6969/announce&tr=https://tracker.moeblog.cn:443/announce&tr=https://tracker.zhuqiy.com:443/announce&tr=udp://open.dstud.io:6969/announce",
+   "title": "Breaking Brad S09E02 The Student Becomes The Master Part 02 480p x264-mSD EZTV",
+   "imdb_id": "0903747",
+   "season": "9",
+   "episode": "2",
+   "seeds": 0,
+   "peers": 0,
+   "date_released_unix": 1556998864,
+   "size_bytes": "1536452144"
+  },
+  {
+   "id": 1330746,
+   "hash": "86e3c8da2dd7569ca9312f71dd52c7778d694a9c",
+   "filename": "Breaking.Brad.S09E03.The.Student.Becomes.The.Master.Part.03.480p.x264-mSD[eztv].mkv",
+   "magnet_url": "magnet:?xt=urn:btih:86e3c8da2dd7569ca9312f71dd52c7778d694a9c&dn=Breaking.Brad.S09E03.The.Student.Becomes.The.Master.Part.03.480p.x264-mSD%5Beztvx.to%5D&tr=udp://tracker.opentrackr.org:1337/announce&tr=udp://open.stealth.si:80/announce&tr=udp://tracker.torrent.eu.org:451/announce&tr=udp://tracker.dler.org:6969/announce&tr=https://tracker.moeblog.cn:443/announce&tr=https://tracker.zhuqiy.com:443/announce&tr=udp://open.dstud.io:6969/announce",
+   "title": "Breaking Brad S09E03 The Student Becomes The Master Part 03 480p x264-mSD EZTV",
+   "imdb_id": "0903747",
+   "season": "9",
+   "episode": "3",
+   "seeds": 0,
+   "peers": 0,
+   "date_released_unix": 1556997088,
+   "size_bytes": "1127026713"
+  }
+ ]
+}

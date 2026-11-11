@@ -481,6 +481,9 @@ contract('C-SEARCH-1', 'P1', 'Search engine files exist and the search contract 
     'utils/search/providers/bitsearch.ts',
     'utils/search/providers/linuxtracker.ts',
     'utils/search/providers/sukebei.ts',
+    'utils/search/providers/eztv.ts',
+    'utils/search/providers/subsplease.ts',
+    'utils/search/providers/animetosho.ts',
     'utils/search/providers/torznab.ts',
     'scripts/test-search.js',
   ];
