@@ -2,16 +2,21 @@
 // One user message is one turn: Send, then up to 6 model round-trips, then idle or awaitingConfirmation.
 // Anything not in the transition table is a no-op. Never add states.
 //
-// Interpretations the table leaves open (also listed in the build report):
+// Interpretations the table leaves open (review round 1, ASSISTANT_DESIGN R1-3..R1-6):
 //  - A proposal tool call creates a card and answers the model `{"status":"proposed","card_id":"c1"}`. The turn
 //    then continues as the table says (ToolsDone -> requesting) so the model can say "I've put it on a card",
 //    and ends at awaitingConfirmation through the `Stop` row (pending cards > 0).
+//  - cardMachine is the only owner of card state. Confirm and Dismiss work in every turn state and only emit
+//    `confirmCard` / `dismissCard`; the runner drives cardMachine and reports back with `CardSettled`. A card stays
+//    in `pendingCards` until it is done, dismissed or expired (a failed card stays: it can be retried).
+//  - Cards expire only on Clear, Disabled (key removed or Assistant off), TargetGone, or a newer card for the same
+//    target. A new Send never expires cards.
 //  - When a round has no read tools, there is nothing for the runner to wait for, so ToolsDone is applied in the
 //    same step (the transient runningTools state is skipped).
-//  - Cap: at most 3 calls per round-trip and 8 per turn. Calls over the allowance are dropped from history. The
-//    turn ends with "Stopped after 6 steps." when any call was dropped or 6 round-trips are used.
-//  - Abort and errors go to idle but keep pending cards (SM-42: "keep history and cards"). Confirm and Dismiss
-//    still work for those cards. The next Send expires them.
+//  - Caps per turn: 6 round-trips, 8 tool calls, 3 per round-trip, 2 proposal cards, 1 destructive card,
+//    2 get_result_details. No read tool runs in the last allowed round. The retry budget (1) is per turn.
+//  - Abort, Stop, Background, Clear and Disabled in runningTools emit `cancelTools` and answer the pending calls
+//    `{ok:false,error:"cancelled"}`. `ToolTimeout` (the runner fires it after 60 s) answers one call the same way.
 
 import {
   MAX_COMPLETION_TOKENS,
@@ -31,16 +36,24 @@ export type TurnKind = 'idle' | 'requesting' | 'streaming' | 'runningTools' | 'a
 
 /** Fixed copy (SM-31 and the design). */
 export const COPY = {
+  notEnabled: 'Turn on the Assistant in Settings first.',
+  noWarning: 'Read the Assistant notice in Settings first.',
   noKey: 'Add an API key in Settings → Assistant.',
   checkKey: 'Check your key.',
   noCredits: 'Out of credits.',
   rateLimited: 'Rate limited. Try again in a minute.',
-  stopped: 'Stopped after 6 steps.',
+  stopped: "I hit my limit for one question. Here's what I found. Ask me to keep going.",
+  answerTooLong: 'The answer was too long. Ask a narrower question.',
+  oneDelete: 'Only one delete per question. Ask again after this one.',
+  tooManyProposals: 'That is enough proposals for one question. Ask again after these.',
+  tooManyDetails: 'I already looked at two results. Ask again to see more.',
+  outOfSteps: 'No steps left for this question.',
+  cancelled: 'cancelled',
+  toolTimeout: 'That took too long.',
   tooLong: 'That message is too long. Try a shorter one.',
   network: "Couldn't reach the provider. Check your connection.",
   providerDown: 'The provider is having trouble. Try again later.',
   rejected: 'The provider rejected the request.',
-  urlNotPasted: 'I can only download links you pasted in this chat.',
   toolMissing: 'The tool did not return a result.',
 } as const;
 
@@ -65,18 +78,22 @@ export interface TurnState {
   config: TurnConfig;
   /** Chat history sent to the model (no system message). */
   history: ChatMessage[];
-  /** The user's capped raw texts this session, for the URL provenance check. */
-  userTexts: string[];
   /** Model round-trips started in this turn (retries do not count). */
   rounds: number;
   /** Tool calls accepted in this turn. */
   toolCalls: number;
-  /** True once the current request used its one retry. */
+  /** True once this turn used its one retry (the budget is per turn, not per request). */
   retried: boolean;
+  /** Proposal cards, destructive cards and get_result_details calls accepted in this turn. */
+  proposals: number;
+  destructive: number;
+  details: number;
   /** Text streamed so far in the current round-trip. */
   streamText: string;
-  /** Cards created and not yet confirmed or dismissed. */
+  /** Cards created and not yet done, dismissed or expired. */
   pendingCards: string[];
+  /** Target handle of each pending card (a result or transfer id), for "newer card for the same target". */
+  cardTargets: Record<string, string>;
   /** Calls of the current round-trip (runningTools only). */
   calls: PendingCall[];
   /** True when calls were dropped by a cap in this round-trip. */
@@ -99,35 +116,57 @@ export type TurnEffect =
   | RequestEffect
   | { type: 'showNotice'; text: string }
   | { type: 'errorCard'; message: string }
-  | { type: 'retryOnce'; request: RequestEffect; discardPartial: boolean }
+  /** The runner waits `delayMs` (plus up to ~250 ms of jitter when `jitter`), then sends `request` again. */
+  | { type: 'retryOnce'; request: RequestEffect; discardPartial: boolean; delayMs: number; jitter: boolean }
   | { type: 'abortFetch' }
+  /** Stop the running read tools. `callIds` names one call (timeout); absent means all of them. */
+  | { type: 'cancelTools'; callIds?: string[] }
   | { type: 'markCancelled' }
   | { type: 'appendText'; text: string }
   | { type: 'runTool'; callId: string; name: string; args: Record<string, unknown> }
   | { type: 'createCard'; cardId: string; callId: string; tool: string; args: Record<string, unknown> }
   | { type: 'appendToolMessage'; toolCallId: string; content: string }
   | { type: 'note'; text: string }
-  | { type: 'executeCard'; cardId: string }
-  | { type: 'removeCard'; cardId: string }
+  /** Runner: drive cardMachine CONFIRM for this card. Reports back with CardSettled. */
+  | { type: 'confirmCard'; cardId: string }
+  /** Runner: drive cardMachine DISMISS for this card. Reports back with CardSettled. */
+  | { type: 'dismissCard'; cardId: string }
+  /** Runner: drive cardMachine EXPIRE for one card (target gone, or a newer card for the same target). */
+  | { type: 'expireCard'; cardId: string }
   | { type: 'expireCards' }
+  | { type: 'addUsage'; input: number; output: number }
   | { type: 'clearHandles' };
 
+export type CardSettledKind = 'done' | 'dismissed' | 'expired' | 'failed';
+
 export type TurnEvent =
-  | { type: 'Send'; text: string; hasKey: boolean }
+  | { type: 'Send'; text: string; enabled: boolean; warningAccepted: boolean; hasKey: boolean }
   | { type: 'FirstByte' }
-  | { type: 'HttpErr'; status: number }
+  /** `retryAfterMs` is the parsed Retry-After header, when the provider sent one. */
+  | { type: 'HttpErr'; status: number; retryAfterMs?: number }
   | { type: 'NetErr' }
-  /** A stream that failed after it started (the parser's `{ok:false}` outcome or an `error` event). */
-  | { type: 'StreamFailed'; error: StreamFailure }
+  /** A stream that failed after it started. `truncated` is true when it ended with finish_reason "length". */
+  | { type: 'StreamFailed'; error: StreamFailure; truncated?: boolean }
   | { type: 'Abort' }
+  /** The app went to the background (SM-42). Same as Abort for the turn. */
+  | { type: 'Background' }
   | { type: 'TextDelta'; text: string }
-  | { type: 'ToolCallsDone'; calls: AssistantToolCall[] }
-  | { type: 'Stop' }
+  | { type: 'Usage'; input: number; output: number }
+  | { type: 'ToolCallsDone'; calls: AssistantToolCall[]; truncated?: boolean }
+  | { type: 'Stop'; truncated?: boolean }
   | { type: 'ToolsDone'; results: { toolCallId: string; content: string }[] }
+  /** The runner fires this 60 s after a read tool started and it has not finished. */
+  | { type: 'ToolTimeout'; toolCallId: string }
   | { type: 'Confirm'; cardId: string }
   | { type: 'Dismiss'; cardId: string }
+  /** cardMachine reached a final-ish state. done, dismissed and expired leave pendingCards; failed stays. */
+  | { type: 'CardSettled'; cardId: string; kind: CardSettledKind }
+  /** The transfer or result a card points at is gone (handle, e.g. "t1"). */
+  | { type: 'TargetGone'; target: string }
   /** SM-42 CLEAR and KEY_REMOVED. */
-  | { type: 'Clear' };
+  | { type: 'Clear' }
+  /** The Assistant switch was turned off. Cards expire, history stays. */
+  | { type: 'Disabled' };
 
 export interface TurnStep {
   state: TurnState;
@@ -139,16 +178,29 @@ export function turnInitial(config: TurnConfig): TurnState {
     kind: 'idle',
     config,
     history: [],
-    userTexts: [],
     rounds: 0,
     toolCalls: 0,
     retried: false,
+    proposals: 0,
+    destructive: 0,
+    details: 0,
     streamText: '',
     pendingCards: [],
+    cardTargets: {},
     calls: [],
     capHit: false,
   };
 }
+
+/** Proposal tools that remove something from the user's device. At most one per turn. */
+export const DESTRUCTIVE_TOOLS: ReadonlySet<string> = new Set(['propose_delete', 'propose_remove_files']);
+export const MAX_PROPOSALS_PER_TURN = 2;
+export const MAX_DESTRUCTIVE_PER_TURN = 1;
+export const MAX_DETAILS_PER_TURN = 2;
+/** Retry delay when the provider sends no Retry-After. The runner adds jitter. */
+export const RETRY_DELAY_MS = 1000;
+/** A Retry-After longer than this is not waited for. */
+export const RETRY_AFTER_MAX_MS = 30_000;
 
 // ---- helpers ------------------------------------------------------------------------------------
 
@@ -170,38 +222,46 @@ function buildRequest(s: TurnState, round: number): RequestEffect {
   };
 }
 
-/** Ends the turn with a plain error. The history keeps what it had. */
+/** Ends the turn with a plain error. The history keeps what it had; pending cards stay. */
 function failTurn(s: TurnState, message: string, extra: TurnEffect[] = []): TurnStep {
-  return {
-    state: { ...s, kind: 'idle', streamText: '', calls: [], capHit: false },
-    effects: [...extra, { type: 'errorCard', message }],
-  };
+  const next: TurnState = { ...s, streamText: '', calls: [], capHit: false };
+  return { state: { ...next, kind: restKind(next) }, effects: [...extra, { type: 'errorCard', message }] };
 }
 
 function toolError(message: string): string {
   return JSON.stringify({ ok: false, error: message });
 }
 
-function statusStep(s: TurnState, status: number): TurnStep {
+function statusStep(s: TurnState, status: number, retryAfterMs?: number): TurnStep {
   if (status === 401 || status === 403) return failTurn(s, COPY.checkKey);
   if (status === 402) return failTurn(s, COPY.noCredits);
   if (status === 429) return failTurn(s, COPY.rateLimited);
-  if (status >= 500) return retryStep(s, COPY.providerDown);
+  if (status >= 500) return retryStep(s, COPY.providerDown, retryAfterMs);
   return failTurn(s, COPY.rejected);
 }
 
-/** SM-31: one retry on network/5xx only. Otherwise the error card. */
-function retryStep(s: TurnState, finalMessage: string): TurnStep {
+/** SM-31: one retry per turn, on network/5xx only. Otherwise the error card. */
+function retryStep(s: TurnState, finalMessage: string, retryAfterMs?: number): TurnStep {
   if (s.retried) return failTurn(s, finalMessage);
+  if (retryAfterMs !== undefined && retryAfterMs > RETRY_AFTER_MAX_MS) return failTurn(s, finalMessage);
   let request: RequestEffect;
   try {
     request = buildRequest(s, s.rounds);
   } catch {
     return failTurn(s, COPY.tooLong);
   }
+  const hasAfter = retryAfterMs !== undefined && retryAfterMs >= 0;
   return {
     state: { ...s, kind: 'requesting', retried: true, streamText: '' },
-    effects: [{ type: 'retryOnce', request, discardPartial: s.kind === 'streaming' }],
+    effects: [
+      {
+        type: 'retryOnce',
+        request,
+        discardPartial: s.kind === 'streaming',
+        delayMs: hasAfter ? (retryAfterMs as number) : RETRY_DELAY_MS,
+        jitter: !hasAfter,
+      },
+    ],
   };
 }
 
@@ -216,7 +276,7 @@ function startRequest(s: TurnState, pre: TurnEffect[]): TurnStep {
     throw e;
   }
   return {
-    state: { ...s, kind: 'requesting', rounds: round, retried: false, streamText: '', calls: [], capHit: false },
+    state: { ...s, kind: 'requesting', rounds: round, streamText: '', calls: [], capHit: false },
     effects: [...pre, request],
   };
 }
@@ -231,19 +291,11 @@ function endTurn(s: TurnState, history: ChatMessage[], effects: TurnEffect[]): T
   return { state: { ...next, kind: restKind(next) }, effects };
 }
 
-/** All urls in a validated proposal (a plan can hold several steps). */
-function urlsOf(tool: string, args: Record<string, unknown>): string[] {
-  if (tool === 'propose_url_download') return typeof args.url === 'string' ? [args.url] : [''];
-  if (tool === 'propose_plan' && Array.isArray(args.steps)) {
-    return (args.steps as Array<{ tool: string; args: Record<string, unknown> }>).flatMap((st) =>
-      urlsOf(st.tool, st.args),
-    );
-  }
-  return [];
-}
-
-function urlsAreProvenanced(s: TurnState, tool: string, args: Record<string, unknown>): boolean {
-  return urlsOf(tool, args).every((u) => u !== '' && s.userTexts.some((t) => t.includes(u)));
+/** The card's target handle ("t1", "r2") from the model's own arguments. Plans have none. */
+function targetOf(args: Record<string, unknown>): string | undefined {
+  if (typeof args.transfer_id === 'string') return args.transfer_id;
+  if (typeof args.result_id === 'string') return args.result_id;
+  return undefined;
 }
 
 // ---- ToolsDone ------------------------------------------------------------------------------------
@@ -265,8 +317,10 @@ function toolsDone(s: TurnState, results: { toolCallId: string; content: string 
   return startRequest({ ...s, history }, effects);
 }
 
-function toolCallsDone(s: TurnState, calls: AssistantToolCall[]): TurnStep {
-  if (calls.length === 0) return stopStep(s);
+function toolCallsDone(s: TurnState, calls: AssistantToolCall[], truncated: boolean): TurnStep {
+  // A call cut off by the length limit has partial arguments. Never run it.
+  if (truncated) return truncatedStep(s);
+  if (calls.length === 0) return stopStep(s, false);
 
   const allowed = Math.max(0, Math.min(MAX_TOOL_CALLS_PER_ROUND_TRIP, MAX_TOOL_CALLS_PER_TURN - s.toolCalls));
   const used = calls.slice(0, allowed);
@@ -277,11 +331,18 @@ function toolCallsDone(s: TurnState, calls: AssistantToolCall[]): TurnStep {
     return endTurn(s, withAssistantText(s), [{ type: 'note', text: COPY.stopped }]);
   }
 
+  // The last allowed round: the model cannot use what a read tool returns, so none runs.
+  const lastRound = s.rounds >= MAX_ROUND_TRIPS;
+
   const seen = new Set<string>();
   const toolCalls: ToolCall[] = [];
   const pending: PendingCall[] = [];
   const effects: TurnEffect[] = [];
   const pendingCards = [...s.pendingCards];
+  const cardTargets = { ...s.cardTargets };
+  let proposals = s.proposals;
+  let destructive = s.destructive;
+  let details = s.details;
 
   used.forEach((call, i) => {
     const id = seen.has(call.id) ? `${call.id}-${i}` : call.id;
@@ -296,15 +357,45 @@ function toolCallsDone(s: TurnState, calls: AssistantToolCall[]): TurnStep {
       return;
     }
     if (READ_TOOLS.has(call.name)) {
+      if (lastRound) {
+        entry.content = toolError(COPY.outOfSteps);
+        return;
+      }
+      if (call.name === 'get_result_details') {
+        if (details >= MAX_DETAILS_PER_TURN) {
+          entry.content = toolError(COPY.tooManyDetails);
+          return;
+        }
+        details += 1;
+      }
       effects.push({ type: 'runTool', callId: id, name: call.name, args: v.args });
       return;
     }
     if (PROPOSAL_TOOLS.has(call.name)) {
-      if (!urlsAreProvenanced(s, call.name, v.args)) {
-        entry.content = toolError(COPY.urlNotPasted);
+      const isDestructive = DESTRUCTIVE_TOOLS.has(call.name);
+      if (isDestructive && destructive >= MAX_DESTRUCTIVE_PER_TURN) {
+        entry.content = toolError(COPY.oneDelete);
         return;
       }
-      const cardId = s.config.registry.issue('card', `${s.userTexts.length}:${s.history.length}:${id}`);
+      if (proposals >= MAX_PROPOSALS_PER_TURN) {
+        entry.content = toolError(COPY.tooManyProposals);
+        return;
+      }
+      proposals += 1;
+      if (isDestructive) destructive += 1;
+      const cardId = s.config.registry.issue('card', `${s.history.length}:${id}`);
+      const target = targetOf(call.arguments);
+      if (target !== undefined) {
+        // A newer card for the same target replaces the older one.
+        for (const old of [...pendingCards]) {
+          if (cardTargets[old] === target) {
+            effects.push({ type: 'expireCard', cardId: old });
+            pendingCards.splice(pendingCards.indexOf(old), 1);
+            delete cardTargets[old];
+          }
+        }
+        cardTargets[cardId] = target;
+      }
       pendingCards.push(cardId);
       effects.push({ type: 'createCard', cardId, callId: id, tool: call.name, args: v.args });
       entry.content = JSON.stringify({ status: 'proposed', card_id: cardId });
@@ -319,7 +410,11 @@ function toolCallsDone(s: TurnState, calls: AssistantToolCall[]): TurnStep {
     kind: 'runningTools',
     history: [...s.history, assistant],
     toolCalls: s.toolCalls + used.length,
+    proposals,
+    destructive,
+    details,
     pendingCards,
+    cardTargets,
     calls: pending,
     capHit,
     streamText: '',
@@ -332,8 +427,14 @@ function toolCallsDone(s: TurnState, calls: AssistantToolCall[]): TurnStep {
   return { state: next, effects };
 }
 
-function stopStep(s: TurnState): TurnStep {
+function stopStep(s: TurnState, truncated: boolean): TurnStep {
+  if (truncated) return truncatedStep(s);
   return endTurn(s, withAssistantText(s), []);
+}
+
+/** finish_reason "length": never retried. Keep what arrived and tell the user. */
+function truncatedStep(s: TurnState): TurnStep {
+  return endTurn(s, withAssistantText(s), [{ type: 'note', text: COPY.answerTooLong }]);
 }
 
 // ---- reducer ----------------------------------------------------------------------------------------
@@ -343,19 +444,32 @@ export function turnStep(state: TurnState, event: TurnEvent): TurnStep {
   const same: TurnStep = { state, effects: [] };
   const s = state;
 
-  if (event.type === 'Clear') {
-    const inFlight = s.kind === 'requesting' || s.kind === 'streaming';
-    return {
-      state: turnInitial(s.config),
-      effects: [...(inFlight ? [{ type: 'abortFetch' } as const] : []), { type: 'expireCards' }, { type: 'clearHandles' }],
-    };
+  // Accounting and cards do not depend on the turn state.
+  switch (event.type) {
+    case 'Usage':
+      return { state, effects: [{ type: 'addUsage', input: event.input, output: event.output }] };
+    case 'Clear':
+      return clearStep(s, true);
+    case 'Disabled':
+      return clearStep(s, false);
+    case 'Confirm':
+      if (!s.pendingCards.includes(event.cardId)) return same;
+      return { state, effects: [{ type: 'confirmCard', cardId: event.cardId }] };
+    case 'Dismiss':
+      if (!s.pendingCards.includes(event.cardId)) return same;
+      return { state, effects: [{ type: 'dismissCard', cardId: event.cardId }] };
+    case 'CardSettled':
+      return cardSettled(s, event.cardId, event.kind);
+    case 'TargetGone':
+      return targetGone(s, event.target);
+    default:
+      break;
   }
 
   switch (s.kind) {
     case 'idle':
     case 'awaitingConfirmation': {
-      if (event.type === 'Send') return send(s, event.text, event.hasKey);
-      if (event.type === 'Confirm' || event.type === 'Dismiss') return cardEvent(s, event);
+      if (event.type === 'Send') return send(s, event);
       return same;
     }
     case 'requesting': {
@@ -363,12 +477,13 @@ export function turnStep(state: TurnState, event: TurnEvent): TurnStep {
         case 'FirstByte':
           return { state: { ...s, kind: 'streaming', streamText: '' }, effects: [] };
         case 'HttpErr':
-          return statusStep(s, event.status);
+          return statusStep(s, event.status, event.retryAfterMs);
         case 'NetErr':
           return retryStep(s, COPY.network);
         case 'StreamFailed':
-          return streamFailed(s, event.error);
+          return streamFailed(s, event.error, event.truncated === true);
         case 'Abort':
+        case 'Background':
           return abort(s);
         default:
           return same;
@@ -383,78 +498,152 @@ export function turnStep(state: TurnState, event: TurnEvent): TurnStep {
             effects: [{ type: 'appendText', text: event.text }],
           };
         case 'ToolCallsDone':
-          return toolCallsDone(s, event.calls);
+          return toolCallsDone(s, event.calls, event.truncated === true);
         case 'Stop':
-          return stopStep(s);
+          return stopStep(s, event.truncated === true);
         case 'StreamFailed':
-          return streamFailed(s, event.error);
+          return streamFailed(s, event.error, event.truncated === true);
         case 'Abort':
+        case 'Background':
           return abort(s);
         default:
           return same;
       }
     }
     case 'runningTools': {
-      if (event.type === 'ToolsDone') return toolsDone(s, event.results);
-      return same;
+      switch (event.type) {
+        case 'ToolsDone':
+          return toolsDone(s, event.results);
+        case 'ToolTimeout':
+          return toolTimeout(s, event.toolCallId);
+        case 'Abort':
+        case 'Stop':
+        case 'Background':
+          return abort(s);
+        default:
+          return same;
+      }
     }
     default:
       return same;
   }
 }
 
-function send(s: TurnState, rawText: string, hasKey: boolean): TurnStep {
-  if (!hasKey) return { state: s, effects: [{ type: 'showNotice', text: COPY.noKey }] };
-  const text = truncate(rawText, USER_TEXT_MAX);
+function send(s: TurnState, e: Extract<TurnEvent, { type: 'Send' }>): TurnStep {
+  if (!e.enabled) return { state: s, effects: [{ type: 'showNotice', text: COPY.notEnabled }] };
+  if (!e.warningAccepted) return { state: s, effects: [{ type: 'showNotice', text: COPY.noWarning }] };
+  if (!e.hasKey) return { state: s, effects: [{ type: 'showNotice', text: COPY.noKey }] };
+  const text = truncate(e.text, USER_TEXT_MAX);
   if (text.trim() === '') return { state: s, effects: [] };
 
-  const expire: TurnEffect[] = s.pendingCards.length > 0 ? [{ type: 'expireCards' }] : [];
+  // Cards survive a new message. Only the per-turn counters reset.
   const next: TurnState = {
     ...s,
     history: [...s.history, { role: 'user', content: text }],
-    userTexts: [...s.userTexts, text],
     rounds: 0,
     toolCalls: 0,
     retried: false,
+    proposals: 0,
+    destructive: 0,
+    details: 0,
     streamText: '',
-    pendingCards: [],
     calls: [],
     capHit: false,
   };
-  const r = startRequest(next, [...expire, { type: 'appendUser', text }]);
+  const r = startRequest(next, [{ type: 'appendUser', text }]);
   if (r.state.kind === 'requesting') return r;
-  // buildContext refused (RangeError): the message does not enter history, cards expire only if it was sent.
+  // buildContext refused (RangeError): the message does not enter history.
   return {
     state: { ...s, kind: restKind(s) },
     effects: [{ type: 'errorCard', message: COPY.tooLong }],
   };
 }
 
-function streamFailed(s: TurnState, error: StreamFailure): TurnStep {
+function streamFailed(s: TurnState, error: StreamFailure, truncated: boolean): TurnStep {
+  if (truncated) return truncatedStep(s);
   if (error.code === 'provider' && error.status !== undefined) return statusStep(s, error.status);
   if (error.code === 'provider') return failTurn(s, error.message);
   // bad_response, bad_args, incomplete: a bad response. One retry, then the plain message.
   return retryStep(s, error.message);
 }
 
+/** Abort, Stop (button) and Background: cancel what is in flight and go to rest. Pending cards stay. */
 function abort(s: TurnState): TurnStep {
-  const history = withAssistantText(s);
+  if (s.kind === 'runningTools') {
+    const { history, effects } = cancelledCalls(s);
+    const next: TurnState = { ...s, history, streamText: '', calls: [], capHit: false };
+    return {
+      state: { ...next, kind: restKind(next) },
+      effects: [{ type: 'cancelTools' }, ...effects, { type: 'markCancelled' }],
+    };
+  }
+  const next: TurnState = { ...s, history: withAssistantText(s), streamText: '', calls: [], capHit: false };
   return {
-    state: { ...s, kind: 'idle', history, streamText: '', calls: [], capHit: false },
+    state: { ...next, kind: restKind(next) },
     effects: [{ type: 'abortFetch' }, { type: 'markCancelled' }],
   };
 }
 
-function cardEvent(s: TurnState, event: { type: 'Confirm' | 'Dismiss'; cardId: string }): TurnStep {
-  if (!s.pendingCards.includes(event.cardId)) return { state: s, effects: [] };
-  const pendingCards = s.pendingCards.filter((c) => c !== event.cardId);
-  const next: TurnState = { ...s, pendingCards };
-  return {
-    state: { ...next, kind: restKind(next) },
-    effects: [
-      event.type === 'Confirm'
-        ? { type: 'executeCard', cardId: event.cardId }
-        : { type: 'removeCard', cardId: event.cardId },
-    ],
-  };
+/** History messages for every call of the round: finished ones keep their content, the rest are cancelled. */
+function cancelledCalls(s: TurnState): { history: ChatMessage[]; effects: TurnEffect[] } {
+  const messages: ChatMessage[] = [];
+  const effects: TurnEffect[] = [];
+  for (const c of s.calls) {
+    const content = c.content ?? toolError(COPY.cancelled);
+    messages.push({ role: 'tool', tool_call_id: c.id, content });
+    effects.push({ type: 'appendToolMessage', toolCallId: c.id, content });
+  }
+  return { history: [...s.history, ...messages], effects };
+}
+
+/** Clear drops history, cards and handles. Disabled expires cards and keeps history. */
+function clearStep(s: TurnState, drop: boolean): TurnStep {
+  const effects: TurnEffect[] = [];
+  if (s.kind === 'requesting' || s.kind === 'streaming') effects.push({ type: 'abortFetch' });
+  if (s.kind === 'runningTools') effects.push({ type: 'cancelTools' });
+  effects.push({ type: 'expireCards' });
+  if (drop) {
+    effects.push({ type: 'clearHandles' });
+    return { state: turnInitial(s.config), effects };
+  }
+  let history = s.history;
+  if (s.kind === 'runningTools') {
+    const c = cancelledCalls(s);
+    history = c.history;
+    effects.push(...c.effects);
+  } else if (s.kind === 'streaming') {
+    history = withAssistantText(s);
+  }
+  return { state: { ...turnInitial(s.config), history }, effects };
+}
+
+function cardSettled(s: TurnState, cardId: string, kind: CardSettledKind): TurnStep {
+  if (kind === 'failed' || !s.pendingCards.includes(cardId)) return { state: s, effects: [] };
+  const pendingCards = s.pendingCards.filter((c) => c !== cardId);
+  const cardTargets = { ...s.cardTargets };
+  delete cardTargets[cardId];
+  const next: TurnState = { ...s, pendingCards, cardTargets };
+  const atRest = s.kind === 'idle' || s.kind === 'awaitingConfirmation';
+  return { state: atRest ? { ...next, kind: restKind(next) } : next, effects: [] };
+}
+
+function targetGone(s: TurnState, target: string): TurnStep {
+  const gone = s.pendingCards.filter((c) => s.cardTargets[c] === target);
+  if (gone.length === 0) return { state: s, effects: [] };
+  // The runner drives cardMachine EXPIRE and reports each card back with CardSettled.
+  return { state: s, effects: gone.map((cardId) => ({ type: 'expireCard' as const, cardId })) };
+}
+
+function toolTimeout(s: TurnState, toolCallId: string): TurnStep {
+  const target = s.calls.find((c) => c.id === toolCallId);
+  if (!target || target.content !== undefined) return { state: s, effects: [] };
+  const calls = s.calls.map((c) => (c.id === toolCallId ? { ...c, content: toolError(COPY.toolTimeout) } : c));
+  const next: TurnState = { ...s, calls };
+  const cancel: TurnEffect = { type: 'cancelTools', callIds: [toolCallId] };
+  // A call that never started a tool (an error or a card) already has content, so these are all read tools.
+  if (calls.every((c) => c.content !== undefined)) {
+    const done = toolsDone(next, []);
+    return { state: done.state, effects: [cancel, ...done.effects] };
+  }
+  return { state: next, effects: [cancel] };
 }

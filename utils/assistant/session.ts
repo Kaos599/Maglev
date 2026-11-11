@@ -1,6 +1,6 @@
 // SM-42 Chat session. Pure: no React, no IO. app/assistant.tsx runs the effects.
 // History lives in memory only in v1 (caption: "Chats aren't saved."). Anything not in the table is a no-op.
-// Never add states. CLEAR goes through `cleared`, which is transient, so the reducer returns `empty` directly.
+// Never add states. CLEAR is valid in every state. It goes through `cleared`, which is transient, so the reducer returns `empty` directly.
 
 export type SessionKind = 'empty' | 'active' | 'backgrounded';
 
@@ -37,8 +37,8 @@ const CLEAR_EFFECTS: SessionEffect[] = [{ type: 'expireAllCards' }, { type: 'dro
 export function sessionStep(state: SessionState, event: SessionEvent): SessionStep {
   const same: SessionStep = { state, effects: [] };
 
-  // Any state: removing the key ends the session like CLEAR.
-  if (event.type === 'KEY_REMOVED') {
+  // Any state: removing the key and CLEAR end the session. Clearing an empty chat is harmless and idempotent.
+  if (event.type === 'KEY_REMOVED' || event.type === 'CLEAR') {
     return { state: { kind: 'empty' }, effects: [...CLEAR_EFFECTS] };
   }
 
@@ -53,10 +53,8 @@ export function sessionStep(state: SessionState, event: SessionEvent): SessionSt
       if (event.type === 'APP_BACKGROUND') {
         return { state: { kind: 'backgrounded' }, effects: [{ type: 'abort' }] };
       }
-      if (event.type === 'CLEAR') {
-        // cleared -> empty in one step.
-        return { state: { kind: 'empty' }, effects: [...CLEAR_EFFECTS] };
-      }
+      // Later messages in an active chat go to the turn machine.
+      if (event.type === 'SEND') return { state, effects: [{ type: 'send', text: event.text }] };
       return same;
     }
     case 'backgrounded': {

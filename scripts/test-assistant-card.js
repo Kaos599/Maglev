@@ -78,6 +78,21 @@ async function main() {
   const err = m.cardStep(at('executing'), { type: 'EXEC_ERR', code: 'x', message: 'Storage full.' }).state;
   check('failed card carries the message', err.error === 'Storage full.', JSON.stringify(err));
 
+  // A card stays confirmable after a failed revalidation (R1-3): the turn machine keeps it pending and the
+  // card shows a live Confirm button, so CONFIRM must work again.
+  {
+    let st = m.cardStep(at('proposed'), { type: 'CONFIRM' }).state;
+    st = m.cardStep(st, { type: 'REVALIDATED', ok: false, reason: 'Gone' }).state;
+    const again = m.cardStep(st, { type: 'CONFIRM' });
+    check('a card stays confirmable after a failed revalidation (adversarial)', st.kind === 'proposed' && again.state.kind === 'confirming' && again.effects[0].type === 'revalidate', JSON.stringify(again));
+    const dismissed = m.cardStep(st, { type: 'DISMISS' }).state;
+    check('a card with a failed revalidation can still be dismissed', dismissed.kind === 'dismissed');
+  }
+  // cardSettledKind tells the runner what to report to the turn machine.
+  for (const [kind, want] of [['proposed', null], ['confirming', null], ['executing', null], ['done', 'done'], ['dismissed', 'dismissed'], ['expired', 'expired'], ['failed', 'failed']]) {
+    check(`cardSettledKind(${kind}) is ${want}`, m.cardSettledKind(at(kind)) === want);
+  }
+
   console.log(`\n${passed} passed, ${failed} failed`);
   process.exit(failed ? 1 : 0);
 }

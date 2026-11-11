@@ -43,10 +43,10 @@ async function main() {
   expectStep('backgrounded + KEY_REMOVED ends empty like CLEAR', { kind: 'backgrounded' }, { type: 'KEY_REMOVED' }, 'empty', clearEffects);
 
   // Anything not in the table is a no-op.
-  expectStep('active + SEND is unchanged', { kind: 'active' }, { type: 'SEND', text: 'x' }, 'active', []);
+  expectStep('active + SEND sends and stays active (later messages in a chat)', { kind: 'active' }, { type: 'SEND', text: 'x' }, 'active', [{ type: 'send', text: 'x' }]);
   expectStep('backgrounded + SEND is unchanged', { kind: 'backgrounded' }, { type: 'SEND', text: 'x' }, 'backgrounded', []);
-  expectStep('empty + CLEAR is unchanged', { kind: 'empty' }, { type: 'CLEAR' }, 'empty', []);
-  expectStep('backgrounded + CLEAR is unchanged', { kind: 'backgrounded' }, { type: 'CLEAR' }, 'backgrounded', []);
+  expectStep('empty + CLEAR ends empty like CLEAR (CLEAR is valid in every state)', { kind: 'empty' }, { type: 'CLEAR' }, 'empty', clearEffects);
+  expectStep('backgrounded + CLEAR ends empty like CLEAR', { kind: 'backgrounded' }, { type: 'CLEAR' }, 'empty', clearEffects);
   expectStep('empty + APP_FOREGROUND is unchanged', { kind: 'empty' }, { type: 'APP_FOREGROUND' }, 'empty', []);
   expectStep('active + APP_FOREGROUND is unchanged', { kind: 'active' }, { type: 'APP_FOREGROUND' }, 'active', []);
   expectStep('empty + APP_BACKGROUND is unchanged', { kind: 'empty' }, { type: 'APP_BACKGROUND' }, 'empty', []);

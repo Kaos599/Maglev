@@ -93,3 +93,20 @@ export function cardStep(state: CardState, event: CardEvent): CardStep {
       return same;
   }
 }
+
+/**
+ * What to report to the turn machine as `CardSettled{cardId, kind}` after a cardMachine step.
+ * Returns null while the card is still live (proposed, confirming, executing). `failed` stays pending in the
+ * turn machine because the card can be retried.
+ */
+export function cardSettledKind(state: CardState): 'done' | 'dismissed' | 'expired' | 'failed' | null {
+  switch (state.kind) {
+    case 'done':
+    case 'dismissed':
+    case 'expired':
+    case 'failed':
+      return state.kind;
+    default:
+      return null;
+  }
+}
