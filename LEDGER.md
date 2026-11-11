@@ -336,6 +336,33 @@ Build **Maglev** — a frictionless, zero-drag, zero-bloat, native-speed Android
   - OpenRouter `:free` models allow 20 requests per minute and 50 per day, rising to 1,000 per day after $10 of credit purchases. Use OAuth PKCE and never embed a key in the app.
   - Store keys with `expo-secure-store`.
 
+### [2026-11-11] Phase 1 + Phase 2 implemented on `feature/foundation-real-engine` (not yet merged)
+- **Process:** orchestrator plus Sonnet/Haiku workers, one contract scope per agent (AGENTS.md §8). Commits carry no attribution (history rewritten, branch head `bfb9f99`).
+- **Phase 1 (foundation):**
+  - Real librqbit 9.1 engine: `2805060` and `bfb9f99`.
+  - Kotlin service, storage and permissions: `4fff932`.
+  - Background survival (sticky headless restart, `specialUse` service, kill nudge): `9cccacf`.
+  - Typed bridge, kv-store settings and intents: `e791401`.
+  - CI pipeline: `05ae3b7`.
+- **Phase 2 (usable app):**
+  - Icon: `47f7761`. Pixel icon family: `b613518`.
+  - Theme and type: `205622a`. Shared primitives: `6c982bd`.
+  - Onboarding and boot gate: `090e291` and `efa688f`.
+  - Screens: transfers `2849330`, search and feeds `57e62d9`, settings `0551363`, add and detail `cfcabca`.
+- **Evidence:**
+  - Contracts: 21 of 22 pass locally. C-ENG-2 fails only because of the stale local simulator `.so`.
+  - CI run 43021021024:
+    - Rust Android builds passed the size, librqbit and 16 KB gates on all 3 ABIs.
+    - Rust unit tests: 54 of 55 passed, and the failure is fixed in `bfb9f99`.
+    - The APK job was cancelled by the force-push.
+  - `tsc`: clean.
+- **Open:**
+  - A CI run on `bfb9f99` is in progress.
+  - Device verification (the Phase 1 exit gate) has not been done.
+  - Visual QA is blocked: the Chrome extension is not connected.
+  - HTTPS trackers need verifier init (`NATIVE_CONTRACT.md` §7).
+  - The adversarial boundary review is pending.
+
 ## 📋 Master Workstream Checklist
 
 | Phase | Milestone | Scope | Status |
