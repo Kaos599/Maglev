@@ -11,6 +11,7 @@
  */
 import { fileKind } from '../fileKind.ts';
 import { formatBytes } from '../../constants/format.ts';
+import { DEFAULT_EPISODE_RUNTIME_MIN, DEFAULT_FILM_RUNTIME_MIN, TOO_SMALL_FRACTION, lowGbPerHour } from './sizeBands.ts';
 
 export type SafetyLevel = 'green' | 'amber' | 'red';
 export type SafetyCategory = 'movie' | 'tv' | 'anime' | 'music' | 'other';
@@ -62,20 +63,6 @@ const DISGUISE_RE = new RegExp(
 const EXEC_RED_CATEGORIES: ReadonlySet<SafetyCategory> = new Set(['movie', 'tv', 'anime', 'music']);
 const VIDEO_CATEGORIES: ReadonlySet<SafetyCategory> = new Set(['movie', 'tv', 'anime']);
 
-/** Lowest expected GB per hour by resolution and codec class (§3.3, heuristic). */
-const LOW_GB_PER_HOUR: Record<string, number> = {
-  '480-avc': 0.4,
-  '480-hevc': 0.4,
-  '720-avc': 0.8,
-  '720-hevc': 0.4,
-  '1080-avc': 1.5,
-  '1080-hevc': 0.9,
-  '2160-hevc': 4,
-  '1080-remux': 15,
-  '2160-remux': 25,
-};
-
-const TOO_SMALL_FRACTION = 0.6;
 const SIZE_MISMATCH_FRACTION = 0.1;
 const SAMPLE_FRACTION = 0.05;
 const DIFFERENT_SIZE_FRACTION = 0.25;
@@ -127,16 +114,8 @@ function codecClassOf(name: string): 'remux' | 'avc' | 'hevc' {
   return 'hevc';
 }
 
-function lowBand(resolution: number, cls: 'remux' | 'avc' | 'hevc'): number | undefined {
-  const exact = LOW_GB_PER_HOUR[`${resolution}-${cls}`];
-  if (exact !== undefined) return exact;
-  // AVC at 2160p has no entry; the HEVC low end is the lenient stand-in.
-  if (cls === 'avc') return LOW_GB_PER_HOUR[`${resolution}-hevc`];
-  return undefined;
-}
-
 function defaultRuntimeMin(category: SafetyCategory): number {
-  return category === 'movie' ? 110 : 45;
+  return category === 'movie' ? DEFAULT_FILM_RUNTIME_MIN : DEFAULT_EPISODE_RUNTIME_MIN;
 }
 
 function checkFiles(input: SafetyInput): Finding[] {
@@ -235,7 +214,7 @@ function checkFiles(input: SafetyInput): Finding[] {
     const res = resolutionOf(input.name);
     if (res !== undefined) {
       const cls = codecClassOf(input.name);
-      const low = lowBand(res, cls);
+      const low = lowGbPerHour(res, cls);
       const runtime = input.runtimeMin ?? defaultRuntimeMin(category);
       if (low !== undefined && runtime > 0) {
         const expectedLow = low * GB * (runtime / 60);
