@@ -27,6 +27,7 @@ import type {
   ScheduleStatus,
   Snapshot,
   StorageStatus,
+  PlaybackSupport,
   TelemetryEvent,
   TorrentCompletedEvent,
   TorrentLimits,
@@ -396,6 +397,18 @@ export class MaglevEngineBridge implements MaglevEngineApi {
     const res = await this.route<any>('pickFolder');
     if (res && res.ok === false) return { cancelled: true };
     return res;
+  }
+  public async getPlaybackSupport(): Promise<PlaybackSupport> {
+    const unknown: PlaybackSupport = {
+      avc: 'unknown', hevc: 'unknown', hevc10: 'unknown', av1: 'unknown', av1_10: 'unknown',
+      vp9: 'unknown', dolbyVision: 'unknown', hdr10: null, hdr10plus: null, hlg: null,
+    };
+    try {
+      const res = await this.route<any>('getPlaybackSupport');
+      return res && typeof res.avc === 'string' ? { ...unknown, ...res } : unknown;
+    } catch {
+      return unknown;
+    }
   }
   public async getStorageStatus(): Promise<StorageStatus> {
     const res = await this.route<any>('getStorageStatus');

@@ -503,6 +503,8 @@ export interface MaglevEngineApi {
   applyConfig(config: NativeConfig): Promise<EngineResult<{ restartRequired: boolean }>>;
   getEffectiveConfig(): Promise<EngineResult<NativeConfig>>;
   getPieceBitfield(id: string): Promise<number[]>;
+  /** What this phone can decode and display (CodecProbe.kt). Cached natively for the process. */
+  getPlaybackSupport(): Promise<PlaybackSupport>;
   streamUrl(id: string, fileIndex: number): Promise<EngineResult<{ url: string; mime: string }>>;
   version(): Promise<{ engine: string; version: string }>;
   // Storage
@@ -537,4 +539,24 @@ export interface MaglevEngineApi {
   onTorrentCompleted(listener: (event: TorrentCompletedEvent) => void): Unsubscribe;
   onNotificationAction(listener: (event: NotificationActionEvent) => void): Unsubscribe;
   onStorageStatus(listener: (event: StorageStatus) => void): Unsubscribe;
+}
+
+export type CodecSupport = 'hardware' | 'software' | 'none' | 'unknown';
+
+/** Device decode and display support. Display fields are null when the phone cannot say. */
+export interface PlaybackSupport {
+  avc: CodecSupport;
+  hevc: CodecSupport;
+  /** HEVC Main10 profile. */
+  hevc10: CodecSupport;
+  av1: CodecSupport;
+  /** AV1 Main10 profile. */
+  av1_10: CodecSupport;
+  vp9: CodecSupport;
+  dolbyVision: CodecSupport;
+  hdr10: boolean | null;
+  hdr10plus: boolean | null;
+  hlg: boolean | null;
+  /** True only for the dev mock. Never set by the native probe. */
+  mock?: boolean;
 }

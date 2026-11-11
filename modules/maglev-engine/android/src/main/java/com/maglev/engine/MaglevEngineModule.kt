@@ -171,6 +171,9 @@ class MaglevEngineModule : Module() {
         AsyncFunction("getEffectiveConfig") { promise: Promise ->
             native(promise) { NativeCore.nativeGetEffectiveConfig() }
         }
+        AsyncFunction("getPlaybackSupport") { promise: Promise ->
+            EngineHost.scope.launch { promise.resolve(CodecProbe.get(context)) }
+        }
         AsyncFunction("getPieceBitfield") { id: String, promise: Promise ->
             EngineHost.scope.launch { promise.resolve(EngineHost.pieceBitfield(id)) }
         }
