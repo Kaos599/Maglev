@@ -49,25 +49,32 @@ body = ("M40 45 H79" + nose + " H28 V70.5 H36 V" + f"{b_y:g}" + f" H{b_x:g}" + _
 # Cruise animation (app + README): each line is a sprite that pops out of the train's back
 # (`hide` units tucked under the body), slides `travel` units back and fades. Different periods
 # and phases give the lines their own speeds. Frames are sampled at FPS so motion steps like a sprite.
-FPS = 15
-#          x    y    w   h    hide travel  ms  phase
-STREAKS = [(16, 46.5, 21, 1.5, 6, 12, 560, 0.00),   # band 1
-           (10, 55.5, 23, 1.5, 6, 14, 720, 0.45),   # band 2
-           (18, 67.5, 15, 1.5, 5, 10, 480, 0.70),   # band 3, upper
-           (12, 73.0, 13, 1.5, 5, 10, 640, 0.25)]   # band 3, tail
-lines = " ".join(f"M{x:g} {y:g} H{x+w:g} V{y+h:g} H{x:g} Z" for (x, y, w, h, *_ ) in STREAKS)
-def streak_frames(hide, travel, ms, phase):
+FPS = 20
+#          x    y    w   h    hide travel  ms  phase  ghost
+STREAKS = [(16, 46.5, 21, 1.5, 8, 22, 300, 0.00, False),   # band 1
+           (10, 55.5, 23, 1.5, 8, 26, 360, 0.45, False),   # band 2
+           (18, 67.5, 15, 1.5, 7, 18, 260, 0.70, False),   # band 3, upper
+           (12, 73.0, 13, 1.5, 7, 20, 320, 0.25, False),   # band 3, tail
+           # Wind dashes: only while cruising. They flash in by the body and whip off to the left.
+           (32, 51.5, 7, 0.75, 0, 34, 240, 0.10, True),
+           (26, 62.5, 9, 0.75, 0, 36, 200, 0.60, True),
+           (24, 77.25, 8, 0.75, 0, 32, 280, 0.35, True)]
+lines = " ".join(f"M{x:g} {y:g} H{x+w:g} V{y+h:g} H{x:g} Z" for (x, y, w, h, *_ ) in STREAKS if not _[-1])
+def streak_frames(hide, travel, ms, phase, ghost=False):
     n = max(2, round(ms * FPS / 1000))
     out = []
     for k in range(n):
         t = (k / n + phase) % 1
         dx = round((hide - (hide + travel) * t) * 2) / 2
-        fade_from = -travel * 0.35
-        o = 1.0 if dx >= fade_from else max(0.0, 1 + (dx - fade_from) / (travel + fade_from))
+        if ghost:
+            o = min(1.0, t / 0.15) if t < 0.15 else max(0.0, 1 - (t - 0.15) / 0.85)
+        else:
+            fade_from = -travel * 0.35
+            o = 1.0 if dx >= fade_from else max(0.0, 1 + (dx - fade_from) / (travel + fade_from))
         out.append((dx, round(o * 4) / 4))
     return out
-# Hover: the train (body + lines) lifts one unit off the rails and settles, in whole frames.
-BOB_MS, BOB = 1600, [0, 0, 0, 0, -0.5, -1, -1, -1, -1, -0.5]
+# Hover: at speed the train hums a hair above the rails (body + lines), in whole frames.
+BOB_MS, BOB = 400, [0, -0.5, -0.5, 0, -0.5, 0, -0.5, -0.5]
 dashes = ""
 rails = ("M20 79.5 H29 V80.75 H20 Z "
          "M34 79.5 H67 V80.75 H68.5 V82 H70 V83.25 H40.5 V82 H36 V80.75 H34 Z "
@@ -93,10 +100,10 @@ open(f"{root}/components/brand/markPaths.ts", "w").write(
     f"export const MARK_LINES = '{lines}';\n"
     f"export const MARK_RAILS = '{rails}';\n"
     f"export const MARK_LIME = '{LIME}';\nexport const MARK_CYAN = '{CYAN}';\n"
-    "/** Speed-line sprites: rect in viewBox units, loop length, and frames of [dx units, opacity]. */\n"
-    "export const MARK_STREAKS: { x: number; y: number; w: number; h: number; ms: number; frames: [number, number][] }[] = [\n"
-    + "".join(f"  {{ x: {x:g}, y: {y:g}, w: {w:g}, h: {h:g}, ms: {ms}, frames: {[[a, b] for a, b in streak_frames(hd, tr, ms, ph)]} }},\n"
-              for (x, y, w, h, hd, tr, ms, ph) in STREAKS).replace(".0,", ",").replace(".0]", "]")
+    "/** Speed-line sprites: rect in viewBox units, loop length, frames of [dx units, opacity]. Ghosts show only while cruising. */\n"
+    "export const MARK_STREAKS: { x: number; y: number; w: number; h: number; ms: number; ghost: boolean; frames: [number, number][] }[] = [\n"
+    + "".join(f"  {{ x: {x:g}, y: {y:g}, w: {w:g}, h: {h:g}, ms: {ms}, ghost: {str(gh).lower()}, frames: {[[a, b] for a, b in streak_frames(hd, tr, ms, ph, gh)]} }},\n"
+              for (x, y, w, h, hd, tr, ms, ph, gh) in STREAKS).replace(".0,", ",").replace(".0]", "]")
     + "];\n"
     f"/** Hover bob: loop length and frames of dy units (negative is up). */\nexport const MARK_BOB = {{ ms: {BOB_MS}, frames: {BOB} }};\n")
 print("ok")
@@ -127,11 +134,11 @@ def css_keyframes(name, frames, prop):
 css = [".ml-ride{animation:ml-bob %dms steps(1,end) infinite}" % BOB_MS,
        css_keyframes("ml-bob", BOB, lambda f: f"transform:translateY({f:g}px)")]
 streak_svg = ""
-for i, (x, y, w, h, hd, tr, ms, ph) in enumerate(STREAKS):
-    fr = streak_frames(hd, tr, ms, ph)
+for i, (x, y, w, h, hd, tr, ms, ph, gh) in enumerate(STREAKS):
+    fr = streak_frames(hd, tr, ms, ph, gh)
     css.append(f".ml-s{i}{{animation:ml-k{i} {ms}ms steps(1,end) infinite}}")
     css.append(css_keyframes(f"ml-k{i}", fr, lambda f: f"transform:translateX({f[0]:g}px);opacity:{f[1]:g}"))
-    streak_svg += f'<rect class="ml-s{i}" x="{x:g}" y="{y:g}" width="{w:g}" height="{h:g}"/>'
+    streak_svg += f'<rect class="ml-s{i}" x="{x:g}" y="{y:g}" width="{w:g}" height="{h:g}"' + (' opacity="0"' if gh else '') + '/>'
 css.append("@media (prefers-reduced-motion:reduce){.ml-ride,.ml-ride rect{animation:none}}")
 H = 76; sc = H / VB[3]; MX, MY = 372, 79           # mark box in the 1280x420 header
 readme_mark = (f'<!-- mark:start (generated by scripts/build-logo.py) -->\n<style>{"".join(css)}</style>\n'

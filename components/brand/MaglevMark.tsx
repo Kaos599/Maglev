@@ -100,7 +100,9 @@ export function MaglevMark({ height = 96, cruising = false }: MaglevMarkProps) {
                 height: s.h * scale,
                 backgroundColor: MARK_CYAN,
               },
-              run && { opacity: motion.streaks[i].o, transform: [{ translateX: motion.streaks[i].x }] },
+              run
+                ? { opacity: motion.streaks[i].o, transform: [{ translateX: motion.streaks[i].x }] }
+                : s.ghost && { opacity: 0 },
             ]}
           />
         ))}
