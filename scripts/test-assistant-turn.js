@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-// SM-31 Assistant chat turn. One test per row of the transition table, plus caps, retry-once,
-// expire cards, the RangeError path and the URL provenance rule.
+// SM-31 Assistant chat turn (with review round 1). One test per row of the transition table, plus caps, retry-once,
+// card lifecycle, abort of running tools, the send gate and the RangeError path.
 // Needs Node 22.18+ (runs the TypeScript sources directly via type stripping).
 process.removeAllListeners('warning');
 
@@ -22,6 +22,8 @@ async function main() {
   const { HandleRegistry } = await import('../utils/assistant/handles.ts');
   const ctx = await import('../utils/assistant/context.ts');
   const { USER_TEXT_MAX } = await import('../utils/assistant/sanitize.ts');
+  const { TOOLS } = await import('../utils/assistant/tools.ts');
+  const STOPPED = "I hit my limit for one question. Here's what I found. Ask me to keep going.";
 
   const mk = (opts = {}) => {
     const registry = new HandleRegistry();
@@ -37,7 +39,7 @@ async function main() {
     for (const ev of events) r = step(r.state, ev);
     return r;
   };
-  const send = (text = 'hello') => ({ type: 'Send', text, hasKey: true });
+  const send = (text = 'hello') => ({ type: 'Send', text, enabled: true, warningAccepted: true, hasKey: true });
   const FIRST = { type: 'FirstByte' };
   const toRequesting = (state = mk(), text = 'hello') => step(state, send(text)).state;
   const toStreaming = (state, text) => step(toRequesting(state, text), FIRST).state;
@@ -45,7 +47,10 @@ async function main() {
   const searchCall = (id = 'k1') => call(id, 'search_torrents', { query: 'The Last Harbor' });
   const proposePause = (id = 'k1') =>
     call(id, 'propose_pause_resume', { transfer_id: 't1', action: 'pause', reason: 'Because.' });
-  const urlCall = (url, id = 'k1') => call(id, 'propose_url_download', { url, reason: 'You asked.' });
+  const deleteCall = (id, t = 't1') => call(id, 'propose_delete', { transfer_id: t, reason: 'Not needed.' });
+  const pauseCall = (id, t) => call(id, 'propose_pause_resume', { transfer_id: t, action: 'pause', reason: 'Because.' });
+  const detailsCall = (id) => call(id, 'get_result_details', { result_id: 'r1' });
+  const toolMsgs = (state) => state.history.filter((h) => h.role === 'tool');
   const okResults = (calls) => calls.map((c) => ({ toolCallId: c.id, content: '{"ok":true}' }));
 
   /** One user turn: a proposal, the model's closing text, Stop -> awaitingConfirmation. */
@@ -72,11 +77,11 @@ async function main() {
     const req = r.effects[1];
     check(
       'Request: system first, user last, all tools, tool_choice auto, parallel_tool_calls false, completion cap',
-      req.messages[0].role === 'system' && req.messages.at(-1).content === 'find a film' && req.tools.length === 15 && req.parallelToolCalls === false && req.toolChoice === 'auto' && req.maxCompletionTokens === ctx.MAX_COMPLETION_TOKENS,
+      req.messages[0].role === 'system' && req.messages.at(-1).content === 'find a film' && req.tools.length === TOOLS.length && req.parallelToolCalls === false && req.toolChoice === 'auto' && req.maxCompletionTokens === ctx.MAX_COMPLETION_TOKENS,
     );
   }
   {
-    const r = step(mk(), { type: 'Send', text: 'hi', hasKey: false });
+    const r = step(mk(), { type: 'Send', text: 'hi', enabled: true, warningAccepted: true, hasKey: false });
     check('idle + Send (no key) -> idle, notice', r.state.kind === 'idle' && r.state.history.length === 0 && JSON.stringify(r.effects) === JSON.stringify([{ type: 'showNotice', text: 'Add an API key in Settings → Assistant.' }]), r.effects);
   }
   check('requesting + FirstByte -> streaming', step(toRequesting(), FIRST).state.kind === 'streaming');
@@ -124,45 +129,75 @@ async function main() {
     check('the next Request carries the tool result', msgs.at(-1).role === 'tool' && msgs.at(-1).tool_call_id === 'k1');
   }
   {
+    // Round 6 is the last. No read tool runs in it (the model could not use the result).
     const c = searchCall('z');
-    const r = run(toRequestingRounds(6), FIRST, { type: 'ToolCallsDone', calls: [c] }, { type: 'ToolsDone', results: okResults([c]) });
-    check('runningTools + ToolsDone (6 round-trips used) -> idle, Note "Stopped after 6 steps."', r.state.kind === 'idle' && r.effects.some((e) => e.type === 'note' && e.text === 'Stopped after 6 steps.') && !r.effects.some((e) => e.type === 'request'), r.effects);
+    const r = run(toRequestingRounds(6), FIRST, { type: 'ToolCallsDone', calls: [c] });
+    check('round 6 never runs a read tool: no RunTool, no request, Note with the limit copy', r.state.kind === 'idle' && !r.effects.some((e) => e.type === 'runTool' || e.type === 'request') && r.effects.some((e) => e.type === 'note' && e.text === STOPPED), r.effects);
+    check('the unrun call is answered with a tool error so history stays valid', JSON.parse(toolMsgs(r.state).at(-1).content).ok === false && toolMsgs(r.state).at(-1).tool_call_id === 'z');
+    check('round 5 still runs read tools', step(run(toRequestingRounds(5), FIRST).state, { type: 'ToolCallsDone', calls: [c] }).effects.some((e) => e.type === 'runTool'));
+    const p6 = run(toRequestingRounds(6), FIRST, { type: 'ToolCallsDone', calls: [proposePause('z2')] });
+    check('round 6 may still create a card, then ends at awaitingConfirmation', p6.state.kind === 'awaitingConfirmation' && p6.effects.some((e) => e.type === 'createCard') && !p6.effects.some((e) => e.type === 'request'), p6.effects);
     const withCard = run(mk(), send(), FIRST, { type: 'ToolCallsDone', calls: [proposePause()] }).state;
-    const y = searchCall('y');
-    // The card is pending; burn the remaining round-trips, then hit the cap.
     let st = withCard;
     for (let i = 2; i < 6; i++) {
       const c2 = searchCall(`w${i}`);
       st = run(st, FIRST, { type: 'ToolCallsDone', calls: [c2] }, { type: 'ToolsDone', results: okResults([c2]) }).state;
     }
     check('six round-trips so far', st.rounds === 6, st.rounds);
-    st = run(st, FIRST, { type: 'ToolCallsDone', calls: [searchCall('w6')] }, { type: 'ToolsDone', results: okResults([searchCall('w6')]) }).state;
+    st = run(st, FIRST, { type: 'ToolCallsDone', calls: [searchCall('w6')] }).state;
     check('cap hit with a pending card -> awaitingConfirmation', st.kind === 'awaitingConfirmation' && st.pendingCards.length === 1, st.kind);
-    void y;
   }
   {
     const a = toAwaitingConfirmation();
     const cardId = a.state.pendingCards[0];
     check('a proposal answers the model {"status":"proposed","card_id"}', a.state.history.some((h) => h.role === 'tool' && h.content === JSON.stringify({ status: 'proposed', card_id: cardId })), a.state.history);
     const c = step(a.state, { type: 'Confirm', cardId });
-    check('awaitingConfirmation + Confirm (valid, last card) -> idle, executeCard', c.state.kind === 'idle' && JSON.stringify(c.effects) === JSON.stringify([{ type: 'executeCard', cardId }]), c.effects);
+    check('Confirm only emits confirmCard; the card stays pending until cardMachine settles it', c.state.kind === 'awaitingConfirmation' && c.state.pendingCards.length === 1 && JSON.stringify(c.effects) === JSON.stringify([{ type: 'confirmCard', cardId }]), c);
+    check('no executeCard effect exists any more', !JSON.stringify(c.effects).includes('executeCard'));
     const d = step(a.state, { type: 'Dismiss', cardId });
-    check('awaitingConfirmation + Dismiss (last card) -> idle, removeCard', d.state.kind === 'idle' && JSON.stringify(d.effects) === JSON.stringify([{ type: 'removeCard', cardId }]));
+    check('Dismiss only emits dismissCard; the card stays pending until settled', d.state.pendingCards.length === 1 && JSON.stringify(d.effects) === JSON.stringify([{ type: 'dismissCard', cardId }]));
     const bad = step(a.state, { type: 'Confirm', cardId: 'c99' });
-    check('Confirm for a card id that is not valid is a no-op', bad.state === a.state && bad.effects.length === 0);
+    check('Confirm for a card id that is not pending is a no-op', bad.state === a.state && bad.effects.length === 0);
+    check('a failed revalidation leaves the card pending, so Confirm works again (adversarial)', JSON.stringify(step(c.state, { type: 'Confirm', cardId }).effects) === JSON.stringify([{ type: 'confirmCard', cardId }]));
+    for (const kind of ['done', 'dismissed', 'expired']) {
+      const r = step(a.state, { type: 'CardSettled', cardId, kind });
+      check(`CardSettled(${kind}) removes the card; last card -> idle`, r.state.kind === 'idle' && r.state.pendingCards.length === 0 && r.effects.length === 0);
+    }
+    const failed = step(a.state, { type: 'CardSettled', cardId, kind: 'failed' });
+    check('CardSettled(failed) keeps the card (it can be retried)', failed.state.pendingCards.length === 1 && failed.state.kind === 'awaitingConfirmation');
+    check('CardSettled for an unknown card is a no-op', step(a.state, { type: 'CardSettled', cardId: 'c99', kind: 'done' }).state === a.state);
 
     let two = run(mk(), send('both'), FIRST, { type: 'ToolCallsDone', calls: [proposePause('p1'), call('p2', 'propose_pause_resume', { transfer_id: 't1', action: 'resume', reason: 'x' })] });
     two = run(two.state, FIRST, { type: 'Stop' });
-    check('two proposals make two pending cards', two.state.pendingCards.length === 2 && two.state.kind === 'awaitingConfirmation', two.state.pendingCards);
-    const one = step(two.state, { type: 'Confirm', cardId: two.state.pendingCards[0] });
-    check('Confirm with another card left -> stays awaitingConfirmation', one.state.kind === 'awaitingConfirmation' && one.state.pendingCards.length === 1);
-    const oneD = step(two.state, { type: 'Dismiss', cardId: two.state.pendingCards[1] });
-    check('Dismiss with another card left -> stays awaitingConfirmation', oneD.state.kind === 'awaitingConfirmation' && oneD.state.pendingCards.length === 1);
+    check('two proposals for the same target leave only the newer card (newer card for the same target)', two.state.pendingCards.length === 1, two.state.pendingCards);
+    const reg = two.state.config.registry;
+    reg.issue('transfer', 8);
+    let three = run(two.state, send('more'), FIRST, { type: 'ToolCallsDone', calls: [pauseCall('p3', 't2')] }, FIRST, { type: 'Stop' });
+    check('two cards for different targets are both pending', three.state.pendingCards.length === 2 && three.state.kind === 'awaitingConfirmation', three.state.pendingCards);
+    const settled = step(three.state, { type: 'CardSettled', cardId: three.state.pendingCards[0], kind: 'done' });
+    check('CardSettled with another card left -> stays awaitingConfirmation', settled.state.kind === 'awaitingConfirmation' && settled.state.pendingCards.length === 1);
+  }
+  {
+    // Confirm and Dismiss work in every turn state.
+    const a = toAwaitingConfirmation();
+    const cardId = a.state.pendingCards[0];
+    const inState = (kind, extra = {}) => ({ ...a.state, kind, ...extra });
+    for (const kind of ['idle', 'requesting', 'streaming', 'runningTools', 'awaitingConfirmation']) {
+      const st = inState(kind);
+      const c = step(st, { type: 'Confirm', cardId });
+      const d = step(st, { type: 'Dismiss', cardId });
+      check(`Confirm in ${kind} emits confirmCard and keeps the state`, c.state.kind === kind && JSON.stringify(c.effects) === JSON.stringify([{ type: 'confirmCard', cardId }]));
+      check(`Dismiss in ${kind} emits dismissCard and keeps the state`, d.state.kind === kind && JSON.stringify(d.effects) === JSON.stringify([{ type: 'dismissCard', cardId }]));
+    }
+    const midTurn = inState('streaming');
+    const settled = step(midTurn, { type: 'CardSettled', cardId, kind: 'done' });
+    check('a card settled mid-turn leaves the turn state alone', settled.state.kind === 'streaming' && settled.state.pendingCards.length === 0);
   }
   {
     const a = toAwaitingConfirmation();
     const r = step(a.state, send('never mind'));
-    check('awaitingConfirmation + Send -> requesting, ExpireCards, AppendUser, Request', r.state.kind === 'requesting' && types(r.effects).join() === 'expireCards,appendUser,request' && r.state.pendingCards.length === 0, types(r.effects));
+    check('awaitingConfirmation + Send -> requesting, AppendUser, Request; no ExpireCards', r.state.kind === 'requesting' && types(r.effects).join() === 'appendUser,request', types(r.effects));
+    check('a new Send keeps the pending cards', r.state.pendingCards.length === 1 && r.state.pendingCards[0] === a.state.pendingCards[0]);
     check('Send resets the round and call counters', r.state.rounds === 1 && r.state.toolCalls === 0);
   }
 
@@ -182,7 +217,7 @@ async function main() {
       ['idle', idle, ['FirstByte', 'Stop', 'Abort', 'TextDelta', 'ToolsDone', 'NetErr']],
       ['requesting', toRequesting(), ['Stop', 'TextDelta', 'ToolCallsDone', 'ToolsDone', 'Send', 'Confirm']],
       ['streaming', toStreaming(), ['FirstByte', 'HttpErr', 'NetErr', 'ToolsDone', 'Send', 'Confirm']],
-      ['runningTools', running, ['Abort', 'Stop', 'TextDelta', 'FirstByte', 'Send', 'NetErr']],
+      ['runningTools', running, ['TextDelta', 'FirstByte', 'Send', 'NetErr']],
     ];
     for (const [name, st, evs] of table) {
       for (const t of evs) {
@@ -214,7 +249,7 @@ async function main() {
     const r = run(st, FIRST, { type: 'ToolCallsDone', calls });
     check('the 8-call turn cap trims the third round-trip to 2 calls', r.effects.filter((e) => e.type === 'runTool').length === 2 && r.state.toolCalls === 8);
     const fin = step(r.state, { type: 'ToolsDone', results: okResults(calls.slice(0, 2)) });
-    check('hitting the turn call cap ends the turn with "Stopped after 6 steps."', fin.state.kind === 'idle' && fin.effects.some((e) => e.type === 'note' && e.text === 'Stopped after 6 steps.'));
+    check('hitting the turn call cap ends the turn with "Stopped after 6 steps."', fin.state.kind === 'idle' && fin.effects.some((e) => e.type === 'note' && e.text === STOPPED));
 
     // Exactly 8 used and no call dropped: the model may still answer in text. A further call is refused.
     const calls2 = [0, 1].map((i) => searchCall(`d${i}`));
@@ -269,7 +304,13 @@ async function main() {
     const r4 = step(toStreaming(), { type: 'StreamFailed', error: { code: 'incomplete', message: 'The answer was cut off.' } });
     check('an incomplete stream counts as a bad response (retried once)', types(r4.effects).join() === 'retryOnce');
     const after = run(toRequesting(), { type: 'NetErr' }, FIRST, { type: 'ToolCallsDone', calls: [searchCall('q')] }, { type: 'ToolsDone', results: okResults([searchCall('q')]) });
-    check('the retry flag resets for the next request in the turn', after.state.retried === false && after.state.kind === 'requesting');
+    check('the retry budget is per turn: the flag does NOT reset for the next request', after.state.retried === true && after.state.kind === 'requesting');
+    const second = step(after.state, { type: 'NetErr' });
+    check('a NetErr in a later round of the same turn is not retried again', second.state.kind === 'requesting' ? false : true);
+    const secondStream = step(step(after.state, FIRST).state, { type: 'StreamFailed', error: { code: 'bad_response', message: 'Bad response from the provider.' } });
+    check('a second bad response later in the same turn is not retried', secondStream.state.kind === 'idle' && types(secondStream.effects).join() === 'errorCard', secondStream.effects);
+    const fresh = run(secondStream.state, send('again'), { type: 'NetErr' });
+    check('a new Send gets a fresh retry', fresh.state.retried === true && types(fresh.effects).join() === 'retryOnce');
   }
   {
     const r = step(toRequesting(), { type: 'HttpErr', status: 400 });
@@ -280,7 +321,7 @@ async function main() {
   {
     const a = toAwaitingConfirmation();
     const r = step(a.state, { type: 'Clear' });
-    check('Clear (SM-42) -> idle, empty history, expire cards, drop handles', r.state.kind === 'idle' && r.state.history.length === 0 && r.state.userTexts.length === 0 && r.state.pendingCards.length === 0 && types(r.effects).join() === 'expireCards,clearHandles', types(r.effects));
+    check('Clear (SM-42) -> idle, empty history, expire cards, drop handles', r.state.kind === 'idle' && r.state.history.length === 0 && r.state.pendingCards.length === 0 && types(r.effects).join() === 'expireCards,clearHandles', types(r.effects));
     const s = step(toStreaming(), { type: 'Clear' });
     check('Clear while streaming aborts the request first', types(s.effects).join() === 'abortFetch,expireCards,clearHandles' && s.state.kind === 'idle');
     check('after Clear, tool results arriving late are ignored', step(s.state, { type: 'ToolsDone', results: [] }).effects.length === 0);
@@ -290,11 +331,11 @@ async function main() {
     check('Abort in awaitingConfirmation is a no-op (cards kept)', step(a.state, { type: 'Abort' }).state === a.state);
     let s = run(mk(), send('pause it'), FIRST, { type: 'ToolCallsDone', calls: [proposePause()] });
     s = run(s.state, FIRST, { type: 'Abort' });
-    check('Abort keeps pending cards and history (SM-42 "keep history and cards")', s.state.kind === 'idle' && s.state.pendingCards.length === 1 && s.state.history.length >= 3);
+    check('Abort keeps pending cards and history (SM-42 "keep history and cards"); rests at awaitingConfirmation', s.state.kind === 'awaitingConfirmation' && s.state.pendingCards.length === 1 && s.state.history.length >= 3);
     const c = step(s.state, { type: 'Confirm', cardId: s.state.pendingCards[0] });
-    check('a kept card can still be confirmed from idle', c.effects[0].type === 'executeCard' && c.state.pendingCards.length === 0 && c.state.kind === 'idle');
+    check('a kept card can still be confirmed after Abort', c.effects[0].type === 'confirmCard' && c.state.pendingCards.length === 1);
     const n = step(s.state, send('next'));
-    check('the next Send after Abort expires the kept cards', types(n.effects).join() === 'expireCards,appendUser,request');
+    check('the next Send after Abort keeps the cards (no ExpireCards)', types(n.effects).join() === 'appendUser,request' && n.state.pendingCards.length === 1);
     check('history survives Abort and feeds the next request', n.effects.at(-1).messages.some((x) => x.role === 'user' && x.content === 'pause it'));
   }
 
@@ -303,7 +344,6 @@ async function main() {
     const long = 'x'.repeat(USER_TEXT_MAX + 500);
     const r = step(mk(), send(long));
     check('user text is capped before it enters history', r.state.history[0].content.length === USER_TEXT_MAX && r.effects[0].text.length === USER_TEXT_MAX, r.state.history[0].content.length);
-    check('userTexts holds the capped text', r.state.userTexts[0].length === USER_TEXT_MAX);
   }
   {
     let r;
@@ -314,7 +354,7 @@ async function main() {
       threw = true;
     }
     check('RangeError from buildContext never escapes the reducer', !threw);
-    check('RangeError path: stays idle, message not kept, plain error card', !threw && r.state.kind === 'idle' && r.state.history.length === 0 && r.state.userTexts.length === 0 && JSON.stringify(r.effects) === JSON.stringify([{ type: 'errorCard', message: 'That message is too long. Try a shorter one.' }]), r && r.effects);
+    check('RangeError path: stays idle, message not kept, plain error card', !threw && r.state.kind === 'idle' && r.state.history.length === 0 && JSON.stringify(r.effects) === JSON.stringify([{ type: 'errorCard', message: 'That message is too long. Try a shorter one.' }]), r && r.effects);
     const a = toAwaitingConfirmation();
     const tight = step({ ...a.state, config: { ...a.state.config, budget: 5 } }, send('hi'));
     check('RangeError while awaitingConfirmation keeps the cards and the state', tight.state.kind === 'awaitingConfirmation' && tight.state.pendingCards.length === 1 && types(tight.effects).join() === 'errorCard', types(tight.effects));
@@ -332,41 +372,124 @@ async function main() {
     check('RangeError on a follow-up request ends the turn with an error card', !threw && r.state.kind === 'idle' && r.effects.some((e) => e.type === 'errorCard'));
   }
 
-  // ---- URL provenance -----------------------------------------------------------------------------------------------
+  // ---- send gate (R1-6) --------------------------------------------------------------------------------------------
   {
-    const url = 'https://example.com/files/linux.iso';
-    const r = step(toStreaming(mk(), `please get ${url} for me`), { type: 'ToolCallsDone', calls: [urlCall(url)] });
-    check('propose_url_download with a pasted url creates a card', types(r.effects).includes('createCard') && r.state.pendingCards.length === 1, r.effects);
+    const gate = (over) => step(mk(), { type: 'Send', text: 'hi', enabled: true, warningAccepted: true, hasKey: true, ...over });
+    const notice = (r) => (r.effects[0] && r.effects[0].type === 'showNotice' ? r.effects[0].text : null);
+    const off = gate({ enabled: false });
+    check('Assistant off -> its own notice, state unchanged', notice(off) === 'Turn on the Assistant in Settings first.' && off.state.kind === 'idle' && off.state.history.length === 0, off.effects);
+    const nowarn = gate({ warningAccepted: false });
+    check('notice not accepted -> its own notice', notice(nowarn) === 'Read the Assistant notice in Settings first.' && nowarn.state.history.length === 0, nowarn.effects);
+    const nokey = gate({ hasKey: false });
+    check('no key -> its own notice', notice(nokey) === 'Add an API key in Settings → Assistant.');
+    check('the three notices are different', new Set([notice(off), notice(nowarn), notice(nokey)]).size === 3);
+    check('all three present -> request goes out', gate({}).state.kind === 'requesting');
+  }
+
+  // ---- caps (R1-4) --------------------------------------------------------------------------------------------------
+  {
+    const st = toStreaming();
+    st.config.registry.issue('transfer', 8); // t2
+    st.config.registry.issue('transfer', 9); // t3
+    const r = step(st, { type: 'ToolCallsDone', calls: [deleteCall('d1'), deleteCall('d2', 't2'), deleteCall('d3', 't3')] });
+    const creates = r.effects.filter((e) => e.type === 'createCard');
+    const errs = toolMsgs(r.state).filter((m) => JSON.parse(m.content).ok === false).map((m) => JSON.parse(m.content).error);
+    check('3 deletes in one round -> 1 card plus 2 tool errors', creates.length === 1 && errs.length === 2 && errs.every((e) => e === 'Only one delete per question. Ask again after this one.') && r.state.pendingCards.length === 1, { creates: creates.length, errs });
+    const later = run(r.state, FIRST, { type: 'ToolCallsDone', calls: [call('d4', 'propose_remove_files', { transfer_id: 't2', file_indices: [0], reason: 'x' })] });
+    check('the destructive cap is per turn: a remove_files in round 2 is refused too', !later.effects.some((e) => e.type === 'createCard') && JSON.parse(toolMsgs(later.state).at(-1).content).ok === false);
+    const next = run(later.state, FIRST, { type: 'Stop' }, send('delete another'), FIRST, { type: 'ToolCallsDone', calls: [deleteCall('d5', 't3')] });
+    check('a new turn resets the destructive cap', next.effects.some((e) => e.type === 'createCard'), next.effects);
   }
   {
-    const r = step(toStreaming(mk(), 'download something good'), { type: 'ToolCallsDone', calls: [urlCall('https://evil.example/a.zip')] });
-    const msg = JSON.parse(r.state.history.find((h) => h.role === 'tool').content);
-    check('propose_url_download with an invented url -> tool error, no card', !types(r.effects).includes('createCard') && r.state.pendingCards.length === 0 && msg.ok === false && /only download links you pasted/.test(msg.error), msg);
+    const st = toStreaming();
+    st.config.registry.issue('transfer', 8);
+    st.config.registry.issue('transfer', 9);
+    const r = step(st, { type: 'ToolCallsDone', calls: [pauseCall('a', 't1'), pauseCall('b', 't2'), pauseCall('c', 't3')] });
+    check('at most 2 proposal cards per turn: the third gets a tool error', r.effects.filter((e) => e.type === 'createCard').length === 2 && JSON.parse(toolMsgs(r.state).at(-1).content).ok === false && r.state.pendingCards.length === 2);
+    const plan = call('pl', 'propose_plan', { reason: 'One step.', steps: [{ tool: 'propose_pause_resume', args: { transfer_id: 't1', action: 'pause', reason: 'x' } }] });
+    const x = step(toStreaming(), { type: 'ToolCallsDone', calls: [plan, pauseCall('q', 't1')] });
+    check('a plan counts as a proposal card', x.state.proposals === 2, x.state.proposals);
   }
   {
-    const url = 'https://example.com/a.zip';
-    const r = step(toStreaming(mk(), `get ${url}`), { type: 'ToolCallsDone', calls: [urlCall(`${url}?x=1`)] });
-    check('the url must appear verbatim: a changed url is refused', r.state.pendingCards.length === 0);
+    const r = step(toStreaming(), { type: 'ToolCallsDone', calls: [detailsCall('g1'), detailsCall('g2'), detailsCall('g3')] });
+    check('get_result_details runs at most 2 per turn', r.effects.filter((e) => e.type === 'runTool').length === 2 && r.state.details === 2);
+    const done = step(r.state, { type: 'ToolsDone', results: okResults([detailsCall('g1'), detailsCall('g2')]) });
+    check('the third details call is answered with a plain error', JSON.parse(toolMsgs(done.state)[2].content).ok === false);
+    const again = run(done.state, FIRST, { type: 'ToolCallsDone', calls: [detailsCall('g4')] });
+    check('the details cap holds across rounds of one turn', !again.effects.some((e) => e.type === 'runTool'));
+  }
+
+  // ---- retry: per turn, backoff, Retry-After, truncation (R1-4) -----------------------------------------------------
+  {
+    const r = step(toRequesting(), { type: 'HttpErr', status: 503 });
+    check('retryOnce carries 1000 ms with jitter by default', r.effects[0].delayMs === 1000 && r.effects[0].jitter === true, r.effects[0]);
+    const ra = step(toRequesting(), { type: 'HttpErr', status: 503, retryAfterMs: 4000 });
+    check('retryOnce uses Retry-After when the error carries it (no jitter)', ra.effects[0].delayMs === 4000 && ra.effects[0].jitter === false, ra.effects[0]);
+    const long = step(toRequesting(), { type: 'HttpErr', status: 503, retryAfterMs: 120000 });
+    check('a Retry-After over 30 s is not waited for', long.state.kind === 'idle' && long.effects[0].type === 'errorCard');
+    const n = step(toRequesting(), { type: 'NetErr' });
+    check('a network error retries after 1000 ms with jitter', n.effects[0].delayMs === 1000 && n.effects[0].jitter === true);
   }
   {
-    const url = 'https://example.com/b.zip';
-    let s = run(mk(), send(`here: ${url}`), FIRST, { type: 'Stop' });
-    s = run(s.state, send('and another thing'), FIRST);
-    const r = step(s.state, { type: 'ToolCallsDone', calls: [urlCall(url)] });
-    check('a url pasted in an earlier message of this session is allowed', r.state.pendingCards.length === 1);
+    const t = run(toStreaming(), { type: 'TextDelta', text: 'Part of an answ' }, { type: 'Stop', truncated: true });
+    check('a truncated stream ends the turn with the plain note and keeps the text', t.state.kind === 'idle' && JSON.stringify(t.effects) === JSON.stringify([{ type: 'note', text: 'The answer was too long. Ask a narrower question.' }]) && t.state.history.at(-1).content === 'Part of an answ', t.effects);
+    const f = step(toStreaming(), { type: 'StreamFailed', error: { code: 'bad_args', message: 'Bad response from the provider.' }, truncated: true });
+    check('a truncated stream that failed to parse never retries', f.state.kind === 'idle' && !types(f.effects).includes('retryOnce') && f.effects[0].text === 'The answer was too long. Ask a narrower question.', f.effects);
+    const c = step(toStreaming(), { type: 'ToolCallsDone', calls: [searchCall()], truncated: true });
+    check('a truncated tool call is never run', c.state.kind === 'idle' && !types(c.effects).includes('runTool'));
+  }
+
+  // ---- abort of running tools (R1-5) --------------------------------------------------------------------------------
+  {
+    const two = [searchCall('s1'), searchCall('s2')];
+    const running = run(mk(), send(), FIRST, { type: 'ToolCallsDone', calls: two }).state;
+    check('two read tools are running', running.kind === 'runningTools' && running.calls.length === 2);
+    for (const ev of [{ type: 'Abort' }, { type: 'Stop' }, { type: 'Background' }]) {
+      const r = step(running, ev);
+      const cancelled = r.effects.filter((e) => e.type === 'appendToolMessage');
+      check(`runningTools + ${ev.type} -> cancelTools, cancelled results for pending calls, rest`, r.state.kind === 'idle' && r.effects[0].type === 'cancelTools' && cancelled.length === 2 && cancelled.every((e) => JSON.parse(e.content).error === 'cancelled' && JSON.parse(e.content).ok === false) && toolMsgs(r.state).length === 2, r.effects);
+    }
+    const ab = step(running, { type: 'Abort' });
+    check('Abort in runningTools marks the answer cancelled and sends no request', ab.effects.at(-1).type === 'markCancelled' && !types(ab.effects).includes('request'));
+    const mixed = run(mk(), send(), FIRST, { type: 'ToolCallsDone', calls: [searchCall('m1'), proposePause('m2')] }).state;
+    const m = step(mixed, { type: 'Abort' });
+    check('Abort with a card made this round keeps the card and rests at awaitingConfirmation', m.state.kind === 'awaitingConfirmation' && m.state.pendingCards.length === 1 && toolMsgs(m.state).find((x) => x.tool_call_id === 'm2').content.includes('proposed'));
+    const cl = step(running, { type: 'Clear' });
+    check('Clear during runningTools emits cancelTools first (adversarial)', types(cl.effects).join() === 'cancelTools,expireCards,clearHandles' && cl.state.kind === 'idle' && cl.state.history.length === 0, types(cl.effects));
+    const off = step(running, { type: 'Disabled' });
+    check('Disabled during runningTools cancels tools, expires cards, keeps history valid', types(off.effects).slice(0, 2).join() === 'cancelTools,expireCards' && off.state.kind === 'idle' && toolMsgs(off.state).length === 2);
   }
   {
-    const url = 'https://example.com/c.zip';
-    const t = step(toStreaming(mk(), 'get me the file'), { type: 'TextDelta', text: `try ${url}` });
-    const r = step(t.state, { type: 'ToolCallsDone', calls: [urlCall(url)] });
-    check('a url only the model wrote is refused', r.state.pendingCards.length === 0);
+    const two = [searchCall('s1'), searchCall('s2')];
+    const running = run(mk(), send(), FIRST, { type: 'ToolCallsDone', calls: two }).state;
+    const t1 = step(running, { type: 'ToolTimeout', toolCallId: 's1' });
+    check('ToolTimeout answers that call and keeps waiting for the other', t1.state.kind === 'runningTools' && JSON.stringify(t1.effects) === JSON.stringify([{ type: 'cancelTools', callIds: ['s1'] }]), t1.effects);
+    const t2 = step(t1.state, { type: 'ToolsDone', results: [{ toolCallId: 's2', content: '{"ok":true}' }, { toolCallId: 's1', content: '{"ok":true,"late":1}' }] });
+    check('the timed-out call keeps its timeout answer even if a late result arrives', t2.state.kind === 'requesting' && JSON.parse(toolMsgs(t2.state)[0].content).error === 'That took too long.');
+    const one = run(mk(), send(), FIRST, { type: 'ToolCallsDone', calls: [searchCall('only')] }).state;
+    const t3 = step(one, { type: 'ToolTimeout', toolCallId: 'only' });
+    check('ToolTimeout on the only call continues the turn', t3.state.kind === 'requesting' && types(t3.effects).join() === 'cancelTools,appendToolMessage,request', types(t3.effects));
+    check('ToolTimeout for an unknown call is a no-op', step(running, { type: 'ToolTimeout', toolCallId: 'zz' }).state === running);
+    check('ToolTimeout outside runningTools is a no-op', step(toStreaming(), { type: 'ToolTimeout', toolCallId: 's1' }).effects.length === 0);
   }
+
+  // ---- usage --------------------------------------------------------------------------------------------------------
   {
-    const plan = (url) => call('pl', 'propose_plan', { reason: 'One step.', steps: [{ tool: 'propose_url_download', args: { url, reason: 'x' } }] });
-    const bad = step(toStreaming(mk(), 'get the thing'), { type: 'ToolCallsDone', calls: [plan('https://evil.example/x.zip')] });
-    check('a url inside a plan step is checked too', bad.state.pendingCards.length === 0);
-    const good = step(toStreaming(mk(), 'get https://example.com/x.zip'), { type: 'ToolCallsDone', calls: [plan('https://example.com/x.zip')] });
-    check('a pasted url inside a plan step is allowed', good.state.pendingCards.length === 1);
+    const r = step(toStreaming(), { type: 'Usage', input: 120, output: 45 });
+    check('streaming + Usage -> addUsage, state unchanged', r.state.kind === 'streaming' && JSON.stringify(r.effects) === JSON.stringify([{ type: 'addUsage', input: 120, output: 45 }]), r.effects);
+  }
+
+  // ---- card expiry (R1-3) -------------------------------------------------------------------------------------------
+  {
+    const a = toAwaitingConfirmation();
+    const cardId = a.state.pendingCards[0];
+    const gone = step(a.state, { type: 'TargetGone', target: 't1' });
+    check('TargetGone expires the cards for that target (cardMachine EXPIRE via the runner)', JSON.stringify(gone.effects) === JSON.stringify([{ type: 'expireCard', cardId }]), gone.effects);
+    check('TargetGone for another target does nothing', step(a.state, { type: 'TargetGone', target: 't9' }).effects.length === 0);
+    const off = step(a.state, { type: 'Disabled' });
+    check('Disabled (Assistant turned off) expires all cards and keeps history', types(off.effects).join() === 'expireCards' && off.state.pendingCards.length === 0 && off.state.history.length === a.state.history.length);
+    const newer = run(a.state, send('again'), FIRST, { type: 'ToolCallsDone', calls: [proposePause('again')] });
+    check('a newer card for the same target expires the older one', newer.effects.some((e) => e.type === 'expireCard' && e.cardId === cardId) && newer.state.pendingCards.length === 1 && newer.state.pendingCards[0] !== cardId, newer.effects);
   }
 
   console.log(`\n${passed} passed, ${failed} failed`);
