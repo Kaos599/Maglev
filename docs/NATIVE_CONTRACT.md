@@ -153,3 +153,61 @@ Additions beyond §2–§6, agreed during Wave 1:
 - Proxy URLs are `socks5://` or `socks5h://` only. TS must not emit `http://`.
 - Error code `UNSUPPORTED` is added to the closed set. It is used, for example, for `https://` sources while TLS verification isn't initialised: "Secure (https) torrent links aren't supported yet. Download the .torrent file and open it instead." Kotlin downloads `https://…/.torrent` itself (10 MB cap, 30 s timeout) and passes the file path, so users rarely see this error.
 - Stream URLs carry a per-session random token, `/stream/<token>/<id>/<file>`. The server rejects a wrong token, and rejects a `Host` other than `127.0.0.1:<port>`.
+
+## 10. Wave 3: user feedback (2026-11-11)
+
+Grounded in librqbit v9.1.0 source (see the LEDGER entry for the research). Rust, Kotlin and TS workers implement against this section only.
+
+### 10.1 File priority ("Download first")
+librqbit has no per-file priority. It downloads in `file_priorities` order, a hardcoded list of file indices sorted by name, with a `// TODO: make it configurable` (`torrent_state/live/mod.rs`). The order is made configurable through a **minimal vendored patch**.
+
+- **Patch:** vendor `librqbit` 9.1.0 into `native/maglev-core/vendor/librqbit` and wire it through `[patch.crates-io]`, the same mechanism as the TLS shim.
+  - The patch adds one public method, `ManagedTorrent::set_file_priority_order(&self, order: Vec<usize>)`. It reorders the live `file_priorities` list, or stores the order for the next live state if the torrent is paused or initializing.
+  - Keep the diff small and listed in `vendor/librqbit/MAGLEV_PATCH.md`, with the upstream file and line numbers, so it can be rebased.
+- **Priorities:** `"first" | "normal" | "skip"`.
+  - `skip` is the same as excluded, so `included = false` and it goes through `update_only_files`.
+  - The order is `first` files (in index order), then `normal` files (in index order).
+  - This **reorders** downloading. It does not weight bandwidth, and the UI must not claim that it does.
+- **JNI:** `nativeSetFilePriorities(id: String, json: String): String`, where `json` is `[{"index":u32,"priority":"first|normal|skip"}]` and covers every file.
+  - It applies the include set and the order atomically.
+  - It returns a Result. Errors are `NOT_FOUND`, or `INVALID_SOURCE` for an unknown index or an empty include set.
+- **Persistence:** Rust persists priorities in its own sidecar, `<sessionDir>/maglev-priorities.json`, keyed by info-hash, and re-applies them on restore.
+- **Detail shape:** `files[]` gains `"priority": "first|normal|skip"`. `included` stays and is derived from it.
+- **Add:** `nativeAddTorrent` options gain an optional `"file_priorities":[{"index","priority"}]`. When it is present, it overrides `only_files`.
+
+### 10.2 Reannounce
+librqbit has no reannounce API. The workaround is `Session::pause` followed by `Session::unpause`, which rebuilds the peer source. That means a new tracker `started` announce, a DHT `get_peers` and an LSD announce.
+
+- **JNI:** `nativeReannounce(id: String): String`. It is valid only while the torrent is `DOWNLOADING` or `SEEDING`; otherwise it returns `{"ok":false,"code":"UNSUPPORTED"}`.
+- **Not a user pause.** It must not change `paused_by`, queue position, seeding clocks or the persisted state. The scheduler tick must not see the torrent as paused in between (hold the tick lock, as recheck does).
+- **Rate limit:** once per 60 s per torrent. Earlier calls return `{"ok":false,"code":"UNSUPPORTED","retry_after_secs":n}`.
+- **UI copy:** "Find more peers" (the subtitle is "Asks trackers and DHT again. Current peers reconnect."). The Detail overflow also shows "Reannounce" as the action label.
+
+### 10.3 Free space
+- **Kotlin:** `getFreeSpace(): {path, freeBytes, totalBytes, mode}`, using `StatFs` on the directory Rust actually writes to (the default dir, the direct SAF path, or the staging dir).
+  - In staging mode it also returns `{targetFreeBytes}` for the SAF target, when the tree resolves to a volume. Otherwise that field is null.
+- **Add-sheet rule:** if `selectedBytes > freeBytes - 200 MB`, show "Not enough space" and disable Start. If the free space after the download would be under 1 GB, show a warning, but Start stays enabled.
+
+### 10.4 Notification and Live Updates
+- **Dependencies:** `androidx.core:core-ktx` 1.17.0 or later, and the manifest permission `android.permission.POST_PROMOTED_NOTIFICATIONS`.
+- **Content:** built from the latest telemetry. The *primary* torrent is the downloading torrent with the highest `down_bps`, falling back to the most recently added.
+
+  | Situation | Title | Text | Progress / chip |
+  |---|---|---|---|
+  | 1 downloading | torrent name | `62% · ↓ 4.1 MB/s · 12 min left` | ProgressStyle 0–100; chip `62%` |
+  | N > 1 downloading | `<primary name> +N−1 more` | `N downloading · ↓ total MB/s` | ProgressStyle of aggregate bytes; chip `62%` |
+  | Seeding only | `Seeding N torrents` | `↑ total MB/s` | no ProgressStyle, **not promoted** |
+  | All paused by governance | `Paused: waiting for Wi-Fi` (or battery, or charging) | — | not promoted |
+
+- **Promotion:** only while something is downloading. Use `setRequestPromotedOngoing(true)` and `setShortCriticalText` with at most 4 characters, and set `ongoing`.
+  - Not colorized and no RemoteViews. The channel importance must be above MIN.
+  - Below API 36 the same builder falls back to a standard notification.
+- **Throttle:** update at most once every 2 s, and only when the text changes.
+- **Actions:** Pause all, Resume all and Shut down stay unchanged.
+- **JS:** `getPermissionStatus()` gains `liveUpdates: "granted"|"denied"|"n/a"` (from `canPostPromotedNotifications()`). `openLiveUpdateSettings()` opens `Settings.ACTION_MANAGE_APP_PROMOTED_NOTIFICATIONS`.
+
+### 10.5 Module API additions (§6)
+`setFilePriorities(id, [{index, priority}])`, `reannounce(id)` (Result with `retryAfterSecs?`), `getFreeSpace()` and `openLiveUpdateSettings()`. The mock engine implements all four with the same validation.
+
+### 10.6 Parked
+**Wi-Fi and mobile data at once** is Phase 4 research. librqbit creates and connects its sockets internally and has no pre-connect hook (`ConnectOpts` only has `source_port` and `bind_device`), so it would need forks of librqbit, librqbit-dualstack-sockets and librqbit-utp. SO_BINDTODEVICE from an unprivileged Android app is also unverified.
