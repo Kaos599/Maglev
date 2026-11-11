@@ -1,0 +1,106 @@
+[
+  {
+    "name": "fits factor 1 well inside budget",
+    "freeBytes": 10737418240,
+    "pendingNeed": 0,
+    "stagingFactor": 1,
+    "selectionBytes": 2147483648,
+    "expect": "Fits"
+  },
+  {
+    "name": "fits factor 2 (staged) inside budget",
+    "freeBytes": 10737418240,
+    "pendingNeed": 0,
+    "stagingFactor": 2,
+    "selectionBytes": 2147483648,
+    "expect": "Fits"
+  },
+  {
+    "name": "tight factor 1 halfway into the band",
+    "freeBytes": 10737418240,
+    "pendingNeed": 0,
+    "stagingFactor": 1,
+    "selectionBytes": 9990832128,
+    "expect": "Tight"
+  },
+  {
+    "name": "tight factor 2 (staged) halfway into the band",
+    "freeBytes": 10737418240,
+    "pendingNeed": 0,
+    "stagingFactor": 2,
+    "selectionBytes": 4995416064,
+    "expect": "Tight"
+  },
+  {
+    "name": "boundary: need == budget - 1 GB is Fits",
+    "freeBytes": 10737418240,
+    "pendingNeed": 0,
+    "stagingFactor": 1,
+    "selectionBytes": 9453961216,
+    "expect": "Fits"
+  },
+  {
+    "name": "boundary: need == budget - 1 GB + 1 is Tight",
+    "freeBytes": 10737418240,
+    "pendingNeed": 0,
+    "stagingFactor": 1,
+    "selectionBytes": 9453961217,
+    "expect": "Tight"
+  },
+  {
+    "name": "boundary: need == budget is Tight",
+    "freeBytes": 10737418240,
+    "pendingNeed": 0,
+    "stagingFactor": 1,
+    "selectionBytes": 10527703040,
+    "expect": "Tight"
+  },
+  {
+    "name": "boundary: need == budget + 1 is DoesntFit",
+    "freeBytes": 10737418240,
+    "pendingNeed": 0,
+    "stagingFactor": 1,
+    "selectionBytes": 10527703041,
+    "expect": "DoesntFit"
+  },
+  {
+    "name": "staged factor 2 doubles need into DoesntFit",
+    "freeBytes": 10737418240,
+    "pendingNeed": 0,
+    "stagingFactor": 2,
+    "selectionBytes": 6442450944,
+    "expect": "DoesntFit"
+  },
+  {
+    "name": "pending need 5 GB pushes 4 GB to Tight",
+    "freeBytes": 10737418240,
+    "pendingNeed": 5368709120,
+    "stagingFactor": 1,
+    "selectionBytes": 4294967296,
+    "expect": "Tight"
+  },
+  {
+    "name": "pending need 5 GB, 5 GB selection is DoesntFit",
+    "freeBytes": 10737418240,
+    "pendingNeed": 5368709120,
+    "stagingFactor": 1,
+    "selectionBytes": 5368709120,
+    "expect": "DoesntFit"
+  },
+  {
+    "name": "pending need with staging still fits when room allows",
+    "freeBytes": 21474836480,
+    "pendingNeed": 5368709120,
+    "stagingFactor": 2,
+    "selectionBytes": 3221225472,
+    "expect": "Fits"
+  },
+  {
+    "name": "zero free space and zero selection is DoesntFit (budget below zero)",
+    "freeBytes": 0,
+    "pendingNeed": 0,
+    "stagingFactor": 1,
+    "selectionBytes": 0,
+    "expect": "DoesntFit"
+  }
+]
