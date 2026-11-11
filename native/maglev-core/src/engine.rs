@@ -15,6 +15,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use bytes::Bytes;
+use futures::StreamExt;
 use librqbit::api::{Api, TorrentIdOrHash};
 use librqbit::dht::{DhtPersistenceConfig, Id20};
 use librqbit::limits::LimitsConfig;
@@ -30,6 +31,7 @@ use tokio::task::JoinHandle;
 use tokio::time::MissedTickBehavior;
 use tracing::warn;
 
+use crate::activity::{ActivitySnapshot, ResolveRegistry};
 use crate::config::NativeConfig;
 use crate::error::{classify_add_error, classify_runtime_error, EngineError, ErrorCode};
 use crate::meta::{MetaStore, PendingAdd, TorrentMeta};
@@ -216,6 +218,27 @@ pub struct MaglevEngine {
     limits: Mutex<LimitsStore>,
     /// Torrents whose files are being moved right now (state `MOVING`).
     moves: Mutex<HashMap<String, Arc<MoveEntry>>>,
+    /// Magnet resolves in progress: peers seen on the DHT and the cancel signal (section 12.1).
+    resolves: Arc<ResolveRegistry>,
+}
+
+/// Keeps a registry entry and its peer-counting task alive for one magnet resolve. Dropping it (any
+/// outcome, including a panic) aborts the task and removes the entry.
+struct ResolveGuard {
+    registry: Arc<ResolveRegistry>,
+    key: String,
+    generation: u64,
+    cancel: Arc<tokio::sync::Notify>,
+    task: Option<JoinHandle<()>>,
+}
+
+impl Drop for ResolveGuard {
+    fn drop(&mut self) {
+        if let Some(t) = self.task.take() {
+            t.abort();
+        }
+        self.registry.end(&self.key, self.generation);
+    }
 }
 
 fn build_options(cfg: &NativeConfig, session_dir: &Path) -> SessionOptions {
@@ -385,6 +408,7 @@ impl MaglevEngine {
             reannounce_limiter: Mutex::new(ReannounceLimiter::new(REANNOUNCE_MIN_INTERVAL)),
             limits: Mutex::new(limits),
             moves: Mutex::new(HashMap::new()),
+            resolves: Arc::new(ResolveRegistry::new()),
         });
 
         engine.restore_priorities();
@@ -917,20 +941,86 @@ impl MaglevEngine {
         }
     }
 
+    /// Registers a magnet resolve and starts the side task that counts unique DHT peer addresses.
+    fn begin_resolve(&self, info_hash: &str) -> Result<ResolveGuard, EngineError> {
+        let hash = Id20::from_str(info_hash)
+            .map_err(|_| EngineError::new(ErrorCode::InvalidSource, "This magnet link has an info hash that isn't valid"))?;
+        let dht_on = self.session.get_dht().is_some();
+        let started = self.resolves.begin(info_hash, dht_on);
+        let task = if dht_on {
+            let registry = self.resolves.clone();
+            let session = self.session.clone();
+            let key = info_hash.to_string();
+            let generation = started.generation;
+            Some(self.handle.spawn(async move {
+                // Same call librqbit makes for a magnet (session.rs make_peer_rx): a stream of SocketAddr.
+                let stream = session
+                    .get_dht()
+                    .map(|dht| dht.get_peers(hash, None));
+                if let Some(mut stream) = stream {
+                    while let Some(addr) = stream.next().await {
+                        registry.record_peer(&key, generation, addr);
+                    }
+                }
+            }))
+        } else {
+            None
+        };
+        Ok(ResolveGuard {
+            registry: self.resolves.clone(),
+            key: info_hash.to_string(),
+            generation: started.generation,
+            cancel: started.cancel,
+            task,
+        })
+    }
+
     pub fn resolve_metadata(&self, source: &str, timeout_ms: i64) -> Result<Metadata, EngineError> {
         let src = parse_source(source)?;
         let limit = Duration::from_millis(timeout_ms.clamp(1_000, 600_000) as u64);
+        // Only magnets have activity to report and can be cancelled.
+        let guard = match &src {
+            Source::Magnet(m) => Some(self.begin_resolve(&m.info_hash)?),
+            _ => None,
+        };
+        let cancel = guard.as_ref().map(|g| g.cancel.clone());
+        let resolving = self.resolve_source(&src, source, Some(limit));
         // The inner timeout produces METADATA_TIMEOUT; the outer one is only a safety net.
-        let r = self.run(
-            limit + Duration::from_secs(5),
-            self.resolve_source(&src, source, Some(limit)),
-        )??;
+        let r = self.run(limit + Duration::from_secs(5), async move {
+            match cancel {
+                Some(c) => tokio::select! {
+                    r = resolving => r,
+                    _ = c.notified() => Err(EngineError::new(
+                        ErrorCode::Cancelled,
+                        "Cancelled",
+                    )),
+                },
+                None => resolving.await,
+            }
+        })??;
+        drop(guard);
         Ok(Metadata {
             info_hash: r.info_hash,
             name: r.name,
             total_bytes: r.total_bytes,
             files: r.files,
         })
+    }
+
+    /// Peers found so far for a magnet that is resolving right now.
+    pub fn resolve_activity(&self, info_hash: &str) -> Result<ActivitySnapshot, EngineError> {
+        let (id, _) = Self::parse_id(info_hash)?;
+        self.resolves.snapshot(&id).ok_or_else(EngineError::not_found)
+    }
+
+    /// Stops a running magnet resolve. `nativeResolveMetadata` then answers `CANCELLED`.
+    pub fn cancel_resolve(&self, info_hash: &str) -> Result<(), EngineError> {
+        let (id, _) = Self::parse_id(info_hash)?;
+        if self.resolves.cancel(&id) {
+            Ok(())
+        } else {
+            Err(EngineError::not_found())
+        }
     }
 
     async fn add_resolved(&self, r: &Resolved, opts: &AddOptions) -> Result<(), EngineError> {

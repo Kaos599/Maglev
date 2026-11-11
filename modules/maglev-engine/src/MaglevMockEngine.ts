@@ -17,6 +17,7 @@ import type {
   NotificationActionEvent,
   PausedBy,
   PickFolderResult,
+  ResolveActivity,
   ScheduleConfig,
   ScheduleStatus,
   Snapshot,
@@ -67,6 +68,8 @@ interface TorrentMeta {
   moveDest?: string;
 }
 
+/** Simulated time a magnet needs to resolve (dev only). */
+const MOCK_RESOLVE_MS = 7000;
 const MOVE_STEPS = 6; // stepSimulation runs twice a second, so about 3 s
 const DEFAULT_MOVE_DIR = '/storage/emulated/0/Download/Maglev';
 const MAX_LIMIT_BPS = 4_294_967_295; // u32::MAX, larger values are clamped
@@ -601,9 +604,45 @@ export class MaglevMockEngine implements MaglevEngineApi {
     return ok();
   }
 
+  /** Dev only: magnet resolves that are still pending, so activity and cancel can be simulated. */
+  private pendingResolves = new Map<string, { startedAt: number; cancel: () => void }>();
+
+  public async getResolveActivity(infoHash: string): Promise<EngineResult<ResolveActivity>> {
+    const p = this.pendingResolves.get(infoHash);
+    if (!p) return fail('NOT_FOUND', 'No resolve is running for this torrent.');
+    const elapsedMs = Date.now() - p.startedAt;
+    return { ok: true, peersFound: Math.min(40, Math.floor(elapsedMs / 400)), dht: true, elapsedMs };
+  }
+
+  public async cancelResolve(infoHash: string): Promise<EngineResult> {
+    const p = this.pendingResolves.get(infoHash);
+    if (!p) return fail('NOT_FOUND', 'No resolve is running for this torrent.');
+    p.cancel();
+    return ok();
+  }
+
   public async resolveMetadata(source: string, _timeoutMs: number): Promise<EngineResult<Metadata>> {
     const parsed = parseSource(source);
     if (!parsed) return fail('INVALID_SOURCE', 'Not a valid magnet link (needs an info-hash) or .torrent source.');
+    if (parsed.kind === 'magnet') {
+      // A magnet takes a few seconds to find peers, like the real engine. Cancel ends the wait early.
+      const hash = parsed.infoHash;
+      const cancelled = await new Promise<boolean>((resolve) => {
+        const timer = setTimeout(() => {
+          this.pendingResolves.delete(hash);
+          resolve(false);
+        }, MOCK_RESOLVE_MS);
+        this.pendingResolves.set(hash, {
+          startedAt: Date.now(),
+          cancel: () => {
+            clearTimeout(timer);
+            this.pendingResolves.delete(hash);
+            resolve(true);
+          },
+        });
+      });
+      if (cancelled) return fail('CANCELLED', 'Cancelled.');
+    }
     const name = parsed.name || `Torrent_${parsed.infoHash.slice(0, 8)}`;
     const total = parsed.exactLength && parsed.exactLength > 5120 ? parsed.exactLength : DEFAULT_PAYLOAD_BYTES;
     return {

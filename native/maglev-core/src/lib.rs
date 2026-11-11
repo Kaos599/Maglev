@@ -4,8 +4,9 @@
 //! contract in `docs/NATIVE_CONTRACT.md`.
 //!
 //! Pure, JVM-free and session-free modules (unit tested on any host):
-//! `config`, `error`, `source`, `scheduler`, `meta`, `priority`, `readiness`, `relocate`, `torrent_limits`, `simd`, and the parsing half of `streaming`.
+//! `activity`, `config`, `error`, `source`, `scheduler`, `meta`, `priority`, `readiness`, `relocate`, `torrent_limits`, `simd`, and the parsing half of `streaming`.
 
+pub mod activity;
 pub mod config;
 pub mod engine;
 pub mod error;

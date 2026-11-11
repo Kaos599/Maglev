@@ -14,7 +14,9 @@ crate-type = ["cdylib", "rlib"]
 # and `http-api-client`. `rust-tls` selects reqwest/rustls and the `ring` SHA-1 backend.
 # `http-api`, `webui` and `upnp-serve-adapter` stay off, so no embedded web server or web UI is built.
 librqbit = { version = "=9.1.0", default-features = false, features = ["rust-tls"] }
-tokio = { version = "1", features = ["rt-multi-thread", "sync", "time", "net", "io-util"] }
+tokio = { version = "1", features = ["rt-multi-thread", "sync", "time", "net", "io-util", "macros"] }
+# `StreamExt::next` for the DHT peer stream (`BoxStream`). librqbit already depends on futures 0.3.
+futures = { version = "0.3", default-features = false, features = ["std"] }
 jni = { version = "0.21", default-features = false }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

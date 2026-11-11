@@ -11,6 +11,7 @@ import { ThemeColors, radius, spacing, touch, type } from '../constants/theme';
 import { formatBytes } from '../constants/format';
 import { triggerHaptic } from '../constants/haptics';
 import { Banner, Button, Chip, EmptyBlock, ProgressBar, Screen } from '../components/ui';
+import { ResolveProgress } from '../components/add/ResolveProgress';
 import { AddFileRow } from '../components/add/AddFileRow';
 import { SpaceStrip } from '../components/add/SpaceStrip';
 import { PrioritySheet } from '../components/detail/PrioritySheet';
@@ -45,7 +46,7 @@ export default function AddTorrentScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const params = useLocalSearchParams<{ source?: string; uri?: string; magnet?: string }>();
-  const { telemetry, defaultStoragePath } = useMaglevEngine();
+  const { telemetry, defaultStoragePath, showNotice } = useMaglevEngine();
 
   const [text, setText] = useState('');
   const [phase, setPhase] = useState<Phase>('input');
@@ -59,6 +60,7 @@ export default function AddTorrentScreen() {
   /** Files marked "Download first". Skip is an unchecked file. */
   const [firsts, setFirsts] = useState<Set<number>>(new Set());
   const [prioIndex, setPrioIndex] = useState<number | null>(null);
+  const [starting, setStarting] = useState(false);
 
   /** The string handed to the engine: a magnet, a URL, or a cached .torrent path. */
   const sourceRef = useRef<string>('');
@@ -115,6 +117,9 @@ export default function AddTorrentScreen() {
         return;
       }
       switch (res.code) {
+        case 'CANCELLED':
+          // The user chose Start now or Cancel; the screen already moved on.
+          break;
         case 'DUPLICATE':
           showDuplicate(res.id ?? null);
           break;
@@ -294,6 +299,43 @@ export default function AddTorrentScreen() {
     setPhase(meta ? 'preview' : 'timeout');
   };
 
+  /** 12.1: stop the wait, add the magnet with every file, and let Transfers show it. */
+  const startNow = async () => {
+    const source = sourceRef.current;
+    const hash = parseSource(source)?.infoHash;
+    if (!hash || starting) return;
+    setStarting(true);
+    try {
+      await maglevEngine.cancelResolve(hash);
+    } catch {
+      // The resolve may already have ended; adding still works.
+    }
+    token.current++; // the pending resolveMetadata result (CANCELLED) is ignored
+    let res;
+    try {
+      res = await maglevEngine.addTorrent(source, { onlyFiles: null, filePriorities: null, outputFolder: null });
+    } catch (e) {
+      setStarting(false);
+      setAddError(e instanceof Error ? e.message : 'Something went wrong.');
+      setPhase('timeout');
+      return;
+    }
+    setStarting(false);
+    if (res.ok) {
+      triggerHaptic('success');
+      showNotice({ message: 'Added. You can choose files once its details arrive.' }, 6000);
+      router.replace('/');
+      return;
+    }
+    if (res.code === 'DUPLICATE') {
+      showDuplicate(res.id ?? null);
+      return;
+    }
+    setAddError(res.message || 'Could not add this torrent.');
+    triggerHaptic('error');
+    setPhase('timeout');
+  };
+
   const toggleFile = useCallback((index: number, next: boolean) => {
     triggerHaptic('selection');
     setSelected((prev) => {
@@ -459,21 +501,15 @@ export default function AddTorrentScreen() {
   if (phase === 'resolving' || phase === 'validating') {
     return (
       <Screen title="Add torrent" onBack={close}>
-        <View style={styles.centered} accessibilityLiveRegion="polite">
-          <Text style={styles.heading}>Getting torrent info…</Text>
-          <View style={styles.loadingBar}>
-            <ProgressBar indeterminate accessibilityLabel="Getting torrent info" />
-          </View>
-          <Text style={styles.metaCenter}>This can take up to a minute for magnet links.</Text>
-          <Button
-            label="Cancel"
-            variant="ghost"
-            onPress={() => {
-              token.current++;
-              setPhase('input');
-            }}
-          />
-        </View>
+        <ResolveProgress
+          infoHash={isMagnetSource ? parseSource(sourceRef.current)?.infoHash ?? null : null}
+          starting={starting}
+          onStartNow={startNow}
+          onCancel={() => {
+            token.current++;
+            setPhase('input');
+          }}
+        />
       </Screen>
     );
   }

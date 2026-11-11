@@ -21,6 +21,8 @@ pub enum ErrorCode {
     EngineUnavailable,
     Unsupported,
     Internal,
+    /// The app cancelled a magnet resolve. Not an error to show.
+    Cancelled,
 }
 
 impl ErrorCode {
@@ -39,6 +41,7 @@ impl ErrorCode {
             ErrorCode::EngineUnavailable => "ENGINE_UNAVAILABLE",
             ErrorCode::Unsupported => "UNSUPPORTED",
             ErrorCode::Internal => "INTERNAL",
+            ErrorCode::Cancelled => "CANCELLED",
         }
     }
 }
@@ -344,5 +347,10 @@ mod tests {
             "\"METADATA_TIMEOUT\""
         );
         assert_eq!(ErrorCode::MetadataTimeout.as_str(), "METADATA_TIMEOUT");
+        assert_eq!(
+            serde_json::to_string(&ErrorCode::Cancelled).unwrap(),
+            "\"CANCELLED\""
+        );
+        assert_eq!(ErrorCode::Cancelled.as_str(), "CANCELLED");
     }
 }

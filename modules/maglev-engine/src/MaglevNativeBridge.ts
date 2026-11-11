@@ -17,6 +17,7 @@ import type {
   NativePermissionStatus,
   NotificationActionEvent,
   PickFolderResult,
+  ResolveActivity,
   ScheduleConfig,
   ScheduleStatus,
   Snapshot,
@@ -277,6 +278,12 @@ export class MaglevEngineBridge implements MaglevEngineApi {
   }
   public resolveMetadata(source: string, timeoutMs: number): Promise<EngineResult<Metadata>> {
     return this.route('resolveMetadata', source, timeoutMs);
+  }
+  public getResolveActivity(infoHash: string): Promise<EngineResult<ResolveActivity>> {
+    return this.route('getResolveActivity', infoHash);
+  }
+  public cancelResolve(infoHash: string): Promise<EngineResult> {
+    return this.route('cancelResolve', infoHash);
   }
   public addTorrent(source: string, options: AddTorrentOptions = {}) {
     // The module forwards options to Rust as JSON, so they keep the contract's snake_case keys.

@@ -80,6 +80,8 @@ interface EngineContextType {
   undoRemove: () => void;
   notice: EngineNotice | null;
   dismissNotice: () => void;
+  /** Show a short message at the bottom of Transfers (stays across screen changes). */
+  showNotice: (next: Omit<EngineNotice, 'id'>, autoDismissMs?: number | null) => void;
   /** Resolves with the torrent id. Throws an Error carrying `.code` (INVALID_SOURCE, DUPLICATE, ...) and `.id` on failure. */
   startTorrent: (
     magnetUri: string,
@@ -747,6 +749,7 @@ export const EngineProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         undoRemove,
         notice,
         dismissNotice,
+        showNotice,
         startTorrent,
         addTorrent,
         resolveMetadata,

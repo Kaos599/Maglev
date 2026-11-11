@@ -2,6 +2,7 @@ package com.maglev.engine
 
 import android.app.ActivityManager
 import android.content.Context
+import android.media.MediaScannerConnection
 import android.content.Intent
 import android.os.StatFs
 import android.os.SystemClock
@@ -19,6 +20,7 @@ import com.maglev.engine.service.Notifications
 import com.maglev.engine.service.TransferSummary
 import com.maglev.engine.storage.FileActions
 import com.maglev.engine.storage.SafStorageManager
+import com.maglev.engine.storage.MediaScanPaths
 import com.maglev.engine.storage.StorageManager
 import com.maglev.engine.util.Json
 import com.maglev.engine.util.TorrentFetcher
@@ -88,6 +90,9 @@ object EngineHost {
     @Volatile private var initialized = false
     private var pollJob: Job? = null
     private val prevFinished = HashMap<String, Boolean>()
+    private val prevState = HashMap<String, String?>()
+    /** Info-hashes already handed to the media scanner for their current completion (contract 12.2). */
+    private val mediaScanned = ConcurrentHashMap.newKeySet<String>()
     private val pollLock = Any()
     private var initOnlySince = 0L
     private val cancelledCopies = ConcurrentHashMap.newKeySet<String>()
@@ -522,17 +527,65 @@ object EngineHost {
                 val id = t["id"] as? String ?: continue
                 val finished = isFinished(t)
                 val prev = prevFinished[id]
-                if (t["state"] == "DOWNLOADING") sawDownloading = true
+                val state = t["state"] as? String
+                val prevSt = prevState[id]
+                if (state == "DOWNLOADING") sawDownloading = true
                 if (prev == false && finished) {
                     val name = t["name"] as? String ?: id
                     emit("onTorrentCompleted", mapOf("id" to id, "name" to name))
                     if (c != null) Notifications.notifyCompleted(c, id, name)
+                    scanMedia(id, force = false)
                 }
+                // A move changed the files' location: scan the new paths even if this completion was scanned before.
+                if (prevSt == "MOVING" && state != "MOVING" && t["error"] == null && finished) {
+                    scanMedia(id, force = true)
+                }
+                // CHECKING and MOVING can flip `finished` briefly. Only a real un-finish starts a new completion.
+                if (!finished && state != "CHECKING" && state != "MOVING") mediaScanned.remove(id)
                 prevFinished[id] = finished
+                prevState[id] = state
             }
             val alive = torrents.mapNotNull { it["id"] as? String }.toSet()
             prevFinished.keys.retainAll(alive)
+            prevState.keys.retainAll(alive)
+            mediaScanned.retainAll(alive)
         }
+    }
+
+    /**
+     * Makes finished files visible to Photos and music apps (contract 12.2). Public shared storage only.
+     * At most once per completion unless [force] (after a move). Runs on IO because it reads the detail.
+     */
+    private fun scanMedia(id: String, force: Boolean) {
+        val c = ctx ?: return
+        if (!mediaScanned.add(id) && !force) return
+        ioScope.launch {
+            try {
+                val d = call { NativeCore.nativeGetDetail(id) }
+                if (!isOk(d)) return@launch
+                @Suppress("UNCHECKED_CAST")
+                val folder = (d["snapshot"] as? Map<String, Any?>)?.get("output_folder") as? String ?: return@launch
+                val rels = Json.list(d["files"]).filter { it["included"] != false }.mapNotNull { it["path"] as? String }
+                scanPaths(c, folder, rels)
+            } catch (t: Throwable) {
+                Log.w(TAG, "media scan failed", t)
+            }
+        }
+    }
+
+    /** Filters to public storage and asks the system scanner. API 1+, see MediaScannerConnection.scanFile. */
+    private fun scanPaths(c: Context, baseDir: String, rels: List<String>) {
+        val privateRoots = listOfNotNull(
+            StorageManager.stagingDir(c).path,
+            c.getExternalFilesDir(null)?.path,
+            c.filesDir.path,
+            c.cacheDir.path,
+        )
+        val paths = MediaScanPaths.select(
+            baseDir, rels, android.os.Environment.getExternalStorageDirectory().path, privateRoots,
+        )
+        if (paths.isEmpty()) return
+        MediaScannerConnection.scanFile(c, paths.toTypedArray(), null, null)
     }
 
     // endregion
@@ -683,6 +736,11 @@ object EngineHost {
         if (src != source) File(src).delete()
         return res
     }
+
+    /** Polled by the Add screen while a magnet resolves (contract 12.1). Does not wait for the resolve. */
+    fun resolveActivity(infoHash: String): Map<String, Any?> = call { NativeCore.nativeResolveActivity(infoHash) }
+
+    fun cancelResolve(infoHash: String): Map<String, Any?> = call { NativeCore.nativeCancelResolve(infoHash) }
 
     fun addTorrent(source: String, options: Map<String, Any?>): Map<String, Any?> {
         val c = requireCtx()
@@ -1114,9 +1172,11 @@ object EngineHost {
         val detail = call { NativeCore.nativeGetDetail(id) }
         if (!isOk(detail)) return
         var error: String? = null
+        val copiedRels = ArrayList<String>()
         for (f in Json.list(detail["files"])) {
             val rel = f["path"] as? String ?: continue
             if (f["included"] == false) continue
+            copiedRels.add(rel)
             if (Json.long(f["progress_bytes"]) < Json.long(f["length"])) { error = "Not all files are complete yet"; break }
             // null means the target exists with the source's size. A missing source is an error.
             val e = SafStorageManager.copyFileIntoTree(c, tree, rel, File(folder, rel))
@@ -1127,6 +1187,11 @@ object EngineHost {
             StorageManager.markCopied(c, id, folder, tree.toString())
             copyFailedAt.remove(id)
             lastCopyError = null
+            // Only when the tree resolves to a real path. Otherwise the document provider indexes it itself.
+            val treePath = SafStorageManager.treeToPosixPath(tree)
+            if (treePath != null && mediaScanned.add(id)) {
+                try { scanPaths(c, treePath, copiedRels) } catch (t: Throwable) { Log.w(TAG, "media scan failed", t) }
+            }
         } else {
             copyFailedAt[id] = SystemClock.elapsedRealtime()
             lastCopyError = error

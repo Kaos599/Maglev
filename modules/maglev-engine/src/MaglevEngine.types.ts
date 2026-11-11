@@ -92,6 +92,7 @@ export type EngineErrorCode =
   | 'INVALID_SOURCE'
   | 'DUPLICATE'
   | 'METADATA_TIMEOUT'
+  | 'CANCELLED'
   | 'NETWORK'
   | 'NOT_FOUND'
   | 'DISK_FULL'
@@ -101,6 +102,13 @@ export type EngineErrorCode =
   | 'ENGINE_UNAVAILABLE'
   | 'UNSUPPORTED'
   | 'INTERNAL';
+
+/** NATIVE_CONTRACT 12.1. */
+export interface ResolveActivity {
+  peersFound: number;
+  dht: boolean;
+  elapsedMs: number;
+}
 
 export type EngineResult<T = object> =
   | ({ ok: true } & T)
@@ -359,6 +367,10 @@ export interface MaglevEngineApi {
   init(config: NativeConfig): Promise<EngineResult>;
   shutdown(): Promise<EngineResult>;
   resolveMetadata(source: string, timeoutMs: number): Promise<EngineResult<Metadata>>;
+  /** NATIVE_CONTRACT 12.1. Peers seen while a magnet resolves; NOT_FOUND when no resolve is running. */
+  getResolveActivity(infoHash: string): Promise<EngineResult<ResolveActivity>>;
+  /** NATIVE_CONTRACT 12.1. The pending `resolveMetadata` then returns CANCELLED. */
+  cancelResolve(infoHash: string): Promise<EngineResult>;
   addTorrent(source: string, options: AddTorrentOptions): Promise<EngineResult<{ id: string; infoHash: string }>>;
   listTorrents(): Promise<EngineResult<{ torrents: Snapshot[] }>>;
   getDetail(id: string): Promise<EngineResult<Detail>>;

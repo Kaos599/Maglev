@@ -34,6 +34,8 @@ object NativeCore {
     @JvmStatic external fun nativeInit(configJson: String, sessionDir: String, defaultDownloadDir: String): String
     @JvmStatic external fun nativeShutdown(): String
     @JvmStatic external fun nativeResolveMetadata(source: String, timeoutMs: Long): String
+    @JvmStatic external fun nativeResolveActivity(infoHash: String): String
+    @JvmStatic external fun nativeCancelResolve(infoHash: String): String
     @JvmStatic external fun nativeAddTorrent(source: String, optionsJson: String): String
     @JvmStatic external fun nativeListTorrents(): String
     @JvmStatic external fun nativeGetDetail(id: String): String

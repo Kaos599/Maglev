@@ -102,6 +102,13 @@ class MaglevEngineModule : Module() {
                 promise.resolve(Json.camelize(r))
             }
         }
+        // Off the serialized engine thread, so polling and cancelling work while resolveMetadata blocks.
+        AsyncFunction("getResolveActivity") { infoHash: String, promise: Promise ->
+            io(promise) { EngineHost.resolveActivity(infoHash) }
+        }
+        AsyncFunction("cancelResolve") { infoHash: String, promise: Promise ->
+            io(promise) { EngineHost.cancelResolve(infoHash) }
+        }
         AsyncFunction("addTorrent") { source: String, options: Map<String, Any?>?, promise: Promise ->
             io(promise) { EngineHost.addTorrent(source, options ?: emptyMap()) }
         }

@@ -138,6 +138,7 @@ jobs:
           cd android
           ./gradlew :maglev-engine:testDebugUnitTest --stacktrace
 
+  contracts:
     name: Contract tests
     runs-on: ubuntu-latest
     steps:
