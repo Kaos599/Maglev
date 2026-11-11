@@ -21,21 +21,20 @@ function check(name, cond, extra) {
 
 const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
-// A jargon hit is a chip label used inside another entry's plain text without
-// a parenthesised explanation right after it, e.g. "WEB-DL (taken as sent)".
-function unexplainedLabels(plain, ownLabel, labels) {
+// A bracketed re-definition is a chip label of another entry followed by an
+// opening bracket, e.g. "HDR10 (the most common format)". The UI links other
+// terms as chips, so a plain label needs no bracket; a bracket after one is flagged.
+function bracketedLabels(text, ownLabel, labels) {
   const hits = [];
   for (const label of labels) {
     if (label === ownLabel) continue;
-    const re = new RegExp(`(?<![A-Za-z0-9.+-])${escapeRe(label)}(?![A-Za-z0-9+-])`, 'g');
-    let m;
-    while ((m = re.exec(plain)) !== null) {
-      const after = plain.slice(m.index + label.length);
-      if (!/^ \(/.test(after)) hits.push(label);
-    }
+    const re = new RegExp(`(?<![A-Za-z0-9.+-])${escapeRe(label)}(?![A-Za-z0-9+-])\\s*\\(`, 'g');
+    if (re.test(text)) hits.push(label);
   }
   return hits;
 }
+
+const allText = (e) => [e.label, e.plain, e.tradeoff ?? '', e.phoneNote ?? ''].join(' ');
 
 const wordCount = (s) => s.trim().split(/\s+/).filter(Boolean).length;
 
@@ -78,10 +77,41 @@ async function main() {
   }
 
   const chipLabels = entryKeys.filter((k) => GLOSSARY[k].chip).map((k) => GLOSSARY[k].label);
+  console.log('glossary: no bracketed re-definitions');
   for (const k of entryKeys) {
     const e = GLOSSARY[k];
-    const hits = unexplainedLabels(e.plain, e.label, chipLabels);
-    check(`${k}: no unexplained jargon label in plain`, hits.length === 0, hits);
+    const hits = bracketedLabels(allText(e), e.label, chipLabels);
+    check(`${k}: no bracket explaining another term`, hits.length === 0, hits);
+    check(`${k}: no brackets in plain`, !e.plain.includes('('), e.plain);
+  }
+
+  console.log('glossary: aka fields');
+  const akaKeys = entryKeys.filter((k) => GLOSSARY[k].aka !== undefined);
+  check('some entries carry aka', akaKeys.length >= 8, akaKeys.length);
+  for (const k of akaKeys) {
+    const { aka, label } = GLOSSARY[k];
+    const ok = Array.isArray(aka) && aka.every((a) => typeof a === 'string' && a.trim().length > 0) &&
+      new Set(aka).size === aka.length && !aka.includes(label);
+    check(`${k}: aka is a list of distinct non-empty names other than the label`, ok, aka);
+  }
+  const hasAka = (k, want) => (GLOSSARY[k].aka ?? []).includes(want);
+  check('hevc aka is HEVC (x265 is an encoder with its own entry)', hasAka('hevc', 'HEVC') && !hasAka('hevc', 'x265'));
+  check('avc aka has AVC', hasAka('avc', 'AVC'));
+  check('dv aka has DoVi and DV', hasAka('dv', 'DoVi') && hasAka('dv', 'DV'));
+
+  console.log('glossary: labels');
+  const pinned = { remux: 'REMUX', mpeg2: 'MPEG-2', vc1: 'VC-1', avc: 'H.264', hevc: 'H.265', webdl: 'WEB-DL', webrip: 'WEBRip', bluray: 'BluRay' };
+  for (const [k, label] of Object.entries(pinned)) {
+    check(`${k}: label is ${label}`, GLOSSARY[k].label === label, GLOSSARY[k].label);
+  }
+
+  console.log('glossary: rewrite rules');
+  for (const k of entryKeys) {
+    const e = GLOSSARY[k];
+    check(`${k}: no lossy`, !/lossy/i.test(allText(e)));
+    check(`${k}: no seeder wording (use sharing)`, !/seeder/i.test(allText(e)));
+    check(`${k}: no hardware or software decoding phrasing`, !/(hardware|software) decod/i.test(allText(e)));
+    check(`${k}: no first person`, !/\b(i|i'm|i'd|we|we're|me|my|mine|our|ours|us|let's)\b/i.test(allText(e)));
   }
 
   console.log('glossary: wording');
