@@ -33,6 +33,16 @@ so the live list can be replaced under `lock_write`. It is rebuilt every time th
 6. `src/torrent_state/live/mod.rs:721-726` (`impl TorrentStateLive`)
    New `pub(crate) fn set_file_priority_order(&self, order)`: `lock_write`, then replaces `file_priorities`.
 
+12. `src/limits.rs:15-26` (new `CHUNK_MAX`, `burst_for`) and `src/limits.rs:36` (`Limit::new_inner`)
+    The quota is `Quota::per_second(bps).allow_burst(burst_for(bps))` instead of `Quota::per_second(bps)`.
+    `burst_for(bps) = min(bps, max(CHUNK_MAX, bps / 8))`, `CHUNK_MAX` = 16 KiB. Why: `per_second` sets the burst to one
+    full second of quota, so a 512 KB/s limit averaged 630 KB/s with peaks near 1 MB/s on device. The burst is now about
+    125 ms of traffic. It stays at least one chunk (the largest `until_n_ready` request: `CHUNK_SIZE` = 16 KiB, used at
+    `live/mod.rs:1752,1758,483,492`), so governor never returns `InsufficientCapacity`. Applies to session and per-torrent limits
+    (same struct). Sources: https://docs.rs/governor/0.10.0/governor/struct.Quota.html (`per_second`, `allow_burst`),
+    https://docs.rs/governor/0.10.0/governor/struct.RateLimiter.html (`until_n_ready` fails when n > capacity).
+    Test: `torrent_limits::tests::burst_is_strict_but_never_below_one_chunk` in maglev-core (imports `librqbit::limits::burst_for`).
+
 Behaviour notes: the order only changes which file's pieces are requested first. It does not weight bandwidth.
 Already-requested pieces are not cancelled. Files that are not selected (`only_files`) are skipped by
 `iter_queued_pieces` through the `queue_pieces` filter, wherever they sit in the list.
@@ -64,8 +74,8 @@ Checked, no patch needed: the DOWNLOAD path already acquires the per-torrent lim
     New `pub(crate) fn set_ratelimits(&self, cfg: crate::limits::LimitsConfig)`: sets the download and upload bps on the live limiter.
 
 Behaviour notes: `None` in `LimitsConfig` means "no per-torrent limit" in that direction. Session limits still apply on top.
-The limiter's burst equals its per-second quota and librqbit asks for one 16 KiB chunk at a time, so a quota under
+The limiter's burst is now `burst_for(bps)` (hunk 12) and librqbit asks for one 16 KiB chunk at a time, so a quota under
 16 KiB/s makes the limiter refuse the request and ends the peer task. Maglev raises smaller non-zero values to 16 KiB/s
 before calling `set_ratelimits` (`src/torrent_limits.rs`).
 
-To rebase on a new librqbit version: re-apply these eleven hunks (`grep -rn "MAGLEV PATCH" src`).
+To rebase on a new librqbit version: re-apply these twelve hunks (`grep -rn "MAGLEV PATCH" src`).

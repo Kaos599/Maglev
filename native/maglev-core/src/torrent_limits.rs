@@ -195,4 +195,25 @@ mod tests {
         assert!(LimitsStore::load(&dir).get("abc").is_none());
         let _ = std::fs::remove_dir_all(&dir);
     }
+
+    #[test]
+    fn burst_is_strict_but_never_below_one_chunk() {
+        use librqbit::limits::{burst_for, CHUNK_MAX};
+        use std::num::NonZeroU32;
+        let b = |v: u32| burst_for(NonZeroU32::new(v).unwrap()).get();
+        // at or below the floor: clamped to the rate itself (never above one second of quota)
+        assert_eq!(b(1), 1);
+        assert_eq!(b(MIN_LIMIT_BPS as u32), 16 * 1024);
+        // slightly above the floor: one chunk is still the minimum
+        assert_eq!(b(100 * 1024), CHUNK_MAX);
+        // 512 KiB/s: 64 KiB, an eighth of a second, not a full 512 KiB
+        assert_eq!(b(512 * 1024), 64 * 1024);
+        // very large values: still an eighth, no overflow
+        assert_eq!(b(u32::MAX), u32::MAX / 8);
+        // never below one chunk once the rate is, and never above the rate
+        for v in [16 * 1024, 20_000, 131_072, 524_288, 10_000_000, u32::MAX] {
+            let x = b(v);
+            assert!(x >= CHUNK_MAX.min(v) && x <= v);
+        }
+    }
 }

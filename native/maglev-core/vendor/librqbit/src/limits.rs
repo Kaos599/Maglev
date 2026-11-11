@@ -12,6 +12,19 @@ pub struct LimitsConfig {
     pub download_bps: Option<NonZeroU32>,
 }
 
+/// MAGLEV PATCH: largest single `until_n_ready` request librqbit makes (one BitTorrent chunk,
+/// `librqbit_core::constants::CHUNK_SIZE` = 16 KiB). The burst must never be below this or governor
+/// returns `InsufficientCapacity`.
+pub const CHUNK_MAX: u32 = 16 * 1024;
+
+/// MAGLEV PATCH: token-bucket burst for a limit of `bps` bytes per second.
+/// `Quota::per_second(bps)` alone allows a full second of burst, which made a 512 KB/s limit peak near
+/// 1 MB/s. The burst is `max(CHUNK_MAX, bps / 8)` (about 125 ms of traffic), clamped to `bps`.
+pub fn burst_for(bps: NonZeroU32) -> NonZeroU32 {
+    let b = CHUNK_MAX.max(bps.get() / 8).min(bps.get());
+    NonZeroU32::new(b).unwrap_or(bps)
+}
+
 struct Limit {
     limiter: ArcSwapOption<RateLimiter>,
     current_bps: std::sync::atomic::AtomicU32,
@@ -20,7 +33,7 @@ struct Limit {
 impl Limit {
     fn new_inner(bps: Option<NonZeroU32>) -> Option<Arc<RateLimiter>> {
         let bps = bps?;
-        Some(Arc::new(RateLimiter::direct(Quota::per_second(bps))))
+        Some(Arc::new(RateLimiter::direct(Quota::per_second(bps).allow_burst(burst_for(bps)))))
     }
 
     fn new(bps: Option<NonZeroU32>) -> Self {
