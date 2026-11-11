@@ -110,3 +110,28 @@ Every method is async and resolves the decoded Result (camelCase). Events: `onTe
 | Permissions | `getPermissionStatus()` → `{notifications:"granted"|"denied"|"undetermined", batteryUnrestricted:bool, legacyStorage:"granted"|"denied"|"n/a"}`; `requestNotifications()`; `openBatterySettings()`; `requestLegacyStorage()` |
 | Governance | `setGovernance({wifiOnly, ssidWhitelist, chargingOnly, batteryCutoffPct, autoExitOnComplete})`. Kotlin watches ConnectivityManager and BatteryManager and calls `nativeSetTransfersAllowed`. |
 | Service | Started by Kotlin when any torrent is `DOWNLOADING` or `SEEDING`. Stopped when none is. JS never manages the service. |
+
+## 7. Known engine gaps (librqbit 9.1, verified against v9.1.0 source)
+
+UI rule: if a setting is "stored only", **hide it or show it as unavailable**. Never present it as working (AGENTS.md §4.6).
+
+| Item | Status | Plan |
+|---|---|---|
+| Protocol encryption (MSE/PE) | Not in librqbit | Hide the setting (Phase 3: revisit upstream) |
+| PEX toggle | Always on, no switch | Hide the toggle |
+| Sequential download | No option; streaming reads prioritise pieces | Replace with **Stream** (uses the stream server) |
+| Tracker status | Not exposed; always `unknown` | Show the tracker URL only, no status badge |
+| Peer progress | Not exposed (`0.0`) | Hide per-peer progress |
+| Recheck | Implemented as forget + re-add from bytes | OK, but show "Checking files…" |
+| **HTTPS (trackers, `.torrent` URLs)** | reqwest 0.13 `rustls` uses rustls-platform-verifier, which needs Android JNI init with a Context | **P0 follow-up.** Either init the verifier via a new JNI entry, or switch to a webpki-roots verifier. Until then Kotlin downloads `https://` `.torrent` URLs and passes a file path. |
+| Proxy | SOCKS5 covers peer TCP + HTTP; DHT/UDP trackers bypass it | Settings copy must say so |
+| Listener | TCP + IPv4 only | uTP is opt-in upstream (Phase 3) |
+| Logs | No subscriber on Android | Phase 2: `android_logger` behind a debug flag |
+
+Additions beyond §2–§6, agreed during Wave 1:
+- `nativeInit` returns `{ok, stream_port, torrents}`. An empty or `"null"` config means "use the last persisted config".
+- Magnet adds return immediately. The torrent shows `INITIALIZING` until metadata arrives, survives a restart, and goes to `ERROR` on failure. `.torrent` file/URL adds resolve synchronously (45 s).
+- `paused_by` is an arbitrary string. `user` and `seed_limit` are reserved; everything else is a governance tag (for example `fgs_timeout`).
+- `max_active_downloads` / `max_active_seeds` of `0` mean unlimited. A user resume of a `seed_limit` torrent waives the limits for that torrent.
+- Multi-file torrents with a custom `output_folder` go into `<folder>/<torrent name>/`.
+- Telemetry event payload: `{ok, torrents:[…], serviceBlocked}`. Storage status: `{path, fallback, safLost, mode, uri, displayName, copyError?}`.
