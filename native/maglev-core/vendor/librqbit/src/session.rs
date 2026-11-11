@@ -1377,6 +1377,7 @@ impl Session {
                 magnet_name: name,
                 client_name_and_version: self.client_name_and_version.clone(),
                 file_priority_order: Default::default(), // MAGLEV PATCH
+                ratelimits_override: Default::default(), // MAGLEV PATCH
             });
 
             let initializing = Arc::new(TorrentStateInitializing::new(

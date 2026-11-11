@@ -41,9 +41,15 @@ use crate::scheduler::{
     accumulate_seed_ms, derive_state, plan, uploaded_total, Action, RqState, StateInputs, TorrentFacts, TorrentState,
     PAUSED_BY_SEED_LIMIT, PAUSED_BY_USER,
 };
+use crate::readiness::{file_readiness, have_piece};
+use crate::relocate::{
+    check_destination, destination_folder, execute_moves, move_error, plan_moves, probe_writable,
+    remove_empty_dirs, rollback, MoveProgress,
+};
 use crate::simd::{downsample_bitfield, MATRIX_SIZE};
 use crate::source::{check_supported, parse_source, Source};
-use crate::streaming::StreamServer;
+use crate::streaming::{mime_for_extension, StreamServer};
+use crate::torrent_limits::{parse_limits, LimitsStore, TorrentLimits};
 use crate::types::{
     subfolder_for, AddOptions, Detail, ErrorInfo, FileDetail, FileEntry, Metadata, PeerDetail,
     Snapshot, TrackerDetail,
@@ -66,6 +72,51 @@ fn now_secs() -> i64 {
 
 fn nonzero_bps(v: u64) -> Option<NonZeroU32> {
     NonZeroU32::new(v.min(u32::MAX as u64) as u32)
+}
+
+/// A stored per-torrent limit as librqbit's config. 0 becomes `None` (no limit).
+fn limits_config(l: TorrentLimits) -> LimitsConfig {
+    LimitsConfig {
+        download_bps: nonzero_bps(l.down_bps),
+        upload_bps: nonzero_bps(l.up_bps),
+    }
+}
+
+/// What the snapshot builder needs to show a torrent while its files are moving.
+struct MoveEntry {
+    progress: Arc<MoveProgress>,
+    name: String,
+    total_bytes: u64,
+    progress_bytes: u64,
+    finished: bool,
+    folder: String,
+}
+
+/// Everything the move task needs, gathered while the call is still synchronous.
+struct MoveJob {
+    id: String,
+    hash: Id20,
+    handle: Handle20,
+    torrent_bytes: Bytes,
+    only_files: Option<Vec<usize>>,
+    old_folder: PathBuf,
+    new_folder: PathBuf,
+    own_folder: bool,
+    rels: Vec<PathBuf>,
+    moves: Vec<crate::relocate::FileMove>,
+    progress: Arc<MoveProgress>,
+}
+
+/// Removes a torrent's "moving" marker when the move task ends, even if it panics.
+struct MoveGuard {
+    engine: Arc<MaglevEngine>,
+    id: String,
+}
+
+impl Drop for MoveGuard {
+    fn drop(&mut self) {
+        self.engine.moves.lock().remove(&self.id);
+    }
 }
 
 /// librqbit reads blocklists through URLs; a `file://` URL makes it read the local file.
@@ -161,6 +212,10 @@ pub struct MaglevEngine {
     /// "Download first" choices, persisted in `maglev-priorities.json`.
     priorities: Mutex<PriorityStore>,
     reannounce_limiter: Mutex<ReannounceLimiter>,
+    /// Per-torrent speed limits, persisted in `maglev-limits.json`.
+    limits: Mutex<LimitsStore>,
+    /// Torrents whose files are being moved right now (state `MOVING`).
+    moves: Mutex<HashMap<String, Arc<MoveEntry>>>,
 }
 
 fn build_options(cfg: &NativeConfig, session_dir: &Path) -> SessionOptions {
@@ -242,6 +297,7 @@ impl MaglevEngine {
 
         let mut meta = MetaStore::load(&session_dir);
         let priorities = PriorityStore::load(&session_dir);
+        let limits = LimitsStore::load(&session_dir);
         let trimmed = config_json.trim();
         let mut config_warning: Option<String> = None;
         let cfg = if trimmed.is_empty() || trimmed == "null" {
@@ -327,9 +383,12 @@ impl MaglevEngine {
             last_seed_tick: Mutex::new(Instant::now()),
             priorities: Mutex::new(priorities),
             reannounce_limiter: Mutex::new(ReannounceLimiter::new(REANNOUNCE_MIN_INTERVAL)),
+            limits: Mutex::new(limits),
+            moves: Mutex::new(HashMap::new()),
         });
 
         engine.restore_priorities();
+        engine.restore_limits();
         engine.resume_pending_adds();
         engine.start_tick_loop();
         // Apply queue and governance rules once before the first list call.
@@ -423,6 +482,15 @@ impl MaglevEngine {
         } else {
             uploaded as f64 / stats.progress_bytes as f64
         };
+        let (down_limit_bps, up_limit_bps) = self.limit_pair(id);
+        // MOVING is set by the engine and wins over everything librqbit says.
+        let moving = self.moves.lock().get(id).cloned();
+        let state = if moving.is_some() {
+            TorrentState::Moving
+        } else {
+            state
+        };
+        let error = if moving.is_some() { None } else { error };
         Snapshot {
             id: id.to_string(),
             name: h.name().unwrap_or_else(|| "Unnamed torrent".to_string()),
@@ -442,10 +510,54 @@ impl MaglevEngine {
             added_at: m.added_at,
             output_folder: h.output_folder().to_string_lossy().into_owned(),
             error,
+            down_limit_bps,
+            up_limit_bps,
+            move_progress: moving.map(|e| e.progress.fraction()),
+        }
+    }
+
+    /// The stored per-torrent limits as `(down, up)`; `(0, 0)` when there are none.
+    fn limit_pair(&self, id: &str) -> (u64, u64) {
+        match self.limits.lock().get(id) {
+            Some(l) => (l.down_bps, l.up_bps),
+            None => (0, 0),
+        }
+    }
+
+    /// A torrent that is mid-move and has no librqbit handle for a moment (between forget and re-add).
+    fn moving_snapshot(&self, id: &str, m: &TorrentMeta, e: &MoveEntry) -> Snapshot {
+        let (down_limit_bps, up_limit_bps) = self.limit_pair(id);
+        Snapshot {
+            id: id.to_string(),
+            name: e.name.clone(),
+            state: TorrentState::Moving,
+            paused_by: m.paused_by.clone(),
+            finished: e.finished,
+            progress_bytes: e.progress_bytes,
+            total_bytes: e.total_bytes,
+            uploaded_bytes: m.uploaded_base.saturating_add(m.last_uploaded_seen),
+            down_bps: 0,
+            up_bps: 0,
+            peers_live: 0,
+            peers_seen: 0,
+            eta_secs: -1,
+            ratio: if e.progress_bytes == 0 {
+                0.0
+            } else {
+                m.uploaded_base.saturating_add(m.last_uploaded_seen) as f64 / e.progress_bytes as f64
+            },
+            seeding_secs: (m.seeding_ms / 1000) as i64,
+            added_at: m.added_at,
+            output_folder: e.folder.clone(),
+            error: None,
+            down_limit_bps,
+            up_limit_bps,
+            move_progress: Some(e.progress.fraction()),
         }
     }
 
     fn pending_snapshot(&self, id: &str, m: &TorrentMeta, p: &PendingAdd) -> Snapshot {
+        let (down_limit_bps, up_limit_bps) = self.limit_pair(id);
         let state = derive_state(StateInputs {
             rq: RqState::Paused,
             finished: false,
@@ -479,6 +591,9 @@ impl MaglevEngine {
                 .clone()
                 .unwrap_or_else(|| self.default_dir.to_string_lossy().into_owned()),
             error: p.error.clone(),
+            down_limit_bps,
+            up_limit_bps,
+            move_progress: None,
         }
     }
 
@@ -506,6 +621,21 @@ impl MaglevEngine {
                 out.push(self.pending_snapshot(id, m, p));
             }
         }
+        // A torrent between forget and re-add has no handle for a moment; keep showing it.
+        let moving: Vec<(String, Arc<MoveEntry>)> = self
+            .moves
+            .lock()
+            .iter()
+            .map(|(k, v)| (k.clone(), v.clone()))
+            .collect();
+        for (id, e) in moving {
+            if seen.contains(&id) {
+                continue;
+            }
+            if let Some(m) = meta.get(&id) {
+                out.push(self.moving_snapshot(&id, m, &e));
+            }
+        }
         out.sort_by(|a, b| a.added_at.cmp(&b.added_at).then_with(|| a.id.cmp(&b.id)));
         Ok(serde_json::json!({ "torrents": out }))
     }
@@ -517,6 +647,17 @@ impl MaglevEngine {
             None => {
                 let meta = self.meta.lock();
                 let m = meta.get(&id).ok_or_else(EngineError::not_found)?;
+                let moving = self.moves.lock().get(&id).cloned();
+                if let Some(e) = moving {
+                    return Ok(Detail {
+                        snapshot: self.moving_snapshot(&id, m, &e),
+                        files: vec![],
+                        peers: vec![],
+                        trackers: vec![],
+                        piece_count: 0,
+                        piece_length: 0,
+                    });
+                }
                 let p = m.pending.as_ref().ok_or_else(EngineError::not_found)?;
                 return Ok(Detail {
                     snapshot: self.pending_snapshot(&id, m, p),
@@ -544,14 +685,24 @@ impl MaglevEngine {
             .get(&id)
             .map(|f| f.to_vec())
             .unwrap_or_default();
+        // The piece bitfield, for stream readiness. Empty while the torrent is still checking.
+        let have_raw: Vec<u8> = self
+            .api
+            .api_dump_haves(TorrentIdOrHash::Hash(hash))
+            .map(|(bf, _)| bf.as_raw_slice().to_vec())
+            .unwrap_or_default();
         let files: Vec<FileDetail> = h
             .with_metadata(|md| {
+                let piece_length = md.lengths().default_piece_length() as u64;
                 md.file_infos
                     .iter()
                     .enumerate()
                     .filter(|(_, fi)| !fi.attrs.padding)
                     .map(|(i, fi)| {
                         let included = only.as_ref().map(|o| o.contains(&i)).unwrap_or(true);
+                        let ready = file_readiness(fi.offset_in_torrent, fi.len, piece_length, |p| {
+                            have_piece(&have_raw, p)
+                        });
                         FileDetail {
                             index: i as u32,
                             path: fi.relative_filename.to_string_lossy().into_owned(),
@@ -559,6 +710,8 @@ impl MaglevEngine {
                             progress_bytes: stats.file_progress.get(i).copied().unwrap_or(0),
                             included,
                             priority: priority_of_file(i as u32, included, &first),
+                            stream_ready_bytes: ready.stream_ready_bytes,
+                            tail_ready: ready.tail_ready,
                         }
                     })
                     .collect()
@@ -665,13 +818,30 @@ impl MaglevEngine {
         let (id, hash) = Self::parse_id(id)?;
         let h = self.find(hash).ok_or_else(EngineError::not_found)?;
         let idx = usize::try_from(file_index).map_err(|_| EngineError::not_found())?;
-        let ok = h
-            .with_metadata(|m| idx < m.file_infos.len())
-            .unwrap_or(false);
-        if !ok {
-            return Err(EngineError::not_found());
+        // (is a padding file, MIME type from the extension); None when the index is out of range.
+        let file: Option<(bool, &'static str)> = h
+            .with_metadata(|m| {
+                m.file_infos.get(idx).map(|fi| {
+                    (
+                        fi.attrs.padding,
+                        fi.relative_filename
+                            .extension()
+                            .and_then(|e| e.to_str())
+                            .map(mime_for_extension)
+                            .unwrap_or("application/octet-stream"),
+                    )
+                })
+            })
+            .map_err(|_| EngineError::not_found())?;
+        let (padding, mime) = file.ok_or_else(EngineError::not_found)?;
+        let included = h.only_files().map(|o| o.contains(&idx)).unwrap_or(true);
+        if padding || !included {
+            return Err(EngineError::new(
+                ErrorCode::Unsupported,
+                "This file is skipped. Include it to play it.",
+            ));
         }
-        Ok(serde_json::json!({ "url": self.stream.url(&id, idx as u32) }))
+        Ok(serde_json::json!({ "url": self.stream.url(&id, idx as u32), "mime": mime }))
     }
 
     // ---- adding ---------------------------------------------------------------------------------
@@ -809,6 +979,17 @@ impl MaglevEngine {
                     handle.set_file_priority_order(p.order);
                     self.remember_first_files(&r.info_hash, p.first);
                 }
+                if opts.down_limit_bps.is_some() || opts.up_limit_bps.is_some() {
+                    self.remember_limits(
+                        &r.info_hash,
+                        TorrentLimits::new(
+                            opts.down_limit_bps.unwrap_or(0),
+                            opts.up_limit_bps.unwrap_or(0),
+                        ),
+                    );
+                }
+                // Covers limits given with the add and limits stored while a magnet was still resolving.
+                self.apply_saved_limits(&r.info_hash, &handle);
                 Ok(())
             }
             Ok(AddTorrentResponse::AlreadyManaged(_, _)) => {
@@ -869,6 +1050,15 @@ impl MaglevEngine {
                 };
                 self.meta.lock().insert(&id, initial_meta(Some(pending.clone())));
                 self.save_meta();
+                if opts.down_limit_bps.is_some() || opts.up_limit_bps.is_some() {
+                    self.remember_limits(
+                        &id,
+                        TorrentLimits::new(
+                            opts.down_limit_bps.unwrap_or(0),
+                            opts.up_limit_bps.unwrap_or(0),
+                        ),
+                    );
+                }
                 self.spawn_pending(id.clone(), pending);
                 Ok(AddResult {
                     info_hash: id.clone(),
@@ -894,7 +1084,7 @@ impl MaglevEngine {
                     self.save_meta();
                     return Err(e);
                 }
-                let _ = self.run(OP_TIMEOUT, self.tick());
+                let _ = self.run(OP_TIMEOUT, self.tick_soon());
                 Ok(AddResult {
                     info_hash: id.clone(),
                     id,
@@ -923,6 +1113,9 @@ impl MaglevEngine {
                 output_folder: pending.output_folder.clone(),
                 sequential: pending.sequential,
                 file_priorities: pending.file_priorities.clone(),
+                // Limits for a magnet were saved to the sidecar when it was added.
+                down_limit_bps: None,
+                up_limit_bps: None,
             };
             self.add_resolved(&resolved, &opts).await
         }
@@ -980,6 +1173,7 @@ impl MaglevEngine {
 
     pub fn pause(&self, id: &str) -> Result<(), EngineError> {
         let (id, hash) = Self::parse_id(id)?;
+        self.reject_if_moving(&id)?;
         let h = self.find(hash);
         {
             let mut meta = self.meta.lock();
@@ -1007,6 +1201,7 @@ impl MaglevEngine {
 
     pub fn resume(&self, id: &str) -> Result<(), EngineError> {
         let (id, hash) = Self::parse_id(id)?;
+        self.reject_if_moving(&id)?;
         let h = self.find(hash);
         if let Some(hh) = &h {
             if let Some(err) = self.files_missing(&id, hh) {
@@ -1053,13 +1248,66 @@ impl MaglevEngine {
                 }
                 Ok(())
             })??;
-            self.run(OP_TIMEOUT, self.tick())?;
+            self.run(OP_TIMEOUT, self.tick_soon())?;
         }
         Ok(())
     }
 
+    /// Adds a torrent back (paused, reusing the files on disk) after a forget, and gives the new handle
+    /// the saved download order and speed limits. Shared by Recheck and Move. The caller holds the tick lock.
+    async fn readd_at(
+        &self,
+        id: &str,
+        bytes: Bytes,
+        only_files: Option<Vec<usize>>,
+        folder: String,
+    ) -> Result<(), EngineError> {
+        let opts = AddTorrentOptions {
+            paused: true,
+            overwrite: true,
+            only_files,
+            output_folder: Some(folder),
+            ..Default::default()
+        };
+        match self
+            .session
+            .add_torrent(AddTorrent::from_bytes(bytes), Some(opts))
+            .await
+        {
+            Ok(AddTorrentResponse::Added(_, new_handle)) => {
+                // The re-added torrent is a new handle; give it its saved settings back.
+                self.apply_saved_order(id, &new_handle);
+                self.apply_saved_limits(id, &new_handle);
+                Ok(())
+            }
+            Ok(_) => Ok(()),
+            Err(e) => Err(classify_add_error(&format!("{e:#}"))),
+        }
+    }
+
+    /// User actions are refused while a torrent's files are moving.
+    fn reject_if_moving(&self, id: &str) -> Result<(), EngineError> {
+        if self.moves.lock().contains_key(id) {
+            return Err(EngineError::new(
+                ErrorCode::Unsupported,
+                "This torrent is moving. Wait for the move to finish.",
+            ));
+        }
+        Ok(())
+    }
+
+    /// A governance pass for callers that just changed something. Skipped while a move holds the
+    /// tick lock, so the caller is not blocked for the whole move; the loop's next pass catches up.
+    async fn tick_soon(&self) {
+        let idle = self.moves.lock().is_empty();
+        if idle {
+            self.tick().await;
+        }
+    }
+
     pub fn recheck(&self, id: &str) -> Result<(), EngineError> {
         let (id, hash) = Self::parse_id(id)?;
+        self.reject_if_moving(&id)?;
         let h = self.find(hash).ok_or_else(EngineError::not_found)?;
         let bytes = h
             .with_metadata(|m| m.torrent_bytes.clone())
@@ -1077,26 +1325,7 @@ impl MaglevEngine {
                     let (code, message) = classify_runtime_error(&format!("{e:#}"));
                     EngineError::new(code, message)
                 })?;
-            let opts = AddTorrentOptions {
-                paused: true,
-                overwrite: true,
-                only_files,
-                output_folder: Some(folder),
-                ..Default::default()
-            };
-            let added = match self
-                .session
-                .add_torrent(AddTorrent::from_bytes(bytes), Some(opts))
-                .await
-            {
-                Ok(AddTorrentResponse::Added(_, new_handle)) => {
-                    // The re-added torrent is a new handle; give it the saved download order back.
-                    self.apply_saved_order(&id, &new_handle);
-                    Ok(())
-                }
-                Ok(_) => Ok(()),
-                Err(e) => Err(classify_add_error(&format!("{e:#}"))),
-            };
+            let added = self.readd_at(&id, bytes, only_files, folder).await;
             // added_at, paused_by, uploaded totals and seeding time are kept; only error state resets.
             self.meta.lock().update(&id, |m| {
                 m.last_error = None;
@@ -1106,12 +1335,13 @@ impl MaglevEngine {
             added
         })??;
         self.save_meta();
-        let _ = self.run(OP_TIMEOUT, self.tick());
+        let _ = self.run(OP_TIMEOUT, self.tick_soon());
         Ok(())
     }
 
     pub fn delete(&self, id: &str, delete_files: bool) -> Result<(), EngineError> {
         let (id, hash) = Self::parse_id(id)?;
+        self.reject_if_moving(&id)?;
         if let Some(t) = self.pending_tasks.lock().remove(&id) {
             t.abort();
         }
@@ -1137,6 +1367,7 @@ impl MaglevEngine {
         }
         let in_meta = self.meta.lock().remove(&id).is_some();
         self.forget_priorities(&id);
+        self.forget_limits(&id);
         self.reannounce_limiter.lock().release(&id);
         self.peer_cache.lock().retain(|k, _| !k.starts_with(&format!("{id}|")));
         self.save_meta();
@@ -1147,7 +1378,8 @@ impl MaglevEngine {
     }
 
     pub fn set_included_files(&self, id: &str, indices_json: &str) -> Result<(), EngineError> {
-        let (_, hash) = Self::parse_id(id)?;
+        let (id, hash) = Self::parse_id(id)?;
+        self.reject_if_moving(&id)?;
         let h = self.find(hash).ok_or_else(EngineError::not_found)?;
         let indices: Vec<u32> = serde_json::from_str(indices_json)
             .map_err(|_| EngineError::internal("The file selection couldn't be read"))?;
@@ -1162,7 +1394,7 @@ impl MaglevEngine {
                 }
             })
         })??;
-        let _ = self.run(OP_TIMEOUT, self.tick());
+        let _ = self.run(OP_TIMEOUT, self.tick_soon());
         Ok(())
     }
 
@@ -1207,6 +1439,7 @@ impl MaglevEngine {
     /// `nativeSetFilePriorities`: the include set and the download order change together.
     pub fn set_file_priorities(&self, id: &str, json: &str) -> Result<(), EngineError> {
         let (id, hash) = Self::parse_id(id)?;
+        self.reject_if_moving(&id)?;
         let h = self.find(hash).ok_or_else(EngineError::not_found)?;
         let entries = parse_priorities(json)?;
         let (valid, file_count): (Vec<usize>, usize) = h
@@ -1249,7 +1482,7 @@ impl MaglevEngine {
         // Only reached when the include set is in place, so the two never disagree.
         h.set_file_priority_order(plan.order);
         self.remember_first_files(&id, plan.first);
-        let _ = self.run(OP_TIMEOUT, self.tick());
+        let _ = self.run(OP_TIMEOUT, self.tick_soon());
         Ok(())
     }
 
@@ -1276,6 +1509,7 @@ impl MaglevEngine {
     /// torrent paused. `paused_by`, `queued`, `added_at` and the seeding clock are not touched.
     pub fn reannounce(&self, id: &str) -> Result<(), EngineError> {
         let (id, hash) = Self::parse_id(id)?;
+        self.reject_if_moving(&id)?;
         let h = self.find(hash).ok_or_else(EngineError::not_found)?;
         let not_running = || {
             EngineError::new(
@@ -1333,6 +1567,296 @@ impl MaglevEngine {
         outcome
     }
 
+    // ---- per-torrent speed limits -------------------------------------------------------------------
+
+    /// Saves a torrent's limits to the sidecar. "No limit" in both directions removes the entry.
+    fn remember_limits(&self, id: &str, l: TorrentLimits) {
+        let mut store = self.limits.lock();
+        store.set(id, l);
+        if let Err(e) = store.save() {
+            warn!("could not save torrent limits: {e}");
+        }
+    }
+
+    fn forget_limits(&self, id: &str) {
+        let mut store = self.limits.lock();
+        if store.remove(id) {
+            if let Err(e) = store.save() {
+                warn!("could not save torrent limits: {e}");
+            }
+        }
+    }
+
+    /// Gives a handle the limits saved for `id`, if there are any.
+    fn apply_saved_limits(&self, id: &str, h: &Handle20) {
+        let saved: Option<TorrentLimits> = self.limits.lock().get(id);
+        if let Some(l) = saved {
+            h.set_ratelimits(limits_config(l));
+        }
+    }
+
+    /// Run once at start: torrents that librqbit restored get their saved limits.
+    fn restore_limits(&self) {
+        for h in self.handles() {
+            let id = h.info_hash().as_string();
+            self.apply_saved_limits(&id, &h);
+        }
+    }
+
+    /// `nativeSetTorrentLimits`: `{"down_bps":u64,"up_bps":u64}`, 0 = no limit. The session-wide limits still apply.
+    pub fn set_torrent_limits(&self, id: &str, json: &str) -> Result<(), EngineError> {
+        let (id, hash) = Self::parse_id(id)?;
+        let limits = parse_limits(json)?;
+        let handle = self.find(hash);
+        if handle.is_none() {
+            // A magnet that is still looking for its info has no handle yet; the limit is applied once it has.
+            let pending = self
+                .meta
+                .lock()
+                .get(&id)
+                .map(|m| m.pending.is_some())
+                .unwrap_or(false);
+            if !pending {
+                return Err(EngineError::not_found());
+            }
+        }
+        self.remember_limits(&id, limits);
+        if let Some(h) = handle {
+            h.set_ratelimits(limits_config(limits));
+        }
+        Ok(())
+    }
+
+    // ---- move storage ---------------------------------------------------------------------------------
+
+    /// `nativeMoveStorage`: checks the request, then moves the files on a background thread and returns at once.
+    pub fn move_storage(self: &Arc<Self>, id: &str, dest_dir: &str) -> Result<(), EngineError> {
+        let (id, hash) = Self::parse_id(id)?;
+        let h = match self.find(hash) {
+            Some(h) => h,
+            None => {
+                let pending = self
+                    .meta
+                    .lock()
+                    .get(&id)
+                    .map(|m| m.pending.is_some())
+                    .unwrap_or(false);
+                return Err(if pending {
+                    EngineError::new(
+                        ErrorCode::Unsupported,
+                        "Wait until this torrent has its info, then move it",
+                    )
+                } else {
+                    EngineError::not_found()
+                });
+            }
+        };
+        self.reject_if_moving(&id)?;
+        let state = {
+            let stats = h.stats();
+            let m = self
+                .meta
+                .lock()
+                .get(&id)
+                .cloned()
+                .unwrap_or_else(|| default_meta(&h, now_secs()));
+            self.snapshot(&id, &h, &m, &stats)
+        };
+        if matches!(state.state, TorrentState::Checking | TorrentState::Initializing) {
+            return Err(EngineError::new(
+                ErrorCode::Unsupported,
+                "Wait until the torrent has been checked, then move it",
+            ));
+        }
+        let dest = dest_dir.trim();
+        if dest.is_empty() {
+            return Err(EngineError::new(
+                ErrorCode::InvalidSource,
+                "Pick a folder to move this torrent to",
+            ));
+        }
+        let dest = PathBuf::from(dest);
+
+        let (name, file_count, rels, torrent_bytes) = h
+            .with_metadata(|md| {
+                (
+                    h.name().unwrap_or_default(),
+                    md.file_infos.len(),
+                    md.file_infos
+                        .iter()
+                        .filter(|fi| !fi.attrs.padding)
+                        .map(|fi| fi.relative_filename.clone())
+                        .collect::<Vec<PathBuf>>(),
+                    md.torrent_bytes.clone(),
+                )
+            })
+            .map_err(|_| EngineError::internal("This torrent has no info to move yet"))?;
+        let old_folder = h.output_folder().to_path_buf();
+        let new_folder = destination_folder(&dest, &name, file_count);
+        let own_folder = subfolder_for(&name, file_count).is_some();
+        check_destination(&dest, &old_folder, &new_folder, own_folder)?;
+
+        // Only files that exist move. A destination file with the same name is never overwritten.
+        let moves: Vec<crate::relocate::FileMove> = plan_moves(&old_folder, &new_folder, &rels)
+            .into_iter()
+            .filter(|m| m.from.is_file())
+            .collect();
+        if moves.iter().any(|m| m.to.exists()) {
+            return Err(EngineError::new(
+                ErrorCode::Unsupported,
+                "That folder already has files with the same names",
+            ));
+        }
+        probe_writable(&new_folder).map_err(|e| {
+            let (code, message) = move_error(&e);
+            EngineError::new(code, message)
+        })?;
+        let total: u64 = moves
+            .iter()
+            .filter_map(|m| std::fs::metadata(&m.from).ok())
+            .map(|md| md.len())
+            .sum();
+
+        let progress = Arc::new(MoveProgress::new(total));
+        let entry = Arc::new(MoveEntry {
+            progress: progress.clone(),
+            name: if name.is_empty() {
+                "Unnamed torrent".to_string()
+            } else {
+                name
+            },
+            total_bytes: state.total_bytes,
+            progress_bytes: state.progress_bytes,
+            finished: state.finished,
+            folder: old_folder.to_string_lossy().into_owned(),
+        });
+        {
+            let mut mv = self.moves.lock();
+            if mv.contains_key(&id) {
+                return Err(EngineError::new(
+                    ErrorCode::Unsupported,
+                    "This torrent is moving. Wait for the move to finish.",
+                ));
+            }
+            mv.insert(id.clone(), entry);
+        }
+        // A failed earlier move leaves an error on the torrent; a new attempt starts clean.
+        self.meta.lock().update(&id, |m| m.last_error = None);
+
+        let job = MoveJob {
+            id: id.clone(),
+            hash,
+            only_files: h.only_files(),
+            handle: h,
+            torrent_bytes,
+            old_folder,
+            new_folder,
+            own_folder,
+            rels,
+            moves,
+            progress,
+        };
+        let me = self.clone();
+        // A blocking thread: the copy is long blocking I/O, and the task never needs to be `Send`.
+        self.handle.spawn_blocking(move || {
+            let _guard = MoveGuard {
+                engine: me.clone(),
+                id: job.id.clone(),
+            };
+            me.handle.block_on(me.run_move(job));
+        });
+        Ok(())
+    }
+
+    /// Runs the move and records the outcome in the torrent's metadata.
+    async fn run_move(&self, job: MoveJob) {
+        let outcome = self.do_move(&job).await;
+        {
+            let mut meta = self.meta.lock();
+            match &outcome {
+                Ok(()) => {
+                    meta.update(&job.id, |m| {
+                        m.last_error = None;
+                        m.max_progress_bytes = 0;
+                        m.queued = m.paused_by.is_none();
+                    });
+                }
+                Err(e) => {
+                    meta.update(&job.id, |m| {
+                        m.last_error = Some(ErrorInfo {
+                            code: e.code,
+                            message: e.message.clone(),
+                        });
+                        m.queued = false;
+                    });
+                }
+            }
+        }
+        self.save_meta();
+        if let Err(e) = outcome {
+            warn!("move failed: {e}");
+        }
+        // The MOVING marker is removed when the guard drops, after the outcome is saved.
+    }
+
+    /// The algorithm of contract section 11.3. Holds the tick lock for the whole move.
+    async fn do_move(&self, job: &MoveJob) -> Result<(), EngineError> {
+        let _tick = self.tick_lock.lock().await;
+        let old = job.old_folder.to_string_lossy().into_owned();
+        let new = job.new_folder.to_string_lossy().into_owned();
+        // The user-visible state (paused_by, queued) stays in the metadata; only the handle is stopped.
+        self.ensure_paused(&job.handle).await;
+        let only_files = job.only_files.clone();
+
+        let done = match execute_moves(&job.moves, &job.progress) {
+            Ok(done) => done,
+            Err(fail) => {
+                warn!("move stopped: {}", fail.error);
+                let (code, message) = move_error(&fail.error);
+                rollback(&fail.done);
+                remove_empty_dirs(&job.new_folder, &job.rels, job.own_folder);
+                return Err(EngineError::new(code, message));
+            }
+        };
+
+        // Same path as Recheck: forget the torrent, then add it back at the new folder.
+        let forgotten = self
+            .session
+            .delete(TorrentIdOrHash::Hash(job.hash), false)
+            .await;
+        if let Err(e) = forgotten {
+            rollback(&done);
+            remove_empty_dirs(&job.new_folder, &job.rels, job.own_folder);
+            let (code, message) = classify_runtime_error(&format!("{e:#}"));
+            return Err(EngineError::new(code, message));
+        }
+        if let Err(e) = self
+            .readd_at(&job.id, job.torrent_bytes.clone(), only_files.clone(), new)
+            .await
+        {
+            // Put the files and the torrent back where they were.
+            rollback(&done);
+            remove_empty_dirs(&job.new_folder, &job.rels, job.own_folder);
+            if let Err(back) = self
+                .readd_at(&job.id, job.torrent_bytes.clone(), only_files, old)
+                .await
+            {
+                warn!("could not add the torrent back after a failed move: {back}");
+            }
+            let (code, message) = match e.code {
+                ErrorCode::DiskFull | ErrorCode::Permission => (e.code, e.message),
+                _ => (
+                    ErrorCode::Internal,
+                    "Couldn't move the files. Try again.".to_string(),
+                ),
+            };
+            return Err(EngineError::new(code, message));
+        }
+        // The files are at the new folder and the torrent points there. Tidy up the old one.
+        remove_empty_dirs(&job.old_folder, &job.rels, job.own_folder);
+        Ok(())
+    }
+
     // ---- settings and governance ----------------------------------------------------------------
 
     fn apply_limits(&self, down: u64, up: u64) {
@@ -1368,7 +1892,7 @@ impl MaglevEngine {
             m.mark_dirty();
         }
         self.save_meta();
-        let _ = self.run(OP_TIMEOUT, self.tick());
+        let _ = self.run(OP_TIMEOUT, self.tick_soon());
         Ok(ApplyConfigResult { restart_required })
     }
 
@@ -1391,7 +1915,7 @@ impl MaglevEngine {
             m.mark_dirty();
         }
         self.save_meta();
-        self.run(OP_TIMEOUT, self.tick())?;
+        self.run(OP_TIMEOUT, self.tick_soon())?;
         Ok(())
     }
 
@@ -1534,11 +2058,18 @@ impl MaglevEngine {
         let blocked = self.blocked.lock().clone();
         let mut facts: Vec<TorrentFacts> = Vec::with_capacity(handles.len());
         let mut by_id: HashMap<String, Handle20> = HashMap::with_capacity(handles.len());
+        // Torrents being moved are not startable, not counted against the queue and never touched.
+        let moving: HashSet<String> = self.moves.lock().keys().cloned().collect();
 
         {
             let mut meta = self.meta.lock();
             for h in &handles {
                 let id = h.info_hash().as_string();
+                if moving.contains(&id) {
+                    // Kept in `by_id` so its metadata is not swept as stale; kept out of `facts`.
+                    by_id.insert(id, h.clone());
+                    continue;
+                }
                 if !meta.contains(&id) {
                     meta.insert(&id, default_meta(h, now));
                 }
@@ -1603,6 +2134,7 @@ impl MaglevEngine {
                 .iter()
                 .filter(|(id, m)| {
                     !by_id.contains_key(*id)
+                        && !moving.contains(*id)
                         && m.pending.is_none()
                         && now - m.added_at > ORPHAN_GRACE_SECS
                 })

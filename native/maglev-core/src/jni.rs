@@ -236,6 +236,38 @@ pub extern "system" fn Java_com_maglev_engine_NativeCore_nativeSetFilePriorities
 }
 
 #[no_mangle]
+pub extern "system" fn Java_com_maglev_engine_NativeCore_nativeSetTorrentLimits(
+    mut env: JNIEnv,
+    _class: JClass,
+    id: JString,
+    limits_json: JString,
+) -> jstring {
+    let out = match (read_str(&mut env, &id), read_str(&mut env, &limits_json)) {
+        (Some(id), Some(json)) => guarded(|| {
+            with_engine(|e| result_envelope(e.set_torrent_limits(&id, &json)))
+        }),
+        _ => bad_argument(),
+    };
+    reply(&mut env, &out)
+}
+
+#[no_mangle]
+pub extern "system" fn Java_com_maglev_engine_NativeCore_nativeMoveStorage(
+    mut env: JNIEnv,
+    _class: JClass,
+    id: JString,
+    dest_dir: JString,
+) -> jstring {
+    let out = match (read_str(&mut env, &id), read_str(&mut env, &dest_dir)) {
+        (Some(id), Some(dest)) => guarded(|| {
+            with_engine(|e| result_envelope(e.move_storage(&id, &dest)))
+        }),
+        _ => bad_argument(),
+    };
+    reply(&mut env, &out)
+}
+
+#[no_mangle]
 pub extern "system" fn Java_com_maglev_engine_NativeCore_nativeReannounce(
     mut env: JNIEnv,
     _class: JClass,

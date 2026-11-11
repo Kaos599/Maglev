@@ -199,6 +199,10 @@ pub struct ManagedTorrentShared {
     // MAGLEV PATCH: user-chosen download order of file indices (see MAGLEV_PATCH.md).
     // Read when the torrent goes live; None means "keep the default sort by file name".
     pub(crate) file_priority_order: parking_lot::Mutex<Option<Vec<usize>>>,
+
+    // MAGLEV PATCH: per-torrent speed limits chosen by the user (see MAGLEV_PATCH.md).
+    // Read when the torrent goes live; None means "use `options.ratelimits`".
+    pub(crate) ratelimits_override: parking_lot::Mutex<Option<LimitsConfig>>,
 }
 
 impl ManagedTorrentShared {
@@ -268,6 +272,18 @@ impl ManagedTorrent {
         *self.shared.file_priority_order.lock() = Some(order.clone());
         if let Some(live) = self.live() {
             live.set_file_priority_order(order);
+        }
+    }
+
+    /// MAGLEV PATCH: sets this torrent's own speed limits (`None` = no per-torrent limit in that direction).
+    ///
+    /// The limits are stored so that they also apply the next time the torrent goes live (after pause,
+    /// or after initializing); if the torrent is live now, its limiter is updated at once. The session
+    /// limits (`Session::ratelimits`) still apply on top of these.
+    pub fn set_ratelimits(&self, cfg: LimitsConfig) {
+        *self.shared.ratelimits_override.lock() = Some(cfg);
+        if let Some(live) = self.live() {
+            live.set_ratelimits(cfg);
         }
     }
 

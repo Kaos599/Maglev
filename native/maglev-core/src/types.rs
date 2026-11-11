@@ -48,6 +48,11 @@ pub struct Snapshot {
     pub added_at: i64,
     pub output_folder: String,
     pub error: Option<ErrorInfo>,
+    /// Per-torrent limits in bytes per second. 0 = none.
+    pub down_limit_bps: u64,
+    pub up_limit_bps: u64,
+    /// 0 to 1 by bytes while the state is `MOVING`, otherwise null.
+    pub move_progress: Option<f64>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -59,6 +64,10 @@ pub struct FileDetail {
     pub included: bool,
     /// `first`, `normal` or `skip`. `included` is true for the first two.
     pub priority: FilePriority,
+    /// Contiguous downloaded bytes from the start of the file (from the piece bitfield).
+    pub stream_ready_bytes: u64,
+    /// True when the last piece of the file is present.
+    pub tail_ready: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -97,6 +106,9 @@ pub struct AddOptions {
     pub sequential: bool,
     /// Per-file choices from the add sheet. When present, this replaces `only_files`.
     pub file_priorities: Option<Vec<FilePriorityEntry>>,
+    /// Per-torrent speed limits in bytes per second. Missing or 0 = no limit.
+    pub down_limit_bps: Option<u64>,
+    pub up_limit_bps: Option<u64>,
 }
 
 /// Folder name used under a custom output folder, so two multi-file torrents never mix files.
@@ -138,6 +150,11 @@ mod tests {
         let p = o.file_priorities.unwrap();
         assert_eq!(p.len(), 2);
         assert_eq!(p[0].priority, FilePriority::First);
+        assert!(o.down_limit_bps.is_none() && o.up_limit_bps.is_none());
+        let o: AddOptions =
+            serde_json::from_str(r#"{"down_limit_bps":1000000,"up_limit_bps":0}"#).unwrap();
+        assert_eq!(o.down_limit_bps, Some(1_000_000));
+        assert_eq!(o.up_limit_bps, Some(0));
     }
 
     #[test]

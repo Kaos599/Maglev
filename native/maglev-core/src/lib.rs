@@ -4,17 +4,20 @@
 //! contract in `docs/NATIVE_CONTRACT.md`.
 //!
 //! Pure, JVM-free and session-free modules (unit tested on any host):
-//! `config`, `error`, `source`, `scheduler`, `meta`, `priority`, `simd`, and the parsing half of `streaming`.
+//! `config`, `error`, `source`, `scheduler`, `meta`, `priority`, `readiness`, `relocate`, `torrent_limits`, `simd`, and the parsing half of `streaming`.
 
 pub mod config;
 pub mod engine;
 pub mod error;
 pub mod meta;
 pub mod priority;
+pub mod readiness;
+pub mod relocate;
 pub mod scheduler;
 pub mod simd;
 pub mod source;
 pub mod streaming;
+pub mod torrent_limits;
 pub mod types;
 
 #[cfg(feature = "jni-bridge")]

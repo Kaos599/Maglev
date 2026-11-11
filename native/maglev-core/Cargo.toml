@@ -27,7 +27,7 @@ tracing = "0.1"
 # librqbit builds its own reqwest::Client, so the crate is replaced by a local one with the same
 # API that verifies against the bundled Mozilla roots (webpki-roots). See vendor/ README comment.
 #
-# librqbit is vendored too: it adds `ManagedTorrent::set_file_priority_order`. The patch is
+# librqbit is vendored too: it adds `ManagedTorrent::set_file_priority_order` and `set_ratelimits`. The patch is
 # listed in vendor/librqbit/MAGLEV_PATCH.md.
 [patch.crates-io]
 librqbit = { path = "vendor/librqbit" }

@@ -287,7 +287,11 @@ impl TorrentStateLive {
             tokio::sync::mpsc::UnboundedSender<WriterRequest>,
             ChunkInfo,
         )>();
-        let ratelimits = Limits::new(paused.shared.options.ratelimits);
+        // MAGLEV PATCH: a limit chosen by the user before this live state existed wins over the add option.
+        let ratelimits = {
+            let chosen = *paused.shared.ratelimits_override.lock();
+            Limits::new(chosen.unwrap_or(paused.shared.options.ratelimits))
+        };
 
         let state = Arc::new(TorrentStateLive {
             shared: paused.shared.clone(),
@@ -719,6 +723,12 @@ impl TorrentStateLive {
         let mut g = self.lock_write("set_file_priority_order");
         let file_count = g.file_priorities.len();
         g.file_priorities = normalize_file_priority_order(order, file_count);
+    }
+
+    /// MAGLEV PATCH: replaces this torrent's live speed limits. Takes effect on the next chunk.
+    pub(crate) fn set_ratelimits(&self, cfg: crate::limits::LimitsConfig) {
+        self.ratelimits.set_download_bps(cfg.download_bps);
+        self.ratelimits.set_upload_bps(cfg.upload_bps);
     }
 
     pub(crate) fn lock_write(

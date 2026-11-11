@@ -27,6 +27,9 @@ pub enum TorrentState {
     Checking,
     Error,
     Completed,
+    /// Files are being moved to another folder (contract section 11.3). Set by the engine, never derived
+    /// from librqbit state. The planner never sees a moving torrent.
+    Moving,
 }
 
 /// What librqbit says about a torrent, reduced to the cases we care about.
@@ -277,6 +280,11 @@ mod tests {
             id: id.into(),
             reason: reason.into(),
         }
+    }
+
+    #[test]
+    fn moving_state_serialises_as_screaming_snake_case() {
+        assert_eq!(serde_json::to_string(&TorrentState::Moving).unwrap(), "\"MOVING\"");
     }
 
     #[test]
