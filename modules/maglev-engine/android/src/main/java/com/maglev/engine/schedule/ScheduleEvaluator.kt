@@ -142,8 +142,8 @@ object ScheduleEvaluator {
         val paused = active.any { it.action == "pause" }
         val ids = active.map { it.id }
         if (paused) return ScheduleState(true, null, null, ids, best)
-        val down = active.mapNotNull { it.downBps }.minOrNull()
-        val up = active.mapNotNull { it.upBps }.minOrNull()
+        val down = active.mapNotNull { it.downBps }.filter { it > 0 }.minOrNull()
+        val up = active.mapNotNull { it.upBps }.filter { it > 0 }.minOrNull()
         return ScheduleState(false, down, up, ids, best)
     }
 
