@@ -104,7 +104,7 @@ jobs:
           body: |
             # Maglev ${{ github.ref_name }}
 
-            Android BitTorrent client (pre-release: engine still in development).
+            Minimal Android torrent client. Beta build.
 
             ### Which APK?
             * Most phones: `arm64-v8a`.
