@@ -17,12 +17,16 @@
  *   mode   text/bg  textMuted/bg  textFaint/bg  accentText(lime)/bg  borderStrong/bg
  *   oled   18.33    7.94          5.41           17.16                4.17
  *   dim    16.00    7.95          5.13           15.82                3.89
- *   light  16.42    6.83          4.46           6.02                 3.48
+ *   light  16.42    6.83          4.46           6.47                 3.48
+ * Light role colours on bg (#F5F5F0): download 5.43, upload 6.47, success 4.59, paused 5.51,
+ * warning 5.84, danger 5.15; accent fill #4D7C0F is 4.57 on bg and 4.99 with white onAccent text.
+ * First chip (light): firstFg on firstBg 12.52. selBg/selBorder are fills, not text.
  * Required: text, textMuted, accentText, download, upload, paused, success,
  * warning, danger >= 4.5 against bg; borderStrong >= 3 (interactive outlines).
  * textFaint is for disabled/placeholder hints only (>= 3 everywhere).
  * On light, accent fills use the darkened accent (white onAccent text) so the
  * fill itself has >= 3:1 against paper; lime on paper would be ~1.1:1.
+ * firstBg/firstFg/firstBorder style the "First" chip; selBg/selBorder style a selected option card.
  */
 
 export type ThemeMode = 'oled' | 'dim' | 'light';
@@ -49,6 +53,11 @@ export interface ThemeColors {
   onDanger: string;
   overlay: string;
   focus: string;
+  firstBg: string;
+  firstFg: string;
+  firstBorder: string;
+  selBg: string;
+  selBorder: string;
 }
 
 /** WCAG relative luminance of a #RRGGBB color. */
@@ -115,18 +124,18 @@ export const palettes: Record<ThemeMode, Palette> = {
     bg: '#F5F5F0', surface: '#FFFFFF', surfaceRaised: '#ECECE4',
     border: '#DAD9CF', borderStrong: '#85837A',
     text: '#15171A', textMuted: '#52555C', textFaint: '#6F7178',
-    download: '#00697A', upload: '#4A6600', paused: '#5F636B',
-    success: '#17753A', warning: '#8A5200', danger: '#C71F4B', onDanger: '#FFFFFF',
+    download: '#0369A1', upload: '#3F6212', paused: '#5F636B',
+    success: '#15803D', warning: '#8A5200', danger: '#C71F4B', onDanger: '#FFFFFF',
     overlay: 'rgba(21, 23, 26, 0.55)', dark: false,
   },
 };
 
 /** Bright brand accent (dark modes) and its AA-safe darker variant (light mode). */
-export const accents: Record<AccentName, { bright: string; deep: string }> = {
-  lime: { bright: '#CCFF00', deep: '#4A6600' },
-  cyan: { bright: '#00E5FF', deep: '#00697A' },
-  pink: { bright: '#FF5CA8', deep: '#B8135F' },
-  orange: { bright: '#FF9F1C', deep: '#9A4F00' },
+export const accents: Record<AccentName, { bright: string; deep: string; deepText: string }> = {
+  lime: { bright: '#CCFF00', deep: '#4D7C0F', deepText: '#3F6212' },
+  cyan: { bright: '#00E5FF', deep: '#00697A', deepText: '#00697A' },
+  pink: { bright: '#FF5CA8', deep: '#B8135F', deepText: '#B8135F' },
+  orange: { bright: '#FF9F1C', deep: '#9A4F00', deepText: '#9A4F00' },
 };
 
 export const DEFAULT_MODE: ThemeMode = 'oled';
@@ -152,7 +161,7 @@ export function buildColors(mode: ThemeMode, accent: AccentName, pureBlack = fal
     textFaint: p.textFaint,
     accent: accentFill,
     onAccent: dark ? '#05070A' : '#FFFFFF',
-    accentText: accentFill,
+    accentText: dark ? a.bright : a.deepText,
     // Cyan accent would make "downloading" indistinguishable from active/primary state.
     download: accent === 'cyan' ? (dark ? '#5AA9FF' : '#1F5FBF') : p.download,
     upload: p.upload,
@@ -163,6 +172,12 @@ export function buildColors(mode: ThemeMode, accent: AccentName, pureBlack = fal
     onDanger: p.onDanger,
     overlay: p.overlay,
     focus: dark ? '#00E5FF' : '#00697A',
+    // "First" chip and selected option card. Light mode uses a lime highlighter for lime only.
+    firstBg: dark || accent !== 'lime' ? alpha(accentFill, 0.1) : '#D9F99D',
+    firstFg: dark || accent !== 'lime' ? (dark ? a.bright : a.deepText) : '#1A2E05',
+    firstBorder: accentFill,
+    selBg: dark || accent !== 'lime' ? alpha(accentFill, 0.08) : '#F4FCE3',
+    selBorder: accentFill,
   };
 }
 

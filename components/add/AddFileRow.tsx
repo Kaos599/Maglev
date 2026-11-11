@@ -2,7 +2,7 @@ import React, { memo, useMemo } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import type { MetadataFile } from 'maglev-engine';
 import { useTheme } from '../../context/ThemeContext';
-import { ThemeColors, alpha, radius, spacing, touch, type } from '../../constants/theme';
+import { ThemeColors, radius, spacing, touch, type } from '../../constants/theme';
 import { formatBytes } from '../../constants/format';
 import { fileGlyph } from '../../utils/fileKind';
 import { PixelIcon } from '../PixelIcon';
@@ -23,7 +23,7 @@ function AddFileRowBase({ file, checked, first, onToggle, onLongPress }: Props) 
   const { colors } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   return (
-    <View style={styles.row}>
+    <View style={[styles.row, !checked && styles.rowSkipped]}>
       <Checkbox
         checked={checked}
         onChange={(next) => onToggle(file.index, next)}
@@ -43,11 +43,11 @@ function AddFileRowBase({ file, checked, first, onToggle, onLongPress }: Props) 
           <Text style={[styles.name, !checked && styles.off]} numberOfLines={1} ellipsizeMode="middle">
             {file.path}
           </Text>
-          <Text style={styles.size}>{formatBytes(file.length)}</Text>
+          <Text style={styles.size}>{checked ? formatBytes(file.length) : `Skipped · ${formatBytes(file.length)}`}</Text>
         </View>
         {first && checked ? (
           <View style={styles.chip}>
-            <PixelIcon name="priority-first" size={16} color={colors.accentText} />
+            <PixelIcon name="priority-first" size={16} color={colors.firstFg} />
             <Text style={styles.chipText}>First</Text>
           </View>
         ) : null}
@@ -71,6 +71,7 @@ const makeStyles = (c: ThemeColors) =>
       marginBottom: spacing.sm,
       paddingLeft: spacing.xs,
     },
+    rowSkipped: { backgroundColor: 'transparent', borderStyle: 'dashed', opacity: 0.6 },
     press: {
       flex: 1,
       minHeight: touch.min,
@@ -89,11 +90,11 @@ const makeStyles = (c: ThemeColors) =>
       alignItems: 'center',
       gap: 4,
       borderWidth: 1,
-      borderColor: c.accent,
-      backgroundColor: alpha(c.accent, 0.1),
+      borderColor: c.firstBorder,
+      backgroundColor: c.firstBg,
       borderRadius: radius.sm,
       paddingHorizontal: spacing.sm,
       paddingVertical: 2,
     },
-    chipText: { ...type.mono, fontSize: type.size.xs, color: c.accentText },
+    chipText: { ...type.mono, fontSize: type.size.xs, color: c.firstFg },
   });

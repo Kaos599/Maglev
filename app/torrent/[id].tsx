@@ -466,6 +466,7 @@ export default function TorrentDetailScreen() {
                 file={item as DetailFile}
                 selecting={!!selection}
                 selected={!!selection?.has((item as DetailFile).index)}
+                paused={snap.state === 'PAUSED'}
                 hasActions={
                   (item as DetailFile).length > 0 &&
                   ((item as DetailFile).progressBytes >= (item as DetailFile).length || isStreamable((item as DetailFile).path))
@@ -506,6 +507,7 @@ export default function TorrentDetailScreen() {
 
       <PrioritySheet
         visible={!!prioTarget}
+        skipBytes={prioTarget ? files.filter((f) => prioTarget.includes(f.index)).reduce((n, f) => n + f.length, 0) : undefined}
         onClose={() => {
           setPrioTarget(null);
           setPrioError(null);

@@ -2,7 +2,7 @@ import React, { memo, useMemo } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import type { DetailFile } from 'maglev-engine';
 import { useTheme } from '../../context/ThemeContext';
-import { ThemeColors, alpha, radius, spacing, touch, type } from '../../constants/theme';
+import { ThemeColors, radius, spacing, touch, type } from '../../constants/theme';
 import { formatBytes } from '../../constants/format';
 import { fileGlyph } from '../../utils/fileKind';
 import { PixelIcon } from '../PixelIcon';
@@ -16,6 +16,8 @@ interface Props {
   selected: boolean;
   /** True for finished or playable files that have Open / Share. */
   hasActions: boolean;
+  /** The torrent is paused: unfinished files show the paused colour and label. */
+  paused?: boolean;
   onPress: (file: DetailFile) => void;
   onLongPress: (file: DetailFile) => void;
   onOpenActions: (file: DetailFile) => void;
@@ -25,13 +27,15 @@ interface Props {
  * One file in the Files tab. The progress bar sits on its own line across the full card width so a
  * finished file reads as 100%, with the options button above it.
  */
-function FileListRowBase({ file, selecting, selected, hasActions, onPress, onLongPress, onOpenActions }: Props) {
+function FileListRowBase({ file, selecting, selected, hasActions, paused = false, onPress, onLongPress, onOpenActions }: Props) {
   const { colors } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const skipped = file.priority === 'skip';
   const done = file.length > 0 && file.progressBytes >= file.length;
   const frac = file.length > 0 ? Math.min(1, file.progressBytes / file.length) : 0;
   const pct = Math.floor(frac * 100);
+  const size = formatBytes(file.length);
+  const iconColor = skipped ? colors.textFaint : done ? colors.success : paused ? colors.paused : colors.download;
   const priorityWord = file.priority === 'first' ? 'download first' : skipped ? 'skipped' : 'normal priority';
 
   return (
@@ -43,35 +47,46 @@ function FileListRowBase({ file, selecting, selected, hasActions, onPress, onLon
       accessibilityHint={selecting ? undefined : 'Change priority'}
       accessibilityState={selecting ? { checked: selected } : undefined}
       scaleTo={0.99}
-      style={[styles.card, selected && styles.cardSelected]}
+      style={[styles.card, skipped && styles.cardSkipped, selected && styles.cardSelected]}
     >
       <View style={styles.top}>
         {selecting ? (
           <Checkbox checked={selected} onChange={() => onPress(file)} accessibilityLabel={`Select ${file.path}`} />
         ) : (
           <View style={styles.glyph}>
-            <PixelIcon name={fileGlyph(file.path)} size={20} color={skipped ? colors.textFaint : colors.textMuted} />
+            <PixelIcon name={done && !skipped ? 'check' : fileGlyph(file.path)} size={20} color={iconColor} />
           </View>
         )}
         <View style={styles.main}>
-          <Text style={[styles.name, skipped && styles.struck]} numberOfLines={1} ellipsizeMode="middle">
+          <Text style={[styles.name, skipped && styles.nameSkipped]} numberOfLines={1} ellipsizeMode="middle">
             {file.path}
           </Text>
           <Text style={styles.meta} numberOfLines={1}>
-            {formatBytes(file.length)} · {skipped ? 'Skipped' : done ? 'Done' : `${pct}%`}
+            {skipped ? (
+              `Skipped · ${size}`
+            ) : done ? (
+              <>
+                <Text style={styles.metaDone}>Done</Text>
+                {` · ${size}`}
+              </>
+            ) : paused ? (
+              <>
+                {`${pct}% · `}
+                <Text style={styles.metaPaused}>Paused</Text>
+                {` · ${size}`}
+              </>
+            ) : (
+              `${pct}% · ${size}`
+            )}
           </Text>
         </View>
         {file.priority === 'first' ? (
           <View style={styles.chipFirst}>
-            <PixelIcon name="priority-first" size={16} color={colors.accentText} />
+            <PixelIcon name="priority-first" size={16} color={colors.firstFg} />
             <Text style={styles.chipFirstText}>First</Text>
           </View>
-        ) : skipped ? (
-          <View style={styles.chipSkip}>
-            <Text style={styles.chipSkipText}>Skip</Text>
-          </View>
         ) : null}
-        {hasActions && !selecting ? (
+        {hasActions && !selecting && !skipped ? (
           <PressableScale
             onPress={() => onOpenActions(file)}
             accessibilityRole="button"
@@ -82,9 +97,9 @@ function FileListRowBase({ file, selecting, selected, hasActions, onPress, onLon
           </PressableScale>
         ) : null}
       </View>
-      {!skipped ? (
+      {!skipped && !done ? (
         <View style={styles.bar}>
-          <ProgressBar progress={frac} tone={done ? 'seed' : 'download'} accessibilityLabel={`${pct} percent`} />
+          <ProgressBar progress={frac} tone={paused ? 'paused' : 'download'} accessibilityLabel={`${pct} percent`} />
         </View>
       ) : null}
     </PressableScale>
@@ -105,33 +120,28 @@ const makeStyles = (c: ThemeColors) =>
       paddingTop: spacing.xs,
       paddingBottom: spacing.sm,
     },
+    cardSkipped: { backgroundColor: 'transparent', borderStyle: 'dashed', opacity: 0.6 },
     cardSelected: { borderColor: c.accent },
     top: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, minHeight: touch.min },
     glyph: { width: 28, alignItems: 'center', justifyContent: 'center' },
     main: { flex: 1 },
     name: { ...type.mono, fontSize: type.size.md, color: c.text },
-    struck: { color: c.textMuted, textDecorationLine: 'line-through' },
+    nameSkipped: { color: c.textMuted },
     meta: { ...type.mono, fontSize: type.size.xs, color: c.textMuted, marginTop: 2 },
+    metaDone: { color: c.success },
+    metaPaused: { color: c.paused },
     chipFirst: {
       flexDirection: 'row',
       alignItems: 'center',
       gap: 4,
       borderWidth: 1,
-      borderColor: c.accent,
-      backgroundColor: alpha(c.accent, 0.1),
+      borderColor: c.firstBorder,
+      backgroundColor: c.firstBg,
       borderRadius: radius.sm,
       paddingHorizontal: spacing.sm,
       paddingVertical: 2,
     },
-    chipFirstText: { ...type.mono, fontSize: type.size.xs, color: c.accentText },
-    chipSkip: {
-      borderWidth: 1,
-      borderColor: c.border,
-      borderRadius: radius.sm,
-      paddingHorizontal: spacing.sm,
-      paddingVertical: 2,
-    },
-    chipSkipText: { ...type.mono, fontSize: type.size.xs, color: c.textMuted },
+    chipFirstText: { ...type.mono, fontSize: type.size.xs, color: c.firstFg },
     kebab: { width: touch.min, height: touch.min, alignItems: 'center', justifyContent: 'center' },
     bar: { paddingHorizontal: spacing.xs, paddingTop: spacing.xs },
   });

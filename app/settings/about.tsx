@@ -48,6 +48,13 @@ export default function AboutSettings() {
         <ListRow title="App version" value={appVersion} />
         <ListRow title="Engine" value={engine} />
         {extra.license ? <ListRow title="License" value={extra.license} /> : null}
+        <ListRow
+          title="Built by Kaos"
+          icon="link"
+          value="Kaos599"
+          onPress={() => void Linking.openURL('https://github.com/Kaos599')}
+          accessibilityHint="Opens GitHub"
+        />
         {links.map((l) => (
           <ListRow key={l.url} title={l.title} onPress={() => void Linking.openURL(l.url)} />
         ))}

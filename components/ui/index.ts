@@ -24,3 +24,5 @@ export { Screen } from './Screen';
 export type { ScreenProps } from './Screen';
 export { PressableScale } from './PressableScale';
 export type { PressableScaleProps } from './PressableScale';
+export { RadioCard } from './RadioCard';
+export type { RadioCardProps } from './RadioCard';
