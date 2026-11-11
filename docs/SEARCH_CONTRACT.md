@@ -107,3 +107,12 @@ These run the providers' parsers against recorded fixtures in `scripts/fixtures/
 6. `hideDead` keeps `undefined` seeders and drops 0.
 
 The Reality contract `C-SEARCH-1` in `test-p3-reality-contracts.js` asserts that the files exist and that `scripts/test-search.js` passes.
+
+## 7. Unsafe-source warnings on results (user decision 2026-11-11)
+
+The adult filter (§5 `adult`) already covers NSFW. This section covers sources known for fake or malware uploads.
+- **Pref:** `SearchPrefs.warnUnsafe: boolean`, default `true`. Settings → Search providers shows a switch "Warn about risky sources" with the caption "Mark results from sources known for fake or harmful uploads." Migration: missing → `true`.
+- **Result row:** when `warnUnsafe` is on and **every** source of a merged result has an `unsafeReason`, the row shows a small warning line under the meta line: a 16 px `warning` PixelIcon in `colors.warning` and the text `Risky source: <provider name>`. If at least one source is not flagged, no warning (another source corroborates the same info-hash).
+- **Before adding:** tapping Add on a warned row opens a short confirm sheet: title `Add from a risky source?`, body = the provider's `unsafeReason`, buttons `Add anyway` (primary) and `Cancel`. When `warnUnsafe` is off, Add works with one tap as today.
+- **Pure helper:** `riskySources(result: MergedResult, providers): string[] | null` in `utils/search/safety.ts` returns the flagged provider names when all sources are flagged, else `null`.
+- **Tests** (added to §6): 7. a TPB-only result is risky; the same hash also from Knaben is not; `warnUnsafe: false` yields no warning. 8. Prefs migration adds `warnUnsafe: true`.
