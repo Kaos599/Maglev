@@ -1,5 +1,7 @@
 export type ThemeMode = 'TACTICAL_DARK' | 'PURE_OLED';
 export type TelemetryDensity = 'COMPACT' | 'VERBOSE';
+export type AppearanceMode = 'oled' | 'dim' | 'light' | 'system';
+export type AccentName = 'lime' | 'cyan' | 'pink' | 'orange';
 export type StorageMode = 'POSIX' | 'SAF';
 export type EncryptionMode = 'REQUIRED' | 'PREFERRED' | 'DISABLED';
 export type ProxyType = 'SOCKS5' | 'HTTP';
@@ -73,7 +75,10 @@ export interface StorageSettings {
 }
 
 export interface AppearanceSettings {
+  /** @deprecated use mode */
   theme: ThemeMode;
+  mode: AppearanceMode;
+  accent: AccentName;
   telemetryDensity: TelemetryDensity;
 }
 
@@ -114,6 +119,8 @@ export const DEFAULT_SETTINGS: MaglevSettings = {
   downloadFolder: null,
   appearance: {
     theme: 'TACTICAL_DARK',
+    mode: 'oled',
+    accent: 'lime',
     telemetryDensity: 'COMPACT',
   },
   storage: {

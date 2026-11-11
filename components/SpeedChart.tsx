@@ -1,6 +1,9 @@
+import { useMemo } from 'react';
 import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
-import { formatSpeed, TOKENS } from '../constants/tokens';
+import { formatSpeed } from '../constants/format';
+import { useTheme } from '../context/ThemeContext';
+import { fonts, ThemeColors } from '../constants/theme';
 
 interface SpeedChartProps {
   currentDownSpeed: number;
@@ -8,6 +11,8 @@ interface SpeedChartProps {
 }
 
 export const SpeedChart: React.FC<SpeedChartProps> = ({ currentDownSpeed, currentUpSpeed }) => {
+  const { colors } = useTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   const [history, setHistory] = useState<{ down: number; up: number }[]>(() =>
     Array(24).fill({ down: 0, up: 0 })
   );
@@ -57,11 +62,11 @@ export const SpeedChart: React.FC<SpeedChartProps> = ({ currentDownSpeed, curren
   );
 };
 
-const styles = StyleSheet.create({
+const makeStyles = (colors: ThemeColors) => StyleSheet.create({
   container: {
-    backgroundColor: TOKENS.colors.surfaceCard,
+    backgroundColor: colors.surface,
     borderWidth: 1,
-    borderColor: TOKENS.colors.surfaceBorder,
+    borderColor: colors.border,
     borderRadius: 12,
     padding: 14,
     marginVertical: 8,
@@ -73,10 +78,9 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   title: {
-    color: TOKENS.colors.textPrimary,
+    color: colors.text,
     fontSize: 12,
-    fontWeight: '700',
-    fontFamily: 'monospace',
+    ...fonts.monoBold,
   },
   indicators: {
     flexDirection: 'row',
@@ -88,31 +92,29 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   downDot: {
-    color: TOKENS.colors.accentCyan,
+    color: colors.download,
     fontSize: 10,
   },
   downText: {
-    color: TOKENS.colors.accentCyan,
+    color: colors.download,
     fontSize: 11,
-    fontWeight: '700',
-    fontFamily: 'monospace',
+    ...fonts.monoBold,
   },
   upDot: {
-    color: TOKENS.colors.accentLime,
+    color: colors.accentText,
     fontSize: 10,
   },
   upText: {
-    color: TOKENS.colors.accentLime,
+    color: colors.accentText,
     fontSize: 11,
-    fontWeight: '700',
-    fontFamily: 'monospace',
+    ...fonts.monoBold,
   },
   chartArea: {
     height: 70,
     flexDirection: 'row',
     alignItems: 'flex-end',
     justifyContent: 'space-between',
-    backgroundColor: '#070A0E',
+    backgroundColor: colors.bg,
     borderRadius: 6,
     paddingHorizontal: 6,
     paddingVertical: 4,
@@ -126,12 +128,12 @@ const styles = StyleSheet.create({
   },
   barDown: {
     width: 4,
-    backgroundColor: TOKENS.colors.accentCyan,
+    backgroundColor: colors.download,
     borderRadius: 1,
   },
   barUp: {
     width: 4,
-    backgroundColor: TOKENS.colors.accentLime,
+    backgroundColor: colors.accent,
     borderRadius: 1,
   },
 });

@@ -1,11 +1,15 @@
+import { useMemo } from 'react';
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { TOKENS } from '../constants/tokens';
 import { useMaglevEngine } from '../context/EngineContext';
+import { useTheme } from '../context/ThemeContext';
+import { fonts, touch, ThemeColors } from '../constants/theme';
 
 export const EmptyState: React.FC = () => {
+  const { colors } = useTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   const router = useRouter();
   const { clipboardMagnet, startTorrent, clearClipboardMagnet } = useMaglevEngine();
 
@@ -21,7 +25,7 @@ export const EmptyState: React.FC = () => {
       {/* 8-bit Cyber-retro Tray Icon */}
       <View style={styles.iconTray}>
         <View style={styles.trayArrow}>
-          <Ionicons name="arrow-down" size={32} color={TOKENS.colors.accentLime} />
+          <Ionicons name="arrow-down" size={32} color={colors.accentText} />
         </View>
         <View style={styles.trayBase} />
       </View>
@@ -35,7 +39,7 @@ export const EmptyState: React.FC = () => {
       {clipboardMagnet && (
         <View style={styles.clipboardPill}>
           <View style={styles.clipboardInfo}>
-            <Ionicons name="link" size={14} color={TOKENS.colors.accentCyan} />
+            <Ionicons name="link" size={14} color={colors.download} />
             <Text style={styles.clipboardText} numberOfLines={1}>
               Magnet Link Detected
             </Text>
@@ -68,7 +72,7 @@ export const EmptyState: React.FC = () => {
           accessibilityRole="button"
           accessibilityLabel="Search Torrents"
         >
-          <Ionicons name="search" size={16} color={TOKENS.colors.textPrimary} style={{ marginRight: 6 }} />
+          <Ionicons name="search" size={16} color={colors.text} style={{ marginRight: 6 }} />
           <Text style={styles.secondaryButtonText}>Search Torrents</Text>
         </TouchableOpacity>
       </View>
@@ -76,7 +80,7 @@ export const EmptyState: React.FC = () => {
   );
 };
 
-const styles = StyleSheet.create({
+const makeStyles = (colors: ThemeColors) => StyleSheet.create({
   container: {
     flex: 1,
     alignItems: 'center',
@@ -87,9 +91,9 @@ const styles = StyleSheet.create({
   iconTray: {
     width: 72,
     height: 72,
-    backgroundColor: TOKENS.colors.surfaceCard,
+    backgroundColor: colors.surface,
     borderWidth: 1,
-    borderColor: TOKENS.colors.surfaceBorder,
+    borderColor: colors.border,
     borderRadius: 16,
     alignItems: 'center',
     justifyContent: 'center',
@@ -101,29 +105,28 @@ const styles = StyleSheet.create({
   trayBase: {
     width: 32,
     height: 4,
-    backgroundColor: TOKENS.colors.accentLime,
+    backgroundColor: colors.accent,
     borderRadius: 2,
   },
   title: {
-    color: TOKENS.colors.textPrimary,
+    color: colors.text,
     fontSize: 16,
-    fontWeight: '700',
-    fontFamily: 'monospace',
+    ...fonts.monoBold,
     marginBottom: 8,
     textAlign: 'center',
   },
   subtitle: {
-    color: TOKENS.colors.textMuted,
-    fontSize: TOKENS.typography.uiCopy.fontSize,
+    color: colors.textMuted,
+    fontSize: 13,
     textAlign: 'center',
     lineHeight: 20,
     marginBottom: 24,
   },
   clipboardPill: {
     width: '100%',
-    backgroundColor: TOKENS.colors.surfaceCard,
+    backgroundColor: colors.surface,
     borderWidth: 1,
-    borderColor: TOKENS.colors.accentCyan,
+    borderColor: colors.download,
     borderRadius: 10,
     flexDirection: 'row',
     alignItems: 'center',
@@ -140,49 +143,46 @@ const styles = StyleSheet.create({
     marginRight: 8,
   },
   clipboardText: {
-    color: TOKENS.colors.accentCyan,
+    color: colors.download,
     fontSize: 12,
-    fontWeight: '700',
-    fontFamily: 'monospace',
+    ...fonts.monoBold,
   },
   clipboardAddBtn: {
-    minHeight: TOKENS.touchTarget.minHeight,
+    minHeight: touch.min,
     paddingHorizontal: 14,
-    backgroundColor: TOKENS.colors.accentCyan,
+    backgroundColor: colors.download,
     borderRadius: 8,
     alignItems: 'center',
     justifyContent: 'center',
   },
   clipboardAddText: {
-    color: '#000000',
+    color: colors.onAccent,
     fontSize: 11,
-    fontWeight: '700',
-    fontFamily: 'monospace',
+    ...fonts.monoBold,
   },
   actionsContainer: {
     width: '100%',
     gap: 12,
   },
   primaryButton: {
-    minHeight: TOKENS.touchTarget.minHeight,
-    backgroundColor: TOKENS.colors.accentLime,
+    minHeight: touch.min,
+    backgroundColor: colors.accent,
     borderRadius: 10,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 20,
   },
   primaryButtonText: {
-    color: '#000000',
+    color: colors.onAccent,
     fontSize: 12,
-    fontWeight: '700',
-    fontFamily: 'monospace',
+    ...fonts.monoBold,
     letterSpacing: 0.5,
   },
   secondaryButton: {
-    minHeight: TOKENS.touchTarget.minHeight,
-    backgroundColor: TOKENS.colors.surfaceCard,
+    minHeight: touch.min,
+    backgroundColor: colors.surface,
     borderWidth: 1,
-    borderColor: TOKENS.colors.surfaceBorder,
+    borderColor: colors.border,
     borderRadius: 10,
     flexDirection: 'row',
     alignItems: 'center',
@@ -190,10 +190,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
   },
   secondaryButtonText: {
-    color: TOKENS.colors.textPrimary,
+    color: colors.text,
     fontSize: 12,
-    fontWeight: '700',
-    fontFamily: 'monospace',
+    ...fonts.monoBold,
     letterSpacing: 0.5,
   },
 });

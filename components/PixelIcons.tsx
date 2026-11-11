@@ -1,4 +1,6 @@
 import React from 'react';
+import { useTheme } from '../context/ThemeContext';
+import type { ThemeColors } from '../constants/theme';
 import { PixelGlyph, PixelIconName } from './PixelIcon';
 
 /**
@@ -11,22 +13,23 @@ interface IconProps {
   color?: string | any;
 }
 
-const make = (name: PixelIconName, defSize: number, defColor: string): React.FC<IconProps> =>
-  function LegacyPixelIcon({ size = defSize, color = defColor }) {
-    return <PixelGlyph name={name} size={size} color={color} />;
+const make = (name: PixelIconName, defSize: number, role: keyof ThemeColors): React.FC<IconProps> =>
+  function LegacyPixelIcon({ size = defSize, color }) {
+    const { colors } = useTheme();
+    return <PixelGlyph name={name} size={size} color={color ?? colors[role]} />;
   };
 
-export const PixelGridIcon = make('grid', 14, '#CCFF00');
-export const PixelArrowDownIcon = make('download', 14, '#00E5FF');
-export const PixelArrowUpIcon = make('upload', 14, '#CCFF00');
-export const PixelPauseBarsIcon = make('pause', 14, '#8B949E');
-export const PixelPlayTriangleIcon = make('play', 14, '#CCFF00');
-export const PixelStopSquareIcon = make('stop', 12, '#FF007F');
-export const PixelClockIcon = make('clock', 10, '#00E5FF');
-export const PixelCheckDoneIcon = make('check', 10, '#CCFF00');
-export const PixelSearchIcon = make('search', 16, '#D1D5DB');
-export const PixelPlusFabIcon = make('plus', 24, '#000000');
-export const PixelNavTransfersIcon = make('transfers', 20, '#CCFF00');
-export const PixelNavSearchIcon = make('search', 20, '#8B949E');
-export const PixelNavFeedsIcon = make('feeds', 20, '#8B949E');
-export const PixelNavConfigIcon = make('settings', 20, '#8B949E');
+export const PixelGridIcon = make('grid', 14, 'accentText');
+export const PixelArrowDownIcon = make('download', 14, 'download');
+export const PixelArrowUpIcon = make('upload', 14, 'accentText');
+export const PixelPauseBarsIcon = make('pause', 14, 'textMuted');
+export const PixelPlayTriangleIcon = make('play', 14, 'accentText');
+export const PixelStopSquareIcon = make('stop', 12, 'danger');
+export const PixelClockIcon = make('clock', 10, 'download');
+export const PixelCheckDoneIcon = make('check', 10, 'accentText');
+export const PixelSearchIcon = make('search', 16, 'text');
+export const PixelPlusFabIcon = make('plus', 24, 'onAccent');
+export const PixelNavTransfersIcon = make('transfers', 20, 'accentText');
+export const PixelNavSearchIcon = make('search', 20, 'textMuted');
+export const PixelNavFeedsIcon = make('feeds', 20, 'textMuted');
+export const PixelNavConfigIcon = make('settings', 20, 'textMuted');

@@ -1,11 +1,15 @@
+import { useMemo } from 'react';
 import React, { useRef } from 'react';
 import { StyleSheet, TouchableOpacity, Animated } from 'react-native';
 import { useRouter } from 'expo-router';
-import { TOKENS } from '../constants/tokens';
 import { triggerHaptic } from '../constants/haptics';
 import { PixelPlusFabIcon } from './PixelIcons';
+import { useTheme } from '../context/ThemeContext';
+import { ThemeColors } from '../constants/theme';
 
 export const FloatingActionButton: React.FC = () => {
+  const { colors } = useTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   const router = useRouter();
   const scaleAnim = useRef(new Animated.Value(1)).current;
 
@@ -41,13 +45,13 @@ export const FloatingActionButton: React.FC = () => {
         accessibilityRole="button"
         accessibilityLabel="Add Torrent"
       >
-        <PixelPlusFabIcon size={24} color="#000000" />
+        <PixelPlusFabIcon size={24} color={colors.onAccent} />
       </TouchableOpacity>
     </Animated.View>
   );
 };
 
-const styles = StyleSheet.create({
+const makeStyles = (colors: ThemeColors) => StyleSheet.create({
   fabContainer: {
     position: 'absolute',
     right: 16,
@@ -58,13 +62,13 @@ const styles = StyleSheet.create({
     width: 48,
     height: 48,
     borderRadius: 14,
-    backgroundColor: TOKENS.colors.accentLime,
-    borderColor: '#efff80',
+    backgroundColor: colors.accent,
+    borderColor: colors.accent,
     borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
     elevation: 8,
-    shadowColor: TOKENS.colors.accentLime,
+    shadowColor: colors.accent,
     shadowOffset: { width: 0, height: 0 },
     shadowOpacity: 0.5,
     shadowRadius: 16,

@@ -1,8 +1,9 @@
+import { useMemo } from 'react';
 import React, { useRef } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Animated, Linking } from 'react-native';
 import { useRouter } from 'expo-router';
 import { TorrentTelemetry } from 'maglev-engine';
-import { formatBytes, formatEta, formatSpeed, TOKENS } from '../constants/tokens';
+import { formatBytes, formatEta, formatSpeed } from '../constants/format';
 import { triggerHaptic } from '../constants/haptics';
 import { useMaglevEngine } from '../context/EngineContext';
 import {
@@ -14,12 +15,16 @@ import {
   PixelArrowDownIcon,
   PixelArrowUpIcon,
 } from './PixelIcons';
+import { useTheme } from '../context/ThemeContext';
+import { alpha, fonts, touch, ThemeColors } from '../constants/theme';
 
 interface TransferCardProps {
   torrent: TorrentTelemetry;
 }
 
 export const TransferCard: React.FC<TransferCardProps> = ({ torrent }) => {
+  const { colors } = useTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   const router = useRouter();
   const { pauseTorrent, resumeTorrent, startHttpStream } = useMaglevEngine();
 
@@ -72,16 +77,16 @@ export const TransferCard: React.FC<TransferCardProps> = ({ torrent }) => {
   };
 
   const getProgressBarColor = () => {
-    if (isDownloading) return TOKENS.colors.accentCyan;
-    if (isSeeding) return TOKENS.colors.accentLime;
-    return '#6B7280';
+    if (isDownloading) return colors.download;
+    if (isSeeding) return colors.accent;
+    return colors.borderStrong;
   };
 
   const renderBadge = () => {
     if (isDownloading) {
       return (
         <View style={styles.badgeDownloading}>
-          <PixelClockIcon size={9} color={TOKENS.colors.accentCyan} />
+          <PixelClockIcon size={9} color={colors.download} />
           <Text style={styles.badgeTextDownloading}>
             {formatEta(torrent.etaSeconds)}
           </Text>
@@ -91,7 +96,7 @@ export const TransferCard: React.FC<TransferCardProps> = ({ torrent }) => {
     if (isSeeding) {
       return (
         <View style={styles.badgeDone}>
-          <PixelCheckDoneIcon size={9} color={TOKENS.colors.accentLime} />
+          <PixelCheckDoneIcon size={9} color={colors.accentText} />
           <Text style={styles.badgeTextDone}>DONE</Text>
         </View>
       );
@@ -169,11 +174,11 @@ export const TransferCard: React.FC<TransferCardProps> = ({ torrent }) => {
       return (
         <View style={styles.bottomStatsRight}>
           <View style={styles.statItem}>
-            <PixelArrowDownIcon size={11} color={TOKENS.colors.accentCyan} />
+            <PixelArrowDownIcon size={11} color={colors.download} />
             <Text style={styles.statCount}>{torrent.peersConnected || 28}</Text>
           </View>
           <View style={styles.statItem}>
-            <PixelArrowUpIcon size={11} color={TOKENS.colors.accentLime} />
+            <PixelArrowUpIcon size={11} color={colors.accentText} />
             <Text style={styles.statCount}>{torrent.seedsConnected || 6}</Text>
           </View>
         </View>
@@ -183,7 +188,7 @@ export const TransferCard: React.FC<TransferCardProps> = ({ torrent }) => {
       return (
         <View style={styles.bottomStatsRight}>
           <View style={styles.statItem}>
-            <PixelArrowUpIcon size={11} color={TOKENS.colors.accentLime} />
+            <PixelArrowUpIcon size={11} color={colors.accentText} />
             <Text style={styles.statCount}>{`${torrent.peersConnected || 14} peers`}</Text>
           </View>
         </View>
@@ -214,7 +219,7 @@ export const TransferCard: React.FC<TransferCardProps> = ({ torrent }) => {
             accessibilityLabel={`Open or Play ${torrent.name}`}
             activeOpacity={0.85}
           >
-            <PixelPlayTriangleIcon size={14} color={TOKENS.colors.accentLime} />
+            <PixelPlayTriangleIcon size={14} color={colors.accentText} />
           </TouchableOpacity>
           <TouchableOpacity
             style={styles.actionIconWrapper}
@@ -223,17 +228,17 @@ export const TransferCard: React.FC<TransferCardProps> = ({ torrent }) => {
             accessibilityLabel={`Stop seeding ${torrent.name}`}
             activeOpacity={0.85}
           >
-            <PixelStopSquareIcon size={12} color="#FF3366" />
+            <PixelStopSquareIcon size={12} color={colors.danger} />
           </TouchableOpacity>
         </View>
       );
     }
 
-    let icon = <PixelPlayTriangleIcon size={14} color={TOKENS.colors.accentLime} />;
+    let icon = <PixelPlayTriangleIcon size={14} color={colors.accentText} />;
     let actionLabel = 'Resume';
 
     if (isDownloading) {
-      icon = <PixelPauseBarsIcon size={14} color="#D1D5DB" />;
+      icon = <PixelPauseBarsIcon size={14} color={colors.text} />;
       actionLabel = 'Pause';
     }
 
@@ -306,12 +311,12 @@ export const TransferCard: React.FC<TransferCardProps> = ({ torrent }) => {
   );
 };
 
-const styles = StyleSheet.create({
+const makeStyles = (colors: ThemeColors) => StyleSheet.create({
   card: {
-    backgroundColor: '#0D1117',
+    backgroundColor: colors.surface,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: '#1F2937',
+    borderColor: colors.border,
     marginHorizontal: 16,
     marginBottom: 12,
     overflow: 'hidden',
@@ -331,77 +336,72 @@ const styles = StyleSheet.create({
   },
   titleText: {
     flex: 1,
-    fontFamily: 'SpaceMono',
+    ...fonts.monoBold,
     fontSize: 13,
-    fontWeight: '700',
-    color: '#FFFFFF',
+    color: colors.text,
     letterSpacing: -0.2,
   },
   badgeDownloading: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    backgroundColor: 'rgba(0, 229, 255, 0.1)',
-    borderColor: 'rgba(0, 229, 255, 0.3)',
+    backgroundColor: alpha(colors.download, 0.1),
+    borderColor: alpha(colors.download, 0.3),
     borderWidth: 1,
     borderRadius: 4,
     paddingHorizontal: 7,
     paddingVertical: 2,
   },
   badgeTextDownloading: {
-    fontFamily: 'SpaceMono',
+    ...fonts.monoBold,
     fontSize: 10,
-    fontWeight: '700',
-    color: TOKENS.colors.accentCyan,
+    color: colors.download,
   },
   badgeDone: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    backgroundColor: 'rgba(204, 255, 0, 0.15)',
-    borderColor: 'rgba(204, 255, 0, 0.3)',
+    backgroundColor: alpha(colors.accent, 0.15),
+    borderColor: alpha(colors.accent, 0.3),
     borderWidth: 1,
     borderRadius: 4,
     paddingHorizontal: 7,
     paddingVertical: 2,
-    shadowColor: TOKENS.colors.accentLime,
+    shadowColor: colors.accent,
     shadowOffset: { width: 0, height: 0 },
     shadowOpacity: 0.25,
     shadowRadius: 6,
   },
   badgeTextDone: {
-    fontFamily: 'SpaceMono',
+    ...fonts.monoBold,
     fontSize: 10,
-    fontWeight: '700',
-    color: TOKENS.colors.accentLime,
+    color: colors.accentText,
   },
   badgePaused: {
-    backgroundColor: 'rgba(255, 255, 255, 0.1)',
-    borderColor: 'rgba(255, 255, 255, 0.2)',
+    backgroundColor: alpha(colors.text, 0.1),
+    borderColor: alpha(colors.text, 0.2),
     borderWidth: 1,
     borderRadius: 4,
     paddingHorizontal: 6,
     paddingVertical: 2,
   },
   badgeQueued: {
-    backgroundColor: 'rgba(0, 229, 255, 0.08)',
-    borderColor: 'rgba(0, 229, 255, 0.25)',
+    backgroundColor: alpha(colors.download, 0.08),
+    borderColor: alpha(colors.download, 0.25),
     borderWidth: 1,
     borderRadius: 4,
     paddingHorizontal: 6,
     paddingVertical: 2,
   },
   badgeTextQueued: {
-    fontFamily: 'Silkscreen',
+    ...fonts.brand,
     fontSize: 8,
-    fontWeight: '700',
-    color: TOKENS.colors.accentCyan,
+    color: colors.download,
   },
   badgeTextPaused: {
-    fontFamily: 'Silkscreen',
+    ...fonts.brand,
     fontSize: 8,
-    fontWeight: '700',
-    color: '#D1D5DB',
+    color: colors.text,
   },
   metricsRow: {
     flexDirection: 'row',
@@ -410,42 +410,38 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   speedTextDown: {
-    fontFamily: 'SpaceMono',
+    ...fonts.monoBold,
     fontSize: 11,
-    fontWeight: '700',
-    color: TOKENS.colors.accentCyan,
+    color: colors.download,
   },
   speedTextUp: {
-    fontFamily: 'SpaceMono',
+    ...fonts.monoBold,
     fontSize: 11,
-    fontWeight: '700',
-    color: TOKENS.colors.accentLime,
+    color: colors.accentText,
   },
   speedTextPaused: {
-    fontFamily: 'SpaceMono',
+    ...fonts.mono,
     fontSize: 11,
-    fontWeight: '500',
-    color: '#8B949E',
+    color: colors.textMuted,
   },
   speedTextQueued: {
-    fontFamily: 'SpaceMono',
+    ...fonts.mono,
     fontSize: 11,
-    fontWeight: '500',
-    color: TOKENS.colors.accentCyan,
+    color: colors.download,
   },
   bulletDot: {
-    color: '#8B949E',
+    color: colors.textMuted,
     fontSize: 10,
   },
   bytesText: {
-    fontFamily: 'SpaceMono',
+    ...fonts.mono,
     fontSize: 11,
-    color: '#D1D5DB',
+    color: colors.text,
   },
   progressTrack: {
     height: 8,
     borderRadius: 4,
-    backgroundColor: '#161D28',
+    backgroundColor: colors.surfaceRaised,
     overflow: 'hidden',
     marginVertical: 4,
   },
@@ -460,13 +456,12 @@ const styles = StyleSheet.create({
     paddingTop: 6,
     marginTop: 4,
     borderTopWidth: 1,
-    borderTopColor: 'rgba(22, 29, 40, 0.7)',
+    borderTopColor: alpha(colors.border, 0.7),
   },
   percentText: {
-    fontFamily: 'SpaceMono',
+    ...fonts.monoBold,
     fontSize: 13,
-    fontWeight: '700',
-    color: '#FFFFFF',
+    color: colors.text,
   },
   bottomStatsRight: {
     flexDirection: 'row',
@@ -479,42 +474,42 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   statCount: {
-    fontFamily: 'SpaceMono',
+    ...fonts.mono,
     fontSize: 11,
-    color: '#9CA3AF',
+    color: colors.textMuted,
   },
   pausedRateText: {
-    fontFamily: 'SpaceMono',
+    ...fonts.mono,
     fontSize: 10,
-    color: '#8B949E',
+    color: colors.textMuted,
   },
   actionColumn: {
     width: 60,
-    backgroundColor: '#121722',
+    backgroundColor: colors.surfaceRaised,
     borderLeftWidth: 1,
-    borderLeftColor: '#1F2937',
+    borderLeftColor: colors.border,
     alignItems: 'center',
     justifyContent: 'center',
-    minHeight: TOKENS.touchTarget.minHeight,
+    minHeight: touch.min,
   },
   actionColumnDual: {
     width: 60,
-    backgroundColor: '#121722',
+    backgroundColor: colors.surfaceRaised,
     borderLeftWidth: 1,
-    borderLeftColor: '#1F2937',
+    borderLeftColor: colors.border,
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
     paddingVertical: 8,
-    minHeight: TOKENS.touchTarget.minHeight,
+    minHeight: touch.min,
   },
   actionIconWrapper: {
     width: 44,
     height: 44,
     borderRadius: 8,
-    backgroundColor: '#1A2230',
+    backgroundColor: colors.surfaceRaised,
     borderWidth: 1,
-    borderColor: '#2D3A4E',
+    borderColor: colors.border,
     alignItems: 'center',
     justifyContent: 'center',
   },

@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
@@ -13,10 +14,12 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { formatBytes, TOKENS } from '../../constants/tokens';
+import { formatBytes } from '../../constants/format';
 import { HeaderBar } from '../../components/HeaderBar';
 import { useMaglevEngine } from '../../context/EngineContext';
 import { triggerHaptic } from '../../constants/haptics';
+import { useTheme } from '../../context/ThemeContext';
+import { alpha, fonts, touch, ThemeColors } from '../../constants/theme';
 
 export interface FeedItem {
   id: string;
@@ -136,6 +139,8 @@ function parseRssFeed(xml: string, channelName: string): FeedItem[] {
 }
 
 export default function FeedsScreen() {
+  const { colors } = useTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   const insets = useSafeAreaInsets();
   const { startTorrent } = useMaglevEngine();
 
@@ -313,9 +318,9 @@ export default function FeedsScreen() {
             accessibilityLabel="Refresh feeds"
           >
             {isRefreshing ? (
-              <ActivityIndicator size="small" color={TOKENS.colors.accentLime} />
+              <ActivityIndicator size="small" color={colors.accentText} />
             ) : (
-              <Ionicons name="refresh" size={16} color={TOKENS.colors.accentLime} />
+              <Ionicons name="refresh" size={16} color={colors.accentText} />
             )}
           </TouchableOpacity>
           <TouchableOpacity
@@ -441,7 +446,7 @@ export default function FeedsScreen() {
                 accessibilityLabel="Close add feed dialog"
                 style={styles.modalCloseBtn}
               >
-                <Ionicons name="close" size={20} color={TOKENS.colors.textMuted} />
+                <Ionicons name="close" size={20} color={colors.textMuted} />
               </TouchableOpacity>
             </View>
 
@@ -449,7 +454,7 @@ export default function FeedsScreen() {
             <TextInput
               style={styles.modalInput}
               placeholder="https://example.com/feed.xml"
-              placeholderTextColor={TOKENS.colors.textMuted}
+              placeholderTextColor={colors.textMuted}
               value={newFeedUrl}
               onChangeText={setNewFeedUrl}
               autoCapitalize="none"
@@ -460,7 +465,7 @@ export default function FeedsScreen() {
             <TextInput
               style={styles.modalInput}
               placeholder="e.g. Linux Releases"
-              placeholderTextColor={TOKENS.colors.textMuted}
+              placeholderTextColor={colors.textMuted}
               value={newChannelName}
               onChangeText={setNewChannelName}
             />
@@ -475,8 +480,8 @@ export default function FeedsScreen() {
               <Switch
                 value={newAutoDownload}
                 onValueChange={setNewAutoDownload}
-                trackColor={{ false: '#161B22', true: TOKENS.colors.accentLime }}
-                thumbColor={newAutoDownload ? '#000000' : TOKENS.colors.textMuted}
+                trackColor={{ false: colors.surfaceRaised, true: colors.accent }}
+                thumbColor={newAutoDownload ? colors.bg : colors.textMuted}
               />
             </View>
 
@@ -488,7 +493,7 @@ export default function FeedsScreen() {
               accessibilityLabel="Confirm add feed"
             >
               {isSubscribing ? (
-                <ActivityIndicator size="small" color="#000000" />
+                <ActivityIndicator size="small" color={colors.onAccent} />
               ) : (
                 <Text style={styles.modalSubmitBtnText}>SUBSCRIBE & SYNC</Text>
               )}
@@ -500,10 +505,10 @@ export default function FeedsScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (colors: ThemeColors) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: TOKENS.colors.bgOled,
+    backgroundColor: colors.bg,
   },
   topBar: {
     flexDirection: 'row',
@@ -521,42 +526,40 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   refreshBtn: {
-    minWidth: TOKENS.touchTarget.minWidth,
-    minHeight: TOKENS.touchTarget.minHeight,
-    backgroundColor: '#0D1117',
+    minWidth: touch.min,
+    minHeight: touch.min,
+    backgroundColor: colors.surface,
     borderWidth: 1,
-    borderColor: '#1F2937',
+    borderColor: colors.border,
     borderRadius: 8,
     alignItems: 'center',
     justifyContent: 'center',
   },
   screenHeading: {
-    color: TOKENS.colors.textPrimary,
+    color: colors.text,
     fontSize: 16,
-    fontWeight: '700',
-    fontFamily: 'monospace',
+    ...fonts.monoBold,
     marginBottom: 2,
   },
   screenSubheading: {
-    color: TOKENS.colors.textMuted,
+    color: colors.textMuted,
     fontSize: 10,
-    fontFamily: 'monospace',
+    ...fonts.mono,
   },
   addFeedBtn: {
-    minHeight: TOKENS.touchTarget.minHeight,
-    backgroundColor: TOKENS.colors.surfaceCard,
+    minHeight: touch.min,
+    backgroundColor: colors.surface,
     borderWidth: 1,
-    borderColor: TOKENS.colors.accentLime,
+    borderColor: colors.accent,
     borderRadius: 8,
     paddingHorizontal: 14,
     alignItems: 'center',
     justifyContent: 'center',
   },
   addFeedBtnText: {
-    color: TOKENS.colors.accentLime,
+    color: colors.accentText,
     fontSize: 11,
-    fontWeight: '700',
-    fontFamily: 'monospace',
+    ...fonts.monoBold,
   },
   channelScrollWrapper: {
     marginVertical: 4,
@@ -567,30 +570,29 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   channelPill: {
-    minHeight: TOKENS.touchTarget.minHeight,
+    minHeight: touch.min,
     paddingHorizontal: 14,
     borderRadius: 10,
     alignItems: 'center',
     justifyContent: 'center',
   },
   channelPillActive: {
-    backgroundColor: TOKENS.colors.accentLime,
+    backgroundColor: colors.accent,
   },
   channelPillInactive: {
-    backgroundColor: TOKENS.colors.surfaceCard,
+    backgroundColor: colors.surface,
     borderWidth: 1,
-    borderColor: TOKENS.colors.surfaceBorder,
+    borderColor: colors.border,
   },
   channelPillText: {
     fontSize: 11,
-    fontWeight: '700',
-    fontFamily: 'monospace',
+    ...fonts.monoBold,
   },
   channelPillTextActive: {
-    color: '#000000',
+    color: colors.onAccent,
   },
   channelPillTextInactive: {
-    color: TOKENS.colors.textMuted,
+    color: colors.textMuted,
   },
   feedScroll: {
     paddingHorizontal: 16,
@@ -601,9 +603,9 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   feedCard: {
-    backgroundColor: TOKENS.colors.surfaceCard,
+    backgroundColor: colors.surface,
     borderWidth: 1,
-    borderColor: TOKENS.colors.surfaceBorder,
+    borderColor: colors.border,
     borderRadius: 12,
     padding: 14,
   },
@@ -616,16 +618,15 @@ const styles = StyleSheet.create({
   channelBadge: {
     paddingHorizontal: 8,
     paddingVertical: 2,
-    backgroundColor: TOKENS.colors.surfacePill,
+    backgroundColor: colors.surfaceRaised,
     borderRadius: 4,
     borderWidth: 1,
-    borderColor: TOKENS.colors.surfaceBorder,
+    borderColor: colors.border,
   },
   channelBadgeText: {
-    color: TOKENS.colors.accentCyan,
+    color: colors.download,
     fontSize: 9,
-    fontWeight: '700',
-    fontFamily: 'monospace',
+    ...fonts.monoBold,
   },
   metaRight: {
     flexDirection: 'row',
@@ -635,27 +636,25 @@ const styles = StyleSheet.create({
   autoBadge: {
     paddingHorizontal: 6,
     paddingVertical: 1,
-    backgroundColor: 'rgba(204, 255, 0, 0.15)',
+    backgroundColor: alpha(colors.accent, 0.15),
     borderRadius: 4,
     borderWidth: 1,
-    borderColor: TOKENS.colors.accentLime,
+    borderColor: colors.accent,
   },
   autoBadgeText: {
-    color: TOKENS.colors.accentLime,
+    color: colors.accentText,
     fontSize: 8,
-    fontWeight: '700',
-    fontFamily: 'monospace',
+    ...fonts.monoBold,
   },
   publishedText: {
-    color: TOKENS.colors.textMuted,
+    color: colors.textMuted,
     fontSize: 10,
-    fontFamily: 'monospace',
+    ...fonts.mono,
   },
   feedTitle: {
-    color: TOKENS.colors.textPrimary,
+    color: colors.text,
     fontSize: 13,
-    fontWeight: '700',
-    fontFamily: 'monospace',
+    ...fonts.monoBold,
     lineHeight: 18,
     marginBottom: 12,
   },
@@ -665,43 +664,42 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   sizeText: {
-    color: TOKENS.colors.textMuted,
+    color: colors.textMuted,
     fontSize: 11,
-    fontFamily: 'monospace',
+    ...fonts.mono,
   },
   downloadBtn: {
     minWidth: 100,
-    minHeight: TOKENS.touchTarget.minHeight,
-    backgroundColor: TOKENS.colors.accentLime,
+    minHeight: touch.min,
+    backgroundColor: colors.accent,
     borderRadius: 8,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 12,
   },
   downloadBtnDone: {
-    backgroundColor: TOKENS.colors.surfacePill,
+    backgroundColor: colors.surfaceRaised,
     borderWidth: 1,
-    borderColor: TOKENS.colors.accentLime,
+    borderColor: colors.accent,
   },
   downloadBtnText: {
-    color: '#000000',
+    color: colors.onAccent,
     fontSize: 11,
-    fontWeight: '700',
-    fontFamily: 'monospace',
+    ...fonts.monoBold,
   },
   downloadBtnTextDone: {
-    color: TOKENS.colors.accentLime,
+    color: colors.accentText,
   },
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(5, 7, 10, 0.85)',
+    backgroundColor: colors.overlay,
     justifyContent: 'center',
     paddingHorizontal: 20,
   },
   modalContent: {
-    backgroundColor: TOKENS.colors.surfaceCard,
+    backgroundColor: colors.surface,
     borderWidth: 1,
-    borderColor: TOKENS.colors.surfaceBorder,
+    borderColor: colors.border,
     borderRadius: 14,
     padding: 20,
   },
@@ -718,29 +716,27 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   modalTitle: {
-    color: TOKENS.colors.textPrimary,
+    color: colors.text,
     fontSize: 14,
-    fontWeight: '700',
-    fontFamily: 'monospace',
+    ...fonts.monoBold,
   },
   inputLabel: {
-    color: TOKENS.colors.textMuted,
+    color: colors.textMuted,
     fontSize: 9,
-    fontWeight: '700',
-    fontFamily: 'monospace',
+    ...fonts.monoBold,
     marginBottom: 6,
     letterSpacing: 0.5,
   },
   modalInput: {
-    minHeight: TOKENS.touchTarget.minHeight,
-    backgroundColor: '#070A0E',
+    minHeight: touch.min,
+    backgroundColor: colors.bg,
     borderWidth: 1,
-    borderColor: TOKENS.colors.surfaceBorder,
+    borderColor: colors.border,
     borderRadius: 8,
     paddingHorizontal: 12,
-    color: TOKENS.colors.textPrimary,
+    color: colors.text,
     fontSize: 11,
-    fontFamily: 'monospace',
+    ...fonts.mono,
     marginBottom: 14,
   },
   modalSwitchRow: {
@@ -754,20 +750,19 @@ const styles = StyleSheet.create({
     marginRight: 10,
   },
   modalSwitchTitle: {
-    color: TOKENS.colors.textPrimary,
+    color: colors.text,
     fontSize: 11,
-    fontWeight: '700',
-    fontFamily: 'monospace',
+    ...fonts.monoBold,
   },
   modalSwitchSubtitle: {
-    color: TOKENS.colors.textMuted,
+    color: colors.textMuted,
     fontSize: 9,
-    fontFamily: 'monospace',
+    ...fonts.mono,
     marginTop: 2,
   },
   modalSubmitBtn: {
-    minHeight: TOKENS.touchTarget.minHeight,
-    backgroundColor: TOKENS.colors.accentLime,
+    minHeight: touch.min,
+    backgroundColor: colors.accent,
     borderRadius: 8,
     alignItems: 'center',
     justifyContent: 'center',
@@ -777,9 +772,8 @@ const styles = StyleSheet.create({
     opacity: 0.6,
   },
   modalSubmitBtnText: {
-    color: '#000000',
+    color: colors.onAccent,
     fontSize: 11,
-    fontWeight: '700',
-    fontFamily: 'monospace',
+    ...fonts.monoBold,
   },
 });

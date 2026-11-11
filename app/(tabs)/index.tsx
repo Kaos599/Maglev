@@ -18,15 +18,18 @@ import { TransferCard } from '../../components/TransferCard';
 import { EmptyState } from '../../components/EmptyState';
 import { FloatingActionButton } from '../../components/FloatingActionButton';
 import { PixelSearchIcon } from '../../components/PixelIcons';
-import { TOKENS } from '../../constants/tokens';
 import { triggerHaptic } from '../../constants/haptics';
 import { useMaglevEngine } from '../../context/EngineContext';
+import { useTheme } from '../../context/ThemeContext';
+import { fonts, touch, ThemeColors } from '../../constants/theme';
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
 }
 
 export default function TransfersScreen() {
+  const { colors } = useTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   const insets = useSafeAreaInsets();
   const { filteredTorrents } = useMaglevEngine();
 
@@ -61,11 +64,11 @@ export default function TransfersScreen() {
       {isSearchOpen && (
         <View style={styles.searchContainer}>
           <View style={styles.searchInputWrapper}>
-            <PixelSearchIcon size={14} color={TOKENS.colors.accentCyan} />
+            <PixelSearchIcon size={14} color={colors.download} />
             <TextInput
               style={styles.searchInput}
               placeholder="Filter transfers by name..."
-              placeholderTextColor="#6B7280"
+              placeholderTextColor={colors.textFaint}
               value={searchQuery}
               onChangeText={setSearchQuery}
               autoFocus
@@ -82,7 +85,7 @@ export default function TransfersScreen() {
                 accessibilityRole="button"
                 accessibilityLabel="Clear search input"
               >
-                <Ionicons name="close" size={16} color="#9CA3AF" />
+                <Ionicons name="close" size={16} color={colors.textMuted} />
               </TouchableOpacity>
             )}
           </View>
@@ -128,10 +131,10 @@ export default function TransfersScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (colors: ThemeColors) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: TOKENS.colors.bgOled,
+    backgroundColor: colors.bg,
   },
   searchContainer: {
     paddingHorizontal: 16,
@@ -140,9 +143,9 @@ const styles = StyleSheet.create({
   },
   searchInputWrapper: {
     height: 44,
-    backgroundColor: '#0D1117',
+    backgroundColor: colors.surface,
     borderWidth: 1,
-    borderColor: '#1F2937',
+    borderColor: colors.border,
     borderRadius: 10,
     flexDirection: 'row',
     alignItems: 'center',
@@ -152,15 +155,15 @@ const styles = StyleSheet.create({
   searchInput: {
     flex: 1,
     height: '100%',
-    fontFamily: 'SpaceMono',
+    ...fonts.mono,
     fontSize: 12,
-    color: '#FFFFFF',
+    color: colors.text,
     marginLeft: 8,
     paddingVertical: 0,
   },
   clearSearchTouch: {
-    minWidth: TOKENS.touchTarget.minWidth,
-    minHeight: TOKENS.touchTarget.minHeight,
+    minWidth: touch.min,
+    minHeight: touch.min,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -172,38 +175,36 @@ const styles = StyleSheet.create({
     paddingBottom: 64,
   },
   noResultsTitle: {
-    fontFamily: 'Silkscreen',
+    ...fonts.brand,
     fontSize: 14,
-    fontWeight: '700',
-    color: '#FFFFFF',
+    color: colors.text,
     marginBottom: 8,
     textAlign: 'center',
   },
   noResultsSubtitle: {
-    fontFamily: 'SpaceMono',
+    ...fonts.mono,
     fontSize: 11,
-    color: '#8B949E',
+    color: colors.textMuted,
     textAlign: 'center',
     marginBottom: 20,
     lineHeight: 18,
   },
   clearFilterButton: {
-    minHeight: TOKENS.touchTarget.minHeight,
+    minHeight: touch.min,
     minWidth: 120,
     paddingHorizontal: 16,
     paddingVertical: 10,
-    backgroundColor: '#161B22',
+    backgroundColor: colors.surfaceRaised,
     borderWidth: 1,
-    borderColor: '#30363D',
+    borderColor: colors.border,
     borderRadius: 8,
     alignItems: 'center',
     justifyContent: 'center',
   },
   clearFilterButtonText: {
-    fontFamily: 'SpaceMono',
+    ...fonts.monoBold,
     fontSize: 11,
-    fontWeight: '700',
-    color: TOKENS.colors.accentLime,
+    color: colors.accentText,
   },
   listContent: {
     paddingBottom: 90,

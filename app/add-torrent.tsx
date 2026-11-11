@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   View,
@@ -15,7 +16,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system';
-import { formatBytes, TOKENS } from '../constants/tokens';
+import { formatBytes } from '../constants/format';
 import { useMaglevEngine } from '../context/EngineContext';
 import { triggerHaptic } from '../constants/haptics';
 import {
@@ -25,8 +26,12 @@ import {
   parseMagnetUri,
 } from '../utils/torrentMetadata';
 import { checkMaglevPermissions, requestMaglevPermissions } from '../utils/permissions';
+import { useTheme } from '../context/ThemeContext';
+import { alpha, fonts, touch, ThemeColors } from '../constants/theme';
 
 export default function AddTorrentSheet() {
+  const { colors } = useTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const searchParams = useLocalSearchParams<{ uri?: string; magnet?: string; source?: string }>();
@@ -351,7 +356,7 @@ export default function AddTorrentSheet() {
           accessibilityRole="button"
           accessibilityLabel="Close sheet"
         >
-          <Ionicons name="close" size={20} color={TOKENS.colors.textMuted} />
+          <Ionicons name="close" size={20} color={colors.textMuted} />
         </TouchableOpacity>
       </View>
 
@@ -362,7 +367,7 @@ export default function AddTorrentSheet() {
           <TextInput
             style={styles.textInput}
             placeholder="magnet:?xt=urn:btih:..."
-            placeholderTextColor={TOKENS.colors.textMuted}
+            placeholderTextColor={colors.textMuted}
             value={magnetInput}
             onChangeText={onMagnetChange}
             multiline
@@ -375,7 +380,7 @@ export default function AddTorrentSheet() {
               accessibilityRole="button"
               accessibilityLabel="Clear magnet link"
             >
-              <Ionicons name="close-circle" size={16} color={TOKENS.colors.textMuted} />
+              <Ionicons name="close-circle" size={16} color={colors.textMuted} />
             </TouchableOpacity>
           )}
         </View>
@@ -389,7 +394,7 @@ export default function AddTorrentSheet() {
             accessibilityLabel="Browse .torrent file from local storage"
             activeOpacity={0.8}
           >
-            <Ionicons name="document-attach-outline" size={16} color={TOKENS.colors.accentCyan} />
+            <Ionicons name="document-attach-outline" size={16} color={colors.download} />
             <Text style={styles.browseFileText}>BROWSE .TORRENT FILE</Text>
           </TouchableOpacity>
         </View>
@@ -397,7 +402,7 @@ export default function AddTorrentSheet() {
         {/* Live Swarm Metadata Resolution Banner */}
         {isResolving && (
           <View style={styles.metadataResolvingCard}>
-            <ActivityIndicator size="small" color={TOKENS.colors.accentLime} />
+            <ActivityIndicator size="small" color={colors.accentText} />
             <View style={styles.resolvingTextCol}>
               <Text style={styles.resolvingTitle}>SCANNING SWARM METADATA...</Text>
               <Text style={styles.resolvingSubtitle}>
@@ -436,7 +441,7 @@ export default function AddTorrentSheet() {
         <Text style={styles.sectionLabel}>Storage Destination</Text>
         <View style={styles.pathPill}>
           <View style={styles.pathTextContainer}>
-            <Ionicons name="folder-outline" size={16} color={TOKENS.colors.accentLime} />
+            <Ionicons name="folder-outline" size={16} color={colors.accentText} />
             {isEditingPath ? (
               <TextInput
                 style={styles.pathInput}
@@ -483,7 +488,7 @@ export default function AddTorrentSheet() {
                 styles.storageFill,
                 {
                   width: `${Math.min(100, Math.max(3, (selectedPayloadBytes / (freeDiskBytes || 1)) * 100))}%`,
-                  backgroundColor: hasEnoughSpace ? TOKENS.colors.accentCyan : '#FF3366',
+                  backgroundColor: hasEnoughSpace ? colors.download : colors.danger,
                 },
               ]}
             />
@@ -491,7 +496,7 @@ export default function AddTorrentSheet() {
 
           {!hasEnoughSpace ? (
             <View style={styles.storageAlertBox}>
-              <Ionicons name="warning-outline" size={14} color="#FF3366" />
+              <Ionicons name="warning-outline" size={14} color={colors.danger} />
               <Text style={styles.storageAlertText}>
                 {`INSUFFICIENT STORAGE: Deficit ${formatBytes(storageDeficitBytes)}. Free up space to continue.`}
               </Text>
@@ -601,7 +606,7 @@ export default function AddTorrentSheet() {
         ) : (
           !isResolving && (
             <View style={styles.emptyFilesBox}>
-              <Ionicons name="document-text-outline" size={24} color="#4B5563" />
+              <Ionicons name="document-text-outline" size={24} color={colors.textFaint} />
               <Text style={styles.emptyFilesText}>
                 Paste a magnet link or browse a .torrent file to load and inspect payload files.
               </Text>
@@ -620,8 +625,8 @@ export default function AddTorrentSheet() {
           <Switch
             value={sequential}
             onValueChange={setSequential}
-            trackColor={{ false: '#161B22', true: TOKENS.colors.accentLime }}
-            thumbColor={sequential ? '#000000' : TOKENS.colors.textMuted}
+            trackColor={{ false: colors.surfaceRaised, true: colors.accent }}
+            thumbColor={sequential ? colors.bg : colors.textMuted}
           />
         </View>
       </ScrollView>
@@ -662,10 +667,10 @@ export default function AddTorrentSheet() {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (colors: ThemeColors) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: TOKENS.colors.bgOled,
+    backgroundColor: colors.bg,
   },
   header: {
     height: 52,
@@ -674,17 +679,16 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: 20,
     borderBottomWidth: 1,
-    borderBottomColor: TOKENS.colors.surfaceBorder,
+    borderBottomColor: colors.border,
   },
   headerTitle: {
-    color: TOKENS.colors.textPrimary,
+    color: colors.text,
     fontSize: 14,
-    fontWeight: '700',
-    fontFamily: 'monospace',
+    ...fonts.monoBold,
   },
   closeButton: {
-    minWidth: TOKENS.touchTarget.minWidth,
-    minHeight: TOKENS.touchTarget.minHeight,
+    minWidth: touch.min,
+    minHeight: touch.min,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -694,19 +698,18 @@ const styles = StyleSheet.create({
     paddingBottom: 24,
   },
   sectionLabel: {
-    color: TOKENS.colors.textMuted,
+    color: colors.textMuted,
     fontSize: 11,
-    fontWeight: '700',
-    fontFamily: 'monospace',
+    ...fonts.monoBold,
     marginBottom: 8,
     letterSpacing: 0.5,
   },
   inputContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: TOKENS.colors.surfaceCard,
+    backgroundColor: colors.surface,
     borderWidth: 1,
-    borderColor: TOKENS.colors.surfaceBorder,
+    borderColor: colors.border,
     borderRadius: 10,
     paddingHorizontal: 12,
     paddingVertical: 8,
@@ -714,9 +717,9 @@ const styles = StyleSheet.create({
   },
   textInput: {
     flex: 1,
-    color: TOKENS.colors.textPrimary,
+    color: colors.text,
     fontSize: 12,
-    fontFamily: 'monospace',
+    ...fonts.mono,
     minHeight: 44,
   },
   clearBtn: {
@@ -729,10 +732,10 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   browseFileBtn: {
-    minHeight: TOKENS.touchTarget.minHeight,
-    backgroundColor: '#0A121A',
+    minHeight: touch.min,
+    backgroundColor: colors.surface,
     borderWidth: 1,
-    borderColor: 'rgba(0, 229, 255, 0.3)',
+    borderColor: alpha(colors.download, 0.3),
     borderRadius: 8,
     flexDirection: 'row',
     alignItems: 'center',
@@ -741,16 +744,15 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
   },
   browseFileText: {
-    color: TOKENS.colors.accentCyan,
+    color: colors.download,
     fontSize: 11,
-    fontWeight: '700',
-    fontFamily: 'monospace',
+    ...fonts.monoBold,
     letterSpacing: 0.5,
   },
   metadataResolvingCard: {
-    backgroundColor: '#0F171E',
+    backgroundColor: colors.surface,
     borderWidth: 1,
-    borderColor: 'rgba(204, 255, 0, 0.3)',
+    borderColor: alpha(colors.accent, 0.3),
     borderRadius: 8,
     padding: 12,
     flexDirection: 'row',
@@ -762,21 +764,20 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   resolvingTitle: {
-    color: TOKENS.colors.accentLime,
+    color: colors.accentText,
     fontSize: 11,
-    fontWeight: '700',
-    fontFamily: 'monospace',
+    ...fonts.monoBold,
   },
   resolvingSubtitle: {
-    color: TOKENS.colors.textMuted,
+    color: colors.textMuted,
     fontSize: 10,
-    fontFamily: 'monospace',
+    ...fonts.mono,
     marginTop: 2,
   },
   resolvedHudCard: {
-    backgroundColor: '#0D1117',
+    backgroundColor: colors.surface,
     borderWidth: 1,
-    borderColor: '#1F2937',
+    borderColor: colors.border,
     borderRadius: 8,
     padding: 12,
     marginBottom: 16,
@@ -791,13 +792,12 @@ const styles = StyleSheet.create({
     width: 6,
     height: 6,
     borderRadius: 3,
-    backgroundColor: TOKENS.colors.accentLime,
+    backgroundColor: colors.accent,
   },
   resolvedNameText: {
-    color: TOKENS.colors.textPrimary,
+    color: colors.text,
     fontSize: 12,
-    fontWeight: '700',
-    fontFamily: 'monospace',
+    ...fonts.monoBold,
     flex: 1,
   },
   resolvedMetaRow: {
@@ -808,22 +808,20 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   resolvedHashText: {
-    color: '#6B7280',
+    color: colors.textFaint,
     fontSize: 10,
-    fontFamily: 'monospace',
+    ...fonts.mono,
   },
   resolvedTrackerText: {
-    color: TOKENS.colors.accentCyan,
+    color: colors.download,
     fontSize: 10,
-    fontFamily: 'monospace',
-    fontWeight: '700',
+    ...fonts.monoBold,
   },
   resolvedPendingBadge: {
-    color: '#EAB308',
+    color: colors.warning,
     fontSize: 9,
-    fontFamily: 'monospace',
-    fontWeight: '700',
-    backgroundColor: 'rgba(234, 179, 8, 0.1)',
+    ...fonts.monoBold,
+    backgroundColor: alpha(colors.warning, 0.1),
     paddingHorizontal: 6,
     paddingVertical: 2,
     borderRadius: 4,
@@ -832,9 +830,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    backgroundColor: TOKENS.colors.surfaceCard,
+    backgroundColor: colors.surface,
     borderWidth: 1,
-    borderColor: TOKENS.colors.surfaceBorder,
+    borderColor: colors.border,
     borderRadius: 10,
     paddingHorizontal: 12,
     paddingVertical: 10,
@@ -848,36 +846,35 @@ const styles = StyleSheet.create({
     marginRight: 8,
   },
   pathText: {
-    color: TOKENS.colors.textPrimary,
+    color: colors.text,
     fontSize: 11,
-    fontFamily: 'monospace',
+    ...fonts.mono,
   },
   pathInput: {
     flex: 1,
-    color: TOKENS.colors.textPrimary,
+    color: colors.text,
     fontSize: 11,
-    fontFamily: 'monospace',
+    ...fonts.mono,
     padding: 0,
   },
   changePathBtn: {
     minHeight: 44,
     minWidth: 44,
     paddingHorizontal: 12,
-    backgroundColor: '#161B22',
+    backgroundColor: colors.surfaceRaised,
     borderRadius: 6,
     alignItems: 'center',
     justifyContent: 'center',
   },
   changePathText: {
-    color: TOKENS.colors.accentLime,
+    color: colors.accentText,
     fontSize: 10,
-    fontWeight: '700',
-    fontFamily: 'monospace',
+    ...fonts.monoBold,
   },
   storageHudCard: {
-    backgroundColor: '#0D1117',
+    backgroundColor: colors.surface,
     borderWidth: 1,
-    borderColor: '#1F2937',
+    borderColor: colors.border,
     borderRadius: 10,
     padding: 14,
     marginBottom: 20,
@@ -894,32 +891,29 @@ const styles = StyleSheet.create({
   storageHudDivider: {
     width: 1,
     height: 24,
-    backgroundColor: '#1F2937',
+    backgroundColor: colors.border,
     marginHorizontal: 12,
   },
   storageHudLabel: {
-    color: '#6B7280',
+    color: colors.textFaint,
     fontSize: 9,
-    fontWeight: '700',
-    fontFamily: 'monospace',
+    ...fonts.monoBold,
     marginBottom: 2,
     letterSpacing: 0.5,
   },
   storageHudValueLime: {
-    color: TOKENS.colors.accentLime,
+    color: colors.accentText,
     fontSize: 14,
-    fontWeight: '700',
-    fontFamily: 'monospace',
+    ...fonts.monoBold,
   },
   storageHudValueCyan: {
-    color: TOKENS.colors.accentCyan,
+    color: colors.download,
     fontSize: 14,
-    fontWeight: '700',
-    fontFamily: 'monospace',
+    ...fonts.monoBold,
   },
   storageTrack: {
     height: 4,
-    backgroundColor: '#161B22',
+    backgroundColor: colors.surfaceRaised,
     borderRadius: 2,
     overflow: 'hidden',
     marginBottom: 8,
@@ -932,24 +926,23 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    backgroundColor: 'rgba(255, 51, 102, 0.1)',
+    backgroundColor: alpha(colors.danger, 0.1),
     borderWidth: 1,
-    borderColor: 'rgba(255, 51, 102, 0.3)',
+    borderColor: alpha(colors.danger, 0.3),
     borderRadius: 6,
     padding: 8,
     marginTop: 4,
   },
   storageAlertText: {
-    color: '#FF3366',
+    color: colors.danger,
     fontSize: 10,
-    fontWeight: '700',
-    fontFamily: 'monospace',
+    ...fonts.monoBold,
     flex: 1,
   },
   storageHintText: {
-    color: '#6B7280',
+    color: colors.textFaint,
     fontSize: 10,
-    fontFamily: 'monospace',
+    ...fonts.mono,
   },
   filesHeaderRow: {
     flexDirection: 'row',
@@ -965,47 +958,47 @@ const styles = StyleSheet.create({
   batchBtn: {
     minHeight: 44,
     paddingHorizontal: 10,
-    backgroundColor: '#161B22',
+    backgroundColor: colors.surfaceRaised,
     borderRadius: 6,
     justifyContent: 'center',
     alignItems: 'center',
   },
   batchBtnText: {
-    color: TOKENS.colors.textMuted,
+    color: colors.textMuted,
     fontSize: 10,
-    fontFamily: 'monospace',
+    ...fonts.mono,
   },
   batchBtnChip: {
     minHeight: 44,
     paddingHorizontal: 10,
-    backgroundColor: '#0F1B26',
+    backgroundColor: colors.surface,
     borderWidth: 1,
-    borderColor: 'rgba(0, 229, 255, 0.2)',
+    borderColor: alpha(colors.download, 0.2),
     borderRadius: 6,
     justifyContent: 'center',
     alignItems: 'center',
   },
   batchBtnChipText: {
-    color: TOKENS.colors.accentCyan,
+    color: colors.download,
     fontSize: 10,
-    fontFamily: 'monospace',
+    ...fonts.mono,
   },
   filesList: {
-    backgroundColor: TOKENS.colors.surfaceCard,
+    backgroundColor: colors.surface,
     borderWidth: 1,
-    borderColor: TOKENS.colors.surfaceBorder,
+    borderColor: colors.border,
     borderRadius: 10,
     marginBottom: 20,
     overflow: 'hidden',
   },
   fileRow: {
-    minHeight: TOKENS.touchTarget.minHeight,
+    minHeight: touch.min,
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 12,
     paddingVertical: 10,
     borderBottomWidth: 1,
-    borderBottomColor: '#161B22',
+    borderBottomColor: colors.border,
   },
   checkbox: {
     width: 20,
@@ -1017,14 +1010,14 @@ const styles = StyleSheet.create({
     marginRight: 10,
   },
   checkboxSelected: {
-    backgroundColor: TOKENS.colors.accentLime,
-    borderColor: TOKENS.colors.accentLime,
+    backgroundColor: colors.accent,
+    borderColor: colors.accent,
   },
   checkboxUnselected: {
-    borderColor: '#374151',
+    borderColor: colors.borderStrong,
   },
   checkmark: {
-    color: '#000000',
+    color: colors.onAccent,
     fontSize: 12,
     fontWeight: '700',
   },
@@ -1033,55 +1026,54 @@ const styles = StyleSheet.create({
     marginRight: 10,
   },
   fileName: {
-    color: TOKENS.colors.textPrimary,
+    color: colors.text,
     fontSize: 11,
-    fontFamily: 'monospace',
+    ...fonts.mono,
   },
   fileNameDisabled: {
-    color: '#4B5563',
+    color: colors.textFaint,
     textDecorationLine: 'line-through',
   },
   fileSize: {
-    color: TOKENS.colors.textMuted,
+    color: colors.textMuted,
     fontSize: 10,
-    fontFamily: 'monospace',
+    ...fonts.mono,
     marginTop: 2,
   },
   priorityBtn: {
     minWidth: 54,
     minHeight: 44,
     paddingHorizontal: 8,
-    backgroundColor: '#161B22',
+    backgroundColor: colors.surfaceRaised,
     borderRadius: 6,
     alignItems: 'center',
     justifyContent: 'center',
   },
   priorityBtnHigh: {
-    backgroundColor: 'rgba(204, 255, 0, 0.15)',
+    backgroundColor: alpha(colors.accent, 0.15),
     borderWidth: 1,
-    borderColor: TOKENS.colors.accentLime,
+    borderColor: colors.accent,
   },
   priorityBtnSkip: {
-    backgroundColor: 'rgba(255, 51, 102, 0.15)',
+    backgroundColor: alpha(colors.danger, 0.15),
     borderWidth: 1,
-    borderColor: '#FF3366',
+    borderColor: colors.danger,
   },
   priorityBtnText: {
-    color: TOKENS.colors.textMuted,
+    color: colors.textMuted,
     fontSize: 9,
-    fontWeight: '700',
-    fontFamily: 'monospace',
+    ...fonts.monoBold,
   },
   priorityBtnTextHigh: {
-    color: TOKENS.colors.accentLime,
+    color: colors.accentText,
   },
   priorityBtnTextSkip: {
-    color: '#FF3366',
+    color: colors.danger,
   },
   emptyFilesBox: {
-    backgroundColor: '#0D1117',
+    backgroundColor: colors.surface,
     borderWidth: 1,
-    borderColor: '#1F2937',
+    borderColor: colors.border,
     borderRadius: 10,
     padding: 24,
     alignItems: 'center',
@@ -1090,20 +1082,20 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   emptyFilesText: {
-    color: '#6B7280',
+    color: colors.textFaint,
     fontSize: 11,
-    fontFamily: 'monospace',
+    ...fonts.mono,
     textAlign: 'center',
     lineHeight: 18,
   },
   toggleRow: {
-    minHeight: TOKENS.touchTarget.minHeight,
+    minHeight: touch.min,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    backgroundColor: TOKENS.colors.surfaceCard,
+    backgroundColor: colors.surface,
     borderWidth: 1,
-    borderColor: TOKENS.colors.surfaceBorder,
+    borderColor: colors.border,
     borderRadius: 10,
     paddingHorizontal: 12,
     paddingVertical: 12,
@@ -1113,43 +1105,41 @@ const styles = StyleSheet.create({
     marginRight: 12,
   },
   toggleTitle: {
-    color: TOKENS.colors.textPrimary,
+    color: colors.text,
     fontSize: 12,
-    fontWeight: '700',
-    fontFamily: 'monospace',
+    ...fonts.monoBold,
   },
   toggleSubtitle: {
-    color: TOKENS.colors.textMuted,
+    color: colors.textMuted,
     fontSize: 10,
-    fontFamily: 'monospace',
+    ...fonts.mono,
     marginTop: 2,
   },
   footer: {
     paddingHorizontal: 20,
     paddingTop: 12,
     borderTopWidth: 1,
-    borderTopColor: TOKENS.colors.surfaceBorder,
+    borderTopColor: colors.border,
   },
   startBtn: {
-    minHeight: TOKENS.touchTarget.minHeight,
-    backgroundColor: TOKENS.colors.accentLime,
+    minHeight: touch.min,
+    backgroundColor: colors.accent,
     borderRadius: 10,
     alignItems: 'center',
     justifyContent: 'center',
   },
   startBtnDisabled: {
-    backgroundColor: '#1E1417',
+    backgroundColor: alpha(colors.danger, 0.1),
     borderWidth: 1,
-    borderColor: '#4A1D24',
+    borderColor: alpha(colors.danger, 0.2),
   },
   startBtnText: {
-    color: '#000000',
+    color: colors.onAccent,
     fontSize: 12,
-    fontWeight: '700',
-    fontFamily: 'monospace',
+    ...fonts.monoBold,
     letterSpacing: 0.5,
   },
   startBtnTextDisabled: {
-    color: '#FF3366',
+    color: colors.danger,
   },
 });

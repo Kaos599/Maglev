@@ -1,6 +1,8 @@
+import { useMemo } from 'react';
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
-import { TOKENS } from '../constants/tokens';
+import { useTheme } from '../context/ThemeContext';
+import { fonts, ThemeColors } from '../constants/theme';
 
 interface PiecesMatrixProps {
   matrix: Uint8Array;
@@ -8,6 +10,8 @@ interface PiecesMatrixProps {
 }
 
 export const PiecesMatrix: React.FC<PiecesMatrixProps> = ({ matrix, totalPieces }) => {
+  const { colors } = useTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   let verifiedCount = 0;
   let inFlightCount = 0;
   let unavailableCount = 0;
@@ -23,14 +27,14 @@ export const PiecesMatrix: React.FC<PiecesMatrixProps> = ({ matrix, totalPieces 
   const getBlockColor = (val: number) => {
     switch (val) {
       case 1:
-        return TOKENS.colors.blockVerified;
+        return colors.download;
       case 2:
-        return TOKENS.colors.blockInFlight;
+        return colors.accent;
       case 3:
-        return TOKENS.colors.blockCorrupt;
+        return colors.danger;
       case 0:
       default:
-        return TOKENS.colors.blockUnavailable;
+        return colors.surfaceRaised;
     }
   };
 
@@ -60,17 +64,17 @@ export const PiecesMatrix: React.FC<PiecesMatrixProps> = ({ matrix, totalPieces 
       {/* Legend */}
       <View style={styles.legendRow}>
         <View style={styles.legendItem}>
-          <View style={[styles.legendDot, { backgroundColor: TOKENS.colors.blockVerified }]} />
+          <View style={[styles.legendDot, { backgroundColor: colors.download }]} />
           <Text style={styles.legendText}>Verified ({verifiedCount})</Text>
         </View>
 
         <View style={styles.legendItem}>
-          <View style={[styles.legendDot, { backgroundColor: TOKENS.colors.blockInFlight }]} />
+          <View style={[styles.legendDot, { backgroundColor: colors.accent }]} />
           <Text style={styles.legendText}>In Flight ({inFlightCount})</Text>
         </View>
 
         <View style={styles.legendItem}>
-          <View style={[styles.legendDot, { backgroundColor: TOKENS.colors.blockUnavailable }]} />
+          <View style={[styles.legendDot, { backgroundColor: colors.surfaceRaised }]} />
           <Text style={styles.legendText}>Missing ({unavailableCount})</Text>
         </View>
       </View>
@@ -78,11 +82,11 @@ export const PiecesMatrix: React.FC<PiecesMatrixProps> = ({ matrix, totalPieces 
   );
 };
 
-const styles = StyleSheet.create({
+const makeStyles = (colors: ThemeColors) => StyleSheet.create({
   container: {
-    backgroundColor: TOKENS.colors.surfaceCard,
+    backgroundColor: colors.surface,
     borderWidth: 1,
-    borderColor: TOKENS.colors.surfaceBorder,
+    borderColor: colors.border,
     borderRadius: 12,
     padding: 14,
     marginVertical: 8,
@@ -94,15 +98,14 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   title: {
-    color: TOKENS.colors.textPrimary,
+    color: colors.text,
     fontSize: 12,
-    fontWeight: '700',
-    fontFamily: 'monospace',
+    ...fonts.monoBold,
   },
   totalPiecesText: {
-    color: TOKENS.colors.textMuted,
+    color: colors.textMuted,
     fontSize: 11,
-    fontFamily: 'monospace',
+    ...fonts.mono,
   },
   grid: {
     width: '100%',
@@ -112,7 +115,7 @@ const styles = StyleSheet.create({
     gap: 2,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#070A0E',
+    backgroundColor: colors.bg,
     padding: 4,
     borderRadius: 8,
   },
@@ -127,7 +130,7 @@ const styles = StyleSheet.create({
     marginTop: 12,
     paddingTop: 10,
     borderTopWidth: 1,
-    borderTopColor: TOKENS.colors.surfaceBorder,
+    borderTopColor: colors.border,
   },
   legendItem: {
     flexDirection: 'row',
@@ -140,8 +143,8 @@ const styles = StyleSheet.create({
     borderRadius: 2,
   },
   legendText: {
-    color: TOKENS.colors.textMuted,
+    color: colors.textMuted,
     fontSize: 10,
-    fontFamily: 'monospace',
+    ...fonts.mono,
   },
 });

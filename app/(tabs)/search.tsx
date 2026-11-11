@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   View,
@@ -11,10 +12,12 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import { formatBytes, TOKENS } from '../../constants/tokens';
+import { formatBytes } from '../../constants/format';
 import { HeaderBar } from '../../components/HeaderBar';
 import { useMaglevEngine } from '../../context/EngineContext';
 import { triggerHaptic } from '../../constants/haptics';
+import { useTheme } from '../../context/ThemeContext';
+import { alpha, fonts, touch, ThemeColors } from '../../constants/theme';
 
 export interface SwarmSearchResult {
   id: string;
@@ -123,6 +126,8 @@ function mapCategory(catNum: string | number): string {
 }
 
 export default function SearchScreen() {
+  const { colors } = useTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { startTorrent } = useMaglevEngine();
@@ -237,13 +242,13 @@ export default function SearchScreen() {
           <Ionicons
             name="search"
             size={16}
-            color={TOKENS.colors.accentCyan}
+            color={colors.download}
             style={{ marginRight: 8 }}
           />
           <TextInput
             style={styles.searchInput}
             placeholder="Search public torrent swarms..."
-            placeholderTextColor={TOKENS.colors.textMuted}
+            placeholderTextColor={colors.textMuted}
             value={query}
             onChangeText={handleQueryChange}
             autoCapitalize="none"
@@ -251,7 +256,7 @@ export default function SearchScreen() {
           />
           {query.length > 0 && (
             <TouchableOpacity onPress={() => handleQueryChange('')} style={styles.clearBtn} accessibilityRole="button" accessibilityLabel="Clear search query">
-              <Ionicons name="close-circle" size={16} color={TOKENS.colors.textMuted} />
+              <Ionicons name="close-circle" size={16} color={colors.textMuted} />
             </TouchableOpacity>
           )}
         </View>
@@ -294,7 +299,7 @@ export default function SearchScreen() {
       {/* Live Indexer Loading Indicator */}
       {isLoading && (
         <View style={styles.indexerLoaderRow}>
-          <ActivityIndicator size="small" color={TOKENS.colors.accentCyan} />
+          <ActivityIndicator size="small" color={colors.download} />
           <Text style={styles.indexerLoaderText}>QUERYING PUBLIC SWARMS IN REAL TIME...</Text>
         </View>
       )}
@@ -348,7 +353,7 @@ export default function SearchScreen() {
           </View>
         ) : (
           <View style={styles.emptyContainer}>
-            <Ionicons name="compass-outline" size={48} color={TOKENS.colors.surfaceBorder} />
+            <Ionicons name="compass-outline" size={48} color={colors.border} />
             <Text style={styles.emptyTitle}>No Matching Swarms Found</Text>
             <Text style={styles.emptySubtitle}>
               {query.trim().length > 0
@@ -362,10 +367,10 @@ export default function SearchScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (colors: ThemeColors) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: TOKENS.colors.bgOled,
+    backgroundColor: colors.bg,
   },
   searchBarContainer: {
     paddingHorizontal: 16,
@@ -374,18 +379,18 @@ const styles = StyleSheet.create({
   searchInputRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: TOKENS.colors.surfaceCard,
+    backgroundColor: colors.surface,
     borderWidth: 1,
-    borderColor: TOKENS.colors.surfaceBorder,
+    borderColor: colors.border,
     borderRadius: 10,
     paddingHorizontal: 12,
-    minHeight: TOKENS.touchTarget.minHeight,
+    minHeight: touch.min,
   },
   searchInput: {
     flex: 1,
-    color: TOKENS.colors.textPrimary,
+    color: colors.text,
     fontSize: 12,
-    fontFamily: 'monospace',
+    ...fonts.mono,
   },
   clearBtn: {
     minWidth: 32,
@@ -402,30 +407,29 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   catPill: {
-    minHeight: TOKENS.touchTarget.minHeight,
+    minHeight: touch.min,
     paddingHorizontal: 16,
     borderRadius: 10,
     alignItems: 'center',
     justifyContent: 'center',
   },
   catPillActive: {
-    backgroundColor: TOKENS.colors.accentLime,
+    backgroundColor: colors.accent,
   },
   catPillInactive: {
-    backgroundColor: TOKENS.colors.surfaceCard,
+    backgroundColor: colors.surface,
     borderWidth: 1,
-    borderColor: TOKENS.colors.surfaceBorder,
+    borderColor: colors.border,
   },
   catPillText: {
     fontSize: 11,
-    fontWeight: '700',
-    fontFamily: 'monospace',
+    ...fonts.monoBold,
   },
   catPillTextActive: {
-    color: '#000000',
+    color: colors.onAccent,
   },
   catPillTextInactive: {
-    color: TOKENS.colors.textMuted,
+    color: colors.textMuted,
   },
   indexerLoaderRow: {
     flexDirection: 'row',
@@ -433,15 +437,14 @@ const styles = StyleSheet.create({
     gap: 10,
     paddingHorizontal: 20,
     paddingVertical: 8,
-    backgroundColor: '#09131C',
+    backgroundColor: colors.surface,
     borderBottomWidth: 1,
-    borderBottomColor: 'rgba(0, 229, 255, 0.2)',
+    borderBottomColor: alpha(colors.download, 0.2),
   },
   indexerLoaderText: {
-    color: TOKENS.colors.accentCyan,
+    color: colors.download,
     fontSize: 10,
-    fontWeight: '700',
-    fontFamily: 'monospace',
+    ...fonts.monoBold,
     letterSpacing: 0.5,
   },
   resultsScroll: {
@@ -453,9 +456,9 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   resultCard: {
-    backgroundColor: TOKENS.colors.surfaceCard,
+    backgroundColor: colors.surface,
     borderWidth: 1,
-    borderColor: TOKENS.colors.surfaceBorder,
+    borderColor: colors.border,
     borderRadius: 12,
     padding: 14,
   },
@@ -468,27 +471,25 @@ const styles = StyleSheet.create({
   categoryBadge: {
     paddingHorizontal: 8,
     paddingVertical: 2,
-    backgroundColor: TOKENS.colors.surfacePill,
+    backgroundColor: colors.surfaceRaised,
     borderRadius: 4,
     borderWidth: 1,
-    borderColor: TOKENS.colors.surfaceBorder,
+    borderColor: colors.border,
   },
   categoryBadgeText: {
-    color: TOKENS.colors.accentCyan,
+    color: colors.download,
     fontSize: 9,
-    fontWeight: '700',
-    fontFamily: 'monospace',
+    ...fonts.monoBold,
   },
   sizeText: {
-    color: TOKENS.colors.textMuted,
+    color: colors.textMuted,
     fontSize: 11,
-    fontFamily: 'monospace',
+    ...fonts.mono,
   },
   resultTitle: {
-    color: TOKENS.colors.textPrimary,
+    color: colors.text,
     fontSize: 13,
-    fontWeight: '700',
-    fontFamily: 'monospace',
+    ...fonts.monoBold,
     lineHeight: 18,
     marginBottom: 12,
   },
@@ -503,46 +504,42 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   metaSeeds: {
-    color: TOKENS.colors.accentLime,
+    color: colors.accentText,
     fontSize: 11,
-    fontWeight: '700',
-    fontFamily: 'monospace',
+    ...fonts.monoBold,
   },
   metaPeers: {
-    color: TOKENS.colors.accentCyan,
+    color: colors.download,
     fontSize: 11,
-    fontWeight: '700',
-    fontFamily: 'monospace',
+    ...fonts.monoBold,
   },
   metaHealth: {
-    color: TOKENS.colors.textMuted,
+    color: colors.textMuted,
     fontSize: 9,
-    fontWeight: '700',
-    fontFamily: 'monospace',
+    ...fonts.monoBold,
     letterSpacing: 0.5,
   },
   addBtn: {
     minWidth: 84,
-    minHeight: TOKENS.touchTarget.minHeight,
-    backgroundColor: TOKENS.colors.accentLime,
+    minHeight: touch.min,
+    backgroundColor: colors.accent,
     borderRadius: 8,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 12,
   },
   addBtnDone: {
-    backgroundColor: TOKENS.colors.surfacePill,
+    backgroundColor: colors.surfaceRaised,
     borderWidth: 1,
-    borderColor: TOKENS.colors.accentLime,
+    borderColor: colors.accent,
   },
   addBtnText: {
-    color: '#000000',
+    color: colors.onAccent,
     fontSize: 11,
-    fontWeight: '700',
-    fontFamily: 'monospace',
+    ...fonts.monoBold,
   },
   addBtnTextDone: {
-    color: TOKENS.colors.accentLime,
+    color: colors.accentText,
   },
   emptyContainer: {
     paddingVertical: 60,
@@ -551,15 +548,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: 32,
   },
   emptyTitle: {
-    color: TOKENS.colors.textPrimary,
+    color: colors.text,
     fontSize: 15,
-    fontWeight: '700',
-    fontFamily: 'monospace',
+    ...fonts.monoBold,
     marginTop: 16,
     marginBottom: 6,
   },
   emptySubtitle: {
-    color: TOKENS.colors.textMuted,
+    color: colors.textMuted,
     fontSize: 12,
     textAlign: 'center',
     lineHeight: 18,

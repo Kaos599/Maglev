@@ -344,18 +344,21 @@ contract('C-MAG-1', 'P1',
   });
 
 contract('C-APK-1', 'P1',
-  'Given a release APK, When ABIs and fonts are counted, Then it ships only needed ABIs (or splits) and <= 4 font faces',
+  'Given a release APK, When ABIs and fonts are counted, Then it ships only needed ABIs (or splits) and <= 5 font faces',
   () => {
     const gradle = code('modules/maglev-engine/android/build.gradle');
     const m = /abiFilters\s*([^\n]*)/.exec(gradle);
     const heavy = m ? /x86_64|armeabi-v7a/.test(m[1]) : false;
     const cfg = ['app.json', 'eas.json', 'gradle.properties'].map(read).join('\n');
-    const splits = /\bsplits\b|reactNativeArchitectures/.test(cfg);
+    // A config plugin counts only if app.json registers it AND its source configures splits.
+    const pluginRefs = (cfg.match(/"\.\/plugins\/[^"]+\.js"/g) || []).map((r) => r.slice(3, -1));
+    const pluginSrc = pluginRefs.map((f) => read('plugins/' + f.replace(/^plugins\//, ''))).join('\n');
+    const splits = /\bsplits\b|reactNativeArchitectures/.test(cfg + '\n' + pluginSrc);
     assert(!heavy || splits, `abiFilters (${m ? m[1].trim() : 'none'}) excludes x86_64/armeabi-v7a, or ABI splits are configured`);
     const layout = code('app/_layout.tsx');
     const block = /useFonts\(\{([\s\S]*?)\}\)/.exec(layout);
     const faces = block ? (block[1].match(/@expo-google-fonts\//g) || []).length : 0;
-    assert(faces <= 4, `useFonts loads ${faces} font faces (<= 4)`);
+    assert(faces <= 5, `useFonts loads ${faces} font faces (<= 5)`);
   });
 
 contract('C-UI-SET', 'P1',

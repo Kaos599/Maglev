@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import React, { useState, useCallback } from 'react';
 import {
   View,
@@ -11,7 +12,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { TOKENS, formatSpeed, formatBytes } from '../../constants/tokens';
+import {  formatSpeed, formatBytes } from '../../constants/format';
 import { triggerHaptic } from '../../constants/haptics';
 import { HeaderBar } from '../../components/HeaderBar';
 import { useSettings } from '../../context/SettingsContext';
@@ -27,15 +28,17 @@ import {
   StorageMode,
   ThemeMode,
 } from 'maglev-engine';
+import { useTheme } from '../../context/ThemeContext';
+import { alpha, fonts, touch, ThemeColors } from '../../constants/theme';
 
 export default function SettingsScreen() {
+  const { colors } = useTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   const insets = useSafeAreaInsets();
   const { isNative, telemetry } = useMaglevEngine();
   const {
     settings,
     isOledBlack,
-    backgroundColor,
-    cardBackgroundColor,
     updateSettings,
     setSpeedPreset,
     loadIpFilter,
@@ -128,13 +131,13 @@ Untrusted Scanners:203.0.113.0-203.0.113.255
   const batteryThresholds: BatteryCutoffThreshold[] = [0, 15, 20, 30];
 
   return (
-    <View style={[styles.container, { backgroundColor, paddingTop: insets.top }]}>
+    <View style={[styles.container, { backgroundColor: colors.bg, paddingTop: insets.top }]}>
       <HeaderBar />
 
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
         {/* 1. APPEARANCE SECTION */}
         <Text style={styles.sectionHeader}>APPEARANCE</Text>
-        <View style={[styles.settingsGroup, { backgroundColor: cardBackgroundColor }]}>
+        <View style={[styles.settingsGroup, { backgroundColor: colors.surface }]}>
           <View style={styles.settingBlock}>
             <Text style={styles.settingTitle}>Theme</Text>
             <View style={styles.chipRow}>
@@ -207,7 +210,7 @@ Untrusted Scanners:203.0.113.0-203.0.113.255
 
         {/* 2. DOWNLOADS & STORAGE SECTION */}
         <Text style={styles.sectionHeader}>DOWNLOADS & STORAGE</Text>
-        <View style={[styles.settingsGroup, { backgroundColor: cardBackgroundColor }]}>
+        <View style={[styles.settingsGroup, { backgroundColor: colors.surface }]}>
           <View style={styles.settingBlock}>
             <Text style={styles.settingTitle}>Storage Location</Text>
             <Text style={styles.settingPathText}>{settings.storage.defaultPath}</Text>
@@ -270,8 +273,8 @@ Untrusted Scanners:203.0.113.0-203.0.113.255
               onValueChange={(val) =>
                 updateSettings({ storage: { ...settings.storage, autoMoveCompleted: val } })
               }
-              trackColor={{ false: '#161B22', true: TOKENS.colors.accentLime }}
-              thumbColor={settings.storage.autoMoveCompleted ? '#000000' : TOKENS.colors.textMuted}
+              trackColor={{ false: colors.surfaceRaised, true: colors.accent }}
+              thumbColor={settings.storage.autoMoveCompleted ? colors.bg : colors.textMuted}
             />
           </View>
 
@@ -284,15 +287,15 @@ Untrusted Scanners:203.0.113.0-203.0.113.255
               onValueChange={(val) =>
                 updateSettings({ storage: { ...settings.storage, preAllocateDisk: val } })
               }
-              trackColor={{ false: '#161B22', true: TOKENS.colors.accentLime }}
-              thumbColor={settings.storage.preAllocateDisk ? '#000000' : TOKENS.colors.textMuted}
+              trackColor={{ false: colors.surfaceRaised, true: colors.accent }}
+              thumbColor={settings.storage.preAllocateDisk ? colors.bg : colors.textMuted}
             />
           </View>
         </View>
 
         {/* 3. BANDWIDTH & LIMITS SECTION */}
         <Text style={styles.sectionHeader}>BANDWIDTH & LIMITS</Text>
-        <View style={[styles.settingsGroup, { backgroundColor: cardBackgroundColor }]}>
+        <View style={[styles.settingsGroup, { backgroundColor: colors.surface }]}>
           {/* Download Speed Presets */}
           <View style={styles.settingBlock}>
             <View style={styles.rowBetween}>
@@ -465,7 +468,7 @@ Untrusted Scanners:203.0.113.0-203.0.113.255
 
         {/* 4. NETWORK & PROXY SECTION */}
         <Text style={styles.sectionHeader}>NETWORK & PROXY</Text>
-        <View style={[styles.settingsGroup, { backgroundColor: cardBackgroundColor }]}>
+        <View style={[styles.settingsGroup, { backgroundColor: colors.surface }]}>
           {/* Network Safety & Data Tracker Card */}
           <View style={styles.networkSafetyCard}>
             <View style={styles.safetyHeaderRow}>
@@ -487,7 +490,7 @@ Untrusted Scanners:203.0.113.0-203.0.113.255
             </View>
 
             <View style={styles.safetyFooterRow}>
-              <Ionicons name="shield-checkmark" size={13} color={TOKENS.colors.accentLime} />
+              <Ionicons name="shield-checkmark" size={13} color={colors.accentText} />
               <Text style={styles.safetyFooterText}>
                 Zero cellular leaks • RFC 1928 remote DNS active
               </Text>
@@ -504,8 +507,8 @@ Untrusted Scanners:203.0.113.0-203.0.113.255
               onValueChange={(val) =>
                 updateSettings({ network: { ...settings.network, wifiOnly: val } })
               }
-              trackColor={{ false: '#161B22', true: TOKENS.colors.accentLime }}
-              thumbColor={settings.network.wifiOnly ? '#000000' : TOKENS.colors.textMuted}
+              trackColor={{ false: colors.surfaceRaised, true: colors.accent }}
+              thumbColor={settings.network.wifiOnly ? colors.bg : colors.textMuted}
             />
           </View>
 
@@ -523,8 +526,8 @@ Untrusted Scanners:203.0.113.0-203.0.113.255
                 onValueChange={(val) =>
                   updateSettings({ network: { ...settings.network, ssidWhitelistEnabled: val } })
                 }
-                trackColor={{ false: '#161B22', true: TOKENS.colors.accentLime }}
-                thumbColor={settings.network.ssidWhitelistEnabled ? '#000000' : TOKENS.colors.textMuted}
+                trackColor={{ false: colors.surfaceRaised, true: colors.accent }}
+                thumbColor={settings.network.ssidWhitelistEnabled ? colors.bg : colors.textMuted}
               />
             </View>
 
@@ -544,7 +547,7 @@ Untrusted Scanners:203.0.113.0-203.0.113.255
                         accessibilityLabel={`Remove ${ssid}`}
                         hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                       >
-                        <Ionicons name="close" size={14} color="#000000" />
+                        <Ionicons name="close" size={14} color={colors.onAccent} />
                       </TouchableOpacity>
                     </View>
                   ))}
@@ -562,7 +565,7 @@ Untrusted Scanners:203.0.113.0-203.0.113.255
                     <TextInput
                       style={styles.ssidTextInput}
                       placeholder="Enter network SSID"
-                      placeholderTextColor={TOKENS.colors.textMuted}
+                      placeholderTextColor={colors.textMuted}
                       value={newSsidInput}
                       onChangeText={setNewSsidInput}
                     />
@@ -595,8 +598,8 @@ Untrusted Scanners:203.0.113.0-203.0.113.255
               onValueChange={(val) =>
                 updateSettings({ network: { ...settings.network, upnpEnabled: val } })
               }
-              trackColor={{ false: '#161B22', true: TOKENS.colors.accentLime }}
-              thumbColor={settings.network.upnpEnabled ? '#000000' : TOKENS.colors.textMuted}
+              trackColor={{ false: colors.surfaceRaised, true: colors.accent }}
+              thumbColor={settings.network.upnpEnabled ? colors.bg : colors.textMuted}
             />
           </View>
 
@@ -638,8 +641,8 @@ Untrusted Scanners:203.0.113.0-203.0.113.255
                 onValueChange={(val) =>
                   updateSettings({ network: { ...settings.network, dhtEnabled: val } })
                 }
-                trackColor={{ false: '#161B22', true: TOKENS.colors.accentLime }}
-                thumbColor={settings.network.dhtEnabled ? '#000000' : TOKENS.colors.textMuted}
+                trackColor={{ false: colors.surfaceRaised, true: colors.accent }}
+                thumbColor={settings.network.dhtEnabled ? colors.bg : colors.textMuted}
               />
             </View>
 
@@ -650,8 +653,8 @@ Untrusted Scanners:203.0.113.0-203.0.113.255
                 onValueChange={(val) =>
                   updateSettings({ network: { ...settings.network, pexEnabled: val } })
                 }
-                trackColor={{ false: '#161B22', true: TOKENS.colors.accentLime }}
-                thumbColor={settings.network.pexEnabled ? '#000000' : TOKENS.colors.textMuted}
+                trackColor={{ false: colors.surfaceRaised, true: colors.accent }}
+                thumbColor={settings.network.pexEnabled ? colors.bg : colors.textMuted}
               />
             </View>
 
@@ -662,8 +665,8 @@ Untrusted Scanners:203.0.113.0-203.0.113.255
                 onValueChange={(val) =>
                   updateSettings({ network: { ...settings.network, lsdEnabled: val } })
                 }
-                trackColor={{ false: '#161B22', true: TOKENS.colors.accentLime }}
-                thumbColor={settings.network.lsdEnabled ? '#000000' : TOKENS.colors.textMuted}
+                trackColor={{ false: colors.surfaceRaised, true: colors.accent }}
+                thumbColor={settings.network.lsdEnabled ? colors.bg : colors.textMuted}
               />
             </View>
           </View>
@@ -687,8 +690,8 @@ Untrusted Scanners:203.0.113.0-203.0.113.255
                     },
                   })
                 }
-                trackColor={{ false: '#161B22', true: TOKENS.colors.accentLime }}
-                thumbColor={settings.network.proxy.enabled ? '#000000' : TOKENS.colors.textMuted}
+                trackColor={{ false: colors.surfaceRaised, true: colors.accent }}
+                thumbColor={settings.network.proxy.enabled ? colors.bg : colors.textMuted}
               />
             </View>
 
@@ -728,7 +731,7 @@ Untrusted Scanners:203.0.113.0-203.0.113.255
                   <TextInput
                     style={[styles.proxyInput, { flex: 2 }]}
                     placeholder="Proxy Host (e.g. 127.0.0.1)"
-                    placeholderTextColor={TOKENS.colors.textMuted}
+                    placeholderTextColor={colors.textMuted}
                     value={settings.network.proxy.host}
                     onChangeText={(val) =>
                       updateSettings({
@@ -742,7 +745,7 @@ Untrusted Scanners:203.0.113.0-203.0.113.255
                   <TextInput
                     style={[styles.proxyInput, { flex: 1 }]}
                     placeholder="Port"
-                    placeholderTextColor={TOKENS.colors.textMuted}
+                    placeholderTextColor={colors.textMuted}
                     keyboardType="numeric"
                     value={settings.network.proxy.port.toString()}
                     onChangeText={(val) =>
@@ -806,8 +809,8 @@ Untrusted Scanners:203.0.113.0-203.0.113.255
                         },
                       })
                     }
-                    trackColor={{ false: '#161B22', true: TOKENS.colors.accentLime }}
-                    thumbColor={settings.network.proxy.remoteDns ? '#000000' : TOKENS.colors.textMuted}
+                    trackColor={{ false: colors.surfaceRaised, true: colors.accent }}
+                    thumbColor={settings.network.proxy.remoteDns ? colors.bg : colors.textMuted}
                   />
                 </View>
               </View>
@@ -828,8 +831,8 @@ Untrusted Scanners:203.0.113.0-203.0.113.255
                 onValueChange={(val) =>
                   updateSettings({ network: { ...settings.network, ipFilterEnabled: val } })
                 }
-                trackColor={{ false: '#161B22', true: TOKENS.colors.accentLime }}
-                thumbColor={settings.network.ipFilterEnabled ? '#000000' : TOKENS.colors.textMuted}
+                trackColor={{ false: colors.surfaceRaised, true: colors.accent }}
+                thumbColor={settings.network.ipFilterEnabled ? colors.bg : colors.textMuted}
               />
             </View>
 
@@ -857,7 +860,7 @@ Untrusted Scanners:203.0.113.0-203.0.113.255
 
         {/* 5. POWER & BATTERY SECTION */}
         <Text style={styles.sectionHeader}>POWER & BATTERY</Text>
-        <View style={[styles.settingsGroup, { backgroundColor: cardBackgroundColor }]}>
+        <View style={[styles.settingsGroup, { backgroundColor: colors.surface }]}>
           <View style={styles.settingRow}>
             <View style={styles.settingTextContainer}>
               <Text style={styles.settingTitle}>Only download while charging</Text>
@@ -867,8 +870,8 @@ Untrusted Scanners:203.0.113.0-203.0.113.255
               onValueChange={(val) =>
                 updateSettings({ power: { ...settings.power, downloadOnlyWhileCharging: val } })
               }
-              trackColor={{ false: '#161B22', true: TOKENS.colors.accentLime }}
-              thumbColor={settings.power.downloadOnlyWhileCharging ? '#000000' : TOKENS.colors.textMuted}
+              trackColor={{ false: colors.surfaceRaised, true: colors.accent }}
+              thumbColor={settings.power.downloadOnlyWhileCharging ? colors.bg : colors.textMuted}
             />
           </View>
 
@@ -907,15 +910,15 @@ Untrusted Scanners:203.0.113.0-203.0.113.255
               onValueChange={(val) =>
                 updateSettings({ power: { ...settings.power, autoExitOnComplete: val } })
               }
-              trackColor={{ false: '#161B22', true: TOKENS.colors.accentLime }}
-              thumbColor={settings.power.autoExitOnComplete ? '#000000' : TOKENS.colors.textMuted}
+              trackColor={{ false: colors.surfaceRaised, true: colors.accent }}
+              thumbColor={settings.power.autoExitOnComplete ? colors.bg : colors.textMuted}
             />
           </View>
         </View>
 
         {/* 6. ABOUT SECTION */}
         <Text style={styles.sectionHeader}>ABOUT</Text>
-        <View style={[styles.settingsGroup, { backgroundColor: cardBackgroundColor }]}>
+        <View style={[styles.settingsGroup, { backgroundColor: colors.surface }]}>
           <View style={styles.settingRow}>
             <View style={styles.settingTextContainer}>
               <Text style={styles.settingTitle}>Maglev Engine</Text>
@@ -951,7 +954,7 @@ Untrusted Scanners:203.0.113.0-203.0.113.255
       {/* Custom Speed Numeric Modal */}
       <Modal visible={customSpeedModal !== null} transparent animationType="fade">
         <View style={styles.modalOverlay}>
-          <View style={[styles.modalCard, { backgroundColor: cardBackgroundColor }]}>
+          <View style={[styles.modalCard, { backgroundColor: colors.surface }]}>
             <Text style={styles.modalTitle}>
               Custom {customSpeedModal === 'download' ? 'Download' : 'Upload'} Limit
             </Text>
@@ -960,7 +963,7 @@ Untrusted Scanners:203.0.113.0-203.0.113.255
             <TextInput
               style={styles.modalInput}
               placeholder="e.g. 2500 for 2.5 MB/s"
-              placeholderTextColor={TOKENS.colors.textMuted}
+              placeholderTextColor={colors.textMuted}
               keyboardType="numeric"
               value={customSpeedInput}
               onChangeText={setCustomSpeedInput}
@@ -991,14 +994,14 @@ Untrusted Scanners:203.0.113.0-203.0.113.255
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (colors: ThemeColors) => StyleSheet.create({
   container: {
     flex: 1,
   },
   networkSafetyCard: {
-    backgroundColor: '#0D1117',
+    backgroundColor: colors.surface,
     borderWidth: 1,
-    borderColor: '#1F2937',
+    borderColor: colors.border,
     borderRadius: 8,
     padding: 12,
     margin: 12,
@@ -1014,22 +1017,20 @@ const styles = StyleSheet.create({
     width: 6,
     height: 6,
     borderRadius: 3,
-    backgroundColor: TOKENS.colors.accentLime,
+    backgroundColor: colors.accent,
   },
   safetyHeaderTitle: {
     flex: 1,
-    color: '#D1D5DB',
+    color: colors.text,
     fontSize: 10,
-    fontWeight: '700',
-    fontFamily: 'monospace',
+    ...fonts.monoBold,
     letterSpacing: 0.5,
   },
   safetyHeaderBadge: {
-    color: TOKENS.colors.accentLime,
+    color: colors.accentText,
     fontSize: 9,
-    fontWeight: '700',
-    fontFamily: 'monospace',
-    backgroundColor: 'rgba(204, 255, 0, 0.1)',
+    ...fonts.monoBold,
+    backgroundColor: alpha(colors.accent, 0.1),
     paddingHorizontal: 6,
     paddingVertical: 2,
     borderRadius: 4,
@@ -1044,28 +1045,25 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   safetyStatLabel: {
-    color: TOKENS.colors.textMuted,
+    color: colors.textMuted,
     fontSize: 9,
-    fontFamily: 'monospace',
-    fontWeight: '700',
+    ...fonts.monoBold,
     marginBottom: 2,
   },
   safetyStatValLime: {
-    color: TOKENS.colors.accentLime,
+    color: colors.accentText,
     fontSize: 13,
-    fontWeight: '700',
-    fontFamily: 'monospace',
+    ...fonts.monoBold,
   },
   safetyStatValCyan: {
-    color: TOKENS.colors.accentCyan,
+    color: colors.download,
     fontSize: 13,
-    fontWeight: '700',
-    fontFamily: 'monospace',
+    ...fonts.monoBold,
   },
   safetyStatDivider: {
     width: 1,
     height: 24,
-    backgroundColor: '#1F2937',
+    backgroundColor: colors.border,
     marginHorizontal: 10,
   },
   safetyFooterRow: {
@@ -1075,12 +1073,12 @@ const styles = StyleSheet.create({
     marginTop: 6,
     paddingTop: 6,
     borderTopWidth: 1,
-    borderTopColor: '#161B22',
+    borderTopColor: colors.border,
   },
   safetyFooterText: {
-    color: TOKENS.colors.textMuted,
+    color: colors.textMuted,
     fontSize: 9,
-    fontFamily: 'monospace',
+    ...fonts.mono,
   },
   scrollContent: {
     paddingHorizontal: 16,
@@ -1088,17 +1086,16 @@ const styles = StyleSheet.create({
     paddingBottom: 48,
   },
   sectionHeader: {
-    color: TOKENS.colors.textMuted,
+    color: colors.textMuted,
     fontSize: 11,
-    fontWeight: '700',
-    fontFamily: 'monospace',
+    ...fonts.monoBold,
     marginTop: 20,
     marginBottom: 8,
     letterSpacing: 0.8,
   },
   settingsGroup: {
     borderWidth: 1,
-    borderColor: TOKENS.colors.surfaceBorder,
+    borderColor: colors.border,
     borderRadius: 12,
     overflow: 'hidden',
     marginBottom: 4,
@@ -1110,41 +1107,41 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 14,
     borderBottomWidth: 1,
-    borderBottomColor: TOKENS.colors.surfaceBorder,
-    minHeight: TOKENS.touchTarget.minHeight,
+    borderBottomColor: colors.border,
+    minHeight: touch.min,
   },
   settingBlock: {
     paddingHorizontal: 16,
     paddingVertical: 14,
     borderBottomWidth: 1,
-    borderBottomColor: TOKENS.colors.surfaceBorder,
+    borderBottomColor: colors.border,
   },
   settingTextContainer: {
     flex: 1,
     marginRight: 12,
   },
   settingTitle: {
-    color: TOKENS.colors.textPrimary,
+    color: colors.text,
     fontSize: 13,
     fontWeight: '600',
     marginBottom: 2,
   },
   settingSubtitle: {
-    color: TOKENS.colors.textMuted,
+    color: colors.textMuted,
     fontSize: 11,
     lineHeight: 16,
     marginTop: 2,
   },
   settingPathText: {
-    color: TOKENS.colors.accentCyan,
+    color: colors.download,
     fontSize: 11,
-    fontFamily: 'monospace',
+    ...fonts.mono,
     marginVertical: 6,
   },
   destinationPathText: {
-    color: TOKENS.colors.accentLime,
+    color: colors.accentText,
     fontSize: 11,
-    fontFamily: 'monospace',
+    ...fonts.mono,
     marginTop: 4,
   },
   rowBetween: {
@@ -1159,10 +1156,9 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   telemetryValue: {
-    color: TOKENS.colors.accentLime,
+    color: colors.accentText,
     fontSize: 12,
-    fontFamily: 'monospace',
-    fontWeight: '700',
+    ...fonts.monoBold,
   },
   chipRow: {
     flexDirection: 'row',
@@ -1178,7 +1174,7 @@ const styles = StyleSheet.create({
   },
   chip: {
     flex: 1,
-    minHeight: TOKENS.touchTarget.minHeight,
+    minHeight: touch.min,
     minWidth: 120,
     borderRadius: 8,
     paddingHorizontal: 12,
@@ -1187,7 +1183,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   chipSmall: {
-    minHeight: TOKENS.touchTarget.minHeight,
+    minHeight: touch.min,
     minWidth: 64,
     paddingHorizontal: 10,
     borderRadius: 8,
@@ -1196,30 +1192,30 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   chipMini: {
-    minHeight: TOKENS.touchTarget.minHeight,
-    minWidth: TOKENS.touchTarget.minWidth,
+    minHeight: touch.min,
+    minWidth: touch.min,
     borderRadius: 8,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
   },
   chipActive: {
-    backgroundColor: TOKENS.colors.accentLime,
-    borderColor: TOKENS.colors.accentLime,
+    backgroundColor: colors.accent,
+    borderColor: colors.accent,
   },
   chipInactive: {
-    backgroundColor: '#11161F',
-    borderColor: TOKENS.colors.surfaceBorder,
+    backgroundColor: colors.surfaceRaised,
+    borderColor: colors.border,
   },
   chipText: {
     fontSize: 11,
     fontWeight: '700',
   },
   chipTextActive: {
-    color: '#000000',
+    color: colors.onAccent,
   },
   chipTextInactive: {
-    color: TOKENS.colors.textPrimary,
+    color: colors.text,
   },
   capsRow: {
     flexDirection: 'row',
@@ -1230,45 +1226,44 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   capLabel: {
-    color: TOKENS.colors.textMuted,
+    color: colors.textMuted,
     fontSize: 11,
     fontWeight: '600',
     marginBottom: 4,
   },
   badgeLime: {
-    backgroundColor: '#223300',
-    borderColor: TOKENS.colors.accentLime,
+    backgroundColor: alpha(colors.accent, 0.15),
+    borderColor: colors.accent,
     borderWidth: 1,
     borderRadius: 6,
     paddingHorizontal: 8,
     paddingVertical: 4,
   },
   badgeLimeText: {
-    color: TOKENS.colors.accentLime,
+    color: colors.accentText,
     fontSize: 10,
     fontWeight: '700',
   },
   portBadge: {
-    backgroundColor: '#002B33',
-    borderColor: TOKENS.colors.accentCyan,
+    backgroundColor: alpha(colors.download, 0.15),
+    borderColor: colors.download,
     borderWidth: 1,
     borderRadius: 6,
     paddingHorizontal: 6,
     paddingVertical: 2,
   },
   portBadgeText: {
-    color: TOKENS.colors.accentCyan,
+    color: colors.download,
     fontSize: 10,
-    fontWeight: '700',
-    fontFamily: 'monospace',
+    ...fonts.monoBold,
   },
   ssidContainer: {
     marginTop: 8,
   },
   currentSsidBadge: {
-    color: TOKENS.colors.accentCyan,
+    color: colors.download,
     fontSize: 11,
-    fontFamily: 'monospace',
+    ...fonts.mono,
     marginBottom: 6,
   },
   ssidTagsRow: {
@@ -1280,14 +1275,14 @@ const styles = StyleSheet.create({
   ssidTag: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: TOKENS.colors.accentLime,
+    backgroundColor: colors.accent,
     borderRadius: 6,
     paddingLeft: 8,
     paddingRight: 4,
     height: 32,
   },
   ssidTagText: {
-    color: '#000000',
+    color: colors.onAccent,
     fontSize: 11,
     fontWeight: '700',
   },
@@ -1299,17 +1294,17 @@ const styles = StyleSheet.create({
     marginLeft: 4,
   },
   addSsidButton: {
-    minHeight: TOKENS.touchTarget.minHeight,
+    minHeight: touch.min,
     paddingHorizontal: 12,
     borderRadius: 8,
-    backgroundColor: '#11161F',
+    backgroundColor: colors.surfaceRaised,
     borderWidth: 1,
-    borderColor: TOKENS.colors.surfaceBorder,
+    borderColor: colors.border,
     alignItems: 'center',
     justifyContent: 'center',
   },
   addSsidButtonText: {
-    color: TOKENS.colors.accentCyan,
+    color: colors.download,
     fontSize: 11,
     fontWeight: '700',
   },
@@ -1320,25 +1315,25 @@ const styles = StyleSheet.create({
   },
   ssidTextInput: {
     flex: 1,
-    height: TOKENS.touchTarget.minHeight,
-    backgroundColor: '#11161F',
-    borderColor: TOKENS.colors.surfaceBorder,
+    height: touch.min,
+    backgroundColor: colors.surfaceRaised,
+    borderColor: colors.border,
     borderWidth: 1,
     borderRadius: 8,
     paddingHorizontal: 12,
-    color: TOKENS.colors.textPrimary,
+    color: colors.text,
     fontSize: 12,
   },
   confirmSsidButton: {
-    height: TOKENS.touchTarget.minHeight,
+    height: touch.min,
     paddingHorizontal: 16,
-    backgroundColor: TOKENS.colors.accentLime,
+    backgroundColor: colors.accent,
     borderRadius: 8,
     alignItems: 'center',
     justifyContent: 'center',
   },
   confirmSsidButtonText: {
-    color: '#000000',
+    color: colors.onAccent,
     fontSize: 12,
     fontWeight: '700',
   },
@@ -1348,18 +1343,18 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingVertical: 8,
     borderTopWidth: 1,
-    borderTopColor: '#161B22',
+    borderTopColor: colors.border,
     marginTop: 8,
-    minHeight: TOKENS.touchTarget.minHeight,
+    minHeight: touch.min,
   },
   subRowLabel: {
-    color: TOKENS.colors.textPrimary,
+    color: colors.text,
     fontSize: 12,
   },
   proxyDetailsBox: {
-    backgroundColor: '#07090D',
+    backgroundColor: colors.surface,
     borderWidth: 1,
-    borderColor: TOKENS.colors.surfaceBorder,
+    borderColor: colors.border,
     borderRadius: 8,
     padding: 12,
     marginTop: 10,
@@ -1370,17 +1365,17 @@ const styles = StyleSheet.create({
     marginTop: 10,
   },
   proxyInput: {
-    height: TOKENS.touchTarget.minHeight,
-    backgroundColor: '#11161F',
-    borderColor: TOKENS.colors.surfaceBorder,
+    height: touch.min,
+    backgroundColor: colors.surfaceRaised,
+    borderColor: colors.border,
     borderWidth: 1,
     borderRadius: 8,
     paddingHorizontal: 12,
-    color: TOKENS.colors.textPrimary,
+    color: colors.text,
     fontSize: 12,
   },
   proxySublabel: {
-    color: TOKENS.colors.textMuted,
+    color: colors.textMuted,
     fontSize: 11,
     fontWeight: '600',
     marginTop: 10,
@@ -1392,57 +1387,57 @@ const styles = StyleSheet.create({
     marginTop: 10,
   },
   loadBlocklistBtn: {
-    minHeight: TOKENS.touchTarget.minHeight,
+    minHeight: touch.min,
     paddingHorizontal: 14,
-    backgroundColor: '#11161F',
+    backgroundColor: colors.surfaceRaised,
     borderWidth: 1,
-    borderColor: TOKENS.colors.surfaceBorder,
+    borderColor: colors.border,
     borderRadius: 8,
     alignItems: 'center',
     justifyContent: 'center',
   },
   loadBlocklistBtnText: {
-    color: TOKENS.colors.accentCyan,
+    color: colors.download,
     fontSize: 11,
     fontWeight: '700',
   },
   filterSuccessMsg: {
-    color: TOKENS.colors.accentLime,
+    color: colors.accentText,
     fontSize: 11,
     marginTop: 6,
-    fontFamily: 'monospace',
+    ...fonts.mono,
   },
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.85)',
+    backgroundColor: colors.overlay,
     justifyContent: 'center',
     padding: 24,
   },
   modalCard: {
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: TOKENS.colors.surfaceBorder,
+    borderColor: colors.border,
     padding: 20,
   },
   modalTitle: {
-    color: TOKENS.colors.textPrimary,
+    color: colors.text,
     fontSize: 16,
     fontWeight: '700',
     marginBottom: 4,
   },
   modalSubtitle: {
-    color: TOKENS.colors.textMuted,
+    color: colors.textMuted,
     fontSize: 12,
     marginBottom: 16,
   },
   modalInput: {
     height: 48,
-    backgroundColor: '#11161F',
-    borderColor: TOKENS.colors.surfaceBorder,
+    backgroundColor: colors.surfaceRaised,
+    borderColor: colors.border,
     borderWidth: 1,
     borderRadius: 8,
     paddingHorizontal: 14,
-    color: TOKENS.colors.textPrimary,
+    color: colors.text,
     fontSize: 14,
     marginBottom: 20,
   },
@@ -1452,25 +1447,25 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   modalCancelBtn: {
-    minHeight: TOKENS.touchTarget.minHeight,
+    minHeight: touch.min,
     paddingHorizontal: 16,
     alignItems: 'center',
     justifyContent: 'center',
   },
   modalCancelText: {
-    color: TOKENS.colors.textMuted,
+    color: colors.textMuted,
     fontSize: 13,
   },
   modalApplyBtn: {
-    minHeight: TOKENS.touchTarget.minHeight,
+    minHeight: touch.min,
     paddingHorizontal: 20,
-    backgroundColor: TOKENS.colors.accentLime,
+    backgroundColor: colors.accent,
     borderRadius: 8,
     alignItems: 'center',
     justifyContent: 'center',
   },
   modalApplyText: {
-    color: '#000000',
+    color: colors.onAccent,
     fontSize: 13,
     fontWeight: '700',
   },

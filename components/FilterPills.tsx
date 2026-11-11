@@ -1,6 +1,6 @@
+import { useMemo } from 'react';
 import React, { useRef } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Animated } from 'react-native';
-import { TOKENS } from '../constants/tokens';
 import { triggerHaptic } from '../constants/haptics';
 import { FilterCategory, useMaglevEngine } from '../context/EngineContext';
 import {
@@ -9,6 +9,8 @@ import {
   PixelArrowUpIcon,
   PixelPauseBarsIcon,
 } from './PixelIcons';
+import { useTheme } from '../context/ThemeContext';
+import { fonts, touch, ThemeColors } from '../constants/theme';
 
 interface FilterButtonProps {
   isActive: boolean;
@@ -19,6 +21,8 @@ interface FilterButtonProps {
 }
 
 const FilterButton: React.FC<FilterButtonProps> = ({ isActive, onPress, label, count, icon }) => {
+  const { colors } = useTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   const scaleAnim = useRef(new Animated.Value(1)).current;
 
   const handlePressIn = () => {
@@ -68,6 +72,8 @@ const FilterButton: React.FC<FilterButtonProps> = ({ isActive, onPress, label, c
 };
 
 export const FilterPills: React.FC = () => {
+  const { colors } = useTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   const { activeFilter, setActiveFilter, telemetry } = useMaglevEngine();
 
   const allCount = telemetry.torrents.length;
@@ -83,25 +89,25 @@ export const FilterPills: React.FC = () => {
   }> = [
     {
       id: 'ALL',
-      icon: (active) => <PixelGridIcon size={14} color={active ? '#000000' : '#CCFF00'} />,
+      icon: (active) => <PixelGridIcon size={14} color={active ? colors.onAccent : colors.accentText} />,
       count: allCount,
       label: 'All',
     },
     {
       id: 'DOWN',
-      icon: (active) => <PixelArrowDownIcon size={14} color={active ? '#000000' : '#00E5FF'} />,
+      icon: (active) => <PixelArrowDownIcon size={14} color={active ? colors.onAccent : colors.download} />,
       count: downCount,
       label: 'Downloading',
     },
     {
       id: 'UP',
-      icon: (active) => <PixelArrowUpIcon size={14} color={active ? '#000000' : '#CCFF00'} />,
+      icon: (active) => <PixelArrowUpIcon size={14} color={active ? colors.onAccent : colors.accentText} />,
       count: upCount,
       label: 'Seeding',
     },
     {
       id: 'PAUSED',
-      icon: (active) => <PixelPauseBarsIcon size={14} color={active ? '#000000' : '#8B949E'} />,
+      icon: (active) => <PixelPauseBarsIcon size={14} color={active ? colors.onAccent : colors.textMuted} />,
       count: pausedCount,
       label: 'Paused',
     },
@@ -126,7 +132,7 @@ export const FilterPills: React.FC = () => {
   );
 };
 
-const styles = StyleSheet.create({
+const makeStyles = (colors: ThemeColors) => StyleSheet.create({
   container: {
     flexDirection: 'row',
     paddingHorizontal: 16,
@@ -139,7 +145,7 @@ const styles = StyleSheet.create({
   },
   button: {
     width: '100%',
-    minHeight: TOKENS.touchTarget.minHeight,
+    minHeight: touch.min,
     borderRadius: 8,
     flexDirection: 'row',
     alignItems: 'center',
@@ -148,30 +154,29 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
   },
   buttonActive: {
-    backgroundColor: TOKENS.colors.accentLime,
-    borderColor: TOKENS.colors.accentLime,
+    backgroundColor: colors.accent,
+    borderColor: colors.accent,
     borderWidth: 1,
     elevation: 4,
-    shadowColor: TOKENS.colors.accentLime,
+    shadowColor: colors.accent,
     shadowOffset: { width: 0, height: 0 },
     shadowOpacity: 0.45,
     shadowRadius: 10,
   },
   buttonInactive: {
-    backgroundColor: '#0D1117',
-    borderColor: '#1F2937',
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
     borderWidth: 1,
   },
   countText: {
-    fontFamily: 'Silkscreen',
+    ...fonts.brand,
     fontSize: 10,
-    fontWeight: '700',
     lineHeight: 12,
   },
   countTextActive: {
-    color: '#000000',
+    color: colors.onAccent,
   },
   countTextInactive: {
-    color: '#D1D5DB',
+    color: colors.text,
   },
 });

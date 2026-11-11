@@ -1,5 +1,6 @@
 import React, { memo } from 'react';
 import Svg, { Path } from 'react-native-svg';
+import { useTheme } from '../context/ThemeContext';
 import { GLYPHS, GLYPH_GRID, PixelIconName } from './pixelGlyphs';
 
 export { GLYPHS } from './pixelGlyphs';
@@ -58,7 +59,7 @@ const crisp = { shapeRendering: 'crispEdges' } as object;
 export const PixelGlyph = memo(function PixelGlyph({
   name,
   size,
-  color = '#CCFF00',
+  color,
   accessibilityLabel,
 }: {
   name: PixelIconName;
@@ -66,6 +67,8 @@ export const PixelGlyph = memo(function PixelGlyph({
   color?: string;
   accessibilityLabel?: string;
 }) {
+  const { colors } = useTheme();
+  const fill = color ?? colors.accentText;
   return (
     <Svg
       width={size}
@@ -76,7 +79,7 @@ export const PixelGlyph = memo(function PixelGlyph({
       accessibilityLabel={accessibilityLabel}
       {...crisp}
     >
-      <Path d={pathFor(name)} fill={color} {...crisp} />
+      <Path d={pathFor(name)} fill={fill} {...crisp} />
     </Svg>
   );
 });
@@ -85,7 +88,7 @@ export const PixelGlyph = memo(function PixelGlyph({
  * The one icon family for Maglev. 12x12 pixel grid, filled cells only,
  * 1-cell strokes (2 for bold accents). Sizes: 16 | 20 | 24 (default 20).
  */
-export function PixelIcon({ name, size = 20, color = '#CCFF00', accessibilityLabel }: PixelIconProps) {
+export function PixelIcon({ name, size = 20, color, accessibilityLabel }: PixelIconProps) {
   return <PixelGlyph name={name} size={size} color={color} accessibilityLabel={accessibilityLabel} />;
 }
 

@@ -1,7 +1,7 @@
+import { useMemo } from 'react';
 import React, { useEffect, useRef } from 'react';
 import { View, StyleSheet, Animated } from 'react-native';
 import { Tabs } from 'expo-router';
-import { TOKENS } from '../../constants/tokens';
 import { triggerHaptic } from '../../constants/haptics';
 import {
   PixelNavTransfersIcon,
@@ -9,6 +9,8 @@ import {
   PixelNavFeedsIcon,
   PixelNavConfigIcon,
 } from '../../components/PixelIcons';
+import { useTheme } from '../../context/ThemeContext';
+import { alpha, fonts, ThemeColors } from '../../constants/theme';
 
 interface AnimatedTabIconProps {
   focused: boolean;
@@ -16,6 +18,8 @@ interface AnimatedTabIconProps {
 }
 
 const AnimatedTabIcon: React.FC<AnimatedTabIconProps> = ({ focused, children }) => {
+  const { colors } = useTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   const scaleAnim = useRef(new Animated.Value(focused ? 1.08 : 1)).current;
 
   useEffect(() => {
@@ -36,6 +40,8 @@ const AnimatedTabIcon: React.FC<AnimatedTabIconProps> = ({ focused, children }) 
 };
 
 export default function TabLayout() {
+  const { colors } = useTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   return (
     <Tabs
       screenListeners={{
@@ -46,19 +52,18 @@ export default function TabLayout() {
       screenOptions={{
         headerShown: false,
         tabBarStyle: {
-          backgroundColor: '#070A0E',
+          backgroundColor: colors.bg,
           borderTopWidth: 1,
-          borderTopColor: '#161C26',
+          borderTopColor: colors.border,
           height: 60,
           paddingBottom: 8,
           paddingTop: 6,
         },
-        tabBarActiveTintColor: TOKENS.colors.accentLime,
-        tabBarInactiveTintColor: 'rgba(139, 148, 158, 0.7)',
+        tabBarActiveTintColor: colors.accentText,
+        tabBarInactiveTintColor: alpha(colors.paused, 0.7),
         tabBarLabelStyle: {
           fontSize: 8,
-          fontWeight: '700',
-          fontFamily: 'Silkscreen',
+          ...fonts.brand,
           letterSpacing: 0.3,
         },
       }}
@@ -69,7 +74,7 @@ export default function TabLayout() {
           title: 'TRANSFERS',
           tabBarIcon: ({ color, focused }) => (
             <AnimatedTabIcon focused={focused}>
-              <PixelNavTransfersIcon size={20} color={focused ? TOKENS.colors.accentLime : color} />
+              <PixelNavTransfersIcon size={20} color={focused ? colors.accentText : color} />
             </AnimatedTabIcon>
           ),
         }}
@@ -80,7 +85,7 @@ export default function TabLayout() {
           title: 'SEARCH',
           tabBarIcon: ({ color, focused }) => (
             <AnimatedTabIcon focused={focused}>
-              <PixelNavSearchIcon size={20} color={focused ? TOKENS.colors.accentLime : color} />
+              <PixelNavSearchIcon size={20} color={focused ? colors.accentText : color} />
             </AnimatedTabIcon>
           ),
         }}
@@ -91,7 +96,7 @@ export default function TabLayout() {
           title: 'FEEDS',
           tabBarIcon: ({ color, focused }) => (
             <AnimatedTabIcon focused={focused}>
-              <PixelNavFeedsIcon size={20} color={focused ? TOKENS.colors.accentLime : color} />
+              <PixelNavFeedsIcon size={20} color={focused ? colors.accentText : color} />
             </AnimatedTabIcon>
           ),
         }}
@@ -102,7 +107,7 @@ export default function TabLayout() {
           title: 'SETTINGS',
           tabBarIcon: ({ color, focused }) => (
             <AnimatedTabIcon focused={focused}>
-              <PixelNavConfigIcon size={20} color={focused ? TOKENS.colors.accentLime : color} />
+              <PixelNavConfigIcon size={20} color={focused ? colors.accentText : color} />
             </AnimatedTabIcon>
           ),
         }}
@@ -111,7 +116,7 @@ export default function TabLayout() {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (colors: ThemeColors) => StyleSheet.create({
   iconContainer: {
     position: 'relative',
     alignItems: 'center',
@@ -126,8 +131,8 @@ const styles = StyleSheet.create({
     width: 6,
     height: 6,
     borderRadius: 3,
-    backgroundColor: TOKENS.colors.accentLime,
-    shadowColor: TOKENS.colors.accentLime,
+    backgroundColor: colors.accent,
+    shadowColor: colors.accent,
     shadowOffset: { width: 0, height: 0 },
     shadowOpacity: 0.8,
     shadowRadius: 4,

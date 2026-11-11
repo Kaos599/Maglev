@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import React, { useState, useEffect } from 'react';
 import {
   View,
@@ -14,16 +15,20 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as Clipboard from 'expo-clipboard';
-import { formatBytes, formatEta, formatSpeed, TOKENS } from '../../constants/tokens';
+import { formatBytes, formatEta, formatSpeed } from '../../constants/format';
 import { useMaglevEngine } from '../../context/EngineContext';
 import { triggerHaptic } from '../../constants/haptics';
 import { SpeedChart } from '../../components/SpeedChart';
 import { PiecesMatrix } from '../../components/PiecesMatrix';
 import type { TorrentFileInfo, TrackerInfo } from 'maglev-engine';
+import { useTheme } from '../../context/ThemeContext';
+import { alpha, fonts, touch, ThemeColors } from '../../constants/theme';
 
 type DetailTab = 'FILES' | 'PIECES' | 'PEERS' | 'TRACKERS';
 
 export default function TorrentDetailScreen() {
+  const { colors } = useTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
   const insets = useSafeAreaInsets();
@@ -184,7 +189,7 @@ export default function TorrentDetailScreen() {
           accessibilityRole="button"
           accessibilityLabel="Back"
         >
-          <Ionicons name="arrow-back" size={20} color={TOKENS.colors.textPrimary} />
+          <Ionicons name="arrow-back" size={20} color={colors.text} />
         </TouchableOpacity>
 
         <Text style={styles.navTitle} numberOfLines={1}>
@@ -201,7 +206,7 @@ export default function TorrentDetailScreen() {
             <Ionicons
               name={copiedMagnet ? "checkmark-outline" : "share-social-outline"}
               size={18}
-              color={copiedMagnet ? TOKENS.colors.accentLime : TOKENS.colors.accentCyan}
+              color={copiedMagnet ? colors.accentText : colors.download}
             />
           </TouchableOpacity>
 
@@ -211,7 +216,7 @@ export default function TorrentDetailScreen() {
             accessibilityRole="button"
             accessibilityLabel="Delete Torrent"
           >
-            <Ionicons name="trash-outline" size={18} color={TOKENS.colors.statusDanger} />
+            <Ionicons name="trash-outline" size={18} color={colors.danger} />
           </TouchableOpacity>
         </View>
       </View>
@@ -239,9 +244,9 @@ export default function TorrentDetailScreen() {
             <Ionicons
               name={copiedMagnet ? "checkmark-circle" : "link-outline"}
               size={14}
-              color={copiedMagnet ? TOKENS.colors.accentLime : TOKENS.colors.accentCyan}
+              color={copiedMagnet ? colors.accentText : colors.download}
             />
-            <Text style={[styles.copyMagnetPillText, copiedMagnet && { color: TOKENS.colors.accentLime }]}>
+            <Text style={[styles.copyMagnetPillText, copiedMagnet && { color: colors.accentText }]}>
               {copiedMagnet ? 'MAGNET COPIED TO CLIPBOARD' : 'COPY MAGNET LINK'}
             </Text>
           </TouchableOpacity>
@@ -272,7 +277,7 @@ export default function TorrentDetailScreen() {
             accessibilityRole="button"
             accessibilityLabel="Stream video now"
           >
-            <Ionicons name="play-circle" size={16} color="#000000" />
+            <Ionicons name="play-circle" size={16} color={colors.onAccent} />
             <Text style={styles.streamButtonText}>▶ STREAM NOW</Text>
           </TouchableOpacity>
         </View>
@@ -313,10 +318,10 @@ export default function TorrentDetailScreen() {
                   size={16}
                   color={
                     file.priority === 2
-                      ? TOKENS.colors.accentLime
+                      ? colors.accent
                       : file.priority === 0
-                      ? TOKENS.colors.statusDanger
-                      : TOKENS.colors.accentCyan
+                      ? colors.danger
+                      : colors.download
                   }
                 />
                 <View style={styles.fileDetailInfo}>
@@ -475,7 +480,7 @@ export default function TorrentDetailScreen() {
             <TextInput
               style={styles.trackerInput}
               placeholder="udp://tracker.opentrackr.org:1337/announce"
-              placeholderTextColor={TOKENS.colors.textMuted}
+              placeholderTextColor={colors.textMuted}
               value={newTrackerUrl}
               onChangeText={setNewTrackerUrl}
               autoCapitalize="none"
@@ -506,10 +511,10 @@ export default function TorrentDetailScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (colors: ThemeColors) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: TOKENS.colors.bgOled,
+    backgroundColor: colors.bg,
   },
   navBar: {
     height: 52,
@@ -518,20 +523,19 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: 16,
     borderBottomWidth: 1,
-    borderBottomColor: TOKENS.colors.surfaceBorder,
+    borderBottomColor: colors.border,
   },
   navAction: {
-    minWidth: TOKENS.touchTarget.minWidth,
-    minHeight: TOKENS.touchTarget.minHeight,
+    minWidth: touch.min,
+    minHeight: touch.min,
     alignItems: 'center',
     justifyContent: 'center',
   },
   navTitle: {
     flex: 1,
-    color: TOKENS.colors.textPrimary,
+    color: colors.text,
     fontSize: 13,
-    fontWeight: '700',
-    fontFamily: 'monospace',
+    ...fonts.monoBold,
     marginHorizontal: 8,
   },
   navRightGroup: {
@@ -545,9 +549,9 @@ const styles = StyleSheet.create({
     paddingBottom: 40,
   },
   summaryCard: {
-    backgroundColor: TOKENS.colors.surfaceCard,
+    backgroundColor: colors.surface,
     borderWidth: 1,
-    borderColor: TOKENS.colors.surfaceBorder,
+    borderColor: colors.border,
     borderRadius: 12,
     padding: 14,
     marginBottom: 8,
@@ -560,10 +564,9 @@ const styles = StyleSheet.create({
   },
   summaryName: {
     flex: 1,
-    color: TOKENS.colors.textPrimary,
+    color: colors.text,
     fontSize: 13,
-    fontWeight: '700',
-    fontFamily: 'monospace',
+    ...fonts.monoBold,
     marginRight: 10,
   },
   statusBadge: {
@@ -572,20 +575,19 @@ const styles = StyleSheet.create({
     borderRadius: 6,
   },
   badgeDown: {
-    backgroundColor: 'rgba(0, 229, 255, 0.15)',
+    backgroundColor: alpha(colors.download, 0.15),
     borderWidth: 1,
-    borderColor: 'rgba(0, 229, 255, 0.4)',
+    borderColor: alpha(colors.download, 0.4),
   },
   badgeDone: {
-    backgroundColor: 'rgba(204, 255, 0, 0.15)',
+    backgroundColor: alpha(colors.accent, 0.15),
     borderWidth: 1,
-    borderColor: 'rgba(204, 255, 0, 0.4)',
+    borderColor: alpha(colors.accent, 0.4),
   },
   statusBadgeText: {
-    color: TOKENS.colors.textPrimary,
+    color: colors.text,
     fontSize: 10,
-    fontWeight: '700',
-    fontFamily: 'monospace',
+    ...fonts.monoBold,
   },
   copyMagnetPill: {
     flexDirection: 'row',
@@ -593,18 +595,17 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 6,
     minHeight: 40,
-    backgroundColor: '#161B22',
+    backgroundColor: colors.surfaceRaised,
     borderWidth: 1,
-    borderColor: '#1F2937',
+    borderColor: colors.border,
     borderRadius: 8,
     paddingHorizontal: 12,
     marginBottom: 12,
   },
   copyMagnetPillText: {
-    color: TOKENS.colors.accentCyan,
+    color: colors.download,
     fontSize: 10,
-    fontWeight: '700',
-    fontFamily: 'monospace',
+    ...fonts.monoBold,
     letterSpacing: 0.5,
   },
   telemetryGrid: {
@@ -617,21 +618,20 @@ const styles = StyleSheet.create({
     width: '45%',
   },
   telemetryLabel: {
-    color: TOKENS.colors.textMuted,
+    color: colors.textMuted,
     fontSize: 10,
-    fontFamily: 'monospace',
+    ...fonts.mono,
     marginBottom: 2,
   },
   telemetryVal: {
-    color: TOKENS.colors.textPrimary,
+    color: colors.text,
     fontSize: 12,
-    fontWeight: '700',
-    fontFamily: 'monospace',
+    ...fonts.monoBold,
     fontVariant: ['tabular-nums'],
   },
   streamButton: {
-    minHeight: TOKENS.touchTarget.minHeight,
-    backgroundColor: TOKENS.colors.accentLime,
+    minHeight: touch.min,
+    backgroundColor: colors.accent,
     borderRadius: 8,
     flexDirection: 'row',
     alignItems: 'center',
@@ -640,18 +640,17 @@ const styles = StyleSheet.create({
     marginTop: 6,
   },
   streamButtonText: {
-    color: '#000000',
+    color: colors.onAccent,
     fontSize: 11,
-    fontWeight: '900',
-    fontFamily: 'monospace',
+    ...fonts.mono,
     letterSpacing: 0.5,
   },
   tabBar: {
     flexDirection: 'row',
-    backgroundColor: TOKENS.colors.surfaceCard,
+    backgroundColor: colors.surface,
     borderRadius: 10,
     borderWidth: 1,
-    borderColor: TOKENS.colors.surfaceBorder,
+    borderColor: colors.border,
     padding: 3,
     marginVertical: 10,
   },
@@ -663,32 +662,30 @@ const styles = StyleSheet.create({
     borderRadius: 8,
   },
   tabItemActive: {
-    backgroundColor: TOKENS.colors.surfacePill,
+    backgroundColor: colors.surfaceRaised,
     borderWidth: 1,
-    borderColor: 'rgba(204, 255, 0, 0.4)',
+    borderColor: alpha(colors.accent, 0.4),
   },
   tabLabel: {
-    color: TOKENS.colors.textMuted,
+    color: colors.textMuted,
     fontSize: 10,
-    fontWeight: '700',
-    fontFamily: 'monospace',
+    ...fonts.monoBold,
   },
   tabLabelActive: {
-    color: TOKENS.colors.accentLime,
+    color: colors.accentText,
   },
   tabContentCard: {
-    backgroundColor: TOKENS.colors.surfaceCard,
+    backgroundColor: colors.surface,
     borderWidth: 1,
-    borderColor: TOKENS.colors.surfaceBorder,
+    borderColor: colors.border,
     borderRadius: 12,
     padding: 14,
     marginVertical: 8,
   },
   contentHeader: {
-    color: TOKENS.colors.textPrimary,
+    color: colors.text,
     fontSize: 12,
-    fontWeight: '700',
-    fontFamily: 'monospace',
+    ...fonts.monoBold,
     marginBottom: 12,
   },
   fileDetailRow: {
@@ -696,58 +693,57 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: 10,
     borderBottomWidth: 1,
-    borderBottomColor: TOKENS.colors.surfaceBorder,
+    borderBottomColor: colors.border,
     gap: 10,
   },
   fileDetailInfo: {
     flex: 1,
   },
   fileDetailName: {
-    color: TOKENS.colors.textPrimary,
+    color: colors.text,
     fontSize: 11,
-    fontFamily: 'monospace',
+    ...fonts.mono,
     marginBottom: 2,
   },
   fileDetailNameSkip: {
-    color: TOKENS.colors.textMuted,
+    color: colors.textMuted,
     textDecorationLine: 'line-through',
     opacity: 0.6,
   },
   fileDetailMeta: {
-    color: TOKENS.colors.textMuted,
+    color: colors.textMuted,
     fontSize: 10,
-    fontFamily: 'monospace',
+    ...fonts.mono,
   },
   priorityBadge: {
     minWidth: 56,
-    minHeight: TOKENS.touchTarget.minHeight,
+    minHeight: touch.min,
     paddingHorizontal: 8,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: TOKENS.colors.surfacePill,
+    backgroundColor: colors.surfaceRaised,
     borderRadius: 6,
     borderWidth: 1,
-    borderColor: TOKENS.colors.surfaceBorder,
+    borderColor: colors.border,
   },
   priorityBadgeHigh: {
-    borderColor: TOKENS.colors.accentLime,
-    backgroundColor: 'rgba(204, 255, 0, 0.1)',
+    borderColor: colors.accent,
+    backgroundColor: alpha(colors.accent, 0.1),
   },
   priorityBadgeSkip: {
-    borderColor: TOKENS.colors.statusDanger,
-    backgroundColor: 'rgba(255, 51, 102, 0.1)',
+    borderColor: colors.danger,
+    backgroundColor: alpha(colors.danger, 0.1),
   },
   priorityText: {
-    color: TOKENS.colors.textMuted,
+    color: colors.textMuted,
     fontSize: 10,
-    fontWeight: '700',
-    fontFamily: 'monospace',
+    ...fonts.monoBold,
   },
   priorityTextHigh: {
-    color: TOKENS.colors.accentLime,
+    color: colors.accentText,
   },
   priorityTextSkip: {
-    color: TOKENS.colors.statusDanger,
+    color: colors.danger,
   },
   peerRow: {
     flexDirection: 'row',
@@ -755,24 +751,24 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingVertical: 8,
     borderBottomWidth: 1,
-    borderBottomColor: TOKENS.colors.surfaceBorder,
+    borderBottomColor: colors.border,
   },
   peerClient: {
     flex: 1,
-    color: TOKENS.colors.textPrimary,
+    color: colors.text,
     fontSize: 11,
-    fontFamily: 'monospace',
+    ...fonts.mono,
   },
   peerSpeedDown: {
-    color: TOKENS.colors.accentCyan,
+    color: colors.download,
     fontSize: 11,
-    fontFamily: 'monospace',
+    ...fonts.mono,
     marginRight: 10,
   },
   peerSpeedUp: {
-    color: TOKENS.colors.accentLime,
+    color: colors.accentText,
     fontSize: 11,
-    fontFamily: 'monospace',
+    ...fonts.mono,
   },
   trackerHeaderRow: {
     flexDirection: 'row',
@@ -785,149 +781,142 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
   },
   addTrackerActionText: {
-    color: TOKENS.colors.accentCyan,
+    color: colors.download,
     fontSize: 10,
-    fontWeight: '700',
-    fontFamily: 'monospace',
+    ...fonts.monoBold,
   },
   trackerRow: {
     paddingVertical: 8,
     borderBottomWidth: 1,
-    borderBottomColor: TOKENS.colors.surfaceBorder,
+    borderBottomColor: colors.border,
   },
   trackerLeft: {
     flex: 1,
   },
   trackerUrl: {
-    color: TOKENS.colors.textPrimary,
+    color: colors.text,
     fontSize: 11,
-    fontFamily: 'monospace',
+    ...fonts.mono,
     marginBottom: 2,
   },
   trackerStatus: {
-    color: TOKENS.colors.textMuted,
+    color: colors.textMuted,
     fontSize: 10,
-    fontFamily: 'monospace',
+    ...fonts.mono,
   },
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(5, 7, 10, 0.85)',
+    backgroundColor: colors.overlay,
     justifyContent: 'center',
     alignItems: 'center',
     padding: 24,
   },
   modalCard: {
     width: '100%',
-    backgroundColor: TOKENS.colors.surfaceCard,
+    backgroundColor: colors.surface,
     borderWidth: 1,
-    borderColor: TOKENS.colors.surfaceBorder,
+    borderColor: colors.border,
     borderRadius: 14,
     padding: 20,
   },
   modalTitle: {
-    color: TOKENS.colors.textPrimary,
+    color: colors.text,
     fontSize: 15,
-    fontWeight: '700',
-    fontFamily: 'monospace',
+    ...fonts.monoBold,
     marginBottom: 6,
   },
   modalSubtitle: {
-    color: TOKENS.colors.textMuted,
+    color: colors.textMuted,
     fontSize: 12,
     lineHeight: 18,
     marginBottom: 18,
   },
   modalOptionSession: {
-    minHeight: TOKENS.touchTarget.minHeight,
-    backgroundColor: TOKENS.colors.surfacePill,
+    minHeight: touch.min,
+    backgroundColor: colors.surfaceRaised,
     borderWidth: 1,
-    borderColor: TOKENS.colors.surfaceBorder,
+    borderColor: colors.border,
     borderRadius: 8,
     padding: 12,
     marginBottom: 10,
   },
   modalOptionSessionText: {
-    color: TOKENS.colors.textPrimary,
+    color: colors.text,
     fontSize: 12,
-    fontWeight: '700',
-    fontFamily: 'monospace',
+    ...fonts.monoBold,
     marginBottom: 2,
   },
   modalOptionWipe: {
-    minHeight: TOKENS.touchTarget.minHeight,
-    backgroundColor: 'rgba(255, 51, 102, 0.1)',
+    minHeight: touch.min,
+    backgroundColor: alpha(colors.danger, 0.1),
     borderWidth: 1,
-    borderColor: 'rgba(255, 51, 102, 0.4)',
+    borderColor: alpha(colors.danger, 0.4),
     borderRadius: 8,
     padding: 12,
     marginBottom: 16,
   },
   modalOptionWipeText: {
-    color: TOKENS.colors.statusDanger,
+    color: colors.danger,
     fontSize: 12,
-    fontWeight: '700',
-    fontFamily: 'monospace',
+    ...fonts.monoBold,
     marginBottom: 2,
   },
   modalOptionDesc: {
-    color: TOKENS.colors.textMuted,
+    color: colors.textMuted,
     fontSize: 10,
   },
   trackerInput: {
-    minHeight: TOKENS.touchTarget.minHeight,
-    backgroundColor: TOKENS.colors.surfacePill,
+    minHeight: touch.min,
+    backgroundColor: colors.surfaceRaised,
     borderWidth: 1,
-    borderColor: TOKENS.colors.surfaceBorder,
+    borderColor: colors.border,
     borderRadius: 8,
     paddingHorizontal: 12,
-    color: TOKENS.colors.textPrimary,
+    color: colors.text,
     fontSize: 12,
-    fontFamily: 'monospace',
+    ...fonts.mono,
     marginBottom: 16,
   },
   modalOptionAddTracker: {
-    minHeight: TOKENS.touchTarget.minHeight,
-    backgroundColor: TOKENS.colors.accentLime,
+    minHeight: touch.min,
+    backgroundColor: colors.accent,
     borderRadius: 8,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 12,
   },
   modalOptionAddTrackerText: {
-    color: '#000000',
+    color: colors.onAccent,
     fontSize: 12,
-    fontWeight: '700',
-    fontFamily: 'monospace',
+    ...fonts.monoBold,
   },
   modalCancel: {
-    minHeight: TOKENS.touchTarget.minHeight,
+    minHeight: touch.min,
     alignItems: 'center',
     justifyContent: 'center',
   },
   modalCancelText: {
-    color: TOKENS.colors.textMuted,
+    color: colors.textMuted,
     fontSize: 12,
-    fontWeight: '700',
-    fontFamily: 'monospace',
+    ...fonts.monoBold,
   },
   notFoundText: {
-    color: TOKENS.colors.textPrimary,
+    color: colors.text,
     fontSize: 14,
-    fontFamily: 'monospace',
+    ...fonts.mono,
     marginBottom: 16,
   },
   backButton: {
-    minHeight: TOKENS.touchTarget.minHeight,
-    backgroundColor: TOKENS.colors.accentLime,
+    minHeight: touch.min,
+    backgroundColor: colors.accent,
     borderRadius: 8,
     paddingHorizontal: 16,
     alignItems: 'center',
     justifyContent: 'center',
   },
   backButtonText: {
-    color: '#000000',
+    color: colors.onAccent,
     fontSize: 12,
-    fontWeight: '700',
-    fontFamily: 'monospace',
+    ...fonts.monoBold,
   },
 });

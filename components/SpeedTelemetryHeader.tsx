@@ -1,10 +1,15 @@
+import { useMemo } from 'react';
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { formatSpeed, TOKENS } from '../constants/tokens';
+import { formatSpeed } from '../constants/format';
 import { useMaglevEngine } from '../context/EngineContext';
+import { useTheme } from '../context/ThemeContext';
+import { fonts, touch, ThemeColors } from '../constants/theme';
 
 export const SpeedTelemetryHeader: React.FC = () => {
+  const { colors } = useTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   const { telemetry, pauseAll, resumeAll } = useMaglevEngine();
 
   const isAnyActive = telemetry.activeDownloads > 0 || telemetry.activeUploads > 0;
@@ -39,12 +44,12 @@ export const SpeedTelemetryHeader: React.FC = () => {
           <Ionicons
             name={isAnyActive ? 'pause' : 'play'}
             size={14}
-            color={isAnyActive ? TOKENS.colors.textMuted : TOKENS.colors.accentLime}
+            color={isAnyActive ? colors.textMuted : colors.accent}
           />
           <Text
             style={[
               styles.actionButtonText,
-              { color: isAnyActive ? TOKENS.colors.textMuted : TOKENS.colors.accentLime },
+              { color: isAnyActive ? colors.textMuted : colors.accent },
             ]}
           >
             {isAnyActive ? 'PAUSE ALL' : 'RESUME ALL'}
@@ -55,11 +60,11 @@ export const SpeedTelemetryHeader: React.FC = () => {
   );
 };
 
-const styles = StyleSheet.create({
+const makeStyles = (colors: ThemeColors) => StyleSheet.create({
   container: {
-    backgroundColor: TOKENS.colors.surfaceCard,
+    backgroundColor: colors.surface,
     borderWidth: 1,
-    borderColor: TOKENS.colors.surfaceBorder,
+    borderColor: colors.border,
     borderRadius: 12,
     marginHorizontal: 16,
     marginVertical: 8,
@@ -78,55 +83,50 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   speedLabelDown: {
-    color: TOKENS.colors.accentCyan,
+    color: colors.download,
     fontSize: 14,
     fontWeight: '700',
     marginRight: 4,
   },
   speedValueDown: {
-    color: TOKENS.colors.accentCyan,
-    fontSize: TOKENS.typography.telemetry.fontSize,
-    fontWeight: TOKENS.typography.telemetry.fontWeight,
-    fontVariant: ['tabular-nums'],
-    fontFamily: 'monospace',
+    color: colors.download,
+    fontSize: 11,
+    ...fonts.mono,
   },
   speedDivider: {
     width: 1,
     height: 16,
-    backgroundColor: TOKENS.colors.surfaceBorder,
+    backgroundColor: colors.border,
     marginHorizontal: 12,
   },
   speedLabelUp: {
-    color: TOKENS.colors.accentLime,
+    color: colors.accentText,
     fontSize: 14,
     fontWeight: '700',
     marginRight: 4,
   },
   speedValueUp: {
-    color: TOKENS.colors.accentLime,
-    fontSize: TOKENS.typography.telemetry.fontSize,
-    fontWeight: TOKENS.typography.telemetry.fontWeight,
-    fontVariant: ['tabular-nums'],
-    fontFamily: 'monospace',
+    color: colors.accentText,
+    fontSize: 11,
+    ...fonts.mono,
   },
   controlsRow: {
     flexDirection: 'row',
     alignItems: 'center',
   },
   actionButton: {
-    minHeight: TOKENS.touchTarget.minHeight,
+    minHeight: touch.min,
     paddingHorizontal: 12,
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: TOKENS.colors.surfacePill,
+    backgroundColor: colors.surfaceRaised,
     borderRadius: 8,
     borderWidth: 1,
-    borderColor: TOKENS.colors.surfaceBorder,
+    borderColor: colors.border,
   },
   actionButtonText: {
     fontSize: 10,
-    fontWeight: '700',
-    fontFamily: 'monospace',
+    ...fonts.monoBold,
     marginLeft: 6,
     letterSpacing: 0.5,
   },
