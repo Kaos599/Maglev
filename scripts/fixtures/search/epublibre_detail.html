@@ -1,0 +1,729 @@
+
+
+<!DOCTYPE html>
+<html lang="es">
+    <head>
+        <meta charset="UTF-8" />
+        
+        <meta name="description" content="Web de la Biblioteca Digital del Proyecto Scriptorium. Más libros, más libres" />
+        <meta name="keywords" content="Epublibre, EPL, libros, libres, EPUB, biblioteca, Scriptorium" />
+		<meta name="author" content="Epublibre" />
+		<title>epublibre - Don Quijote de la Mancha (IV CENTENARIO)</title>
+        <meta name="robots" content="noindex, nofollow"/><meta name="googlebot" content="noindex, nofollow"/>        
+		<link rel="shortcut icon" href="https://epublibre.org/img/favicon2.ico">
+        <link rel="stylesheet" href="https://epublibre.org/css/bootstrap.css">
+		
+		<link href="https://epublibre.org/css/jquery.rating.css" rel="stylesheet">
+		<link rel="stylesheet" href="https://epublibre.org/css/base.css">
+        <link rel="stylesheet" href="https://epublibre.org/css/sprites.css">
+        <script src="https://epublibre.org/js/jquery-1.7.2.min.js"></script>
+		<script src="https://epublibre.org/js/bootstrap.js"></script>
+        
+		<script type="text/javascript">
+		
+		function loadjscssfile(filename, filetype){
+			if (filetype=="js"){ 
+				var fileref=document.createElement('script');
+				fileref.setAttribute("type","text/javascript");
+				fileref.setAttribute("src", filename);
+			}
+			else if (filetype=="css"){
+				var fileref=document.createElement("link");
+				fileref.setAttribute("rel", "stylesheet");
+				fileref.setAttribute("type", "text/css");
+				fileref.setAttribute("href", filename);
+			}
+			if (typeof fileref!="undefined")
+				document.getElementsByTagName("head")[0].appendChild(fileref);
+		}
+		
+		
+		if (document.all && document.documentMode) {
+			loadjscssfile("https://epublibre.org/css/ie.css", "css");
+		}
+		</script>
+    </head>
+
+    <body>
+		
+		<div class="container">
+			
+			
+			
+<div class="row">
+	<div class="span12">
+		<div class="ali_derecha pad_t negrita">
+			<a href="https://www.ePublibre.org/acceso/solicitar" class="no_subrayar"><i class="icon-star icon-white"></i> solicitud de acceso</a>&nbsp; &nbsp; &nbsp;<a href="https://www.ePublibre.org/acceso/login" class="no_subrayar" id="acceder"><i class="icon-user icon-white"></i> acceder</a>		</div>
+	</div>
+</div>
+<script type="text/javascript">
+//	var elemento = document.getElementById('dot').target='_self';
+//	elemento.target='_self';
+	function goIn() {
+		window.open('inicio/index','_self');
+	}	
+</script>
+
+
+    <style>
+        marquee {
+			color: white;
+            font-family: "Tahoma";
+            font-size: 1.5em;
+			text-shadow: -1px -1px #000, 1px 1px #000, -1px 1px #000, 1px -1px #000, ;
+			-webkit-text-fill-color: white;
+			-webkit-text-stroke: 1px black;
+        }
+    </style>
+
+
+
+
+
+<div class="row">
+
+	
+	<div class="span2" style="position:relative;">
+        <a href="https://epublibre.org/inicio/index"><img class="sprite logo" src="https://epublibre.org/img/vacio.png" alt="epublibre" align="top"/></a>	</div>
+	<div class="span2 txt_pequena txt_blanco pad_t_15">
+		más libros, más libres
+	</div>
+	
+	
+	
+	<div class="span6">
+	<div class="menu ali_derecha">
+		<a href="https://epublibre.org/catalogo/novedades">novedades</a>&nbsp;&nbsp;<a href="https://epublibre.org/catalogo/index">catálogo</a>&nbsp;&nbsp;<a href="https://epublibre.org/catalogo_col/index">colecciones</a>&nbsp;&nbsp;<a href="https://epublibre.org/directorio/index">directorio</a>&nbsp;&nbsp;<a href="https://epublibre.org/manual/index">manuales</a>&nbsp;&nbsp;	</div>
+</div>	
+	
+    
+    <div class="span2 margen_b_5">
+        <div class="pad_t">
+            <form action="https://epublibre.org/catalogo/index" method="post" accept-charset="utf-8"><div style="display:none">
+<input type="hidden" name="csrf_test_name" value="13a51feb00fc279c97a112684042aeb1" />
+</div>            <div class="input-append">
+                <input class="input-small busca_inverse" id="bus" name="bus" type="text" placeholder="título, autor, colección" autocomplete="off" onblur="javascript:cambiar2();" onfocus="javascript:cambiar();"/>
+                <button id="buscador_btn" class="btn btn-small btn-inverse" type="submit"  onblur="javascript:cambiar2();" onfocus="javascript:cambiar();"><i id="buscador_icon" class="icon-search icon-white"></i></button>
+            </div>
+            </form>        </div>
+    </div>
+    
+	
+</div>
+
+
+
+
+
+
+
+
+
+
+
+
+
+<script type="text/javascript">
+	function cambiar() {
+		document.getElementById('buscador_btn').className = 'btn btn-small btn-primary';
+		document.getElementById('buscador_icon').className = 'icon-search';
+	}
+	function cambiar2() {
+		document.getElementById('buscador_btn').className = 'btn btn-small btn-inverse';
+		document.getElementById('buscador_icon').className = 'icon-search icon-white';
+	}
+</script>
+
+			
+			
+			
+			
+<div class="cab_detalle">
+	<style>
+	#tabla_porcentajes_votos {width:400px;margin:auto;margin-bottom:40px;border-collapse:collapse;border:none;}
+	#tabla_porcentajes_votos .votos-totales {text-align:center;}
+	#tabla_porcentajes_votos .celda-barra {text-align:center;vertical-align:bottom;width:10%;font-size:0.85em;}
+	#tabla_porcentajes_votos .porcentaje {margin-bottom:3px;}
+	#tabla_porcentajes_votos .barra {width:25px;margin:auto;background-color:#36e939;box-shadow: inset -1px 0px 2px 1px #02a515;}
+	#tabla_porcentajes_votos tr.linea-puntos {border-top:1px solid #888;}
+	#tabla_porcentajes_votos .celda-puntos {text-align:center;font-weight:bold;font-size:0.9em;}
+</style>
+<div class="row">
+  
+    
+    <div class="cont-ampl-portada">
+        <div id="cont_portada" class="txt_pequena ali_centro ampl-portada" style="display:none;">
+            <img id="img_portada_ampl" onclick="javascript:reducir()" src="https://images.epublibre.org/libros/4765.jpg" alt="" width="100%" height="100%" />
+        </div>
+    </div>
+	
+	<div class="span2">
+        <div class="portada-libro">
+            <!--<div class="texto-portada">
+                <h2>Miguel de Cervantes Saavedra<br></h2>
+                <h1>Don Quijote de la Mancha (IV CENTENARIO)</h1>
+            </div>-->
+            <div class="portada-libro">
+                <img id="portada" src="https://images.epublibre.org/libros/4765.jpg" alt="" width="140" height="210" rel="tooltip" title="Haz click para ampliar" class="red-portada" onclick="javascript:ampliar();" />
+            </div>
+        </div>
+		<div class="etiqueta3"><img class="sprite estado-3" rel="tooltip" title="Verificado" src="https://epublibre.org/img/vacio.png"/></div>
+	</div>
+	
+	
+	
+	<div class="span8 pad_t_20">
+		<div class="well_black pad txt_blanco" style="min-height:45px;">
+			<div style="float:left;">
+				<div class="det_titulo" id="titulo_libro" style="display:inline-block;">
+					Don Quijote de la Mancha (IV CENTENARIO)				</div>
+				<br/>
+				<div class="negrita aut_sec" style="display:inline-block;">
+					<a href="https://epublibre.org/autor/index/847">Miguel de Cervantes Saavedra</a>				</div>
+			</div>
+			<div class="negrita" style="display:inline;float:right;text-align:center;font-size:13px;">
+                <a href="https://epublibre.org/catalogo/index/0/nuevo/todos/sin/1">
+                    <div style="vertical-align:text-top;" class="sprite idioma_1"></div><br/>
+                    <span class="txt_blanco">Español</span>
+                </a>
+			</div>
+		</div>
+		<div class="txt_blanco">
+            <div style="height:54px;min-height:40px;width:620px;margin-top:-10px;">
+                
+                <div style="float:left;width:70%;padding-right:0%;">
+	<table style="font-size:12px;">
+		<tr>
+			<td>Páginas:</td>
+			<td><span class="well_blue btn-small negrita celda-info">1.511</span></td>
+			<td class="pad_l_5">
+				Actualizado el:</td><td><span class="well_blue btn-small negrita">26-08-2025</span>			</td>
+				                    <td class="pad_l_5">Publicado en:</td>
+                    <td><span class="well_blue btn-small negrita">1605</span></td>
+						</tr>
+		<tr>
+			<td>Revisión:</td>
+			<td><span class="well_blue btn-small negrita celda-info">1.9</span></td>
+			<td class="pad_l_5">Estado:</td><td><span class="well_blue btn-small negrita celda-info" style="width:64px;">Verificado</span></td>			<td colspan="2" class="ali_derecha">
+							</td>
+		</tr>
+	</table>
+</div>                
+                
+                <div style="float:right;width:30%;padding-right:0%;text-align:right;">
+                	                </div>
+                
+            </div>
+            
+                            <div class="borde-derecha">
+                    <div class="avatar50 borde-portada">
+                        <img id="avatar50" src="https://epublibre.org/img/titi.jpg" alt="Titivillus" rel="tooltip" title="Responsable: Titivillus"/>
+                    </div>
+                </div>
+                        
+            <div class="agradecimientos">
+                            </div>
+        </div>
+        <div>
+                            <div class="btn-toolbar2" style="display:inline-block;">
+                                            <div class="btn-group">
+                                                                                                                        
+                                                                    <a href="magnet:?xt=urn:btih:2D361E98BF4AD38FF0C4F3B023CAAEEC096896A4&dn=EPL_Don_Quijote_de_la_Mancha_(IV_CENTENARIO)&tr=udp://tracker.opentrackr.org:1337/announce&tr=udp://www.torrent.eu.org:451/announce&tr=udp://exodus.desync.com:6969/announce&tr=udp://p4p.arenabg.ch:1337/announce&tr=udp://tracker.internetwarriors.net:1337/announce" id="en_desc" class="btn btn-small btn-success">
+										<i class="icon-magnet icon-white"></i> Descargar (magnet link)
+									</a>
+                                                                                    </div>
+                        
+                        <div class="pull-right info-descargas">
+                            <a  href="#" class="btn btn-tiny btn-inverse" onclick="javascript:$('#info_desc').toggle('slow');return false;">¿No sabes cómo descargar?</a>
+                            <div id="info_desc" class="well_black txt_mediana txt_blanco desplegable-info">
+                                <div class="interior_aviso">
+                                    <p>Nuestros libros se descargan mediante enlaces magnet. Necesitas tener instalado en tu equipo un programa torrent para la descarga. Algunos de los programas que puedes usar son:</p>
+                                    <ul class="negrita en_linea">
+                                        <li><a href="http://www.qbittorrent.org/" target="_blank">qBittorrent</a></li>
+                                        <li><a href="http://www.utorrent.com/" target="_blank">uTorrent</a></li>
+                                        <li><a href="http://www.transmissionbt.com/" target="_blank">Transmission</a></li>
+                                        <li><a href="http://www.vuze.com/" target="_blank">Vuze</a></li>
+                                    </ul>
+                                    <p>Alternativamente, puedes utilizar alguno de estos servicios web (copia el magnet link con el botón derecho y pégalo donde corresponda):</p>
+                                    <ul class="en_linea">
+                    
+                                        <li><a class="negrita" href="http://put.io" target="_blank">put.io</a> (*)</li>
+                                        <li><a class="negrita" href="http://filestream.me" target="_blank">filestream.me</a> (*)</li>
+                                        <li>(*) Necesitan registrarse previamente en su página web.</li>
+                                    </ul>
+                                    <p>Más información sobre los enlaces magnet <a href="https://epublibre.org/foro/viewtopic.php?f=8&t=266" target="_blank">aquí</a> y una amplia variedad de métodos de descarga e instrucciones <a href="https://epublibre.org/foro/viewtopic.php?f=8&t=34400" target="_blank">aquí</a>.</p>
+                                </div>
+                            </div>
+                        </div>
+                        
+                                        
+                                    </div>
+                    </div>
+	</div>
+	
+	
+	
+	<div class="span2">
+		<div class="margen_17-l">
+			
+			
+									
+			
+			
+			<div id="cont_puntuacion" class="well_orange ali_centro txt_blanco negrita ali_centro">
+                <div id="barra_puntuacion" >
+                                                <input class="star-radio" type="radio" name="rating" value="1" disabled=disabled />
+                                                                        <input class="star-radio" type="radio" name="rating" value="2" disabled=disabled />
+                                                                        <input class="star-radio" type="radio" name="rating" value="3" disabled=disabled />
+                                                                        <input class="star-radio" type="radio" name="rating" value="4" disabled=disabled />
+                                                                        <input class="star-radio" type="radio" name="rating" value="5" disabled=disabled />
+                                                                        <input class="star-radio" type="radio" name="rating" value="6" disabled=disabled />
+                                                                        <input class="star-radio" type="radio" name="rating" value="7" disabled=disabled />
+                                                                        <input class="star-radio" type="radio" name="rating" value="8" disabled=disabled />
+                                                                        <input class="star-radio" type="radio" name="rating" value="9" checked="checked" disabled=disabled />
+                                                                        <input class="star-radio" type="radio" name="rating" value="10" disabled=disabled />
+                                                                <br/><span id="msgVotos">258 votos</span>                </div>
+				<div id="puntuacion_detallada" style="display:none;position:absolute;bottom:2px;left:2px;">
+					<a id="stk" href="#modal_info_votos" class="btn btn-tiny btn-inverse" role="button" data-toggle="modal" rel="tooltip" data-original-title="Ver info detallada de los votos">
+						<i class="icon-eye-open icon-white"></i>
+					</a>
+				</div>
+                				<div id="loading" style="clear:both;"></div>
+			</div>
+			
+            
+            
+												
+		</div>
+	</div>
+	
+	
+</div>
+
+
+<div id="modal_erratas" class="modal modal-info erratas hide fade" tabindex="-1" role="dialog" aria-labelledby="myModalLabel" aria-hidden="true">
+	<div class="modal-header">
+		<button type="button" class="close" data-dismiss="modal" aria-hidden="true">×</button>
+		<h4 id="myModalLabel" style="margin-bottom:0px;">Envío de aviso para "Don Quijote de la Mancha (IV CENTENARIO)"<span id="load2"></span></h4>
+	</div>
+	<form action="https://epublibre.org/libro/enviar_errata_ajax" method="post" accept-charset="utf-8" class="form-inline" id="myform"><div style="display:none">
+<input type="hidden" name="csrf_test_name" value="13a51feb00fc279c97a112684042aeb1" />
+</div>	<div class="modal-body">
+		<input type="hidden" name="epl_id" id="txt_libro" value="4765"/>
+        <div class="row-fluid">
+            
+            <div class="span7">
+                <div class="control-group">
+                    <label for="tipo">Tipo informe a enviar</label>                    <select id="txt_tipo_errata" onchange="javascript:tipo(this.value);" name="txt_tipo_errata" class="input-large">
+                        <option value="ne">&nbsp;</option>
+                        <option value="ficha">Errata en ficha</option>
+                        <option value="libro">Errata en libro</option>
+                        <option value="enlace">Problema con descarga</option>
+                    </select>
+                  </div>
+            </div>
+            
+            
+            <div class="span5" id="vers_errata" style="display:none;">
+                <div class="control-group pull-right">
+                    <label for="version">Versión del libro</label>                                        <select id="txt_version" name="txt_version" class="input-mini">
+                    <option value="1.0">1.0</option><option value="1.1">1.1</option><option value="1.2">1.2</option><option value="1.3">1.3</option><option value="1.4">1.4</option><option value="1.5">1.5</option><option value="1.6">1.6</option><option value="1.7">1.7</option><option value="1.8">1.8</option><option value="1.9" selected>1.9</option>                    </select>
+                </div>
+            </div>
+            
+            <div id="error_tipo" style="display:none;margin-top:-5px;margin-bottom:5px;" class="alert alert-error margen_t_10 ajustado_cont">
+                <img class="sprite icon-warning" src="https://epublibre.org/img/vacio.png"/> Es necesario especificar el tipo de informe.
+            </div>
+        </div>
+        
+        <div class="control-group">
+			<div id="toolbar"  style="display: none;">
+				<div class="btn-group pull-left">
+					<a href="https://epublibre.org/" class="btn btn-mini btn-inverse" rel="tooltip" title="ctrl+b<br/>negrita" data-wysihtml5-command="bold"><i class="icon-bold icon-white"></i></a><a href="https://epublibre.org/" class="btn btn-mini btn-inverse" rel="tooltip" title="ctrl+i<br/>cursiva" data-wysihtml5-command="italic"><i class="icon-italic icon-white"></i></a>				</div>
+                <div class="txt_verde txt_pequena pull-right">
+                    Etiquetas permitidas: [quote][/quote], [code][/code], [url][/url], [spoiler][/spoiler]
+                </div>
+			</div>
+			<textarea name="informe" cols="40" rows="15" id="txt_informe" class="span9" style="height:230px;" ></textarea>			<div id="error_contenido" style="display:none;" class="alert alert-error margen_t_10 ajustado_cont">
+				<img class="sprite icon-warning" src="https://epublibre.org/img/vacio.png"/> El informe no puede estar vacío
+			</div>
+		</div>
+
+		<div id="cont_enlaces" class="control-group" style="display:none;">
+        			<label for="enlace">Enlace (opcional) <a href="#" id="prevenir" rel="tooltip" title="Si se desea incluir un enlace a algún tipo de fichero, introducirlo a continuación"><i class="icon-question-sign"></i></a></label>			<input type="text" name="enlace" value="" id="txt_enlace" class="span9" autocomplete="off"  />			<div id="error_enlace" style="display:none;" class="alert alert-error margen_t_10 ajustado_cont">
+				<img class="sprite icon-warning" src="https://epublibre.org/img/vacio.png"/> El enlace no es válido. Debe comenzar por <strong>http://</strong> o <strong>https://</strong>
+			</div>
+        </div>
+		<div id="error_general" style="display:none;" class="alert alert-error">
+			<img class="sprite icon-warning" src="https://epublibre.org/img/vacio.png"/> Ha ocurrido un error, inténtalo de nuevo
+		</div>
+	</div>
+	<div class="modal-footer">
+                    <div id="cont_botones">
+            <a class="btn btn-small btn-primary" onclick="javascript:enviar();" href="#">Enviar</a>
+            <button class="btn btn-small btn-danger" data-dismiss="modal" aria-hidden="true">Cancelar</button>
+        </div>
+	</div>
+	</form></div>
+
+
+<!--
+<div id="modal_demagnetize" class="modal modal-warning hide fade" tabindex="-1" role="dialog" aria-labelledby="myModalLabel" aria-hidden="true">
+	<div class="modal-header">
+        <button type="button" class="close" data-dismiss="modal" aria-hidden="true">×</button>
+		<h4 id="myModalLabel">Aviso relativo a demagnetize.link</h4>
+	</div>
+  
+    <div class="modal-body">
+        <p>Se va a realizar la descarga de un archivo usando el servicio de demagnetize.link.<br/>
+           Demagnetize.link es un servicio externo a nuestra web, cuya responsabilidad y funcionamiento no depende de ePubLibre.</p>
+        <p>Por favor, <strong>NO informar en los comentarios de posibles problemas al utilizar este servicio</strong>, puesto que ni dependen de nosotros ni podemos hacer nada para solucionarlos.</p>
+        <input type="hidden" id="enlace_ext" value="magnet:?xt=urn:btih:2D361E98BF4AD38FF0C4F3B023CAAEEC096896A4&dn=EPL_Don_Quijote_de_la_Mancha_(IV_CENTENARIO)&tr=udp://tracker.opentrackr.org:1337/announce&tr=udp://www.torrent.eu.org:451/announce&tr=udp://exodus.desync.com:6969/announce&tr=udp://p4p.arenabg.ch:1337/announce&tr=udp://tracker.internetwarriors.net:1337/announce" />
+    </div>
+    <div class="modal-footer ali_centro">
+        <button id="btn_continuar" class="btn btn-small btn-info" data-toggle="modal" onclick="javascript:continuar_demagnetize();">Continuar</button>
+        <button class="btn btn-small btn-danger" data-dismiss="modal" aria-hidden="true">Cancelar</button>
+    </div>
+</div>
+-->
+
+
+
+
+
+<script src="https://epublibre.org/js/wyssimple.js"></script>
+<script src="https://epublibre.org/js/wysihtml5-0.3.0.min.js"></script>
+<script src="https://epublibre.org/js/jquery.rating.js"></script>
+<script type="text/javascript">
+  
+    
+    function ampliar () {
+        $('#cont_portada').show('slow');
+    };
+    function reducir() {
+        $('#cont_portada').hide('slow');
+    }
+    $('#cont_portada').mouseout(function(){reducir();});
+    
+    
+	$("[name=lect]").live('click', function(event) {
+		event.preventDefault();
+	});
+    $("#prevenir").live('click', function(event) {
+		event.preventDefault();
+	});
+	
+  
+    
+	function marcar(accion, valor) {
+		var url = "https://epublibre.org/libro/marcar/ajax/4765/"+accion+"/"+valor;
+        $("[rel=tooltip]").tooltip('hide');
+        $('#lecturas').html('<div id="loading2"></div>');
+		$("#loading2").html('<img alt="" height="31" width="31" src="https://epublibre.org//img/ajaxL4.gif" />');
+		$.ajax({
+			cache: false,
+			type: "POST",
+			url: url,
+			dataType: 'json',
+			success: function(e) {
+				$('#lecturas').html(e);
+                $("[rel=tooltip]").tooltip({'placement':'top'});
+			}
+		});
+	}
+	
+    
+    
+	function gracias() {
+		var url = "https://epublibre.org/libro/marcar/ajax/4765/gracias";
+        $("[rel=tooltip]").tooltip('hide');
+		$("#gracias").html('<img alt="" height="31" width="31" src="https://epublibre.org//img/ajaxL4.gif" />');
+		$.ajax({
+			cache: false,
+			type: "POST",
+			url: url,
+			dataType: 'json',
+			success: function(e) {
+				$("#num_gracias").html(e);
+                $("#gracias").html('');
+                $("[rel=tooltip]").tooltip({'placement':'top'});
+			}
+		});
+	}
+	
+    
+    
+	$('.star-radio').rating({
+		required: true,
+		callback: function(value, link) {
+			enviar_voto(value);
+		}
+	});
+	
+    
+    
+    function enviar_voto(value)
+    {
+        $('.star-radio').rating('readOnly', true, true);
+        $('[rel=tooltip]').tooltip('hide');
+        $("#msgVotos").html('<img alt="" src="https://epublibre.org//img/ajax.gif">');
+		$("#cont_tabla_info_votos").html('<p>Recuperando información sobre los votos...</p>');
+        $.ajax({
+            type: 'post',
+            url: 'https://epublibre.org/libro/rate/4765/'+value,
+            dataType: 'json',
+            success: function(e) {
+                if (e.error!='') {
+                    $('#msgVotos').html('<div class="txt_negro normal pequena">'+e.error+'</div>');
+                    $('.star-radio').rating('readOnly', false, false);
+                }
+                else {
+                    $('#cont_puntuacion').html(e.html);
+                    $('.star-radio').rating();
+                    $('#cont_mi_nota').show('slow', function(){
+                        $("#btn_retirar_nota").css('display','');
+                    });
+                }
+                $("[rel=tooltip]").tooltip({'placement':'top'});
+            }
+        });
+    }
+    
+    
+    function retirar_voto()
+    {
+        $('[rel=tooltip]').tooltip('hide');
+        var nota = $("#cont_mi_nota").html();
+        $("#msgVotos").html('<img alt="" src="https://epublibre.org//img/ajax.gif">');
+		$("#cont_tabla_info_votos").html('<p>Recuperando información sobre los votos...</p>');
+        $("#btn_retirar_nota").css('display','none');
+        $.ajax({
+            type: 'post',
+            url: 'https://epublibre.org/libro/unrate/4765',
+            dataType: 'json',
+            success: function(e) {
+                if (e.error!='') {
+                    $('#msgVotos').html('<div class="txt_negro normal pequena">'+e.error+'</div>');
+                    $("#cont_mi_nota").html(nota);
+                    $("#btn_retirar_nota").css('display','');
+                }
+                else {
+                    $('#cont_mi_nota').hide('slow', function(){
+                        $('#cont_puntuacion').html(e.html);
+                        $('.star-radio').rating({
+                            required: true,
+                            callback: function(value, link) {
+                                enviar_voto(value);
+                            }
+                        });
+                        $("[rel=tooltip]").tooltip({'placement':'top'});
+                    });
+                }
+            }
+        });
+    }
+    
+    
+    
+    
+    $("#en_desc").live('click', function(event) {
+        $.ajax({ url: 'https://epublibre.org/libro/libroclick/ajax/4765' });
+    });
+    
+    
+    
+    
+	var editor = new wysihtml5.Editor("txt_informe", {
+		toolbar:        "toolbar",
+        autolink:       false,
+		parserRules:    wysihtml5ParserRules,
+		useLineBreaks:  true,
+        autoLink:       false
+	});
+	
+	
+	
+	function enviar()
+	{
+		error = false;
+		if ($('#txt_informe').val()=='')
+		{
+			$('#error_contenido').css('display','');
+			error = true;
+		}
+        else
+            $('#error_contenido').css('display','none');
+        if ($('#txt_tipo_errata').val()=='ne')
+        {
+            $('#error_tipo').css('display','');
+            error = true;
+        }
+        else
+            $('#error_tipo').css('display','none');
+        if (!error)
+        {
+            var en = document.getElementById('txt_enlace').value;
+            var patron = /^http[s]?:\/\//;
+            if ((en!='') && (!en.toLowerCase().match(patron)))
+            {
+                $('#error_enlace').css('display','');
+                error = true;
+            }
+            else
+            {
+                $('#error_enlace').css('display','none');
+                error = false;
+            }
+        }
+		if (error) return false;
+		document.forms["myform"].submit();
+        return false;
+	}
+	
+    
+    
+	$("#prevenir").live('click', function(event) {
+		event.preventDefault();
+	});
+	
+    
+    
+	function tipo(txt) {
+        if (txt!="ne") {
+            $('#error_tipo').css('display','none');
+        }
+        if (txt=="libro") {
+            $('#vers_errata').css('display','');
+            $('#cont_enlaces').css('display','');
+        }
+        else {
+            $('#vers_errata').css('display','none');
+            $('#cont_enlaces').css('display','none');
+        }
+	}
+	
+    
+    
+/*    function continuar_demagnetize() {
+        enlace = $("#enlace_ext").val();
+        window.open('https://demagnetize.link?magnet='+enlace);
+        $('#modal_demagnetize').modal('hide');
+    }*/
+</script>
+
+
+</div>
+
+
+
+<div class="bg_blanco">
+	<div class="row pad_tabla">
+	<table width="100%">
+		<tr>
+            			<td class="contenido" style="max-width:630px;">
+              
+                
+                                
+			
+				
+                <div><div class="titulo">Don Quijote de la Mancha (IV CENTENARIO)</div></div><div> <div class="detalle"><div class="negrita">Sinopsis</div><div class="ali_justi"><span>Poco puede decirse del Quijote que no se haya dicho ya. Obra culmen de la literatura universal y primera novela moderna, Cervantes ideó la historia de un hidalgo aldeano que enloquece de tanto leer novelas de caballerías y, como buen caballero andante, sale a los caminos con el noble afán de ayudar a los necesitados. Así, en compañía del afable y crédulo Sancho Panza, don Quijote participa en una serie de delirantes aventuras que provocarán la hilaridad del lector, ya que la vida que reproduce Cervantes es alegre, graciosa y dramática, a la vez que sana y optimista, a pesar de las vicisitudes de su existencia. Sin embargo, el Quijote es mucho más, pues constituye una lección magistral sobre la grandeza y la miseria de la condición humana.<br><br>La Real Academia Española y la Asociación de Academias de la Lengua Española conmemoran el IV Centenario de Don Quijote de la Mancha con la publicación de una edición de la obra de Miguel de Cervantes. El texto crítico y sus notas han sido preparados por Francisco Rico. El texto ha sido fijado a partir del examen de todas las ediciones significativas, antiguas y modernas, y con la aplicación de los métodos filológicos más rigurosos. Las notas aclaran todos los puntos que pueden plantear dudas al lector moderno y están redactadas siempre con la máxima claridad y del modo que más agiliza la lectura. Lo acompañan un extenso prólogo de Vargas Llosa, estudios generales de Martín de Riquer, Francisco Ayala; y el propio Francisco Rico y se cierra con otra serie de diversos artículos de importantes comentaristas y un glosario de 7.000 términos que ayudará al lector actual a conocer la lengua de Cervantes.</span></div><br/><table width="100%"><tr><td valign="top" width="42%">  <div class="negrita"> Autores </div> <div class="ali_justi"> <span> <table> <tr> <td class="celda-rotulo"> <div class="label"> Escritor </div> </td> <td class="negrita txt_azul" nowrap="nowrap"> &nbsp; <a href="https://www.epublibre.org/autor/index/847">Miguel de Cervantes Saavedra</a> </td> </tr> <tr> <td class="celda-rotulo"> <div class="label"> Director </div> </td> <td class="negrita txt_azul" nowrap="nowrap"> &nbsp; <a href="https://www.epublibre.org/autor/index/3386">Francisco Rico</a> </td> </tr> <tr> <td class="celda-rotulo"> <div class="label"> Anotador </div> </td> <td class="negrita txt_azul" nowrap="nowrap"> &nbsp; <a href="https://www.epublibre.org/autor/index/3386">Francisco Rico</a> </td> </tr> <tr> <td class="celda-rotulo"> <div class="label"> Prologuista </div> </td> <td class="negrita txt_azul" nowrap="nowrap"> &nbsp; <a href="https://www.epublibre.org/autor/index/464">Mario Vargas Llosa</a> </td> </tr> </table> </span> </div> </td><td valign="top" width="58%">  <div class="negrita"> Géneros </div> <div class="ali_justi"> <span> <table class="negrita"><tr><td class="celda-rotulo"><div class="label">Tipo</div></td><td>&nbsp;Ficción</td></tr><tr><td class="celda-rotulo"><div class="label">Género</div></td><td>&nbsp;<a href="https://www.epublibre.org/genero/index/genero/1/3">Novela</a></td></tr><tr><td class="celda-rotulo"><div class="label">Temas</div></td><td>&nbsp;<a href="https://www.epublibre.org/genero/index/subgenero/1/1">Aventuras</a></td></tr></table> </span> </div> </td></tr></table><br/> <br/>  <div class="negrita"> Características adicionales </div> <div style="margin:5px 0px 10px 0px;"> <div class="pull-left margen-det"> <a href="https://www.epublibre.org/catalogo/ilustrada"> <img class="sprite car-2" src="https://www.epublibre.org/img/vacio.png" id="stk" rel="tooltip" title="Versión ilustrada:<br>El libro contiene ilustraciones"/> </a> </div> <div class="pull-left margen-det"> <a href="https://www.epublibre.org/catalogo/anotada"> <img class="sprite car-3" src="https://www.epublibre.org/img/vacio.png" id="stk" rel="tooltip" title="Edición anotada:<br>El libro contiene anotaciones explicativas"/> </a> </div> <div class="pull-left margen-det"> <img class="sprite car-5" src="https://www.epublibre.org/img/vacio.png" id="stk" rel="tooltip" title="Fuentes incrustadas:<br>El libro contiene fuentes incrustadas"/> </div> <div style="clear:both;"></div> </div>  <div class="negrita"> Notas </div> <div class="ali_justi"> <span> r1.1 - Corregidos varios y añadidos anexos faltantes GRACIAS a <b>TaliZorah</b><br>r1.4 - Conversión a ePub Base 1.2 y corregidos varios<br>r1.5: Corrección de erratas, gracias al reporte de<b> Ignotus</b>. Actualización al ePub Base 2.1.<br>r1.6: Corrección de errata, gracias al reporte de <b>diego77. </b>Mejora en las imágenes y estilos gracias a la colaboración de <b>diego77.</b><br>r1.7: Mejoras en las imágenes y cambios en los códigos gracias la colaboración de <b>diego77.</b><br>r1.8: corrección de erratas gracias al reporte de <b>Ernios</b>.<br>r1.9: corrección de erratas gracias al reporte de <b>El Tempranillo.</b> </span> </div> <br/></div></div>				
+								
+				
+                <div><div class="titulo degradado">Comentarios</div> </div><br/><div><div class="detalle"><div> <a name="comentarios"></a><span>  <div id="contenido"> <div id="com_156972" class="alert alert-success"> <div> <a href="https://www.epublibre.org/usuario/detalle/294360" class="negrita"><img id="avatar30" class="sprite user-30" src="https://www.epublibre.org//img/vacio.png" alt="" /> x2drfr60</a> <strong>el 16-12-2024 a las 23:31:31</strong> </div> <div id="contenido_com_156972" class="borde-sup-verde pad_8 corta_palabras txt_negro"> La mejor edición, la de Francisco Rico.</div><div class="borde-sup-verde txt_mediana firma"></div></div> <div id="com_152988" class="alert alert-success"> <div> <a href="https://www.epublibre.org/usuario/detalle/284995" class="negrita"><img id="avatar30" src="https://images.epublibre.org/avatares/284995.jpg" alt="" height="30" width="30" /> Lazarus</a> <strong>el 06-11-2023 a las 21:53:45</strong> </div> <div id="contenido_com_152988" class="borde-sup-verde pad_8 corta_palabras txt_negro"> Merecidas múltiples relecturas!<br> </div><div class="borde-sup-verde txt_mediana firma"></div></div> <div id="com_152659" class="alert alert-success"> <div> <a href="https://www.epublibre.org/usuario/detalle/16533" class="negrita"><img id="avatar30" src="https://images.epublibre.org/avatares/16533.jpg" alt="" height="30" width="30" /> Alix</a> <strong>el 29-09-2023 a las 13:11:36</strong> </div> <div id="contenido_com_152659" class="borde-sup-verde pad_8 corta_palabras txt_negro"> Obra maestra.</div><div class="borde-sup-verde txt_mediana firma"></div></div> <div id="com_149287" class="alert alert-success"> <div> <a href="https://www.epublibre.org/usuario/detalle/1" class="negrita"><img id="avatar30" class="sprite user-30" src="https://www.epublibre.org//img/vacio.png" alt="" /> Antiguo usuario</a> <strong>el 09-11-2022 a las 11:05:49</strong> </div> <div id="contenido_com_149287" class="borde-sup-verde pad_8 corta_palabras txt_negro"> Totalmente de acuerdo con "volador". Es un libro para disfrutar, no para aprenderselo. Suele ser habitual que, enfrentados a una obra -como El Quijote- tan reconocida y valorada mundialmente, pretendamos absorver y comprender todo en una primera lectura, con el resultado de convertirse en una tarea abrumadora que termina por agotarnos. Pienso que El Quijote ha de leerse de corrido y, si ha gustado o despertado el interés natural, tiempo hay, incluso, de leerla por segunda vez acudiendo a las notas de la edición o con un diccionario dedicado expresamente a esta novela, que los hay y muy buenos.</div><div class="borde-sup-verde txt_mediana firma"></div></div> <div id="com_149271" class="alert alert-success"> <div> <a href="https://www.epublibre.org/usuario/detalle/22679" class="negrita"><img id="avatar30" class="sprite user-30" src="https://www.epublibre.org//img/vacio.png" alt="" /> volador</a> <strong>el 07-11-2022 a las 19:24:41</strong> </div> <div id="contenido_com_149271" class="borde-sup-verde pad_8 corta_palabras txt_negro"> Para quienes lo intentan con ganas y no lo consiguen, un consejo: Leer alguna edición sin notas al pie.<br>Las notas suelen ser interesantes, desde luego. Pero si cuesta abordar esta maravilla de libro, mejor ceñirse a él.<br>Y es una maravilla. Lo tiene todo... imposible sobrevalorarlo.</div><div class="borde-sup-verde txt_mediana firma">Tch, tch...</div></div> <div id="com_138435" class="alert alert-success"> <div> <a href="https://www.epublibre.org/usuario/detalle/1" class="negrita"><img id="avatar30" class="sprite user-30" src="https://www.epublibre.org//img/vacio.png" alt="" /> Antiguo usuario</a> <strong>el 08-12-2020 a las 00:53:33</strong> </div> <div id="contenido_com_138435" class="borde-sup-verde pad_8 corta_palabras txt_negro"> Una obre cumbre de nuestra Literatura. Llega el momento en que todos pasamos por el Quijote o, mejor, llega el momento en que el Quijote nos atraviesa. </div><div class="borde-sup-verde txt_mediana firma"></div></div> <div id="com_128158" class="alert alert-success"> <div> <a href="https://www.epublibre.org/usuario/detalle/1" class="negrita"><img id="avatar30" class="sprite user-30" src="https://www.epublibre.org//img/vacio.png" alt="" /> Antiguo usuario</a> <strong>el 15-02-2020 a las 12:33:37</strong> </div> <div id="contenido_com_128158" class="borde-sup-verde pad_8 corta_palabras txt_negro"> nunca he podido acabarla. A ver si esta es la vencida. una joya de la literatura.</div><div class="borde-sup-verde txt_mediana firma"></div></div> <div id="com_125304" class="alert alert-success"> <div> <a href="https://www.epublibre.org/usuario/detalle/230830" class="negrita"><img id="avatar30" class="sprite user-30" src="https://www.epublibre.org//img/vacio.png" alt="" /> NoFriendly</a> <strong>el 04-12-2019 a las 17:52:44</strong> </div> <div id="contenido_com_125304" class="borde-sup-verde pad_8 corta_palabras txt_negro"> ¡Excelente, excelente!: nada más que agregar.</div><div class="borde-sup-verde txt_mediana firma"></div></div> <div id="com_117525" class="alert alert-success"> <div> <a href="https://www.epublibre.org/usuario/detalle/1" class="negrita"><img id="avatar30" class="sprite user-30" src="https://www.epublibre.org//img/vacio.png" alt="" /> Antiguo usuario</a> <strong>el 25-05-2019 a las 11:09:22</strong> </div> <div id="contenido_com_117525" class="borde-sup-verde pad_8 corta_palabras txt_negro"> Me encanta este libro. Lo he leído tantas veces y siempre encuentro algo nuevo. Cervantes es un maestro de pluma. </div><div class="borde-sup-verde txt_mediana firma"></div></div> <div id="com_112648" class="alert alert-success"> <div> <a href="https://www.epublibre.org/usuario/detalle/1" class="negrita"><img id="avatar30" class="sprite user-30" src="https://www.epublibre.org//img/vacio.png" alt="" /> Antiguo usuario</a> <strong>el 09-01-2019 a las 15:35:25</strong> </div> <div id="contenido_com_112648" class="borde-sup-verde pad_8 corta_palabras txt_negro"> No hay lugar a dudas, la obra cumbre de la literatura en español. Leerlo en la época actual con la traducción original surte un curioso efecto, al menos en mí. Plagado de momentos hilarantes, acción, intertextualidad, figuras costumbristas e intelectuales, amor, odio, tristeza, historias paralelas que podrían fácilmente ser libros independientes, etc. El mejor libro.</div><div class="borde-sup-verde txt_mediana firma"></div></div> </div>   <div class="row"> <div id="paginador" class="ali_centro" style="width:600px;padding-left:8px;"> <div class="pagination pagination-centered" style="margin:5px;"><ul><li class="active" id="pagina"><a href="#">1</a></li><li id="pagina"><a href="https://www.epublibre.org/libro/detalle/4765/10">2</a></li><li id="pagina"><a href="https://www.epublibre.org/libro/detalle/4765/20">3</a></li><li id="pagina"><a href="https://www.epublibre.org/libro/detalle/4765/10">Siguiente</a></li></ul></div> </div> </div> </span></div></div></div><div id="modal_elim_com" class="modal modal-danger hide fade" tabindex="-1" role="dialog" aria-labelledby="myModalLabel" aria-hidden="true"><div class="modal-header"><button type="button" class="close" data-dismiss="modal" aria-hidden="true">×</button><h4 id="myModalLabel">Retirar comentario</h4></div><form action="https://www.epublibre.org/libro/retirar_comentario/4765" method="post" accept-charset="utf-8" id="eliminar" name="eliminar"><div style="display:none"><input type="hidden" name="csrf_test_name" value="cd7da85f902dbef440ffa7c108ace0eb" /></div><div class="modal-body"><p>¿Estás seguro de que deseas retirar el comentario publicado?</p><input type="hidden" id="eliminar_msj" name="eliminar_msj"/> <input type="hidden" id="epl_id" name="epl_id" value="4765"/></div><div class="modal-footer"><button name="bt_entrar" type="button" class="btn btn-small btn-primary" onclick="javascript:retirar_msj();" >Retirar</button><button class="btn btn-small btn-danger" data-dismiss="modal" aria-hidden="true">Cancelar</button></div></form></div><script type="text/javascript"> 	$("#pagina a").live('click', function(event) {	event.preventDefault();	});			$("#pagina a").live('click', function() {	var url = $(this).attr("href");	var n = url.lenght;	if (url.substring(n-1,n)=='#') exit;	if (url.lastIndexOf("/")==url.length-1) {url = url + "0"};	url = url + "/ajax"; var tam_pag = $("#paginador").height();	$("#paginador").html('<img alt="" height="25" width="25" src="https://www.epublibre.org//img/ajax.gif" />').height(tam_pag);	$.ajax({	cache: false,	type: "POST",	url: url,	dataType: 'json',	success: function(e) {	$('#contenido').html(e.contenido);	$('#paginador').html(e.paginacion);	$('#loading').addClass('nomostrar');	$("#loading").html('');	$("[rel=tooltip1]").tooltip({'placement':'top'});	}	});	});	 var contenido_comentario = ''; 	function edit_msj(id){ $("#contenido [role=button]").css('display','none'); $("#formulario_com").css('display','none'); $("#contenido_com_"+id).css('display','none'); contenido_comentario = $("#edit").val(); $("#editor").css('display', '');	}	 	function cancel_msj(id){ $("#contenido [role=button]").css('display',''); $("#formulario_com").css('display',''); $("#contenido_com_"+id).css('display',''); $("#editor").css('display', 'none'); $("#edit").val(contenido_comentario); contenido_comentario = '';	}	 	function guardar_msj(id) {	var url = "https://www.epublibre.org/libro/editar_comentario/ajax"; var texto = $("#contenido_com_"+id).html();	$("#contenido_com_"+id).html('<img alt="" height="31" width="31" src="https://www.epublibre.org//img/ajax.gif" />'); $("#editor").css('display','none'); $("#contenido_com_"+id).css('display', '');	$.ajax({	cache: false,	type: "POST",	url: url,	dataType: 'json', data: $("#form_edicion").serialize(),	success: function(e) { if (e.error!='') { $("#com_error").html(e.error); $("#com_error").css('display', ''); $("#contenido_com_"+id).html(texto); } else { $('#contenido_com_'+id).html(e.contenido); } $("#contenido [role=button]").css('display',''); $("#formulario_com").css('display','');	}	});	}	 	function del_msj(id){	document.forms['eliminar'].elements['eliminar_msj'].value = id;	}	 	function retirar_msj() {	var url = "https://www.epublibre.org/libro/retirar_comentario/ajax"; var id = $("#eliminar_msj").val(); var texto = $("#contenido_com_"+id).html(); $("#com_error").css('display', 'none'); $("#contenido [role=button]").css('display','none'); $("#contenido_com_"+id).html('<img alt="" height="31" width="31" src="https://www.epublibre.org//img/ajax.gif" />'); $("#cont_com").css('display','none'); $("#modal_elim_com").modal('hide');	$.ajax({	cache: false,	type: "POST",	url: url,	dataType: 'json', data: $("#eliminar").serialize(),	success: function(e) { if (e!='') { $("#com_error").html(e); $("#com_error").css('display', ''); $("#contenido_com_"+id).html(texto); $("#cont_com").css('display', ''); $("#contenido [role=button]").css('display',''); } else { $("#com_"+id).remove(); $("#com_publicado").html('El comentario se ha retirado correctamente') .hide() .slideToggle(500) .delay(3500) .slideToggle(500, function() { $("#cont_com").css('display', ''); $("#contenido [role=button]").css('display',''); }); }	}	});	}	 	function nuevo_msj() { var val = $("#comentario").val(); if ((val=='') || (val.length<5)) { $("#com_error").html('El comentario debe tener 5 caracteres de longitud como mínimo.').css('display',''); return false; } $(".alert-error").css('display', 'none');	var url = "https://www.epublibre.org/libro/comentario_nuevo/ajax"; $("#cont_com").css('display', 'none');	$("#temporizador").html('<div class="alert alert-success txt_mediana"><img alt="" height="31" width="31" src="https://www.epublibre.org//img/ajax.gif" />&nbsp;&nbsp;&nbsp;Enviando comentario...</div>');	$.ajax({	cache: false,	type: "POST",	url: url,	dataType: 'json', data: $("#form_nuevo").serialize(),	success: function(e) { if (e.error!='') { $("#com_error").html(e.error); $("#com_error").css('display', ''); $("#cont_com").css('display', ''); } else {  if ($("#editor").length) $("#editor").remove(); if ($("#btn_editar").length) $("#btn_editar").remove();  var div = document.createElement("div"); $(div).addClass("alert alert-success") .attr("id", "com_"+e.id) .html(e.contenido) .prependTo($("#contenido")) .hide() .slideToggle(300); $("#contenido [role=button]").css('display','none'); if ($("#no_com").length) $("#no_com").css('display','none'); $("#com_publicado").html('El comentario se ha publicado correctamente') .hide() .slideToggle(500) .delay(3500) .slideToggle(500,function() { $("#cont_com").css('display', ''); $("#contenido [role=button]").css('display',''); }); } $("#comentario").val(''); $("#temporizador").html('');	}	});	}	  function conf_traslado() { if($("input[name='com_sel[]']:checked").length > 0) { $("#error_seleccion").css("display", "none"); $("#modal_conf_traslado").modal("show"); } else $("#error_seleccion").css("display", ""); }  function realizar_traslado() { var id_hilo = $("#id_hilo").val(); if ((id_hilo=='') || (($.isNumeric(id_hilo)) && (id_hilo>0))) { $("#modal_conf_traslado #error_id_hilo").css("display", "none"); if ($("#hilo").val()!='') { $("#modal_conf_traslado #error_hilo").css("display", "none"); $("#titulo_hilo").val($("#hilo").val()); $("#id_hilo_ex").val(id_hilo); var contenido = '<div class="alert alert-success">Realizando traslado de los comentarios....&nbsp;&nbsp<img alt="" height="31" width="31" src="https://www.epublibre.org/img/ajax.gif" /></div>'; $("#modal_conf_traslado .modal-body").html(contenido); $("#modal_conf_traslado .modal-footer").css("display", "none"); $("#trasladar_com").submit(); } else $("#modal_conf_traslado #error_hilo").css("display", ""); } else $("#modal_conf_traslado #error_id_hilo").css("display", ""); }</script>				
+				
+			</td>
+                            
+                <td class="banda-separacion"></td>
+                
+                <td class="mensajes">
+                                                    
+                            <div>
+
+	
+	<div>
+		<div class="span4 titulo">
+			Lo que te estás perdiendo...
+			<br/>
+		</div>
+	</div>
+	
+    
+	<div>
+        <div class="span4 pad_similar">
+            <br/>
+            <span>
+            <ul>
+                <li>Libros similares</li>
+                <li>Premios recibidos</li>
+                <li>Usuarios que lo han leído</li>
+                <li>Más títulos del mismo autor</li>
+                <li>Usuarios que lo tienen</li>
+                <li>Informes de erratas</li>
+                <li>Añadir libros a tu biblioteca personal</li>
+            </ul>
+            <br/>
+            Para poder disfrutar de esa información
+            <br/>
+            <strong><a href="https://epublibre.org/acceso/login">accede a tu cuenta</a></strong> si ya estás registrado, o
+            <br/>
+            <strong><a href="https://epublibre.org/acceso/solicitar">solicita tu acceso</a></strong> a la comunidad <strong>EPL.</strong>
+            </span>
+        </div>
+    </div>
+    
+	<br/>
+</div>                            
+                                        </td>
+            		</tr>
+	</table>
+</div></div>
+
+
+
+<script type="text/javascript">
+	
+    $('.popover-libro').popover({trigger:'hover',html:true,placement:'top'});
+    $('.popover-usuario').popover({
+          trigger: 'hover', html: true, placement:'top',
+          template: '<div class="popover popover-pequeno"><div class="arrow"></div><div class="popover-inner"><h3 class="popover-title"></h3><div class="popover-content"><p></p></div></div></div>'
+    });
+    $("[rel=tooltip1]").tooltip({'placement':'top'});
+    
+	
+	
+    $("img").error(function() {
+        $(this).css("display", "none");
+    });
+    
+	
+</script>
+			
+			
+			
+			<div class="row">
+	<div class="span12 foot">
+		<div>
+			<div class="pull-left pad negrita">
+				&copy; 2013 - epublibre | proyecto scriptorium
+			</div>
+		</div>
+		<div style="clear:both;"></div>
+	</div>
+</div>			
+			
+		</div>
+		
+		<script type="text/javascript">
+		
+			
+			$('body').on('touchstart.dropdown', '.dropdown-menu', function (e) { e.stopPropagation(); });
+            
+			
+			
+			$("[rel=tooltip]").tooltip({'selector': '','placement':'top'});
+			
+			
+		</script>
+		
+    </body>
+</html>

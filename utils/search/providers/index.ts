@@ -37,3 +37,17 @@ import { filemood } from './filemood.ts';
 import { zeromagnet } from './zeromagnet.ts';
 PROVIDERS.push(btsow, torrentkitty, filemood, zeromagnet);
 export { btsow, torrentkitty, filemood, zeromagnet };
+
+// Games, books and regional sources (ported from TorrentSearch). All off by default.
+import { fitgirl } from './fitgirl.ts';
+import { blueroms } from './blueroms.ts';
+import { audiobookbay } from './audiobookbay.ts';
+import { epublibre } from './epublibre.ts';
+import { rutor } from './rutor.ts';
+import { megapeer } from './megapeer.ts';
+import { oxtorrent } from './oxtorrent.ts';
+import { torrent9 } from './torrent9.ts';
+
+PROVIDERS.push(fitgirl, blueroms, audiobookbay, epublibre, rutor, megapeer, oxtorrent, torrent9);
+
+export { fitgirl, blueroms, audiobookbay, epublibre, rutor, megapeer, oxtorrent, torrent9 };

@@ -1,0 +1,3 @@
+Fetched live with curl (browser-like User-Agent) on 2026-11-12. Unedited.
+epublibre_search.json  POST (empty body, X-Requested-With: XMLHttpRequest) https://epublibre.org/catalogo/index/0/nuevo/todos/sin/todos/quijote/ajax
+epublibre_detail.html  https://epublibre.org/libro/detalle/4765

@@ -1,0 +1,2 @@
+Fetched live with curl (browser-like User-Agent) on 2026-11-12. Unedited.
+rutor_search.html  https://rutor.info/search/0/0/010/2/linux

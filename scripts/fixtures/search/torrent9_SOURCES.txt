@@ -1,0 +1,3 @@
+Fetched live with curl (browser-like User-Agent) on 2026-11-12. Unedited.
+torrent9_search.html  https://www6.torrent9.to/search_torrent/linux.html
+torrent9_detail.html  https://www6.torrent9.to/torrent/87168/linux-file-systems-for-windows

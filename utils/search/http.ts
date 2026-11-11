@@ -4,6 +4,7 @@
 
 import { hostOf, isCloudflareChallenge } from './challenge.ts';
 import { clearanceFor, dropClearance } from './clearance.ts';
+import { decodeWindows1251, isWindows1251 } from './charset.ts';
 
 export const APP_VERSION = '0.1.0';
 export const USER_AGENT = `Maglev/${APP_VERSION} (Android)`;
@@ -30,11 +31,13 @@ export interface HttpOptions {
   method?: 'GET' | 'POST';
   body?: string;
   contentType?: string;
+  /** Extra request headers (for example X-Requested-With). */
+  headers?: Record<string, string>;
 }
 
 export async function httpText(url: string, opts: HttpOptions): Promise<string> {
   const cleared = clearanceFor(url);
-  const headers: Record<string, string> = { 'User-Agent': cleared?.userAgent ?? USER_AGENT, Accept: opts.accept };
+  const headers: Record<string, string> = { ...opts.headers, 'User-Agent': cleared?.userAgent ?? USER_AGENT, Accept: opts.accept };
   if (opts.contentType) headers['Content-Type'] = opts.contentType;
   let res: Response;
   try {
@@ -52,7 +55,8 @@ export async function httpText(url: string, opts: HttpOptions): Promise<string> 
   const type = res.headers.get('content-type') ?? '';
   let text: string;
   try {
-    text = await res.text();
+    // fetch().text() always reads UTF-8; some Cyrillic sites still answer in windows-1251.
+    text = isWindows1251(type) ? decodeWindows1251(new Uint8Array(await res.arrayBuffer())) : await res.text();
   } catch (e) {
     if (opts.signal.aborted) throw new ProviderError('cancelled', 'Cancelled');
     throw new ProviderError('network', e instanceof Error ? e.message : 'Network error');

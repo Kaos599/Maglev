@@ -1,0 +1,4 @@
+Live www.blueroms.ws answers curl with a Cloudflare "Attention Required" 403 (2026-11-12), so both fixtures are Wayback Machine id_ captures. Unedited.
+blueroms_search.html  captured 2025-05-27  https://web.archive.org/web/20250527084127id_/https://www.blueroms.ws/search?q=Mario+%26+Luigi&g=0&p=0&ord=desc&at=date&page=1
+blueroms_detail.html  captured 2022-12-25  https://web.archive.org/web/20221225105902id_/https://www.blueroms.ws/download/gAAAAABjqCbQ29YAambn8Oz2p3_x-FngaqF13Lba-G_C8Fxb2r_GKH9nkC8QZqb_n_8LV0Elbt2C-toYl-6NLBaDZCCqyKeoPi-UnfMEheabqV84QUIOIoXtu_AAlSKyfvfEQ9tWDCQ86dh6euKyDSFMFIy3wgFUlbxxbvhTKOHTSlViQPuEwmM%3D
+Note: the detail capture is the OLD download-page layout (plain magnet link). Today's layout (Base64 button#magnet-button[data-link], per TorrentSearch) has no recorded page; the test builds it from the real magnet in this capture.

@@ -1,0 +1,3 @@
+Fetched live with curl (browser-like User-Agent) on 2026-11-12. Unedited.
+oxtorrent_search.html  https://oxtorrent.co/recherche/linux
+oxtorrent_detail.html  https://oxtorrent.co/torrent/49303/nero-linux-v3-5

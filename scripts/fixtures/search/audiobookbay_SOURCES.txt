@@ -1,0 +1,3 @@
+Fetched live with curl (browser-like User-Agent) on 2026-11-12. Unedited.
+audiobookbay_search.html  https://audiobookbay.lu/?s=harry+potter
+audiobookbay_detail.html  https://audiobookbay.lu/abss/harry-potter-and-the-deathly-hallows-full-cast-edition-jk-rowling/
