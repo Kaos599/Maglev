@@ -19,9 +19,9 @@ Maglev replaces LibreTorrent and Flood on a phone. It should feel minimal, quick
 | Accent 2 | `#00E5FF` (cyan) | Downloading, inbound speed |
 | Danger | `#FF3366` | Destructive actions, errors |
 | Muted | `#8B949E` | Telemetry, paused |
-| App icon | `#282828` tile, `#D0FF00` angular "M" | See `screens/1.css`. The launcher icon only. |
+| App icon | `#282828` tile, `#D0FF00` angular "M" | Source: `screens/1.css`. Vector: `assets/brand/maglev-mark.svg`; rasters come from `node scripts/generate-icons.js`. |
 
-Colours are reached through `useTheme()` and never written as hex outside `constants/`. Fonts are Silkscreen (brand and headers), Space Mono (filenames and telemetry, `tabular-nums`) and Inter (copy). **Never use `fontFamily: 'monospace'`.** Use one icon family only: the pixel glyphs in `components/PixelIcons.tsx`.
+Colours are reached through `useTheme()` and never written as hex outside `constants/`. Fonts are Silkscreen (brand and headers), Space Mono (filenames and telemetry, `tabular-nums`) and Inter (copy). **Never use `fontFamily: 'monospace'`.** Use one icon family only: **Pixelarticons** (MIT), rendered through `components/PixelIcon.tsx` from `components/icons.generated.ts` (`node scripts/gen-icons.js`). Default size is 24px.
 
 ---
 

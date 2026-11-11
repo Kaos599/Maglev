@@ -131,7 +131,7 @@ The `source` query param prefills the input and auto-resolves.
 
 ## S9. Wave 3: user feedback (2026-11-11)
 
-The boundary is in `NATIVE_CONTRACT.md` §10. Every icon is a pixel glyph from `components/pixelGlyphs.ts`, drawn on a 12×12 grid. Reuse existing glyphs where they fit, and add new ones only from the list below.
+The boundary is in `NATIVE_CONTRACT.md` §10. Every icon comes from **Pixelarticons** (MIT, 24×24 grid), generated into `components/icons.generated.ts` by `scripts/gen-icons.js`. To add an icon, map a name to a Pixelarticons file there and re-run the script. *(Amended 2026-11-11: the user picked Pixelarticons over hand-drawn 12×12 glyphs.)*
 
 ### S9.1 Bottom tab bar
 - **Problem:** the four glyphs read as similar blobs. The focused tab is shown by colour only.
@@ -140,7 +140,7 @@ The boundary is in `NATIVE_CONTRACT.md` §10. Every icon is a pixel glyph from `
   - `tab-search`: a magnifier with a thick ring.
   - `tab-feeds`: an RSS quarter-arcs mark.
   - `tab-settings`: a 3-slider mixer, not a cog. Keep `settings` for other uses.
-  - Each glyph is 2px stroke-equivalent, optically centred, and sits within the 10×10 live area of the 12×12 grid.
+  - Tab icons render at 24px, a 1:1 match with the Pixelarticons grid.
 - **Focused state:**
   - a 56×28 pill behind the icon with `accent` at 16% alpha and radius 8 (no new hex; derive it with an alpha helper in `constants/`);
   - the icon in `accentText` and the label in `text` at weight 600.

@@ -1,81 +1,84 @@
 <p align="center">
-  <img src="assets/brand/readme-header.svg" alt="Maglev, a small, fast torrent client for Android" width="100%">
+  <img src="assets/brand/readme-header.svg" alt="Maglev, a fast, minimal torrent client for Android" width="100%">
 </p>
 
 <p align="center">
   <a href="https://github.com/Kaos599/Maglev/actions/workflows/ci.yml"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/Kaos599/Maglev/ci.yml?style=flat-square&label=CI&labelColor=05070A"></a>
-  <a href="https://github.com/Kaos599/Maglev/releases"><img alt="Release" src="https://img.shields.io/github/v/tag/Kaos599/Maglev?style=flat-square&label=release&labelColor=05070A&color=CCFF00"></a>
+  <a href="https://github.com/Kaos599/Maglev/releases"><img alt="Release" src="https://img.shields.io/github/v/release/Kaos599/Maglev?include_prereleases&style=flat-square&label=release&labelColor=05070A&color=CCFF00"></a>
+  <img alt="Status: beta" src="https://img.shields.io/badge/status-beta-CCFF00?style=flat-square&labelColor=05070A">
   <img alt="Android 7+" src="https://img.shields.io/badge/Android-7%2B-00E5FF?style=flat-square&labelColor=05070A">
-  <img alt="Status: pre-release" src="https://img.shields.io/badge/status-pre--release-FFB020?style=flat-square&labelColor=05070A">
+  <img alt="Engine: Rust + librqbit" src="https://img.shields.io/badge/engine-Rust%20%C2%B7%20librqbit-E8ECEF?style=flat-square&labelColor=05070A">
 </p>
 
 <p align="center">
-  <b>Maglev</b> is a minimal torrent client for Android, built to replace LibreTorrent and Flood on your phone.<br>
-  A Rust engine does the downloading. The interface stays out of your way.
+  Maglev is a torrent client for Android, built to do on a phone what LibreTorrent and Flood do elsewhere.<br>
+  Paste a magnet link, pick your files, and put the phone in your pocket.
+</p>
+
+<p align="center">
+  <a href="https://github.com/Kaos599/Maglev/releases/latest"><b>Download the beta</b></a>
+  &nbsp;·&nbsp;
+  <a href="#features">Features</a>
+  &nbsp;·&nbsp;
+  <a href="#whats-next">What's next</a>
 </p>
 
 ---
 
-> [!NOTE]
-> **Pre-release.** The engine is real (librqbit) and CI builds every commit. The first release is waiting on the
-> on-device test described in [What's next](#whats-next). Expect rough edges.
+## Features
 
-## Why Maglev
+**Adding torrents**
+- Open magnet links and `.torrent` files straight from your browser, a chat app, or the clipboard.
+- See every file before you start. Choose which ones to download, and mark one to download first.
+- Maglev checks the free space on your phone and tells you what will be left before you tap Start.
 
-- **Small.** No ads, analytics or account. The arm64 APK is about 38 MB today; we expect about 19 MB once the compressed-library build is confirmed.
-- **Keeps going in the background.** A foreground service keeps downloads running. If Android kills the app, it restarts on its own and picks up where it left off.
-- **Files go where you can find them.** By default they land in `Download/Maglev`, which any file manager can open. You can also pick any folder.
-- **Search built in.** It searches several public indexes at once, merges duplicate results, and lets you choose which sources to use for each category.
+**Downloading**
+- The engine is [librqbit](https://github.com/ikatson/rqbit), written in Rust, with DHT, trackers and local peer discovery.
+- A queue decides how many torrents run at once. Seeding stops on its own at the ratio or time you set.
+- Downloads keep running with the screen off. If Android closes the app, Maglev restarts and carries on from where it was.
+- On Android 16 and later, progress shows as a live chip in the status bar.
 
-## What works today
+**Your files**
+- Everything lands in `Download/Maglev`, where any file manager can find it, or in any folder you choose.
+- Open, share or stream a file from the torrent's detail screen. Video can start playing before the download finishes.
 
-| Area | Status | Notes |
-|---|:---:|---|
-| Magnet links and `.torrent` files | ✅ | Opens from the browser, other apps, or the clipboard. Duplicates are detected. |
-| Downloading and seeding | ✅ | librqbit 9 with DHT, ratio and time seed limits, and a queue (max active). |
-| Background service | ✅ | Notification with Pause all, Resume all and Shut down. Restarts after process death. |
-| Storage | ✅ | `Download/Maglev` by default. A custom folder is supported through the system picker. |
-| Network and power rules | ✅ | Wi-Fi only, battery cutoff, charging only. |
-| Transfers screen | ✅ | Sort, filter, multi-select with bulk actions. |
-| Torrent detail | ✅ | Files (include or exclude), peers, trackers, pieces, recheck. |
-| Search | 🧪 | Knaben, Torrents-CSV, Internet Archive, Nyaa and YTS on by default. Optional: TPB, BitSearch, LinuxTracker, and your own Jackett or Prowlarr (Torznab). Needs a device test. |
-| Themes | ✅ | OLED, Dim and Light, with Lime, Cyan, Pink or Orange accent. |
-| Streaming while downloading | 🧪 | Local playback link for VLC and similar players. Needs a device test. |
-| Encryption, PEX toggle, sequential download | ⏳ | These are saved, but librqbit does not apply them yet. See [`NATIVE_CONTRACT.md` §7](docs/NATIVE_CONTRACT.md). |
-| RSS rules, scheduler, create torrent | ⏳ | Planned for Phase 3. |
+**Search**
+- One search box queries Knaben, Torrents-CSV, Internet Archive, Nyaa and YTS together, and merges results that point to the same torrent.
+- Filter by category, sort by seeders, size or date, and pick which sources answer each category.
+- Add your own Jackett or Prowlarr indexer.
 
-✅ works and is covered by contracts · 🧪 built, waiting for a device test · ⏳ not done yet
+**Control**
+- Wi-Fi only, pause on low battery, and download only while charging.
+- Speed limits, Pause all and Resume all, and Shut down from the notification.
+- OLED, Dim and Light themes with four accent colours.
 
 ## Install
 
-Download an APK from [Releases](https://github.com/Kaos599/Maglev/releases). Each CI run also uploads an `apks` artifact.
+Download an APK from [Releases](https://github.com/Kaos599/Maglev/releases/latest).
 
-| File | Pick it if |
+| File | Choose it if |
 |---|---|
-| `Maglev-<version>-arm64-v8a.apk` | You have a phone made in the last 6 years. Most people want this one. |
-| `Maglev-<version>-armeabi-v7a.apk` | You have an older 32-bit phone. |
-| `Maglev-<version>-x86_64.apk` | You use an emulator or a Chromebook. |
-| `Maglev-<version>-universal.apk` | You aren't sure. It runs everywhere but is larger. |
+| `Maglev-<version>-arm64-v8a.apk` | your phone is from the last six years. Most people want this one. |
+| `Maglev-<version>-armeabi-v7a.apk` | you have an older 32-bit phone. |
+| `Maglev-<version>-x86_64.apk` | you use an emulator or a Chromebook. |
+| `Maglev-<version>-universal.apk` | you aren't sure. It runs on every device. |
 
 ## What's next
 
-**First release**
-- Test on real phones: long downloads, the app being closed by Android, and search.
-- Publish the first pre-release APKs.
+**Now**
+- Per-torrent speed limits, tracker editing and moving finished downloads to another folder.
+- Sharing a torrent as a magnet link or a `.torrent` file, and creating your own.
 
-**Coming after that**
-- Speed limits for each torrent
-- Moving downloads to another folder
-- Sharing a torrent or making your own
-- A scheduler that only downloads at times you pick (overnight, for example)
-- RSS feeds that add new episodes automatically
-- A blocklist for bad peers
+**Soon**
+- A scheduler that downloads only during the hours you choose.
+- RSS feeds that add new episodes as they come out, filtered by name.
+- Peer blocklists.
 
 **Later**
-- An optional assistant that uses your own AI key
-- Downloading normal files from any link, with pause and resume
+- An optional assistant that runs on your own AI key.
+- Downloading ordinary files from any link, with pause and resume.
 
-The detailed task list is in [`docs/ROADMAP.md`](docs/ROADMAP.md).
+The full plan lives in [`docs/ROADMAP.md`](docs/ROADMAP.md).
 
 ## Contributing
 
@@ -84,45 +87,41 @@ The detailed task list is in [`docs/ROADMAP.md`](docs/ROADMAP.md).
 
 ### Build from source
 
-You need Node 22, the Android SDK and a device or emulator. You don't need Rust: CI compiles `libmaglev_core.so` on every push.
+You need Node 22, the Android SDK and a device or emulator. CI compiles the Rust engine (`libmaglev_core.so`) on every push, so there's no Rust toolchain to install.
 
 ```bash
 git clone https://github.com/Kaos599/Maglev.git && cd Maglev
 npm install --legacy-peer-deps
-
-# Debug builds use a mock engine when the native library is missing.
 npx expo run:android
 ```
 
-To run the real engine locally, download the `jniLibs-<abi>` artifact from a CI run and unpack it into `modules/maglev-engine/android/src/main/jniLibs/`.
+Debug builds use a mock engine until the native library is present. For the real engine, download the `jniLibs-<abi>` artifact from a CI run and unpack it into `modules/maglev-engine/android/src/main/jniLibs/`. Maglev ships its own native module, so it runs as a development build (`expo run:android`) rather than in Expo Go.
 
-Expo Go cannot load Maglev's native module, so use a development build (`expo run:android`).
-
-#### Tests
+### Tests
 
 ```bash
-npm test                 # ABI-split plugin + reality contracts
-npm run test:contracts   # contract suite (exits 1 if any P0 fails)
+npm test                 # ABI-split plugin + contract suite
+npm run test:contracts   # contract suite on its own
 npm run test:search      # search providers against offline fixtures
 node scripts/test-plugins.js
 ```
 
-CI also runs the Rust unit tests and rejects any engine library that is under 3 MB, lacks librqbit symbols, or isn't 16 KB page-aligned.
+CI also runs the Rust unit tests and checks every engine build for librqbit symbols and 16 KB page alignment.
 
 ### Project docs
 
 | Doc | What's in it |
 |---|---|
-| [`AGENTS.md`](AGENTS.md) | How to work in this repo: rules, design tokens, git workflow. |
+| [`AGENTS.md`](AGENTS.md) | Working rules, design tokens and the git workflow. |
 | [`docs/ROADMAP.md`](docs/ROADMAP.md) | Phases, tasks and priorities. |
-| [`docs/NATIVE_CONTRACT.md`](docs/NATIVE_CONTRACT.md) | The engine boundary: JNI calls, JSON shapes, error codes. |
-| [`docs/SEARCH_CONTRACT.md`](docs/SEARCH_CONTRACT.md) | Search providers, categories and aggregation. |
+| [`docs/NATIVE_CONTRACT.md`](docs/NATIVE_CONTRACT.md) | The Rust ⇄ Kotlin ⇄ TypeScript boundary: JNI calls, JSON shapes, error codes. |
+| [`docs/SEARCH_CONTRACT.md`](docs/SEARCH_CONTRACT.md) | Search providers, categories and how results merge. |
 | [`docs/STATE_MACHINES_AND_SCREENS.md`](docs/STATE_MACHINES_AND_SCREENS.md) | Every screen and state transition. |
 
-The Rust ⇄ Kotlin ⇄ TypeScript boundary is defined in [`docs/NATIVE_CONTRACT.md`](docs/NATIVE_CONTRACT.md).
+Icons are [Pixelarticons](https://github.com/halfmage/pixelarticons) by Gerrit Halfmann (MIT).
 
 </details>
 
 ## Legal
 
-Maglev does not host, index or curate any content. Search sends your query to public third-party indexes. You are responsible for what you download and for following the laws where you live.
+Maglev doesn't host or index any content. Search sends your query to public indexes run by third parties. What you download, and following the law where you live, is up to you.
