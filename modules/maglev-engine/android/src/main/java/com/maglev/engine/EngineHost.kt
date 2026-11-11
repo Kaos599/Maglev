@@ -876,6 +876,40 @@ object EngineHost {
         return res
     }
 
+    /**
+     * Removes the data of the files at [indices] (contract section 14). Rust stops downloading them, deletes
+     * them from the output folder and drops the have bits. The result carries `freed_bytes` (`freedBytes` in JS).
+     * For a staging torrent that was already copied into the user's SAF folder, the copy is deleted here,
+     * through the same layer that wrote it.
+     */
+    fun removeFiles(id: String, indices: List<Int>): Map<String, Any?> {
+        // Resolve the paths first; the detail still lists skipped files afterwards, but this keeps the order obvious.
+        val located = call { NativeCore.nativeGetDetail(id) }
+        val folder = ((located["snapshot"] as? Map<*, *>)?.get("output_folder")) as? String
+        val rels = if (isOk(located)) {
+            Json.list(located["files"])
+                .filter { f -> indices.contains((f["index"] as? Number)?.toInt()) }
+                .mapNotNull { it["path"] as? String }
+        } else emptyList()
+        val res = call { NativeCore.nativeRemoveFiles(id, Json.toJson(indices)) }
+        val c = ctx
+        if (isOk(res) && c != null && folder != null && StorageManager.isStagingPath(c, folder)) {
+            val treeStr = StorageManager.customUri(c)
+            if (treeStr != null) {
+                val tree = android.net.Uri.parse(treeStr)
+                for (rel in rels) {
+                    if (!SafStorageManager.deleteFromTree(c, tree, rel)) {
+                        Log.w(TAG, "could not delete the copy of $rel from the chosen folder")
+                        lastCopyError = "Couldn't delete a file from your chosen folder"
+                    }
+                }
+                emitStorageStatus()
+            }
+        }
+        pollNow()
+        return res
+    }
+
     /** The result carries `retry_after_secs` (camelized to retryAfterSecs by the module) when rate limited. */
     fun reannounce(id: String): Map<String, Any?> = call { NativeCore.nativeReannounce(id) }
 

@@ -87,6 +87,24 @@ object SafStorageManager {
         return cur
     }
 
+    /**
+     * Deletes the document at [relativePath] in the tree, then each parent folder it leaves empty.
+     * True when nothing is left at that path (a missing document counts). Blocking, call from IO.
+     */
+    fun deleteFromTree(context: Context, treeUri: Uri, relativePath: String): Boolean {
+        val doc = findInTree(context, treeUri, relativePath) ?: return true
+        val deleted = try { doc.delete() } catch (_: Exception) { false }
+        if (!deleted) return false
+        var parent = relativePath.trimEnd('/').substringBeforeLast('/', "")
+        while (parent.isNotEmpty()) {
+            val dir = findInTree(context, treeUri, parent) ?: break
+            val empty = try { dir.isDirectory && dir.listFiles().isEmpty() } catch (_: Exception) { false }
+            if (!empty || !dir.delete()) break
+            parent = parent.substringBeforeLast('/', "")
+        }
+        return true
+    }
+
     fun mimeFor(name: String): String {
         val ext = name.substringAfterLast('.', "").lowercase()
         return android.webkit.MimeTypeMap.getSingleton().getMimeTypeFromExtension(ext) ?: "application/octet-stream"

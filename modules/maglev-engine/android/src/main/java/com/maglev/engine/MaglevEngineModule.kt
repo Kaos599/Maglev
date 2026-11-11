@@ -143,6 +143,9 @@ class MaglevEngineModule : Module() {
         AsyncFunction("setFilePriorities") { id: String, priorities: List<Map<String, Any?>>, promise: Promise ->
             io(promise) { EngineHost.setFilePriorities(id, priorities) }
         }
+        AsyncFunction("removeFiles") { id: String, indices: List<Int>, promise: Promise ->
+            io(promise) { EngineHost.removeFiles(id, indices) }
+        }
         AsyncFunction("reannounce") { id: String, promise: Promise ->
             io(promise) { EngineHost.reannounce(id) }
         }

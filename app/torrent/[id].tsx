@@ -17,7 +17,7 @@ import { PiecesMatrix } from '../../components/PiecesMatrix';
 import { StateBadge } from '../../components/detail/StateBadge';
 import { StatGrid } from '../../components/detail/StatGrid';
 import { PeerRow, TrackerRow } from '../../components/detail/rows';
-import { DeleteSheet, FileActionsSheet } from '../../components/detail/sheets';
+import { DeleteSheet, FileActionsSheet, RemoveFilesSheet } from '../../components/detail/sheets';
 import { FileListRow } from '../../components/detail/FileListRow';
 import { PrioritySheet } from '../../components/detail/PrioritySheet';
 import { TorrentMoreSheet } from '../../components/detail/TorrentMoreSheet';
@@ -60,6 +60,9 @@ export default function TorrentDetailScreen() {
   const [prioTarget, setPrioTarget] = useState<number[] | null>(null);
   const [prioError, setPrioError] = useState<string | null>(null);
   const [selection, setSelection] = useState<Set<number> | null>(null);
+  const [removeTarget, setRemoveTarget] = useState<number[] | null>(null);
+  const [removeBusy, setRemoveBusy] = useState(false);
+  const [removeError, setRemoveError] = useState<string | null>(null);
   const [limitOpen, setLimitOpen] = useState(false);
   const [limitPending, setLimitPending] = useState<TorrentLimits | null>(null);
   const [moveOpen, setMoveOpen] = useState(false);
@@ -169,6 +172,43 @@ export default function TorrentDetailScreen() {
     },
     [files, id, prioTarget, showNotice],
   );
+
+  // Asks before deleting. Refuses at once when no included file would be left.
+  const askRemove = useCallback(
+    (indices: number[]) => {
+      const gone = new Set(indices);
+      if (!files.some((f) => f.priority !== 'skip' && !gone.has(f.index))) {
+        triggerHaptic('warning');
+        showNotice({ tone: 'danger', text: 'Keep at least one file.' });
+        return;
+      }
+      setPrioTarget(null);
+      setPrioError(null);
+      setRemoveError(null);
+      setRemoveTarget(indices);
+    },
+    [files, showNotice],
+  );
+
+  const handleRemove = useCallback(async () => {
+    if (!id || !removeTarget) return;
+    setRemoveBusy(true);
+    setRemoveError(null);
+    try {
+      const res = await maglevEngine.removeFiles(id, removeTarget);
+      if (res.ok) {
+        triggerHaptic('warning');
+        setRemoveTarget(null);
+        setSelection(null);
+        showNotice({ tone: 'info', text: `Freed ${formatBytes(res.freedBytes)}.` });
+      } else {
+        triggerHaptic('warning');
+        setRemoveError(res.message || "Couldn't remove those files.");
+      }
+    } finally {
+      setRemoveBusy(false);
+    }
+  }, [id, removeTarget, showNotice]);
 
   const handleFilePress = useCallback((file: DetailFile) => {
     if (selection) {
@@ -506,7 +546,7 @@ export default function TorrentDetailScreen() {
               }
             />
           </View>
-          {/* The three choices sit in the bar itself: no "Set priority" step and no sheet. */}
+          {/* The choices sit in the bar itself: no "Set priority" step and no sheet. Remove asks first. */}
           <View style={styles.selectActions} accessibilityRole="toolbar">
             <View style={styles.selectAction}>
               <Button label="First" icon="priority-first" variant="secondary" fullWidth
@@ -519,6 +559,10 @@ export default function TorrentDetailScreen() {
             <View style={styles.selectAction}>
               <Button label="Skip" icon="checkbox-empty" variant="secondary" fullWidth
                 accessibilityLabel="Don't download these" onPress={() => void applyPriority([...selection], 'skip')} />
+            </View>
+            <View style={styles.selectAction}>
+              <Button label="Remove" icon="trash" variant="danger" fullWidth
+                accessibilityLabel="Delete these files from your phone" onPress={() => askRemove([...selection])} />
             </View>
           </View>
         </View>
@@ -544,6 +588,16 @@ export default function TorrentDetailScreen() {
         })()}
         error={prioError}
         onSelect={(p) => prioTarget && applyPriority(prioTarget, p)}
+        onRemove={prioTarget && prioTarget.length === 1 ? () => askRemove(prioTarget) : undefined}
+      />
+      <RemoveFilesSheet
+        visible={!!removeTarget}
+        count={removeTarget?.length ?? 0}
+        bytes={removeTarget ? files.filter((f) => removeTarget.includes(f.index)).reduce((n, f) => n + f.progressBytes, 0) : 0}
+        busy={removeBusy}
+        error={removeError}
+        onClose={() => !removeBusy && setRemoveTarget(null)}
+        onConfirm={() => void handleRemove()}
       />
       <TorrentMoreSheet
         visible={moreOpen}

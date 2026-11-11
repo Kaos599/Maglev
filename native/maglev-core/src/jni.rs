@@ -267,6 +267,22 @@ pub extern "system" fn Java_com_maglev_engine_NativeCore_nativeSetFilePriorities
 }
 
 #[no_mangle]
+pub extern "system" fn Java_com_maglev_engine_NativeCore_nativeRemoveFiles(
+    mut env: JNIEnv,
+    _class: JClass,
+    id: JString,
+    indices_json: JString,
+) -> jstring {
+    let out = match (read_str(&mut env, &id), read_str(&mut env, &indices_json)) {
+        (Some(id), Some(ix)) => guarded(|| {
+            with_engine(|e| result_envelope(e.remove_files(&id, &ix)))
+        }),
+        _ => bad_argument(),
+    };
+    reply(&mut env, &out)
+}
+
+#[no_mangle]
 pub extern "system" fn Java_com_maglev_engine_NativeCore_nativeSetTorrentLimits(
     mut env: JNIEnv,
     _class: JClass,

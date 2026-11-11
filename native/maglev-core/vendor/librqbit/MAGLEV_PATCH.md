@@ -78,4 +78,45 @@ The limiter's burst is now `burst_for(bps)` (hunk 12) and librqbit asks for one 
 16 KiB/s makes the limiter refuse the request and ends the peer task. Maglev raises smaller non-zero values to 16 KiB/s
 before calling `set_ratelimits` (`src/torrent_limits.rs`).
 
-To rebase on a new librqbit version: re-apply these twelve hunks (`grep -rn "MAGLEV PATCH" src`).
+## Remove a file's data (hunk 13, Wave 5, contract section 14)
+
+Why: librqbit can deselect a file (`update_only_files`) but never forgets pieces it already has, and never deletes
+a single file of a running torrent. Maglev's "Remove" needs both, and the have bits must go too or a restart (fast
+resume) would claim bytes that are gone.
+
+Grounding (upstream code, unchanged): `ChunkTracker` keeps `have` (a `BoxBitV`, disk-backed through the session's bitfield
+factory), `queue_pieces`, `chunk_status`, `selected`, `per_file_bytes` and `hns` (`chunk_tracker.rs:15-45`).
+Nothing upstream clears a have bit; the only writers are `mark_piece_downloaded` (`:272`) and `ChunkTracker::new`.
+`update_only_files` (`:328`) re-derives `selected`, requeues and recomputes `hns`. `per_file_bytes` is rebuilt by
+`recalculate_per_file_bytes` (`:187`). The persisted bitfield is flushed by `BitV::flush` (`bitv.rs:141`, `DiskBackedBitV`);
+fast resume (`initializing.rs:86-187`) validates one claimed piece per file by hash and clears the whole bitfield if any
+fails, so stale have bits would also force a full recheck. `FilesystemStorage` opens every file at `init`
+(`storage/filesystem/fs.rs:125-180`), `remove_file` is a plain `std::fs::remove_file` (`:90`), `ensure_file_length` is `set_len` on the open handle (`:94`), and a failed chunk write is
+fatal to the torrent (`live/mod.rs:1924-1933`). That last point is why the work is done on a *paused* torrent:
+a live one has in-flight pieces and open writers, and closing a handle under them would put the torrent in ERROR.
+
+13. Four additions, all named `remove_files_data`:
+    - `src/chunk_tracker.rs:385` `ChunkTracker::remove_files_data(file_infos, new_only_files, removed) -> Result<u64>`:
+      runs `update_only_files`, then for every piece in `piece_range` of a removed file clears the have bit and the piece's
+      chunk bits and sets its queue bit to `selected[piece]`; recomputes `per_file_bytes` and `hns`. Returns the verified
+      bytes the removed files held. Test: `chunk_tracker::tests::test_remove_files_data_clears_inside_and_boundary_pieces`.
+    - `src/torrent_state/paused.rs:45` `TorrentStatePaused::remove_files_data`: tracker first, then per file
+      `ensure_file_length(idx, 0)` (returns the blocks even if a descriptor stays open) and `remove_file` (a missing file is
+      not an error), then empty parent folders (never the torrent's own folder), then `flush(false)` of the bitfield.
+      A disk error is kept and returned after the tracker is already consistent.
+    - `src/torrent_state/mod.rs:690` `ManagedTorrent::remove_files_data(&HashSet<usize>) -> Result<u64>`: validates indices
+      (in range, not padding), computes the new include set, refuses if it is empty, requires `Paused`, runs the above under
+      `locked.write()`, then stores `only_files`.
+    - `src/session.rs:1645` `Session::remove_files_data(handle, indices)`: the call above plus
+      `try_update_persistence_metadata` (the include set lives in the session JSON, `session_persistence/json.rs:148`).
+    A live torrent is paused first and started again by the caller (`engine.rs`), exactly as reannounce does.
+
+Boundary pieces: every piece that overlaps a removed file, wholly inside or shared with a kept file, loses its have bit.
+A shared piece cannot be verified without the deleted bytes, so it is downloaded again and rewrites the kept file's bytes
+unchanged. The boundary piece's bytes that belong to the removed file are written again too (the piece is one write
+stream). The file is unlinked but its descriptor stays open in the storage (`take()` hands descriptors over on pause/unpause),
+so those few bytes land in an unlinked inode and vanish when the torrent is dropped or the app restarts. After a restart
+`FilesystemStorage::init` creates an empty file at that path again and a boundary download can leave up to one piece of
+that file's bytes there; the file is not selected, so nothing else is downloaded into it.
+
+To rebase on a new librqbit version: re-apply these thirteen hunks (`grep -rn "MAGLEV PATCH" src`).

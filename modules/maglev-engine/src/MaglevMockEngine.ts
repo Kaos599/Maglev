@@ -759,6 +759,43 @@ export class MaglevMockEngine implements MaglevEngineApi {
     return ok();
   }
 
+  /**
+   * Mirrors `nativeRemoveFiles` (NATIVE_CONTRACT 14): same validation and error codes as the Rust engine.
+   * The mock tracks progress for the whole torrent, so a removed file frees `length * progress` bytes and
+   * leaves the totals (and `finished`) consistent. Dev and web builds only.
+   */
+  public async removeFiles(id: string, indices: number[]): Promise<EngineResult<{ freedBytes: number }>> {
+    const t = this.torrents.get(id);
+    if (!t) return fail('NOT_FOUND', 'Torrent not found.');
+    if (t.state === 'MOVING') return fail('UNSUPPORTED', 'Wait for the move to finish.');
+    if (t.state === 'CHECKING') return fail('UNSUPPORTED', 'Wait until the torrent has been checked, then remove files.');
+    if (!Array.isArray(indices) || indices.length === 0) return fail('INVALID_SOURCE', 'Pick at least one file to remove.');
+    const remove = new Set<number>();
+    for (const i of indices) {
+      if (!Number.isInteger(i) || !t.files.some((f) => f.index === i)) {
+        return fail('INVALID_SOURCE', "One of those files isn't in the torrent.");
+      }
+      remove.add(i);
+    }
+    const kept = t.files.filter((f) => f.priority > 0 && !remove.has(f.index));
+    if (kept.length === 0) return fail('INVALID_SOURCE', 'Keep at least one file in the torrent.');
+
+    let freed = 0;
+    let removedLength = 0;
+    for (const f of t.files) {
+      if (!remove.has(f.index)) continue;
+      if (f.priority > 0) removedLength += f.length;
+      freed += Math.floor((f.length * t.progressPercent) / 100);
+      f.priority = 0;
+      f.progress = 0;
+    }
+    t.downloadedBytes = Math.max(0, t.downloadedBytes - freed);
+    t.totalSizeBytes = Math.max(1, t.totalSizeBytes - removedLength);
+    t.progressPercent = parseFloat(((t.downloadedBytes / t.totalSizeBytes) * 100).toFixed(1));
+    this.broadcast();
+    return { ok: true, freedBytes: freed };
+  }
+
   private lastReannounce: Map<string, number> = new Map();
 
   public async reannounce(id: string): Promise<EngineResult<{ retryAfterSecs?: number }>> {

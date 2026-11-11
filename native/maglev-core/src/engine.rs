@@ -36,8 +36,8 @@ use crate::config::NativeConfig;
 use crate::error::{classify_add_error, classify_runtime_error, EngineError, ErrorCode};
 use crate::meta::{MetaStore, PendingAdd, TorrentMeta};
 use crate::priority::{
-    include_set_changed, order_from_first, parse_priorities, plan_priorities, priority_of_file,
-    PriorityPlan, PriorityStore, ReannounceLimiter, REANNOUNCE_MIN_INTERVAL,
+    include_set_changed, order_from_first, parse_priorities, plan_priorities, plan_removal,
+    priority_of_file, PriorityPlan, PriorityStore, ReannounceLimiter, REANNOUNCE_MIN_INTERVAL,
 };
 use crate::scheduler::{
     accumulate_seed_ms, derive_state, plan, uploaded_total, Action, RqState, StateInputs, TorrentFacts, TorrentState,
@@ -1574,6 +1574,116 @@ impl MaglevEngine {
         self.remember_first_files(&id, plan.first);
         let _ = self.run(OP_TIMEOUT, self.tick_soon());
         Ok(())
+    }
+
+    // ---- remove a file's data -----------------------------------------------------------------------
+
+    /// `nativeRemoveFiles` (`NATIVE_CONTRACT.md` section 14): the files stop downloading, their data is deleted
+    /// from disk and the pieces that overlap them lose their have bits. Returns the verified bytes freed.
+    ///
+    /// librqbit can only rewrite the chunk tracker and delete files safely while the torrent is paused, so a
+    /// live torrent is paused first and started again afterwards. The tick lock is held for the whole round
+    /// trip, as in `reannounce`, so the governance pass never sees the torrent paused. `paused_by`, `queued`
+    /// and `added_at` are not touched. A torrent that is checking or in error is refused with `UNSUPPORTED`.
+    pub fn remove_files(&self, id: &str, indices_json: &str) -> Result<serde_json::Value, EngineError> {
+        let (id, hash) = Self::parse_id(id)?;
+        self.reject_if_moving(&id)?;
+        let h = self.find(hash).ok_or_else(EngineError::not_found)?;
+        let indices: Vec<u32> = serde_json::from_str(indices_json)
+            .map_err(|_| EngineError::new(ErrorCode::InvalidSource, "The file choices couldn't be read"))?;
+        let (valid, file_count): (Vec<usize>, usize) = h
+            .with_metadata(|m| {
+                (
+                    m.file_infos
+                        .iter()
+                        .enumerate()
+                        .filter(|(_, fi)| !fi.attrs.padding)
+                        .map(|(i, _)| i)
+                        .collect::<Vec<usize>>(),
+                    m.file_infos.len(),
+                )
+            })
+            .map_err(|_| EngineError::not_found())?;
+        // Nothing is changed until the whole request has been checked.
+        let current = h.only_files();
+        let remove = plan_removal(&indices, &valid, current.as_deref())?;
+
+        let busy = || {
+            EngineError::new(
+                ErrorCode::Unsupported,
+                "Wait until the torrent has been checked, then remove files",
+            )
+        };
+        let freed = self.run(DELETE_TIMEOUT, async {
+            let _tick = self.tick_lock.lock().await;
+            // The state may have changed while this call waited for the lock.
+            let was_live = match h.stats().state {
+                TorrentStatsState::Live => true,
+                TorrentStatsState::Paused => false,
+                _ => return Err(busy()),
+            };
+            if was_live {
+                // librqbit restarts its upload counter when a torrent goes live again.
+                // Fold what it has counted so far into the saved total first.
+                let uploaded_now = h.stats().uploaded_bytes;
+                self.meta.lock().update(&id, |m| {
+                    let (_, base, last) =
+                        uploaded_total(m.uploaded_base, m.last_uploaded_seen, uploaded_now);
+                    m.uploaded_base = base;
+                    m.last_uploaded_seen = last;
+                });
+                self.session.pause(&h).await.map_err(|e| {
+                    let (code, message) = classify_runtime_error(&format!("{e:#}"));
+                    EngineError::new(code, message)
+                })?;
+            }
+            let removed = self.session.remove_files_data(&h, &remove).await;
+            if was_live {
+                if let Err(e) = self.session.unpause(&h).await {
+                    warn!("remove_files could not restart the torrent: {e:#}");
+                    // Leave it for the planner to start again instead of stuck paused.
+                    self.meta.lock().update(&id, |m| {
+                        if m.paused_by.is_none() {
+                            m.queued = true;
+                        }
+                    });
+                }
+            }
+            removed.map_err(|e| {
+                let raw = format!("{e:#}");
+                if raw.contains("must be paused") {
+                    return busy();
+                }
+                if raw.contains("invalid value") || raw.contains("no file to download") {
+                    return EngineError::new(ErrorCode::InvalidSource, "Keep at least one file in the torrent");
+                }
+                let (code, message) = classify_runtime_error(&raw);
+                if code == ErrorCode::Internal {
+                    EngineError::new(code, "Couldn't delete those files. Try again in a moment.")
+                } else {
+                    EngineError::new(code, message)
+                }
+            })
+        })??;
+
+        // The files are skipped now; forget them in the "download first" list too.
+        let first: Vec<u32> = self.priorities.lock().get(&id).map(|f| f.to_vec()).unwrap_or_default();
+        let pruned: Vec<u32> = first
+            .iter()
+            .copied()
+            .filter(|i| !remove.contains(&(*i as usize)))
+            .collect();
+        if pruned.len() != first.len() {
+            h.set_file_priority_order(order_from_first(&pruned, file_count));
+            self.remember_first_files(&id, pruned);
+        }
+        // Progress went down on purpose: the files_missing check must not read that as lost data.
+        self.meta.lock().update(&id, |m| {
+            m.max_progress_bytes = 0;
+        });
+        self.save_meta();
+        let _ = self.run(OP_TIMEOUT, self.tick_soon());
+        Ok(serde_json::json!({ "freed_bytes": freed }))
     }
 
     // ---- reannounce -------------------------------------------------------------------------------

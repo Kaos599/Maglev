@@ -678,6 +678,50 @@ impl ManagedTorrent {
         g.only_files = Some(only_files.iter().copied().collect());
         Ok(())
     }
+
+    /// MAGLEV PATCH (hunk 13, see MAGLEV_PATCH.md): deletes the data of `remove` and stops downloading
+    /// those files. Returns the verified bytes they held.
+    ///
+    /// Only works while the torrent is paused (the caller pauses a live torrent first and starts it
+    /// again afterwards), because a live torrent has pieces in flight and open writers on the files.
+    /// The selection shrinks by `remove`; it is an error when no file would be left. The chunk tracker
+    /// and the persisted bitfield are updated before the files are deleted, so if deleting fails
+    /// part-way the error is returned but the torrent already agrees with what is on disk.
+    pub fn remove_files_data(&self, remove: &HashSet<usize>) -> anyhow::Result<u64> {
+        let metadata = self.metadata.load();
+        let metadata = metadata.as_ref().context("torrent is not resolved")?;
+        let file_infos = &metadata.file_infos;
+        for f in remove.iter().copied() {
+            match file_infos.get(f) {
+                Some(fi) if !fi.attrs.padding => {}
+                _ => anyhow::bail!("remove_files contains invalid value {f}"),
+            }
+        }
+
+        let mut g = self.locked.write();
+        let current: Vec<usize> = match &g.only_files {
+            Some(o) => o.clone(),
+            None => (0..file_infos.len()).collect(),
+        };
+        let new_only_files: HashSet<usize> = current
+            .into_iter()
+            .filter(|i| !remove.contains(i))
+            .filter(|i| file_infos.get(*i).map(|fi| !fi.attrs.padding).unwrap_or(false))
+            .collect();
+        if new_only_files.is_empty() {
+            anyhow::bail!("remove_files would leave no file to download");
+        }
+
+        let outcome = match &mut g.state {
+            ManagedTorrentState::Paused(p) => p.remove_files_data(&new_only_files, remove)?,
+            _ => bail!("torrent must be paused to remove files"),
+        };
+        g.only_files = Some(new_only_files.into_iter().collect());
+        match outcome.io_error {
+            Some(e) => Err(e),
+            None => Ok(outcome.freed_bytes),
+        }
+    }
 }
 
 pub type ManagedTorrentHandle = Arc<ManagedTorrent>;

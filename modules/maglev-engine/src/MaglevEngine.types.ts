@@ -383,6 +383,12 @@ export interface MaglevEngineApi {
   setIncludedFiles(id: string, indices: number[]): Promise<EngineResult>;
   /** Covers every file. Unknown index or all `skip` returns INVALID_SOURCE. */
   setFilePriorities(id: string, priorities: FilePriorityEntry[]): Promise<EngineResult>;
+  /**
+   * NATIVE_CONTRACT 14. Stops downloading those files, deletes their data and frees the space; pieces shared with a
+   * kept file are downloaded again. INVALID_SOURCE for an unknown index or when no included file would remain,
+   * UNSUPPORTED while the torrent is moving or checking.
+   */
+  removeFiles(id: string, indices: number[]): Promise<EngineResult<{ freedBytes: number }>>;
   /** Only while DOWNLOADING or SEEDING. Rate limited to once per 60 s per torrent. */
   reannounce(id: string): Promise<EngineResult<{ retryAfterSecs?: number }>>;
   getFreeSpace(): Promise<EngineResult<FreeSpace>>;

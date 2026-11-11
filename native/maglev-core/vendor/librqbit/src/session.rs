@@ -1640,6 +1640,18 @@ impl Session {
         Ok(())
     }
 
+    /// MAGLEV PATCH (hunk 13): `ManagedTorrent::remove_files_data`, then the persisted metadata
+    /// (the include set) is refreshed like `update_only_files` does. The torrent must be paused.
+    pub async fn remove_files_data(
+        self: &Arc<Self>,
+        handle: &ManagedTorrentHandle,
+        remove: &HashSet<usize>,
+    ) -> anyhow::Result<u64> {
+        let result = handle.remove_files_data(remove);
+        self.try_update_persistence_metadata(handle).await;
+        result
+    }
+
     pub fn listen_addr(&self) -> Option<SocketAddr> {
         self.listen_addr
     }
