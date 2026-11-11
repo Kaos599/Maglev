@@ -1,563 +1,266 @@
-import { useMemo } from 'react';
-import React, { useState, useEffect, useCallback, useRef } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  TextInput,
-  TouchableOpacity,
-  ScrollView,
-  ActivityIndicator,
-} from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Ionicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
-import { formatBytes } from '../../constants/format';
-import { HeaderBar } from '../../components/HeaderBar';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { FlatList, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useMaglevEngine } from '../../context/EngineContext';
-import { triggerHaptic } from '../../constants/haptics';
 import { useTheme } from '../../context/ThemeContext';
-import { alpha, fonts, touch, ThemeColors } from '../../constants/theme';
+import { ThemeColors, radius, spacing, type } from '../../constants/theme';
+import { PixelIcon } from '../../components/PixelIcon';
+import { Button, Chip, EmptyBlock, IconButton, Screen, SectionHeader } from '../../components/ui';
+import { ResultRow } from '../../components/search/ResultRow';
+import { SkeletonRows } from '../../components/search/SkeletonRows';
+import { NoticeBanner, addErrorNotice, useNotice } from '../../components/search/Notice';
+import { addRecentSearch, clearRecentSearches, getRecentSearches } from '../../utils/prefs/search';
 
-export interface SwarmSearchResult {
+interface SearchResult {
   id: string;
-  title: string;
-  category: string;
+  infoHash: string;
+  name: string;
+  cat: number;
   sizeBytes: number;
   seeds: number;
   peers: number;
-  magnet: string;
 }
 
-const CURATED_SWARMS: SwarmSearchResult[] = [
-  {
-    id: 'sw_ubuntu_24',
-    title: 'Ubuntu-24.04-desktop-amd64.iso',
-    category: 'Apps',
-    sizeBytes: 4_294_967_296,
-    seeds: 1842,
-    peers: 142,
-    magnet: 'magnet:?xt=urn:btih:9dc31b34e568449c2872322a36b5ccab5d1a89c9&dn=Ubuntu-24.04-desktop-amd64.iso&tr=udp%3A%2F%2Ftracker.opentrackr.org%3A1337%2Fannounce&tr=udp%3A%2F%2Fopen.stealth.si%3A80%2Fannounce',
-  },
-  {
-    id: 'sw_arch_linux',
-    title: 'ArchLinux-2026.11.01-x86_64.iso',
-    category: 'Apps',
-    sizeBytes: 1_288_490_188,
-    seeds: 924,
-    peers: 78,
-    magnet: 'magnet:?xt=urn:btih:e06c138f6bdf1f50a8c279cbe8784d5df684a20b&dn=ArchLinux-2026.11.01-x86_64.iso&tr=udp%3A%2F%2Ftracker.opentrackr.org%3A1337%2Fannounce&tr=udp%3A%2F%2Fopen.stealth.si%3A80%2Fannounce',
-  },
-  {
-    id: 'sw_debian_12',
-    title: 'Debian-12.8.0-netinst.iso',
-    category: 'Apps',
-    sizeBytes: 671_088_640,
-    seeds: 612,
-    peers: 34,
-    magnet: 'magnet:?xt=urn:btih:576566c5a083d9aa8c688321d454fa16b0b2e3e5&dn=Debian-12.8.0-netinst.iso&tr=udp%3A%2F%2Ftracker.opentrackr.org%3A1337%2Fannounce&tr=udp%3A%2F%2Fopen.stealth.si%3A80%2Fannounce',
-  },
-  {
-    id: 'sw_bbb_4k',
-    title: 'Big-Buck-Bunny-4K-Surround.mkv',
-    category: 'Movies',
-    sizeBytes: 891_289_600,
-    seeds: 412,
-    peers: 28,
-    magnet: 'magnet:?xt=urn:btih:dd8255ecdc7ca55fb0bbf81323d87062db1f6d1c&dn=Big-Buck-Bunny-4K-Surround.mkv&tr=udp%3A%2F%2Ftracker.opentrackr.org%3A1337%2Fannounce&tr=udp%3A%2F%2Fopen.stealth.si%3A80%2Fannounce',
-  },
-  {
-    id: 'sw_tears_of_steel',
-    title: 'Tears-Of-Steel-UHD-Master.mkv',
-    category: 'Movies',
-    sizeBytes: 1_503_238_553,
-    seeds: 350,
-    peers: 19,
-    magnet: 'magnet:?xt=urn:btih:20bb20901e9d0e2e925c27f3aa111b212f717904&dn=Tears-Of-Steel-UHD-Master.mkv&tr=udp%3A%2F%2Ftracker.opentrackr.org%3A1337%2Fannounce&tr=udp%3A%2F%2Fopen.stealth.si%3A80%2Fannounce',
-  },
-  {
-    id: 'sw_blender_demo',
-    title: 'Blender-Studio-Wing-It-Anime.mkv',
-    category: 'Anime',
-    sizeBytes: 566_231_040,
-    seeds: 280,
-    peers: 14,
-    magnet: 'magnet:?xt=urn:btih:c12056fae8590c7931ef827727e57c6b412128e4&dn=Blender-Studio-Wing-It-Anime.mkv&tr=udp%3A%2F%2Ftracker.opentrackr.org%3A1337%2Fannounce&tr=udp%3A%2F%2Fopen.stealth.si%3A80%2Fannounce',
-  },
-  {
-    id: 'sw_nin_ghosts',
-    title: 'Nine-Inch-Nails-Ghosts-I-IV-FLAC',
-    category: 'Music',
-    sizeBytes: 1_932_735_283,
-    seeds: 512,
-    peers: 42,
-    magnet: 'magnet:?xt=urn:btih:5a0928e086f03407e3a6efad69b8bd59cfc8135a&dn=Nine-Inch-Nails-Ghosts-I-IV-FLAC&tr=udp%3A%2F%2Ftracker.opentrackr.org%3A1337%2Fannounce&tr=udp%3A%2F%2Fopen.stealth.si%3A80%2Fannounce',
-  },
-  {
-    id: 'sw_ebooks_master',
-    title: 'Standard-Ebooks-Anthology-2026.epub',
-    category: 'Books',
-    sizeBytes: 125_829_120,
-    seeds: 180,
-    peers: 8,
-    magnet: 'magnet:?xt=urn:btih:a88fda5954e89178c372716a6a78b8180ed4dad3&dn=Standard-Ebooks-Anthology-2026.epub&tr=udp%3A%2F%2Ftracker.opentrackr.org%3A1337%2Fannounce&tr=udp%3A%2F%2Fopen.stealth.si%3A80%2Fannounce',
-  },
-];
+type Category = 'All' | 'Video' | 'Audio' | 'Apps' | 'Games' | 'Books' | 'Other';
+const CATEGORIES: Category[] = ['All', 'Video', 'Audio', 'Apps', 'Games', 'Books', 'Other'];
 
-const CATEGORIES = [
-  'All',
-  'Anime',
-  'Apps',
-  'Books',
-  'Games',
-  'Movies',
-  'Music',
-  'Others',
-];
+// apibay category codes: 100 audio, 200 video, 300 apps, 400 games, 601 e-books, 600 other.
+const CAT_PARAM: Record<Category, number> = { All: 0, Video: 200, Audio: 100, Apps: 300, Games: 400, Books: 601, Other: 600 };
 
-function mapCategory(catNum: string | number): string {
-  const n = typeof catNum === 'number' ? catNum : parseInt(catNum, 10);
-  if (n >= 100 && n < 200) return 'Music';
-  if (n >= 200 && n < 300) return 'Movies';
-  if (n >= 300 && n < 400) return 'Apps';
-  if (n >= 400 && n < 500) return 'Games';
-  if (n >= 600 && n < 700) return 'Books';
-  return 'Others';
+const DEBOUNCE_MS = 400;
+const TIMEOUT_MS = 8000;
+const MIN_QUERY = 2;
+const TRACKERS = ['udp://tracker.opentrackr.org:1337/announce', 'udp://open.stealth.si:80/announce', 'udp://tracker.torrent.eu.org:451/announce'];
+
+type Phase =
+  | { kind: 'idle' }
+  | { kind: 'loading' }
+  | { kind: 'done'; results: SearchResult[] }
+  | { kind: 'error'; message: string };
+
+function magnetFor(r: SearchResult): string {
+  return `magnet:?xt=urn:btih:${r.infoHash}&dn=${encodeURIComponent(r.name)}${TRACKERS.map((t) => `&tr=${encodeURIComponent(t)}`).join('')}`;
+}
+
+async function searchApibay(query: string, category: Category, signal: AbortSignal): Promise<SearchResult[]> {
+  const url = `https://apibay.org/q.php?q=${encodeURIComponent(query)}&cat=${CAT_PARAM[category]}`;
+  const res = await fetch(url, { signal });
+  if (!res.ok) throw new Error(`status ${res.status}`);
+  const data = await res.json();
+  if (!Array.isArray(data)) throw new Error('bad response');
+  if (data.length === 1 && (data[0].id === '0' || data[0].name === 'No results returned')) return [];
+  const results: SearchResult[] = [];
+  for (const item of data) {
+    const hash = String(item.info_hash ?? '').toLowerCase();
+    if (!/^[0-9a-f]{40}$/.test(hash)) continue;
+    const cat = parseInt(item.category, 10) || 0;
+    if (category === 'Other' && cat === 601) continue;
+    results.push({
+      id: hash,
+      infoHash: hash,
+      name: String(item.name ?? hash),
+      cat,
+      sizeBytes: parseInt(item.size, 10) || 0,
+      seeds: parseInt(item.seeders, 10) || 0,
+      peers: parseInt(item.leechers, 10) || 0,
+    });
+  }
+  return results.sort((a, b) => b.seeds - a.seeds);
 }
 
 export default function SearchScreen() {
   const { colors } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
-  const insets = useSafeAreaInsets();
-  const router = useRouter();
-  const { startTorrent } = useMaglevEngine();
+  const { startTorrent, telemetry } = useMaglevEngine();
 
   const [query, setQuery] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState('All');
-  const [addedIds, setAddedIds] = useState<string[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
-  const [onlineResults, setOnlineResults] = useState<SwarmSearchResult[] | null>(null);
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [category, setCategory] = useState<Category>('All');
+  const [phase, setPhase] = useState<Phase>({ kind: 'idle' });
+  const [recents, setRecents] = useState<string[]>(() => getRecentSearches());
+  const [sessionAdded, setSessionAdded] = useState<Set<string>>(() => new Set());
+  const [busyHash, setBusyHash] = useState<string | null>(null);
+  const [retryTick, setRetryTick] = useState(0);
+  const { notice, show, dismiss } = useNotice();
+  const reqId = useRef(0);
 
-  const fetchLiveSwarms = useCallback(async (searchQuery: string, category: string) => {
-    if (!searchQuery.trim()) {
-      setOnlineResults(null);
+  const trimmed = query.trim();
+
+  useEffect(() => {
+    reqId.current += 1;
+    const mine = reqId.current;
+    if (trimmed.length < MIN_QUERY) {
+      setPhase({ kind: 'idle' });
       return;
     }
-
-    setIsLoading(true);
-
-    try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 4000);
-
-      // Query public BitTorrent indexer API (apibay)
-      let apiUrl = `https://apibay.org/q.php?q=${encodeURIComponent(searchQuery.trim())}`;
-      if (category === 'Movies') apiUrl += '&cat=200';
-      else if (category === 'Music') apiUrl += '&cat=100';
-      else if (category === 'Apps') apiUrl += '&cat=300';
-      else if (category === 'Games') apiUrl += '&cat=400';
-      else if (category === 'Books') apiUrl += '&cat=601';
-
-      const res = await fetch(apiUrl, {
-        signal: controller.signal,
-        headers: { 'User-Agent': 'Maglev-Client/1.0' },
-      });
-      clearTimeout(timeoutId);
-
-      if (res.ok) {
-        const data = await res.json();
-        if (Array.isArray(data) && data.length > 0 && data[0].id !== '0' && data[0].name !== 'No results returned') {
-          const mapped: SwarmSearchResult[] = data.map((item: any) => ({
-            id: item.info_hash || `sw_${Math.random()}`,
-            title: item.name || 'Unknown Swarm',
-            category: mapCategory(item.category),
-            sizeBytes: parseInt(item.size || '0', 10),
-            seeds: parseInt(item.seeders || '0', 10),
-            peers: parseInt(item.leechers || '0', 10),
-            magnet: `magnet:?xt=urn:btih:${item.info_hash}&dn=${encodeURIComponent(
-              item.name || ''
-            )}&tr=udp%3A%2F%2Ftracker.opentrackr.org%3A1337%2Fannounce&tr=udp%3A%2F%2Fopen.stealth.si%3A80%2Fannounce&tr=udp%3A%2F%2Ftracker.torrent.eu.org%3A451%2Fannounce`,
-          }));
-          setOnlineResults(mapped);
-          return;
-        }
+    setPhase({ kind: 'loading' });
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), TIMEOUT_MS);
+    const debounce = setTimeout(async () => {
+      try {
+        const results = await searchApibay(trimmed, category, controller.signal);
+        if (reqId.current === mine) setPhase({ kind: 'done', results });
+      } catch {
+        if (reqId.current !== mine) return;
+        setPhase({ kind: 'error', message: controller.signal.aborted ? 'The search took too long.' : 'Check your connection and try again.' });
+      } finally {
+        clearTimeout(timeout);
       }
-      setOnlineResults([]);
-    } catch {
-      // Offline fallback
-      setOnlineResults(null);
-    } finally {
-      setIsLoading(false);
-    }
+    }, DEBOUNCE_MS);
+    return () => {
+      clearTimeout(debounce);
+      clearTimeout(timeout);
+      controller.abort();
+    };
+  }, [trimmed, category, retryTick]);
+
+  const remember = useCallback((q: string) => {
+    if (q.trim().length >= MIN_QUERY) setRecents(addRecentSearch(q));
   }, []);
 
-  const handleQueryChange = (text: string) => {
-    setQuery(text);
+  const inList = useMemo(() => new Set(telemetry.torrents.map((t) => t.id.toLowerCase())), [telemetry.torrents]);
 
-    if (debounceRef.current) {
-      clearTimeout(debounceRef.current);
-    }
+  const handleAdd = useCallback(
+    async (r: SearchResult) => {
+      setBusyHash(r.infoHash);
+      remember(trimmed);
+      try {
+        await startTorrent(magnetFor(r));
+        setSessionAdded((prev) => new Set(prev).add(r.infoHash));
+      } catch (e) {
+        const { duplicate, notice: n } = addErrorNotice(e);
+        if (duplicate) setSessionAdded((prev) => new Set(prev).add(r.infoHash));
+        show(n);
+      } finally {
+        setBusyHash(null);
+      }
+    },
+    [remember, show, startTorrent, trimmed],
+  );
 
-    if (!text.trim()) {
-      setOnlineResults(null);
-      setIsLoading(false);
-      return;
-    }
+  const renderItem = useCallback(
+    ({ item }: { item: SearchResult }) => (
+      <ResultRow
+        name={item.name}
+        sizeBytes={item.sizeBytes}
+        seeds={item.seeds}
+        peers={item.peers}
+        added={sessionAdded.has(item.infoHash) || inList.has(item.infoHash)}
+        busy={busyHash === item.infoHash}
+        onAdd={() => handleAdd(item)}
+      />
+    ),
+    [busyHash, handleAdd, inList, sessionAdded],
+  );
 
-    debounceRef.current = setTimeout(() => {
-      fetchLiveSwarms(text, selectedCategory);
-    }, 450);
-  };
-
-  const handleSelectCategory = (cat: string) => {
-    triggerHaptic('light');
-    setSelectedCategory(cat);
-    if (query.trim()) {
-      fetchLiveSwarms(query, cat);
-    }
-  };
-
-  const handleAddSwarm = async (item: SwarmSearchResult) => {
-    triggerHaptic('medium');
-    await startTorrent(item.magnet);
-    setAddedIds((prev) => [...prev, item.id]);
-  };
-
-  // Determine active display list
-  const activeResults: SwarmSearchResult[] = onlineResults !== null
-    ? onlineResults.filter((item) => selectedCategory === 'All' || item.category === selectedCategory)
-    : CURATED_SWARMS.filter((item) => {
-        const matchesCategory = selectedCategory === 'All' || item.category === selectedCategory;
-        const matchesQuery = query.trim().length === 0 || item.title.toLowerCase().includes(query.trim().toLowerCase());
-        return matchesCategory && matchesQuery;
-      });
-
-  return (
-    <View style={[styles.container, { paddingTop: insets.top }]}>
-      <HeaderBar />
-
-      <View style={styles.searchBarContainer}>
-        <View style={styles.searchInputRow}>
-          <Ionicons
-            name="search"
-            size={16}
-            color={colors.download}
-            style={{ marginRight: 8 }}
+  let body: React.ReactNode;
+  if (phase.kind === 'idle') {
+    body = recents.length > 0 ? (
+      <View style={styles.pad}>
+        <View style={styles.recentsHead}>
+          <SectionHeader title="Recent" />
+          <Button
+            label="Clear"
+            variant="ghost"
+            onPress={() => setRecents(clearRecentSearches())}
+            accessibilityLabel="Clear recent searches"
           />
-          <TextInput
-            style={styles.searchInput}
-            placeholder="Search public torrent swarms..."
-            placeholderTextColor={colors.textMuted}
-            value={query}
-            onChangeText={handleQueryChange}
-            autoCapitalize="none"
-            autoCorrect={false}
-          />
-          {query.length > 0 && (
-            <TouchableOpacity onPress={() => handleQueryChange('')} style={styles.clearBtn} accessibilityRole="button" accessibilityLabel="Clear search query">
-              <Ionicons name="close-circle" size={16} color={colors.textMuted} />
-            </TouchableOpacity>
-          )}
         </View>
-      </View>
-
-      {/* Category Filter Pills */}
-      <View style={styles.categoryScrollWrapper}>
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.categoryScroll}
-        >
-          {CATEGORIES.map((cat) => {
-            const isSelected = selectedCategory === cat;
-            return (
-              <TouchableOpacity
-                key={cat}
-                style={[
-                  styles.catPill,
-                  isSelected ? styles.catPillActive : styles.catPillInactive,
-                ]}
-                onPress={() => handleSelectCategory(cat)}
-                accessibilityRole="button"
-                accessibilityLabel={`Filter by ${cat}`}
-              >
-                <Text
-                  style={[
-                    styles.catPillText,
-                    isSelected ? styles.catPillTextActive : styles.catPillTextInactive,
-                  ]}
-                >
-                  {cat}
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips}>
+          {recents.map((r) => (
+            <Chip key={r} label={r} onPress={() => setQuery(r)} />
+          ))}
         </ScrollView>
       </View>
+    ) : (
+      <EmptyBlock icon="search" title="Search public swarms" body="Type at least two letters. Results come from a public index." />
+    );
+  } else if (phase.kind === 'loading') {
+    body = (
+      <View style={styles.pad}>
+        <SkeletonRows />
+      </View>
+    );
+  } else if (phase.kind === 'error') {
+    body = (
+      <EmptyBlock
+        icon="warning"
+        error
+        title="Search is unavailable right now"
+        body={phase.message}
+        primary={{ label: 'Retry', icon: 'retry', onPress: () => setRetryTick((n) => n + 1) }}
+      />
+    );
+  } else if (phase.results.length === 0) {
+    body = <EmptyBlock icon="search" title={`No results for "${trimmed}"`} body="Try fewer words or another category." />;
+  } else {
+    body = (
+      <FlatList
+        data={phase.results}
+        keyExtractor={(r) => r.id}
+        renderItem={renderItem}
+        contentContainerStyle={styles.list}
+        keyboardShouldPersistTaps="handled"
+        initialNumToRender={12}
+        windowSize={7}
+      />
+    );
+  }
 
-      {/* Live Indexer Loading Indicator */}
-      {isLoading && (
-        <View style={styles.indexerLoaderRow}>
-          <ActivityIndicator size="small" color={colors.download} />
-          <Text style={styles.indexerLoaderText}>QUERYING PUBLIC SWARMS IN REAL TIME...</Text>
+  return (
+    <Screen title="Search">
+      <View style={styles.pad}>
+        <View style={styles.field}>
+          <PixelIcon name="search" size={20} color={colors.textMuted} />
+          <TextInput
+            style={styles.input}
+            value={query}
+            onChangeText={setQuery}
+            onSubmitEditing={() => {
+              remember(query);
+              setRetryTick((n) => n + 1);
+            }}
+            placeholder="Search torrents"
+            placeholderTextColor={colors.textFaint}
+            autoCapitalize="none"
+            autoCorrect={false}
+            returnKeyType="search"
+            accessibilityLabel="Search torrents"
+          />
+          {query.length > 0 ? <IconButton icon="close" size={16} onPress={() => setQuery('')} accessibilityLabel="Clear search" /> : null}
         </View>
-      )}
-
-      {/* Search Results List or Empty State */}
-      <ScrollView
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={styles.resultsScroll}
-      >
-        {activeResults.length > 0 ? (
-          <View style={styles.resultsList}>
-            {activeResults.map((item) => {
-              const isAdded = addedIds.includes(item.id);
-              return (
-                <View key={item.id} style={styles.resultCard}>
-                  <View style={styles.cardHeaderRow}>
-                    <View style={styles.categoryBadge}>
-                      <Text style={styles.categoryBadgeText}>{item.category}</Text>
-                    </View>
-                    <Text style={styles.sizeText}>{formatBytes(item.sizeBytes)}</Text>
-                  </View>
-
-                  <Text style={styles.resultTitle} numberOfLines={2}>
-                    {item.title}
-                  </Text>
-
-                  <View style={styles.cardFooterRow}>
-                    <View style={styles.swarmMeta}>
-                      <Text style={styles.metaSeeds}>↑ {item.seeds}</Text>
-                      <Text style={styles.metaPeers}>↓ {item.peers}</Text>
-                      <Text style={styles.metaHealth}>
-                        {item.seeds >= 50 ? 'HEALTHY' : item.seeds > 0 ? 'ACTIVE' : 'LOW PEERS'}
-                      </Text>
-                    </View>
-
-                    <TouchableOpacity
-                      style={[styles.addBtn, isAdded && styles.addBtnDone]}
-                      onPress={() => !isAdded && handleAddSwarm(item)}
-                      disabled={isAdded}
-                      accessibilityRole="button"
-                      accessibilityLabel={isAdded ? `Already added ${item.title}` : `Add ${item.title}`}
-                    >
-                      <Text style={[styles.addBtnText, isAdded && styles.addBtnTextDone]}>
-                        {isAdded ? 'ADDED ✓' : '+ ADD'}
-                      </Text>
-                    </TouchableOpacity>
-                  </View>
-                </View>
-              );
-            })}
-          </View>
-        ) : (
-          <View style={styles.emptyContainer}>
-            <Ionicons name="compass-outline" size={48} color={colors.border} />
-            <Text style={styles.emptyTitle}>No Matching Swarms Found</Text>
-            <Text style={styles.emptySubtitle}>
-              {query.trim().length > 0
-                ? `Zero public seeds detected for "${query}". Try different terms or categories.`
-                : 'Enter a search keyword to query public BitTorrent swarms.'}
-            </Text>
-          </View>
-        )}
+      </View>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.catScroll} contentContainerStyle={styles.chips}>
+        {CATEGORIES.map((c) => (
+          <Chip key={c} label={c} selected={c === category} onPress={() => setCategory(c)} />
+        ))}
       </ScrollView>
-    </View>
+      {notice ? (
+        <View style={styles.pad}>
+          <NoticeBanner notice={notice} onDismiss={dismiss} />
+        </View>
+      ) : null}
+      <View style={styles.body}>{body}</View>
+    </Screen>
   );
 }
 
-const makeStyles = (colors: ThemeColors) => StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: colors.bg,
-  },
-  searchBarContainer: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-  },
-  searchInputRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    minHeight: touch.min,
-  },
-  searchInput: {
-    flex: 1,
-    color: colors.text,
-    fontSize: 12,
-    ...fonts.mono,
-  },
-  clearBtn: {
-    minWidth: 32,
-    minHeight: 32,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  categoryScrollWrapper: {
-    marginVertical: 4,
-  },
-  categoryScroll: {
-    paddingHorizontal: 16,
-    flexDirection: 'row',
-    gap: 8,
-  },
-  catPill: {
-    minHeight: touch.min,
-    paddingHorizontal: 16,
-    borderRadius: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  catPillActive: {
-    backgroundColor: colors.accent,
-  },
-  catPillInactive: {
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  catPillText: {
-    fontSize: 11,
-    ...fonts.monoBold,
-  },
-  catPillTextActive: {
-    color: colors.onAccent,
-  },
-  catPillTextInactive: {
-    color: colors.textMuted,
-  },
-  indexerLoaderRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    paddingHorizontal: 20,
-    paddingVertical: 8,
-    backgroundColor: colors.surface,
-    borderBottomWidth: 1,
-    borderBottomColor: alpha(colors.download, 0.2),
-  },
-  indexerLoaderText: {
-    color: colors.download,
-    fontSize: 10,
-    ...fonts.monoBold,
-    letterSpacing: 0.5,
-  },
-  resultsScroll: {
-    paddingHorizontal: 16,
-    paddingTop: 10,
-    paddingBottom: 40,
-  },
-  resultsList: {
-    gap: 12,
-  },
-  resultCard: {
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 12,
-    padding: 14,
-  },
-  cardHeaderRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 8,
-  },
-  categoryBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    backgroundColor: colors.surfaceRaised,
-    borderRadius: 4,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  categoryBadgeText: {
-    color: colors.download,
-    fontSize: 9,
-    ...fonts.monoBold,
-  },
-  sizeText: {
-    color: colors.textMuted,
-    fontSize: 11,
-    ...fonts.mono,
-  },
-  resultTitle: {
-    color: colors.text,
-    fontSize: 13,
-    ...fonts.monoBold,
-    lineHeight: 18,
-    marginBottom: 12,
-  },
-  cardFooterRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  swarmMeta: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-  },
-  metaSeeds: {
-    color: colors.accentText,
-    fontSize: 11,
-    ...fonts.monoBold,
-  },
-  metaPeers: {
-    color: colors.download,
-    fontSize: 11,
-    ...fonts.monoBold,
-  },
-  metaHealth: {
-    color: colors.textMuted,
-    fontSize: 9,
-    ...fonts.monoBold,
-    letterSpacing: 0.5,
-  },
-  addBtn: {
-    minWidth: 84,
-    minHeight: touch.min,
-    backgroundColor: colors.accent,
-    borderRadius: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 12,
-  },
-  addBtnDone: {
-    backgroundColor: colors.surfaceRaised,
-    borderWidth: 1,
-    borderColor: colors.accent,
-  },
-  addBtnText: {
-    color: colors.onAccent,
-    fontSize: 11,
-    ...fonts.monoBold,
-  },
-  addBtnTextDone: {
-    color: colors.accentText,
-  },
-  emptyContainer: {
-    paddingVertical: 60,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 32,
-  },
-  emptyTitle: {
-    color: colors.text,
-    fontSize: 15,
-    ...fonts.monoBold,
-    marginTop: 16,
-    marginBottom: 6,
-  },
-  emptySubtitle: {
-    color: colors.textMuted,
-    fontSize: 12,
-    textAlign: 'center',
-    lineHeight: 18,
-  },
-});
+const makeStyles = (c: ThemeColors) =>
+  StyleSheet.create({
+    pad: { paddingHorizontal: spacing.lg },
+    field: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      minHeight: 48,
+      paddingLeft: spacing.lg,
+      gap: spacing.sm,
+      borderRadius: radius.md,
+      borderWidth: 1,
+      borderColor: c.borderStrong,
+      backgroundColor: c.surface,
+    },
+    input: { ...type.body, flex: 1, minHeight: 48, fontSize: 15, color: c.text },
+    catScroll: { flexGrow: 0, marginTop: spacing.md, marginBottom: spacing.sm },
+    chips: { paddingHorizontal: spacing.lg, gap: spacing.sm },
+    recentsHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: spacing.md },
+    body: { flex: 1, marginTop: spacing.sm },
+    list: { paddingHorizontal: spacing.lg, paddingBottom: spacing.xxxl },
+  });

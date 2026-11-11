@@ -1,779 +1,324 @@
-import { useMemo } from 'react';
-import React, { useState, useEffect, useCallback } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  TouchableOpacity,
-  ScrollView,
-  Modal,
-  TextInput,
-  Switch,
-  ActivityIndicator,
-  Alert,
-} from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Ionicons } from '@expo/vector-icons';
-import { formatBytes } from '../../constants/format';
-import { HeaderBar } from '../../components/HeaderBar';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Alert, FlatList, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useFocusEffect } from 'expo-router';
 import { useMaglevEngine } from '../../context/EngineContext';
-import { triggerHaptic } from '../../constants/haptics';
 import { useTheme } from '../../context/ThemeContext';
-import { alpha, fonts, touch, ThemeColors } from '../../constants/theme';
+import { ThemeColors, spacing, type } from '../../constants/theme';
+import { Banner, Button, Chip, EmptyBlock, Screen } from '../../components/ui';
+import { FeedItemRow } from '../../components/feeds/FeedItemRow';
+import { NewFeedSheet } from '../../components/feeds/NewFeedSheet';
+import { SkeletonRows } from '../../components/search/SkeletonRows';
+import { NoticeBanner, addErrorNotice, useNotice } from '../../components/search/Notice';
+import {
+  Feed,
+  FeedItem,
+  fetchFeed,
+  hostOf,
+  loadFeeds,
+  loadSeen,
+  normalizeFeedUrl,
+  saveFeeds,
+  saveSeen,
+} from '../../utils/feeds';
 
-export interface FeedItem {
-  id: string;
-  title: string;
-  channel: string;
-  sizeBytes: number;
-  published: string;
-  autoDownload: boolean;
-  magnet: string;
+interface FeedState {
+  status: 'loading' | 'ok' | 'error';
+  items: FeedItem[];
+  error?: string;
 }
 
-const DEFAULT_FEED_URLS: { channel: string; url: string }[] = [
-  {
-    channel: 'Linux Distros',
-    url: 'https://distrowatch.com/news/dwd.xml',
-  },
-];
-
-const INITIAL_FALLBACK_FEEDS: FeedItem[] = [
-  {
-    id: 'f_ubuntu',
-    title: 'Ubuntu-24.04.1-LTS-Desktop-x86_64.iso',
-    channel: 'Linux Distros',
-    sizeBytes: 4_294_967_296,
-    published: 'Today',
-    autoDownload: true,
-    magnet: 'magnet:?xt=urn:btih:9dc31b34e568449c2872322a36b5ccab5d1a89c9&dn=Ubuntu-24.04.1-LTS-Desktop-x86_64.iso&tr=udp%3A%2F%2Ftracker.opentrackr.org%3A1337%2Fannounce',
-  },
-  {
-    id: 'f_arch',
-    title: 'Arch-Linux-2026.11.01-Dual.iso',
-    channel: 'Linux Distros',
-    sizeBytes: 1_288_490_188,
-    published: 'Yesterday',
-    autoDownload: false,
-    magnet: 'magnet:?xt=urn:btih:e06c138f6bdf1f50a8c279cbe8784d5df684a20b&dn=Arch-Linux-2026.11.01-Dual.iso&tr=udp%3A%2F%2Ftracker.opentrackr.org%3A1337%2Fannounce',
-  },
-  {
-    id: 'f_blender',
-    title: 'Blender-4.3.0-Daily-Snapshot.tar.xz',
-    channel: 'Blender Releases',
-    sizeBytes: 450_887_680,
-    published: '3d ago',
-    autoDownload: false,
-    magnet: 'magnet:?xt=urn:btih:c12056fae8590c7931ef827727e57c6b412128e4&dn=Blender-4.3.0-Daily-Snapshot.tar.xz&tr=udp%3A%2F%2Ftracker.opentrackr.org%3A1337%2Fannounce',
-  },
-  {
-    id: 'f_tears',
-    title: 'Tears-Of-Steel-4K-Master-CC.mkv',
-    channel: 'Open Media',
-    sizeBytes: 1_824_522_240,
-    published: '4d ago',
-    autoDownload: true,
-    magnet: 'magnet:?xt=urn:btih:20bb20901e9d0e2e925c27f3aa111b212f717904&dn=Tears-Of-Steel-4K-Master-CC.mkv&tr=udp%3A%2F%2Ftracker.opentrackr.org%3A1337%2Fannounce',
-  },
-  {
-    id: 'f_debian',
-    title: 'Debian-12.8.0-netinst-amd64.iso',
-    channel: 'Linux Distros',
-    sizeBytes: 671_088_640,
-    published: '5d ago',
-    autoDownload: false,
-    magnet: 'magnet:?xt=urn:btih:576566c5a083d9aa8c688321d454fa16b0b2e3e5&dn=Debian-12.8.0-netinst-amd64.iso&tr=udp%3A%2F%2Ftracker.opentrackr.org%3A1337%2Fannounce',
-  },
-];
-
-/**
- * Lightweight XML RSS / Atom parser
- */
-function parseRssFeed(xml: string, channelName: string): FeedItem[] {
-  const items: FeedItem[] = [];
-  const itemBlocks = xml.split(/<item>|<item [^>]*>|<entry>|<entry [^>]*>/i).slice(1);
-
-  for (const block of itemBlocks) {
-    const endPos = block.search(/<\/item>|<\/entry>/i);
-    const content = endPos !== -1 ? block.substring(0, endPos) : block;
-
-    const titleMatch = content.match(/<title[^>]*>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?<\/title>/i);
-    const linkMatch = content.match(/<link[^>]*>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?<\/link>|<link [^>]*href=["']([^"']+)["']/i);
-    const enclosureMatch = content.match(/<enclosure [^>]*url=["']([^"']+)["'][^>]*length=["']?([0-9]*)["']?/i);
-    const dateMatch = content.match(/<pubDate[^>]*>([\s\S]*?)<\/pubDate>|<updated[^>]*>([\s\S]*?)<\/updated>/i);
-
-    const title = titleMatch ? titleMatch[1].trim().replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>') : 'Release Item';
-    let url = enclosureMatch ? enclosureMatch[1] : linkMatch ? (linkMatch[1] || linkMatch[2]) : '';
-    const size = enclosureMatch && enclosureMatch[2] ? parseInt(enclosureMatch[2], 10) : 1_073_741_824;
-    let published = 'Recent';
-
-    if (dateMatch) {
-      try {
-        const rawDate = (dateMatch[1] || dateMatch[2]).trim();
-        const d = new Date(rawDate);
-        if (!isNaN(d.getTime())) {
-          published = d.toLocaleDateString();
-        }
-      } catch {
-        published = 'Recent';
-      }
-    }
-
-    let magnet = url.startsWith('magnet:?') ? url : `magnet:?xt=urn:btih:${Date.now()}&dn=${encodeURIComponent(title)}`;
-    if (url.endsWith('.torrent') || url.includes('.torrent?')) {
-      magnet = url;
-    }
-
-    items.push({
-      id: `feed_${Math.random().toString(36).substring(2, 9)}`,
-      title,
-      channel: channelName,
-      sizeBytes: size,
-      published,
-      autoDownload: false,
-      magnet,
-    });
-  }
-
-  return items;
-}
+const ALL = 'all';
 
 export default function FeedsScreen() {
   const { colors } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
-  const insets = useSafeAreaInsets();
-  const { startTorrent } = useMaglevEngine();
+  const { startTorrent, telemetry } = useMaglevEngine();
 
-  const [channels, setChannels] = useState<string[]>([
-    'All Feeds',
-    'Linux Distros',
-    'Blender Releases',
-    'Open Media',
-  ]);
-  const [selectedChannel, setSelectedChannel] = useState('All Feeds');
-  const [feedItems, setFeedItems] = useState<FeedItem[]>(INITIAL_FALLBACK_FEEDS);
-  const [downloadedIds, setDownloadedIds] = useState<string[]>([]);
-  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [feeds, setFeeds] = useState<Feed[]>(() => loadFeeds());
+  const [states, setStates] = useState<Record<string, FeedState>>({});
+  const [selected, setSelected] = useState<string>(ALL);
+  const [sheetOpen, setSheetOpen] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const [seen, setSeen] = useState<Record<string, string[]>>(() => loadSeen());
+  const [sessionAdded, setSessionAdded] = useState<Set<string>>(() => new Set());
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const { notice, show, dismiss } = useNotice();
 
-  // Modal State for adding new RSS feed
-  const [addModalVisible, setAddModalVisible] = useState(false);
-  const [newFeedUrl, setNewFeedUrl] = useState('');
-  const [newChannelName, setNewChannelName] = useState('');
-  const [newAutoDownload, setNewAutoDownload] = useState(false);
-  const [isSubscribing, setIsSubscribing] = useState(false);
+  // Ids that were unseen when this visit began; keeps "new" stable while the screen is open.
+  const seenRef = useRef(seen);
+  seenRef.current = seen;
+  const statesRef = useRef(states);
+  statesRef.current = states;
 
-  const fetchLiveFeeds = useCallback(async () => {
-    setIsRefreshing(true);
-    const allFetched: FeedItem[] = [];
-
-    for (const feed of DEFAULT_FEED_URLS) {
-      try {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 3500);
-
-        const res = await fetch(feed.url, {
-          signal: controller.signal,
-          headers: { 'User-Agent': 'Maglev-RSS/1.0' },
-        });
-        clearTimeout(timeoutId);
-
-        if (res.ok) {
-          const text = await res.text();
-          const parsed = parseRssFeed(text, feed.channel);
-          if (parsed.length > 0) {
-            allFetched.push(...parsed);
-          }
-        }
-      } catch {
-        // Feed offline, fallback
+  const loadOne = useCallback(async (feed: Feed) => {
+    setStates((p) => ({ ...p, [feed.id]: { status: 'loading', items: p[feed.id]?.items ?? [] } }));
+    try {
+      const parsed = await fetchFeed(feed.url);
+      const items: FeedItem[] = parsed.items.map((i) => ({ ...i, feedId: feed.id }));
+      setStates((p) => ({ ...p, [feed.id]: { status: 'ok', items } }));
+      // First successful load of a feed seeds "seen" so a new feed does not report everything as new.
+      if (!seenRef.current[feed.id]) {
+        const next = { ...seenRef.current, [feed.id]: items.map((i) => i.id) };
+        setSeen(next);
+        saveSeen(next);
       }
+    } catch (e) {
+      setStates((p) => ({
+        ...p,
+        [feed.id]: { status: 'error', items: p[feed.id]?.items ?? [], error: e instanceof Error ? e.message : 'Could not load this feed.' },
+      }));
     }
-
-    if (allFetched.length > 0) {
-      setFeedItems((prev) => {
-        const nonDuplicate = allFetched.filter(
-          (item) => !prev.some((p) => p.title.toLowerCase() === item.title.toLowerCase())
-        );
-        return [...nonDuplicate, ...prev];
-      });
-    }
-
-    setIsRefreshing(false);
   }, []);
 
+  const refreshAll = useCallback(
+    async (list: Feed[]) => {
+      await Promise.all(list.map(loadOne));
+    },
+    [loadOne],
+  );
+
   useEffect(() => {
-    fetchLiveFeeds();
-  }, [fetchLiveFeeds]);
+    void refreshAll(feeds.filter((f) => !statesRef.current[f.id]));
+    // Initial load only; later changes call loadOne directly.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-  const handleDownloadFeed = async (item: FeedItem) => {
-    triggerHaptic('medium');
-    await startTorrent(item.magnet);
-    setDownloadedIds((prev) => [...prev, item.id]);
-  };
-
-  const handleAddFeed = async () => {
-    const url = newFeedUrl.trim();
-    if (!url) {
-      Alert.alert('Missing URL', 'Please enter a valid RSS or Atom feed URL.');
-      return;
-    }
-
-    setIsSubscribing(true);
-    triggerHaptic('light');
-
-    try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 4000);
-
-      const res = await fetch(url, {
-        signal: controller.signal,
-        headers: { 'User-Agent': 'Maglev-RSS/1.0' },
-      });
-      clearTimeout(timeoutId);
-
-      const channel = newChannelName.trim() || 'Custom Feed';
-
-      if (res.ok) {
-        const text = await res.text();
-        const parsed = parseRssFeed(text, channel);
-
-        if (parsed.length > 0) {
-          if (!channels.includes(channel)) {
-            setChannels((prev) => [...prev, channel]);
+  // Leaving the tab marks everything shown as seen.
+  useFocusEffect(
+    useCallback(() => {
+      return () => {
+        const next = { ...seenRef.current };
+        let changed = false;
+        for (const [fid, st] of Object.entries(statesRef.current)) {
+          if (st.status !== 'ok') continue;
+          const merged = Array.from(new Set([...(next[fid] ?? []), ...st.items.map((i) => i.id)]));
+          if (merged.length !== (next[fid] ?? []).length) {
+            next[fid] = merged;
+            changed = true;
           }
-
-          setFeedItems((prev) => [...parsed, ...prev]);
-
-          if (newAutoDownload && parsed[0]) {
-            startTorrent(parsed[0].magnet);
-            setDownloadedIds((prev) => [...prev, parsed[0].id]);
-          }
-
-          setNewFeedUrl('');
-          setNewChannelName('');
-          setNewAutoDownload(false);
-          setAddModalVisible(false);
-          triggerHaptic('medium');
-          return;
         }
-      }
-
-      // If XML parsing returned no items, add nominal channel subscription
-      if (!channels.includes(channel)) {
-        setChannels((prev) => [...prev, channel]);
-      }
-
-      const fallbackItem: FeedItem = {
-        id: `f_${Date.now()}`,
-        title: `${channel} Latest Release`,
-        channel,
-        sizeBytes: 1_048_576_000,
-        published: 'Just now',
-        autoDownload: newAutoDownload,
-        magnet: `magnet:?xt=urn:btih:custom${Date.now()}&dn=${encodeURIComponent(channel)}`,
+        if (changed) {
+          setSeen(next);
+          saveSeen(next);
+        }
       };
+    }, []),
+  );
 
-      setFeedItems((prev) => [fallbackItem, ...prev]);
-      if (newAutoDownload) {
-        startTorrent(fallbackItem.magnet);
-        setDownloadedIds((prev) => [...prev, fallbackItem.id]);
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await refreshAll(feeds);
+    setRefreshing(false);
+  }, [feeds, refreshAll]);
+
+  const addFeed = useCallback(
+    async (rawUrl: string): Promise<string | null> => {
+      const url = normalizeFeedUrl(rawUrl);
+      if (!url) return 'Enter a web address that starts with http:// or https://.';
+      if (feeds.some((f) => f.url === url)) return 'You already follow this feed.';
+      try {
+        const parsed = await fetchFeed(url);
+        const feed: Feed = {
+          id: `feed_${Date.now().toString(36)}`,
+          name: parsed.title.trim() || hostOf(url),
+          url,
+        };
+        const items: FeedItem[] = parsed.items.map((i) => ({ ...i, feedId: feed.id }));
+        const nextFeeds = [...feeds, feed];
+        setFeeds(nextFeeds);
+        saveFeeds(nextFeeds);
+        setStates((p) => ({ ...p, [feed.id]: { status: 'ok', items } }));
+        const nextSeen = { ...seenRef.current, [feed.id]: items.map((i) => i.id) };
+        setSeen(nextSeen);
+        saveSeen(nextSeen);
+        setSelected(feed.id);
+        setSheetOpen(false);
+        return null;
+      } catch (e) {
+        return e instanceof Error ? e.message : 'Could not load this feed.';
       }
+    },
+    [feeds],
+  );
 
-      setNewFeedUrl('');
-      setNewChannelName('');
-      setNewAutoDownload(false);
-      setAddModalVisible(false);
-      triggerHaptic('medium');
-    } catch (e) {
-      Alert.alert(
-        'Subscription Failed',
-        'Could not fetch or parse the RSS feed from the specified URL. Please check your network connection.'
-      );
-    } finally {
-      setIsSubscribing(false);
+  const removeFeed = useCallback(
+    (feed: Feed) => {
+      Alert.alert(`Remove ${feed.name}?`, 'Torrents you already added stay in your list.', [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Remove',
+          style: 'destructive',
+          onPress: () => {
+            const next = feeds.filter((f) => f.id !== feed.id);
+            setFeeds(next);
+            saveFeeds(next);
+            setStates((p) => {
+              const { [feed.id]: _gone, ...rest } = p;
+              return rest;
+            });
+            const nextSeen = { ...seenRef.current };
+            delete nextSeen[feed.id];
+            setSeen(nextSeen);
+            saveSeen(nextSeen);
+            setSelected(ALL);
+          },
+        },
+      ]);
+    },
+    [feeds],
+  );
+
+  const feedById = useMemo(() => new Map(feeds.map((f) => [f.id, f])), [feeds]);
+  const inList = useMemo(() => new Set(telemetry.torrents.map((t) => t.id.toLowerCase())), [telemetry.torrents]);
+
+  const newCount = useMemo(() => {
+    let n = 0;
+    for (const f of feeds) {
+      const st = states[f.id];
+      if (!st) continue;
+      const known = new Set(seen[f.id] ?? []);
+      n += st.items.filter((i) => !known.has(i.id)).length;
     }
-  };
+    return n;
+  }, [feeds, states, seen]);
 
-  const filteredItems = feedItems.filter(
-    (item) => selectedChannel === 'All Feeds' || item.channel === selectedChannel
+  const visibleFeeds = selected === ALL ? feeds : feeds.filter((f) => f.id === selected);
+  const items = useMemo(() => {
+    const all: FeedItem[] = [];
+    for (const f of visibleFeeds) all.push(...(states[f.id]?.items ?? []));
+    return all.sort((a, b) => (b.publishedAt ?? 0) - (a.publishedAt ?? 0));
+  }, [visibleFeeds, states]);
+  const errored = visibleFeeds.filter((f) => states[f.id]?.status === 'error');
+  const loadingAny = visibleFeeds.some((f) => !states[f.id] || states[f.id].status === 'loading');
+
+  const isAdded = useCallback(
+    (item: FeedItem) => sessionAdded.has(`${item.feedId}:${item.id}`) || (!!item.infoHash && inList.has(item.infoHash)),
+    [inList, sessionAdded],
+  );
+
+  const handleAdd = useCallback(
+    async (item: FeedItem) => {
+      if (!item.source) return;
+      const key = `${item.feedId}:${item.id}`;
+      setBusyId(key);
+      try {
+        await startTorrent(item.source);
+        setSessionAdded((p) => new Set(p).add(key));
+      } catch (e) {
+        const { duplicate, notice: n } = addErrorNotice(e);
+        if (duplicate) setSessionAdded((p) => new Set(p).add(key));
+        show(n);
+      } finally {
+        setBusyId(null);
+      }
+    },
+    [show, startTorrent],
+  );
+
+  const renderItem = useCallback(
+    ({ item }: { item: FeedItem }) => (
+      <FeedItemRow
+        title={item.title}
+        feedName={feedById.get(item.feedId)?.name ?? ''}
+        sizeBytes={item.sizeBytes}
+        publishedAt={item.publishedAt}
+        hasSource={!!item.source}
+        added={isAdded(item)}
+        busy={busyId === `${item.feedId}:${item.id}`}
+        onAdd={() => handleAdd(item)}
+      />
+    ),
+    [busyId, feedById, handleAdd, isAdded],
+  );
+
+  const sheet = <NewFeedSheet visible={sheetOpen} onClose={() => setSheetOpen(false)} onSubmit={addFeed} />;
+
+  if (feeds.length === 0) {
+    return (
+      <Screen title="Feeds">
+        <EmptyBlock
+          icon="feeds"
+          title="No feeds yet"
+          body="Follow an RSS or Atom feed to see new torrents here."
+          primary={{ label: 'New feed', icon: 'plus', onPress: () => setSheetOpen(true) }}
+        />
+        {sheet}
+      </Screen>
+    );
+  }
+
+  const selectedFeed = selected === ALL ? null : feedById.get(selected) ?? null;
+
+  const header = (
+    <View>
+      {notice ? <NoticeBanner notice={notice} onDismiss={dismiss} /> : null}
+      {errored.map((f) => (
+        <View key={f.id} style={styles.errorWrap}>
+          <Banner
+            tone="danger"
+            title={`Could not load ${f.name}`}
+            body={states[f.id]?.error}
+            actionLabel="Retry"
+            onAction={() => void loadOne(f)}
+          />
+        </View>
+      ))}
+    </View>
   );
 
   return (
-    <View style={[styles.container, { paddingTop: insets.top }]}>
-      <HeaderBar />
-
-      {/* Screen Header & Add Feed Action */}
-      <View style={styles.topBar}>
-        <View style={styles.titleCol}>
-          <Text style={styles.screenHeading}>Automated Feeds</Text>
-          <Text style={styles.screenSubheading}>
-            RSS/Atom channels with smart background release ingestion
-          </Text>
-        </View>
-        <View style={styles.topActionsRow}>
-          <TouchableOpacity
-            style={styles.refreshBtn}
-            onPress={fetchLiveFeeds}
-            accessibilityRole="button"
-            accessibilityLabel="Refresh feeds"
-          >
-            {isRefreshing ? (
-              <ActivityIndicator size="small" color={colors.accentText} />
-            ) : (
-              <Ionicons name="refresh" size={16} color={colors.accentText} />
-            )}
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.addFeedBtn}
-            onPress={() => setAddModalVisible(true)}
-            accessibilityRole="button"
-            accessibilityLabel="Add RSS Feed"
-          >
-            <Text style={styles.addFeedBtnText}>+ FEED</Text>
-          </TouchableOpacity>
-        </View>
+    <Screen title="Feeds">
+      <View style={styles.sub}>
+        <Text style={styles.subText} accessibilityLiveRegion="polite">
+          {`${feeds.length} ${feeds.length === 1 ? 'feed' : 'feeds'} · ${newCount} new`}
+        </Text>
+        <Button label="New feed" icon="plus" onPress={() => setSheetOpen(true)} />
       </View>
-
-      {/* Channel Filter Pills */}
-      <View style={styles.channelScrollWrapper}>
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.channelScroll}
-        >
-          {channels.map((ch) => {
-            const isSelected = selectedChannel === ch;
-            return (
-              <TouchableOpacity
-                key={ch}
-                style={[
-                  styles.channelPill,
-                  isSelected ? styles.channelPillActive : styles.channelPillInactive,
-                ]}
-                onPress={() => {
-                  triggerHaptic('light');
-                  setSelectedChannel(ch);
-                }}
-                accessibilityRole="button"
-                accessibilityLabel={`Channel ${ch}`}
-              >
-                <Text
-                  style={[
-                    styles.channelPillText,
-                    isSelected ? styles.channelPillTextActive : styles.channelPillTextInactive,
-                  ]}
-                >
-                  {ch}
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
-        </ScrollView>
-      </View>
-
-      {/* Feed Releases List */}
-      <ScrollView
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={styles.feedScroll}
-      >
-        <View style={styles.feedList}>
-          {filteredItems.map((item) => {
-            const isDownloaded = downloadedIds.includes(item.id);
-            return (
-              <View key={item.id} style={styles.feedCard}>
-                <View style={styles.cardHeaderRow}>
-                  <View style={styles.channelBadge}>
-                    <Text style={styles.channelBadgeText}>{item.channel}</Text>
-                  </View>
-                  <View style={styles.metaRight}>
-                    {item.autoDownload && (
-                      <View style={styles.autoBadge}>
-                        <Text style={styles.autoBadgeText}>AUTO</Text>
-                      </View>
-                    )}
-                    <Text style={styles.publishedText}>{item.published}</Text>
-                  </View>
-                </View>
-
-                <Text style={styles.feedTitle} numberOfLines={2}>
-                  {item.title}
-                </Text>
-
-                <View style={styles.cardFooterRow}>
-                  <Text style={styles.sizeText}>{formatBytes(item.sizeBytes)}</Text>
-
-                  <TouchableOpacity
-                    style={[styles.downloadBtn, isDownloaded && styles.downloadBtnDone]}
-                    onPress={() => !isDownloaded && handleDownloadFeed(item)}
-                    disabled={isDownloaded}
-                    accessibilityRole="button"
-                    accessibilityLabel={
-                      isDownloaded
-                        ? `Already downloading ${item.title}`
-                        : `Download ${item.title}`
-                    }
-                  >
-                    <Text
-                      style={[
-                        styles.downloadBtnText,
-                        isDownloaded && styles.downloadBtnTextDone,
-                      ]}
-                    >
-                      {isDownloaded ? 'ADDED ✓' : '+ DOWNLOAD'}
-                    </Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
-            );
-          })}
-        </View>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chipScroll} contentContainerStyle={styles.chips}>
+        <Chip label="All" selected={selected === ALL} onPress={() => setSelected(ALL)} />
+        {feeds.map((f) => (
+          <Chip key={f.id} label={f.name} selected={selected === f.id} onPress={() => setSelected(f.id)} />
+        ))}
       </ScrollView>
-
-      {/* Add Feed Modal */}
-      <Modal
-        visible={addModalVisible}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setAddModalVisible(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Subscribe to RSS Feed</Text>
-              <TouchableOpacity
-                onPress={() => setAddModalVisible(false)}
-                accessibilityRole="button"
-                accessibilityLabel="Close add feed dialog"
-                style={styles.modalCloseBtn}
-              >
-                <Ionicons name="close" size={20} color={colors.textMuted} />
-              </TouchableOpacity>
-            </View>
-
-            <Text style={styles.inputLabel}>FEED URL (RSS/ATOM)</Text>
-            <TextInput
-              style={styles.modalInput}
-              placeholder="https://example.com/feed.xml"
-              placeholderTextColor={colors.textMuted}
-              value={newFeedUrl}
-              onChangeText={setNewFeedUrl}
-              autoCapitalize="none"
-              autoCorrect={false}
-            />
-
-            <Text style={styles.inputLabel}>CHANNEL NAME</Text>
-            <TextInput
-              style={styles.modalInput}
-              placeholder="e.g. Linux Releases"
-              placeholderTextColor={colors.textMuted}
-              value={newChannelName}
-              onChangeText={setNewChannelName}
-            />
-
-            <View style={styles.modalSwitchRow}>
-              <View style={styles.modalSwitchTextCol}>
-                <Text style={styles.modalSwitchTitle}>Auto-Download New Releases</Text>
-                <Text style={styles.modalSwitchSubtitle}>
-                  Automatically begin transfers when published
-                </Text>
-              </View>
-              <Switch
-                value={newAutoDownload}
-                onValueChange={setNewAutoDownload}
-                trackColor={{ false: colors.surfaceRaised, true: colors.accent }}
-                thumbColor={newAutoDownload ? colors.bg : colors.textMuted}
-              />
-            </View>
-
-            <TouchableOpacity
-              style={[styles.modalSubmitBtn, isSubscribing && styles.modalSubmitBtnDisabled]}
-              onPress={handleAddFeed}
-              disabled={isSubscribing}
-              accessibilityRole="button"
-              accessibilityLabel="Confirm add feed"
-            >
-              {isSubscribing ? (
-                <ActivityIndicator size="small" color={colors.onAccent} />
-              ) : (
-                <Text style={styles.modalSubmitBtnText}>SUBSCRIBE & SYNC</Text>
-              )}
-            </TouchableOpacity>
-          </View>
+      {selectedFeed ? (
+        <View style={styles.feedBar}>
+          <Text style={styles.feedHost} numberOfLines={1}>
+            {hostOf(selectedFeed.url)}
+          </Text>
+          <Button label="Remove feed" variant="danger" onPress={() => removeFeed(selectedFeed)} />
         </View>
-      </Modal>
-    </View>
+      ) : null}
+      <FlatList
+        data={items}
+        keyExtractor={(i) => `${i.feedId}:${i.id}`}
+        renderItem={renderItem}
+        ListHeaderComponent={header}
+        ListEmptyComponent={
+          loadingAny ? (
+            <SkeletonRows />
+          ) : errored.length > 0 ? null : (
+            <EmptyBlock icon="feeds" title="Nothing here yet" body="Pull down to check for new releases." />
+          )
+        }
+        contentContainerStyle={styles.list}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.accent} colors={[colors.accent]} progressBackgroundColor={colors.surface} />}
+        keyboardShouldPersistTaps="handled"
+        initialNumToRender={12}
+        windowSize={7}
+      />
+      {sheet}
+    </Screen>
   );
 }
 
-const makeStyles = (colors: ThemeColors) => StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: colors.bg,
-  },
-  topBar: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-  },
-  titleCol: {
-    flex: 1,
-  },
-  topActionsRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  refreshBtn: {
-    minWidth: touch.min,
-    minHeight: touch.min,
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  screenHeading: {
-    color: colors.text,
-    fontSize: 16,
-    ...fonts.monoBold,
-    marginBottom: 2,
-  },
-  screenSubheading: {
-    color: colors.textMuted,
-    fontSize: 10,
-    ...fonts.mono,
-  },
-  addFeedBtn: {
-    minHeight: touch.min,
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.accent,
-    borderRadius: 8,
-    paddingHorizontal: 14,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  addFeedBtnText: {
-    color: colors.accentText,
-    fontSize: 11,
-    ...fonts.monoBold,
-  },
-  channelScrollWrapper: {
-    marginVertical: 4,
-  },
-  channelScroll: {
-    paddingHorizontal: 16,
-    flexDirection: 'row',
-    gap: 8,
-  },
-  channelPill: {
-    minHeight: touch.min,
-    paddingHorizontal: 14,
-    borderRadius: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  channelPillActive: {
-    backgroundColor: colors.accent,
-  },
-  channelPillInactive: {
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  channelPillText: {
-    fontSize: 11,
-    ...fonts.monoBold,
-  },
-  channelPillTextActive: {
-    color: colors.onAccent,
-  },
-  channelPillTextInactive: {
-    color: colors.textMuted,
-  },
-  feedScroll: {
-    paddingHorizontal: 16,
-    paddingTop: 10,
-    paddingBottom: 40,
-  },
-  feedList: {
-    gap: 12,
-  },
-  feedCard: {
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 12,
-    padding: 14,
-  },
-  cardHeaderRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 8,
-  },
-  channelBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    backgroundColor: colors.surfaceRaised,
-    borderRadius: 4,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  channelBadgeText: {
-    color: colors.download,
-    fontSize: 9,
-    ...fonts.monoBold,
-  },
-  metaRight: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  autoBadge: {
-    paddingHorizontal: 6,
-    paddingVertical: 1,
-    backgroundColor: alpha(colors.accent, 0.15),
-    borderRadius: 4,
-    borderWidth: 1,
-    borderColor: colors.accent,
-  },
-  autoBadgeText: {
-    color: colors.accentText,
-    fontSize: 8,
-    ...fonts.monoBold,
-  },
-  publishedText: {
-    color: colors.textMuted,
-    fontSize: 10,
-    ...fonts.mono,
-  },
-  feedTitle: {
-    color: colors.text,
-    fontSize: 13,
-    ...fonts.monoBold,
-    lineHeight: 18,
-    marginBottom: 12,
-  },
-  cardFooterRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  sizeText: {
-    color: colors.textMuted,
-    fontSize: 11,
-    ...fonts.mono,
-  },
-  downloadBtn: {
-    minWidth: 100,
-    minHeight: touch.min,
-    backgroundColor: colors.accent,
-    borderRadius: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 12,
-  },
-  downloadBtnDone: {
-    backgroundColor: colors.surfaceRaised,
-    borderWidth: 1,
-    borderColor: colors.accent,
-  },
-  downloadBtnText: {
-    color: colors.onAccent,
-    fontSize: 11,
-    ...fonts.monoBold,
-  },
-  downloadBtnTextDone: {
-    color: colors.accentText,
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: colors.overlay,
-    justifyContent: 'center',
-    paddingHorizontal: 20,
-  },
-  modalContent: {
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 14,
-    padding: 20,
-  },
-  modalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 16,
-  },
-  modalCloseBtn: {
-    minWidth: 32,
-    minHeight: 32,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  modalTitle: {
-    color: colors.text,
-    fontSize: 14,
-    ...fonts.monoBold,
-  },
-  inputLabel: {
-    color: colors.textMuted,
-    fontSize: 9,
-    ...fonts.monoBold,
-    marginBottom: 6,
-    letterSpacing: 0.5,
-  },
-  modalInput: {
-    minHeight: touch.min,
-    backgroundColor: colors.bg,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    color: colors.text,
-    fontSize: 11,
-    ...fonts.mono,
-    marginBottom: 14,
-  },
-  modalSwitchRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginVertical: 8,
-  },
-  modalSwitchTextCol: {
-    flex: 1,
-    marginRight: 10,
-  },
-  modalSwitchTitle: {
-    color: colors.text,
-    fontSize: 11,
-    ...fonts.monoBold,
-  },
-  modalSwitchSubtitle: {
-    color: colors.textMuted,
-    fontSize: 9,
-    ...fonts.mono,
-    marginTop: 2,
-  },
-  modalSubmitBtn: {
-    minHeight: touch.min,
-    backgroundColor: colors.accent,
-    borderRadius: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 16,
-  },
-  modalSubmitBtnDisabled: {
-    opacity: 0.6,
-  },
-  modalSubmitBtnText: {
-    color: colors.onAccent,
-    fontSize: 11,
-    ...fonts.monoBold,
-  },
-});
+const makeStyles = (c: ThemeColors) =>
+  StyleSheet.create({
+    sub: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: spacing.lg, paddingBottom: spacing.sm },
+    subText: { ...type.mono, fontSize: 13, color: c.textMuted },
+    chipScroll: { flexGrow: 0, marginBottom: spacing.sm },
+    chips: { paddingHorizontal: spacing.lg, gap: spacing.sm },
+    feedBar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: spacing.lg, marginBottom: spacing.sm },
+    feedHost: { ...type.mono, flex: 1, fontSize: 12, color: c.textMuted, marginRight: spacing.md },
+    errorWrap: { marginBottom: spacing.sm },
+    list: { paddingHorizontal: spacing.lg, paddingBottom: spacing.xxxl, flexGrow: 1 },
+  });
