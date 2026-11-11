@@ -113,6 +113,37 @@ pub extern "system" fn Java_com_maglev_engine_NativeCore_nativeResolveMetadata(
 }
 
 #[no_mangle]
+pub extern "system" fn Java_com_maglev_engine_NativeCore_nativeResolveActivity(
+    mut env: JNIEnv,
+    _class: JClass,
+    info_hash: JString,
+) -> jstring {
+    let out = match read_str(&mut env, &info_hash) {
+        Some(h) => guarded(|| with_engine(|e| result_envelope(e.resolve_activity(&h)))),
+        None => bad_argument(),
+    };
+    reply(&mut env, &out)
+}
+
+#[no_mangle]
+pub extern "system" fn Java_com_maglev_engine_NativeCore_nativeCancelResolve(
+    mut env: JNIEnv,
+    _class: JClass,
+    info_hash: JString,
+) -> jstring {
+    let out = match read_str(&mut env, &info_hash) {
+        Some(h) => guarded(|| {
+            with_engine(|e| match e.cancel_resolve(&h) {
+                Ok(()) => ok_empty(),
+                Err(err) => err.to_json(),
+            })
+        }),
+        None => bad_argument(),
+    };
+    reply(&mut env, &out)
+}
+
+#[no_mangle]
 pub extern "system" fn Java_com_maglev_engine_NativeCore_nativeAddTorrent(
     mut env: JNIEnv,
     _class: JClass,
