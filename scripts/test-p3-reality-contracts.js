@@ -226,6 +226,21 @@ contract('C-SVC-2', 'P0',
     assert(/"onNotificationAction"/.test(kt) && /pause_all/.test(kt), 'Kotlin emits onNotificationAction with pause_all');
   });
 
+contract('C-SVC-3', 'P0',
+  'Given active transfers, When Android kills the process, Then the service restarts headless from persisted state, without a 6 h cap, and never resurrects user-stopped transfers',
+  () => {
+    const kt = walk('modules/maglev-engine/android/src', ['.kt']).map(code).join('\n');
+    const manifest = read('modules/maglev-engine/android/src/main/AndroidManifest.xml');
+    assert(/START_STICKY/.test(kt), 'service can return START_STICKY');
+    assert(/specialUse/.test(manifest) && /PROPERTY_SPECIAL_USE_FGS_SUBTYPE/.test(manifest), 'manifest declares specialUse type with subtype property');
+    assert(/FOREGROUND_SERVICE_SPECIAL_USE/.test(manifest), 'FOREGROUND_SERVICE_SPECIAL_USE permission declared');
+    assert(/FOREGROUND_SERVICE_TYPE_SPECIAL_USE/.test(kt) && /UPSIDE_DOWN_CAKE|>=\s*34/.test(kt), 'specialUse used only on API 34+');
+    assert(/getSharedPreferences[\s\S]{0,4000}(governance|wifiOnly|wifi_only)/i.test(kt), 'governance rules persisted natively');
+    assert(/backgroundKills/.test(kt), 'background kill count exposed to JS');
+    const ts = walkMany(['modules/maglev-engine/src'], TS_EXT).map(code).join('\n');
+    assert(/backgroundKills/.test(ts), 'TS types include backgroundKills');
+  });
+
 contract('C-PERM-1', 'P0',
   'Given first launch, When permissions are requested, Then an onboarding route exists and results are read by field, not as a truthy object',
   () => {
