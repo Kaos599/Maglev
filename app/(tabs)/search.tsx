@@ -377,6 +377,7 @@ export default function SearchScreen() {
         <IconButton
           icon="filter"
           badge={prefs.enabled.length}
+          selected={!!sourceFilter}
           onPress={openProviders}
           accessibilityLabel={`Search sources, ${prefs.enabled.length} on`}
         />
