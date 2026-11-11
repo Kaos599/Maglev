@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 261" width="200" height="261">
+  <title>Maglev mark</title>
+  <g fill="#D0FF00">
+    <path d="M0 0H52V205L0 261Z"/>
+    <path d="M60 0L100 92L140 0V72L100 175L60 72Z"/>
+    <path d="M148 0H200V180H148Z"/>
+  </g>
+</svg>
