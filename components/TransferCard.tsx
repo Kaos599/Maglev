@@ -1,516 +1,221 @@
-import { useMemo } from 'react';
-import React, { useRef } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Animated, Linking } from 'react-native';
-import { useRouter } from 'expo-router';
-import { TorrentTelemetry } from 'maglev-engine';
-import { formatBytes, formatEta, formatSpeed } from '../constants/format';
-import { triggerHaptic } from '../constants/haptics';
-import { useMaglevEngine } from '../context/EngineContext';
-import {
-  PixelClockIcon,
-  PixelCheckDoneIcon,
-  PixelPauseBarsIcon,
-  PixelStopSquareIcon,
-  PixelPlayTriangleIcon,
-  PixelArrowDownIcon,
-  PixelArrowUpIcon,
-} from './PixelIcons';
+import React, { memo, useMemo } from 'react';
+import { StyleSheet, Text, View } from 'react-native';
+import type { TorrentTelemetry } from 'maglev-engine';
 import { useTheme } from '../context/ThemeContext';
-import { alpha, fonts, touch, ThemeColors } from '../constants/theme';
+import { ThemeColors, alpha, radius, spacing, type } from '../constants/theme';
+import { formatBytes, formatEta, formatSpeed } from '../constants/format';
+import { PixelIcon, PixelIconName } from './PixelIcon';
+import { IconButton, PressableScale, ProgressBar, ProgressTone } from './ui';
 
-interface TransferCardProps {
+export const CARD_HEIGHT = 124;
+export const CARD_GAP = 8;
+
+export interface TransferCardProps {
   torrent: TorrentTelemetry;
+  selectionMode: boolean;
+  selected: boolean;
+  onPress: (id: string) => void;
+  onLongPress: (id: string) => void;
+  onPause: (id: string) => void;
+  onResume: (id: string) => void;
 }
 
-export const TransferCard: React.FC<TransferCardProps> = ({ torrent }) => {
+interface Badge {
+  text: string;
+  tone: 'neutral' | 'accent' | 'danger';
+}
+
+type CardAction = { icon: PixelIconName; label: string; kind: 'pause' | 'resume' } | null;
+
+function pausedLabel(pausedBy: string | null | undefined): string {
+  switch (pausedBy) {
+    case 'wifi_only':
+      return 'Waiting for Wi-Fi';
+    case 'battery':
+    case 'charging_only':
+      return 'Paused to save battery';
+    case 'seed_limit':
+      return 'Done';
+    case 'fgs_timeout':
+      return 'Paused in background';
+    default:
+      return 'Paused';
+  }
+}
+
+function badgeFor(t: TorrentTelemetry): Badge | null {
+  switch (t.state) {
+    case 'INITIALIZING':
+      return { text: 'Getting info', tone: 'neutral' };
+    case 'QUEUED':
+      return { text: 'Queued', tone: 'neutral' };
+    case 'SEEDING':
+      return { text: 'Seeding', tone: 'accent' };
+    case 'PAUSED':
+      return { text: pausedLabel(t.pausedBy), tone: 'neutral' };
+    case 'CHECKING':
+      return { text: 'Checking', tone: 'neutral' };
+    case 'ERROR':
+      return { text: t.error?.message ? t.error.message : 'Something went wrong', tone: 'danger' };
+    case 'COMPLETED':
+      return { text: 'Done', tone: 'accent' };
+    default:
+      return null;
+  }
+}
+
+function actionFor(t: TorrentTelemetry): CardAction {
+  switch (t.state) {
+    case 'DOWNLOADING':
+    case 'SEEDING':
+      return { icon: 'pause', label: 'Pause', kind: 'pause' };
+    case 'PAUSED': {
+      const by: string | null | undefined = t.pausedBy;
+      if (by === 'wifi_only' || by === 'battery' || by === 'charging_only' || by === 'fgs_timeout') return null;
+      return { icon: 'play', label: by === 'seed_limit' ? 'Seed again' : 'Resume', kind: 'resume' };
+    }
+    case 'ERROR':
+      return { icon: 'retry', label: 'Retry', kind: 'resume' };
+    default:
+      return null;
+  }
+}
+
+function toneFor(t: TorrentTelemetry): ProgressTone {
+  switch (t.state) {
+    case 'SEEDING':
+    case 'COMPLETED':
+      return 'seed';
+    case 'PAUSED':
+      return 'paused';
+    case 'ERROR':
+      return 'error';
+    default:
+      return 'download';
+  }
+}
+
+function telemetryLine(t: TorrentTelemetry): string {
+  const total = t.totalSizeBytes > 0 ? formatBytes(t.totalSizeBytes) : '—';
+  const done = formatBytes(t.downloadedBytes);
+  switch (t.state) {
+    case 'DOWNLOADING':
+      return `↓ ${formatSpeed(t.downloadSpeedBytes)} · ${done} / ${total} · ${formatEta(t.etaSeconds)}`;
+    case 'SEEDING':
+      return `↑ ${formatSpeed(t.uploadSpeedBytes)} · ratio ${t.ratio.toFixed(2)} · ${total}`;
+    case 'INITIALIZING':
+      return '—';
+    default:
+      return `${done} / ${total}`;
+  }
+}
+
+function TransferCardImpl({ torrent: t, selectionMode, selected, onPress, onLongPress, onPause, onResume }: TransferCardProps) {
   const { colors } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
-  const router = useRouter();
-  const { pauseTorrent, resumeTorrent, startHttpStream } = useMaglevEngine();
-
-  const buttonScale = useRef(new Animated.Value(1)).current;
-
-  const isDownloading = torrent.state === 'DOWNLOADING';
-  const isSeeding = torrent.state === 'SEEDING';
-  const isPaused = torrent.state === 'PAUSED';
-  const isQueued = torrent.state === 'QUEUED';
-
-  const handleOpenPlay = async (e: any) => {
-    e.stopPropagation?.();
-    triggerHaptic('medium');
-    try {
-      const streamUrl = await startHttpStream(torrent.id, 0);
-      if (streamUrl) {
-        await Linking.openURL(streamUrl);
-      }
-    } catch {
-      // Stream launch fallback
-    }
-  };
-
-  const handleAction = async (e: any) => {
-    e.stopPropagation?.();
-    triggerHaptic(isDownloading ? 'light' : 'medium');
-    if (isDownloading || isSeeding) {
-      await pauseTorrent(torrent.id);
-    } else {
-      await resumeTorrent(torrent.id);
-    }
-  };
-
-  const handleButtonPressIn = () => {
-    Animated.spring(buttonScale, {
-      toValue: 0.88,
-      useNativeDriver: true,
-      friction: 7,
-      tension: 220,
-    }).start();
-  };
-
-  const handleButtonPressOut = () => {
-    Animated.spring(buttonScale, {
-      toValue: 1,
-      useNativeDriver: true,
-      friction: 4,
-      tension: 200,
-    }).start();
-  };
-
-  const getProgressBarColor = () => {
-    if (isDownloading) return colors.download;
-    if (isSeeding) return colors.accent;
-    return colors.borderStrong;
-  };
-
-  const renderBadge = () => {
-    if (isDownloading) {
-      return (
-        <View style={styles.badgeDownloading}>
-          <PixelClockIcon size={9} color={colors.download} />
-          <Text style={styles.badgeTextDownloading}>
-            {formatEta(torrent.etaSeconds)}
-          </Text>
-        </View>
-      );
-    }
-    if (isSeeding) {
-      return (
-        <View style={styles.badgeDone}>
-          <PixelCheckDoneIcon size={9} color={colors.accentText} />
-          <Text style={styles.badgeTextDone}>DONE</Text>
-        </View>
-      );
-    }
-    if (isQueued) {
-      return (
-        <View style={styles.badgeQueued}>
-          <Text style={styles.badgeTextQueued}>[QUEUED]</Text>
-        </View>
-      );
-    }
-    return (
-      <View style={styles.badgePaused}>
-        <Text style={styles.badgeTextPaused}>[PAUSED]</Text>
-      </View>
-    );
-  };
-
-  const renderSpeedMetrics = () => {
-    if (isDownloading) {
-      return (
-        <View style={styles.metricsRow}>
-          <Text style={styles.speedTextDown}>
-            {`↓ ${formatSpeed(torrent.downloadSpeedBytes)}`}
-          </Text>
-          <Text style={styles.bulletDot}>•</Text>
-          <Text style={styles.bytesText}>
-            {`${formatBytes(torrent.downloadedBytes)} / ${formatBytes(torrent.totalSizeBytes)}`}
-          </Text>
-        </View>
-      );
-    }
-    if (isSeeding) {
-      const hasUploadSpeed = torrent.uploadSpeedBytes > 0;
-      return (
-        <View style={styles.metricsRow}>
-          {hasUploadSpeed && (
-            <>
-              <Text style={styles.speedTextUp}>
-                {`↑ ${formatSpeed(torrent.uploadSpeedBytes)}`}
-              </Text>
-              <Text style={styles.bulletDot}>•</Text>
-            </>
-          )}
-          <Text style={styles.bytesText}>
-            {formatBytes(torrent.totalSizeBytes)}
-          </Text>
-        </View>
-      );
-    }
-    if (isQueued) {
-      return (
-        <View style={styles.metricsRow}>
-          <Text style={styles.speedTextQueued}>Waiting in queue</Text>
-          <Text style={styles.bulletDot}>•</Text>
-          <Text style={styles.bytesText}>
-            {formatBytes(torrent.totalSizeBytes)}
-          </Text>
-        </View>
-      );
-    }
-    return (
-      <View style={styles.metricsRow}>
-        <Text style={styles.speedTextPaused}>Paused</Text>
-        <Text style={styles.bulletDot}>•</Text>
-        <Text style={styles.bytesText}>
-          {`${formatBytes(torrent.downloadedBytes)} / ${formatBytes(torrent.totalSizeBytes)}`}
-        </Text>
-      </View>
-    );
-  };
-
-  const renderBottomStats = () => {
-    if (isDownloading) {
-      return (
-        <View style={styles.bottomStatsRight}>
-          <View style={styles.statItem}>
-            <PixelArrowDownIcon size={11} color={colors.download} />
-            <Text style={styles.statCount}>{torrent.peersConnected || 28}</Text>
-          </View>
-          <View style={styles.statItem}>
-            <PixelArrowUpIcon size={11} color={colors.accentText} />
-            <Text style={styles.statCount}>{torrent.seedsConnected || 6}</Text>
-          </View>
-        </View>
-      );
-    }
-    if (isSeeding) {
-      return (
-        <View style={styles.bottomStatsRight}>
-          <View style={styles.statItem}>
-            <PixelArrowUpIcon size={11} color={colors.accentText} />
-            <Text style={styles.statCount}>{`${torrent.peersConnected || 14} peers`}</Text>
-          </View>
-        </View>
-      );
-    }
-    if (isQueued) {
-      return (
-        <View style={styles.bottomStatsRight}>
-          <Text style={styles.pausedRateText}>Slot pending</Text>
-        </View>
-      );
-    }
-    return (
-      <View style={styles.bottomStatsRight}>
-        <Text style={styles.pausedRateText}>0 KB/s</Text>
-      </View>
-    );
-  };
-
-  const renderActionButton = () => {
-    if (isSeeding) {
-      return (
-        <View style={styles.actionColumnDual}>
-          <TouchableOpacity
-            style={styles.actionIconWrapper}
-            onPress={handleOpenPlay}
-            accessibilityRole="button"
-            accessibilityLabel={`Open or Play ${torrent.name}`}
-            activeOpacity={0.85}
-          >
-            <PixelPlayTriangleIcon size={14} color={colors.accentText} />
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.actionIconWrapper}
-            onPress={handleAction}
-            accessibilityRole="button"
-            accessibilityLabel={`Stop seeding ${torrent.name}`}
-            activeOpacity={0.85}
-          >
-            <PixelStopSquareIcon size={12} color={colors.danger} />
-          </TouchableOpacity>
-        </View>
-      );
-    }
-
-    let icon = <PixelPlayTriangleIcon size={14} color={colors.accentText} />;
-    let actionLabel = 'Resume';
-
-    if (isDownloading) {
-      icon = <PixelPauseBarsIcon size={14} color={colors.text} />;
-      actionLabel = 'Pause';
-    }
-
-    return (
-      <View style={styles.actionColumn}>
-        <TouchableOpacity
-          style={styles.actionIconWrapper}
-          onPress={handleAction}
-          onPressIn={handleButtonPressIn}
-          onPressOut={handleButtonPressOut}
-          accessibilityRole="button"
-          accessibilityLabel={`${actionLabel} ${torrent.name}`}
-          activeOpacity={0.85}
-        >
-          <Animated.View style={{ transform: [{ scale: buttonScale }] }}>
-            {icon}
-          </Animated.View>
-        </TouchableOpacity>
-      </View>
-    );
-  };
+  const badge = badgeFor(t);
+  const action = actionFor(t);
+  const indeterminate = t.state === 'INITIALIZING' || t.state === 'CHECKING';
+  const pct = Math.min(100, Math.max(0, t.progressPercent));
+  const badgeColor = badge?.tone === 'danger' ? colors.danger : badge?.tone === 'accent' ? colors.accentText : colors.textMuted;
 
   return (
-    <View style={styles.card}>
-      {/* Left Main Content Area - Tap to view detail */}
-      <TouchableOpacity
-        style={styles.mainContent}
-        activeOpacity={0.85}
-        onPress={() => {
-          triggerHaptic('light');
-          router.push(`/torrent/${torrent.id}` as any);
-        }}
-        accessibilityRole="button"
-        accessibilityLabel={`View detail for ${torrent.name}`}
-      >
-        {/* Row 1: Title + Badge */}
-        <View style={styles.rowTitle}>
-          <Text style={styles.titleText} numberOfLines={1} ellipsizeMode="middle">
-            {torrent.name}
-          </Text>
-          {renderBadge()}
+    <PressableScale
+      onPress={() => onPress(t.id)}
+      onLongPress={() => onLongPress(t.id)}
+      scaleTo={0.99}
+      accessibilityRole="button"
+      accessibilityLabel={`${t.name}, ${badge?.text ?? 'Downloading'}, ${pct.toFixed(0)} percent`}
+      accessibilityState={{ selected: selectionMode ? selected : undefined }}
+      style={[styles.card, selected && styles.cardSelected]}
+    >
+      <View style={styles.row}>
+        {selectionMode ? <PixelIcon name={selected ? 'select' : 'checkbox-empty'} size={20} color={selected ? colors.accentText : colors.textMuted} /> : null}
+        <Text style={styles.name} numberOfLines={1} ellipsizeMode="middle">
+          {t.name}
+        </Text>
+        {badge ? (
+          <View style={[styles.badge, { backgroundColor: alpha(badgeColor, 0.12), borderColor: alpha(badgeColor, 0.4) }]}>
+            <Text style={[styles.badgeText, { color: badgeColor }]} numberOfLines={1}>
+              {badge.text}
+            </Text>
+          </View>
+        ) : null}
+      </View>
+      <Text style={styles.telemetry} numberOfLines={1}>
+        {telemetryLine(t)}
+      </Text>
+      <ProgressBar progress={pct / 100} tone={toneFor(t)} indeterminate={indeterminate} accessibilityLabel={`${t.name} progress`} />
+      <View style={styles.footer}>
+        <Text style={styles.footText}>{indeterminate ? '—' : `${pct.toFixed(1)}%`}</Text>
+        <Text style={[styles.footText, styles.peers]} numberOfLines={1}>
+          {`peers ${t.peersConnected}/${t.peersTotal}`}
+        </Text>
+        <View style={styles.actionSlot}>
+          {action && !selectionMode ? (
+            <IconButton
+              icon={action.icon}
+              accessibilityLabel={`${action.label} ${t.name}`}
+              onPress={() => (action.kind === 'pause' ? onPause(t.id) : onResume(t.id))}
+            />
+          ) : null}
         </View>
-
-        {/* Row 2: Speed + Transfer Metrics */}
-        {renderSpeedMetrics()}
-
-        {/* Row 3: Progress Bar */}
-        <View style={styles.progressTrack}>
-          <View
-            style={[
-              styles.progressFill,
-              {
-                width: `${Math.min(100, Math.max(0, torrent.progressPercent))}%`,
-                backgroundColor: getProgressBarColor(),
-              },
-            ]}
-          />
-        </View>
-
-        {/* Row 4: Percent + Bottom Meta Stats */}
-        <View style={styles.bottomRow}>
-          <Text style={styles.percentText}>{`${torrent.progressPercent.toFixed(1)}%`}</Text>
-          {renderBottomStats()}
-        </View>
-      </TouchableOpacity>
-
-      {/* Dedicated Full-Height Vertical Action Bar */}
-      {renderActionButton()}
-    </View>
+      </View>
+    </PressableScale>
   );
-};
+}
 
-const makeStyles = (colors: ThemeColors) => StyleSheet.create({
-  card: {
-    backgroundColor: colors.surface,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: colors.border,
-    marginHorizontal: 16,
-    marginBottom: 12,
-    overflow: 'hidden',
-    flexDirection: 'row',
-  },
-  mainContent: {
-    flex: 1,
-    padding: 14,
-    justifyContent: 'space-between',
-  },
-  rowTitle: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 8,
-    marginBottom: 6,
-  },
-  titleText: {
-    flex: 1,
-    ...fonts.monoBold,
-    fontSize: 13,
-    color: colors.text,
-    letterSpacing: -0.2,
-  },
-  badgeDownloading: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    backgroundColor: alpha(colors.download, 0.1),
-    borderColor: alpha(colors.download, 0.3),
-    borderWidth: 1,
-    borderRadius: 4,
-    paddingHorizontal: 7,
-    paddingVertical: 2,
-  },
-  badgeTextDownloading: {
-    ...fonts.monoBold,
-    fontSize: 10,
-    color: colors.download,
-  },
-  badgeDone: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    backgroundColor: alpha(colors.accent, 0.15),
-    borderColor: alpha(colors.accent, 0.3),
-    borderWidth: 1,
-    borderRadius: 4,
-    paddingHorizontal: 7,
-    paddingVertical: 2,
-    shadowColor: colors.accent,
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.25,
-    shadowRadius: 6,
-  },
-  badgeTextDone: {
-    ...fonts.monoBold,
-    fontSize: 10,
-    color: colors.accentText,
-  },
-  badgePaused: {
-    backgroundColor: alpha(colors.text, 0.1),
-    borderColor: alpha(colors.text, 0.2),
-    borderWidth: 1,
-    borderRadius: 4,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-  },
-  badgeQueued: {
-    backgroundColor: alpha(colors.download, 0.08),
-    borderColor: alpha(colors.download, 0.25),
-    borderWidth: 1,
-    borderRadius: 4,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-  },
-  badgeTextQueued: {
-    ...fonts.brand,
-    fontSize: 8,
-    color: colors.download,
-  },
-  badgeTextPaused: {
-    ...fonts.brand,
-    fontSize: 8,
-    color: colors.text,
-  },
-  metricsRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    marginBottom: 8,
-  },
-  speedTextDown: {
-    ...fonts.monoBold,
-    fontSize: 11,
-    color: colors.download,
-  },
-  speedTextUp: {
-    ...fonts.monoBold,
-    fontSize: 11,
-    color: colors.accentText,
-  },
-  speedTextPaused: {
-    ...fonts.mono,
-    fontSize: 11,
-    color: colors.textMuted,
-  },
-  speedTextQueued: {
-    ...fonts.mono,
-    fontSize: 11,
-    color: colors.download,
-  },
-  bulletDot: {
-    color: colors.textMuted,
-    fontSize: 10,
-  },
-  bytesText: {
-    ...fonts.mono,
-    fontSize: 11,
-    color: colors.text,
-  },
-  progressTrack: {
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: colors.surfaceRaised,
-    overflow: 'hidden',
-    marginVertical: 4,
-  },
-  progressFill: {
-    height: '100%',
-    borderRadius: 4,
-  },
-  bottomRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingTop: 6,
-    marginTop: 4,
-    borderTopWidth: 1,
-    borderTopColor: alpha(colors.border, 0.7),
-  },
-  percentText: {
-    ...fonts.monoBold,
-    fontSize: 13,
-    color: colors.text,
-  },
-  bottomStatsRight: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-  },
-  statItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  statCount: {
-    ...fonts.mono,
-    fontSize: 11,
-    color: colors.textMuted,
-  },
-  pausedRateText: {
-    ...fonts.mono,
-    fontSize: 10,
-    color: colors.textMuted,
-  },
-  actionColumn: {
-    width: 60,
-    backgroundColor: colors.surfaceRaised,
-    borderLeftWidth: 1,
-    borderLeftColor: colors.border,
-    alignItems: 'center',
-    justifyContent: 'center',
-    minHeight: touch.min,
-  },
-  actionColumnDual: {
-    width: 60,
-    backgroundColor: colors.surfaceRaised,
-    borderLeftWidth: 1,
-    borderLeftColor: colors.border,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    paddingVertical: 8,
-    minHeight: touch.min,
-  },
-  actionIconWrapper: {
-    width: 44,
-    height: 44,
-    borderRadius: 8,
-    backgroundColor: colors.surfaceRaised,
-    borderWidth: 1,
-    borderColor: colors.border,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-});
+function sameCard(a: TransferCardProps, b: TransferCardProps): boolean {
+  const x = a.torrent;
+  const y = b.torrent;
+  return (
+    a.selectionMode === b.selectionMode &&
+    a.selected === b.selected &&
+    a.onPress === b.onPress &&
+    a.onLongPress === b.onLongPress &&
+    a.onPause === b.onPause &&
+    a.onResume === b.onResume &&
+    x.id === y.id &&
+    x.name === y.name &&
+    x.state === y.state &&
+    x.pausedBy === y.pausedBy &&
+    x.error?.message === y.error?.message &&
+    x.downloadSpeedBytes === y.downloadSpeedBytes &&
+    x.uploadSpeedBytes === y.uploadSpeedBytes &&
+    x.progressPercent === y.progressPercent &&
+    x.downloadedBytes === y.downloadedBytes &&
+    x.totalSizeBytes === y.totalSizeBytes &&
+    x.etaSeconds === y.etaSeconds &&
+    x.peersConnected === y.peersConnected &&
+    x.peersTotal === y.peersTotal &&
+    x.ratio === y.ratio
+  );
+}
+
+export const TransferCard = memo(TransferCardImpl, sameCard);
+
+const makeStyles = (c: ThemeColors) =>
+  StyleSheet.create({
+    card: {
+      height: CARD_HEIGHT,
+      marginHorizontal: spacing.lg,
+      paddingLeft: spacing.lg,
+      paddingRight: spacing.sm,
+      paddingTop: spacing.md,
+      backgroundColor: c.surface,
+      borderWidth: 1,
+      borderColor: c.border,
+      borderRadius: radius.lg,
+      justifyContent: 'flex-start',
+    },
+    cardSelected: { borderColor: c.accent, backgroundColor: alpha(c.accent, 0.08) },
+    row: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, height: 24, paddingRight: spacing.sm },
+    name: { ...type.mono, fontSize: 13, color: c.text, flex: 1 },
+    badge: { borderWidth: 1, borderRadius: radius.sm, paddingHorizontal: 6, height: 22, justifyContent: 'center', maxWidth: 160 },
+    badgeText: { ...type.bodyStrong, fontSize: 11 },
+    telemetry: { ...type.mono, fontSize: 12, color: c.textMuted, height: 20, lineHeight: 20, marginTop: 2, marginBottom: spacing.sm },
+    footer: { flexDirection: 'row', alignItems: 'center', height: 44, gap: spacing.md },
+    footText: { ...type.mono, fontSize: 12, color: c.textMuted },
+    peers: { flex: 1 },
+    actionSlot: { width: 44, height: 44 },
+  });

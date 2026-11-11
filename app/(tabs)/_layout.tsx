@@ -1,140 +1,70 @@
-import { useMemo } from 'react';
-import React, { useEffect, useRef } from 'react';
-import { View, StyleSheet, Animated } from 'react-native';
+import React, { useMemo } from 'react';
+import { StyleSheet, View } from 'react-native';
 import { Tabs } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { triggerHaptic } from '../../constants/haptics';
-import {
-  PixelNavTransfersIcon,
-  PixelNavSearchIcon,
-  PixelNavFeedsIcon,
-  PixelNavConfigIcon,
-} from '../../components/PixelIcons';
+import { PixelIcon, PixelIconName } from '../../components/PixelIcon';
 import { useTheme } from '../../context/ThemeContext';
-import { alpha, fonts, ThemeColors } from '../../constants/theme';
+import { ThemeColors, type } from '../../constants/theme';
 
-interface AnimatedTabIconProps {
-  focused: boolean;
-  children: React.ReactNode;
-}
+const TAB_BAR_HEIGHT = 56;
 
-const AnimatedTabIcon: React.FC<AnimatedTabIconProps> = ({ focused, children }) => {
+function TabIcon({ name, focused }: { name: PixelIconName; focused: boolean }) {
   const { colors } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
-  const scaleAnim = useRef(new Animated.Value(focused ? 1.08 : 1)).current;
-
-  useEffect(() => {
-    Animated.spring(scaleAnim, {
-      toValue: focused ? 1.1 : 1,
-      useNativeDriver: true,
-      friction: 6,
-      tension: 120,
-    }).start();
-  }, [focused, scaleAnim]);
-
   return (
-    <Animated.View style={[styles.iconContainer, { transform: [{ scale: scaleAnim }] }]}>
-      {children}
-      {focused && <View style={styles.neonDot} />}
-    </Animated.View>
+    <View style={styles.iconWrap}>
+      <View style={[styles.bar, focused && styles.barActive]} />
+      <PixelIcon name={name} size={20} color={focused ? colors.accentText : colors.textMuted} />
+    </View>
   );
-};
+}
 
 export default function TabLayout() {
   const { colors } = useTheme();
-  const styles = useMemo(() => makeStyles(colors), [colors]);
+  const insets = useSafeAreaInsets();
+
+  const tab = (name: string, title: string, icon: PixelIconName) => (
+    <Tabs.Screen
+      name={name}
+      options={{
+        title,
+        tabBarAccessibilityLabel: title,
+        tabBarIcon: ({ focused }) => <TabIcon name={icon} focused={focused} />,
+      }}
+    />
+  );
+
   return (
     <Tabs
-      screenListeners={{
-        tabPress: () => {
-          triggerHaptic('selection');
-        },
-      }}
+      screenListeners={{ tabPress: () => triggerHaptic('selection') }}
       screenOptions={{
         headerShown: false,
         tabBarStyle: {
           backgroundColor: colors.bg,
           borderTopWidth: 1,
           borderTopColor: colors.border,
-          height: 60,
-          paddingBottom: 8,
-          paddingTop: 6,
+          height: TAB_BAR_HEIGHT + insets.bottom,
+          paddingBottom: insets.bottom,
+          paddingTop: 0,
         },
+        tabBarItemStyle: { height: TAB_BAR_HEIGHT },
         tabBarActiveTintColor: colors.accentText,
-        tabBarInactiveTintColor: alpha(colors.paused, 0.7),
-        tabBarLabelStyle: {
-          fontSize: 8,
-          ...fonts.brand,
-          letterSpacing: 0.3,
-        },
+        tabBarInactiveTintColor: colors.textMuted,
+        tabBarLabelStyle: { ...type.bodyStrong, fontSize: 11 },
       }}
     >
-      <Tabs.Screen
-        name="index"
-        options={{
-          title: 'TRANSFERS',
-          tabBarIcon: ({ color, focused }) => (
-            <AnimatedTabIcon focused={focused}>
-              <PixelNavTransfersIcon size={20} color={focused ? colors.accentText : color} />
-            </AnimatedTabIcon>
-          ),
-        }}
-      />
-      <Tabs.Screen
-        name="search"
-        options={{
-          title: 'SEARCH',
-          tabBarIcon: ({ color, focused }) => (
-            <AnimatedTabIcon focused={focused}>
-              <PixelNavSearchIcon size={20} color={focused ? colors.accentText : color} />
-            </AnimatedTabIcon>
-          ),
-        }}
-      />
-      <Tabs.Screen
-        name="feeds"
-        options={{
-          title: 'FEEDS',
-          tabBarIcon: ({ color, focused }) => (
-            <AnimatedTabIcon focused={focused}>
-              <PixelNavFeedsIcon size={20} color={focused ? colors.accentText : color} />
-            </AnimatedTabIcon>
-          ),
-        }}
-      />
-      <Tabs.Screen
-        name="settings"
-        options={{
-          title: 'SETTINGS',
-          tabBarIcon: ({ color, focused }) => (
-            <AnimatedTabIcon focused={focused}>
-              <PixelNavConfigIcon size={20} color={focused ? colors.accentText : color} />
-            </AnimatedTabIcon>
-          ),
-        }}
-      />
+      {tab('index', 'Transfers', 'transfers')}
+      {tab('search', 'Search', 'search')}
+      {tab('feeds', 'Feeds', 'feeds')}
+      {tab('settings', 'Settings', 'settings')}
     </Tabs>
   );
 }
 
-const makeStyles = (colors: ThemeColors) => StyleSheet.create({
-  iconContainer: {
-    position: 'relative',
-    alignItems: 'center',
-    justifyContent: 'center',
-    width: 24,
-    height: 24,
-  },
-  neonDot: {
-    position: 'absolute',
-    top: -2,
-    right: -4,
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: colors.accent,
-    shadowColor: colors.accent,
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.8,
-    shadowRadius: 4,
-  },
-});
+const makeStyles = (c: ThemeColors) =>
+  StyleSheet.create({
+    iconWrap: { alignItems: 'center', justifyContent: 'center', width: 44, height: 28 },
+    bar: { width: 24, height: 2, backgroundColor: 'transparent', marginBottom: 4 },
+    barActive: { backgroundColor: c.accent },
+  });
