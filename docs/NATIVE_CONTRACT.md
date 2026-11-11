@@ -211,3 +211,114 @@ librqbit has no reannounce API. The workaround is `Session::pause` followed by `
 
 ### 10.6 Parked
 **Wi-Fi and mobile data at once** is Phase 4 research. librqbit creates and connects its sockets internally and has no pre-connect hook (`ConnectOpts` only has `source_port` and `bind_device`), so it would need forks of librqbit, librqbit-dualstack-sockets and librqbit-utp. SO_BINDTODEVICE from an unprivileged Android app is also unverified.
+
+## 11. Wave 4: parity features (2026-11-11)
+
+User decisions (2026-11-11): magnet sharing sends the link only; the scheduler wakes through an inexact alarm; feed rules run in the background through WorkManager. Grounding: librqbit v9.1.0 source (`limits.rs`, `torrent_state/live/mod.rs`) and developer.android.com, "Restrictions on starting a foreground service from the background".
+
+**Background-start rule (applies to 11.5 and 11.6).** On Android 12+ an alarm or a worker may call `startForegroundService` only when one of the exemptions in that page holds. The exemption Maglev relies on is the battery one: "The user turns off battery optimizations for your app", which onboarding already requests. Kotlin wraps every background start in `try/catch (ForegroundServiceStartNotAllowedException)`. If the start is refused, Kotlin posts a normal notification on a new channel, `maglev_reminders` (default importance). Tapping it starts the service, because a notification tap is an exempt user action. The texts are given below. Nothing ever fails silently.
+
+### 11.1 Share magnet link
+- The share payload is **only** the magnet URI. On Android, `Share.share({ message: magnet })` sets only `EXTRA_TEXT`. Pass no `title`, no `url` and no extra text.
+- The magnet comes from the same source as "Copy magnet". The Detail overflow sheet gets a "Share magnet link" row (icon `share`), placed directly under "Copy magnet".
+- Exporting a `.torrent` file is out of scope.
+
+### 11.2 Per-torrent speed limits
+librqbit 9.1 already has a per-torrent `Limits` (`TorrentStateLive.ratelimits`). Uploads acquire the torrent limiter and then the session limiter. The torrent limiter is built only from `AddTorrentOptions.ratelimits`, when the live state is created.
+- **Patch:** add `ManagedTorrent::set_ratelimits(&self, cfg: LimitsConfig)` to the vendored crate. It sets `set_download_bps`/`set_upload_bps` on the live state's limiter. It also stores `cfg`, so the next live state (after a pause/unpause or recheck) is built with it. Before writing it, confirm that the download path acquires the torrent limiter as well (around `live/mod.rs` line 1741). If it doesn't, add that one call to the patch. Add the entry to `MAGLEV_PATCH.md`.
+- **JNI:** `nativeSetTorrentLimits(id: String, json: String): String`. The JSON is `{"down_bps":u64,"up_bps":u64}`, where `0` means no limit. It returns a Result; the only error is `NOT_FOUND`. Values above `u32::MAX` are clamped.
+- **Persistence:** stored in a sidecar, `<sessionDir>/maglev-limits.json`, keyed by info-hash. It is re-applied on restore, re-add and recheck.
+- **Snapshot:** gains `down_limit_bps: u64` and `up_limit_bps: u64` (0 = none).
+- **Global limits still apply.** The effective speed is the lower of the two. The UI says "This torrent: 2 MB/s. The overall limit still applies."
+- **Add:** `nativeAddTorrent` options gain optional `"down_limit_bps"` and `"up_limit_bps"`.
+
+### 11.3 Move finished or active downloads
+- **New state `MOVING`** joins `TorrentState` (and SM-1). The snapshot gains `move_progress: f64 | null`, from 0 to 1 by bytes, and non-null only while `MOVING`.
+- **JNI:** `nativeMoveStorage(id: String, destDir: String): String`. It returns a Result **immediately**, and the move runs on the engine runtime. `destDir` is an absolute POSIX directory, and Rust creates it. The torrent's own layout is kept: a multi-file torrent moves to `<destDir>/<name>/`, a single file to `<destDir>/<file>`.
+- **Errors** (immediate): `NOT_FOUND`; `UNSUPPORTED` when the torrent is `INITIALIZING`, `CHECKING` or `MOVING`, or when the destination equals the current folder; `PERMISSION` when the destination isn't writable.
+- **Algorithm** (holds the tick lock for the whole move, as recheck does):
+  1. Remember the pre-move state and `paused_by`, then pause.
+  2. For each existing file, try `rename`. If that fails with `EXDEV`, copy it in 1 MiB chunks, `fsync`, then remove the source. Update `move_progress` as it goes.
+  3. Re-add the torrent at the new `output_folder` with the same include set, priorities (§10.1) and limits (§11.2), and run the same forget + re-add path as Recheck. The result is `CHECKING` and then the pre-move state. A user-paused torrent stays paused.
+  4. On any I/O error, move the files already moved back, keep the old folder, set `ERROR` with `DISK_FULL` or `PERMISSION`, and leave the torrent recoverable with Retry.
+  5. Remove the now-empty source folder of a multi-file torrent.
+- **Persistence:** the new `output_folder` persists. A crash mid-move restores at the old folder, and files already moved show as missing until Recheck (`FILES_MISSING`). This edge is accepted for v1.
+- **Kotlin:** `moveStorage(id, target)`. `target` is either `{kind:"default"}` or `{kind:"tree", uri}` from the folder picker.
+  - Kotlin resolves it with the same rules as the storage setting (§5).
+  - Only directories Maglev can write **directly** are allowed. A tree that would need staging returns `UNSUPPORTED` with the message "Maglev can't keep active torrents in this folder. Pick a folder inside Download, or use the default."
+  - When the move is cross-volume, check free space first. If `StatFs` free space at the destination is below the bytes still to move plus 200 MB, return `DISK_FULL`.
+
+### 11.4 Streaming
+- **Rust:** `nativeStreamUrl(id, fileIndex)` works for any **included** file, finished or not. It returns `UNSUPPORTED` for a skipped file and adds `"mime"` to the result.
+- **Detail `files[]`** gains `stream_ready_bytes: u64`: the contiguous downloaded bytes from the start of the file, computed from the bitfield. Also add `"tail_ready": bool`, true when the last piece of the file is present (players read the MP4 index there).
+- **Kotlin:** `openStream(url, mime, title)` sends `ACTION_VIEW` with `setDataAndType(Uri.parse(url), mime)` and `EXTRA_TITLE`, through `Intent.createChooser` titled "Play with". It returns `{ok:false, code:"UNSUPPORTED", message:"No video player found. Install VLC or another player."}` when nothing resolves.
+- **UI:** "Stream" is offered for video and audio files (from the `fileKind` helper) while downloading or finished. The sheet shows readiness:
+  - "Ready to play" when it's finished, or when `stream_ready_bytes ≥ min(8 MB, 5% of the file)` and `tail_ready`.
+  - Otherwise "Starting may pause to buffer (N% ready)".
+  - In both cases Stream stays enabled. Streaming a file reorders its pieces through librqbit's stream reader. The UI never says "sequential download".
+- **When you tap Stream,** if the torrent is paused by the user, resume it first and say "Resumed to stream".
+
+### 11.5 Scheduler (SM-26)
+Kotlin owns the scheduler. It is another governance input, next to network and power.
+- **Config** (JS → Kotlin `setSchedule(json)`, persisted in SharedPreferences `maglev_schedule`):
+  `{enabled: bool, rules: [{id: string, days: number[] /* 0=Mon … 6=Sun */, start: "HH:MM", end: "HH:MM", action: "pause" | "limit", downBps?: number, upBps?: number}]}`.
+- **Evaluation:** pure Kotlin, `ScheduleEvaluator.evaluate(config, now: LocalDateTime): ScheduleState`, where `ScheduleState = {paused, downBps: Long?, upBps: Long?, activeRuleIds, nextBoundary: LocalDateTime?}`.
+  - `end <= start` means the window runs past midnight. `days` refers to the day the window **starts**. `start == end` means all day.
+  - **Overlaps:** `pause` wins. Among `limit` rules the lowest non-zero value wins, per direction.
+  - `nextBoundary` is the soonest start or end of any rule within the next 8 days.
+- **Apply:** a pause uses `nativeSetTransfersAllowed(false, "schedule")`. Limits apply as `min(global, schedule)` per direction through `nativeSetGlobalLimits`, with 0 meaning none. Settings never show the schedule-adjusted value as the user's global limit.
+- **Paused reason:** `paused_by: "schedule"`. The UI label is "Scheduled pause · resumes 01:00", with the time taken from `nextBoundary`.
+- **While paused, the service stops,** about 10 s after entering the pause. It persists `scheduleHeld = true` so a sticky restart doesn't resume anything.
+- **Wake-up:** `AlarmManager.setAndAllowWhileIdle(RTC_WAKEUP, nextBoundary)` is inexact and needs no permission. The receiver re-evaluates.
+  - If the schedule allows transfers again and `scheduleHeld` is set, it starts the service headless (§8 path), subject to the background-start rule.
+  - Refused-start notification: title "Scheduled downloads are ready", text "Tap to start them."
+  - Re-arm on `ACTION_TIME_CHANGED`, `ACTION_TIMEZONE_CHANGED`, app start and every `setSchedule`.
+  - While the service runs, it also re-evaluates once a minute, because alarms can be late.
+- **JS status:** `getScheduleStatus(): {enabled, paused, activeRuleIds, nextBoundary: epochMs | null}`.
+
+### 11.6 Feed rules (SM-25)
+The Feeds tab keeps its TS parsing for display. Automation runs in Kotlin so it works with the app closed.
+- **Config** (JS → Kotlin `setFeedAutomation(json)`, persisted in SharedPreferences `maglev_feeds`):
+  `{enabled: bool, intervalMins: 15 | 30 | 60, feeds: [{id, url, name}], rules: [Rule]}`.
+  `Rule = {id, name, feedIds: string[] /* empty = all */, include: string, exclude: string, episodes: "all" | "new_only", startPaused: bool, enabled: bool}`.
+- **Matching is case-insensitive, with one source of truth for the semantics:** `scripts/fixtures/feeds/rule-vectors.json` (`[{rule, title, seenEpisodes, expect}]`). Both `utils/feedRules.ts` (`scripts/test-feeds.js`) and Kotlin `FeedRuleMatcher` (JVM test) must pass every vector.
+  - `include`: every whitespace-separated word must appear. If the string is wrapped in `/…/`, it's a regex instead, and an invalid regex never matches.
+  - `exclude`: same syntax; any match rejects the item. Empty means nothing is excluded.
+  - `episodes: "new_only"`: parse the episode key from the title (`S01E02`, `1x02`, `S01E01-E03`, and anime ` - 12 ` with an optional `v2`) as `"s1e2"`. Skip an item whose key is already in `seenEpisodes` for that rule. Titles with no key match normally.
+- **Worker:** `FeedWorker`, a `CoroutineWorker` scheduled as unique periodic work `maglev-feeds` with `ExistingPeriodicWorkPolicy.UPDATE`. Constraints are `CONNECTED`, or `UNMETERED` when the Wi-Fi-only governance setting is on. It adds `androidx.work:work-runtime-ktx`.
+  - Fetch each feed with `HttpURLConnection`: 15 s timeouts and a 2 MB cap. Parse RSS 2.0 and Atom with `XmlPullParser`. The source is a magnet from `link`, an `enclosure`, `torznab:attr magneturl`/`infohash`, or a `.torrent` URL.
+  - Seen items are keyed `feedId + (guid || link)` and capped at 1000 per feed. The first fetch of a new feed marks everything as seen and adds nothing.
+  - Matches are appended to a pending-add queue in SharedPreferences. The worker then starts the service with `ACTION_DRAIN_FEED_ADDS`, subject to the background-start rule. The service drains the queue through the normal add path (`.torrent` URLs go through `TorrentFetcher`). A duplicate counts as done.
+  - Refused-start notification: title "N new from <rule name>", text "Tap to download."
+- **JS status:** `getFeedAutomationStatus(): {lastRunAt: epochMs | null, lastError: string | null, addedTotal: number, pending: number}` and `runFeedCheckNow()`, which enqueues a one-time `maglev-feeds-now`.
+
+### 11.7 Service restart check (C-SVC-3)
+- Extract the restart decision into pure Kotlin: `RestartPolicy.decide(input): Decision`. The input is the persisted intent (`userShutdown`, `userPausedAll`, `scheduleHeld`) and the count of active torrents. The decision is `Resume | StayStopped`.
+- **JVM unit tests** go in `modules/maglev-engine/android/src/test/` (JUnit 4, `testImplementation`), together with the `ScheduleEvaluator` and `FeedRuleMatcher` tests. CI runs them after prebuild.
+- **Device check:** `scripts/device/test-service-restart.sh`. With a torrent downloading, it runs `adb shell am crash com.maglev`, waits up to 60 s, then asserts that the service is back (`dumpsys activity services com.maglev`) and that the download is moving again (logcat telemetry line or notification text). A user-paused run must stay stopped.
+
+### 11.8 Module API additions (§6)
+`setTorrentLimits(id, {downBps, upBps})`, `moveStorage(id, target)`, `openStream(url, mime, title)`, `setSchedule(cfg)`, `getScheduleStatus()`, `setFeedAutomation(cfg)`, `getFeedAutomationStatus()`, `runFeedCheckNow()`.
+- The mock engine implements all of them with the same validation. `MOVING` is simulated over about 3 s in dev only.
+- The TS snapshot maps `down_limit_bps`, `up_limit_bps` and `move_progress`. The file detail maps `stream_ready_bytes` and `tail_ready`.
+
+## 12. Wave 4.5: native items (user-approved 2026-11-11)
+
+The UI side is in `UI_SPEC_PHASE2.md` S10.
+
+### 12.1 Activity while a magnet resolves
+librqbit resolves a magnet inside `Session::add_torrent(.., list_only: true)` and exposes no progress for it. Maglev therefore reports only what it can observe itself, and the copy never claims more.
+- **Rust:** when `resolve_metadata` starts on a magnet, it spawns a side task on the session runtime. The task reads `session.get_dht()` (if DHT is on) and the `get_peers(info_hash, None)` stream, and counts **unique peer addresses**. It stops when the resolve ends, either successfully or with an error or timeout.
+  - Counts live in a map keyed by info-hash: `{peers_found: u32, dht: bool, elapsed_ms: u64}`.
+  - Before writing this, verify the DHT accessor and stream API against the vendored source and cite file:line.
+- **JNI:** `nativeResolveActivity(infoHash: String): String` returns `{"ok":true,"peers_found":n,"dht":bool,"elapsed_ms":n}` or `NOT_FOUND` when no resolve is running.
+  - `nativeCancelResolve(infoHash: String): String` aborts a running resolve. The blocked `nativeResolveMetadata` call then returns `{"ok":false,"code":"CANCELLED"}`. `CANCELLED` is added to the closed error set, and the UI never shows it as an error.
+- **UI** (Add screen while resolving), polled every 1 s:
+  - With DHT on: "Looking for peers · 14 found". With DHT off: "Asking trackers…". The elapsed time shows as a quiet timer.
+  - After 5 s it offers **Start now, choose files later**. That cancels the resolve and adds the magnet the normal way (`INITIALIZING`, all files), then goes back to Transfers with the notice "Added. You can choose files once its details arrive."
+
+### 12.2 Finished files show up in gallery and music apps
+- **Kotlin:** on the `finished` false→true edge (§9), and after a successful move (§11.3) or staging copy, call `MediaScannerConnection.scanFile(context, paths, null, null)` for every included file in public shared storage.
+  - For SAF trees, call it on the resolved path when one exists. Otherwise skip: the document provider indexes those itself.
+  - Run it at most once per torrent per completion, and never for private or staging directories.
+- No UI. On a device, check that a finished video shows up in Google Photos (or the gallery app) within a few seconds.

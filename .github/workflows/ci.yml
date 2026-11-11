@@ -121,6 +121,11 @@ jobs:
           chmod +x gradlew
           ./gradlew assembleRelease --stacktrace
 
+      - name: Kotlin unit tests (schedule, feed rules, restart policy)
+        run: |
+          cd android
+          ./gradlew :maglev-engine:testReleaseUnitTest --stacktrace
+
       - name: List APKs
         run: ls -lh android/app/build/outputs/apk/release/*.apk
 
@@ -160,3 +165,6 @@ jobs:
 
       - name: Search providers (offline fixtures)
         run: node scripts/test-search.js
+
+      - name: Feed rules (shared vectors)
+        run: node scripts/test-feeds.js

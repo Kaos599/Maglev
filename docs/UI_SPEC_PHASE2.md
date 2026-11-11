@@ -206,3 +206,51 @@ The boundary is in `NATIVE_CONTRACT.md` §10. Every icon comes from **Pixelartic
 Settings → Interface (or Notifications) gets a "Live progress in status bar" row:
 - On API 36 and later, the value is On or Off from `liveUpdates`, and tapping the row calls `openLiveUpdateSettings()`.
 - Below API 36 the row is hidden.
+
+## S10. Wave 4.5: feel and trust (user-approved 2026-11-11)
+
+TS-only items are listed here. Native items (MediaStore indexing, resolve activity) are in `NATIVE_CONTRACT.md` §12.
+
+### S10.1 Instant actions (SM-22)
+- Tapping Pause, Resume, Pause all or Resume all updates the screen **immediately**. `EngineContext` keeps an optimistic override per torrent, `{state, since}`. It clears when telemetry reports the expected state, or after 5 s.
+- On timeout or on an error result, the torrent reverts to the engine state and a notice says "Couldn't pause <name>. Try again."
+- The card's action button is disabled while an override is pending, so double taps do nothing.
+
+### S10.2 Steady speed and time left
+- **Pure functions** in `utils/rates.ts`, tested in `scripts/test-rates.js`:
+  - `smoothRate(prev, sample, dtMs)` is an exponential moving average with τ = 5 s. If the gap is more than 15 s (the app was backgrounded), it resets to the sample.
+  - `etaSecs(remaining, smoothedBps)`: −1 when the rate is under 1 KB/s.
+  - `formatEta(secs, prevLabel)` uses steps: "under a minute", whole minutes up to 59, "1 h 20 min" (5-minute steps), and "over a day". There is **hysteresis**: the label changes only when the new value is outside ±10% of the value the previous label stands for, or when it crosses a step boundary.
+- **Applied in one place:** smoothing happens where telemetry enters `EngineContext`, per torrent, for `down_bps` and `up_bps`. Every screen shows the smoothed values. The raw values stay available as `rawDownBps` for the detail Peers tab.
+
+### S10.3 Instant cold start
+- `EngineContext` persists the last torrent list (id, name, state, progress, totals, `paused_by`) to the kv-store, throttled to once every 5 s and on app background.
+- On boot it renders that list **at once**, before the engine answers. Speeds show "—" and the state comes from the cache. Live telemetry replaces it in place, with no list reset or re-mount, and keys stay stable.
+- Never show a full-screen spinner when a cached list exists. Log `bootToFirstRowMs` with `console.log('[Maglev] boot', ms)` for device measurement.
+
+### S10.4 Transfers list at a glance
+- **A card shows three things:** the name (two lines max), one progress bar, and one status line.
+- **Status line** by state:
+  - Downloading: `12 min left · 4.1 MB/s`
+  - Seeding: `Seeding · ↑ 1.2 MB/s`
+  - Paused: its reason, for example `Paused: waiting for Wi-Fi`
+  - Finished: `Done · 4.2 GB`
+  - Moving: `Moving files… 42%`
+- Peers, ratio and the upload amount move out of the card into Detail. Keep the stat icons only where they label the single status line, if at all.
+- Keep the card height steady across states.
+
+### S10.5 Undo for removing a torrent
+- "Remove (keep files)" no longer asks for confirmation. The torrent leaves the list at once, and a notice shows "Removed <name> · Undo" for 5 s. The engine delete runs only after the notice expires.
+- If the app goes to the background first, the pending removal runs at once.
+- "Remove and delete files" still asks first, with the existing confirmation and its exact size.
+- Bulk remove behaves the same way, with "Removed N torrents · Undo".
+
+### S10.6 Empty state that teaches
+- With no torrents, Transfers shows the title "Paste a magnet link or open a .torrent file" and the body "Links you tap in your browser open here too."
+- Actions are **Paste link**, enabled only when the clipboard holds a magnet or `.torrent` URL (reuse the clipboard chip detection), and **Open file** (the document picker).
+- The clipboard chip appears at the top of the empty state when it applies.
+
+### S10.7 Mobile data during onboarding
+- A new onboarding step after Background: "Download on mobile data?" The options are **Wi-Fi only (recommended)**, which is pre-selected, and **Wi-Fi and mobile data**.
+- The step saves the existing Wi-Fi-only setting.
+- **Defaults:** for a fresh install the default becomes Wi-Fi only. Users who have already finished onboarding keep their current value. Never change it silently.
