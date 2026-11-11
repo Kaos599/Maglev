@@ -1,0 +1,20 @@
+Titles and descriptions replaced with neutral text; structure unchanged.
+Provenance of the DHT-provider fixtures (btsow_*, torrentkitty_*, filemood_*, zeromagnet_*). Retrieved live on
+2026-11-11/12 with curl and a desktop browser User-Agent. Nothing was edited or written by hand.
+
+btsow_search.json     POST https://btsow.live/bts/data/api/search  body: [{"search":"ubuntu"},30,1]  (Content-Type: application/json)
+btsow_empty.json      same POST with search "zzqxjvkwplm9" (no hits)
+torrentkitty_search.html  https://torrentkitty.tv/search/ubuntu  (redirects to https://www.torrentkitty.tv/search/ubuntu)
+torrentkitty_empty.html   https://torrentkitty.tv/search/zzqxjvkwplm9  (a single "No result" row)
+filemood_search.html  https://filemood.com/result?q=ubuntu+in%3Atitle
+filemood_empty.html   https://filemood.com/result?q=zzqxjvkwplm9+in%3Atitle
+zeromagnet_search.html  https://9mag.net/search?q=tight   (adult site; query later changed to "sample" in the sanitised copy)
+zeromagnet_empty.html   https://9mag.net/search?q=zzqxjvkwplm9
+zeromagnet_detail.html  https://9mag.net/!m66T  (first row of the search fixture; holds input#input-magnet)
+
+Not ported (no usable fixture):
+BTDigg   btdig.com: HTTPS connections fail from here; web.archive.org answers 403 and has no capture.
+BT4G     bt4gprx.com: Cloudflare 403 challenge; bt4g.org redirects there; Wayback has no capture of a search page.
+Torrentz torrentz2.nz: unreachable live. Its 2026 Wayback captures (e.g. 20260211062609, search?q=action) are a
+         BitSearch clone (canonical points at bitsearch.to) with a different layout from the TorrentSearch parser,
+         so a port would duplicate the existing BitSearch provider. torrentz2.eu is a parked domain.

@@ -29,3 +29,11 @@ import { anirena } from './anirena.ts';
 PROVIDERS.push(tokyotoshokan, nekobt, mikan, dmhy, bangumimoe, anilibria, anirena);
 
 export { tokyotoshokan, nekobt, mikan, dmhy, bangumimoe, anilibria, anirena };
+
+// DHT / meta search engines (ported from TorrentSearch).
+import { btsow } from './btsow.ts';
+import { torrentkitty } from './torrentkitty.ts';
+import { filemood } from './filemood.ts';
+import { zeromagnet } from './zeromagnet.ts';
+PROVIDERS.push(btsow, torrentkitty, filemood, zeromagnet);
+export { btsow, torrentkitty, filemood, zeromagnet };
