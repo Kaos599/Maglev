@@ -168,7 +168,7 @@ librqbit has no per-file priority. It downloads in `file_priorities` order, a ha
   - `skip` is the same as excluded, so `included = false` and it goes through `update_only_files`.
   - The order is `first` files (in index order), then `normal` files (in index order).
   - This **reorders** downloading. It does not weight bandwidth, and the UI must not claim that it does.
-- **JNI:** `nativeSetFilePriorities(id: String, json: String): String`, where `json` is `[{"index":u32,"priority":"first|normal|skip"}]` and covers every file.
+- **JNI:** `nativeSetFilePriorities(id: String, json: String): String`, where `json` is `[{"index":u32,"priority":"first|normal|skip"}]`. Files that are not listed count as `normal`.
   - It applies the include set and the order atomically.
   - It returns a Result. Errors are `NOT_FOUND`, or `INVALID_SOURCE` for an unknown index or an empty include set.
 - **Persistence:** Rust persists priorities in its own sidecar, `<sessionDir>/maglev-priorities.json`, keyed by info-hash, and re-applies them on restore.

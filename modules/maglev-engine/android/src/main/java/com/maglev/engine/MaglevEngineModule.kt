@@ -123,6 +123,12 @@ class MaglevEngineModule : Module() {
         AsyncFunction("setIncludedFiles") { id: String, indices: List<Int>, promise: Promise ->
             native(promise) { NativeCore.nativeSetIncludedFiles(id, Json.toJson(indices)) }
         }
+        AsyncFunction("setFilePriorities") { id: String, priorities: List<Map<String, Any?>>, promise: Promise ->
+            io(promise) { EngineHost.setFilePriorities(id, priorities) }
+        }
+        AsyncFunction("reannounce") { id: String, promise: Promise ->
+            io(promise) { EngineHost.reannounce(id) }
+        }
         AsyncFunction("setGlobalLimits") { down: Double, up: Double, promise: Promise ->
             native(promise) { NativeCore.nativeSetGlobalLimits(down.toLong(), up.toLong()) }
         }
@@ -151,6 +157,9 @@ class MaglevEngineModule : Module() {
         }
         AsyncFunction("getStorageStatus") { promise: Promise ->
             engine(promise) { EngineHost.storageStatus() }
+        }
+        AsyncFunction("getFreeSpace") { promise: Promise ->
+            io(promise) { EngineHost.freeSpace() }
         }
         AsyncFunction("openFile") { id: String, fileIndex: Int, promise: Promise ->
             engine(promise) { EngineHost.openFile(id, fileIndex) }
@@ -182,6 +191,11 @@ class MaglevEngineModule : Module() {
         AsyncFunction("openBatterySettings") { promise: Promise ->
             val c = context
             val err = if (c == null) "Module is not attached" else PermissionHelper.openBatterySettings(c)
+            promise.resolve(if (err == null) mapOf("ok" to true) else Json.failure("INTERNAL", err))
+        }
+        AsyncFunction("openLiveUpdateSettings") { promise: Promise ->
+            val c = context
+            val err = if (c == null) "Module is not attached" else PermissionHelper.openLiveUpdateSettings(c)
             promise.resolve(if (err == null) mapOf("ok" to true) else Json.failure("INTERNAL", err))
         }
         AsyncFunction("requestLegacyStorage") { promise: Promise ->

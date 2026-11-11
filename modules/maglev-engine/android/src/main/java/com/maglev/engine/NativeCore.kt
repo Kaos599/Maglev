@@ -42,6 +42,8 @@ object NativeCore {
     @JvmStatic external fun nativeRecheck(id: String): String
     @JvmStatic external fun nativeDelete(id: String, deleteFiles: Boolean): String
     @JvmStatic external fun nativeSetIncludedFiles(id: String, indicesJson: String): String
+    @JvmStatic external fun nativeSetFilePriorities(id: String, json: String): String
+    @JvmStatic external fun nativeReannounce(id: String): String
     @JvmStatic external fun nativeSetGlobalLimits(downBps: Long, upBps: Long): String
     @JvmStatic external fun nativeApplyConfig(configJson: String): String
     @JvmStatic external fun nativeGetEffectiveConfig(): String

@@ -1,6 +1,7 @@
 package com.maglev.engine.permissions
 
 import android.Manifest
+import android.app.NotificationManager
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -38,6 +39,17 @@ object PermissionHelper {
         return if (granted) "granted" else "denied"
     }
 
+    /** "n/a" below API 36 (no Live Updates). Otherwise NotificationManager.canPostPromotedNotifications(). */
+    private fun liveUpdates(context: Context): String {
+        if (Build.VERSION.SDK_INT < 36) return "n/a"
+        val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager ?: return "n/a"
+        return try {
+            if (nm.canPostPromotedNotifications()) "granted" else "denied"
+        } catch (_: Throwable) {
+            "n/a"
+        }
+    }
+
     fun status(context: Context): Map<String, Any?> {
         val pm = context.getSystemService(Context.POWER_SERVICE) as? PowerManager
         return linkedMapOf(
@@ -45,6 +57,7 @@ object PermissionHelper {
             "notifications" to notifications(context),
             "batteryUnrestricted" to (pm?.isIgnoringBatteryOptimizations(context.packageName) == true),
             "legacyStorage" to legacyStorage(context),
+            "liveUpdates" to liveUpdates(context),
             "backgroundKills" to context.getSharedPreferences(EngineHost.PREFS, Context.MODE_PRIVATE)
                 .getInt(EngineHost.KEY_KILLS, 0),
             "oemHint" to oemHint(),
@@ -81,6 +94,33 @@ object PermissionHelper {
             null
         } catch (e: Exception) {
             e.message ?: "Battery settings are not available"
+        }
+    }
+
+    /** Opens the Live Updates page of this app's settings. Returns an error message or null. */
+    fun openLiveUpdateSettings(context: Context): String? {
+        val pkg = Uri.parse("package:" + context.packageName)
+        if (Build.VERSION.SDK_INT >= 36) {
+            try {
+                context.startActivity(
+                    // Literal of Settings.ACTION_MANAGE_APP_PROMOTED_NOTIFICATIONS (API 36), so compile
+                    // never depends on the SDK stub carrying the constant; the catch falls back.
+                    Intent("android.settings.MANAGE_APP_PROMOTED_NOTIFICATIONS").setData(pkg).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+                )
+                return null
+            } catch (_: Exception) {
+                // fall through to the app notification settings
+            }
+        }
+        return try {
+            context.startActivity(
+                Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+                    .putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+            )
+            null
+        } catch (e: Exception) {
+            e.message ?: "Notification settings are not available"
         }
     }
 }

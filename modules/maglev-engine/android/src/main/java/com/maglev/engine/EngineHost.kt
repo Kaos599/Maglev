@@ -3,6 +3,7 @@ package com.maglev.engine
 import android.app.ActivityManager
 import android.content.Context
 import android.content.Intent
+import android.os.StatFs
 import android.os.SystemClock
 import android.util.Log
 import androidx.core.content.ContextCompat
@@ -385,16 +386,33 @@ object EngineHost {
         var dl = 0; var seed = 0; var queued = 0; var paused = 0; var byRules = 0
         var checking = 0; var init = 0
         var done = 0L; var total = 0L; var down = 0L; var up = 0L
+        var dlDone = 0L; var dlTotal = 0L
+        var seedId: String? = null
+        var wifiPaused = false; var batteryPaused = false; var chargingPaused = false
+        var primary: Map<String, Any?>? = null
+        var latest: Map<String, Any?>? = null
         for (t in torrents) {
+            if (latest == null || Json.long(t["added_at"]) > Json.long(latest["added_at"])) latest = t
             when (t["state"]) {
-                "DOWNLOADING" -> { dl++; done += Json.long(t["progress_bytes"]); total += Json.long(t["total_bytes"]) }
-                "SEEDING" -> seed++
+                "DOWNLOADING" -> {
+                    dl++; done += Json.long(t["progress_bytes"]); total += Json.long(t["total_bytes"])
+                    dlDone += Json.long(t["progress_bytes"]); dlTotal += Json.long(t["total_bytes"])
+                    val p = primary
+                    // Highest down_bps wins. Ties go to the most recently added torrent.
+                    if (p == null || Json.long(t["down_bps"]) > Json.long(p["down_bps"]) ||
+                        (Json.long(t["down_bps"]) == Json.long(p["down_bps"]) &&
+                            Json.long(t["added_at"]) > Json.long(p["added_at"]))
+                    ) primary = t
+                }
+                "SEEDING" -> { seed++; seedId = t["id"] as? String }
                 "QUEUED" -> { queued++; done += Json.long(t["progress_bytes"]); total += Json.long(t["total_bytes"]) }
                 "CHECKING" -> { checking++; done += Json.long(t["progress_bytes"]); total += Json.long(t["total_bytes"]) }
                 "INITIALIZING" -> init++
                 "PAUSED" -> when (t["paused_by"]) {
                     null, "user" -> paused++
-                    "wifi_only", "battery", "charging_only" -> byRules++
+                    "wifi_only" -> { byRules++; wifiPaused = true }
+                    "battery" -> { byRules++; batteryPaused = true }
+                    "charging_only" -> { byRules++; chargingPaused = true }
                 }
             }
             down += Json.long(t["down_bps"])
@@ -410,7 +428,27 @@ object EngineHost {
         }
         val effectiveInit = if (initOnly && now - initOnlySince > INIT_GIVE_UP_MS) 0 else init
         val pct = if (dl + queued + checking > 0 && total > 0) ((done * 100) / total).toInt().coerceIn(0, 100) else -1
-        return TransferSummary(dl, seed, queued, paused, pct, down, up, byRules, checking, effectiveInit)
+        val dlPct = if (dl > 0 && dlTotal > 0) ((dlDone * 100) / dlTotal).toInt().coerceIn(0, 100) else -1
+        val shown = primary ?: latest
+        val singleId = when {
+            dl == 1 -> primary?.get("id") as? String
+            dl == 0 && seed == 1 -> seedId
+            else -> null
+        }
+        val reason = when {
+            wifiPaused -> "wifi_only"
+            batteryPaused -> "battery"
+            chargingPaused -> "charging_only"
+            else -> null
+        }
+        return TransferSummary(
+            dl, seed, queued, paused, pct, down, up, byRules, checking, effectiveInit,
+            primaryName = shown?.get("name") as? String,
+            primaryEtaSecs = if (primary != null) (primary["eta_secs"] as? Number)?.toLong() ?: -1L else -1L,
+            downloadingPct = dlPct,
+            singleTorrentId = singleId,
+            ruleReason = reason,
+        )
     }
 
     /** Fires onTorrentCompleted and the notification on the `finished` false to true edge. */
@@ -596,6 +634,57 @@ object EngineHost {
             (0 until n.coerceIn(0, 256)).map { buf.get(it).toInt() and 0xFF }
         } catch (t: Throwable) {
             emptyList()
+        }
+    }
+
+    // endregion
+
+    // region wave 3 (contract section 10)
+
+    /** [priorities] is a list of {index, priority}. Rust validates indices and the empty include set. */
+    fun setFilePriorities(id: String, priorities: List<Map<String, Any?>>): Map<String, Any?> {
+        val json = Json.toJson(priorities.map { linkedMapOf("index" to it["index"], "priority" to it["priority"]) })
+        val res = call { NativeCore.nativeSetFilePriorities(id, json) }
+        pollNow()
+        return res
+    }
+
+    /** The result carries `retry_after_secs` (camelized to retryAfterSecs by the module) when rate limited. */
+    fun reannounce(id: String): Map<String, Any?> = call { NativeCore.nativeReannounce(id) }
+
+    /**
+     * Free space of the directory Rust writes into (default, direct SAF path or staging).
+     * In staging mode, `targetFreeBytes` is the SAF target volume when the tree resolves to a readable path, else null.
+     */
+    fun freeSpace(): Map<String, Any?> {
+        val c = requireCtx() ?: return Json.failure("ENGINE_UNAVAILABLE", "Module is not attached")
+        val t = StorageManager.activeTarget(c)
+        val own = statOf(File(t.path)) ?: return Json.failure("INTERNAL", "Could not read free space")
+        val m = linkedMapOf<String, Any?>(
+            "ok" to true,
+            "path" to t.path,
+            "freeBytes" to own.first,
+            "totalBytes" to own.second,
+            "mode" to t.mode,
+        )
+        if (t.mode == "staging") {
+            val tree = t.treeUri?.let { SafStorageManager.treeToPosixPath(android.net.Uri.parse(it)) }
+            m["targetFreeBytes"] = tree?.let { statOf(File(it))?.first }
+        }
+        return m
+    }
+
+    /** (available, total) bytes for the nearest existing directory at or above [dir], or null. */
+    private fun statOf(dir: File): Pair<Long, Long>? {
+        var d: File? = dir
+        while (d != null && !d.exists()) d = d.parentFile
+        if (d == null) return null
+        return try {
+            val st = StatFs(d.absolutePath)
+            st.availableBytes to st.totalBytes
+        } catch (e: Exception) {
+            Log.w(TAG, "StatFs failed for ${d.path}: ${e.message}")
+            null
         }
     }
 

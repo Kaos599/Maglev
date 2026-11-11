@@ -36,6 +36,7 @@ class MaglevTorrentService : Service() {
         const val USE_SPECIAL_USE_FGS = true
 
         private const val TAG = "MaglevService"
+        private const val NOTIFY_MIN_INTERVAL_MS = 2000L
         private const val LOCK_TIMEOUT_MS = 15 * 60 * 1000L
         private const val LOCK_REFRESH_MS = 10 * 60 * 1000L
 
@@ -113,9 +114,14 @@ class MaglevTorrentService : Service() {
         handler.post {
             summary = s
             updateLocks(s.busy > 0)
-            val key = Notifications.title(s) + "|" + Notifications.text(s) + "|" + s.progressPct + "|" + (s.busy > 0)
+            val key = listOf(
+                Notifications.title(s), Notifications.text(s), s.downloadingPct, s.progressPct,
+                s.downloading > 0, s.busy > 0, s.singleTorrentId,
+            ).joinToString("|")
             val now = SystemClock.elapsedRealtime()
-            if (isForeground && key != lastKey && now - lastNotifyAt >= 1000) {
+            // At most one update every 2 s, and only when the content changed. A skipped change is
+            // picked up by the next 1 s poll because lastKey is not advanced.
+            if (isForeground && key != lastKey && now - lastNotifyAt >= NOTIFY_MIN_INTERVAL_MS) {
                 lastKey = key
                 lastNotifyAt = now
                 Notifications.update(this, Notifications.ongoing(this, s))
