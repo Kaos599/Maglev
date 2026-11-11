@@ -16,6 +16,7 @@ import { FILTERS, TransferFilter, countByFilter, magnetHash, matchesFilter, sort
 import { PixelIcon } from '../../components/PixelIcon';
 import { Banner, EmptyBlock, IconButton } from '../../components/ui/index';
 import * as DocumentPicker from 'expo-document-picker';
+import { maglevEngine } from 'maglev-engine';
 import { triggerHaptic } from '../../constants/haptics';
 import { useMaglevEngine } from '../../context/EngineContext';
 import { useTheme } from '../../context/ThemeContext';
@@ -123,6 +124,15 @@ export default function TransfersScreen() {
   );
   const onPause = useCallback((id: string) => void pauseTorrent(id), [pauseTorrent]);
   const onResume = useCallback((id: string) => void resumeTorrent(id), [resumeTorrent]);
+  // SM-37: clear the no_peers tag so the torrent looks for peers again.
+  const onKeepTrying = useCallback(
+    (id: string) => {
+      void maglevEngine.setHealth(id, '').then((res) => {
+        if (!res.ok) showNotice({ message: res.message || "Couldn't try again." });
+      });
+    },
+    [showNotice],
+  );
 
   const changeSort = useCallback((next: TransferSort) => {
     setSort(next);
@@ -210,9 +220,10 @@ export default function TransfersScreen() {
         onLongPress={startSelection}
         onPause={onPause}
         onResume={onResume}
+        onKeepTrying={onKeepTrying}
       />
     ),
-    [selectionMode, selectedIds, onCardPress, startSelection, onPause, onResume],
+    [selectionMode, selectedIds, onCardPress, startSelection, onPause, onResume, onKeepTrying],
   );
 
   const filtering = filter !== 'all' || query.trim().length > 0;

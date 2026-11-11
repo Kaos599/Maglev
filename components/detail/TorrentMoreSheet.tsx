@@ -20,6 +20,8 @@ interface Props {
   limitSummary?: string;
   onOpenFolder: () => void;
   onDelete: () => void;
+  /** SM-33: the SD card is gone, so Recheck is off. */
+  storageGone?: boolean;
 }
 
 const RUNNING: readonly TorrentState[] = ['DOWNLOADING', 'SEEDING', 'QUEUED'];
@@ -41,6 +43,7 @@ export function TorrentMoreSheet({
   limitSummary,
   onOpenFolder,
   onDelete,
+  storageGone = false,
 }: Props) {
   const running = RUNNING.includes(state);
   const busy = state === 'CHECKING' || state === 'INITIALIZING' || state === 'MOVING';
@@ -60,7 +63,13 @@ export function TorrentMoreSheet({
         disabled={!canTogglePause}
         onPress={onTogglePause}
       />
-      <ListRow title="Recheck files" subtitle="Verify everything on disk" icon="recheck" disabled={state === 'MOVING'} onPress={onRecheck} />
+      <ListRow
+        title="Recheck files"
+        subtitle={storageGone ? "The SD card isn't there." : 'Verify everything on disk'}
+        icon="recheck"
+        disabled={state === 'MOVING' || storageGone}
+        onPress={onRecheck}
+      />
       <ListRow
         title="Find more peers"
         subtitle={peersSubtitle}

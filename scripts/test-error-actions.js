@@ -26,6 +26,7 @@ async function main() {
     ['PERMISSION', none, { message: "Maglev can't write to this folder.", primary: 'pickFolder' }],
     ['FILES_MISSING', none, { message: 'Some files are missing.', primary: 'filesMissing' }],
     ['storage_unavailable', { pausedBy: 'storage_unavailable' }, { message: "The SD card isn't there.", primary: 'none', secondary: 'move' }],
+    ['storage_full', { pausedBy: 'storage_full' }, { message: 'Storage full.', primary: 'freeSpace', secondary: 'move' }],
     ['NETWORK', none, { message: "Can't reach anyone right now.", primary: 'retry' }],
     ['TRACKER', none, { message: "Can't reach anyone right now.", primary: 'retry' }],
     ['INTERNAL', none, { message: 'Something went wrong.', primary: 'retry', secondary: 'recheck' }],

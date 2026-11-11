@@ -16,7 +16,7 @@ import { AddFileRow } from '../components/add/AddFileRow';
 import { SpaceStrip } from '../components/add/SpaceStrip';
 import { PrioritySheet } from '../components/detail/PrioritySheet';
 import { fileExt } from '../components/detail/torrentLabels';
-import { admit, type AdmissionOutcome } from '../utils/admission';
+import { admit, pendingNeedOf, type AdmissionOutcome } from '../utils/admission';
 
 /** SM-9 add flow states. */
 type Phase = 'input' | 'validating' | 'invalid' | 'resolving' | 'timeout' | 'error' | 'duplicate' | 'preview' | 'adding' | 'added';
@@ -380,12 +380,7 @@ export default function AddTorrentScreen() {
     const freeBytes = freeSpace
       ? Math.min(freeSpace.freeBytes, freeSpace.targetFreeBytes ?? freeSpace.freeBytes)
       : null;
-    // TODO(SM-35): TorrentTelemetry has no "included bytes" field yet, so each torrent counts 0 until one exists.
-    const includedBytes = 0;
-    const pendingNeed = telemetry.torrents.reduce(
-      (n, t) => (t.finished ? n : n + Math.max(0, includedBytes - t.downloadedBytes)),
-      0,
-    );
+    const pendingNeed = pendingNeedOf(telemetry.torrents);
     const admission: AdmissionOutcome | null =
       freeBytes !== null && selectedBytes > 0
         ? admit({
