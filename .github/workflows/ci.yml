@@ -1,9 +1,12 @@
 name: CI
 
+# Docs-only changes skip CI entirely (the README badge keeps the last real result).
 on:
   push:
     branches: ['**']
+    paths-ignore: ['**/*.md', 'docs/**', 'screens/**', 'LICENSE']
   pull_request:
+    paths-ignore: ['**/*.md', 'docs/**', 'screens/**', 'LICENSE']
   workflow_dispatch:
 
 permissions:
@@ -51,7 +54,12 @@ jobs:
     runs-on: ubuntu-latest
     env:
       ANDROID_HOME: /usr/local/lib/android/sdk
-      GRADLE_OPTS: "-Xmx4g -Dorg.gradle.jvmargs=-Xmx4g -Dorg.gradle.daemon=false"
+      GRADLE_OPTS: "-Xmx4g -Dorg.gradle.jvmargs=-Xmx4g -Dorg.gradle.daemon=false -Dorg.gradle.caching=true"
+      # Everyday CI builds arm64 only (plugins/withAbiSplits.js); release-apk.yml builds all three.
+      MAGLEV_ABIS: arm64-v8a
+      # CMake 3.17+ reads these, so the NDK C++ compile goes through ccache.
+      CMAKE_C_COMPILER_LAUNCHER: ccache
+      CMAKE_CXX_COMPILER_LAUNCHER: ccache
 
     steps:
       - name: Checkout repository
@@ -63,26 +71,48 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: Setup Node.js 20
+      - name: Setup Node.js 22
         uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
 
+      - name: Setup Gradle (dependency and build cache)
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          # Feature branches write the cache too; the default is read-only off main.
+          cache-read-only: false
+
+      - name: Setup ccache
+        uses: hendrikmuhs/ccache-action@v1.2
+        with:
+          key: apk-arm64
+          max-size: 1G
+
       - name: Accept Android SDK licenses
         run: |
           yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses 2>/dev/null || true
 
+      - name: Install NDK (retries a corrupt download)
+        # Must match the ndkVersion React Native pins; Gradle would otherwise fetch it mid-build with no retry.
+        run: |
+          NDK="ndk;27.1.12297006"
+          for i in 1 2 3; do
+            yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --install "$NDK" >/dev/null && break
+            echo "NDK install attempt $i failed, retrying"; rm -rf "$ANDROID_HOME/ndk/27.1.12297006"; sleep 15
+          done
+          test -f "$ANDROID_HOME/ndk/27.1.12297006/source.properties" || { echo "NDK install failed"; exit 1; }
+
       - name: Download jniLibs
         uses: actions/download-artifact@v4
         with:
-          pattern: jniLibs-*
+          pattern: jniLibs-arm64-v8a
           merge-multiple: true
           path: modules/maglev-engine/android/src/main/jniLibs
 
       - name: Verify jniLibs layout
         run: |
-          for abi in arm64-v8a armeabi-v7a x86_64; do
+          for abi in arm64-v8a; do
             test -f "modules/maglev-engine/android/src/main/jniLibs/$abi/libmaglev_core.so" \
               || { echo "Missing $abi/libmaglev_core.so"; find modules/maglev-engine/android/src/main/jniLibs -type f; exit 1; }
           done
@@ -99,6 +129,9 @@ jobs:
           cd android
           chmod +x gradlew
           ./gradlew assembleRelease --stacktrace
+
+      - name: ccache stats
+        run: ccache --show-stats || true
 
       - name: List APKs
         run: ls -lh android/app/build/outputs/apk/release/*.apk
@@ -118,7 +151,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Setup Node.js 20
+      - name: Setup Node.js 22
         uses: actions/setup-node@v4
         with:
           node-version: 22
