@@ -112,8 +112,8 @@ class MaglevTorrentService : Service() {
     fun onSummary(s: TransferSummary) {
         handler.post {
             summary = s
-            updateLocks(s.active > 0)
-            val key = Notifications.title(s) + "|" + Notifications.text(s) + "|" + s.progressPct + "|" + (s.active > 0)
+            updateLocks(s.busy > 0)
+            val key = Notifications.title(s) + "|" + Notifications.text(s) + "|" + s.progressPct + "|" + (s.busy > 0)
             val now = SystemClock.elapsedRealtime()
             if (isForeground && key != lastKey && now - lastNotifyAt >= 1000) {
                 lastKey = key

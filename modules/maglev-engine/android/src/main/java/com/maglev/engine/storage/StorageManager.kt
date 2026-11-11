@@ -115,13 +115,23 @@ object StorageManager {
         return outputFolder == root || outputFolder.startsWith(root + File.separator)
     }
 
-    fun isCopied(context: Context, id: String): Boolean =
-        prefs(context).getStringSet(KEY_COPIED, emptySet())?.contains(id) == true
+    private fun copiedKey(id: String, folder: String, tree: String) = "$id|$folder|$tree"
 
-    fun markCopied(context: Context, id: String) {
+    /** A marker is valid only for the same torrent, output folder and destination tree. */
+    fun isCopied(context: Context, id: String, folder: String, tree: String): Boolean =
+        prefs(context).getStringSet(KEY_COPIED, emptySet())?.contains(copiedKey(id, folder, tree)) == true
+
+    fun markCopied(context: Context, id: String, folder: String, tree: String) {
         val p = prefs(context)
         val next = HashSet(p.getStringSet(KEY_COPIED, emptySet()) ?: emptySet())
-        next.add(id)
+        next.add(copiedKey(id, folder, tree))
         p.edit().putStringSet(KEY_COPIED, next).apply()
+    }
+
+    /** Forget every marker of a torrent, used when it is deleted. */
+    fun clearCopied(context: Context, id: String) {
+        val p = prefs(context)
+        val next = HashSet(p.getStringSet(KEY_COPIED, emptySet()) ?: emptySet())
+        if (next.removeAll { it.startsWith("$id|") }) p.edit().putStringSet(KEY_COPIED, next).apply()
     }
 }

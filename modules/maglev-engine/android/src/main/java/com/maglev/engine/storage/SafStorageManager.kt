@@ -47,10 +47,11 @@ object SafStorageManager {
     /**
      * Copies [source] into the tree at [relativePath] (segments separated by `/`).
      * Skips files that already exist with the same size. Blocking, call from IO.
+     * Returns null only when the target exists with the source size. A missing source is a failure.
      * Returns null on success or a plain-English error.
      */
     fun copyFileIntoTree(context: Context, treeUri: Uri, relativePath: String, source: File): String? {
-        if (!source.exists()) return null
+        if (!source.exists()) return "Missing file: $relativePath"
         val root = DocumentFile.fromTreeUri(context, treeUri) ?: return "Folder is no longer available"
         val parts = relativePath.split('/').filter { it.isNotEmpty() }
         if (parts.isEmpty()) return null
@@ -64,14 +65,14 @@ object SafStorageManager {
         }
         val name = parts.last()
         val existing = dir.findFile(name)
-        if (existing != null && existing.isFile && existing.length() == source.length()) return null
+        if (existing != null && existing.isFile && existing.length() == source.length() && source.length() > 0) return null
         existing?.delete()
         val target = dir.createFile(mimeFor(name), name) ?: return "Could not create $name"
         return try {
             context.contentResolver.openOutputStream(target.uri, "wt")?.use { out ->
                 source.inputStream().use { it.copyTo(out, 256 * 1024) }
             } ?: return "Could not write $name"
-            null
+            if (target.length() != source.length()) "Copy of $name is incomplete" else null
         } catch (e: Exception) {
             e.message ?: "Copy failed for $name"
         }

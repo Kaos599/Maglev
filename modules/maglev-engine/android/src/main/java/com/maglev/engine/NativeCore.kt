@@ -19,8 +19,10 @@ object NativeCore {
         var err: String? = null
         try {
             System.loadLibrary("maglev_core")
+            // A stale .so with old symbols loads fine but throws here. That must read as unavailable.
+            nativeVersion()
             ok = true
-        } catch (e: UnsatisfiedLinkError) {
+        } catch (e: LinkageError) {
             err = e.message ?: "maglev_core could not be loaded"
         } catch (e: SecurityException) {
             err = e.message ?: "maglev_core load denied"

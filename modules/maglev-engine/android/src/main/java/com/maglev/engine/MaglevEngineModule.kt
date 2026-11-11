@@ -44,6 +44,18 @@ class MaglevEngineModule : Module() {
         }
     }
 
+    /** Like [engine] but off the serialized thread, for calls that can block for a long time. */
+    private fun io(promise: Promise, block: () -> Map<String, Any?>) {
+        EngineHost.ioScope.launch {
+            val result = try {
+                block()
+            } catch (t: Throwable) {
+                Json.failure("INTERNAL", t.message ?: "Engine call failed")
+            }
+            promise.resolve(Json.camelize(result))
+        }
+    }
+
     private fun native(promise: Promise, block: () -> String) = engine(promise) { EngineHost.call(block) }
 
     override fun definition() = ModuleDefinition {
@@ -77,12 +89,12 @@ class MaglevEngineModule : Module() {
         AsyncFunction("resolveMetadata") { source: String, timeoutMs: Double, promise: Promise ->
             // Can block for the full timeout, so it must not hold up the serialized engine thread.
             EngineHost.ioScope.launch {
-                val r = EngineHost.call { NativeCore.nativeResolveMetadata(source, timeoutMs.toLong()) }
+                val r = EngineHost.resolveMetadata(source, timeoutMs.toLong())
                 promise.resolve(Json.camelize(r))
             }
         }
         AsyncFunction("addTorrent") { source: String, options: Map<String, Any?>?, promise: Promise ->
-            engine(promise) { EngineHost.addTorrent(source, options ?: emptyMap()) }
+            io(promise) { EngineHost.addTorrent(source, options ?: emptyMap()) }
         }
         AsyncFunction("listTorrents") { promise: Promise ->
             native(promise) { NativeCore.nativeListTorrents() }
@@ -97,7 +109,7 @@ class MaglevEngineModule : Module() {
             engine(promise) { EngineHost.call { NativeCore.nativeResume(id) }.also { EngineHost.pollNow() } }
         }
         AsyncFunction("recheck") { id: String, promise: Promise ->
-            native(promise) { NativeCore.nativeRecheck(id) }
+            io(promise) { EngineHost.call { NativeCore.nativeRecheck(id) } }
         }
         AsyncFunction("pauseAll") { promise: Promise ->
             engine(promise) { EngineHost.pauseAll() }
@@ -106,7 +118,7 @@ class MaglevEngineModule : Module() {
             engine(promise) { EngineHost.resumeAll() }
         }
         AsyncFunction("delete") { id: String, deleteFiles: Boolean, promise: Promise ->
-            engine(promise) { EngineHost.call { NativeCore.nativeDelete(id, deleteFiles) }.also { EngineHost.pollNow() } }
+            io(promise) { EngineHost.deleteTorrent(id, deleteFiles) }
         }
         AsyncFunction("setIncludedFiles") { id: String, indices: List<Int>, promise: Promise ->
             native(promise) { NativeCore.nativeSetIncludedFiles(id, Json.toJson(indices)) }

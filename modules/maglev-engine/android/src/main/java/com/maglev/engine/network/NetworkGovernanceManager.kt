@@ -66,8 +66,9 @@ class NetworkGovernanceManager(context: Context, private val onChanged: () -> Un
 
     private fun update(caps: NetworkCapabilities) {
         connected = true
-        unmeteredLink = caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) ||
-            caps.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET)
+        unmeteredLink = caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_METERED) &&
+            (caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) ||
+                caps.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET))
         onChanged()
     }
 

@@ -15,6 +15,7 @@ import com.maglev.engine.storage.FileActions
 import com.maglev.engine.storage.SafStorageManager
 import com.maglev.engine.storage.StorageManager
 import com.maglev.engine.util.Json
+import com.maglev.engine.util.TorrentFetcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExecutorCoroutineDispatcher
 import kotlinx.coroutines.Job
@@ -54,6 +55,7 @@ object EngineHost {
     private const val REASON_FGS_TIMEOUT = "fgs_timeout"
     private const val SERVICE_RETRY_MS = 10_000L
     private const val COPY_RETRY_MS = 60_000L
+    private const val INIT_GIVE_UP_MS = 10 * 60_000L
 
     @Volatile private var ctx: Context? = null
 
@@ -72,7 +74,10 @@ object EngineHost {
 
     @Volatile private var initialized = false
     private var pollJob: Job? = null
-    private val prevStates = HashMap<String, String>()
+    private val prevFinished = HashMap<String, Boolean>()
+    private val pollLock = Any()
+    private var initOnlySince = 0L
+    private val cancelledCopies = ConcurrentHashMap.newKeySet<String>()
     private var sawDownloading = false
     private var autoExitFired = false
 
@@ -174,7 +179,9 @@ object EngineHost {
         if (!isOk(res)) return res
 
         initialized = true
-        synchronized(prevStates) { prevStates.clear() }
+        liftFgsTimeoutBlock(c)
+        synchronized(prevFinished) { prevFinished.clear() }
+        initOnlySince = 0L
         sawDownloading = false
         autoExitFired = false
         lastAllowed.clear()
@@ -183,6 +190,16 @@ object EngineHost {
         startPolling()
         emitStorageStatus()
         return LinkedHashMap(res).apply { put("storage", storageStatus()) }
+    }
+
+    /**
+     * The "fgs_timeout" governance block persists inside Rust. Lift it whenever the app has not timed out
+     * (flag false). The flag itself is cleared by [onForeground] only after the unblock call succeeded.
+     */
+    private fun liftFgsTimeoutBlock(c: Context) {
+        if (!prefs(c).getBoolean(KEY_FGS_TIMEOUT, false)) {
+            call { NativeCore.nativeSetTransfersAllowed(true, REASON_FGS_TIMEOUT) }
+        }
     }
 
     /**
@@ -250,10 +267,13 @@ object EngineHost {
         net?.stop(); net = null
         power?.stop(); power = null
         holdForPaused = false
-        ctx?.let { setWanted(it, false) }
-        val res = call { NativeCore.nativeShutdown() }
+        // Taking the poll lock waits for an in-flight poll. Later polls see initialized == false and return.
+        val res = synchronized(pollLock) { call { NativeCore.nativeShutdown() } }
         stopService()
-        ctx?.let { Notifications.cancel(it, Notifications.ID_ONGOING) }
+        ctx?.let {
+            Notifications.cancel(it, Notifications.ID_ONGOING)
+            setWanted(it, false) // last, once the poller is quiet
+        }
         return res
     }
 
@@ -279,11 +299,15 @@ object EngineHost {
     fun onForeground() {
         holdForPaused = false
         val c = ctx ?: return
-        val p = c.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val p = prefs(c)
         if (p.getBoolean(KEY_FGS_TIMEOUT, false)) {
-            p.edit().putBoolean(KEY_FGS_TIMEOUT, false).apply()
             scope.launch {
-                if (initialized) call { NativeCore.nativeSetTransfersAllowed(true, REASON_FGS_TIMEOUT) }
+                if (!initialized) {
+                    // startEngine lifts the block when the flag is clear.
+                    p.edit().putBoolean(KEY_FGS_TIMEOUT, false).apply()
+                } else if (isOk(call { NativeCore.nativeSetTransfersAllowed(true, REASON_FGS_TIMEOUT) })) {
+                    p.edit().putBoolean(KEY_FGS_TIMEOUT, false).apply()
+                }
                 pollNow()
             }
         }
@@ -327,8 +351,11 @@ object EngineHost {
         }
     }
 
-    @Synchronized
     private fun pollOnce() {
+        synchronized(pollLock) { pollLocked() }
+    }
+
+    private fun pollLocked() {
         if (!initialized) return
         val res = call { NativeCore.nativeListTorrents() }
         if (!isOk(res)) {
@@ -348,16 +375,23 @@ object EngineHost {
         checkAutoExit(torrents)
     }
 
+    private fun isFinished(t: Map<String, Any?>): Boolean {
+        (t["finished"] as? Boolean)?.let { return it }
+        val total = Json.long(t["total_bytes"])
+        return total > 0 && Json.long(t["progress_bytes"]) >= total
+    }
+
     private fun summarize(torrents: List<Map<String, Any?>>): TransferSummary {
         var dl = 0; var seed = 0; var queued = 0; var paused = 0; var byRules = 0
+        var checking = 0; var init = 0
         var done = 0L; var total = 0L; var down = 0L; var up = 0L
         for (t in torrents) {
             when (t["state"]) {
                 "DOWNLOADING" -> { dl++; done += Json.long(t["progress_bytes"]); total += Json.long(t["total_bytes"]) }
                 "SEEDING" -> seed++
-                "QUEUED", "INITIALIZING", "CHECKING" -> {
-                    queued++; done += Json.long(t["progress_bytes"]); total += Json.long(t["total_bytes"])
-                }
+                "QUEUED" -> { queued++; done += Json.long(t["progress_bytes"]); total += Json.long(t["total_bytes"]) }
+                "CHECKING" -> { checking++; done += Json.long(t["progress_bytes"]); total += Json.long(t["total_bytes"]) }
+                "INITIALIZING" -> init++
                 "PAUSED" -> when (t["paused_by"]) {
                     null, "user" -> paused++
                     "wifi_only", "battery", "charging_only" -> byRules++
@@ -366,27 +400,37 @@ object EngineHost {
             down += Json.long(t["down_bps"])
             up += Json.long(t["up_bps"])
         }
-        val pct = if (dl + queued > 0 && total > 0) ((done * 100) / total).toInt().coerceIn(0, 100) else -1
-        return TransferSummary(dl, seed, queued, paused, pct, down, up, byRules)
+        // A torrent stuck in INITIALIZING (no metadata, no peers) must not hold the service forever.
+        val initOnly = init > 0 && dl + seed + queued + checking == 0
+        val now = SystemClock.elapsedRealtime()
+        if (initOnly) {
+            if (initOnlySince == 0L) initOnlySince = now
+        } else {
+            initOnlySince = 0L
+        }
+        val effectiveInit = if (initOnly && now - initOnlySince > INIT_GIVE_UP_MS) 0 else init
+        val pct = if (dl + queued + checking > 0 && total > 0) ((done * 100) / total).toInt().coerceIn(0, 100) else -1
+        return TransferSummary(dl, seed, queued, paused, pct, down, up, byRules, checking, effectiveInit)
     }
 
+    /** Fires onTorrentCompleted and the notification on the `finished` false to true edge. */
     private fun detectCompletions(torrents: List<Map<String, Any?>>) {
         val c = ctx
-        synchronized(prevStates) {
+        synchronized(prevFinished) {
             for (t in torrents) {
                 val id = t["id"] as? String ?: continue
-                val state = t["state"] as? String ?: continue
-                val prev = prevStates[id]
-                if (state == "DOWNLOADING") sawDownloading = true
-                if (prev == "DOWNLOADING" && (state == "COMPLETED" || state == "SEEDING")) {
+                val finished = isFinished(t)
+                val prev = prevFinished[id]
+                if (t["state"] == "DOWNLOADING") sawDownloading = true
+                if (prev == false && finished) {
                     val name = t["name"] as? String ?: id
                     emit("onTorrentCompleted", mapOf("id" to id, "name" to name))
                     if (c != null) Notifications.notifyCompleted(c, id, name)
                 }
-                prevStates[id] = state
+                prevFinished[id] = finished
             }
             val alive = torrents.mapNotNull { it["id"] as? String }.toSet()
-            prevStates.keys.retainAll(alive)
+            prevFinished.keys.retainAll(alive)
         }
     }
 
@@ -396,16 +440,17 @@ object EngineHost {
 
     private fun driveService(s: TransferSummary) {
         val c = ctx ?: return
+        if (!initialized) return
         val timedOut = c.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getBoolean(KEY_FGS_TIMEOUT, false)
         if (s.active == 0 && s.pausedByUser == 0) holdForPaused = false
         // Wanted = real work exists. A rules-paused torrent counts: it must resume by itself when Wi-Fi or power returns.
-        setWanted(c, s.busy > 0 || s.pausedByRules > 0)
+        if (initialized) setWanted(c, s.busy > 0 || s.pausedByRules > 0)
         val shouldRun = !timedOut && (s.busy > 0 || s.pausedByRules > 0 || (holdForPaused && s.pausedByUser > 0))
         val svc = MaglevTorrentService.instance
         if (shouldRun) {
             if (svc != null) {
                 svc.onSummary(s)
-            } else {
+            } else if (initialized) {
                 ensureServiceStarted(c)
             }
         } else if (svc != null && svc.isForeground) {
@@ -504,11 +549,40 @@ object EngineHost {
         return linkedMapOf("ok" to true, "count" to n)
     }
 
+    /** Turns an https .torrent URL into a local file path. Returns (source, failure). */
+    private fun localizeSource(source: String): Pair<String, Map<String, Any?>?> {
+        val c = ctx
+        if (c == null || !TorrentFetcher.isHttps(source)) return source to null
+        val (path, failure) = TorrentFetcher.fetch(c, source)
+        return if (path != null) path to null else source to failure
+    }
+
+    fun resolveMetadata(source: String, timeoutMs: Long): Map<String, Any?> {
+        val (src, failure) = localizeSource(source)
+        if (failure != null) return failure
+        val res = call { NativeCore.nativeResolveMetadata(src, timeoutMs) }
+        if (src != source) File(src).delete()
+        return res
+    }
+
     fun addTorrent(source: String, options: Map<String, Any?>): Map<String, Any?> {
         val c = requireCtx()
+        val (src, failure) = localizeSource(source)
+        if (failure != null) return failure
         val opts = LinkedHashMap(Json.snakeify(options) as Map<String, Any?>)
         if (opts["output_folder"] == null && c != null) opts["output_folder"] = StorageManager.activeTarget(c).path
-        val res = call { NativeCore.nativeAddTorrent(source, Json.toJson(opts)) }
+        val res = call { NativeCore.nativeAddTorrent(src, Json.toJson(opts)) }
+        pollNow()
+        return res
+    }
+
+    fun deleteTorrent(id: String, deleteFiles: Boolean): Map<String, Any?> {
+        val res = call { NativeCore.nativeDelete(id, deleteFiles) }
+        if (isOk(res)) {
+            ctx?.let { StorageManager.clearCopied(it, id) }
+            if (copying.contains(id)) cancelledCopies.add(id)
+            copyFailedAt.remove(id)
+        }
         pollNow()
         return res
     }
@@ -579,7 +653,7 @@ object EngineHost {
 
     private fun checkAutoExit(torrents: List<Map<String, Any?>>) {
         if (!governance.autoExitOnComplete || autoExitFired || !sawDownloading || torrents.isEmpty()) return
-        val allDone = torrents.all { it["state"] == "COMPLETED" || it["state"] == "SEEDING" }
+        val allDone = torrents.all { isFinished(it) }
         if (allDone) {
             autoExitFired = true
             shutdownAndExit()
@@ -614,17 +688,16 @@ object EngineHost {
 
     fun emitStorageStatus() = emit("onStorageStatus", storageStatus())
 
-    /** Copies completed staging torrents into the user's tree. Idempotent, retried after failures. */
+    /** Copies finished staging torrents into the user's tree. Idempotent, retried after failures. */
     private fun copyStagedTorrents(torrents: List<Map<String, Any?>>) {
         val c = ctx ?: return
         val treeStr = StorageManager.customUri(c) ?: return
         val tree = android.net.Uri.parse(treeStr)
         for (t in torrents) {
             val id = t["id"] as? String ?: continue
-            val state = t["state"]
             val folder = t["output_folder"] as? String ?: continue
-            if (state != "COMPLETED" && state != "SEEDING") continue
-            if (!StorageManager.isStagingPath(c, folder) || StorageManager.isCopied(c, id)) continue
+            if (!isFinished(t)) continue
+            if (!StorageManager.isStagingPath(c, folder) || StorageManager.isCopied(c, id, folder, treeStr)) continue
             val failedAt = copyFailedAt[id]
             if (failedAt != null && SystemClock.elapsedRealtime() - failedAt < COPY_RETRY_MS) continue
             if (!copying.add(id)) continue
@@ -644,13 +717,15 @@ object EngineHost {
         var error: String? = null
         for (f in Json.list(detail["files"])) {
             val rel = f["path"] as? String ?: continue
-            val complete = Json.long(f["progress_bytes"]) >= Json.long(f["length"])
-            if (f["included"] == false || !complete) continue
+            if (f["included"] == false) continue
+            if (Json.long(f["progress_bytes"]) < Json.long(f["length"])) { error = "Not all files are complete yet"; break }
+            // null means the target exists with the source's size. A missing source is an error.
             val e = SafStorageManager.copyFileIntoTree(c, tree, rel, File(folder, rel))
             if (e != null) { error = e; break }
         }
+        if (cancelledCopies.remove(id)) return // deleted while copying
         if (error == null) {
-            StorageManager.markCopied(c, id)
+            StorageManager.markCopied(c, id, folder, tree.toString())
             copyFailedAt.remove(id)
             lastCopyError = null
         } else {

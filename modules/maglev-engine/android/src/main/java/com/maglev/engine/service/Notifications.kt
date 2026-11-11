@@ -23,11 +23,16 @@ data class TransferSummary(
     val upBps: Long = 0,
     /** Torrents waiting on Wi-Fi, battery or charging rules. */
     val pausedByRules: Int = 0,
+    val checking: Int = 0,
+    /** Torrents still fetching metadata. Dropped to 0 after 10 minutes with nothing else going on. */
+    val initializing: Int = 0,
 ) {
     val active: Int get() = downloading + seeding
 
     /** Active plus torrents that are queued, initializing or checking. Counts as real work. */
-    val busy: Int get() = active + queued
+    val busy: Int get() = active + queued + checking + initializing
+
+    val lookingForInfo: Boolean get() = active + queued + checking == 0 && initializing > 0
 }
 
 object Notifications {
@@ -64,14 +69,18 @@ object Notifications {
     }
 
     fun title(s: TransferSummary): String =
-        if (s.active == 0 && s.pausedByUser == 0 && s.pausedByRules > 0) "Waiting \u00B7 ${s.pausedByRules} torrents"
-        else if (s.active == 0 && s.pausedByUser > 0) "Paused · ${s.pausedByUser} torrents"
+        if (s.busy == 0 && s.pausedByUser == 0 && s.pausedByRules > 0) "Waiting \u00B7 ${s.pausedByRules} torrents"
+        else if (s.busy == 0 && s.pausedByUser > 0) "Paused · ${s.pausedByUser} torrents"
         else "Downloading ${s.downloading} · Seeding ${s.seeding}"
 
-    fun text(s: TransferSummary): String =
-        if (s.active == 0 && s.pausedByUser == 0) "Paused by Wi-Fi, battery or charging rules"
-        else if (s.active == 0) "Tap Resume all to continue"
-        else "↓ ${speed(s.downBps)} · ↑ ${speed(s.upBps)}"
+    fun text(s: TransferSummary): String = when {
+        s.lookingForInfo -> "Looking for torrent info\u2026"
+        s.active == 0 && s.checking > 0 -> "Checking files\u2026"
+        s.active == 0 && s.queued > 0 -> "Waiting for a free slot"
+        s.active == 0 && s.pausedByUser == 0 -> "Paused by Wi-Fi, battery or charging rules"
+        s.active == 0 -> "Tap Resume all to continue"
+        else -> "\u2193 ${speed(s.downBps)} \u00B7 \u2191 ${speed(s.upBps)}"
+    }
 
     fun speed(bps: Long): String {
         val v = bps.toDouble()
@@ -96,7 +105,7 @@ object Notifications {
             .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
             .setContentIntent(contentIntent(context))
         if (s.progressPct >= 0) b.setProgress(100, s.progressPct, false)
-        if (s.active > 0) {
+        if (s.busy > 0) {
             b.addAction(0, "Pause all", serviceAction(context, MaglevTorrentService.ACTION_PAUSE_ALL, 1))
         } else if (s.pausedByUser > 0) {
             b.addAction(0, "Resume all", serviceAction(context, MaglevTorrentService.ACTION_RESUME_ALL, 2))
