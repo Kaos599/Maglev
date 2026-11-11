@@ -79,7 +79,8 @@
     },
     "plugins": [
       "expo-router",
-      "./plugins/withAbiSplits.js"
+      "./plugins/withAbiSplits.js",
+      "./plugins/withSizeReduction.js"
     ],
     "experiments": {
       "typedRoutes": true
