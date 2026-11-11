@@ -220,6 +220,35 @@ pub extern "system" fn Java_com_maglev_engine_NativeCore_nativeSetIncludedFiles(
 }
 
 #[no_mangle]
+pub extern "system" fn Java_com_maglev_engine_NativeCore_nativeSetFilePriorities(
+    mut env: JNIEnv,
+    _class: JClass,
+    id: JString,
+    priorities_json: JString,
+) -> jstring {
+    let out = match (read_str(&mut env, &id), read_str(&mut env, &priorities_json)) {
+        (Some(id), Some(json)) => guarded(|| {
+            with_engine(|e| result_envelope(e.set_file_priorities(&id, &json)))
+        }),
+        _ => bad_argument(),
+    };
+    reply(&mut env, &out)
+}
+
+#[no_mangle]
+pub extern "system" fn Java_com_maglev_engine_NativeCore_nativeReannounce(
+    mut env: JNIEnv,
+    _class: JClass,
+    id: JString,
+) -> jstring {
+    let out = match read_str(&mut env, &id) {
+        Some(id) => guarded(|| with_engine(|e| result_envelope(e.reannounce(&id)))),
+        None => bad_argument(),
+    };
+    reply(&mut env, &out)
+}
+
+#[no_mangle]
 pub extern "system" fn Java_com_maglev_engine_NativeCore_nativeSetGlobalLimits(
     mut env: JNIEnv,
     _class: JClass,

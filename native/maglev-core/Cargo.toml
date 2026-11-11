@@ -13,7 +13,7 @@ crate-type = ["cdylib", "rlib"]
 # default-features = false drops `default-tls` (native-tls / OpenSSL, which does not exist on Android)
 # and `http-api-client`. `rust-tls` selects reqwest/rustls and the `ring` SHA-1 backend.
 # `http-api`, `webui` and `upnp-serve-adapter` stay off, so no embedded web server or web UI is built.
-librqbit = { version = "9.1", default-features = false, features = ["rust-tls"] }
+librqbit = { version = "=9.1.0", default-features = false, features = ["rust-tls"] }
 tokio = { version = "1", features = ["rt-multi-thread", "sync", "time", "net", "io-util"] }
 jni = { version = "0.21", default-features = false }
 serde = { version = "1", features = ["derive"] }
@@ -26,7 +26,11 @@ tracing = "0.1"
 # init plus a Kotlin companion component. reqwest has no feature to pick another verifier and
 # librqbit builds its own reqwest::Client, so the crate is replaced by a local one with the same
 # API that verifies against the bundled Mozilla roots (webpki-roots). See vendor/ README comment.
+#
+# librqbit is vendored too: it adds `ManagedTorrent::set_file_priority_order`. The patch is
+# listed in vendor/librqbit/MAGLEV_PATCH.md.
 [patch.crates-io]
+librqbit = { path = "vendor/librqbit" }
 rustls-platform-verifier = { path = "vendor/rustls-platform-verifier" }
 
 [features]

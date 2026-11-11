@@ -3,6 +3,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::error::ErrorCode;
+use crate::priority::{FilePriority, FilePriorityEntry};
 use crate::scheduler::TorrentState;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -56,6 +57,8 @@ pub struct FileDetail {
     pub length: u64,
     pub progress_bytes: u64,
     pub included: bool,
+    /// `first`, `normal` or `skip`. `included` is true for the first two.
+    pub priority: FilePriority,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -92,6 +95,8 @@ pub struct AddOptions {
     pub output_folder: Option<String>,
     /// Stored only; librqbit has no sequential switch (streaming reads steer piece order instead).
     pub sequential: bool,
+    /// Per-file choices from the add sheet. When present, this replaces `only_files`.
+    pub file_priorities: Option<Vec<FilePriorityEntry>>,
 }
 
 /// Folder name used under a custom output folder, so two multi-file torrents never mix files.
@@ -125,6 +130,14 @@ mod tests {
         .unwrap();
         assert_eq!(o.only_files, Some(vec![0, 2]));
         assert!(o.paused && o.sequential);
+        assert!(o.file_priorities.is_none());
+        let o: AddOptions = serde_json::from_str(
+            r#"{"only_files":[0],"file_priorities":[{"index":0,"priority":"first"},{"index":1,"priority":"skip"}]}"#,
+        )
+        .unwrap();
+        let p = o.file_priorities.unwrap();
+        assert_eq!(p.len(), 2);
+        assert_eq!(p[0].priority, FilePriority::First);
     }
 
     #[test]

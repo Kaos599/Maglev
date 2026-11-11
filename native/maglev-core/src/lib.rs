@@ -4,12 +4,13 @@
 //! contract in `docs/NATIVE_CONTRACT.md`.
 //!
 //! Pure, JVM-free and session-free modules (unit tested on any host):
-//! `config`, `error`, `source`, `scheduler`, `meta`, `simd`, and the parsing half of `streaming`.
+//! `config`, `error`, `source`, `scheduler`, `meta`, `priority`, `simd`, and the parsing half of `streaming`.
 
 pub mod config;
 pub mod engine;
 pub mod error;
 pub mod meta;
+pub mod priority;
 pub mod scheduler;
 pub mod simd;
 pub mod source;

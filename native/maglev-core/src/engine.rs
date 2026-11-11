@@ -33,6 +33,10 @@ use tracing::warn;
 use crate::config::NativeConfig;
 use crate::error::{classify_add_error, classify_runtime_error, EngineError, ErrorCode};
 use crate::meta::{MetaStore, PendingAdd, TorrentMeta};
+use crate::priority::{
+    include_set_changed, order_from_first, parse_priorities, plan_priorities, priority_of_file,
+    PriorityPlan, PriorityStore, ReannounceLimiter, REANNOUNCE_MIN_INTERVAL,
+};
 use crate::scheduler::{
     accumulate_seed_ms, derive_state, plan, uploaded_total, Action, RqState, StateInputs, TorrentFacts, TorrentState,
     PAUSED_BY_SEED_LIMIT, PAUSED_BY_USER,
@@ -154,6 +158,9 @@ pub struct MaglevEngine {
     shutting_down: AtomicBool,
     config_warning: Mutex<Option<String>>,
     last_seed_tick: Mutex<Instant>,
+    /// "Download first" choices, persisted in `maglev-priorities.json`.
+    priorities: Mutex<PriorityStore>,
+    reannounce_limiter: Mutex<ReannounceLimiter>,
 }
 
 fn build_options(cfg: &NativeConfig, session_dir: &Path) -> SessionOptions {
@@ -234,6 +241,7 @@ impl MaglevEngine {
         let _ = std::fs::create_dir_all(&default_dir);
 
         let mut meta = MetaStore::load(&session_dir);
+        let priorities = PriorityStore::load(&session_dir);
         let trimmed = config_json.trim();
         let mut config_warning: Option<String> = None;
         let cfg = if trimmed.is_empty() || trimmed == "null" {
@@ -317,8 +325,11 @@ impl MaglevEngine {
             shutting_down: AtomicBool::new(false),
             config_warning: Mutex::new(config_warning),
             last_seed_tick: Mutex::new(Instant::now()),
+            priorities: Mutex::new(priorities),
+            reannounce_limiter: Mutex::new(ReannounceLimiter::new(REANNOUNCE_MIN_INTERVAL)),
         });
 
+        engine.restore_priorities();
         engine.resume_pending_adds();
         engine.start_tick_loop();
         // Apply queue and governance rules once before the first list call.
@@ -527,18 +538,28 @@ impl MaglevEngine {
         let snapshot = self.snapshot(&id, &h, &m, &stats);
 
         let only = h.only_files();
+        let first: Vec<u32> = self
+            .priorities
+            .lock()
+            .get(&id)
+            .map(|f| f.to_vec())
+            .unwrap_or_default();
         let files: Vec<FileDetail> = h
             .with_metadata(|md| {
                 md.file_infos
                     .iter()
                     .enumerate()
                     .filter(|(_, fi)| !fi.attrs.padding)
-                    .map(|(i, fi)| FileDetail {
-                        index: i as u32,
-                        path: fi.relative_filename.to_string_lossy().into_owned(),
-                        length: fi.len,
-                        progress_bytes: stats.file_progress.get(i).copied().unwrap_or(0),
-                        included: only.as_ref().map(|o| o.contains(&i)).unwrap_or(true),
+                    .map(|(i, fi)| {
+                        let included = only.as_ref().map(|o| o.contains(&i)).unwrap_or(true);
+                        FileDetail {
+                            index: i as u32,
+                            path: fi.relative_filename.to_string_lossy().into_owned(),
+                            length: fi.len,
+                            progress_bytes: stats.file_progress.get(i).copied().unwrap_or(0),
+                            included,
+                            priority: priority_of_file(i as u32, included, &first),
+                        }
                     })
                     .collect()
             })
@@ -754,15 +775,27 @@ impl MaglevEngine {
             }
             _ => None,
         };
+        // Per-file choices replace `only_files` when both are given.
+        let planned: Option<PriorityPlan> = match &opts.file_priorities {
+            Some(entries) => {
+                let valid: Vec<usize> = r.files.iter().map(|f| f.index as usize).collect();
+                Some(plan_priorities(entries, &valid, r.file_count)?)
+            }
+            None => None,
+        };
+        let only_files: Option<Vec<usize>> = match &planned {
+            Some(p) => Some(p.included.iter().copied().collect()),
+            None => opts
+                .only_files
+                .as_ref()
+                .map(|v| v.iter().map(|i| *i as usize).collect()),
+        };
         let add_opts = AddTorrentOptions {
             // Always added paused; the planner starts it when a slot is free.
             paused: true,
             // Reuse files that are already on disk instead of failing.
             overwrite: true,
-            only_files: opts
-                .only_files
-                .as_ref()
-                .map(|v| v.iter().map(|i| *i as usize).collect()),
+            only_files,
             output_folder,
             ..Default::default()
         };
@@ -771,7 +804,13 @@ impl MaglevEngine {
             .add_torrent(AddTorrent::from_bytes(r.torrent_bytes.clone()), Some(add_opts))
             .await
         {
-            Ok(AddTorrentResponse::Added(_, _)) => Ok(()),
+            Ok(AddTorrentResponse::Added(_, handle)) => {
+                if let Some(p) = planned {
+                    handle.set_file_priority_order(p.order);
+                    self.remember_first_files(&r.info_hash, p.first);
+                }
+                Ok(())
+            }
             Ok(AddTorrentResponse::AlreadyManaged(_, _)) => {
                 Err(EngineError::duplicate(r.info_hash.clone()))
             }
@@ -825,6 +864,7 @@ impl MaglevEngine {
                     only_files: opts.only_files.clone(),
                     output_folder: opts.output_folder.clone(),
                     sequential: opts.sequential,
+                    file_priorities: opts.file_priorities.clone(),
                     error: None,
                 };
                 self.meta.lock().insert(&id, initial_meta(Some(pending.clone())));
@@ -882,6 +922,7 @@ impl MaglevEngine {
                 paused: false,
                 output_folder: pending.output_folder.clone(),
                 sequential: pending.sequential,
+                file_priorities: pending.file_priorities.clone(),
             };
             self.add_resolved(&resolved, &opts).await
         }
@@ -1043,12 +1084,19 @@ impl MaglevEngine {
                 output_folder: Some(folder),
                 ..Default::default()
             };
-            let added = self
+            let added = match self
                 .session
                 .add_torrent(AddTorrent::from_bytes(bytes), Some(opts))
                 .await
-                .map(|_| ())
-                .map_err(|e| classify_add_error(&format!("{e:#}")));
+            {
+                Ok(AddTorrentResponse::Added(_, new_handle)) => {
+                    // The re-added torrent is a new handle; give it the saved download order back.
+                    self.apply_saved_order(&id, &new_handle);
+                    Ok(())
+                }
+                Ok(_) => Ok(()),
+                Err(e) => Err(classify_add_error(&format!("{e:#}"))),
+            };
             // added_at, paused_by, uploaded totals and seeding time are kept; only error state resets.
             self.meta.lock().update(&id, |m| {
                 m.last_error = None;
@@ -1088,6 +1136,8 @@ impl MaglevEngine {
             })??;
         }
         let in_meta = self.meta.lock().remove(&id).is_some();
+        self.forget_priorities(&id);
+        self.reannounce_limiter.lock().release(&id);
         self.peer_cache.lock().retain(|k, _| !k.starts_with(&format!("{id}|")));
         self.save_meta();
         if !had_handle && !in_meta {
@@ -1114,6 +1164,173 @@ impl MaglevEngine {
         })??;
         let _ = self.run(OP_TIMEOUT, self.tick());
         Ok(())
+    }
+
+    // ---- file priority ----------------------------------------------------------------------------
+
+    /// Saves the `first` files of a torrent to the sidecar.
+    fn remember_first_files(&self, id: &str, first: Vec<u32>) {
+        let mut store = self.priorities.lock();
+        store.set(id, first);
+        if let Err(e) = store.save() {
+            warn!("could not save file priorities: {e}");
+        }
+    }
+
+    fn forget_priorities(&self, id: &str) {
+        let mut store = self.priorities.lock();
+        if store.remove(id) {
+            if let Err(e) = store.save() {
+                warn!("could not save file priorities: {e}");
+            }
+        }
+    }
+
+    /// Gives a handle the download order saved for `id`, if there is one.
+    fn apply_saved_order(&self, id: &str, h: &Handle20) {
+        let first: Option<Vec<u32>> = self.priorities.lock().get(id).map(|f| f.to_vec());
+        let Some(first) = first else { return };
+        let file_count = h.with_metadata(|m| m.file_infos.len()).unwrap_or(0);
+        if file_count > 0 {
+            h.set_file_priority_order(order_from_first(&first, file_count));
+        }
+    }
+
+    /// Run once at start: torrents that librqbit restored get their saved order.
+    fn restore_priorities(&self) {
+        for h in self.handles() {
+            let id = h.info_hash().as_string();
+            self.apply_saved_order(&id, &h);
+        }
+    }
+
+    /// `nativeSetFilePriorities`: the include set and the download order change together.
+    pub fn set_file_priorities(&self, id: &str, json: &str) -> Result<(), EngineError> {
+        let (id, hash) = Self::parse_id(id)?;
+        let h = self.find(hash).ok_or_else(EngineError::not_found)?;
+        let entries = parse_priorities(json)?;
+        let (valid, file_count): (Vec<usize>, usize) = h
+            .with_metadata(|m| {
+                (
+                    m.file_infos
+                        .iter()
+                        .enumerate()
+                        .filter(|(_, fi)| !fi.attrs.padding)
+                        .map(|(i, _)| i)
+                        .collect::<Vec<usize>>(),
+                    m.file_infos.len(),
+                )
+            })
+            .map_err(|_| EngineError::not_found())?;
+        // Nothing is changed until the whole list has been checked.
+        let plan = plan_priorities(&entries, &valid, file_count)?;
+
+        let current = h.only_files();
+        if include_set_changed(current.as_deref(), &valid, &plan.included) {
+            self.run(OP_TIMEOUT, async {
+                self.session
+                    .update_only_files(&h, &plan.included)
+                    .await
+                    .map_err(|e| {
+                        let raw = format!("{e:#}");
+                        if raw.contains("invalid value") {
+                            EngineError::new(
+                                ErrorCode::InvalidSource,
+                                "One of those files isn't in the torrent",
+                            )
+                        } else {
+                            EngineError::internal(
+                                "Couldn't change the file selection right now. Try again in a moment.",
+                            )
+                        }
+                    })
+            })??;
+        }
+        // Only reached when the include set is in place, so the two never disagree.
+        h.set_file_priority_order(plan.order);
+        self.remember_first_files(&id, plan.first);
+        let _ = self.run(OP_TIMEOUT, self.tick());
+        Ok(())
+    }
+
+    // ---- reannounce -------------------------------------------------------------------------------
+
+    /// True while the torrent shows as DOWNLOADING or SEEDING.
+    fn is_active_transfer(&self, id: &str, h: &Handle20) -> bool {
+        let stats = h.stats();
+        let m = self
+            .meta
+            .lock()
+            .get(id)
+            .cloned()
+            .unwrap_or_else(|| default_meta(h, now_secs()));
+        matches!(
+            self.snapshot(id, h, &m, &stats).state,
+            TorrentState::Downloading | TorrentState::Seeding
+        )
+    }
+
+    /// `nativeReannounce`: pause and unpause the same handle so trackers, DHT and LSD are asked again.
+    ///
+    /// The tick lock is held for the whole round trip, so the governance pass never sees the
+    /// torrent paused. `paused_by`, `queued`, `added_at` and the seeding clock are not touched.
+    pub fn reannounce(&self, id: &str) -> Result<(), EngineError> {
+        let (id, hash) = Self::parse_id(id)?;
+        let h = self.find(hash).ok_or_else(EngineError::not_found)?;
+        let not_running = || {
+            EngineError::new(
+                ErrorCode::Unsupported,
+                "Find more peers only works while a torrent is downloading or seeding",
+            )
+        };
+        if !self.is_active_transfer(&id, &h) {
+            return Err(not_running());
+        }
+        if let Err(secs) = self.reannounce_limiter.lock().try_acquire(&id, Instant::now()) {
+            return Err(EngineError::retry_later(
+                format!("Try again in {secs} seconds"),
+                secs,
+            ));
+        }
+        let outcome = self
+            .run(OP_TIMEOUT, async {
+                let _tick = self.tick_lock.lock().await;
+                // The state may have changed while this call waited for the lock.
+                if !self.is_active_transfer(&id, &h) {
+                    return Err(not_running());
+                }
+                // librqbit restarts its upload counter when a torrent goes live again.
+                // Fold what it has counted so far into the saved total first.
+                let uploaded_now = h.stats().uploaded_bytes;
+                self.meta.lock().update(&id, |m| {
+                    let (_, base, last) =
+                        uploaded_total(m.uploaded_base, m.last_uploaded_seen, uploaded_now);
+                    m.uploaded_base = base;
+                    m.last_uploaded_seen = last;
+                });
+                self.session.pause(&h).await.map_err(|e| {
+                    let (code, message) = classify_runtime_error(&format!("{e:#}"));
+                    EngineError::new(code, message)
+                })?;
+                if let Err(e) = self.session.unpause(&h).await {
+                    warn!("reannounce could not restart the torrent: {e:#}");
+                    // Leave it for the planner to start again instead of stuck paused.
+                    self.meta.lock().update(&id, |m| {
+                        if m.paused_by.is_none() {
+                            m.queued = true;
+                        }
+                    });
+                    let (code, message) = classify_runtime_error(&format!("{e:#}"));
+                    return Err(EngineError::new(code, message));
+                }
+                Ok::<(), EngineError>(())
+            })
+            .and_then(|r| r);
+        if outcome.is_err() {
+            // A call that did not reach the trackers must not use up the minute.
+            self.reannounce_limiter.lock().release(&id);
+        }
+        outcome
     }
 
     // ---- settings and governance ----------------------------------------------------------------

@@ -11,6 +11,7 @@ use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
 
 use crate::config::NativeConfig;
+use crate::priority::FilePriorityEntry;
 use crate::types::ErrorInfo;
 
 pub const META_FILE: &str = "maglev_meta.json";
@@ -23,6 +24,9 @@ pub struct PendingAdd {
     pub only_files: Option<Vec<u32>>,
     pub output_folder: Option<String>,
     pub sequential: bool,
+    /// Per-file choices to apply once the metadata arrives.
+    #[serde(default)]
+    pub file_priorities: Option<Vec<FilePriorityEntry>>,
     /// Set when the lookup failed. Cleared on the next start.
     #[serde(default)]
     pub error: Option<ErrorInfo>,

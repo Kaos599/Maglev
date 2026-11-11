@@ -50,6 +50,8 @@ pub struct EngineError {
     pub message: String,
     /// Set for `DUPLICATE`: the id of the torrent that already exists.
     pub id: Option<String>,
+    /// Set when a call was refused only because it came too soon (`nativeReannounce`).
+    pub retry_after_secs: Option<u64>,
 }
 
 impl EngineError {
@@ -58,6 +60,15 @@ impl EngineError {
             code,
             message: message.into(),
             id: None,
+            retry_after_secs: None,
+        }
+    }
+
+    /// `UNSUPPORTED` with a wait time, for calls that are rate limited.
+    pub fn retry_later(message: impl Into<String>, secs: u64) -> Self {
+        Self {
+            retry_after_secs: Some(secs),
+            ..Self::new(ErrorCode::Unsupported, message)
         }
     }
 
@@ -66,6 +77,7 @@ impl EngineError {
             code: ErrorCode::Duplicate,
             message: "This torrent is already in your list".to_string(),
             id: Some(id.into()),
+            retry_after_secs: None,
         }
     }
 
@@ -91,6 +103,9 @@ impl EngineError {
         m.insert("message".into(), Value::String(self.message.clone()));
         if let Some(id) = &self.id {
             m.insert("id".into(), Value::String(id.clone()));
+        }
+        if let Some(secs) = self.retry_after_secs {
+            m.insert("retry_after_secs".into(), Value::from(secs));
         }
         Value::Object(m).to_string()
     }
@@ -310,6 +325,16 @@ mod tests {
         let v: Value = serde_json::from_str(&panic_envelope()).unwrap();
         assert_eq!(v["code"], "INTERNAL");
         assert_eq!(v["ok"], false);
+    }
+
+    #[test]
+    fn retry_later_carries_the_wait_time() {
+        let v: Value = serde_json::from_str(&EngineError::retry_later("Wait", 42).to_json()).unwrap();
+        assert_eq!(v["ok"], false);
+        assert_eq!(v["code"], "UNSUPPORTED");
+        assert_eq!(v["retry_after_secs"], 42);
+        let v: Value = serde_json::from_str(&EngineError::not_found().to_json()).unwrap();
+        assert!(v.get("retry_after_secs").is_none());
     }
 
     #[test]
