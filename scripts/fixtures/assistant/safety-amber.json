@@ -1,0 +1,98 @@
+[
+  {
+    "name": "main payload is a RAR archive in a movie torrent",
+    "input": {
+      "name": "The.Last.Harbor.2023",
+      "category": "movie",
+      "files": [
+        { "path": "Harbor/harbor.rar", "sizeBytes": 3221225472 },
+        { "path": "Harbor/sample.mkv", "sizeBytes": 41943040 }
+      ]
+    },
+    "expect": { "level": "amber", "reasonMatch": "main file is an archive" }
+  },
+  {
+    "name": "RAR with a password note and no link stays amber",
+    "input": {
+      "name": "The.Last.Harbor.2023",
+      "category": "movie",
+      "files": [
+        { "path": "Harbor/harbor.rar", "sizeBytes": 943718400 },
+        { "path": "Harbor/Harbor.The.Last.mkv", "sizeBytes": 1288490188 },
+        { "path": "Harbor/how-to-open.txt", "sizeBytes": 512 }
+      ]
+    },
+    "expect": { "level": "amber", "reasonMatch": "common lure" }
+  },
+  {
+    "name": "4K film that is only 200 KB",
+    "input": {
+      "name": "The.Last.Harbor.2023.2160p.WEB-DL.x265",
+      "category": "movie",
+      "files": [
+        { "path": "Harbor/The.Last.Harbor.2023.2160p.mkv", "sizeBytes": 204800 }
+      ]
+    },
+    "expect": { "level": "amber", "reasonMatch": "usually at least" }
+  },
+  {
+    "name": "1080p film of 38 MB claims more than it is",
+    "input": {
+      "name": "The.Last.Harbor.2023.1080p.WEB-DL.x265",
+      "category": "movie",
+      "files": [
+        { "path": "Harbor/The.Last.Harbor.2023.1080p.mkv", "sizeBytes": 39845888 }
+      ]
+    },
+    "expect": { "level": "amber", "reasonMatch": "claims 1080p" }
+  },
+  {
+    "name": "search size and file total differ by more than 10 %",
+    "input": {
+      "name": "Harbor.2023.1080p.WEB-DL.x265",
+      "category": "movie",
+      "claimedSizeBytes": 3221225472,
+      "files": [
+        { "path": "Harbor/Harbor.2023.1080p.mkv", "sizeBytes": 1610612736 }
+      ]
+    },
+    "expect": { "level": "amber", "reasonMatch": "The search listed" }
+  },
+  {
+    "name": "only video is named another title and year",
+    "input": {
+      "name": "The Last Harbor 2023 1080p WEB-DL",
+      "category": "movie",
+      "queryTitle": "The Last Harbor",
+      "queryYear": 2023,
+      "files": [
+        { "path": "Other.Film.2019.1080p.mkv", "sizeBytes": 2684354560 }
+      ]
+    },
+    "expect": { "level": "amber", "reasonMatch": "doesn't match it" }
+  },
+  {
+    "name": "single film torrent with a second, mid-sized video",
+    "input": {
+      "name": "Harbor.2023.1080p.WEB-DL.x265",
+      "category": "movie",
+      "files": [
+        { "path": "Harbor/Harbor.2023.1080p.mkv", "sizeBytes": 2147483648 },
+        { "path": "Harbor/Harbor.Extended.mkv", "sizeBytes": 429496730 }
+      ]
+    },
+    "expect": { "level": "amber", "reasonMatch": "very different video sizes" }
+  },
+  {
+    "name": "parser flagged a cinema camera source",
+    "input": {
+      "name": "Harbor.2023.1080p.HDCAM",
+      "category": "movie",
+      "parserWarnings": ["cam_source"],
+      "files": [
+        { "path": "Harbor/Harbor.2023.mkv", "sizeBytes": 2147483648 }
+      ]
+    },
+    "expect": { "level": "amber", "reasonMatch": "camera recording" }
+  }
+]
