@@ -1,11 +1,8 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
   <title>Maglev icon</title>
   <rect width="1024" height="1024" rx="246" fill="#282828"/>
-  <g transform="translate(272 256) scale(2.4)">
-  <g fill="#D0FF00">
-    <path d="M0 0H52V205L0 261Z"/>
-    <path d="M60 0L100 92L140 0V72L100 175L60 72Z"/>
-    <path d="M148 0H200V180H148Z"/>
-  </g>
+  <g transform="translate(235.7 166.5) scale(3.635)" fill="#D0FF00">
+    <path d="M75.96 76.06L0.31 1.20L1.17 164.80L36.09 199.35L35.49 85.07L76.22 125.38L114.00 87.21L114.00 37.62Z"/>
+    <path d="M150.82 0.41L128.00 23.47L128.00 112.42L151.46 120.90Z"/>
   </g>
 </svg>

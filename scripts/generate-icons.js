@@ -20,8 +20,8 @@ const root = path.resolve(__dirname, '..');
 const assets = path.join(root, 'assets');
 const ICON_SVG = path.join(assets, 'brand', 'maglev-icon.svg');
 const MARK_SVG = path.join(assets, 'brand', 'maglev-mark.svg');
-const MARK_W = 200; // viewBox of maglev-mark.svg
-const MARK_H = 261;
+const MARK_W = 152; // viewBox of maglev-mark.svg
+const MARK_H = 200;
 
 const magick = (...args) => execFileSync('magick', args, { stdio: 'inherit' });
 
