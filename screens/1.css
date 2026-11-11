@@ -1,61 +1,7 @@
-/* Group 8 */
-
-position: absolute;
-width: 295px;
-height: 280px;
-
-
-
-/* Rectangle 36 */
-
-position: absolute;
-width: 295px;
-height: 280px;
-
-background: #282828;
-border-radius: 71px;
-
-
-/* M */
-
-position: absolute;
-width: 174px;
-height: 261px;
-
-font-family: 'Sparkles';
-font-style: normal;
-font-weight: 400;
-font-size: 237.122px;
-line-height: 261px;
-
-color: #D0FF00;
-
-transform: rotate(-0.3deg);
-
-
-/* Rectangle 37 */
-
-position: absolute;
-width: 12px;
-height: 73.77px;
-
-background: #282828;
-
-
-/* Rectangle 38 */
-
-position: absolute;
-width: 14px;
-height: 194px;
-
-background: #282828;
-
-
-/* Rectangle 40 */
-
-position: absolute;
-width: 48.91px;
-height: 79.83px;
-
-background: #282828;
-transform: rotate(-70.13deg);
+<svg width="295" height="280" viewBox="0 0 295 280" fill="none" xmlns="http://www.w3.org/2000/svg">
+<path d="M0 71C0 31.7878 31.7878 0 71 0H224C263.212 0 295 31.7878 295 71V209C295 248.212 263.212 280 224 280H71C31.7878 280 0 248.212 0 209V71Z" fill="#282828"/>
+<path d="M106.486 130.075L107.089 244.35L72.1716 209.8L71.3074 46.202L146.962 121.062L221.822 45.407L222.686 209.005L187.952 209.188L187.532 129.647L147.223 170.384L106.486 130.075Z" fill="#D0FF00"/>
+<path d="M182 143H194V216.766H182V143Z" fill="#282828"/>
+<path d="M185 17H199V211H185V17Z" fill="#282828"/>
+<path d="M154 193.167L170.622 147.166L245.699 174.295L229.078 220.296L154 193.167Z" fill="#282828"/>
+</svg>
