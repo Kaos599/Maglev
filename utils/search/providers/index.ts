@@ -17,3 +17,11 @@ import { x1337 } from './x1337.ts';
 export const PROVIDERS: SearchProvider[] = [knaben, torrentscsv, archive, nyaa, yts, tpb, bitsearch, linuxtracker, sukebei, eztv, subsplease, animetosho, x1337];
 
 export { knaben, torrentscsv, archive, nyaa, yts, tpb, bitsearch, linuxtracker, sukebei, eztv, subsplease, animetosho, x1337 };
+
+// DHT / meta search engines (ported from TorrentSearch).
+import { btsow } from './btsow.ts';
+import { torrentkitty } from './torrentkitty.ts';
+import { filemood } from './filemood.ts';
+import { zeromagnet } from './zeromagnet.ts';
+PROVIDERS.push(btsow, torrentkitty, filemood, zeromagnet);
+export { btsow, torrentkitty, filemood, zeromagnet };
