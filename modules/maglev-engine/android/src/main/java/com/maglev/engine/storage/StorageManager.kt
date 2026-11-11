@@ -129,6 +129,19 @@ object StorageManager {
         return outputFolder == root || outputFolder.startsWith(root + File.separator)
     }
 
+    /**
+     * Frees the staged files of a torrent whose copy in the user's tree is verified by size. Seeding reads from
+     * staging (NATIVE_CONTRACT section 5), so call this only when the torrent is removed with its files kept in
+     * the tree, or has stopped seeding for good. Returns bytes freed. Blocking, call from IO.
+     */
+    fun freeStagedFiles(context: Context, outputFolder: String, relPaths: List<String>): Long {
+        val tree = customUri(context)?.let { android.net.Uri.parse(it) } ?: return 0L
+        if (!isStagingPath(context, outputFolder)) return 0L
+        return StagingCleanup.free(stagingDir(context), File(outputFolder), relPaths) { rel, f ->
+            SafStorageManager.copyMatches(context, tree, rel, f)
+        }
+    }
+
     private fun copiedKey(id: String, folder: String, tree: String) = "$id|$folder|$tree"
 
     /** A marker is valid only for the same torrent, output folder and destination tree. */

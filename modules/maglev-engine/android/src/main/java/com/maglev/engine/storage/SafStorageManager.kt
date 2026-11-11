@@ -78,6 +78,12 @@ object SafStorageManager {
         }
     }
 
+    /** True when the tree holds a file at [relativePath] with the same size as [source]. Blocking, call from IO. */
+    fun copyMatches(context: Context, treeUri: Uri, relativePath: String, source: File): Boolean {
+        val doc = try { findInTree(context, treeUri, relativePath) } catch (_: Exception) { null } ?: return false
+        return doc.isFile && source.isFile && doc.length() == source.length()
+    }
+
     /** Finds a document in the tree by relative path, or null. */
     fun findInTree(context: Context, treeUri: Uri, relativePath: String): DocumentFile? {
         var cur: DocumentFile = DocumentFile.fromTreeUri(context, treeUri) ?: return null

@@ -8,7 +8,10 @@ import { formatEta } from "../utils/rates";
 import { PixelIcon, PixelIconName } from "./PixelIcon";
 import { IconButton, PressableScale, ProgressBar, ProgressTone } from "./ui";
 
-/** Name (two lines), one bar, one status line. The height never changes between states. */
+/**
+ * Name (two lines), one bar, one status line. At the default font size the height never changes
+ * between states. It is a minimum, not a fixed height: at large font scales the card grows so text never clips.
+ */
 export const CARD_HEIGHT = 104;
 export const CARD_GAP = 8;
 
@@ -152,6 +155,12 @@ function TransferCardImpl({
         ? colors.accentText
         : colors.textMuted;
   const actionBusy = !!t.pending || !!t.lastKnown;
+  const canAct = !!action && !selectionMode && !actionBusy;
+  const a11yActions = [
+    { name: "activate", label: selectionMode ? (selected ? "Deselect" : "Select") : "Open" },
+    ...(canAct && action ? [{ name: action.kind, label: action.label }] : []),
+  ];
+  const a11yLabel = `${t.name}, ${status.text}, ${pct.toFixed(0)} percent${selectionMode && selected ? ", selected" : ""}`;
 
   return (
     <View style={[styles.card, selected && styles.cardSelected]}>
@@ -160,7 +169,21 @@ function TransferCardImpl({
         onLongPress={() => onLongPress(t.id)}
         scaleTo={0.99}
         accessibilityRole="button"
-        accessibilityLabel={`${t.name}, ${status.text}, ${pct.toFixed(0)} percent`}
+        accessibilityLabel={a11yLabel}
+        accessibilityActions={a11yActions}
+        onAccessibilityAction={(e) => {
+          switch (e.nativeEvent.actionName) {
+            case "activate":
+              onPress(t.id);
+              break;
+            case "pause":
+              onPause(t.id);
+              break;
+            case "resume":
+              onResume(t.id);
+              break;
+          }
+        }}
         accessibilityState={{ selected: selectionMode ? selected : undefined }}
         style={styles.press}
       >
@@ -234,7 +257,7 @@ export const TransferCard = memo(TransferCardImpl, sameCard);
 const makeStyles = (c: ThemeColors) =>
   StyleSheet.create({
     card: {
-      height: CARD_HEIGHT,
+      minHeight: CARD_HEIGHT,
       marginHorizontal: spacing.lg,
       backgroundColor: c.surface,
       borderWidth: 1,
@@ -243,7 +266,8 @@ const makeStyles = (c: ThemeColors) =>
       overflow: "hidden",
     },
     press: {
-      flex: 1,
+      flexGrow: 1,
+      gap: spacing.sm,
       paddingLeft: spacing.lg,
       paddingRight: 44 + spacing.sm,
       paddingVertical: spacing.md,
@@ -252,7 +276,8 @@ const makeStyles = (c: ThemeColors) =>
     actionAnchor: {
       position: "absolute",
       right: spacing.sm,
-      top: (CARD_HEIGHT - 2 - 44) / 2,
+      top: "50%",
+      marginTop: -22,
       width: 44,
       height: 44,
     },
@@ -264,7 +289,7 @@ const makeStyles = (c: ThemeColors) =>
       flexDirection: "row",
       alignItems: "flex-start",
       gap: spacing.sm,
-      height: 36,
+      minHeight: 36,
     },
     name: { ...type.mono, fontSize: 13, lineHeight: 18, color: c.text, flex: 1 },
     status: { ...type.mono, fontSize: 12, lineHeight: 18 },

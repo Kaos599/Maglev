@@ -19,4 +19,41 @@ assert(rules.includes('native <methods>'));
 assert(rules.startsWith('# existing\n'));
 assert.strictEqual(applyKeepRules(rules), rules, 'rules not idempotent');
 assert(applyKeepRules('').includes('com.maglev.engine'));
+// --- backup rules (exclude session/ from Auto Backup) ---
+{
+  const { fullBackupXml, dataExtractionXml, applyBackupAttributes } = require('../plugins/withBackupRules');
+  const full = fullBackupXml();
+  assert(full.includes('<exclude domain="file" path="session/"/>'), 'full backup excludes session/');
+  assert(full.includes('domain="external" path="Download/"'), 'full backup excludes staging/downloads');
+  const ext = dataExtractionXml();
+  const cloud = /<cloud-backup>([\s\S]*?)<\/cloud-backup>/.exec(ext)[1];
+  const transfer = /<device-transfer>([\s\S]*?)<\/device-transfer>/.exec(ext)[1];
+  for (const part of [cloud, transfer]) assert(part.includes('path="session/"'), 'data extraction excludes session/ in both sections');
+  const app = applyBackupAttributes({ $: { 'android:allowBackup': 'true' } });
+  assert.strictEqual(app.$['android:fullBackupContent'], '@xml/maglev_backup_rules');
+  assert.strictEqual(app.$['android:dataExtractionRules'], '@xml/maglev_data_extraction_rules');
+  assert.strictEqual(app.$['android:allowBackup'], 'true', 'unrelated attributes kept');
+  assert.deepStrictEqual(applyBackupAttributes(app), app, 'attributes not idempotent');
+}
+
+// --- share intents (ACTION_SEND / SEND_MULTIPLE) ---
+{
+  const { applyMainActivity, KOTLIN } = require('../plugins/withShareIntents');
+  const tpl =
+    'package com.maglev\n\nimport android.os.Bundle\n\nclass MainActivity : ReactActivity() {\n  override fun onCreate(savedInstanceState: Bundle?) {\n    setTheme(R.style.AppTheme);\n    super.onCreate(null)\n  }\n}\n';
+  const out = applyMainActivity(tpl);
+  assert(out.includes('import android.content.Intent'));
+  assert(out.includes('override fun onNewIntent(intent: Intent) {\n    MaglevShareIntent.rewrite(intent)\n    super.onNewIntent(intent)'));
+  assert(/onCreate\(savedInstanceState: Bundle\?\) \{\n    MaglevShareIntent\.rewrite\(intent\)\n    setTheme/.test(out), 'rewrite runs before super.onCreate');
+  assert.strictEqual(applyMainActivity(out), out, 'MainActivity patch not idempotent');
+  assert.throws(() => applyMainActivity('class X'), /onCreate not found/);
+  assert(KOTLIN.includes('ACTION_SEND_MULTIPLE') && KOTLIN.includes('magnet:'));
+  const fs = require('fs');
+  const path = require('path');
+  const app = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'app.json'), 'utf8')).expo;
+  const filters = app.android.intentFilters;
+  assert(filters.some((f) => f.action === 'SEND' && f.data.some((d) => d.mimeType === 'text/plain')), 'SEND text/plain filter');
+  assert(filters.some((f) => f.action === 'SEND_MULTIPLE'), 'SEND_MULTIPLE filter');
+  assert(app.plugins.includes('./plugins/withBackupRules.js') && app.plugins.includes('./plugins/withShareIntents.js'));
+}
 console.log('test-plugins: all assertions passed');
