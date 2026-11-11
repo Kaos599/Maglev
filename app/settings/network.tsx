@@ -49,6 +49,11 @@ export default function NetworkSettings() {
           accessory={sw('Wi-Fi only', n.wifiOnly, (v) => set({ wifiOnly: v }))}
         />
         <ListRow
+          title="Only download over a VPN"
+          subtitle="Pauses when no VPN is connected."
+          accessory={sw('Only download over a VPN', n.vpnOnly, (v) => set({ vpnOnly: v }))}
+        />
+        <ListRow
           title="Only on these networks"
           subtitle="Limit downloads to Wi-Fi names you list."
           accessory={sw('Only on these networks', n.ssidWhitelistEnabled, (v) => set({ ssidWhitelistEnabled: v }))}

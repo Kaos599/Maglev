@@ -18,6 +18,8 @@ pub struct MagnetInfo {
     pub info_hash: String,
     /// The `dn` display name, percent-decoded.
     pub name: Option<String>,
+    /// The `tr` announce URLs, percent-decoded, in link order.
+    pub trackers: Vec<String>,
 }
 
 fn invalid(msg: &str) -> EngineError {
@@ -45,6 +47,7 @@ pub fn parse_source(raw: &str) -> Result<Source, EngineError> {
         return Ok(Source::Magnet(MagnetInfo {
             info_hash: s.to_ascii_lowercase(),
             name: None,
+            trackers: Vec::new(),
         }));
     }
     if s.starts_with('/') {
@@ -84,6 +87,7 @@ fn parse_magnet(s: &str) -> Result<MagnetInfo, EngineError> {
     let mut info_hash: Option<String> = None;
     let mut saw_v2_only = false;
     let mut name: Option<String> = None;
+    let mut trackers: Vec<String> = Vec::new();
     for pair in query.split('&') {
         let (k, v) = match pair.split_once('=') {
             Some(kv) => kv,
@@ -105,10 +109,12 @@ fn parse_magnet(s: &str) -> Result<MagnetInfo, EngineError> {
             }
         } else if key == "dn" && !v.is_empty() && name.is_none() {
             name = Some(percent_decode(v));
+        } else if (key == "tr" || key.starts_with("tr.")) && !v.is_empty() {
+            trackers.push(percent_decode(v));
         }
     }
     match info_hash {
-        Some(info_hash) => Ok(MagnetInfo { info_hash, name }),
+        Some(info_hash) => Ok(MagnetInfo { info_hash, name, trackers }),
         None if saw_v2_only => Err(invalid(
             "This magnet link only has a BitTorrent v2 hash, which isn't supported yet",
         )),
@@ -195,6 +201,23 @@ mod tests {
     use super::*;
 
     const HEX: &str = "0123456789abcdef0123456789abcdef01234567";
+
+    #[test]
+    fn magnet_collects_tracker_urls() {
+        let src = format!(
+            "magnet:?xt=urn:btih:{HEX}&tr=udp%3A%2F%2Ft.example.com%3A1%2Fannounce&tr=http%3A%2F%2Fa.example.com%2Fannounce&tr="
+        );
+        match parse_source(&src).unwrap() {
+            Source::Magnet(m) => assert_eq!(
+                m.trackers,
+                vec![
+                    "udp://t.example.com:1/announce".to_string(),
+                    "http://a.example.com/announce".to_string()
+                ]
+            ),
+            _ => panic!("expected a magnet"),
+        }
+    }
 
     #[test]
     fn magnet_without_btih_is_invalid_source() {

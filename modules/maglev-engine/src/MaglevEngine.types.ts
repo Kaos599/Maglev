@@ -36,6 +36,10 @@ export type PausedBy =
   | 'seed_limit'
   | 'fgs_timeout'
   | 'schedule'
+  /** NATIVE_CONTRACT 21: connected but not validated (captive portal). */
+  | 'network_unvalidated'
+  /** NATIVE_CONTRACT 21: `network.vpnOnly` is on and no VPN is connected. */
+  | 'vpn_required'
   | HealthTag;
 
 export interface TorrentTelemetry {
@@ -145,7 +149,7 @@ export interface ResolveActivity {
 
 export type EngineResult<T = object> =
   | ({ ok: true } & T)
-  | { ok: false; code: EngineErrorCode; message: string; id?: string; retryAfterSecs?: number };
+  | { ok: false; code: EngineErrorCode; message: string; id?: string; retryAfterSecs?: number; mergedTrackers?: number };
 
 export type NativeEncryption = 'prefer' | 'require' | 'disable';
 
@@ -321,6 +325,8 @@ export interface GovernanceConfig {
   autoExitOnComplete: boolean;
   /** NATIVE_CONTRACT 19: restart unfinished transfers after a reboot or app update. */
   resumeAfterRestart: boolean;
+  /** NATIVE_CONTRACT 21: pause while the active network is not a VPN. */
+  vpnOnly: boolean;
 }
 
 export type NotificationActionName = 'pause_all' | 'resume_all' | 'shutdown';

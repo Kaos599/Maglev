@@ -25,6 +25,8 @@ export interface ProxyConfig {
 
 export interface NetworkSettings {
   wifiOnly: boolean;
+  /** NATIVE_CONTRACT 21: pause while the active network is not a VPN. */
+  vpnOnly: boolean;
   ssidWhitelistEnabled: boolean;
   allowedSsids: string[];
   currentSsid?: string;
@@ -146,6 +148,7 @@ export const DEFAULT_SETTINGS: MaglevSettings = {
   },
   network: {
     wifiOnly: false,
+    vpnOnly: false,
     ssidWhitelistEnabled: false,
     allowedSsids: [],
     networkType: 'WIFI',

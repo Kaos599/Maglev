@@ -68,11 +68,13 @@ export function toGovernance(settings: MaglevSettings): GovernanceConfig {
     batteryCutoffPct: power.batteryCutoffThreshold,
     autoExitOnComplete: power.autoExitOnComplete,
     resumeAfterRestart: power.resumeAfterRestart,
+    vpnOnly: network.vpnOnly,
   };
 }
 
 /** Governance reason tags that appear in `Snapshot.pausedBy` (contract section 3). */
-export const GOVERNANCE_REASONS: Record<'wifiOnly' | 'chargingOnly' | 'batteryCutoff', PausedBy> = {
+export const GOVERNANCE_REASONS: Record<'wifiOnly' | 'chargingOnly' | 'batteryCutoff' | 'vpnOnly', PausedBy> = {
+  vpnOnly: 'vpn_required',
   wifiOnly: 'wifi_only',
   chargingOnly: 'charging_only',
   batteryCutoff: 'battery',

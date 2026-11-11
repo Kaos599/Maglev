@@ -55,11 +55,11 @@ use crate::relocate::{
 };
 use crate::simd::{downsample_bitfield, MATRIX_SIZE};
 use crate::source::{check_supported, parse_source, Source};
-use crate::streaming::{mime_for_extension, StreamServer};
+use crate::streaming::{mime_for_extension, stream_active, StreamServer};
 use crate::torrent_limits::{parse_limits, LimitsStore, TorrentLimits};
 use crate::trackers::{
-    apply_edits, build_torrent_file, check_export_path, find_tracker, parse_url_list, plan_add,
-    TrackerStore,
+    announce_urls_from_torrent, apply_edits, build_torrent_file, check_export_path, find_tracker, parse_url_list, plan_add,
+    TrackerStore, validate_tracker_url,
 };
 use crate::types::{
     subfolder_for, AddOptions, Detail, ErrorInfo, FileDetail, FileEntry, Metadata, PeerDetail,
@@ -816,7 +816,7 @@ impl MaglevEngine {
             }
         }
         out.sort_by(|a, b| a.added_at.cmp(&b.added_at).then_with(|| a.id.cmp(&b.id)));
-        Ok(serde_json::json!({ "torrents": out }))
+        Ok(serde_json::json!({ "torrents": out, "streaming": stream_active() }))
     }
 
     pub fn detail(&self, id: &str) -> Result<Detail, EngineError> {
@@ -1284,7 +1284,8 @@ impl MaglevEngine {
             Source::Magnet(m) => {
                 let (id, hash) = Self::parse_id(&m.info_hash)?;
                 if self.is_known(&id, hash) {
-                    return Err(EngineError::duplicate(id));
+                    let merged = self.merge_duplicate_trackers(&id, &m.trackers);
+                    return Err(EngineError::duplicate_merged(id, merged));
                 }
                 let pending = PendingAdd {
                     source: source.trim().to_string(),
@@ -1319,7 +1320,9 @@ impl MaglevEngine {
                 )??;
                 let (id, hash) = Self::parse_id(&resolved.info_hash)?;
                 if self.is_known(&id, hash) {
-                    return Err(EngineError::duplicate(id));
+                    let urls = announce_urls_from_torrent(&resolved.torrent_bytes);
+                    let merged = self.merge_duplicate_trackers(&id, &urls);
+                    return Err(EngineError::duplicate_merged(id, merged));
                 }
                 self.meta.lock().insert(&id, initial_meta(None));
                 self.save_meta();
@@ -2136,6 +2139,25 @@ impl MaglevEngine {
             skipped,
             announced,
         })
+    }
+
+    /// Section 21: a duplicate add brings its trackers to the torrent that already exists. Returns how many
+    /// were new. Private torrents, torrents still resolving, invalid addresses and any failure give 0 or skip.
+    fn merge_duplicate_trackers(&self, id: &str, urls: &[String]) -> usize {
+        let valid: Vec<String> = urls
+            .iter()
+            .filter_map(|u| validate_tracker_url(u).ok())
+            .collect();
+        if valid.is_empty() {
+            return 0;
+        }
+        let Ok(json) = serde_json::to_string(&valid) else {
+            return 0;
+        };
+        match self.add_trackers(id, &json) {
+            Ok(r) => r.added,
+            Err(_) => 0,
+        }
     }
 
     /// `nativeRemoveTracker`: drops one announce URL. Removing the last one is allowed (DHT and PEX still work).

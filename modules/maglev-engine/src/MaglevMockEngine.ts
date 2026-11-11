@@ -49,7 +49,7 @@ import { parseSource, pseudoHash } from './magnet.ts';
 import { checkTrackerLines, trackerKey } from './trackerUrl.ts';
 import { restartReasons, toNativeConfig } from './toNativeConfig.ts';
 
-const GOVERNANCE_TAGS: ReadonlySet<PausedBy | null> = new Set<PausedBy | null>(['wifi_only', 'battery', 'charging_only']);
+const GOVERNANCE_TAGS: ReadonlySet<PausedBy | null> = new Set<PausedBy | null>(['wifi_only', 'battery', 'charging_only', 'network_unvalidated', 'vpn_required']);
 const DEFAULT_PAYLOAD_BYTES = 1_610_612_736; // 1.5 GiB when a magnet carries no xl=
 
 /** Thrown by the legacy synchronous `startTorrent`; carries the contract error code. */
@@ -305,7 +305,20 @@ export class MaglevMockEngine implements MaglevEngineApi {
     }
     const id = parsed.infoHash;
     if (this.torrents.has(id)) {
-      return fail('DUPLICATE', 'This torrent is already in your list.', id);
+      // NATIVE_CONTRACT 21: the new source's trackers are merged into the existing torrent.
+      const t = this.torrents.get(id)!;
+      const have = new Set(t.trackers.map((tr) => trackerKey(tr.url)));
+      const fresh: string[] = [];
+      for (const url of parsed.trackers) {
+        const key = trackerKey(url);
+        if (!have.has(key)) {
+          have.add(key);
+          fresh.push(url);
+        }
+      }
+      for (const url of fresh) t.trackers.push({ url, status: 'Announcing', seeds: 0, peers: 0 });
+      if (fresh.length > 0) this.broadcast();
+      return { ok: false, code: 'DUPLICATE', message: 'This torrent is already in your list.', id, mergedTrackers: fresh.length };
     }
     const name = parsed.name || `Torrent_${id.slice(0, 8)}`;
     const totalSize = parsed.exactLength && parsed.exactLength > 5120 ? parsed.exactLength : DEFAULT_PAYLOAD_BYTES;

@@ -7,8 +7,9 @@
 
 use std::io::SeekFrom;
 use std::str::FromStr;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use librqbit::api::TorrentIdOrHash;
 use librqbit::dht::Id20;
@@ -24,6 +25,38 @@ const HEAD_TIMEOUT: Duration = Duration::from_secs(10);
 const READ_TIMEOUT: Duration = Duration::from_secs(120);
 const WRITE_TIMEOUT: Duration = Duration::from_secs(60);
 const CHUNK: usize = 64 * 1024;
+
+/// How long after the last served byte a stream still counts as active (contract section 21).
+pub const STREAM_ACTIVE_WINDOW_MS: u64 = 60_000;
+
+/// Wall clock time of the last chunk written to a player, in ms since the epoch. 0 means never.
+/// One loopback server exists per process, so a process-wide value is enough.
+static LAST_SERVED_MS: AtomicU64 = AtomicU64::new(0);
+
+fn now_epoch_ms() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or(0)
+}
+
+fn note_served() {
+    LAST_SERVED_MS.store(now_epoch_ms(), Ordering::Relaxed);
+}
+
+/// Pure rule: bytes were served at `last_ms` and `now_ms` is no more than `window_ms` later.
+pub fn served_within(last_ms: u64, now_ms: u64, window_ms: u64) -> bool {
+    last_ms != 0 && now_ms.saturating_sub(last_ms) <= window_ms
+}
+
+/// True while a player has been fed bytes in the last 60 s. Kotlin keeps the service up while it holds.
+pub fn stream_active() -> bool {
+    served_within(
+        LAST_SERVED_MS.load(Ordering::Relaxed),
+        now_epoch_ms(),
+        STREAM_ACTIVE_WINDOW_MS,
+    )
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RequestHead {
@@ -376,7 +409,7 @@ async fn handle_connection(mut sock: TcpStream, session: Arc<Session>, auth: Arc
             Ok(Ok(n)) => n,
         };
         match timeout(WRITE_TIMEOUT, sock.write_all(&buf[..n])).await {
-            Ok(Ok(())) => {}
+            Ok(Ok(())) => note_served(),
             _ => break,
         }
         remaining -= n as u64;
@@ -435,6 +468,14 @@ impl StreamServer {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn served_within_window() {
+        assert!(!served_within(0, 1_000_000, 60_000));
+        assert!(served_within(1_000, 61_000, 60_000));
+        assert!(!served_within(1_000, 61_001, 60_000));
+        assert!(served_within(5_000, 1_000, 60_000));
+    }
 
     #[test]
     fn range_forms() {

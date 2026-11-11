@@ -14,6 +14,7 @@ data class TileModel(val state: TileUiState, val subtitle: String, val tapAction
                 val subtitle = when {
                     s.downloading > 0 -> "${s.downloading} downloading · ${Notifications.speed(s.downBps)}"
                     s.seeding > 0 -> "Seeding ${s.seeding}"
+                    s.streaming && s.initializing == 0 && s.checking == 0 && s.queued == 0 -> "Streaming"
                     s.lookingForInfo -> "Looking for info"
                     s.checking > 0 -> "Checking files"
                     else -> "Waiting for a free slot"
@@ -26,6 +27,8 @@ data class TileModel(val state: TileUiState, val subtitle: String, val tapAction
                 s.pausedByUser == 0 && s.pausedByRules > 0 -> when (s.ruleReason) {
                     "battery" -> "Battery low"
                     "charging_only" -> "Waiting for charger"
+                    "network_unvalidated" -> "Waiting for internet"
+                    "vpn_required" -> "Waiting for VPN"
                     else -> "Waiting for Wi-Fi"
                 }
                 s.pausedByUser == 0 && s.pausedBySchedule > 0 -> "Scheduled pause"
