@@ -52,52 +52,107 @@ lines = " ".join(f"M{x:g} {y:g} H{x+w:g} V{y+1.5:g} H{x:g} Z" for (x, y, w) in L
 # ---- Dash animation (app + README) -------------------------------------------------------
 # One loop of N frames at FPS, so everything stays in step. Every sprite is a rect described per
 # frame as [left x, width, opacity] in viewBox units; the group (body + trails) gets [dx, dy].
-#  * Trails: each speed line stays pinned to the train and stretches back as three segments
-#    (solid, half, faint): a pixel-art fade. Length flickers frame to frame.
-#  * Surge: at the top of the loop the train lunges forward and the trails snap out long.
-#  * Afterimages: two faint copies of the train's back trail behind it (motion blur).
-#  * Wind and ground dashes whip past in a few frames each.
+#  * Trails: each speed line stays pinned to the train as a light-trail with a taper: a solid core,
+#    then a half-height tail at half strength. Their length holds steady while cruising (no flicker).
+#  * Streaks: every few frames each trail sheds a thin streak off its tip that flies back and fades,
+#    so the lines read as streaming rather than stretching.
+#  * Dash: once per loop the train dips back for two frames (trails shorten), snaps forward and holds
+#    while the trails whip out long, then settles straight back. No overshoot, no vertical bob.
+#  * Afterimages: two stepped copies of the band ends smear off the back; they reach out on the dash.
+#  * Wind: one streak through each cut-in between the bands, and one over the roof on the dash.
+#  * Ground: dashes under the rails sweep the length of the track.
 FPS, N = 20, 24
-SURGE = [1, 0.85, 0.6, 0.35, 0.15] + [0] * (N - 5)
-HUM = [0, -0.5, -0.5, 0, -0.5, 0, -0.5, -0.5] * (N // 8)
-JITTER = [1.0, 0.92, 1.06, 0.96, 1.1, 0.9, 1.03, 0.97]
-SEGS = [(0.0, 0.45, 1.0), (0.45, 0.75, 0.55), (0.75, 1.0, 0.22)]
+# Dash envelope per frame: -ve = anticipation (the last two frames of the loop), 1 = full stretch.
+ENV = [1, 1, 0.8, 0.6, 0.42, 0.27, 0.14, 0.05] + [0] * (N - 10) + [-0.15, -0.3]
+SHED_PHASE = [0, 3, 1, 4]         # stagger between the four trails
+# Two tunings of the same loop. "full" is drawn for 32 dp and up. "compact" is for the header
+# (22 dp, where 1 unit is half a dp): nothing thinner than a speed line, no wind, roof or ground
+# sprites (they are under a pixel there), shorter trails that stay inside the header's left margin,
+# and a push authored so every step lands on a whole dp.
+FULL = dict(push=[3, 3, 2.5, 2, 1.5, 1, 0.5] + [0] * (N - 9) + [-0.5, -1],
+            cruise=1.3, stretch=0.9, tail=0.5, thin=0.75, tail_o=0.5,
+            shed_every=6, shed_fade=[0.7, 0.5, 0.3, 0.14], shed_step=11, shed_w=9, shed_gap=3, extras=True)
+COMPACT = dict(push=[8, 8, 6, 4, 2] + [0] * (N - 7) + [-2, -2],
+               cruise=1.15, stretch=0.8, tail=0.4, thin=1.5, tail_o=0.45,
+               shed_every=6, shed_fade=[0.6, 0.35, 0.15], shed_step=6, shed_w=6, shed_gap=2, extras=False)
+COMPACT_BELOW = 32                # dp: MaglevMark uses the compact set under this height
 q = lambda v: round(v * 2) / 2
-def fx():
+def _trail(sprites, line, core, tail, c, tail_o):
+    """Core + tail sprites of one speed line. core/tail are lengths per frame; tail_o opacity per frame."""
+    x, y, w = line
+    anchor, dy = x + w, (1.5 - c["thin"]) / 2
+    sprites.append({"y": y, "h": 1.5, "ghost": False, "frames": [[anchor - k, k, 1] for k in core]})
+    sprites.append({"y": y + dy, "h": c["thin"], "ghost": True,
+                    "frames": [[anchor - k - t, t, o] for k, t, o in zip(core, tail, tail_o)]})
+def fx(c):
     sprites = []
-    for i, (x, y, w) in enumerate(LINES):
+    add = lambda y, h, fr: sprites.append({"y": y, "h": h, "ghost": True, "frames": fr})
+    for i, line in enumerate(LINES):
+        x, y, w = line
         anchor = x + w
-        lengths = [w * (1.6 + 1.1 * SURGE[k]) * JITTER[(k + 3 * i) % len(JITTER)] for k in range(N)]
-        for (f0, f1, o) in SEGS:
-            fr = [[q(anchor - Lk * f1), q(Lk * (f1 - f0)) or 0.5, o] for Lk in lengths]
-            sprites.append({"y": y, "h": 1.5, "ghost": False, "frames": fr})
-    # Wind dashes: thin, long, gone in four frames. (y, w, start x, phase)
-    for (y, w, x0, ph) in [(51.5, 14, 30, 0), (62.5, 16, 24, 2), (44, 10, 30, 1), (77.25, 12, 20, 3)]:
+        core = [q(w * (c["cruise"] + c["stretch"] * e)) for e in ENV]
+        tail = [q(k * c["tail"]) for k in core]
+        _trail(sprites, line, core, tail, c, [c["tail_o"]] * N)
+        fade, sw = c["shed_fade"], c["shed_w"]
         fr = []
         for k in range(N):
-            t = ((k + ph) % 4) / 4
-            fr.append([q(x0 - 70 * t), w, [0.9, 0.7, 0.4, 0.15][int(t * 4)]])
-        sprites.append({"y": y, "h": 0.75, "ghost": True, "frames": fr})
-    # Ground dashes: under the rails, sweeping the full width (scenery rushing past).
-    for (w, ph) in [(10, 0), (6, 3)]:
-        fr = []
-        for k in range(N):
-            t = ((k + ph) % 6) / 6
-            fr.append([q(118 - 130 * t), w, 0.6])
-        sprites.append({"y": 84.5, "h": 0.75, "ghost": True, "frames": fr})
-    group = [[q(1.5 * SURGE[k]), HUM[k]] for k in range(N)]
-    # Afterimages flash with the surge and settle to a faint smear.
-    after = [[[q(-(3 + 3 * SURGE[k]) - 0.5 * (k % 2)), round(0.1 + 0.25 * SURGE[k], 2)] for k in range(N)],
-             [[q(-(7 + 7 * SURGE[k]) - 0.5 * ((k + 1) % 2)), round(0.04 + 0.14 * SURGE[k], 2)] for k in range(N)]]
+            j = (k + SHED_PHASE[i]) % c["shed_every"]
+            if j < len(fade):
+                born = (k - j) % N                 # the tip it left from (the loop wraps)
+                tip = anchor - core[born] - tail[born]
+                fr.append([q(tip - c["shed_gap"] - c["shed_step"] * j - sw), sw, fade[j]])
+            else:
+                fr.append([anchor - sw, sw, 0])
+        add(y + (1.5 - c["thin"]) / 2, c["thin"], fr)
+    if c["extras"]:
+        # Wind through the two cut-ins: starts inside the cut and is gone in four frames. (y, phase)
+        for (y, ph) in [(51.375, 2), (61.875, 6)]:
+            fr = []
+            for k in range(N):
+                j = (k + ph) % 8
+                fr.append([q(30 - 20 * j), 16, [0.75, 0.55, 0.32, 0.14][j]] if j < 4 else [30, 16, 0])
+            add(y, 0.75, fr)
+        # Roof whip: one long streak over the roof as the train snaps forward.
+        roof = {0: (52, 26, 0.8), 1: (24, 30, 0.6), 2: (-4, 30, 0.35), 3: (-30, 28, 0.15)}
+        add(43.25, 0.75, [list(roof.get(k, (52, 26, 0))) for k in range(N)])
+        # Ground dashes under the rails: enter under the nose, leave past the tail. (w, phase)
+        ground = [(104, 0.35), (82, 0.7), (60, 0.7), (38, 0.7), (16, 0.45), (-6, 0.2)]
+        for (w, ph) in [(12, 0), (7, 3)]:
+            add(84.5, 0.75, [[ground[(k + ph) % 6][0], w, ground[(k + ph) % 6][1]] for k in range(N)])
+    group = [[c["push"][k], 0] for k in range(N)]
+    after = [[[q(-(2.5 + 5 * max(e, 0))), round(0.34 + 0.26 * max(e, 0), 2)] for e in ENV],
+             [[q(-(5 + 10 * max(e, 0))), round(0.14 + 0.2 * max(e, 0), 2)] for e in ENV]]
     return {"ms": round(N * 1000 / FPS), "sprites": sprites, "group": group, "after": after}
-AFTER_CLIP_X = 62   # afterimages show only the train's back, never through the window
-FX = fx()
+FX = fx(FULL)
+FX_COMPACT = fx(COMPACT)
 
-def _clip_x(d, xmax):
-    """Clip the body's outer outline to x <= xmax. It only has H/V edges, so clamping x is exact."""
-    outer = d.split(" Z")[0]
-    return re.sub(r"H([\d.]+)", lambda m: f"H{min(float(m.group(1)), xmax):g}", outer) + " Z"
-ghost = _clip_x(body, AFTER_CLIP_X)
+# ---- Boost (tap) and arrival (cold start): one-shots ---------------------------------------
+# Crouch for two frames, launch off to the right, come back in from the left and settle on the still
+# logo. How far the train travels depends on the screen, so the renderer supplies it
+# (components/brand/markMotion.ts, which must agree on these frame counts); here are the trails and
+# afterimages for each frame. The arrival is the boost from BOOST_ENTER_AT on.
+#          crouch      launch (off to the right)   re-entry from the left, last frame = still logo
+B_LEN  = [0.8, 0.6,   2.2, 2.4, 2.4, 2.4, 2.4,    2.4, 2.2, 1.8, 1.4, 1.15, 1.0]
+B_SMEAR = [0, 0,      1, 1, 1, 1, 1,              1, 0.8, 0.5, 0.25, 0.1, 0]
+BOOST_ENTER_AT = 7
+def boost(c):
+    sprites, n = [], len(B_LEN)
+    for line in LINES:
+        w = line[2]
+        core = [q(w * m) for m in B_LEN[:-1]] + [w]
+        tail = [q(k * c["tail"]) for k in core]
+        _trail(sprites, line, core, tail, c, [c["tail_o"]] * (n - 1) + [0])
+    after = [[[q(-(2.5 + 5 * e)), round(0.6 * e, 2)] for e in B_SMEAR],
+             [[q(-(5 + 10 * e)), round(0.34 * e, 2)] for e in B_SMEAR]]
+    return {"ms": round(n * 1000 / FPS), "sprites": sprites, "group": [[0, 0]] * n, "after": after}
+BOOST = boost(FULL)
+BOOST_COMPACT = boost(COMPACT)
+
+# Afterimage shape: just the back end of each band (GHOST_W deep), so the smear is a clean stepped
+# fade off the back and never shows inside the cut-ins or through the window.
+GHOST_W = 8
+ghost = " ".join(f"M{x:g} {y0:g} H{x + GHOST_W:g} V{y1:g} H{x:g} Z" for (x, y0, y1) in
+                 [(40, 45, CUT_A[1]), (36, 54, CUT_B[1]), (36, b_y, 70.5), (28, 70.5, 76)])
 dashes = ""
 rails = ("M20 79.5 H29 V80.75 H20 Z "
          "M34 79.5 H67 V80.75 H68.5 V82 H70 V83.25 H40.5 V82 H36 V80.75 H34 Z "
@@ -125,7 +180,15 @@ open(f"{root}/components/brand/markPaths.ts", "w").write(
     f"export const MARK_LIME = '{LIME}';\nexport const MARK_CYAN = '{CYAN}';\n"
     "/** Dash loop: frames per element. Sprites are [left x, width, opacity]; group is [dx, dy]; afterimages [dx, opacity]. Ghost sprites show only while dashing. */\n"
     f"export const MARK_GHOST = '{ghost}';\n"
-    f"export const MARK_FX: {{ ms: number; sprites: {{ y: number; h: number; ghost: boolean; frames: [number, number, number][] }}[]; group: [number, number][]; after: [number, number][][] }} = {json.dumps(FX, separators=(',', ':'))};\n")
+    "export type MarkFx = { ms: number; sprites: { y: number; h: number; ghost: boolean; frames: [number, number, number][] }[]; group: [number, number][]; after: [number, number][][] };\n"
+    f"export const MARK_FX: MarkFx = {json.dumps(FX, separators=(',', ':'))};\n"
+    "/** The same loop tuned for small sizes: use it under MARK_COMPACT_BELOW dp of height. */\n"
+    f"export const MARK_COMPACT_BELOW = {COMPACT_BELOW};\n"
+    f"export const MARK_FX_COMPACT: MarkFx = {json.dumps(FX_COMPACT, separators=(',', ':'))};\n"
+    "/** Boost one-shot (crouch, launch right, re-enter from the left, settle on the still logo). The renderer supplies the travel; the arrival plays it from MARK_BOOST_ENTER_AT. */\n"
+    f"export const MARK_BOOST_ENTER_AT = {BOOST_ENTER_AT};\n"
+    f"export const MARK_BOOST: MarkFx = {json.dumps(BOOST, separators=(',', ':'))};\n"
+    f"export const MARK_BOOST_COMPACT: MarkFx = {json.dumps(BOOST_COMPACT, separators=(',', ':'))};\n")
 print("ok")
 
 # Monochrome status-bar / Quick Settings drawable: body + rails only (the speed lines vanish at 24dp).

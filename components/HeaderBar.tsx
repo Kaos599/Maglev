@@ -46,7 +46,7 @@ export function HeaderBar({ actions, selection, cruising = false }: HeaderBarPro
   return (
     <View style={styles.bar}>
       <View style={styles.brand}>
-        <MaglevMark height={22} cruising={cruising} />
+        <MaglevMark height={22} cruising={cruising} tappable arrive />
         <Text style={styles.brandTitle} accessibilityRole="header">
           MAGLEV
         </Text>
@@ -67,7 +67,8 @@ const makeStyles = (c: ThemeColors) =>
       borderBottomWidth: 1,
       borderBottomColor: c.border,
     },
-    brand: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: spacing.md, paddingLeft: spacing.sm },
+    // zIndex: the mark flies over the action buttons when tapped.
+    brand: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: spacing.md, paddingLeft: spacing.sm, zIndex: 1 },
     brandTitle: { ...type.brand, fontSize: 14, color: c.text },
     actions: { flexDirection: 'row', alignItems: 'center' },
     selectedText: { ...type.bodyStrong, fontSize: 17, color: c.text, flex: 1, marginLeft: spacing.xs },
