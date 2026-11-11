@@ -13,8 +13,30 @@ import type { DownloadFolder } from './MaglevSettings.types.ts';
 
 export * from './MaglevSettings.types.ts';
 
-/** Reserved: user, seed_limit. Any other value is a governance tag from Kotlin. */
-export type PausedBy = 'user' | 'wifi_only' | 'battery' | 'charging_only' | 'seed_limit' | 'fgs_timeout' | 'schedule';
+/**
+ * NATIVE_CONTRACT 18.2 and 20. Why a torrent is stopped by its own condition. While set the engine keeps
+ * the torrent paused; `paused_by` carries the same tag unless the user paused it first.
+ */
+export type HealthTag = 'files_missing' | 'files_changed' | 'storage_full' | 'storage_unavailable' | 'no_peers';
+
+export const HEALTH_TAGS: readonly HealthTag[] = [
+  'files_missing',
+  'files_changed',
+  'storage_full',
+  'storage_unavailable',
+  'no_peers',
+];
+
+/** Reserved: user, seed_limit. Any other value is a governance tag from Kotlin or a health tag (18.2). */
+export type PausedBy =
+  | 'user'
+  | 'wifi_only'
+  | 'battery'
+  | 'charging_only'
+  | 'seed_limit'
+  | 'fgs_timeout'
+  | 'schedule'
+  | HealthTag;
 
 export interface TorrentTelemetry {
   id: string;
@@ -43,6 +65,14 @@ export interface TorrentTelemetry {
   upLimitBps?: number;
   /** 0 to 1 while MOVING, otherwise null or undefined. */
   moveProgress?: number | null;
+  /** NATIVE_CONTRACT 18.2. Null or undefined when the torrent is healthy. */
+  health?: HealthTag | null;
+  /** NATIVE_CONTRACT 18.4. Sum of the included, non-padding file lengths. */
+  includedBytes?: number;
+  /** NATIVE_CONTRACT 16. Web seeds configured for the torrent. */
+  webSeeds?: number;
+  /** NATIVE_CONTRACT 20. Seconds a magnet has been looking for its metadata, null once it has it. */
+  resolvingSecs?: number | null;
 }
 
 export interface AggregatedTelemetry {
@@ -102,6 +132,7 @@ export type EngineErrorCode =
   | 'ENGINE_UNAVAILABLE'
   | 'UNSUPPORTED'
   | 'INVALID_ARGUMENT'
+  | 'INVALID_STATE'
   | 'NOT_READY'
   | 'INTERNAL';
 
@@ -168,6 +199,8 @@ export interface Snapshot {
   upBps: number;
   peersLive: number;
   peersSeen: number;
+  /** NATIVE_CONTRACT 16. Web seeds configured for the torrent. 0 when none. */
+  webSeeds: number;
   etaSecs: number; // -1 = unknown
   ratio: number;
   seedingSecs: number;
@@ -179,6 +212,12 @@ export interface Snapshot {
   upLimitBps: number;
   /** NATIVE_CONTRACT 11.3. 0 to 1, non-null only while MOVING. */
   moveProgress: number | null;
+  /** NATIVE_CONTRACT 18.2. */
+  health: HealthTag | null;
+  /** NATIVE_CONTRACT 18.4. SM-35: `pendingNeed = sum(max(0, includedBytes - progressBytes))` over unfinished torrents. */
+  includedBytes: number;
+  /** NATIVE_CONTRACT 20. Seconds a magnet has been looking for its metadata; null once it has it. */
+  resolvingSecs: number | null;
 }
 
 export type FilePriority = 'first' | 'normal' | 'skip';
@@ -226,6 +265,17 @@ export interface TorrentExport {
   folder: string;
   bytes: number;
 }
+
+/** NATIVE_CONTRACT 18.3. */
+export type FileHealthState = 'ok' | 'missing' | 'changed';
+
+export interface FileHealthEntry {
+  index: number;
+  state: FileHealthState;
+}
+
+/** NATIVE_CONTRACT 18.3. `stop` and `again` take the file indices, `folder` takes a folder path, `recheck` takes neither. */
+export type ResolveFilesAction = 'stop' | 'again' | 'folder' | 'recheck';
 
 export interface DetailTracker {
   url: string;
@@ -408,6 +458,22 @@ export interface MaglevEngineApi {
    * UNSUPPORTED while the torrent is moving or checking.
    */
   removeFiles(id: string, indices: number[]): Promise<EngineResult<{ freedBytes: number }>>;
+  /**
+   * NATIVE_CONTRACT 18.2. `tag` is a health tag, or "" to clear it. Clearing `files_missing` or `storage_unavailable`
+   * runs the files check first: if files are still gone the torrent stays stopped under `files_missing`.
+   * INVALID_ARGUMENT for an unknown tag, NOT_FOUND for an unknown torrent.
+   */
+  setHealth(id: string, tag: HealthTag | ''): Promise<EngineResult>;
+  /** NATIVE_CONTRACT 18.3. One file scan now (the engine also scans every 30 s). `changed` counts torrents whose tag changed. */
+  scanFileHealth(): Promise<EngineResult<{ changed: number }>>;
+  /** NATIVE_CONTRACT 18.3. The included files only. A torrent that can't be judged right now reports every file `ok`. */
+  fileHealth(id: string): Promise<EngineResult<{ files: FileHealthEntry[] }>>;
+  /**
+   * NATIVE_CONTRACT 18.3. What to do about missing or changed files. `folder` answers FILES_MISSING with
+   * "Those files aren't in that folder." when they are not there. NOT_FOUND, INVALID_ARGUMENT, INVALID_STATE
+   * (moving or checking).
+   */
+  resolveFiles(id: string, action: ResolveFilesAction, indices: number[], dir: string): Promise<EngineResult>;
   /** Only while DOWNLOADING or SEEDING. Rate limited to once per 60 s per torrent. */
   reannounce(id: string): Promise<EngineResult<{ retryAfterSecs?: number }>>;
   /**

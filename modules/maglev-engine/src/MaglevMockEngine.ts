@@ -6,9 +6,11 @@ import type {
   EngineResult,
   FeedAutomationConfig,
   FeedAutomationStatus,
+  FileHealthEntry,
   FilePriorityEntry,
   FreeSpace,
   GovernanceConfig,
+  HealthTag,
   MaglevEngineApi,
   Metadata,
   MoveTarget,
@@ -18,6 +20,7 @@ import type {
   PausedBy,
   PickFolderResult,
   ResolveActivity,
+  ResolveFilesAction,
   ScheduleConfig,
   ScheduleStatus,
   Snapshot,
@@ -34,6 +37,7 @@ import type {
   TrackersAdded,
   Unsubscribe,
 } from './MaglevEngine.types.ts';
+import { HEALTH_TAGS } from './MaglevEngine.types.ts';
 import {
   DEFAULT_SETTINGS,
   type MaglevSettings,
@@ -69,7 +73,19 @@ interface TorrentMeta {
   /** Simulated move (dev only): progress 0 to 1 and destination folder. */
   moveProgress?: number;
   moveDest?: string;
+  /** NATIVE_CONTRACT 18.2. While set the torrent stays paused. */
+  health?: HealthTag | null;
+  /** NATIVE_CONTRACT 18.3 (dev only): files the simulator treats as deleted or changed outside Maglev. */
+  fileStates?: Map<number, 'missing' | 'changed'>;
 }
+
+/** Messages for a Resume the engine refuses while a health tag is set, same as the Rust engine. */
+const HEALTH_RESUME_REFUSAL: Partial<Record<HealthTag, { code: EngineErrorCode; message: string }>> = {
+  files_missing: { code: 'FILES_MISSING', message: 'Some files are missing. Choose what to do with them first.' },
+  files_changed: { code: 'UNSUPPORTED', message: 'Files were changed after downloading. Recheck them first.' },
+  storage_unavailable: { code: 'UNSUPPORTED', message: "The SD card isn't there." },
+  no_peers: { code: 'UNSUPPORTED', message: 'No one is sharing this yet. Tap Keep trying.' },
+};
 
 /** Simulated time a magnet needs to resolve (dev only). */
 const MOCK_RESOLVE_MS = 7000;
@@ -530,7 +546,8 @@ export class MaglevMockEngine implements MaglevEngineApi {
       id: t.id,
       name: t.name,
       state: t.state,
-      finished: t.totalSizeBytes > 0 && t.downloadedBytes >= t.totalSizeBytes,
+      // The finished edge never fires while files are missing (NATIVE_CONTRACT 18.3).
+      finished: t.totalSizeBytes > 0 && t.downloadedBytes >= t.totalSizeBytes && m.health !== 'files_missing',
       pausedBy: t.state === 'PAUSED' ? m.pausedBy : null,
       progressBytes: t.downloadedBytes,
       totalBytes: t.totalSizeBytes,
@@ -539,6 +556,7 @@ export class MaglevMockEngine implements MaglevEngineApi {
       upBps: t.uploadSpeedBytes,
       peersLive: t.peersConnected,
       peersSeen: t.peersTotal,
+      webSeeds: 0,
       etaSecs: t.state === 'DOWNLOADING' && t.downloadSpeedBytes > 0 ? t.etaSeconds : -1,
       ratio: t.ratio,
       seedingSecs: t.seedDurationSeconds || 0,
@@ -548,6 +566,10 @@ export class MaglevMockEngine implements MaglevEngineApi {
       downLimitBps: m.downLimitBps ?? 0,
       upLimitBps: m.upLimitBps ?? 0,
       moveProgress: t.state === 'MOVING' ? (m.moveProgress ?? 0) : null,
+      health: m.health ?? null,
+      includedBytes: t.files.filter((f) => f.priority > 0).reduce((n, f) => n + f.length, 0),
+      // Dev torrents have their metadata at once; only the native engine has a magnet that is still looking.
+      resolvingSecs: null,
     };
   }
 
@@ -698,6 +720,13 @@ export class MaglevMockEngine implements MaglevEngineApi {
 
   public async resume(id: string): Promise<EngineResult> {
     if (this.torrents.get(id)?.state === 'MOVING') return fail('UNSUPPORTED', 'Wait for the move to finish.');
+    const m = this.meta.get(id);
+    if (m?.health) {
+      // A full disk is cleared by the user's Resume (a new write error puts it back); the rest refuse.
+      const refusal = HEALTH_RESUME_REFUSAL[m.health];
+      if (refusal) return fail(refusal.code, refusal.message);
+      m.health = null;
+    }
     return this.resumeTorrent(id) ? ok() : fail('NOT_FOUND', 'Torrent not found.');
   }
 
@@ -785,6 +814,144 @@ export class MaglevMockEngine implements MaglevEngineApi {
     t.progressPercent = parseFloat(((t.downloadedBytes / t.totalSizeBytes) * 100).toFixed(1));
     this.broadcast();
     return { ok: true, freedBytes: freed };
+  }
+
+  // ---------------------------------------------------------------------------
+  // Health (NATIVE_CONTRACT 18). Dev and web builds only: there is no disk here, so a file is "missing"
+  // or "changed" only after `simulateFileChange` says so.
+  // ---------------------------------------------------------------------------
+
+  /** Dev only: pretend files were deleted or changed outside Maglev. The next scan sets the tag. */
+  public simulateFileChange(id: string, kind: 'missing' | 'changed', indices: number[]): boolean {
+    const t = this.torrents.get(id);
+    if (!t) return false;
+    const m = this.metaOf(id);
+    m.fileStates = m.fileStates ?? new Map();
+    for (const i of indices) if (t.files.some((f) => f.index === i)) m.fileStates.set(i, kind);
+    return true;
+  }
+
+  /** Applies a health tag: the torrent stops, unless the user paused it first (that pause wins). */
+  private applyHealth(t: TorrentDetailData, tag: HealthTag): void {
+    const m = this.metaOf(t.id);
+    m.health = tag;
+    if (t.state !== 'PAUSED') {
+      t.state = 'PAUSED';
+      t.downloadSpeedBytes = 0;
+      t.uploadSpeedBytes = 0;
+    }
+    if (m.pausedBy !== 'user' && m.pausedBy !== 'seed_limit') m.pausedBy = tag;
+  }
+
+  /** Clears the tag; a torrent that the tag paused goes back to work. */
+  private clearHealth(t: TorrentDetailData): void {
+    const m = this.metaOf(t.id);
+    const tag = m.health;
+    m.health = null;
+    if (tag && m.pausedBy === tag) this.resumeTorrent(t.id);
+    else this.broadcast();
+  }
+
+  public async setHealth(id: string, tag: HealthTag | ''): Promise<EngineResult> {
+    if (tag !== '' && !HEALTH_TAGS.includes(tag)) return fail('INVALID_ARGUMENT', "That isn't a known health state");
+    const t = this.torrents.get(id);
+    if (!t) return fail('NOT_FOUND', 'Torrent not found.');
+    const m = this.metaOf(id);
+    if (tag === '') {
+      const previous = m.health;
+      if ((previous === 'files_missing' || previous === 'storage_unavailable') && this.hasFileStates(m, 'missing')) {
+        // Files are still gone: the torrent stays stopped, now under files_missing.
+        this.applyHealth(t, 'files_missing');
+        this.broadcast();
+        return ok();
+      }
+      this.clearHealth(t);
+    } else {
+      this.applyHealth(t, tag);
+      this.broadcast();
+    }
+    return ok();
+  }
+
+  private hasFileStates(m: TorrentMeta, kind: 'missing' | 'changed'): boolean {
+    for (const v of m.fileStates?.values() ?? []) if (v === kind) return true;
+    return false;
+  }
+
+  public async scanFileHealth(): Promise<EngineResult<{ changed: number }>> {
+    let changed = 0;
+    this.torrents.forEach((t) => {
+      const m = this.metaOf(t.id);
+      if (t.state === 'MOVING' || t.state === 'CHECKING') return;
+      if (m.health && m.health !== 'files_missing' && m.health !== 'files_changed') return;
+      const found: HealthTag | null = this.hasFileStates(m, 'missing')
+        ? 'files_missing'
+        : this.hasFileStates(m, 'changed')
+          ? 'files_changed'
+          : null;
+      if (found && m.health !== found) {
+        this.applyHealth(t, found);
+        changed++;
+      } else if (!found && m.health) {
+        this.clearHealth(t);
+        changed++;
+      }
+    });
+    if (changed > 0) this.broadcast();
+    return { ok: true, changed };
+  }
+
+  public async fileHealth(id: string): Promise<EngineResult<{ files: FileHealthEntry[] }>> {
+    const t = this.torrents.get(id);
+    if (!t) return fail('NOT_FOUND', 'Torrent not found.');
+    if (t.state === 'MOVING') return fail('INVALID_STATE', 'This torrent is moving. Wait for the move to finish.');
+    const states = this.metaOf(id).fileStates;
+    return {
+      ok: true,
+      files: t.files
+        .filter((f) => f.priority > 0)
+        .map((f) => ({ index: f.index, state: states?.get(f.index) ?? ('ok' as const) })),
+    };
+  }
+
+  public async resolveFiles(
+    id: string,
+    action: ResolveFilesAction,
+    indices: number[],
+    dir: string
+  ): Promise<EngineResult> {
+    const t = this.torrents.get(id);
+    if (!t) return fail('NOT_FOUND', 'Torrent not found.');
+    if (t.state === 'MOVING') return fail('INVALID_STATE', 'This torrent is moving. Wait for the move to finish.');
+    if (t.state === 'CHECKING') return fail('INVALID_STATE', 'Wait until the torrent has been checked.');
+    const m = this.metaOf(id);
+    const states = (m.fileStates = m.fileStates ?? new Map());
+    if (action === 'stop' || action === 'again') {
+      if (!Array.isArray(indices) || indices.length === 0) return fail('INVALID_ARGUMENT', 'Pick at least one file');
+      for (const i of indices) {
+        if (!Number.isInteger(i) || !t.files.some((f) => f.index === i)) {
+          return fail('INVALID_ARGUMENT', "One of those files isn't in the torrent");
+        }
+      }
+      if (action === 'stop') {
+        const left = t.files.filter((f) => f.priority > 0 && !indices.includes(f.index));
+        if (left.length === 0) return fail('INVALID_SOURCE', 'Keep at least one file in the torrent.');
+        for (const f of t.files) if (indices.includes(f.index)) f.priority = 0;
+      }
+      for (const i of indices) states.delete(i);
+    } else if (action === 'folder') {
+      if (!dir.trim() || !dir.startsWith('/')) return fail('INVALID_ARGUMENT', 'Pick a folder');
+      // There is no disk to look at: every missing file counts as found in the chosen folder.
+      for (const [i, v] of [...states]) if (v === 'missing') states.delete(i);
+    } else if (action === 'recheck') {
+      for (const [i, v] of [...states]) if (v === 'changed') states.delete(i);
+    } else {
+      return fail('INVALID_ARGUMENT', "That isn't something Maglev can do with these files");
+    }
+    const left = this.hasFileStates(m, 'missing') ? 'files_missing' : this.hasFileStates(m, 'changed') ? 'files_changed' : null;
+    if (left) this.applyHealth(t, left);
+    else this.clearHealth(t);
+    return ok();
   }
 
   private lastReannounce: Map<string, number> = new Map();

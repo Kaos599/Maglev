@@ -376,6 +376,66 @@ pub extern "system" fn Java_com_maglev_engine_NativeCore_nativeExportTorrent(
 }
 
 #[no_mangle]
+pub extern "system" fn Java_com_maglev_engine_NativeCore_nativeSetHealth(
+    mut env: JNIEnv,
+    _class: JClass,
+    id: JString,
+    tag: JString,
+) -> jstring {
+    let out = match (read_str(&mut env, &id), read_str(&mut env, &tag)) {
+        (Some(id), Some(tag)) => guarded(|| with_engine(|e| result_envelope(e.set_health(&id, &tag)))),
+        _ => bad_argument(),
+    };
+    reply(&mut env, &out)
+}
+
+#[no_mangle]
+pub extern "system" fn Java_com_maglev_engine_NativeCore_nativeScanFileHealth(
+    mut env: JNIEnv,
+    _class: JClass,
+) -> jstring {
+    let out = guarded(|| with_engine(|e| result_envelope(e.scan_file_health_now())));
+    reply(&mut env, &out)
+}
+
+#[no_mangle]
+pub extern "system" fn Java_com_maglev_engine_NativeCore_nativeFileHealth(
+    mut env: JNIEnv,
+    _class: JClass,
+    id: JString,
+) -> jstring {
+    let out = match read_str(&mut env, &id) {
+        Some(id) => guarded(|| with_engine(|e| result_envelope(e.file_health(&id)))),
+        None => bad_argument(),
+    };
+    reply(&mut env, &out)
+}
+
+#[no_mangle]
+pub extern "system" fn Java_com_maglev_engine_NativeCore_nativeResolveFiles(
+    mut env: JNIEnv,
+    _class: JClass,
+    id: JString,
+    action: JString,
+    indices_json: JString,
+    dir: JString,
+) -> jstring {
+    let args = (
+        read_str(&mut env, &id),
+        read_str(&mut env, &action),
+        read_str(&mut env, &indices_json),
+        read_str(&mut env, &dir),
+    );
+    let out = match args {
+        (Some(id), Some(action), Some(ix), Some(dir)) => guarded(|| {
+            with_engine(|e| result_envelope(e.resolve_files(&id, &action, &ix, &dir)))
+        }),
+        _ => bad_argument(),
+    };
+    reply(&mut env, &out)
+}
+
+#[no_mangle]
 pub extern "system" fn Java_com_maglev_engine_NativeCore_nativeSetGlobalLimits(
     mut env: JNIEnv,
     _class: JClass,

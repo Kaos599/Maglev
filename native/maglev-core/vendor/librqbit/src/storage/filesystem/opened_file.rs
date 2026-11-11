@@ -176,6 +176,63 @@ impl OpenedFile {
         }
     }
 
+    /// MAGLEV PATCH (hunk 25, see MAGLEV_PATCH.md): a file that is not opened yet. It is opened on first
+    /// use (`lock_or_open`) by its path. Used for files the user skipped.
+    pub fn new_lazy(path: PathBuf) -> Self {
+        Self {
+            file: RwLock::new(OpenedFileLocked {
+                path,
+                fd: None,
+                #[cfg(windows)]
+                tried_marking_sparse: false,
+            }),
+        }
+    }
+
+    /// MAGLEV PATCH (hunk 25): drops the open handle but keeps the path, so the next `lock_or_open`
+    /// opens (and, for writes, creates) the file by path again. Waits for readers and writers that
+    /// hold the handle. A no-op for a padding file or a file that was taken on pause.
+    pub fn close(&self) {
+        self.file.write().fd = None;
+    }
+
+    /// MAGLEV PATCH (hunk 25): opens the file by its path when it has no handle. `create` makes a
+    /// missing file (and its folders); without it a missing file is an error. A file with no path
+    /// (padding, or the old storage after `take`) stays closed and gives `FsFileIsNone`.
+    fn reopen(&self, create: bool) -> anyhow::Result<()> {
+        let mut g = self.file.write();
+        if g.fd.is_some() {
+            return Ok(());
+        }
+        if g.path.as_os_str().is_empty() {
+            return Err(Error::FsFileIsNone.into());
+        }
+        if create {
+            if let Some(parent) = g.path.parent() {
+                std::fs::create_dir_all(parent)
+                    .with_context(|| format!("error creating folder {parent:?}"))?;
+            }
+        }
+        let f = std::fs::OpenOptions::new()
+            .create(create)
+            .truncate(false)
+            .read(true)
+            .write(true)
+            .open(&g.path)
+            .with_context(|| format!("error opening {:?} in read/write mode", g.path))?;
+        g.fd = Some(f);
+        Ok(())
+    }
+
+    /// MAGLEV PATCH (hunk 25): `lock_read`, but a closed file is opened first. Writes pass
+    /// `create = true`; reads and truncation pass `false` so they never make an empty file appear.
+    pub fn lock_or_open(&self, create: bool) -> anyhow::Result<impl Deref<Target = File>> {
+        if self.file.read().fd.is_none() {
+            self.reopen(create)?;
+        }
+        Ok(self.lock_read()?)
+    }
+
     pub fn take_clone(&self) -> anyhow::Result<Self> {
         let f = std::mem::take(&mut *self.file.write());
         Ok(Self {

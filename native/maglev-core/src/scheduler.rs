@@ -5,7 +5,9 @@
 //! unit tested on its own.
 //!
 //! Vocabulary for `paused_by`: `"user"`, `"seed_limit"`, or any other string, which is treated
-//! as a governance tag (`"wifi_only"`, `"battery"`, `"charging_only"`).
+//! as a governance tag (`"wifi_only"`, `"battery"`, `"charging_only"`). The health tags
+//! (`"files_missing"`, `"files_changed"`, `"storage_full"`, `"storage_unavailable"`, `"no_peers"`,
+//! contract section 18.2) are governance tags too, set by a torrent's own `health` field.
 
 use serde::{Deserialize, Serialize};
 
@@ -14,6 +16,37 @@ pub const PAUSED_BY_SEED_LIMIT: &str = "seed_limit";
 
 pub fn is_governance_tag(tag: &str) -> bool {
     tag != PAUSED_BY_USER && tag != PAUSED_BY_SEED_LIMIT
+}
+
+/// Health tags (contract section 18.2 and 20).
+pub const HEALTH_FILES_MISSING: &str = "files_missing";
+pub const HEALTH_FILES_CHANGED: &str = "files_changed";
+pub const HEALTH_STORAGE_FULL: &str = "storage_full";
+pub const HEALTH_STORAGE_UNAVAILABLE: &str = "storage_unavailable";
+pub const HEALTH_NO_PEERS: &str = "no_peers";
+pub const HEALTH_TAGS: [&str; 5] = [
+    HEALTH_FILES_MISSING,
+    HEALTH_FILES_CHANGED,
+    HEALTH_STORAGE_FULL,
+    HEALTH_STORAGE_UNAVAILABLE,
+    HEALTH_NO_PEERS,
+];
+
+pub fn is_health_tag(tag: &str) -> bool {
+    HEALTH_TAGS.contains(&tag)
+}
+
+/// A magnet that is still looking for its metadata gives up and shows `no_peers` after this long (section 20).
+pub const NO_PEERS_AFTER_MS: i64 = 10 * 60 * 1000;
+
+/// True when a magnet has been resolving for `NO_PEERS_AFTER_MS` or more.
+pub fn no_peers_due(resolving_since_ms: i64, now_ms: i64) -> bool {
+    now_ms.saturating_sub(resolving_since_ms) >= NO_PEERS_AFTER_MS
+}
+
+/// Whole seconds a magnet has been resolving, never negative.
+pub fn resolving_secs(resolving_since_ms: i64, now_ms: i64) -> i64 {
+    now_ms.saturating_sub(resolving_since_ms).max(0) / 1000
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -120,6 +153,9 @@ pub struct TorrentFacts {
     pub seeding_secs: i64,
     /// The user resumed this torrent after it hit a seed limit; do not pause it for limits again.
     pub limits_waived: bool,
+    /// A health tag (section 18.2). While set the torrent is not a candidate and is kept paused with
+    /// that tag, unless the user or a seed limit paused it first.
+    pub health: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -152,6 +188,22 @@ pub fn plan(facts: &[TorrentFacts], cfg: &SchedulerConfig, blocked: &[String]) -
     // a governance reason that no longer blocks. User pauses and seed-limit pauses are never touched.
     let mut candidates: Vec<&TorrentFacts> = Vec::new();
     for f in facts.iter().filter(|f| !f.errored) {
+        // Health first: a torrent with a health tag is never started, and is stopped with that tag
+        // unless the user (or a seed limit) already paused it. The user's pause wins and is kept.
+        if let Some(tag) = f.health.as_deref() {
+            let user_or_limit = matches!(
+                f.paused_by.as_deref(),
+                Some(PAUSED_BY_USER) | Some(PAUSED_BY_SEED_LIMIT)
+            );
+            let already = f.paused_by.as_deref() == Some(tag) && !f.running;
+            if !user_or_limit && !already {
+                actions.push(Action::Pause {
+                    id: f.id.clone(),
+                    reason: tag.to_string(),
+                });
+            }
+            continue;
+        }
         match f.paused_by.as_deref() {
             None => candidates.push(f),
             Some(tag) if is_governance_tag(tag) && !blocked.iter().any(|b| b == tag) => {
@@ -261,6 +313,7 @@ mod tests {
             ratio: 0.0,
             seeding_secs: 0,
             limits_waived: false,
+            health: None,
         }
     }
 
@@ -524,6 +577,110 @@ mod tests {
         t.running = false;
         t.queued = true; // resume() releases it into the queue
         assert_eq!(plan(&[t], &cfg(), &[]), vec![Action::Resume { id: "a".into() }]);
+    }
+
+    fn with_health(mut t: TorrentFacts, tag: &str) -> TorrentFacts {
+        t.health = Some(tag.into());
+        t
+    }
+
+    #[test]
+    fn health_tag_pauses_a_running_torrent_with_that_tag() {
+        for tag in HEALTH_TAGS {
+            let facts = vec![with_health(f("a", 1), tag)];
+            assert_eq!(plan(&facts, &cfg(), &[]), vec![pause("a", tag)]);
+        }
+        // A queued or untagged-but-parked torrent gets the tag too.
+        let mut parked = with_health(f("p", 1), "storage_full");
+        parked.running = false;
+        parked.queued = true;
+        assert_eq!(plan(&[parked], &cfg(), &[]), vec![pause("p", "storage_full")]);
+    }
+
+    #[test]
+    fn health_pause_is_not_repeated_once_applied() {
+        let mut t = with_health(f("a", 1), "files_missing");
+        t.running = false;
+        t.paused_by = Some("files_missing".into());
+        assert!(plan(&[t], &cfg(), &[]).is_empty());
+    }
+
+    #[test]
+    fn health_torrent_takes_no_queue_slot() {
+        // Two download slots: the health torrent does not use one, so b and c both run.
+        let facts = vec![with_health(f("a", 1), "storage_full"), f("b", 2), f("c", 3)];
+        assert_eq!(plan(&facts, &cfg(), &[]), vec![pause("a", "storage_full")]);
+    }
+
+    #[test]
+    fn user_pause_wins_over_health() {
+        for tag in HEALTH_TAGS {
+            let mut t = with_health(f("u", 1), tag);
+            t.running = false;
+            t.paused_by = Some("user".into());
+            // Never re-tagged and never resumed, while the health is set.
+            assert!(plan(&[t.clone()], &cfg(), &[]).is_empty());
+            // And after the health clears it is still a user pause: not a candidate.
+            t.health = None;
+            assert!(plan(&[t], &cfg(), &[]).is_empty());
+        }
+        // Even while a running user-paused torrent is being stopped, the tag stays "user".
+        let mut running = with_health(f("r", 1), "files_missing");
+        running.paused_by = Some("user".into());
+        assert!(plan(&[running], &cfg(), &[]).is_empty());
+    }
+
+    #[test]
+    fn seed_limit_pause_wins_over_health() {
+        let mut t = with_health(seed(f("s", 1)), "files_changed");
+        t.running = false;
+        t.paused_by = Some("seed_limit".into());
+        assert!(plan(&[t], &cfg(), &[]).is_empty());
+    }
+
+    #[test]
+    fn clearing_health_resumes_a_torrent_paused_by_it() {
+        for tag in HEALTH_TAGS {
+            let mut t = f("a", 1);
+            t.running = false;
+            t.paused_by = Some(tag.into());
+            // Health cleared (health: None), the tag on paused_by is a governance tag that no longer blocks.
+            assert_eq!(plan(&[t], &cfg(), &[]), vec![Action::Resume { id: "a".into() }]);
+        }
+    }
+
+    #[test]
+    fn cleared_health_torrent_still_respects_the_queue() {
+        let mut a = f("a", 5);
+        a.running = false;
+        a.paused_by = Some("storage_full".into());
+        let facts = vec![a, f("b", 2), f("c", 3)];
+        // b and c fill the two slots; a waits in the queue.
+        assert_eq!(plan(&facts, &cfg(), &[]), vec![Action::Queue { id: "a".into() }]);
+    }
+
+    #[test]
+    fn health_overrides_a_governance_pause_tag() {
+        let mut t = with_health(f("a", 1), "files_missing");
+        t.running = false;
+        t.paused_by = Some("wifi_only".into());
+        assert_eq!(plan(&[t], &cfg(), &["wifi_only".to_string()]), vec![pause("a", "files_missing")]);
+    }
+
+    #[test]
+    fn health_vocabulary() {
+        assert!(is_health_tag("no_peers") && is_health_tag("storage_unavailable"));
+        assert!(!is_health_tag("user") && !is_health_tag("") && !is_health_tag("wifi_only"));
+    }
+
+    #[test]
+    fn no_peers_after_ten_minutes() {
+        let t0 = 1_000_000;
+        assert!(!no_peers_due(t0, t0));
+        assert!(!no_peers_due(t0, t0 + NO_PEERS_AFTER_MS - 1));
+        assert!(no_peers_due(t0, t0 + NO_PEERS_AFTER_MS));
+        assert_eq!(resolving_secs(t0, t0 + 61_500), 61);
+        assert_eq!(resolving_secs(t0, t0 - 5), 0);
     }
 
     fn inputs(rq: RqState) -> StateInputs<'static> {

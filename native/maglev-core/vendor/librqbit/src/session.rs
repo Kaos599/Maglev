@@ -1412,6 +1412,7 @@ impl Session {
                 ratelimits_override: Default::default(), // MAGLEV PATCH
                 web_seeds: WebSeeds::new(web_seeds, opts.disable_web_seeds, self.disable_web_seeds), // MAGLEV PATCH
                 trackers_override: Default::default(), // MAGLEV PATCH (T2)
+                init_only_files: parking_lot::Mutex::new(only_files.clone()), // MAGLEV PATCH (hunk 25)
             });
 
             let initializing = Arc::new(TorrentStateInitializing::new(

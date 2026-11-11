@@ -7,8 +7,11 @@ import type {
   EngineStatus,
   FeedAutomationConfig,
   FeedAutomationStatus,
+  FileHealthEntry,
   FilePriorityEntry,
   FreeSpace,
+  HealthTag,
+  ResolveFilesAction,
   TorrentExport,
   TrackersAdded,
   GovernanceConfig,
@@ -324,6 +327,18 @@ export class MaglevEngineBridge implements MaglevEngineApi {
   }
   public removeFiles(id: string, indices: number[]): Promise<EngineResult<{ freedBytes: number }>> {
     return this.route('removeFiles', id, indices);
+  }
+  public setHealth(id: string, tag: HealthTag | ''): Promise<EngineResult> {
+    return this.route('setHealth', id, tag);
+  }
+  public scanFileHealth(): Promise<EngineResult<{ changed: number }>> {
+    return this.route('scanFileHealth');
+  }
+  public fileHealth(id: string): Promise<EngineResult<{ files: FileHealthEntry[] }>> {
+    return this.route('fileHealth', id);
+  }
+  public resolveFiles(id: string, action: ResolveFilesAction, indices: number[], dir: string): Promise<EngineResult> {
+    return this.route('resolveFiles', id, action, indices, dir);
   }
   public reannounce(id: string): Promise<EngineResult<{ retryAfterSecs?: number }>> {
     return this.route('reannounce', id);

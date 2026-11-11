@@ -175,7 +175,32 @@ so those few bytes land in an unlinked inode and vanish when the torrent is drop
 `FilesystemStorage::init` creates an empty file at that path again and a boundary download can leave up to one piece of
 that file's bytes there; the file is not selected, so nothing else is downloaded into it.
 
-To rebase on a new librqbit version: re-apply hunks 1-12 and 24 (`grep -rn "MAGLEV PATCH" src`) and hunks 13-23 (web seed
+25. Open only included files, and `close_file` (contract section 18.1; also `forget_files_data` for section 18.3 "Download again").
+    - `src/storage/filesystem/fs.rs` `FilesystemStorage::init`: a file outside the include set gets `OpenedFile::new_lazy(path)`: no
+      `create_dir_all`, no 0-byte file, no handle. The include set comes from the new `ManagedTorrentShared::init_only_files`
+      (`src/torrent_state/mod.rs`, a `Mutex<Option<Vec<usize>>>`), because `StorageFactory::create_and_init(shared, metadata)` has no
+      room for it. It is set in `Session::add_torrent` (`src/session.rs`, the `ManagedTorrentShared` literal, from the `only_files` that
+      call computed) and just before `create_and_init` in the error-to-initializing branch of `ManagedTorrent::start`.
+    - `src/storage/filesystem/opened_file.rs`: `OpenedFile::new_lazy`, `close` (drops the `File`, keeps the path), `reopen(create)` and
+      `lock_or_open(create)`. A closed file with a path opens by that path; a file with no path (padding, or the old storage after
+      `take()`, which `mem::take`s the path away) stays closed and still gives `FsFileIsNone`, so pausing keeps working as before.
+    - `src/storage/filesystem/fs.rs` I/O: `pwrite_all` and `pwrite_all_vectored` use `lock_or_open(true)` (create the file and its folders
+      on first write); `pread_exact` and `ensure_file_length` use `lock_or_open(false)` (never make an empty file just to read or cut
+      it; a missing file is an error, which `initial_check` already reads as "pieces missing"). Windows paths are unchanged.
+    - `src/storage/mod.rs`: `TorrentStorage::close_file(&self, file_id) -> Result<()>` with a default that does nothing, forwarded by
+      `impl TorrentStorage for Box<U>`. The three middlewares in `storage/middleware` (feature `storage_middleware`, not built by
+      Maglev) do not forward it.
+    - `src/torrent_state/mod.rs` `ManagedTorrent::close_file(idx)`: closes the handle in the initializing, paused or live storage
+      (other states do nothing). The live storage is the same `Box<dyn TorrentStorage>` that `TorrentStatePaused::files` hands over
+      on unpause, so a closed handle stays closed across pause and unpause.
+    - `src/torrent_state/{mod,paused}.rs` `ManagedTorrent::forget_files_data(&HashSet<usize>) -> Result<u64>` and
+      `TorrentStatePaused::forget_files_data`: the hunk-24 chunk tracker call (`ChunkTracker::remove_files_data`) with the files left
+      in the selection, so their pieces (boundary pieces too) lose their have bits and are queued again; then `close_file` for each and
+      a flush of the persisted bitfield. Nothing is deleted from disk. Requires `Paused`, like `remove_files_data`.
+    Why: a file deleted from outside keeps an open handle to the deleted inode, and pre-hunk `init` made a 0-byte file for every skipped
+    file. After this hunk the engine calls `close_file` for every included file it finds gone, so the next write re-creates it.
+
+To rebase on a new librqbit version: re-apply hunks 1-12, 24 and 25 (`grep -rn "MAGLEV PATCH" src`) and hunks 13-23 (web seed
 files are whole files; diff them against the PR or its merged form).
 
 ## Live tracker list (hunks T1-T4, Wave 6, contract section 15)

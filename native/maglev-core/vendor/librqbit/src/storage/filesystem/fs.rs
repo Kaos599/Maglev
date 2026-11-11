@@ -62,7 +62,7 @@ impl TorrentStorage for FilesystemStorage {
         self.opened_files
             .get(file_id)
             .context("no such file")?
-            .lock_read()?
+            .lock_or_open(false)? // MAGLEV PATCH (hunk 25): a skipped file opens on first read
             .pread_exact(offset, buf)
     }
 
@@ -70,8 +70,9 @@ impl TorrentStorage for FilesystemStorage {
         let of = self.opened_files.get(file_id).context("no such file")?;
         #[cfg(windows)]
         return of.try_mark_sparse()?.pwrite_all(offset, buf);
+        // MAGLEV PATCH (hunk 25): a skipped or closed file is created/opened by its path on first write.
         #[cfg(not(windows))]
-        return of.lock_read()?.pwrite_all(offset, buf);
+        return of.lock_or_open(true)?.pwrite_all(offset, buf);
     }
 
     fn pwrite_all_vectored(
@@ -84,7 +85,7 @@ impl TorrentStorage for FilesystemStorage {
         #[cfg(windows)]
         return of.try_mark_sparse()?.pwrite_all_vectored(offset, bufs);
         #[cfg(not(windows))]
-        return of.lock_read()?.pwrite_all_vectored(offset, bufs);
+        return of.lock_or_open(true)?.pwrite_all_vectored(offset, bufs); // MAGLEV PATCH (hunk 25)
     }
 
     fn remove_file(&self, _file_id: usize, filename: &Path) -> anyhow::Result<()> {
@@ -95,7 +96,17 @@ impl TorrentStorage for FilesystemStorage {
         let f = &self.opened_files.get(file_id).context("no such file")?;
         #[cfg(windows)]
         f.try_mark_sparse()?;
-        Ok(f.lock_read()?.set_len(len)?)
+        // MAGLEV PATCH (hunk 25): never creates a file just to cut or grow it.
+        Ok(f.lock_or_open(false)?.set_len(len)?)
+    }
+
+    /// MAGLEV PATCH (hunk 25): see `TorrentStorage::close_file`.
+    fn close_file(&self, file_id: usize) -> anyhow::Result<()> {
+        self.opened_files
+            .get(file_id)
+            .context("no such file")?
+            .close();
+        Ok(())
     }
 
     fn take(&self) -> anyhow::Result<Box<dyn TorrentStorage>> {
@@ -128,7 +139,9 @@ impl TorrentStorage for FilesystemStorage {
         metadata: &TorrentMetadata,
     ) -> anyhow::Result<()> {
         let mut files = Vec::<OpenedFile>::new();
-        for file_details in metadata.file_infos.iter() {
+        // MAGLEV PATCH (hunk 25): only included files are created and opened here.
+        let only_files: Option<Vec<usize>> = shared.init_only_files.lock().clone();
+        for (idx, file_details) in metadata.file_infos.iter().enumerate() {
             let mut full_path = self.output_folder.clone();
             let relative_path = &file_details.relative_filename;
             full_path.push(relative_path);
@@ -137,6 +150,11 @@ impl TorrentStorage for FilesystemStorage {
                 files.push(OpenedFile::new_dummy());
                 continue;
             };
+            if !only_files.as_ref().map(|o| o.contains(&idx)).unwrap_or(true) {
+                // Skipped: no 0-byte file and no handle. The first write or read opens it by path.
+                files.push(OpenedFile::new_lazy(full_path));
+                continue;
+            }
             std::fs::create_dir_all(full_path.parent().context("bug: no parent")?)?;
             let f = if shared.options.allow_overwrite {
                 OpenOptions::new()

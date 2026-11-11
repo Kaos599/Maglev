@@ -55,6 +55,12 @@ pub struct Snapshot {
     pub up_limit_bps: u64,
     /// 0 to 1 by bytes while the state is `MOVING`, otherwise null.
     pub move_progress: Option<f64>,
+    /// Health tag (contract section 18.2), or null.
+    pub health: Option<String>,
+    /// Sum of the lengths of the included, non-padding files. 0 until the metadata is known.
+    pub included_bytes: u64,
+    /// Seconds a magnet has been looking for its metadata, or null once it has it (section 20).
+    pub resolving_secs: Option<i64>,
 }
 
 #[derive(Debug, Clone, Serialize)]

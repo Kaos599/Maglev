@@ -4,7 +4,7 @@
 //! Torrent ids are lower case 40 character hex info hashes. Queue, seed-limit and governance decisions
 //! come from the pure planner in `scheduler.rs`; this file only gathers facts and applies actions.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::future::Future;
 use std::net::Ipv4Addr;
 use std::num::NonZeroU32;
@@ -34,14 +34,19 @@ use tracing::warn;
 use crate::activity::{ActivitySnapshot, ResolveRegistry};
 use crate::config::NativeConfig;
 use crate::error::{classify_add_error, classify_runtime_error, EngineError, ErrorCode};
+use crate::file_health::{
+    classify_files, folder_scannable, health_change, rollup, scan_owns, stat_path, FileProbe, FileStamp,
+    FileState, HealthChange, HealthStore, OnDisk,
+};
 use crate::meta::{write_atomic, MetaStore, PendingAdd, TorrentMeta};
 use crate::priority::{
     include_set_changed, order_from_first, parse_priorities, plan_priorities, plan_removal,
     priority_of_file, PriorityPlan, PriorityStore, ReannounceLimiter, REANNOUNCE_MIN_INTERVAL,
 };
 use crate::scheduler::{
-    accumulate_seed_ms, derive_state, plan, uploaded_total, Action, RqState, StateInputs, TorrentFacts, TorrentState,
-    PAUSED_BY_SEED_LIMIT, PAUSED_BY_USER,
+    accumulate_seed_ms, derive_state, is_health_tag, no_peers_due, plan, resolving_secs, uploaded_total, Action,
+    RqState, StateInputs, TorrentFacts, TorrentState, HEALTH_FILES_CHANGED, HEALTH_FILES_MISSING, HEALTH_NO_PEERS,
+    HEALTH_STORAGE_FULL, HEALTH_STORAGE_UNAVAILABLE, PAUSED_BY_SEED_LIMIT, PAUSED_BY_USER,
 };
 use crate::readiness::{file_readiness, have_piece};
 use crate::relocate::{
@@ -68,12 +73,56 @@ const DELETE_TIMEOUT: Duration = Duration::from_secs(90);
 const SOFT_SAVE_INTERVAL: Duration = Duration::from_secs(30);
 /// Meta entries with no torrent behind them are dropped after this long.
 const ORPHAN_GRACE_SECS: i64 = 180;
+/// The file health scan runs every this many one-second passes (section 18.3).
+const FILE_SCAN_EVERY_PASSES: u64 = 30;
+
+/// Clears the "a scan is running" flag when the scan ends, however it ends.
+struct ScanReset<'a>(&'a AtomicBool);
+
+impl Drop for ScanReset<'_> {
+    fn drop(&mut self) {
+        self.0.store(false, Ordering::SeqCst);
+    }
+}
 
 fn now_secs() -> i64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_secs() as i64)
         .unwrap_or(0)
+}
+
+fn now_ms() -> i64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_millis() as i64)
+        .unwrap_or(0)
+}
+
+/// Sum of the lengths of the included, non-padding files (contract section 18.4).
+fn included_bytes(h: &Handle20) -> u64 {
+    let only: Option<HashSet<usize>> = h.only_files().map(|o| o.into_iter().collect());
+    h.with_metadata(|md| {
+        md.file_infos
+            .iter()
+            .enumerate()
+            .filter(|(i, fi)| {
+                !fi.attrs.padding && only.as_ref().map(|o| o.contains(i)).unwrap_or(true)
+            })
+            .map(|(_, fi)| fi.len)
+            .sum::<u64>()
+    })
+    .unwrap_or(0)
+}
+
+/// True when librqbit stopped the torrent because the disk is full.
+fn is_disk_full_stop(stats: &TorrentStats) -> bool {
+    rq_state(stats) == RqState::Error
+        && stats
+            .error
+            .as_deref()
+            .map(|e| classify_runtime_error(e).0 == ErrorCode::DiskFull)
+            .unwrap_or(false)
 }
 
 fn nonzero_bps(v: u64) -> Option<NonZeroU32> {
@@ -240,6 +289,26 @@ pub struct TorrentExported {
     pub trackers: usize,
 }
 
+/// One included file in the answer of `nativeFileHealth`.
+#[derive(Serialize)]
+pub struct FileHealthEntry {
+    pub index: u32,
+    pub state: FileState,
+}
+
+/// Answer of `nativeFileHealth`.
+#[derive(Serialize)]
+pub struct FileHealthReport {
+    pub files: Vec<FileHealthEntry>,
+}
+
+/// Answer of `nativeScanFileHealth`.
+#[derive(Serialize)]
+pub struct ScanResult {
+    /// Torrents whose health tag the scan set or cleared.
+    pub changed: usize,
+}
+
 #[derive(Serialize)]
 pub struct ApplyConfigResult {
     pub restart_required: bool,
@@ -282,6 +351,10 @@ pub struct MaglevEngine {
     moves: Mutex<HashMap<String, Arc<MoveEntry>>>,
     /// Magnet resolves in progress: peers seen on the DHT and the cancel signal (section 12.1).
     resolves: Arc<ResolveRegistry>,
+    /// File size and time snapshots taken when a torrent finishes, `maglev-filehealth.json` (section 18.3).
+    filehealth: Mutex<HealthStore>,
+    /// True while a file health scan runs, so scans never overlap.
+    scanning: AtomicBool,
 }
 
 /// Keeps a registry entry and its peer-counting task alive for one magnet resolve. Dropping it (any
@@ -384,6 +457,7 @@ impl MaglevEngine {
         let priorities = PriorityStore::load(&session_dir);
         let limits = LimitsStore::load(&session_dir);
         let trackers = TrackerStore::load(&session_dir);
+        let filehealth = HealthStore::load(&session_dir);
         let trimmed = config_json.trim();
         let mut config_warning: Option<String> = None;
         let cfg = if trimmed.is_empty() || trimmed == "null" {
@@ -473,6 +547,8 @@ impl MaglevEngine {
             trackers: Mutex::new(trackers),
             moves: Mutex::new(HashMap::new()),
             resolves: Arc::new(ResolveRegistry::new()),
+            filehealth: Mutex::new(filehealth),
+            scanning: AtomicBool::new(false),
         });
 
         engine.restore_priorities();
@@ -536,7 +612,8 @@ impl MaglevEngine {
         let rq = rq_state(stats);
         let error = if let Some(e) = &m.last_error {
             Some(e.clone())
-        } else if rq == RqState::Error {
+        } else if rq == RqState::Error && m.health.as_deref() != Some(HEALTH_STORAGE_FULL) {
+            // A full disk is a health state (section 18.2), not an error.
             let (code, message) = classify_runtime_error(stats.error.as_deref().unwrap_or(""));
             Some(ErrorInfo { code, message })
         } else {
@@ -585,7 +662,8 @@ impl MaglevEngine {
             name: h.name().unwrap_or_else(|| "Unnamed torrent".to_string()),
             state,
             paused_by: m.paused_by.clone(),
-            finished: stats.finished,
+            // The finished edge never fires while files are missing (section 18.3).
+            finished: stats.finished && m.health.as_deref() != Some(HEALTH_FILES_MISSING),
             progress_bytes: stats.progress_bytes,
             total_bytes: stats.total_bytes,
             uploaded_bytes: uploaded,
@@ -603,6 +681,9 @@ impl MaglevEngine {
             down_limit_bps,
             up_limit_bps,
             move_progress: moving.map(|e| e.progress.fraction()),
+            health: m.health.clone(),
+            included_bytes: included_bytes(h),
+            resolving_secs: None,
         }
     }
 
@@ -644,6 +725,9 @@ impl MaglevEngine {
             down_limit_bps,
             up_limit_bps,
             move_progress: Some(e.progress.fraction()),
+            health: m.health.clone(),
+            included_bytes: e.total_bytes,
+            resolving_secs: None,
         }
     }
 
@@ -686,6 +770,9 @@ impl MaglevEngine {
             down_limit_bps,
             up_limit_bps,
             move_progress: None,
+            health: m.health.clone(),
+            included_bytes: 0,
+            resolving_secs: m.resolving_since_ms.map(|since| resolving_secs(since, now_ms())),
         }
     }
 
@@ -1179,6 +1266,8 @@ impl MaglevEngine {
         let now = now_secs();
 
         let initial_meta = |pending: Option<PendingAdd>| TorrentMeta {
+            // A magnet starts its metadata lookup now (section 20).
+            resolving_since_ms: pending.as_ref().map(|_| now_ms()),
             added_at: now,
             paused_by: if opts.paused {
                 Some(PAUSED_BY_USER.to_string())
@@ -1282,10 +1371,17 @@ impl MaglevEngine {
             let mut meta = self.meta.lock();
             match outcome {
                 Ok(()) => {
-                    meta.update(&id, |m| m.pending = None);
+                    meta.update(&id, |m| {
+                        m.pending = None;
+                        m.resolving_since_ms = None;
+                        m.health = None;
+                    });
                 }
                 Err(e) if e.code == ErrorCode::Duplicate => {
-                    meta.update(&id, |m| m.pending = None);
+                    meta.update(&id, |m| {
+                        m.pending = None;
+                        m.resolving_since_ms = None;
+                    });
                 }
                 Err(e) => {
                     meta.update(&id, |m| {
@@ -1318,12 +1414,30 @@ impl MaglevEngine {
                 .and_then(|(_, h)| self.find(h))
                 .is_some();
             if in_session {
-                self.meta.lock().update(&id, |m| m.pending = None);
+                self.meta.lock().update(&id, |m| {
+                    m.pending = None;
+                    m.resolving_since_ms = None;
+                });
                 continue;
             }
             p.error = None;
-            self.meta.lock().update(&id, |m| m.pending = Some(p.clone()));
-            self.spawn_pending(id, p);
+            // The lookup starts over, so its clock does too. A magnet that had given up (`no_peers`)
+            // stays quiet until the user or the hourly retry asks again.
+            let given_up = self
+                .meta
+                .lock()
+                .get(&id)
+                .map(|m| m.health.as_deref() == Some(HEALTH_NO_PEERS))
+                .unwrap_or(false);
+            self.meta.lock().update(&id, |m| {
+                m.pending = Some(p.clone());
+                if !given_up {
+                    m.resolving_since_ms = Some(now_ms());
+                }
+            });
+            if !given_up {
+                self.spawn_pending(id, p);
+            }
         }
     }
 
@@ -1360,6 +1474,39 @@ impl MaglevEngine {
     pub fn resume(&self, id: &str) -> Result<(), EngineError> {
         let (id, hash) = Self::parse_id(id)?;
         self.reject_if_moving(&id)?;
+        // A health tag keeps a torrent stopped (section 18.2). Resume does not override it, except a
+        // full disk: the user freed space, and a new write error puts the tag back.
+        let health = self.meta.lock().get(&id).and_then(|m| m.health.clone());
+        match health.as_deref() {
+            None => {}
+            Some(HEALTH_STORAGE_FULL) => {
+                self.meta.lock().update(&id, |m| m.health = None);
+            }
+            Some(HEALTH_FILES_MISSING) => {
+                return Err(EngineError::new(
+                    ErrorCode::FilesMissing,
+                    "Some files are missing. Choose what to do with them first.",
+                ))
+            }
+            Some(HEALTH_FILES_CHANGED) => {
+                return Err(EngineError::new(
+                    ErrorCode::Unsupported,
+                    "Files were changed after downloading. Recheck them first.",
+                ))
+            }
+            Some(HEALTH_STORAGE_UNAVAILABLE) => {
+                return Err(EngineError::new(
+                    ErrorCode::Unsupported,
+                    "The SD card isn't there.",
+                ))
+            }
+            Some(_) => {
+                return Err(EngineError::new(
+                    ErrorCode::Unsupported,
+                    "No one is sharing this yet. Tap Keep trying.",
+                ))
+            }
+        }
         let h = self.find(hash);
         if let Some(hh) = &h {
             if let Some(err) = self.files_missing(&id, hh) {
@@ -1468,12 +1615,28 @@ impl MaglevEngine {
         let (id, hash) = Self::parse_id(id)?;
         self.reject_if_moving(&id)?;
         let h = self.find(hash).ok_or_else(EngineError::not_found)?;
+        self.run(DELETE_TIMEOUT, self.recheck_async(&id, hash, &h, None))??;
+        let _ = self.run(OP_TIMEOUT, self.tick_soon());
+        Ok(())
+    }
+
+    /// Forget the torrent and add it back (paused, reusing the files on disk), so librqbit checks every
+    /// piece again. `folder` re-points the torrent at another output folder (the "Pick folder" fix of
+    /// section 18.3); `None` keeps the current one. The file snapshot is dropped: a new one is taken when
+    /// the torrent finishes again.
+    async fn recheck_async(
+        &self,
+        id: &str,
+        hash: Id20,
+        h: &Handle20,
+        folder: Option<String>,
+    ) -> Result<(), EngineError> {
         let bytes = h
             .with_metadata(|m| m.torrent_bytes.clone())
             .map_err(|_| EngineError::internal("This torrent has no info to check yet"))?;
         let only_files = h.only_files();
-        let folder = h.output_folder().to_string_lossy().into_owned();
-        self.run(DELETE_TIMEOUT, async {
+        let folder = folder.unwrap_or_else(|| h.output_folder().to_string_lossy().into_owned());
+        let added = {
             // Holding the tick lock keeps the governance pass (and its stale-entry sweep) away from
             // this torrent between the delete and the re-add, so its Maglev metadata survives.
             let _tick = self.tick_lock.lock().await;
@@ -1484,18 +1647,18 @@ impl MaglevEngine {
                     let (code, message) = classify_runtime_error(&format!("{e:#}"));
                     EngineError::new(code, message)
                 })?;
-            let added = self.readd_at(&id, bytes, only_files, folder).await;
+            let added = self.readd_at(id, bytes, only_files, folder).await;
             // added_at, paused_by, uploaded totals and seeding time are kept; only error state resets.
-            self.meta.lock().update(&id, |m| {
+            self.meta.lock().update(id, |m| {
                 m.last_error = None;
                 m.max_progress_bytes = 0;
                 m.queued = m.paused_by.is_none();
             });
             added
-        })??;
+        };
+        self.forget_file_snapshot(id);
         self.save_meta();
-        let _ = self.run(OP_TIMEOUT, self.tick_soon());
-        Ok(())
+        added
     }
 
     pub fn delete(&self, id: &str, delete_files: bool) -> Result<(), EngineError> {
@@ -1528,6 +1691,7 @@ impl MaglevEngine {
         self.forget_priorities(&id);
         self.forget_limits(&id);
         self.forget_trackers(&id);
+        self.forget_file_snapshot(&id);
         self.reannounce_limiter.lock().release(&id);
         self.peer_cache.lock().retain(|k, _| !k.starts_with(&format!("{id}|")));
         self.save_meta();
@@ -1752,6 +1916,7 @@ impl MaglevEngine {
             m.max_progress_bytes = 0;
         });
         self.save_meta();
+        self.refresh_file_snapshot(&id, &h);
         let _ = self.run(OP_TIMEOUT, self.tick_soon());
         Ok(serde_json::json!({ "freed_bytes": freed }))
     }
@@ -2249,8 +2414,14 @@ impl MaglevEngine {
             }
         }
         self.save_meta();
-        if let Err(e) = outcome {
-            warn!("move failed: {e}");
+        match outcome {
+            Ok(()) => {
+                // The files are in the new folder: take their size and time again (section 18.3).
+                if let Some(h) = self.find(job.hash) {
+                    self.refresh_file_snapshot(&job.id, &h);
+                }
+            }
+            Err(e) => warn!("move failed: {e}"),
         }
         // The MOVING marker is removed when the guard drops, after the outcome is saved.
     }
@@ -2382,11 +2553,21 @@ impl MaglevEngine {
         let jh = self.handle.spawn(async move {
             let mut iv = tokio::time::interval(Duration::from_secs(1));
             iv.set_missed_tick_behavior(MissedTickBehavior::Skip);
+            let mut passes: u64 = 0;
             loop {
                 iv.tick().await;
+                passes += 1;
                 let e = me.clone();
                 // A panic in one tick must not stop the loop.
                 let _ = tokio::spawn(async move { e.tick().await }).await;
+                // The file health scan (section 18.3) runs on its own task, outside the tick lock,
+                // because fixing a torrent can mean a recheck.
+                if passes % FILE_SCAN_EVERY_PASSES == 0 {
+                    let e = me.clone();
+                    tokio::spawn(async move {
+                        e.scan_file_health().await;
+                    });
+                }
             }
         });
         *self.tick_task.lock() = Some(jh);
@@ -2406,12 +2587,16 @@ impl MaglevEngine {
         }
         let only = h.only_files();
         let folder = h.output_folder().to_path_buf();
+        // Per-file verified bytes; empty while the torrent is checking or in error. A file with no
+        // verified bytes is not "missing": it is made again by its first write (section 18.1).
+        let progress = h.stats().file_progress;
         let missing = h
             .with_metadata(|m| {
                 m.file_infos.iter().enumerate().any(|(i, fi)| {
                     !fi.attrs.padding
                         && fi.len > 0
                         && only.as_ref().map(|o| o.contains(&i)).unwrap_or(true)
+                        && (progress.is_empty() || progress.get(i).copied().unwrap_or(0) > 0)
                         && !folder.join(&fi.relative_filename).exists()
                 })
             })
@@ -2439,11 +2624,22 @@ impl MaglevEngine {
     async fn ensure_running(&self, id: &str, h: &Handle20) {
         let rq = rq_state(&h.stats());
         if rq == RqState::Paused || rq == (RqState::Initializing { paused: true }) {
+            if rq == RqState::Paused {
+                // A file deleted from outside keeps a handle to the deleted file; drop it so the next
+                // write makes the file again (section 18.1).
+                self.close_absent_handles(h);
+            }
             if let Err(e) = self.session.unpause(h).await {
                 let (code, message) = classify_runtime_error(&format!("{e:#}"));
                 warn!("resume failed: {e:#}");
                 self.meta.lock().update(id, |m| {
-                    m.last_error = Some(ErrorInfo { code, message });
+                    if code == ErrorCode::DiskFull {
+                        // A full disk is a health state, not an error (section 18.2).
+                        m.health = Some(HEALTH_STORAGE_FULL.to_string());
+                        m.paused_by = Some(HEALTH_STORAGE_FULL.to_string());
+                    } else {
+                        m.last_error = Some(ErrorInfo { code, message });
+                    }
                     m.queued = false;
                 });
             }
@@ -2516,6 +2712,9 @@ impl MaglevEngine {
         let mut by_id: HashMap<String, Handle20> = HashMap::with_capacity(handles.len());
         // Torrents being moved are not startable, not counted against the queue and never touched.
         let moving: HashSet<String> = self.moves.lock().keys().cloned().collect();
+        // Finished torrents with no file snapshot yet (section 18.3) and magnets that gave up (section 20).
+        let mut to_snapshot: Vec<(String, Handle20)> = Vec::new();
+        let mut gave_up: Vec<String> = Vec::new();
 
         {
             let mut meta = self.meta.lock();
@@ -2543,7 +2742,29 @@ impl MaglevEngine {
                 if stats.progress_bytes > m.max_progress_bytes {
                     m.max_progress_bytes = stats.progress_bytes;
                 }
-                let errored = m.last_error.is_some() || rq == RqState::Error;
+                // A full disk stops a torrent with a write error. Show it as a health state, not an error
+                // (section 18.2): the planner keeps it stopped until the space is back.
+                if m.health.is_none()
+                    && m.last_error.is_none()
+                    && !matches!(
+                        m.paused_by.as_deref(),
+                        Some(PAUSED_BY_USER) | Some(PAUSED_BY_SEED_LIMIT)
+                    )
+                    && is_disk_full_stop(&stats)
+                {
+                    m.health = Some(HEALTH_STORAGE_FULL.to_string());
+                    m.paused_by = Some(HEALTH_STORAGE_FULL.to_string());
+                    m.queued = false;
+                }
+                let errored = m.last_error.is_some()
+                    || (rq == RqState::Error && m.health.as_deref() != Some(HEALTH_STORAGE_FULL));
+                if stats.finished
+                    && m.health.is_none()
+                    && matches!(rq, RqState::Live | RqState::Paused)
+                    && !self.filehealth.lock().has(&id)
+                {
+                    to_snapshot.push((id.clone(), h.clone()));
+                }
                 let state = derive_state(StateInputs {
                     rq,
                     finished: stats.finished,
@@ -2573,6 +2794,7 @@ impl MaglevEngine {
                     ratio,
                     seeding_secs: (m.seeding_ms / 1000) as i64,
                     limits_waived: m.limits_waived,
+                    health: m.health.clone(),
                 });
                 if *m != before {
                     changed = true;
@@ -2599,12 +2821,43 @@ impl MaglevEngine {
             for id in stale {
                 meta.remove(&id);
             }
+
+            // A magnet that found no one for ten minutes stops looking and shows `no_peers`, so it
+            // holds no work and the service can stop (section 20). A user pause is left alone.
+            let now_ms = now_ms();
+            for (id, m) in meta.data.torrents.iter_mut() {
+                let looking = m.pending.as_ref().map(|p| p.error.is_none()).unwrap_or(false);
+                if !looking
+                    || m.health.is_some()
+                    || m.paused_by.as_deref() == Some(PAUSED_BY_USER)
+                    || by_id.contains_key(id)
+                {
+                    continue;
+                }
+                if let Some(since) = m.resolving_since_ms {
+                    if no_peers_due(since, now_ms) {
+                        m.health = Some(HEALTH_NO_PEERS.to_string());
+                        gave_up.push(id.clone());
+                    }
+                }
+            }
+            if !gave_up.is_empty() {
+                meta.mark_dirty();
+            }
+        }
+        for id in &gave_up {
+            if let Some(t) = self.pending_tasks.lock().remove(id) {
+                t.abort();
+            }
         }
 
         let actions = plan(&facts, &cfg.scheduler(), &blocked);
-        let structural = !actions.is_empty();
+        let structural = !actions.is_empty() || !gave_up.is_empty();
         for a in actions {
             self.apply_action(a, &by_id).await;
+        }
+        for (id, h) in &to_snapshot {
+            self.snapshot_files(id, h);
         }
 
         let should_save = {
@@ -2614,6 +2867,532 @@ impl MaglevEngine {
         if should_save {
             self.save_meta();
         }
+    }
+
+    // ---- health: files, storage, no peers (contract sections 18 and 20) ----------------------------
+
+    /// What the torrent knows about each file and what is on disk. A skipped or padding file is never
+    /// looked up on disk.
+    fn probe_files(&self, h: &Handle20, stats: &TorrentStats) -> Vec<FileProbe> {
+        let folder = h.output_folder().to_path_buf();
+        let only: Option<HashSet<usize>> = h.only_files().map(|o| o.into_iter().collect());
+        h.with_metadata(|md| {
+            md.file_infos
+                .iter()
+                .enumerate()
+                .map(|(i, fi)| {
+                    let included = only.as_ref().map(|o| o.contains(&i)).unwrap_or(true);
+                    let on_disk = if included && !fi.attrs.padding {
+                        stat_path(&folder.join(&fi.relative_filename))
+                    } else {
+                        OnDisk::Unknown
+                    };
+                    FileProbe {
+                        index: i as u32,
+                        included,
+                        padding: fi.attrs.padding,
+                        had_data: stats.file_progress.get(i).copied().unwrap_or(0) > 0,
+                        on_disk,
+                    }
+                })
+                .collect::<Vec<FileProbe>>()
+        })
+        .unwrap_or_default()
+    }
+
+    /// The probes and the per-file states of a torrent, or `None` when it can't be judged right now:
+    /// it is still checking, has no verified data yet, or its folder can't be read.
+    fn judge_files(
+        &self,
+        id: &str,
+        h: &Handle20,
+        stats: &TorrentStats,
+    ) -> Option<(Vec<FileProbe>, Vec<(u32, FileState)>)> {
+        if !matches!(rq_state(stats), RqState::Live | RqState::Paused) || stats.file_progress.is_empty() {
+            return None;
+        }
+        let had_progress = self
+            .meta
+            .lock()
+            .get(id)
+            .map(|m| m.max_progress_bytes > 0)
+            .unwrap_or(false);
+        if !had_progress && stats.progress_bytes == 0 {
+            return None;
+        }
+        if !folder_scannable(h.output_folder()) {
+            return None;
+        }
+        let probes = self.probe_files(h, stats);
+        let snapshot = self.filehealth.lock().get(id).map(|s| s.by_index());
+        let states = classify_files(&probes, stats.finished, snapshot.as_ref());
+        Some((probes, states))
+    }
+
+    /// Drops the open handle of every included file that is gone from disk, so the next write makes
+    /// the file again instead of writing into the deleted file (section 18.1).
+    fn close_absent_handles(&self, h: &Handle20) {
+        let stats = h.stats();
+        for p in self.probe_files(h, &stats) {
+            if p.included && !p.padding && p.on_disk == OnDisk::Absent {
+                if let Err(e) = h.close_file(p.index as usize) {
+                    warn!("could not close the handle of file {}: {e:#}", p.index);
+                }
+            }
+        }
+    }
+
+    /// Takes the size and time of every included file that exists and stores them in the sidecar.
+    fn snapshot_files(&self, id: &str, h: &Handle20) {
+        let folder = h.output_folder().to_path_buf();
+        let only: Option<HashSet<usize>> = h.only_files().map(|o| o.into_iter().collect());
+        let stamps: BTreeMap<u32, FileStamp> = h
+            .with_metadata(|md| {
+                md.file_infos
+                    .iter()
+                    .enumerate()
+                    .filter(|(i, fi)| {
+                        !fi.attrs.padding && only.as_ref().map(|o| o.contains(i)).unwrap_or(true)
+                    })
+                    .filter_map(|(i, fi)| match stat_path(&folder.join(&fi.relative_filename)) {
+                        OnDisk::Present(stamp) => Some((i as u32, stamp)),
+                        _ => None,
+                    })
+                    .collect::<BTreeMap<u32, FileStamp>>()
+            })
+            .unwrap_or_default();
+        let mut store = self.filehealth.lock();
+        store.set(id, &stamps);
+        if let Err(e) = store.save() {
+            warn!("could not save the file snapshot: {e}");
+        }
+    }
+
+    /// Takes the snapshot again, but only for a torrent that already has one (after Remove file or Move).
+    fn refresh_file_snapshot(&self, id: &str, h: &Handle20) {
+        let has = self.filehealth.lock().has(id);
+        if has {
+            self.snapshot_files(id, h);
+        }
+    }
+
+    fn forget_file_snapshot(&self, id: &str) {
+        let mut store = self.filehealth.lock();
+        if store.remove(id) {
+            if let Err(e) = store.save() {
+                warn!("could not save the file snapshot: {e}");
+            }
+        }
+    }
+
+    fn set_meta_health(&self, id: &str, tag: Option<&str>) {
+        self.meta
+            .lock()
+            .update(id, |m| m.health = tag.map(str::to_string));
+        self.save_meta();
+    }
+
+    /// `scan_file_health()` (section 18.3): looks at the files of every torrent and sets or clears
+    /// `files_missing` and `files_changed`. Returns how many torrents changed. Scans never overlap.
+    pub async fn scan_file_health(&self) -> usize {
+        if self.scanning.swap(true, Ordering::SeqCst) {
+            return 0;
+        }
+        let _reset = ScanReset(&self.scanning);
+        let mut changed = 0;
+        for h in self.handles() {
+            if self.shutting_down.load(Ordering::SeqCst) {
+                break;
+            }
+            let id = h.info_hash().as_string();
+            if self.scan_one(&id, &h).await {
+                changed += 1;
+            }
+        }
+        changed
+    }
+
+    async fn scan_one(&self, id: &str, h: &Handle20) -> bool {
+        if self.moves.lock().contains_key(id) {
+            return false;
+        }
+        let health = match self.meta.lock().get(id) {
+            Some(m) => m.health.clone(),
+            None => return false,
+        };
+        // Storage and no-peers tags belong to other owners.
+        if !scan_owns(health.as_deref()) {
+            return false;
+        }
+        let stats = h.stats();
+        let Some((probes, states)) = self.judge_files(id, h, &stats) else {
+            return false;
+        };
+        for p in probes
+            .iter()
+            .filter(|p| p.included && !p.padding && p.on_disk == OnDisk::Absent)
+        {
+            if let Err(e) = h.close_file(p.index as usize) {
+                warn!("could not close the handle of file {}: {e:#}", p.index);
+            }
+        }
+        match health_change(health.as_deref(), rollup(&states)) {
+            HealthChange::Keep => false,
+            HealthChange::Set(tag) => {
+                self.set_meta_health(id, Some(tag));
+                self.tick_soon().await;
+                true
+            }
+            HealthChange::ClearChanged => {
+                self.set_meta_health(id, None);
+                self.tick_soon().await;
+                true
+            }
+            HealthChange::ClearMissing => {
+                // Every missing file is back. Check the torrent again, then let the planner resume it.
+                let rechecked =
+                    tokio::time::timeout(DELETE_TIMEOUT, self.recheck_async(id, h.info_hash(), h, None)).await;
+                match rechecked {
+                    Ok(Ok(())) => {
+                        self.set_meta_health(id, None);
+                        self.tick_soon().await;
+                        true
+                    }
+                    _ => {
+                        warn!("could not recheck {id} after its files came back");
+                        false
+                    }
+                }
+            }
+        }
+    }
+
+    /// `nativeScanFileHealth`: one scan now (Kotlin calls it when the app comes to the front).
+    pub fn scan_file_health_now(&self) -> Result<ScanResult, EngineError> {
+        let changed = self.run(DELETE_TIMEOUT, self.scan_file_health())?;
+        Ok(ScanResult { changed })
+    }
+
+    /// `nativeFileHealth`: the state of every included file. A torrent that can't be judged right now
+    /// (checking, nothing downloaded yet, folder not readable) reports every file `ok`.
+    pub fn file_health(&self, id: &str) -> Result<FileHealthReport, EngineError> {
+        let (id, hash) = Self::parse_id(id)?;
+        let h = self.find(hash).ok_or_else(EngineError::not_found)?;
+        if self.moves.lock().contains_key(&id) {
+            return Err(EngineError::new(
+                ErrorCode::InvalidState,
+                "This torrent is moving. Wait for the move to finish.",
+            ));
+        }
+        let stats = h.stats();
+        let states: Vec<(u32, FileState)> = match self.judge_files(&id, &h, &stats) {
+            Some((_, states)) => states,
+            None => self
+                .probe_files(&h, &stats)
+                .iter()
+                .filter(|p| p.included && !p.padding)
+                .map(|p| (p.index, FileState::Ok))
+                .collect(),
+        };
+        Ok(FileHealthReport {
+            files: states
+                .into_iter()
+                .map(|(index, state)| FileHealthEntry { index, state })
+                .collect(),
+        })
+    }
+
+    /// `nativeSetHealth`: `tag` is a health tag, or `""` to clear it (section 18.2).
+    pub fn set_health(self: &Arc<Self>, id: &str, tag: &str) -> Result<(), EngineError> {
+        let (id, hash) = Self::parse_id(id)?;
+        let tag = tag.trim();
+        if !tag.is_empty() && !is_health_tag(tag) {
+            return Err(EngineError::new(
+                ErrorCode::InvalidArgument,
+                "That isn't a known health state",
+            ));
+        }
+        let h = self.find(hash);
+        {
+            let mut meta = self.meta.lock();
+            if !meta.contains(&id) {
+                match &h {
+                    Some(hh) => meta.insert(&id, default_meta(hh, now_secs())),
+                    None => return Err(EngineError::not_found()),
+                }
+            }
+        }
+        let previous: Option<String> = self
+            .meta
+            .lock()
+            .update(&id, |m| {
+                let before = m.health.take();
+                m.health = if tag.is_empty() { None } else { Some(tag.to_string()) };
+                before
+            })
+            .flatten();
+
+        if tag.is_empty() {
+            match previous.as_deref() {
+                Some(HEALTH_FILES_MISSING) | Some(HEALTH_STORAGE_UNAVAILABLE) => {
+                    // The files_missing check runs before the torrent may resume: if files are still
+                    // gone the torrent stays stopped, now under the files_missing tag.
+                    if let Some(hh) = &h {
+                        if self.files_missing(&id, hh).is_some() {
+                            self.meta
+                                .lock()
+                                .update(&id, |m| m.health = Some(HEALTH_FILES_MISSING.to_string()));
+                        }
+                    }
+                }
+                Some(HEALTH_NO_PEERS) => self.restart_lookup(&id),
+                Some(HEALTH_STORAGE_FULL) => {
+                    if let Some(hh) = &h {
+                        self.restart_after_disk_full(&id, hh)?;
+                    }
+                }
+                _ => {}
+            }
+        } else if tag == HEALTH_NO_PEERS {
+            if let Some(t) = self.pending_tasks.lock().remove(&id) {
+                t.abort();
+            }
+        }
+        self.save_meta();
+        let _ = self.run(OP_TIMEOUT, self.tick_soon());
+        Ok(())
+    }
+
+    /// Starts a magnet's metadata lookup again with a fresh ten minute clock.
+    fn restart_lookup(self: &Arc<Self>, id: &str) {
+        let pending = self
+            .meta
+            .lock()
+            .update(id, |m| {
+                m.resolving_since_ms = Some(now_ms());
+                if let Some(p) = m.pending.as_mut() {
+                    p.error = None;
+                }
+                m.pending.clone()
+            })
+            .flatten();
+        if let Some(p) = pending {
+            let running = self.pending_tasks.lock().contains_key(id);
+            if !running {
+                self.spawn_pending(id.to_string(), p);
+            }
+        }
+    }
+
+    /// A torrent that librqbit stopped with a write error needs a restart once the space is back.
+    /// A user-paused one stays as it is until the user resumes it.
+    fn restart_after_disk_full(&self, id: &str, h: &Handle20) -> Result<(), EngineError> {
+        let user_paused = self
+            .meta
+            .lock()
+            .get(id)
+            .map(|m| m.paused_by.as_deref() == Some(PAUSED_BY_USER))
+            .unwrap_or(false);
+        if rq_state(&h.stats()) != RqState::Error || user_paused {
+            return Ok(());
+        }
+        let restarted = self.run(OP_TIMEOUT, async { self.session.unpause(h).await })?;
+        if let Err(e) = restarted {
+            let (code, message) = classify_runtime_error(&format!("{e:#}"));
+            warn!("could not restart {id} after the disk had space again: {e:#}");
+            self.meta.lock().update(id, |m| {
+                if code == ErrorCode::DiskFull {
+                    m.health = Some(HEALTH_STORAGE_FULL.to_string());
+                } else {
+                    m.last_error = Some(ErrorInfo { code, message });
+                }
+            });
+        }
+        Ok(())
+    }
+
+    /// Runs `op` on a torrent while it is paused. A live torrent is paused first and started again
+    /// afterwards, under the tick lock, as `remove_files` does. A torrent that is checking or in error
+    /// is `INVALID_STATE`.
+    async fn with_paused<T>(
+        &self,
+        id: &str,
+        h: &Handle20,
+        op: impl FnOnce() -> anyhow::Result<T>,
+    ) -> Result<T, EngineError> {
+        let _tick = self.tick_lock.lock().await;
+        let was_live = match h.stats().state {
+            TorrentStatsState::Live => true,
+            TorrentStatsState::Paused => false,
+            _ => {
+                return Err(EngineError::new(
+                    ErrorCode::InvalidState,
+                    "Wait until the torrent has been checked.",
+                ))
+            }
+        };
+        if was_live {
+            // librqbit restarts its upload counter when a torrent goes live again.
+            let uploaded_now = h.stats().uploaded_bytes;
+            self.meta.lock().update(id, |m| {
+                let (_, base, last) = uploaded_total(m.uploaded_base, m.last_uploaded_seen, uploaded_now);
+                m.uploaded_base = base;
+                m.last_uploaded_seen = last;
+            });
+            self.session.pause(h).await.map_err(|e| {
+                let (code, message) = classify_runtime_error(&format!("{e:#}"));
+                EngineError::new(code, message)
+            })?;
+        }
+        let result = op();
+        if was_live {
+            if let Err(e) = self.session.unpause(h).await {
+                warn!("could not restart the torrent: {e:#}");
+                self.meta.lock().update(id, |m| {
+                    if m.paused_by.is_none() {
+                        m.queued = true;
+                    }
+                });
+            }
+        }
+        result.map_err(|e| {
+            let (code, message) = classify_runtime_error(&format!("{e:#}"));
+            if code == ErrorCode::Internal {
+                EngineError::internal("Couldn't change those files. Try again in a moment.")
+            } else {
+                EngineError::new(code, message)
+            }
+        })
+    }
+
+    /// `nativeResolveFiles` (section 18.3): what the user chose for files that went missing or changed.
+    /// `stop`, `again`, `folder` (for missing files) and `recheck` (for changed files).
+    pub fn resolve_files(
+        &self,
+        id: &str,
+        action: &str,
+        indices_json: &str,
+        dir: &str,
+    ) -> Result<(), EngineError> {
+        let (id, hash) = Self::parse_id(id)?;
+        let h = self.find(hash).ok_or_else(EngineError::not_found)?;
+        let busy = |why: &str| EngineError::new(ErrorCode::InvalidState, why);
+        if self.moves.lock().contains_key(&id) {
+            return Err(busy("This torrent is moving. Wait for the move to finish."));
+        }
+        if matches!(rq_state(&h.stats()), RqState::Initializing { .. }) {
+            return Err(busy("Wait until the torrent has been checked."));
+        }
+        let bad_indices = || EngineError::new(ErrorCode::InvalidArgument, "The file choices couldn't be read");
+        let parse_indices = || -> Result<Vec<u32>, EngineError> {
+            let v: Vec<u32> = serde_json::from_str(indices_json).map_err(|_| bad_indices())?;
+            if v.is_empty() {
+                return Err(EngineError::new(ErrorCode::InvalidArgument, "Pick at least one file"));
+            }
+            Ok(v)
+        };
+        match action {
+            "stop" => {
+                // The remove-file path (section 14); a file that is already gone is not an error.
+                let indices = parse_indices()?;
+                let json = serde_json::to_string(&indices).map_err(|_| bad_indices())?;
+                self.remove_files(&id, &json)?;
+                let stats = h.stats();
+                let found = self
+                    .judge_files(&id, &h, &stats)
+                    .and_then(|(_, states)| rollup(&states));
+                self.set_meta_health(&id, found);
+            }
+            "again" => {
+                let indices = parse_indices()?;
+                let set = self.valid_file_set(&h, &indices)?;
+                self.run(DELETE_TIMEOUT, self.with_paused(&id, &h, || h.forget_files_data(&set)))??;
+                // Progress went down on purpose; the snapshot of those files is stale.
+                self.meta.lock().update(&id, |m| m.max_progress_bytes = 0);
+                self.forget_file_snapshot(&id);
+                self.set_meta_health(&id, None);
+            }
+            "folder" => {
+                let dir = dir.trim();
+                let dir_path = PathBuf::from(dir);
+                if dir.is_empty() || !dir_path.is_absolute() {
+                    return Err(EngineError::new(ErrorCode::InvalidArgument, "Pick a folder"));
+                }
+                let stats = h.stats();
+                let (_, states) = self
+                    .judge_files(&id, &h, &stats)
+                    .ok_or_else(|| busy("Wait until the torrent has been checked."))?;
+                let missing: Vec<usize> = states
+                    .iter()
+                    .filter(|(_, s)| *s == FileState::Missing)
+                    .map(|(i, _)| *i as usize)
+                    .collect();
+                if !missing.is_empty() {
+                    let all_there = h
+                        .with_metadata(|md| {
+                            missing.iter().all(|i| {
+                                md.file_infos.get(*i).map_or(false, |fi| {
+                                    matches!(
+                                        stat_path(&dir_path.join(&fi.relative_filename)),
+                                        OnDisk::Present(_)
+                                    )
+                                })
+                            })
+                        })
+                        .unwrap_or(false);
+                    if !all_there {
+                        return Err(EngineError::new(
+                            ErrorCode::FilesMissing,
+                            "Those files aren't in that folder.",
+                        ));
+                    }
+                    // Same as Move without copying: add the torrent back at the new folder and check it.
+                    self.run(
+                        DELETE_TIMEOUT,
+                        self.recheck_async(&id, hash, &h, Some(dir_path.to_string_lossy().into_owned())),
+                    )??;
+                }
+                self.set_meta_health(&id, None);
+            }
+            "recheck" => {
+                self.run(DELETE_TIMEOUT, self.recheck_async(&id, hash, &h, None))??;
+                self.set_meta_health(&id, None);
+            }
+            _ => {
+                return Err(EngineError::new(
+                    ErrorCode::InvalidArgument,
+                    "That isn't something Maglev can do with these files",
+                ))
+            }
+        }
+        let _ = self.run(OP_TIMEOUT, self.tick_soon());
+        Ok(())
+    }
+
+    /// The indices as a set, checked against the torrent's real (non-padding) files.
+    fn valid_file_set(&self, h: &Handle20, indices: &[u32]) -> Result<HashSet<usize>, EngineError> {
+        let valid: HashSet<usize> = h
+            .with_metadata(|md| {
+                md.file_infos
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, fi)| !fi.attrs.padding)
+                    .map(|(i, _)| i)
+                    .collect::<HashSet<usize>>()
+            })
+            .map_err(|_| EngineError::not_found())?;
+        let mut set = HashSet::with_capacity(indices.len());
+        for i in indices {
+            let idx = *i as usize;
+            if !valid.contains(&idx) {
+                return Err(EngineError::new(
+                    ErrorCode::InvalidArgument,
+                    "One of those files isn't in the torrent",
+                ));
+            }
+            set.insert(idx);
+        }
+        Ok(set)
     }
 
     // ---- shutdown -------------------------------------------------------------------------------
