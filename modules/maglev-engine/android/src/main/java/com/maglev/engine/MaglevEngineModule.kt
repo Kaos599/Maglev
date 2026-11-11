@@ -113,6 +113,31 @@ class MaglevEngineModule : Module() {
         AsyncFunction("addTorrent") { source: String, options: Map<String, Any?>?, promise: Promise ->
             io(promise) { EngineHost.addTorrent(source, options ?: emptyMap()) }
         }
+        // URL downloads (docs/NATIVE_CONTRACT.md section 17)
+        AsyncFunction("probeUrl") { url: String, options: Map<String, Any?>?, timeoutMs: Double, promise: Promise ->
+            io(promise) { EngineHost.probeUrl(url, options ?: emptyMap(), timeoutMs.toLong()) }
+        }
+        AsyncFunction("addDownload") { url: String, options: Map<String, Any?>?, promise: Promise ->
+            io(promise) { EngineHost.addDownload(url, options ?: emptyMap()) }
+        }
+        AsyncFunction("pauseDownload") { id: String, promise: Promise ->
+            engine(promise) { EngineHost.pauseDownload(id) }
+        }
+        AsyncFunction("resumeDownload") { id: String, promise: Promise ->
+            engine(promise) { EngineHost.resumeDownload(id) }
+        }
+        AsyncFunction("retryDownload") { id: String, promise: Promise ->
+            engine(promise) { EngineHost.retryDownload(id) }
+        }
+        AsyncFunction("removeDownload") { id: String, deleteFiles: Boolean, promise: Promise ->
+            io(promise) { EngineHost.removeDownload(id, deleteFiles) }
+        }
+        AsyncFunction("refreshDownloadUrl") { id: String, url: String, options: Map<String, Any?>?, promise: Promise ->
+            io(promise) { EngineHost.refreshDownloadUrl(id, url, options ?: emptyMap()) }
+        }
+        AsyncFunction("setDownloadLimits") { id: String, limits: Map<String, Any?>, promise: Promise ->
+            engine(promise) { EngineHost.setDownloadLimits(id, limits) }
+        }
         AsyncFunction("listTorrents") { promise: Promise ->
             native(promise) { NativeCore.nativeListTorrents() }
         }

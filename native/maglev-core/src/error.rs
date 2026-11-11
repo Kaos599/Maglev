@@ -29,6 +29,18 @@ pub enum ErrorCode {
     Internal,
     /// The app cancelled a magnet resolve. Not an error to show.
     Cancelled,
+    /// URL downloads (section 17): the server answered with a failing status (`http_status`).
+    HttpStatus,
+    /// URL downloads: 401 or 403. The link needs a sign in or has expired.
+    AuthRequired,
+    /// URL downloads: the link has expired (410) and needs a new one.
+    LinkExpired,
+    /// URL downloads: the file on the server is not the one that was started.
+    FileChanged,
+    /// URL downloads: the link opens a web page, not a file.
+    NotAFile,
+    /// URL downloads: the finished file does not match the checksum.
+    ChecksumMismatch,
 }
 
 impl ErrorCode {
@@ -51,6 +63,12 @@ impl ErrorCode {
             ErrorCode::InvalidState => "INVALID_STATE",
             ErrorCode::Internal => "INTERNAL",
             ErrorCode::Cancelled => "CANCELLED",
+            ErrorCode::HttpStatus => "HTTP_STATUS",
+            ErrorCode::AuthRequired => "AUTH_REQUIRED",
+            ErrorCode::LinkExpired => "LINK_EXPIRED",
+            ErrorCode::FileChanged => "FILE_CHANGED",
+            ErrorCode::NotAFile => "NOT_A_FILE",
+            ErrorCode::ChecksumMismatch => "CHECKSUM_MISMATCH",
         }
     }
 }
@@ -66,6 +84,8 @@ pub struct EngineError {
     pub retry_after_secs: Option<u64>,
     /// Set for `DUPLICATE`: how many trackers of the new source were added to the existing torrent (section 21).
     pub merged_trackers: Option<usize>,
+    /// Set for `HTTP_STATUS`: the status the server answered.
+    pub http_status: Option<u16>,
 }
 
 impl EngineError {
@@ -76,6 +96,15 @@ impl EngineError {
             id: None,
             retry_after_secs: None,
             merged_trackers: None,
+            http_status: None,
+        }
+    }
+
+    /// `HTTP_STATUS` with the status the server answered.
+    pub fn http_status(status: u16, message: impl Into<String>) -> Self {
+        Self {
+            http_status: Some(status),
+            ..Self::new(ErrorCode::HttpStatus, message)
         }
     }
 
@@ -94,6 +123,7 @@ impl EngineError {
             id: Some(id.into()),
             retry_after_secs: None,
             merged_trackers: None,
+            http_status: None,
         }
     }
 
@@ -133,6 +163,9 @@ impl EngineError {
         }
         if let Some(secs) = self.retry_after_secs {
             m.insert("retry_after_secs".into(), Value::from(secs));
+        }
+        if let Some(status) = self.http_status {
+            m.insert("http_status".into(), Value::from(status));
         }
         Value::Object(m).to_string()
     }

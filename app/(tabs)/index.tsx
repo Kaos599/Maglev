@@ -5,6 +5,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { HeaderBar } from '../../components/HeaderBar';
 import { FilterPills } from '../../components/FilterPills';
 import { CARD_GAP, TransferCard } from '../../components/TransferCard';
+import { DownloadCard } from '../../components/transfers/DownloadCard';
+import { DownloadSheet } from '../../components/transfers/DownloadSheet';
 import { FloatingActionButton } from '../../components/FloatingActionButton';
 import { SpeedTelemetryHeader } from '../../components/SpeedTelemetryHeader';
 import { BulkBar } from '../../components/transfers/BulkBar';
@@ -16,12 +18,13 @@ import { FILTERS, TransferFilter, countByFilter, magnetHash, matchesFilter, sort
 import { PixelIcon } from '../../components/PixelIcon';
 import { Banner, EmptyBlock, IconButton } from '../../components/ui/index';
 import * as DocumentPicker from 'expo-document-picker';
-import { maglevEngine } from 'maglev-engine';
+import { maglevEngine, type DownloadSnapshot } from 'maglev-engine';
 import { triggerHaptic } from '../../constants/haptics';
 import { useMaglevEngine } from '../../context/EngineContext';
 import { useTheme } from '../../context/ThemeContext';
 import { ThemeColors, radius, spacing, type } from '../../constants/theme';
 import { takeNextShared } from '../../utils/shareQueue';
+import type { DownloadAction } from '../../utils/downloadCopy';
 import { BulkVerb, bulkSummary } from '../../utils/bulkSummary';
 import { TransferSort, loadTransferSort, saveTransferSort } from '../../utils/prefs/transfers';
 
@@ -45,6 +48,12 @@ export default function TransfersScreen() {
     dismissNotice,
     clipboardMagnet,
     clearClipboardMagnet,
+    downloads,
+    pauseDownload,
+    resumeDownload,
+    retryDownload,
+    removeDownload,
+    refreshDownloadUrl,
   } = useMaglevEngine();
 
   const [sort, setSort] = useState<TransferSort>(loadTransferSort);
@@ -55,8 +64,37 @@ export default function TransfersScreen() {
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [selectedIds, setSelectedIds] = useState<ReadonlySet<string>>(() => new Set());
   const [fileError, setFileError] = useState<string | null>(null);
+  const [sheetDownloadId, setSheetDownloadId] = useState<string | null>(null);
 
   const all = telemetry.torrents;
+  // Downloads from links show above the torrents, under "All" only, and obey the name filter.
+  const shownDownloads = useMemo(() => {
+    if (filter !== 'all') return [];
+    const q = query.trim().toLowerCase();
+    return q ? downloads.filter((d) => d.name.toLowerCase().includes(q)) : downloads;
+  }, [downloads, filter, query]);
+  const sheetDownload = useMemo(() => downloads.find((d) => d.id === sheetDownloadId) ?? null, [downloads, sheetDownloadId]);
+  const onDownloadPress = useCallback((id: string) => setSheetDownloadId(id), []);
+  const onDownloadAction = useCallback(
+    (d: DownloadSnapshot, action: DownloadAction) => {
+      switch (action.kind) {
+        case 'pause':
+          void pauseDownload(d.id);
+          break;
+        case 'resume':
+          void resumeDownload(d.id);
+          break;
+        case 'retry':
+        case 'restart':
+          void retryDownload(d.id);
+          break;
+        case 'newLink':
+          setSheetDownloadId(d.id);
+          break;
+      }
+    },
+    [pauseDownload, resumeDownload, retryDownload],
+  );
   const selectionMode = selectedIds.size > 0;
 
   const counts = useMemo(() => countByFilter(all), [all]);
@@ -66,8 +104,17 @@ export default function TransfersScreen() {
     return sortTorrents(filtered, sort);
   }, [all, filter, query, sort]);
 
-  const anyRunning = useMemo(() => all.some((t) => t.state === 'DOWNLOADING' || t.state === 'SEEDING' || t.state === 'QUEUED'), [all]);
-  const anyPaused = useMemo(() => all.some((t) => t.state === 'PAUSED'), [all]);
+  const anyRunning = useMemo(
+    () =>
+      all.some((t) => t.state === 'DOWNLOADING' || t.state === 'SEEDING' || t.state === 'QUEUED') ||
+      downloads.some((d) => d.state === 'downloading' || d.state === 'queued'),
+    [all, downloads],
+  );
+  const anyPaused = useMemo(
+    () => all.some((t) => t.state === 'PAUSED') || downloads.some((d) => d.state === 'paused'),
+    [all, downloads],
+  );
+  const nothingHere = all.length === 0 && downloads.length === 0;
 
   const clipboardIsNew = useMemo(() => {
     if (!clipboardMagnet) return false;
@@ -271,7 +318,7 @@ export default function TransfersScreen() {
         </View>
       ) : null}
 
-      {all.length > 0 ? (
+      {!nothingHere ? (
         <SpeedTelemetryHeader
           downloadBytes={telemetry.totalDownloadSpeedBytes}
           uploadBytes={telemetry.totalUploadSpeedBytes}
@@ -292,12 +339,12 @@ export default function TransfersScreen() {
         </View>
       ) : null}
 
-      {all.length === 0 ? (
+      {nothingHere ? (
         <TeachingEmptyState canPaste={!!clipboardMagnet && clipboardIsNew} onPaste={addClipboard} onOpenFile={openFile} />
       ) : (
         <>
           <FilterPills value={filter} counts={counts} onChange={setFilter} />
-          {visible.length === 0 ? (
+          {visible.length === 0 && shownDownloads.length === 0 ? (
             <View style={styles.noMatch}>
               <EmptyBlock
                 icon="filter"
@@ -323,6 +370,16 @@ export default function TransfersScreen() {
               renderItem={renderItem}
               extraData={selectedIds}
               ItemSeparatorComponent={Separator}
+              ListHeaderComponent={
+                shownDownloads.length > 0 ? (
+                  <View style={styles.downloads}>
+                    {shownDownloads.map((d) => (
+                      <DownloadCard key={d.id} download={d} onPress={onDownloadPress} onAction={onDownloadAction} />
+                    ))}
+                    {visible.length > 0 ? <Separator /> : null}
+                  </View>
+                ) : undefined
+              }
               contentContainerStyle={{ paddingTop: spacing.xs, paddingBottom: listBottom }}
               initialNumToRender={8}
               windowSize={7}
@@ -355,6 +412,13 @@ export default function TransfersScreen() {
         </View>
       ) : null}
 
+      <DownloadSheet
+        download={sheetDownload}
+        onClose={() => setSheetDownloadId(null)}
+        onRetry={(id) => void retryDownload(id)}
+        onRemove={(id, deleteFiles) => void removeDownload(id, deleteFiles)}
+        onNewLink={refreshDownloadUrl}
+      />
       <SortSheet visible={sortOpen} sort={sort} onChange={changeSort} onClose={() => setSortOpen(false)} />
       <DeleteSheet visible={deleteOpen} count={selectedIds.size} bytes={selectedBytes} onClose={() => setDeleteOpen(false)} onConfirm={confirmDelete} />
     </View>
@@ -380,4 +444,5 @@ const makeStyles = (c: ThemeColors) =>
     fileError: { paddingHorizontal: spacing.lg, paddingBottom: spacing.sm },
     notice: { position: 'absolute', left: spacing.lg, right: spacing.lg, bottom: spacing.lg + 56 + spacing.sm },
     noMatch: { flex: 1, justifyContent: 'center' },
+    downloads: { gap: CARD_GAP },
   });

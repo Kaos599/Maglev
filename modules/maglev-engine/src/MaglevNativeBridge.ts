@@ -2,6 +2,8 @@ import { Platform, requireOptionalNativeModule } from 'expo-modules-core';
 import type {
   AddTorrentOptions,
   Detail,
+  DownloadOptions,
+  DownloadSnapshot,
   EngineErrorCode,
   EngineResult,
   EngineStatus,
@@ -30,6 +32,7 @@ import type {
   TelemetryEvent,
   TorrentCompletedEvent,
   TorrentLimits,
+  UrlProbe,
   Unsubscribe,
 } from './MaglevEngine.types.ts';
 import type { MaglevSettings } from './MaglevSettings.types.ts';
@@ -229,7 +232,8 @@ export class MaglevEngineBridge implements MaglevEngineApi {
       };
       sub('onTelemetry', (p) => {
         const torrents: Snapshot[] = Array.isArray(p) ? p : (p?.torrents ?? []);
-        this.telemetryListeners.forEach((l) => l({ torrents }));
+        const downloads: DownloadSnapshot[] = Array.isArray(p?.downloads) ? p.downloads : [];
+        this.telemetryListeners.forEach((l) => l({ torrents, downloads }));
       });
       sub('onTorrentCompleted', (p) => this.completedListeners.forEach((l) => l(p)));
       sub('onNotificationAction', (p) => this.actionListeners.forEach((l) => l(p)));
@@ -296,7 +300,7 @@ export class MaglevEngineBridge implements MaglevEngineApi {
     return this.route<EngineResult<{ id: string; infoHash: string }>>('addTorrent', source, wire);
   }
   public listTorrents() {
-    return this.route<EngineResult<{ torrents: Snapshot[] }>>('listTorrents');
+    return this.route<EngineResult<{ torrents: Snapshot[]; downloads?: DownloadSnapshot[] }>>('listTorrents');
   }
   public getDetail(id: string): Promise<EngineResult<Detail>> {
     return this.route('getDetail', id);
@@ -409,6 +413,31 @@ export class MaglevEngineBridge implements MaglevEngineApi {
   }
   public openFolder(id: string): Promise<EngineResult> {
     return this.route('openFolder', id);
+  }
+  // URL downloads (NATIVE_CONTRACT 17). The module snake_cases option keys for Rust itself.
+  public probeUrl(url: string, options: DownloadOptions = {}, timeoutMs = 15_000): Promise<EngineResult<UrlProbe>> {
+    return this.route('probeUrl', url, options, timeoutMs);
+  }
+  public addDownload(url: string, options: DownloadOptions = {}): Promise<EngineResult<{ id: string }>> {
+    return this.route('addDownload', url, options);
+  }
+  public pauseDownload(id: string): Promise<EngineResult> {
+    return this.route('pauseDownload', id);
+  }
+  public resumeDownload(id: string): Promise<EngineResult> {
+    return this.route('resumeDownload', id);
+  }
+  public retryDownload(id: string): Promise<EngineResult> {
+    return this.route('retryDownload', id);
+  }
+  public removeDownload(id: string, deleteFiles: boolean): Promise<EngineResult> {
+    return this.route('removeDownload', id, deleteFiles);
+  }
+  public refreshDownloadUrl(id: string, url: string, options: DownloadOptions = {}): Promise<EngineResult> {
+    return this.route('refreshDownloadUrl', id, url, options);
+  }
+  public setDownloadLimits(id: string, limits: { downLimitBps: number }): Promise<EngineResult> {
+    return this.route('setDownloadLimits', id, limits);
   }
   public setTorrentLimits(id: string, limits: TorrentLimits): Promise<EngineResult> {
     return this.route('setTorrentLimits', id, limits);

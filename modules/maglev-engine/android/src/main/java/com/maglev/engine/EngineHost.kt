@@ -456,8 +456,12 @@ object EngineHost {
         }
         ctx?.let { heartbeat(it) }
         val torrents = Json.list(res["torrents"])
+        val downloads = Json.list(res["downloads"])
         detectCompletions(torrents)
-        val summary = summarize(torrents, res["streaming"] == true)
+        detectDownloadCompletions(downloads)
+        // URL downloads count as transfers: they keep the service up and show in the notification (section 17).
+        val transfers = torrents + downloadsAsTransfers(downloads)
+        val summary = summarize(transfers, res["streaming"] == true)
         lastSummary = summary
         refreshTile(summary)
         @Suppress("UNCHECKED_CAST")
@@ -468,7 +472,7 @@ object EngineHost {
         healthTick(torrents, summary)
         copyStagedTorrents(torrents)
         freeStagedAtSeedLimit(torrents)
-        checkAutoExit(torrents)
+        checkAutoExit(transfers)
     }
 
     private fun isFinished(t: Map<String, Any?>): Boolean {
@@ -813,6 +817,12 @@ object EngineHost {
                 if (isOk(call { NativeCore.nativePause(id) })) n++
             }
         }
+        for (d in Json.list(list["downloads"])) {
+            if ((d["state"] as? String) in setOf("downloading", "queued", "resolving")) {
+                val id = d["id"] as? String ?: continue
+                if (isOk(call { NativeCore.nativePauseDownload(id) })) n++
+            }
+        }
         pollNow()
         return linkedMapOf("ok" to true, "count" to n)
     }
@@ -827,6 +837,12 @@ object EngineHost {
             if (t["state"] == "PAUSED" && (by == null || by == "user")) {
                 val id = t["id"] as? String ?: continue
                 if (isOk(call { NativeCore.nativeResume(id) })) n++
+            }
+        }
+        for (d in Json.list(list["downloads"])) {
+            if (d["state"] == "paused" && (d["paused_by"] == null || d["paused_by"] == "user")) {
+                val id = d["id"] as? String ?: continue
+                if (isOk(call { NativeCore.nativeResumeDownload(id) })) n++
             }
         }
         pollNow()
@@ -1497,6 +1513,88 @@ object EngineHost {
         if (allDone) {
             autoExitFired = true
             shutdownAndExit()
+        }
+    }
+
+    // endregion
+
+    // region URL downloads (§17)
+
+    /** Per download: its last seen state, to find the edge to `finished`. Guarded by itself. */
+    private val prevDownloadState = HashMap<String, String>()
+
+    fun probeUrl(url: String, options: Map<String, Any?>, timeoutMs: Long): Map<String, Any?> =
+        call { NativeCore.nativeProbeUrl(url, Json.toJson(Json.snakeify(options)), timeoutMs) }
+
+    fun addDownload(url: String, options: Map<String, Any?>): Map<String, Any?> {
+        val c = requireCtx()
+        val opts = LinkedHashMap(Json.snakeify(options) as Map<String, Any?>)
+        if (opts["folder"] == null && c != null) opts["folder"] = StorageManager.activeTarget(c).path
+        val res = call { NativeCore.nativeAddDownload(url, Json.toJson(opts)) }
+        pollNow()
+        return res
+    }
+
+    fun pauseDownload(id: String) = call { NativeCore.nativePauseDownload(id) }.also { pollNow() }
+    fun resumeDownload(id: String) = call { NativeCore.nativeResumeDownload(id) }.also { pollNow() }
+    fun retryDownload(id: String) = call { NativeCore.nativeRetryDownload(id) }.also { pollNow() }
+    fun removeDownload(id: String, deleteFiles: Boolean) =
+        call { NativeCore.nativeRemoveDownload(id, deleteFiles) }.also { pollNow() }
+
+    fun refreshDownloadUrl(id: String, url: String, options: Map<String, Any?>) =
+        call { NativeCore.nativeRefreshDownloadUrl(id, url, Json.toJson(Json.snakeify(options))) }.also { pollNow() }
+
+    fun setDownloadLimits(id: String, limits: Map<String, Any?>) =
+        call { NativeCore.nativeSetDownloadLimits(id, Json.toJson(Json.snakeify(limits))) }
+
+    /**
+     * Active downloads in the shape [summarize] reads, so the service stays up and the notification shows them.
+     * They have no `id`, so a single download never links to the torrent screen. Finished and failed ones are left out.
+     */
+    private fun downloadsAsTransfers(downloads: List<Map<String, Any?>>): List<Map<String, Any?>> =
+        downloads.mapNotNull { d ->
+            val state = when (d["state"]) {
+                "downloading", "resolving", "verifying" -> "DOWNLOADING"
+                "queued" -> "QUEUED"
+                "paused" -> "PAUSED"
+                else -> return@mapNotNull null
+            }
+            linkedMapOf<String, Any?>(
+                "id" to null,
+                "name" to d["name"],
+                "state" to state,
+                "paused_by" to d["paused_by"],
+                "progress_bytes" to Json.long(d["downloaded"]),
+                "total_bytes" to Json.long(d["size"]),
+                "down_bps" to Json.long(d["down_bps"]),
+                "up_bps" to 0L,
+                "added_at" to Json.long(d["added_at"]),
+                "eta_secs" to Json.long(d["eta"]),
+                "finished" to false,
+            )
+        }
+
+    /** Notification and media scan on the edge to `finished`. The first poll after a restart never notifies. */
+    private fun detectDownloadCompletions(downloads: List<Map<String, Any?>>) {
+        val c = ctx
+        val done = ArrayList<Map<String, Any?>>()
+        synchronized(prevDownloadState) {
+            for (d in downloads) {
+                val id = d["id"] as? String ?: continue
+                val st = d["state"] as? String ?: continue
+                val prev = prevDownloadState[id]
+                if (prev != null && prev != "finished" && st == "finished") done.add(d)
+                prevDownloadState[id] = st
+            }
+            prevDownloadState.keys.retainAll(downloads.mapNotNull { it["id"] as? String }.toSet())
+        }
+        if (c == null) return
+        for (d in done) {
+            val id = d["id"] as? String ?: continue
+            val name = d["name"] as? String ?: id
+            val folder = d["folder"] as? String
+            Notifications.notifyCompleted(c, id, name, Json.long(d["size"]), null)
+            if (folder != null) ioScope.launch { try { scanPaths(c, folder, listOf(name)) } catch (t: Throwable) { Log.w(TAG, "media scan failed", t) } }
         }
     }
 

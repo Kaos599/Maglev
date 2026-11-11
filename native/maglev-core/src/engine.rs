@@ -34,6 +34,7 @@ use tracing::warn;
 use crate::activity::{ActivitySnapshot, ResolveRegistry};
 use crate::config::NativeConfig;
 use crate::error::{classify_add_error, classify_runtime_error, EngineError, ErrorCode};
+use crate::http_dl::{AddedDownload, Downloads, ProbeResult};
 use crate::file_health::{
     classify_files, folder_scannable, health_change, rollup, scan_owns, stat_path, FileProbe, FileStamp,
     FileState, HealthChange, HealthStore, OnDisk,
@@ -355,6 +356,8 @@ pub struct MaglevEngine {
     filehealth: Mutex<HealthStore>,
     /// True while a file health scan runs, so scans never overlap.
     scanning: AtomicBool,
+    /// Downloads from http(s) links (section 17), persisted in `maglev-downloads.json`.
+    downloads: Arc<Downloads>,
 }
 
 /// Keeps a registry entry and its peer-counting task alive for one magnet resolve. Dropping it (any
@@ -523,6 +526,15 @@ impl MaglevEngine {
                 )
             })?;
 
+        let downloads = Downloads::new(
+            handle.clone(),
+            session.clone(),
+            &session_dir,
+            &default_dir,
+            cfg.proxy_url.clone(),
+            blocked.clone(),
+        );
+
         let engine = Arc::new(MaglevEngine {
             runtime: Mutex::new(Some(runtime)),
             handle,
@@ -549,6 +561,7 @@ impl MaglevEngine {
             resolves: Arc::new(ResolveRegistry::new()),
             filehealth: Mutex::new(filehealth),
             scanning: AtomicBool::new(false),
+            downloads,
         });
 
         engine.restore_priorities();
@@ -816,7 +829,11 @@ impl MaglevEngine {
             }
         }
         out.sort_by(|a, b| a.added_at.cmp(&b.added_at).then_with(|| a.id.cmp(&b.id)));
-        Ok(serde_json::json!({ "torrents": out, "streaming": stream_active() }))
+        Ok(serde_json::json!({
+            "torrents": out,
+            "streaming": stream_active(),
+            "downloads": self.downloads.snapshots(),
+        }))
     }
 
     pub fn detail(&self, id: &str) -> Result<Detail, EngineError> {
@@ -2534,6 +2551,7 @@ impl MaglevEngine {
         let old = self.config.lock().clone();
         let restart_required = old.restart_required(&new);
         self.apply_limits(new.download_limit_bps, new.upload_limit_bps);
+        self.downloads.set_proxy(new.proxy_url.clone());
         *self.config.lock() = new.clone();
         {
             let mut m = self.meta.lock();
@@ -2730,6 +2748,8 @@ impl MaglevEngine {
         let now = now_secs();
         let cfg = self.config.lock().clone();
         let blocked = self.blocked.lock().clone();
+        // URL downloads follow the same governance reasons as torrents (section 17).
+        self.downloads.set_blocked(&blocked);
         let mut facts: Vec<TorrentFacts> = Vec::with_capacity(handles.len());
         let mut by_id: HashMap<String, Handle20> = HashMap::with_capacity(handles.len());
         // Torrents being moved are not startable, not counted against the queue and never touched.
@@ -3430,6 +3450,7 @@ impl MaglevEngine {
             t.abort();
         }
         self.stream.stop();
+        self.downloads.shutdown();
         self.save_meta();
         let rt = self.runtime.lock().take();
         if let Some(rt) = rt {
@@ -3440,6 +3461,43 @@ impl MaglevEngine {
             rt.shutdown_timeout(Duration::from_secs(3));
         }
         Ok(())
+    }
+
+    // ---- URL downloads (section 17) -------------------------------------------------------------
+
+    /// `Range: bytes=0-0` probe of a link for the add sheet. Nothing is stored.
+    pub fn probe_url(&self, url: &str, options_json: &str, timeout_ms: i64) -> Result<ProbeResult, EngineError> {
+        let limit = Duration::from_millis(timeout_ms.clamp(1_000, 60_000) as u64);
+        self.run(limit, self.downloads.probe_url(url, options_json))?
+    }
+
+    pub fn add_download(&self, url: &str, options_json: &str) -> Result<AddedDownload, EngineError> {
+        let r = self.downloads.add(url, options_json)?;
+        Ok(r)
+    }
+
+    pub fn pause_download(&self, id: &str) -> Result<(), EngineError> {
+        self.downloads.pause(id)
+    }
+
+    pub fn resume_download(&self, id: &str) -> Result<(), EngineError> {
+        self.downloads.resume(id)
+    }
+
+    pub fn retry_download(&self, id: &str) -> Result<(), EngineError> {
+        self.downloads.retry(id)
+    }
+
+    pub fn remove_download(&self, id: &str, delete_files: bool) -> Result<(), EngineError> {
+        self.downloads.remove(id, delete_files)
+    }
+
+    pub fn refresh_download_url(&self, id: &str, url: &str, options_json: &str) -> Result<(), EngineError> {
+        self.run(Duration::from_secs(60), self.downloads.refresh_url(id, url, options_json))?
+    }
+
+    pub fn set_download_limits(&self, id: &str, json: &str) -> Result<(), EngineError> {
+        self.downloads.set_limits(id, json)
     }
 
     pub fn version() -> String {
