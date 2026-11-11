@@ -164,6 +164,51 @@ export default function SearchProvidersSettings() {
       <Caption>Maglev asks every source you turn on at the same time. Open a source to set which one wins when two return the same torrent.</Caption>
 
       <View style={styles.section}>
+        <SectionHeader title="What sources to show" />
+        <Card>
+          <ListRow
+            title="Show adult sources"
+            subtitle={prefs.adult ? 'Adult sources are listed under Off' : 'Hidden until you turn this on'}
+            accessory={<Toggle value={prefs.adult} onValueChange={(adult) => update({ adult })} accessibilityLabel="Show adult sources" />}
+          />
+          <ListRow
+            title="Warn about risky sources"
+            subtitle="Mark results from sources known for fake or harmful uploads."
+            accessory={<Toggle value={prefs.warnUnsafe} onValueChange={(warnUnsafe) => update({ warnUnsafe })} accessibilityLabel="Warn about risky sources" />}
+          />
+          {prefs.clearances.length > 0 ? (
+            <ListRow
+              icon="trash"
+              title="Clear site checks"
+              subtitle={`Forget the checks you passed on ${prefs.clearances.length} ${prefs.clearances.length === 1 ? 'site' : 'sites'}. You'll be asked again.`}
+              onPress={() => {
+                const hosts = clearSiteChecks();
+                void clearCookies(hosts.map((h) => `https://${h.host}/`));
+              }}
+            />
+          ) : null}
+        </Card>
+      </View>
+
+      <View style={styles.section}>
+        <SectionHeader title="How search behaves" />
+        <Card>
+          <ChipGroup
+            label="Wait for slow sources"
+            options={WAITS}
+            value={prefs.waitSeconds}
+            onChange={(waitSeconds) => update({ waitSeconds })}
+          />
+          <ChipGroup label="Results per source" options={LIMITS} value={prefs.limit} onChange={(limit) => update({ limit })} />
+          <ListRow
+            title="Hide dead torrents"
+            subtitle="Results with no seeders"
+            accessory={<Toggle value={prefs.hideDead} onValueChange={(hideDead) => update({ hideDead })} accessibilityLabel="Hide dead torrents" />}
+          />
+        </Card>
+      </View>
+
+      <View style={styles.section}>
         <SectionHeader title={`On · ${onList.length}`} />
         <Card>
           {onList.length === 0 ? <Text style={styles.empty}>Nothing is on. Turn on a source below.</Text> : null}
@@ -209,30 +254,6 @@ export default function SearchProvidersSettings() {
         </View>
       ) : null}
 
-      <Card>
-        <ListRow
-          title="Show adult sources"
-          subtitle={prefs.adult ? 'Adult sources are listed under Off' : 'Hidden until you turn this on'}
-          accessory={<Toggle value={prefs.adult} onValueChange={(adult) => update({ adult })} accessibilityLabel="Show adult sources" />}
-        />
-        <ListRow
-          title="Warn about risky sources"
-          subtitle="Mark results from sources known for fake or harmful uploads."
-          accessory={<Toggle value={prefs.warnUnsafe} onValueChange={(warnUnsafe) => update({ warnUnsafe })} accessibilityLabel="Warn about risky sources" />}
-        />
-        {prefs.clearances.length > 0 ? (
-          <ListRow
-            icon="trash"
-            title="Clear site checks"
-            subtitle={`Forget the checks you passed on ${prefs.clearances.length} ${prefs.clearances.length === 1 ? 'site' : 'sites'}. You'll be asked again.`}
-            onPress={() => {
-              const hosts = clearSiteChecks();
-              void clearCookies(hosts.map((h) => `https://${h.host}/`));
-            }}
-          />
-        ) : null}
-      </Card>
-
       <View style={styles.section}>
         <SectionHeader title="Your own indexer" />
         <Card>
@@ -241,24 +262,6 @@ export default function SearchProvidersSettings() {
             title="Connect Jackett or Prowlarr"
             subtitle="Search any tracker your server supports, including private ones"
             onPress={() => setTorznabOpen(true)}
-          />
-        </Card>
-      </View>
-
-      <View style={styles.section}>
-        <SectionHeader title="How search behaves" />
-        <Card>
-          <ChipGroup
-            label="Wait for slow sources"
-            options={WAITS}
-            value={prefs.waitSeconds}
-            onChange={(waitSeconds) => update({ waitSeconds })}
-          />
-          <ChipGroup label="Results per source" options={LIMITS} value={prefs.limit} onChange={(limit) => update({ limit })} />
-          <ListRow
-            title="Hide dead torrents"
-            subtitle="Results with no seeders"
-            accessory={<Toggle value={prefs.hideDead} onValueChange={(hideDead) => update({ hideDead })} accessibilityLabel="Hide dead torrents" />}
           />
         </Card>
       </View>
