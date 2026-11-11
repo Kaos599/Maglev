@@ -236,6 +236,8 @@ export interface DetailFile {
   path: string;
   length: number;
   progressBytes: number;
+  /** Size on disk of a skipped file (preallocated or partial data Remove can delete). 0 for included files and absent ones. */
+  onDiskBytes?: number;
   included: boolean;
   /** NATIVE_CONTRACT 10.1. `included` is derived from it (`skip` means not included). */
   priority: FilePriority;

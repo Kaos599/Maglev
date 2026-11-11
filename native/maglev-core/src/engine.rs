@@ -35,8 +35,8 @@ use crate::activity::{ActivitySnapshot, ResolveRegistry};
 use crate::config::NativeConfig;
 use crate::error::{classify_add_error, classify_runtime_error, EngineError, ErrorCode};
 use crate::file_health::{
-    classify_files, folder_scannable, health_change, rollup, scan_owns, stat_path, FileProbe, FileStamp,
-    FileState, HealthChange, HealthStore, OnDisk,
+    classify_files, folder_scannable, health_change, rollup, scan_owns, snapshot_step, stat_path, FileProbe,
+    FileStamp, FileState, HealthChange, HealthStore, OnDisk, SnapshotStep,
 };
 use crate::meta::{write_atomic, MetaStore, PendingAdd, TorrentMeta};
 use crate::priority::{
@@ -44,8 +44,8 @@ use crate::priority::{
     priority_of_file, PriorityPlan, PriorityStore, ReannounceLimiter, REANNOUNCE_MIN_INTERVAL,
 };
 use crate::scheduler::{
-    accumulate_seed_ms, derive_state, is_health_tag, no_peers_due, plan, resolving_secs, uploaded_total, Action,
-    RqState, StateInputs, TorrentFacts, TorrentState, HEALTH_FILES_CHANGED, HEALTH_FILES_MISSING, HEALTH_NO_PEERS,
+    accumulate_seed_ms, carry_resolving_since, derive_state, finished_is_real, is_health_tag, no_peers_due,
+    pending_view, plan, uploaded_total, Action, RqState, StateInputs, TorrentFacts, TorrentState, HEALTH_FILES_CHANGED, HEALTH_FILES_MISSING, HEALTH_NO_PEERS,
     HEALTH_STORAGE_FULL, HEALTH_STORAGE_UNAVAILABLE, PAUSED_BY_SEED_LIMIT, PAUSED_BY_USER,
 };
 use crate::readiness::{file_readiness, have_piece};
@@ -113,6 +113,15 @@ fn included_bytes(h: &Handle20) -> u64 {
             .sum::<u64>()
     })
     .unwrap_or(0)
+}
+
+/// `stats` with `finished` cleared when it only means "librqbit could not read the chunk tracker"
+/// (a live torrent with selected total 0 although files are included). See `finished_is_real`.
+fn real_finished(h: &Handle20, stats: &TorrentStats) -> bool {
+    if stats.finished && stats.total_bytes == 0 {
+        return finished_is_real(true, 0, included_bytes(h));
+    }
+    stats.finished
 }
 
 /// True when librqbit stopped the torrent because the disk is full.
@@ -609,6 +618,7 @@ impl MaglevEngine {
     // ---- snapshots ------------------------------------------------------------------------------
 
     fn snapshot(&self, id: &str, h: &Handle20, m: &TorrentMeta, stats: &TorrentStats) -> Snapshot {
+        let finished = real_finished(h, stats);
         let rq = rq_state(stats);
         let error = if let Some(e) = &m.last_error {
             Some(e.clone())
@@ -621,7 +631,7 @@ impl MaglevEngine {
         };
         let state = derive_state(StateInputs {
             rq,
-            finished: stats.finished,
+            finished,
             paused_by: m.paused_by.as_deref(),
             queued: m.queued,
             has_error: error.is_some(),
@@ -637,7 +647,7 @@ impl MaglevEngine {
             None => (0, 0, 0, 0),
         };
         let remaining = stats.total_bytes.saturating_sub(stats.progress_bytes);
-        let eta_secs = if stats.finished || down_bps == 0 || remaining == 0 {
+        let eta_secs = if finished || down_bps == 0 || remaining == 0 {
             -1
         } else {
             (remaining / down_bps) as i64
@@ -663,7 +673,7 @@ impl MaglevEngine {
             state,
             paused_by: m.paused_by.clone(),
             // The finished edge never fires while files are missing (section 18.3).
-            finished: stats.finished && m.health.as_deref() != Some(HEALTH_FILES_MISSING),
+            finished: finished && m.health.as_deref() != Some(HEALTH_FILES_MISSING),
             progress_bytes: stats.progress_bytes,
             total_bytes: stats.total_bytes,
             uploaded_bytes: uploaded,
@@ -733,14 +743,14 @@ impl MaglevEngine {
 
     fn pending_snapshot(&self, id: &str, m: &TorrentMeta, p: &PendingAdd) -> Snapshot {
         let (down_limit_bps, up_limit_bps) = self.limit_pair(id);
-        let state = derive_state(StateInputs {
-            rq: RqState::Paused,
-            finished: false,
-            paused_by: None,
-            queued: false,
-            has_error: p.error.is_some(),
-            resolving: true,
-        });
+        // A magnet that gave up shows as PAUSED with `no_peers`; one that still looks is INITIALIZING.
+        let (state, paused_by, resolving) = pending_view(
+            m.health.as_deref(),
+            m.paused_by.as_deref(),
+            p.error.is_some(),
+            m.resolving_since_ms,
+            now_ms(),
+        );
         Snapshot {
             id: id.to_string(),
             name: p
@@ -748,7 +758,7 @@ impl MaglevEngine {
                 .clone()
                 .unwrap_or_else(|| "Getting torrent info".to_string()),
             state,
-            paused_by: m.paused_by.clone(),
+            paused_by,
             finished: false,
             progress_bytes: 0,
             total_bytes: 0,
@@ -772,7 +782,7 @@ impl MaglevEngine {
             move_progress: None,
             health: m.health.clone(),
             included_bytes: 0,
-            resolving_secs: m.resolving_since_ms.map(|since| resolving_secs(since, now_ms())),
+            resolving_secs: resolving,
         }
     }
 
@@ -870,6 +880,7 @@ impl MaglevEngine {
             .api_dump_haves(TorrentIdOrHash::Hash(hash))
             .map(|(bf, _)| bf.as_raw_slice().to_vec())
             .unwrap_or_default();
+        let detail_folder = h.output_folder().to_path_buf();
         let files: Vec<FileDetail> = h
             .with_metadata(|md| {
                 let piece_length = md.lengths().default_piece_length() as u64;
@@ -887,6 +898,16 @@ impl MaglevEngine {
                             path: fi.relative_filename.to_string_lossy().into_owned(),
                             length: fi.len,
                             progress_bytes: stats.file_progress.get(i).copied().unwrap_or(0),
+                            // Only skipped files are looked up: they can still hold preallocated or
+                            // partial data that Remove deletes.
+                            on_disk_bytes: if included {
+                                0
+                            } else {
+                                match stat_path(&detail_folder.join(&fi.relative_filename)) {
+                                    OnDisk::Present(s) => s.size,
+                                    _ => 0,
+                                }
+                            },
                             included,
                             priority: priority_of_file(i as u32, included, &first),
                             stream_ready_bytes: ready.stream_ready_bytes,
@@ -1432,10 +1453,12 @@ impl MaglevEngine {
                 .get(&id)
                 .map(|m| m.health.as_deref() == Some(HEALTH_NO_PEERS))
                 .unwrap_or(false);
+            // A restart inside the ten minute window keeps the clock; otherwise a magnet on a phone whose
+            // engine restarts every few minutes would never reach `no_peers`.
             self.meta.lock().update(&id, |m| {
                 m.pending = Some(p.clone());
                 if !given_up {
-                    m.resolving_since_ms = Some(now_ms());
+                    m.resolving_since_ms = Some(carry_resolving_since(m.resolving_since_ms, now_ms()));
                 }
             });
             if !given_up {
@@ -1844,6 +1867,21 @@ impl MaglevEngine {
         // Nothing is changed until the whole request has been checked.
         let current = h.only_files();
         let remove = plan_removal(&indices, &valid, current.as_deref())?;
+        // What the files take on disk now. A skipped file can hold preallocated bytes that no verified
+        // piece accounts for, and "Freed" should count them.
+        let folder = h.output_folder().to_path_buf();
+        let on_disk: u64 = h
+            .with_metadata(|md| {
+                remove
+                    .iter()
+                    .filter_map(|i| md.file_infos.get(*i))
+                    .map(|fi| match stat_path(&folder.join(&fi.relative_filename)) {
+                        OnDisk::Present(s) => s.size,
+                        _ => 0,
+                    })
+                    .sum::<u64>()
+            })
+            .unwrap_or(0);
 
         let busy = || {
             EngineError::new(
@@ -1921,7 +1959,7 @@ impl MaglevEngine {
         self.save_meta();
         self.refresh_file_snapshot(&id, &h);
         let _ = self.run(OP_TIMEOUT, self.tick_soon());
-        Ok(serde_json::json!({ "freed_bytes": freed }))
+        Ok(serde_json::json!({ "freed_bytes": freed.max(on_disk) }))
     }
 
     // ---- reannounce -------------------------------------------------------------------------------
@@ -2736,6 +2774,7 @@ impl MaglevEngine {
         let moving: HashSet<String> = self.moves.lock().keys().cloned().collect();
         // Finished torrents with no file snapshot yet (section 18.3) and magnets that gave up (section 20).
         let mut to_snapshot: Vec<(String, Handle20)> = Vec::new();
+        let mut to_unsnapshot: Vec<String> = Vec::new();
         let mut gave_up: Vec<String> = Vec::new();
 
         {
@@ -2750,7 +2789,8 @@ impl MaglevEngine {
                 if !meta.contains(&id) {
                     meta.insert(&id, default_meta(h, now));
                 }
-                let stats = h.stats();
+                let mut stats = h.stats();
+                stats.finished = real_finished(h, &stats);
                 let rq = rq_state(&stats);
                 let running = is_running(rq);
                 let mut changed = false;
@@ -2780,12 +2820,13 @@ impl MaglevEngine {
                 }
                 let errored = m.last_error.is_some()
                     || (rq == RqState::Error && m.health.as_deref() != Some(HEALTH_STORAGE_FULL));
-                if stats.finished
-                    && m.health.is_none()
-                    && matches!(rq, RqState::Live | RqState::Paused)
-                    && !self.filehealth.lock().has(&id)
-                {
-                    to_snapshot.push((id.clone(), h.clone()));
+                if matches!(rq, RqState::Live | RqState::Paused) {
+                    let has_snapshot = self.filehealth.lock().has(&id);
+                    match snapshot_step(has_snapshot, stats.finished, m.health.is_none()) {
+                        SnapshotStep::Take => to_snapshot.push((id.clone(), h.clone())),
+                        SnapshotStep::Drop => to_unsnapshot.push(id.clone()),
+                        SnapshotStep::Keep => {}
+                    }
                 }
                 let state = derive_state(StateInputs {
                     rq,
@@ -2877,6 +2918,9 @@ impl MaglevEngine {
         let structural = !actions.is_empty() || !gave_up.is_empty();
         for a in actions {
             self.apply_action(a, &by_id).await;
+        }
+        for id in &to_unsnapshot {
+            self.forget_file_snapshot(id);
         }
         for (id, h) in &to_snapshot {
             self.snapshot_files(id, h);
@@ -2990,11 +3034,21 @@ impl MaglevEngine {
         }
     }
 
-    /// Takes the snapshot again, but only for a torrent that already has one (after Remove file or Move).
+    /// Brings the snapshot in line after Maglev changed files itself (Remove file or Move), but only for
+    /// a torrent that already has one. A snapshot describes a finished torrent: when the change left it
+    /// unfinished (removing a file clears the pieces it shares with its neighbours, so the neighbours
+    /// are downloaded and rewritten again) the snapshot is dropped, and the tick takes a new one on the
+    /// next finished edge. Otherwise our own rewrites would show up as "Files changed".
     fn refresh_file_snapshot(&self, id: &str, h: &Handle20) {
         let has = self.filehealth.lock().has(id);
-        if has {
+        if !has {
+            return;
+        }
+        let stats = h.stats();
+        if real_finished(h, &stats) && matches!(rq_state(&stats), RqState::Live | RqState::Paused) {
             self.snapshot_files(id, h);
+        } else {
+            self.forget_file_snapshot(id);
         }
     }
 
@@ -3330,7 +3384,14 @@ impl MaglevEngine {
                 let set = self.valid_file_set(&h, &indices)?;
                 self.run(DELETE_TIMEOUT, self.with_paused(&id, &h, || h.forget_files_data(&set)))??;
                 // Progress went down on purpose; the snapshot of those files is stale.
-                self.meta.lock().update(&id, |m| m.max_progress_bytes = 0);
+                // A resume that found the files gone left a FILES_MISSING error behind; the planner
+                // never restarts an errored torrent, so it would stay stopped after "Download again".
+                self.meta.lock().update(&id, |m| {
+                    m.max_progress_bytes = 0;
+                    if m.last_error.as_ref().map(|e| e.code) == Some(ErrorCode::FilesMissing) {
+                        m.last_error = None;
+                    }
+                });
                 self.forget_file_snapshot(&id);
                 self.set_meta_health(&id, None);
             }

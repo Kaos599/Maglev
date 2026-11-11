@@ -19,7 +19,7 @@ import { StatGrid } from '../../components/detail/StatGrid';
 import { PeerRow, TrackerRow } from '../../components/detail/rows';
 import { DeleteSheet, FileActionsSheet, RemoveFilesSheet, SavedTorrentSheet } from '../../components/detail/sheets';
 import { AddTrackerSheet, RemoveTrackerSheet } from '../../components/detail/TrackerSheets';
-import { REMOVE_FILES_INITIAL, removeFilesStep } from '../../components/detail/removeFilesMachine';
+import { REMOVE_FILES_INITIAL, buildRemoveRequest, removeFilesStep } from '../../components/detail/removeFilesMachine';
 import { TRACKER_EDIT_INITIAL, trackerEditStep } from '../../components/detail/trackerEditMachine';
 import {
   FILE_HEALTH_INITIAL,
@@ -359,14 +359,9 @@ export default function TorrentDetailScreen() {
     (indices: number[]) => {
       setPrioTarget(null);
       setPrioError(null);
-      // Skipped files hold no data to remove, so only included ones count toward the guard.
-      const included = indices.filter((i) => files.some((f) => f.index === i && f.priority !== 'skip'));
-      sendRemove({
-        type: 'REQUEST',
-        indices: included,
-        bytes: files.filter((f) => included.includes(f.index)).reduce((n, f) => n + f.progressBytes, 0),
-        allIncludedCount: files.filter((f) => f.priority !== 'skip').length,
-      });
+      // A skipped file can still hold preallocated or partial data, so it is removable when it has bytes on
+      // disk. Only included files count toward "keep at least one file".
+      sendRemove(buildRemoveRequest(files, indices));
     },
     [files, sendRemove],
   );

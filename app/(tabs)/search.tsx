@@ -19,6 +19,7 @@ import { riskySources } from '../../utils/search/safety';
 import { addRecentSearch, clearRecentSearches, getSearchPrefs, useSearchPrefs } from '../../utils/prefs/search';
 import { availableCategories, eligibleProviders, mergeInto, rerunProvider, resolveResult, searchAll } from '../../utils/search/aggregate';
 import { CloudflareSolverSheet } from '../../components/search/CloudflareSolverSheet';
+import { tallySources, unansweredNote } from '../../utils/search/answered';
 import type { Category, MergedResult, SearchUpdate } from '../../utils/search/types';
 
 const DEBOUNCE_MS = 400;
@@ -240,7 +241,10 @@ export default function SearchScreen() {
 
   // After Stop, sources that never answered are left out of the scoreboard.
   const sources = useMemo(() => (update?.sources ?? []).filter((s) => !(stopped && s.state === 'searching')), [update, stopped]);
-  const answered = sources.filter((s) => s.state !== 'searching').length;
+  // A source behind a Cloudflare check, or one that failed, has not answered.
+  const tally = useMemo(() => tallySources(sources), [sources]);
+  const answered = tally.answered;
+  const unanswered = unansweredNote(tally);
   const total = update?.sources.length ?? 0;
 
   const shown = useMemo(() => {
@@ -351,7 +355,7 @@ export default function SearchScreen() {
             <Text style={styles.summary}>
               {searching
                 ? `${answered}/${total || eligible.length} sources answered, results appear as they arrive`
-                : `${stopped ? 'Stopped. ' : ''}${answered}/${total} sources answered · ${update?.results.length ?? 0} results`}
+                : `${stopped ? 'Stopped. ' : ''}${answered}/${total} sources answered${unanswered ? ` · ${unanswered}` : ''} · ${update?.results.length ?? 0} results`}
             </Text>
             {!searching && hasResults ? (
               <Button

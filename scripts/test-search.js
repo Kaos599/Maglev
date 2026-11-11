@@ -520,6 +520,21 @@ async function main() {
   check('resolveResult: challenge on the detail page surfaces as a challenge error', chal && chal.kind === 'challenge');
   clr.clearAllClearances();
 
+  // "N/M sources answered": a source behind a Cloudflare check or one that failed has not answered.
+  const ans = await import('../utils/search/answered.ts');
+  const stt = (state) => ({ providerId: state, state, count: 0, ms: 0 });
+  const t7 = ans.tallySources(['done', 'done', 'empty', 'done', 'done', 'done', 'challenge'].map(stt));
+  check('answered: a challenge source is not counted as answered', t7.answered === 6 && t7.total === 7 && t7.needsCheck === 1);
+  check('answered: searching sources are not answered', ans.tallySources([stt('searching'), stt('done')]).answered === 1);
+  const tf = ans.tallySources(['timeout', 'error', 'blocked', 'done'].map(stt));
+  check('answered: timeout, error and blocked are failures, not answers', tf.answered === 1 && tf.failed === 3);
+  check('answered: note for one check', ans.unansweredNote(t7) === '1 needs a quick check');
+  check(
+    'answered: note for checks and failures',
+    ans.unansweredNote({ total: 5, answered: 1, needsCheck: 2, failed: 1 }) === "2 need a quick check · 1 didn't respond",
+  );
+  check('answered: no note when all answered', ans.unansweredNote(ans.tallySources([stt('done'), stt('empty')])) === '');
+
   console.log(`\n${passed} passed, ${failed} failed`);
   process.exit(failed ? 1 : 0);
 }

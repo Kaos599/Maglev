@@ -69,6 +69,9 @@ pub struct FileDetail {
     pub path: String,
     pub length: u64,
     pub progress_bytes: u64,
+    /// Size on disk of a skipped file, 0 when it is not there (and always 0 for an included file). A
+    /// skipped file can still hold preallocated or partial data, which Remove deletes (section 14).
+    pub on_disk_bytes: u64,
     pub included: bool,
     /// `first`, `normal` or `skip`. `included` is true for the first two.
     pub priority: FilePriority,

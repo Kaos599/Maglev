@@ -33,6 +33,19 @@ async function main() {
   check('budget is free - pending - 200 MB', one.budget === 10 * 1024 ** 3 - 200 * 1024 ** 2, String(one.budget));
   check('leftAfter is budget - need', one.leftAfter === one.budget - one.need, String(one.leftAfter));
 
+  // Add-preview caption: the numbers must add up for a reader.
+  const { admissionCaption } = await import('../utils/admissionCopy.ts');
+  const MB = 1024 ** 2;
+  const tight = admit({ freeBytes: 2252 * MB, pendingNeed: 1400 * MB, stagingFactor: 1, selectionBytes: 11 * MB });
+  const cap = admissionCaption(tight, 1400 * MB);
+  check('tight with pending downloads says "after your other downloads finish"', /free after your other downloads finish/.test(cap || ''), String(cap));
+  check('tight caption names the pending need and the 200 MB margin', /1\.4 GB still to come/.test(cap || '') && /200 MB kept spare/.test(cap || ''), String(cap));
+  const tightAlone = admit({ freeBytes: 1000 * MB, pendingNeed: 0, stagingFactor: 1, selectionBytes: 100 * MB });
+  check('tight without pending downloads does not mention them', !/other downloads/.test(admissionCaption(tightAlone, 0) || ''));
+  const no = admit({ freeBytes: 500 * MB, pendingNeed: 100 * MB, stagingFactor: 1, selectionBytes: 900 * MB });
+  check('doesnt fit with pending downloads explains the budget', /only .* free after your other downloads finish/.test(admissionCaption(no, 100 * MB) || ''));
+  check('fits has no caption', admissionCaption(admit({ freeBytes: 50 * 1024 ** 3, pendingNeed: 0, stagingFactor: 1, selectionBytes: MB }), 0) === null);
+
   if (failed) {
     console.error(`\n${failed} failed`);
     process.exit(1);

@@ -13,7 +13,17 @@ export interface RemoveFilesState {
 }
 
 export type RemoveFilesEvent =
-  | { type: 'REQUEST'; indices: number[]; bytes: number; allIncludedCount: number }
+  | {
+      type: 'REQUEST';
+      /** Files to delete: included files, and skipped files that still hold bytes on disk. */
+      indices: number[];
+      bytes: number;
+      allIncludedCount: number;
+      /** How many of `indices` are included files. Skipped ones never count toward "keep one file". Defaults to all. */
+      includedCount?: number;
+      /** How many files the user picked, before the empty skipped ones were dropped. */
+      requested?: number;
+    }
   | { type: 'CONFIRM' }
   | { type: 'CANCEL' }
   | { type: 'RESULT_OK'; freedBytes: number }
@@ -37,6 +47,49 @@ export const REMOVE_FILES_INITIAL: RemoveFilesState = { kind: 'idle', indices: [
 
 const IDLE: RemoveFilesState = REMOVE_FILES_INITIAL;
 
+export const NOTHING_TO_REMOVE = "Nothing to remove. Those files aren't on your phone.";
+
+export interface RemovableFile {
+  index: number;
+  progressBytes: number;
+  /** Size on disk of a skipped file (preallocated or partial data). */
+  onDiskBytes?: number;
+  priority: 'first' | 'normal' | 'skip';
+}
+
+/**
+ * Builds the REQUEST for the files the user picked. A skipped file is removable when it still holds bytes
+ * on disk (preallocated or partial); a skipped file with nothing on disk is dropped, and when that leaves
+ * nothing the machine shows a short notice.
+ */
+export function buildRemoveRequest(
+  files: RemovableFile[],
+  picked: number[],
+): Extract<RemoveFilesEvent, { type: 'REQUEST' }> {
+  const byIndex = new Map(files.map((f) => [f.index, f]));
+  const indices: number[] = [];
+  let bytes = 0;
+  let includedCount = 0;
+  for (const i of picked) {
+    const f = byIndex.get(i);
+    if (!f) continue;
+    const skipped = f.priority === 'skip';
+    const held = Math.max(f.progressBytes, f.onDiskBytes ?? 0);
+    if (skipped && held <= 0) continue;
+    indices.push(i);
+    bytes += held;
+    if (!skipped) includedCount++;
+  }
+  return {
+    type: 'REQUEST',
+    indices,
+    bytes,
+    allIncludedCount: files.filter((f) => f.priority !== 'skip').length,
+    includedCount,
+    requested: picked.length,
+  };
+}
+
 /** Copy for a failed removal. Known codes get fixed text; anything else shows the native message. */
 export function removeErrorCopy(code: string, message: string): string {
   switch (code) {
@@ -57,8 +110,14 @@ export function removeFilesStep(state: RemoveFilesState, event: RemoveFilesEvent
   switch (state.kind) {
     case 'idle': {
       if (event.type !== 'REQUEST') return same;
-      if (event.indices.length === 0) return same;
-      if (event.indices.length >= event.allIncludedCount) {
+      if (event.indices.length === 0) {
+        // Everything picked was skipped and has nothing on disk: say so instead of doing nothing.
+        if ((event.requested ?? 0) > 0) {
+          return { state, effects: [{ type: 'notice', text: NOTHING_TO_REMOVE, tone: 'info' }] };
+        }
+        return same;
+      }
+      if ((event.includedCount ?? event.indices.length) >= event.allIncludedCount) {
         return {
           state,
           effects: [

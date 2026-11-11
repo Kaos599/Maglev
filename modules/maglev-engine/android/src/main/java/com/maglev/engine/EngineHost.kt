@@ -115,6 +115,9 @@ object EngineHost {
     private var sawDownloading = false
     /** Per torrent: seen DOWNLOADING since it was last unfinished (contract 13.2). Guarded by [prevFinished]. */
     private val sawDownloadingById = HashMap<String, Boolean>()
+    /** Per torrent: when the user removed files from it while it was finished (elapsedRealtime). Guarded by [prevFinished]. */
+    private val quietCompletion = HashMap<String, Long>()
+    private const val QUIET_COMPLETION_MS = 30_000L
     /** Latest summary for the Quick Settings tile (contract 13.3). Null until the first poll after init. */
     @Volatile private var lastSummary: TransferSummary? = null
     private var lastTileModel: TileModel? = null
@@ -575,10 +578,17 @@ object EngineHost {
                     sawDownloading = true
                     sawDownloadingById[id] = true
                 }
+                // The user removed files from a finished torrent. Either it stays finished (the mark is dropped
+                // after a short while) or it un-finishes and finishes again, which is not a new download.
+                val quietSince = quietCompletion[id]
+                if (quietSince != null && prev == true && finished &&
+                    SystemClock.elapsedRealtime() - quietSince > QUIET_COMPLETION_MS
+                ) quietCompletion.remove(id)
                 if (prev == false && finished) {
                     val name = t["name"] as? String ?: id
                     emit("onTorrentCompleted", mapOf("id" to id, "name" to name))
-                    if (c != null && CompletionPolicy.shouldNotify(prev, finished, sawDownloadingById[id] == true)) {
+                    val quiet = quietCompletion.remove(id) != null
+                    if (c != null && CompletionPolicy.shouldNotify(prev, finished, sawDownloadingById[id] == true, quiet)) {
                         announceCompletion(c, id, name)
                     }
                     scanMedia(id, force = false)
@@ -598,6 +608,7 @@ object EngineHost {
             prevFinished.keys.retainAll(alive)
             prevState.keys.retainAll(alive)
             sawDownloadingById.keys.retainAll(alive)
+            quietCompletion.keys.retainAll(alive)
             mediaScanned.retainAll(alive)
         }
     }
@@ -967,7 +978,12 @@ object EngineHost {
                 .filter { f -> indices.contains((f["index"] as? Number)?.toInt()) }
                 .mapNotNull { it["path"] as? String }
         } else emptyList()
+        // A finished torrent that downloads boundary pieces again after this is not completing a new download.
+        synchronized(prevFinished) {
+            if (prevFinished[id] == true) quietCompletion[id] = SystemClock.elapsedRealtime()
+        }
         val res = call { NativeCore.nativeRemoveFiles(id, Json.toJson(indices)) }
+        if (!isOk(res)) synchronized(prevFinished) { quietCompletion.remove(id) }
         val c = ctx
         if (isOk(res) && c != null && folder != null && StorageManager.isStagingPath(c, folder)) {
             val treeStr = StorageManager.customUri(c)

@@ -39,6 +39,31 @@ async function main() {
   ]);
   expectStep('idle + REQUEST opens the confirm sheet', idle, req([1, 2]), 'confirming', [{ type: 'openSheet' }]);
 
+  // A skipped file that still holds bytes on disk is removable; one with nothing on disk gets a notice.
+  const files = [
+    { index: 0, progressBytes: 100, priority: 'normal' },
+    { index: 1, progressBytes: 100, priority: 'normal' },
+    { index: 2, progressBytes: 0, onDiskBytes: 5535040, priority: 'skip' }, // preallocated .ogg
+    { index: 3, progressBytes: 0, onDiskBytes: 0, priority: 'skip' },
+  ];
+  const skippedWithData = m.buildRemoveRequest(files, [2]);
+  check('skipped file with bytes on disk is requested', skippedWithData.indices.join() === '2' && skippedWithData.bytes === 5535040);
+  expectStep('idle + REQUEST for a preallocated skipped file opens the sheet', idle, skippedWithData, 'confirming', [{ type: 'openSheet' }]);
+  const skippedEmpty = m.buildRemoveRequest(files, [3]);
+  check('skipped file with nothing on disk is dropped', skippedEmpty.indices.length === 0 && skippedEmpty.requested === 1);
+  expectStep('idle + REQUEST with only empty skipped files shows a notice', idle, skippedEmpty, 'idle', [
+    { type: 'notice', text: m.NOTHING_TO_REMOVE, tone: 'info' },
+  ]);
+  const mixed = m.buildRemoveRequest(files, [0, 2, 3]);
+  check('mixed pick keeps the included file and the skipped one with data', mixed.indices.join() === '0,2' && mixed.includedCount === 1);
+  expectStep('skipped files do not count toward keeping one file', idle, m.buildRemoveRequest(files, [0, 1, 2]), 'idle', [
+    { type: 'notice', text: 'Keep at least one file.', tone: 'danger' },
+    { type: 'haptic', style: 'warning' },
+  ]);
+  expectStep('removing a skipped file plus one of two included files is fine', idle, m.buildRemoveRequest(files, [0, 2]), 'confirming', [
+    { type: 'openSheet' },
+  ]);
+
   expectStep('confirming + CANCEL closes to idle', confirming, { type: 'CANCEL' }, 'idle', [{ type: 'closeSheet' }]);
   expectStep('confirming + CONFIRM calls removeFiles', confirming, { type: 'CONFIRM' }, 'removing', [
     { type: 'call', fn: 'removeFiles', indices: [1, 2] },

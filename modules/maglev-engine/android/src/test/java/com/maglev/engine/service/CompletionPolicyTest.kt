@@ -12,6 +12,9 @@ class CompletionPolicyTest {
     @Test fun alreadyFinishedNeverNotifies() = assertFalse(CompletionPolicy.shouldNotify(true, true, true))
     @Test fun stillUnfinishedNeverNotifies() = assertFalse(CompletionPolicy.shouldNotify(false, false, true))
 
+    @Test fun quietEdgeNeverNotifies() = assertFalse(CompletionPolicy.shouldNotify(false, true, true, quiet = true))
+    @Test fun notQuietStillNotifies() = assertTrue(CompletionPolicy.shouldNotify(false, true, true, quiet = false))
+
     @Test fun bodyWithSize() = assertEquals("Downloaded · 1.5 GB", CompletionPolicy.body(1_610_612_736L))
     @Test fun bodyMegabytes() = assertEquals("Downloaded · 700.0 MB", CompletionPolicy.body(700L * 1024 * 1024))
     @Test fun bodyKilobytes() = assertEquals("Downloaded · 2 KB", CompletionPolicy.body(2048))
