@@ -11,6 +11,8 @@ export const NAME_MAX = 120;
 export const QUERY_MAX = 80;
 /** Cap for free text such as tracker and provider messages. Not specified in the design; chosen here. */
 export const MESSAGE_MAX = 300;
+/** Cap for what the user types. Higher than MESSAGE_MAX so a pasted download link survives intact. */
+export const USER_TEXT_MAX = 2000;
 
 const ELLIPSIS = '…';
 const LINK_PLACEHOLDER = '[link removed]';
