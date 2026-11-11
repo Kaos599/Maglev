@@ -52,34 +52,41 @@ jobs:
           chmod +x gradlew
           ./gradlew assembleRelease --stacktrace
 
-      - name: Copy & Name APK
+      - name: Copy & Name APKs
         run: |
           mkdir -p build-artifacts
-          cp android/app/build/outputs/apk/release/app-release.apk build-artifacts/Maglev-v0.1-beta.apk
-          ls -lh build-artifacts/Maglev-v0.1-beta.apk
+          TAG="${{ github.ref_name }}"
+          for abi in universal arm64-v8a armeabi-v7a x86_64; do
+            src="android/app/build/outputs/apk/release/app-${abi}-release.apk"
+            test -f "$src" || { echo "Missing $src"; ls -R android/app/build/outputs/apk/release; exit 1; }
+            cp "$src" "build-artifacts/Maglev-${TAG}-${abi}.apk"
+          done
+          ls -lh build-artifacts
 
-      - name: Create GitHub Release & Upload APK
+      - name: Create GitHub Release & Upload APKs
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.ref_name || 'v0.1-beta' }}
-          name: Maglev v0.1-beta
+          tag_name: ${{ github.ref_name }}
+          name: Maglev ${{ github.ref_name }}
           body: |
-            # Maglev v0.1-beta — Native-Speed Android BitTorrent Client
-            
-            Ultra-fast, zero-bloat Android BitTorrent client powered by **React Native**, **Expo (SDK 58)**, and **Rust (`librqbit`)**.
-            
-            ### Installation
-            1. Download **`Maglev-v0.1-beta.apk`** from the Assets list below.
-            2. Open the downloaded APK on your Android device to install.
-            3. Grant notification & storage permissions when prompted.
-            
-            ### Included in this Release
-            * **Embedded Offline Hermes Engine:** Pure native offline execution with zero Metro server dependency.
-            * **Rust Engine Core:** Cross-compiled `libmaglev_core.so` (ARM64, ARMv7, x86_64).
-            * **Cyber-Retro UI & App Icon:** Authentic OLED black (`#05070A`) & Electric Lime (`#CCFF00`) with tactile >= 44x44px touch targets.
-            * **Full Protocol Parity:** Multi-file selection, priority controls (`HIGH`, `NORMAL`, `SKIP`), clipboard magnet detection, and in-flight sequential media streaming to VLC.
-            * **Search & Feeds:** In-app public swarm search and automated RSS release monitoring.
-            * **System Governance:** Wi-Fi only, SSID whitelist, battery cutoff (<20%), SOCKS5 proxy, and IP filter.
-          files: build-artifacts/Maglev-v0.1-beta.apk
+            # Maglev ${{ github.ref_name }}
+
+            Android BitTorrent client (pre-release: engine still in development).
+
+            ### Which APK?
+            * Most phones: `arm64-v8a`.
+            * Older 32-bit phones: `armeabi-v7a`.
+            * Not sure: `universal` (larger, works everywhere).
+            * `x86_64` is for emulators and Chromebooks.
+
+            ### Install
+            1. Download one APK from the Assets list below.
+            2. Open it on your Android device to install.
+            3. Allow notifications so downloads keep running in the background.
+          files: |
+            build-artifacts/Maglev-${{ github.ref_name }}-universal.apk
+            build-artifacts/Maglev-${{ github.ref_name }}-arm64-v8a.apk
+            build-artifacts/Maglev-${{ github.ref_name }}-armeabi-v7a.apk
+            build-artifacts/Maglev-${{ github.ref_name }}-x86_64.apk
           draft: false
           prerelease: true

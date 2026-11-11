@@ -319,8 +319,8 @@ Build **Maglev** — a frictionless, zero-drag, zero-bloat, native-speed Android
 | Phase | Milestone | Scope | Status |
 |:---:|:---|:---|:---:|
 | **0** | **Repo, Specs & Nemesis Audit** | Git init, branches, design tokens, multi-agent audit, locked contracts | ✅ **COMPLETED** |
-| **1** | **Core BitTorrent Engine & Transfers** | Rust librqbit Expo module, intent filters, safe deletion, transfer dashboard | ✅ **COMPLETED** |
-| **2** | **Settings & System Governance** | Bandwidth limits, UPnP port forwarding, encryption PE/MSE, OLED pure black, SOCKS5 proxy, IP filter | ✅ **COMPLETED** |
+| **1** | **Core BitTorrent Engine & Transfers** | Rust librqbit Expo module, intent filters, safe deletion, transfer dashboard | 🔴 **REOPENED 2026-11-11.** The Rust core is a simulator and librqbit is never called. See `docs/GAP_AUDIT_AND_TASKS.md` Phase R. |
+| **2** | **Settings & System Governance** | Bandwidth limits, UPnP port forwarding, encryption PE/MSE, OLED pure black, SOCKS5 proxy, IP filter | 🟡 **UI ONLY.** Settings do not persist and do not reach the engine (contracts C-PERSIST-1, C-SET-1). |
 | **3** | **Search & Aggregation** | Multi-provider search, category filters, recent searches, bookmarks, NSFW filters | 🟡 **UP NEXT** |
 | **4** | **Automated Feeds (RSS)** | RSS feed parser, auto-download regex filters, background sync | ⚪ Pending |
 

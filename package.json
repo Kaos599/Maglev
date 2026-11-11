@@ -9,7 +9,8 @@
     "web": "expo start --web",
     "test": "node scripts/test-e2e.js",
     "test:playbook": "node scripts/test-verification-playbook.js",
-    "test:all": "node scripts/test-e2e.js && node scripts/test-p2-contracts.js && node scripts/test-verification-playbook.js"
+    "test:all": "node scripts/test-e2e.js && node scripts/test-p2-contracts.js && node scripts/test-verification-playbook.js",
+    "test:contracts": "node scripts/test-p3-reality-contracts.js"
   },
   "dependencies": {
     "@expo-google-fonts/inter": "^0.4.2",

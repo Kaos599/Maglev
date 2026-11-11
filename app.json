@@ -75,7 +75,8 @@
       "bundler": "metro"
     },
     "plugins": [
-      "expo-router"
+      "expo-router",
+      "./plugins/withAbiSplits.js"
     ],
     "experiments": {
       "typedRoutes": true
