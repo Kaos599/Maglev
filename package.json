@@ -7,12 +7,15 @@
     "android": "expo start --android",
     "ios": "expo start --ios",
     "web": "expo start --web",
-    "test": "node scripts/test-abi-splits.js && node scripts/test-p3-reality-contracts.js && node scripts/test-feeds.js && node scripts/test-rates.js",
+    "test": "node scripts/test-abi-splits.js && node scripts/test-p3-reality-contracts.js && node scripts/test-feeds.js && node scripts/test-rates.js && node scripts/test-version.js",
     "test:contracts": "node scripts/test-p3-reality-contracts.js",
     "test:search": "node scripts/test-search.js",
     "test:feeds": "node scripts/test-feeds.js",
     "test:rates": "node scripts/test-rates.js",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test:version": "node scripts/test-version.js",
+    "version:minor": "node scripts/bump-version.js minor",
+    "version:major": "node scripts/bump-version.js major"
   },
   "dependencies": {
     "@expo-google-fonts/inter": "^0.4.2",

@@ -98,6 +98,7 @@ Work containing any of the following is rejected:
 ## 7. Git workflow
 
 - Branch from `dev` as `feature/<phase>-<task>` (for example `feature/p2-onboarding`). Merge to `dev` when CI and the phase contracts pass. Release with a tag on `main`.
+- **Versions are `<major>.<minor>`** (for example 0.1, 0.2, 1.0). Bump with `npm run version:minor` or `npm run version:major`, which writes `app.json` (version and `android.versionCode = major*1000 + minor`) and mirrors `package.json` as `x.y.0`. Release tags are `v<major>.<minor>-beta` during the beta and `v<major>.<minor>` after; the release workflow refuses a tag that doesn't match `app.json`.
 - Use Conventional Commits: `feat|fix|refactor|test|docs|ci(<scope>): …`. Keep commits atomic.
 - After a merge, append to `LEDGER.md`: date, task IDs, commit, CI run URL, and the contract IDs that turned green.
 
