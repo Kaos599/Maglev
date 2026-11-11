@@ -3,7 +3,6 @@ import Svg, { Path } from 'react-native-svg';
 import {
   MARK_BODY,
   MARK_CYAN,
-  MARK_DASHES,
   MARK_LIME,
   MARK_LINES,
   MARK_RAILS,
@@ -22,7 +21,6 @@ export function BrandMark({ height = 96 }: BrandMarkProps) {
     <Svg width={height * MARK_RATIO} height={height} viewBox={MARK_VIEWBOX} accessibilityLabel="Maglev">
       <Path d={MARK_BODY} fill={MARK_LIME} fillRule="evenodd" />
       <Path d={MARK_LINES} fill={MARK_CYAN} />
-      <Path d={MARK_DASHES} fill={MARK_CYAN} fillOpacity={0.5} />
       <Path d={MARK_RAILS} fill={MARK_CYAN} />
     </Svg>
   );
