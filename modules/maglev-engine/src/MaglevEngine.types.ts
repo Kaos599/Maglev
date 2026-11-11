@@ -17,6 +17,7 @@ export type PausedBy = 'user' | 'wifi_only' | 'battery' | 'charging_only' | 'see
 
 export interface TorrentTelemetry {
   id: string;
+  finished?: boolean;
   name: string;
   state: TorrentState;
   downloadSpeedBytes: number;
@@ -90,6 +91,7 @@ export type EngineErrorCode =
   | 'FILES_MISSING'
   | 'NOT_INITIALIZED'
   | 'ENGINE_UNAVAILABLE'
+  | 'UNSUPPORTED'
   | 'INTERNAL';
 
 export type EngineResult<T = object> =
@@ -139,6 +141,8 @@ export interface Snapshot {
   name: string;
   state: TorrentState;
   pausedBy: PausedBy | null;
+  /** True once every included piece is present. Completion edges key off this, not the state string. */
+  finished: boolean;
   progressBytes: number;
   totalBytes: number;
   uploadedBytes: number;

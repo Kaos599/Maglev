@@ -67,6 +67,8 @@ export class MaglevEngineBridge implements MaglevEngineApi {
   private startPromise: Promise<EngineStatus> | null = null;
   private lastConfig: NativeConfig | null = null;
   private restartNeeded = false;
+  private warning: string | null = null;
+  private lastSettings: MaglevSettings | null = null;
   private stateListeners = new Set<StateListener>();
 
   private telemetryListeners = new Set<(e: TelemetryEvent) => void>();
@@ -91,6 +93,11 @@ export class MaglevEngineBridge implements MaglevEngineApi {
     return this.usingNative;
   }
 
+  /** Set when init fell back to the last persisted or default config because the supplied one was invalid. */
+  public get configWarning(): string | null {
+    return this.warning;
+  }
+
   public subscribeState(listener: StateListener): Unsubscribe {
     this.stateListeners.add(listener);
     return () => {
@@ -111,12 +118,17 @@ export class MaglevEngineBridge implements MaglevEngineApi {
    * Idempotent: later calls return the first outcome.
    */
   public start(settings: MaglevSettings): Promise<EngineStatus> {
+    this.lastSettings = settings;
     if (!this.startPromise) {
       this.startPromise = (async () => {
         const config = toNativeConfig(settings);
         const res = await this.init(config);
         if (res.ok) {
           await this.pushGovernanceAndLimits(settings, config);
+          // Settings may have changed while init was in flight.
+          if (this.lastSettings && this.lastSettings !== settings) await this.applySettings(this.lastSettings);
+        } else {
+          this.startPromise = null; // allow a retry after failure
         }
         return this.status;
       })();
@@ -124,9 +136,20 @@ export class MaglevEngineBridge implements MaglevEngineApi {
     return this.startPromise;
   }
 
+  /** Re-attempts engine start with the latest settings after a failure. No-op while ready. */
+  public async retry(settings?: MaglevSettings): Promise<EngineStatus> {
+    if (this.started) return this.status;
+    this.startPromise = null;
+    this.setState({ status: { kind: 'starting', message: 'Starting…' } });
+    const s = settings ?? this.lastSettings;
+    if (!s) return this.status;
+    return this.start(s);
+  }
+
   /** Re-applies settings after a change: config, governance and global limits. */
   public async applySettings(settings: MaglevSettings): Promise<void> {
-    if (!this.started || !this.impl) return;
+    this.lastSettings = settings;
+    if (!this.started) return;
     const config = toNativeConfig(settings);
     const prev = this.lastConfig;
     const res = await this.applyConfig(config);
@@ -146,6 +169,8 @@ export class MaglevEngineBridge implements MaglevEngineApi {
     if (NativeModule) {
       const res = await this.callNative<EngineResult>('init', config);
       if (res.ok) {
+        const w = (res as { configWarning?: unknown }).configWarning;
+        this.warning = typeof w === 'string' && w ? w : null;
         this.bind(null, true);
         return this.markReady('Native engine running.', false);
       }
@@ -232,7 +257,7 @@ export class MaglevEngineBridge implements MaglevEngineApi {
         return { ok: false, code: 'INTERNAL', message: String(e?.message ?? e) } as T;
       }
     }
-    return (this.startPromise === null
+    return (this.startPromise === null && this.status.kind === 'starting'
       ? unavailable('Engine not started.', 'NOT_INITIALIZED')
       : unavailable(this.status.message)) as T;
   }

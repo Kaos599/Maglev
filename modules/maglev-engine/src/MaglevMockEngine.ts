@@ -498,6 +498,7 @@ export class MaglevMockEngine implements MaglevEngineApi {
       id: t.id,
       name: t.name,
       state: t.state,
+      finished: t.totalSizeBytes > 0 && t.downloadedBytes >= t.totalSizeBytes,
       pausedBy: t.state === 'PAUSED' ? m.pausedBy : null,
       progressBytes: t.downloadedBytes,
       totalBytes: t.totalSizeBytes,
@@ -854,6 +855,22 @@ export class MaglevMockEngine implements MaglevEngineApi {
         }
       });
     }
+
+    // Seed slots (contract section 9): finished torrents beyond max_active_seeds are COMPLETED, never QUEUED.
+    const maxSeeds = bw.maxActiveUploads > 0 ? bw.maxActiveUploads : Number.MAX_SAFE_INTEGER;
+    let seedSlots = 0;
+    this.torrents.forEach((t) => {
+      if (t.state === 'SEEDING' || t.state === 'COMPLETED') {
+        if (seedSlots < maxSeeds) {
+          seedSlots++;
+          t.state = 'SEEDING';
+        } else {
+          t.state = 'COMPLETED';
+          t.downloadSpeedBytes = 0;
+          t.uploadSpeedBytes = 0;
+        }
+      }
+    });
 
     let downloadingCount = 0;
     let seedingCount = 0;

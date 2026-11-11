@@ -48,8 +48,10 @@ interface EngineContextType {
   addTracker: (id: string, trackerUrl: string) => Promise<boolean>;
   /** 256 cells, contract values: 0 missing, 1 have, 2 partial. */
   getPieceBitfield: (id: string) => Promise<Uint8Array>;
-  /** Cached detail; the first call for an id schedules a fetch and the cache refreshes on every telemetry tick. */
+  /** Cached detail. An uncached id triggers a one-off fetch; use `watchDetail` for live updates. */
   getTorrentDetail: (id: string) => TorrentDetailData | null;
+  /** Starts refreshing detail for `id` on every telemetry tick. Call the returned function on unmount. */
+  watchDetail: (id: string) => () => void;
   startHttpStream: (id: string, fileIndex: number) => Promise<string>;
   isNative: boolean;
   defaultStoragePath: string;
@@ -58,6 +60,10 @@ interface EngineContextType {
   permissionStatus: NativePermissionStatus | null;
   refreshPermissions: () => Promise<NativePermissionStatus>;
   restartRequired: boolean;
+  /** Non-null when the engine fell back to a saved or default config because the supplied one was invalid. */
+  configWarning: string | null;
+  /** Re-attempts engine start after a failure. */
+  retryEngine: () => Promise<void>;
   lastCompleted: TorrentCompletedEvent | null;
 }
 
@@ -81,6 +87,7 @@ export const EngineProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const [clipboardMagnet, setClipboardMagnet] = useState<string | null>(null);
   const [engineStatus, setEngineStatus] = useState<EngineStatus>(maglevEngine.engineStatus);
   const [restartRequired, setRestartRequired] = useState(maglevEngine.restartRequired);
+  const [configWarning, setConfigWarning] = useState<string | null>(maglevEngine.configWarning);
   const [isNative, setIsNative] = useState(maglevEngine.isNativeMode());
   const [storageStatus, setStorageStatus] = useState<StorageStatus | null>(null);
   const [permissionStatus, setPermissionStatus] = useState<NativePermissionStatus | null>(null);
@@ -88,7 +95,7 @@ export const EngineProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const [, setDetailVersion] = useState(0);
 
   const detailCache = useRef<Map<string, TorrentDetailData>>(new Map());
-  const watched = useRef<Set<string>>(new Set());
+  const watched = useRef<Map<string, number>>(new Map());
   const inFlight = useRef<Set<string>>(new Set());
 
   const refreshDetail = useCallback(async (id: string) => {
@@ -126,19 +133,39 @@ export const EngineProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }
   }, []);
 
+  const afterStart = useCallback(
+    async (status: EngineStatus) => {
+      if (status.kind === 'ready') {
+        const [list, storage] = await Promise.all([maglevEngine.listTorrents(), maglevEngine.getStorageStatus()]);
+        if (list.ok) setTelemetry(aggregateSnapshots(list.torrents));
+        setStorageStatus(storage);
+      }
+      void refreshPermissions();
+    },
+    [refreshPermissions]
+  );
+
+  const retryEngine = useCallback(async () => {
+    const status = await maglevEngine.retry(settingsStore.getSettings());
+    setEngineStatus(maglevEngine.engineStatus);
+    setConfigWarning(maglevEngine.configWarning);
+    await afterStart(status);
+  }, [afterStart]);
+
   // Engine start, status mirroring and event subscriptions. Events only: no polling.
   useEffect(() => {
     let cancelled = false;
     const syncState = () => {
       setEngineStatus(maglevEngine.engineStatus);
       setRestartRequired(maglevEngine.restartRequired);
+      setConfigWarning(maglevEngine.configWarning);
       setIsNative(maglevEngine.isNativeMode());
     };
     const offState = maglevEngine.subscribeState(syncState);
 
     const offTelemetry = maglevEngine.onTelemetry((event) => {
       setTelemetry(aggregateSnapshots(event.torrents));
-      watched.current.forEach((id) => {
+      watched.current.forEach((_count, id) => {
         if (event.torrents.some((s) => s.id === id)) void refreshDetail(id);
       });
     });
@@ -157,13 +184,7 @@ export const EngineProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       const status = await maglevEngine.start(settingsStore.getSettings());
       if (cancelled) return;
       syncState();
-      if (status.kind === 'ready') {
-        const [list, storage] = await Promise.all([maglevEngine.listTorrents(), maglevEngine.getStorageStatus()]);
-        if (cancelled) return;
-        if (list.ok) setTelemetry(aggregateSnapshots(list.torrents));
-        setStorageStatus(storage);
-      }
-      void refreshPermissions();
+      await afterStart(status);
     })();
 
     return () => {
@@ -174,7 +195,7 @@ export const EngineProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       offAction();
       offStorage();
     };
-  }, [refreshDetail, refreshPermissions]);
+  }, [refreshDetail, afterStart]);
 
   // Clipboard and permissions are re-read whenever the app returns to the foreground.
   useEffect(() => {
@@ -276,11 +297,29 @@ export const EngineProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const getTorrentDetail = useCallback(
     (id: string) => {
       if (!id) return null;
-      if (!watched.current.has(id)) {
-        watched.current.add(id);
-        void refreshDetail(id);
-      }
-      return detailCache.current.get(id) ?? null;
+      const cached = detailCache.current.get(id);
+      if (!cached) void refreshDetail(id);
+      return cached ?? null;
+    },
+    [refreshDetail]
+  );
+
+  const watchDetail = useCallback(
+    (id: string) => {
+      watched.current.set(id, (watched.current.get(id) ?? 0) + 1);
+      void refreshDetail(id);
+      let released = false;
+      return () => {
+        if (released) return;
+        released = true;
+        const n = (watched.current.get(id) ?? 1) - 1;
+        if (n <= 0) {
+          watched.current.delete(id);
+          detailCache.current.delete(id);
+        } else {
+          watched.current.set(id, n);
+        }
+      };
     },
     [refreshDetail]
   );
@@ -313,6 +352,7 @@ export const EngineProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         addTracker,
         getPieceBitfield,
         getTorrentDetail,
+        watchDetail,
         startHttpStream,
         isNative,
         defaultStoragePath,
@@ -321,6 +361,8 @@ export const EngineProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         permissionStatus,
         refreshPermissions,
         restartRequired,
+        configWarning,
+        retryEngine,
         lastCompleted,
       }}
     >
