@@ -88,6 +88,8 @@ jobs:
         with:
           key: apk-arm64
           max-size: 1G
+          # The runner image's apt index can be stale; without this the ccache install fails.
+          update-package-index: true
 
       - name: Accept Android SDK licenses
         run: |
