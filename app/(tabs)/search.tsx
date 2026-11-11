@@ -13,6 +13,8 @@ import { SourcesCard } from '../../components/search/SourcesCard';
 import { NoticeBanner, addErrorNotice, useNotice } from '../../components/search/Notice';
 import { buildExtraProviders, loadExtraProviders } from '../../components/search/extra';
 import { CATEGORY_LABEL, formatAge, providerMap } from '../../components/search/meta';
+import { admit, oneTapDecision, pendingNeedOf } from '../../utils/admission';
+import { formatBytes } from '../../constants/format';
 import { riskySources } from '../../utils/search/safety';
 import { addRecentSearch, clearRecentSearches, getSearchPrefs, useSearchPrefs } from '../../utils/prefs/search';
 import { availableCategories, eligibleProviders, mergeInto, rerunProvider, resolveResult, searchAll } from '../../utils/search/aggregate';
@@ -46,7 +48,7 @@ export default function SearchScreen() {
   const { colors } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const router = useRouter();
-  const { startTorrent, telemetry } = useMaglevEngine();
+  const { startTorrent, telemetry, getFreeSpace } = useMaglevEngine();
   const [prefs, updatePrefs] = useSearchPrefs();
 
   const [query, setQuery] = useState('');
@@ -180,8 +182,34 @@ export default function SearchScreen() {
       try {
         // Some sources only show the magnet on a detail page: read it now.
         const ready = await resolveResult(r, wait.signal);
+        // SM-35: the metadata size is not known before the add, so the search result's size decides.
+        let tightNotice: string | null = null;
+        const size = ready.sizeBytes ?? r.sizeBytes;
+        if (size && size > 0) {
+          try {
+            const fs = await getFreeSpace();
+            if (fs.ok) {
+              const out = admit({
+                freeBytes: Math.min(fs.freeBytes, fs.targetFreeBytes ?? fs.freeBytes),
+                pendingNeed: pendingNeedOf(telemetry.torrents),
+                stagingFactor: fs.mode === 'staging' ? 2 : 1,
+                selectionBytes: size,
+              });
+              const decision = oneTapDecision(out.result);
+              if (decision === 'openSheet') {
+                // Doesn't fit: let the user pick files in the add flow instead of adding it all.
+                router.push({ pathname: '/add-torrent', params: { source: ready.magnet } });
+                return;
+              }
+              if (decision === 'addWithNotice') tightNotice = `Leaves ${formatBytes(out.leftAfter)} free`;
+            }
+          } catch {
+            // Free space unknown: add as before.
+          }
+        }
         await startTorrent(ready.magnet);
         setSessionAdded((prev) => new Set(prev).add(r.infoHash));
+        if (tightNotice) show({ tone: 'info', title: tightNotice });
       } catch (e) {
         const { duplicate, notice: n } = addErrorNotice(e);
         if (duplicate) setSessionAdded((prev) => new Set(prev).add(r.infoHash));
@@ -191,7 +219,7 @@ export default function SearchScreen() {
         setBusyHash(null);
       }
     },
-    [remember, show, startTorrent, trimmed],
+    [remember, show, startTorrent, trimmed, getFreeSpace, telemetry.torrents, router],
   );
 
   // Tapping Add on a warned row asks first; with the warning off it is one tap.

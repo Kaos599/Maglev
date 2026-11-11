@@ -358,6 +358,12 @@ export const EngineProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     });
     const offCompleted = maglevEngine.onTorrentCompleted((e) => setLastCompleted(e));
     const offAction = maglevEngine.onNotificationAction(async (e) => {
+      // Sent once on app open after Android killed Maglev (NATIVE_CONTRACT 19). Not in the TS union yet.
+      const ev = e as { action: string; message?: string };
+      if (ev.action === 'stopped_by_android') {
+        if (ev.message) showNotice({ message: ev.message }, 6000);
+        return;
+      }
       if (e.action === 'shutdown') {
         BackHandler.exitApp();
         return;
@@ -382,7 +388,7 @@ export const EngineProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       offAction();
       offStorage();
     };
-  }, [refreshDetail, afterStart, ingest]);
+  }, [refreshDetail, afterStart, ingest, showNotice]);
 
   // Clipboard and permissions are re-read whenever the app returns to the foreground.
   useEffect(() => {

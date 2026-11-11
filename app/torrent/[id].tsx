@@ -21,6 +21,14 @@ import { DeleteSheet, FileActionsSheet, RemoveFilesSheet, SavedTorrentSheet } fr
 import { AddTrackerSheet, RemoveTrackerSheet } from '../../components/detail/TrackerSheets';
 import { REMOVE_FILES_INITIAL, removeFilesStep } from '../../components/detail/removeFilesMachine';
 import { TRACKER_EDIT_INITIAL, trackerEditStep } from '../../components/detail/trackerEditMachine';
+import {
+  FILE_HEALTH_INITIAL,
+  fileHealthBanner,
+  fileHealthStep,
+  healthBannerFor,
+  type BannerButtonId,
+  type HealthBanner,
+} from '../../components/detail/fileHealthMachine';
 import { FileListRow } from '../../components/detail/FileListRow';
 import { PrioritySheet } from '../../components/detail/PrioritySheet';
 import { TorrentMoreSheet } from '../../components/detail/TorrentMoreSheet';
@@ -191,6 +199,58 @@ export default function TorrentDetailScreen() {
     }
   });
 
+  // SM-32 Files changed outside Maglev. The machine decides; this runs its effects.
+  const [fh, sendFh] = useMachine(fileHealthStep, FILE_HEALTH_INITIAL, (effects, send) => {
+    for (const e of effects) {
+      switch (e.type) {
+        case 'haptic':
+          triggerHaptic(e.style);
+          break;
+        case 'pickFolder':
+          maglevEngine
+            .pickFolder()
+            .then((picked) => send('cancelled' in picked ? { type: 'FOLDER_CANCELLED' } : { type: 'FOLDER_PICKED', dir: picked.uri }))
+            .catch(() => send({ type: 'PICK_FAILED' }));
+          break;
+        case 'call':
+          if (!id) {
+            send({ type: 'RESULT_ERR', code: 'NOT_FOUND', message: '' });
+            break;
+          }
+          maglevEngine
+            .resolveFiles(id, e.action, e.indices, e.dir)
+            .then((res) => send(res.ok ? { type: 'RESULT_OK' } : { type: 'RESULT_ERR', code: res.code, message: res.message }))
+            .catch(() => send({ type: 'RESULT_ERR', code: 'UNKNOWN', message: '' }));
+          break;
+      }
+    }
+  });
+  const [missingIdx, setMissingIdx] = useState<number[]>([]);
+  const healthTag = detail?.snapshot.health ?? null;
+  // Read which files are missing whenever the tag is set, and again on every poll while it is.
+  useEffect(() => {
+    if (!id) return;
+    if (healthTag !== 'files_missing' && healthTag !== 'files_changed') {
+      setMissingIdx((m) => (m.length ? [] : m));
+      sendFh({ type: 'SYNC', health: healthTag, missing: [] });
+      return;
+    }
+    let alive = true;
+    maglevEngine
+      .fileHealth(id)
+      .then((res) => {
+        if (!alive) return;
+        const missing = res.ok ? res.files.filter((f) => f.state === 'missing').map((f) => f.index) : [];
+        setMissingIdx(missing);
+        sendFh({ type: 'SYNC', health: healthTag, missing });
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, [id, healthTag, tick, sendFh]);
+  const missingSet = useMemo(() => new Set(missingIdx), [missingIdx]);
+
   // Tick once a second while the "Find more peers" cool-down is showing.
   useEffect(() => {
     if (!moreOpen || retryUntil <= Date.now()) return;
@@ -349,24 +409,24 @@ export default function TorrentDetailScreen() {
     setMoreOpen(false);
     if (!id || !snap) return;
     try {
-      await Clipboard.setStringAsync(buildMagnet(id, snap.name));
+      await Clipboard.setStringAsync(buildMagnet(id, snap.name, trackers.map((t) => t.url)));
       triggerHaptic('success');
       showNotice({ tone: 'info', text: 'Magnet link copied.' });
     } catch {
       showNotice({ tone: 'danger', text: "Couldn't copy the magnet link." });
     }
-  }, [id, snap, showNotice]);
+  }, [id, snap, showNotice, trackers]);
 
   const handleShareMagnet = useCallback(async () => {
     setMoreOpen(false);
     if (!id || !snap) return;
     try {
       // Only the magnet link goes out: no title, no url, no extra text.
-      await Share.share({ message: buildMagnet(id, snap.name) });
+      await Share.share({ message: buildMagnet(id, snap.name, trackers.map((t) => t.url)) });
     } catch {
       showNotice({ tone: 'danger', text: "Couldn't share the magnet link." });
     }
-  }, [id, snap, showNotice]);
+  }, [id, snap, showNotice, trackers]);
 
   const handleSaveTorrent = useCallback(async () => {
     setMoreOpen(false);
@@ -473,6 +533,54 @@ export default function TorrentDetailScreen() {
     if (!ok) showNotice({ tone: 'danger', text: "Couldn't change the torrent state." });
   }, [id, pauseTorrent, resumeTorrent, showNotice, snap]);
 
+  const handleScanFiles = useCallback(async () => {
+    const res = await maglevEngine.scanFileHealth();
+    showNotice(res.ok ? { tone: 'info', text: 'Checking files…' } : { tone: 'danger', text: res.message });
+  }, [showNotice]);
+
+  const handleKeepTrying = useCallback(async () => {
+    if (!id) return;
+    triggerHaptic('light');
+    const res = await maglevEngine.setHealth(id, '');
+    if (!res.ok) showNotice({ tone: 'danger', text: res.message || "Couldn't try again." });
+  }, [id, showNotice]);
+
+  const handleBannerButton = useCallback(
+    (button: BannerButtonId) => {
+      switch (button) {
+        case 'stop':
+          sendFh({ type: 'STOP' });
+          return;
+        case 'again':
+          sendFh({ type: 'AGAIN' });
+          return;
+        case 'folder':
+          sendFh({ type: 'PICK_FOLDER' });
+          return;
+        case 'recheck':
+          sendFh({ type: 'RECHECK' });
+          return;
+        case 'stopSharing':
+          sendFh({ type: 'STOP_SHARING' });
+          return;
+        case 'freeSpace':
+          void handleFreeSpace();
+          return;
+        case 'move':
+          setMoveError(null);
+          setMoveOpen(true);
+          return;
+        case 'keepTrying':
+          void handleKeepTrying();
+          return;
+        case 'remove':
+          void handleDelete(false);
+          return;
+      }
+    },
+    [handleDelete, handleFreeSpace, handleKeepTrying, sendFh],
+  );
+
   const handleErrorAction = useCallback(
     (action: ErrorAction) => {
       switch (action) {
@@ -489,8 +597,8 @@ export default function TorrentDetailScreen() {
           void handlePlayPause();
           return;
         case 'filesMissing':
-          // TODO(SM-32): replace with the SM-32 choices. Until then, Recheck.
-          void handleRecheck();
+          // One file scan now. It sets the files_missing tag, and the SM-32 choices appear as a banner.
+          void handleScanFiles();
           return;
         case 'recheck':
           void handleRecheck();
@@ -499,7 +607,7 @@ export default function TorrentDetailScreen() {
           return;
       }
     },
-    [handleFreeSpace, handlePlayPause, handleRecheck, router],
+    [handleFreeSpace, handlePlayPause, handleRecheck, handleScanFiles, router],
   );
 
   const headerActions = snap ? (
@@ -579,6 +687,14 @@ export default function TorrentDetailScreen() {
     if (errorMap.secondary) errorButtons.push({ action: errorMap.secondary, label: labels[errorMap.secondary], variant: 'secondary' });
   }
 
+  // SM-32 has its own machine; SM-33 and SM-37 banners come from the health tag. A health banner replaces the error one.
+  const healthBanner: HealthBanner | null = fileHealthBanner(fh) ?? healthBannerFor(snap.health);
+  const healthBusy = fh.kind === 'working' || fh.kind === 'picking';
+  const busyButton = fh.action === 'stop' ? 'stop' : fh.action === 'again' ? 'again' : fh.action === 'folder' ? 'folder' : fh.action === 'recheck' ? 'recheck' : null;
+  const resolving =
+    snap.state === 'INITIALIZING' && snap.resolvingSecs != null ? { peersSeen: snap.peersSeen, secs: snap.resolvingSecs } : null;
+  const storageGone = snap.health === 'storage_unavailable' || snap.pausedBy === 'storage_unavailable';
+
   const moving = snap.state === 'MOVING';
   const frac = moving
     ? Math.min(1, Math.max(0, snap.moveProgress ?? 0))
@@ -600,7 +716,24 @@ export default function TorrentDetailScreen() {
           <Banner tone="warning" title="Updates paused" body={error} actionLabel="Retry" onAction={retry} />
         </View>
       ) : null}
-      {snap.error ? (
+      {healthBanner ? (
+        <View style={styles.block}>
+          <Banner tone={healthBanner.tone} title={healthBanner.title} body={fh.error} />
+          <View style={styles.errorActions}>
+            {healthBanner.buttons.map((b) => (
+              <Button
+                key={b.id}
+                label={b.label}
+                variant={b.variant}
+                loading={healthBusy && busyButton === b.id}
+                disabled={healthBusy}
+                onPress={() => handleBannerButton(b.id)}
+              />
+            ))}
+          </View>
+        </View>
+      ) : null}
+      {snap.error && !healthBanner ? (
         <View style={styles.block}>
           <Banner tone="danger" title="This torrent has a problem" body={errorMap?.message} />
           {errorButtons.length ? (
@@ -615,7 +748,7 @@ export default function TorrentDetailScreen() {
 
       <View style={styles.summary}>
         <View style={styles.summaryTop}>
-          <StateBadge state={snap.state} pausedBy={snap.pausedBy} moveProgress={snap.moveProgress} resumesAt={resumesAt} />
+          <StateBadge state={snap.state} pausedBy={snap.pausedBy} moveProgress={snap.moveProgress} resumesAt={resumesAt} resolving={resolving} />
           <Text style={styles.percent} accessibilityLabel={`${(frac * 100).toFixed(1)} percent`}>
             {(frac * 100).toFixed(1)}%
           </Text>
@@ -695,6 +828,7 @@ export default function TorrentDetailScreen() {
                 selecting={!!selection}
                 selected={!!selection?.has((item as DetailFile).index)}
                 paused={snap.state === 'PAUSED'}
+                missing={missingSet.has((item as DetailFile).index)}
                 hasActions={
                   (item as DetailFile).length > 0 &&
                   ((item as DetailFile).progressBytes >= (item as DetailFile).length || isStreamable((item as DetailFile).path))
@@ -716,7 +850,7 @@ export default function TorrentDetailScreen() {
         initialNumToRender={12}
         windowSize={7}
         keyboardShouldPersistTaps="handled"
-        extraData={selection}
+        extraData={[selection, missingSet]}
       />
 
       {selection ? (
@@ -799,6 +933,7 @@ export default function TorrentDetailScreen() {
         onCopyMagnet={handleCopyMagnet}
         onShareMagnet={handleShareMagnet}
         onSaveTorrent={handleSaveTorrent}
+        storageGone={storageGone}
         limitSummary={limitSummary}
         onSpeedLimit={() => {
           setMoreOpen(false);
@@ -821,6 +956,7 @@ export default function TorrentDetailScreen() {
         name={snap.name}
         busy={deleteBusy}
         error={deleteError}
+        storageGone={storageGone}
         onClose={() => !deleteBusy && setDeleteOpen(false)}
         onRemove={() => handleDelete(false)}
         onDeleteFiles={() => handleDelete(true)}

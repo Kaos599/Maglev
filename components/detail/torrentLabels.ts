@@ -2,18 +2,22 @@ import type { PausedBy, TorrentState } from 'maglev-engine';
 import type { ThemeColors } from '../../constants/theme';
 import { formatSpeed } from '../../constants/format';
 import { fileKind } from '../../utils/fileKind';
+import { buildMagnet } from './magnet';
+import { healthLabel, resolvingLine } from './fileHealthMachine';
+
+export { buildMagnet };
 
 /** Plain-language state label. Paused copy follows the paused_by table in STATE_MACHINES section 2.1. */
 export function stateLabel(
   state: TorrentState,
   pausedBy: PausedBy | null | undefined,
-  extra?: { moveProgress?: number | null; resumesAt?: string | null },
+  extra?: { moveProgress?: number | null; resumesAt?: string | null; resolving?: { peersSeen: number; secs: number } | null },
 ): string {
   switch (state) {
     case 'MOVING':
       return extra?.moveProgress != null ? `Moving files… ${Math.round(extra.moveProgress * 100)}%` : 'Moving files…';
     case 'INITIALIZING':
-      return 'Getting info';
+      return extra?.resolving ? resolvingLine(extra.resolving.peersSeen, extra.resolving.secs) : 'Getting info';
     case 'QUEUED':
       return 'Queued';
     case 'DOWNLOADING':
@@ -38,7 +42,7 @@ export function stateLabel(
         case 'schedule':
           return extra?.resumesAt ? `Scheduled pause · resumes ${extra.resumesAt}` : 'Scheduled pause';
         default:
-          return 'Paused';
+          return healthLabel(pausedBy) ?? 'Paused';
       }
   }
 }
@@ -73,11 +77,6 @@ export function fileName(path: string): string {
 export function fileExt(path: string): string {
   const m = /\.([A-Za-z0-9]{1,6})$/.exec(path);
   return m ? `.${m[1].toLowerCase()}` : 'other';
-}
-
-/** Torrent info-hash is the engine id; build a magnet link from it. */
-export function buildMagnet(infoHash: string, name: string): string {
-  return `magnet:?xt=urn:btih:${infoHash}&dn=${encodeURIComponent(name)}`;
 }
 
 /** "HH:MM" in the device's 24-hour clock for an epoch-ms boundary. */

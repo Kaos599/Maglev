@@ -15,9 +15,11 @@ interface DeleteSheetProps {
   onClose: () => void;
   onRemove: () => void;
   onDeleteFiles: () => void;
+  /** SM-33: the SD card is gone, so deleting files is off. */
+  storageGone?: boolean;
 }
 
-export function DeleteSheet({ visible, name, busy, error, onClose, onRemove, onDeleteFiles }: DeleteSheetProps) {
+export function DeleteSheet({ visible, name, busy, error, onClose, onRemove, onDeleteFiles, storageGone = false }: DeleteSheetProps) {
   const { colors } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   return (
@@ -25,7 +27,8 @@ export function DeleteSheet({ visible, name, busy, error, onClose, onRemove, onD
       {error ? <Banner tone="danger" title="Couldn't delete" body={error} /> : null}
       <View style={styles.stack}>
         <Button label="Remove from list" variant="secondary" fullWidth loading={busy} onPress={onRemove} />
-        <Button label="Delete with files" variant="danger" fullWidth disabled={busy} onPress={onDeleteFiles} />
+        <Button label="Delete with files" variant="danger" fullWidth disabled={busy || storageGone} onPress={onDeleteFiles} />
+        {storageGone ? <Text style={styles.hint}>The SD card isn't there.</Text> : null}
         <Button label="Cancel" variant="ghost" fullWidth disabled={busy} onPress={onClose} />
       </View>
     </Sheet>

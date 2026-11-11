@@ -18,6 +18,8 @@ interface Props {
   hasActions: boolean;
   /** The torrent is paused: unfinished files show the paused colour and label. */
   paused?: boolean;
+  /** SM-32: the file was deleted outside Maglev. */
+  missing?: boolean;
   onPress: (file: DetailFile) => void;
   onLongPress: (file: DetailFile) => void;
   onOpenActions: (file: DetailFile) => void;
@@ -27,7 +29,7 @@ interface Props {
  * One file in the Files tab. The progress bar sits on its own line across the full card width so a
  * finished file reads as 100%, with the options button above it.
  */
-function FileListRowBase({ file, selecting, selected, hasActions, paused = false, onPress, onLongPress, onOpenActions }: Props) {
+function FileListRowBase({ file, selecting, selected, hasActions, paused = false, missing = false, onPress, onLongPress, onOpenActions }: Props) {
   const { colors } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const skipped = file.priority === 'skip';
@@ -43,7 +45,7 @@ function FileListRowBase({ file, selecting, selected, hasActions, paused = false
       onPress={() => onPress(file)}
       onLongPress={() => onLongPress(file)}
       accessibilityRole={selecting ? 'checkbox' : 'button'}
-      accessibilityLabel={`${file.path}, ${formatBytes(file.length)}, ${skipped ? 'skipped' : `${pct} percent`}, ${priorityWord}`}
+      accessibilityLabel={`${file.path}, ${formatBytes(file.length)}, ${skipped ? 'skipped' : missing ? 'missing' : `${pct} percent`}, ${priorityWord}`}
       accessibilityHint={selecting ? undefined : 'Change priority'}
       accessibilityState={selecting ? { checked: selected } : undefined}
       scaleTo={0.99}
@@ -64,6 +66,8 @@ function FileListRowBase({ file, selecting, selected, hasActions, paused = false
           <Text style={styles.meta} numberOfLines={1}>
             {skipped ? (
               `Skipped · ${size}`
+            ) : missing ? (
+              `Missing · ${size}`
             ) : done ? (
               <>
                 <Text style={styles.metaDone}>Done</Text>
@@ -97,7 +101,7 @@ function FileListRowBase({ file, selecting, selected, hasActions, paused = false
           </PressableScale>
         ) : null}
       </View>
-      {!skipped && !done ? (
+      {!skipped && !done && !missing ? (
         <View style={styles.bar}>
           <ProgressBar progress={frac} tone={paused ? 'paused' : 'download'} accessibilityLabel={`${pct} percent`} />
         </View>

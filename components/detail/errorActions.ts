@@ -23,6 +23,7 @@ const INTERNAL: ErrorActions = { message: 'Something went wrong.', primary: 'ret
  */
 export function actionsFor(code: string, ctx: { pausedBy?: string | null }): ErrorActions {
   if (ctx.pausedBy === 'storage_unavailable') return { ...STORAGE_UNAVAILABLE };
+  if (ctx.pausedBy === 'storage_full') return { ...DISK_FULL };
   if (code === 'DISK_FULL') return { ...DISK_FULL };
   if (code === 'PERMISSION') return { ...PERMISSION };
   if (code === 'FILES_MISSING') return { ...FILES_MISSING };

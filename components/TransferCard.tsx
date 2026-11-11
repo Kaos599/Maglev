@@ -7,6 +7,7 @@ import { formatBytes, formatSpeed } from "../constants/format";
 import { formatEta } from "../utils/rates";
 import { PixelIcon, PixelIconName } from "./PixelIcon";
 import { IconButton, PressableScale, ProgressBar, ProgressTone } from "./ui";
+import { healthLabel, resolvingLine } from "./detail/fileHealthMachine";
 
 /**
  * Name (two lines), one bar, one status line. At the default font size the height never changes
@@ -23,12 +24,14 @@ export interface TransferCardProps {
   onLongPress: (id: string) => void;
   onPause: (id: string) => void;
   onResume: (id: string) => void;
+  /** SM-37: clears the no_peers tag so the torrent looks for peers again. */
+  onKeepTrying?: (id: string) => void;
 }
 
 type CardAction = {
   icon: PixelIconName;
   label: string;
-  kind: "pause" | "resume";
+  kind: "pause" | "resume" | "keepTrying";
 } | null;
 
 type StatusTone = "muted" | "accent" | "danger";
@@ -46,7 +49,7 @@ function pausedReason(pausedBy: string | null | undefined): string {
     case "schedule":
       return "Paused: by schedule";
     default:
-      return "Paused";
+      return healthLabel(pausedBy) ?? "Paused";
   }
 }
 
@@ -78,6 +81,8 @@ function statusFor(t: TransferTelemetry, etaLabel: string): { text: string; tone
     case "CHECKING":
       return { text: "Checking files…", tone: "muted" };
     case "INITIALIZING":
+      if (t.resolvingSecs != null) return { text: resolvingLine(t.peersTotal, t.resolvingSecs), tone: "muted" };
+      return { text: "Getting info…", tone: "muted" };
     default:
       return { text: "Getting info…", tone: "muted" };
   }
@@ -90,6 +95,14 @@ function actionFor(t: TransferTelemetry): CardAction {
       return { icon: "pause", label: "Pause", kind: "pause" };
     case "PAUSED": {
       const by: string | null | undefined = t.pausedBy;
+      if (by === "no_peers") return { icon: "retry", label: "Keep trying", kind: "keepTrying" };
+      if (
+        by === "files_missing" ||
+        by === "files_changed" ||
+        by === "storage_full" ||
+        by === "storage_unavailable"
+      )
+        return null;
       if (
         by === "wifi_only" ||
         by === "battery" ||
@@ -133,6 +146,7 @@ function TransferCardImpl({
   onLongPress,
   onPause,
   onResume,
+  onKeepTrying,
 }: TransferCardProps) {
   const { colors } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -182,6 +196,9 @@ function TransferCardImpl({
             case "resume":
               onResume(t.id);
               break;
+            case "keepTrying":
+              onKeepTrying?.(t.id);
+              break;
           }
         }}
         accessibilityState={{ selected: selectionMode ? selected : undefined }}
@@ -216,7 +233,11 @@ function TransferCardImpl({
             disabled={actionBusy}
             accessibilityLabel={`${action.label} ${t.name}`}
             onPress={() =>
-              action.kind === "pause" ? onPause(t.id) : onResume(t.id)
+              action.kind === "pause"
+                ? onPause(t.id)
+                : action.kind === "keepTrying"
+                  ? onKeepTrying?.(t.id)
+                  : onResume(t.id)
             }
           />
         </View>
@@ -235,10 +256,14 @@ function sameCard(a: TransferCardProps, b: TransferCardProps): boolean {
     a.onLongPress === b.onLongPress &&
     a.onPause === b.onPause &&
     a.onResume === b.onResume &&
+    a.onKeepTrying === b.onKeepTrying &&
     x.id === y.id &&
     x.name === y.name &&
     x.state === y.state &&
     x.pausedBy === y.pausedBy &&
+    x.health === y.health &&
+    x.resolvingSecs === y.resolvingSecs &&
+    x.peersTotal === y.peersTotal &&
     x.error?.message === y.error?.message &&
     x.downloadSpeedBytes === y.downloadSpeedBytes &&
     x.uploadSpeedBytes === y.uploadSpeedBytes &&

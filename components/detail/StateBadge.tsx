@@ -11,15 +11,17 @@ interface Props {
   moveProgress?: number | null;
   /** "HH:MM" shown on a scheduled pause. */
   resumesAt?: string | null;
+  /** SM-37: set while a magnet looks for its metadata. */
+  resolving?: { peersSeen: number; secs: number } | null;
 }
 
-export function StateBadge({ state, pausedBy, moveProgress, resumesAt }: Props) {
+export function StateBadge({ state, pausedBy, moveProgress, resumesAt, resolving }: Props) {
   const { colors } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const tint = stateColor(state, colors);
   return (
     <View style={[styles.badge, { borderColor: tint, backgroundColor: alpha(tint, 0.12) }]}>
-      <Text style={[styles.text, { color: tint }]}>{stateLabel(state, pausedBy, { moveProgress, resumesAt })}</Text>
+      <Text style={[styles.text, { color: tint }]}>{stateLabel(state, pausedBy, { moveProgress, resumesAt, resolving })}</Text>
     </View>
   );
 }
