@@ -57,24 +57,32 @@ Download an APK from [Releases](https://github.com/Kaos599/Maglev/releases). Eac
 | `Maglev-<version>-x86_64.apk` | You use an emulator or a Chromebook. |
 | `Maglev-<version>-universal.apk` | You aren't sure. It runs everywhere but is larger. |
 
-## How it's built
+## What's next
 
-```mermaid
-flowchart TB
-  UI["React Native + Expo Router<br/>screens · theme · search"]
-  KT["Kotlin Expo module<br/>foreground service · storage · permissions · network/power rules"]
-  RS["Rust core<br/>librqbit session · scheduler · stream server"]
-  UI -- "typed bridge (JSON)" --> KT
-  KT -- "JNI" --> RS
-```
+**First release**
+- Test on real phones: long downloads, the app being closed by Android, and search.
+- Publish the first pre-release APKs.
 
-- **Rust** (`native/maglev-core`): the librqbit session, a pure scheduler for the queue, seed limits and rules, and a local stream server with tokenized URLs.
-- **Kotlin** (`modules/maglev-engine/android`): owns the engine for the life of the process, runs the foreground service, and handles storage (direct writes, or staging and copy-on-complete), permissions and the network and power rules.
-- **TypeScript** (`app/`, `components/`, `utils/`): the screens, the settings store (expo-sqlite), and the search aggregator.
+**Coming after that**
+- Speed limits for each torrent
+- Moving downloads to another folder
+- Sharing a torrent or making your own
+- A scheduler that only downloads at times you pick (overnight, for example)
+- RSS feeds that add new episodes automatically
+- A blocklist for bad peers
 
-The Rust ⇄ Kotlin ⇄ TS boundary is defined in [`docs/NATIVE_CONTRACT.md`](docs/NATIVE_CONTRACT.md).
+**Later**
+- An optional assistant that uses your own AI key
+- Downloading normal files from any link, with pause and resume
 
-## Develop
+The detailed task list is in [`docs/ROADMAP.md`](docs/ROADMAP.md).
+
+## Contributing
+
+<details>
+<summary>Build from source, run the tests, and find the project docs</summary>
+
+### Build from source
 
 You need Node 22, the Android SDK and a device or emulator. You don't need Rust: CI compiles `libmaglev_core.so` on every push.
 
@@ -90,7 +98,7 @@ To run the real engine locally, download the `jniLibs-<abi>` artifact from a CI 
 
 Expo Go cannot load Maglev's native module, so use a development build (`expo run:android`).
 
-### Tests
+#### Tests
 
 ```bash
 npm test                 # ABI-split plugin + reality contracts
@@ -101,26 +109,7 @@ node scripts/test-plugins.js
 
 CI also runs the Rust unit tests and rejects any engine library that is under 3 MB, lacks librqbit symbols, or isn't 16 KB page-aligned.
 
-## What's next
-
-**Now: finish Phase 1 and Phase 2**
-1. Install a CI release APK on a real phone. Download a Debian netinst into `Download/Maglev`, kill the app with `adb`, and check that it comes back and keeps going for 10 minutes. This is the Phase 1 exit gate.
-2. Smoke-test the release build with R8 on: engine start, notification actions, opening files.
-3. Check the search providers and streaming on the device.
-4. Merge `feature/foundation-real-engine` into `dev` and tag the first pre-release.
-
-**Next: Phase 3 parity**
-- Per-torrent speed limits, tracker editing, move storage, export `.torrent`, create torrent.
-- A scheduler, and RSS rules with regex and episode filters.
-- An IP blocklist. Encryption, but only if librqbit can enforce it; otherwise the setting is hidden.
-
-**Later: Phase 4**
-- An assistant where you bring your own key (any OpenAI-compatible endpoint, including OpenRouter's free models).
-- Downloading from any URL, with resume and segmented downloads.
-
-The full task list, with state machines and priorities, is in [`docs/ROADMAP.md`](docs/ROADMAP.md). A dated record of what has landed is in [`LEDGER.md`](LEDGER.md).
-
-## Docs
+### Project docs
 
 | Doc | What's in it |
 |---|---|
@@ -129,6 +118,10 @@ The full task list, with state machines and priorities, is in [`docs/ROADMAP.md`
 | [`docs/NATIVE_CONTRACT.md`](docs/NATIVE_CONTRACT.md) | The engine boundary: JNI calls, JSON shapes, error codes. |
 | [`docs/SEARCH_CONTRACT.md`](docs/SEARCH_CONTRACT.md) | Search providers, categories and aggregation. |
 | [`docs/STATE_MACHINES_AND_SCREENS.md`](docs/STATE_MACHINES_AND_SCREENS.md) | Every screen and state transition. |
+
+The Rust ⇄ Kotlin ⇄ TypeScript boundary is defined in [`docs/NATIVE_CONTRACT.md`](docs/NATIVE_CONTRACT.md).
+
+</details>
 
 ## Legal
 
