@@ -35,6 +35,14 @@ class NetworkGovernanceManager(
     var validated: Boolean = true
         private set
 
+    /**
+     * NET_CAPABILITY_CAPTIVE_PORTAL: the network is behind a sign-in page. Only this pauses transfers; an
+     * unvalidated network without a portal (LAN-only Wi-Fi, a blocked connectivity check) keeps downloading.
+     */
+    @Volatile
+    var captivePortal: Boolean = false
+        private set
+
     /** The default network has TRANSPORT_VPN. */
     @Volatile
     var vpn: Boolean = false
@@ -58,6 +66,7 @@ class NetworkGovernanceManager(
                 connected = false
                 unmeteredLink = false
                 validated = true
+                captivePortal = false
                 vpn = false
                 gainedFor = null
                 onChanged()
@@ -87,6 +96,7 @@ class NetworkGovernanceManager(
             connected = false
             unmeteredLink = false
             validated = true
+            captivePortal = false
             vpn = false
             onChanged()
         } else {
@@ -97,6 +107,7 @@ class NetworkGovernanceManager(
     private fun update(network: Network, caps: NetworkCapabilities, announce: Boolean) {
         connected = true
         validated = caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
+        captivePortal = caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_CAPTIVE_PORTAL)
         vpn = caps.hasTransport(NetworkCapabilities.TRANSPORT_VPN)
         val gained = validated && gainedFor != network
         gainedFor = if (validated) network else null

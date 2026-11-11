@@ -1088,7 +1088,8 @@ object EngineHost {
         // Contract section 21. Only judged while the callback is registered and a network exists: no network at
         // all is "offline", which these rules do not turn into a pause.
         val linkKnown = n != null && n.monitoring && n.connected
-        val unvalidatedBlocked = linkKnown && n?.validated == false
+        // A sign-in page, not merely an unvalidated network (§21).
+        val unvalidatedBlocked = linkKnown && n?.captivePortal == true
         val vpnBlocked = g.vpnOnly && linkKnown && n?.vpn == false
         val charging = p?.charging ?: true
         val level = p?.levelPct ?: 100
@@ -1353,7 +1354,16 @@ object EngineHost {
 
     /** [action] is `stop`, `again`, `folder` or `recheck`; [dir] is only read by `folder`. */
     fun resolveFiles(id: String, action: String, indices: List<Int>, dir: String): Map<String, Any?> {
-        val res = call { NativeCore.nativeResolveFiles(id, action, Json.toJson(indices), dir) }
+        // "Pick folder" hands over a SAF tree URI; Rust needs the POSIX path behind it, as Move does.
+        var target = dir
+        if (dir.startsWith("content://")) {
+            val c = ctx ?: return Json.failure("NOT_READY", "Maglev isn't ready yet.")
+            val uri = android.net.Uri.parse(dir)
+            SafStorageManager.takePersistablePermission(c, uri)
+            target = SafStorageManager.treeToPosixPath(uri)
+                ?: return Json.failure("FILES_MISSING", "Maglev can't read that folder directly. Pick a folder on this phone.")
+        }
+        val res = call { NativeCore.nativeResolveFiles(id, action, Json.toJson(indices), target) }
         pollNow()
         return res
     }
