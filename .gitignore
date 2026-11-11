@@ -50,3 +50,8 @@ expo-env.d.ts
 # @end expo-cli
 # Local design mockups and the original icon CSS (the icon now lives in assets/brand/)
 screens/
+
+# Internal planning docs (kept local, not public)
+docs/
+LEDGER.md
+.claude/

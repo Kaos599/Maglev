@@ -49,7 +49,10 @@
 
 **Control**
 - Wi-Fi only, pause on low battery, and download only while charging.
-- Speed limits, Pause all and Resume all, and Shut down from the notification.
+- Speed limits for everything or per torrent, Pause all and Resume all, and Shut down from the notification.
+- A Quick Settings tile that pauses or resumes everything, and an alert when a download finishes.
+- A schedule for when downloads run or slow down, and feeds that add new episodes that match your rules.
+- Move a torrent's files to another folder, even mid-download.
 - OLED, Dim and Light themes with four accent colours.
 
 ## Install
@@ -66,24 +69,18 @@ Download an APK from [Releases](https://github.com/Kaos599/Maglev/releases/lates
 ## What's next
 
 **Now**
-- Per-torrent speed limits, tracker editing and moving finished downloads to another folder.
-- Sharing a torrent as a magnet link or a `.torrent` file, and creating your own.
-
-**Soon**
-- A scheduler that downloads only during the hours you choose.
-- RSS feeds that add new episodes as they come out, filtered by name.
-- Peer blocklists.
-
-**Later**
-- An optional assistant that runs on your own AI key.
+- Downloading from web mirrors listed in a torrent (web seeds), so archive.org-style torrents work.
+- Warnings on search results from sources known for fake uploads.
+- Tracker editing and exporting a `.torrent` file.
 - Downloading ordinary files from any link, with pause and resume.
 
-The full plan lives in [`docs/ROADMAP.md`](docs/ROADMAP.md).
+**Later**
+- An optional assistant that runs on your own AI key. It can search, check a result before you add it, and explain why a download is stuck. It asks before it changes anything.
 
 ## Contributing
 
 <details>
-<summary>Build from source, run the tests, and find the project docs</summary>
+<summary>Build from source and run the tests</summary>
 
 ### Build from source
 
@@ -107,16 +104,6 @@ node scripts/test-plugins.js
 ```
 
 CI also runs the Rust unit tests and checks every engine build for librqbit symbols and 16 KB page alignment.
-
-### Project docs
-
-| Doc | What's in it |
-|---|---|
-| [`AGENTS.md`](AGENTS.md) | Working rules, design tokens and the git workflow. |
-| [`docs/ROADMAP.md`](docs/ROADMAP.md) | Phases, tasks and priorities. |
-| [`docs/NATIVE_CONTRACT.md`](docs/NATIVE_CONTRACT.md) | The Rust ⇄ Kotlin ⇄ TypeScript boundary: JNI calls, JSON shapes, error codes. |
-| [`docs/SEARCH_CONTRACT.md`](docs/SEARCH_CONTRACT.md) | Search providers, categories and how results merge. |
-| [`docs/STATE_MACHINES_AND_SCREENS.md`](docs/STATE_MACHINES_AND_SCREENS.md) | Every screen and state transition. |
 
 Icons are [Pixelarticons](https://github.com/halfmage/pixelarticons) by Gerrit Halfmann (MIT).
 
