@@ -7,14 +7,17 @@ nose = "".join(f" H{80+k:g} V{45.75+0.75*k:g}" for k in range(36)) + " V74.5 H11
 # Window: a slanted parallelogram like the original drawing. Both sides step down to the right
 # (the left edge leans like a windshield, the right edge follows the nose), the top-left corner is
 # rounded off, and the frame along the nose thickens towards the base. 22 rows of 0.75 units.
+# Corner insets per row (negative keys count from the bottom row).
+SOFT_L = {0: 2.2, 1: 1.0, 2: 0.35, -1: 1.4, -2: 0.5}
+SOFT_R = {0: 1.4, 1: 0.5, -1: 2.0, -2: 0.9, -3: 0.3}
 def _window():
     rows = 22
     top = 49.5
     pts = []
     for j in range(rows):
         y0 = top + 0.75 * j
-        left = 67 + 0.6 * j + (1.6 if j == 0 else 0.6 if j == 1 else 0)   # rounded top-left corner
-        right = 84 + 0.8 * j - (0.8 if j == rows - 1 else 0)               # softened bottom-right corner
+        left = 67 + 0.6 * j + SOFT_L.get(j, SOFT_L.get(j - rows, 0))   # every corner rounded over 2-3 rows
+        right = 84 + 0.8 * j - SOFT_R.get(j, SOFT_R.get(j - rows, 0))
         pts.append((y0, y0 + 0.75, left, right))
     d = f"M{pts[0][2]:g} {pts[0][0]:g}"
     for (y0, y1, l, r) in pts:                       # down the right edge
@@ -39,22 +42,38 @@ def _cut_bottom_right(cut):
     return x + SLOPE * (rows - 1), y + 0.75 * rows
 a_x, a_y = _cut_bottom_right(CUT_A)
 b_x, b_y = _cut_bottom_right(CUT_B)
-body = ("M40 45 H79" + nose + " H34 V" + f"{b_y:g}" + f" H{b_x:g}" + _stair_up(*CUT_B, SLOPE) +
-        " H37 V54" + f" H{a_x:g}" + _stair_up(*CUT_A, SLOPE) + " H40 Z " + window)
-# Bands start at evenly staggered x (40, 37, 34). Speed lines: one thickness (1.5), centred on their
-# band, each stopping exactly 3 units short of it.
-lines = ("M17 46.5 H37 V48 H17 Z "     # band 1 (x 40)
-         "M11 55.5 H34 V57 H11 Z "     # band 2 (x 37)
-         "M19 68 H31 V69.5 H19 Z "     # band 3 (x 34), upper
-         "M14 72.5 H31 V74 H14 Z")     # band 3, lower
+# Back ends are raked like a wind trail: within each band the top row reaches furthest back.
+# Rows are 1.5 units tall. Walking up the back: (y_bottom, y_top, left_x) per row, bottom band first.
+BAND3 = [(76, 70.5, 29.5), (70.5, 69, 36), (69, 67.5, 33.5), (67.5, 66, 31)]
+BAND2 = [(58.5, 57, 40), (57, 55.5, 37), (55.5, 54, 34)]
+BAND1 = [(49.5, 48, 42.5), (48, 46.5, 40), (46.5, 45, 37)]
+def _rake(rows):
+    return "".join(f" H{x:g} V{yt:g}" for (_, yt, x) in rows)
+body = ("M37 45 H79" + nose +
+        f" H{BAND3[0][2]:g} V70.5" + "".join(f" H{x:g} V{yt:g}" for (_, yt, x) in BAND3[1:]) +
+        f" H{b_x:g}" + _stair_up(*CUT_B, SLOPE) +
+        f" H{BAND2[0][2]:g} V57" + "".join(f" H{x:g} V{yt:g}" for (_, yt, x) in BAND2[1:]) +
+        f" H{a_x:g}" + _stair_up(*CUT_A, SLOPE) +
+        f" H{BAND1[0][2]:g} V48" + "".join(f" H{x:g} V{yt:g}" for (_, yt, x) in BAND1[1:]) + " Z " + window)
+# Speed lines: varied length and weight, each leaving a band's longest row with a 2-unit gap, plus
+# faded trailing dashes (motion blur). The long middle streak leads.
+lines = ("M21 45 H35 V46.5 H21 Z "        # off band 1
+         "M7 54 H32 V55.5 H7 Z "          # lead streak off band 2
+         "M25 57.75 H37 V58.5 H25 Z "     # thin under-streak
+         "M18 66 H29 V67.5 H18 Z "        # off band 3
+         "M13 73 H27.5 V74.5 H13 Z")      # off the chassis
+dashes = ("M14 45 H18 V46.5 H14 Z "
+          "M10 66 H15 V67.5 H10 Z "
+          "M6 73 H9.5 V74.5 H6 Z")
 rails = ("M20 79.5 H29 V80.75 H20 Z "
          "M34 79.5 H67 V80.75 H68.5 V82 H70 V83.25 H40.5 V82 H36 V80.75 H34 Z "
          "M71 79.5 H112.5 V80.75 H111 V82 H108.5 V83.25 H74.5 V82 H72.5 V80.75 H71 Z")
 LIME, CYAN, VOID = "#A5FB48", "#01E5EF", "#05070A"
-VB = (10, 42, 107, 44)
+VB = (4, 42, 113, 44)
 def art(tf=""):
     return (f'<g{tf}><path fill="{LIME}" fill-rule="evenodd" d="{body}"/>'
-            f'<path fill="{CYAN}" d="{lines}"/><path fill="{CYAN}" d="{rails}"/></g>')
+            f'<path fill="{CYAN}" d="{lines}"/><path fill="{CYAN}" fill-opacity="0.5" d="{dashes}"/>'
+            f'<path fill="{CYAN}" d="{rails}"/></g>')
 open(f"{root}/assets/brand/maglev-mark.svg", "w").write(
     f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="{" ".join(map(str, VB))}" width="{VB[2]}" height="{VB[3]}">\n'
     f'  <title>Maglev mark</title>\n  {art()}\n</svg>\n')
@@ -70,6 +89,7 @@ open(f"{root}/components/brand/markPaths.ts", "w").write(
     f"export const MARK_BODY = '{body}';\n"
     f"export const MARK_LINES = '{lines}';\n"
     f"export const MARK_RAILS = '{rails}';\n"
+    f"export const MARK_DASHES = '{dashes}';\n"
     f"export const MARK_LIME = '{LIME}';\nexport const MARK_CYAN = '{CYAN}';\n")
 print("ok")
 

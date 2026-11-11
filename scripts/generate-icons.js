@@ -20,7 +20,7 @@ const root = path.resolve(__dirname, '..');
 const assets = path.join(root, 'assets');
 const ICON_SVG = path.join(assets, 'brand', 'maglev-icon.svg');
 const MARK_SVG = path.join(assets, 'brand', 'maglev-mark.svg');
-const MARK_W = 107; // viewBox of maglev-mark.svg (scripts/build-logo.py)
+const MARK_W = 113; // viewBox of maglev-mark.svg (scripts/build-logo.py)
 const MARK_H = 44;
 const TILE = '#05070A';
 
