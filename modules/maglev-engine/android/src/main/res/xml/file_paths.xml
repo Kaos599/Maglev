@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths>
+    <!-- Public Download/Maglev and any custom folder resolved to a direct path -->
+    <external-path name="external_storage" path="." />
+    <!-- App-specific external files, including Download/Maglev fallback and Staging -->
+    <external-files-path name="external_files" path="." />
+    <!-- Internal staging if no external storage exists -->
+    <files-path name="internal_files" path="." />
+</paths>

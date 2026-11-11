@@ -3,83 +3,91 @@ package com.maglev.engine.storage
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
-import android.os.ParcelFileDescriptor
+import android.provider.DocumentsContract
 import androidx.documentfile.provider.DocumentFile
 import java.io.File
-import java.io.FileInputStream
-import java.io.FileOutputStream
 
+/** Storage Access Framework helpers: persisted permission, tree to path, copy into a tree. */
 object SafStorageManager {
 
-    /**
-     * Persists URI permission across reboots when user selects a custom tree via ACTION_OPEN_DOCUMENT_TREE.
-     */
-    fun takePersistablePermission(context: Context, treeUri: Uri) {
-        try {
-            val takeFlags = Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
-            context.contentResolver.takePersistableUriPermission(treeUri, takeFlags)
-        } catch (e: Exception) {
-            // Permission already taken or not persistable
+    fun takePersistablePermission(context: Context, treeUri: Uri): Boolean {
+        return try {
+            val flags = Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+            context.contentResolver.takePersistableUriPermission(treeUri, flags)
+            true
+        } catch (_: Exception) {
+            false
         }
     }
 
-    /**
-     * Resolves and detaches a file descriptor for a child file inside the SAF document tree.
-     * Strictly calls pfd.detachFd() so the native Rust engine holds sole ownership of the fd.
-     */
-    fun getDetachedFdForFile(
-        context: Context,
-        treeUri: Uri,
-        fileName: String,
-        mimeType: String = "application/octet-stream"
-    ): Int {
-        val rootDoc = DocumentFile.fromTreeUri(context, treeUri) ?: return -1
-        var targetDoc = rootDoc.findFile(fileName)
-        if (targetDoc == null) {
-            targetDoc = rootDoc.createFile(mimeType, fileName)
+    /** True while the app still holds read and write on [treeUri]. */
+    fun hasPersistedPermission(context: Context, treeUri: Uri): Boolean =
+        context.contentResolver.persistedUriPermissions.any {
+            it.uri == treeUri && it.isReadPermission && it.isWritePermission
         }
-        val targetUri = targetDoc?.uri ?: return -1
 
-        val pfd = context.contentResolver.openFileDescriptor(targetUri, "rwt") ?: return -1
-        return pfd.detachFd()
+    /** `primary:Movies/X` becomes `/storage/emulated/0/Movies/X`. Other volumes map to `/storage/<id>/...`. */
+    fun treeToPosixPath(treeUri: Uri): String? {
+        return try {
+            val docId = DocumentsContract.getTreeDocumentId(treeUri)
+            val idx = docId.indexOf(':')
+            if (idx < 0) return null
+            val volume = docId.substring(0, idx)
+            val rel = docId.substring(idx + 1)
+            val root = if (volume == "primary") "/storage/emulated/0" else "/storage/$volume"
+            if (rel.isEmpty()) root else "$root/$rel"
+        } catch (_: Exception) {
+            null
+        }
     }
 
+    fun displayName(context: Context, treeUri: Uri): String =
+        DocumentFile.fromTreeUri(context, treeUri)?.name ?: treeUri.lastPathSegment ?: "Selected folder"
+
     /**
-     * Auto-moves a completed torrent file or directory to the destination directory.
-     * Uses atomic rename if on the same mount, otherwise copies with zero blocking.
+     * Copies [source] into the tree at [relativePath] (segments separated by `/`).
+     * Skips files that already exist with the same size. Blocking, call from IO.
+     * Returns null on success or a plain-English error.
      */
-    fun moveCompletedPayload(sourcePath: String, destinationDir: String): String? {
-        val src = File(sourcePath)
-        if (!src.exists()) return null
-
-        val dstDir = File(destinationDir)
-        if (!dstDir.exists()) {
-            dstDir.mkdirs()
-        }
-
-        val target = File(dstDir, src.name)
-
-        // Try atomic rename first
-        if (src.renameTo(target)) {
-            return target.absolutePath
-        }
-
-        // Fallback to streaming copy and delete
-        try {
-            if (src.isDirectory) {
-                src.copyRecursively(target, overwrite = true)
-                src.deleteRecursively()
-            } else {
-                FileInputStream(src).use { input ->
-                    FileOutputStream(target).use { output ->
-                        input.copyTo(output)
-                    }
-                }
-                src.delete()
+    fun copyFileIntoTree(context: Context, treeUri: Uri, relativePath: String, source: File): String? {
+        if (!source.exists()) return null
+        val root = DocumentFile.fromTreeUri(context, treeUri) ?: return "Folder is no longer available"
+        val parts = relativePath.split('/').filter { it.isNotEmpty() }
+        if (parts.isEmpty()) return null
+        var dir: DocumentFile = root
+        for (seg in parts.dropLast(1)) {
+            val existing = dir.findFile(seg)
+            dir = when {
+                existing != null && existing.isDirectory -> existing
+                else -> dir.createDirectory(seg) ?: return "Could not create folder $seg"
             }
-            return target.absolutePath
-        } catch (e: Exception) {
-            return null
         }
+        val name = parts.last()
+        val existing = dir.findFile(name)
+        if (existing != null && existing.isFile && existing.length() == source.length()) return null
+        existing?.delete()
+        val target = dir.createFile(mimeFor(name), name) ?: return "Could not create $name"
+        return try {
+            context.contentResolver.openOutputStream(target.uri, "wt")?.use { out ->
+                source.inputStream().use { it.copyTo(out, 256 * 1024) }
+            } ?: return "Could not write $name"
+            null
+        } catch (e: Exception) {
+            e.message ?: "Copy failed for $name"
+        }
+    }
+
+    /** Finds a document in the tree by relative path, or null. */
+    fun findInTree(context: Context, treeUri: Uri, relativePath: String): DocumentFile? {
+        var cur: DocumentFile = DocumentFile.fromTreeUri(context, treeUri) ?: return null
+        for (seg in relativePath.split('/').filter { it.isNotEmpty() }) {
+            cur = cur.findFile(seg) ?: return null
+        }
+        return cur
+    }
+
+    fun mimeFor(name: String): String {
+        val ext = name.substringAfterLast('.', "").lowercase()
+        return android.webkit.MimeTypeMap.getSingleton().getMimeTypeFromExtension(ext) ?: "application/octet-stream"
     }
 }

@@ -1,256 +1,162 @@
 package com.maglev.engine.service
 
-import android.app.Notification
-import android.app.NotificationChannel
-import android.app.NotificationManager
-import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
 import android.content.Intent
+import android.content.pm.ServiceInfo
+import android.net.wifi.WifiManager
 import android.os.Build
+import android.os.Handler
 import android.os.IBinder
+import android.os.Looper
 import android.os.PowerManager
-import androidx.core.app.NotificationCompat
-import com.maglev.engine.MaglevEngineModule
+import android.os.SystemClock
+import android.util.Log
+import androidx.core.app.ServiceCompat
+import com.maglev.engine.EngineHost
 
+/**
+ * Foreground service (type dataSync) that keeps the process alive while torrents run.
+ * Started and stopped by [EngineHost] from telemetry; JS never manages it.
+ */
 class MaglevTorrentService : Service() {
 
     companion object {
-        const val CHANNEL_ID = "maglev_transfers_channel"
-        const val NOTIFICATION_ID = 9001
+        const val ACTION_START = "com.maglev.engine.action.START"
+        const val ACTION_UPDATE = "com.maglev.engine.action.UPDATE"
+        const val ACTION_PAUSE_ALL = "com.maglev.engine.action.PAUSE_ALL"
+        const val ACTION_RESUME_ALL = "com.maglev.engine.action.RESUME_ALL"
+        const val ACTION_SHUTDOWN = "com.maglev.engine.action.SHUTDOWN"
 
-        const val ACTION_UPDATE_TELEMETRY = "com.maglev.engine.ACTION_UPDATE_TELEMETRY"
-        const val ACTION_STOP_SERVICE = "com.maglev.engine.ACTION_STOP_SERVICE"
-        const val ACTION_PAUSE_ALL = "com.maglev.engine.ACTION_PAUSE_ALL"
+        private const val TAG = "MaglevService"
+        private const val LOCK_TIMEOUT_MS = 15 * 60 * 1000L
+        private const val LOCK_REFRESH_MS = 10 * 60 * 1000L
 
-        const val EXTRA_ACTIVE_DOWNLOADS = "extra_active_downloads"
-        const val EXTRA_ACTIVE_UPLOADS = "extra_active_uploads"
-        const val EXTRA_DOWN_SPEED = "extra_down_speed"
-        const val EXTRA_UP_SPEED = "extra_up_speed"
-
-        private var wakeLock: PowerManager.WakeLock? = null
-
-        fun updateService(
-            context: Context,
-            activeDown: Int,
-            activeUp: Int,
-            downSpeedBytes: Long,
-            upSpeedBytes: Long
-        ) {
-            val totalActive = activeDown + activeUp
-            if (totalActive <= 0) {
-                stopService(context)
-                return
-            }
-
-            val intent = Intent(context, MaglevTorrentService::class.java).apply {
-                action = ACTION_UPDATE_TELEMETRY
-                putExtra(EXTRA_ACTIVE_DOWNLOADS, activeDown)
-                putExtra(EXTRA_ACTIVE_UPLOADS, activeUp)
-                putExtra(EXTRA_DOWN_SPEED, downSpeedBytes)
-                putExtra(EXTRA_UP_SPEED, upSpeedBytes)
-            }
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                context.startForegroundService(intent)
-            } else {
-                context.startService(intent)
-            }
-        }
-
-        fun stopService(context: Context) {
-            val stopIntent = Intent(context, MaglevTorrentService::class.java).apply {
-                action = ACTION_STOP_SERVICE
-            }
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                context.startForegroundService(stopIntent)
-            } else {
-                context.startService(stopIntent)
-            }
-        }
+        @Volatile
+        var instance: MaglevTorrentService? = null
+            private set
     }
 
-    private val notificationManager by lazy {
-        getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-    }
+    private val handler = Handler(Looper.getMainLooper())
+    private var wakeLock: PowerManager.WakeLock? = null
+    private var wifiLock: WifiManager.WifiLock? = null
+    private var lockAcquiredAt = 0L
+    private var lastKey: String? = null
+    private var lastNotifyAt = 0L
+    private var summary = TransferSummary()
+
+    /** True once startForeground succeeded. [EngineHost] only stops a service that reached this state. */
+    @Volatile
+    var isForeground: Boolean = false
+        private set
+
+    override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onCreate() {
         super.onCreate()
-        createNotificationChannel()
+        instance = this
+        EngineHost.attach(applicationContext)
+        Notifications.ensureChannels(this)
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        if (intent == null) return START_NOT_STICKY
+        // startForegroundService() obliges us to call startForeground() for every start, whatever the action.
+        if (!enterForeground()) {
+            stopSelf()
+            return START_NOT_STICKY
+        }
+        when (intent?.action) {
+            ACTION_PAUSE_ALL -> EngineHost.pauseAllFromNotification()
+            ACTION_RESUME_ALL -> EngineHost.resumeAllFromNotification()
+            ACTION_SHUTDOWN -> EngineHost.shutdownFromNotification()
+            else -> Unit
+        }
+        return START_NOT_STICKY
+    }
 
-        when (intent.action) {
-            ACTION_STOP_SERVICE -> {
-                // SLA CONTRACT: When active count is 0 or stop requested,
-                // immediately release WakeLock and satisfy Android 8+ foreground service
-                // requirements before stopping self
-                releaseWakeLock()
-                val notification = buildTelemetryNotification(0, 0, 0L, 0L)
-                startForeground(NOTIFICATION_ID, notification)
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-                    stopForeground(STOP_FOREGROUND_REMOVE)
-                } else {
-                    @Suppress("DEPRECATION")
-                    stopForeground(true)
+    private fun enterForeground(): Boolean {
+        return try {
+            val n = Notifications.ongoing(this, summary)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                ServiceCompat.startForeground(this, Notifications.ID_ONGOING, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
+            } else {
+                startForeground(Notifications.ID_ONGOING, n)
+            }
+            isForeground = true
+            true
+        } catch (e: Exception) {
+            // ForegroundServiceStartNotAllowedException (API 31+), SecurityException for a missing type permission, and similar.
+            Log.w(TAG, "startForeground refused: ${e.javaClass.simpleName}: ${e.message}")
+            EngineHost.onServiceStartBlocked(e.message ?: e.javaClass.simpleName)
+            false
+        }
+    }
+
+    /** Called from the engine poller. Thread-safe. */
+    fun onSummary(s: TransferSummary) {
+        handler.post {
+            summary = s
+            updateLocks(s.active > 0)
+            val key = Notifications.title(s) + "|" + Notifications.text(s) + "|" + s.progressPct + "|" + (s.active > 0)
+            val now = SystemClock.elapsedRealtime()
+            if (isForeground && key != lastKey && now - lastNotifyAt >= 1000) {
+                lastKey = key
+                lastNotifyAt = now
+                Notifications.update(this, Notifications.ongoing(this, s))
+            }
+        }
+    }
+
+    /** Android 15 dataSync timeout. Must stop within seconds. Contract-compatible: pause via governance, tell the user. */
+    override fun onTimeout(startId: Int, fgsType: Int) {
+        Log.w(TAG, "foreground service timeout, type=$fgsType")
+        EngineHost.onFgsTimeout()
+        Notifications.notifyTimeout(this)
+        stopSelf()
+    }
+
+    @Suppress("DEPRECATION")
+    private fun updateLocks(active: Boolean) {
+        val now = SystemClock.elapsedRealtime()
+        if (active) {
+            if (wakeLock == null) {
+                val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
+                wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "Maglev:transfer").apply { setReferenceCounted(false) }
+            }
+            if (wifiLock == null) {
+                val wm = applicationContext.getSystemService(Context.WIFI_SERVICE) as? WifiManager
+                wifiLock = wm?.createWifiLock(WifiManager.WIFI_MODE_FULL_HIGH_PERF, "Maglev:wifi")?.apply { setReferenceCounted(false) }
+            }
+            val stale = now - lockAcquiredAt >= LOCK_REFRESH_MS
+            if (wakeLock?.isHeld != true || stale) {
+                try {
+                    wakeLock?.acquire(LOCK_TIMEOUT_MS)
+                    if (wifiLock?.isHeld != true) wifiLock?.acquire()
+                    lockAcquiredAt = now
+                } catch (e: Exception) {
+                    Log.w(TAG, "lock acquire failed: ${e.message}")
                 }
-                stopSelf()
-                return START_NOT_STICKY
             }
-
-            ACTION_PAUSE_ALL -> {
-                MaglevEngineModule.onPauseAllRequested()
-                releaseWakeLock()
-                val notification = buildTelemetryNotification(0, 0, 0L, 0L)
-                startForeground(NOTIFICATION_ID, notification)
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-                    stopForeground(STOP_FOREGROUND_REMOVE)
-                } else {
-                    @Suppress("DEPRECATION")
-                    stopForeground(true)
-                }
-                stopSelf()
-                return START_NOT_STICKY
-            }
-
-            ACTION_UPDATE_TELEMETRY -> {
-                val activeDown = intent.getIntExtra(EXTRA_ACTIVE_DOWNLOADS, 0)
-                val activeUp = intent.getIntExtra(EXTRA_ACTIVE_UPLOADS, 0)
-                val totalActive = activeDown + activeUp
-
-                if (totalActive <= 0) {
-                    // SLA CONTRACT: When active count is 0, immediately release WakeLock
-                    // and remove foreground notification without leaving idle clutter
-                    releaseWakeLock()
-                    val notification = buildTelemetryNotification(0, 0, 0L, 0L)
-                    startForeground(NOTIFICATION_ID, notification)
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-                        stopForeground(STOP_FOREGROUND_REMOVE)
-                    } else {
-                        @Suppress("DEPRECATION")
-                        stopForeground(true)
-                    }
-                    stopSelf()
-                    return START_NOT_STICKY
-                }
-
-                // Transfers active: acquire Partial WakeLock to prevent CPU sleep
-                acquireWakeLock()
-
-                val downSpeed = intent.getLongExtra(EXTRA_DOWN_SPEED, 0L)
-                val upSpeed = intent.getLongExtra(EXTRA_UP_SPEED, 0L)
-                val notification = buildTelemetryNotification(activeDown, activeUp, downSpeed, upSpeed)
-                startForeground(NOTIFICATION_ID, notification)
-            }
-        }
-
-        return START_STICKY
-    }
-
-    private fun acquireWakeLock() {
-        if (wakeLock == null) {
-            val powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
-            wakeLock = powerManager.newWakeLock(
-                PowerManager.PARTIAL_WAKE_LOCK,
-                "Maglev::TransferWakeLock"
-            ).apply {
-                setReferenceCounted(false)
-            }
-        }
-        wakeLock?.let {
-            if (!it.isHeld) {
-                it.acquire(60 * 60 * 1000L) // 1 hr max safety timeout
-            }
+        } else {
+            releaseLocks()
         }
     }
 
-    private fun releaseWakeLock() {
-        wakeLock?.let {
-            if (it.isHeld) {
-                it.release()
-            }
+    private fun releaseLocks() {
+        try {
+            if (wakeLock?.isHeld == true) wakeLock?.release()
+            if (wifiLock?.isHeld == true) wifiLock?.release()
+        } catch (_: Exception) {
         }
-        wakeLock = null
-    }
-
-    private fun buildTelemetryNotification(
-        activeDown: Int,
-        activeUp: Int,
-        downSpeedBytes: Long,
-        upSpeedBytes: Long
-    ): Notification {
-        val launchIntent = packageManager.getLaunchIntentForPackage(packageName)
-        val pendingIntent = PendingIntent.getActivity(
-            this,
-            0,
-            launchIntent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
-
-        val downFormatted = formatSpeed(downSpeedBytes)
-        val upFormatted = formatSpeed(upSpeedBytes)
-        val content = "↓ $downFormatted  •  ↑ $upFormatted  ($activeDown active)"
-
-        val pauseAllIntent = Intent(this, MaglevTorrentService::class.java).apply {
-            action = ACTION_PAUSE_ALL
-        }
-        val pauseAllPendingIntent = PendingIntent.getService(
-            this,
-            1,
-            pauseAllIntent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
-
-        val stopAllIntent = Intent(this, MaglevTorrentService::class.java).apply {
-            action = ACTION_STOP_SERVICE
-        }
-        val stopAllPendingIntent = PendingIntent.getService(
-            this,
-            2,
-            stopAllIntent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
-
-        return NotificationCompat.Builder(this, CHANNEL_ID)
-            .setContentTitle("Maglev Transfers")
-            .setContentText(content)
-            .setSmallIcon(android.R.drawable.stat_sys_download)
-            .setOngoing(true)
-            .setOnlyAlertOnce(true)
-            .setPriority(NotificationCompat.PRIORITY_LOW)
-            .setContentIntent(pendingIntent)
-            .addAction(android.R.drawable.ic_media_pause, "Pause All", pauseAllPendingIntent)
-            .addAction(android.R.drawable.ic_menu_close_clear_cancel, "Stop All", stopAllPendingIntent)
-            .build()
-    }
-
-    private fun formatSpeed(bytesPerSec: Long): String {
-        return when {
-            bytesPerSec >= 1024 * 1024 -> String.format("%.1f MB/s", bytesPerSec / (1024.0 * 1024.0))
-            bytesPerSec >= 1024 -> String.format("%.0f KB/s", bytesPerSec / 1024.0)
-            else -> "$bytesPerSec B/s"
-        }
-    }
-
-    private fun createNotificationChannel() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val channel = NotificationChannel(
-                CHANNEL_ID,
-                "Active Transfers",
-                NotificationManager.IMPORTANCE_LOW
-            ).apply {
-                description = "Maglev BitTorrent transfer speeds and activity"
-                setShowBadge(false)
-            }
-            notificationManager.createNotificationChannel(channel)
-        }
+        lockAcquiredAt = 0L
     }
 
     override fun onDestroy() {
-        releaseWakeLock()
+        handler.removeCallbacksAndMessages(null)
+        releaseLocks()
+        isForeground = false
+        instance = null
+        ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
         super.onDestroy()
     }
-
-    override fun onBind(intent: Intent?): IBinder? = null
 }

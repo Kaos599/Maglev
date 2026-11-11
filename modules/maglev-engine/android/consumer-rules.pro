@@ -1,9 +1,9 @@
 # ProGuard / R8 rules for Maglev Engine
--keep class com.maglev.engine.** { *; }
+# JNI: Rust looks these classes and methods up by name.
+-keep class com.maglev.engine.NativeCore { *; }
 -keepclassmembers class * {
     native <methods>;
 }
--keepclassmembers class com.maglev.engine.MaglevEngineModule$Companion {
-    public static void onTelemetryUpdate(java.lang.String);
-    public static void onPauseAllRequested();
-}
+-keep class com.maglev.engine.MaglevEngineModule { *; }
+-keep class com.maglev.engine.service.MaglevTorrentService { *; }
+-keep class com.maglev.engine.storage.MaglevFileProvider { *; }
