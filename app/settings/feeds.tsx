@@ -12,6 +12,8 @@ import { Feed, FeedItem, fetchFeed, loadFeeds, relativeTime } from '../../utils/
 import { INTERVALS, newFeedRule, updateFeedAutomation, useFeedAutomation } from '../../utils/prefs/feedAutomation';
 
 const STATUS_REFRESH_MS = 20_000;
+/** Let the push transition finish before reading storage or calling native (InteractionManager is gone from RN 0.88). */
+const SETTLE_MS = 250;
 
 function ruleSubtitle(r: FeedRule, feeds: Feed[]): string {
   const where = r.feedIds.length === 0 ? 'All feeds' : feeds.filter((f) => r.feedIds.includes(f.id)).map((f) => f.name).join(', ') || 'Feed removed';
@@ -23,11 +25,18 @@ export default function AutoDownloadSettings() {
   const { colors } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const [auto] = useFeedAutomation();
-  const feeds = useMemo(() => loadFeeds(), []);
+  // The saved feed list is read after the transition, not during the first render.
+  const [loadedFeeds, setFeeds] = useState<Feed[] | null>(null);
+  const feeds = useMemo(() => loadedFeeds ?? [], [loadedFeeds]);
   const [itemsByFeed, setItemsByFeed] = useState<Record<string, FeedItem[] | undefined>>({});
   const [status, setStatus] = useState<FeedAutomationStatus | null>(null);
   const [checking, setChecking] = useState(false);
   const [editing, setEditing] = useState<{ rule: FeedRule; isNew: boolean } | null>(null);
+
+  useEffect(() => {
+    const t = setTimeout(() => setFeeds(loadFeeds()), SETTLE_MS);
+    return () => clearTimeout(t);
+  }, []);
 
   // Load the feeds once so the rule editor can preview matches.
   useEffect(() => {
@@ -55,9 +64,12 @@ export default function AutoDownloadSettings() {
   }, []);
 
   useEffect(() => {
-    void refresh();
+    const first = setTimeout(() => void refresh(), SETTLE_MS);
     const timer = setInterval(() => void refresh(), STATUS_REFRESH_MS);
-    return () => clearInterval(timer);
+    return () => {
+      clearTimeout(first);
+      clearInterval(timer);
+    };
   }, [refresh]);
 
   const checkNow = async () => {
@@ -112,7 +124,7 @@ export default function AutoDownloadSettings() {
 
       <View style={styles.section}>
         <SectionHeader title="Rules" />
-        {feeds.length === 0 ? (
+        {loadedFeeds !== null && feeds.length === 0 ? (
           <Caption>You do not follow any feeds yet. Add one in the Feeds tab, then make a rule here.</Caption>
         ) : null}
         {auto.rules.length === 0 ? (

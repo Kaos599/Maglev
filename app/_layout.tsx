@@ -62,8 +62,9 @@ function AppNavigation() {
         screenOptions={{
           headerShown: false,
           contentStyle: { backgroundColor: colors.bg },
-          animation: 'slide_from_right',
-          animationDuration: 200, // Snappy 200ms screen switch
+          // Android duration is fixed by the animation XML (animationDuration is iOS-only in react-native-screens 4.30).
+          // 'ios_from_right' is directional and uses config_shortAnimTime (~200 ms); 'slide_from_right' uses config_mediumAnimTime (~400 ms).
+          animation: 'ios_from_right',
           gestureEnabled: true,
         }}
       >
@@ -80,15 +81,13 @@ function AppNavigation() {
             options={{
               presentation: 'modal',
               animation: 'slide_from_bottom',
-              animationDuration: 220,
               headerShown: false,
             }}
           />
           <Stack.Screen
             name="torrent/[id]"
             options={{
-              animation: 'slide_from_right',
-              animationDuration: 200,
+              animation: 'ios_from_right',
               gestureEnabled: true,
               headerShown: false,
             }}

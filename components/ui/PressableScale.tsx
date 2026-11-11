@@ -75,8 +75,9 @@ export function PressableScale({
         // A press that navigates away can lose its onPressOut; never leave the pressed look behind.
         setPressed(false);
         to(1);
-        if (haptic) triggerHaptic('light');
+        // Navigation first; the haptic must never sit in front of it.
         onPress?.(e);
+        if (haptic) triggerHaptic('light');
       }}
     >
       <Animated.View

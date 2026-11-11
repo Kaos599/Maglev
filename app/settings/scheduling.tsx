@@ -50,10 +50,11 @@ export default function SchedulingSettings() {
 
   // Native applies the new schedule asynchronously, so look again shortly after a change.
   useEffect(() => {
-    void refresh();
+    const first = setTimeout(() => void refresh(), 250); // after the push transition
     const quick = setTimeout(() => void refresh(), 600);
     const timer = setInterval(() => void refresh(), STATUS_REFRESH_MS);
     return () => {
+      clearTimeout(first);
       clearTimeout(quick);
       clearInterval(timer);
     };

@@ -1,6 +1,6 @@
-import React, { useMemo } from 'react';
+import React, { useCallback, useMemo } from 'react';
 import { Linking, StyleSheet, View } from 'react-native';
-import { useRouter } from 'expo-router';
+import { router } from 'expo-router';
 import Constants from 'expo-constants';
 import { maglevEngine } from 'maglev-engine';
 import { useSettings } from '../../context/SettingsContext';
@@ -16,15 +16,30 @@ import { spacing } from '../../constants/theme';
 const ACCENT_LABEL = { lime: 'Lime', cyan: 'Cyan', pink: 'Pink', orange: 'Orange' } as const;
 const MODE_LABEL = { oled: 'OLED', dim: 'Dim', light: 'Light', system: 'System' } as const;
 
-export default function SettingsIndex() {
-  const router = useRouter();
-  const { settings } = useSettings();
-  const { permissionStatus, storageStatus, defaultStoragePath, refreshPermissions } = useEngine();
-  const [searchPrefs] = useSearchPrefs();
-  const [schedule] = useSchedule();
-  const [feedAuto] = useFeedAutomation();
-  const { bandwidth: b, network: n, power: p, appearance: a } = settings;
+interface RowSpec {
+  icon: PixelIconName;
+  title: string;
+  value: string;
+  route: string;
+}
 
+/** One settings row. Memoised so a telemetry tick or an unrelated change never re-renders the list. */
+const SettingsRow = React.memo(function SettingsRow({ icon, title, value, route }: RowSpec) {
+  const onPress = useCallback(() => router.push(`/settings/${route}` as never), [route]);
+  return <ListRow icon={icon} title={title} value={value} onPress={onPress} />;
+});
+
+/** Storage row: the only row that reads the engine, kept apart so the rest of the list stays still. */
+function StorageRow() {
+  const { settings } = useSettings();
+  const { storageStatus, defaultStoragePath } = useEngine();
+  const folder = settings.downloadFolder?.displayName ?? friendlyPath(storageStatus?.path || defaultStoragePath);
+  return <SettingsRow icon="folder" title="Storage" value={folder} route="storage" />;
+}
+
+/** Warning banners. Reads engine state itself, so engine ticks re-render only this block. */
+function NeedsAttention() {
+  const { permissionStatus, storageStatus, refreshPermissions } = useEngine();
   const attention = useMemo(() => {
     const items: React.ReactElement[] = [];
     if (permissionStatus?.notifications === 'denied') {
@@ -85,9 +100,27 @@ export default function SettingsIndex() {
       );
     }
     return items;
-  }, [permissionStatus, storageStatus, refreshPermissions, router]);
+  }, [permissionStatus, storageStatus, refreshPermissions]);
 
-  const folder = settings.downloadFolder?.displayName ?? friendlyPath(storageStatus?.path || defaultStoragePath);
+  if (attention.length === 0) return null;
+  return (
+    <View style={styles.section}>
+      <SectionHeader title="Needs attention" />
+      {attention}
+    </View>
+  );
+}
+
+const APP_VERSION = Constants.expoConfig?.version ?? '';
+
+export default function SettingsIndex() {
+  const { settings } = useSettings();
+  const [searchPrefs] = useSearchPrefs();
+  const [schedule] = useSchedule();
+  const [feedAuto] = useFeedAutomation();
+  const { bandwidth: b, network: n, power: p, appearance: a } = settings;
+
+  // Strings only, so the memoised rows below see equal props until a value really changes.
   const limits =
     b.downloadLimitBytesPerSec <= 0 && b.uploadLimitBytesPerSec <= 0
       ? 'Unlimited'
@@ -98,37 +131,32 @@ export default function SettingsIndex() {
       : p.downloadOnlyWhileCharging
         ? 'Charging only'
         : 'Off';
+  const queue = `${b.maxActiveDownloads} at a time`;
+  const interfaceValue = `${MODE_LABEL[a.mode]} · ${ACCENT_LABEL[a.accent]}`;
+  const network = n.wifiOnly ? 'Wi-Fi only' : 'Any network';
+  const scheduling = scheduleSummary(schedule);
+  const providers = `${searchPrefs.enabled.length} on`;
+  const auto = feedAutomationSummary(feedAuto);
 
-  const rows: { icon: PixelIconName; title: string; value: string; route: string }[] = [
-    { icon: 'folder', title: 'Storage', value: folder, route: 'storage' },
+  const rows: RowSpec[] = [
     { icon: 'bandwidth', title: 'Bandwidth', value: limits, route: 'bandwidth' },
-    { icon: 'queue', title: 'Torrents & queue', value: `${b.maxActiveDownloads} at a time`, route: 'queue' },
-    { icon: 'interface', title: 'Interface', value: `${MODE_LABEL[a.mode]} · ${ACCENT_LABEL[a.accent]}`, route: 'interface' },
-    { icon: 'network', title: 'Network', value: n.wifiOnly ? 'Wi-Fi only' : 'Any network', route: 'network' },
+    { icon: 'queue', title: 'Torrents & queue', value: queue, route: 'queue' },
+    { icon: 'interface', title: 'Interface', value: interfaceValue, route: 'interface' },
+    { icon: 'network', title: 'Network', value: network, route: 'network' },
     { icon: 'power', title: 'Power', value: power, route: 'power' },
-    { icon: 'schedule', title: 'Scheduling', value: scheduleSummary(schedule), route: 'scheduling' },
-    { icon: 'search', title: 'Search providers', value: `${searchPrefs.enabled.length} on`, route: 'search-providers' },
-    { icon: 'feeds', title: 'Auto-download', value: feedAutomationSummary(feedAuto), route: 'feeds' },
-    { icon: 'about', title: 'About', value: Constants.expoConfig?.version ?? '', route: 'about' },
+    { icon: 'schedule', title: 'Scheduling', value: scheduling, route: 'scheduling' },
+    { icon: 'search', title: 'Search providers', value: providers, route: 'search-providers' },
+    { icon: 'feeds', title: 'Auto-download', value: auto, route: 'feeds' },
+    { icon: 'about', title: 'About', value: APP_VERSION, route: 'about' },
   ];
 
   return (
     <Screen title="SETTINGS" scroll contentStyle={styles.content}>
-      {attention.length > 0 ? (
-        <View style={styles.section}>
-          <SectionHeader title="Needs attention" />
-          {attention}
-        </View>
-      ) : null}
+      <NeedsAttention />
       <Card>
+        <StorageRow />
         {rows.map((r) => (
-          <ListRow
-            key={r.route}
-            icon={r.icon}
-            title={r.title}
-            value={r.value}
-            onPress={() => router.push(`/settings/${r.route}` as never)}
-          />
+          <SettingsRow key={r.route} {...r} />
         ))}
       </Card>
     </Screen>
