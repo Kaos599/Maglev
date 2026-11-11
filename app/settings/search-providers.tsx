@@ -10,7 +10,8 @@ import { ProviderSheet, TestOutcome } from '../../components/search-providers/Pr
 import { TorznabDraft, TorznabSheet } from '../../components/search-providers/TorznabSheet';
 import { ProviderInfo, TORZNAB_PREFIX, allProviderInfo, coverage, formatSeconds } from '../../components/search/meta';
 import { loadExtraProviders } from '../../components/search/extra';
-import { SearchPrefs, deleteTorznabApiKey, setTorznabApiKey, useSearchPrefs } from '../../utils/prefs/search';
+import { clearCookies } from 'maglev-engine';
+import { SearchPrefs, clearSiteChecks, deleteTorznabApiKey, setTorznabApiKey, useSearchPrefs } from '../../utils/prefs/search';
 import { testProvider } from '../../utils/search/aggregate';
 import type { Category } from '../../utils/search/types';
 
@@ -219,6 +220,17 @@ export default function SearchProvidersSettings() {
           subtitle="Mark results from sources known for fake or harmful uploads."
           accessory={<Toggle value={prefs.warnUnsafe} onValueChange={(warnUnsafe) => update({ warnUnsafe })} accessibilityLabel="Warn about risky sources" />}
         />
+        {prefs.clearances.length > 0 ? (
+          <ListRow
+            icon="trash"
+            title="Clear site checks"
+            subtitle={`Forget the checks you passed on ${prefs.clearances.length} ${prefs.clearances.length === 1 ? 'site' : 'sites'}. You'll be asked again.`}
+            onPress={() => {
+              const hosts = clearSiteChecks();
+              void clearCookies(hosts.map((h) => `https://${h.host}/`));
+            }}
+          />
+        ) : null}
       </Card>
 
       <View style={styles.section}>

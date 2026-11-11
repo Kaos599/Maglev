@@ -279,6 +279,36 @@ class MaglevEngineModule : Module() {
 
         // endregion
 
+        // region Site checks (docs/SEARCH_CONTRACT.md section 8)
+
+        // Cookies the shared WebView jar holds for a URL ("a=1; b=2"), or "" when none.
+        // CookieManager.getCookie includes HttpOnly cookies such as cf_clearance.
+        AsyncFunction("getCookies") { url: String, promise: Promise ->
+            promise.resolve(runCatching { android.webkit.CookieManager.getInstance().getCookie(url) }.getOrNull() ?: "")
+        }
+
+        // Expires every cookie the jar holds for each URL (the hosts the user passed a check on). Returns how many were removed.
+        AsyncFunction("clearCookies") { urls: List<String>, promise: Promise ->
+            var removed = 0
+            runCatching {
+                val cm = android.webkit.CookieManager.getInstance()
+                for (url in urls) {
+                    val host = Uri.parse(url).host ?: continue
+                    val names = cm.getCookie(url)?.split(";")?.map { it.substringBefore("=").trim() }?.filter { it.isNotEmpty() } ?: continue
+                    for (name in names) {
+                        // The jar matches on name, domain and path: expire both the host and its dotted domain.
+                        cm.setCookie(url, "$name=; Max-Age=0; Path=/")
+                        cm.setCookie(url, "$name=; Domain=.$host; Max-Age=0; Path=/")
+                        removed++
+                    }
+                }
+                cm.flush()
+            }
+            promise.resolve(removed)
+        }
+
+        // endregion
+
         // region Governance
 
         AsyncFunction("setGovernance") { rules: Map<String, Any?>, promise: Promise ->

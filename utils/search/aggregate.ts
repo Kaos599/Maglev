@@ -113,6 +113,34 @@ export function mergeResults(rows: SearchResult[], priority: string[]): MergedRe
   return out;
 }
 
+/** Adds one provider's late rows (for example after a solved check) to an existing merged list. */
+export function mergeInto(existing: MergedResult[], rows: SearchResult[], priority: string[]): MergedResult[] {
+  const prio = (id: string) => {
+    const i = priority.indexOf(id);
+    return i < 0 ? Number.MAX_SAFE_INTEGER : i;
+  };
+  const byHash = new Map(existing.map((m) => [m.infoHash, m]));
+  for (const r of rows) {
+    const m = byHash.get(r.infoHash);
+    if (!m) {
+      byHash.set(r.infoHash, { ...r, sources: [r.providerId] });
+      continue;
+    }
+    const pick = (a?: number, b?: number, f: (x: number, y: number) => number = Math.max) => (a === undefined ? b : b === undefined ? a : f(a, b));
+    const sources = Array.from(new Set([...m.sources, r.providerId])).sort((a, b) => prio(a) - prio(b));
+    const better = rank(r.seeders) > rank(m.seeders);
+    byHash.set(r.infoHash, {
+      ...(better ? r : m),
+      seeders: pick(m.seeders, r.seeders),
+      leechers: pick(m.leechers, r.leechers),
+      publishedAt: pick(m.publishedAt, r.publishedAt, Math.min),
+      sizeBytes: m.sizeBytes ?? r.sizeBytes,
+      sources,
+    });
+  }
+  return Array.from(byHash.values());
+}
+
 export function sortResults(list: MergedResult[], sort: SortKey = 'seeders'): MergedResult[] {
   const bySeeders = (a: MergedResult, b: MergedResult) => rank(b.seeders) - rank(a.seeders);
   const cmp: Record<SortKey, (a: MergedResult, b: MergedResult) => number> = {
@@ -213,6 +241,10 @@ async function runProvider(a: RunArgs): Promise<RunOutcome> {
   } catch (e) {
     if (e instanceof ProviderError) {
       if (e.kind === 'cancelled') return finish('error', [], 'Cancelled');
+      // A check page is not a failure of the source: no health penalty. Without a solver URL it stays 'blocked'.
+      if (e.kind === 'challenge') {
+        return p.cloudflare ? finish('challenge', [], 'Needs a quick check') : finish('blocked', [], 'Blocked by a bot check');
+      }
       recordFailure(p.id);
       if (e.kind === 'timeout') return finish('timeout', [], e.message);
       if (e.kind === 'blocked') return finish('blocked', [], e.message);
@@ -288,6 +320,41 @@ export async function searchAll(q: string, category: Category, opts: SearchOptio
   const final = snapshot(true);
   emit(final);
   return final;
+}
+
+export interface RerunOptions extends ProviderPrefs {
+  mirrorOverride?: Record<string, string>;
+  waitSeconds?: number;
+  limit?: number;
+  hideDead?: boolean;
+  page?: number;
+  signal?: AbortSignal;
+}
+
+/**
+ * Re-runs one provider after the user solved its Cloudflare check. Exactly one attempt: if the host answers
+ * with a challenge again it stays 'challenge' (the HTTP layer drops the clearance) and nothing loops.
+ */
+export async function rerunProvider(
+  id: string,
+  q: string,
+  category: Category,
+  opts: RerunOptions,
+): Promise<{ status: SourceStatus; results: SearchResult[] } | null> {
+  const p = lookup(id, opts.extraProviders);
+  if (!p || !q.trim()) return null;
+  return runProvider({
+    provider: p,
+    q: q.trim(),
+    category,
+    page: opts.page ?? 1,
+    limit: opts.limit ?? 50,
+    hideAdult: !opts.adult,
+    hideDead: opts.hideDead ?? true,
+    waitMs: (opts.waitSeconds ?? 8) * 1000,
+    mirrorOverride: opts.mirrorOverride?.[p.id] || undefined,
+    cancel: opts.signal,
+  });
 }
 
 export interface TestOptions {

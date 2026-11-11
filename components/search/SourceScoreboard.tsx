@@ -11,7 +11,7 @@ export interface ScoreboardEntry {
   name: string;
 }
 
-function outcome(s: SourceStatus): { text: string; kind: 'ok' | 'empty' | 'fail' | 'wait' } {
+function outcome(s: SourceStatus): { text: string; kind: 'ok' | 'empty' | 'fail' | 'wait' | 'check' } {
   switch (s.state) {
     case 'searching':
       return { text: '', kind: 'wait' };
@@ -21,6 +21,8 @@ function outcome(s: SourceStatus): { text: string; kind: 'ok' | 'empty' | 'fail'
       return { text: '0', kind: 'empty' };
     case 'timeout':
       return { text: 'timed out', kind: 'fail' };
+    case 'challenge':
+      return { text: 'Needs a quick check', kind: 'check' };
     case 'blocked':
       return { text: 'blocked', kind: 'fail' };
     default:
@@ -47,11 +49,14 @@ export function SourceScoreboard({
   entries,
   selected,
   onSelect,
+  onSolve,
 }: {
   entries: ScoreboardEntry[];
   /** Provider id the list is filtered to, or null. */
   selected: string | null;
   onSelect: (providerId: string | null) => void;
+  /** Tapping a source that needs a Cloudflare check opens the solver for it. */
+  onSolve?: (providerId: string) => void;
 }) {
   const { colors } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -60,29 +65,30 @@ export function SourceScoreboard({
       {entries.map(({ status, name }) => {
         const o = outcome(status);
         const isSel = selected === status.providerId;
-        const tone = o.kind === 'fail' ? colors.danger : o.kind === 'empty' ? colors.textMuted : colors.text;
+        const tone = o.kind === 'fail' || o.kind === 'check' ? colors.danger : o.kind === 'empty' ? colors.textMuted : colors.text;
         const canFilter = o.kind === 'ok';
+        const canSolve = o.kind === 'check' && !!onSolve;
         const label =
           o.kind === 'wait' ? `${name}, still searching` : `${name}, ${o.kind === 'ok' ? `${status.count} results` : o.kind === 'empty' ? 'no results' : o.text}`;
         return (
           <PressableScale
             key={status.providerId}
-            onPress={canFilter ? () => onSelect(isSel ? null : status.providerId) : undefined}
-            disabled={!canFilter}
+            onPress={canFilter ? () => onSelect(isSel ? null : status.providerId) : canSolve ? () => onSolve?.(status.providerId) : undefined}
+            disabled={!canFilter && !canSolve}
             accessibilityRole="button"
             accessibilityLabel={label}
-            accessibilityHint={canFilter ? (isSel ? 'Show all sources' : 'Show only this source') : undefined}
-            accessibilityState={{ selected: isSel, disabled: !canFilter }}
+            accessibilityHint={canFilter ? (isSel ? 'Show all sources' : 'Show only this source') : canSolve ? 'Opens a quick check for this source' : undefined}
+            accessibilityState={{ selected: isSel, disabled: !canFilter && !canSolve }}
             style={() => [
               styles.chip,
               o.kind === 'ok' && styles.ok,
               o.kind === 'empty' && styles.empty,
-              o.kind === 'fail' && styles.fail,
+              (o.kind === 'fail' || o.kind === 'check') && styles.fail,
               o.kind === 'wait' && styles.wait,
               isSel && styles.selected,
             ]}
           >
-            {o.kind === 'fail' ? <PixelIcon name="warning" size={16} color={colors.danger} /> : null}
+            {o.kind === 'fail' || o.kind === 'check' ? <PixelIcon name="warning" size={16} color={colors.danger} /> : null}
             <Text style={[styles.name, { color: isSel ? colors.accentText : o.kind === 'wait' ? colors.textMuted : colors.text }]} numberOfLines={1}>
               {name}
             </Text>
