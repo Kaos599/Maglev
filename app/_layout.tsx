@@ -11,18 +11,17 @@ import { fontFamily } from '../constants/theme';
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
 
-/** Longest we wait for the engine to report before treating a silent start as a failure. */
-const ENGINE_RESOLVE_TIMEOUT_MS = 8000;
+/** Safety net: if init never settles, stop waiting on the splash and show the engine error. */
+const ENGINE_RESOLVE_TIMEOUT_MS = 15000;
 
 function AppNavigation() {
   const { colors, dark } = useTheme();
   const { settings } = useSettings();
-  const { engineStatus, permissionStatus } = useMaglevEngine();
+  const { engineStatus } = useMaglevEngine();
   const [timedOut, setTimedOut] = useState(false);
 
-  // The engine starts as "unavailable: not started". It has resolved once it is ready, or once the
-  // post-start permission read has landed (it runs after start() settles either way).
-  const resolved = engineStatus.kind === 'ready' || permissionStatus !== null || timedOut;
+  // The bridge reports 'starting' until init settles to 'ready' or 'unavailable'.
+  const resolved = engineStatus.kind !== 'starting' || timedOut;
 
   useEffect(() => {
     if (resolved) return;
@@ -37,7 +36,7 @@ function AppNavigation() {
   // Native splash stays up (see preventAutoHideAsync); render the background only, no navigator, until resolved.
   if (!resolved) return <View style={{ flex: 1, backgroundColor: colors.bg }} />;
 
-  const unavailable = engineStatus.kind === 'unavailable';
+  const unavailable = engineStatus.kind === 'unavailable' || engineStatus.kind === 'starting';
   const onboarding = !unavailable && !settings.onboarded;
   const main = !unavailable && settings.onboarded;
 

@@ -232,6 +232,7 @@ export interface NativePermissionStatus {
 }
 
 export type EngineStatus =
+  | { kind: 'starting'; message: string }
   | { kind: 'ready'; message: string; simulated: boolean }
   | { kind: 'unavailable'; message: string };
 

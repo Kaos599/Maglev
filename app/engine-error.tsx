@@ -10,7 +10,9 @@ export default function EngineErrorScreen() {
   const { colors } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const { engineStatus } = useMaglevEngine();
-  const message = engineStatus.message || 'The engine did not report a reason.';
+  const message = engineStatus.kind === 'starting'
+    ? 'The download engine took too long to start.'
+    : engineStatus.message || 'The engine did not report a reason.';
 
   const copyDetails = useCallback(async () => {
     const details = [

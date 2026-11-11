@@ -62,7 +62,7 @@ type StateListener = () => void;
 export class MaglevEngineBridge implements MaglevEngineApi {
   private impl: MaglevEngineApi | null = null;
   private usingNative = false;
-  private status: EngineStatus = { kind: 'unavailable', message: 'Engine not started.' };
+  private status: EngineStatus = { kind: 'starting', message: 'Starting…' };
   private started = false;
   private startPromise: Promise<EngineStatus> | null = null;
   private lastConfig: NativeConfig | null = null;
