@@ -4,14 +4,50 @@ import sys
 root = sys.argv[1]
 # Nose: fine 1 x 0.75 steps read as a smooth slope; the last steps round off the tip into the base.
 nose = "".join(f" H{80+k:g} V{45.75+0.75*k:g}" for k in range(36)) + " V74.5 H114.25 V75.5 H113.5 V76"
-# Window: a file with a folded corner; its slanted edge is shallower than the nose, so the frame
-# is thin at the top and thickens towards the base, as in the original drawing.
-window = "M69 49.5" + "".join(f" H{84+1.5*i:g} V{51+1.5*i:g}" for i in range(11)) + " H67 V51 H69 Z"
-notch2 = " V64.5 H64 V63 H63 V61.5 H62 V60 H61 V58.5 H60"                   # stepped edge of the lower cut-in
-body = ("M38 45 H79" + nose + " H29 V73 H36 V71.5 H41 V70 H48 V68 H40 V66 H65" + notch2 +
-        " H39 V54 H55 V49 H38 Z " + window)
-lines = "M16 46.5 H35 V48 H16 Z M12 56.5 H37 V58 H12 Z M18 64.5 H38 V66 H18 Z M13 74.5 H27 V76 H13 Z"
-rails = ("M21 79.5 H30 V80.75 H21 Z "
+# Window: a slanted parallelogram like the original drawing. Both sides step down to the right
+# (the left edge leans like a windshield, the right edge follows the nose), the top-left corner is
+# rounded off, and the frame along the nose thickens towards the base. 22 rows of 0.75 units.
+def _window():
+    rows = 22
+    top = 49.5
+    pts = []
+    for j in range(rows):
+        y0 = top + 0.75 * j
+        left = 67 + 0.6 * j + (1.6 if j == 0 else 0.6 if j == 1 else 0)   # rounded top-left corner
+        right = 84 + 0.8 * j - (0.8 if j == rows - 1 else 0)               # softened bottom-right corner
+        pts.append((y0, y0 + 0.75, left, right))
+    d = f"M{pts[0][2]:g} {pts[0][0]:g}"
+    for (y0, y1, l, r) in pts:                       # down the right edge
+        d += f" H{r:g} V{y1:g}"
+    for (y0, y1, l, r) in reversed(pts):              # back up the left edge
+        d += f" H{l:g} V{y0:g}"
+    return d + " Z"
+window = _window()
+def _stair_up(rows, y_top, x_right, slope):
+    """Walk up a stepped edge (0.75-unit rows) whose right side leans like the window's left edge."""
+    d = ""
+    for j in reversed(range(rows)):
+        d += f" V{y_top + 0.75 * j:g}" + (f" H{x_right + slope * (j - 1):g}" if j else "")
+    return d
+# Back of the train: three bands that stream into the speed lines. The two cut-ins between them end
+# in stepped edges at the window's angle, so every cut reads as one deliberate slant.
+CUT_A = (6, 49.5, 52.0)    # rows, top y, right x of the first row  (between band 1 and band 2)
+CUT_B = (10, 58.5, 58.0)   # (between band 2 and band 3)
+SLOPE = 0.6
+def _cut_bottom_right(cut):
+    rows, y, x = cut
+    return x + SLOPE * (rows - 1), y + 0.75 * rows
+a_x, a_y = _cut_bottom_right(CUT_A)
+b_x, b_y = _cut_bottom_right(CUT_B)
+body = ("M40 45 H79" + nose + " H34 V" + f"{b_y:g}" + f" H{b_x:g}" + _stair_up(*CUT_B, SLOPE) +
+        " H37 V54" + f" H{a_x:g}" + _stair_up(*CUT_A, SLOPE) + " H40 Z " + window)
+# Bands start at evenly staggered x (40, 37, 34). Speed lines: one thickness (1.5), centred on their
+# band, each stopping exactly 3 units short of it.
+lines = ("M17 46.5 H37 V48 H17 Z "     # band 1 (x 40)
+         "M11 55.5 H34 V57 H11 Z "     # band 2 (x 37)
+         "M19 68 H31 V69.5 H19 Z "     # band 3 (x 34), upper
+         "M14 72.5 H31 V74 H14 Z")     # band 3, lower
+rails = ("M20 79.5 H29 V80.75 H20 Z "
          "M34 79.5 H67 V80.75 H68.5 V82 H70 V83.25 H40.5 V82 H36 V80.75 H34 Z "
          "M71 79.5 H112.5 V80.75 H111 V82 H108.5 V83.25 H74.5 V82 H72.5 V80.75 H71 Z")
 LIME, CYAN, VOID = "#A5FB48", "#01E5EF", "#05070A"
