@@ -1,18 +1,45 @@
-import React, { useEffect } from 'react';
-import { View, ActivityIndicator } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { View } from 'react-native';
 import { Stack, SplashScreen } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { useFonts } from 'expo-font';
-import { SettingsProvider } from '../context/SettingsContext';
+import { SettingsProvider, useSettings } from '../context/SettingsContext';
 import { ThemeProvider, useTheme } from '../context/ThemeContext';
-import { EngineProvider } from '../context/EngineContext';
-import { buildColors, DEFAULT_ACCENT, DEFAULT_MODE, fontFamily } from '../constants/theme';
+import { EngineProvider, useMaglevEngine } from '../context/EngineContext';
+import { fontFamily } from '../constants/theme';
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
 
+/** Longest we wait for the engine to report before treating a silent start as a failure. */
+const ENGINE_RESOLVE_TIMEOUT_MS = 8000;
+
 function AppNavigation() {
   const { colors, dark } = useTheme();
+  const { settings } = useSettings();
+  const { engineStatus, permissionStatus } = useMaglevEngine();
+  const [timedOut, setTimedOut] = useState(false);
+
+  // The engine starts as "unavailable: not started". It has resolved once it is ready, or once the
+  // post-start permission read has landed (it runs after start() settles either way).
+  const resolved = engineStatus.kind === 'ready' || permissionStatus !== null || timedOut;
+
+  useEffect(() => {
+    if (resolved) return;
+    const t = setTimeout(() => setTimedOut(true), ENGINE_RESOLVE_TIMEOUT_MS);
+    return () => clearTimeout(t);
+  }, [resolved]);
+
+  useEffect(() => {
+    if (resolved) SplashScreen.hideAsync().catch(() => {});
+  }, [resolved]);
+
+  // Native splash stays up (see preventAutoHideAsync); render the background only, no navigator, until resolved.
+  if (!resolved) return <View style={{ flex: 1, backgroundColor: colors.bg }} />;
+
+  const unavailable = engineStatus.kind === 'unavailable';
+  const onboarding = !unavailable && !settings.onboarded;
+  const main = !unavailable && settings.onboarded;
 
   return (
     <>
@@ -26,30 +53,33 @@ function AppNavigation() {
           gestureEnabled: true,
         }}
       >
-        <Stack.Screen
-          name="(tabs)"
-          options={{
-            headerShown: false,
-          }}
-        />
-        <Stack.Screen
-          name="add-torrent"
-          options={{
-            presentation: 'modal',
-            animation: 'slide_from_bottom',
-            animationDuration: 220,
-            headerShown: false,
-          }}
-        />
-        <Stack.Screen
-          name="torrent/[id]"
-          options={{
-            animation: 'slide_from_right',
-            animationDuration: 200,
-            gestureEnabled: true,
-            headerShown: false,
-          }}
-        />
+        <Stack.Protected guard={unavailable}>
+          <Stack.Screen name="engine-error" options={{ gestureEnabled: false, animation: 'none' }} />
+        </Stack.Protected>
+        <Stack.Protected guard={onboarding}>
+          <Stack.Screen name="onboarding" options={{ gestureEnabled: false, animation: 'fade' }} />
+        </Stack.Protected>
+        <Stack.Protected guard={main}>
+          <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+          <Stack.Screen
+            name="add-torrent"
+            options={{
+              presentation: 'modal',
+              animation: 'slide_from_bottom',
+              animationDuration: 220,
+              headerShown: false,
+            }}
+          />
+          <Stack.Screen
+            name="torrent/[id]"
+            options={{
+              animation: 'slide_from_right',
+              animationDuration: 200,
+              gestureEnabled: true,
+              headerShown: false,
+            }}
+          />
+        </Stack.Protected>
       </Stack>
     </>
   );
@@ -64,18 +94,8 @@ export default function RootLayout() {
     [fontFamily.bodyStrong]: require('@expo-google-fonts/inter/600SemiBold/Inter_600SemiBold.ttf'),
   });
 
-  useEffect(() => {
-    if (fontsLoaded) SplashScreen.hideAsync().catch(() => {});
-  }, [fontsLoaded]);
-
-  if (!fontsLoaded) {
-    const boot = buildColors(DEFAULT_MODE, DEFAULT_ACCENT);
-    return (
-      <View style={{ flex: 1, backgroundColor: boot.bg, alignItems: 'center', justifyContent: 'center' }}>
-        <ActivityIndicator color={boot.accent} size="large" />
-      </View>
-    );
-  }
+  // Native splash stays visible until fonts load; AppNavigation hides it once the engine resolves.
+  if (!fontsLoaded) return null;
 
   return (
     <SafeAreaProvider>
