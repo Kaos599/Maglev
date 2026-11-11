@@ -794,6 +794,8 @@ export class MaglevMockEngine implements MaglevEngineApi {
 
   public async openLiveUpdateSettings(): Promise<void> {}
 
+  public async openNotificationSettings(_channel?: 'completed'): Promise<void> {}
+
   public async setGlobalLimits(down: number, up: number): Promise<EngineResult> {
     const bw = this.settings.bandwidth;
     bw.downloadPreset = down > 0 ? 'CUSTOM' : 'UNLIMITED';

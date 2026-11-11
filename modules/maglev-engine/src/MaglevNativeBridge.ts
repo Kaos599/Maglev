@@ -329,6 +329,9 @@ export class MaglevEngineBridge implements MaglevEngineApi {
   public async openLiveUpdateSettings(): Promise<void> {
     if (this.usingNative) await this.callNative('openLiveUpdateSettings');
   }
+  public async openNotificationSettings(channel: 'completed' = 'completed'): Promise<void> {
+    if (this.usingNative) await this.callNative('openNotificationSettings', channel);
+  }
   public setGlobalLimits(down: number, up: number): Promise<EngineResult> {
     return this.route('setGlobalLimits', down, up);
   }

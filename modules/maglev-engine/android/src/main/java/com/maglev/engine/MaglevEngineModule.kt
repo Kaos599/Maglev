@@ -9,6 +9,7 @@ import android.os.Build
 import com.maglev.engine.feeds.FeedScheduler
 import com.maglev.engine.permissions.PermissionHelper
 import com.maglev.engine.schedule.ScheduleManager
+import com.maglev.engine.service.Notifications
 import com.maglev.engine.storage.SafStorageManager
 import com.maglev.engine.storage.StorageManager
 import com.maglev.engine.util.Json
@@ -248,6 +249,11 @@ class MaglevEngineModule : Module() {
         AsyncFunction("openLiveUpdateSettings") { promise: Promise ->
             val c = context
             val err = if (c == null) "Module is not attached" else PermissionHelper.openLiveUpdateSettings(c)
+            promise.resolve(if (err == null) mapOf("ok" to true) else Json.failure("INTERNAL", err))
+        }
+        AsyncFunction("openNotificationSettings") { channel: String?, promise: Promise ->
+            val c = context
+            val err = if (c == null) "Module is not attached" else Notifications.openChannelSettings(c, channel ?: Notifications.CH_COMPLETED)
             promise.resolve(if (err == null) mapOf("ok" to true) else Json.failure("INTERNAL", err))
         }
         AsyncFunction("requestLegacyStorage") { promise: Promise ->

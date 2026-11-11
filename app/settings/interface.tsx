@@ -1,7 +1,7 @@
 import React, { useMemo } from 'react';
 import { Platform, StyleSheet, Text, View } from 'react-native';
 import { Stack } from 'expo-router';
-import { AccentName, AppearanceMode } from 'maglev-engine';
+import { AccentName, AppearanceMode, maglevEngine } from 'maglev-engine';
 import { useSettings } from '../../context/SettingsContext';
 import { useTheme } from '../../context/ThemeContext';
 import { useMaglevEngine } from '../../context/EngineContext';
@@ -91,6 +91,16 @@ export default function InterfaceSettings() {
           />
         </View>
       </Card>
+      {Platform.OS === 'android' ? (
+        <Card>
+          <ListRow
+            title="Finished-download alerts"
+            subtitle="Choose sound and banners in Android settings."
+            onPress={() => void maglevEngine.openNotificationSettings('completed')}
+            accessibilityHint="Opens Android settings"
+          />
+        </Card>
+      ) : null}
       {showLiveUpdates ? (
         <Card>
           <ListRow

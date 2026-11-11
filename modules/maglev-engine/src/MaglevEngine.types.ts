@@ -387,6 +387,8 @@ export interface MaglevEngineApi {
   reannounce(id: string): Promise<EngineResult<{ retryAfterSecs?: number }>>;
   getFreeSpace(): Promise<EngineResult<FreeSpace>>;
   openLiveUpdateSettings(): Promise<void>;
+  /** Opens the Android notification settings for the "Completed" channel (or the app page below API 26). */
+  openNotificationSettings(channel?: 'completed'): Promise<void>;
   setGlobalLimits(down: number, up: number): Promise<EngineResult>;
   applyConfig(config: NativeConfig): Promise<EngineResult<{ restartRequired: boolean }>>;
   getEffectiveConfig(): Promise<EngineResult<NativeConfig>>;

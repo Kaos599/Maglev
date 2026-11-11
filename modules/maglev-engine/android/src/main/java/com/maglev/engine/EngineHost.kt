@@ -1,13 +1,19 @@
 package com.maglev.engine
 
 import android.app.ActivityManager
+import android.app.PendingIntent
+import android.content.ComponentName
 import android.content.Context
 import android.media.MediaScannerConnection
 import android.content.Intent
 import android.os.StatFs
+import android.net.Uri
 import android.os.SystemClock
+import android.service.quicksettings.TileService
 import android.util.Log
 import androidx.core.content.ContextCompat
+import androidx.core.content.FileProvider
+import com.maglev.engine.service.TileModel
 import com.maglev.engine.network.NetworkGovernanceManager
 import com.maglev.engine.feeds.FeedScheduler
 import com.maglev.engine.feeds.FeedStore
@@ -15,6 +21,8 @@ import com.maglev.engine.power.PowerGovernanceManager
 import com.maglev.engine.schedule.ScheduleEvaluator
 import com.maglev.engine.schedule.ScheduleManager
 import com.maglev.engine.schedule.ScheduleState
+import com.maglev.engine.service.CompletionPolicy
+import com.maglev.engine.service.MaglevTileService
 import com.maglev.engine.service.MaglevTorrentService
 import com.maglev.engine.service.Notifications
 import com.maglev.engine.service.TransferSummary
@@ -69,6 +77,7 @@ object EngineHost {
     const val ENGINE_PREFS = PREFS
     private const val REASON_FGS_TIMEOUT = "fgs_timeout"
     private const val SERVICE_RETRY_MS = 10_000L
+    private const val TILE_REFRESH_MS = 2_000L
     private const val COPY_RETRY_MS = 60_000L
     private const val INIT_GIVE_UP_MS = 10 * 60_000L
 
@@ -97,6 +106,12 @@ object EngineHost {
     private var initOnlySince = 0L
     private val cancelledCopies = ConcurrentHashMap.newKeySet<String>()
     private var sawDownloading = false
+    /** Per torrent: seen DOWNLOADING since it was last unfinished (contract 13.2). Guarded by [prevFinished]. */
+    private val sawDownloadingById = HashMap<String, Boolean>()
+    /** Latest summary for the Quick Settings tile (contract 13.3). Null until the first poll after init. */
+    @Volatile private var lastSummary: TransferSummary? = null
+    private var lastTileModel: TileModel? = null
+    private var lastTileAt = 0L
     private var autoExitFired = false
 
     @Volatile private var governance = Governance()
@@ -215,7 +230,8 @@ object EngineHost {
 
         initialized = true
         liftFgsTimeoutBlock(c)
-        synchronized(prevFinished) { prevFinished.clear() }
+        synchronized(prevFinished) { prevFinished.clear(); sawDownloadingById.clear() }
+        lastSummary = null
         initOnlySince = 0L
         sawDownloading = false
         autoExitFired = false
@@ -432,6 +448,8 @@ object EngineHost {
         val torrents = Json.list(res["torrents"])
         detectCompletions(torrents)
         val summary = summarize(torrents)
+        lastSummary = summary
+        refreshTile(summary)
         @Suppress("UNCHECKED_CAST")
         val body = LinkedHashMap(Json.camelize(res) as Map<String, Any?>)
         body["serviceBlocked"] = serviceBlocked
@@ -529,11 +547,16 @@ object EngineHost {
                 val prev = prevFinished[id]
                 val state = t["state"] as? String
                 val prevSt = prevState[id]
-                if (state == "DOWNLOADING") sawDownloading = true
+                if (state == "DOWNLOADING") {
+                    sawDownloading = true
+                    sawDownloadingById[id] = true
+                }
                 if (prev == false && finished) {
                     val name = t["name"] as? String ?: id
                     emit("onTorrentCompleted", mapOf("id" to id, "name" to name))
-                    if (c != null) Notifications.notifyCompleted(c, id, name)
+                    if (c != null && CompletionPolicy.shouldNotify(prev, finished, sawDownloadingById[id] == true)) {
+                        announceCompletion(c, id, name)
+                    }
                     scanMedia(id, force = false)
                 }
                 // A move changed the files' location: scan the new paths even if this completion was scanned before.
@@ -542,13 +565,78 @@ object EngineHost {
                 }
                 // CHECKING and MOVING can flip `finished` briefly. Only a real un-finish starts a new completion.
                 if (!finished && state != "CHECKING" && state != "MOVING") mediaScanned.remove(id)
+                // A finished torrent starts over: the next notification needs a fresh DOWNLOADING.
+                if (finished) sawDownloadingById.remove(id)
                 prevFinished[id] = finished
                 prevState[id] = state
             }
             val alive = torrents.mapNotNull { it["id"] as? String }.toSet()
             prevFinished.keys.retainAll(alive)
             prevState.keys.retainAll(alive)
+            sawDownloadingById.keys.retainAll(alive)
             mediaScanned.retainAll(alive)
+        }
+    }
+
+    /**
+     * Posts the "Download finished" notification (contract 13.2). Reads the detail for the size of the included
+     * files and, with exactly one included file, a content URI for the Open action. Runs on IO.
+     */
+    private fun announceCompletion(c: Context, id: String, name: String) {
+        ioScope.launch {
+            var size = 0L
+            var open: PendingIntent? = null
+            try {
+                val d = call { NativeCore.nativeGetDetail(id) }
+                if (isOk(d)) {
+                    val files = Json.list(d["files"]).filter { it["included"] != false }
+                    size = files.sumOf { Json.long(it["length"]) }
+                    @Suppress("UNCHECKED_CAST")
+                    val folder = (d["snapshot"] as? Map<String, Any?>)?.get("output_folder") as? String
+                    val rel = files.singleOrNull()?.get("path") as? String
+                    if (folder != null && rel != null) {
+                        val uri = viewUri(c, folder, rel)
+                        if (uri != null) open = Notifications.openFileAction(c, id, uri, SafStorageManager.mimeFor(rel))
+                    }
+                }
+            } catch (t: Throwable) {
+                Log.w(TAG, "completion detail failed", t)
+            }
+            Notifications.notifyCompleted(c, id, name, size, open)
+        }
+    }
+
+    /** Same resolution as FileActions.openFile: FileProvider for a POSIX path, else the SAF tree. */
+    private fun viewUri(c: Context, folder: String, rel: String): Uri? {
+        val f = File(folder, rel)
+        if (f.exists()) {
+            return try {
+                FileProvider.getUriForFile(c, FileActions.authority(c), f)
+            } catch (_: IllegalArgumentException) {
+                null
+            }
+        }
+        val tree = StorageManager.customUri(c) ?: return null
+        return SafStorageManager.findInTree(c, Uri.parse(tree), rel)?.uri
+    }
+
+    /** Summary for the Quick Settings tile, or null when the engine is not running. */
+    fun tileSummary(): TransferSummary? = if (initialized) lastSummary else null
+
+    /** Asks the system to rebind the tile when its content changed, at most every 2 s (contract 13.3). */
+    private fun refreshTile(s: TransferSummary) {
+        val c = ctx ?: return
+        val model = TileModel.from(s)
+        if (model == lastTileModel) return
+        val now = SystemClock.elapsedRealtime()
+        if (now - lastTileAt < TILE_REFRESH_MS) return
+        lastTileModel = model
+        lastTileAt = now
+        try {
+            // Needs ACTIVE_TILE meta-data; a no-op when the tile is not added. May throw on API 33+ for a bad request.
+            TileService.requestListeningState(c, ComponentName(c, MaglevTileService::class.java))
+        } catch (e: Exception) {
+            Log.w(TAG, "tile refresh failed: ${e.message}")
         }
     }
 

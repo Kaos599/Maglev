@@ -4,12 +4,15 @@ import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
+import android.content.ClipData
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
+import android.provider.Settings
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
+import com.maglev.engine.R
 import java.util.Locale
 
 /** Aggregate view of the torrent list used for the ongoing notification and service decisions. */
@@ -57,6 +60,8 @@ object Notifications {
     const val ID_TIMEOUT = 4102
     const val CH_REMINDERS = "maglev_reminders"
     const val ID_SCHEDULE_READY = 4103
+    const val GROUP_COMPLETED = "maglev_completed"
+    const val ID_COMPLETED_SUMMARY = 4999
 
     fun ensureChannels(context: Context) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
@@ -210,17 +215,87 @@ object Notifications {
         return b.build()
     }
 
-    fun notifyCompleted(context: Context, id: String, name: String) {
-        post(
-            context, 5000 + (id.hashCode() and 0xFFFF),
-            NotificationCompat.Builder(context, CH_COMPLETED)
-                .setSmallIcon(android.R.drawable.stat_sys_download_done)
-                .setContentTitle("Download complete: $name")
-                .setAutoCancel(true)
-                .setCategory(NotificationCompat.CATEGORY_STATUS)
-                .setContentIntent(contentIntent(context))
-                .build(),
+    /** Opens one file with the system viewer. The grant flag lets the viewer read the FileProvider/SAF URI. */
+    fun openFileAction(context: Context, torrentId: String, uri: Uri, mime: String): PendingIntent {
+        val intent = Intent(Intent.ACTION_VIEW)
+            .setDataAndType(uri, mime)
+            .setClipData(ClipData.newRawUri("", uri))
+            .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
+        return PendingIntent.getActivity(
+            context, 20 + (torrentId.hashCode() and 0xFFFF), intent,
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
         )
+    }
+
+    /**
+     * "Download finished" (contract 13.2). [openFile] is non-null only for a single-file torrent.
+     * Two or more showing at once get a group summary.
+     */
+    fun notifyCompleted(context: Context, id: String, name: String, sizeBytes: Long, openFile: PendingIntent?) {
+        val nid = 5000 + (id.hashCode() and 0xFFFF)
+        val b = NotificationCompat.Builder(context, CH_COMPLETED)
+            .setSmallIcon(R.drawable.ic_tile_maglev)
+            .setContentTitle(name)
+            .setContentText(CompletionPolicy.body(sizeBytes))
+            .setAutoCancel(true)
+            .setCategory(NotificationCompat.CATEGORY_STATUS)
+            .setGroup(GROUP_COMPLETED)
+            .setContentIntent(contentIntent(context, id))
+        if (openFile != null) b.addAction(0, "Open", openFile)
+        post(context, nid, b.build())
+        postCompletedSummary(context, nid, name)
+    }
+
+    private fun postCompletedSummary(context: Context, newId: Int, newName: String) {
+        try {
+            val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            // The notify() above may not be in activeNotifications yet, so count the others and add this one.
+            val others = nm.activeNotifications.filter {
+                it.notification.group == GROUP_COMPLETED && it.id != ID_COMPLETED_SUMMARY && it.id != newId
+            }
+            if (others.isEmpty()) return
+            val names = others.mapNotNull { it.notification.extras.getCharSequence(Notification.EXTRA_TITLE)?.toString() } + newName
+            val count = others.size + 1
+            val inbox = NotificationCompat.InboxStyle().setBigContentTitle(CompletionPolicy.summaryTitle(count))
+            names.take(5).forEach { inbox.addLine(it) }
+            if (names.size > 5) inbox.setSummaryText("+${names.size - 5} more")
+            post(
+                context, ID_COMPLETED_SUMMARY,
+                NotificationCompat.Builder(context, CH_COMPLETED)
+                    .setSmallIcon(R.drawable.ic_tile_maglev)
+                    .setContentTitle(CompletionPolicy.summaryTitle(count))
+                    .setContentText(names.joinToString(", "))
+                    .setStyle(inbox)
+                    .setGroup(GROUP_COMPLETED)
+                    .setGroupSummary(true)
+                    .setGroupAlertBehavior(NotificationCompat.GROUP_ALERT_CHILDREN)
+                    .setAutoCancel(true)
+                    .setCategory(NotificationCompat.CATEGORY_STATUS)
+                    .setContentIntent(contentIntent(context))
+                    .build(),
+            )
+        } catch (_: Exception) {
+            // The summary is cosmetic. Never let it break completion handling.
+        }
+    }
+
+    /** Opens the system settings page for a channel, or the app notification page below API 26. Null on success. */
+    fun openChannelSettings(context: Context, channel: String): String? {
+        ensureChannels(context)
+        val intent = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            Intent(Settings.ACTION_CHANNEL_NOTIFICATION_SETTINGS)
+                .putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)
+                .putExtra(Settings.EXTRA_CHANNEL_ID, channel)
+        } else {
+            // Literals of Settings.ACTION_APP_NOTIFICATION_SETTINGS and EXTRA_APP_PACKAGE (both API 26).
+            Intent("android.settings.APP_NOTIFICATION_SETTINGS").putExtra("android.provider.extra.APP_PACKAGE", context.packageName)
+        }
+        return try {
+            context.startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            null
+        } catch (e: Exception) {
+            e.message ?: "Notification settings are not available"
+        }
     }
 
     fun notifyTimeout(context: Context) {

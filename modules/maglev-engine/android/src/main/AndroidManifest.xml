@@ -40,6 +40,24 @@
                 android:value="Peer-to-peer file transfer (BitTorrent) that the user started and can pause or stop from the notification" />
         </service>
 
+        <service
+            android:name=".service.MaglevTileService"
+            android:exported="true"
+            android:icon="@drawable/ic_tile_maglev"
+            android:label="Maglev"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
+            <!-- Active: the system binds on a click, and EngineHost calls requestListeningState when content changes. -->
+            <meta-data
+                android:name="android.service.quicksettings.ACTIVE_TILE"
+                android:value="true" />
+            <meta-data
+                android:name="android.service.quicksettings.TOGGLEABLE_TILE"
+                android:value="true" />
+        </service>
+
         <receiver
             android:name=".schedule.ScheduleReceiver"
             android:exported="false">
