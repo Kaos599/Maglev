@@ -513,6 +513,17 @@ contract('C-W3-1', 'P1', 'Wave 3 JS side: file priority, reannounce, free space,
   assert(/Platform\.Version/.test(iface) && /Live progress in status bar/.test(iface), 'Interface settings has the Live Updates row gated by API level');
 });
 
+// The assistant's logic stays pure and testable in node: only the tool runner may reach the engine or React Native.
+contract('C-ASSIST-8', 'P1', 'Assistant modules import neither react-native nor the engine (toolRunner.ts excepted)', () => {
+  const files = walk('utils/assistant', ['.ts', '.tsx']).filter((f) => path.basename(f) !== 'toolRunner.ts');
+  if (files.length === 0) return skip('no assistant modules yet');
+  for (const f of files) {
+    const src = code(f);
+    const bad = /from\s+['"](react-native|react|maglev-engine|expo-[\w-]+)['"]|require\(\s*['"](react-native|maglev-engine)['"]/.exec(src);
+    assert(!bad, `${f} is pure (found import of ${bad ? bad[1] || bad[2] : ''})`);
+  }
+});
+
 // ---------- runner ----------
 
 function main() {
