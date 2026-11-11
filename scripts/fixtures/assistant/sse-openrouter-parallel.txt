@@ -1,0 +1,37 @@
+# Recorded-style stream: OpenRouter (OpenAI-compatible), keep-alive comments, two parallel tool calls
+# split over chunks, usage chunk after finish_reason.
+# Keep-alive comment and stream shape from the OpenRouter streaming docs:
+#   https://openrouter.ai/docs/api/reference/streaming
+# (fetched during authoring: ": OPENROUTER PROCESSING" comments are documented as ignorable.)
+# Call 0 and call 1 interleave, so the parser must key fragments by "index", not by arrival order.
+# Only the first fragment of each call carries "id" and "function.name".
+# Lines starting with "# " are fixture comments. The parser ignores them (no "data" field).
+
+: OPENROUTER PROCESSING
+
+data: {"id":"gen-1","object":"chat.completion.chunk","created":1730000200,"model":"anthropic/claude-3.5-haiku","provider":"Anthropic","choices":[{"index":0,"delta":{"role":"assistant","content":""},"finish_reason":null}]}
+
+: OPENROUTER PROCESSING
+
+data: {"id":"gen-1","object":"chat.completion.chunk","created":1730000200,"model":"anthropic/claude-3.5-haiku","provider":"Anthropic","choices":[{"index":0,"delta":{"role":"assistant","content":"Checking both files."},"finish_reason":null}]}
+
+data: {"id":"gen-1","object":"chat.completion.chunk","created":1730000200,"model":"anthropic/claude-3.5-haiku","provider":"Anthropic","choices":[{"index":0,"delta":{"role":"assistant","content":null,"tool_calls":[{"index":0,"id":"toolu_01","type":"function","function":{"name":"search_torrents","arguments":""}}]},"finish_reason":null}]}
+
+: OPENROUTER PROCESSING
+
+data: {"id":"gen-1","object":"chat.completion.chunk","created":1730000200,"model":"anthropic/claude-3.5-haiku","provider":"Anthropic","choices":[{"index":0,"delta":{"tool_calls":[{"index":1,"id":"toolu_02","type":"function","function":{"name":"resolve_result","arguments":"{\"id\":\"r"}}]},"finish_reason":null}]}
+
+data: {"id":"gen-1","object":"chat.completion.chunk","created":1730000200,"model":"anthropic/claude-3.5-haiku","provider":"Anthropic","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"{\"query\": \"the last harbor"}}]},"finish_reason":null}]}
+
+data: {"id":"gen-1","object":"chat.completion.chunk","created":1730000200,"model":"anthropic/claude-3.5-haiku","provider":"Anthropic","choices":[{"index":0,"delta":{"tool_calls":[{"index":1,"function":{"arguments":"1\"}"}}]},"finish_reason":null}]}
+
+data: {"id":"gen-1","object":"chat.completion.chunk","created":1730000200,"model":"anthropic/claude-3.5-haiku","provider":"Anthropic","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":" 2023\", \"max_gb\": 5}"}}]},"finish_reason":null}]}
+
+: OPENROUTER PROCESSING
+
+data: {"id":"gen-1","object":"chat.completion.chunk","created":1730000200,"model":"anthropic/claude-3.5-haiku","provider":"Anthropic","choices":[{"index":0,"delta":{},"finish_reason":"tool_calls"}]}
+
+data: {"id":"gen-1","object":"chat.completion.chunk","created":1730000200,"model":"anthropic/claude-3.5-haiku","provider":"Anthropic","choices":[],"usage":{"prompt_tokens":640,"completion_tokens":58,"total_tokens":698}}
+
+data: [DONE]
+
