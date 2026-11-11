@@ -1,0 +1,5 @@
+Provenance of limetorrents_* fixtures. Nothing was edited or written by hand.
+
+limetorrents_search.html
+  https://limetorrents.fun/search/all/ubuntu/date/1/  (live curl, browser User-Agent, 2026-11-11)
+  The .torrent link of each row carries the info hash (itorrents.net/torrent/<HASH>.torrent).

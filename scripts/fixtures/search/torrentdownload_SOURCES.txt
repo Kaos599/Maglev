@@ -1,0 +1,5 @@
+Provenance of torrentdownload_* fixtures. Nothing was edited or written by hand.
+
+torrentdownload_search.html
+  https://www.torrentdownload.info/search?q=ubuntu  (live curl, browser User-Agent, 2026-11-11)
+  The info hash is the first path segment of each result link. The first table (Fast Links) has no hash and is skipped.

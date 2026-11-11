@@ -1,0 +1,10 @@
+Titles and descriptions replaced with neutral text; structure unchanged.
+Provenance of xxxtracker_* fixtures (adult content). Nothing was edited or written by hand.
+
+Live xxxtor.com answers a Cloudflare challenge (403) to a plain client, so the page is a raw Wayback Machine
+capture (the "id_" URL form returns the original bytes).
+
+xxxtracker_search.html
+  https://web.archive.org/web/20240424124501id_/https://xxxtor.com/b.php
+  Capture of 2024-04-24 of the latest-torrents list (b.php). b.php?search=<q> renders the same table. 100 rows.
+  Dates are Russian ("24 Апр 24").

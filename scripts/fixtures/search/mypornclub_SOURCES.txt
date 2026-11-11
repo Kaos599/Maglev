@@ -1,0 +1,9 @@
+Titles and descriptions replaced with neutral text; structure unchanged.
+Provenance of mypornclub_* fixtures (adult content). Nothing was edited or written by hand.
+
+mypornclub_search.html
+  https://myporn.club/s/1080p/seeders  (live curl, browser User-Agent, 2026-11-11)
+
+mypornclub_detail.html
+  https://myporn.club/t/ffUAUwi5  (live curl, 2026-11-11)
+  First row of the search fixture. Magnet hash f397ddc5...40a3.
