@@ -491,6 +491,25 @@ contract('C-SEARCH-1', 'P1', 'Search engine files exist and the search contract 
   assert(r.status === 0, 'node scripts/test-search.js exits 0');
 });
 
+contract('C-W3-1', 'P1', 'Wave 3 JS side: file priority, reannounce, free space, Live Updates (NATIVE_CONTRACT 10.1-10.5)', () => {
+  const bridge = read('modules/maglev-engine/src/MaglevNativeBridge.ts');
+  const mock = read('modules/maglev-engine/src/MaglevMockEngine.ts');
+  const add = read('app/add-torrent.tsx') + read('components/add/SpaceStrip.tsx');
+  const detail = read('app/torrent/[id].tsx') + read('components/detail/TorrentMoreSheet.tsx') + read('components/detail/PrioritySheet.tsx');
+  const iface = read('app/settings/interface.tsx');
+  for (const m of ['setFilePriorities', 'reannounce', 'getFreeSpace', 'openLiveUpdateSettings']) {
+    assert(new RegExp(`public (async )?${m}\\(`).test(bridge), `bridge exposes ${m}`);
+  }
+  assert(/Keep at least one file/.test(mock) && /every\(\(e\) => e\.priority === 'skip'\)/.test(mock), 'mock rejects an all-skip priority list');
+  assert(/60_000/.test(mock) && /retryAfterSecs/.test(mock), 'mock rate-limits reannounce to once per 60 s');
+  assert(/getFreeSpace/.test(add), 'add-torrent reads getFreeSpace');
+  assert(/Not enough space/.test(add) && /disabled=\{[^}]*notEnough/.test(add), 'add-torrent disables Start on insufficient space');
+  assert(/file_priorities|filePriorities/.test(add), 'add-torrent sends file priorities');
+  assert(/reannounce/.test(detail) && /Find more peers/.test(detail), 'detail has Find more peers (reannounce)');
+  assert(/Download first/.test(detail) && /setFilePriorities/.test(detail) && /Keep at least one file/.test(detail), 'detail has the priority sheet and blocks all-skip');
+  assert(/Platform\.Version/.test(iface) && /Live progress in status bar/.test(iface), 'Interface settings has the Live Updates row gated by API level');
+});
+
 // ---------- runner ----------
 
 function main() {

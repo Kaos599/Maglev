@@ -105,7 +105,7 @@ export function detailToTorrentDetail(d: Detail, pieceBitfield?: number[]): Torr
       path: f.path,
       length: f.length,
       progress: f.length > 0 ? Math.min(100, (f.progressBytes / f.length) * 100) : 0,
-      priority: f.included ? 1 : 0,
+      priority: f.priority === 'first' ? 2 : f.included ? 1 : 0,
     })),
     trackers: d.trackers.map((t) => ({
       url: t.url,

@@ -4,14 +4,16 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Clipboard from 'expo-clipboard';
 import * as DocumentPicker from 'expo-document-picker';
-import { maglevEngine, parseSource, type Metadata } from 'maglev-engine';
+import { maglevEngine, parseSource, type FilePriority, type FreeSpace, type Metadata } from 'maglev-engine';
 import { useTheme } from '../context/ThemeContext';
 import { useMaglevEngine } from '../context/EngineContext';
 import { ThemeColors, radius, spacing, touch, type } from '../constants/theme';
 import { formatBytes } from '../constants/format';
 import { triggerHaptic } from '../constants/haptics';
 import { Banner, Button, Chip, EmptyBlock, ProgressBar, Screen } from '../components/ui';
-import { PreviewFileRow } from '../components/add/PreviewFileRow';
+import { AddFileRow } from '../components/add/AddFileRow';
+import { SpaceStrip } from '../components/add/SpaceStrip';
+import { PrioritySheet } from '../components/detail/PrioritySheet';
 import { fileExt } from '../components/detail/torrentLabels';
 
 /** SM-9 add flow states. */
@@ -19,6 +21,12 @@ type Phase = 'input' | 'validating' | 'invalid' | 'resolving' | 'timeout' | 'err
 
 const RESOLVE_TIMEOUT_MS = 60_000;
 const INVALID_TEXT = "That isn't a magnet link or torrent file.";
+/** NATIVE_CONTRACT 10.3: keep this much free for the system. */
+const RESERVE_BYTES = 200 * 1024 * 1024;
+/** Warn when less than this would be left after the download. */
+const LOW_SPACE_BYTES = 1024 * 1024 * 1024;
+/** Android hands VIEW intents over as file:// or content:// URIs; Kotlin reads both. */
+const LOCAL_SOURCE = /^(file|content):\/\//i;
 
 interface Folder {
   uri: string;
@@ -47,6 +55,10 @@ export default function AddTorrentScreen() {
   const [dupId, setDupId] = useState<string | null>(null);
   const [folder, setFolder] = useState<Folder | null>(null);
   const [addError, setAddError] = useState<string | null>(null);
+  const [freeSpace, setFreeSpace] = useState<FreeSpace | null>(null);
+  /** Files marked "Download first". Skip is an unchecked file. */
+  const [firsts, setFirsts] = useState<Set<number>>(new Set());
+  const [prioIndex, setPrioIndex] = useState<number | null>(null);
 
   /** The string handed to the engine: a magnet, a URL, or a cached .torrent path. */
   const sourceRef = useRef<string>('');
@@ -97,6 +109,7 @@ export default function AddTorrentScreen() {
         }
         setMeta(res);
         setSelected(new Set(res.files.map((f) => f.index)));
+        setFirsts(new Set());
         setPhase('preview');
         triggerHaptic('medium');
         return;
@@ -130,6 +143,12 @@ export default function AddTorrentScreen() {
         return;
       }
       fromFileRef.current = false;
+      if (LOCAL_SOURCE.test(input)) {
+        // A .torrent handed over by another app. The engine reads the path or content URI itself.
+        fromFileRef.current = true;
+        void resolve(input);
+        return;
+      }
       const parsed = parseSource(input);
       if (!parsed) {
         setMessage(INVALID_TEXT);
@@ -145,17 +164,43 @@ export default function AddTorrentScreen() {
     [resolve, showDuplicate, telemetry.torrents],
   );
 
-  // The `source` param prefills the input and resolves once.
-  const autoRan = useRef(false);
+  // The `source` param prefills the input and resolves. A new value (a second intent while this
+  // screen is open) discards the old state and starts over.
+  const lastIncoming = useRef<string | null>(null);
   useEffect(() => {
-    if (autoRan.current) return;
-    const incoming = params.source || params.uri || params.magnet;
-    if (typeof incoming === 'string' && incoming.trim()) {
-      autoRan.current = true;
-      setText(incoming);
-      submit(incoming);
-    }
+    const raw = params.source || params.uri || params.magnet;
+    const incoming = typeof raw === 'string' ? raw.trim() : '';
+    if (!incoming || incoming === lastIncoming.current) return;
+    lastIncoming.current = incoming;
+    token.current++;
+    setMeta(null);
+    setSelected(new Set());
+    setFirsts(new Set());
+    setFreeSpace(null);
+    setDupId(null);
+    setAddError(null);
+    setMessage(null);
+    setText(incoming);
+    submit(incoming);
   }, [params.source, params.uri, params.magnet, submit]);
+
+  // Free space refreshes when the preview opens and whenever the folder changes.
+  const previewHash = meta?.infoHash;
+  useEffect(() => {
+    if (!previewHash) return;
+    let alive = true;
+    maglevEngine
+      .getFreeSpace()
+      .then((res) => {
+        if (alive) setFreeSpace(res.ok ? res : null);
+      })
+      .catch(() => {
+        if (alive) setFreeSpace(null);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [previewHash, folder?.uri]);
 
   const onChangeText = (next: string) => {
     token.current++;
@@ -221,9 +266,16 @@ export default function AddTorrentScreen() {
     setAddError(null);
     setPhase('adding');
     const onlyFiles = !onlyAll && meta && selected.size < meta.files.length ? [...selected].sort((a, b) => a - b) : null;
+    const filePriorities =
+      !onlyAll && meta && [...firsts].some((i) => selected.has(i))
+        ? meta.files.map((f) => ({
+            index: f.index,
+            priority: (!selected.has(f.index) ? 'skip' : firsts.has(f.index) ? 'first' : 'normal') as FilePriority,
+          }))
+        : null;
     let res;
     try {
-      res = await maglevEngine.addTorrent(sourceRef.current, { onlyFiles, outputFolder: null /* Kotlin fills output_folder from the persisted target set by pickDownloadFolder (handles direct + staging) */ });
+      res = await maglevEngine.addTorrent(sourceRef.current, { onlyFiles, filePriorities, outputFolder: null /* Kotlin fills output_folder from the persisted target set by pickDownloadFolder (handles direct + staging) */ });
     } catch (e) {
       setAddError(e instanceof Error ? e.message : 'Something went wrong.');
       setPhase(meta ? 'preview' : 'timeout');
@@ -252,6 +304,23 @@ export default function AddTorrentScreen() {
     });
   }, []);
 
+  const applyPriority = (index: number, p: FilePriority) => {
+    triggerHaptic('selection');
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (p === 'skip') next.delete(index);
+      else next.add(index);
+      return next;
+    });
+    setFirsts((prev) => {
+      const next = new Set(prev);
+      if (p === 'first') next.add(index);
+      else next.delete(index);
+      return next;
+    });
+    setPrioIndex(null);
+  };
+
   const isMagnetSource = !fromFileRef.current && /^magnet:/i.test(sourceRef.current);
   const destination = folder?.label ?? defaultStoragePath;
   const destShort = friendlyFolder(destination);
@@ -266,6 +335,13 @@ export default function AddTorrentScreen() {
     }
     const selectedBytes = meta.files.reduce((n, f) => (selected.has(f.index) ? n + f.length : n), 0);
     const allSelected = selected.size === meta.files.length;
+    // Writes land in the free-space path; in staging mode the SAF target must fit it too.
+    const freeBytes = freeSpace
+      ? Math.min(freeSpace.freeBytes, freeSpace.targetFreeBytes ?? freeSpace.freeBytes)
+      : null;
+    const notEnough = freeBytes !== null && selectedBytes > 0 && selectedBytes > freeBytes - RESERVE_BYTES;
+    const lowSpace = freeBytes !== null && !notEnough && selectedBytes > 0 && freeBytes - selectedBytes < LOW_SPACE_BYTES;
+    const prioFile = prioIndex === null ? null : meta.files.find((f) => f.index === prioIndex) ?? null;
 
     const header = (
       <View style={styles.previewHeader}>
@@ -292,6 +368,15 @@ export default function AddTorrentScreen() {
               />
             ))}
           </View>
+        ) : null}
+        <SpaceStrip selectedBytes={selectedBytes} totalBytes={meta.totalBytes} free={freeSpace} tooBig={notEnough} />
+        {notEnough ? (
+          <Banner
+            tone="danger"
+            title={`Not enough space. Free up ${formatBytes(selectedBytes - (freeBytes! - RESERVE_BYTES))} or deselect files.`}
+          />
+        ) : lowSpace ? (
+          <Banner tone="warning" title={`Only ${formatBytes(freeBytes! - selectedBytes)} will be left on your device.`} />
         ) : null}
         <View style={styles.selectRow}>
           <Text style={styles.meta}>
@@ -324,7 +409,16 @@ export default function AddTorrentScreen() {
           data={meta.files}
           keyExtractor={(f) => String(f.index)}
           renderItem={({ item }) => (
-            <PreviewFileRow file={item} checked={selected.has(item.index)} onToggle={toggleFile} />
+            <AddFileRow
+              file={item}
+              checked={selected.has(item.index)}
+              first={firsts.has(item.index)}
+              onToggle={toggleFile}
+              onLongPress={(i) => {
+                triggerHaptic('medium');
+                setPrioIndex(i);
+              }}
+            />
           )}
           ListHeaderComponent={header}
           ListFooterComponent={footer}
@@ -335,14 +429,28 @@ export default function AddTorrentScreen() {
         />
         <View style={[styles.bar, { paddingBottom: Math.max(insets.bottom, spacing.md) }]}>
           <Button
-            label={selected.size === 0 ? 'Select a file to start' : `Start download · ${formatBytes(selectedBytes)}`}
+            label={
+              selected.size === 0
+                ? 'Select a file to start'
+                : notEnough
+                  ? 'Not enough space'
+                  : `Start download · ${formatBytes(selectedBytes)}`
+            }
             size="lg"
             fullWidth
             loading={adding}
-            disabled={selected.size === 0}
+            disabled={selected.size === 0 || notEnough}
             onPress={() => doAdd(false)}
           />
         </View>
+        <PrioritySheet
+          visible={!!prioFile}
+          onClose={() => setPrioIndex(null)}
+          title="File priority"
+          subtitle={prioFile?.path.split('/').pop()}
+          current={prioFile ? (!selected.has(prioFile.index) ? 'skip' : firsts.has(prioFile.index) ? 'first' : 'normal') : null}
+          onSelect={(p) => prioFile && applyPriority(prioFile.index, p)}
+        />
       </Screen>
     );
   }

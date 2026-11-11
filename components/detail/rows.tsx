@@ -9,58 +9,6 @@ import { PressableScale, ProgressBar } from '../ui';
 import { Checkbox } from './Checkbox';
 import { isMediaFile } from './torrentLabels';
 
-interface FileRowProps {
-  file: DetailFile;
-  onToggle: (file: DetailFile, next: boolean) => void;
-  onOpenActions: (file: DetailFile) => void;
-}
-
-function FileRowBase({ file, onToggle, onOpenActions }: FileRowProps) {
-  const { colors } = useTheme();
-  const styles = useMemo(() => makeStyles(colors), [colors]);
-  const done = file.length > 0 && file.progressBytes >= file.length;
-  const frac = file.length > 0 ? file.progressBytes / file.length : 0;
-  const actionable = done || isMediaFile(file.path);
-  const body = (
-    <View style={styles.body}>
-      <Text style={[styles.name, !file.included && styles.skipped]} numberOfLines={2} ellipsizeMode="middle">
-        {file.path}
-      </Text>
-      <Text style={styles.meta}>
-        {formatBytes(file.length)} · {file.included ? `${Math.floor(frac * 100)}%` : 'Skipped'}
-        {done ? ' · Done' : ''}
-      </Text>
-      {file.included ? (
-        <View style={styles.bar}>
-          <ProgressBar progress={frac} tone={done ? 'seed' : 'download'} accessibilityLabel={`${Math.floor(frac * 100)} percent`} />
-        </View>
-      ) : null}
-    </View>
-  );
-  return (
-    <View style={styles.row}>
-      <Checkbox
-        checked={file.included}
-        onChange={(next) => onToggle(file, next)}
-        accessibilityLabel={`Download ${file.path}`}
-      />
-      {actionable ? (
-        <PressableScale
-          style={styles.press}
-          onPress={() => onOpenActions(file)}
-          accessibilityRole="button"
-          accessibilityLabel={`${file.path}, ${formatBytes(file.length)}. File options`}
-        >
-          {body}
-          <PixelIcon name="more" size={20} color={colors.textMuted} />
-        </PressableScale>
-      ) : (
-        <View style={styles.press}>{body}</View>
-      )}
-    </View>
-  );
-}
-export const FileRow = memo(FileRowBase);
 
 export function PeerRow({ peer }: { peer: DetailPeer }) {
   const { colors } = useTheme();

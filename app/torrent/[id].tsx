@@ -2,21 +2,25 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { FlatList, StyleSheet, Text, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import * as Clipboard from 'expo-clipboard';
-import { maglevEngine, type DetailFile } from 'maglev-engine';
+import { maglevEngine, type DetailFile, type FilePriority } from 'maglev-engine';
 import { useTheme } from '../../context/ThemeContext';
 import { useMaglevEngine } from '../../context/EngineContext';
 import { ThemeColors, radius, spacing, type } from '../../constants/theme';
 import { formatBytes, formatEta, formatSpeed } from '../../constants/format';
 import { triggerHaptic } from '../../constants/haptics';
-import { Banner, EmptyBlock, IconButton, ProgressBar, Screen, SegmentedControl } from '../../components/ui';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Banner, Button, EmptyBlock, IconButton, ProgressBar, Screen, SegmentedControl } from '../../components/ui';
 import { SpeedChart } from '../../components/SpeedChart';
 import { PiecesMatrix } from '../../components/PiecesMatrix';
 import { StateBadge } from '../../components/detail/StateBadge';
 import { StatGrid } from '../../components/detail/StatGrid';
-import { FileRow, PeerRow, TrackerRow } from '../../components/detail/rows';
-import { DeleteSheet, FileActionsSheet, MoreSheet } from '../../components/detail/sheets';
+import { PeerRow, TrackerRow } from '../../components/detail/rows';
+import { DeleteSheet, FileActionsSheet } from '../../components/detail/sheets';
+import { FileListRow } from '../../components/detail/FileListRow';
+import { PrioritySheet } from '../../components/detail/PrioritySheet';
+import { TorrentMoreSheet } from '../../components/detail/TorrentMoreSheet';
 import { useTorrentDetail } from '../../components/detail/useTorrentDetail';
-import { buildMagnet } from '../../components/detail/torrentLabels';
+import { buildMagnet, isMediaFile } from '../../components/detail/torrentLabels';
 
 type Tab = 'files' | 'peers' | 'trackers' | 'pieces';
 
@@ -48,7 +52,13 @@ export default function TorrentDetailScreen() {
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [fileSheet, setFileSheet] = useState<DetailFile | null>(null);
   const [notice, setNotice] = useState<Notice | null>(null);
-  const [pending, setPending] = useState<Record<number, boolean>>({});
+  const [pending, setPending] = useState<Record<number, FilePriority>>({});
+  const [prioTarget, setPrioTarget] = useState<number[] | null>(null);
+  const [prioError, setPrioError] = useState<string | null>(null);
+  const [selection, setSelection] = useState<Set<number> | null>(null);
+  const [retryUntil, setRetryUntil] = useState(0);
+  const [now, setNow] = useState(() => Date.now());
+  const insets = useSafeAreaInsets();
   const noticeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const showNotice = useCallback((n: Notice) => {
@@ -60,21 +70,30 @@ export default function TorrentDetailScreen() {
     if (noticeTimer.current) clearTimeout(noticeTimer.current);
   }, []);
 
-  // Drop optimistic include flags once the engine reports the same value.
+  // Tick once a second while the "Find more peers" cool-down is showing.
+  useEffect(() => {
+    if (!moreOpen || retryUntil <= Date.now()) return;
+    setNow(Date.now());
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, [moreOpen, retryUntil]);
+  const retryInSecs = Math.max(0, Math.ceil((retryUntil - now) / 1000));
+
+  // Drop optimistic priorities once the engine reports the same value.
   useEffect(() => {
     if (!detail) return;
     setPending((prev) => {
       const keys = Object.keys(prev);
       if (keys.length === 0) return prev;
       const next = { ...prev };
-      for (const f of detail.files) if (f.index in next && next[f.index] === f.included) delete next[f.index];
+      for (const f of detail.files) if (f.index in next && next[f.index] === f.priority) delete next[f.index];
       return Object.keys(next).length === keys.length ? prev : next;
     });
   }, [detail]);
 
   const snap = detail?.snapshot ?? null;
   const files = useMemo(
-    () => (detail ? detail.files.map((f) => (f.index in pending ? { ...f, included: pending[f.index] } : f)) : []),
+    () => (detail ? detail.files.map((f) => (f.index in pending ? { ...f, priority: pending[f.index], included: pending[f.index] !== 'skip' } : f)) : []),
     [detail, pending],
   );
 
@@ -83,27 +102,67 @@ export default function TorrentDetailScreen() {
     else router.replace('/');
   }, [router]);
 
-  const handleToggle = useCallback(
-    async (file: DetailFile, next: boolean) => {
+  const applyPriority = useCallback(
+    async (indices: number[], priority: FilePriority) => {
       if (!id) return;
-      const indices = files.filter((f) => (f.index === file.index ? next : f.included)).map((f) => f.index);
-      if (indices.length === 0) {
-        showNotice({ tone: 'info', text: 'Keep at least one file selected.' });
+      const chosen = new Set(indices);
+      const next = files.map((f) => ({ index: f.index, priority: chosen.has(f.index) ? priority : f.priority }));
+      if (next.every((e) => e.priority === 'skip')) {
+        setPrioError('Keep at least one file');
+        triggerHaptic('warning');
         return;
       }
       triggerHaptic('selection');
-      setPending((p) => ({ ...p, [file.index]: next }));
-      const res = await maglevEngine.setIncludedFiles(id, indices);
+      setPrioError(null);
+      setPrioTarget(null);
+      setSelection(null);
+      setPending((p) => ({ ...p, ...Object.fromEntries(indices.map((i) => [i, priority])) }));
+      const res = await maglevEngine.setFilePriorities(id, next);
       if (!res.ok) {
         setPending((p) => {
-          const { [file.index]: _drop, ...rest } = p;
+          const rest = { ...p };
+          for (const i of indices) delete rest[i];
           return rest;
         });
-        showNotice({ tone: 'danger', text: res.message || "Couldn't change the file selection." });
+        showNotice({ tone: 'danger', text: res.message || "Couldn't change the file priority." });
       }
     },
     [files, id, showNotice],
   );
+
+  const handleFilePress = useCallback((file: DetailFile) => {
+    if (selection) {
+      setSelection((prev) => {
+        const s = new Set(prev);
+        if (s.has(file.index)) s.delete(file.index);
+        else s.add(file.index);
+        return s.size === 0 ? null : s;
+      });
+      return;
+    }
+    setPrioError(null);
+    setPrioTarget([file.index]);
+  }, [selection]);
+
+  const handleFileLongPress = useCallback((file: DetailFile) => {
+    triggerHaptic('medium');
+    setSelection((prev) => (prev ? prev : new Set([file.index])));
+  }, []);
+
+  const handleReannounce = useCallback(async () => {
+    setMoreOpen(false);
+    if (!id) return;
+    const res = await maglevEngine.reannounce(id);
+    if (res.ok) {
+      setRetryUntil(Date.now() + 60_000);
+      showNotice({ tone: 'info', text: 'Looking for more peers…' });
+    } else if (res.retryAfterSecs) {
+      setRetryUntil(Date.now() + res.retryAfterSecs * 1000);
+      showNotice({ tone: 'info', text: `Try again in ${res.retryAfterSecs} s.` });
+    } else {
+      showNotice({ tone: 'danger', text: res.message || "Couldn't ask for more peers." });
+    }
+  }, [id, showNotice]);
 
   const handleCopyMagnet = useCallback(async () => {
     setMoreOpen(false);
@@ -297,7 +356,20 @@ export default function TorrentDetailScreen() {
         }}
         renderItem={({ item }) => {
           if (tab === 'files')
-            return <FileRow file={item as DetailFile} onToggle={handleToggle} onOpenActions={setFileSheet} />;
+            return (
+              <FileListRow
+                file={item as DetailFile}
+                selecting={!!selection}
+                selected={!!selection?.has((item as DetailFile).index)}
+                hasActions={
+                  (item as DetailFile).length > 0 &&
+                  ((item as DetailFile).progressBytes >= (item as DetailFile).length || isMediaFile((item as DetailFile).path))
+                }
+                onPress={handleFilePress}
+                onLongPress={handleFileLongPress}
+                onOpenActions={setFileSheet}
+              />
+            );
           if (tab === 'peers') return <PeerRow peer={item as never} />;
           return <TrackerRow tracker={item as never} />;
         }}
@@ -310,13 +382,55 @@ export default function TorrentDetailScreen() {
         initialNumToRender={12}
         windowSize={7}
         keyboardShouldPersistTaps="handled"
+        extraData={selection}
       />
 
-      <MoreSheet
+      {selection ? (
+        <View style={[styles.selectBar, { paddingBottom: Math.max(insets.bottom, spacing.md) }]}>
+          <Text style={styles.selectCount}>{selection.size} selected</Text>
+          <Button label="Cancel" variant="ghost" onPress={() => setSelection(null)} />
+          <Button
+            label="Set priority"
+            onPress={() => {
+              setPrioError(null);
+              setPrioTarget([...selection]);
+            }}
+          />
+        </View>
+      ) : null}
+
+      <PrioritySheet
+        visible={!!prioTarget}
+        onClose={() => {
+          setPrioTarget(null);
+          setPrioError(null);
+        }}
+        title={prioTarget && prioTarget.length > 1 ? `${prioTarget.length} files` : 'File priority'}
+        subtitle={
+          prioTarget && prioTarget.length === 1
+            ? files.find((f) => f.index === prioTarget[0])?.path.split('/').pop()
+            : undefined
+        }
+        current={(() => {
+          if (!prioTarget) return null;
+          const set = new Set(files.filter((f) => prioTarget.includes(f.index)).map((f) => f.priority));
+          return set.size === 1 ? [...set][0] : null;
+        })()}
+        error={prioError}
+        onSelect={(p) => prioTarget && applyPriority(prioTarget, p)}
+      />
+      <TorrentMoreSheet
         visible={moreOpen}
         onClose={() => setMoreOpen(false)}
-        onCopyMagnet={handleCopyMagnet}
+        state={snap.state}
+        retryInSecs={retryInSecs}
+        onTogglePause={() => {
+          setMoreOpen(false);
+          void handlePlayPause();
+        }}
         onRecheck={handleRecheck}
+        onReannounce={handleReannounce}
+        onCopyMagnet={handleCopyMagnet}
         onOpenFolder={handleOpenFolder}
         onDelete={() => {
           setMoreOpen(false);
@@ -356,5 +470,16 @@ const makeStyles = (c: ThemeColors) =>
     tabs: { marginBottom: spacing.md },
     centered: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: spacing.md, paddingHorizontal: spacing.xxxl },
     loadingBar: { width: '60%' },
+    selectBar: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.sm,
+      paddingHorizontal: spacing.lg,
+      paddingTop: spacing.md,
+      borderTopWidth: 1,
+      borderTopColor: c.border,
+      backgroundColor: c.bg,
+    },
+    selectCount: { ...type.bodyStrong, fontSize: type.size.lg, color: c.text, flex: 1 },
     muted: { ...type.body, fontSize: type.size.md, color: c.textMuted },
   });

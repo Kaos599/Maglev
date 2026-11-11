@@ -6,26 +6,6 @@ import { ThemeColors, spacing, type } from '../../constants/theme';
 import { Banner, Button, ListRow, Sheet } from '../ui';
 import { fileName, isMediaFile } from './torrentLabels';
 
-interface MoreSheetProps {
-  visible: boolean;
-  onClose: () => void;
-  onCopyMagnet: () => void;
-  onRecheck: () => void;
-  onOpenFolder: () => void;
-  onDelete: () => void;
-}
-
-export function MoreSheet({ visible, onClose, onCopyMagnet, onRecheck, onOpenFolder, onDelete }: MoreSheetProps) {
-  return (
-    <Sheet visible={visible} onClose={onClose} title="Torrent options">
-      <ListRow title="Copy magnet link" icon="link" onPress={onCopyMagnet} />
-      <ListRow title="Recheck files" icon="retry" onPress={onRecheck} />
-      <ListRow title="Open folder" icon="folder" onPress={onOpenFolder} />
-      <ListRow title="Delete…" icon="trash" destructive onPress={onDelete} />
-    </Sheet>
-  );
-}
-
 interface DeleteSheetProps {
   visible: boolean;
   name: string;

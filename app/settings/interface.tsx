@@ -1,12 +1,13 @@
 import React, { useMemo } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { Platform, StyleSheet, Text, View } from 'react-native';
 import { Stack } from 'expo-router';
 import { AccentName, AppearanceMode } from 'maglev-engine';
 import { useSettings } from '../../context/SettingsContext';
 import { useTheme } from '../../context/ThemeContext';
+import { useMaglevEngine } from '../../context/EngineContext';
 import { ThemeColors, accents, radius, spacing, type } from '../../constants/theme';
 import { PixelIcon } from '../../components/PixelIcon';
-import { PressableScale, SegmentedControl } from '../../components/ui';
+import { ListRow, PressableScale, SegmentedControl } from '../../components/ui';
 import { Card, Caption, SettingsPage } from '../../components/settings/SettingsParts';
 import { TelemetryDensity } from 'maglev-engine';
 
@@ -27,7 +28,13 @@ const ACCENTS: { name: AccentName; label: string }[] = [
   { name: 'orange', label: 'Orange' },
 ];
 
+/** Live Updates (promoted notifications) exist from Android 16 (API 36). */
+const LIVE_UPDATES_API = 36;
+
 export default function InterfaceSettings() {
+  const { permissionStatus, openLiveUpdateSettings } = useMaglevEngine();
+  const showLiveUpdates = Platform.OS === 'android' && Number(Platform.Version) >= LIVE_UPDATES_API;
+  const liveUpdatesOn = permissionStatus?.liveUpdates === 'granted';
   const { settings, updateSettings } = useSettings();
   const { colors, dark } = useTheme();
   const s = useMemo(() => makeStyles(colors), [colors]);
@@ -84,6 +91,17 @@ export default function InterfaceSettings() {
           />
         </View>
       </Card>
+      {showLiveUpdates ? (
+        <Card>
+          <ListRow
+            title="Live progress in status bar"
+            subtitle="Shows download progress at the top of your screen."
+            value={liveUpdatesOn ? 'On' : 'Off'}
+            onPress={() => void openLiveUpdateSettings()}
+            accessibilityHint="Opens Android settings"
+          />
+        </Card>
+      ) : null}
     </SettingsPage>
   );
 }

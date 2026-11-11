@@ -96,7 +96,7 @@ export type EngineErrorCode =
 
 export type EngineResult<T = object> =
   | ({ ok: true } & T)
-  | { ok: false; code: EngineErrorCode; message: string; id?: string };
+  | { ok: false; code: EngineErrorCode; message: string; id?: string; retryAfterSecs?: number };
 
 export type NativeEncryption = 'prefer' | 'require' | 'disable';
 
@@ -158,12 +158,21 @@ export interface Snapshot {
   error: SnapshotError | null;
 }
 
+export type FilePriority = 'first' | 'normal' | 'skip';
+
+export interface FilePriorityEntry {
+  index: number;
+  priority: FilePriority;
+}
+
 export interface DetailFile {
   index: number;
   path: string;
   length: number;
   progressBytes: number;
   included: boolean;
+  /** NATIVE_CONTRACT 10.1. `included` is derived from it (`skip` means not included). */
+  priority: FilePriority;
 }
 
 export interface DetailPeer {
@@ -194,6 +203,17 @@ export interface AddTorrentOptions {
   paused?: boolean;
   outputFolder?: string | null;
   sequential?: boolean;
+  /** When present, overrides `onlyFiles`. Covers every file. */
+  filePriorities?: FilePriorityEntry[] | null;
+}
+
+export interface FreeSpace {
+  path: string;
+  freeBytes: number;
+  totalBytes: number;
+  mode: 'direct' | 'staging';
+  /** Staging mode only: free bytes on the SAF target volume, or null when unknown. */
+  targetFreeBytes?: number | null;
 }
 
 export interface GovernanceConfig {
@@ -232,6 +252,8 @@ export interface NativePermissionStatus {
   /** Times Android killed Maglev while transfers were running (headless restarts after an unclean stop). */
   backgroundKills?: number;
   /** Manufacturer known for aggressive background killing (link to dontkillmyapp.com), else null. */
+  /** Android 16+ Live Updates. 'n/a' below API 36. */
+  liveUpdates?: 'granted' | 'denied' | 'n/a';
   oemHint?: 'xiaomi' | 'samsung' | 'huawei' | 'oneplus' | 'oppo' | 'vivo' | null;
 }
 
@@ -258,6 +280,12 @@ export interface MaglevEngineApi {
   resumeAll(): Promise<EngineResult>;
   delete(id: string, deleteFiles: boolean): Promise<EngineResult>;
   setIncludedFiles(id: string, indices: number[]): Promise<EngineResult>;
+  /** Covers every file. Unknown index or all `skip` returns INVALID_SOURCE. */
+  setFilePriorities(id: string, priorities: FilePriorityEntry[]): Promise<EngineResult>;
+  /** Only while DOWNLOADING or SEEDING. Rate limited to once per 60 s per torrent. */
+  reannounce(id: string): Promise<EngineResult<{ retryAfterSecs?: number }>>;
+  getFreeSpace(): Promise<EngineResult<FreeSpace>>;
+  openLiveUpdateSettings(): Promise<void>;
   setGlobalLimits(down: number, up: number): Promise<EngineResult>;
   applyConfig(config: NativeConfig): Promise<EngineResult<{ restartRequired: boolean }>>;
   getEffectiveConfig(): Promise<EngineResult<NativeConfig>>;

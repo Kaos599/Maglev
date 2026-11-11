@@ -4,6 +4,8 @@ import type {
   Detail,
   EngineErrorCode,
   EngineResult,
+  FilePriorityEntry,
+  FreeSpace,
   GovernanceConfig,
   MaglevEngineApi,
   Metadata,
@@ -261,7 +263,18 @@ export class MaglevMockEngine implements MaglevEngineApi {
     const name = parsed.name || `Torrent_${id.slice(0, 8)}`;
     const totalSize = parsed.exactLength && parsed.exactLength > 5120 ? parsed.exactLength : DEFAULT_PAYLOAD_BYTES;
     const only = options.onlyFiles && options.onlyFiles.length > 0 ? options.onlyFiles : null;
-    const active = (i: number) => (!only || only.includes(i) ? 1 : 0) as 0 | 1 | 2;
+    const fp = options.filePriorities && options.filePriorities.length > 0 ? options.filePriorities : null;
+    if (fp) {
+      const bad = this.validatePriorities(fp, 3);
+      if (bad) return fail('INVALID_SOURCE', bad);
+    }
+    const active = (i: number) => {
+      if (fp) {
+        const p = fp.find((e) => e.index === i)?.priority;
+        return (p === 'first' ? 2 : p === 'skip' ? 0 : 1) as 0 | 1 | 2;
+      }
+      return (!only || only.includes(i) ? 1 : 0) as 0 | 1 | 2;
+    };
 
     const files: TorrentFileInfo[] = [
       { index: 0, name, path: name, length: totalSize - 5120, progress: 0, priority: active(0) },
@@ -602,6 +615,7 @@ export class MaglevMockEngine implements MaglevEngineApi {
         length: f.length,
         progressBytes: Math.floor((f.length * t.progressPercent) / 100),
         included: f.priority > 0,
+        priority: f.priority === 2 ? ('first' as const) : f.priority === 1 ? ('normal' as const) : ('skip' as const),
       })),
       peers: [],
       trackers: t.trackers.map((tr) => ({
@@ -647,6 +661,64 @@ export class MaglevMockEngine implements MaglevEngineApi {
     });
     return ok();
   }
+
+  /** Returns an error message, or null when the list is valid (known indices, at least one file kept). */
+  private validatePriorities(list: FilePriorityEntry[], fileCount: number): string | null {
+    for (const e of list) {
+      if (!Number.isInteger(e.index) || e.index < 0 || e.index >= fileCount) return `Unknown file ${e.index}.`;
+      if (e.priority !== 'first' && e.priority !== 'normal' && e.priority !== 'skip') return 'Unknown priority.';
+    }
+    if (list.every((e) => e.priority === 'skip')) return 'Keep at least one file.';
+    return null;
+  }
+
+  public async setFilePriorities(id: string, priorities: FilePriorityEntry[]): Promise<EngineResult> {
+    const t = this.torrents.get(id);
+    if (!t) return fail('NOT_FOUND', 'Torrent not found.');
+    const bad = this.validatePriorities(priorities, t.files.length);
+    if (bad) return fail('INVALID_SOURCE', bad);
+    for (const e of priorities) {
+      const f = t.files.find((x) => x.index === e.index);
+      if (f) f.priority = e.priority === 'first' ? 2 : e.priority === 'normal' ? 1 : 0;
+    }
+    this.broadcast();
+    return ok();
+  }
+
+  private lastReannounce: Map<string, number> = new Map();
+
+  public async reannounce(id: string): Promise<EngineResult<{ retryAfterSecs?: number }>> {
+    const t = this.torrents.get(id);
+    if (!t) return fail('NOT_FOUND', 'Torrent not found.');
+    if (t.state !== 'DOWNLOADING' && t.state !== 'SEEDING') {
+      return fail('UNSUPPORTED', 'Peers can only be refreshed while downloading or seeding.');
+    }
+    const now = Date.now();
+    const last = this.lastReannounce.get(id);
+    if (last !== undefined && now - last < 60_000) {
+      return {
+        ok: false,
+        code: 'UNSUPPORTED',
+        message: 'Try again in a moment.',
+        retryAfterSecs: Math.ceil((60_000 - (now - last)) / 1000),
+      };
+    }
+    this.lastReannounce.set(id, now);
+    return ok();
+  }
+
+  public async getFreeSpace(): Promise<EngineResult<FreeSpace>> {
+    return {
+      ok: true,
+      path: this.getDefaultStoragePath(),
+      freeBytes: 21_400_000_000,
+      totalBytes: 128_000_000_000,
+      mode: 'direct',
+      targetFreeBytes: null,
+    };
+  }
+
+  public async openLiveUpdateSettings(): Promise<void> {}
 
   public async setGlobalLimits(down: number, up: number): Promise<EngineResult> {
     const bw = this.settings.bandwidth;
@@ -705,7 +777,7 @@ export class MaglevMockEngine implements MaglevEngineApi {
   }
 
   public async getPermissionStatus(): Promise<NativePermissionStatus> {
-    return { notifications: 'granted', batteryUnrestricted: true, legacyStorage: 'n/a' };
+    return { notifications: 'granted', batteryUnrestricted: true, legacyStorage: 'n/a', liveUpdates: 'n/a' };
   }
 
   public async requestNotifications(): Promise<EngineResult> {

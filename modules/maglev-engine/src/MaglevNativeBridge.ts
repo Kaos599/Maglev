@@ -5,6 +5,8 @@ import type {
   EngineErrorCode,
   EngineResult,
   EngineStatus,
+  FilePriorityEntry,
+  FreeSpace,
   GovernanceConfig,
   MaglevEngineApi,
   Metadata,
@@ -302,6 +304,18 @@ export class MaglevEngineBridge implements MaglevEngineApi {
   public setIncludedFiles(id: string, indices: number[]): Promise<EngineResult> {
     return this.route('setIncludedFiles', id, indices);
   }
+  public setFilePriorities(id: string, priorities: FilePriorityEntry[]): Promise<EngineResult> {
+    return this.route('setFilePriorities', id, priorities);
+  }
+  public reannounce(id: string): Promise<EngineResult<{ retryAfterSecs?: number }>> {
+    return this.route('reannounce', id);
+  }
+  public getFreeSpace(): Promise<EngineResult<FreeSpace>> {
+    return this.route('getFreeSpace');
+  }
+  public async openLiveUpdateSettings(): Promise<void> {
+    if (this.usingNative) await this.callNative('openLiveUpdateSettings');
+  }
   public setGlobalLimits(down: number, up: number): Promise<EngineResult> {
     return this.route('setGlobalLimits', down, up);
   }
@@ -348,7 +362,7 @@ export class MaglevEngineBridge implements MaglevEngineApi {
       const res = await this.callNative<any>('getPermissionStatus');
       if (res && res.ok !== false) return res;
     }
-    return { notifications: 'granted', batteryUnrestricted: true, legacyStorage: 'n/a' };
+    return { notifications: 'granted', batteryUnrestricted: true, legacyStorage: 'n/a', liveUpdates: 'n/a' };
   }
   public requestNotifications(): Promise<EngineResult> {
     return this.permissionCall('requestNotifications');

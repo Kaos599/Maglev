@@ -10,6 +10,8 @@ import {
   type AggregatedTelemetry,
   type EngineResult,
   type EngineStatus,
+  type FilePriorityEntry,
+  type FreeSpace,
   type Metadata,
   type NativePermissionStatus,
   type StorageStatus,
@@ -44,6 +46,11 @@ interface EngineContextType {
   addTorrent: (source: string, options?: AddTorrentOptions) => Promise<EngineResult<{ id: string; infoHash: string }>>;
   resolveMetadata: (source: string, timeoutMs?: number) => Promise<EngineResult<Metadata>>;
   setFilePriority: (id: string, fileIndex: number, priority: 0 | 1 | 2) => Promise<boolean>;
+  setFilePriorities: (id: string, priorities: FilePriorityEntry[]) => Promise<EngineResult>;
+  /** Result carries `retryAfterSecs` when rate limited. */
+  reannounce: (id: string) => Promise<EngineResult<{ retryAfterSecs?: number }>>;
+  getFreeSpace: () => Promise<EngineResult<FreeSpace>>;
+  openLiveUpdateSettings: () => Promise<void>;
   /** Not supported by the engine contract; always resolves false. */
   addTracker: (id: string, trackerUrl: string) => Promise<boolean>;
   /** 256 cells, contract values: 0 missing, 1 have, 2 partial. */
@@ -285,6 +292,14 @@ export const EngineProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     [refreshDetail]
   );
 
+  const setFilePriorities = useCallback(
+    (id: string, priorities: FilePriorityEntry[]) => maglevEngine.setFilePriorities(id, priorities),
+    []
+  );
+  const reannounce = useCallback((id: string) => maglevEngine.reannounce(id), []);
+  const getFreeSpace = useCallback(() => maglevEngine.getFreeSpace(), []);
+  const openLiveUpdateSettings = useCallback(() => maglevEngine.openLiveUpdateSettings(), []);
+
   const addTracker = useCallback(async (_id: string, _trackerUrl: string) => false, []);
 
   const getPieceBitfield = useCallback(async (id: string) => {
@@ -349,6 +364,10 @@ export const EngineProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         addTorrent,
         resolveMetadata,
         setFilePriority,
+        setFilePriorities,
+        reannounce,
+        getFreeSpace,
+        openLiveUpdateSettings,
         addTracker,
         getPieceBitfield,
         getTorrentDetail,
