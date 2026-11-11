@@ -21,8 +21,13 @@ data class TransferSummary(
     val progressPct: Int = -1,
     val downBps: Long = 0,
     val upBps: Long = 0,
+    /** Torrents waiting on Wi-Fi, battery or charging rules. */
+    val pausedByRules: Int = 0,
 ) {
     val active: Int get() = downloading + seeding
+
+    /** Active plus torrents that are queued, initializing or checking. Counts as real work. */
+    val busy: Int get() = active + queued
 }
 
 object Notifications {
@@ -59,11 +64,13 @@ object Notifications {
     }
 
     fun title(s: TransferSummary): String =
-        if (s.active == 0 && s.pausedByUser > 0) "Paused · ${s.pausedByUser} torrents"
+        if (s.active == 0 && s.pausedByUser == 0 && s.pausedByRules > 0) "Waiting \u00B7 ${s.pausedByRules} torrents"
+        else if (s.active == 0 && s.pausedByUser > 0) "Paused · ${s.pausedByUser} torrents"
         else "Downloading ${s.downloading} · Seeding ${s.seeding}"
 
     fun text(s: TransferSummary): String =
-        if (s.active == 0) "Tap Resume all to continue"
+        if (s.active == 0 && s.pausedByUser == 0) "Paused by Wi-Fi, battery or charging rules"
+        else if (s.active == 0) "Tap Resume all to continue"
         else "↓ ${speed(s.downBps)} · ↑ ${speed(s.upBps)}"
 
     fun speed(bps: Long): String {

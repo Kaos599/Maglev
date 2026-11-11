@@ -224,6 +224,10 @@ export interface NativePermissionStatus {
   notifications: NotificationPermission;
   batteryUnrestricted: boolean;
   legacyStorage: 'granted' | 'denied' | 'n/a';
+  /** Times Android killed Maglev while transfers were running (headless restarts after an unclean stop). */
+  backgroundKills?: number;
+  /** Manufacturer known for aggressive background killing (link to dontkillmyapp.com), else null. */
+  oemHint?: 'xiaomi' | 'samsung' | 'huawei' | 'oneplus' | 'oppo' | 'vivo' | null;
 }
 
 export type EngineStatus =

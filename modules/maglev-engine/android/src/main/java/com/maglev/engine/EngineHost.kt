@@ -44,8 +44,13 @@ data class Governance(
  */
 object EngineHost {
     private const val TAG = "MaglevEngine"
-    private const val PREFS = "maglev_engine"
+    const val PREFS = "maglev_engine"
     private const val KEY_FGS_TIMEOUT = "fgs_timeout"
+    private const val KEY_WANTED = "service_wanted"
+    private const val KEY_ALIVE_AT = "last_alive_at"
+    const val KEY_KILLS = "background_kills"
+    const val GOV_PREFS = "maglev_governance"
+    const val ENGINE_PREFS = PREFS
     private const val REASON_FGS_TIMEOUT = "fgs_timeout"
     private const val SERVICE_RETRY_MS = 10_000L
     private const val COPY_RETRY_MS = 60_000L
@@ -79,6 +84,7 @@ object EngineHost {
     @Volatile private var holdForPaused = false
     @Volatile private var serviceBlocked = false
     private var lastServiceAttempt = 0L
+    private var lastHeartbeat = 0L
 
     private val copying = ConcurrentHashMap.newKeySet<String>()
     private val copyFailedAt = ConcurrentHashMap<String, Long>()
@@ -87,7 +93,31 @@ object EngineHost {
     private val bitfieldBuffer: ByteBuffer by lazy { ByteBuffer.allocateDirect(256) }
 
     fun attach(context: Context) {
-        if (ctx == null) ctx = context.applicationContext
+        if (ctx == null) {
+            ctx = context.applicationContext
+            governance = loadGovernance(context.applicationContext)
+        }
+    }
+
+    private fun loadGovernance(c: Context): Governance {
+        val p = c.getSharedPreferences(GOV_PREFS, Context.MODE_PRIVATE)
+        return Governance(
+            wifiOnly = p.getBoolean("wifiOnly", false),
+            ssidWhitelist = (p.getString("ssids", "") ?: "").split('\n').filter { it.isNotBlank() },
+            chargingOnly = p.getBoolean("chargingOnly", false),
+            batteryCutoffPct = p.getInt("batteryCutoffPct", 0),
+            autoExitOnComplete = p.getBoolean("autoExitOnComplete", false),
+        )
+    }
+
+    private fun saveGovernance(c: Context, g: Governance) {
+        c.getSharedPreferences(GOV_PREFS, Context.MODE_PRIVATE).edit()
+            .putBoolean("wifiOnly", g.wifiOnly)
+            .putString("ssids", g.ssidWhitelist.joinToString("\n"))
+            .putBoolean("chargingOnly", g.chargingOnly)
+            .putInt("batteryCutoffPct", g.batteryCutoffPct)
+            .putBoolean("autoExitOnComplete", g.autoExitOnComplete)
+            .apply()
     }
 
     private fun requireCtx(): Context? = ctx
@@ -113,14 +143,34 @@ object EngineHost {
 
     // region lifecycle
 
+    /**
+     * JS entry point. Idempotent: if the engine was already started headlessly after a process restart,
+     * the JS config is applied to the running engine instead of starting a second one.
+     */
     fun init(config: Map<String, Any?>): Map<String, Any?> {
+        val configJson = Json.toJson(Json.snakeify(config))
+        if (initialized) {
+            val applied = call { NativeCore.nativeApplyConfig(configJson) }
+            startPolling()
+            emitStorageStatus()
+            val out = LinkedHashMap<String, Any?>(applied)
+            out["ok"] = true
+            out["alreadyRunning"] = true
+            out["storage"] = storageStatus()
+            return out
+        }
+        return startEngine(configJson)
+    }
+
+    /** Starts the native session. [configJson] of "" makes Rust load its last persisted config. */
+    private fun startEngine(configJson: String): Map<String, Any?> {
         val c = requireCtx() ?: return Json.failure("ENGINE_UNAVAILABLE", "Module is not attached")
         if (!NativeCore.loaded) {
             return Json.failure("ENGINE_UNAVAILABLE", NativeCore.loadError ?: "Engine library is not loaded")
         }
         val target = StorageManager.activeTarget(c)
         val session = StorageManager.sessionDir(c).absolutePath
-        val res = call { NativeCore.nativeInit(Json.toJson(Json.snakeify(config)), session, target.path) }
+        val res = call { NativeCore.nativeInit(configJson, session, target.path) }
         if (!isOk(res)) return res
 
         initialized = true
@@ -135,6 +185,63 @@ object EngineHost {
         return LinkedHashMap(res).apply { put("storage", storageStatus()) }
     }
 
+    /**
+     * Sequence for a sticky restart with a null intent and no JS: the service has already called startForeground.
+     * 1. Count a background kill if the previous run never stopped cleanly.
+     * 2. If the user stopped transfers ("service wanted" is false), stop the service.
+     * 3. Start the engine from Rust's persisted config, with governance rules restored from SharedPreferences.
+     * 4. Poll once. If nothing is active or rule-paused, stop the service. Otherwise the poller keeps running.
+     */
+    fun headlessStart() {
+        scope.launch {
+            val c = ctx ?: return@launch
+            val p = prefs(c)
+            if (p.getLong(KEY_ALIVE_AT, 0L) > 0L) {
+                p.edit().putInt(KEY_KILLS, p.getInt(KEY_KILLS, 0) + 1).apply()
+            }
+            if (!p.getBoolean(KEY_WANTED, false)) {
+                stopService()
+                return@launch
+            }
+            if (!initialized) {
+                val res = startEngine("")
+                if (!isOk(res)) {
+                    Log.w(TAG, "headless init failed: ${res["code"]}")
+                    stopService()
+                    return@launch
+                }
+            }
+            val list = call { NativeCore.nativeListTorrents() }
+            val summary = summarize(Json.list(list["torrents"]))
+            if (summary.busy == 0 && summary.pausedByRules == 0) {
+                setWanted(c, false)
+                stopService()
+            } else {
+                pollNow()
+            }
+        }
+    }
+
+    private fun prefs(c: Context) = c.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+
+    private fun setWanted(c: Context, wanted: Boolean) {
+        val p = prefs(c)
+        if (p.getBoolean(KEY_WANTED, false) != wanted) p.edit().putBoolean(KEY_WANTED, wanted).apply()
+    }
+
+    /** Called by the service when it is destroyed normally. A missing heartbeat on restart means the process was killed. */
+    fun markCleanStop() {
+        ctx?.let { prefs(it).edit().putLong(KEY_ALIVE_AT, 0L).apply() }
+    }
+
+    private fun heartbeat(c: Context) {
+        val now = System.currentTimeMillis()
+        if (now - lastHeartbeat >= 30_000L) {
+            lastHeartbeat = now
+            prefs(c).edit().putLong(KEY_ALIVE_AT, now).apply()
+        }
+    }
+
     /** Stops the engine, the poller, the governance watchers and the service. */
     fun shutdownEngine(): Map<String, Any?> {
         initialized = false
@@ -143,6 +250,7 @@ object EngineHost {
         net?.stop(); net = null
         power?.stop(); power = null
         holdForPaused = false
+        ctx?.let { setWanted(it, false) }
         val res = call { NativeCore.nativeShutdown() }
         stopService()
         ctx?.let { Notifications.cancel(it, Notifications.ID_ONGOING) }
@@ -227,6 +335,7 @@ object EngineHost {
             if (res["code"] == "NOT_INITIALIZED") initialized = false
             return
         }
+        ctx?.let { heartbeat(it) }
         val torrents = Json.list(res["torrents"])
         detectCompletions(torrents)
         val summary = summarize(torrents)
@@ -240,7 +349,7 @@ object EngineHost {
     }
 
     private fun summarize(torrents: List<Map<String, Any?>>): TransferSummary {
-        var dl = 0; var seed = 0; var queued = 0; var paused = 0
+        var dl = 0; var seed = 0; var queued = 0; var paused = 0; var byRules = 0
         var done = 0L; var total = 0L; var down = 0L; var up = 0L
         for (t in torrents) {
             when (t["state"]) {
@@ -249,13 +358,16 @@ object EngineHost {
                 "QUEUED", "INITIALIZING", "CHECKING" -> {
                     queued++; done += Json.long(t["progress_bytes"]); total += Json.long(t["total_bytes"])
                 }
-                "PAUSED" -> if (t["paused_by"] == null || t["paused_by"] == "user") paused++
+                "PAUSED" -> when (t["paused_by"]) {
+                    null, "user" -> paused++
+                    "wifi_only", "battery", "charging_only" -> byRules++
+                }
             }
             down += Json.long(t["down_bps"])
             up += Json.long(t["up_bps"])
         }
         val pct = if (dl + queued > 0 && total > 0) ((done * 100) / total).toInt().coerceIn(0, 100) else -1
-        return TransferSummary(dl, seed, queued, paused, pct, down, up)
+        return TransferSummary(dl, seed, queued, paused, pct, down, up, byRules)
     }
 
     private fun detectCompletions(torrents: List<Map<String, Any?>>) {
@@ -286,7 +398,9 @@ object EngineHost {
         val c = ctx ?: return
         val timedOut = c.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getBoolean(KEY_FGS_TIMEOUT, false)
         if (s.active == 0 && s.pausedByUser == 0) holdForPaused = false
-        val shouldRun = !timedOut && (s.active > 0 || (holdForPaused && s.pausedByUser > 0))
+        // Wanted = real work exists. A rules-paused torrent counts: it must resume by itself when Wi-Fi or power returns.
+        setWanted(c, s.busy > 0 || s.pausedByRules > 0)
+        val shouldRun = !timedOut && (s.busy > 0 || s.pausedByRules > 0 || (holdForPaused && s.pausedByUser > 0))
         val svc = MaglevTorrentService.instance
         if (shouldRun) {
             if (svc != null) {
@@ -360,6 +474,7 @@ object EngineHost {
     // region bulk actions
 
     fun pauseAll(): Map<String, Any?> {
+        ctx?.let { setWanted(it, false) }
         val list = call { NativeCore.nativeListTorrents() }
         if (!isOk(list)) return list
         var n = 0
@@ -417,6 +532,7 @@ object EngineHost {
     fun setGovernance(g: Governance): Map<String, Any?> {
         governance = g
         val c = ctx
+        if (c != null) saveGovernance(c, g)
         if (initialized && c != null) startGovernanceWatchers(c)
         evaluateGovernance(force = false)
         val enforceable = g.ssidWhitelist.isEmpty() || net?.currentSsid() != null

@@ -28,6 +28,13 @@ class MaglevTorrentService : Service() {
         const val ACTION_RESUME_ALL = "com.maglev.engine.action.RESUME_ALL"
         const val ACTION_SHUTDOWN = "com.maglev.engine.action.SHUTDOWN"
 
+        /**
+         * API 34+ foreground type. specialUse has no 6-hour cap (dataSync does on Android 15).
+         * Google Play requires a written specialUse justification, so a Play build should set this to false.
+         * When false, API 34+ falls back to dataSync, which is also declared in the manifest.
+         */
+        const val USE_SPECIAL_USE_FGS = true
+
         private const val TAG = "MaglevService"
         private const val LOCK_TIMEOUT_MS = 15 * 60 * 1000L
         private const val LOCK_REFRESH_MS = 10 * 60 * 1000L
@@ -65,23 +72,32 @@ class MaglevTorrentService : Service() {
             stopSelf()
             return START_NOT_STICKY
         }
-        when (intent?.action) {
+        // A null intent means Android restarted us after the process died. No JS is running.
+        if (intent == null) {
+            EngineHost.headlessStart()
+            return START_STICKY
+        }
+        when (intent.action) {
             ACTION_PAUSE_ALL -> EngineHost.pauseAllFromNotification()
             ACTION_RESUME_ALL -> EngineHost.resumeAllFromNotification()
             ACTION_SHUTDOWN -> EngineHost.shutdownFromNotification()
             else -> Unit
         }
-        return START_NOT_STICKY
+        // Sticky so Android restarts us after a kill. EngineHost stops the service itself when nothing is wanted.
+        return START_STICKY
+    }
+
+    /** The type argument is ignored below API 29 by ServiceCompat. */
+    private fun foregroundType(): Int = when {
+        Build.VERSION.SDK_INT >= 34 && USE_SPECIAL_USE_FGS -> ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
+        Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q -> ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
+        else -> 0
     }
 
     private fun enterForeground(): Boolean {
         return try {
             val n = Notifications.ongoing(this, summary)
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                ServiceCompat.startForeground(this, Notifications.ID_ONGOING, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
-            } else {
-                startForeground(Notifications.ID_ONGOING, n)
-            }
+            ServiceCompat.startForeground(this, Notifications.ID_ONGOING, n, foregroundType())
             isForeground = true
             true
         } catch (e: Exception) {
@@ -156,6 +172,7 @@ class MaglevTorrentService : Service() {
         releaseLocks()
         isForeground = false
         instance = null
+        EngineHost.markCleanStop()
         ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
         super.onDestroy()
     }

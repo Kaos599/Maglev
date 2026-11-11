@@ -10,6 +10,7 @@ import android.os.PowerManager
 import android.provider.Settings
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
+import com.maglev.engine.EngineHost
 
 object PermissionHelper {
     private const val PREFS = "maglev_permissions"
@@ -44,7 +45,24 @@ object PermissionHelper {
             "notifications" to notifications(context),
             "batteryUnrestricted" to (pm?.isIgnoringBatteryOptimizations(context.packageName) == true),
             "legacyStorage" to legacyStorage(context),
+            "backgroundKills" to context.getSharedPreferences(EngineHost.PREFS, Context.MODE_PRIVATE)
+                .getInt(EngineHost.KEY_KILLS, 0),
+            "oemHint" to oemHint(),
         )
+    }
+
+    /** Vendors whose battery managers are known to kill background apps. See dontkillmyapp.com. */
+    fun oemHint(): String? {
+        val m = Build.MANUFACTURER.lowercase()
+        return when {
+            "xiaomi" in m || "redmi" in m || "poco" in m -> "xiaomi"
+            "samsung" in m -> "samsung"
+            "huawei" in m || "honor" in m -> "huawei"
+            "oneplus" in m -> "oneplus"
+            "oppo" in m || "realme" in m -> "oppo"
+            "vivo" in m || "iqoo" in m -> "vivo"
+            else -> null
+        }
     }
 
     /** Opens the exemption dialog, falling back to the battery optimization list. Returns an error message or null. */
