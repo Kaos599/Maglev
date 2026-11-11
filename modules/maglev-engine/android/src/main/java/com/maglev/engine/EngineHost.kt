@@ -15,6 +15,7 @@ import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import com.maglev.engine.service.TileModel
 import com.maglev.engine.network.NetworkGovernanceManager
+import com.maglev.engine.storage.Admission
 import com.maglev.engine.feeds.FeedScheduler
 import com.maglev.engine.feeds.FeedStore
 import com.maglev.engine.power.PowerGovernanceManager
@@ -54,6 +55,8 @@ data class Governance(
     val chargingOnly: Boolean = false,
     val batteryCutoffPct: Int = 0,
     val autoExitOnComplete: Boolean = false,
+    /** Contract section 21: pause while the active network is not a VPN. */
+    val vpnOnly: Boolean = false,
 )
 
 /**
@@ -80,6 +83,7 @@ object EngineHost {
     private const val SERVICE_RETRY_MS = 10_000L
     private const val TILE_REFRESH_MS = 2_000L
     private const val COPY_RETRY_MS = 60_000L
+    private const val FEED_RESOLVE_MS = 20_000L
     private const val INIT_GIVE_UP_MS = 10 * 60_000L
 
     @Volatile private var ctx: Context? = null
@@ -106,6 +110,8 @@ object EngineHost {
     private val pollLock = Any()
     private var initOnlySince = 0L
     private val cancelledCopies = ConcurrentHashMap.newKeySet<String>()
+    /** Torrents whose staged copy was freed at the seed limit in this process. */
+    private val seedLimitFreed = ConcurrentHashMap.newKeySet<String>()
     private var sawDownloading = false
     /** Per torrent: seen DOWNLOADING since it was last unfinished (contract 13.2). Guarded by [prevFinished]. */
     private val sawDownloadingById = HashMap<String, Boolean>()
@@ -157,6 +163,7 @@ object EngineHost {
             chargingOnly = p.getBoolean("chargingOnly", false),
             batteryCutoffPct = p.getInt("batteryCutoffPct", 0),
             autoExitOnComplete = p.getBoolean("autoExitOnComplete", false),
+            vpnOnly = p.getBoolean("vpnOnly", false),
         )
     }
 
@@ -167,6 +174,7 @@ object EngineHost {
             .putBoolean("chargingOnly", g.chargingOnly)
             .putInt("batteryCutoffPct", g.batteryCutoffPct)
             .putBoolean("autoExitOnComplete", g.autoExitOnComplete)
+            .putBoolean("vpnOnly", g.vpnOnly)
             .apply()
     }
 
@@ -294,7 +302,7 @@ object EngineHost {
                 evaluateGovernance(force = false)
             }
             val list = call { NativeCore.nativeListTorrents() }
-            val summary = summarize(Json.list(list["torrents"]))
+            val summary = summarize(Json.list(list["torrents"]), list["streaming"] == true)
             val counted = summary.busy + summary.pausedByRules + summary.pausedBySchedule
             if (RestartPolicy.decide(intent.copy(activeTorrents = counted)) == RestartDecision.StayStopped) {
                 setWanted(c, false)
@@ -449,7 +457,7 @@ object EngineHost {
         ctx?.let { heartbeat(it) }
         val torrents = Json.list(res["torrents"])
         detectCompletions(torrents)
-        val summary = summarize(torrents)
+        val summary = summarize(torrents, res["streaming"] == true)
         lastSummary = summary
         refreshTile(summary)
         @Suppress("UNCHECKED_CAST")
@@ -459,6 +467,7 @@ object EngineHost {
         driveService(summary)
         healthTick(torrents, summary)
         copyStagedTorrents(torrents)
+        freeStagedAtSeedLimit(torrents)
         checkAutoExit(torrents)
     }
 
@@ -468,13 +477,14 @@ object EngineHost {
         return total > 0 && Json.long(t["progress_bytes"]) >= total
     }
 
-    private fun summarize(torrents: List<Map<String, Any?>>): TransferSummary {
+    private fun summarize(torrents: List<Map<String, Any?>>, streaming: Boolean = false): TransferSummary {
         var dl = 0; var seed = 0; var queued = 0; var paused = 0; var byRules = 0
         var checking = 0; var init = 0; var bySchedule = 0
         var done = 0L; var total = 0L; var down = 0L; var up = 0L
         var dlDone = 0L; var dlTotal = 0L
         var seedId: String? = null
         var wifiPaused = false; var batteryPaused = false; var chargingPaused = false
+        var unvalidatedPaused = false; var vpnPaused = false
         // §18.5: storage-paused torrents keep the service alive so the free-space poll and media receiver keep running.
         var spacePaused = false; var volumePaused = false
         var primary: Map<String, Any?>? = null
@@ -501,6 +511,8 @@ object EngineHost {
                     "wifi_only" -> { byRules++; wifiPaused = true }
                     "battery" -> { byRules++; batteryPaused = true }
                     "charging_only" -> { byRules++; chargingPaused = true }
+                    "network_unvalidated" -> { byRules++; unvalidatedPaused = true }
+                    "vpn_required" -> { byRules++; vpnPaused = true }
                     "storage_full" -> { byRules++; spacePaused = true }
                     "storage_unavailable" -> { byRules++; volumePaused = true }
                     "schedule" -> bySchedule++
@@ -528,6 +540,8 @@ object EngineHost {
         }
         val reason = when {
             wifiPaused -> "wifi_only"
+            unvalidatedPaused -> "network_unvalidated"
+            vpnPaused -> "vpn_required"
             batteryPaused -> "battery"
             chargingPaused -> "charging_only"
             spacePaused -> "storage_full"
@@ -543,6 +557,7 @@ object EngineHost {
             ruleReason = reason,
             pausedBySchedule = bySchedule,
             scheduleResumeAt = if (bySchedule > 0) ctx?.let { ScheduleManager.nextBoundaryLabel(it) } else null,
+            streaming = streaming,
         )
     }
 
@@ -851,14 +866,66 @@ object EngineHost {
     }
 
     fun deleteTorrent(id: String, deleteFiles: Boolean): Map<String, Any?> {
+        // Contract section 21: keeping the files of a staged torrent means the copy in the user's folder is the
+        // one that stays, so the staged copy goes. The paths must be read before the torrent is gone.
+        val staged = if (!deleteFiles) stagedFilesOf(id) else null
         val res = call { NativeCore.nativeDelete(id, deleteFiles) }
         if (isOk(res)) {
+            if (staged != null) freeStagedAsync(staged.first, staged.second)
             ctx?.let { StorageManager.clearCopied(it, id) }
             if (copying.contains(id)) cancelledCopies.add(id)
             copyFailedAt.remove(id)
         }
         pollNow()
         return res
+    }
+
+    /** (outputFolder, relPaths) when [id] writes into the staging folder and a custom folder is set, else null. */
+    private fun stagedFilesOf(id: String): Pair<String, List<String>>? {
+        val c = ctx ?: return null
+        if (StorageManager.customUri(c) == null) return null
+        val detail = call { NativeCore.nativeGetDetail(id) }
+        if (!isOk(detail)) return null
+        val folder = (detail["snapshot"] as? Map<*, *>)?.get("output_folder") as? String ?: return null
+        if (!StorageManager.isStagingPath(c, folder)) return null
+        val rels = Json.list(detail["files"]).mapNotNull { it["path"] as? String }
+        return if (rels.isEmpty()) null else folder to rels
+    }
+
+    /** Frees the staged files whose copy in the user's folder matches by size. Runs off the control thread. */
+    private fun freeStagedAsync(folder: String, rels: List<String>) {
+        val c = ctx ?: return
+        ioScope.launch {
+            try {
+                val freed = StorageManager.freeStagedFiles(c, folder, rels)
+                if (freed > 0) Log.i(TAG, "freed $freed bytes of staged files")
+            } catch (t: Throwable) {
+                Log.w(TAG, "could not free staged files", t)
+            }
+        }
+    }
+
+    /** Staged torrents that hit their seed limit have their staged copy freed once (contract section 21). */
+    private fun freeStagedAtSeedLimit(torrents: List<Map<String, Any?>>) {
+        val c = ctx ?: return
+        val treeStr = StorageManager.customUri(c) ?: return
+        for (t in torrents) {
+            if (t["paused_by"] != "seed_limit") continue
+            val id = t["id"] as? String ?: continue
+            val folder = t["output_folder"] as? String ?: continue
+            if (!StorageManager.isStagingPath(c, folder) || !StorageManager.isCopied(c, id, folder, treeStr)) continue
+            if (!seedLimitFreed.add(id)) continue
+            ioScope.launch {
+                try {
+                    val detail = call { NativeCore.nativeGetDetail(id) }
+                    if (!isOk(detail)) { seedLimitFreed.remove(id); return@launch }
+                    val rels = Json.list(detail["files"]).mapNotNull { it["path"] as? String }
+                    StorageManager.freeStagedFiles(c, folder, rels)
+                } catch (e: Throwable) {
+                    Log.w(TAG, "could not free staged files at the seed limit", e)
+                }
+            }
+        }
     }
 
     fun pieceBitfield(id: String): List<Int> {
@@ -975,8 +1042,30 @@ object EngineHost {
         return linkedMapOf("ok" to true, "ssidEnforceable" to enforceable)
     }
 
+    /**
+     * Contract section 21: a validated network was gained, so peers and trackers are asked again. Rust refuses a
+     * torrent that announced less than 60 s ago (section 10) and one that is not running, so errors are ignored.
+     */
+    private fun reannounceLiveTorrents() {
+        if (!initialized) return
+        val list = call { NativeCore.nativeListTorrents() }
+        if (!isOk(list)) return
+        for (t in Json.list(list["torrents"])) {
+            val state = t["state"] as? String
+            if (state != "DOWNLOADING" && state != "SEEDING") continue
+            val id = t["id"] as? String ?: continue
+            call { NativeCore.nativeReannounce(id) }
+        }
+    }
+
     private fun startGovernanceWatchers(c: Context) {
-        if (net == null) net = NetworkGovernanceManager(c) { scope.launch { evaluateGovernance(false) } }.also { it.start() }
+        if (net == null) {
+            net = NetworkGovernanceManager(
+                c,
+                onChanged = { scope.launch { evaluateGovernance(false) } },
+                onGained = { scope.launch { reannounceLiveTorrents() } },
+            ).also { it.start() }
+        }
         if (power == null) power = PowerGovernanceManager(c) { scope.launch { evaluateGovernance(false) } }.also { it.start() }
     }
 
@@ -996,6 +1085,11 @@ object EngineHost {
                 if (ssid != null && g.ssidWhitelist.none { it.trim() == ssid }) wifiBlocked = true
             }
         }
+        // Contract section 21. Only judged while the callback is registered and a network exists: no network at
+        // all is "offline", which these rules do not turn into a pause.
+        val linkKnown = n != null && n.monitoring && n.connected
+        val unvalidatedBlocked = linkKnown && n?.validated == false
+        val vpnBlocked = g.vpnOnly && linkKnown && n?.vpn == false
         val charging = p?.charging ?: true
         val level = p?.levelPct ?: 100
         val batteryBlocked = g.batteryCutoffPct > 0 && !charging && level < g.batteryCutoffPct
@@ -1004,6 +1098,8 @@ object EngineHost {
         send("wifi_only", !wifiBlocked, force)
         send("battery", !batteryBlocked, force)
         send("charging_only", !chargingBlocked, force)
+        send("network_unvalidated", !unvalidatedBlocked, force)
+        send("vpn_required", !vpnBlocked, force)
 
         val c = ctx ?: return
         val st = ScheduleManager.state(c)
@@ -1313,6 +1409,32 @@ object EngineHost {
     }
 
     /**
+     * Admission check (SM-35, `Admission.kt`) for a feed match. Reads the size from the torrent's metadata; a source
+     * whose size cannot be read in time (a magnet with no peers yet) is let through, as it was before.
+     */
+    private fun feedFits(source: String): Boolean {
+        val meta = resolveMetadata(source, FEED_RESOLVE_MS)
+        if (!isOk(meta)) return true
+        val selection = Json.long(meta["total_bytes"])
+        val space = freeSpace()
+        if (!isOk(space)) return true
+        val staged = space["mode"] == "staging"
+        val ownFree = Json.long(space["freeBytes"])
+        val free = if (staged) (space["targetFreeBytes"] as? Number)?.toLong()?.coerceAtMost(ownFree) ?: ownFree else ownFree
+        val list = call { NativeCore.nativeListTorrents() }
+        var pending = 0L
+        if (isOk(list)) {
+            for (t in Json.list(list["torrents"])) {
+                if (isFinished(t)) continue
+                pending += (Json.long(t["total_bytes"]) - Json.long(t["progress_bytes"])).coerceAtLeast(0L)
+            }
+        }
+        val out = Admission.admit(free, pending, if (staged) 2 else 1, selection)
+        if (out.result == Admission.Result.DoesntFit) Log.i(TAG, "feed match does not fit: need ${out.need}, budget ${out.budget}")
+        return out.result != Admission.Result.DoesntFit
+    }
+
+    /**
      * Service action ACTION_DRAIN_FEED_ADDS: starts the engine if needed, then adds every queued match through
      * the normal add path. A duplicate counts as done. Network and disk failures stay queued for the next drain.
      */
@@ -1332,7 +1454,10 @@ object EngineHost {
                 val done = ArrayList<com.maglev.engine.feeds.PendingAdd>()
                 var added = 0
                 for (p in pending) {
-                    val res = addTorrent(p.source, mapOf("paused" to p.startPaused))
+                    val fits = feedFits(p.source)
+                    val res = addTorrent(p.source, mapOf("paused" to (p.startPaused || !fits)))
+                    // Contract section 21: a match that does not fit is kept, paused, and marked as out of space.
+                    if (!fits && isOk(res)) (res["id"] as? String)?.let { setHealth(it, "storage_full") }
                     val code = res["code"]
                     when {
                         isOk(res) -> { added++; done.add(p) }

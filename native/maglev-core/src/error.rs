@@ -64,6 +64,8 @@ pub struct EngineError {
     pub id: Option<String>,
     /// Set when a call was refused only because it came too soon (`nativeReannounce`).
     pub retry_after_secs: Option<u64>,
+    /// Set for `DUPLICATE`: how many trackers of the new source were added to the existing torrent (section 21).
+    pub merged_trackers: Option<usize>,
 }
 
 impl EngineError {
@@ -73,6 +75,7 @@ impl EngineError {
             message: message.into(),
             id: None,
             retry_after_secs: None,
+            merged_trackers: None,
         }
     }
 
@@ -90,6 +93,15 @@ impl EngineError {
             message: "This torrent is already in your list".to_string(),
             id: Some(id.into()),
             retry_after_secs: None,
+            merged_trackers: None,
+        }
+    }
+
+    /// Same as `duplicate`, with the count of trackers merged into the existing torrent.
+    pub fn duplicate_merged(id: impl Into<String>, merged: usize) -> Self {
+        Self {
+            merged_trackers: Some(merged),
+            ..Self::duplicate(id)
         }
     }
 
@@ -115,6 +127,9 @@ impl EngineError {
         m.insert("message".into(), Value::String(self.message.clone()));
         if let Some(id) = &self.id {
             m.insert("id".into(), Value::String(id.clone()));
+        }
+        if let Some(n) = self.merged_trackers {
+            m.insert("mergedTrackers".into(), Value::from(n));
         }
         if let Some(secs) = self.retry_after_secs {
             m.insert("retry_after_secs".into(), Value::from(secs));
@@ -333,6 +348,10 @@ mod tests {
         let v: Value = serde_json::from_str(&EngineError::duplicate("abc").to_json()).unwrap();
         assert_eq!(v["ok"], false);
         assert_eq!(v["code"], "DUPLICATE");
+        assert!(v.get("mergedTrackers").is_none());
+        let m: Value = serde_json::from_str(&EngineError::duplicate_merged("abc", 2).to_json()).unwrap();
+        assert_eq!(m["mergedTrackers"], 2);
+        assert_eq!(m["id"], "abc");
         assert_eq!(v["id"], "abc");
         let v: Value = serde_json::from_str(&ok_envelope(&json!({"id": "x"}))).unwrap();
         assert_eq!(v["ok"], true);

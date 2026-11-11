@@ -337,6 +337,7 @@ class MaglevEngineModule : Module() {
                         chargingOnly = rules["chargingOnly"] == true,
                         batteryCutoffPct = (rules["batteryCutoffPct"] as? Number)?.toInt() ?: 0,
                         autoExitOnComplete = rules["autoExitOnComplete"] == true,
+                        vpnOnly = rules["vpnOnly"] == true,
                     ),
                 )
             }

@@ -38,19 +38,21 @@ data class TransferSummary(
     val downloadingPct: Int = -1,
     /** Id when exactly one torrent is downloading (or, with nothing downloading, exactly one is seeding). */
     val singleTorrentId: String? = null,
-    /** Governance reason of rule-paused torrents: "wifi_only", "battery", "charging_only", or null. */
+    /** Governance reason of rule-paused torrents: "wifi_only", "battery", "charging_only", "network_unvalidated", "vpn_required", or null. */
     val ruleReason: String? = null,
     /** Torrents paused by the schedule (not counted in [pausedByRules], so they never keep the service alive). */
     val pausedBySchedule: Int = 0,
     /** "HH:MM" when the schedule next changes, for the scheduled-pause notification. */
     val scheduleResumeAt: String? = null,
+    /** Contract section 21: a player was fed stream bytes in the last 60 s. Counts as real work. */
+    val streaming: Boolean = false,
 ) {
     val active: Int get() = downloading + seeding
 
-    /** Active plus torrents that are queued, initializing or checking. Counts as real work. */
-    val busy: Int get() = active + queued + checking + initializing
+    /** Active plus torrents that are queued, initializing or checking, plus a live stream. Counts as real work. */
+    val busy: Int get() = active + queued + checking + initializing + (if (streaming) 1 else 0)
 
-    val lookingForInfo: Boolean get() = active + queued + checking == 0 && initializing > 0
+    val lookingForInfo: Boolean get() = active + queued + checking == 0 && initializing > 0 && !streaming
 }
 
 object Notifications {
@@ -121,6 +123,8 @@ object Notifications {
         "charging_only" -> "charging"
         "storage_full" -> "free space"
         "storage_unavailable" -> "the SD card"
+        "network_unvalidated" -> "internet"
+        "vpn_required" -> "VPN"
         else -> "Wi-Fi"
     }
 

@@ -306,6 +306,103 @@ pub fn build_torrent_file(info_bytes: &[u8], trackers: &[String]) -> Vec<u8> {
     out
 }
 
+/// Parses one bencode value at `pos` and returns the position after it. Depth is capped so a
+/// hostile file cannot overflow the stack.
+fn bencode_skip(b: &[u8], pos: usize, depth: u32) -> Option<usize> {
+    if depth > 32 {
+        return None;
+    }
+    match *b.get(pos)? {
+        b'i' => {
+            let end = b[pos..].iter().position(|&c| c == b'e')?;
+            Some(pos + end + 1)
+        }
+        b'l' => {
+            let mut p = pos + 1;
+            while *b.get(p)? != b'e' {
+                p = bencode_skip(b, p, depth + 1)?;
+            }
+            Some(p + 1)
+        }
+        b'd' => {
+            let mut p = pos + 1;
+            while *b.get(p)? != b'e' {
+                p = bencode_skip(b, p, depth + 1)?;
+                p = bencode_skip(b, p, depth + 1)?;
+            }
+            Some(p + 1)
+        }
+        b'0'..=b'9' => {
+            let (len, start) = bencode_str_at(b, pos)?;
+            start.checked_add(len).filter(|&e| e <= b.len())
+        }
+        _ => None,
+    }
+}
+
+/// `(length, start of the bytes)` of the byte string at `pos`.
+fn bencode_str_at(b: &[u8], pos: usize) -> Option<(usize, usize)> {
+    let colon = b[pos..].iter().position(|&c| c == b':')?;
+    let len: usize = std::str::from_utf8(&b[pos..pos + colon]).ok()?.parse().ok()?;
+    let start = pos + colon + 1;
+    if start.checked_add(len)? > b.len() {
+        return None;
+    }
+    Some((len, start))
+}
+
+/// The announce URLs of a `.torrent` file (`announce` and every `announce-list` entry), in file
+/// order, without duplicates. Anything unreadable gives an empty or shorter list, never an error.
+pub fn announce_urls_from_torrent(bytes: &[u8]) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    let mut push = |b: &[u8], pos: usize| {
+        if let Some((len, start)) = bencode_str_at(b, pos) {
+            if let Ok(s) = std::str::from_utf8(&b[start..start + len]) {
+                if !out.iter().any(|u| u == s) {
+                    out.push(s.to_string());
+                }
+            }
+        }
+    };
+    if bytes.first() != Some(&b'd') {
+        return Vec::new();
+    }
+    let mut p = 1;
+    while bytes.get(p).is_some_and(|&c| c != b'e') {
+        let Some((klen, kstart)) = bencode_str_at(bytes, p) else { break };
+        let key = &bytes[kstart..kstart + klen];
+        let vpos = kstart + klen;
+        match key {
+            b"announce" => push(bytes, vpos),
+            b"announce-list" if bytes.get(vpos) == Some(&b'l') => {
+                let mut q = vpos + 1;
+                while bytes.get(q).is_some_and(|&c| c != b'e') {
+                    if bytes[q] == b'l' {
+                        let mut r = q + 1;
+                        while bytes.get(r).is_some_and(|&c| c != b'e') {
+                            push(bytes, r);
+                            match bencode_skip(bytes, r, 0) {
+                                Some(n) => r = n,
+                                None => break,
+                            }
+                        }
+                    }
+                    match bencode_skip(bytes, q, 0) {
+                        Some(n) => q = n,
+                        None => break,
+                    }
+                }
+            }
+            _ => {}
+        }
+        match bencode_skip(bytes, vpos, 0) {
+            Some(n) => p = n,
+            None => break,
+        }
+    }
+    out
+}
+
 /// The destination of an export must be an absolute path to a `.torrent` file.
 pub fn check_export_path(dest: &str) -> Result<PathBuf, EngineError> {
     let p = PathBuf::from(dest.trim());
@@ -430,6 +527,19 @@ mod tests {
             .collect();
         let e = parse_url_list(&serde_json::to_string(&many).unwrap()).unwrap_err();
         assert_eq!(e.code, ErrorCode::InvalidArgument);
+    }
+
+    #[test]
+    fn reads_announce_urls_from_a_torrent_file() {
+        let info = b"d4:name1:xe";
+        let file = build_torrent_file(info, &["http://a.example.com/announce".to_string(), "udp://b.example.com:1/announce".to_string()]);
+        assert_eq!(
+            announce_urls_from_torrent(&file),
+            vec!["http://a.example.com/announce".to_string(), "udp://b.example.com:1/announce".to_string()]
+        );
+        assert!(announce_urls_from_torrent(b"garbage").is_empty());
+        assert!(announce_urls_from_torrent(&build_torrent_file(info, &[])).is_empty());
+        assert!(announce_urls_from_torrent(b"d8:announce99:short").is_empty());
     }
 
     #[test]
