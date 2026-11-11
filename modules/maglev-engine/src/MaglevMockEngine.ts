@@ -4,22 +4,28 @@ import type {
   Detail,
   EngineErrorCode,
   EngineResult,
+  FeedAutomationConfig,
+  FeedAutomationStatus,
   FilePriorityEntry,
   FreeSpace,
   GovernanceConfig,
   MaglevEngineApi,
   Metadata,
+  MoveTarget,
   NativeConfig,
   NativePermissionStatus,
   NotificationActionEvent,
   PausedBy,
   PickFolderResult,
+  ScheduleConfig,
+  ScheduleStatus,
   Snapshot,
   StorageStatus,
   TelemetryEvent,
   TorrentCompletedEvent,
   TorrentDetailData,
   TorrentFileInfo,
+  TorrentLimits,
   TorrentState,
   TorrentTelemetry,
   TrackerInfo,
@@ -54,6 +60,25 @@ interface TorrentMeta {
   pausedBy: PausedBy | null;
   addedAt: number;
   priorState?: TorrentState;
+  downLimitBps?: number;
+  upLimitBps?: number;
+  /** Simulated move (dev only): progress 0 to 1 and destination folder. */
+  moveProgress?: number;
+  moveDest?: string;
+}
+
+const MOVE_STEPS = 6; // stepSimulation runs twice a second, so about 3 s
+const DEFAULT_MOVE_DIR = '/storage/emulated/0/Download/Maglev';
+const MAX_LIMIT_BPS = 4_294_967_295; // u32::MAX, larger values are clamped
+
+const MIME: Record<string, string> = {
+  mp4: 'video/mp4', m4v: 'video/mp4', mkv: 'video/x-matroska', webm: 'video/webm', avi: 'video/x-msvideo',
+  mov: 'video/quicktime', mp3: 'audio/mpeg', flac: 'audio/flac', ogg: 'audio/ogg', opus: 'audio/ogg',
+  wav: 'audio/wav', m4a: 'audio/mp4', aac: 'audio/aac',
+};
+function mimeFor(path: string): string {
+  const m = /\.([A-Za-z0-9]+)$/.exec(path);
+  return (m && MIME[m[1].toLowerCase()]) || 'application/octet-stream';
 }
 
 const ok = (): { ok: true } => ({ ok: true });
@@ -526,6 +551,9 @@ export class MaglevMockEngine implements MaglevEngineApi {
       addedAt: m.addedAt,
       outputFolder: t.savePath,
       error: null,
+      downLimitBps: m.downLimitBps ?? 0,
+      upLimitBps: m.upLimitBps ?? 0,
+      moveProgress: t.state === 'MOVING' ? (m.moveProgress ?? 0) : null,
     };
   }
 
@@ -609,14 +637,19 @@ export class MaglevMockEngine implements MaglevEngineApi {
     return {
       ok: true,
       snapshot: this.toSnapshot(t),
-      files: t.files.map((f) => ({
-        index: f.index,
-        path: f.path,
-        length: f.length,
-        progressBytes: Math.floor((f.length * t.progressPercent) / 100),
-        included: f.priority > 0,
-        priority: f.priority === 2 ? ('first' as const) : f.priority === 1 ? ('normal' as const) : ('skip' as const),
-      })),
+      files: t.files.map((f) => {
+        const progressBytes = Math.floor((f.length * t.progressPercent) / 100);
+        return {
+          index: f.index,
+          path: f.path,
+          length: f.length,
+          progressBytes,
+          included: f.priority > 0,
+          priority: f.priority === 2 ? ('first' as const) : f.priority === 1 ? ('normal' as const) : ('skip' as const),
+          streamReadyBytes: progressBytes,
+          tailReady: f.length > 0 && progressBytes >= f.length,
+        };
+      }),
       peers: [],
       trackers: t.trackers.map((tr) => ({
         url: tr.url,
@@ -629,10 +662,12 @@ export class MaglevMockEngine implements MaglevEngineApi {
   }
 
   public async pause(id: string): Promise<EngineResult> {
+    if (this.torrents.get(id)?.state === 'MOVING') return fail('UNSUPPORTED', 'Wait for the move to finish.');
     return this.pauseTorrent(id) ? ok() : fail('NOT_FOUND', 'Torrent not found.');
   }
 
   public async resume(id: string): Promise<EngineResult> {
+    if (this.torrents.get(id)?.state === 'MOVING') return fail('UNSUPPORTED', 'Wait for the move to finish.');
     return this.resumeTorrent(id) ? ok() : fail('NOT_FOUND', 'Torrent not found.');
   }
 
@@ -746,10 +781,97 @@ export class MaglevMockEngine implements MaglevEngineApi {
     return Array.from(legacy, (v) => (v === 2 ? 1 : v === 1 ? 2 : 0));
   }
 
-  public async streamUrl(id: string, fileIndex: number): Promise<EngineResult<{ url: string }>> {
+  public async streamUrl(id: string, fileIndex: number): Promise<EngineResult<{ url: string; mime: string }>> {
     const t = this.torrents.get(id);
     if (!t) return fail('NOT_FOUND', 'Torrent not found.');
-    return { ok: true, url: `http://127.0.0.1:8080/stream/${id}/${fileIndex}` };
+    const f = t.files.find((x) => x.index === fileIndex);
+    if (!f) return fail('NOT_FOUND', 'File not found.');
+    if (f.priority === 0) return fail('UNSUPPORTED', 'This file is skipped, so it is not being downloaded.');
+    return { ok: true, url: `http://127.0.0.1:8080/stream/${id}/${fileIndex}`, mime: mimeFor(f.path) };
+  }
+
+  public async setTorrentLimits(id: string, limits: TorrentLimits): Promise<EngineResult> {
+    if (!this.torrents.has(id)) return fail('NOT_FOUND', 'Torrent not found.');
+    const clamp = (n: number) => (Number.isFinite(n) && n > 0 ? Math.min(Math.floor(n), MAX_LIMIT_BPS) : 0);
+    const m = this.metaOf(id);
+    m.downLimitBps = clamp(limits.downBps);
+    m.upLimitBps = clamp(limits.upBps);
+    this.broadcast();
+    return ok();
+  }
+
+  public async moveStorage(id: string, target: MoveTarget): Promise<EngineResult> {
+    const t = this.torrents.get(id);
+    if (!t) return fail('NOT_FOUND', 'Torrent not found.');
+    if (t.state === 'INITIALIZING' || t.state === 'CHECKING' || t.state === 'MOVING') {
+      return fail('UNSUPPORTED', 'Wait for this torrent to finish its current step, then try again.');
+    }
+    let dest = DEFAULT_MOVE_DIR;
+    if (target.kind === 'tree') {
+      if (!target.uri) return fail('PERMISSION', 'Maglev does not have permission to write to that folder.');
+      dest = `/storage/emulated/0/${decodeURIComponent(target.uri.split('/').pop() ?? '').replace(/^primary:/, '')}`;
+    }
+    if (dest === t.savePath) return fail('UNSUPPORTED', 'This torrent is already in that folder.');
+    const m = this.metaOf(id);
+    m.priorState = t.state;
+    m.moveProgress = 0;
+    m.moveDest = dest;
+    t.state = 'MOVING';
+    t.downloadSpeedBytes = 0;
+    t.uploadSpeedBytes = 0;
+    this.broadcast();
+    return ok();
+  }
+
+  public async openStream(_url: string, _mime: string, _title: string): Promise<EngineResult> {
+    return ok();
+  }
+
+  private schedule: ScheduleConfig = { enabled: false, rules: [] };
+  private feedAutomation: FeedAutomationConfig = { enabled: false, intervalMins: 30, feeds: [], rules: [] };
+
+  /** Same shape checks as the native side: HH:MM times, days 0 to 6, known action. */
+  public async setSchedule(config: ScheduleConfig): Promise<EngineResult> {
+    const time = /^([01]\d|2[0-3]):[0-5]\d$/;
+    for (const r of config?.rules ?? []) {
+      if (!r.id || !time.test(r.start) || !time.test(r.end)) return fail('INVALID_SOURCE', 'Use times like 22:00.');
+      if (!Array.isArray(r.days) || r.days.some((d) => !Number.isInteger(d) || d < 0 || d > 6)) {
+        return fail('INVALID_SOURCE', 'Pick days from Monday to Sunday.');
+      }
+      if (r.action !== 'pause' && r.action !== 'limit') return fail('INVALID_SOURCE', 'Unknown schedule action.');
+    }
+    this.schedule = JSON.parse(JSON.stringify(config));
+    return ok();
+  }
+
+  public async getScheduleStatus(): Promise<ScheduleStatus> {
+    return { enabled: this.schedule.enabled, paused: false, activeRuleIds: [], nextBoundary: null };
+  }
+
+  public async setFeedAutomation(config: FeedAutomationConfig): Promise<EngineResult> {
+    if (![15, 30, 60].includes(config?.intervalMins)) return fail('INVALID_SOURCE', 'Check every 15, 30 or 60 minutes.');
+    for (const r of config.rules ?? []) {
+      for (const pattern of [r.include, r.exclude]) {
+        const m = /^\/(.+)\/$/.exec(pattern ?? '');
+        if (m) {
+          try {
+            new RegExp(m[1], 'i');
+          } catch {
+            return fail('INVALID_SOURCE', 'One of the rules has an invalid pattern.');
+          }
+        }
+      }
+    }
+    this.feedAutomation = JSON.parse(JSON.stringify(config));
+    return ok();
+  }
+
+  public async getFeedAutomationStatus(): Promise<FeedAutomationStatus> {
+    return { lastRunAt: null, lastError: null, addedTotal: 0, pending: 0 };
+  }
+
+  public async runFeedCheckNow(): Promise<EngineResult> {
+    return this.feedAutomation.enabled ? ok() : fail('UNSUPPORTED', 'Turn on automatic downloads first.');
   }
 
   public async version(): Promise<{ engine: string; version: string }> {
@@ -758,6 +880,10 @@ export class MaglevMockEngine implements MaglevEngineApi {
 
   public async pickDownloadFolder(): Promise<PickFolderResult> {
     return { uri: 'content://simulator/tree/Downloads', displayName: 'Downloads (simulated)', mode: 'staging' };
+  }
+
+  public async pickFolder(): Promise<PickFolderResult> {
+    return this.pickDownloadFolder();
   }
 
   public async getStorageStatus(): Promise<StorageStatus> {
@@ -1011,6 +1137,16 @@ export class MaglevMockEngine implements MaglevEngineApi {
   public stepSimulation(): void {
     this.torrents.forEach((t) => {
       if (t.state === 'CHECKING') t.state = this.metaOf(t.id).priorState ?? 'PAUSED';
+      if (t.state === 'MOVING') {
+        const m = this.metaOf(t.id);
+        m.moveProgress = Math.min(1, (m.moveProgress ?? 0) + 1 / MOVE_STEPS);
+        if (m.moveProgress >= 1) {
+          if (m.moveDest) t.savePath = m.moveDest;
+          t.state = m.priorState ?? 'PAUSED';
+          m.moveProgress = undefined;
+          m.moveDest = undefined;
+        }
+      }
     });
     const net = this.settings.network;
     const pwr = this.settings.power;

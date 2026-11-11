@@ -1,14 +1,16 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { FlatList, StyleSheet, Text, View } from 'react-native';
+import { FlatList, Share, StyleSheet, Text, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import * as Clipboard from 'expo-clipboard';
-import { maglevEngine, type DetailFile, type FilePriority } from 'maglev-engine';
+import { maglevEngine, type DetailFile, type FilePriority, type TorrentLimits } from 'maglev-engine';
 import { useTheme } from '../../context/ThemeContext';
 import { useMaglevEngine } from '../../context/EngineContext';
 import { ThemeColors, radius, spacing, type } from '../../constants/theme';
 import { formatBytes, formatEta, formatSpeed } from '../../constants/format';
 import { triggerHaptic } from '../../constants/haptics';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { PixelIcon } from '../../components/PixelIcon';
+import { friendlyPath } from '../../components/settings/SettingsParts';
 import { Banner, Button, EmptyBlock, IconButton, ProgressBar, Screen, SegmentedControl } from '../../components/ui';
 import { SpeedChart } from '../../components/SpeedChart';
 import { PiecesMatrix } from '../../components/PiecesMatrix';
@@ -19,8 +21,10 @@ import { DeleteSheet, FileActionsSheet } from '../../components/detail/sheets';
 import { FileListRow } from '../../components/detail/FileListRow';
 import { PrioritySheet } from '../../components/detail/PrioritySheet';
 import { TorrentMoreSheet } from '../../components/detail/TorrentMoreSheet';
+import { SpeedLimitSheet } from '../../components/detail/SpeedLimitSheet';
+import { MoveSheet } from '../../components/detail/MoveSheet';
 import { useTorrentDetail } from '../../components/detail/useTorrentDetail';
-import { buildMagnet, isMediaFile } from '../../components/detail/torrentLabels';
+import { buildMagnet, clockTime, isStreamable, limitText, moveFailure } from '../../components/detail/torrentLabels';
 
 type Tab = 'files' | 'peers' | 'trackers' | 'pieces';
 
@@ -56,6 +60,12 @@ export default function TorrentDetailScreen() {
   const [prioTarget, setPrioTarget] = useState<number[] | null>(null);
   const [prioError, setPrioError] = useState<string | null>(null);
   const [selection, setSelection] = useState<Set<number> | null>(null);
+  const [limitOpen, setLimitOpen] = useState(false);
+  const [limitPending, setLimitPending] = useState<TorrentLimits | null>(null);
+  const [moveOpen, setMoveOpen] = useState(false);
+  const [moveBusy, setMoveBusy] = useState(false);
+  const [moveError, setMoveError] = useState<{ text: string; pickAgain: boolean } | null>(null);
+  const [resumesAt, setResumesAt] = useState<string | null>(null);
   const [retryUntil, setRetryUntil] = useState(0);
   const [now, setNow] = useState(() => Date.now());
   const insets = useSafeAreaInsets();
@@ -92,6 +102,34 @@ export default function TorrentDetailScreen() {
   }, [detail]);
 
   const snap = detail?.snapshot ?? null;
+
+  // Drop the optimistic limit once the engine reports the same values.
+  useEffect(() => {
+    if (limitPending && snap && snap.downLimitBps === limitPending.downBps && snap.upLimitBps === limitPending.upBps) {
+      setLimitPending(null);
+    }
+  }, [limitPending, snap]);
+  const limits: TorrentLimits = limitPending ?? { downBps: snap?.downLimitBps ?? 0, upBps: snap?.upLimitBps ?? 0 };
+  const limitSummary = limitText(limits);
+
+  // "resumes HH:MM" on a scheduled pause, when the schedule knows its next boundary.
+  const scheduled = snap?.state === 'PAUSED' && snap.pausedBy === 'schedule';
+  useEffect(() => {
+    if (!scheduled) {
+      setResumesAt(null);
+      return;
+    }
+    let alive = true;
+    maglevEngine
+      .getScheduleStatus()
+      .then((st) => {
+        if (alive) setResumesAt(st.nextBoundary ? clockTime(st.nextBoundary) : null);
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, [scheduled]);
   const files = useMemo(
     () => (detail ? detail.files.map((f) => (f.index in pending ? { ...f, priority: pending[f.index], included: pending[f.index] !== 'skip' } : f)) : []),
     [detail, pending],
@@ -176,6 +214,62 @@ export default function TorrentDetailScreen() {
     }
   }, [id, snap, showNotice]);
 
+  const handleShareMagnet = useCallback(async () => {
+    setMoreOpen(false);
+    if (!id || !snap) return;
+    try {
+      // Only the magnet link goes out: no title, no url, no extra text.
+      await Share.share({ message: buildMagnet(id, snap.name) });
+    } catch {
+      showNotice({ tone: 'danger', text: "Couldn't share the magnet link." });
+    }
+  }, [id, snap, showNotice]);
+
+  const handleLimits = useCallback(
+    async (next: TorrentLimits) => {
+      if (!id) return;
+      setLimitPending(next);
+      const res = await maglevEngine.setTorrentLimits(id, next);
+      if (!res.ok) {
+        setLimitPending(null);
+        showNotice({ tone: 'danger', text: res.message || "Couldn't change the speed limit." });
+      }
+    },
+    [id, showNotice],
+  );
+
+  const startMove = useCallback(
+    async (target: { kind: 'default' } | { kind: 'tree'; uri: string }) => {
+      if (!id) return;
+      setMoveBusy(true);
+      setMoveError(null);
+      try {
+        const res = await maglevEngine.moveStorage(id, target);
+        if (res.ok) {
+          setMoveOpen(false);
+          showNotice({ tone: 'info', text: 'Moving files…' });
+        } else {
+          setMoveError(moveFailure(res.code, res.message));
+          triggerHaptic('warning');
+        }
+      } finally {
+        setMoveBusy(false);
+      }
+    },
+    [id, showNotice],
+  );
+
+  const handlePickMove = useCallback(async () => {
+    setMoveError(null);
+    try {
+      const picked = await maglevEngine.pickFolder();
+      if ('cancelled' in picked) return;
+      await startMove({ kind: 'tree', uri: picked.uri });
+    } catch {
+      setMoveError({ text: "Couldn't open the folder picker. Try again.", pickAgain: true });
+    }
+  }, [startMove]);
+
   const handleRecheck = useCallback(async () => {
     setMoreOpen(false);
     if (!id) return;
@@ -218,7 +312,7 @@ export default function TorrentDetailScreen() {
 
   const headerActions = snap ? (
     <>
-      {snap.state === 'CHECKING' || snap.state === 'INITIALIZING' ? null : (
+      {snap.state === 'CHECKING' || snap.state === 'INITIALIZING' || snap.state === 'MOVING' ? null : (
         <IconButton
           icon={
             snap.state === 'ERROR' ? 'retry' : snap.state === 'DOWNLOADING' || snap.state === 'SEEDING' || snap.state === 'QUEUED' ? 'pause' : 'play'
@@ -277,7 +371,12 @@ export default function TorrentDetailScreen() {
 
   if (!snap || !detail) return null;
 
-  const frac = snap.totalBytes > 0 ? Math.min(1, snap.progressBytes / snap.totalBytes) : 0;
+  const moving = snap.state === 'MOVING';
+  const frac = moving
+    ? Math.min(1, Math.max(0, snap.moveProgress ?? 0))
+    : snap.totalBytes > 0
+      ? Math.min(1, snap.progressBytes / snap.totalBytes)
+      : 0;
   const tone =
     snap.state === 'ERROR' ? 'error' : snap.state === 'PAUSED' ? 'paused' : snap.state === 'SEEDING' || snap.state === 'COMPLETED' ? 'seed' : 'download';
 
@@ -301,12 +400,18 @@ export default function TorrentDetailScreen() {
 
       <View style={styles.summary}>
         <View style={styles.summaryTop}>
-          <StateBadge state={snap.state} pausedBy={snap.pausedBy} />
+          <StateBadge state={snap.state} pausedBy={snap.pausedBy} moveProgress={snap.moveProgress} resumesAt={resumesAt} />
           <Text style={styles.percent} accessibilityLabel={`${(frac * 100).toFixed(1)} percent`}>
             {(frac * 100).toFixed(1)}%
           </Text>
         </View>
-        <ProgressBar progress={frac} tone={tone} accessibilityLabel="Download progress" />
+        <ProgressBar progress={frac} tone={tone} accessibilityLabel={moving ? 'Move progress' : 'Download progress'} />
+        {limitSummary ? (
+          <View style={styles.limitRow} accessibilityLabel={`Speed limit: ${limitSummary}`}>
+            <PixelIcon name="speed-limit" size={16} color={colors.textMuted} />
+            <Text style={styles.limitText}>{limitSummary}</Text>
+          </View>
+        ) : null}
       </View>
 
       <View style={styles.block}>
@@ -363,7 +468,7 @@ export default function TorrentDetailScreen() {
                 selected={!!selection?.has((item as DetailFile).index)}
                 hasActions={
                   (item as DetailFile).length > 0 &&
-                  ((item as DetailFile).progressBytes >= (item as DetailFile).length || isMediaFile((item as DetailFile).path))
+                  ((item as DetailFile).progressBytes >= (item as DetailFile).length || isStreamable((item as DetailFile).path))
                 }
                 onPress={handleFilePress}
                 onLongPress={handleFileLongPress}
@@ -431,6 +536,17 @@ export default function TorrentDetailScreen() {
         onRecheck={handleRecheck}
         onReannounce={handleReannounce}
         onCopyMagnet={handleCopyMagnet}
+        onShareMagnet={handleShareMagnet}
+        limitSummary={limitSummary}
+        onSpeedLimit={() => {
+          setMoreOpen(false);
+          setLimitOpen(true);
+        }}
+        onMove={() => {
+          setMoreOpen(false);
+          setMoveError(null);
+          setMoveOpen(true);
+        }}
         onOpenFolder={handleOpenFolder}
         onDelete={() => {
           setMoreOpen(false);
@@ -447,7 +563,26 @@ export default function TorrentDetailScreen() {
         onRemove={() => handleDelete(false)}
         onDeleteFiles={() => handleDelete(true)}
       />
-      <FileActionsSheet id={id} file={fileSheet} onClose={() => setFileSheet(null)} />
+      <SpeedLimitSheet visible={limitOpen} onClose={() => setLimitOpen(false)} limits={limits} onChange={handleLimits} />
+      <MoveSheet
+        visible={moveOpen}
+        onClose={() => !moveBusy && setMoveOpen(false)}
+        currentFolder={friendlyPath(snap.outputFolder)}
+        busy={moveBusy}
+        error={moveError?.text ?? null}
+        pickAgain={moveError?.pickAgain}
+        onDefault={() => startMove({ kind: 'default' })}
+        onPick={handlePickMove}
+      />
+      <FileActionsSheet
+        id={id}
+        file={fileSheet}
+        torrentState={snap.state}
+        pausedBy={snap.pausedBy}
+        onResume={() => resumeTorrent(id)}
+        onNotice={(text) => showNotice({ tone: 'info', text })}
+        onClose={() => setFileSheet(null)}
+      />
     </Screen>
   );
 }
@@ -467,6 +602,8 @@ const makeStyles = (c: ThemeColors) =>
     },
     summaryTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
     percent: { ...type.monoBold, fontSize: type.size.xxl, color: c.text },
+    limitRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
+    limitText: { ...type.mono, fontSize: type.size.xs, color: c.textMuted },
     tabs: { marginBottom: spacing.md },
     centered: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: spacing.md, paddingHorizontal: spacing.xxxl },
     loadingBar: { width: '60%' },

@@ -5,19 +5,25 @@ import type {
   EngineErrorCode,
   EngineResult,
   EngineStatus,
+  FeedAutomationConfig,
+  FeedAutomationStatus,
   FilePriorityEntry,
   FreeSpace,
   GovernanceConfig,
   MaglevEngineApi,
   Metadata,
+  MoveTarget,
   NativeConfig,
   NativePermissionStatus,
   NotificationActionEvent,
   PickFolderResult,
+  ScheduleConfig,
+  ScheduleStatus,
   Snapshot,
   StorageStatus,
   TelemetryEvent,
   TorrentCompletedEvent,
+  TorrentLimits,
   Unsubscribe,
 } from './MaglevEngine.types.ts';
 import type { MaglevSettings } from './MaglevSettings.types.ts';
@@ -332,7 +338,7 @@ export class MaglevEngineBridge implements MaglevEngineApi {
     const res = await this.route<number[] | EngineResult>('getPieceBitfield', id);
     return Array.isArray(res) ? res : [];
   }
-  public streamUrl(id: string, fileIndex: number): Promise<EngineResult<{ url: string }>> {
+  public streamUrl(id: string, fileIndex: number): Promise<EngineResult<{ url: string; mime: string }>> {
     return this.route('streamUrl', id, fileIndex);
   }
   public async version(): Promise<{ engine: string; version: string }> {
@@ -341,6 +347,11 @@ export class MaglevEngineBridge implements MaglevEngineApi {
   }
   public async pickDownloadFolder(): Promise<PickFolderResult> {
     const res = await this.route<any>('pickDownloadFolder');
+    if (res && res.ok === false) return { cancelled: true };
+    return res;
+  }
+  public async pickFolder(): Promise<PickFolderResult> {
+    const res = await this.route<any>('pickFolder');
     if (res && res.ok === false) return { cancelled: true };
     return res;
   }
@@ -356,6 +367,36 @@ export class MaglevEngineBridge implements MaglevEngineApi {
   }
   public openFolder(id: string): Promise<EngineResult> {
     return this.route('openFolder', id);
+  }
+  public setTorrentLimits(id: string, limits: TorrentLimits): Promise<EngineResult> {
+    return this.route('setTorrentLimits', id, limits);
+  }
+  public moveStorage(id: string, target: MoveTarget): Promise<EngineResult> {
+    return this.route('moveStorage', id, target);
+  }
+  public openStream(url: string, mime: string, title: string): Promise<EngineResult> {
+    return this.route('openStream', url, mime, title);
+  }
+  public setSchedule(config: ScheduleConfig): Promise<EngineResult> {
+    return this.route('setSchedule', config);
+  }
+  public async getScheduleStatus(): Promise<ScheduleStatus> {
+    const res = await this.route<ScheduleStatus | EngineResult>('getScheduleStatus');
+    return res && (res as { ok?: boolean }).ok !== false
+      ? (res as ScheduleStatus)
+      : { enabled: false, paused: false, activeRuleIds: [], nextBoundary: null };
+  }
+  public setFeedAutomation(config: FeedAutomationConfig): Promise<EngineResult> {
+    return this.route('setFeedAutomation', config);
+  }
+  public async getFeedAutomationStatus(): Promise<FeedAutomationStatus> {
+    const res = await this.route<FeedAutomationStatus | EngineResult>('getFeedAutomationStatus');
+    return res && (res as { ok?: boolean }).ok !== false
+      ? (res as FeedAutomationStatus)
+      : { lastRunAt: null, lastError: null, addedTotal: 0, pending: 0 };
+  }
+  public runFeedCheckNow(): Promise<EngineResult> {
+    return this.route('runFeedCheckNow');
   }
   public async getPermissionStatus(): Promise<NativePermissionStatus> {
     if (this.usingNative) {

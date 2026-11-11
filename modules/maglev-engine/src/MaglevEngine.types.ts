@@ -6,14 +6,15 @@ export type TorrentState =
   | 'PAUSED'
   | 'CHECKING'
   | 'ERROR'
-  | 'COMPLETED';
+  | 'COMPLETED'
+  | 'MOVING';
 
 import type { DownloadFolder } from './MaglevSettings.types.ts';
 
 export * from './MaglevSettings.types.ts';
 
 /** Reserved: user, seed_limit. Any other value is a governance tag from Kotlin. */
-export type PausedBy = 'user' | 'wifi_only' | 'battery' | 'charging_only' | 'seed_limit' | 'fgs_timeout';
+export type PausedBy = 'user' | 'wifi_only' | 'battery' | 'charging_only' | 'seed_limit' | 'fgs_timeout' | 'schedule';
 
 export interface TorrentTelemetry {
   id: string;
@@ -37,6 +38,11 @@ export interface TorrentTelemetry {
   error?: { code: string; message: string } | null;
   outputFolder?: string;
   addedAt?: number;
+  /** Per-torrent limits in bytes per second. 0 or undefined = no limit. */
+  downLimitBps?: number;
+  upLimitBps?: number;
+  /** 0 to 1 while MOVING, otherwise null or undefined. */
+  moveProgress?: number | null;
 }
 
 export interface AggregatedTelemetry {
@@ -62,6 +68,8 @@ export interface TorrentFileInfo {
   length: number;
   progress: number;
   priority: 0 | 1 | 2; // 0 = skip, 1 = normal, 2 = high
+  streamReadyBytes?: number;
+  tailReady?: boolean;
 }
 
 export interface TorrentDetailData extends TorrentTelemetry {
@@ -156,6 +164,11 @@ export interface Snapshot {
   addedAt: number;
   outputFolder: string;
   error: SnapshotError | null;
+  /** NATIVE_CONTRACT 11.2. 0 = no per-torrent limit. */
+  downLimitBps: number;
+  upLimitBps: number;
+  /** NATIVE_CONTRACT 11.3. 0 to 1, non-null only while MOVING. */
+  moveProgress: number | null;
 }
 
 export type FilePriority = 'first' | 'normal' | 'skip';
@@ -173,6 +186,10 @@ export interface DetailFile {
   included: boolean;
   /** NATIVE_CONTRACT 10.1. `included` is derived from it (`skip` means not included). */
   priority: FilePriority;
+  /** NATIVE_CONTRACT 11.4. Contiguous downloaded bytes from the start of the file. */
+  streamReadyBytes: number;
+  /** True when the last piece of the file is present (players read the MP4 index there). */
+  tailReady: boolean;
 }
 
 export interface DetailPeer {
@@ -205,6 +222,9 @@ export interface AddTorrentOptions {
   sequential?: boolean;
   /** When present, overrides `onlyFiles`. Covers every file. */
   filePriorities?: FilePriorityEntry[] | null;
+  /** NATIVE_CONTRACT 11.2. 0 or absent = no limit. */
+  downLimitBps?: number;
+  upLimitBps?: number;
 }
 
 export interface FreeSpace {
@@ -257,6 +277,75 @@ export interface NativePermissionStatus {
   oemHint?: 'xiaomi' | 'samsung' | 'huawei' | 'oneplus' | 'oppo' | 'vivo' | null;
 }
 
+// ---------------------------------------------------------------------------
+// Wave 4 (NATIVE_CONTRACT section 11)
+// ---------------------------------------------------------------------------
+
+/** 11.2. Bytes per second; 0 = no limit. */
+export interface TorrentLimits {
+  downBps: number;
+  upBps: number;
+}
+
+/** 11.3. `default` is Download/Maglev; `tree` comes from the folder picker. */
+export type MoveTarget = { kind: 'default' } | { kind: 'tree'; uri: string };
+
+/** 11.5. `days`: 0 = Monday ... 6 = Sunday. `start` and `end` are "HH:MM". */
+export interface ScheduleRule {
+  id: string;
+  days: number[];
+  start: string;
+  end: string;
+  action: 'pause' | 'limit';
+  downBps?: number;
+  upBps?: number;
+}
+
+export interface ScheduleConfig {
+  enabled: boolean;
+  rules: ScheduleRule[];
+}
+
+export interface ScheduleStatus {
+  enabled: boolean;
+  paused: boolean;
+  activeRuleIds: string[];
+  /** Epoch milliseconds of the next rule start or end, or null. */
+  nextBoundary: number | null;
+}
+
+/** 11.6. `feedIds` empty = all feeds. */
+export interface FeedRule {
+  id: string;
+  name: string;
+  feedIds: string[];
+  include: string;
+  exclude: string;
+  episodes: 'all' | 'new_only';
+  startPaused: boolean;
+  enabled: boolean;
+}
+
+export interface FeedAutomationFeed {
+  id: string;
+  url: string;
+  name: string;
+}
+
+export interface FeedAutomationConfig {
+  enabled: boolean;
+  intervalMins: 15 | 30 | 60;
+  feeds: FeedAutomationFeed[];
+  rules: FeedRule[];
+}
+
+export interface FeedAutomationStatus {
+  lastRunAt: number | null;
+  lastError: string | null;
+  addedTotal: number;
+  pending: number;
+}
+
 export type EngineStatus =
   | { kind: 'starting'; message: string }
   | { kind: 'ready'; message: string; simulated: boolean }
@@ -290,14 +379,28 @@ export interface MaglevEngineApi {
   applyConfig(config: NativeConfig): Promise<EngineResult<{ restartRequired: boolean }>>;
   getEffectiveConfig(): Promise<EngineResult<NativeConfig>>;
   getPieceBitfield(id: string): Promise<number[]>;
-  streamUrl(id: string, fileIndex: number): Promise<EngineResult<{ url: string }>>;
+  streamUrl(id: string, fileIndex: number): Promise<EngineResult<{ url: string; mime: string }>>;
   version(): Promise<{ engine: string; version: string }>;
   // Storage
   pickDownloadFolder(): Promise<PickFolderResult>;
+  /** Same picker, but the choice does not become the default download folder (used by Move). */
+  pickFolder(): Promise<PickFolderResult>;
   getStorageStatus(): Promise<StorageStatus>;
   openFile(id: string, fileIndex: number): Promise<EngineResult>;
   shareFile(id: string, fileIndex: number): Promise<EngineResult>;
   openFolder(id: string): Promise<EngineResult>;
+  // Wave 4 (NATIVE_CONTRACT section 11)
+  /** 0 means no limit. Only error: NOT_FOUND. */
+  setTorrentLimits(id: string, limits: TorrentLimits): Promise<EngineResult>;
+  /** Returns at once; the move runs in the engine and shows as state MOVING. */
+  moveStorage(id: string, target: MoveTarget): Promise<EngineResult>;
+  /** Opens the stream in a player chooser. UNSUPPORTED when no player is installed. */
+  openStream(url: string, mime: string, title: string): Promise<EngineResult>;
+  setSchedule(config: ScheduleConfig): Promise<EngineResult>;
+  getScheduleStatus(): Promise<ScheduleStatus>;
+  setFeedAutomation(config: FeedAutomationConfig): Promise<EngineResult>;
+  getFeedAutomationStatus(): Promise<FeedAutomationStatus>;
+  runFeedCheckNow(): Promise<EngineResult>;
   // Permissions
   getPermissionStatus(): Promise<NativePermissionStatus>;
   requestNotifications(): Promise<EngineResult>;

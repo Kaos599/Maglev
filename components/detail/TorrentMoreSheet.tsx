@@ -12,6 +12,11 @@ interface Props {
   onRecheck: () => void;
   onReannounce: () => void;
   onCopyMagnet: () => void;
+  onShareMagnet: () => void;
+  onSpeedLimit: () => void;
+  onMove: () => void;
+  /** Short summary of the per-torrent limit, or undefined when none is set. */
+  limitSummary?: string;
   onOpenFolder: () => void;
   onDelete: () => void;
 }
@@ -28,11 +33,16 @@ export function TorrentMoreSheet({
   onRecheck,
   onReannounce,
   onCopyMagnet,
+  onShareMagnet,
+  onSpeedLimit,
+  onMove,
+  limitSummary,
   onOpenFolder,
   onDelete,
 }: Props) {
   const running = RUNNING.includes(state);
-  const canTogglePause = state !== 'CHECKING' && state !== 'INITIALIZING';
+  const busy = state === 'CHECKING' || state === 'INITIALIZING' || state === 'MOVING';
+  const canTogglePause = !busy;
   const canReannounce = state === 'DOWNLOADING' || state === 'SEEDING';
   const waiting = canReannounce && retryInSecs > 0;
   const peersSubtitle = waiting
@@ -48,7 +58,7 @@ export function TorrentMoreSheet({
         disabled={!canTogglePause}
         onPress={onTogglePause}
       />
-      <ListRow title="Recheck files" subtitle="Verify everything on disk" icon="recheck" onPress={onRecheck} />
+      <ListRow title="Recheck files" subtitle="Verify everything on disk" icon="recheck" disabled={state === 'MOVING'} onPress={onRecheck} />
       <ListRow
         title="Find more peers"
         subtitle={peersSubtitle}
@@ -57,6 +67,15 @@ export function TorrentMoreSheet({
         onPress={onReannounce}
       />
       <ListRow title="Copy magnet" icon="magnet" onPress={onCopyMagnet} />
+      <ListRow title="Share magnet link" icon="share" onPress={onShareMagnet} />
+      <ListRow title="Speed limit" subtitle={limitSummary ?? 'No limit'} icon="speed-limit" onPress={onSpeedLimit} />
+      <ListRow
+        title="Move to…"
+        subtitle={state === 'MOVING' ? 'Moving now' : busy ? 'Wait for the current step to finish' : undefined}
+        icon="move"
+        disabled={busy}
+        onPress={onMove}
+      />
       <ListRow title="Open folder" icon="folder" onPress={onOpenFolder} />
       <ListRow title="Delete…" icon="trash" destructive onPress={onDelete} />
     </Sheet>

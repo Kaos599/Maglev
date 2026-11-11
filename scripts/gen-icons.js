@@ -36,6 +36,12 @@ const MAP = {
   folder: 'folder',
   file: 'file',
   share: 'share',
+  // wave 4
+  'speed-limit': 'speed-medium',
+  move: 'move',
+  rule: 'filter',
+  calendar: 'calendar-range',
+  alarm: 'alarm-clock',
   link: 'link',
   clipboard: 'clipboard',
   sort: 'arrow-down-wide-narrow',

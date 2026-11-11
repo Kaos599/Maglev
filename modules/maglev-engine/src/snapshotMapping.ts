@@ -56,6 +56,9 @@ export function snapshotToTelemetry(s: Snapshot): TorrentTelemetry {
     error: s.error,
     outputFolder: s.outputFolder,
     addedAt: s.addedAt,
+    downLimitBps: s.downLimitBps ?? 0,
+    upLimitBps: s.upLimitBps ?? 0,
+    moveProgress: s.state === 'MOVING' ? (s.moveProgress ?? 0) : null,
   };
 }
 
@@ -106,6 +109,8 @@ export function detailToTorrentDetail(d: Detail, pieceBitfield?: number[]): Torr
       length: f.length,
       progress: f.length > 0 ? Math.min(100, (f.progressBytes / f.length) * 100) : 0,
       priority: f.priority === 'first' ? 2 : f.included ? 1 : 0,
+      streamReadyBytes: f.streamReadyBytes ?? 0,
+      tailReady: f.tailReady ?? false,
     })),
     trackers: d.trackers.map((t) => ({
       url: t.url,

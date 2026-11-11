@@ -1,10 +1,10 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Linking, StyleSheet, Text, View } from 'react-native';
-import { maglevEngine, type DetailFile } from 'maglev-engine';
+import { StyleSheet, Text, View } from 'react-native';
+import { maglevEngine, type DetailFile, type PausedBy, type TorrentState } from 'maglev-engine';
 import { useTheme } from '../../context/ThemeContext';
 import { ThemeColors, spacing, type } from '../../constants/theme';
 import { Banner, Button, ListRow, Sheet } from '../ui';
-import { fileName, isMediaFile } from './torrentLabels';
+import { fileName, isStreamable, streamReadiness } from './torrentLabels';
 
 interface DeleteSheetProps {
   visible: boolean;
@@ -34,34 +34,31 @@ export function DeleteSheet({ visible, name, busy, error, onClose, onRemove, onD
 interface FileSheetProps {
   id: string;
   file: DetailFile | null;
+  torrentState: TorrentState;
+  pausedBy: PausedBy | null;
+  /** Resumes the torrent; resolves true on success. */
+  onResume: () => Promise<boolean>;
+  onNotice: (text: string) => void;
   onClose: () => void;
 }
 
-/** Open / Share for completed files; Stream only for media when the engine returns a stream URL. */
-export function FileActionsSheet({ id, file, onClose }: FileSheetProps) {
+/** Open and Share for finished files; Stream for video and audio, finished or not (NATIVE_CONTRACT 11.4). */
+export function FileActionsSheet({ id, file, torrentState, pausedBy, onResume, onNotice, onClose }: FileSheetProps) {
   const { colors } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
-  const [streamUrl, setStreamUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-
-  const done = !!file && file.length > 0 && file.progressBytes >= file.length;
-  const media = !!file && isMediaFile(file.path);
+  const [busy, setBusy] = useState(false);
 
   useEffect(() => {
-    setStreamUrl(null);
     setError(null);
-    if (!file || !media) return;
-    let alive = true;
-    maglevEngine
-      .streamUrl(id, file.index)
-      .then((res) => {
-        if (alive && res.ok) setStreamUrl(res.url);
-      })
-      .catch(() => {});
-    return () => {
-      alive = false;
-    };
-  }, [id, file, media]);
+    setBusy(false);
+  }, [file]);
+
+  const done = !!file && file.length > 0 && file.progressBytes >= file.length;
+  const streamable = !!file && isStreamable(file.path);
+  const skipped = !!file && file.priority === 'skip';
+  const moving = torrentState === 'MOVING';
+  const readiness = file ? streamReadiness(file) : null;
 
   const run = async (call: Promise<{ ok: boolean; message?: string }>, fallback: string) => {
     try {
@@ -73,6 +70,43 @@ export function FileActionsSheet({ id, file, onClose }: FileSheetProps) {
     }
   };
 
+  const stream = async () => {
+    if (!file) return;
+    setError(null);
+    setBusy(true);
+    try {
+      const userPaused = torrentState === 'PAUSED' && pausedBy === 'user';
+      if (userPaused && !(await onResume())) {
+        setError("Couldn't resume the torrent.");
+        return;
+      }
+      const url = await maglevEngine.streamUrl(id, file.index);
+      if (!url.ok) {
+        setError(url.message || "Couldn't start the stream.");
+        return;
+      }
+      const res = await maglevEngine.openStream(url.url, url.mime, fileName(file.path));
+      if (!res.ok) {
+        setError(res.message || 'No video player found. Install VLC or another player.');
+        return;
+      }
+      if (userPaused) onNotice('Resumed to stream');
+      onClose();
+    } catch {
+      setError("Couldn't start the stream.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const streamSubtitle = skipped
+    ? "Skipped files can't be streamed. Set a priority first."
+    : moving
+      ? 'Wait for the move to finish'
+      : readiness?.ready
+        ? 'Ready to play'
+        : `Starting may pause to buffer (${readiness?.percent ?? 0}% ready)`;
+
   return (
     <Sheet visible={!!file} onClose={onClose} title={file ? fileName(file.path) : 'File'}>
       {error ? <Banner tone="danger" title="Couldn't do that" body={error} /> : null}
@@ -82,16 +116,10 @@ export function FileActionsSheet({ id, file, onClose }: FileSheetProps) {
           <ListRow title="Share" icon="share" onPress={() => run(maglevEngine.shareFile(id, file.index), 'Sharing failed.')} />
         </>
       ) : null}
-      {file && streamUrl ? (
-        <ListRow
-          title="Stream"
-          icon="stream"
-          onPress={() => {
-            Linking.openURL(streamUrl).then(onClose, () => setError('No player app found for this stream.'));
-          }}
-        />
+      {file && streamable ? (
+        <ListRow title="Stream" subtitle={streamSubtitle} icon="stream" disabled={skipped || moving || busy} onPress={stream} />
       ) : null}
-      {file && !done && !streamUrl ? <Text style={styles.hint}>Available once the file finishes downloading.</Text> : null}
+      {file && !done && !streamable ? <Text style={styles.hint}>Available once the file finishes downloading.</Text> : null}
     </Sheet>
   );
 }

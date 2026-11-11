@@ -5,13 +5,21 @@ import { useTheme } from '../../context/ThemeContext';
 import { ThemeColors, alpha, radius, spacing, type } from '../../constants/theme';
 import { stateColor, stateLabel } from './torrentLabels';
 
-export function StateBadge({ state, pausedBy }: { state: TorrentState; pausedBy?: PausedBy | null }) {
+interface Props {
+  state: TorrentState;
+  pausedBy?: PausedBy | null;
+  moveProgress?: number | null;
+  /** "HH:MM" shown on a scheduled pause. */
+  resumesAt?: string | null;
+}
+
+export function StateBadge({ state, pausedBy, moveProgress, resumesAt }: Props) {
   const { colors } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const tint = stateColor(state, colors);
   return (
     <View style={[styles.badge, { borderColor: tint, backgroundColor: alpha(tint, 0.12) }]}>
-      <Text style={[styles.text, { color: tint }]}>{stateLabel(state, pausedBy)}</Text>
+      <Text style={[styles.text, { color: tint }]}>{stateLabel(state, pausedBy, { moveProgress, resumesAt })}</Text>
     </View>
   );
 }
