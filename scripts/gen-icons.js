@@ -70,6 +70,7 @@ const MAP = {
   power: 'battery-full',
   schedule: 'calendar',
   about: 'circle-info',
+  github: 'github',
   bell: 'bell',
   shield: 'shield',
   warning: 'warning-diamond',

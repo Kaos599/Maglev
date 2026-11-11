@@ -9,6 +9,8 @@ import { ListRow } from '../../components/ui';
 import { Card, SettingsPage } from '../../components/settings/SettingsParts';
 import { Wordmark } from '../../components/settings/Wordmark';
 
+const REPO_URL = 'https://github.com/Kaos599/Maglev';
+
 type Extra = { license?: string; homepage?: string; sourceUrl?: string; privacyUrl?: string };
 
 export default function AboutSettings() {
@@ -34,7 +36,7 @@ export default function AboutSettings() {
 
   const links = [
     extra.homepage && { title: 'Website', url: extra.homepage },
-    extra.sourceUrl && { title: 'Source code', url: extra.sourceUrl },
+    extra.sourceUrl && extra.sourceUrl !== REPO_URL && { title: 'Source code', url: extra.sourceUrl },
     extra.privacyUrl && { title: 'Privacy policy', url: extra.privacyUrl },
   ].filter(Boolean) as { title: string; url: string }[];
 
@@ -49,11 +51,11 @@ export default function AboutSettings() {
         <ListRow title="Engine" value={engine} />
         {extra.license ? <ListRow title="License" value={extra.license} /> : null}
         <ListRow
-          title="Built by Kaos"
-          icon="link"
-          value="Kaos599"
-          onPress={() => void Linking.openURL('https://github.com/Kaos599')}
-          accessibilityHint="Opens GitHub"
+          title="Made with love by Kaos"
+          subtitle="github.com/Kaos599/Maglev"
+          icon="github"
+          onPress={() => void Linking.openURL(REPO_URL)}
+          accessibilityHint="Opens the Maglev source code on GitHub"
         />
         {links.map((l) => (
           <ListRow key={l.url} title={l.title} onPress={() => void Linking.openURL(l.url)} />
