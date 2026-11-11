@@ -46,6 +46,9 @@ object NativeCore {
     @JvmStatic external fun nativeSetIncludedFiles(id: String, indicesJson: String): String
     @JvmStatic external fun nativeSetFilePriorities(id: String, json: String): String
     @JvmStatic external fun nativeReannounce(id: String): String
+    @JvmStatic external fun nativeAddTrackers(id: String, urlsJson: String): String
+    @JvmStatic external fun nativeRemoveTracker(id: String, url: String): String
+    @JvmStatic external fun nativeExportTorrent(id: String, destPath: String): String
     @JvmStatic external fun nativeSetGlobalLimits(downBps: Long, upBps: Long): String
     @JvmStatic external fun nativeApplyConfig(configJson: String): String
     @JvmStatic external fun nativeGetEffectiveConfig(): String

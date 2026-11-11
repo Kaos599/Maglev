@@ -101,6 +101,8 @@ export type EngineErrorCode =
   | 'NOT_INITIALIZED'
   | 'ENGINE_UNAVAILABLE'
   | 'UNSUPPORTED'
+  | 'INVALID_ARGUMENT'
+  | 'NOT_READY'
   | 'INTERNAL';
 
 /** NATIVE_CONTRACT 12.1. */
@@ -206,6 +208,23 @@ export interface DetailPeer {
   downBps: number;
   upBps: number;
   progress: number;
+}
+
+export interface TrackersAdded {
+  /** Addresses that were new to the torrent. */
+  added: number;
+  /** Addresses it already had. */
+  skipped: number;
+  announced: boolean;
+}
+
+export interface TorrentExport {
+  /** The saved file. It exists and can be shared. */
+  path: string;
+  name: string;
+  /** Where to tell the user it went, for example "Download/Maglev". */
+  folder: string;
+  bytes: number;
 }
 
 export interface DetailTracker {
@@ -385,6 +404,17 @@ export interface MaglevEngineApi {
   setFilePriorities(id: string, priorities: FilePriorityEntry[]): Promise<EngineResult>;
   /** Only while DOWNLOADING or SEEDING. Rate limited to once per 60 s per torrent. */
   reannounce(id: string): Promise<EngineResult<{ retryAfterSecs?: number }>>;
+  /**
+   * NATIVE_CONTRACT 15. One announce URL per entry (http, https or udp). Nothing is added unless every one is valid
+   * (INVALID_ARGUMENT). Private torrents refuse (UNSUPPORTED). `announced` is true when a running torrent asked the new trackers at once.
+   */
+  addTrackers(id: string, urls: string[]): Promise<EngineResult<TrackersAdded>>;
+  /** NATIVE_CONTRACT 15. Removing the last tracker is allowed. NOT_FOUND when the torrent or the tracker is not there. */
+  removeTracker(id: string, url: string): Promise<EngineResult<{ announced: boolean }>>;
+  /** NATIVE_CONTRACT 15. Writes `<name>.torrent` to the download folder. NOT_READY while a magnet still has no metadata. */
+  exportTorrent(id: string): Promise<EngineResult<TorrentExport>>;
+  /** Opens the share sheet for a file `exportTorrent` returned. */
+  shareExportedTorrent(path: string): Promise<EngineResult>;
   getFreeSpace(): Promise<EngineResult<FreeSpace>>;
   openLiveUpdateSettings(): Promise<void>;
   /** Opens the Android notification settings for the "Completed" channel (or the app page below API 26). */

@@ -31,6 +31,45 @@ export function DeleteSheet({ visible, name, busy, error, onClose, onRemove, onD
   );
 }
 
+interface SavedTorrentSheetProps {
+  /** The result of `exportTorrent`, or null when the sheet is closed. */
+  saved: { path: string; name: string; folder: string } | null;
+  onClose: () => void;
+}
+
+/** Shown after "Save .torrent file": where it went, and a Share button (NATIVE_CONTRACT 15). */
+export function SavedTorrentSheet({ saved, onClose }: SavedTorrentSheetProps) {
+  const { colors } = useTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setError(null);
+  }, [saved]);
+
+  const share = async () => {
+    if (!saved) return;
+    try {
+      const res = await maglevEngine.shareExportedTorrent(saved.path);
+      if (!res.ok) setError(res.message || 'Sharing failed.');
+      else onClose();
+    } catch {
+      setError('Sharing failed.');
+    }
+  };
+
+  return (
+    <Sheet visible={!!saved} onClose={onClose} title="Saved" subtitle={saved ? `${saved.folder}/${saved.name}` : undefined}>
+      {error ? <Banner tone="danger" title="Couldn't share" body={error} /> : null}
+      <Text style={styles.hint}>The file keeps this torrent's current trackers.</Text>
+      <View style={styles.stack}>
+        <Button label="Share" icon="share" variant="secondary" fullWidth onPress={share} />
+        <Button label="Done" variant="ghost" fullWidth onPress={onClose} />
+      </View>
+    </Sheet>
+  );
+}
+
 interface FileSheetProps {
   id: string;
   file: DetailFile | null;

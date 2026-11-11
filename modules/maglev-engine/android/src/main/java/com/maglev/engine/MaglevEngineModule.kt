@@ -146,6 +146,19 @@ class MaglevEngineModule : Module() {
         AsyncFunction("reannounce") { id: String, promise: Promise ->
             io(promise) { EngineHost.reannounce(id) }
         }
+        // Section 15. A tracker change restarts the torrent's peer sources, so keep it off the serialized thread.
+        AsyncFunction("addTrackers") { id: String, urls: List<String>, promise: Promise ->
+            io(promise) { EngineHost.addTrackers(id, urls) }
+        }
+        AsyncFunction("removeTracker") { id: String, url: String, promise: Promise ->
+            io(promise) { EngineHost.removeTracker(id, url) }
+        }
+        AsyncFunction("exportTorrent") { id: String, promise: Promise ->
+            io(promise) { EngineHost.exportTorrent(id) }
+        }
+        AsyncFunction("shareExportedTorrent") { path: String, promise: Promise ->
+            io(promise) { EngineHost.shareExportedTorrent(path) }
+        }
         AsyncFunction("setGlobalLimits") { down: Double, up: Double, promise: Promise ->
             engine(promise) { EngineHost.setGlobalLimits(down.toLong(), up.toLong()) }
         }

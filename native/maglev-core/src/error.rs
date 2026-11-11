@@ -20,6 +20,10 @@ pub enum ErrorCode {
     NotInitialized,
     EngineUnavailable,
     Unsupported,
+    /// A caller-supplied value is malformed (for example a tracker address). Nothing was changed.
+    InvalidArgument,
+    /// The torrent has no metadata yet (a magnet that is still resolving).
+    NotReady,
     Internal,
     /// The app cancelled a magnet resolve. Not an error to show.
     Cancelled,
@@ -40,6 +44,8 @@ impl ErrorCode {
             ErrorCode::NotInitialized => "NOT_INITIALIZED",
             ErrorCode::EngineUnavailable => "ENGINE_UNAVAILABLE",
             ErrorCode::Unsupported => "UNSUPPORTED",
+            ErrorCode::InvalidArgument => "INVALID_ARGUMENT",
+            ErrorCode::NotReady => "NOT_READY",
             ErrorCode::Internal => "INTERNAL",
             ErrorCode::Cancelled => "CANCELLED",
         }
@@ -314,6 +320,8 @@ mod tests {
             ErrorCode::Network
         );
         assert_eq!(ErrorCode::Unsupported.as_str(), "UNSUPPORTED");
+        assert_eq!(ErrorCode::InvalidArgument.as_str(), "INVALID_ARGUMENT");
+        assert_eq!(ErrorCode::NotReady.as_str(), "NOT_READY");
     }
 
     #[test]

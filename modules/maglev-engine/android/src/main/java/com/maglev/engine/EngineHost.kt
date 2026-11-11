@@ -1104,6 +1104,95 @@ object EngineHost {
         }
     }
 
+    // region trackers and .torrent export (contract section 15)
+
+    /** [urls] are announce URLs, one per entry. Rust validates them all and changes nothing unless every one is valid. */
+    fun addTrackers(id: String, urls: List<String>): Map<String, Any?> =
+        call { NativeCore.nativeAddTrackers(id, Json.toJson(urls)) }
+
+    fun removeTracker(id: String, url: String): Map<String, Any?> =
+        call { NativeCore.nativeRemoveTracker(id, url) }
+
+    private val fileNameJunk = Regex("[\\\\/:*?\"<>|\\p{Cntrl}]")
+
+    /** A file name for a torrent: no path characters, at most 120 characters, always ending in `.torrent`. */
+    private fun torrentFileName(name: String): String {
+        val cleaned = name.replace(fileNameJunk, "_").trim().trim('.').take(120).trim()
+        return (if (cleaned.isEmpty()) "torrent" else cleaned) + ".torrent"
+    }
+
+    /** `Download/Maglev` instead of `/storage/emulated/0/Download/Maglev`. */
+    private fun friendlyFolder(path: String): String = path.removePrefix("/storage/emulated/0/")
+
+    /**
+     * JS exportTorrent: writes `<name>.torrent` to the download folder (`Download/Maglev` by default, a direct
+     * custom folder, or the SAF folder) and returns `{path, name, folder, bytes}`. `path` is a real file that exists
+     * and can be shared; `folder` is the place to tell the user about. Overwrites an earlier export of the same name.
+     * In SAF staging mode Rust writes into an app folder first, and the file is then copied into the tree.
+     */
+    fun exportTorrent(id: String): Map<String, Any?> {
+        val c = requireCtx() ?: return Json.failure("ENGINE_UNAVAILABLE", "Module is not attached")
+        val detail = call { NativeCore.nativeGetDetail(id) }
+        if (!isOk(detail)) return detail
+        @Suppress("UNCHECKED_CAST")
+        val name = (detail["snapshot"] as? Map<String, Any?>)?.get("name") as? String ?: ""
+        val fileName = torrentFileName(name)
+        val target = StorageManager.activeTarget(c)
+        val tree = if (target.mode == "staging") target.treeUri else null
+        val dir = if (tree != null) {
+            File(c.getExternalFilesDir(android.os.Environment.DIRECTORY_DOWNLOADS) ?: c.filesDir, "Exports")
+                .also { it.mkdirs() }
+        } else {
+            File(target.path)
+        }
+        val dest = File(dir, fileName)
+        val res = call { NativeCore.nativeExportTorrent(id, dest.absolutePath) }
+        if (!isOk(res)) return res
+        val folder: String
+        if (tree != null) {
+            val uri = Uri.parse(tree)
+            // copyFileIntoTree keeps an existing file of the same size, so remove the old export first.
+            try {
+                SafStorageManager.findInTree(c, uri, fileName)?.delete()
+            } catch (e: Exception) {
+                Log.w(TAG, "could not replace the old export: ${e.message}")
+            }
+            val err = SafStorageManager.copyFileIntoTree(c, uri, fileName, dest)
+            if (err != null) {
+                Log.w(TAG, "export copy into the chosen folder failed: $err")
+                return Json.failure("PERMISSION", "Maglev can't write to your download folder. Pick the folder again in Settings.")
+            }
+            folder = StorageManager.customName(c) ?: "your download folder"
+        } else {
+            folder = friendlyFolder(dir.absolutePath)
+            try {
+                MediaScannerConnection.scanFile(c, arrayOf(dest.absolutePath), arrayOf("application/x-bittorrent"), null)
+            } catch (e: Exception) {
+                Log.w(TAG, "media scan skipped: ${e.message}")
+            }
+        }
+        return linkedMapOf(
+            "ok" to true,
+            "path" to dest.absolutePath,
+            "name" to fileName,
+            "folder" to folder,
+            "bytes" to Json.long(res["bytes"]),
+        )
+    }
+
+    /** JS shareExportedTorrent: the share sheet for a file [exportTorrent] returned. */
+    fun shareExportedTorrent(path: String): Map<String, Any?> {
+        val c = requireCtx() ?: return Json.failure("ENGINE_UNAVAILABLE", "Module is not attached")
+        val file = File(path)
+        if (!path.endsWith(".torrent", ignoreCase = true) || !file.isFile) {
+            return Json.failure("NOT_FOUND", "The saved file isn't there any more. Save it again.")
+        }
+        val err = FileActions.shareLocalFile(c, file, "application/x-bittorrent")
+        return if (err == null) linkedMapOf("ok" to true) else Json.failure("UNSUPPORTED", err)
+    }
+
+    // endregion
+
     /** JS setSchedule: persist, re-arm the alarm and apply the new state now. */
     fun setSchedule(cfg: Map<String, Any?>): Map<String, Any?> {
         val c = requireCtx() ?: return Json.failure("ENGINE_UNAVAILABLE", "Module is not attached")

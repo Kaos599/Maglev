@@ -1378,6 +1378,7 @@ impl Session {
                 client_name_and_version: self.client_name_and_version.clone(),
                 file_priority_order: Default::default(), // MAGLEV PATCH
                 ratelimits_override: Default::default(), // MAGLEV PATCH
+                trackers_override: Default::default(), // MAGLEV PATCH (T2)
             });
 
             let initializing = Arc::new(TorrentStateInitializing::new(
@@ -1530,9 +1531,16 @@ impl Session {
         announce: bool,
     ) -> Option<PeerStream> {
         let is_private = t.with_metadata(|m| m.info.info().private).unwrap_or(false);
+        // MAGLEV PATCH (T4): the user-edited list when there is one.
+        let trackers: Vec<url::Url> = {
+            let edited = t.shared().trackers_override.lock();
+            let current = edited.as_ref().unwrap_or(&t.shared().trackers);
+            let list: Vec<url::Url> = current.iter().cloned().collect();
+            list
+        };
         self.make_peer_rx(
             t.info_hash(),
-            t.shared().trackers.iter().cloned().collect(),
+            trackers,
             announce,
             t.shared().options.force_tracker_interval,
             t.shared().options.initial_peers.clone(),

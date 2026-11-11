@@ -34,7 +34,7 @@ use tracing::warn;
 use crate::activity::{ActivitySnapshot, ResolveRegistry};
 use crate::config::NativeConfig;
 use crate::error::{classify_add_error, classify_runtime_error, EngineError, ErrorCode};
-use crate::meta::{MetaStore, PendingAdd, TorrentMeta};
+use crate::meta::{write_atomic, MetaStore, PendingAdd, TorrentMeta};
 use crate::priority::{
     include_set_changed, order_from_first, parse_priorities, plan_priorities, priority_of_file,
     PriorityPlan, PriorityStore, ReannounceLimiter, REANNOUNCE_MIN_INTERVAL,
@@ -52,6 +52,10 @@ use crate::simd::{downsample_bitfield, MATRIX_SIZE};
 use crate::source::{check_supported, parse_source, Source};
 use crate::streaming::{mime_for_extension, StreamServer};
 use crate::torrent_limits::{parse_limits, LimitsStore, TorrentLimits};
+use crate::trackers::{
+    apply_edits, build_torrent_file, check_export_path, find_tracker, parse_url_list, plan_add,
+    TrackerStore,
+};
 use crate::types::{
     subfolder_for, AddOptions, Detail, ErrorInfo, FileDetail, FileEntry, Metadata, PeerDetail,
     Snapshot, TrackerDetail,
@@ -180,6 +184,31 @@ pub struct AddResult {
     pub info_hash: String,
 }
 
+/// Answer of `nativeAddTrackers`.
+#[derive(Serialize)]
+pub struct TrackersAdded {
+    /// Addresses that were new to the torrent.
+    pub added: usize,
+    /// Addresses it already had.
+    pub skipped: usize,
+    /// True when the torrent was restarted so the new trackers are asked at once.
+    pub announced: bool,
+}
+
+/// Answer of `nativeRemoveTracker`.
+#[derive(Serialize)]
+pub struct TrackerRemoved {
+    pub announced: bool,
+}
+
+/// Answer of `nativeExportTorrent`.
+#[derive(Serialize)]
+pub struct TorrentExported {
+    pub path: String,
+    pub bytes: u64,
+    pub trackers: usize,
+}
+
 #[derive(Serialize)]
 pub struct ApplyConfigResult {
     pub restart_required: bool,
@@ -216,6 +245,8 @@ pub struct MaglevEngine {
     reannounce_limiter: Mutex<ReannounceLimiter>,
     /// Per-torrent speed limits, persisted in `maglev-limits.json`.
     limits: Mutex<LimitsStore>,
+    /// Trackers the user added or removed, persisted in `maglev-trackers.json` (section 15).
+    trackers: Mutex<TrackerStore>,
     /// Torrents whose files are being moved right now (state `MOVING`).
     moves: Mutex<HashMap<String, Arc<MoveEntry>>>,
     /// Magnet resolves in progress: peers seen on the DHT and the cancel signal (section 12.1).
@@ -321,6 +352,7 @@ impl MaglevEngine {
         let mut meta = MetaStore::load(&session_dir);
         let priorities = PriorityStore::load(&session_dir);
         let limits = LimitsStore::load(&session_dir);
+        let trackers = TrackerStore::load(&session_dir);
         let trimmed = config_json.trim();
         let mut config_warning: Option<String> = None;
         let cfg = if trimmed.is_empty() || trimmed == "null" {
@@ -407,12 +439,14 @@ impl MaglevEngine {
             priorities: Mutex::new(priorities),
             reannounce_limiter: Mutex::new(ReannounceLimiter::new(REANNOUNCE_MIN_INTERVAL)),
             limits: Mutex::new(limits),
+            trackers: Mutex::new(trackers),
             moves: Mutex::new(HashMap::new()),
             resolves: Arc::new(ResolveRegistry::new()),
         });
 
         engine.restore_priorities();
         engine.restore_limits();
+        engine.restore_trackers();
         engine.resume_pending_adds();
         engine.start_tick_loop();
         // Apply queue and governance rules once before the first list call.
@@ -751,11 +785,10 @@ impl MaglevEngine {
             .unwrap_or((0, 0));
 
         let trackers: Vec<TrackerDetail> = h
-            .shared()
-            .trackers
-            .iter()
-            .map(|u| TrackerDetail {
-                url: u.to_string(),
+            .trackers()
+            .into_iter()
+            .map(|url| TrackerDetail {
+                url,
                 // librqbit does not expose per-tracker status.
                 status: "unknown".to_string(),
                 message: None,
@@ -1368,6 +1401,7 @@ impl MaglevEngine {
                 // The re-added torrent is a new handle; give it its saved settings back.
                 self.apply_saved_order(id, &new_handle);
                 self.apply_saved_limits(id, &new_handle);
+                self.apply_saved_trackers(id, &new_handle);
                 Ok(())
             }
             Ok(_) => Ok(()),
@@ -1458,6 +1492,7 @@ impl MaglevEngine {
         let in_meta = self.meta.lock().remove(&id).is_some();
         self.forget_priorities(&id);
         self.forget_limits(&id);
+        self.forget_trackers(&id);
         self.reannounce_limiter.lock().release(&id);
         self.peer_cache.lock().retain(|k, _| !k.starts_with(&format!("{id}|")));
         self.save_meta();
@@ -1593,6 +1628,49 @@ impl MaglevEngine {
         )
     }
 
+    /// Pauses and unpauses the same handle so trackers, DHT and LSD are asked again. Only valid while
+    /// the torrent is DOWNLOADING or SEEDING (`UNSUPPORTED` otherwise).
+    ///
+    /// The tick lock is held for the whole round trip, so the governance pass never sees the
+    /// torrent paused. `paused_by`, `queued`, `added_at` and the seeding clock are not touched.
+    async fn restart_peer_sources(&self, id: &str, h: &Handle20) -> Result<(), EngineError> {
+        let not_running = || {
+            EngineError::new(
+                ErrorCode::Unsupported,
+                "Find more peers only works while a torrent is downloading or seeding",
+            )
+        };
+        let _tick = self.tick_lock.lock().await;
+        // The state may have changed while this call waited for the lock.
+        if !self.is_active_transfer(id, h) {
+            return Err(not_running());
+        }
+        // librqbit restarts its upload counter when a torrent goes live again.
+        // Fold what it has counted so far into the saved total first.
+        let uploaded_now = h.stats().uploaded_bytes;
+        self.meta.lock().update(id, |m| {
+            let (_, base, last) = uploaded_total(m.uploaded_base, m.last_uploaded_seen, uploaded_now);
+            m.uploaded_base = base;
+            m.last_uploaded_seen = last;
+        });
+        self.session.pause(h).await.map_err(|e| {
+            let (code, message) = classify_runtime_error(&format!("{e:#}"));
+            EngineError::new(code, message)
+        })?;
+        if let Err(e) = self.session.unpause(h).await {
+            warn!("reannounce could not restart the torrent: {e:#}");
+            // Leave it for the planner to start again instead of stuck paused.
+            self.meta.lock().update(id, |m| {
+                if m.paused_by.is_none() {
+                    m.queued = true;
+                }
+            });
+            let (code, message) = classify_runtime_error(&format!("{e:#}"));
+            return Err(EngineError::new(code, message));
+        }
+        Ok(())
+    }
+
     /// `nativeReannounce`: pause and unpause the same handle so trackers, DHT and LSD are asked again.
     ///
     /// The tick lock is held for the whole round trip, so the governance pass never sees the
@@ -1617,44 +1695,187 @@ impl MaglevEngine {
             ));
         }
         let outcome = self
-            .run(OP_TIMEOUT, async {
-                let _tick = self.tick_lock.lock().await;
-                // The state may have changed while this call waited for the lock.
-                if !self.is_active_transfer(&id, &h) {
-                    return Err(not_running());
-                }
-                // librqbit restarts its upload counter when a torrent goes live again.
-                // Fold what it has counted so far into the saved total first.
-                let uploaded_now = h.stats().uploaded_bytes;
-                self.meta.lock().update(&id, |m| {
-                    let (_, base, last) =
-                        uploaded_total(m.uploaded_base, m.last_uploaded_seen, uploaded_now);
-                    m.uploaded_base = base;
-                    m.last_uploaded_seen = last;
-                });
-                self.session.pause(&h).await.map_err(|e| {
-                    let (code, message) = classify_runtime_error(&format!("{e:#}"));
-                    EngineError::new(code, message)
-                })?;
-                if let Err(e) = self.session.unpause(&h).await {
-                    warn!("reannounce could not restart the torrent: {e:#}");
-                    // Leave it for the planner to start again instead of stuck paused.
-                    self.meta.lock().update(&id, |m| {
-                        if m.paused_by.is_none() {
-                            m.queued = true;
-                        }
-                    });
-                    let (code, message) = classify_runtime_error(&format!("{e:#}"));
-                    return Err(EngineError::new(code, message));
-                }
-                Ok::<(), EngineError>(())
-            })
+            .run(OP_TIMEOUT, self.restart_peer_sources(&id, &h))
             .and_then(|r| r);
         if outcome.is_err() {
             // A call that did not reach the trackers must not use up the minute.
             self.reannounce_limiter.lock().release(&id);
         }
         outcome
+    }
+
+    // ---- trackers and .torrent export (contract section 15) ---------------------------------------
+
+    fn save_trackers(&self, change: impl FnOnce(&mut TrackerStore)) {
+        let mut store = self.trackers.lock();
+        change(&mut store);
+        if let Err(e) = store.save() {
+            warn!("could not save tracker changes: {e}");
+        }
+    }
+
+    fn forget_trackers(&self, id: &str) {
+        let mut store = self.trackers.lock();
+        if store.forget(id) {
+            if let Err(e) = store.save() {
+                warn!("could not save tracker changes: {e}");
+            }
+        }
+    }
+
+    /// Gives a handle the tracker edits saved for `id`. True when its list changed.
+    fn apply_saved_trackers(&self, id: &str, h: &Handle20) -> bool {
+        let saved = self.trackers.lock().get(id);
+        let Some(edits) = saved else { return false };
+        let current = h.trackers();
+        let next = apply_edits(&current, &edits);
+        if next == current {
+            return false;
+        }
+        h.set_trackers(next);
+        true
+    }
+
+    /// Run once at start: torrents that librqbit restored get their tracker edits back. A torrent that
+    /// is already running restarts its peer sources so a removed tracker is not asked again.
+    fn restore_trackers(&self) {
+        for h in self.handles() {
+            let id = h.info_hash().as_string();
+            if self.apply_saved_trackers(&id, &h) && self.is_active_transfer(&id, &h) {
+                let _ = self.run(OP_TIMEOUT, self.restart_peer_sources(&id, &h));
+            }
+        }
+    }
+
+    /// The handle a tracker or export call works on. A magnet that is still resolving has none (`NOT_READY`).
+    fn handle_with_metadata(&self, id: &str) -> Result<(String, Handle20), EngineError> {
+        let (id, hash) = Self::parse_id(id)?;
+        self.reject_if_moving(&id)?;
+        match self.find(hash) {
+            Some(h) => Ok((id, h)),
+            None => {
+                let pending = self
+                    .meta
+                    .lock()
+                    .get(&id)
+                    .map(|m| m.pending.is_some())
+                    .unwrap_or(false);
+                if pending {
+                    Err(EngineError::new(
+                        ErrorCode::NotReady,
+                        "Maglev is still getting this torrent's details. Try again in a moment.",
+                    ))
+                } else {
+                    Err(EngineError::not_found())
+                }
+            }
+        }
+    }
+
+    /// Private torrents use only the tracker they came with, and librqbit keeps just one of several.
+    fn reject_if_private(h: &Handle20) -> Result<(), EngineError> {
+        if h.with_metadata(|m| m.info.info().private).unwrap_or(false) {
+            return Err(EngineError::new(
+                ErrorCode::Unsupported,
+                "Private torrents only use the trackers they came with.",
+            ));
+        }
+        Ok(())
+    }
+
+    /// Restarts the peer sources after a tracker change so the new list is used now. Best effort:
+    /// a torrent that is not running picks the list up the next time it starts.
+    fn announce_after_tracker_change(&self, id: &str, h: &Handle20) -> bool {
+        if !self.is_active_transfer(id, h) {
+            return false;
+        }
+        match self
+            .run(OP_TIMEOUT, self.restart_peer_sources(id, h))
+            .and_then(|r| r)
+        {
+            Ok(()) => true,
+            Err(e) => {
+                warn!("trackers changed but the torrent could not announce yet: {e}");
+                false
+            }
+        }
+    }
+
+    /// `nativeAddTrackers`: `urls_json` is a JSON array of announce URLs. Nothing changes unless every one is valid.
+    pub fn add_trackers(&self, id: &str, urls_json: &str) -> Result<TrackersAdded, EngineError> {
+        let urls = parse_url_list(urls_json)?;
+        let (id, h) = self.handle_with_metadata(id)?;
+        Self::reject_if_private(&h)?;
+        let current = h.trackers();
+        let (fresh, skipped) = plan_add(&current, &urls);
+        if fresh.is_empty() {
+            return Ok(TrackersAdded {
+                added: 0,
+                skipped,
+                announced: false,
+            });
+        }
+        let mut next = current;
+        next.extend(fresh.iter().cloned());
+        next.sort();
+        h.set_trackers(next);
+        self.save_trackers(|s| s.record_added(&id, &fresh));
+        let announced = self.announce_after_tracker_change(&id, &h);
+        Ok(TrackersAdded {
+            added: fresh.len(),
+            skipped,
+            announced,
+        })
+    }
+
+    /// `nativeRemoveTracker`: drops one announce URL. Removing the last one is allowed (DHT and PEX still work).
+    pub fn remove_tracker(&self, id: &str, url: &str) -> Result<TrackerRemoved, EngineError> {
+        let wanted = url.trim();
+        if wanted.is_empty() {
+            return Err(EngineError::new(
+                ErrorCode::InvalidArgument,
+                "Choose which tracker to remove",
+            ));
+        }
+        let (id, h) = self.handle_with_metadata(id)?;
+        Self::reject_if_private(&h)?;
+        let current = h.trackers();
+        let found = find_tracker(&current, wanted).ok_or_else(|| {
+            EngineError::new(ErrorCode::NotFound, "That tracker isn't in the list")
+        })?;
+        let next: Vec<String> = current.into_iter().filter(|u| *u != found).collect();
+        h.set_trackers(next);
+        self.save_trackers(|s| s.record_removed(&id, &found));
+        let announced = self.announce_after_tracker_change(&id, &h);
+        Ok(TrackerRemoved { announced })
+    }
+
+    /// `nativeExportTorrent`: writes the original info dictionary and the current tracker list to `dest_path`
+    /// (an absolute path ending in `.torrent`). The info-hash of the file equals the torrent's.
+    pub fn export_torrent(&self, id: &str, dest_path: &str) -> Result<TorrentExported, EngineError> {
+        let dest = check_export_path(dest_path)?;
+        let (_, h) = self.handle_with_metadata(id)?;
+        let info_bytes = h.with_metadata(|m| m.info_bytes.clone()).map_err(|_| {
+            EngineError::new(
+                ErrorCode::NotReady,
+                "Maglev is still getting this torrent's details. Try again in a moment.",
+            )
+        })?;
+        let trackers = h.trackers();
+        let bytes = build_torrent_file(&info_bytes, &trackers);
+        write_atomic(&dest, &bytes).map_err(|e| {
+            warn!("could not write the .torrent file: {e}");
+            let (code, message) = classify_runtime_error(&e.to_string());
+            match code {
+                ErrorCode::DiskFull | ErrorCode::Permission => EngineError::new(code, message),
+                _ => EngineError::internal("Couldn't save the .torrent file. Try again."),
+            }
+        })?;
+        Ok(TorrentExported {
+            path: dest.to_string_lossy().into_owned(),
+            bytes: bytes.len() as u64,
+            trackers: trackers.len(),
+        })
     }
 
     // ---- per-torrent speed limits -------------------------------------------------------------------
