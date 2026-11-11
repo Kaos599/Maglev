@@ -45,7 +45,7 @@ export default function AboutSettings() {
     <SettingsPage title="ABOUT">
       <Stack.Screen options={{ headerShown: false }} />
       <View style={s.brand}>
-        <MaglevMark height={64} cruising />
+        <MaglevMark height={64} cruising tappable />
         <Wordmark />
       </View>
       <Card>
