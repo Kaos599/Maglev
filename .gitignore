@@ -48,3 +48,5 @@ pnpm-debug.log*
 
 expo-env.d.ts
 # @end expo-cli
+# Local design mockups and the original icon CSS (the icon now lives in assets/brand/)
+screens/

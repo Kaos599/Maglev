@@ -99,7 +99,7 @@ Covers SM-3, 4, 5 (UI), 11, 12, 16, 17, 18, 20, 21.
 | 2.1 **Theme foundation**: `useTheme()` with semantic tokens; OLED / Dim / Light × Lime / Cyan / Pink accents; no hex values outside `constants/` | C-UI-THEME |
 | 2.2 **Type foundation**: replace all 107 `'monospace'` uses with the token fonts; load ≤ 4 faces (Silkscreen 400, Space Mono 400/700, Inter 400/600); `tabular-nums` on all telemetry | C-APK-1 |
 | 2.3 **Icon foundation**: one pixel-glyph family (8×8 grid, sizes 16/20/24); about 30 glyphs including settings categories; remove `@expo/vector-icons` | C-ICON-1 |
-| 2.4 **App icon** from `screens/1.css`: rebuilt as a vector "M" in a #282828 rounded tile, with launcher, adaptive and splash variants | — |
+| 2.4 **App icon** (vector in `assets/brand/maglev-mark.svg`): rebuilt as a vector "M" in a #282828 rounded tile, with launcher, adaptive and splash variants | — |
 | 2.5 **Onboarding** (SM-3/4/5): Notifications → Download folder → Background running → Done; gated by `onboarded` | C-PERM-1 |
 | 2.6 **Settings index**: icon-labelled rows (Storage · Bandwidth · Torrents & Queue · Interface · Network · Power · Scheduling · Feeds · About), each a sub-screen with a value preview | C-UI-SET |
 | 2.7 **Transfers**: sort sheet, long-press multi-select with bulk bar, clipboard chip, real state badges (Queued, Waiting for Wi-Fi, Storage full, Files missing) | C-UI-SORT |
