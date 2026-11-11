@@ -7,12 +7,20 @@
 //   2. An assistant message with tool_calls and its tool results are one unit. Providers reject orphans,
 //      so a unit is kept whole or dropped whole. Incomplete units in the input are dropped.
 //   3. Tool results longer than MAX_TOOL_RESULT_TOKENS are truncated with a note.
-//   4. Tool results from earlier turns are replaced by a one-line summary, always. This keeps old
-//      (possibly hostile) text out of the prompt, as §7.3 layer "segregate by turn" asks.
+//   4. Tool results from earlier turns are replaced by an app-written digest (R1-11), always: handles,
+//      labels and numbers only, at most 300 characters, every string through sanitizeText. This keeps old
+//      (possibly hostile) text out of the prompt, as §7.3 layer "segregate by turn" asks, and it keeps
+//      "r1" meaning the same result when the user says "yes" in a later turn.
+//      The digest stays the tool message content, so the assistant/tool_calls pairing stays valid.
 //   5. If the request is still over budget, whole old turns are dropped, oldest first.
 //   6. If it is still over budget, tool results in the newest turn are summarised, oldest first.
-//   7. If the system message plus the newest user message cannot fit, buildContext throws a RangeError.
+//   7. The tool definitions are sent with every request, so their estimated cost is taken off the budget
+//      first (`toolsTokens`, default: the cost of TOOLS).
+//   8. If the system message plus the newest user message cannot fit, buildContext throws a RangeError.
 //      The caller must cap the user's text (QUERY_MAX and friends) so this does not happen.
+
+import { TOOLS } from './tools.ts';
+import { sanitizeText } from './sanitize.ts';
 
 /** A tool call the model made. OpenAI chat format. */
 export interface ToolCall {
@@ -37,7 +45,7 @@ export const MAX_TOOL_CALLS_PER_TURN = 8;
 /** Tool calls per round-trip (SM-31). */
 export const MAX_TOOL_CALLS_PER_ROUND_TRIP = 3;
 /** `max_completion_tokens` per round-trip (§8.4). */
-export const MAX_COMPLETION_TOKENS = 600;
+export const MAX_COMPLETION_TOKENS = 2048; // R1-12: reasoning models spend part of this on thinking
 /** Each tool result, after truncation (§8.4). */
 export const MAX_TOOL_RESULT_TOKENS = 1500;
 /**
@@ -53,17 +61,50 @@ export const DEFAULT_INPUT_BUDGET = 12000;
  */
 export const MESSAGE_OVERHEAD_TOKENS = 4;
 
-/** Content that replaces a tool result from an earlier turn, or one that was cut for budget. */
-export const SUMMARY_OK = '{"ok":true,"summarised":true}';
-export const SUMMARY_FAILED = '{"ok":false,"summarised":true}';
+/** Longest digest of one tool result (R1-11). */
+export const MAX_DIGEST_CHARS = 300;
+
+function isWideCodePoint(cp: number): boolean {
+  return (
+    (cp >= 0x2e80 && cp <= 0x9fff) || // CJK radicals, kana, CJK symbols, ideographs
+    (cp >= 0xa960 && cp <= 0xa97f) || // Hangul Jamo extended A
+    (cp >= 0xac00 && cp <= 0xd7ff) || // Hangul syllables, Jamo extended B
+    (cp >= 0xf900 && cp <= 0xfaff) || // CJK compatibility ideographs
+    (cp >= 0xfe30 && cp <= 0xfe4f) || // CJK compatibility forms
+    (cp >= 0xff00 && cp <= 0xffef) || // half- and full-width forms
+    (cp >= 0x0e00 && cp <= 0x0eff) || // Thai, Lao
+    (cp >= 0x1100 && cp <= 0x11ff) || // Hangul Jamo
+    cp >= 0x10000 // astral: emoji, rare ideographs
+  );
+}
+
+function isMidWidthCodePoint(cp: number): boolean {
+  // Cyrillic, Greek, Armenian, Hebrew, Arabic, Indic scripts: roughly half a token per character.
+  return (cp >= 0x0370 && cp <= 0x08ff) || (cp >= 0x0900 && cp <= 0x0dff) || (cp >= 0x0f00 && cp <= 0x109f);
+}
 
 /**
- * Cheap token estimate: characters divided by 4, rounded up.
- * This is an ESTIMATE. Real tokenisers vary by model and by language (non-Latin text often costs more
- * per character). Replace it with the provider's `usage` figures when they are available.
+ * Cheap token estimate. Latin text counts characters / 4. CJK, Hangul, kana, Thai and other wide scripts
+ * (and emoji) count about 1 token per character, other non-Latin scripts about 1/2. Rounded up.
+ * This is an ESTIMATE: real tokenisers vary by model. Replace it with the provider's `usage` figures
+ * when they are available.
  */
 export function estimateTokens(text: string): number {
-  return Math.ceil(text.length / 4);
+  // Fast path: Latin text (ASCII through Latin Extended / combining marks) is chars / 4.
+  if (/^[\u0000-\u036f]*$/.test(text)) return Math.ceil(text.length / 4);
+  let quarters = 0; // work in quarter-tokens so the sum stays an integer
+  for (const ch of text) {
+    const cp = ch.codePointAt(0) as number;
+    quarters += isWideCodePoint(cp) ? 4 : isMidWidthCodePoint(cp) ? 2 : 1;
+  }
+  return Math.ceil(quarters / 4);
+}
+
+let toolsTokensCache: number | null = null;
+/** Estimated cost of the tool definitions, which ride along with every request. */
+export function toolsTokenEstimate(): number {
+  if (toolsTokensCache === null) toolsTokensCache = estimateTokens(JSON.stringify(TOOLS));
+  return toolsTokensCache;
 }
 
 /** Estimated cost of one message, including MESSAGE_OVERHEAD_TOKENS. Used for every budget decision. */
@@ -88,8 +129,10 @@ export interface ContextResult {
   summarised: number;
   /** Messages removed: whole turns dropped, plus unpaired or incomplete tool units in the input. */
   dropped: number;
-  /** Estimated tokens of `messages`. Always <= budget when no error is thrown. */
+  /** Estimated tokens of `messages` plus `toolsTokens`. Always <= budget when no error is thrown. */
   tokens: number;
+  /** The tool-definition cost that was subtracted from the budget. */
+  toolsTokens: number;
 }
 
 interface Slot {
@@ -102,7 +145,9 @@ interface Slot {
  * Build the messages for one request.
  * @param system   The system prompt, sent as the first message.
  * @param history  Earlier messages in order (user, assistant, tool). A system message here is ignored.
- * @param budget   Token budget for all messages together (see DEFAULT_INPUT_BUDGET).
+ * @param budget   Token budget for the whole request: messages plus tool definitions (see DEFAULT_INPUT_BUDGET).
+ * @param toolsTokens Estimated cost of the tool definitions. Default: toolsTokenEstimate() (the cost of TOOLS).
+ *                 Pass 0 when the request carries no tools.
  * @throws RangeError if the budget is not a non-negative number, or if the system message and the
  *         newest user message cannot fit inside it.
  */
@@ -110,13 +155,18 @@ export function buildContext(
   system: string,
   history: readonly ChatMessage[],
   budget: number = DEFAULT_INPUT_BUDGET,
+  toolsTokens: number = toolsTokenEstimate(),
 ): ContextResult {
   if (!(budget >= 0) || !Number.isFinite(budget)) {
     throw new RangeError(`budget must be a finite non-negative number, got ${budget}`);
   }
 
+  if (!(toolsTokens >= 0) || !Number.isFinite(toolsTokens)) {
+    throw new RangeError(`toolsTokens must be a finite non-negative number, got ${toolsTokens}`);
+  }
+
   const systemMsg: ChatMessage = { role: 'system', content: system };
-  const systemTokens = messageTokens(systemMsg);
+  const systemTokens = messageTokens(systemMsg) + toolsTokens;
 
   const { messages: units, dropped: unitDropped } = keepCompleteUnits(history);
 
@@ -129,6 +179,14 @@ export function buildContext(
   }
   const newestTurn = turn;
 
+  // Which tool produced each result, so the digest knows what it is reading.
+  const toolNameById = new Map<string, string>();
+  for (const s of slots) {
+    if (s.msg.role === 'assistant') for (const c of s.msg.tool_calls ?? []) toolNameById.set(c.id, c.function.name);
+  }
+  const digestOf = (s: Slot): string =>
+    s.msg.role === 'tool' ? digestToolResult(toolNameById.get(s.msg.tool_call_id) ?? 'tool', s.msg.content) : '';
+
   // Keep the last MAX_HISTORY_TURNS turns. The newest turn is always kept.
   let dropped = unitDropped;
   const firstKeptTurn = newestTurn - MAX_HISTORY_TURNS + 1;
@@ -136,15 +194,17 @@ export function buildContext(
   dropped += slots.length - turnKept.length;
   let live: Slot[] = turnKept;
 
-  // Truncate oversized tool results, then summarise tool results from earlier turns.
+  // Tool results from earlier turns become a digest (built from the full result, before any truncation).
+  // Results in the newest turn are only truncated when oversized.
+  const originalContent = new Map<Slot, string>();
+  for (const s of live) if (s.msg.role === 'tool') originalContent.set(s, s.msg.content);
   for (const s of live) {
     if (s.msg.role !== 'tool') continue;
-    const next = truncateIfLarge(s.msg.content);
-    if (next !== s.msg.content) setToolContent(s, next);
-  }
-  for (const s of live) {
-    if (s.msg.role !== 'tool' || s.turn >= newestTurn) continue;
-    setToolContent(s, summaryFor(s.msg.content));
+    if (s.turn < newestTurn) setToolContent(s, digestOf(s));
+    else {
+      const next = truncateIfLarge(s.msg.content);
+      if (next !== s.msg.content) setToolContent(s, next);
+    }
   }
 
   const total = (): number => systemTokens + live.reduce((sum, s) => sum + messageTokens(s.msg), 0);
@@ -158,11 +218,13 @@ export function buildContext(
     dropped += before - live.length;
   }
 
-  // Still over budget: summarise tool results in the newest turn, oldest first.
+  // Still over budget: digest tool results in the newest turn, oldest first. The digest is built from the
+  // original content, because truncation may already have cut the JSON.
   for (const s of live) {
     if (total() <= budget) break;
-    if (s.msg.role === 'tool' && s.turn === newestTurn && s.msg.content !== summaryFor(s.msg.content)) {
-      setToolContent(s, summaryFor(s.msg.content));
+    if (s.msg.role === 'tool' && s.turn === newestTurn) {
+      const d = digestToolResult(toolNameById.get(s.msg.tool_call_id) ?? 'tool', originalContent.get(s) ?? s.msg.content);
+      if (s.msg.content !== d && d.length < s.msg.content.length) setToolContent(s, d);
     }
   }
 
@@ -175,7 +237,7 @@ export function buildContext(
 
   const messages: ChatMessage[] = [systemMsg, ...live.map((s) => s.msg)];
   const summarised = live.filter((s) => s.touched).length;
-  return { messages, summarised, dropped, tokens };
+  return { messages, summarised, dropped, tokens, toolsTokens };
 }
 
 // ---- helpers --------------------------------------------------------------------------------
@@ -186,32 +248,149 @@ function setToolContent(s: Slot, content: string): void {
   s.touched = true;
 }
 
-/** The summary for a tool result: `{"ok":…,"summarised":true}`. ok is true only when the input says so. */
-function summaryFor(content: string): string {
-  return toolOk(content) ? SUMMARY_OK : SUMMARY_FAILED;
+function isRecord(v: unknown): v is Record<string, unknown> {
+  return typeof v === 'object' && v !== null && !Array.isArray(v);
 }
 
 function toolOk(content: string): boolean {
   try {
     const v: unknown = JSON.parse(content);
-    return typeof v === 'object' && v !== null && (v as { ok?: unknown }).ok === true;
+    return isRecord(v) && v.ok === true;
   } catch {
     return false;
   }
 }
 
-/** Return content unchanged if it fits MAX_TOOL_RESULT_TOKENS; otherwise a valid JSON object with a head. */
+/**
+ * Return content unchanged if it fits MAX_TOOL_RESULT_TOKENS; otherwise a valid JSON object with a head.
+ * Tokens are estimated per script, so CJK text is cut much shorter than Latin text.
+ */
 function truncateIfLarge(content: string): string {
   if (estimateTokens(content) <= MAX_TOOL_RESULT_TOKENS) return content;
-  const maxChars = MAX_TOOL_RESULT_TOKENS * 4;
   const ok = toolOk(content);
-  let n = Math.max(0, maxChars - 100);
+  const cps = Array.from(content);
+  let n = Math.min(cps.length, MAX_TOOL_RESULT_TOKENS * 4);
   for (;;) {
-    const out = JSON.stringify({ ok, truncated: true, head: content.slice(0, n) });
-    if (out.length <= maxChars || n === 0) return out;
-    // Escapes can make the JSON longer than the slice, so shrink by the excess and try again.
-    n = Math.max(0, n - Math.max(1, Math.ceil((out.length - maxChars) / 2)));
+    const out = JSON.stringify({ ok, truncated: true, head: cps.slice(0, n).join('') });
+    if (estimateTokens(out) <= MAX_TOOL_RESULT_TOKENS || n === 0) return out;
+    // Escapes and wide characters make the JSON cost more than the slice, so shrink and try again.
+    n = Math.floor(n * 0.85);
   }
+}
+
+// ---- digest (R1-11) ---------------------------------------------------------------------------
+
+const LABEL_KEYS = ['label', 'source', 'resolution', 'codec', 'hdr', 'state', 'status', 'fit', 'verdict', 'kind'] as const;
+const SHARING_KEYS = ['seeders', 'sharing'] as const;
+const ROW_LIST_KEYS = ['results', 'transfers', 'files', 'items', 'rows'] as const;
+const ROW_HANDLE_KEYS = ['id', 'handle', 'result_id', 'transfer_id', 'file_id'] as const;
+const HANDLE_LIKE = /^[rtfc][1-9][0-9]{0,8}$/;
+/** A label is short and made of plain characters. Anything else is left out of the digest. */
+const LABEL_LIKE = /^[A-Za-z0-9][A-Za-z0-9 .+\-_/]{0,23}$/;
+
+function safeLabel(v: unknown): string | null {
+  if (typeof v !== 'string') return null;
+  const t = sanitizeText(v, 24);
+  return LABEL_LIKE.test(t) ? t : null;
+}
+
+function fmtNum(n: number): string {
+  if (Number.isInteger(n)) return String(n);
+  return Math.abs(n) < 10 ? n.toFixed(1) : String(Math.round(n));
+}
+
+function fmtGb(gb: number): string {
+  return gb >= 1 ? `${fmtNum(gb)} GB` : `${Math.round(gb * 1000)} MB`;
+}
+
+function rowDigest(row: unknown): string {
+  if (!isRecord(row)) return '';
+  const parts: string[] = [];
+  for (const k of ROW_HANDLE_KEYS) {
+    const v = row[k];
+    if (typeof v === 'string' && HANDLE_LIKE.test(v)) {
+      parts.push(v);
+      break;
+    }
+  }
+  for (const k of LABEL_KEYS) {
+    const v = row[k];
+    if (typeof v === 'number' && Number.isFinite(v) && k === 'resolution') parts.push(`${fmtNum(v)}p`);
+    else {
+      const t = safeLabel(v);
+      if (t !== null) parts.push(t);
+    }
+  }
+  const gb = row.size_gb ?? row.sizeGb;
+  const bytes = row.size_bytes ?? row.sizeBytes ?? row.total_bytes;
+  if (typeof gb === 'number' && Number.isFinite(gb) && gb >= 0) parts.push(fmtGb(gb));
+  else if (typeof bytes === 'number' && Number.isFinite(bytes) && bytes >= 0) parts.push(fmtGb(bytes / 1e9));
+  for (const k of SHARING_KEYS) {
+    const v = row[k];
+    if (typeof v === 'number' && Number.isFinite(v) && v >= 0) {
+      parts.push(`${fmtNum(v)} sharing`);
+      break;
+    }
+  }
+  const p = row.progress;
+  if (typeof p === 'number' && Number.isFinite(p) && p >= 0 && p <= 1) parts.push(`${Math.round(p * 100)}%`);
+  return parts.join(' ');
+}
+
+function cutAtEntry(text: string, max: number): string {
+  if (text.length <= max) return text;
+  const room = max - 1; // one character for the ellipsis
+  const at = text.lastIndexOf('; ', room);
+  return (at > 0 ? text.slice(0, at) : text.slice(0, room)) + '…';
+}
+
+/**
+ * App-written digest of one tool result, kept in later turns instead of the raw JSON (R1-11).
+ * Example for a search: `r1 WEB-DL 1080p x265 2.1 GB 340 sharing; r2 ...`.
+ * Only handles (r1, t2), short labels and numbers are used, never names, paths or free text, and every string
+ * goes through sanitizeText. At most MAX_DIGEST_CHARS characters. Rows are read from `data.results`,
+ * `data.transfers`, `data.files`, `data.items` or `data.rows` (or `data` itself when it is a list);
+ * a result without rows gets its top-level numbers and flags.
+ */
+export function digestToolResult(toolName: string, resultJson: string): string {
+  const name = safeLabel(toolName) ?? 'tool';
+  let v: unknown;
+  try {
+    v = JSON.parse(resultJson);
+  } catch {
+    return cutAtEntry(`${name}: unreadable result`, MAX_DIGEST_CHARS);
+  }
+  if (!isRecord(v)) return cutAtEntry(`${name}: unreadable result`, MAX_DIGEST_CHARS);
+  if (v.ok === false) {
+    const err = isRecord(v.error) ? safeLabel(v.error.code) : null;
+    return cutAtEntry(err ? `${name} failed: ${err}` : `${name} failed`, MAX_DIGEST_CHARS);
+  }
+  const data = v.data !== undefined ? v.data : v;
+  let rows: unknown[] | null = Array.isArray(data) ? data : null;
+  if (!rows && isRecord(data)) {
+    for (const k of ROW_LIST_KEYS) {
+      if (Array.isArray(data[k])) {
+        rows = data[k] as unknown[];
+        break;
+      }
+    }
+  }
+  if (rows) {
+    const entries = rows.map(rowDigest).filter((e) => e !== '');
+    if (entries.length === 0) return cutAtEntry(`${name}: ${rows.length} item(s)`, MAX_DIGEST_CHARS);
+    return cutAtEntry(entries.join('; '), MAX_DIGEST_CHARS);
+  }
+  const pairs: string[] = [];
+  if (isRecord(data)) {
+    for (const [k, val] of Object.entries(data)) {
+      if (pairs.length >= 8) break;
+      const key = sanitizeText(k, 24);
+      if (!/^[A-Za-z_][A-Za-z0-9_]{0,23}$/.test(key)) continue;
+      if (typeof val === 'number' && Number.isFinite(val)) pairs.push(`${key} ${fmtNum(val)}`);
+      else if (typeof val === 'boolean') pairs.push(`${key} ${val ? 'yes' : 'no'}`);
+    }
+  }
+  return cutAtEntry(pairs.length > 0 ? `${name}: ${pairs.join(', ')}` : `${name} ok`, MAX_DIGEST_CHARS);
 }
 
 /**

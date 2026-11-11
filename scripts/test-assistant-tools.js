@@ -34,8 +34,6 @@ function samples(R, T) {
     propose_pause_resume: { transfer_id: T, action: 'pause', reason: REASON },
     propose_remove_files: { transfer_id: T, file_indices: [0, 1, 2], reason: REASON },
     propose_delete: { transfer_id: T, delete_files: false, reason: REASON },
-    propose_url_download: { url: 'https://example.com/file.zip', reason: REASON },
-    propose_setting_change: { key: 'wifi_only', value: true, reason: REASON },
     propose_plan: {
       reason: REASON,
       steps: [{ tool: 'propose_pause_resume', args: { transfer_id: T, action: 'pause', reason: REASON } }],
@@ -63,7 +61,7 @@ function checkClosed(schema, where, problems) {
 }
 
 async function main() {
-  const { TOOLS, READ_TOOLS, PROPOSAL_TOOLS, validateArgs } = await import('../utils/assistant/tools.ts');
+  const { TOOLS, READ_TOOLS, PROPOSAL_TOOLS, DESTRUCTIVE_TOOLS, validateArgs } = await import('../utils/assistant/tools.ts');
   const { HandleRegistry } = await import('../utils/assistant/handles.ts');
 
   const reg = new HandleRegistry();
@@ -74,9 +72,9 @@ async function main() {
   const isBad = (r, code = 'bad_args') => !r.ok && r.error.code === code;
 
   console.log('tools: schema structure');
-  check('TOOLS has 15 entries', TOOLS.length === 15, TOOLS.length);
+  check('TOOLS has 13 entries', TOOLS.length === 13, TOOLS.length);
   check('READ_TOOLS has the 7 read tools', READ_TOOLS.size === 7, [...READ_TOOLS]);
-  check('PROPOSAL_TOOLS has the 8 proposal tools', PROPOSAL_TOOLS.size === 8, [...PROPOSAL_TOOLS]);
+  check('PROPOSAL_TOOLS has the 6 proposal tools', PROPOSAL_TOOLS.size === 6, [...PROPOSAL_TOOLS]);
   check('READ and PROPOSAL cover TOOLS exactly', TOOLS.every((t) => READ_TOOLS.has(t.function.name) || PROPOSAL_TOOLS.has(t.function.name)));
   const names = TOOLS.map((t) => t.function.name);
   check('tool names are unique', new Set(names).size === names.length, names);
@@ -173,13 +171,23 @@ async function main() {
   check('select with nothing to include or skip gives bad_args', isBad(bad('propose_select_files', { transfer_id: 't1', reason: REASON })));
   check('file both included and skipped gives bad_args', isBad(bad('propose_select_files', { transfer_id: 't1', include: [1], skip: [1], reason: REASON })));
 
-  console.log('tools: URL, settings and plans');
-  check('ftp link gives bad_args', isBad(bad('propose_url_download', { url: 'ftp://example.com/a', reason: REASON })));
-  check('magnet link gives bad_args', isBad(bad('propose_url_download', { url: `magnet:?xt=urn:btih:${HASH}`, reason: REASON })));
-  check('setting key outside the list gives bad_args', isBad(bad('propose_setting_change', { key: 'adult_sources', value: true, reason: REASON })));
-  check('risky-warning setting key gives bad_args', isBad(bad('propose_setting_change', { key: 'warn_unsafe', value: false, reason: REASON })));
-  check('switch setting with a string gives bad_args', isBad(bad('propose_setting_change', { key: 'wifi_only', value: 'yes', reason: REASON })));
-  check('speed limits are not a setting the assistant can change', isBad(bad('propose_setting_change', { key: 'download_limit_kbps', value: 500, reason: REASON })));
+  console.log('tools: removed tools (R1-1) and plans (R1-2)');
+  check('propose_url_download is gone', isBad(bad('propose_url_download', { url: 'https://example.com/a', reason: REASON }), 'unknown_tool'));
+  check('propose_setting_change is gone', isBad(bad('propose_setting_change', { key: 'wifi_only', value: true, reason: REASON }), 'unknown_tool'));
+  check('no tool definition mentions the removed tools', !/url_download|setting_change/.test(JSON.stringify(TOOLS)));
+  check('DESTRUCTIVE_TOOLS is delete and remove_files', DESTRUCTIVE_TOOLS.size === 2 && DESTRUCTIVE_TOOLS.has('propose_delete') && DESTRUCTIVE_TOOLS.has('propose_remove_files'), [...DESTRUCTIVE_TOOLS]);
+  check('destructive tools are proposal tools', [...DESTRUCTIVE_TOOLS].every((n) => PROPOSAL_TOOLS.has(n)));
+  const planDesc = TOOLS.find((t) => t.function.name === 'propose_plan').function.description;
+  check('plan description says steps are independent', /independent/.test(planDesc) && /cannot refer to a download created by an earlier step/.test(planDesc), planDesc);
+  const stepEnum = TOOLS.find((t) => t.function.name === 'propose_plan').function.parameters.properties.steps.items.properties.tool.enum;
+  check('plan step enum is add, select_files, pause_resume', JSON.stringify([...stepEnum].sort()) === JSON.stringify(['propose_add', 'propose_pause_resume', 'propose_select_files']), stepEnum);
+  const addStep = { tool: 'propose_add', args: { result_id: R, reason: REASON } };
+  const selStep = { tool: 'propose_select_files', args: { transfer_id: T, include: [1], reason: REASON } };
+  check('plan of add + select + pause is accepted', bad('propose_plan', { reason: REASON, steps: [addStep, selStep, { tool: 'propose_pause_resume', args: { transfer_id: T, action: 'pause', reason: REASON } }] }).ok === true);
+  check('plan with a delete step gives bad_args', isBad(bad('propose_plan', { reason: REASON, steps: [{ tool: 'propose_delete', args: { transfer_id: T, reason: REASON } }] })));
+  check('plan with a remove_files step gives bad_args', isBad(bad('propose_plan', { reason: REASON, steps: [{ tool: 'propose_remove_files', args: { transfer_id: T, file_indices: [0], reason: REASON } }] })));
+  check('plan with a removed-tool step gives bad_args', isBad(bad('propose_plan', { reason: REASON, steps: [{ tool: 'propose_url_download', args: { url: 'https://a.b/c', reason: REASON } }] })));
+  check('delete step is blocked even when hidden in step 2', isBad(bad('propose_plan', { reason: REASON, steps: [addStep, { tool: 'propose_delete', args: { transfer_id: T, delete_files: true, reason: REASON } }] })));
 
   const step = { tool: 'propose_pause_resume', args: { transfer_id: T, action: 'pause', reason: REASON } };
   const planOfSix = Array.from({ length: 6 }, () => step);
@@ -192,6 +200,23 @@ async function main() {
   check('plan step missing its args gives bad_args', isBad(bad('propose_plan', { reason: REASON, steps: [{ tool: 'propose_pause_resume' }] })));
   const badStepMsg = bad('propose_plan', { reason: REASON, steps: [step, { tool: 'propose_pause_resume', args: { transfer_id: 't99', action: 'pause', reason: REASON } }] });
   check('plan error names the failing step', !badStepMsg.ok && badStepMsg.error.message.startsWith('Step 2:'), badStepMsg);
+
+  console.log('handles: hash-keyed results (R1-11 / handles.ts)');
+  {
+    const h = new HandleRegistry();
+    const a = h.issue('result', HASH);
+    check('issuing the same info hash twice gives the same handle', h.issue('result', HASH) === a && h.size === 1);
+    const b = h.issue('result', 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa');
+    check('a different hash gets the next handle', a === 'r1' && b === 'r2');
+    check('a transfer with the same text is a different handle', h.issue('transfer', HASH) === 't1');
+    check('resolve gives the hash back for the right kind only', h.resolve('r1', 'result') === HASH && h.resolve('r1', 'transfer') === null);
+    check('handleFor finds the handle by hash', h.handleFor('result', HASH) === 'r1');
+    h.clearKind('result');
+    check('clearKind drops result handles only', h.resolve('r1') === null && h.resolve('t1', 'transfer') === HASH && h.size === 1);
+    check('clearKind restarts that counter', h.issue('result', HASH) === 'r1');
+    check('clearKind leaves the other counters alone', h.issue('transfer', 'zzz') === 't2');
+    check('after clearKind a stale handle no longer validates', !validateArgs('get_result_details', { result_id: 'r2' }, h).ok);
+  }
 
   console.log();
   if (failed) {

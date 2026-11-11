@@ -51,7 +51,7 @@ function feedOneByOne(make, text) {
 const load = (name) => fs.readFileSync(path.join(FIXTURE_DIR, name), 'utf8');
 
 async function main() {
-  const { createStreamParser } = await import('../utils/assistant/sse.ts');
+  const { createStreamParser, requestExtras } = await import('../utils/assistant/sse.ts');
   const make = createStreamParser;
 
   console.log('SM-41 rules');
@@ -230,10 +230,15 @@ async function main() {
     assert.deepStrictEqual(p.finish().toolCalls, [{ id: 'c', name: 'f', arguments: {} }]);
   });
 
-  test('a call with no id or no name gives bad_response', () => {
+  test('a call with no name gives bad_response; a missing id is synthesised', () => {
     const p = make();
-    p.push('data: {"choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"name":"f","arguments":"{}"}}]},"finish_reason":"tool_calls"}]}\n\n');
+    p.push('data: {"choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":"c","function":{"arguments":"{}"}}]},"finish_reason":"tool_calls"}]}\n\n');
     assert.strictEqual(p.finish().error.code, 'bad_response');
+    const q = make();
+    q.push('data: {"choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"name":"f","arguments":"{}"}}]},"finish_reason":"tool_calls"}]}\n\n');
+    const out = q.finish();
+    assert.strictEqual(out.ok, true);
+    assert.deepStrictEqual(out.toolCalls, [{ id: 'call_1', name: 'f', arguments: {} }]);
   });
 
   test('stream that ends with no finish_reason and no [DONE] gives incomplete', () => {
@@ -262,11 +267,195 @@ async function main() {
     assert.strictEqual(r.outcome.text, 'Your download is stuck at 99%, usually because no peers are left.');
   });
 
+  console.log('R1-12: usage, truncation, synthesis, caps');
+  const sse = (o) => `data: ${JSON.stringify(o)}\n\n`;
+  const tc = (frag, finish) => sse({ choices: [{ index: 0, delta: { tool_calls: [frag] }, ...(finish ? { finish_reason: finish } : {}) }] });
+
+  test('requestExtras asks for usage', () => {
+    assert.deepStrictEqual(requestExtras(), { stream_options: { include_usage: true } });
+  });
+
+  test('usage-only chunk after finish_reason emits a usage event and lands in the outcome', () => {
+    const p = make();
+    const ev = [
+      ...p.push(sse({ choices: [{ index: 0, delta: { content: 'hi' }, finish_reason: 'stop' }] })),
+      ...p.push(sse({ choices: [], usage: { prompt_tokens: 120, completion_tokens: 8, total_tokens: 128 } })),
+      ...p.push('data: [DONE]\n\n'),
+    ];
+    assert.deepStrictEqual(ev.filter((e) => e.type === 'usage'), [{ type: 'usage', input: 120, output: 8 }]);
+    const out = p.finish();
+    assert.strictEqual(out.ok, true);
+    assert.deepStrictEqual(out.usage, { input: 120, output: 8 });
+    assert.strictEqual(out.text, 'hi');
+  });
+
+  test('input_tokens/output_tokens are accepted; usage:null and junk are ignored', () => {
+    const p = make();
+    const ev = [
+      ...p.push(sse({ choices: [{ index: 0, delta: { content: 'a' } }], usage: null })),
+      ...p.push(sse({ choices: [], usage: 'lots' })),
+      ...p.push(sse({ choices: [{ index: 0, delta: {}, finish_reason: 'stop' }], usage: { input_tokens: 5, output_tokens: 2 } })),
+    ];
+    assert.deepStrictEqual(ev.filter((e) => e.type === 'usage'), [{ type: 'usage', input: 5, output: 2 }]);
+    assert.deepStrictEqual(p.finish().usage, { input: 5, output: 2 });
+  });
+
+  test('no usage sent gives usage null', () => {
+    const p = make();
+    p.push(sse({ choices: [{ index: 0, delta: { content: 'a' }, finish_reason: 'stop' }] }));
+    assert.strictEqual(p.finish().usage, null);
+  });
+
+  test('negative or non-numeric token counts are ignored', () => {
+    const p = make();
+    p.push(sse({ choices: [{ index: 0, delta: { content: 'a' }, finish_reason: 'stop' }], usage: { prompt_tokens: -4, completion_tokens: 'x' } }));
+    assert.strictEqual(p.finish().usage, null);
+  });
+
+  test('length stop with plain text is ok and truncated', () => {
+    const r = feedWhole(make(), load('sse-openai-length.txt'));
+    assert.strictEqual(r.outcome.ok, true);
+    assert.strictEqual(r.outcome.truncated, true);
+    assert.strictEqual(r.outcome.finishReason, 'length');
+  });
+
+  test('length stop inside a tool call is truncated, not bad_args', () => {
+    const p = make();
+    p.push(tc({ index: 0, id: 'c1', function: { name: 'propose_add', arguments: '{"result_id":"r1","rea' } }, 'length'));
+    const out = p.finish();
+    assert.strictEqual(out.ok, false);
+    assert.strictEqual(out.code, 'truncated');
+    assert.strictEqual(out.error.code, 'truncated');
+    assert.strictEqual(out.truncated, true);
+  });
+
+  test('length stop after a complete tool call is ok and truncated', () => {
+    const p = make();
+    p.push(tc({ index: 0, id: 'c1', function: { name: 'get_free_space', arguments: '{}' } }, 'length'));
+    const out = p.finish();
+    assert.strictEqual(out.ok, true);
+    assert.strictEqual(out.truncated, true);
+  });
+
+  test('a non-length stop with broken args is still bad_args, truncated false', () => {
+    const p = make();
+    p.push(tc({ index: 0, id: 'c1', function: { name: 'f', arguments: '{oops' } }, 'tool_calls'));
+    const out = p.finish();
+    assert.strictEqual(out.code, 'bad_args');
+    assert.strictEqual(out.truncated, false);
+  });
+
+  test('failures carry code equal to error.code', () => {
+    const p = make();
+    p.push('data: nope\n\n');
+    const out = p.finish();
+    assert.strictEqual(out.code, 'bad_response');
+    assert.strictEqual(out.code, out.error.code);
+  });
+
+  test('no-index Gemini stream: new id starts a new call, same id continues', () => {
+    const p = make();
+    p.push(tc({ id: 'a', function: { name: 'search_torrents', arguments: '{"query":' } }));
+    p.push(tc({ id: 'a', function: { arguments: '"abc"}' } }));
+    p.push(tc({ id: 'b', function: { name: 'get_free_space', arguments: '{}' } }, 'tool_calls'));
+    const out = p.finish();
+    assert.strictEqual(out.ok, true);
+    assert.deepStrictEqual(out.toolCalls, [
+      { id: 'a', name: 'search_torrents', arguments: { query: 'abc' } },
+      { id: 'b', name: 'get_free_space', arguments: {} },
+    ]);
+  });
+
+  test('no index and no id: fragments append to the last open call', () => {
+    const p = make();
+    p.push(tc({ function: { name: 'search_torrents', arguments: '{"query":' } }));
+    p.push(tc({ function: { arguments: '"abc"}' } }, 'tool_calls'));
+    const out = p.finish();
+    assert.deepStrictEqual(out.toolCalls, [{ id: 'call_1', name: 'search_torrents', arguments: { query: 'abc' } }]);
+  });
+
+  test('no index, no id, a second named call starts a new call with its own synthesised id', () => {
+    const p = make();
+    p.push(tc({ function: { name: 'get_free_space', arguments: '{}' } }));
+    p.push(tc({ function: { name: 'list_transfers', arguments: '{}' } }, 'tool_calls'));
+    const out = p.finish();
+    assert.deepStrictEqual(out.toolCalls.map((c) => [c.id, c.name]), [['call_1', 'get_free_space'], ['call_2', 'list_transfers']]);
+  });
+
+  test('a synthesised id never collides with a real one', () => {
+    const p = make();
+    p.push(tc({ index: 0, id: 'call_1', function: { name: 'a', arguments: '{}' } }));
+    p.push(tc({ index: 1, function: { name: 'b', arguments: '{}' } }, 'tool_calls'));
+    const ids = p.finish().toolCalls.map((c) => c.id);
+    assert.strictEqual(new Set(ids).size, 2, ids.join());
+  });
+
+  test('a no-index fragment before any call starts call 0', () => {
+    const p = make();
+    const ev = p.push(tc({ function: { arguments: '{}' } }));
+    assert.strictEqual(ev[0].index, 0);
+  });
+
+  test('text over 32 KB gives too_long', () => {
+    const p = make();
+    const chunk = sse({ choices: [{ index: 0, delta: { content: 'x'.repeat(8 * 1024) } }] });
+    const errs = [];
+    for (let i = 0; i < 5; i++) errs.push(...p.push(chunk).filter((e) => e.type === 'error'));
+    assert.strictEqual(errs.length, 1);
+    assert.strictEqual(errs[0].error.code, 'too_long');
+    const out = p.finish();
+    assert.strictEqual(out.ok, false);
+    assert.strictEqual(out.code, 'too_long');
+  });
+
+  test('text of exactly 32 KB is accepted', () => {
+    const p = make();
+    p.push(sse({ choices: [{ index: 0, delta: { content: 'x'.repeat(32 * 1024) }, finish_reason: 'stop' }] }));
+    assert.strictEqual(p.finish().ok, true);
+  });
+
+  test('one call over 16 KB of arguments gives too_long, even in small fragments', () => {
+    const p = make();
+    p.push(tc({ index: 0, id: 'c', function: { name: 'f', arguments: '{"a":"' } }));
+    let err = null;
+    for (let i = 0; i < 20 && !err; i++) {
+      err = p.push(tc({ index: 0, function: { arguments: 'y'.repeat(1024) } })).find((e) => e.type === 'error') ?? null;
+    }
+    assert.ok(err, 'cap tripped');
+    assert.strictEqual(err.error.code, 'too_long');
+    assert.strictEqual(p.finish().code, 'too_long');
+  });
+
+  test('the args cap is per call, not shared', () => {
+    const p = make();
+    p.push(tc({ index: 0, id: 'a', function: { name: 'f', arguments: '{"a":"' + 'y'.repeat(10000) + '"}' } }));
+    p.push(tc({ index: 1, id: 'b', function: { name: 'f', arguments: '{"a":"' + 'y'.repeat(10000) + '"}' } }, 'tool_calls'));
+    assert.strictEqual(p.finish().ok, true);
+  });
+
+  test('sse-gemini-noindex.txt gives two calls and usage', () => {
+    const o = feedWhole(make(), load('sse-gemini-noindex.txt')).outcome;
+    assert.strictEqual(o.ok, true);
+    assert.deepStrictEqual(o.toolCalls, [
+      { id: 'call_g1', name: 'search_torrents', arguments: { query: 'The Last Harbor 2023' } },
+      { id: 'call_g2', name: 'get_free_space', arguments: {} },
+    ]);
+    assert.deepStrictEqual(o.usage, { input: 812, output: 37 });
+  });
+
+  test('sse-ollama-whole.txt gives one call with a synthesised id and a usage-only chunk', () => {
+    const o = feedWhole(make(), load('sse-ollama-whole.txt')).outcome;
+    assert.strictEqual(o.ok, true);
+    assert.deepStrictEqual(o.toolCalls, [{ id: 'call_1', name: 'list_transfers', arguments: { filter: 'active' } }]);
+    assert.deepStrictEqual(o.usage, { input: 640, output: 21 });
+    assert.strictEqual(o.finishReason, 'tool_calls');
+  });
+
   console.log('Fixtures: whole, every split point, one character at a time');
 
   const fixtures = fs.readdirSync(FIXTURE_DIR).filter((f) => f.startsWith('sse-') && f.endsWith('.txt')).sort();
   test('fixture set covers text, one tool, parallel tools, error, length, Groq', () => {
-    for (const f of ['sse-openai-text.txt', 'sse-openai-tool.txt', 'sse-openrouter-parallel.txt', 'sse-openrouter-error.txt', 'sse-openai-length.txt', 'sse-groq-parallel.txt']) {
+    for (const f of ['sse-openai-text.txt', 'sse-openai-tool.txt', 'sse-openrouter-parallel.txt', 'sse-openrouter-error.txt', 'sse-openai-length.txt', 'sse-groq-parallel.txt', 'sse-gemini-noindex.txt', 'sse-ollama-whole.txt']) {
       assert.ok(fixtures.includes(f), `missing ${f}`);
     }
   });

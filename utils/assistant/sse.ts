@@ -10,7 +10,30 @@
 /** SM-41 states. `toolCall` also exposes the index of the call being streamed (`toolIndex`). */
 export type StreamState = 'idle' | 'text' | 'toolCall' | 'done' | 'error';
 
-export type StreamErrorCode = 'provider' | 'bad_response' | 'bad_args' | 'incomplete';
+/**
+ * `truncated`: the provider stopped on its length limit in the middle of a tool call. Never retry it as is.
+ * `too_long`: the text or one call's arguments passed the accumulator cap (MAX_TEXT_CHARS, MAX_ARGS_CHARS).
+ */
+export type StreamErrorCode = 'provider' | 'bad_response' | 'bad_args' | 'incomplete' | 'truncated' | 'too_long';
+
+/** Accumulated assistant text cap, in UTF-16 units (about 32 KB of text). */
+export const MAX_TEXT_CHARS = 32 * 1024;
+/** Cap for the argument JSON of one tool call. */
+export const MAX_ARGS_CHARS = 16 * 1024;
+
+/**
+ * Extra fields every streaming request body must carry so the provider sends a final `usage` chunk (R1-12).
+ * Spread it into the request: `{ ...body, ...requestExtras() }`.
+ */
+export function requestExtras(): { stream_options: { include_usage: true } } {
+  return { stream_options: { include_usage: true } };
+}
+
+/** Token counts reported by the provider. */
+export interface StreamUsage {
+  input: number;
+  output: number;
+}
 
 export interface StreamFailure {
   code: StreamErrorCode;
@@ -30,6 +53,7 @@ export type StreamEvent =
       /** Characters of argument JSON received so far for this call. */
       argumentsLength: number;
     }
+  | { type: 'usage'; input: number; output: number }
   | { type: 'error'; error: StreamFailure };
 
 export interface AssistantToolCall {
@@ -43,10 +67,19 @@ export interface StreamResult {
   text: string;
   toolCalls: AssistantToolCall[];
   finishReason: string | null;
+  /** True when finish_reason was `length`. The turn machine must not retry on this. */
   truncated: boolean;
+  /** Last usage the provider sent, or null when it sent none. */
+  usage: StreamUsage | null;
 }
 
-export type FinishOutcome = ({ ok: true } & StreamResult) | { ok: false; error: StreamFailure };
+/**
+ * A failure carries `code` (same as `error.code`) for easy switching, and `truncated`, true when the
+ * provider hit its length limit (so a retry would hit it again).
+ */
+export type FinishOutcome =
+  | ({ ok: true } & StreamResult)
+  | { ok: false; code: StreamErrorCode; error: StreamFailure; truncated: boolean };
 
 export interface StreamParser {
   readonly state: StreamState;
@@ -66,6 +99,16 @@ interface CallAccumulator {
 const BAD_RESPONSE: StreamFailure = {
   code: 'bad_response',
   message: 'Bad response from the provider.',
+};
+
+const TRUNCATED: StreamFailure = {
+  code: 'truncated',
+  message: 'The answer hit the length limit before it was finished.',
+};
+
+const TOO_LONG: StreamFailure = {
+  code: 'too_long',
+  message: 'The answer was too long to handle.',
 };
 
 const BAD_ARGS: StreamFailure = {
@@ -93,6 +136,19 @@ function isRecord(v: unknown): v is Record<string, unknown> {
   return typeof v === 'object' && v !== null && !Array.isArray(v);
 }
 
+function count(v: unknown): number | undefined {
+  return typeof v === 'number' && Number.isFinite(v) && v >= 0 ? Math.floor(v) : undefined;
+}
+
+/** Reads `usage` in the OpenAI shape (prompt/completion_tokens) or the Anthropic-style one (input/output_tokens). */
+function readUsage(raw: unknown): StreamUsage | null {
+  if (!isRecord(raw)) return null;
+  const input = count(raw.prompt_tokens) ?? count(raw.input_tokens);
+  const output = count(raw.completion_tokens) ?? count(raw.output_tokens);
+  if (input === undefined && output === undefined) return null;
+  return { input: input ?? 0, output: output ?? 0 };
+}
+
 /** Creates one parser per response. Feed chunks in order, then call finish() once. */
 export function createStreamParser(): StreamParser {
   let buffer = '';
@@ -102,6 +158,8 @@ export function createStreamParser(): StreamParser {
   let text = '';
   const calls = new Map<number, CallAccumulator>();
   let finishReason: string | null = null;
+  let usage: StreamUsage | null = null;
+  let lastIndex: number | null = null; // the call most recently written to, for fragments with no index and no id
   let sawDone = false; // `data: [DONE]` seen; later data is ignored
   let failure: StreamFailure | null = null;
   let finished: FinishOutcome | null = null;
@@ -112,6 +170,27 @@ export function createStreamParser(): StreamParser {
     state = 'error';
     toolIndex = null;
     out.push({ type: 'error', error: f });
+  }
+
+  /**
+   * Which call a fragment belongs to. A numeric `index` is trusted. Without one (Gemini's compat layer
+   * omits it; Ollama sends whole calls with no id), the rules are:
+   *   - same id as an earlier call: that call;
+   *   - a new id: a new call;
+   *   - neither: the last call written to, unless this fragment names a function and that call
+   *     already has a name (a second whole call in the same stream), which starts a new call.
+   */
+  function fragmentIndex(raw: unknown, id: string | undefined, name: string | undefined): number {
+    if (typeof raw === 'number' && Number.isInteger(raw) && raw >= 0) return raw;
+    const next = (): number => (calls.size === 0 ? 0 : Math.max(...calls.keys()) + 1);
+    if (id !== undefined) {
+      for (const c of calls.values()) if (c.id === id) return c.index;
+      return next();
+    }
+    const last = lastIndex === null ? undefined : calls.get(lastIndex);
+    if (!last) return next();
+    if (name !== undefined && last.name !== undefined) return next();
+    return last.index;
   }
 
   /** Handles one complete event payload (the `data:` lines of one SSE event, joined by \n). */
@@ -138,6 +217,12 @@ export function createStreamParser(): StreamParser {
       fail(providerFailure(asStatus(err.code)), out);
       return;
     }
+    // Usage can ride on any chunk, including a final chunk with an empty `choices` array.
+    const u = readUsage(obj.usage);
+    if (u) {
+      usage = u;
+      out.push({ type: 'usage', input: u.input, output: u.output });
+    }
     const choices = Array.isArray(obj.choices) ? obj.choices : [];
     for (const choice of choices) {
       if (!isRecord(choice)) continue;
@@ -145,6 +230,10 @@ export function createStreamParser(): StreamParser {
 
       // Fragments before finish_reason: a finish_reason in the same chunk must not drop them.
       if (typeof delta.content === 'string' && delta.content.length > 0) {
+        if (text.length + delta.content.length > MAX_TEXT_CHARS) {
+          fail(TOO_LONG, out);
+          return;
+        }
         text += delta.content;
         state = 'text';
         toolIndex = null;
@@ -152,21 +241,31 @@ export function createStreamParser(): StreamParser {
       }
       if (Array.isArray(delta.tool_calls)) {
         for (const frag of delta.tool_calls) {
-          if (!isRecord(frag) || typeof frag.index !== 'number') continue;
-          let acc = calls.get(frag.index);
-          if (!acc) {
-            acc = { index: frag.index, args: '' };
-            calls.set(frag.index, acc);
-          }
-          if (acc.id === undefined && typeof frag.id === 'string' && frag.id.length > 0) acc.id = frag.id;
+          if (!isRecord(frag)) continue;
           const fn = isRecord(frag.function) ? frag.function : {};
-          if (acc.name === undefined && typeof fn.name === 'string' && fn.name.length > 0) acc.name = fn.name;
-          if (typeof fn.arguments === 'string') acc.args += fn.arguments;
+          const fragId = typeof frag.id === 'string' && frag.id.length > 0 ? frag.id : undefined;
+          const fragName = typeof fn.name === 'string' && fn.name.length > 0 ? fn.name : undefined;
+          const index = fragmentIndex(frag.index, fragId, fragName);
+          let acc = calls.get(index);
+          if (!acc) {
+            acc = { index, args: '' };
+            calls.set(index, acc);
+          }
+          lastIndex = index;
+          if (acc.id === undefined && fragId !== undefined) acc.id = fragId;
+          if (acc.name === undefined && fragName !== undefined) acc.name = fragName;
+          if (typeof fn.arguments === 'string') {
+            if (acc.args.length + fn.arguments.length > MAX_ARGS_CHARS) {
+              fail(TOO_LONG, out);
+              return;
+            }
+            acc.args += fn.arguments;
+          }
           state = 'toolCall';
-          toolIndex = frag.index;
+          toolIndex = index;
           out.push({
             type: 'tool',
-            index: frag.index,
+            index,
             ...(acc.id !== undefined ? { id: acc.id } : {}),
             ...(acc.name !== undefined ? { name: acc.name } : {}),
             argumentsLength: acc.args.length,
@@ -226,27 +325,47 @@ export function createStreamParser(): StreamParser {
   }
 
   function resolve(): FinishOutcome {
-    if (failure) return { ok: false, error: failure };
+    const lengthStop = finishReason === 'length';
+    const failed = (error: StreamFailure): FinishOutcome => ({
+      ok: false,
+      code: error.code,
+      error,
+      truncated: lengthStop || error.code === 'truncated',
+    });
+    if (failure) return failed(failure);
     if (!sawDone && finishReason === null) {
-      return { ok: false, error: { code: 'incomplete', message: 'The answer was cut off.' } };
+      return failed({ code: 'incomplete', message: 'The answer was cut off.' });
     }
     const toolCalls: AssistantToolCall[] = [];
     const ordered = [...calls.values()].sort((a, b) => a.index - b.index);
+    const used = new Set(ordered.map((c) => c.id).filter((id): id is string => id !== undefined));
+    let n = 0;
     for (const acc of ordered) {
-      if (!acc.id || !acc.name) return { ok: false, error: BAD_RESPONSE };
+      n += 1;
       const raw = acc.args.trim();
       let args: unknown = {};
+      let parsed = true;
       if (raw !== '') {
         try {
           args = JSON.parse(raw);
         } catch {
-          return { ok: false, error: BAD_ARGS };
+          parsed = false;
         }
       }
-      if (!isRecord(args)) return { ok: false, error: BAD_ARGS };
-      toolCalls.push({ id: acc.id, name: acc.name, arguments: args });
+      // A length stop inside a call is truncation, not a model mistake.
+      if (lengthStop && (!parsed || !acc.name)) return failed(TRUNCATED);
+      if (!acc.name) return failed(BAD_RESPONSE);
+      if (!parsed || !isRecord(args)) return failed(BAD_ARGS);
+      let id = acc.id;
+      if (!id) {
+        let k = n;
+        while (used.has(`call_${k}`)) k += 1;
+        id = `call_${k}`;
+        used.add(id);
+      }
+      toolCalls.push({ id, name: acc.name, arguments: args });
     }
-    return { ok: true, text, toolCalls, finishReason, truncated: finishReason === 'length' };
+    return { ok: true, text, toolCalls, finishReason, truncated: lengthStop, usage };
   }
 
   function finish(): FinishOutcome {
