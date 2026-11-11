@@ -2,7 +2,7 @@ import { useSyncExternalStore } from 'react';
 import Storage from 'expo-sqlite/kv-store';
 import * as SecureStore from 'expo-secure-store';
 import type { Category } from '../search/types';
-import { PROVIDERS } from '../search/aggregate';
+import { PROVIDERS } from '../search/aggregate.ts';
 
 /** Contract: docs/SEARCH_CONTRACT.md section 5. */
 export interface TorznabConfig {
@@ -18,6 +18,8 @@ export interface SearchPrefs {
   useFor: Record<string, Category[]>;
   mirrorOverride: Record<string, string>;
   adult: boolean;
+  /** Mark results whose every source is known for fake or harmful uploads. */
+  warnUnsafe: boolean;
   waitSeconds: 5 | 8 | 15;
   limit: 25 | 50 | 100;
   hideDead: boolean;
@@ -44,6 +46,7 @@ function defaults(): SearchPrefs {
     useFor: {},
     mirrorOverride: {},
     adult: false,
+    warnUnsafe: true,
     waitSeconds: 8,
     limit: 50,
     hideDead: true,
@@ -74,7 +77,7 @@ function recordOf<T>(v: unknown, pick: (x: unknown) => T | null): Record<string,
 }
 
 /** Tolerant parse: unknown or missing fields fall back to defaults. `enabled` missing means "seed from defaults". */
-function normalize(raw: unknown, legacyRecents: string[]): SearchPrefs {
+export function normalizeSearchPrefs(raw: unknown, legacyRecents: string[]): SearchPrefs {
   const d = defaults();
   const o = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
   const recents = (Array.isArray(o.recents) ? strings(o.recents) : legacyRecents).slice(0, MAX_RECENTS);
@@ -90,6 +93,7 @@ function normalize(raw: unknown, legacyRecents: string[]): SearchPrefs {
     useFor: recordOf(o.useFor, (x) => (Array.isArray(x) ? categories(x) : null)),
     mirrorOverride: recordOf(o.mirrorOverride, (x) => (typeof x === 'string' && x ? x : null)),
     adult: o.adult === true,
+    warnUnsafe: o.warnUnsafe !== false,
     waitSeconds: o.waitSeconds === 5 || o.waitSeconds === 15 ? o.waitSeconds : 8,
     limit: o.limit === 25 || o.limit === 100 ? o.limit : 50,
     hideDead: o.hideDead !== false,
@@ -126,7 +130,7 @@ function load(): SearchPrefs {
   } catch {
     // Storage unavailable: use defaults for this session.
   }
-  cache = normalize(parsed, found ? [] : readLegacyRecents());
+  cache = normalizeSearchPrefs(parsed, found ? [] : readLegacyRecents());
   if (!found) persist(cache);
   return cache;
 }

@@ -14,6 +14,8 @@ export interface ResultRowProps {
   leechers?: number;
   age: string;
   via: string;
+  /** Names of the flagged sources when every source is known for fake or harmful uploads. */
+  risky?: string[] | null;
   added: boolean;
   busy?: boolean;
   onAdd: () => void;
@@ -21,7 +23,7 @@ export interface ResultRowProps {
 
 const count = (n: number | undefined) => (n === undefined ? '—' : n.toLocaleString('en-US'));
 
-function ResultRowImpl({ name, sizeBytes, seeders, leechers, age, via, added, busy, onAdd }: ResultRowProps) {
+function ResultRowImpl({ name, sizeBytes, seeders, leechers, age, via, risky, added, busy, onAdd }: ResultRowProps) {
   const { colors } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const size = sizeBytes ? formatBytes(sizeBytes) : '—';
@@ -47,6 +49,14 @@ function ResultRowImpl({ name, sizeBytes, seeders, leechers, age, via, added, bu
           </View>
           {age ? <Text style={styles.age}>{age}</Text> : null}
         </View>
+        {risky ? (
+          <View style={styles.risk} accessible accessibilityLabel={`Risky source: ${risky.join(', ')}`}>
+            <PixelIcon name="warning" size={16} color={colors.warning} />
+            <Text style={styles.riskText} numberOfLines={1}>
+              Risky source: {risky.join(', ')}
+            </Text>
+          </View>
+        ) : null}
         <Text style={styles.via} numberOfLines={1}>
           via {via}
         </Text>
@@ -83,5 +93,7 @@ const makeStyles = (c: ThemeColors) =>
     stat: { flexDirection: 'row', alignItems: 'center', gap: 4 },
     metaText: { ...type.mono, fontSize: 12, color: c.textMuted },
     age: { ...type.body, fontSize: 12, color: c.textMuted },
+    risk: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+    riskText: { ...type.body, fontSize: 12, color: c.warning, flexShrink: 1 },
     via: { ...type.body, fontSize: 11, color: c.textMuted },
   });

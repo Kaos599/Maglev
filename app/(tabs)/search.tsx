@@ -13,6 +13,7 @@ import { SourcesCard } from '../../components/search/SourcesCard';
 import { NoticeBanner, addErrorNotice, useNotice } from '../../components/search/Notice';
 import { buildExtraProviders, loadExtraProviders } from '../../components/search/extra';
 import { CATEGORY_LABEL, formatAge, providerMap } from '../../components/search/meta';
+import { riskySources } from '../../utils/search/safety';
 import { addRecentSearch, clearRecentSearches, getSearchPrefs, useSearchPrefs } from '../../utils/prefs/search';
 import { availableCategories, eligibleProviders, searchAll } from '../../utils/search/aggregate';
 import type { Category, MergedResult, SearchUpdate } from '../../utils/search/types';
@@ -58,6 +59,7 @@ export default function SearchScreen() {
   const [sessionAdded, setSessionAdded] = useState<Set<string>>(() => new Set());
   const [busyHash, setBusyHash] = useState<string | null>(null);
   const [retryTick, setRetryTick] = useState(0);
+  const [confirm, setConfirm] = useState<{ result: MergedResult; reason: string } | null>(null);
   const { notice, show, dismiss } = useNotice();
   const reqId = useRef(0);
   const controller = useRef<AbortController | null>(null);
@@ -160,6 +162,20 @@ export default function SearchScreen() {
     [remember, show, startTorrent, trimmed],
   );
 
+  // Tapping Add on a warned row asks first; with the warning off it is one tap.
+  const requestAdd = useCallback(
+    (r: MergedResult) => {
+      const risky = riskySources(r, providers, prefs.warnUnsafe);
+      if (!risky) {
+        void handleAdd(r);
+        return;
+      }
+      const reason = r.sources.map((id) => providers.get(id)?.unsafeReason).find((x): x is string => !!x) ?? '';
+      setConfirm({ result: r, reason });
+    },
+    [handleAdd, providers, prefs.warnUnsafe],
+  );
+
   const nameOf = useCallback((id: string) => providers.get(id)?.name ?? id, [providers]);
 
   // After Stop, sources that never answered are left out of the scoreboard.
@@ -184,12 +200,13 @@ export default function SearchScreen() {
         leechers={item.leechers}
         age={formatAge(item.publishedAt)}
         via={item.sources.map(nameOf).join(' · ')}
+        risky={riskySources(item, providers, prefs.warnUnsafe)}
         added={sessionAdded.has(item.infoHash) || inList.has(item.infoHash)}
         busy={busyHash === item.infoHash}
-        onAdd={() => handleAdd(item)}
+        onAdd={() => requestAdd(item)}
       />
     ),
-    [busyHash, handleAdd, inList, nameOf, sessionAdded],
+    [busyHash, requestAdd, inList, nameOf, sessionAdded, providers, prefs.warnUnsafe],
   );
 
   const openProviders = useCallback(() => router.push('/settings/search-providers' as never), [router]);
@@ -356,6 +373,20 @@ export default function SearchScreen() {
           ))}
         </View>
       </Sheet>
+      <Sheet visible={!!confirm} onClose={() => setConfirm(null)} title="Add from a risky source?" subtitle={confirm?.reason}>
+        <View style={styles.confirmActions}>
+          <Button
+            label="Add anyway"
+            fullWidth
+            onPress={() => {
+              const r = confirm?.result;
+              setConfirm(null);
+              if (r) void handleAdd(r);
+            }}
+          />
+          <Button label="Cancel" variant="secondary" fullWidth onPress={() => setConfirm(null)} />
+        </View>
+      </Sheet>
     </Screen>
   );
 }
@@ -363,6 +394,7 @@ export default function SearchScreen() {
 const makeStyles = (c: ThemeColors) =>
   StyleSheet.create({
     pad: { paddingHorizontal: spacing.lg },
+    confirmActions: { gap: spacing.sm },
     field: {
       flexDirection: 'row',
       alignItems: 'center',

@@ -292,6 +292,38 @@ async function main() {
   check('normalizeInfoHash: base32 round trip, zero hash rejected', magnet.normalizeInfoHash(b32(A)) === A && magnet.normalizeInfoHash('0'.repeat(40)) === null);
   check('infoHashFromMagnet reads btih', magnet.infoHashFromMagnet(`magnet:?dn=x&xt=urn:btih:${A.toUpperCase()}`) === A);
 
+  // Unsafe-source warnings (SEARCH_CONTRACT section 7).
+  console.log('\n[safety]');
+  const { riskySources } = await import('../utils/search/safety.ts');
+  const validBase = () => ({ providerId: 'tpb', name: 'x', infoHash: A, magnet: `magnet:?xt=urn:btih:${A}` });
+  const provMap = new Map(agg.PROVIDERS.map((p) => [p.id, p]));
+  const only = { ...validBase(), sources: ['tpb'] };
+  const both = { ...validBase(), sources: ['tpb', 'knaben'] };
+  const risk = riskySources(only, provMap);
+  check('safety: TPB-only result is risky', Array.isArray(risk) && risk.join() === 'The Pirate Bay', String(risk));
+  check('safety: same hash also from Knaben is not risky', riskySources(both, provMap) === null);
+  check('safety: unknown provider id is not risky', riskySources({ ...validBase(), sources: ['nope'] }, provMap) === null);
+  check('safety: warnUnsafe false yields no warning', riskySources(only, provMap, false) === null);
+
+  // Prefs migration (stub the native storage modules so the TS source loads in Node).
+  const Module = require('module');
+  const store = new Map();
+  Module.registerHooks({
+    resolve(spec, ctx, next) {
+      if (spec === 'expo-sqlite/kv-store' || spec === 'expo-secure-store') return { url: `stub:${spec}`, shortCircuit: true, format: 'commonjs' };
+      return next(spec, ctx);
+    },
+    load(url, ctx, next) {
+      if (url.startsWith('stub:')) {
+        return { format: 'commonjs', shortCircuit: true, source: 'module.exports = { default: { getItemSync: () => null, setItemSync() {} }, getItemAsync: async () => null, setItemAsync: async () => {}, deleteItemAsync: async () => {} };' };
+      }
+      return next(url, ctx);
+    },
+  });
+  const prefsMod = await import('../utils/prefs/search.ts');
+  check('prefs: missing warnUnsafe migrates to true', prefsMod.normalizeSearchPrefs({ adult: true }, []).warnUnsafe === true);
+  check('prefs: warnUnsafe false is kept', prefsMod.normalizeSearchPrefs({ warnUnsafe: false }, []).warnUnsafe === false);
+
   console.log(`\n${passed} passed, ${failed} failed`);
   process.exit(failed ? 1 : 0);
 }
