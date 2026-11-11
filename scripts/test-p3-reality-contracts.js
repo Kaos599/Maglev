@@ -200,7 +200,11 @@ contract('C-SVC-1', 'P0',
     const svc = svcFiles[0] ? code(svcFiles[0]) : '';
     assert(/override\s+fun\s+onStartCommand/.test(svc), 'service overrides onStartCommand');
     assert(/override\s+fun\s+onCreate/.test(svc), 'service overrides onCreate');
-    assert(/createNotificationChannel/.test(svc), 'service calls createNotificationChannel');
+    // Channel creation may live in a helper in the service package, but onCreate must reach it.
+    const svcPkg = walk('modules/maglev-engine/android/src', ['.kt']).filter((f) => /\/service\//.test(f)).map(code).join('\n');
+    const onCreateBody = (/override\s+fun\s+onCreate\s*\(\)\s*\{([\s\S]*?)\n    \}/.exec(svc) || [])[1] || '';
+    assert(/createNotificationChannel/.test(svcPkg) && /(createNotificationChannel|ensureChannels)/.test(onCreateBody),
+      'service onCreate creates notification channels (directly or via service-package helper)');
     assert(/\bonTimeout\b/.test(svc), 'service implements onTimeout (Android 15 FGS timeout)');
     const manifest = read('modules/maglev-engine/android/src/main/AndroidManifest.xml');
     const svcTag = /<service\b[^>]*MaglevTorrentService[^>]*>/s.exec(manifest);
@@ -210,14 +214,16 @@ contract('C-SVC-1', 'P0',
   });
 
 contract('C-SVC-2', 'P0',
-  'Given a notification action, When "Pause all" is tapped, Then the service handles it and JS receives onPauseAllRequested',
+  'Given a notification action, When "Pause all" is tapped, Then the service handles it and JS receives onNotificationAction (NATIVE_CONTRACT §6)',
   () => {
     const svcFiles = walk('modules/maglev-engine/android/src', ['.kt']).filter((f) => /MaglevTorrentService\.kt$/.test(f));
     const svc = svcFiles[0] ? code(svcFiles[0]) : '';
     const idx = svc.search(/onStartCommand/);
     assert(idx >= 0 && /ACTION_PAUSE_ALL/.test(svc.slice(idx)), 'ACTION_PAUSE_ALL is handled after onStartCommand');
     const ts = walkMany(['app', 'context', 'modules/maglev-engine/src'], TS_EXT);
-    assert(ts.some((f) => /onPauseAllRequested/.test(code(f))), 'TS subscribes to onPauseAllRequested');
+    assert(ts.some((f) => /onNotificationAction/.test(code(f))), 'TS subscribes to onNotificationAction');
+    const kt = walk('modules/maglev-engine/android/src', ['.kt']).map(code).join('\n');
+    assert(/"onNotificationAction"/.test(kt) && /pause_all/.test(kt), 'Kotlin emits onNotificationAction with pause_all');
   });
 
 contract('C-PERM-1', 'P0',

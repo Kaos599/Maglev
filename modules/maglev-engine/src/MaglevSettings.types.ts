@@ -77,7 +77,22 @@ export interface AppearanceSettings {
   telemetryDensity: TelemetryDensity;
 }
 
+export type DownloadFolderMode = 'direct' | 'staging';
+
+export interface DownloadFolder {
+  uri: string;
+  displayName: string;
+  mode: DownloadFolderMode;
+}
+
+/** Bump when the persisted shape changes; the store migrates older payloads with defaults. */
+export const SETTINGS_SCHEMA_VERSION = 3;
+
 export interface MaglevSettings {
+  /** True once the first-run onboarding has been completed. */
+  onboarded: boolean;
+  /** Folder chosen through the SAF picker, or null to use the engine default. */
+  downloadFolder: DownloadFolder | null;
   appearance: AppearanceSettings;
   storage: StorageSettings;
   bandwidth: BandwidthSettings;
@@ -95,13 +110,15 @@ export const SPEED_PRESET_MAP: Record<SpeedPreset, number> = {
 };
 
 export const DEFAULT_SETTINGS: MaglevSettings = {
+  onboarded: false,
+  downloadFolder: null,
   appearance: {
     theme: 'TACTICAL_DARK',
     telemetryDensity: 'COMPACT',
   },
   storage: {
     storageMode: 'POSIX',
-    defaultPath: '/storage/emulated/0/Android/data/com.maglev/files/Download',
+    defaultPath: '/storage/emulated/0/Download/Maglev',
     autoMoveCompleted: false,
     autoMoveDestinationPath: '/storage/emulated/0/Download/MaglevCompleted',
     preAllocateDisk: true,

@@ -1,9 +1,87 @@
-import { DEFAULT_SETTINGS, type MaglevSettings } from './MaglevSettings.types.ts';
+import {
+  DEFAULT_SETTINGS,
+  SETTINGS_SCHEMA_VERSION,
+  type DownloadFolder,
+  type MaglevSettings,
+} from './MaglevSettings.types.ts';
+
+/** Minimal sync key-value surface shared by expo-sqlite/kv-store and the in-memory fallback. */
+interface SyncKv {
+  getItemSync(key: string): string | null;
+  setItemSync(key: string, value: string): void;
+}
+
+declare const require: ((id: string) => any) | undefined;
+
+const memoryKv = new Map<string, string>();
+const inMemoryKv: SyncKv = {
+  getItemSync: (k) => memoryKv.get(k) ?? null,
+  setItemSync: (k, v) => {
+    memoryKv.set(k, v);
+  },
+};
+
+/**
+ * Loads expo-sqlite's kv-store (synchronous API, so the first render already has settings).
+ * Falls back to memory when the native module is unavailable: Node test runners, Expo Go
+ * without the module, or web without SQLite support.
+ */
+function loadKv(): SyncKv {
+  try {
+    if (typeof require === 'function') {
+      const mod = require('expo-sqlite/kv-store');
+      const kv = mod?.default ?? mod?.Storage ?? mod;
+      if (kv && typeof kv.getItemSync === 'function' && typeof kv.setItemSync === 'function') {
+        kv.getItemSync('__probe__'); // throws if the native side is missing
+        return kv as SyncKv;
+      }
+    }
+  } catch {
+    // fall through to memory
+  }
+  return inMemoryKv;
+}
+
+function isPlainObject(v: unknown): v is Record<string, unknown> {
+  return typeof v === 'object' && v !== null && !Array.isArray(v);
+}
+
+/** Recursively overlays `stored` on `defaults`; any field with a mismatched type keeps its default. */
+function mergeWithDefaults<T>(defaults: T, stored: unknown): T {
+  if (!isPlainObject(defaults)) {
+    if (Array.isArray(defaults)) return (Array.isArray(stored) ? stored : defaults) as T;
+    return (typeof stored === typeof defaults ? stored : defaults) as T;
+  }
+  const out: Record<string, unknown> = {};
+  const src = isPlainObject(stored) ? stored : {};
+  for (const key of Object.keys(defaults)) {
+    out[key] = mergeWithDefaults((defaults as Record<string, unknown>)[key], src[key]);
+  }
+  return out as T;
+}
+
+function sanitizeFolder(v: unknown): DownloadFolder | null {
+  if (!isPlainObject(v) || typeof v.uri !== 'string' || !v.uri) return null;
+  return {
+    uri: v.uri,
+    displayName: typeof v.displayName === 'string' ? v.displayName : v.uri,
+    mode: v.mode === 'staging' ? 'staging' : 'direct',
+  };
+}
+
+/** Upgrades any persisted payload (any version, or none) to the current schema with defaults for missing fields. */
+export function migrateSettings(raw: unknown): MaglevSettings {
+  const defaults: MaglevSettings = JSON.parse(JSON.stringify(DEFAULT_SETTINGS));
+  const body = isPlainObject(raw) && isPlainObject(raw.settings) ? raw.settings : raw;
+  const merged = mergeWithDefaults(defaults, body);
+  merged.downloadFolder = sanitizeFolder(isPlainObject(body) ? body.downloadFolder : null);
+  return merged;
+}
 
 type SettingsListener = (settings: MaglevSettings) => void;
 
 /**
- * High-speed in-memory cached Settings Store with MMKV / local persistence
+ * High-speed in-memory cached Settings Store with expo-sqlite kv-store persistence
  * and reactive subscriber bridge.
  *
  * Latency SLA: < 10ms for read and write operations.
@@ -12,12 +90,12 @@ export class MaglevSettingsStore {
   private static instance: MaglevSettingsStore;
   private settings: MaglevSettings;
   private listeners: Set<SettingsListener> = new Set();
-  private isPersisting: boolean = false;
-  private storageKey = 'maglev_system_settings_v2';
+  private kv: SyncKv;
+  private storageKey = 'maglev_settings';
 
   private constructor() {
-    this.settings = JSON.parse(JSON.stringify(DEFAULT_SETTINGS));
-    this.loadInitialSettings();
+    this.kv = loadKv();
+    this.settings = this.load();
   }
 
   public static getInstance(): MaglevSettingsStore {
@@ -42,6 +120,8 @@ export class MaglevSettingsStore {
     const patch = typeof updater === 'function' ? updater(this.settings) : updater;
 
     this.settings = {
+      onboarded: patch.onboarded ?? this.settings.onboarded,
+      downloadFolder: patch.downloadFolder !== undefined ? patch.downloadFolder : this.settings.downloadFolder,
       appearance: { ...this.settings.appearance, ...(patch.appearance || {}) },
       storage: { ...this.settings.storage, ...(patch.storage || {}) },
       bandwidth: { ...this.settings.bandwidth, ...(patch.bandwidth || {}) },
@@ -59,8 +139,7 @@ export class MaglevSettingsStore {
     // Dispatch immediately to listeners
     this.notifyListeners();
 
-    // Persist asynchronously
-    this.persistSettingsAsync();
+    this.persist();
 
     const elapsed = performance.now() - startTime;
     if (elapsed > 10) {
@@ -76,7 +155,7 @@ export class MaglevSettingsStore {
   public resetToDefaults(): MaglevSettings {
     this.settings = JSON.parse(JSON.stringify(DEFAULT_SETTINGS));
     this.notifyListeners();
-    this.persistSettingsAsync();
+    this.persist();
     return this.settings;
   }
 
@@ -102,32 +181,21 @@ export class MaglevSettingsStore {
     });
   }
 
-  private loadInitialSettings(): void {
+  private load(): MaglevSettings {
     try {
-      if (typeof localStorage !== 'undefined') {
-        const raw = localStorage.getItem(this.storageKey);
-        if (raw) {
-          const parsed = JSON.parse(raw);
-          this.settings = { ...this.settings, ...parsed };
-        }
-      }
+      const raw = this.kv.getItemSync(this.storageKey);
+      if (raw) return migrateSettings(JSON.parse(raw));
     } catch {
-      // Fallback to default in non-storage environments
+      // corrupt payload: start from defaults
     }
+    return JSON.parse(JSON.stringify(DEFAULT_SETTINGS));
   }
 
-  private persistSettingsAsync(): void {
-    if (this.isPersisting) return;
-    this.isPersisting = true;
-
+  private persist(): void {
     try {
-      if (typeof localStorage !== 'undefined') {
-        localStorage.setItem(this.storageKey, JSON.stringify(this.settings));
-      }
+      this.kv.setItemSync(this.storageKey, JSON.stringify({ version: SETTINGS_SCHEMA_VERSION, settings: this.settings }));
     } catch {
-      // Ignored
-    } finally {
-      this.isPersisting = false;
+      // storage unavailable: settings stay in memory for this session
     }
   }
 }

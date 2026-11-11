@@ -14,16 +14,17 @@ export const PiecesMatrix: React.FC<PiecesMatrixProps> = ({ matrix, totalPieces 
 
   for (let i = 0; i < 256; i++) {
     const val = matrix[i] || 0;
-    if (val === 2) verifiedCount++;
-    else if (val === 1) inFlightCount++;
+    // Engine contract: 0 missing, 1 have, 2 partial
+    if (val === 1) verifiedCount++;
+    else if (val === 2) inFlightCount++;
     else unavailableCount++;
   }
 
   const getBlockColor = (val: number) => {
     switch (val) {
-      case 2:
-        return TOKENS.colors.blockVerified;
       case 1:
+        return TOKENS.colors.blockVerified;
+      case 2:
         return TOKENS.colors.blockInFlight;
       case 3:
         return TOKENS.colors.blockCorrupt;

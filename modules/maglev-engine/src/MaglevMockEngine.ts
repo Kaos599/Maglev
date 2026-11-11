@@ -1,10 +1,27 @@
 import type {
+  AddTorrentOptions,
   AggregatedTelemetry,
-  PieceMatrix,
+  Detail,
+  EngineErrorCode,
+  EngineResult,
+  GovernanceConfig,
+  MaglevEngineApi,
+  Metadata,
+  NativeConfig,
+  NativePermissionStatus,
+  NotificationActionEvent,
+  PausedBy,
+  PickFolderResult,
+  Snapshot,
+  StorageStatus,
+  TelemetryEvent,
+  TorrentCompletedEvent,
   TorrentDetailData,
   TorrentFileInfo,
+  TorrentState,
   TorrentTelemetry,
   TrackerInfo,
+  Unsubscribe,
 } from './MaglevEngine.types.ts';
 import {
   DEFAULT_SETTINGS,
@@ -13,10 +30,50 @@ import {
 } from './MaglevSettings.types.ts';
 import { ipFilter } from './MaglevIpFilter.ts';
 import { settingsStore } from './MaglevSettingsStore.ts';
+import { parseSource, pseudoHash } from './magnet.ts';
+import { restartReasons, toNativeConfig } from './toNativeConfig.ts';
+
+const GOVERNANCE_TAGS: ReadonlySet<PausedBy | null> = new Set<PausedBy | null>(['wifi_only', 'battery', 'charging_only']);
+const DEFAULT_PAYLOAD_BYTES = 1_610_612_736; // 1.5 GiB when a magnet carries no xl=
+
+/** Thrown by the legacy synchronous `startTorrent`; carries the contract error code. */
+export class MaglevEngineError extends Error {
+  code: EngineErrorCode;
+  id?: string;
+  constructor(code: EngineErrorCode, message: string, id?: string) {
+    super(message);
+    this.name = 'MaglevEngineError';
+    this.code = code;
+    this.id = id;
+  }
+}
+
+interface TorrentMeta {
+  pausedBy: PausedBy | null;
+  addedAt: number;
+  priorState?: TorrentState;
+}
+
+const ok = (): { ok: true } => ({ ok: true });
+const fail = (code: EngineErrorCode, message: string, id?: string): EngineResult<any> =>
+  id ? { ok: false, code, message, id } : { ok: false, code, message };
 
 type Listener = (telemetry: AggregatedTelemetry) => void;
 
-export class MaglevMockEngine {
+/**
+ * Dev and web simulator. Implements the same `MaglevEngineApi` as the native module and enforces the
+ * contract's validation and state rules. It also keeps a legacy synchronous surface (startTorrent,
+ * getAggregatedTelemetry, stepSimulation, ...) used by the Node test suites.
+ */
+export class MaglevMockEngine implements MaglevEngineApi {
+  private meta: Map<string, TorrentMeta> = new Map();
+  private snapshotListeners: Set<(e: TelemetryEvent) => void> = new Set();
+  private completedListeners: Set<(e: TorrentCompletedEvent) => void> = new Set();
+  private notificationListeners: Set<(e: NotificationActionEvent) => void> = new Set();
+  private storageListeners: Set<(e: StorageStatus) => void> = new Set();
+  private nativeConfig: NativeConfig | null = null;
+  private initialized = false;
+
   private torrents: Map<string, TorrentDetailData> = new Map();
   private pieceMatrices: Map<string, Uint8Array> = new Map();
   private listeners: Set<Listener> = new Set();
@@ -67,6 +124,7 @@ export class MaglevMockEngine {
 
   public applySettings(settings: MaglevSettings): void {
     this.settings = JSON.parse(JSON.stringify(settings));
+    this.nativeConfig = null;
     this.recalculateGovernance();
     this.broadcast();
   }
@@ -172,93 +230,74 @@ export class MaglevMockEngine {
     };
   }
 
+  /** Legacy synchronous add. Returns the torrent id; throws MaglevEngineError on INVALID_SOURCE / DUPLICATE. */
   public startTorrent(
-    magnetUri: string,
+    source: string,
     savePathOverride?: string,
     sequential: boolean = false,
     selectedFileIndices?: number[]
   ): string {
-    const id = this.extractHashOrGenerate(magnetUri);
-    // Concurrency guard: return existing session if already registered
-    if (this.torrents.has(id)) {
-      return id;
-    }
-    const name = this.extractName(magnetUri) || 'Ubuntu-24.04-desktop-amd64.iso';
-    const totalSize = 4_294_967_296; // 4.0 GB
+    const r = this.addInternal(source, {
+      outputFolder: savePathOverride ?? null,
+      sequential,
+      onlyFiles: selectedFileIndices ?? null,
+    });
+    if (r.ok === false) throw new MaglevEngineError(r.code, r.message, r.id);
+    return r.id;
+  }
 
-    const isPrimaryActive = !selectedFileIndices || selectedFileIndices.includes(0);
-    const isShaActive = !selectedFileIndices || selectedFileIndices.includes(1);
-    const isNotesActive = !selectedFileIndices || selectedFileIndices.includes(2);
+  private addInternal(
+    source: string,
+    options: AddTorrentOptions
+  ): EngineResult<{ id: string; infoHash: string }> {
+    const parsed = parseSource(source);
+    if (!parsed) {
+      return fail('INVALID_SOURCE', 'Not a valid magnet link (needs an info-hash) or .torrent source.');
+    }
+    const id = parsed.infoHash;
+    if (this.torrents.has(id)) {
+      return fail('DUPLICATE', 'This torrent is already in your list.', id);
+    }
+    const name = parsed.name || `Torrent_${id.slice(0, 8)}`;
+    const totalSize = parsed.exactLength && parsed.exactLength > 5120 ? parsed.exactLength : DEFAULT_PAYLOAD_BYTES;
+    const only = options.onlyFiles && options.onlyFiles.length > 0 ? options.onlyFiles : null;
+    const active = (i: number) => (!only || only.includes(i) ? 1 : 0) as 0 | 1 | 2;
 
     const files: TorrentFileInfo[] = [
-      {
-        index: 0,
-        name: `${name}`,
-        path: `${name}`,
-        length: totalSize,
-        progress: 0,
-        priority: (isPrimaryActive ? 1 : 0) as 0 | 1 | 2,
-      },
-      {
-        index: 1,
-        name: `${name}.sha256`,
-        path: `${name}.sha256`,
-        length: 1024,
-        progress: 0,
-        priority: (isShaActive ? 1 : 0) as 0 | 1 | 2,
-      },
-      {
-        index: 2,
-        name: 'release-notes.txt',
-        path: 'release-notes.txt',
-        length: 4096,
-        progress: 0,
-        priority: (isNotesActive ? 1 : 0) as 0 | 1 | 2,
-      },
+      { index: 0, name, path: name, length: totalSize - 5120, progress: 0, priority: active(0) },
+      { index: 1, name: `${name}.sha256`, path: `${name}.sha256`, length: 1024, progress: 0, priority: active(1) },
+      { index: 2, name: 'release-notes.txt', path: 'release-notes.txt', length: 4096, progress: 0, priority: active(2) },
     ];
-
-    const trackers: TrackerInfo[] = [
-      {
-        url: 'udp://tracker.opentrackr.org:1337/announce',
-        status: 'Working',
-        seeds: 42,
-        peers: 86,
-      },
-      {
-        url: 'udp://open.stealth.si:80/announce',
-        status: 'Working',
-        seeds: 19,
-        peers: 31,
-      },
-    ];
+    const trackers: TrackerInfo[] = (parsed.trackers.length ? parsed.trackers : ['udp://tracker.opentrackr.org:1337/announce']).map(
+      (url) => ({ url, status: 'Working' as const, seeds: 0, peers: 0 })
+    );
 
     const effectiveSavePath =
-      savePathOverride ||
+      options.outputFolder ||
       (this.settings.storage.storageMode === 'SAF' && this.settings.storage.customSafPath
         ? this.settings.storage.customSafPath
         : this.settings.storage.defaultPath);
 
     const effDown = this.getEffectiveDownloadLimit();
-    const effUp = this.getEffectiveUploadLimit();
     const baseDownSpeed = effDown > 0 ? effDown : 14_800_000;
-    const baseUpSpeed = effUp > 0 ? effUp : 1_200_000;
+    const paused = !!options.paused;
 
     const newTorrent: TorrentDetailData = {
       id,
       name,
-      state: 'DOWNLOADING',
-      downloadSpeedBytes: baseDownSpeed,
-      uploadSpeedBytes: baseUpSpeed,
+      state: paused ? 'PAUSED' : 'DOWNLOADING',
+      downloadSpeedBytes: paused ? 0 : baseDownSpeed,
+      uploadSpeedBytes: 0,
       progressPercent: 0,
       downloadedBytes: 0,
       uploadedBytes: 0,
       totalSizeBytes: totalSize,
       etaSeconds: Math.floor(totalSize / baseDownSpeed),
-      peersConnected: 28,
-      peersTotal: Math.min(40, this.settings.bandwidth.maxConnectionsPerTorrent),
-      seedsConnected: 12,
+      peersConnected: 0,
+      peersTotal: 0,
+      seedsConnected: 0,
       ratio: 0.0,
-      sequential,
+      sequential: !!options.sequential,
       seedDurationSeconds: 0,
       savePath: effectiveSavePath,
       piecesTotal: 256,
@@ -267,18 +306,19 @@ export class MaglevMockEngine {
       trackers,
     };
 
-    const matrix = new Uint8Array(256);
-    this.pieceMatrices.set(id, matrix);
+    this.pieceMatrices.set(id, new Uint8Array(256));
     this.torrents.set(id, newTorrent);
+    this.meta.set(id, { pausedBy: paused ? 'user' : null, addedAt: Math.floor(Date.now() / 1000) });
     this.recalculateGovernance();
     this.broadcast();
-    return id;
+    return { ok: true, id, infoHash: id };
   }
 
   public pauseTorrent(id: string): boolean {
     const t = this.torrents.get(id);
     if (!t) return false;
     t.state = 'PAUSED';
+    this.metaOf(id).pausedBy = 'user';
     t.downloadSpeedBytes = 0;
     t.uploadSpeedBytes = 0;
     this.recalculateGovernance();
@@ -291,6 +331,7 @@ export class MaglevMockEngine {
     if (!t) return false;
     const effDown = this.getEffectiveDownloadLimit();
     const effUp = this.getEffectiveUploadLimit();
+    this.metaOf(id).pausedBy = null;
 
     if (t.progressPercent >= 100) {
       t.state = 'SEEDING';
@@ -304,20 +345,23 @@ export class MaglevMockEngine {
     return true;
   }
 
-  public pauseAll(): void {
+  public pauseAll(): Promise<EngineResult> {
     this.torrents.forEach((t) => {
       t.state = 'PAUSED';
+      this.metaOf(t.id).pausedBy = 'user';
       t.downloadSpeedBytes = 0;
       t.uploadSpeedBytes = 0;
     });
     this.recalculateGovernance();
     this.broadcast();
+    return Promise.resolve(ok());
   }
 
-  public resumeAll(): void {
+  public resumeAll(): Promise<EngineResult> {
     const effDown = this.getEffectiveDownloadLimit();
     const effUp = this.getEffectiveUploadLimit();
     this.torrents.forEach((t) => {
+      this.metaOf(t.id).pausedBy = null;
       if (t.progressPercent >= 100) {
         t.state = 'SEEDING';
         t.uploadSpeedBytes = effUp > 0 ? effUp : 2_500_000;
@@ -328,11 +372,13 @@ export class MaglevMockEngine {
     });
     this.recalculateGovernance();
     this.broadcast();
+    return Promise.resolve(ok());
   }
 
   public deleteTorrent(id: string, _deleteFiles: boolean = false): boolean {
     const removed = this.torrents.delete(id);
     this.pieceMatrices.delete(id);
+    this.meta.delete(id);
     this.recalculateGovernance();
     this.broadcast();
     return removed;
@@ -395,7 +441,8 @@ export class MaglevMockEngine {
     return true;
   }
 
-  public getPieceBitfield(id: string): Uint8Array {
+  /** Legacy matrix (2 = verified, 1 = in flight). The contract API `getPieceBitfield` swaps to 1 = have, 2 = partial. */
+  public getPieceMatrix(id: string): Uint8Array {
     let matrix = this.pieceMatrices.get(id);
     if (!matrix) {
       matrix = new Uint8Array(256);
@@ -430,6 +477,292 @@ export class MaglevMockEngine {
       t.streamUrl = streamUrl;
     }
     return streamUrl;
+  }
+
+  // ---------------------------------------------------------------------------
+  // MaglevEngineApi (docs/NATIVE_CONTRACT.md section 6)
+  // ---------------------------------------------------------------------------
+
+  private metaOf(id: string): TorrentMeta {
+    let m = this.meta.get(id);
+    if (!m) {
+      m = { pausedBy: null, addedAt: Math.floor(Date.now() / 1000) };
+      this.meta.set(id, m);
+    }
+    return m;
+  }
+
+  private toSnapshot(t: TorrentDetailData): Snapshot {
+    const m = this.metaOf(t.id);
+    return {
+      id: t.id,
+      name: t.name,
+      state: t.state,
+      pausedBy: t.state === 'PAUSED' ? m.pausedBy : null,
+      progressBytes: t.downloadedBytes,
+      totalBytes: t.totalSizeBytes,
+      uploadedBytes: t.uploadedBytes,
+      downBps: t.downloadSpeedBytes,
+      upBps: t.uploadSpeedBytes,
+      peersLive: t.peersConnected,
+      peersSeen: t.peersTotal,
+      etaSecs: t.state === 'DOWNLOADING' && t.downloadSpeedBytes > 0 ? t.etaSeconds : -1,
+      ratio: t.ratio,
+      seedingSecs: t.seedDurationSeconds || 0,
+      addedAt: m.addedAt,
+      outputFolder: t.savePath,
+      error: null,
+    };
+  }
+
+  private snapshots(): Snapshot[] {
+    return Array.from(this.torrents.values())
+      .map((t) => this.toSnapshot(t))
+      .sort((a, b) => a.addedAt - b.addedAt);
+  }
+
+  private applyNativeConfig(cfg: NativeConfig): boolean {
+    const before = this.nativeConfig ?? toNativeConfig(this.settings);
+    const net = this.settings.network;
+    const bw = this.settings.bandwidth;
+    net.listeningPort = cfg.listen_port;
+    net.upnpEnabled = cfg.enable_upnp;
+    net.dhtEnabled = cfg.enable_dht;
+    net.lsdEnabled = cfg.enable_lsd;
+    net.pexEnabled = cfg.enable_pex;
+    net.encryption = cfg.encryption === 'require' ? 'REQUIRED' : cfg.encryption === 'disable' ? 'DISABLED' : 'PREFERRED';
+    bw.maxActiveDownloads = cfg.max_active_downloads;
+    bw.maxActiveUploads = cfg.max_active_seeds;
+    bw.maxConnectionsPerTorrent = cfg.max_connections_per_torrent;
+    bw.downloadPreset = cfg.download_limit_bps > 0 ? 'CUSTOM' : 'UNLIMITED';
+    bw.downloadLimitBytesPerSec = cfg.download_limit_bps;
+    bw.uploadPreset = cfg.upload_limit_bps > 0 ? 'CUSTOM' : 'UNLIMITED';
+    bw.uploadLimitBytesPerSec = cfg.upload_limit_bps;
+    bw.seedingRatioLimit = cfg.seed_ratio_limit as typeof bw.seedingRatioLimit;
+    bw.seedingDurationLimitSeconds = (cfg.seed_time_limit_mins * 60) as typeof bw.seedingDurationLimitSeconds;
+    this.nativeConfig = { ...cfg };
+    this.recalculateGovernance();
+    this.broadcast();
+    return restartReasons(before, cfg).length > 0;
+  }
+
+  public async init(config: NativeConfig): Promise<EngineResult> {
+    this.initialized = true;
+    this.applyNativeConfig(config);
+    return ok();
+  }
+
+  public async shutdown(): Promise<EngineResult> {
+    if (this.timer) clearInterval(this.timer);
+    this.timer = null;
+    this.initialized = false;
+    return ok();
+  }
+
+  public async resolveMetadata(source: string, _timeoutMs: number): Promise<EngineResult<Metadata>> {
+    const parsed = parseSource(source);
+    if (!parsed) return fail('INVALID_SOURCE', 'Not a valid magnet link (needs an info-hash) or .torrent source.');
+    const name = parsed.name || `Torrent_${parsed.infoHash.slice(0, 8)}`;
+    const total = parsed.exactLength && parsed.exactLength > 5120 ? parsed.exactLength : DEFAULT_PAYLOAD_BYTES;
+    return {
+      ok: true,
+      infoHash: parsed.infoHash,
+      name,
+      totalBytes: total,
+      files: [
+        { index: 0, path: `${name}/${name}`, length: total - 5120 },
+        { index: 1, path: `${name}/${name}.sha256`, length: 1024 },
+        { index: 2, path: `${name}/release-notes.txt`, length: 4096 },
+      ],
+    };
+  }
+
+  public async addTorrent(
+    source: string,
+    options: AddTorrentOptions = {}
+  ): Promise<EngineResult<{ id: string; infoHash: string }>> {
+    return this.addInternal(source, options);
+  }
+
+  public async listTorrents(): Promise<EngineResult<{ torrents: Snapshot[] }>> {
+    return { ok: true, torrents: this.snapshots() };
+  }
+
+  public async getDetail(id: string): Promise<EngineResult<Detail>> {
+    const t = this.torrents.get(id);
+    if (!t) return fail('NOT_FOUND', 'Torrent not found.');
+    const pieceLength = Math.max(1, Math.ceil(t.totalSizeBytes / t.piecesTotal));
+    return {
+      ok: true,
+      snapshot: this.toSnapshot(t),
+      files: t.files.map((f) => ({
+        index: f.index,
+        path: f.path,
+        length: f.length,
+        progressBytes: Math.floor((f.length * t.progressPercent) / 100),
+        included: f.priority > 0,
+      })),
+      peers: [],
+      trackers: t.trackers.map((tr) => ({
+        url: tr.url,
+        status: tr.status === 'Working' ? 'working' : tr.status === 'Error' ? 'error' : 'updating',
+        message: tr.lastError ?? null,
+      })),
+      pieceCount: t.piecesTotal,
+      pieceLength,
+    };
+  }
+
+  public async pause(id: string): Promise<EngineResult> {
+    return this.pauseTorrent(id) ? ok() : fail('NOT_FOUND', 'Torrent not found.');
+  }
+
+  public async resume(id: string): Promise<EngineResult> {
+    return this.resumeTorrent(id) ? ok() : fail('NOT_FOUND', 'Torrent not found.');
+  }
+
+  public async recheck(id: string): Promise<EngineResult> {
+    const t = this.torrents.get(id);
+    if (!t) return fail('NOT_FOUND', 'Torrent not found.');
+    const m = this.metaOf(id);
+    m.priorState = t.state === 'CHECKING' ? m.priorState : t.state;
+    t.state = 'CHECKING';
+    t.downloadSpeedBytes = 0;
+    t.uploadSpeedBytes = 0;
+    this.broadcast();
+    return ok();
+  }
+
+  public async delete(id: string, deleteFiles: boolean): Promise<EngineResult> {
+    return this.deleteTorrent(id, deleteFiles) ? ok() : fail('NOT_FOUND', 'Torrent not found.');
+  }
+
+  public async setIncludedFiles(id: string, indices: number[]): Promise<EngineResult> {
+    const t = this.torrents.get(id);
+    if (!t) return fail('NOT_FOUND', 'Torrent not found.');
+    const include = new Set(indices);
+    t.files.forEach((f) => {
+      f.priority = include.has(f.index) ? (f.priority > 0 ? f.priority : 1) : 0;
+    });
+    return ok();
+  }
+
+  public async setGlobalLimits(down: number, up: number): Promise<EngineResult> {
+    const bw = this.settings.bandwidth;
+    bw.downloadPreset = down > 0 ? 'CUSTOM' : 'UNLIMITED';
+    bw.downloadLimitBytesPerSec = Math.max(0, down);
+    bw.uploadPreset = up > 0 ? 'CUSTOM' : 'UNLIMITED';
+    bw.uploadLimitBytesPerSec = Math.max(0, up);
+    this.recalculateGovernance();
+    this.broadcast();
+    return ok();
+  }
+
+  public async applyConfig(config: NativeConfig): Promise<EngineResult<{ restartRequired: boolean }>> {
+    return { ok: true, restartRequired: this.applyNativeConfig(config) };
+  }
+
+  public async getEffectiveConfig(): Promise<EngineResult<NativeConfig>> {
+    return { ok: true, ...(this.nativeConfig ?? toNativeConfig(this.settings)) };
+  }
+
+  /** Contract bitfield: 256 cells, 0 = missing, 1 = have, 2 = partial. */
+  public async getPieceBitfield(id: string): Promise<number[]> {
+    if (!this.torrents.has(id)) return new Array(256).fill(0);
+    const legacy = this.getPieceMatrix(id);
+    return Array.from(legacy, (v) => (v === 2 ? 1 : v === 1 ? 2 : 0));
+  }
+
+  public async streamUrl(id: string, fileIndex: number): Promise<EngineResult<{ url: string }>> {
+    const t = this.torrents.get(id);
+    if (!t) return fail('NOT_FOUND', 'Torrent not found.');
+    return { ok: true, url: `http://127.0.0.1:8080/stream/${id}/${fileIndex}` };
+  }
+
+  public async version(): Promise<{ engine: string; version: string }> {
+    return { engine: 'simulator', version: 'dev' };
+  }
+
+  public async pickDownloadFolder(): Promise<PickFolderResult> {
+    return { uri: 'content://simulator/tree/Downloads', displayName: 'Downloads (simulated)', mode: 'staging' };
+  }
+
+  public async getStorageStatus(): Promise<StorageStatus> {
+    return { path: this.getDefaultStoragePath(), fallback: false, safLost: false };
+  }
+
+  public async openFile(id: string, _fileIndex: number): Promise<EngineResult> {
+    return this.torrents.has(id) ? ok() : fail('NOT_FOUND', 'Torrent not found.');
+  }
+
+  public async shareFile(id: string, fileIndex: number): Promise<EngineResult> {
+    return this.openFile(id, fileIndex);
+  }
+
+  public async openFolder(id: string): Promise<EngineResult> {
+    return this.openFile(id, 0);
+  }
+
+  public async getPermissionStatus(): Promise<NativePermissionStatus> {
+    return { notifications: 'granted', batteryUnrestricted: true, legacyStorage: 'n/a' };
+  }
+
+  public async requestNotifications(): Promise<EngineResult> {
+    return ok();
+  }
+
+  public async openBatterySettings(): Promise<void> {}
+
+  public async requestLegacyStorage(): Promise<EngineResult> {
+    return ok();
+  }
+
+  public async setGovernance(g: GovernanceConfig): Promise<EngineResult> {
+    const net = this.settings.network;
+    const pwr = this.settings.power;
+    net.wifiOnly = g.wifiOnly;
+    net.ssidWhitelistEnabled = g.ssidWhitelist.length > 0;
+    net.allowedSsids = [...g.ssidWhitelist];
+    pwr.downloadOnlyWhileCharging = g.chargingOnly;
+    pwr.batteryCutoffThreshold = g.batteryCutoffPct as typeof pwr.batteryCutoffThreshold;
+    pwr.autoExitOnComplete = g.autoExitOnComplete;
+    this.recalculateGovernance();
+    this.broadcast();
+    return ok();
+  }
+
+  public onTelemetry(listener: (event: TelemetryEvent) => void): Unsubscribe {
+    this.snapshotListeners.add(listener);
+    if (!this.timer) this.startTelemetryLoop();
+    listener({ torrents: this.snapshots() });
+    return () => {
+      this.snapshotListeners.delete(listener);
+      if (this.snapshotListeners.size === 0 && this.timer) {
+        clearInterval(this.timer);
+        this.timer = null;
+      }
+    };
+  }
+
+  public onTorrentCompleted(listener: (event: TorrentCompletedEvent) => void): Unsubscribe {
+    this.completedListeners.add(listener);
+    return () => {
+      this.completedListeners.delete(listener);
+    };
+  }
+
+  public onNotificationAction(listener: (event: NotificationActionEvent) => void): Unsubscribe {
+    this.notificationListeners.add(listener);
+    return () => {
+      this.notificationListeners.delete(listener);
+    };
+  }
+
+  public onStorageStatus(listener: (event: StorageStatus) => void): Unsubscribe {
+    this.storageListeners.add(listener);
+    return () => {
+      this.storageListeners.delete(listener);
+    };
   }
 
   /**
@@ -467,6 +800,32 @@ export class MaglevMockEngine {
         shouldPausePower = true;
       }
     }
+
+    // 2b. Governance pause tags: never override a user pause; resume only what governance paused.
+    const govReason: PausedBy | null = shouldClampNetwork
+      ? 'wifi_only'
+      : shouldPausePower
+        ? pwr.downloadOnlyWhileCharging && !pwr.isCharging
+          ? 'charging_only'
+          : 'battery'
+        : null;
+    this.torrents.forEach((t) => {
+      const m = this.metaOf(t.id);
+      if (t.state === 'ERROR') return;
+      if (govReason) {
+        if (t.state !== 'PAUSED') {
+          t.state = 'PAUSED';
+          m.pausedBy = govReason;
+          t.downloadSpeedBytes = 0;
+          t.uploadSpeedBytes = 0;
+        } else if (GOVERNANCE_TAGS.has(m.pausedBy)) {
+          m.pausedBy = govReason;
+        }
+      } else if (t.state === 'PAUSED' && GOVERNANCE_TAGS.has(m.pausedBy)) {
+        m.pausedBy = null;
+        t.state = t.progressPercent >= 100 ? 'SEEDING' : 'DOWNLOADING';
+      }
+    });
 
     // 3. Count active transfers and manage WakeLock & Rate Limit Clamping
     const effectiveDown = this.getEffectiveDownloadLimit();
@@ -551,14 +910,19 @@ export class MaglevMockEngine {
 
   private startTelemetryLoop(): void {
     if (this.timer) clearInterval(this.timer);
-    // Strict SLA: 500ms cadence
+    // Contract: telemetry once per second
     this.timer = setInterval(() => {
+      this.stepSimulation(); // each step advances 0.5 s of simulated transfer
       this.stepSimulation();
       this.broadcast();
-    }, 500);
+    }, 1000);
+    this.timer?.unref?.();
   }
 
   public stepSimulation(): void {
+    this.torrents.forEach((t) => {
+      if (t.state === 'CHECKING') t.state = this.metaOf(t.id).priorState ?? 'PAUSED';
+    });
     const net = this.settings.network;
     const pwr = this.settings.power;
     const bw = this.settings.bandwidth;
@@ -623,7 +987,7 @@ export class MaglevMockEngine {
       }
 
       // Update piece matrix
-      const matrix = this.getPieceBitfield(t.id);
+      const matrix = this.getPieceMatrix(t.id);
       const verifiedCount = Math.floor((t.progressPercent / 100) * 256);
       t.piecesVerified = verifiedCount;
       for (let i = 0; i < 256; i++) {
@@ -644,6 +1008,7 @@ export class MaglevMockEngine {
         t.etaSeconds = 0;
         t.progressPercent = 100.0;
         t.seedDurationSeconds = 0;
+        this.completedListeners.forEach((l) => l({ id: t.id, name: t.name }));
 
         // Auto-Move Completed Downloads (Task 2.11)
         if (this.settings.storage.autoMoveCompleted && this.settings.storage.autoMoveDestinationPath) {
@@ -679,6 +1044,7 @@ export class MaglevMockEngine {
 
       if (stopSeeding) {
         t.state = 'PAUSED';
+        this.metaOf(t.id).pausedBy = 'seed_limit';
         t.uploadSpeedBytes = 0;
         t.downloadSpeedBytes = 0;
       }
@@ -687,6 +1053,16 @@ export class MaglevMockEngine {
 
   private broadcast(): void {
     const payload = this.getAggregatedTelemetry();
+    if (this.snapshotListeners.size > 0) {
+      const event: TelemetryEvent = { torrents: this.snapshots() };
+      this.snapshotListeners.forEach((l) => {
+        try {
+          l(event);
+        } catch {
+          // ignore listener error
+        }
+      });
+    }
     this.listeners.forEach((listener) => {
       try {
         listener(payload);
@@ -696,18 +1072,13 @@ export class MaglevMockEngine {
     });
   }
 
-  private extractHashOrGenerate(magnet: string): string {
-    const match = magnet.match(/xt=urn:btih:([a-zA-Z0-9]+)/i);
-    return match ? match[1].toLowerCase() : `mg_${Date.now().toString(16)}`;
-  }
-
-  private extractName(magnet: string): string | null {
-    const match = magnet.match(/dn=([^&]+)/);
-    return match ? decodeURIComponent(match[1].replace(/\+/g, ' ')) : null;
-  }
-
   private seedInitialMockData(): void {
-    const id1 = 'card-ubuntu';
+    const seededAt = Math.floor(Date.now() / 1000);
+    this.meta.set(pseudoHash('card-ubuntu'), { pausedBy: null, addedAt: seededAt - 3 });
+    this.meta.set(pseudoHash('card-blender'), { pausedBy: null, addedAt: seededAt - 2 });
+    this.meta.set(pseudoHash('card-arch'), { pausedBy: 'user', addedAt: seededAt - 1 });
+
+    const id1 = pseudoHash('card-ubuntu');
     const name1 = 'Ubuntu-26.04-Desktop.iso';
     const total1 = 4_509_715_660; // 4.2 GB
     const downloaded1 = 3_328_599_654; // 74.2%
@@ -745,7 +1116,7 @@ export class MaglevMockEngine {
       trackers: [{ url: 'udp://tracker.ubuntu.com:6969/announce', status: 'Working', seeds: 48, peers: 92 }],
     });
 
-    const id2 = 'card-blender';
+    const id2 = pseudoHash('card-blender');
     const name2 = 'Blender-5.2-Linux.tar.xz';
     const total2 = 1_932_735_283; // 1.8 GB
     const matrix2 = new Uint8Array(256);
@@ -777,7 +1148,7 @@ export class MaglevMockEngine {
       trackers: [{ url: 'udp://tracker.blender.org:6969/announce', status: 'Working', seeds: 35, peers: 28 }],
     });
 
-    const id3 = 'card-arch';
+    const id3 = pseudoHash('card-arch');
     const name3 = 'archlinux-2025.02.01-x86_64.iso';
     const total3 = 956_301_312; // 912 MB
     const downloaded3 = 432_013_312; // 412 MB (45.2%)

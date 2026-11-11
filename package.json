@@ -7,10 +7,9 @@
     "android": "expo start --android",
     "ios": "expo start --ios",
     "web": "expo start --web",
-    "test": "node scripts/test-e2e.js",
-    "test:playbook": "node scripts/test-verification-playbook.js",
-    "test:all": "node scripts/test-e2e.js && node scripts/test-p2-contracts.js && node scripts/test-verification-playbook.js",
-    "test:contracts": "node scripts/test-p3-reality-contracts.js"
+    "test": "node scripts/test-abi-splits.js && node scripts/test-p3-reality-contracts.js",
+    "test:contracts": "node scripts/test-p3-reality-contracts.js",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@expo-google-fonts/inter": "^0.4.2",
@@ -28,6 +27,7 @@
     "expo-haptics": "^58.0.7",
     "expo-linking": "~58.0.15",
     "expo-router": "~58.0.29",
+    "expo-sqlite": "~58.0.15",
     "expo-status-bar": "~58.0.4",
     "maglev-engine": "file:./modules/maglev-engine",
     "react": "19.3.0",

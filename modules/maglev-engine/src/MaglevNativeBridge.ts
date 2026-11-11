@@ -1,317 +1,403 @@
-import { EventEmitter, NativeModulesProxy, requireOptionalNativeModule } from 'expo-modules-core';
-import { AggregatedTelemetry, PieceMatrix, TorrentDetailData, TrackerInfo } from './MaglevEngine.types.ts';
+import { Platform, requireOptionalNativeModule } from 'expo-modules-core';
+import type {
+  AddTorrentOptions,
+  Detail,
+  EngineErrorCode,
+  EngineResult,
+  EngineStatus,
+  GovernanceConfig,
+  MaglevEngineApi,
+  Metadata,
+  NativeConfig,
+  NativePermissionStatus,
+  NotificationActionEvent,
+  PickFolderResult,
+  Snapshot,
+  StorageStatus,
+  TelemetryEvent,
+  TorrentCompletedEvent,
+  Unsubscribe,
+} from './MaglevEngine.types.ts';
 import type { MaglevSettings } from './MaglevSettings.types.ts';
 import { mockEngine } from './MaglevMockEngine.ts';
+import { ipFilter } from './MaglevIpFilter.ts';
+import { settingsStore } from './MaglevSettingsStore.ts';
+import { camelizeKeys, snakeizeKeys } from './snapshotMapping.ts';
+import { restartReasons, toGovernance, toNativeConfig } from './toNativeConfig.ts';
 
-// Safely probe for native module
+/**
+ * Thin typed wrapper over the Expo native module `MaglevEngine` (docs/NATIVE_CONTRACT.md section 6).
+ *
+ * Engine selection:
+ * - Android with the native module present: native engine.
+ * - Module missing or init returns ENGINE_UNAVAILABLE: simulator in `__DEV__` and on web (with a warning);
+ *   in a release build there is NO fallback and `engineStatus` becomes `{ kind: 'unavailable' }`.
+ */
+
+const SIMULATOR_ALLOWED = __DEV__ || Platform.OS === 'web';
+
+/** Returns the simulator only where allowed. Never reachable in a release build on a device. */
+function simulatorIfAllowed(): MaglevEngineApi | null {
+  if (__DEV__ || Platform.OS === 'web') {
+    return mockEngine;
+  }
+  return null;
+}
+
 let NativeModule: any = null;
 try {
-  NativeModule = requireOptionalNativeModule('MaglevEngine');
-} catch (e) {
+  NativeModule = Platform.OS === 'android' ? requireOptionalNativeModule('MaglevEngine') : null;
+} catch {
   NativeModule = null;
 }
 
-const isNativeActive = Boolean(NativeModule && NativeModule.isNativeAvailable && NativeModule.isNativeAvailable());
+const unavailable = (message: string, code: EngineErrorCode = 'ENGINE_UNAVAILABLE'): EngineResult<any> => ({
+  ok: false,
+  code,
+  message,
+});
 
-const eventEmitter = NativeModule ? new EventEmitter(NativeModule) : null;
+type StateListener = () => void;
 
-export class MaglevEngineBridge {
-  private isNative: boolean = isNativeActive;
-  private _lastServiceUpdateMs: number = 0;
-  private latestTelemetry: AggregatedTelemetry = {
-    totalDownloadSpeedBytes: 0,
-    totalUploadSpeedBytes: 0,
-    activeDownloads: 0,
-    activeUploads: 0,
-    torrents: [],
-  };
+export class MaglevEngineBridge implements MaglevEngineApi {
+  private impl: MaglevEngineApi | null = null;
+  private usingNative = false;
+  private status: EngineStatus = { kind: 'unavailable', message: 'Engine not started.' };
+  private started = false;
+  private startPromise: Promise<EngineStatus> | null = null;
+  private lastConfig: NativeConfig | null = null;
+  private restartNeeded = false;
+  private stateListeners = new Set<StateListener>();
 
-  constructor() {
-    if (this.isNative && NativeModule) {
-      NativeModule.initEngine(6881);
-    }
+  private telemetryListeners = new Set<(e: TelemetryEvent) => void>();
+  private completedListeners = new Set<(e: TorrentCompletedEvent) => void>();
+  private actionListeners = new Set<(e: NotificationActionEvent) => void>();
+  private storageListeners = new Set<(e: StorageStatus) => void>();
+  private detach: Unsubscribe[] = [];
+
+  // ---- state surface for the UI ------------------------------------------------
+
+  public get engineStatus(): EngineStatus {
+    return this.status;
   }
 
+  /** True when a changed setting (port, dht, upnp, proxy) only applies after an app restart. */
+  public get restartRequired(): boolean {
+    return this.restartNeeded;
+  }
+
+  /** True when the real native engine is serving calls. False for the simulator or when unavailable. */
   public isNativeMode(): boolean {
-    return this.isNative;
+    return this.usingNative;
   }
 
-  public getDefaultStoragePath(): string {
-    if (this.isNative && NativeModule?.getDefaultStoragePath) {
-      return NativeModule.getDefaultStoragePath();
-    }
-    return mockEngine.getDefaultStoragePath();
+  public subscribeState(listener: StateListener): Unsubscribe {
+    this.stateListeners.add(listener);
+    return () => {
+      this.stateListeners.delete(listener);
+    };
   }
 
-  public subscribeTelemetry(listener: (data: AggregatedTelemetry) => void): () => void {
-    if (this.isNative && eventEmitter) {
-      const subscription = (eventEmitter as any).addListener('onTelemetryUpdate', (event: { payload: string }) => {
-        try {
-          const parsed: AggregatedTelemetry = JSON.parse(event.payload);
-          this.latestTelemetry = parsed;
-          listener(parsed);
-          // Sync foreground service notification
-          if (NativeModule?.updateServiceTelemetry) {
-            NativeModule.updateServiceTelemetry(
-              parsed.activeDownloads,
-              parsed.activeUploads,
-              parsed.totalDownloadSpeedBytes,
-              parsed.totalUploadSpeedBytes
-            );
-          }
-        } catch (err) {
-          // Parse error
+  private setState(patch: { status?: EngineStatus; restartNeeded?: boolean }): void {
+    if (patch.status) this.status = patch.status;
+    if (patch.restartNeeded !== undefined) this.restartNeeded = patch.restartNeeded;
+    this.stateListeners.forEach((l) => l());
+  }
+
+  // ---- lifecycle ---------------------------------------------------------------
+
+  /**
+   * Starts the engine with the persisted settings and pushes governance and limits.
+   * Idempotent: later calls return the first outcome.
+   */
+  public start(settings: MaglevSettings): Promise<EngineStatus> {
+    if (!this.startPromise) {
+      this.startPromise = (async () => {
+        const config = toNativeConfig(settings);
+        const res = await this.init(config);
+        if (res.ok) {
+          await this.pushGovernanceAndLimits(settings, config);
         }
-      });
-      const pollTimer = setInterval(() => {
-        try {
-          if (NativeModule?.getTelemetry) {
-            const raw = NativeModule.getTelemetry();
-            if (raw && typeof raw === 'string' && raw.length > 5) {
-              const parsed: AggregatedTelemetry = JSON.parse(raw);
-              this.latestTelemetry = parsed;
-              listener(parsed);
-            }
-          }
-        } catch {}
-      }, 500);
-
-      return () => {
-        subscription.remove();
-        clearInterval(pollTimer);
-      };
+        return this.status;
+      })();
     }
-
-    return mockEngine.subscribe((data) => {
-      this.latestTelemetry = data;
-      listener(data);
-    });
+    return this.startPromise;
   }
 
-  public async startTorrent(
-    magnetUri: string,
-    savePathOverride?: string,
-    sequential: boolean = false,
-    selectedFileIndices?: number[]
-  ): Promise<string> {
-    if (this.isNative && NativeModule) {
-      const id = await NativeModule.startTorrent(magnetUri, savePathOverride || null, sequential);
-      if (selectedFileIndices && selectedFileIndices.length > 0) {
-        const maxIndex = Math.max(...selectedFileIndices, 2);
-        for (let i = 0; i <= maxIndex; i++) {
-          const priority = selectedFileIndices.includes(i) ? 1 : 0;
-          await NativeModule.setFilePriority(id, i, priority);
-        }
-      }
-      if (!this.latestTelemetry.torrents.some((t) => t.id === id)) {
-        const dnMatch = magnetUri.match(/dn=([^&]+)/);
-        const name = dnMatch && dnMatch[1] ? decodeURIComponent(dnMatch[1].replace(/\+/g, ' ')) : 'Torrent Transfer';
-        const initialItem = {
-          id,
-          name,
-          state: 'DOWNLOADING' as const,
-          downloadSpeedBytes: 0,
-          uploadSpeedBytes: 850_000,
-          progressPercent: 0,
-          downloadedBytes: 0,
-          uploadedBytes: 0,
-          totalSizeBytes: 1024 * 1024 * 500,
-          etaSeconds: 40,
-          peersConnected: 24,
-          peersTotal: 40,
-          seedsConnected: 12,
-          ratio: 0,
-          sequential,
-          seedDurationSeconds: 0,
-        };
-        this.latestTelemetry = {
-          ...this.latestTelemetry,
-          activeDownloads: this.latestTelemetry.activeDownloads + 1,
-          torrents: [initialItem, ...this.latestTelemetry.torrents],
-        };
-      }
-      return id;
-    }
-    return mockEngine.startTorrent(magnetUri, savePathOverride, sequential, selectedFileIndices);
-  }
-
-  public async pauseTorrent(id: string): Promise<boolean> {
-    if (this.isNative && NativeModule) {
-      return await NativeModule.pauseTorrent(id);
-    }
-    return mockEngine.pauseTorrent(id);
-  }
-
-  public async resumeTorrent(id: string): Promise<boolean> {
-    if (this.isNative && NativeModule) {
-      return await NativeModule.resumeTorrent(id);
-    }
-    return mockEngine.resumeTorrent(id);
-  }
-
-  public async pauseAll(): Promise<void> {
-    if (this.isNative) {
-      for (const t of this.latestTelemetry.torrents) {
-        if (t.state === 'DOWNLOADING' || t.state === 'SEEDING') {
-          await this.pauseTorrent(t.id);
-        }
-      }
-    } else {
-      mockEngine.pauseAll();
-    }
-  }
-
-  public async resumeAll(): Promise<void> {
-    if (this.isNative) {
-      for (const t of this.latestTelemetry.torrents) {
-        if (t.state === 'PAUSED' || t.state === 'QUEUED') {
-          await this.resumeTorrent(t.id);
-        }
-      }
-    } else {
-      mockEngine.resumeAll();
-    }
-  }
-
-  public async deleteTorrent(id: string, deleteFiles: boolean = false): Promise<boolean> {
-    if (this.isNative && NativeModule) {
-      return await NativeModule.deleteTorrent(id, deleteFiles);
-    }
-    return mockEngine.deleteTorrent(id, deleteFiles);
-  }
-
-  public moveTorrentUp(id: string): boolean {
-    return mockEngine.moveTorrentUp(id);
-  }
-
-  public moveTorrentDown(id: string): boolean {
-    return mockEngine.moveTorrentDown(id);
-  }
-
-  public async setFilePriority(id: string, fileIndex: number, priority: 0 | 1 | 2): Promise<boolean> {
-    if (this.isNative && NativeModule) {
-      return await NativeModule.setFilePriority(id, fileIndex, priority);
-    }
-    return mockEngine.setFilePriority(id, fileIndex, priority);
-  }
-
-  public async getPieceBitfield(id: string): Promise<Uint8Array> {
-    if (this.isNative && NativeModule) {
-      const base64Str: string = await NativeModule.getPieceBitfield(id);
-      if (!base64Str) return new Uint8Array(256);
-      return decodeBase64ToUint8Array(base64Str);
-    }
-    return mockEngine.getPieceBitfield(id);
-  }
-
-  public async getTrackers(id: string): Promise<TrackerInfo[]> {
-    if (this.isNative && NativeModule) {
-      const jsonStr = await NativeModule.getTrackers(id);
-      try {
-        return JSON.parse(jsonStr);
-      } catch {
-        return [];
-      }
-    }
-    const detail = mockEngine.getTorrentDetail(id);
-    return detail ? detail.trackers : [];
-  }
-
-  public async addTracker(id: string, trackerUrl: string): Promise<boolean> {
-    if (this.isNative && NativeModule) {
-      return await NativeModule.addTracker(id, trackerUrl);
-    }
-    return mockEngine.addTracker(id, trackerUrl);
-  }
-
-  public async startHttpStream(id: string, fileIndex: number): Promise<string> {
-    if (this.isNative && NativeModule) {
-      return await NativeModule.startHttpStream(id, fileIndex);
-    }
-    return mockEngine.startHttpStream(id, fileIndex);
-  }
-
-  public getTorrentDetail(id: string): TorrentDetailData | null {
-    if (this.isNative) {
-      const summary = this.latestTelemetry.torrents.find((t) => t.id === id);
-      if (summary) {
-        return {
-          ...summary,
-          savePath: this.getDefaultStoragePath(),
-          piecesTotal: 256,
-          piecesVerified: Math.floor((summary.progressPercent / 100) * 256),
-          files: [
-            {
-              index: 0,
-              name: summary.name,
-              path: summary.name,
-              length: summary.totalSizeBytes,
-              progress: summary.progressPercent,
-              priority: 1,
-            },
-          ],
-          trackers: [],
-        };
-      }
-    }
-    return mockEngine.getTorrentDetail(id);
-  }
-
+  /** Re-applies settings after a change: config, governance and global limits. */
   public async applySettings(settings: MaglevSettings): Promise<void> {
-    if (this.isNative && NativeModule?.applySettings) {
-      await NativeModule.applySettings(JSON.stringify(settings));
+    if (!this.started || !this.impl) return;
+    const config = toNativeConfig(settings);
+    const prev = this.lastConfig;
+    const res = await this.applyConfig(config);
+    if (res.ok && (res.restartRequired || (prev && restartReasons(prev, config).length > 0))) {
+      this.setState({ restartNeeded: true });
     }
-    mockEngine.applySettings(settings);
+    await this.pushGovernanceAndLimits(settings, config);
   }
 
-  public async updateNetworkState(state: {
-    networkType: 'WIFI' | 'CELLULAR' | 'NONE';
-    ssid?: string;
-  }): Promise<void> {
-    if (this.isNative && NativeModule?.updateNetworkState) {
-      await NativeModule.updateNetworkState(state.networkType, state.ssid || '');
-    }
-    mockEngine.updateNetworkState(state);
+  private async pushGovernanceAndLimits(settings: MaglevSettings, config: NativeConfig): Promise<void> {
+    await this.setGovernance(toGovernance(settings));
+    await this.setGlobalLimits(config.download_limit_bps, config.upload_limit_bps);
   }
 
-  public async updatePowerState(state: {
-    isCharging: boolean;
-    batteryPercentage: number;
-  }): Promise<void> {
-    if (this.isNative && NativeModule?.updatePowerState) {
-      await NativeModule.updatePowerState(state.isCharging, state.batteryPercentage);
+  public async init(config: NativeConfig): Promise<EngineResult> {
+    this.lastConfig = config;
+    if (NativeModule) {
+      const res = await this.callNative<EngineResult>('init', config);
+      if (res.ok) {
+        this.bind(null, true);
+        return this.markReady('Native engine running.', false);
+      }
+      if (res.code !== 'ENGINE_UNAVAILABLE') {
+        this.setState({ status: { kind: 'unavailable', message: res.message } });
+        return res;
+      }
+      return this.fallbackOrFail(res.message, config);
     }
-    mockEngine.updatePowerState(state);
+    return this.fallbackOrFail('The native engine module is not installed in this build.', config);
   }
 
+  private async fallbackOrFail(reason: string, config: NativeConfig): Promise<EngineResult> {
+    const sim = simulatorIfAllowed();
+    if (sim) {
+      console.warn(`[Maglev] ${reason} Falling back to the simulator engine.`);
+      this.bind(sim, false);
+      await sim.init(config);
+      return this.markReady('Simulator engine (no real transfers).', true);
+    }
+    this.impl = null;
+    this.setState({ status: { kind: 'unavailable', message: reason } });
+    return unavailable(reason);
+  }
+
+  private markReady(message: string, simulated: boolean): EngineResult {
+    this.started = true;
+    this.setState({ status: { kind: 'ready', message, simulated } });
+    return { ok: true };
+  }
+
+  /** Selects the implementation and (re)wires events once. */
+  private bind(sim: MaglevEngineApi | null, native: boolean): void {
+    this.detach.forEach((d) => d());
+    this.detach = [];
+    this.usingNative = native;
+    if (native) {
+      this.impl = null; // native calls go through callNative
+      const sub = (name: string, fan: (payload: any) => void) => {
+        const s = NativeModule.addListener(name, (payload: unknown) => fan(camelizeKeys(payload)));
+        this.detach.push(() => s.remove());
+      };
+      sub('onTelemetry', (p) => {
+        const torrents: Snapshot[] = Array.isArray(p) ? p : (p?.torrents ?? []);
+        this.telemetryListeners.forEach((l) => l({ torrents }));
+      });
+      sub('onTorrentCompleted', (p) => this.completedListeners.forEach((l) => l(p)));
+      sub('onNotificationAction', (p) => this.actionListeners.forEach((l) => l(p)));
+      sub('onStorageStatus', (p) => this.storageListeners.forEach((l) => l(p)));
+    } else {
+      if (!sim) return;
+      this.impl = sim;
+      this.detach.push(
+        sim.onTelemetry((e) => this.telemetryListeners.forEach((l) => l(e))),
+        sim.onTorrentCompleted((e) => this.completedListeners.forEach((l) => l(e))),
+        sim.onNotificationAction((e) => this.actionListeners.forEach((l) => l(e))),
+        sim.onStorageStatus((e) => this.storageListeners.forEach((l) => l(e)))
+      );
+    }
+  }
+
+  // ---- dispatch ----------------------------------------------------------------
+
+  private async callNative<T>(method: string, ...args: unknown[]): Promise<T> {
+    try {
+      const fn = NativeModule?.[method];
+      if (typeof fn !== 'function') {
+        return unavailable(`Native method "${method}" is missing.`) as T;
+      }
+      const raw = await fn.apply(NativeModule, args);
+      return camelizeKeys<T>(raw);
+    } catch (e: any) {
+      return { ok: false, code: 'INTERNAL', message: String(e?.message ?? e) } as T;
+    }
+  }
+
+  /** Routes to native or simulator. Before a successful start, returns a typed failure. */
+  private async route<T>(method: keyof MaglevEngineApi, ...args: unknown[]): Promise<T> {
+    if (this.usingNative) return this.callNative<T>(method, ...args);
+    if (this.impl) {
+      try {
+        return await (this.impl[method] as (...a: unknown[]) => Promise<T>)(...args);
+      } catch (e: any) {
+        return { ok: false, code: 'INTERNAL', message: String(e?.message ?? e) } as T;
+      }
+    }
+    return (this.startPromise === null
+      ? unavailable('Engine not started.', 'NOT_INITIALIZED')
+      : unavailable(this.status.message)) as T;
+  }
+
+  // ---- MaglevEngineApi ---------------------------------------------------------
+
+  public shutdown(): Promise<EngineResult> {
+    return this.route('shutdown');
+  }
+  public resolveMetadata(source: string, timeoutMs: number): Promise<EngineResult<Metadata>> {
+    return this.route('resolveMetadata', source, timeoutMs);
+  }
+  public addTorrent(source: string, options: AddTorrentOptions = {}) {
+    // The module forwards options to Rust as JSON, so they keep the contract's snake_case keys.
+    const wire = this.usingNative ? snakeizeKeys(options) : options;
+    return this.route<EngineResult<{ id: string; infoHash: string }>>('addTorrent', source, wire);
+  }
+  public listTorrents() {
+    return this.route<EngineResult<{ torrents: Snapshot[] }>>('listTorrents');
+  }
+  public getDetail(id: string): Promise<EngineResult<Detail>> {
+    return this.route('getDetail', id);
+  }
+  public pause(id: string): Promise<EngineResult> {
+    return this.route('pause', id);
+  }
+  public resume(id: string): Promise<EngineResult> {
+    return this.route('resume', id);
+  }
+  public recheck(id: string): Promise<EngineResult> {
+    return this.route('recheck', id);
+  }
+  public pauseAll(): Promise<EngineResult> {
+    return this.route('pauseAll');
+  }
+  public resumeAll(): Promise<EngineResult> {
+    return this.route('resumeAll');
+  }
+  public delete(id: string, deleteFiles: boolean): Promise<EngineResult> {
+    return this.route('delete', id, deleteFiles);
+  }
+  public setIncludedFiles(id: string, indices: number[]): Promise<EngineResult> {
+    return this.route('setIncludedFiles', id, indices);
+  }
+  public setGlobalLimits(down: number, up: number): Promise<EngineResult> {
+    return this.route('setGlobalLimits', down, up);
+  }
+  public async applyConfig(config: NativeConfig): Promise<EngineResult<{ restartRequired: boolean }>> {
+    this.lastConfig = config;
+    return this.route('applyConfig', config);
+  }
+  public async getEffectiveConfig(): Promise<EngineResult<NativeConfig>> {
+    const res = await this.route<EngineResult<NativeConfig>>('getEffectiveConfig');
+    // The contract defines NativeConfig in snake_case; accept either casing from the module.
+    return res.ok ? (snakeizeKeys<EngineResult<NativeConfig>>(res)) : res;
+  }
+  public async getPieceBitfield(id: string): Promise<number[]> {
+    const res = await this.route<number[] | EngineResult>('getPieceBitfield', id);
+    return Array.isArray(res) ? res : [];
+  }
+  public streamUrl(id: string, fileIndex: number): Promise<EngineResult<{ url: string }>> {
+    return this.route('streamUrl', id, fileIndex);
+  }
+  public async version(): Promise<{ engine: string; version: string }> {
+    const res = await this.route<{ engine?: string; version?: string }>('version');
+    return { engine: res?.engine ?? 'unavailable', version: res?.version ?? '' };
+  }
+  public async pickDownloadFolder(): Promise<PickFolderResult> {
+    const res = await this.route<any>('pickDownloadFolder');
+    if (res && res.ok === false) return { cancelled: true };
+    return res;
+  }
+  public async getStorageStatus(): Promise<StorageStatus> {
+    const res = await this.route<any>('getStorageStatus');
+    return res && res.ok !== false ? res : { path: '', fallback: false, safLost: false };
+  }
+  public openFile(id: string, fileIndex: number): Promise<EngineResult> {
+    return this.route('openFile', id, fileIndex);
+  }
+  public shareFile(id: string, fileIndex: number): Promise<EngineResult> {
+    return this.route('shareFile', id, fileIndex);
+  }
+  public openFolder(id: string): Promise<EngineResult> {
+    return this.route('openFolder', id);
+  }
+  public async getPermissionStatus(): Promise<NativePermissionStatus> {
+    if (this.usingNative) {
+      const res = await this.callNative<any>('getPermissionStatus');
+      if (res && res.ok !== false) return res;
+    }
+    return { notifications: 'granted', batteryUnrestricted: true, legacyStorage: 'n/a' };
+  }
+  public requestNotifications(): Promise<EngineResult> {
+    return this.permissionCall('requestNotifications');
+  }
+  public async openBatterySettings(): Promise<void> {
+    if (this.usingNative) await this.callNative('openBatterySettings');
+  }
+  public requestLegacyStorage(): Promise<EngineResult> {
+    return this.permissionCall('requestLegacyStorage');
+  }
+  private async permissionCall(method: string): Promise<EngineResult> {
+    if (!this.usingNative) return { ok: true };
+    const res = await this.callNative<any>(method);
+    return res && res.ok === false ? res : { ok: true };
+  }
+  public setGovernance(config: GovernanceConfig): Promise<EngineResult> {
+    return this.route('setGovernance', config);
+  }
+
+  // ---- events (stable across engine selection) ---------------------------------
+
+  public onTelemetry(listener: (e: TelemetryEvent) => void): Unsubscribe {
+    this.telemetryListeners.add(listener);
+    return () => {
+      this.telemetryListeners.delete(listener);
+    };
+  }
+  public onTorrentCompleted(listener: (e: TorrentCompletedEvent) => void): Unsubscribe {
+    this.completedListeners.add(listener);
+    return () => {
+      this.completedListeners.delete(listener);
+    };
+  }
+  public onNotificationAction(listener: (e: NotificationActionEvent) => void): Unsubscribe {
+    this.actionListeners.add(listener);
+    return () => {
+      this.actionListeners.delete(listener);
+    };
+  }
+  public onStorageStatus(listener: (e: StorageStatus) => void): Unsubscribe {
+    this.storageListeners.add(listener);
+    return () => {
+      this.storageListeners.delete(listener);
+    };
+  }
+
+  /**
+   * Parses a PeerGuardian/eMule .dat for the rule count and, on device, writes it to app storage so the
+   * engine can load it through `NativeConfig.ip_filter_path` (applied on the next settings push).
+   */
   public async loadIpFilterDat(content: string): Promise<number> {
-    if (this.isNative && NativeModule?.loadIpFilter) {
-      return await NativeModule.loadIpFilter(content);
+    const count = ipFilter.parseDatContent(content);
+    let path = '';
+    if (this.usingNative && count > 0) {
+      try {
+        const { File, Paths } = require('expo-file-system');
+        const file = new File(Paths.document, 'maglev-ipfilter.dat');
+        file.create({ overwrite: true });
+        file.write(content);
+        path = String(file.uri).replace(/^file:\/\//, '');
+      } catch {
+        path = '';
+      }
     }
-    return mockEngine.loadIpFilterDat(content);
+    const net = settingsStore.getSettings().network;
+    settingsStore.updateSettings({
+      network: { ...net, ipFilterEnabled: count > 0, ipFilterRulesCount: count, ipFilterPath: path },
+    });
+    return count;
   }
 
-  public isSocketsClamped(): boolean {
-    return mockEngine.isSocketsClamped();
+  public get simulatorAllowed(): boolean {
+    return SIMULATOR_ALLOWED;
   }
-
-  public isWakeLockHeld(): boolean {
-    return mockEngine.isWakeLockHeld();
-  }
-}
-
-function decodeBase64ToUint8Array(base64: string): Uint8Array {
-  if (typeof atob === 'function') {
-    const binary = atob(base64);
-    const bytes = new Uint8Array(binary.length);
-    for (let i = 0; i < binary.length; i++) {
-      bytes[i] = binary.charCodeAt(i);
-    }
-    return bytes;
-  }
-  // Fallback for environments without atob
-  const buffer = Buffer.from(base64, 'base64');
-  return new Uint8Array(buffer.buffer, buffer.byteOffset, buffer.byteLength);
 }
 
 export const maglevEngine = new MaglevEngineBridge();

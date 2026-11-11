@@ -4,8 +4,10 @@
  * Provides:
  * 1. Zero-dependency fast Bencode parser (BEP 0003) with binary hash protection
  * 2. Magnet URI parser & parameter extractor (BEP 0009)
- * 3. Concurrent swarm metadata resolution via public torrent caches & DHT gateways
+ * 3. Swarm metadata resolution delegated to the engine (`resolveMetadata`)
  */
+
+import { base32ToHex } from 'maglev-engine/src/magnet.ts';
 
 export interface ParsedTorrentFile {
   id: number;
@@ -109,28 +111,6 @@ export function parseMagnetUri(uri: string): {
   }
 
   return { infoHash, name, exactLength, trackers };
-}
-
-/**
- * Converts Base32 RFC 4648 string to hex string.
- */
-function base32ToHex(base32: string): string {
-  const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
-  let bits = '';
-  const upper = base32.toUpperCase();
-  for (let i = 0; i < upper.length; i++) {
-    const val = alphabet.indexOf(upper.charAt(i));
-    if (val === -1) {
-      throw new Error(`Invalid Base32 character at index ${i}: ${upper.charAt(i)}`);
-    }
-    bits += val.toString(2).padStart(5, '0');
-  }
-  let hex = '';
-  for (let i = 0; i + 4 <= bits.length; i += 4) {
-    const chunk = bits.substring(i, i + 4);
-    hex += parseInt(chunk, 2).toString(16);
-  }
-  return hex.toLowerCase();
 }
 
 /**
@@ -347,75 +327,46 @@ export function parseTorrentData(bencodedData: Uint8Array, defaultHash?: string)
 }
 
 /**
- * Resolves metadata for a magnet URI.
- * Concurrently races public torrent caches with DHT fallback.
+ * Resolves metadata through the engine (`resolveMetadata`, librqbit `list_only`). The engine is the source of
+ * truth on device; the simulator answers the same call in dev and on web. No JS-side network lookups.
+ * If the swarm does not answer in time, returns the magnet's own fields with `isPendingSwarm: true`.
  */
-export async function resolveMagnetMetadata(magnetUri: string): Promise<ResolvedMetadata> {
+export async function resolveMagnetMetadata(magnetUri: string, timeoutMs: number = 30_000): Promise<ResolvedMetadata> {
   const { infoHash, name, exactLength, trackers } = parseMagnetUri(magnetUri);
-
-  if (!infoHash) {
-    return {
-      infoHash: '',
-      name: name || 'Unknown Magnet Link',
-      totalSize: exactLength || 0,
-      files: [],
-      trackers,
-      isPendingSwarm: true,
-    };
-  }
-
-  // Public torrent cache endpoints that index swarms by hex infoHash
-  const cacheUrls = [
-    `https://itorrents.org/torrent/${infoHash.toUpperCase()}.torrent`,
-    `https://cache.torrentstorage.encryp.ch/${infoHash.toUpperCase()}.torrent`,
-  ];
-
-  // Race cache mirrors in parallel for fastest response
-  const probeMirror = async (url: string): Promise<ResolvedMetadata> => {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 3000); // 3s parallel race
-    try {
-      const response = await fetch(url, {
-        signal: controller.signal,
-        headers: { 'User-Agent': 'Maglev/0.1.0' },
-      });
-      clearTimeout(timeoutId);
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      const arrayBuffer = await response.arrayBuffer();
-      if (arrayBuffer.byteLength < 100) throw new Error('Buffer too small');
-      const parsed = parseTorrentData(new Uint8Array(arrayBuffer), infoHash);
-      if (parsed.files.length === 0) throw new Error('No files in torrent');
-      return parsed;
-    } finally {
-      clearTimeout(timeoutId);
-    }
-  };
-
-  try {
-    const resolved = await Promise.any(cacheUrls.map(probeMirror));
-    return resolved;
-  } catch {
-    // Both cache mirrors missed or timed out - fall back to nominal magnet metadata
-  }
-
-  // Fallback: Use magnet URI parameters
-  const files: ParsedTorrentFile[] = [
-    {
-      id: 0,
-      name,
-      path: name,
-      size: exactLength || 1_073_741_824, // Use exactLength if present, else 1 GB nominal estimate
-      selected: true,
-      priority: 1,
-    },
-  ];
-
-  return {
+  const pending: ResolvedMetadata = {
     infoHash,
-    name,
-    totalSize: exactLength || 1_073_741_824,
-    files,
+    name: name || 'Unknown Magnet Link',
+    totalSize: exactLength || 0,
+    // Placeholder row so the picker has something to show until the swarm answers; size is unknown (0) without xl=.
+    files: [{ id: 0, name: name || 'Unknown Magnet Link', path: name || 'Unknown Magnet Link', size: exactLength || 0, selected: true, priority: 1 }],
     trackers,
     isPendingSwarm: true,
+  };
+  if (!infoHash) return pending;
+
+  let res;
+  try {
+    // Loaded lazily so the pure parsers above stay usable from Node scripts without the Expo runtime.
+    const { maglevEngine } = await import('maglev-engine');
+    res = await maglevEngine.resolveMetadata(magnetUri, timeoutMs);
+  } catch {
+    return pending;
+  }
+  if (res.ok === false) return pending;
+
+  return {
+    infoHash: res.infoHash,
+    name: res.name,
+    totalSize: res.totalBytes,
+    files: res.files.map((f) => ({
+      id: f.index,
+      name: f.path.split('/').pop() || f.path,
+      path: f.path,
+      size: f.length,
+      selected: true,
+      priority: 1 as const,
+    })),
+    trackers,
+    isPendingSwarm: false,
   };
 }

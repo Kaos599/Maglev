@@ -1,103 +1,47 @@
-import { Platform, PermissionsAndroid } from 'react-native';
+import { maglevEngine, type NativePermissionStatus } from 'maglev-engine';
 
-export interface PermissionStatus {
+/**
+ * Typed permission status built on the engine module's getPermissionStatus
+ * (docs/NATIVE_CONTRACT.md section 6, Permissions). Always check the specific field: this is an object, never a boolean.
+ */
+export interface PermissionStatus extends NativePermissionStatus {
+  /** POST_NOTIFICATIONS is granted (always true below Android 13 where the module reports "granted"). */
   hasNotificationPermission: boolean;
+  /** Legacy WRITE_EXTERNAL_STORAGE is granted or not needed on this Android version. */
   hasStoragePermission: boolean;
+  /** Notifications and storage are usable. Battery optimization is advisory and not included. */
   isPermissionGranted: boolean;
 }
 
-/**
- * Checks current permission status without prompting.
- */
-export async function checkMaglevPermissions(): Promise<PermissionStatus> {
-  if (Platform.OS !== 'android') {
-    return {
-      hasNotificationPermission: true,
-      hasStoragePermission: true,
-      isPermissionGranted: true,
-    };
-  }
-
-  let hasNotification = true;
-  let hasStorage = true;
-
-  try {
-    // Android 13+ (API 33+) requires POST_NOTIFICATIONS runtime permission
-    if (Platform.Version >= 33) {
-      hasNotification = await PermissionsAndroid.check(
-        PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS
-      );
-    }
-
-    // Android 10 (API 29) and below requires WRITE_EXTERNAL_STORAGE for custom paths
-    if (Platform.Version < 30) {
-      const writeStorage = await PermissionsAndroid.check(
-        PermissionsAndroid.PERMISSIONS.WRITE_EXTERNAL_STORAGE
-      );
-      hasStorage = writeStorage;
-    }
-  } catch {
-    // If check fails, default to permissive
-  }
-
+function toStatus(native: NativePermissionStatus): PermissionStatus {
+  const hasNotificationPermission = native.notifications === 'granted';
+  const hasStoragePermission = native.legacyStorage !== 'denied';
   return {
-    hasNotificationPermission: hasNotification,
-    hasStoragePermission: hasStorage,
-    isPermissionGranted: hasNotification && hasStorage,
+    ...native,
+    hasNotificationPermission,
+    hasStoragePermission,
+    isPermissionGranted: hasNotificationPermission && hasStoragePermission,
   };
 }
 
-/**
- * Proactively requests all necessary Android permissions for Maglev.
- */
+/** Reads current permission status without prompting. */
+export async function checkMaglevPermissions(): Promise<PermissionStatus> {
+  return toStatus(await maglevEngine.getPermissionStatus());
+}
+
+/** Prompts for whatever is missing (notifications, legacy storage) and returns the re-read status. */
 export async function requestMaglevPermissions(): Promise<PermissionStatus> {
-  if (Platform.OS !== 'android') {
-    return {
-      hasNotificationPermission: true,
-      hasStoragePermission: true,
-      isPermissionGranted: true,
-    };
+  const before = await maglevEngine.getPermissionStatus();
+  if (before.notifications !== 'granted') {
+    await maglevEngine.requestNotifications();
   }
-
-  let hasNotification = true;
-  let hasStorage = true;
-
-  try {
-    const permissionsToRequest: any[] = [];
-
-    if (Platform.Version >= 33) {
-      permissionsToRequest.push(PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS);
-    }
-
-    if (Platform.Version < 30) {
-      permissionsToRequest.push(
-        PermissionsAndroid.PERMISSIONS.WRITE_EXTERNAL_STORAGE,
-        PermissionsAndroid.PERMISSIONS.READ_EXTERNAL_STORAGE
-      );
-    }
-
-    if (permissionsToRequest.length > 0) {
-      const results = await PermissionsAndroid.requestMultiple(permissionsToRequest);
-
-      if (Platform.Version >= 33) {
-        hasNotification =
-          results[PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS] ===
-          PermissionsAndroid.RESULTS.GRANTED;
-      }
-
-      if (Platform.Version < 30) {
-        hasStorage =
-          results[PermissionsAndroid.PERMISSIONS.WRITE_EXTERNAL_STORAGE] ===
-          PermissionsAndroid.RESULTS.GRANTED;
-      }
-    }
-  } catch {
-    // Permission request handled gracefully
+  if (before.legacyStorage === 'denied') {
+    await maglevEngine.requestLegacyStorage();
   }
+  return toStatus(await maglevEngine.getPermissionStatus());
+}
 
-  return {
-    hasNotificationPermission: hasNotification,
-    hasStoragePermission: hasStorage,
-    isPermissionGranted: hasNotification && hasStorage,
-  };
+/** Opens the system battery optimization screen so downloads survive Doze. */
+export async function openBatterySettings(): Promise<void> {
+  await maglevEngine.openBatterySettings();
 }

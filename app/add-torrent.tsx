@@ -29,7 +29,7 @@ import { checkMaglevPermissions, requestMaglevPermissions } from '../utils/permi
 export default function AddTorrentSheet() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const searchParams = useLocalSearchParams<{ uri?: string; magnet?: string }>();
+  const searchParams = useLocalSearchParams<{ uri?: string; magnet?: string; source?: string }>();
   const { defaultStoragePath, startTorrent, setFilePriority } = useMaglevEngine();
 
   const [magnetInput, setMagnetInput] = useState('');
@@ -49,7 +49,7 @@ export default function AddTorrentSheet() {
   const [files, setFiles] = useState<ParsedTorrentFile[]>([]);
   const [isStarting, setIsStarting] = useState(false);
   const isSubmittingRef = useRef(false);
-  const resolveDebounceRef = useRef<NodeJS.Timeout | null>(null);
+  const resolveDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Initial Disk Free Space & Incoming Magnet Detection
   useEffect(() => {
@@ -66,7 +66,7 @@ export default function AddTorrentSheet() {
     })();
 
     // Handle incoming search or clipboard param
-    const incomingUri = searchParams.uri || searchParams.magnet;
+    const incomingUri = searchParams.source || searchParams.uri || searchParams.magnet;
     if (incomingUri && typeof incomingUri === 'string') {
       onMagnetChange(incomingUri);
     }
@@ -308,7 +308,7 @@ export default function AddTorrentSheet() {
       const permStatus = await checkMaglevPermissions();
       if (!permStatus.isPermissionGranted) {
         const granted = await requestMaglevPermissions();
-        if (!granted) {
+        if (!granted.isPermissionGranted) {
           Alert.alert(
             'Permissions Required',
             'Maglev requires storage and notification permissions to manage torrent transfers. Please enable them in device settings.'

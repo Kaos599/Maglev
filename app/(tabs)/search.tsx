@@ -132,7 +132,7 @@ export default function SearchScreen() {
   const [addedIds, setAddedIds] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [onlineResults, setOnlineResults] = useState<SwarmSearchResult[] | null>(null);
-  const debounceRef = useRef<NodeJS.Timeout | null>(null);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const fetchLiveSwarms = useCallback(async (searchQuery: string, category: string) => {
     if (!searchQuery.trim()) {
