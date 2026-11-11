@@ -145,6 +145,42 @@ pub fn include_set_changed(
     current_set != *new
 }
 
+/// Validates a "remove these files' data" request (`NATIVE_CONTRACT.md` section 14) and returns the
+/// set of file indices to remove.
+///
+/// `valid` holds the indices of the real (non-padding) files; `current` is `ManagedTorrent::only_files()`
+/// (`None` = every file). Errors, all `INVALID_SOURCE`: an empty list, an index that is not a file,
+/// or a request that would leave no included file. Repeated indices are merged.
+pub fn plan_removal(
+    indices: &[u32],
+    valid: &[usize],
+    current: Option<&[usize]>,
+) -> Result<HashSet<usize>, EngineError> {
+    if indices.is_empty() {
+        return Err(invalid("Pick at least one file to remove"));
+    }
+    let valid_set: HashSet<usize> = valid.iter().copied().collect();
+    let mut remove: HashSet<usize> = HashSet::with_capacity(indices.len());
+    for i in indices {
+        let idx = *i as usize;
+        if !valid_set.contains(&idx) {
+            return Err(invalid("One of those files isn't in the torrent"));
+        }
+        remove.insert(idx);
+    }
+    let left = match current {
+        None => valid_set.iter().filter(|i| !remove.contains(*i)).count(),
+        Some(c) => c
+            .iter()
+            .filter(|i| valid_set.contains(*i) && !remove.contains(*i))
+            .count(),
+    };
+    if left == 0 {
+        return Err(invalid("Keep at least one file in the torrent"));
+    }
+    Ok(remove)
+}
+
 // ---- sidecar ---------------------------------------------------------------------------------------
 
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
@@ -279,6 +315,33 @@ mod tests {
         let plan = plan_priorities(&entries, &[0, 2], 3).unwrap();
         assert_eq!(plan.included, HashSet::from([0, 2]));
         assert_eq!(plan.order, vec![2, 0, 1]);
+    }
+
+    #[test]
+    fn removal_checks_indices_and_keeps_one_included_file() {
+        let valid = [0usize, 2, 3];
+        // repeated indices merge
+        assert_eq!(plan_removal(&[2, 2], &valid, None).unwrap(), HashSet::from([2]));
+        // everything but one included file
+        assert_eq!(
+            plan_removal(&[0, 2], &valid, None).unwrap(),
+            HashSet::from([0, 2])
+        );
+        // skipped files do not count as "left"
+        let only: &[usize] = &[0, 2];
+        assert_eq!(plan_removal(&[0], &valid, Some(only)).unwrap(), HashSet::from([0]));
+        assert_eq!(
+            plan_removal(&[0, 2], &valid, Some(only)).unwrap_err().code,
+            ErrorCode::InvalidSource
+        );
+        assert_eq!(
+            plan_removal(&[0, 2, 3], &valid, None).unwrap_err().code,
+            ErrorCode::InvalidSource
+        );
+        // empty list, padding or unknown index
+        assert!(plan_removal(&[], &valid, None).is_err());
+        assert!(plan_removal(&[1], &valid, None).is_err());
+        assert!(plan_removal(&[9], &valid, None).is_err());
     }
 
     #[test]

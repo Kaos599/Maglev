@@ -5,7 +5,7 @@ import { useTheme } from '../../context/ThemeContext';
 import { ThemeColors, radius, spacing, type } from '../../constants/theme';
 import { formatBytes } from '../../constants/format';
 import { PixelIcon } from '../PixelIcon';
-import { Banner, RadioCard, Sheet } from '../ui';
+import { Banner, Button, RadioCard, Sheet } from '../ui';
 
 interface Props {
   visible: boolean;
@@ -20,13 +20,15 @@ interface Props {
   skipBytes?: number;
   /** Free space on the download volume in bytes, from getFreeSpace(). Omit when unknown. */
   freeBytes?: number;
+  /** Shows a danger "Remove file" row below the cards (single file only). The caller confirms. */
+  onRemove?: () => void;
 }
 
 /**
  * Option-card sheet for file priority (UI_SPEC S11.2). "Download first" reorders downloading; it
  * does not change bandwidth, so the copy never says "faster".
  */
-export function PrioritySheet({ visible, onClose, title, subtitle, current, onSelect, error, skipBytes, freeBytes }: Props) {
+export function PrioritySheet({ visible, onClose, title, subtitle, current, onSelect, error, skipBytes, freeBytes, onRemove }: Props) {
   const { colors } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const hasSize = typeof skipBytes === 'number' && Number.isFinite(skipBytes) && skipBytes > 0;
@@ -72,6 +74,11 @@ export function PrioritySheet({ visible, onClose, title, subtitle, current, onSe
           onPress={() => onSelect('skip')}
         />
       </View>
+      {onRemove ? (
+        <View style={styles.remove}>
+          <Button label="Remove file" icon="trash" variant="danger" fullWidth onPress={onRemove} />
+        </View>
+      ) : null}
       <Text style={styles.foot}>Changes apply at once. You can change it again any time.</Text>
     </Sheet>
   );
@@ -80,6 +87,7 @@ export function PrioritySheet({ visible, onClose, title, subtitle, current, onSe
 const makeStyles = (c: ThemeColors) =>
   StyleSheet.create({
     cards: { gap: spacing.sm },
+    remove: { marginTop: spacing.md },
     foot: { ...type.body, fontSize: type.size.sm, lineHeight: 18, color: c.textMuted, marginTop: spacing.md },
     chip: {
       flexDirection: 'row',

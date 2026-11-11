@@ -320,6 +320,9 @@ export class MaglevEngineBridge implements MaglevEngineApi {
   public setFilePriorities(id: string, priorities: FilePriorityEntry[]): Promise<EngineResult> {
     return this.route('setFilePriorities', id, priorities);
   }
+  public removeFiles(id: string, indices: number[]): Promise<EngineResult<{ freedBytes: number }>> {
+    return this.route('removeFiles', id, indices);
+  }
   public reannounce(id: string): Promise<EngineResult<{ retryAfterSecs?: number }>> {
     return this.route('reannounce', id);
   }

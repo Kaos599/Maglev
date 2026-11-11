@@ -376,6 +376,50 @@ impl ChunkTracker {
         Ok(self.hns)
     }
 
+    /// MAGLEV PATCH (hunk 24, see MAGLEV_PATCH.md): the data of `removed` files is being deleted.
+    ///
+    /// 1. Narrows the selection to `new_only_files` (same as `update_only_files`).
+    /// 2. Every piece that overlaps a removed file loses its have bit, wholly-inside and boundary
+    ///    pieces alike, because a boundary piece can no longer be verified without the deleted bytes.
+    ///    Its chunk bits are cleared so a fresh download starts from an empty piece. A cleared piece is
+    ///    queued when a kept file still selects it, so the kept file's bytes get rewritten unchanged.
+    /// 3. Per-file bytes and the have/needed/selected totals are recomputed.
+    ///
+    /// Returns the verified bytes the removed files held before the call. Call only while paused:
+    /// no piece may be in flight (`PieceTracker::into_chunks` has already requeued them).
+    pub fn remove_files_data(
+        &mut self,
+        file_infos: &FileInfos,
+        new_only_files: &HashSet<usize>,
+        removed: &HashSet<usize>,
+    ) -> anyhow::Result<u64> {
+        let freed: u64 = removed
+            .iter()
+            .filter_map(|idx| self.per_file_bytes.get(*idx).copied())
+            .sum();
+        self.update_only_files(file_infos, new_only_files)?;
+        for idx in removed.iter().copied() {
+            let Some(fi) = file_infos.get(idx) else {
+                continue;
+            };
+            for piece in fi.piece_range_usize() {
+                #[allow(clippy::cast_possible_truncation)]
+                let Some(valid) = self.lengths.validate_piece_index(piece as u32) else {
+                    continue;
+                };
+                self.have.as_slice_mut().set(piece, false);
+                if let Some(s) = self.chunk_status.get_mut(self.lengths.chunk_range(valid)) {
+                    s.fill(false);
+                }
+                let wanted = self.selected[piece];
+                self.queue_pieces.set(piece, wanted);
+            }
+        }
+        self.recalculate_per_file_bytes(file_infos);
+        self.hns = self.calc_hns();
+        Ok(freed)
+    }
+
     pub(crate) fn get_selected_pieces(&self) -> &BF {
         &self.selected
     }
@@ -717,5 +761,96 @@ mod tests {
             !ct.queue_pieces[0],
             "a piece we have is still queued, so a second peer will download it again"
         );
+    }
+
+    // Three files whose pieces cross the file boundaries; the middle one is removed.
+    //   piece:   0     1     2     3     4     5
+    //   file:    A     A|B   B     B|C   C     C
+    #[test]
+    fn test_remove_files_data_clears_inside_and_boundary_pieces() {
+        let piece_len = CHUNK_SIZE * 2;
+        let pl = piece_len as u64;
+        let l = Lengths::new(pl * 6, piece_len).unwrap();
+        let files = vec![
+            FileInfo {
+                relative_filename: "a".into(),
+                offset_in_torrent: 0,
+                piece_range: 0..2,
+                len: pl + pl / 2,
+                attrs: Default::default(),
+            },
+            FileInfo {
+                relative_filename: "b".into(),
+                offset_in_torrent: pl + pl / 2,
+                piece_range: 1..4,
+                len: pl * 2,
+                attrs: Default::default(),
+            },
+            FileInfo {
+                relative_filename: "c".into(),
+                offset_in_torrent: pl * 3 + pl / 2,
+                piece_range: 3..6,
+                len: pl * 2 + pl / 2,
+                attrs: Default::default(),
+            },
+        ];
+        let bf_len = l.piece_bitfield_bytes();
+        let mut have = BF::from_boxed_slice(vec![0u8; bf_len].into_boxed_slice());
+        have.get_mut(0..6).unwrap().fill(true);
+        let mut selected = BF::from_boxed_slice(vec![0u8; bf_len].into_boxed_slice());
+        selected.get_mut(0..6).unwrap().fill(true);
+        let mut ct = ChunkTracker::new(have.into_dyn(), selected, l, &files).unwrap();
+        assert!(ct.get_hns().finished());
+        assert_eq!(
+            ct.per_file_have_bytes(),
+            &[pl + pl / 2, pl * 2, pl * 2 + pl / 2]
+        );
+
+        let freed = ct
+            .remove_files_data(
+                &files,
+                &HashSet::from_iter([0, 2]),
+                &HashSet::from_iter([1]),
+            )
+            .unwrap();
+        assert_eq!(freed, pl * 2);
+
+        let have_bits: Vec<bool> = (0..6).map(|i| ct.have.as_slice()[i]).collect();
+        // 0 touches only A, 4 and 5 only C: they keep their bits.
+        // 1 and 3 are boundary pieces and 2 lies wholly inside B: they lose theirs.
+        assert_eq!(have_bits, vec![true, false, false, false, true, true]);
+
+        // The boundary pieces are wanted again because A and C are kept. Piece 2 is not.
+        let queued: Vec<bool> = (0..6).map(|i| ct.queue_pieces[i]).collect();
+        assert_eq!(queued, vec![false, true, false, true, false, false]);
+
+        // Chunk bits: piece p owns chunks 2p and 2p + 1.
+        let chunks: Vec<bool> = (0..12).map(|i| ct.chunk_status[i]).collect();
+        assert_eq!(
+            chunks,
+            vec![
+                true, true, false, false, false, false, false, false, true, true, true, true
+            ]
+        );
+
+        // A keeps piece 0 only, B has nothing, C keeps pieces 4 and 5.
+        assert_eq!(ct.per_file_have_bytes(), &[pl, 0, pl * 2]);
+        assert_eq!(
+            *ct.get_hns(),
+            HaveNeededSelected {
+                have_bytes: pl * 3,
+                needed_bytes: pl * 2,
+                selected_bytes: pl * 5,
+            }
+        );
+        assert!(!ct.get_hns().finished());
+
+        // Downloading the two boundary pieces again finishes what is left.
+        for i in [1u32, 3] {
+            let p = l.validate_piece_index(i).unwrap();
+            ct.reserve_needed_piece(p);
+            ct.mark_piece_downloaded(p);
+        }
+        assert!(ct.get_hns().finished());
     }
 }

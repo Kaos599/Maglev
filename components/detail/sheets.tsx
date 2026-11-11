@@ -3,6 +3,7 @@ import { StyleSheet, Text, View } from 'react-native';
 import { maglevEngine, type DetailFile, type PausedBy, type TorrentState } from 'maglev-engine';
 import { useTheme } from '../../context/ThemeContext';
 import { ThemeColors, spacing, type } from '../../constants/theme';
+import { formatBytes } from '../../constants/format';
 import { Banner, Button, ListRow, Sheet } from '../ui';
 import { fileName, isStreamable, streamReadiness } from './torrentLabels';
 
@@ -25,6 +26,36 @@ export function DeleteSheet({ visible, name, busy, error, onClose, onRemove, onD
       <View style={styles.stack}>
         <Button label="Remove from list" variant="secondary" fullWidth loading={busy} onPress={onRemove} />
         <Button label="Delete with files" variant="danger" fullWidth disabled={busy} onPress={onDeleteFiles} />
+        <Button label="Cancel" variant="ghost" fullWidth disabled={busy} onPress={onClose} />
+      </View>
+    </Sheet>
+  );
+}
+
+interface RemoveFilesSheetProps {
+  visible: boolean;
+  /** How many files will be removed. */
+  count: number;
+  /** Downloaded bytes of those files, which is what the phone gets back. */
+  bytes: number;
+  busy: boolean;
+  error: string | null;
+  onClose: () => void;
+  onConfirm: () => void;
+}
+
+/** Confirm sheet for removing files' data from a torrent (NATIVE_CONTRACT 14). There is no undo. */
+export function RemoveFilesSheet({ visible, count, bytes, busy, error, onClose, onConfirm }: RemoveFilesSheetProps) {
+  const { colors } = useTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
+  return (
+    <Sheet visible={visible} onClose={onClose} title={`Remove ${count} ${count === 1 ? 'file' : 'files'}?`}>
+      {error ? <Banner tone="danger" title="Couldn't remove" body={error} /> : null}
+      <Text style={styles.hint}>
+        {`Deletes ${formatBytes(bytes)} from your phone and stops downloading them. Other files keep going.`}
+      </Text>
+      <View style={styles.stack}>
+        <Button label="Remove" icon="trash" variant="danger" fullWidth loading={busy} onPress={onConfirm} />
         <Button label="Cancel" variant="ghost" fullWidth disabled={busy} onPress={onClose} />
       </View>
     </Sheet>
