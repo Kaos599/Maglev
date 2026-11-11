@@ -1,21 +1,72 @@
-import React, { useMemo } from 'react';
-import { StyleSheet, View } from 'react-native';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { AccessibilityInfo, Animated, StyleSheet, Text, View } from 'react-native';
 import { Tabs } from 'expo-router';
 import { TAB_BAR_HEIGHT, useTabBarStyle } from '../../components/tabBarStyle';
 import { triggerHaptic } from '../../constants/haptics';
 import { PixelIcon, PixelIconName } from '../../components/PixelIcon';
 import { useTheme } from '../../context/ThemeContext';
-import { ThemeColors, type } from '../../constants/theme';
+import { ThemeColors, fontFamily, withAlpha } from '../../constants/theme';
 
+const PILL_W = 56;
+const PILL_H = 28;
+const PILL_MS = 160;
+
+/** True when the system asks for less motion. Updates live. */
+function useReduceMotion(): boolean {
+  const [reduce, setReduce] = useState(false);
+  useEffect(() => {
+    let alive = true;
+    AccessibilityInfo.isReduceMotionEnabled().then((v) => alive && setReduce(v)).catch(() => {});
+    const sub = AccessibilityInfo.addEventListener('reduceMotionChanged', setReduce);
+    return () => {
+      alive = false;
+      sub.remove();
+    };
+  }, []);
+  return reduce;
+}
 
 function TabIcon({ name, focused }: { name: PixelIconName; focused: boolean }) {
   const { colors } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
+  const reduce = useReduceMotion();
+  const progress = useRef(new Animated.Value(focused ? 1 : 0)).current;
+
+  useEffect(() => {
+    if (reduce) {
+      progress.setValue(focused ? 1 : 0);
+      return;
+    }
+    Animated.timing(progress, { toValue: focused ? 1 : 0, duration: PILL_MS, useNativeDriver: true }).start();
+  }, [focused, reduce, progress]);
+
+  const pillStyle = {
+    opacity: progress,
+    transform: [{ scale: progress.interpolate({ inputRange: [0, 1], outputRange: [0.9, 1] }) }],
+  };
+
   return (
     <View style={styles.iconWrap}>
-      <View style={[styles.bar, focused && styles.barActive]} />
+      <Animated.View style={[styles.pill, pillStyle]} />
       <PixelIcon name={name} size={20} color={focused ? colors.accentText : colors.textMuted} />
     </View>
+  );
+}
+
+function TabLabel({ title, focused }: { title: string; focused: boolean }) {
+  const { colors } = useTheme();
+  return (
+    <Text
+      numberOfLines={1}
+      style={{
+        fontFamily: focused ? fontFamily.bodyStrong : fontFamily.body,
+        fontSize: 11,
+        marginTop: 2,
+        color: focused ? colors.text : colors.textMuted,
+      }}
+    >
+      {title}
+    </Text>
   );
 }
 
@@ -30,6 +81,7 @@ export default function TabLayout() {
         title,
         tabBarAccessibilityLabel: title,
         tabBarIcon: ({ focused }) => <TabIcon name={icon} focused={focused} />,
+        tabBarLabel: ({ focused }) => <TabLabel title={title} focused={focused} />,
       }}
     />
   );
@@ -40,23 +92,27 @@ export default function TabLayout() {
       screenOptions={{
         headerShown: false,
         tabBarStyle,
-        tabBarItemStyle: { height: TAB_BAR_HEIGHT },
+        tabBarItemStyle: { height: TAB_BAR_HEIGHT, justifyContent: 'center' },
         tabBarActiveTintColor: colors.accentText,
         tabBarInactiveTintColor: colors.textMuted,
-        tabBarLabelStyle: { ...type.bodyStrong, fontSize: 11 },
       }}
     >
-      {tab('index', 'Transfers', 'transfers')}
-      {tab('search', 'Search', 'search')}
-      {tab('feeds', 'Feeds', 'feeds')}
-      {tab('settings', 'Settings', 'settings')}
+      {tab('index', 'Transfers', 'tab-transfers')}
+      {tab('search', 'Search', 'tab-search')}
+      {tab('feeds', 'Feeds', 'tab-feeds')}
+      {tab('settings', 'Settings', 'tab-settings')}
     </Tabs>
   );
 }
 
 const makeStyles = (c: ThemeColors) =>
   StyleSheet.create({
-    iconWrap: { alignItems: 'center', justifyContent: 'center', width: 44, height: 28 },
-    bar: { width: 24, height: 2, backgroundColor: 'transparent', marginBottom: 4 },
-    barActive: { backgroundColor: c.accent },
+    iconWrap: { alignItems: 'center', justifyContent: 'center', width: PILL_W, height: PILL_H },
+    pill: {
+      position: 'absolute',
+      width: PILL_W,
+      height: PILL_H,
+      borderRadius: 8,
+      backgroundColor: withAlpha(c.accent, 0.16),
+    },
   });

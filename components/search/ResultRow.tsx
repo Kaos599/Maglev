@@ -33,7 +33,10 @@ function ResultRowImpl({ name, sizeBytes, seeders, leechers, age, via, added, bu
           {name}
         </Text>
         <View style={styles.meta} accessible accessibilityLabel={label}>
-          <Text style={styles.metaText}>{size}</Text>
+          <View style={styles.stat}>
+            <PixelIcon name="storage" size={16} color={colors.textMuted} />
+            <Text style={styles.metaText}>{size}</Text>
+          </View>
           <View style={styles.stat}>
             <PixelIcon name="upload" size={16} color={colors.upload} />
             <Text style={styles.metaText}>{count(seeders)}</Text>

@@ -71,6 +71,9 @@ export function alpha(hex: string, a: number): string {
   return `rgba(${r}, ${g}, ${b}, ${a})`;
 }
 
+/** Same as `alpha`; the name the tab bar spec uses ("accent at 16%"). */
+export const withAlpha = alpha;
+
 interface Palette {
   bg: string;
   surface: string;

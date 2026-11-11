@@ -112,18 +112,28 @@ function toneFor(t: TorrentTelemetry): ProgressTone {
   }
 }
 
-function telemetryLine(t: TorrentTelemetry): string {
+type Stat = { icon?: PixelIconName; text: string };
+
+function telemetryStats(t: TorrentTelemetry): Stat[] {
   const total = t.totalSizeBytes > 0 ? formatBytes(t.totalSizeBytes) : "—";
   const done = formatBytes(t.downloadedBytes);
   switch (t.state) {
     case "DOWNLOADING":
-      return `↓ ${formatSpeed(t.downloadSpeedBytes)} · ${done} / ${total} · ${formatEta(t.etaSeconds)}`;
+      return [
+        { icon: "download", text: formatSpeed(t.downloadSpeedBytes) },
+        { text: `${done} / ${total}` },
+        { icon: "clock", text: formatEta(t.etaSeconds) },
+      ];
     case "SEEDING":
-      return `↑ ${formatSpeed(t.uploadSpeedBytes)} · ratio ${t.ratio.toFixed(2)} · ${total}`;
+      return [
+        { icon: "upload", text: formatSpeed(t.uploadSpeedBytes) },
+        { icon: "ratio", text: t.ratio.toFixed(2) },
+        { icon: "storage", text: total },
+      ];
     case "INITIALIZING":
-      return "—";
+      return [{ text: "—" }];
     default:
-      return `${done} / ${total}`;
+      return [{ text: `${done} / ${total}` }];
   }
 }
 
@@ -190,9 +200,16 @@ function TransferCardImpl({
             </View>
           ) : null}
         </View>
-        <Text style={styles.telemetry} numberOfLines={1}>
-          {telemetryLine(t)}
-        </Text>
+        <View style={styles.telemetry}>
+          {telemetryStats(t).map((st, i) => (
+            <View key={i} style={styles.stat}>
+              {st.icon ? <PixelIcon name={st.icon} size={16} color={colors.textMuted} /> : null}
+              <Text style={styles.telemetryText} numberOfLines={1}>
+                {st.text}
+              </Text>
+            </View>
+          ))}
+        </View>
         <ProgressBar
           progress={pct / 100}
           tone={toneFor(t)}
@@ -203,9 +220,12 @@ function TransferCardImpl({
           <Text style={styles.footText}>
             {indeterminate ? "—" : `${pct.toFixed(1)}%`}
           </Text>
-          <Text style={[styles.footText, styles.peers]} numberOfLines={1}>
-            {`peers ${t.peersConnected}/${t.peersTotal}`}
-          </Text>
+          <View style={[styles.stat, styles.peers]}>
+            <PixelIcon name="peers" size={16} color={colors.textMuted} />
+            <Text style={styles.footText} numberOfLines={1}>
+              {`${t.peersConnected}/${t.peersTotal}`}
+            </Text>
+          </View>
           <View style={styles.actionSlot} />
         </View>
       </PressableScale>
@@ -300,14 +320,15 @@ const makeStyles = (c: ThemeColors) =>
     },
     badgeText: { ...type.bodyStrong, fontSize: 11 },
     telemetry: {
-      ...type.mono,
-      fontSize: 12,
-      color: c.textMuted,
+      flexDirection: "row",
+      alignItems: "center",
+      gap: spacing.md,
       height: 20,
-      lineHeight: 20,
       marginTop: 2,
       marginBottom: spacing.sm,
     },
+    stat: { flexDirection: "row", alignItems: "center", gap: 4 },
+    telemetryText: { ...type.mono, fontSize: 12, lineHeight: 20, color: c.textMuted },
     footer: {
       flexDirection: "row",
       alignItems: "center",

@@ -3,7 +3,7 @@ import type { ViewStyle } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../context/ThemeContext';
 
-export const TAB_BAR_HEIGHT = 56;
+export const TAB_BAR_HEIGHT = 64;
 
 /** Shared bottom tab bar style, so a screen can hide the bar and restore it exactly. */
 export function useTabBarStyle(): ViewStyle {

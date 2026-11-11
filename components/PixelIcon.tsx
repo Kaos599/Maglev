@@ -1,53 +1,19 @@
 import React, { memo } from 'react';
 import Svg, { Path } from 'react-native-svg';
 import { useTheme } from '../context/ThemeContext';
-import { GLYPHS, GLYPH_GRID, PixelIconName } from './pixelGlyphs';
+import { ICON_PATHS, ICON_VIEWBOX } from './icons.generated';
 
-export { GLYPHS } from './pixelGlyphs';
-export type { PixelIconName } from './pixelGlyphs';
+export type PixelIconName = keyof typeof ICON_PATHS;
+export const ICON_NAMES = Object.keys(ICON_PATHS) as PixelIconName[];
 
-/** Allowed icon sizes (px). Anything else is a design-law violation. */
-export type PixelIconSize = 16 | 20 | 24;
+/** Allowed icon sizes (px). 24 is crisp 1:1 and the default; 48 is 2x. 16/20 only for inline stats. */
+export type PixelIconSize = 16 | 20 | 24 | 48;
 
 export interface PixelIconProps {
   name: PixelIconName;
   size?: PixelIconSize;
   color?: string;
   accessibilityLabel?: string;
-}
-
-/**
- * Parse a 12x12 string bitmap into one SVG path made of merged horizontal
- * runs ("M x y h w v1 h-w z" per run). One <Path> node per icon, no
- * anti-aliased seams between neighbouring cells.
- */
-function bitmapToPath(rows: readonly string[]): string {
-  let d = '';
-  rows.forEach((row, y) => {
-    let x = 0;
-    while (x < row.length) {
-      if (row[x] !== '#') {
-        x += 1;
-        continue;
-      }
-      let end = x;
-      while (end < row.length && row[end] === '#') end += 1;
-      d += `M${x} ${y}h${end - x}v1h${x - end}z`;
-      x = end;
-    }
-  });
-  return d;
-}
-
-// Parsed once per glyph, lazily, then cached.
-const pathCache: Partial<Record<PixelIconName, string>> = {};
-function pathFor(name: PixelIconName): string {
-  let d = pathCache[name];
-  if (d === undefined) {
-    d = bitmapToPath(GLYPHS[name]);
-    pathCache[name] = d;
-  }
-  return d;
 }
 
 const crisp = { shapeRendering: 'crispEdges' } as object;
@@ -73,20 +39,17 @@ export const PixelGlyph = memo(function PixelGlyph({
     <Svg
       width={size}
       height={size}
-      viewBox={`0 0 ${GLYPH_GRID} ${GLYPH_GRID}`}
+      viewBox={`0 0 ${ICON_VIEWBOX} ${ICON_VIEWBOX}`}
       {...(accessibilityLabel ? { accessible: true, accessibilityRole: 'image' as const, accessibilityLabel } : null)}
       {...crisp}
     >
-      <Path d={pathFor(name)} fill={fill} {...crisp} />
+      <Path d={ICON_PATHS[name]} fill={fill} {...crisp} />
     </Svg>
   );
 });
 
-/**
- * The one icon family for Maglev. 12x12 pixel grid, filled cells only,
- * 1-cell strokes (2 for bold accents). Sizes: 16 | 20 | 24 (default 20).
- */
-export function PixelIcon({ name, size = 20, color, accessibilityLabel }: PixelIconProps) {
+/** The one icon family for Maglev: pixelarticons, 24x24 grid, filled paths. */
+export function PixelIcon({ name, size = 24, color, accessibilityLabel }: PixelIconProps) {
   return <PixelGlyph name={name} size={size} color={color} accessibilityLabel={accessibilityLabel} />;
 }
 

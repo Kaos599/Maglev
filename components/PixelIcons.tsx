@@ -5,7 +5,7 @@ import { PixelGlyph, PixelIconName } from './PixelIcon';
 
 /**
  * Legacy named icons, kept so existing imports keep working. Each is a thin
- * wrapper over the unified 12x12 glyph set in PixelIcon. Prefer
+ * wrapper over the Pixelarticons set in PixelIcon. Prefer
  * <PixelIcon name=... size={16|20|24} /> in new code.
  */
 interface IconProps {
