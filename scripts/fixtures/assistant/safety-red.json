@@ -1,0 +1,88 @@
+[
+  {
+    "name": "exe next to the film in a movie torrent",
+    "input": {
+      "name": "The.Last.Harbor.2023.1080p.WEB-DL.x265",
+      "category": "movie",
+      "files": [
+        { "path": "The.Last.Harbor.2023/Setup.exe", "sizeBytes": 2097152 },
+        { "path": "The.Last.Harbor.2023/The.Last.Harbor.2023.1080p.mkv", "sizeBytes": 2147483648 }
+      ]
+    },
+    "expect": { "level": "red", "reasonMatch": "program or script" }
+  },
+  {
+    "name": "lnk launcher hidden with a subtitle in a TV torrent",
+    "input": {
+      "name": "Harbor.Lights.S02E01.720p.WEB-DL.x264",
+      "category": "tv",
+      "files": [
+        { "path": "Harbor.Lights.S02E01/CD.lnk", "sizeBytes": 4096 },
+        { "path": "Harbor.Lights.S02E01/Harbor.Lights.S02E01.srt", "sizeBytes": 65536 },
+        { "path": "Harbor.Lights.S02E01/Harbor.Lights.S02E01.720p.mkv", "sizeBytes": 629145600 }
+      ]
+    },
+    "expect": { "level": "red", "reasonMatch": "CD.lnk" }
+  },
+  {
+    "name": "apk in a movie torrent",
+    "input": {
+      "name": "The.Last.Harbor.2023.1080p.WEB-DL.x265",
+      "category": "movie",
+      "files": [
+        { "path": "Harbor/Harbor.Player.apk", "sizeBytes": 20971520 },
+        { "path": "Harbor/The.Last.Harbor.2023.1080p.mkv", "sizeBytes": 2147483648 }
+      ]
+    },
+    "expect": { "level": "red", "reasonMatch": "Android app" }
+  },
+  {
+    "name": "double extension hides a program (any category)",
+    "input": {
+      "name": "Harbor Collection Vol 1",
+      "category": "other",
+      "files": [
+        { "path": "Harbor/Harbor.Lights.mp4.exe", "sizeBytes": 1048576 }
+      ]
+    },
+    "expect": { "level": "red", "reasonMatch": "hides a program" }
+  },
+  {
+    "name": "TV torrent with no video file",
+    "input": {
+      "name": "Harbor.Lights.S02.Complete",
+      "category": "tv",
+      "files": [
+        { "path": "Harbor.Lights.S02/Harbor.Lights.S02E01.srt", "sizeBytes": 65536 },
+        { "path": "Harbor.Lights.S02/info.nfo", "sizeBytes": 4096 }
+      ]
+    },
+    "expect": { "level": "red", "reasonMatch": "No video file" }
+  },
+  {
+    "name": "note telling you to install a codec",
+    "input": {
+      "name": "The.Last.Harbor.2023.1080p.WEB-DL.x265",
+      "category": "movie",
+      "files": [
+        { "path": "Harbor/How to install codec.txt", "sizeBytes": 2048 },
+        { "path": "Harbor/The.Last.Harbor.2023.1080p.mkv", "sizeBytes": 2147483648 }
+      ]
+    },
+    "expect": { "level": "red", "reasonMatch": "tells you to install" }
+  },
+  {
+    "name": "RAR with password note and a download-site name is red",
+    "input": {
+      "name": "The.Last.Harbor.2023.1080p",
+      "category": "movie",
+      "files": [
+        { "path": "Harbor/harbor.part1.rar", "sizeBytes": 524288000 },
+        { "path": "Harbor/The.Last.Harbor.2023.1080p.mkv", "sizeBytes": 2147483648 },
+        { "path": "Harbor/password.txt", "sizeBytes": 256 },
+        { "path": "Harbor/get-movies-here.com.txt", "sizeBytes": 128 }
+      ]
+    },
+    "expect": { "level": "red", "reasonMatch": "download-site name" }
+  }
+]

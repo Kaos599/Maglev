@@ -1,0 +1,68 @@
+[
+  {
+    "name": "clean WEB-DL film with subtitles",
+    "input": {
+      "name": "The.Last.Harbor.2023.1080p.WEB-DL.x265",
+      "category": "movie",
+      "claimedSizeBytes": 2254857830,
+      "queryTitle": "The Last Harbor",
+      "queryYear": 2023,
+      "files": [
+        { "path": "The.Last.Harbor.2023/The.Last.Harbor.2023.1080p.mkv", "sizeBytes": 2254857830 },
+        { "path": "The.Last.Harbor.2023/The.Last.Harbor.2023.srt", "sizeBytes": 65536 }
+      ]
+    },
+    "expect": { "level": "green", "reasonMatch": "nothing suspicious" }
+  },
+  {
+    "name": "clean 720p TV episode with nfo",
+    "input": {
+      "name": "Harbor.Lights.S02E04.720p.WEB-DL.x264",
+      "category": "tv",
+      "runtimeMin": 45,
+      "files": [
+        { "path": "Harbor.Lights.S02E04.720p.mkv", "sizeBytes": 629145600 },
+        { "path": "Harbor.Lights.S02E04.nfo", "sizeBytes": 4096 }
+      ]
+    },
+    "expect": { "level": "green", "reasonMatch": "nothing suspicious" }
+  },
+  {
+    "name": "small sample file below 5 % is normal",
+    "input": {
+      "name": "Harbor.2023.1080p.WEB-DL.x265",
+      "category": "movie",
+      "files": [
+        { "path": "Harbor/Harbor.2023.1080p.mkv", "sizeBytes": 2147483648 },
+        { "path": "Harbor/sample.mkv", "sizeBytes": 41943040 }
+      ]
+    },
+    "expect": { "level": "green", "reasonMatch": "nothing suspicious" }
+  },
+  {
+    "name": "FLAC album with cover art and a text note",
+    "input": {
+      "name": "Harbor Lights - Original Score FLAC",
+      "category": "music",
+      "files": [
+        { "path": "Score/01 Opening.flac", "sizeBytes": 41943040 },
+        { "path": "Score/02 Harbor.flac", "sizeBytes": 39845888 },
+        { "path": "Score/cover.jpg", "sizeBytes": 204800 },
+        { "path": "Score/readme.txt", "sizeBytes": 512 }
+      ]
+    },
+    "expect": { "level": "green", "reasonMatch": "nothing suspicious" }
+  },
+  {
+    "name": "password note without any RAR is not a lure",
+    "input": {
+      "name": "The.Last.Harbor.2023.1080p.WEB-DL.x265",
+      "category": "movie",
+      "files": [
+        { "path": "Harbor/The.Last.Harbor.2023.1080p.mkv", "sizeBytes": 2254857830 },
+        { "path": "Harbor/password-manager-tips.txt", "sizeBytes": 512 }
+      ]
+    },
+    "expect": { "level": "green", "reasonMatch": "nothing suspicious" }
+  }
+]
