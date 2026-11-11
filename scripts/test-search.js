@@ -349,6 +349,111 @@ async function main() {
   check('prefs: missing warnUnsafe migrates to true', prefsMod.normalizeSearchPrefs({ adult: true }, []).warnUnsafe === true);
   check('prefs: warnUnsafe false is kept', prefsMod.normalizeSearchPrefs({ warnUnsafe: false }, []).warnUnsafe === false);
 
+  // Cloudflare check (SEARCH_CONTRACT section 8).
+  console.log('\n[cloudflare]');
+  const ch = await import('../utils/search/challenge.ts');
+  const clr = await import('../utils/search/clearance.ts');
+  const httpMod = await import('../utils/search/http.ts');
+  const headersFrom = (file) => {
+    const h = new Headers();
+    for (const line of fx(file).split(/\r?\n/).slice(1)) {
+      const i = line.indexOf(':');
+      if (i > 0) h.set(line.slice(0, i).trim(), line.slice(i + 1).trim());
+    }
+    return h;
+  };
+  const cfBody = fx('cloudflare_challenge.html');
+  const cfHeaders = headersFrom('cloudflare_challenge.headers.txt');
+  const plainBody = fx('plain_403.html');
+  const plainHeaders = headersFrom('plain_403.headers.txt');
+  check('challenge: recorded 1337x 403 (cf-mitigated) is a challenge', ch.isCloudflareChallenge(403, cfHeaders, cfBody));
+  check('challenge: same page without the cf-mitigated header is caught by server + marker', ch.isCloudflareChallenge(403, new Headers({ server: 'cloudflare' }), cfBody));
+  check('challenge: 503 "Just a moment" body counts', ch.isCloudflareChallenge(503, new Headers({ server: 'cloudflare' }), '<!DOCTYPE html><html><head><title>Just a moment...</title></head></html>'));
+  check('challenge: plain nginx 403 is not a challenge', !ch.isCloudflareChallenge(403, plainHeaders, plainBody));
+  check('challenge: Cloudflare 403 without a challenge marker is not a challenge', !ch.isCloudflareChallenge(403, new Headers({ server: 'cloudflare' }), '<html><body>Access denied</body></html>'));
+  check('challenge: a 200 is never a challenge', !ch.isCloudflareChallenge(200, cfHeaders, cfBody));
+  check('challenge: hostOf', ch.hostOf('https://1337x.to/search/ubuntu/1/') === '1337x.to' && ch.hostOf('HTTP://Foo.Example:8080/x') === 'foo.example');
+
+  const cfProvider = (over = {}) => ({
+    id: 'cftest',
+    name: 'CF Test',
+    abbr: 'CF',
+    homepage: 'https://cf.test',
+    mirrors: ['https://cf.test'],
+    categories: ['all'],
+    nsfw: false,
+    enabledByDefault: false,
+    method: 'json',
+    canPage: false,
+    cloudflare: { solverUrl: 'https://cf.test/' },
+    async search(q, category, page, c) {
+      const body = await httpMod.httpText(`${c.baseUrl}/s?q=${q}`, { signal: c.signal, accept: 'application/json' });
+      return JSON.parse(body);
+    },
+    ...over,
+  });
+  const goodRow = [{ providerId: 'cftest', name: 'ubuntu', infoHash: 'a'.repeat(40), magnet: `magnet:?xt=urn:btih:${'a'.repeat(40)}`, seeders: 3 }];
+  const challengeRes = () => new Response(cfBody, { status: 403, headers: cfHeaders });
+  clr.clearAllClearances();
+  health.resetHealth();
+
+  const seenUa = [];
+  let hits = 0;
+  globalThis.fetch = async (url, init) => {
+    hits++;
+    seenUa.push([init.headers['User-Agent'], init.credentials]);
+    return challengeRes();
+  };
+  let out = await agg.rerunProvider('cftest', 'ubuntu', 'all', { enabled: ['cftest'], extraProviders: [cfProvider()], waitSeconds: 2 });
+  check('state: provider with cloudflare field -> challenge', out.status.state === 'challenge' && out.status.message === 'Needs a quick check', out.status.state);
+  check('state: first request uses the generic UA and no cookies', seenUa[0][0].startsWith('Maglev/') && seenUa[0][1] === 'omit', JSON.stringify(seenUa[0]));
+  out = await agg.rerunProvider('cftest', 'ubuntu', 'all', { enabled: ['cftest'], extraProviders: [cfProvider({ cloudflare: undefined })], waitSeconds: 2 });
+  check('state: provider without cloudflare field stays blocked', out.status.state === 'blocked', out.status.state);
+  const sa = await agg.searchAll('ubuntu', 'all', { enabled: ['cftest'], extraProviders: [cfProvider()], waitSeconds: 2 });
+  check('state: searchAll reports challenge, not a health failure', sa.sources[0].state === 'challenge');
+  for (let i = 0; i < 4; i++) await agg.searchAll('ubuntu', 'all', { enabled: ['cftest'], extraProviders: [cfProvider()], waitSeconds: 2 });
+  const again = await agg.searchAll('ubuntu', 'all', { enabled: ['cftest'], extraProviders: [cfProvider()], waitSeconds: 2 });
+  check('state: repeated challenges never pause the provider', again.sources[0].state === 'challenge');
+
+  // After a solve: the cleared host gets the WebView UA and the cookie jar.
+  const WEBVIEW_UA = 'Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 Chrome/141.0.0.0 Mobile Safari/537.36';
+  clr.setClearance('cf.test', WEBVIEW_UA, 1);
+  const calls2 = [];
+  globalThis.fetch = async (url, init) => {
+    calls2.push([url, init.headers['User-Agent'], init.credentials]);
+    return new Response(JSON.stringify(goodRow), { status: 200, headers: { 'content-type': 'application/json' } });
+  };
+  out = await agg.rerunProvider('cftest', 'ubuntu', 'all', { enabled: ['cftest'], extraProviders: [cfProvider()], waitSeconds: 2 });
+  check('reuse: cleared host sends the WebView User-Agent with the cookie jar', calls2[0][1] === WEBVIEW_UA && calls2[0][2] === 'include', JSON.stringify(calls2[0]));
+  check('reuse: rerun after a solve returns the results', out.status.state === 'done' && out.results.length === 1);
+  const other = [];
+  globalThis.fetch = async (url, init) => {
+    other.push([init.headers['User-Agent'], init.credentials]);
+    return new Response('[]', { status: 200, headers: { 'content-type': 'application/json' } });
+  };
+  await httpMod.httpText('https://other.test/x', { signal: new AbortController().signal, accept: 'application/json' });
+  check('reuse: other hosts keep the generic UA and no cookies', other[0][0].startsWith('Maglev/') && other[0][1] === 'omit', JSON.stringify(other[0]));
+
+  // Expiry and the one-retry rule.
+  hits = 0;
+  globalThis.fetch = async () => {
+    hits++;
+    return challengeRes();
+  };
+  out = await agg.rerunProvider('cftest', 'ubuntu', 'all', { enabled: ['cftest'], extraProviders: [cfProvider()], waitSeconds: 2 });
+  check('expiry: a cleared host that is challenged again shows the chip', out.status.state === 'challenge' && !clr.clearanceFor('https://cf.test/'));
+  check('one retry: a failed rerun makes exactly one request and does not loop', hits === 1, String(hits));
+  const lateMerged = agg.mergeInto([{ ...goodRow[0], sources: ['knaben'], seeders: 5 }], goodRow, ['knaben', 'cftest']);
+  check('late rows: mergeInto joins an existing hash and keeps max seeders', lateMerged.length === 1 && lateMerged[0].sources.join() === 'knaben,cftest' && lateMerged[0].seeders === 5);
+
+  // Prefs keep clearances (host, userAgent, at) and ignore junk.
+  const pc = prefsMod.normalizeSearchPrefs({ clearances: [{ host: 'CF.test', userAgent: 'UA', at: 5 }, { host: 'x' }, 7] }, []).clearances;
+  check('prefs: clearances normalised', pc.length === 1 && pc[0].host === 'cf.test' && pc[0].userAgent === 'UA' && pc[0].at === 5);
+  check('prefs: missing clearances -> []', prefsMod.normalizeSearchPrefs({}, []).clearances.length === 0);
+  clr.setClearance('a.test', 'UA');
+  const forgot = prefsMod.clearSiteChecks();
+  check('Clear site checks: forgets every host and returns them for cookie removal', forgot.length === 1 && clr.listClearances().length === 0 && forgot[0].host === 'a.test');
+
   console.log(`\n${passed} passed, ${failed} failed`);
   process.exit(failed ? 1 : 0);
 }

@@ -36,6 +36,8 @@ export interface SearchProvider {
   enabledByDefault: boolean;
   method: 'json' | 'rss' | 'html' | 'torznab';
   canPage: boolean;
+  /** Set when the source can sit behind a Cloudflare check: the page the user opens to pass it. */
+  cloudflare?: { solverUrl: string };
   search(q: string, category: Category, page: number, ctx: SearchContext): Promise<SearchResult[]>;
 }
 
@@ -47,7 +49,7 @@ export interface ParseContext {
   limit: number;
 }
 
-export type SourceState = 'searching' | 'done' | 'empty' | 'timeout' | 'error' | 'blocked';
+export type SourceState = 'searching' | 'done' | 'empty' | 'timeout' | 'error' | 'blocked' | 'challenge';
 
 export interface SourceStatus {
   providerId: string;

@@ -15,7 +15,8 @@ import { buildExtraProviders, loadExtraProviders } from '../../components/search
 import { CATEGORY_LABEL, formatAge, providerMap } from '../../components/search/meta';
 import { riskySources } from '../../utils/search/safety';
 import { addRecentSearch, clearRecentSearches, getSearchPrefs, useSearchPrefs } from '../../utils/prefs/search';
-import { availableCategories, eligibleProviders, searchAll } from '../../utils/search/aggregate';
+import { availableCategories, eligibleProviders, mergeInto, rerunProvider, searchAll } from '../../utils/search/aggregate';
+import { CloudflareSolverSheet } from '../../components/search/CloudflareSolverSheet';
 import type { Category, MergedResult, SearchUpdate } from '../../utils/search/types';
 
 const DEBOUNCE_MS = 400;
@@ -60,6 +61,7 @@ export default function SearchScreen() {
   const [busyHash, setBusyHash] = useState<string | null>(null);
   const [retryTick, setRetryTick] = useState(0);
   const [confirm, setConfirm] = useState<{ result: MergedResult; reason: string } | null>(null);
+  const [solving, setSolving] = useState<string | null>(null);
   const { notice, show, dismiss } = useNotice();
   const reqId = useRef(0);
   const controller = useRef<AbortController | null>(null);
@@ -130,6 +132,31 @@ export default function SearchScreen() {
     // searchKey stands in for the prefs fields a search depends on.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [trimmed, category, retryTick, searchKey]);
+
+  // After the user passes a Cloudflare check: one re-run of that source only (SEARCH_CONTRACT section 8).
+  const solvingProvider = solving ? providers.get(solving) : undefined;
+  const handleSolved = useCallback(() => {
+    const id = solving;
+    setSolving(null);
+    if (!id) return;
+    const mine = reqId.current;
+    setUpdate((u) => (u ? { ...u, sources: u.sources.map((s) => (s.providerId === id ? { ...s, state: 'searching' as const } : s)) } : u));
+    loadExtraProviders(getSearchPrefs().torznab)
+      .then((extraProviders) => rerunProvider(id, trimmed, category, { ...getSearchPrefs(), extraProviders }))
+      .then((out) => {
+        if (!out || reqId.current !== mine) return;
+        setUpdate((u) =>
+          u
+            ? {
+                ...u,
+                results: mergeInto(u.results, out.results, getSearchPrefs().enabled),
+                sources: u.sources.map((s) => (s.providerId === id ? out.status : s)),
+              }
+            : u,
+        );
+      })
+      .catch(() => {});
+  }, [solving, trimmed, category]);
 
   const stop = useCallback(() => {
     reqId.current += 1;
@@ -303,7 +330,7 @@ export default function SearchScreen() {
               />
             ) : null}
           </View>
-          {entries.length > 0 ? <SourceScoreboard entries={entries} selected={sourceFilter} onSelect={setSourceFilter} /> : null}
+          {entries.length > 0 ? <SourceScoreboard entries={entries} selected={sourceFilter} onSelect={setSourceFilter} onSolve={(id) => providers.get(id)?.cloudflare && setSolving(id)} /> : null}
         </View>
         {list}
       </>
@@ -358,7 +385,16 @@ export default function SearchScreen() {
         </View>
       ) : null}
       <View style={styles.body}>{body}</View>
-      <Sheet visible={sortOpen} onClose={() => setSortOpen(false)} title="Sort results">
+      {solvingProvider?.cloudflare ? (
+        <CloudflareSolverSheet
+          visible
+          providerName={solvingProvider.name}
+          solverUrl={solvingProvider.cloudflare.solverUrl}
+          onClose={() => setSolving(null)}
+          onSolved={handleSolved}
+        />
+      ) : null}
+      <Sheet visible={sortOpen}onClose={() => setSortOpen(false)} title="Sort results">
         <View style={styles.wrapRow}>
           {SORT_ORDER.map((s) => (
             <Chip

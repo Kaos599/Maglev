@@ -18,7 +18,7 @@ export const CATEGORY_LABEL: Record<Category, string> = {
 /** The part of a provider the UI needs. Built-ins and user Torznab entries both fit. */
 export type ProviderInfo = Pick<
   SearchProvider,
-  'id' | 'name' | 'abbr' | 'method' | 'categories' | 'nsfw' | 'unsafeReason' | 'mirrors' | 'enabledByDefault'
+  'id' | 'name' | 'abbr' | 'method' | 'categories' | 'nsfw' | 'unsafeReason' | 'mirrors' | 'enabledByDefault' | 'cloudflare'
 > & { custom?: boolean };
 
 export const TORZNAB_PREFIX = 'torznab:';

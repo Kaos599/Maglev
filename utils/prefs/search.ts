@@ -3,6 +3,8 @@ import Storage from 'expo-sqlite/kv-store';
 import * as SecureStore from 'expo-secure-store';
 import type { Category } from '../search/types';
 import { PROVIDERS } from '../search/aggregate.ts';
+import { clearAllClearances, hydrateClearances, listClearances, onClearancesChange } from '../search/clearance.ts';
+import type { Clearance } from '../search/clearance.ts';
 
 /** Contract: docs/SEARCH_CONTRACT.md section 5. */
 export interface TorznabConfig {
@@ -27,6 +29,8 @@ export interface SearchPrefs {
   lastCategory: Category;
   recents: string[];
   torznab: TorznabConfig[];
+  /** Hosts the user passed a Cloudflare check on (SEARCH_CONTRACT section 8). Cookies live in the WebView jar, never here. */
+  clearances: Clearance[];
 }
 
 const KEY = 'maglev.search.prefs.v2';
@@ -54,6 +58,7 @@ function defaults(): SearchPrefs {
     lastCategory: 'all',
     recents: [],
     torznab: [],
+    clearances: [],
   };
 }
 
@@ -88,6 +93,13 @@ export function normalizeSearchPrefs(raw: unknown, legacyRecents: string[]): Sea
         return [{ id: x.id, name: x.name, url: x.url, categories: categories(x.categories) }];
       })
     : [];
+  const clearances: Clearance[] = Array.isArray(o.clearances)
+    ? (o.clearances as unknown[]).flatMap((c) => {
+        const x = c as Partial<Clearance> | null;
+        if (!x || typeof x.host !== 'string' || !x.host || typeof x.userAgent !== 'string' || !x.userAgent) return [];
+        return [{ host: x.host.toLowerCase(), userAgent: x.userAgent, at: typeof x.at === 'number' ? x.at : 0 }];
+      })
+    : [];
   return {
     enabled: Array.isArray(o.enabled) ? strings(o.enabled) : d.enabled,
     useFor: recordOf(o.useFor, (x) => (Array.isArray(x) ? categories(x) : null)),
@@ -101,6 +113,7 @@ export function normalizeSearchPrefs(raw: unknown, legacyRecents: string[]): Sea
     lastCategory: (CATEGORIES as readonly unknown[]).includes(o.lastCategory) ? (o.lastCategory as Category) : 'all',
     recents,
     torznab,
+    clearances,
   };
 }
 
@@ -132,7 +145,23 @@ function load(): SearchPrefs {
   }
   cache = normalizeSearchPrefs(parsed, found ? [] : readLegacyRecents());
   if (!found) persist(cache);
+  hydrateClearances(cache.clearances);
   return cache;
+}
+
+// The HTTP layer drops a clearance when the host challenges again, and the solver adds one: mirror both into prefs.
+onClearancesChange(() => {
+  if (cache) updateSearchPrefs({ clearances: listClearances() });
+});
+
+/**
+ * Forgets every cleared host (prefs and in-memory table). Returns the hosts so the caller can expire
+ * their cookies in the WebView jar.
+ */
+export function clearSiteChecks(): Clearance[] {
+  const had = clearAllClearances();
+  updateSearchPrefs({ clearances: [] });
+  return had;
 }
 
 function persist(p: SearchPrefs): void {
