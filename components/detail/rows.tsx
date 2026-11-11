@@ -1,13 +1,9 @@
-import React, { memo, useMemo } from 'react';
+import React, { useMemo } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
-import type { DetailFile, DetailPeer, DetailTracker } from 'maglev-engine';
+import type { DetailPeer, DetailTracker } from 'maglev-engine';
 import { useTheme } from '../../context/ThemeContext';
 import { ThemeColors, radius, spacing, type } from '../../constants/theme';
-import { formatBytes, formatSpeed } from '../../constants/format';
-import { PixelIcon } from '../PixelIcon';
-import { PressableScale, ProgressBar } from '../ui';
-import { Checkbox } from './Checkbox';
-import { isMediaFile } from './torrentLabels';
+import { formatSpeed } from '../../constants/format';
 
 
 export function PeerRow({ peer }: { peer: DetailPeer }) {

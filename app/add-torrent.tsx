@@ -10,7 +10,7 @@ import { useMaglevEngine } from '../context/EngineContext';
 import { ThemeColors, radius, spacing, touch, type } from '../constants/theme';
 import { formatBytes } from '../constants/format';
 import { triggerHaptic } from '../constants/haptics';
-import { Banner, Button, Chip, EmptyBlock, ProgressBar, Screen } from '../components/ui';
+import { Banner, Button, Chip, EmptyBlock, Screen } from '../components/ui';
 import { ResolveProgress } from '../components/add/ResolveProgress';
 import { AddFileRow } from '../components/add/AddFileRow';
 import { SpaceStrip } from '../components/add/SpaceStrip';
