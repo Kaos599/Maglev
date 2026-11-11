@@ -29,15 +29,21 @@ const BANDS: Readonly<Record<string, SizeBand>> = {
 };
 
 /**
- * Below this fraction of the low end, a file is too small to be what its name claims.
- * §3.3: "Below low but at least 0.6x low: 5 ... Below 0.6x low: 0 and flag too_small_for_claim".
- * Also the §3.4 fake-upload rule "Largest video is below 0.6x the low end of its band".
+ * Below this fraction of the low end, a file is too small to be what its name claims (red).
+ * Review round 1 (R1-13): "red 'probably not what the name says' below 0.25x the floor".
  */
-export const TOO_SMALL_FRACTION = 0.6;
+export const TOO_SMALL_FRACTION = 0.25;
 
-/** Default runtimes in minutes. §3.1: "film: user or default 110; episode: 45". */
+/**
+ * Below this fraction of the low end, a file is smaller than usual (amber). Between this and the
+ * low end it is a normal, slimmer encode and gets no warning (R1-13).
+ */
+export const SMALL_FRACTION = 0.5;
+
+/** Default runtimes in minutes. §3.1: "film: user or default 110; episode: 45". R1-13: anime episode 24. */
 export const DEFAULT_FILM_RUNTIME_MIN = 110;
 export const DEFAULT_EPISODE_RUNTIME_MIN = 45;
+export const DEFAULT_ANIME_EPISODE_RUNTIME_MIN = 24;
 
 /**
  * Looks up the band for a resolution height and codec class.

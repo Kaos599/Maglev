@@ -12,7 +12,7 @@
         { "path": "The.Last.Harbor.2023/The.Last.Harbor.2023.srt", "sizeBytes": 65536 }
       ]
     },
-    "expect": { "level": "green", "reasonMatch": "nothing suspicious" }
+    "expect": { "level": "green", "reasonMatch": "No warning signs" }
   },
   {
     "name": "clean 720p TV episode with nfo",
@@ -25,7 +25,7 @@
         { "path": "Harbor.Lights.S02E04.nfo", "sizeBytes": 4096 }
       ]
     },
-    "expect": { "level": "green", "reasonMatch": "nothing suspicious" }
+    "expect": { "level": "green", "reasonMatch": "No warning signs" }
   },
   {
     "name": "small sample file below 5 % is normal",
@@ -37,7 +37,7 @@
         { "path": "Harbor/sample.mkv", "sizeBytes": 41943040 }
       ]
     },
-    "expect": { "level": "green", "reasonMatch": "nothing suspicious" }
+    "expect": { "level": "green", "reasonMatch": "No warning signs" }
   },
   {
     "name": "FLAC album with cover art and a text note",
@@ -51,7 +51,7 @@
         { "path": "Score/readme.txt", "sizeBytes": 512 }
       ]
     },
-    "expect": { "level": "green", "reasonMatch": "nothing suspicious" }
+    "expect": { "level": "green", "reasonMatch": "No warning signs" }
   },
   {
     "name": "password note without any RAR is not a lure",
@@ -63,6 +63,6 @@
         { "path": "Harbor/password-manager-tips.txt", "sizeBytes": 512 }
       ]
     },
-    "expect": { "level": "green", "reasonMatch": "nothing suspicious" }
+    "expect": { "level": "green", "reasonMatch": "No warning signs" }
   }
 ]

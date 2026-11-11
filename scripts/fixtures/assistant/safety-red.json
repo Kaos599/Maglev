@@ -84,5 +84,27 @@
       ]
     },
     "expect": { "level": "red", "reasonMatch": "download-site name" }
+  },
+  {
+    "name": "1080p film of 38 MB is not what the name says",
+    "input": {
+      "name": "The.Last.Harbor.2023.1080p.WEB-DL.x265",
+      "category": "movie",
+      "files": [
+        { "path": "Harbor/The.Last.Harbor.2023.1080p.mkv", "sizeBytes": 39845888 }
+      ]
+    },
+    "expect": { "level": "red", "reasonMatch": "not what the name says" }
+  },
+  {
+    "name": "4K film that is only 200 KB",
+    "input": {
+      "name": "The.Last.Harbor.2023.2160p.WEB-DL.x265",
+      "category": "movie",
+      "files": [
+        { "path": "Harbor/The.Last.Harbor.2023.2160p.mkv", "sizeBytes": 204800 }
+      ]
+    },
+    "expect": { "level": "red", "reasonMatch": "not what the name says" }
   }
 ]

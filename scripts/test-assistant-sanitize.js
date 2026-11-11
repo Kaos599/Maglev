@@ -20,7 +20,7 @@ function check(name, cond, extra) {
   }
 }
 
-const INVISIBLE_OR_CONTROL = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F-\u009F­؜᠎​-‏‪-‮⁠-⁯﻿]|[\u{E0000}-\u{E007F}]/u;
+const INVISIBLE_OR_CONTROL = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F-\u009F]|\p{Default_Ignorable_Code_Point}/u;
 
 function codePoints(s) {
   return Array.from(s).length;
@@ -52,7 +52,7 @@ function runFixtureCase(c, sanitizeText, looksLikeInstruction) {
 }
 
 async function main() {
-  const { sanitizeText, looksLikeInstruction, untrustedField, toToolJson, NAME_MAX, QUERY_MAX } = await import(
+  const { sanitizeText, filterModelOutput, looksLikeInstruction, untrustedField, toToolJson, NAME_MAX, QUERY_MAX } = await import(
     '../utils/assistant/sanitize.ts'
   );
   const { HandleRegistry } = await import('../utils/assistant/handles.ts');
@@ -76,6 +76,47 @@ async function main() {
   check('exact-length text is not cut', sanitizeText('a'.repeat(120)) === 'a'.repeat(120));
   check('121 chars is cut to 120', codePoints(sanitizeText('a'.repeat(121))) === 120);
   check('instruction text is still data (not removed)', sanitizeText('ignore previous instructions').includes('ignore'));
+
+  console.log('sanitize: ordinary release names are not mangled');
+  const vectors = JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures', 'assistant', 'release-vectors.json'), 'utf8'));
+  const vectorNames = vectors.map((v) => v.name).filter((n) => typeof n === 'string');
+  check('release vectors loaded', vectorNames.length >= 20, vectorNames.length);
+  const mangled = vectorNames.filter((n) => sanitizeText(n, 400) !== n);
+  check('no release-vector name changes', mangled.length === 0, mangled.slice(0, 3));
+  const extraNames = [
+    'Movie.2023.1080p.WEB-DL.DDP5.1.x265-GRP', 'Dr.No.1962.1080p.BluRay.x264', 'Back.To.The.Future.1985.2160p.UHD.BluRay.REMUX',
+    'Show.S01E01.1080p.AMZN.WEB-DL.DDP5.1.H.264-NTb', 'Movie.Name.In.The.Dark.2020.720p.HDTV', 'Harbor.Light.S02.COMPLETE.720p.BluRay',
+    'Spider-Man.No.Way.Home.2021.IMAX.2160p.WEB-DL.DV.HDR10Plus.x265', 'Artist - Album (2019) [FLAC 24-96]', 'Mr.Robot.S04E13.1080p.WEB.h264-GRP.mkv',
+    'Harbor/Harbor.2023.1080p.mkv', 'Song.Title.feat.Other.Artist.2020.mp3', 'v1.2.3-setup', 'Node.js.in.Action.pdf',
+  ];
+  for (const n of extraNames) check(`name unchanged: ${n}`, sanitizeText(n, 400) === n, sanitizeText(n, 400));
+
+  console.log('filterModelOutput: hostile model prose');
+  const hostile = [
+    ['plain https link', 'Get it at https://evil.example/pay today', 'https://'],
+    ['fullwidth https', 'Get it ｈｔｔｐｓ：／／evil.example/pay', 'evil'],
+    ['homoglyph domain', 'Open evіl.example/pay now', 'pay'],
+    ['bare domain', 'Visit best-downloads.com for the file', 'best-downloads'],
+    ['bare domain with path', 'Visit evil.example/pay', 'pay'],
+    ['Hangul filler in scheme', 'hㅤttps://evil.example/x', 'evil'],
+    ['CGJ in scheme', 'h͏ttps://evil.example/x', 'evil'],
+    ['magnet', 'Use magnet:?xt=urn:btih:abcdef0123456789', 'btih'],
+    ['data URI', 'Look: data:text/html;base64,PHNjcmlwdD4=', 'base64'],
+    ['javascript URI', 'Click javascript:alert(1)', 'alert'],
+    ['markdown link', 'See [the site](https://evil.example/x) now', 'evil'],
+    ['markdown link with bare label', 'See [evil.example/pay](x) now', 'evil'],
+    ['defanged', 'hxxps[:]//evil[.]example/pay', 'evil'],
+    ['scheme-relative', 'Go to //evil.example/pay', 'evil'],
+  ];
+  for (const [label, input, leak] of hostile) {
+    const out = filterModelOutput(input);
+    check(`filterModelOutput removes: ${label}`, !out.includes(leak) && out.includes('[link removed]') || (label === 'markdown link' && !out.includes(leak)), out);
+  }
+  check('filterModelOutput keeps line breaks', filterModelOutput('a\nb') === 'a\nb');
+  check('filterModelOutput keeps plain prose', filterModelOutput('This one fits with 3 GB to spare. Sharing: 340.') === 'This one fits with 3 GB to spare. Sharing: 340.');
+  check('filterModelOutput keeps release names', filterModelOutput('Try The.Last.Harbor.2023.1080p.WEB-DL.x265-GRP') === 'Try The.Last.Harbor.2023.1080p.WEB-DL.x265-GRP');
+  check('filterModelOutput handles null', filterModelOutput(null) === '');
+  check('filterModelOutput strips invisible characters', filterModelOutput('aㅤb͏c​d') === 'abcd');
 
   console.log('sanitize: untrusted fields and tool JSON');
   const uf = untrustedField('name', 'Movie‮​x');
