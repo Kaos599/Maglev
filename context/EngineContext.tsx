@@ -22,6 +22,9 @@ import {
 import { etaSecs, smoothRate } from '../utils/rates';
 import { fromCached, loadTransferCache, saveTransferCache } from '../utils/transferCache';
 
+/** Bundle-load time, the zero point for the cold-start log (UI spec S10.3). */
+const JS_LOADED_AT = Date.now();
+
 /** A torrent row as every screen sees it: smoothed speeds, optimistic state, cached marker. */
 export type TransferTelemetry = TorrentTelemetry & {
   /** Unsmoothed engine speeds, for screens that want the raw numbers (Peers tab). */
@@ -444,7 +447,8 @@ export const EngineProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   useEffect(() => {
     if (bootLogged.current || telemetry.torrents.length === 0) return;
     bootLogged.current = true;
-    console.log('[Maglev] boot', Math.round(performance.now()));
+    // Hermes performance.now() counts from device boot, so measure from bundle load instead.
+    console.log('[Maglev] boot', Date.now() - JS_LOADED_AT);
   }, [telemetry.torrents.length]);
 
   const filteredTorrents = useMemo(() => {
