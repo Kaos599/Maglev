@@ -322,3 +322,34 @@ librqbit resolves a magnet inside `Session::add_torrent(.., list_only: true)` an
   - For SAF trees, call it on the resolved path when one exists. Otherwise skip: the document provider indexes those itself.
   - Run it at most once per torrent per completion, and never for private or staging directories.
 - No UI. On a device, check that a finished video shows up in Google Photos (or the gallery app) within a few seconds.
+
+## 13. Wave 5: finished downloads, Quick Settings tile, limit burst (2026-11-11)
+
+### 13.1 Limit burst (vendored hunk 12)
+Every rate limiter (session-wide and per-torrent) is `Quota::per_second(bps).allow_burst(burst_for(bps))`, where `burst_for(bps) = min(bps, max(16 KiB, bps / 8))`. That is about 125 ms of traffic, so a limit holds at the set value instead of peaking near twice it. 16 KiB is the largest single `until_n_ready` request (one chunk). A session-wide limit below 16 KiB/s still fails with `InsufficientCapacity`, as before; per-torrent limits are floored at `MIN_LIMIT_BPS` = 16 KiB/s.
+
+### 13.2 "Download finished" notification (replaces the bare `notifyCompleted`)
+- **When:** on the `finished` false→true edge (§9), **only if this torrent was seen `DOWNLOADING` since it was last unfinished**. A recheck (forget + re-add), a move, an app restart, or adding an already-complete torrent never notifies.
+- **Content:** channel `completed` (unchanged). Title: the torrent name. Text: `Downloaded · <size>` (size = sum of included files, formatted like the ongoing notification). Small icon: the app's monochrome notification icon used by the ongoing notification, not `stat_sys_download_done`.
+- **Tap:** deep link `maglev://torrent/<id>` (the existing `contentIntent(context, torrentId)`).
+- **Action "Open":** only when the torrent has exactly one included file. It opens that file with the same `FileActions` chooser the Detail screen uses (FileProvider/content URI, `FLAG_GRANT_READ_URI_PERMISSION`). Multi-file torrents get no action; the tap opens Detail.
+- **Grouping:** group key `maglev_completed`. When two or more completion notifications are showing, post a group summary `N downloads finished` (InboxStyle with the names). Notification id stays `5000 + (id.hashCode() and 0xFFFF)`; summary id `4999`.
+- **No setting toggle.** The user turns it off through the Android "Completed" channel. The JS module gains `openNotificationSettings(channel?: "completed")` (opens `Settings.ACTION_CHANNEL_NOTIFICATION_SETTINGS` on API 26+, app notification settings otherwise); Settings → Interface shows a row "Finished-download alerts" that calls it.
+- **Pure helper + JVM test:** `CompletionPolicy.shouldNotify(prevFinished, finished, sawDownloading)` and the text builder are unit-tested in `testDebugUnitTest`.
+
+### 13.3 Quick Settings tile
+- **Service:** `com.maglev.engine.service.MaglevTileService : TileService`, label "Maglev", icon a vector drawable `ic_tile_maglev` (24 dp, monochrome, from the brand "M"). Manifest: `android.permission.BIND_QUICK_SETTINGS_TILE`, intent filter `android.service.quicksettings.action.QS_TILE`, meta-data `android.service.quicksettings.TOGGLEABLE_TILE=true`, `exported=true`.
+- **State** (computed from the same `TransferSummary` as the ongoing notification, read in `onStartListening`, refreshed with `TileService.requestListeningState` at most every 2 s when the summary changes):
+
+  | Situation | Tile state | Subtitle (API 29+) |
+  |---|---|---|
+  | Something downloading or seeding | `STATE_ACTIVE` | `2 downloading · 4.1 MB/s` or `Seeding 3` |
+  | Torrents exist, all paused (user or rules) | `STATE_INACTIVE` | `Paused` or the rule reason (`Waiting for Wi-Fi`) |
+  | No torrents, or engine never started | `STATE_INACTIVE` | `No transfers` |
+
+- **Tap:** ACTIVE → Pause all (same path as the notification action, `paused_by = user`). INACTIVE with torrents → Resume all (user resume; governance can still hold them, which the subtitle then shows). No torrents → open the app via `startActivityAndCollapse` (the `PendingIntent` overload on API 34+, the `Intent` overload below).
+- **Engine not running:** the tap starts `MaglevTorrentService` with `ACTION_RESUME_ALL` / `ACTION_PAUSE_ALL` through `ContextCompat.startForegroundService`. A Quick Settings tap is a user interaction; if the platform still throws `ForegroundServiceStartNotAllowedException`, fall back to opening the app. Never crash the tile.
+- **Pure helper + JVM test:** `TileModel.from(summary): {state, subtitle, tapAction}` is unit-tested.
+
+### 13.4 Module API additions (§6)
+`openNotificationSettings(channel?)`. The mock engine implements it as a no-op that resolves.
