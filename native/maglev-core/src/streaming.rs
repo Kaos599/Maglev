@@ -30,6 +30,7 @@ pub struct RequestHead {
     pub method: String,
     pub path: String,
     pub range: Option<String>,
+    pub host: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -52,21 +53,35 @@ pub fn parse_request_head(head: &str) -> Option<RequestHead> {
         return None;
     }
     let mut range = None;
+    let mut host = None;
     for line in lines {
         if let Some((k, v)) = line.split_once(':') {
-            if k.trim().eq_ignore_ascii_case("range") {
+            let k = k.trim();
+            if k.eq_ignore_ascii_case("range") {
                 range = Some(v.trim().to_string());
+            } else if k.eq_ignore_ascii_case("host") {
+                host = Some(v.trim().to_string());
             }
         }
     }
-    Some(RequestHead { method, path, range })
+    Some(RequestHead {
+        method,
+        path,
+        range,
+        host,
+    })
 }
 
-/// `/stream/<40 hex id>/<file index>[/anything]` -> (id, file index). Query strings are ignored.
-pub fn parse_stream_path(path: &str) -> Option<(String, usize)> {
+/// `/stream/<token>/<40 hex id>/<file index>[/anything]` -> (token, id, file index).
+/// Query strings are ignored. The token is checked separately by `authorize`.
+pub fn parse_stream_path(path: &str) -> Option<(String, String, usize)> {
     let path = path.split(['?', '#']).next()?;
     let mut seg = path.split('/');
     if seg.next()? != "" || seg.next()? != "stream" {
+        return None;
+    }
+    let token = seg.next()?;
+    if token.is_empty() {
         return None;
     }
     let id = seg.next()?;
@@ -74,7 +89,65 @@ pub fn parse_stream_path(path: &str) -> Option<(String, usize)> {
         return None;
     }
     let file: usize = seg.next()?.parse().ok()?;
-    Some((id.to_ascii_lowercase(), file))
+    Some((token.to_string(), id.to_ascii_lowercase(), file))
+}
+
+/// Compares without exiting at the first differing byte.
+fn constant_time_eq(a: &str, b: &str) -> bool {
+    let (a, b) = (a.as_bytes(), b.as_bytes());
+    if a.len() != b.len() {
+        return false;
+    }
+    a.iter().zip(b).fold(0u8, |acc, (x, y)| acc | (x ^ y)) == 0
+}
+
+/// Checks the `Host` header (DNS rebinding defence) and the per-session token.
+/// Returns the HTTP status line to answer with when the request is refused.
+pub fn authorize(
+    host: Option<&str>,
+    path_token: &str,
+    expected_token: &str,
+    port: u16,
+) -> Result<(), &'static str> {
+    let expected_host = format!("127.0.0.1:{port}");
+    match host {
+        Some(h) if h.eq_ignore_ascii_case(&expected_host) => {}
+        _ => return Err("403 Forbidden"),
+    }
+    if constant_time_eq(path_token, expected_token) {
+        Ok(())
+    } else {
+        Err("404 Not Found")
+    }
+}
+
+/// 16 random bytes as hex. Reads the OS entropy source and mixes in process-local randomness.
+pub fn random_token() -> String {
+    use std::collections::hash_map::RandomState;
+    use std::hash::{BuildHasher, Hasher};
+    let mut bytes = [0u8; 16];
+    let mut got_os_entropy = false;
+    if let Ok(mut f) = std::fs::File::open("/dev/urandom") {
+        use std::io::Read;
+        got_os_entropy = f.read_exact(&mut bytes).is_ok();
+    }
+    if !got_os_entropy {
+        // Fallback: std's per-process random hasher keys plus the clock.
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0);
+        for (i, chunk) in bytes.chunks_mut(8).enumerate() {
+            let mut h = RandomState::new().build_hasher();
+            h.write_u128(nanos);
+            h.write_usize(i);
+            h.write_u32(std::process::id());
+            for (b, m) in chunk.iter_mut().zip(h.finish().to_le_bytes()) {
+                *b = m;
+            }
+        }
+    }
+    bytes.iter().map(|b| format!("{b:02x}")).collect()
 }
 
 /// Resolves a `Range` header against the file length. Syntax we do not understand is ignored (full body),
@@ -184,7 +257,7 @@ async fn read_head(sock: &mut TcpStream) -> Option<String> {
     }
 }
 
-async fn handle_connection(mut sock: TcpStream, session: Arc<Session>) {
+async fn handle_connection(mut sock: TcpStream, session: Arc<Session>, auth: Arc<Auth>) {
     let head = match timeout(HEAD_TIMEOUT, read_head(&mut sock)).await {
         Ok(Some(h)) => h,
         _ => {
@@ -203,13 +276,27 @@ async fn handle_connection(mut sock: TcpStream, session: Arc<Session>) {
         write_simple(&mut sock, "405 Method Not Allowed", "Use GET").await;
         return;
     }
-    let (id, file) = match parse_stream_path(&req.path) {
+    // Host first (403), then path shape and token (404).
+    let expected_host = format!("127.0.0.1:{}", auth.port);
+    if !req
+        .host
+        .as_deref()
+        .is_some_and(|h| h.eq_ignore_ascii_case(&expected_host))
+    {
+        write_simple(&mut sock, "403 Forbidden", "Forbidden").await;
+        return;
+    }
+    let (token, id, file) = match parse_stream_path(&req.path) {
         Some(x) => x,
         None => {
             write_simple(&mut sock, "404 Not Found", "Not found").await;
             return;
         }
     };
+    if let Err(status) = authorize(req.host.as_deref(), &token, &auth.token, auth.port) {
+        write_simple(&mut sock, status, "Not found").await;
+        return;
+    }
     let hash = match Id20::from_str(&id) {
         Ok(h) => h,
         Err(_) => {
@@ -297,8 +384,14 @@ async fn handle_connection(mut sock: TcpStream, session: Arc<Session>) {
     let _ = sock.shutdown().await;
 }
 
+struct Auth {
+    token: String,
+    port: u16,
+}
+
 pub struct StreamServer {
     pub port: u16,
+    token: String,
     task: JoinHandle<()>,
 }
 
@@ -307,18 +400,24 @@ impl StreamServer {
     pub async fn start(session: Arc<Session>) -> std::io::Result<StreamServer> {
         let listener = TcpListener::bind(("127.0.0.1", 0)).await?;
         let port = listener.local_addr()?.port();
+        let token = random_token();
+        let auth = Arc::new(Auth {
+            token: token.clone(),
+            port,
+        });
         let task = tokio::spawn(async move {
             loop {
                 match listener.accept().await {
                     Ok((sock, _)) => {
                         let session = session.clone();
-                        tokio::spawn(handle_connection(sock, session));
+                        let auth = auth.clone();
+                        tokio::spawn(handle_connection(sock, session, auth));
                     }
                     Err(_) => tokio::time::sleep(Duration::from_millis(200)).await,
                 }
             }
         });
-        Ok(StreamServer { port, task })
+        Ok(StreamServer { port, token, task })
     }
 
     pub fn stop(&self) {
@@ -326,7 +425,10 @@ impl StreamServer {
     }
 
     pub fn url(&self, id: &str, file: u32) -> String {
-        format!("http://127.0.0.1:{}/stream/{}/{}", self.port, id, file)
+        format!(
+            "http://127.0.0.1:{}/stream/{}/{}/{}",
+            self.port, self.token, id, file
+        )
     }
 }
 
@@ -385,6 +487,7 @@ mod tests {
         .unwrap();
         assert_eq!(h.method, "GET");
         assert_eq!(h.range.as_deref(), Some("bytes=5-"));
+        assert_eq!(h.host.as_deref(), Some("x"));
         assert!(parse_request_head("garbage").is_none());
         assert!(parse_request_head("GET / SPDY/3\r\n").is_none());
     }
@@ -393,16 +496,42 @@ mod tests {
     fn stream_path_parsing() {
         let id = "0123456789ABCDEF0123456789abcdef01234567";
         assert_eq!(
-            parse_stream_path(&format!("/stream/{id}/3")),
-            Some((id.to_ascii_lowercase(), 3))
+            parse_stream_path(&format!("/stream/tok/{id}/3")),
+            Some(("tok".to_string(), id.to_ascii_lowercase(), 3))
         );
         assert_eq!(
-            parse_stream_path(&format!("/stream/{id}/0/movie.mkv?x=1")),
-            Some((id.to_ascii_lowercase(), 0))
+            parse_stream_path(&format!("/stream/tok/{id}/0/movie.mkv?x=1")),
+            Some(("tok".to_string(), id.to_ascii_lowercase(), 0))
         );
-        assert!(parse_stream_path("/stream/short/0").is_none());
-        assert!(parse_stream_path(&format!("/other/{id}/0")).is_none());
-        assert!(parse_stream_path(&format!("/stream/{id}/x")).is_none());
+        assert!(parse_stream_path("/stream/tok/short/0").is_none());
+        assert!(parse_stream_path(&format!("/other/tok/{id}/0")).is_none());
+        assert!(parse_stream_path(&format!("/stream/tok/{id}/x")).is_none());
+        // The old token-less form no longer parses as a valid stream path.
+        assert!(parse_stream_path(&format!("/stream/{id}/3")).is_none());
+    }
+
+    #[test]
+    fn token_and_host_are_enforced() {
+        let t = "0123456789abcdef0123456789abcdef";
+        assert_eq!(authorize(Some("127.0.0.1:4000"), t, t, 4000), Ok(()));
+        assert_eq!(authorize(Some("127.0.0.1:4000"), "wrong", t, 4000), Err("404 Not Found"));
+        assert_eq!(authorize(Some("127.0.0.1:4000"), "", t, 4000), Err("404 Not Found"));
+        // A rebinding hostname, another port, localhost, or no Host at all is forbidden.
+        assert_eq!(authorize(Some("evil.example:4000"), t, t, 4000), Err("403 Forbidden"));
+        assert_eq!(authorize(Some("127.0.0.1:4001"), t, t, 4000), Err("403 Forbidden"));
+        assert_eq!(authorize(Some("localhost:4000"), t, t, 4000), Err("403 Forbidden"));
+        assert_eq!(authorize(None, t, t, 4000), Err("403 Forbidden"));
+        // A wrong token on a wrong host reports the host problem first.
+        assert_eq!(authorize(Some("evil:1"), "wrong", t, 4000), Err("403 Forbidden"));
+    }
+
+    #[test]
+    fn random_tokens_are_long_hex_and_differ() {
+        let a = random_token();
+        let b = random_token();
+        assert_eq!(a.len(), 32);
+        assert!(a.bytes().all(|c| c.is_ascii_hexdigit()));
+        assert_ne!(a, b);
     }
 
     #[test]

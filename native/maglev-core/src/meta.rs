@@ -34,7 +34,8 @@ pub struct TorrentMeta {
     pub added_at: i64,
     pub paused_by: Option<String>,
     pub queued: bool,
-    pub seeding_secs: i64,
+    /// Wall-clock milliseconds spent in SEEDING.
+    pub seeding_ms: u64,
     pub uploaded_base: u64,
     pub last_uploaded_seen: u64,
     /// Highest verified byte count seen; used to tell "never started" from "files were deleted".

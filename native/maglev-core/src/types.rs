@@ -32,6 +32,8 @@ pub struct Snapshot {
     pub name: String,
     pub state: TorrentState,
     pub paused_by: Option<String>,
+    /// True once every included piece is present.
+    pub finished: bool,
     pub progress_bytes: u64,
     pub total_bytes: u64,
     pub uploaded_bytes: u64,

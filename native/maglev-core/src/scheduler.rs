@@ -57,7 +57,8 @@ pub fn derive_state(i: StateInputs<'_>) -> TorrentState {
     if i.resolving {
         return TorrentState::Initializing;
     }
-    if i.queued {
+    // QUEUED is reserved for unfinished torrents; a finished one without a seed slot is COMPLETED.
+    if i.queued && !i.finished {
         return TorrentState::Queued;
     }
     if let Some(by) = i.paused_by {
@@ -124,6 +125,8 @@ pub enum Action {
     Pause { id: String, reason: String },
     /// Clear tags, mark as waiting for a slot and make sure it is not running.
     Queue { id: String },
+    /// A finished torrent without a seed slot: clear tags, not running, shown as COMPLETED (never QUEUED).
+    Park { id: String },
     /// Clear tags and make sure it is running.
     Resume { id: String },
 }
@@ -196,12 +199,25 @@ pub fn plan(facts: &[TorrentFacts], cfg: &SchedulerConfig, blocked: &[String]) -
                 if !f.running || f.queued || f.paused_by.is_some() {
                     actions.push(Action::Resume { id: f.id.clone() });
                 }
+            } else if want_finished {
+                if f.running || f.queued || f.paused_by.is_some() {
+                    actions.push(Action::Park { id: f.id.clone() });
+                }
             } else if f.running || !f.queued || f.paused_by.is_some() {
                 actions.push(Action::Queue { id: f.id.clone() });
             }
         }
     }
     actions
+}
+
+/// Wall-clock seeding time. `delta` is capped so a suspended process does not count the gap as seeding.
+pub fn accumulate_seed_ms(prev_ms: u64, delta: std::time::Duration, seeding: bool) -> u64 {
+    if !seeding {
+        return prev_ms;
+    }
+    let capped = delta.min(std::time::Duration::from_secs(5));
+    prev_ms.saturating_add(capped.as_millis() as u64)
 }
 
 /// Uploaded bytes accumulate across restarts and pauses, because librqbit's counter restarts
@@ -311,7 +327,34 @@ mod tests {
     fn seeds_have_their_own_slots() {
         let facts = vec![seed(f("s1", 1)), seed(f("s2", 2)), f("d1", 3)];
         let actions = plan(&facts, &cfg(), &[]);
-        assert_eq!(actions, vec![Action::Queue { id: "s2".into() }]);
+        assert_eq!(actions, vec![Action::Park { id: "s2".into() }]);
+    }
+
+    #[test]
+    fn finished_torrents_beyond_seed_slots_are_parked_never_queued() {
+        let mut parked = seed(f("s2", 2));
+        parked.running = false;
+        let facts = vec![seed(f("s1", 1)), parked.clone(), seed(f("s3", 3))];
+        // s3 is still running without a slot; s2 is already parked and needs no action.
+        assert_eq!(plan(&facts, &cfg(), &[]), vec![Action::Park { id: "s3".into() }]);
+        // A finished torrent carrying a stale queued flag is cleaned up.
+        parked.queued = true;
+        assert_eq!(
+            plan(&[seed(f("s1", 1)), parked], &cfg(), &[]),
+            vec![Action::Park { id: "s2".into() }]
+        );
+        // No Queue action is ever produced for finished torrents.
+        let many: Vec<_> = (0..6).map(|i| seed(f(&format!("s{i}"), i))).collect();
+        assert!(plan(&many, &cfg(), &[])
+            .iter()
+            .all(|a| !matches!(a, Action::Queue { .. })));
+    }
+
+    #[test]
+    fn parked_seed_is_promoted_when_a_slot_frees() {
+        let mut parked = seed(f("s2", 2));
+        parked.running = false;
+        assert_eq!(plan(&[parked], &cfg(), &[]), vec![Action::Resume { id: "s2".into() }]);
     }
 
     #[test]
@@ -501,6 +544,9 @@ mod tests {
         let mut i = inputs(RqState::Paused);
         i.queued = true;
         assert_eq!(derive_state(i), S::Queued);
+        // Finished + parked/queued flag: COMPLETED, never QUEUED.
+        i.finished = true;
+        assert_eq!(derive_state(i), S::Completed);
         let mut i = inputs(RqState::Paused);
         i.paused_by = Some("wifi_only");
         assert_eq!(derive_state(i), S::Paused);
@@ -515,6 +561,19 @@ mod tests {
         i.resolving = true;
         assert_eq!(derive_state(i), S::Initializing);
         assert_eq!(derive_state(inputs(RqState::Error)), S::Error);
+    }
+
+    #[test]
+    fn seed_time_is_wall_clock_not_tick_count() {
+        use std::time::Duration as D;
+        // Many on-demand ticks a few ms apart add only the elapsed time.
+        let mut ms = 0;
+        for _ in 0..100 {
+            ms = accumulate_seed_ms(ms, D::from_millis(5), true);
+        }
+        assert_eq!(ms, 500);
+        assert_eq!(accumulate_seed_ms(ms, D::from_secs(1), false), 500);
+        assert_eq!(accumulate_seed_ms(0, D::from_secs(3600), true), 5000);
     }
 
     #[test]

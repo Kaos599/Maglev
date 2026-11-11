@@ -34,11 +34,11 @@ use crate::config::NativeConfig;
 use crate::error::{classify_add_error, classify_runtime_error, EngineError, ErrorCode};
 use crate::meta::{MetaStore, PendingAdd, TorrentMeta};
 use crate::scheduler::{
-    derive_state, plan, uploaded_total, Action, RqState, StateInputs, TorrentFacts, TorrentState,
+    accumulate_seed_ms, derive_state, plan, uploaded_total, Action, RqState, StateInputs, TorrentFacts, TorrentState,
     PAUSED_BY_SEED_LIMIT, PAUSED_BY_USER,
 };
 use crate::simd::{downsample_bitfield, MATRIX_SIZE};
-use crate::source::{parse_source, Source};
+use crate::source::{check_supported, parse_source, Source};
 use crate::streaming::StreamServer;
 use crate::types::{
     subfolder_for, AddOptions, Detail, ErrorInfo, FileDetail, FileEntry, Metadata, PeerDetail,
@@ -132,6 +132,8 @@ pub struct ApplyConfigResult {
 pub struct InitResult {
     pub stream_port: u16,
     pub torrents: usize,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub config_warning: Option<String>,
 }
 
 pub struct MaglevEngine {
@@ -150,6 +152,8 @@ pub struct MaglevEngine {
     pending_tasks: Mutex<HashMap<String, JoinHandle<()>>>,
     tick_task: Mutex<Option<JoinHandle<()>>>,
     shutting_down: AtomicBool,
+    config_warning: Mutex<Option<String>>,
+    last_seed_tick: Mutex<Instant>,
 }
 
 fn build_options(cfg: &NativeConfig, session_dir: &Path) -> SessionOptions {
@@ -231,10 +235,21 @@ impl MaglevEngine {
 
         let mut meta = MetaStore::load(&session_dir);
         let trimmed = config_json.trim();
+        let mut config_warning: Option<String> = None;
         let cfg = if trimmed.is_empty() || trimmed == "null" {
             meta.data.config.clone().unwrap_or_default()
         } else {
-            NativeConfig::from_json(trimmed)?
+            match NativeConfig::from_json(trimmed) {
+                Ok(c) => c,
+                Err(e) => {
+                    // A bad config must never leave the engine unavailable.
+                    config_warning = Some(format!(
+                        "{}. Using your last saved settings instead.",
+                        e.message.trim_end_matches('.')
+                    ));
+                    meta.data.config.clone().unwrap_or_default()
+                }
+            }
         };
         meta.data.config = Some(cfg.clone());
         let blocked = meta.data.blocked.clone();
@@ -300,6 +315,8 @@ impl MaglevEngine {
             pending_tasks: Mutex::new(HashMap::new()),
             tick_task: Mutex::new(None),
             shutting_down: AtomicBool::new(false),
+            config_warning: Mutex::new(config_warning),
+            last_seed_tick: Mutex::new(Instant::now()),
         });
 
         engine.resume_pending_adds();
@@ -312,6 +329,7 @@ impl MaglevEngine {
     pub fn init_result(&self) -> InitResult {
         InitResult {
             stream_port: self.stream.port,
+            config_warning: self.config_warning.lock().clone(),
             torrents: self.handles().len(),
         }
     }
@@ -399,6 +417,7 @@ impl MaglevEngine {
             name: h.name().unwrap_or_else(|| "Unnamed torrent".to_string()),
             state,
             paused_by: m.paused_by.clone(),
+            finished: stats.finished,
             progress_bytes: stats.progress_bytes,
             total_bytes: stats.total_bytes,
             uploaded_bytes: uploaded,
@@ -408,7 +427,7 @@ impl MaglevEngine {
             peers_seen,
             eta_secs,
             ratio,
-            seeding_secs: m.seeding_secs,
+            seeding_secs: (m.seeding_ms / 1000) as i64,
             added_at: m.added_at,
             output_folder: h.output_folder().to_string_lossy().into_owned(),
             error,
@@ -432,6 +451,7 @@ impl MaglevEngine {
                 .unwrap_or_else(|| "Getting torrent info".to_string()),
             state,
             paused_by: m.paused_by.clone(),
+            finished: false,
             progress_bytes: 0,
             total_bytes: 0,
             uploaded_bytes: 0,
@@ -641,6 +661,7 @@ impl MaglevEngine {
         raw: &str,
         limit: Option<Duration>,
     ) -> Result<Resolved, EngineError> {
+        check_supported(src)?;
         let add = match src {
             Source::Magnet(_) | Source::Url(_) => AddTorrent::from_url(raw.trim().to_string()),
             Source::File(path) => {
@@ -1005,6 +1026,9 @@ impl MaglevEngine {
         let only_files = h.only_files();
         let folder = h.output_folder().to_string_lossy().into_owned();
         self.run(DELETE_TIMEOUT, async {
+            // Holding the tick lock keeps the governance pass (and its stale-entry sweep) away from
+            // this torrent between the delete and the re-add, so its Maglev metadata survives.
+            let _tick = self.tick_lock.lock().await;
             self.session
                 .delete(TorrentIdOrHash::Hash(hash), false)
                 .await
@@ -1019,17 +1043,20 @@ impl MaglevEngine {
                 output_folder: Some(folder),
                 ..Default::default()
             };
-            self.session
+            let added = self
+                .session
                 .add_torrent(AddTorrent::from_bytes(bytes), Some(opts))
                 .await
                 .map(|_| ())
-                .map_err(|e| classify_add_error(&format!("{e:#}")))
+                .map_err(|e| classify_add_error(&format!("{e:#}")));
+            // added_at, paused_by, uploaded totals and seeding time are kept; only error state resets.
+            self.meta.lock().update(&id, |m| {
+                m.last_error = None;
+                m.max_progress_bytes = 0;
+                m.queued = m.paused_by.is_none();
+            });
+            added
         })??;
-        self.meta.lock().update(&id, |m| {
-            m.last_error = None;
-            m.max_progress_bytes = 0;
-            m.queued = m.paused_by.is_none();
-        });
         self.save_meta();
         let _ = self.run(OP_TIMEOUT, self.tick());
         Ok(())
@@ -1246,6 +1273,15 @@ impl MaglevEngine {
                     self.ensure_paused(h).await;
                 }
             }
+            Action::Park { id } => {
+                self.meta.lock().update(&id, |m| {
+                    m.paused_by = None;
+                    m.queued = false;
+                });
+                if let Some(h) = by_id.get(&id) {
+                    self.ensure_paused(h).await;
+                }
+            }
             Action::Resume { id } => {
                 if let Some(h) = by_id.get(&id) {
                     if let Some(err) = self.files_missing(&id, h) {
@@ -1268,6 +1304,13 @@ impl MaglevEngine {
     /// One governance pass: refresh counters, plan, apply, persist.
     pub async fn tick(&self) {
         let _guard = self.tick_lock.lock().await;
+        // Wall-clock time since the previous pass, however it was triggered.
+        let elapsed = {
+            let mut last = self.last_seed_tick.lock();
+            let d = last.elapsed();
+            *last = Instant::now();
+            d
+        };
         let handles = self.handles();
         let now = now_secs();
         let cfg = self.config.lock().clone();
@@ -1305,9 +1348,11 @@ impl MaglevEngine {
                     has_error: errored,
                     resolving: false,
                 });
-                if state == TorrentState::Seeding {
-                    m.seeding_secs += 1;
-                }
+                m.seeding_ms = accumulate_seed_ms(
+                    m.seeding_ms,
+                    elapsed,
+                    state == TorrentState::Seeding,
+                );
                 let ratio = if stats.progress_bytes == 0 {
                     0.0
                 } else {
@@ -1322,7 +1367,7 @@ impl MaglevEngine {
                     queued: m.queued,
                     errored,
                     ratio,
-                    seeding_secs: m.seeding_secs,
+                    seeding_secs: (m.seeding_ms / 1000) as i64,
                     limits_waived: m.limits_waived,
                 });
                 if *m != before {

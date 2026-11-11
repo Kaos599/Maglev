@@ -55,6 +55,19 @@ pub fn parse_source(raw: &str) -> Result<Source, EngineError> {
     ))
 }
 
+/// Secure (https) sources can't be fetched until Android TLS verification is initialised.
+pub fn check_supported(src: &Source) -> Result<(), EngineError> {
+    if let Source::Url(u) = src {
+        if u.to_ascii_lowercase().starts_with("https://") {
+            return Err(EngineError::new(
+                ErrorCode::Unsupported,
+                "Secure (https) torrent links aren't supported yet. Download the .torrent file and open it instead.",
+            ));
+        }
+    }
+    Ok(())
+}
+
 fn is_hex40(s: &str) -> bool {
     s.len() == 40 && s.bytes().all(|b| b.is_ascii_hexdigit())
 }
@@ -246,6 +259,15 @@ mod tests {
         for bad in ["", "   ", "ftp://x/y.torrent", "relative/path.torrent", "https://", "hello"] {
             assert_eq!(parse_source(bad).unwrap_err().code, ErrorCode::InvalidSource, "{bad}");
         }
+    }
+
+    #[test]
+    fn https_sources_are_unsupported_for_now() {
+        let e = check_supported(&parse_source("https://example.org/a.torrent").unwrap()).unwrap_err();
+        assert_eq!(e.code, ErrorCode::Unsupported);
+        assert!(e.message.starts_with("Secure (https) torrent links"));
+        assert!(check_supported(&parse_source("http://example.org/a.torrent").unwrap()).is_ok());
+        assert!(check_supported(&parse_source(&format!("magnet:?xt=urn:btih:{}", "a".repeat(40))).unwrap()).is_ok());
     }
 
     #[test]

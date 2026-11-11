@@ -19,6 +19,7 @@ pub enum ErrorCode {
     Tracker,
     NotInitialized,
     EngineUnavailable,
+    Unsupported,
     Internal,
 }
 
@@ -36,6 +37,7 @@ impl ErrorCode {
             ErrorCode::Tracker => "TRACKER",
             ErrorCode::NotInitialized => "NOT_INITIALIZED",
             ErrorCode::EngineUnavailable => "ENGINE_UNAVAILABLE",
+            ErrorCode::Unsupported => "UNSUPPORTED",
             ErrorCode::Internal => "INTERNAL",
         }
     }
@@ -205,13 +207,32 @@ pub fn classify_add_error(raw: &str) -> EngineError {
         );
     }
     let (code, message) = classify_runtime_error(raw);
-    match code {
-        ErrorCode::DiskFull | ErrorCode::Permission => EngineError::new(code, message),
-        _ => EngineError::new(
+    if matches!(code, ErrorCode::DiskFull | ErrorCode::Permission) {
+        return EngineError::new(code, message);
+    }
+    const NETWORK_HINTS: [&str; 12] = [
+        "error downloading torrent metadata",
+        "connect",
+        "dns",
+        "resolve",
+        "timed out",
+        "timeout",
+        "refused",
+        "unreachable",
+        "no known way to resolve peers",
+        "error sending request",
+        "returned 4",
+        "returned 5",
+    ];
+    if NETWORK_HINTS.iter().any(|h| t.contains(h)) {
+        return EngineError::new(
             ErrorCode::Network,
             "Couldn't reach the torrent. Check your connection and try again.",
-        ),
+        );
     }
+    let first = raw.lines().next().unwrap_or("").trim();
+    let detail: String = first.chars().take(200).collect();
+    EngineError::internal(format!("Couldn't add this torrent: {detail}"))
 }
 
 #[cfg(test)]
@@ -263,6 +284,18 @@ mod tests {
             classify_add_error("error downloading torrent metadata: connection refused").code,
             ErrorCode::Network
         );
+    }
+
+    #[test]
+    fn unknown_add_errors_are_internal_with_the_underlying_message() {
+        let e = classify_add_error("something odd happened in the engine");
+        assert_eq!(e.code, ErrorCode::Internal);
+        assert!(e.message.contains("something odd"));
+        assert_eq!(
+            classify_add_error("GET http://x returned 503").code,
+            ErrorCode::Network
+        );
+        assert_eq!(ErrorCode::Unsupported.as_str(), "UNSUPPORTED");
     }
 
     #[test]
