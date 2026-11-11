@@ -135,6 +135,7 @@ async fn create_torrent_raw<'a>(
                 output_files.push(TorrentMetaV1File {
                     length,
                     path,
+                    path_utf8: None, // MAGLEV PATCH (webseed backport)
                     attr: None,
                     sha1: None,
                     symlink_path: None,
@@ -160,6 +161,7 @@ async fn create_torrent_raw<'a>(
     Ok(CreateTorrentRawResult {
         info: TorrentMetaV1Info {
             name: Some(name),
+            name_utf8: None, // MAGLEV PATCH (webseed backport)
             pieces: piece_hashes.into(),
             piece_length,
             length: if single_file_mode { Some(length) } else { None },
@@ -236,6 +238,7 @@ pub async fn create_torrent<'a>(
             publisher_url: None,
             creation_date: None,
             info_hash,
+            url_list: Vec::new(), // MAGLEV PATCH (webseed backport)
         },
         output_folder: res.output_folder,
     })

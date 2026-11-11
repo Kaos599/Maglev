@@ -78,4 +78,61 @@ The limiter's burst is now `burst_for(bps)` (hunk 12) and librqbit asks for one 
 16 KiB/s makes the limiter refuse the request and ends the peer task. Maglev raises smaller non-zero values to 16 KiB/s
 before calling `set_ratelimits` (`src/torrent_limits.rs`).
 
-To rebase on a new librqbit version: re-apply these twelve hunks (`grep -rn "MAGLEV PATCH" src`).
+
+## Web seeds, BEP 19 (hunks 13-23, contract section 16)
+
+Source: https://github.com/ikatson/rqbit/pull/739 (open, head 272a3bf, "feat(webseed): download from BEP 19 web seeds"),
+applied with `patch -p3` onto the 9.1.0 sources; every hunk below applied without fuzz except the two marked CONFLICT.
+`librqbit-core` 9.1.0 is vendored next to this crate (`vendor/librqbit-core`, `[patch.crates-io]`): crates.io package
+contents, no LICENSE file in the package (the Apache-2.0 notice from `vendor/librqbit/LICENSE` was copied in), plus the PR's
+core hunks (`grep -rn "web_seed\|url_list\|name_utf8\|path_utf8" vendor/librqbit-core/src`).
+
+Taken from the PR:
+
+13. `librqbit-core/src/web_seed.rs` (new): `MAX_WEB_SEEDS` = 64, `is_web_seed_url`, `push_web_seed`, `web_seed_file_url`
+    (libtorrent's URL mapping, byte-wise percent encoding), `deserialize_url_list` (string or list, garbage skipped).
+14. `librqbit-core/src/lib.rs` (`pub mod web_seed`), `magnet.rs` (`Magnet::web_seeds`, `ws=` parsed and written),
+    `torrent_metainfo.rs` (`TorrentMetaV1::url_list`, `TorrentMetaV1Info::name_utf8`, `TorrentMetaV1File::path_utf8`;
+    BEP 17 `httpseeds` stays ignored; `url-list` is outside the info dict so the info hash is unchanged).
+15. `src/webseed/mod.rs` (new): `WebSeeds` list, `WebSeedState`, `WebSeedStats`, `ManagedTorrent::web_seeds()`,
+    `Session::add_web_seed` / `remove_web_seed`, `merge_web_seed_urls`; `src/lib.rs` exports `WebSeedState`, `WebSeedStats`.
+16. `src/webseed/worker.rs` (new): one manager task per live torrent, up to 4 workers (one per web seed), runs of up to 8
+    pieces / 2 MiB fetched with one HTTP range request per file; padding and empty files are never requested (zeros are fed
+    locally); transient errors (timeout, 5xx, 429, 408) back off 2 s doubling to 5 min and honour `Retry-After` (seconds form,
+    max 10 min, never shorter than the backoff); 404/403/410/416 mark one file missing; wrong range answers disable the mirror
+    for the run; a mirror is disabled after 2 pieces that failed the hash check (and only when the mirror supplied all chunks
+    of the piece). Download rate: each filled chunk (at most `CHUNK_SIZE` = 16 KiB, the hunk 12 burst floor) waits on the
+    torrent limiter and then the session limiter before it is written.
+17. `src/torrent_state/live/web_seed.rs` (new, child of `live`): `web_seed_reserve` (same `acquire_piece` as peers, then
+    consecutive queued pieces inside the same file), `web_seed_owns`, `web_seed_release`, `wait_for_web_seed_download_rate`.
+18. `src/torrent_state/live/mod.rs`: `mod web_seed;`, `crate::webseed::spawn_web_seeds(&state)` at the end of
+    `TorrentStateLive::new`, and `on_received_piece` split: the write/verify tail is now `TorrentStateLive::process_received_chunk`
+    (counts `received` bytes, so padding zeros are not counted), which returns `PieceHashFailed` on a failed hash
+    (peers still die on it, as before).
+19. `src/piece_tracker.rs` (`reserve_queued` + test), `src/chunk_tracker.rs` (`is_piece_queued`).
+20. `src/session.rs`: `AddTorrentOptions::{web_seeds, replace_web_seeds, disable_web_seeds}`,
+    `SessionOptions::disable_web_seeds`, `Session::disable_web_seeds`, `InternalAddResult::web_seeds` (from the magnet's `ws`
+    or the torrent's `url_list`), `reqwest_client` and `try_update_persistence_metadata` made `pub(crate)`.
+    CONFLICT with hunks 2/8 (`ManagedTorrentShared` literal): both lines kept, `web_seeds: WebSeeds::new(..)` added after them.
+21. `src/torrent_state/mod.rs`: `ManagedTorrentShared::web_seeds`. CONFLICT with hunks 1/7 (same struct tail): new field
+    added after `ratelimits_override`.
+22. `src/session_persistence/{mod,json}.rs`: web seeds (and the per-torrent disable flag) are saved in the JSON state, so a
+    seed removed at run time stays removed after a restart (`replace_web_seeds` is set when the list was stored). This is
+    not Postgres persistence; Maglev uses JSON.
+23. Struct-literal fixes for the new core fields: `src/create_torrent_file.rs` (`name_utf8`, `path_utf8`, `url_list` only),
+    `src/upnp_server_adapter.rs` (test data).
+
+Dropped: Postgres persistence (`session_persistence/postgres.rs`; it is behind the `postgres` feature, which Maglev keeps
+off, but that file would need the two new `SerializedTorrent` fields if the feature were ever turned on), the HTTP API
+(`api.rs`, `http_api/handlers/*`), the `create_torrent_file.rs` piece-count fix and its tests (create-torrent change), the
+`rqbit` CLI, the `tokio/process` dev-dependency, the libtorrent interop tests, and the in-process e2e tests
+(`tests/e2e_webseed.rs`, `tests/web_seed_server.rs`; they need upstream test helpers that 9.1.0 does not have, `fake_peer`,
+`e2e_have`). The unit tests that live inside the taken files are kept (`web_seed.rs`, `magnet.rs`, `torrent_metainfo.rs`,
+`webseed/mod.rs`, `webseed/worker.rs`, `piece_tracker.rs`, `session_persistence/mod.rs`).
+
+Maglev wiring (`native/maglev-core/src/engine.rs`): `Snapshot.web_seeds` = `ManagedTorrent::web_seeds().len()`; the peers list
+gets one row per web seed with `client: "Web seed"`, the URL's host as `addr`, and a speed computed from
+`WebSeedStats::downloaded_bytes`.
+
+To rebase on a new librqbit version: re-apply these hunks (`grep -rn "MAGLEV PATCH" src` for 1-12 and the markers above; the
+web seed files are whole files, diff them against the PR or its merged form).

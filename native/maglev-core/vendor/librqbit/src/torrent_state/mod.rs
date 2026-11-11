@@ -203,6 +203,9 @@ pub struct ManagedTorrentShared {
     // MAGLEV PATCH: per-torrent speed limits chosen by the user (see MAGLEV_PATCH.md).
     // Read when the torrent goes live; None means "use `options.ratelimits`".
     pub(crate) ratelimits_override: parking_lot::Mutex<Option<LimitsConfig>>,
+
+    /// The web seeds (BEP 19) of the torrent.
+    pub(crate) web_seeds: crate::webseed::WebSeeds, // MAGLEV PATCH (webseed backport)
 }
 
 impl ManagedTorrentShared {
