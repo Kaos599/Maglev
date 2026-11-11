@@ -6,6 +6,7 @@ import { createTorznabProvider } from './providers/torznab.ts';
 import { ProviderError } from './http.ts';
 import { pausedFor, recordFailure, recordSuccess } from './health.ts';
 import { CATEGORY_ORDER } from './types.ts';
+import { decodeEntities } from './text.ts';
 import type { Category, MergedResult, SearchProvider, SearchResult, SearchUpdate, SortKey, SourceStatus } from './types.ts';
 
 export { PROVIDERS, createTorznabProvider };
@@ -85,7 +86,9 @@ export function mergeResults(rows: SearchResult[], priority: string[]): MergedRe
     return i < 0 ? Number.MAX_SAFE_INTEGER : i;
   };
   const groups = new Map<string, SearchResult[]>();
-  for (const r of rows) {
+  for (const raw of rows) {
+    // JSON providers (e.g. Internet Archive) return HTML-escaped titles too.
+    const r = raw.name.includes('&') ? { ...raw, name: decodeEntities(raw.name) } : raw;
     const g = groups.get(r.infoHash);
     if (g) g.push(r);
     else groups.set(r.infoHash, [r]);

@@ -91,7 +91,7 @@ Work containing any of the following is rejected:
 
 - **Storage:** default to `Download/Maglev`, which is visible in file managers. A custom folder goes through the SAF picker, using direct POSIX writes when possible and otherwise staging plus copy-on-complete. Never request `MANAGE_EXTERNAL_STORAGE` in the Play build.
 - **Permissions** are requested during onboarding, each with a reason screen. `POST_NOTIFICATIONS` is requested on API 33+. Battery optimization goes through the system settings intent. Every denial must have a recovery path.
-- **Foreground service:** type `dataSync`, started only while a torrent is downloading or seeding. It handles `onTimeout` (Android 15's 6-hour cap) and offers Pause all / Resume all / Shut down actions.
+- **Foreground service:** type `specialUse` on API 34+ (no 6-hour cap) and `dataSync` below it. A future Play build flips back to `dataSync` and its `onTimeout` handling. The service runs only while a torrent is downloading or seeding, restarts headless after process death (`NATIVE_CONTRACT.md` §8), and offers Pause all / Resume all / Shut down. On API 36+ the notification is a promoted Live Update while downloading (§10.4).
 - **Release APKs:** universal, arm64-v8a, armeabi-v7a and x86_64, all from one build (`plugins/withAbiSplits.js`). No x86.
 
 ---

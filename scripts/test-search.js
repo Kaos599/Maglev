@@ -168,6 +168,8 @@ async function main() {
   check('tie goes to higher priority source', merged[0].providerId === 'knaben');
   merged = agg.mergeResults([mk('archive', undefined), mk('tpb', 3)], ['archive', 'tpb']);
   check('undefined seeders do not beat a count', merged[0].providerId === 'tpb' && merged[0].seeders === 3);
+  merged = agg.mergeResults([mk('archive', 3, { name: 'Handbook by Rapha&euml;l Hertzog &ndash; 2nd &amp; final' })], ['archive']);
+  check('names are entity-decoded (JSON providers too)', merged[0].name === 'Handbook by Raphaël Hertzog – 2nd & final', merged[0].name);
   // End to end: two providers, same hash.
   health.resetHealth();
   installFetch({
