@@ -25,6 +25,7 @@ import type {
   ScheduleStatus,
   Snapshot,
   StorageStatus,
+  PlaybackSupport,
   TelemetryEvent,
   TorrentCompletedEvent,
   TorrentDetailData,
@@ -1187,6 +1188,14 @@ export class MaglevMockEngine implements MaglevEngineApi {
 
   public async pickFolder(): Promise<PickFolderResult> {
     return this.pickDownloadFolder();
+  }
+
+  /** Mock: a plausible mid-range phone. Marked `mock: true`. Dev and web only. */
+  public async getPlaybackSupport(): Promise<PlaybackSupport> {
+    return {
+      avc: 'hardware', hevc: 'hardware', hevc10: 'hardware', av1: 'software', av1_10: 'software',
+      vp9: 'hardware', dolbyVision: 'none', hdr10: true, hdr10plus: false, hlg: true, mock: true,
+    };
   }
 
   public async getStorageStatus(): Promise<StorageStatus> {
