@@ -475,6 +475,8 @@ object EngineHost {
         var dlDone = 0L; var dlTotal = 0L
         var seedId: String? = null
         var wifiPaused = false; var batteryPaused = false; var chargingPaused = false
+        // §18.5: storage-paused torrents keep the service alive so the free-space poll and media receiver keep running.
+        var spacePaused = false; var volumePaused = false
         var primary: Map<String, Any?>? = null
         var latest: Map<String, Any?>? = null
         for (t in torrents) {
@@ -499,6 +501,8 @@ object EngineHost {
                     "wifi_only" -> { byRules++; wifiPaused = true }
                     "battery" -> { byRules++; batteryPaused = true }
                     "charging_only" -> { byRules++; chargingPaused = true }
+                    "storage_full" -> { byRules++; spacePaused = true }
+                    "storage_unavailable" -> { byRules++; volumePaused = true }
                     "schedule" -> bySchedule++
                 }
             }
@@ -526,6 +530,8 @@ object EngineHost {
             wifiPaused -> "wifi_only"
             batteryPaused -> "battery"
             chargingPaused -> "charging_only"
+            spacePaused -> "storage_full"
+            volumePaused -> "storage_unavailable"
             else -> null
         }
         return TransferSummary(

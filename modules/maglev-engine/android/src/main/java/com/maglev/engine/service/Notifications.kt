@@ -119,6 +119,8 @@ object Notifications {
     private fun reasonLabel(reason: String?): String = when (reason) {
         "battery" -> "battery"
         "charging_only" -> "charging"
+        "storage_full" -> "free space"
+        "storage_unavailable" -> "the SD card"
         else -> "Wi-Fi"
     }
 

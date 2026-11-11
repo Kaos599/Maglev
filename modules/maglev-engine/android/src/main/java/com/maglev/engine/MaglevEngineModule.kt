@@ -328,6 +328,8 @@ class MaglevEngineModule : Module() {
             engine(promise) {
                 @Suppress("UNCHECKED_CAST")
                 val ssids = (rules["ssidWhitelist"] as? List<Any?>)?.mapNotNull { it?.toString() } ?: emptyList()
+                // §19: read headless by RestartEntry after a reboot or update, so it lives in SharedPreferences.
+                context?.let { RestartPrefs.setResumeAfterRestart(it, rules["resumeAfterRestart"] != false) }
                 EngineHost.setGovernance(
                     Governance(
                         wifiOnly = rules["wifiOnly"] == true,

@@ -67,6 +67,7 @@ export function toGovernance(settings: MaglevSettings): GovernanceConfig {
     chargingOnly: power.downloadOnlyWhileCharging,
     batteryCutoffPct: power.batteryCutoffThreshold,
     autoExitOnComplete: power.autoExitOnComplete,
+    resumeAfterRestart: power.resumeAfterRestart,
   };
 }
 

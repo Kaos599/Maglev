@@ -319,6 +319,8 @@ export interface GovernanceConfig {
   chargingOnly: boolean;
   batteryCutoffPct: number;
   autoExitOnComplete: boolean;
+  /** NATIVE_CONTRACT 19: restart unfinished transfers after a reboot or app update. */
+  resumeAfterRestart: boolean;
 }
 
 export type NotificationActionName = 'pause_all' | 'resume_all' | 'shutdown';
