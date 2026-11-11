@@ -63,7 +63,21 @@ object StorageManager {
     }
 
     /** Creates and deletes a file in [dir]. */
+    private val probeCache = java.util.concurrent.ConcurrentHashMap<String, Pair<Boolean, Long>>()
+    private const val PROBE_TTL_MS = 60_000L
+
+    /**
+     * True when a file can be written in [dir]. Cached per folder for a minute: each probe write in
+     * shared storage makes MediaProvider log an error, and storage status is read often.
+     */
     fun probeWritable(dir: File): Boolean {
+        val key = dir.absolutePath
+        val now = android.os.SystemClock.elapsedRealtime()
+        probeCache[key]?.let { (ok, at) -> if (now - at < PROBE_TTL_MS) return ok }
+        return probeUncached(dir).also { probeCache[key] = it to now }
+    }
+
+    private fun probeUncached(dir: File): Boolean {
         return try {
             if (!dir.exists() && !dir.mkdirs()) return false
             val probe = File(dir, PROBE)
