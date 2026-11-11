@@ -57,9 +57,6 @@ jobs:
       GRADLE_OPTS: "-Xmx4g -Dorg.gradle.jvmargs=-Xmx4g -Dorg.gradle.daemon=false -Dorg.gradle.caching=true"
       # Everyday CI builds arm64 only (plugins/withAbiSplits.js); release-apk.yml builds all three.
       MAGLEV_ABIS: arm64-v8a
-      # CMake 3.17+ reads these, so the NDK C++ compile goes through ccache.
-      CMAKE_C_COMPILER_LAUNCHER: ccache
-      CMAKE_CXX_COMPILER_LAUNCHER: ccache
 
     steps:
       - name: Checkout repository
@@ -82,14 +79,6 @@ jobs:
         with:
           # Feature branches write the cache too; the default is read-only off main.
           cache-read-only: false
-
-      - name: Setup ccache
-        uses: hendrikmuhs/ccache-action@v1.2
-        with:
-          key: apk-arm64
-          max-size: 1G
-          # The runner image's apt index can be stale; without this the ccache install fails.
-          update-package-index: true
 
       - name: Accept Android SDK licenses
         run: |
@@ -131,9 +120,6 @@ jobs:
           cd android
           chmod +x gradlew
           ./gradlew assembleRelease --stacktrace
-
-      - name: ccache stats
-        run: ccache --show-stats || true
 
       - name: List APKs
         run: ls -lh android/app/build/outputs/apk/release/*.apk
