@@ -1,0 +1,22 @@
+[
+  { "note": "all include words, any order, case-insensitive", "rule": { "include": "show 1080p", "exclude": "", "episodes": "all" }, "title": "The.Show.S02E05.1080p.WEB.h264", "seenEpisodes": [], "expect": { "match": true, "episode": "s2e5" } },
+  { "note": "missing include word", "rule": { "include": "show 2160p", "exclude": "", "episodes": "all" }, "title": "The.Show.S02E05.1080p.WEB.h264", "seenEpisodes": [], "expect": { "match": false, "episode": "s2e5" } },
+  { "note": "empty include matches everything", "rule": { "include": "", "exclude": "", "episodes": "all" }, "title": "Anything at all", "seenEpisodes": [], "expect": { "match": true, "episode": null } },
+  { "note": "exclude word rejects", "rule": { "include": "show", "exclude": "720p cam", "episodes": "all" }, "title": "The Show S02E05 720p", "seenEpisodes": [], "expect": { "match": false, "episode": "s2e5" } },
+  { "note": "exclude is any-word, not all-words", "rule": { "include": "show", "exclude": "cam hdts", "episodes": "all" }, "title": "The Show S02E05 HDTS", "seenEpisodes": [], "expect": { "match": false, "episode": "s2e5" } },
+  { "note": "regex include", "rule": { "include": "/show\\.s0[12]e\\d+/", "exclude": "", "episodes": "all" }, "title": "The.Show.S01E09.720p", "seenEpisodes": [], "expect": { "match": true, "episode": "s1e9" } },
+  { "note": "regex include is case-insensitive", "rule": { "include": "/THE\\.SHOW/", "exclude": "", "episodes": "all" }, "title": "the.show.s01e09", "seenEpisodes": [], "expect": { "match": true, "episode": "s1e9" } },
+  { "note": "invalid regex never matches", "rule": { "include": "/show(/", "exclude": "", "episodes": "all" }, "title": "show( S01E01", "seenEpisodes": [], "expect": { "match": false, "episode": "s1e1" } },
+  { "note": "regex exclude", "rule": { "include": "show", "exclude": "/\\b(720|480)p\\b/", "episodes": "all" }, "title": "Show S03E01 480p", "seenEpisodes": [], "expect": { "match": false, "episode": "s3e1" } },
+  { "note": "new_only skips a seen episode (other quality)", "rule": { "include": "show", "exclude": "", "episodes": "new_only" }, "title": "Show S02E05 2160p", "seenEpisodes": ["s2e5"], "expect": { "match": false, "episode": "s2e5" } },
+  { "note": "new_only allows an unseen episode", "rule": { "include": "show", "exclude": "", "episodes": "new_only" }, "title": "Show S02E06 1080p", "seenEpisodes": ["s2e5"], "expect": { "match": true, "episode": "s2e6" } },
+  { "note": "all ignores seen episodes", "rule": { "include": "show", "exclude": "", "episodes": "all" }, "title": "Show S02E05 2160p", "seenEpisodes": ["s2e5"], "expect": { "match": true, "episode": "s2e5" } },
+  { "note": "new_only with no episode key matches normally", "rule": { "include": "ubuntu", "exclude": "", "episodes": "new_only" }, "title": "ubuntu-26.04-desktop-amd64.iso", "seenEpisodes": ["s1e1"], "expect": { "match": true, "episode": null } },
+  { "note": "NxNN form", "rule": { "include": "show", "exclude": "", "episodes": "all" }, "title": "Show 3x07 HDTV", "seenEpisodes": [], "expect": { "match": true, "episode": "s3e7" } },
+  { "note": "multi-episode keeps the first episode", "rule": { "include": "show", "exclude": "", "episodes": "all" }, "title": "Show.S01E01-E03.1080p", "seenEpisodes": [], "expect": { "match": true, "episode": "s1e1" } },
+  { "note": "anime absolute number with version", "rule": { "include": "frieren", "exclude": "", "episodes": "new_only" }, "title": "[SubsPlease] Frieren - 12v2 (1080p) [ABCD1234].mkv", "seenEpisodes": [], "expect": { "match": true, "episode": "s1e12" } },
+  { "note": "anime absolute number already seen", "rule": { "include": "frieren", "exclude": "", "episodes": "new_only" }, "title": "[Other] Frieren - 12 (720p).mkv", "seenEpisodes": ["s1e12"], "expect": { "match": false, "episode": "s1e12" } },
+  { "note": "years and resolutions are not episodes", "rule": { "include": "movie", "exclude": "", "episodes": "new_only" }, "title": "Some Movie 2024 1080p x265", "seenEpisodes": [], "expect": { "match": true, "episode": null } },
+  { "note": "word match is substring within title tokens", "rule": { "include": "show", "exclude": "", "episodes": "all" }, "title": "TheShowcase S01E01", "seenEpisodes": [], "expect": { "match": true, "episode": "s1e1" } },
+  { "note": "include words separated by extra spaces", "rule": { "include": "  show   web  ", "exclude": "  ", "episodes": "all" }, "title": "Show S01E02 WEB", "seenEpisodes": [], "expect": { "match": true, "episode": "s1e2" } }
+]

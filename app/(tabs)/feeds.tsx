@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, FlatList, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { useFocusEffect } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import { useMaglevEngine } from '../../context/EngineContext';
 import { useTheme } from '../../context/ThemeContext';
 import { ThemeColors, spacing, type } from '../../constants/theme';
@@ -20,6 +20,7 @@ import {
   saveFeeds,
   saveSeen,
 } from '../../utils/feeds';
+import { syncFeedAutomationToNative } from '../../utils/prefs/feedAutomation';
 
 interface FeedState {
   status: 'loading' | 'ok' | 'error';
@@ -32,6 +33,7 @@ const ALL = 'all';
 export default function FeedsScreen() {
   const { colors } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
+  const router = useRouter();
   const { startTorrent, telemetry } = useMaglevEngine();
 
   const [feeds, setFeeds] = useState<Feed[]>(() => loadFeeds());
@@ -127,6 +129,7 @@ export default function FeedsScreen() {
         const nextFeeds = [...feeds, feed];
         setFeeds(nextFeeds);
         saveFeeds(nextFeeds);
+        void syncFeedAutomationToNative();
         setStates((p) => ({ ...p, [feed.id]: { status: 'ok', items } }));
         const nextSeen = { ...seenRef.current, [feed.id]: items.map((i) => i.id) };
         setSeen(nextSeen);
@@ -152,6 +155,7 @@ export default function FeedsScreen() {
             const next = feeds.filter((f) => f.id !== feed.id);
             setFeeds(next);
             saveFeeds(next);
+            void syncFeedAutomationToNative();
             setStates((p) => {
               const { [feed.id]: _gone, ...rest } = p;
               return rest;
@@ -241,6 +245,7 @@ export default function FeedsScreen() {
           title="No feeds yet"
           body="Follow an RSS or Atom feed to see new torrents here."
           primary={{ label: 'New feed', icon: 'plus', onPress: () => setSheetOpen(true) }}
+          secondary={{ label: 'Auto-download rules', onPress: () => router.push('/settings/feeds' as never) }}
         />
         {sheet}
       </Screen>
@@ -273,6 +278,9 @@ export default function FeedsScreen() {
           {`${feeds.length} ${feeds.length === 1 ? 'feed' : 'feeds'} · ${newCount} new`}
         </Text>
         <Button label="New feed" icon="plus" onPress={() => setSheetOpen(true)} />
+      </View>
+      <View style={styles.autoRow}>
+        <Button label="Auto-download rules" icon="rule" variant="ghost" onPress={() => router.push('/settings/feeds' as never)} />
       </View>
       <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chipScroll} contentContainerStyle={styles.chips}>
         <Chip label="All" selected={selected === ALL} onPress={() => setSelected(ALL)} />
@@ -315,6 +323,7 @@ const makeStyles = (c: ThemeColors) =>
   StyleSheet.create({
     sub: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: spacing.lg, paddingBottom: spacing.sm },
     subText: { ...type.mono, fontSize: 13, color: c.textMuted },
+    autoRow: { paddingHorizontal: spacing.lg, alignItems: 'flex-start', paddingBottom: spacing.xs },
     chipScroll: { flexGrow: 0, marginBottom: spacing.sm },
     chips: { paddingHorizontal: spacing.lg, gap: spacing.sm },
     feedBar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: spacing.lg, marginBottom: spacing.sm },
