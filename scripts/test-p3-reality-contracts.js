@@ -135,6 +135,12 @@ contract('C-ENG-2', 'P0',
   'Given the shipped arm64 .so, When its size and strings are inspected, Then it is >= 3 MB and embeds librqbit/dht code',
   () => {
     const dir = 'modules/maglev-engine/android/src/main/jniLibs';
+    // Binaries are never committed (AGENTS.md §4.5). With no local build, the CI gate in
+    // .github/workflows/_rust-android.yml enforces the same rule on every push.
+    if (!exists(`${dir}/arm64-v8a/libmaglev_core.so`)) {
+      skip('no local .so (gitignored); enforced by CI _rust-android size/reality/16KB gate');
+      return;
+    }
     const check = (abi, strict) => {
       const rel = `${dir}/${abi}/libmaglev_core.so`;
       const report = strict ? assert : (c, m) => { if (!c) warn(m); };

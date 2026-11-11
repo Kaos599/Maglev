@@ -296,7 +296,7 @@ export default function FeedsScreen() {
         ListEmptyComponent={
           loadingAny ? (
             <SkeletonRows />
-          ) : errored.length > 0 ? null : (
+          ) : errored.length > 0 ? undefined : (
             <EmptyBlock icon="feeds" title="Nothing here yet" body="Pull down to check for new releases." />
           )
         }
