@@ -1,0 +1,62 @@
+import React, { useEffect, useMemo, useState } from 'react';
+import { Linking, StyleSheet, View } from 'react-native';
+import { Stack } from 'expo-router';
+import Constants from 'expo-constants';
+import { maglevEngine } from 'maglev-engine';
+import { ThemeColors, spacing } from '../../constants/theme';
+import { useTheme } from '../../context/ThemeContext';
+import { ListRow } from '../../components/ui';
+import { Card, SettingsPage } from '../../components/settings/SettingsParts';
+import { Wordmark } from '../../components/settings/Wordmark';
+
+type Extra = { license?: string; homepage?: string; sourceUrl?: string; privacyUrl?: string };
+
+export default function AboutSettings() {
+  const { colors } = useTheme();
+  const s = useMemo(() => makeStyles(colors), [colors]);
+  const [engine, setEngine] = useState<string>('—');
+  const appVersion = Constants.expoConfig?.version ?? '—';
+  const extra = (Constants.expoConfig?.extra ?? {}) as Extra;
+
+  useEffect(() => {
+    let alive = true;
+    maglevEngine
+      .version()
+      .then((v) => {
+        if (!alive) return;
+        setEngine(v.engine === 'unavailable' || !v.version ? 'Unavailable' : `${v.engine} ${v.version}`);
+      })
+      .catch(() => alive && setEngine('Unavailable'));
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  const links = [
+    extra.homepage && { title: 'Website', url: extra.homepage },
+    extra.sourceUrl && { title: 'Source code', url: extra.sourceUrl },
+    extra.privacyUrl && { title: 'Privacy policy', url: extra.privacyUrl },
+  ].filter(Boolean) as { title: string; url: string }[];
+
+  return (
+    <SettingsPage title="ABOUT">
+      <Stack.Screen options={{ headerShown: false }} />
+      <View style={s.brand}>
+        <Wordmark />
+      </View>
+      <Card>
+        <ListRow title="App version" value={appVersion} />
+        <ListRow title="Engine" value={engine} />
+        {extra.license ? <ListRow title="License" value={extra.license} /> : null}
+        {links.map((l) => (
+          <ListRow key={l.url} title={l.title} onPress={() => void Linking.openURL(l.url)} />
+        ))}
+      </Card>
+    </SettingsPage>
+  );
+}
+
+const makeStyles = (c: ThemeColors) =>
+  StyleSheet.create({
+    brand: { alignItems: 'center', paddingVertical: spacing.xxl },
+  });

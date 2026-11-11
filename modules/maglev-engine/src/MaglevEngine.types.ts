@@ -12,7 +12,8 @@ import type { DownloadFolder } from './MaglevSettings.types.ts';
 
 export * from './MaglevSettings.types.ts';
 
-export type PausedBy = 'user' | 'wifi_only' | 'battery' | 'charging_only' | 'seed_limit';
+/** Reserved: user, seed_limit. Any other value is a governance tag from Kotlin. */
+export type PausedBy = 'user' | 'wifi_only' | 'battery' | 'charging_only' | 'seed_limit' | 'fgs_timeout';
 
 export interface TorrentTelemetry {
   id: string;

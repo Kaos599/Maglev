@@ -383,7 +383,16 @@ contract('C-UI-SET', 'P1',
     assert(!!dir, 'settings directory exists (app/settings or app/(tabs)/settings)');
     if (!dir) return;
     const files = fs.readdirSync(abs(dir)).filter((f) => f.endsWith('.tsx'));
-    assert(files.includes('index.tsx'), `${dir}/index.tsx exists`);
+    // The index is either <dir>/index.tsx or the Settings tab itself (UI_SPEC S8), never both (duplicate /settings route).
+    const tabIndex = exists('app/(tabs)/settings.tsx');
+    const dirIndex = files.includes('index.tsx');
+    assert(tabIndex !== dirIndex, `exactly one settings index (tab: ${tabIndex}, ${dir}/index.tsx: ${dirIndex})`);
+    if (tabIndex) {
+      const idx = code('app/(tabs)/settings.tsx');
+      const linked = files.filter((f) => f !== 'index.tsx' && f !== '_layout.tsx').map((f) => f.replace('.tsx', ''))
+        .filter((n) => new RegExp(`settings/${n}\\b|route:\\s*['"]${n}['"]`).test(idx));
+      assert(linked.length >= 6, `settings index links to >= 6 sub-screens (found ${linked.length})`);
+    }
     assert(files.filter((f) => f !== 'index.tsx' && f !== '_layout.tsx').length >= 6, `>= 6 sub-screens (found ${files.filter((f) => f !== 'index.tsx' && f !== '_layout.tsx').length})`);
   });
 
