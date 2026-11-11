@@ -6,16 +6,17 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { HeaderBar } from '../../components/HeaderBar';
 import { FilterPills } from '../../components/FilterPills';
 import { CARD_GAP, CARD_HEIGHT, TransferCard } from '../../components/TransferCard';
-import { EmptyState } from '../../components/EmptyState';
 import { FloatingActionButton } from '../../components/FloatingActionButton';
 import { SpeedTelemetryHeader } from '../../components/SpeedTelemetryHeader';
 import { BulkBar } from '../../components/transfers/BulkBar';
 import { ClipboardChip } from '../../components/transfers/ClipboardChip';
 import { DeleteSheet } from '../../components/transfers/DeleteSheet';
 import { SortSheet } from '../../components/transfers/SortSheet';
+import { TeachingEmptyState } from '../../components/transfers/TeachingEmptyState';
 import { FILTERS, TransferFilter, countByFilter, magnetHash, matchesFilter, sortTorrents } from '../../components/transfers/model';
 import { PixelIcon } from '../../components/PixelIcon';
-import { EmptyBlock, IconButton } from '../../components/ui/index';
+import { Banner, EmptyBlock, IconButton } from '../../components/ui/index';
+import * as DocumentPicker from 'expo-document-picker';
 import { triggerHaptic } from '../../constants/haptics';
 import { useMaglevEngine } from '../../context/EngineContext';
 import { useTheme } from '../../context/ThemeContext';
@@ -33,8 +34,19 @@ export default function TransfersScreen() {
   const router = useRouter();
   const navigation = useNavigation();
   const tabBarStyle = useTabBarStyle();
-  const { telemetry, pauseTorrent, resumeTorrent, pauseAll, resumeAll, deleteTorrent, clipboardMagnet, clearClipboardMagnet } =
-    useMaglevEngine();
+  const {
+    telemetry,
+    pauseTorrent,
+    resumeTorrent,
+    pauseAll,
+    resumeAll,
+    deleteTorrent,
+    removeTorrents,
+    notice,
+    dismissNotice,
+    clipboardMagnet,
+    clearClipboardMagnet,
+  } = useMaglevEngine();
 
   const [sort, setSort] = useState<TransferSort>(loadTransferSort);
   const [filter, setFilter] = useState<TransferFilter>('all');
@@ -43,6 +55,7 @@ export default function TransfersScreen() {
   const [sortOpen, setSortOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [selectedIds, setSelectedIds] = useState<ReadonlySet<string>>(() => new Set());
+  const [fileError, setFileError] = useState<string | null>(null);
 
   const all = telemetry.torrents;
   const selectionMode = selectedIds.size > 0;
@@ -126,20 +139,49 @@ export default function TransfersScreen() {
     },
     [selectedIds, exitSelection],
   );
+  const selectedBytes = useMemo(
+    () => all.reduce((sum, t) => (selectedIds.has(t.id) ? sum + t.downloadedBytes : sum), 0),
+    [all, selectedIds],
+  );
   const confirmDelete = useCallback(
     (deleteFiles: boolean) => {
       setDeleteOpen(false);
-      void bulk((id) => deleteTorrent(id, deleteFiles));
+      if (deleteFiles) {
+        void bulk((id) => deleteTorrent(id, true));
+      } else {
+        // Keep files: the rows leave now and the notice offers Undo for 5 seconds.
+        const ids = [...selectedIds];
+        exitSelection();
+        removeTorrents(ids);
+      }
     },
-    [bulk, deleteTorrent],
+    [bulk, deleteTorrent, removeTorrents, selectedIds, exitSelection],
   );
 
   const goAdd = useCallback(() => router.push('/add-torrent'), [router]);
-  const goSearch = useCallback(() => router.navigate('/search'), [router]);
   const addClipboard = useCallback(() => {
     if (!clipboardMagnet) return;
     router.push({ pathname: '/add-torrent', params: { source: clipboardMagnet } });
   }, [clipboardMagnet, router]);
+
+  const openFile = useCallback(async () => {
+    setFileError(null);
+    try {
+      const res = await DocumentPicker.getDocumentAsync({
+        type: ['application/x-bittorrent', 'application/octet-stream', '*/*'],
+        copyToCacheDirectory: true,
+      });
+      if (res.canceled || !res.assets?.length) return;
+      const asset = res.assets[0];
+      if (!/\.torrent$/i.test(asset.name)) {
+        setFileError("That isn't a .torrent file.");
+        return;
+      }
+      router.push({ pathname: '/add-torrent', params: { source: asset.uri } });
+    } catch {
+      setFileError("Couldn't open that file.");
+    }
+  }, [router]);
 
   const toggleSearch = useCallback(() => {
     setSearchOpen((open) => {
@@ -219,10 +261,18 @@ export default function TransfersScreen() {
         />
       ) : null}
 
-      {clipboardMagnet && clipboardIsNew && !selectionMode ? <ClipboardChip onAdd={addClipboard} onDismiss={clearClipboardMagnet} /> : null}
+      {clipboardMagnet && clipboardIsNew && !selectionMode ? (
+        <ClipboardChip magnet={clipboardMagnet.startsWith('magnet:')} onAdd={addClipboard} onDismiss={clearClipboardMagnet} />
+      ) : null}
+
+      {fileError && all.length === 0 ? (
+        <View style={styles.fileError}>
+          <Banner tone="warning" title={fileError} onDismiss={() => setFileError(null)} />
+        </View>
+      ) : null}
 
       {all.length === 0 ? (
-        <EmptyState onAdd={goAdd} onSearch={goSearch} />
+        <TeachingEmptyState canPaste={!!clipboardMagnet && clipboardIsNew} onPaste={addClipboard} onOpenFile={openFile} />
       ) : (
         <>
           <FilterPills value={filter} counts={counts} onChange={setFilter} />
@@ -273,8 +323,20 @@ export default function TransfersScreen() {
         <FloatingActionButton onPress={goAdd} />
       )}
 
+      {notice ? (
+        <View style={styles.notice} pointerEvents="box-none">
+          <Banner
+            tone="info"
+            title={notice.message}
+            actionLabel={notice.actionLabel}
+            onAction={notice.onAction}
+            onDismiss={notice.actionLabel ? undefined : dismissNotice}
+          />
+        </View>
+      ) : null}
+
       <SortSheet visible={sortOpen} sort={sort} onChange={changeSort} onClose={() => setSortOpen(false)} />
-      <DeleteSheet visible={deleteOpen} count={selectedIds.size} onClose={() => setDeleteOpen(false)} onConfirm={confirmDelete} />
+      <DeleteSheet visible={deleteOpen} count={selectedIds.size} bytes={selectedBytes} onClose={() => setDeleteOpen(false)} onConfirm={confirmDelete} />
     </View>
   );
 }
@@ -295,5 +357,7 @@ const makeStyles = (c: ThemeColors) =>
       borderRadius: radius.md,
     },
     searchInput: { ...type.mono, flex: 1, fontSize: 13, color: c.text, paddingVertical: 0 },
+    fileError: { paddingHorizontal: spacing.lg, paddingBottom: spacing.sm },
+    notice: { position: 'absolute', left: spacing.lg, right: spacing.lg, bottom: spacing.lg + 56 + spacing.sm },
     noMatch: { flex: 1, justifyContent: 'center' },
   });

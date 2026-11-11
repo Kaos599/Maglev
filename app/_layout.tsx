@@ -9,6 +9,8 @@ import { ThemeProvider, useTheme } from '../context/ThemeContext';
 import { EngineProvider, useMaglevEngine } from '../context/EngineContext';
 import { fontFamily } from '../constants/theme';
 import NavigationBarSync from '../components/NavigationBarSync';
+import { syncScheduleToNative } from '../utils/prefs/schedule';
+import { syncFeedAutomationToNative } from '../utils/prefs/feedAutomation';
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
 
@@ -18,26 +20,37 @@ const ENGINE_RESOLVE_TIMEOUT_MS = 15000;
 function AppNavigation() {
   const { colors, dark } = useTheme();
   const { settings } = useSettings();
-  const { engineStatus } = useMaglevEngine();
+  const { engineStatus, telemetry } = useMaglevEngine();
   const [timedOut, setTimedOut] = useState(false);
 
   // The bridge reports 'starting' until init settles to 'ready' or 'unavailable'.
-  const resolved = engineStatus.kind !== 'starting' || timedOut;
+  const starting = engineStatus.kind === 'starting';
+  // UI spec S10.3: an onboarded user with a cached list sees it at once while the engine starts.
+  const cachedBoot = starting && !timedOut && settings.onboarded && telemetry.torrents.some((t) => t.lastKnown);
+  const resolved = !starting || timedOut || cachedBoot;
 
   useEffect(() => {
-    if (resolved) return;
+    if (!starting) return;
     const t = setTimeout(() => setTimedOut(true), ENGINE_RESOLVE_TIMEOUT_MS);
     return () => clearTimeout(t);
-  }, [resolved]);
+  }, [starting]);
 
   useEffect(() => {
     if (resolved) SplashScreen.hideAsync().catch(() => {});
   }, [resolved]);
 
+  // Push the saved schedule and feed rules to Kotlin once the engine is up.
+  const engineReady = engineStatus.kind === 'ready';
+  useEffect(() => {
+    if (!engineReady) return;
+    void syncScheduleToNative();
+    void syncFeedAutomationToNative();
+  }, [engineReady]);
+
   // Native splash stays up (see preventAutoHideAsync); render the background only, no navigator, until resolved.
   if (!resolved) return <View style={{ flex: 1, backgroundColor: colors.bg }} />;
 
-  const unavailable = engineStatus.kind === 'unavailable' || engineStatus.kind === 'starting';
+  const unavailable = engineStatus.kind === 'unavailable' || (starting && !cachedBoot);
   const onboarding = !unavailable && !settings.onboarded;
   const main = !unavailable && settings.onboarded;
 

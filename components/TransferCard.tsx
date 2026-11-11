@@ -1,17 +1,19 @@
-import React, { memo, useMemo } from "react";
+import React, { memo, useMemo, useRef } from "react";
 import { StyleSheet, Text, View } from "react-native";
-import type { TorrentTelemetry } from "maglev-engine";
 import { useTheme } from "../context/ThemeContext";
+import type { TransferTelemetry } from "../context/EngineContext";
 import { ThemeColors, alpha, radius, spacing, type } from "../constants/theme";
-import { formatBytes, formatEta, formatSpeed } from "../constants/format";
+import { formatBytes, formatSpeed } from "../constants/format";
+import { formatEta } from "../utils/rates";
 import { PixelIcon, PixelIconName } from "./PixelIcon";
 import { IconButton, PressableScale, ProgressBar, ProgressTone } from "./ui";
 
-export const CARD_HEIGHT = 124;
+/** Name (two lines), one bar, one status line. The height never changes between states. */
+export const CARD_HEIGHT = 104;
 export const CARD_GAP = 8;
 
 export interface TransferCardProps {
-  torrent: TorrentTelemetry;
+  torrent: TransferTelemetry;
   selectionMode: boolean;
   selected: boolean;
   onPress: (id: string) => void;
@@ -20,58 +22,65 @@ export interface TransferCardProps {
   onResume: (id: string) => void;
 }
 
-interface Badge {
-  text: string;
-  tone: "neutral" | "accent" | "danger";
-}
-
 type CardAction = {
   icon: PixelIconName;
   label: string;
   kind: "pause" | "resume";
 } | null;
 
-function pausedLabel(pausedBy: string | null | undefined): string {
+type StatusTone = "muted" | "accent" | "danger";
+
+function pausedReason(pausedBy: string | null | undefined): string {
   switch (pausedBy) {
     case "wifi_only":
-      return "Waiting for Wi-Fi";
+      return "Paused: waiting for Wi-Fi";
     case "battery":
+      return "Paused: battery is low";
     case "charging_only":
-      return "Paused to save battery";
-    case "seed_limit":
-      return "Done";
+      return "Paused: waiting for charger";
     case "fgs_timeout":
-      return "Paused in background";
+      return "Paused: stopped in background";
+    case "schedule":
+      return "Paused: by schedule";
     default:
       return "Paused";
   }
 }
 
-function badgeFor(t: TorrentTelemetry): Badge | null {
+/** The one status line under the bar. `etaLabel` is the hysteresis-stable time left. */
+function statusFor(t: TransferTelemetry, etaLabel: string): { text: string; tone: StatusTone } {
+  const total = t.totalSizeBytes > 0 ? formatBytes(t.totalSizeBytes) : "—";
   switch (t.state) {
-    case "INITIALIZING":
-      return { text: "Getting info", tone: "neutral" };
-    case "QUEUED":
-      return { text: "Queued", tone: "neutral" };
+    case "DOWNLOADING": {
+      const speed = t.lastKnown || t.downloadSpeedBytes <= 0 ? "—" : formatSpeed(t.downloadSpeedBytes);
+      if (!t.lastKnown && t.etaSeconds >= 0 && etaLabel !== "—") return { text: `${etaLabel} left · ${speed}`, tone: "muted" };
+      return { text: `Downloading · ${speed}`, tone: "muted" };
+    }
     case "SEEDING":
-      return { text: "Seeding", tone: "accent" };
+      return { text: `Seeding · ↑ ${t.lastKnown ? "—" : formatSpeed(t.uploadSpeedBytes)}`, tone: "accent" };
     case "PAUSED":
-      return { text: pausedLabel(t.pausedBy), tone: "neutral" };
-    case "CHECKING":
-      return { text: "Checking", tone: "neutral" };
-    case "ERROR":
-      return {
-        text: t.error?.message ? t.error.message : "Something went wrong",
-        tone: "danger",
-      };
+      if (t.pausedBy === "seed_limit") return { text: `Done · ${total}`, tone: "accent" };
+      return { text: pausedReason(t.pausedBy), tone: "muted" };
     case "COMPLETED":
-      return { text: "Done", tone: "accent" };
+      return { text: `Done · ${total}`, tone: "accent" };
+    case "MOVING":
+      return {
+        text: t.moveProgress != null ? `Moving files… ${Math.round(t.moveProgress * 100)}%` : "Moving files…",
+        tone: "accent",
+      };
+    case "ERROR":
+      return { text: t.error?.message ? t.error.message : "Something went wrong", tone: "danger" };
+    case "QUEUED":
+      return { text: "Queued", tone: "muted" };
+    case "CHECKING":
+      return { text: "Checking files…", tone: "muted" };
+    case "INITIALIZING":
     default:
-      return null;
+      return { text: "Getting info…", tone: "muted" };
   }
 }
 
-function actionFor(t: TorrentTelemetry): CardAction {
+function actionFor(t: TransferTelemetry): CardAction {
   switch (t.state) {
     case "DOWNLOADING":
     case "SEEDING":
@@ -82,7 +91,8 @@ function actionFor(t: TorrentTelemetry): CardAction {
         by === "wifi_only" ||
         by === "battery" ||
         by === "charging_only" ||
-        by === "fgs_timeout"
+        by === "fgs_timeout" ||
+        by === "schedule"
       )
         return null;
       return {
@@ -98,7 +108,7 @@ function actionFor(t: TorrentTelemetry): CardAction {
   }
 }
 
-function toneFor(t: TorrentTelemetry): ProgressTone {
+function toneFor(t: TransferTelemetry): ProgressTone {
   switch (t.state) {
     case "SEEDING":
     case "COMPLETED":
@@ -109,31 +119,6 @@ function toneFor(t: TorrentTelemetry): ProgressTone {
       return "error";
     default:
       return "download";
-  }
-}
-
-type Stat = { icon?: PixelIconName; text: string };
-
-function telemetryStats(t: TorrentTelemetry): Stat[] {
-  const total = t.totalSizeBytes > 0 ? formatBytes(t.totalSizeBytes) : "—";
-  const done = formatBytes(t.downloadedBytes);
-  switch (t.state) {
-    case "DOWNLOADING":
-      return [
-        { icon: "download", text: formatSpeed(t.downloadSpeedBytes) },
-        { text: `${done} / ${total}` },
-        { icon: "clock", text: formatEta(t.etaSeconds) },
-      ];
-    case "SEEDING":
-      return [
-        { icon: "upload", text: formatSpeed(t.uploadSpeedBytes) },
-        { icon: "ratio", text: t.ratio.toFixed(2) },
-        { icon: "storage", text: total },
-      ];
-    case "INITIALIZING":
-      return [{ text: "—" }];
-    default:
-      return [{ text: `${done} / ${total}` }];
   }
 }
 
@@ -148,16 +133,25 @@ function TransferCardImpl({
 }: TransferCardProps) {
   const { colors } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
-  const badge = badgeFor(t);
+  // The time left only changes label when it moves more than 10% or crosses a step.
+  const etaRef = useRef<string | null>(null);
+  const etaLabel = formatEta(t.state === "DOWNLOADING" ? t.etaSeconds : -1, etaRef.current);
+  etaRef.current = etaLabel === "—" ? null : etaLabel;
+  const status = statusFor(t, etaLabel);
   const action = actionFor(t);
   const indeterminate = t.state === "INITIALIZING" || t.state === "CHECKING";
-  const pct = Math.min(100, Math.max(0, t.progressPercent));
-  const badgeColor =
-    badge?.tone === "danger"
+  const moving = t.state === "MOVING";
+  const pct = Math.min(
+    100,
+    Math.max(0, moving ? (t.moveProgress ?? 0) * 100 : t.progressPercent),
+  );
+  const statusColor =
+    status.tone === "danger"
       ? colors.danger
-      : badge?.tone === "accent"
+      : status.tone === "accent"
         ? colors.accentText
         : colors.textMuted;
+  const actionBusy = !!t.pending || !!t.lastKnown;
 
   return (
     <View style={[styles.card, selected && styles.cardSelected]}>
@@ -166,11 +160,11 @@ function TransferCardImpl({
         onLongPress={() => onLongPress(t.id)}
         scaleTo={0.99}
         accessibilityRole="button"
-        accessibilityLabel={`${t.name}, ${badge?.text ?? "Downloading"}, ${pct.toFixed(0)} percent`}
+        accessibilityLabel={`${t.name}, ${status.text}, ${pct.toFixed(0)} percent`}
         accessibilityState={{ selected: selectionMode ? selected : undefined }}
         style={styles.press}
       >
-        <View style={styles.row}>
+        <View style={styles.nameRow}>
           {selectionMode ? (
             <PixelIcon
               name={selected ? "select" : "checkbox-empty"}
@@ -178,37 +172,9 @@ function TransferCardImpl({
               color={selected ? colors.accentText : colors.textMuted}
             />
           ) : null}
-          <Text style={styles.name} numberOfLines={1} ellipsizeMode="middle">
+          <Text style={styles.name} numberOfLines={2} ellipsizeMode="tail">
             {t.name}
           </Text>
-          {badge ? (
-            <View
-              style={[
-                styles.badge,
-                {
-                  backgroundColor: alpha(badgeColor, 0.12),
-                  borderColor: alpha(badgeColor, 0.4),
-                },
-              ]}
-            >
-              <Text
-                style={[styles.badgeText, { color: badgeColor }]}
-                numberOfLines={1}
-              >
-                {badge.text}
-              </Text>
-            </View>
-          ) : null}
-        </View>
-        <View style={styles.telemetry}>
-          {telemetryStats(t).map((st, i) => (
-            <View key={i} style={styles.stat}>
-              {st.icon ? <PixelIcon name={st.icon} size={16} color={colors.textMuted} /> : null}
-              <Text style={styles.telemetryText} numberOfLines={1}>
-                {st.text}
-              </Text>
-            </View>
-          ))}
         </View>
         <ProgressBar
           progress={pct / 100}
@@ -216,23 +182,15 @@ function TransferCardImpl({
           indeterminate={indeterminate}
           accessibilityLabel={`${t.name} progress`}
         />
-        <View style={styles.footer}>
-          <Text style={styles.footText}>
-            {indeterminate ? "—" : `${pct.toFixed(1)}%`}
-          </Text>
-          <View style={[styles.stat, styles.peers]}>
-            <PixelIcon name="peers" size={16} color={colors.textMuted} />
-            <Text style={styles.footText} numberOfLines={1}>
-              {`${t.peersConnected}/${t.peersTotal}`}
-            </Text>
-          </View>
-          <View style={styles.actionSlot} />
-        </View>
+        <Text style={[styles.status, { color: statusColor }]} numberOfLines={1}>
+          {status.text}
+        </Text>
       </PressableScale>
       {action && !selectionMode ? (
         <View style={styles.actionAnchor}>
           <IconButton
             icon={action.icon}
+            disabled={actionBusy}
             accessibilityLabel={`${action.label} ${t.name}`}
             onPress={() =>
               action.kind === "pause" ? onPause(t.id) : onResume(t.id)
@@ -262,12 +220,12 @@ function sameCard(a: TransferCardProps, b: TransferCardProps): boolean {
     x.downloadSpeedBytes === y.downloadSpeedBytes &&
     x.uploadSpeedBytes === y.uploadSpeedBytes &&
     x.progressPercent === y.progressPercent &&
+    x.moveProgress === y.moveProgress &&
     x.downloadedBytes === y.downloadedBytes &&
     x.totalSizeBytes === y.totalSizeBytes &&
     x.etaSeconds === y.etaSeconds &&
-    x.peersConnected === y.peersConnected &&
-    x.peersTotal === y.peersTotal &&
-    x.ratio === y.ratio
+    x.pending === y.pending &&
+    x.lastKnown === y.lastKnown
   );
 }
 
@@ -287,14 +245,14 @@ const makeStyles = (c: ThemeColors) =>
     press: {
       flex: 1,
       paddingLeft: spacing.lg,
-      paddingRight: spacing.sm,
-      paddingTop: spacing.md,
-      justifyContent: "flex-start",
+      paddingRight: 44 + spacing.sm,
+      paddingVertical: spacing.md,
+      justifyContent: "space-between",
     },
     actionAnchor: {
       position: "absolute",
       right: spacing.sm,
-      bottom: 0,
+      top: (CARD_HEIGHT - 2 - 44) / 2,
       width: 44,
       height: 44,
     },
@@ -302,40 +260,12 @@ const makeStyles = (c: ThemeColors) =>
       borderColor: c.accent,
       backgroundColor: alpha(c.accent, 0.08),
     },
-    row: {
+    nameRow: {
       flexDirection: "row",
-      alignItems: "center",
+      alignItems: "flex-start",
       gap: spacing.sm,
-      height: 24,
-      paddingRight: spacing.sm,
+      height: 36,
     },
-    name: { ...type.mono, fontSize: 13, color: c.text, flex: 1 },
-    badge: {
-      borderWidth: 1,
-      borderRadius: radius.sm,
-      paddingHorizontal: 6,
-      height: 22,
-      justifyContent: "center",
-      maxWidth: 160,
-    },
-    badgeText: { ...type.bodyStrong, fontSize: 11 },
-    telemetry: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: spacing.md,
-      height: 20,
-      marginTop: 2,
-      marginBottom: spacing.sm,
-    },
-    stat: { flexDirection: "row", alignItems: "center", gap: 4 },
-    telemetryText: { ...type.mono, fontSize: 12, lineHeight: 20, color: c.textMuted },
-    footer: {
-      flexDirection: "row",
-      alignItems: "center",
-      height: 44,
-      gap: spacing.md,
-    },
-    footText: { ...type.mono, fontSize: 12, color: c.textMuted },
-    peers: { flex: 1 },
-    actionSlot: { width: 44, height: 44 },
+    name: { ...type.mono, fontSize: 13, lineHeight: 18, color: c.text, flex: 1 },
+    status: { ...type.mono, fontSize: 12, lineHeight: 18 },
   });

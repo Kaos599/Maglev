@@ -71,7 +71,7 @@ function value(t: TorrentTelemetry, key: SortKey): number {
   }
 }
 
-export function sortTorrents(list: readonly TorrentTelemetry[], sort: TransferSort): TorrentTelemetry[] {
+export function sortTorrents<T extends TorrentTelemetry>(list: readonly T[], sort: TransferSort): T[] {
   const mul = sort.dir === 'asc' ? 1 : -1;
   return [...list].sort((a, b) => {
     const cmp =

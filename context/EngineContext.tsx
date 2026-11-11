@@ -19,14 +19,51 @@ import {
   type TorrentDetailData,
   type TorrentTelemetry,
 } from 'maglev-engine';
+import { etaSecs, smoothRate } from '../utils/rates';
+import { fromCached, loadTransferCache, saveTransferCache } from '../utils/transferCache';
+
+/** A torrent row as every screen sees it: smoothed speeds, optimistic state, cached marker. */
+export type TransferTelemetry = TorrentTelemetry & {
+  /** Unsmoothed engine speeds, for screens that want the raw numbers (Peers tab). */
+  rawDownBps: number;
+  rawUpBps: number;
+  /** True while the row comes from the saved list and the engine has not answered yet. */
+  lastKnown?: boolean;
+  /** True while a pause or resume tap waits for the engine to confirm. */
+  pending?: boolean;
+};
+
+export type TransferAggregate = Omit<AggregatedTelemetry, 'torrents'> & { torrents: TransferTelemetry[] };
+
+/** A short message shown at the bottom of Transfers. Optional single action. */
+export interface EngineNotice {
+  id: number;
+  message: string;
+  actionLabel?: string;
+  onAction?: () => void;
+}
+
+/** How long an optimistic pause or resume waits for the engine before it reverts. */
+export const OVERRIDE_TIMEOUT_MS = 5000;
+/** How long "Removed X · Undo" stays before the engine delete runs. */
+export const UNDO_WINDOW_MS = 5000;
+const CACHE_SAVE_EVERY_MS = 5000;
+const ERROR_NOTICE_MS = 4000;
+
+type OverrideKind = 'pause' | 'resume';
+interface Override {
+  kind: OverrideKind;
+  since: number;
+  group: number;
+}
 
 export type FilterCategory = 'ALL' | 'DOWN' | 'UP' | 'PAUSED';
 
 interface EngineContextType {
-  telemetry: AggregatedTelemetry;
+  telemetry: TransferAggregate;
   activeFilter: FilterCategory;
   setActiveFilter: (filter: FilterCategory) => void;
-  filteredTorrents: TorrentTelemetry[];
+  filteredTorrents: TransferTelemetry[];
   clipboardMagnet: string | null;
   checkClipboard: () => Promise<void>;
   clearClipboardMagnet: () => void;
@@ -35,6 +72,14 @@ interface EngineContextType {
   pauseAll: () => Promise<void>;
   resumeAll: () => Promise<void>;
   deleteTorrent: (id: string, deleteFiles: boolean) => Promise<boolean>;
+  /**
+   * Remove from the list and keep the files. The rows vanish at once; the engine delete runs after
+   * `UNDO_WINDOW_MS` unless `undoRemove` is called, or at once when the app goes to the background.
+   */
+  removeTorrents: (ids: string[]) => void;
+  undoRemove: () => void;
+  notice: EngineNotice | null;
+  dismissNotice: () => void;
   /** Resolves with the torrent id. Throws an Error carrying `.code` (INVALID_SOURCE, DUPLICATE, ...) and `.id` on failure. */
   startTorrent: (
     magnetUri: string,
@@ -74,7 +119,7 @@ interface EngineContextType {
   lastCompleted: TorrentCompletedEvent | null;
 }
 
-const defaultTelemetry: AggregatedTelemetry = {
+const EMPTY_AGGREGATE: TransferAggregate = {
   totalDownloadSpeedBytes: 0,
   totalUploadSpeedBytes: 0,
   activeDownloads: 0,
@@ -82,14 +127,88 @@ const defaultTelemetry: AggregatedTelemetry = {
   torrents: [],
 };
 
+/** The saved list as an aggregate with unknown speeds. Read once, before the engine answers. */
+function cachedAggregate(): TransferAggregate {
+  const cached = loadTransferCache();
+  if (cached.length === 0) return EMPTY_AGGREGATE;
+  const torrents = cached.map((c) => ({ ...fromCached(c), rawDownBps: 0, rawUpBps: 0, lastKnown: true }));
+  return { ...EMPTY_AGGREGATE, torrents };
+}
+
+interface Smoothed {
+  down: number;
+  up: number;
+  at: number;
+}
+
+const SMOOTHED_STATES = new Set(['DOWNLOADING', 'SEEDING']);
+
+/** Turns engine telemetry into rows with steady speeds and a time left computed from them. */
+function smoothAggregate(agg: AggregatedTelemetry, memo: Map<string, Smoothed>, now: number): TransferAggregate {
+  let down = 0;
+  let up = 0;
+  const live = new Set<string>();
+  const torrents = agg.torrents.map((t): TransferTelemetry => {
+    live.add(t.id);
+    const prev = memo.get(t.id);
+    let sd = t.downloadSpeedBytes;
+    let su = t.uploadSpeedBytes;
+    if (SMOOTHED_STATES.has(t.state)) {
+      const dt = prev ? now - prev.at : 0;
+      sd = smoothRate(prev ? prev.down : null, t.downloadSpeedBytes, dt);
+      su = smoothRate(prev ? prev.up : null, t.uploadSpeedBytes, dt);
+      memo.set(t.id, { down: sd, up: su, at: now });
+    } else {
+      memo.delete(t.id);
+    }
+    down += sd;
+    up += su;
+    const remaining = t.totalSizeBytes > 0 ? t.totalSizeBytes - t.downloadedBytes : -1;
+    const eta = t.state === 'DOWNLOADING' ? (remaining < 0 ? -1 : etaSecs(remaining, sd)) : t.etaSeconds;
+    return { ...t, downloadSpeedBytes: sd, uploadSpeedBytes: su, etaSeconds: eta, rawDownBps: t.downloadSpeedBytes, rawUpBps: t.uploadSpeedBytes };
+  });
+  for (const id of [...memo.keys()]) if (!live.has(id)) memo.delete(id);
+  return { ...agg, totalDownloadSpeedBytes: down, totalUploadSpeedBytes: up, torrents };
+}
+
+function overrideSatisfied(t: TransferTelemetry, o: Override): boolean {
+  return o.kind === 'pause' ? t.state === 'PAUSED' : t.state !== 'PAUSED' && t.state !== 'ERROR';
+}
+
+function applyOverride(t: TransferTelemetry, o: Override): TransferTelemetry {
+  if (o.kind === 'pause') {
+    return {
+      ...t,
+      state: 'PAUSED',
+      pausedBy: 'user',
+      downloadSpeedBytes: 0,
+      uploadSpeedBytes: 0,
+      etaSeconds: -1,
+      pending: true,
+    };
+  }
+  const done = t.finished === true || t.progressPercent >= 100;
+  return { ...t, state: done ? 'SEEDING' : 'DOWNLOADING', pausedBy: null, error: null, pending: true };
+}
+
 const EngineContext = createContext<EngineContextType | null>(null);
+
+/** A magnet link or an http(s) link to a .torrent file. Same test for the chip and the Paste link button. */
+export function isAddableLink(text: string): boolean {
+  if (text.startsWith('magnet:?xt=')) return true;
+  return /^https?:\/\/\S+\.torrent(?:[?#]\S*)?$/i.test(text);
+}
 
 function engineError(code: string, message: string, id?: string): Error {
   return Object.assign(new Error(message), { code, id });
 }
 
 export const EngineProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [telemetry, setTelemetry] = useState<AggregatedTelemetry>(defaultTelemetry);
+  // Engine truth (or the saved list until the engine answers), before overrides and pending removals.
+  const [liveTelemetry, setLiveTelemetry] = useState<TransferAggregate>(cachedAggregate);
+  const [overrides, setOverrides] = useState<Record<string, Override>>({});
+  const [removing, setRemoving] = useState<readonly string[]>([]);
+  const [notice, setNotice] = useState<EngineNotice | null>(null);
   const [activeFilter, setActiveFilter] = useState<FilterCategory>('ALL');
   const [clipboardMagnet, setClipboardMagnet] = useState<string | null>(null);
   const [engineStatus, setEngineStatus] = useState<EngineStatus>(maglevEngine.engineStatus);
@@ -104,6 +223,63 @@ export const EngineProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const detailCache = useRef<Map<string, TorrentDetailData>>(new Map());
   const watched = useRef<Map<string, number>>(new Map());
   const inFlight = useRef<Set<string>>(new Set());
+  const smoothing = useRef<Map<string, Smoothed>>(new Map());
+  const gotLive = useRef(false);
+  const bootLogged = useRef(false);
+  const noticeSeq = useRef(0);
+  const noticeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const groupSeq = useRef(0);
+  const groupTimers = useRef<Map<number, ReturnType<typeof setTimeout>>>(new Map());
+  const overridesRef = useRef(overrides);
+  overridesRef.current = overrides;
+  const liveRef = useRef(liveTelemetry);
+  liveRef.current = liveTelemetry;
+  const pendingRemoval = useRef<{ ids: string[]; names: string[]; timer: ReturnType<typeof setTimeout>; noticeId: number } | null>(null);
+  const lastSave = useRef(0);
+  const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const showNotice = useCallback((next: Omit<EngineNotice, 'id'>, autoDismissMs: number | null = ERROR_NOTICE_MS) => {
+    if (noticeTimer.current) clearTimeout(noticeTimer.current);
+    noticeTimer.current = null;
+    const id = ++noticeSeq.current;
+    setNotice({ ...next, id });
+    if (autoDismissMs != null) {
+      noticeTimer.current = setTimeout(() => setNotice((n) => (n && n.id === id ? null : n)), autoDismissMs);
+    }
+  }, []);
+
+  const dismissNotice = useCallback(() => {
+    if (noticeTimer.current) clearTimeout(noticeTimer.current);
+    noticeTimer.current = null;
+    setNotice(null);
+  }, []);
+
+  /** Saves the engine's list for the next cold start, at most once every 5 s. Background forces a write. */
+  const saveCacheNow = useCallback(() => {
+    if (saveTimer.current) clearTimeout(saveTimer.current);
+    saveTimer.current = null;
+    if (!gotLive.current) return;
+    lastSave.current = Date.now();
+    saveTransferCache(liveRef.current.torrents);
+  }, []);
+
+  const scheduleCacheSave = useCallback(() => {
+    if (saveTimer.current) return;
+    const wait = Math.max(0, CACHE_SAVE_EVERY_MS - (Date.now() - lastSave.current));
+    saveTimer.current = setTimeout(saveCacheNow, wait);
+  }, [saveCacheNow]);
+
+  /** The single place where engine telemetry enters the app: smoothing happens here. */
+  const ingest = useCallback(
+    (snapshots: Parameters<typeof aggregateSnapshots>[0]) => {
+      gotLive.current = true;
+      const next = smoothAggregate(aggregateSnapshots(snapshots), smoothing.current, Date.now());
+      liveRef.current = next;
+      setLiveTelemetry(next);
+      scheduleCacheSave();
+    },
+    [scheduleCacheSave]
+  );
 
   const refreshDetail = useCallback(async (id: string) => {
     if (inFlight.current.has(id)) return;
@@ -130,8 +306,9 @@ export const EngineProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const checkClipboard = useCallback(async () => {
     try {
       const content = await Clipboard.getStringAsync();
-      if (content && content.trim().startsWith('magnet:?xt=')) {
-        setClipboardMagnet(content.trim());
+      const clip = content?.trim() ?? '';
+      if (isAddableLink(clip)) {
+        setClipboardMagnet(clip);
       } else {
         setClipboardMagnet(null);
       }
@@ -144,12 +321,12 @@ export const EngineProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     async (status: EngineStatus) => {
       if (status.kind === 'ready') {
         const [list, storage] = await Promise.all([maglevEngine.listTorrents(), maglevEngine.getStorageStatus()]);
-        if (list.ok) setTelemetry(aggregateSnapshots(list.torrents));
+        if (list.ok) ingest(list.torrents);
         setStorageStatus(storage);
       }
       void refreshPermissions();
     },
-    [refreshPermissions]
+    [refreshPermissions, ingest]
   );
 
   const retryEngine = useCallback(async () => {
@@ -171,7 +348,7 @@ export const EngineProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     const offState = maglevEngine.subscribeState(syncState);
 
     const offTelemetry = maglevEngine.onTelemetry((event) => {
-      setTelemetry(aggregateSnapshots(event.torrents));
+      ingest(event.torrents);
       watched.current.forEach((_count, id) => {
         if (event.torrents.some((s) => s.id === id)) void refreshDetail(id);
       });
@@ -183,7 +360,7 @@ export const EngineProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         return;
       }
       const res = await maglevEngine.listTorrents(); // pause_all / resume_all were applied natively
-      if (res.ok) setTelemetry(aggregateSnapshots(res.torrents));
+      if (res.ok) ingest(res.torrents);
     });
     const offStorage = maglevEngine.onStorageStatus((s) => setStorageStatus(s));
 
@@ -202,7 +379,7 @@ export const EngineProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       offAction();
       offStorage();
     };
-  }, [refreshDetail, afterStart]);
+  }, [refreshDetail, afterStart, ingest]);
 
   // Clipboard and permissions are re-read whenever the app returns to the foreground.
   useEffect(() => {
@@ -220,6 +397,54 @@ export const EngineProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     setClipboardMagnet(null);
   }, []);
 
+  // Engine rows with optimistic pause/resume applied and pending removals hidden.
+  const telemetry = useMemo<TransferAggregate>(() => {
+    const hasOverrides = Object.keys(overrides).length > 0;
+    if (!hasOverrides && removing.length === 0) return liveTelemetry;
+    const hidden = new Set(removing);
+    const torrents: TransferTelemetry[] = [];
+    let down = 0;
+    let up = 0;
+    let activeDownloads = 0;
+    let activeUploads = 0;
+    for (const t of liveTelemetry.torrents) {
+      if (hidden.has(t.id)) continue;
+      const o = overrides[t.id];
+      const row = o && !overrideSatisfied(t, o) ? applyOverride(t, o) : t;
+      down += row.downloadSpeedBytes;
+      up += row.uploadSpeedBytes;
+      if (row.state === 'DOWNLOADING') activeDownloads++;
+      else if (row.state === 'SEEDING') activeUploads++;
+      torrents.push(row);
+    }
+    return { totalDownloadSpeedBytes: down, totalUploadSpeedBytes: up, activeDownloads, activeUploads, torrents };
+  }, [liveTelemetry, overrides, removing]);
+
+  // Overrides end as soon as the engine reports the expected state (or the torrent is gone).
+  useEffect(() => {
+    const current = overridesRef.current;
+    const ids = Object.keys(current);
+    if (ids.length === 0) return;
+    const byId = new Map(liveTelemetry.torrents.map((t) => [t.id, t]));
+    const done = ids.filter((id) => {
+      const t = byId.get(id);
+      return !t || overrideSatisfied(t, current[id]);
+    });
+    if (done.length === 0) return;
+    setOverrides((prev) => {
+      const next = { ...prev };
+      for (const id of done) delete next[id];
+      return next;
+    });
+  }, [liveTelemetry]);
+
+  // First row on screen, from the saved list or from the engine. Read in adb logcat to measure cold start.
+  useEffect(() => {
+    if (bootLogged.current || telemetry.torrents.length === 0) return;
+    bootLogged.current = true;
+    console.log('[Maglev] boot', Math.round(performance.now()));
+  }, [telemetry.torrents.length]);
+
   const filteredTorrents = useMemo(() => {
     switch (activeFilter) {
       case 'DOWN':
@@ -236,18 +461,176 @@ export const EngineProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }
   }, [telemetry.torrents, activeFilter]);
 
-  const pauseTorrent = useCallback(async (id: string) => (await maglevEngine.pause(id)).ok, []);
-  const resumeTorrent = useCallback(async (id: string) => (await maglevEngine.resume(id)).ok, []);
+  const nameOf = useCallback((id: string) => liveRef.current.torrents.find((t) => t.id === id)?.name ?? 'torrent', []);
+
+  const failGroup = useCallback(
+    (group: number, kind: OverrideKind, label: string) => {
+      const stuck = Object.entries(overridesRef.current)
+        .filter(([, o]) => o.group === group)
+        .map(([id]) => id);
+      if (stuck.length === 0) return;
+      setOverrides((prev) => {
+        const next = { ...prev };
+        for (const id of stuck) delete next[id];
+        return next;
+      });
+      showNotice({ message: `Couldn't ${kind} ${label}. Try again.` });
+    },
+    [showNotice]
+  );
+
+  /** Marks torrents as pausing or resuming right now. Reverts after 5 s if the engine never confirms. */
+  const startOverrides = useCallback(
+    (ids: string[], kind: OverrideKind, label: string): number => {
+      const group = ++groupSeq.current;
+      const since = Date.now();
+      setOverrides((prev) => {
+        const next = { ...prev };
+        for (const id of ids) next[id] = { kind, since, group };
+        return next;
+      });
+      const timer = setTimeout(() => {
+        groupTimers.current.delete(group);
+        failGroup(group, kind, label);
+      }, OVERRIDE_TIMEOUT_MS);
+      groupTimers.current.set(group, timer);
+      return group;
+    },
+    [failGroup]
+  );
+
+  const pauseTorrent = useCallback(
+    async (id: string) => {
+      if (overridesRef.current[id]) return false; // a tap is already in flight
+      const label = nameOf(id);
+      const group = startOverrides([id], 'pause', label);
+      const ok = (await maglevEngine.pause(id)).ok;
+      if (!ok) failGroup(group, 'pause', label);
+      return ok;
+    },
+    [nameOf, startOverrides, failGroup]
+  );
+  const resumeTorrent = useCallback(
+    async (id: string) => {
+      if (overridesRef.current[id]) return false;
+      const label = nameOf(id);
+      const group = startOverrides([id], 'resume', label);
+      const ok = (await maglevEngine.resume(id)).ok;
+      if (!ok) failGroup(group, 'resume', label);
+      return ok;
+    },
+    [nameOf, startOverrides, failGroup]
+  );
   const pauseAll = useCallback(async () => {
-    await maglevEngine.pauseAll();
-  }, []);
+    const ids = liveRef.current.torrents
+      .filter((t) => (t.state === 'DOWNLOADING' || t.state === 'SEEDING' || t.state === 'QUEUED') && !overridesRef.current[t.id])
+      .map((t) => t.id);
+    const group = startOverrides(ids, 'pause', 'all');
+    const res = await maglevEngine.pauseAll();
+    if (!res.ok) failGroup(group, 'pause', 'all');
+  }, [startOverrides, failGroup]);
   const resumeAll = useCallback(async () => {
-    await maglevEngine.resumeAll();
-  }, []);
+    const ids = liveRef.current.torrents
+      .filter((t) => t.state === 'PAUSED' && (!t.pausedBy || t.pausedBy === 'user') && !overridesRef.current[t.id])
+      .map((t) => t.id);
+    const group = startOverrides(ids, 'resume', 'all');
+    const res = await maglevEngine.resumeAll();
+    if (!res.ok) failGroup(group, 'resume', 'all');
+  }, [startOverrides, failGroup]);
   const deleteTorrent = useCallback(async (id: string, deleteFiles: boolean) => {
     detailCache.current.delete(id);
     watched.current.delete(id);
     return (await maglevEngine.delete(id, deleteFiles)).ok;
+  }, []);
+
+  /** Runs the engine delete for removals whose undo window ended. Failed rows come back with a notice. */
+  const runRemoval = useCallback(
+    async (ids: string[], names: string[]) => {
+      const results = await Promise.all(
+        ids.map(async (id) => {
+          detailCache.current.delete(id);
+          watched.current.delete(id);
+          return (await maglevEngine.delete(id, false)).ok;
+        })
+      );
+      const gone = ids.filter((_, i) => results[i]);
+      if (gone.length > 0) {
+        for (const id of gone) smoothing.current.delete(id);
+        const goneSet = new Set(gone);
+        setLiveTelemetry((prev) => {
+          const next = { ...prev, torrents: prev.torrents.filter((t) => !goneSet.has(t.id)) };
+          liveRef.current = next;
+          return next;
+        });
+      }
+      setRemoving((prev) => prev.filter((id) => !ids.includes(id)));
+      const failedAt = results.findIndex((ok) => !ok);
+      if (failedAt >= 0) {
+        const failed = results.filter((ok) => !ok).length;
+        showNotice({ message: failed === 1 ? `Couldn't remove ${names[failedAt]}. Try again.` : `Couldn't remove ${failed} torrents. Try again.` });
+      }
+    },
+    [showNotice]
+  );
+
+  const flushRemoval = useCallback(() => {
+    const p = pendingRemoval.current;
+    if (!p) return;
+    clearTimeout(p.timer);
+    pendingRemoval.current = null;
+    setNotice((n) => (n && n.id === p.noticeId ? null : n));
+    void runRemoval(p.ids, p.names);
+  }, [runRemoval]);
+
+  const undoRemove = useCallback(() => {
+    const p = pendingRemoval.current;
+    if (!p) return;
+    clearTimeout(p.timer);
+    pendingRemoval.current = null;
+    setRemoving((prev) => prev.filter((id) => !p.ids.includes(id)));
+    setNotice((n) => (n && n.id === p.noticeId ? null : n));
+  }, []);
+
+  const removeTorrents = useCallback(
+    (ids: string[]) => {
+      if (ids.length === 0) return;
+      flushRemoval(); // a second removal ends the first one's undo window
+      const names = ids.map(nameOf);
+      setRemoving((prev) => [...prev, ...ids]);
+      const timer = setTimeout(flushRemoval, UNDO_WINDOW_MS);
+      const noticeId = noticeSeq.current + 1;
+      pendingRemoval.current = { ids, names, timer, noticeId };
+      showNotice(
+        {
+          message: ids.length === 1 ? `Removed ${names[0]}` : `Removed ${ids.length} torrents`,
+          actionLabel: 'Undo',
+          onAction: undoRemove,
+        },
+        null
+      );
+    },
+    [flushRemoval, nameOf, showNotice, undoRemove]
+  );
+
+  // Leaving the app ends any undo window at once and saves the list for the next cold start.
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (next) => {
+      if (next === 'background' || next === 'inactive') {
+        flushRemoval();
+        saveCacheNow();
+      }
+    });
+    return () => sub.remove();
+  }, [flushRemoval, saveCacheNow]);
+
+  useEffect(() => {
+    const timers = groupTimers.current;
+    return () => {
+      timers.forEach(clearTimeout);
+      timers.clear();
+      if (noticeTimer.current) clearTimeout(noticeTimer.current);
+      if (saveTimer.current) clearTimeout(saveTimer.current);
+    };
   }, []);
 
   const defaultStoragePath = storageStatus?.path || settingsStore.getSettings().storage.defaultPath;
@@ -360,6 +743,10 @@ export const EngineProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         pauseAll,
         resumeAll,
         deleteTorrent,
+        removeTorrents,
+        undoRemove,
+        notice,
+        dismissNotice,
         startTorrent,
         addTorrent,
         resolveMetadata,

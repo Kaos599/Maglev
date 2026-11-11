@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { BackHandler, Platform, StyleSheet, Text, View } from 'react-native';
 import { maglevEngine } from 'maglev-engine';
-import { Banner, Button, Screen } from '../components/ui';
+import { Banner, Button, ListRow, Screen } from '../components/ui';
 import { PixelIcon, PixelIconName } from '../components/PixelIcon';
 import { BrandMark } from '../components/onboarding/BrandMark';
 import { ProgressSquares } from '../components/onboarding/ProgressSquares';
@@ -11,7 +11,7 @@ import { useSettings } from '../context/SettingsContext';
 import { useTheme } from '../context/ThemeContext';
 import { ThemeColors, radius, spacing, type } from '../constants/theme';
 
-type StepId = 'welcome' | 'notifications' | 'folder' | 'background';
+type StepId = 'welcome' | 'notifications' | 'folder' | 'background' | 'mobileData';
 
 const API_LEVEL = typeof Platform.Version === 'number' ? Platform.Version : parseInt(String(Platform.Version), 10) || 0;
 const NEEDS_NOTIFICATION_STEP = Platform.OS !== 'android' || API_LEVEL >= 33;
@@ -19,8 +19,8 @@ const NEEDS_LEGACY_STORAGE = Platform.OS === 'android' && API_LEVEL <= 28;
 const DEFAULT_FOLDER_LABEL = 'Download/Maglev';
 
 const STEPS: StepId[] = NEEDS_NOTIFICATION_STEP
-  ? ['welcome', 'notifications', 'folder', 'background']
-  : ['welcome', 'folder', 'background'];
+  ? ['welcome', 'notifications', 'folder', 'background', 'mobileData']
+  : ['welcome', 'folder', 'background', 'mobileData'];
 
 function IconTile({ name }: { name: PixelIconName }) {
   const { colors } = useTheme();
@@ -40,11 +40,17 @@ export default function OnboardingScreen() {
   const [index, setIndex] = useState(0);
   const [busy, setBusy] = useState(false);
   const [folderNote, setFolderNote] = useState<string | null>(null);
+  // Wi-Fi only is pre-selected. The setting changes only when the user taps Continue.
+  const [wifiOnly, setWifiOnly] = useState(true);
   const step = STEPS[index];
 
   const finish = useCallback(() => {
     updateSettings({ onboarded: true });
   }, [updateSettings]);
+
+  const saveNetwork = useCallback(() => {
+    updateSettings((prev) => ({ network: { ...prev.network, wifiOnly }, onboarded: true }));
+  }, [updateSettings, wifiOnly]);
 
   const next = useCallback(() => {
     setFolderNote(null);
@@ -177,7 +183,7 @@ export default function OnboardingScreen() {
         }
       />
     );
-  } else {
+  } else if (step === 'background') {
     content = (
       <StepLayout
         hero={<IconTile name="power" />}
@@ -186,9 +192,34 @@ export default function OnboardingScreen() {
         actions={
           <>
             <Button label="Allow" size="lg" fullWidth loading={busy} onPress={allowBackground} />
-            <Button label="Skip" variant="ghost" fullWidth disabled={busy} onPress={finish} />
+            <Button label="Skip" variant="ghost" fullWidth disabled={busy} onPress={next} />
           </>
         }
+      />
+    );
+  } else if (step === 'mobileData') {
+    content = (
+      <StepLayout
+        hero={<IconTile name="wifi" />}
+        title="Download on mobile data?"
+        body="Large downloads can use a lot of your data plan."
+        extra={
+          <View style={styles.optionWrap}>
+            <ListRow
+              title="Wi-Fi only (recommended)"
+              subtitle="Downloads wait until you are on Wi-Fi"
+              selected={wifiOnly}
+              onPress={() => setWifiOnly(true)}
+            />
+            <ListRow
+              title="Wi-Fi and mobile data"
+              subtitle="Downloads also run on mobile data"
+              selected={!wifiOnly}
+              onPress={() => setWifiOnly(false)}
+            />
+          </View>
+        }
+        actions={<Button label="Continue" size="lg" fullWidth onPress={saveNetwork} />}
       />
     );
   }
@@ -219,6 +250,7 @@ const makeStyles = (c: ThemeColors) =>
       alignItems: 'center',
       justifyContent: 'center',
     },
+    optionWrap: { alignSelf: 'stretch', marginTop: spacing.xl, gap: spacing.sm },
     folderWrap: { alignSelf: 'stretch', marginTop: spacing.xl, gap: spacing.sm },
     folderRow: {
       minHeight: 48,

@@ -7,6 +7,7 @@ import {
   maglevEngine,
   settingsStore,
 } from 'maglev-engine';
+import { kvGet, kvSet } from '../utils/prefs/kv';
 
 interface SettingsContextType {
   settings: MaglevSettings;
@@ -20,8 +21,22 @@ interface SettingsContextType {
 
 const SettingsContext = createContext<SettingsContextType | null>(null);
 
+const WIFI_DEFAULT_KEY = 'maglev.defaults.wifiOnly.v1';
+
+/**
+ * A fresh install defaults to Wi-Fi only (UI_SPEC_PHASE2 S10.7). This runs once.
+ * Anyone who already finished onboarding keeps their value; nothing changes silently.
+ */
+function readSettingsWithFreshDefaults(): MaglevSettings {
+  const current = settingsStore.getSettings();
+  if (kvGet(WIFI_DEFAULT_KEY)) return current;
+  kvSet(WIFI_DEFAULT_KEY, '1');
+  if (current.onboarded || current.network.wifiOnly) return current;
+  return settingsStore.updateSettings({ network: { ...current.network, wifiOnly: true } });
+}
+
 export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [settings, setSettings] = useState<MaglevSettings>(() => settingsStore.getSettings());
+  const [settings, setSettings] = useState<MaglevSettings>(readSettingsWithFreshDefaults);
 
   useEffect(() => {
     // Subscribe to store updates (< 1ms dispatch)
