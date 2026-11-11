@@ -35,7 +35,7 @@ export default function EngineErrorScreen() {
           error
           title="Maglev couldn't start its download engine"
           body={message}
-          primary={{ label: 'Copy details', onPress: copyDetails }}
+          primary={{ label: 'Copy details', icon: 'copy', onPress: copyDetails }}
           secondary={{ label: 'Close app', onPress: () => BackHandler.exitApp() }}
         />
       </View>

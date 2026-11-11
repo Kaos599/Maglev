@@ -8,6 +8,7 @@ import { SettingsProvider, useSettings } from '../context/SettingsContext';
 import { ThemeProvider, useTheme } from '../context/ThemeContext';
 import { EngineProvider, useMaglevEngine } from '../context/EngineContext';
 import { fontFamily } from '../constants/theme';
+import NavigationBarSync from '../components/NavigationBarSync';
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
 
@@ -43,6 +44,7 @@ function AppNavigation() {
   return (
     <>
       <StatusBar style={dark ? 'light' : 'dark'} />
+      <NavigationBarSync />
       <Stack
         screenOptions={{
           headerShown: false,
