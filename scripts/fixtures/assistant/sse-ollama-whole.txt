@@ -1,0 +1,16 @@
+# Recorded-style stream: Ollama OpenAI-compatible endpoint (/v1/chat/completions). The whole tool call
+# arrives in ONE chunk with its arguments complete and NO "id" field, and a final usage-only chunk follows
+# finish_reason because the request sent stream_options.include_usage.
+# Docs checked: https://docs.ollama.com/api/openai-compatibility (lists tools, streaming and
+# stream_options.include_usage as supported). Chunk shape follows the OpenAI schema the page points to;
+# not captured live.
+# Lines starting with "# " are fixture comments. The parser ignores them (no "data" field).
+
+data: {"id":"chatcmpl-441","object":"chat.completion.chunk","created":1730002000,"model":"qwen3:8b","system_fingerprint":"fp_ollama","choices":[{"index":0,"delta":{"role":"assistant","content":"","tool_calls":[{"function":{"name":"list_transfers","arguments":"{\"filter\":\"active\"}"}}]},"finish_reason":null}]}
+
+data: {"id":"chatcmpl-441","object":"chat.completion.chunk","created":1730002000,"model":"qwen3:8b","system_fingerprint":"fp_ollama","choices":[{"index":0,"delta":{"role":"assistant","content":""},"finish_reason":"tool_calls"}]}
+
+data: {"id":"chatcmpl-441","object":"chat.completion.chunk","created":1730002000,"model":"qwen3:8b","system_fingerprint":"fp_ollama","choices":[],"usage":{"prompt_tokens":640,"completion_tokens":21,"total_tokens":661}}
+
+data: [DONE]
+

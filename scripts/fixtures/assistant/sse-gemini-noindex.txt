@@ -1,0 +1,13 @@
+# Recorded-style stream: Gemini OpenAI-compatible endpoint. Tool-call fragments carry NO "index" field,
+# one whole call per chunk, each with its own id; the second call arrives after the first.
+# Docs checked: https://ai.google.dev/gemini-api/docs/openai (lists function calling and streaming on the
+# compat endpoint; the page does not print a raw chunk). The missing "index" is the behaviour reported by
+# client libraries that had to patch it, so this fixture is shaped from those reports, not captured live.
+# Lines starting with "# " are fixture comments. The parser ignores them (no "data" field).
+
+data: {"choices":[{"index":0,"delta":{"role":"assistant","tool_calls":[{"id":"call_g1","type":"function","function":{"name":"search_torrents","arguments":"{\"query\":\"The Last Harbor 2023\"}"}}]}}],"created":1730001000,"model":"gemini-2.0-flash","object":"chat.completion.chunk"}
+
+data: {"choices":[{"index":0,"delta":{"role":"assistant","tool_calls":[{"id":"call_g2","type":"function","function":{"name":"get_free_space","arguments":"{}"}}]},"finish_reason":"tool_calls"}],"created":1730001000,"model":"gemini-2.0-flash","object":"chat.completion.chunk","usage":{"prompt_tokens":812,"completion_tokens":37,"total_tokens":849}}
+
+data: [DONE]
+

@@ -56,8 +56,6 @@ export const PROPOSAL_TOOL_NAMES = [
   'propose_pause_resume',
   'propose_remove_files',
   'propose_delete',
-  'propose_url_download',
-  'propose_setting_change',
   'propose_plan',
 ] as const;
 
@@ -70,25 +68,17 @@ export const READ_TOOLS: ReadonlySet<string> = new Set<string>(READ_TOOL_NAMES);
 /** Names of the proposal tools (create a card; nothing runs until the user confirms). */
 export const PROPOSAL_TOOLS: ReadonlySet<string> = new Set<string>(PROPOSAL_TOOL_NAMES);
 
-/** Tools a plan step may use. A plan cannot contain a plan (SM-39). */
-const PLAN_STEP_TOOL_NAMES = PROPOSAL_TOOL_NAMES.filter((n) => n !== 'propose_plan');
+/**
+ * Tools a plan step may use (R1-2). No plan inside a plan, and no destructive step: propose_delete and
+ * propose_remove_files always get their own card.
+ */
+const PLAN_STEP_TOOL_NAMES = ['propose_add', 'propose_select_files', 'propose_pause_resume'] as const;
+
+/** Destructive proposal tools. The turn machine allows at most one such card per turn (R1-4). */
+export const DESTRUCTIVE_TOOLS: ReadonlySet<string> = new Set<string>(['propose_delete', 'propose_remove_files']);
 
 /** Max steps in one plan (SM-39). */
 const PLAN_MAX_STEPS = 6;
-
-/** Settings the assistant may propose to change. Anything about adult sources, risky-source warnings or
- * protections is deliberately absent (ASSISTANT_DESIGN §5.3 rule 6, §7.2). The key names are a decision to
- * align with SettingsContext before this ships. */
-const SWITCH_SETTING_KEYS = ['wifi_only', 'charging_only', 'resume_after_restart', 'auto_exit_on_complete'] as const;
-// Speed limits are left out: they go through a preset in SettingsContext, not a raw number.
-const SETTING_KEYS = [...SWITCH_SETTING_KEYS];
-/** Where each switch lives in MaglevSettings (modules/maglev-engine/src/MaglevSettings.types.ts). */
-export const SETTING_PATHS: Record<(typeof SWITCH_SETTING_KEYS)[number], readonly [string, string]> = {
-  wifi_only: ['network', 'wifiOnly'],
-  charging_only: ['power', 'downloadOnlyWhileCharging'],
-  resume_after_restart: ['power', 'resumeAfterRestart'],
-  auto_exit_on_complete: ['power', 'autoExitOnComplete'],
-};
 
 /** Handle fields and the kind of real id they stand for. Any other field is a plain value. */
 const HANDLE_FIELD_KIND: Readonly<Record<string, HandleKind>> = {
@@ -262,40 +252,12 @@ const PROPOSE_DELETE: JsonSchema = {
   additionalProperties: false,
 };
 
-const PROPOSE_URL_DOWNLOAD: JsonSchema = {
-  type: 'object',
-  properties: {
-    url: {
-      type: 'string',
-      pattern: '^https?://\\S+$',
-      maxLength: 2048,
-      description: 'A web link the user gave in this chat.',
-    },
-    reason: REASON,
-  },
-  required: ['url', 'reason'],
-  additionalProperties: false,
-};
-
-const PROPOSE_SETTING_CHANGE: JsonSchema = {
-  type: 'object',
-  properties: {
-    key: { type: 'string', enum: [...SETTING_KEYS] },
-    value: { type: 'boolean' },
-    reason: REASON,
-  },
-  required: ['key', 'value', 'reason'],
-  additionalProperties: false,
-};
-
 const PROPOSE_TOOL_SCHEMAS: Record<Exclude<ProposalToolName, 'propose_plan'>, JsonSchema> = {
   propose_add: PROPOSE_ADD,
   propose_select_files: PROPOSE_SELECT_FILES,
   propose_pause_resume: PROPOSE_PAUSE_RESUME,
   propose_remove_files: PROPOSE_REMOVE_FILES,
   propose_delete: PROPOSE_DELETE,
-  propose_url_download: PROPOSE_URL_DOWNLOAD,
-  propose_setting_change: PROPOSE_SETTING_CHANGE,
 };
 
 // A step's args are one closed object that lists every field any step tool uses. Which fields a given step
@@ -369,12 +331,8 @@ const DESCRIPTIONS: Record<ToolName, string> = {
     'Propose deleting some files of a download from the phone. This cannot be undone. Only use files the user named.',
   propose_delete:
     'Propose removing a whole download. Files stay on the phone unless delete_files is true. Nothing changes until the user taps Confirm.',
-  propose_url_download:
-    'Propose downloading one file from a web link the user gave in this chat. Nothing starts until the user taps Confirm.',
-  propose_setting_change:
-    'Propose changing one app setting. Nothing changes until the user taps Confirm.',
   propose_plan:
-    'Propose up to 6 steps as one plan. The user taps Confirm once and the steps run in order. Use only when one step depends on another.',
+    'Propose up to 6 independent steps you want confirmed together: add, select files, pause or resume. A step cannot refer to a download created by an earlier step.',
 };
 
 /** OpenAI-compatible function definitions for every read and proposal tool. */
@@ -433,9 +391,13 @@ function validateToolArgs(name: ToolName, input: Record<string, unknown>, regist
 
 function validatePlan(input: Record<string, unknown>, registry: HandleRegistry): ValidateResult {
   const steps = input.steps as Array<{ tool: string; args: Record<string, unknown> }>;
+  // The schema enum already limits step tools; this guards direct callers of validateToolArgs too.
   const resolved: Array<{ tool: string; args: Record<string, unknown> }> = [];
   for (let i = 0; i < steps.length; i++) {
     const step = steps[i];
+    if (!(PLAN_STEP_TOOL_NAMES as readonly string[]).includes(step.tool)) {
+      return bad(`Step ${i + 1}: a plan can only add, select files or pause/resume.`);
+    }
     const result = validateToolArgs(step.tool as ToolName, step.args, registry);
     if (!result.ok) return bad(`Step ${i + 1}: ${result.error.message}`);
     resolved.push({ tool: step.tool, args: result.args });
@@ -468,11 +430,6 @@ function crossFieldError(name: ToolName, args: Record<string, unknown>): string 
       if (include.length === 0 && skip.length === 0) return 'Give at least one file to include or skip.';
       if (include.some((i) => skip.includes(i))) return 'A file cannot be both included and skipped.';
       return null;
-    }
-    case 'propose_setting_change': {
-      const key = args.key as string;
-      const value = args.value;
-      return typeof value === 'boolean' ? null : `${key} takes true or false.`;
     }
     default:
       return null;
