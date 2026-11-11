@@ -7,7 +7,7 @@
     "android": "expo start --android",
     "ios": "expo start --ios",
     "web": "expo start --web",
-    "test": "node scripts/test-abi-splits.js && node scripts/test-p3-reality-contracts.js && node scripts/test-feeds.js && node scripts/test-rates.js && node scripts/test-version.js && node scripts/test-format.js && node scripts/test-trackers.js && node scripts/test-error-actions.js && node scripts/test-admission.js && node scripts/test-remove-files.js && node scripts/test-tracker-edit.js && node scripts/test-plugins.js && node scripts/test-share-bulk.js && node scripts/test-file-health-ui.js && node scripts/test-wave2-edge.js",
+    "test": "node scripts/test-abi-splits.js && node scripts/test-p3-reality-contracts.js && node scripts/test-feeds.js && node scripts/test-rates.js && node scripts/test-version.js && node scripts/test-format.js && node scripts/test-trackers.js && node scripts/test-error-actions.js && node scripts/test-admission.js && node scripts/test-remove-files.js && node scripts/test-tracker-edit.js && node scripts/test-plugins.js && node scripts/test-share-bulk.js && node scripts/test-file-health-ui.js && node scripts/test-wave2-edge.js && npm run test:assistant",
     "test:contracts": "node scripts/test-p3-reality-contracts.js",
     "test:search": "node scripts/test-search.js && node scripts/test-search-general.js && node scripts/test-search-dht.js && node scripts/test-search-anime.js && node scripts/test-search-niche.js",
     "test:feeds": "node scripts/test-feeds.js",
@@ -21,7 +21,8 @@
     "version:major": "node scripts/bump-version.js major",
     "test:admission": "node scripts/test-admission.js",
     "test:remove-files": "node scripts/test-remove-files.js",
-    "test:tracker-edit": "node scripts/test-tracker-edit.js"
+    "test:tracker-edit": "node scripts/test-tracker-edit.js",
+    "test:assistant": "node scripts/test-assistant-card.js && node scripts/test-assistant-plan.js && node scripts/test-assistant-session.js && node scripts/test-assistant-sanitize.js && node scripts/test-assistant-sse.js && node scripts/test-assistant-prefs.js && node scripts/test-assistant-provider.js && node scripts/test-assistant-safety.js"
   },
   "dependencies": {
     "@expo-google-fonts/inter": "^0.4.2",
