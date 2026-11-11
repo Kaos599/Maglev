@@ -125,3 +125,9 @@ Icons are [Pixelarticons](https://github.com/halfmage/pixelarticons) by Gerrit H
 ## Legal
 
 Maglev doesn't host or index any content. Search sends your query to public indexes run by third parties. What you download, and following the law where you live, is up to you.
+
+## License
+
+Maglev is free software under the [GNU General Public License v3.0](LICENSE). You can use, study, change and share it. If you distribute a changed version, its source must stay available under the same licence.
+
+It includes a modified copy of [librqbit](https://github.com/ikatson/rqbit) by Igor Katson, under the [Apache License 2.0](native/maglev-core/vendor/librqbit/LICENSE). The changes are listed in [`MAGLEV_PATCH.md`](native/maglev-core/vendor/librqbit/MAGLEV_PATCH.md).
