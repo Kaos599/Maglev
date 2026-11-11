@@ -16,11 +16,11 @@ const MAP = {
   transfers: 'sort-vertical',
   search: 'search',
   feeds: 'rss',
-  settings: 'sliders-horizontal',
+  settings: 'settings-cog',
   'tab-transfers': 'sort-vertical',
   'tab-search': 'search',
   'tab-feeds': 'rss',
-  'tab-settings': 'sliders-vertical',
+  'tab-settings': 'settings-cog',
   // actions
   plus: 'plus',
   close: 'close',
