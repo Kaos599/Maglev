@@ -1,6 +1,6 @@
 # Run: python3 scripts/build-logo.py "$PWD"  then  node scripts/generate-icons.js
 # Maglev mark: the traced train redrawn on a pixel grid (1 unit = 16 px of the 2048 trace).
-import sys
+import sys, json, re
 root = sys.argv[1]
 # Nose: fine 1 x 0.75 steps read as a smooth slope; the last steps round off the tip into the base.
 nose = "".join(f" H{80+k:g} V{45.75+0.75*k:g}" for k in range(36)) + " V74.5 H114.25 V75.5 H113.5 V76"
@@ -45,36 +45,59 @@ a_x, a_y = _cut_bottom_right(CUT_A)
 b_x, b_y = _cut_bottom_right(CUT_B)
 body = ("M40 45 H79" + nose + " H28 V70.5 H36 V" + f"{b_y:g}" + f" H{b_x:g}" + _stair_up(*CUT_B, SLOPE) +
         " H36 V54" + f" H{a_x:g}" + _stair_up(*CUT_A, SLOPE) + " H40 Z " + window)
-# Speed lines: one thickness (1.5), varied lengths, each sitting on a band.
-# Cruise animation (app + README): each line is a sprite that pops out of the train's back
-# (`hide` units tucked under the body), slides `travel` units back and fades. Different periods
-# and phases give the lines their own speeds. Frames are sampled at FPS so motion steps like a sprite.
-FPS = 20
-#          x    y    w   h    hide travel  ms  phase  ghost
-STREAKS = [(16, 46.5, 21, 1.5, 8, 22, 300, 0.00, False),   # band 1
-           (10, 55.5, 23, 1.5, 8, 26, 360, 0.45, False),   # band 2
-           (18, 67.5, 15, 1.5, 7, 18, 260, 0.70, False),   # band 3, upper
-           (12, 73.0, 13, 1.5, 7, 20, 320, 0.25, False),   # band 3, tail
-           # Wind dashes: only while cruising. They flash in by the body and whip off to the left.
-           (32, 51.5, 7, 0.75, 0, 34, 240, 0.10, True),
-           (26, 62.5, 9, 0.75, 0, 36, 200, 0.60, True),
-           (24, 77.25, 8, 0.75, 0, 32, 280, 0.35, True)]
-lines = " ".join(f"M{x:g} {y:g} H{x+w:g} V{y+h:g} H{x:g} Z" for (x, y, w, h, *_ ) in STREAKS if not _[-1])
-def streak_frames(hide, travel, ms, phase, ghost=False):
-    n = max(2, round(ms * FPS / 1000))
-    out = []
-    for k in range(n):
-        t = (k / n + phase) % 1
-        dx = round((hide - (hide + travel) * t) * 2) / 2
-        if ghost:
-            o = min(1.0, t / 0.15) if t < 0.15 else max(0.0, 1 - (t - 0.15) / 0.85)
-        else:
-            fade_from = -travel * 0.35
-            o = 1.0 if dx >= fade_from else max(0.0, 1 + (dx - fade_from) / (travel + fade_from))
-        out.append((dx, round(o * 4) / 4))
-    return out
-# Hover: at speed the train hums a hair above the rails (body + lines), in whole frames.
-BOB_MS, BOB = 400, [0, -0.5, -0.5, 0, -0.5, 0, -0.5, -0.5]
+# Speed lines: one thickness (1.5), varied lengths, each sitting on a band. (x, y, w)
+LINES = [(16, 46.5, 21), (10, 55.5, 23), (18, 67.5, 15), (12, 73.0, 13)]
+lines = " ".join(f"M{x:g} {y:g} H{x+w:g} V{y+1.5:g} H{x:g} Z" for (x, y, w) in LINES)
+
+# ---- Dash animation (app + README) -------------------------------------------------------
+# One loop of N frames at FPS, so everything stays in step. Every sprite is a rect described per
+# frame as [left x, width, opacity] in viewBox units; the group (body + trails) gets [dx, dy].
+#  * Trails: each speed line stays pinned to the train and stretches back as three segments
+#    (solid, half, faint): a pixel-art fade. Length flickers frame to frame.
+#  * Surge: at the top of the loop the train lunges forward and the trails snap out long.
+#  * Afterimages: two faint copies of the train's back trail behind it (motion blur).
+#  * Wind and ground dashes whip past in a few frames each.
+FPS, N = 20, 24
+SURGE = [1, 0.85, 0.6, 0.35, 0.15] + [0] * (N - 5)
+HUM = [0, -0.5, -0.5, 0, -0.5, 0, -0.5, -0.5] * (N // 8)
+JITTER = [1.0, 0.92, 1.06, 0.96, 1.1, 0.9, 1.03, 0.97]
+SEGS = [(0.0, 0.45, 1.0), (0.45, 0.75, 0.55), (0.75, 1.0, 0.22)]
+q = lambda v: round(v * 2) / 2
+def fx():
+    sprites = []
+    for i, (x, y, w) in enumerate(LINES):
+        anchor = x + w
+        lengths = [w * (1.6 + 1.1 * SURGE[k]) * JITTER[(k + 3 * i) % len(JITTER)] for k in range(N)]
+        for (f0, f1, o) in SEGS:
+            fr = [[q(anchor - Lk * f1), q(Lk * (f1 - f0)) or 0.5, o] for Lk in lengths]
+            sprites.append({"y": y, "h": 1.5, "ghost": False, "frames": fr})
+    # Wind dashes: thin, long, gone in four frames. (y, w, start x, phase)
+    for (y, w, x0, ph) in [(51.5, 14, 30, 0), (62.5, 16, 24, 2), (44, 10, 30, 1), (77.25, 12, 20, 3)]:
+        fr = []
+        for k in range(N):
+            t = ((k + ph) % 4) / 4
+            fr.append([q(x0 - 70 * t), w, [0.9, 0.7, 0.4, 0.15][int(t * 4)]])
+        sprites.append({"y": y, "h": 0.75, "ghost": True, "frames": fr})
+    # Ground dashes: under the rails, sweeping the full width (scenery rushing past).
+    for (w, ph) in [(10, 0), (6, 3)]:
+        fr = []
+        for k in range(N):
+            t = ((k + ph) % 6) / 6
+            fr.append([q(118 - 130 * t), w, 0.6])
+        sprites.append({"y": 84.5, "h": 0.75, "ghost": True, "frames": fr})
+    group = [[q(1.5 * SURGE[k]), HUM[k]] for k in range(N)]
+    # Afterimages flash with the surge and settle to a faint smear.
+    after = [[[q(-(3 + 3 * SURGE[k]) - 0.5 * (k % 2)), round(0.1 + 0.25 * SURGE[k], 2)] for k in range(N)],
+             [[q(-(7 + 7 * SURGE[k]) - 0.5 * ((k + 1) % 2)), round(0.04 + 0.14 * SURGE[k], 2)] for k in range(N)]]
+    return {"ms": round(N * 1000 / FPS), "sprites": sprites, "group": group, "after": after}
+AFTER_CLIP_X = 62   # afterimages show only the train's back, never through the window
+FX = fx()
+
+def _clip_x(d, xmax):
+    """Clip the body's outer outline to x <= xmax. It only has H/V edges, so clamping x is exact."""
+    outer = d.split(" Z")[0]
+    return re.sub(r"H([\d.]+)", lambda m: f"H{min(float(m.group(1)), xmax):g}", outer) + " Z"
+ghost = _clip_x(body, AFTER_CLIP_X)
 dashes = ""
 rails = ("M20 79.5 H29 V80.75 H20 Z "
          "M34 79.5 H67 V80.75 H68.5 V82 H70 V83.25 H40.5 V82 H36 V80.75 H34 Z "
@@ -100,12 +123,9 @@ open(f"{root}/components/brand/markPaths.ts", "w").write(
     f"export const MARK_LINES = '{lines}';\n"
     f"export const MARK_RAILS = '{rails}';\n"
     f"export const MARK_LIME = '{LIME}';\nexport const MARK_CYAN = '{CYAN}';\n"
-    "/** Speed-line sprites: rect in viewBox units, loop length, frames of [dx units, opacity]. Ghosts show only while cruising. */\n"
-    "export const MARK_STREAKS: { x: number; y: number; w: number; h: number; ms: number; ghost: boolean; frames: [number, number][] }[] = [\n"
-    + "".join(f"  {{ x: {x:g}, y: {y:g}, w: {w:g}, h: {h:g}, ms: {ms}, ghost: {str(gh).lower()}, frames: {[[a, b] for a, b in streak_frames(hd, tr, ms, ph, gh)]} }},\n"
-              for (x, y, w, h, hd, tr, ms, ph, gh) in STREAKS).replace(".0,", ",").replace(".0]", "]")
-    + "];\n"
-    f"/** Hover bob: loop length and frames of dy units (negative is up). */\nexport const MARK_BOB = {{ ms: {BOB_MS}, frames: {BOB} }};\n")
+    "/** Dash loop: frames per element. Sprites are [left x, width, opacity]; group is [dx, dy]; afterimages [dx, opacity]. Ghost sprites show only while dashing. */\n"
+    f"export const MARK_GHOST = '{ghost}';\n"
+    f"export const MARK_FX: {{ ms: number; sprites: {{ y: number; h: number; ghost: boolean; frames: [number, number, number][] }}[]; group: [number, number][]; after: [number, number][][] }} = {json.dumps(FX, separators=(',', ':'))};\n")
 print("ok")
 
 # Monochrome status-bar / Quick Settings drawable: body + rails only (the speed lines vanish at 24dp).
@@ -125,25 +145,35 @@ open(f"{root}/modules/maglev-engine/android/src/main/res/drawable/ic_tile_maglev
     f'        <path android:fillColor="#FFFFFFFF" android:pathData="{android_path(rails)}" />\n'
     '    </group>\n</vector>\n')
 
-# README header: the same mark, cruising with the same frames via SVG keyframes.
+# README header: the same mark and the same dash loop, as SVG keyframes.
 import re
-def css_keyframes(name, frames, prop):
-    n = len(frames)
-    ks = "".join(f"{100*k/n:.3f}%{{{prop(f)}}}" for k, f in enumerate(frames)) + f"100%{{{prop(frames[0])}}}"
+def kf(name, frames, prop):
+    ks = "".join(f"{100*k/len(frames):.3f}%{{{prop(f)}}}" for k, f in enumerate(frames)) + f"100%{{{prop(frames[0])}}}"
     return f"@keyframes {name}{{{ks}}}"
-css = [".ml-ride{animation:ml-bob %dms steps(1,end) infinite}" % BOB_MS,
-       css_keyframes("ml-bob", BOB, lambda f: f"transform:translateY({f:g}px)")]
-streak_svg = ""
-for i, (x, y, w, h, hd, tr, ms, ph, gh) in enumerate(STREAKS):
-    fr = streak_frames(hd, tr, ms, ph, gh)
+ms = FX["ms"]
+css = [f".ml-ride{{animation:ml-g {ms}ms steps(1,end) infinite}}",
+       kf("ml-g", FX["group"], lambda f: f"transform:translate({f[0]:g}px,{f[1]:g}px)"),
+       ".ml-sp{transform-box:fill-box;transform-origin:center}"]
+sprite_svg = ""
+for i, sp in enumerate(FX["sprites"]):
+    x0, w0, _ = sp["frames"][0]
     css.append(f".ml-s{i}{{animation:ml-k{i} {ms}ms steps(1,end) infinite}}")
-    css.append(css_keyframes(f"ml-k{i}", fr, lambda f: f"transform:translateX({f[0]:g}px);opacity:{f[1]:g}"))
-    streak_svg += f'<rect class="ml-s{i}" x="{x:g}" y="{y:g}" width="{w:g}" height="{h:g}"' + (' opacity="0"' if gh else '') + '/>'
-css.append("@media (prefers-reduced-motion:reduce){.ml-ride,.ml-ride rect{animation:none}}")
-H = 76; sc = H / VB[3]; MX, MY = 372, 79           # mark box in the 1280x420 header
+    css.append(kf(f"ml-k{i}", sp["frames"],
+                  lambda f, x0=x0, w0=w0: f"transform:translateX({(f[0] + f[1]/2) - (x0 + w0/2):g}px) scaleX({f[1]/w0:.4g});opacity:{f[2]:g}"))
+    sprite_svg += f'<rect class="ml-sp ml-s{i}" x="{x0:g}" y="{sp["y"]:g}" width="{w0:g}" height="{sp["h"]:g}" opacity="0"/>'
+after_svg = ""
+for j, fr in enumerate(FX["after"]):
+    css.append(f".ml-a{j}{{animation:ml-ak{j} {ms}ms steps(1,end) infinite}}")
+    css.append(kf(f"ml-ak{j}", fr, lambda f: f"transform:translateX({f[0]:g}px);opacity:{f[1]:g}"))
+    after_svg += f'<use class="ml-a{j}" href="#ml-ghost" fill="{LIME}" opacity="0"/>'
+css.append("@media (prefers-reduced-motion:reduce){.ml-ride,.ml-ride *{animation:none}.ml-run{display:none}.ml-rest{display:inline}}")
+css.append(".ml-rest{display:none}")
+H = 76; sc = H / VB[3]; MX, MY = 372, 79
 readme_mark = (f'<!-- mark:start (generated by scripts/build-logo.py) -->\n<style>{"".join(css)}</style>\n'
+    f'<defs><path id="ml-body" fill-rule="evenodd" d="{body}"/><path id="ml-ghost" d="{ghost}"/></defs>\n'
     f'<g transform="translate({MX - VB[0]*sc:.2f} {MY - VB[1]*sc:.2f}) scale({sc:.4f})">'
-    f'<g class="ml-ride"><g fill="{CYAN}">{streak_svg}</g><path fill="{LIME}" fill-rule="evenodd" d="{body}"/></g>'
+    f'<g class="ml-ride ml-run">{after_svg}<g fill="{CYAN}">{sprite_svg}</g><use href="#ml-body" fill="{LIME}"/></g>'
+    f'<g class="ml-rest"><path fill="{CYAN}" d="{lines}"/><use href="#ml-body" fill="{LIME}"/></g>'
     f'<path fill="{CYAN}" d="{rails}"/></g>\n<!-- mark:end -->')
 hp = f"{root}/assets/brand/readme-header.svg"
 hs = open(hp).read()
