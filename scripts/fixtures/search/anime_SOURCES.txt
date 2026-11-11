@@ -1,0 +1,36 @@
+Titles and descriptions replaced with neutral text; structure unchanged.
+Provenance of the anime provider fixtures. Fetched with curl and a browser User-Agent unless noted. Nothing was written by hand.
+Dates are 2026-11-11 unless noted.
+
+tokyotoshokan_search.html
+  Wayback Machine raw capture (id_ form): https://web.archive.org/web/20250117005331id_/https://www.tokyotosho.info/
+  Capture of 2025-01-17 of the site's front listing, which uses the same table markup as search.php results.
+  Live site: search.php answers a Cloudflare "Just a moment" 403 (so the provider sets `cloudflare`), rss.php answers 522.
+  A live search page could not be fetched, so the search URL (search.php?terms=..&type=..) comes from the TorrentSearch source, unverified against a live response.
+
+nekobt_search.json
+  https://nekobt.to/api/v1/torrents/search?query=frieren&limit=20
+nekobt_search.html
+  https://nekobt.to/search?query=frieren  (HTML page; not used by the provider or tests. Left over from research and safe to delete.)
+
+mikan_search.html
+  https://mikanani.me/Home/Search?searchstr=frieren
+  The live response held 1000 result rows (4.3 MB). This file keeps the first 20 rows: everything after the 20th
+  `tr.js-search-results-row` up to `</tbody>` was cut. Row content is unmodified.
+
+dmhy_search.html
+  https://share.dmhy.org/topics/list?keyword=frieren&sort_id=0&team_id=0&order=date-desc
+
+bangumimoe_search.json
+  POST https://bangumi.moe/api/v2/torrent/search with body {"query":"frieren"}, Content-Type: application/json
+
+anilibria_releases.json
+  https://anilibria.top/api/v1/app/search/releases?query=frieren
+anilibria_torrents_9542.json
+  https://anilibria.top/api/v1/anime/torrents/release/9542  (release 9542 from the file above)
+
+anirena_search.xml
+  https://www.anirena.com/rss?q=frieren
+anirena_detail.html
+  https://www.anirena.com/torrent/01a01773-2d7a-70f2-8f93-1c9fba95e2d8  (first item of the feed; shows the info hash)
+  The magnet itself is at /torrents/<id>/magnet as a 302 to the magnet: URI, which fetch() in React Native cannot read, so the provider reads the hash from the detail page.

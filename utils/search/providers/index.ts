@@ -17,3 +17,15 @@ import { x1337 } from './x1337.ts';
 export const PROVIDERS: SearchProvider[] = [knaben, torrentscsv, archive, nyaa, yts, tpb, bitsearch, linuxtracker, sukebei, eztv, subsplease, animetosho, x1337];
 
 export { knaben, torrentscsv, archive, nyaa, yts, tpb, bitsearch, linuxtracker, sukebei, eztv, subsplease, animetosho, x1337 };
+
+import { tokyotoshokan } from './tokyotoshokan.ts';
+import { nekobt } from './nekobt.ts';
+import { mikan } from './mikan.ts';
+import { dmhy } from './dmhy.ts';
+import { bangumimoe } from './bangumimoe.ts';
+import { anilibria } from './anilibria.ts';
+import { anirena } from './anirena.ts';
+
+PROVIDERS.push(tokyotoshokan, nekobt, mikan, dmhy, bangumimoe, anilibria, anirena);
+
+export { tokyotoshokan, nekobt, mikan, dmhy, bangumimoe, anilibria, anirena };
