@@ -57,6 +57,10 @@ object NativeCore {
     @JvmStatic external fun nativeGetPieceBitfield(id: String, out: ByteBuffer): Int
     @JvmStatic external fun nativeSetTorrentLimits(id: String, json: String): String
     @JvmStatic external fun nativeMoveStorage(id: String, destDir: String): String
+    @JvmStatic external fun nativeSetHealth(id: String, tag: String): String
+    @JvmStatic external fun nativeScanFileHealth(): String
+    @JvmStatic external fun nativeFileHealth(id: String): String
+    @JvmStatic external fun nativeResolveFiles(id: String, action: String, indicesJson: String, dir: String): String
     @JvmStatic external fun nativeStreamUrl(id: String, fileIndex: Int): String
     @JvmStatic external fun nativeVersion(): String
 }

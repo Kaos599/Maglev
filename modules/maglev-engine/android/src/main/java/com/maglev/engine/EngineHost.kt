@@ -1230,6 +1230,34 @@ object EngineHost {
 
     // endregion
 
+    // region Health (§18)
+
+    /** [tag] is `files_missing`, `files_changed`, `storage_full`, `storage_unavailable`, `no_peers`, or "" to clear it. */
+    fun setHealth(id: String, tag: String): Map<String, Any?> {
+        val res = call { NativeCore.nativeSetHealth(id, tag) }
+        pollNow()
+        return res
+    }
+
+    /** One scan of every torrent's files now. The result carries `changed`, the number of torrents whose tag changed. */
+    fun scanFileHealth(): Map<String, Any?> {
+        val res = call { NativeCore.nativeScanFileHealth() }
+        pollNow()
+        return res
+    }
+
+    /** `{files: [{index, state: "ok"|"missing"|"changed"}]}` for the included files. */
+    fun fileHealth(id: String): Map<String, Any?> = call { NativeCore.nativeFileHealth(id) }
+
+    /** [action] is `stop`, `again`, `folder` or `recheck`; [dir] is only read by `folder`. */
+    fun resolveFiles(id: String, action: String, indices: List<Int>, dir: String): Map<String, Any?> {
+        val res = call { NativeCore.nativeResolveFiles(id, action, Json.toJson(indices), dir) }
+        pollNow()
+        return res
+    }
+
+    // endregion
+
     /** JS setSchedule: persist, re-arm the alarm and apply the new state now. */
     fun setSchedule(cfg: Map<String, Any?>): Map<String, Any?> {
         val c = requireCtx() ?: return Json.failure("ENGINE_UNAVAILABLE", "Module is not attached")

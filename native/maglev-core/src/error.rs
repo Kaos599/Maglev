@@ -24,6 +24,8 @@ pub enum ErrorCode {
     InvalidArgument,
     /// The torrent has no metadata yet (a magnet that is still resolving).
     NotReady,
+    /// The torrent is moving or checking, so the call can't run now.
+    InvalidState,
     Internal,
     /// The app cancelled a magnet resolve. Not an error to show.
     Cancelled,
@@ -46,6 +48,7 @@ impl ErrorCode {
             ErrorCode::Unsupported => "UNSUPPORTED",
             ErrorCode::InvalidArgument => "INVALID_ARGUMENT",
             ErrorCode::NotReady => "NOT_READY",
+            ErrorCode::InvalidState => "INVALID_STATE",
             ErrorCode::Internal => "INTERNAL",
             ErrorCode::Cancelled => "CANCELLED",
         }
@@ -322,6 +325,7 @@ mod tests {
         assert_eq!(ErrorCode::Unsupported.as_str(), "UNSUPPORTED");
         assert_eq!(ErrorCode::InvalidArgument.as_str(), "INVALID_ARGUMENT");
         assert_eq!(ErrorCode::NotReady.as_str(), "NOT_READY");
+        assert_eq!(ErrorCode::InvalidState.as_str(), "INVALID_STATE");
     }
 
     #[test]

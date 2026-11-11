@@ -175,6 +175,13 @@ pub trait TorrentStorage: Send + Sync {
     /// This is used to make the underlying object useless when e.g. pausing the torrent.
     fn take(&self) -> anyhow::Result<Box<dyn TorrentStorage>>;
 
+    /// MAGLEV PATCH (hunk 25): drops the open handle of one file, so the next write re-opens (and
+    /// re-creates) it by path. Without it a handle to a file deleted from outside keeps writing to the
+    /// deleted inode. The default does nothing (a storage with no handles).
+    fn close_file(&self, _file_id: usize) -> anyhow::Result<()> {
+        Ok(())
+    }
+
     /// Callback called every time a piece has completed and has been validated.
     /// Default implementation does nothing, but can be override in trait implementations.
     fn on_piece_completed(&self, _piece_index: ValidPieceIndex) -> anyhow::Result<()> {
@@ -226,6 +233,10 @@ impl<U: TorrentStorage + ?Sized> TorrentStorage for Box<U> {
 
     fn on_piece_completed(&self, piece_id: ValidPieceIndex) -> anyhow::Result<()> {
         (**self).on_piece_completed(piece_id)
+    }
+
+    fn close_file(&self, file_id: usize) -> anyhow::Result<()> {
+        (**self).close_file(file_id) // MAGLEV PATCH (hunk 25)
     }
 }
 

@@ -36,6 +36,27 @@ impl TorrentStatePaused {
         self.chunk_tracker.get_hns()
     }
 
+    /// MAGLEV PATCH (hunk 25): the bytes of `files` are gone or no longer trusted, but the files stay in
+    /// the selection. Their pieces (boundary pieces included) lose their have bits and are queued again,
+    /// and each file's open handle is dropped so the next write re-creates it by path. Returns the
+    /// verified bytes the files held. Nothing is deleted from disk.
+    pub(crate) fn forget_files_data(
+        &mut self,
+        selection: &HashSet<usize>,
+        files: &HashSet<usize>,
+    ) -> anyhow::Result<u64> {
+        let freed = self
+            .chunk_tracker
+            .remove_files_data(&self.metadata.file_infos, selection, files)?;
+        for idx in files.iter().copied() {
+            if let Err(e) = self.files.close_file(idx) {
+                tracing::debug!(idx, "could not close the file handle: {e:#}");
+            }
+        }
+        self.chunk_tracker.get_have_pieces_mut().flush(false)?;
+        Ok(freed)
+    }
+
     /// MAGLEV PATCH (hunk 24): drops the data of `remove` (see MAGLEV_PATCH.md).
     ///
     /// Order: chunk tracker first (selection, have bits, per-file bytes, totals), then the files on

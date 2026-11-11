@@ -184,6 +184,19 @@ class MaglevEngineModule : Module() {
             // Probes the disk and may read free space, so keep it off the serialized engine thread.
             io(promise) { EngineHost.moveStorage(id, target) }
         }
+        // Section 18. Fixing missing files can mean a recheck, so these stay off the serialized thread.
+        AsyncFunction("setHealth") { id: String, tag: String, promise: Promise ->
+            io(promise) { EngineHost.setHealth(id, tag) }
+        }
+        AsyncFunction("scanFileHealth") { promise: Promise ->
+            io(promise) { EngineHost.scanFileHealth() }
+        }
+        AsyncFunction("fileHealth") { id: String, promise: Promise ->
+            io(promise) { EngineHost.fileHealth(id) }
+        }
+        AsyncFunction("resolveFiles") { id: String, action: String, indices: List<Int>, dir: String, promise: Promise ->
+            io(promise) { EngineHost.resolveFiles(id, action, indices, dir) }
+        }
         AsyncFunction("openStream") { url: String, mime: String, title: String, promise: Promise ->
             io(promise) { EngineHost.openStream(url, mime, title) }
         }

@@ -48,6 +48,12 @@ pub struct TorrentMeta {
     pub sequential: bool,
     pub last_error: Option<ErrorInfo>,
     pub pending: Option<PendingAdd>,
+    /// Health tag (contract section 18.2): `files_missing`, `files_changed`, `storage_full`,
+    /// `storage_unavailable` or `no_peers`. While set the planner keeps the torrent paused.
+    pub health: Option<String>,
+    /// Wall-clock milliseconds when a magnet started looking for its metadata (section 20).
+    /// Set when the magnet is added, cleared when the metadata arrives.
+    pub resolving_since_ms: Option<i64>,
 }
 
 #[derive(Debug, Default, Serialize, Deserialize)]
@@ -210,6 +216,28 @@ mod tests {
         let m = s.get("x").unwrap();
         assert_eq!(m.added_at, 5);
         assert!(m.paused_by.is_none() && !m.queued);
+        // Files written before health existed load with no health and no resolve clock.
+        assert!(m.health.is_none() && m.resolving_since_ms.is_none());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn health_and_resolve_clock_round_trip() {
+        let dir = temp_dir("health");
+        let mut s = MetaStore::load(&dir);
+        s.insert(
+            "abc",
+            TorrentMeta {
+                health: Some("files_missing".into()),
+                resolving_since_ms: Some(1_700_000_000_000),
+                ..Default::default()
+            },
+        );
+        s.save().unwrap();
+        let s2 = MetaStore::load(&dir);
+        let m = s2.get("abc").unwrap();
+        assert_eq!(m.health.as_deref(), Some("files_missing"));
+        assert_eq!(m.resolving_since_ms, Some(1_700_000_000_000));
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

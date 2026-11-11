@@ -209,6 +209,10 @@ pub struct ManagedTorrentShared {
     // MAGLEV PATCH (T1): tracker list edited by the user (see MAGLEV_PATCH.md).
     // `trackers` above never changes; `None` here means "use `trackers`".
     pub(crate) trackers_override: parking_lot::Mutex<Option<HashSet<url::Url>>>,
+    // MAGLEV PATCH (hunk 25): the include set the next storage `init` opens files for. Set just before
+    // `create_and_init` (`Session::add_torrent`, and the restart from the error state in `start`).
+    // `None` means every file.
+    pub(crate) init_only_files: parking_lot::Mutex<Option<Vec<usize>>>,
 }
 
 impl ManagedTorrentShared {
@@ -315,6 +319,19 @@ impl ManagedTorrent {
             .filter_map(|u| url::Url::parse(u).ok())
             .collect();
         *self.shared.trackers_override.lock() = Some(set);
+    }
+
+    /// MAGLEV PATCH (hunk 25, see MAGLEV_PATCH.md): drops the open handle of file `idx`, so the next
+    /// write re-opens (re-creates) it by path. Works while the torrent is initializing, paused or live;
+    /// in any other state there is no storage and it does nothing.
+    pub fn close_file(&self, idx: usize) -> anyhow::Result<()> {
+        let g = self.locked.read();
+        match &g.state {
+            ManagedTorrentState::Initializing(i) => i.files.close_file(idx),
+            ManagedTorrentState::Paused(p) => p.files.close_file(idx),
+            ManagedTorrentState::Live(l) => l.files.close_file(idx),
+            ManagedTorrentState::Error(_) | ManagedTorrentState::None => Ok(()),
+        }
     }
 
     pub fn with_state<R>(&self, f: impl FnOnce(&ManagedTorrentState) -> R) -> R {
@@ -493,6 +510,7 @@ impl ManagedTorrent {
                 }
                 ManagedTorrentState::Error(_) => {
                     let metadata = t.metadata.load_full().expect("TODO");
+                    *t.shared.init_only_files.lock() = g.only_files.clone(); // MAGLEV PATCH (hunk 25)
                     let initializing = Arc::new(TorrentStateInitializing::new(
                         t.shared.clone(),
                         metadata.clone(),
@@ -707,6 +725,31 @@ impl ManagedTorrent {
 
         g.only_files = Some(only_files.iter().copied().collect());
         Ok(())
+    }
+
+    /// MAGLEV PATCH (hunk 25, see MAGLEV_PATCH.md): the data of `files` is gone or no longer trusted.
+    /// Clears the have bits of every piece that overlaps them (boundary pieces too), keeps the files in the
+    /// selection so they download again, and drops their open handles. Returns the verified bytes they held.
+    /// Only works while the torrent is paused; the caller pauses a live torrent first and starts it again.
+    pub fn forget_files_data(&self, files: &HashSet<usize>) -> anyhow::Result<u64> {
+        let metadata = self.metadata.load();
+        let metadata = metadata.as_ref().context("torrent is not resolved")?;
+        let file_infos = &metadata.file_infos;
+        for f in files.iter().copied() {
+            match file_infos.get(f) {
+                Some(fi) if !fi.attrs.padding => {}
+                _ => anyhow::bail!("forget_files_data contains invalid value {f}"),
+            }
+        }
+        let mut g = self.locked.write();
+        let selection: HashSet<usize> = match &g.only_files {
+            Some(o) => o.iter().copied().collect(),
+            None => (0..file_infos.len()).collect(),
+        };
+        match &mut g.state {
+            ManagedTorrentState::Paused(p) => p.forget_files_data(&selection, files),
+            _ => bail!("torrent must be paused to forget file data"),
+        }
     }
 
     /// MAGLEV PATCH (hunk 24, see MAGLEV_PATCH.md): deletes the data of `remove` and stops downloading
