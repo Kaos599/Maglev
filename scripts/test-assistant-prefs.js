@@ -105,6 +105,13 @@ async function main() {
   check('null raw gives defaults', JSON.stringify(m.normalizeAssistantPrefs(null)) === JSON.stringify(d));
   check('array raw gives defaults', JSON.stringify(m.normalizeAssistantPrefs([1, 2])) === JSON.stringify(d));
   check('string raw gives defaults', JSON.stringify(m.normalizeAssistantPrefs('x')) === JSON.stringify(d));
+  check('assistant is off and the warning unseen by default', d.enabled === false && d.warningAcceptedAt === null);
+  {
+    const on = m.normalizeAssistantPrefs({ enabled: true, warningAcceptedAt: 1700000000000 });
+    check('enabled and warningAcceptedAt round-trip', on.enabled === true && on.warningAcceptedAt === 1700000000000);
+    const junk = m.normalizeAssistantPrefs({ enabled: 'yes', warningAcceptedAt: -1 });
+    check('junk enabled/warning values fall back to off and unseen', junk.enabled === false && junk.warningAcceptedAt === null);
+  }
   check('unknown preset falls back to openrouter', m.normalizeAssistantPrefs({ presetId: 'mystery' }).presetId === 'openrouter');
   check('unknown preset keeps defaults for url and model', (() => {
     const p = m.normalizeAssistantPrefs({ presetId: 'mystery' });

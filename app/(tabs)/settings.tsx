@@ -10,6 +10,7 @@ import { PixelIconName } from '../../components/PixelIcon';
 import { useSearchPrefs } from '../../utils/prefs/search';
 import { scheduleSummary, useSchedule } from '../../utils/prefs/schedule';
 import { feedAutomationSummary, useFeedAutomation } from '../../utils/prefs/feedAutomation';
+import { useAssistantPrefs } from '../../utils/prefs/assistantApp';
 import { Card, formatLimit, friendlyPath } from '../../components/settings/SettingsParts';
 import { spacing } from '../../constants/theme';
 
@@ -118,6 +119,7 @@ export default function SettingsIndex() {
   const [searchPrefs] = useSearchPrefs();
   const [schedule] = useSchedule();
   const [feedAuto] = useFeedAutomation();
+  const assistant = useAssistantPrefs();
   const { bandwidth: b, network: n, power: p, appearance: a } = settings;
 
   // Strings only, so the memoised rows below see equal props until a value really changes.
@@ -147,6 +149,7 @@ export default function SettingsIndex() {
     { icon: 'schedule', title: 'Scheduling', value: scheduling, route: 'scheduling' },
     { icon: 'search', title: 'Search providers', value: providers, route: 'search-providers' },
     { icon: 'feeds', title: 'Auto-download', value: auto, route: 'feeds' },
+    { icon: 'assistant', title: 'Assistant', value: assistant.enabled ? 'On' : 'Off', route: 'assistant' },
     { icon: 'about', title: 'About', value: APP_VERSION, route: 'about' },
   ];
 

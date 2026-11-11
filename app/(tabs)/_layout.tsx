@@ -5,6 +5,7 @@ import { TAB_BAR_HEIGHT, useTabBarStyle } from '../../components/tabBarStyle';
 import { triggerHaptic } from '../../constants/haptics';
 import { PixelIcon, PixelIconName } from '../../components/PixelIcon';
 import { useTheme } from '../../context/ThemeContext';
+import { useAssistantPrefs } from '../../utils/prefs/assistantApp';
 import { ThemeColors, fontFamily, withAlpha } from '../../constants/theme';
 
 const PILL_W = 56;
@@ -74,10 +75,14 @@ export default function TabLayout() {
   const { colors } = useTheme();
   const tabBarStyle = useTabBarStyle();
 
-  const tab = (name: string, title: string, icon: PixelIconName) => (
+  const assistant = useAssistantPrefs();
+
+  const tab = (name: string, title: string, icon: PixelIconName, hidden = false) => (
     <Tabs.Screen
       name={name}
       options={{
+        // href null removes the tab entirely (Settings > Assistant off).
+        href: hidden ? null : undefined,
         title,
         tabBarAccessibilityLabel: title,
         tabBarIcon: ({ focused }) => <TabIcon name={icon} focused={focused} />,
@@ -101,6 +106,7 @@ export default function TabLayout() {
       {tab('search', 'Search', 'tab-search')}
       {tab('feeds', 'Feeds', 'tab-feeds')}
       {tab('settings', 'Settings', 'tab-settings')}
+      {tab('assistant', 'Assistant', 'tab-assistant', !assistant.enabled)}
     </Tabs>
   );
 }

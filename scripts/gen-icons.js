@@ -71,6 +71,8 @@ const MAP = {
   schedule: 'calendar',
   about: 'circle-info',
   github: 'github',
+  assistant: 'robot-face',
+  'tab-assistant': 'robot-face',
   bell: 'bell',
   shield: 'shield',
   warning: 'warning-diamond',

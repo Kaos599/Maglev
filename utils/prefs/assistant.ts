@@ -111,6 +111,10 @@ export interface AssistantPrefs {
   keyRef: string | null;
   /** Lifetime token counters from provider `usage`. Shown as tokens, never money (D4). */
   tokensUsed: { input: number; output: number };
+  /** Master switch from Settings > Assistant. Off hides the tab and stops every request. Default off. */
+  enabled: boolean;
+  /** When the user accepted the usage warning (ms since epoch), or null if never. */
+  warningAcceptedAt: number | null;
 }
 
 export function presetById(id: PresetId): ProviderPreset {
@@ -125,7 +129,7 @@ function isPresetId(v: unknown): v is PresetId {
 
 export function defaultAssistantPrefs(): AssistantPrefs {
   const p = presetById('openrouter');
-  return { presetId: p.id, baseUrl: p.baseUrl, model: p.defaultModel, keyRef: null, tokensUsed: { input: 0, output: 0 } };
+  return { presetId: p.id, baseUrl: p.baseUrl, model: p.defaultModel, keyRef: null, tokensUsed: { input: 0, output: 0 }, enabled: false, warningAcceptedAt: null };
 }
 
 /** SecureStore key names allow [A-Za-z0-9._-] only. */
@@ -203,6 +207,11 @@ export function normalizeAssistantPrefs(raw: unknown): AssistantPrefs {
     model,
     keyRef,
     tokensUsed: { input: count(t.input), output: count(t.output) },
+    enabled: o.enabled === true,
+    warningAcceptedAt:
+      typeof o.warningAcceptedAt === 'number' && Number.isFinite(o.warningAcceptedAt) && o.warningAcceptedAt > 0
+        ? o.warningAcceptedAt
+        : null,
   };
 }
 
