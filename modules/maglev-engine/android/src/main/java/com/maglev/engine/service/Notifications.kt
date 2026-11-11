@@ -217,10 +217,12 @@ object Notifications {
 
     /** Opens one file with the system viewer. The grant flag lets the viewer read the FileProvider/SAF URI. */
     fun openFileAction(context: Context, torrentId: String, uri: Uri, mime: String): PendingIntent {
-        val intent = Intent(Intent.ACTION_VIEW)
-            .setDataAndType(uri, mime)
-            .setClipData(ClipData.newRawUri("", uri))
-            .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
+        // setClipData is a void Java setter, so it can't sit in a builder chain.
+        val intent = Intent(Intent.ACTION_VIEW).apply {
+            setDataAndType(uri, mime)
+            clipData = ClipData.newRawUri("", uri)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
         return PendingIntent.getActivity(
             context, 20 + (torrentId.hashCode() and 0xFFFF), intent,
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,

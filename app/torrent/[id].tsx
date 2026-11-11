@@ -147,6 +147,8 @@ export default function TorrentDetailScreen() {
       const next = files.map((f) => ({ index: f.index, priority: chosen.has(f.index) ? priority : f.priority }));
       if (next.every((e) => e.priority === 'skip')) {
         setPrioError('Keep at least one file');
+        // From the selection bar there is no sheet to show the error in.
+        if (!prioTarget) showNotice({ tone: 'danger', text: 'Keep at least one file.' });
         triggerHaptic('warning');
         return;
       }
@@ -165,7 +167,7 @@ export default function TorrentDetailScreen() {
         showNotice({ tone: 'danger', text: res.message || "Couldn't change the file priority." });
       }
     },
-    [files, id, showNotice],
+    [files, id, prioTarget, showNotice],
   );
 
   const handleFilePress = useCallback((file: DetailFile) => {
@@ -493,15 +495,32 @@ export default function TorrentDetailScreen() {
 
       {selection ? (
         <View style={[styles.selectBar, { paddingBottom: Math.max(insets.bottom, spacing.md) }]}>
-          <Text style={styles.selectCount}>{selection.size} selected</Text>
-          <Button label="Cancel" variant="ghost" onPress={() => setSelection(null)} />
-          <Button
-            label="Set priority"
-            onPress={() => {
-              setPrioError(null);
-              setPrioTarget([...selection]);
-            }}
-          />
+          <View style={styles.selectHead}>
+            <IconButton icon="close" accessibilityLabel="Stop selecting" onPress={() => setSelection(null)} />
+            <Text style={styles.selectCount}>{selection.size} selected</Text>
+            <Button
+              label={selection.size === files.length ? 'Select none' : 'Select all'}
+              variant="ghost"
+              onPress={() =>
+                setSelection(selection.size === files.length ? null : new Set(files.map((f) => f.index)))
+              }
+            />
+          </View>
+          {/* The three choices sit in the bar itself: no "Set priority" step and no sheet. */}
+          <View style={styles.selectActions} accessibilityRole="toolbar">
+            <View style={styles.selectAction}>
+              <Button label="First" icon="priority-first" variant="secondary" fullWidth
+                accessibilityLabel="Download these first" onPress={() => void applyPriority([...selection], 'first')} />
+            </View>
+            <View style={styles.selectAction}>
+              <Button label="Normal" icon="download" variant="secondary" fullWidth
+                accessibilityLabel="Download these normally" onPress={() => void applyPriority([...selection], 'normal')} />
+            </View>
+            <View style={styles.selectAction}>
+              <Button label="Skip" icon="checkbox-empty" variant="secondary" fullWidth
+                accessibilityLabel="Don't download these" onPress={() => void applyPriority([...selection], 'skip')} />
+            </View>
+          </View>
         </View>
       ) : null}
 
@@ -610,8 +629,6 @@ const makeStyles = (c: ThemeColors) =>
     centered: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: spacing.md, paddingHorizontal: spacing.xxxl },
     loadingBar: { width: '60%' },
     selectBar: {
-      flexDirection: 'row',
-      alignItems: 'center',
       gap: spacing.sm,
       paddingHorizontal: spacing.lg,
       paddingTop: spacing.md,
@@ -619,6 +636,9 @@ const makeStyles = (c: ThemeColors) =>
       borderTopColor: c.border,
       backgroundColor: c.bg,
     },
+    selectHead: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+    selectActions: { flexDirection: 'row', gap: spacing.sm },
+    selectAction: { flex: 1 },
     selectCount: { ...type.bodyStrong, fontSize: type.size.lg, color: c.text, flex: 1 },
     muted: { ...type.body, fontSize: type.size.md, color: c.textMuted },
   });
