@@ -17,6 +17,7 @@ import { SpaceStrip } from '../components/add/SpaceStrip';
 import { PrioritySheet } from '../components/detail/PrioritySheet';
 import { fileExt } from '../components/detail/torrentLabels';
 import { admit, pendingNeedOf, type AdmissionOutcome } from '../utils/admission';
+import { admissionCaption } from '../utils/admissionCopy';
 
 /** SM-9 add flow states. */
 type Phase = 'input' | 'validating' | 'invalid' | 'resolving' | 'timeout' | 'error' | 'duplicate' | 'preview' | 'adding' | 'added';
@@ -470,10 +471,8 @@ export default function AddTorrentScreen() {
           windowSize={7}
         />
         <View style={[styles.bar, { paddingBottom: Math.max(insets.bottom, spacing.md) }]}>
-          {admission?.result === 'DoesntFit' ? (
-            <Text style={styles.caption}>{`Needs ${formatBytes(admission.need)}, ${formatBytes(admission.budget)} free`}</Text>
-          ) : admission?.result === 'Tight' ? (
-            <Text style={styles.caption}>{`Leaves ${formatBytes(admission.leftAfter)} free`}</Text>
+          {admission && admissionCaption(admission, pendingNeed) ? (
+            <Text style={styles.caption}>{admissionCaption(admission, pendingNeed)}</Text>
           ) : null}
           <Button
             label={

@@ -49,6 +49,50 @@ pub fn resolving_secs(resolving_since_ms: i64, now_ms: i64) -> i64 {
     now_ms.saturating_sub(resolving_since_ms).max(0) / 1000
 }
 
+/// The clock a magnet resumes with after the engine starts again (section 20). A lookup still inside
+/// its ten minute window keeps its start time, so restarts do not push `no_peers` back for ever. A
+/// clock that is already older than the window belongs to a process that was not running, so the
+/// lookup gets a fresh window.
+pub fn carry_resolving_since(existing: Option<i64>, now_ms: i64) -> i64 {
+    match existing {
+        Some(since) if since <= now_ms && !no_peers_due(since, now_ms) => since,
+        _ => now_ms,
+    }
+}
+
+/// How a magnet without metadata shows up in a snapshot: `(state, paused_by, resolving_secs)`.
+/// After it gave up (`no_peers`) it is PAUSED with `paused_by = no_peers`, which is what the card and
+/// the detail screen read to show "No one is sharing this yet" and Keep trying. While it looks it is
+/// INITIALIZING with the seconds so far.
+pub fn pending_view(
+    health: Option<&str>,
+    paused_by: Option<&str>,
+    has_error: bool,
+    resolving_since_ms: Option<i64>,
+    now_ms: i64,
+) -> (TorrentState, Option<String>, Option<i64>) {
+    if !has_error && health == Some(HEALTH_NO_PEERS) {
+        return (TorrentState::Paused, Some(HEALTH_NO_PEERS.to_string()), None);
+    }
+    let state = if has_error {
+        TorrentState::Error
+    } else {
+        TorrentState::Initializing
+    };
+    (
+        state,
+        paused_by.map(str::to_string),
+        resolving_since_ms.map(|since| resolving_secs(since, now_ms)),
+    )
+}
+
+/// librqbit reports `finished` for a live torrent whose chunk tracker it could not read (total 0, needs
+/// nothing). That is not a finished download: a torrent with included bytes is finished only when its
+/// selected total is known and non-zero.
+pub fn finished_is_real(finished: bool, total_bytes: u64, included_bytes: u64) -> bool {
+    finished && (total_bytes > 0 || included_bytes == 0)
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum TorrentState {
@@ -681,6 +725,39 @@ mod tests {
         assert!(no_peers_due(t0, t0 + NO_PEERS_AFTER_MS));
         assert_eq!(resolving_secs(t0, t0 + 61_500), 61);
         assert_eq!(resolving_secs(t0, t0 - 5), 0);
+    }
+
+    #[test]
+    fn resolving_clock_survives_a_quick_restart_but_not_a_long_gap() {
+        let t0 = 5_000_000;
+        assert_eq!(carry_resolving_since(Some(t0), t0 + 60_000), t0);
+        assert_eq!(
+            carry_resolving_since(Some(t0), t0 + NO_PEERS_AFTER_MS),
+            t0 + NO_PEERS_AFTER_MS
+        );
+        assert_eq!(carry_resolving_since(None, t0), t0);
+        assert_eq!(carry_resolving_since(Some(t0 + 10), t0), t0);
+    }
+
+    #[test]
+    fn a_magnet_that_gave_up_is_paused_with_no_peers() {
+        use TorrentState as S;
+        let (s, by, secs) = pending_view(Some("no_peers"), None, false, Some(1_000), 900_000);
+        assert_eq!((s, by.as_deref(), secs), (S::Paused, Some("no_peers"), None));
+        let (s, by, secs) = pending_view(None, None, false, Some(1_000), 61_000);
+        assert_eq!((s, by, secs), (S::Initializing, None, Some(60)));
+        let (s, _, _) = pending_view(None, None, true, Some(1_000), 61_000);
+        assert_eq!(s, S::Error);
+        let (s, by, _) = pending_view(None, Some("user"), false, None, 0);
+        assert_eq!((s, by.as_deref()), (S::Initializing, Some("user")));
+    }
+
+    #[test]
+    fn finished_with_nothing_selected_is_not_finished() {
+        assert!(finished_is_real(true, 100, 100));
+        assert!(!finished_is_real(true, 0, 100));
+        assert!(finished_is_real(true, 0, 0));
+        assert!(!finished_is_real(false, 100, 100));
     }
 
     fn inputs(rq: RqState) -> StateInputs<'static> {

@@ -106,6 +106,27 @@ pub fn rollup(states: &[(u32, FileState)]) -> Option<&'static str> {
     }
 }
 
+/// What to do with a torrent's file snapshot on a governance pass.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SnapshotStep {
+    Keep,
+    /// Take a new one: the torrent just finished.
+    Take,
+    /// Drop it: the torrent is not finished, so its files are being written by Maglev itself.
+    Drop,
+}
+
+/// A snapshot describes a finished torrent. It is taken on the finished edge (no health tag on the
+/// torrent) and dropped as soon as the torrent is unfinished again, so files Maglev rewrites itself
+/// (a file included again, Download again, the neighbours of a removed file) never read as changed.
+pub fn snapshot_step(has_snapshot: bool, finished: bool, health_clear: bool) -> SnapshotStep {
+    match (finished, has_snapshot) {
+        (true, false) if health_clear => SnapshotStep::Take,
+        (false, true) => SnapshotStep::Drop,
+        _ => SnapshotStep::Keep,
+    }
+}
+
 /// True when the scan may look at a torrent whose health is `current`. Storage and no-peers tags
 /// belong to other owners and are left alone.
 pub fn scan_owns(current: Option<&str>) -> bool {
@@ -294,6 +315,28 @@ mod tests {
         assert_eq!(classify_file(&p, false, Some(&snap)), FileState::Ok);
         // No snapshot yet: nothing to compare with.
         assert_eq!(classify_file(&p, true, None), FileState::Ok);
+    }
+
+    #[test]
+    fn snapshot_follows_the_finished_edge() {
+        use SnapshotStep as S;
+        assert_eq!(snapshot_step(false, true, true), S::Take);
+        // A tagged torrent (missing files) is not snapshotted.
+        assert_eq!(snapshot_step(false, true, false), S::Keep);
+        assert_eq!(snapshot_step(true, true, true), S::Keep);
+        // Unfinished again (file included, Download again, neighbours of a removed file): drop it.
+        assert_eq!(snapshot_step(true, false, true), S::Drop);
+        assert_eq!(snapshot_step(true, false, false), S::Drop);
+        assert_eq!(snapshot_step(false, false, true), S::Keep);
+    }
+
+    #[test]
+    fn rewriting_a_file_while_unfinished_never_reads_as_changed() {
+        // The old stamp is gone once the torrent is unfinished; with no snapshot nothing is compared,
+        // and an unfinished torrent compares nothing anyway.
+        let rewritten = probe(1, OnDisk::Present(stamp(500, 9_999)));
+        assert_eq!(classify_file(&rewritten, false, Some(&stamp(500, 1))), FileState::Ok);
+        assert_eq!(classify_file(&rewritten, true, None), FileState::Ok);
     }
 
     #[test]

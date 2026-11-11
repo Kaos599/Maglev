@@ -7,9 +7,11 @@ object CompletionPolicy {
     /**
      * Notify on the `finished` false to true edge, and only when this torrent was seen DOWNLOADING since it was
      * last unfinished. A recheck, a move, an app restart (prev is null) or an already-complete add never notifies.
+     * [quiet] is true when the torrent was finished and the user removed files from it: the pieces those files
+     * shared with their neighbours download again, and finishing that is not a new download.
      */
-    fun shouldNotify(prevFinished: Boolean?, finished: Boolean, sawDownloading: Boolean): Boolean =
-        prevFinished == false && finished && sawDownloading
+    fun shouldNotify(prevFinished: Boolean?, finished: Boolean, sawDownloading: Boolean, quiet: Boolean = false): Boolean =
+        prevFinished == false && finished && sawDownloading && !quiet
 
     /** "Downloaded · 1.4 GB". Without a known size, just "Downloaded". */
     fun body(sizeBytes: Long): String =
