@@ -118,20 +118,25 @@ Covers SM-19, 22–26.
 - Tracker add / remove / reannounce
 - Move storage
 - Share magnet / export .torrent
-- Create torrent
 - Scheduler
 - RSS rules with regex and episode filters
 - Search providers with error and retry states
 - **Wave 3 (user feedback):** file priority ("Download first"), reannounce, free-space check, Live Updates notification, tab bar and icon pass. See `NATIVE_CONTRACT.md` §10 and `UI_SPEC_PHASE2.md` S9.
 - IP blocklist via librqbit
-- Encryption setting (verify librqbit MSE support; hide the setting if unsupported)
 - Streaming polish
+- **Wave 5:** "Download finished" notification (opens the torrent, Open action, grouped) and a Quick Settings tile (`NATIVE_CONTRACT.md` §13)
+- Tracker add / remove, export .torrent
+- **Web seeds** (BEP 19 `url-list`, magnet `ws=`): backport upstream rqbit PR #739 into the vendored librqbit. Makes archive.org-style torrents download from their HTTP mirrors.
+- **Search: categories and safety** (user request 2026-11-11): category chips, per-result safety warnings, adult filter. Spec pending research.
+- **Download from any URL** (moved from Phase 4, 2026-11-11). Rust `reqwest` on the shared runtime and service; Range/ETag resume; segmented downloads; a User-Initiated Data Transfer job on API 34+.
+
+**Parked (2026-11-11, user decision):** create torrent; uTP connections (librqbit has it, off by default); protocol encryption (not in librqbit, the setting stays hidden).
 
 ### Phase 4: Exploration (only after Phase 3)
 
 - **AI assistant, bring your own key.** An OpenAI-compatible client, provider presets, keys stored in `expo-secure-store`, and OpenRouter OAuth. See the research notes in `LEDGER.md` (2026-11-11).
+  - **Tool calling, acting as a guide** (user request 2026-11-11). The assistant calls app tools instead of guessing: `search_torrents(query, category)`, `get_result_details(id)` (seeders, size, files after metadata), `assess_safety(id)` (same rules as the search safety check), `list_transfers()`, `explain_state(id)` ("why is this stuck?"). Anything that changes state (`add_torrent`, `pause`, `delete`) is proposed as a card the user taps to confirm; the model never acts on its own. Tool results are data, never instructions.
 - **Wi-Fi and mobile data together** (user request, 2026-11-11). This is research only. It needs a pre-connect socket hook in librqbit, librqbit-dualstack-sockets and librqbit-utp, plus `Network.bindSocket` / `android_setsocknetwork` (API 23). See `NATIVE_CONTRACT.md` §10.6. Start with a feasibility spike on a real device.
-- **Download from any URL.** Rust `reqwest` on the shared runtime and service; Range/ETag resume; segmented downloads; a User-Initiated Data Transfer job on API 34+.
 
 ### Phase-out (removed or retired)
 
