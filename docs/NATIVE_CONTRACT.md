@@ -80,7 +80,7 @@ All externs live in `object NativeCore` in `com.maglev.engine.NativeCore`. The R
 ```
 
 ### Error codes (closed set)
-`INVALID_SOURCE`, `DUPLICATE`, `METADATA_TIMEOUT`, `NETWORK`, `NOT_FOUND`, `DISK_FULL`, `PERMISSION`, `FILES_MISSING`, `NOT_INITIALIZED`, `ENGINE_UNAVAILABLE`, `INTERNAL`.
+`INVALID_SOURCE`, `DUPLICATE`, `METADATA_TIMEOUT`, `NETWORK`, `NOT_FOUND`, `DISK_FULL`, `PERMISSION`, `FILES_MISSING`, `NOT_INITIALIZED`, `ENGINE_UNAVAILABLE`, `UNSUPPORTED`, `INTERNAL`.
 
 ## 4. State rules (enforced in Rust)
 
@@ -143,3 +143,13 @@ Additions beyond §2–§6, agreed during Wave 1:
 - **No 6-hour cap.** On API 34+ the service type is `specialUse` (property: P2P transfer the user started). Below 34 it is `dataSync`. A future Google Play build flips `USE_SPECIAL_USE_FGS = false`, which brings back `dataSync` and its `onTimeout` handling.
 - **Battery nudge.** `getPermissionStatus()` adds `backgroundKills: number` (headless restarts detected after a gap) and `oemHint` (the manufacturer, for dontkillmyapp.com guidance). Settings → Needs attention shows "Android stopped Maglev N times. Allow unrestricted battery" with **Allow** (`openBatterySettings`).
 - **No boot auto-start.** Android 15 blocks starting these service types from `BOOT_COMPLETED`. Transfers resume on the next app open or the next sticky restart.
+
+## 9. Amendments from the boundary review (2026-11-11)
+
+- `Snapshot.finished: bool`: true once every included piece is present. **Completion and the staging copy key off the `finished` false→true edge**, never off the state string.
+- A finished torrent that exceeds `max_active_seeds` becomes `COMPLETED` (not seeding), never `QUEUED`. `QUEUED` is reserved for unfinished torrents.
+- `seeding_secs` is wall-clock time accumulated only while `SEEDING`, never a tick count.
+- `nativeInit` with an invalid config **never** leaves the engine unavailable. It falls back to the last persisted config (or the defaults) and returns `{ok:true, config_warning:"…"}`.
+- Proxy URLs are `socks5://` or `socks5h://` only. TS must not emit `http://`.
+- Error code `UNSUPPORTED` is added to the closed set. It is used, for example, for `https://` sources while TLS verification isn't initialised: "Secure (https) torrent links aren't supported yet. Download the .torrent file and open it instead." Kotlin downloads `https://…/.torrent` itself (10 MB cap, 30 s timeout) and passes the file path, so users rarely see this error.
+- Stream URLs carry a per-session random token, `/stream/<token>/<id>/<file>`. The server rejects a wrong token, and rejects a `Host` other than `127.0.0.1:<port>`.
