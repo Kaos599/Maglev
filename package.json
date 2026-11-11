@@ -9,6 +9,7 @@
     "web": "expo start --web",
     "test": "node scripts/test-abi-splits.js && node scripts/test-p3-reality-contracts.js",
     "test:contracts": "node scripts/test-p3-reality-contracts.js",
+    "test:search": "node scripts/test-search.js",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
@@ -26,6 +27,7 @@
     "expo-linking": "~58.0.15",
     "expo-navigation-bar": "~58.0.4",
     "expo-router": "~58.0.29",
+    "expo-secure-store": "~58.0.2",
     "expo-sqlite": "~58.0.15",
     "expo-status-bar": "~58.0.4",
     "maglev-engine": "file:./modules/maglev-engine",

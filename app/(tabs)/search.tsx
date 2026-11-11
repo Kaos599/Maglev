@@ -1,116 +1,140 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { FlatList, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { useRouter } from 'expo-router';
 import { useMaglevEngine } from '../../context/EngineContext';
 import { useTheme } from '../../context/ThemeContext';
 import { ThemeColors, radius, spacing, type } from '../../constants/theme';
 import { PixelIcon } from '../../components/PixelIcon';
-import { Button, Chip, EmptyBlock, IconButton, Screen, SectionHeader } from '../../components/ui';
+import { Button, Chip, EmptyBlock, IconButton, Screen, Sheet } from '../../components/ui';
 import { ResultRow } from '../../components/search/ResultRow';
 import { SkeletonRows } from '../../components/search/SkeletonRows';
+import { SourceScoreboard, ScoreboardEntry } from '../../components/search/SourceScoreboard';
+import { SourcesCard } from '../../components/search/SourcesCard';
 import { NoticeBanner, addErrorNotice, useNotice } from '../../components/search/Notice';
-import { addRecentSearch, clearRecentSearches, getRecentSearches } from '../../utils/prefs/search';
-
-interface SearchResult {
-  id: string;
-  infoHash: string;
-  name: string;
-  cat: number;
-  sizeBytes: number;
-  seeds: number;
-  peers: number;
-}
-
-type Category = 'All' | 'Video' | 'Audio' | 'Apps' | 'Games' | 'Books' | 'Other';
-const CATEGORIES: Category[] = ['All', 'Video', 'Audio', 'Apps', 'Games', 'Books', 'Other'];
-
-// apibay category codes: 100 audio, 200 video, 300 apps, 400 games, 601 e-books, 600 other.
-const CAT_PARAM: Record<Category, number> = { All: 0, Video: 200, Audio: 100, Apps: 300, Games: 400, Books: 601, Other: 600 };
+import { buildExtraProviders, loadExtraProviders } from '../../components/search/extra';
+import { CATEGORY_LABEL, formatAge, providerMap } from '../../components/search/meta';
+import { addRecentSearch, clearRecentSearches, getSearchPrefs, useSearchPrefs } from '../../utils/prefs/search';
+import { availableCategories, eligibleProviders, searchAll } from '../../utils/search/aggregate';
+import type { Category, MergedResult, SearchUpdate } from '../../utils/search/types';
 
 const DEBOUNCE_MS = 400;
-const TIMEOUT_MS = 8000;
 const MIN_QUERY = 2;
-const TRACKERS = ['udp://tracker.opentrackr.org:1337/announce', 'udp://open.stealth.si:80/announce', 'udp://tracker.torrent.eu.org:451/announce'];
 
-type Phase =
-  | { kind: 'idle' }
-  | { kind: 'loading' }
-  | { kind: 'done'; results: SearchResult[] }
-  | { kind: 'error'; message: string };
+type SortKey = 'seeders' | 'newest' | 'size' | 'name';
+const SORT_LABEL: Record<SortKey, string> = { seeders: 'Most seeders', newest: 'Newest', size: 'Largest', name: 'Name' };
+const SORT_ORDER: SortKey[] = ['seeders', 'newest', 'size', 'name'];
 
-function magnetFor(r: SearchResult): string {
-  return `magnet:?xt=urn:btih:${r.infoHash}&dn=${encodeURIComponent(r.name)}${TRACKERS.map((t) => `&tr=${encodeURIComponent(t)}`).join('')}`;
-}
-
-async function searchApibay(query: string, category: Category, signal: AbortSignal): Promise<SearchResult[]> {
-  const url = `https://apibay.org/q.php?q=${encodeURIComponent(query)}&cat=${CAT_PARAM[category]}`;
-  const res = await fetch(url, { signal });
-  if (!res.ok) throw new Error(`status ${res.status}`);
-  const data = await res.json();
-  if (!Array.isArray(data)) throw new Error('bad response');
-  if (data.length === 1 && (data[0].id === '0' || data[0].name === 'No results returned')) return [];
-  const results: SearchResult[] = [];
-  for (const item of data) {
-    const hash = String(item.info_hash ?? '').toLowerCase();
-    if (!/^[0-9a-f]{40}$/.test(hash)) continue;
-    const cat = parseInt(item.category, 10) || 0;
-    if (category === 'Other' && cat === 601) continue;
-    results.push({
-      id: hash,
-      infoHash: hash,
-      name: String(item.name ?? hash),
-      cat,
-      sizeBytes: parseInt(item.size, 10) || 0,
-      seeds: parseInt(item.seeders, 10) || 0,
-      peers: parseInt(item.leechers, 10) || 0,
-    });
+/** Missing numbers sort last in every numeric order. */
+function sortResults(list: MergedResult[], sort: SortKey): MergedResult[] {
+  const num = (a: number | undefined, b: number | undefined) => (b ?? -1) - (a ?? -1);
+  const copy = [...list];
+  switch (sort) {
+    case 'seeders':
+      return copy.sort((a, b) => num(a.seeders, b.seeders));
+    case 'newest':
+      return copy.sort((a, b) => num(a.publishedAt, b.publishedAt));
+    case 'size':
+      return copy.sort((a, b) => num(a.sizeBytes, b.sizeBytes));
+    case 'name':
+      return copy.sort((a, b) => a.name.localeCompare(b.name));
   }
-  return results.sort((a, b) => b.seeds - a.seeds);
 }
 
 export default function SearchScreen() {
   const { colors } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
+  const router = useRouter();
   const { startTorrent, telemetry } = useMaglevEngine();
+  const [prefs, updatePrefs] = useSearchPrefs();
 
   const [query, setQuery] = useState('');
-  const [category, setCategory] = useState<Category>('All');
-  const [phase, setPhase] = useState<Phase>({ kind: 'idle' });
-  const [recents, setRecents] = useState<string[]>(() => getRecentSearches());
+  const [searching, setSearching] = useState(false);
+  const [stopped, setStopped] = useState(false);
+  const [update, setUpdate] = useState<SearchUpdate | null>(null);
+  const [failed, setFailed] = useState(false);
+  const [sourceFilter, setSourceFilter] = useState<string | null>(null);
+  const [sortOpen, setSortOpen] = useState(false);
+  const [recents, setRecents] = useState<string[]>(() => prefs.recents);
   const [sessionAdded, setSessionAdded] = useState<Set<string>>(() => new Set());
   const [busyHash, setBusyHash] = useState<string | null>(null);
   const [retryTick, setRetryTick] = useState(0);
   const { notice, show, dismiss } = useNotice();
   const reqId = useRef(0);
+  const controller = useRef<AbortController | null>(null);
 
   const trimmed = query.trim();
+  const providers = useMemo(() => providerMap(prefs), [prefs]);
+
+  const extra = useMemo(() => buildExtraProviders(prefs.torznab), [prefs.torznab]);
+  const engPrefs = useMemo(() => ({ ...prefs, extraProviders: extra }), [prefs, extra]);
+
+  const categories = useMemo<Category[]>(() => {
+    const list = availableCategories(engPrefs);
+    return ['all', ...list.filter((c) => c !== 'all')];
+  }, [engPrefs]);
+  const category: Category = categories.includes(prefs.lastCategory) ? prefs.lastCategory : 'all';
+
+  const eligible = useMemo(() => eligibleProviders(category, engPrefs), [category, engPrefs]);
+  const onProviders = useMemo(
+    () => prefs.enabled.map((id) => providers.get(id)).filter((p): p is NonNullable<typeof p> => !!p),
+    [prefs.enabled, providers],
+  );
+
+  // Anything that changes what a search asks for restarts it. Sort and recents do not.
+  const searchKey = JSON.stringify([prefs.enabled, prefs.useFor, prefs.mirrorOverride, prefs.adult, prefs.waitSeconds, prefs.limit, prefs.hideDead, prefs.torznab]);
 
   useEffect(() => {
     reqId.current += 1;
     const mine = reqId.current;
+    setUpdate(null);
+    setFailed(false);
+    setStopped(false);
+    setSourceFilter(null);
     if (trimmed.length < MIN_QUERY) {
-      setPhase({ kind: 'idle' });
+      setSearching(false);
       return;
     }
-    setPhase({ kind: 'loading' });
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), TIMEOUT_MS);
-    const debounce = setTimeout(async () => {
-      try {
-        const results = await searchApibay(trimmed, category, controller.signal);
-        if (reqId.current === mine) setPhase({ kind: 'done', results });
-      } catch {
-        if (reqId.current !== mine) return;
-        setPhase({ kind: 'error', message: controller.signal.aborted ? 'The search took too long.' : 'Check your connection and try again.' });
-      } finally {
-        clearTimeout(timeout);
-      }
+    setSearching(true);
+    const ctl = new AbortController();
+    controller.current = ctl;
+    const debounce = setTimeout(() => {
+      const current = getSearchPrefs();
+      loadExtraProviders(current.torznab).then((extraProviders) =>
+        searchAll(trimmed, category, {
+          ...current,
+          extraProviders,
+          signal: ctl.signal,
+          onUpdate: (u: SearchUpdate) => {
+            if (reqId.current !== mine) return;
+            setUpdate(u);
+            if (u.done) setSearching(false);
+          },
+        }),
+      ).then(
+        () => {
+          if (reqId.current === mine) setSearching(false);
+        },
+        () => {
+          if (reqId.current !== mine || ctl.signal.aborted) return;
+          setFailed(true);
+          setSearching(false);
+        },
+      );
     }, DEBOUNCE_MS);
     return () => {
       clearTimeout(debounce);
-      clearTimeout(timeout);
-      controller.abort();
+      ctl.abort();
     };
-  }, [trimmed, category, retryTick]);
+    // searchKey stands in for the prefs fields a search depends on.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [trimmed, category, retryTick, searchKey]);
+
+  const stop = useCallback(() => {
+    reqId.current += 1;
+    controller.current?.abort();
+    setSearching(false);
+    setStopped(true);
+  }, []);
 
   const remember = useCallback((q: string) => {
     if (q.trim().length >= MIN_QUERY) setRecents(addRecentSearch(q));
@@ -119,11 +143,11 @@ export default function SearchScreen() {
   const inList = useMemo(() => new Set(telemetry.torrents.map((t) => t.id.toLowerCase())), [telemetry.torrents]);
 
   const handleAdd = useCallback(
-    async (r: SearchResult) => {
+    async (r: MergedResult) => {
       setBusyHash(r.infoHash);
       remember(trimmed);
       try {
-        await startTorrent(magnetFor(r));
+        await startTorrent(r.magnet);
         setSessionAdded((prev) => new Set(prev).add(r.infoHash));
       } catch (e) {
         const { duplicate, notice: n } = addErrorNotice(e);
@@ -136,77 +160,151 @@ export default function SearchScreen() {
     [remember, show, startTorrent, trimmed],
   );
 
+  const nameOf = useCallback((id: string) => providers.get(id)?.name ?? id, [providers]);
+
+  // After Stop, sources that never answered are left out of the scoreboard.
+  const sources = useMemo(() => (update?.sources ?? []).filter((s) => !(stopped && s.state === 'searching')), [update, stopped]);
+  const answered = sources.filter((s) => s.state !== 'searching').length;
+  const total = update?.sources.length ?? 0;
+
+  const shown = useMemo(() => {
+    const base = update?.results ?? [];
+    const filtered = sourceFilter ? base.filter((r) => r.sources.includes(sourceFilter)) : base;
+    return sortResults(filtered, prefs.sort);
+  }, [update, sourceFilter, prefs.sort]);
+
+  const entries: ScoreboardEntry[] = useMemo(() => sources.map((status) => ({ status, name: nameOf(status.providerId) })), [sources, nameOf]);
+
   const renderItem = useCallback(
-    ({ item }: { item: SearchResult }) => (
+    ({ item }: { item: MergedResult }) => (
       <ResultRow
         name={item.name}
         sizeBytes={item.sizeBytes}
-        seeds={item.seeds}
-        peers={item.peers}
+        seeders={item.seeders}
+        leechers={item.leechers}
+        age={formatAge(item.publishedAt)}
+        via={item.sources.map(nameOf).join(' · ')}
         added={sessionAdded.has(item.infoHash) || inList.has(item.infoHash)}
         busy={busyHash === item.infoHash}
         onAdd={() => handleAdd(item)}
       />
     ),
-    [busyHash, handleAdd, inList, sessionAdded],
+    [busyHash, handleAdd, inList, nameOf, sessionAdded],
   );
 
+  const openProviders = useCallback(() => router.push('/settings/search-providers' as never), [router]);
+
+  const idle = trimmed.length < MIN_QUERY;
+  const hasResults = (update?.results.length ?? 0) > 0;
+
   let body: React.ReactNode;
-  if (phase.kind === 'idle') {
-    body = recents.length > 0 ? (
-      <View style={styles.pad}>
-        <View style={styles.recentsHead}>
-          <SectionHeader title="Recent" />
-          <Button
-            label="Clear"
-            variant="ghost"
-            onPress={() => setRecents(clearRecentSearches())}
-            accessibilityLabel="Clear recent searches"
-          />
-        </View>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips}>
-          {recents.map((r) => (
-            <Chip key={r} label={r} onPress={() => setQuery(r)} />
-          ))}
-        </ScrollView>
-      </View>
-    ) : (
-      <EmptyBlock icon="search" title="Search public swarms" body="Type at least two letters. Results come from a public index." />
-    );
-  } else if (phase.kind === 'loading') {
+  if (idle) {
     body = (
-      <View style={styles.pad}>
-        <SkeletonRows />
-      </View>
+      <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.idle}>
+        {recents.length > 0 ? (
+          <View>
+            <View style={styles.recentsHead}>
+              <Text style={styles.sectionLabel} accessibilityRole="header">
+                Recent
+              </Text>
+              <Button label="Clear" variant="ghost" onPress={() => setRecents(clearRecentSearches())} accessibilityLabel="Clear recent searches" />
+            </View>
+            <View style={styles.wrapRow}>
+              {recents.map((r) => (
+                <Chip key={r} label={r} onPress={() => setQuery(r)} />
+              ))}
+            </View>
+          </View>
+        ) : null}
+        <SourcesCard providers={onProviders} onChange={openProviders} />
+        <Text style={styles.disclaimer}>Maglev doesn't host or index anything. You're responsible for what you download.</Text>
+      </ScrollView>
     );
-  } else if (phase.kind === 'error') {
+  } else if (failed) {
     body = (
       <EmptyBlock
         icon="warning"
         error
         title="Search is unavailable right now"
-        body={phase.message}
+        body="Check your connection and try again."
         primary={{ label: 'Retry', icon: 'retry', onPress: () => setRetryTick((n) => n + 1) }}
       />
     );
-  } else if (phase.results.length === 0) {
-    body = <EmptyBlock icon="search" title={`No results for "${trimmed}"`} body="Try fewer words or another category." />;
-  } else {
+  } else if (eligible.length === 0) {
     body = (
+      <EmptyBlock
+        icon="search"
+        title="No source covers this category"
+        body="Turn on a source that searches it."
+        primary={{ label: 'Change sources', onPress: openProviders }}
+      />
+    );
+  } else {
+    const list = (
       <FlatList
-        data={phase.results}
-        keyExtractor={(r) => r.id}
+        data={shown}
+        keyExtractor={(r) => r.infoHash}
         renderItem={renderItem}
         contentContainerStyle={styles.list}
         keyboardShouldPersistTaps="handled"
         initialNumToRender={12}
         windowSize={7}
+        ListFooterComponent={searching ? <SkeletonRows count={hasResults ? 2 : 5} /> : undefined}
+        ListEmptyComponent={
+          !searching ? (
+            update && answered === 0 ? (
+              <EmptyBlock
+                icon="warning"
+                error
+                title="No source answered"
+                body="Check your connection or try other sources."
+                primary={{ label: 'Retry', icon: 'retry', onPress: () => setRetryTick((n) => n + 1) }}
+              />
+            ) : (
+              <EmptyBlock icon="search" title={`No results for "${trimmed}"`} body="Try fewer words or another category." />
+            )
+          ) : undefined
+        }
       />
+    );
+    body = (
+      <>
+        <View style={styles.sources} accessibilityLiveRegion="polite">
+          <View style={styles.summaryRow}>
+            <Text style={styles.summary}>
+              {searching
+                ? `${answered}/${total || eligible.length} sources answered, results appear as they arrive`
+                : `${stopped ? 'Stopped. ' : ''}${answered}/${total} sources answered · ${update?.results.length ?? 0} results`}
+            </Text>
+            {!searching && hasResults ? (
+              <Button
+                label={SORT_LABEL[prefs.sort]}
+                icon="sort"
+                variant="ghost"
+                onPress={() => setSortOpen(true)}
+                accessibilityLabel={`Sort: ${SORT_LABEL[prefs.sort]}`}
+              />
+            ) : null}
+          </View>
+          {entries.length > 0 ? <SourceScoreboard entries={entries} selected={sourceFilter} onSelect={setSourceFilter} /> : null}
+        </View>
+        {list}
+      </>
     );
   }
 
   return (
-    <Screen title="Search">
+    <Screen
+      title="Search"
+      actions={
+        <IconButton
+          icon="filter"
+          badge={prefs.enabled.length}
+          onPress={openProviders}
+          accessibilityLabel={`Search sources, ${prefs.enabled.length} on`}
+        />
+      }
+    >
       <View style={styles.pad}>
         <View style={styles.field}>
           <PixelIcon name="search" size={20} color={colors.textMuted} />
@@ -218,19 +316,23 @@ export default function SearchScreen() {
               remember(query);
               setRetryTick((n) => n + 1);
             }}
-            placeholder="Search torrents"
+            placeholder="Name, show, file…"
             placeholderTextColor={colors.textFaint}
             autoCapitalize="none"
             autoCorrect={false}
             returnKeyType="search"
             accessibilityLabel="Search torrents"
           />
-          {query.length > 0 ? <IconButton icon="close" size={16} onPress={() => setQuery('')} accessibilityLabel="Clear search" /> : null}
+          {searching ? (
+            <Button label="Stop" variant="ghost" onPress={stop} accessibilityLabel="Stop searching" />
+          ) : query.length > 0 ? (
+            <IconButton icon="close" size={16} onPress={() => setQuery('')} accessibilityLabel="Clear search" />
+          ) : null}
         </View>
       </View>
       <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.catScroll} contentContainerStyle={styles.chips}>
-        {CATEGORIES.map((c) => (
-          <Chip key={c} label={c} selected={c === category} onPress={() => setCategory(c)} />
+        {categories.map((c) => (
+          <Chip key={c} label={CATEGORY_LABEL[c]} selected={c === category} onPress={() => updatePrefs({ lastCategory: c })} />
         ))}
       </ScrollView>
       {notice ? (
@@ -239,6 +341,21 @@ export default function SearchScreen() {
         </View>
       ) : null}
       <View style={styles.body}>{body}</View>
+      <Sheet visible={sortOpen} onClose={() => setSortOpen(false)} title="Sort results">
+        <View style={styles.wrapRow}>
+          {SORT_ORDER.map((s) => (
+            <Chip
+              key={s}
+              label={SORT_LABEL[s]}
+              selected={prefs.sort === s}
+              onPress={() => {
+                updatePrefs({ sort: s });
+                setSortOpen(false);
+              }}
+            />
+          ))}
+        </View>
+      </Sheet>
     </Screen>
   );
 }
@@ -251,6 +368,7 @@ const makeStyles = (c: ThemeColors) =>
       alignItems: 'center',
       minHeight: 48,
       paddingLeft: spacing.lg,
+      paddingRight: spacing.xs,
       gap: spacing.sm,
       borderRadius: radius.md,
       borderWidth: 1,
@@ -260,7 +378,14 @@ const makeStyles = (c: ThemeColors) =>
     input: { ...type.body, flex: 1, minHeight: 48, fontSize: 15, color: c.text },
     catScroll: { flexGrow: 0, marginTop: spacing.md, marginBottom: spacing.sm },
     chips: { paddingHorizontal: spacing.lg, gap: spacing.sm },
-    recentsHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: spacing.md },
+    idle: { paddingHorizontal: spacing.lg, paddingTop: spacing.md, paddingBottom: spacing.xxxl, gap: spacing.xxl },
+    recentsHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+    sectionLabel: { ...type.bodyStrong, fontSize: 12, color: c.textMuted },
+    wrapRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
+    disclaimer: { ...type.body, fontSize: 11, lineHeight: 16, color: c.textMuted },
+    sources: { paddingHorizontal: spacing.lg, paddingBottom: spacing.sm, gap: spacing.sm },
+    summaryRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.sm },
+    summary: { ...type.body, flex: 1, fontSize: 12, lineHeight: 17, color: c.textMuted },
     body: { flex: 1, marginTop: spacing.sm },
     list: { paddingHorizontal: spacing.lg, paddingBottom: spacing.xxxl },
   });

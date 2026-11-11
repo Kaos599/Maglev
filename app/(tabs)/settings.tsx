@@ -7,6 +7,7 @@ import { useSettings } from '../../context/SettingsContext';
 import { useMaglevEngine as useEngine } from '../../context/EngineContext';
 import { Banner, ListRow, Screen, SectionHeader } from '../../components/ui';
 import { PixelIconName } from '../../components/PixelIcon';
+import { useSearchPrefs } from '../../utils/prefs/search';
 import { Card, formatLimit, friendlyPath } from '../../components/settings/SettingsParts';
 import { spacing } from '../../constants/theme';
 
@@ -17,6 +18,7 @@ export default function SettingsIndex() {
   const router = useRouter();
   const { settings } = useSettings();
   const { permissionStatus, storageStatus, defaultStoragePath, refreshPermissions } = useEngine();
+  const [searchPrefs] = useSearchPrefs();
   const { bandwidth: b, network: n, power: p, appearance: a } = settings;
 
   const attention = useMemo(() => {
@@ -94,13 +96,14 @@ export default function SettingsIndex() {
         : 'Off';
 
   const rows: { icon: PixelIconName; title: string; value: string; route: string }[] = [
-    { icon: 'storage', title: 'Storage', value: folder, route: 'storage' },
+    { icon: 'folder', title: 'Storage', value: folder, route: 'storage' },
     { icon: 'bandwidth', title: 'Bandwidth', value: limits, route: 'bandwidth' },
     { icon: 'queue', title: 'Torrents & queue', value: `${b.maxActiveDownloads} at a time`, route: 'queue' },
     { icon: 'interface', title: 'Interface', value: `${MODE_LABEL[a.mode]} · ${ACCENT_LABEL[a.accent]}`, route: 'interface' },
     { icon: 'network', title: 'Network', value: n.wifiOnly ? 'Wi-Fi only' : 'Any network', route: 'network' },
     { icon: 'power', title: 'Power', value: power, route: 'power' },
     { icon: 'schedule', title: 'Scheduling', value: 'Coming soon', route: 'scheduling' },
+    { icon: 'search', title: 'Search providers', value: `${searchPrefs.enabled.length} on`, route: 'search-providers' },
     { icon: 'feeds', title: 'Feeds', value: 'Feeds tab', route: 'feeds' },
     { icon: 'about', title: 'About', value: Constants.expoConfig?.version ?? '', route: 'about' },
   ];

@@ -1,46 +1,227 @@
+import { useSyncExternalStore } from 'react';
 import Storage from 'expo-sqlite/kv-store';
+import * as SecureStore from 'expo-secure-store';
+import type { Category } from '../search/types';
+import { PROVIDERS } from '../search/aggregate';
 
-const KEY = 'maglev.search.recents.v1';
-const MAX_RECENTS = 8;
-
-let memory: string[] | null = null;
-
-function read(): string[] {
-  try {
-    const raw = Storage.getItemSync(KEY);
-    if (!raw) return memory ?? [];
-    const parsed = JSON.parse(raw);
-    if (Array.isArray(parsed)) return parsed.filter((s): s is string => typeof s === 'string').slice(0, MAX_RECENTS);
-  } catch {
-    // Storage unavailable: use the in-memory copy for this session.
-  }
-  return memory ?? [];
+/** Contract: docs/SEARCH_CONTRACT.md section 5. */
+export interface TorznabConfig {
+  /** Bare uuid. The provider id used in `enabled` / `useFor` is `torznab:<id>`. */
+  id: string;
+  name: string;
+  url: string;
+  categories: Category[];
 }
 
-function write(list: string[]): void {
-  memory = list;
+export interface SearchPrefs {
+  enabled: string[];
+  useFor: Record<string, Category[]>;
+  mirrorOverride: Record<string, string>;
+  adult: boolean;
+  waitSeconds: 5 | 8 | 15;
+  limit: 25 | 50 | 100;
+  hideDead: boolean;
+  sort: 'seeders' | 'newest' | 'size' | 'name';
+  lastCategory: Category;
+  recents: string[];
+  torznab: TorznabConfig[];
+}
+
+const KEY = 'maglev.search.prefs.v2';
+const LEGACY_RECENTS_KEY = 'maglev.search.recents.v1';
+const MAX_RECENTS = 8;
+
+const CATEGORIES: readonly Category[] = ['all', 'movies', 'tv', 'anime', 'music', 'apps', 'games', 'books', 'other', 'adult'];
+const SORTS = ['seeders', 'newest', 'size', 'name'] as const;
+
+function defaultEnabled(): string[] {
+  return PROVIDERS.filter((p) => p.enabledByDefault).map((p) => p.id);
+}
+
+function defaults(): SearchPrefs {
+  return {
+    enabled: defaultEnabled(),
+    useFor: {},
+    mirrorOverride: {},
+    adult: false,
+    waitSeconds: 8,
+    limit: 50,
+    hideDead: true,
+    sort: 'seeders',
+    lastCategory: 'all',
+    recents: [],
+    torznab: [],
+  };
+}
+
+function strings(v: unknown): string[] {
+  return Array.isArray(v) ? v.filter((s): s is string => typeof s === 'string') : [];
+}
+
+function categories(v: unknown): Category[] {
+  return strings(v).filter((c): c is Category => (CATEGORIES as readonly string[]).includes(c));
+}
+
+function recordOf<T>(v: unknown, pick: (x: unknown) => T | null): Record<string, T> {
+  const out: Record<string, T> = {};
+  if (v && typeof v === 'object' && !Array.isArray(v)) {
+    for (const [k, x] of Object.entries(v as Record<string, unknown>)) {
+      const picked = pick(x);
+      if (picked !== null) out[k] = picked;
+    }
+  }
+  return out;
+}
+
+/** Tolerant parse: unknown or missing fields fall back to defaults. `enabled` missing means "seed from defaults". */
+function normalize(raw: unknown, legacyRecents: string[]): SearchPrefs {
+  const d = defaults();
+  const o = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
+  const recents = (Array.isArray(o.recents) ? strings(o.recents) : legacyRecents).slice(0, MAX_RECENTS);
+  const torznab: TorznabConfig[] = Array.isArray(o.torznab)
+    ? (o.torznab as unknown[]).flatMap((t) => {
+        const x = t as Partial<TorznabConfig> | null;
+        if (!x || typeof x.id !== 'string' || typeof x.name !== 'string' || typeof x.url !== 'string') return [];
+        return [{ id: x.id, name: x.name, url: x.url, categories: categories(x.categories) }];
+      })
+    : [];
+  return {
+    enabled: Array.isArray(o.enabled) ? strings(o.enabled) : d.enabled,
+    useFor: recordOf(o.useFor, (x) => (Array.isArray(x) ? categories(x) : null)),
+    mirrorOverride: recordOf(o.mirrorOverride, (x) => (typeof x === 'string' && x ? x : null)),
+    adult: o.adult === true,
+    waitSeconds: o.waitSeconds === 5 || o.waitSeconds === 15 ? o.waitSeconds : 8,
+    limit: o.limit === 25 || o.limit === 100 ? o.limit : 50,
+    hideDead: o.hideDead !== false,
+    sort: (SORTS as readonly unknown[]).includes(o.sort) ? (o.sort as SearchPrefs['sort']) : d.sort,
+    lastCategory: (CATEGORIES as readonly unknown[]).includes(o.lastCategory) ? (o.lastCategory as Category) : 'all',
+    recents,
+    torznab,
+  };
+}
+
+function readLegacyRecents(): string[] {
   try {
-    Storage.setItemSync(KEY, JSON.stringify(list));
+    const raw = Storage.getItemSync(LEGACY_RECENTS_KEY);
+    if (raw) return strings(JSON.parse(raw)).slice(0, MAX_RECENTS);
+  } catch {
+    // Legacy store unreadable: start with no recents.
+  }
+  return [];
+}
+
+let cache: SearchPrefs | null = null;
+const listeners = new Set<() => void>();
+
+function load(): SearchPrefs {
+  if (cache) return cache;
+  let parsed: unknown = null;
+  let found = false;
+  try {
+    const raw = Storage.getItemSync(KEY);
+    if (raw) {
+      parsed = JSON.parse(raw);
+      found = true;
+    }
+  } catch {
+    // Storage unavailable: use defaults for this session.
+  }
+  cache = normalize(parsed, found ? [] : readLegacyRecents());
+  if (!found) persist(cache);
+  return cache;
+}
+
+function persist(p: SearchPrefs): void {
+  try {
+    Storage.setItemSync(KEY, JSON.stringify(p));
   } catch {
     // Kept in memory only.
   }
 }
 
+/** Current prefs (synchronous). */
+export function getSearchPrefs(): SearchPrefs {
+  return load();
+}
+
+/**
+ * Applies a change and notifies subscribers.
+ * Turning `adult` off also disables every nsfw provider (TorrentSearch's model) and drops the adult category.
+ */
+export function updateSearchPrefs(change: Partial<SearchPrefs> | ((p: SearchPrefs) => Partial<SearchPrefs>)): SearchPrefs {
+  const prev = load();
+  const patch = typeof change === 'function' ? change(prev) : change;
+  let next: SearchPrefs = { ...prev, ...patch };
+  if (prev.adult && !next.adult) {
+    const nsfw = new Set(PROVIDERS.filter((p) => p.nsfw).map((p) => p.id));
+    next = {
+      ...next,
+      enabled: next.enabled.filter((id) => !nsfw.has(id)),
+      lastCategory: next.lastCategory === 'adult' ? 'all' : next.lastCategory,
+    };
+  }
+  cache = next;
+  persist(next);
+  listeners.forEach((l) => l());
+  return next;
+}
+
+function subscribe(l: () => void): () => void {
+  listeners.add(l);
+  return () => {
+    listeners.delete(l);
+  };
+}
+
+/** Reactive prefs plus the updater. */
+export function useSearchPrefs(): [SearchPrefs, typeof updateSearchPrefs] {
+  const prefs = useSyncExternalStore(subscribe, getSearchPrefs, getSearchPrefs);
+  return [prefs, updateSearchPrefs];
+}
+
+// ---- Recents (existing behaviour, now inside the prefs record) ----
+
 /** Last searches, newest first (max 8). */
 export function getRecentSearches(): string[] {
-  return read();
+  return load().recents;
 }
 
 /** Adds a query to the front, de-duplicating case-insensitively. Returns the new list. */
 export function addRecentSearch(query: string): string[] {
   const q = query.trim();
-  if (!q) return read();
-  const next = [q, ...read().filter((r) => r.toLowerCase() !== q.toLowerCase())].slice(0, MAX_RECENTS);
-  write(next);
-  return next;
+  const current = load().recents;
+  if (!q) return current;
+  const recents = [q, ...current.filter((r) => r.toLowerCase() !== q.toLowerCase())].slice(0, MAX_RECENTS);
+  return updateSearchPrefs({ recents }).recents;
 }
 
 export function clearRecentSearches(): string[] {
-  write([]);
-  return [];
+  return updateSearchPrefs({ recents: [] }).recents;
+}
+
+// ---- Torznab API keys (expo-secure-store) ----
+
+/** SecureStore keys allow only [A-Za-z0-9._-], so the contract's `torznab:<id>` is stored as `torznab.<id>`. */
+export function torznabKeyName(id: string): string {
+  return `torznab.${id.replace(/[^A-Za-z0-9._-]/g, '_')}`;
+}
+
+export async function getTorznabApiKey(id: string): Promise<string> {
+  try {
+    return (await SecureStore.getItemAsync(torznabKeyName(id))) ?? '';
+  } catch {
+    return '';
+  }
+}
+
+export async function setTorznabApiKey(id: string, apiKey: string): Promise<void> {
+  await SecureStore.setItemAsync(torznabKeyName(id), apiKey);
+}
+
+export async function deleteTorznabApiKey(id: string): Promise<void> {
+  try {
+    await SecureStore.deleteItemAsync(torznabKeyName(id));
+  } catch {
+    // Nothing stored.
+  }
 }
