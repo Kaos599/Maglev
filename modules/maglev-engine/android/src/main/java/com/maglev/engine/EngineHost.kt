@@ -22,6 +22,7 @@ import com.maglev.engine.schedule.ScheduleEvaluator
 import com.maglev.engine.schedule.ScheduleManager
 import com.maglev.engine.schedule.ScheduleState
 import com.maglev.engine.service.CompletionPolicy
+import com.maglev.engine.service.StorageHealthDriver
 import com.maglev.engine.service.MaglevTileService
 import com.maglev.engine.service.MaglevTorrentService
 import com.maglev.engine.service.Notifications
@@ -369,6 +370,7 @@ object EngineHost {
     fun onForeground() {
         holdForPaused = false
         val c = ctx ?: return
+        onForegroundHealth()
         val p = prefs(c)
         if (p.getBoolean(KEY_FGS_TIMEOUT, false)) {
             scope.launch {
@@ -455,6 +457,7 @@ object EngineHost {
         body["serviceBlocked"] = serviceBlocked
         emit("onTelemetry", body)
         driveService(summary)
+        healthTick(torrents, summary)
         copyStagedTorrents(torrents)
         checkAutoExit(torrents)
     }
@@ -1440,6 +1443,39 @@ object EngineHost {
             ?: return Json.failure("NOT_FOUND", "Folder not found")
         val err = FileActions.openFolder(c, folder)
         return if (err == null) linkedMapOf("ok" to true) else Json.failure("NOT_FOUND", err)
+    }
+
+    // endregion
+
+    // region Restart and storage (§18.5, §19)
+
+    /** Per-poll hook: storage health, background error notice, restart bookkeeping, resolve retry work. */
+    private fun healthTick(torrents: List<Map<String, Any?>>, summary: TransferSummary) {
+        val c = ctx ?: return
+        StorageHealthDriver.onTelemetry(c, torrents)
+        RestartPrefs.recordTick(c, summary.busy + summary.pausedByRules + summary.pausedBySchedule)
+        ResolveRetry.sync(c, torrents.any { it["health"] == "no_peers" })
+    }
+
+    /** App-in-front hook: the one-time "stopped by Android" notice, and a file health scan. */
+    private fun onForegroundHealth() {
+        val c = ctx ?: return
+        if (RestartEntry.onAppOpen(c)) emit("onNotificationAction", mapOf("action" to "stopped_by_android", "message" to RestartEntry.STOPPED_NOTICE))
+        if (initialized) scope.launch { scanFileHealth() }
+    }
+
+    /** Clears every no_peers tag so the 10 minute resolve window starts again (contract 20). Starts the engine if needed. */
+    fun resolveRetry() {
+        scope.launch {
+            val c = ctx ?: return@launch
+            if (RestartPolicy.decide(RestartPrefs.input(c).copy(activeTorrents = RestartPolicy.UNKNOWN_COUNT)) == RestartDecision.StayStopped) return@launch
+            if (!initialized && !isOk(startEngine(""))) return@launch
+            val list = call { NativeCore.nativeListTorrents() }
+            for (t in Json.list(list["torrents"])) {
+                if (t["health"] == "no_peers") (t["id"] as? String)?.let { setHealth(it, "") }
+            }
+            pollNow()
+        }
     }
 
     // endregion
