@@ -39,6 +39,11 @@ export interface SearchProvider {
   /** Set when the source can sit behind a Cloudflare check: the page the user opens to pass it. */
   cloudflare?: { solverUrl: string };
   search(q: string, category: Category, page: number, ctx: SearchContext): Promise<SearchResult[]>;
+  /**
+   * For sources whose list page has no magnet (rows come back with `magnet: ''` and a stand-in `infoHash`):
+   * fetch the real magnet and info hash when the user adds the result. Use resolveResult() to call it.
+   */
+  resolveMagnet?(result: SearchResult, signal: AbortSignal): Promise<{ magnet: string; infoHash: string }>;
 }
 
 /** Context handed to the pure parse() functions. */

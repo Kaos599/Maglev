@@ -1,0 +1,19 @@
+Titles and descriptions replaced with neutral text; structure unchanged.
+Provenance of the x1337_* fixtures (retrieved 2026-11-11). Nothing in these files was edited or written by hand.
+
+Live 1337x mirrors all answer a Cloudflare challenge or a redirect page to a plain client
+(checked with curl and a browser User-Agent): 1337x.st 403, x1337x.ws 403, 1337xx.to 403,
+1337x.so 200 but only a "Redirecting..." stub, 1337x.to connection failure. The TinyFish fetch tool
+also got proxy_error on the live hosts. So both pages are raw Wayback Machine captures
+(the "id_" URL form returns the original bytes with no Wayback toolbar or rewritten links).
+
+x1337_search.html
+  https://web.archive.org/web/20241224024639id_/https://1337x.to/search/ubuntu/1/
+  Capture of 2024-12-24 of https://1337x.to/search/ubuntu/1/ . Result table of 20 rows: name / se / le / time / size / uploader.
+
+x1337_detail.html
+  https://web.archive.org/web/20250124112906id_/https://1337x.to/torrent/2099267/Ubuntu-MATE-16-04-2-MATE-armhf-img-xz-Uzerus/
+  Capture of 2025-01-24 of the first row of the search fixture. Holds the magnet link (info hash D0F23C10...E4A9).
+
+The empty-result case is not a fixture: scripts/test-search.js derives it from x1337_search.html by removing the table rows.
+The challenge case reuses cloudflare_challenge.html / .headers.txt (a real 1337x 403).

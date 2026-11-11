@@ -41,6 +41,18 @@ function lookup(id: string, extra?: SearchProvider[]): SearchProvider | undefine
   return PROVIDERS.find((p) => p.id === id) ?? extra?.find((p) => p.id === id);
 }
 
+/**
+ * Gives a result its real magnet and info hash before it is added. Rows that already have a magnet pass through.
+ * Throws a ProviderError (for example 'challenge' when the site wants its check again).
+ */
+export async function resolveResult<T extends SearchResult>(r: T, signal: AbortSignal, extra?: SearchProvider[]): Promise<T> {
+  if (r.magnet) return r;
+  const p = lookup(r.providerId, extra);
+  if (!p?.resolveMagnet) throw new ProviderError('parse', 'No magnet link for this result');
+  const { magnet, infoHash } = await p.resolveMagnet(r, signal);
+  return { ...r, magnet, infoHash };
+}
+
 export function effectiveCategories(p: SearchProvider, prefs: Pick<ProviderPrefs, 'useFor' | 'adult'>): Category[] {
   const pick = prefs.useFor?.[p.id];
   let cats = pick ? p.categories.filter((c) => pick.includes(c)) : p.categories.slice();
