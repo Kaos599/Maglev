@@ -1,922 +1,358 @@
-import { useMemo } from 'react';
-import React, { useState, useEffect } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  TouchableOpacity,
-  ScrollView,
-  Modal,
-  Linking,
-  Alert,
-  TextInput,
-} from 'react-native';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { FlatList, StyleSheet, Text, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Ionicons } from '@expo/vector-icons';
 import * as Clipboard from 'expo-clipboard';
-import { formatBytes, formatEta, formatSpeed } from '../../constants/format';
+import { maglevEngine, type DetailFile } from 'maglev-engine';
+import { useTheme } from '../../context/ThemeContext';
 import { useMaglevEngine } from '../../context/EngineContext';
+import { ThemeColors, radius, spacing, type } from '../../constants/theme';
+import { formatBytes, formatEta, formatSpeed } from '../../constants/format';
 import { triggerHaptic } from '../../constants/haptics';
+import { Banner, EmptyBlock, IconButton, ProgressBar, Screen, SegmentedControl } from '../../components/ui';
 import { SpeedChart } from '../../components/SpeedChart';
 import { PiecesMatrix } from '../../components/PiecesMatrix';
-import type { TorrentFileInfo, TrackerInfo } from 'maglev-engine';
-import { useTheme } from '../../context/ThemeContext';
-import { alpha, fonts, touch, ThemeColors } from '../../constants/theme';
+import { StateBadge } from '../../components/detail/StateBadge';
+import { StatGrid } from '../../components/detail/StatGrid';
+import { FileRow, PeerRow, TrackerRow } from '../../components/detail/rows';
+import { DeleteSheet, FileActionsSheet, MoreSheet } from '../../components/detail/sheets';
+import { useTorrentDetail } from '../../components/detail/useTorrentDetail';
+import { buildMagnet } from '../../components/detail/torrentLabels';
 
-type DetailTab = 'FILES' | 'PIECES' | 'PEERS' | 'TRACKERS';
+type Tab = 'files' | 'peers' | 'trackers' | 'pieces';
+
+const TABS = [
+  { value: 'files', label: 'Files' },
+  { value: 'peers', label: 'Peers' },
+  { value: 'trackers', label: 'Trackers' },
+  { value: 'pieces', label: 'Pieces' },
+] as const;
+
+interface Notice {
+  tone: 'info' | 'danger';
+  text: string;
+}
 
 export default function TorrentDetailScreen() {
   const { colors } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
-  const insets = useSafeAreaInsets();
-  const {
-    telemetry,
-    getTorrentDetail,
-    getPieceBitfield,
-    deleteTorrent,
-    startHttpStream,
-    setFilePriority,
-    addTracker,
-  } = useMaglevEngine();
+  const { pauseTorrent, resumeTorrent, deleteTorrent } = useMaglevEngine();
 
-  const [activeTab, setActiveTab] = useState<DetailTab>('PIECES');
-  const [pieceMatrix, setPieceMatrix] = useState<Uint8Array>(new Uint8Array(256));
-  const [deleteModalVisible, setDeleteModalVisible] = useState(false);
-  const [streamUrl, setStreamUrl] = useState<string | null>(null);
-  const [newTrackerUrl, setNewTrackerUrl] = useState('');
-  const [addTrackerVisible, setAddTrackerVisible] = useState(false);
-  const [copiedMagnet, setCopiedMagnet] = useState(false);
+  const [tab, setTab] = useState<Tab>('files');
+  const { detail, pieces, status, error, tick, retry } = useTorrentDetail(id, tab === 'pieces');
 
-  const torrentSummary = telemetry.torrents.find((t) => t.id === id);
-  const detailData = getTorrentDetail(id || '');
+  const [moreOpen, setMoreOpen] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deleteBusy, setDeleteBusy] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [fileSheet, setFileSheet] = useState<DetailFile | null>(null);
+  const [notice, setNotice] = useState<Notice | null>(null);
+  const [pending, setPending] = useState<Record<number, boolean>>({});
+  const noticeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const [files, setFiles] = useState<TorrentFileInfo[]>(detailData?.files || []);
-  const [trackers, setTrackers] = useState<TrackerInfo[]>(detailData?.trackers || []);
+  const showNotice = useCallback((n: Notice) => {
+    setNotice(n);
+    if (noticeTimer.current) clearTimeout(noticeTimer.current);
+    noticeTimer.current = setTimeout(() => setNotice(null), 3500);
+  }, []);
+  useEffect(() => () => {
+    if (noticeTimer.current) clearTimeout(noticeTimer.current);
+  }, []);
 
-  const handleCopyMagnet = async () => {
-    if (!id) return;
-    triggerHaptic('medium');
-    const magnetUri = `magnet:?xt=urn:btih:${id}&dn=${encodeURIComponent(detailData?.name || torrentSummary?.name || 'torrent')}`;
-    try {
-      await Clipboard.setStringAsync(magnetUri);
-      setCopiedMagnet(true);
-      setTimeout(() => setCopiedMagnet(false), 2500);
-    } catch {
-      // Ignored
-    }
-  };
-
+  // Drop optimistic include flags once the engine reports the same value.
   useEffect(() => {
-    if (detailData?.files) {
-      setFiles(detailData.files);
-    }
-    if (detailData?.trackers) {
-      setTrackers(detailData.trackers);
-    }
-  }, [detailData]);
+    if (!detail) return;
+    setPending((prev) => {
+      const keys = Object.keys(prev);
+      if (keys.length === 0) return prev;
+      const next = { ...prev };
+      for (const f of detail.files) if (f.index in next && next[f.index] === f.included) delete next[f.index];
+      return Object.keys(next).length === keys.length ? prev : next;
+    });
+  }, [detail]);
 
-  const handleCyclePriority = async (fileIndex: number, currentPriority: 0 | 1 | 2) => {
-    triggerHaptic('medium');
-    const nextPriority: 0 | 1 | 2 = currentPriority === 1 ? 2 : currentPriority === 2 ? 0 : 1;
-    setFiles((prev) =>
-      prev.map((f) => (f.index === fileIndex ? { ...f, priority: nextPriority } : f))
-    );
-    if (id) {
-      await setFilePriority(id, fileIndex, nextPriority);
-    }
-  };
+  const snap = detail?.snapshot ?? null;
+  const files = useMemo(
+    () => (detail ? detail.files.map((f) => (f.index in pending ? { ...f, included: pending[f.index] } : f)) : []),
+    [detail, pending],
+  );
 
-  const handleConfirmAddTracker = async () => {
-    const url = newTrackerUrl.trim();
-    if (!url || !id) return;
-    triggerHaptic('medium');
-    await addTracker(id, url);
-    setTrackers((prev) => [
-      ...prev,
-      {
-        url,
-        status: 'Working',
-        seeds: 0,
-        peers: 0,
-      },
-    ]);
-    setNewTrackerUrl('');
-    setAddTrackerVisible(false);
-  };
+  const goBack = useCallback(() => {
+    if (router.canGoBack()) router.back();
+    else router.replace('/');
+  }, [router]);
 
-  // Load and refresh piece bitfield at 500ms cadence
-  useEffect(() => {
-    let mounted = true;
-    const fetchMatrix = async () => {
-      if (id) {
-        const matrix = await getPieceBitfield(id);
-        if (mounted) setPieceMatrix(matrix);
+  const handleToggle = useCallback(
+    async (file: DetailFile, next: boolean) => {
+      if (!id) return;
+      const indices = files.filter((f) => (f.index === file.index ? next : f.included)).map((f) => f.index);
+      if (indices.length === 0) {
+        showNotice({ tone: 'info', text: 'Keep at least one file selected.' });
+        return;
       }
-    };
+      triggerHaptic('selection');
+      setPending((p) => ({ ...p, [file.index]: next }));
+      const res = await maglevEngine.setIncludedFiles(id, indices);
+      if (!res.ok) {
+        setPending((p) => {
+          const { [file.index]: _drop, ...rest } = p;
+          return rest;
+        });
+        showNotice({ tone: 'danger', text: res.message || "Couldn't change the file selection." });
+      }
+    },
+    [files, id, showNotice],
+  );
 
-    fetchMatrix();
-    const interval = setInterval(fetchMatrix, 500);
-    return () => {
-      mounted = false;
-      clearInterval(interval);
-    };
-  }, [id, getPieceBitfield]);
+  const handleCopyMagnet = useCallback(async () => {
+    setMoreOpen(false);
+    if (!id || !snap) return;
+    try {
+      await Clipboard.setStringAsync(buildMagnet(id, snap.name));
+      triggerHaptic('success');
+      showNotice({ tone: 'info', text: 'Magnet link copied.' });
+    } catch {
+      showNotice({ tone: 'danger', text: "Couldn't copy the magnet link." });
+    }
+  }, [id, snap, showNotice]);
 
-  if (!torrentSummary && !detailData) {
+  const handleRecheck = useCallback(async () => {
+    setMoreOpen(false);
+    if (!id) return;
+    const res = await maglevEngine.recheck(id);
+    showNotice(res.ok ? { tone: 'info', text: 'Checking files…' } : { tone: 'danger', text: res.message });
+  }, [id, showNotice]);
+
+  const handleOpenFolder = useCallback(async () => {
+    setMoreOpen(false);
+    if (!id) return;
+    const res = await maglevEngine.openFolder(id);
+    if (!res.ok) showNotice({ tone: 'danger', text: res.message || "Couldn't open the folder." });
+  }, [id, showNotice]);
+
+  const handleDelete = useCallback(
+    async (withFiles: boolean) => {
+      if (!id) return;
+      setDeleteBusy(true);
+      setDeleteError(null);
+      const ok = await deleteTorrent(id, withFiles);
+      setDeleteBusy(false);
+      if (ok) {
+        triggerHaptic('warning');
+        setDeleteOpen(false);
+        goBack();
+      } else {
+        setDeleteError('The engine could not remove this torrent. Try again.');
+      }
+    },
+    [deleteTorrent, goBack, id],
+  );
+
+  const handlePlayPause = useCallback(async () => {
+    if (!id || !snap) return;
+    triggerHaptic('light');
+    const running = snap.state === 'DOWNLOADING' || snap.state === 'SEEDING' || snap.state === 'QUEUED';
+    const ok = running ? await pauseTorrent(id) : await resumeTorrent(id);
+    if (!ok) showNotice({ tone: 'danger', text: "Couldn't change the torrent state." });
+  }, [id, pauseTorrent, resumeTorrent, showNotice, snap]);
+
+  const headerActions = snap ? (
+    <>
+      {snap.state === 'CHECKING' || snap.state === 'INITIALIZING' ? null : (
+        <IconButton
+          icon={
+            snap.state === 'ERROR' ? 'retry' : snap.state === 'DOWNLOADING' || snap.state === 'SEEDING' || snap.state === 'QUEUED' ? 'pause' : 'play'
+          }
+          accessibilityLabel={
+            snap.state === 'ERROR' ? 'Retry' : snap.state === 'DOWNLOADING' || snap.state === 'SEEDING' || snap.state === 'QUEUED' ? 'Pause' : 'Resume'
+          }
+          onPress={handlePlayPause}
+        />
+      )}
+      <IconButton icon="more" accessibilityLabel="More options" onPress={() => setMoreOpen(true)} />
+    </>
+  ) : null;
+
+  if (!id || status === 'missing') {
     return (
-      <View style={[styles.container, { paddingTop: insets.top, alignItems: 'center', justifyContent: 'center' }]}>
-        <Text style={styles.notFoundText}>Torrent not found</Text>
-        <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
-          <Text style={styles.backButtonText}>Return to Transfers</Text>
-        </TouchableOpacity>
-      </View>
+      <Screen title="Torrent" onBack={goBack}>
+        <EmptyBlock
+          icon="warning"
+          error
+          title="Torrent not found"
+          body="It may have been removed."
+          primary={{ label: 'Back to transfers', onPress: goBack }}
+        />
+      </Screen>
     );
   }
 
-  const name = torrentSummary?.name || detailData?.name || 'Torrent';
-  const state = torrentSummary?.state || detailData?.state || 'PAUSED';
-  const downSpeed = torrentSummary?.downloadSpeedBytes || 0;
-  const upSpeed = torrentSummary?.uploadSpeedBytes || 0;
-  const totalSize = torrentSummary?.totalSizeBytes || detailData?.totalSizeBytes || 0;
-  const downloaded = torrentSummary?.downloadedBytes || detailData?.downloadedBytes || 0;
-  const progress = torrentSummary?.progressPercent || detailData?.progressPercent || 0;
-  const eta = torrentSummary?.etaSeconds || detailData?.etaSeconds || 0;
-  const peers = torrentSummary?.peersConnected || detailData?.peersConnected || 0;
-  const seeds = torrentSummary?.seedsConnected || detailData?.seedsConnected || 0;
-
-  const handleStreamNow = async () => {
-    if (!id) return;
-    try {
-      const url = await startHttpStream(id, 0);
-      setStreamUrl(url);
-      const canOpen = await Linking.canOpenURL(url);
-      if (canOpen) {
-        await Linking.openURL(url);
-      } else {
-        Alert.alert('Stream Server Active', `Streaming endpoint ready:\n${url}`);
-      }
-    } catch {
-      Alert.alert('Streaming Notice', 'External player stream initialized on loopback.');
-    }
-  };
-
-  const confirmDeleteSession = async () => {
-    if (id) {
-      await deleteTorrent(id, false);
-      setDeleteModalVisible(false);
-      router.back();
-    }
-  };
-
-  const confirmDeleteWithFiles = async () => {
-    if (id) {
-      await deleteTorrent(id, true);
-      setDeleteModalVisible(false);
-      router.back();
-    }
-  };
-
-  return (
-    <View style={[styles.container, { paddingTop: insets.top, paddingBottom: insets.bottom + 8 }]}>
-      {/* Top Bar */}
-      <View style={styles.navBar}>
-        <TouchableOpacity
-          style={styles.navAction}
-          onPress={() => router.back()}
-          accessibilityRole="button"
-          accessibilityLabel="Back"
-        >
-          <Ionicons name="arrow-back" size={20} color={colors.text} />
-        </TouchableOpacity>
-
-        <Text style={styles.navTitle} numberOfLines={1}>
-          {name}
-        </Text>
-
-        <View style={styles.navRightGroup}>
-          <TouchableOpacity
-            style={styles.navAction}
-            onPress={handleCopyMagnet}
-            accessibilityRole="button"
-            accessibilityLabel="Copy Magnet Link"
-          >
-            <Ionicons
-              name={copiedMagnet ? "checkmark-outline" : "share-social-outline"}
-              size={18}
-              color={copiedMagnet ? colors.accentText : colors.download}
-            />
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.navAction}
-            onPress={() => setDeleteModalVisible(true)}
-            accessibilityRole="button"
-            accessibilityLabel="Delete Torrent"
-          >
-            <Ionicons name="trash-outline" size={18} color={colors.danger} />
-          </TouchableOpacity>
+  if (status === 'loading' && !detail) {
+    return (
+      <Screen title="Torrent" onBack={goBack}>
+        <View style={styles.centered} accessibilityLiveRegion="polite">
+          <View style={styles.loadingBar}>
+            <ProgressBar indeterminate accessibilityLabel="Loading torrent" />
+          </View>
+          <Text style={styles.muted}>Loading…</Text>
         </View>
+      </Screen>
+    );
+  }
+
+  if (status === 'error' && !detail) {
+    return (
+      <Screen title="Torrent" onBack={goBack}>
+        <EmptyBlock
+          icon="warning"
+          error
+          title="Couldn't load this torrent"
+          body={error ?? undefined}
+          primary={{ label: 'Retry', onPress: retry }}
+          secondary={{ label: 'Back', onPress: goBack }}
+        />
+      </Screen>
+    );
+  }
+
+  if (!snap || !detail) return null;
+
+  const frac = snap.totalBytes > 0 ? Math.min(1, snap.progressBytes / snap.totalBytes) : 0;
+  const tone =
+    snap.state === 'ERROR' ? 'error' : snap.state === 'PAUSED' ? 'paused' : snap.state === 'SEEDING' || snap.state === 'COMPLETED' ? 'seed' : 'download';
+
+  const header = (
+    <View>
+      {notice ? (
+        <View style={styles.block}>
+          <Banner tone={notice.tone} title={notice.text} onDismiss={() => setNotice(null)} />
+        </View>
+      ) : null}
+      {error ? (
+        <View style={styles.block}>
+          <Banner tone="warning" title="Updates paused" body={error} actionLabel="Retry" onAction={retry} />
+        </View>
+      ) : null}
+      {snap.error ? (
+        <View style={styles.block}>
+          <Banner tone="danger" title="This torrent has a problem" body={snap.error.message} actionLabel="Recheck" onAction={handleRecheck} />
+        </View>
+      ) : null}
+
+      <View style={styles.summary}>
+        <View style={styles.summaryTop}>
+          <StateBadge state={snap.state} pausedBy={snap.pausedBy} />
+          <Text style={styles.percent} accessibilityLabel={`${(frac * 100).toFixed(1)} percent`}>
+            {(frac * 100).toFixed(1)}%
+          </Text>
+        </View>
+        <ProgressBar progress={frac} tone={tone} accessibilityLabel="Download progress" />
       </View>
 
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
-        {/* Main Status Pill */}
-        <View style={styles.summaryCard}>
-          <View style={styles.summaryHeader}>
-            <Text style={styles.summaryName} numberOfLines={2}>
-              {name}
-            </Text>
-            <View style={[styles.statusBadge, state === 'DOWNLOADING' ? styles.badgeDown : styles.badgeDone]}>
-              <Text style={styles.statusBadgeText}>{state}</Text>
-            </View>
-          </View>
+      <View style={styles.block}>
+        <StatGrid
+          stats={[
+            { label: 'Download', value: formatSpeed(snap.downBps), tint: colors.download },
+            { label: 'Upload', value: formatSpeed(snap.upBps), tint: colors.upload },
+            { label: 'ETA', value: snap.etaSecs > 0 ? formatEta(snap.etaSecs) : '—' },
+            { label: 'Ratio', value: snap.ratio >= 0 ? snap.ratio.toFixed(2) : '—' },
+            { label: 'Peers', value: `${snap.peersLive}/${snap.peersSeen}` },
+            { label: 'Size', value: snap.totalBytes > 0 ? formatBytes(snap.totalBytes) : '—' },
+          ]}
+        />
+      </View>
 
-          {/* Quick Magnet Copy Pill */}
-          <TouchableOpacity
-            style={styles.copyMagnetPill}
-            onPress={handleCopyMagnet}
-            accessibilityRole="button"
-            accessibilityLabel="Copy Magnet URI"
-            activeOpacity={0.8}
-          >
-            <Ionicons
-              name={copiedMagnet ? "checkmark-circle" : "link-outline"}
-              size={14}
-              color={copiedMagnet ? colors.accentText : colors.download}
-            />
-            <Text style={[styles.copyMagnetPillText, copiedMagnet && { color: colors.accentText }]}>
-              {copiedMagnet ? 'MAGNET COPIED TO CLIPBOARD' : 'COPY MAGNET LINK'}
-            </Text>
-          </TouchableOpacity>
+      <View style={styles.block}>
+        <SpeedChart downBps={snap.downBps} upBps={snap.upBps} sampleId={tick} />
+      </View>
 
-          <View style={styles.telemetryGrid}>
-            <View style={styles.telemetryItem}>
-              <Text style={styles.telemetryLabel}>Downloaded</Text>
-              <Text style={styles.telemetryVal}>{formatBytes(downloaded)}</Text>
-            </View>
-            <View style={styles.telemetryItem}>
-              <Text style={styles.telemetryLabel}>Total Size</Text>
-              <Text style={styles.telemetryVal}>{formatBytes(totalSize)}</Text>
-            </View>
-            <View style={styles.telemetryItem}>
-              <Text style={styles.telemetryLabel}>Progress</Text>
-              <Text style={styles.telemetryVal}>{progress.toFixed(1)}%</Text>
-            </View>
-            <View style={styles.telemetryItem}>
-              <Text style={styles.telemetryLabel}>ETA</Text>
-              <Text style={styles.telemetryVal}>{formatEta(eta)}</Text>
-            </View>
-          </View>
-
-          {/* Stream Now Action Button (Task 1.11) */}
-          <TouchableOpacity
-            style={styles.streamButton}
-            onPress={handleStreamNow}
-            accessibilityRole="button"
-            accessibilityLabel="Stream video now"
-          >
-            <Ionicons name="play-circle" size={16} color={colors.onAccent} />
-            <Text style={styles.streamButtonText}>▶ STREAM NOW</Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* Live Throughput Chart */}
-        <SpeedChart currentDownSpeed={downSpeed} currentUpSpeed={upSpeed} />
-
-        {/* 4 Detail Tabs */}
-        <View style={styles.tabBar}>
-          {(['PIECES', 'FILES', 'PEERS', 'TRACKERS'] as DetailTab[]).map((tab) => (
-            <TouchableOpacity
-              key={tab}
-              style={[styles.tabItem, activeTab === tab && styles.tabItemActive]}
-              onPress={() => setActiveTab(tab)}
-              accessibilityRole="tab"
-              accessibilityState={{ selected: activeTab === tab }}
-            >
-              <Text style={[styles.tabLabel, activeTab === tab && styles.tabLabelActive]}>
-                [{tab}]
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </View>
-
-        {/* Tab 1: Pieces Matrix */}
-        {activeTab === 'PIECES' && (
-          <PiecesMatrix matrix={pieceMatrix} totalPieces={detailData?.piecesTotal || 256} />
-        )}
-
-        {/* Tab 2: Files List */}
-        {activeTab === 'FILES' && (
-          <View style={styles.tabContentCard}>
-            <Text style={styles.contentHeader}>Files in Payload</Text>
-            {files.map((file) => (
-              <View key={file.index} style={styles.fileDetailRow}>
-                <Ionicons
-                  name={file.priority === 0 ? 'close-circle-outline' : 'document-text-outline'}
-                  size={16}
-                  color={
-                    file.priority === 2
-                      ? colors.accent
-                      : file.priority === 0
-                      ? colors.danger
-                      : colors.download
-                  }
-                />
-                <View style={styles.fileDetailInfo}>
-                  <Text
-                    style={[
-                      styles.fileDetailName,
-                      file.priority === 0 && styles.fileDetailNameSkip,
-                    ]}
-                    numberOfLines={1}
-                  >
-                    {file.name}
-                  </Text>
-                  <Text style={styles.fileDetailMeta}>
-                    {formatBytes(file.length)} · {file.progress.toFixed(0)}%
-                  </Text>
-                </View>
-                <TouchableOpacity
-                  style={[
-                    styles.priorityBadge,
-                    file.priority === 2 && styles.priorityBadgeHigh,
-                    file.priority === 0 && styles.priorityBadgeSkip,
-                  ]}
-                  onPress={() => handleCyclePriority(file.index, file.priority)}
-                  accessibilityRole="button"
-                  accessibilityLabel={`Change priority for ${file.name}. Current: ${
-                    file.priority === 2 ? 'High' : file.priority === 1 ? 'Normal' : 'Skip'
-                  }`}
-                >
-                  <Text
-                    style={[
-                      styles.priorityText,
-                      file.priority === 2 && styles.priorityTextHigh,
-                      file.priority === 0 && styles.priorityTextSkip,
-                    ]}
-                  >
-                    {file.priority === 2 ? 'HIGH' : file.priority === 1 ? 'NORMAL' : 'SKIP'}
-                  </Text>
-                </TouchableOpacity>
-              </View>
-            ))}
-          </View>
-        )}
-
-        {/* Tab 3: Swarm Peers */}
-        {activeTab === 'PEERS' && (
-          <View style={styles.tabContentCard}>
-            <Text style={styles.contentHeader}>Connected Swarm Peers ({peers})</Text>
-            <View style={styles.peerRow}>
-              <Text style={styles.peerClient}>qBittorrent/4.6.3</Text>
-              <Text style={styles.peerSpeedDown}>↓ 8.2 MB/s</Text>
-              <Text style={styles.peerSpeedUp}>↑ 420 KB/s</Text>
-            </View>
-            <View style={styles.peerRow}>
-              <Text style={styles.peerClient}>Transmission/4.0.5</Text>
-              <Text style={styles.peerSpeedDown}>↓ 4.6 MB/s</Text>
-              <Text style={styles.peerSpeedUp}>↑ 310 KB/s</Text>
-            </View>
-            <View style={styles.peerRow}>
-              <Text style={styles.peerClient}>Maglev/0.1.0-Rust</Text>
-              <Text style={styles.peerSpeedDown}>↓ 2.0 MB/s</Text>
-              <Text style={styles.peerSpeedUp}>↑ 120 KB/s</Text>
-            </View>
-          </View>
-        )}
-
-        {/* Tab 4: Trackers */}
-        {activeTab === 'TRACKERS' && (
-          <View style={styles.tabContentCard}>
-            <View style={styles.trackerHeaderRow}>
-              <Text style={styles.contentHeader}>Announced Trackers</Text>
-              <TouchableOpacity
-                style={styles.addTrackerAction}
-                onPress={() => setAddTrackerVisible(true)}
-                accessibilityRole="button"
-                accessibilityLabel="Add Tracker"
-              >
-                <Text style={styles.addTrackerActionText}>+ Add Tracker</Text>
-              </TouchableOpacity>
-            </View>
-            {trackers.map((tr, idx) => (
-              <View key={idx} style={styles.trackerRow}>
-                <View style={styles.trackerLeft}>
-                  <Text style={styles.trackerUrl} numberOfLines={1}>
-                    {tr.url}
-                  </Text>
-                  <Text style={styles.trackerStatus}>
-                    Status: {tr.status} · Seeds: {tr.seeds} · Peers: {tr.peers}
-                  </Text>
-                </View>
-              </View>
-            ))}
-          </View>
-        )}
-      </ScrollView>
-
-      {/* Dual-Action Delete Dialog Modal */}
-      <Modal
-        visible={deleteModalVisible}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setDeleteModalVisible(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalCard}>
-            <Text style={styles.modalTitle}>Delete Transfer</Text>
-            <Text style={styles.modalSubtitle}>
-              Choose whether to remove the torrent session only or permanently wipe the downloaded data from storage.
-            </Text>
-
-            <TouchableOpacity
-              style={styles.modalOptionSession}
-              onPress={confirmDeleteSession}
-              accessibilityRole="button"
-              accessibilityLabel="Remove from Maglev only"
-            >
-              <Text style={styles.modalOptionSessionText}>Remove from Maglev</Text>
-              <Text style={styles.modalOptionDesc}>Keeps payload files intact in storage</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.modalOptionWipe}
-              onPress={confirmDeleteWithFiles}
-              accessibilityRole="button"
-              accessibilityLabel="Delete Torrent and Files"
-            >
-              <Text style={styles.modalOptionWipeText}>Delete Torrent + Files</Text>
-              <Text style={styles.modalOptionDesc}>Permanently deletes files from disk</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.modalCancel}
-              onPress={() => setDeleteModalVisible(false)}
-              accessibilityRole="button"
-              accessibilityLabel="Cancel"
-            >
-              <Text style={styles.modalCancelText}>Cancel</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
-
-      {/* Add Tracker Modal */}
-      <Modal
-        visible={addTrackerVisible}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setAddTrackerVisible(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalCard}>
-            <Text style={styles.modalTitle}>Add Tracker</Text>
-            <Text style={styles.modalSubtitle}>
-              Enter a valid BitTorrent announcement URL (UDP, HTTP, or WSS).
-            </Text>
-
-            <TextInput
-              style={styles.trackerInput}
-              placeholder="udp://tracker.opentrackr.org:1337/announce"
-              placeholderTextColor={colors.textMuted}
-              value={newTrackerUrl}
-              onChangeText={setNewTrackerUrl}
-              autoCapitalize="none"
-              autoCorrect={false}
-            />
-
-            <TouchableOpacity
-              style={styles.modalOptionAddTracker}
-              onPress={handleConfirmAddTracker}
-              accessibilityRole="button"
-              accessibilityLabel="Confirm Add Tracker"
-            >
-              <Text style={styles.modalOptionAddTrackerText}>Add Tracker</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.modalCancel}
-              onPress={() => setAddTrackerVisible(false)}
-              accessibilityRole="button"
-              accessibilityLabel="Cancel"
-            >
-              <Text style={styles.modalCancelText}>Cancel</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
+      <View style={styles.tabs}>
+        <SegmentedControl options={TABS} value={tab} onChange={setTab} accessibilityLabel="Detail section" />
+      </View>
     </View>
+  );
+
+  const emptyFor = (): React.ReactElement | null => {
+    if (tab === 'files')
+      return <EmptyBlock icon="file" title="No files yet" body="File info appears once the torrent has its metadata." />;
+    if (tab === 'peers')
+      return <EmptyBlock icon="peers" title="No peers connected" body="Peers show up while the torrent is running." />;
+    if (tab === 'trackers') return <EmptyBlock icon="tracker" title="No trackers" body="This torrent doesn't list any trackers." />;
+    return null;
+  };
+
+  const data: unknown[] = tab === 'files' ? files : tab === 'peers' ? detail.peers : tab === 'trackers' ? detail.trackers : [];
+
+  return (
+    <Screen title={snap.name || 'Torrent'} onBack={goBack} actions={headerActions}>
+      <FlatList
+        data={data}
+        keyExtractor={(item, i) => {
+          if (tab === 'files') return String((item as DetailFile).index);
+          if (tab === 'peers') return `${(item as { addr: string }).addr}-${i}`;
+          return `${(item as { url: string }).url}-${i}`;
+        }}
+        renderItem={({ item }) => {
+          if (tab === 'files')
+            return <FileRow file={item as DetailFile} onToggle={handleToggle} onOpenActions={setFileSheet} />;
+          if (tab === 'peers') return <PeerRow peer={item as never} />;
+          return <TrackerRow tracker={item as never} />;
+        }}
+        ListHeaderComponent={header}
+        ListEmptyComponent={tab === 'pieces' ? undefined : (emptyFor() ?? undefined)}
+        ListFooterComponent={
+          tab === 'pieces' ? <PiecesMatrix cells={pieces} totalPieces={detail.pieceCount} /> : undefined
+        }
+        contentContainerStyle={styles.content}
+        initialNumToRender={12}
+        windowSize={7}
+        keyboardShouldPersistTaps="handled"
+      />
+
+      <MoreSheet
+        visible={moreOpen}
+        onClose={() => setMoreOpen(false)}
+        onCopyMagnet={handleCopyMagnet}
+        onRecheck={handleRecheck}
+        onOpenFolder={handleOpenFolder}
+        onDelete={() => {
+          setMoreOpen(false);
+          setDeleteError(null);
+          setDeleteOpen(true);
+        }}
+      />
+      <DeleteSheet
+        visible={deleteOpen}
+        name={snap.name}
+        busy={deleteBusy}
+        error={deleteError}
+        onClose={() => !deleteBusy && setDeleteOpen(false)}
+        onRemove={() => handleDelete(false)}
+        onDeleteFiles={() => handleDelete(true)}
+      />
+      <FileActionsSheet id={id} file={fileSheet} onClose={() => setFileSheet(null)} />
+    </Screen>
   );
 }
 
-const makeStyles = (colors: ThemeColors) => StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: colors.bg,
-  },
-  navBar: {
-    height: 52,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-  },
-  navAction: {
-    minWidth: touch.min,
-    minHeight: touch.min,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  navTitle: {
-    flex: 1,
-    color: colors.text,
-    fontSize: 13,
-    ...fonts.monoBold,
-    marginHorizontal: 8,
-  },
-  navRightGroup: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  scrollContent: {
-    paddingHorizontal: 16,
-    paddingTop: 12,
-    paddingBottom: 40,
-  },
-  summaryCard: {
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 12,
-    padding: 14,
-    marginBottom: 8,
-  },
-  summaryHeader: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    justifyContent: 'space-between',
-    marginBottom: 12,
-  },
-  summaryName: {
-    flex: 1,
-    color: colors.text,
-    fontSize: 13,
-    ...fonts.monoBold,
-    marginRight: 10,
-  },
-  statusBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 6,
-  },
-  badgeDown: {
-    backgroundColor: alpha(colors.download, 0.15),
-    borderWidth: 1,
-    borderColor: alpha(colors.download, 0.4),
-  },
-  badgeDone: {
-    backgroundColor: alpha(colors.accent, 0.15),
-    borderWidth: 1,
-    borderColor: alpha(colors.accent, 0.4),
-  },
-  statusBadgeText: {
-    color: colors.text,
-    fontSize: 10,
-    ...fonts.monoBold,
-  },
-  copyMagnetPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    minHeight: 40,
-    backgroundColor: colors.surfaceRaised,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    marginBottom: 12,
-  },
-  copyMagnetPillText: {
-    color: colors.download,
-    fontSize: 10,
-    ...fonts.monoBold,
-    letterSpacing: 0.5,
-  },
-  telemetryGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 12,
-    marginBottom: 12,
-  },
-  telemetryItem: {
-    width: '45%',
-  },
-  telemetryLabel: {
-    color: colors.textMuted,
-    fontSize: 10,
-    ...fonts.mono,
-    marginBottom: 2,
-  },
-  telemetryVal: {
-    color: colors.text,
-    fontSize: 12,
-    ...fonts.monoBold,
-    fontVariant: ['tabular-nums'],
-  },
-  streamButton: {
-    minHeight: touch.min,
-    backgroundColor: colors.accent,
-    borderRadius: 8,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    marginTop: 6,
-  },
-  streamButtonText: {
-    color: colors.onAccent,
-    fontSize: 11,
-    ...fonts.mono,
-    letterSpacing: 0.5,
-  },
-  tabBar: {
-    flexDirection: 'row',
-    backgroundColor: colors.surface,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: colors.border,
-    padding: 3,
-    marginVertical: 10,
-  },
-  tabItem: {
-    flex: 1,
-    minHeight: 38,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: 8,
-  },
-  tabItemActive: {
-    backgroundColor: colors.surfaceRaised,
-    borderWidth: 1,
-    borderColor: alpha(colors.accent, 0.4),
-  },
-  tabLabel: {
-    color: colors.textMuted,
-    fontSize: 10,
-    ...fonts.monoBold,
-  },
-  tabLabelActive: {
-    color: colors.accentText,
-  },
-  tabContentCard: {
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 12,
-    padding: 14,
-    marginVertical: 8,
-  },
-  contentHeader: {
-    color: colors.text,
-    fontSize: 12,
-    ...fonts.monoBold,
-    marginBottom: 12,
-  },
-  fileDetailRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-    gap: 10,
-  },
-  fileDetailInfo: {
-    flex: 1,
-  },
-  fileDetailName: {
-    color: colors.text,
-    fontSize: 11,
-    ...fonts.mono,
-    marginBottom: 2,
-  },
-  fileDetailNameSkip: {
-    color: colors.textMuted,
-    textDecorationLine: 'line-through',
-    opacity: 0.6,
-  },
-  fileDetailMeta: {
-    color: colors.textMuted,
-    fontSize: 10,
-    ...fonts.mono,
-  },
-  priorityBadge: {
-    minWidth: 56,
-    minHeight: touch.min,
-    paddingHorizontal: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: colors.surfaceRaised,
-    borderRadius: 6,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  priorityBadgeHigh: {
-    borderColor: colors.accent,
-    backgroundColor: alpha(colors.accent, 0.1),
-  },
-  priorityBadgeSkip: {
-    borderColor: colors.danger,
-    backgroundColor: alpha(colors.danger, 0.1),
-  },
-  priorityText: {
-    color: colors.textMuted,
-    fontSize: 10,
-    ...fonts.monoBold,
-  },
-  priorityTextHigh: {
-    color: colors.accentText,
-  },
-  priorityTextSkip: {
-    color: colors.danger,
-  },
-  peerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-  },
-  peerClient: {
-    flex: 1,
-    color: colors.text,
-    fontSize: 11,
-    ...fonts.mono,
-  },
-  peerSpeedDown: {
-    color: colors.download,
-    fontSize: 11,
-    ...fonts.mono,
-    marginRight: 10,
-  },
-  peerSpeedUp: {
-    color: colors.accentText,
-    fontSize: 11,
-    ...fonts.mono,
-  },
-  trackerHeaderRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 8,
-  },
-  addTrackerAction: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-  },
-  addTrackerActionText: {
-    color: colors.download,
-    fontSize: 10,
-    ...fonts.monoBold,
-  },
-  trackerRow: {
-    paddingVertical: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-  },
-  trackerLeft: {
-    flex: 1,
-  },
-  trackerUrl: {
-    color: colors.text,
-    fontSize: 11,
-    ...fonts.mono,
-    marginBottom: 2,
-  },
-  trackerStatus: {
-    color: colors.textMuted,
-    fontSize: 10,
-    ...fonts.mono,
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: colors.overlay,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 24,
-  },
-  modalCard: {
-    width: '100%',
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 14,
-    padding: 20,
-  },
-  modalTitle: {
-    color: colors.text,
-    fontSize: 15,
-    ...fonts.monoBold,
-    marginBottom: 6,
-  },
-  modalSubtitle: {
-    color: colors.textMuted,
-    fontSize: 12,
-    lineHeight: 18,
-    marginBottom: 18,
-  },
-  modalOptionSession: {
-    minHeight: touch.min,
-    backgroundColor: colors.surfaceRaised,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 8,
-    padding: 12,
-    marginBottom: 10,
-  },
-  modalOptionSessionText: {
-    color: colors.text,
-    fontSize: 12,
-    ...fonts.monoBold,
-    marginBottom: 2,
-  },
-  modalOptionWipe: {
-    minHeight: touch.min,
-    backgroundColor: alpha(colors.danger, 0.1),
-    borderWidth: 1,
-    borderColor: alpha(colors.danger, 0.4),
-    borderRadius: 8,
-    padding: 12,
-    marginBottom: 16,
-  },
-  modalOptionWipeText: {
-    color: colors.danger,
-    fontSize: 12,
-    ...fonts.monoBold,
-    marginBottom: 2,
-  },
-  modalOptionDesc: {
-    color: colors.textMuted,
-    fontSize: 10,
-  },
-  trackerInput: {
-    minHeight: touch.min,
-    backgroundColor: colors.surfaceRaised,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    color: colors.text,
-    fontSize: 12,
-    ...fonts.mono,
-    marginBottom: 16,
-  },
-  modalOptionAddTracker: {
-    minHeight: touch.min,
-    backgroundColor: colors.accent,
-    borderRadius: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 12,
-  },
-  modalOptionAddTrackerText: {
-    color: colors.onAccent,
-    fontSize: 12,
-    ...fonts.monoBold,
-  },
-  modalCancel: {
-    minHeight: touch.min,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  modalCancelText: {
-    color: colors.textMuted,
-    fontSize: 12,
-    ...fonts.monoBold,
-  },
-  notFoundText: {
-    color: colors.text,
-    fontSize: 14,
-    ...fonts.mono,
-    marginBottom: 16,
-  },
-  backButton: {
-    minHeight: touch.min,
-    backgroundColor: colors.accent,
-    borderRadius: 8,
-    paddingHorizontal: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  backButtonText: {
-    color: colors.onAccent,
-    fontSize: 12,
-    ...fonts.monoBold,
-  },
-});
+const makeStyles = (c: ThemeColors) =>
+  StyleSheet.create({
+    content: { paddingHorizontal: spacing.lg, paddingBottom: spacing.xxxl },
+    block: { marginBottom: spacing.md },
+    summary: {
+      backgroundColor: c.surface,
+      borderWidth: 1,
+      borderColor: c.border,
+      borderRadius: radius.lg,
+      padding: spacing.lg,
+      marginBottom: spacing.md,
+      gap: spacing.md,
+    },
+    summaryTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+    percent: { ...type.monoBold, fontSize: type.size.xxl, color: c.text },
+    tabs: { marginBottom: spacing.md },
+    centered: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: spacing.md, paddingHorizontal: spacing.xxxl },
+    loadingBar: { width: '60%' },
+    muted: { ...type.body, fontSize: type.size.md, color: c.textMuted },
+  });

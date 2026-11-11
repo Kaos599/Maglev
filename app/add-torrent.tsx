@@ -1,1145 +1,503 @@
-import { useMemo } from 'react';
-import React, { useState, useEffect, useCallback, useRef } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  TextInput,
-  TouchableOpacity,
-  ScrollView,
-  Switch,
-  ActivityIndicator,
-  Alert,
-} from 'react-native';
-import { useRouter, useLocalSearchParams } from 'expo-router';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { FlatList, StyleSheet, Text, TextInput, View } from 'react-native';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Ionicons } from '@expo/vector-icons';
+import * as Clipboard from 'expo-clipboard';
 import * as DocumentPicker from 'expo-document-picker';
-import * as FileSystem from 'expo-file-system';
-import { formatBytes } from '../constants/format';
-import { useMaglevEngine } from '../context/EngineContext';
-import { triggerHaptic } from '../constants/haptics';
-import {
-  ParsedTorrentFile,
-  parseTorrentData,
-  resolveMagnetMetadata,
-  parseMagnetUri,
-} from '../utils/torrentMetadata';
-import { checkMaglevPermissions, requestMaglevPermissions } from '../utils/permissions';
+import { maglevEngine, parseSource, type Metadata } from 'maglev-engine';
 import { useTheme } from '../context/ThemeContext';
-import { alpha, fonts, touch, ThemeColors } from '../constants/theme';
+import { useMaglevEngine } from '../context/EngineContext';
+import { ThemeColors, radius, spacing, touch, type } from '../constants/theme';
+import { formatBytes } from '../constants/format';
+import { triggerHaptic } from '../constants/haptics';
+import { Banner, Button, Chip, EmptyBlock, ProgressBar, Screen } from '../components/ui';
+import { PreviewFileRow } from '../components/add/PreviewFileRow';
+import { fileExt } from '../components/detail/torrentLabels';
 
-export default function AddTorrentSheet() {
+/** SM-9 add flow states. */
+type Phase = 'input' | 'validating' | 'invalid' | 'resolving' | 'timeout' | 'error' | 'duplicate' | 'preview' | 'adding' | 'added';
+
+const RESOLVE_TIMEOUT_MS = 60_000;
+const INVALID_TEXT = "That isn't a magnet link or torrent file.";
+
+interface Folder {
+  uri: string;
+  label: string;
+}
+
+export default function AddTorrentScreen() {
   const { colors } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const searchParams = useLocalSearchParams<{ uri?: string; magnet?: string; source?: string }>();
-  const { defaultStoragePath, startTorrent, setFilePriority } = useMaglevEngine();
+  const params = useLocalSearchParams<{ source?: string; uri?: string; magnet?: string }>();
+  const { telemetry, defaultStoragePath } = useMaglevEngine();
 
-  const [magnetInput, setMagnetInput] = useState('');
-  const [customPath, setCustomPath] = useState('');
-  const [isEditingPath, setIsEditingPath] = useState(false);
-  const [sequential, setSequential] = useState(false);
-  const [freeDiskBytes, setFreeDiskBytes] = useState<number>(51_539_607_552); // Default 48 GB fallback
+  const [text, setText] = useState('');
+  const [phase, setPhase] = useState<Phase>('input');
+  const [message, setMessage] = useState<string | null>(null);
+  const [meta, setMeta] = useState<Metadata | null>(null);
+  const [selected, setSelected] = useState<Set<number>>(new Set());
+  const [dupId, setDupId] = useState<string | null>(null);
+  const [folder, setFolder] = useState<Folder | null>(null);
+  const [addError, setAddError] = useState<string | null>(null);
 
-  // Metadata Resolution States
-  const [isResolving, setIsResolving] = useState(false);
-  const [resolvedName, setResolvedName] = useState<string>('');
-  const [infoHash, setInfoHash] = useState<string>('');
-  const [trackerCount, setTrackerCount] = useState<number>(0);
-  const [isPendingSwarm, setIsPendingSwarm] = useState(false);
+  /** The string handed to the engine: a magnet, a URL, or a cached .torrent path. */
+  const sourceRef = useRef<string>('');
+  const fromFileRef = useRef(false);
+  const token = useRef(0);
 
-  /* Payload files state */
-  const [files, setFiles] = useState<ParsedTorrentFile[]>([]);
-  const [isStarting, setIsStarting] = useState(false);
-  const isSubmittingRef = useRef(false);
-  const resolveDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const close = useCallback(() => {
+    if (router.canGoBack()) router.back();
+    else router.replace('/');
+  }, [router]);
 
-  // Initial Disk Free Space & Incoming Magnet Detection
-  useEffect(() => {
-    let isMounted = true;
-    (async () => {
-      try {
-        const free = await FileSystem.getFreeDiskStorageAsync();
-        if (isMounted && typeof free === 'number' && free > 0) {
-          setFreeDiskBytes(free);
-        }
-      } catch {
-        // Fallback disk query
-      }
-    })();
+  const finishAdded = useCallback(
+    (id: string) => {
+      setPhase('added');
+      triggerHaptic('success');
+      router.replace({ pathname: '/torrent/[id]', params: { id } });
+    },
+    [router],
+  );
 
-    // Handle incoming search or clipboard param
-    const incomingUri = searchParams.source || searchParams.uri || searchParams.magnet;
-    if (incomingUri && typeof incomingUri === 'string') {
-      onMagnetChange(incomingUri);
-    }
-
-    return () => {
-      isMounted = false;
-      if (resolveDebounceRef.current) {
-        clearTimeout(resolveDebounceRef.current);
-      }
-    };
-  }, [searchParams]);
-
-  const handleResolveMagnet = useCallback(async (uri: string) => {
-    const trimmed = uri.trim();
-    if (!trimmed.startsWith('magnet:?xt=')) return;
-
-    setIsResolving(true);
-    triggerHaptic('light');
-
-    try {
-      const parsed = parseMagnetUri(trimmed);
-      setInfoHash(parsed.infoHash);
-      setResolvedName(parsed.name);
-      setTrackerCount(parsed.trackers.length);
-
-      const metadata = await resolveMagnetMetadata(trimmed);
-      setInfoHash(metadata.infoHash);
-      setResolvedName(metadata.name);
-      setTrackerCount(metadata.trackers.length);
-      setIsPendingSwarm(metadata.isPendingSwarm);
-
-      if (metadata.files && metadata.files.length > 0) {
-        setFiles(metadata.files);
-      } else {
-        setFiles([
-          {
-            id: 0,
-            name: metadata.name || 'Transfer Payload',
-            path: metadata.name || 'Transfer Payload',
-            size: metadata.totalSize || 1_073_741_824,
-            selected: true,
-            priority: 1,
-          },
-        ]);
-      }
-      triggerHaptic('medium');
-    } catch (err) {
-      // Resolution fallback
-      const parsed = parseMagnetUri(trimmed);
-      setFiles([
-        {
-          id: 0,
-          name: parsed.name || 'Transfer Payload',
-          path: parsed.name || 'Transfer Payload',
-          size: parsed.exactLength || 1_073_741_824,
-          selected: true,
-          priority: 1,
-        },
-      ]);
-    } finally {
-      setIsResolving(false);
-    }
+  const showDuplicate = useCallback((id: string | null) => {
+    setDupId(id);
+    setPhase('duplicate');
+    triggerHaptic('warning');
   }, []);
 
-  const onMagnetChange = (text: string) => {
-    let effectiveText = text.trim();
-    if (/^[a-fA-F0-9]{40}$/.test(effectiveText) || /^[2-7a-zA-Z]{32}$/.test(effectiveText)) {
-      effectiveText = `magnet:?xt=urn:btih:${effectiveText}`;
-    }
-    setMagnetInput(effectiveText);
+  const resolve = useCallback(
+    async (source: string) => {
+      const mine = ++token.current;
+      sourceRef.current = source;
+      setMessage(null);
+      setAddError(null);
+      setPhase('resolving');
+      let res;
+      try {
+        res = await maglevEngine.resolveMetadata(source, RESOLVE_TIMEOUT_MS);
+      } catch (e) {
+        if (mine !== token.current) return;
+        setMessage(e instanceof Error ? e.message : 'Something went wrong.');
+        setPhase('error');
+        return;
+      }
+      if (mine !== token.current) return;
+      if (res.ok) {
+        if (telemetry.torrents.some((t) => t.id === res.infoHash)) {
+          showDuplicate(res.infoHash);
+          return;
+        }
+        setMeta(res);
+        setSelected(new Set(res.files.map((f) => f.index)));
+        setPhase('preview');
+        triggerHaptic('medium');
+        return;
+      }
+      switch (res.code) {
+        case 'DUPLICATE':
+          showDuplicate(res.id ?? null);
+          break;
+        case 'INVALID_SOURCE':
+          setMessage(INVALID_TEXT);
+          setPhase('invalid');
+          break;
+        case 'METADATA_TIMEOUT':
+          setPhase('timeout');
+          break;
+        default:
+          setMessage(res.message || 'Something went wrong.');
+          setPhase('error');
+      }
+    },
+    [showDuplicate, telemetry.torrents],
+  );
 
-    if (resolveDebounceRef.current) {
-      clearTimeout(resolveDebounceRef.current);
-    }
+  const submit = useCallback(
+    (raw: string, fromFile = false) => {
+      const input = raw.trim();
+      setPhase('validating');
+      if (fromFile) {
+        fromFileRef.current = true;
+        void resolve(input);
+        return;
+      }
+      fromFileRef.current = false;
+      const parsed = parseSource(input);
+      if (!parsed) {
+        setMessage(INVALID_TEXT);
+        setPhase('invalid');
+        return;
+      }
+      if (parsed.kind === 'magnet' && telemetry.torrents.some((t) => t.id === parsed.infoHash)) {
+        showDuplicate(parsed.infoHash);
+        return;
+      }
+      void resolve(input);
+    },
+    [resolve, showDuplicate, telemetry.torrents],
+  );
 
-    if (effectiveText.startsWith('magnet:?xt=')) {
-      const quickParsed = parseMagnetUri(effectiveText);
-      setInfoHash(quickParsed.infoHash);
-      setResolvedName(quickParsed.name);
-      setTrackerCount(quickParsed.trackers.length);
-
-      // Debounce network probe for cache metadata
-      resolveDebounceRef.current = setTimeout(() => {
-        handleResolveMagnet(effectiveText);
-      }, 400);
-    } else {
-      setFiles([]);
-      setResolvedName('');
-      setInfoHash('');
-      setTrackerCount(0);
-      setIsPendingSwarm(false);
+  // The `source` param prefills the input and resolves once.
+  const autoRan = useRef(false);
+  useEffect(() => {
+    if (autoRan.current) return;
+    const incoming = params.source || params.uri || params.magnet;
+    if (typeof incoming === 'string' && incoming.trim()) {
+      autoRan.current = true;
+      setText(incoming);
+      submit(incoming);
     }
+  }, [params.source, params.uri, params.magnet, submit]);
+
+  const onChangeText = (next: string) => {
+    token.current++;
+    fromFileRef.current = false;
+    setText(next);
+    setMessage(null);
+    setMeta(null);
+    setPhase('input');
   };
 
-  const handleBrowseTorrentFile = async () => {
+  const handlePaste = async () => {
+    triggerHaptic('light');
+    let clip = '';
+    try {
+      clip = (await Clipboard.getStringAsync()).trim();
+    } catch {
+      clip = '';
+    }
+    if (!clip) {
+      setMessage('Your clipboard is empty.');
+      setPhase('invalid');
+      return;
+    }
+    setText(clip);
+    submit(clip);
+  };
+
+  const handlePickFile = async () => {
     triggerHaptic('light');
     try {
       const res = await DocumentPicker.getDocumentAsync({
-        type: ['*/*', 'application/x-bittorrent'],
+        type: ['application/x-bittorrent', 'application/octet-stream', '*/*'],
         copyToCacheDirectory: true,
       });
-
-      if (!res.canceled && res.assets && res.assets.length > 0) {
-        const asset = res.assets[0];
-        setIsResolving(true);
-
-        try {
-          // Read actual bytes from local file
-          const base64 = await FileSystem.readAsStringAsync(asset.uri, {
-            encoding: FileSystem.EncodingType.Base64,
-          });
-
-          const binaryStr = atob(base64);
-          const bytes = new Uint8Array(binaryStr.length);
-          for (let i = 0; i < binaryStr.length; i++) {
-            bytes[i] = binaryStr.charCodeAt(i);
-          }
-
-          const parsed = parseTorrentData(bytes);
-          setMagnetInput(`file://${asset.uri}`);
-          setResolvedName(parsed.name);
-          setFiles(parsed.files);
-          setTrackerCount(parsed.trackers.length);
-          setIsPendingSwarm(false);
-          triggerHaptic('medium');
-        } catch (readErr) {
-          Alert.alert(
-            'Invalid Torrent File',
-            'The selected file could not be parsed as a valid BitTorrent file.'
-          );
-          setFiles([]);
-          setResolvedName('');
-          setInfoHash('');
-        } finally {
-          setIsResolving(false);
-        }
+      if (res.canceled || !res.assets?.length) return;
+      const asset = res.assets[0];
+      setText(asset.name);
+      if (!/\.torrent$/i.test(asset.name)) {
+        setMessage(INVALID_TEXT);
+        setPhase('invalid');
+        return;
       }
+      // The engine reads an absolute path; the picker already copied the file into the cache.
+      submit(decodeURI(asset.uri.replace(/^file:\/\//, '')), true);
     } catch {
-      // User cancelled
+      setMessage("Couldn't open that file.");
+      setPhase('invalid');
     }
   };
 
-  const toggleFile = (id: number) => {
+  const handleChangeFolder = async () => {
     triggerHaptic('light');
-    setFiles((prev) =>
-      prev.map((f) => {
-        if (f.id !== id) return f;
-        const nextSelected = !f.selected;
-        return {
-          ...f,
-          selected: nextSelected,
-          priority: nextSelected ? 1 : 0,
-        };
-      })
-    );
-  };
-
-  const cyclePriority = (id: number) => {
-    triggerHaptic('medium');
-    setFiles((prev) =>
-      prev.map((f) => {
-        if (f.id !== id) return f;
-        // Cycle: Normal (1) -> High (2) -> Skip (0) -> Normal (1)
-        const nextPriority: 0 | 1 | 2 = f.priority === 1 ? 2 : f.priority === 2 ? 0 : 1;
-        return {
-          ...f,
-          priority: nextPriority,
-          selected: nextPriority > 0,
-        };
-      })
-    );
-  };
-
-  const selectAll = () => {
-    triggerHaptic('light');
-    setFiles((prev) =>
-      prev.map((f) => ({ ...f, selected: true, priority: f.priority === 0 ? 1 : f.priority }))
-    );
-  };
-
-  const deselectAll = () => {
-    triggerHaptic('light');
-    setFiles((prev) => prev.map((f) => ({ ...f, selected: false, priority: 0 })));
-  };
-
-  const filterByExt = (ext: string) => {
-    triggerHaptic('light');
-    setFiles((prev) =>
-      prev.map((f) => {
-        const matches = f.name.toLowerCase().endsWith(ext.toLowerCase());
-        return {
-          ...f,
-          selected: matches,
-          priority: matches ? 1 : 0,
-        };
-      })
-    );
-  };
-
-  const selectedPayloadBytes = files
-    .filter((f) => f.selected && f.priority > 0)
-    .reduce((acc, f) => acc + f.size, 0);
-
-  const SAFETY_BUFFER_BYTES = 250 * 1024 * 1024; // 250 MB OS headroom
-  const hasEnoughSpace = freeDiskBytes >= selectedPayloadBytes + SAFETY_BUFFER_BYTES;
-  const storageDeficitBytes = Math.max(0, selectedPayloadBytes + SAFETY_BUFFER_BYTES - freeDiskBytes);
-
-  const handleStartDownload = async () => {
-    // Re-entrancy and rapid-tap concurrency guard
-    if (isSubmittingRef.current || isStarting) return;
-    isSubmittingRef.current = true;
-    setIsStarting(true);
-
-    triggerHaptic('medium');
-
-    const uri = magnetInput.trim();
-    if (!uri) {
-      Alert.alert('Missing Magnet Link', 'Please enter a magnet link or select a .torrent file.');
-      isSubmittingRef.current = false;
-      setIsStarting(false);
-      return;
-    }
-
-    // Check disk storage space before proceeding
-    if (!hasEnoughSpace) {
-      Alert.alert(
-        'Insufficient Disk Storage',
-        `This payload requires ${formatBytes(selectedPayloadBytes)}, but only ${formatBytes(
-          freeDiskBytes
-        )} is free on device. Deficit: ${formatBytes(storageDeficitBytes)}. Please free up disk space first.`
-      );
-      isSubmittingRef.current = false;
-      setIsStarting(false);
-      return;
-    }
-
     try {
-      // Check Android permissions
-      const permStatus = await checkMaglevPermissions();
-      if (!permStatus.isPermissionGranted) {
-        const granted = await requestMaglevPermissions();
-        if (!granted.isPermissionGranted) {
-          Alert.alert(
-            'Permissions Required',
-            'Maglev requires storage and notification permissions to manage torrent transfers. Please enable them in device settings.'
-          );
-          isSubmittingRef.current = false;
-          setIsStarting(false);
-          return;
-        }
-      }
-
-      const finalPath = customPath.trim() || defaultStoragePath;
-      const selectedIndices = files.filter((f) => f.selected && f.priority > 0).map((f) => f.id);
-
-      const newId = await startTorrent(uri, finalPath, sequential, selectedIndices);
-
-      // Apply High priorities if configured
-      for (const file of files) {
-        if (file.priority === 2) {
-          await setFilePriority(newId, file.id, 2);
-        }
-      }
-
-      router.back();
-    } catch (err: any) {
-      Alert.alert('Transfer Start Failed', err?.message || 'Could not initiate torrent download.');
-    } finally {
-      isSubmittingRef.current = false;
-      setIsStarting(false);
+      const res = await maglevEngine.pickDownloadFolder();
+      if ('cancelled' in res) return;
+      setFolder({ uri: res.uri, label: res.displayName });
+    } catch {
+      setAddError("Couldn't open the folder picker.");
     }
   };
 
-  return (
-    <View style={[styles.container, { paddingTop: insets.top + 10, paddingBottom: insets.bottom + 10 }]}>
-      {/* Modal Header */}
-      <View style={styles.header}>
-        <Text style={styles.headerTitle}>Add Torrent Sheet</Text>
-        <TouchableOpacity
-          style={styles.closeButton}
-          onPress={() => router.back()}
-          accessibilityRole="button"
-          accessibilityLabel="Close sheet"
-        >
-          <Ionicons name="close" size={20} color={colors.textMuted} />
-        </TouchableOpacity>
-      </View>
+  const doAdd = async (onlyAll: boolean) => {
+    setAddError(null);
+    setPhase('adding');
+    const onlyFiles = !onlyAll && meta && selected.size < meta.files.length ? [...selected].sort((a, b) => a - b) : null;
+    let res;
+    try {
+      res = await maglevEngine.addTorrent(sourceRef.current, { onlyFiles, outputFolder: null /* Kotlin fills output_folder from the persisted target set by pickDownloadFolder (handles direct + staging) */ });
+    } catch (e) {
+      setAddError(e instanceof Error ? e.message : 'Something went wrong.');
+      setPhase(meta ? 'preview' : 'timeout');
+      return;
+    }
+    if (res.ok) {
+      finishAdded(res.id);
+      return;
+    }
+    if (res.code === 'DUPLICATE') {
+      showDuplicate(res.id ?? null);
+      return;
+    }
+    setAddError(res.message || 'Could not add this torrent.');
+    triggerHaptic('error');
+    setPhase(meta ? 'preview' : 'timeout');
+  };
 
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
-        {/* Magnet / Torrent Input */}
-        <Text style={styles.sectionLabel}>Magnet URI or Hash</Text>
-        <View style={styles.inputContainer}>
-          <TextInput
-            style={styles.textInput}
-            placeholder="magnet:?xt=urn:btih:..."
-            placeholderTextColor={colors.textMuted}
-            value={magnetInput}
-            onChangeText={onMagnetChange}
-            multiline
-            numberOfLines={2}
-          />
-          {magnetInput.length > 0 && (
-            <TouchableOpacity
-              style={styles.clearBtn}
-              onPress={() => onMagnetChange('')}
-              accessibilityRole="button"
-              accessibilityLabel="Clear magnet link"
-            >
-              <Ionicons name="close-circle" size={16} color={colors.textMuted} />
-            </TouchableOpacity>
-          )}
-        </View>
+  const toggleFile = useCallback((index: number, next: boolean) => {
+    triggerHaptic('selection');
+    setSelected((prev) => {
+      const s = new Set(prev);
+      if (next) s.add(index);
+      else s.delete(index);
+      return s;
+    });
+  }, []);
 
-        {/* Browse .torrent file button */}
-        <View style={styles.browseFileRow}>
-          <TouchableOpacity
-            style={styles.browseFileBtn}
-            onPress={handleBrowseTorrentFile}
-            accessibilityRole="button"
-            accessibilityLabel="Browse .torrent file from local storage"
-            activeOpacity={0.8}
-          >
-            <Ionicons name="document-attach-outline" size={16} color={colors.download} />
-            <Text style={styles.browseFileText}>BROWSE .TORRENT FILE</Text>
-          </TouchableOpacity>
-        </View>
+  const isMagnetSource = !fromFileRef.current && /^magnet:/i.test(sourceRef.current);
+  const destination = folder?.label ?? defaultStoragePath;
 
-        {/* Live Swarm Metadata Resolution Banner */}
-        {isResolving && (
-          <View style={styles.metadataResolvingCard}>
-            <ActivityIndicator size="small" color={colors.accentText} />
-            <View style={styles.resolvingTextCol}>
-              <Text style={styles.resolvingTitle}>SCANNING SWARM METADATA...</Text>
-              <Text style={styles.resolvingSubtitle}>
-                {infoHash ? `Hash: ${infoHash.slice(0, 16)}... • Querying caches & DHT` : 'Reading torrent dictionary'}
-              </Text>
-            </View>
-          </View>
-        )}
+  // ---------- Preview ----------
+  if ((phase === 'preview' || phase === 'adding') && meta) {
+    const adding = phase === 'adding';
+    const exts = new Map<string, number[]>();
+    for (const f of meta.files) {
+      const e = fileExt(f.path);
+      exts.set(e, [...(exts.get(e) ?? []), f.index]);
+    }
+    const selectedBytes = meta.files.reduce((n, f) => (selected.has(f.index) ? n + f.length : n), 0);
+    const allSelected = selected.size === meta.files.length;
 
-        {/* Resolved Torrent HUD */}
-        {resolvedName.length > 0 && !isResolving && (
-          <View style={styles.resolvedHudCard}>
-            <View style={styles.resolvedHeaderRow}>
-              <View style={styles.resolvedDot} />
-              <Text style={styles.resolvedNameText} numberOfLines={1}>
-                {resolvedName}
-              </Text>
-            </View>
-            <View style={styles.resolvedMetaRow}>
-              {infoHash ? (
-                <Text style={styles.resolvedHashText}>
-                  HASH: {infoHash.slice(0, 12)}...
-                </Text>
-              ) : null}
-              <Text style={styles.resolvedTrackerText}>
-                {trackerCount > 0 ? `${trackerCount} TRACKERS FOUND` : 'DHT SWARM DISCOVERY'}
-              </Text>
-              {isPendingSwarm && (
-                <Text style={styles.resolvedPendingBadge}>METADATA RESOLVING</Text>
-              )}
-            </View>
-          </View>
-        )}
-
-        {/* Destination Path Pill */}
-        <Text style={styles.sectionLabel}>Storage Destination</Text>
-        <View style={styles.pathPill}>
-          <View style={styles.pathTextContainer}>
-            <Ionicons name="folder-outline" size={16} color={colors.accentText} />
-            {isEditingPath ? (
-              <TextInput
-                style={styles.pathInput}
-                value={customPath || defaultStoragePath}
-                onChangeText={setCustomPath}
-                autoFocus
-                onBlur={() => setIsEditingPath(false)}
+    const header = (
+      <View style={styles.previewHeader}>
+        <Text style={styles.name} numberOfLines={3}>{meta.name}</Text>
+        <Text style={styles.meta}>
+          {formatBytes(meta.totalBytes)} · {meta.files.length} {meta.files.length === 1 ? 'file' : 'files'}
+        </Text>
+        {exts.size > 1 ? (
+          <View style={styles.chips}>
+            {[...exts.entries()].map(([ext, idx]) => (
+              <Chip
+                key={ext}
+                label={ext}
+                count={idx.length}
+                selected={idx.every((i) => selected.has(i))}
+                onPress={() => {
+                  const all = idx.every((i) => selected.has(i));
+                  setSelected((prev) => {
+                    const s = new Set(prev);
+                    idx.forEach((i) => (all ? s.delete(i) : s.add(i)));
+                    return s;
+                  });
+                }}
               />
-            ) : (
-              <Text style={styles.pathText} numberOfLines={1}>
-                {customPath || defaultStoragePath}
-              </Text>
-            )}
-          </View>
-          <TouchableOpacity
-            style={styles.changePathBtn}
-            onPress={() => setIsEditingPath(!isEditingPath)}
-            accessibilityRole="button"
-            accessibilityLabel="Change destination storage path"
-          >
-            <Text style={styles.changePathText}>
-              {isEditingPath ? 'DONE' : 'CHANGE'}
-            </Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* Storage Space Allocation HUD */}
-        <View style={styles.storageHudCard}>
-          <View style={styles.storageHudHeader}>
-            <View style={styles.storageHudItem}>
-              <Text style={styles.storageHudLabel}>PAYLOAD SIZE</Text>
-              <Text style={styles.storageHudValueLime}>{formatBytes(selectedPayloadBytes)}</Text>
-            </View>
-            <View style={styles.storageHudDivider} />
-            <View style={styles.storageHudItem}>
-              <Text style={styles.storageHudLabel}>FREE DISK SPACE</Text>
-              <Text style={styles.storageHudValueCyan}>{formatBytes(freeDiskBytes)}</Text>
-            </View>
-          </View>
-
-          <View style={styles.storageTrack}>
-            <View
-              style={[
-                styles.storageFill,
-                {
-                  width: `${Math.min(100, Math.max(3, (selectedPayloadBytes / (freeDiskBytes || 1)) * 100))}%`,
-                  backgroundColor: hasEnoughSpace ? colors.download : colors.danger,
-                },
-              ]}
-            />
-          </View>
-
-          {!hasEnoughSpace ? (
-            <View style={styles.storageAlertBox}>
-              <Ionicons name="warning-outline" size={14} color={colors.danger} />
-              <Text style={styles.storageAlertText}>
-                {`INSUFFICIENT STORAGE: Deficit ${formatBytes(storageDeficitBytes)}. Free up space to continue.`}
-              </Text>
-            </View>
-          ) : (
-            <Text style={styles.storageHintText}>
-              {`${formatBytes(Math.max(0, freeDiskBytes - selectedPayloadBytes))} will remain available after download`}
-            </Text>
-          )}
-        </View>
-
-        {/* Batch File Controls */}
-        {files.length > 0 && (
-          <View style={styles.filesHeaderRow}>
-            <Text style={styles.sectionLabel}>
-              {`Files & Contents (${files.filter((f) => f.selected).length}/${files.length})`}
-            </Text>
-            <View style={styles.batchControls}>
-              <TouchableOpacity
-                style={styles.batchBtn}
-                onPress={selectAll}
-                accessibilityRole="button"
-                accessibilityLabel="Select all files"
-              >
-                <Text style={styles.batchBtnText}>Select All</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.batchBtn}
-                onPress={deselectAll}
-                accessibilityRole="button"
-                accessibilityLabel="Deselect all files"
-              >
-                <Text style={styles.batchBtnText}>Deselect</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.batchBtnChip}
-                onPress={() => filterByExt('.iso')}
-              >
-                <Text style={styles.batchBtnChipText}>.iso</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.batchBtnChip}
-                onPress={() => filterByExt('.mkv')}
-              >
-                <Text style={styles.batchBtnChipText}>.mkv</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        )}
-
-        {/* Files Checklist */}
-        {files.length > 0 ? (
-          <View style={styles.filesList}>
-            {files.map((file) => (
-              <TouchableOpacity
-                key={file.id}
-                style={styles.fileRow}
-                onPress={() => toggleFile(file.id)}
-                accessibilityRole="checkbox"
-                accessibilityState={{ checked: file.selected }}
-              >
-                <View
-                  style={[
-                    styles.checkbox,
-                    file.selected ? styles.checkboxSelected : styles.checkboxUnselected,
-                  ]}
-                >
-                  {file.selected && <Text style={styles.checkmark}>✓</Text>}
-                </View>
-                <View style={styles.fileInfo}>
-                  <Text
-                    style={[
-                      styles.fileName,
-                      (!file.selected || file.priority === 0) && styles.fileNameDisabled,
-                    ]}
-                    numberOfLines={1}
-                  >
-                    {file.name}
-                  </Text>
-                  <Text style={styles.fileSize}>{formatBytes(file.size)}</Text>
-                </View>
-                <TouchableOpacity
-                  style={[
-                    styles.priorityBtn,
-                    file.priority === 2 && styles.priorityBtnHigh,
-                    file.priority === 0 && styles.priorityBtnSkip,
-                  ]}
-                  onPress={() => cyclePriority(file.id)}
-                  accessibilityRole="button"
-                  accessibilityLabel={`Cycle priority for ${file.name}. Current: ${
-                    file.priority === 2 ? 'High' : file.priority === 1 ? 'Normal' : 'Skip'
-                  }`}
-                >
-                  <Text
-                    style={[
-                      styles.priorityBtnText,
-                      file.priority === 2 && styles.priorityBtnTextHigh,
-                      file.priority === 0 && styles.priorityBtnTextSkip,
-                    ]}
-                  >
-                    {file.priority === 2 ? 'HIGH' : file.priority === 1 ? 'NORMAL' : 'SKIP'}
-                  </Text>
-                </TouchableOpacity>
-              </TouchableOpacity>
             ))}
           </View>
-        ) : (
-          !isResolving && (
-            <View style={styles.emptyFilesBox}>
-              <Ionicons name="document-text-outline" size={24} color={colors.textFaint} />
-              <Text style={styles.emptyFilesText}>
-                Paste a magnet link or browse a .torrent file to load and inspect payload files.
-              </Text>
-            </View>
-          )
-        )}
-
-        {/* Sequential Stream Toggle */}
-        <View style={styles.toggleRow}>
-          <View style={styles.toggleTextContainer}>
-            <Text style={styles.toggleTitle}>Sequential Download</Text>
-            <Text style={styles.toggleSubtitle}>
-              Prioritize head pieces for immediate media streaming to VLC
-            </Text>
+        ) : null}
+        <View style={styles.selectRow}>
+          <Text style={styles.meta}>
+            {selected.size} of {meta.files.length} selected · {formatBytes(selectedBytes)}
+          </Text>
+          <View style={styles.selectActions}>
+            <Button label="All" variant="ghost" disabled={allSelected} onPress={() => setSelected(new Set(meta.files.map((f) => f.index)))} />
+            <Button label="None" variant="ghost" disabled={selected.size === 0} onPress={() => setSelected(new Set())} />
           </View>
-          <Switch
-            value={sequential}
-            onValueChange={setSequential}
-            trackColor={{ false: colors.surfaceRaised, true: colors.accent }}
-            thumbColor={sequential ? colors.bg : colors.textMuted}
+        </View>
+      </View>
+    );
+
+    const footer = (
+      <View style={styles.footer}>
+        <View style={styles.destRow}>
+          <View style={styles.destText}>
+            <Text style={styles.meta}>Save to</Text>
+            <Text style={styles.dest} numberOfLines={2} ellipsizeMode="middle">{destination}</Text>
+          </View>
+          <Button label="Change" variant="secondary" disabled={adding} onPress={handleChangeFolder} />
+        </View>
+        {addError ? <Banner tone="danger" title="Couldn't add this torrent" body={addError} /> : null}
+      </View>
+    );
+
+    return (
+      <Screen title="Add torrent" onBack={close}>
+        <FlatList
+          data={meta.files}
+          keyExtractor={(f) => String(f.index)}
+          renderItem={({ item }) => (
+            <PreviewFileRow file={item} checked={selected.has(item.index)} onToggle={toggleFile} />
+          )}
+          ListHeaderComponent={header}
+          ListFooterComponent={footer}
+          ListEmptyComponent={<EmptyBlock icon="file" title="No files listed" body="This torrent has no files to choose from." />}
+          contentContainerStyle={styles.listContent}
+          initialNumToRender={14}
+          windowSize={7}
+        />
+        <View style={[styles.bar, { paddingBottom: Math.max(insets.bottom, spacing.md) }]}>
+          <Button
+            label={selected.size === 0 ? 'Select a file to start' : `Start download · ${formatBytes(selectedBytes)}`}
+            size="lg"
+            fullWidth
+            loading={adding}
+            disabled={selected.size === 0}
+            onPress={() => doAdd(false)}
           />
         </View>
-      </ScrollView>
+      </Screen>
+    );
+  }
 
-      {/* Start Action CTA Button (min-44px touch target) */}
-      <View style={styles.footer}>
-        <TouchableOpacity
-          style={[
-            styles.startBtn,
-            !hasEnoughSpace && styles.startBtnDisabled,
-            files.length === 0 && styles.startBtnDisabled,
-          ]}
-          disabled={!hasEnoughSpace || files.length === 0 || isResolving || isStarting}
-          onPress={handleStartDownload}
-          accessibilityRole="button"
-          accessibilityLabel={
-            !hasEnoughSpace
-              ? `Insufficient disk storage available`
-              : 'Start downloading torrent'
+  // ---------- Resolving ----------
+  if (phase === 'resolving' || phase === 'validating') {
+    return (
+      <Screen title="Add torrent" onBack={close}>
+        <View style={styles.centered} accessibilityLiveRegion="polite">
+          <Text style={styles.heading}>Getting torrent info…</Text>
+          <View style={styles.loadingBar}>
+            <ProgressBar indeterminate accessibilityLabel="Getting torrent info" />
+          </View>
+          <Text style={styles.metaCenter}>This can take up to a minute for magnet links.</Text>
+          <Button
+            label="Cancel"
+            variant="ghost"
+            onPress={() => {
+              token.current++;
+              setPhase('input');
+            }}
+          />
+        </View>
+      </Screen>
+    );
+  }
+
+  // ---------- Terminal states with their own block ----------
+  if (phase === 'duplicate') {
+    return (
+      <Screen title="Add torrent" onBack={close}>
+        <EmptyBlock
+          icon="check"
+          title="Already in your list"
+          body="This torrent is already added."
+          primary={{ label: 'Open it', onPress: () => dupId && router.replace({ pathname: '/torrent/[id]', params: { id: dupId } }) }}
+          secondary={{ label: 'Back', onPress: () => setPhase('input') }}
+        />
+      </Screen>
+    );
+  }
+
+  if (phase === 'timeout') {
+    return (
+      <Screen title="Add torrent" onBack={close}>
+        <EmptyBlock
+          icon="clock"
+          title="Couldn't find this torrent's info"
+          body={
+            addError ??
+            (isMagnetSource
+              ? 'No peers answered in time. Retry, or add it anyway and Maglev keeps looking in the background.'
+              : 'No peers answered in time.')
           }
-          activeOpacity={0.8}
-        >
-          <Text
-            style={[
-              styles.startBtnText,
-              (!hasEnoughSpace || files.length === 0) && styles.startBtnTextDisabled,
-            ]}
-          >
-            {!hasEnoughSpace
-              ? `INSUFFICIENT DISK STORAGE (DEFICIT ${formatBytes(storageDeficitBytes)})`
-              : files.length === 0
-              ? 'ENTER MAGNET OR SELECT FILE'
-              : 'START DOWNLOAD'}
-          </Text>
-        </TouchableOpacity>
+          primary={{ label: 'Retry', onPress: () => resolve(sourceRef.current) }}
+          secondary={isMagnetSource ? { label: 'Add anyway', onPress: () => doAdd(true) } : { label: 'Back', onPress: () => setPhase('input') }}
+        />
+      </Screen>
+    );
+  }
+
+  if (phase === 'error') {
+    return (
+      <Screen title="Add torrent" onBack={close}>
+        <EmptyBlock
+          icon="warning"
+          error
+          title="Couldn't read this torrent"
+          body={message ?? undefined}
+          primary={{ label: 'Retry', onPress: () => resolve(sourceRef.current) }}
+          secondary={{ label: 'Back', onPress: () => setPhase('input') }}
+        />
+      </Screen>
+    );
+  }
+
+  // ---------- Input (and Invalid, Added) ----------
+  const canSubmit = text.trim().length > 0 && phase !== 'added';
+  return (
+    <Screen title="Add torrent" onBack={close} scroll contentStyle={styles.inputContent}>
+      <Text style={styles.label}>Magnet link or torrent URL</Text>
+      <TextInput
+        value={text}
+        onChangeText={onChangeText}
+        placeholder="magnet:?xt=urn:btih:…"
+        placeholderTextColor={colors.textFaint}
+        autoCapitalize="none"
+        autoCorrect={false}
+        spellCheck={false}
+        returnKeyType="go"
+        onSubmitEditing={() => canSubmit && submit(text)}
+        multiline
+        style={[styles.field, phase === 'invalid' && styles.fieldInvalid]}
+        accessibilityLabel="Magnet link or torrent URL"
+      />
+      {phase === 'invalid' && message ? (
+        <View style={styles.gap}>
+          <Banner tone="danger" title={message} />
+        </View>
+      ) : null}
+
+      <View style={styles.actions}>
+        <Button label="Paste" icon="clipboard" variant="secondary" onPress={handlePaste} />
+        <Button label="Open .torrent file" icon="file" variant="secondary" onPress={handlePickFile} />
       </View>
-    </View>
+
+      <View style={styles.gap}>
+        <Button label="Get info" size="lg" fullWidth disabled={!canSubmit} onPress={() => submit(text)} />
+      </View>
+    </Screen>
   );
 }
 
-const makeStyles = (colors: ThemeColors) => StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: colors.bg,
-  },
-  header: {
-    height: 52,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 20,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-  },
-  headerTitle: {
-    color: colors.text,
-    fontSize: 14,
-    ...fonts.monoBold,
-  },
-  closeButton: {
-    minWidth: touch.min,
-    minHeight: touch.min,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  scrollContent: {
-    paddingHorizontal: 20,
-    paddingTop: 16,
-    paddingBottom: 24,
-  },
-  sectionLabel: {
-    color: colors.textMuted,
-    fontSize: 11,
-    ...fonts.monoBold,
-    marginBottom: 8,
-    letterSpacing: 0.5,
-  },
-  inputContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    marginBottom: 12,
-  },
-  textInput: {
-    flex: 1,
-    color: colors.text,
-    fontSize: 12,
-    ...fonts.mono,
-    minHeight: 44,
-  },
-  clearBtn: {
-    minWidth: 44,
-    minHeight: 44,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  browseFileRow: {
-    marginBottom: 16,
-  },
-  browseFileBtn: {
-    minHeight: touch.min,
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: alpha(colors.download, 0.3),
-    borderRadius: 8,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    paddingHorizontal: 14,
-  },
-  browseFileText: {
-    color: colors.download,
-    fontSize: 11,
-    ...fonts.monoBold,
-    letterSpacing: 0.5,
-  },
-  metadataResolvingCard: {
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: alpha(colors.accent, 0.3),
-    borderRadius: 8,
-    padding: 12,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    marginBottom: 16,
-  },
-  resolvingTextCol: {
-    flex: 1,
-  },
-  resolvingTitle: {
-    color: colors.accentText,
-    fontSize: 11,
-    ...fonts.monoBold,
-  },
-  resolvingSubtitle: {
-    color: colors.textMuted,
-    fontSize: 10,
-    ...fonts.mono,
-    marginTop: 2,
-  },
-  resolvedHudCard: {
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 8,
-    padding: 12,
-    marginBottom: 16,
-  },
-  resolvedHeaderRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginBottom: 6,
-  },
-  resolvedDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: colors.accent,
-  },
-  resolvedNameText: {
-    color: colors.text,
-    fontSize: 12,
-    ...fonts.monoBold,
-    flex: 1,
-  },
-  resolvedMetaRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    flexWrap: 'wrap',
-    gap: 6,
-  },
-  resolvedHashText: {
-    color: colors.textFaint,
-    fontSize: 10,
-    ...fonts.mono,
-  },
-  resolvedTrackerText: {
-    color: colors.download,
-    fontSize: 10,
-    ...fonts.monoBold,
-  },
-  resolvedPendingBadge: {
-    color: colors.warning,
-    fontSize: 9,
-    ...fonts.monoBold,
-    backgroundColor: alpha(colors.warning, 0.1),
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 4,
-  },
-  pathPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    marginBottom: 16,
-  },
-  pathTextContainer: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginRight: 8,
-  },
-  pathText: {
-    color: colors.text,
-    fontSize: 11,
-    ...fonts.mono,
-  },
-  pathInput: {
-    flex: 1,
-    color: colors.text,
-    fontSize: 11,
-    ...fonts.mono,
-    padding: 0,
-  },
-  changePathBtn: {
-    minHeight: 44,
-    minWidth: 44,
-    paddingHorizontal: 12,
-    backgroundColor: colors.surfaceRaised,
-    borderRadius: 6,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  changePathText: {
-    color: colors.accentText,
-    fontSize: 10,
-    ...fonts.monoBold,
-  },
-  storageHudCard: {
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 10,
-    padding: 14,
-    marginBottom: 20,
-  },
-  storageHudHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 10,
-  },
-  storageHudItem: {
-    flex: 1,
-  },
-  storageHudDivider: {
-    width: 1,
-    height: 24,
-    backgroundColor: colors.border,
-    marginHorizontal: 12,
-  },
-  storageHudLabel: {
-    color: colors.textFaint,
-    fontSize: 9,
-    ...fonts.monoBold,
-    marginBottom: 2,
-    letterSpacing: 0.5,
-  },
-  storageHudValueLime: {
-    color: colors.accentText,
-    fontSize: 14,
-    ...fonts.monoBold,
-  },
-  storageHudValueCyan: {
-    color: colors.download,
-    fontSize: 14,
-    ...fonts.monoBold,
-  },
-  storageTrack: {
-    height: 4,
-    backgroundColor: colors.surfaceRaised,
-    borderRadius: 2,
-    overflow: 'hidden',
-    marginBottom: 8,
-  },
-  storageFill: {
-    height: '100%',
-    borderRadius: 2,
-  },
-  storageAlertBox: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    backgroundColor: alpha(colors.danger, 0.1),
-    borderWidth: 1,
-    borderColor: alpha(colors.danger, 0.3),
-    borderRadius: 6,
-    padding: 8,
-    marginTop: 4,
-  },
-  storageAlertText: {
-    color: colors.danger,
-    fontSize: 10,
-    ...fonts.monoBold,
-    flex: 1,
-  },
-  storageHintText: {
-    color: colors.textFaint,
-    fontSize: 10,
-    ...fonts.mono,
-  },
-  filesHeaderRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 10,
-  },
-  batchControls: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  batchBtn: {
-    minHeight: 44,
-    paddingHorizontal: 10,
-    backgroundColor: colors.surfaceRaised,
-    borderRadius: 6,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  batchBtnText: {
-    color: colors.textMuted,
-    fontSize: 10,
-    ...fonts.mono,
-  },
-  batchBtnChip: {
-    minHeight: 44,
-    paddingHorizontal: 10,
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: alpha(colors.download, 0.2),
-    borderRadius: 6,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  batchBtnChipText: {
-    color: colors.download,
-    fontSize: 10,
-    ...fonts.mono,
-  },
-  filesList: {
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 10,
-    marginBottom: 20,
-    overflow: 'hidden',
-  },
-  fileRow: {
-    minHeight: touch.min,
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-  },
-  checkbox: {
-    width: 20,
-    height: 20,
-    borderRadius: 4,
-    borderWidth: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 10,
-  },
-  checkboxSelected: {
-    backgroundColor: colors.accent,
-    borderColor: colors.accent,
-  },
-  checkboxUnselected: {
-    borderColor: colors.borderStrong,
-  },
-  checkmark: {
-    color: colors.onAccent,
-    fontSize: 12,
-    fontWeight: '700',
-  },
-  fileInfo: {
-    flex: 1,
-    marginRight: 10,
-  },
-  fileName: {
-    color: colors.text,
-    fontSize: 11,
-    ...fonts.mono,
-  },
-  fileNameDisabled: {
-    color: colors.textFaint,
-    textDecorationLine: 'line-through',
-  },
-  fileSize: {
-    color: colors.textMuted,
-    fontSize: 10,
-    ...fonts.mono,
-    marginTop: 2,
-  },
-  priorityBtn: {
-    minWidth: 54,
-    minHeight: 44,
-    paddingHorizontal: 8,
-    backgroundColor: colors.surfaceRaised,
-    borderRadius: 6,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  priorityBtnHigh: {
-    backgroundColor: alpha(colors.accent, 0.15),
-    borderWidth: 1,
-    borderColor: colors.accent,
-  },
-  priorityBtnSkip: {
-    backgroundColor: alpha(colors.danger, 0.15),
-    borderWidth: 1,
-    borderColor: colors.danger,
-  },
-  priorityBtnText: {
-    color: colors.textMuted,
-    fontSize: 9,
-    ...fonts.monoBold,
-  },
-  priorityBtnTextHigh: {
-    color: colors.accentText,
-  },
-  priorityBtnTextSkip: {
-    color: colors.danger,
-  },
-  emptyFilesBox: {
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 10,
-    padding: 24,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 20,
-    gap: 8,
-  },
-  emptyFilesText: {
-    color: colors.textFaint,
-    fontSize: 11,
-    ...fonts.mono,
-    textAlign: 'center',
-    lineHeight: 18,
-  },
-  toggleRow: {
-    minHeight: touch.min,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 12,
-  },
-  toggleTextContainer: {
-    flex: 1,
-    marginRight: 12,
-  },
-  toggleTitle: {
-    color: colors.text,
-    fontSize: 12,
-    ...fonts.monoBold,
-  },
-  toggleSubtitle: {
-    color: colors.textMuted,
-    fontSize: 10,
-    ...fonts.mono,
-    marginTop: 2,
-  },
-  footer: {
-    paddingHorizontal: 20,
-    paddingTop: 12,
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
-  },
-  startBtn: {
-    minHeight: touch.min,
-    backgroundColor: colors.accent,
-    borderRadius: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  startBtnDisabled: {
-    backgroundColor: alpha(colors.danger, 0.1),
-    borderWidth: 1,
-    borderColor: alpha(colors.danger, 0.2),
-  },
-  startBtnText: {
-    color: colors.onAccent,
-    fontSize: 12,
-    ...fonts.monoBold,
-    letterSpacing: 0.5,
-  },
-  startBtnTextDisabled: {
-    color: colors.danger,
-  },
-});
+const makeStyles = (c: ThemeColors) =>
+  StyleSheet.create({
+    inputContent: { padding: spacing.lg, gap: spacing.md },
+    label: { ...type.bodyStrong, fontSize: type.size.md, color: c.textMuted },
+    field: {
+      ...type.mono,
+      fontSize: type.size.md,
+      color: c.text,
+      minHeight: 96,
+      textAlignVertical: 'top',
+      backgroundColor: c.surface,
+      borderWidth: 1,
+      borderColor: c.borderStrong,
+      borderRadius: radius.md,
+      padding: spacing.md,
+    },
+    fieldInvalid: { borderColor: c.danger },
+    actions: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
+    gap: { marginTop: spacing.sm },
+    centered: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: spacing.lg, paddingHorizontal: spacing.xxxl },
+    heading: { ...type.bodyStrong, fontSize: type.size.xl, color: c.text, textAlign: 'center' },
+    loadingBar: { width: '70%' },
+    metaCenter: { ...type.body, fontSize: type.size.md, color: c.textMuted, textAlign: 'center' },
+    listContent: { paddingHorizontal: spacing.lg, paddingBottom: spacing.lg },
+    previewHeader: { marginBottom: spacing.md, gap: spacing.sm },
+    name: { ...type.mono, fontSize: type.size.lg, color: c.text },
+    meta: { ...type.mono, fontSize: type.size.sm, color: c.textMuted },
+    chips: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
+    selectRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap' },
+    selectActions: { flexDirection: 'row' },
+    footer: { marginTop: spacing.sm, gap: spacing.md },
+    destRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.md,
+      backgroundColor: c.surface,
+      borderWidth: 1,
+      borderColor: c.border,
+      borderRadius: radius.md,
+      padding: spacing.md,
+      minHeight: touch.min,
+    },
+    destText: { flex: 1 },
+    dest: { ...type.mono, fontSize: type.size.md, color: c.text, marginTop: 2 },
+    bar: {
+      paddingHorizontal: spacing.lg,
+      paddingTop: spacing.md,
+      borderTopWidth: 1,
+      borderTopColor: c.border,
+      backgroundColor: c.bg,
+    },
+  });
