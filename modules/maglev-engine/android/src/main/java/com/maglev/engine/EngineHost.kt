@@ -8,7 +8,12 @@ import android.os.SystemClock
 import android.util.Log
 import androidx.core.content.ContextCompat
 import com.maglev.engine.network.NetworkGovernanceManager
+import com.maglev.engine.feeds.FeedScheduler
+import com.maglev.engine.feeds.FeedStore
 import com.maglev.engine.power.PowerGovernanceManager
+import com.maglev.engine.schedule.ScheduleEvaluator
+import com.maglev.engine.schedule.ScheduleManager
+import com.maglev.engine.schedule.ScheduleState
 import com.maglev.engine.service.MaglevTorrentService
 import com.maglev.engine.service.Notifications
 import com.maglev.engine.service.TransferSummary
@@ -50,6 +55,13 @@ object EngineHost {
     private const val KEY_FGS_TIMEOUT = "fgs_timeout"
     private const val KEY_WANTED = "service_wanted"
     private const val KEY_ALIVE_AT = "last_alive_at"
+    private const val KEY_USER_SHUTDOWN = "user_shutdown"
+    private const val KEY_USER_PAUSED_ALL = "user_paused_all"
+    private const val KEY_LIMIT_DOWN = "limitDownBps"
+    private const val KEY_LIMIT_UP = "limitUpBps"
+    private const val SCHEDULE_STOP_DELAY_MS = 10_000L
+    private const val SCHEDULE_TICK_MS = 60_000L
+    private const val NO_SPACE_MARGIN = 200L * 1024 * 1024
     const val KEY_KILLS = "background_kills"
     const val GOV_PREFS = "maglev_governance"
     const val ENGINE_PREFS = PREFS
@@ -88,6 +100,14 @@ object EngineHost {
     private var power: PowerGovernanceManager? = null
 
     @Volatile private var holdForPaused = false
+
+    // Scheduler (contract 11.5). Global limits are the user's values, never the schedule-adjusted ones.
+    @Volatile private var globalDown = 0L
+    @Volatile private var globalUp = 0L
+    private var scheduleLimitApplied = false
+    private var lastPushedLimits: Pair<Long, Long>? = null
+    private var scheduleIdleSince = 0L
+    private var lastScheduleTick = 0L
     @Volatile private var serviceBlocked = false
     private var lastServiceAttempt = 0L
     private var lastHeartbeat = 0L
@@ -102,6 +122,9 @@ object EngineHost {
         if (ctx == null) {
             ctx = context.applicationContext
             governance = loadGovernance(context.applicationContext)
+            val gp = context.applicationContext.getSharedPreferences(GOV_PREFS, Context.MODE_PRIVATE)
+            globalDown = gp.getLong(KEY_LIMIT_DOWN, 0L)
+            globalUp = gp.getLong(KEY_LIMIT_UP, 0L)
         }
     }
 
@@ -154,9 +177,15 @@ object EngineHost {
      * the JS config is applied to the running engine instead of starting a second one.
      */
     fun init(config: Map<String, Any?>): Map<String, Any?> {
-        val configJson = Json.toJson(Json.snakeify(config))
+        val snake = Json.snakeify(config) as Map<*, *>
+        val configJson = Json.toJson(snake)
+        captureGlobalLimits(snake)
+        // JS opened the app: a schedule hold from an earlier pause no longer applies once the schedule allows transfers.
+        ctx?.let { if (!ScheduleManager.state(it).paused) ScheduleManager.setHeld(it, false) }
         if (initialized) {
             val applied = call { NativeCore.nativeApplyConfig(configJson) }
+            lastPushedLimits = null
+            evaluateGovernance(force = false)
             startPolling()
             emitStorageStatus()
             val out = LinkedHashMap<String, Any?>(applied)
@@ -186,6 +215,9 @@ object EngineHost {
         sawDownloading = false
         autoExitFired = false
         lastAllowed.clear()
+        lastPushedLimits = null
+        scheduleLimitApplied = false
+        scheduleIdleSince = 0L
         startGovernanceWatchers(c)
         evaluateGovernance(force = true)
         startPolling()
@@ -210,14 +242,22 @@ object EngineHost {
      * 3. Start the engine from Rust's persisted config, with governance rules restored from SharedPreferences.
      * 4. Poll once. If nothing is active or rule-paused, stop the service. Otherwise the poller keeps running.
      */
-    fun headlessStart() {
+    fun headlessStart(countKill: Boolean = true) {
         scope.launch {
             val c = ctx ?: return@launch
             val p = prefs(c)
-            if (p.getLong(KEY_ALIVE_AT, 0L) > 0L) {
+            if (countKill && p.getLong(KEY_ALIVE_AT, 0L) > 0L) {
                 p.edit().putInt(KEY_KILLS, p.getInt(KEY_KILLS, 0) + 1).apply()
             }
-            if (!p.getBoolean(KEY_WANTED, false)) {
+            // "Not wanted" used to stop the restart outright. It still does: a count of 0 vetoes the restart.
+            val wanted = p.getBoolean(KEY_WANTED, false)
+            val intent = RestartInput(
+                userShutdown = p.getBoolean(KEY_USER_SHUTDOWN, false),
+                userPausedAll = p.getBoolean(KEY_USER_PAUSED_ALL, false),
+                scheduleHeld = ScheduleManager.isHeld(c),
+                activeTorrents = if (wanted) RestartPolicy.UNKNOWN_COUNT else 0,
+            )
+            if (RestartPolicy.decide(intent) == RestartDecision.StayStopped) {
                 stopService()
                 return@launch
             }
@@ -228,10 +268,13 @@ object EngineHost {
                     stopService()
                     return@launch
                 }
+            } else {
+                evaluateGovernance(force = false)
             }
             val list = call { NativeCore.nativeListTorrents() }
             val summary = summarize(Json.list(list["torrents"]))
-            if (summary.busy == 0 && summary.pausedByRules == 0) {
+            val counted = summary.busy + summary.pausedByRules + summary.pausedBySchedule
+            if (RestartPolicy.decide(intent.copy(activeTorrents = counted)) == RestartDecision.StayStopped) {
                 setWanted(c, false)
                 stopService()
             } else {
@@ -245,6 +288,10 @@ object EngineHost {
     private fun setWanted(c: Context, wanted: Boolean) {
         val p = prefs(c)
         if (p.getBoolean(KEY_WANTED, false) != wanted) p.edit().putBoolean(KEY_WANTED, wanted).apply()
+        // Real work exists again, so an earlier user stop no longer applies.
+        if (wanted && (p.getBoolean(KEY_USER_SHUTDOWN, false) || p.getBoolean(KEY_USER_PAUSED_ALL, false))) {
+            p.edit().putBoolean(KEY_USER_SHUTDOWN, false).putBoolean(KEY_USER_PAUSED_ALL, false).apply()
+        }
     }
 
     /** Called by the service when it is destroyed normally. A missing heartbeat on restart means the process was killed. */
@@ -274,6 +321,7 @@ object EngineHost {
         ctx?.let {
             Notifications.cancel(it, Notifications.ID_ONGOING)
             setWanted(it, false) // last, once the poller is quiet
+            prefs(it).edit().putBoolean(KEY_USER_SHUTDOWN, true).apply()
         }
         return res
     }
@@ -335,9 +383,21 @@ object EngineHost {
                         Log.w(TAG, "poll failed", t)
                     }
                 }
+                scheduleTick()
                 delay((1000 - (SystemClock.elapsedRealtime() - started)).coerceAtLeast(100))
             }
         }
+    }
+
+    /** Re-evaluates the schedule once a minute while the engine runs, because alarms can be late. */
+    private fun scheduleTick() {
+        val now = SystemClock.elapsedRealtime()
+        if (now - lastScheduleTick < SCHEDULE_TICK_MS) return
+        lastScheduleTick = now
+        val c = ctx ?: return
+        if (!ScheduleManager.config(c).enabled) return
+        ScheduleManager.rearm(c)
+        scope.launch { evaluateGovernance(false) }
     }
 
     /** Polls immediately, used after state-changing calls so the service and locks react fast. */
@@ -384,7 +444,7 @@ object EngineHost {
 
     private fun summarize(torrents: List<Map<String, Any?>>): TransferSummary {
         var dl = 0; var seed = 0; var queued = 0; var paused = 0; var byRules = 0
-        var checking = 0; var init = 0
+        var checking = 0; var init = 0; var bySchedule = 0
         var done = 0L; var total = 0L; var down = 0L; var up = 0L
         var dlDone = 0L; var dlTotal = 0L
         var seedId: String? = null
@@ -413,6 +473,7 @@ object EngineHost {
                     "wifi_only" -> { byRules++; wifiPaused = true }
                     "battery" -> { byRules++; batteryPaused = true }
                     "charging_only" -> { byRules++; chargingPaused = true }
+                    "schedule" -> bySchedule++
                 }
             }
             down += Json.long(t["down_bps"])
@@ -448,6 +509,8 @@ object EngineHost {
             downloadingPct = dlPct,
             singleTorrentId = singleId,
             ruleReason = reason,
+            pausedBySchedule = bySchedule,
+            scheduleResumeAt = if (bySchedule > 0) ctx?.let { ScheduleManager.nextBoundaryLabel(it) } else null,
         )
     }
 
@@ -481,10 +544,25 @@ object EngineHost {
         if (!initialized) return
         val timedOut = c.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getBoolean(KEY_FGS_TIMEOUT, false)
         if (s.active == 0 && s.pausedByUser == 0) holdForPaused = false
-        // Wanted = real work exists. A rules-paused torrent counts: it must resume by itself when Wi-Fi or power returns.
-        if (initialized) setWanted(c, s.busy > 0 || s.pausedByRules > 0)
-        val shouldRun = !timedOut && (s.busy > 0 || s.pausedByRules > 0 || (holdForPaused && s.pausedByUser > 0))
         val svc = MaglevTorrentService.instance
+        val others = s.busy > 0 || s.pausedByRules > 0 || (holdForPaused && s.pausedByUser > 0)
+        // Schedule pause: keep the service ~10 s, then stop it and persist scheduleHeld (contract 11.5).
+        var scheduleGrace = false
+        if (!others && s.pausedBySchedule > 0) {
+            val now = SystemClock.elapsedRealtime()
+            if (scheduleIdleSince == 0L) scheduleIdleSince = now
+            if (now - scheduleIdleSince >= SCHEDULE_STOP_DELAY_MS) {
+                if (ScheduleManager.state(c).paused) ScheduleManager.setHeld(c, true)
+            } else {
+                scheduleGrace = true
+            }
+        } else {
+            scheduleIdleSince = 0L
+            if (s.busy > 0 && svc != null) ScheduleManager.setHeld(c, false)
+        }
+        // Wanted = real work exists. A rules- or schedule-paused torrent counts: it must resume by itself later.
+        if (initialized) setWanted(c, others || s.pausedBySchedule > 0)
+        val shouldRun = !timedOut && (others || scheduleGrace)
         if (shouldRun) {
             if (svc != null) {
                 svc.onSummary(s)
@@ -557,7 +635,10 @@ object EngineHost {
     // region bulk actions
 
     fun pauseAll(): Map<String, Any?> {
-        ctx?.let { setWanted(it, false) }
+        ctx?.let {
+            setWanted(it, false)
+            prefs(it).edit().putBoolean(KEY_USER_PAUSED_ALL, true).apply()
+        }
         val list = call { NativeCore.nativeListTorrents() }
         if (!isOk(list)) return list
         var n = 0
@@ -695,7 +776,10 @@ object EngineHost {
     fun setGovernance(g: Governance): Map<String, Any?> {
         governance = g
         val c = ctx
-        if (c != null) saveGovernance(c, g)
+        if (c != null) {
+            saveGovernance(c, g)
+            FeedScheduler.apply(c) // the Wi-Fi-only setting changes the work constraint
+        }
         if (initialized && c != null) startGovernanceWatchers(c)
         evaluateGovernance(force = false)
         val enforceable = g.ssidWhitelist.isEmpty() || net?.currentSsid() != null
@@ -731,7 +815,233 @@ object EngineHost {
         send("wifi_only", !wifiBlocked, force)
         send("battery", !batteryBlocked, force)
         send("charging_only", !chargingBlocked, force)
+
+        val c = ctx ?: return
+        val st = ScheduleManager.state(c)
+        val held = ScheduleManager.isHeld(c)
+        // Schedule allows transfers again but the service is down: start it. The service clears the hold.
+        if (held && !st.paused) ScheduleManager.requestResumeIfAllowed(c)
+        send("schedule", !st.paused && !held, force)
+        applyLimits(st, force)
     }
+
+    private fun pushLimits(down: Long, up: Long) {
+        val pair = down to up
+        if (lastPushedLimits == pair) return
+        lastPushedLimits = pair
+        call { NativeCore.nativeSetGlobalLimits(down, up) }
+    }
+
+    /**
+     * Effective limit = min(global, schedule) per direction, 0 = none. Rust keeps its own persisted global limits
+     * until a schedule limit has been applied in this process, so a headless restart never resets them.
+     */
+    private fun applyLimits(st: ScheduleState, force: Boolean) {
+        val active = st.downBps != null || st.upBps != null
+        if (active) {
+            scheduleLimitApplied = true
+            if (force) lastPushedLimits = null
+            pushLimits(
+                ScheduleEvaluator.effectiveLimit(globalDown, st.downBps),
+                ScheduleEvaluator.effectiveLimit(globalUp, st.upBps),
+            )
+        } else if (scheduleLimitApplied) {
+            scheduleLimitApplied = false
+            pushLimits(globalDown, globalUp)
+        }
+    }
+
+    private fun captureGlobalLimits(snakeConfig: Map<*, *>) {
+        val d = (snakeConfig["download_limit_bps"] as? Number)?.toLong()
+        val u = (snakeConfig["upload_limit_bps"] as? Number)?.toLong()
+        if (d != null || u != null) storeGlobalLimits(d ?: globalDown, u ?: globalUp)
+    }
+
+    private fun storeGlobalLimits(down: Long, up: Long) {
+        globalDown = down.coerceAtLeast(0L)
+        globalUp = up.coerceAtLeast(0L)
+        ctx?.getSharedPreferences(GOV_PREFS, Context.MODE_PRIVATE)?.edit()
+            ?.putLong(KEY_LIMIT_DOWN, globalDown)?.putLong(KEY_LIMIT_UP, globalUp)?.apply()
+    }
+
+    /** JS setGlobalLimits: remember the user's values and apply min(global, schedule). */
+    fun setGlobalLimits(down: Long, up: Long): Map<String, Any?> {
+        storeGlobalLimits(down, up)
+        val c = ctx
+        val st = if (c != null) ScheduleManager.state(c) else null
+        val d = ScheduleEvaluator.effectiveLimit(globalDown, st?.downBps)
+        val u = ScheduleEvaluator.effectiveLimit(globalUp, st?.upBps)
+        scheduleLimitApplied = st != null && (st.downBps != null || st.upBps != null)
+        lastPushedLimits = d to u
+        return call { NativeCore.nativeSetGlobalLimits(d, u) }
+    }
+
+    // region wave 4 (contract section 11)
+
+    /** JS setTorrentLimits. Values below 0 are treated as 0 (no limit). Rust clamps above u32::MAX. */
+    fun setTorrentLimits(id: String, limits: Map<String, Any?>): Map<String, Any?> {
+        val down = ((limits["downBps"] as? Number)?.toLong() ?: 0L).coerceAtLeast(0L)
+        val up = ((limits["upBps"] as? Number)?.toLong() ?: 0L).coerceAtLeast(0L)
+        val res = call { NativeCore.nativeSetTorrentLimits(id, Json.toJson(linkedMapOf("down_bps" to down, "up_bps" to up))) }
+        pollNow()
+        return res
+    }
+
+    private const val TREE_STAGING_ONLY =
+        "Maglev can't keep active torrents in this folder. Pick a folder inside Download, or use the default."
+
+    /**
+     * Resolves [target] (`{kind:"default"}` or `{kind:"tree", uri}`) to a directory Maglev can write directly,
+     * checks free space for a cross-volume move, then asks Rust to move. Never changes the default download folder.
+     */
+    fun moveStorage(id: String, target: Map<String, Any?>): Map<String, Any?> {
+        val c = requireCtx() ?: return Json.failure("ENGINE_UNAVAILABLE", "Module is not attached")
+        val dest: String = when (target["kind"]) {
+            "default" -> StorageManager.resolveDefaultDownloadDir(c).first.absolutePath
+            "tree" -> {
+                val raw = target["uri"] as? String ?: return Json.failure("UNSUPPORTED", "Pick a folder to move to.")
+                val uri = android.net.Uri.parse(raw)
+                // Keeps access to the folder across restarts. Does not touch the stored default folder.
+                SafStorageManager.takePersistablePermission(c, uri)
+                val path = SafStorageManager.treeToPosixPath(uri)
+                if (path == null || !StorageManager.probeWritable(File(path))) {
+                    return Json.failure("UNSUPPORTED", TREE_STAGING_ONLY)
+                }
+                path
+            }
+            else -> return Json.failure("UNSUPPORTED", "Pick a folder to move to.")
+        }
+        val detail = call { NativeCore.nativeGetDetail(id) }
+        if (!isOk(detail)) return detail
+        @Suppress("UNCHECKED_CAST")
+        val snap = detail["snapshot"] as? Map<String, Any?>
+        val source = snap?.get("output_folder") as? String
+        if (source != null && crossVolume(source, dest)) {
+            val needed = Json.long(snap?.get("progress_bytes")) + NO_SPACE_MARGIN
+            val free = statOf(File(dest))?.first
+            if (free != null && free < needed) {
+                return Json.failure("DISK_FULL", "Not enough free space in that folder to move this torrent.")
+            }
+        }
+        val res = call { NativeCore.nativeMoveStorage(id, dest) }
+        pollNow()
+        return res
+    }
+
+    /** Different st_dev means a copy instead of a rename. Unknown counts as cross-volume, which is the safe side. */
+    private fun crossVolume(a: String, b: String): Boolean = try {
+        fun existing(p: String): File {
+            var f: File? = File(p)
+            while (f != null && !f.exists()) f = f.parentFile
+            return f ?: File("/")
+        }
+        android.system.Os.stat(existing(a).absolutePath).st_dev != android.system.Os.stat(existing(b).absolutePath).st_dev
+    } catch (e: Exception) {
+        true
+    }
+
+    /** "Play with" chooser for a stream URL (contract 11.4). */
+    fun openStream(url: String, mime: String, title: String): Map<String, Any?> {
+        val c = requireCtx() ?: return Json.failure("ENGINE_UNAVAILABLE", "Module is not attached")
+        val view = Intent(Intent.ACTION_VIEW).setDataAndType(android.net.Uri.parse(url), mime)
+            .putExtra(Intent.EXTRA_TITLE, title)
+        val noPlayer = Json.failure("UNSUPPORTED", "No video player found. Install VLC or another player.")
+        return try {
+            // Needs the <queries> entry in the module manifest to see other apps on API 30+.
+            if (c.packageManager.queryIntentActivities(view, 0).isEmpty()) return noPlayer
+            c.startActivity(Intent.createChooser(view, "Play with").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            linkedMapOf("ok" to true)
+        } catch (e: android.content.ActivityNotFoundException) {
+            noPlayer
+        } catch (e: Exception) {
+            Json.failure("INTERNAL", e.message ?: "Could not open the player")
+        }
+    }
+
+    /** JS setSchedule: persist, re-arm the alarm and apply the new state now. */
+    fun setSchedule(cfg: Map<String, Any?>): Map<String, Any?> {
+        val c = requireCtx() ?: return Json.failure("ENGINE_UNAVAILABLE", "Module is not attached")
+        ScheduleManager.setConfig(c, cfg)
+        ScheduleManager.resetResumeThrottle()
+        scheduleIdleSince = 0L
+        if (initialized) {
+            evaluateGovernance(force = false)
+            pollNow()
+        }
+        return ScheduleManager.status(c)
+    }
+
+    /** Alarm or clock change reached the process. */
+    fun onScheduleChanged() {
+        if (!initialized) return
+        scope.launch {
+            evaluateGovernance(false)
+            pollNow()
+        }
+    }
+
+    /** Service action ACTION_SCHEDULE_RESUME: the schedule allows transfers again. */
+    fun scheduleResume() {
+        val c = ctx ?: return
+        ScheduleManager.resetResumeThrottle()
+        scheduleIdleSince = 0L
+        if (!ScheduleManager.state(c).paused) ScheduleManager.setHeld(c, false)
+        headlessStart(countKill = false)
+    }
+
+    fun setFeedAutomation(cfg: Map<String, Any?>): Map<String, Any?> {
+        val c = requireCtx() ?: return Json.failure("ENGINE_UNAVAILABLE", "Module is not attached")
+        FeedStore.setConfig(c, cfg)
+        FeedScheduler.apply(c)
+        return FeedStore.status(c)
+    }
+
+    fun feedStatus(): Map<String, Any?> {
+        val c = requireCtx() ?: return Json.failure("ENGINE_UNAVAILABLE", "Module is not attached")
+        return FeedStore.status(c)
+    }
+
+    fun runFeedCheckNow(): Map<String, Any?> {
+        val c = requireCtx() ?: return Json.failure("ENGINE_UNAVAILABLE", "Module is not attached")
+        return if (FeedScheduler.runNow(c)) linkedMapOf("ok" to true) else Json.failure("INTERNAL", "Could not start the feed check")
+    }
+
+    /**
+     * Service action ACTION_DRAIN_FEED_ADDS: starts the engine if needed, then adds every queued match through
+     * the normal add path. A duplicate counts as done. Network and disk failures stay queued for the next drain.
+     */
+    fun drainFeedAdds() {
+        scope.launch {
+            val c = ctx ?: return@launch
+            if (!initialized) {
+                val res = startEngine("")
+                if (!isOk(res)) {
+                    Log.w(TAG, "feed drain: engine did not start: ${res["code"]}")
+                    stopService()
+                    return@launch
+                }
+            }
+            ioScope.launch {
+                val pending = FeedStore.pending(c)
+                val done = ArrayList<com.maglev.engine.feeds.PendingAdd>()
+                var added = 0
+                for (p in pending) {
+                    val res = addTorrent(p.source, mapOf("paused" to p.startPaused))
+                    val code = res["code"]
+                    when {
+                        isOk(res) -> { added++; done.add(p) }
+                        code == "DUPLICATE" || code == "INVALID_SOURCE" || code == "UNSUPPORTED" -> done.add(p)
+                        else -> Log.w(TAG, "feed add kept for retry: $code")
+                    }
+                }
+                FeedStore.remove(c, done)
+                FeedStore.addedDone(c, added)
+                pollNow()
+            }
+        }
+    }
+
+    // endregion
 
     private fun send(reason: String, allowed: Boolean, force: Boolean) {
         if (!force && lastAllowed[reason] == allowed) return

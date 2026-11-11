@@ -37,6 +37,10 @@ data class TransferSummary(
     val singleTorrentId: String? = null,
     /** Governance reason of rule-paused torrents: "wifi_only", "battery", "charging_only", or null. */
     val ruleReason: String? = null,
+    /** Torrents paused by the schedule (not counted in [pausedByRules], so they never keep the service alive). */
+    val pausedBySchedule: Int = 0,
+    /** "HH:MM" when the schedule next changes, for the scheduled-pause notification. */
+    val scheduleResumeAt: String? = null,
 ) {
     val active: Int get() = downloading + seeding
 
@@ -51,6 +55,8 @@ object Notifications {
     const val CH_COMPLETED = "completed"
     const val ID_ONGOING = 4101
     const val ID_TIMEOUT = 4102
+    const val CH_REMINDERS = "maglev_reminders"
+    const val ID_SCHEDULE_READY = 4103
 
     fun ensureChannels(context: Context) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
@@ -62,8 +68,12 @@ object Notifications {
         val completed = NotificationChannel(CH_COMPLETED, "Completed", NotificationManager.IMPORTANCE_DEFAULT).apply {
             description = "Finished downloads and alerts"
         }
+        val reminders = NotificationChannel(CH_REMINDERS, "Reminders", NotificationManager.IMPORTANCE_DEFAULT).apply {
+            description = "Scheduled downloads and new feed matches that need a tap to start"
+        }
         nm.createNotificationChannel(transfers)
         nm.createNotificationChannel(completed)
+        nm.createNotificationChannel(reminders)
     }
 
     /** Opens the app. With a torrent id, deep-links to maglev://torrent/<id> (app.json scheme "maglev"). */
@@ -85,6 +95,20 @@ object Notifications {
         return PendingIntent.getService(context, code, i, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
     }
 
+    /**
+     * Tapping a notification is an exempt user action, so this may start the foreground service
+     * (https://developer.android.com/develop/background-work/services/fgs/restrictions-bg-start).
+     */
+    private fun serviceStart(context: Context, action: String, code: Int): PendingIntent {
+        val i = Intent(context, MaglevTorrentService::class.java).setAction(action)
+        val flags = PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            PendingIntent.getForegroundService(context, code, i, flags)
+        } else {
+            PendingIntent.getService(context, code, i, flags)
+        }
+    }
+
     private fun rulesOnly(s: TransferSummary) = s.busy == 0 && s.pausedByUser == 0 && s.pausedByRules > 0
 
     private fun reasonLabel(reason: String?): String = when (reason) {
@@ -101,6 +125,7 @@ object Notifications {
             s.downloading > 1 -> "$name +${s.downloading - 1} more"
             s.seeding > 0 -> if (s.seeding == 1) "Seeding 1 torrent" else "Seeding ${s.seeding} torrents"
             rulesOnly(s) -> "Paused: waiting for ${reasonLabel(s.ruleReason)}"
+            s.busy == 0 && s.pausedBySchedule > 0 -> "Scheduled pause"
             s.busy == 0 && s.pausedByUser > 0 -> "Paused \u00B7 ${s.pausedByUser} torrents"
             else -> "Maglev"
         }
@@ -116,6 +141,7 @@ object Notifications {
         s.downloading > 1 -> "${s.downloading} downloading \u00B7 \u2193 ${speed(s.downBps)}"
         s.seeding > 0 -> "\u2191 ${speed(s.upBps)}"
         rulesOnly(s) -> ""
+        s.busy == 0 && s.pausedBySchedule > 0 -> s.scheduleResumeAt?.let { "Resumes $it" } ?: ""
         s.lookingForInfo -> "Looking for torrent info\u2026"
         s.checking > 0 -> "Checking files\u2026"
         s.queued > 0 -> "Waiting for a free slot"
@@ -205,6 +231,36 @@ object Notifications {
                 .setContentTitle("Paused after 6 hours in the background. Open Maglev to continue.")
                 .setAutoCancel(true)
                 .setContentIntent(contentIntent(context))
+                .build(),
+        )
+    }
+
+    /** Background-start refused for a schedule resume (contract 11.5). */
+    fun notifyScheduleReady(context: Context) {
+        post(
+            context, ID_SCHEDULE_READY,
+            NotificationCompat.Builder(context, CH_REMINDERS)
+                .setSmallIcon(android.R.drawable.stat_sys_download)
+                .setContentTitle("Scheduled downloads are ready")
+                .setContentText("Tap to start them.")
+                .setAutoCancel(true)
+                .setCategory(NotificationCompat.CATEGORY_REMINDER)
+                .setContentIntent(serviceStart(context, MaglevTorrentService.ACTION_SCHEDULE_RESUME, 10))
+                .build(),
+        )
+    }
+
+    /** Background-start refused for a feed drain (contract 11.6). One notification per rule. */
+    fun notifyFeedMatches(context: Context, ruleId: String, ruleName: String, count: Int) {
+        post(
+            context, 6000 + (ruleId.hashCode() and 0xFFFF),
+            NotificationCompat.Builder(context, CH_REMINDERS)
+                .setSmallIcon(android.R.drawable.stat_sys_download)
+                .setContentTitle("$count new from $ruleName")
+                .setContentText("Tap to download.")
+                .setAutoCancel(true)
+                .setCategory(NotificationCompat.CATEGORY_REMINDER)
+                .setContentIntent(serviceStart(context, MaglevTorrentService.ACTION_DRAIN_FEED_ADDS, 11))
                 .build(),
         )
     }

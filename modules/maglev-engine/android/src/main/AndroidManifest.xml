@@ -15,6 +15,18 @@
         android:name="android.permission.WRITE_EXTERNAL_STORAGE"
         android:maxSdkVersion="28" />
 
+    <queries>
+        <!-- openStream resolves a video or audio player for the local stream URL (API 30+ package visibility). -->
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="http" android:mimeType="video/*" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="http" android:mimeType="audio/*" />
+        </intent>
+    </queries>
+
     <application
         android:requestLegacyExternalStorage="true"
         tools:targetApi="q">
@@ -27,6 +39,15 @@
                 android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
                 android:value="Peer-to-peer file transfer (BitTorrent) that the user started and can pause or stop from the notification" />
         </service>
+
+        <receiver
+            android:name=".schedule.ScheduleReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.TIME_SET" />
+                <action android:name="android.intent.action.TIMEZONE_CHANGED" />
+            </intent-filter>
+        </receiver>
 
         <provider
             android:name=".storage.MaglevFileProvider"

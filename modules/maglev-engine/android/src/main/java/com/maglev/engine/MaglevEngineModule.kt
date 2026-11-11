@@ -6,7 +6,9 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
+import com.maglev.engine.feeds.FeedScheduler
 import com.maglev.engine.permissions.PermissionHelper
+import com.maglev.engine.schedule.ScheduleManager
 import com.maglev.engine.storage.SafStorageManager
 import com.maglev.engine.storage.StorageManager
 import com.maglev.engine.util.Json
@@ -28,6 +30,8 @@ class MaglevEngineModule : Module() {
     }
 
     private var pendingPick: Promise? = null
+    /** False for pickFolder (Move): return the folder without making it the default download folder. */
+    private var pendingPickSaves = true
 
     private val context: Context?
         get() = appContext.reactContext?.applicationContext
@@ -64,7 +68,12 @@ class MaglevEngineModule : Module() {
         Events("onTelemetry", "onTorrentCompleted", "onNotificationAction", "onStorageStatus")
 
         OnCreate {
-            context?.let { EngineHost.attach(it) }
+            context?.let {
+                EngineHost.attach(it)
+                // Alarms do not survive a reboot, and the work constraint can change: re-arm on app start.
+                ScheduleManager.rearm(it)
+                FeedScheduler.apply(it)
+            }
             EngineHost.emitter = { name, body -> sendEvent(name, body) }
         }
 
@@ -130,7 +139,7 @@ class MaglevEngineModule : Module() {
             io(promise) { EngineHost.reannounce(id) }
         }
         AsyncFunction("setGlobalLimits") { down: Double, up: Double, promise: Promise ->
-            native(promise) { NativeCore.nativeSetGlobalLimits(down.toLong(), up.toLong()) }
+            engine(promise) { EngineHost.setGlobalLimits(down.toLong(), up.toLong()) }
         }
         AsyncFunction("applyConfig") { config: Map<String, Any?>, promise: Promise ->
             native(promise) { NativeCore.nativeApplyConfig(Json.toJson(Json.snakeify(config))) }
@@ -144,8 +153,41 @@ class MaglevEngineModule : Module() {
         AsyncFunction("streamUrl") { id: String, fileIndex: Int, promise: Promise ->
             native(promise) { NativeCore.nativeStreamUrl(id, fileIndex) }
         }
+        AsyncFunction("setTorrentLimits") { id: String, limits: Map<String, Any?>, promise: Promise ->
+            engine(promise) { EngineHost.setTorrentLimits(id, limits) }
+        }
+        AsyncFunction("moveStorage") { id: String, target: Map<String, Any?>, promise: Promise ->
+            // Probes the disk and may read free space, so keep it off the serialized engine thread.
+            io(promise) { EngineHost.moveStorage(id, target) }
+        }
+        AsyncFunction("openStream") { url: String, mime: String, title: String, promise: Promise ->
+            io(promise) { EngineHost.openStream(url, mime, title) }
+        }
         AsyncFunction("version") { promise: Promise ->
             native(promise) { NativeCore.nativeVersion() }
+        }
+
+        // endregion
+
+        // region Scheduler and feeds (contract section 11)
+
+        AsyncFunction("setSchedule") { cfg: Map<String, Any?>, promise: Promise ->
+            engine(promise) { EngineHost.setSchedule(cfg) }
+        }
+        AsyncFunction("getScheduleStatus") { promise: Promise ->
+            io(promise) {
+                val c = context
+                if (c == null) Json.failure("ENGINE_UNAVAILABLE", "Module is not attached") else ScheduleManager.status(c)
+            }
+        }
+        AsyncFunction("setFeedAutomation") { cfg: Map<String, Any?>, promise: Promise ->
+            io(promise) { EngineHost.setFeedAutomation(cfg) }
+        }
+        AsyncFunction("getFeedAutomationStatus") { promise: Promise ->
+            io(promise) { EngineHost.feedStatus() }
+        }
+        AsyncFunction("runFeedCheckNow") { promise: Promise ->
+            io(promise) { EngineHost.runFeedCheckNow() }
         }
 
         // endregion
@@ -153,7 +195,10 @@ class MaglevEngineModule : Module() {
         // region Storage
 
         AsyncFunction("pickDownloadFolder") { promise: Promise ->
-            startFolderPicker(promise)
+            startFolderPicker(promise, saveAsDefault = true)
+        }
+        AsyncFunction("pickFolder") { promise: Promise ->
+            startFolderPicker(promise, saveAsDefault = false)
         }
         AsyncFunction("getStorageStatus") { promise: Promise ->
             engine(promise) { EngineHost.storageStatus() }
@@ -250,7 +295,7 @@ class MaglevEngineModule : Module() {
         perms.askForPermissions(PermissionsResponseListener { promise.resolve(PermissionHelper.status(c)) }, permission)
     }
 
-    private fun startFolderPicker(promise: Promise) {
+    private fun startFolderPicker(promise: Promise, saveAsDefault: Boolean) {
         if (pendingPick != null) {
             promise.resolve(Json.failure("INTERNAL", "A folder picker is already open"))
             return
@@ -267,6 +312,7 @@ class MaglevEngineModule : Module() {
                 Intent.FLAG_GRANT_PREFIX_URI_PERMISSION,
         )
         pendingPick = promise
+        pendingPickSaves = saveAsDefault
         try {
             activity.startActivityForResult(intent, REQ_PICK_FOLDER)
         } catch (e: Exception) {
@@ -278,6 +324,7 @@ class MaglevEngineModule : Module() {
     private fun handlePickResult(resultCode: Int, data: Intent?) {
         val promise = pendingPick ?: return
         pendingPick = null
+        val saves = pendingPickSaves
         val tree: Uri? = data?.data
         val c = context
         if (resultCode != Activity.RESULT_OK || tree == null || c == null) {
@@ -291,7 +338,7 @@ class MaglevEngineModule : Module() {
             val direct = path != null && StorageManager.probeWritable(File(path))
             val mode = if (direct) "direct" else "staging"
             val name = SafStorageManager.displayName(c, tree)
-            StorageManager.saveCustomFolder(c, tree.toString(), if (direct) path else null, mode, name)
+            if (saves) StorageManager.saveCustomFolder(c, tree.toString(), if (direct) path else null, mode, name)
             promise.resolve(
                 linkedMapOf(
                     "ok" to true,
@@ -302,7 +349,7 @@ class MaglevEngineModule : Module() {
                     "permissionPersisted" to persisted,
                 ),
             )
-            EngineHost.emitStorageStatus()
+            if (saves) EngineHost.emitStorageStatus()
         }
     }
 

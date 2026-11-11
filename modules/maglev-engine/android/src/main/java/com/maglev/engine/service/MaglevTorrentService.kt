@@ -27,6 +27,10 @@ class MaglevTorrentService : Service() {
         const val ACTION_PAUSE_ALL = "com.maglev.engine.action.PAUSE_ALL"
         const val ACTION_RESUME_ALL = "com.maglev.engine.action.RESUME_ALL"
         const val ACTION_SHUTDOWN = "com.maglev.engine.action.SHUTDOWN"
+        /** Alarm or notification tap: the schedule allows transfers again (contract 11.5). */
+        const val ACTION_SCHEDULE_RESUME = "com.maglev.engine.action.SCHEDULE_RESUME"
+        /** Worker or notification tap: add queued feed matches (contract 11.6). */
+        const val ACTION_DRAIN_FEED_ADDS = "com.maglev.engine.action.DRAIN_FEED_ADDS"
 
         /**
          * API 34+ foreground type. specialUse has no 6-hour cap (dataSync does on Android 15).
@@ -82,6 +86,8 @@ class MaglevTorrentService : Service() {
             ACTION_PAUSE_ALL -> EngineHost.pauseAllFromNotification()
             ACTION_RESUME_ALL -> EngineHost.resumeAllFromNotification()
             ACTION_SHUTDOWN -> EngineHost.shutdownFromNotification()
+            ACTION_SCHEDULE_RESUME -> EngineHost.scheduleResume()
+            ACTION_DRAIN_FEED_ADDS -> EngineHost.drainFeedAdds()
             else -> Unit
         }
         // Sticky so Android restarts us after a kill. EngineHost stops the service itself when nothing is wanted.
