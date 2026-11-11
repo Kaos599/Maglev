@@ -122,4 +122,6 @@ jobs:
             build-artifacts/Maglev-${{ github.ref_name }}-armeabi-v7a.apk
             build-artifacts/Maglev-${{ github.ref_name }}-x86_64.apk
           draft: false
-          prerelease: true
+          # Beta is in the tag name; a normal release is what GitHub shows in the repo sidebar.
+          prerelease: false
+          make_latest: true
