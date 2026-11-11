@@ -1,137 +1,127 @@
-# AGENTS.md — Master Operating Guide for AI Agents & Engineers
+# AGENTS.md: Operating Guide for AI Agents and Engineers
 
-> **Project:** Maglev  
-> **Platform:** Android Mobile (React Native + Expo + Rust `librqbit`)  
-> **Base Working Branch:** `dev`  
-> **Rule 0:** Zero Bloat. Zero Jargon. Zero Developer Slop. Pure Utility.
-
----
-
-## 1. Project Overview & Identity
-
-Maglev is an ultra-fast, zero-bloat Android torrent client powered by **React Native**, **Expo**, and **Rust (`librqbit`)**. Its signature visual theme is an authentic cyber-retro aesthetic:
-- **Void Background:** `#05070A` (True OLED black)
-- **Cards:** `#0D1117` with 1px hairline border `#1F2937`
-- **Primary Accent:** `#CCFF00` (Electric Acid Lime)
-- **Secondary Accent:** `#00E5FF` (Cyber Cyan)
-- **Status/Danger:** `#FF3366` (Crimson)
-- **Muted Telemetry:** `#8B949E` / `#9CA3AF`
+> **Project:** Maglev, a minimal and fast Android torrent client
+> **Stack:** React Native 0.88 + Expo SDK 58 (expo-router, Hermes, new arch) · Kotlin Expo Module · Rust (`librqbit` 9.x)
+> **Integration branch:** `dev` · **Releases:** `main` (tags)
+> **Rule 0:** Zero bloat, zero jargon, pure utility. **Rule 1:** Nothing is "done" until a contract proves it on real code.
 
 ---
 
-## 2. Directory Structure & Permitted Workspaces
+## 1. Identity
 
-```
-g:\Stuff\Study\Programs\Maglev\
-├── .github/workflows/        # Cloud compilation CI (Rust NDK .so build)
-├── .gitignore
-├── README.md                 # Public overview and high-level identity
-├── AGENTS.md                 # THIS FILE (Master agent instructions)
-├── LEDGER.md                 # Active ledger of workstream progress and phase status
-├── docs/                     # CANONICAL ARCHITECTURE & DESIGN LAW (Never bypass)
-│   ├── ARCHITECTURE_AND_GOAL.md       # High architecture, SLAs, memory budgets, subsystems
-│   ├── DESIGN_SYSTEM_TOKENS.md        # Colors, typography, touch targets, anti-slop rules
-│   ├── STATE_MACHINES_AND_SCREENS.md  # 7 mobile screens, state machine diagrams, contracts
-│   ├── PHASE_ROADMAP_AND_CONTRACTS.md # Phases 1–4, task lists, minimum SLA thresholds
-│   └── BITTORRENT_AND_NATIVE_RESEARCH.md # Rust librqbit, JNI bridge, SAF mechanics, BEPs
-├── app/                      # Expo / React Native UI codebase (Phase 1+)
-├── modules/maglev-engine/    # Custom Expo Native Module (Kotlin + JNI bindings)
-│   ├── android/              # Native Android service, JNI bridge, notifications
-│   └── src/                  # TypeScript interface, mock engine, event subscriptions
-└── native/maglev-core/       # Rust librqbit native dynamic library (Cargo workspace)
-    ├── Cargo.toml
-    └── src/                  # Tokio runtime, SIMD piece downsampling, POSIX I/O
-```
+Maglev replaces LibreTorrent and Flood on a phone. It should feel minimal, quick and playful, with a retro feel that stays modern and readable for a general audience.
 
----
-
-## 3. Documentation Registry (The Law of the Codebase)
-
-Every agent must read and conform strictly to these canonical reference files before writing any code:
-
-| File | What It Contains | How to Use It |
+| Token | Value | Use |
 |---|---|---|
-| `docs/DESIGN_SYSTEM_TOKENS.md` | Colors, fonts, $\ge 44\text{px}$ touch targets, anti-slop guidelines. | Validate all styles, colors, padding, and UI labels. Check against Rule 0 prohibitions. |
-| `docs/STATE_MACHINES_AND_SCREENS.md` | 7 mobile screens, Mermaid state machines, component micro-states. | Implement state transitions 1:1. Never invent ad-hoc button states or transitions. |
-| `docs/PHASE_ROADMAP_AND_CONTRACTS.md` | Detailed task lists, contracts, and minimum SLA criteria for Phases 1–4. | Use as the contractual scope for each task. Do not declare tasks done without SLA checks. |
-| `docs/ARCHITECTURE_AND_GOAL.md` | System SLAs (RAM $\le 85\text{MB}$, launch $< 500\text{ms}$), power governance, subsystems. | Enforce system boundaries, thread decoupling, and battery rules. |
-| `docs/BITTORRENT_AND_NATIVE_RESEARCH.md` | `librqbit` mechanics, JNI thread safety, app-specific storage, BEP compliance. | Reference for all low-level Rust, NDK, JNI, and BitTorrent protocol details. |
-| `LEDGER.md` | Active ledger of project state, completed milestones, and upcoming tasks. | Update immediately upon completing any milestone or subagent task. |
+| Void | `#05070A` | OLED background |
+| Card / border | `#0D1117` / `#1F2937` | Surfaces with a 1px hairline border, no shadows |
+| Accent | `#CCFF00` (lime) | Primary actions, active state, done |
+| Accent 2 | `#00E5FF` (cyan) | Downloading, inbound speed |
+| Danger | `#FF3366` | Destructive actions, errors |
+| Muted | `#8B949E` | Telemetry, paused |
+| App icon | `#282828` tile, `#D0FF00` angular "M" | See `screens/1.css`. The launcher icon only. |
+
+Colours are reached through `useTheme()` and never written as hex outside `constants/`. Fonts are Silkscreen (brand and headers), Space Mono (filenames and telemetry, `tabular-nums`) and Inter (copy). **Never use `fontFamily: 'monospace'`.** Use one icon family only: the pixel glyphs in `components/PixelIcons.tsx`.
 
 ---
 
-## 4. Anti-Slop & Anti-Jargon Creed (Non-Negotiable)
+## 2. Repository map
 
-Any code, PR, or subagent work containing any of the following will be **immediately rejected**:
-1. ❌ **NO Header Comment Slashes:** Never write `// Appearance`, `// Downloads`, or `// Files` in UI headings.
-2. ❌ **NO Header Version Strings:** Never display `v0.1.0` or `v2.4` in the app bar. Versions belong solely in `Settings -> About`.
-3. ❌ **NO Fake Hardware Status Displays:** Never display `● CONFIG OK`, `● CORE OK`, `BEP-0003 OK`, or pulsating status dots in headers.
-4. ❌ **NO Cryptic Codes:** No debug strings like `050406` or raw info-hashes in consumer screens.
-5. ❌ **NO Pipeline Jargon:** Use `Add Torrent Sheet` (not "Magnet Ingestion"), `SETTINGS` (not "CONFIG"), `RESUME` (not "START" on paused cards), and `Pieces` (not "Bitfield Matrix").
-6. ❌ **NO Desktop Window Elements:** No desktop resolutions (`2560px`), no desktop "Save Configuration" buttons, no generic SaaS profile avatars.
-7. ❌ **NO Sub-44px Touch Targets:** All interactive buttons and filter pills must be $\ge 44 \times 44\text{px}$.
-
----
-
-## 5. Host Machine & Cloud-Compilation Policy (Strict Zero-Bloat Mandate)
-
-To protect the user's host machine from gigabytes of compiler bloat, the following rules are **strictly mandatory**:
-1. **NO Local Rust or Android NDK Installation:** Never prompt the user to install Rust, Cargo, or Android NDK, and never attempt to install them on the local Windows machine.
-2. **Local Environment Boundary:** The local machine runs **strictly Node.js & npm** (~250MB Expo dependencies).
-3. **Cloud Rust Cross-Compilation:** Native Rust compilation (`native/maglev-core`) is handled via **GitHub Actions CI** in `.github/workflows/build-engine.yml`. GitHub's free runners have Rust, Cargo, and Android NDK pre-installed. The compiled stripped `.so` binaries (`~4 MB` each) are placed into `modules/maglev-engine/android/src/main/jniLibs/`.
-4. **Dual-Mode Engine Bridge:** `modules/maglev-engine` must provide:
-   - **Mock/Simulator Mode:** High-fidelity simulated telemetry engine running in TypeScript, allowing full UI/UX testing in **Expo Go** or browser with zero native compilation.
-   - **Native Engine Mode:** Loads the JNI/Rust `.so` binary when running in a standalone Android APK.
-5. **Cloud APK Builds:** Standalone APKs are built using **Expo EAS Cloud Build** (`npx eas-cli build -p android --profile preview`), with zero local Android Studio or NDK compilation required.
+```
+app/                     expo-router screens (tabs, add-torrent, torrent/[id], onboarding, settings/*)
+components/              UI components and PixelIcons
+constants/               design tokens, theme palettes, haptics
+context/                 EngineContext, SettingsContext
+utils/                   permissions, formatting
+modules/maglev-engine/
+  src/                   TS bridge (MaglevNativeBridge), mock engine (dev/web only), settings store, toNativeConfig
+  android/               Kotlin: NativeCore (JNI), MaglevEngineModule, foreground service, storage, governance
+native/maglev-core/      Rust: librqbit session, scheduler (pure), JNI exports, stream server
+plugins/                 Expo config plugins (ABI splits)
+scripts/                 contract tests (test-p3-reality-contracts.js, test-abi-splits.js)
+screens/                 design mockups (HTML) and the app icon spec (1.css)
+docs/                    the law (see §3)
+.github/workflows/       ci.yml (every push), release-apk.yml (tags), _rust-android.yml (reusable)
+```
 
 ---
 
-## 6. Git Workflow & Branching Strategy
+## 3. Documents (read before writing code)
 
-All work must follow strict git hygiene:
-
-### 6.1 Branching Rules
-* `main` is protected: only tagged releases and production milestones are merged here.
-* `dev` is the integration trunk: all completed feature branches merge into `dev`.
-* Feature branches branch off `dev`:
-  ```bash
-  git checkout dev
-  git pull origin dev
-  git checkout -b feature/<phase>-<task-name>
-  # Example: feature/p1-transfers-ui
-  ```
-
-### 6.2 Commit Conventions (Atomic & Logical)
-Commits must be atomic, logical, and follow Conventional Commits:
-* `feat(<scope>): <description>` — New user-facing feature or native module capability
-* `fix(<scope>): <description>` — Bug fix or contract violation resolution
-* `refactor(<scope>): <description>` — Code change that neither fixes a bug nor adds a feature
-* `test(<scope>): <description>` — Adding or updating integration/E2E tests
-* `docs(<scope>): <description>` — Updating architecture or design specs
-
-### 6.3 Merge & Ledger Update
-1. Feature branches are merged into `dev` only after the phase SLA and contract tests pass.
-2. Immediately record the completed task and commit hash in `LEDGER.md`.
-3. Push to `origin dev`.
-
----
-
-## 7. Subagent Task Execution Protocol
-
-When spawning subagents for implementation:
-1. **Single Contract Scope:** Assign **strictly one task** from `docs/PHASE_ROADMAP_AND_CONTRACTS.md` per subagent.
-2. **State Machine Grounding:** Supply the exact state machine from `docs/STATE_MACHINES_AND_SCREENS.md`.
-3. **End-to-End Verification:** Subagents must run and pass the designated integration test before reporting completion.
-4. **No Assumptions:** Never assume local compilers exist. Follow Section 5 (Cloud Compilation & Simulator Bridge).
-
----
-
-## 8. Recommended Skills to Use
-
-| Skill | When to Use |
+| File | Purpose |
 |---|---|
-| `audit` | After completing major components or state machine updates to run multi-stakeholder adversarial reviews. |
-| `bug-hunt-review` | For adversarial 4-agent bug-hunting chains before merging feature branches. |
-| `anti-slop-writing` | When authoring UI copy, button labels, documentation, or user-facing messaging. |
-| `ui-ux-pro-max` | For component tokens, layout grids, spacing scales, and accessibility checks. |
-| `building-components` | For building accessible, fluid React Native / Expo UI components. |
+| `docs/ROADMAP.md` | Phases, task list, state-machine priorities (P0/P1/P2), the phase-out list. **The only task list.** |
+| `docs/NATIVE_CONTRACT.md` | The exact Rust ⇄ Kotlin ⇄ TS boundary: JNI signatures, JSON shapes, error codes, state rules, storage policy. Change this file **first** whenever the boundary changes. |
+| `docs/STATE_MACHINES_AND_SCREENS.md` | Screens and state machines. Implement transitions 1:1 and never invent ad-hoc states. |
+| `docs/DESIGN_SYSTEM_TOKENS.md` | Tokens, type scale, component specs, anti-slop rules. |
+| `docs/ARCHITECTURE_AND_GOAL.md` | Layers, SLAs and the memory/battery budget. |
+| `LEDGER.md` | A dated log of what landed, with commit hash and CI run. Only history, never plans. |
+
+---
+
+## 4. Reality rules (non-negotiable)
+
+These rules exist because Phase 1 was once marked "complete" while the engine was a simulator.
+
+1. **No simulation in release builds.** The mock engine (`MaglevMockEngine.ts`) runs only under `__DEV__` or on web. If the native engine fails to load in release, the app shows "Engine failed to start". It never shows fake data.
+2. **No fabricated values in the bridge.** No hardcoded files, peers, trackers, sizes or speeds. Unknown is shown as unknown (for example `eta: -1`, shown as "—").
+3. **Contracts are the definition of done.** `npm run test:contracts` exits 1 while any P0 fails. A ledger or roadmap entry may say "Done" only with a green CI run and the passing contract IDs.
+4. **CI is the compiler.** Rust and Gradle are never installed locally. CI rejects a `.so` under 3 MB, a `.so` without librqbit symbols, or a `.so` without 16 KB page alignment.
+5. **Native binaries are never committed.** `jniLibs/` is gitignored. CI builds the binaries on every push.
+6. **Settings must round-trip.** Every user-facing setting is persisted (expo-sqlite kv-store) and reaches Rust through `toNativeConfig`. `nativeGetEffectiveConfig` proves it. A toggle that does nothing must not ship.
+7. **Errors are plain English and recoverable.** Each error code in `NATIVE_CONTRACT.md` maps to a message and an action (Retry, Recheck, Pick folder again, Open settings).
+
+---
+
+## 5. Anti-slop creed
+
+Work containing any of the following is rejected:
+
+1. `// Heading`-style labels, version strings in headers, or fake status displays (`● CORE OK`, pulsing dots).
+2. Cryptic codes or raw info-hashes on consumer screens. Hashes belong only under Detail → "Copy magnet".
+3. Pipeline jargon. Say "Add torrent", "Settings", "Resume", "Pieces", "Waiting for Wi-Fi", "Storage full".
+4. Desktop artifacts such as "Save configuration" buttons or SaaS avatars.
+5. Touch targets under 44×44 px. Use `hitSlop` when the visual element is smaller.
+6. Marketing claims in release notes or About that the code does not prove.
+7. Mixed icon families or system `monospace`.
+
+---
+
+## 6. Android platform rules
+
+- **Storage:** default to `Download/Maglev`, which is visible in file managers. A custom folder goes through the SAF picker, using direct POSIX writes when possible and otherwise staging plus copy-on-complete. Never request `MANAGE_EXTERNAL_STORAGE` in the Play build.
+- **Permissions** are requested during onboarding, each with a reason screen. `POST_NOTIFICATIONS` is requested on API 33+. Battery optimization goes through the system settings intent. Every denial must have a recovery path.
+- **Foreground service:** type `dataSync`, started only while a torrent is downloading or seeding. It handles `onTimeout` (Android 15's 6-hour cap) and offers Pause all / Resume all / Shut down actions.
+- **Release APKs:** universal, arm64-v8a, armeabi-v7a and x86_64, all from one build (`plugins/withAbiSplits.js`). No x86.
+
+---
+
+## 7. Git workflow
+
+- Branch from `dev` as `feature/<phase>-<task>` (for example `feature/p2-onboarding`). Merge to `dev` when CI and the phase contracts pass. Release with a tag on `main`.
+- Use Conventional Commits: `feat|fix|refactor|test|docs|ci(<scope>): …`. Keep commits atomic.
+- After a merge, append to `LEDGER.md`: date, task IDs, commit, CI run URL, and the contract IDs that turned green.
+
+---
+
+## 8. Orchestration protocol (multi-agent)
+
+The lead agent (orchestrator) writes specs and reviews. Worker agents write code.
+
+1. **Contract first.** The orchestrator writes or updates the contract (a `NATIVE_CONTRACT.md` section, state machine, or contract test) **before** dispatching any work.
+2. **Workers run on cheaper models.** Code-writing agents use Sonnet, or Haiku for mechanical work such as CI and renames. Each gets **one contract scope** and an explicit list of files it owns. Two agents never own the same file in one wave.
+3. **Ground unfamiliar APIs.** Workers verify every library API against its real source or docs (librqbit tag source, expo-modules-core, expo-router) and cite URLs in their report.
+4. **Review is mandatory.** The orchestrator reads the diff, runs the contract and unit tests, and checks CI before accepting. Compiler errors from CI go back to the owning agent.
+5. **Workers never commit or push.** The orchestrator commits atomically per contract scope.
+
+---
+
+## 9. Skills
+
+| Skill | When |
+|---|---|
+| `superpowers:test-driven-development` | Every contract change: red, then green |
+| `code-review` / `nemesis-review` agent | Before merging a phase |
+| `anti-slop-writing` | UI copy, release notes, docs |
+| `make-interfaces-feel-better`, `unslop` | Phase 2 UI work |
+| `building-components` | New RN components (accessible, composable) |

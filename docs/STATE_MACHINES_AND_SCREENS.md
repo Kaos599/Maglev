@@ -12,7 +12,10 @@
 | **SCR-04** | **Torrent Detail Screen** | `/torrent/:id` | Header metadata pill, live speed chart, and 4 tab views: `[FILES]`, `[PIECES]`, `[PEERS]`, and `[TRACKERS]`. Dual-action trash button. |
 | **SCR-05** | **Search & Browse Screen** | `/search` | Search box with clear action, horizontal category pills (9 categories), recent searches chips, bookmark icon, search result cards with instant `+ Add` trigger. |
 | **SCR-06** | **Automated Feeds Screen** | `/feeds` | Feed channel pills (`All Feeds`, `Linux Distros`, `EZTV`, etc.), `+ Add Feed` button, feed release items with 1-touch download and auto-download badges. |
-| **SCR-07** | **System Settings** | `/settings` | 6 grouped sections: Appearance (OLED Black/Dark), Downloads & Storage (POSIX/SAF/Pre-allocation), Bandwidth & Limits (Speed presets, active caps), Network & Proxy (Wi-Fi only, SSID whitelist, SOCKS5, UPnP, Encryption), Power & Battery (Charge only, battery % cutoff, auto-exit), About. |
+| **SCR-07** | **Settings index** | `/settings` | Icon-labelled rows, each showing its current value and opening a sub-screen: Storage · Bandwidth · Torrents & Queue · Interface (theme, accent) · Network (Wi-Fi only, port, UPnP, DHT, proxy, encryption) · Power (charging only, battery cutoff, auto-exit) · Scheduling · Feeds · About. A Permissions row appears at the top only when something is denied. |
+| **SCR-07x** | **Settings sub-screens** | `/settings/<category>` | One topic per screen. Changes apply instantly; there is no Save button. A row whose value needs a restart gets a "Restart engine" chip. |
+| **SCR-08** | **Onboarding** | `/onboarding` | Four steps: Welcome → Notifications → Download folder → Background running. Every step can be skipped and has a recovery path in Settings. |
+| **SCR-09** | **Engine unavailable** | `/engine-error` | Blocking screen for release builds when the native engine fails to load. Plain message, Copy details, Close app. |
 
 ---
 
@@ -21,33 +24,39 @@
 ### 2.1 Torrent Lifecycle State Machine
 Governs the core download, verification, and seeding pipeline.
 
+The engine states are exactly the `Snapshot.state` values in `NATIVE_CONTRACT.md`: `INITIALIZING | QUEUED | DOWNLOADING | SEEDING | PAUSED | CHECKING | ERROR | COMPLETED`. `PAUSED` always carries a `paused_by` reason, and the UI copy depends on that reason:
+
+| `paused_by` | Card label | Action |
+|---|---|---|
+| `user` | Paused | ▶ Resume |
+| `wifi_only` | Waiting for Wi-Fi | (auto) |
+| `battery` / `charging_only` | Paused to save battery | (auto) |
+| `seed_limit` | Done | ▶ Seed again |
+| `fgs_timeout` | Paused in background | Open the app to continue |
+
+The add flow (SM-9) runs before a torrent exists. Its states are `Validating → InvalidSource | Resolving → MetadataTimeout (60 s, Retry) | Duplicate ("Already in your list", open it) | Preview → Added`.
+
 ```mermaid
 stateDiagram-v2
-    [*] --> Ingesting: Magnet Link / .torrent file input
-    
-    Ingesting --> ResolvingMetadata: BEP-9 Swarm Query
-    ResolvingMetadata --> MetadataFailed: 15s Swarm Timeout
-    MetadataFailed --> ResolvingMetadata: Retry / Re-announce
-    MetadataFailed --> [*]: Discard
-    
-    ResolvingMetadata --> ReadyForDownload: Metadata Resolved
-    ReadyForDownload --> AllocatingDisk: User confirms files
-    
-    AllocatingDisk --> CheckingPieces: Existing files detected
-    AllocatingDisk --> Downloading: Pre-allocation complete
-    CheckingPieces --> Downloading: Hash verified
-    
-    Downloading --> Downloading: Piece SHA-1 Verified
-    Downloading --> Paused: User Pause / Wi-Fi lost
-    Paused --> Downloading: User Resume / Wi-Fi restored
-    
-    Downloading --> Seeding: 100% Verified
-    Seeding --> Paused: User Pause / Ratio limit reached
-    Paused --> Seeding: User Resume
-    
-    Downloading --> Error: Disk Full / Permission Denied
-    Error --> Downloading: Retry After Fix
-    
+    [*] --> INITIALIZING: Added (metadata known)
+    INITIALIZING --> CHECKING: Existing files found
+    INITIALIZING --> QUEUED: Active slots full
+    INITIALIZING --> DOWNLOADING: Slot free
+    CHECKING --> DOWNLOADING
+    CHECKING --> SEEDING: All pieces present
+    QUEUED --> DOWNLOADING: Slot frees (added_at order)
+
+    DOWNLOADING --> PAUSED: User / Wi-Fi rule / battery rule
+    PAUSED --> DOWNLOADING: User resume, or the same rule clears
+    DOWNLOADING --> SEEDING: 100% verified
+    SEEDING --> PAUSED: User / seed limit
+    SEEDING --> COMPLETED: Seeding disabled (max_active_seeds = 0)
+    PAUSED --> SEEDING: Resume a finished torrent
+
+    DOWNLOADING --> ERROR: DISK_FULL / PERMISSION / FILES_MISSING
+    ERROR --> CHECKING: Recheck
+    ERROR --> DOWNLOADING: Retry
+
     Downloading --> DeletionPrompt: User taps Trash / Long-press
     Paused --> DeletionPrompt: User taps Trash / Long-press
     Seeding --> DeletionPrompt: User taps Trash / Long-press
@@ -61,6 +70,48 @@ stateDiagram-v2
 
     RemoveSessionOnly --> [*]: Task removed, files kept
     RemoveWithFiles --> [*]: Task removed, files wiped
+```
+
+### 2.1a App Boot & First Run (SM-2, SM-3, SM-4)
+
+```mermaid
+stateDiagram-v2
+    [*] --> Booting: Settings read synchronously from the kv-store
+    Booting --> EngineUnavailable: Release build and native init failed
+    EngineUnavailable --> [*]: Blocking screen "Engine failed to start" + Copy details
+    Booting --> Onboarding: onboarded = false
+    Booting --> Restoring: onboarded = true
+    Restoring --> Transfers: Session restored (same list as before the kill)
+
+    state Onboarding {
+        [*] --> Welcome
+        Welcome --> Notifications: Continue
+        Notifications --> Folder: Allowed / Not now (both continue)
+        Folder --> Background: Default Download/Maglev or a picked folder
+        Background --> Done: Allow background / Skip
+    }
+    Onboarding --> Transfers: Set onboarded = true
+```
+
+Permission states (SM-4) are tracked per permission: `undetermined → granted | denied`. A denial is never a dead end:
+- **Notifications denied:** Settings shows the row "Notifications are off — downloads may stop in the background" with an **Open settings** button.
+- **Battery restricted:** a row with **Allow background**.
+- **Storage (API ≤ 28):** **Grant access**. If the grant is refused, the app falls back to the private folder and shows a banner.
+
+### 2.1b Storage Location (SM-5)
+
+```mermaid
+stateDiagram-v2
+    [*] --> DefaultPublic: Download/Maglev probe ok
+    [*] --> FallbackPrivate: Probe failed (banner: "Files are saved in app storage")
+    DefaultPublic --> PickingFolder: Settings → Storage → Change
+    FallbackPrivate --> PickingFolder
+    PickingFolder --> CustomDirect: Tree maps to a writable path
+    PickingFolder --> CustomStaging: Tree is SAF-only (copied when complete)
+    PickingFolder --> DefaultPublic: Cancelled (unchanged)
+    CustomDirect --> AccessLost: Persisted permission missing at boot
+    CustomStaging --> AccessLost
+    AccessLost --> PickingFolder: Banner "Folder access lost" → Pick again
 ```
 
 ### 2.2 Android Background Power & Service State Machine
@@ -91,7 +142,13 @@ stateDiagram-v2
     
     ServiceStopped --> ForegroundActive: Transfer resumed
     ServiceStopped --> ServiceDestroyed: User exits app / OS stops service
+
+    ForegroundActive --> TimedOut: Android 15 onTimeout (6 h dataSync cap)
+    TimedOut --> ServiceStopped: Pause all (paused_by fgs_timeout) + "Open Maglev to continue"
+    ForegroundActive --> ServiceDestroyed: Notification "Shut down" (engine stopped, app exits)
 ```
+
+Notification actions are **Pause all** / **Resume all** (whichever applies) and **Shut down**. The notification text reads "Downloading 2 · Seeding 1" and "↓ 4.2 MB/s · ↑ 1.1 MB/s", with a bar showing aggregate progress.
 
 ### 2.3 Network & Connectivity Governance State Machine
 Controls network interfaces, Wi-Fi constraints, SOCKS5 proxy routing, and Android Doze dormancy.
@@ -232,10 +289,5 @@ stateDiagram-v2
   * `INACTIVE_PRESET`: Card surface `#0D1117`, 1px border `#1F2937`, muted text. Tapping switches active preset within `< 10ms`.
   * `CUSTOM_INPUT`: Tapping `Custom` opens numeric keypad bottom sheet for arbitrary KB/s or MB/s entry.
 
-### 3.7 Storage Directory Selector (POSIX vs SAF)
-* **Purpose:** Configure where torrent payloads are written.
-* **States:**
-  * `STATE_APP_SPECIFIC_POSIX` (Default): Points to `/Android/data/com.maglev/files/Download`. Zero-copy, no runtime permissions, highest I/O throughput.
-  * `STATE_SAF_PENDING`: User taps `[Browse Directory]`. Fires `ACTION_OPEN_DOCUMENT_TREE` intent to Android file picker.
-  * `STATE_SAF_GRANTED`: Detached file descriptor (`pfd.detachFd()`) passed to Rust JNI bridge with persistable URI permission (`takePersistableUriPermission`).
-  * `STATE_AUTO_MOVE_ENABLED`: Completed torrent payloads are automatically relocated to secondary storage without blocking active transfers.
+### 3.7 Storage Directory Selector
+* The full state machine is in §2.1b. The row shows the folder name (for example `Download/Maglev`) and a **Change** button. When the folder is in staging mode, a caption reads "Copied to your folder when complete".

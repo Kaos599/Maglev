@@ -20,20 +20,20 @@ Unlike mainstream commercial torrent apps that suffer from battery drain, ad tra
 ┌─────────────────────────────────────────────────────────────┐
 │                 React Native / Expo UI Layer                │
 │  - Transfers Dashboard, Pieces Matrix, Search, Feeds, Settings
-│  - MMKV Persistent Settings Store (<10ms read/write)        │
+│  - expo-sqlite kv-store settings (sync read at boot)        │
 │  - Reactive System Governance Subscriptions                 │
 └──────────────────────────────┬──────────────────────────────┘
-                               │ JSI / Native Events (500ms Throttled)
+                               │ Expo Module async calls + 1s telemetry events (JSON)
 ┌──────────────────────────────▼──────────────────────────────┐
 │           Maglev Native Module (Expo Module / Kotlin)       │
 │  - Android ForegroundService (FOREGROUND_SERVICE_TYPE_DATA_SYNC)
 │  - NetworkCallback (Wi-Fi vs Cellular detection & SSID check)│
 │  - BatteryManager Monitor (Charging state & battery % cutoff)│
-│  - App-Specific Storage Resolver (/Android/data/com.maglev) │
-│  - JNI Dispatcher Thread (draining Rust MPSC telemetry queue)│
+│  - Storage: Download/Maglev default, SAF picker, staging   │
+│  - NativeCore JNI (JSON in/out, serialized IO dispatcher)  │
 │  - PartialWakeLock Manager (Acquire on leech / Release on idle)│
 └──────────────────────────────┬──────────────────────────────┘
-                               │ JNI DirectByteBuffer / C ABI
+                               │ JNI: JSON strings + one 256-byte DirectByteBuffer (pieces)
 ┌──────────────────────────────▼──────────────────────────────┐
 │           Native Rust BitTorrent Engine (librqbit)          │
 │  - BEP 3 (Wire), BEP 5 (DHT), BEP 9/10 (Metadata), BEP 55   │
@@ -68,7 +68,7 @@ Unlike mainstream commercial torrent apps that suffer from battery drain, ad tra
 * **Network Doze & Connectivity State:** When network connectivity is lost or firewalled during Doze (detected via `ConnectivityManager.NetworkCallback`), Maglev transitions the Rust engine to a low-power `DORMANT` state—halting DHT queries, freezing timers, and avoiding futile battery-draining retries.
 
 ### SLA-4: Storage & Native I/O Contract
-* **Primary Target (App-Specific Storage):** Default download directory is set to `/storage/emulated/0/Android/data/com.maglev/files/Download`. Retains **100% direct POSIX file path access** (`open`, `pwrite64`, `pread64`) without SAF permissions, without Binder IPC overhead, and without FUSE permission dialogs on Android 11–15.
+* **Storage policy:** defined in `docs/NATIVE_CONTRACT.md` §5. The default is the public `Download/Maglev` folder, which file managers can see and which uses direct POSIX I/O. A custom folder uses the SAF picker and writes directly when the tree maps to a writable path; otherwise it downloads to staging and copies on completion. The app-specific dir is only a fallback, and the UI shows a banner when it is in use.
 * **Secondary Target (SAF Custom Directory):** If the user selects a custom external directory via `ACTION_OPEN_DOCUMENT_TREE`, an async JNI storage adapter requests file descriptors on-demand only after BEP-9 metadata resolves, strictly detaching descriptors (`pfd.detachFd()`) before handing integer handles to Rust.
 * **Filesystem Allocation Fallback:** Rust disk I/O catches `EOPNOTSUPP` from `posix_fallocate` on Android FUSE emulation and falls back to `ftruncate` / sparse chunk writes.
 * **Auto-Move Relocation:** Completed files are automatically moved to destination directories using atomic renames or zero-blocking background I/O streams.

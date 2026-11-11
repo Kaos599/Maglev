@@ -17,7 +17,11 @@ local.properties
 
 # Rust / Cargo
 target/
+native/maglev-core/target/
 Cargo.lock
+
+# Cloud-compiled native binaries (built in CI, never committed)
+modules/maglev-engine/android/src/main/jniLibs/
 
 # Environment & Secrets
 .env

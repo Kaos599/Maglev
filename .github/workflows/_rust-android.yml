@@ -1,0 +1,109 @@
+name: Rust Android (reusable)
+
+# Cross-compiles native/maglev-core for every Android ABI and uploads one
+# artifact per ABI. Each artifact contains `<abi>/libmaglev_core.so`, so the
+# caller can merge them straight into jniLibs/.
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build ${{ matrix.abi }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: aarch64-linux-android
+            abi: arm64-v8a
+          - target: armv7-linux-androideabi
+            abi: armeabi-v7a
+          - target: x86_64-linux-android
+            abi: x86_64
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Cache Cargo build
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: native/maglev-core
+          key: ${{ matrix.target }}
+
+      - name: Setup Android NDK
+        uses: nttld/setup-ndk@v1
+        with:
+          ndk-version: r27c
+          add-to-path: true
+
+      - name: Install cargo-ndk
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-ndk
+
+      - name: Build release .so
+        working-directory: native/maglev-core
+        env:
+          # Android 15 requires 16 KB ELF page alignment.
+          RUSTFLAGS: "-C link-arg=-Wl,-z,max-page-size=16384"
+        run: cargo ndk --target ${{ matrix.target }} --platform 24 build --release
+
+      - name: Size and reality gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          SO="native/maglev-core/target/${{ matrix.target }}/release/libmaglev_core.so"
+          test -f "$SO" || { echo "FAIL: missing $SO"; exit 1; }
+          ls -l "$SO"
+          SIZE=$(stat -c %s "$SO")
+          if [ "$SIZE" -lt 3000000 ]; then
+            echo "FAIL: $SIZE bytes is below 3000000 (looks like a simulator stub)"
+            exit 1
+          fi
+          MATCHES=$(strings -a "$SO" | grep -oiE 'librqbit|dht' | wc -l || true)
+          echo "librqbit|dht matches: $MATCHES"
+          if [ "$MATCHES" -lt 5 ]; then
+            echo "FAIL: only $MATCHES librqbit|dht matches (need 5+)"
+            exit 1
+          fi
+
+      - name: Verify 16 KB LOAD alignment
+        shell: bash
+        run: |
+          set -euo pipefail
+          SO="native/maglev-core/target/${{ matrix.target }}/release/libmaglev_core.so"
+          READELF="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-readelf"
+          ALIGNS=$("$READELF" -lW "$SO" | awk '$1 == "LOAD" { print $NF }')
+          echo "LOAD segment alignments: $ALIGNS"
+          test -n "$ALIGNS" || { echo "FAIL: no LOAD segments found"; exit 1; }
+          for a in $ALIGNS; do
+            if [ "$a" != "0x4000" ]; then
+              echo "FAIL: LOAD align $a is not 0x4000 (16 KB)"
+              exit 1
+            fi
+          done
+
+      - name: Stage library
+        run: |
+          mkdir -p jniLibs-stage/${{ matrix.abi }}
+          cp native/maglev-core/target/${{ matrix.target }}/release/libmaglev_core.so \
+             jniLibs-stage/${{ matrix.abi }}/libmaglev_core.so
+
+      - name: Upload jniLibs artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: jniLibs-${{ matrix.abi }}
+          # Directory root is jniLibs-stage, so the artifact holds <abi>/libmaglev_core.so.
+          path: jniLibs-stage
+          if-no-files-found: error
+          retention-days: 7

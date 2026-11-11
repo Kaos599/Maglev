@@ -1,0 +1,132 @@
+name: CI
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  rust-test:
+    name: Rust tests (no JNI feature)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      - name: Cache Cargo build
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: native/maglev-core
+
+      - name: Run tests
+        run: cargo test --manifest-path native/maglev-core/Cargo.toml --no-default-features
+
+      - name: Clippy (non-blocking)
+        continue-on-error: true
+        run: cargo clippy --manifest-path native/maglev-core/Cargo.toml --no-default-features -- -D warnings
+
+  rust-android:
+    name: Rust Android
+    uses: ./.github/workflows/_rust-android.yml
+
+  apk:
+    name: Build APK
+    needs: rust-android
+    runs-on: ubuntu-latest
+    env:
+      ANDROID_HOME: /usr/local/lib/android/sdk
+      GRADLE_OPTS: "-Xmx4g -Dorg.gradle.jvmargs=-Xmx4g -Dorg.gradle.daemon=false"
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Accept Android SDK licenses
+        run: |
+          yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses 2>/dev/null || true
+
+      - name: Download jniLibs
+        uses: actions/download-artifact@v4
+        with:
+          pattern: jniLibs-*
+          merge-multiple: true
+          path: modules/maglev-engine/android/src/main/jniLibs
+
+      - name: Verify jniLibs layout
+        run: |
+          for abi in arm64-v8a armeabi-v7a x86_64; do
+            test -f "modules/maglev-engine/android/src/main/jniLibs/$abi/libmaglev_core.so" \
+              || { echo "Missing $abi/libmaglev_core.so"; find modules/maglev-engine/android/src/main/jniLibs -type f; exit 1; }
+          done
+          ls -l modules/maglev-engine/android/src/main/jniLibs/*/
+
+      - name: Install dependencies
+        run: npm ci --legacy-peer-deps || npm install --legacy-peer-deps
+
+      - name: Prebuild Android project
+        run: npx expo prebuild --platform android --clean
+
+      - name: Build release APKs
+        run: |
+          cd android
+          chmod +x gradlew
+          ./gradlew assembleRelease --stacktrace
+
+      - name: List APKs
+        run: ls -lh android/app/build/outputs/apk/release/*.apk
+
+      - name: Upload APKs
+        uses: actions/upload-artifact@v4
+        with:
+          name: apks
+          path: android/app/build/outputs/apk/release/*.apk
+          if-no-files-found: error
+          retention-days: 7
+
+  contracts:
+    name: Contract tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --legacy-peer-deps || npm install --legacy-peer-deps
+
+      - name: P3 reality contracts (non-blocking until P0s land)
+        continue-on-error: true
+        run: node scripts/test-p3-reality-contracts.js
+
+      - name: ABI splits
+        run: node scripts/test-abi-splits.js

@@ -11,8 +11,13 @@ permissions:
   contents: write
 
 jobs:
+  rust-android:
+    name: Rust Android
+    uses: ./.github/workflows/_rust-android.yml
+
   build-apk:
     name: Build Android APK
+    needs: rust-android
     runs-on: ubuntu-latest
     env:
       ANDROID_HOME: /usr/local/lib/android/sdk
@@ -39,6 +44,20 @@ jobs:
       - name: Accept Android SDK Licenses
         run: |
           yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses 2>/dev/null || yes | $ANDROID_HOME/cmdline-tools/16.0/bin/sdkmanager --licenses 2>/dev/null || true
+
+      - name: Download jniLibs
+        uses: actions/download-artifact@v4
+        with:
+          pattern: jniLibs-*
+          merge-multiple: true
+          path: modules/maglev-engine/android/src/main/jniLibs
+
+      - name: Verify jniLibs layout
+        run: |
+          for abi in arm64-v8a armeabi-v7a x86_64; do
+            test -f "modules/maglev-engine/android/src/main/jniLibs/$abi/libmaglev_core.so" \
+              || { echo "Missing $abi/libmaglev_core.so"; find modules/maglev-engine/android/src/main/jniLibs -type f; exit 1; }
+          done
 
       - name: Install dependencies
         run: npm ci --legacy-peer-deps || npm install --legacy-peer-deps

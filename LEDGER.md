@@ -314,6 +314,28 @@ Build **Maglev** — a frictionless, zero-drag, zero-bloat, native-speed Android
 
 ---
 
+### [2026-11-11] Reality audit and Phase 1 restart
+- **Finding:** the Rust core was a simulator, and librqbit was never called. The foreground service was broken and settings never persisted. The ledger had marked Phase 1 and Phase 2 complete on the strength of mock-only tests. Phase 1 is reopened.
+- **Added:**
+  - `scripts/test-p3-reality-contracts.js` (21 contracts, 12 of them P0).
+  - `docs/NATIVE_CONTRACT.md` (the JNI/JSON boundary).
+  - `docs/ROADMAP.md` (phases, state-machine priorities, phase-out list).
+  - Per-ABI release APKs via `plugins/withAbiSplits.js`.
+  - CI that builds the `.so` on every push behind a size, reality and 16 KB gate.
+- **Removed:**
+  - `PHASE_ROADMAP_AND_CONTRACTS.md` and `BITTORRENT_AND_NATIVE_RESEARCH.md`.
+  - `build-engine.yml`.
+  - The committed `.so` binaries.
+- **APK measurement (v0.1-beta, 85 MB):**
+  - 74.5 MB of native libs across 4 ABIs.
+  - 5.5 MB dex.
+  - 5.0 MB fonts (about 19 of the 27 font files are unused icon fonts).
+  - 2.8 MB JS bundle.
+- **AI provider research (for Phase 4):**
+  - One OpenAI-compatible `POST {base}/chat/completions` client with Bearer auth covers 19 of the 20 providers checked: OpenAI, Gemini (`generativelanguage.googleapis.com/v1beta/openai/`), Anthropic (`api.anthropic.com/v1/`, with limitations), OpenRouter, Groq, Mistral, DeepSeek, xAI, Together, Fireworks, Cerebras, Azure, Ollama, LM Studio, HF, NVIDIA NIM, DashScope, Moonshot and Cohere. Perplexity is partial.
+  - OpenRouter `:free` models allow 20 requests per minute and 50 per day, rising to 1,000 per day after $10 of credit purchases. Use OAuth PKCE and never embed a key in the app.
+  - Store keys with `expo-secure-store`.
+
 ## 📋 Master Workstream Checklist
 
 | Phase | Milestone | Scope | Status |
