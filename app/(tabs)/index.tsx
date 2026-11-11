@@ -1,7 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { BackHandler, FlatList, StyleSheet, TextInput, View } from 'react-native';
-import { useNavigation, useRouter } from 'expo-router';
-import { useTabBarStyle } from '../../components/tabBarStyle';
+import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { HeaderBar } from '../../components/HeaderBar';
 import { FilterPills } from '../../components/FilterPills';
@@ -32,8 +31,6 @@ export default function TransfersScreen() {
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const navigation = useNavigation();
-  const tabBarStyle = useTabBarStyle();
   const {
     telemetry,
     pauseTorrent,
@@ -84,10 +81,10 @@ export default function TransfersScreen() {
     if (next.size !== selectedIds.size) setSelectedIds(next);
   }, [all, selectedIds]);
 
-  // Selecting hides the tab bar so the bulk bar owns the bottom edge.
-  useEffect(() => {
-    navigation.setOptions({ tabBarStyle: selectionMode ? { display: 'none' } : tabBarStyle });
-  }, [navigation, selectionMode, tabBarStyle]);
+  // The tab bar stays mounted and visible during selection. The bulk bar sits above it (the screen
+  // ends where the tab bar begins), so no hide/show happens under the finger while a tap lands.
+  // Hiding it used to re-show the bar in the same frame as the Pause tap, and the follow-up touch
+  // reached the Search tab.
 
   // Android Back leaves selection mode before anything else.
   useEffect(() => {
@@ -134,7 +131,8 @@ export default function TransfersScreen() {
   const bulk = useCallback(
     async (fn: (id: string) => Promise<boolean>) => {
       const ids = [...selectedIds];
-      exitSelection();
+      // Leave selection after the press has fully finished, never inside the onPress frame.
+      setTimeout(exitSelection, 0);
       await Promise.all(ids.map(fn));
     },
     [selectedIds, exitSelection],

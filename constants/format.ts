@@ -1,13 +1,14 @@
+const BYTE_UNITS = ['B', 'KB', 'MB', 'GB', 'TB'];
+
+/** Total: anything that is not a positive finite number reads as "0 B". Fractions below 1 B round to 0 B. */
 export function formatBytes(bytes: number): string {
-  if (bytes <= 0) return '0 B';
-  const units = ['B', 'KB', 'MB', 'GB', 'TB'];
-  const i = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
+  if (typeof bytes !== 'number' || !Number.isFinite(bytes) || bytes < 1) return '0 B';
+  const i = Math.min(Math.max(Math.floor(Math.log(bytes) / Math.log(1024)), 0), BYTE_UNITS.length - 1);
   const val = bytes / Math.pow(1024, i);
-  return `${val.toFixed(i === 0 ? 0 : 1)} ${units[i]}`;
+  return `${val.toFixed(i === 0 ? 0 : 1)} ${BYTE_UNITS[i]}`;
 }
 
 export function formatSpeed(bytesPerSec: number): string {
-  if (bytesPerSec <= 0) return '0 B/s';
   return `${formatBytes(bytesPerSec)}/s`;
 }
 

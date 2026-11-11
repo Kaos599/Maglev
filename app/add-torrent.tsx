@@ -28,6 +28,8 @@ const RESERVE_BYTES = 200 * 1024 * 1024;
 const LOW_SPACE_BYTES = 1024 * 1024 * 1024;
 /** Android hands VIEW intents over as file:// or content:// URIs; Kotlin reads both. */
 const LOCAL_SOURCE = /^(file|content):\/\//i;
+/** The same file with its scheme stripped on the way in: an absolute path ending in .torrent. */
+const BARE_TORRENT_PATH = /^\/[^?#]*\.torrent$/i;
 
 interface Folder {
   uri: string;
@@ -148,10 +150,10 @@ export default function AddTorrentScreen() {
         return;
       }
       fromFileRef.current = false;
-      if (LOCAL_SOURCE.test(input)) {
+      if (LOCAL_SOURCE.test(input) || BARE_TORRENT_PATH.test(input)) {
         // A .torrent handed over by another app. The engine reads the path or content URI itself.
         fromFileRef.current = true;
-        void resolve(input);
+        void resolve(BARE_TORRENT_PATH.test(input) ? `file://${input}` : input);
         return;
       }
       const parsed = parseSource(input);
@@ -491,6 +493,7 @@ export default function AddTorrentScreen() {
           title="File priority"
           subtitle={prioFile?.path.split('/').pop()}
           current={prioFile ? (!selected.has(prioFile.index) ? 'skip' : firsts.has(prioFile.index) ? 'first' : 'normal') : null}
+          skipBytes={prioFile?.length}
           onSelect={(p) => prioFile && applyPriority(prioFile.index, p)}
         />
       </Screen>
