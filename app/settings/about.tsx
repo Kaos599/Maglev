@@ -8,6 +8,7 @@ import { useTheme } from '../../context/ThemeContext';
 import { ListRow } from '../../components/ui';
 import { Card, SettingsPage } from '../../components/settings/SettingsParts';
 import { Wordmark } from '../../components/settings/Wordmark';
+import { MaglevMark } from '../../components/brand/MaglevMark';
 
 const REPO_URL = 'https://github.com/Kaos599/Maglev';
 
@@ -44,6 +45,7 @@ export default function AboutSettings() {
     <SettingsPage title="ABOUT">
       <Stack.Screen options={{ headerShown: false }} />
       <View style={s.brand}>
+        <MaglevMark height={64} cruising />
         <Wordmark />
       </View>
       <Card>
@@ -67,5 +69,5 @@ export default function AboutSettings() {
 
 const makeStyles = (c: ThemeColors) =>
   StyleSheet.create({
-    brand: { alignItems: 'center', paddingVertical: spacing.xxl },
+    brand: { alignItems: 'center', gap: spacing.lg, paddingVertical: spacing.xxl },
   });

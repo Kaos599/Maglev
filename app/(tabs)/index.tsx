@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { BackHandler, FlatList, StyleSheet, TextInput, View } from 'react-native';
-import { useFocusEffect, useRouter } from 'expo-router';
+import { useFocusEffect, useIsFocused, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { HeaderBar } from '../../components/HeaderBar';
 import { FilterPills } from '../../components/FilterPills';
@@ -57,6 +57,8 @@ export default function TransfersScreen() {
   const [fileError, setFileError] = useState<string | null>(null);
 
   const all = telemetry.torrents;
+  const focused = useIsFocused();
+  const cruising = focused && all.some((t) => t.state === 'DOWNLOADING');
   const selectionMode = selectedIds.size > 0;
 
   const counts = useMemo(() => countByFilter(all), [all]);
@@ -233,6 +235,7 @@ export default function TransfersScreen() {
   return (
     <View style={[styles.root, { paddingTop: insets.top }]}>
       <HeaderBar
+        cruising={cruising}
         selection={
           selectionMode
             ? { count: selectedIds.size, allSelected: selectedIds.size === visible.length, onClose: exitSelection, onSelectAll: selectAll }

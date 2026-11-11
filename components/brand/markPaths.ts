@@ -6,3 +6,12 @@ export const MARK_LINES = 'M16 46.5 H37 V48 H16 Z M10 55.5 H33 V57 H10 Z M18 67.
 export const MARK_RAILS = 'M20 79.5 H29 V80.75 H20 Z M34 79.5 H67 V80.75 H68.5 V82 H70 V83.25 H40.5 V82 H36 V80.75 H34 Z M71 79.5 H112.5 V80.75 H111 V82 H108.5 V83.25 H74.5 V82 H72.5 V80.75 H71 Z';
 export const MARK_LIME = '#A5FB48';
 export const MARK_CYAN = '#01E5EF';
+/** Speed-line sprites: rect in viewBox units, loop length, and frames of [dx units, opacity]. */
+export const MARK_STREAKS: { x: number; y: number; w: number; h: number; ms: number; frames: [number, number][] }[] = [
+  { x: 16, y: 46.5, w: 21, h: 1.5, ms: 560, frames: [[6, 1], [4, 1], [1.5, 1], [-1, 1], [-3, 1], [-5, 1], [-7.5, 0.5], [-10, 0.25]] },
+  { x: 10, y: 55.5, w: 23, h: 1.5, ms: 720, frames: [[-3, 1], [-5, 1], [-6.5, 0.75], [-8.5, 0.5], [-10.5, 0.5], [-12, 0.25], [-14, 0], [4.5, 1], [2.5, 1], [0.5, 1], [-1, 1]] },
+  { x: 18, y: 67.5, w: 15, h: 1.5, ms: 480, frames: [[-5.5, 0.75], [-7.5, 0.5], [-10, 0], [3, 1], [1, 1], [-1, 1], [-3.5, 1]] },
+  { x: 12, y: 73, w: 13, h: 1.5, ms: 640, frames: [[1, 1], [0, 1], [-2, 1], [-3, 1], [-5, 0.75], [-6, 0.5], [-8, 0.25], [-9, 0.25], [4, 1], [3, 1]] },
+];
+/** Hover bob: loop length and frames of dy units (negative is up). */
+export const MARK_BOB = { ms: 1600, frames: [0, 0, 0, 0, -0.5, -1, -1, -1, -1, -0.5] };

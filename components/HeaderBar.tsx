@@ -1,8 +1,9 @@
 import React, { useMemo } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { useTheme } from '../context/ThemeContext';
-import { ThemeColors, radius, spacing, type } from '../constants/theme';
+import { ThemeColors, spacing, type } from '../constants/theme';
 import { IconButton } from './ui';
+import { MaglevMark } from './brand/MaglevMark';
 
 export interface HeaderSelection {
   count: number;
@@ -16,9 +17,11 @@ export interface HeaderBarProps {
   actions?: React.ReactNode;
   /** When set, the header swaps to the multi-select layout. */
   selection?: HeaderSelection;
+  /** Animate the brand mark (the Transfers tab sets this while something downloads). */
+  cruising?: boolean;
 }
 
-export function HeaderBar({ actions, selection }: HeaderBarProps) {
+export function HeaderBar({ actions, selection, cruising = false }: HeaderBarProps) {
   const { colors } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
@@ -43,9 +46,7 @@ export function HeaderBar({ actions, selection }: HeaderBarProps) {
   return (
     <View style={styles.bar}>
       <View style={styles.brand}>
-        <View style={styles.tile}>
-          <Text style={styles.tileText}>M</Text>
-        </View>
+        <MaglevMark height={22} cruising={cruising} />
         <Text style={styles.brandTitle} accessibilityRole="header">
           MAGLEV
         </Text>
@@ -67,8 +68,6 @@ const makeStyles = (c: ThemeColors) =>
       borderBottomColor: c.border,
     },
     brand: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: spacing.md, paddingLeft: spacing.sm },
-    tile: { width: 28, height: 28, borderRadius: radius.sm, backgroundColor: c.accent, alignItems: 'center', justifyContent: 'center' },
-    tileText: { ...type.brand, fontSize: 13, color: c.onAccent },
     brandTitle: { ...type.brand, fontSize: 14, color: c.text },
     actions: { flexDirection: 'row', alignItems: 'center' },
     selectedText: { ...type.bodyStrong, fontSize: 17, color: c.text, flex: 1, marginLeft: spacing.xs },
