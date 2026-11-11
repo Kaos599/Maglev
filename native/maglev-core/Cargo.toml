@@ -22,6 +22,13 @@ parking_lot = "0.12"
 bytes = "1"
 tracing = "0.1"
 
+# reqwest 0.13's `rustls` feature hard-wires rustls-platform-verifier, which on Android needs a JNI
+# init plus a Kotlin companion component. reqwest has no feature to pick another verifier and
+# librqbit builds its own reqwest::Client, so the crate is replaced by a local one with the same
+# API that verifies against the bundled Mozilla roots (webpki-roots). See vendor/ README comment.
+[patch.crates-io]
+rustls-platform-verifier = { path = "vendor/rustls-platform-verifier" }
+
 [features]
 default = ["jni-bridge"]
 jni-bridge = []

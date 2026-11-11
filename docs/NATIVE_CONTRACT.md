@@ -123,7 +123,7 @@ UI rule: if a setting is "stored only", **hide it or show it as unavailable**. N
 | Tracker status | Not exposed; always `unknown` | Show the tracker URL only, no status badge |
 | Peer progress | Not exposed (`0.0`) | Hide per-peer progress |
 | Recheck | Implemented as forget + re-add from bytes | OK, but show "Checking files…" |
-| **HTTPS (trackers, `.torrent` URLs)** | reqwest 0.13 `rustls` uses rustls-platform-verifier, which needs Android JNI init with a Context | **P0 follow-up.** Either init the verifier via a new JNI entry, or switch to a webpki-roots verifier. Until then Kotlin downloads `https://` `.torrent` URLs and passes a file path. |
+| HTTPS (trackers, `.torrent` URLs) | **Fixed.** `[patch.crates-io]` swaps `rustls-platform-verifier` for a local shim (`native/maglev-core/vendor/`) that verifies against bundled Mozilla roots (`webpki-roots`). No JNI is needed. Certificates the user installed on the device are not trusted. | The shim must keep matching the API reqwest 0.13 calls (`Verifier::new`, `new_with_extra_roots`). |
 | Proxy | SOCKS5 covers peer TCP + HTTP; DHT/UDP trackers bypass it | Settings copy must say so |
 | Listener | TCP + IPv4 only | uTP is opt-in upstream (Phase 3) |
 | Logs | No subscriber on Android | Phase 2: `android_logger` behind a debug flag |

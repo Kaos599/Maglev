@@ -1,0 +1,15 @@
+[package]
+name = "rustls-platform-verifier"
+# Must satisfy reqwest 0.13's requirement `rustls-platform-verifier = "0.6"`.
+version = "0.6.99"
+edition = "2021"
+description = "Maglev drop-in replacement: same Verifier API, verifies against bundled Mozilla roots"
+license = "MIT OR Apache-2.0"
+publish = false
+
+# Standalone so cargo never mistakes the parent package for a workspace root.
+[workspace]
+
+[dependencies]
+rustls = { version = "0.23.27", default-features = false, features = ["std"] }
+webpki-roots = "1"

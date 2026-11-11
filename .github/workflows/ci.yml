@@ -34,6 +34,9 @@ jobs:
       - name: Run tests
         run: cargo test --manifest-path native/maglev-core/Cargo.toml --no-default-features
 
+      - name: Run TLS verifier shim tests
+        run: cargo test --manifest-path native/maglev-core/vendor/rustls-platform-verifier/Cargo.toml
+
       - name: Clippy (non-blocking)
         continue-on-error: true
         run: cargo clippy --manifest-path native/maglev-core/Cargo.toml --no-default-features -- -D warnings

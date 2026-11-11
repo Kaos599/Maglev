@@ -55,10 +55,14 @@ pub fn parse_source(raw: &str) -> Result<Source, EngineError> {
     ))
 }
 
-/// Secure (https) sources can't be fetched until Android TLS verification is initialised.
+/// librqbit's HTTP client verifies certificates with the bundled Mozilla roots (see
+/// `vendor/rustls-platform-verifier`), so https works without any JNI setup. Flip this to
+/// `false` to reject https sources again.
+const HTTPS_SUPPORTED: bool = true;
+
 pub fn check_supported(src: &Source) -> Result<(), EngineError> {
     if let Source::Url(u) = src {
-        if u.to_ascii_lowercase().starts_with("https://") {
+        if !HTTPS_SUPPORTED && u.to_ascii_lowercase().starts_with("https://") {
             return Err(EngineError::new(
                 ErrorCode::Unsupported,
                 "Secure (https) torrent links aren't supported yet. Download the .torrent file and open it instead.",
@@ -262,10 +266,8 @@ mod tests {
     }
 
     #[test]
-    fn https_sources_are_unsupported_for_now() {
-        let e = check_supported(&parse_source("https://example.org/a.torrent").unwrap()).unwrap_err();
-        assert_eq!(e.code, ErrorCode::Unsupported);
-        assert!(e.message.starts_with("Secure (https) torrent links"));
+    fn https_sources_are_supported() {
+        assert!(check_supported(&parse_source("https://example.org/a.torrent").unwrap()).is_ok());
         assert!(check_supported(&parse_source("http://example.org/a.torrent").unwrap()).is_ok());
         assert!(check_supported(&parse_source(&format!("magnet:?xt=urn:btih:{}", "a".repeat(40))).unwrap()).is_ok());
     }
