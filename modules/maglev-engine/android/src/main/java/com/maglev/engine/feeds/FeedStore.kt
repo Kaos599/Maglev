@@ -96,12 +96,17 @@ object FeedStore {
         synchronized(lock) { writePending(c, readPending(c) + items) }
     }
 
-    /** Removes [done] entries (by source) from the queue. Entries added meanwhile stay. */
+    /**
+     * Removes [done] entries (by source) from the queue and only now marks their episodes as seen.
+     * [done] is what the drain finished: added, or already present. Entries kept for retry never get here,
+     * so a failed add leaves its episode free. Entries added meanwhile stay.
+     */
     fun remove(c: Context, done: Collection<PendingAdd>) {
         if (done.isEmpty()) return
         synchronized(lock) {
             val sources = done.map { it.ruleId + "|" + it.source }.toSet()
             writePending(c, readPending(c).filterNot { sources.contains(it.ruleId + "|" + it.source) })
+            for ((ruleId, eps) in FeedEpisodes.byRule(done)) saveSeenEpisodes(c, ruleId, seenEpisodes(c, ruleId) + eps)
         }
     }
 

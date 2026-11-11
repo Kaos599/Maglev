@@ -70,6 +70,37 @@
             "BROWSABLE",
             "DEFAULT"
           ]
+        },
+        {
+          "action": "SEND",
+          "data": [
+            {
+              "mimeType": "text/plain"
+            },
+            {
+              "mimeType": "application/x-bittorrent"
+            },
+            {
+              "mimeType": "application/x-torrent"
+            }
+          ],
+          "category": [
+            "DEFAULT"
+          ]
+        },
+        {
+          "action": "SEND_MULTIPLE",
+          "data": [
+            {
+              "mimeType": "application/x-bittorrent"
+            },
+            {
+              "mimeType": "application/x-torrent"
+            }
+          ],
+          "category": [
+            "DEFAULT"
+          ]
         }
       ],
       "versionCode": 5
@@ -81,7 +112,9 @@
     "plugins": [
       "expo-router",
       "./plugins/withAbiSplits.js",
-      "./plugins/withSizeReduction.js"
+      "./plugins/withSizeReduction.js",
+      "./plugins/withShareIntents.js",
+      "./plugins/withBackupRules.js"
     ],
     "experiments": {
       "typedRoutes": true

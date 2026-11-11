@@ -5,6 +5,8 @@
  * returns `string | Promise<string | null> | null`; a falsy value means no redirect).
  */
 
+import { parsePackedShare, setShareQueue } from '../utils/shareQueue';
+
 const ADD_ROUTE = '/add-torrent';
 
 function addRoute(source: string): string {
@@ -19,6 +21,13 @@ function isTorrentLocation(url: string): boolean {
 export function redirectSystemPath({ path }: { path: string; initial: boolean }): string {
   try {
     const raw = (path ?? '').trim();
+    // Several files shared at once: open the first now, queue the rest for the Transfers screen.
+    const packed = parsePackedShare(raw);
+    if (packed) {
+      if (packed.length === 0) return '/';
+      setShareQueue(packed.slice(1));
+      return addRoute(packed[0]);
+    }
     if (/^magnet:/i.test(raw)) return addRoute(raw);
     if (/^content:\/\//i.test(raw) || /^file:\/\//i.test(raw)) return addRoute(raw);
     if (/^https?:\/\//i.test(raw) && isTorrentLocation(raw)) return addRoute(raw);

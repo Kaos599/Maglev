@@ -1,10 +1,10 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { BackHandler, FlatList, StyleSheet, TextInput, View } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { HeaderBar } from '../../components/HeaderBar';
 import { FilterPills } from '../../components/FilterPills';
-import { CARD_GAP, CARD_HEIGHT, TransferCard } from '../../components/TransferCard';
+import { CARD_GAP, TransferCard } from '../../components/TransferCard';
 import { FloatingActionButton } from '../../components/FloatingActionButton';
 import { SpeedTelemetryHeader } from '../../components/SpeedTelemetryHeader';
 import { BulkBar } from '../../components/transfers/BulkBar';
@@ -20,10 +20,10 @@ import { triggerHaptic } from '../../constants/haptics';
 import { useMaglevEngine } from '../../context/EngineContext';
 import { useTheme } from '../../context/ThemeContext';
 import { ThemeColors, radius, spacing, type } from '../../constants/theme';
+import { takeNextShared } from '../../utils/shareQueue';
+import { BulkVerb, bulkSummary } from '../../utils/bulkSummary';
 import { TransferSort, loadTransferSort, saveTransferSort } from '../../utils/prefs/transfers';
 
-const ITEM_SPAN = CARD_HEIGHT + CARD_GAP;
-const getItemLayout = (_: unknown, index: number) => ({ length: ITEM_SPAN, offset: ITEM_SPAN * index, index });
 const Separator = () => <View style={{ height: CARD_GAP }} />;
 
 export default function TransfersScreen() {
@@ -40,6 +40,7 @@ export default function TransfersScreen() {
     deleteTorrent,
     removeTorrents,
     notice,
+    showNotice,
     dismissNotice,
     clipboardMagnet,
     clearClipboardMagnet,
@@ -129,13 +130,16 @@ export default function TransfersScreen() {
   }, []);
 
   const bulk = useCallback(
-    async (fn: (id: string) => Promise<boolean>) => {
+    async (verb: BulkVerb, fn: (id: string) => Promise<boolean>) => {
       const ids = [...selectedIds];
       // Leave selection after the press has fully finished, never inside the onPress frame.
       setTimeout(exitSelection, 0);
-      await Promise.all(ids.map(fn));
+      const results = await Promise.all(ids.map((id) => fn(id).catch(() => false)));
+      // One notice for the whole action. It replaces the per-row "Couldn't pause X" notices.
+      const summary = bulkSummary(verb, results);
+      if (summary) showNotice({ message: summary });
     },
-    [selectedIds, exitSelection],
+    [selectedIds, exitSelection, showNotice],
   );
   const selectedBytes = useMemo(
     () => all.reduce((sum, t) => (selectedIds.has(t.id) ? sum + t.downloadedBytes : sum), 0),
@@ -145,7 +149,7 @@ export default function TransfersScreen() {
     (deleteFiles: boolean) => {
       setDeleteOpen(false);
       if (deleteFiles) {
-        void bulk((id) => deleteTorrent(id, true));
+        void bulk('Deleted', (id) => deleteTorrent(id, true));
       } else {
         // Keep files: the rows leave now and the notice offers Undo for 5 seconds.
         const ids = [...selectedIds];
@@ -154,6 +158,14 @@ export default function TransfersScreen() {
       }
     },
     [bulk, deleteTorrent, removeTorrents, selectedIds, exitSelection],
+  );
+
+  // Files shared together: when this screen is focused again (the add flow closed), open the next one.
+  useFocusEffect(
+    useCallback(() => {
+      const next = takeNextShared();
+      if (next) router.push({ pathname: '/add-torrent', params: { source: next } });
+    }, [router]),
   );
 
   const goAdd = useCallback(() => router.push('/add-torrent'), [router]);
@@ -300,7 +312,6 @@ export default function TransfersScreen() {
               renderItem={renderItem}
               extraData={selectedIds}
               ItemSeparatorComponent={Separator}
-              getItemLayout={getItemLayout}
               contentContainerStyle={{ paddingTop: spacing.xs, paddingBottom: listBottom }}
               initialNumToRender={8}
               windowSize={7}
@@ -313,8 +324,8 @@ export default function TransfersScreen() {
       {selectionMode ? (
         <BulkBar
           disabled={false}
-          onPause={() => void bulk(pauseTorrent)}
-          onResume={() => void bulk(resumeTorrent)}
+          onPause={() => void bulk('Paused', pauseTorrent)}
+          onResume={() => void bulk('Resumed', resumeTorrent)}
           onDelete={() => setDeleteOpen(true)}
         />
       ) : (

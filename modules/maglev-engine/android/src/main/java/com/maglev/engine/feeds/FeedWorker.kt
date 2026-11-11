@@ -67,6 +67,10 @@ class FeedWorker(context: Context, params: WorkerParameters) : CoroutineWorker(c
         if (!cfg.enabled) return Result.success()
         var error: String? = null
         val queued = ArrayList<PendingAdd>()
+        // Episodes already added or queued, per rule. Kept in memory for this run only: an episode is
+        // persisted as seen by FeedStore.remove after its add succeeds.
+        val queuedBefore = FeedStore.pending(c)
+        val episodes = HashMap<String, MutableSet<String>>()
         for (feed in cfg.feeds) {
             try {
                 val bytes = fetch(feed.url)
@@ -75,7 +79,7 @@ class FeedWorker(context: Context, params: WorkerParameters) : CoroutineWorker(c
                     error = "Could not read ${feed.name}."
                     continue
                 }
-                queued.addAll(process(c, cfg, feed, items))
+                queued.addAll(process(c, cfg, feed, items, queuedBefore, episodes))
             } catch (t: Throwable) {
                 Log.w(TAG, "feed ${feed.id} failed", t)
                 error = "Could not read ${feed.name}."
@@ -88,7 +92,14 @@ class FeedWorker(context: Context, params: WorkerParameters) : CoroutineWorker(c
     }
 
     /** Applies the seen-set and the rules to one feed. Returns the new matches. */
-    private fun process(c: Context, cfg: FeedConfig, feed: FeedSource, items: List<FeedItem>): List<PendingAdd> {
+    private fun process(
+        c: Context,
+        cfg: FeedConfig,
+        feed: FeedSource,
+        items: List<FeedItem>,
+        queuedBefore: List<PendingAdd>,
+        episodes: MutableMap<String, MutableSet<String>>,
+    ): List<PendingAdd> {
         val seen = FeedStore.seen(c, feed.id)
         val keys = items.map { FeedStore.seenKey(feed.id, it) }
         if (seen == null) {
@@ -98,7 +109,6 @@ class FeedWorker(context: Context, params: WorkerParameters) : CoroutineWorker(c
         }
         val seenSet = HashSet(seen)
         val rules = cfg.rules.filter { it.enabled && (it.feedIds.isEmpty() || it.feedIds.contains(feed.id)) }
-        val episodes = HashMap<String, MutableSet<String>>()
         val out = ArrayList<PendingAdd>()
         // Feeds list newest first. Walk oldest first so "new_only" keeps the earliest release of an episode.
         for (i in items.indices.reversed()) {
@@ -108,7 +118,7 @@ class FeedWorker(context: Context, params: WorkerParameters) : CoroutineWorker(c
             seen.add(key)
             val source = item.source ?: continue
             for (rule in rules) {
-                val eps = episodes.getOrPut(rule.id) { FeedStore.seenEpisodes(c, rule.id) }
+                val eps = episodes.getOrPut(rule.id) { FeedStore.seenEpisodes(c, rule.id).apply { addAll(FeedEpisodes.inFlight(queuedBefore, rule.id)) } }
                 if (!FeedRuleMatcher.matches(rule, item.title, eps)) continue
                 FeedRuleMatcher.episodeKey(item.title)?.let { eps.add(it) }
                 out.add(PendingAdd(feed.id, rule.id, rule.name, item.title, source, rule.startPaused))
@@ -116,7 +126,6 @@ class FeedWorker(context: Context, params: WorkerParameters) : CoroutineWorker(c
             }
         }
         FeedStore.saveSeen(c, feed.id, seen)
-        for ((ruleId, eps) in episodes) FeedStore.saveSeenEpisodes(c, ruleId, eps)
         return out
     }
 
