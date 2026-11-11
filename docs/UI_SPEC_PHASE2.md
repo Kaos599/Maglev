@@ -254,3 +254,52 @@ TS-only items are listed here. Native items (MediaStore indexing, resolve activi
 - A new onboarding step after Background: "Download on mobile data?" The options are **Wi-Fi only (recommended)**, which is pre-selected, and **Wi-Fi and mobile data**.
 - The step saves the existing Wi-Fi-only setting.
 - **Defaults:** for a fresh install the default becomes Wi-Fi only. Users who have already finished onboarding keep their current value. Never change it silently.
+
+## S11. Wave 4.6: device-test fixes and polish (user-approved 2026-11-11)
+
+The reference design is https://claude.ai/artifact/15UyikwfrRKdpkcfQvVe8j (Files tab, priority sheet, light palette).
+
+### S11.1 File row states (`components/detail/FileListRow.tsx`)
+- **Downloading:** file icon in `download`, bar in `download`, label `42% · 1.2 GB`.
+- **Paused** (torrent paused): icon and bar in `paused`, label `30% · Paused · 96 MB`.
+- **Done:** a `check` icon in `success` replaces the file icon. No bar. The label reads `Done · 64 MB`, with "Done" in `success`.
+- **Skipped:** transparent background, dashed border (`border`), opacity 0.6, faint icon, label `Skipped · 4.9 GB`. No strikethrough, no Skip chip and no ⋮ button.
+- **First chip:** keeps the lime chip and uses the new `firstBg`, `firstFg` and `firstBorder` tokens.
+
+### S11.2 Priority sheet (`components/detail/PrioritySheet.tsx`)
+- Three option cards (a new `components/ui/RadioCard.tsx`): a 32 px icon box, a mono title, a body description and a square pixel radio (2 px border, with an 8 px filled square when selected).
+- **Selected card:** border `selBorder`, background `selBg`. The Skip card is dashed and faded when not selected.
+- **Copy:**
+  - Download first: "Fetched before the other files. Same speed, earlier turn." with the First chip.
+  - Normal: "In torrent order with the rest."
+  - Skip: "Not downloaded. Saves <size>, leaves <free> free." For several files, use the sum. Free space comes from `getFreeSpace()`. If that is unknown, use "Not downloaded. Saves <size>."
+  - Footer: "Changes apply at once. You can change it again any time."
+- Accessibility: `radio` role, `checked` state and a 44 px minimum.
+
+### S11.3 Light palette (`constants/theme.ts`, light mode only)
+- **Colours:** `accent` = `#4D7C0F`, `accentText` = `#3F6212`, `download` = `#0369A1`, `upload` = `#3F6212`, `success` = `#15803D`.
+- **New semantic tokens in every mode:** `firstBg`, `firstFg`, `firstBorder`, `selBg`, `selBorder`.
+  - Dark modes: `alpha(accent, .10)`, `accentText`, `accent`, `alpha(accent, .08)`, `accent`.
+  - Light: `#D9F99D`, `#1A2E05`, `#4D7C0F`, `#F4FCE3`, `#4D7C0F`.
+- Update the contrast table in the header comment. Every text role must stay at 4.5:1 or above on `bg`.
+- Accent fills with `onAccent` text (buttons) must still pass 4.5:1. Check white on `#4D7C0F` and use `#3F6212` for fills if it fails.
+
+### S11.4 Bugs from the device test
+1. **Unknown speed unit.** The Transfers header showed "↓ 4.1 undefined/s" while a magnet was still getting its info. Find the speed formatter that can return an undefined unit (NaN or an out-of-range index) and make every speed formatter total and safe. Add a test.
+2. **Opening a `.torrent` via a `file://` VIEW intent** put the path in the paste box with "That isn't a magnet link or torrent file". `file://` and `content://` URIs that end in `.torrent`, or that arrive with the torrent MIME type, must go straight to resolving, the same as the document picker.
+3. **Long-press, then Pause in the bulk bar, opened a search box** (reported by the user, not yet reproduced). The bulk bar replaces the hidden tab bar, and the tab bar is shown again in the same frame the tap is handled. Make the bulk bar not depend on hiding the tab bar: keep the tab bar mounted and hidden for the whole press (delay exiting selection until the press has ended, e.g. `requestAnimationFrame` after `onPress`), or place the bulk bar above it. Also check that no header control (search toggle) sits under the selection header's controls. Write down which cause you found.
+
+### S11.5 About
+Settings → About gets a "Built by Kaos" row with the GitHub icon (or `link`). It opens `https://github.com/Kaos599` with `Linking.openURL` and shows the handle `Kaos599` as its value.
+
+### S11.6 Snappier screen changes
+- The user finds Settings → Storage → Back slow.
+- Measure before changing anything:
+  - which navigator the root `Stack` uses (expo-router uses native-stack, where `animationDuration` is iOS-only),
+  - how long the Android transition takes,
+  - whether the pushed screen or the screen we return to does heavy work on mount or focus (a context re-render, a sync storage read, an effect that waits).
+- Then:
+  - Pick the fastest Android animation available in the installed react-native-screens version that still shows direction. Read its source for the supported `animation` values and any Android duration control, and cite them.
+  - Remove the JS work in the path: memoise the Settings rows and defer non-visible work with `InteractionManager` or after the transition.
+  - Make sure the back gesture and the hardware back button pop at once.
+- Report before and after numbers if you can measure them. Otherwise report the transition values you used.
