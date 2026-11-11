@@ -1,0 +1,14 @@
+# Recorded-style stream: OpenAI Chat Completions, output cut off by max tokens (finish_reason "length").
+# Shape from the OpenAI API reference (Chat Completions, streaming):
+#   https://platform.openai.com/docs/api-reference/chat-streaming
+# (Page returned HTTP 403 during authoring; format per the documented chunk schema.)
+# Lines starting with "# " are fixture comments. The parser ignores them (no "data" field).
+
+data: {"id":"chatcmpl-L1","object":"chat.completion.chunk","created":1730000500,"model":"gpt-4o-mini","choices":[{"index":0,"delta":{"role":"assistant","content":"Here are the options I found, sorted by"},"finish_reason":null}]}
+
+data: {"id":"chatcmpl-L1","object":"chat.completion.chunk","created":1730000500,"model":"gpt-4o-mini","choices":[{"index":0,"delta":{"content":" fit:\n1."},"finish_reason":null}]}
+
+data: {"id":"chatcmpl-L1","object":"chat.completion.chunk","created":1730000500,"model":"gpt-4o-mini","choices":[{"index":0,"delta":{},"finish_reason":"length"}]}
+
+data: [DONE]
+

@@ -1,0 +1,23 @@
+# Recorded-style stream: OpenAI Chat Completions, text only.
+# Shape from the OpenAI API reference (Chat Completions, streaming):
+#   https://platform.openai.com/docs/api-reference/chat/create
+#   https://platform.openai.com/docs/api-reference/chat-streaming
+# Note: the streaming reference page returned HTTP 403 to the fetcher during authoring,
+# so this shape is from the documented format, not re-verified against the live page.
+# Lines starting with "# " are fixture comments. The parser ignores them (no "data" field).
+# Key stripped; ids shortened.
+
+data: {"id":"chatcmpl-A1","object":"chat.completion.chunk","created":1730000000,"model":"gpt-4o-mini","system_fingerprint":"fp_1","choices":[{"index":0,"delta":{"role":"assistant","content":""},"logprobs":null,"finish_reason":null}]}
+
+data: {"id":"chatcmpl-A1","object":"chat.completion.chunk","created":1730000000,"model":"gpt-4o-mini","system_fingerprint":"fp_1","choices":[{"index":0,"delta":{"content":"Your download is "},"logprobs":null,"finish_reason":null}]}
+
+data: {"id":"chatcmpl-A1","object":"chat.completion.chunk","created":1730000000,"model":"gpt-4o-mini","system_fingerprint":"fp_1","choices":[{"index":0,"delta":{"content":"stuck at 99%, usually"},"logprobs":null,"finish_reason":null}]}
+
+data: {"id":"chatcmpl-A1","object":"chat.completion.chunk","created":1730000000,"model":"gpt-4o-mini","system_fingerprint":"fp_1","choices":[{"index":0,"delta":{"content":" because no peers are left."},"logprobs":null,"finish_reason":null}]}
+
+data: {"id":"chatcmpl-A1","object":"chat.completion.chunk","created":1730000000,"model":"gpt-4o-mini","system_fingerprint":"fp_1","choices":[{"index":0,"delta":{},"logprobs":null,"finish_reason":"stop"}]}
+
+data: {"id":"chatcmpl-A1","object":"chat.completion.chunk","created":1730000000,"model":"gpt-4o-mini","system_fingerprint":"fp_1","choices":[],"usage":{"prompt_tokens":812,"completion_tokens":14,"total_tokens":826}}
+
+data: [DONE]
+

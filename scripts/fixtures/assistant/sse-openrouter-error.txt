@@ -1,0 +1,18 @@
+# Recorded-style stream: OpenRouter, provider error mid-stream after partial text.
+# HTTP status is 200 because headers were already sent. The error arrives as a chunk with a
+# top-level "error" object and finish_reason "error". Shape from the OpenRouter streaming docs:
+#   https://openrouter.ai/docs/api/reference/streaming
+# Lines starting with "# " are fixture comments. The parser ignores them (no "data" field).
+
+: OPENROUTER PROCESSING
+
+data: {"id":"gen-2","object":"chat.completion.chunk","created":1730000300,"model":"openai/gpt-4o-mini","provider":"OpenAI","choices":[{"index":0,"delta":{"role":"assistant","content":"The download needs "},"finish_reason":null}]}
+
+data: {"id":"gen-2","object":"chat.completion.chunk","created":1730000300,"model":"openai/gpt-4o-mini","provider":"OpenAI","choices":[{"index":0,"delta":{"role":"assistant","content":"3.2 GB."},"finish_reason":null}]}
+
+: OPENROUTER PROCESSING
+
+data: {"id":"gen-2","object":"chat.completion.chunk","created":1730000300,"model":"openai/gpt-4o-mini","provider":"OpenAI","error":{"code":"server_error","message":"Provider disconnected unexpectedly"},"choices":[{"index":0,"delta":{"role":"assistant","content":""},"finish_reason":"error"}]}
+
+data: [DONE]
+
