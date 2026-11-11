@@ -42,6 +42,8 @@ pub struct Snapshot {
     pub up_bps: u64,
     pub peers_live: u32,
     pub peers_seen: u32,
+    /// Web seeds (BEP 19) configured for the torrent, from `url-list`, `ws=` or added later. 0 when none.
+    pub web_seeds: u32,
     pub eta_secs: i64,
     pub ratio: f64,
     pub seeding_secs: i64,

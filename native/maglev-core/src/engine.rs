@@ -76,6 +76,37 @@ fn nonzero_bps(v: u64) -> Option<NonZeroU32> {
     NonZeroU32::new(v.min(u32::MAX as u64) as u32)
 }
 
+/// Download and upload speed in bytes per second since the previous sample `(fetched, uploaded, taken_at)`.
+/// `(0, 0)` without a sample or when it is under 200 ms old.
+fn rates_since(previous: Option<&(u64, u64, Instant)>, now: Instant, fetched: u64, uploaded: u64) -> (u64, u64) {
+    match previous {
+        Some((pf, pu, at)) => {
+            let dt = now.duration_since(*at).as_secs_f64();
+            if dt >= 0.2 {
+                (
+                    (fetched.saturating_sub(*pf) as f64 / dt) as u64,
+                    (uploaded.saturating_sub(*pu) as f64 / dt) as u64,
+                )
+            } else {
+                (0, 0)
+            }
+        }
+        None => (0, 0),
+    }
+}
+
+/// The host (and port, if any) of a web seed URL, for the peers list. Falls back to the whole string.
+fn web_seed_host(url: &str) -> String {
+    let rest = url.split_once("://").map_or(url, |(_, r)| r);
+    let authority = rest.split(['/', '?', '#']).next().unwrap_or(rest);
+    let host = authority.rsplit_once('@').map_or(authority, |(_, h)| h);
+    if host.is_empty() {
+        url.to_string()
+    } else {
+        host.to_string()
+    }
+}
+
 /// A stored per-torrent limit as librqbit's config. 0 becomes `None` (no limit).
 fn limits_config(l: TorrentLimits) -> LimitsConfig {
     LimitsConfig {
@@ -528,6 +559,7 @@ impl MaglevEngine {
             up_bps,
             peers_live,
             peers_seen,
+            web_seeds: u32::try_from(h.web_seeds().len()).unwrap_or(u32::MAX),
             eta_secs,
             ratio,
             seeding_secs: (m.seeding_ms / 1000) as i64,
@@ -564,6 +596,7 @@ impl MaglevEngine {
             up_bps: 0,
             peers_live: 0,
             peers_seen: 0,
+            web_seeds: 0,
             eta_secs: -1,
             ratio: if e.progress_bytes == 0 {
                 0.0
@@ -606,6 +639,7 @@ impl MaglevEngine {
             up_bps: 0,
             peers_live: 0,
             peers_seen: 0,
+            web_seeds: 0,
             eta_secs: -1,
             ratio: 0.0,
             seeding_secs: 0,
@@ -780,20 +814,7 @@ impl MaglevEngine {
                 let key = format!("{prefix}{addr}");
                 let fetched = p.counters.fetched_bytes;
                 let uploaded = p.counters.uploaded_bytes;
-                let (down_bps, up_bps) = match previous.get(&key) {
-                    Some((pf, pu, at)) => {
-                        let dt = now.duration_since(*at).as_secs_f64();
-                        if dt >= 0.2 {
-                            (
-                                (fetched.saturating_sub(*pf) as f64 / dt) as u64,
-                                (uploaded.saturating_sub(*pu) as f64 / dt) as u64,
-                            )
-                        } else {
-                            (0, 0)
-                        }
-                    }
-                    None => (0, 0),
-                };
+                let (down_bps, up_bps) = rates_since(previous.get(&key), now, fetched, uploaded);
                 cache.insert(key, (fetched, uploaded, now));
                 peers.push(PeerDetail {
                     addr: addr.to_string(),
@@ -804,6 +825,20 @@ impl MaglevEngine {
                     down_bps,
                     up_bps,
                     // librqbit does not expose a peer's progress.
+                    progress: 0.0,
+                });
+            }
+            // Web seeds (section 16) are not librqbit peers: one row per configured web seed.
+            for w in h.web_seeds() {
+                let key = format!("{prefix}ws|{}", w.url);
+                let fetched = w.downloaded_bytes;
+                let (down_bps, _) = rates_since(previous.get(&key), now, fetched, 0);
+                cache.insert(key, (fetched, 0, now));
+                peers.push(PeerDetail {
+                    addr: web_seed_host(&w.url),
+                    client: "Web seed".to_string(),
+                    down_bps,
+                    up_bps: 0,
                     progress: 0.0,
                 });
             }
@@ -2288,6 +2323,23 @@ mod tests {
     fn file_urls_escape_url_syntax_characters() {
         assert_eq!(file_url("/a/b.txt"), "file:///a/b.txt");
         assert_eq!(file_url("/a b/c#d?e%f"), "file:///a%20b/c%23d%3Fe%25f");
+    }
+
+    #[test]
+    fn web_seed_host_drops_scheme_path_and_credentials() {
+        assert_eq!(web_seed_host("https://mirror.example.org/pub/x.iso"), "mirror.example.org");
+        assert_eq!(web_seed_host("http://u:p@host.test:8080/a?b=1"), "host.test:8080");
+        assert_eq!(web_seed_host("http://[::1]:80/"), "[::1]:80");
+        assert_eq!(web_seed_host("http://host.test"), "host.test");
+    }
+
+    #[test]
+    fn rates_need_a_sample_at_least_200ms_old() {
+        let t0 = Instant::now();
+        assert_eq!(rates_since(None, t0, 100, 50), (0, 0));
+        assert_eq!(rates_since(Some(&(0, 0, t0)), t0, 100, 50), (0, 0));
+        let later = t0 + Duration::from_secs(2);
+        assert_eq!(rates_since(Some(&(100, 0, t0)), later, 300, 40), (100, 20));
     }
 
     #[test]

@@ -31,8 +31,13 @@ tracing = "0.1"
 #
 # librqbit is vendored too: it adds `ManagedTorrent::set_file_priority_order` and `set_ratelimits`. The patch is
 # listed in vendor/librqbit/MAGLEV_PATCH.md.
+#
+# librqbit-core is vendored for BEP 19 web seeds (rqbit PR #739): it parses `url-list` and `ws=` and adds the
+# `name.utf-8` / `path.utf-8` fields. It is the same 9.1.0 that librqbit 9.1.0 resolves to; every other crate of the
+# workspace that depends on it picks the path copy too. See vendor/librqbit/MAGLEV_PATCH.md, "Web seeds".
 [patch.crates-io]
 librqbit = { path = "vendor/librqbit" }
+librqbit-core = { path = "vendor/librqbit-core" }
 rustls-platform-verifier = { path = "vendor/rustls-platform-verifier" }
 
 [features]
