@@ -506,7 +506,7 @@ contract('C-W3-1', 'P1', 'Wave 3 JS side: file priority, reannounce, free space,
   assert(/Keep at least one file/.test(mock) && /every\(\(e\) => e\.priority === 'skip'\)/.test(mock), 'mock rejects an all-skip priority list');
   assert(/60_000/.test(mock) && /retryAfterSecs/.test(mock), 'mock rate-limits reannounce to once per 60 s');
   assert(/getFreeSpace/.test(add), 'add-torrent reads getFreeSpace');
-  assert(/Not enough space/.test(add) && /disabled=\{[^}]*notEnough/.test(add), 'add-torrent disables Start on insufficient space');
+  assert(/admit\(/.test(add) && /'DoesntFit'/.test(add) && /Add paused/.test(add) && /doAdd\(false, doesntFit\)/.test(add), 'add-torrent runs the SM-35 space budget and adds paused when it does not fit');
   assert(/file_priorities|filePriorities/.test(add), 'add-torrent sends file priorities');
   assert(/reannounce/.test(detail) && /Find more peers/.test(detail), 'detail has Find more peers (reannounce)');
   assert(/Download first/.test(detail) && /setFilePriorities/.test(detail) && /Keep at least one file/.test(detail), 'detail has the priority sheet and blocks all-skip');
