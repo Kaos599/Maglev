@@ -1,9 +1,12 @@
 /**
- * Quality scoring and shortlist for the assistant (docs/ASSISTANT_DESIGN.md §3).
+ * Quality scoring and shortlist for the assistant (docs/ASSISTANT_DESIGN.md §3, review round 1).
  *
  * Pure: no React, no react-native, no engine, no clock unless the caller omits
  * `ctx.now`. Free space and pending need come in as arguments. The model never
  * ranks anything; this code does, and the model only words the result.
+ *
+ * Rows are keyed by info hash. This module assigns no handles; the runner issues
+ * r1, r2, ... through HandleRegistry (R1-10).
  *
  * Section numbers in comments point at docs/ASSISTANT_DESIGN.md.
  */
@@ -12,9 +15,14 @@ import { admit } from '../admission.ts';
 import type { AdmissionResult } from '../admission.ts';
 import { riskySources } from '../search/safety.ts';
 import type { MergedResult } from '../search/types.ts';
+import type { PlaybackSupport } from '../../modules/maglev-engine/src/MaglevEngine.types';
+import type { SafetyLevel, SafetyResult } from './fileSafety.ts';
+import { playbackVerdict } from './playback.ts';
 import { parseRelease } from './releaseName.ts';
 import type { ParsedRelease, SourceKind } from './releaseName.ts';
-import { DEFAULT_EPISODE_RUNTIME_MIN, DEFAULT_FILM_RUNTIME_MIN, TOO_SMALL_FRACTION, sizeBand } from './sizeBands.ts';
+import {
+  DEFAULT_ANIME_EPISODE_RUNTIME_MIN, DEFAULT_EPISODE_RUNTIME_MIN, DEFAULT_FILM_RUNTIME_MIN, SMALL_FRACTION, TOO_SMALL_FRACTION, sizeBand,
+} from './sizeBands.ts';
 import type { BandCodec } from './sizeBands.ts';
 
 const GB = 1024 * 1024 * 1024;
@@ -32,7 +40,8 @@ export interface ScoreContext {
   pendingNeed: number;
   stagingFactor: 1 | 2;
   maxBytes?: number;
-  playback?: { hevc: boolean; hevc10: boolean; av1: 'hardware' | 'software'; dv: boolean };
+  /** The phone's real codec probe. Absent or null means unknown, and unknown never scores as playable. */
+  playback?: PlaybackSupport | null;
   warnUnsafe: boolean;
   providers: ReadonlyMap<string, { name: string; unsafeReason?: string }>;
   query: { title: string; year?: number; season?: number; episode?: number };
@@ -42,6 +51,8 @@ export interface ScoreContext {
   wantsMultiAudio?: boolean;
   /** Extra. Episode count per season pack, keyed by info hash. Needed for pack sanity and `partial_fits`. */
   packEpisodeCounts?: ReadonlyMap<string, number>;
+  /** Extra. File-list safety keyed by info hash (see `safetyForShortlist`). A red row is never shortlisted. */
+  safety?: ReadonlyMap<string, SafetyResult | null>;
   /** Extra. Epoch ms. Defaults to Date.now(); pass it for deterministic tests. */
   now?: number;
 }
@@ -51,6 +62,7 @@ export type Label = 'best-fit' | 'smaller' | 'best-quality';
 export type ExcludeReason = 'cam_source' | 'wrong_title' | 'adult';
 
 export interface Ranked {
+  /** The info hash. Handles (r1, r2, ...) come from HandleRegistry in the runner, never from here. */
   id: string;
   score: number;
   tier: Tier;
@@ -65,11 +77,14 @@ export interface Ranked {
   result: MergedResult;
   parsed: ParsedRelease;
   breakdown: { quality: number; playability: number; health: number; sanity: number; fit: number; penalties: number };
+  /** File-list safety, when the runner has checked this row. */
+  safety?: SafetyResult | null;
   /** Season pack that does not fit whole: how many episodes would. */
   partialEpisodes?: number;
 }
 
 export interface Excluded {
+  /** The info hash. */
   id: string;
   result: MergedResult;
   reason: ExcludeReason;
@@ -82,7 +97,12 @@ export interface ScoreOutput {
   /** At most three, labelled by code (§3.5). */
   shortlist: Ranked[];
   excluded: Excluded[];
+  /** Notes about the whole list. Shown once, not on every row. */
+  notes: string[];
 }
+
+/** Said once per list, not on every row (R1-15). */
+export const SEEDER_NOTE = 'Sharing counts come from the sites and can be out of date.';
 
 // ---------------------------------------------------------------- tables
 
@@ -104,9 +124,10 @@ const SOURCE_POINTS: Record<SourceKind, [number, number]> = {
   scr: [5, 5],
 };
 
-const SOURCE_LABEL: Record<SourceKind, string> = {
-  bluray: 'BluRay', webdl: 'WEB-DL', remux: 'Remux', webrip: 'WEBRip', web: 'WEB', hdtv: 'HDTV',
-  hdrip: 'HDRip', dvdrip: 'DVDRip', cam: 'CAM', ts: 'TS', tc: 'TC', scr: 'SCR', unknown: 'Unknown',
+/** Glossary-consistent labels. 'unknown' is omitted from headlines (R1-15). */
+const SOURCE_LABEL: Record<SourceKind, string | undefined> = {
+  bluray: 'BluRay', webdl: 'WEB-DL', remux: 'REMUX', webrip: 'WEBRip', web: 'WEB', hdtv: 'HDTV',
+  hdrip: 'HDRip', dvdrip: 'DVDRip', cam: 'CAM', ts: 'TS', tc: 'TC', scr: 'SCR', unknown: undefined,
 };
 
 const EARLY_SOURCES: ReadonlySet<SourceKind> = new Set(['cam', 'ts', 'tc', 'scr']);
@@ -118,6 +139,8 @@ const AVOID_BELOW_SCORE = 40;
 const RISKY_PENALTY = 15;
 /** §3.5: "smaller: ... size is at most 60 % of best-fit". */
 const SMALLER_FRACTION = 0.6;
+/** A copy this much smaller than the group's median size is an outlier (likely a fake). */
+const OUTLIER_FRACTION = 0.5;
 
 // ---------------------------------------------------------------- title matching
 
@@ -128,41 +151,90 @@ const SEQUEL_WORDS = new Set([
   'ii', 'iii', 'iv', 'vi', 'vii', 'viii', 'ix',
 ]);
 
+export interface ParsedQuery {
+  title: string;
+  year?: number;
+  season?: number;
+  episode?: number;
+}
+
+/**
+ * Splits the model's free-text query into a title and the facts the release parser can read from it:
+ * a year, a season and an episode ("Harbor Light S01E02", "Schindler's List 1993"). Reuses `parseRelease`.
+ * The model must not add a year the user didn't give; that is a prompt rule, not enforced here.
+ */
+export function parseQuery(text: string): ParsedQuery {
+  const raw = typeof text === 'string' ? text.trim() : '';
+  const p = parseRelease(raw);
+  const title = (p.title ?? '').trim() || raw;
+  const out: ParsedQuery = { title };
+  if (p.year !== undefined) out.year = p.year;
+  if (p.season !== undefined) out.season = p.season;
+  if (p.episodes && p.episodes.length > 0) out.episode = p.episodes[0];
+  return out;
+}
+
+/** Facts the caller passed win; the rest are read out of the title text. */
+function resolveQuery(q: ScoreContext['query']): ScoreContext['query'] {
+  const parsed = parseQuery(q.title);
+  return {
+    title: parsed.title,
+    year: q.year ?? parsed.year,
+    season: q.season ?? parsed.season,
+    episode: q.episode ?? parsed.episode,
+  };
+}
+
 function titleTokens(s: string): string[] {
-  return s
+  const tokens = s
     .normalize('NFD')
     .replace(/\p{M}+/gu, '')
     .toLowerCase()
+    // Apostrophes are dropped, not split on: "Schindler's" becomes "schindlers".
+    .replace(/['’‘`´]/g, '')
     .split(/[^\p{L}\p{N}]+/u)
     .filter((t) => t.length > 0 && !ARTICLES.has(t));
+  // "Ocean.s.Eleven" has lost its apostrophe to a dot: glue a lone s or t back on.
+  const out: string[] = [];
+  for (const t of tokens) {
+    if ((t === 's' || t === 't') && out.length > 0) out[out.length - 1] += t;
+    else out.push(t);
+  }
+  return out;
 }
 
-/** Returns a plain-English reason when the result is the wrong title, else null. §3.2 row 2. */
-function wrongTitle(parsed: ParsedRelease, q: ScoreContext['query']): string | null {
+interface TitleVerdict { reason: string | null; partial: boolean }
+
+/** Returns a plain-English reason when the result is the wrong title, else null. §3.2 row 2, R1-9. */
+function wrongTitle(parsed: ParsedRelease, q: ScoreContext['query']): TitleVerdict {
+  let partial = false;
   const want = titleTokens(q.title);
   if (want.length > 0) {
     const have = titleTokens(parsed.title ?? '');
-    if (have.length === 0) return 'The name does not show a title.';
+    if (have.length === 0) return { reason: 'The name does not show a title.', partial };
     const set = new Set(have);
-    // §3.2: every query title token must be present in the result title.
-    const missing = want.find((t) => !set.has(t));
-    if (missing !== undefined) return `The title does not match "${q.title}".`;
+    const missing = want.filter((t) => !set.has(t));
+    // Exclude only when most of the title is missing. One missing word in a longer title is a partial match.
+    if (missing.length > 1 || (missing.length === 1 && want.length < 2)) {
+      return { reason: `The title does not match "${q.title}".`, partial };
+    }
+    if (missing.length === 1) partial = true;
     // A sequel or part number the user did not ask for means a different film.
     const wantSet = new Set(want);
     const extra = have.find((t) => !wantSet.has(t) && (/^\d+$/.test(t) || SEQUEL_WORDS.has(t)));
-    if (extra !== undefined) return `This looks like a different film or part than "${q.title}".`;
+    if (extra !== undefined) return { reason: `This looks like a different film or part than "${q.title}".`, partial };
   }
   // §3.2: "the year differs by more than 1".
   if (q.year !== undefined && parsed.year !== undefined && Math.abs(parsed.year - q.year) > 1) {
-    return `It is from ${parsed.year}, but you asked for ${q.year}.`;
+    return { reason: `It is from ${parsed.year}, but you asked for ${q.year}.`, partial };
   }
   if (q.season !== undefined && parsed.season !== undefined && parsed.season !== q.season) {
-    return `It is season ${parsed.season}, but you asked for season ${q.season}.`;
+    return { reason: `It is season ${parsed.season}, but you asked for season ${q.season}.`, partial };
   }
   if (q.episode !== undefined && parsed.episodes && parsed.episodes.length > 0 && !parsed.episodes.includes(q.episode)) {
-    return `It is not episode ${q.episode}.`;
+    return { reason: `It is not episode ${q.episode}.`, partial };
   }
-  return null;
+  return { reason: null, partial };
 }
 
 // ---------------------------------------------------------------- score parts
@@ -192,27 +264,37 @@ function resolutionPoints(res: ParsedRelease['resolution'], profile: Profile): n
   }
 }
 
-function playabilityOf(parsed: ParsedRelease, ctx: ScoreContext, flags: string[]): number {
-  const pb = ctx.playback;
-  let pts: number;
+/** What the codec scores when the phone decodes it well. §3.3 "avc 10-bit 8", "avc 8-bit 20", "hevc 18", "av1 16". */
+function codecPotential(parsed: ParsedRelease): number {
   switch (parsed.codec) {
-    case 'avc':
-      pts = parsed.bitDepth === 10 ? 8 : 20; // §3.3 "avc 10-bit (Hi10P) 8", "avc 8-bit 20"
-      break;
-    case 'hevc': {
-      const noHw = pb !== undefined && (!pb.hevc || (parsed.bitDepth === 10 && !pb.hevc10));
-      pts = noHw ? 10 : 18; // "hevc, probe says no hardware HEVC 10", "hevc ... hardware (or unknown) 18"
-      break;
-    }
-    case 'av1':
-      pts = pb?.av1 === 'hardware' ? 16 : 9; // "av1 with hardware decode 16", "software-only or unknown 9"
-      break;
+    case 'avc': return parsed.bitDepth === 10 ? 8 : 20;
+    case 'hevc': return 18;
+    case 'av1': return 16;
+    default: return 10; // "xvid / mpeg2 / vc1 10". vp9 and unknown codecs get the same (open in §3).
+  }
+}
+
+/**
+ * §3.3 playability through `playbackVerdict`, so the codec probe decides (R1 item 7):
+ * smooth keeps the codec's points, "may stutter" is capped at 10, "needs another player" at 4,
+ * and unknown scores 60 % of them. Unknown is never treated as playable.
+ */
+function playabilityOf(parsed: ParsedRelease, ctx: ScoreContext, flags: string[]): number {
+  const advice = playbackVerdict(parsed, ctx.playback);
+  const potential = codecPotential(parsed);
+  let pts: number;
+  switch (advice.verdict) {
+    case 'smooth': pts = potential; break;
+    case 'may_stutter': pts = Math.min(potential, 10); break;
+    case 'needs_other_player': pts = Math.min(potential, 4); break;
     default:
-      pts = 10; // "xvid / mpeg2 / vc1 10". vp9 and unknown codecs get the same (open in §3).
+      pts = Math.round(potential * 0.6);
+      flags.push('playback_unknown');
   }
   if (parsed.hdr.includes('dv') && parsed.dvFallback !== true) {
     flags.push('dv_no_fallback');
-    if (pb !== undefined && !pb.dv) pts -= 8; // "Subtract 8: dv without confirmed fallback and probe says no DV"
+    // "Subtract 8: dv without confirmed fallback and probe says no DV" (the verdict already caps a confirmed no-fallback case).
+    if (ctx.playback?.dolbyVision === 'none' && advice.verdict !== 'needs_other_player') pts -= 8;
   }
   const audio = parsed.audio;
   if (ctx.profile === 'phone' && audio.length > 0 && audio.every((a) => a.codec === 'truehd' || a.codec === 'dtshd')) {
@@ -246,8 +328,11 @@ function isEpisodic(parsed: ParsedRelease, q: ScoreContext['query']): boolean {
 }
 
 /** Total runtime the size is spread over, or undefined when it cannot be known (pack with no episode count). */
-function totalRuntimeMin(r: MergedResult, parsed: ParsedRelease, ctx: ScoreContext): number | undefined {
-  const per = ctx.runtimeMin ?? (isEpisodic(parsed, ctx.query) ? DEFAULT_EPISODE_RUNTIME_MIN : DEFAULT_FILM_RUNTIME_MIN);
+function totalRuntimeMin(r: MergedResult, parsed: ParsedRelease, ctx: ScoreContext, q: ScoreContext['query']): number | undefined {
+  // R1-13: an anime episode runs 24 minutes, other episodes 45, films 110.
+  const episodic = isEpisodic(parsed, q) || r.category === 'anime';
+  const episodeMin = r.category === 'anime' ? DEFAULT_ANIME_EPISODE_RUNTIME_MIN : DEFAULT_EPISODE_RUNTIME_MIN;
+  const per = ctx.runtimeMin ?? (episodic ? episodeMin : DEFAULT_FILM_RUNTIME_MIN);
   if (parsed.seasonPack) {
     const n = ctx.packEpisodeCounts?.get(r.infoHash);
     return n !== undefined && n > 0 ? n * per : undefined; // §3.3: "skip when the episode count is unknown"
@@ -265,13 +350,14 @@ function sizeScore(r: MergedResult, parsed: ParsedRelease, runtimeMin: number | 
   if (!band || !runtimeMin) return { sanity: 5, bitrate: 0 };
   const perHour = r.sizeBytes / GB / (runtimeMin / 60);
   if (perHour < band.low * TOO_SMALL_FRACTION) {
-    flags.push('too_small_for_claim'); // §3.3 "Below 0.6x low: 0 and flag too_small_for_claim"
+    flags.push('too_small_for_claim'); // R1-13: below 0.25x the floor: probably not what the name says
     return { sanity: 0, bitrate: 0 };
   }
-  if (perHour < band.low) {
-    flags.push('small_for_quality'); // "Below low but at least 0.6x low: 5 and flag small_for_quality"
+  if (perHour < band.low * SMALL_FRACTION) {
+    flags.push('small_for_quality'); // R1-13: only below 0.5x the floor is "smaller than usual"
     return { sanity: 5, bitrate: 0 };
   }
+  if (perHour < band.low) return { sanity: 8, bitrate: 0 }; // a slim encode, no warning
   if (perHour > band.high) {
     flags.push('bigger_than_needed'); // "Above high: 6 and flag bigger_than_needed"
     return { sanity: 6, bitrate: 0 };
@@ -290,28 +376,30 @@ function codecLabel(parsed: ParsedRelease): string | undefined {
     case 'av1': return 'AV1';
     case 'xvid': return 'XviD';
     case 'vp9': return 'VP9';
-    case 'mpeg2': return 'MPEG2';
-    case 'vc1': return 'VC1';
+    case 'mpeg2': return 'MPEG-2';
+    case 'vc1': return 'VC-1';
     default: return undefined;
   }
 }
 
-/** §3.5 template: "{SOURCE} {RES}p {CODEC}{ 10-bit}, {SIZE}, {SEEDERS} seeders, {FIT}". */
+/** §3.5 template: "{SOURCE} {RES}p {CODEC}{ 10-bit}, {SIZE}, {N} sharing, {FIT}". Unknown parts are left out. */
 function headline(r: MergedResult, parsed: ParsedRelease, adm: Ranked['admission']): string {
-  const parts = [SOURCE_LABEL[parsed.source]];
+  const parts: string[] = [];
+  const source = SOURCE_LABEL[parsed.source];
+  if (source) parts.push(source);
   if (parsed.resolution) parts.push(`${parsed.resolution}p`);
   const codec = codecLabel(parsed);
   if (codec) parts.push(codec);
   let head = parts.join(' ');
-  if (parsed.bitDepth === 10) head += ' 10-bit';
+  if (parsed.bitDepth === 10 && head) head += ' 10-bit';
   const size = r.sizeBytes !== undefined && r.sizeBytes > 0 ? formatBytes(r.sizeBytes) : 'size unknown';
-  const seeders = r.seeders === undefined ? 'no seeder count' : `${r.seeders} ${r.seeders === 1 ? 'seeder' : 'seeders'}`;
+  const sharing = r.seeders === undefined ? 'no sharing count' : `${r.seeders} sharing`;
   let fit: string;
   if (!adm) fit = 'fit unknown';
   else if (adm.result === 'Fits') fit = `fits with ${formatBytes(adm.leftAfter)} to spare`;
   else if (adm.result === 'Tight') fit = `fits, leaves ${formatBytes(adm.leftAfter)} free`;
   else fit = `doesn't fit by ${formatBytes(-adm.leftAfter)}`;
-  return `${head}, ${size}, ${seeders}, ${fit}`;
+  return [head, size, sharing, fit].filter((x) => x.length > 0).join(', ');
 }
 
 function extraReasons(
@@ -323,22 +411,25 @@ function extraReasons(
     switch (f) {
       case 'risky_source': {
         const names = riskySources(r, ctx.providers, ctx.warnUnsafe);
-        out.push(`Only ${names ? names.join(' and ') : 'flagged sites'} list${names && names.length === 1 ? 's' : ''} it, and the app flags that source as unsafe.`);
+        const list = names && names.length > 0 ? names.join(' and ') : 'some sites';
+        out.push(`Maglev flags ${list} as unsafe, and only ${names && names.length > 1 ? 'those sites list' : `${list} lists`} this one.`);
         break;
       }
       case 'size_unknown': out.push('The site gave no size, so the fit and the size check could not run.'); break;
       case 'too_small_for_claim': out.push(`The file is far smaller than a real ${res}copy should be. It is probably not what the name says.`); break;
       case 'small_for_quality': out.push(`Smaller than usual for ${res}video, so expect lower quality.`); break;
-      case 'bigger_than_needed': out.push(`Bigger than usual for ${res}video. A smaller copy would look the same.`); break;
-      case 'dv_no_fallback': out.push('Dolby Vision with no standard HDR fallback listed. Colours can look wrong on screens that lack it.'); break;
-      case 'lossless_audio_only': out.push('Only lossless audio, which adds gigabytes a phone cannot use.'); break;
+      case 'bigger_than_needed': out.push(`Bigger than usual for ${res}video. A smaller copy would likely look the same on a phone.`); break;
+      case 'dv_no_fallback': out.push('Dolby Vision only. On phones without it, colours can look green or purple.'); break;
+      case 'lossless_audio_only': out.push("The sound track is disc-quality and adds gigabytes a phone can't use."); break;
       case 'hardcoded_subs': out.push('Subtitles are burned into the picture.'); break;
       case 'over_size_cap': out.push(`Bigger than your limit of ${formatBytes(ctx.maxBytes ?? 0)}.`); break;
       case 'partial_fits': out.push(`The whole pack does not fit, but ${partial} episode${partial === 1 ? '' : 's'} would.`); break;
+      case 'title_partial': out.push('The title is close, but one word you searched for is missing from the name.'); break;
+      case 'no_sharing': out.push('Nobody is sharing it right now, so it would not download.'); break;
+      case 'unsafe_files': out.push('The file list has a serious warning sign.'); break;
       default: break;
     }
   }
-  if (r.seeders !== undefined) out.push('Seeder counts are reported by the site and can be out of date.');
   return out;
 }
 
@@ -346,10 +437,13 @@ function extraReasons(
 
 interface Scored { ranked: Ranked; sizeKnown: boolean; eligible: boolean }
 
-function scoreOne(r: MergedResult, id: string, parsed: ParsedRelease, ctx: ScoreContext, now: number): Scored {
+function scoreOne(
+  r: MergedResult, parsed: ParsedRelease, ctx: ScoreContext, q: ScoreContext['query'], now: number, titlePartial: boolean,
+): Scored {
   const flags: string[] = [];
+  if (titlePartial) flags.push('title_partial');
   const sizeKnown = r.sizeBytes !== undefined && r.sizeBytes > 0;
-  const runtimeMin = totalRuntimeMin(r, parsed, ctx);
+  const runtimeMin = totalRuntimeMin(r, parsed, ctx, q);
 
   // Quality (0-40). Resolution 12 on tv/archive can push the sum past 40; cap it there.
   const size = sizeScore(r, parsed, runtimeMin, flags);
@@ -358,6 +452,8 @@ function scoreOne(r: MergedResult, id: string, parsed: ParsedRelease, ctx: Score
 
   const playability = playabilityOf(parsed, ctx, flags);
   const health = healthOf(r, now);
+  const dead = r.seeders !== undefined && r.seeders <= 0;
+  if (dead) flags.push('no_sharing');
 
   let admission: Ranked['admission'] = null;
   let budget = 0;
@@ -379,6 +475,10 @@ function scoreOne(r: MergedResult, id: string, parsed: ParsedRelease, ctx: Score
     penalties += RISKY_PENALTY;
     flags.push('risky_source');
   }
+
+  const safety = ctx.safety?.get(r.infoHash);
+  const unsafeFiles = safety?.level === 'red';
+  if (unsafeFiles) flags.push('unsafe_files');
 
   const overCap = sizeKnown && ctx.maxBytes !== undefined && r.sizeBytes! > ctx.maxBytes;
   if (overCap) flags.push('over_size_cap');
@@ -404,10 +504,13 @@ function scoreOne(r: MergedResult, id: string, parsed: ParsedRelease, ctx: Score
   const score = Math.max(0, Math.min(100, Math.round(quality + playability + health + size.sanity + fit - penalties)));
 
   let tier: Tier;
-  if (admission?.result === 'DoesntFit' || overCap || flags.includes('too_small_for_claim') || score < AVOID_BELOW_SCORE) {
+  if (
+    admission?.result === 'DoesntFit' || overCap || dead || unsafeFiles
+    || flags.includes('too_small_for_claim') || score < AVOID_BELOW_SCORE
+  ) {
     tier = 'avoid';
   } else if (
-    score >= RECOMMENDED_MIN_SCORE && sizeKnown && !risky && admission !== null
+    score >= RECOMMENDED_MIN_SCORE && sizeKnown && !risky && admission !== null && !titlePartial
   ) {
     tier = 'recommended';
   } else {
@@ -416,20 +519,31 @@ function scoreOne(r: MergedResult, id: string, parsed: ParsedRelease, ctx: Score
 
   const reasons = [headline(r, parsed, admission), ...extraReasons(flags, parsed, r, ctx, partialEpisodes)];
   const ranked: Ranked = {
-    id, score, tier, labels: [], reasons, flags, admission, result: r, parsed,
+    id: r.infoHash, score, tier, labels: [], reasons, flags, admission, result: r, parsed,
     breakdown: { quality, playability, health, sanity: size.sanity, fit, penalties },
+    ...(safety !== undefined ? { safety } : {}),
     ...(partialEpisodes !== undefined ? { partialEpisodes } : {}),
   };
-  return { ranked, sizeKnown, eligible: sizeKnown && tier !== 'avoid' && admission !== null && admission.result !== 'DoesntFit' };
+  return {
+    ranked, sizeKnown,
+    eligible: sizeKnown && tier !== 'avoid' && admission !== null && admission.result !== 'DoesntFit',
+  };
 }
 
 // ---------------------------------------------------------------- shortlist
 
-function dedupeKey(p: ParsedRelease): string {
+/** Same release, whoever uploaded it. Rows inside a group differ by info hash and are ranked together. */
+function groupKey(p: ParsedRelease): string {
   return [
     (p.title ?? '').toLowerCase(), p.year ?? '', p.season ?? '', (p.episodes ?? []).join(','),
     p.resolution ?? '', p.source, p.encoder ?? p.codec,
   ].join('|');
+}
+
+function median(xs: number[]): number {
+  const a = xs.slice().sort((x, y) => x - y);
+  const m = Math.floor(a.length / 2);
+  return a.length % 2 ? a[m] : (a[m - 1] + a[m]) / 2;
 }
 
 /** Prefer results that are not risky; fall back to all of them when every one is risky. */
@@ -439,32 +553,48 @@ function preferSafe(list: Scored[]): Scored[] {
 }
 
 function pickShortlist(sorted: Scored[]): Ranked[] {
-  // §3.5: deduplicate by (title, year, resolution, source, encoder); sorted order keeps the best copy.
-  const seen = new Set<string>();
-  const unique = sorted.filter((s) => {
-    const k = dedupeKey(s.ranked.parsed);
-    if (seen.has(k)) return false;
-    seen.add(k);
-    return true;
-  });
-  const eligible = unique.filter((s) => s.eligible);
+  // Only rows that could be offered take part. A copy that cannot be offered (no size, dead, unsafe, too big)
+  // never hides one that can. Dead and unsafe rows are already tier "avoid" and so not eligible.
+  const eligible = sorted.filter((s) => s.eligible);
+
+  // §3.5: one row per release. The group is ranked as a whole (best score first), but a copy far smaller
+  // than its siblings is a likely fake and only wins when nothing else is left in the group.
+  const groups = new Map<string, Scored[]>();
+  for (const s of eligible) {
+    const k = groupKey(s.ranked.parsed);
+    const g = groups.get(k);
+    if (g) g.push(s);
+    else groups.set(k, [s]);
+  }
+  const unique: Scored[] = [];
+  for (const g of groups.values()) {
+    let pool = g;
+    if (g.length >= 3) {
+      const med = median(g.map((s) => s.ranked.result.sizeBytes!));
+      const normal = g.filter((s) => s.ranked.result.sizeBytes! >= OUTLIER_FRACTION * med);
+      if (normal.length > 0) pool = normal;
+    }
+    unique.push(pool[0]); // `sorted` order is best first
+  }
+  unique.sort((a, b) => sorted.indexOf(a) - sorted.indexOf(b));
+
   const give = (s: Scored | undefined, label: Label): Ranked | undefined => {
     if (s && !s.ranked.labels.includes(label)) s.ranked.labels.push(label);
     return s?.ranked;
   };
 
-  const fits = preferSafe(eligible.filter((s) => s.ranked.admission!.result === 'Fits'));
+  const fits = preferSafe(unique.filter((s) => s.ranked.admission!.result === 'Fits'));
   const bestFit = fits[0]; // highest score among Fits
   give(bestFit, 'best-fit');
 
   if (bestFit) {
     const cap = SMALLER_FRACTION * bestFit.ranked.result.sizeBytes!;
-    const small = preferSafe(eligible.filter((s) => s !== bestFit && s.ranked.result.sizeBytes! <= cap));
+    const small = preferSafe(unique.filter((s) => s !== bestFit && s.ranked.result.sizeBytes! <= cap));
     give(small[0], 'smaller');
   }
 
-  // best-quality: highest quality component among Fits or Tight (both are in `eligible`).
-  const byQuality = preferSafe(eligible).slice().sort(
+  // best-quality: highest quality component among Fits or Tight (both are in `unique`).
+  const byQuality = preferSafe(unique).slice().sort(
     (a, b) => b.ranked.breakdown.quality - a.ranked.breakdown.quality || b.ranked.score - a.ranked.score,
   );
   if (byQuality[0] !== bestFit) give(byQuality[0], 'best-quality');
@@ -472,11 +602,37 @@ function pickShortlist(sorted: Scored[]): Ranked[] {
   const order: Label[] = ['best-fit', 'smaller', 'best-quality'];
   const out: Ranked[] = [];
   for (const label of order) {
-    const hit = eligible.find((s) => s.ranked.labels.includes(label));
+    const hit = unique.find((s) => s.ranked.labels.includes(label));
     if (hit && !out.includes(hit.ranked)) out.push(hit.ranked);
   }
   for (const r of out) r.label = order.find((l) => r.labels.includes(l));
   return out;
+}
+
+// ---------------------------------------------------------------- proposing
+
+export interface ProposeCheck {
+  ok: boolean;
+  /** Plain English, set when `ok` is false. */
+  reason?: string;
+}
+
+/**
+ * Whether the assistant may propose adding this row (R1-8). Red is enforced: a row whose file-list safety
+ * is red, or whose size says it is not what the name claims, is refused. Accepts a Ranked row or any object
+ * carrying the stored `safety` result (or just its `level`).
+ */
+export function canPropose(
+  result: { safety?: { level: SafetyLevel } | null; level?: SafetyLevel; flags?: readonly string[] } | null | undefined,
+): ProposeCheck {
+  const level = result?.safety?.level ?? result?.level;
+  if (level === 'red' || result?.flags?.includes('unsafe_files')) {
+    return { ok: false, reason: "The file list has a serious warning sign, so Maglev won't add it." };
+  }
+  if (result?.flags?.includes('too_small_for_claim')) {
+    return { ok: false, reason: "The file is far smaller than the name claims, so Maglev won't add it." };
+  }
+  return { ok: true };
 }
 
 // ---------------------------------------------------------------- entry point
@@ -484,35 +640,40 @@ function pickShortlist(sorted: Scored[]): Ranked[] {
 /**
  * Applies the hard rules, scores what is left, and picks the shortlist.
  * `ranked` holds every kept result, best first, with "avoid" rows last.
- * Ids are `r1`, `r2`, ... by input position, so they stay stable for the session.
+ * Rows are keyed by info hash (`id`); the runner turns them into handles.
+ * The same info hash given twice is one row.
  */
 export function scoreResults(results: readonly MergedResult[], ctx: ScoreContext): ScoreOutput {
   const now = ctx.now ?? Date.now();
+  const q = resolveQuery(ctx.query);
   const excluded: Excluded[] = [];
   const scored: Scored[] = [];
+  const seen = new Set<string>();
 
-  results.forEach((r, i) => {
-    const id = `r${i + 1}`;
+  for (const r of results) {
+    const hash = r.infoHash;
+    if (seen.has(hash)) continue;
+    seen.add(hash);
     const parsed = parseRelease(r.name);
     // §3.2 and decision D2: adult content is never recommended, and never goes into a shortlist.
     if (r.category === 'adult') {
-      excluded.push({ id, result: r, reason: 'adult', detail: 'Adult content is never suggested.' });
-      return;
+      excluded.push({ id: hash, result: r, reason: 'adult', detail: 'Adult content is never suggested.' });
+      continue;
     }
-    const wrong = wrongTitle(parsed, ctx.query);
-    if (wrong !== null) {
-      excluded.push({ id, result: r, reason: 'wrong_title', detail: wrong });
-      return;
+    const wrong = wrongTitle(parsed, q);
+    if (wrong.reason !== null) {
+      excluded.push({ id: hash, result: r, reason: 'wrong_title', detail: wrong.reason });
+      continue;
     }
     if (EARLY_SOURCES.has(parsed.source) && !ctx.allowEarlySources) {
       excluded.push({
-        id, result: r, reason: 'cam_source',
+        id: hash, result: r, reason: 'cam_source',
         detail: 'Recorded in a cinema or from an early source. The picture and sound are poor.',
       });
-      return;
+      continue;
     }
-    scored.push(scoreOne(r, id, parsed, ctx, now));
-  });
+    scored.push(scoreOne(r, parsed, ctx, q, now, wrong.partial));
+  }
 
   const rank = (s: Scored) => (s.ranked.tier === 'avoid' ? 1 : 0);
   const sorted = scored
@@ -531,5 +692,6 @@ export function scoreResults(results: readonly MergedResult[], ctx: ScoreContext
   }
 
   const shortlist = pickShortlist(sorted);
-  return { ranked: sorted.map((s) => s.ranked), shortlist, excluded };
+  const notes = sorted.some((s) => s.ranked.result.seeders !== undefined) ? [SEEDER_NOTE] : [];
+  return { ranked: sorted.map((s) => s.ranked), shortlist, excluded, notes };
 }

@@ -27,7 +27,66 @@ const INVISIBLE_RE =
 const CONTROL_RE = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F-\u009F]/g;
 
 const MARKDOWN_LINK_RE = /!?\[([^\]\n]{0,200})\]\(\s*[^)\s]*\s*\)/g;
-const BARE_URL_RE = /\b(?:https?|ftp):\/\/\S*|\bwww\.\S+|\b(?:magnet|data|javascript|file|content|intent):\S*/gi;
+
+// Everything Unicode marks as ignorable when rendering: Hangul fillers (U+3164, U+FFA0), the combining
+// grapheme joiner (U+034F), variation selectors and more. NFKC turns some look-alikes into these, so strip after it.
+const IGNORABLE_RE = /\p{Default_Ignorable_Code_Point}/gu;
+
+function stripInvisible(s: string): string {
+  return s.replace(INVISIBLE_RE, '').replace(IGNORABLE_RE, '').replace(CONTROL_RE, '');
+}
+
+// Link detection runs on a "folded" copy where look-alike letters from other scripts map to ASCII, one
+// UTF-16 unit to one, so match offsets carry over to the original text. NFKC has already handled fullwidth.
+const CONFUSABLES: Record<string, string> = {
+  'а': 'a', 'е': 'e', 'о': 'o', 'р': 'p', 'с': 'c', 'х': 'x', 'у': 'y', 'і': 'i', 'ј': 'j', 'ѕ': 's', 'һ': 'h',
+  'ԁ': 'd', 'ԛ': 'q', 'ԝ': 'w', 'ɡ': 'g', 'ο': 'o', 'ν': 'v', 'ι': 'i', 'α': 'a', 'ρ': 'p', 'τ': 't', 'κ': 'k',
+  'А': 'A', 'В': 'B', 'Е': 'E', 'К': 'K', 'М': 'M', 'Н': 'H', 'О': 'O', 'Р': 'P', 'С': 'C', 'Т': 'T', 'Х': 'X',
+  'І': 'I', 'Ѕ': 'S', 'Ј': 'J',
+};
+function fold(s: string): string {
+  let out = '';
+  for (let i = 0; i < s.length; i++) out += CONFUSABLES[s[i]] ?? s[i];
+  return out;
+}
+
+// Suffix words that are also common title words (to, in, me, it, tv) are left out so "Back.To.The.Future" survives.
+const TLDS =
+  'com|net|org|info|biz|xyz|top|site|online|club|shop|store|click|link|live|icu|cc|ws|ru|su|cn|tk|ml|ga|cf|gq|pw|vip|app|dev|io|co|uk|de|fr|download|stream|pro|work|cyou|rest|fun|win|bid|loan';
+const LN = '\\p{L}\\p{N}';
+const DOT_OBF = '(?:\\[\\.\\]|\\(\\.\\)|\\{\\.\\}|\\[dot\\]|\\(dot\\))';
+const LINK_RES: RegExp[] = [
+  // Real and defanged schemes: http(s), hxxp(s), hxxps[:]//, ftp.
+  /\b(?:h(?:tt|xx)ps?|ftp|sftp)(?:\[:\]|:)\s?\/\/\S*/gi,
+  /\bwww\.\S+/gi,
+  /\b(?:magnet|data|javascript|vbscript|file|content|intent):\S*/gi,
+  // Scheme-relative: //host/path at the start or after whitespace, a bracket or a quote.
+  /(?<=^|[\s(\["'<])\/\/[^\s/]\S*/g,
+  // Obfuscated dots: evil[.]example, evil(dot)example.
+  new RegExp(`(?<![${LN}_-])[${LN}-]+(?:\\.[${LN}-]+)*${DOT_OBF}[${LN}-]+(?:(?:${DOT_OBF}|\\.)[${LN}-]+)*(?:[/?#]\\S*)?`, 'giu'),
+  // Bare domain with a well-known suffix: evil.com, shop.evil.io/pay.
+  new RegExp(`(?<![${LN}_-])(?:[${LN}](?:[${LN}-]*[${LN}])?\\.)+(?:${TLDS})(?![${LN}_-])(?![.-][${LN}])(?::\\d{1,5})?(?:[/?#]\\S*)?`, 'giu'),
+  // Any suffix, but only with a path and only in lower case: evil.example/pay.
+  /(?<![\p{L}\p{N}_-])(?:[\p{Ll}\p{N}-]+\.)+\p{Ll}{2,24}\/\S+/gu,
+];
+
+/** Replace every link-like span with a placeholder. Detection runs on the folded text, replacement on the original. */
+function removeLinks(input: string): string {
+  let s = input;
+  for (const re of LINK_RES) {
+    const folded = fold(s);
+    re.lastIndex = 0;
+    let out = '';
+    let last = 0;
+    for (let m = re.exec(folded); m; m = re.exec(folded)) {
+      if (m[0].length === 0) { re.lastIndex++; continue; }
+      out += s.slice(last, m.index) + LINK_PLACEHOLDER;
+      last = m.index + m[0].length;
+    }
+    s = out + s.slice(last);
+  }
+  return s;
+}
 
 const ROLE_MARKER_RES: RegExp[] = [
   /<\|[^|>\n]{0,40}\|>/g,
@@ -53,16 +112,28 @@ const INSTRUCTION_LIKE_RES: RegExp[] = [
  */
 export function sanitizeText(input: unknown, maxLen: number = NAME_MAX): string {
   let s = input === null || input === undefined ? '' : String(input);
-  s = s.normalize('NFC');
+  s = s.normalize('NFKC');
   s = s.replace(/[\t\n\r]/g, ' ');
-  s = s.replace(INVISIBLE_RE, '');
-  s = s.replace(CONTROL_RE, '');
+  s = stripInvisible(s);
   s = s.replace(MARKDOWN_LINK_RE, (_m, label: string) => (label.trim() ? label : LINK_PLACEHOLDER));
-  s = s.replace(BARE_URL_RE, LINK_PLACEHOLDER);
+  s = removeLinks(s);
   for (const re of ROLE_MARKER_RES) s = s.replace(re, '?');
   s = s.replace(ROLE_PREFIX_RE, (_m, lead: string) => `${lead}?`);
   s = s.replace(/\s+/gu, ' ').trim();
   return truncate(s, maxLen);
+}
+
+/**
+ * Output filter for model prose and card reasons. Keeps line breaks, drops every kind of link:
+ * http(s), magnet, data, javascript, defanged and scheme-relative forms, and bare domains.
+ * Markdown links keep their label. Normalises like sanitizeText so fullwidth and invisible-character tricks fail.
+ */
+export function filterModelOutput(text: unknown): string {
+  let s = text === null || text === undefined ? '' : String(text);
+  s = s.normalize('NFKC').replace(/\r\n?/g, '\n').replace(/\t/g, ' ');
+  s = s.split('\n').map(stripInvisible).join('\n');
+  s = s.replace(MARKDOWN_LINK_RE, (_m, label: string) => (label.trim() ? label : LINK_PLACEHOLDER));
+  return removeLinks(s);
 }
 
 /** Truncate by code point (never splits a surrogate pair), keeping the result within maxLen. */
@@ -77,8 +148,9 @@ export function truncate(s: string, maxLen: number): string {
 /** True when text reads like an instruction to the model. Used for logging and tests; the text is still data. */
 export function looksLikeInstruction(input: unknown): boolean {
   const s = (input === null || input === undefined ? '' : String(input))
-    .normalize('NFC')
+    .normalize('NFKC')
     .replace(INVISIBLE_RE, '')
+    .replace(IGNORABLE_RE, '')
     .replace(/\s+/gu, ' ');
   return INSTRUCTION_LIKE_RES.some((re) => re.test(s));
 }
