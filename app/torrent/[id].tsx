@@ -276,6 +276,8 @@ export default function TorrentDetailScreen() {
   const emptyFor = (): React.ReactElement | null => {
     if (tab === 'files')
       return <EmptyBlock icon="file" title="No files yet" body="File info appears once the torrent has its metadata." />;
+    if (tab === 'peers' && snap && snap.peersLive > 0)
+      return <EmptyBlock icon="peers" title="Peer details aren't available yet" body={`${snap.peersLive} connected. The list fills in shortly.`} />;
     if (tab === 'peers')
       return <EmptyBlock icon="peers" title="No peers connected" body="Peers show up while the torrent is running." />;
     if (tab === 'trackers') return <EmptyBlock icon="tracker" title="No trackers" body="This torrent doesn't list any trackers." />;

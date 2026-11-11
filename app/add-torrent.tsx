@@ -25,6 +25,12 @@ interface Folder {
   label: string;
 }
 
+/** Last two path segments ("Download/Maglev"), so long storage paths stay on one line. */
+function friendlyFolder(path: string): string {
+  const parts = path.replace(/^[a-z]+:\/\//i, '').split(/[\/:]/).filter(Boolean);
+  return parts.length > 2 ? parts.slice(-2).join('/') : parts.join('/') || path;
+}
+
 export default function AddTorrentScreen() {
   const { colors } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -248,6 +254,7 @@ export default function AddTorrentScreen() {
 
   const isMagnetSource = !fromFileRef.current && /^magnet:/i.test(sourceRef.current);
   const destination = folder?.label ?? defaultStoragePath;
+  const destShort = friendlyFolder(destination);
 
   // ---------- Preview ----------
   if ((phase === 'preview' || phase === 'adding') && meta) {
@@ -303,7 +310,7 @@ export default function AddTorrentScreen() {
         <View style={styles.destRow}>
           <View style={styles.destText}>
             <Text style={styles.meta}>Save to</Text>
-            <Text style={styles.dest} numberOfLines={2} ellipsizeMode="middle">{destination}</Text>
+            <Text style={styles.dest} numberOfLines={1} ellipsizeMode="middle" accessibilityLabel={`Save to ${destination}`}>{destShort}</Text>
           </View>
           <Button label="Change" variant="secondary" disabled={adding} onPress={handleChangeFolder} />
         </View>

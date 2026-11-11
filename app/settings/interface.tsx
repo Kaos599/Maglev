@@ -61,11 +61,14 @@ export default function InterfaceSettings() {
                   accessibilityRole="radio"
                   accessibilityLabel={label}
                   accessibilityState={{ selected, checked: selected }}
-                  style={[s.swatchRing, selected && { borderColor: colors.text }]}
+                  style={s.swatchItem}
                 >
-                  <View style={[s.swatch, { backgroundColor: fill }]}>
-                    {selected ? <PixelIcon name="check" size={16} color={colors.onAccent} /> : null}
+                  <View style={[s.swatchRing, selected && { borderColor: colors.text }]}>
+                    <View style={[s.swatch, { backgroundColor: fill }]}>
+                      {selected ? <PixelIcon name="check" size={16} color={colors.onAccent} /> : null}
+                    </View>
                   </View>
+                  <Text style={[s.swatchLabel, selected && { color: colors.text }]}>{label}</Text>
                 </PressableScale>
               );
             })}
@@ -89,7 +92,9 @@ const makeStyles = (c: ThemeColors) =>
   StyleSheet.create({
     block: { padding: spacing.lg, gap: spacing.sm },
     label: { ...type.bodyStrong, fontSize: 14, color: c.text },
-    swatches: { flexDirection: 'row', gap: spacing.md },
+    swatches: { flexDirection: 'row', gap: spacing.sm },
+    swatchItem: { minWidth: 64, alignItems: 'center', gap: 4 },
+    swatchLabel: { ...type.body, fontSize: 12, color: c.textMuted },
     // 44px outer target; the ring sits inside it so the swatch itself is 34px.
     swatchRing: {
       width: 44,

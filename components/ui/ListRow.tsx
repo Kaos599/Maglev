@@ -15,6 +15,8 @@ export interface ListRowProps {
   accessory?: React.ReactNode;
   onPress?: () => void;
   destructive?: boolean;
+  /** Radio semantics: shows a check on the selected row and no chevron. Pass true/false to opt in. */
+  selected?: boolean;
   disabled?: boolean;
   accessibilityLabel?: string;
   accessibilityHint?: string;
@@ -29,6 +31,7 @@ export function ListRow({
   accessory,
   onPress,
   destructive,
+  selected,
   disabled,
   accessibilityLabel,
   accessibilityHint,
@@ -55,7 +58,9 @@ export function ListRow({
           </Text>
         ) : null}
       </View>
-      {accessory ? (
+      {selected !== undefined ? (
+        <View style={styles.check}>{selected ? <PixelIcon name="check" size={20} color={colors.accentText} /> : null}</View>
+      ) : accessory ? (
         <View>{accessory}</View>
       ) : (
         <>
@@ -86,10 +91,10 @@ export function ListRow({
       onPress={onPress}
       disabled={disabled}
       testID={testID}
-      accessibilityRole="button"
+      accessibilityRole={selected !== undefined ? 'radio' : 'button'}
       accessibilityLabel={accessibilityLabel ?? [title, value, subtitle].filter(Boolean).join(', ')}
       accessibilityHint={accessibilityHint}
-      accessibilityState={{ disabled: !!disabled }}
+      accessibilityState={selected !== undefined ? { disabled: !!disabled, selected, checked: selected } : { disabled: !!disabled }}
       style={(pressed) => [styles.row, pressed && styles.pressed, disabled && styles.disabled]}
     >
       {body}
@@ -119,6 +124,7 @@ const makeStyles = (c: ThemeColors) =>
       justifyContent: 'center',
     },
     text: { flex: 1 },
+    check: { width: 20, height: 20 },
     title: { ...type.body, fontSize: 15 },
     subtitle: { ...type.body, fontSize: 12, color: c.textMuted, marginTop: 2 },
     value: { ...type.body, fontSize: 13, color: c.textMuted, maxWidth: '45%' },

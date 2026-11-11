@@ -74,9 +74,7 @@ export const PixelGlyph = memo(function PixelGlyph({
       width={size}
       height={size}
       viewBox={`0 0 ${GLYPH_GRID} ${GLYPH_GRID}`}
-      accessible={!!accessibilityLabel}
-      accessibilityRole={accessibilityLabel ? 'image' : undefined}
-      accessibilityLabel={accessibilityLabel}
+      {...(accessibilityLabel ? { accessible: true, accessibilityRole: 'image' as const, accessibilityLabel } : null)}
       {...crisp}
     >
       <Path d={pathFor(name)} fill={fill} {...crisp} />

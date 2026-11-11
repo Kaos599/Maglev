@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { BackHandler, FlatList, StyleSheet, TextInput, View } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useNavigation, useRouter } from 'expo-router';
+import { useTabBarStyle } from '../../components/tabBarStyle';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { HeaderBar } from '../../components/HeaderBar';
 import { FilterPills } from '../../components/FilterPills';
@@ -30,6 +31,8 @@ export default function TransfersScreen() {
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const navigation = useNavigation();
+  const tabBarStyle = useTabBarStyle();
   const { telemetry, pauseTorrent, resumeTorrent, pauseAll, resumeAll, deleteTorrent, clipboardMagnet, clearClipboardMagnet } =
     useMaglevEngine();
 
@@ -67,6 +70,11 @@ export default function TransfersScreen() {
     const next = new Set([...selectedIds].filter((id) => live.has(id)));
     if (next.size !== selectedIds.size) setSelectedIds(next);
   }, [all, selectedIds]);
+
+  // Selecting hides the tab bar so the bulk bar owns the bottom edge.
+  useEffect(() => {
+    navigation.setOptions({ tabBarStyle: selectionMode ? { display: 'none' } : tabBarStyle });
+  }, [navigation, selectionMode, tabBarStyle]);
 
   // Android Back leaves selection mode before anything else.
   useEffect(() => {
@@ -204,8 +212,8 @@ export default function TransfersScreen() {
         <SpeedTelemetryHeader
           downloadBytes={telemetry.totalDownloadSpeedBytes}
           uploadBytes={telemetry.totalUploadSpeedBytes}
-          canPause={anyRunning}
-          canResume={!anyRunning && anyPaused}
+          canPause={anyRunning && !selectionMode}
+          canResume={!anyRunning && anyPaused && !selectionMode}
           onPauseAll={() => void pauseAll()}
           onResumeAll={() => void resumeAll()}
         />

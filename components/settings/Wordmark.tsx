@@ -1,4 +1,5 @@
 import React from 'react';
+import { useWindowDimensions } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
 import { useTheme } from '../../context/ThemeContext';
 
@@ -8,12 +9,14 @@ const PATH =
 
 const crisp = { shapeRendering: 'crispEdges' } as object;
 
-export function Wordmark({ width = 168 }: { width?: number }) {
+export function Wordmark({ width }: { width?: number }) {
   const { colors } = useTheme();
+  const { width: screenW } = useWindowDimensions();
+  const w = width ?? Math.min(168, Math.round(screenW * 0.4));
   return (
     <Svg
-      width={width}
-      height={(width * 56) / 280}
+      width={w}
+      height={(w * 56) / 280}
       viewBox="0 0 280 56"
       accessible
       accessibilityRole="image"

@@ -150,7 +150,8 @@ export function buildColors(mode: ThemeMode, accent: AccentName, pureBlack = fal
     accent: accentFill,
     onAccent: dark ? '#05070A' : '#FFFFFF',
     accentText: accentFill,
-    download: p.download,
+    // Cyan accent would make "downloading" indistinguishable from active/primary state.
+    download: accent === 'cyan' ? (dark ? '#5AA9FF' : '#1F5FBF') : p.download,
     upload: p.upload,
     paused: p.paused,
     success: p.success,

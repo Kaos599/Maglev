@@ -1,13 +1,12 @@
 import React, { useMemo } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { Tabs } from 'expo-router';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { TAB_BAR_HEIGHT, useTabBarStyle } from '../../components/tabBarStyle';
 import { triggerHaptic } from '../../constants/haptics';
 import { PixelIcon, PixelIconName } from '../../components/PixelIcon';
 import { useTheme } from '../../context/ThemeContext';
 import { ThemeColors, type } from '../../constants/theme';
 
-const TAB_BAR_HEIGHT = 56;
 
 function TabIcon({ name, focused }: { name: PixelIconName; focused: boolean }) {
   const { colors } = useTheme();
@@ -22,7 +21,7 @@ function TabIcon({ name, focused }: { name: PixelIconName; focused: boolean }) {
 
 export default function TabLayout() {
   const { colors } = useTheme();
-  const insets = useSafeAreaInsets();
+  const tabBarStyle = useTabBarStyle();
 
   const tab = (name: string, title: string, icon: PixelIconName) => (
     <Tabs.Screen
@@ -40,14 +39,7 @@ export default function TabLayout() {
       screenListeners={{ tabPress: () => triggerHaptic('selection') }}
       screenOptions={{
         headerShown: false,
-        tabBarStyle: {
-          backgroundColor: colors.bg,
-          borderTopWidth: 1,
-          borderTopColor: colors.border,
-          height: TAB_BAR_HEIGHT + insets.bottom,
-          paddingBottom: insets.bottom,
-          paddingTop: 0,
-        },
+        tabBarStyle,
         tabBarItemStyle: { height: TAB_BAR_HEIGHT },
         tabBarActiveTintColor: colors.accentText,
         tabBarInactiveTintColor: colors.textMuted,
