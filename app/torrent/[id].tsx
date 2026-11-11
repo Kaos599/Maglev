@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { FlatList, Share, StyleSheet, Text, View } from 'react-native';
+import { FlatList, Linking, Share, StyleSheet, Text, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import * as Clipboard from 'expo-clipboard';
 import { maglevEngine, type DetailFile, type FilePriority, type TorrentLimits } from 'maglev-engine';
@@ -26,6 +26,7 @@ import { SpeedLimitSheet } from '../../components/detail/SpeedLimitSheet';
 import { MoveSheet } from '../../components/detail/MoveSheet';
 import { useTorrentDetail } from '../../components/detail/useTorrentDetail';
 import { buildMagnet, clockTime, isStreamable, limitText, moveFailure } from '../../components/detail/torrentLabels';
+import { actionsFor, type ErrorAction } from '../../components/detail/errorActions';
 
 type Tab = 'files' | 'peers' | 'trackers' | 'pieces';
 
@@ -405,6 +406,14 @@ export default function TorrentDetailScreen() {
     showNotice(res.ok ? { tone: 'info', text: 'Checking files…' } : { tone: 'danger', text: res.message });
   }, [id, showNotice]);
 
+  const handleFreeSpace = useCallback(async () => {
+    try {
+      await Linking.sendIntent('android.settings.INTERNAL_STORAGE_SETTINGS');
+    } catch {
+      await Linking.openSettings();
+    }
+  }, []);
+
   const handleOpenFolder = useCallback(async () => {
     setMoreOpen(false);
     if (!id) return;
@@ -437,6 +446,35 @@ export default function TorrentDetailScreen() {
     const ok = running ? await pauseTorrent(id) : await resumeTorrent(id);
     if (!ok) showNotice({ tone: 'danger', text: "Couldn't change the torrent state." });
   }, [id, pauseTorrent, resumeTorrent, showNotice, snap]);
+
+  const handleErrorAction = useCallback(
+    (action: ErrorAction) => {
+      switch (action) {
+        case 'freeSpace':
+          void handleFreeSpace();
+          return;
+        case 'move':
+          setMoveOpen(true);
+          return;
+        case 'pickFolder':
+          router.push('/settings/storage');
+          return;
+        case 'retry':
+          void handlePlayPause();
+          return;
+        case 'filesMissing':
+          // TODO(SM-32): replace with the SM-32 choices. Until then, Recheck.
+          void handleRecheck();
+          return;
+        case 'recheck':
+          void handleRecheck();
+          return;
+        case 'none':
+          return;
+      }
+    },
+    [handleFreeSpace, handlePlayPause, handleRecheck, router],
+  );
 
   const headerActions = snap ? (
     <>
@@ -499,6 +537,22 @@ export default function TorrentDetailScreen() {
 
   if (!snap || !detail) return null;
 
+  const errorMap = snap.error ? actionsFor(snap.error.code, { pausedBy: snap.pausedBy }) : null;
+  const errorButtons: { action: ErrorAction; label: string; variant: 'primary' | 'secondary' }[] = [];
+  if (errorMap) {
+    const labels: Record<ErrorAction, string> = {
+      freeSpace: 'Free up space',
+      move: 'Move',
+      pickFolder: 'Pick folder again',
+      filesMissing: 'Recheck',
+      retry: 'Retry',
+      recheck: 'Recheck',
+      none: '',
+    };
+    if (errorMap.primary !== 'none') errorButtons.push({ action: errorMap.primary, label: labels[errorMap.primary], variant: 'primary' });
+    if (errorMap.secondary) errorButtons.push({ action: errorMap.secondary, label: labels[errorMap.secondary], variant: 'secondary' });
+  }
+
   const moving = snap.state === 'MOVING';
   const frac = moving
     ? Math.min(1, Math.max(0, snap.moveProgress ?? 0))
@@ -522,7 +576,14 @@ export default function TorrentDetailScreen() {
       ) : null}
       {snap.error ? (
         <View style={styles.block}>
-          <Banner tone="danger" title="This torrent has a problem" body={snap.error.message} actionLabel="Recheck" onAction={handleRecheck} />
+          <Banner tone="danger" title="This torrent has a problem" body={errorMap?.message} />
+          {errorButtons.length ? (
+            <View style={styles.errorActions}>
+              {errorButtons.map((b) => (
+                <Button key={b.action} label={b.label} variant={b.variant} onPress={() => handleErrorAction(b.action)} />
+              ))}
+            </View>
+          ) : null}
         </View>
       ) : null}
 
@@ -784,6 +845,7 @@ const makeStyles = (c: ThemeColors) =>
   StyleSheet.create({
     content: { paddingHorizontal: spacing.lg, paddingBottom: spacing.xxxl },
     block: { marginBottom: spacing.md },
+    errorActions: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginTop: spacing.sm },
     summary: {
       backgroundColor: c.surface,
       borderWidth: 1,
