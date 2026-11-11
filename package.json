@@ -9,7 +9,7 @@
     "web": "expo start --web",
     "test": "node scripts/test-abi-splits.js && node scripts/test-p3-reality-contracts.js && node scripts/test-feeds.js && node scripts/test-rates.js && node scripts/test-version.js && node scripts/test-format.js && node scripts/test-trackers.js && node scripts/test-error-actions.js && node scripts/test-admission.js && node scripts/test-remove-files.js && node scripts/test-tracker-edit.js && node scripts/test-plugins.js && node scripts/test-share-bulk.js && node scripts/test-file-health-ui.js && node scripts/test-wave2-edge.js",
     "test:contracts": "node scripts/test-p3-reality-contracts.js",
-    "test:search": "node scripts/test-search.js",
+    "test:search": "node scripts/test-search.js && node scripts/test-search-general.js && node scripts/test-search-dht.js && node scripts/test-search-anime.js && node scripts/test-search-niche.js",
     "test:feeds": "node scripts/test-feeds.js",
     "test:rates": "node scripts/test-rates.js",
     "test:format": "node scripts/test-format.js",
