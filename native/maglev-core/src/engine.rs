@@ -3214,11 +3214,11 @@ impl MaglevEngine {
     /// Runs `op` on a torrent while it is paused. A live torrent is paused first and started again
     /// afterwards, under the tick lock, as `remove_files` does. A torrent that is checking or in error
     /// is `INVALID_STATE`.
-    async fn with_paused<T>(
+    async fn with_paused<T, E: std::fmt::Display>(
         &self,
         id: &str,
         h: &Handle20,
-        op: impl FnOnce() -> anyhow::Result<T>,
+        op: impl FnOnce() -> Result<T, E>,
     ) -> Result<T, EngineError> {
         let _tick = self.tick_lock.lock().await;
         let was_live = match h.stats().state {
