@@ -10,28 +10,28 @@ name = "maglev_core"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-librqbit = { version = "8.1", default-features = false, features = ["rust-tls"] }
-tokio = { version = "1.43", features = ["rt-multi-thread", "sync", "time", "macros", "net", "io-util"] }
+# default-features = false drops `default-tls` (native-tls / OpenSSL, which does not exist on Android)
+# and `http-api-client`. `rust-tls` selects reqwest/rustls and the `ring` SHA-1 backend.
+# `http-api`, `webui` and `upnp-serve-adapter` stay off, so no embedded web server or web UI is built.
+librqbit = { version = "9.1", default-features = false, features = ["rust-tls"] }
+tokio = { version = "1", features = ["rt-multi-thread", "sync", "time", "net", "io-util"] }
 jni = { version = "0.21", default-features = false }
-serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
 parking_lot = "0.12"
+bytes = "1"
 tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["fmt", "env-filter"] }
-thiserror = "2.0"
-bytes = "1.10"
-http-body-util = "0.1"
-hyper = { version = "1.6", features = ["full"] }
-hyper-util = { version = "0.1", features = ["full"] }
-libc = "0.2"
 
 [features]
 default = ["jni-bridge"]
 jni-bridge = []
 
 [profile.release]
-opt-level = 3
+# Size over raw speed: the engine is network and disk bound, and piece hashing runs in
+# ring's hand written assembly, which opt-level does not touch.
+opt-level = "s"
 lto = true
 codegen-units = 1
-panic = "abort"
+# No panic = "abort": the contract maps panics to {"ok":false,"code":"INTERNAL"} through
+# catch_unwind, and a panic inside a tokio task must not take the whole app down.
 strip = true

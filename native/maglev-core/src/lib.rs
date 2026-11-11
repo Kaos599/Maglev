@@ -1,21 +1,24 @@
-//! Maglev Core Native Library.
+//! Maglev Core: the native BitTorrent engine behind the Android app.
 //!
-//! Provides the embedded BitTorrent engine, JNI dispatcher, direct storage I/O,
-//! SIMD piece bitfield downsampling, local loopback HTTP streaming,
-//! and Phase 2 system governance (token-bucket limiter, proxy tunneling, IP filter).
+//! The engine wraps librqbit 9.x. Everything the app sees goes through the JSON
+//! contract in `docs/NATIVE_CONTRACT.md`.
+//!
+//! Pure, JVM-free and session-free modules (unit tested on any host):
+//! `config`, `error`, `source`, `scheduler`, `meta`, `simd`, and the parsing half of `streaming`.
 
+pub mod config;
 pub mod engine;
-pub mod governance;
-pub mod ip_filter;
+pub mod error;
+pub mod meta;
+pub mod scheduler;
 pub mod simd;
-pub mod storage;
+pub mod source;
 pub mod streaming;
+pub mod types;
 
 #[cfg(feature = "jni-bridge")]
 pub mod jni;
 
-// Re-export common types
-pub use engine::{AggregatedTelemetry, MaglevEngine, TorrentTelemetry};
-pub use governance::{NetworkGovernance, PowerGovernance, ProxyConfig, TokenBucketLimiter};
-pub use ip_filter::IpFilterEngine;
-pub use simd::{downsample_bitfield, MATRIX_SIZE};
+pub use config::NativeConfig;
+pub use engine::MaglevEngine;
+pub use error::{EngineError, ErrorCode};

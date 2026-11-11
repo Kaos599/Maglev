@@ -1,0 +1,290 @@
+//! Error codes, the `Result` envelope, and mapping of raw librqbit / OS errors to codes.
+
+use serde::{Deserialize, Serialize};
+use serde_json::{json, Map, Value};
+
+/// The closed set of codes from `docs/NATIVE_CONTRACT.md` section 3, plus `TRACKER`,
+/// which only appears inside a torrent snapshot's `error` object.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum ErrorCode {
+    InvalidSource,
+    Duplicate,
+    MetadataTimeout,
+    Network,
+    NotFound,
+    DiskFull,
+    Permission,
+    FilesMissing,
+    Tracker,
+    NotInitialized,
+    EngineUnavailable,
+    Internal,
+}
+
+impl ErrorCode {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            ErrorCode::InvalidSource => "INVALID_SOURCE",
+            ErrorCode::Duplicate => "DUPLICATE",
+            ErrorCode::MetadataTimeout => "METADATA_TIMEOUT",
+            ErrorCode::Network => "NETWORK",
+            ErrorCode::NotFound => "NOT_FOUND",
+            ErrorCode::DiskFull => "DISK_FULL",
+            ErrorCode::Permission => "PERMISSION",
+            ErrorCode::FilesMissing => "FILES_MISSING",
+            ErrorCode::Tracker => "TRACKER",
+            ErrorCode::NotInitialized => "NOT_INITIALIZED",
+            ErrorCode::EngineUnavailable => "ENGINE_UNAVAILABLE",
+            ErrorCode::Internal => "INTERNAL",
+        }
+    }
+}
+
+/// A failure that is turned into `{"ok":false,"code":...,"message":...}`.
+#[derive(Debug, Clone, PartialEq)]
+pub struct EngineError {
+    pub code: ErrorCode,
+    pub message: String,
+    /// Set for `DUPLICATE`: the id of the torrent that already exists.
+    pub id: Option<String>,
+}
+
+impl EngineError {
+    pub fn new(code: ErrorCode, message: impl Into<String>) -> Self {
+        Self {
+            code,
+            message: message.into(),
+            id: None,
+        }
+    }
+
+    pub fn duplicate(id: impl Into<String>) -> Self {
+        Self {
+            code: ErrorCode::Duplicate,
+            message: "This torrent is already in your list".to_string(),
+            id: Some(id.into()),
+        }
+    }
+
+    pub fn not_found() -> Self {
+        Self::new(ErrorCode::NotFound, "That torrent isn't in your list")
+    }
+
+    pub fn not_initialized() -> Self {
+        Self::new(
+            ErrorCode::NotInitialized,
+            "The download engine isn't running yet",
+        )
+    }
+
+    pub fn internal(message: impl Into<String>) -> Self {
+        Self::new(ErrorCode::Internal, message)
+    }
+
+    pub fn to_json(&self) -> String {
+        let mut m = Map::new();
+        m.insert("ok".into(), Value::Bool(false));
+        m.insert("code".into(), Value::String(self.code.as_str().into()));
+        m.insert("message".into(), Value::String(self.message.clone()));
+        if let Some(id) = &self.id {
+            m.insert("id".into(), Value::String(id.clone()));
+        }
+        Value::Object(m).to_string()
+    }
+}
+
+impl std::fmt::Display for EngineError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}: {}", self.code.as_str(), self.message)
+    }
+}
+
+impl std::error::Error for EngineError {}
+
+/// Shown when a Rust panic is caught at the JNI boundary.
+pub fn panic_envelope() -> String {
+    EngineError::internal("Something went wrong inside the download engine").to_json()
+}
+
+/// `{"ok":true}` with the fields of `payload` merged in. A payload that is not a
+/// JSON object is stored under `"value"`.
+pub fn ok_envelope<T: Serialize>(payload: &T) -> String {
+    let mut m = Map::new();
+    m.insert("ok".into(), Value::Bool(true));
+    match serde_json::to_value(payload) {
+        Ok(Value::Object(obj)) => {
+            for (k, v) in obj {
+                m.insert(k, v);
+            }
+        }
+        Ok(Value::Null) => {}
+        Ok(other) => {
+            m.insert("value".into(), other);
+        }
+        Err(_) => {
+            return EngineError::internal("Couldn't encode the engine's answer").to_json();
+        }
+    }
+    Value::Object(m).to_string()
+}
+
+pub fn ok_empty() -> String {
+    json!({ "ok": true }).to_string()
+}
+
+pub fn result_envelope<T: Serialize>(r: Result<T, EngineError>) -> String {
+    match r {
+        Ok(v) => ok_envelope(&v),
+        Err(e) => e.to_json(),
+    }
+}
+
+/// Maps a raw runtime error text (anyhow chain, OS error) to a code and a plain English message.
+/// The raw text is only used for matching; it is never shown to the user.
+pub fn classify_runtime_error(raw: &str) -> (ErrorCode, String) {
+    let t = raw.to_ascii_lowercase();
+    if t.contains("no space left")
+        || t.contains("os error 28")
+        || t.contains("disk quota")
+        || t.contains("os error 122")
+        || t.contains("storage full")
+    {
+        return (
+            ErrorCode::DiskFull,
+            "Storage is full. Free up some space, then resume.".to_string(),
+        );
+    }
+    if t.contains("permission denied")
+        || t.contains("operation not permitted")
+        || t.contains("os error 13")
+        || t.contains("os error 1)")
+        || t.contains("read-only file system")
+        || t.contains("os error 30")
+    {
+        return (
+            ErrorCode::Permission,
+            "Maglev can't write to this download folder. Check the folder permission.".to_string(),
+        );
+    }
+    if t.contains("no such file")
+        || t.contains("os error 2)")
+        || t.contains("file not found")
+        || t.contains("files are missing")
+    {
+        return (
+            ErrorCode::FilesMissing,
+            "Some downloaded files are missing. Recheck to download them again.".to_string(),
+        );
+    }
+    if t.contains("tracker") {
+        return (
+            ErrorCode::Tracker,
+            "A tracker isn't responding.".to_string(),
+        );
+    }
+    (
+        ErrorCode::Internal,
+        "Something went wrong with this torrent.".to_string(),
+    )
+}
+
+/// Classifies a failure while fetching or decoding torrent info.
+pub fn classify_add_error(raw: &str) -> EngineError {
+    let t = raw.to_ascii_lowercase();
+    if t.contains("error decoding torrent")
+        || t.contains("deserializ")
+        || t.contains("bencode")
+        || t.contains("not a valid magnet")
+        || t.contains("infohash")
+        || t.contains("unsupported url")
+    {
+        return EngineError::new(
+            ErrorCode::InvalidSource,
+            "That doesn't look like a valid torrent",
+        );
+    }
+    let (code, message) = classify_runtime_error(raw);
+    match code {
+        ErrorCode::DiskFull | ErrorCode::Permission => EngineError::new(code, message),
+        _ => EngineError::new(
+            ErrorCode::Network,
+            "Couldn't reach the torrent. Check your connection and try again.",
+        ),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn enospc_maps_to_disk_full() {
+        let (c, m) = classify_runtime_error("write failed\n\nCaused by:\n    No space left on device (os error 28)");
+        assert_eq!(c, ErrorCode::DiskFull);
+        assert!(m.contains("Storage is full"));
+        assert_eq!(classify_runtime_error("os error 28").0, ErrorCode::DiskFull);
+    }
+
+    #[test]
+    fn eacces_and_eperm_map_to_permission() {
+        assert_eq!(
+            classify_runtime_error("Permission denied (os error 13)").0,
+            ErrorCode::Permission
+        );
+        assert_eq!(
+            classify_runtime_error("Operation not permitted (os error 1)").0,
+            ErrorCode::Permission
+        );
+    }
+
+    #[test]
+    fn missing_file_maps_to_files_missing() {
+        assert_eq!(
+            classify_runtime_error("No such file or directory (os error 2)").0,
+            ErrorCode::FilesMissing
+        );
+    }
+
+    #[test]
+    fn unknown_errors_hide_raw_text() {
+        let (c, m) = classify_runtime_error("bug: torrent in broken None state");
+        assert_eq!(c, ErrorCode::Internal);
+        assert!(!m.contains("bug"));
+    }
+
+    #[test]
+    fn add_errors_split_between_invalid_and_network() {
+        assert_eq!(
+            classify_add_error("error decoding torrent").code,
+            ErrorCode::InvalidSource
+        );
+        assert_eq!(
+            classify_add_error("error downloading torrent metadata: connection refused").code,
+            ErrorCode::Network
+        );
+    }
+
+    #[test]
+    fn envelopes_have_the_contract_shape() {
+        let v: Value = serde_json::from_str(&EngineError::duplicate("abc").to_json()).unwrap();
+        assert_eq!(v["ok"], false);
+        assert_eq!(v["code"], "DUPLICATE");
+        assert_eq!(v["id"], "abc");
+        let v: Value = serde_json::from_str(&ok_envelope(&json!({"id": "x"}))).unwrap();
+        assert_eq!(v["ok"], true);
+        assert_eq!(v["id"], "x");
+        let v: Value = serde_json::from_str(&panic_envelope()).unwrap();
+        assert_eq!(v["code"], "INTERNAL");
+        assert_eq!(v["ok"], false);
+    }
+
+    #[test]
+    fn code_serializes_screaming_snake() {
+        assert_eq!(
+            serde_json::to_string(&ErrorCode::MetadataTimeout).unwrap(),
+            "\"METADATA_TIMEOUT\""
+        );
+        assert_eq!(ErrorCode::MetadataTimeout.as_str(), "METADATA_TIMEOUT");
+    }
+}
