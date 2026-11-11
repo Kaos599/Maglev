@@ -513,6 +513,15 @@ contract('C-W3-1', 'P1', 'Wave 3 JS side: file priority, reannounce, free space,
   assert(/Platform\.Version/.test(iface) && /Live progress in status bar/.test(iface), 'Interface settings has the Live Updates row gated by API level');
 });
 
+// expo-router throws "Cannot use `href` and `tabBarButton` together" (TabsClient processScreens),
+// so a hidden tab (Assistant off, the default) must not carry the custom button or the app crashes at launch.
+contract('C-NAV-1', 'P0', 'A hidden tab sets href:null without tabBarButton', () => {
+  const layout = code('app/(tabs)/_layout.tsx');
+  assert(/\{\s*href:\s*null,\s*title\s*\}/.test(layout), 'the hidden branch is exactly { href: null, title }');
+  const objs = layout.match(/\{[^{}]*\}/g) || [];
+  assert(!objs.some((o) => /href\s*:/.test(o) && /tabBarButton\s*:/.test(o)), 'no options object sets both href and tabBarButton');
+});
+
 // The assistant's logic stays pure and testable in node: only the tool runner may reach the engine or React Native.
 contract('C-ASSIST-8', 'P1', 'Assistant modules import neither react-native nor the engine (toolRunner.ts excepted)', () => {
   const files = walk('utils/assistant', ['.ts', '.tsx']).filter((f) => path.basename(f) !== 'toolRunner.ts');
