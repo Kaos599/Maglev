@@ -135,3 +135,11 @@ Additions beyond §2–§6, agreed during Wave 1:
 - `max_active_downloads` / `max_active_seeds` of `0` mean unlimited. A user resume of a `seed_limit` torrent waives the limits for that torrent.
 - Multi-file torrents with a custom `output_folder` go into `<folder>/<torrent name>/`.
 - Telemetry event payload: `{ok, torrents:[…], serviceBlocked}`. Storage status: `{path, fallback, safLost, mode, uri, displayName, copyError?}`.
+
+## 8. Background survival (user requirement, 2026-11-11)
+
+- **Auto-restart.** The service is `START_STICKY` while any torrent is active. When Android kills the process, the service restarts **headless** (no JS): `nativeInit("")` loads the last persisted config, the governance rules come from SharedPreferences, and transfers resume. If nothing is active, the service stops itself.
+- **User intent wins.** Tapping Shut down or Pause all is persisted, so a sticky restart never resurrects transfers the user stopped.
+- **No 6-hour cap.** On API 34+ the service type is `specialUse` (property: P2P transfer the user started). Below 34 it is `dataSync`. A future Google Play build flips `USE_SPECIAL_USE_FGS = false`, which brings back `dataSync` and its `onTimeout` handling.
+- **Battery nudge.** `getPermissionStatus()` adds `backgroundKills: number` (headless restarts detected after a gap) and `oemHint` (the manufacturer, for dontkillmyapp.com guidance). Settings → Needs attention shows "Android stopped Maglev N times. Allow unrestricted battery" with **Allow** (`openBatterySettings`).
+- **No boot auto-start.** Android 15 blocks starting these service types from `BOOT_COMPLETED`. Transfers resume on the next app open or the next sticky restart.

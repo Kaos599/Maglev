@@ -85,6 +85,7 @@ Covers SM-1, 2, 6, 7, 8, 9, 10, 13, 14, 15.
 | 1.6 Typed bridge, no release mock, `toNativeConfig`, settings in expo-sqlite kv-store, intents | TS | C-ENG-3, C-PERSIST-1, C-SET-1, C-INTENT-1 |
 | 1.7 Mock engine enforces the same validation as the real engine (dev and web only) | TS | C-DUP-1, C-MAG-1 |
 | 1.8 CI: build the `.so` on every push, size/reality/16 KB-alignment gate, APK artifact on every branch, stop committing binaries | CI | C-ENG-2 (gate) |
+| 1.10 **Background survival**: START_STICKY with headless re-init, persisted governance and user intent, `specialUse` service on API 34+ (no 6 h cap), battery-kill nudge (`NATIVE_CONTRACT.md` §8) | Kotlin | C-SVC-3 (todo) |
 | 1.9 Delete the simulator and its redundant tests (`test-e2e.js`, `test-p2-contracts.js`, `test-verification-playbook.js` exercise the old mock API) | Orchestrator | — |
 
 **Exit gate:** all P0 engine, service and persistence contracts pass. A CI APK installed on a device downloads a real public torrent (for example a Debian netinst) into `Download/Maglev`, survives `adb shell am kill`, and keeps running for 10 minutes in the background with the notification visible.
