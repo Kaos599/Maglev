@@ -468,6 +468,29 @@ contract('C-A11Y-1', 'P2',
     assert(offenders.length === 0, `sub-44px interactive style sizes found: ${offenders.length}`);
   });
 
+contract('C-SEARCH-1', 'P1', 'Search engine files exist and the search contract tests pass', () => {
+  const files = [
+    'utils/search/aggregate.ts',
+    'utils/search/providers/index.ts',
+    'utils/search/providers/knaben.ts',
+    'utils/search/providers/torrentscsv.ts',
+    'utils/search/providers/archive.ts',
+    'utils/search/providers/nyaa.ts',
+    'utils/search/providers/yts.ts',
+    'utils/search/providers/tpb.ts',
+    'utils/search/providers/bitsearch.ts',
+    'utils/search/providers/linuxtracker.ts',
+    'utils/search/providers/sukebei.ts',
+    'utils/search/providers/torznab.ts',
+    'scripts/test-search.js',
+  ];
+  const missing = files.filter((f) => !exists(f));
+  assert(missing.length === 0, `search engine files present${missing.length ? ` (missing: ${missing.join(', ')})` : ''}`);
+  const r = require('child_process').spawnSync(process.execPath, [abs('scripts/test-search.js')], { cwd: ROOT, encoding: 'utf8', timeout: 60000 });
+  if (r.status !== 0) console.error(`${r.stdout || ''}${r.stderr || ''}`.split('\n').slice(-25).join('\n'));
+  assert(r.status === 0, 'node scripts/test-search.js exits 0');
+});
+
 // ---------- runner ----------
 
 function main() {

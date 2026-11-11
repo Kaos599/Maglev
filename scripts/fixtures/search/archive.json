@@ -1,0 +1,33 @@
+{
+ "response": {
+  "numFound": 4,
+  "start": 0,
+  "docs": [
+   {
+    "btih": "0d124c3a96fe8b38a0a97a4b7349fb43ef54b1e2",
+    "identifier": "ubuntu_202505",
+    "item_size": 670940361,
+    "title": "ubuntu",
+    "mediatype": "software",
+    "publicdate": "2025-05-01T10:00:00Z"
+   },
+   {
+    "btih": "8ac3db7dac80cf217800d12a2c466d3f4b159e86",
+    "identifier": "UbuntuBasura",
+    "item_size": 105402,
+    "title": "Ubuntu Basura"
+   },
+   {
+    "btih": "7875d23bf32dc090815605226099a437b4c1a33d",
+    "identifier": "ubuntu-on-windows---how-to-install-and-use-bash-with-in-windows-10",
+    "item_size": 22860521,
+    "title": "Ubuntu on Windows - How to Install and Use Bash With in Windows 10"
+   },
+   {
+    "identifier": "no-torrent-item",
+    "item_size": 10,
+    "title": "No btih here"
+   }
+  ]
+ }
+}

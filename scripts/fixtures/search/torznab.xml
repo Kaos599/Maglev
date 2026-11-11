@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom" xmlns:torznab="http://torznab.com/schemas/2015/feed">
+  <channel>
+    <title>Sample indexer</title>
+    <item>
+      <title>Ubuntu 26.04 Desktop amd64 &amp; Tools</title>
+      <guid>https://indexer.example/details/1</guid>
+      <link>https://indexer.example/dl/1.torrent</link>
+      <comments>https://indexer.example/details/1</comments>
+      <pubDate>Tue, 03 Nov 2026 07:03:00 +0000</pubDate>
+      <size>6517612871</size>
+      <enclosure url="https://indexer.example/dl/1.torrent" length="6517612871" type="application/x-bittorrent" />
+      <torznab:attr name="category" value="4000" />
+      <torznab:attr name="category" value="4050" />
+      <torznab:attr name="seeders" value="12" />
+      <torznab:attr name="peers" value="20" />
+      <torznab:attr name="infohash" value="DAFC8C076CA2F3ED376EEAE7C76A0D6BE2415C45" />
+    </item>
+    <item>
+      <title><![CDATA[Some Show S01E01 1080p]]></title>
+      <link>magnet:?xt=urn:btih:e8cbdb334ffaa758d79ec634797b8c8b160a19d6&amp;dn=Some+Show</link>
+      <size>1500000000</size>
+      <torznab:attr name="category" value="5000" />
+      <torznab:attr name="seeders" value="3" />
+      <torznab:attr name="leechers" value="1" />
+    </item>
+    <item>
+      <title>No hash anywhere</title>
+      <link>https://indexer.example/dl/3.torrent</link>
+    </item>
+  </channel>
+</rss>

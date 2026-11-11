@@ -1,0 +1,60 @@
+{
+ "status": "ok",
+ "data": {
+  "movie_count": 2,
+  "movies": [
+   {
+    "id": 59406,
+    "url": "https://yts.gg/movies/matrix-generation-2024",
+    "title_long": "Matrix: Generation (2024)",
+    "year": 2024,
+    "torrents": [
+     {
+      "hash": "937C8886C8FD31240898B0DE40DE9E104A926F7E",
+      "quality": "720p",
+      "type": "web",
+      "seeds": 13,
+      "peers": 5,
+      "size_bytes": 511568773,
+      "date_uploaded_unix": 1705959944
+     },
+     {
+      "hash": "47C3A66A7D04065607F97AAB5CBFA651C136D90A",
+      "quality": "1080p",
+      "type": "web",
+      "seeds": 12,
+      "peers": 3,
+      "size_bytes": 948174848,
+      "date_uploaded_unix": 1705961949
+     }
+    ]
+   },
+   {
+    "id": 38698,
+    "url": "https://yts.gg/movies/the-matrix-resurrections-2021",
+    "title_long": "The Matrix Resurrections (2021)",
+    "year": 2021,
+    "torrents": [
+     {
+      "hash": "107FACDA1820DF8212022863FFFA19A971563595",
+      "quality": "720p",
+      "type": "bluray",
+      "seeds": 36,
+      "peers": 7,
+      "size_bytes": 1428076626,
+      "date_uploaded_unix": 1645277920
+     },
+     {
+      "hash": "E9CC8CB56C01EDCB7E324A5B57A7B5D04520DD48",
+      "quality": "1080p",
+      "type": "bluray",
+      "seeds": 100,
+      "peers": 20,
+      "size_bytes": 2931315180,
+      "date_uploaded_unix": 1645282983
+     }
+    ]
+   }
+  ]
+ }
+}
