@@ -80,7 +80,7 @@ async function main() {
     small720: row('The.Last.Harbor.2023.720p.WEBRip.x264-YTS', 1.0 * GB, 50),
     cam: row('The.Last.Harbor.2023.HDCAM.x264.AC3-LUMEN', 1.4 * GB, 900),
     ts: row('The.Last.Harbor.2023.HDTS.x264-NOGRP', 1.6 * GB, 400),
-    fake: row('The.Last.Harbor.2023.1080p.WEB-DL.x264-FAKE', 38 * MB, 12),
+    fake: row('The.Last.Harbor.2023.1080p.WEB-DL.x264-FAKE', 150 * MB, 12),
     tpbOnly: row('The.Last.Harbor.2023.1080p.WEBRip.x265-GRP', 1.8 * GB, 800, ['tpb']),
     sequel: row('The.Last.Harbor.2.2025.1080p.WEB-DL.x265-GRP', 2 * GB, 200),
     oldYear: row('The.Last.Harbor.2019.1080p.WEB-DL.x265-GRP', 2 * GB, 200),
@@ -115,10 +115,10 @@ async function main() {
   const tc = scoreResults([row('The.Last.Harbor.2023.TC.x264-GRP', 1.4 * GB, 10), row('The.Last.Harbor.2023.DVDSCR.x264-GRP', 1.4 * GB, 10)], baseCtx());
   check('TC and SCR are excluded too', tc.excluded.length === 2 && tc.ranked.length === 0);
 
-  // ---------------------------------------------------------------- item 3: 38 MB "1080p"
+  // ---------------------------------------------------------------- item 3: 150 MB "1080p"
   const fake = out.ranked.find((r) => r.id === idOf('fake'));
-  check('38 MB 1080p gets too_small_for_claim', fake.flags.includes('too_small_for_claim'), fake.flags.join(','));
-  check('38 MB 1080p is "avoid" and never shortlisted', fake.tier === 'avoid' && !out.shortlist.includes(fake));
+  check('150 MB 1080p gets too_small_for_claim', fake.flags.includes('too_small_for_claim'), fake.flags.join(','));
+  check('150 MB 1080p is "avoid" and never shortlisted', fake.tier === 'avoid' && !out.shortlist.includes(fake));
 
   // ---------------------------------------------------------------- item 4: risky sources
   const hash = '9'.repeat(40);
@@ -439,6 +439,32 @@ async function main() {
     const o4 = scoreResults([packs.s1to5, exact], baseCtx({ query: { title: 'Harbor Light' }, freeBytes: 500 * GB }));
     check('no season asked: pack kept, no pack reason', o4.ranked.length === 2 && !o4.ranked.some((r) => r.reasons.some((x) => /^Pack:/.test(x))));
     check('no season asked: no multi_season_pack flag', !o4.ranked.some((r) => r.flags.includes('multi_season_pack')));
+  }
+
+  // ---------------------------------------------------------------- implausible sizes (0.11)
+  {
+    const KB = 1024;
+    const ex = (rows, over = {}) => scoreResults(rows, baseCtx({ freeBytes: 500 * GB, ...over }));
+    const tiny = row('The.Last.Harbor.2023.1080p.WEB-DL.x265-GRP', 22.4 * KB, 900);
+    const ok = row('The.Last.Harbor.2023.1080p.BluRay.x264-GRP', 3 * GB, 50);
+    const o = ex([tiny, ok]);
+    check('a 22 KB movie is excluded as a broken size', o.excluded.length === 1 && o.excluded[0].reason === 'broken_size' && o.excluded[0].id === tiny.infoHash, o.excluded);
+    check('the exclusion has a plain reason', /too small/i.test(o.excluded[0].detail), o.excluded[0].detail);
+    check('the broken row is not ranked or shortlisted', !o.ranked.some((r) => r.id === tiny.infoHash) && !o.shortlist.some((r) => r.id === tiny.infoHash));
+    check('a 30 MB movie is excluded too', ex([row('The.Last.Harbor.2023.720p.WEB-DL.x264-GRP', 30 * MB, 10)]).excluded[0]?.reason === 'broken_size');
+    check('a 49 MB movie is excluded, a 60 MB one is kept for the normal checks', ex([row('The.Last.Harbor.2023.480p.WEB-DL.x264-GRP', 49 * MB, 10)]).excluded.length === 1 && ex([row('The.Last.Harbor.2023.480p.WEB-DL.x264-GRP', 60 * MB, 10)]).excluded.length === 0);
+    const ep = row('Harbor.Light.S01E02.1080p.WEB-DL.x265-GRP', 20 * MB, 10, ['knaben'], { category: 'tv' });
+    check('a 20 MB TV episode is excluded', ex([ep], { query: { title: 'Harbor Light', season: 1, episode: 2 } }).excluded[0]?.reason === 'broken_size');
+    const anime = row('Harbor.Light.S01E02.1080p.WEB-DL.x265-GRP', 20 * MB, 10, ['knaben'], { category: 'anime' });
+    check('a 20 MB anime episode is kept (only under 1 MB is broken for anime)', ex([anime], { query: { title: 'Harbor Light', season: 1, episode: 2 } }).excluded.length === 0);
+    const anime2 = row('Harbor.Light.S01E03.1080p.WEB-DL.x265-GRP', 500 * KB, 10, ['knaben'], { category: 'anime' });
+    check('a 500 KB anime episode is excluded', ex([anime2], { query: { title: 'Harbor Light', season: 1, episode: 3 } }).excluded[0]?.reason === 'broken_size');
+    check('size unknown is never excluded as broken', ex([row('The.Last.Harbor.2023.1080p.WEB-DL.x265-GRP', undefined, 10)]).excluded.length === 0);
+    const unk = ex([row('The.Last.Harbor.2023.1080p.WEB-DL.x265-GRP', undefined, 10)]);
+    check('unknown size keeps the size_unknown flag', unk.ranked[0].flags.includes('size_unknown'));
+    check('a tiny book is not a video, so it is kept', ex([row('The.Last.Harbor.2023.epub', 300 * KB, 10, ['knaben'], { category: 'books' })]).excluded.length === 0);
+    check('a tiny music file is kept', ex([row('The.Last.Harbor.2023.FLAC', 400 * KB, 10, ['knaben'], { category: 'music' })]).excluded.length === 0);
+    check('with no category, a name that is clearly video is still checked', ex([row('The.Last.Harbor.2023.1080p.WEB-DL.x265-GRP', 22 * KB, 10, ['knaben'], { category: undefined })]).excluded[0]?.reason === 'broken_size');
   }
 
   // ---------------------------------------------------------------- purity

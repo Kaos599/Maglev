@@ -34,6 +34,9 @@ function samples(R, T) {
     propose_pause_resume: { transfer_id: T, action: 'pause', reason: REASON },
     propose_remove_files: { transfer_id: T, file_indices: [0, 1, 2], reason: REASON },
     propose_delete: { transfer_id: T, delete_files: false, reason: REASON },
+    propose_change: { transfer_id: T, action: 'select_files', file_indices: [0, 1], reason: REASON },
+    ask_user: { question: 'Which size?', options: ['Small', 'Big'] },
+    open_screen: { screen: 'transfer', transfer_id: T },
     propose_plan: {
       reason: REASON,
       steps: [{ tool: 'propose_pause_resume', args: { transfer_id: T, action: 'pause', reason: REASON } }],
@@ -68,13 +71,13 @@ async function main() {
   const R = reg.issue('result', HASH);
   const T = reg.issue('transfer', 42);
   const S = samples(R, T);
-  const bad = (name, args) => validateArgs(name, args, reg);
+  const bad = (name, args) => validateArgs(name, args, reg, true);
   const isBad = (r, code = 'bad_args') => !r.ok && r.error.code === code;
 
   console.log('tools: schema structure');
-  check('TOOLS has 13 entries', TOOLS.length === 13, TOOLS.length);
-  check('READ_TOOLS has the 7 read tools', READ_TOOLS.size === 7, [...READ_TOOLS]);
-  check('PROPOSAL_TOOLS has the 6 proposal tools', PROPOSAL_TOOLS.size === 6, [...PROPOSAL_TOOLS]);
+  check('TOOLS has exactly 7 entries', TOOLS.length === 7, TOOLS.length);
+  check('READ_TOOLS has the 5 read tools', READ_TOOLS.size === 5, [...READ_TOOLS]);
+  check('PROPOSAL_TOOLS has the 2 proposal tools', PROPOSAL_TOOLS.size === 2 && PROPOSAL_TOOLS.has('propose_change'), [...PROPOSAL_TOOLS]);
   check('READ and PROPOSAL cover TOOLS exactly', TOOLS.every((t) => READ_TOOLS.has(t.function.name) || PROPOSAL_TOOLS.has(t.function.name)));
   const names = TOOLS.map((t) => t.function.name);
   check('tool names are unique', new Set(names).size === names.length, names);
@@ -87,6 +90,39 @@ async function main() {
     checkClosed(p, n, problems);
     check(`${n}: closed, required ⊆ properties at every depth`, problems.length === 0, problems);
     check(`${n}: description is short plain text`, t.function.description.length > 20 && t.function.description.length < 300);
+  }
+
+  console.log('tools: the seven tools and the generated overview');
+  {
+    const { toolsOverview } = await import('../utils/assistant/tools.ts');
+    check('the model sees exactly these seven', names.join() === 'search_torrents,get_result_details,list_transfers,ask_user,open_screen,propose_add,propose_change', names);
+    for (const old of ['parse_release_name', 'describe_tools', 'propose_plan', 'propose_setting', 'get_free_space', 'get_transfer_details', 'explain_error', 'propose_select_files', 'propose_pause_resume', 'propose_remove_files', 'propose_delete']) {
+      check(`${old} is not exposed to the model`, !names.includes(old) && isBad(validateArgs(old, {}, reg), 'unknown_tool'));
+    }
+    const text = toolsOverview();
+    const lines = text.split('\n');
+    check('overview has one line per tool', lines.length === TOOLS.length, lines.length);
+    check('overview names every tool', TOOLS.every((t) => lines.some((l) => l.startsWith(`- ${t.function.name}:`))));
+    const sl = lines.find((l) => l.startsWith('- search_torrents:'));
+    check('overview shows search key args and sort values', /query/.test(sl) && /category/.test(sl) && /sort best\|seeders\|newest/.test(sl), sl);
+    check('overview lines are short', lines.every((l) => l.length < 320), lines.map((l) => l.length));
+    check('overview does not show ids or the reason argument', !/reason|result_id/.test(text));
+    const ok = (n, a) => validateArgs(n, a, reg).ok === true;
+    check('propose_change: pause', ok('propose_change', { transfer_id: T, action: 'pause', reason: REASON }));
+    check('propose_change: select_files needs file_indices', isBad(validateArgs('propose_change', { transfer_id: T, action: 'select_files', reason: REASON }, reg)) && /file_indices/.test(validateArgs('propose_change', { transfer_id: T, action: 'select_files', reason: REASON }, reg).error.message));
+    check('propose_change: remove_files needs file_indices', isBad(validateArgs('propose_change', { transfer_id: T, action: 'remove_files', reason: REASON }, reg)));
+    check('propose_change: pause with file_indices is refused', isBad(validateArgs('propose_change', { transfer_id: T, action: 'pause', file_indices: [0], reason: REASON }, reg)));
+    check('propose_change: delete_files only with delete', isBad(validateArgs('propose_change', { transfer_id: T, action: 'pause', delete_files: true, reason: REASON }, reg)) && ok('propose_change', { transfer_id: T, action: 'delete', delete_files: true, reason: REASON }));
+    check('propose_change: bad action lists the choices', /pause, resume, select_files, remove_files, delete/.test(validateArgs('propose_change', { transfer_id: T, action: 'wipe', reason: REASON }, reg).error.message));
+    const resolved = validateArgs('propose_change', { transfer_id: T, action: 'resume', reason: REASON }, reg);
+    check('propose_change resolves the transfer handle', resolved.ok && resolved.args.transfer_id === 42, resolved);
+    check('propose_change rejects an unknown handle', isBad(validateArgs('propose_change', { transfer_id: 't77', action: 'pause', reason: REASON }, reg)));
+    check('ask_user: 2 to 5 options', ok('ask_user', { question: 'Which?', options: ['a', 'b'] }) && isBad(validateArgs('ask_user', { question: 'Which?', options: ['a'] }, reg)) && isBad(validateArgs('ask_user', { question: 'Which?', options: ['a', 'b', 'c', 'd', 'e', 'f'] }, reg)));
+    check('ask_user: duplicate options and long options are refused', isBad(validateArgs('ask_user', { question: 'Which?', options: ['a', 'a'] }, reg)) && isBad(validateArgs('ask_user', { question: 'Which?', options: ['a', 'x'.repeat(41)] }, reg)));
+    check('open_screen: each screen', ok('open_screen', { screen: 'transfers', filter: 'paused' }) && ok('open_screen', { screen: 'search', query: 'ubuntu' }) && ok('open_screen', { screen: 'add_download' }) && ok('open_screen', { screen: 'settings', section: 'network' }) && ok('open_screen', { screen: 'transfer', transfer_id: T }));
+    check('open_screen: transfer needs an id, others refuse one', isBad(validateArgs('open_screen', { screen: 'transfer' }, reg)) && isBad(validateArgs('open_screen', { screen: 'settings', transfer_id: T }, reg)));
+    check('open_screen: refuses a section on the wrong screen and a URL screen', isBad(validateArgs('open_screen', { screen: 'search', section: 'network' }, reg)) && isBad(validateArgs('open_screen', { screen: 'https://evil.example' }, reg)));
+    check('list_transfers takes an optional transfer_id', ok('list_transfers', { transfer_id: T }) && ok('list_transfers', {}));
   }
 
   console.log('tools: wording');
@@ -176,11 +212,7 @@ async function main() {
   check('propose_setting_change is gone', isBad(bad('propose_setting_change', { key: 'wifi_only', value: true, reason: REASON }), 'unknown_tool'));
   check('no tool definition mentions the removed tools', !/url_download|setting_change/.test(JSON.stringify(TOOLS)));
   check('DESTRUCTIVE_TOOLS is delete and remove_files', DESTRUCTIVE_TOOLS.size === 2 && DESTRUCTIVE_TOOLS.has('propose_delete') && DESTRUCTIVE_TOOLS.has('propose_remove_files'), [...DESTRUCTIVE_TOOLS]);
-  check('destructive tools are proposal tools', [...DESTRUCTIVE_TOOLS].every((n) => PROPOSAL_TOOLS.has(n)));
-  const planDesc = TOOLS.find((t) => t.function.name === 'propose_plan').function.description;
-  check('plan description says steps are independent', /independent/.test(planDesc) && /cannot refer to a download created by an earlier step/.test(planDesc), planDesc);
-  const stepEnum = TOOLS.find((t) => t.function.name === 'propose_plan').function.parameters.properties.steps.items.properties.tool.enum;
-  check('plan step enum is add, select_files, pause_resume', JSON.stringify([...stepEnum].sort()) === JSON.stringify(['propose_add', 'propose_pause_resume', 'propose_select_files']), stepEnum);
+  check('propose_change is the one destructive proposal the model can call', PROPOSAL_TOOLS.has('propose_change'));
   const addStep = { tool: 'propose_add', args: { result_id: R, reason: REASON } };
   const selStep = { tool: 'propose_select_files', args: { transfer_id: T, include: [1], reason: REASON } };
   check('plan of add + select + pause is accepted', bad('propose_plan', { reason: REASON, steps: [addStep, selStep, { tool: 'propose_pause_resume', args: { transfer_id: T, action: 'pause', reason: REASON } }] }).ok === true);

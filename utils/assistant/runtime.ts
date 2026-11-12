@@ -195,6 +195,10 @@ export interface ToolRunOutput {
   content: string;
   /** search_torrents: the shortlist to render as result cards. */
   results?: ResultCardView[];
+  /** ask_user: a question to show with tappable answers. The chat adds a `question` item. */
+  question?: { question: string; options: string[] };
+  /** open_screen: a button to show. The chat adds a `link` item. */
+  link?: { label: string; target: ScreenTarget };
   /** One plain line for the finished progress step, e.g. "23 results from 4 sources, newest first". Real facts only. */
   detail?: string;
 }

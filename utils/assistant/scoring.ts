@@ -59,7 +59,7 @@ export interface ScoreContext {
 
 export type Tier = 'recommended' | 'ok' | 'avoid';
 export type Label = 'best-fit' | 'smaller' | 'best-quality';
-export type ExcludeReason = 'cam_source' | 'wrong_title' | 'adult';
+export type ExcludeReason = 'cam_source' | 'wrong_title' | 'adult' | 'broken_size';
 
 export interface Ranked {
   /** The info hash. Handles (r1, r2, ...) come from HandleRegistry in the runner, never from here. */
@@ -129,6 +129,27 @@ const SOURCE_LABEL: Record<SourceKind, string | undefined> = {
   bluray: 'BluRay', webdl: 'WEB-DL', remux: 'REMUX', webrip: 'WEBRip', web: 'WEB', hdtv: 'HDTV',
   hdrip: 'HDRip', dvdrip: 'DVDRip', cam: 'CAM', ts: 'TS', tc: 'TC', scr: 'SCR', unknown: undefined,
 };
+
+/**
+ * A video whose content size is below these is not what its name says (a placeholder, a text file, or a source that
+ * reported the .torrent file's own size). Any video category: under 1 MB. Movies and TV episodes: under 50 MB.
+ * Unknown sizes never count.
+ */
+const BROKEN_ANY_VIDEO_BYTES = 1024 * 1024;
+const BROKEN_MOVIE_TV_BYTES = 50 * 1024 * 1024;
+
+/** True when the size is known and far too small for a video of this kind. */
+function brokenSize(r: MergedResult, parsed: ParsedRelease): boolean {
+  if (r.sizeBytes === undefined || !(r.sizeBytes > 0)) return false;
+  const cat = r.category;
+  const videoCat = cat === 'movies' || cat === 'tv' || cat === 'anime';
+  // A row with no clear category counts as video only when its name says so (a resolution or a video source).
+  const nameSaysVideo = parsed.resolution !== undefined || (parsed.source !== 'unknown');
+  const isVideo = videoCat || ((cat === undefined || cat === 'all' || cat === 'other') && nameSaysVideo);
+  if (!isVideo) return false;
+  if (r.sizeBytes < BROKEN_ANY_VIDEO_BYTES) return true;
+  return cat !== 'anime' && r.sizeBytes < BROKEN_MOVIE_TV_BYTES;
+}
 
 const EARLY_SOURCES: ReadonlySet<SourceKind> = new Set(['cam', 'ts', 'tc', 'scr']);
 
@@ -730,6 +751,13 @@ export function scoreResults(results: readonly MergedResult[], ctx: ScoreContext
       excluded.push({
         id: hash, result: r, reason: 'cam_source',
         detail: 'Recorded in a cinema or from an early source. The picture and sound are poor.',
+      });
+      continue;
+    }
+    if (brokenSize(r, parsed)) {
+      excluded.push({
+        id: hash, result: r, reason: 'broken_size',
+        detail: 'The size is far too small for a video, so it is probably a fake or broken upload.',
       });
       continue;
     }

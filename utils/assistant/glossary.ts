@@ -26,6 +26,7 @@ export const GLOSSARY: Record<TokenKey, GlossaryEntry> = {
     plain: 'Filmed by someone in a cinema with a camera. The picture is often shaky or blocked by heads, and the sound is the room microphone with audience noise.',
     tradeoff: 'Usually the first copy online, but picture and sound are poor.',
     phoneNote: 'Poor on any screen.',
+    aka: ['HDCAM'],
     chip: true,
   },
   ts: {

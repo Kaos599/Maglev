@@ -35,7 +35,8 @@ import { playbackVerdict } from './playback.ts';
 import { parseRelease } from './releaseName.ts';
 import type { ParsedRelease } from './releaseName.ts';
 import type {
-  ExecuteResult, ProposalCardView, ResultCardView, RevalidateResult, ToolRunContext, ToolRunOutput, ToolRunner,
+  ExecuteResult, FileKind, FileRowView, ProposalCardView, ResultCardView, ResultDetailsView, RevalidateResult, ScreenTarget, ToolRunContext,
+  ToolRunOutput, ToolRunner,
 } from './runtime.ts';
 import { canPropose, parseQuery, scoreResults } from './scoring.ts';
 import type { ParsedQuery, Profile, Ranked, ScoreContext } from './scoring.ts';
@@ -197,7 +198,7 @@ function fail(code: string, message: string): ToolRunOutput {
 const SHRINKABLE = ['results', 'transfers', 'files', 'episodes', 'advice', 'items'];
 
 /** Serialise `{ok:true,data}` and keep it within MAX_TOOL_RESULT_TOKENS by shortening the longest list. */
-function succeed(data: Data, extra: Pick<ToolRunOutput, 'results'> = {}): ToolRunOutput {
+function succeed(data: Data, extra: Pick<ToolRunOutput, 'results' | 'detail'> = {}): ToolRunOutput {
   let json = toToolJson({ ok: true, data }, MESSAGE_MAX);
   let guard = 0;
   while (estimateTokens(json) > MAX_TOOL_RESULT_TOKENS && guard++ < 500) {
@@ -228,6 +229,45 @@ function succeed(data: Data, extra: Pick<ToolRunOutput, 'results'> = {}): ToolRu
   }
   return { content: json, ...extra };
 }
+
+// ---------------------------------------------------------------- upload age and file kinds
+
+
+/** "today", "2 days ago", "3 weeks ago", "5 months ago", "1 year ago". Undefined when the source gave no date. */
+export function ageText(publishedAt: number | undefined, now: number): string | undefined {
+  if (publishedAt === undefined || !Number.isFinite(publishedAt) || publishedAt <= 0) return undefined;
+  const days = Math.floor((now - publishedAt) / DAY_MS);
+  const unit = (n: number, word: string): string => `${n} ${word}${n === 1 ? '' : 's'} ago`;
+  if (days < 1) return 'today';
+  if (days < 7) return unit(days, 'day');
+  if (days < 30) return unit(Math.floor(days / 7), 'week');
+  if (days < 365) return unit(Math.floor(days / 30), 'month');
+  return unit(Math.floor(days / 365), 'year');
+}
+
+const KIND_EXT: Record<Exclude<FileKind, 'other'>, readonly string[]> = {
+  video: ['mkv', 'mp4', 'avi', 'mov', 'wmv', 'm4v', 'webm', 'ts', 'm2ts', 'mpg', 'mpeg', 'flv', 'iso', 'vob'],
+  audio: ['mp3', 'flac', 'aac', 'm4a', 'ogg', 'opus', 'wav', 'wma', 'ac3', 'dts', 'mka'],
+  subtitle: ['srt', 'ass', 'ssa', 'sub', 'idx', 'vtt', 'sup'],
+  image: ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'tif', 'tiff', 'heic'],
+  archive: ['zip', 'rar', '7z', 'tar', 'gz', 'bz2', 'xz', 'tgz'],
+  app: ['exe', 'msi', 'apk', 'bat', 'cmd', 'com', 'scr', 'lnk', 'sh', 'dmg', 'pkg', 'jar', 'vbs', 'ps1'],
+  book: ['epub', 'pdf', 'mobi', 'azw', 'azw3', 'djvu', 'cbz', 'cbr', 'fb2'],
+  text: ['txt', 'nfo', 'md', 'log', 'diz', 'url', 'html', 'htm', 'rtf', 'csv', 'json', 'xml'],
+};
+const KIND_BY_EXT: ReadonlyMap<string, FileKind> = new Map(
+  (Object.entries(KIND_EXT) as Array<[FileKind, readonly string[]]>).flatMap(([kind, exts]) => exts.map((e): [string, FileKind] => [e, kind])),
+);
+
+/** What a file is, by its extension. */
+export function fileKindOf(path: string): FileKind {
+  const base = path.split(/[\\/]/).pop() ?? '';
+  const dot = base.lastIndexOf('.');
+  if (dot < 0) return 'other';
+  return KIND_BY_EXT.get(base.slice(dot + 1).toLowerCase()) ?? 'other';
+}
+
+const DETAIL_FILES_SHOWN = 8;
 
 // ---------------------------------------------------------------- internal state
 
@@ -506,7 +546,47 @@ export function createToolRunner(deps: ToolRunnerDeps): ToolRunner {
       view.riskyWarning = `${risky.map((n) => clean(n, 40)).join(' and ')} ${risky.length > 1 ? 'are' : 'is'} flagged for fake or harmful uploads.${why ? ` ${clean(why, 160)}` : ''}`;
     }
     if (stored.safety) view.safety = { level: stored.safety.level, text: safetyText(stored.safety) };
+    const details = detailsFor(stored);
+    if (details) view.details = details;
     return view;
+  }
+
+  /** What is inside, computed from the torrent's own file list. Never the size of the .torrent file. */
+  function detailsFor(stored: Stored): ResultDetailsView | undefined {
+    const files = stored.files;
+    if (!files || files.length === 0) return undefined;
+    const flags = new Map<string, 'danger' | 'warn'>();
+    for (const f of stored.safety?.findings ?? []) {
+      if (!f.name_untrusted || f.level === 'green') continue;
+      const flag = f.level === 'red' ? 'danger' : 'warn';
+      if (flags.get(f.name_untrusted) !== 'danger') flags.set(f.name_untrusted, flag);
+    }
+    const kinds: Partial<Record<FileKind, number>> = {};
+    let total = 0;
+    for (const f of files) {
+      const kind = fileKindOf(f.path);
+      kinds[kind] = (kinds[kind] ?? 0) + 1;
+      total += f.length;
+    }
+    const rows: FileRowView[] = files
+      .slice()
+      .sort((a, b) => b.length - a.length)
+      .slice(0, DETAIL_FILES_SHOWN)
+      .map((f) => {
+        const base = fileName(f.path);
+        const row: FileRowView = { name: clean(base, NAME_MAX), sizeText: formatBytes(f.length), kind: fileKindOf(f.path) };
+        const flag = flags.get(base);
+        if (flag) row.flag = flag;
+        return row;
+      });
+    const more = files.length - rows.length;
+    return {
+      fileCount: files.length,
+      totalText: formatBytes(total),
+      files: rows,
+      moreText: more > 0 ? `and ${more} more ${more === 1 ? 'file' : 'files'}` : '',
+      kinds,
+    };
   }
 
   // ------------------------------------------------------------ read tools
@@ -597,8 +677,18 @@ export function createToolRunner(deps: ToolRunnerDeps): ToolRunner {
     const cardRows: Ranked[] = out.shortlist.length > 0 ? out.shortlist : out.ranked.filter((r) => r.tier !== 'avoid').slice(0, 3);
     const picked: Ranked[] = [...cardRows];
     for (const r of out.ranked) if (!picked.includes(r)) picked.push(r);
-    let shown = picked.slice(0, Math.max(limit, cardRows.length));
-    if (sort !== 'best') shown = sortShown(shown, sort);
+    // A sort other than "best" applies to the whole list, not to the few rows quality picked, so "newest" finds
+    // the newest rows. Rows that cannot be recommended ("avoid") stay last. The shortlist is always shown.
+    let shown: Ranked[];
+    if (sort === 'best') {
+      shown = picked.slice(0, Math.max(limit, cardRows.length));
+    } else {
+      const usable = sortShown(picked.filter((r) => r.tier !== 'avoid'), sort);
+      const rest = picked.filter((r) => r.tier === 'avoid');
+      const ordered = [...usable, ...rest];
+      const keep = new Set<Ranked>([...ordered.slice(0, limit), ...cardRows]);
+      shown = ordered.filter((r) => keep.has(r));
+    }
 
     // Handles are issued here, after ranking, in the order the rows are shown (R1-10).
     for (const r of shown) {
@@ -634,6 +724,8 @@ export function createToolRunner(deps: ToolRunnerDeps): ToolRunner {
         reasons: r.reasons.slice(0, 3),
         flags: r.flags,
       };
+      const uploaded = ageText(r.result.publishedAt, deps.now());
+      if (uploaded) row.uploaded = uploaded;
       if (r.label) row.label = r.label;
       if (space.known && r.admission) row.left_after_text = leftText(r.admission.leftAfter);
       if (r.partialEpisodes !== undefined) row.partial_episodes = r.partialEpisodes;
@@ -650,6 +742,9 @@ export function createToolRunner(deps: ToolRunnerDeps): ToolRunner {
 
     const notes = [...out.notes];
     if (!space.known) notes.push("Free space couldn't be read, so fit is unknown.");
+    if (shown.length > 0 && !shown.some((r) => r.result.publishedAt !== undefined)) {
+      notes.push("These sources gave no upload dates, so I can't tell how new they are.");
+    }
     const unanswered = update.sources.filter((s) => isDown(s.state));
     if (unanswered.length > 0) notes.push(`${unanswered.map((s) => names(s.providerId)).join(', ')} didn't answer.`);
 
@@ -665,7 +760,12 @@ export function createToolRunner(deps: ToolRunnerDeps): ToolRunner {
       const advice = adviceData(shown.slice(0, 8).map((r) => candidateFromRanked(r, packCounts.get(r.id))), profile, space, support);
       if (advice.length > 0) data.advice = advice;
     }
-    return succeed(data, { results: cardViews });
+    const answered = update.sources.filter((x) => x.state === 'done' || (x.state !== 'searching' && x.count > 0)).length;
+    const SORT_TEXT: Record<string, string> = { newest: ', newest first', seeders: ', most sharing first', size: ', biggest first', name: ', by name' };
+    const detail = update.results.length === 0
+      ? 'No results'
+      : `${plural(update.results.length, 'result')} from ${plural(Math.max(answered, 1), 'source')}${SORT_TEXT[sort] ?? ''}`;
+    return succeed(data, { results: cardViews, detail });
   }
 
   function sortShown(list: Ranked[], sort: string): Ranked[] {
@@ -840,7 +940,14 @@ export function createToolRunner(deps: ToolRunnerDeps): ToolRunner {
       if (adv.length > 0) data.advice = adv;
     }
     // The card is returned too, so the chat can show the safety line now that the files were checked.
-    return succeed(data, { results: [cardFor(stored, space)] });
+    const card = cardFor(stored, space);
+    let detail = 'Opened, but the files were not listed';
+    if (card.details && stored.safety) {
+      const s = stored.safety;
+      const verdict = s.level === 'green' ? 'Nothing suspicious in the file list' : s.level === 'red' ? 'Serious warning sign in the file list' : 'Something in the file list looks off';
+      detail = `${plural(card.details.fileCount, 'file')}, ${card.details.totalText}. ${verdict}`;
+    }
+    return succeed(data, { results: [card], detail });
   }
 
   function parseReleaseNames(args: Data, support: PlaybackSupport | null): ToolRunOutput {
@@ -911,7 +1018,21 @@ export function createToolRunner(deps: ToolRunnerDeps): ToolRunner {
     return rows;
   }
 
+  /** Plain status and the first fix for one row, from the same copy explain_error uses. */
+  function statusOf(r: Row): { text: string; hint?: string } | null {
+    if (r.errorCode) {
+      const fixes = r.errorCode === 'DISK_FULL' ? ['Free up space'] : r.errorCode === 'PERMISSION' ? ['Pick the folder again']
+        : r.errorCode === 'FILES_MISSING' ? ['Restore the files, or stop downloading the missing ones'] : ['Retry'];
+      return { text: plainEngineError(r.errorCode), hint: fixes[0] };
+    }
+    const tag = r.health && r.health !== 'no_peers' ? r.health : r.pausedBy ?? (r.health === 'no_peers' ? 'no_peers' : null);
+    if (!tag) return null;
+    const c = pauseCopy(tag);
+    return { text: c.plain, ...(c.fixes[0] ? { hint: c.fixes[0] } : {}) };
+  }
+
   async function listTransfers(args: Data): Promise<ToolRunOutput> {
+    if (args.transfer_id !== undefined) return transferOne(args);
     const filter = typeof args.filter === 'string' ? args.filter : 'all';
     const s = await readSpace();
     if (!s.listOk) return fail('engine_error', plainEngineError('NOT_READY'));
@@ -932,9 +1053,91 @@ export function createToolRunner(deps: ToolRunnerDeps): ToolRunner {
       if (r.pausedBy) row.paused_by = r.pausedBy;
       if (r.health) row.health = r.health;
       if (r.errorCode) row.error_code = r.errorCode;
+      const status = statusOf(r);
+      if (status) {
+        row.status_text = status.text;
+        if (status.hint) row.action_hint = status.hint;
+      }
       return row;
     });
-    return succeed({ count: items.length, filter, transfers: items });
+    const data: Data = { count: items.length, filter, transfers: items };
+    if (s.known) {
+      data.free_text = formatBytes(s.freeBytes);
+      data.free_after_promised_text = formatBytes(Math.max(0, admitFor(s, 0).budget));
+    }
+    return succeed(data, { detail: items.length === 0 ? 'No downloads' : plural(items.length, 'download') });
+  }
+
+  /** One download: its details and files, plus the plain status and fix that explain_error gives. */
+  async function transferOne(args: Data): Promise<ToolRunOutput> {
+    const detail = await getTransferDetails({ transfer_id: args.transfer_id, include_files: true });
+    const d = JSON.parse(detail.content) as { ok: boolean; data?: Data };
+    if (!d.ok || !d.data) return detail;
+    const why = JSON.parse((await explainError({ transfer_id: args.transfer_id })).content) as { ok: boolean; data?: Data };
+    const data: Data = { ...d.data };
+    if (why.ok && why.data) {
+      data.status_text = why.data.plain as string;
+      const fixes = (why.data.fixes as string[] | undefined) ?? [];
+      if (fixes.length > 0) data.action_hint = fixes[0];
+    }
+    const s = await readSpace();
+    if (s.known) data.free_text = formatBytes(s.freeBytes);
+    return succeed(data, { detail: typeof data.status_text === 'string' ? (data.status_text as string) : 'Looked at this download' });
+  }
+
+  function askUser(args: Data): ToolRunOutput {
+    const question = clean(args.question, 160);
+    const options = (Array.isArray(args.options) ? args.options : [])
+      .map((o) => clean(o, 40))
+      .filter((o, i, all) => o.length > 0 && all.indexOf(o) === i)
+      .slice(0, 5);
+    if (question.length < 3 || options.length < 2) return fail('bad_args', 'Give a question and 2 to 5 different short options.');
+    const out = succeed({
+      status: 'asked',
+      note: 'The question is on screen with buttons. Stop here. Do not repeat it or answer it. Wait for the reply.',
+    }, { detail: 'Asked you to choose' });
+    return { ...out, question: { question, options } };
+  }
+
+  const SETTINGS_SECTION: Record<string, string> = {
+    storage: 'Storage', network: 'Network', assistant: 'Assistant', search_providers: 'Search sources', schedule: 'Schedule',
+  };
+
+  function openScreen(args: Data): ToolRunOutput {
+    let link: { label: string; target: ScreenTarget };
+    switch (args.screen) {
+      case 'transfers': {
+        const f = args.filter as 'all' | 'downloading' | 'paused' | 'done' | 'errors' | undefined;
+        link = { label: 'Open Transfers', target: f ? { screen: 'transfers', filter: f } : { screen: 'transfers' } };
+        break;
+      }
+      case 'transfer': {
+        const ref = refFor(args.transfer_id);
+        if (!ref) return fail('bad_args', 'That download is not in this chat. Look at list_transfers.');
+        link = { label: 'Open this download', target: { screen: 'transfer', id: ref.id } };
+        break;
+      }
+      case 'search': {
+        const q = typeof args.query === 'string' ? clean(args.query, QUERY_MAX) : '';
+        link = { label: 'Open Search', target: q ? { screen: 'search', query: q } : { screen: 'search' } };
+        break;
+      }
+      case 'add_download':
+        link = { label: 'Add a download', target: { screen: 'add_download' } };
+        break;
+      case 'settings': {
+        const section = args.section as keyof typeof SETTINGS_SECTION | undefined;
+        link = {
+          label: section ? `Open Settings → ${SETTINGS_SECTION[section]}` : 'Open Settings',
+          target: section ? { screen: 'settings', section: section as 'storage' } : { screen: 'settings' },
+        };
+        break;
+      }
+      default:
+        return fail('bad_args', 'screen must be transfers, transfer, search, add_download or settings.');
+    }
+    const out = succeed({ status: 'shown', label: link.label, note: 'A button is on screen. The user taps it. Say what it opens in one short line.' }, { detail: link.label });
+    return { ...out, link };
   }
 
   async function getTransferDetails(args: Data): Promise<ToolRunOutput> {
@@ -1059,6 +1262,7 @@ export function createToolRunner(deps: ToolRunnerDeps): ToolRunner {
       case 'propose_pause_resume': return buildPause(args, space);
       case 'propose_remove_files': return buildRemoveFiles(args);
       case 'propose_delete': return buildDelete(args, space);
+      case 'propose_change': return buildChange(args, space);
       default: return { error: 'That is not something a card can do.' };
     }
   }
@@ -1133,7 +1337,7 @@ export function createToolRunner(deps: ToolRunnerDeps): ToolRunner {
     const first = new Set((args.first as number[] | undefined) ?? []);
     const valid = new Map(d.files.map((f) => [f.index, f] as const));
     for (const i of [...include, ...skip, ...first]) {
-      if (!valid.has(i)) return { error: 'One of those file numbers is not in this download. Check get_transfer_details.' };
+      if (!valid.has(i)) return { error: 'One of those file numbers is not in this download. Look at list_transfers with transfer_id.' };
     }
     const entries = selectEntries(d.files, include, skip, first);
     const kept = entries.filter((e) => e.priority !== 'skip');
@@ -1202,6 +1406,32 @@ export function createToolRunner(deps: ToolRunnerDeps): ToolRunner {
     return null;
   }
 
+  /** propose_change: one tool for the four things a card can do to a download. Each action reuses its own builder. */
+  async function buildChange(args: Data, space: Space): Promise<Built | { error: string }> {
+    const files = (args.file_indices as number[] | undefined) ?? [];
+    switch (args.action) {
+      case 'pause':
+      case 'resume':
+        return buildPause({ transfer_id: args.transfer_id, action: args.action, reason: args.reason }, space);
+      case 'select_files': {
+        // "Keep only these files": every other file is skipped, so the card shows exactly what stops.
+        const ref = refFor(args.transfer_id);
+        if (!ref) return { error: 'That download is not in this chat. Look at list_transfers.' };
+        const d = await detailOf(ref);
+        if ('error' in d) return d;
+        const keep = new Set(files);
+        const skip = d.files.map((f) => f.index).filter((i) => !keep.has(i));
+        return buildSelect({ transfer_id: args.transfer_id, include: files, skip, reason: args.reason }, space);
+      }
+      case 'remove_files':
+        return buildRemoveFiles({ transfer_id: args.transfer_id, file_indices: files, reason: args.reason });
+      case 'delete':
+        return buildDelete({ transfer_id: args.transfer_id, delete_files: args.delete_files === true, reason: args.reason }, space);
+      default:
+        return { error: 'action must be pause, resume, select_files, remove_files or delete.' };
+    }
+  }
+
   async function buildPause(args: Data, space: Space): Promise<Built | { error: string }> {
     const ref = refFor(args.transfer_id);
     if (!ref) return { error: 'That download is not in this chat. Check list_transfers.' };
@@ -1236,7 +1466,7 @@ export function createToolRunner(deps: ToolRunnerDeps): ToolRunner {
     const indices = [...new Set((args.file_indices as number[]) ?? [])].sort((a, b) => a - b);
     const byIndex = new Map(d.files.map((f) => [f.index, f] as const));
     if (indices.length === 0) return { error: 'No files were chosen.' };
-    if (indices.some((i) => !byIndex.has(i))) return { error: 'One of those file numbers is not in this download. Check get_transfer_details.' };
+    if (indices.some((i) => !byIndex.has(i))) return { error: 'One of those file numbers is not in this download. Look at list_transfers with transfer_id.' };
     if (d.files.filter((f) => f.included && !indices.includes(f.index)).length === 0) {
       return { error: 'That would remove every file. To remove the whole download, propose removing the download instead.' };
     }
@@ -1570,6 +1800,8 @@ export function createToolRunner(deps: ToolRunnerDeps): ToolRunner {
         case 'list_transfers': out = await listTransfers(args); break;
         case 'get_transfer_details': out = await getTransferDetails(args); break;
         case 'explain_error': out = await explainError(args); break;
+        case 'ask_user': out = askUser(args); break;
+        case 'open_screen': out = openScreen(args); break;
         default: out = fail('bad_args', 'That is not a read tool.');
       }
       if (ctx.signal.aborted) throw new CancelledError();

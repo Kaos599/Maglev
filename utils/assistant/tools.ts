@@ -40,18 +40,20 @@ export type ValidateResult =
   | { ok: true; args: Record<string, unknown> }
   | { ok: false; error: { code: 'bad_args' | 'unknown_tool'; message: string } };
 
-export const READ_TOOL_NAMES = [
-  'search_torrents',
-  'get_result_details',
+/** The seven tools the model sees (docs/ASSISTANT_DESIGN.md, 0.11). Few tools, because free models call many tools badly. */
+export const READ_TOOL_NAMES = ['search_torrents', 'get_result_details', 'list_transfers', 'ask_user', 'open_screen'] as const;
+
+export const PROPOSAL_TOOL_NAMES = ['propose_add', 'propose_change'] as const;
+
+/**
+ * Tools the model no longer sees. The runner still builds its cards and answers from the same code, and
+ * validateArgs(..., internal = true) still accepts them, so propose_change and list_transfers reuse them.
+ */
+const LEGACY_TOOL_NAMES = [
   'parse_release_name',
   'get_free_space',
-  'list_transfers',
   'get_transfer_details',
   'explain_error',
-] as const;
-
-export const PROPOSAL_TOOL_NAMES = [
-  'propose_add',
   'propose_select_files',
   'propose_pause_resume',
   'propose_remove_files',
@@ -59,9 +61,9 @@ export const PROPOSAL_TOOL_NAMES = [
   'propose_plan',
 ] as const;
 
-type ReadToolName = (typeof READ_TOOL_NAMES)[number];
-type ProposalToolName = (typeof PROPOSAL_TOOL_NAMES)[number];
-type ToolName = ReadToolName | ProposalToolName;
+type ExposedToolName = (typeof READ_TOOL_NAMES)[number] | (typeof PROPOSAL_TOOL_NAMES)[number];
+type LegacyToolName = (typeof LEGACY_TOOL_NAMES)[number];
+type ToolName = ExposedToolName | LegacyToolName;
 
 /** Names of the read tools (run locally, return data). */
 export const READ_TOOLS: ReadonlySet<string> = new Set<string>(READ_TOOL_NAMES);
@@ -118,7 +120,7 @@ const SEARCH_TORRENTS: JsonSchema = {
       default: 'all',
     },
     profile: { type: 'string', enum: ['phone', 'tv', 'archive'], default: 'phone' },
-    sort: { type: 'string', enum: ['best', 'seeders', 'newest', 'size', 'name'], default: 'best' },
+    sort: { type: 'string', enum: ['best', 'seeders', 'newest'], default: 'best', description: 'newest for latest releases, seeders for most popular.' },
     max_size_gb: { type: 'number', minimum: 0.1, maximum: 200 },
     min_resolution: { type: 'integer', enum: [480, 720, 1080, 2160] },
     max_resolution: { type: 'integer', enum: [480, 720, 1080, 2160] },
@@ -158,15 +160,6 @@ const PARSE_RELEASE_NAME: JsonSchema = {
 const GET_FREE_SPACE: JsonSchema = {
   type: 'object',
   properties: {},
-  required: [],
-  additionalProperties: false,
-};
-
-const LIST_TRANSFERS: JsonSchema = {
-  type: 'object',
-  properties: {
-    filter: { type: 'string', enum: ['all', 'active', 'paused', 'error', 'finished'], default: 'all' },
-  },
   required: [],
   additionalProperties: false,
 };
@@ -252,7 +245,7 @@ const PROPOSE_DELETE: JsonSchema = {
   additionalProperties: false,
 };
 
-const PROPOSE_TOOL_SCHEMAS: Record<Exclude<ProposalToolName, 'propose_plan'>, JsonSchema> = {
+const PROPOSE_TOOL_SCHEMAS: Record<'propose_add' | 'propose_select_files' | 'propose_pause_resume' | 'propose_remove_files' | 'propose_delete', JsonSchema> = {
   propose_add: PROPOSE_ADD,
   propose_select_files: PROPOSE_SELECT_FILES,
   propose_pause_resume: PROPOSE_PAUSE_RESUME,
@@ -294,14 +287,78 @@ const PROPOSE_PLAN: JsonSchema = {
   additionalProperties: false,
 };
 
+const LIST_TRANSFERS_V2: JsonSchema = {
+  type: 'object',
+  properties: {
+    filter: { type: 'string', enum: ['all', 'active', 'paused', 'error', 'finished'], default: 'all', description: 'Which downloads to list.' },
+    transfer_id: { ...TRANSFER_ID, description: 'One download, such as t1. Gives its files, status and the fix for a problem.' },
+  },
+  required: [],
+  additionalProperties: false,
+};
+
+const PROPOSE_CHANGE: JsonSchema = {
+  type: 'object',
+  properties: {
+    transfer_id: TRANSFER_ID,
+    action: {
+      type: 'string',
+      enum: ['pause', 'resume', 'select_files', 'remove_files', 'delete'],
+      description: 'select_files keeps only file_indices. remove_files deletes file_indices from the phone. delete removes the download.',
+    },
+    file_indices: { ...FILE_INDEX_LIST(500, 'File numbers from list_transfers. Only for select_files and remove_files.'), minItems: 1 },
+    delete_files: { type: 'boolean', default: false, description: 'delete only: also delete the files from the phone.' },
+    reason: REASON,
+  },
+  required: ['transfer_id', 'action', 'reason'],
+  additionalProperties: false,
+};
+
+const ASK_USER: JsonSchema = {
+  type: 'object',
+  properties: {
+    question: { type: 'string', minLength: 3, maxLength: 160, description: 'One short question.' },
+    options: {
+      type: 'array',
+      items: { type: 'string', minLength: 1, maxLength: 40 },
+      minItems: 2,
+      maxItems: 5,
+      uniqueItems: true,
+      description: '2 to 5 short answers the user can tap.',
+    },
+  },
+  required: ['question', 'options'],
+  additionalProperties: false,
+};
+
+const OPEN_SCREEN: JsonSchema = {
+  type: 'object',
+  properties: {
+    screen: { type: 'string', enum: ['transfers', 'transfer', 'search', 'add_download', 'settings'] },
+    filter: { type: 'string', enum: ['all', 'downloading', 'paused', 'done', 'errors'], description: 'transfers only.' },
+    transfer_id: { ...TRANSFER_ID, description: 'transfer only: the download to open, such as t1.' },
+    query: { type: 'string', minLength: 1, maxLength: QUERY_MAX, description: 'search only: what to search for.' },
+    section: {
+      type: 'string',
+      enum: ['storage', 'network', 'assistant', 'search_providers', 'schedule'],
+      description: 'settings only: which part of Settings.',
+    },
+  },
+  required: ['screen'],
+  additionalProperties: false,
+};
+
 const PARAMETERS: Record<ToolName, JsonSchema> = {
   search_torrents: SEARCH_TORRENTS,
   get_result_details: GET_RESULT_DETAILS,
   parse_release_name: PARSE_RELEASE_NAME,
   get_free_space: GET_FREE_SPACE,
-  list_transfers: LIST_TRANSFERS,
   get_transfer_details: GET_TRANSFER_DETAILS,
   explain_error: EXPLAIN_ERROR,
+  list_transfers: LIST_TRANSFERS_V2,
+  propose_change: PROPOSE_CHANGE,
+  ask_user: ASK_USER,
+  open_screen: OPEN_SCREEN,
   ...PROPOSE_TOOL_SCHEMAS,
   propose_plan: PROPOSE_PLAN,
 };
@@ -309,18 +366,25 @@ const PARAMETERS: Record<ToolName, JsonSchema> = {
 // Short, plain English. Nothing here may mention adult content (D2).
 const DESCRIPTIONS: Record<ToolName, string> = {
   search_torrents:
-    'Search the enabled sources. Returns the best matches, already checked against free space. Use a short title and year, or show and season.',
+    'Search the enabled sources for torrents. Returns the best matches with size, sharing, upload age when known, and a space check. Use a short title and year, or show and season.',
   get_result_details:
     'Look inside one search result: its files, file safety check and space check. Slow. Call it before proposing a result.',
   parse_release_name:
     'Explain release names part by part: source, resolution, codec, HDR, audio and flags. Use for names the user pastes or asks about.',
   get_free_space:
     'Free space on the download folder, space promised to unfinished downloads, and what is left.',
-  list_transfers: "The user's downloads, in short form.",
+  list_transfers:
+    "The user's downloads with status, plain problem text, a fix, and free space. Pass transfer_id for one download's files and details.",
   get_transfer_details:
     'One download in detail: progress, connections and, optionally, its files with sizes.',
   explain_error:
     'Why a download is stuck, paused or failed, in plain words, with the fix the app offers. Use before guessing.',
+  propose_change:
+    'Propose a change to one download: pause, resume, select_files, remove_files or delete. Nothing changes until the user taps Confirm.',
+  ask_user:
+    'Ask the user to pick one option. Shows tappable answers. Use it instead of asking a question in text. Then stop and wait.',
+  open_screen:
+    'Offer a button that opens a screen in the app: transfers, one download, search, add a download, or a Settings section. Nothing opens until the user taps.',
   propose_add:
     'Propose adding a search result. Nothing is added until the user taps Confirm. Call get_result_details first.',
   propose_select_files:
@@ -341,6 +405,9 @@ export const TOOLS: ToolDef[] = [
   ...PROPOSAL_TOOL_NAMES.map((name) => toolDef(name)),
 ];
 
+/** Every tool name the runner understands, model-facing or not. */
+export const ALL_TOOL_NAMES: readonly string[] = [...READ_TOOL_NAMES, ...PROPOSAL_TOOL_NAMES, ...LEGACY_TOOL_NAMES];
+
 function toolDef(name: ToolName): ToolDef {
   return {
     type: 'function',
@@ -348,13 +415,100 @@ function toolDef(name: ToolName): ToolDef {
   };
 }
 
+// ---- Generated summaries: the system prompt's "Your tools" list and the describe_tools result ----
+
+/** One argument of a tool, read from its schema. */
+export interface ToolArgInfo {
+  name: string;
+  type: string;
+  required: boolean;
+  /** Allowed values of an enum. */
+  values?: Array<string | number | boolean>;
+  default?: string | number | boolean;
+  /** Range or length limits, e.g. "1 to 8". */
+  limits?: string;
+  description?: string;
+}
+
+export interface ToolInfo {
+  name: string;
+  kind: 'read' | 'propose';
+  description: string;
+  args: ToolArgInfo[];
+}
+
+function argType(schema: JsonSchema): string {
+  if (schema.type === 'array') return `list of ${schema.items ? argType(schema.items) : 'values'}`;
+  return schema.type ?? 'value';
+}
+
+function argLimits(schema: JsonSchema): string | undefined {
+  if (schema.minimum !== undefined || schema.maximum !== undefined) return `${schema.minimum ?? ''} to ${schema.maximum ?? ''}`.trim();
+  if (schema.maxItems !== undefined) return `up to ${schema.maxItems} items`;
+  if (schema.maxLength !== undefined) return `up to ${schema.maxLength} characters`;
+  return undefined;
+}
+
+function argsOf(name: ToolName): ToolArgInfo[] {
+  const schema = PARAMETERS[name];
+  const required = new Set(schema.required ?? []);
+  return Object.entries(schema.properties ?? {}).map(([key, p]) => {
+    const info: ToolArgInfo = { name: key, type: argType(p), required: required.has(key) };
+    if (p.enum) info.values = [...p.enum];
+    if (p.default !== undefined) info.default = p.default;
+    const limits = argLimits(p);
+    if (limits) info.limits = limits;
+    if (p.description) info.description = p.description;
+    return info;
+  });
+}
+
+/** Every tool, or the one named, with its full description and argument summary. Generated from the same schemas the model sees. */
+export function describeTools(name?: string): { tools: ToolInfo[] } {
+  const names: ExposedToolName[] = [...READ_TOOL_NAMES, ...PROPOSAL_TOOL_NAMES];
+  const pick = name === undefined ? names : names.filter((n) => n === name);
+  return {
+    tools: pick.map((n) => ({
+      name: n,
+      kind: READ_TOOLS.has(n) ? 'read' : 'propose',
+      description: DESCRIPTIONS[n],
+      args: argsOf(n),
+    })),
+  };
+}
+
+/** Enums longer than this are not spelled out in the overview line. */
+const OVERVIEW_ENUM_MAX = 5;
+/** Arguments shown per line in the overview. */
+const OVERVIEW_ARGS_MAX = 6;
+
+/**
+ * "Your tools" for the system prompt: one line per tool, name, plain purpose and key arguments. Generated from
+ * the tool definitions so it cannot drift. Internal ids and the free-text `reason` are left out.
+ */
+export function toolsOverview(): string {
+  return describeTools()
+    .tools.map((t) => {
+      const purpose = t.description.split(/(?<=\.)\s/)[0].replace(/\.$/, '');
+      const shown = t.args.filter((a) => a.name !== 'reason' && a.name !== 'steps' && !/_id$/.test(a.name));
+      const parts = shown.slice(0, OVERVIEW_ARGS_MAX).map((a) =>
+        a.values && a.values.length <= OVERVIEW_ENUM_MAX ? `${a.name} ${a.values.join('|')}` : a.name,
+      );
+      if (t.name === 'propose_plan') parts.unshift('steps');
+      const more = shown.length > OVERVIEW_ARGS_MAX ? ', ...' : '';
+      return `- ${t.name}: ${purpose}${parts.length > 0 ? ` (${parts.join(', ')}${more})` : ''}`;
+    })
+    .join('\n');
+}
+
 /**
  * Validate a tool call from the model. `rawArgs` is the parsed object or the JSON string the provider sent.
  * On success `args` holds the same fields, with handle fields replaced by the real ids from `registry`.
  * Errors carry plain English and never echo a real id or a hash.
  */
-export function validateArgs(name: string, rawArgs: unknown, registry: HandleRegistry): ValidateResult {
-  if (!isToolName(name)) {
+export function validateArgs(name: string, rawArgs: unknown, registry: HandleRegistry, internal = false): ValidateResult {
+  const known = internal ? isToolName(name) : isExposedToolName(name);
+  if (!known) {
     return { ok: false, error: { code: 'unknown_tool', message: 'There is no tool with that name.' } };
   }
   let input: unknown = rawArgs;
@@ -366,7 +520,7 @@ export function validateArgs(name: string, rawArgs: unknown, registry: HandleReg
     }
   }
   if (!isPlainObject(input)) return bad('Arguments must be a JSON object.');
-  return validateToolArgs(name, input, registry);
+  return validateToolArgs(name as ToolName, input, registry);
 }
 
 function validateToolArgs(name: ToolName, input: Record<string, unknown>, registry: HandleRegistry): ValidateResult {
@@ -422,6 +576,27 @@ function crossFieldError(name: ToolName, args: Record<string, unknown>): string 
       if (first && all && !first.every((i) => all.includes(i))) {
         return 'first_indices must be a subset of file_indices.';
       }
+      return null;
+    }
+    case 'propose_change': {
+      const action = args.action as string;
+      const files = args.file_indices as number[] | undefined;
+      if ((action === 'select_files' || action === 'remove_files') && (!files || files.length === 0)) {
+        return `${action} needs file_indices: the file numbers from list_transfers with transfer_id.`;
+      }
+      if (action !== 'select_files' && action !== 'remove_files' && files !== undefined) {
+        return 'file_indices only goes with select_files or remove_files.';
+      }
+      if (action !== 'delete' && args.delete_files !== undefined) return 'delete_files only goes with delete.';
+      return null;
+    }
+    case 'open_screen': {
+      const screen = args.screen as string;
+      if (screen === 'transfer' && args.transfer_id === undefined) return 'screen transfer needs transfer_id, such as t1.';
+      if (screen !== 'transfer' && args.transfer_id !== undefined) return 'transfer_id only goes with screen transfer.';
+      if (screen !== 'transfers' && args.filter !== undefined) return 'filter only goes with screen transfers.';
+      if (screen !== 'search' && args.query !== undefined) return 'query only goes with screen search.';
+      if (screen !== 'settings' && args.section !== undefined) return 'section only goes with screen settings.';
       return null;
     }
     case 'propose_select_files': {
@@ -523,6 +698,10 @@ function rangeError(schema: JsonSchema, value: number, name: string): string | n
 
 function bad(message: string): ValidateResult {
   return { ok: false, error: { code: 'bad_args', message } };
+}
+
+function isExposedToolName(name: string): name is ExposedToolName {
+  return (READ_TOOL_NAMES as readonly string[]).includes(name) || (PROPOSAL_TOOL_NAMES as readonly string[]).includes(name);
 }
 
 function isToolName(name: string): name is ToolName {

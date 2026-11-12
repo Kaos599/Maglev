@@ -231,6 +231,12 @@ export function turnInitial(config: TurnConfig): TurnState {
 
 /** Proposal tools that remove something from the user's device. At most one per turn. */
 export const DESTRUCTIVE_TOOLS: ReadonlySet<string> = new Set(['propose_delete', 'propose_remove_files']);
+
+/** propose_change is destructive when its action removes files or the download. */
+function isDestructiveCall(name: string, args: Record<string, unknown>): boolean {
+  if (DESTRUCTIVE_TOOLS.has(name)) return true;
+  return name === 'propose_change' && (args.action === 'remove_files' || args.action === 'delete');
+}
 export const MAX_PROPOSALS_PER_TURN = 2;
 export const MAX_DESTRUCTIVE_PER_TURN = 1;
 export const MAX_DETAILS_PER_TURN = 2;
@@ -445,7 +451,7 @@ function toolCallsDone(s: TurnState, calls: AssistantToolCall[], truncated: bool
       return;
     }
     if (PROPOSAL_TOOLS.has(call.name)) {
-      const isDestructive = DESTRUCTIVE_TOOLS.has(call.name);
+      const isDestructive = isDestructiveCall(call.name, v.args);
       if (isDestructive && destructive >= MAX_DESTRUCTIVE_PER_TURN) {
         entry.content = toolError(COPY.oneDelete);
         return;
