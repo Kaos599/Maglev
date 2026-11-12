@@ -1,12 +1,15 @@
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { FlatList, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { router } from 'expo-router';
 import { useTheme } from '../../context/ThemeContext';
 import { ThemeColors, spacing, type } from '../../constants/theme';
 import type { TokenKey } from '../../utils/assistant/glossary';
 import type { AssistantChat, ChatGate, ChatItem, ScreenTarget } from '../../utils/assistant/runtime';
-import { modelChipText, tokensLine } from '../../utils/assistant/chatView';
+import { modelChipText, shouldAutoOpenCapabilities, tokensLine } from '../../utils/assistant/chatView';
 import { Button, EmptyBlock, Screen, Sheet } from '../ui';
+import { assistantPrefs, useAssistantPrefs } from '../../utils/prefs/assistantApp';
+import { PixelIcon } from '../PixelIcon';
+import { CapabilitiesSheet } from './CapabilitiesSheet';
 import { Composer } from './Composer';
 import { JargonSheet } from './JargonSheet';
 import { Message } from './Message';
@@ -40,7 +43,21 @@ export function AssistantChatView({ chat, onOpenSettings, onChooseFiles, onOpenT
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const [term, setTerm] = useState<TokenKey | null>(null);
   const [confirmClear, setConfirmClear] = useState(false);
+  const [capsOpen, setCapsOpen] = useState(false);
+  const prefs = useAssistantPrefs();
   const { items, gate, send } = chat;
+  // Open once on first sight. The ref stops it reopening before the close saves capabilitiesSeenAt.
+  const autoOpened = useRef(false);
+  useEffect(() => {
+    if (!autoOpened.current && shouldAutoOpenCapabilities(gate, prefs.capabilitiesSeenAt)) {
+      autoOpened.current = true;
+      setCapsOpen(true);
+    }
+  }, [gate, prefs.capabilitiesSeenAt]);
+  const closeCaps = useCallback(() => {
+    setCapsOpen(false);
+    if (assistantPrefs.get().capabilitiesSeenAt === null) assistantPrefs.update({ capabilitiesSeenAt: Date.now() });
+  }, []);
   useChatAnnouncements(items);
   const kb = useKeyboardInset();
 
@@ -110,17 +127,28 @@ export function AssistantChatView({ chat, onOpenSettings, onChooseFiles, onOpenT
     [chat, onChooseFiles, onOpenSettings, onOpenTarget, retry, styles.stack, styles.link],
   );
 
-  const clearAction =
-    items.length > 0 ? (
+  const clearAction = (
+    <View style={styles.actions}>
       <Pressable
-        onPress={() => (items.length > 0 ? setConfirmClear(true) : chat.clear())}
-        style={styles.clear}
+        onPress={() => setCapsOpen(true)}
+        style={styles.iconBtn}
         accessibilityRole="button"
-        accessibilityLabel="Clear chat"
+        accessibilityLabel="What the Assistant can do"
       >
-        <Text style={styles.clearText}>Clear</Text>
+        <PixelIcon name="about" size={20} color={colors.textMuted} />
       </Pressable>
-    ) : null;
+      {items.length > 0 ? (
+        <Pressable
+          onPress={() => setConfirmClear(true)}
+          style={styles.clear}
+          accessibilityRole="button"
+          accessibilityLabel="Clear chat"
+        >
+          <Text style={styles.clearText}>Clear</Text>
+        </Pressable>
+      ) : null}
+    </View>
+  );
 
   const ready = gate === 'ready';
   const gateLine = ready ? '' : GATE_LINE[gate];
@@ -140,6 +168,9 @@ export function AssistantChatView({ chat, onOpenSettings, onChooseFiles, onOpenT
         <Suggestions onPick={send} />
         <Text style={styles.privacy}>Your messages and the names of your downloads go to {chat.providerName}.</Text>
         <Text style={styles.privacy}>Chats aren't saved. Leaving Maglev or tapping Clear ends this chat.</Text>
+        <View style={styles.link}>
+          <Button label="What can it do?" variant="ghost" onPress={() => setCapsOpen(true)} />
+        </View>
       </ScrollView>
     );
   } else {
@@ -192,6 +223,7 @@ export function AssistantChatView({ chat, onOpenSettings, onChooseFiles, onOpenT
           <Button label="Cancel" variant="secondary" fullWidth onPress={() => setConfirmClear(false)} />
         </View>
       </Sheet>
+      <CapabilitiesSheet visible={capsOpen} onClose={closeCaps} modelName={chat.modelName} providerName={chat.providerName} />
       <JargonSheet termKey={term} onClose={() => setTerm(null)} />
     </Screen>
   );
@@ -209,6 +241,8 @@ const makeStyles = (c: ThemeColors) =>
     empty: { flexGrow: 1, justifyContent: 'center', padding: spacing.lg, gap: spacing.lg },
     sheetActions: { gap: spacing.sm },
     privacy: { ...type.body, fontSize: type.size.md, lineHeight: 18, color: c.textMuted },
+    actions: { flexDirection: 'row', alignItems: 'center' },
+    iconBtn: { minWidth: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center' },
     clear: { minWidth: 56, minHeight: 44, alignItems: 'center', justifyContent: 'center', paddingHorizontal: spacing.sm },
     clearText: { ...type.bodyStrong, fontSize: 14, color: c.textMuted },
     gate: { gap: spacing.md, padding: spacing.lg, borderTopWidth: 1, borderTopColor: c.border, alignItems: 'flex-start' },

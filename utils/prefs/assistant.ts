@@ -157,6 +157,8 @@ export interface AssistantPrefs {
   enabled: boolean;
   /** When the user accepted the usage warning (ms since epoch), or null if never. */
   warningAcceptedAt: number | null;
+  /** When the user first closed "What the Assistant can do" (ms since epoch), or null if never. */
+  capabilitiesSeenAt: number | null;
 }
 
 export function presetById(id: PresetId): ProviderPreset {
@@ -171,7 +173,7 @@ function isPresetId(v: unknown): v is PresetId {
 
 export function defaultAssistantPrefs(): AssistantPrefs {
   const p = presetById('openrouter');
-  return { presetId: p.id, baseUrl: p.baseUrl, model: p.defaultModel, modelName: null, keyRef: null, tokensUsed: { input: 0, output: 0 }, enabled: false, warningAcceptedAt: null };
+  return { presetId: p.id, baseUrl: p.baseUrl, model: p.defaultModel, modelName: null, keyRef: null, tokensUsed: { input: 0, output: 0 }, enabled: false, warningAcceptedAt: null, capabilitiesSeenAt: null };
 }
 
 /** The key loaded for one preset. Used so a key is never sent to another preset's address. */
@@ -272,6 +274,10 @@ export function normalizeAssistantPrefs(raw: unknown): AssistantPrefs {
     warningAcceptedAt:
       typeof o.warningAcceptedAt === 'number' && Number.isFinite(o.warningAcceptedAt) && o.warningAcceptedAt > 0
         ? o.warningAcceptedAt
+        : null,
+    capabilitiesSeenAt:
+      typeof o.capabilitiesSeenAt === 'number' && Number.isFinite(o.capabilitiesSeenAt) && o.capabilitiesSeenAt > 0
+        ? o.capabilitiesSeenAt
         : null,
   };
 }

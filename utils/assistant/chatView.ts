@@ -301,3 +301,46 @@ export function routeForTarget(t: ScreenTarget): AppRoute {
 export function questionLabel(question: string, answered?: string): string {
   return answered ? `${question} You chose ${answered}.` : `${question} Choose one answer.`;
 }
+
+// ---------------------------------------------------------------- "What the Assistant can do" sheet
+
+export const CAPABILITIES_TITLE = 'What the Assistant can do';
+
+export const CAN_DO: readonly string[] = [
+  'Find something to download and compare the copies: quality, size and how many people are sharing.',
+  'Explain the words in file names, like WEB-DL or x265.',
+  'Look inside a download before you add it.',
+  'Check on your downloads and say why one is stuck.',
+  'Get an add, pause, file choice or removal ready for you to confirm.',
+  'Take you to the right screen or setting.',
+];
+
+export const CANT_DO: readonly string[] = [
+  'Change anything without your tap. Every change is a card you confirm.',
+  'Remember earlier chats. Leaving Maglev or tapping Clear ends the chat.',
+  'Know the newest releases from memory. It searches for those.',
+  "Tell you a file is safe, or what's legal where you live.",
+];
+
+export const CAPABILITIES_NOTE =
+  'Free models are small. They can misread a question, stop early or pick the wrong result. Check every card before you confirm.';
+
+/** The collapsed "Technical details" lines. `contextLabel` is optional and skipped when empty. */
+export function capabilitiesFacts(info: { modelName?: string; providerName: string; contextLabel?: string }): string[] {
+  const model = info.modelName?.trim() || 'Auto (any free model)';
+  const context = info.contextLabel?.trim() ? ` Context ${info.contextLabel.trim()}.` : '';
+  return [
+    `Model: ${model} on ${info.providerName}.${context}`,
+    'Each message can use up to 6 model requests, 8 tool calls and 2 cards, only 1 of which can delete.',
+    'Tools: search, look inside a result, list downloads, ask you a question, open a screen, propose an add, propose a change.',
+    'The model only sees names, sizes, sharing counts and file lists from the search sources you turned on, and the names of your downloads. It never sees your files.',
+    'Every fact on a card is worked out by Maglev, not the model, and every tool call is checked before it runs.',
+    'Smaller models sometimes answer without searching, make up details in their text, or send a broken tool call. Maglev rejects broken calls; the text can still be wrong.',
+    "OpenRouter's free models are rate limited (about 20 requests a minute, and 50 a day on accounts with less than $10 of credit), and one message can use several requests.",
+  ];
+}
+
+/** Open the sheet on first sight: chat is ready and the user never closed it before. */
+export function shouldAutoOpenCapabilities(gate: string, seenAt: number | null): boolean {
+  return gate === 'ready' && seenAt === null;
+}

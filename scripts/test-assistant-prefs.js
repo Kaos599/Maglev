@@ -122,6 +122,9 @@ async function main() {
     check('enabled and warningAcceptedAt round-trip', on.enabled === true && on.warningAcceptedAt === 1700000000000);
     const junk = m.normalizeAssistantPrefs({ enabled: 'yes', warningAcceptedAt: -1 });
     check('junk enabled/warning values fall back to off and unseen', junk.enabled === false && junk.warningAcceptedAt === null);
+    check('capabilitiesSeenAt defaults to null', d.capabilitiesSeenAt === null);
+    check('capabilitiesSeenAt round-trips', m.normalizeAssistantPrefs({ capabilitiesSeenAt: 1700000000000 }).capabilitiesSeenAt === 1700000000000);
+    check('junk capabilitiesSeenAt falls back to null', m.normalizeAssistantPrefs({ capabilitiesSeenAt: 'x' }).capabilitiesSeenAt === null && m.normalizeAssistantPrefs({ capabilitiesSeenAt: -5 }).capabilitiesSeenAt === null);
   }
   check('unknown preset falls back to openrouter', m.normalizeAssistantPrefs({ presetId: 'mystery' }).presetId === 'openrouter');
   check('unknown preset keeps defaults for url and model', (() => {
