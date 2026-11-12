@@ -1,12 +1,15 @@
-import React, { memo, useMemo, useRef } from "react";
-import { StyleSheet, Text, View } from "react-native";
+import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { StyleSheet, Text, View, useWindowDimensions } from "react-native";
+import Animated, { useAnimatedStyle, useSharedValue, withDelay, withSequence, withTiming } from "react-native-reanimated";
+import { scheduleOnRN } from "react-native-worklets";
 import { useTheme } from "../context/ThemeContext";
 import type { TransferTelemetry } from "../context/EngineContext";
-import { ThemeColors, alpha, radius, spacing, type } from "../constants/theme";
+import { ThemeColors, alpha, isFinishTransition, monoSlotWidth, motion, radius, spacing, type } from "../constants/theme";
 import { formatBytes, formatSpeed } from "../constants/format";
 import { formatEta } from "../utils/rates";
 import { PixelIcon, PixelIconName } from "./PixelIcon";
 import { IconButton, PressableScale, ProgressBar, ProgressTone } from "./ui";
+import { useMotion } from "./ui/useMotion";
 import { healthLabel, resolvingLine } from "./detail/fileHealthMachine";
 
 /**
@@ -36,6 +39,31 @@ type CardAction = {
 
 type StatusTone = "muted" | "accent" | "danger";
 
+/** Status line font size; the value slot is sized in Space Mono glyphs at this size. */
+const STATUS_SIZE = 12;
+const STATUS_LINE = 18;
+
+/**
+ * Widest strings each value slot holds, in glyphs: "1023.9 KB/s", "↑ 1023.9 KB/s", "1023.9 GB".
+ * A fixed minimum width means a speed that gains a digit never shifts the text beside it.
+ */
+const SLOT_CHARS = { speed: 11, upload: 13, size: 9 } as const;
+
+interface Status {
+  /** The whole line, for screen readers. */
+  text: string;
+  /** Left part: what is happening ("12 min left", "Seeding", "Paused: waiting for Wi-Fi"). */
+  lead: string;
+  /** Right part, a number in a fixed-width slot (speed or size), when there is one. */
+  value?: string;
+  slot?: keyof typeof SLOT_CHARS;
+  tone: StatusTone;
+}
+
+function line(lead: string, tone: StatusTone, value?: string, slot?: keyof typeof SLOT_CHARS): Status {
+  return { text: value ? `${lead} · ${value}` : lead, lead, value, slot, tone };
+}
+
 function pausedReason(pausedBy: string | null | undefined): string {
   switch (pausedBy) {
     case "wifi_only":
@@ -54,39 +82,74 @@ function pausedReason(pausedBy: string | null | undefined): string {
 }
 
 /** The one status line under the bar. `etaLabel` is the hysteresis-stable time left. */
-function statusFor(t: TransferTelemetry, etaLabel: string): { text: string; tone: StatusTone } {
+function statusFor(t: TransferTelemetry, etaLabel: string): Status {
   const total = t.totalSizeBytes > 0 ? formatBytes(t.totalSizeBytes) : "—";
   switch (t.state) {
     case "DOWNLOADING": {
       const speed = t.lastKnown || t.downloadSpeedBytes <= 0 ? "—" : formatSpeed(t.downloadSpeedBytes);
-      if (!t.lastKnown && t.etaSeconds >= 0 && etaLabel !== "—") return { text: `${etaLabel} left · ${speed}`, tone: "muted" };
-      return { text: `Downloading · ${speed}`, tone: "muted" };
+      if (!t.lastKnown && t.etaSeconds >= 0 && etaLabel !== "—") return line(`${etaLabel} left`, "muted", speed, "speed");
+      return line("Downloading", "muted", speed, "speed");
     }
     case "SEEDING":
-      return { text: `Seeding · ↑ ${t.lastKnown ? "—" : formatSpeed(t.uploadSpeedBytes)}`, tone: "accent" };
+      return line("Seeding", "accent", `↑ ${t.lastKnown ? "—" : formatSpeed(t.uploadSpeedBytes)}`, "upload");
     case "PAUSED":
-      if (t.pausedBy === "seed_limit") return { text: `Done · ${total}`, tone: "accent" };
-      return { text: pausedReason(t.pausedBy), tone: "muted" };
+      if (t.pausedBy === "seed_limit") return line("Done", "accent", total, "size");
+      return line(pausedReason(t.pausedBy), "muted");
     case "COMPLETED":
-      return { text: `Done · ${total}`, tone: "accent" };
+      return line("Done", "accent", total, "size");
     case "MOVING":
-      return {
-        text: t.moveProgress != null ? `Moving files… ${Math.round(t.moveProgress * 100)}%` : "Moving files…",
-        tone: "accent",
-      };
+      return line(t.moveProgress != null ? `Moving files… ${Math.round(t.moveProgress * 100)}%` : "Moving files…", "accent");
     case "ERROR":
-      return { text: t.error?.message ? t.error.message : "Something went wrong", tone: "danger" };
+      return line(t.error?.message ? t.error.message : "Something went wrong", "danger");
     case "QUEUED":
-      return { text: "Queued", tone: "muted" };
+      return line("Queued", "muted");
     case "CHECKING":
-      return { text: "Checking files…", tone: "muted" };
+      return line("Checking files…", "muted");
     case "INITIALIZING":
-      if (t.resolvingSecs != null) return { text: resolvingLine(t.peersTotal, t.resolvingSecs), tone: "muted" };
-      return { text: "Getting info…", tone: "muted" };
+      if (t.resolvingSecs != null) return line(resolvingLine(t.peersTotal, t.resolvingSecs), "muted");
+      return line("Getting info…", "muted");
     default:
-      return { text: "Getting info…", tone: "muted" };
+      return line("Getting info…", "muted");
   }
 }
+
+/**
+ * The finish moment: a lime check fades in over the value slot (150 ms) once the bar has filled,
+ * holds, then fades out (220 ms) and hands the slot back to the size or upload speed.
+ * Mounted only while it plays, so idle rows carry no extra animated views.
+ */
+function FinishMark({ color, cover, onDone }: { color: string; cover: string; onDone: () => void }) {
+  const m = useMotion();
+  const o = useSharedValue(0);
+  useEffect(() => {
+    o.value = withSequence(
+      // Let the bar finish its 220 ms fill first.
+      withDelay(m.base - m.fast / 2, withTiming(1, { duration: m.fast, easing: m.easing })),
+      withDelay(
+        motion.finishHold,
+        withTiming(0, { duration: m.base, easing: m.easing }, (finished) => {
+          if (finished) scheduleOnRN(onDone);
+        }),
+      ),
+    );
+    // Plays once per mount.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  const style = useAnimatedStyle(() => ({ opacity: o.value }));
+  return (
+    <Animated.View
+      pointerEvents="none"
+      importantForAccessibility="no-hide-descendants"
+      style={[finishStyles.mark, { backgroundColor: cover }, style]}
+    >
+      <PixelIcon name="check" size={16} color={color} />
+    </Animated.View>
+  );
+}
+
+const finishStyles = StyleSheet.create({
+  mark: { ...StyleSheet.absoluteFill, alignItems: "flex-end", justifyContent: "center" },
+});
 
 function actionFor(t: TransferTelemetry): CardAction {
   switch (t.state) {
@@ -150,6 +213,8 @@ function TransferCardImpl({
 }: TransferCardProps) {
   const { colors } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
+  const { fontScale } = useWindowDimensions();
+  const m = useMotion();
   // The time left only changes label when it moves more than 10% or crosses a step.
   const etaRef = useRef<string | null>(null);
   const etaLabel = formatEta(t.state === "DOWNLOADING" ? t.etaSeconds : -1, etaRef.current);
@@ -168,6 +233,24 @@ function TransferCardImpl({
       : status.tone === "accent"
         ? colors.accentText
         : colors.textMuted;
+  // Finish moment: only for this torrent going from downloading to done while its row is shown.
+  // A recycled row (another id) resets instead of playing.
+  const seen = useRef<{ id: string; state: string; pausedBy?: string | null } | null>(null);
+  const [finishing, setFinishing] = useState(false);
+  useEffect(() => {
+    const next = { id: t.id, state: t.state, pausedBy: t.pausedBy };
+    const prev = seen.current;
+    seen.current = next;
+    if (prev && prev.id !== t.id) {
+      setFinishing(false);
+      return;
+    }
+    if (isFinishTransition(prev, next) && !m.disabled && !selectionMode) setFinishing(true);
+  }, [t.id, t.state, t.pausedBy, m.disabled, selectionMode]);
+  const endFinish = useCallback(() => setFinishing(false), []);
+
+  // Optimistic action in flight (or the saved list before the engine answers): the button dims
+  // and stops taking presses. No spinner, no fake progress; the next engine update settles it.
   const actionBusy = !!t.pending || !!t.lastKnown;
   const canAct = !!action && !selectionMode && !actionBusy;
   const a11yActions = [
@@ -221,10 +304,21 @@ function TransferCardImpl({
           tone={toneFor(t)}
           indeterminate={indeterminate}
           accessibilityLabel={`${t.name} progress`}
+          resetKey={t.id}
         />
-        <Text style={[styles.status, { color: statusColor }]} numberOfLines={1}>
-          {status.text}
-        </Text>
+        <View style={styles.statusRow}>
+          <Text style={[styles.status, styles.lead, { color: statusColor }]} numberOfLines={1}>
+            {status.lead}
+          </Text>
+          {status.value ? (
+            <View style={[styles.slot, { minWidth: monoSlotWidth(SLOT_CHARS[status.slot ?? "speed"], STATUS_SIZE, fontScale) }]}>
+              <Text style={[styles.status, styles.value, { color: statusColor }]} numberOfLines={1}>
+                {status.value}
+              </Text>
+              {finishing ? <FinishMark key={t.id} color={colors.accentText} cover={colors.surface} onDone={endFinish} /> : null}
+            </View>
+          ) : null}
+        </View>
       </PressableScale>
       {action && !selectionMode ? (
         <View style={styles.actionAnchor}>
@@ -317,5 +411,10 @@ const makeStyles = (c: ThemeColors) =>
       minHeight: 36,
     },
     name: { ...type.mono, fontSize: 13, lineHeight: 18, color: c.text, flex: 1 },
-    status: { ...type.mono, fontSize: 12, lineHeight: 18 },
+    // One line, always present, at a fixed minimum height: rows never grow or shrink as the text changes.
+    statusRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm, minHeight: STATUS_LINE },
+    status: { ...type.mono, fontSize: STATUS_SIZE, lineHeight: STATUS_LINE },
+    lead: { flex: 1, flexShrink: 1 },
+    slot: { flexShrink: 0, alignItems: "flex-end", justifyContent: "center" },
+    value: { textAlign: "right" },
   });
