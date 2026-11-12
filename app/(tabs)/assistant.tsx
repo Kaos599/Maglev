@@ -1,10 +1,14 @@
-import React, { useMemo } from 'react';
+import React, { useCallback, useMemo } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { router } from 'expo-router';
 import { useTheme } from '../../context/ThemeContext';
 import { ThemeColors, spacing, type } from '../../constants/theme';
 import { PixelIcon, PixelIconName } from '../../components/PixelIcon';
-import { Button, EmptyBlock, Screen } from '../../components/ui';
+import { Button, Screen } from '../../components/ui';
+import { AssistantChatView } from '../../components/assistant/AssistantChatView';
+import type { ToolRunner } from '../../utils/assistant/runtime';
+import { createAppToolRunner } from '../../utils/assistantApp/appToolRunner';
+import { useAssistantChat } from '../../utils/assistantApp/useAssistantChat';
 import { assistantPrefs, useAssistantPrefs } from '../../utils/prefs/assistantApp';
 
 /** The usage notice: shown until accepted (Settings > Assistant can show it again). */
@@ -36,10 +40,17 @@ const NOTICE: { icon: PixelIconName; title: string; body: string }[] = [
   },
 ];
 
+/** One runner for the app's lifetime: the chat controller is keyed by it, so the chat survives leaving the tab. */
+let runner: ToolRunner | null = null;
+const appRunner = () => (runner ??= createAppToolRunner());
+
 export default function AssistantTab() {
   const { colors } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const prefs = useAssistantPrefs();
+  const chat = useAssistantChat(appRunner());
+  const openSettings = useCallback(() => router.push('/settings/assistant' as never), []);
+  const chooseFiles = useCallback((source: string) => router.push({ pathname: '/add-torrent', params: { source } }), []);
 
   if (!prefs.warningAcceptedAt) {
     return (
@@ -65,17 +76,7 @@ export default function AssistantTab() {
     );
   }
 
-  // Chat UI lands in assistant step 13; until then the tab says so plainly instead of pretending.
-  return (
-    <Screen title="ASSISTANT">
-      <EmptyBlock
-        icon="assistant"
-        title="Chat is coming in the next build"
-        body="Provider setup and chat are being built. You can turn the Assistant off in Settings."
-        secondary={{ label: 'Assistant settings', onPress: () => router.push('/settings/assistant' as never) }}
-      />
-    </Screen>
-  );
+  return <AssistantChatView chat={chat} onOpenSettings={openSettings} onChooseFiles={chooseFiles} />;
 }
 
 const makeStyles = (c: ThemeColors) =>
