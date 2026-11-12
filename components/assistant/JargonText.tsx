@@ -1,11 +1,15 @@
 import React, { memo, useMemo } from 'react';
 import { AccessibilityActionEvent, StyleProp, StyleSheet, Text, TextStyle } from 'react-native';
 import { useTheme } from '../../context/ThemeContext';
+import { type } from '../../constants/theme';
 import type { TokenKey } from '../../utils/assistant/glossary';
 import { scanJargon } from '../../utils/assistant/jargonScan';
+import type { Span } from '../../utils/assistant/chatView';
 
 export interface JargonTextProps {
-  text: string;
+  text?: string;
+  /** Pre-split spans (bold allowed). Used instead of `text` when given. */
+  spans?: Span[];
   style?: StyleProp<TextStyle>;
   /** Called when a known glossary term is tapped. The sheet it opens never calls the model. */
   onTerm: (key: TokenKey) => void;
@@ -17,9 +21,13 @@ const MAX_ACTIONS = 6;
  * Assistant text with known glossary terms dotted-underlined and tappable. The app does the scan
  * (utils/assistant/jargonScan.ts), so the model cannot invent a term.
  */
-export const JargonText = memo(function JargonText({ text, style, onTerm }: JargonTextProps) {
+export const JargonText = memo(function JargonText({ text, spans, style, onTerm }: JargonTextProps) {
   const { colors } = useTheme();
-  const segments = useMemo(() => scanJargon(text), [text]);
+  const segments = useMemo(
+    () => (spans ?? [{ text: text ?? '' }]).flatMap((sp) => scanJargon(sp.text).map((seg) => ({ ...seg, bold: sp.bold }))),
+    [text, spans],
+  );
+  const bold = useMemo(() => StyleSheet.create({ b: { fontFamily: type.bodyStrong.fontFamily } }).b, []);
   const term = useMemo(
     () => StyleSheet.create({ t: { textDecorationLine: 'underline', textDecorationStyle: 'dotted', textDecorationColor: colors.accentText } }).t,
     [colors],
@@ -54,11 +62,15 @@ export const JargonText = memo(function JargonText({ text, style, onTerm }: Jarg
         s.key ? (
           <Text
             key={i}
-            style={term}
+            style={s.bold ? [term, bold] : term}
             onPress={() => onTerm(s.key as TokenKey)}
             accessibilityRole="button"
             accessibilityLabel={`${s.text}, what is this?`}
           >
+            {s.text}
+          </Text>
+        ) : s.bold ? (
+          <Text key={i} style={bold}>
             {s.text}
           </Text>
         ) : (

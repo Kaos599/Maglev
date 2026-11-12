@@ -6,19 +6,22 @@ import type { TokenKey } from '../../utils/assistant/glossary';
 import type { ChatItem } from '../../utils/assistant/runtime';
 import { Button } from '../ui';
 import { PixelIcon } from '../PixelIcon';
-import { JargonText } from './JargonText';
+import { LightText } from './LightText';
 
 type TextItem = Extract<ChatItem, { kind: 'user' | 'assistant' | 'note' | 'error' }>;
 
-export interface MessageBubbleProps {
+export interface MessageProps {
   item: TextItem;
   onTerm: (key: TokenKey) => void;
   onOpenSettings: () => void;
   onRetry: () => void;
 }
 
-/** User text, assistant text, one-line app notes and SM-31 errors. */
-export const MessageBubble = memo(function MessageBubble({ item, onTerm, onOpenSettings, onRetry }: MessageBubbleProps) {
+/**
+ * One turn of text, after AI Elements' Message: the user's words in an accent-outlined bubble on the right, the
+ * assistant's on the left with light formatting, plus one-line app notes and SM-31 errors.
+ */
+export const Message = memo(function Message({ item, onTerm, onOpenSettings, onRetry }: MessageProps) {
   const { colors } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
@@ -32,11 +35,11 @@ export const MessageBubble = memo(function MessageBubble({ item, onTerm, onOpenS
         </View>
       );
     case 'assistant':
-      // An empty streaming message is the progress lines' job; draw nothing until text arrives.
+      // An empty streaming message is the steps' job; draw nothing until text arrives.
       if (!item.text) return null;
       return (
         <View style={[styles.bubble, styles.assistant]}>
-          <JargonText text={item.text} style={styles.text} onTerm={onTerm} />
+          <LightText text={item.text} onTerm={onTerm} />
         </View>
       );
     case 'note':
@@ -65,7 +68,7 @@ export const MessageBubble = memo(function MessageBubble({ item, onTerm, onOpenS
 
 const makeStyles = (c: ThemeColors) =>
   StyleSheet.create({
-    bubble: { maxWidth: '88%', paddingHorizontal: spacing.md, paddingVertical: spacing.sm + 2, borderRadius: radius.md, borderWidth: 1 },
+    bubble: { maxWidth: '92%', paddingHorizontal: spacing.md, paddingVertical: spacing.sm + 2, borderRadius: radius.md, borderWidth: 1 },
     user: { alignSelf: 'flex-end', borderColor: c.accent, backgroundColor: 'transparent' },
     assistant: { alignSelf: 'flex-start', borderColor: c.border, backgroundColor: c.surface },
     text: { ...type.body, fontSize: 15, lineHeight: 21, color: c.text },

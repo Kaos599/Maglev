@@ -2,16 +2,25 @@ import React, { useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
 import { useTheme } from '../../context/ThemeContext';
 import { ThemeColors, radius, spacing, type } from '../../constants/theme';
+import { PixelIcon } from '../PixelIcon';
 
 export interface ComposerProps {
   /** A turn is in flight: Send becomes Stop. */
   busy: boolean;
   onSend: (text: string) => void;
   onStop: () => void;
+  /** The model in use, or the provider when the model is unknown. Opens Settings → Assistant. */
+  modelText: string;
+  onOpenModel: () => void;
+  /** Plain-words token count, e.g. "12.4k tokens used". */
+  contextText: string;
 }
 
-/** Single-line field that grows up to a few lines, with a text-only Send that becomes Stop while a turn runs. */
-export function Composer({ busy, onSend, onStop }: ComposerProps) {
+/**
+ * Prompt input, after AI Elements: a field that grows up to a few lines, a text-only Send that becomes Stop while a
+ * turn runs, a model chip (display only, opens settings) and a Context line with the tokens used.
+ */
+export function Composer({ busy, onSend, onStop, modelText, onOpenModel, contextText }: ComposerProps) {
   const { colors } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const [text, setText] = useState('');
@@ -26,6 +35,23 @@ export function Composer({ busy, onSend, onStop }: ComposerProps) {
   };
 
   return (
+    <View style={styles.outer}>
+    <View style={styles.meta}>
+      <Pressable
+        onPress={onOpenModel}
+        style={({ pressed }) => [styles.model, pressed && styles.pressed]}
+        accessibilityRole="button"
+        accessibilityLabel={`Model: ${modelText}. Open Assistant settings`}
+      >
+        <PixelIcon name="assistant" size={16} color={colors.textMuted} />
+        <Text style={styles.modelText} numberOfLines={1}>
+          {modelText}
+        </Text>
+      </Pressable>
+      <Text style={styles.context} accessibilityLabel={contextText}>
+        {contextText}
+      </Text>
+    </View>
     <View style={styles.bar}>
       <TextInput
         style={[styles.input, { maxHeight: 120 * Math.max(1, Math.min(fontScale, 2)) }]}
@@ -61,20 +87,23 @@ export function Composer({ busy, onSend, onStop }: ComposerProps) {
         </Pressable>
       )}
     </View>
+    </View>
   );
 }
 
 const makeStyles = (c: ThemeColors) =>
   StyleSheet.create({
+    outer: { borderTopWidth: 1, borderTopColor: c.border, backgroundColor: c.bg },
+    meta: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.sm, paddingHorizontal: spacing.lg },
+    model: { flexShrink: 1, minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
+    modelText: { ...type.mono, flexShrink: 1, fontSize: type.size.sm, color: c.textMuted },
+    context: { ...type.mono, flexShrink: 0, fontSize: type.size.sm, color: c.textFaint },
     bar: {
       flexDirection: 'row',
       alignItems: 'flex-end',
       gap: spacing.sm,
       paddingHorizontal: spacing.lg,
-      paddingVertical: spacing.sm,
-      borderTopWidth: 1,
-      borderTopColor: c.border,
-      backgroundColor: c.bg,
+      paddingBottom: spacing.sm,
     },
     input: {
       ...type.body,

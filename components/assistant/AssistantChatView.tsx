@@ -1,14 +1,19 @@
 import React, { useCallback, useMemo, useState } from 'react';
 import { FlatList, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { router } from 'expo-router';
 import { useTheme } from '../../context/ThemeContext';
 import { ThemeColors, spacing, type } from '../../constants/theme';
 import type { TokenKey } from '../../utils/assistant/glossary';
-import type { AssistantChat, ChatGate, ChatItem } from '../../utils/assistant/runtime';
-import { Button, Chip, EmptyBlock, Screen, Sheet } from '../ui';
+import type { AssistantChat, ChatGate, ChatItem, ScreenTarget } from '../../utils/assistant/runtime';
+import { modelChipText, tokensLine } from '../../utils/assistant/chatView';
+import { Button, EmptyBlock, Screen, Sheet } from '../ui';
 import { Composer } from './Composer';
 import { JargonSheet } from './JargonSheet';
-import { MessageBubble } from './MessageBubble';
-import { ProgressSteps } from './ProgressSteps';
+import { Message } from './Message';
+import { Questionnaire } from './Questionnaire';
+import { routeForTarget } from '../../utils/assistant/chatView';
+import { Suggestions } from './Suggestions';
+import { Trace } from './Trace';
 import { ProposalCard } from './ProposalCard';
 import { ResultCard } from './ResultCard';
 import { useChatAnnouncements } from './useChatAnnouncements';
@@ -18,9 +23,9 @@ export interface AssistantChatViewProps {
   onOpenSettings(): void;
   /** Open the Add sheet for a magnet or .torrent URL. */
   onChooseFiles(source: string): void;
+  /** Open a screen the Assistant offered with a link button. Defaults to router.push of routeForTarget. */
+  onOpenTarget?(target: ScreenTarget): void;
 }
-
-const STARTERS = ['Find a movie that fits in 5 GB', 'Why is my download stuck?', 'What does x265 mean?'];
 
 const GATE_LINE: Record<Exclude<ChatGate, 'ready'>, string> = {
   noKey: 'Add an API key in Settings → Assistant.',
@@ -29,7 +34,7 @@ const GATE_LINE: Record<Exclude<ChatGate, 'ready'>, string> = {
 };
 
 /** The chat screen. Renders an AssistantChat and calls its methods; never talks to the model, the engine or search. */
-export function AssistantChatView({ chat, onOpenSettings, onChooseFiles }: AssistantChatViewProps) {
+export function AssistantChatView({ chat, onOpenSettings, onChooseFiles, onOpenTarget }: AssistantChatViewProps) {
   const { colors } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const [term, setTerm] = useState<TokenKey | null>(null);
@@ -47,7 +52,7 @@ export function AssistantChatView({ chat, onOpenSettings, onChooseFiles }: Assis
     ({ item }: { item: ChatItem }) => {
       switch (item.kind) {
         case 'progress':
-          return <ProgressSteps steps={item.steps} />;
+          return <Trace steps={item.steps} />;
         case 'results':
           return (
             <View style={styles.stack}>
@@ -75,11 +80,32 @@ export function AssistantChatView({ chat, onOpenSettings, onChooseFiles }: Assis
               onDismiss={() => chat.dismiss(item.view.cardId)}
             />
           );
+        case 'question':
+          return (
+            <Questionnaire
+              question={item.question}
+              options={item.options}
+              answered={item.answered}
+              onAnswer={(o) => chat.answer?.(item.id, o)}
+            />
+          );
+        case 'link':
+          return (
+            <View style={styles.link}>
+              <Button
+                label={item.label}
+                variant="secondary"
+                icon="chevron-right"
+                fullWidth
+                onPress={() => (onOpenTarget ? onOpenTarget(item.target) : router.push(routeForTarget(item.target) as never))}
+              />
+            </View>
+          );
         default:
-          return <MessageBubble item={item} onTerm={setTerm} onOpenSettings={onOpenSettings} onRetry={retry} />;
+          return <Message item={item} onTerm={setTerm} onOpenSettings={onOpenSettings} onRetry={retry} />;
       }
     },
-    [chat, onChooseFiles, onOpenSettings, retry, styles.stack],
+    [chat, onChooseFiles, onOpenSettings, onOpenTarget, retry, styles.stack, styles.link],
   );
 
   const clearAction =
@@ -109,11 +135,7 @@ export function AssistantChatView({ chat, onOpenSettings, onChooseFiles }: Assis
   } else if (items.length === 0) {
     body = (
       <ScrollView contentContainerStyle={styles.empty} keyboardShouldPersistTaps="handled">
-        <View style={styles.starters}>
-          {STARTERS.map((s) => (
-            <Chip key={s} label={s} onPress={() => send(s)} />
-          ))}
-        </View>
+        <Suggestions onPick={send} />
         <Text style={styles.privacy}>Your messages and the names of your downloads go to {chat.providerName}.</Text>
         <Text style={styles.privacy}>Chats aren't saved. Leaving Maglev or tapping Clear ends this chat.</Text>
       </ScrollView>
@@ -139,7 +161,14 @@ export function AssistantChatView({ chat, onOpenSettings, onChooseFiles }: Assis
       <KeyboardAvoidingView style={styles.fill} behavior="padding">
         {body}
         {ready ? (
-          <Composer busy={chat.busy} onSend={send} onStop={chat.stop} />
+          <Composer
+            busy={chat.busy}
+            onSend={send}
+            onStop={chat.stop}
+            modelText={modelChipText(chat.modelName, chat.providerName)}
+            onOpenModel={onOpenSettings}
+            contextText={tokensLine(chat.tokensUsed)}
+          />
         ) : items.length > 0 ? (
           <View style={styles.gate}>
             <Text style={styles.gateText}>{gateLine}</Text>
@@ -174,9 +203,9 @@ const makeStyles = (c: ThemeColors) =>
     list: { flex: 1 },
     listContent: { padding: spacing.lg },
     stack: { gap: spacing.md },
+    link: { alignSelf: 'stretch' },
     empty: { flexGrow: 1, justifyContent: 'center', padding: spacing.lg, gap: spacing.lg },
     sheetActions: { gap: spacing.sm },
-    starters: { gap: spacing.sm, alignItems: 'flex-start' },
     privacy: { ...type.body, fontSize: type.size.md, lineHeight: 18, color: c.textMuted },
     clear: { minWidth: 56, minHeight: 44, alignItems: 'center', justifyContent: 'center', paddingHorizontal: spacing.sm },
     clearText: { ...type.bodyStrong, fontSize: 14, color: c.textMuted },
