@@ -22,6 +22,7 @@ const S = {
   testing: (preset = 'openai', key = 'sk-1') => ({ kind: 'testing', preset, key }),
   ready: { kind: 'ready' },
   invalid: (reason) => ({ kind: 'invalid', reason }),
+  kept: (reason, preset, key) => ({ kind: 'invalid', reason, preset, key }),
   awaitingCode: (from = { kind: 'noKey' }) => ({ kind: 'awaitingCode', from }),
   exchanging: (from = { kind: 'noKey' }) => ({ kind: 'exchanging', from }),
 };
@@ -77,14 +78,14 @@ async function main() {
     ['editing SAVE custom preset without a key -> testing, probe with empty key', S.editing, { type: 'SAVE', preset: 'custom', baseUrl: 'http://192.168.1.4:11434/v1', model: 'llama3', key: '' }, S.testing('custom', ''), [{ type: 'probe', preset: 'custom', baseUrl: 'http://192.168.1.4:11434/v1', model: 'llama3', key: '' }]],
     ['testing PROBE_OK tools work -> ready, storeKey now', S.testing(), { type: 'PROBE_OK', toolCallsWork: true }, S.ready, [{ type: 'storeKey', key: 'sk-1' }]],
     ['testing (custom, no key) PROBE_OK -> ready, nothing to store', S.testing('custom', ''), { type: 'PROBE_OK', toolCallsWork: true }, S.ready, []],
-    ['testing PROBE_OK no tools -> invalid, key never stored', S.testing(), { type: 'PROBE_OK', toolCallsWork: false }, S.invalid(COPY.cantUseTools), []],
+    ['testing PROBE_OK no tools -> invalid, key never stored', S.testing(), { type: 'PROBE_OK', toolCallsWork: false }, S.kept(COPY.cantUseTools, 'openai', 'sk-1'), []],
     ['testing PROBE_ERR 401 -> invalid with the provider name', S.testing('openai'), { type: 'PROBE_ERR', status: 401 }, S.invalid("OpenAI didn't accept this key. Paste it again or make a new one."), []],
     ['testing PROBE_ERR 403 -> invalid with the provider name', S.testing('groq'), { type: 'PROBE_ERR', status: 403 }, S.invalid("Groq didn't accept this key. Paste it again or make a new one."), []],
-    ['testing PROBE_ERR 402 -> invalid with the provider name', S.testing('openrouter'), { type: 'PROBE_ERR', status: 402 }, S.invalid('Your OpenRouter account is out of credit. Top up on their site or pick another model.'), []],
-    ['testing PROBE_ERR net -> invalid', S.testing(), { type: 'PROBE_ERR', status: 'net' }, S.invalid(COPY.cantReach), []],
-    ['testing PROBE_ERR timeout -> invalid', S.testing(), { type: 'PROBE_ERR', status: 'timeout' }, S.invalid(COPY.cantReach), []],
-    ['testing PROBE_ERR 500 -> invalid', S.testing(), { type: 'PROBE_ERR', status: 500 }, S.invalid(COPY.cantReach), []],
-    ['testing PROBE_ERR 503 -> invalid', S.testing(), { type: 'PROBE_ERR', status: 503 }, S.invalid(COPY.cantReach), []],
+    ['testing PROBE_ERR 402 -> invalid with the provider name', S.testing('openrouter'), { type: 'PROBE_ERR', status: 402 }, S.kept(COPY.noCreditOpenRouter, 'openrouter', 'sk-1'), []],
+    ['testing PROBE_ERR net -> invalid', S.testing(), { type: 'PROBE_ERR', status: 'net' }, S.kept(COPY.cantReach, 'openai', 'sk-1'), []],
+    ['testing PROBE_ERR timeout -> invalid', S.testing(), { type: 'PROBE_ERR', status: 'timeout' }, S.kept(COPY.cantReach, 'openai', 'sk-1'), []],
+    ['testing PROBE_ERR 500 -> invalid', S.testing(), { type: 'PROBE_ERR', status: 500 }, S.kept(COPY.cantReach, 'openai', 'sk-1'), []],
+    ['testing PROBE_ERR 503 -> invalid', S.testing(), { type: 'PROBE_ERR', status: 503 }, S.kept(COPY.cantReach, 'openai', 'sk-1'), []],
     ['noKey SIGN_IN_OPENROUTER -> awaitingCode', S.noKey, { type: 'SIGN_IN_OPENROUTER' }, S.awaitingCode(S.noKey), [{ type: 'openAuth' }]],
     ['invalid SIGN_IN_OPENROUTER -> awaitingCode (remembers invalid)', S.invalid('x'), { type: 'SIGN_IN_OPENROUTER' }, S.awaitingCode(S.invalid('x')), [{ type: 'openAuth' }]],
     ['editing SIGN_IN_OPENROUTER -> awaitingCode (remembers editing)', S.editing, { type: 'SIGN_IN_OPENROUTER' }, S.awaitingCode(S.editing), [{ type: 'openAuth' }]],
@@ -122,10 +123,10 @@ async function main() {
     check('PROBE_OK stores the trimmed key', effectsJson(ok.effects) === JSON.stringify([{ type: 'storeKey', key: 'sk-trim' }]));
     for (const status of [401, 402, 404, 429, 500, 'net', 'timeout']) {
       const r = reduceProvider(save.state, { type: 'PROBE_ERR', status });
-      check(`PROBE_ERR ${status} never stores the key`, !r.effects.some((e) => e.type === 'storeKey') && JSON.stringify(r.state).indexOf('sk-trim') === -1);
+      check(`PROBE_ERR ${status} never stores the key`, !r.effects.some((e) => e.type === 'storeKey'));
     }
     const nt = reduceProvider(save.state, { type: 'PROBE_OK', toolCallsWork: false });
-    check('PROBE_OK without tool calls never stores the key and drops it from the state', nt.effects.length === 0 && JSON.stringify(nt.state).indexOf('sk-trim') === -1);
+    check('PROBE_OK without tool calls never stores the key (kept in memory only)', nt.effects.length === 0);
     const keyFlow = reduceProvider(S.exchanging(), { type: 'KEY', key: ' sk-or-9 ', baseUrl: 'https://openrouter.ai/api/v1', model: 'm' });
     check('OpenRouter KEY does not store either; it probes first', !keyFlow.effects.some((e) => e.type === 'storeKey'));
     const e = reduceProvider(S.editing, { ...VALID_SAVE, key: '' });
@@ -142,6 +143,41 @@ async function main() {
   {
     const r = reduceProvider(S.testing('custom', ''), { type: 'PROBE_ERR', status: 401 });
     check('the {provider} placeholder is always filled', r.state.kind === 'invalid' && !r.state.reason.includes('{'), r.state.reason);
+  }
+
+  // ---- A good key survives a failed test (new OpenRouter user, no credit) ----
+  console.log('key kept through invalid');
+  check('402 copy for OpenRouter', COPY.noCreditOpenRouter === 'Your OpenRouter account has no credit yet. Pick a free model below, or add credit on openrouter.ai and test again.');
+  check('save-failed copy', COPY.saveFailed === "Couldn't save the key on this phone. Try again.");
+  {
+    // Sign-in -> exchanged key -> probe 402 -> invalid keeps the key -> new model -> Test model -> ready, no second sign-in.
+    let r = reduceProvider(S.exchanging(), { type: 'KEY', key: 'sk-or-1', baseUrl: 'https://openrouter.ai/api/v1', model: 'openai/gpt-5-nano' });
+    r = reduceProvider(r.state, { type: 'PROBE_ERR', status: 402 });
+    check('402 on OpenRouter -> invalid with the key in memory', r.state.kind === 'invalid' && r.state.key === 'sk-or-1' && r.state.preset === 'openrouter' && r.state.reason === COPY.noCreditOpenRouter, JSON.stringify(r.state));
+    check('402 does not store the key', !r.effects.some((e) => e.type === 'storeKey'));
+    const again = reduceProvider(r.state, { type: 'SAVE', preset: 'openrouter', baseUrl: 'https://openrouter.ai/api/v1', model: 'openrouter/free', key: 'sk-or-1' });
+    check('Test model again from invalid with a kept key probes (no sign-in)', again.state.kind === 'testing' && again.effects.length === 1 && again.effects[0].type === 'probe' && again.effects[0].model === 'openrouter/free', JSON.stringify(again));
+    const ok = reduceProvider(again.state, { type: 'PROBE_OK', toolCallsWork: true });
+    check('then ready, key stored once', ok.state.kind === 'ready' && effectsJson(ok.effects) === JSON.stringify([{ type: 'storeKey', key: 'sk-or-1' }]));
+  }
+  for (const status of [404, 429, 'net', 'timeout', 502]) {
+    const r = reduceProvider(S.testing('openrouter', 'k'), { type: 'PROBE_ERR', status });
+    check(`PROBE_ERR ${status} keeps the key`, r.state.kind === 'invalid' && r.state.key === 'k');
+  }
+  for (const status of [401, 403]) {
+    const r = reduceProvider(S.testing('openrouter', 'k'), { type: 'PROBE_ERR', status });
+    check(`PROBE_ERR ${status} drops the key`, r.state.kind === 'invalid' && r.state.key === undefined && JSON.stringify(r.state).indexOf('"k"') === -1);
+  }
+  check('402 on another provider keeps the generic copy', reduceProvider(S.testing('openai', 'k'), { type: 'PROBE_ERR', status: 402 }).state.reason === 'Your OpenAI account is out of credit. Top up on their site or pick another model.');
+  {
+    const r = reduceProvider(S.testing('openai', 'sk-1'), { type: 'PROBE_OK', toolCallsWork: false });
+    check('no-tools keeps the key in memory', r.state.kind === 'invalid' && r.state.key === 'sk-1');
+    check('SAVE from invalid without a kept key is a no-op', reduceProvider(S.invalid('x'), VALID_SAVE).state.kind === 'invalid' && reduceProvider(S.invalid('x'), VALID_SAVE).effects.length === 0);
+  }
+  {
+    const r = reduceProvider(S.testing(), { type: 'STORE_FAILED' });
+    check('STORE_FAILED -> editing with the save-failed line', r.state.kind === 'editing' && effectsJson(r.effects) === JSON.stringify([{ type: 'showError', message: COPY.saveFailed }]));
+    check('STORE_FAILED outside testing is a no-op', reduceProvider(S.ready, { type: 'STORE_FAILED' }).state.kind === 'ready');
   }
 
   // ---- Events outside the table are no-ops ----

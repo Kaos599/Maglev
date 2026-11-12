@@ -40,6 +40,7 @@ function memorySecrets() {
 
 async function main() {
   const m = await import('../utils/prefs/assistant.ts');
+  const { createAssistantPrefsStore, ASSISTANT_PREFS_KEY, keyFor, presetById, PRESETS } = m;
 
   // ---- Presets ----
   console.log('presets');
@@ -111,7 +112,7 @@ async function main() {
   // ---- Defaults and migration ----
   console.log('migration');
   const d = m.defaultAssistantPrefs();
-  check('defaults: openrouter, default model, no key, zero tokens', d.presetId === 'openrouter' && d.model === 'openai/gpt-5-nano' && d.keyRef === null && d.tokensUsed.input === 0 && d.tokensUsed.output === 0);
+  check('defaults: openrouter, default model, no key, zero tokens', d.presetId === 'openrouter' && d.model === 'openrouter/free' && d.keyRef === null && d.tokensUsed.input === 0 && d.tokensUsed.output === 0);
   check('null raw gives defaults', JSON.stringify(m.normalizeAssistantPrefs(null)) === JSON.stringify(d));
   check('array raw gives defaults', JSON.stringify(m.normalizeAssistantPrefs([1, 2])) === JSON.stringify(d));
   check('string raw gives defaults', JSON.stringify(m.normalizeAssistantPrefs('x')) === JSON.stringify(d));
@@ -125,7 +126,7 @@ async function main() {
   check('unknown preset falls back to openrouter', m.normalizeAssistantPrefs({ presetId: 'mystery' }).presetId === 'openrouter');
   check('unknown preset keeps defaults for url and model', (() => {
     const p = m.normalizeAssistantPrefs({ presetId: 'mystery' });
-    return p.baseUrl === 'https://openrouter.ai/api/v1' && p.model === 'openai/gpt-5-nano';
+    return p.baseUrl === 'https://openrouter.ai/api/v1' && p.model === 'openrouter/free';
   })());
   check('valid saved fields kept', (() => {
     const p = m.normalizeAssistantPrefs({ presetId: 'groq', baseUrl: 'https://api.groq.com/openai/v1', model: ' llama-3.1-8b-instant ' });
@@ -136,8 +137,8 @@ async function main() {
     return p.baseUrl === 'https://api.openai.com/v1';
   })());
   check('LAN baseUrl kept for custom', m.normalizeAssistantPrefs({ presetId: 'custom', baseUrl: 'http://192.168.1.9:11434/v1' }).baseUrl === 'http://192.168.1.9:11434/v1');
-  check('empty model replaced by default', m.normalizeAssistantPrefs({ model: '   ' }).model === 'openai/gpt-5-nano');
-  check('over-long model replaced by default', m.normalizeAssistantPrefs({ model: 'x'.repeat(121) }).model === 'openai/gpt-5-nano');
+  check('empty model replaced by default', m.normalizeAssistantPrefs({ model: '   ' }).model === 'openrouter/free');
+  check('over-long model replaced by default', m.normalizeAssistantPrefs({ model: 'x'.repeat(121) }).model === 'openrouter/free');
   check('keyRef with bad characters dropped', m.normalizeAssistantPrefs({ keyRef: 'sk-abc/def' }).keyRef === null);
   check('keyRef with spaces dropped', m.normalizeAssistantPrefs({ keyRef: 'my key' }).keyRef === null);
   check('valid keyRef kept', m.normalizeAssistantPrefs({ keyRef: 'assistant.openai' }).keyRef === 'assistant.openai');
@@ -254,6 +255,55 @@ async function main() {
       ok = false;
     }
     check('removeKey survives a keystore error', ok);
+  }
+
+  // ---- Keys of other providers do not linger; the key is tied to its preset ----
+  console.log('single key, tagged key');
+  {
+    const secrets = memorySecrets();
+    const store = createAssistantPrefsStore(memoryKv(), secrets);
+    await secrets.set('assistant.openai', 'old-openai');
+    await secrets.set('assistant.groq', 'old-groq');
+    await store.saveKey('openrouter', 'or-key', { baseUrl: 'https://openrouter.ai/api/v1', model: 'openrouter/free' });
+    check('saveKey deletes every other provider key', [...secrets.data.keys()].join() === 'assistant.openrouter');
+    check('saveKey with settings switches preset, address, model and keyRef in one update', store.get().presetId === 'openrouter' && store.get().model === 'openrouter/free' && store.get().keyRef === 'assistant.openrouter');
+    await secrets.set('assistant.anthropic', 'stray');
+    await store.removeKey();
+    check('removeKey deletes every provider key', secrets.data.size === 0 && store.get().keyRef === null);
+  }
+  {
+    const secrets = memorySecrets();
+    const store = createAssistantPrefsStore(memoryKv(), secrets);
+    await store.saveKey('openai', 'k1', { baseUrl: 'https://api.openai.com/v1', model: 'gpt-5-nano' });
+    const before = store.get();
+    const failing = { ...secrets, async set() { throw new Error('keystore'); } };
+    const store2 = createAssistantPrefsStore(memoryKv({ [ASSISTANT_PREFS_KEY]: JSON.stringify(before) }), failing);
+    let threw = false;
+    try {
+      await store2.saveKey('groq', 'k2', { baseUrl: 'https://api.groq.com/openai/v1', model: 'llama-3.3-70b-versatile' });
+    } catch {
+      threw = true;
+    }
+    check('a failed secure-store write throws and leaves prefs on the old preset', threw && store2.get().presetId === 'openai' && store2.get().keyRef === 'assistant.openai');
+    check('and leaves the old key alone', secrets.data.get('assistant.openai') === 'k1');
+  }
+  {
+    const cur = { presetId: 'groq', keyRef: 'assistant.groq' };
+    check('keyFor: same preset returns the key', keyFor({ presetId: 'groq', key: 'k' }, cur) === 'k');
+    check('keyFor: a key loaded for another preset is never returned', keyFor({ presetId: 'openai', key: 'old' }, cur) === null);
+    check('keyFor: nothing loaded', keyFor(null, cur) === null);
+    check('keyFor: no saved key (removed) returns null', keyFor({ presetId: 'groq', key: 'k' }, { presetId: 'groq', keyRef: null }) === null);
+  }
+  {
+    const or = presetById('openrouter');
+    check('OpenRouter default is the free router', or.defaultModel === 'openrouter/free' && or.models[0].id === 'openrouter/free' && or.models[0].free === true);
+    for (const p of PRESETS) {
+      if (p.local) {
+        check(`${p.id} has no list (free text)`, p.models.length === 0);
+        continue;
+      }
+      check(`${p.id} has 2-4 models, the default first`, p.models.length >= 2 && p.models.length <= 4 && p.models[0].id === p.defaultModel);
+    }
   }
 
   if (failed) {

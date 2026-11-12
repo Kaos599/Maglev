@@ -65,7 +65,6 @@ function initialState(p: { presetId: PresetId; baseUrl: string; keyRef: string |
 }
 
 export const SIGN_IN_CODE_HINT = 'Paste the code OpenRouter shows you.';
-const SAVE_FAILED = "Couldn't save the key on this phone. Try again.";
 const LOCAL_NAME = "Use the computer's address (like 192.168.1.20), not a .local name.";
 
 export function useProviderSetup(opts?: { onExpireCards?: () => void }) {
@@ -102,32 +101,31 @@ export function useProviderSetup(opts?: { onExpireCards?: () => void }) {
             { preset: fx.preset, baseUrl: fx.baseUrl, model: fx.model, key: fx.key },
             fetch as unknown as ProbeFetch,
             ctl.signal,
-          ).then((ev) => {
+          ).then(async (ev) => {
             if (!ev) return;
-            // Settings are saved only once the probe passes (R1-14). The key follows through the storeKey effect.
             if (ev.type === 'PROBE_OK' && ev.toolCallsWork) {
-              assistantPrefs.update({
-                presetId: fx.preset as PresetId,
-                baseUrl: fx.baseUrl,
-                model: fx.model,
-                ...(fx.key ? {} : { keyRef: null }),
-              });
+              // R1-14: settings and key are saved only once the probe passes, in one step. The key is written first;
+              // if the phone refuses it, nothing switches and the user can try again.
+              try {
+                if (fx.key) {
+                  await assistantPrefs.saveKey(fx.preset as PresetId, fx.key, { baseUrl: fx.baseUrl, model: fx.model });
+                } else {
+                  await assistantPrefs.removeKey();
+                  assistantPrefs.update({ presetId: fx.preset as PresetId, baseUrl: fx.baseUrl, model: fx.model });
+                }
+              } catch {
+                dispatchRef.current({ type: 'STORE_FAILED' });
+                return;
+              }
+              setForm({ key: '' });
             }
             dispatchRef.current(ev);
           });
           break;
         }
-        case 'storeKey': {
-          const preset = (lastProbe.current?.preset ?? formRef.current.preset) as PresetId;
-          assistantPrefs.saveKey(preset, fx.key).then(
-            () => setForm({ key: '' }),
-            () => {
-              dispatchRef.current({ type: 'EDIT' });
-              setError(SAVE_FAILED);
-            },
-          );
+        case 'storeKey':
+          // Already written before PROBE_OK was dispatched (see the probe effect).
           break;
-        }
         case 'openAuth':
           auth.start().catch(() => {
             dispatchRef.current({ type: 'CANCEL' });
@@ -175,9 +173,15 @@ export function useProviderSetup(opts?: { onExpireCards?: () => void }) {
         clearTimeout(timer.current);
         timer.current = null;
       }
+      // A key kept through a failed test (no credit, no tools, wrong model) goes back into the form so the user can
+      // change the model and press Test model again.
+      if (next.kind === 'invalid' && next.key !== undefined && next.preset) {
+        const l = lastProbe.current;
+        setForm({ preset: next.preset as PresetId, key: next.key, ...(l ? { baseUrl: l.baseUrl, model: l.model } : {}) });
+      }
       effects.forEach(runEffect);
     },
-    [runEffect],
+    [runEffect, setForm],
   );
   dispatchRef.current = dispatch;
 

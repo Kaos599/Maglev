@@ -149,7 +149,7 @@ export default function SettingsIndex() {
     { icon: 'schedule', title: 'Scheduling', value: scheduling, route: 'scheduling' },
     { icon: 'search', title: 'Search providers', value: providers, route: 'search-providers' },
     { icon: 'feeds', title: 'Auto-download', value: auto, route: 'feeds' },
-    { icon: 'assistant', title: 'Assistant', value: assistant.enabled ? 'On' : 'Off', route: 'assistant' },
+    { icon: 'assistant', title: 'Assistant', value: assistant.enabled ? 'Experimental · On' : 'Experimental · Off', route: 'assistant' },
     { icon: 'about', title: 'About', value: APP_VERSION, route: 'about' },
   ];
 

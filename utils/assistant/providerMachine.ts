@@ -8,7 +8,7 @@
 import { checkBaseUrl, presetById, type PresetId } from '../prefs/assistant.ts';
 
 /** States the user can go back to after cancelling a sign-in. */
-export type RestState = { kind: 'noKey' } | { kind: 'editing' } | { kind: 'invalid'; reason: string };
+export type RestState = { kind: 'noKey' } | { kind: 'editing' } | { kind: 'invalid'; reason: string; preset?: string; key?: string };
 
 export type ProviderState =
   | { kind: 'noKey' }
@@ -16,7 +16,12 @@ export type ProviderState =
   /** `key` stays in memory until PROBE_OK. It may be empty for the custom (Ollama) preset. */
   | { kind: 'testing'; preset: string; key: string }
   | { kind: 'ready' }
-  | { kind: 'invalid'; reason: string }
+  /**
+   * `key` (with its `preset`) stays in memory, never persisted, when the key itself may be fine: no credit,
+   * model can't use tools, model not found, or the provider was unreachable. The user changes the model and
+   * presses Test model again without signing in again.
+   */
+  | { kind: 'invalid'; reason: string; preset?: string; key?: string }
   | { kind: 'awaitingCode'; from: RestState }
   | { kind: 'exchanging'; from: RestState };
 
@@ -29,6 +34,8 @@ export type ProviderEvent =
   | { type: 'CODE'; pasted: string }
   | { type: 'KEY'; key: string; baseUrl: string; model: string }
   | { type: 'ERR' }
+  /** The probe passed but the phone's secure store refused the key. Back to editing, nothing switched. */
+  | { type: 'STORE_FAILED' }
   /** Back out of awaitingCode or exchanging. */
   | { type: 'CANCEL' }
   /** The runner fires this PROVIDER_TIMEOUT_MS after sign-in started. */
@@ -59,6 +66,9 @@ export const COPY = {
   cantUseTools: "This model can't work with Maglev's actions. Pick another.",
   badKey: "{provider} didn't accept this key. Paste it again or make a new one.",
   outOfCredits: 'Your {provider} account is out of credit. Top up on their site or pick another model.',
+  noCreditOpenRouter:
+    'Your OpenRouter account has no credit yet. Pick a free model below, or add credit on openrouter.ai and test again.',
+  saveFailed: "Couldn't save the key on this phone. Try again.",
   cantReach: "Couldn't reach the provider. Try again.",
   signInFailed: "Sign-in didn't finish. Try again.",
   signInTimedOut: 'Sign-in took too long. Try again.',
@@ -120,7 +130,8 @@ export function reduceProvider(
       return stay(state);
 
     case 'SAVE': {
-      if (state.kind !== 'editing') return stay(state);
+      // From invalid only when the key is still in memory (changed the model, pressed Test model again).
+      if (state.kind !== 'editing' && !(state.kind === 'invalid' && state.key !== undefined)) return stay(state);
       const error = validateSave(event);
       if (error) return to(state, [{ type: 'showError', message: error }]);
       const key = event.key.trim();
@@ -133,18 +144,24 @@ export function reduceProvider(
     case 'PROBE_OK':
       if (state.kind !== 'testing') return stay(state);
       if (event.toolCallsWork) return to({ kind: 'ready' }, state.key ? [{ type: 'storeKey', key: state.key }] : []);
-      return to({ kind: 'invalid', reason: COPY.cantUseTools });
+      return to({ kind: 'invalid', reason: COPY.cantUseTools, preset: state.preset, key: state.key });
+
+    case 'STORE_FAILED':
+      if (state.kind !== 'testing') return stay(state);
+      return to({ kind: 'editing' }, [{ type: 'showError', message: COPY.saveFailed }]);
 
     case 'PROBE_ERR': {
       if (state.kind !== 'testing') return stay(state);
       const s = event.status;
       const bad = (reason: string) => to({ kind: 'invalid', reason });
+      // The key may still be fine, so keep it in memory for another Test model.
+      const keep = (reason: string) => to({ kind: 'invalid', reason, preset: state.preset, key: state.key });
       if (s === 401 || s === 403) return bad(fillProvider(COPY.badKey, state.preset));
-      if (s === 402) return bad(fillProvider(COPY.outOfCredits, state.preset));
-      if (s === 'net' || s === 'timeout' || (typeof s === 'number' && s >= 500 && s <= 599)) return bad(COPY.cantReach);
+      if (s === 402) return keep(state.preset === 'openrouter' ? COPY.noCreditOpenRouter : fillProvider(COPY.outOfCredits, state.preset));
+      if (s === 'net' || s === 'timeout' || (typeof s === 'number' && s >= 500 && s <= 599)) return keep(COPY.cantReach);
       // Any other status must still leave `testing`, or the screen hangs on "Testing…".
-      if (s === 404) return bad(COPY.modelNotFound);
-      if (s === 429) return bad(COPY.rateLimited);
+      if (s === 404) return keep(COPY.modelNotFound);
+      if (s === 429) return keep(COPY.rateLimited);
       return bad(COPY.rejected);
     }
 

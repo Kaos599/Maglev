@@ -1,5 +1,7 @@
-import React, { useMemo, useState } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { AppState, StyleSheet, Text, View } from 'react-native';
+import * as Clipboard from 'expo-clipboard';
+import { parseAuthCode } from '../../../utils/assistantApp/openrouterAuth';
 import { useTheme } from '../../../context/ThemeContext';
 import { ThemeColors, spacing, type } from '../../../constants/theme';
 import { Button } from '../../ui';
@@ -32,6 +34,34 @@ export function OpenRouterCodeEntry({
   const { colors } = useTheme();
   const s = useMemo(() => makeStyles(colors), [colors]);
   const [code, setCode] = useState('');
+  const codeRef = useRef(code);
+  codeRef.current = code;
+
+  // Back from the OpenRouter page: if the clipboard holds something code-shaped, fill it in (never submit).
+  useEffect(() => {
+    if (exchanging) return;
+    const sub = AppState.addEventListener('change', async (st) => {
+      if (st !== 'active' || codeRef.current) return;
+      try {
+        const found = parseAuthCode((await Clipboard.getStringAsync()).trim());
+        if (found && !codeRef.current) setCode(found);
+      } catch {
+        // No clipboard access: the user can still paste by hand.
+      }
+    });
+    return () => sub.remove();
+  }, [exchanging]);
+
+  const paste = async () => {
+    let clip = '';
+    try {
+      clip = (await Clipboard.getStringAsync()).trim();
+    } catch {
+      // The empty-code hint shows from onSubmit.
+    }
+    setCode(clip);
+    onSubmit(clip);
+  };
   return (
     <View style={s.wrap}>
       <Text style={s.title}>{exchanging ? 'Getting your key' : 'Finish on OpenRouter'}</Text>
@@ -39,7 +69,7 @@ export function OpenRouterCodeEntry({
         <Text style={s.caption}>Hang on a moment.</Text>
       ) : (
         <>
-          <Text style={s.caption}>Sign in and allow Maglev in the page that opened. OpenRouter then shows a code. Paste it here.</Text>
+          <Text style={s.caption}>Sign in and tap Allow. OpenRouter shows a code. Copy it, come back, and tap Paste code. The code works for 10 minutes.</Text>
           <Field label="Code from OpenRouter" value={code} onChangeText={setCode} placeholder="Paste the code" onSubmitEditing={() => onSubmit(code)} testID="assistant-code" />
           {error ? (
             <Text style={s.error} accessibilityLiveRegion="polite">
@@ -49,6 +79,7 @@ export function OpenRouterCodeEntry({
         </>
       )}
       <View style={s.actions}>
+        {exchanging ? null : <Button label="Paste code" variant="secondary" onPress={paste} testID="assistant-code-paste" />}
         {exchanging ? null : <Button label="Continue" onPress={() => onSubmit(code)} disabled={!code.trim()} testID="assistant-code-continue" />}
         <Button label="Cancel" variant="ghost" onPress={onCancel} testID="assistant-sign-in-cancel" />
       </View>

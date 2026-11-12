@@ -84,7 +84,7 @@ export function ProviderSection({ onExpireCards }: { onExpireCards?: () => void 
       <View style={s.body}>
         {state.kind === 'invalid' ? <Banner tone="danger" title={state.reason} /> : null}
         <OpenRouterSignInButton onPress={p.signIn} primary={state.kind === 'invalid' || form.preset === 'openrouter'} />
-        {state.kind === 'invalid' ? (
+        {state.kind === 'invalid' && state.key === undefined ? (
           <Button label="Fix settings" variant="ghost" onPress={p.startEdit} fullWidth testID="assistant-fix" />
         ) : (
           <>
@@ -102,7 +102,7 @@ export function ProviderSection({ onExpireCards }: { onExpireCards?: () => void 
               />
             ) : null}
             {custom ? null : <KeyField value={form.key} onChange={(t) => p.setForm({ key: t })} editable={!testing} />}
-            <ModelField value={form.model} onChange={(t) => p.setForm({ model: t })} editable={!testing} />
+            <ModelField preset={preset} value={form.model} onChange={(t) => p.setForm({ model: t })} editable={!testing} />
             <Caption>{sentLine(form.preset)}</Caption>
             {p.error ? (
               <Text style={s.error} accessibilityLiveRegion="polite">

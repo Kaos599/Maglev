@@ -5,13 +5,14 @@ import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { AppState } from 'react-native';
 import { fetch as expoFetch } from 'expo/fetch'; // Streaming fetch: response.body.getReader() (SDK 52+).
 import type { AssistantChat, ToolRunner } from '../assistant/runtime.ts';
-import { addTokensUsed } from '../prefs/assistant.ts';
+import { addTokensUsed, keyFor, type TaggedKey } from '../prefs/assistant.ts';
 import { assistantPrefs, useAssistantPrefs } from '../prefs/assistantApp';
 import { createStreamFn, type FetchLike } from './client.ts';
 import { createChatController, goneTargets, type ChatController } from './chatController.ts';
 import { useMaglevEngine } from '../../context/EngineContext';
 
-let currentKey: string | null = null;
+// The loaded key is tagged with the preset it belongs to; keyFor() returns it only for that preset.
+let loadedKey: TaggedKey | null = null;
 const controllers = new WeakMap<ToolRunner, ChatController>();
 
 function controllerFor(runner: ToolRunner): ChatController {
@@ -21,7 +22,7 @@ function controllerFor(runner: ToolRunner): ChatController {
       runner,
       stream: createStreamFn(expoFetch as unknown as FetchLike),
       getPrefs: () => assistantPrefs.get(),
-      getKey: () => currentKey,
+      getKey: () => keyFor(loadedKey, assistantPrefs.get()),
       addUsage: (usage) => {
         assistantPrefs.update((p) => addTokensUsed(p, usage));
       },
@@ -34,30 +35,31 @@ function controllerFor(runner: ToolRunner): ChatController {
 export function useAssistantChat(runner: ToolRunner): AssistantChat {
   const controller = controllerFor(runner);
   const prefs = useAssistantPrefs();
-  const [key, setKey] = useState<string | null>(currentKey);
+  const [loaded, setLoaded] = useState<TaggedKey | null>(loadedKey);
 
   // Load the key from secure storage whenever the provider or its key name changes.
   useEffect(() => {
     let live = true;
-    if (!prefs.keyRef) {
-      currentKey = null;
-      setKey(null);
-      return;
-    }
+    if (!prefs.keyRef) return;
     void assistantPrefs.readKey(prefs.presetId).then((k) => {
       if (!live) return;
-      currentKey = k;
-      setKey(k);
+      loadedKey = { presetId: prefs.presetId, key: k };
+      setLoaded(loadedKey);
     });
     return () => {
       live = false;
     };
   }, [prefs.presetId, prefs.keyRef]);
 
+  // A key is saved but not yet loaded for this provider (a switch in progress): do not look at the gate yet,
+  // or the missing key would read as "removed" and clear the chat. Only a real removal (keyRef null) clears.
+  const loadPending = prefs.keyRef !== null && (loaded === null || loaded.presetId !== prefs.presetId);
+
   // Prefs or key changed: recompute the gate; key removed means Clear, Assistant off means Disabled.
   useEffect(() => {
+    if (loadPending) return;
     controller.refresh();
-  }, [controller, prefs, key]);
+  }, [controller, prefs, loaded, loadPending]);
 
   useEffect(() => {
     const sub = AppState.addEventListener('change', (s) => {

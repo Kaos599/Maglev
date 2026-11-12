@@ -1,7 +1,10 @@
 import React from 'react';
 import { Stack } from 'expo-router';
 import { ListRow, Toggle } from '../../components/ui';
-import { Card, SettingsPage } from '../../components/settings/SettingsParts';
+import { View } from 'react-native';
+import { Card, Caption, SettingsPage } from '../../components/settings/SettingsParts';
+import { spacing } from '../../constants/theme';
+import { ExperimentalTag } from '../../components/assistant/provider/ExperimentalTag';
 import { assistantPrefs, useAssistantPrefs } from '../../utils/prefs/assistantApp';
 import { ProviderSection } from '../../components/assistant/provider/ProviderSection';
 import { SectionHeader } from '../../components/ui';
@@ -41,6 +44,10 @@ export default function AssistantSettings() {
           />
         ) : null}
       </Card>
+      <View style={{ gap: spacing.sm }}>
+        <ExperimentalTag />
+        <Caption>Experimental. It can be wrong, and features may change.</Caption>
+      </View>
       <SectionHeader title="Provider" />
       <ProviderSection />
     </SettingsPage>

@@ -7,6 +7,13 @@
  * prefs keep only the secure-store key NAME (`keyRef`).
  */
 
+export interface ModelChoice {
+  id: string;
+  label: string;
+  /** true: costs nothing to use (may be rate-limited). false: needs credit or a paid plan. */
+  free: boolean;
+}
+
 export type PresetId = 'openrouter' | 'openai' | 'anthropic' | 'groq' | 'gemini' | 'custom';
 
 export interface ProviderPreset {
@@ -14,8 +21,10 @@ export interface ProviderPreset {
   label: string;
   /** Default base URL. The custom preset starts at the Ollama default. */
   baseUrl: string;
-  /** Model id to start with. Model ids are not checked against the provider's list (see report). */
+  /** Model id to start with. It is the first entry of `models` when the preset has a list. */
   defaultModel: string;
+  /** Short list of tool-capable models for the picker. Empty for the custom preset (free text). */
+  models: readonly ModelChoice[];
   notes: string;
   /** true when the base URL was read on the provider's own page at `sourceUrl`. */
   verified: boolean;
@@ -40,7 +49,15 @@ export const PRESETS: readonly ProviderPreset[] = [
     id: 'openrouter',
     label: 'OpenRouter',
     baseUrl: 'https://openrouter.ai/api/v1',
-    defaultModel: 'openai/gpt-5-nano',
+    // Free so a new account with no credit passes Test model. Checked 2026-11-12 against the public list
+    // https://openrouter.ai/api/v1/models: pricing.prompt and completion "0" and supported_parameters has "tools"
+    // for openrouter/free (router, 200k context) and google/gemma-4-31b-it:free. openai/gpt-5-nano is paid and has tools.
+    defaultModel: 'openrouter/free',
+    models: [
+      { id: 'openrouter/free', label: 'Free models (picked for you)', free: true },
+      { id: 'google/gemma-4-31b-it:free', label: 'Gemma 4 31B', free: true },
+      { id: 'openai/gpt-5-nano', label: 'GPT-5 Nano', free: false },
+    ],
     notes: 'One key, many models. Sign in with OpenRouter, or paste a key.',
     verified: true,
     sourceUrl: 'https://openrouter.ai/docs/quickstart',
@@ -51,6 +68,11 @@ export const PRESETS: readonly ProviderPreset[] = [
     label: 'OpenAI',
     baseUrl: 'https://api.openai.com/v1',
     defaultModel: 'gpt-5-nano',
+    // Tool calling: both are listed with "tools" at https://openrouter.ai/api/v1/models as openai/gpt-5-nano and openai/gpt-5-mini (checked 2026-11-12).
+    models: [
+      { id: 'gpt-5-nano', label: 'GPT-5 Nano', free: false },
+      { id: 'gpt-5-mini', label: 'GPT-5 Mini', free: false },
+    ],
     notes: 'OpenAI API key from the OpenAI platform.',
     verified: true,
     sourceUrl: 'https://developers.openai.com/api/reference/overview',
@@ -61,6 +83,11 @@ export const PRESETS: readonly ProviderPreset[] = [
     label: 'Anthropic (compatible)',
     baseUrl: 'https://api.anthropic.com/v1/',
     defaultModel: 'claude-haiku-5-5',
+    // Claude models support tool use: https://platform.claude.com/docs/en/about-claude/models/overview (no free tier).
+    models: [
+      { id: 'claude-haiku-5-5', label: 'Claude Haiku 5.5', free: false },
+      { id: 'claude-sonnet-5-5', label: 'Claude Sonnet 5.5', free: false },
+    ],
     notes: 'Claude through its OpenAI-compatible layer. Anthropic calls this layer a test tool, not a production API.',
     verified: true,
     sourceUrl: 'https://platform.claude.com/docs/en/cli-sdks-libraries/libraries/openai-sdk',
@@ -71,6 +98,12 @@ export const PRESETS: readonly ProviderPreset[] = [
     label: 'Groq',
     baseUrl: 'https://api.groq.com/openai/v1',
     defaultModel: 'llama-3.3-70b-versatile',
+    // Listed with tool use on https://console.groq.com/docs/tool-use/overview (checked 2026-11-12). Free tier has limits.
+    models: [
+      { id: 'llama-3.3-70b-versatile', label: 'Llama 3.3 70B', free: true },
+      { id: 'openai/gpt-oss-20b', label: 'GPT-OSS 20B', free: true },
+      { id: 'llama-3.1-8b-instant', label: 'Llama 3.1 8B', free: true },
+    ],
     notes: 'Fast hosted models. Free tier has daily token limits.',
     verified: true,
     sourceUrl: 'https://console.groq.com/docs/openai',
@@ -81,6 +114,11 @@ export const PRESETS: readonly ProviderPreset[] = [
     label: 'Gemini (OpenAI-compatible)',
     baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai/',
     defaultModel: 'gemini-2.5-flash-lite',
+    // Both are on https://ai.google.dev/gemini-api/docs/pricing with a free tier (checked 2026-11-12); function calling is supported.
+    models: [
+      { id: 'gemini-2.5-flash-lite', label: 'Gemini 2.5 Flash-Lite', free: true },
+      { id: 'gemini-2.5-flash', label: 'Gemini 2.5 Flash', free: true },
+    ],
     notes: 'Google AI Studio key, through the OpenAI-compatible endpoint.',
     verified: true,
     sourceUrl: 'https://aistudio.google.com/docs/openai',
@@ -92,6 +130,7 @@ export const PRESETS: readonly ProviderPreset[] = [
     // R1-14: no default. On a phone, localhost is the phone; the user types the computer's address.
     baseUrl: '',
     defaultModel: 'llama3.1',
+    models: [],
     notes: 'Ollama or any OpenAI-compatible server. Private addresses may use http.',
     verified: true,
     sourceUrl: 'https://docs.ollama.com/api/openai-compatibility',
@@ -131,6 +170,18 @@ function isPresetId(v: unknown): v is PresetId {
 export function defaultAssistantPrefs(): AssistantPrefs {
   const p = presetById('openrouter');
   return { presetId: p.id, baseUrl: p.baseUrl, model: p.defaultModel, keyRef: null, tokensUsed: { input: 0, output: 0 }, enabled: false, warningAcceptedAt: null };
+}
+
+/** The key loaded for one preset. Used so a key is never sent to another preset's address. */
+export interface TaggedKey {
+  presetId: PresetId;
+  key: string | null;
+}
+
+/** The key to send for `current`: only when the loaded key belongs to the same preset and a key is saved. */
+export function keyFor(loaded: TaggedKey | null, current: { presetId: PresetId; keyRef: string | null }): string | null {
+  if (!loaded || !current.keyRef || loaded.presetId !== current.presetId) return null;
+  return loaded.key;
 }
 
 /** SecureStore key names allow [A-Za-z0-9._-] only. */
@@ -253,10 +304,14 @@ export interface AssistantPrefsStore {
   get(): AssistantPrefs;
   update(change: Partial<AssistantPrefs> | ((p: AssistantPrefs) => Partial<AssistantPrefs>)): AssistantPrefs;
   subscribe(listener: () => void): () => void;
-  /** Stores the key under keyNameFor(presetId) and sets keyRef. Returns the key name. */
-  saveKey(presetId: PresetId, key: string): Promise<string>;
+  /**
+   * Stores the key under keyNameFor(presetId), deletes every other provider's key, then in ONE update sets
+   * keyRef and, when `settings` is given, presetId, baseUrl and model. If the secret write throws, prefs are untouched.
+   * Returns the key name.
+   */
+  saveKey(presetId: PresetId, key: string, settings?: { baseUrl: string; model: string }): Promise<string>;
   readKey(presetId: PresetId): Promise<string | null>;
-  /** Removes the key named by keyRef and clears keyRef. */
+  /** Removes every provider's key (`assistant.<preset>`) and clears keyRef. */
   removeKey(): Promise<void>;
 }
 
@@ -292,6 +347,18 @@ export function createAssistantPrefsStore(kv: KeyValueStore, secrets: SecretStor
     return next;
   }
 
+  /** Deletes the key of every preset except `keep`. A failing delete is skipped. */
+  async function removeOthers(keep: PresetId | null): Promise<void> {
+    for (const p of PRESETS) {
+      if (p.id === keep) continue;
+      try {
+        await secrets.remove(keyNameFor(p.id));
+      } catch {
+        // Nothing stored.
+      }
+    }
+  }
+
   return {
     get: load,
     update(change) {
@@ -305,10 +372,11 @@ export function createAssistantPrefsStore(kv: KeyValueStore, secrets: SecretStor
         listeners.delete(listener);
       };
     },
-    async saveKey(presetId, key) {
+    async saveKey(presetId, key, settings) {
       const name = keyNameFor(presetId);
       await secrets.set(name, key.trim());
-      set({ ...load(), keyRef: name });
+      await removeOthers(presetId);
+      set(normalizeAssistantPrefs({ ...load(), ...(settings ? { presetId, ...settings } : {}), keyRef: name }));
       return name;
     },
     async readKey(presetId) {
@@ -319,14 +387,7 @@ export function createAssistantPrefsStore(kv: KeyValueStore, secrets: SecretStor
       }
     },
     async removeKey() {
-      const ref = load().keyRef;
-      if (ref) {
-        try {
-          await secrets.remove(ref);
-        } catch {
-          // Nothing stored.
-        }
-      }
+      await removeOthers(null);
       set({ ...load(), keyRef: null });
     },
   };
