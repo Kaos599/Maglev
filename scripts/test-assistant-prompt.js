@@ -68,6 +68,8 @@ async function main() {
   check('settings questions go to open_screen', /open_screen/.test(ap));
   check('closed choices go to ask_user then wait; open questions in one plain sentence', /ask_user[^\n]*stop and wait/.test(ap) && /open question[^\n]*plain sentence/i.test(ap));
   check('fewest tool calls', /fewest tool calls/.test(ap));
+  check('a download request picks a card, looks inside, proposes; no asking which copy', /pick the card that fits best yourself/.test(ap) && /Don't ask which copy/.test(ap));
+  check('existing downloads: list_transfers before searching', /list_transfers first\. Search only if it isn't there/.test(ap));
   check('cards are referred to by title, matched by on_card', /on_card/.test(ap) && /never by an id/.test(ap));
   check('nothing found: no invented titles, mention sources down', /Nothing found/.test(ap) && /never invent a title/i.test(ap));
   check('all too big: shortfall_text then ask_user, no add', /all_too_big/.test(ap) && /shortfall_text/.test(ap) && /Don't look inside or propose an add/.test(ap));
