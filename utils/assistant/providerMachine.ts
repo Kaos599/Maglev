@@ -54,6 +54,7 @@ export const PROVIDER_TIMEOUT_MS = 10 * 60 * 1000;
 export const COPY = {
   pasteKey: 'Paste a key',
   httpsOnly: 'That address must start with https://',
+  needAddress: "Type your computer's address, like http://192.168.1.20:11434/v1",
   pickModel: 'Pick a model',
   cantUseTools: "This model can't work with Maglev's actions. Pick another.",
   badKey: "{provider} didn't accept this key. Paste it again or make a new one.",
@@ -93,10 +94,12 @@ export function fillProvider(copy: string, preset: string): string {
 /** The machine starts with no key. SM-40 does not name an initial state; the screen starts here. */
 export const INITIAL_PROVIDER_STATE: ProviderState = { kind: 'noKey' };
 
-/** SAVE field checks, in order: key, base URL, model. The custom (Ollama) preset needs no key. */
+/** SAVE field checks, in order: key, base URL, model. The custom (Ollama) preset needs no key but needs an address. */
 export function validateSave(e: { preset?: string; baseUrl: string; model: string; key: string }): string | null {
   if (e.preset !== 'custom' && !e.key.trim()) return COPY.pasteKey;
-  if (!checkBaseUrl(e.baseUrl).ok) return COPY.httpsOnly;
+  if (e.preset === 'custom' && !e.baseUrl.trim()) return COPY.needAddress;
+  const url = checkBaseUrl(e.baseUrl);
+  if (!url.ok) return url.reason;
   if (!e.model.trim()) return COPY.pickModel;
   return null;
 }

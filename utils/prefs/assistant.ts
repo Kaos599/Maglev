@@ -89,7 +89,8 @@ export const PRESETS: readonly ProviderPreset[] = [
   {
     id: 'custom',
     label: 'Custom (Ollama on your network)',
-    baseUrl: 'http://localhost:11434/v1/',
+    // R1-14: no default. On a phone, localhost is the phone; the user types the computer's address.
+    baseUrl: '',
     defaultModel: 'llama3.1',
     notes: 'Ollama or any OpenAI-compatible server. Private addresses may use http.',
     verified: true,
@@ -140,14 +141,14 @@ export function keyNameFor(presetId: PresetId): string {
 // ---- Base URL and LAN rule (SM-40) ----
 
 /**
- * True for hosts on a private network or loopback: 10/8, 172.16/12, 192.168/16, 127/8, ::1, fc00::/7, *.local.
+ * True for hosts on a private network or loopback: 10/8, 172.16/12, 192.168/16, 127/8, ::1, fc00::/7.
  * `localhost` is treated as loopback (127/8). Brackets around IPv6 literals are optional.
  */
 export function isPrivateHost(hostname: string): boolean {
   let h = hostname.trim().toLowerCase();
   if (h.startsWith('[') && h.endsWith(']')) h = h.slice(1, -1);
   if (h.endsWith('.')) h = h.slice(0, -1);
-  if (h === 'localhost' || h.endsWith('.local')) return true;
+  if (h === 'localhost') return true;
   if (h.includes(':')) return h === '::1' || /^f[cd][0-9a-f]{0,2}:/.test(h);
   const m = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(h);
   if (!m) return false;
@@ -159,9 +160,12 @@ export function isPrivateHost(hostname: string): boolean {
 
 export const ADDRESS_COPY = 'That address must start with https://';
 
+/** R1-14: Android can't resolve mDNS (.local) names, so those addresses are refused with this line. */
+export const LOCAL_NAME_COPY = "Use the computer's address, like 192.168.1.20, not a .local name.";
+
 export type BaseUrlCheck = { ok: true; url: string } | { ok: false; reason: string };
 
-/** https always passes. http passes only for a private-range host. Credentials in the URL are refused. */
+/** https passes, http only for a private-range host. Credentials in the URL and .local names are refused. */
 export function checkBaseUrl(raw: string): BaseUrlCheck {
   const text = raw.trim();
   let u: URL;
@@ -171,6 +175,7 @@ export function checkBaseUrl(raw: string): BaseUrlCheck {
     return { ok: false, reason: ADDRESS_COPY };
   }
   if (u.username || u.password) return { ok: false, reason: ADDRESS_COPY };
+  if (/\.local\.?$/i.test(u.hostname)) return { ok: false, reason: LOCAL_NAME_COPY };
   if (u.protocol === 'https:') return { ok: true, url: text };
   if (u.protocol === 'http:' && isPrivateHost(u.hostname)) return { ok: true, url: text };
   return { ok: false, reason: ADDRESS_COPY };

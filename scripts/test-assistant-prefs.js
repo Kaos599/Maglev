@@ -46,7 +46,7 @@ async function main() {
   const ids = m.PRESETS.map((p) => p.id);
   check('six presets in order', JSON.stringify(ids) === JSON.stringify(['openrouter', 'openai', 'anthropic', 'groq', 'gemini', 'custom']), ids.join(','));
   check('every preset has a label, model and notes', m.PRESETS.every((p) => p.label && p.defaultModel && p.notes));
-  check('every preset base URL passes checkBaseUrl', m.PRESETS.every((p) => m.checkBaseUrl(p.baseUrl).ok), m.PRESETS.map((p) => p.baseUrl).join(' '));
+  check('every hosted preset base URL passes checkBaseUrl', m.PRESETS.filter((p) => !p.local).every((p) => m.checkBaseUrl(p.baseUrl).ok), m.PRESETS.map((p) => p.baseUrl).join(' '));
   check('verified presets cite an https source', m.PRESETS.filter((p) => p.verified).every((p) => p.sourceUrl.startsWith('https://')));
   check('all six base URLs verified against a docs page', m.PRESETS.every((p) => p.verified === true));
   check('only custom is local', m.PRESETS.filter((p) => p.local).map((p) => p.id).join() === 'custom');
@@ -68,12 +68,12 @@ async function main() {
   console.log('private hosts');
   const privateHosts = [
     '10.0.0.1', '10.255.255.255', '172.16.0.1', '172.31.255.254', '192.168.1.20', '127.0.0.1', '127.9.9.9',
-    '::1', '[::1]', 'fc00::1', 'fd12:3456::1', '[fdab::2]', 'localhost', 'nas.local', 'PRINTER.LOCAL',
+    '::1', '[::1]', 'fc00::1', 'fd12:3456::1', '[fdab::2]', 'localhost',
   ];
   for (const h of privateHosts) check(`private: ${h}`, m.isPrivateHost(h) === true);
   const publicHosts = [
     '8.8.8.8', '172.15.0.1', '172.32.0.1', '192.169.0.1', '11.0.0.1', '1.2.3.4', 'example.com', 'api.openai.com',
-    'fe80::1', '2001:db8::1', 'fe::1', '::', '999.1.1.1', 'localnet', 'local.example.com',
+    'fe80::1', '2001:db8::1', 'fe::1', '::', '999.1.1.1', 'localnet', 'local.example.com', 'nas.local', 'PRINTER.LOCAL',
   ];
   for (const h of publicHosts) check(`public: ${h}`, m.isPrivateHost(h) === false);
 
@@ -83,6 +83,16 @@ async function main() {
   check('http LAN allowed', m.checkBaseUrl('http://192.168.1.50:11434/v1/').ok === true);
   check('http localhost allowed', m.checkBaseUrl('http://localhost:11434/v1/').ok === true);
   check('http IPv6 loopback allowed', m.checkBaseUrl('http://[::1]:11434/v1').ok === true);
+  // R1-14: Android can't resolve mDNS names, so .local is refused with its own plain reason.
+  for (const u of ['http://nas.local:11434/v1', 'https://nas.local/v1', 'http://PRINTER.LOCAL./v1']) {
+    const r = m.checkBaseUrl(u);
+    check(`.local refused: ${u}`, r.ok === false && r.reason === m.LOCAL_NAME_COPY, JSON.stringify(r));
+  }
+  check('local-name copy is plain', /192\.168/.test(m.LOCAL_NAME_COPY) && /\.local/.test(m.LOCAL_NAME_COPY));
+  // R1-14: no localhost default for Ollama/custom; the user types the computer's address.
+  check('custom preset has no default address', m.presetById('custom').baseUrl === '');
+  check('selecting custom clears the address', m.selectPreset(m.defaultAssistantPrefs(), 'custom').baseUrl === '');
+  check('stored custom with no address stays empty', m.normalizeAssistantPrefs({ presetId: 'custom' }).baseUrl === '');
   check('ftp refused', m.checkBaseUrl('ftp://192.168.1.5/v1').ok === false);
   check('garbage refused', m.checkBaseUrl('not a url').ok === false);
   check('empty refused', m.checkBaseUrl('').ok === false);

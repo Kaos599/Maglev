@@ -53,6 +53,8 @@ async function main() {
   check('empty key -> Paste a key', validateSave({ baseUrl: 'https://a.example/v1', model: 'm', key: '  ' }) === 'Paste a key');
   check('public http -> https message', validateSave({ baseUrl: 'http://a.example/v1', model: 'm', key: 'k' }) === COPY.httpsOnly);
   check('LAN http is valid', validateSave({ baseUrl: 'http://192.168.1.4:11434/v1', model: 'm', key: 'k' }) === null);
+  check('custom with no address -> asks for it', validateSave({ preset: 'custom', baseUrl: ' ', model: 'm', key: '' }) === COPY.needAddress);
+  check('.local address -> its own reason', /\.local/.test(validateSave({ preset: 'custom', baseUrl: 'http://nas.local:11434/v1', model: 'm', key: '' }) ?? ''));
   check('empty model -> Pick a model', validateSave({ baseUrl: 'https://a.example/v1', model: '', key: 'k' }) === 'Pick a model');
   check('key error wins over the others', validateSave({ baseUrl: 'bad', model: '', key: '' }) === 'Paste a key');
   check('base URL error wins over model', validateSave({ baseUrl: 'bad', model: '', key: 'k' }) === COPY.httpsOnly);
