@@ -43,6 +43,37 @@ export interface ResultCardView {
   riskyWarning?: string;
   /** Present only after get_result_details looked inside. Red shows a danger banner. */
   safety?: { level: SafetyLevel; text: string };
+  /**
+   * 0.11: what is inside, present only after get_result_details looked inside. Rendered as small file rows
+   * under a "What's inside" toggle, collapsed by default, so non-technical users aren't shown it unasked.
+   */
+  details?: ResultDetailsView;
+}
+
+/** The contents of one result, app-computed from the torrent's file list. */
+export interface ResultDetailsView {
+  /** All files in the torrent. */
+  fileCount: number;
+  /** Sum of all file sizes, e.g. "4.2 GB". Never the size of the .torrent file itself. */
+  totalText: string;
+  /** Up to 8 rows, largest first. */
+  files: FileRowView[];
+  /** e.g. "and 12 more files". Empty when every file is listed. */
+  moreText: string;
+  /** Counts per kind, for a one-line summary such as "1 video · 3 subtitles". */
+  kinds: Partial<Record<FileKind, number>>;
+}
+
+export type FileKind = 'video' | 'audio' | 'subtitle' | 'image' | 'archive' | 'app' | 'book' | 'text' | 'other';
+
+export interface FileRowView {
+  /** File name without folders, sanitised. */
+  name: string;
+  /** e.g. "1.9 GB". */
+  sizeText: string;
+  kind: FileKind;
+  /** From the safety check: danger for an app or script hidden in media, warn for anything amber. */
+  flag?: 'danger' | 'warn';
 }
 
 /** A proposal awaiting the user's tap (§9 "Proposal cards"). */
@@ -79,6 +110,10 @@ export interface ProgressStep {
   /** Real facts only: "Searching 4 sources", "Looking inside r1", "Checking space", "Knaben didn't answer". */
   text: string;
   state: 'running' | 'done' | 'failed';
+  /** 0.11: the tool this step belongs to, e.g. "search_torrents". The UI maps it to a plain label and icon. */
+  tool?: string;
+  /** 0.11: one plain line shown when the step is expanded, e.g. "23 results from 4 sources, newest first". */
+  detail?: string;
 }
 
 export type ChatItem =
@@ -104,6 +139,8 @@ export interface AssistantChat {
   busy: boolean;
   /** e.g. "OpenRouter". Used in "Your messages and the names of your downloads go to <provider>." */
   providerName: string;
+  /** 0.11: the model in use as the user knows it, e.g. "Llama 3.3 70B (free)". Shown in the composer's model chip. */
+  modelName?: string;
   /** Tokens used on this provider, all time (D4: tokens, not money). */
   tokensUsed: { input: number; output: number };
   send(text: string): void;
