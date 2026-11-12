@@ -1,0 +1,808 @@
+{
+  "checkedOn": "2026-11-12",
+  "method": "Values come from each app's official pages (its website, GitHub or GitLab README, F-Droid listing or Google Play listing) as checked on this date; a feature that those pages do not list is marked No.",
+  "apps": [
+    {
+      "id": "maglev",
+      "name": "Maglev",
+      "kind": "Open source",
+      "url": "https://github.com/Kaos599/Maglev",
+      "sources": [
+        "https://github.com/Kaos599/Maglev"
+      ],
+      "summary": "Torrents, ordinary links and a built-in browser that saves streams, in one free, open source Android app with no ads."
+    },
+    {
+      "id": "libretorrent",
+      "name": "LibreTorrent",
+      "kind": "Open source",
+      "url": "https://f-droid.org/packages/org.proninyaroslav.libretorrent/",
+      "sources": [
+        "https://github.com/proninyaroslav/libretorrent",
+        "https://f-droid.org/packages/org.proninyaroslav.libretorrent/"
+      ],
+      "summary": "A full-featured open source torrent client for Android, with RSS, scheduling and file selection."
+    },
+    {
+      "id": "biglybt",
+      "name": "BiglyBT (Android)",
+      "kind": "Open source",
+      "url": "https://github.com/BiglySoftware/BiglyBT-Android",
+      "sources": [
+        "https://www.biglybt.com/",
+        "https://github.com/BiglySoftware/BiglyBT-Android",
+        "https://f-droid.org/en/packages/com.biglybt.android.client/",
+        "https://play.google.com/store/apps/details?id=com.biglybt.android.client&hl=en_US"
+      ],
+      "summary": "An ad-free, open source torrent client for Android that can also control desktop BiglyBT and Transmission."
+    },
+    {
+      "id": "seal",
+      "name": "Seal",
+      "kind": "Open source",
+      "url": "https://github.com/JunkFood02/Seal",
+      "sources": [
+        "https://github.com/JunkFood02/Seal",
+        "https://github.com/JunkFood02/Seal/blob/main/README.md",
+        "https://f-droid.org/packages/com.junkfood.seal/"
+      ],
+      "summary": "An open source Android app built on yt-dlp for downloading audio and video from the sites yt-dlp supports."
+    },
+    {
+      "id": "ytdlnis",
+      "name": "YTDLnis",
+      "kind": "Open source",
+      "url": "https://github.com/deniscerri/ytdlnis",
+      "sources": [
+        "https://github.com/deniscerri/ytdlnis",
+        "https://github.com/deniscerri/ytdlnis/blob/main/README.md",
+        "https://f-droid.org/packages/com.deniscerri.ytdl/"
+      ],
+      "summary": "An open source Android app built on yt-dlp, with queues, scheduling and tools for editing downloaded videos."
+    },
+    {
+      "id": "newpipe",
+      "name": "NewPipe",
+      "kind": "Open source",
+      "url": "https://newpipe.net/",
+      "sources": [
+        "https://newpipe.net/",
+        "https://github.com/TeamNewPipe/NewPipe",
+        "https://f-droid.org/packages/org.schabi.newpipe/"
+      ],
+      "summary": "An open source Android client for YouTube and a few other services, which can also save videos and audio."
+    },
+    {
+      "id": "flud",
+      "name": "Flud",
+      "kind": "Closed source",
+      "url": "https://play.google.com/store/apps/details?id=com.delphicoder.flud",
+      "sources": [
+        "https://play.google.com/store/apps/details?id=com.delphicoder.flud&hl=en_US"
+      ],
+      "summary": "A torrent client for Android with RSS, file selection and Wi-Fi-only downloads. Its Play listing says it contains ads and in-app purchases."
+    },
+    {
+      "id": "1dm",
+      "name": "1DM+",
+      "kind": "Closed source",
+      "url": "https://play.google.com/store/apps/details?id=idm.internet.download.manager.plus",
+      "sources": [
+        "https://play.google.com/store/apps/details?id=idm.internet.download.manager.plus&hl=en"
+      ],
+      "summary": "A download manager for Android with a browser, link catching and torrent support, which its Play listing describes as ad free."
+    },
+    {
+      "id": "adm",
+      "name": "Advanced Download Manager (ADM)",
+      "kind": "Closed source",
+      "url": "https://play.google.com/store/apps/details?id=com.dv.adm",
+      "sources": [
+        "https://play.google.com/store/apps/details?id=com.dv.adm&hl=en_US"
+      ],
+      "summary": "A download manager for Android with a browser, link interception and torrent support. Its Play listing says it contains ads."
+    },
+    {
+      "id": "fdm",
+      "name": "Free Download Manager (FDM)",
+      "kind": "Closed source",
+      "url": "https://play.google.com/store/apps/details?id=org.freedownloadmanager.fdm",
+      "sources": [
+        "https://play.google.com/store/apps/details?id=org.freedownloadmanager.fdm&hl=en_US",
+        "https://www.freedownloadmanager.org/download.htm"
+      ],
+      "summary": "A download manager from SoftDeluxe for links, torrents and scheduled downloads. It is not a full web browser, according to its developer."
+    }
+  ],
+  "rows": [
+    {
+      "id": "torrents",
+      "group": "Torrents",
+      "label": "Torrents",
+      "help": "Downloads a file shared by many people at once, from a magnet link or a .torrent file.",
+      "values": {
+        "maglev": "Yes",
+        "libretorrent": "Yes",
+        "biglybt": "Yes",
+        "seal": "No",
+        "ytdlnis": "No",
+        "newpipe": "No",
+        "flud": "Yes",
+        "1dm": "Yes",
+        "adm": "Yes",
+        "fdm": "Yes"
+      },
+      "notes": {}
+    },
+    {
+      "id": "magnet",
+      "group": "Torrents",
+      "label": "Magnet links",
+      "help": "Opens a magnet link, which starts a torrent without a separate file.",
+      "values": {
+        "maglev": "Yes",
+        "libretorrent": "Yes",
+        "biglybt": "No",
+        "seal": "No",
+        "ytdlnis": "No",
+        "newpipe": "No",
+        "flud": "Yes",
+        "1dm": "Yes",
+        "adm": "Yes",
+        "fdm": "Yes"
+      },
+      "notes": {
+        "biglybt": "The Android pages do not mention magnet links. The desktop app supports them."
+      }
+    },
+    {
+      "id": "torrent-search",
+      "group": "Torrents",
+      "label": "Search many torrent sources",
+      "help": "One search box that asks several public torrent sites at once.",
+      "values": {
+        "maglev": "Yes",
+        "libretorrent": "No",
+        "biglybt": "No",
+        "seal": "No",
+        "ytdlnis": "No",
+        "newpipe": "No",
+        "flud": "No",
+        "1dm": "No",
+        "adm": "No",
+        "fdm": "No"
+      },
+      "notes": {}
+    },
+    {
+      "id": "rss",
+      "group": "Torrents",
+      "label": "RSS feeds with auto-download rules",
+      "help": "Follows a feed and downloads new items that match rules you set.",
+      "values": {
+        "maglev": "Yes",
+        "libretorrent": "Yes",
+        "biglybt": "Yes",
+        "seal": "No",
+        "ytdlnis": "Partial",
+        "newpipe": "No",
+        "flud": "Yes",
+        "1dm": "No",
+        "adm": "No",
+        "fdm": "No"
+      },
+      "notes": {
+        "ytdlnis": "Watches playlists and channels and downloads new uploads. It is not described as RSS."
+      }
+    },
+    {
+      "id": "file-picks",
+      "group": "Torrents",
+      "label": "Pick files inside a torrent",
+      "help": "Choose which files in a torrent to download, and set which one comes first.",
+      "values": {
+        "maglev": "Yes",
+        "libretorrent": "Yes",
+        "biglybt": "Yes",
+        "seal": "No",
+        "ytdlnis": "No",
+        "newpipe": "No",
+        "flud": "Yes",
+        "1dm": "No",
+        "adm": "Yes",
+        "fdm": "Yes"
+      },
+      "notes": {}
+    },
+    {
+      "id": "plain-links",
+      "group": "Downloads",
+      "label": "Plain web links (http/https)",
+      "help": "Downloads an ordinary file from a web address, not a torrent.",
+      "values": {
+        "maglev": "Yes",
+        "libretorrent": "No",
+        "biglybt": "No",
+        "seal": "No",
+        "ytdlnis": "No",
+        "newpipe": "No",
+        "flud": "No",
+        "1dm": "Yes",
+        "adm": "Yes",
+        "fdm": "Yes"
+      },
+      "notes": {
+        "libretorrent": "Its HTTP support is for links to .torrent files. Plain file downloads are not listed."
+      }
+    },
+    {
+      "id": "link-pause",
+      "group": "Downloads",
+      "label": "Pause and resume for links",
+      "help": "Stop an ordinary download and pick it up later, even after a restart.",
+      "values": {
+        "maglev": "Yes",
+        "libretorrent": "No",
+        "biglybt": "No",
+        "seal": "No",
+        "ytdlnis": "No",
+        "newpipe": "No",
+        "flud": "No",
+        "1dm": "Partial",
+        "adm": "Yes",
+        "fdm": "Yes"
+      },
+      "notes": {
+        "1dm": "Pause and resume work with links it supports. The Play page says so with the words supported links."
+      }
+    },
+    {
+      "id": "background",
+      "group": "Downloads",
+      "label": "Background downloads with a notification",
+      "help": "Downloads keep going when you leave the app, with a notification that shows progress.",
+      "values": {
+        "maglev": "Yes",
+        "libretorrent": "No",
+        "biglybt": "Yes",
+        "seal": "No",
+        "ytdlnis": "Partial",
+        "newpipe": "No",
+        "flud": "No",
+        "1dm": "Yes",
+        "adm": "Yes",
+        "fdm": "No"
+      },
+      "notes": {
+        "libretorrent": "Its page does not describe background downloads or notifications.",
+        "biglybt": "Shows a torrent service icon in the status bar.",
+        "ytdlnis": "Shows live notifications for running downloads. Its page describes background runs only through intents from other apps."
+      }
+    },
+    {
+      "id": "stream-before",
+      "group": "Downloads",
+      "label": "Play while downloading",
+      "help": "Start watching a video before the whole file has arrived.",
+      "values": {
+        "maglev": "Yes",
+        "libretorrent": "Yes",
+        "biglybt": "No",
+        "seal": "No",
+        "ytdlnis": "No",
+        "newpipe": "No",
+        "flud": "Partial",
+        "1dm": "No",
+        "adm": "No",
+        "fdm": "No"
+      },
+      "notes": {
+        "flud": "Lists sequential downloads, which fetch pieces in order. It does not say you can stream a video from them."
+      }
+    },
+    {
+      "id": "browser",
+      "group": "Browser and streams",
+      "label": "Built-in browser",
+      "help": "Browse web pages inside the app, so you can find and save files from them.",
+      "values": {
+        "maglev": "Yes",
+        "libretorrent": "No",
+        "biglybt": "No",
+        "seal": "No",
+        "ytdlnis": "Partial",
+        "newpipe": "No",
+        "flud": "No",
+        "1dm": "Yes",
+        "adm": "Yes",
+        "fdm": "No"
+      },
+      "notes": {
+        "ytdlnis": "Has a built-in browser for logging in, so that cookies can be used for downloads. It is not presented as a general browser.",
+        "fdm": "The developer says FDM is primarily a download manager, not a full-featured web browser."
+      }
+    },
+    {
+      "id": "adblock",
+      "group": "Browser and streams",
+      "label": "Ad blocking in the browser",
+      "help": "Stops ads and trackers in the built-in browser before they load.",
+      "values": {
+        "maglev": "Yes",
+        "libretorrent": "No",
+        "biglybt": "No",
+        "seal": "No",
+        "ytdlnis": "No",
+        "newpipe": "No",
+        "flud": "No",
+        "1dm": "Yes",
+        "adm": "No",
+        "fdm": "No"
+      },
+      "notes": {
+        "1dm": "Its Play page describes an adblock browser.",
+        "adm": "Its page describes a browser but does not mention ad blocking."
+      }
+    },
+    {
+      "id": "finds-files",
+      "group": "Browser and streams",
+      "label": "Finds videos and files on a web page",
+      "help": "Lists the videos and files a page plays or links to, so you can pick one to save.",
+      "values": {
+        "maglev": "Yes",
+        "libretorrent": "No",
+        "biglybt": "No",
+        "seal": "No",
+        "ytdlnis": "No",
+        "newpipe": "No",
+        "flud": "No",
+        "1dm": "Yes",
+        "adm": "Partial",
+        "fdm": "No"
+      },
+      "notes": {
+        "adm": "Has an advanced media downloader in its browser. The page does not say how it finds files.",
+        "fdm": "Its video add-on is listed for desktop browsers. The Android page does not list this feature."
+      }
+    },
+    {
+      "id": "hls",
+      "group": "Browser and streams",
+      "label": "Saves HLS (m3u8) streams",
+      "help": "Many sites play video in small pieces listed in an .m3u8 file. This saves them as one video.",
+      "values": {
+        "maglev": "Yes",
+        "libretorrent": "No",
+        "biglybt": "No",
+        "seal": "No",
+        "ytdlnis": "No",
+        "newpipe": "No",
+        "flud": "No",
+        "1dm": "Partial",
+        "adm": "No",
+        "fdm": "No"
+      },
+      "notes": {
+        "1dm": "Its Play page says it supports HTTP Live Streaming websites. It does not mention DASH or AES-128.",
+        "seal": "Not named on its page. Seal uses yt-dlp, which handles many streams on supported sites.",
+        "ytdlnis": "Not named on its page. YTDLnis uses yt-dlp, which handles many streams on supported sites."
+      }
+    },
+    {
+      "id": "dash",
+      "group": "Browser and streams",
+      "label": "Saves DASH streams",
+      "help": "Another common way sites split video into pieces, listed in an .mpd file.",
+      "values": {
+        "maglev": "Yes",
+        "libretorrent": "No",
+        "biglybt": "No",
+        "seal": "No",
+        "ytdlnis": "No",
+        "newpipe": "No",
+        "flud": "No",
+        "1dm": "No",
+        "adm": "No",
+        "fdm": "No"
+      },
+      "notes": {}
+    },
+    {
+      "id": "aes128",
+      "group": "Browser and streams",
+      "label": "Saves AES-128 encrypted HLS",
+      "help": "Streams that are scrambled with the standard AES-128 method, and not with DRM.",
+      "values": {
+        "maglev": "Yes",
+        "libretorrent": "No",
+        "biglybt": "No",
+        "seal": "No",
+        "ytdlnis": "No",
+        "newpipe": "No",
+        "flud": "No",
+        "1dm": "No",
+        "adm": "No",
+        "fdm": "No"
+      },
+      "notes": {}
+    },
+    {
+      "id": "quality",
+      "group": "Browser and streams",
+      "label": "Picks stream quality and audio language",
+      "help": "Choose the video size and the audio language before a download starts.",
+      "values": {
+        "maglev": "Yes",
+        "libretorrent": "No",
+        "biglybt": "No",
+        "seal": "No",
+        "ytdlnis": "Partial",
+        "newpipe": "No",
+        "flud": "No",
+        "1dm": "No",
+        "adm": "No",
+        "fdm": "No"
+      },
+      "notes": {
+        "ytdlnis": "Chooses video and audio formats for each download. Its page does not describe stream quality or audio language choices in a browser."
+      }
+    },
+    {
+      "id": "live",
+      "group": "Browser and streams",
+      "label": "Saves live streams",
+      "help": "Saves a broadcast while it is still running.",
+      "values": {
+        "maglev": "No",
+        "libretorrent": "No",
+        "biglybt": "No",
+        "seal": "No",
+        "ytdlnis": "No",
+        "newpipe": "No",
+        "flud": "No",
+        "1dm": "No",
+        "adm": "No",
+        "fdm": "No"
+      },
+      "notes": {
+        "maglev": "Maglev does not save live streams and says so when it meets one."
+      }
+    },
+    {
+      "id": "youtube",
+      "group": "Browser and streams",
+      "label": "YouTube downloads",
+      "help": "Saves videos from YouTube itself.",
+      "values": {
+        "maglev": "No",
+        "libretorrent": "No",
+        "biglybt": "No",
+        "seal": "Yes",
+        "ytdlnis": "Yes",
+        "newpipe": "Yes",
+        "flud": "No",
+        "1dm": "No",
+        "adm": "No",
+        "fdm": "No"
+      },
+      "notes": {
+        "seal": "Through yt-dlp",
+        "ytdlnis": "Through yt-dlp",
+        "newpipe": "NewPipe is a YouTube client. Its page lists downloading videos, audio and subtitles.",
+        "1dm": "Its Play page says downloading from YouTube is not supported.",
+        "fdm": "Its Play page says downloading from YouTube is not supported."
+      }
+    },
+    {
+      "id": "wifi",
+      "group": "Control",
+      "label": "Wi-Fi only option",
+      "help": "Downloads start only on Wi-Fi, so mobile data is not used.",
+      "values": {
+        "maglev": "Yes",
+        "libretorrent": "No",
+        "biglybt": "No",
+        "seal": "No",
+        "ytdlnis": "No",
+        "newpipe": "No",
+        "flud": "Yes",
+        "1dm": "Yes",
+        "adm": "Yes",
+        "fdm": "Yes"
+      },
+      "notes": {}
+    },
+    {
+      "id": "speed",
+      "group": "Control",
+      "label": "Speed limits",
+      "help": "Caps how fast downloads or uploads run.",
+      "values": {
+        "maglev": "Yes",
+        "libretorrent": "No",
+        "biglybt": "No",
+        "seal": "No",
+        "ytdlnis": "No",
+        "newpipe": "No",
+        "flud": "No",
+        "1dm": "Yes",
+        "adm": "Yes",
+        "fdm": "Partial"
+      },
+      "notes": {
+        "flud": "Its Play page says there are no speed limits on downloads or uploads.",
+        "fdm": "Says it adjusts traffic usage. It does not describe a fixed speed cap."
+      }
+    },
+    {
+      "id": "schedule",
+      "group": "Control",
+      "label": "Download scheduling",
+      "help": "Set a time for downloads to start or slow down.",
+      "values": {
+        "maglev": "Yes",
+        "libretorrent": "Yes",
+        "biglybt": "No",
+        "seal": "No",
+        "ytdlnis": "Yes",
+        "newpipe": "No",
+        "flud": "No",
+        "1dm": "Yes",
+        "adm": "Yes",
+        "fdm": "Yes"
+      },
+      "notes": {}
+    },
+    {
+      "id": "ai",
+      "group": "Control",
+      "label": "Optional AI assistant",
+      "help": "A chat helper that can search and suggest downloads. It asks before it changes anything.",
+      "values": {
+        "maglev": "Yes",
+        "libretorrent": "No",
+        "biglybt": "No",
+        "seal": "No",
+        "ytdlnis": "No",
+        "newpipe": "No",
+        "flud": "No",
+        "1dm": "No",
+        "adm": "No",
+        "fdm": "No"
+      },
+      "notes": {
+        "maglev": "Optional. It runs on your own OpenRouter key and can be turned off."
+      }
+    },
+    {
+      "id": "min-android",
+      "group": "Control",
+      "label": "Minimum Android version",
+      "help": "The oldest Android version the app supports.",
+      "values": {
+        "maglev": "Android 7",
+        "libretorrent": "Android 7",
+        "biglybt": "Android 4.1",
+        "seal": "Android 5",
+        "ytdlnis": "Android 7",
+        "newpipe": "Android 6",
+        "flud": "Not listed",
+        "1dm": "Not listed",
+        "adm": "Not listed",
+        "fdm": "Not listed"
+      },
+      "notes": {
+        "biglybt": "From the F-Droid listing for the F-Droid build. The Play listing did not show a version.",
+        "seal": "From the F-Droid listing.",
+        "libretorrent": "From the F-Droid listing.",
+        "ytdlnis": "From its README and the F-Droid listing.",
+        "newpipe": "From the F-Droid listing."
+      }
+    },
+    {
+      "id": "open-source",
+      "group": "Price and privacy",
+      "label": "Open source",
+      "help": "The source code is public, so anyone can read or change it.",
+      "values": {
+        "maglev": "Yes",
+        "libretorrent": "Yes",
+        "biglybt": "Yes",
+        "seal": "Yes",
+        "ytdlnis": "Yes",
+        "newpipe": "Yes",
+        "flud": "No",
+        "1dm": "No",
+        "adm": "No",
+        "fdm": "No"
+      },
+      "notes": {
+        "biglybt": "Its site says it is GPL licensed. F-Droid lists GPL v2 or later.",
+        "seal": "Licensed under GPLv3 according to its README.",
+        "ytdlnis": "Licensed under GPLv3 according to its README.",
+        "newpipe": "Licensed under GPL v3 or later according to its README.",
+        "libretorrent": "Licensed under GPL v3 according to its README."
+      }
+    },
+    {
+      "id": "ads",
+      "group": "Price and privacy",
+      "label": "Contains ads",
+      "help": "Shows adverts inside the app. Yes means it does.",
+      "values": {
+        "maglev": "No",
+        "libretorrent": "No",
+        "biglybt": "No",
+        "seal": "No",
+        "ytdlnis": "No",
+        "newpipe": "No",
+        "flud": "Yes",
+        "1dm": "No",
+        "adm": "Yes",
+        "fdm": "No"
+      },
+      "notes": {
+        "libretorrent": "Its pages do not say it contains ads. They also do not say it is ad free.",
+        "seal": "Its pages do not say it contains ads.",
+        "ytdlnis": "Its pages do not say it contains ads.",
+        "newpipe": "Says it is used without annoying ads. It does not say ad free.",
+        "flud": "Its Play listing says it contains ads.",
+        "adm": "Its Play listing says it contains ads.",
+        "fdm": "Its Play page does not say it contains ads or that it is ad free.",
+        "1dm": "Its Play page says it is ad free.",
+        "biglybt": "Its site says it is ad-free."
+      }
+    },
+    {
+      "id": "iap",
+      "group": "Price and privacy",
+      "label": "In-app purchases",
+      "help": "Paid extras inside the app. Yes means the app sells them.",
+      "values": {
+        "maglev": "No",
+        "libretorrent": "No",
+        "biglybt": "Yes",
+        "seal": "No",
+        "ytdlnis": "No",
+        "newpipe": "No",
+        "flud": "Yes",
+        "1dm": "No",
+        "adm": "Yes",
+        "fdm": "No"
+      },
+      "notes": {
+        "biglybt": "Its Play listing shows in-app purchases.",
+        "flud": "Its Play listing shows in-app purchases.",
+        "adm": "Its Play listing shows in-app purchases."
+      }
+    },
+    {
+      "id": "free",
+      "group": "Price and privacy",
+      "label": "Free",
+      "help": "No price to pay to use the app.",
+      "values": {
+        "maglev": "Yes",
+        "libretorrent": "Yes",
+        "biglybt": "Yes",
+        "seal": "Yes",
+        "ytdlnis": "Yes",
+        "newpipe": "Yes",
+        "flud": "Yes",
+        "1dm": "Yes",
+        "adm": "Yes",
+        "fdm": "Yes"
+      },
+      "notes": {
+        "flud": "Free with ads; a paid upgrade exists",
+        "1dm": "Free; a paid version exists",
+        "adm": "Free with ads; a paid Pro exists",
+        "fdm": "Free"
+      }
+    },
+    {
+      "id": "account",
+      "group": "Price and privacy",
+      "label": "Needs an account",
+      "help": "Yes means you must sign in to the app before it works.",
+      "values": {
+        "maglev": "No",
+        "libretorrent": "No",
+        "biglybt": "No",
+        "seal": "No",
+        "ytdlnis": "No",
+        "newpipe": "No",
+        "flud": "No",
+        "1dm": "No",
+        "adm": "No",
+        "fdm": "No"
+      },
+      "notes": {
+        "maglev": "The README does not mention accounts, and the app has no sign-in step.",
+        "newpipe": "Its README says you do not need an account on any service.",
+        "ytdlnis": "Logging in is optional, for private or premium videos.",
+        "libretorrent": "No sign-in is mentioned on its pages.",
+        "flud": "No sign-in is mentioned on its Play page.",
+        "adm": "No sign-in is mentioned on its Play page.",
+        "1dm": "No sign-in is mentioned on its Play page.",
+        "fdm": "No sign-in is mentioned on its Play page."
+      }
+    }
+  ],
+  "page": {
+    "title": "How Maglev is different",
+    "description": "Maglev is a free, open source Android app for torrents, web links and streams, with an ad-free browser. Here is how it compares with other apps.",
+    "intro": "Maglev is one Android app for torrents, ordinary links and the videos on a web page. This page compares it with other Android apps, using only what each app's own pages say.",
+    "sections": [
+      {
+        "heading": "What Maglev is",
+        "body": [
+          "Maglev puts four things in one app: a torrent client, a download manager for ordinary links, a browser that lists the files on a page, and a way to save streaming video as one file. It is free, open source under GPL-3.0, and has no ads.",
+          "It does not download YouTube, and it does not save live streams or DRM-protected video. When a page is one it cannot save, Maglev says so."
+        ]
+      },
+      {
+        "heading": "Compared with torrent apps",
+        "body": [
+          "LibreTorrent, BiglyBT and Flud are dedicated torrent clients. They handle magnet links, file selection and RSS feeds, and they do not include a browser or a streaming saver. LibreTorrent is open source, and BiglyBT is open source and ad-free. Flud's Play listing says it contains ads.",
+          "If you only download torrents and want a mature client with no extras, one of these is a reasonable pick. Maglev adds ordinary link downloads, a browser and a search across 40 sources, which these apps do not list."
+        ]
+      },
+      {
+        "heading": "Compared with download managers",
+        "body": [
+          "1DM+, Advanced Download Manager (ADM) and Free Download Manager (FDM) handle links and torrents, with browsers, scheduling and speed controls. 1DM+ is listed as ad free. ADM's Play listing says it contains ads and in-app purchases. FDM is a download manager and, according to its developer, not a full web browser.",
+          "All three are closed source. Maglev is open source, and it adds an ad-free browser that saves streams and an optional assistant. ADM and 1DM+ also list real-time speed changes, and FDM lists traffic controls, so compare the speed options if that matters to you."
+        ]
+      },
+      {
+        "heading": "Compared with video downloaders",
+        "body": [
+          "Seal and YTDLnis are open source Android front ends for yt-dlp. They can download from many sites, including YouTube, and they offer format choices and editing tools. NewPipe is an open source YouTube client that can save videos and audio.",
+          "These apps are the better choice if YouTube is what you want. Maglev does not download YouTube, and its browser and stream saver work on the other sites you open. Maglev saves HLS and DASH streams with a quality and audio language choice, which the video downloaders here do not list."
+        ]
+      },
+      {
+        "heading": "Privacy and ads",
+        "body": [
+          "Maglev has no ads SDK and no analytics. Its browser blocks ads and trackers with a built-in list of over 42,000 domains that you can update in Settings. It contacts only the sites you open, the sources you search, the block-list addresses and OpenRouter when you use the assistant.",
+          "BiglyBT says it is ad-free, and 1DM+ says it is ad free. Flud and ADM say on their Play pages that they contain ads."
+        ]
+      },
+      {
+        "heading": "When another app is the better pick",
+        "body": [
+          "Pick Seal, YTDLnis or NewPipe if you mainly want YouTube or music from YouTube. Pick LibreTorrent or BiglyBT if you want a torrent client with nothing else. Pick 1DM+ or ADM if you want a closed source download manager and do not mind its ads or purchases. Pick FDM if you want a desktop-style manager that also runs on Android.",
+          "Maglev is in beta, so expect rough edges. It is also not on Google Play yet, so you install it from GitHub Releases or with Obtainium."
+        ]
+      }
+    ],
+    "faq": [
+      {
+        "q": "Is Maglev a good alternative to 1DM?",
+        "a": "Yes, if you want links, torrents and web videos in one free app. Both Maglev and 1DM+ have no ads, scheduling and Wi-Fi-only downloads. The difference: Maglev is open source and also saves DASH and AES-128 HLS streams, while 1DM+ is closed source."
+      },
+      {
+        "q": "Is Maglev a good LibreTorrent alternative?",
+        "a": "Yes, if you want torrents with RSS and file selection. Maglev also downloads ordinary links, saves streams from web pages and searches 40 built-in sources. LibreTorrent is a dedicated torrent client, and it has been around longer."
+      },
+      {
+        "q": "Can Maglev download YouTube videos like Seal or YTDLnis?",
+        "a": "No. Maglev does not download YouTube. Seal and YTDLnis can, because they use yt-dlp, and NewPipe saves YouTube videos too. If YouTube is your main use, one of those apps is the better pick."
+      },
+      {
+        "q": "Does Maglev have ads, and do the other apps?",
+        "a": "No, Maglev has no ads. Flud and ADM say on their Google Play pages that they contain ads. BiglyBT and 1DM+ say they are ad free, and the other apps on this page do not say either way."
+      },
+      {
+        "q": "Can Maglev save HLS and DASH streams?",
+        "a": "Yes, Maglev saves on-demand HLS and DASH streams, including HLS with standard AES-128 encryption. You pick the quality and audio language, and it joins the pieces into one file. It cannot save live streams or DRM-protected video."
+      },
+      {
+        "q": "Which app should I choose if I only want torrents?",
+        "a": "LibreTorrent or BiglyBT is a good pick if you only download torrents. Both are open source. Maglev works for torrents too, but it is built for links, streams and torrents together."
+      }
+    ]
+  }
+}

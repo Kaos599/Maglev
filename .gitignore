@@ -49,7 +49,7 @@ pnpm-debug.log*
 expo-env.d.ts
 # @end expo-cli
 # Local design mockups and the original icon CSS (the icon now lives in assets/brand/)
-screens/
+/screens/
 
 # Internal planning docs (kept local, not public)
 docs/
@@ -57,3 +57,9 @@ LEDGER.md
 .claude/
 scripts/eval-assistant/out/
 scripts/perf/out/
+
+# Store listing renders (node store/render.js)
+store/out/
+
+# The landing site generator and its data are source, not build output.
+!site/build/
