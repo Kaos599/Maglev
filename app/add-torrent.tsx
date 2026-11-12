@@ -4,7 +4,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Clipboard from 'expo-clipboard';
 import * as DocumentPicker from 'expo-document-picker';
-import { maglevEngine, parseSource, type FilePriority, type FreeSpace, type Metadata } from 'maglev-engine';
+import { maglevEngine, isDownloadLink, parseSource, type FilePriority, type FreeSpace, type Metadata } from 'maglev-engine';
 import { useTheme } from '../context/ThemeContext';
 import { useMaglevEngine } from '../context/EngineContext';
 import { ThemeColors, radius, spacing, touch, type } from '../constants/theme';
@@ -23,7 +23,7 @@ import { admissionCaption } from '../utils/admissionCopy';
 type Phase = 'input' | 'validating' | 'invalid' | 'resolving' | 'timeout' | 'error' | 'duplicate' | 'preview' | 'adding' | 'added';
 
 const RESOLVE_TIMEOUT_MS = 60_000;
-const INVALID_TEXT = "That isn't a magnet link or torrent file.";
+const INVALID_TEXT = "That isn't a magnet link, torrent file or web link.";
 /** Android hands VIEW intents over as file:// or content:// URIs; Kotlin reads both. */
 const LOCAL_SOURCE = /^(file|content):\/\//i;
 /** The same file with its scheme stripped on the way in: an absolute path ending in .torrent. */
@@ -154,6 +154,11 @@ export default function AddTorrentScreen() {
         void resolve(BARE_TORRENT_PATH.test(input) ? `file://${input}` : input);
         return;
       }
+      // A plain web link (not a .torrent) is a download from a link: hand it to that flow.
+      if (isDownloadLink(input)) {
+        router.replace({ pathname: '/add-download', params: { url: input } });
+        return;
+      }
       const parsed = parseSource(input);
       if (!parsed) {
         setMessage(INVALID_TEXT);
@@ -166,7 +171,7 @@ export default function AddTorrentScreen() {
       }
       void resolve(input);
     },
-    [resolve, showDuplicate, telemetry.torrents],
+    [resolve, router, showDuplicate, telemetry.torrents],
   );
 
   // The `source` param prefills the input and resolves. A new value (a second intent while this

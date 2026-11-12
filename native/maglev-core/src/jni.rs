@@ -545,3 +545,128 @@ pub extern "system" fn Java_com_maglev_engine_NativeCore_nativeVersion(
     let out = guarded(MaglevEngine::version);
     reply(&mut env, &out)
 }
+
+// ---- URL downloads (docs/NATIVE_CONTRACT.md section 17) ----------------------------------------------------
+
+#[no_mangle]
+pub extern "system" fn Java_com_maglev_engine_NativeCore_nativeProbeUrl(
+    mut env: JNIEnv,
+    _class: JClass,
+    url: JString,
+    options_json: JString,
+    timeout_ms: jlong,
+) -> jstring {
+    let out = match (read_str(&mut env, &url), read_str(&mut env, &options_json)) {
+        (Some(u), Some(o)) => guarded(|| {
+            with_engine(|e| result_envelope(e.probe_url(&u, &o, timeout_ms as i64)))
+        }),
+        _ => bad_argument(),
+    };
+    reply(&mut env, &out)
+}
+
+#[no_mangle]
+pub extern "system" fn Java_com_maglev_engine_NativeCore_nativeAddDownload(
+    mut env: JNIEnv,
+    _class: JClass,
+    url: JString,
+    options_json: JString,
+) -> jstring {
+    let out = match (read_str(&mut env, &url), read_str(&mut env, &options_json)) {
+        (Some(u), Some(o)) => guarded(|| with_engine(|e| result_envelope(e.add_download(&u, &o)))),
+        _ => bad_argument(),
+    };
+    reply(&mut env, &out)
+}
+
+#[no_mangle]
+pub extern "system" fn Java_com_maglev_engine_NativeCore_nativePauseDownload(
+    mut env: JNIEnv,
+    _class: JClass,
+    id: JString,
+) -> jstring {
+    let out = match read_str(&mut env, &id) {
+        Some(id) => guarded(|| with_engine(|e| result_envelope(e.pause_download(&id)))),
+        None => bad_argument(),
+    };
+    reply(&mut env, &out)
+}
+
+#[no_mangle]
+pub extern "system" fn Java_com_maglev_engine_NativeCore_nativeResumeDownload(
+    mut env: JNIEnv,
+    _class: JClass,
+    id: JString,
+) -> jstring {
+    let out = match read_str(&mut env, &id) {
+        Some(id) => guarded(|| with_engine(|e| result_envelope(e.resume_download(&id)))),
+        None => bad_argument(),
+    };
+    reply(&mut env, &out)
+}
+
+#[no_mangle]
+pub extern "system" fn Java_com_maglev_engine_NativeCore_nativeRetryDownload(
+    mut env: JNIEnv,
+    _class: JClass,
+    id: JString,
+) -> jstring {
+    let out = match read_str(&mut env, &id) {
+        Some(id) => guarded(|| with_engine(|e| result_envelope(e.retry_download(&id)))),
+        None => bad_argument(),
+    };
+    reply(&mut env, &out)
+}
+
+#[no_mangle]
+pub extern "system" fn Java_com_maglev_engine_NativeCore_nativeRemoveDownload(
+    mut env: JNIEnv,
+    _class: JClass,
+    id: JString,
+    delete_files: jboolean,
+) -> jstring {
+    let out = match read_str(&mut env, &id) {
+        Some(id) => guarded(|| {
+            with_engine(|e| result_envelope(e.remove_download(&id, delete_files != 0)))
+        }),
+        None => bad_argument(),
+    };
+    reply(&mut env, &out)
+}
+
+#[no_mangle]
+pub extern "system" fn Java_com_maglev_engine_NativeCore_nativeRefreshDownloadUrl(
+    mut env: JNIEnv,
+    _class: JClass,
+    id: JString,
+    url: JString,
+    options_json: JString,
+) -> jstring {
+    let out = match (
+        read_str(&mut env, &id),
+        read_str(&mut env, &url),
+        read_str(&mut env, &options_json),
+    ) {
+        (Some(id), Some(u), Some(o)) => guarded(|| {
+            with_engine(|e| result_envelope(e.refresh_download_url(&id, &u, &o)))
+        }),
+        _ => bad_argument(),
+    };
+    reply(&mut env, &out)
+}
+
+#[no_mangle]
+pub extern "system" fn Java_com_maglev_engine_NativeCore_nativeSetDownloadLimits(
+    mut env: JNIEnv,
+    _class: JClass,
+    id: JString,
+    json: JString,
+) -> jstring {
+    let out = match (read_str(&mut env, &id), read_str(&mut env, &json)) {
+        (Some(id), Some(j)) => guarded(|| {
+            with_engine(|e| result_envelope(e.set_download_limits(&id, &j)))
+        }),
+        _ => bad_argument(),
+    };
+    reply(&mut env, &out)
+}

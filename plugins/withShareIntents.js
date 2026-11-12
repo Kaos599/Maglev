@@ -16,6 +16,8 @@ import android.os.Build
 object MaglevShareIntent {
     private val MAGNET = Regex("magnet:\\\\?[^\\\\s\\"'<>]+", RegexOption.IGNORE_CASE)
     private val TORRENT_URL = Regex("https?://[^\\\\s\\"'<>]+\\\\.torrent(?:\\\\?[^\\\\s\\"'<>]*)?", RegexOption.IGNORE_CASE)
+    /** Any other web link in shared text starts a download from a link (NATIVE_CONTRACT 17). Magnets and .torrent links win. */
+    private val WEB_URL = Regex("https?://[^\\\\s\\"'<>]+", RegexOption.IGNORE_CASE)
 
     @JvmStatic
     fun rewrite(intent: Intent?) {
@@ -36,7 +38,9 @@ object MaglevShareIntent {
 
     private fun textSource(intent: Intent): String? {
         val text = intent.getStringExtra(Intent.EXTRA_TEXT) ?: return null
-        return MAGNET.find(text)?.value ?: TORRENT_URL.find(text)?.value
+        return MAGNET.find(text)?.value
+            ?: TORRENT_URL.find(text)?.value
+            ?: WEB_URL.find(text)?.value?.trimEnd('.', ',', ';', ':', '!', '?', ')', ']', '}')
     }
 
     @Suppress("DEPRECATION")

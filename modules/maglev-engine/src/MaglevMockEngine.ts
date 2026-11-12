@@ -2,6 +2,7 @@ import type {
   AddTorrentOptions,
   AggregatedTelemetry,
   Detail,
+  DownloadOptions,
   EngineErrorCode,
   EngineResult,
   FeedAutomationConfig,
@@ -37,6 +38,7 @@ import type {
   TrackerInfo,
   TrackersAdded,
   Unsubscribe,
+  UrlProbe,
 } from './MaglevEngine.types.ts';
 import { HEALTH_TAGS } from './MaglevEngine.types.ts';
 import {
@@ -49,6 +51,7 @@ import { settingsStore } from './MaglevSettingsStore.ts';
 import { parseSource, pseudoHash } from './magnet.ts';
 import { checkTrackerLines, trackerKey } from './trackerUrl.ts';
 import { restartReasons, toNativeConfig } from './toNativeConfig.ts';
+import { MockDownloads } from './MaglevMockDownloads.ts';
 
 const GOVERNANCE_TAGS: ReadonlySet<PausedBy | null> = new Set<PausedBy | null>(['wifi_only', 'battery', 'charging_only', 'network_unvalidated', 'vpn_required']);
 const DEFAULT_PAYLOAD_BYTES = 1_610_612_736; // 1.5 GiB when a magnet carries no xl=
@@ -129,6 +132,21 @@ export class MaglevMockEngine implements MaglevEngineApi {
   private listeners: Set<Listener> = new Set();
   private timer: any = null;
   private defaultStoragePath = '/storage/emulated/0/Android/data/com.maglev/files/Download';
+
+  /** URL downloads (NATIVE_CONTRACT 17). They follow the same governance as torrents. */
+  private downloads: MockDownloads = new MockDownloads({
+    blockedReason: () => {
+      if (this.socketsClamped) return 'wifi_only';
+      const p = this.settings.power;
+      if (!p.isCharging) {
+        if (p.downloadOnlyWhileCharging) return 'charging_only';
+        if (p.batteryCutoffThreshold > 0 && p.batteryPercentage < p.batteryCutoffThreshold) return 'battery';
+      }
+      return null;
+    },
+    folder: () => this.getDefaultStoragePath(),
+    changed: () => this.broadcast(),
+  });
 
   // System & Governance state
   private settings: MaglevSettings;
@@ -692,8 +710,38 @@ export class MaglevMockEngine implements MaglevEngineApi {
     return this.addInternal(source, options);
   }
 
-  public async listTorrents(): Promise<EngineResult<{ torrents: Snapshot[] }>> {
-    return { ok: true, torrents: this.snapshots() };
+  public async listTorrents(): Promise<EngineResult<{ torrents: Snapshot[]; downloads: ReturnType<MockDownloads['snapshots']> }>> {
+    return { ok: true, torrents: this.snapshots(), downloads: this.downloads.snapshots() };
+  }
+
+  // ---- URL downloads (NATIVE_CONTRACT 17) ----
+  public probeUrl(url: string, options: DownloadOptions = {}, _timeoutMs = 15_000): Promise<EngineResult<UrlProbe>> {
+    return this.downloads.probeUrl(url, options);
+  }
+  public addDownload(url: string, options: DownloadOptions = {}): Promise<EngineResult<{ id: string }>> {
+    return this.downloads.add(url, options);
+  }
+  public async pauseDownload(id: string): Promise<EngineResult> {
+    return this.downloads.pause(id);
+  }
+  public async resumeDownload(id: string): Promise<EngineResult> {
+    return this.downloads.resume(id);
+  }
+  public async retryDownload(id: string): Promise<EngineResult> {
+    return this.downloads.retry(id);
+  }
+  public async removeDownload(id: string, deleteFiles: boolean): Promise<EngineResult> {
+    return this.downloads.remove(id, deleteFiles);
+  }
+  public refreshDownloadUrl(id: string, url: string, options: DownloadOptions = {}): Promise<EngineResult> {
+    return this.downloads.refreshUrl(id, url, options);
+  }
+  public async setDownloadLimits(id: string, limits: { downLimitBps: number }): Promise<EngineResult> {
+    return this.downloads.setLimits(id, limits);
+  }
+  /** Test hook: advances the download simulation. */
+  public stepDownloads(seconds = 1) {
+    return this.downloads.step(seconds);
   }
 
   public async getDetail(id: string): Promise<EngineResult<Detail>> {
@@ -1245,7 +1293,7 @@ export class MaglevMockEngine implements MaglevEngineApi {
   public onTelemetry(listener: (event: TelemetryEvent) => void): Unsubscribe {
     this.snapshotListeners.add(listener);
     if (!this.timer) this.startTelemetryLoop();
-    listener({ torrents: this.snapshots() });
+    listener({ torrents: this.snapshots(), downloads: this.downloads.snapshots() });
     return () => {
       this.snapshotListeners.delete(listener);
       if (this.snapshotListeners.size === 0 && this.timer) {
@@ -1441,6 +1489,7 @@ export class MaglevMockEngine implements MaglevEngineApi {
     this.timer = setInterval(() => {
       this.stepSimulation(); // each step advances 0.5 s of simulated transfer
       this.stepSimulation();
+      this.downloads.step(1);
       this.broadcast();
     }, 1000);
     this.timer?.unref?.();
@@ -1591,7 +1640,7 @@ export class MaglevMockEngine implements MaglevEngineApi {
   private broadcast(): void {
     const payload = this.getAggregatedTelemetry();
     if (this.snapshotListeners.size > 0) {
-      const event: TelemetryEvent = { torrents: this.snapshots() };
+      const event: TelemetryEvent = { torrents: this.snapshots(), downloads: this.downloads.snapshots() };
       this.snapshotListeners.forEach((l) => {
         try {
           l(event);

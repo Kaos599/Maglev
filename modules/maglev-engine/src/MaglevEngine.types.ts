@@ -138,7 +138,14 @@ export type EngineErrorCode =
   | 'INVALID_ARGUMENT'
   | 'INVALID_STATE'
   | 'NOT_READY'
-  | 'INTERNAL';
+  | 'INTERNAL'
+  /** NATIVE_CONTRACT 17 (URL downloads). */
+  | 'HTTP_STATUS'
+  | 'AUTH_REQUIRED'
+  | 'LINK_EXPIRED'
+  | 'FILE_CHANGED'
+  | 'NOT_A_FILE'
+  | 'CHECKSUM_MISMATCH';
 
 /** NATIVE_CONTRACT 12.1. */
 export interface ResolveActivity {
@@ -149,7 +156,16 @@ export interface ResolveActivity {
 
 export type EngineResult<T = object> =
   | ({ ok: true } & T)
-  | { ok: false; code: EngineErrorCode; message: string; id?: string; retryAfterSecs?: number; mergedTrackers?: number };
+  | {
+      ok: false;
+      code: EngineErrorCode;
+      message: string;
+      id?: string;
+      retryAfterSecs?: number;
+      mergedTrackers?: number;
+      /** Set with `HTTP_STATUS` (and `AUTH_REQUIRED`): the status the server answered. */
+      httpStatus?: number;
+    };
 
 export type NativeEncryption = 'prefer' | 'require' | 'disable';
 
@@ -335,6 +351,73 @@ export type NotificationActionName = 'pause_all' | 'resume_all' | 'shutdown';
 
 export interface TelemetryEvent {
   torrents: Snapshot[];
+  /** NATIVE_CONTRACT 17. Downloads from http(s) links. Missing from an older engine. */
+  downloads?: DownloadSnapshot[];
+}
+
+// ---------------------------------------------------------------------------
+// NATIVE_CONTRACT 17 and STATE_MACHINES_AND_SCREENS SM-30: downloads from any link.
+// ---------------------------------------------------------------------------
+
+export type DownloadState =
+  | 'resolving'
+  | 'queued'
+  | 'downloading'
+  | 'paused'
+  | 'verifying'
+  | 'finished'
+  | 'needs_link'
+  | 'error';
+
+export interface DownloadError {
+  code: Extract<
+    EngineErrorCode,
+    'HTTP_STATUS' | 'AUTH_REQUIRED' | 'LINK_EXPIRED' | 'FILE_CHANGED' | 'NOT_A_FILE' | 'CHECKSUM_MISMATCH' | 'NETWORK' | 'PERMISSION'
+  >;
+  message: string;
+  httpStatus?: number | null;
+}
+
+export interface DownloadSnapshot {
+  id: string;
+  /** Scheme, host and path only. Never a user name, password or query. */
+  urlDisplay: string;
+  name: string;
+  state: DownloadState;
+  /** Why a `paused` download is stopped: `user`, `storage_full`, or a governance tag. */
+  pausedBy: string | null;
+  /** Bytes, or null while the server has not said. */
+  size: number | null;
+  downloaded: number;
+  downBps: number;
+  /** Seconds left, -1 = unknown. */
+  eta: number;
+  segmentsActive: number;
+  resumable: boolean;
+  folder: string;
+  addedAt: number;
+  error: DownloadError | null;
+  /** A one-line note, for example "Server sent the whole file again; starting over." */
+  notice?: string | null;
+}
+
+export interface DownloadOptions {
+  name?: string | null;
+  folder?: string | null;
+  paused?: boolean;
+  /** 1 to 8. The engine downloads on one connection today. */
+  segments?: number;
+  headers?: { Cookie?: string; Referer?: string; 'User-Agent'?: string };
+  /** Refused with UNSUPPORTED until the engine can check it. */
+  expectedHash?: { alg: 'sha256'; hex: string };
+  downLimitBps?: number;
+}
+
+export interface UrlProbe {
+  name: string;
+  size: number | null;
+  resumable: boolean;
+  urlDisplay: string;
 }
 export interface TorrentCompletedEvent {
   id: string;
@@ -451,7 +534,7 @@ export interface MaglevEngineApi {
   /** NATIVE_CONTRACT 12.1. The pending `resolveMetadata` then returns CANCELLED. */
   cancelResolve(infoHash: string): Promise<EngineResult>;
   addTorrent(source: string, options: AddTorrentOptions): Promise<EngineResult<{ id: string; infoHash: string }>>;
-  listTorrents(): Promise<EngineResult<{ torrents: Snapshot[] }>>;
+  listTorrents(): Promise<EngineResult<{ torrents: Snapshot[]; downloads?: DownloadSnapshot[] }>>;
   getDetail(id: string): Promise<EngineResult<Detail>>;
   pause(id: string): Promise<EngineResult>;
   resume(id: string): Promise<EngineResult>;
@@ -536,6 +619,17 @@ export interface MaglevEngineApi {
   requestLegacyStorage(): Promise<EngineResult>;
   // Governance
   setGovernance(config: GovernanceConfig): Promise<EngineResult>;
+  // URL downloads (NATIVE_CONTRACT 17)
+  probeUrl(url: string, options: DownloadOptions, timeoutMs: number): Promise<EngineResult<UrlProbe>>;
+  addDownload(url: string, options: DownloadOptions): Promise<EngineResult<{ id: string }>>;
+  pauseDownload(id: string): Promise<EngineResult>;
+  resumeDownload(id: string): Promise<EngineResult>;
+  /** After FILE_CHANGED this restarts from zero. */
+  retryDownload(id: string): Promise<EngineResult>;
+  removeDownload(id: string, deleteFiles: boolean): Promise<EngineResult>;
+  /** Only for `needs_link`. FILE_CHANGED when the new link is another file. */
+  refreshDownloadUrl(id: string, url: string, options: DownloadOptions): Promise<EngineResult>;
+  setDownloadLimits(id: string, limits: { downLimitBps: number }): Promise<EngineResult>;
   // Events
   onTelemetry(listener: (event: TelemetryEvent) => void): Unsubscribe;
   onTorrentCompleted(listener: (event: TorrentCompletedEvent) => void): Unsubscribe;

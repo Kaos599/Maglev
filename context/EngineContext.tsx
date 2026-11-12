@@ -8,6 +8,8 @@ import {
   settingsStore,
   type AddTorrentOptions,
   type AggregatedTelemetry,
+  type DownloadOptions,
+  type DownloadSnapshot,
   type EngineResult,
   type EngineStatus,
   type FilePriorityEntry,
@@ -18,6 +20,7 @@ import {
   type TorrentCompletedEvent,
   type TorrentDetailData,
   type TorrentTelemetry,
+  type UrlProbe,
 } from 'maglev-engine';
 import { etaSecs, smoothRate } from '../utils/rates';
 import { fromCached, loadTransferCache, saveTransferCache } from '../utils/transferCache';
@@ -120,6 +123,17 @@ interface EngineContextType {
   /** Re-attempts engine start after a failure. */
   retryEngine: () => Promise<void>;
   lastCompleted: TorrentCompletedEvent | null;
+  /** Downloads from http(s) links (NATIVE_CONTRACT 17), oldest first. */
+  downloads: DownloadSnapshot[];
+  /** Never throws: returns the Result envelope. Nothing is stored. */
+  probeUrl: (url: string, options?: DownloadOptions) => Promise<EngineResult<UrlProbe>>;
+  startDownload: (url: string, options?: DownloadOptions) => Promise<EngineResult<{ id: string }>>;
+  pauseDownload: (id: string) => Promise<boolean>;
+  resumeDownload: (id: string) => Promise<boolean>;
+  /** After a changed file this restarts from zero. */
+  retryDownload: (id: string) => Promise<boolean>;
+  removeDownload: (id: string, deleteFiles: boolean) => Promise<boolean>;
+  refreshDownloadUrl: (id: string, url: string) => Promise<EngineResult>;
 }
 
 const EMPTY_AGGREGATE: TransferAggregate = {
@@ -222,6 +236,7 @@ export const EngineProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const [permissionStatus, setPermissionStatus] = useState<NativePermissionStatus | null>(null);
   const [lastCompleted, setLastCompleted] = useState<TorrentCompletedEvent | null>(null);
   const [, setDetailVersion] = useState(0);
+  const [downloads, setDownloads] = useState<DownloadSnapshot[]>([]);
 
   const detailCache = useRef<Map<string, TorrentDetailData>>(new Map());
   const watched = useRef<Map<string, number>>(new Map());
@@ -324,7 +339,10 @@ export const EngineProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     async (status: EngineStatus) => {
       if (status.kind === 'ready') {
         const [list, storage] = await Promise.all([maglevEngine.listTorrents(), maglevEngine.getStorageStatus()]);
-        if (list.ok) ingest(list.torrents);
+        if (list.ok) {
+          ingest(list.torrents);
+          if (list.downloads) setDownloads(list.downloads);
+        }
         setStorageStatus(storage);
       }
       void refreshPermissions();
@@ -352,6 +370,7 @@ export const EngineProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
     const offTelemetry = maglevEngine.onTelemetry((event) => {
       ingest(event.torrents);
+      if (event.downloads) setDownloads(event.downloads);
       watched.current.forEach((_count, id) => {
         if (event.torrents.some((s) => s.id === id)) void refreshDetail(id);
       });
@@ -369,7 +388,10 @@ export const EngineProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         return;
       }
       const res = await maglevEngine.listTorrents(); // pause_all / resume_all were applied natively
-      if (res.ok) ingest(res.torrents);
+      if (res.ok) {
+        ingest(res.torrents);
+        if (res.downloads) setDownloads(res.downloads);
+      }
     });
     const offStorage = maglevEngine.onStorageStatus((s) => setStorageStatus(s));
 
@@ -730,6 +752,26 @@ export const EngineProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     [refreshDetail]
   );
 
+  // ---- URL downloads (NATIVE_CONTRACT 17). The engine pushes its list on the next telemetry event. ----
+  const probeUrl = useCallback((url: string, options: DownloadOptions = {}) => maglevEngine.probeUrl(url, options, 15_000), []);
+  const startDownload = useCallback((url: string, options: DownloadOptions = {}) => maglevEngine.addDownload(url, options), []);
+  const downloadCall = useCallback(
+    async (label: string, call: () => Promise<EngineResult>) => {
+      const res = await call();
+      if (!res.ok) showNotice({ message: res.message || `Couldn't ${label}. Try again.` });
+      return res.ok;
+    },
+    [showNotice]
+  );
+  const pauseDownload = useCallback((id: string) => downloadCall('pause', () => maglevEngine.pauseDownload(id)), [downloadCall]);
+  const resumeDownload = useCallback((id: string) => downloadCall('resume', () => maglevEngine.resumeDownload(id)), [downloadCall]);
+  const retryDownload = useCallback((id: string) => downloadCall('retry', () => maglevEngine.retryDownload(id)), [downloadCall]);
+  const removeDownload = useCallback(
+    (id: string, deleteFiles: boolean) => downloadCall('remove', () => maglevEngine.removeDownload(id, deleteFiles)),
+    [downloadCall]
+  );
+  const refreshDownloadUrl = useCallback((id: string, url: string) => maglevEngine.refreshDownloadUrl(id, url, {}), []);
+
   const startHttpStream = useCallback(async (id: string, fileIndex: number) => {
     const res = await maglevEngine.streamUrl(id, fileIndex);
     if (res.ok === false) throw engineError(res.code, res.message);
@@ -778,6 +820,14 @@ export const EngineProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         configWarning,
         retryEngine,
         lastCompleted,
+        downloads,
+        probeUrl,
+        startDownload,
+        pauseDownload,
+        resumeDownload,
+        retryDownload,
+        removeDownload,
+        refreshDownloadUrl,
       }}
     >
       {children}

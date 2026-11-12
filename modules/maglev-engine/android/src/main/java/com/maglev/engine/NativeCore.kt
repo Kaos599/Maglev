@@ -62,5 +62,14 @@ object NativeCore {
     @JvmStatic external fun nativeFileHealth(id: String): String
     @JvmStatic external fun nativeResolveFiles(id: String, action: String, indicesJson: String, dir: String): String
     @JvmStatic external fun nativeStreamUrl(id: String, fileIndex: Int): String
+    // URL downloads (docs/NATIVE_CONTRACT.md section 17)
+    @JvmStatic external fun nativeProbeUrl(url: String, optionsJson: String, timeoutMs: Long): String
+    @JvmStatic external fun nativeAddDownload(url: String, optionsJson: String): String
+    @JvmStatic external fun nativePauseDownload(id: String): String
+    @JvmStatic external fun nativeResumeDownload(id: String): String
+    @JvmStatic external fun nativeRetryDownload(id: String): String
+    @JvmStatic external fun nativeRemoveDownload(id: String, deleteFiles: Boolean): String
+    @JvmStatic external fun nativeRefreshDownloadUrl(id: String, url: String, optionsJson: String): String
+    @JvmStatic external fun nativeSetDownloadLimits(id: String, json: String): String
     @JvmStatic external fun nativeVersion(): String
 }

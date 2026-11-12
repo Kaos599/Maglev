@@ -23,6 +23,10 @@ serde_json = "1"
 parking_lot = "0.12"
 bytes = "1"
 tracing = "0.1"
+# URL downloads (docs/NATIVE_CONTRACT.md section 17). Same major as the reqwest librqbit pulls in, so cargo
+# resolves one copy. Only `rustls` (already on through librqbit) and `socks` (proxy, also on through librqbit) are
+# selected; `Response::chunk` needs no feature. The rustls-platform-verifier patch below applies to this copy too.
+reqwest = { version = "0.13", default-features = false, features = ["rustls", "socks"] }
 
 # reqwest 0.13's `rustls` feature hard-wires rustls-platform-verifier, which on Android needs a JNI
 # init plus a Kotlin companion component. reqwest has no feature to pick another verifier and
