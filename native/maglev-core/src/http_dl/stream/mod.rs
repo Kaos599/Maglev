@@ -15,6 +15,8 @@ pub mod fetch;
 pub mod hls;
 pub mod plan;
 
+pub use plan::StreamProbe;
+
 use serde::{Deserialize, Serialize};
 
 use crate::error::{
