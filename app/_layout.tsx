@@ -105,6 +105,26 @@ function AppNavigation() {
               headerShown: false,
             }}
           />
+          {/*
+            Every other route is declared here too, with the Stack defaults. A route left out of every
+            guard is never guarded, and expo-router sends a blocked launch to the first unguarded route
+            in file order (not this order): on a fresh install that opened the browser instead of
+            onboarding (0.12). scripts/test-route-guards.js keeps every route inside a guard.
+          */}
+          <Stack.Screen name="add-download" />
+          <Stack.Screen name="browser" />
+          <Stack.Screen name="settings/about" />
+          <Stack.Screen name="settings/assistant" />
+          <Stack.Screen name="settings/bandwidth" />
+          <Stack.Screen name="settings/browser" />
+          <Stack.Screen name="settings/feeds" />
+          <Stack.Screen name="settings/interface" />
+          <Stack.Screen name="settings/network" />
+          <Stack.Screen name="settings/power" />
+          <Stack.Screen name="settings/queue" />
+          <Stack.Screen name="settings/scheduling" />
+          <Stack.Screen name="settings/search-providers" />
+          <Stack.Screen name="settings/storage" />
         </Stack.Protected>
       </Stack>
     </>
