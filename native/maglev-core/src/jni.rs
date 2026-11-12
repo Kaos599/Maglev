@@ -566,6 +566,41 @@ pub extern "system" fn Java_com_maglev_engine_NativeCore_nativeProbeUrl(
 }
 
 #[no_mangle]
+pub extern "system" fn Java_com_maglev_engine_NativeCore_nativeProbeStream(
+    mut env: JNIEnv,
+    _class: JClass,
+    url: JString,
+    options_json: JString,
+    timeout_ms: jlong,
+) -> jstring {
+    let out = match (read_str(&mut env, &url), read_str(&mut env, &options_json)) {
+        (Some(u), Some(o)) => guarded(|| {
+            with_engine(|e| result_envelope(e.probe_stream(&u, &o, timeout_ms as i64)))
+        }),
+        _ => bad_argument(),
+    };
+    reply(&mut env, &out)
+}
+
+/// `error_message` is an empty string when there is none.
+#[no_mangle]
+pub extern "system" fn Java_com_maglev_engine_NativeCore_nativeFinishMux(
+    mut env: JNIEnv,
+    _class: JClass,
+    id: JString,
+    ok: jboolean,
+    error_message: JString,
+) -> jstring {
+    let out = match (read_str(&mut env, &id), read_str(&mut env, &error_message)) {
+        (Some(id), Some(m)) => guarded(|| {
+            with_engine(|e| result_envelope(e.finish_mux(&id, ok != 0, &m)))
+        }),
+        _ => bad_argument(),
+    };
+    reply(&mut env, &out)
+}
+
+#[no_mangle]
 pub extern "system" fn Java_com_maglev_engine_NativeCore_nativeAddDownload(
     mut env: JNIEnv,
     _class: JClass,

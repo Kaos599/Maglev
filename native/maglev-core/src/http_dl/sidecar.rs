@@ -23,6 +23,22 @@ pub struct Segment {
     pub pos: u64,
 }
 
+/// How far one track of a stream download (contract section 24.8) got: `done` segments (a contiguous prefix; the init
+/// segment counts as the first) and the byte length of the part file after them. `total` is the segment count of the
+/// playlist, so a changed playlist is noticed.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TrackSide {
+    pub done: usize,
+    pub bytes: u64,
+    pub total: usize,
+}
+
+/// The stream part of a resume record: one entry per track (video then audio, or one).
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub struct StreamSide {
+    pub tracks: Vec<TrackSide>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Sidecar {
     pub version: u32,
@@ -31,6 +47,9 @@ pub struct Sidecar {
     pub total: Option<u64>,
     pub validator: Option<String>,
     pub segments: Vec<Segment>,
+    /// Set by stream downloads only (`segments` then holds one placeholder range).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub stream: Option<StreamSide>,
 }
 
 /// `scheme://host[:port]/path`: no user name, password, query or fragment. A string that is not a URL is cut at the
@@ -56,7 +75,13 @@ impl Sidecar {
             total,
             validator,
             segments: vec![Segment { start: 0, end, pos: 0 }],
+            stream: None,
         }
+    }
+
+    /// Bytes held by a stream record, summed over its tracks (0 for any other record).
+    pub fn stream_held(&self) -> u64 {
+        self.stream.as_ref().map(|s| s.tracks.iter().map(|t| t.bytes).sum()).unwrap_or(0)
     }
 
     /// Bytes already stored, summed over the segments.
@@ -225,6 +250,24 @@ mod tests {
         let s = Sidecar::load(&p).unwrap();
         assert_eq!(s.url, "https://x.test/a.bin");
         assert_eq!(s.resume_offset(), 2);
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn a_stream_record_round_trips_and_an_old_one_has_none() {
+        let d = temp_dir("stream");
+        let p = sidecar_path(&d, "a.mp4");
+        let mut s = Sidecar::new("https://x.test/i.m3u8?token=SECRET", "a.mp4", Some(9), None);
+        s.stream = Some(StreamSide {
+            tracks: vec![TrackSide { done: 3, bytes: 300, total: 10 }, TrackSide { done: 1, bytes: 50, total: 4 }],
+        });
+        s.save(&p).unwrap();
+        let back = Sidecar::load(&p).unwrap();
+        assert_eq!(back.stream_held(), 350);
+        assert_eq!(back, s);
+        assert!(!std::fs::read_to_string(&p).unwrap().contains("SECRET"));
+        std::fs::write(&p, br#"{"version":1,"url":"u","name":"n","total":null,"validator":null,"segments":[{"start":0,"end":1,"pos":0}]}"#).unwrap();
+        assert_eq!(Sidecar::load(&p).unwrap().stream, None);
         let _ = std::fs::remove_dir_all(&d);
     }
 

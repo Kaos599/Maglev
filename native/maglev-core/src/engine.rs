@@ -3552,6 +3552,22 @@ impl MaglevEngine {
         self.run(limit, self.downloads.probe_url(url, options_json))?
     }
 
+    /// Reads an HLS or DASH link for the add sheet: qualities, audio tracks, estimates (contract 24.8). Nothing is stored.
+    pub fn probe_stream(
+        &self,
+        url: &str,
+        options_json: &str,
+        timeout_ms: i64,
+    ) -> Result<crate::http_dl::stream::plan::StreamProbe, EngineError> {
+        let limit = Duration::from_millis(timeout_ms.clamp(1_000, 60_000) as u64);
+        self.run(limit, self.downloads.probe_stream(url, options_json))?
+    }
+
+    /// Kotlin joined (or failed to join) the video and audio parts of a stream download. An empty `message` is none.
+    pub fn finish_mux(&self, id: &str, ok: bool, message: &str) -> Result<(), EngineError> {
+        self.downloads.finish_mux(id, ok, if message.is_empty() { None } else { Some(message) })
+    }
+
     pub fn add_download(&self, url: &str, options_json: &str) -> Result<AddedDownload, EngineError> {
         match self.downloads.add(url, options_json) {
             // The same link pasted again while that download waits for a new link (after a restart the saved link

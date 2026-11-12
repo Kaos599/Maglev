@@ -32,6 +32,7 @@ import com.maglev.engine.storage.FileActions
 import com.maglev.engine.storage.SafStorageManager
 import com.maglev.engine.storage.MediaScanPaths
 import com.maglev.engine.storage.StorageManager
+import com.maglev.engine.storage.StreamMuxer
 import com.maglev.engine.util.Json
 import com.maglev.engine.util.TorrentFetcher
 import kotlinx.coroutines.CoroutineScope
@@ -480,6 +481,8 @@ object EngineHost {
         driveService(summary)
         healthTick(torrents, summary)
         copyStagedTorrents(torrents)
+        // Joining video and audio parts comes first: the copy into the user's folder only sees `finished` (§24.8).
+        runPendingMuxes(downloads)
         copyStagedDownloads(downloads)
         freeStagedAtSeedLimit(torrents)
         checkAutoExit(transfers)
@@ -1555,6 +1558,60 @@ object EngineHost {
 
     fun probeUrl(url: String, options: Map<String, Any?>, timeoutMs: Long): Map<String, Any?> =
         call { NativeCore.nativeProbeUrl(url, Json.toJson(Json.snakeify(options)), timeoutMs) }
+
+    /** Reads an HLS or DASH link: qualities, audio tracks and size estimates (contract 24.8). */
+    fun probeStream(url: String, options: Map<String, Any?>, timeoutMs: Long): Map<String, Any?> =
+        call { NativeCore.nativeProbeStream(url, Json.toJson(Json.snakeify(options)), timeoutMs) }
+
+    /** Ids whose join was started and whose state hasn't left `verifying` yet. Guarded by itself. */
+    private val muxStarted = HashSet<String>()
+
+    /**
+     * A stream download with separate video and audio parts waits in `verifying` with `mux_needed` (contract 24.8).
+     * Joins them once per wait on an IO thread (no re-encode), then tells Rust. Runs before the copy into a chosen
+     * folder, which only looks at `finished`. A failure goes to Rust as `MUX_FAILED`; Retry makes the state
+     * `verifying` again and this joins again. After a process restart the wait is still there and starts again.
+     */
+    private fun runPendingMuxes(downloads: List<Map<String, Any?>>) {
+        val waiting = ArrayList<Map<String, Any?>>()
+        synchronized(muxStarted) {
+            val ids = HashSet<String>()
+            for (d in downloads) {
+                val id = d["id"] as? String ?: continue
+                if (d["state"] == "verifying" && d["mux_needed"] == true) {
+                    ids.add(id)
+                    if (muxStarted.add(id)) waiting.add(d)
+                }
+            }
+            muxStarted.retainAll(ids)
+        }
+        for (d in waiting) {
+            val id = d["id"] as? String ?: continue
+            val folder = d["folder"] as? String ?: continue
+            val name = d["name"] as? String ?: continue
+            ioScope.launch {
+                var ok = false
+                var message: String? = null
+                val out = File(folder, name)
+                try {
+                    StreamMuxer.mux(File(folder, "$name.video.part"), File(folder, "$name.audio.part"), out)
+                    ok = true
+                } catch (e: StreamMuxer.MuxException) {
+                    message = e.message
+                } catch (t: Throwable) {
+                    message = t.javaClass.simpleName
+                }
+                val res = call { NativeCore.nativeFinishMux(id, ok, message ?: "") }
+                if (!isOk(res)) {
+                    // The download was removed, or Rust couldn't be told: don't leave an orphan file, and let the
+                    // next poll try again if the download is still waiting.
+                    if (ok) try { out.delete() } catch (t: Throwable) { Log.w(TAG, "could not remove the joined file", t) }
+                    synchronized(muxStarted) { muxStarted.remove(id) }
+                }
+                pollNow()
+            }
+        }
+    }
 
     fun addDownload(url: String, options: Map<String, Any?>): Map<String, Any?> {
         val c = requireCtx()

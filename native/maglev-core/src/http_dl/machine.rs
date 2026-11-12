@@ -59,6 +59,14 @@ pub enum DlError {
     LanAddress,
     /// The server kept the connection open but sent almost nothing, again and again.
     Stalled,
+    /// Stream (contract 24.8): encrypted with something Maglev doesn't open, or DRM.
+    StreamProtected,
+    /// Stream: a live stream.
+    StreamLive,
+    /// Stream: a kind of stream Maglev can't read yet.
+    StreamUnsupported,
+    /// Stream: joining video and audio failed. Retry only runs the join again.
+    MuxFailed,
 }
 
 impl DlError {
@@ -75,6 +83,10 @@ impl DlError {
             DlError::FileTooLarge => "FILE_TOO_LARGE",
             DlError::Stalled => "STALLED",
             DlError::LanAddress => "LAN_ADDRESS",
+            DlError::StreamProtected => "STREAM_PROTECTED",
+            DlError::StreamLive => "STREAM_LIVE",
+            DlError::StreamUnsupported => "STREAM_UNSUPPORTED",
+            DlError::MuxFailed => "MUX_FAILED",
         }
     }
 }
@@ -151,6 +163,12 @@ pub enum Event {
     SecretsLost,
     /// Extra: `UserRetry` while governance blocks. Goes to the pause instead of the network.
     UserRetryBlocked(PauseReason),
+    /// Extra (streams): the playlist can't be saved (protected, live or unsupported). Probe or transfer.
+    StreamRefused(DlError),
+    /// Extra (streams): Kotlin could not join the video and audio parts.
+    MuxFailed,
+    /// Extra (streams): Retry after `MuxFailed` runs the join again, nothing is fetched.
+    RetryMux,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -312,6 +330,12 @@ pub fn step(state: State, event: Event) -> (State, Vec<Effect>) {
 
         (S::NeedsLink, E::NewLink { matches: true }) => (S::Queued, vec![Effect::RebindUrl]),
         (S::NeedsLink, E::NewLink { matches: false }) => (S::Error(DlError::FileChanged), vec![]),
+
+        // Extra (streams, contract 24.8).
+        (S::Resolving, E::StreamRefused(e)) => (S::Error(e), vec![]),
+        (S::Downloading, E::StreamRefused(e)) => (S::Error(e), vec![Effect::KeepPart]),
+        (S::Verifying, E::MuxFailed) => (S::Error(DlError::MuxFailed), vec![Effect::KeepPart]),
+        (S::Error(DlError::MuxFailed), E::RetryMux) => (S::Verifying, vec![]),
 
         (S::Error(_), E::UserRetry) => (S::Resolving, vec![Effect::Probe]),
         (S::Error(_), E::UserRetryBlocked(r)) => (S::Paused(r), vec![]),
@@ -808,5 +832,27 @@ mod tests {
         assert_ne!(DlError::LanAddress.as_str(), DlError::LocalRedirect.as_str());
         assert_eq!(step(S::Error(DlError::LanAddress), E::UserRetry), (S::Resolving, vec![F::Probe]));
         assert_eq!(step(S::Queued, E::LanAddress), (S::Queued, vec![]));
+    }
+
+    #[test]
+    fn stream_refusals_and_the_join() {
+        for e in [DlError::StreamProtected, DlError::StreamLive, DlError::StreamUnsupported] {
+            assert_eq!(step(S::Resolving, E::StreamRefused(e)), (S::Error(e), vec![]));
+            assert_eq!(step(S::Downloading, E::StreamRefused(e)), (S::Error(e), vec![F::KeepPart]));
+        }
+        assert_eq!(DlError::StreamProtected.as_str(), "STREAM_PROTECTED");
+        assert_eq!(DlError::StreamLive.as_str(), "STREAM_LIVE");
+        assert_eq!(DlError::StreamUnsupported.as_str(), "STREAM_UNSUPPORTED");
+        assert_eq!(DlError::MuxFailed.as_str(), "MUX_FAILED");
+        assert_eq!(step(S::Verifying, E::MuxFailed), (S::Error(DlError::MuxFailed), vec![F::KeepPart]));
+        assert_eq!(step(S::Error(DlError::MuxFailed), E::RetryMux), (S::Verifying, vec![]));
+        // RetryMux means nothing for any other error, and a stream error retries as a new probe.
+        assert_eq!(step(S::Error(DlError::Network), E::RetryMux), (S::Error(DlError::Network), vec![]));
+        assert_eq!(step(S::Error(DlError::StreamLive), E::UserRetry), (S::Resolving, vec![F::Probe]));
+        // A join that works finishes like a verified file.
+        assert_eq!(
+            step(S::Verifying, E::HashOk),
+            (S::Finished, vec![F::RenamePart, F::MediaScan, F::NotifyFinished])
+        );
     }
 }

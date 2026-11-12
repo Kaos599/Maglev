@@ -150,6 +150,9 @@ class MaglevEngineModule : Module() {
         AsyncFunction("probeUrl") { url: String, options: Map<String, Any?>?, timeoutMs: Double, promise: Promise ->
             io(promise) { EngineHost.probeUrl(url, options ?: emptyMap(), timeoutMs.toLong()) }
         }
+        AsyncFunction("probeStream") { url: String, options: Map<String, Any?>?, timeoutMs: Double, promise: Promise ->
+            io(promise) { EngineHost.probeStream(url, options ?: emptyMap(), timeoutMs.toLong()) }
+        }
         AsyncFunction("addDownload") { url: String, options: Map<String, Any?>?, promise: Promise ->
             io(promise) { EngineHost.addDownload(url, options ?: emptyMap()) }
         }

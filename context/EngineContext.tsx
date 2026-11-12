@@ -9,6 +9,7 @@ import {
   type AddTorrentOptions,
   type AggregatedTelemetry,
   type DownloadOptions,
+  type StreamProbe,
   type DownloadSnapshot,
   type EngineResult,
   type EngineStatus,
@@ -140,6 +141,8 @@ interface EngineContextType {
   downloads: DownloadSnapshot[];
   /** Never throws: returns the Result envelope. Nothing is stored. */
   probeUrl: (url: string, options?: DownloadOptions) => Promise<EngineResult<UrlProbe>>;
+  /** Qualities, audio tracks and size estimates of an HLS or DASH link (NATIVE_CONTRACT 24.8). Nothing is stored. */
+  probeStream: (url: string, options?: DownloadOptions) => Promise<EngineResult<StreamProbe>>;
   startDownload: (url: string, options?: DownloadOptions) => Promise<EngineResult<{ id: string }>>;
   pauseDownload: (id: string) => Promise<boolean>;
   resumeDownload: (id: string) => Promise<boolean>;
@@ -830,6 +833,7 @@ export const EngineProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
   // ---- URL downloads (NATIVE_CONTRACT 17). The engine pushes its list on the next telemetry event. ----
   const probeUrl = useCallback((url: string, options: DownloadOptions = {}) => maglevEngine.probeUrl(url, options, 15_000), []);
+  const probeStream = useCallback((url: string, options: DownloadOptions = {}) => maglevEngine.probeStream(url, options, 15_000), []);
   const startDownload = useCallback((url: string, options: DownloadOptions = {}) => maglevEngine.addDownload(url, options), []);
   const downloadCall = useCallback(
     async (label: string, call: () => Promise<EngineResult>) => {
@@ -899,6 +903,7 @@ export const EngineProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         lastCompleted,
         downloads,
         probeUrl,
+        probeStream,
         startDownload,
         pauseDownload,
         resumeDownload,

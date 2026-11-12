@@ -72,5 +72,8 @@ object NativeCore {
     @JvmStatic external fun nativeRefreshDownloadUrl(id: String, url: String, optionsJson: String): String
     @JvmStatic external fun nativeSetDownloadLimits(id: String, json: String): String
     @JvmStatic external fun nativeAllowLanHost(id: String): String
+    // Stream downloads, HLS and DASH (docs/NATIVE_CONTRACT.md section 24.8). `errorMessage` is "" when there is none.
+    @JvmStatic external fun nativeProbeStream(url: String, optionsJson: String, timeoutMs: Long): String
+    @JvmStatic external fun nativeFinishMux(id: String, ok: Boolean, errorMessage: String): String
     @JvmStatic external fun nativeVersion(): String
 }

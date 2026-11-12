@@ -42,6 +42,7 @@ use super::rules::{
     StallClock,
 };
 use super::sidecar::{final_path, part_path, safe_url, sidecar_path, Sidecar};
+use super::stream::{StreamError, StreamRec, StreamSpec};
 use crate::error::{EngineError, ErrorCode};
 use crate::meta::write_atomic;
 
@@ -66,6 +67,9 @@ const EXPIRED_COPY: &str = "This link has expired. Paste a new one.";
 const STALLED_COPY: &str = "The server stopped sending data. Try again later.";
 const LOCAL_REDIRECT_COPY: &str = "A redirect tried to send Maglev to a device on your network, so it stopped.";
 const LAN_ADDRESS_COPY: &str = "This address points to a device on your network.";
+
+/// HLS and DASH downloads (contract section 24.8): probe, transfer, join and refresh live in this child module.
+mod stream_run;
 
 // ---- options ------------------------------------------------------------------------------------------------
 
@@ -99,6 +103,8 @@ pub struct DownloadOptions {
     pub down_limit_bps: Option<u64>,
     /// Allow the typed host to resolve onto the local network (after `LAN_ADDRESS`).
     pub allow_lan: bool,
+    /// Save an HLS or DASH stream (contract 24.8): which variant and audio track.
+    pub stream: Option<StreamSpec>,
 }
 
 fn parse_options(json: &str) -> Result<DownloadOptions, EngineError> {
@@ -163,6 +169,10 @@ pub struct DlRecord {
     pub allow_lan: bool,
     /// The addresses of that host when it was allowed; its lookups may only return these.
     pub lan_pinned: Vec<String>,
+    /// Set for an HLS or DASH download (contract 24.8): ids and counts, nothing secret.
+    pub stream: Option<StreamRec>,
+    /// All bytes of a stream with separate video and audio parts are in, and the join has not finished yet.
+    pub mux_needed: bool,
 }
 
 impl Default for DlRecord {
@@ -190,6 +200,8 @@ impl Default for DlRecord {
             needs_login: false,
             allow_lan: false,
             lan_pinned: Vec::new(),
+            stream: None,
+            mux_needed: false,
         }
     }
 }
@@ -408,6 +420,10 @@ fn error_message(e: DlError, status: Option<u16>) -> String {
             "This file is bigger than the card's format allows (4 GB). Use phone storage.".to_string()
         }
         DlError::Stalled => STALLED_COPY.to_string(),
+        DlError::StreamProtected => crate::error::STREAM_PROTECTED_MSG.to_string(),
+        DlError::StreamLive => crate::error::STREAM_LIVE_MSG.to_string(),
+        DlError::StreamUnsupported => crate::error::STREAM_UNSUPPORTED_MSG.to_string(),
+        DlError::MuxFailed => crate::error::MUX_FAILED_MSG.to_string(),
     }
 }
 
@@ -710,6 +726,8 @@ enum ProbeFail {
     Status(u16),
     Html,
     LocalRedirect,
+    /// The playlist can't be saved (contract 24.8).
+    Stream(StreamError),
 }
 
 struct ProbeReply {
@@ -824,7 +842,8 @@ impl Downloads {
             let (next, _) = step(rec.state, Event::Restore);
             rec.state = next;
             // A download that was verifying has all its bytes; the first request answers 416 and finishes it.
-            if rec.state == State::Verifying {
+            // A stream whose parts are all in waits for the join (`mux_needed`); it keeps `verifying`.
+            if rec.state == State::Verifying && !rec.mux_needed {
                 rec.state = State::Queued;
             }
             // Added with `paused: true` and never ran: it comes back paused, not queued.
@@ -841,11 +860,11 @@ impl Downloads {
             // What is on disk is the truth for how much we hold.
             if let Some(sc) = Sidecar::load(&sidecar_path(Path::new(&rec.folder), &rec.name)) {
                 if rec.state != State::Finished {
-                    rec.held = sc.held();
+                    rec.held = if sc.stream.is_some() { sc.stream_held() } else { sc.held() };
                 }
             }
             // The password, cookie or signed query lived in memory only: ask for the link again.
-            if rec.needs_login {
+            if rec.needs_login && !rec.mux_needed {
                 let (st, _) = step(rec.state, Event::SecretsLost);
                 if st == State::NeedsLink {
                     rec.state = st;
@@ -1161,7 +1180,11 @@ impl Downloads {
         let block = self.first_block();
         let id = {
             let mut inner = self.inner.lock();
-            if let Some(existing) = inner.records.values().find(|r| same_link(r, &url_str, &folder)) {
+            let want_stream = opts.stream.as_ref().map(|s| (s.variant_id.clone(), s.audio_id.clone()));
+            let same_stream = |r: &DlRecord| {
+                r.stream.as_ref().map(|s| (s.variant_id.clone(), s.audio_id.clone())) == want_stream
+            };
+            if let Some(existing) = inner.records.values().find(|r| same_link(r, &url_str, &folder) && same_stream(r)) {
                 let mut e = EngineError::duplicate(existing.id.clone());
                 e.message = "This link is already in your downloads".to_string();
                 return Err(e);
@@ -1197,6 +1220,13 @@ impl Downloads {
                 segments: opts.segments.unwrap_or(1),
                 start_paused: opts.paused && block.is_none(),
                 allow_lan: opts.allow_lan,
+                stream: opts.stream.as_ref().map(|s| StreamRec {
+                    kind: s.kind,
+                    variant_id: s.variant_id.clone(),
+                    audio_id: s.audio_id.clone(),
+                    segments_done: 0,
+                    segments_total: 0,
+                }),
                 ..DlRecord::default()
             };
             let h = opts.headers.clone().unwrap_or_default();
@@ -1264,6 +1294,11 @@ impl Downloads {
         let State::Error(e) = s else {
             return Err(EngineError::new(ErrorCode::InvalidState, "Only a failed download can be retried"));
         };
+        // A failed join runs the join again; nothing is fetched (contract 24.8).
+        if e == DlError::MuxFailed {
+            self.dispatch(id, Event::RetryMux);
+            return Ok(());
+        }
         if e == DlError::FileChanged || e == DlError::ChecksumMismatch {
             self.update(id, |rec, _| {
                 delete_partial(rec);
@@ -1337,6 +1372,9 @@ impl Downloads {
         if self.network_blocked() {
             return Err(EngineError::new(ErrorCode::Blocked, BLOCKED_MSG));
         }
+        if self.update(id, |r, _| r.stream.is_some()).unwrap_or(false) {
+            return self.refresh_stream_url(id, clean, auth, opts).await;
+        }
         let (client, pinned) = self.scoped_client(clean.as_str(), opts.allow_lan).await?;
         let h = opts.headers.unwrap_or_default();
         let reply = probe_request(&client, clean.as_str(), auth.as_ref(), &h.cookie, &h.referer, &h.user_agent)
@@ -1400,7 +1438,13 @@ impl Downloads {
                     "stalled": stalled,
                     "eta": eta,
                     "segments_active": if r.state == State::Downloading { 1 } else { 0 },
-                    "resumable": r.resumable,
+                    "resumable": r.resumable || r.stream.is_some(),
+                    "stream": r.stream.as_ref().map(|s| json!({
+                        "kind": s.kind,
+                        "segments_done": s.segments_done,
+                        "segments_total": s.segments_total,
+                    })),
+                    "mux_needed": r.mux_needed && r.state == State::Verifying,
                     "folder": r.folder,
                     "added_at": r.added_at,
                     "error": r.error,
@@ -1598,6 +1642,9 @@ impl Downloads {
             Err(ProbeFail::LanAddress) => {
                 self.dispatch(&id, Event::LanAddress);
             }
+            Err(ProbeFail::Stream(e)) => {
+                self.dispatch(&id, Event::StreamRefused(stream_run::stream_dl_error(e)));
+            }
             Err(ProbeFail::Net) => {
                 if self.is_offline() {
                     // No network: wait for it instead of failing.
@@ -1611,6 +1658,9 @@ impl Downloads {
 
     /// Probes the record's link and fills in name, size, validator and resume support.
     async fn do_probe(&self, id: &str) -> Result<(), ProbeFail> {
+        if self.update(id, |r, _| r.stream.is_some()).unwrap_or(false) {
+            return self.do_probe_stream(id).await;
+        }
         let (url, auth, cookie, referer, ua) = self
             .update(id, |r, l| (r.url.clone(), l.auth.clone(), l.cookie.clone(), l.referer.clone(), l.user_agent.clone()))
             .ok_or(ProbeFail::Net)?;
@@ -1652,6 +1702,9 @@ impl Downloads {
 
     /// The transfer task of one download: prepare the part file, then request, judge, write, retry.
     async fn transfer(self: Arc<Self>, id: String) {
+        if self.update(&id, |r, _| r.stream.is_some()).unwrap_or(false) {
+            return self.transfer_stream(id).await;
+        }
         // A download restored before its probe ran has no name yet.
         let probed = self.update(&id, |r, _| !r.name.is_empty()).unwrap_or(false);
         if !probed {
@@ -1679,6 +1732,7 @@ impl Downloads {
                     self.dispatch(&id, Event::LanAddress);
                     return;
                 }
+                Err(ProbeFail::Stream(_)) => return,
                 Err(ProbeFail::Net) => {
                     if !self.transient(&id, None).await {
                         return;
@@ -2275,6 +2329,7 @@ fn probe_error(f: ProbeFail) -> EngineError {
         ProbeFail::Html => EngineError::new(ErrorCode::NotAFile, "This link opens a web page, not a file."),
         ProbeFail::LocalRedirect => EngineError::new(ErrorCode::LocalRedirect, LOCAL_REDIRECT_COPY),
         ProbeFail::LanAddress => EngineError::new(ErrorCode::LanAddress, LAN_ADDRESS_COPY),
+        ProbeFail::Stream(e) => EngineError::new(e.code(), e.message()),
     }
 }
 
@@ -2283,14 +2338,37 @@ fn probe_error(f: ProbeFail) -> EngineError {
 /// Renames the part file to its final name (a free one if that is taken) and removes the sidecar.
 fn finish_files(rec: &mut DlRecord) -> Result<(), String> {
     let folder = PathBuf::from(&rec.folder);
+    if rec.mux_needed {
+        // Kotlin joined the parts into `<name>` already. The parts and the record go; the file stays.
+        let len = std::fs::metadata(final_path(&folder, &rec.name)).map_err(|e| e.to_string())?.len();
+        remove_stream_parts(&folder, &rec.name);
+        let _ = std::fs::remove_file(sidecar_path(&folder, &rec.name));
+        rec.mux_needed = false;
+        rec.size = Some(len);
+        rec.held = len;
+        return Ok(());
+    }
     let part = part_path(&folder, &rec.name);
     let wanted = rec.name.clone();
     let name = unique_name(&wanted, |n| final_path(&folder, n).exists());
     std::fs::rename(&part, final_path(&folder, &name)).map_err(|e| e.to_string())?;
     let _ = std::fs::remove_file(sidecar_path(&folder, &wanted));
+    // A stream's size was an estimate until now.
+    if rec.stream.is_some() {
+        if let Ok(m) = std::fs::metadata(final_path(&folder, &name)) {
+            rec.size = Some(m.len());
+        }
+    }
     rec.name = name;
     rec.held = rec.size.unwrap_or(rec.held);
     Ok(())
+}
+
+/// The video and audio parts and the temporary join output of a stream download (contract 24.8).
+fn remove_stream_parts(folder: &Path, name: &str) {
+    for suffix in [".video.part", ".audio.part", ".mux.tmp"] {
+        let _ = std::fs::remove_file(folder.join(format!("{name}{suffix}")));
+    }
 }
 
 /// Removes the part file and the sidecar (a restart after `FILE_CHANGED`).
@@ -2301,6 +2379,7 @@ fn delete_partial(rec: &DlRecord) {
     let folder = PathBuf::from(&rec.folder);
     let _ = std::fs::remove_file(part_path(&folder, &rec.name));
     let _ = std::fs::remove_file(sidecar_path(&folder, &rec.name));
+    remove_stream_parts(&folder, &rec.name);
 }
 
 /// `Remove`: the sidecar always goes. The part file (or, for a finished download, the file) goes when asked.
@@ -2310,6 +2389,9 @@ fn delete_files(rec: &DlRecord, delete: bool, was_finished: bool) {
     }
     let folder = PathBuf::from(&rec.folder);
     let _ = std::fs::remove_file(sidecar_path(&folder, &rec.name));
+    if delete && !was_finished {
+        remove_stream_parts(&folder, &rec.name);
+    }
     if delete {
         if was_finished {
             let _ = std::fs::remove_file(final_path(&folder, &rec.name));
