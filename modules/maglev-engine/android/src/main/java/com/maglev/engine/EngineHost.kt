@@ -1786,6 +1786,31 @@ object EngineHost {
     fun openFile(id: String, fileIndex: Int) = fileAction(id, fileIndex, FileActions::openFile)
     fun shareFile(id: String, fileIndex: Int) = fileAction(id, fileIndex, FileActions::shareFile)
 
+    /**
+     * Opens a finished link download with the app the phone picks (contract 17.y). Same file resolution as
+     * [openFile]: FileProvider for a POSIX path, else the SAF tree once the staged copy was moved there.
+     * Errors: NOT_FOUND (unknown id, or the file is gone), INVALID_STATE (not finished), NO_APP.
+     */
+    fun openDownload(id: String): Map<String, Any?> {
+        val c = requireCtx() ?: return Json.failure("ENGINE_UNAVAILABLE", "Module is not attached")
+        val res = call { NativeCore.nativeListTorrents() }
+        if (!isOk(res)) return res
+        val d = Json.list(res["downloads"]).firstOrNull { it["id"] == id }
+            ?: return Json.failure("NOT_FOUND", "That download isn't in your list")
+        if (d["state"] != "finished") return Json.failure("INVALID_STATE", "This download isn't finished yet")
+        val folder = d["folder"] as? String
+        val name = d["name"] as? String
+        if (folder == null || name.isNullOrEmpty()) return Json.failure("NOT_FOUND", "File not found")
+        return when (val err = FileActions.openFile(c, folder, name)) {
+            null -> linkedMapOf("ok" to true)
+            FILE_ACTIONS_NO_APP -> Json.failure("NO_APP", "No app on this phone can open this file")
+            else -> Json.failure("NOT_FOUND", err)
+        }
+    }
+
+    /** The text `FileActions.openFile` returns when no activity handles the file. Keep in step with FileActions. */
+    private const val FILE_ACTIONS_NO_APP = "No app can open this file"
+
     fun openFolder(id: String): Map<String, Any?> {
         val c = requireCtx() ?: return Json.failure("ENGINE_UNAVAILABLE", "Module is not attached")
         val d = call { NativeCore.nativeGetDetail(id) }

@@ -138,6 +138,9 @@ class MaglevEngineModule : Module() {
         AsyncFunction("setDownloadLimits") { id: String, limits: Map<String, Any?>, promise: Promise ->
             engine(promise) { EngineHost.setDownloadLimits(id, limits) }
         }
+        AsyncFunction("openDownload") { id: String, promise: Promise ->
+            engine(promise) { EngineHost.openDownload(id) }
+        }
         AsyncFunction("listTorrents") { promise: Promise ->
             native(promise) { NativeCore.nativeListTorrents() }
         }
