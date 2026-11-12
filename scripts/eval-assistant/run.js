@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Local eval harness for the in-app assistant. Runs the REAL controller, turn machine, tool runner, system prompt
 // and OpenRouter client in Node against a real model, with a fake engine and the real search layer.
-//   node scripts/eval-assistant/run.js [--only 1,5,9] [--fake]
+//   node scripts/eval-assistant/run.js [--only 1,5,9] [--fake] [--model <openrouter id>] [--gap <seconds>]
 // Needs Node 22.18+ (imports the .ts sources directly with type stripping, same as scripts/test-assistant-*.js).
 // The API key comes from .env.local (OPENROUTER_API_KEY) or the environment. It is never printed or written.
 'use strict';
@@ -10,14 +10,17 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { SCENARIOS, GENERIC } = require('./scenarios.js');
 const { createWorld, fakeSearchRows } = require('./fakeEngine.js');
+const RATE_LIMITED_TEXT = /rate limited|too many requests|\b429\b/i;
 
 const ROOT = path.resolve(__dirname, '..', '..');
 const argv = process.argv.slice(2);
 const FAKE = argv.includes('--fake');
 const onlyIdx = argv.indexOf('--only');
 const ONLY = onlyIdx >= 0 ? new Set((argv[onlyIdx + 1] || '').split(',').map((s) => Number(s.trim())).filter(Boolean)) : null;
-const MODEL = process.env.MAGLEV_EVAL_MODEL || 'meta-llama/llama-3.3-70b-instruct:free';
-const MIN_GAP_MS = FAKE ? 0 : 4000;
+const flag = (name) => { const i = argv.indexOf(name); return i >= 0 ? argv[i + 1] : undefined; };
+const MODEL = flag('--model') || process.env.MAGLEV_EVAL_MODEL || 'meta-llama/llama-3.3-70b-instruct:free';
+const gapArg = Number(flag('--gap'));
+const MIN_GAP_MS = FAKE ? 0 : (Number.isFinite(gapArg) && gapArg >= 0 && flag('--gap') !== undefined ? gapArg : 4) * 1000;
 const TURN_TIMEOUT_MS = 180_000;
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -61,9 +64,31 @@ function handlesFrom(messages) {
     }
   };
   for (const m of messages) if (m.role === 'tool') { try { walk(JSON.parse(m.content)); } catch { /* not json */ } }
+  /** Result rows of the latest search, in the order shown; rows marked on_card (when the runner marks them) come first as cards. */
+  const lastRows = () => {
+    let rows = [];
+    for (const m of messages) {
+      if (m.role !== 'tool') continue;
+      try { const j0 = JSON.parse(m.content); const j = j0 && j0.data ? j0.data : j0; if (j && Array.isArray(j.results) && j.results.every((r) => r && typeof r.id === 'string')) rows = j.results; } catch { /* not json */ }
+    }
+    return rows;
+  };
+  /** First value of a key anywhere in the tool results (latest wins), for example shortfall_text. */
+  const field = (key) => {
+    let hit;
+    const walk = (v) => {
+      if (Array.isArray(v)) v.forEach(walk);
+      else if (v && typeof v === 'object') { if (key in v && v[key] !== undefined && v[key] !== null) hit = v[key]; Object.values(v).forEach(walk); }
+    };
+    for (const m of messages) if (m.role === 'tool') { try { walk(JSON.parse(m.content)); } catch { /* not json */ } }
+    return hit;
+  };
   return {
     tid: (sub) => (found.find((f) => f.id[0] === 't' && f.name.includes(sub)) || { id: 't1' }).id,
     rid: (n) => `r${n}`,
+    cardIds: () => { const r = lastRows(); const on = r.filter((x) => x.on_card === true); return (on.length ? on : r).map((x) => x.id); },
+    rowIds: () => lastRows().map((x) => x.id),
+    field,
   };
 }
 function makeFakeFetch(state) {
@@ -74,6 +99,7 @@ function makeFakeFetch(state) {
     state.lastMessages = body.messages;
     const raw = state.scenario.fake[state.fakeStep++] ?? { text: 'Okay.' };
     const step = typeof raw === 'function' ? raw(handlesFrom(body.messages)) : raw;
+    if (step.status) return { ok: false, status: step.status, headers: { get: () => null }, text: async () => '{"error":"rate limited"}', body: null };
     const chunks = sseFor(step);
     return {
       ok: true, status: 200, headers: { get: () => null },
@@ -123,7 +149,8 @@ const md = (s) => String(s).replace(/\|/g, '\\|').replace(/\r?\n/g, ' ');
 async function runScenario(mods, scenario) {
   const { createChatController, createStreamFn, createToolRunner, defaultAssistantPrefs, PROVIDERS, searchAll, resolveResult } = mods;
   const world = createWorld({ freeGB: scenario.freeGB });
-  const state = { scenario, requests: 0, fakeStep: 0, rateLimited: false };
+  const state = { scenario, requests: 0, fakeStep: 0, rateLimited: false, searches: 0 };
+  let turn = 0;
   const tools = [];
   const cards = [];
   const executes = [];
@@ -136,8 +163,10 @@ async function runScenario(mods, scenario) {
     async search(query, category, opts) {
       const remember = (u) => { for (const x of u.results || []) world.knownResults.set(String(x.infoHash).toLowerCase(), { name: x.name, sizeBytes: x.sizeBytes }); return u; };
       if (FAKE) {
-        const results = fakeSearchRows(query);
-        const update = { results, sources: [{ providerId: 'knaben', state: 'done', count: results.length, ms: 5 }], done: true };
+        const fx = scenario.fixture ? scenario.fixture(query, state.searches++) : fakeSearchRows(query);
+        const results = Array.isArray(fx) ? fx : fx.results;
+        const sources = Array.isArray(fx) || !fx.sources ? [{ providerId: 'knaben', state: 'done', count: results.length, ms: 5 }] : fx.sources;
+        const update = { results, sources, done: true };
         opts.onUpdate?.(update);
         return remember(update);
       }
@@ -155,7 +184,7 @@ async function runScenario(mods, scenario) {
       const t0 = Date.now();
       const out = await base.run(call, ctx);
       seq.push(call.name);
-      tools.push({ name: call.name, args: call.args, content: cut(out.content), detail: out.detail, ms: Date.now() - t0 });
+      tools.push({ name: call.name, args: call.args, content: cut(out.content), full: out.content, turn, detail: out.detail, ms: Date.now() - t0 });
       return out;
     },
     async prepareCard(cardId, tool, args) {
@@ -204,7 +233,10 @@ async function runScenario(mods, scenario) {
   }
 
   const t0 = Date.now();
+  const turnTexts = [];
+  let seenItems = 0;
   for (const msg of scenario.messages) {
+    turn = turnTexts.length;
     if (typeof msg === 'string') chat().send(msg);
     else {
       const q = [...chat().items].reverse().find((i) => i.kind === 'question' && !i.answered);
@@ -213,6 +245,8 @@ async function runScenario(mods, scenario) {
     }
     await waitIdle();
     await settleCards();
+    turnTexts.push(chat().items.slice(seenItems).filter((i) => i.kind === 'assistant').map((i) => i.text.trim()).filter(Boolean).join('\n\n'));
+    seenItems = chat().items.length;
     if (state.rateLimited || timedOut) break;
   }
   const latencyMs = Date.now() - t0;
@@ -228,11 +262,16 @@ async function runScenario(mods, scenario) {
     cards,
     cardItems: items.filter((i) => i.kind === 'card'),
     errors: items.filter((i) => i.kind === 'error'),
+    turnTexts,
+    resultItems: items.filter((i) => i.kind === 'results'),
+    cardsShown: items.filter((i) => i.kind === 'results').flatMap((i) => i.results),
+    modelRequests: state.requests,
     timedOut,
     engineActions: world.actions.filter((a) => !['resolveMetadata'].includes(a.name)),
     subtitleIndices: world.subtitleIndices,
   };
-  const status = state.rateLimited ? 'rate_limited' : timedOut ? 'timeout' : 'ok';
+  const errorRateLimited = ctx.errors.some((e) => RATE_LIMITED_TEXT.test(String(e.message)));
+  const status = state.rateLimited || errorRateLimited ? 'rate_limited' : timedOut ? 'timeout' : 'ok';
   const checks = [];
   if (status === 'ok') {
     for (const c of [...GENERIC, ...scenario.checks]) {
@@ -244,7 +283,7 @@ async function runScenario(mods, scenario) {
   return {
     id: scenario.id, prompt: scenario.messages.map((m) => (typeof m === 'string' ? m : `[pick option ${m.pick}]`)).join(' / '), model: FAKE ? 'fake' : MODEL,
     fake: FAKE, status, record_only: !!scenario.record, confirm: !!scenario.confirm, modelRequests: state.requests, latencyMs,
-    toolSequence: seq, toolCalls: tools, toolMessages: (state.lastMessages || []).filter((m) => m.role === 'tool').map((m) => ({ id: m.tool_call_id, content: cut(m.content) })), cards, executes, engineActions: ctx.engineActions, checks, finalText: ctx.text, items,
+    toolSequence: seq, toolCalls: tools.map(({ full, ...t }) => t), toolMessages: (state.lastMessages || []).filter((m) => m.role === 'tool').map((m) => ({ id: m.tool_call_id, content: cut(m.content) })), cards, executes, engineActions: ctx.engineActions, checks, finalText: ctx.text, items,
   };
 }
 
@@ -278,22 +317,28 @@ async function main() {
     total += r.modelRequests;
     results.push(r);
     const failed = r.checks.filter((c) => !c.pass).length;
-    console.log(r.status === 'ok' ? (r.record_only ? 'recorded' : failed ? `${failed} check(s) failed` : 'pass') : r.status);
+    console.log(r.status === 'ok' ? (failed ? `${failed} check(s) failed` : 'pass') : r.status === 'rate_limited' ? 'rate limited' : r.status);
     fs.writeFileSync(path.join(outDir, `${s.id}.json`), scrub(JSON.stringify(deepCut(r), null, 2)));
   }
 
   const rows = results.map((r) => {
     const pass = r.checks.filter((c) => c.pass).map((c) => c.name);
     const fail = r.checks.filter((c) => !c.pass).map((c) => c.name);
-    const checksCell = r.status !== 'ok' ? r.status : r.record_only ? `record only (${pass.length} ok, ${fail.length} failed generic)${fail.length ? `: FAIL ${fail.join('; ')}` : ''}` : `${pass.length} ok${fail.length ? `; FAIL: ${fail.join('; ')}` : ''}`;
+    const checksCell = r.status === 'rate_limited' ? 'rate limited' : r.status !== 'ok' ? r.status : `${pass.length} ok${fail.length ? `; FAIL: ${fail.join('; ')}` : ''}`;
     return { id: r.id, prompt: r.prompt, tools: (r.toolSequence || []).join(' > ') || '(none)', checksCell, text: r.finalText || '(no text)' };
   });
-  const header = `# Assistant eval ${stamp}\n\nModel: ${FAKE ? 'fake (scripted dry run)' : MODEL}. Model requests used: ${total}.\n\n`;
+  const rl = results.filter((r) => r.status === 'rate_limited').length;
+  const bad = results.filter((r) => r.status === 'ok' && r.checks.some((c) => !c.pass)).length;
+  const good = results.filter((r) => r.status === 'ok' && r.checks.every((c) => c.pass)).length;
+  const other = results.length - rl - bad - good;
+  const tally = `${good} passed, ${bad} failed, ${rl} rate limited${other ? `, ${other} timeout or harness error` : ''}`;
+  const header = `# Assistant eval ${stamp}\n\nModel: ${FAKE ? 'fake (scripted dry run)' : MODEL}. Model requests used: ${total}.\n\nScenarios: ${tally}. Rate limited scenarios are not scored.\n\n`;
   const table = ['| id | prompt | tools (in order) | checks | final assistant text |', '|---|---|---|---|---|', ...rows.map((r) => `| ${r.id} | ${md(r.prompt)} | ${md(r.tools)} | ${md(r.checksCell)} | ${md(clip(r.text, 400))} |`)].join('\n');
   fs.writeFileSync(path.join(outDir, 'summary.md'), scrub(`${header}${table}\n`));
 
   console.log(`\n${scrub(table)}`);
-  console.log(`\nModel requests used: ${total}`);
+  console.log(`\nScenarios: ${tally}`);
+  console.log(`Model requests used: ${total}`);
   console.log(`Transcripts: ${path.relative(ROOT, outDir)}`);
 }
 

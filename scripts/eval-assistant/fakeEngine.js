@@ -94,18 +94,42 @@ function createWorld(opts = {}) {
   return { engine, actions, transfers, knownResults, subtitleIndices: [1, 2, 3, 4, 5, 6] };
 }
 
-/** Canned rows for --fake (no network). publishedAt is set on most rows, left off on a few. */
-function fakeSearchRows(query) {
-  const q = (query || 'movie').toLowerCase();
+const DAY = 86400000;
+/** Build search rows (the shape the real providers return) from {name, mb, seeders, ageDays?, category?}. */
+function rows(list, defaults = {}) {
   const now = Date.now();
-  const day = 86400000;
-  const title = q.replace(/\b\w/g, (c) => c.toUpperCase()).replace(/\s+/g, '.');
-  const mk = (n, extra, o = {}) => ({
-    providerId: 'knaben', name: `${title}.${extra}`, infoHash: hash(String.fromCharCode(97 + n)),
-    magnet: `magnet:?xt=urn:btih:${hash(String.fromCharCode(97 + n))}&dn=${encodeURIComponent(`${title}.${extra}`)}`,
-    sizeBytes: (900 - n * 30) * MB, seeders: 120 - n * 15, category: 'movies', sources: ['knaben'], publishedAt: now - (n + 1) * 3 * day, ...o,
+  return list.map((r, n) => {
+    const h = hash(String.fromCharCode(97 + (n % 26))).slice(0, 38) + String(10 + n).slice(-2);
+    const provider = r.provider || defaults.provider || 'knaben';
+    return {
+      providerId: provider, name: r.name, infoHash: h,
+      magnet: `magnet:?xt=urn:btih:${h}&dn=${encodeURIComponent(r.name)}`,
+      sizeBytes: Math.round(r.mb * MB), seeders: r.seeders ?? 50, category: r.category || defaults.category || 'movies',
+      sources: [provider], ...(r.ageDays === undefined ? {} : { publishedAt: now - r.ageDays * DAY }),
+    };
   });
-  return [mk(0, '2025.1080p.WEB-DL.x264-GRP'), mk(1, '2025.720p.WEB-DL.x264-GRP'), mk(2, '2024.1080p.BluRay.x264-GRP'), mk(3, '2025.HDTS.x264-GRP')];
 }
 
-module.exports = { createWorld, fakeSearchRows, GB, MB };
+/** Normal recent movie releases, with upload dates. */
+const movieRows = () => rows([
+  { name: 'The.Last.Harbor.2025.1080p.WEB-DL.DDP5.1.H.264-FLUX', mb: 4300, seeders: 210, ageDays: 2 },
+  { name: 'Night.Train.to.Lisbon.2025.1080p.WEBRip.x265-RARBG', mb: 2100, seeders: 160, ageDays: 4 },
+  { name: 'Quiet.Orbit.2025.720p.WEB-DL.x264-NTb', mb: 1400, seeders: 95, ageDays: 6 },
+  { name: 'Paper.Lanterns.2025.2160p.WEB-DL.DDP5.1.HDR.H.265-APEX', mb: 14500, seeders: 70, ageDays: 9 },
+  { name: 'Glass.Orchard.2025.1080p.BluRay.x264-GECKOS', mb: 3600, seeders: 55, ageDays: 15 },
+]);
+
+/** Canned rows for --fake (no network). Goes through the real toolRunner and scorer like a live search. */
+function fakeSearchRows(query) {
+  const q = (query || 'movie').toLowerCase().trim();
+  if (/^(latest |new |popular |best )?(movies?|films?)( .*)?$/.test(q)) return movieRows();
+  const title = q.replace(/\b\w/g, (c) => c.toUpperCase()).replace(/[^A-Za-z0-9]+/g, '.');
+  return rows([
+    { name: `${title}.2025.1080p.WEB-DL.DDP5.1.H.264-FLUX`, mb: 900, seeders: 120, ageDays: 3 },
+    { name: `${title}.2025.720p.WEB-DL.x264-NTb`, mb: 600, seeders: 90, ageDays: 6 },
+    { name: `${title}.2024.1080p.BluRay.x264-GECKOS`, mb: 840, seeders: 60, ageDays: 9 },
+    { name: `${title}.2025.HDTS.x264-RARBG`, mb: 700, seeders: 30 },
+  ]);
+}
+
+module.exports = { createWorld, fakeSearchRows, rows, movieRows, GB, MB };
