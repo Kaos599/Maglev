@@ -24,6 +24,7 @@ import {
 } from 'maglev-engine';
 import { etaSecs, smoothRate } from '../utils/rates';
 import { fromCached, loadTransferCache, saveTransferCache } from '../utils/transferCache';
+import { shareRows } from '../components/transfers/snapshots';
 
 /** Bundle-load time, the zero point for the cold-start log (UI spec S10.3). */
 const JS_LOADED_AT = Date.now();
@@ -158,6 +159,9 @@ interface Smoothed {
   at: number;
 }
 
+/** Only an explicit background counts as away: an unknown state at launch must still paint. */
+const isAway = () => AppState.currentState === 'background';
+
 const SMOOTHED_STATES = new Set(['DOWNLOADING', 'SEEDING']);
 
 /** Turns engine telemetry into rows with steady speeds and a time left computed from them. */
@@ -251,7 +255,10 @@ export const EngineProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const overridesRef = useRef(overrides);
   overridesRef.current = overrides;
   const liveRef = useRef(liveTelemetry);
-  liveRef.current = liveTelemetry;
+  // Rows that arrived in the background live only in the refs until the app is active again.
+  const heldWhileAway = useRef(false);
+  if (!heldWhileAway.current) liveRef.current = liveTelemetry;
+  const downloadsRef = useRef<DownloadSnapshot[]>([]);
   const pendingRemoval = useRef<{ ids: string[]; names: string[]; timer: ReturnType<typeof setTimeout>; noticeId: number } | null>(null);
   const lastSave = useRef(0);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -287,17 +294,54 @@ export const EngineProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     saveTimer.current = setTimeout(saveCacheNow, wait);
   }, [saveCacheNow]);
 
-  /** The single place where engine telemetry enters the app: smoothing happens here. */
+  /**
+   * The single place where engine telemetry enters the app: smoothing happens here.
+   * The engine sends fresh objects every second. Unchanged rows keep their previous object and an
+   * unchanged list skips `setState`, so an idle list renders nothing (before: one full render per
+   * tick). In the background the rows are kept for the cache but React is not told until the app
+   * is active again.
+   */
   const ingest = useCallback(
     (snapshots: Parameters<typeof aggregateSnapshots>[0]) => {
       gotLive.current = true;
-      const next = smoothAggregate(aggregateSnapshots(snapshots), smoothing.current, Date.now());
+      const prev = liveRef.current;
+      const smoothed = smoothAggregate(aggregateSnapshots(snapshots), smoothing.current, Date.now());
+      const torrents = shareRows(prev.torrents, smoothed.torrents) as TransferTelemetry[];
+      const same =
+        torrents === prev.torrents &&
+        smoothed.totalDownloadSpeedBytes === prev.totalDownloadSpeedBytes &&
+        smoothed.totalUploadSpeedBytes === prev.totalUploadSpeedBytes &&
+        smoothed.activeDownloads === prev.activeDownloads &&
+        smoothed.activeUploads === prev.activeUploads;
+      if (same) return;
+      const next = { ...smoothed, torrents };
       liveRef.current = next;
-      setLiveTelemetry(next);
+      if (!isAway()) setLiveTelemetry(next);
+      else heldWhileAway.current = true;
       scheduleCacheSave();
     },
     [scheduleCacheSave]
   );
+
+  /** Link downloads: same rule as torrents. */
+  const ingestDownloads = useCallback((list: DownloadSnapshot[]) => {
+    const shared = shareRows(downloadsRef.current, list) as DownloadSnapshot[];
+    if (shared === downloadsRef.current) return;
+    downloadsRef.current = shared;
+    if (!isAway()) setDownloads(shared);
+    else heldWhileAway.current = true;
+  }, []);
+
+  // Back in the foreground: hand React whatever arrived while away.
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (next) => {
+      if (next === 'background' || !heldWhileAway.current) return;
+      heldWhileAway.current = false;
+      setLiveTelemetry(liveRef.current);
+      setDownloads(downloadsRef.current);
+    });
+    return () => sub.remove();
+  }, []);
 
   const refreshDetail = useCallback(async (id: string) => {
     if (inFlight.current.has(id)) return;
@@ -341,13 +385,13 @@ export const EngineProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         const [list, storage] = await Promise.all([maglevEngine.listTorrents(), maglevEngine.getStorageStatus()]);
         if (list.ok) {
           ingest(list.torrents);
-          if (list.downloads) setDownloads(list.downloads);
+          if (list.downloads) ingestDownloads(list.downloads);
         }
         setStorageStatus(storage);
       }
       void refreshPermissions();
     },
-    [refreshPermissions, ingest]
+    [refreshPermissions, ingest, ingestDownloads]
   );
 
   const retryEngine = useCallback(async () => {
@@ -370,7 +414,9 @@ export const EngineProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
     const offTelemetry = maglevEngine.onTelemetry((event) => {
       ingest(event.torrents);
-      if (event.downloads) setDownloads(event.downloads);
+      if (event.downloads) ingestDownloads(event.downloads);
+      // Detail screens are not on screen in the background; they refresh on the next tick back.
+      if (isAway()) return;
       watched.current.forEach((_count, id) => {
         if (event.torrents.some((s) => s.id === id)) void refreshDetail(id);
       });
@@ -390,7 +436,7 @@ export const EngineProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       const res = await maglevEngine.listTorrents(); // pause_all / resume_all were applied natively
       if (res.ok) {
         ingest(res.torrents);
-        if (res.downloads) setDownloads(res.downloads);
+        if (res.downloads) ingestDownloads(res.downloads);
       }
     });
     const offStorage = maglevEngine.onStorageStatus((s) => setStorageStatus(s));
@@ -410,7 +456,7 @@ export const EngineProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       offAction();
       offStorage();
     };
-  }, [refreshDetail, afterStart, ingest, showNotice]);
+  }, [refreshDetail, afterStart, ingest, ingestDownloads, showNotice]);
 
   // Clipboard and permissions are re-read whenever the app returns to the foreground.
   useEffect(() => {
@@ -589,11 +635,12 @@ export const EngineProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       if (gone.length > 0) {
         for (const id of gone) smoothing.current.delete(id);
         const goneSet = new Set(gone);
-        setLiveTelemetry((prev) => {
-          const next = { ...prev, torrents: prev.torrents.filter((t) => !goneSet.has(t.id)) };
-          liveRef.current = next;
-          return next;
-        });
+        // From the ref, not React state: rows held in the background are newer than the state.
+        const prev = liveRef.current;
+        const next = { ...prev, torrents: prev.torrents.filter((t) => !goneSet.has(t.id)) };
+        liveRef.current = next;
+        if (!isAway()) setLiveTelemetry(next);
+        else heldWhileAway.current = true;
       }
       setRemoving((prev) => prev.filter((id) => !ids.includes(id)));
       const failedAt = results.findIndex((ok) => !ok);

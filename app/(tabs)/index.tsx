@@ -1,5 +1,5 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { BackHandler, FlatList, StyleSheet, TextInput, View } from 'react-native';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { AppState, BackHandler, FlatList, Linking, StyleSheet, TextInput, View } from 'react-native';
 import { useFocusEffect, useIsFocused, useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { HeaderBar } from '../../components/HeaderBar';
@@ -17,6 +17,9 @@ import { TeachingEmptyState } from '../../components/transfers/TeachingEmptyStat
 import { FILTERS, TransferFilter, countByFilter, downloadMatchesFilter, magnetHash, matchesFilter, sortTorrents } from '../../components/transfers/model';
 import { PixelIcon } from '../../components/PixelIcon';
 import { Banner, EmptyBlock, IconButton } from '../../components/ui/index';
+import { ProgressMotionContext, type ProgressMotion } from '../../components/ui/ProgressBar';
+import { steadyResolvingSecs } from '../../components/transfers/snapshots';
+import { lowSpaceWarning, usableFreeOf, type LowSpaceWarning } from '../../components/transfers/lowSpace';
 import * as DocumentPicker from 'expo-document-picker';
 import { maglevEngine, type DownloadSnapshot } from 'maglev-engine';
 import { triggerHaptic } from '../../constants/haptics';
@@ -30,13 +33,43 @@ import { TransferSort, loadTransferSort, saveTransferSort } from '../../utils/pr
 
 const Separator = () => <View style={{ height: CARD_GAP }} />;
 
+/** How often free space is read while Transfers is on screen. */
+const FREE_SPACE_EVERY_MS = 30_000;
+/** Indeterminate bars sweep this many times, then rest (an endless sweep keeps Android from going idle). */
+const LIST_SWEEPS = 3;
+
+/**
+ * The value as it was when the screen lost focus. Tabs stay mounted, so without this every
+ * telemetry tick re-ran the list's filtering and sorting behind other tabs.
+ */
+function useHeldWhileBlurred<T>(value: T, focused: boolean): T {
+  const held = useRef(value);
+  if (focused) held.current = value;
+  return held.current;
+}
+
+/** The row as the card shows it: the looking-for-peers time moves in steps, not every second. */
+function steadyRow<T extends { resolvingSecs?: number | null }>(t: T): T {
+  if (t.resolvingSecs == null) return t;
+  const secs = steadyResolvingSecs(t.resolvingSecs);
+  return secs === t.resolvingSecs ? t : { ...t, resolvingSecs: secs };
+}
+
+async function openStorageSettings() {
+  try {
+    await Linking.sendIntent('android.settings.INTERNAL_STORAGE_SETTINGS');
+  } catch {
+    await Linking.openSettings();
+  }
+}
+
 export default function TransfersScreen() {
   const { colors } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const {
-    telemetry,
+    telemetry: liveTelemetry,
     pauseTorrent,
     resumeTorrent,
     pauseAll,
@@ -48,13 +81,17 @@ export default function TransfersScreen() {
     dismissNotice,
     clipboardMagnet,
     clearClipboardMagnet,
-    downloads,
+    downloads: liveDownloads,
     pauseDownload,
     resumeDownload,
     retryDownload,
     removeDownload,
     refreshDownloadUrl,
+    getFreeSpace,
   } = useMaglevEngine();
+  const focused = useIsFocused();
+  const telemetry = useHeldWhileBlurred(liveTelemetry, focused);
+  const downloads = useHeldWhileBlurred(liveDownloads, focused);
 
   const [sort, setSort] = useState<TransferSort>(loadTransferSort);
   const [filter, setFilter] = useState<TransferFilter>('all');
@@ -75,7 +112,6 @@ export default function TransfersScreen() {
   const [sheetDownloadId, setSheetDownloadId] = useState<string | null>(null);
 
   const all = telemetry.torrents;
-  const focused = useIsFocused();
   const cruising = focused && all.some((t) => t.state === 'DOWNLOADING');
   // Downloads from links show above the torrents, obey the same filters, and obey the name filter.
   const shownDownloads = useMemo(() => {
@@ -147,6 +183,41 @@ export default function TransfersScreen() {
     [all, downloads],
   );
   const nothingHere = all.length === 0 && downloads.length === 0;
+
+  // Low-space banner. Free space and what unfinished downloads still need are read at the same
+  // moment, so the numbers agree with each other (and the text changes every 30 s, not every tick).
+  // Read again when the unfinished set changes. Unknown free space shows nothing.
+  const [lowSpace, setLowSpace] = useState<LowSpaceWarning | null>(null);
+  const allRef = useRef(all);
+  allRef.current = all;
+  const unfinishedKey = useMemo(
+    () =>
+      all
+        .filter((t) => !t.finished)
+        .map((t) => t.id)
+        .join(','),
+    [all],
+  );
+  useEffect(() => {
+    if (!focused) return;
+    let alive = true;
+    const read = () => {
+      if (AppState.currentState === 'background') return;
+      void getFreeSpace()
+        .then((res) => {
+          if (alive) setLowSpace(lowSpaceWarning(res.ok ? usableFreeOf(res) : null, allRef.current));
+        })
+        .catch(() => {
+          if (alive) setLowSpace(null);
+        });
+    };
+    read();
+    const timer = setInterval(read, FREE_SPACE_EVERY_MS);
+    return () => {
+      alive = false;
+      clearInterval(timer);
+    };
+  }, [focused, unfinishedKey, getFreeSpace]);
 
   const clipboardIsNew = useMemo(() => {
     if (!clipboardMagnet) return false;
@@ -292,7 +363,7 @@ export default function TransfersScreen() {
   const renderItem = useCallback(
     ({ item }: { item: (typeof visible)[number] }) => (
       <TransferCard
-        torrent={item}
+        torrent={steadyRow(item)}
         selectionMode={selectionMode}
         selected={selectedIds.has(item.id)}
         onPress={onCardPress}
@@ -304,6 +375,21 @@ export default function TransfersScreen() {
     ),
     [selectionMode, selectedIds, onCardPress, startSelection, onPause, onResume, onKeepTrying],
   );
+
+  // A new header element every render made FlatList re-render it on every telemetry tick.
+  const listHeader = useMemo(
+    () =>
+      shownDownloads.length > 0 ? (
+        <View style={styles.downloads}>
+          {shownDownloads.map((d) => (
+            <DownloadCard key={d.id} download={d} onPress={onDownloadPress} onAction={onDownloadAction} />
+          ))}
+          {visible.length > 0 ? <Separator /> : null}
+        </View>
+      ) : undefined,
+    [shownDownloads, visible.length, styles, onDownloadPress, onDownloadAction],
+  );
+  const progressMotion = useMemo<ProgressMotion>(() => ({ active: focused, sweeps: LIST_SWEEPS }), [focused]);
 
   const filtering = filter !== 'all' || query.trim().length > 0;
   const filterLabel = FILTERS.find((f) => f.id === filter)?.label ?? '';
@@ -351,6 +437,18 @@ export default function TransfersScreen() {
         </View>
       ) : null}
 
+      {lowSpace && !nothingHere ? (
+        <View style={styles.lowSpace}>
+          <Banner
+            tone="warning"
+            title={lowSpace.title}
+            body={lowSpace.body}
+            actionLabel="Free up space"
+            onAction={() => void openStorageSettings()}
+          />
+        </View>
+      ) : null}
+
       {!nothingHere ? (
         <SpeedTelemetryHeader
           downloadBytes={telemetry.totalDownloadSpeedBytes}
@@ -375,7 +473,7 @@ export default function TransfersScreen() {
       {nothingHere ? (
         <TeachingEmptyState canPaste={!!clipboardMagnet && clipboardIsNew} onPaste={addClipboard} onOpenFile={openFile} />
       ) : (
-        <>
+        <ProgressMotionContext.Provider value={progressMotion}>
           <FilterPills value={filter} counts={counts} onChange={setFilter} />
           {visible.length === 0 && shownDownloads.length === 0 ? (
             <View style={styles.noMatch}>
@@ -403,23 +501,14 @@ export default function TransfersScreen() {
               renderItem={renderItem}
               extraData={selectedIds}
               ItemSeparatorComponent={Separator}
-              ListHeaderComponent={
-                shownDownloads.length > 0 ? (
-                  <View style={styles.downloads}>
-                    {shownDownloads.map((d) => (
-                      <DownloadCard key={d.id} download={d} onPress={onDownloadPress} onAction={onDownloadAction} />
-                    ))}
-                    {visible.length > 0 ? <Separator /> : null}
-                  </View>
-                ) : undefined
-              }
+              ListHeaderComponent={listHeader}
               contentContainerStyle={{ paddingTop: spacing.xs, paddingBottom: listBottom }}
               initialNumToRender={8}
               windowSize={7}
               showsVerticalScrollIndicator={false}
             />
           )}
-        </>
+        </ProgressMotionContext.Provider>
       )}
 
       {selectionMode ? (
@@ -477,6 +566,7 @@ const makeStyles = (c: ThemeColors) =>
     },
     searchInput: { ...type.mono, flex: 1, fontSize: 13, color: c.text, paddingVertical: 0 },
     fileError: { paddingHorizontal: spacing.lg, paddingBottom: spacing.sm },
+    lowSpace: { paddingHorizontal: spacing.lg, paddingTop: spacing.sm },
     notice: { position: 'absolute', left: spacing.lg, right: spacing.lg, bottom: spacing.lg + 56 + spacing.sm },
     noMatch: { flex: 1, justifyContent: 'center' },
     downloads: { gap: CARD_GAP },
