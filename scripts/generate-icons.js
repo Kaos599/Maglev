@@ -38,9 +38,9 @@ const iconOut = path.join(assets, 'icon.png');
 rasterize(ICON_SVG, 1024, 1024, iconOut);
 magick(iconOut, '-background', TILE, '-alpha', 'remove', '-alpha', 'off', iconOut);
 
-// 2. Adaptive foreground: the wide mark at 560px keeps its far points (nose tip, longest speed line) inside the 676px safe circle
+// 2. Adaptive foreground: the wide mark at 650px keeps its far points (nose tip, longest speed line) inside the 676px safe circle
 const adaptiveMark = path.join(assets, '.adaptive-mark.tmp.png');
-rasterize(MARK_SVG, MARK_H, Math.round((560 * MARK_H) / MARK_W), adaptiveMark);
+rasterize(MARK_SVG, MARK_H, Math.round((650 * MARK_H) / MARK_W), adaptiveMark);
 magick('-size', '1024x1024', 'xc:none', adaptiveMark, '-gravity', 'center', '-composite',
   path.join(assets, 'adaptive-icon.png'));
 
