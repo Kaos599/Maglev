@@ -6,24 +6,48 @@ name: Rust Android (reusable)
 
 on:
   workflow_call:
+    inputs:
+      abis:
+        description: Comma list of Android ABIs to build (arm64-v8a, armeabi-v7a, x86_64)
+        type: string
+        required: false
+        default: 'arm64-v8a,armeabi-v7a,x86_64'
 
 permissions:
   contents: read
 
 jobs:
+  plan:
+    name: Plan ABIs
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.m.outputs.matrix }}
+    steps:
+      - name: Build matrix from the abis input
+        id: m
+        env:
+          ABIS: ${{ inputs.abis }}
+        run: |
+          node -e '
+          const map = { "arm64-v8a": "aarch64-linux-android", "armeabi-v7a": "armv7-linux-androideabi", "x86_64": "x86_64-linux-android" };
+          const abis = [...new Set(String(process.env.ABIS).split(",").map((s) => s.trim()).filter(Boolean))];
+          const bad = abis.filter((a) => !map[a]);
+          if (abis.length === 0 || bad.length) {
+            console.error("Bad abis input: " + JSON.stringify(process.env.ABIS) + " (unknown: " + bad.join(",") + ")");
+            process.exit(1);
+          }
+          const include = abis.map((abi) => ({ abi, target: map[abi] }));
+          console.log(JSON.stringify(include));
+          require("fs").appendFileSync(process.env.GITHUB_OUTPUT, "matrix=" + JSON.stringify({ include }) + "\n");
+          '
+
   build:
     name: Build ${{ matrix.abi }}
+    needs: plan
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          - target: aarch64-linux-android
-            abi: arm64-v8a
-          - target: armv7-linux-androideabi
-            abi: armeabi-v7a
-          - target: x86_64-linux-android
-            abi: x86_64
+      matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
 
     steps:
       - name: Checkout repository

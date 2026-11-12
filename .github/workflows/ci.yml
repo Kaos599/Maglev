@@ -47,6 +47,9 @@ jobs:
   rust-android:
     name: Rust Android
     uses: ./.github/workflows/_rust-android.yml
+    with:
+      # main builds all three ABIs so release-apk.yml can reuse the APKs; other refs build arm64 only.
+      abis: ${{ github.ref == 'refs/heads/main' && 'arm64-v8a,armeabi-v7a,x86_64' || 'arm64-v8a' }}
 
   apk:
     name: Build APK
@@ -55,8 +58,9 @@ jobs:
     env:
       ANDROID_HOME: /usr/local/lib/android/sdk
       GRADLE_OPTS: "-Xmx4g -Dorg.gradle.jvmargs=-Xmx4g -Dorg.gradle.daemon=false -Dorg.gradle.caching=true"
-      # Everyday CI builds arm64 only (plugins/withAbiSplits.js); release-apk.yml builds all three.
-      MAGLEV_ABIS: arm64-v8a
+      # Everyday CI builds arm64 only (plugins/withAbiSplits.js). main builds all three, and
+      # release-apk.yml reuses that run's `apks` artifact (app-{universal,arm64-v8a,armeabi-v7a,x86_64}-release.apk).
+      MAGLEV_ABIS: ${{ github.ref == 'refs/heads/main' && 'arm64-v8a,armeabi-v7a,x86_64' || 'arm64-v8a' }}
 
     steps:
       - name: Checkout repository
@@ -97,13 +101,13 @@ jobs:
       - name: Download jniLibs
         uses: actions/download-artifact@v4
         with:
-          pattern: jniLibs-arm64-v8a
+          pattern: jniLibs-*
           merge-multiple: true
           path: modules/maglev-engine/android/src/main/jniLibs
 
       - name: Verify jniLibs layout
         run: |
-          for abi in arm64-v8a; do
+          for abi in ${MAGLEV_ABIS//,/ }; do
             test -f "modules/maglev-engine/android/src/main/jniLibs/$abi/libmaglev_core.so" \
               || { echo "Missing $abi/libmaglev_core.so"; find modules/maglev-engine/android/src/main/jniLibs -type f; exit 1; }
           done
