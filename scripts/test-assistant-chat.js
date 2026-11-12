@@ -177,7 +177,7 @@ async function main() {
   // ---- system prompt ------------------------------------------------------------------------------
   {
     const p = buildSystemPrompt();
-    check('system prompt: sharing wording, no year rule, cards need a tap, no setting tool', p.includes('sharing') && p.includes("Never add a year") && p.includes('Nothing happens until the user taps the card') && !p.includes('propose_setting_change') && !p.includes('propose_url_download'), p.length);
+    check('system prompt: sharing wording, no year rule, cards need a tap, no setting tool', p.includes('sharing') && p.includes("Never add a year") && p.includes('Every change is a card the user taps') && !p.includes('propose_setting_change') && !p.includes('propose_url_download'), p.length);
     const q = buildSystemPrompt({ profile: 'tv', maxSizeGb: 5, language: 'English', glossaryKeys: ['x265'] });
     check('system prompt: profile lines added only when set', q.includes('on a tv') && q.includes('5 GB') && q.includes('x265') && !p.includes('About this user'));
   }
