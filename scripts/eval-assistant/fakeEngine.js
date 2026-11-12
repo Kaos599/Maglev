@@ -119,6 +119,32 @@ const movieRows = () => rows([
   { name: 'Glass.Orchard.2025.1080p.BluRay.x264-GECKOS', mb: 3600, seeders: 55, ageDays: 15 },
 ]);
 
+/**
+ * Canned browse rows for --fake: what a browse source answers (no title, recent uploads). Years follow the clock, so
+ * "new" keeps them next year too. Two copies of The Last Harbor collapse into one title; Casablanca is an old film
+ * uploaded this week (kept for popular, dropped for new); Paper Lanterns went up 20 days ago (outside a week).
+ */
+function fakeBrowseRows(kind = 'movies') {
+  const Y = new Date().getUTCFullYear();
+  if (kind === 'tv') {
+    return rows([
+      { name: 'Harbor.Watch.S02E05.1080p.WEB-DL.DDP5.1.H.264-FLUX', mb: 2300, seeders: 900, ageDays: 1 },
+      { name: 'Harbor.Watch.S02E05.720p.WEB.h264-ETHEL', mb: 900, seeders: 400, ageDays: 1 },
+      { name: 'Night.Shift.Station.S01E03.1080p.WEB.H264-GRACE', mb: 1800, seeders: 650, ageDays: 3 },
+      { name: 'Quiet.Orbit.S03E01.720p.WEB-DL.x264-NTb', mb: 800, seeders: 300, ageDays: 5 },
+    ], { category: 'tv' });
+  }
+  return rows([
+    { name: `The.Last.Harbor.${Y}.1080p.WEB-DL.DDP5.1.H.264-FLUX`, mb: 4300, seeders: 210, ageDays: 2 },
+    { name: `The.Last.Harbor.${Y}.720p.WEB-DL.x264-NTb`, mb: 1400, seeders: 120, ageDays: 2 },
+    { name: `Night.Train.to.Lisbon.${Y}.1080p.WEBRip.x265-RARBG`, mb: 2100, seeders: 160, ageDays: 4 },
+    { name: `Quiet.Orbit.${Y - 1}.720p.WEB-DL.x264-NTb`, mb: 1400, seeders: 95, ageDays: 6 },
+    { name: `Glass.Orchard.${Y}.1080p.BluRay.x264-GECKOS`, mb: 3600, seeders: 55, ageDays: 1 },
+    { name: 'Casablanca.1942.1080p.BluRay.x264-AMIABLE', mb: 8000, seeders: 300, ageDays: 1 },
+    { name: `Paper.Lanterns.${Y}.2160p.WEB-DL.DDP5.1.HDR.H.265-APEX`, mb: 14500, seeders: 70, ageDays: 20 },
+  ], { category: kind });
+}
+
 /** Canned rows for --fake (no network). Goes through the real toolRunner and scorer like a live search. */
 function fakeSearchRows(query) {
   const q = (query || 'movie').toLowerCase().trim();
@@ -132,4 +158,4 @@ function fakeSearchRows(query) {
   ]);
 }
 
-module.exports = { createWorld, fakeSearchRows, rows, movieRows, GB, MB };
+module.exports = { createWorld, fakeSearchRows, fakeBrowseRows, rows, movieRows, GB, MB };

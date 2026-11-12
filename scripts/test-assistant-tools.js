@@ -23,6 +23,7 @@ const REASON = 'One plain sentence.';
 function samples(R, T) {
   return {
     search_torrents: { query: 'The Last Harbor 2023', category: 'movies', max_size_gb: 5, limit: 6 },
+    browse_torrents: { kind: 'movies', order: 'new', period: 'week', limit: 6 },
     get_result_details: { result_id: R },
     parse_release_name: { names: ['The.Last.Harbor.2023.1080p.WEB-DL.DDP5.1.Atmos.H.265-LUMEN'] },
     get_free_space: {},
@@ -75,8 +76,8 @@ async function main() {
   const isBad = (r, code = 'bad_args') => !r.ok && r.error.code === code;
 
   console.log('tools: schema structure');
-  check('TOOLS has exactly 7 entries', TOOLS.length === 7, TOOLS.length);
-  check('READ_TOOLS has the 5 read tools', READ_TOOLS.size === 5, [...READ_TOOLS]);
+  check('TOOLS has exactly 8 entries', TOOLS.length === 8, TOOLS.length);
+  check('READ_TOOLS has the 6 read tools', READ_TOOLS.size === 6 && READ_TOOLS.has('browse_torrents'), [...READ_TOOLS]);
   check('PROPOSAL_TOOLS has the 2 proposal tools', PROPOSAL_TOOLS.size === 2 && PROPOSAL_TOOLS.has('propose_change'), [...PROPOSAL_TOOLS]);
   check('READ and PROPOSAL cover TOOLS exactly', TOOLS.every((t) => READ_TOOLS.has(t.function.name) || PROPOSAL_TOOLS.has(t.function.name)));
   const names = TOOLS.map((t) => t.function.name);
@@ -92,10 +93,10 @@ async function main() {
     check(`${n}: description is short plain text`, t.function.description.length > 20 && t.function.description.length < 300);
   }
 
-  console.log('tools: the seven tools and the generated overview');
+  console.log('tools: the eight tools and the generated overview');
   {
     const { toolsOverview } = await import('../utils/assistant/tools.ts');
-    check('the model sees exactly these seven', names.join() === 'search_torrents,get_result_details,list_transfers,ask_user,open_screen,propose_add,propose_change', names);
+    check('the model sees exactly these eight', names.join() === 'search_torrents,browse_torrents,get_result_details,list_transfers,ask_user,open_screen,propose_add,propose_change', names);
     for (const old of ['parse_release_name', 'describe_tools', 'propose_plan', 'propose_setting', 'get_free_space', 'get_transfer_details', 'explain_error', 'propose_select_files', 'propose_pause_resume', 'propose_remove_files', 'propose_delete']) {
       check(`${old} is not exposed to the model`, !names.includes(old) && isBad(validateArgs(old, {}, reg), 'unknown_tool'));
     }
@@ -186,6 +187,38 @@ async function main() {
   check('out-of-range numeric string still rejected', isBad(sr({ limit: '99' })) && isBad(sr({ max_resolution: '1081' })));
   check('wrong handle still rejected', isBad(bad('propose_add', { result_id: 'r99' })) && isBad(bad('propose_change', { transfer_id: 'zzz', action: 'pause' })));
   check('missing required handle still rejected', isBad(bad('propose_add', {})) && isBad(bad('propose_change', { action: 'pause' })));
+  console.log('tools: browse_torrents');
+  {
+    const br = (a) => bad('browse_torrents', a);
+    const beq = (name, a, want) => { const r = br(a); const got = r.ok ? JSON.stringify(['kind', 'order', 'period', 'limit'].map((k) => r.args[k])) : r.error.message; check(name, got === JSON.stringify(want), got); };
+    beq('kind alone is enough (defaults stay to the runner)', { kind: 'movies' }, ['movies', undefined, undefined, undefined]);
+    beq('every field', { kind: 'tv', order: 'popular', period: 'month', limit: 10 }, ['tv', 'popular', 'month', 10]);
+    check('kind is required', isBad(br({ order: 'new' })) && /kind/.test(br({ order: 'new' }).error.message));
+    check('an unknown kind lists the choices', isBad(br({ kind: 'podcasts' })) && /movies, tv, anime, books, games, music, apps/.test(br({ kind: 'podcasts' }).error.message));
+    check('adult is not a kind', isBad(br({ kind: 'adult' })));
+    check('limit 1 to 10', isBad(br({ kind: 'movies', limit: 11 })) && isBad(br({ kind: 'movies', limit: 0 })) && br({ kind: 'movies', limit: '10' }).ok);
+    for (const [from, to] of [['Movies', 'movies'], ['film', 'movies'], ['films', 'movies'], ['movie', 'movies'], ['show', 'tv'], ['shows', 'tv'], ['series', 'tv'], ['TV shows', 'tv'], ['episodes', 'tv'], ['Anime', 'anime'], ['ebooks', 'books'], ['audiobooks', 'books'], ['game', 'games'], ['songs', 'music'], ['albums', 'music'], ['software', 'apps'], ['programs', 'apps']]) {
+      beq(`kind "${from}" becomes ${to}`, { kind: from }, [to, undefined, undefined, undefined]);
+    }
+    for (const [from, to] of [['latest', 'new'], ['Recent', 'new'], ['newest', 'new'], ['trending', 'popular'], ['top', 'popular'], ['best', 'popular'], ['seeders', 'popular'], ['most popular', 'popular']]) {
+      beq(`order "${from}" becomes ${to}`, { kind: 'movies', order: from }, ['movies', to, undefined, undefined]);
+    }
+    for (const [from, to] of [['this week', 'week'], ['Today', 'day'], ['24h', 'day'], ['this month', 'month'], ['weekly', 'week'], ['this year', 'year']]) {
+      beq(`period "${from}" becomes ${to}`, { kind: 'movies', period: from }, ['movies', undefined, to, undefined]);
+    }
+    beq('search-style field names are mapped: category, sort', { category: 'films', sort: 'newest' }, ['movies', 'new', undefined, undefined]);
+    beq('the real field wins over an alias', { kind: 'tv', category: 'movies' }, ['tv', undefined, undefined, undefined]);
+    const q = br({ kind: 'movies', query: 'latest movies' });
+    check('a query is dropped with a note, not an error', q.ok && !('query' in q.args) && q.notes.some((n) => /query/.test(n)), q);
+    check('a nonsense period is refused with the choices', isBad(br({ kind: 'movies', period: 'decade' })) && /day, week, month, year/.test(br({ kind: 'movies', period: 'decade' }).error.message));
+    const def = TOOLS.find((t) => t.function.name === 'browse_torrents').function;
+    check('browse description says when to use it', /new or popular/.test(def.description) && /latest/.test(def.description) && /no title/.test(def.description), def.description);
+    const { toolsOverview } = await import('../utils/assistant/tools.ts');
+    const line = toolsOverview().split('\n').find((l) => l.startsWith('- browse_torrents:'));
+    check('overview shows browse order and period values', /kind/.test(line) && /order new\|popular/.test(line) && /period day\|week\|month\|year/.test(line), line);
+    check('a sort of "popular" on search still means seeders', sr({ sort: 'popular' }).args.sort === 'seeders');
+  }
+
   const searchDef = TOOLS.find((t) => t.function.name === 'search_torrents').function;
   const JUST = 'Just the title. Add a year, season or episode only if the user gave one.';
   check('search description and query hint say just the title', searchDef.description.includes(JUST) && searchDef.parameters.properties.query.description === JUST && !/short title/i.test(searchDef.description), searchDef.description);

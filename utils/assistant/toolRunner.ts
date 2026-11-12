@@ -1,7 +1,7 @@
 /**
  * The assistant's tool runner (docs/ASSISTANT_DESIGN.md §3.5, §4, §5.4, §6, §7.3 and review round 1).
  *
- * Runs the seven read tools against search and the engine, builds the proposal cards, re-checks them on Confirm
+ * Runs the read tools against search, browse and the engine, builds the proposal cards, re-checks them on Confirm
  * and runs the confirmed action. Contract: utils/assistant/runtime.ts (`ToolRunner`).
  *
  * Pure: no React, no react-native, no expo, no engine import. Everything impure comes in through
@@ -21,6 +21,8 @@ import type {
 import { ADMISSION_RESERVE_BYTES, admit, pendingNeedOf } from '../admission.ts';
 import type { AdmissionOutcome } from '../admission.ts';
 import { buildMagnet, infoHashFromMagnet, normalizeInfoHash } from '../search/magnet.ts';
+import { browseArgsFromQuery, collapseWorks, filterForBrowse, orderBrowse, workKey } from '../search/browse.ts';
+import type { BrowseKind, BrowseOrder, BrowsePeriod } from '../search/browse.ts';
 import { riskySources } from '../search/safety.ts';
 import type { Category, MergedResult, SearchUpdate } from '../search/types.ts';
 import { MAX_TOOL_RESULT_TOKENS, estimateTokens } from './context.ts';
@@ -38,7 +40,7 @@ import type {
   ExecuteResult, FileKind, FileRowView, ProposalCardView, ResultCardView, ResultDetailsView, RevalidateResult, ScreenTarget, ToolRunContext,
   ToolRunOutput, ToolRunner,
 } from './runtime.ts';
-import { canPropose, parseQuery, scoreResults } from './scoring.ts';
+import { canPropose, isBrowseQuery, parseQuery, scoreResults } from './scoring.ts';
 import type { Label, ParsedQuery, Profile, Ranked, ScoreContext } from './scoring.ts';
 import { MESSAGE_MAX, NAME_MAX, QUERY_MAX, filterModelOutput, sanitizeText, toToolJson, truncate, untrustedField } from './sanitize.ts';
 
@@ -62,6 +64,12 @@ export interface ToolRunnerDeps {
   searchPrefs(): { warnUnsafe: boolean; providers: ReadonlyMap<string, { name: string; unsafeReason?: string }> };
   /** Gives a result its real magnet and info hash (`resolveResult` in utils/search/aggregate.ts). May throw. */
   resolveResult(result: MergedResult, signal: AbortSignal): Promise<MergedResult>;
+  /**
+   * List what is new or popular in one kind, with the user's prefs applied (enabled sources, mirrors, wait).
+   * Adult content is never listed (D2). Same shape as `browseAll` in utils/search/browse.ts. Optional: without it
+   * browse_torrents fails plainly and search_torrents never turns a generic query into a browse.
+   */
+  browse?(kind: BrowseKind, order: BrowseOrder, period: BrowsePeriod, opts: { signal: AbortSignal; onUpdate?: (u: SearchUpdate) => void }): Promise<SearchUpdate>;
   engine: RunnerEngine;
   /** What this phone can decode (`getPlaybackSupport`). null when unknown. */
   playbackSupport(): Promise<PlaybackSupport | null>;
@@ -122,6 +130,8 @@ class CancelledError extends Error {
 
 const clean = (s: unknown, max = NAME_MAX): string => sanitizeText(s, max);
 const plural = (n: number, one: string, many = `${one}s`): string => `${n} ${n === 1 ? one : many}`;
+/** A source that did not give an answer. */
+const isDown = (state: string): boolean => state === 'timeout' || state === 'error' || state === 'blocked' || state === 'challenge';
 
 function fileName(path: string): string {
   const parts = String(path).split(/[\\/]/);
@@ -594,26 +604,10 @@ export function createToolRunner(deps: ToolRunnerDeps): ToolRunner {
 
   // ------------------------------------------------------------ read tools
 
-  async function searchTorrents(args: Data, ctx: ToolRunContext): Promise<ToolRunOutput> {
-    const queryText = clean(args.query, QUERY_MAX);
-    if (queryText.length < 2) return fail('bad_args', 'The search needs a title.');
-    const category = (typeof args.category === 'string' ? args.category : 'all') as Category;
-    const profile = (typeof args.profile === 'string' ? args.profile : 'phone') as Profile;
-    const sort = typeof args.sort === 'string' ? args.sort : 'best';
-    const limit = Math.max(1, Math.min(8, typeof args.limit === 'number' ? args.limit : 6));
-    const minSharing = typeof args.min_seeders === 'number' ? args.min_seeders : 1;
-    const minRes = typeof args.min_resolution === 'number' ? args.min_resolution : undefined;
-    const maxRes = typeof args.max_resolution === 'number' ? args.max_resolution : undefined;
-    const maxBytes = typeof args.max_size_gb === 'number' ? Math.round(args.max_size_gb * 1024 * 1024 * 1024) : undefined;
-    const runtimeMin = typeof args.runtime_min === 'number' ? args.runtime_min : undefined;
-
-    const prefs = deps.searchPrefs();
-    const names = (id: string): string => clean(prefs.providers.get(id)?.name ?? id, 40);
-    const progressText = `Searching: ${queryText}`;
-    ctx.progress(progressText, 'running');
+  /** Reports each source that fails as its own progress line, once. Returns the onUpdate listener. */
+  function watchSources(ctx: ToolRunContext, names: (id: string) => string): (u: SearchUpdate) => void {
     const failedSeen = new Set<string>();
-    const isDown = (state: string): boolean => state === 'timeout' || state === 'error' || state === 'blocked' || state === 'challenge';
-    const onUpdate = (u: SearchUpdate): void => {
+    return (u: SearchUpdate): void => {
       for (const s of u.sources) {
         if (isDown(s.state) && !failedSeen.has(s.providerId)) {
           failedSeen.add(s.providerId);
@@ -621,80 +615,26 @@ export function createToolRunner(deps: ToolRunnerDeps): ToolRunner {
         }
       }
     };
+  }
 
-    let update: SearchUpdate;
-    try {
-      update = await raceAbort(deps.search(queryText, category, { signal: ctx.signal, onUpdate }), ctx.signal);
-    } catch (e) {
-      if (e instanceof CancelledError || ctx.signal.aborted) throw new CancelledError();
-      ctx.progress(progressText, 'failed');
-      return fail('search_failed', "Search didn't work. Check the connection and try again.");
-    }
-    ctx.progress(progressText, 'done');
+  interface PresentOptions {
+    /** The query a stored row is checked against later (file safety): the search's, or the row's own title for a browse. */
+    queryOf: (r: Ranked) => ParsedQuery;
+    profile: Profile;
+    runtimeMin?: number;
+    space: Space;
+    support: PlaybackSupport | null;
+    packCounts: Map<string, number>;
+  }
 
-    // R1-9: the model's free text becomes title, year, season and episode here, not in the model.
-    const parsedQuery = parseQuery(queryText);
-    const space = await readSpace();
-    const support = await deps.playbackSupport().catch(() => null);
-
-    // Names are cleaned before they are parsed or stored: invisible and bidi characters and links are gone first.
-    let rows = update.results
-      .filter((r) => r.seeders === undefined || r.seeders >= minSharing)
-      .map((r) => ({ ...r, name: clean(r.name, MESSAGE_MAX) }));
-    if (minRes !== undefined || maxRes !== undefined) {
-      rows = rows.filter((r) => {
-        const res = parseRelease(r.name).resolution;
-        if (res === undefined) return true;
-        if (minRes !== undefined && res < minRes) return false;
-        if (maxRes !== undefined && res > maxRes) return false;
-        return true;
-      });
-    }
-
-    const safety = new Map<string, SafetyResult | null>();
-    const packCounts = new Map<string, number>();
-    for (const r of rows) {
-      const st = results.get(r.infoHash);
-      if (st?.safety) safety.set(r.infoHash, st.safety);
-      if (st?.episodeCount !== undefined) packCounts.set(r.infoHash, st.episodeCount);
-    }
-    const scoreCtx: ScoreContext = {
-      profile,
-      runtimeMin,
-      freeBytes: space.freeBytes,
-      pendingNeed: space.pendingNeed,
-      stagingFactor: space.stagingFactor,
-      maxBytes,
-      playback: support,
-      warnUnsafe: prefs.warnUnsafe,
-      providers: prefs.providers,
-      query: { ...parsedQuery, raw: queryText },
-      category,
-      allowEarlySources: args.include_cam === true,
-      packEpisodeCounts: packCounts,
-      safety,
-      now: deps.now(),
-    };
-    const out = scoreResults(rows, scoreCtx);
-
-    // Sort best: the quality shortlist leads, or when nothing qualified the best rows that are not "avoid".
-    const shortlist: Ranked[] = out.shortlist.length > 0 ? out.shortlist : out.ranked.filter((r) => r.tier !== 'avoid').slice(0, 3);
-    const picked: Ranked[] = [...shortlist];
-    for (const r of out.ranked) if (!picked.includes(r)) picked.push(r);
-    // A sort other than "best" applies to the whole list, not to the few rows quality picked, so "newest" finds
-    // the newest rows. Rows that cannot be recommended ("avoid") stay last.
-    let shown: Ranked[];
-    let cardRows: Ranked[];
-    if (sort === 'best') {
-      shown = picked.slice(0, Math.max(limit, shortlist.length));
-      cardRows = shortlist;
-    } else {
-      const usable = sortShown(picked.filter((r) => r.tier !== 'avoid'), sort);
-      const rest = picked.filter((r) => r.tier === 'avoid');
-      shown = [...usable, ...rest].slice(0, limit);
-      // The cards are the first rows the model sees, in the same order, so "the second one" means one thing.
-      cardRows = shown.filter((r) => r.tier !== 'avoid').slice(0, 3);
-    }
+  /**
+   * Stores the shown rows (handles are issued here, in the order shown, R1-10) and builds the model rows, the
+   * cards and the space facts shared by search_torrents and browse_torrents.
+   */
+  function present(shown: Ranked[], cardRows: Ranked[], o: PresentOptions): { rowsData: Data[]; cardViews: ResultCardView[]; tail: Data } {
+    const { space, support, packCounts, profile } = o;
+    const prefs = deps.searchPrefs();
+    const names = (id: string): string => clean(prefs.providers.get(id)?.name ?? id, 40);
     const onCard = new Set<Ranked>(cardRows);
     // Labels stay only where they still hold: on a card, and "smaller" only next to the best-fit card it is smaller than.
     const bestFitOnCard = cardRows.some((r) => r.labels.includes('best-fit'));
@@ -704,7 +644,6 @@ export function createToolRunner(deps: ToolRunnerDeps): ToolRunner {
       return r.label;
     };
 
-    // Handles are issued here, after ranking, in the order the rows are shown (R1-10).
     for (const r of shown) {
       const prev = results.get(r.id);
       results.set(r.id, {
@@ -712,9 +651,9 @@ export function createToolRunner(deps: ToolRunnerDeps): ToolRunner {
         merged: r.result,
         magnet: prev?.magnet || r.result.magnet || '',
         parsed: r.parsed,
-        query: parsedQuery,
+        query: o.queryOf(r),
         profile,
-        runtimeMin,
+        runtimeMin: o.runtimeMin,
         ranked: r,
         files: prev?.files,
         totalBytes: prev?.totalBytes,
@@ -754,20 +693,145 @@ export function createToolRunner(deps: ToolRunnerDeps): ToolRunner {
 
     const cardViews = cardRows.map((r) => cardFor(results.get(r.id) as Stored, space));
 
+    const tail: Data = {};
+    if (space.known) tail.free_text = formatBytes(Math.max(0, space.freeBytes - space.pendingNeed - ADMISSION_RESERVE_BYTES));
+    // Nothing fits: say how much more space the closest one needs.
+    if (shown.length > 0 && shown.every((r) => fitOf(r.admission, space.known) === 'too_big')) {
+      const shortfall = Math.min(...shown.map((r) => -(r.admission as NonNullable<Ranked['admission']>).leftAfter));
+      tail.all_too_big = true;
+      // Say why when unfinished downloads hold the space: the user sees more free space in their file manager.
+      const held = space.known && space.pendingNeed > 0 ? ` (the phone has ${formatBytes(space.freeBytes)} free, but unfinished downloads still need ${formatBytes(space.pendingNeed)} of it)` : '';
+      tail.shortfall_text = `about ${formatBytes(shortfall)} more space needed${held}`;
+    }
+    if (shown.some((r) => r.admission && r.admission.result !== 'Fits')) {
+      const advice = adviceData(shown.slice(0, 8).map((r) => candidateFromRanked(r, packCounts.get(r.id))), profile, space, support);
+      if (advice.length > 0) tail.advice = advice;
+    }
+    return { rowsData, cardViews, tail };
+  }
+
+  /** Notes about the whole list that search and browse both give. */
+  function listNotes(shown: Ranked[], update: SearchUpdate, space: Space, names: (id: string) => string): { first: string[]; last: string[] } {
+    const first: string[] = [];
+    if (!space.known) first.push("Free space couldn't be read, so fit is unknown.");
+    if (shown.length > 0 && !shown.some((r) => r.result.publishedAt !== undefined)) {
+      first.push("These sources gave no upload dates, so I can't tell how new they are.");
+    }
+    const last: string[] = [];
+    const unanswered = update.sources.filter((s) => isDown(s.state));
+    if (unanswered.length > 0) last.push(`${unanswered.map((s) => names(s.providerId)).join(', ')} didn't answer.`);
+    return { first, last };
+  }
+
+  const answeredCount = (update: SearchUpdate): number =>
+    update.sources.filter((x) => x.state === 'done' || (x.state !== 'searching' && x.count > 0)).length;
+
+  async function searchTorrents(args: Data, ctx: ToolRunContext): Promise<ToolRunOutput> {
+    const queryText = clean(args.query, QUERY_MAX);
+    if (queryText.length < 2) return fail('bad_args', 'The search needs a title.');
+    const category = (typeof args.category === 'string' ? args.category : 'all') as Category;
+    const profile = (typeof args.profile === 'string' ? args.profile : 'phone') as Profile;
+    const sort = typeof args.sort === 'string' ? args.sort : 'best';
+    const limit = Math.max(1, Math.min(8, typeof args.limit === 'number' ? args.limit : 6));
+
+    // "latest movies" names no title: it is a browse, and a title search for it finds junk.
+    if (deps.browse && isBrowseQuery(queryText)) {
+      const b = browseArgsFromQuery(queryText, category, sort);
+      if (b) return browseTorrents({ ...b, limit, profile }, ctx, ['Treated as a browse request.']);
+    }
+
+    const minSharing = typeof args.min_seeders === 'number' ? args.min_seeders : 1;
+    const minRes = typeof args.min_resolution === 'number' ? args.min_resolution : undefined;
+    const maxRes = typeof args.max_resolution === 'number' ? args.max_resolution : undefined;
+    const maxBytes = typeof args.max_size_gb === 'number' ? Math.round(args.max_size_gb * 1024 * 1024 * 1024) : undefined;
+    const runtimeMin = typeof args.runtime_min === 'number' ? args.runtime_min : undefined;
+
+    const prefs = deps.searchPrefs();
+    const names = (id: string): string => clean(prefs.providers.get(id)?.name ?? id, 40);
+    const progressText = `Searching: ${queryText}`;
+    ctx.progress(progressText, 'running');
+    const onUpdate = watchSources(ctx, names);
+
+    let update: SearchUpdate;
+    try {
+      update = await raceAbort(deps.search(queryText, category, { signal: ctx.signal, onUpdate }), ctx.signal);
+    } catch (e) {
+      if (e instanceof CancelledError || ctx.signal.aborted) throw new CancelledError();
+      ctx.progress(progressText, 'failed');
+      return fail('search_failed', "Search didn't work. Check the connection and try again.");
+    }
+    ctx.progress(progressText, 'done');
+
+    // R1-9: the model's free text becomes title, year, season and episode here, not in the model.
+    const parsedQuery = parseQuery(queryText);
+    const space = await readSpace();
+    const support = await deps.playbackSupport().catch(() => null);
+
+    // Names are cleaned before they are parsed or stored: invisible and bidi characters and links are gone first.
+    let rows = update.results
+      .filter((r) => r.seeders === undefined || r.seeders >= minSharing)
+      .map((r) => ({ ...r, name: clean(r.name, MESSAGE_MAX) }));
+    if (minRes !== undefined || maxRes !== undefined) {
+      rows = rows.filter((r) => {
+        const res = parseRelease(r.name).resolution;
+        if (res === undefined) return true;
+        if (minRes !== undefined && res < minRes) return false;
+        if (maxRes !== undefined && res > maxRes) return false;
+        return true;
+      });
+    }
+
+    const { safety, packCounts } = knownChecks(rows);
+    const scoreCtx: ScoreContext = {
+      profile,
+      runtimeMin,
+      freeBytes: space.freeBytes,
+      pendingNeed: space.pendingNeed,
+      stagingFactor: space.stagingFactor,
+      maxBytes,
+      playback: support,
+      warnUnsafe: prefs.warnUnsafe,
+      providers: prefs.providers,
+      query: { ...parsedQuery, raw: queryText },
+      category,
+      allowEarlySources: args.include_cam === true,
+      packEpisodeCounts: packCounts,
+      safety,
+      now: deps.now(),
+    };
+    const out = scoreResults(rows, scoreCtx);
+
+    // Sort best: the quality shortlist leads, or when nothing qualified the best rows that are not "avoid".
+    const shortlist: Ranked[] = out.shortlist.length > 0 ? out.shortlist : out.ranked.filter((r) => r.tier !== 'avoid').slice(0, 3);
+    const picked: Ranked[] = [...shortlist];
+    for (const r of out.ranked) if (!picked.includes(r)) picked.push(r);
+    // A sort other than "best" applies to the whole list, not to the few rows quality picked, so "newest" finds
+    // the newest rows. Rows that cannot be recommended ("avoid") stay last.
+    let shown: Ranked[];
+    let cardRows: Ranked[];
+    if (sort === 'best') {
+      shown = picked.slice(0, Math.max(limit, shortlist.length));
+      cardRows = shortlist;
+    } else {
+      const usable = sortShown(picked.filter((r) => r.tier !== 'avoid'), sort);
+      const rest = picked.filter((r) => r.tier === 'avoid');
+      shown = [...usable, ...rest].slice(0, limit);
+      // The cards are the first rows the model sees, in the same order, so "the second one" means one thing.
+      cardRows = shown.filter((r) => r.tier !== 'avoid').slice(0, 3);
+    }
+
+    const { rowsData, cardViews, tail } = present(shown, cardRows, { queryOf: () => parsedQuery, profile, runtimeMin, space, support, packCounts });
+
     const hidden: Record<string, number> = {};
     for (const x of out.excluded) hidden[x.reason] = (hidden[x.reason] ?? 0) + 1;
 
-    const notes = [...out.notes];
-    if (!space.known) notes.push("Free space couldn't be read, so fit is unknown.");
-    if (shown.length > 0 && !shown.some((r) => r.result.publishedAt !== undefined)) {
-      notes.push("These sources gave no upload dates, so I can't tell how new they are.");
-    }
+    const common = listNotes(shown, update, space, names);
+    const notes = [...out.notes, ...common.first];
     const hiddenCam = hidden.cam_source ?? 0;
     if (args.include_cam !== true && hiddenCam > 0 && rowsData.length === 0) {
       notes.push(`Only cinema recordings found (${hiddenCam} hidden). Their quality is poor.`);
     }
-    const unanswered = update.sources.filter((s) => isDown(s.state));
-    if (unanswered.length > 0) notes.push(`${unanswered.map((s) => names(s.providerId)).join(', ')} didn't answer.`);
+    notes.push(...common.last);
 
     const data: Data = {
       query: { title: clean(parsedQuery.title, QUERY_MAX), year: parsedQuery.year, season: parsedQuery.season, episode: parsedQuery.episode },
@@ -775,23 +839,115 @@ export function createToolRunner(deps: ToolRunnerDeps): ToolRunner {
       results: rowsData,
       hidden,
       notes,
+      ...tail,
     };
-    if (space.known) data.free_text = formatBytes(Math.max(0, space.freeBytes - space.pendingNeed - ADMISSION_RESERVE_BYTES));
-    // Nothing fits: say how much more space the closest one needs.
-    if (shown.length > 0 && shown.every((r) => fitOf(r.admission, space.known) === 'too_big')) {
-      const shortfall = Math.min(...shown.map((r) => -(r.admission as NonNullable<Ranked['admission']>).leftAfter));
-      data.all_too_big = true;
-      data.shortfall_text = `about ${formatBytes(shortfall)} more space needed`;
-    }
-    if (shown.some((r) => r.admission && r.admission.result !== 'Fits')) {
-      const advice = adviceData(shown.slice(0, 8).map((r) => candidateFromRanked(r, packCounts.get(r.id))), profile, space, support);
-      if (advice.length > 0) data.advice = advice;
-    }
-    const answered = update.sources.filter((x) => x.state === 'done' || (x.state !== 'searching' && x.count > 0)).length;
     const SORT_TEXT: Record<string, string> = { newest: ', newest first', seeders: ', most sharing first', size: ', biggest first', name: ', by name' };
     const detail = update.results.length === 0
       ? 'No results'
-      : `${plural(update.results.length, 'result')} from ${plural(Math.max(answered, 1), 'source')}${SORT_TEXT[sort] ?? ''}`;
+      : `${plural(update.results.length, 'result')} from ${plural(Math.max(answeredCount(update), 1), 'source')}${SORT_TEXT[sort] ?? ''}`;
+    return succeed(data, { results: cardViews, detail });
+  }
+
+  /** File-list safety and pack sizes already learned for these rows (from an earlier get_result_details). */
+  function knownChecks(rows: readonly MergedResult[]): { safety: Map<string, SafetyResult | null>; packCounts: Map<string, number> } {
+    const safety = new Map<string, SafetyResult | null>();
+    const packCounts = new Map<string, number>();
+    for (const r of rows) {
+      const st = results.get(r.infoHash);
+      if (st?.safety) safety.set(r.infoHash, st.safety);
+      if (st?.episodeCount !== undefined) packCounts.set(r.infoHash, st.episodeCount);
+    }
+    return { safety, packCounts };
+  }
+
+  const KIND_TEXT: Record<BrowseKind, string> = { movies: 'movies', tv: 'shows', anime: 'anime', books: 'books', games: 'games', music: 'music', apps: 'apps' };
+  const PERIOD_TEXT: Record<BrowsePeriod, string> = { day: 'today', week: 'this week', month: 'this month', year: 'this year' };
+
+  /**
+   * browse_torrents: what is new or popular in one kind, no title. Same rows, cards and handles as a search, one
+   * row per title (the best copy by the same scoring), newest upload or most sharing first. `extraNotes` lead the
+   * notes (the search fallback says it treated the query as a browse).
+   */
+  async function browseTorrents(args: Data, ctx: ToolRunContext, extraNotes: string[] = []): Promise<ToolRunOutput> {
+    const kind = (typeof args.kind === 'string' ? args.kind : 'movies') as BrowseKind;
+    const order = (args.order === 'popular' ? 'popular' : 'new') as BrowseOrder;
+    const period = (typeof args.period === 'string' && args.period in PERIOD_TEXT ? args.period : 'week') as BrowsePeriod;
+    const limit = Math.max(1, Math.min(10, typeof args.limit === 'number' ? args.limit : 6));
+    const profile = (typeof args.profile === 'string' ? args.profile : 'phone') as Profile;
+    if (!deps.browse) return fail('browse_unavailable', "Browsing isn't available here. Search for a title instead.");
+
+    const prefs = deps.searchPrefs();
+    const names = (id: string): string => clean(prefs.providers.get(id)?.name ?? id, 40);
+    const progressText = `Looking at ${order === 'new' ? 'new' : 'popular'} ${KIND_TEXT[kind]} ${PERIOD_TEXT[period]}`;
+    ctx.progress(progressText, 'running');
+    const onUpdate = watchSources(ctx, names);
+
+    let update: SearchUpdate;
+    try {
+      update = await raceAbort(deps.browse(kind, order, period, { signal: ctx.signal, onUpdate }), ctx.signal);
+    } catch (e) {
+      if (e instanceof CancelledError || ctx.signal.aborted) throw new CancelledError();
+      ctx.progress(progressText, 'failed');
+      return fail('search_failed', "Couldn't list them. Check the connection and try again.");
+    }
+    ctx.progress(progressText, 'done');
+
+    const now = deps.now();
+    const space = await readSpace();
+    const support = await deps.playbackSupport().catch(() => null);
+    const rows = update.results
+      .filter((r) => r.seeders === undefined || r.seeders >= 1)
+      .map((r) => ({ ...r, name: clean(r.name, MESSAGE_MAX) }));
+    const { kept } = filterForBrowse(rows, { kind, order, period, now });
+
+    const { safety, packCounts } = knownChecks(kept);
+    // A generic query ("new movies") turns off the title match in scoring: every release of the kind matches.
+    const raw = `${order} ${kind}`;
+    const out = scoreResults(kept, {
+      profile,
+      freeBytes: space.freeBytes,
+      pendingNeed: space.pendingNeed,
+      stagingFactor: space.stagingFactor,
+      playback: support,
+      warnUnsafe: prefs.warnUnsafe,
+      providers: prefs.providers,
+      query: { title: raw, raw },
+      category: kind,
+      packEpisodeCounts: packCounts,
+      safety,
+      now,
+    });
+
+    // Best copy of each title first (scoring order), then one row per title, then the browse order.
+    const usable = orderBrowse(collapseWorks(out.ranked.filter((r) => r.tier !== 'avoid'), (r) => workKey(r.result.name, kind)), order, (r) => r.result);
+    const usableKeys = new Set(usable.map((r) => workKey(r.result.name, kind)));
+    const rest = collapseWorks(out.ranked.filter((r) => r.tier === 'avoid' && !usableKeys.has(workKey(r.result.name, kind))), (r) => workKey(r.result.name, kind));
+    const shown = [...usable, ...rest].slice(0, limit);
+    const cardRows = shown.filter((r) => r.tier !== 'avoid').slice(0, 3);
+
+    const { rowsData, cardViews, tail } = present(shown, cardRows, {
+      queryOf: (r) => ({ title: r.parsed.title ?? r.result.name, ...(r.parsed.year !== undefined ? { year: r.parsed.year } : {}) }),
+      profile, space, support, packCounts,
+    });
+
+    const hidden: Record<string, number> = {};
+    for (const x of out.excluded) hidden[x.reason] = (hidden[x.reason] ?? 0) + 1;
+
+    const common = listNotes(shown, update, space, names);
+    const notes = [...extraNotes, ...out.notes, ...common.first];
+    if (shown.length === 0) {
+      if (update.sources.length === 0) {
+        notes.push(`None of your sources can list ${KIND_TEXT[kind]}. Turn one on in Settings, Search sources.`);
+      } else if (rows.length > 0) {
+        notes.push(`Nothing ${order === 'new' ? 'new' : 'popular'} in that period. A longer period may find some.`);
+      }
+    }
+    notes.push(...common.last);
+
+    const data: Data = { kind, order, period, count: rowsData.length, results: rowsData, hidden, notes, ...tail };
+    const detail = shown.length === 0
+      ? 'No titles'
+      : `${plural(shown.length, 'title')} from ${plural(Math.max(answeredCount(update), 1), 'source')}`;
     return succeed(data, { results: cardViews, detail });
   }
 
@@ -1821,6 +1977,7 @@ export function createToolRunner(deps: ToolRunnerDeps): ToolRunner {
       let out: ToolRunOutput;
       switch (call.name) {
         case 'search_torrents': out = await searchTorrents(args, ctx); break;
+        case 'browse_torrents': out = await browseTorrents(args, ctx); break;
         case 'get_result_details': out = await getResultDetails(args, ctx); break;
         case 'parse_release_name': out = parseReleaseNames(args, await deps.playbackSupport().catch(() => null)); break;
         case 'get_free_space': out = await getFreeSpaceTool(); break;

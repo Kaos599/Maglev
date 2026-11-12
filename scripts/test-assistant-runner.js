@@ -331,6 +331,32 @@ async function main() {
     check('"elden ring" finds Elden.Ring.v1.12-FitGirl.Repack', jg.ok && jg.data.count === 1, jg.data.hidden);
   }
 
+  console.log('search: a generic query becomes a browse when browse is available');
+  {
+    const NOW_MS = 1700100000000;
+    const DAY = 86_400_000;
+    const films = [
+      merged({ name: 'Harbor.Nights.2023.1080p.WEB-DL.x265-GRP', infoHash: hash('2'), sizeBytes: 1.8 * GB, seeders: 80, publishedAt: NOW_MS - 2 * DAY }),
+      merged({ name: 'Harbor.Nights.2023.720p.WEB-DL.x264-GRP', infoHash: hash('3'), sizeBytes: 0.9 * GB, seeders: 40, publishedAt: NOW_MS - 2 * DAY }),
+      merged({ name: 'Quiet.Fields.2023.720p.BluRay.x264-GRP', infoHash: hash('4'), sizeBytes: 1.1 * GB, seeders: 40, publishedAt: NOW_MS - 4 * DAY }),
+    ];
+    const w = world({ rows: films });
+    const asked = [];
+    w.deps.browse = async (kind, order, period, opts) => {
+      asked.push([kind, order, period]);
+      opts.onUpdate?.({ results: [], sources: w.sources, done: false });
+      return { results: films, sources: w.sources, done: true };
+    };
+    const runner = createToolRunner(w.deps);
+    const out = await call(runner, 'search_torrents', { query: 'latest movies', category: 'movies', sort: 'newest' });
+    const j = parse(out);
+    check('browse ran with movies, new, week; search did not', asked.length === 1 && asked[0].join() === 'movies,new,week' && w.lastQuery === null, asked);
+    check('one row per title, newest first', j.data.count === 2 && /Harbor/.test(j.data.results[0].name_untrusted) && /Quiet/.test(j.data.results[1].name_untrusted), j.data.results.map((r) => r.name_untrusted));
+    check('notes say it was treated as a browse, and name the source that did not answer', j.data.notes[0] === 'Treated as a browse request.' && j.data.notes.includes("YTS didn't answer."), j.data.notes);
+    const d = parse(await call(runner, 'get_result_details', resolveArgs(runner, 'get_result_details', { result_id: out.results[1].handle })));
+    check('a browse row is addressable by get_result_details', d.ok === false ? d.error.code !== 'bad_args' : true, d);
+  }
+
   console.log('search: cards match the on_card rows');
   {
     const NOW_MS = 1700100000000;
@@ -791,7 +817,7 @@ async function main() {
 
   // ---------------------------------------------------------------- the other proposals
 
-  console.log('seven tools: list_transfers, propose_change, ask_user, open_screen (0.11)');
+  console.log('model tools: list_transfers, propose_change, ask_user, open_screen (0.11)');
   {
     const w = transferWorld();
     const runner = createToolRunner(w.deps);

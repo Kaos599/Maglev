@@ -188,7 +188,7 @@ async function main() {
     const base = turnStep(turnInitial({ system: 'S', registry: new HandleRegistry() }), { type: 'Send', text: 'hi', enabled: true, warningAccepted: true, hasKey: true }).effects[1];
     const mk = (presetId, apiKey = 'k') => ({ request: base, presetId, baseUrl: presetById(presetId).baseUrl, model: 'm', apiKey });
     const o = buildRequestBody(mk('openrouter'));
-    check('body: system first, tools, auto, stream, usage extras, max_completion_tokens, parallel false', o.messages[0].role === 'system' && o.tools.length === 7 && o.tool_choice === 'auto' && o.stream === true && o.stream_options.include_usage === true && o.max_completion_tokens === 2048 && o.parallel_tool_calls === false, Object.keys(o));
+    check('body: system first, tools, auto, stream, usage extras, max_completion_tokens, parallel false', o.messages[0].role === 'system' && o.tools.length === 8 && o.tool_choice === 'auto' && o.stream === true && o.stream_options.include_usage === true && o.max_completion_tokens === 2048 && o.parallel_tool_calls === false, Object.keys(o));
     check('body: groq omits parallel_tool_calls', !('parallel_tool_calls' in buildRequestBody(mk('groq'))));
     const g = buildRequestBody(mk('gemini'));
     check('body: gemini and custom use max_tokens', g.max_tokens === 2048 && !('max_completion_tokens' in g) && buildRequestBody(mk('custom')).max_tokens === 2048);
@@ -300,7 +300,7 @@ async function main() {
     await settle();
     await s.timers.advance(60);
     check('the next question gets the new time', s.fetch.requests.at(-1).body.messages[0].content.includes('Friday 13 November 2026, 09:30'));
-    check('the system prompt lists the seven tools', (s.fetch.requests[0].body.tools ?? []).length === 7 && sys1.includes('- ask_user:'));
+    check('the system prompt lists the eight tools', (s.fetch.requests[0].body.tools ?? []).length === 8 && sys1.includes('- ask_user:'));
   }
   {
     const s = setup();

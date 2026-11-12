@@ -3,7 +3,7 @@
 // checks (deterministic, by name), and `fake` (the scripted model used by --fake).
 'use strict';
 
-const { rows, movieRows } = require('./fakeEngine.js');
+const { rows } = require('./fakeEngine.js');
 
 const words = (s) => (s.trim() ? s.trim().split(/\s+/).length : 0);
 const called = (ctx, name) => ctx.tools.filter((t) => t.name === name);
@@ -11,6 +11,9 @@ const names = (ctx) => ctx.tools.map((t) => t.name);
 const cardFor = (ctx, action) => ctx.cards.find((c) => c.tool === 'propose_change' && c.args.action === action);
 const indexOfTool = (ctx, name) => ctx.seq.indexOf(name);
 const searches = (ctx) => called(ctx, 'search_torrents');
+const browses = (ctx) => called(ctx, 'browse_torrents');
+/** A browse_torrents call for `kind` with `order` (order defaults to new). */
+const browsedAs = (ctx, kind, order) => browses(ctx).some((t) => t.args.kind === kind && (t.args.order ?? 'new') === order);
 const toolText = (ctx) => ctx.tools.map((t) => t.full ?? t.content).join('\n');
 /** The "count" of a search result (rows shown), or -1 when the result is not a search answer. */
 const countOf = (t) => { const m = /"count"\s*:\s*(\d+)/.exec(t.full ?? t.content); return m ? Number(m[1]) : -1; };
@@ -44,15 +47,20 @@ const add = (s) => S.push({ confirm: false, record: false, ...s });
 add({
   id: 1, messages: ['find me latest movies'],
   checks: [
-    { name: 'search_torrents sort newest', fn: (c) => called(c, 'search_torrents').some((t) => t.args.sort === 'newest') },
+    { name: 'browse_torrents kind movies, order new', fn: (c) => browsedAs(c, 'movies', 'new') },
+    { name: 'no title search', fn: (c) => searches(c).length === 0 },
+    { name: 'browse rows are different titles', fn: (c) => { const b = browses(c)[0]; const names = b ? (JSON.parse(b.full).data.results || []).map((r) => String(r.name_untrusted).toLowerCase().split(/[ .]\d{4}/)[0]) : []; return names.length > 0 && new Set(names).size === names.length; } },
   ],
-  fake: [call('search_torrents', { query: 'movies', category: 'movies', sort: 'newest' }), say('Here are the newest movie uploads I found. The first one went up a few days ago. Want me to look inside one?')],
+  fake: [call('browse_torrents', { kind: 'movies', order: 'new' }), say('Here are new movies from this week. The Last Harbor went up a couple of days ago. Want me to look inside one?')],
 });
 
 add({
   id: 2, messages: ['find me popular movies'],
-  checks: [{ name: 'search_torrents sort seeders', fn: (c) => called(c, 'search_torrents').some((t) => t.args.sort === 'seeders') }],
-  fake: [call('search_torrents', { query: 'movies', category: 'movies', sort: 'seeders' }), say('These are the most shared movies right now. Tell me which one you want and I will check what is inside.')],
+  checks: [
+    { name: 'browse_torrents kind movies, order popular', fn: (c) => browsedAs(c, 'movies', 'popular') },
+    { name: 'no title search', fn: (c) => searches(c).length === 0 },
+  ],
+  fake: [call('browse_torrents', { kind: 'movies', order: 'popular' }), say('These are the most shared movies this week. Tell me which one you want and I will check what is inside.')],
 });
 
 add({
@@ -97,17 +105,18 @@ add({
 add({
   id: 7, messages: ['best movies this week'],
   checks: [
-    { name: 'search sort newest', fn: (c) => called(c, 'search_torrents').some((t) => t.args.sort === 'newest') },
+    { name: 'browse_torrents kind movies (new or popular), period week', fn: (c) => browses(c).some((t) => t.args.kind === 'movies' && (t.args.period ?? 'week') === 'week') },
+    { name: 'no title search', fn: (c) => searches(c).length === 0 },
     {
       name: 'no date claims when rows lack upload age',
       fn: (c) => {
-        const content = called(c, 'search_torrents').map((t) => t.content).join(' ');
+        const content = browses(c).map((t) => t.content).join(' ');
         if (/uploaded/i.test(content)) return true;
         return !/\b(\d+\s+days?\s+ago|uploaded|released (on|in|this week))\b/i.test(c.text);
       },
     },
   ],
-  fake: [call('search_torrents', { query: 'movies', category: 'movies', sort: 'newest' }), say('These are the newest movie uploads I found. Want me to look inside one?')],
+  fake: [call('browse_torrents', { kind: 'movies', order: 'popular', period: 'week' }), say('These are the most shared movies from this week. Want me to look inside one?')],
 });
 
 add({
@@ -211,13 +220,13 @@ add({
 
 add({
   id: 16, messages: ['find me latest movies'], freeGB: 20,
-  fixture: () => movieRows(),
   checks: [
-    { name: 'search returned at least 1 row', fn: (c) => searches(c).some((t) => countOf(t) >= 1) },
+    { name: 'browse_torrents kind movies, order new', fn: (c) => browsedAs(c, 'movies', 'new') },
+    { name: 'browse returned at least 1 row', fn: (c) => browses(c).some((t) => countOf(t) >= 1) },
     { name: 'cards exist', fn: (c) => c.cardsShown.length >= 1 },
     { name: 'text never contains r1-style ids', fn: (c) => !/\br\d+\b/.test(c.text) },
   ],
-  fake: [call('search_torrents', { query: 'movies', category: 'movies', sort: 'newest' }), say('The newest upload is The Last Harbor, from a couple of days ago. Night Train to Lisbon is a smaller copy if space is tight.')],
+  fake: [call('browse_torrents', { kind: 'movies', order: 'new' }), say('The newest one is Glass Orchard, from yesterday. The Last Harbor went up a couple of days ago.')],
 });
 
 add({
@@ -273,8 +282,8 @@ add({
 
 add({
   id: 20, messages: ['find me latest movies', 'look inside the second one'], freeGB: 20,
-  fixture: () => movieRows(),
   checks: [
+    { name: 'browse_torrents before get_result_details', fn: (c) => { const b = indexOfTool(c, 'browse_torrents'); const d = indexOfTool(c, 'get_result_details'); return b >= 0 && d > b; } },
     { name: 'get_result_details called', fn: (c) => called(c, 'get_result_details').length > 0 },
     {
       name: 'details target is the 2nd card',
@@ -282,8 +291,8 @@ add({
     },
   ],
   fake: [
-    call('search_torrents', { query: 'movies', category: 'movies', sort: 'newest' }),
-    say('The newest upload is The Last Harbor. Want me to look inside one?'),
+    call('browse_torrents', { kind: 'movies', order: 'new' }),
+    say('The newest one is Glass Orchard. Want me to look inside one?'),
     (h) => call('get_result_details', { result_id: h.cardIds()[1] ?? h.rid(2) }),
     say('It has one video file and an English subtitle file. Nothing odd.'),
   ],

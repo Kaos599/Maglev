@@ -9,7 +9,7 @@ process.removeAllListeners('warning');
 const fs = require('node:fs');
 const path = require('node:path');
 const { SCENARIOS, GENERIC } = require('./scenarios.js');
-const { createWorld, fakeSearchRows } = require('./fakeEngine.js');
+const { createWorld, fakeSearchRows, fakeBrowseRows } = require('./fakeEngine.js');
 const RATE_LIMITED_TEXT = /rate limited|too many requests|\b429\b/i;
 
 const ROOT = path.resolve(__dirname, '..', '..');
@@ -147,9 +147,9 @@ const md = (s) => String(s).replace(/\|/g, '\\|').replace(/\r?\n/g, ' ');
 
 // ---- one scenario ----------------------------------------------------------------------------------------
 async function runScenario(mods, scenario) {
-  const { createChatController, createStreamFn, createToolRunner, defaultAssistantPrefs, PROVIDERS, searchAll, resolveResult } = mods;
+  const { createChatController, createStreamFn, createToolRunner, defaultAssistantPrefs, PROVIDERS, searchAll, resolveResult, browseAll } = mods;
   const world = createWorld({ freeGB: scenario.freeGB });
-  const state = { scenario, requests: 0, fakeStep: 0, rateLimited: false, searches: 0 };
+  const state = { scenario, requests: 0, fakeStep: 0, rateLimited: false, searches: 0, browses: 0 };
   let turn = 0;
   const tools = [];
   const cards = [];
@@ -159,9 +159,9 @@ async function runScenario(mods, scenario) {
 
   const enabled = PROVIDERS.filter((p) => p.enabledByDefault && !p.nsfw).map((p) => p.id);
   const providers = new Map(PROVIDERS.map((p) => [p.id, { name: p.name, ...(p.unsafeReason ? { unsafeReason: p.unsafeReason } : {}) }]));
+  const remember = (u) => { for (const x of u.results || []) world.knownResults.set(String(x.infoHash).toLowerCase(), { name: x.name, sizeBytes: x.sizeBytes }); return u; };
   const base = createToolRunner({
     async search(query, category, opts) {
-      const remember = (u) => { for (const x of u.results || []) world.knownResults.set(String(x.infoHash).toLowerCase(), { name: x.name, sizeBytes: x.sizeBytes }); return u; };
       if (FAKE) {
         const fx = scenario.fixture ? scenario.fixture(query, state.searches++) : fakeSearchRows(query);
         const results = Array.isArray(fx) ? fx : fx.results;
@@ -171,6 +171,17 @@ async function runScenario(mods, scenario) {
         return remember(update);
       }
       return remember(await searchAll(query, category, { enabled, useFor: {}, mirrorOverride: {}, adult: false, waitSeconds: 8, limit: 50, hideDead: true, sort: 'seeders', signal: opts.signal, onUpdate: opts.onUpdate }));
+    },
+    async browse(kind, order, period, opts) {
+      if (FAKE) {
+        const fx = scenario.browseFixture ? scenario.browseFixture(kind, order, period, state.browses++) : fakeBrowseRows(kind);
+        const results = Array.isArray(fx) ? fx : fx.results;
+        const sources = Array.isArray(fx) || !fx.sources ? [{ providerId: 'knaben', state: 'done', count: results.length, ms: 5 }, { providerId: 'yts', state: 'done', count: 0, ms: 5 }] : fx.sources;
+        const update = { results, sources, done: true };
+        opts.onUpdate?.(update);
+        return remember(update);
+      }
+      return remember(await browseAll(kind, order, period, { enabled, useFor: {}, mirrorOverride: {}, adult: false, waitSeconds: 8, hideDead: true, signal: opts.signal, onUpdate: opts.onUpdate }));
     },
     searchPrefs: () => ({ warnUnsafe: true, providers }),
     resolveResult: async (r, signal) => (FAKE ? r : resolveResult(r, signal)),
@@ -289,14 +300,15 @@ async function runScenario(mods, scenario) {
 
 // ---- main ------------------------------------------------------------------------------------------------
 async function main() {
-  const [{ createChatController }, { createStreamFn }, { createToolRunner }, { defaultAssistantPrefs }, agg] = await Promise.all([
+  const [{ createChatController }, { createStreamFn }, { createToolRunner }, { defaultAssistantPrefs }, agg, browse] = await Promise.all([
     import(path.join(ROOT, 'utils/assistantApp/chatController.ts')),
     import(path.join(ROOT, 'utils/assistantApp/client.ts')),
     import(path.join(ROOT, 'utils/assistant/toolRunner.ts')),
     import(path.join(ROOT, 'utils/prefs/assistant.ts')),
     import(path.join(ROOT, 'utils/search/aggregate.ts')),
+    import(path.join(ROOT, 'utils/search/browse.ts')),
   ]);
-  const mods = { createChatController, createStreamFn, createToolRunner, defaultAssistantPrefs, PROVIDERS: agg.PROVIDERS, searchAll: agg.searchAll, resolveResult: agg.resolveResult };
+  const mods = { createChatController, createStreamFn, createToolRunner, defaultAssistantPrefs, PROVIDERS: agg.PROVIDERS, searchAll: agg.searchAll, resolveResult: agg.resolveResult, browseAll: browse.browseAll };
 
   const stamp = new Date().toISOString().replace(/[:.]/g, '-');
   const outDir = path.join(__dirname, 'out', stamp);

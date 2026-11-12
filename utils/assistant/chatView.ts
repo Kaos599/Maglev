@@ -34,6 +34,7 @@ export interface ToolMeta {
 
 const META: Record<string, ToolMeta> = {
   search_torrents: { icon: 'search', running: 'Searching', done: 'Searched', failed: "Couldn't search" },
+  browse_torrents: { icon: 'search', running: 'Looking at what is out', done: 'Looked at what is out', failed: "Couldn't list" },
   get_result_details: { icon: 'folder', running: 'Looking inside', done: 'Looked inside', failed: "Couldn't look inside" },
   parse_release_name: { icon: 'file-doc', running: 'Reading the name', done: 'Read the name', failed: "Couldn't read the name" },
   get_free_space: { icon: 'storage', running: 'Checking space', done: 'Checked space', failed: "Couldn't check space" },

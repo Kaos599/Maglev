@@ -40,8 +40,8 @@ export type ValidateResult =
   | { ok: true; args: Record<string, unknown>; /** Plain-English remarks about what was fixed or ignored, for the tool result. */ notes?: string[] }
   | { ok: false; error: { code: 'bad_args' | 'unknown_tool'; message: string } };
 
-/** The seven tools the model sees (docs/ASSISTANT_DESIGN.md, 0.11). Few tools, because free models call many tools badly. */
-export const READ_TOOL_NAMES = ['search_torrents', 'get_result_details', 'list_transfers', 'ask_user', 'open_screen'] as const;
+/** The eight tools the model sees (docs/ASSISTANT_DESIGN.md, 0.11). Few tools, because free models call many tools badly. */
+export const READ_TOOL_NAMES = ['search_torrents', 'browse_torrents', 'get_result_details', 'list_transfers', 'ask_user', 'open_screen'] as const;
 
 export const PROPOSAL_TOOL_NAMES = ['propose_add', 'propose_change'] as const;
 
@@ -91,7 +91,7 @@ const HANDLE_FIELD_KIND: Readonly<Record<string, HandleKind>> = {
 const RESULT_ID: JsonSchema = {
   type: 'string',
   pattern: '^r[0-9]+$',
-  description: 'Result id from search_torrents, such as r1.',
+  description: 'Result id from search_torrents or browse_torrents, such as r1.',
 };
 const TRANSFER_ID: JsonSchema = {
   type: 'string',
@@ -130,6 +130,19 @@ const SEARCH_TORRENTS: JsonSchema = {
     limit: { type: 'integer', minimum: 1, maximum: 8, default: 6 },
   },
   required: ['query'],
+  additionalProperties: false,
+};
+
+/** Kinds, orders and periods browse_torrents takes (utils/search/browse.ts). */
+const BROWSE_TORRENTS: JsonSchema = {
+  type: 'object',
+  properties: {
+    kind: { type: 'string', enum: ['movies', 'tv', 'anime', 'books', 'games', 'music', 'apps'] },
+    order: { type: 'string', enum: ['new', 'popular'], default: 'new', description: 'new for latest releases, popular for most shared.' },
+    period: { type: 'string', enum: ['day', 'week', 'month', 'year'], default: 'week' },
+    limit: { type: 'integer', minimum: 1, maximum: 10, default: 6 },
+  },
+  required: ['kind'],
   additionalProperties: false,
 };
 
@@ -350,6 +363,7 @@ const OPEN_SCREEN: JsonSchema = {
 
 const PARAMETERS: Record<ToolName, JsonSchema> = {
   search_torrents: SEARCH_TORRENTS,
+  browse_torrents: BROWSE_TORRENTS,
   get_result_details: GET_RESULT_DETAILS,
   parse_release_name: PARSE_RELEASE_NAME,
   get_free_space: GET_FREE_SPACE,
@@ -367,6 +381,8 @@ const PARAMETERS: Record<ToolName, JsonSchema> = {
 const DESCRIPTIONS: Record<ToolName, string> = {
   search_torrents:
     'Search the enabled sources for torrents. Returns the best matches with size, sharing, upload age when known, and a space check. Just the title. Add a year, season or episode only if the user gave one.',
+  browse_torrents:
+    'List what is new or popular in a kind of thing, with no title. Use it for latest, new, recent, popular, trending, top requests.',
   get_result_details:
     'Look inside one search result: its files, file safety check and space check. Slow. Call it before proposing a result.',
   parse_release_name:
@@ -525,7 +541,7 @@ export function validateArgs(name: string, rawArgs: unknown, registry: HandleReg
 
 function validateToolArgs(name: ToolName, input: Record<string, unknown>, registry: HandleRegistry): ValidateResult {
   const dropped: string[] = [];
-  input = normalizeNode(PARAMETERS[name], input, '', dropped) as Record<string, unknown>;
+  input = normalizeNode(PARAMETERS[name], applyAliases(name, input), '', dropped) as Record<string, unknown>;
   const schemaError = checkNode(PARAMETERS[name], input, 'arguments');
   if (schemaError) return bad(schemaError);
 
@@ -558,21 +574,57 @@ function ignoredNote(keys: string[]): string {
 
 // ---- Lenient input: small free models send slightly wrong shapes. Fix what is unambiguous, reject the rest. ----
 
+const CATEGORY_SYNONYMS: Record<string, string> = {
+  movie: 'movies', film: 'movies', films: 'movies', cinema: 'movies',
+  show: 'tv', shows: 'tv', series: 'tv', 'tv show': 'tv', 'tv shows': 'tv', 'tv series': 'tv', television: 'tv',
+  song: 'music', songs: 'music', album: 'music', albums: 'music',
+  book: 'books', ebook: 'books', ebooks: 'books',
+  game: 'games',
+  app: 'apps', software: 'apps', application: 'apps', applications: 'apps',
+};
+
 const ENUM_SYNONYMS: Record<string, Record<string, string>> = {
-  category: {
-    movie: 'movies', film: 'movies', films: 'movies', cinema: 'movies',
-    show: 'tv', shows: 'tv', series: 'tv', 'tv show': 'tv', 'tv shows': 'tv', 'tv series': 'tv', television: 'tv',
-    song: 'music', songs: 'music', album: 'music', albums: 'music',
-    book: 'books', ebook: 'books', ebooks: 'books',
-    game: 'games',
-    app: 'apps', software: 'apps', application: 'apps', applications: 'apps',
-  },
+  category: CATEGORY_SYNONYMS,
   sort: {
     popular: 'seeders', seeds: 'seeders', seeder: 'seeders', seeded: 'seeders', 'most seeded': 'seeders', 'most popular': 'seeders',
     latest: 'newest', new: 'newest', recent: 'newest', newer: 'newest', date: 'newest',
     relevance: 'best', relevant: 'best', default: 'best',
   },
+  // browse_torrents
+  kind: {
+    ...CATEGORY_SYNONYMS,
+    episodes: 'tv', episode: 'tv', animes: 'anime', cartoon: 'anime', cartoons: 'anime',
+    audiobook: 'books', audiobooks: 'books', comic: 'books', comics: 'books', program: 'apps', programs: 'apps',
+  },
+  order: {
+    latest: 'new', newest: 'new', recent: 'new', newer: 'new', fresh: 'new', date: 'new', 'date added': 'new', released: 'new',
+    trending: 'popular', top: 'popular', best: 'popular', hot: 'popular', seeders: 'popular', seeds: 'popular', seeded: 'popular',
+    'most popular': 'popular', 'most seeded': 'popular', 'most shared': 'popular', sharing: 'popular',
+  },
+  period: {
+    today: 'day', daily: 'day', '24h': 'day', '24 hours': 'day', 'last 24 hours': 'day', 'this day': 'day', tonight: 'day',
+    'this week': 'week', weekly: 'week', '7 days': 'week', 'last week': 'week', 'last 7 days': 'week',
+    'this month': 'month', monthly: 'month', '30 days': 'month', 'last month': 'month', 'last 30 days': 'month',
+    'this year': 'year', yearly: 'year', annual: 'year', 'last year': 'year', '12 months': 'year',
+  },
 };
+
+/** Field names small models use for another tool's argument, per tool: renamed when the real field is absent. */
+const FIELD_ALIASES: Partial<Record<string, Record<string, string>>> = {
+  browse_torrents: { category: 'kind', type: 'kind', sort: 'order', order_by: 'order', time: 'period', window: 'period', range: 'period', timeframe: 'period' },
+};
+
+function applyAliases(name: string, input: Record<string, unknown>): Record<string, unknown> {
+  const aliases = FIELD_ALIASES[name];
+  if (!aliases) return input;
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(input)) {
+    const to = hasOwn(aliases, k) ? aliases[k] : undefined;
+    if (to !== undefined && !hasOwn(input, to) && !hasOwn(out, to)) out[to] = v;
+    else if (!hasOwn(out, k)) out[k] = v;
+  }
+  return out;
+}
 
 /** "1080", "1080p", "5", "5 GB", "90 min" → a number. Other units (MB, TB) are not guessed. */
 function coerceNumber(value: string, schema: JsonSchema): number | string {

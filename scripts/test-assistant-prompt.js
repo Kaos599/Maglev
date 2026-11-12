@@ -37,7 +37,8 @@ async function main() {
   const lines = section.split('\n');
   check('one line per tool', lines.length === TOOLS.length && TOOLS.every((t) => lines.some((l) => l.startsWith(`- ${t.function.name}:`))), lines.length);
   check('search_torrents line shows sort values and category', /search_torrents:.*category.*sort best\|seeders\|newest/.test(section));
-  check('exactly seven tools are mentioned', TOOLS.length === 7);
+  check('exactly eight tools are mentioned', TOOLS.length === 8);
+  check('browse_torrents is listed', /^- browse_torrents: /m.test(section), section);
   for (const gone of ['parse_release_name', 'describe_tools', 'propose_plan', 'propose_setting', 'get_free_space', 'get_transfer_details', 'explain_error', 'propose_select_files', 'propose_pause_resume', 'propose_remove_files', 'propose_delete', 'propose_url_download']) {
     check(`the prompt never mentions ${gone}`, !p.includes(gone));
   }
@@ -56,9 +57,9 @@ async function main() {
 
   console.log('prompt: approach by intent');
   const ap = p.split('<approach>')[1].split('</approach>')[0];
-  check('recency sorts newest and judges by upload age', /newest for recency/.test(ap) && /upload age/.test(ap) && /sources gave no dates/.test(ap));
-  check('popularity sorts by seeders', /seeders for popularity/.test(ap));
-  check('suggestions: picks first, offer to search; new or popular now counts as finding', /two or three picks, then offer to search/.test(ap) && /new, recent or popular now, treat it as finding/.test(ap));
+  check('no title but new or popular: browse_torrents with order new or popular', /No title[^\n]*new, recent, popular[^\n]*browse_torrents[^\n]*order new or popular/.test(ap), ap);
+  check('a title: search_torrents, newest for the newest copy, seeders for the most shared', /A title: search_torrents/.test(ap) && /newest/.test(ap) && /seeders for the most shared/.test(ap));
+  check('suggestions: picks first, offer to search; new or popular now browses', /two or three picks, then offer to search/.test(ap) && /new, recent or popular now, browse instead/.test(ap));
   check('meaning questions: no tools', /Answer from knowledge, no tools\n- Meaning or comparison/.test(ap));
   check('availability opens with yes, no or not yet; cinema recordings flagged', /yes, no or not yet/.test(ap) && /cinema recordings/.test(ap));
   check('how-to follows the app and names Download/Maglev', /Choose files/.test(ap) && /Download\/Maglev/.test(ap));
