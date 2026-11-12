@@ -56,6 +56,57 @@ function safeDecode(s: string): string {
   }
 }
 
+/** A magnet or a link to a .torrent file. Those belong to the Add torrent screen, not the download screen. */
+export function isTorrentSource(text: string): boolean {
+  const t = (text ?? '').trim();
+  if (/^magnet:/i.test(t)) return true;
+  return parseDownloadUrl(t).ok && isTorrentUrl(t);
+}
+
+/**
+ * What pasted or typed text means: a magnet stays whole, otherwise the first web link inside it
+ * ("Get it here https://x/a.zip" gives "https://x/a.zip"), otherwise the trimmed text unchanged.
+ */
+export function normalizeIncoming(text: string): string {
+  const t = (text ?? '').trim();
+  if (/^magnet:/i.test(t)) return t;
+  return extractHttpUrl(t) ?? t;
+}
+
+function decodeKey(s: string): string {
+  try {
+    return decodeURIComponent(s.replace(/\+/g, ' '));
+  } catch {
+    return s;
+  }
+}
+
+/**
+ * Removes every `from` query parameter (compared after decoding, so `%66rom=share` goes too) from a route
+ * or URL. The share handler is the only code that may add `from=share`; anything arriving from outside
+ * (a `maglev://` link) passes through this first, so it cannot claim to be a share.
+ */
+export function stripShareMarker(path: string): string {
+  const s = path ?? '';
+  const q = s.indexOf('?');
+  if (q < 0) return s;
+  const hashAt = s.indexOf('#', q);
+  const query = s.slice(q + 1, hashAt < 0 ? undefined : hashAt);
+  const tail = hashAt < 0 ? '' : s.slice(hashAt);
+  const kept = query.split('&').filter((p) => p !== '' && decodeKey(p.split('=')[0]).trim().toLowerCase() !== 'from');
+  return s.slice(0, q) + (kept.length ? `?${kept.join('&')}` : '') + tail;
+}
+
+/** The route the share handler uses for a shared web link. Only this route carries the share marker. */
+export function sharedDownloadRoute(url: string): string {
+  return `/add-download?url=${encodeURIComponent(url)}&from=share`;
+}
+
+/** True only when the screen was opened by the share handler with a link. */
+export function isShareOpen(params: { url?: unknown; from?: unknown }): boolean {
+  return params.from === 'share' && typeof params.url === 'string' && params.url.trim().length > 0;
+}
+
 /** Makes a name safe as a single file name. Same rules as the engine's sanitiser, for display and the simulator. */
 export function sanitizeFileName(raw: string): string {
   const last = raw.split(/[/\\]/).pop() ?? '';

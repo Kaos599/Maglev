@@ -64,12 +64,62 @@ async function main() {
   check('queued pauses', copy.downloadAction(d({ state: 'queued' }))?.kind === 'pause');
   check('user pause resumes', copy.downloadAction(d({ state: 'paused', pausedBy: 'user' }))?.kind === 'resume');
   check('storage full pause resumes', copy.downloadAction(d({ state: 'paused', pausedBy: 'storage_full' }))?.kind === 'resume');
-  check('governance pause has no button', copy.downloadAction(d({ state: 'paused', pausedBy: 'wifi_only' })) === null);
+  check('governance pause has no button', copy.downloadAction(d({ state: 'paused', pausedBy: 'schedule' })) === null);
   check('needs link offers a new link', copy.downloadAction(d({ state: 'needs_link' }))?.kind === 'newLink');
   check('file changed offers restart', copy.downloadAction(d({ state: 'error', error: { code: 'FILE_CHANGED', message: '' } }))?.kind === 'restart');
   check('other errors offer retry', copy.downloadAction(d({ state: 'error', error: { code: 'NETWORK', message: '' } }))?.kind === 'retry');
   check('finished has no button', copy.downloadAction(d({ state: 'finished' })) === null);
   check('remove copy differs for a finished download', copy.removeCopy(d({ state: 'finished' })).keepLabel === 'Remove (keep file)' && copy.removeCopy(d({})).keepLabel.includes('partial'));
+
+  // ---- recovery copy and actions ----
+  console.log('recovery');
+  const err = (code, extra) => d({ state: 'error', error: { code, message: 'x', ...extra } });
+  const kinds = (x) => copy.downloadActions(x).map((a) => a.kind).join(',');
+  check('auth needs sign-in label', copy.downloadStatus(d({ state: 'needs_link', error: { code: 'AUTH_REQUIRED', message: '' } })).text === 'Needs sign-in · Paste new link');
+  check('not a file offers Remove, not Retry', kinds(err('NOT_A_FILE')) === 'remove');
+  check('checksum offers Remove, not Retry', kinds(err('CHECKSUM_MISMATCH')) === 'remove');
+  check('permission offers Pick folder again then Retry', kinds(err('PERMISSION')) === 'pickFolder,retry' && copy.downloadStatus(err('PERMISSION')).text === "Maglev can't write to that folder.");
+  check('EACCES is permission', kinds(err('EACCES')) === 'pickFolder,retry');
+  check('network offers Retry', kinds(err('NETWORK')) === 'retry');
+  check('5xx offers Retry, 404 offers Remove', kinds(err('HTTP_STATUS', { httpStatus: 503 })) === 'retry' && kinds(err('HTTP_STATUS', { httpStatus: 404 })) === 'remove' && kinds(err('HTTP_STATUS', { httpStatus: 429 })) === 'retry');
+  check('unknown code is a generic retry', kinds(err('WHATEVER')) === 'retry' && copy.downloadStatus(d({ state: 'error', error: null })).text === 'Something went wrong');
+  check('offline pause', copy.downloadStatus(d({ state: 'paused', pausedBy: 'offline' })).text === 'Waiting for a connection' && copy.downloadAction(d({ state: 'paused', pausedBy: 'offline' })) === null);
+  check('folder gone pause offers Pick folder again', copy.downloadStatus(d({ state: 'paused', pausedBy: 'storage_unavailable' })).text === "The folder isn't available. Is the SD card in?" && kinds(d({ state: 'paused', pausedBy: 'storage_unavailable' })) === 'pickFolder');
+  check('folder gone error', copy.downloadStatus(err('STORAGE_UNAVAILABLE')).text === "The folder isn't available. Is the SD card in?" && kinds(err('STORAGE_UNAVAILABLE')) === 'pickFolder');
+  check('too big for the card', copy.downloadStatus(err('FILE_TOO_LARGE')).text === "This file is bigger than the card's format allows (4 GB). Use phone storage." && kinds(err('FILE_TOO_LARGE')) === 'pickFolder');
+  check('local redirect is blocked, Remove only', copy.downloadStatus(err('LOCAL_REDIRECT')).text === 'This link tried to send Maglev to a device on your network, so it was stopped.' && kinds(err('LOCAL_REDIRECT')) === 'remove');
+  check('policy block opens settings', copy.downloadStatus(err('BLOCKED')).text === 'Blocked by your Wi-Fi-only or VPN setting.' && kinds(err('BLOCKED')) === 'openNetworkSettings,retry');
+  check('wifi pause opens settings with a caption', kinds(d({ state: 'paused', pausedBy: 'wifi_only' })) === 'openNetworkSettings' && copy.downloadCaption(d({ state: 'paused', pausedBy: 'wifi_only' })) === 'Wi-Fi only is on in Settings → Network.');
+  check('battery pause still has no button', copy.downloadAction(d({ state: 'paused', pausedBy: 'battery' })) === null);
+  check('settings actions have routes', copy.actionRoute('pickFolder') === '/settings/storage' && copy.actionRoute('openNetworkSettings') === '/settings/network' && copy.actionRoute('retry') === null);
+  const pv = (code, status) => copy.probeErrorView(code, 'm', status);
+  check('probe: page and sign-in say Paste another link', pv('NOT_A_FILE').primary === 'pasteAnother' && pv('AUTH_REQUIRED').primary === 'pasteAnother');
+  check('probe: page copy is exact', pv('NOT_A_FILE').body === 'This is a web page, not a file. On the page, long-press the download button, tap Copy link address, then paste it here.');
+  check('probe: sign-in copy is exact', pv('AUTH_REQUIRED').body === 'This site wants you to sign in. Sign in on the site in your browser, copy the download link again, and paste it here.');
+  check('probe: network and 5xx keep Try again, 404 does not', pv('NETWORK').primary === 'retry' && pv('HTTP_STATUS', 502).primary === 'retry' && pv('HTTP_STATUS', 404).primary === 'pasteAnother');
+
+  // ---- torrents, pasted text and the share marker ----
+  console.log('routing');
+  const mag = 'magnet:?xt=urn:btih:' + 'a'.repeat(40);
+  check('magnet is a torrent source', link.isTorrentSource(mag) && link.isTorrentSource('https://x.test/a.torrent?x=1') && !link.isTorrentSource('https://x.test/a.zip'));
+  check('paste extracts the link from text', link.normalizeIncoming('Get it here https://x/a.zip') === 'https://x/a.zip');
+  check('paste keeps a magnet whole', link.normalizeIncoming(mag + '&tr=http://t.test/announce') === mag + '&tr=http://t.test/announce');
+  check('share route carries the marker', link.sharedDownloadRoute('https://x.test/a.zip?b=1') === '/add-download?url=https%3A%2F%2Fx.test%2Fa.zip%3Fb%3D1&from=share');
+  check('share marker opens only with a link', link.isShareOpen({ url: 'https://x/a', from: 'share' }) && !link.isShareOpen({ url: 'https://x/a' }) && !link.isShareOpen({ from: 'share' }) && !link.isShareOpen({ url: 'https://x/a', from: 'other' }));
+  for (const forged of [
+    '/add-download?url=https%3A%2F%2Fevil.test%2Fa&from=share',
+    'maglev://add-download?url=https%3A%2F%2Fevil.test%2Fa&from=share',
+    '/add-download?from=share&url=x',
+    '/add-download?url=x&%66rom=share',
+    '/add-download?url=x&FROM=share',
+    '/add-download?url=x&from=share&from=share#h',
+  ]) {
+    const out = link.stripShareMarker(forged);
+    check(`forged marker is stripped: ${forged}`, !/from/i.test(out.replace(/^[^?]*/, '').replace(/https?%3A[^&]*/i, '')) && out.includes('url=') );
+  }
+  check('strip leaves other params and plain paths alone', link.stripShareMarker('/add-download?url=x&y=1') === '/add-download?url=x&y=1' && link.stripShareMarker('/settings/storage') === '/settings/storage');
+  check('strip removes an empty query', link.stripShareMarker('/add-download?from=share') === '/add-download');
+  check('a url value containing from=share is kept', link.stripShareMarker('/add-download?url=' + encodeURIComponent('https://x/a?from=share')).includes('url=https%3A%2F%2Fx%2Fa%3Ffrom%3Dshare'));
 
   // ---- simulator ----
   console.log('simulator');

@@ -1,12 +1,13 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { StyleSheet, Text, TextInput, View } from 'react-native';
+import { useRouter } from 'expo-router';
 import * as Clipboard from 'expo-clipboard';
 import type { DownloadSnapshot, EngineResult } from 'maglev-engine';
-import { isDownloadLink } from 'maglev-engine';
+import { isDownloadLink, normalizeIncoming } from 'maglev-engine';
 import { useTheme } from '../../context/ThemeContext';
 import { ThemeColors, radius, spacing, type } from '../../constants/theme';
 import { formatBytes } from '../../constants/format';
-import { downloadAction, removeCopy } from '../../utils/downloadCopy';
+import { actionRoute, downloadActions, downloadCaption, removeCopy } from '../../utils/downloadCopy';
 import { Banner, Button, Sheet } from '../ui';
 
 export interface DownloadSheetProps {
@@ -23,6 +24,7 @@ type Step = 'main' | 'confirmDelete';
 /** What a tap on a download card opens: details, Retry or Restart, Paste new link, Remove (SM-30 Copy). */
 export function DownloadSheet({ download: d, onClose, onRetry, onRemove, onNewLink }: DownloadSheetProps) {
   const { colors } = useTheme();
+  const router = useRouter();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const [step, setStep] = useState<Step>('main');
   const [link, setLink] = useState('');
@@ -40,12 +42,13 @@ export function DownloadSheet({ download: d, onClose, onRetry, onRemove, onNewLi
   if (!d) return <Sheet visible={false} onClose={onClose} title="" />;
 
   const copy = removeCopy(d);
-  const action = downloadAction(d);
+  const actions = downloadActions(d);
+  const caption = downloadCaption(d);
   const size = d.size ? formatBytes(d.size) : 'Size unknown';
   const subtitle = `${d.urlDisplay} · ${size}`;
 
   const applyLink = async (raw: string) => {
-    const text = raw.trim();
+    const text = normalizeIncoming(raw);
     if (!isDownloadLink(text)) {
       setLinkError("That isn't a web link.");
       return;
@@ -117,17 +120,26 @@ export function DownloadSheet({ download: d, onClose, onRetry, onRemove, onNewLi
             <Button label="Use this link" fullWidth disabled={!link.trim() || busy} onPress={() => void applyLink(link)} />
           </View>
         ) : null}
-        {d.state === 'error' && action && (action.kind === 'retry' || action.kind === 'restart') ? (
-          <Button
-            label={action.label}
-            icon="retry"
-            fullWidth
-            onPress={() => {
-              onRetry(d.id);
-              onClose();
-            }}
-          />
-        ) : null}
+        {caption ? <Text style={styles.hint}>{caption}</Text> : null}
+        {d.state === 'error' || d.state === 'paused'
+          ? actions
+              .filter((a) => a.kind !== 'remove' && a.kind !== 'resume')
+              .map((a, i) => (
+                <Button
+                  key={a.kind}
+                  label={a.label}
+                  icon={a.icon}
+                  variant={i === 0 ? 'primary' : 'secondary'}
+                  fullWidth
+                  onPress={() => {
+                    const route = actionRoute(a.kind);
+                    if (route) router.push(route);
+                    else onRetry(d.id);
+                    onClose();
+                  }}
+                />
+              ))
+          : null}
         <Text style={styles.hint}>{copy.subtitle}</Text>
         <Button label={copy.keepLabel} variant="secondary" fullWidth onPress={() => { onRemove(d.id, false); onClose(); }} />
         <Button label={copy.deleteLabel} variant="danger" icon="trash" fullWidth onPress={() => setStep('confirmDelete')} />

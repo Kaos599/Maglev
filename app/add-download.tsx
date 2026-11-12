@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { StyleSheet, Text, TextInput, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import * as Clipboard from 'expo-clipboard';
-import { maglevEngine, isDownloadLink, type FreeSpace, type UrlProbe } from 'maglev-engine';
+import { maglevEngine, isDownloadLink, isShareOpen, isTorrentSource, normalizeIncoming, type FreeSpace, type UrlProbe } from 'maglev-engine';
 import { useTheme } from '../context/ThemeContext';
 import { useMaglevEngine } from '../context/EngineContext';
 import { ThemeColors, radius, spacing, type } from '../constants/theme';
@@ -10,6 +10,7 @@ import { formatBytes } from '../constants/format';
 import { triggerHaptic } from '../constants/haptics';
 import { Banner, Button, EmptyBlock, Screen } from '../components/ui';
 import { admit, pendingNeedOf } from '../utils/admission';
+import { probeErrorView } from '../utils/downloadCopy';
 
 /** Add a download from a web link: probe the link, show what it is, then start. */
 type Phase = 'input' | 'probing' | 'ready' | 'adding' | 'error';
@@ -20,12 +21,13 @@ export default function AddDownloadScreen() {
   const { colors } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const router = useRouter();
-  const params = useLocalSearchParams<{ url?: string; source?: string }>();
+  const params = useLocalSearchParams<{ url?: string; source?: string; from?: string }>();
   const { telemetry, defaultStoragePath, probeUrl, startDownload, showNotice } = useMaglevEngine();
 
   const [text, setText] = useState('');
   const [phase, setPhase] = useState<Phase>('input');
   const [message, setMessage] = useState<string | null>(null);
+  const [errorView, setErrorView] = useState<ReturnType<typeof probeErrorView> | null>(null);
   const [probe, setProbe] = useState<UrlProbe | null>(null);
   const [free, setFree] = useState<FreeSpace | null>(null);
   const [addError, setAddError] = useState<string | null>(null);
@@ -39,7 +41,12 @@ export default function AddDownloadScreen() {
 
   const submit = useCallback(
     async (raw: string) => {
-      const input = raw.trim();
+      const input = normalizeIncoming(raw);
+      // A magnet or a .torrent link is a torrent: hand it to Add torrent instead of refusing it.
+      if (isTorrentSource(input)) {
+        router.replace({ pathname: '/add-torrent', params: { source: input } });
+        return;
+      }
       if (!isDownloadLink(input)) {
         setMessage(INVALID_TEXT);
         setPhase('input');
@@ -59,22 +66,35 @@ export default function AddDownloadScreen() {
         return;
       }
       setProbe(null);
-      setMessage(res.message || 'Something went wrong.');
+      setErrorView(probeErrorView(res.code, res.message, res.httpStatus));
       setPhase('error');
     },
-    [probeUrl],
+    [probeUrl, router],
   );
 
-  // The `url` param (share, or the torrent screen) fills the field and starts at once.
+  // The `url` or `source` param (a share, a maglev:// link, or another screen) fills the field.
+  // Only a share (`from=share`, set by app/+native-intent.tsx and stripped from every outside link)
+  // checks the link at once. Anything else waits for a tap, so a web page or app cannot make the
+  // phone fetch a link by opening maglev://add-download.
   const lastIncoming = useRef<string | null>(null);
   useEffect(() => {
     const raw = params.url || params.source;
     const incoming = typeof raw === 'string' ? raw.trim() : '';
     if (!incoming || incoming === lastIncoming.current) return;
     lastIncoming.current = incoming;
-    setText(incoming);
-    void submit(incoming);
-  }, [params.url, params.source, submit]);
+    const shared = isShareOpen({ url: params.url, from: params.from });
+    const clean = normalizeIncoming(incoming);
+    if (shared) {
+      setText(clean);
+      void submit(clean);
+      return;
+    }
+    if (isTorrentSource(clean)) {
+      router.replace({ pathname: '/add-torrent', params: { source: clean } });
+      return;
+    }
+    setText(clean);
+  }, [params.url, params.source, params.from, submit, router]);
 
   // Free space refreshes when the preview opens.
   const probed = phase === 'ready' ? probe?.name : null;
@@ -112,10 +132,12 @@ export default function AddDownloadScreen() {
     }
     if (!clip) {
       setMessage('Your clipboard is empty.');
+      setPhase('input');
       return;
     }
-    setText(clip);
-    void submit(clip);
+    const link = normalizeIncoming(clip);
+    setText(link);
+    void submit(link);
   };
 
   const start = async () => {
@@ -157,8 +179,12 @@ export default function AddDownloadScreen() {
           icon="warning"
           error
           title="Couldn't use this link"
-          body={message ?? undefined}
-          primary={{ label: 'Try again', onPress: () => void submit(urlRef.current) }}
+          body={errorView?.body}
+          primary={
+            errorView?.primary === 'pasteAnother'
+              ? { label: 'Paste another link', onPress: () => { setText(''); void handlePaste(); } }
+              : { label: 'Try again', onPress: () => void submit(urlRef.current) }
+          }
           secondary={{ label: 'Back', onPress: () => setPhase('input') }}
         />
       </Screen>

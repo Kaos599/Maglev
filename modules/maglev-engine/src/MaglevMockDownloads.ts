@@ -57,7 +57,7 @@ export function mockSizeFor(url: string): number {
 function probeFailure(url: string): Item['probeFail'] {
   const u = url.toLowerCase();
   if (u.includes('offline')) return { code: 'NETWORK', message: "Couldn't reach that link. Check your connection and the address." };
-  if (u.includes('auth')) return { code: 'AUTH_REQUIRED', message: 'This link needs a sign in, or it has expired.', httpStatus: 403 };
+  if (u.includes('auth')) return { code: 'AUTH_REQUIRED', message: 'This site wants you to sign in.', httpStatus: 403 };
   if (u.includes('404')) return { code: 'HTTP_STATUS', message: "The file isn't there (404).", httpStatus: 404 };
   if (/\.html?(?:[?#]|$)/.test(u)) return { code: 'NOT_A_FILE', message: 'This link opens a web page, not a file.' };
   return null;
@@ -76,6 +76,7 @@ function errorFor(code: DownloadError['code'], httpStatus?: number): DownloadErr
     case 'PERMISSION':
       return { code, message: "Maglev can't write to that folder." };
     case 'AUTH_REQUIRED':
+      return { code, message: 'This site wants you to sign in.', httpStatus: httpStatus ?? null };
     case 'LINK_EXPIRED':
       return { code, message: 'Link expired', httpStatus: httpStatus ?? null };
     default:

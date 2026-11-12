@@ -6,6 +6,7 @@
  */
 
 import { parsePackedShare, setShareQueue } from '../utils/shareQueue';
+import { sharedDownloadRoute, stripShareMarker } from '../modules/maglev-engine/src/downloadLink';
 
 const ADD_ROUTE = '/add-torrent';
 
@@ -33,7 +34,9 @@ export function redirectSystemPath({ path }: { path: string; initial: boolean })
     if (/^https?:\/\//i.test(raw) && isTorrentLocation(raw)) return addRoute(raw);
     // A shared web link (the share rewrite in plugins/withShareIntents.js hands it over as the intent data).
     // No VIEW filter exists for http(s), so this only ever comes from a share (NATIVE_CONTRACT 17).
-    if (/^https?:\/\//i.test(raw)) return `/add-download?url=${encodeURIComponent(raw)}`;
+    // Only this branch adds `from=share`, which lets the screen check the link at once. A maglev:// link
+    // (any app or web page can send one) reaches the last line, where every `from` parameter is stripped.
+    if (/^https?:\/\//i.test(raw)) return sharedDownloadRoute(raw);
     // A completed download's notification opens maglev://torrent/dl_<id>; Transfers shows downloads.
     if (/^\/?torrent\/dl_[0-9a-f]+$/i.test(raw)) return '/';
     // Some launchers hand a file:// intent over with the scheme stripped: a bare absolute path.
@@ -44,7 +47,7 @@ export function redirectSystemPath({ path }: { path: string; initial: boolean })
     // Some launchers pass the intent data as a router path with the magnet URI embedded after a slash.
     const embedded = /^\/?(magnet:.*)$/i.exec(raw);
     if (embedded) return addRoute(embedded[1]);
-    return path;
+    return stripShareMarker(path);
   } catch {
     return '/';
   }

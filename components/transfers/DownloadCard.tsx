@@ -1,10 +1,11 @@
 import React, { memo, useMemo, useRef } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
+import { useRouter } from 'expo-router';
 import type { DownloadSnapshot } from 'maglev-engine';
 import { useTheme } from '../../context/ThemeContext';
 import { ThemeColors, radius, spacing, type } from '../../constants/theme';
 import { formatEta } from '../../utils/rates';
-import { downloadAction, downloadProgress, downloadStatus, type DownloadAction } from '../../utils/downloadCopy';
+import { actionRoute, downloadAction, downloadProgress, downloadStatus, type DownloadAction } from '../../utils/downloadCopy';
 import { IconButton, PressableScale, ProgressBar, ProgressTone } from '../ui';
 import { CARD_HEIGHT } from '../TransferCard';
 
@@ -30,8 +31,17 @@ function toneFor(d: DownloadSnapshot): ProgressTone {
 }
 
 /** Same card as a torrent: name, one bar, one status line, one button. The sheet behind a tap has the rest. */
-function DownloadCardImpl({ download: d, onPress, onAction }: DownloadCardProps) {
+function DownloadCardImpl({ download: d, onPress, onAction: onActionProp }: DownloadCardProps) {
   const { colors } = useTheme();
+  const router = useRouter();
+  // Settings actions go to their screen and Remove opens the sheet (which has the keep/delete choice) here,
+  // so the card works without the list screen knowing about them. The rest go to the list screen.
+  const onAction = (dl: DownloadSnapshot, a: DownloadAction) => {
+    const route = actionRoute(a.kind);
+    if (route) router.push(route);
+    else if (a.kind === 'remove') onPress(dl.id);
+    else onActionProp(dl, a);
+  };
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const etaRef = useRef<string | null>(null);
   const etaLabel = formatEta(d.state === 'downloading' ? d.eta : -1, etaRef.current);
@@ -86,6 +96,7 @@ function same(a: DownloadCardProps, b: DownloadCardProps): boolean {
     x.name === y.name &&
     x.state === y.state &&
     x.pausedBy === y.pausedBy &&
+    x.error?.httpStatus === y.error?.httpStatus &&
     x.size === y.size &&
     x.downloaded === y.downloaded &&
     x.downBps === y.downBps &&

@@ -7,26 +7,83 @@ import { formatBytes, formatSpeed } from '../constants/format.ts';
 import { formatEta } from './rates.ts';
 
 export type DownloadTone = 'muted' | 'accent' | 'danger';
-export type DownloadActionKind = 'pause' | 'resume' | 'retry' | 'restart' | 'newLink';
+export type DownloadActionKind =
+  | 'pause'
+  | 'resume'
+  | 'retry'
+  | 'restart'
+  | 'newLink'
+  | 'remove'
+  | 'pickFolder'
+  | 'openNetworkSettings';
 
 export interface DownloadAction {
   kind: DownloadActionKind;
   /** Icon name from the generated Pixelarticons set. */
-  icon: 'pause' | 'play' | 'retry' | 'link';
+  icon: 'pause' | 'play' | 'retry' | 'link' | 'trash' | 'folder' | 'settings';
   label: string;
 }
 
 const GOVERNANCE_TEXT: Record<string, string> = {
   wifi_only: 'Paused: waiting for Wi-Fi',
+  vpn_required: 'Paused: waiting for VPN',
   battery: 'Paused: battery is low',
   charging_only: 'Paused: waiting for charger',
   fgs_timeout: 'Paused: stopped in background',
   schedule: 'Paused: by schedule',
 };
 
+export const OFFLINE_TEXT = 'Waiting for a connection';
+export const FOLDER_GONE_TEXT = "The folder isn't available. Is the SD card in?";
+export const TOO_BIG_TEXT = "This file is bigger than the card's format allows (4 GB). Use phone storage.";
+export const LOCAL_BLOCKED_TEXT = 'This link tried to send Maglev to a device on your network, so it was stopped.';
+export const POLICY_BLOCKED_TEXT = 'Blocked by your Wi-Fi-only or VPN setting.';
+export const PERMISSION_TEXT = "Maglev can't write to that folder.";
+export const WIFI_CAPTION = 'Wi-Fi only is on in Settings → Network.';
+export const NOT_A_FILE_BODY =
+  'This is a web page, not a file. On the page, long-press the download button, tap Copy link address, then paste it here.';
+export const AUTH_BODY =
+  'This site wants you to sign in. Sign in on the site in your browser, copy the download link again, and paste it here.';
+
 /** Reasons the engine clears by itself. The card offers no Resume for them. */
 export function isGovernancePause(pausedBy: string | null | undefined): boolean {
-  return !!pausedBy && pausedBy !== 'user' && pausedBy !== 'storage_full';
+  return !!pausedBy && pausedBy !== 'user' && pausedBy !== 'storage_full' && pausedBy !== 'storage_unavailable';
+}
+
+type ErrorKind =
+  | 'fileChanged'
+  | 'notAFile'
+  | 'checksum'
+  | 'permission'
+  | 'folderGone'
+  | 'tooBig'
+  | 'localBlocked'
+  | 'policyBlocked'
+  | 'httpGone'
+  | 'network'
+  | 'other';
+
+/** True for a 4xx that a second try will not change (not "request timeout" or "too many requests"). */
+function isFinal4xx(status: number | null | undefined): boolean {
+  const st = status ?? 0;
+  return st >= 400 && st < 500 && st !== 408 && st !== 429;
+}
+
+/** Sorts an engine error code into what the card does about it. Unknown codes land in `other`. */
+function errorKind(code: string | undefined, httpStatus?: number | null): ErrorKind {
+  const c = (code ?? '').toUpperCase();
+  if (c === 'FILE_CHANGED') return 'fileChanged';
+  if (c === 'NOT_A_FILE') return 'notAFile';
+  if (c === 'CHECKSUM_MISMATCH') return 'checksum';
+  if (c === 'PERMISSION' || c === 'EACCES') return 'permission';
+  if (c === 'HTTP_STATUS') return isFinal4xx(httpStatus) ? 'httpGone' : 'network';
+  if (c === 'NETWORK') return 'network';
+  // Exact codes from native/maglev-core (http_dl, NATIVE_CONTRACT §17).
+  if (c === 'FILE_TOO_LARGE') return 'tooBig';
+  if (c === 'STORAGE_UNAVAILABLE') return 'folderGone';
+  if (c === 'LOCAL_REDIRECT') return 'localBlocked';
+  if (c === 'BLOCKED') return 'policyBlocked';
+  return 'other';
 }
 
 /** 0 to 1. Unknown size reads as 0 (the bar is shown indeterminate while resolving). */
@@ -51,6 +108,8 @@ export function downloadStatus(d: DownloadSnapshot, etaLabel?: string): { text: 
     }
     case 'paused':
       if (d.pausedBy === 'storage_full') return { text: 'Storage full', tone: 'danger' };
+      if (d.pausedBy === 'storage_unavailable') return { text: FOLDER_GONE_TEXT, tone: 'danger' };
+      if (d.pausedBy === 'offline') return { text: OFFLINE_TEXT, tone: 'muted' };
       if (d.pausedBy && GOVERNANCE_TEXT[d.pausedBy]) return { text: GOVERNANCE_TEXT[d.pausedBy], tone: 'muted' };
       return { text: 'Paused', tone: 'muted' };
     case 'verifying':
@@ -58,7 +117,10 @@ export function downloadStatus(d: DownloadSnapshot, etaLabel?: string): { text: 
     case 'finished':
       return { text: d.size ? `Done · ${formatBytes(d.size)}` : 'Done', tone: 'accent' };
     case 'needs_link':
-      return { text: 'Link expired · Paste new link', tone: 'danger' };
+      return {
+        text: d.error?.code === 'AUTH_REQUIRED' ? 'Needs sign-in · Paste new link' : 'Link expired · Paste new link',
+        tone: 'danger',
+      };
     case 'error':
       return { text: errorLine(d), tone: 'danger' };
     default:
@@ -67,40 +129,115 @@ export function downloadStatus(d: DownloadSnapshot, etaLabel?: string): { text: 
 }
 
 function errorLine(d: DownloadSnapshot): string {
-  switch (d.error?.code) {
-    case 'FILE_CHANGED':
+  switch (errorKind(d.error?.code, d.error?.httpStatus)) {
+    case 'fileChanged':
       return 'The file changed on the server · Restart';
-    case 'NOT_A_FILE':
+    case 'notAFile':
       return 'This link opens a web page, not a file';
-    case 'CHECKSUM_MISMATCH':
+    case 'checksum':
       return "File doesn't match the checksum";
-    case 'HTTP_STATUS':
-    case 'NETWORK':
-    case 'PERMISSION':
-      return d.error.message || 'Something went wrong';
+    case 'permission':
+      return PERMISSION_TEXT;
+    case 'folderGone':
+      return FOLDER_GONE_TEXT;
+    case 'tooBig':
+      return TOO_BIG_TEXT;
+    case 'localBlocked':
+      return LOCAL_BLOCKED_TEXT;
+    case 'policyBlocked':
+      return POLICY_BLOCKED_TEXT;
     default:
       return d.error?.message || 'Something went wrong';
   }
 }
 
-/** The card's one button, or null when nothing can be done now. */
-export function downloadAction(d: DownloadSnapshot): DownloadAction | null {
+/** A longer line the sheet shows (the card line is one row and may be cut). Null when there is none. */
+export function downloadCaption(d: DownloadSnapshot): string | null {
+  if (d.state === 'paused' && d.pausedBy === 'wifi_only') return WIFI_CAPTION;
+  if (d.state === 'paused' && d.pausedBy === 'storage_unavailable') return FOLDER_GONE_TEXT;
+  if (d.state === 'needs_link' && d.error?.code === 'AUTH_REQUIRED') return AUTH_BODY;
+  if (d.state === 'error') {
+    const k = errorKind(d.error?.code, d.error?.httpStatus);
+    if (k === 'notAFile') return NOT_A_FILE_BODY;
+    if (k === 'permission' || k === 'folderGone' || k === 'tooBig' || k === 'localBlocked' || k === 'policyBlocked') return errorLine(d);
+  }
+  return null;
+}
+
+const A = {
+  pause: { kind: 'pause', icon: 'pause', label: 'Pause' },
+  resume: { kind: 'resume', icon: 'play', label: 'Resume' },
+  retry: { kind: 'retry', icon: 'retry', label: 'Retry' },
+  restart: { kind: 'restart', icon: 'retry', label: 'Restart' },
+  newLink: { kind: 'newLink', icon: 'link', label: 'Paste new link' },
+  remove: { kind: 'remove', icon: 'trash', label: 'Remove' },
+  pickFolder: { kind: 'pickFolder', icon: 'folder', label: 'Pick folder again' },
+  openSettings: { kind: 'openNetworkSettings', icon: 'settings', label: 'Open settings' },
+} as const satisfies Record<string, DownloadAction>;
+
+/** Every action that makes sense now, the most useful first. The card shows the first; the sheet shows all. */
+export function downloadActions(d: DownloadSnapshot): DownloadAction[] {
   switch (d.state) {
     case 'downloading':
     case 'queued':
-      return { kind: 'pause', icon: 'pause', label: 'Pause' };
+      return [A.pause];
     case 'paused':
-      if (isGovernancePause(d.pausedBy)) return null;
-      return { kind: 'resume', icon: 'play', label: 'Resume' };
+      if (d.pausedBy === 'storage_unavailable') return [A.pickFolder];
+      if (d.pausedBy === 'wifi_only' || d.pausedBy === 'vpn_required') return [A.openSettings];
+      if (isGovernancePause(d.pausedBy)) return [];
+      return [A.resume];
     case 'needs_link':
-      return { kind: 'newLink', icon: 'link', label: 'Paste new link' };
+      return [A.newLink];
     case 'error':
-      if (d.error?.code === 'FILE_CHANGED') return { kind: 'restart', icon: 'retry', label: 'Restart' };
-      // A web page or a wrong checksum will not change on a second try, but Retry probes again and says so.
-      return { kind: 'retry', icon: 'retry', label: 'Retry' };
+      switch (errorKind(d.error?.code, d.error?.httpStatus)) {
+        case 'fileChanged':
+          return [A.restart];
+        // These will not change on a second try, so no Retry.
+        case 'notAFile':
+        case 'checksum':
+        case 'localBlocked':
+        case 'httpGone':
+          return [A.remove];
+        case 'permission':
+          return [A.pickFolder, A.retry];
+        case 'folderGone':
+        case 'tooBig':
+          return [A.pickFolder];
+        case 'policyBlocked':
+          return [A.openSettings, A.retry];
+        default:
+          return [A.retry];
+      }
     default:
-      return null;
+      return [];
   }
+}
+
+/** The card's one button, or null when nothing can be done now. */
+export function downloadAction(d: DownloadSnapshot): DownloadAction | null {
+  return downloadActions(d)[0] ?? null;
+}
+
+/** Where the settings-style actions go. Null for the ones the engine or the sheet handles. */
+export function actionRoute(kind: DownloadActionKind): '/settings/storage' | '/settings/network' | null {
+  if (kind === 'pickFolder') return '/settings/storage';
+  if (kind === 'openNetworkSettings') return '/settings/network';
+  return null;
+}
+
+/** What the add screen says when checking a link fails, and what its main button does. */
+export function probeErrorView(
+  code: string | undefined,
+  message: string | undefined,
+  httpStatus?: number | null,
+): { body: string; primary: 'pasteAnother' | 'retry' } {
+  const k = (code ?? '').toUpperCase();
+  if (k === 'NOT_A_FILE') return { body: NOT_A_FILE_BODY, primary: 'pasteAnother' };
+  if (k === 'AUTH_REQUIRED') return { body: AUTH_BODY, primary: 'pasteAnother' };
+  const body = message || 'Something went wrong.';
+  // A missing file will not appear on a second try; a network drop or a busy server might.
+  if (k === 'HTTP_STATUS' && isFinal4xx(httpStatus)) return { body, primary: 'pasteAnother' };
+  return { body, primary: 'retry' };
 }
 
 /** True while the download is working or waiting to work. */
