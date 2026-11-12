@@ -71,6 +71,8 @@ async function main() {
   collect(notices, ['notices'], 'notice', items);
   collect(banners, ['banners'], 'banner', items);
   collect(empty, ['empty'], 'empty', items);
+  // Font setting descriptions follow the banner body rules (16 words, ends with a period).
+  for (const o of copy.fontStyleCopy.options) collect(o.description, ['fontStyleCopy', o.value], 'banner.body', items);
   check('copy.ts exports strings to lint', items.length > 60, String(items.length));
 
   const problems = [];

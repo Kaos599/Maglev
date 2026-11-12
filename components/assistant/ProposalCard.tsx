@@ -164,7 +164,7 @@ const makeStyles = (c: ThemeColors) =>
     sourceLabel: { ...type.bodyStrong, fontSize: type.size.sm, color: c.textMuted },
     fact: { ...type.mono, fontSize: type.size.md, lineHeight: 18, color: c.text },
     head: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
-    ask: { ...type.brand, fontSize: type.size.sm, color: c.accentText },
+    ask: { ...type.heading, fontSize: type.size.sm, color: c.accentText },
     plan: { gap: spacing.sm },
     planRow: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.sm },
     planNum: { minWidth: 20, height: 20, borderRadius: radius.sm, borderWidth: 1, borderColor: c.border, alignItems: 'center', justifyContent: 'center' },
