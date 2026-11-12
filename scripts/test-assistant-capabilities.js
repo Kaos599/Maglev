@@ -22,7 +22,8 @@ async function main() {
   check('model line', a[0] === 'Model: Llama 3.3 70B (free) on Groq.', a[0]);
   check('7 lines', a.length === 7);
   check('no model name falls back to Auto', v.capabilitiesFacts({ providerName: 'OpenRouter' })[0] === 'Model: Auto (any free model) on OpenRouter.');
-  check('blank model name falls back', v.capabilitiesFacts({ modelName: '  ', providerName: 'X' })[0].startsWith('Model: Auto'));
+  check('blank model name falls back', v.capabilitiesFacts({ modelName: '  ', providerName: 'OpenRouter' })[0].startsWith('Model: Auto'));
+  check('other providers say default model, not Auto', v.capabilitiesFacts({ providerName: 'Groq' })[0] === "Model: the provider's default model on Groq.");
   check('context only when known', v.capabilitiesFacts({ providerName: 'X', contextLabel: '128K' })[0].endsWith('Context 128K.') && !a[0].includes('Context'));
   check('limits line', a[1] === 'Each message can use up to 6 model requests, 8 tool calls and 2 cards, only 1 of which can delete.');
 

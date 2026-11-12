@@ -59,7 +59,7 @@ async function main() {
   check('partial streaming text is safe', v.parseLight('- **Hel').length === 1);
 
   console.log('chatview: starters and composer');
-  check('six suggestions', v.SUGGESTIONS.length === 6 && v.SUGGESTIONS[0] === 'Find me the latest movies');
+  check('six suggestions', v.SUGGESTIONS.length === 6 && v.SUGGESTIONS[0] === "What's new in movies this week?");
   check('compactCount', v.compactCount(950) === '950' && v.compactCount(12400) === '12.4k' && v.compactCount(1200) === '1.2k' && v.compactCount(2300000) === '2.3M');
   check('tokens line', v.tokensLine({ input: 800, output: 400 }) === '1.2k tokens used');
   check('tokens zero', v.tokensLine({ input: 0, output: 0 }) === 'No tokens used yet');

@@ -577,7 +577,7 @@ export default function AddTorrentScreen() {
   const canSubmit = text.trim().length > 0 && phase !== 'added';
   return (
     <Screen title="Add torrent" onBack={close} scroll contentStyle={styles.inputContent}>
-      <Text style={styles.label}>Magnet link or torrent URL</Text>
+      <Text style={styles.label}>Magnet, torrent or file link</Text>
       <TextInput
         value={text}
         onChangeText={onChangeText}
@@ -590,7 +590,7 @@ export default function AddTorrentScreen() {
         onSubmitEditing={() => canSubmit && submit(text)}
         multiline
         style={[styles.field, phase === 'invalid' && styles.fieldInvalid]}
-        accessibilityLabel="Magnet link or torrent URL"
+        accessibilityLabel="Magnet, torrent or file link"
       />
       {phase === 'invalid' && message ? (
         <View style={styles.gap}>

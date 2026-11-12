@@ -232,11 +232,11 @@ export function parseLight(text: string): Block[] {
 
 /** One-tap prompts on the empty chat. */
 export const SUGGESTIONS: readonly string[] = [
-  'Find me the latest movies',
-  'Find me popular movies',
-  "What's WEB-DL vs telesync?",
-  'Find me good books to read',
-  'Is a new movie on torrent yet?',
+  "What's new in movies this week?",
+  'Popular shows right now',
+  'Why is my download stuck?',
+  'What does WEB-DL mean?',
+  'Suggest a good book to read',
   'How do I download a game?',
 ];
 
@@ -327,12 +327,12 @@ export const CAPABILITIES_NOTE =
 
 /** The collapsed "Technical details" lines. `contextLabel` is optional and skipped when empty. */
 export function capabilitiesFacts(info: { modelName?: string; providerName: string; contextLabel?: string }): string[] {
-  const model = info.modelName?.trim() || 'Auto (any free model)';
+  const model = info.modelName?.trim() || (/openrouter/i.test(info.providerName) ? 'Auto (any free model)' : "the provider's default model");
   const context = info.contextLabel?.trim() ? ` Context ${info.contextLabel.trim()}.` : '';
   return [
     `Model: ${model} on ${info.providerName}.${context}`,
     'Each message can use up to 6 model requests, 8 tool calls and 2 cards, only 1 of which can delete.',
-    'Tools: search, look inside a result, list downloads, ask you a question, open a screen, propose an add, propose a change.',
+    'Tools: search by title, list what is new or popular, look inside a result, list downloads, ask you a question, open a screen, propose an add, propose a change.',
     'The model only sees names, sizes, sharing counts and file lists from the search sources you turned on, and the names of your downloads. It never sees your files.',
     'Every fact on a card is worked out by Maglev, not the model, and every tool call is checked before it runs.',
     'Smaller models sometimes answer without searching, make up details in their text, or send a broken tool call. Maglev rejects broken calls; the text can still be wrong.',

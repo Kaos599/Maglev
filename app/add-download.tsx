@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { friendlyPath } from '../components/settings/SettingsParts';
 import { StyleSheet, Text, TextInput, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import * as Clipboard from 'expo-clipboard';
@@ -249,7 +250,7 @@ export default function AddDownloadScreen() {
         <Text style={styles.meta}>
           {probe.resumable ? 'You can pause and resume this one.' : "This server can't resume. It starts over if it stops."}
         </Text>
-        <Text style={styles.meta}>Saves to {defaultStoragePath}</Text>
+        <Text style={styles.meta}>Saves to {friendlyPath(defaultStoragePath)}</Text>
         {doesntFit ? <Banner tone="danger" title="Not enough space" body="Free up some storage, then try again." /> : null}
         {addError ? <Banner tone="danger" title={addError} /> : null}
         <View style={styles.gap}>

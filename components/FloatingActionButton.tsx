@@ -10,7 +10,7 @@ export interface FloatingActionButtonProps {
   accessibilityLabel?: string;
 }
 
-export function FloatingActionButton({ onPress, accessibilityLabel = 'Add torrent' }: FloatingActionButtonProps) {
+export function FloatingActionButton({ onPress, accessibilityLabel = 'Add a torrent or link' }: FloatingActionButtonProps) {
   const { colors } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   return (
