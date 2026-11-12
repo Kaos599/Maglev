@@ -185,14 +185,20 @@ function resolveQuery(q: ScoreContext['query']): ScoreContext['query'] {
   };
 }
 
+/** Scripts written without spaces between words: a title in them is one long token, so it is matched by substring. */
+const UNSPACED = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Thai}\p{Script=Lao}\p{Script=Khmer}\p{Script=Myanmar}]/u;
+
 function titleTokens(s: string): string[] {
   const tokens = s
+    .normalize('NFKC')
+    // Fold Latin accents only (combining marks U+0300-036F); marks that belong to other scripts stay.
     .normalize('NFD')
-    .replace(/\p{M}+/gu, '')
+    .replace(/[\u0300-\u036f]+/g, '')
+    .normalize('NFKC')
     .toLowerCase()
     // Apostrophes are dropped, not split on: "Schindler's" becomes "schindlers".
     .replace(/['’‘`´]/g, '')
-    .split(/[^\p{L}\p{N}]+/u)
+    .split(/[^\p{L}\p{N}\p{M}]+/u)
     .filter((t) => t.length > 0 && !ARTICLES.has(t));
   // "Ocean.s.Eleven" has lost its apostrophe to a dot: glue a lone s or t back on.
   const out: string[] = [];
@@ -201,6 +207,46 @@ function titleTokens(s: string): string[] {
     else out.push(t);
   }
   return out;
+}
+
+function bigrams(s: string): string[] {
+  const cs = Array.from(s);
+  if (cs.length < 2) return [s];
+  const out: string[] = [];
+  for (let i = 0; i < cs.length - 1; i++) out.push(cs[i] + cs[i + 1]);
+  return out;
+}
+
+/** Whether a wanted token shows up in the release's title tokens. Unspaced scripts match by substring or character pairs. */
+function hasToken(want: string, have: Set<string>, haveText: string): boolean {
+  if (have.has(want)) return true;
+  if (!UNSPACED.test(want)) return false;
+  if (haveText.includes(want)) return true;
+  // A one-character difference in a long title ("進撃の巨人" vs "進撃の巨神") still counts as the same title.
+  const pairs = bigrams(want);
+  if (pairs.length < 4) return false;
+  return pairs.filter((b) => haveText.includes(b)).length / pairs.length >= 0.75;
+}
+
+/** Seasons a name covers: the range of a multi-season pack, else the single season (empty when it names none). */
+function coveredSeasons(parsed: ParsedRelease): number[] {
+  if (parsed.seasons && parsed.seasons.length > 1) return parsed.seasons;
+  return parsed.season !== undefined ? [parsed.season] : [];
+}
+
+/** "seasons 1\u20135" for a run, "seasons 1, 3 and 4" otherwise. */
+function seasonSpan(seasons: readonly number[]): string {
+  const first = seasons[0];
+  const last = seasons[seasons.length - 1];
+  if (seasons.length === last - first + 1) return `seasons ${first}\u2013${last}`;
+  return `seasons ${seasons.slice(0, -1).join(', ')} and ${last}`;
+}
+
+/** A pack that holds more than the one season the user asked for. */
+function isBigPack(parsed: ParsedRelease, q: ScoreContext['query']): boolean {
+  if (q.season === undefined || q.episode !== undefined) return false;
+  if (parsed.seasons && parsed.seasons.length > 1) return parsed.seasons.includes(q.season);
+  return parsed.completeSeries === true && parsed.season === undefined;
 }
 
 interface TitleVerdict { reason: string | null; partial: boolean }
@@ -213,7 +259,8 @@ function wrongTitle(parsed: ParsedRelease, q: ScoreContext['query']): TitleVerdi
     const have = titleTokens(parsed.title ?? '');
     if (have.length === 0) return { reason: 'The name does not show a title.', partial };
     const set = new Set(have);
-    const missing = want.filter((t) => !set.has(t));
+    const haveText = have.join('');
+    const missing = want.filter((t) => !hasToken(t, set, haveText));
     // Exclude only when most of the title is missing. One missing word in a longer title is a partial match.
     if (missing.length > 1 || (missing.length === 1 && want.length < 2)) {
       return { reason: `The title does not match "${q.title}".`, partial };
@@ -228,8 +275,16 @@ function wrongTitle(parsed: ParsedRelease, q: ScoreContext['query']): TitleVerdi
   if (q.year !== undefined && parsed.year !== undefined && Math.abs(parsed.year - q.year) > 1) {
     return { reason: `It is from ${parsed.year}, but you asked for ${q.year}.`, partial };
   }
-  if (q.season !== undefined && parsed.season !== undefined && parsed.season !== q.season) {
-    return { reason: `It is season ${parsed.season}, but you asked for season ${q.season}.`, partial };
+  if (q.season !== undefined && parsed.season !== undefined) {
+    const covered = coveredSeasons(parsed);
+    if (!covered.includes(q.season)) {
+      return {
+        reason: covered.length > 1
+          ? `It covers ${seasonSpan(covered)}, but you asked for season ${q.season}.`
+          : `It is season ${parsed.season}, but you asked for season ${q.season}.`,
+        partial,
+      };
+    }
   }
   if (q.episode !== undefined && parsed.episodes && parsed.episodes.length > 0 && !parsed.episodes.includes(q.episode)) {
     return { reason: `It is not episode ${q.episode}.`, partial };
@@ -424,6 +479,11 @@ function extraReasons(
       case 'hardcoded_subs': out.push('Subtitles are burned into the picture.'); break;
       case 'over_size_cap': out.push(`Bigger than your limit of ${formatBytes(ctx.maxBytes ?? 0)}.`); break;
       case 'partial_fits': out.push(`The whole pack does not fit, but ${partial} episode${partial === 1 ? '' : 's'} would.`); break;
+      case 'multi_season_pack': {
+        const span = parsed.seasons && parsed.seasons.length > 1 ? seasonSpan(parsed.seasons) : 'complete series';
+        out.push(`Pack: ${span} (bigger download)`);
+        break;
+      }
       case 'title_partial': out.push('The title is close, but one word you searched for is missing from the name.'); break;
       case 'no_sharing': out.push('Nobody is sharing it right now, so it would not download.'); break;
       case 'unsafe_files': out.push('The file list has a serious warning sign.'); break;
@@ -442,6 +502,7 @@ function scoreOne(
 ): Scored {
   const flags: string[] = [];
   if (titlePartial) flags.push('title_partial');
+  if (isBigPack(parsed, q)) flags.push('multi_season_pack');
   const sizeKnown = r.sizeBytes !== undefined && r.sizeBytes > 0;
   const runtimeMin = totalRuntimeMin(r, parsed, ctx, q);
 
@@ -535,7 +596,7 @@ function scoreOne(
 /** Same release, whoever uploaded it. Rows inside a group differ by info hash and are ranked together. */
 function groupKey(p: ParsedRelease): string {
   return [
-    (p.title ?? '').toLowerCase(), p.year ?? '', p.season ?? '', (p.episodes ?? []).join(','),
+    (p.title ?? '').toLowerCase(), p.year ?? '', p.season ?? '', (p.seasons ?? []).join('-'), p.completeSeries ? 'c' : '', (p.episodes ?? []).join(','),
     p.resolution ?? '', p.source, p.encoder ?? p.codec,
   ].join('|');
 }
@@ -676,10 +737,13 @@ export function scoreResults(results: readonly MergedResult[], ctx: ScoreContext
   }
 
   const rank = (s: Scored) => (s.ranked.tier === 'avoid' ? 1 : 0);
+  // A pack that only contains the season asked for never outranks an exact single-season match.
+  const pack = (s: Scored) => (s.ranked.flags.includes('multi_season_pack') ? 1 : 0);
   const sorted = scored
     .map((s, i) => ({ s, i }))
     .sort((a, b) =>
       rank(a.s) - rank(b.s)
+      || pack(a.s) - pack(b.s)
       || b.s.ranked.score - a.s.ranked.score
       || (b.s.ranked.result.seeders ?? -1) - (a.s.ranked.result.seeders ?? -1)
       || a.i - b.i)

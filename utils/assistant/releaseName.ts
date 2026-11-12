@@ -17,6 +17,10 @@ export interface ParsedRelease {
   title?: string;
   year?: number;
   season?: number;
+  /** Every season a multi-season pack covers ("S01-S05" gives 1..5). `season` is the first of them. */
+  seasons?: number[];
+  /** "Complete Series" or "Complete Collection". */
+  completeSeries?: boolean;
   episodes?: number[];
   seasonPack: boolean;
   source: SourceKind;
@@ -73,6 +77,8 @@ interface Draft {
   hc: boolean;
   flags: ParsedRelease['flags'];
   season?: number;
+  seasons?: number[];
+  completeSeries?: boolean;
   episodes: number[];
   complete: boolean;
 }
@@ -244,6 +250,22 @@ const DEFS: Def[] = [
       if (Number.isFinite(n) && !d.episodes.includes(n)) d.episodes.push(n);
     },
   },
+  {
+    // "S01-S05", "S01-05", "S01.S02.S03", "Season 1-3", "Seasons 1 to 3": a pack that covers several seasons.
+    key: 'season',
+    src: 'S\\d{1,3}(?:(?:-|~)S?\\d{1,3}|[ ._]?to[ ._]?S?\\d{1,3}|[ ._+&]S\\d{1,3}|S\\d{1,3})+'
+      + '|Seasons?[ ._]?\\d{1,3}(?:[ ._]*(?:-|~|to|thru|through|&|\\+|,|and)[ ._]*\\d{1,3})+',
+    apply: (d, text) => {
+      const seasons = expandSeasons(text);
+      if (seasons.length === 0) return;
+      d.season ??= seasons[0];
+      d.seasons = [...new Set([...(d.seasons ?? []), ...seasons])].sort((a, b) => a - b);
+    },
+  },
+  {
+    key: 'complete', src: 'COMPLETE[ ._-]?(?:SERIES|COLLECTION|SEASONS|SAGA|BOX[ ._-]?SET)',
+    apply: (d) => { d.complete = true; d.completeSeries = true; },
+  },
   { key: 'season', src: 'S\\d{1,3}|Season[ ._-]?\\d{1,3}', apply: (d, text) => { d.season ??= Number(/(\d+)$/.exec(text)?.[1]); } },
   { key: 'complete', src: 'COMPLETE', weak: true, apply: (d) => { d.complete = true; } },
 ];
@@ -261,6 +283,26 @@ const KNOWN_EXT = new Set([
 const ARCHIVE_EXT = new Set(['rar', 'zip', '7z', 'tar', 'gz', 'tgz', 'bz2', 'xz']);
 const EXEC_EXT = new Set(['exe', 'msi', 'bat', 'cmd', 'scr', 'lnk', 'jar', 'apk', 'dmg', 'com', 'vbs', 'ps1', 'sh', 'js']);
 
+/** "S01-S05" -> [1..5]; "S01.S02" -> [1, 2]; "Season 1 to 3" -> [1, 2, 3]. Ranges are capped at 100 seasons. */
+function expandSeasons(text: string): number[] {
+  const out: number[] = [];
+  const re = /(\d+)([^\d]*)/g;
+  let prev: number | undefined;
+  let sep = '';
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(text)) !== null) {
+    const n = Number(m[1]);
+    if (prev !== undefined && /-|~|to|thru|through/i.test(sep) && n > prev && n - prev <= 100) {
+      for (let i = prev + 1; i <= n; i++) out.push(i);
+    } else {
+      out.push(n);
+    }
+    prev = n;
+    sep = m[2];
+  }
+  return out;
+}
+
 const BOUND = (body: string) => `(?<![A-Za-z0-9])(?:${body})(?![A-Za-z0-9])`;
 const COMPILED = DEFS.map((d) => ({ def: d, re: new RegExp(BOUND(d.src), d.cs ? 'g' : 'gi') }));
 const YEAR_RE = new RegExp(BOUND('(?:19|20)\\d\\d'), 'g');
@@ -276,7 +318,7 @@ function cleanTitle(s: string): string | undefined {
     .replace(/\(\s*\)|\[\s*\]/g, ' ')
     .replace(/^[\s\-_.()[\]]+|[\s\-_.()[\]]+$/g, '')
     .replace(/\s+/g, ' ');
-  return /[A-Za-z0-9]/.test(t) ? t : undefined;
+  return /[\p{L}\p{N}]/u.test(t) ? t : undefined;
 }
 
 interface Leaf {
@@ -478,11 +520,18 @@ export function parseRelease(name: string): ParsedRelease {
   }
 }
 
+/** Last `/` that separates folders. A slash with a space on both sides ("Title / 日本語") splits a bilingual title, not a path. */
+function lastPathSep(raw: string, ch: string, from: number): number {
+  let i = from < 0 ? -1 : raw.lastIndexOf(ch, from);
+  while (i > 0 && /\s/.test(raw[i - 1]) && /\s/.test(raw[i + 1] ?? '')) i = raw.lastIndexOf(ch, i - 1);
+  return i;
+}
+
 function parseInner(raw: string): ParsedRelease {
   const out = emptyResult(raw);
   let end = raw.length;
   while (end > 0 && (raw[end - 1] === '/' || raw[end - 1] === '\\')) end--;
-  const sep = end > 0 ? Math.max(raw.lastIndexOf('/', end - 1), raw.lastIndexOf('\\', end - 1)) : -1;
+  const sep = end > 0 ? Math.max(lastPathSep(raw, '/', end - 1), raw.lastIndexOf('\\', end - 1)) : -1;
   const base = sep + 1;
   const leaf = parseLeaf(raw.slice(base, end), base);
   const d = leaf.d;
@@ -491,7 +540,7 @@ function parseInner(raw: string): ParsedRelease {
   let title = leaf.title;
   if (sep > 0) {
     // File paths: the folder supplies the season (and a missing title) when the file does not.
-    const prev = Math.max(raw.lastIndexOf('/', sep - 1), raw.lastIndexOf('\\', sep - 1));
+    const prev = Math.max(lastPathSep(raw, '/', sep - 1), raw.lastIndexOf('\\', sep - 1));
     const folder = raw.slice(prev + 1, sep);
     if (folder) {
       const f = parseLeaf(folder, prev + 1);
@@ -512,6 +561,8 @@ function parseInner(raw: string): ParsedRelease {
   if (title) out.title = title;
   if (leaf.year !== undefined) out.year = leaf.year;
   if (season !== undefined) out.season = season;
+  if (d.seasons && d.seasons.length > 1) out.seasons = d.seasons;
+  if (d.completeSeries) out.completeSeries = true;
   if (d.episodes.length) out.episodes = [...d.episodes].sort((a, b) => a - b);
   out.seasonPack = d.episodes.length === 0 && (d.season !== undefined || d.complete);
   out.source = source;

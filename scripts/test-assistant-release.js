@@ -140,6 +140,31 @@ async function main() {
   check('huge input does not throw', br !== null);
   if (br) checkTokens('huge', br);
 
+  // ---------------------------------------------------------------- non-Latin titles and season ranges
+  {
+    const t = (name) => parseRelease(name);
+    check('jp title kept', t('進撃の巨人 S02 1080p WEB-DL').title === '進撃の巨人');
+    check('jp title with year', t('鬼滅の刃 2019 1080p BluRay x264-GRP').title === '鬼滅の刃' && t('鬼滅の刃 2019 1080p BluRay x264-GRP').year === 2019);
+    check('anime group + jp title', t('[SubsPlease] 鬼滅の刃 - 07 (1080p)').title === '鬼滅の刃');
+    check('hindi title kept', t('हम आपके हैं कौन 1994 1080p BluRay').title === 'हम आपके हैं कौन' && t('हम आपके हैं कौन 1994 1080p BluRay').year === 1994);
+    check('cyrillic title kept', t('Игра престолов S02 1080p').title === 'Игра престолов');
+    check('arabic title kept', t('مسلسل الحفرة S01 720p').title === 'مسلسل الحفرة');
+    const mixed = t('Attack on Titan / 進撃の巨人 2013 1080p BluRay x264-GRP');
+    check('mixed title keeps both halves', mixed.title === 'Attack on Titan / 進撃の巨人' && mixed.year === 2013, JSON.stringify(mixed.title));
+    check('real path still splits', t('Show.S01.1080p/Show.S01E02.1080p.mkv').episodes?.[0] === 2);
+    const range = (name) => { const r = t(name); return [r.season, JSON.stringify(r.seasons), r.seasonPack, r.completeSeries === true]; };
+    check('S01-S05', JSON.stringify(range('Show S01-S05 1080p')) === JSON.stringify([1, '[1,2,3,4,5]', true, false]), JSON.stringify(range('Show S01-S05 1080p')));
+    check('S01-05', t('Show S01-05 1080p').seasons?.join() === '1,2,3,4,5');
+    check('Season 1-3', t('Show Season 1-3 720p').seasons?.join() === '1,2,3' && t('Show Season 1-3 720p').title === 'Show');
+    check('Seasons 1 to 3', t('Show Seasons 1 to 3 720p').seasons?.join() === '1,2,3');
+    check('S01-S03 Complete', t('Show S01-S03 Complete 1080p').seasons?.join() === '1,2,3' && t('Show S01-S03 Complete 1080p').seasonPack);
+    check('S01.S02.S03', t('Show.S01.S02.S03.1080p').seasons?.join() === '1,2,3');
+    const cs = t('Show Complete Series 1080p BluRay');
+    check('Complete Series is a pack with a clean title', cs.title === 'Show' && cs.completeSeries === true && cs.seasonPack && cs.seasons === undefined, JSON.stringify(cs.title));
+    check('single season has no seasons list', t('Show S02 1080p').seasons === undefined && t('Show S02 1080p').season === 2);
+    check('S01E02 unchanged', t('Show S01E02 1080p').season === 1 && t('Show S01E02 1080p').seasons === undefined);
+  }
+
   console.log(`${passed} checks passed, ${vectors.length} vectors`);
   if (failed) {
     console.error(`\n${failed} failed`);

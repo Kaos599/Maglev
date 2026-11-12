@@ -370,6 +370,77 @@ async function main() {
   check('Dolby Vision copy', has(/^Dolby Vision only\. On phones without it, colours can look green or purple\.$/));
   check('risky source names Maglev', has(/^Maglev flags The Pirate Bay as unsafe, and only The Pirate Bay lists this one\.$/), copyRows.filter((x) => /Maglev|unsafe/.test(x)).join('|'));
 
+  // ---------------------------------------------------------------- non-Latin titles
+  {
+    const run = (title, names, extra = {}) => scoreResults(
+      names.map((n) => row(n, 2 * GB, 100)), baseCtx({ query: { title, ...extra }, freeBytes: 80 * GB }),
+    );
+    const keeps = (label, title, name, extra) => {
+      const o = run(title, [name], extra);
+      check(label, o.ranked.length === 1 && o.excluded.length === 0, JSON.stringify(o.excluded.map((e) => e.detail)));
+    };
+    const drops = (label, title, name, extra) => {
+      const o = run(title, [name], extra);
+      check(label, o.ranked.length === 0 && o.excluded[0]?.reason === 'wrong_title');
+    };
+    keeps('jp kana+kanji kept', '進撃の巨人', '進撃の巨人 S02 1080p WEB-DL x265-GRP', { season: 2 });
+    keeps('jp katakana kept', 'ワンピース', '[Group] ワンピース - 1071 (1080p) [ABCD1234].mkv');
+    keeps('jp query in mixed release name', '日本語タイトル', 'Title / 日本語タイトル 2023 1080p BluRay x264-GRP');
+    keeps('latin query in mixed release name', 'Title', 'Title / 日本語タイトル 2023 1080p BluRay x264-GRP', { year: 2023 });
+    keeps('jp substring match (extra words after)', '鬼滅の刃', '鬼滅の刃 無限列車編 2020 1080p BluRay x264-GRP');
+    drops('different jp title dropped', '進撃の巨人', '呪術廻戦 S02 1080p WEB-DL x265-GRP', { season: 2 });
+    drops('jp title with different year dropped', '鬼滅の刃', '鬼滅の刃 2010 1080p BluRay x264-GRP', { year: 2019 });
+    keeps('hindi kept', 'हम आपके हैं कौन', 'हम आपके हैं कौन 1994 1080p BluRay x264-GRP', { year: 1994 });
+    drops('different hindi dropped', 'हम आपके हैं कौन', 'दिलवाले दुल्हनिया ले जाएंगे 1995 1080p BluRay x264-GRP');
+    keeps('cyrillic kept', 'Игра престолов', 'Игра престолов S02 1080p WEB-DL x265-GRP', { season: 2 });
+    keeps('cyrillic case-insensitive', 'игра престолов', 'ИГРА ПРЕСТОЛОВ S02 1080p WEB-DL x265-GRP', { season: 2 });
+    drops('different cyrillic dropped', 'Игра престолов', 'Во все тяжкие S02 1080p WEB-DL x265-GRP', { season: 2 });
+    keeps('arabic kept', 'مسلسل الحفرة', 'مسلسل الحفرة S01 720p WEB-DL x264-GRP', { season: 1 });
+    drops('different arabic dropped', 'مسلسل الحفرة', 'باب الحارة S01 720p WEB-DL x264-GRP', { season: 1 });
+    keeps('NFKC full-width latin', 'Ｓｈｏｗ', 'Show 2023 1080p WEB-DL x265-GRP');
+    keeps('accents still fold', 'Amelie', 'Amélie 2001 1080p BluRay x264-GRP');
+  }
+
+  // ---------------------------------------------------------------- multi-season packs
+  {
+    const S = (n, size) => row(n, size, 100, ['knaben'], { category: 'tv' });
+    const ctx = (season) => baseCtx({ query: { title: 'Harbor Light', season }, freeBytes: 500 * GB });
+    const exact = S('Harbor.Light.S02.1080p.WEB-DL.x265-GRP', 10 * GB);
+    const packs = {
+      s1to5: S('Harbor.Light.S01-S05.1080p.WEB-DL.x265-GRP', 50 * GB),
+      season13: S('Harbor Light Season 1-3 1080p WEB-DL x265-GRP', 30 * GB),
+      s1s3c: S('Harbor.Light.S01-S03.COMPLETE.1080p.WEB-DL.x265-GRP', 30 * GB),
+      series: S('Harbor Light Complete Series 1080p WEB-DL x265-GRP', 80 * GB),
+      outside: S('Harbor.Light.S03-S05.1080p.WEB-DL.x265-GRP', 30 * GB),
+      other: S('Harbor.Light.S01.1080p.WEB-DL.x265-GRP', 10 * GB),
+    };
+    const o = scoreResults([...Object.values(packs), exact], ctx(2));
+    const ids = o.ranked.map((r) => r.id);
+    for (const k of ['s1to5', 'season13', 's1s3c', 'series']) check(`pack kept for S02: ${k}`, ids.includes(packs[k].infoHash));
+    check('pack not containing S02 excluded', o.excluded.some((e) => e.id === packs.outside.infoHash && e.reason === 'wrong_title'));
+    check('single other season still excluded', o.excluded.some((e) => e.id === packs.other.infoHash && e.reason === 'wrong_title'));
+    check('exact single season ranks first', o.ranked[0].id === exact.infoHash);
+    const lastExact = ids.indexOf(exact.infoHash);
+    check('all packs rank below the exact match', ['s1to5', 'season13', 's1s3c', 'series'].every((k) => ids.indexOf(packs[k].infoHash) > lastExact));
+    const reasonsOf = (k) => o.ranked.find((r) => r.id === packs[k].infoHash).reasons;
+    check('range pack reason', reasonsOf('s1to5').includes('Pack: seasons 1\u20135 (bigger download)'), reasonsOf('s1to5').join('|'));
+    check('season 1-3 reason', reasonsOf('season13').includes('Pack: seasons 1\u20133 (bigger download)'));
+    check('complete series reason', reasonsOf('series').includes('Pack: complete series (bigger download)'), reasonsOf('series').join('|'));
+    check('pack flagged', o.ranked.find((r) => r.id === packs.s1to5.infoHash).flags.includes('multi_season_pack'));
+    check('exact match has no pack reason', !o.ranked[0].reasons.some((x) => /^Pack:/.test(x)));
+    // an even-better-scoring pack still sits under a weaker exact match
+    const weakExact = S('Harbor.Light.S02.480p.WEBRip.x264-GRP', 3 * GB);
+    const o2 = scoreResults([packs.s1to5, weakExact], ctx(2));
+    check('weak exact match beats a stronger pack', o2.ranked[0].id === weakExact.infoHash);
+    // asking for season 1 keeps the S01 single and an S01-S05 pack
+    const o3 = scoreResults([packs.other, packs.s1to5], ctx(1));
+    check('season 1 ask: single first, pack kept', o3.ranked[0].id === packs.other.infoHash && o3.ranked.length === 2);
+    // no season asked: nothing changes
+    const o4 = scoreResults([packs.s1to5, exact], baseCtx({ query: { title: 'Harbor Light' }, freeBytes: 500 * GB }));
+    check('no season asked: pack kept, no pack reason', o4.ranked.length === 2 && !o4.ranked.some((r) => r.reasons.some((x) => /^Pack:/.test(x))));
+    check('no season asked: no multi_season_pack flag', !o4.ranked.some((r) => r.flags.includes('multi_season_pack')));
+  }
+
   // ---------------------------------------------------------------- purity
   for (const file of ['scoring.ts', 'sizeBands.ts']) {
     const src = fs.readFileSync(path.join(__dirname, '..', 'utils', 'assistant', file), 'utf8');
