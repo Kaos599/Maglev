@@ -13,6 +13,7 @@ android {
 const once = applyAbiSplits(sample);
 assert(/splits\s*\{\s*abi\s*\{/.test(once), 'splits block missing');
 assert(once.includes('universalApk true'), 'universalApk missing');
+assert(/enable !gradle\.startParameter\.taskNames\.any \{ it\.toLowerCase\(\)\.contains\("bundle"\) \}/.test(once), 'splits must be off for bundle tasks');
 for (const abi of ['arm64-v8a', 'armeabi-v7a', 'x86_64']) assert(once.includes(`"${abi}"`), abi);
 assert(!/"x86"/.test(once), 'x86 must not be present');
 assert(once.indexOf('splits {') < once.indexOf('defaultConfig'), 'splits inside android block');
