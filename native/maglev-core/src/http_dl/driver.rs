@@ -11,12 +11,13 @@
 //! previous, follow, error}`, `RequestBuilder::{header, basic_auth, send}`, `Response::{status, headers, url,
 //! chunk}`. `chunk()` needs no cargo feature, so only the `rustls` feature that librqbit already turns on is used.
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fs::{File, OpenOptions};
 use std::io;
+use std::net::{IpAddr, SocketAddr};
 use std::num::NonZeroU32;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
@@ -34,17 +35,21 @@ use tokio::task::JoinHandle;
 use tracing::warn;
 
 use super::content_disposition::{choose_name, sanitize_filename, unique_name};
-use super::machine::{step, DlError, Effect, Event, Notice, PauseReason, State, MAX_ATTEMPTS};
+use super::machine::{step, DlError, Effect, Event, Notice, PauseReason, State, MAX_ATTEMPTS, MAX_STALL_ATTEMPTS};
 use super::rules::{
-    backoff_delay, classify_probe, fits, judge_get, overruns, pace_delay, redirect_host_allowed, Headers,
-    ProbeInfo, ProbeVerdict, Reply,
+    backoff_delay, check_stall, classify_probe, fits, has_secret_query, judge_get, keep_resolved, looks_like_lan_name,
+    overruns, pace_delay, redirect_host_allowed, slot_free, stall_floor, waiting_for_server, Headers, ProbeInfo,
+    ProbeVerdict, Reply, StallCheck,
 };
-use super::sidecar::{final_path, part_path, sidecar_path, Sidecar};
+use super::sidecar::{final_path, part_path, safe_url, sidecar_path, Sidecar};
 use crate::error::{EngineError, ErrorCode};
 use crate::meta::write_atomic;
 
-/// How many URL downloads transfer at once. Torrents have their own cap.
-pub const MAX_ACTIVE_DOWNLOADS: usize = 3;
+/// How many link downloads transfer at once until the engine passes `max_active_downloads` (0 = no limit).
+/// Torrents have their own plan (`scheduler.rs`).
+pub const DEFAULT_MAX_ACTIVE_DOWNLOADS: u32 = 3;
+/// How long one wait for the next chunk lasts before the stall rule looks at the clock again.
+const STALL_TICK: Duration = Duration::from_secs(5);
 const STORE_FILE: &str = "maglev-downloads.json";
 const SIDECAR_FLUSH: Duration = Duration::from_secs(2);
 const REPORT_EVERY: Duration = Duration::from_millis(250);
@@ -56,6 +61,9 @@ const OFFLINE_TAG: &str = "offline";
 /// The text `attempt.error` carries out of the redirect policy; `is_local_redirect` looks for it.
 const LOCAL_REDIRECT_MSG: &str = "redirect to a device on the local network";
 const BLOCKED_MSG: &str = "Blocked by your Wi-Fi-only or VPN setting.";
+const AUTH_AGAIN_COPY: &str = "Sign in again: paste the link again.";
+const EXPIRED_COPY: &str = "This link has expired. Paste a new one.";
+const STALLED_COPY: &str = "The server stopped sending data. Try again later.";
 const LOCAL_REDIRECT_COPY: &str = "This link tried to send Maglev to a device on your network, so it was stopped.";
 
 // ---- options ------------------------------------------------------------------------------------------------
@@ -145,6 +153,9 @@ pub struct DlRecord {
     pub status: Option<u16>,
     pub error: Option<DlErrInfo>,
     pub notice: Option<String>,
+    /// The link needs something that is never saved: a user name and password, a cookie, or a signed query.
+    /// The flag is saved, the secret is not. After a restart the download waits for a new link (`AUTH_REQUIRED`).
+    pub needs_login: bool,
 }
 
 impl Default for DlRecord {
@@ -169,6 +180,7 @@ impl Default for DlRecord {
             status: None,
             error: None,
             notice: None,
+            needs_login: false,
         }
     }
 }
@@ -184,6 +196,10 @@ struct Live {
     attempts: u32,
     denied: u32,
     bps: u64,
+    /// Stall retries since the last healthy minute. Progress does not reset it (a trickle must not buy more tries).
+    stalls: u32,
+    /// Active, but no byte for 30 s.
+    stalled: bool,
 }
 
 #[derive(Default)]
@@ -352,7 +368,106 @@ fn error_message(e: DlError, status: Option<u16>) -> String {
         DlError::FileTooLarge => {
             "This file is bigger than the card's format allows (4 GB). Use phone storage.".to_string()
         }
+        DlError::Stalled => STALLED_COPY.to_string(),
     }
+}
+
+/// The error of a download in `NeedsLink`. A 401 or 403, or a restart that lost the secrets (no status), is a
+/// sign in; anything else (410, an expired signed link) is an expired link.
+fn needs_link_info(status: Option<u16>, needs_login: bool) -> DlErrInfo {
+    let auth = matches!(status, Some(401) | Some(403)) || (status.is_none() && needs_login);
+    DlErrInfo {
+        code: if auth { "AUTH_REQUIRED" } else { "LINK_EXPIRED" }.to_string(),
+        message: if auth { AUTH_AGAIN_COPY } else { EXPIRED_COPY }.to_string(),
+        http_status: status,
+    }
+}
+
+/// The record as it is written to disk: no query that looks like a secret, and `final_url` cut down to host and path.
+fn persisted(rec: &DlRecord) -> DlRecord {
+    let mut r = rec.clone();
+    r.final_url = r.final_url.as_deref().map(safe_url);
+    if has_secret_query(&r.url) {
+        r.url = safe_url(&r.url);
+        r.needs_login = true;
+    }
+    r
+}
+
+/// What `maglev-downloads.json` held, entry by entry.
+struct ParsedStore {
+    records: Vec<DlRecord>,
+    /// Entries that could not be read (or had no id).
+    skipped: usize,
+    /// The file is not JSON or has no `downloads` list.
+    unreadable: bool,
+}
+
+/// One bad entry never costs the good ones. Only the id and the kind of error are logged, never the link.
+fn parse_store(bytes: &[u8]) -> ParsedStore {
+    let unreadable = ParsedStore { records: vec![], skipped: 0, unreadable: true };
+    let Ok(root) = serde_json::from_slice::<Value>(bytes) else {
+        return unreadable;
+    };
+    let Some(items) = root.get("downloads").and_then(Value::as_array) else {
+        return unreadable;
+    };
+    let mut records = Vec::new();
+    let mut skipped = 0;
+    for item in items {
+        let id = item.get("id").and_then(Value::as_str).unwrap_or("?").to_string();
+        match serde_json::from_value::<DlRecord>(item.clone()) {
+            Ok(r) if !r.id.is_empty() => records.push(r),
+            Ok(_) => {
+                warn!("skipped a saved download with no id");
+                skipped += 1;
+            }
+            Err(e) => {
+                warn!("skipped a saved download ({id}): {:?}", e.classify());
+                skipped += 1;
+            }
+        }
+    }
+    ParsedStore { records, skipped, unreadable: false }
+}
+
+fn corrupt_backup_name(now: i64) -> String {
+    format!("maglev-downloads.corrupt-{now}.json")
+}
+
+// ---- resolving names ----------------------------------------------------------------------------------------------
+
+/// Hosts the user typed that are already on the home network. Only these may resolve to a local address.
+type LanHosts = Arc<Mutex<HashSet<String>>>;
+
+/// reqwest's resolver, with every answer checked (contract section 17.y). Runs for the first request and for every
+/// redirect hop, so a public name that answers a private address is refused (DNS rebinding).
+struct GuardedResolver {
+    lan: LanHosts,
+}
+
+impl reqwest::dns::Resolve for GuardedResolver {
+    fn resolve(&self, name: reqwest::dns::Name) -> reqwest::dns::Resolving {
+        let host = name.as_str().trim_end_matches('.').to_ascii_lowercase();
+        let lan_ok = self.lan.lock().contains(&host);
+        Box::pin(async move {
+            guarded_lookup(host, lan_ok).await.map(|v| Box::new(v.into_iter()) as reqwest::dns::Addrs)
+        })
+    }
+}
+
+async fn guarded_lookup(
+    host: String,
+    lan_ok: bool,
+) -> Result<Vec<SocketAddr>, Box<dyn std::error::Error + Send + Sync>> {
+    let found: Vec<SocketAddr> = tokio::net::lookup_host((host.as_str(), 0u16)).await?.collect();
+    let ips: Vec<IpAddr> = found.iter().map(|a| a.ip()).collect();
+    let keep = keep_resolved(lan_ok, &ips);
+    if keep.is_empty() && !found.is_empty() {
+        // `is_local_redirect` finds this text in the error chain, so the download ends as LOCAL_REDIRECT.
+        return Err(LOCAL_REDIRECT_MSG.into());
+    }
+    Ok(found.into_iter().filter(|a| keep.contains(&a.ip())).collect())
 }
 
 /// Does a link to the same file match what was stored? Size must agree; validators must agree when both exist,
@@ -448,7 +563,7 @@ fn read_headers(h: &HeaderMap) -> Headers {
     }
 }
 
-fn build_client(proxy: Option<&str>) -> Result<Client, String> {
+fn build_client(proxy: Option<&str>, lan: LanHosts) -> Result<Client, String> {
     // Contract section 17: at most 10 redirects, and https to http is an error. Credentials headers that reqwest
     // marks sensitive (Cookie, Authorization) are dropped by reqwest itself on a cross-origin redirect.
     let policy = redirect::Policy::custom(|attempt| {
@@ -474,6 +589,8 @@ fn build_client(proxy: Option<&str>) -> Result<Client, String> {
         .redirect(policy)
         .connect_timeout(Duration::from_secs(15))
         .read_timeout(Duration::from_secs(45))
+        // Every connection, redirects included, goes through the address check. A proxy resolves names itself.
+        .dns_resolver(Arc::new(GuardedResolver { lan }))
         .user_agent(USER_AGENT_DEFAULT);
     if let Some(p) = proxy {
         b = b.proxy(reqwest::Proxy::all(p).map_err(|e| e.to_string())?);
@@ -514,6 +631,8 @@ struct ProbeReply {
 enum Streamed {
     Done(u64),
     Broken(u64),
+    /// Too slow or silent for too long (the stall rule).
+    Stalled(u64),
     Stopped,
 }
 
@@ -529,6 +648,9 @@ pub struct Downloads {
     proxy: Mutex<Option<String>>,
     client: Mutex<Option<(Option<String>, Client)>>,
     counter: AtomicU64,
+    /// `NativeConfig.max_active_downloads`; 0 = no limit.
+    max_active: AtomicU32,
+    lan_hosts: LanHosts,
 }
 
 impl Downloads {
@@ -550,6 +672,8 @@ impl Downloads {
             proxy: Mutex::new(proxy),
             client: Mutex::new(None),
             counter: AtomicU64::new(1),
+            max_active: AtomicU32::new(DEFAULT_MAX_ACTIVE_DOWNLOADS),
+            lan_hosts: Arc::new(Mutex::new(HashSet::new())),
         });
         me.restore();
         me
@@ -559,36 +683,56 @@ impl Downloads {
         self.session_dir.join(STORE_FILE)
     }
 
-    /// Loads the list. Every download that was working goes back in the queue (SM-30 `Restore`).
+    /// Loads the list entry by entry. Every download that was working goes back in the queue (SM-30 `Restore`).
+    /// A download that needs a login that was never saved waits for a new link. When anything is unreadable the
+    /// original file is kept as `maglev-downloads.corrupt-<time>.json` before the list is rewritten.
     fn restore(&self) {
         let bytes = match std::fs::read(self.store_path()) {
             Ok(b) => b,
             Err(_) => return,
         };
-        let file: StoreFile = match serde_json::from_slice(&bytes) {
-            Ok(f) => f,
-            Err(e) => {
-                warn!("could not read the downloads list: {e}");
-                return;
+        let parsed = parse_store(&bytes);
+        if parsed.unreadable || parsed.skipped > 0 {
+            warn!(
+                "the downloads list has {} unreadable entries{}; keeping a copy",
+                parsed.skipped,
+                if parsed.unreadable { " (the whole file)" } else { "" }
+            );
+            let backup = self.session_dir.join(corrupt_backup_name(now_secs()));
+            if let Err(e) = std::fs::write(&backup, &bytes) {
+                warn!("could not keep a copy of the downloads list: {e}");
             }
-        };
+        }
+        if parsed.unreadable {
+            return;
+        }
         let mut inner = self.inner.lock();
-        for mut rec in file.downloads {
-            if rec.id.is_empty() {
-                continue;
-            }
+        for mut rec in parsed.records {
             let (next, _) = step(rec.state, Event::Restore);
             rec.state = next;
             // A download that was verifying has all its bytes; the first request answers 416 and finishes it.
             if rec.state == State::Verifying {
                 rec.state = State::Queued;
             }
+            // Older builds saved the query of the final link.
+            rec.final_url = rec.final_url.as_deref().map(safe_url);
             // What is on disk is the truth for how much we hold.
             if let Some(sc) = Sidecar::load(&sidecar_path(Path::new(&rec.folder), &rec.name)) {
                 if rec.state != State::Finished {
                     rec.held = sc.held();
                 }
             }
+            // The password, cookie or signed query lived in memory only: ask for the link again.
+            if rec.needs_login {
+                let (st, _) = step(rec.state, Event::SecretsLost);
+                if st == State::NeedsLink {
+                    rec.state = st;
+                    rec.paused_tag = None;
+                    rec.status = None;
+                    rec.error = Some(needs_link_info(None, true));
+                }
+            }
+            self.allow_lan_host(&rec.url);
             inner.live.insert(rec.id.clone(), Live::default());
             inner.records.insert(rec.id.clone(), rec);
         }
@@ -599,7 +743,7 @@ impl Downloads {
     fn save(&self) {
         let file = StoreFile {
             version: 1,
-            downloads: self.inner.lock().records.values().cloned().collect(),
+            downloads: self.inner.lock().records.values().map(persisted).collect(),
         };
         match serde_json::to_vec(&file) {
             Ok(bytes) => {
@@ -609,6 +753,26 @@ impl Downloads {
             }
             Err(e) => warn!("could not encode the downloads list: {e}"),
         }
+    }
+
+    /// Remembers a host the user typed when it is already on the home network, so it may resolve to a local address.
+    fn allow_lan_host(&self, url: &str) {
+        if let Some(host) = reqwest::Url::parse(url).ok().and_then(|u| u.host_str().map(str::to_ascii_lowercase)) {
+            if looks_like_lan_name(&host) {
+                self.lan_hosts.lock().insert(host.trim_end_matches('.').to_string());
+            }
+        }
+    }
+
+    /// The cap on working link downloads (`max_active_downloads`, 0 = no limit). Raising it starts waiting downloads;
+    /// lowering it never stops a working one.
+    pub fn set_max_active(self: &Arc<Self>, max: u32) {
+        self.max_active.store(max, Ordering::Relaxed);
+        self.pump();
+    }
+
+    fn has_free_slot(&self, inner: &Inner) -> bool {
+        slot_free(Self::active_count(inner), self.max_active.load(Ordering::Relaxed))
     }
 
     pub fn set_proxy(&self, proxy: Option<String>) {
@@ -623,7 +787,7 @@ impl Downloads {
                 return Ok(c.clone());
             }
         }
-        let c = build_client(proxy.as_deref()).map_err(|e| {
+        let c = build_client(proxy.as_deref(), self.lan_hosts.clone()).map_err(|e| {
             warn!("download client failed: {e}");
             EngineError::new(ErrorCode::Network, "The download client couldn't start. Check the proxy address.")
         })?;
@@ -701,12 +865,7 @@ impl Downloads {
                 });
             }
             State::NeedsLink => {
-                let auth = matches!(rec.status, Some(401) | Some(403));
-                rec.error = Some(DlErrInfo {
-                    code: if auth { "AUTH_REQUIRED" } else { "LINK_EXPIRED" }.to_string(),
-                    message: "Link expired".to_string(),
-                    http_status: rec.status,
-                });
+                rec.error = Some(needs_link_info(rec.status, rec.needs_login));
             }
             State::Downloading | State::Queued | State::Resolving | State::Verifying | State::Finished => {
                 rec.error = None;
@@ -718,6 +877,7 @@ impl Downloads {
         }
         if next != State::Downloading {
             live.bps = 0;
+            live.stalled = false;
         }
 
         for e in &effects {
@@ -735,6 +895,8 @@ impl Downloads {
                 Effect::StartSegments => {
                     live.attempts = 0;
                     live.denied = 0;
+                    live.stalls = 0;
+                    live.stalled = false;
                     rec.notice = None;
                     let me = self.clone();
                     let id2 = id.to_string();
@@ -816,6 +978,7 @@ impl Downloads {
             .filter(|f| !f.trim().is_empty())
             .unwrap_or_else(|| self.default_dir.to_string_lossy().into_owned());
         let url_str = clean.to_string();
+        self.allow_lan_host(&url_str);
         let block = self.first_block();
         let id = {
             let mut inner = self.inner.lock();
@@ -861,6 +1024,9 @@ impl Downloads {
                 ..DlRecord::default()
             };
             let h = opts.headers.clone().unwrap_or_default();
+            let mut rec = rec;
+            // Sign-in details stay in memory. Only the fact that they are needed is saved.
+            rec.needs_login = auth.is_some() || h.cookie.is_some() || has_secret_query(&rec.url);
             inner.live.insert(
                 id.clone(),
                 Live {
@@ -957,6 +1123,7 @@ impl Downloads {
         if self.network_blocked() {
             return Err(EngineError::new(ErrorCode::Blocked, BLOCKED_MSG));
         }
+        self.allow_lan_host(clean.as_str());
         let h = opts.headers.unwrap_or_default();
         let client = self.client()?;
         match probe_request(&client, clean.as_str(), auth.as_ref(), &h.cookie, &h.referer, &h.user_agent).await {
@@ -983,6 +1150,7 @@ impl Downloads {
         if self.network_blocked() {
             return Err(EngineError::new(ErrorCode::Blocked, BLOCKED_MSG));
         }
+        self.allow_lan_host(clean.as_str());
         let h = opts.headers.unwrap_or_default();
         let client = self.client()?;
         let reply = probe_request(&client, clean.as_str(), auth.as_ref(), &h.cookie, &h.referer, &h.user_agent)
@@ -994,6 +1162,7 @@ impl Downloads {
                 rec.url = clean.to_string();
                 rec.final_url = Some(reply.final_url.clone());
                 rec.status = None;
+                rec.needs_login = auth.is_some() || h.cookie.is_some() || has_secret_query(&rec.url);
                 live.auth = auth;
                 live.cookie = h.cookie;
                 live.referer = h.referer;
@@ -1018,6 +1187,7 @@ impl Downloads {
         recs.into_iter()
             .map(|r| {
                 let bps = inner.live.get(&r.id).map(|l| l.bps).unwrap_or(0);
+                let stalled = r.state == State::Downloading && inner.live.get(&r.id).map(|l| l.stalled).unwrap_or(false);
                 let eta: i64 = match (r.size, r.state) {
                     (Some(total), State::Downloading) if bps > 0 => (total.saturating_sub(r.held) / bps) as i64,
                     _ => -1,
@@ -1039,6 +1209,7 @@ impl Downloads {
                     "size": r.size,
                     "downloaded": r.held,
                     "down_bps": bps,
+                    "stalled": stalled,
                     "eta": eta,
                     "segments_active": if r.state == State::Downloading { 1 } else { 0 },
                     "resumable": r.resumable,
@@ -1178,7 +1349,7 @@ impl Downloads {
             queued.sort();
             queued.dedup();
             for (_, id) in queued {
-                let free = Self::active_count(&self.inner.lock()) < MAX_ACTIVE_DOWNLOADS;
+                let free = self.has_free_slot(&self.inner.lock());
                 if !free {
                     break;
                 }
@@ -1199,7 +1370,7 @@ impl Downloads {
                 let (start_paused, space_ok) = self
                     .update(&id, |r, _| (r.start_paused, fits(r.size, r.held, free_space(Path::new(&r.folder)))))
                     .unwrap_or((false, true));
-                let slot_free = Self::active_count(&self.inner.lock()) < MAX_ACTIVE_DOWNLOADS;
+                let slot_free = self.has_free_slot(&self.inner.lock());
                 let gov_allows = self.gov_allows();
                 let ev = if start_paused {
                     Event::ProbeOk { slot_free: false, gov_allows: true, space_ok }
@@ -1401,6 +1572,12 @@ impl Downloads {
                                 return;
                             }
                         }
+                        Streamed::Stalled(pos) => {
+                            held = self.resume_point(&id, pos);
+                            if !self.stall_retry(&id).await {
+                                return;
+                            }
+                        }
                     }
                 }
                 Reply::Event(ev) => {
@@ -1596,13 +1773,33 @@ impl Downloads {
         let mut side = Sidecar::new(&url, &name, total, validator);
         let side_path = sidecar_path(&folder, &name);
         let mut last_space = Instant::now();
+        // The stall rule (contract 17.y): the client's read timeout alone lets a server that sends one byte every
+        // 40 s hold a slot forever, so the clock is read here too.
+        let mut last_byte = Instant::now();
+        let mut win_start = Instant::now();
+        let mut win_pos = pos;
         loop {
-            let chunk = match resp.chunk().await {
-                Ok(Some(c)) => c,
-                Ok(None) => return Streamed::Done(pos),
-                Err(_) => {
+            let chunk = match tokio::time::timeout(STALL_TICK, resp.chunk()).await {
+                Ok(Ok(Some(c))) => {
+                    last_byte = Instant::now();
+                    c
+                }
+                Ok(Ok(None)) => return Streamed::Done(pos),
+                Ok(Err(_)) => {
                     self.flush_side(&mut side, &side_path, file, pos, resumable);
                     return Streamed::Broken(pos);
+                }
+                Err(_) => {
+                    // Nothing arrived for a few seconds.
+                    if self.stall_step(id, limit, last_byte, &mut win_start, &mut win_pos, pos) {
+                        self.flush_side(&mut side, &side_path, file, pos, resumable);
+                        self.update(id, |rec, _| rec.held = pos);
+                        return Streamed::Stalled(pos);
+                    }
+                    if self.state_of(id) != Some(State::Downloading) {
+                        return Streamed::Stopped;
+                    }
+                    continue;
                 }
             };
             // The global limit is the session's limiter, shared with torrents. A limit below one chunk
@@ -1637,6 +1834,11 @@ impl Downloads {
                 };
             }
             pos += chunk.len() as u64;
+            if self.stall_step(id, limit, last_byte, &mut win_start, &mut win_pos, pos) {
+                self.flush_side(&mut side, &side_path, file, pos, resumable);
+                self.update(id, |rec, _| rec.held = pos);
+                return Streamed::Stalled(pos);
+            }
 
             // Unknown size: stop with Storage full when the free space drops below the reserve.
             if total.is_none() && last_space.elapsed() >= SIDECAR_FLUSH {
@@ -1659,6 +1861,7 @@ impl Downloads {
                 let alive = self.update(id, |rec, live| {
                     rec.held = pos;
                     live.bps = bps_smooth as u64;
+                    live.stalled = false;
                     live.attempts = 0;
                     live.denied = 0;
                     limit = rec.down_limit_bps;
@@ -1679,6 +1882,64 @@ impl Downloads {
                 }
             }
         }
+    }
+
+    /// Applies the stall rule once. Keeps the "waiting for the server" flag up to date, starts a new window after a
+    /// healthy one (and forgives earlier stalls), and says whether the transfer must be cut.
+    fn stall_step(
+        &self,
+        id: &str,
+        per_download_limit: u64,
+        last_byte: Instant,
+        win_start: &mut Instant,
+        win_pos: &mut u64,
+        pos: u64,
+    ) -> bool {
+        let quiet = last_byte.elapsed();
+        let global = self.session.ratelimits.get_download_bps().map(|n| n.get() as u64).unwrap_or(0);
+        let limit = match (per_download_limit, global) {
+            (0, g) => g,
+            (l, 0) => l,
+            (l, g) => l.min(g),
+        };
+        match check_stall(quiet, win_start.elapsed(), pos.saturating_sub(*win_pos), stall_floor(limit)) {
+            StallCheck::Stalled => true,
+            StallCheck::Healthy => {
+                *win_start = Instant::now();
+                *win_pos = pos;
+                self.update(id, |_, l| l.stalls = 0);
+                false
+            }
+            StallCheck::Fine => {
+                if waiting_for_server(quiet) {
+                    self.update(id, |_, l| l.stalled = true);
+                }
+                false
+            }
+        }
+    }
+
+    /// One stall: wait the backoff and say whether to go on. Has its own, smaller budget than `transient`.
+    async fn stall_retry(self: &Arc<Self>, id: &str) -> bool {
+        // Offline is not the server's fault: wait without using the budget.
+        if self.is_offline() {
+            return self.transient(id, None).await;
+        }
+        let n = self
+            .update(id, |_, l| {
+                let n = l.stalls;
+                l.stalls += 1;
+                n
+            })
+            .unwrap_or(MAX_STALL_ATTEMPTS);
+        let (state, effects) = self.dispatch(id, Event::Stalled { attempts: n });
+        if state != State::Downloading {
+            return false;
+        }
+        if effects.contains(&Effect::Backoff) {
+            tokio::time::sleep(backoff_delay(n, None, jitter())).await;
+        }
+        self.state_of(id) == Some(State::Downloading)
     }
 
     fn flush_side(&self, side: &mut Sidecar, path: &Path, file: &File, pos: u64, resumable: bool) {
@@ -1743,19 +2004,11 @@ async fn probe_request(
     match classify_probe(status, &headers, &final_url) {
         ProbeVerdict::Ok(info) => {
             let name = choose_name(headers.content_disposition.as_deref(), &final_url);
-            Ok(ProbeReply { info, name, final_url: display_url_keep(&final_url) })
+            Ok(ProbeReply { info, name, final_url: display_url(&final_url) })
         }
         ProbeVerdict::Auth => Err(ProbeFail::Auth(status)),
         ProbeVerdict::Status(s) => Err(ProbeFail::Status(s)),
         ProbeVerdict::Html => Err(ProbeFail::Html),
-    }
-}
-
-/// The final URL without credentials or fragment, keeping the query (a signed link needs it to resume).
-fn display_url_keep(url: &str) -> String {
-    match reqwest::Url::parse(url) {
-        Ok(u) => split_credentials(u).0.to_string(),
-        Err(_) => url.to_string(),
     }
 }
 
@@ -2063,5 +2316,140 @@ mod tests {
         assert_eq!(error_message(DlError::FileChanged, None), "The file changed on the server.");
         assert_eq!(error_message(DlError::HttpStatus, Some(404)), "The file isn't there anymore (404).");
         assert_eq!(error_message(DlError::HttpStatus, Some(500)), "The server returned an error (500).");
+    }
+
+    // ---- second hardening round ----
+
+    fn rec_json(id: &str, url: &str) -> serde_json::Value {
+        serde_json::to_value(DlRecord { id: id.into(), url: url.into(), ..DlRecord::default() }).unwrap()
+    }
+
+    #[test]
+    fn one_bad_saved_entry_keeps_the_good_ones() {
+        let file = json!({
+            "version": 1,
+            "downloads": [
+                rec_json("dl_a", "https://x.test/a.bin"),
+                { "id": "dl_bad", "state": "NotAState", "url": "https://secret.example/?token=1" },
+                { "id": "dl_worse", "size": "huge" },
+                rec_json("dl_b", "https://x.test/b.bin"),
+                { "url": "https://x.test/noid.bin" },
+            ],
+        });
+        let p = parse_store(file.to_string().as_bytes());
+        assert!(!p.unreadable);
+        assert_eq!(p.records.iter().map(|r| r.id.as_str()).collect::<Vec<_>>(), vec!["dl_a", "dl_b"]);
+        assert_eq!(p.skipped, 3);
+    }
+
+    #[test]
+    fn a_clean_saved_list_skips_nothing_and_old_files_still_load() {
+        // An entry written before `needs_login` and `stalled` existed.
+        let old = r#"{"version":1,"downloads":[{"id":"dl_old","url":"https://x.test/a.bin","state":"Queued","held":5}]}"#;
+        let p = parse_store(old.as_bytes());
+        assert!(!p.unreadable);
+        assert_eq!(p.skipped, 0);
+        assert_eq!(p.records.len(), 1);
+        assert_eq!(p.records[0].held, 5);
+        assert!(!p.records[0].needs_login);
+    }
+
+    #[test]
+    fn a_broken_file_is_unreadable_not_empty() {
+        for bad in ["", "{", "not json", "[]", r#"{"version":1}"#, r#"{"downloads":3}"#] {
+            let p = parse_store(bad.as_bytes());
+            assert!(p.unreadable, "{bad}");
+            assert!(p.records.is_empty());
+        }
+    }
+
+    #[test]
+    fn the_backup_name_carries_the_time() {
+        assert_eq!(corrupt_backup_name(1700000000), "maglev-downloads.corrupt-1700000000.json");
+    }
+
+    #[test]
+    fn saved_copies_never_hold_a_signed_query_or_the_final_query() {
+        let rec = DlRecord {
+            id: "dl_a".into(),
+            url: "https://cdn.test/f.zip?X-Amz-Signature=abc&id=1".into(),
+            final_url: Some("https://edge.test/f.zip?token=zzz".into()),
+            ..DlRecord::default()
+        };
+        let p = persisted(&rec);
+        assert_eq!(p.url, "https://cdn.test/f.zip");
+        assert_eq!(p.final_url.as_deref(), Some("https://edge.test/f.zip"));
+        assert!(p.needs_login);
+        let text = serde_json::to_string(&p).unwrap();
+        assert!(!text.contains("abc") && !text.contains("zzz"));
+        // The copy in memory keeps what it needs to go on.
+        assert!(rec.url.contains("X-Amz-Signature"));
+    }
+
+    #[test]
+    fn a_plain_query_is_saved_as_it_is() {
+        let rec = DlRecord {
+            id: "dl_a".into(),
+            url: "https://x.test/get?file=a.zip".into(),
+            final_url: Some("https://x.test/get?file=a.zip".into()),
+            ..DlRecord::default()
+        };
+        let p = persisted(&rec);
+        assert_eq!(p.url, "https://x.test/get?file=a.zip");
+        assert!(!p.needs_login);
+        assert_eq!(p.final_url.as_deref(), Some("https://x.test/get"));
+    }
+
+    #[test]
+    fn a_lost_login_asks_to_sign_in_again() {
+        let e = needs_link_info(None, true);
+        assert_eq!(e.code, "AUTH_REQUIRED");
+        assert_eq!(e.message, "Sign in again: paste the link again.");
+        assert_eq!(needs_link_info(Some(401), false).code, "AUTH_REQUIRED");
+        assert_eq!(needs_link_info(Some(403), false).code, "AUTH_REQUIRED");
+        let gone = needs_link_info(Some(410), true);
+        assert_eq!(gone.code, "LINK_EXPIRED");
+        assert_eq!(gone.http_status, Some(410));
+        assert_eq!(needs_link_info(None, false).code, "LINK_EXPIRED");
+    }
+
+    #[test]
+    fn the_stalled_error_has_plain_copy() {
+        assert_eq!(error_message(DlError::Stalled, None), "The server stopped sending data. Try again later.");
+    }
+
+    #[tokio::test]
+    async fn a_lookup_that_leads_to_the_home_network_is_refused() {
+        // An IP literal resolves to itself: stands in for a public name that answers a private address.
+        let e = guarded_lookup("127.0.0.1".to_string(), false).await.unwrap_err();
+        assert!(e.to_string().contains(LOCAL_REDIRECT_MSG));
+        let e = guarded_lookup("192.168.1.1".to_string(), false).await.unwrap_err();
+        assert!(e.to_string().contains(LOCAL_REDIRECT_MSG));
+        assert!(!guarded_lookup("8.8.8.8".to_string(), false).await.unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn a_name_the_user_typed_as_local_may_resolve_locally() {
+        let a = guarded_lookup("127.0.0.1".to_string(), true).await.unwrap();
+        assert_eq!(a.len(), 1);
+        assert!(a[0].ip().is_loopback());
+    }
+
+    #[test]
+    fn the_refusal_text_survives_an_error_chain() {
+        let inner: Box<dyn std::error::Error + Send + Sync> = LOCAL_REDIRECT_MSG.into();
+        #[derive(Debug)]
+        struct Wrap(Box<dyn std::error::Error + Send + Sync>);
+        impl std::fmt::Display for Wrap {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                write!(f, "dns error")
+            }
+        }
+        impl std::error::Error for Wrap {
+            fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+                Some(&*self.0)
+            }
+        }
+        assert!(chain_contains(&Wrap(inner), LOCAL_REDIRECT_MSG));
     }
 }

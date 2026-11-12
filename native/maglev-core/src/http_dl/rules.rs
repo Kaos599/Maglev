@@ -312,6 +312,131 @@ pub fn pace_delay(bytes: u64, elapsed: Duration, limit_bps: u64) -> Duration {
     needed.saturating_sub(elapsed)
 }
 
+// ---- slots ----
+
+/// Is there room for one more working download? `max` is `NativeConfig.max_active_downloads`; 0 = no limit.
+pub fn slot_free(active: usize, max: u32) -> bool {
+    max == 0 || active < max as usize
+}
+
+// ---- stalls ----
+
+/// No byte for this long: the card shows "Waiting for the server".
+pub const STALL_FLAG_AFTER: Duration = Duration::from_secs(30);
+/// No byte for this long: the connection is cut and retried.
+pub const STALL_SILENCE_ABORT: Duration = Duration::from_secs(60);
+/// The length of the window the average speed is judged over.
+pub const STALL_WINDOW: Duration = Duration::from_secs(60);
+/// Average speed under this over a window counts as a stall.
+pub const STALL_MIN_BPS: u64 = 1024;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum StallCheck {
+    /// Keep going; the window is not over.
+    Fine,
+    /// The window is over and fast enough: start a new one and forgive earlier stalls.
+    Healthy,
+    /// Too slow or silent: cut the connection.
+    Stalled,
+}
+
+/// Has the server been quiet long enough to say so on the card?
+pub fn waiting_for_server(since_last_byte: Duration) -> bool {
+    since_last_byte >= STALL_FLAG_AFTER
+}
+
+/// The slowest average (bytes per second) that still counts as moving. A speed limit below 2 KiB/s lowers it, so
+/// the user's own limit never looks like a stall. `limit_bps` 0 = no limit.
+pub fn stall_floor(limit_bps: u64) -> u64 {
+    if limit_bps == 0 {
+        STALL_MIN_BPS
+    } else {
+        STALL_MIN_BPS.min(limit_bps / 2)
+    }
+}
+
+/// Judges the transfer so far. `window_elapsed` and `window_bytes` cover the current window only.
+pub fn check_stall(since_last_byte: Duration, window_elapsed: Duration, window_bytes: u64, floor_bps: u64) -> StallCheck {
+    if since_last_byte >= STALL_SILENCE_ABORT {
+        return StallCheck::Stalled;
+    }
+    if window_elapsed >= STALL_WINDOW {
+        let needed = floor_bps.saturating_mul(window_elapsed.as_secs());
+        return if window_bytes < needed { StallCheck::Stalled } else { StallCheck::Healthy };
+    }
+    StallCheck::Fine
+}
+
+// ---- resolved addresses (DNS rebinding) ----
+
+/// Loopback, unspecified, private, link-local, CGNAT, unique-local, multicast, broadcast, or a mapped or NAT64 form
+/// of one of those.
+pub fn is_local_ip(ip: IpAddr) -> bool {
+    match ip {
+        IpAddr::V4(a) => v4_is_local(a) || a.is_multicast() || a.is_broadcast(),
+        IpAddr::V6(a) => {
+            if a.is_multicast() {
+                return true;
+            }
+            // NAT64 well-known prefix 64:ff9b::/96 carries an IPv4 address in the last 32 bits.
+            let s = a.segments();
+            if s[0] == 0x0064 && s[1] == 0xff9b && s[2..6].iter().all(|x| *x == 0) {
+                let v4 = Ipv4Addr::new((s[6] >> 8) as u8, s[6] as u8, (s[7] >> 8) as u8, s[7] as u8);
+                return v4_is_local(v4);
+            }
+            v6_is_local(a)
+        }
+    }
+}
+
+/// A name the user could type for a device at home: `localhost`, `*.local`, `*.localhost`, `*.lan`,
+/// `*.home.arpa`, `*.localdomain` or a single word such as `nas`. These may resolve to a local address.
+pub fn looks_like_lan_name(host: &str) -> bool {
+    let h = host.trim().trim_end_matches('.').to_ascii_lowercase();
+    if h.is_empty() {
+        return false;
+    }
+    if is_local_host(&h) {
+        return true;
+    }
+    if h.parse::<IpAddr>().is_ok() {
+        return false;
+    }
+    !h.contains('.') || h.ends_with(".lan") || h.ends_with(".home.arpa") || h.ends_with(".localdomain")
+}
+
+/// The resolved addresses a connection may use. A name the user typed as a local one (`lan_ok`) keeps them all;
+/// any other name loses its local addresses. An empty answer means the name only led to the local network.
+pub fn keep_resolved(lan_ok: bool, addrs: &[IpAddr]) -> Vec<IpAddr> {
+    if lan_ok {
+        addrs.to_vec()
+    } else {
+        addrs.iter().copied().filter(|a| !is_local_ip(*a)).collect()
+    }
+}
+
+// ---- secrets in a link ----
+
+/// Does the query of this link look like it carries a token or a signature? Such a link is never saved with its
+/// query (contract section 17.y).
+pub fn has_secret_query(url: &str) -> bool {
+    let Ok(u) = reqwest::Url::parse(url) else {
+        return false;
+    };
+    const WORDS: [&str; 20] = [
+        "token", "secret", "password", "passwd", "pwd", "signature", "sig", "credential", "credentials", "session",
+        "sessionid", "apikey", "key", "auth", "authorization", "jwt", "sas", "expires", "expire", "sign",
+    ];
+    const PARTS: [&str; 5] = ["token", "apikey", "signature", "secret", "password"];
+    u.query_pairs().any(|(k, _)| {
+        let k = k.to_ascii_lowercase();
+        k.starts_with("x-amz-")
+            || k.starts_with("x-goog-")
+            || PARTS.iter().any(|p| k.contains(p))
+            || k.split(|c: char| !c.is_ascii_alphanumeric()).any(|w| WORDS.contains(&w))
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -674,5 +799,153 @@ mod tests {
         assert_eq!(pace_delay(1000, Duration::from_secs(5), 0), Duration::ZERO);
         assert_eq!(pace_delay(1000, Duration::from_millis(500), 1000), Duration::from_millis(500));
         assert_eq!(pace_delay(1000, Duration::from_secs(2), 1000), Duration::ZERO);
+    }
+
+    // ---- slots ----
+
+    #[test]
+    fn slots_follow_the_cap_and_zero_means_no_limit() {
+        assert!(slot_free(0, 1));
+        assert!(!slot_free(1, 1));
+        assert!(slot_free(2, 3));
+        assert!(!slot_free(3, 3));
+        assert!(!slot_free(5, 3));
+        assert!(slot_free(100, 0));
+    }
+
+    // ---- stalls ----
+
+    fn secs(n: u64) -> Duration {
+        Duration::from_secs(n)
+    }
+
+    #[test]
+    fn one_byte_every_forty_seconds_is_a_stall() {
+        // 2 bytes in a 60 s window.
+        assert_eq!(check_stall(secs(20), secs(60), 2, STALL_MIN_BPS), StallCheck::Stalled);
+    }
+
+    #[test]
+    fn a_healthy_window_is_forgiven() {
+        assert_eq!(check_stall(secs(0), secs(60), 5_000_000, STALL_MIN_BPS), StallCheck::Healthy);
+        // Exactly the floor is fine.
+        assert_eq!(check_stall(secs(1), secs(60), 60 * 1024, STALL_MIN_BPS), StallCheck::Healthy);
+        assert_eq!(check_stall(secs(1), secs(60), 60 * 1024 - 1, STALL_MIN_BPS), StallCheck::Stalled);
+    }
+
+    #[test]
+    fn the_window_is_not_judged_before_it_is_over() {
+        assert_eq!(check_stall(secs(10), secs(59), 0, STALL_MIN_BPS), StallCheck::Fine);
+        assert_eq!(check_stall(secs(59), secs(59), 0, STALL_MIN_BPS), StallCheck::Fine);
+    }
+
+    #[test]
+    fn a_minute_of_silence_is_a_stall_inside_the_window() {
+        assert_eq!(check_stall(secs(60), secs(60), 10_000_000, STALL_MIN_BPS), StallCheck::Stalled);
+        assert_eq!(check_stall(secs(60), secs(5), 10_000_000, STALL_MIN_BPS), StallCheck::Stalled);
+    }
+
+    #[test]
+    fn the_card_says_waiting_after_thirty_seconds_of_silence() {
+        assert!(!waiting_for_server(secs(29)));
+        assert!(waiting_for_server(secs(30)));
+        assert!(waiting_for_server(secs(45)));
+    }
+
+    #[test]
+    fn a_tiny_speed_limit_lowers_the_stall_floor() {
+        assert_eq!(stall_floor(0), 1024);
+        assert_eq!(stall_floor(10_000_000), 1024);
+        assert_eq!(stall_floor(2048), 1024);
+        assert_eq!(stall_floor(1000), 500);
+        assert_eq!(stall_floor(1), 0);
+        // A user limit of 1000 B/s running at 900 B/s is not a stall.
+        assert_eq!(check_stall(secs(1), secs(60), 900 * 60, stall_floor(1000)), StallCheck::Healthy);
+    }
+
+    // ---- resolved addresses ----
+
+    fn ip(s: &str) -> IpAddr {
+        s.parse().unwrap()
+    }
+
+    #[test]
+    fn local_addresses_are_found_in_every_family() {
+        for a in [
+            "127.0.0.1", "10.1.2.3", "172.16.0.1", "192.168.1.1", "169.254.169.254", "100.64.0.1", "0.0.0.0",
+            "224.0.0.1", "255.255.255.255", "::1", "::", "fe80::1", "fd00::1", "fc00::1", "ff02::1",
+            "::ffff:10.0.0.1", "::ffff:127.0.0.1", "64:ff9b::a00:1", "64:ff9b::7f00:1",
+        ] {
+            assert!(is_local_ip(ip(a)), "{a}");
+        }
+    }
+
+    #[test]
+    fn public_addresses_are_not_local() {
+        for a in ["8.8.8.8", "1.1.1.1", "172.32.0.1", "100.128.0.1", "2001:4860:4860::8888", "::ffff:8.8.8.8", "64:ff9b::808:808"] {
+            assert!(!is_local_ip(ip(a)), "{a}");
+        }
+    }
+
+    #[test]
+    fn a_name_that_resolves_to_the_home_network_is_refused() {
+        // DNS rebinding: evil.example answers 192.168.1.1.
+        assert!(keep_resolved(false, &[ip("192.168.1.1")]).is_empty());
+        assert!(keep_resolved(false, &[ip("127.0.0.1"), ip("::1")]).is_empty());
+    }
+
+    #[test]
+    fn a_mixed_answer_keeps_only_the_public_addresses() {
+        assert_eq!(
+            keep_resolved(false, &[ip("10.0.0.5"), ip("93.184.216.34"), ip("fd00::1")]),
+            vec![ip("93.184.216.34")]
+        );
+    }
+
+    #[test]
+    fn a_name_the_user_typed_as_local_may_resolve_locally() {
+        assert_eq!(keep_resolved(true, &[ip("192.168.1.9")]), vec![ip("192.168.1.9")]);
+    }
+
+    #[test]
+    fn lan_names_are_recognised() {
+        for h in ["localhost", "nas.local", "pi.localhost", "nas", "plex.lan", "box.home.arpa", "NAS.", "pc.localdomain"] {
+            assert!(looks_like_lan_name(h), "{h}");
+        }
+        for h in ["example.com", "files.example.org", "8.8.8.8", "evil.example", ""] {
+            assert!(!looks_like_lan_name(h), "{h}");
+        }
+    }
+
+    // ---- secrets in a link ----
+
+    #[test]
+    fn signed_and_token_links_are_found() {
+        for u in [
+            "https://x.test/f.zip?token=abc",
+            "https://x.test/f.zip?access_token=abc",
+            "https://x.test/f.zip?X-Amz-Signature=abc&X-Amz-Date=1",
+            "https://x.test/f.zip?sig=abc&se=2026",
+            "https://x.test/f.zip?Expires=1&Key-Pair-Id=2",
+            "https://x.test/f.zip?apikey=1",
+            "https://x.test/f.zip?AccessToken=1",
+            "https://x.test/f.zip?X-Goog-Credential=1",
+            "https://x.test/f.zip?a=1&password=hunter2",
+        ] {
+            assert!(has_secret_query(u), "{u}");
+        }
+    }
+
+    #[test]
+    fn plain_queries_are_not_secrets() {
+        for u in [
+            "https://x.test/f.zip",
+            "https://x.test/f.zip?id=42&lang=en",
+            "https://x.test/download?file=report.pdf&version=3",
+            "https://x.test/f.zip?author=bob",
+            "not a url",
+        ] {
+            assert!(!has_secret_query(u), "{u}");
+        }
     }
 }

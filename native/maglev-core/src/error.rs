@@ -45,6 +45,10 @@ pub enum ErrorCode {
     LocalRedirect,
     /// URL downloads: the Wi-Fi-only or VPN-only setting blocks the request.
     Blocked,
+    /// URL downloads: the server kept the connection open but sent almost nothing, again and again.
+    Stalled,
+    /// Opening a finished file: no app on the phone can open it. Returned by the Kotlin layer only.
+    NoApp,
 }
 
 impl ErrorCode {
@@ -75,6 +79,8 @@ impl ErrorCode {
             ErrorCode::ChecksumMismatch => "CHECKSUM_MISMATCH",
             ErrorCode::LocalRedirect => "LOCAL_REDIRECT",
             ErrorCode::Blocked => "BLOCKED",
+            ErrorCode::Stalled => "STALLED",
+            ErrorCode::NoApp => "NO_APP",
         }
     }
 }
@@ -422,5 +428,13 @@ mod tests {
             "\"CANCELLED\""
         );
         assert_eq!(ErrorCode::Cancelled.as_str(), "CANCELLED");
+    }
+
+    #[test]
+    fn link_download_codes_serialize_screaming_snake() {
+        assert_eq!(serde_json::to_string(&ErrorCode::Stalled).unwrap(), "\"STALLED\"");
+        assert_eq!(ErrorCode::Stalled.as_str(), "STALLED");
+        assert_eq!(serde_json::to_string(&ErrorCode::NoApp).unwrap(), "\"NO_APP\"");
+        assert_eq!(ErrorCode::NoApp.as_str(), "NO_APP");
     }
 }

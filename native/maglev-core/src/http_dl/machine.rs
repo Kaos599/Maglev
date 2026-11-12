@@ -12,6 +12,10 @@ use serde::{Deserialize, Serialize};
 /// Max retries of one transfer before it gives up (contract section 17, retry policy).
 pub const MAX_ATTEMPTS: u32 = 10;
 
+/// Max stall retries (too slow, or silent) before the download gives up. Smaller than `MAX_ATTEMPTS`: every
+/// stall already cost a full minute.
+pub const MAX_STALL_ATTEMPTS: u32 = 5;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum PauseReason {
     User,
@@ -51,6 +55,8 @@ pub enum DlError {
     StorageUnavailable,
     /// The file is bigger than the file system allows (FAT32 4 GB).
     FileTooLarge,
+    /// The server kept the connection open but sent almost nothing, again and again.
+    Stalled,
 }
 
 impl DlError {
@@ -65,6 +71,7 @@ impl DlError {
             DlError::LocalRedirect => "LOCAL_REDIRECT",
             DlError::StorageUnavailable => "STORAGE_UNAVAILABLE",
             DlError::FileTooLarge => "FILE_TOO_LARGE",
+            DlError::Stalled => "STALLED",
         }
     }
 }
@@ -131,6 +138,10 @@ pub enum Event {
     StorageGone,
     /// Extra: EFBIG, the file system cannot hold a file this big.
     FileTooLarge,
+    /// Extra: the transfer was too slow or silent for too long. `attempts` is the number of stall retries made.
+    Stalled { attempts: u32 },
+    /// Extra: restart of a download that needs a password, cookie or signed link that was never saved.
+    SecretsLost,
     /// Extra: `UserRetry` while governance blocks. Goes to the pause instead of the network.
     UserRetryBlocked(PauseReason),
 }
@@ -174,6 +185,15 @@ pub fn step(state: State, event: Event) -> (State, Vec<Effect>) {
     // `Remove` applies to every state.
     if let E::Remove { delete_files } = event {
         return (S::Gone, vec![Effect::CancelTasks, Effect::DeletePartIf(delete_files)]);
+    }
+    // `SecretsLost`: what the link needs was only in memory. Everything that is not over waits for a new link.
+    if event == E::SecretsLost {
+        return match state {
+            S::Resolving | S::Queued | S::Downloading | S::Paused(_) | S::Verifying => {
+                (S::NeedsLink, vec![Effect::CancelTasks, Effect::KeepPart])
+            }
+            other => (other, vec![]),
+        };
     }
     // `Restore`: a download that was working when the process died goes back in the queue.
     if event == E::Restore {
@@ -231,6 +251,14 @@ pub fn step(state: State, event: Event) -> (State, Vec<Effect>) {
                 (S::Downloading, vec![Effect::Backoff, Effect::RetrySegment])
             } else {
                 (S::Error(DlError::Network), vec![Effect::KeepPart])
+            }
+        }
+        // Extra: too slow or silent. Same shape as `Transient`, with its own, smaller budget.
+        (S::Downloading, E::Stalled { attempts }) => {
+            if attempts < MAX_STALL_ATTEMPTS {
+                (S::Downloading, vec![Effect::Backoff, Effect::RetrySegment])
+            } else {
+                (S::Error(DlError::Stalled), vec![Effect::KeepPart])
             }
         }
         (S::Downloading, E::Got200OnResume) => (
@@ -672,5 +700,55 @@ mod tests {
     fn events_without_a_row_change_nothing() {
         assert_eq!(step(S::Finished, E::UserPause), (S::Finished, vec![]));
         assert_eq!(step(S::Queued, E::AllBytes), (S::Queued, vec![]));
+    }
+
+    #[test]
+    fn stall_retries_then_gives_up_with_its_own_error() {
+        assert_eq!(
+            step(S::Downloading, E::Stalled { attempts: 0 }),
+            (S::Downloading, vec![F::Backoff, F::RetrySegment])
+        );
+        assert_eq!(
+            step(S::Downloading, E::Stalled { attempts: MAX_STALL_ATTEMPTS - 1 }),
+            (S::Downloading, vec![F::Backoff, F::RetrySegment])
+        );
+        assert_eq!(
+            step(S::Downloading, E::Stalled { attempts: MAX_STALL_ATTEMPTS }),
+            (S::Error(DlError::Stalled), vec![F::KeepPart])
+        );
+        assert_eq!(DlError::Stalled.as_str(), "STALLED");
+    }
+
+    #[test]
+    fn a_stall_outside_downloading_changes_nothing() {
+        for s in [S::Queued, S::Finished, S::Paused(PauseReason::User), S::NeedsLink] {
+            assert_eq!(step(s, E::Stalled { attempts: 0 }), (s, vec![]));
+        }
+    }
+
+    #[test]
+    fn a_stalled_error_can_be_retried() {
+        assert_eq!(step(S::Error(DlError::Stalled), E::UserRetry), (S::Resolving, vec![F::Probe]));
+    }
+
+    #[test]
+    fn lost_secrets_send_unfinished_downloads_to_needs_link() {
+        for s in [
+            S::Resolving,
+            S::Queued,
+            S::Downloading,
+            S::Paused(PauseReason::User),
+            S::Paused(PauseReason::Offline),
+            S::Verifying,
+        ] {
+            assert_eq!(step(s, E::SecretsLost), (S::NeedsLink, vec![F::CancelTasks, F::KeepPart]), "{s:?}");
+        }
+    }
+
+    #[test]
+    fn lost_secrets_leave_finished_failed_and_waiting_for_link_alone() {
+        for s in [S::Finished, S::NeedsLink, S::Error(DlError::Network), S::Gone, S::None] {
+            assert_eq!(step(s, E::SecretsLost), (s, vec![]), "{s:?}");
+        }
     }
 }

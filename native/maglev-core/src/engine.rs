@@ -560,6 +560,7 @@ impl MaglevEngine {
             cfg.proxy_url.clone(),
             blocked.clone(),
         );
+        downloads.set_max_active(cfg.max_active_downloads);
 
         let engine = Arc::new(MaglevEngine {
             runtime: Mutex::new(Some(runtime)),
@@ -2607,6 +2608,7 @@ impl MaglevEngine {
         let restart_required = old.restart_required(&new);
         self.apply_limits(new.download_limit_bps, new.upload_limit_bps);
         self.downloads.set_proxy(new.proxy_url.clone());
+        self.downloads.set_max_active(new.max_active_downloads);
         *self.config.lock() = new.clone();
         {
             let mut m = self.meta.lock();
