@@ -24,7 +24,7 @@ const MARK_SVG = path.join(assets, 'brand', 'maglev-mark.svg');
 const MONO_SVG = path.join(assets, 'brand', 'maglev-mark-mono.svg');
 const MARK_W = 107; // viewBox of maglev-mark.svg (scripts/build-logo.py)
 const MARK_H = 44;
-const TILE = '#05070A';
+const TILE = '#0B2A30'; // deep teal launcher tile (AGENTS.md §1)
 
 const magick = (...args) => execFileSync('magick', args, { stdio: 'inherit' });
 
