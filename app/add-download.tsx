@@ -10,7 +10,7 @@ import { formatBytes } from '../constants/format';
 import { triggerHaptic } from '../constants/haptics';
 import { Banner, Button, EmptyBlock, Screen } from '../components/ui';
 import { admit, pendingNeedOf } from '../utils/admission';
-import { probeErrorView } from '../utils/downloadCopy';
+import { actionRoute, probeErrorView } from '../utils/downloadCopy';
 
 /** Add a download from a web link: probe the link, show what it is, then start. */
 type Phase = 'input' | 'probing' | 'ready' | 'adding' | 'error';
@@ -140,7 +140,7 @@ export default function AddDownloadScreen() {
     void submit(link);
   };
 
-  const start = async () => {
+  const start = async (fromError = false) => {
     setPhase('adding');
     setAddError(null);
     const res = await startDownload(urlRef.current, {});
@@ -155,6 +155,11 @@ export default function AddDownloadScreen() {
       return;
     }
     triggerHaptic('error');
+    if (fromError) {
+      setErrorView({ body: res.message || "Couldn't start this download.", primary: 'retry' });
+      setPhase('error');
+      return;
+    }
     setAddError(res.message || "Couldn't start this download.");
     setPhase('ready');
   };
@@ -172,6 +177,20 @@ export default function AddDownloadScreen() {
   }
 
   // ---------- Error ----------
+  if (phase === 'error' && errorView?.primary === 'blocked') {
+    return (
+      <Screen title="Add download" onBack={close}>
+        <EmptyBlock
+          icon="warning"
+          error
+          title="Waiting for a network"
+          body={errorView.body}
+          primary={{ label: 'Open settings', onPress: () => router.push(actionRoute('openNetworkSettings') ?? '/settings/network') }}
+          secondary={{ label: 'Add anyway', onPress: () => void start(true) }}
+        />
+      </Screen>
+    );
+  }
   if (phase === 'error') {
     return (
       <Screen title="Add download" onBack={close}>

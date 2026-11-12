@@ -98,6 +98,10 @@ async function main() {
   check('probe: sign-in copy is exact', pv('AUTH_REQUIRED').body === 'This site wants you to sign in. Sign in on the site in your browser, copy the download link again, and paste it here.');
   check('probe: network and 5xx keep Try again, 404 does not', pv('NETWORK').primary === 'retry' && pv('HTTP_STATUS', 502).primary === 'retry' && pv('HTTP_STATUS', 404).primary === 'pasteAnother');
 
+  check('probe: blocked offers settings and Add anyway, not Try again', pv('BLOCKED').primary === 'blocked' && /Open settings/.test(pv('BLOCKED').body) && /add it anyway and it starts when downloads are allowed/.test(pv('BLOCKED').body) && pv('blocked').primary === 'blocked');
+  check('probe: other codes are not blocked', pv('BLOCKED_X').primary === 'retry');
+  check('paused tags: storage_unavailable is a folder problem, storage_full is a full disk', copy.downloadStatus(d({ state: 'paused', pausedBy: 'storage_unavailable' })).text !== copy.downloadStatus(d({ state: 'paused', pausedBy: 'storage_full' })).text && kinds(d({ state: 'paused', pausedBy: 'storage_unavailable' })) === 'pickFolder' && kinds(d({ state: 'paused', pausedBy: 'storage_full' })) === 'resume' && !copy.isGovernancePause('storage_unavailable') && !copy.isGovernancePause('storage_full'));
+
   // ---- torrents, pasted text and the share marker ----
   console.log('routing');
   const mag = 'magnet:?xt=urn:btih:' + 'a'.repeat(40);

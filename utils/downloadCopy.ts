@@ -47,6 +47,8 @@ export const STALLED_TEXT = 'Waiting for the server';
 export const STALLED_ERROR_TEXT = 'The server stopped sending data.';
 export const AUTH_REQUIRED_TEXT = 'This link needs you to sign in again. Paste the link again.';
 export const NO_APP_TEXT = 'No app on this phone can open this file.';
+export const PROBE_BLOCKED_BODY =
+  'Your network settings block downloads right now. Open settings to change that, or add it anyway and it starts when downloads are allowed.';
 export const AUTH_BODY =
   'This site wants you to sign in. Sign in on the site in your browser, copy the download link again, and paste it here.';
 
@@ -278,8 +280,10 @@ export function probeErrorView(
   code: string | undefined,
   message: string | undefined,
   httpStatus?: number | null,
-): { body: string; primary: 'pasteAnother' | 'retry' } {
+): { body: string; primary: 'pasteAnother' | 'retry' | 'blocked' } {
   const k = (code ?? '').toUpperCase();
+  // Trying again fails the same way; the user can change the setting or add it now and let it wait.
+  if (k === 'BLOCKED') return { body: PROBE_BLOCKED_BODY, primary: 'blocked' };
   if (k === 'NOT_A_FILE') return { body: NOT_A_FILE_BODY, primary: 'pasteAnother' };
   if (k === 'AUTH_REQUIRED') return { body: AUTH_BODY, primary: 'pasteAnother' };
   const body = message || 'Something went wrong.';
