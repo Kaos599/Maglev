@@ -24,8 +24,8 @@ Made by Harsh Dayal (https://harshdayal.dev, GitHub: https://github.com/Kaos599)
 
 ## Links
 
-- [Website](https://harshdayal.dev/maglev/)
-- [How Maglev is different (comparison with LibreTorrent, BiglyBT (Android), Seal, YTDLnis, NewPipe, Flud, 1DM+, Advanced Download Manager (ADM), Free Download Manager (FDM))](https://harshdayal.dev/maglev/compare/)
+- [Website](https://harshdayal.dev/maglev)
+- [How Maglev is different (comparison with LibreTorrent, BiglyBT (Android), Seal, YTDLnis, NewPipe, Flud, 1DM+, Advanced Download Manager (ADM), Free Download Manager (FDM))](https://harshdayal.dev/maglev/compare)
 - [Download (latest release)](https://github.com/Kaos599/Maglev/releases/latest)
 - [Source code](https://github.com/Kaos599/Maglev)
 - [Report a bug](https://github.com/Kaos599/Maglev/issues)
