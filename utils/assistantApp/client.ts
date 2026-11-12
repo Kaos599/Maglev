@@ -4,6 +4,7 @@
 // so Node tests run this file with a fake.
 
 import { chatCompletionsUrl, type PresetId } from '../prefs/assistant.ts';
+import { attributionHeaders } from '../assistant/models.ts';
 import { MAX_DETAIL_CHARS, STREAM_COPY, createStreamParser, requestExtras, sanitizeSnippet } from '../assistant/sse.ts';
 import type { RequestEffect, TurnEvent } from '../assistant/turnMachine.ts';
 
@@ -66,8 +67,8 @@ export function buildRequestBody(p: StreamParams): Record<string, unknown> {
 
 export function buildHeaders(p: StreamParams): Record<string, string> {
   const headers: Record<string, string> = { 'Content-Type': 'application/json', Accept: 'text/event-stream' };
-  // §8.2 lists no extra headers for any preset. OpenRouter's attribution headers are optional and would
-  // identify the app, so they are not sent.
+  // OpenRouter only: app attribution (https://openrouter.ai/docs/api-reference/overview). No other provider gets them.
+  Object.assign(headers, attributionHeaders(p.presetId));
   if (p.apiKey) headers.Authorization = `Bearer ${p.apiKey}`;
   return headers;
 }

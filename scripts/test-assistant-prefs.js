@@ -351,6 +351,25 @@ async function main() {
     }
   }
 
+  // ---- modelName ----
+  console.log('modelName');
+  {
+    const store = m.createAssistantPrefsStore(memoryKv(), memorySecrets());
+    check('modelName starts null', store.get().modelName === null);
+    store.update({ model: 'b/big:free', modelName: 'Big' });
+    check('modelName is saved with the model', store.get().modelName === 'Big');
+    store.update({ tokensUsed: { input: 1, output: 1 } });
+    check('unrelated update keeps it', store.get().modelName === 'Big');
+    store.update({ model: 'c/other:free' });
+    check('a new model without a name drops the old name', store.get().modelName === null);
+    await store.saveKey('openrouter', 'k', { baseUrl: 'https://openrouter.ai/api/v1', model: 'b/big:free', modelName: 'Big' });
+    check('saveKey stores the name', store.get().modelName === 'Big');
+    await store.saveKey('openrouter', 'k', { baseUrl: 'https://openrouter.ai/api/v1', model: 'x/y' });
+    check('saveKey without a name clears it', store.get().modelName === null);
+    check('selectPreset clears it', m.selectPreset({ ...store.get(), modelName: 'Z' }, 'groq').modelName === null);
+    check('junk modelName normalises to null', m.normalizeAssistantPrefs({ modelName: 5 }).modelName === null && m.normalizeAssistantPrefs({ modelName: 'x'.repeat(200) }).modelName === null);
+  }
+
   if (failed) {
     console.error(`\n${failed} failed`);
     process.exit(1);

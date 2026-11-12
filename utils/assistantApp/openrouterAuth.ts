@@ -46,8 +46,11 @@ export async function challengeFor(verifier: string, sha256Base64: (s: string) =
   return toBase64Url(await sha256Base64(verifier));
 }
 
+/** `key_label` names the key in the user's OpenRouter account (https://openrouter.ai/docs/guides/overview/auth/oauth, Optional Parameters). */
+export const KEY_LABEL = 'Maglev';
+
 export function buildAuthUrl(challenge: string): string {
-  return `${OPENROUTER_AUTH_URL}?code_challenge=${encodeURIComponent(challenge)}&code_challenge_method=S256`;
+  return `${OPENROUTER_AUTH_URL}?code_challenge=${encodeURIComponent(challenge)}&code_challenge_method=S256&key_label=${encodeURIComponent(KEY_LABEL)}`;
 }
 
 /**

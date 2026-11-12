@@ -7,6 +7,9 @@ import { ThemeColors, spacing, type } from '../../../constants/theme';
 import { Button } from '../../ui';
 import { Field } from './Field';
 
+/** OpenRouter's own page talks about a terminal; this is not one. */
+export const TERMINAL_NOTE = "OpenRouter's page may say to paste the code into a terminal. Paste it here in Maglev instead.";
+
 /** Sign in with OpenRouter: the primary way to get a key (noKey, editing, invalid). */
 export function OpenRouterSignInButton({ onPress, primary = true }: { onPress: () => void; primary?: boolean }) {
   const { colors } = useTheme();
@@ -15,6 +18,7 @@ export function OpenRouterSignInButton({ onPress, primary = true }: { onPress: (
     <View style={s.wrap}>
       <Button label="Sign in with OpenRouter" onPress={onPress} variant={primary ? 'primary' : 'secondary'} fullWidth testID="assistant-sign-in" />
       <Text style={s.caption}>One key for many models. You sign in on openrouter.ai, then paste the code it shows you.</Text>
+      <Text style={s.caption}>{TERMINAL_NOTE}</Text>
     </View>
   );
 }
@@ -70,6 +74,7 @@ export function OpenRouterCodeEntry({
       ) : (
         <>
           <Text style={s.caption}>Sign in and tap Allow. OpenRouter shows a code. Copy it, come back, and tap Paste code. The code works for 10 minutes.</Text>
+          <Text style={s.caption}>{TERMINAL_NOTE}</Text>
           <Field label="Code from OpenRouter" value={code} onChangeText={setCode} placeholder="Paste the code" onSubmitEditing={() => onSubmit(code)} testID="assistant-code" />
           {error ? (
             <Text style={s.error} accessibilityLiveRegion="polite">

@@ -27,6 +27,8 @@ export interface ProviderForm {
   key: string;
   baseUrl: string;
   model: string;
+  /** Display name of `model` from OpenRouter's list; null when unknown. */
+  modelName: string | null;
 }
 
 const auth = createOpenRouterAuth({
@@ -48,13 +50,14 @@ export function defaultBaseUrlFor(preset: ProviderPreset): string {
   return preset.local ? '' : preset.baseUrl;
 }
 
-function formFromPrefs(p: { presetId: PresetId; baseUrl: string; model: string }, saved: boolean): ProviderForm {
+function formFromPrefs(p: { presetId: PresetId; baseUrl: string; model: string; modelName: string | null }, saved: boolean): ProviderForm {
   const preset = presetById(p.presetId);
   return {
     preset: p.presetId,
     key: '',
     baseUrl: preset.local && !saved ? '' : p.baseUrl,
     model: p.model,
+    modelName: p.modelName,
   };
 }
 
@@ -87,6 +90,9 @@ export function useProviderSetup(opts?: { onExpireCards?: () => void }) {
     setFormState(formRef.current);
   }, []);
 
+  /** The picked model's display name, only while the form still holds that model. */
+  const nameFor = (model: string): string | null => (formRef.current.model === model ? formRef.current.modelName : null);
+
   const runEffect = useCallback(
     (fx: ProviderEffect) => {
       switch (fx.type) {
@@ -114,7 +120,7 @@ export function useProviderSetup(opts?: { onExpireCards?: () => void }) {
                   const saved = await assistantPrefs.saveKey(
                     fx.preset as PresetId,
                     fx.key,
-                    { baseUrl: fx.baseUrl, model: fx.model },
+                    { baseUrl: fx.baseUrl, model: fx.model, modelName: nameFor(fx.model) },
                     // Remove key during the write revokes it: the store deletes what it wrote.
                     () => probeMayStore({ aborted: ctl.signal.aborted, state: stateRef.current }),
                   );
@@ -122,7 +128,7 @@ export function useProviderSetup(opts?: { onExpireCards?: () => void }) {
                 } else {
                   await assistantPrefs.removeKey();
                   if (!probeMayStore({ aborted: ctl.signal.aborted, state: stateRef.current })) return;
-                  assistantPrefs.update({ presetId: fx.preset as PresetId, baseUrl: fx.baseUrl, model: fx.model });
+                  assistantPrefs.update({ presetId: fx.preset as PresetId, baseUrl: fx.baseUrl, model: fx.model, modelName: nameFor(fx.model) });
                 }
               } catch {
                 dispatchRef.current({ type: 'STORE_FAILED' });
@@ -208,7 +214,7 @@ export function useProviderSetup(opts?: { onExpireCards?: () => void }) {
   const pickPreset = useCallback(
     (id: PresetId) => {
       const p = presetById(id);
-      setForm({ preset: id, key: '', baseUrl: defaultBaseUrlFor(p), model: p.defaultModel });
+      setForm({ preset: id, key: '', baseUrl: defaultBaseUrlFor(p), model: p.defaultModel, modelName: null });
       setError(null);
     },
     [setForm],
@@ -244,7 +250,7 @@ export function useProviderSetup(opts?: { onExpireCards?: () => void }) {
 
   const signIn = useCallback(() => {
     const or = presetById('openrouter');
-    if (formRef.current.preset !== 'openrouter') setForm({ preset: 'openrouter', key: '', baseUrl: or.baseUrl, model: or.defaultModel });
+    if (formRef.current.preset !== 'openrouter') setForm({ preset: 'openrouter', key: '', baseUrl: or.baseUrl, model: or.defaultModel, modelName: null });
     dispatch({ type: 'SIGN_IN_OPENROUTER' });
   }, [dispatch, setForm]);
 
@@ -277,7 +283,7 @@ export function useProviderSetup(opts?: { onExpireCards?: () => void }) {
     cancel,
     removeKey,
     /** Name of the saved provider and model, for the ready summary. */
-    saved: { preset: prefs.presetId, model: prefs.model, baseUrl: prefs.baseUrl },
+    saved: { preset: prefs.presetId, model: prefs.model, modelName: prefs.modelName, baseUrl: prefs.baseUrl },
   };
 }
 
