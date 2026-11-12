@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useFocusEffect } from 'expo-router';
 import { maglevEngine, type Detail } from 'maglev-engine';
+import { notices } from '../../constants/copy';
 
 export type DetailStatus = 'loading' | 'ready' | 'missing' | 'error';
 
@@ -56,7 +57,7 @@ export function useTorrentDetail(id: string | undefined, wantPieces: boolean) {
           }
         } catch (e) {
           if (!alive) return;
-          setError(e instanceof Error ? e.message : 'Could not read torrent info.');
+          setError(e instanceof Error ? e.message : notices.inline.readInfoFailed);
           if (!hasData.current) setStatus('error');
         } finally {
           inFlight.current = false;

@@ -15,7 +15,7 @@ export function FloatingActionButton({ onPress, accessibilityLabel = 'Add a torr
   const styles = useMemo(() => makeStyles(colors), [colors]);
   return (
     <View style={styles.anchor} pointerEvents="box-none">
-      <PressableScale onPress={onPress} accessibilityRole="button" accessibilityLabel={accessibilityLabel} style={styles.fab}>
+      <PressableScale onPress={onPress} haptic="tap" accessibilityRole="button" accessibilityLabel={accessibilityLabel} style={styles.fab}>
         <PixelIcon name="plus" size={24} color={colors.onAccent} />
       </PressableScale>
     </View>

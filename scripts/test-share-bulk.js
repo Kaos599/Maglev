@@ -22,9 +22,9 @@ async function main() {
   assert.strictEqual(takeNextShared(), b);
   assert.strictEqual(takeNextShared(), null);
 
-  assert.strictEqual(bulkSummary('Paused', [true, true, true, true, false]), "Paused 4 · 1 couldn't");
+  assert.strictEqual(bulkSummary('Paused', [true, true, true, true, false]), "Paused 4. Couldn't finish 1.");
   assert.strictEqual(bulkSummary('Paused', [true, true]), null);
-  assert.strictEqual(bulkSummary('Deleted', [false, false]), "2 couldn't be deleted");
+  assert.strictEqual(bulkSummary('Deleted', [false, false]), "Couldn't delete 2.");
   assert.strictEqual(bulkSummary('Resumed', []), null);
   console.log('share + bulk summary tests passed');
 }

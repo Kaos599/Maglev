@@ -21,6 +21,7 @@ import {
   saveSeen,
 } from '../../utils/feeds';
 import { syncFeedAutomationToNative } from '../../utils/prefs/feedAutomation';
+import { banners, empty } from '../../constants/copy';
 
 interface FeedState {
   status: 'loading' | 'ok' | 'error';
@@ -252,8 +253,8 @@ export default function FeedsScreen() {
       <Screen title="Feeds">
         <EmptyBlock
           icon="feeds"
-          title="No feeds yet"
-          body="Follow an RSS or Atom feed to see new torrents here."
+          title={empty.feeds.none.title}
+          body={empty.feeds.none.body}
           primary={{ label: 'New feed', icon: 'plus', onPress: () => setSheetOpen(true) }}
           secondary={{ label: 'Auto-download rules', onPress: () => router.push('/settings/feeds' as never) }}
         />
@@ -271,7 +272,7 @@ export default function FeedsScreen() {
         <View key={f.id} style={styles.errorWrap}>
           <Banner
             tone="danger"
-            title={`Could not load ${f.name}`}
+            title={banners.feeds.loadFailed(f.name).title}
             body={states[f.id]?.error}
             actionLabel="Retry"
             onAction={() => void loadOne(f)}
@@ -315,7 +316,7 @@ export default function FeedsScreen() {
           loadingAny ? (
             <SkeletonRows />
           ) : errored.length > 0 ? undefined : (
-            <EmptyBlock icon="feeds" title="Nothing here yet" body="Pull down to check for new releases." />
+            <EmptyBlock icon="feeds" title={empty.feeds.nothingNew.title} body={empty.feeds.nothingNew.body} />
           )
         }
         contentContainerStyle={styles.list}

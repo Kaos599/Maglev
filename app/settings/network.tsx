@@ -5,6 +5,7 @@ import { useSettings } from '../../context/SettingsContext';
 import { useMaglevEngine as useEngine } from '../../context/EngineContext';
 import { Banner, Button, Chip, IconButton, ListRow, SectionHeader, Toggle } from '../../components/ui';
 import { Caption, Card, InputSheet, SettingsPage, parseIntIn } from '../../components/settings/SettingsParts';
+import { notices } from '../../constants/copy';
 
 type Field = 'port' | 'ssid' | 'proxyHost' | 'proxyPort' | 'proxyUser' | 'proxyPass';
 
@@ -30,7 +31,7 @@ export default function NetworkSettings() {
       const path = res.assets[0].uri.replace(/^file:\/\//, '');
       set({ ipFilterPath: path, ipFilterEnabled: true });
     } catch {
-      setFileError("Couldn't read that file. Pick another one.");
+      setFileError(notices.inline.readFileFailed);
     }
   };
 

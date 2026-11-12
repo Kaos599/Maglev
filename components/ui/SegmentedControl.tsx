@@ -36,7 +36,7 @@ export function SegmentedControl<T extends string>({
           <PressableScale
             key={o.value}
             onPress={() => !active && onChange(o.value)}
-            haptic={!active}
+            haptic={active ? false : 'select'}
             accessibilityRole="radio"
             accessibilityLabel={o.accessibilityLabel ?? o.label}
             accessibilityState={{ selected: active, checked: active }}

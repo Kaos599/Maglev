@@ -13,6 +13,7 @@ import { feedAutomationSummary, useFeedAutomation } from '../../utils/prefs/feed
 import { useAssistantPrefs } from '../../utils/prefs/assistantApp';
 import { Card, formatLimit, friendlyPath } from '../../components/settings/SettingsParts';
 import { spacing } from '../../constants/theme';
+import { banners } from '../../constants/copy';
 
 const ACCENT_LABEL = { lime: 'Lime', cyan: 'Cyan', pink: 'Pink', orange: 'Orange' } as const;
 const MODE_LABEL = { oled: 'OLED', dim: 'Dim', light: 'Light', system: 'System' } as const;
@@ -48,8 +49,8 @@ function NeedsAttention() {
         <Banner
           key="notif"
           tone="warning"
-          title="Notifications are off"
-          body="Downloads may stop in the background."
+          title={banners.settings.notificationsOff.title}
+          body={banners.settings.notificationsOff.body}
           actionLabel="Open settings"
           onAction={() => void Linking.openSettings()}
         />,
@@ -60,7 +61,7 @@ function NeedsAttention() {
         <Banner
           key="battery"
           tone="warning"
-          title="Android may stop downloads to save battery"
+          title={banners.settings.batteryRestricted.title}
           actionLabel="Allow background"
           onAction={() => void maglevEngine.openBatterySettings().then(refreshPermissions)}
         />,
@@ -71,8 +72,8 @@ function NeedsAttention() {
         <Banner
           key="legacy"
           tone="warning"
-          title="Storage access denied"
-          body="Files are saved in app storage instead."
+          title={banners.settings.legacyStorageDenied.title}
+          body={banners.settings.legacyStorageDenied.body}
           actionLabel="Grant access"
           onAction={() => void maglevEngine.requestLegacyStorage().then(refreshPermissions)}
         />,
@@ -83,8 +84,8 @@ function NeedsAttention() {
         <Banner
           key="saf"
           tone="danger"
-          title="Folder access lost"
-          body="Maglev can no longer write to your chosen folder."
+          title={banners.storage.folderAccessLost.title}
+          body={banners.storage.folderAccessLost.body}
           actionLabel="Pick again"
           onAction={() => router.push('/settings/storage')}
         />,
@@ -94,7 +95,8 @@ function NeedsAttention() {
         <Banner
           key="fallback"
           tone="warning"
-          title="Files are saved in app storage"
+          title={banners.storage.appStorageFallback.title}
+          body={banners.storage.appStorageFallback.body}
           actionLabel="Fix"
           onAction={() => router.push('/settings/storage')}
         />,

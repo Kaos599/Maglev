@@ -8,6 +8,7 @@ import { CATEGORY_LABEL, ProviderInfo, formatSeconds, methodLine } from '../sear
 import { Monogram } from './ProviderRow';
 import type { SearchPrefs } from '../../utils/prefs/search';
 import type { Category } from '../../utils/search/types';
+import { banners } from '../../constants/copy';
 
 export interface TestOutcome {
   ok: boolean;
@@ -98,7 +99,7 @@ export function ProviderSheet({
   return (
     <Sheet visible onClose={done} title={provider.name} subtitle={methodLine(provider.method)}>
       <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.content}>
-        {provider.unsafeReason ? <Banner tone="warning" title="Unsafe source" body={provider.unsafeReason} /> : null}
+        {provider.unsafeReason ? <Banner tone="warning" title={banners.sources.unsafe.title} body={provider.unsafeReason} /> : null}
 
         <View style={styles.headRow}>
           <Monogram abbr={provider.abbr} tint={enabled} />

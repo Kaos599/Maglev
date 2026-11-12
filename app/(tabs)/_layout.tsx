@@ -3,7 +3,7 @@ import { Animated, Pressable, StyleSheet, View } from 'react-native';
 import { Tabs } from 'expo-router';
 import type { BottomTabBarButtonProps } from 'expo-router/build/layouts/Tabs';
 import { TAB_BAR_HEIGHT, useTabBarStyle } from '../../components/tabBarStyle';
-import { triggerHaptic } from '../../constants/haptics';
+import { haptic } from '../../constants/haptics';
 import { PixelIconName } from '../../components/PixelIcon';
 import { TabGlyph, useTabMove } from '../../components/tabs/TabGlyph';
 import type { TabGlyphName } from '../../components/tabs/tabGlyphs';
@@ -127,7 +127,7 @@ export default function TabLayout() {
 
   return (
     <Tabs
-      screenListeners={{ tabPress: () => triggerHaptic('selection') }}
+      screenListeners={{ tabPress: () => haptic('select') }}
       screenOptions={{
         // A tab renders (and its route module loads) only when first opened. This is already the
         // default (createBottomTabNavigator passes lazyByDefault: true); set so it cannot regress.

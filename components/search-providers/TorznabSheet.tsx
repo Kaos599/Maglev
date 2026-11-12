@@ -3,6 +3,7 @@ import { StyleSheet, Text, TextInput, View } from 'react-native';
 import { useTheme } from '../../context/ThemeContext';
 import { ThemeColors, radius, spacing, touch, type } from '../../constants/theme';
 import { Button, Sheet } from '../ui';
+import { notices } from '../../constants/copy';
 
 export interface TorznabDraft {
   name: string;
@@ -52,7 +53,7 @@ export function TorznabSheet({
     try {
       await onAdd({ name: name.trim(), url: cleanUrl, apiKey: apiKey.trim() });
     } catch {
-      setError("Couldn't save the API key on this device. Try again.");
+      setError(notices.inline.apiKeyFailed);
       setBusy(false);
     }
   };

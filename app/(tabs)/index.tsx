@@ -23,7 +23,7 @@ import { steadyResolvingSecs } from '../../components/transfers/snapshots';
 import { lowSpaceWarning, usableFreeOf, type LowSpaceWarning } from '../../components/transfers/lowSpace';
 import * as DocumentPicker from 'expo-document-picker';
 import { maglevEngine, type DownloadSnapshot } from 'maglev-engine';
-import { triggerHaptic } from '../../constants/haptics';
+import { haptic } from '../../constants/haptics';
 import { useMaglevEngine } from '../../context/EngineContext';
 import { useTheme } from '../../context/ThemeContext';
 import { ThemeColors, radius, spacing, type } from '../../constants/theme';
@@ -31,6 +31,7 @@ import { takeNextShared } from '../../utils/shareQueue';
 import { allowDeviceFailureText, openFailureText, type DownloadAction } from '../../utils/downloadCopy';
 import { BulkVerb, bulkSummary } from '../../utils/bulkSummary';
 import { TransferSort, loadTransferSort, saveTransferSort } from '../../utils/prefs/transfers';
+import { empty, notices } from '../../constants/copy';
 
 const Separator = () => <View style={{ height: CARD_GAP }} />;
 const keyOfTorrent = (t: { id: string }) => t.id;
@@ -265,7 +266,7 @@ export default function TransfersScreen() {
     });
   }, []);
   const startSelection = useCallback((id: string) => {
-    triggerHaptic('medium');
+    haptic('select');
     setSelectedIds((prev) => (prev.has(id) ? prev : new Set(prev).add(id)));
   }, []);
   const selectAll = useCallback(() => {
@@ -285,7 +286,7 @@ export default function TransfersScreen() {
   const onKeepTrying = useCallback(
     (id: string) => {
       void maglevEngine.setHealth(id, '').then((res) => {
-        if (!res.ok) showNotice({ message: res.message || "Couldn't try again." });
+        if (!res.ok) showNotice({ message: res.message || notices.common.retryFailed });
       });
     },
     [showNotice],
@@ -351,12 +352,12 @@ export default function TransfersScreen() {
       if (res.canceled || !res.assets?.length) return;
       const asset = res.assets[0];
       if (!/\.torrent$/i.test(asset.name)) {
-        setFileError("That isn't a .torrent file.");
+        setFileError(notices.inline.notTorrentFile);
         return;
       }
       router.push({ pathname: '/add-torrent', params: { source: asset.uri } });
     } catch {
-      setFileError("Couldn't open that file.");
+      setFileError(notices.inline.openFileFailed);
     }
   }, [router]);
 
@@ -400,6 +401,7 @@ export default function TransfersScreen() {
 
   const filtering = filter !== 'all' || query.trim().length > 0;
   const filterLabel = FILTERS.find((f) => f.id === filter)?.label ?? '';
+  const emptyFilter = query.trim() ? empty.transfers.noMatch : empty.transfers.noneInFilter(filterLabel);
 
   return (
     <View style={[styles.root, { paddingTop: insets.top }]}>
@@ -485,8 +487,8 @@ export default function TransfersScreen() {
             <View style={styles.noMatch}>
               <EmptyBlock
                 icon="filter"
-                title={query.trim() ? 'No matching transfers' : `No ${filterLabel.toLowerCase()} transfers`}
-                body={query.trim() ? `Nothing matches "${query.trim()}".` : undefined}
+                title={emptyFilter.title}
+                body={emptyFilter.body}
                 primary={
                   filtering
                     ? {

@@ -9,7 +9,7 @@ import { useTheme } from '../context/ThemeContext';
 import { useMaglevEngine } from '../context/EngineContext';
 import { ThemeColors, radius, spacing, touch, type } from '../constants/theme';
 import { formatBytes } from '../constants/format';
-import { triggerHaptic } from '../constants/haptics';
+import { haptic } from '../constants/haptics';
 import { Banner, Button, Chip, EmptyBlock, Screen } from '../components/ui';
 import { ResolveProgress } from '../components/add/ResolveProgress';
 import { AddFileRow } from '../components/add/AddFileRow';
@@ -19,6 +19,7 @@ import { fileExt } from '../components/detail/torrentLabels';
 import { admit, pendingNeedOf, type AdmissionOutcome } from '../utils/admission';
 import { admissionCaption } from '../utils/admissionCopy';
 import { takePrefetchedMetadata } from '../components/search/metadataCache';
+import { banners, empty, notices } from '../constants/copy';
 
 /** SM-9 add flow states. */
 type Phase = 'input' | 'validating' | 'invalid' | 'resolving' | 'timeout' | 'error' | 'duplicate' | 'preview' | 'adding' | 'added';
@@ -76,7 +77,7 @@ export default function AddTorrentScreen() {
   const finishAdded = useCallback(
     (id: string) => {
       setPhase('added');
-      triggerHaptic('success');
+      haptic('commit');
       router.replace({ pathname: '/torrent/[id]', params: { id } });
     },
     [router],
@@ -85,7 +86,6 @@ export default function AddTorrentScreen() {
   const showDuplicate = useCallback((id: string | null) => {
     setDupId(id);
     setPhase('duplicate');
-    triggerHaptic('warning');
   }, []);
 
   const resolve = useCallback(
@@ -107,7 +107,7 @@ export default function AddTorrentScreen() {
         }
       } catch (e) {
         if (mine !== token.current) return;
-        setMessage(e instanceof Error ? e.message : 'Something went wrong.');
+        setMessage(e instanceof Error ? e.message : notices.addTorrent.addFailed);
         setPhase('error');
         return;
       }
@@ -121,7 +121,6 @@ export default function AddTorrentScreen() {
         setSelected(new Set(res.files.map((f) => f.index)));
         setFirsts(new Set());
         setPhase('preview');
-        triggerHaptic('medium');
         return;
       }
       switch (res.code) {
@@ -139,7 +138,7 @@ export default function AddTorrentScreen() {
           setPhase('timeout');
           break;
         default:
-          setMessage(res.message || 'Something went wrong.');
+          setMessage(res.message || notices.addTorrent.addFailed);
           setPhase('error');
       }
     },
@@ -230,7 +229,7 @@ export default function AddTorrentScreen() {
   };
 
   const handlePaste = async () => {
-    triggerHaptic('light');
+    haptic('tap');
     let clip = '';
     try {
       clip = (await Clipboard.getStringAsync()).trim();
@@ -238,7 +237,7 @@ export default function AddTorrentScreen() {
       clip = '';
     }
     if (!clip) {
-      setMessage('Your clipboard is empty.');
+      setMessage(notices.inline.clipboardEmpty);
       setPhase('invalid');
       return;
     }
@@ -247,7 +246,7 @@ export default function AddTorrentScreen() {
   };
 
   const handlePickFile = async () => {
-    triggerHaptic('light');
+    haptic('tap');
     try {
       const res = await DocumentPicker.getDocumentAsync({
         type: ['application/x-bittorrent', 'application/octet-stream', '*/*'],
@@ -264,19 +263,19 @@ export default function AddTorrentScreen() {
       // The engine reads an absolute path; the picker already copied the file into the cache.
       submit(decodeURI(asset.uri.replace(/^file:\/\//, '')), true);
     } catch {
-      setMessage("Couldn't open that file.");
+      setMessage(notices.inline.openFileFailed);
       setPhase('invalid');
     }
   };
 
   const handleChangeFolder = async () => {
-    triggerHaptic('light');
+    haptic('tap');
     try {
       const res = await maglevEngine.pickDownloadFolder();
       if ('cancelled' in res) return;
       setFolder({ uri: res.uri, label: res.displayName });
     } catch {
-      setAddError("Couldn't open the folder picker.");
+      setAddError(notices.inline.folderPickerFailed);
     }
   };
 
@@ -295,7 +294,7 @@ export default function AddTorrentScreen() {
     try {
       res = await maglevEngine.addTorrent(sourceRef.current, { onlyFiles, filePriorities, paused, outputFolder: null /* Kotlin fills output_folder from the persisted target set by pickDownloadFolder (handles direct + staging) */ });
     } catch (e) {
-      setAddError(e instanceof Error ? e.message : 'Something went wrong.');
+      setAddError(e instanceof Error ? e.message : notices.addTorrent.addFailed);
       setPhase(meta ? 'preview' : 'timeout');
       return;
     }
@@ -307,8 +306,8 @@ export default function AddTorrentScreen() {
       showDuplicate(res.id ?? null);
       return;
     }
-    setAddError(res.message || 'Could not add this torrent.');
-    triggerHaptic('error');
+    setAddError(res.message || notices.addTorrent.addFailed);
+    haptic('fail');
     setPhase(meta ? 'preview' : 'timeout');
   };
 
@@ -329,14 +328,14 @@ export default function AddTorrentScreen() {
       res = await maglevEngine.addTorrent(source, { onlyFiles: null, filePriorities: null, outputFolder: null });
     } catch (e) {
       setStarting(false);
-      setAddError(e instanceof Error ? e.message : 'Something went wrong.');
+      setAddError(e instanceof Error ? e.message : notices.addTorrent.addFailed);
       setPhase('timeout');
       return;
     }
     setStarting(false);
     if (res.ok) {
-      triggerHaptic('success');
-      showNotice({ message: 'Added. You can choose files once its details arrive.' }, 6000);
+      haptic('commit');
+      showNotice({ message: notices.addTorrent.addedWaiting }, 6000);
       router.replace('/');
       return;
     }
@@ -344,13 +343,13 @@ export default function AddTorrentScreen() {
       showDuplicate(res.id ?? null);
       return;
     }
-    setAddError(res.message || 'Could not add this torrent.');
-    triggerHaptic('error');
+    setAddError(res.message || notices.addTorrent.addFailed);
+    haptic('fail');
     setPhase('timeout');
   };
 
   const toggleFile = useCallback((index: number, next: boolean) => {
-    triggerHaptic('selection');
+    haptic('select');
     setSelected((prev) => {
       const s = new Set(prev);
       if (next) s.add(index);
@@ -360,7 +359,7 @@ export default function AddTorrentScreen() {
   }, []);
 
   const applyPriority = (index: number, p: FilePriority) => {
-    triggerHaptic('selection');
+    haptic('select');
     setSelected((prev) => {
       const next = new Set(prev);
       if (p === 'skip') next.delete(index);
@@ -455,7 +454,7 @@ export default function AddTorrentScreen() {
           </View>
           <Button label="Change" variant="secondary" disabled={adding} onPress={handleChangeFolder} />
         </View>
-        {addError ? <Banner tone="danger" title="Couldn't add this torrent" body={addError} /> : null}
+        {addError ? <Banner tone="danger" title={banners.addTorrent.addFailed.title} body={addError} /> : null}
       </View>
     );
 
@@ -471,14 +470,14 @@ export default function AddTorrentScreen() {
               first={firsts.has(item.index)}
               onToggle={toggleFile}
               onLongPress={(i) => {
-                triggerHaptic('medium');
+                haptic('tap');
                 setPrioIndex(i);
               }}
             />
           )}
           ListHeaderComponent={header}
           ListFooterComponent={footer}
-          ListEmptyComponent={<EmptyBlock icon="file" title="No files listed" body="This torrent has no files to choose from." />}
+          ListEmptyComponent={<EmptyBlock icon="file" title={empty.addTorrent.noFiles.title} body={empty.addTorrent.noFiles.body} />}
           contentContainerStyle={styles.listContent}
           initialNumToRender={14}
           windowSize={7}
@@ -538,8 +537,8 @@ export default function AddTorrentScreen() {
       <Screen title="Add torrent" onBack={close}>
         <EmptyBlock
           icon="check"
-          title="Already in your list"
-          body="This torrent is already added."
+          title={empty.addTorrent.duplicate.title}
+          body={empty.addTorrent.duplicate.body}
           primary={{ label: 'Open it', onPress: () => dupId && router.replace({ pathname: '/torrent/[id]', params: { id: dupId } }) }}
           secondary={{ label: 'Back', onPress: () => setPhase('input') }}
         />
@@ -552,12 +551,12 @@ export default function AddTorrentScreen() {
       <Screen title="Add torrent" onBack={close}>
         <EmptyBlock
           icon="clock"
-          title="Couldn't find this torrent's info"
+          title={empty.addTorrent.timedOut.title}
           body={
             addError ??
             (isMagnetSource
-              ? 'No peers answered in time. Retry, or add it anyway and Maglev keeps looking in the background.'
-              : 'No peers answered in time.')
+              ? empty.addTorrent.timedOutMagnet
+              : empty.addTorrent.timedOutFile)
           }
           primary={{ label: 'Retry', onPress: () => resolve(sourceRef.current) }}
           secondary={isMagnetSource ? { label: 'Add anyway', onPress: () => doAdd(true) } : { label: 'Back', onPress: () => setPhase('input') }}
@@ -572,7 +571,7 @@ export default function AddTorrentScreen() {
         <EmptyBlock
           icon="warning"
           error
-          title="Couldn't read this torrent"
+          title={empty.addTorrent.readFailed.title}
           body={message ?? undefined}
           primary={{ label: 'Retry', onPress: () => resolve(sourceRef.current) }}
           secondary={{ label: 'Back', onPress: () => setPhase('input') }}

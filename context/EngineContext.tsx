@@ -36,6 +36,7 @@ import {
   type PendingMap,
 } from '../utils/optimistic';
 import { shareRows } from '../components/transfers/snapshots';
+import { notices } from '../constants/copy';
 
 /** Bundle-load time, the zero point for the cold-start log (UI spec S10.3). */
 const JS_LOADED_AT = Date.now();
@@ -593,7 +594,7 @@ export const EngineProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       const label = nameOf(id);
       const group = beginTap([id], 'pause');
       const ok = (await maglevEngine.pause(id)).ok;
-      endTap(group, ok, `Couldn't pause ${label}. Try again.`);
+      endTap(group, ok, notices.engine.pauseFailed(label));
       return ok;
     },
     [nameOf, beginTap, endTap]
@@ -604,7 +605,7 @@ export const EngineProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       const label = nameOf(id);
       const group = beginTap([id], 'resume');
       const ok = (await maglevEngine.resume(id)).ok;
-      endTap(group, ok, `Couldn't resume ${label}. Try again.`);
+      endTap(group, ok, notices.engine.resumeFailed(label));
       return ok;
     },
     [nameOf, beginTap, endTap]
@@ -615,7 +616,7 @@ export const EngineProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       .map((t) => t.id);
     const group = beginTap(ids, 'pause');
     const res = await maglevEngine.pauseAll();
-    endTap(group, res.ok, "Couldn't pause all. Try again.");
+    endTap(group, res.ok, notices.engine.pauseAllFailed);
   }, [beginTap, endTap]);
   const resumeAll = useCallback(async () => {
     const ids = liveRef.current.torrents
@@ -623,7 +624,7 @@ export const EngineProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       .map((t) => t.id);
     const group = beginTap(ids, 'resume');
     const res = await maglevEngine.resumeAll();
-    endTap(group, res.ok, "Couldn't resume all. Try again.");
+    endTap(group, res.ok, notices.engine.resumeAllFailed);
   }, [beginTap, endTap]);
 
   /** Drops rows the engine deleted from the engine list itself (React state too, unless away). */
@@ -677,7 +678,7 @@ export const EngineProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       const failedAt = results.findIndex((ok) => !ok);
       if (failedAt >= 0) {
         const failed = results.filter((ok) => !ok).length;
-        showNotice({ message: failed === 1 ? `Couldn't remove ${names[failedAt]}. Try again.` : `Couldn't remove ${failed} torrents. Try again.` });
+        showNotice({ message: failed === 1 ? notices.engine.removeFailed(names[failedAt]) : notices.engine.removeFailedMany(failed) });
       }
     },
     [showNotice, dropFromLive, beginTap, endTap]
@@ -712,7 +713,7 @@ export const EngineProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       pendingRemoval.current = { ids, names, timer, noticeId };
       showNotice(
         {
-          message: ids.length === 1 ? `Removed ${names[0]}` : `Removed ${ids.length} torrents`,
+          message: ids.length === 1 ? notices.engine.removed(names[0]) : notices.engine.removedMany(ids.length),
           actionLabel: 'Undo',
           onAction: undoRemove,
         },
@@ -833,7 +834,7 @@ export const EngineProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const downloadCall = useCallback(
     async (label: string, call: () => Promise<EngineResult>) => {
       const res = await call();
-      if (!res.ok) showNotice({ message: res.message || `Couldn't ${label}. Try again.` });
+      if (!res.ok) showNotice({ message: res.message || notices.engine.downloadActionFailed(label) });
       return res.ok;
     },
     [showNotice]

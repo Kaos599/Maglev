@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef } from 'react';
 import { Animated, Pressable, StyleSheet } from 'react-native';
 import { useTheme } from '../../context/ThemeContext';
 import { ThemeColors } from '../../constants/theme';
-import { triggerHaptic } from '../../constants/haptics';
+import { haptic } from '../../constants/haptics';
 
 export interface ToggleProps {
   value: boolean;
@@ -29,7 +29,7 @@ export function Toggle({ value, onValueChange, accessibilityLabel, disabled = fa
   return (
     <Pressable
       onPress={() => {
-        triggerHaptic('selection');
+        haptic('select');
         onValueChange(!value);
       }}
       disabled={disabled}

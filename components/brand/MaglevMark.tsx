@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AccessibilityInfo, Animated, Easing, Pressable, StyleSheet, View, useWindowDimensions, type HostInstance } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
-import { triggerHaptic } from '../../constants/haptics';
+import { haptic } from '../../constants/haptics';
 import { useReduceMotion } from '../motion/useReduceMotion';
 import { BOOST_ENTER_AT, BOOST_FRAMES, boostTravel, claimArrival, createTapGate, hitSlopFor, steppedRanges } from './markMotion';
 import {
@@ -162,7 +162,7 @@ export function MaglevMark({ height = 96, cruising = false, tappable = false, ar
 
   const onPress = useCallback(() => {
     if (!gate.tryStart()) return;
-    triggerHaptic('light');
+    haptic('tap');
     if (reduce) {
       gate.finish();
       return;

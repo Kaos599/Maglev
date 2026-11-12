@@ -1,7 +1,7 @@
 import React, { useCallback } from 'react';
 import { Pressable, PressableProps, StyleProp, StyleSheet, ViewStyle } from 'react-native';
 import Animated, { cancelAnimation, interpolate, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
-import { triggerHaptic } from '../../constants/haptics';
+import { haptic as buzz, HapticVerb } from '../../constants/haptics';
 import { motion } from '../../constants/theme';
 import { PRESS_SINK } from '../motion';
 import { useMotion } from './useMotion';
@@ -19,7 +19,8 @@ export interface PressableScaleProps extends Omit<PressableProps, 'style' | 'chi
    * `sink` moves it down 2 whole pixels, for bare pixel icons, which blur when scaled.
    */
   feedback?: 'scale' | 'sink';
-  haptic?: boolean;
+  /** Haptic verb played after the press, or false for none (default). Opt in only where it helps. */
+  haptic?: HapticVerb | false;
 }
 
 const OUTER_KEYS = new Set([
@@ -39,7 +40,7 @@ function splitStyle(style: StyleProp<ViewStyle>): { outer: ViewStyle; inner: Vie
 }
 
 /**
- * Shared pressable: a short press response (scale or sink) and a light haptic.
+ * Shared pressable: a short press response (scale or sink). Silent unless `haptic` names a verb.
  * The Pressable owns the hit area; the inner Animated.View owns the look.
  * Press in and release are both 120 ms ease-out, driven by a Reanimated shared value on the UI thread.
  * With reduce motion on there is no scale or sink at all; a `style(pressed)` background still shows the press.
@@ -50,7 +51,7 @@ export function PressableScale({
   children,
   scaleTo = motion.pressScale,
   feedback = 'scale',
-  haptic = true,
+  haptic = false,
   onPress,
   onPressIn,
   onPressOut,
@@ -109,7 +110,7 @@ export function PressableScale({
         to(0);
         // Navigation first; the haptic must never sit in front of it.
         onPress?.(e);
-        if (haptic) triggerHaptic('light');
+        if (haptic) buzz(haptic);
       }}
     >
       <Animated.View style={[inner, styles.fill, animated]}>{children}</Animated.View>

@@ -28,6 +28,7 @@ import { availableCategories, eligibleProviders, mergeInto, rerunProvider, resol
 import { CloudflareSolverSheet } from '../../components/search/CloudflareSolverSheet';
 import { tallySources, unansweredNote } from '../../utils/search/answered';
 import type { Category, MergedResult, SearchUpdate } from '../../utils/search/types';
+import { empty } from '../../constants/copy';
 
 const DEBOUNCE_MS = 400;
 const MIN_QUERY = 2;
@@ -420,8 +421,8 @@ export default function SearchScreen() {
       <EmptyBlock
         icon="warning"
         error
-        title="Search is unavailable right now"
-        body="Check your connection and try again."
+        title={empty.search.unavailable.title}
+        body={empty.search.unavailable.body}
         primary={{ label: 'Retry', icon: 'retry', onPress: () => setRetryTick((n) => n + 1) }}
       />
     );
@@ -429,8 +430,8 @@ export default function SearchScreen() {
     body = (
       <EmptyBlock
         icon="search"
-        title="No source covers this category"
-        body="Turn on a source that searches it."
+        title={empty.search.noSource.title}
+        body={empty.search.noSource.body}
         primary={{ label: 'Change sources', onPress: openProviders }}
       />
     );
@@ -454,12 +455,12 @@ export default function SearchScreen() {
                 <EmptyBlock
                   icon="warning"
                   error
-                  title="No source answered"
-                  body="Check your connection or try other sources."
+                  title={empty.search.noAnswer.title}
+                  body={empty.search.noAnswer.body}
                   primary={{ label: 'Retry', icon: 'retry', onPress: () => setRetryTick((n) => n + 1) }}
                 />
               ) : (
-                <EmptyBlock icon="search" title={`No results for "${trimmed}"`} body="Try fewer words or another category." />
+                <EmptyBlock icon="search" title={empty.search.noResults(trimmed).title} body={empty.search.noResults(trimmed).body} />
               )
             )
           }

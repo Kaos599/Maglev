@@ -8,10 +8,11 @@ import { useTheme } from '../context/ThemeContext';
 import { useMaglevEngine } from '../context/EngineContext';
 import { ThemeColors, radius, spacing, type } from '../constants/theme';
 import { formatBytes } from '../constants/format';
-import { triggerHaptic } from '../constants/haptics';
+import { haptic } from '../constants/haptics';
 import { Banner, Button, EmptyBlock, Screen } from '../components/ui';
 import { admit, pendingNeedOf } from '../utils/admission';
 import { actionRoute, probeErrorView } from '../utils/downloadCopy';
+import { banners, empty, notices } from '../constants/copy';
 
 /** Add a download from a web link: probe the link, show what it is, then start. */
 type Phase = 'input' | 'probing' | 'ready' | 'adding' | 'error';
@@ -65,7 +66,6 @@ export default function AddDownloadScreen() {
       if (res.ok) {
         setProbe(res);
         setPhase('ready');
-        triggerHaptic('medium');
         return;
       }
       setProbe(null);
@@ -126,7 +126,7 @@ export default function AddDownloadScreen() {
   };
 
   const handlePaste = async () => {
-    triggerHaptic('light');
+    haptic('tap');
     let clip = '';
     try {
       clip = (await Clipboard.getStringAsync()).trim();
@@ -134,7 +134,7 @@ export default function AddDownloadScreen() {
       clip = '';
     }
     if (!clip) {
-      setMessage('Your clipboard is empty.');
+      setMessage(notices.inline.clipboardEmpty);
       setPhase('input');
       return;
     }
@@ -148,22 +148,22 @@ export default function AddDownloadScreen() {
     setAddError(null);
     const res = await startDownload(urlRef.current, allowLanRef.current ? { allowLan: true } : {});
     if (res.ok) {
-      triggerHaptic('success');
+      haptic('commit');
       router.replace('/');
       return;
     }
     if (res.code === 'DUPLICATE') {
-      showNotice({ message: 'This link is already in your downloads.' });
+      showNotice({ message: notices.addDownload.duplicate });
       router.replace('/');
       return;
     }
-    triggerHaptic('error');
+    haptic('fail');
     if (fromError) {
       setErrorView({ body: res.message || "Couldn't start this download.", primary: 'retry' });
       setPhase('error');
       return;
     }
-    setAddError(res.message || "Couldn't start this download.");
+    setAddError(res.message || notices.inline.startDownloadFailed);
     setPhase('ready');
   };
 
@@ -186,7 +186,7 @@ export default function AddDownloadScreen() {
         <EmptyBlock
           icon="warning"
           error
-          title="Waiting for a network"
+          title={empty.addDownload.waitingForNetwork.title}
           body={errorView.body}
           primary={{ label: 'Open settings', onPress: () => router.push(actionRoute('openNetworkSettings') ?? '/settings/network') }}
           secondary={{ label: 'Add anyway', onPress: () => void start(true) }}
@@ -200,7 +200,7 @@ export default function AddDownloadScreen() {
         <EmptyBlock
           icon="warning"
           error
-          title="A device on your network"
+          title={empty.addDownload.deviceOnNetwork.title}
           body={errorView.body}
           primary={{ label: 'Allow this device', onPress: () => void submit(urlRef.current, true) }}
           secondary={{ label: 'Back', onPress: () => setPhase('input') }}
@@ -214,7 +214,7 @@ export default function AddDownloadScreen() {
         <EmptyBlock
           icon="warning"
           error
-          title="Couldn't use this link"
+          title={empty.addDownload.badLink.title}
           body={errorView?.body}
           primary={
             errorView?.primary === 'pasteAnother'
@@ -251,7 +251,7 @@ export default function AddDownloadScreen() {
           {probe.resumable ? 'You can pause and resume this one.' : "This server can't resume. It starts over if it stops."}
         </Text>
         <Text style={styles.meta}>Saves to {friendlyPath(defaultStoragePath)}</Text>
-        {doesntFit ? <Banner tone="danger" title="Not enough space" body="Free up some storage, then try again." /> : null}
+        {doesntFit ? <Banner tone="danger" title={banners.addDownload.notEnoughSpace.title} body={banners.addDownload.notEnoughSpace.body} /> : null}
         {addError ? <Banner tone="danger" title={addError} /> : null}
         <View style={styles.gap}>
           <Button label="Start" size="lg" fullWidth loading={adding} disabled={adding || doesntFit} onPress={() => void start()} />

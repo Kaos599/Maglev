@@ -4,6 +4,7 @@ import { useTheme } from '../../context/ThemeContext';
 import { ThemeColors, radius, spacing, type } from '../../constants/theme';
 import { PixelIcon } from '../PixelIcon';
 import { Button } from '../ui';
+import { empty } from '../../constants/copy';
 
 export interface TeachingEmptyStateProps {
   /** Paste link is enabled only when the clipboard holds a magnet or .torrent link. */
@@ -22,9 +23,9 @@ export function TeachingEmptyState({ canPaste, onPaste, onOpenFile }: TeachingEm
         <PixelIcon name="transfers" size={24} color={colors.textMuted} />
       </View>
       <Text style={styles.title} accessibilityRole="header">
-        Paste a magnet link or open a .torrent file
+        {empty.transfers.none.title}
       </Text>
-      <Text style={styles.body}>Links you tap in your browser open here too.</Text>
+      <Text style={styles.body}>{empty.transfers.none.body}</Text>
       <View style={styles.actions}>
         <Button label="Paste link" icon="clipboard" disabled={!canPaste} onPress={onPaste} />
         <Button label="Open file" icon="file" variant="secondary" onPress={onOpenFile} />

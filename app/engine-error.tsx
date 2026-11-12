@@ -5,6 +5,7 @@ import { Screen, EmptyBlock } from '../components/ui';
 import { useMaglevEngine } from '../context/EngineContext';
 import { useTheme } from '../context/ThemeContext';
 import { ThemeColors } from '../constants/theme';
+import { empty } from '../constants/copy';
 
 export default function EngineErrorScreen() {
   const { colors } = useTheme();
@@ -16,7 +17,7 @@ export default function EngineErrorScreen() {
 
   const copyDetails = useCallback(async () => {
     const details = [
-      "Maglev couldn't start its download engine",
+      empty.engineError.title,
       message,
       `Platform: ${Platform.OS} ${String(Platform.Version)}`,
     ].join('\n');
@@ -33,7 +34,7 @@ export default function EngineErrorScreen() {
         <EmptyBlock
           icon="warning"
           error
-          title="Maglev couldn't start its download engine"
+          title={empty.engineError.title}
           body={message}
           primary={{ label: 'Copy details', icon: 'copy', onPress: copyDetails }}
           secondary={{ label: 'Close app', onPress: () => BackHandler.exitApp() }}
