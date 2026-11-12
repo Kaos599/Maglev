@@ -18,6 +18,7 @@ import { PrioritySheet } from '../components/detail/PrioritySheet';
 import { fileExt } from '../components/detail/torrentLabels';
 import { admit, pendingNeedOf, type AdmissionOutcome } from '../utils/admission';
 import { admissionCaption } from '../utils/admissionCopy';
+import { takePrefetchedMetadata } from '../components/search/metadataCache';
 
 /** SM-9 add flow states. */
 type Phase = 'input' | 'validating' | 'invalid' | 'resolving' | 'timeout' | 'error' | 'duplicate' | 'preview' | 'adding' | 'added';
@@ -95,8 +96,15 @@ export default function AddTorrentScreen() {
       setAddError(null);
       setPhase('resolving');
       let res;
+      const began = Date.now();
       try {
-        res = await maglevEngine.resolveMetadata(source, RESOLVE_TIMEOUT_MS);
+        // Search may have read this magnet's file list already (or be reading it): use that read.
+        const early = takePrefetchedMetadata(source);
+        res = early ? await early : await maglevEngine.resolveMetadata(source, RESOLVE_TIMEOUT_MS);
+        // The background read gives up sooner than this screen; keep looking for the rest of the wait.
+        if (early && !res.ok && res.code === 'METADATA_TIMEOUT' && mine === token.current) {
+          res = await maglevEngine.resolveMetadata(source, Math.max(1_000, RESOLVE_TIMEOUT_MS - (Date.now() - began)));
+        }
       } catch (e) {
         if (mine !== token.current) return;
         setMessage(e instanceof Error ? e.message : 'Something went wrong.');

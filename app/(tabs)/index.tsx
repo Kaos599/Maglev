@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { AppState, BackHandler, FlatList, Linking, StyleSheet, TextInput, View } from 'react-native';
+import { AppState, BackHandler, Linking, StyleSheet, TextInput, View } from 'react-native';
+import { FlashList } from '@shopify/flash-list';
 import { useFocusEffect, useIsFocused, useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { HeaderBar } from '../../components/HeaderBar';
@@ -32,6 +33,12 @@ import { BulkVerb, bulkSummary } from '../../utils/bulkSummary';
 import { TransferSort, loadTransferSort, saveTransferSort } from '../../utils/prefs/transfers';
 
 const Separator = () => <View style={{ height: CARD_GAP }} />;
+const keyOfTorrent = (t: { id: string }) => t.id;
+/**
+ * Off: the list is re-sorted by live values (speed, progress), and FlashList's default anchoring
+ * would scroll to follow whichever card was on top. FlatList never did that; neither does this.
+ */
+const NO_ANCHOR = { disabled: true } as const;
 
 /** How often free space is read while Transfers is on screen. */
 const FREE_SPACE_EVERY_MS = 30_000;
@@ -376,7 +383,7 @@ export default function TransfersScreen() {
     [selectionMode, selectedIds, onCardPress, startSelection, onPause, onResume, onKeepTrying],
   );
 
-  // A new header element every render made FlatList re-render it on every telemetry tick.
+  // A new header element every render made the list re-render it on every telemetry tick.
   const listHeader = useMemo(
     () =>
       shownDownloads.length > 0 ? (
@@ -393,7 +400,6 @@ export default function TransfersScreen() {
 
   const filtering = filter !== 'all' || query.trim().length > 0;
   const filterLabel = FILTERS.find((f) => f.id === filter)?.label ?? '';
-  const listBottom = 96;
 
   return (
     <View style={[styles.root, { paddingTop: insets.top }]}>
@@ -495,16 +501,15 @@ export default function TransfersScreen() {
               />
             </View>
           ) : (
-            <FlatList
+            <FlashList
               data={visible}
-              keyExtractor={(t) => t.id}
+              keyExtractor={keyOfTorrent}
               renderItem={renderItem}
               extraData={selectedIds}
               ItemSeparatorComponent={Separator}
               ListHeaderComponent={listHeader}
-              contentContainerStyle={{ paddingTop: spacing.xs, paddingBottom: listBottom }}
-              initialNumToRender={8}
-              windowSize={7}
+              contentContainerStyle={styles.listContent}
+              maintainVisibleContentPosition={NO_ANCHOR}
               showsVerticalScrollIndicator={false}
             />
           )}
@@ -570,4 +575,5 @@ const makeStyles = (c: ThemeColors) =>
     notice: { position: 'absolute', left: spacing.lg, right: spacing.lg, bottom: spacing.lg + 56 + spacing.sm },
     noMatch: { flex: 1, justifyContent: 'center' },
     downloads: { gap: CARD_GAP },
+    listContent: { paddingTop: spacing.xs, paddingBottom: 96 },
   });
