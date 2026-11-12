@@ -1,0 +1,50 @@
+name: Pages
+
+# Publishes site/ to GitHub Pages. The HTML is committed output of site/build/build-site.mjs, so CI runs no build.
+# Only pushes to main that touch site/ or this file deploy; ci.yml runs on these pushes too (its own paths filter).
+on:
+  push:
+    branches: [main]
+    paths: ['site/**', '.github/workflows/pages.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# One deployment at a time; a newer push waits instead of cancelling one in progress.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy site
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Configure Pages
+        uses: actions/configure-pages@v6
+
+      # Static checks only (FAQ text matches its JSON-LD, links resolve); no browser, no npm install.
+      - name: Check site
+        run: node site/build/verify.mjs
+
+      # The generator and its checker stay in the repo, not on the site.
+      - name: Stage site without build sources
+        run: rsync -a --exclude build/ site/ _site/
+
+      - name: Upload site
+        uses: actions/upload-pages-artifact@v5
+        with:
+          path: _site
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v5
