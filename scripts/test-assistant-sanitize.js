@@ -180,7 +180,20 @@ async function main() {
   reg.clear();
   check('clear drops every handle', reg.resolve('r1') === null && reg.resolve('t1') === null && reg.size === 0);
   check('clear drops reverse lookup', reg.handleFor('result', 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa') === null);
-  check('counters restart after clear', reg.issue('result', 'new') === 'r1');
+  const n1 = Number(reg.issue('result', 'new').slice(1));
+  check('counters keep counting after clear (r1 and r2 are never reused)', n1 > 2, n1);
+
+  console.log('sanitize: release names that end in a web suffix');
+  for (const keep of ['Stranger.Things.S04.ru', 'Movie.2020.Pro', 'Dark.S01.DE.1080p', 'Linkin.Park.Live.2008.FLAC']) {
+    check(`keeps ${keep}`, sanitizeText(keep) === keep, sanitizeText(keep));
+  }
+  for (const [input, gone] of [
+    ['evil.ru', 'evil.ru'], ['visit evil.com now', 'evil.com'], ['go to free-movies.xyz/watch', 'free-movies'],
+    ['http://x.io', 'x.io'], ['www.example.org', 'example.org'], ['Movie.2020.Pro/pay', 'Pro/pay'],
+  ]) {
+    const out = sanitizeText(input);
+    check(`removes link in "${input}"`, !out.includes(gone) && out.includes('[link removed]'), out);
+  }
 
   console.log();
   if (failed) {

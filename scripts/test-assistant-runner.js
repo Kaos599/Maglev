@@ -400,7 +400,7 @@ async function main() {
     const card = await runner.prepareCard('c1', 'propose_add', args);
     check('add card built', !('error' in card), card);
     check('card title, verb label and dismiss', card.title === 'Add torrent?' && /^Add · 2\.1 GB$/.test(card.confirmLabel) && card.dismissLabel === 'Not now', card);
-    check('card facts are computed by the app', card.facts[0] === HARBOR_A && card.facts.some((f) => /^Needs 2\.1 GB · .* left after$/.test(f)) && card.facts.some((f) => f === 'Saves to Download/Maglev'), card.facts);
+    check('card facts are computed by the app', card.sourceName === HARBOR_A && !card.facts.includes(HARBOR_A) && card.facts.some((f) => /^Needs 2\.1 GB · .* left after$/.test(f)) && card.facts.some((f) => f === 'Saves to Download/Maglev'), card.facts);
     check('card facts mention sequential', card.facts.some((f) => /in order/.test(f)));
     check('card is not danger and not risky', card.danger === false && card.risky === false);
     check('model reason goes through the output filter', card.reason.includes('Fits well.') && !card.reason.includes('evil.example'), card.reason);
@@ -575,7 +575,7 @@ async function main() {
     const arg = (name, raw) => resolveArgs(runner, name, raw);
 
     const pause = await runner.prepareCard('c1', 'propose_pause_resume', arg('propose_pause_resume', { transfer_id: 't1', action: 'pause', reason: 'You asked.' }));
-    check('pause card', pause.title === 'Pause this download?' && pause.confirmLabel === 'Pause' && !pause.danger && pause.facts[0] === 'Show.S01.1080p', pause);
+    check('pause card', pause.title === 'Pause this download?' && pause.confirmLabel === 'Pause' && !pause.danger && pause.sourceName === 'Show.S01.1080p' && !pause.facts.includes('Show.S01.1080p'), pause);
     check('pause cardTarget is the transfer handle', runner.cardTarget('c1') === 't1');
     const pr = await runner.execute('c1');
     check('pause executes', pr.ok && pr.summary === 'Paused.' && w.calls.some((c) => c[0] === 'pause' && c[1] === 'tor1'));
@@ -687,6 +687,113 @@ async function main() {
     w2.addResult = { ok: false, code: 'DUPLICATE', message: 'x' };
     const halted = await r2.execute('c1');
     check('a failing step names itself and the plain reason', halted.ok === false && /^Step 2 didn't run\. Already in your downloads\.$/.test(halted.message), halted);
+  }
+
+
+  console.log('safety: stale cards after Clear');
+  {
+    const { w, runner } = await openedRunner();
+    await call(runner, 'get_result_details', resolveArgs(runner, 'get_result_details', { result_id: 'r1' }));
+    const oldId = runner.registry.issue('card', 'old');
+    // The old card is slow: its free-space read is held until after Clear.
+    let release;
+    const gate = new Promise((r) => { release = r; });
+    const realFree = w.deps.engine.getFreeSpace;
+    w.deps.engine.getFreeSpace = async () => { await gate; return realFree(); };
+    const stale = runner.prepareCard(oldId, 'propose_add', resolveArgs(runner, 'propose_add', { result_id: 'r1', reason: 'x' }));
+    runner.reset();
+    runner.registry.clear();
+    w.deps.engine.getFreeSpace = realFree;
+    await call(runner, 'search_torrents', { query: 'The Last Harbor 2023' });
+    const rNew = runner.registry.handleFor('result', hash('a'));
+    await call(runner, 'get_result_details', resolveArgs(runner, 'get_result_details', { result_id: rNew }));
+    const newId = runner.registry.issue('card', 'new');
+    check('a card id is never reused after Clear', newId !== oldId, [oldId, newId]);
+    const fresh = await runner.prepareCard(newId, 'propose_add', resolveArgs(runner, 'propose_add', { result_id: rNew, reason: 'x' }));
+    check('the new card is built', !('error' in fresh), fresh);
+    release();
+    const late = await stale;
+    check('a prepare that started before Clear returns an error', 'error' in late && /no longer valid/.test(late.error), late);
+    const rvOld = await runner.revalidate(oldId);
+    check('the old card never entered the runner', rvOld.ok === false && /no longer valid/.test(rvOld.reason), rvOld);
+    const exOld = await runner.execute(oldId);
+    check('executing the old card does nothing', exOld.ok === false && !w.calls.some((c) => c[0] === 'addTorrent'), exOld);
+    const rvNew = await runner.revalidate(newId);
+    const exNew = await runner.execute(newId);
+    check('the new card revalidates and runs exactly one add', rvNew.ok && exNew.ok && w.calls.filter((c) => c[0] === 'addTorrent').length === 1, [rvNew, exNew]);
+  }
+  {
+    // Clear during revalidate: the answer must not say ok for an old card.
+    const { w, runner } = await openedRunner();
+    await call(runner, 'get_result_details', resolveArgs(runner, 'get_result_details', { result_id: 'r1' }));
+    await runner.prepareCard('c1', 'propose_add', resolveArgs(runner, 'propose_add', { result_id: 'r1', reason: 'x' }));
+    let release;
+    const gate = new Promise((r) => { release = r; });
+    const realFree = w.deps.engine.getFreeSpace;
+    w.deps.engine.getFreeSpace = async () => { await gate; return realFree(); };
+    const rv = runner.revalidate('c1');
+    runner.reset();
+    release();
+    const out = await rv;
+    check('revalidate that straddles Clear is refused', out.ok === false, out);
+  }
+
+  console.log('safety: the link must match the result');
+  {
+    // Listing magnet names another hash.
+    const w = world({ rows: [merged({ name: 'Movie.2023.1080p.WEB-DL.x264-GRP', infoHash: hash('8'), magnet: `magnet:?xt=urn:btih:${hash('9')}`, sizeBytes: 2 * GB, seeders: 50 })] });
+    w.metadata.set(hash('9'), { infoHash: hash('9'), name: 'x', totalBytes: 2 * GB, files: [{ index: 0, path: 'a/b.mkv', length: 2 * GB }] });
+    const runner = createToolRunner(w.deps);
+    await call(runner, 'search_torrents', { query: 'Movie 2023' });
+    const j = parse(await call(runner, 'get_result_details', resolveArgs(runner, 'get_result_details', { result_id: 'r1' })));
+    check('a magnet naming another hash is refused', j.ok === false && /doesn't match this result/.test(j.error.message), j);
+    check('no metadata lookup runs for a mismatched link', !w.calls.some((c) => c[0] === 'resolveMetadata'));
+    check('sourceFor gives nothing for a mismatched link', runner.sourceFor('r1') === undefined);
+  }
+  {
+    // Metadata says another hash than the link.
+    const w = world({ rows: [merged({ name: 'Movie.2023.1080p.WEB-DL.x264-GRP', infoHash: hash('8'), magnet: `magnet:?xt=urn:btih:${hash('8')}`, sizeBytes: 2 * GB, seeders: 50 })] });
+    w.metadata.set(hash('8'), { infoHash: hash('7'), name: 'x', totalBytes: 2 * GB, files: [{ index: 0, path: 'a/b.mkv', length: 2 * GB }] });
+    const runner = createToolRunner(w.deps);
+    await call(runner, 'search_torrents', { query: 'Movie 2023' });
+    const j = parse(await call(runner, 'get_result_details', resolveArgs(runner, 'get_result_details', { result_id: 'r1' })));
+    check('metadata with another info hash is refused', j.ok === false && /doesn't match this result/.test(j.error.message), j);
+    const card = await runner.prepareCard('c1', 'propose_add', resolveArgs(runner, 'propose_add', { result_id: 'r1', reason: 'x' }));
+    check('no card can be built after a mismatch', 'error' in card, card);
+  }
+  {
+    // A resolved magnet that disagrees with the hash the source reports.
+    const w = world({ rows: [merged({ name: 'Movie.2023.1080p.WEB-DL.x264-GRP', infoHash: hash('6'), magnet: '', sizeBytes: 2 * GB, seeders: 50 })] });
+    w.deps.resolveResult = async (r) => ({ ...r, magnet: `magnet:?xt=urn:btih:${hash('5')}`, infoHash: hash('4') });
+    const runner = createToolRunner(w.deps);
+    await call(runner, 'search_torrents', { query: 'Movie 2023' });
+    const j = parse(await call(runner, 'get_result_details', resolveArgs(runner, 'get_result_details', { result_id: 'r1' })));
+    check('a resolved magnet that disagrees with its hash is refused', j.ok === false && /doesn't match this result/.test(j.error.message), j);
+  }
+  {
+    // Extra magnet parameters never reach the engine.
+    const evil = `magnet:?xt=urn:btih:${hash('8')}&dn=x&xs=http://evil.example/a.torrent&ws=http://evil.example/&tr=udp://evil.example:1/announce`;
+    const w = world({ rows: [merged({ name: 'Movie.2023.1080p.WEB-DL.x264-GRP', infoHash: hash('8'), magnet: evil, sizeBytes: 2 * GB, seeders: 50 })] });
+    w.metadata.set(hash('8'), { infoHash: hash('8'), name: 'x', totalBytes: 2 * GB, files: [{ index: 0, path: 'Movie.2023.1080p.WEB-DL.x264-GRP/Movie.2023.1080p.WEB-DL.x264-GRP.mkv', length: 2 * GB }] });
+    const runner = createToolRunner(w.deps);
+    await call(runner, 'search_torrents', { query: 'Movie 2023' });
+    const d = parse(await call(runner, 'get_result_details', resolveArgs(runner, 'get_result_details', { result_id: 'r1' })));
+    check('details open for a matching link', d.ok === true, d);
+    const card = await runner.prepareCard('c1', 'propose_add', resolveArgs(runner, 'propose_add', { result_id: 'r1', reason: 'x' }));
+    check('card built', !('error' in card), card);
+    await runner.revalidate('c1');
+    await runner.execute('c1');
+    const add = w.calls.find((c) => c[0] === 'addTorrent');
+    check('the engine gets a rebuilt magnet', add && add[1].startsWith(`magnet:?xt=urn:btih:${hash('8')}&dn=`), add && add[1]);
+    check('xs, ws and the stranger tracker are gone', add && !/xs=|ws=|evil/.test(add[1]), add && add[1]);
+    check('the rebuilt magnet keeps Maglev trackers', add && /tr=udp/.test(add[1]));
+  }
+  {
+    // The card keeps the source's name out of facts.
+    const { runner } = await openedRunner();
+    await call(runner, 'get_result_details', resolveArgs(runner, 'get_result_details', { result_id: 'r1' }));
+    const card = await runner.prepareCard('c1', 'propose_add', resolveArgs(runner, 'propose_add', { result_id: 'r1', reason: 'x' }));
+    check('sourceName holds the name, facts do not', card.sourceName === HARBOR_A && !card.facts.some((f) => f.includes('Harbor')), card);
   }
 
   console.log(`\n${passed} passed, ${failed} failed`);

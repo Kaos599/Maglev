@@ -20,6 +20,7 @@ import type {
 } from '../../modules/maglev-engine/src/MaglevEngine.types.ts';
 import { ADMISSION_RESERVE_BYTES, admit, pendingNeedOf } from '../admission.ts';
 import type { AdmissionOutcome } from '../admission.ts';
+import { buildMagnet, infoHashFromMagnet, normalizeInfoHash } from '../search/magnet.ts';
 import { riskySources } from '../search/safety.ts';
 import type { Category, MergedResult, SearchUpdate } from '../search/types.ts';
 import { MAX_TOOL_RESULT_TOKENS, estimateTokens } from './context.ts';
@@ -230,6 +231,9 @@ function succeed(data: Data, extra: Pick<ToolRunOutput, 'results'> = {}): ToolRu
 
 // ---------------------------------------------------------------- internal state
 
+const STALE_CARD = 'This card is no longer valid. Ask me again.';
+const LINK_MISMATCH = "The source's link doesn't match this result, so Maglev won't use it.";
+
 interface Stored {
   hash: string;
   merged: MergedResult;
@@ -243,7 +247,7 @@ interface Stored {
   files?: MetadataFile[];
   totalBytes?: number;
   safety?: SafetyResult;
-  /** Real info hash from the metadata, used for cancelResolve. */
+  /** The info hash the link was verified against (listing hash, or the resolved hash). Used for cancelResolve and for rebuilding the magnet. */
   realHash?: string;
   episodeCount?: number;
 }
@@ -277,6 +281,8 @@ interface Built {
   title: string;
   confirmLabel: string;
   facts: string[];
+  /** Name as the source gave it. Goes to `view.sourceName`, never into `facts`. */
+  sourceName?: string;
   /** One line for a plan step. */
   line: string;
   danger: boolean;
@@ -327,6 +333,8 @@ export function createToolRunner(deps: ToolRunnerDeps): ToolRunner {
   const registry = new HandleRegistry();
   const results = new Map<string, Stored>();
   const cards = new Map<string, CardRecord>();
+  /** Bumped by reset(). Work that started in an older epoch must not write cards or act. */
+  let epoch = 0;
 
   // ------------------------------------------------------------ shared reads
 
@@ -677,11 +685,27 @@ export function createToolRunner(deps: ToolRunnerDeps): ToolRunner {
     ctx.progress(lookText, 'running');
 
     if (!stored.magnet && stored.merged.magnet) stored.magnet = stored.merged.magnet;
+    if (stored.magnet && !stored.realHash) {
+      // A magnet from the result list must name the hash the result is keyed by.
+      const claimed = infoHashFromMagnet(stored.magnet);
+      if (!claimed || claimed !== normalizeInfoHash(stored.hash)) {
+        stored.magnet = '';
+        ctx.progress(lookText, 'failed');
+        return fail('source_error', LINK_MISMATCH);
+      }
+      stored.realHash = claimed;
+    }
     if (!stored.magnet) {
       try {
         const resolved = await raceAbort(deps.resolveResult(stored.merged, ctx.signal), ctx.signal);
+        // A resolved magnet must name the hash the source says it resolved to.
+        const claimed = infoHashFromMagnet(resolved.magnet);
+        if (!claimed || claimed !== normalizeInfoHash(resolved.infoHash)) {
+          ctx.progress(lookText, 'failed');
+          return fail('source_error', LINK_MISMATCH);
+        }
         stored.magnet = resolved.magnet;
-        stored.realHash = resolved.infoHash;
+        stored.realHash = claimed;
         stored.merged = { ...stored.merged, magnet: resolved.magnet };
       } catch (e) {
         if (e instanceof CancelledError || ctx.signal.aborted) throw new CancelledError();
@@ -693,6 +717,7 @@ export function createToolRunner(deps: ToolRunnerDeps): ToolRunner {
 
     if (resolveFiles && !stored.files) {
       const cancelHash = stored.realHash ?? stored.merged.infoHash;
+      const expected = stored.realHash;
       let res: EngineResult<Metadata>;
       try {
         res = await raceAbort(
@@ -709,9 +734,16 @@ export function createToolRunner(deps: ToolRunnerDeps): ToolRunner {
         if (res.code === 'CANCELLED') throw new CancelledError();
         return fail(res.code === 'METADATA_TIMEOUT' ? 'timeout' : 'engine_error', plainEngineError(res.code));
       }
+      const metaHash = res.infoHash ? normalizeInfoHash(res.infoHash) : null;
+      if (res.infoHash && (!metaHash || metaHash !== expected)) {
+        // The torrent's own metadata disagrees with the link the source gave.
+        stored.magnet = '';
+        stored.realHash = undefined;
+        ctx.progress(lookText, 'failed');
+        return fail('source_error', LINK_MISMATCH);
+      }
       stored.files = res.files.map((f) => ({ index: f.index, path: f.path, length: f.length }));
       stored.totalBytes = res.totalBytes;
-      stored.realHash = res.infoHash || stored.realHash;
       const eps = new Set<number>();
       for (const f of stored.files) for (const e of parseRelease(fileName(f.path)).episodes ?? []) eps.add(e);
       stored.episodeCount = eps.size > 0 ? eps.size : undefined;
@@ -1056,7 +1088,6 @@ export function createToolRunner(deps: ToolRunnerDeps): ToolRunner {
     const name = clean(stored.merged.name);
     const all = indices.length === files.length;
     const facts = [
-      name,
       all ? `${plural(files.length, 'file')} · ${formatBytes(selectedBytes)}` : `${indices.length} of ${plural(files.length, 'file')} · ${formatBytes(selectedBytes)}`,
       `Needs ${formatBytes(o.need)} · ${formatBytes(Math.max(0, o.leftAfter))} left after`,
     ];
@@ -1071,6 +1102,7 @@ export function createToolRunner(deps: ToolRunnerDeps): ToolRunner {
       title: 'Add torrent?',
       confirmLabel: `Add · ${formatBytes(selectedBytes)}`,
       facts,
+      sourceName: name,
       line: `Add ${name} · ${formatBytes(selectedBytes)}`,
       danger: false,
       risky: riskySources(stored.merged, prefs.providers, prefs.warnUnsafe) !== null,
@@ -1121,7 +1153,7 @@ export function createToolRunner(deps: ToolRunnerDeps): ToolRunner {
       }
     }
     const name = clean(d.snapshot.name);
-    const facts = [name, `Keeps ${plural(kept.length, 'file')} · ${formatBytes(kept.reduce((s, e) => s + (valid.get(e.index)?.length ?? 0), 0))}`];
+    const facts = [`Keeps ${plural(kept.length, 'file')} · ${formatBytes(kept.reduce((s, e) => s + (valid.get(e.index)?.length ?? 0), 0))}`];
     if (skippedNow > 0) facts.push(`Stops downloading ${plural(skippedNow, 'file')} · ${formatBytes(skippedBytes)}. They are not deleted.`);
     if (growBytes > 0) facts.push(`Adds ${formatBytes(growBytes)} still to download`);
     return {
@@ -1129,6 +1161,7 @@ export function createToolRunner(deps: ToolRunnerDeps): ToolRunner {
       title: 'Change which files download?',
       confirmLabel: 'Update files',
       facts,
+      sourceName: name,
       line: `Change files of ${name}`,
       danger: false,
       risky: false,
@@ -1174,13 +1207,14 @@ export function createToolRunner(deps: ToolRunnerDeps): ToolRunner {
     const err = pauseStateError(row, pause);
     if (err) return { error: err };
     const name = clean(row.name);
-    const facts = [name, `${pct(row.done, row.total)}% done`];
+    const facts = [`${pct(row.done, row.total)}% done`];
     if (!pause && row.pausedBy && row.pausedBy !== 'user') facts.push(`It was stopped by: ${pauseCopy(row.pausedBy).plain}`);
     return {
       action: { kind: pause ? 'pause' : 'resume', ref },
       title: pause ? 'Pause this download?' : 'Resume this download?',
       confirmLabel: pause ? 'Pause' : 'Resume',
       facts,
+      sourceName: name,
       line: `${pause ? 'Pause' : 'Resume'} ${name}`,
       danger: false,
       risky: false,
@@ -1214,8 +1248,8 @@ export function createToolRunner(deps: ToolRunnerDeps): ToolRunner {
       action: { kind: 'remove_files', ref, indices },
       title: `Remove ${plural(n, 'file')}?`,
       confirmLabel: `Remove ${plural(n, 'file')}`,
+      sourceName: `${names.join(', ')}${more > 0 ? ` and ${more} more` : ''}`,
       facts: [
-        `${names.join(', ')}${more > 0 ? ` and ${more} more` : ''}`,
         // NATIVE_CONTRACT §14 confirm copy.
         `Deletes ${formatBytes(bytes)} from your phone and stops downloading ${n === 1 ? 'it' : 'them'}. Other files keep going.`,
         'There is no undo.',
@@ -1236,7 +1270,7 @@ export function createToolRunner(deps: ToolRunnerDeps): ToolRunner {
     if (!row) return { error: GONE };
     const deleteFiles = args.delete_files === true;
     const name = clean(row.name);
-    const facts = [name];
+    const facts: string[] = [];
     if (deleteFiles) {
       const folderPath = ref.kind === 'torrent'
         ? space.torrents.find((t) => t.id === ref.id)?.outputFolder
@@ -1253,6 +1287,7 @@ export function createToolRunner(deps: ToolRunnerDeps): ToolRunner {
       title: 'Remove download?',
       confirmLabel: deleteFiles ? 'Remove and delete files' : 'Remove download',
       facts,
+      sourceName: name,
       line: `${deleteFiles ? 'Remove and delete files of' : 'Remove'} ${name}`,
       danger: true,
       risky: false,
@@ -1270,16 +1305,20 @@ export function createToolRunner(deps: ToolRunnerDeps): ToolRunner {
   }
 
   async function prepareCard(cardId: string, tool: string, args: Record<string, unknown>): Promise<ProposalCardView | { error: string }> {
+    const startEpoch = epoch;
     try {
       const space = await readSpace();
-      if (tool === 'propose_plan') return await preparePlan(cardId, args, space);
+      if (startEpoch !== epoch) return { error: STALE_CARD };
+      if (tool === 'propose_plan') return await preparePlan(cardId, args, space, startEpoch);
       const built = await build(tool, args, space, 0);
+      if (startEpoch !== epoch) return { error: STALE_CARD };
       if ('error' in built) return built;
       cards.set(cardId, { cardId, tool, actions: [built.action], target: built.target, done: [null] });
       const view: ProposalCardView = {
         cardId, tool, title: built.title, facts: built.facts, confirmLabel: built.confirmLabel, dismissLabel: 'Not now',
         danger: built.danger, risky: built.risky,
       };
+      if (built.sourceName) view.sourceName = built.sourceName;
       const reason = reasonOf(args);
       if (reason) view.reason = reason;
       return view;
@@ -1288,7 +1327,7 @@ export function createToolRunner(deps: ToolRunnerDeps): ToolRunner {
     }
   }
 
-  async function preparePlan(cardId: string, args: Data, space: Space): Promise<ProposalCardView | { error: string }> {
+  async function preparePlan(cardId: string, args: Data, space: Space, startEpoch: number): Promise<ProposalCardView | { error: string }> {
     const steps = Array.isArray(args.steps) ? (args.steps as Array<{ tool: string; args: Data }>) : [];
     if (!planSizeOk(steps.length)) return { error: `A plan needs between 1 and ${MAX_PLAN_STEPS} steps.` };
     const built: Built[] = [];
@@ -1307,6 +1346,7 @@ export function createToolRunner(deps: ToolRunnerDeps): ToolRunner {
       pendingAdds += b.addBytes;
       built.push(b);
     }
+    if (startEpoch !== epoch) return { error: STALE_CARD };
     const n = built.length;
     const addTotal = built.reduce((s, b) => s + b.addBytes, 0);
     const facts = [plural(n, 'step')];
@@ -1338,6 +1378,7 @@ export function createToolRunner(deps: ToolRunnerDeps): ToolRunner {
       case 'add': {
         const stored = results.get(a.hash);
         if (!stored || !stored.files || !stored.magnet) return 'That result is no longer available. Ask me to search again.';
+        if (!verifiedMagnet(stored)) return LINK_MISMATCH;
         const can = canPropose({ safety: stored.safety, flags: stored.ranked?.flags });
         if (!can.ok) return can.reason ?? "Maglev won't add this.";
         const valid = new Set(stored.files.map((f) => f.index));
@@ -1384,15 +1425,18 @@ export function createToolRunner(deps: ToolRunnerDeps): ToolRunner {
 
   async function revalidate(cardId: string, signal?: AbortSignal): Promise<RevalidateResult> {
     try {
+      const startEpoch = epoch;
       const found = lookup(cardId);
-      if (!found) return { ok: false, reason: 'This card is no longer valid. Ask me again.' };
+      if (!found) return { ok: false, reason: STALE_CARD };
       if (signal?.aborted) return { ok: false, reason: 'Stopped.' };
       const space = await readSpace();
+      if (startEpoch !== epoch) return { ok: false, reason: STALE_CARD };
       let pendingAdds = 0;
       for (const i of found.indices) {
         if (found.rec.done[i] !== null) continue; // already ran
         const a = found.rec.actions[i];
         const why = await revalidateAction(a, space, pendingAdds);
+        if (startEpoch !== epoch) return { ok: false, reason: STALE_CARD };
         if (signal?.aborted) return { ok: false, reason: 'Stopped.' };
         if (why) return { ok: false, reason: found.rec.actions.length > 1 ? `Step ${i + 1}: ${why}` : why };
         if (a.kind === 'add') pendingAdds += a.selectedBytes;
@@ -1411,7 +1455,9 @@ export function createToolRunner(deps: ToolRunnerDeps): ToolRunner {
     switch (a.kind) {
       case 'add': {
         const stored = results.get(a.hash);
-        if (!stored || !stored.magnet) return failed('NOT_FOUND');
+        if (!stored) return failed('NOT_FOUND');
+        const source = verifiedMagnet(stored);
+        if (!source) return { ok: false, code: 'BAD_SOURCE', message: LINK_MISMATCH };
         const files = stored.files ?? [];
         const onlyFiles = a.indices.length < a.fileCount ? a.indices : null;
         const filePriorities = a.firsts.length > 0
@@ -1421,7 +1467,7 @@ export function createToolRunner(deps: ToolRunnerDeps): ToolRunner {
           }))
           : null;
         // The same call the Add sheet makes (app/add-torrent.tsx doAdd). The folder is filled in natively.
-        const res = await callEngine(() => eng.addTorrent(stored.magnet, { onlyFiles, filePriorities, sequential: a.sequential, outputFolder: null }));
+        const res = await callEngine(() => eng.addTorrent(source, { onlyFiles, filePriorities, sequential: a.sequential, outputFolder: null }));
         return res.ok ? { ok: true, summary: 'Added.' } : failed(res.code);
       }
       case 'select': {
@@ -1449,8 +1495,9 @@ export function createToolRunner(deps: ToolRunnerDeps): ToolRunner {
 
   async function execute(cardId: string): Promise<ExecuteResult> {
     try {
+      const startEpoch = epoch;
       const found = lookup(cardId);
-      if (!found) return { ok: false, code: 'NOT_FOUND', message: 'This card is no longer valid. Ask me again.' };
+      if (!found) return { ok: false, code: 'NOT_FOUND', message: STALE_CARD };
       const { rec, indices } = found;
       let last = 'Done.';
       for (const i of indices) {
@@ -1459,6 +1506,7 @@ export function createToolRunner(deps: ToolRunnerDeps): ToolRunner {
           last = cached;
           continue;
         }
+        if (startEpoch !== epoch) return { ok: false, code: 'NOT_FOUND', message: STALE_CARD };
         const res = await executeAction(rec.actions[i]);
         if (!res.ok) {
           return indices.length > 1 ? { ok: false, code: res.code, message: `Step ${i + 1} didn't run. ${res.message}` } : res;
@@ -1497,13 +1545,26 @@ export function createToolRunner(deps: ToolRunnerDeps): ToolRunner {
     }
   }
 
+  /**
+   * The magnet Maglev hands to the engine: rebuilt from the verified hash and our own trackers, never the
+   * provider's raw string (it can carry xs, ws or other parameters). Null when the link's hash differs from
+   * the verified hash (or, before the result is opened, from the hash the result is keyed by).
+   */
+  function verifiedMagnet(stored: Stored): string | null {
+    const expected = stored.realHash ?? normalizeInfoHash(stored.hash);
+    if (!stored.magnet || !expected) return null;
+    if (infoHashFromMagnet(stored.magnet) !== expected) return null;
+    return buildMagnet(expected, stored.merged.name);
+  }
+
   function sourceFor(handle: string): string | undefined {
     const stored = storedFor(handle);
     if (!stored) return undefined;
-    return stored.magnet || stored.merged.magnet || undefined;
+    return verifiedMagnet(stored) ?? undefined;
   }
 
   function reset(): void {
+    epoch += 1;
     results.clear();
     cards.clear();
     registry.clear();

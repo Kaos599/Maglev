@@ -55,6 +55,7 @@ const TLDS =
   'com|net|org|info|biz|xyz|top|site|online|club|shop|store|click|link|live|icu|cc|ws|ru|su|cn|tk|ml|ga|cf|gq|pw|vip|app|dev|io|co|uk|de|fr|download|stream|pro|work|cyou|rest|fun|win|bid|loan';
 const LN = '\\p{L}\\p{N}';
 const DOT_OBF = '(?:\\[\\.\\]|\\(\\.\\)|\\{\\.\\}|\\[dot\\]|\\(dot\\))';
+const BARE_DOMAIN_RE = new RegExp(`(?<![${LN}_-])(?:[${LN}](?:[${LN}-]*[${LN}])?\\.)+(?:${TLDS})(?![${LN}_-])(?![.-][${LN}])(?::\\d{1,5})?(?:[/?#]\\S*)?`, 'giu');
 const LINK_RES: RegExp[] = [
   // Real and defanged schemes: http(s), hxxp(s), hxxps[:]//, ftp.
   /\b(?:h(?:tt|xx)ps?|ftp|sftp)(?:\[:\]|:)\s?\/\/\S*/gi,
@@ -64,11 +65,26 @@ const LINK_RES: RegExp[] = [
   /(?<=^|[\s(\["'<])\/\/[^\s/]\S*/g,
   // Obfuscated dots: evil[.]example, evil(dot)example.
   new RegExp(`(?<![${LN}_-])[${LN}-]+(?:\\.[${LN}-]+)*${DOT_OBF}[${LN}-]+(?:(?:${DOT_OBF}|\\.)[${LN}-]+)*(?:[/?#]\\S*)?`, 'giu'),
-  // Bare domain with a well-known suffix: evil.com, shop.evil.io/pay.
-  new RegExp(`(?<![${LN}_-])(?:[${LN}](?:[${LN}-]*[${LN}])?\\.)+(?:${TLDS})(?![${LN}_-])(?![.-][${LN}])(?::\\d{1,5})?(?:[/?#]\\S*)?`, 'giu'),
+  // Bare domain with a well-known suffix: evil.com, shop.evil.io/pay. Release names are spared (see isReleaseName).
+  BARE_DOMAIN_RE,
   // Any suffix, but only with a path and only in lower case: evil.example/pay.
   /(?<![\p{L}\p{N}_-])(?:[\p{Ll}\p{N}-]+\.)+\p{Ll}{2,24}\/\S+/gu,
 ];
+
+const RELEASE_LABEL_RE =
+  /^(?:s\d{1,3}(?:e\d{1,3})?|e\d{2,3}|\d{3,4}p|\d{4}|x26[45]|h26[45]|hevc|web(?:-?dl|rip)?|blu-?ray|bdrip|brrip|hdtv|dvdrip|remux|aac|flac|ac3|dts|10bit)$/i;
+
+/**
+ * A dotted name that only looks like a domain because its last label is a common suffix ("Stranger.Things.S04.ru",
+ * "Movie.2020.Pro"). Spared when it has more than three labels, or any label is a release token. A match with a
+ * path, query or port is always a link, so callers only ask about bare matches.
+ */
+function isReleaseName(match: string): boolean {
+  if (/[/?#:]/.test(match)) return false;
+  const labels = match.split('.');
+  if (labels.length > 3) return true;
+  return labels.slice(0, -1).some((l) => RELEASE_LABEL_RE.test(l));
+}
 
 /** Replace every link-like span with a placeholder. Detection runs on the folded text, replacement on the original. */
 function removeLinks(input: string): string {
@@ -80,6 +96,7 @@ function removeLinks(input: string): string {
     let last = 0;
     for (let m = re.exec(folded); m; m = re.exec(folded)) {
       if (m[0].length === 0) { re.lastIndex++; continue; }
+      if (re === BARE_DOMAIN_RE && isReleaseName(m[0])) continue;
       out += s.slice(last, m.index) + LINK_PLACEHOLDER;
       last = m.index + m[0].length;
     }

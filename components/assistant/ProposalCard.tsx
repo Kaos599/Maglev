@@ -60,6 +60,13 @@ export const ProposalCard = memo(function ProposalCard({ view, state, onConfirm,
         {view.title}
       </Text>
 
+      {view.sourceName ? (
+        <View style={styles.sourceName}>
+          <Text style={styles.sourceLabel}>Name from the source</Text>
+          <Text style={styles.fact}>{view.sourceName}</Text>
+        </View>
+      ) : null}
+
       <View style={styles.facts}>
         {view.facts.map((f) => (
           <Text key={f} style={styles.fact}>
@@ -85,7 +92,7 @@ export const ProposalCard = memo(function ProposalCard({ view, state, onConfirm,
         </View>
       ) : null}
 
-      <Text style={styles.footer}>Facts above come from Maglev.</Text>
+      <Text style={styles.footer}>Sizes and space are checked by Maglev. The name comes from the source.</Text>
 
       {problem ? (
         <View style={styles.problem} accessibilityRole="alert">
@@ -138,6 +145,8 @@ const makeStyles = (c: ThemeColors) =>
     expiredTitle: { ...type.bodyStrong, fontSize: 14, color: c.textMuted },
     title: { ...type.bodyStrong, fontSize: 16, color: c.text },
     facts: { gap: spacing.xs },
+    sourceName: { gap: 2 },
+    sourceLabel: { ...type.bodyStrong, fontSize: type.size.sm, color: c.textMuted },
     fact: { ...type.mono, fontSize: type.size.md, lineHeight: 18, color: c.text },
     step: { ...type.body, fontSize: 14, lineHeight: 20, color: c.text },
     says: { gap: 2 },

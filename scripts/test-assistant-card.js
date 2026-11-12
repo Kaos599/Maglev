@@ -93,6 +93,11 @@ async function main() {
     check(`cardSettledKind(${kind}) is ${want}`, m.cardSettledKind(at(kind)) === want);
   }
 
+  // The card text keeps a stranger's name apart from the facts Maglev computed (source check; no RN renderer in Node).
+  const src = (await import('node:fs')).readFileSync(new URL('../components/assistant/ProposalCard.tsx', import.meta.url), 'utf8');
+  check('card shows sourceName under the label "Name from the source"', /view\.sourceName/.test(src) && src.includes('Name from the source'));
+  check('card footer separates checked facts from the source name', src.includes('Sizes and space are checked by Maglev. The name comes from the source.') && !src.includes('Facts above come from Maglev.'));
+
   console.log(`\n${passed} passed, ${failed} failed`);
   process.exit(failed ? 1 : 0);
 }
