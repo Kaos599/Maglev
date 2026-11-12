@@ -126,7 +126,25 @@ export type ChatItem =
   /** One-line app note: "Added.", "Freed 1.9 GB.", "Stopped." */
   | { kind: 'note'; id: string; text: string }
   /** SM-31 error copy. `action` is the one recovery the UI offers. */
-  | { kind: 'error'; id: string; message: string; action?: 'settings' | 'retry' };
+  | { kind: 'error'; id: string; message: string; action?: 'settings' | 'retry' }
+  /**
+   * 0.11 ask_user: a question with tappable answers (AI Elements "Questionnaire"). Tapping one calls
+   * answer(), which sends that option as the user's next message. `answered` is set once tapped; the chips lock.
+   */
+  | { kind: 'question'; id: string; question: string; options: string[]; answered?: string }
+  /**
+   * 0.11 open_screen: a button that takes the user somewhere in the app. Nothing navigates by itself; the user taps.
+   * `label` is app-written ("Open Transfers", "Open this download"); `target` is resolved by the app, never a URL.
+   */
+  | { kind: 'link'; id: string; label: string; target: ScreenTarget };
+
+/** Places the assistant may offer to open. The UI maps each to an expo-router route. */
+export type ScreenTarget =
+  | { screen: 'transfers'; filter?: 'all' | 'downloading' | 'paused' | 'done' | 'errors' }
+  | { screen: 'transfer'; id: string }
+  | { screen: 'search'; query?: string }
+  | { screen: 'add_download' }
+  | { screen: 'settings'; section?: 'storage' | 'network' | 'assistant' | 'search_providers' | 'schedule' };
 
 /** Why the composer is locked (R1-6 send gate). 'ready' means Send works. */
 export type ChatGate = 'ready' | 'disabled' | 'notAccepted' | 'noKey';
@@ -159,6 +177,8 @@ export interface AssistantChat {
   askAbout(handle: string): void;
   /** "Choose files" on a result card: the magnet or .torrent URL to open in the Add sheet, if known. */
   sourceFor(handle: string): string | undefined;
+  /** 0.11: tap on a question chip. Locks the question and sends the option as the next user message. */
+  answer?(itemId: string, option: string): void;
 }
 
 // ---------------------------------------------------------------- tool runner (step 12)
@@ -175,6 +195,8 @@ export interface ToolRunOutput {
   content: string;
   /** search_torrents: the shortlist to render as result cards. */
   results?: ResultCardView[];
+  /** One plain line for the finished progress step, e.g. "23 results from 4 sources, newest first". Real facts only. */
+  detail?: string;
 }
 
 export type RevalidateResult = { ok: true } | { ok: false; reason: string };
