@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useMemo } from 'react';
 import { useColorScheme } from 'react-native';
 import { useSettings } from './SettingsContext';
+import { FontStyleName, resolveFontStyle } from '../constants/fontStyles';
 import {
   AccentName,
   DEFAULT_ACCENT,
@@ -11,6 +12,7 @@ import {
   ThemeMode,
   Type,
   accents,
+  setActiveFontStyle,
   buildColors,
   isDarkMode,
   radius,
@@ -23,6 +25,7 @@ export interface Theme {
   colors: ThemeColors;
   mode: ThemeMode;
   accent: AccentName;
+  fontStyle: FontStyleName;
   dark: boolean;
   spacing: Spacing;
   radius: Radius;
@@ -37,6 +40,7 @@ export interface Theme {
 interface ExtendedAppearance {
   mode?: ThemeMode | 'system';
   accent?: AccentName;
+  fontStyle?: FontStyleName;
 }
 
 const ThemeContext = createContext<Theme | null>(null);
@@ -48,6 +52,7 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const legacyTheme = appearance.theme;
   const rawMode = appearance.mode;
   const rawAccent = appearance.accent;
+  const fontStyle = resolveFontStyle(appearance.fontStyle);
 
   const value = useMemo<Theme>(() => {
     const mode: ThemeMode =
@@ -59,19 +64,23 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           ? rawMode
           : DEFAULT_MODE;
     const accent: AccentName = rawAccent && rawAccent in accents ? rawAccent : DEFAULT_ACCENT;
+    // Fonts are live tokens (constants/theme.ts). Set them before any child reads `type`; the new
+    // `colors` object below makes every memoised makeStyles(colors) run again with the new fonts.
+    setActiveFontStyle(fontStyle);
     // PURE_OLED keeps its true-black backdrop; TACTICAL_DARK is the standard oled palette.
     const pureBlack = !rawMode && legacyTheme === 'PURE_OLED';
     return {
       colors: buildColors(mode, accent, pureBlack),
       mode,
       accent,
+      fontStyle,
       dark: isDarkMode(mode),
       spacing,
       radius,
       type,
       touch,
     };
-  }, [rawMode, rawAccent, legacyTheme, system]);
+  }, [rawMode, rawAccent, legacyTheme, system, fontStyle]);
 
   return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;
 };

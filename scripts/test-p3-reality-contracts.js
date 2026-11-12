@@ -365,7 +365,7 @@ contract('C-MAG-1', 'P1',
   });
 
 contract('C-APK-1', 'P1',
-  'Given a release APK, When ABIs and fonts are counted, Then it ships only needed ABIs (or splits) and <= 5 font faces',
+  'Given a release APK, When ABIs and fonts are counted, Then it ships only needed ABIs (or splits) and <= 7 font faces (Clean adds Inter Medium and Bold to the five Retro faces, about 0.7 MB)',
   () => {
     const gradle = code('modules/maglev-engine/android/build.gradle');
     const m = /abiFilters\s*([^\n]*)/.exec(gradle);
@@ -379,7 +379,7 @@ contract('C-APK-1', 'P1',
     const layout = code('app/_layout.tsx');
     const block = /useFonts\(\{([\s\S]*?)\}\)/.exec(layout);
     const faces = block ? (block[1].match(/@expo-google-fonts\//g) || []).length : 0;
-    assert(faces <= 5, `useFonts loads ${faces} font faces (<= 5)`);
+    assert(faces <= 7, `useFonts loads ${faces} font faces (<= 7)`);
   });
 
 contract('C-UI-SET', 'P1',

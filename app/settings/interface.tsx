@@ -7,9 +7,12 @@ import { useTheme } from '../../context/ThemeContext';
 import { useMaglevEngine } from '../../context/EngineContext';
 import { ThemeColors, accents, radius, spacing, type } from '../../constants/theme';
 import { PixelIcon } from '../../components/PixelIcon';
-import { ListRow, PressableScale, SegmentedControl } from '../../components/ui';
+import { ListRow, PressableScale, RadioCard, SegmentedControl } from '../../components/ui';
 import { Card, Caption, SettingsPage } from '../../components/settings/SettingsParts';
-import { TelemetryDensity } from 'maglev-engine';
+import { FontStyle, TelemetryDensity } from 'maglev-engine';
+import { fontFamilies, resolveFontStyle } from '../../constants/fontStyles';
+import { fontStyleCopy } from '../../constants/copy';
+import type { PixelIconName } from '../../components/PixelIcon';
 
 const MODES = [
   { value: 'oled', label: 'OLED' },
@@ -28,6 +31,8 @@ const ACCENTS: { name: AccentName; label: string }[] = [
   { name: 'orange', label: 'Orange' },
 ];
 
+const FONT_ICONS: Record<FontStyle, PixelIconName> = { clean: 'interface', retro: 'grid', mono: 'file' };
+
 /** Live Updates (promoted notifications) exist from Android 16 (API 36). */
 const LIVE_UPDATES_API = 36;
 
@@ -39,6 +44,7 @@ export default function InterfaceSettings() {
   const { colors, dark } = useTheme();
   const s = useMemo(() => makeStyles(colors), [colors]);
   const a = settings.appearance;
+  const fontStyle = resolveFontStyle(a.fontStyle);
   const set = (patch: Partial<typeof a>) => updateSettings((prev) => ({ appearance: { ...prev.appearance, ...patch } }));
 
   return (
@@ -80,6 +86,32 @@ export default function InterfaceSettings() {
               );
             })}
           </View>
+        </View>
+        <View style={s.block} accessibilityRole="radiogroup" accessibilityLabel={fontStyleCopy.label}>
+          <Text style={s.label}>{fontStyleCopy.label}</Text>
+          {fontStyleCopy.options.map((o) => {
+            const fonts = fontFamilies[o.value];
+            return (
+              <RadioCard
+                key={o.value}
+                title={o.title}
+                icon={FONT_ICONS[o.value]}
+                selected={fontStyle === o.value}
+                onPress={() => fontStyle !== o.value && set({ fontStyle: o.value })}
+                accessibilityLabel={`${o.title}. ${o.description}`}
+                description={
+                  <>
+                    {o.description}
+                    {'\n'}
+                    <Text style={{ fontFamily: fonts.mono, fontVariant: ['tabular-nums'], color: colors.text }}>
+                      {fontStyleCopy.sampleName} · {fontStyleCopy.sampleSize}
+                    </Text>
+                  </>
+                }
+              />
+            );
+          })}
+          <Caption>{fontStyleCopy.hint}</Caption>
         </View>
         <View style={s.block}>
           <Text style={s.label}>Transfer details</Text>
