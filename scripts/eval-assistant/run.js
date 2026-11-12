@@ -119,17 +119,24 @@ function makeRealFetch(state) {
       lastRequestAt = Date.now();
       state.requests++;
       try { state.lastMessages = JSON.parse(init.body).messages; } catch { /* ignore */ }
-      return fetch(url, init);
+      let r;
+      try {
+        r = await fetch(url, init);
+      } catch (e) {
+        console.log(`    fetch threw: ${String(e && e.message ? e.message : e).slice(0, 200)}`);
+        throw e;
+      }
+      // Log any failure status with the start of its body, so app error copy can be traced to its cause.
+      if (!r.ok) {
+        const body = await r.clone().text().catch(() => '');
+        console.log(`    HTTP ${r.status} ${body.replace(/\s+/g, ' ').slice(0, 300)}`);
+      }
+      return r;
     };
-    let res = await send();
-    if (res.status === 429) {
-      const ra = Number(res.headers.get('retry-after'));
-      const waitMs = Math.min(Number.isFinite(ra) && ra > 0 ? ra * 1000 : 20_000, 60_000);
-      console.log(`    429 from OpenRouter, waiting ${Math.round(waitMs / 1000)}s then retrying once`);
-      await sleep(waitMs);
-      res = await send();
-      if (res.status === 429) state.rateLimited = true;
-    }
+    // A 429 goes straight to the app, so its own rate-limit copy is what gets tested. Sleeping here would outlast
+    // the app's request timeout and surface as "Couldn't reach the provider" instead.
+    const res = await send();
+    if (res.status === 429) state.rateLimited = true;
     return res;
   };
 }

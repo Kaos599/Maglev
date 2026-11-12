@@ -44,6 +44,7 @@ export const COPY = {
   noCredits: 'Your {provider} account is out of credit. Add credit on their site, or pick a free model in Settings.',
   rateLimited: 'Rate limited. Try again in a minute.',
   rateLimitedLong: "You've hit this model's limit for now. Try again later, or pick another model.",
+  dailyLimit: "You've used today's free requests on OpenRouter (50 a day). They reset tomorrow, or adding $10 of credit there raises the limit to 1000 a day.",
   noTools: "This model can't use Maglev's tools. Pick another model in Settings → Assistant.",
   modelGone: "That model isn't available any more. Pick another in Settings → Assistant.",
   tooMuch: 'That was too much for this model. Clear the chat or ask a shorter question.',
@@ -295,6 +296,7 @@ function toolError(message: string): string {
 const NO_TOOLS_RE = /\btools?\b|function[ _-]?calling/i;
 const TOO_MUCH_RE = /context[ _-]?(length|window)|too (long|large|many)|token limit|max(imum)?\b.*\btokens\b|\btokens\b.*\b(exceed|limit)/i;
 const TOOL_USE_FAILED_RE = /tool_use_failed/i;
+const DAILY_LIMIT_RE = /free-models-per-day|requests? per day|daily limit/i;
 /** A Retry-After longer than this on a 429 means "later", not "in a moment". */
 export const RATE_LIMIT_SHORT_MS = 60_000;
 
@@ -303,6 +305,8 @@ function statusStep(s: TurnState, status: number, retryAfterMs?: number, body?: 
   if (status === 401 || status === 403) return failTurn(s, COPY.checkKey);
   if (status === 402) return failTurn(s, COPY.noCredits);
   if (status === 429) {
+    // OpenRouter's free daily cap: retrying in a minute won't help, so say what will.
+    if (DAILY_LIMIT_RE.test(text)) return failTurn(s, COPY.dailyLimit);
     // No wait given: a free model's busy moment, so "a minute". Only a long wait is "later".
     const short = retryAfterMs === undefined || retryAfterMs <= RATE_LIMIT_SHORT_MS;
     return failTurn(s, short ? COPY.rateLimited : COPY.rateLimitedLong);

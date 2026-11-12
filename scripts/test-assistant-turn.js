@@ -493,6 +493,7 @@ async function main() {
     check('400 "maximum context length" -> too much', err({ type: 'HttpErr', status: 400, body: "This model's maximum context length is 8192 tokens" }) === MUCH);
     check('other 4xx -> refused', err({ type: 'HttpErr', status: 422, body: 'bad field' }) === REFUSED && err({ type: 'HttpErr', status: 400 }) === REFUSED);
     check('429 with Retry-After 20 s keeps "Rate limited."', err({ type: 'HttpErr', status: 429, retryAfterMs: 20_000 }) === 'Rate limited. Try again in a minute.');
+    check('429 free daily cap names the cap and the fix', /today's free requests on OpenRouter/.test(err({ type: 'HttpErr', status: 429, body: '{"error":{"message":"Rate limit exceeded: free-models-per-day. Add 10 credits","code":429}}' })));
     check('429 with Retry-After 120 s -> limit for now', err({ type: 'HttpErr', status: 429, retryAfterMs: 120_000 }) === "You've hit this model's limit for now. Try again later, or pick another model.");
     check('a 5xx body is not used (still retried)', step(toRequesting(), { type: 'HttpErr', status: 503, body: 'tools' }).effects[0].type === 'retryOnce');
     // Groq tool_use_failed: retried once, then a plain message.
