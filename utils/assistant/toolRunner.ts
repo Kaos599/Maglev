@@ -39,7 +39,7 @@ import type {
   ToolRunOutput, ToolRunner,
 } from './runtime.ts';
 import { canPropose, parseQuery, scoreResults } from './scoring.ts';
-import type { ParsedQuery, Profile, Ranked, ScoreContext } from './scoring.ts';
+import type { Label, ParsedQuery, Profile, Ranked, ScoreContext } from './scoring.ts';
 import { MESSAGE_MAX, NAME_MAX, QUERY_MAX, filterModelOutput, sanitizeText, toToolJson, truncate, untrustedField } from './sanitize.ts';
 
 // ---------------------------------------------------------------- dependencies
@@ -290,6 +290,8 @@ interface Stored {
   /** The info hash the link was verified against (listing hash, or the resolved hash). Used for cancelResolve and for rebuilding the magnet. */
   realHash?: string;
   episodeCount?: number;
+  /** The label the last search put on this row's card, or null when it had none. Absent: use ranked.label. */
+  cardLabel?: Label | null;
 }
 
 interface Space {
@@ -539,7 +541,8 @@ export function createToolRunner(deps: ToolRunnerDeps): ToolRunner {
       reasons: (ranked?.reasons ?? []).slice(0, 3).map((x) => clean(x, MAX_REASON_CHARS)),
       tier: ranked?.tier ?? 'ok',
     };
-    if (ranked?.label) view.label = ranked.label;
+    const label = stored.cardLabel !== undefined ? stored.cardLabel : ranked?.label;
+    if (label) view.label = label;
     const risky = riskySources(r, prefs.providers, prefs.warnUnsafe);
     if (risky) {
       const why = r.sources.map((id) => prefs.providers.get(id)?.unsafeReason).find((x): x is string => !!x);
@@ -665,7 +668,8 @@ export function createToolRunner(deps: ToolRunnerDeps): ToolRunner {
       playback: support,
       warnUnsafe: prefs.warnUnsafe,
       providers: prefs.providers,
-      query: parsedQuery,
+      query: { ...parsedQuery, raw: queryText },
+      category,
       allowEarlySources: args.include_cam === true,
       packEpisodeCounts: packCounts,
       safety,
@@ -673,22 +677,32 @@ export function createToolRunner(deps: ToolRunnerDeps): ToolRunner {
     };
     const out = scoreResults(rows, scoreCtx);
 
-    // Cards: the shortlist, or when nothing qualified the best rows that are not "avoid".
-    const cardRows: Ranked[] = out.shortlist.length > 0 ? out.shortlist : out.ranked.filter((r) => r.tier !== 'avoid').slice(0, 3);
-    const picked: Ranked[] = [...cardRows];
+    // Sort best: the quality shortlist leads, or when nothing qualified the best rows that are not "avoid".
+    const shortlist: Ranked[] = out.shortlist.length > 0 ? out.shortlist : out.ranked.filter((r) => r.tier !== 'avoid').slice(0, 3);
+    const picked: Ranked[] = [...shortlist];
     for (const r of out.ranked) if (!picked.includes(r)) picked.push(r);
     // A sort other than "best" applies to the whole list, not to the few rows quality picked, so "newest" finds
-    // the newest rows. Rows that cannot be recommended ("avoid") stay last. The shortlist is always shown.
+    // the newest rows. Rows that cannot be recommended ("avoid") stay last.
     let shown: Ranked[];
+    let cardRows: Ranked[];
     if (sort === 'best') {
-      shown = picked.slice(0, Math.max(limit, cardRows.length));
+      shown = picked.slice(0, Math.max(limit, shortlist.length));
+      cardRows = shortlist;
     } else {
       const usable = sortShown(picked.filter((r) => r.tier !== 'avoid'), sort);
       const rest = picked.filter((r) => r.tier === 'avoid');
-      const ordered = [...usable, ...rest];
-      const keep = new Set<Ranked>([...ordered.slice(0, limit), ...cardRows]);
-      shown = ordered.filter((r) => keep.has(r));
+      shown = [...usable, ...rest].slice(0, limit);
+      // The cards are the first rows the model sees, in the same order, so "the second one" means one thing.
+      cardRows = shown.filter((r) => r.tier !== 'avoid').slice(0, 3);
     }
+    const onCard = new Set<Ranked>(cardRows);
+    // Labels stay only where they still hold: on a card, and "smaller" only next to the best-fit card it is smaller than.
+    const bestFitOnCard = cardRows.some((r) => r.labels.includes('best-fit'));
+    const labelOf = (r: Ranked): Label | null => {
+      if (!onCard.has(r) || !r.label) return null;
+      if (r.label === 'smaller' && !bestFitOnCard) return r.labels.find((l) => l === 'best-quality') ?? null;
+      return r.label;
+    };
 
     // Handles are issued here, after ranking, in the order the rows are shown (R1-10).
     for (const r of shown) {
@@ -707,6 +721,7 @@ export function createToolRunner(deps: ToolRunnerDeps): ToolRunner {
         safety: prev?.safety,
         realHash: prev?.realHash,
         episodeCount: prev?.episodeCount,
+        cardLabel: labelOf(r),
       });
       registry.issue('result', r.id);
     }
@@ -726,7 +741,9 @@ export function createToolRunner(deps: ToolRunnerDeps): ToolRunner {
       };
       const uploaded = ageText(r.result.publishedAt, deps.now());
       if (uploaded) row.uploaded = uploaded;
-      if (r.label) row.label = r.label;
+      const label = labelOf(r);
+      if (label) row.label = label;
+      if (onCard.has(r)) row.on_card = true;
       if (space.known && r.admission) row.left_after_text = leftText(r.admission.leftAfter);
       if (r.partialEpisodes !== undefined) row.partial_episodes = r.partialEpisodes;
       const play = playbackVerdict(r.parsed, support);
@@ -745,6 +762,10 @@ export function createToolRunner(deps: ToolRunnerDeps): ToolRunner {
     if (shown.length > 0 && !shown.some((r) => r.result.publishedAt !== undefined)) {
       notes.push("These sources gave no upload dates, so I can't tell how new they are.");
     }
+    const hiddenCam = hidden.cam_source ?? 0;
+    if (args.include_cam !== true && hiddenCam > 0 && rowsData.length === 0) {
+      notes.push(`Only cinema recordings found (${hiddenCam} hidden). Their quality is poor.`);
+    }
     const unanswered = update.sources.filter((s) => isDown(s.state));
     if (unanswered.length > 0) notes.push(`${unanswered.map((s) => names(s.providerId)).join(', ')} didn't answer.`);
 
@@ -756,6 +777,12 @@ export function createToolRunner(deps: ToolRunnerDeps): ToolRunner {
       notes,
     };
     if (space.known) data.free_text = formatBytes(Math.max(0, space.freeBytes - space.pendingNeed - ADMISSION_RESERVE_BYTES));
+    // Nothing fits: say how much more space the closest one needs.
+    if (shown.length > 0 && shown.every((r) => fitOf(r.admission, space.known) === 'too_big')) {
+      const shortfall = Math.min(...shown.map((r) => -(r.admission as NonNullable<Ranked['admission']>).leftAfter));
+      data.all_too_big = true;
+      data.shortfall_text = `about ${formatBytes(shortfall)} more space needed`;
+    }
     if (shown.some((r) => r.admission && r.admission.result !== 'Fits')) {
       const advice = adviceData(shown.slice(0, 8).map((r) => candidateFromRanked(r, packCounts.get(r.id))), profile, space, support);
       if (advice.length > 0) data.advice = advice;

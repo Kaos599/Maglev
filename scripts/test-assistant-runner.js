@@ -307,6 +307,98 @@ async function main() {
     check('best sort detail has no sort suffix', !/newest/.test(bestOut.detail ?? ''), bestOut.detail);
   }
 
+  console.log('search: browse and non-movie queries');
+  {
+    const NOW_MS = 1700100000000;
+    const DAY = 86_400_000;
+    const films = [
+      merged({ name: 'The.Wild.Robot.2024.1080p.WEBRip.x264-GRP', infoHash: hash('1'), sizeBytes: 2 * GB, seeders: 120, publishedAt: NOW_MS - 30 * DAY }),
+      merged({ name: 'Harbor.Nights.2026.1080p.WEB-DL.x265-GRP', infoHash: hash('2'), sizeBytes: 1.8 * GB, seeders: 80, publishedAt: NOW_MS - 2 * DAY }),
+      merged({ name: 'Quiet.Fields.2025.720p.BluRay.x264-GRP', infoHash: hash('3'), sizeBytes: 1.1 * GB, seeders: 40, publishedAt: NOW_MS - 9 * DAY }),
+    ];
+    for (const q of ['movies', 'latest movies']) {
+      const j = parse(await call(createToolRunner(world({ rows: films }).deps), 'search_torrents', { query: q, category: 'movies', sort: 'newest' }));
+      check(`"${q}" (sort newest) returns every film, not zero`, j.ok && j.data.count === 3 && !j.data.hidden.wrong_title, j.data);
+      check(`"${q}" rows are newest first`, j.data.results.map((r) => r.uploaded).join('|') === '2 days ago|1 week ago|1 month ago', j.data.results.map((r) => r.uploaded));
+    }
+    const iso = merged({ name: 'ubuntu-24.04.1-desktop-amd64.iso', infoHash: hash('4'), sizeBytes: 5.8 * GB, seeders: 300, category: 'apps' });
+    for (const q of ['ubuntu', 'ubuntu 24.04', 'linux iso']) {
+      const j = parse(await call(createToolRunner(world({ rows: [iso] }).deps), 'search_torrents', { query: q, category: 'apps' }));
+      check(`"${q}" finds the ubuntu iso`, j.ok && j.data.count === 1, j.data.hidden);
+    }
+    const game = merged({ name: 'Elden.Ring.v1.12-FitGirl.Repack', infoHash: hash('5'), sizeBytes: 48 * GB, seeders: 900, category: 'games' });
+    const jg = parse(await call(createToolRunner(world({ rows: [game], free: { path: '/storage/emulated/0/Download/Maglev', freeBytes: 200 * GB, totalBytes: 256 * GB, mode: 'direct' } }).deps), 'search_torrents', { query: 'elden ring', category: 'games' }));
+    check('"elden ring" finds Elden.Ring.v1.12-FitGirl.Repack', jg.ok && jg.data.count === 1, jg.data.hidden);
+  }
+
+  console.log('search: cards match the on_card rows');
+  {
+    const NOW_MS = 1700100000000;
+    const DAY = 86_400_000;
+    const rows = [
+      merged({ name: 'Fresh.Film.2026.1080p.WEB-DL.x265-GRP', infoHash: hash('1'), sizeBytes: 2 * GB, seeders: 40, publishedAt: NOW_MS - 2 * DAY }),
+      merged({ name: 'Fresh.Film.2026.720p.WEB-DL.x264-GRP', infoHash: hash('2'), sizeBytes: 1.2 * GB, seeders: 400, publishedAt: NOW_MS - 400 * DAY }),
+      merged({ name: 'Fresh.Film.2026.1080p.BluRay.x264-GRP', infoHash: hash('3'), sizeBytes: 3 * GB, seeders: 90, publishedAt: NOW_MS - 20 * DAY }),
+      merged({ name: 'Fresh.Film.2026.2160p.WEB-DL.x265-GRP', infoHash: hash('4'), sizeBytes: 9 * GB, seeders: 15, publishedAt: NOW_MS - 1 * DAY }),
+      merged({ name: 'Fresh.Film.2026.1080p.HDRip.x264-NODATE', infoHash: hash('5'), sizeBytes: 1.5 * GB, seeders: 60 }),
+      merged({ name: 'Fresh.Film.2026.480p.DVDRip.XviD-DEAD', infoHash: hash('6'), sizeBytes: 700 * MB, seeders: 0, publishedAt: NOW_MS - 3 * DAY }),
+    ];
+    for (const sort of ['best', 'newest', 'seeders']) {
+      const out = await call(createToolRunner(world({ rows }).deps), 'search_torrents', { query: 'Fresh Film 2026', sort, min_seeders: 0 });
+      const j = parse(out);
+      const marked = j.data.results.filter((r) => r.on_card === true);
+      check(`sort ${sort}: on_card rows are the cards, same order`, marked.length === out.results.length && marked.every((r, i) => r.id === out.results[i].handle), [marked.map((r) => r.id), out.results.map((c) => c.handle)]);
+      check(`sort ${sort}: on_card rows lead the list`, j.data.results.slice(0, marked.length).every((r) => r.on_card === true));
+      check(`sort ${sort}: no avoid row is on a card`, !marked.some((r) => r.tier === 'avoid'));
+      check(`sort ${sort}: a row's label matches its card's label`, j.data.results.every((r) => {
+        const c = out.results.find((x) => x.handle === r.id);
+        return c ? (c.label ?? null) === (r.label ?? null) : r.label === undefined;
+      }), j.data.results.map((r) => [r.id, r.label]));
+      if (sort !== 'best') {
+        const usable = j.data.results.filter((r) => r.tier !== 'avoid').slice(0, 3);
+        check(`sort ${sort}: cards are the first 3 usable rows`, usable.map((r) => r.id).join() === marked.map((r) => r.id).join(), [usable.map((r) => r.id), marked.map((r) => r.id)]);
+      }
+      if (sort === 'newest') {
+        check('sort newest: the first card is the newest usable row', out.results[0] && /2160p/.test(j.data.results[0].name_untrusted), j.data.results[0]?.name_untrusted);
+      }
+    }
+    // For sort best the cards are the quality shortlist, as before.
+    const outBest = await call(createToolRunner(world({ rows: harborRows() }).deps), 'search_torrents', { query: 'The Last Harbor 2023' });
+    check('sort best: cards still carry the best-fit label first', outBest.results[0]?.label === 'best-fit', outBest.results.map((c) => c.label));
+  }
+
+  console.log('search: all too big, cinema-only');
+  {
+    const full = { path: '/storage/emulated/0/Download/Maglev', freeBytes: 3 * GB, totalBytes: 128 * GB, mode: 'direct' };
+    const big = [
+      merged({ name: 'Huge.Film.2024.2160p.WEB-DL.x265-GRP', infoHash: hash('1'), sizeBytes: 12 * GB, seeders: 50 }),
+      merged({ name: 'Huge.Film.2024.1080p.BluRay.x264-GRP', infoHash: hash('2'), sizeBytes: 6 * GB, seeders: 50 }),
+    ];
+    const jb = parse(await call(createToolRunner(world({ rows: big, free: full }).deps), 'search_torrents', { query: 'Huge Film 2024' }));
+    check('every row too big: all_too_big is true', jb.data.all_too_big === true && jb.data.results.every((r) => r.fit === 'too_big'), jb.data);
+    check('shortfall_text uses the smallest shortfall, in plain words', /^about \d+(\.\d)? [KMGT]?B more space needed$/.test(jb.data.shortfall_text ?? '') && jb.data.shortfall_text.includes(jb.data.results.find((r) => r.name_untrusted.includes('1080p')).left_after_text.replace('short by ', '')), [jb.data.shortfall_text, jb.data.results.map((r) => r.left_after_text)]);
+    const jf = parse(await call(createToolRunner(world({ rows: [...big, merged({ name: 'Huge.Film.2024.720p.WEB-DL.x264-GRP', infoHash: hash('3'), sizeBytes: 1 * GB, seeders: 50 })], free: full }).deps), 'search_torrents', { query: 'Huge Film 2024' }));
+    check('one row fits: no all_too_big, no shortfall_text', !('all_too_big' in jf.data) && !('shortfall_text' in jf.data), jf.data);
+    const je = parse(await call(createToolRunner(world({ rows: [] }).deps), 'search_torrents', { query: 'Huge Film 2024' }));
+    check('no rows: no all_too_big', !('all_too_big' in je.data) && !('shortfall_text' in je.data));
+    const jl = parse(await call(createToolRunner(world({ rows: big, throwList: true }).deps), 'search_torrents', { query: 'Huge Film 2024' }));
+    check('unknown space: no all_too_big', !('all_too_big' in jl.data));
+
+    const cams = [
+      merged({ name: 'New.Release.2026.CAM.x264-GRP', infoHash: hash('4'), sizeBytes: 1.4 * GB, seeders: 500 }),
+      merged({ name: 'New.Release.2026.HDTS.x264-GRP', infoHash: hash('5'), sizeBytes: 1.6 * GB, seeders: 300 }),
+      merged({ name: 'New.Release.2026.TELESYNC.x264-GRP', infoHash: hash('6'), sizeBytes: 1.2 * GB, seeders: 200 }),
+    ];
+    const jc = parse(await call(createToolRunner(world({ rows: cams }).deps), 'search_torrents', { query: 'New Release 2026', sort: 'newest' }));
+    const camNote = jc.data.notes.find((n) => n.startsWith('Only cinema recordings found'));
+    check('only cinema recordings: a note says so, with the count', jc.data.count === 0 && camNote === 'Only cinema recordings found (3 hidden). Their quality is poor.', jc.data.notes);
+    check('the sources that did not answer are still in the notes', jc.data.notes.some((n) => n === "YTS didn't answer."), jc.data.notes);
+    const jci = parse(await call(createToolRunner(world({ rows: cams }).deps), 'search_torrents', { query: 'New Release 2026', include_cam: true }));
+    check('include_cam: no cinema-only note', jci.data.count > 0 && !jci.data.notes.some((n) => n.startsWith('Only cinema')), jci.data.notes);
+    const jm = parse(await call(createToolRunner(world({ rows: [...cams, merged({ name: 'New.Release.2026.1080p.WEB-DL.x265-GRP', infoHash: hash('7'), sizeBytes: 2 * GB, seeders: 50 })] }).deps), 'search_torrents', { query: 'New Release 2026' }));
+    check('a real copy survived: no cinema-only note', jm.data.count === 1 && !jm.data.notes.some((n) => n.startsWith('Only cinema')), jm.data.notes);
+  }
+
   // ---------------------------------------------------------------- get_result_details
 
   console.log('get_result_details');

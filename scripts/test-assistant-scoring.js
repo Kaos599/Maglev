@@ -464,7 +464,61 @@ async function main() {
     check('unknown size keeps the size_unknown flag', unk.ranked[0].flags.includes('size_unknown'));
     check('a tiny book is not a video, so it is kept', ex([row('The.Last.Harbor.2023.epub', 300 * KB, 10, ['knaben'], { category: 'books' })]).excluded.length === 0);
     check('a tiny music file is kept', ex([row('The.Last.Harbor.2023.FLAC', 400 * KB, 10, ['knaben'], { category: 'music' })]).excluded.length === 0);
+    const junk = row('The.Last.Harbor.2023.1080p.WEB-DL.x264-JUNK', 22.4 * KB, 900, ['knaben'], { category: 'movies' });
+    const good = row('The.Last.Harbor.2023.1080p.WEB-DL.x265-GRP', 2 * GB, 40);
+    const jx = ex([junk, good]);
+    check('a 22.4 KB movies-category row is excluded as broken_size and never reaches Best fit',
+      jx.excluded.some((x) => x.id === junk.infoHash && x.reason === 'broken_size') && !jx.ranked.some((r) => r.id === junk.infoHash)
+      && jx.shortlist[0]?.id === good.infoHash, jx.shortlist.map((r) => r.result.name));
+    const jb = ex([junk, good], { query: { title: 'latest movies' } });
+    check('a browse query still excludes the 22.4 KB movie', jb.excluded.some((x) => x.id === junk.infoHash && x.reason === 'broken_size'));
     check('with no category, a name that is clearly video is still checked', ex([row('The.Last.Harbor.2023.1080p.WEB-DL.x265-GRP', 22 * KB, 10, ['knaben'], { category: undefined })]).excluded[0]?.reason === 'broken_size');
+  }
+
+  // ---------------------------------------------------------------- browse and non-movie queries
+  console.log('browse and non-movie title matching');
+  {
+    const ctxQ = (title, over = {}) => baseCtx({ freeBytes: 500 * GB, query: { title }, ...over });
+    const films = [
+      row('The.Wild.Robot.2024.1080p.WEBRip.x264-GRP', 2 * GB, 120),
+      row('Harbor.Nights.2026.1080p.WEB-DL.x265-GRP', 1.8 * GB, 80),
+      row('Quiet.Fields.2025.720p.BluRay.x264-GRP', 1.1 * GB, 40),
+    ];
+    const recent = films.slice(1);
+    for (const q of ['movies', 'latest movies', 'movies this week', 'best films', 'top tv shows']) {
+      const o = scoreResults(films, ctxQ(q));
+      check(`browse query "${q}" keeps every release (no title match)`, o.excluded.length === 0 && o.ranked.length === 3, o.excluded.map((x) => x.detail));
+    }
+    const y = scoreResults(recent, ctxQ('new movies', { query: { title: 'new movies', year: 2026 } }));
+    check('browse query "new movies 2026" keeps the 2025 and 2026 releases', y.excluded.length === 0 && y.ranked.length === 2, y.excluded.map((x) => x.detail));
+    check('a browse query still has a shortlist', scoreResults(films, ctxQ('latest movies')).shortlist.length >= 1);
+    check('a real title is still matched ("Dune" hides The Wild Robot)', scoreResults(films, ctxQ('Dune')).excluded.length === 3);
+    check('a title with a generic word is not a browse query ("Scary Movie")', scoreResults(films, ctxQ('Scary Movie')).excluded.length === 3);
+
+    const iso = (extra = {}) => row('ubuntu-24.04.1-desktop-amd64.iso', 5.8 * GB, 300, ['knaben'], { category: 'apps', ...extra });
+    for (const q of ['ubuntu', 'ubuntu 24.04', 'linux iso']) {
+      const o = scoreResults([iso()], ctxQ(q, { category: 'apps' }));
+      check(`"${q}" matches ubuntu-24.04.1-desktop-amd64.iso`, o.excluded.length === 0 && o.ranked.length === 1, o.excluded.map((x) => x.detail));
+    }
+    const isoAll = scoreResults([iso({ category: undefined })], ctxQ('ubuntu 24.04'));
+    check('"ubuntu 24.04" matches the iso with no category (it does not parse as a film)', isoAll.excluded.length === 0, isoAll.excluded.map((x) => x.detail));
+    check('"ubuntu 22.04" does not match the 24.04 iso', scoreResults([iso()], ctxQ('ubuntu 22.04', { category: 'apps' })).excluded[0]?.reason === 'wrong_title');
+    check('"fedora" does not match the ubuntu iso', scoreResults([iso()], ctxQ('fedora', { category: 'apps' })).excluded[0]?.reason === 'wrong_title');
+
+    const game = row('Elden.Ring.v1.12-FitGirl.Repack', 48 * GB, 900, ['knaben'], { category: 'games' });
+    const g = scoreResults([game], ctxQ('elden ring', { category: 'games' }));
+    check('"elden ring" matches Elden.Ring.v1.12-FitGirl.Repack (no extra-number rule for games)', g.excluded.length === 0, g.excluded.map((x) => x.detail));
+    const gAll = scoreResults([game], ctxQ('elden ring'));
+    check('"elden ring" in an all search matches the game too', gAll.excluded.length === 0, gAll.excluded.map((x) => x.detail));
+    const book = row('Project.Hail.Mary.2021.Andy.Weir.epub', 2 * MB, 30, ['knaben'], { category: 'books' });
+    check('a book query matches on the raw name', scoreResults([book], ctxQ('project hail mary', { category: 'books' })).excluded.length === 0);
+
+    // Movie and TV behaviour is unchanged.
+    const dune2 = row('Dune.Part.Two.2024.1080p.WEB-DL.x265-GRP', 2 * GB, 50);
+    check('"Dune" still rejects Dune Part Two', scoreResults([dune2], ctxQ('Dune')).excluded[0]?.reason === 'wrong_title');
+    const alien3 = row('Alien.3.1992.1080p.BluRay.x264-GRP', 2 * GB, 50);
+    check('"Alien" still rejects Alien 3 (extra number)', scoreResults([alien3], ctxQ('Alien')).excluded[0]?.reason === 'wrong_title');
+    check('a movie year more than 1 off is still rejected', scoreResults([alien3], ctxQ('Alien 3', { query: { title: 'Alien 3', year: 1979 } })).excluded[0]?.reason === 'wrong_title');
   }
 
   // ---------------------------------------------------------------- purity

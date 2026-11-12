@@ -42,7 +42,7 @@ async function main() {
     check(`the prompt never mentions ${gone}`, !p.includes(gone));
   }
   const names = [...p.matchAll(/\b(search_torrents|get_result_details|propose_add|propose_change|list_transfers|ask_user|open_screen|[a-z]+_[a-z_]+)\b/g)].map((m) => m[1]);
-  const known = new Set([...TOOLS.map((t) => t.function.name), 'max_size_gb', 'min_resolution', 'resolve_files', 'transfer_id', 'status_text', 'action_hint', 'add_download', 'search_providers', 'file_indices', 'first_indices', 'select_files', 'remove_files', 'delete_files']);
+  const known = new Set([...TOOLS.map((t) => t.function.name), 'max_size_gb', 'min_resolution', 'resolve_files', 'transfer_id', 'status_text', 'action_hint', 'add_download', 'search_providers', 'file_indices', 'first_indices', 'select_files', 'remove_files', 'delete_files', 'on_card', 'all_too_big', 'shortfall_text', 'max_resolution']);
   check('every snake_case word in the prompt is a real tool or argument', names.every((n) => known.has(n)), names.filter((n) => !known.has(n)));
 
   console.log('prompt: structure');
@@ -58,15 +58,22 @@ async function main() {
   const ap = p.split('<approach>')[1].split('</approach>')[0];
   check('recency sorts newest and judges by upload age', /newest for recency/.test(ap) && /upload age/.test(ap) && /sources gave no dates/.test(ap));
   check('popularity sorts by seeders', /seeders for popularity/.test(ap));
-  check('suggestions: picks from knowledge first, then offer to search', /two or three picks from your knowledge/.test(ap) && /offer to search/.test(ap) && /Don't search first/.test(ap));
-  check('meaning questions: no tools', /Meaning or comparison[^\n]*No tools/.test(ap));
+  check('suggestions: picks first, offer to search; new or popular now counts as finding', /two or three picks, then offer to search/.test(ap) && /new, recent or popular now, treat it as finding/.test(ap));
+  check('meaning questions: no tools', /Answer from knowledge, no tools\n- Meaning or comparison/.test(ap));
   check('availability opens with yes, no or not yet; cinema recordings flagged', /yes, no or not yet/.test(ap) && /cinema recordings/.test(ap));
   check('how-to follows the app and names Download/Maglev', /Choose files/.test(ap) && /Download\/Maglev/.test(ap));
   check('downloads use list_transfers status_text and action_hint', /list_transfers[^\n]*status_text and action_hint/.test(ap));
   check('already in that state: say so, no card', /already in the state asked for/.test(ap));
   check('settings questions go to open_screen', /open_screen/.test(ap));
-  check('choices go to ask_user, never plain text, then wait', /ask_user[^\n]*stop and wait/.test(ap) && /Never ask in plain text/.test(ap));
+  check('closed choices go to ask_user then wait; open questions in one plain sentence', /ask_user[^\n]*stop and wait/.test(ap) && /open question[^\n]*plain sentence/i.test(ap));
   check('fewest tool calls', /fewest tool calls/.test(ap));
+  check('cards are referred to by title, matched by on_card', /on_card/.test(ap) && /never by an id/.test(ap));
+  check('nothing found: no invented titles, mention sources down', /Nothing found/.test(ap) && /never invent a title/i.test(ap));
+  check('all too big: shortfall_text then ask_user, no add', /all_too_big/.test(ap) && /shortfall_text/.test(ap) && /Don't look inside or propose an add/.test(ap));
+  check('follow-ups map to the cards in order', /Follow-ups/.test(ap) && /smaller/.test(ap));
+  check('scope: no cracks (malware), no adult search, other topics declined in one line', /cracks, keygens, activators/.test(p) && /adult content/.test(p) && /For anything else/.test(p));
+  check('quote tool numbers as written', /exactly as the tool wrote them/.test(p));
+  check('reply in the user language', /Reply in the language the user writes in/.test(p));
 
   console.log('prompt: style');
   const st = p.split('<style>')[1].split('</style>')[0];
@@ -87,7 +94,7 @@ async function main() {
 
   console.log('prompt: size');
   const tokens = estimateTokens(p);
-  check('the prompt stays under 2000 tokens', tokens < 2000, tokens);
+  check('the prompt stays under 2400 tokens', tokens < 2400, tokens);
 
   console.log('glossary: terms the jargon workflow relies on');
   for (const k of ['webdl', 'webrip', 'bluray', 'hdtv', 'cam', 'ts', 'remux', 'x264', 'x265', 'hevc', '10bit', 'hdr', 'dv', 'atmos', 'dts', 'aac', '2160p', '1080p', '720p']) {
