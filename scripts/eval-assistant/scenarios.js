@@ -355,7 +355,7 @@ add({
 });
 
 add({
-  id: 24, messages: ['find me dune'], freeGB: 20,
+  id: 24, fakeOnly: true, messages: ['find me dune'], freeGB: 20,
   fixture: () => rows([
     { name: 'Dune.2021.1080p.WEB-DL.DDP5.1.Atmos.H.264-CMRG', mb: 3900, seeders: 250, ageDays: 400 },
     { name: 'Dune.2021.720p.BluRay.x264-YIFY', mb: 1100, seeders: 160, ageDays: 400 },

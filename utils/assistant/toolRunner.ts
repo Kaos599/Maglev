@@ -732,6 +732,24 @@ export function createToolRunner(deps: ToolRunnerDeps): ToolRunner {
   const answeredCount = (update: SearchUpdate): number =>
     update.sources.filter((x) => x.state === 'done' || (x.state !== 'searching' && x.count > 0)).length;
 
+  /** The name of a download whose name contains every word of the query, if any. Engine errors count as none. */
+  async function ownedMatch(queryText: string): Promise<string | undefined> {
+    const words = (t: string) => t.toLowerCase().split(/[^\p{L}\p{N}]+/u).filter((w) => w.length >= 2);
+    const want = words(queryText);
+    if (want.length === 0) return undefined;
+    try {
+      const res = await callEngine<{ torrents: Snapshot[] }>(() => deps.engine.listTorrents());
+      if (!res.ok) return undefined;
+      const hit = res.torrents.find((t: Snapshot) => {
+        const have = new Set(words(String(t.name ?? '')));
+        return want.every((w) => have.has(w));
+      });
+      return hit ? clean(String(hit.name), 80) : undefined;
+    } catch {
+      return undefined;
+    }
+  }
+
   async function searchTorrents(args: Data, ctx: ToolRunContext): Promise<ToolRunOutput> {
     const queryText = clean(args.query, QUERY_MAX);
     if (queryText.length < 2) return fail('bad_args', 'The search needs a title.');
@@ -833,6 +851,9 @@ export function createToolRunner(deps: ToolRunnerDeps): ToolRunner {
 
     const common = listNotes(shown, update, space, names);
     const notes = [...out.notes, ...common.first];
+    // Small models search for a title the user already has ("only the subtitles from sintel"). Point them back.
+    const owned = await ownedMatch(queryText);
+    if (owned) notes.unshift(`Already in your downloads: ${owned}. To choose its files, pause or delete it, use list_transfers and propose_change instead.`);
     const hiddenCam = hidden.cam_source ?? 0;
     if (args.include_cam !== true && hiddenCam > 0 && rowsData.length === 0) {
       notes.push(`Only cinema recordings found (${hiddenCam} hidden). Their quality is poor.`);

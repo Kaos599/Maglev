@@ -393,6 +393,16 @@ async function main() {
     check('sort best: cards still carry the best-fit label first', outBest.results[0]?.label === 'best-fit', outBest.results.map((c) => c.label));
   }
 
+  console.log('search: a title the user already has');
+  {
+    const w = world({ rows: [merged({ name: 'Sintel.2010.1080p.x264', infoHash: hash('9'), sizeBytes: 1 * GB, seeders: 40 })] });
+    w.torrents = [snap({ id: 'tor1', name: 'Sintel', totalBytes: 1 * GB, progressBytes: 0, includedBytes: 1 * GB })];
+    const j = parse(await call(createToolRunner(w.deps), 'search_torrents', { query: 'sintel' }));
+    check('owned title: a note points to list_transfers', j.data.notes.some((n) => /^Already in your downloads: Sintel\./.test(n) && /list_transfers/.test(n)), j.data.notes);
+    const k = parse(await call(createToolRunner(w.deps), 'search_torrents', { query: 'big buck bunny' }));
+    check('other titles: no owned note', !k.data.notes.some((n) => /Already in your downloads/.test(n)), k.data.notes);
+  }
+
   console.log('search: all too big, cinema-only');
   {
     const full = { path: '/storage/emulated/0/Download/Maglev', freeBytes: 3 * GB, totalBytes: 128 * GB, mode: 'direct' };

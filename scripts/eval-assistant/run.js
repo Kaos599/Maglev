@@ -169,7 +169,8 @@ async function runScenario(mods, scenario) {
   const remember = (u) => { for (const x of u.results || []) world.knownResults.set(String(x.infoHash).toLowerCase(), { name: x.name, sizeBytes: x.sizeBytes }); return u; };
   const base = createToolRunner({
     async search(query, category, opts) {
-      if (FAKE) {
+      // A scenario's own fixture defines it (a hostile name, a source down), so it applies to real runs too.
+      if (FAKE || scenario.fixture) {
         const fx = scenario.fixture ? scenario.fixture(query, state.searches++) : fakeSearchRows(query);
         const results = Array.isArray(fx) ? fx : fx.results;
         const sources = Array.isArray(fx) || !fx.sources ? [{ providerId: 'knaben', state: 'done', count: results.length, ms: 5 }] : fx.sources;
@@ -320,7 +321,8 @@ async function main() {
   const stamp = new Date().toISOString().replace(/[:.]/g, '-');
   const outDir = path.join(__dirname, 'out', stamp);
   fs.mkdirSync(outDir, { recursive: true });
-  const picked = SCENARIOS.filter((s) => !ONLY || ONLY.has(s.id));
+  // fakeOnly scenarios test the app's handling of scripted model output; a real model writes its own, so skip them.
+  const picked = SCENARIOS.filter((s) => (!ONLY || ONLY.has(s.id)) && (FAKE || !s.fakeOnly));
   console.log(`Assistant eval: ${picked.length} scenario(s), model ${FAKE ? 'fake (scripted)' : MODEL}${FAKE ? '' : `, 1 request per ${MIN_GAP_MS / 1000}s max`}`);
 
   const results = [];
