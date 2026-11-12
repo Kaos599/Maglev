@@ -26,11 +26,26 @@ SIZE=$(adb shell wm size | sed -n 's/.*: \([0-9]*\)x\([0-9]*\).*/\1 \2/p' | tail
 W=${SIZE% *}; H=${SIZE#* }
 X=$((W / 2)); YT=$((H * 3 / 10)); YB=$((H * 8 / 10))
 
+# The screen must be on with Maglev in front for every measurement; a dozing phone reports nonsense frames and CPU.
+# This only wakes the screen and dismisses a swipe lock; it changes no settings. A PIN lock stops the run.
+awake() {
+  adb shell input keyevent KEYCODE_WAKEUP >&2
+  adb shell wm dismiss-keyguard >/dev/null 2>&1 || true
+  sleep 1
+  local w f
+  w=$(adb shell dumpsys power | tr -d '\r' | sed -n 's/.*mWakefulness=\([A-Za-z]*\).*/\1/p' | head -1 || true)
+  f=$(adb shell dumpsys window | tr -d '\r' | grep -m1 mCurrentFocus || true)
+  if [ "$w" != "Awake" ] || ! echo "$f" | grep -q com.maglev; then
+    echo "Screen not usable for measuring (wakefulness=$w, focus: $f). Unlock the phone and run again." >&2; exit 2
+  fi
+}
+
 echo "Maglev $VERSION on $(adb shell getprop ro.product.model | tr -d '\r'), $RUNS cold starts"
 
 # ---- cold start
 starts=()
 for i in $(seq 1 "$RUNS"); do
+  adb shell input keyevent KEYCODE_WAKEUP >&2
   adb shell am force-stop "$PKG"
   sleep 2
   t=$(adb shell am start -W -n "$ACT" | sed -n 's/TotalTime: //p' | tr -d '\r')
@@ -40,6 +55,7 @@ done
 
 # ---- scroll helper: reset gfxinfo, fling up and down, read the summary
 scroll() {
+  awake
   adb shell dumpsys gfxinfo "$PKG" reset >/dev/null
   for _ in 1 2 3 4 5 6; do
     adb shell input swipe "$X" "$YB" "$X" "$YT" 120
@@ -59,16 +75,22 @@ scroll() {
 
 # ---- Transfers (the first tab after launch)
 adb shell am start -W -n "$ACT" >/dev/null
+adb shell am start -a android.intent.action.VIEW -d "maglev:///" "$PKG" >/dev/null 2>&1
 sleep 3
 transfers=$(scroll)
 
 # ---- idle thread CPU on Transfers, 10 s window
+awake
 PID=$(adb shell pidof "$PKG" | tr -d '\r')
+# Columns: TID USER PR NI VIRT RES SHR S %CPU %MEM TIME+ THREAD PROCESS. The second sample covers the 10 s window.
+# The main (UI) thread is named like the process, so match the THREAD column, not the last one.
 idle=$(adb shell top -H -b -d 10 -n 2 -p "$PID" | tr -d '\r' | awk '
-  /^Tasks:/ {n++}
-  n==2 && /mqt_v_js|mqt_js/ {js+=$9}
-  n==2 && $NF ~ /^com.maglev$|RenderThread/ {ui+=$9}
-  END {printf "{\"js_cpu_pct\":%.1f,\"ui_render_cpu_pct\":%.1f}", js, ui}')
+  /^Threads:|^Tasks:/ {n++}
+  n==2 && $12 ~ /^mqt_v_js$|^mqt_js$/ {js+=$9}
+  n==2 && $12 == "com.maglev" {ui+=$9}
+  n==2 && $12 == "RenderThread" {rt+=$9}
+  n==2 && $9 ~ /^[0-9.]+$/ {all+=$9}
+  END {printf "{\"js_cpu_pct\":%.1f,\"ui_cpu_pct\":%.1f,\"render_cpu_pct\":%.1f,\"process_cpu_pct\":%.1f}", js, ui, rt, all}')
 
 # ---- Search: deep link a small public-domain title, wait for sources, scroll the results
 adb shell am start -W -a android.intent.action.VIEW -d "maglev://search?q=big%20buck%20bunny" "$PKG" >/dev/null
