@@ -535,6 +535,28 @@ async function main() {
   );
   check('answered: no note when all answered', ans.unansweredNote(ans.tallySources([stt('done'), stt('empty')])) === '');
 
+  // ---- folded summary line: "23 results from 5 sources" until the user expands the details
+  const fold = ans.foldedSummary;
+  const tl = (states) => ans.tallySources(states.map(stt));
+  const five = ['done', 'done', 'done', 'empty', 'done'];
+  check('fold: all answered', fold({ tally: tl(five), results: 23, searching: false, stopped: false }).text === '23 results from 5 sources');
+  check('fold: one result, one source', fold({ tally: tl(['done']), results: 1, searching: false, stopped: false }).text === '1 result from 1 source');
+  check('fold: a failed source is said briefly', fold({ tally: tl(['done', 'done', 'done', 'done', 'timeout']), results: 23, searching: false, stopped: false }).text === '23 results from 4 of 5 sources');
+  check('fold: a failed source marks the line as needing a look', fold({ tally: tl(['done', 'timeout']), results: 3, searching: false, stopped: false }).attention === true);
+  check('fold: a source behind a check counts as unanswered', fold({ tally: tl(['done', 'challenge']), results: 3, searching: false, stopped: false }).text === '3 results from 1 of 2 sources');
+  check('fold: all answered needs no attention', fold({ tally: tl(five), results: 23, searching: false, stopped: false }).attention === false);
+  check('fold: searching with nothing yet', fold({ tally: tl(['searching', 'searching', 'searching']), results: 0, searching: true, stopped: false, eligible: 3 }).text === 'Searching 3 sources');
+  check('fold: searching with some results', fold({ tally: tl(['done', 'searching', 'searching']), results: 8, searching: true, stopped: false, eligible: 3 }).text === '8 results so far from 1 of 3 sources');
+  check('fold: searching uses the eligible count before the first update', fold({ tally: tl([]), results: 0, searching: true, stopped: false, eligible: 5 }).text === 'Searching 5 sources');
+  check('fold: stopped says so', fold({ tally: tl(['done', 'done']), results: 4, searching: false, stopped: true }).text === 'Stopped. 4 results from 2 sources');
+  check('fold: no results', fold({ tally: tl(five), results: 0, searching: false, stopped: false }).text === '0 results from 5 sources');
+  const searchSrc = fs.readFileSync(path.join(__dirname, '..', 'app/(tabs)/search.tsx'), 'utf8');
+  check('fold: search uses foldedSummary and keeps the detailed status', /foldedSummary\(/.test(searchSrc) && /sources answered, results appear as they arrive/.test(searchSrc));
+  check('fold: expanded state is per session (useState, never persisted)', /const \[sourcesOpen, setSourcesOpen\] = useState\(false\)/.test(searchSrc) && !/sourcesOpen[\s\S]{0,80}updatePrefs/.test(searchSrc));
+  check('fold: the chips show only when expanded', /sourcesOpen && entries\.length > 0/.test(searchSrc) || /sourcesOpen \? \(/.test(searchSrc));
+  check('fold: the toggle is a 44px expanded-state button', /accessibilityState=\{\{ expanded: sourcesOpen \}\}/.test(searchSrc) && /minHeight: 44/.test(searchSrc));
+  check('fold: Most seeders keeps its name', /seeders: 'Most seeders'/.test(searchSrc));
+
   console.log(`\n${passed} passed, ${failed} failed`);
   process.exit(failed ? 1 : 0);
 }

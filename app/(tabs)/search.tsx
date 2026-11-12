@@ -7,7 +7,7 @@ import { useSettings } from '../../context/SettingsContext';
 import { useTheme } from '../../context/ThemeContext';
 import { ThemeColors, radius, spacing, type } from '../../constants/theme';
 import { PixelIcon } from '../../components/PixelIcon';
-import { Button, Chip, EmptyBlock, IconButton, Screen, Sheet } from '../../components/ui';
+import { Button, Chip, EmptyBlock, IconButton, PressableScale, Screen, Sheet } from '../../components/ui';
 import { ResultRow } from '../../components/search/ResultRow';
 import { SKELETON_FIRST_COUNT, SKELETON_MORE_COUNT, SkeletonRows } from '../../components/search/SkeletonRows';
 import { seenRowCount, stableOrder } from '../../components/search/stableOrder';
@@ -26,7 +26,7 @@ import { riskySources } from '../../utils/search/safety';
 import { addRecentSearch, clearRecentSearches, getSearchPrefs, useSearchPrefs } from '../../utils/prefs/search';
 import { availableCategories, eligibleProviders, mergeInto, rerunProvider, resolveResult, searchAll } from '../../utils/search/aggregate';
 import { CloudflareSolverSheet } from '../../components/search/CloudflareSolverSheet';
-import { tallySources, unansweredNote } from '../../utils/search/answered';
+import { foldedSummary, tallySources, unansweredNote } from '../../utils/search/answered';
 import type { Category, MergedResult, SearchUpdate } from '../../utils/search/types';
 import { empty } from '../../constants/copy';
 
@@ -82,6 +82,8 @@ export default function SearchScreen() {
   const [failed, setFailed] = useState(false);
   const [sourceFilter, setSourceFilter] = useState<string | null>(null);
   const [sortOpen, setSortOpen] = useState(false);
+  // Per session only: the per-source chips stay folded until the user opens them, and fold again on a new launch.
+  const [sourcesOpen, setSourcesOpen] = useState(false);
   const [recents, setRecents] = useState<string[]>(() => prefs.recents);
   const [sessionAdded, setSessionAdded] = useState<Set<string>>(() => new Set());
   const [busyHash, setBusyHash] = useState<string | null>(null);
@@ -313,6 +315,7 @@ export default function SearchScreen() {
   const answered = tally.answered;
   const unanswered = unansweredNote(tally);
   const total = update?.sources.length ?? 0;
+  const folded = foldedSummary({ tally, results: update?.results.length ?? 0, searching, stopped, eligible: eligible.length });
 
   // Rows the user has had on screen keep their slots while later sources answer; new rows are ranked
   // below them. A new sort, source filter or search ranks everything again (and the list starts at the top).
@@ -471,11 +474,20 @@ export default function SearchScreen() {
       <>
         <View style={styles.sources} accessibilityLiveRegion="polite">
           <View style={styles.summaryRow}>
-            <Text style={styles.summary}>
-              {searching
-                ? `${answered}/${total || eligible.length} sources answered, results appear as they arrive`
-                : `${stopped ? 'Stopped. ' : ''}${answered}/${total} sources answered${unanswered ? ` · ${unanswered}` : ''} · ${update?.results.length ?? 0} results`}
-            </Text>
+            <PressableScale
+              onPress={() => setSourcesOpen((v) => !v)}
+              haptic="select"
+              scaleTo={0.99}
+              accessibilityRole="button"
+              accessibilityLabel={`${folded.text}. ${sourcesOpen ? 'Hide' : 'Show'} sources`}
+              accessibilityState={{ expanded: sourcesOpen }}
+              style={styles.foldToggle}
+            >
+              <Text style={[styles.summary, folded.attention && { color: colors.warning }]} numberOfLines={1}>
+                {folded.text}
+              </Text>
+              <PixelIcon name={sourcesOpen ? 'chevron-down' : 'chevron-right'} size={16} color={folded.attention ? colors.warning : colors.textMuted} />
+            </PressableScale>
             {!searching && hasResults ? (
               <Button
                 label={SORT_LABEL[prefs.sort]}
@@ -486,7 +498,14 @@ export default function SearchScreen() {
               />
             ) : null}
           </View>
-          {entries.length > 0 ? <SourceScoreboard entries={entries} selected={sourceFilter} onSelect={setSourceFilter} onSolve={(id) => providers.get(id)?.cloudflare && setSolving(id)} /> : null}
+          {sourcesOpen ? (
+            <Text style={styles.detail}>
+              {searching
+                ? `${answered}/${total || eligible.length} sources answered, results appear as they arrive`
+                : `${stopped ? 'Stopped. ' : ''}${answered}/${total} sources answered${unanswered ? ` · ${unanswered}` : ''} · ${update?.results.length ?? 0} results`}
+            </Text>
+          ) : null}
+          {sourcesOpen && entries.length > 0 ? <SourceScoreboard entries={entries} selected={sourceFilter} onSelect={setSourceFilter} onSolve={(id) => providers.get(id)?.cloudflare && setSolving(id)} /> : null}
         </View>
         {list}
       </>
@@ -615,7 +634,9 @@ const makeStyles = (c: ThemeColors) =>
     disclaimer: { ...type.body, fontSize: 11, lineHeight: 16, color: c.textMuted },
     sources: { paddingHorizontal: spacing.lg, paddingBottom: spacing.sm, gap: spacing.sm },
     summaryRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.sm },
-    summary: { ...type.body, flex: 1, fontSize: 12, lineHeight: 17, color: c.textMuted },
+    foldToggle: { flex: 1, minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
+    summary: { ...type.body, flexShrink: 1, fontSize: 12, lineHeight: 17, color: c.textMuted },
+    detail: { ...type.body, fontSize: 12, lineHeight: 17, color: c.textMuted },
     body: { flex: 1, marginTop: spacing.sm },
     listWrap: { flex: 1 },
     list: { paddingHorizontal: spacing.lg, paddingBottom: spacing.xxxl },

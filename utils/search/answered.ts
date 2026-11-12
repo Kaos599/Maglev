@@ -37,3 +37,37 @@ export function unansweredNote(t: SourceTally): string {
   if (t.failed > 0) parts.push(t.failed === 1 ? "1 didn't respond" : `${t.failed} didn't respond`);
   return parts.join(' · ');
 }
+
+export interface FoldedSummary {
+  text: string;
+  /** True when a finished search had sources that did not answer, so the line should stand out. */
+  attention: boolean;
+}
+
+const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
+
+/**
+ * The one plain line shown above the results: "23 results from 5 sources". The per-source chips and
+ * the "x/y sources answered" detail sit behind it. A source that did not answer is said briefly
+ * ("23 results from 4 of 5 sources") so it stays discoverable while the details are folded.
+ */
+export function foldedSummary(i: {
+  tally: SourceTally;
+  results: number;
+  searching: boolean;
+  stopped: boolean;
+  /** Sources the search will ask, used until the first update names them. */
+  eligible?: number;
+}): FoldedSummary {
+  const { tally, results, searching, stopped } = i;
+  const total = tally.total || i.eligible || 0;
+  if (searching) {
+    return {
+      text: results > 0 ? `${plural(results, 'result', 'results')} so far from ${tally.answered} of ${total} sources` : `Searching ${plural(total, 'source', 'sources')}`,
+      attention: false,
+    };
+  }
+  const missed = tally.answered < tally.total;
+  const from = missed ? `${tally.answered} of ${tally.total} sources` : plural(tally.total, 'source', 'sources');
+  return { text: `${stopped ? 'Stopped. ' : ''}${plural(results, 'result', 'results')} from ${from}`, attention: missed && !stopped };
+}
