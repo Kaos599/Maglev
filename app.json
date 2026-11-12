@@ -22,7 +22,7 @@
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "monochromeImage": "./assets/adaptive-icon-monochrome.png",
-        "backgroundColor": "#05070A"
+        "backgroundColor": "#0B2A30"
       },
       "predictiveBackGestureEnabled": true,
       "package": "com.maglev",
