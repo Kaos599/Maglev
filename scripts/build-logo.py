@@ -165,6 +165,11 @@ def art(tf=""):
 open(f"{root}/assets/brand/maglev-mark.svg", "w").write(
     f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="{" ".join(map(str, VB))}" width="{VB[2]}" height="{VB[3]}">\n'
     f'  <title>Maglev mark</title>\n  {art()}\n</svg>\n')
+# Themed-icon layer (Android 13+): body with its window as a hole, plus rails, one flat colour.
+# The speed lines are 1.5 units thick, under a dp at launcher size, so they are left out. Same viewBox as the colour mark.
+open(f"{root}/assets/brand/maglev-mark-mono.svg", "w").write(
+    f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="{" ".join(map(str, VB))}" width="{VB[2]}" height="{VB[3]}">\n'
+    f'  <title>Maglev mark, single colour</title>\n  <g fill="#FFFFFF"><path fill-rule="evenodd" d="{body}"/><path d="{rails}"/></g>\n</svg>\n')
 W = 880; s = W / VB[2]; tx = (1024 - W) / 2 - VB[0] * s; ty = (1024 - VB[3] * s) / 2 - VB[1] * s
 open(f"{root}/assets/brand/maglev-icon.svg", "w").write(
     '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">\n'
