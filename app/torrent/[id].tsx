@@ -17,6 +17,7 @@ import { PiecesMatrix } from '../../components/PiecesMatrix';
 import { StateBadge } from '../../components/detail/StateBadge';
 import { StatGrid } from '../../components/detail/StatGrid';
 import { PeerRow, TrackerRow } from '../../components/detail/rows';
+import { DoneActions } from '../../components/detail/DoneActions';
 import { DeleteSheet, FileActionsSheet, RemoveFilesSheet, SavedTorrentSheet } from '../../components/detail/sheets';
 import { AddTrackerSheet, RemoveTrackerSheet } from '../../components/detail/TrackerSheets';
 import { REMOVE_FILES_INITIAL, buildRemoveRequest, removeFilesStep } from '../../components/detail/removeFilesMachine';
@@ -699,6 +700,10 @@ export default function TorrentDetailScreen() {
   const tone =
     snap.state === 'ERROR' ? 'error' : snap.state === 'PAUSED' ? 'paused' : snap.state === 'SEEDING' || snap.state === 'COMPLETED' ? 'seed' : 'download';
 
+  // SM-17: every included file is complete, so Open / Share / Open folder show.
+  const includedFiles = files.filter((f) => f.included && f.length > 0);
+  const allDone = !moving && includedFiles.length > 0 && includedFiles.every((f) => f.progressBytes >= f.length);
+
   const header = (
     <View>
       {notice ? (
@@ -756,6 +761,10 @@ export default function TorrentDetailScreen() {
           </View>
         ) : null}
       </View>
+
+      {allDone ? (
+        <DoneActions id={id} files={files} onNotice={showNotice} />
+      ) : null}
 
       <View style={styles.block}>
         <StatGrid

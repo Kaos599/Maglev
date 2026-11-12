@@ -255,6 +255,7 @@ export default function AddDownloadScreen() {
         {addError ? <Banner tone="danger" title={addError} /> : null}
         <View style={styles.gap}>
           <Button label="Start" size="lg" fullWidth loading={adding} disabled={adding || doesntFit} onPress={() => void start()} />
+          <Button label="Cancel" variant="ghost" size="lg" fullWidth disabled={adding} onPress={close} />
         </View>
       </Screen>
     );

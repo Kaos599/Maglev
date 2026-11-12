@@ -190,7 +190,7 @@ object Notifications {
      */
     fun ongoing(context: Context, s: TransferSummary): Notification {
         val b = NotificationCompat.Builder(context, CH_TRANSFERS)
-            .setSmallIcon(android.R.drawable.stat_sys_download)
+            .setSmallIcon(R.drawable.ic_tile_maglev)
             .setContentTitle(title(s))
             .setOngoing(true)
             .setOnlyAlertOnce(true)
@@ -323,7 +323,7 @@ object Notifications {
         post(
             context, ID_SCHEDULE_READY,
             NotificationCompat.Builder(context, CH_REMINDERS)
-                .setSmallIcon(android.R.drawable.stat_sys_download)
+                .setSmallIcon(R.drawable.ic_tile_maglev)
                 .setContentTitle("Scheduled downloads are ready")
                 .setContentText("Tap to start them.")
                 .setAutoCancel(true)
@@ -338,7 +338,7 @@ object Notifications {
         post(
             context, 6000 + (ruleId.hashCode() and 0xFFFF),
             NotificationCompat.Builder(context, CH_REMINDERS)
-                .setSmallIcon(android.R.drawable.stat_sys_download)
+                .setSmallIcon(R.drawable.ic_tile_maglev)
                 .setContentTitle("$count new from $ruleName")
                 .setContentText("Tap to download.")
                 .setAutoCancel(true)
@@ -374,7 +374,7 @@ object Notifications {
         post(
             context, ID_CONTINUE,
             NotificationCompat.Builder(context, CH_REMINDERS)
-                .setSmallIcon(android.R.drawable.stat_sys_download)
+                .setSmallIcon(R.drawable.ic_tile_maglev)
                 .setContentTitle(com.maglev.engine.RestartEntryPolicy.reminderTitle(count))
                 .setAutoCancel(true)
                 .setCategory(NotificationCompat.CATEGORY_REMINDER)
