@@ -25,6 +25,17 @@
   <a href="#whats-next">What's next</a>
 </p>
 
+<p align="center">
+  <img src="store/images/canon/browser.png" alt="Save videos from any page: the files Maglev found on a page" width="32%">
+  <img src="store/images/canon/stream-sheet.png" alt="Pick quality, then save: choosing a stream's quality and audio" width="32%">
+  <img src="store/images/canon/search.png" alt="Search many sites at once: results from several sources in one list" width="32%">
+</p>
+<p align="center">
+  <img src="store/images/canon/transfers.png" alt="See every download: torrents and links with speed and time left" width="32%">
+  <img src="store/images/canon/feeds.png" alt="Get new releases automatically: feeds with download rules" width="32%">
+  <img src="store/images/canon/assistant.png" alt="An assistant that asks first: a proposed download waiting for confirmation" width="32%">
+</p>
+
 ---
 
 ## Features

@@ -19,7 +19,7 @@ Maglev replaces LibreTorrent and Flood on a phone. It should feel minimal, quick
 | Accent 2 | `#00E5FF` (cyan) | Downloading, inbound speed |
 | Danger | `#FF3366` | Destructive actions, errors |
 | Muted | `#8B949E` | Telemetry, paused |
-| App icon | `#05070A` tile, pixel maglev train (lime `#A5FB48` body, cyan `#01E5EF` speed lines and rails) | Geometry and cruise sprite frames in `scripts/build-logo.py` → `assets/brand/maglev-mark.svg`, `maglev-icon.svg`, `readme-header.svg` (animated), `components/brand/markPaths.ts` (rendered by `components/brand/MaglevMark.tsx`); rasters from `node scripts/generate-icons.js`. |
+| App icon | `#0B2A30` (deep teal) tile, pixel maglev train (lime `#A5FB48` body, cyan `#01E5EF` speed lines and rails) | Geometry and cruise sprite frames in `scripts/build-logo.py` → `assets/brand/maglev-mark.svg`, `maglev-icon.svg`, `readme-header.svg` (animated), `components/brand/markPaths.ts` (rendered by `components/brand/MaglevMark.tsx`); rasters from `node scripts/generate-icons.js`. |
 
 Colours are reached through `useTheme()` and never written as hex outside `constants/`. Fonts are Silkscreen (brand and headers), Space Mono (filenames and telemetry, `tabular-nums`) and Inter (copy). **Never use `fontFamily: 'monospace'`.** Use one icon family only: **Pixelarticons** (MIT), rendered through `components/PixelIcon.tsx` from `components/icons.generated.ts` (`node scripts/gen-icons.js`). Default size is 24px.
 
