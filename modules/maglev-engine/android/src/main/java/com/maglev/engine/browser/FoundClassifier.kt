@@ -89,7 +89,7 @@ object FoundClassifier {
         val dot = seg.lastIndexOf('.')
         if (dot < 0 || dot == seg.length - 1) return null
         val ext = seg.substring(dot + 1).lowercase()
-        return if (ext.length in 1..5 && ext.all { it.isLetterOrDigit() }) ext else null
+        return if (ext.length in 1..7 && ext.all { it.isLetterOrDigit() }) ext else null
     }
 
     private fun pathOf(url: String): String {

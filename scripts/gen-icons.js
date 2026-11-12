@@ -92,6 +92,9 @@ const MAP = {
   'file-doc': 'file-text',
   'file-app': 'android',
   'file-disc': 'target',
+  // browser
+  lock: 'lock',
+  forward: 'arrow-right',
 };
 
 const out = {};

@@ -93,6 +93,33 @@ export const notices = {
       `${toName(verb)} ${toName(done)}. Couldn't finish ${toName(failed)}.`,
     allFailed: (failed: string | number, verb: string | number) => `Couldn't ${toName(verb)} ${toName(failed)}.`,
   },
+  browser: {
+    popup: 'Blocked a pop-up.',
+    scheme: 'Blocked a link that opens another app.',
+    permission: 'Blocked a request for your camera, mic or location.',
+    drm: "This video is protected. Maglev can't save it.",
+    blob: "This player streams in a way Maglev can't save.",
+    linkCopied: 'Link copied.',
+    linkCopyFailed: "Couldn't copy the link.",
+    addedToTransfers: 'Added to Transfers.',
+    adsAllowed: (site: string | number) => `Ads allowed on ${toName(site)}.`,
+    adsBlocked: (site: string | number) => `Blocking ads on ${toName(site)}.`,
+    listUpdated: (domains: string | number) => `Block list updated. ${toName(domains)} domains.`,
+    listReset: 'Back to the built-in list.',
+    listAddressAdded: 'List address added.',
+    dataCleared: 'Browsing data cleared.',
+    dataClearFailed: "Couldn't clear browsing data.",
+    /** Block list update errors, keyed by the native error code. */
+    listError: {
+      NETWORK: "Couldn't reach the list. Check your connection.",
+      HTTP_STATUS: 'The list server returned an error.',
+      LIST_TOO_LARGE: 'That list is too big.',
+      LIST_INVALID: "That list doesn't look like a block list.",
+      BLOCKED: 'Blocked by your network settings.',
+      INVALID_ARGUMENT: "That list address isn't valid.",
+      OTHER: "Couldn't update the list.",
+    },
+  },
   addDownload: {
     duplicate: 'This link is already in Transfers.',
   },
@@ -131,6 +158,11 @@ export const banners = {
   storage: {
     folderAccessLost: { title: 'Folder access lost', body: 'Maglev can no longer write to your chosen folder.' },
     appStorageFallback: { title: 'Files are saved in app storage', body: "The download folder isn't available right now." },
+  },
+  browser: {
+    installer: { title: 'This is an app installer', body: 'Only download it if you trust the site.' },
+    sslRefused: { title: "Couldn't open this page securely", body: "The site's certificate isn't trusted, so Maglev stopped." },
+    localRefused: { title: 'Blocked a device on your network', body: "Pages can't send you there. Type the address yourself if you trust it." },
   },
   addDownload: {
     notEnoughSpace: { title: 'Not enough space', body: 'Free up some storage, then try again.' },
@@ -207,6 +239,12 @@ export const empty = {
     }),
     noPeers: { title: 'No peers connected', body: 'Peers show up while the torrent is running.' },
     noTrackers: { title: 'No trackers', body: 'Peers can still be found without one. Add a tracker to look for more.' },
+  },
+  browser: {
+    start: { title: 'Nothing open yet', body: 'Type an address or search for something above.' },
+    crashed: { title: 'This page stopped working', body: 'Reload to try it again.' },
+    noFiles: { title: 'No files found yet', body: 'Play a video or open a page with files. Maglev lists what it finds here.' },
+    noAllowedSites: { title: 'No sites allowed', body: 'Sites you allow ads on show up here.' },
   },
   engineError: {
     title: 'Engine failed to start',

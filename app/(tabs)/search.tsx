@@ -497,13 +497,16 @@ export default function SearchScreen() {
     <Screen
       title="Search"
       actions={
-        <IconButton
-          icon="filter"
-          badge={prefs.enabled.length}
-          selected={!!sourceFilter}
-          onPress={openProviders}
-          accessibilityLabel={`Search sources, ${prefs.enabled.length} on`}
-        />
+        <>
+          <IconButton icon="network" onPress={() => router.push('/browser')} accessibilityLabel="Browse the web" />
+          <IconButton
+            icon="filter"
+            badge={prefs.enabled.length}
+            selected={!!sourceFilter}
+            onPress={openProviders}
+            accessibilityLabel={`Search sources, ${prefs.enabled.length} on`}
+          />
+        </>
       }
     >
       <View style={styles.pad}>

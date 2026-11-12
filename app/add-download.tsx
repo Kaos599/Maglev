@@ -3,14 +3,14 @@ import { friendlyPath } from '../components/settings/SettingsParts';
 import { StyleSheet, Text, TextInput, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import * as Clipboard from 'expo-clipboard';
-import { maglevEngine, isDownloadLink, isShareOpen, isTorrentSource, normalizeIncoming, type FreeSpace, type UrlProbe } from 'maglev-engine';
+import { isDownloadLink, isShareOpen, isTorrentSource, normalizeIncoming, type UrlProbe } from 'maglev-engine';
 import { useTheme } from '../context/ThemeContext';
 import { useMaglevEngine } from '../context/EngineContext';
 import { ThemeColors, radius, spacing, type } from '../constants/theme';
 import { formatBytes } from '../constants/format';
 import { haptic } from '../constants/haptics';
 import { Banner, Button, EmptyBlock, Screen } from '../components/ui';
-import { admit, pendingNeedOf } from '../utils/admission';
+import { useDownloadAdmission } from '../utils/useDownloadAdmission';
 import { actionRoute, probeErrorView } from '../utils/downloadCopy';
 import { banners, empty, notices } from '../constants/copy';
 
@@ -24,14 +24,14 @@ export default function AddDownloadScreen() {
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const router = useRouter();
   const params = useLocalSearchParams<{ url?: string; source?: string; from?: string }>();
-  const { telemetry, defaultStoragePath, probeUrl, startDownload, showNotice } = useMaglevEngine();
+  const { defaultStoragePath, probeUrl, startDownload, showNotice } = useMaglevEngine();
 
   const [text, setText] = useState('');
   const [phase, setPhase] = useState<Phase>('input');
   const [message, setMessage] = useState<string | null>(null);
   const [errorView, setErrorView] = useState<ReturnType<typeof probeErrorView> | null>(null);
   const [probe, setProbe] = useState<UrlProbe | null>(null);
-  const [free, setFree] = useState<FreeSpace | null>(null);
+  const [notAFile, setNotAFile] = useState(false);
   const [addError, setAddError] = useState<string | null>(null);
   const token = useRef(0);
   const urlRef = useRef('');
@@ -69,6 +69,7 @@ export default function AddDownloadScreen() {
         return;
       }
       setProbe(null);
+      setNotAFile((res.code ?? '').toUpperCase() === 'NOT_A_FILE');
       setErrorView(probeErrorView(res.code, res.message, res.httpStatus));
       setPhase('error');
     },
@@ -100,22 +101,7 @@ export default function AddDownloadScreen() {
   }, [params.url, params.source, params.from, submit, router]);
 
   // Free space refreshes when the preview opens.
-  const probed = phase === 'ready' ? probe?.name : null;
-  useEffect(() => {
-    if (!probed) return;
-    let alive = true;
-    maglevEngine
-      .getFreeSpace()
-      .then((res) => {
-        if (alive) setFree(res.ok ? res : null);
-      })
-      .catch(() => {
-        if (alive) setFree(null);
-      });
-    return () => {
-      alive = false;
-    };
-  }, [probed]);
+  const { doesntFit } = useDownloadAdmission(probe?.size ?? null, phase === 'ready');
 
   const onChangeText = (next: string) => {
     token.current++;
@@ -217,11 +203,17 @@ export default function AddDownloadScreen() {
           title={empty.addDownload.badLink.title}
           body={errorView?.body}
           primary={
-            errorView?.primary === 'pasteAnother'
-              ? { label: 'Paste another link', onPress: () => { setText(''); void handlePaste(); } }
-              : { label: 'Try again', onPress: () => void submit(urlRef.current) }
+            notAFile
+              ? { label: 'Open in browser', onPress: () => router.replace({ pathname: '/browser', params: { url: urlRef.current } }) }
+              : errorView?.primary === 'pasteAnother'
+                ? { label: 'Paste another link', onPress: () => { setText(''); void handlePaste(); } }
+                : { label: 'Try again', onPress: () => void submit(urlRef.current) }
           }
-          secondary={{ label: 'Back', onPress: () => setPhase('input') }}
+          secondary={
+            notAFile
+              ? { label: 'Paste another link', onPress: () => { setText(''); void handlePaste(); } }
+              : { label: 'Back', onPress: () => setPhase('input') }
+          }
         />
       </Screen>
     );
@@ -231,17 +223,6 @@ export default function AddDownloadScreen() {
   if ((phase === 'ready' || phase === 'adding') && probe) {
     const adding = phase === 'adding';
     const size = probe.size;
-    const freeBytes = free ? Math.min(free.freeBytes, free.targetFreeBytes ?? free.freeBytes) : null;
-    const outcome =
-      freeBytes !== null && size
-        ? admit({
-            freeBytes,
-            pendingNeed: pendingNeedOf(telemetry.torrents),
-            stagingFactor: free?.mode === 'staging' ? 2 : 1,
-            selectionBytes: size,
-          })
-        : null;
-    const doesntFit = outcome?.result === 'DoesntFit';
     return (
       <Screen title="Add download" onBack={close} scroll contentStyle={styles.content}>
         <Text style={styles.name} numberOfLines={3}>{probe.name}</Text>

@@ -6,6 +6,7 @@
  */
 
 import { parsePackedShare, setShareQueue } from '../utils/shareQueue';
+import { browserIntentRoute } from '../utils/browserUrl';
 import { sharedDownloadRoute, stripShareMarker } from '../modules/maglev-engine/src/downloadLink';
 
 const ADD_ROUTE = '/add-torrent';
@@ -22,6 +23,9 @@ function isTorrentLocation(url: string): boolean {
 export function redirectSystemPath({ path }: { path: string; initial: boolean }): string {
   try {
     const raw = (path ?? '').trim();
+    // maglev://browser?url= fills the address bar and never loads (NATIVE_CONTRACT 24.7).
+    const browser = browserIntentRoute(raw);
+    if (browser) return browser;
     // Several files shared at once: open the first now, queue the rest for the Transfers screen.
     const packed = parsePackedShare(raw);
     if (packed) {
