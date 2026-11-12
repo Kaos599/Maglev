@@ -278,16 +278,37 @@ fn blocks_network(tags: &[String]) -> bool {
     tags.iter().any(|t| t != OFFLINE_TAG && reason_for_tag(t) == PauseReason::Network)
 }
 
+/// How user-actionable a blocking tag is; the lowest rank wins when several apply (contract 17.z).
+fn tag_rank(tag: &str) -> u8 {
+    match tag {
+        "storage_unavailable" => 0,
+        "storage_full" => 1,
+        "battery" | "charging_only" => 3,
+        "schedule" => 4,
+        "offline" => 5,
+        _ => 2, // Wi-Fi only, VPN only and any tag we don't know
+    }
+}
+
+/// The tag a download pauses for: the most user-actionable blocking one (first among equals).
+fn top_block(blocked: &[String]) -> Option<&String> {
+    blocked.iter().min_by_key(|t| tag_rank(t))
+}
+
+/// The tag `paused_by` shows for a storage pause: the real governance tag, else the one it already had, else
+/// `storage_full` (no space found by the probe or the write).
+fn storage_pause_tag(tag: Option<&str>, existing: Option<&str>) -> String {
+    let is_storage = |t: &&str| matches!(*t, "storage_full" | "storage_unavailable");
+    tag.filter(is_storage).or(existing.filter(is_storage)).unwrap_or("storage_full").to_string()
+}
+
 /// The governance event that applies to a download in `state` for the blocked tags, with the tag to remember.
-/// A working download pauses for the first tag. A queued or probing one pauses only for `offline`; for the other
-/// tags it stays queued and simply does not start.
+/// A working, waiting or probing download pauses for the top tag. Nothing else is touched here.
 fn gov_event(state: State, blocked: &[String]) -> Option<(Event, String)> {
     match state {
-        State::Downloading => blocked.first().map(|t| (Event::GovBlock(reason_for_tag(t)), t.clone())),
-        State::Queued | State::Resolving => blocked
-            .iter()
-            .find(|t| t.as_str() == OFFLINE_TAG)
-            .map(|t| (Event::GovBlock(PauseReason::Offline), t.clone())),
+        State::Downloading | State::Queued | State::Resolving => {
+            top_block(blocked).map(|t| (Event::GovBlock(reason_for_tag(t)), t.clone()))
+        }
         _ => None,
     }
 }
@@ -640,7 +661,8 @@ enum Streamed {
 
 pub struct Downloads {
     handle: Handle,
-    session: Arc<Session>,
+    /// `None` only in unit tests. The session holds the global speed limiter shared with torrents.
+    session: Option<Arc<Session>>,
     session_dir: PathBuf,
     default_dir: PathBuf,
     inner: Mutex<Inner>,
@@ -657,6 +679,17 @@ impl Downloads {
     pub fn new(
         handle: Handle,
         session: Arc<Session>,
+        session_dir: &Path,
+        default_dir: &Path,
+        proxy: Option<String>,
+        blocked: Vec<String>,
+    ) -> Arc<Self> {
+        Self::build(handle, Some(session), session_dir, default_dir, proxy, blocked)
+    }
+
+    fn build(
+        handle: Handle,
+        session: Option<Arc<Session>>,
         session_dir: &Path,
         default_dir: &Path,
         proxy: Option<String>,
@@ -714,6 +747,15 @@ impl Downloads {
             if rec.state == State::Verifying {
                 rec.state = State::Queued;
             }
+            // Added with `paused: true` and never ran: it comes back paused, not queued.
+            if rec.start_paused {
+                let (st, _) = step(rec.state, Event::RestoreStartPaused);
+                if st != rec.state {
+                    rec.state = st;
+                    rec.paused_tag = Some("user".to_string());
+                }
+                rec.start_paused = false;
+            }
             // Older builds saved the query of the final link.
             rec.final_url = rec.final_url.as_deref().map(safe_url);
             // What is on disk is the truth for how much we hold.
@@ -769,6 +811,11 @@ impl Downloads {
     pub fn set_max_active(self: &Arc<Self>, max: u32) {
         self.max_active.store(max, Ordering::Relaxed);
         self.pump();
+    }
+
+    /// The session-wide download limit shared with torrents, if one is set.
+    fn global_down_bps(&self) -> Option<NonZeroU32> {
+        self.session.as_ref().and_then(|s| s.ratelimits.get_download_bps())
     }
 
     fn has_free_slot(&self, inner: &Inner) -> bool {
@@ -848,7 +895,9 @@ impl Downloads {
 
         match next {
             State::Paused(PauseReason::User) => rec.paused_tag = Some("user".to_string()),
-            State::Paused(PauseReason::Storage) => rec.paused_tag = Some("storage_full".to_string()),
+            State::Paused(PauseReason::Storage) => {
+                rec.paused_tag = Some(storage_pause_tag(tag, rec.paused_tag.as_deref()));
+            }
             State::Paused(_) => {
                 if before != next || tag.is_some() {
                     rec.paused_tag = tag.map(str::to_string).or_else(|| rec.paused_tag.clone());
@@ -1006,7 +1055,7 @@ impl Downloads {
             };
             let paused_tag = match reason {
                 Some(PauseReason::User) => Some("user".to_string()),
-                Some(PauseReason::Storage) => Some("storage_full".to_string()),
+                Some(PauseReason::Storage) => Some(storage_pause_tag(tag.as_deref(), None)),
                 Some(_) => tag,
                 None => None,
             };
@@ -1046,16 +1095,28 @@ impl Downloads {
             return Ok(AddedDownload { id });
         }
         // Persist and Probe are the effects of the `Add` row.
-        let me = self.clone();
-        let id2 = id.clone();
-        let jh = self.handle.spawn(async move { me.run_probe(id2).await });
-        self.update(&id, |_, live| live.task = Some(jh));
+        // The handle is stored while the list is locked, so a fast probe that starts the transfer can't have its
+        // transfer handle overwritten by this one afterwards.
+        {
+            let me = self.clone();
+            let id2 = id.clone();
+            let mut inner = self.inner.lock();
+            let jh = self.handle.spawn(async move { me.run_probe(id2).await });
+            inner.live.entry(id.clone()).or_default().task = Some(jh);
+        }
         Ok(AddedDownload { id })
     }
 
     pub fn pause(self: &Arc<Self>, id: &str) -> Result<(), EngineError> {
         let s = self.state_of(id).ok_or_else(EngineError::not_found)?;
-        if matches!(s, State::Downloading | State::Queued) {
+        // A probing download, and one that governance paused, can be held by the user too (Pause all).
+        let can = match s {
+            State::Downloading | State::Queued | State::Resolving => true,
+            State::Paused(r) => r != PauseReason::User,
+            _ => false,
+        };
+        if can {
+            self.update(id, |r, _| r.start_paused = false);
             self.dispatch(id, Event::UserPause);
         }
         Ok(())
@@ -1312,14 +1373,6 @@ impl Downloads {
                     if f.dead {
                         // The task ended without a state change (a panic). Do not leave the download spinning.
                         self.dispatch(&f.id, Event::Transient { attempts: MAX_ATTEMPTS });
-                    } else if let Some((ev, tag)) = gov_event(f.state, &blocked) {
-                        self.dispatch_tagged(&f.id, ev, Some(tag.as_str()));
-                    }
-                }
-                // `offline` pauses a queued or probing download too; it comes back when the tag clears.
-                State::Queued | State::Resolving => {
-                    if let Some((ev, tag)) = gov_event(f.state, &blocked) {
-                        self.dispatch_tagged(&f.id, ev, Some(tag.as_str()));
                     }
                 }
                 // Storage pauses clear on their own once the governance tag is gone and the space is back.
@@ -1336,6 +1389,19 @@ impl Downloads {
                     }
                 }
                 _ => {}
+            }
+        }
+
+        // Second pass, on the states the first pass left: a download that is working, waiting or probing while a tag
+        // still blocks is paused for the top tag. This catches a download that a cleared reason just put back in
+        // the queue while another reason still applies, and one that `resume` just woke up.
+        if !blocked.is_empty() {
+            let ids: Vec<String> = facts.iter().map(|f| f.id.clone()).collect();
+            for id in ids {
+                let Some(state) = self.state_of(&id) else { continue };
+                if let Some((ev, tag)) = gov_event(state, &blocked) {
+                    self.dispatch_tagged(&id, ev, Some(tag.as_str()));
+                }
             }
         }
 
@@ -1709,7 +1775,12 @@ impl Downloads {
         if resumable && validator.is_some() {
             let mut sc = Sidecar::new(&url, &name, total, validator);
             sc.set_single_pos(held);
-            let _ = sc.save(&side_path);
+            // Skipped when the download was removed meanwhile (see `flush_side`).
+            let guard = self.inner.lock();
+            if guard.records.contains_key(id) {
+                let _ = sc.save(&side_path);
+            }
+            drop(guard);
         }
         self.update(id, |r, _| r.held = held);
         Ok((file, held))
@@ -1786,13 +1857,13 @@ impl Downloads {
                 }
                 Ok(Ok(None)) => return Streamed::Done(pos),
                 Ok(Err(_)) => {
-                    self.flush_side(&mut side, &side_path, file, pos, resumable);
+                    self.flush_side(id, &mut side, &side_path, file, pos, resumable);
                     return Streamed::Broken(pos);
                 }
                 Err(_) => {
                     // Nothing arrived for a few seconds.
                     if self.stall_step(id, limit, last_byte, &mut win_start, &mut win_pos, pos) {
-                        self.flush_side(&mut side, &side_path, file, pos, resumable);
+                        self.flush_side(id, &mut side, &side_path, file, pos, resumable);
                         self.update(id, |rec, _| rec.held = pos);
                         return Streamed::Stalled(pos);
                     }
@@ -1804,27 +1875,27 @@ impl Downloads {
             };
             // The global limit is the session's limiter, shared with torrents. A limit below one chunk
             // is served in pieces no larger than the limit itself (the burst can't be below the request).
-            if let Some(bps) = self.session.ratelimits.get_download_bps() {
+            if let (Some(session), Some(bps)) = (self.session.as_ref(), self.global_down_bps()) {
                 let step_max = bps.get().min(16 * 1024) as usize;
                 let mut left = chunk.len();
                 while left > 0 {
                     let n = left.min(step_max.max(1));
                     if let Some(nz) = NonZeroU32::new(n as u32) {
-                        let _ = self.session.ratelimits.prepare_for_download(nz).await;
+                        let _ = session.ratelimits.prepare_for_download(nz).await;
                     }
                     left -= n;
                 }
             }
             // More bytes than the probe promised: the file changed. Nothing is finished from this.
             if overruns(pos, chunk.len() as u64, total) {
-                self.flush_side(&mut side, &side_path, file, pos, resumable);
+                self.flush_side(id, &mut side, &side_path, file, pos, resumable);
                 self.dispatch(id, Event::ValidatorChanged);
                 return Streamed::Stopped;
             }
             let write = tokio::task::block_in_place(|| write_all_at(file, &chunk, pos));
             if let Err(e) = write {
                 let n = self.update(id, |_, l| l.attempts).unwrap_or(0);
-                self.flush_side(&mut side, &side_path, file, pos, resumable);
+                self.flush_side(id, &mut side, &side_path, file, pos, resumable);
                 let ev = io_event(&e, n);
                 let (state, _) = self.dispatch(id, ev);
                 return if matches!(ev, Event::Transient { .. }) && state == State::Downloading {
@@ -1835,7 +1906,7 @@ impl Downloads {
             }
             pos += chunk.len() as u64;
             if self.stall_step(id, limit, last_byte, &mut win_start, &mut win_pos, pos) {
-                self.flush_side(&mut side, &side_path, file, pos, resumable);
+                self.flush_side(id, &mut side, &side_path, file, pos, resumable);
                 self.update(id, |rec, _| rec.held = pos);
                 return Streamed::Stalled(pos);
             }
@@ -1845,7 +1916,7 @@ impl Downloads {
                 last_space = Instant::now();
                 let free = tokio::task::block_in_place(|| free_space(&folder));
                 if !fits(None, 0, free) {
-                    self.flush_side(&mut side, &side_path, file, pos, resumable);
+                    self.flush_side(id, &mut side, &side_path, file, pos, resumable);
                     self.update(id, |rec, _| rec.held = pos);
                     self.dispatch(id, Event::Enospc);
                     return Streamed::Stopped;
@@ -1873,7 +1944,7 @@ impl Downloads {
             }
             if last_flush.elapsed() >= SIDECAR_FLUSH {
                 last_flush = Instant::now();
-                self.flush_side(&mut side, &side_path, file, pos, resumable);
+                self.flush_side(id, &mut side, &side_path, file, pos, resumable);
             }
             if limit > 0 {
                 let wait = pace_delay(pos - offset, started.elapsed(), limit);
@@ -1896,7 +1967,7 @@ impl Downloads {
         pos: u64,
     ) -> bool {
         let quiet = last_byte.elapsed();
-        let global = self.session.ratelimits.get_download_bps().map(|n| n.get() as u64).unwrap_or(0);
+        let global = self.global_down_bps().map(|n| n.get() as u64).unwrap_or(0);
         let limit = match (per_download_limit, global) {
             (0, g) => g,
             (l, 0) => l,
@@ -1942,14 +2013,19 @@ impl Downloads {
         self.state_of(id) == Some(State::Downloading)
     }
 
-    fn flush_side(&self, side: &mut Sidecar, path: &Path, file: &File, pos: u64, resumable: bool) {
+    /// Writes the resume record, but only while the download is still in the list. `Remove` deletes the record and
+    /// the sidecar under the same lock, so a flush that runs late can't bring the sidecar back.
+    fn flush_side(&self, id: &str, side: &mut Sidecar, path: &Path, file: &File, pos: u64, resumable: bool) {
         if !resumable {
             return;
         }
         tokio::task::block_in_place(|| {
             let _ = file.sync_data();
             side.set_single_pos(pos);
-            let _ = side.save(path);
+            let guard = self.inner.lock();
+            if guard.records.contains_key(id) {
+                let _ = side.save(path);
+            }
         });
     }
 
@@ -2143,14 +2219,37 @@ mod tests {
     }
 
     #[test]
-    fn other_tags_pause_only_the_working_download() {
+    fn every_tag_now_pauses_a_queued_or_probing_download() {
         let b = tags(&["wifi_only"]);
-        assert_eq!(
-            gov_event(State::Downloading, &b),
-            Some((Event::GovBlock(PauseReason::Network), "wifi_only".to_string()))
-        );
-        assert_eq!(gov_event(State::Queued, &b), None);
-        assert_eq!(gov_event(State::Resolving, &b), None);
+        for st in [State::Downloading, State::Queued, State::Resolving] {
+            assert_eq!(
+                gov_event(st, &b),
+                Some((Event::GovBlock(PauseReason::Network), "wifi_only".to_string())),
+                "{st:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn the_most_actionable_tag_wins() {
+        let top = |t: &[&str]| gov_event(State::Queued, &tags(t)).map(|(_, tag)| tag);
+        assert_eq!(top(&["offline", "wifi_only"]).as_deref(), Some("wifi_only"));
+        assert_eq!(top(&["wifi_only", "offline"]).as_deref(), Some("wifi_only"));
+        assert_eq!(top(&["schedule", "battery"]).as_deref(), Some("battery"));
+        assert_eq!(top(&["offline", "schedule"]).as_deref(), Some("schedule"));
+        assert_eq!(top(&["battery", "wifi_only"]).as_deref(), Some("wifi_only"));
+        assert_eq!(top(&["wifi_only", "storage_full"]).as_deref(), Some("storage_full"));
+        assert_eq!(top(&["storage_full", "storage_unavailable", "offline"]).as_deref(), Some("storage_unavailable"));
+        assert_eq!(top(&[]), None);
+    }
+
+    #[test]
+    fn a_storage_pause_keeps_its_real_tag() {
+        assert_eq!(storage_pause_tag(Some("storage_unavailable"), None), "storage_unavailable");
+        assert_eq!(storage_pause_tag(Some("storage_full"), Some("storage_unavailable")), "storage_full");
+        assert_eq!(storage_pause_tag(None, Some("storage_unavailable")), "storage_unavailable");
+        assert_eq!(storage_pause_tag(None, None), "storage_full");
+        assert_eq!(storage_pause_tag(Some("wifi_only"), Some("offline")), "storage_full");
     }
 
     #[test]
@@ -2451,5 +2550,184 @@ mod tests {
             }
         }
         assert!(chain_contains(&Wrap(inner), LOCAL_REDIRECT_MSG));
+    }
+
+    // ---- the manager itself (no session: `Downloads::build(.., None, ..)`) ----
+
+    fn tmp(name: &str) -> PathBuf {
+        let d = std::env::temp_dir().join(format!("maglev-dl-drv-{}-{name}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(&d).unwrap();
+        d
+    }
+
+    fn rt() -> tokio::runtime::Runtime {
+        tokio::runtime::Builder::new_multi_thread().worker_threads(1).enable_all().build().unwrap()
+    }
+
+    fn manager(rt: &tokio::runtime::Runtime, dir: &Path, blocked: &[&str]) -> Arc<Downloads> {
+        Downloads::build(rt.handle().clone(), None, dir, dir, None, tags(blocked))
+    }
+
+    fn put(d: &Arc<Downloads>, id: &str, state: State, f: impl FnOnce(&mut DlRecord)) {
+        let mut rec = DlRecord {
+            id: id.into(),
+            url: "https://x.test/a.bin".into(),
+            state,
+            folder: d.default_dir.to_string_lossy().into_owned(),
+            ..DlRecord::default()
+        };
+        f(&mut rec);
+        let mut inner = d.inner.lock();
+        inner.live.insert(id.into(), Live::default());
+        inner.records.insert(id.into(), rec);
+    }
+
+    fn tag_of(d: &Arc<Downloads>, id: &str) -> Option<String> {
+        d.inner.lock().records.get(id).and_then(|r| r.paused_tag.clone())
+    }
+
+    #[test]
+    fn a_cleared_reason_with_another_still_blocking_ends_paused_not_queued() {
+        let (rt, dir) = (rt(), tmp("stack"));
+        let d = manager(&rt, &dir, &["offline", "wifi_only"]);
+        put(&d, "dl_a", State::Paused(PauseReason::Offline), |r| r.paused_tag = Some("offline".into()));
+        put(&d, "dl_q", State::Queued, |_| {});
+        // Offline clears, Wi-Fi-only stays: the download must say so, not wait in the queue.
+        d.set_blocked(&tags(&["wifi_only"]));
+        assert_eq!(d.state_of("dl_a"), Some(State::Paused(PauseReason::Network)));
+        assert_eq!(tag_of(&d, "dl_a").as_deref(), Some("wifi_only"));
+        assert_eq!(d.state_of("dl_q"), Some(State::Paused(PauseReason::Network)));
+        // Both at once: the Wi-Fi reason is the one the user can act on.
+        d.set_blocked(&tags(&["offline", "wifi_only"]));
+        assert_eq!(tag_of(&d, "dl_a").as_deref(), Some("wifi_only"));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn resume_while_blocked_pauses_again_for_the_block() {
+        let (rt, dir) = (rt(), tmp("resume"));
+        let d = manager(&rt, &dir, &["wifi_only"]);
+        put(&d, "dl_a", State::Paused(PauseReason::User), |r| r.paused_tag = Some("user".into()));
+        d.resume("dl_a").unwrap();
+        assert_eq!(d.state_of("dl_a"), Some(State::Paused(PauseReason::Network)));
+        assert_eq!(tag_of(&d, "dl_a").as_deref(), Some("wifi_only"));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn pause_all_holds_a_probing_download_and_a_governance_paused_one() {
+        let (rt, dir) = (rt(), tmp("pauseall"));
+        let d = manager(&rt, &dir, &["wifi_only"]);
+        put(&d, "dl_probe", State::Resolving, |r| r.start_paused = true);
+        put(&d, "dl_gov", State::Paused(PauseReason::Network), |r| r.paused_tag = Some("wifi_only".into()));
+        d.pause("dl_probe").unwrap();
+        d.pause("dl_gov").unwrap();
+        for id in ["dl_probe", "dl_gov"] {
+            assert_eq!(d.state_of(id), Some(State::Paused(PauseReason::User)), "{id}");
+            assert_eq!(tag_of(&d, id).as_deref(), Some("user"));
+        }
+        // The block clears: the user pause stays.
+        d.set_blocked(&[]);
+        assert_eq!(d.state_of("dl_gov"), Some(State::Paused(PauseReason::User)));
+        assert_eq!(d.state_of("dl_probe"), Some(State::Paused(PauseReason::User)));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_missing_folder_pauses_with_the_storage_unavailable_tag() {
+        let (rt, dir) = (rt(), tmp("storage"));
+        let d = manager(&rt, &dir, &["storage_unavailable"]);
+        put(&d, "dl_a", State::Queued, |_| {});
+        d.govern();
+        assert_eq!(d.state_of("dl_a"), Some(State::Paused(PauseReason::Storage)));
+        assert_eq!(tag_of(&d, "dl_a").as_deref(), Some("storage_unavailable"));
+        let snap = d.snapshots();
+        assert_eq!(snap[0]["paused_by"], "storage_unavailable");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn restore_brings_back_a_start_paused_download_paused() {
+        let (rt, dir) = (rt(), tmp("restore"));
+        let mk = |id: &str, state: State, start_paused: bool| DlRecord {
+            id: id.into(),
+            url: format!("https://x.test/{id}.bin"),
+            state,
+            start_paused,
+            folder: dir.to_string_lossy().into_owned(),
+            ..DlRecord::default()
+        };
+        let file = StoreFile {
+            version: 1,
+            downloads: vec![
+                mk("dl_sp", State::Resolving, true),
+                mk("dl_q", State::Queued, false),
+                mk("dl_dl", State::Downloading, false),
+            ],
+        };
+        std::fs::write(dir.join(STORE_FILE), serde_json::to_vec(&file).unwrap()).unwrap();
+        let d = manager(&rt, &dir, &["wifi_only"]);
+        assert_eq!(d.state_of("dl_sp"), Some(State::Paused(PauseReason::User)));
+        assert_eq!(tag_of(&d, "dl_sp").as_deref(), Some("user"));
+        assert_eq!(d.state_of("dl_q"), Some(State::Queued));
+        assert_eq!(d.state_of("dl_dl"), Some(State::Queued));
+        // The flag is spent: the next save no longer carries it.
+        let saved = std::fs::read_to_string(dir.join(STORE_FILE)).unwrap();
+        assert!(saved.contains("\"start_paused\":false"));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn restore_keeps_good_entries_and_a_copy_of_a_damaged_file() {
+        let (rt, dir) = (rt(), tmp("damaged"));
+        let good = serde_json::to_value(DlRecord { id: "dl_ok".into(), state: State::Queued, ..DlRecord::default() }).unwrap();
+        let file = json!({ "version": 1, "downloads": [ good, { "id": "dl_bad", "state": "Nope" } ] });
+        std::fs::write(dir.join(STORE_FILE), file.to_string()).unwrap();
+        let d = manager(&rt, &dir, &["wifi_only"]);
+        assert_eq!(d.state_of("dl_ok"), Some(State::Queued));
+        assert_eq!(d.state_of("dl_bad"), None);
+        let copies: Vec<_> = std::fs::read_dir(&dir)
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .filter(|e| e.file_name().to_string_lossy().starts_with("maglev-downloads.corrupt-"))
+            .collect();
+        assert_eq!(copies.len(), 1);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn restore_sends_a_download_that_needs_a_login_to_needs_link() {
+        let (rt, dir) = (rt(), tmp("login"));
+        let rec = DlRecord { id: "dl_a".into(), state: State::Downloading, needs_login: true, ..DlRecord::default() };
+        std::fs::write(
+            dir.join(STORE_FILE),
+            serde_json::to_vec(&StoreFile { version: 1, downloads: vec![rec] }).unwrap(),
+        )
+        .unwrap();
+        let d = manager(&rt, &dir, &[]);
+        assert_eq!(d.state_of("dl_a"), Some(State::NeedsLink));
+        let snap = d.snapshots();
+        assert_eq!(snap[0]["error"]["code"], "AUTH_REQUIRED");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+    async fn a_late_flush_cannot_bring_back_a_removed_sidecar() {
+        let dir = tmp("flush");
+        let d = Downloads::build(tokio::runtime::Handle::current(), None, &dir, &dir, None, tags(&["wifi_only"]));
+        put(&d, "dl_a", State::Paused(PauseReason::User), |r| r.name = "a.bin".into());
+        let file = File::create(dir.join("a.bin.part")).unwrap();
+        let side_path = sidecar_path(&dir, "a.bin");
+        let mut sc = Sidecar::new("https://x.test/a.bin", "a.bin", Some(10), Some("\"e\"".into()));
+        // Present: written.
+        d.flush_side("dl_a", &mut sc, &side_path, &file, 5, true);
+        assert!(side_path.exists());
+        // Removed (the sidecar goes with it), then a late flush: nothing comes back.
+        d.remove("dl_a", false).unwrap();
+        assert!(!side_path.exists());
+        d.flush_side("dl_a", &mut sc, &side_path, &file, 7, true);
+        assert!(!side_path.exists());
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

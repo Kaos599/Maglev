@@ -140,6 +140,8 @@ pub enum Event {
     FileTooLarge,
     /// Extra: the transfer was too slow or silent for too long. `attempts` is the number of stall retries made.
     Stalled { attempts: u32 },
+    /// Extra: process start for a download that was added with `paused: true` and never ran.
+    RestoreStartPaused,
     /// Extra: restart of a download that needs a password, cookie or signed link that was never saved.
     SecretsLost,
     /// Extra: `UserRetry` while governance blocks. Goes to the pause instead of the network.
@@ -195,6 +197,12 @@ pub fn step(state: State, event: Event) -> (State, Vec<Effect>) {
             other => (other, vec![]),
         };
     }
+    if event == E::RestoreStartPaused {
+        return match state {
+            S::Resolving | S::Queued => (S::Paused(PauseReason::User), vec![]),
+            other => (other, vec![]),
+        };
+    }
     // `Restore`: a download that was working when the process died goes back in the queue.
     if event == E::Restore {
         return match state {
@@ -225,6 +233,8 @@ pub fn step(state: State, event: Event) -> (State, Vec<Effect>) {
         }
         (S::Resolving, E::NetErr) => (S::Error(DlError::Network), vec![]),
         (S::Resolving, E::LocalRedirect) => (S::Error(DlError::LocalRedirect), vec![]),
+        // Extra: the user pauses while the probe runs. The probe is cancelled; it runs again from `Downloading`.
+        (S::Resolving, E::UserPause) => (S::Paused(PauseReason::User), vec![Effect::CancelTasks]),
         // Extra: governance blocks while the probe runs. The probe is cancelled; it runs again from `Downloading`.
         (S::Resolving, E::GovBlock(r)) => (S::Paused(r), vec![Effect::CancelTasks]),
 
@@ -241,6 +251,8 @@ pub fn step(state: State, event: Event) -> (State, Vec<Effect>) {
             (S::Paused(r), vec![Effect::CancelTasks, Effect::FlushSidecar])
         }
 
+        // Extra: Pause all holds a download that governance already paused. The user pause then survives `GovClear`.
+        (S::Paused(r), E::UserPause) if r != PauseReason::User => (S::Paused(PauseReason::User), vec![]),
         // The user's pause wins over every governance clear.
         (S::Paused(PauseReason::User), E::GovClear(_)) => (S::Paused(PauseReason::User), vec![]),
         (S::Paused(r), E::GovClear(r2)) if r == r2 => (S::Queued, vec![]),
@@ -750,5 +762,34 @@ mod tests {
         for s in [S::Finished, S::NeedsLink, S::Error(DlError::Network), S::Gone, S::None] {
             assert_eq!(step(s, E::SecretsLost), (s, vec![]), "{s:?}");
         }
+    }
+
+    #[test]
+    fn user_pause_while_probing_pauses_and_cancels() {
+        assert_eq!(
+            step(S::Resolving, E::UserPause),
+            (S::Paused(PauseReason::User), vec![F::CancelTasks])
+        );
+    }
+
+    #[test]
+    fn user_pause_takes_over_a_governance_pause_and_survives_the_clear() {
+        for r in [PauseReason::Network, PauseReason::Offline, PauseReason::Battery, PauseReason::Schedule, PauseReason::Storage] {
+            let (s1, fx) = step(S::Paused(r), E::UserPause);
+            assert_eq!((s1, fx), (S::Paused(PauseReason::User), vec![]));
+            assert_eq!(step(s1, E::GovClear(r)), (S::Paused(PauseReason::User), vec![]));
+        }
+        assert_eq!(
+            step(S::Paused(PauseReason::User), E::UserPause),
+            (S::Paused(PauseReason::User), vec![])
+        );
+    }
+
+    #[test]
+    fn restore_of_a_start_paused_download_is_a_user_pause() {
+        assert_eq!(step(S::Queued, E::RestoreStartPaused), (S::Paused(PauseReason::User), vec![]));
+        assert_eq!(step(S::Resolving, E::RestoreStartPaused), (S::Paused(PauseReason::User), vec![]));
+        assert_eq!(step(S::Finished, E::RestoreStartPaused), (S::Finished, vec![]));
+        assert_eq!(step(S::Paused(PauseReason::Network), E::RestoreStartPaused), (S::Paused(PauseReason::Network), vec![]));
     }
 }
