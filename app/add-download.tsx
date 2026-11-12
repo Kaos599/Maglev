@@ -33,6 +33,7 @@ export default function AddDownloadScreen() {
   const [addError, setAddError] = useState<string | null>(null);
   const token = useRef(0);
   const urlRef = useRef('');
+  const allowLanRef = useRef(false);
 
   const close = useCallback(() => {
     if (router.canGoBack()) router.back();
@@ -40,7 +41,7 @@ export default function AddDownloadScreen() {
   }, [router]);
 
   const submit = useCallback(
-    async (raw: string) => {
+    async (raw: string, allowLan = false) => {
       const input = normalizeIncoming(raw);
       // A magnet or a .torrent link is a torrent: hand it to Add torrent instead of refusing it.
       if (isTorrentSource(input)) {
@@ -54,10 +55,11 @@ export default function AddDownloadScreen() {
       }
       const mine = ++token.current;
       urlRef.current = input;
+      allowLanRef.current = allowLan;
       setMessage(null);
       setAddError(null);
       setPhase('probing');
-      const res = await probeUrl(input);
+      const res = await probeUrl(input, allowLan ? { allowLan: true } : {});
       if (mine !== token.current) return;
       if (res.ok) {
         setProbe(res);
@@ -143,7 +145,7 @@ export default function AddDownloadScreen() {
   const start = async (fromError = false) => {
     setPhase('adding');
     setAddError(null);
-    const res = await startDownload(urlRef.current, {});
+    const res = await startDownload(urlRef.current, allowLanRef.current ? { allowLan: true } : {});
     if (res.ok) {
       triggerHaptic('success');
       router.replace('/');
@@ -187,6 +189,20 @@ export default function AddDownloadScreen() {
           body={errorView.body}
           primary={{ label: 'Open settings', onPress: () => router.push(actionRoute('openNetworkSettings') ?? '/settings/network') }}
           secondary={{ label: 'Add anyway', onPress: () => void start(true) }}
+        />
+      </Screen>
+    );
+  }
+  if (phase === 'error' && errorView?.primary === 'allowDevice') {
+    return (
+      <Screen title="Add download" onBack={close}>
+        <EmptyBlock
+          icon="warning"
+          error
+          title="A device on your network"
+          body={errorView.body}
+          primary={{ label: 'Allow this device', onPress: () => void submit(urlRef.current, true) }}
+          secondary={{ label: 'Back', onPress: () => setPhase('input') }}
         />
       </Screen>
     );

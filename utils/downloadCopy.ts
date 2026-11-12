@@ -13,6 +13,7 @@ export type DownloadActionKind =
   | 'retry'
   | 'restart'
   | 'newLink'
+  | 'allowDevice'
   | 'remove'
   | 'open'
   | 'pickFolder'
@@ -37,7 +38,9 @@ const GOVERNANCE_TEXT: Record<string, string> = {
 export const OFFLINE_TEXT = 'Waiting for a connection';
 export const FOLDER_GONE_TEXT = "The folder isn't available. Is the SD card in?";
 export const TOO_BIG_TEXT = "This file is bigger than the card's format allows (4 GB). Use phone storage.";
-export const LOCAL_BLOCKED_TEXT = 'This link tried to send Maglev to a device on your network, so it was stopped.';
+export const LOCAL_BLOCKED_TEXT = 'A redirect tried to send Maglev to a device on your network, so it stopped.';
+export const LAN_ADDRESS_TEXT = 'This address points to a device on your network.';
+export const LAN_ADDRESS_BODY = "If it's your own server, allow this device. Only do this for devices you trust.";
 export const POLICY_BLOCKED_TEXT = 'Blocked by your Wi-Fi-only or VPN setting.';
 export const PERMISSION_TEXT = "Maglev can't write to that folder.";
 export const WIFI_CAPTION = 'Wi-Fi only is on in Settings → Network.';
@@ -65,6 +68,7 @@ type ErrorKind =
   | 'folderGone'
   | 'tooBig'
   | 'localBlocked'
+  | 'lanAddress'
   | 'policyBlocked'
   | 'httpGone'
   | 'authRequired'
@@ -91,6 +95,7 @@ function errorKind(code: string | undefined, httpStatus?: number | null): ErrorK
   if (c === 'FILE_TOO_LARGE') return 'tooBig';
   if (c === 'STORAGE_UNAVAILABLE') return 'folderGone';
   if (c === 'LOCAL_REDIRECT') return 'localBlocked';
+  if (c === 'LAN_ADDRESS') return 'lanAddress';
   if (c === 'BLOCKED') return 'policyBlocked';
   if (c === 'AUTH_REQUIRED') return 'authRequired';
   if (c === 'STALLED') return 'stalled';
@@ -173,6 +178,8 @@ function errorLine(d: DownloadSnapshot): string {
       return TOO_BIG_TEXT;
     case 'localBlocked':
       return LOCAL_BLOCKED_TEXT;
+    case 'lanAddress':
+      return LAN_ADDRESS_TEXT;
     case 'policyBlocked':
       return POLICY_BLOCKED_TEXT;
     case 'authRequired':
@@ -192,6 +199,7 @@ export function downloadCaption(d: DownloadSnapshot): string | null {
   if (d.state === 'needs_link' && d.error?.code === 'AUTH_REQUIRED') return AUTH_BODY;
   if (d.state === 'error') {
     const k = errorKind(d.error?.code, d.error?.httpStatus);
+    if (k === 'lanAddress') return `${LAN_ADDRESS_TEXT} ${LAN_ADDRESS_BODY}`;
     if (k === 'notAFile') return NOT_A_FILE_BODY;
     if (k === 'permission' || k === 'folderGone' || k === 'tooBig' || k === 'localBlocked' || k === 'policyBlocked' || k === 'authRequired' || k === 'stalled') return errorLine(d);
   }
@@ -203,6 +211,7 @@ const A = {
   resume: { kind: 'resume', icon: 'play', label: 'Resume' },
   retry: { kind: 'retry', icon: 'retry', label: 'Retry' },
   restart: { kind: 'restart', icon: 'retry', label: 'Restart' },
+  allowDevice: { kind: 'allowDevice', icon: 'link', label: 'Allow this device' },
   open: { kind: 'open', icon: 'external', label: 'Open' },
   newLink: { kind: 'newLink', icon: 'link', label: 'Paste new link' },
   remove: { kind: 'remove', icon: 'trash', label: 'Remove' },
@@ -237,6 +246,8 @@ export function downloadActions(d: DownloadSnapshot): DownloadAction[] {
           return [A.remove];
         case 'authRequired':
           return [A.newLink];
+        case 'lanAddress':
+          return [A.allowDevice, A.remove];
         case 'permission':
           return [A.pickFolder, A.retry];
         case 'folderGone':
@@ -255,6 +266,14 @@ export function downloadActions(d: DownloadSnapshot): DownloadAction[] {
 /** True when the sheet should ask for a new link (the link expired, or the site wants a sign-in again). */
 export function needsNewLink(d: DownloadSnapshot): boolean {
   return d.state === 'needs_link' || (d.state === 'error' && errorKind(d.error?.code, d.error?.httpStatus) === 'authRequired');
+}
+
+/** What to tell the user when "Allow this device" fails. */
+export function allowDeviceFailureText(code: string | undefined, message?: string): string {
+  const c = (code ?? '').toUpperCase();
+  if (c === 'NETWORK') return "Couldn't find that device. Check the address and your connection.";
+  if (c === 'INVALID_STATE') return "This download doesn't need that anymore.";
+  return message || "Couldn't allow that device.";
 }
 
 /** What to tell the user when Open fails. */
@@ -280,9 +299,10 @@ export function probeErrorView(
   code: string | undefined,
   message: string | undefined,
   httpStatus?: number | null,
-): { body: string; primary: 'pasteAnother' | 'retry' | 'blocked' } {
+): { body: string; primary: 'pasteAnother' | 'retry' | 'blocked' | 'allowDevice' } {
   const k = (code ?? '').toUpperCase();
   // Trying again fails the same way; the user can change the setting or add it now and let it wait.
+  if (k === 'LAN_ADDRESS') return { body: `${LAN_ADDRESS_TEXT} ${LAN_ADDRESS_BODY}`, primary: 'allowDevice' };
   if (k === 'BLOCKED') return { body: PROBE_BLOCKED_BODY, primary: 'blocked' };
   if (k === 'NOT_A_FILE') return { body: NOT_A_FILE_BODY, primary: 'pasteAnother' };
   if (k === 'AUTH_REQUIRED') return { body: AUTH_BODY, primary: 'pasteAnother' };

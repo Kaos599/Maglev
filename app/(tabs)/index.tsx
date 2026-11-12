@@ -24,7 +24,7 @@ import { useMaglevEngine } from '../../context/EngineContext';
 import { useTheme } from '../../context/ThemeContext';
 import { ThemeColors, radius, spacing, type } from '../../constants/theme';
 import { takeNextShared } from '../../utils/shareQueue';
-import { openFailureText, type DownloadAction } from '../../utils/downloadCopy';
+import { allowDeviceFailureText, openFailureText, type DownloadAction } from '../../utils/downloadCopy';
 import { BulkVerb, bulkSummary } from '../../utils/bulkSummary';
 import { TransferSort, loadTransferSort, saveTransferSort } from '../../utils/prefs/transfers';
 
@@ -84,6 +84,15 @@ export default function TransfersScreen() {
     },
     [showNotice],
   );
+  const allowDevice = useCallback(
+    (id: string) => {
+      void maglevEngine.allowLanHost(id).then((res) => {
+        if (!res.ok) showNotice({ message: allowDeviceFailureText(res.code, res.message) });
+        else void retryDownload(id);
+      });
+    },
+    [showNotice, retryDownload],
+  );
   const onDownloadAction = useCallback(
     (d: DownloadSnapshot, action: DownloadAction) => {
       switch (action.kind) {
@@ -103,9 +112,12 @@ export default function TransfersScreen() {
         case 'open':
           openDownload(d.id);
           break;
+        case 'allowDevice':
+          allowDevice(d.id);
+          break;
       }
     },
-    [pauseDownload, resumeDownload, retryDownload, openDownload],
+    [pauseDownload, resumeDownload, retryDownload, openDownload, allowDevice],
   );
   const selectionMode = selectedIds.size > 0;
 
@@ -430,6 +442,7 @@ export default function TransfersScreen() {
         onClose={() => setSheetDownloadId(null)}
         onRetry={(id) => void retryDownload(id)}
         onOpen={openDownload}
+        onAllowDevice={allowDevice}
         onRemove={(id, deleteFiles) => void removeDownload(id, deleteFiles)}
         onNewLink={refreshDownloadUrl}
       />

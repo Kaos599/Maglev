@@ -17,6 +17,8 @@ export interface DownloadSheetProps {
   onRetry: (id: string) => void;
   /** Opens a finished download in another app. */
   onOpen: (id: string) => void;
+  /** Allows the download's host, then retries it. */
+  onAllowDevice: (id: string) => void;
   onRemove: (id: string, deleteFiles: boolean) => void;
   onNewLink: (id: string, url: string) => Promise<EngineResult>;
 }
@@ -24,7 +26,7 @@ export interface DownloadSheetProps {
 type Step = 'main' | 'confirmDelete';
 
 /** What a tap on a download card opens: details, Retry or Restart, Paste new link, Remove (SM-30 Copy). */
-export function DownloadSheet({ download: d, onClose, onRetry, onOpen, onRemove, onNewLink }: DownloadSheetProps) {
+export function DownloadSheet({ download: d, onClose, onRetry, onOpen, onAllowDevice, onRemove, onNewLink }: DownloadSheetProps) {
   const { colors } = useTheme();
   const router = useRouter();
   const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -137,6 +139,7 @@ export function DownloadSheet({ download: d, onClose, onRetry, onOpen, onRemove,
                     const route = actionRoute(a.kind);
                     if (route) router.push(route);
                     else if (a.kind === 'open') onOpen(d.id);
+                    else if (a.kind === 'allowDevice') onAllowDevice(d.id);
                     else onRetry(d.id);
                     onClose();
                   }}

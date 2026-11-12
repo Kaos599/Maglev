@@ -733,6 +733,12 @@ export class MaglevMockEngine implements MaglevEngineApi {
   public async removeDownload(id: string, deleteFiles: boolean): Promise<EngineResult> {
     return this.downloads.remove(id, deleteFiles);
   }
+  public async allowLanHost(id: string): Promise<EngineResult> {
+    const d = this.downloads.snapshots().find((s) => s.id === id);
+    if (!d) return { ok: false, code: 'NOT_FOUND', message: 'No such download.' };
+    if (d.state !== 'error' || d.error?.code !== 'LAN_ADDRESS') return { ok: false, code: 'INVALID_STATE', message: "This download doesn't need that." };
+    return { ok: true };
+  }
   public async openDownload(id: string): Promise<EngineResult> {
     return this.downloads.snapshots().some((d) => d.id === id) ? { ok: true } : { ok: false, code: 'NOT_FOUND', message: 'No such download.' };
   }

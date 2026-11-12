@@ -448,6 +448,9 @@ export class MaglevEngineBridge implements MaglevEngineApi {
   public removeDownload(id: string, deleteFiles: boolean): Promise<EngineResult> {
     return this.route('removeDownload', id, deleteFiles);
   }
+  public allowLanHost(id: string): Promise<EngineResult> {
+    return this.route('allowLanHost', id);
+  }
   public openDownload(id: string): Promise<EngineResult> {
     return this.route('openDownload', id);
   }

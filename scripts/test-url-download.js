@@ -87,7 +87,7 @@ async function main() {
   check('folder gone pause offers Pick folder again', copy.downloadStatus(d({ state: 'paused', pausedBy: 'storage_unavailable' })).text === "The folder isn't available. Is the SD card in?" && kinds(d({ state: 'paused', pausedBy: 'storage_unavailable' })) === 'pickFolder');
   check('folder gone error', copy.downloadStatus(err('STORAGE_UNAVAILABLE')).text === "The folder isn't available. Is the SD card in?" && kinds(err('STORAGE_UNAVAILABLE')) === 'pickFolder');
   check('too big for the card', copy.downloadStatus(err('FILE_TOO_LARGE')).text === "This file is bigger than the card's format allows (4 GB). Use phone storage." && kinds(err('FILE_TOO_LARGE')) === 'pickFolder');
-  check('local redirect is blocked, Remove only', copy.downloadStatus(err('LOCAL_REDIRECT')).text === 'This link tried to send Maglev to a device on your network, so it was stopped.' && kinds(err('LOCAL_REDIRECT')) === 'remove');
+  check('local redirect is blocked, Remove only', copy.downloadStatus(err('LOCAL_REDIRECT')).text === 'A redirect tried to send Maglev to a device on your network, so it stopped.' && kinds(err('LOCAL_REDIRECT')) === 'remove');
   check('policy block opens settings', copy.downloadStatus(err('BLOCKED')).text === 'Blocked by your Wi-Fi-only or VPN setting.' && kinds(err('BLOCKED')) === 'openNetworkSettings,retry');
   check('wifi pause opens settings with a caption', kinds(d({ state: 'paused', pausedBy: 'wifi_only' })) === 'openNetworkSettings' && copy.downloadCaption(d({ state: 'paused', pausedBy: 'wifi_only' })) === 'Wi-Fi only is on in Settings → Network.');
   check('battery pause still has no button', copy.downloadAction(d({ state: 'paused', pausedBy: 'battery' })) === null);
@@ -101,6 +101,11 @@ async function main() {
   check('probe: blocked offers settings and Add anyway, not Try again', pv('BLOCKED').primary === 'blocked' && /Open settings/.test(pv('BLOCKED').body) && /add it anyway and it starts when downloads are allowed/.test(pv('BLOCKED').body) && pv('blocked').primary === 'blocked');
   check('probe: other codes are not blocked', pv('BLOCKED_X').primary === 'retry');
   check('paused tags: storage_unavailable is a folder problem, storage_full is a full disk', copy.downloadStatus(d({ state: 'paused', pausedBy: 'storage_unavailable' })).text !== copy.downloadStatus(d({ state: 'paused', pausedBy: 'storage_full' })).text && kinds(d({ state: 'paused', pausedBy: 'storage_unavailable' })) === 'pickFolder' && kinds(d({ state: 'paused', pausedBy: 'storage_full' })) === 'resume' && !copy.isGovernancePause('storage_unavailable') && !copy.isGovernancePause('storage_full'));
+
+  check('LAN_ADDRESS copy and actions', copy.downloadStatus(err('LAN_ADDRESS')).text === 'This address points to a device on your network.' && kinds(err('LAN_ADDRESS')) === 'allowDevice,remove' && copy.downloadAction(err('LAN_ADDRESS')).label === 'Allow this device' && /Only do this for devices you trust/.test(copy.downloadCaption(err('LAN_ADDRESS'))));
+  check('LAN_ADDRESS matches exactly', kinds(err('LAN_ADDRESS_X')) === 'retry' && kinds(err('LOCAL_REDIRECT')) === 'remove');
+  check('probe: LAN_ADDRESS offers Allow this device', pv('LAN_ADDRESS').primary === 'allowDevice' && /allow this device/.test(pv('LAN_ADDRESS').body));
+  check('allow device failures are plain', /find that device/.test(copy.allowDeviceFailureText('NETWORK')) && /anymore/.test(copy.allowDeviceFailureText('INVALID_STATE')) && copy.allowDeviceFailureText('NOT_FOUND', 'Gone') === 'Gone');
 
   // ---- torrents, pasted text and the share marker ----
   console.log('routing');

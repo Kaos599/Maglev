@@ -147,6 +147,7 @@ export type EngineErrorCode =
   | 'NOT_A_FILE'
   | 'CHECKSUM_MISMATCH'
   /** Opening a finished download: no app can open it. */
+  | 'LAN_ADDRESS'
   | 'NO_APP'
   /** The server stopped sending data and the retries ran out. */
   | 'STALLED';
@@ -376,7 +377,7 @@ export type DownloadState =
 export interface DownloadError {
   code: Extract<
     EngineErrorCode,
-    'HTTP_STATUS' | 'AUTH_REQUIRED' | 'LINK_EXPIRED' | 'FILE_CHANGED' | 'NOT_A_FILE' | 'CHECKSUM_MISMATCH' | 'NETWORK' | 'PERMISSION' | 'STALLED'
+    'HTTP_STATUS' | 'AUTH_REQUIRED' | 'LINK_EXPIRED' | 'FILE_CHANGED' | 'NOT_A_FILE' | 'CHECKSUM_MISMATCH' | 'NETWORK' | 'PERMISSION' | 'STALLED' | 'LAN_ADDRESS' | 'LOCAL_REDIRECT' | 'BLOCKED'
   >;
   message: string;
   httpStatus?: number | null;
@@ -417,6 +418,8 @@ export interface DownloadOptions {
   /** Refused with UNSUPPORTED until the engine can check it. */
   expectedHash?: { alg: 'sha256'; hex: string };
   downLimitBps?: number;
+  /** The user allowed the typed host even though it is on their own network. The module sends it as `allow_lan`. */
+  allowLan?: boolean;
 }
 
 export interface UrlProbe {
@@ -633,6 +636,8 @@ export interface MaglevEngineApi {
   /** After FILE_CHANGED this restarts from zero. */
   retryDownload(id: string): Promise<EngineResult>;
   removeDownload(id: string, deleteFiles: boolean): Promise<EngineResult>;
+  /** Allows the download's host and pins its addresses. Does not retry: call `retryDownload` next. NOT_FOUND, INVALID_STATE (not LAN_ADDRESS), NETWORK (host does not resolve). */
+  allowLanHost(id: string): Promise<EngineResult>;
   /** Opens a finished download in another app. NO_APP when none can open it. */
   openDownload(id: string): Promise<EngineResult>;
   /** Only for `needs_link`. FILE_CHANGED when the new link is another file. */
