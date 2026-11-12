@@ -19,6 +19,8 @@ pub enum PauseReason {
     Network,
     Battery,
     Storage,
+    /// No validated network (governance tag `offline`).
+    Offline,
 }
 
 impl PauseReason {
@@ -29,6 +31,7 @@ impl PauseReason {
             PauseReason::Network => "network",
             PauseReason::Battery => "battery",
             PauseReason::Storage => "storage_full",
+            PauseReason::Offline => "offline",
         }
     }
 }
@@ -42,6 +45,12 @@ pub enum DlError {
     NotAFile,
     ChecksumMismatch,
     Permission,
+    /// A redirect led to a device on the local network.
+    LocalRedirect,
+    /// The folder is gone (SD card removed) or the storage answered with an I/O error.
+    StorageUnavailable,
+    /// The file is bigger than the file system allows (FAT32 4 GB).
+    FileTooLarge,
 }
 
 impl DlError {
@@ -53,6 +62,9 @@ impl DlError {
             DlError::NotAFile => "NOT_A_FILE",
             DlError::ChecksumMismatch => "CHECKSUM_MISMATCH",
             DlError::Permission => "PERMISSION",
+            DlError::LocalRedirect => "LOCAL_REDIRECT",
+            DlError::StorageUnavailable => "STORAGE_UNAVAILABLE",
+            DlError::FileTooLarge => "FILE_TOO_LARGE",
         }
     }
 }
@@ -77,6 +89,8 @@ pub enum State {
 pub enum Event {
     /// `url_ok` is true for an http or https URL.
     Add { url_ok: bool },
+    /// Extra: `Add` while governance blocks. The record is created paused and nothing touches the network.
+    AddBlocked(PauseReason),
     ProbeOk { slot_free: bool, gov_allows: bool, space_ok: bool },
     /// 401 or 403 on the probe.
     ProbeAuth,
@@ -109,6 +123,16 @@ pub enum Event {
     Restore,
     /// Extra: 400, 404 or another status that must never be retried, while downloading.
     HttpFatal,
+    /// Extra: a redirect led to the local network (probe or transfer).
+    LocalRedirect,
+    /// Extra: the real GET answered with a web page.
+    NotAFile,
+    /// Extra: the folder is gone or the storage failed (ENOENT, EIO, ENODEV, ...).
+    StorageGone,
+    /// Extra: EFBIG, the file system cannot hold a file this big.
+    FileTooLarge,
+    /// Extra: `UserRetry` while governance blocks. Goes to the pause instead of the network.
+    UserRetryBlocked(PauseReason),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -162,6 +186,8 @@ pub fn step(state: State, event: Event) -> (State, Vec<Effect>) {
     match (state, event) {
         (S::None, E::Add { url_ok: true }) => (S::Resolving, vec![Effect::Persist, Effect::Probe]),
         (S::None, E::Add { url_ok: false }) => (S::None, vec![Effect::RejectInvalidSource]),
+        // Extra: blocked by governance before the first request.
+        (S::None, E::AddBlocked(r)) => (S::Paused(r), vec![Effect::Persist]),
 
         (S::Resolving, E::ProbeOk { slot_free, gov_allows, space_ok }) => {
             if !space_ok {
@@ -178,10 +204,15 @@ pub fn step(state: State, event: Event) -> (State, Vec<Effect>) {
             (S::Error(DlError::NotAFile), vec![])
         }
         (S::Resolving, E::NetErr) => (S::Error(DlError::Network), vec![]),
+        (S::Resolving, E::LocalRedirect) => (S::Error(DlError::LocalRedirect), vec![]),
+        // Extra: governance blocks while the probe runs. The probe is cancelled; it runs again from `Downloading`.
+        (S::Resolving, E::GovBlock(r)) => (S::Paused(r), vec![Effect::CancelTasks]),
 
         (S::Queued, E::SlotFree { gov_allows: true }) => (S::Downloading, vec![Effect::StartSegments]),
         // Extra: a queued download can be paused by the user.
         (S::Queued, E::UserPause) => (S::Paused(PauseReason::User), vec![]),
+        // Extra: a queued download pauses with the governance reason (`offline`).
+        (S::Queued, E::GovBlock(r)) => (S::Paused(r), vec![]),
 
         (S::Downloading, E::UserPause) => {
             (S::Paused(PauseReason::User), vec![Effect::CancelTasks, Effect::FlushSidecar])
@@ -218,6 +249,10 @@ pub fn step(state: State, event: Event) -> (State, Vec<Effect>) {
         (S::Downloading, E::Auth) => (S::NeedsLink, vec![Effect::KeepPart]),
         (S::Downloading, E::Enospc) => (S::Paused(PauseReason::Storage), vec![Effect::FlushSidecar]),
         (S::Downloading, E::Eacces) => (S::Error(DlError::Permission), vec![]),
+        (S::Downloading, E::StorageGone) => (S::Error(DlError::StorageUnavailable), vec![Effect::KeepPart]),
+        (S::Downloading, E::FileTooLarge) => (S::Error(DlError::FileTooLarge), vec![]),
+        (S::Downloading, E::LocalRedirect) => (S::Error(DlError::LocalRedirect), vec![]),
+        (S::Downloading, E::NotAFile) => (S::Error(DlError::NotAFile), vec![]),
         (S::Downloading, E::AllBytes) => (S::Verifying, vec![]),
         // Extra.
         (S::Downloading, E::HttpFatal) => (S::Error(DlError::HttpStatus), vec![Effect::KeepPart]),
@@ -232,6 +267,7 @@ pub fn step(state: State, event: Event) -> (State, Vec<Effect>) {
         (S::NeedsLink, E::NewLink { matches: false }) => (S::Error(DlError::FileChanged), vec![]),
 
         (S::Error(_), E::UserRetry) => (S::Resolving, vec![Effect::Probe]),
+        (S::Error(_), E::UserRetryBlocked(r)) => (S::Paused(r), vec![]),
 
         (s, _) => (s, vec![]),
     }
@@ -390,6 +426,7 @@ mod tests {
             PauseReason::Network,
             PauseReason::Battery,
             PauseReason::Storage,
+            PauseReason::Offline,
         ] {
             assert_eq!(step(S::Paused(r), E::UserResume), (S::Queued, vec![]));
         }
@@ -518,6 +555,9 @@ mod tests {
             DlError::NotAFile,
             DlError::ChecksumMismatch,
             DlError::Permission,
+            DlError::LocalRedirect,
+            DlError::StorageUnavailable,
+            DlError::FileTooLarge,
         ] {
             assert_eq!(step(S::Error(e), E::UserRetry), (S::Resolving, vec![F::Probe]));
         }
@@ -564,6 +604,68 @@ mod tests {
         ] {
             assert_eq!(step(s, E::Restore), (s, vec![]));
         }
+    }
+
+    #[test]
+    fn add_while_blocked_pauses_without_a_probe() {
+        let (s, fx) = step(S::None, E::AddBlocked(PauseReason::Network));
+        assert_eq!(s, S::Paused(PauseReason::Network));
+        assert!(!fx.contains(&F::Probe));
+        assert_eq!(fx, vec![F::Persist]);
+    }
+
+    #[test]
+    fn retry_while_blocked_pauses_without_a_probe() {
+        let (s, fx) = step(S::Error(DlError::Network), E::UserRetryBlocked(PauseReason::Network));
+        assert_eq!(s, S::Paused(PauseReason::Network));
+        assert!(fx.is_empty());
+    }
+
+    #[test]
+    fn offline_pauses_downloading_queued_and_resolving() {
+        let off = E::GovBlock(PauseReason::Offline);
+        assert_eq!(
+            step(S::Downloading, off),
+            (S::Paused(PauseReason::Offline), vec![F::CancelTasks, F::FlushSidecar])
+        );
+        assert_eq!(step(S::Queued, off), (S::Paused(PauseReason::Offline), vec![]));
+        assert_eq!(step(S::Resolving, off), (S::Paused(PauseReason::Offline), vec![F::CancelTasks]));
+    }
+
+    #[test]
+    fn offline_clears_back_to_the_queue() {
+        assert_eq!(
+            step(S::Paused(PauseReason::Offline), E::GovClear(PauseReason::Offline)),
+            (S::Queued, vec![])
+        );
+        assert_eq!(
+            step(S::Paused(PauseReason::User), E::GovClear(PauseReason::Offline)),
+            (S::Paused(PauseReason::User), vec![])
+        );
+        assert_eq!(PauseReason::Offline.as_str(), "offline");
+    }
+
+    #[test]
+    fn local_redirect_is_an_error_while_probing_or_downloading() {
+        assert_eq!(step(S::Resolving, E::LocalRedirect), (S::Error(DlError::LocalRedirect), vec![]));
+        assert_eq!(step(S::Downloading, E::LocalRedirect), (S::Error(DlError::LocalRedirect), vec![]));
+        assert_eq!(DlError::LocalRedirect.as_str(), "LOCAL_REDIRECT");
+    }
+
+    #[test]
+    fn a_page_in_the_get_is_not_a_file() {
+        assert_eq!(step(S::Downloading, E::NotAFile), (S::Error(DlError::NotAFile), vec![]));
+    }
+
+    #[test]
+    fn storage_faults_are_storage_errors() {
+        assert_eq!(
+            step(S::Downloading, E::StorageGone),
+            (S::Error(DlError::StorageUnavailable), vec![F::KeepPart])
+        );
+        assert_eq!(step(S::Downloading, E::FileTooLarge), (S::Error(DlError::FileTooLarge), vec![]));
+        assert_eq!(DlError::StorageUnavailable.as_str(), "STORAGE_UNAVAILABLE");
+        assert_eq!(DlError::FileTooLarge.as_str(), "FILE_TOO_LARGE");
     }
 
     #[test]

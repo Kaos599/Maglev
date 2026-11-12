@@ -86,6 +86,23 @@ impl Drop for ScanReset<'_> {
     }
 }
 
+/// The governance reasons that pause torrents. The `offline` tag is for URL downloads only.
+fn torrent_blocked(blocked: &[String]) -> Vec<String> {
+    blocked.iter().filter(|r| r.as_str() != "offline").cloned().collect()
+}
+
+#[cfg(test)]
+mod offline_filter_tests {
+    use super::torrent_blocked;
+
+    #[test]
+    fn offline_never_pauses_torrents() {
+        let b = vec!["offline".to_string(), "wifi_only".to_string()];
+        assert_eq!(torrent_blocked(&b), vec!["wifi_only".to_string()]);
+        assert!(torrent_blocked(&["offline".to_string()]).is_empty());
+    }
+}
+
 fn now_secs() -> i64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -2934,7 +2951,8 @@ impl MaglevEngine {
             }
         }
 
-        let actions = plan(&facts, &cfg.scheduler(), &blocked);
+        // `offline` pauses URL downloads only; torrents wait for peers on their own (section 17).
+        let actions = plan(&facts, &cfg.scheduler(), &torrent_blocked(&blocked));
         let structural = !actions.is_empty() || !gave_up.is_empty();
         for a in actions {
             self.apply_action(a, &by_id).await;

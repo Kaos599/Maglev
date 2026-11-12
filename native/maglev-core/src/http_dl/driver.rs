@@ -36,7 +36,8 @@ use tracing::warn;
 use super::content_disposition::{choose_name, sanitize_filename, unique_name};
 use super::machine::{step, DlError, Effect, Event, Notice, PauseReason, State, MAX_ATTEMPTS};
 use super::rules::{
-    backoff_delay, classify_probe, judge_response, pace_delay, Headers, ProbeInfo, ProbeVerdict, Reply,
+    backoff_delay, classify_probe, fits, judge_get, overruns, pace_delay, redirect_host_allowed, Headers,
+    ProbeInfo, ProbeVerdict, Reply,
 };
 use super::sidecar::{final_path, part_path, sidecar_path, Sidecar};
 use crate::error::{EngineError, ErrorCode};
@@ -50,6 +51,12 @@ const REPORT_EVERY: Duration = Duration::from_millis(250);
 const USER_AGENT_DEFAULT: &str = "Maglev";
 const WHOLE_FILE_NOTICE: &str = "Server sent the whole file again; starting over.";
 const NO_RESUME_NOTICE: &str = "This server can't resume. Starting over.";
+/// Governance tag Kotlin sends while the phone has no validated network. It pauses URL downloads only.
+const OFFLINE_TAG: &str = "offline";
+/// The text `attempt.error` carries out of the redirect policy; `is_local_redirect` looks for it.
+const LOCAL_REDIRECT_MSG: &str = "redirect to a device on the local network";
+const BLOCKED_MSG: &str = "Blocked by your Wi-Fi-only or VPN setting.";
+const LOCAL_REDIRECT_COPY: &str = "This link tried to send Maglev to a device on your network, so it was stopped.";
 
 // ---- options ------------------------------------------------------------------------------------------------
 
@@ -244,8 +251,73 @@ pub fn reason_for_tag(tag: &str) -> PauseReason {
         "battery" | "charging_only" => PauseReason::Battery,
         "schedule" => PauseReason::Schedule,
         "storage_full" | "storage_unavailable" => PauseReason::Storage,
+        "offline" => PauseReason::Offline,
         _ => PauseReason::Network,
     }
+}
+
+/// Does any blocking tag come from the Wi-Fi-only or VPN-only setting? `offline` does not count: a probe while
+/// offline just fails as a network error, and an add while offline is paused instead.
+fn blocks_network(tags: &[String]) -> bool {
+    tags.iter().any(|t| t != OFFLINE_TAG && reason_for_tag(t) == PauseReason::Network)
+}
+
+/// The governance event that applies to a download in `state` for the blocked tags, with the tag to remember.
+/// A working download pauses for the first tag. A queued or probing one pauses only for `offline`; for the other
+/// tags it stays queued and simply does not start.
+fn gov_event(state: State, blocked: &[String]) -> Option<(Event, String)> {
+    match state {
+        State::Downloading => blocked.first().map(|t| (Event::GovBlock(reason_for_tag(t)), t.clone())),
+        State::Queued | State::Resolving => blocked
+            .iter()
+            .find(|t| t.as_str() == OFFLINE_TAG)
+            .map(|t| (Event::GovBlock(PauseReason::Offline), t.clone())),
+        _ => None,
+    }
+}
+
+/// True when the error, or anything it wraps, says the redirect policy refused a local address.
+fn chain_contains(e: &(dyn std::error::Error + 'static), needle: &str) -> bool {
+    let mut cur: Option<&(dyn std::error::Error + 'static)> = Some(e);
+    while let Some(x) = cur {
+        if x.to_string().contains(needle) {
+            return true;
+        }
+        cur = x.source();
+    }
+    false
+}
+
+fn is_local_redirect(e: &reqwest::Error) -> bool {
+    chain_contains(e, LOCAL_REDIRECT_MSG)
+}
+
+/// Free bytes for a normal app on the file system holding `path` (the nearest existing parent when the folder is
+/// not created yet). `None` when it can't be read; callers then let the download go on.
+#[cfg(unix)]
+pub fn free_space(path: &Path) -> Option<u64> {
+    use std::ffi::CString;
+    use std::os::unix::ffi::OsStrExt;
+    let mut p = path.to_path_buf();
+    while !p.exists() {
+        if !p.pop() {
+            return None;
+        }
+    }
+    let c = CString::new(p.as_os_str().as_bytes()).ok()?;
+    let mut st: libc::statvfs = unsafe { std::mem::zeroed() };
+    // SAFETY: `c` is a valid NUL-terminated path and `st` is a valid, zeroed out-parameter.
+    let rc = unsafe { libc::statvfs(c.as_ptr(), &mut st) };
+    if rc != 0 {
+        return None;
+    }
+    let bs = if st.f_frsize > 0 { st.f_frsize as u64 } else { st.f_bsize as u64 };
+    Some((st.f_bavail as u64).saturating_mul(bs))
+}
+
+#[cfg(not(unix))]
+pub fn free_space(_path: &Path) -> Option<u64> {
+    None
 }
 
 pub fn state_name(s: State) -> &'static str {
@@ -275,6 +347,11 @@ fn error_message(e: DlError, status: Option<u16>) -> String {
         DlError::NotAFile => "This link opens a web page, not a file.".to_string(),
         DlError::ChecksumMismatch => "File doesn't match the checksum.".to_string(),
         DlError::Permission => "Maglev can't write to that folder.".to_string(),
+        DlError::LocalRedirect => LOCAL_REDIRECT_COPY.to_string(),
+        DlError::StorageUnavailable => "The folder isn't available. Is the SD card in?".to_string(),
+        DlError::FileTooLarge => {
+            "This file is bigger than the card's format allows (4 GB). Use phone storage.".to_string()
+        }
     }
 }
 
@@ -313,11 +390,25 @@ fn is_eacces(e: &io::Error) -> bool {
     e.kind() == io::ErrorKind::PermissionDenied || matches!(e.raw_os_error(), Some(1) | Some(13) | Some(30))
 }
 
+/// EFBIG: the file system can't hold a file this big (FAT32 stops at 4 GB).
+fn is_too_large(e: &io::Error) -> bool {
+    matches!(e.raw_os_error(), Some(27))
+}
+
+/// The folder is gone or the storage fails: ENOENT, EIO, ENXIO, ENODEV, ENOTDIR, ESTALE (a removed SD card).
+fn is_unavailable(e: &io::Error) -> bool {
+    e.kind() == io::ErrorKind::NotFound || matches!(e.raw_os_error(), Some(2) | Some(5) | Some(6) | Some(19) | Some(20) | Some(116))
+}
+
 fn io_event(e: &io::Error, attempts: u32) -> Event {
     if is_enospc(e) {
         Event::Enospc
+    } else if is_too_large(e) {
+        Event::FileTooLarge
     } else if is_eacces(e) {
         Event::Eacces
+    } else if is_unavailable(e) {
+        Event::StorageGone
     } else {
         Event::Transient { attempts }
     }
@@ -368,6 +459,15 @@ fn build_client(proxy: Option<&str>) -> Result<Client, String> {
         if was_https && attempt.url().scheme() == "http" {
             return attempt.error("redirect from https to http");
         }
+        // A redirect may not lead onto the local network, unless the link the user typed was already there.
+        let local = {
+            let original = attempt.previous().first().and_then(|u| u.host_str()).unwrap_or("").to_string();
+            let target = attempt.url().host_str().unwrap_or("").to_string();
+            !redirect_host_allowed(&original, &target)
+        };
+        if local {
+            return attempt.error(LOCAL_REDIRECT_MSG);
+        }
         attempt.follow()
     });
     let mut b = Client::builder()
@@ -402,6 +502,7 @@ enum ProbeFail {
     Auth(u16),
     Status(u16),
     Html,
+    LocalRedirect,
 }
 
 struct ProbeReply {
@@ -547,6 +648,18 @@ impl Downloads {
 
     fn gov_allows(&self) -> bool {
         self.blocked.lock().is_empty()
+    }
+
+    fn first_block(&self) -> Option<String> {
+        self.blocked.lock().first().cloned()
+    }
+
+    fn is_offline(&self) -> bool {
+        self.blocked.lock().iter().any(|t| t == OFFLINE_TAG)
+    }
+
+    fn network_blocked(&self) -> bool {
+        blocks_network(&self.blocked.lock())
     }
 
     fn active_count(inner: &Inner) -> usize {
@@ -703,6 +816,7 @@ impl Downloads {
             .filter(|f| !f.trim().is_empty())
             .unwrap_or_else(|| self.default_dir.to_string_lossy().into_owned());
         let url_str = clean.to_string();
+        let block = self.first_block();
         let id = {
             let mut inner = self.inner.lock();
             if let Some(existing) = inner
@@ -715,8 +829,26 @@ impl Downloads {
                 return Err(e);
             }
             let id = self.new_id(&inner);
-            let (state, _) = step(State::None, Event::Add { url_ok: true });
+            // Governance blocks: the record is created paused and nothing touches the network until it clears.
+            let (reason, tag) = match &block {
+                Some(tag) => {
+                    let r = if opts.paused { PauseReason::User } else { reason_for_tag(tag) };
+                    (Some(r), Some(tag.clone()))
+                }
+                None => (None, None),
+            };
+            let (state, _) = match reason {
+                Some(r) => step(State::None, Event::AddBlocked(r)),
+                None => step(State::None, Event::Add { url_ok: true }),
+            };
+            let paused_tag = match reason {
+                Some(PauseReason::User) => Some("user".to_string()),
+                Some(PauseReason::Storage) => Some("storage_full".to_string()),
+                Some(_) => tag,
+                None => None,
+            };
             let rec = DlRecord {
+                paused_tag,
                 id: id.clone(),
                 url: url_str,
                 state,
@@ -725,7 +857,7 @@ impl Downloads {
                 added_at: now_secs(),
                 down_limit_bps: opts.down_limit_bps.unwrap_or(0),
                 segments: opts.segments.unwrap_or(1),
-                start_paused: opts.paused,
+                start_paused: opts.paused && block.is_none(),
                 ..DlRecord::default()
             };
             let h = opts.headers.clone().unwrap_or_default();
@@ -743,6 +875,10 @@ impl Downloads {
             id
         };
         self.save();
+        if block.is_some() {
+            // Paused by governance: the probe runs when the transfer starts (`transfer` probes an unnamed record).
+            return Ok(AddedDownload { id });
+        }
         // Persist and Probe are the effects of the `Add` row.
         let me = self.clone();
         let id2 = id.clone();
@@ -783,6 +919,11 @@ impl Downloads {
                 rec.resumable = false;
             });
         }
+        // Wi-Fi-only, VPN-only, offline and the other reasons gate the request here too.
+        if let Some(tag) = self.first_block() {
+            self.dispatch_tagged(id, Event::UserRetryBlocked(reason_for_tag(&tag)), Some(tag.as_str()));
+            return Ok(());
+        }
         self.dispatch(id, Event::UserRetry);
         Ok(())
     }
@@ -813,6 +954,9 @@ impl Downloads {
     pub async fn probe_url(&self, url: &str, options_json: &str) -> Result<ProbeResult, EngineError> {
         let opts = parse_options(options_json)?;
         let (clean, auth) = parse_http_url(url)?;
+        if self.network_blocked() {
+            return Err(EngineError::new(ErrorCode::Blocked, BLOCKED_MSG));
+        }
         let h = opts.headers.unwrap_or_default();
         let client = self.client()?;
         match probe_request(&client, clean.as_str(), auth.as_ref(), &h.cookie, &h.referer, &h.user_agent).await {
@@ -835,6 +979,9 @@ impl Downloads {
             .ok_or_else(EngineError::not_found)?;
         if state != State::NeedsLink {
             return Err(EngineError::new(ErrorCode::InvalidState, "This download doesn't need a new link"));
+        }
+        if self.network_blocked() {
+            return Err(EngineError::new(ErrorCode::Blocked, BLOCKED_MSG));
         }
         let h = opts.headers.unwrap_or_default();
         let client = self.client()?;
@@ -961,6 +1108,9 @@ impl Downloads {
             tag: Option<String>,
             dead: bool,
             added_at: i64,
+            folder: String,
+            size: Option<u64>,
+            held: u64,
         }
         let facts: Vec<Fact> = {
             let inner = self.inner.lock();
@@ -978,6 +1128,9 @@ impl Downloads {
                             .map(|l| l.task.as_ref().map(|t| t.is_finished()).unwrap_or(true))
                             .unwrap_or(true),
                     added_at: r.added_at,
+                    folder: r.folder.clone(),
+                    size: r.size,
+                    held: r.held,
                 })
                 .collect()
         };
@@ -988,8 +1141,21 @@ impl Downloads {
                     if f.dead {
                         // The task ended without a state change (a panic). Do not leave the download spinning.
                         self.dispatch(&f.id, Event::Transient { attempts: MAX_ATTEMPTS });
-                    } else if let Some(tag) = &first {
-                        self.dispatch_tagged(&f.id, Event::GovBlock(reason_for_tag(tag)), Some(tag));
+                    } else if let Some((ev, tag)) = gov_event(f.state, &blocked) {
+                        self.dispatch_tagged(&f.id, ev, Some(tag.as_str()));
+                    }
+                }
+                // `offline` pauses a queued or probing download too; it comes back when the tag clears.
+                State::Queued | State::Resolving => {
+                    if let Some((ev, tag)) = gov_event(f.state, &blocked) {
+                        self.dispatch_tagged(&f.id, ev, Some(tag.as_str()));
+                    }
+                }
+                // Storage pauses clear on their own once the governance tag is gone and the space is back.
+                State::Paused(PauseReason::Storage) => {
+                    let tagged = blocked.iter().any(|t| reason_for_tag(t) == PauseReason::Storage);
+                    if !tagged && fits(f.size, f.held, free_space(Path::new(&f.folder))) {
+                        self.dispatch(&f.id, Event::GovClear(PauseReason::Storage));
                     }
                 }
                 State::Paused(r) if r != PauseReason::User && r != PauseReason::Storage => {
@@ -1030,13 +1196,15 @@ impl Downloads {
         let outcome = self.do_probe(&id).await;
         match outcome {
             Ok(()) => {
-                let start_paused = self.update(&id, |r, _| r.start_paused).unwrap_or(false);
+                let (start_paused, space_ok) = self
+                    .update(&id, |r, _| (r.start_paused, fits(r.size, r.held, free_space(Path::new(&r.folder)))))
+                    .unwrap_or((false, true));
                 let slot_free = Self::active_count(&self.inner.lock()) < MAX_ACTIVE_DOWNLOADS;
                 let gov_allows = self.gov_allows();
                 let ev = if start_paused {
-                    Event::ProbeOk { slot_free: false, gov_allows: true, space_ok: true }
+                    Event::ProbeOk { slot_free: false, gov_allows: true, space_ok }
                 } else {
-                    Event::ProbeOk { slot_free, gov_allows, space_ok: true }
+                    Event::ProbeOk { slot_free, gov_allows, space_ok }
                 };
                 let (state, _) = self.dispatch(&id, ev);
                 if start_paused && state == State::Queued {
@@ -1055,8 +1223,16 @@ impl Downloads {
             Err(ProbeFail::Html) => {
                 self.dispatch(&id, Event::ProbeHtml { url_looks_like_file: true });
             }
+            Err(ProbeFail::LocalRedirect) => {
+                self.dispatch(&id, Event::LocalRedirect);
+            }
             Err(ProbeFail::Net) => {
-                self.dispatch(&id, Event::NetErr);
+                if self.is_offline() {
+                    // No network: wait for it instead of failing.
+                    self.dispatch_tagged(&id, Event::GovBlock(PauseReason::Offline), Some(OFFLINE_TAG));
+                } else {
+                    self.dispatch(&id, Event::NetErr);
+                }
             }
         }
     }
@@ -1115,7 +1291,11 @@ impl Downloads {
                     return;
                 }
                 Err(ProbeFail::Html) => {
-                    self.dispatch(&id, Event::HttpFatal);
+                    self.dispatch(&id, Event::NotAFile);
+                    return;
+                }
+                Err(ProbeFail::LocalRedirect) => {
+                    self.dispatch(&id, Event::LocalRedirect);
                     return;
                 }
                 Err(ProbeFail::Net) => {
@@ -1140,16 +1320,21 @@ impl Downloads {
             }
         };
 
+        let folder = self.update(&id, |r, _| PathBuf::from(&r.folder)).unwrap_or_default();
         loop {
             if self.state_of(&id) != Some(State::Downloading) {
                 return;
             }
-            let Some((builder, ranged, total)) = self.build_get(&id, &client, held) else {
+            let Some((builder, ranged, total, validator)) = self.build_get(&id, &client, held) else {
                 return;
             };
             let resp = match builder.send().await {
                 Ok(r) => r,
-                Err(_) => {
+                Err(e) => {
+                    if is_local_redirect(&e) {
+                        self.dispatch(&id, Event::LocalRedirect);
+                        return;
+                    }
                     if !self.transient(&id, None).await {
                         return;
                     }
@@ -1158,7 +1343,7 @@ impl Downloads {
             };
             let status = resp.status().as_u16();
             let headers = read_headers(resp.headers());
-            match judge_response(status, &headers, held, total, ranged) {
+            match judge_get(status, &headers, held, total, validator.as_deref(), ranged) {
                 Reply::Body { offset, total: learned } => {
                     if offset == 0 {
                         held = 0;
@@ -1170,14 +1355,27 @@ impl Downloads {
                     });
                     let size = learned.or(total);
                     if let Some(sz) = size {
+                        // The size is known now: stop before allocating more than the storage can hold.
+                        let free = tokio::task::block_in_place(|| free_space(&folder));
+                        if !fits(Some(sz), offset, free) {
+                            self.dispatch(&id, Event::Enospc);
+                            return;
+                        }
                         // Pre-allocate once for a fresh file.
-                        let _ = tokio::task::block_in_place(|| {
+                        let alloc = tokio::task::block_in_place(|| {
                             if file.metadata().map(|m| m.len()).unwrap_or(0) != sz && offset == 0 {
                                 file.set_len(sz)
                             } else {
                                 Ok(())
                             }
                         });
+                        if let Err(e) = alloc {
+                            let ev = io_event(&e, 0);
+                            if !matches!(ev, Event::Transient { .. }) {
+                                self.dispatch(&id, ev);
+                                return;
+                            }
+                        }
                     }
                     match self.stream_body(&id, resp, &file, offset, size).await {
                         Streamed::Stopped => return,
@@ -1207,6 +1405,10 @@ impl Downloads {
                 }
                 Reply::Event(ev) => {
                     let (state, effects) = self.dispatch(&id, ev);
+                    if ev == Event::NotAFile {
+                        // A page is never saved: drop the part file.
+                        self.update(&id, |rec, _| delete_partial(rec));
+                    }
                     if effects.contains(&Effect::TruncatePart) {
                         // The server sent the whole file again: write it from the start.
                         held = 0;
@@ -1253,6 +1455,12 @@ impl Downloads {
 
     /// One failed attempt: ask the machine, wait the backoff, and say whether to go on.
     async fn transient(self: &Arc<Self>, id: &str, retry_after: Option<Duration>) -> bool {
+        // While the phone is offline a failed request is expected: wait, and do not use up the retries.
+        // The governance pass pauses the download with the reason `offline` and stops this task.
+        if self.is_offline() {
+            tokio::time::sleep(Duration::from_secs(2)).await;
+            return self.state_of(id) == Some(State::Downloading);
+        }
         let n = self
             .update(id, |_, l| {
                 let n = l.attempts;
@@ -1314,6 +1522,10 @@ impl Downloads {
         if held == 0 {
             file.set_len(0).map_err(|e| io_event(&e, 0))?;
             if let Some(t) = total {
+                // Never allocate more than the storage can hold, with the reserve left over.
+                if !fits(Some(t), 0, free_space(&folder)) {
+                    return Err(Event::Enospc);
+                }
                 file.set_len(t).map_err(|e| io_event(&e, 0))?;
             }
         }
@@ -1332,7 +1544,7 @@ impl Downloads {
         id: &str,
         client: &Client,
         held: u64,
-    ) -> Option<(reqwest::RequestBuilder, bool, Option<u64>)> {
+    ) -> Option<(reqwest::RequestBuilder, bool, Option<u64>, Option<String>)> {
         self.update(id, |rec, live| {
             let mut b = client.get(rec.url.as_str()).header(ACCEPT_ENCODING, "identity");
             if let Some(ua) = live.user_agent.as_deref().and_then(|v| HeaderValue::from_str(v).ok()) {
@@ -1354,7 +1566,7 @@ impl Downloads {
                     ranged = true;
                 }
             }
-            (b, ranged, rec.size)
+            (b, ranged, rec.size, rec.validator.clone())
         })
     }
 
@@ -1383,6 +1595,7 @@ impl Downloads {
         };
         let mut side = Sidecar::new(&url, &name, total, validator);
         let side_path = sidecar_path(&folder, &name);
+        let mut last_space = Instant::now();
         loop {
             let chunk = match resp.chunk().await {
                 Ok(Some(c)) => c,
@@ -1405,6 +1618,12 @@ impl Downloads {
                     left -= n;
                 }
             }
+            // More bytes than the probe promised: the file changed. Nothing is finished from this.
+            if overruns(pos, chunk.len() as u64, total) {
+                self.flush_side(&mut side, &side_path, file, pos, resumable);
+                self.dispatch(id, Event::ValidatorChanged);
+                return Streamed::Stopped;
+            }
             let write = tokio::task::block_in_place(|| write_all_at(file, &chunk, pos));
             if let Err(e) = write {
                 let n = self.update(id, |_, l| l.attempts).unwrap_or(0);
@@ -1418,6 +1637,18 @@ impl Downloads {
                 };
             }
             pos += chunk.len() as u64;
+
+            // Unknown size: stop with Storage full when the free space drops below the reserve.
+            if total.is_none() && last_space.elapsed() >= SIDECAR_FLUSH {
+                last_space = Instant::now();
+                let free = tokio::task::block_in_place(|| free_space(&folder));
+                if !fits(None, 0, free) {
+                    self.flush_side(&mut side, &side_path, file, pos, resumable);
+                    self.update(id, |rec, _| rec.held = pos);
+                    self.dispatch(id, Event::Enospc);
+                    return Streamed::Stopped;
+                }
+            }
 
             if last_report.elapsed() >= REPORT_EVERY {
                 let dt = last_report.elapsed().as_secs_f64().max(0.001);
@@ -1498,7 +1729,13 @@ async fn probe_request(
     if let Some((u, p)) = auth {
         b = b.basic_auth(u, Some(p));
     }
-    let resp = b.send().await.map_err(|_| ProbeFail::Net)?;
+    let resp = b.send().await.map_err(|e| {
+        if is_local_redirect(&e) {
+            ProbeFail::LocalRedirect
+        } else {
+            ProbeFail::Net
+        }
+    })?;
     let status = resp.status().as_u16();
     let headers = read_headers(resp.headers());
     let final_url = resp.url().to_string();
@@ -1542,6 +1779,7 @@ fn probe_error(f: ProbeFail) -> EngineError {
             },
         ),
         ProbeFail::Html => EngineError::new(ErrorCode::NotAFile, "This link opens a web page, not a file."),
+        ProbeFail::LocalRedirect => EngineError::new(ErrorCode::LocalRedirect, LOCAL_REDIRECT_COPY),
     }
 }
 
@@ -1629,6 +1867,62 @@ mod tests {
         assert_eq!(reason_for_tag("charging_only"), PauseReason::Battery);
         assert_eq!(reason_for_tag("schedule"), PauseReason::Schedule);
         assert_eq!(reason_for_tag("storage_full"), PauseReason::Storage);
+        assert_eq!(reason_for_tag("offline"), PauseReason::Offline);
+    }
+
+    fn tags(t: &[&str]) -> Vec<String> {
+        t.iter().map(|s| s.to_string()).collect()
+    }
+
+    #[test]
+    fn offline_pauses_working_and_waiting_downloads_with_its_own_reason() {
+        let b = tags(&["offline"]);
+        for st in [State::Downloading, State::Queued, State::Resolving] {
+            assert_eq!(
+                gov_event(st, &b),
+                Some((Event::GovBlock(PauseReason::Offline), "offline".to_string())),
+                "{st:?}"
+            );
+        }
+        assert_eq!(gov_event(State::Finished, &b), None);
+        assert_eq!(gov_event(State::Paused(PauseReason::User), &b), None);
+        assert_eq!(gov_event(State::Downloading, &tags(&[])), None);
+    }
+
+    #[test]
+    fn other_tags_pause_only_the_working_download() {
+        let b = tags(&["wifi_only"]);
+        assert_eq!(
+            gov_event(State::Downloading, &b),
+            Some((Event::GovBlock(PauseReason::Network), "wifi_only".to_string()))
+        );
+        assert_eq!(gov_event(State::Queued, &b), None);
+        assert_eq!(gov_event(State::Resolving, &b), None);
+    }
+
+    #[test]
+    fn wifi_and_vpn_tags_block_the_network_but_offline_does_not() {
+        assert!(blocks_network(&tags(&["wifi_only"])));
+        assert!(blocks_network(&tags(&["offline", "vpn_required"])));
+        assert!(!blocks_network(&tags(&["offline"])));
+        assert!(!blocks_network(&tags(&["battery", "schedule", "storage_full"])));
+        assert!(!blocks_network(&tags(&[])));
+    }
+
+    #[test]
+    fn the_redirect_refusal_is_found_in_an_error_chain() {
+        let inner = io::Error::new(io::ErrorKind::Other, LOCAL_REDIRECT_MSG);
+        assert!(chain_contains(&inner, LOCAL_REDIRECT_MSG));
+        let other = io::Error::new(io::ErrorKind::Other, "timed out");
+        assert!(!chain_contains(&other, LOCAL_REDIRECT_MSG));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn free_space_reads_the_nearest_existing_folder() {
+        let d = std::env::temp_dir();
+        assert!(free_space(&d).is_some());
+        assert!(free_space(&d.join("maglev-not-created-yet").join("sub")).is_some());
     }
 
     #[test]
@@ -1687,6 +1981,36 @@ mod tests {
         assert_eq!(io_event(&io::Error::from_raw_os_error(13), 3), Event::Eacces);
         assert_eq!(io_event(&io::Error::new(io::ErrorKind::PermissionDenied, "x"), 3), Event::Eacces);
         assert_eq!(io_event(&io::Error::new(io::ErrorKind::Other, "x"), 3), Event::Transient { attempts: 3 });
+        // Read-only storage and a full quota.
+        assert_eq!(io_event(&io::Error::from_raw_os_error(30), 0), Event::Eacces);
+        assert_eq!(io_event(&io::Error::from_raw_os_error(122), 0), Event::Enospc);
+    }
+
+    #[test]
+    fn storage_faults_do_not_become_network_errors() {
+        // ENOENT, EIO, ENXIO, ENODEV, ENOTDIR, ESTALE: the folder or the card is gone.
+        for code in [2, 5, 6, 19, 20, 116] {
+            assert_eq!(io_event(&io::Error::from_raw_os_error(code), 4), Event::StorageGone, "{code}");
+        }
+        assert_eq!(io_event(&io::Error::new(io::ErrorKind::NotFound, "x"), 4), Event::StorageGone);
+        // EFBIG: FAT32 4 GB limit.
+        assert_eq!(io_event(&io::Error::from_raw_os_error(27), 4), Event::FileTooLarge);
+    }
+
+    #[test]
+    fn new_error_copy_is_plain_english() {
+        assert_eq!(
+            error_message(DlError::StorageUnavailable, None),
+            "The folder isn't available. Is the SD card in?"
+        );
+        assert_eq!(
+            error_message(DlError::FileTooLarge, None),
+            "This file is bigger than the card's format allows (4 GB). Use phone storage."
+        );
+        assert_eq!(
+            error_message(DlError::LocalRedirect, None),
+            "This link tried to send Maglev to a device on your network, so it was stopped."
+        );
     }
 
     #[test]

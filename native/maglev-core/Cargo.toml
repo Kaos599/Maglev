@@ -27,6 +27,8 @@ tracing = "0.1"
 # resolves one copy. Only `rustls` (already on through librqbit) and `socks` (proxy, also on through librqbit) are
 # selected; `Response::chunk` needs no feature. The rustls-platform-verifier patch below applies to this copy too.
 reqwest = { version = "0.13", default-features = false, features = ["rustls", "socks"] }
+# statvfs for the free-space check of URL downloads (no helper existed). Already in the graph through tokio and librqbit.
+libc = "0.2"
 
 # reqwest 0.13's `rustls` feature hard-wires rustls-platform-verifier, which on Android needs a JNI
 # init plus a Kotlin companion component. reqwest has no feature to pick another verifier and

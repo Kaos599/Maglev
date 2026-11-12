@@ -41,6 +41,10 @@ pub enum ErrorCode {
     NotAFile,
     /// URL downloads: the finished file does not match the checksum.
     ChecksumMismatch,
+    /// URL downloads: a redirect pointed at a device on the local network, so it was refused.
+    LocalRedirect,
+    /// URL downloads: the Wi-Fi-only or VPN-only setting blocks the request.
+    Blocked,
 }
 
 impl ErrorCode {
@@ -69,6 +73,8 @@ impl ErrorCode {
             ErrorCode::FileChanged => "FILE_CHANGED",
             ErrorCode::NotAFile => "NOT_A_FILE",
             ErrorCode::ChecksumMismatch => "CHECKSUM_MISMATCH",
+            ErrorCode::LocalRedirect => "LOCAL_REDIRECT",
+            ErrorCode::Blocked => "BLOCKED",
         }
     }
 }

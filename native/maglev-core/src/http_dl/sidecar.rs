@@ -1,7 +1,8 @@
 //! The resume record next to a partial download: `<name>.maglev-dl.json` beside `<name>.part`.
 //!
-//! It holds what resuming needs: the final URL (without credentials), the validator, the total size and, per
-//! segment, how far it got. Credentials and request headers are never written here (contract section 17).
+//! It holds what resuming needs: the link without credentials or query, the validator, the total size and, per
+//! segment, how far it got. The file sits in a public folder, so signed tokens (the query) and request headers are
+//! never written here (contract section 17). The `url` field stays for readers of older builds.
 
 use std::path::{Path, PathBuf};
 
@@ -32,13 +33,25 @@ pub struct Sidecar {
     pub segments: Vec<Segment>,
 }
 
+/// `scheme://host[:port]/path`: no user name, password, query or fragment. A string that is not a URL is cut at the
+/// first `?` or `#`.
+pub fn safe_url(url: &str) -> String {
+    match reqwest::Url::parse(url) {
+        Ok(u) if u.host_str().is_some() => {
+            let port = u.port().map(|p| format!(":{p}")).unwrap_or_default();
+            format!("{}://{}{}{}", u.scheme(), u.host_str().unwrap_or(""), port, u.path())
+        }
+        _ => url.split(['?', '#']).next().unwrap_or("").to_string(),
+    }
+}
+
 impl Sidecar {
     /// A single segment covering the whole file (or an open-ended one when the size is unknown).
     pub fn new(url: &str, name: &str, total: Option<u64>, validator: Option<String>) -> Self {
         let end = total.map(|t| t.saturating_sub(1)).unwrap_or(u64::MAX);
         Sidecar {
             version: VERSION,
-            url: url.to_string(),
+            url: safe_url(url),
             name: name.to_string(),
             total,
             validator,
@@ -82,7 +95,9 @@ impl Sidecar {
     /// `None` when the file is missing, unreadable, from another version or not a valid record.
     pub fn load(path: &Path) -> Option<Sidecar> {
         let bytes = std::fs::read(path).ok()?;
-        let s: Sidecar = serde_json::from_slice(&bytes).ok()?;
+        let mut s: Sidecar = serde_json::from_slice(&bytes).ok()?;
+        // A record written by an older build may carry a signed query. Drop it; the next save removes it from disk.
+        s.url = safe_url(&s.url);
         if s.version != VERSION || s.segments.is_empty() {
             return None;
         }
@@ -189,6 +204,28 @@ mod tests {
         assert_eq!(part_path(d, "a.bin"), PathBuf::from("/dl/a.bin.part"));
         assert_eq!(sidecar_path(d, "a.bin"), PathBuf::from("/dl/a.bin.maglev-dl.json"));
         assert_eq!(final_path(d, "a.bin"), PathBuf::from("/dl/a.bin"));
+    }
+
+    #[test]
+    fn the_stored_url_has_no_query_credentials_or_fragment() {
+        let s = Sidecar::new("https://me:pw@x.test:8443/a/b.bin?token=SECRET&sig=1#frag", "b.bin", Some(1), None);
+        assert_eq!(s.url, "https://x.test:8443/a/b.bin");
+        let json = serde_json::to_string(&s).unwrap();
+        for bad in ["SECRET", "token", "sig=", "pw", "frag", "me:"] {
+            assert!(!json.contains(bad), "{bad}");
+        }
+        assert_eq!(safe_url("u?x=1"), "u");
+    }
+
+    #[test]
+    fn an_old_record_with_a_query_is_cleaned_on_load() {
+        let d = temp_dir("old");
+        let p = sidecar_path(&d, "a.bin");
+        std::fs::write(&p, br#"{"version":1,"url":"https://x.test/a.bin?token=SECRET","name":"a.bin","total":5,"validator":"\"v\"","segments":[{"start":0,"end":4,"pos":2}]}"#).unwrap();
+        let s = Sidecar::load(&p).unwrap();
+        assert_eq!(s.url, "https://x.test/a.bin");
+        assert_eq!(s.resume_offset(), 2);
+        let _ = std::fs::remove_dir_all(&d);
     }
 
     #[test]

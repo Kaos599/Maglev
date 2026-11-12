@@ -1,6 +1,7 @@
 //! The pure decisions of the URL download driver: how to read a probe answer, what a resume answer means,
 //! retry timing and pacing (contract section 17). No IO, no clock, no randomness (the caller passes the jitter).
 
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 use std::time::Duration;
 
 use super::machine::Event;
@@ -95,7 +96,9 @@ fn is_html(content_type: Option<&str>) -> bool {
 pub fn classify_probe(status: u16, h: &Headers, url: &str) -> ProbeVerdict {
     match status {
         200 | 206 => {
-            if is_html(h.content_type.as_deref()) && url_looks_like_file(url) {
+            // A web page is never the file, whatever the URL looks like (an HTML file download is rare).
+            let _ = url;
+            if is_html(h.content_type.as_deref()) {
                 return ProbeVerdict::Html;
             }
             let validator = pick_validator(h.etag.as_deref(), h.last_modified.as_deref());
@@ -186,6 +189,99 @@ pub fn judge_response(status: u16, h: &Headers, held: u64, total: Option<u64>, r
         408 | 429 | 500 | 502 | 503 | 504 => Reply::Retry { retry_after: parse_retry_after(h.retry_after.as_deref()) },
         _ => Reply::Event(Event::HttpFatal),
     }
+}
+
+/// Judges the response to a GET against what the probe taught us (`total` and `validator` as stored).
+/// A page instead of the file is `NotAFile`; a fresh 200 whose length or validator differs from the probe is a
+/// changed file. A header the GET does not send cannot be compared and is let through.
+pub fn judge_get(
+    status: u16,
+    h: &Headers,
+    held: u64,
+    total: Option<u64>,
+    validator: Option<&str>,
+    ranged: bool,
+) -> Reply {
+    let reply = judge_response(status, h, held, total, ranged);
+    let offset = match &reply {
+        Reply::Body { offset, .. } => *offset,
+        _ => return reply,
+    };
+    if is_html(h.content_type.as_deref()) {
+        return Reply::Event(Event::NotAFile);
+    }
+    if offset == 0 {
+        if let (Some(a), Some(b)) = (total, h.content_length) {
+            if a != b {
+                return Reply::Event(Event::ValidatorChanged);
+            }
+        }
+        if let (Some(a), Some(b)) = (validator, pick_validator(h.etag.as_deref(), h.last_modified.as_deref())) {
+            if a != b {
+                return Reply::Event(Event::ValidatorChanged);
+            }
+        }
+    }
+    reply
+}
+
+/// True when writing `len` more bytes at `pos` would pass the declared `total`.
+pub fn overruns(pos: u64, len: u64, total: Option<u64>) -> bool {
+    total.map(|t| pos.saturating_add(len) > t).unwrap_or(false)
+}
+
+/// Free space kept back for the system and the user (contract section 10.3).
+pub const RESERVE_BYTES: u64 = 200 * 1024 * 1024;
+
+/// Does the rest of the file fit with the reserve left over? `free` of `None` (unknown) says yes.
+/// With an unknown `size` only the reserve is checked.
+pub fn fits(size: Option<u64>, held: u64, free: Option<u64>) -> bool {
+    let Some(free) = free else {
+        return true;
+    };
+    let need = size.map(|s| s.saturating_sub(held)).unwrap_or(0);
+    need <= free.saturating_sub(RESERVE_BYTES) && (size.is_some() || free >= RESERVE_BYTES)
+}
+
+fn v4_is_local(a: Ipv4Addr) -> bool {
+    let o = a.octets();
+    a.is_loopback()
+        || a.is_private()
+        || a.is_link_local()
+        || a.is_unspecified()
+        || o[0] == 0
+        || (o[0] == 100 && (o[1] & 0xc0) == 64)
+}
+
+fn v6_is_local(a: Ipv6Addr) -> bool {
+    if let Some(v4) = a.to_ipv4_mapped() {
+        return v4_is_local(v4);
+    }
+    let seg = a.segments();
+    a.is_loopback()
+        || a.is_unspecified()
+        || (seg[0] & 0xffc0) == 0xfe80
+        || (seg[0] & 0xfe00) == 0xfc00
+}
+
+/// Loopback, private (RFC 1918), link-local, CGNAT, unique-local, `localhost` and `*.local`.
+/// `host` may be a bracketed IPv6 literal.
+pub fn is_local_host(host: &str) -> bool {
+    let h = host.trim().trim_start_matches('[').trim_end_matches(']').trim_end_matches('.');
+    let lower = h.to_ascii_lowercase();
+    if lower == "localhost" || lower.ends_with(".localhost") || lower.ends_with(".local") {
+        return true;
+    }
+    match lower.parse::<IpAddr>() {
+        Ok(IpAddr::V4(a)) => v4_is_local(a),
+        Ok(IpAddr::V6(a)) => v6_is_local(a),
+        Err(_) => false,
+    }
+}
+
+/// A redirect may not lead onto the local network, unless the link the user typed was already there.
+pub fn redirect_host_allowed(original_host: &str, target_host: &str) -> bool {
+    !is_local_host(target_host) || is_local_host(original_host)
 }
 
 /// `Retry-After` in seconds. The HTTP-date form is not parsed; the normal backoff covers it.
@@ -316,11 +412,127 @@ mod tests {
     }
 
     #[test]
-    fn probe_html_for_a_file_url() {
+    fn probe_html_is_always_not_a_file() {
         let hd = Headers { content_type: Some("text/html; charset=utf-8".into()), ..h() };
         assert_eq!(classify_probe(200, &hd, "https://x.test/movie.mkv"), ProbeVerdict::Html);
-        // An extension-less URL that answers with a page is treated as the file (download endpoints).
-        assert!(matches!(classify_probe(200, &hd, "https://x.test/get"), ProbeVerdict::Ok(_)));
+        assert_eq!(classify_probe(200, &hd, "https://x.test/get"), ProbeVerdict::Html);
+        assert_eq!(classify_probe(206, &hd, "https://x.test/page.html"), ProbeVerdict::Html);
+        let xh = Headers { content_type: Some("application/xhtml+xml".into()), ..h() };
+        assert_eq!(classify_probe(200, &xh, "https://x.test/a"), ProbeVerdict::Html);
+    }
+
+    // ---- GET against the probe ----
+
+    #[test]
+    fn get_with_a_page_is_not_a_file() {
+        let hd = Headers { content_type: Some("text/html".into()), content_length: Some(10), ..h() };
+        assert_eq!(judge_get(200, &hd, 0, Some(10), None, false), Reply::Event(Event::NotAFile));
+        assert_eq!(judge_get(200, &hd, 0, None, None, false), Reply::Event(Event::NotAFile));
+    }
+
+    #[test]
+    fn get_length_must_match_the_probe() {
+        let hd = Headers { content_length: Some(11), ..h() };
+        assert_eq!(judge_get(200, &hd, 0, Some(10), None, false), Reply::Event(Event::ValidatorChanged));
+        let ok = Headers { content_length: Some(10), ..h() };
+        assert_eq!(
+            judge_get(200, &ok, 0, Some(10), None, false),
+            Reply::Body { offset: 0, total: Some(10) }
+        );
+        // No length on the GET cannot be compared.
+        assert_eq!(judge_get(200, &h(), 0, Some(10), None, false), Reply::Body { offset: 0, total: None });
+    }
+
+    #[test]
+    fn get_validator_must_match_the_probe() {
+        let other = Headers { etag: Some("\"v2\"".into()), ..h() };
+        assert_eq!(
+            judge_get(200, &other, 0, None, Some("\"v1\""), false),
+            Reply::Event(Event::ValidatorChanged)
+        );
+        let same = Headers { etag: Some("\"v1\"".into()), ..h() };
+        assert!(matches!(judge_get(200, &same, 0, None, Some("\"v1\""), false), Reply::Body { .. }));
+        let lm = Headers { last_modified: Some("Tue, 02 Jan 2024 00:00:00 GMT".into()), ..h() };
+        assert_eq!(
+            judge_get(200, &lm, 0, None, Some("Mon, 01 Jan 2024 00:00:00 GMT"), false),
+            Reply::Event(Event::ValidatorChanged)
+        );
+    }
+
+    #[test]
+    fn get_resume_replies_pass_through() {
+        assert_eq!(
+            judge_get(206, &ranged_206(1000, 5000), 1000, Some(5000), Some("\"v\""), true),
+            Reply::Body { offset: 1000, total: Some(5000) }
+        );
+        assert_eq!(judge_get(200, &h(), 1000, Some(5000), Some("\"v\""), true), Reply::Event(Event::Got200OnResume));
+        assert_eq!(judge_get(404, &h(), 0, None, None, false), Reply::Event(Event::HttpFatal));
+    }
+
+    // ---- overrun and free space ----
+
+    #[test]
+    fn bytes_past_the_total_are_an_overrun() {
+        assert!(!overruns(0, 10, Some(10)));
+        assert!(overruns(5, 6, Some(10)));
+        assert!(overruns(10, 1, Some(10)));
+        assert!(!overruns(u64::MAX, 1, None));
+    }
+
+    #[test]
+    fn free_space_rule_keeps_the_reserve() {
+        let gb = 1024 * 1024 * 1024u64;
+        assert!(fits(Some(gb), 0, Some(2 * gb)));
+        assert!(!fits(Some(gb), 0, Some(gb)));
+        assert!(!fits(Some(gb), 0, Some(gb + RESERVE_BYTES - 1)));
+        assert!(fits(Some(gb), 0, Some(gb + RESERVE_BYTES)));
+        // Bytes already held do not need space again.
+        assert!(fits(Some(gb), gb - 1000, Some(RESERVE_BYTES + 1000)));
+        // Unknown size: only the reserve counts.
+        assert!(fits(None, 0, Some(RESERVE_BYTES)));
+        assert!(!fits(None, 0, Some(RESERVE_BYTES - 1)));
+        // Unknown free space does not block.
+        assert!(fits(Some(gb), 0, None));
+    }
+
+    // ---- redirects to the local network ----
+
+    #[test]
+    fn local_hosts_are_recognised() {
+        for h in [
+            "localhost", "LOCALHOST", "printer.local", "nas.local.", "127.0.0.1", "127.9.9.9", "10.0.0.5",
+            "172.16.0.1", "172.31.255.255", "192.168.1.1", "169.254.10.10", "100.64.0.1", "100.127.255.255",
+            "0.0.0.0", "[::1]", "::1", "[fe80::1]", "[febf::1]", "[fc00::1]", "[fd12:3456::1]",
+            "[::ffff:192.168.1.1]", "[::ffff:127.0.0.1]",
+        ] {
+            assert!(is_local_host(h), "{h}");
+        }
+    }
+
+    #[test]
+    fn public_hosts_are_not_local() {
+        for h in [
+            "example.com", "8.8.8.8", "172.15.0.1", "172.32.0.1", "100.63.255.255", "100.128.0.1", "192.169.0.1",
+            "[2001:4860:4860::8888]", "[fec0::1]", "[::ffff:8.8.8.8]", "notlocal.example", "mylocal.com",
+        ] {
+            assert!(!is_local_host(h), "{h}");
+        }
+    }
+
+    #[test]
+    fn redirect_to_the_local_network_is_refused_from_a_public_link() {
+        assert!(!redirect_host_allowed("cdn.example.com", "192.168.1.1"));
+        assert!(!redirect_host_allowed("cdn.example.com", "localhost"));
+        assert!(!redirect_host_allowed("cdn.example.com", "[::1]"));
+        assert!(!redirect_host_allowed("cdn.example.com", "router.local"));
+        assert!(redirect_host_allowed("cdn.example.com", "files.example.org"));
+    }
+
+    #[test]
+    fn a_local_link_may_redirect_locally() {
+        assert!(redirect_host_allowed("192.168.1.10", "192.168.1.20"));
+        assert!(redirect_host_allowed("nas.local", "10.0.0.2"));
+        assert!(redirect_host_allowed("192.168.1.10", "cdn.example.com"));
     }
 
     #[test]
