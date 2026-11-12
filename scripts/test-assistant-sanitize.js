@@ -91,6 +91,12 @@ async function main() {
   ];
   for (const n of extraNames) check(`name unchanged: ${n}`, sanitizeText(n, 400) === n, sanitizeText(n, 400));
 
+  console.log('filterModelOutput: small-model habits');
+  check('bracketed handle is cut', filterModelOutput('The smallest is **2.0 GB** (r6), still short.') === 'The smallest is **2.0 GB**, still short.');
+  check('bare handle stays (cutting would break the sentence)', filterModelOutput('Pick r2.') === 'Pick r2.');
+  check('codec names survive', filterModelOutput('Avedon (2026) H.264 x265') === 'Avedon (2026) H.264 x265');
+  check("\"I'll wait\" sign-off is cut", filterModelOutput("Go for it. I'll wait for your choice.") === 'Go for it.');
+
   console.log('filterModelOutput: hostile model prose');
   const hostile = [
     ['plain https link', 'Get it at https://evil.example/pay today', 'https://'],

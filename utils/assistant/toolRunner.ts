@@ -694,7 +694,13 @@ export function createToolRunner(deps: ToolRunnerDeps): ToolRunner {
     const cardViews = cardRows.map((r) => cardFor(results.get(r.id) as Stored, space));
 
     const tail: Data = {};
-    if (space.known) tail.free_text = formatBytes(Math.max(0, space.freeBytes - space.pendingNeed - ADMISSION_RESERVE_BYTES));
+    if (space.known) {
+      const usable = Math.max(0, space.freeBytes - space.pendingNeed - ADMISSION_RESERVE_BYTES);
+      // "0 B free" reads as a bug when the phone shows 1.1 GB free: name what holds the space.
+      tail.free_text = space.pendingNeed > 0
+        ? `${formatBytes(usable)} usable for new downloads (${formatBytes(space.freeBytes)} free, but unfinished downloads still need ${formatBytes(space.pendingNeed)})`
+        : formatBytes(usable);
+    }
     // Nothing fits: say how much more space the closest one needs.
     if (shown.length > 0 && shown.every((r) => fitOf(r.admission, space.known) === 'too_big')) {
       const shortfall = Math.min(...shown.map((r) => -(r.admission as NonNullable<Ranked['admission']>).leftAfter));
