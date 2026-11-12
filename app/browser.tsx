@@ -20,6 +20,7 @@ import { banners, empty, notices } from '../constants/copy';
 import { PixelIcon } from '../components/PixelIcon';
 import { Banner, Button, EmptyBlock, IconButton, ListRow, ProgressBar, Sheet, Toggle } from '../components/ui';
 import { FoundTray } from '../components/browser/FoundTray';
+import { StreamSheet } from '../components/browser/StreamSheet';
 import { FoundDownloadSheet, type DownloadTarget } from '../components/browser/FoundDownload';
 import { isInstaller, mergeFound } from '../components/browser/foundFilter';
 import { updateBrowserPrefs, useBrowserPrefs } from '../utils/prefs/browser';
@@ -349,19 +350,14 @@ export default function BrowserScreen() {
       <FoundTray visible={trayOpen} items={found} onClose={() => setTrayOpen(false)} onPick={pickFile} onPickStream={(item) => { setTrayOpen(false); setStreamItem(item); }} />
       <FoundDownloadSheet target={target} onClose={() => setTarget(null)} />
 
-      <Sheet visible={streamItem != null} onClose={() => setStreamItem(null)} title="Video stream" subtitle={streamItem?.name}>
-        <View style={styles.sheetActions}>
-          <Button label="Close" variant="ghost" onPress={() => setStreamItem(null)} />
-          <Button
-            label="Copy link"
-            icon="copy"
-            onPress={() => {
-              if (streamItem) void copy(streamItem.url);
-              setStreamItem(null);
-            }}
-          />
-        </View>
-      </Sheet>
+      <StreamSheet
+        item={streamItem}
+        pageTitle={page?.title}
+        pageUrl={page?.url}
+        userAgent={page?.userAgent}
+        onClose={() => setStreamItem(null)}
+        onCopyLink={(u) => void copy(u)}
+      />
 
       <Sheet visible={menuOpen} onClose={() => setMenuOpen(false)} title="This page" subtitle={pageHost || undefined}>
         <ListRow
@@ -441,5 +437,4 @@ const makeStyles = (c: ThemeColors) =>
       borderTopColor: c.border,
     },
     blocked: { ...type.mono, fontSize: type.size.sm, color: c.textMuted },
-    sheetActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: spacing.sm, marginTop: spacing.md },
   });

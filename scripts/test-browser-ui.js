@@ -80,6 +80,23 @@ async function main() {
   check('installers', ['apk', 'exe', 'msi', 'dmg', 'bat', 'cmd', 'scr'].every((e) => f.isInstaller({ ext: e, name: 'x' })) && f.isInstaller({ ext: null, name: 'Setup.EXE' }) && !f.isInstaller({ ext: 'zip', name: 'a.zip' }));
   check('stream tags', f.streamTag({ stream: 'hls' }) === 'HLS' && f.streamTag({ stream: 'dash' }) === 'DASH' && f.streamTag({ stream: null }) === null);
 
+  console.log('stream choices');
+  const sc = await import('../components/browser/streamChoice.ts');
+  const V = (id, height, bandwidth, estBytes, audio = 'muxed') => ({ id, height, width: null, bandwidth, codecs: null, estBytes, audio });
+  const vs = [V('a', 720, 2e6, 1.5e9), V('b', 1080, 4e6, 1.2 * 1024 ** 3), V('c', 480, 1e6, null)];
+  check('default is the tallest', sc.defaultVariant(vs).id === 'b' && sc.defaultVariant([]) === null);
+  check('default without heights is the biggest bandwidth', sc.defaultVariant([V('x', null, 1e6, null), V('y', null, 3e6, null)]).id === 'y');
+  check('label has height and size', sc.qualityLabel(vs[1], vs) === '1080p · about 1.2 GB');
+  check('label omits unknown size', sc.qualityLabel(vs[2], vs) === '480p');
+  const blind = [V('x', null, 1e6, null), V('y', null, 2e6, null), V('z', null, 3e6, null)];
+  check('no height falls back to bandwidth tiers', sc.qualityName(blind[0], blind) === 'Low quality' && sc.qualityName(blind[1], blind) === 'Medium quality' && sc.qualityName(blind[2], blind) === 'High quality' && sc.qualityName(blind[0], [blind[0]]) === 'Medium quality');
+  const tr = [{ id: 't1', lang: 'en', name: 'English', bandwidth: null }, { id: 't2', lang: 'fr', name: null, bandwidth: null }, { id: 't3', lang: null, name: null, bandwidth: null }];
+  check('audio label: name, lang, Track N', sc.audioLabel(tr[0], 0) === 'English' && sc.audioLabel(tr[1], 1) === 'fr' && sc.audioLabel(tr[2], 2) === 'Track 3');
+  check('audio picker only for separate audio with 2+ tracks', sc.needsAudioPicker(V('s', 1, 1, 1, 'separate'), tr) && !sc.needsAudioPicker(V('m', 1, 1, 1, 'muxed'), tr) && !sc.needsAudioPicker(V('s', 1, 1, 1, 'separate'), [tr[0]]));
+  check('default audio is first, a valid pick is kept', sc.defaultAudio(tr) === 't1' && sc.defaultAudio(tr, 't2') === 't2' && sc.defaultAudio(tr, 'gone') === 't1' && sc.defaultAudio([]) === null);
+  const sel = sc.buildSelection('hls', { audioTracks: tr }, V('s', 1, 1, 1, 'separate'), 't2');
+  check('selection carries audio only when separate', sel.audioId === 't2' && sel.variantId === 's' && sel.kind === 'hls' && !('audioId' in sc.buildSelection('dash', { audioTracks: tr }, V('m', 1, 1, 1, 'muxed'), 't2')));
+
   console.log('wiring');
   const exists = (p) => fs.existsSync(path.join(root, p));
   check('screens exist', exists('app/browser.tsx') && exists('app/settings/browser.tsx') && exists('components/browser/FoundTray.tsx'));
@@ -90,6 +107,7 @@ async function main() {
     check('downloads send the page user agent', /User-Agent/.test(read('components/browser/FoundDownload.tsx')));
     check('streams do not say "later"', !/later version/i.test(b + read('components/browser/FoundTray.tsx') + read('constants/copy.ts')));
   }
+  check('stream sheet probes and starts with the stream selection', /probeStream/.test(read('components/browser/StreamSheet.tsx')) && /stream:/.test(read('components/browser/StreamSheet.tsx')) && /StreamSheet/.test(read('app/browser.tsx')));
   check('native intent routes maglev://browser', /browserIntentRoute/.test(read('app/+native-intent.tsx')));
   check('search tab has Browse the web', /Browse the web/.test(read('app/(tabs)/search.tsx')));
   check('settings list has Browser row', /route: 'browser'/.test(read('app/(tabs)/settings.tsx')));

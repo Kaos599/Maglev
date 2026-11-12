@@ -163,6 +163,10 @@ export const banners = {
     installer: { title: 'This is an app installer', body: 'Only download it if you trust the site.' },
     sslRefused: { title: "Couldn't open this page securely", body: "The site's certificate isn't trusted, so Maglev stopped." },
     localRefused: { title: 'Blocked a device on your network', body: "Pages can't send you there. Type the address yourself if you trust it." },
+    streamProtected: { title: 'This video is protected' },
+    streamLive: { title: 'This is a live stream' },
+    streamUnsupported: { title: "Maglev can't save this kind of stream" },
+    streamFailed: { title: "Couldn't read this stream" },
   },
   addDownload: {
     notEnoughSpace: { title: 'Not enough space', body: 'Free up some storage, then try again.' },
@@ -249,4 +253,13 @@ export const empty = {
   engineError: {
     title: 'Engine failed to start',
   },
+} as const;
+
+/** Labels on the browser's stream sheet. Not linted as notices; they are short field names. */
+export const streamSheet = {
+  title: 'Video stream',
+  reading: 'Reading the stream',
+  quality: 'Quality',
+  audio: 'Audio',
+  name: 'Name',
 } as const;
