@@ -10,6 +10,8 @@ import { ResultRow } from '../../components/search/ResultRow';
 import { SkeletonRows } from '../../components/search/SkeletonRows';
 import { SourceScoreboard, ScoreboardEntry } from '../../components/search/SourceScoreboard';
 import { SourcesCard } from '../../components/search/SourcesCard';
+import { FollowSheet } from '../../components/search/FollowSheet';
+import { followRuleFromResult, type FollowTarget } from '../../utils/follow';
 import { NoticeBanner, addErrorNotice, useNotice } from '../../components/search/Notice';
 import { buildExtraProviders, loadExtraProviders } from '../../components/search/extra';
 import { CATEGORY_LABEL, formatAge, providerMap } from '../../components/search/meta';
@@ -73,6 +75,8 @@ export default function SearchScreen() {
   const [retryTick, setRetryTick] = useState(0);
   const [confirm, setConfirm] = useState<{ result: MergedResult; reason: string } | null>(null);
   const [solving, setSolving] = useState<string | null>(null);
+  const [following, setFollowing] = useState<FollowTarget | null>(null);
+  const followCache = useRef(new Map<string, FollowTarget | null>());
   const { notice, show, dismiss } = useNotice();
   const reqId = useRef(0);
   const controller = useRef<AbortController | null>(null);
@@ -245,6 +249,33 @@ export default function SearchScreen() {
     [handleAdd, providers, prefs.warnUnsafe],
   );
 
+  const followTargetOf = useCallback(
+    (r: MergedResult): FollowTarget | null => {
+      const cat = r.category ?? category;
+      const key = `${cat}|${trimmed}|${r.name}`;
+      const cache = followCache.current;
+      if (!cache.has(key)) {
+        if (cache.size > 400) cache.clear();
+        cache.set(key, followRuleFromResult(r.name, trimmed, cat));
+      }
+      return cache.get(key) ?? null;
+    },
+    [category, trimmed],
+  );
+
+  const onFollowed = useCallback(
+    (target: FollowTarget, status: 'followed' | 'already') => {
+      setFollowing(null);
+      show({
+        tone: 'success',
+        title: status === 'already' ? `Already following ${target.title}` : `Following ${target.title}`,
+        actionLabel: 'Open Feeds',
+        onAction: () => router.push('/feeds' as never),
+      });
+    },
+    [router, show],
+  );
+
   const nameOf = useCallback((id: string) => providers.get(id)?.name ?? id, [providers]);
 
   // After Stop, sources that never answered are left out of the scoreboard.
@@ -276,9 +307,10 @@ export default function SearchScreen() {
         added={sessionAdded.has(item.infoHash) || inList.has(item.infoHash)}
         busy={busyHash === item.infoHash}
         onAdd={() => requestAdd(item)}
+        onFollow={followTargetOf(item) ? () => setFollowing(followTargetOf(item)) : undefined}
       />
     ),
-    [busyHash, requestAdd, inList, nameOf, sessionAdded, providers, prefs.warnUnsafe],
+    [followTargetOf, busyHash, requestAdd, inList, nameOf, sessionAdded, providers, prefs.warnUnsafe],
   );
 
   const openProviders = useCallback(() => router.push('/settings/search-providers' as never), [router]);
@@ -440,6 +472,7 @@ export default function SearchScreen() {
           onSolved={handleSolved}
         />
       ) : null}
+      <FollowSheet target={following} onClose={() => setFollowing(null)} onDone={onFollowed} />
       <Sheet visible={sortOpen}onClose={() => setSortOpen(false)} title="Sort results">
         <View style={styles.wrapRow}>
           {SORT_ORDER.map((s) => (

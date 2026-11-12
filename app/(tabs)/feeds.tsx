@@ -85,6 +85,16 @@ export default function FeedsScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // A show followed from Search adds a feed while this tab stays mounted: pick it up when the tab is shown.
+  useFocusEffect(
+    useCallback(() => {
+      const latest = loadFeeds();
+      setFeeds((prev) => (JSON.stringify(prev) === JSON.stringify(latest) ? prev : latest));
+      const fresh = latest.filter((f) => !statesRef.current[f.id]);
+      if (fresh.length > 0) void refreshAll(fresh);
+    }, [refreshAll]),
+  );
+
   // Leaving the tab marks everything shown as seen.
   useFocusEffect(
     useCallback(() => {

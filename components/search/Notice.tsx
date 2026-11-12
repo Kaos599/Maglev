@@ -5,6 +5,8 @@ export interface NoticeState {
   tone: BannerTone;
   title: string;
   body?: string;
+  actionLabel?: string;
+  onAction?: () => void;
 }
 
 /** Short-lived inline notice (plain toast replacement). Auto-dismisses after 4s. */
@@ -33,7 +35,7 @@ export function useNotice() {
 
 export function NoticeBanner({ notice, onDismiss }: { notice: NoticeState | null; onDismiss: () => void }) {
   if (!notice) return null;
-  return <Banner tone={notice.tone} title={notice.title} body={notice.body} onDismiss={onDismiss} />;
+  return <Banner tone={notice.tone} title={notice.title} body={notice.body} actionLabel={notice.actionLabel} onAction={notice.onAction} onDismiss={onDismiss} />;
 }
 
 /** Maps an engine add failure to plain copy. Contract: Error carries `.code`. */
