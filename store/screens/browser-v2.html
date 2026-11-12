@@ -1,0 +1,69 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><!-- v2 data: same layout as browser.html, friendlier demo titles -->
+<title>Browser files</title>
+<link rel="stylesheet" href="app.css"><link rel="stylesheet" href="browser-page.css">
+<style>
+  /* components/browser/FoundTray.tsx */
+  .fchips { padding: 0 0 12px; gap: 8px; margin-right: -20px; }
+  .frow { min-height: 56px; display: flex; align-items: center; gap: 12px; padding: 8px 0; }
+  .thumb { width: 40px; height: 40px; border-radius: 10px; background: var(--raised); border: 1px solid var(--border); display: flex; align-items: center; justify-content: center; overflow: hidden; color: var(--muted); position: relative; flex-shrink: 0; }
+  .thumb i.px { width: 20px; height: 20px; }
+  .frow .main { flex: 1; min-width: 44px; }
+  .frow .nm { font: 13px 'SpaceMono'; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .frow .mt { font: 12px 'SpaceMono'; color: var(--muted); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  /* Image rows show the picture itself; these stand in for the poster and a storyboard frame. */
+  .img1 { background: #3B5566; }
+  .img1::before { content: ''; position: absolute; left: -6px; right: 10px; bottom: -4px; height: 22px; background: #22313A; border-radius: 50% 50% 0 0; }
+  .img1::after { content: ''; position: absolute; left: 24px; top: 7px; width: 7px; height: 7px; border-radius: 50%; background: #E9D9A6; }
+  .img2 { background: #D9CFBD; }
+  .img2::before { content: ''; position: absolute; left: 6px; top: 8px; width: 26px; height: 22px; border: 2px solid #5B5243; }
+  .img2::after { content: ''; position: absolute; left: 12px; top: 14px; width: 12px; height: 8px; background: #8A7C64; }
+  .img3 { background: #6B4A3A; }
+  .img3::before { content: ''; position: absolute; inset: 18px 0 0 0; background: #3D2A22; }
+  .img3::after { content: ''; position: absolute; left: 15px; top: 9px; width: 10px; height: 16px; background: #C9A27A; border-radius: 5px 5px 2px 2px; }
+</style></head>
+<body>
+<div class="statusbar"></div>
+<div class="bbar">
+  <div class="ib"><i class="px" data-i="back"></i></div>
+  <div class="addr"><i class="px" data-i="lock"></i><span>openfilms.example</span></div>
+  <div class="ib"><i class="px" data-i="retry"></i></div>
+  <div class="ib"><i class="px" data-i="more"></i></div>
+</div>
+<div class="prog"></div>
+<div class="web">
+  <div class="top">openfilms <em>Catalogue · About</em></div>
+  <div class="player"><div class="sky"></div><div class="hill"></div><div class="hill2"></div><div class="play"></div></div>
+  <h1>Sintel</h1>
+  <div class="by">2010 · 14 min · CC BY 3.0</div>
+  <p>A lone girl searches for the baby dragon she raised, across a frozen country and into the city of Ishtar.</p>
+  <p>Made in Blender by an open team and released for anyone to watch, share and remix.</p>
+  <p>Trailer, poster, storyboards and the press kit are below.</p>
+</div>
+<div class="bfoot"><span class="blocked">214 blocked</span><div class="btn secondary"><i class="px" data-i="file"></i>Files · 9</div></div>
+<div class="scrim"></div>
+<div class="sheet">
+  <div class="grab"></div>
+  <div class="stitle">Files</div>
+  <div class="ssub">9 found on your pages</div>
+  <div class="scontent">
+    <div class="chips fchips">
+      <div class="chip on">All<span class="n">9</span></div>
+      <div class="chip">Video<span class="n">3</span></div>
+      <div class="chip">Audio<span class="n">1</span></div>
+      <div class="chip">Image<span class="n">4</span></div>
+      <div class="chip">Document<span class="n">1</span></div>
+    </div>
+    <div class="frow"><div class="thumb"><i class="px" data-i="stream"></i></div><div class="main"><div class="nm">sintel.m3u8</div><div class="mt">cdn.openfilms.example · HLS</div></div></div>
+    <div class="frow"><div class="thumb"><i class="px" data-i="file-video"></i></div><div class="main"><div class="nm">Sintel trailer 1080p.webm</div><div class="mt">48.6 MB · cdn.openfilms.example</div></div></div>
+    <div class="frow"><div class="thumb img1"></div><div class="main"><div class="nm">Sintel poster.jpg</div><div class="mt">2.4 MB · cdn.openfilms.example</div></div></div>
+    <div class="frow"><div class="thumb img2"></div><div class="main"><div class="nm">Storyboard 4.png</div><div class="mt">1.8 MB · cdn.openfilms.example</div></div></div>
+    <div class="frow"><div class="thumb"><i class="px" data-i="file-doc"></i></div><div class="main"><div class="nm">Press kit.pdf</div><div class="mt">3.1 MB · openfilms.example</div></div></div>
+    <div class="frow"><div class="thumb"><i class="px" data-i="file-audio"></i></div><div class="main"><div class="nm">Main theme.ogg</div><div class="mt">6.2 MB · cdn.openfilms.example</div></div></div>
+    <div class="frow"><div class="thumb img3"></div><div class="main"><div class="nm">Ishtar gate.jpg</div><div class="mt">1.2 MB · cdn.openfilms.example</div></div></div>
+  </div>
+  <div style="height:var(--nav-h)"></div>
+</div>
+<div class="navbar" style="position:absolute;left:0;right:0;bottom:0;background:var(--surface)"></div>
+<script src="icons.js"></script><script src="app.js"></script>
+</body></html>

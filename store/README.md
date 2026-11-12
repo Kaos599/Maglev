@@ -8,7 +8,12 @@ Phone screenshots (1080x1920) and the feature graphic (1024x500) for the store l
 node store/render.js                  # everything, into store/out/
 node store/render.js --only search    # one screen and its frame
 node store/render.js --out /tmp/x     # somewhere else
+
+# The new set (screens.v2.json): captions on top in Inter ExtraBold, one lime phrase each
+node store/render.js --config screens.v2.json   # CANON: new set with Inter screens -> store/out/v2-inter
 ```
+
+A config can set `out`, `screenFonts` (a `store/fonts/<name>.css` applied to the phone screens only, never the captions), and for each screen its `screen` file and `template`. In a v2 headline, `*phrase*` marks the lime phrase. The v2 screens (`screens/<id>-v2.html`) have the same layout as the current ones with friendlier demo titles. `store/index.html` compares the current set, v2 and v2 with Inter screens.
 
 Output (gitignored):
 
@@ -58,3 +63,10 @@ A headline is at most 5 words and a supporting line at most 12. Every claim must
 | detail | Every file, peer and piece | Pick files to fetch first, skip the rest, watch the speed. |
 | feeds | Follow feeds, get new releases | Add any RSS feed. New items that match your rules download. |
 | feature | (wordmark) | Torrents, links and web video. One small app. |
+
+## Canon
+
+The canonical store set is `screens.v2.json` (six images, Inter captions and Inter on the phone screens, matching
+the Clean font style). Committed copies live in `store/images/canon/`; the earlier set is kept in
+`store/images/current/` for reference. After changing a screen, render the canon set and copy
+`store/out/v2-inter/` over `store/images/canon/`. `store/index.html` compares the two.

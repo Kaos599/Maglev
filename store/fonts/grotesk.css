@@ -1,0 +1,10 @@
+/* Font trial: Space Grotesk for headings and titles, Inter for names and numbers. */
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&display=block');
+@font-face { font-family: 'InterT'; font-weight: 500; src: url('../../node_modules/@expo-google-fonts/inter/500Medium/Inter_500Medium.ttf'); }
+@font-face { font-family: 'InterT'; font-weight: 700; src: url('../../node_modules/@expo-google-fonts/inter/700Bold/Inter_700Bold.ttf'); }
+.headline { font-family: 'Space Grotesk', sans-serif !important; font-weight: 700; letter-spacing: -2px; font-size: 92px; line-height: 1.04; }
+.screenhead .title, .card .ask, .composer .send { font-family: 'Space Grotesk', sans-serif !important; font-weight: 700; }
+/* Re-point the app's SpaceMono name at Inter, so names and numbers everywhere switch (a later face with the same name and weight wins). */
+@font-face { font-family: 'SpaceMono'; font-weight: 400; src: url('../../node_modules/@expo-google-fonts/inter/500Medium/Inter_500Medium.ttf'); }
+@font-face { font-family: 'SpaceMono'; font-weight: 700; src: url('../../node_modules/@expo-google-fonts/inter/700Bold/Inter_700Bold.ttf'); }
+body { font-variant-numeric: tabular-nums; }

@@ -1,0 +1,26 @@
+{
+  "out": "out/v2-inter",
+  "screenFonts": "inter",
+  "frameSize": { "width": 1080, "height": 1920 },
+  "screens": [
+    { "id": "browser", "screen": "browser-v2.html", "template": "v2",
+      "headline": "Save videos from *any page*",
+      "subline": "Play a video, then save it from the tray." },
+    { "id": "stream-sheet", "screen": "stream-sheet-v2.html", "template": "v2",
+      "headline": "Pick quality, *then save*",
+      "subline": "Choose video size and language first." },
+    { "id": "search", "screen": "search-v2.html", "template": "v2",
+      "headline": "Search *many sites* at once",
+      "subline": "One search, all results in one list." },
+    { "id": "transfers", "screen": "transfers-v2.html", "template": "v2",
+      "headline": "See *every download*",
+      "subline": "Speed and time left, in one list." },
+    { "id": "feeds", "screen": "feeds-v2.html", "template": "v2",
+      "headline": "Get new releases *automatically*",
+      "subline": "Follow a feed and matching items download for you." },
+    { "id": "assistant", "screen": "assistant-v2.html", "template": "v2",
+      "headline": "An assistant that *asks first*",
+      "subline": "Optional. It shows every change and waits for you to confirm." }
+  ],
+  "feature": { "template": "feature-v2.html", "subline": "Videos, links and torrents. One small app." }
+}

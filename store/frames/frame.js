@@ -10,7 +10,17 @@
   const q = new URLSearchParams(location.search);
   const $ = (sel) => document.querySelector(sel);
   if ($('.headline')) {
-    $('.headline').textContent = q.get('h') || '';
+    // "*phrase*" marks the one accent phrase (v2 frames); built with text nodes, never HTML.
+    const h = $('.headline');
+    (q.get('h') || '').split(/(\*[^*]+\*)/).forEach((part) => {
+      if (!part) return;
+      if (part.startsWith('*') && part.endsWith('*')) {
+        const span = document.createElement('span');
+        span.className = 'lime';
+        span.textContent = part.slice(1, -1);
+        h.appendChild(span);
+      } else h.appendChild(document.createTextNode(part));
+    });
     if (q.get('color') === 'lime') $('.headline').classList.add('lime');
   }
   if ($('.subline')) $('.subline').textContent = q.get('s') || '';

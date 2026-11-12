@@ -5,6 +5,17 @@
  *   node store/render.js                 everything
  *   node store/render.js --only search   one screen and its frame
  *   node store/render.js --out <dir>     write somewhere other than store/out
+ *   node store/render.js --fonts inter   load store/fonts/inter.css over every page (font trials);
+ *                                        writes to store/out/fonts/inter unless --out is given
+ *   node store/render.js --config screens.v2.json
+ *                                        another set: its "out" folder, screen files and templates
+ *   node store/render.js --config screens.v2.json --screen-fonts inter
+ *                                        load store/fonts/inter.css on the phone screens only
+ *                                        (captions keep their own font); writes to <out>-inter
+ *
+ * A config may set "out" (folder under store/), "screenFonts" (a store/fonts/<name>.css for the
+ * screens only), and per screen "screen" (the HTML file, default <id>.html) and "template".
+ * "feature.template" picks the feature graphic page (default feature.html).
  *
  * Steps
  *   1. Writes store/screens/icons.js from components/icons.generated.ts, so the mock screens use
@@ -35,7 +46,19 @@ function arg(name) {
   return i > 0 ? process.argv[i + 1] : undefined;
 }
 const ONLY = arg('--only');
-const OUT = path.resolve(arg('--out') || path.join(STORE, 'out'));
+const FONTS = arg('--fonts');
+const FONT_CSS = FONTS ? path.join(STORE, 'fonts', `${FONTS}.css`) : null;
+if (FONT_CSS && !fs.existsSync(FONT_CSS)) throw new Error(`no font variant: ${path.relative(ROOT, FONT_CSS)}`);
+const CONFIG = path.resolve(STORE, arg('--config') || 'screens.json');
+const CFG = JSON.parse(fs.readFileSync(CONFIG, 'utf8'));
+const SCREEN_FONTS = arg('--screen-fonts') || CFG.screenFonts || null;
+const SCREEN_FONT_CSS = SCREEN_FONTS ? path.join(STORE, 'fonts', `${SCREEN_FONTS}.css`) : null;
+if (SCREEN_FONT_CSS && !fs.existsSync(SCREEN_FONT_CSS)) throw new Error(`no font variant: ${path.relative(ROOT, SCREEN_FONT_CSS)}`);
+const BASE_OUT = CFG.out ? path.join(STORE, CFG.out) : path.join(STORE, 'out');
+const OUT = path.resolve(
+  arg('--out') ||
+    (FONTS ? path.join(BASE_OUT, 'fonts', FONTS) : arg('--screen-fonts') ? `${BASE_OUT}-${SCREEN_FONTS}` : BASE_OUT),
+);
 
 // ---------------------------------------------------------------- Playwright
 
@@ -88,7 +111,12 @@ function writeIcons() {
 
 // ---------------------------------------------------------------- render
 
-async function settle(page) {
+async function settle(page, screen = false) {
+  // A font variant is a plain stylesheet added last, so it wins over the page's own rules.
+  // --fonts applies to every page; screenFonts only to the phone screens.
+  const css = [FONT_CSS, screen ? SCREEN_FONT_CSS : null].filter(Boolean);
+  for (const f of css) await page.addStyleTag({ content: fs.readFileSync(f, 'utf8') });
+  if (css.length) await page.waitForTimeout(150); // let the new faces start loading before fonts.ready is read
   await page.evaluate(async () => {
     await document.fonts.ready;
     await Promise.all([...document.images].map((img) => (img.complete ? null : img.decode().catch(() => null))));
@@ -104,9 +132,10 @@ async function checkFonts(page, label) {
 }
 
 async function main() {
-  const cfg = JSON.parse(fs.readFileSync(path.join(STORE, 'screens.json'), 'utf8'));
+  const cfg = CFG;
   const n = writeIcons();
   console.log(`icons.js: ${n} Pixelarticons paths`);
+  console.log(`config ${path.relative(ROOT, CONFIG)} -> ${path.relative(ROOT, OUT)}${SCREEN_FONTS ? ` (screens in ${SCREEN_FONTS})` : ''}`);
 
   fs.mkdirSync(path.join(OUT, 'screens'), { recursive: true });
   const { chromium } = loadPlaywright();
@@ -120,13 +149,13 @@ async function main() {
     phone.on('pageerror', (e) => errors.push(String(e)));
     for (const s of cfg.screens) {
       if (ONLY && s.id !== ONLY) continue;
-      const file = path.join(STORE, 'screens', `${s.id}.html`);
+      const file = path.join(STORE, 'screens', s.screen || `${s.id}.html`);
       if (!fs.existsSync(file)) {
         console.warn(`skip ${s.id}: ${path.relative(ROOT, file)} not found`);
         continue;
       }
       await phone.goto(pathToFileURL(file).href);
-      await settle(phone);
+      await settle(phone, true);
       await checkFonts(phone, s.id);
       const out = path.join(OUT, 'screens', `${s.id}.png`);
       await phone.screenshot({ path: out, clip: { x: 0, y: 0, width: 360, height: 800 } });
@@ -172,7 +201,7 @@ async function main() {
       const page = await browser.newPage({ viewport: { width: 1024, height: 500 }, deviceScaleFactor: 1 });
       page.on('pageerror', (e) => errors.push(String(e)));
       const q = new URLSearchParams({ s: f.subline });
-      await page.goto(`${pathToFileURL(path.join(STORE, 'frames', 'feature.html')).href}?${q}`);
+      await page.goto(`${pathToFileURL(path.join(STORE, 'frames', f.template || 'feature.html')).href}?${q}`);
       await settle(page);
       const out = path.join(OUT, 'feature.png');
       await page.screenshot({ path: out, clip: { x: 0, y: 0, width: 1024, height: 500 } });
@@ -187,7 +216,7 @@ async function main() {
       const feature = fs.existsSync(path.join(OUT, 'feature.png')) ? `<img class="f" src="${pathToFileURL(path.join(OUT, 'feature.png')).href}">` : '';
       fs.writeFileSync(
         sheet,
-        `<!doctype html><style>body{margin:0;background:#05070A;padding:40px;display:flex;flex-wrap:wrap;gap:24px;width:${4 * 270 + 3 * 24}px}img{width:270px;height:480px;outline:1px solid #1F2937}img.f{width:512px;height:250px}</style>${cells}${feature}`,
+        `<!doctype html><style>body{margin:0;background:#05070A;padding:40px;display:flex;flex-wrap:wrap;gap:24px;width:${4 * 270 + 3 * 24 + 80}px}img{width:270px;height:480px;outline:1px solid #1F2937}img.f{width:512px;height:250px}</style>${cells}${feature}`,
       );
       const page = await browser.newPage({ viewport: { width: 4 * 270 + 3 * 24 + 80, height: 400 }, deviceScaleFactor: 1 });
       await page.goto(pathToFileURL(sheet).href);

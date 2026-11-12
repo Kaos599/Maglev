@@ -1,0 +1,98 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><!-- v2 data: same layout as search.html, friendlier demo titles -->
+<title>Search</title>
+<link rel="stylesheet" href="app.css">
+<style>
+  /* app/(tabs)/search.tsx */
+  .pad { padding: 0 16px; }
+  .field { display: flex; align-items: center; min-height: 48px; padding-left: 16px; padding-right: 4px; gap: 8px; border-radius: 10px; border: 1px solid var(--border-strong); background: var(--surface); }
+  .field i.px { width: 20px; height: 20px; color: var(--muted); }
+  .field .q { flex: 1; font-size: 15px; }
+  .field .ib i.px { width: 16px; height: 16px; color: var(--text); }
+  .cats { margin-top: 12px; margin-bottom: 8px; }
+  .body { flex: 1; margin-top: 8px; display: flex; flex-direction: column; overflow: hidden; }
+  .sources { padding: 0 16px 8px; display: flex; flex-direction: column; gap: 8px; }
+  .summary { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .summary .t { flex: 1; font-size: 12px; line-height: 17px; color: var(--muted); }
+  .summary .btn { padding: 4px 8px; font-size: 15px; }
+  /* components/search/SourceScoreboard.tsx */
+  .board { display: flex; flex-wrap: wrap; gap: 8px; }
+  .sc { display: flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 12px; border-radius: 6px; border: 1px solid var(--border); background: var(--surface); font-size: 12px; }
+  .sc b { font: 700 12px 'SpaceMono'; }
+  .sc.empty { background: transparent; border: 1px dashed var(--border-strong); }
+  .sc.empty b { color: var(--muted); }
+  /* components/search/ResultRow.tsx */
+  .list { padding: 0 16px; }
+  .res { display: flex; align-items: center; min-height: 72px; padding: 12px 8px 12px 16px; margin-bottom: 8px; border-radius: 10px; background: var(--surface); border: 1px solid var(--border); }
+  .res .txt { flex: 1; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+  .res .nm { font: 13px/18px 'SpaceMono'; }
+  .res .meta { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+  .res .st { display: flex; align-items: center; gap: 4px; font: 12px 'SpaceMono'; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .res .st i.px { width: 16px; height: 16px; }
+  .res .age { font-size: 12px; color: var(--muted); }
+  .res .via { font-size: 11px; color: var(--muted); }
+</style></head>
+<body>
+<div class="statusbar"></div>
+<div class="screenhead">
+  <div class="title">Search</div>
+  <div class="ib"><i class="px" data-i="network"></i></div>
+  <div class="ib"><i class="px" data-i="filter"></i><span class="badge">12</span></div>
+</div>
+<div class="pad"><div class="field">
+  <i class="px" data-i="search"></i><span class="q">open movie</span>
+  <div class="ib"><i class="px" data-i="close"></i></div>
+</div></div>
+<div class="chips cats">
+  <div class="chip on">All</div><div class="chip">Movies</div><div class="chip">TV</div><div class="chip">Anime</div><div class="chip">Music</div><div class="chip">Apps</div>
+</div>
+<div class="body">
+  <div class="sources">
+    <div class="summary">
+      <span class="t">5/5 sources answered · 23 results</span>
+      <div class="btn ghost"><i class="px" data-i="sort"></i>Most seeders</div>
+    </div>
+    <div class="board">
+      <div class="sc">Internet Archive<b>9</b></div>
+      <div class="sc">Knaben<b>7</b></div>
+      <div class="sc">Torrents-CSV<b>4</b></div>
+      <div class="sc">BitSearch<b>3</b></div>
+      <div class="sc empty">LinuxTracker<b>0</b></div>
+    </div>
+  </div>
+  <div class="list">
+    <div class="res"><div class="txt">
+      <div class="nm clamp2">Sintel (2010) 4K</div>
+      <div class="meta"><span class="st"><i class="px" data-i="storage" style="color:var(--muted)"></i>4.4 GB</span><span class="st"><i class="px" data-i="upload" style="color:var(--upload)"></i>1,284</span><span class="st"><i class="px" data-i="peers" style="color:var(--muted)"></i>96</span><span class="age">2 yr</span></div>
+      <div class="via ell">via Internet Archive · Knaben · Torrents-CSV</div>
+    </div><div class="ib" style="color:var(--accent)"><i class="px" data-i="download"></i></div></div>
+
+    <div class="res"><div class="txt">
+      <div class="nm clamp2">Big Buck Bunny 1080p</div>
+      <div class="meta"><span class="st"><i class="px" data-i="storage" style="color:var(--muted)"></i>691.2 MB</span><span class="st"><i class="px" data-i="upload" style="color:var(--upload)"></i>1,032</span><span class="st"><i class="px" data-i="peers" style="color:var(--muted)"></i>41</span><span class="age">3 yr</span></div>
+      <div class="via ell">via Internet Archive · Knaben</div>
+    </div><div class="ib" style="color:var(--success)"><i class="px" data-i="check"></i></div></div>
+
+    <div class="res"><div class="txt">
+      <div class="nm clamp2">Tears of Steel 4K</div>
+      <div class="meta"><span class="st"><i class="px" data-i="storage" style="color:var(--muted)"></i>6.3 GB</span><span class="st"><i class="px" data-i="upload" style="color:var(--upload)"></i>612</span><span class="st"><i class="px" data-i="peers" style="color:var(--muted)"></i>58</span><span class="age">2 yr</span></div>
+      <div class="via ell">via Knaben · BitSearch</div>
+    </div><div class="ib" style="color:var(--accent)"><i class="px" data-i="download"></i></div></div>
+
+    <div class="res"><div class="txt">
+      <div class="nm clamp2">Spring (2019) 1080p</div>
+      <div class="meta"><span class="st"><i class="px" data-i="storage" style="color:var(--muted)"></i>412.8 MB</span><span class="st"><i class="px" data-i="upload" style="color:var(--upload)"></i>338</span><span class="st"><i class="px" data-i="peers" style="color:var(--muted)"></i>12</span><span class="age">5 yr</span></div>
+      <div class="via ell">via Internet Archive</div>
+    </div><div class="ib" style="color:var(--accent)"><i class="px" data-i="download"></i></div></div>
+
+    <div class="res"><div class="txt">
+      <div class="nm clamp2">Elephants Dream 1080p</div>
+      <div class="meta"><span class="st"><i class="px" data-i="storage" style="color:var(--muted)"></i>815.0 MB</span><span class="st"><i class="px" data-i="upload" style="color:var(--upload)"></i>204</span><span class="st"><i class="px" data-i="peers" style="color:var(--muted)"></i>9</span><span class="age">4 yr</span></div>
+      <div class="via ell">via Internet Archive · Torrents-CSV</div>
+    </div><div class="ib" style="color:var(--accent)"><i class="px" data-i="download"></i></div></div>
+  </div>
+</div>
+<nav class="tabbar" data-on="search"></nav>
+<div class="navbar"></div>
+<script src="icons.js"></script><script src="app.js"></script>
+</body></html>

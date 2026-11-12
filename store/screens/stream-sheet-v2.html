@@ -1,0 +1,57 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><!-- v2 data: same layout as stream-sheet.html, friendlier demo titles -->
+<title>Stream sheet</title>
+<link rel="stylesheet" href="app.css"><link rel="stylesheet" href="browser-page.css">
+<style>
+  /* components/browser/StreamSheet.tsx */
+  .sbody { display: flex; flex-direction: column; gap: 8px; }
+  .lab { font-weight: 600; font-size: 13px; color: var(--muted); }
+  .cards { display: flex; flex-direction: column; gap: 8px; }
+  .namef { font: 13px 'SpaceMono'; min-height: 48px; background: var(--bg); border: 1px solid var(--border-strong); border-radius: 10px; padding: 12px; }
+  .acts { display: flex; justify-content: flex-end; gap: 8px; margin-top: 12px; }
+</style></head>
+<body>
+<div class="statusbar"></div>
+<div class="bbar">
+  <div class="ib"><i class="px" data-i="back"></i></div>
+  <div class="addr"><i class="px" data-i="lock"></i><span>openfilms.example</span></div>
+  <div class="ib"><i class="px" data-i="retry"></i></div>
+  <div class="ib"><i class="px" data-i="more"></i></div>
+</div>
+<div class="prog"></div>
+<div class="web">
+  <div class="top">openfilms <em>Catalogue · About</em></div>
+  <div class="player"><div class="sky"></div><div class="hill"></div><div class="hill2"></div><div class="play"></div></div>
+  <h1>Sintel</h1>
+  <div class="by">2010 · 14 min · CC BY 3.0</div>
+  <p>A lone girl searches for the baby dragon she raised, across a frozen country and into the city of Ishtar.</p>
+  <p>Made in Blender by an open team and released for anyone to watch, share and remix.</p>
+  <p>Trailer, poster, storyboards and the press kit are below.</p>
+</div>
+<div class="bfoot"><span class="blocked">214 blocked</span><div class="btn secondary"><i class="px" data-i="file"></i>Files · 9</div></div>
+<div class="scrim"></div>
+<div class="sheet">
+  <div class="grab"></div>
+  <div class="stitle">Video stream</div>
+  <div class="ssub">cdn.openfilms.example</div>
+  <div class="scontent sbody">
+    <div class="lab">Quality</div>
+    <div class="cards">
+      <div class="radio on"><div class="ibox"><i class="px" data-i="file"></i></div><div class="fill"><div class="rt">1080p · about 580.8 MB</div><div class="rd">5.8 Mbps</div></div><div class="dot"></div></div>
+      <div class="radio"><div class="ibox"><i class="px" data-i="file"></i></div><div class="fill"><div class="rt">720p · about 320.4 MB</div><div class="rd">3.2 Mbps</div></div><div class="dot"></div></div>
+      <div class="radio"><div class="ibox"><i class="px" data-i="file"></i></div><div class="fill"><div class="rt">480p · about 160.2 MB</div><div class="rd">1.6 Mbps</div></div><div class="dot"></div></div>
+    </div>
+    <div class="lab">Audio</div>
+    <div class="cards">
+      <div class="radio on"><div class="ibox"><i class="px" data-i="play"></i></div><div class="fill"><div class="rt">English</div><div class="rd"></div></div><div class="dot"></div></div>
+      <div class="radio"><div class="ibox"><i class="px" data-i="play"></i></div><div class="fill"><div class="rt">Español</div><div class="rd"></div></div><div class="dot"></div></div>
+    </div>
+    <div class="lab">Name</div>
+    <div class="namef">Sintel (2010)</div>
+    <div class="acts"><div class="btn ghost"><i class="px" data-i="copy"></i>Copy link</div><div class="btn primary">Start</div></div>
+  </div>
+  <div style="height:var(--nav-h)"></div>
+</div>
+<div class="navbar" style="position:absolute;left:0;right:0;bottom:0;background:var(--surface)"></div>
+<script src="icons.js"></script><script src="app.js"></script>
+</body></html>

@@ -1,0 +1,4 @@
+/* Font trial: keep the retro feel with Space Mono Bold headings; names and numbers stay Space Mono. */
+@font-face { font-family: 'MonoT'; font-weight: 700; src: url('../../node_modules/@expo-google-fonts/space-mono/700Bold/SpaceMono_700Bold.ttf'); }
+.headline { font-family: 'MonoT', monospace !important; font-weight: 700; letter-spacing: -3px; font-size: 84px; line-height: 1.08; }
+.screenhead .title, .card .ask, .composer .send { font-family: 'MonoT', monospace !important; font-weight: 700; letter-spacing: -0.3px; }

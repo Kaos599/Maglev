@@ -1,0 +1,79 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><!-- v2 data: same layout as transfers.html, friendlier demo titles -->
+<title>Transfers</title>
+<link rel="stylesheet" href="app.css">
+<style>
+  /* components/SpeedTelemetryHeader.tsx */
+  .strip { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; flex-shrink: 0; }
+  .strip .speeds { display: flex; gap: 16px; font: 700 13px 'SpaceMono'; }
+  .pills { padding-top: 8px; padding-bottom: 8px; }
+  .list { flex: 1; overflow: hidden; display: flex; flex-direction: column; gap: 8px; padding-top: 4px; }
+  .fab { bottom: calc(64px + var(--nav-h) + 16px); }
+</style></head>
+<body>
+<div class="statusbar"></div>
+<div class="headerbar">
+  <div class="brandrow"><span class="mark"></span><span>MAGLEV</span></div>
+  <div class="ib"><i class="px" data-i="sort"></i></div>
+  <div class="ib"><i class="px" data-i="search"></i></div>
+</div>
+<div class="strip">
+  <div class="speeds"><span style="color:var(--download)">↓ 8.4 MB/s</span><span style="color:var(--upload)">↑ 1.2 MB/s</span></div>
+  <div class="btn secondary"><i class="px" data-i="pause"></i>Pause all</div>
+</div>
+<div class="chips pills">
+  <div class="chip on">All<span class="n">7</span></div>
+  <div class="chip">Downloading<span class="n">3</span></div>
+  <div class="chip">Seeding<span class="n">2</span></div>
+  <div class="chip">Paused<span class="n">1</span></div>
+  <div class="chip">Done<span class="n">1</span></div>
+</div>
+<div class="list">
+  <!-- Link downloads sit above torrents (app/(tabs)/index.tsx listHeader) -->
+  <div class="tcard">
+    <div class="name clamp2">Nature timelapse 4K.mp4</div>
+    <div class="bar"><b style="width:62%"></b></div>
+    <div class="status"><span class="lead">2 min left · 3.1 MB/s</span></div>
+    <div class="ib act"><i class="px" data-i="pause"></i></div>
+  </div>
+  <div class="tcard">
+    <div class="name clamp2">Sintel (2010) 4K</div>
+    <div class="bar"><b style="width:47%"></b></div>
+    <div class="status"><span class="lead">8 min left</span><span>4.2 MB/s</span></div>
+    <div class="ib act"><i class="px" data-i="pause"></i></div>
+  </div>
+  <div class="tcard">
+    <div class="name clamp2">Big Buck Bunny 1080p</div>
+    <div class="bar seed"><b style="width:100%"></b></div>
+    <div class="status acc"><span class="lead">Done</span><span>691.2 MB</span></div>
+  </div>
+  <div class="tcard">
+    <div class="name clamp2">Tears of Steel 1080p</div>
+    <div class="bar"><b style="width:81%"></b></div>
+    <div class="status"><span class="lead">3 min left</span><span>1.1 MB/s</span></div>
+    <div class="ib act"><i class="px" data-i="pause"></i></div>
+  </div>
+  <div class="tcard">
+    <div class="name clamp2">Night of the Living Dead (1968)</div>
+    <div class="bar paused"><b style="width:34%"></b></div>
+    <div class="status"><span class="lead">Paused</span></div>
+    <div class="ib act"><i class="px" data-i="play"></i></div>
+  </div>
+  <div class="tcard">
+    <div class="name clamp2">Ubuntu 26.04 desktop</div>
+    <div class="bar seed"><b style="width:100%"></b></div>
+    <div class="status acc"><span class="lead">Seeding</span><span>↑ 840.0 KB/s</span></div>
+    <div class="ib act"><i class="px" data-i="pause"></i></div>
+  </div>
+  <div class="tcard">
+    <div class="name clamp2">Fedora 43 Workstation</div>
+    <div class="bar seed"><b style="width:100%"></b></div>
+    <div class="status acc"><span class="lead">Seeding</span><span>↑ 388.0 KB/s</span></div>
+    <div class="ib act"><i class="px" data-i="pause"></i></div>
+  </div>
+</div>
+<div class="fab"><i class="px" data-i="plus"></i></div>
+<nav class="tabbar" data-on="transfers"></nav>
+<div class="navbar"></div>
+<script src="icons.js"></script><script src="app.js"></script>
+</body></html>

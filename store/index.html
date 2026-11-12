@@ -1,0 +1,182 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Store Screens</title>
+<!--
+  Reference page for the store listing images. Open it straight from disk.
+  The images come from store/out (not committed); make them first:
+    node store/render.js                  current fonts  -> store/out
+    node store/render.js --fonts inter    a font trial   -> store/out/fonts/inter
+    node store/render.js --config screens.v2.json   CANON (new set, Inter screens) -> store/out/v2-inter
+  "Current vs new" reads the committed copies in store/images/{current,canon}; refresh them by copying
+  store/out (old set) and store/out/v2-inter (canon) after a render.
+  The "Live HTML" links open the source screens in store/screens, which need no render.
+-->
+<style>
+  :root { --bg:#05070A; --card:#0D1117; --line:#1F2937; --text:#E6EDF3; --muted:#8B949E; --accent:#CCFF00; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font:14px/1.5 system-ui, sans-serif; padding:16px; }
+  h1 { font-size:18px; margin:8px 0 4px; }
+  p { color:var(--muted); margin:0 0 16px; max-width:760px; }
+  code { background:var(--card); border:1px solid var(--line); border-radius:4px; padding:0 4px; }
+  .bar { position:sticky; top:0; z-index:2; background:var(--bg); padding:10px 0; border-bottom:1px solid var(--line);
+         display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin-bottom:20px; }
+  .bar .label { color:var(--muted); margin-right:4px; }
+  button, .bar a { font:inherit; color:var(--text); background:none; border:1px solid var(--line); border-radius:6px;
+           padding:4px 10px; cursor:pointer; text-decoration:none; }
+  button.on { border-color:var(--accent); color:var(--accent); }
+  .sep { width:1px; height:20px; background:var(--line); margin:0 4px; }
+  section { margin:0 0 40px; }
+  h2 { font-size:14px; font-weight:600; margin:0 0 8px; display:flex; gap:12px; align-items:baseline; flex-wrap:wrap; }
+  h2 a { font-weight:400; font-size:12px; color:var(--muted); }
+  .row { display:flex; gap:16px; overflow-x:auto; padding-bottom:8px; }
+  figure { margin:0; flex:0 0 auto; }
+  figure img { display:block; width:360px; height:auto; border:1px solid var(--line); background:var(--card); }
+  body.full figure img { width:auto; }
+  figcaption { color:var(--muted); font-size:12px; margin-top:4px; }
+  figcaption b { color:var(--text); font-weight:600; }
+  .dropped { border-style:solid; color:var(--text); }
+  .missing { width:360px; aspect-ratio:9/16; display:flex; align-items:center; justify-content:center; text-align:center;
+             padding:16px; border:1px dashed var(--line); color:var(--muted); font-size:12px; }
+</style>
+</head>
+<body>
+<h1>Maglev store screens</h1>
+<p id="intro"></p>
+
+<div class="bar" id="bar">
+  <span class="label">Mode</span>
+  <button id="m-compare">Current vs new</button>
+  <button id="m-fonts">Font trials</button>
+  <span class="sep"></span>
+  <span class="label" id="vlabel">Fonts</span>
+  <span id="variants"></span>
+  <span class="sep"></span>
+  <button id="bare">Bare screens</button>
+  <button id="full">Actual pixels</button>
+  <span class="sep"></span>
+  <span id="jump"></span>
+</div>
+<div id="list"></div>
+
+<script>
+const VARIANTS = [
+  { id: 'pixel',   dir: 'out',               name: 'Pixel (current)', note: 'Silkscreen headings, Space Mono names and numbers' },
+  { id: 'inter',   dir: 'out/fonts/inter',   name: 'Inter',           note: 'Inter everywhere; pixel font only on the logo' },
+  { id: 'grotesk', dir: 'out/fonts/grotesk', name: 'Space Grotesk',   note: 'Space Grotesk headings, Inter names and numbers' },
+  { id: 'mono',    dir: 'out/fonts/mono',    name: 'Space Mono Bold', note: 'Space Mono headings, Space Mono names and numbers' },
+];
+const SCREENS = [
+  ['transfers', 'Every download, one list'],
+  ['search', 'Search 40+ sources at once'],
+  ['browser', 'Save what the page plays'],
+  ['stream-sheet', 'Streams saved as one file'],
+  ['assistant', 'An assistant that asks first'],
+  ['detail', 'Every file, peer and piece'],
+  ['feeds', 'Follow feeds, get new releases'],
+  ['feature', 'Feature graphic 1024×500'],
+];
+
+// "Current vs new": the old set and the canon set (screens.v2.json, Inter on the screens), from store/images.
+// v2 order is the store order; detail is dropped from v2.
+const COMPARE = [
+  { id: 'current', dir: 'images/current', name: 'Current (old)',  note: 'store/images/current' },
+  { id: 'v2inter', dir: 'images/canon',   name: 'Canon',          note: 'store/images/canon: new set, Inter screens' },
+];
+const SCREENS_V2 = [
+  ['browser', 'Save videos from any page'],
+  ['stream-sheet', 'Pick quality, then save'],
+  ['search', 'Search many sites at once'],
+  ['transfers', 'See every download'],
+  ['feeds', 'Get new releases automatically'],
+  ['assistant', 'An assistant that asks first'],
+  ['detail', 'Every file, peer and piece', 'dropped'],
+  ['feature', 'Feature graphic 1024×500'],
+];
+let mode = 'compare';
+try { mode = localStorage.getItem('maglev-store-mode') || 'compare'; } catch {}
+
+let shown = new Set(['pixel', 'inter']);
+try { const s = JSON.parse(localStorage.getItem('maglev-store-variants')); if (Array.isArray(s) && s.length) shown = new Set(s); } catch {}
+let bare = false;
+
+const vbox = document.getElementById('variants');
+for (const v of VARIANTS) {
+  const b = document.createElement('button');
+  b.textContent = v.name; b.title = v.note;
+  b.onclick = () => { shown.has(v.id) ? shown.delete(v.id) : shown.add(v.id); if (!shown.size) shown.add(v.id); draw(); };
+  b.dataset.v = v.id; vbox.appendChild(b); vbox.append(' ');
+}
+const jump = document.getElementById('jump');
+document.getElementById('m-compare').onclick = () => { mode = 'compare'; draw(); };
+document.getElementById('m-fonts').onclick = () => { mode = 'fonts'; draw(); };
+document.getElementById('full').onclick = (e) => { document.body.classList.toggle('full'); e.target.classList.toggle('on'); };
+document.getElementById('bare').onclick = (e) => { bare = !bare; e.target.classList.toggle('on', bare); draw(); };
+
+function img(src, label, note) {
+  const f = document.createElement('figure');
+  const a = document.createElement('a'); a.href = src; a.target = '_blank';
+  const i = new Image(); i.src = src; i.alt = label; i.loading = 'lazy';
+  i.onerror = () => { const m = document.createElement('div'); m.className = 'missing'; m.textContent = `${label}: not rendered yet`; a.replaceWith(m); };
+  a.appendChild(i); f.appendChild(a);
+  f.insertAdjacentHTML('beforeend', `<figcaption><b>${label}</b> · ${note}</figcaption>`);
+  return f;
+}
+
+function note(text, cls) { const m = document.createElement('div'); m.className = `missing ${cls || ''}`; m.textContent = text; return m; }
+
+function drawCompare(list) {
+  for (const [id, title, dropped] of SCREENS_V2) {
+    const sec = document.createElement('section'); sec.id = id;
+    const liveOld = id === 'feature' ? 'frames/feature.html' : `screens/${id}.html`;
+    const liveNew = id === 'feature' ? 'frames/feature-v2.html' : `screens/${id}-v2.html`;
+    sec.innerHTML = `<h2>${title} <a href="${liveOld}" target="_blank">Live HTML (current)</a>` +
+      (dropped ? '' : ` <a href="${liveNew}" target="_blank">Live HTML (new)</a>`) + '</h2>';
+    const row = document.createElement('div'); row.className = 'row';
+    for (const v of COMPARE) {
+      if (dropped && v.id !== 'current') {
+        const f = document.createElement('figure');
+        f.appendChild(note('Dropped from the new set', 'dropped'));
+        f.insertAdjacentHTML('beforeend', `<figcaption><b>${v.name}</b> · dropped</figcaption>`);
+        row.appendChild(f); continue;
+      }
+      const file = bare && id !== 'feature' ? `${v.dir}/screens/${id}.png` : `${v.dir}/${id}.png`;
+      row.appendChild(img(file, v.name, v.note));
+    }
+    sec.appendChild(row); list.appendChild(sec);
+  }
+}
+
+function draw() {
+  try { localStorage.setItem('maglev-store-mode', mode); } catch {}
+  document.getElementById('m-compare').classList.toggle('on', mode === 'compare');
+  document.getElementById('m-fonts').classList.toggle('on', mode === 'fonts');
+  vbox.style.display = document.getElementById('vlabel').style.display = mode === 'fonts' ? '' : 'none';
+  document.getElementById('intro').innerHTML = mode === 'compare'
+    ? 'Each row shows one store image: the current set, the new set, and the new set with Inter on the phone screens. Rows follow the new store order. Press <b>Actual pixels</b> to see them at full 1080×1920; click an image to open it alone. A missing image means that set has not been rendered yet (commands at the top of this file).'
+    : 'Each row shows one store image in every font option, side by side. Pick the options to compare, or press <b>Actual pixels</b> to see them at full 1080×1920. Click an image to open it alone. A missing image means that option has not been rendered yet: run <code>node store/render.js --fonts &lt;name&gt;</code>.';
+  jump.innerHTML = '';
+  for (const [id, t] of mode === 'compare' ? SCREENS_V2 : SCREENS) jump.insertAdjacentHTML('beforeend', `<a href="#${id}">${t.split(',')[0]}</a> `);
+  for (const b of vbox.querySelectorAll('button')) b.classList.toggle('on', shown.has(b.dataset.v));
+  try { localStorage.setItem('maglev-store-variants', JSON.stringify([...shown])); } catch {}
+  const list = document.getElementById('list'); list.innerHTML = '';
+  if (mode === 'compare') return drawCompare(list);
+  for (const [id, title] of SCREENS) {
+    const sec = document.createElement('section'); sec.id = id;
+    const live = id === 'feature' ? 'frames/feature.html' : `screens/${id}.html`;
+    sec.innerHTML = `<h2>${title} <a href="${live}" target="_blank">Live HTML</a></h2>`;
+    const row = document.createElement('div'); row.className = 'row';
+    for (const v of VARIANTS) {
+      if (!shown.has(v.id)) continue;
+      const file = bare && id !== 'feature' ? `${v.dir}/screens/${id}.png` : `${v.dir}/${id}.png`;
+      row.appendChild(img(file, v.name, v.note));
+    }
+    sec.appendChild(row); list.appendChild(sec);
+  }
+}
+draw();
+</script>
+</body>
+</html>
