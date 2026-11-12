@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { FlatList, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useMaglevEngine } from '../../context/EngineContext';
 import { useTheme } from '../../context/ThemeContext';
 import { ThemeColors, radius, spacing, type } from '../../constants/theme';
@@ -53,6 +53,14 @@ export default function SearchScreen() {
   const [prefs, updatePrefs] = useSearchPrefs();
 
   const [query, setQuery] = useState('');
+  // An optional `q` route param (from assistant links) prefills the query once, then is cleared.
+  // The search effect below runs on the trimmed query, so setting it starts the search.
+  const { q: qParam } = useLocalSearchParams<{ q?: string }>();
+  useEffect(() => {
+    if (typeof qParam !== 'string' || !qParam.trim()) return;
+    setQuery(qParam);
+    router.setParams({ q: undefined });
+  }, [qParam, router]);
   const [searching, setSearching] = useState(false);
   const [stopped, setStopped] = useState(false);
   const [update, setUpdate] = useState<SearchUpdate | null>(null);

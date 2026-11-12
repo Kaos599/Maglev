@@ -285,12 +285,13 @@ export function routeForTarget(t: ScreenTarget): AppRoute {
       if (typeof t.id === 'string' && t.id && !t.id.startsWith('dl_')) return { pathname: '/torrent/[id]', params: { id: t.id } };
       return { pathname: '/' };
     case 'search':
-      return { pathname: '/search' };
+      return typeof t.query === 'string' && t.query.trim() ? { pathname: '/search', params: { q: t.query.trim() } } : { pathname: '/search' };
     case 'add_download':
       return { pathname: '/add-download' };
     case 'settings':
       return { pathname: (t.section && SETTINGS_PATH[t.section]) || '/settings' };
     case 'transfers':
+      return typeof t.filter === 'string' && t.filter ? { pathname: '/', params: { filter: t.filter } } : { pathname: '/' };
     default:
       return { pathname: '/' };
   }

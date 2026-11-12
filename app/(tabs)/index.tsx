@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { BackHandler, FlatList, StyleSheet, TextInput, View } from 'react-native';
-import { useFocusEffect, useIsFocused, useRouter } from 'expo-router';
+import { useFocusEffect, useIsFocused, useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { HeaderBar } from '../../components/HeaderBar';
 import { FilterPills } from '../../components/FilterPills';
@@ -58,6 +58,14 @@ export default function TransfersScreen() {
 
   const [sort, setSort] = useState<TransferSort>(loadTransferSort);
   const [filter, setFilter] = useState<TransferFilter>('all');
+  // An optional `filter` route param (from assistant links) is applied once, then cleared.
+  const { filter: filterParam } = useLocalSearchParams<{ filter?: string }>();
+  useEffect(() => {
+    if (typeof filterParam !== 'string' || !filterParam) return;
+    const wanted = FILTERS.find((f) => f.id === filterParam);
+    if (wanted) setFilter(wanted.id);
+    router.setParams({ filter: undefined });
+  }, [filterParam, router]);
   const [query, setQuery] = useState('');
   const [searchOpen, setSearchOpen] = useState(false);
   const [sortOpen, setSortOpen] = useState(false);

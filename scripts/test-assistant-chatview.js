@@ -67,10 +67,10 @@ async function main() {
 
   console.log('chatview: links and questions');
   const r = v.routeForTarget;
-  check('transfers', eq(r({ screen: 'transfers', filter: 'done' }), { pathname: '/' }));
+  check('transfers', eq(r({ screen: 'transfers', filter: 'done' }), { pathname: '/', params: { filter: 'done' } }) && eq(r({ screen: 'transfers' }), { pathname: '/' }));
   check('torrent id', eq(r({ screen: 'transfer', id: 'abc' }), { pathname: '/torrent/[id]', params: { id: 'abc' } }));
   check('download id goes to Transfers', eq(r({ screen: 'transfer', id: 'dl_00000001' }), { pathname: '/' }));
-  check('search', r({ screen: 'search', query: 'x' }).pathname === '/search');
+  check('search', eq(r({ screen: 'search', query: ' x y ' }), { pathname: '/search', params: { q: 'x y' } }) && eq(r({ screen: 'search' }), { pathname: '/search' }));
   check('add download', r({ screen: 'add_download' }).pathname === '/add-download');
   check('settings sections', r({ screen: 'settings', section: 'search_providers' }).pathname === '/settings/search-providers' && r({ screen: 'settings', section: 'schedule' }).pathname === '/settings/scheduling' && r({ screen: 'settings', section: 'storage' }).pathname === '/settings/storage');
   check('settings without section', r({ screen: 'settings' }).pathname === '/settings');
