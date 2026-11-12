@@ -31,7 +31,7 @@ export function Chip({ label, selected = false, onPress, count, disabled = false
         disabled && styles.disabled,
       ]}
     >
-      <Text style={[styles.label, { color: selected ? colors.accentText : colors.text }]} numberOfLines={1}>
+      <Text style={[styles.label, { color: selected ? colors.accentText : colors.text }]}>
         {label}
       </Text>
       {hasCount ? (
@@ -51,6 +51,7 @@ const makeStyles = (c: ThemeColors) =>
       alignItems: 'center',
       gap: spacing.sm,
       paddingHorizontal: spacing.lg,
+      paddingVertical: spacing.xs,
       borderRadius: radius.pill,
       borderWidth: 1,
     },
@@ -58,7 +59,7 @@ const makeStyles = (c: ThemeColors) =>
     pressed: { backgroundColor: c.surfaceRaised, borderColor: c.border },
     selected: { backgroundColor: alpha(c.accent, 0.15), borderColor: c.accent },
     disabled: { opacity: 0.4 },
-    label: { ...type.bodyStrong, fontSize: 13 },
+    label: { ...type.bodyStrong, fontSize: 13, flexShrink: 1 },
     count: {
       minWidth: 20,
       height: 20,

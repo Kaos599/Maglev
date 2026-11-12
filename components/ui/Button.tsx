@@ -90,7 +90,7 @@ export function Button({
       ]}
     >
       {loading ? <Dots color={fg} /> : icon ? <PixelIcon name={icon} size={20} color={fg} /> : null}
-      <Text style={[styles.label, { color: fg }]} numberOfLines={1}>
+      <Text style={[styles.label, { color: fg }]}>
         {label}
       </Text>
     </PressableScale>
@@ -108,11 +108,12 @@ const makeStyles = (c: ThemeColors) =>
       borderWidth: 1,
       borderColor: 'transparent',
       paddingHorizontal: spacing.xl,
+      paddingVertical: spacing.xs,
     },
     md: { minHeight: 44 },
     lg: { minHeight: 52 },
     full: { alignSelf: 'stretch' },
-    label: { ...type.bodyStrong, fontSize: 15 },
+    label: { ...type.bodyStrong, fontSize: 15, flexShrink: 1, textAlign: 'center' },
     primary: { backgroundColor: c.accent, borderColor: c.accent },
     primaryPressed: { backgroundColor: c.accent, opacity: 0.88 },
     secondary: { backgroundColor: c.surface, borderColor: c.border },

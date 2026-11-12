@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Pressable, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
 import { useTheme } from '../../context/ThemeContext';
 import { ThemeColors, radius, spacing, type } from '../../constants/theme';
 
@@ -15,6 +15,7 @@ export function Composer({ busy, onSend, onStop }: ComposerProps) {
   const { colors } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const [text, setText] = useState('');
+  const { fontScale } = useWindowDimensions();
   const trimmed = text.trim();
   const canSend = !busy && trimmed.length > 0;
 
@@ -27,7 +28,7 @@ export function Composer({ busy, onSend, onStop }: ComposerProps) {
   return (
     <View style={styles.bar}>
       <TextInput
-        style={styles.input}
+        style={[styles.input, { maxHeight: 120 * Math.max(1, Math.min(fontScale, 2)) }]}
         value={text}
         onChangeText={setText}
         placeholder="Ask about a download"
@@ -79,7 +80,6 @@ const makeStyles = (c: ThemeColors) =>
       ...type.body,
       flex: 1,
       minHeight: 44,
-      maxHeight: 120,
       paddingHorizontal: spacing.md,
       paddingVertical: spacing.sm,
       fontSize: 15,
@@ -89,7 +89,7 @@ const makeStyles = (c: ThemeColors) =>
       borderColor: c.border,
       borderRadius: radius.md,
     },
-    action: { minWidth: 56, height: 44, alignItems: 'center', justifyContent: 'center', borderRadius: radius.md },
+    action: { minWidth: 56, minHeight: 44, paddingHorizontal: spacing.xs, alignItems: 'center', justifyContent: 'center', borderRadius: radius.md },
     actionText: { ...type.brand, fontSize: 13 },
     pressed: { backgroundColor: c.surfaceRaised },
     off: { opacity: 0.4 },

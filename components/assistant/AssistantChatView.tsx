@@ -4,13 +4,14 @@ import { useTheme } from '../../context/ThemeContext';
 import { ThemeColors, spacing, type } from '../../constants/theme';
 import type { TokenKey } from '../../utils/assistant/glossary';
 import type { AssistantChat, ChatGate, ChatItem } from '../../utils/assistant/runtime';
-import { Button, Chip, EmptyBlock, Screen } from '../ui';
+import { Button, Chip, EmptyBlock, Screen, Sheet } from '../ui';
 import { Composer } from './Composer';
 import { JargonSheet } from './JargonSheet';
 import { MessageBubble } from './MessageBubble';
 import { ProgressSteps } from './ProgressSteps';
 import { ProposalCard } from './ProposalCard';
 import { ResultCard } from './ResultCard';
+import { useChatAnnouncements } from './useChatAnnouncements';
 
 export interface AssistantChatViewProps {
   chat: AssistantChat;
@@ -32,7 +33,9 @@ export function AssistantChatView({ chat, onOpenSettings, onChooseFiles }: Assis
   const { colors } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const [term, setTerm] = useState<TokenKey | null>(null);
+  const [confirmClear, setConfirmClear] = useState(false);
   const { items, gate, send } = chat;
+  useChatAnnouncements(items);
 
   // Newest first, because the list is inverted: it stays pinned to the latest message while text streams in.
   const data = useMemo(() => [...items].reverse(), [items]);
@@ -89,7 +92,7 @@ export function AssistantChatView({ chat, onOpenSettings, onChooseFiles }: Assis
   const clearAction =
     items.length > 0 ? (
       <Pressable
-        onPress={chat.clear}
+        onPress={() => (items.length > 0 ? setConfirmClear(true) : chat.clear())}
         style={styles.clear}
         accessibilityRole="button"
         accessibilityLabel="Clear chat"
@@ -119,6 +122,7 @@ export function AssistantChatView({ chat, onOpenSettings, onChooseFiles }: Assis
           ))}
         </View>
         <Text style={styles.privacy}>Your messages and the names of your downloads go to {chat.providerName}.</Text>
+        <Text style={styles.privacy}>Chats aren't saved. Leaving Maglev or tapping Clear ends this chat.</Text>
       </ScrollView>
     );
   } else {
@@ -150,6 +154,20 @@ export function AssistantChatView({ chat, onOpenSettings, onChooseFiles }: Assis
           </View>
         ) : null}
       </KeyboardAvoidingView>
+      <Sheet visible={confirmClear} onClose={() => setConfirmClear(false)} title="Clear this chat?" subtitle="Messages and cards go. Downloads stay.">
+        <View style={styles.sheetActions}>
+          <Button
+            label="Clear"
+            variant="danger"
+            fullWidth
+            onPress={() => {
+              setConfirmClear(false);
+              chat.clear();
+            }}
+          />
+          <Button label="Cancel" variant="secondary" fullWidth onPress={() => setConfirmClear(false)} />
+        </View>
+      </Sheet>
       <JargonSheet termKey={term} onClose={() => setTerm(null)} />
     </Screen>
   );
@@ -163,10 +181,11 @@ const makeStyles = (c: ThemeColors) =>
     list: { flex: 1 },
     listContent: { padding: spacing.lg },
     stack: { gap: spacing.md },
-    empty: { flexGrow: 1, justifyContent: 'center', padding: spacing.lg, gap: spacing.xl },
+    empty: { flexGrow: 1, justifyContent: 'center', padding: spacing.lg, gap: spacing.lg },
+    sheetActions: { gap: spacing.sm },
     starters: { gap: spacing.sm, alignItems: 'flex-start' },
     privacy: { ...type.body, fontSize: type.size.md, lineHeight: 18, color: c.textMuted },
-    clear: { minWidth: 56, height: 44, alignItems: 'center', justifyContent: 'center', paddingHorizontal: spacing.sm },
+    clear: { minWidth: 56, minHeight: 44, alignItems: 'center', justifyContent: 'center', paddingHorizontal: spacing.sm },
     clearText: { ...type.bodyStrong, fontSize: 14, color: c.textMuted },
     gate: { gap: spacing.md, padding: spacing.lg, borderTopWidth: 1, borderTopColor: c.border, alignItems: 'flex-start' },
     gateText: { ...type.body, fontSize: 14, lineHeight: 20, color: c.text },

@@ -43,7 +43,7 @@ export const MessageBubble = memo(function MessageBubble({ item, onTerm, onOpenS
       return <Text style={styles.note}>{item.text}</Text>;
     case 'error':
       return (
-        <View style={styles.error} accessibilityRole="alert">
+        <View style={styles.error}>
           <View style={styles.errorRow}>
             <PixelIcon name="warning" size={20} color={colors.danger} />
             <Text style={styles.errorText}>{item.message}</Text>
