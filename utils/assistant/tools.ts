@@ -9,6 +9,7 @@
 // check is required anyway (§7.3).
 
 import type { HandleKind, HandleRegistry } from './handles.ts';
+import { normalizeLanguage } from './releaseName.ts';
 import { QUERY_MAX, sanitizeText } from './sanitize.ts';
 
 /** The subset of JSON Schema used for tool parameters. */
@@ -128,6 +129,14 @@ const SEARCH_TORRENTS: JsonSchema = {
     include_cam: { type: 'boolean', default: false },
     runtime_min: { type: 'integer', minimum: 1, maximum: 600, description: 'Runtime in minutes, if the user said it.' },
     limit: { type: 'integer', minimum: 1, maximum: 8, default: 6 },
+    audio_language: {
+      type: 'string', maxLength: 30,
+      description: 'Only if the user named one: the audio language, such as hindi, or "dual audio". Copies with it rank first.',
+    },
+    subtitles: {
+      type: 'string', maxLength: 30,
+      description: 'Only if the user asked for subtitles: "any", or a language such as english. Copies with them rank first.',
+    },
   },
   required: ['query'],
   additionalProperties: false,
@@ -541,7 +550,9 @@ export function validateArgs(name: string, rawArgs: unknown, registry: HandleReg
 
 function validateToolArgs(name: ToolName, input: Record<string, unknown>, registry: HandleRegistry): ValidateResult {
   const dropped: string[] = [];
-  input = normalizeNode(PARAMETERS[name], applyAliases(name, input), '', dropped) as Record<string, unknown>;
+  input = applyAliases(name, input);
+  if (name === 'search_torrents') input = coerceLanguageArgs(input);
+  input = normalizeNode(PARAMETERS[name], input, '', dropped) as Record<string, unknown>;
   const schemaError = checkNode(PARAMETERS[name], input, 'arguments');
   if (schemaError) return bad(schemaError);
 
@@ -611,6 +622,10 @@ const ENUM_SYNONYMS: Record<string, Record<string, string>> = {
 
 /** Field names small models use for another tool's argument, per tool: renamed when the real field is absent. */
 const FIELD_ALIASES: Partial<Record<string, Record<string, string>>> = {
+  search_torrents: {
+    language: 'audio_language', audio: 'audio_language', lang: 'audio_language', audio_lang: 'audio_language', dub: 'audio_language',
+    subtitle: 'subtitles', subs: 'subtitles', sub: 'subtitles', subtitle_language: 'subtitles', subtitles_language: 'subtitles',
+  },
   browse_torrents: { category: 'kind', type: 'kind', sort: 'order', order_by: 'order', time: 'period', window: 'period', range: 'period', timeframe: 'period' },
 };
 
@@ -622,6 +637,45 @@ function applyAliases(name: string, input: Record<string, unknown>): Record<stri
     const to = hasOwn(aliases, k) ? aliases[k] : undefined;
     if (to !== undefined && !hasOwn(input, to) && !hasOwn(out, to)) out[to] = v;
     else if (!hasOwn(out, k)) out[k] = v;
+  }
+  return out;
+}
+
+/** Values that mean "no subtitles wanted" or "any subtitles". */
+const SUBS_OFF = new Set(['false', 'no', 'none', 'off', 'n', '0', '']);
+const SUBS_ANY = new Set(['true', 'yes', 'y', 'any', 'on', '1', 'subs', 'sub', 'subtitles', 'subtitle', 'subbed', 'with subtitles']);
+
+/**
+ * search_torrents: audio_language and subtitles arrive as booleans, lists or loose text. A list keeps its first
+ * entry; audio text goes through normalizeLanguage ("Hin" → "hindi", "dual audio" → "multi"); subtitles true or
+ * "yes" become "any", false or "no" drop the field. Anything else is left for checkNode to reject.
+ */
+function coerceLanguageArgs(input: Record<string, unknown>): Record<string, unknown> {
+  const out = { ...input };
+  const first = (v: unknown): unknown => (Array.isArray(v) ? v.find((x) => typeof x === 'string' || typeof x === 'boolean') : v);
+  if (hasOwn(out, 'audio_language')) {
+    const v = first(out.audio_language);
+    if (v === null || v === undefined || v === false || (typeof v === 'string' && v.trim() === '')) delete out.audio_language;
+    else if (typeof v === 'string') {
+      const lang = normalizeLanguage(v);
+      if (lang === null) delete out.audio_language;
+      else out.audio_language = lang;
+    }
+  }
+  if (hasOwn(out, 'subtitles')) {
+    const v = first(out.subtitles);
+    if (v === true) out.subtitles = 'any';
+    else if (v === false || v === null || v === undefined) delete out.subtitles;
+    else if (typeof v === 'string') {
+      const t = v.trim().toLowerCase();
+      if (SUBS_OFF.has(t)) delete out.subtitles;
+      else if (SUBS_ANY.has(t)) out.subtitles = 'any';
+      else {
+        const lang = normalizeLanguage(t);
+        if (lang === null) delete out.subtitles;
+        else out.subtitles = lang === 'multi' ? 'any' : lang;
+      }
+    }
   }
   return out;
 }

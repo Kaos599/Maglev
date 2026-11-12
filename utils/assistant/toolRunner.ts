@@ -34,7 +34,7 @@ import { chipsFor } from './glossary.ts';
 import { HandleRegistry } from './handles.ts';
 import { MAX_PLAN_STEPS, planSizeOk } from './planMachine.ts';
 import { playbackVerdict } from './playback.ts';
-import { parseRelease } from './releaseName.ts';
+import { languageLabel, normalizeLanguage, parseRelease, subtitleFiles } from './releaseName.ts';
 import type { ParsedRelease } from './releaseName.ts';
 import type {
   ExecuteResult, FileKind, FileRowView, ProposalCardView, ResultCardView, ResultDetailsView, RevalidateResult, ScreenTarget, ToolRunContext,
@@ -772,6 +772,9 @@ export function createToolRunner(deps: ToolRunnerDeps): ToolRunner {
     const maxRes = typeof args.max_resolution === 'number' ? args.max_resolution : undefined;
     const maxBytes = typeof args.max_size_gb === 'number' ? Math.round(args.max_size_gb * 1024 * 1024 * 1024) : undefined;
     const runtimeMin = typeof args.runtime_min === 'number' ? args.runtime_min : undefined;
+    // Already normalized by validateArgs; normalized again so a direct caller gets the same ranking.
+    const audioLanguage = normalizeLanguage(args.audio_language) ?? undefined;
+    const subtitlesWant = args.subtitles === true || args.subtitles === 'any' ? 'any' : normalizeLanguage(args.subtitles) ?? undefined;
 
     const prefs = deps.searchPrefs();
     const names = (id: string): string => clean(prefs.providers.get(id)?.name ?? id, 40);
@@ -828,6 +831,8 @@ export function createToolRunner(deps: ToolRunnerDeps): ToolRunner {
       packEpisodeCounts: packCounts,
       safety,
       now: deps.now(),
+      ...(audioLanguage !== undefined ? { audioLanguage } : {}),
+      ...(subtitlesWant !== undefined ? { subtitles: subtitlesWant } : {}),
     };
     const out = scoreResults(rows, scoreCtx);
 
@@ -1127,6 +1132,13 @@ export function createToolRunner(deps: ToolRunnerDeps): ToolRunner {
         });
       }
       data.presets = presets;
+      // Subtitle files in the list (.srt, .ass, ...) and the languages their names give. Only what the names say.
+      const subs = subtitleFiles(files.map((f) => f.path));
+      data.has_subtitles = subs.count > 0;
+      if (subs.count > 0) {
+        data.subtitle_file_count = subs.count;
+        if (subs.languages.length > 0) data.subtitle_languages = subs.languages.map(languageLabel);
+      }
       const s = stored.safety;
       data.safety = {
         level: s.level,
@@ -1334,7 +1346,10 @@ export function createToolRunner(deps: ToolRunnerDeps): ToolRunner {
       case 'transfer': {
         const ref = refFor(args.transfer_id);
         if (!ref) return fail('bad_args', 'That download is not in this chat. Look at list_transfers.');
-        link = { label: 'Open this download', target: { screen: 'transfer', id: ref.id } };
+        // A download from a link has no page of its own; it opens in a sheet on Transfers, so the button opens Transfers.
+        link = ref.kind === 'link'
+          ? { label: 'Open Transfers', target: { screen: 'transfers' } }
+          : { label: 'Open this download', target: { screen: 'transfer', id: ref.id } };
         break;
       }
       case 'search': {

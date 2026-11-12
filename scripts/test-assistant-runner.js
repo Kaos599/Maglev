@@ -447,6 +447,27 @@ async function main() {
     check('a real copy survived: no cinema-only note', jm.data.count === 1 && !jm.data.notes.some((n) => n.startsWith('Only cinema')), jm.data.notes);
   }
 
+  console.log('search: audio language and subtitles (0.12)');
+  {
+    const rrr = [
+      merged({ name: 'RRR.2022.1080p.BluRay.x265-GRP', infoHash: hash('1'), sizeBytes: 2.2 * GB, seeders: 900 }),
+      merged({ name: 'RRR.2022.1080p.WEB-DL.HINDI.x264-GRP', infoHash: hash('2'), sizeBytes: 2.6 * GB, seeders: 40 }),
+    ];
+    const runner = createToolRunner(world({ rows: rrr }).deps);
+    const out = await call(runner, 'search_torrents', resolveArgs(runner, 'search_torrents', { query: 'RRR', audio_language: 'Hindi' }));
+    const j = parse(out);
+    check('audio_language: the Hindi copy is the first row and the first card', j.data.results[0].name_untrusted.includes('HINDI') && out.results[0].handle === j.data.results[0].id && j.data.results[0].on_card === true, j.data.results.map((r) => r.name_untrusted));
+    check('audio_language: the row says why', j.data.results[0].reasons.includes('Has Hindi audio'), j.data.results[0].reasons);
+    check('audio_language: the other copy stays, with a plain reason', j.data.count === 2 && j.data.results[1].reasons.includes('No sign of Hindi audio in the name'), j.data.results[1].reasons);
+    const none = parse(await call(createToolRunner(world({ rows: rrr }).deps), 'search_torrents', { query: 'RRR' }));
+    check('without audio_language the order is the usual one', none.data.results[0].name_untrusted.includes('BluRay'), none.data.results.map((r) => r.name_untrusted));
+    const subs = parse(await call(createToolRunner(world({ rows: [
+      merged({ name: 'Interstellar.2014.1080p.BluRay.x265-GRP', infoHash: hash('3'), sizeBytes: 2.4 * GB, seeders: 900 }),
+      merged({ name: 'Interstellar.2014.1080p.BluRay.x264.ESub-GRP', infoHash: hash('4'), sizeBytes: 2.6 * GB, seeders: 20 }),
+    ] }).deps), 'search_torrents', { query: 'Interstellar', subtitles: 'english' }));
+    check('subtitles: the ESub copy leads with a reason', subs.data.results[0].name_untrusted.includes('ESub') && subs.data.results[0].reasons.includes('Has English subtitles'), subs.data.results.map((r) => r.reasons));
+  }
+
   // ---------------------------------------------------------------- get_result_details
 
   console.log('get_result_details');
@@ -471,6 +492,7 @@ async function main() {
     check('details list files with sanitised path field', j.data.files.length === 2 && j.data.files[0].path_untrusted.includes('.mkv'));
     check('details run the safety check', ['green', 'amber'].includes(j.data.safety.level) && j.data.can_propose === true, j.data.safety);
     check('details carry fit from fresh space', j.data.fit === 'fits' && typeof j.data.left_after_text === 'string', j.data);
+    check('details say a subtitle file is there and its language (en.srt)', j.data.has_subtitles === true && j.data.subtitle_file_count === 1 && JSON.stringify(j.data.subtitle_languages) === '["English"]', j.data);
     check('details progress lines are real facts', ctx.lines.some((l) => l[0] === `Looking inside ${id}`) && ctx.lines.some((l) => l[0] === 'Checking space'), ctx.lines);
     check('details return the card with safety', out.results?.length === 1 && out.results[0].safety && out.results[0].handle === id, out.results);
     check('details content has no hash or magnet', !/magnet:|[0-9a-f]{40}/i.test(out.content));
@@ -884,6 +906,12 @@ async function main() {
     const l3 = await call(runner, 'open_screen', { screen: 'settings', section: 'network' });
     check('open_screen settings section label', l3.link.label === 'Open Settings → Network' && l3.link.target.section === 'network', l3.link);
     check('open_screen content has no engine id', !l2.content.includes('tor1'));
+    const dlHandle = runner.registry.handleFor('transfer', 'dl:dl9');
+    const l2b = await call(runner, 'open_screen', { screen: 'transfer', transfer_id: dlHandle });
+    check('open_screen for a link download opens Transfers, not a torrent page', l2b.link && l2b.link.label === 'Open Transfers' && JSON.stringify(l2b.link.target) === JSON.stringify({ screen: 'transfers' }), l2b.link);
+    check('open_screen link content has no engine id', !l2b.content.includes('dl9'));
+    const l2c = await call(runner, 'open_screen', { screen: 'transfer', transfer_id: 'dl:dl9' });
+    check('open_screen with a raw dl: id also opens Transfers', l2c.link && l2c.link.target.screen === 'transfers', l2c.link);
     const l4 = await call(runner, 'open_screen', { screen: 'transfer', transfer_id: 't99' });
     check('open_screen with an unknown download is a plain error', parse(l4).ok === false && !l4.link, parse(l4));
     const l5 = await call(runner, 'open_screen', { screen: 'search', query: 'linux iso' });

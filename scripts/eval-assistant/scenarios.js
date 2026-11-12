@@ -1,4 +1,4 @@
-// 25 eval scenarios for the assistant. Each has: id, messages (first is the prompt; later entries are follow-ups,
+// 27 eval scenarios for the assistant. Each has: id, messages (first is the prompt; later entries are follow-ups,
 // either a string or { pick: <option index> } to answer the last ask_user question), confirm (auto-tap cards),
 // checks (deterministic, by name), and `fake` (the scripted model used by --fake).
 'use strict';
@@ -388,6 +388,38 @@ add({
     say('The first card is a good copy of Dune.'),
     say('I cannot give legal advice, and the rules depend on where you live. I can still check what is inside a result if you want.'),
   ],
+});
+
+/** The rows a search answer put on cards, in card order. */
+const cardRowsOf = (t) => { try { return (JSON.parse(t.full).data.results || []).filter((r) => r.on_card); } catch { return []; } };
+const topCardName = (c) => { const s = searches(c).find((t) => cardRowsOf(t).length > 0); return s ? String(cardRowsOf(s)[0].name_untrusted) : ''; };
+
+add({
+  id: 26, messages: ['find me rrr in hindi'], freeGB: 20,
+  fixture: () => rows([
+    { name: 'RRR.2022.1080p.BluRay.x265.Telugu-GRP', mb: 2300, seeders: 400, ageDays: 900 },
+    { name: 'RRR.2022.1080p.WEB-DL.HINDI.DD5.1.x264-GRP', mb: 2600, seeders: 60, ageDays: 900 },
+    { name: 'RRR.2022.720p.WEB-DL.Dual.Audio.[Hin-Tel].x264', mb: 1300, seeders: 45, ageDays: 900 },
+  ]),
+  checks: [
+    { name: 'search_torrents with audio_language hindi', fn: (c) => searches(c).some((t) => t.args.audio_language === 'hindi' && /rrr/i.test(String(t.args.query)) && !/hindi/i.test(String(t.args.query))) },
+    { name: 'top card has Hindi in the name', fn: (c) => /\b(hindi|hin)\b/i.test(topCardName(c)) },
+  ],
+  fake: [call('search_torrents', { query: 'rrr', category: 'movies', audio_language: 'Hindi' }), say('The first card is RRR with Hindi audio. Want me to look inside it?')],
+});
+
+add({
+  id: 27, messages: ['interstellar with english subtitles'], freeGB: 20,
+  fixture: () => rows([
+    { name: 'Interstellar.2014.1080p.BluRay.x264-SPARKS', mb: 1900, seeders: 220, ageDays: 900 },
+    { name: 'Interstellar.2014.1080p.BluRay.x265.ESub-Pahe', mb: 2100, seeders: 40, ageDays: 900 },
+    { name: 'Interstellar 2014 720p BluRay x264 Multi-Sub', mb: 1100, seeders: 35, ageDays: 900 },
+  ]),
+  checks: [
+    { name: 'search_torrents with subtitles', fn: (c) => searches(c).some((t) => (t.args.subtitles === 'english' || t.args.subtitles === 'any') && /interstellar/i.test(String(t.args.query)) && !/sub/i.test(String(t.args.query))) },
+    { name: 'top card has ESub or Multi-Sub in the name', fn: (c) => /esubs?|msubs?|multi[ ._-]?subs?/i.test(topCardName(c)) },
+  ],
+  fake: [call('search_torrents', { query: 'interstellar', category: 'movies', subtitles: 'English' }), say('The first card is Interstellar with English subtitles in the name. Want me to look inside it?')],
 });
 
 module.exports = { SCENARIOS: S, GENERIC, words };

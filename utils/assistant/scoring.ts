@@ -18,8 +18,8 @@ import type { Category, MergedResult } from '../search/types.ts';
 import type { PlaybackSupport } from '../../modules/maglev-engine/src/MaglevEngine.types';
 import type { SafetyLevel, SafetyResult } from './fileSafety.ts';
 import { playbackVerdict } from './playback.ts';
-import { parseRelease } from './releaseName.ts';
-import type { ParsedRelease, SourceKind } from './releaseName.ts';
+import { detectLanguages, hasAudioLanguage, languageLabel, parseRelease } from './releaseName.ts';
+import type { LanguageInfo, LanguageWant, ParsedRelease, SourceKind } from './releaseName.ts';
 import {
   DEFAULT_ANIME_EPISODE_RUNTIME_MIN, DEFAULT_EPISODE_RUNTIME_MIN, DEFAULT_FILM_RUNTIME_MIN, SMALL_FRACTION, TOO_SMALL_FRACTION, sizeBand,
 } from './sizeBands.ts';
@@ -55,6 +55,13 @@ export interface ScoreContext {
   allowEarlySources?: boolean;
   /** Extra. §3.3 playability "+1 multiAudio when the user asked for a language the name lists". */
   wantsMultiAudio?: boolean;
+  /**
+   * Extra. The audio language the user asked for, from normalizeLanguage ("hindi", "multi" for dual audio, or a plain
+   * word Maglev doesn't list). Rows whose name gives it rank first; the rest stay in the list, lower, with a reason.
+   */
+  audioLanguage?: LanguageWant;
+  /** Extra. Subtitles the user asked for: "any", or a language. Rows whose name gives them rank first. */
+  subtitles?: 'any' | LanguageWant;
   /** Extra. Episode count per season pack, keyed by info hash. Needed for pack sanity and `partial_fits`. */
   packEpisodeCounts?: ReadonlyMap<string, number>;
   /** Extra. File-list safety keyed by info hash (see `safetyForShortlist`). A red row is never shortlisted. */
@@ -87,6 +94,8 @@ export interface Ranked {
   safety?: SafetyResult | null;
   /** Season pack that does not fit whole: how many episodes would. */
   partialEpisodes?: number;
+  /** Set only when the user asked for an audio language or subtitles: how well the name matches. */
+  preference?: { audio?: 'yes' | 'maybe' | 'no'; subtitles?: 'yes' | 'maybe' | 'no' };
 }
 
 export interface Excluded {
@@ -443,7 +452,7 @@ function playabilityOf(parsed: ParsedRelease, ctx: ScoreContext, flags: string[]
     pts -= 2; // "Subtract 2: hardcoded subs"
     flags.push('hardcoded_subs');
   }
-  if (parsed.multiAudio && ctx.wantsMultiAudio) pts += 1; // "Add 1 (cap 20): multiAudio ..."
+  if (parsed.multiAudio && (ctx.wantsMultiAudio || ctx.audioLanguage !== undefined)) pts += 1; // "Add 1 (cap 20): multiAudio ..."
   return Math.max(0, Math.min(20, pts));
 }
 
@@ -576,9 +585,66 @@ function extraReasons(
   return out;
 }
 
+// ---------------------------------------------------------------- language and subtitle preference
+
+type Match = 'yes' | 'maybe' | 'no';
+interface Preference { audio?: Match; subtitles?: Match; good: string[]; bad: string[]; rank: number }
+
+const MATCH_POINTS: Record<Match, number> = { yes: 2, maybe: 1, no: 0 };
+
+/**
+ * How a name meets the language and subtitle the user asked for. `rank` orders rows (audio before subtitles);
+ * nothing is dropped. Reasons are plain and only say what the name shows.
+ */
+function preferenceOf(name: string, ctx: ScoreContext): Preference | null {
+  const audioWant = ctx.audioLanguage;
+  const subWant = ctx.subtitles;
+  if (audioWant === undefined && subWant === undefined) return null;
+  const info: LanguageInfo = detectLanguages(name);
+  const pref: Preference = { good: [], bad: [], rank: 0 };
+  if (audioWant !== undefined) {
+    const label = languageLabel(audioWant);
+    if (audioWant === 'multi') {
+      pref.audio = info.multiAudio ? 'yes' : 'no';
+      if (info.multiAudio) pref.good.push(info.audio.length > 1 ? `Has ${info.audio.map(languageLabel).join(' and ')} audio` : 'Has more than one audio track');
+      else pref.bad.push('No sign of more than one audio track in the name');
+    } else if (hasAudioLanguage(info, audioWant)) {
+      pref.audio = 'yes';
+      pref.good.push(`Has ${label} audio`);
+    } else if (info.multiAudio && info.audio.length < 2) {
+      pref.audio = 'maybe';
+      pref.good.push(`Has more than one audio track, but the name doesn't say if ${label} is one`);
+    } else {
+      pref.audio = 'no';
+      pref.bad.push(`No sign of ${label} audio in the name`);
+    }
+  }
+  if (subWant !== undefined) {
+    if (subWant === 'any' || subWant === 'multi') {
+      pref.subtitles = info.subtitles ? 'yes' : 'no';
+      if (info.subtitles) pref.good.push(info.subtitleLanguages.length > 0 ? `Has ${info.subtitleLanguages.map(languageLabel).join(' and ')} subtitles` : 'Has subtitles');
+      else pref.bad.push('No sign of subtitles in the name');
+    } else {
+      const label = languageLabel(subWant);
+      if ((info.subtitleLanguages as string[]).includes(subWant)) {
+        pref.subtitles = 'yes';
+        pref.good.push(`Has ${label} subtitles`);
+      } else if (info.subtitles) {
+        pref.subtitles = 'maybe';
+        pref.good.push(info.multiSubs ? `Has subtitles in several languages; ${label} is likely but not named` : `Has subtitles, but the name doesn't say ${label}`);
+      } else {
+        pref.subtitles = 'no';
+        pref.bad.push(`No sign of ${label} subtitles in the name`);
+      }
+    }
+  }
+  pref.rank = (pref.audio ? MATCH_POINTS[pref.audio] * 3 : 0) + (pref.subtitles ? MATCH_POINTS[pref.subtitles] : 0);
+  return pref;
+}
+
 // ---------------------------------------------------------------- scoring one result
 
-interface Scored { ranked: Ranked; sizeKnown: boolean; eligible: boolean }
+interface Scored { ranked: Ranked; sizeKnown: boolean; eligible: boolean; prefRank: number }
 
 function scoreOne(
   r: MergedResult, parsed: ParsedRelease, ctx: ScoreContext, q: ScoreContext['query'], now: number, titlePartial: boolean,
@@ -661,15 +727,18 @@ function scoreOne(
     tier = 'ok';
   }
 
-  const reasons = [headline(r, parsed, admission), ...extraReasons(flags, parsed, r, ctx, partialEpisodes)];
+  // What the user asked for leads after the headline; a miss goes last so warnings stay in the first three.
+  const pref = preferenceOf(r.name, ctx);
+  const reasons = [headline(r, parsed, admission), ...(pref?.good ?? []), ...extraReasons(flags, parsed, r, ctx, partialEpisodes), ...(pref?.bad ?? [])];
   const ranked: Ranked = {
     id: r.infoHash, score, tier, labels: [], reasons, flags, admission, result: r, parsed,
     breakdown: { quality, playability, health, sanity: size.sanity, fit, penalties },
     ...(safety !== undefined ? { safety } : {}),
     ...(partialEpisodes !== undefined ? { partialEpisodes } : {}),
+    ...(pref ? { preference: { ...(pref.audio ? { audio: pref.audio } : {}), ...(pref.subtitles ? { subtitles: pref.subtitles } : {}) } } : {}),
   };
   return {
-    ranked, sizeKnown,
+    ranked, sizeKnown, prefRank: pref?.rank ?? 0,
     eligible: sizeKnown && tier !== 'avoid' && admission !== null && admission.result !== 'DoesntFit',
   };
 }
@@ -739,7 +808,7 @@ function pickShortlist(sorted: Scored[]): Ranked[] {
 
   // best-quality: highest quality component among Fits or Tight (both are in `unique`).
   const byQuality = preferSafe(unique).slice().sort(
-    (a, b) => b.ranked.breakdown.quality - a.ranked.breakdown.quality || b.ranked.score - a.ranked.score,
+    (a, b) => b.prefRank - a.prefRank || b.ranked.breakdown.quality - a.ranked.breakdown.quality || b.ranked.score - a.ranked.score,
   );
   if (byQuality[0] !== bestFit) give(byQuality[0], 'best-quality');
 
@@ -839,6 +908,8 @@ export function scoreResults(results: readonly MergedResult[], ctx: ScoreContext
     .sort((a, b) =>
       rank(a.s) - rank(b.s)
       || pack(a.s) - pack(b.s)
+      // A language or subtitles the user asked for beats quality; rows without it stay, lower.
+      || b.s.prefRank - a.s.prefRank
       || b.s.ranked.score - a.s.ranked.score
       || (b.s.ranked.result.seeders ?? -1) - (a.s.ranked.result.seeders ?? -1)
       || a.i - b.i)

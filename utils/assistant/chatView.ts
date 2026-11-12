@@ -277,13 +277,13 @@ const SETTINGS_PATH: Record<NonNullable<Extract<ScreenTarget, { screen: 'setting
 
 /**
  * ScreenTarget to an expo-router route. The Transfers and Search tabs keep their filter and query in local state
- * and take no route params, so those open the tab itself. Downloads from links (ids "dl_...") have no route of
- * their own (a sheet on Transfers), so they open Transfers. Unknown shapes fall back to Transfers.
+ * and take no route params, so those open the tab itself. Downloads from links (ids "dl_..." or the runner's
+ * "dl:..." form) have no route of their own (a sheet on Transfers), so they open Transfers. Unknown shapes fall back to Transfers.
  */
 export function routeForTarget(t: ScreenTarget): AppRoute {
   switch (t?.screen) {
     case 'transfer':
-      if (typeof t.id === 'string' && t.id && !t.id.startsWith('dl_')) return { pathname: '/torrent/[id]', params: { id: t.id } };
+      if (typeof t.id === 'string' && t.id && !t.id.startsWith('dl_') && !t.id.startsWith('dl:')) return { pathname: '/torrent/[id]', params: { id: t.id } };
       return { pathname: '/' };
     case 'search':
       return typeof t.query === 'string' && t.query.trim() ? { pathname: '/search', params: { q: t.query.trim() } } : { pathname: '/search' };

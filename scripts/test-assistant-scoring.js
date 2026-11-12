@@ -521,6 +521,78 @@ async function main() {
     check('a movie year more than 1 off is still rejected', scoreResults([alien3], ctxQ('Alien 3', { query: { title: 'Alien 3', year: 1979 } })).excluded[0]?.reason === 'wrong_title');
   }
 
+  // ---------------------------------------------------------------- audio language and subtitles (0.12)
+  {
+    const { detectLanguages, normalizeLanguage, subtitleFiles } = await import('../utils/assistant/releaseName.ts');
+    const L = (n) => detectLanguages(n);
+    const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+    check('lang: HINDI after the year is Hindi audio', same(L('RRR.2022.1080p.HINDI.WEB-DL.x264-GRP').audio, ['hindi']));
+    check('lang: "(2022) Hindi 1080p" is Hindi audio', same(L('RRR (2022) Hindi 1080p WEB-DL').audio, ['hindi']));
+    check('lang: no year, language just before the first tag', same(L('RRR.Hindi.1080p.WEB-DL').audio, ['hindi']));
+    const dual = L('RRR.2022.Dual.Audio.[Hin-Eng].1080p.WEB-DL');
+    check('lang: Dual Audio [Hin-Eng] gives both languages and multi', same(dual.audio, ['hindi', 'english']) && dual.multiAudio, JSON.stringify(dual));
+    check('lang: MULTi VFF is French and multi', same(L('Movie.2020.MULTi.VFF.1080p.BluRay').audio, ['french']) && L('Movie.2020.MULTi.VFF.1080p.BluRay').multiAudio);
+    check('lang: iTA ENG', same(L('Film.2019.iTA.ENG.1080p.BluRay').audio, ['italian', 'english']));
+    check('lang: LATINO is Spanish', same(L('La.Casa.2019.1080p.WEB-DL.LATINO').audio, ['spanish']));
+    check('lang: "The Italian Job" is not Italian audio', L('The.Italian.Job.2003.1080p.BluRay.x264-GRP').audio.length === 0);
+    check('lang: "Hindi Medium" (a title) is not Hindi audio', L('Hindi.Medium.2017.1080p.WEB-DL.x264').audio.length === 0);
+    check('lang: "Dual" as a title is not dual audio', !L('Dual.2022.1080p.WEB-DL.x264').multiAudio);
+    const esub = L('RRR 2022 1080p WEB-DL Dual-Audio Hindi-English ESub');
+    check('subs: ESub is English subtitles, not English audio from the tag', esub.subtitles && same(esub.subtitleLanguages, ['english']) && same(esub.audio, ['hindi', 'english']), JSON.stringify(esub));
+    const msubs = L('Interstellar.2014.1080p.BluRay.x265.MSubs-Pahe');
+    check('subs: MSubs is subtitles in several languages', msubs.subtitles && msubs.multiSubs && msubs.audio.length === 0, JSON.stringify(msubs));
+    const multiSub = L('Interstellar 2014 1080p BluRay Multi-Sub');
+    check('subs: Multi-Sub is subtitles, not multi audio', multiSub.subtitles && multiSub.multiSubs && !multiSub.multiAudio, JSON.stringify(multiSub));
+    check('subs: "English Subtitles" is English subtitles', same(L('Interstellar.2014.1080p.BluRay.English.Subtitles').subtitleLanguages, ['english']));
+    check('subs: a plain release has none', !L('Interstellar.2014.1080p.BluRay.x264-GRP').subtitles);
+    check('subs: an anime group called SubsPlease is not a subtitle tag', !L('[SubsPlease] Frieren - 01 (1080p) [ABCD1234].mkv').subtitles);
+    check('normalizeLanguage: aliases', same(['Hindi', 'hin', 'pt-BR', 'latino', 'VFF', 'ger', 'jpn', 'hindi audio'].map(normalizeLanguage), ['hindi', 'hindi', 'portuguese', 'spanish', 'french', 'german', 'japanese', 'hindi']));
+    check('normalizeLanguage: dual audio and multi are "multi"', normalizeLanguage('Dual Audio') === 'multi' && normalizeLanguage('multi') === 'multi');
+    check('normalizeLanguage: unknown kept as a plain word, empty is null', normalizeLanguage('Malayalam') === 'malayalam' && normalizeLanguage('  ') === null && normalizeLanguage(5) === null);
+    const sf = subtitleFiles(['M/Subs/en.srt', 'M/Subs/2_English.srt', 'M/M.mkv', 'M/M.hin.ass', 'M/forced.srt']);
+    check('subtitleFiles: counts subtitle files and reads their languages', sf.count === 4 && same(sf.languages, ['english', 'hindi']), JSON.stringify(sf));
+    check('subtitleFiles: none in a video-only list', subtitleFiles(['M/M.mkv', 'M/sample.mkv']).count === 0);
+
+    const rq = (over = {}) => baseCtx({ query: { title: 'RRR', year: 2022 }, ...over });
+    const plain = row('RRR.2022.1080p.BluRay.x265-GRP', 2.2 * GB, 900);
+    const hindi = row('RRR.2022.1080p.WEB-DL.HINDI.x264-GRP', 2.6 * GB, 40);
+    const dualRow = row('RRR.2022.1080p.WEB-DL.Dual.Audio.[Hin-Eng].x264', 2.4 * GB, 30);
+    const before = scoreResults([plain, hindi, dualRow], rq());
+    check('no language asked: the best plain copy leads', before.ranked[0].id === plain.infoHash && !before.ranked[0].preference);
+    const asked = scoreResults([plain, hindi, dualRow], rq({ audioLanguage: 'hindi' }));
+    check('hindi asked: a Hindi copy leads', [hindi.infoHash, dualRow.infoHash].includes(asked.ranked[0].id), asked.ranked.map((r) => r.result.name).join(' | '));
+    check('hindi asked: the plain copy stays in the list, ranked last', asked.ranked.length === 3 && asked.ranked[2].id === plain.infoHash && asked.excluded.length === 0);
+    check('hindi asked: reason on the match', asked.ranked[0].reasons.includes('Has Hindi audio') && asked.ranked[0].reasons.indexOf('Has Hindi audio') === 1, asked.ranked[0].reasons.join(' / '));
+    check('hindi asked: reason on the miss', asked.ranked[2].reasons.includes('No sign of Hindi audio in the name') && asked.ranked[2].preference.audio === 'no', asked.ranked[2].reasons.join(' / '));
+    check('hindi asked: best-fit on the shortlist has Hindi', asked.shortlist[0].reasons.includes('Has Hindi audio'), asked.shortlist.map((r) => r.result.name).join(' | '));
+    const eng = scoreResults([plain, dualRow], rq({ audioLanguage: 'english' }));
+    check('dual audio [Hin-Eng] counts for English too', eng.ranked[0].id === dualRow.infoHash && eng.ranked[0].reasons.includes('Has English audio'), eng.ranked[0].reasons.join(' / '));
+    const multi = scoreResults([plain, dualRow], rq({ audioLanguage: 'multi' }));
+    check('"dual audio" asked: the dual copy leads', multi.ranked[0].id === dualRow.infoHash && multi.ranked[0].reasons.includes('Has Hindi and English audio'), multi.ranked[0].reasons.join(' / '));
+    const mal = row('RRR.2022.1080p.WEB-DL.Malayalam.x264-GRP', 2.4 * GB, 10);
+    const unk = scoreResults([plain, mal], rq({ audioLanguage: 'malayalam' }));
+    check('unknown language passes through as a word', unk.ranked[0].id === mal.infoHash && unk.ranked[0].reasons.includes('Has Malayalam audio'), unk.ranked[0].reasons.join(' / '));
+    const multiOnly = row('RRR.2022.1080p.WEB-DL.MULTi.x264-GRP', 2.4 * GB, 10);
+    const mo = scoreResults([plain, multiOnly], rq({ audioLanguage: 'hindi' }));
+    check('MULTi with no named language ranks above none, and says it is unsure', mo.ranked[0].id === multiOnly.infoHash && mo.ranked[0].preference.audio === 'maybe' && /doesn't say if Hindi/.test(mo.ranked[0].reasons.join(' ')), mo.ranked[0].reasons.join(' / '));
+
+    const jobQ = baseCtx({ query: { title: 'The Italian Job', year: 2003 }, audioLanguage: 'italian' });
+    const job = row('The.Italian.Job.2003.1080p.BluRay.x264-GRP', 2 * GB, 100);
+    const jobIta = row('The.Italian.Job.2003.1080p.BluRay.iTA.ENG.x264-GRP', 2.2 * GB, 5);
+    const jo = scoreResults([job, jobIta], jobQ);
+    check('"The Italian Job" title is no false positive', jo.ranked[0].id === jobIta.infoHash && jo.ranked[1].reasons.includes('No sign of Italian audio in the name'), jo.ranked.map((r) => r.reasons.join(' / ')).join(' || '));
+
+    const iq = (over = {}) => baseCtx({ query: { title: 'Interstellar', year: 2014 }, ...over });
+    const iPlain = row('Interstellar.2014.1080p.BluRay.x265-GRP', 2.4 * GB, 900);
+    const iEsub = row('Interstellar.2014.1080p.BluRay.x264.ESub-GRP', 2.6 * GB, 20);
+    const iMsub = row('Interstellar 2014 1080p BluRay x265 Multi-Sub', 2.5 * GB, 30);
+    const se = scoreResults([iPlain, iMsub, iEsub], iq({ subtitles: 'english' }));
+    check('english subtitles asked: ESub leads, Multi-Sub next, plain last', se.ranked.map((r) => r.id).join() === [iEsub, iMsub, iPlain].map((r) => r.infoHash).join(), se.ranked.map((r) => r.result.name).join(' | '));
+    check('english subtitles asked: plain reasons', se.ranked[0].reasons.includes('Has English subtitles') && /several languages/.test(se.ranked[1].reasons.join(' ')) && se.ranked[2].reasons.includes('No sign of English subtitles in the name'), se.ranked.map((r) => r.reasons.join(' / ')).join(' || '));
+    const sa = scoreResults([iPlain, iMsub], iq({ subtitles: 'any' }));
+    check('any subtitles asked: Multi-Sub leads', sa.ranked[0].id === iMsub.infoHash && sa.ranked[0].reasons.includes('Has subtitles'), sa.ranked[0].reasons.join(' / '));
+  }
+
   // ---------------------------------------------------------------- purity
   for (const file of ['scoring.ts', 'sizeBands.ts']) {
     const src = fs.readFileSync(path.join(__dirname, '..', 'utils', 'assistant', file), 'utf8');

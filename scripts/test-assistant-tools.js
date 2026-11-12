@@ -126,6 +126,30 @@ async function main() {
     check('list_transfers takes an optional transfer_id', ok('list_transfers', { transfer_id: T }) && ok('list_transfers', {}));
   }
 
+  console.log('tools: search_torrents audio_language and subtitles (0.12)');
+  {
+    const reg = new HandleRegistry();
+    const v = (a) => validateArgs('search_torrents', { query: 'rrr', ...a }, reg);
+    const props = TOOLS[0].function.parameters.properties;
+    check('search_torrents offers audio_language and subtitles', props.audio_language && props.audio_language.type === 'string' && props.subtitles && props.subtitles.type === 'string');
+    check('browse_torrents is unchanged (no language args)', !TOOLS.find((t) => t.function.name === 'browse_torrents').function.parameters.properties.audio_language);
+    const h = v({ audio_language: 'Hindi' });
+    check('audio_language "Hindi" becomes hindi', h.ok && h.args.audio_language === 'hindi', h);
+    check('audio_language aliases: hin, VFF, latino, pt-BR', v({ audio_language: 'hin' }).args.audio_language === 'hindi' && v({ audio_language: 'VFF' }).args.audio_language === 'french'
+      && v({ audio_language: 'latino' }).args.audio_language === 'spanish' && v({ audio_language: 'pt-BR' }).args.audio_language === 'portuguese');
+    check('audio_language "dual audio" becomes multi', v({ audio_language: 'dual audio' }).args.audio_language === 'multi');
+    check('an unknown language is kept as a plain word', v({ audio_language: 'Malayalam' }).args.audio_language === 'malayalam');
+    check('a list keeps its first language', v({ audio_language: ['Hindi', 'English'] }).args.audio_language === 'hindi');
+    check('an empty or null audio_language is dropped', !('audio_language' in v({ audio_language: '' }).args) && !('audio_language' in v({ audio_language: null }).args));
+    check('a number for audio_language is refused', isBad(v({ audio_language: 5 })));
+    check('field "language" is read as audio_language', v({ language: 'tamil' }).args.audio_language === 'tamil');
+    check('subtitles true and "yes" become any', v({ subtitles: true }).args.subtitles === 'any' && v({ subtitles: 'yes' }).args.subtitles === 'any');
+    check('subtitles "English" becomes english', v({ subtitles: 'English' }).args.subtitles === 'english' && v({ subtitles: 'eng' }).args.subtitles === 'english');
+    check('subtitles false, "false" and "no" are dropped', ['false', 'no', false].every((x) => { const r = v({ subtitles: x }); return r.ok && !('subtitles' in r.args); }));
+    check('field "subs" is read as subtitles', v({ subs: 'english' }).args.subtitles === 'english');
+    check('subtitles "multi" becomes any', v({ subtitles: 'multi' }).args.subtitles === 'any');
+  }
+
   console.log('tools: wording');
   const all = JSON.stringify(TOOLS);
   check('no tool text mentions adult content', !/adult|nsfw|porn/i.test(all));

@@ -43,7 +43,7 @@ async function main() {
     check(`the prompt never mentions ${gone}`, !p.includes(gone));
   }
   const names = [...p.matchAll(/\b(search_torrents|get_result_details|propose_add|propose_change|list_transfers|ask_user|open_screen|[a-z]+_[a-z_]+)\b/g)].map((m) => m[1]);
-  const known = new Set([...TOOLS.map((t) => t.function.name), 'max_size_gb', 'min_resolution', 'resolve_files', 'transfer_id', 'status_text', 'action_hint', 'add_download', 'search_providers', 'file_indices', 'first_indices', 'select_files', 'remove_files', 'delete_files', 'on_card', 'all_too_big', 'shortfall_text', 'max_resolution']);
+  const known = new Set([...TOOLS.map((t) => t.function.name), 'max_size_gb', 'min_resolution', 'resolve_files', 'transfer_id', 'status_text', 'action_hint', 'add_download', 'search_providers', 'file_indices', 'first_indices', 'select_files', 'remove_files', 'delete_files', 'on_card', 'all_too_big', 'shortfall_text', 'max_resolution', 'audio_language']);
   check('every snake_case word in the prompt is a real tool or argument', names.every((n) => known.has(n)), names.filter((n) => !known.has(n)));
 
   console.log('prompt: structure');

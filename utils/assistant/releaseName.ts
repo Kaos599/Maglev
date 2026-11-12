@@ -598,3 +598,214 @@ function parseInner(raw: string): ParsedRelease {
   if (/(?<![A-Za-z])(?:password|passwd|pwd|pass)(?![A-Za-z])/i.test(raw)) w.push('password_hint');
   return out;
 }
+
+// ---------------------------------------------------------------- audio and subtitle languages
+// Kept apart from parseRelease's tokens: these feed the assistant's ranking when the user names a language,
+// and never change what the parser or the glossary report.
+
+/** Languages the assistant knows by name. Anything else the user asks for is matched as a plain word. */
+export const KNOWN_LANGUAGES = [
+  'hindi', 'tamil', 'telugu', 'english', 'spanish', 'french', 'german', 'italian', 'japanese', 'korean', 'russian', 'portuguese', 'chinese',
+] as const;
+export type KnownLanguage = (typeof KNOWN_LANGUAGES)[number];
+
+/** Words and short codes in release names, lowercased, to the language they mean. */
+const LANGUAGE_ALIASES: Readonly<Record<string, KnownLanguage>> = {
+  hindi: 'hindi', hin: 'hindi',
+  tamil: 'tamil', tam: 'tamil',
+  telugu: 'telugu', tel: 'telugu',
+  english: 'english', eng: 'english',
+  spanish: 'spanish', esp: 'spanish', spa: 'spanish', latino: 'spanish', castellano: 'spanish', espanol: 'spanish',
+  french: 'french', fre: 'french', fra: 'french', vf: 'french', vff: 'french', vfq: 'french', vfi: 'french', vf2: 'french', truefrench: 'french',
+  german: 'german', ger: 'german', deu: 'german', deutsch: 'german',
+  italian: 'italian', ita: 'italian',
+  japanese: 'japanese', jap: 'japanese', jpn: 'japanese',
+  korean: 'korean', kor: 'korean',
+  russian: 'russian', rus: 'russian',
+  portuguese: 'portuguese', por: 'portuguese', 'pt-br': 'portuguese', ptbr: 'portuguese', 'pt br': 'portuguese', brazilian: 'portuguese',
+  chinese: 'chinese', chi: 'chinese', chs: 'chinese', cht: 'chinese', mandarin: 'chinese', cantonese: 'chinese',
+};
+
+/** Two-letter codes, only trusted in subtitle file names ("Movie.en.srt"), never in release names. */
+const ISO2: Readonly<Record<string, KnownLanguage>> = {
+  hi: 'hindi', ta: 'tamil', te: 'telugu', en: 'english', es: 'spanish', fr: 'french', de: 'german', it: 'italian',
+  ja: 'japanese', ko: 'korean', ru: 'russian', pt: 'portuguese', zh: 'chinese',
+};
+
+/** "multi" means the user asked for more than one audio track ("dual audio") without naming a language. */
+export type LanguageWant = KnownLanguage | 'multi' | string;
+
+/**
+ * The user's free text ("Hindi", "hin", "pt-BR", "dual audio", "latino") to a known language, "multi", or the
+ * plain lowercased word for a language Maglev doesn't list ("malayalam"). Null for empty or unusable text.
+ */
+export function normalizeLanguage(text: unknown): LanguageWant | null {
+  if (typeof text !== 'string') return null;
+  let v = text.normalize('NFKC').toLowerCase().replace(/[_.]+/g, ' ').replace(/\s+/g, ' ').trim();
+  if (!v) return null;
+  if (/^(?:dual|multi)(?:[ -]?(?:audio|language|lang|track|tracks))?$/.test(v)) return 'multi';
+  v = v.replace(/\s+(?:audio|dubbed|dub|language|lang|track|version|subs?|subtitles?)$/, '').trim();
+  if (hasOwnKey(LANGUAGE_ALIASES, v)) return LANGUAGE_ALIASES[v];
+  if (hasOwnKey(LANGUAGE_ALIASES, v.replace(/[\s-]+/g, ''))) return LANGUAGE_ALIASES[v.replace(/[\s-]+/g, '')];
+  const word = v.replace(/[^\p{L}]+/gu, '');
+  return word.length >= 2 && word.length <= 20 ? word : null;
+}
+
+/** What a release name says about audio and subtitle languages. Unknown stays empty. */
+export interface LanguageInfo {
+  /** Audio languages the name lists, known ones by their KnownLanguage name. */
+  audio: KnownLanguage[];
+  /** DUAL AUDIO, MULTi, or two audio languages. */
+  multiAudio: boolean;
+  /** Any subtitle tag: ESub, MSubs, Multi-Sub, Subbed, VOSTFR and the like. */
+  subtitles: boolean;
+  /** Subtitle languages the name lists. */
+  subtitleLanguages: KnownLanguage[];
+  /** MSubs, Multi-Sub: subtitles in several languages, none named. */
+  multiSubs: boolean;
+  /** Lowercased words that sit where release tags go, for matching a language Maglev doesn't list. */
+  tagWords: string[];
+}
+
+interface Word { text: string; low: string; start: number; end: number; bracketed: boolean }
+
+function splitWords(name: string): Word[] {
+  const out: Word[] = [];
+  let depth = 0;
+  let i = 0;
+  while (i < name.length) {
+    const ch = name[i];
+    if (ch === '[' || ch === '(' || ch === '{') { depth++; i++; continue; }
+    if (ch === ']' || ch === ')' || ch === '}') { depth = Math.max(0, depth - 1); i++; continue; }
+    if (/[\p{L}\p{N}]/u.test(ch)) {
+      const s = i;
+      while (i < name.length && /[\p{L}\p{N}]/u.test(name[i])) i++;
+      const text = name.slice(s, i);
+      out.push({ text, low: text.toLowerCase(), start: s, end: i, bracketed: depth > 0 });
+      continue;
+    }
+    i++;
+  }
+  return out;
+}
+
+const SUB_WORD = /^(?:subs?|subtitles?|subtitled|subbed|subtitulado|subtitulos|legendado|legendas)$/;
+const AUDIO_WORD = /^(?:audio|dub|dubbed|dubs)$/;
+/** One word that is a whole subtitle tag: ESub, ESubs, EngSub, HinSub, MSubs, MultiSubs, VOSTFR, SubFrench. */
+function subTag(low: string): { lang?: KnownLanguage; multi?: boolean } | null {
+  if (low === 'vostfr' || low === 'stfr' || low === 'subfrench' || low === 'subfr') return { lang: 'french' };
+  if (low === 'esub' || low === 'esubs') return { lang: 'english' };
+  if (low === 'msub' || low === 'msubs' || low === 'multisub' || low === 'multisubs' || low === 'multisubtitles') return { multi: true };
+  const m = /^([a-z]+?)subs?$/.exec(low);
+  if (m && hasOwnKey(LANGUAGE_ALIASES, m[1])) return { lang: LANGUAGE_ALIASES[m[1]] };
+  const n = /^subs?([a-z]+)$/.exec(low);
+  if (n && hasOwnKey(LANGUAGE_ALIASES, n[1])) return { lang: LANGUAGE_ALIASES[n[1]] };
+  return null;
+}
+
+/** Words that link language tags in a run: "Hindi + English", "Dual Audio". */
+const RUN_FILLER = /^(?:dual|multi|audio|and|dub|dubbed)$/;
+
+/**
+ * Audio and subtitle languages a release name gives. A language word counts only where release tags go: after
+ * the title (from the year or the first quality tag on), inside brackets, or in a run of language words just
+ * before the first tag with a title in front ("RRR.Hindi.1080p"). So "The Italian Job 2003" is not Italian audio.
+ */
+export function detectLanguages(name: string): LanguageInfo {
+  const out: LanguageInfo = { audio: [], multiAudio: false, subtitles: false, subtitleLanguages: [], multiSubs: false, tagWords: [] };
+  const raw = typeof name === 'string' ? name.slice(0, MAX_SCAN) : '';
+  if (!raw) return out;
+  // Only the last path part: the folder repeats the name.
+  const leafStart = Math.max(raw.lastIndexOf('/'), raw.lastIndexOf('\\')) + 1;
+  const leaf = raw.slice(leafStart);
+  const parsed = parseRelease(leaf);
+  const extTok = parsed.tokens.find((t) => t.key === 'extension');
+  // Group names stay in: a trailing "[Hin-Eng]" reads as a group to the parser but is a language tag.
+  const tagStart = Math.min(Infinity, ...parsed.tokens.filter((t) => t.key !== 'group' && t.key !== 'extension').map((t) => t.start));
+  const words = splitWords(leaf).filter((w) => !(extTok && w.start >= extTok.start));
+
+  const isLang = (w: Word) => hasOwnKey(LANGUAGE_ALIASES, w.low) || w.low === 'pt' || subTag(w.low) !== null || RUN_FILLER.test(w.low) || SUB_WORD.test(w.low);
+  const eligible = new Array<boolean>(words.length).fill(false);
+  for (let i = 0; i < words.length; i++) eligible[i] = words[i].start >= tagStart || words[i].bracketed;
+  // A run of language words right before the first tag, with at least one title word in front of it.
+  if (Number.isFinite(tagStart)) {
+    const first = words.findIndex((w) => w.start >= tagStart);
+    const j = (first < 0 ? words.length : first) - 1;
+    let k = j;
+    while (k >= 0 && !words[k].bracketed && isLang(words[k])) k--;
+    if (k >= 0 && k < j) for (let x = k + 1; x <= j; x++) eligible[x] = true;
+  }
+
+  const addAudio = (l: KnownLanguage) => { if (!out.audio.includes(l)) out.audio.push(l); };
+  const addSub = (l: KnownLanguage) => { out.subtitles = true; if (!out.subtitleLanguages.includes(l)) out.subtitleLanguages.push(l); };
+  for (let i = 0; i < words.length; i++) {
+    if (!eligible[i]) continue;
+    const w = words[i];
+    const next = words[i + 1]?.low ?? '';
+    out.tagWords.push(w.low);
+    const tag = subTag(w.low);
+    if (tag) {
+      out.subtitles = true;
+      if (tag.lang) addSub(tag.lang);
+      if (tag.multi) out.multiSubs = true;
+      continue;
+    }
+    if (SUB_WORD.test(w.low)) { out.subtitles = true; continue; }
+    if (w.low === 'dual' || w.low === 'multi') {
+      if (SUB_WORD.test(next)) { out.subtitles = true; out.multiSubs = true; i++; continue; }
+      out.multiAudio = true;
+      continue;
+    }
+    let lang: KnownLanguage | undefined = hasOwnKey(LANGUAGE_ALIASES, w.low) ? LANGUAGE_ALIASES[w.low] : undefined;
+    let skip = 0;
+    if (w.low === 'pt' && next === 'br') { lang = 'portuguese'; skip = 1; }
+    if (!lang) continue;
+    const after = words[i + 1 + skip]?.low ?? '';
+    if (SUB_WORD.test(after)) { addSub(lang); i += 1 + skip; continue; }
+    addAudio(lang);
+    if (AUDIO_WORD.test(after)) skip++;
+    i += skip;
+  }
+  if (out.audio.length > 1) out.multiAudio = true;
+  return out;
+}
+
+/** True when the name gives this audio language. "multi" asks for dual or multi audio. Unknown languages match as a tag word. */
+export function hasAudioLanguage(info: LanguageInfo, want: LanguageWant): boolean {
+  if (want === 'multi') return info.multiAudio;
+  if ((KNOWN_LANGUAGES as readonly string[]).includes(want)) return info.audio.includes(want as KnownLanguage);
+  return info.tagWords.includes(want);
+}
+
+const SUBTITLE_EXT = new Set(['srt', 'ass', 'ssa', 'vtt', 'sub', 'idx', 'sup', 'smi']);
+
+/** Subtitle files in a torrent's file list, and the languages their names give ("Movie.eng.srt", "Subs/2_English.srt", "en.srt"). */
+export function subtitleFiles(paths: readonly string[]): { count: number; languages: KnownLanguage[] } {
+  let count = 0;
+  const languages: KnownLanguage[] = [];
+  for (const p of paths) {
+    if (typeof p !== 'string') continue;
+    const base = p.slice(Math.max(p.lastIndexOf('/'), p.lastIndexOf('\\')) + 1);
+    const dot = base.lastIndexOf('.');
+    if (dot <= 0 || !SUBTITLE_EXT.has(base.slice(dot + 1).toLowerCase())) continue;
+    count++;
+    const parts = base.slice(0, dot).toLowerCase().split(/[^a-z]+/).filter(Boolean);
+    for (const part of parts) {
+      const lang = hasOwnKey(LANGUAGE_ALIASES, part) ? LANGUAGE_ALIASES[part]
+        : hasOwnKey(ISO2, part) ? ISO2[part]
+          : subTag(part)?.lang;
+      if (lang && !languages.includes(lang)) languages.push(lang);
+    }
+  }
+  return { count, languages };
+}
+
+/** "hindi" → "Hindi". */
+export function languageLabel(want: LanguageWant): string {
+  if (want === 'multi') return 'more than one';
+  return want.charAt(0).toUpperCase() + want.slice(1);
+}
+
+function hasOwnKey<T extends object>(obj: T, key: string): boolean {
+  return Object.prototype.hasOwnProperty.call(obj, key);
+}
