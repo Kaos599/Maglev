@@ -71,5 +71,6 @@ object NativeCore {
     @JvmStatic external fun nativeRemoveDownload(id: String, deleteFiles: Boolean): String
     @JvmStatic external fun nativeRefreshDownloadUrl(id: String, url: String, optionsJson: String): String
     @JvmStatic external fun nativeSetDownloadLimits(id: String, json: String): String
+    @JvmStatic external fun nativeAllowLanHost(id: String): String
     @JvmStatic external fun nativeVersion(): String
 }

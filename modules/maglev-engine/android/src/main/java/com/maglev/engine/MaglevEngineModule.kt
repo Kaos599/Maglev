@@ -138,6 +138,9 @@ class MaglevEngineModule : Module() {
         AsyncFunction("setDownloadLimits") { id: String, limits: Map<String, Any?>, promise: Promise ->
             engine(promise) { EngineHost.setDownloadLimits(id, limits) }
         }
+        AsyncFunction("allowLanHost") { id: String, promise: Promise ->
+            io(promise) { EngineHost.allowLanHost(id) }
+        }
         AsyncFunction("openDownload") { id: String, promise: Promise ->
             engine(promise) { EngineHost.openDownload(id) }
         }

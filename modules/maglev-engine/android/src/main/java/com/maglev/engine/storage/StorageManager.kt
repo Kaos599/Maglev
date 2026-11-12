@@ -147,12 +147,13 @@ object StorageManager {
      * unfinished `.part` and `.maglev-dl.json` leftovers (docs/NATIVE_CONTRACT.md section 17). Returns bytes freed.
      * Blocking, call from IO.
      */
-    fun freeStagedDownload(context: Context, folder: String, name: String): Long {
+    fun freeStagedDownload(context: Context, folder: String, name: String, targetName: String = name): Long {
         val tree = customUri(context)?.let { android.net.Uri.parse(it) } ?: return 0L
         if (!isStagingPath(context, folder)) return 0L
         val leftovers = setOf("$name.part", "$name.maglev-dl.json")
         return StagingCleanup.free(stagingDir(context), File(folder), listOf(name) + leftovers) { rel, f ->
-            rel in leftovers || SafStorageManager.copyMatches(context, tree, rel, f)
+            // The copy may have a different name than the staged file (a free name in the user's folder).
+            rel in leftovers || SafStorageManager.copyMatches(context, tree, if (rel == name) targetName else rel, f)
         }
     }
 
@@ -169,9 +170,19 @@ object StorageManager {
         p.edit().putStringSet(KEY_COPIED, next).apply()
     }
 
+    private fun copiedUriKey(id: String) = "copied_uri:$id"
+
+    /** The document Maglev created in the user's tree for a link download, so Delete file removes exactly it. */
+    fun markCopiedUri(context: Context, id: String, uri: String) {
+        prefs(context).edit().putString(copiedUriKey(id), uri).apply()
+    }
+
+    fun copiedUri(context: Context, id: String): String? = prefs(context).getString(copiedUriKey(id), null)
+
     /** Forget every marker of a torrent, used when it is deleted. */
     fun clearCopied(context: Context, id: String) {
         val p = prefs(context)
+        if (p.contains(copiedUriKey(id))) p.edit().remove(copiedUriKey(id)).apply()
         val next = HashSet(p.getStringSet(KEY_COPIED, emptySet()) ?: emptySet())
         if (next.removeAll { it.startsWith("$id|") }) p.edit().putStringSet(KEY_COPIED, next).apply()
     }

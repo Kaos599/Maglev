@@ -53,6 +53,21 @@ object FileActions {
         }
     }
 
+    /** Opens a document by its URI (the copy Maglev made in the user's folder). */
+    fun openUri(context: Context, uri: Uri, name: String): OpenResult {
+        val intent = Intent(Intent.ACTION_VIEW)
+            .setDataAndType(uri, SafStorageManager.mimeFor(name))
+            .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
+        return try {
+            context.startActivity(intent)
+            OpenResult.Opened
+        } catch (_: ActivityNotFoundException) {
+            OpenResult.NoApp
+        } catch (e: SecurityException) {
+            OpenResult.Failed(e.message ?: "Access denied")
+        }
+    }
+
     /** Returns null on success or a plain-English error. */
     fun openFile(context: Context, outputFolder: String, relPath: String): String? =
         when (val r = open(context, outputFolder, relPath)) {

@@ -78,6 +78,45 @@ object SafStorageManager {
         }
     }
 
+    /** What [copyNewFileIntoTree] did. [error] is null on success; [uri] and [name] name the document it created. */
+    data class CopyOutcome(val error: String?, val uri: Uri?, val name: String?)
+
+    /**
+     * Copies [source] into the root of the tree as a NEW file. It never overwrites or adopts an existing file: when
+     * [name] is taken the copy gets a free name (`a (1).zip`). On success the created document is returned so the
+     * caller can remember exactly it. A copy that fails deletes only the document it created itself.
+     * Blocking, call from IO.
+     */
+    fun copyNewFileIntoTree(context: Context, treeUri: Uri, name: String, source: File): CopyOutcome {
+        if (!source.exists()) return CopyOutcome("Missing file: $name", null, null)
+        val root = DocumentFile.fromTreeUri(context, treeUri) ?: return CopyOutcome("Folder is no longer available", null, null)
+        val finalName = FreeName.pick(name) { root.findFile(it) != null }
+        val target = root.createFile(mimeFor(finalName), finalName)
+            ?: return CopyOutcome("Could not create $finalName", null, null)
+        // From here on the document is ours: a failure removes it.
+        fun fail(message: String): CopyOutcome {
+            try { target.delete() } catch (_: Exception) {}
+            return CopyOutcome(message, null, null)
+        }
+        return try {
+            context.contentResolver.openOutputStream(target.uri, "wt")?.use { out ->
+                source.inputStream().use { it.copyTo(out, 256 * 1024) }
+            } ?: return fail("Could not write $finalName")
+            if (target.length() != source.length()) fail("Copy of $finalName is incomplete") else CopyOutcome(null, target.uri, target.name ?: finalName)
+        } catch (e: Exception) {
+            fail(e.message ?: "Copy failed for $finalName")
+        }
+    }
+
+    /** Deletes one document by its URI. True when it is gone (a missing document counts). */
+    fun deleteDocument(context: Context, uri: Uri): Boolean = try {
+        DocumentsContract.deleteDocument(context.contentResolver, uri)
+    } catch (_: java.io.FileNotFoundException) {
+        true
+    } catch (_: Exception) {
+        false
+    }
+
     /** True when the tree holds a file at [relativePath] with the same size as [source]. Blocking, call from IO. */
     fun copyMatches(context: Context, treeUri: Uri, relativePath: String, source: File): Boolean {
         val doc = try { findInTree(context, treeUri, relativePath) } catch (_: Exception) { null } ?: return false

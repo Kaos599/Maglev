@@ -1568,31 +1568,16 @@ object EngineHost {
     fun pauseDownload(id: String) = call { NativeCore.nativePauseDownload(id) }.also { pollNow() }
     fun resumeDownload(id: String) = call { NativeCore.nativeResumeDownload(id) }.also { pollNow() }
     fun retryDownload(id: String) = call { NativeCore.nativeRetryDownload(id) }.also { pollNow() }
-    /**
-     * The copy that Maglev made in the user's chosen folder for a finished download, as (tree, name), or null when
-     * there is none. Read before the record is removed.
-     */
-    private fun downloadCopyInTree(c: Context, id: String): Pair<android.net.Uri, String>? {
-        val list = call { NativeCore.nativeListTorrents() }
-        if (!isOk(list)) return null
-        val d = Json.list(list["downloads"]).firstOrNull { it["id"] == id } ?: return null
-        if (d["state"] != "finished") return null
-        val folder = d["folder"] as? String ?: return null
-        val name = d["name"] as? String ?: return null
-        val tree = StorageManager.customUri(c) ?: return null
-        if (!StorageManager.isStagingPath(c, folder) || !StorageManager.isCopied(c, DL_PREFIX + id, folder, tree)) return null
-        return android.net.Uri.parse(tree) to name
-    }
-
     fun removeDownload(id: String, deleteFiles: Boolean): Map<String, Any?> {
-        val copy = if (deleteFiles) ctx?.let { downloadCopyInTree(it, id) } else null
+        // The document this download's copy created, read before the marker goes. Delete file removes only it.
+        val copyUri = if (deleteFiles) ctx?.let { StorageManager.copiedUri(it, DL_PREFIX + id) } else null
         val res = call { NativeCore.nativeRemoveDownload(id, deleteFiles) }
         if (isOk(res)) {
             val key = DL_PREFIX + id
             ctx?.let { StorageManager.clearCopied(it, key) }
             // Delete file also removes the copy in the chosen folder (contract 17.z).
-            if (copy != null) {
-                try { ctx?.let { SafStorageManager.deleteFromTree(it, copy.first, copy.second) } }
+            if (copyUri != null) {
+                try { ctx?.let { SafStorageManager.deleteDocument(it, android.net.Uri.parse(copyUri)) } }
                 catch (t: Throwable) { Log.w(TAG, "could not delete the copy", t) }
             }
             if (copying.contains(key)) {
@@ -1608,6 +1593,9 @@ object EngineHost {
 
     fun refreshDownloadUrl(id: String, url: String, options: Map<String, Any?>) =
         call { NativeCore.nativeRefreshDownloadUrl(id, url, Json.toJson(Json.snakeify(options))) }.also { pollNow() }
+
+    /** The user allows the typed host of a download that failed with LAN_ADDRESS. The caller retries afterwards. */
+    fun allowLanHost(id: String) = call { NativeCore.nativeAllowLanHost(id) }
 
     fun setDownloadLimits(id: String, limits: Map<String, Any?>) =
         call { NativeCore.nativeSetDownloadLimits(id, Json.toJson(Json.snakeify(limits))) }
@@ -1776,29 +1764,34 @@ object EngineHost {
 
     private fun copyOneDownload(c: Context, tree: android.net.Uri, key: String, folder: String, name: String) {
         val source = File(folder, name)
-        // Null means the target exists with the source's size. A missing source is an error.
-        val error = SafStorageManager.copyFileIntoTree(c, tree, name, source)
+        // Always a new file in the user's folder (a free name when `name` is taken); never an existing one.
+        val outcome = SafStorageManager.copyNewFileIntoTree(c, tree, name, source)
+        val error = outcome.error
         if (cancelledCopies.remove(key)) {
-            // Removed while copying. An incomplete copy never stays in the user's folder; a complete one stays
-            // unless Delete file was asked.
+            // Removed while copying. A failed copy already removed what it created. A complete one stays unless
+            // Delete file was asked, and then exactly the document this copy created goes.
             val deleteAsked = deleteCopyTargets.remove(key)
-            if (error != null || deleteAsked) {
-                try { SafStorageManager.deleteFromTree(c, tree, name) } catch (t: Throwable) { Log.w(TAG, "could not delete the copy", t) }
+            val created = outcome.uri
+            if (deleteAsked && created != null) {
+                try { SafStorageManager.deleteDocument(c, created) } catch (t: Throwable) { Log.w(TAG, "could not delete the copy", t) }
             }
             return
         }
-        if (error == null) {
+        val created = outcome.uri
+        if (error == null && created != null) {
+            val target = outcome.name ?: name
             StorageManager.markCopied(c, key, folder, tree.toString())
+            StorageManager.markCopiedUri(c, key, created.toString())
             copyFailedAt.remove(key)
             lastCopyError = null
             val treePath = SafStorageManager.treeToPosixPath(tree)
             if (treePath != null && mediaScanned.add(key)) {
-                try { scanPaths(c, treePath, listOf(name)) } catch (t: Throwable) { Log.w(TAG, "media scan failed", t) }
+                try { scanPaths(c, treePath, listOf(target)) } catch (t: Throwable) { Log.w(TAG, "media scan failed", t) }
             }
-            try { StorageManager.freeStagedDownload(c, folder, name) } catch (t: Throwable) { Log.w(TAG, "staged cleanup failed", t) }
+            try { StorageManager.freeStagedDownload(c, folder, name, target) } catch (t: Throwable) { Log.w(TAG, "staged cleanup failed", t) }
         } else {
             copyFailedAt[key] = SystemClock.elapsedRealtime()
-            lastCopyError = error
+            lastCopyError = error ?: "Copy failed"
         }
         emitStorageStatus()
     }
@@ -1839,7 +1832,15 @@ object EngineHost {
         val folder = d["folder"] as? String
         val name = d["name"] as? String
         if (folder == null || name.isNullOrEmpty()) return Json.failure("NOT_FOUND", "File not found")
-        return when (val r = FileActions.open(c, folder, name)) {
+        // Once the file was copied into the user's folder (maybe under a free name) the staged one is gone: open the
+        // document Maglev created, by its URI.
+        val copyUri = StorageManager.copiedUri(c, DL_PREFIX + id)
+        val result = if (copyUri != null && !File(folder, name).exists()) {
+            FileActions.openUri(c, android.net.Uri.parse(copyUri), name)
+        } else {
+            FileActions.open(c, folder, name)
+        }
+        return when (val r = result) {
             FileActions.OpenResult.Opened -> linkedMapOf("ok" to true)
             FileActions.OpenResult.NoApp -> Json.failure("NO_APP", "No app on this phone can open this file")
             is FileActions.OpenResult.Failed -> Json.failure("NOT_FOUND", r.message)
