@@ -335,6 +335,8 @@ export function createToolRunner(deps: ToolRunnerDeps): ToolRunner {
   const registry = new HandleRegistry();
   const results = new Map<string, Stored>();
   const cards = new Map<string, CardRecord>();
+  /** Engine calls of confirmed actions that have not returned yet, by card and step. */
+  const inflight = new Map<string, Promise<ExecuteResult>>();
   /** Bumped by reset(). Work that started in an older epoch must not write cards or act. */
   let epoch = 0;
 
@@ -1437,6 +1439,7 @@ export function createToolRunner(deps: ToolRunnerDeps): ToolRunner {
       let pendingAdds = 0;
       for (const i of found.indices) {
         if (found.rec.done[i] !== null) continue; // already ran
+        if (inflight.has(`${found.rec.cardId}#${i}`)) continue; // still running: Retry joins it
         const a = found.rec.actions[i];
         const why = await revalidateAction(a, space, pendingAdds);
         if (startEpoch !== epoch) return { ok: false, reason: STALE_CARD };
@@ -1496,6 +1499,36 @@ export function createToolRunner(deps: ToolRunnerDeps): ToolRunner {
     }
   }
 
+  /**
+   * Runs one action once. The call is kept in `inflight` and its success is recorded when it finishes, whoever is
+   * still waiting. A caller that gave up (the chat's 60 s limit) leaves the engine call running; a Retry then joins
+   * that call instead of starting a second one. A joined call that failed is tried once more.
+   */
+  async function runStep(rec: CardRecord, i: number): Promise<ExecuteResult> {
+    const key = `${rec.cardId}#${i}`;
+    const joined = inflight.get(key);
+    if (joined) {
+      const res = await joined;
+      if (res.ok || rec.done[i] !== null) return res.ok ? res : { ok: true, summary: rec.done[i] as string };
+      // It failed: fall through and run it again (nobody else is running it now).
+    }
+    const existing = inflight.get(key);
+    if (existing) return existing;
+    const started: Promise<ExecuteResult> = executeAction(rec.actions[i]).then(
+      (res): ExecuteResult => {
+        if (res.ok) rec.done[i] = res.summary;
+        if (inflight.get(key) === started) inflight.delete(key);
+        return res;
+      },
+      (): ExecuteResult => {
+        if (inflight.get(key) === started) inflight.delete(key);
+        return { ok: false, code: 'INTERNAL', message: plainEngineError('INTERNAL') };
+      },
+    );
+    inflight.set(key, started);
+    return started;
+  }
+
   async function execute(cardId: string): Promise<ExecuteResult> {
     try {
       const startEpoch = epoch;
@@ -1510,11 +1543,10 @@ export function createToolRunner(deps: ToolRunnerDeps): ToolRunner {
           continue;
         }
         if (startEpoch !== epoch) return { ok: false, code: 'NOT_FOUND', message: STALE_CARD };
-        const res = await executeAction(rec.actions[i]);
+        const res = await runStep(rec, i);
         if (!res.ok) {
           return indices.length > 1 ? { ok: false, code: res.code, message: `Step ${i + 1} didn't run. ${res.message}` } : res;
         }
-        rec.done[i] = res.summary;
         last = res.summary;
       }
       return indices.length > 1 ? { ok: true, summary: `Done: ${plural(indices.length, 'step')}.` } : { ok: true, summary: last };
@@ -1570,6 +1602,7 @@ export function createToolRunner(deps: ToolRunnerDeps): ToolRunner {
     epoch += 1;
     results.clear();
     cards.clear();
+    inflight.clear();
     registry.clear();
   }
 

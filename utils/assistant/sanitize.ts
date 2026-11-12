@@ -90,16 +90,21 @@ function isTitleCasePair(labels: string[]): boolean {
  * "Movie.2020.Pro"). Spared when it has more than three labels, or any label is a release token. A match with a
  * path, query or port is always a link, so callers only ask about bare matches.
  */
-function isReleaseName(match: string): boolean {
+function isReleaseName(match: string, keepNames: boolean): boolean {
   if (/[/?#:]/.test(match)) return false;
   const labels = match.split('.');
-  if (isTitleCasePair(labels)) return true;
+  // Only app-derived names (keepNames). Model prose can write "Evil.Ru" as a site, so it never gets this pass.
+  if (keepNames && isTitleCasePair(labels)) return true;
   if (labels.length > 3) return true;
   return labels.slice(0, -1).some((l) => RELEASE_LABEL_RE.test(l));
 }
 
-/** Replace every link-like span with a placeholder. Detection runs on the folded text, replacement on the original. */
-function removeLinks(input: string): string {
+/**
+ * Replace every link-like span with a placeholder. Detection runs on the folded text, replacement on the original.
+ * `keepNames`: spare "Movie.Pro"-style two-label names. True for text the app derived (tool results, titles);
+ * false for model output.
+ */
+function removeLinks(input: string, keepNames: boolean): string {
   let s = input;
   for (const re of LINK_RES) {
     const folded = fold(s);
@@ -108,7 +113,7 @@ function removeLinks(input: string): string {
     let last = 0;
     for (let m = re.exec(folded); m; m = re.exec(folded)) {
       if (m[0].length === 0) { re.lastIndex++; continue; }
-      if (re === BARE_DOMAIN_RE && isReleaseName(m[0])) continue;
+      if (re === BARE_DOMAIN_RE && isReleaseName(m[0], keepNames)) continue;
       out += s.slice(last, m.index) + LINK_PLACEHOLDER;
       last = m.index + m[0].length;
     }
@@ -145,7 +150,7 @@ export function sanitizeText(input: unknown, maxLen: number = NAME_MAX): string 
   s = s.replace(/[\t\n\r]/g, ' ');
   s = stripInvisible(s);
   s = s.replace(MARKDOWN_LINK_RE, (_m, label: string) => (label.trim() ? label : LINK_PLACEHOLDER));
-  s = removeLinks(s);
+  s = removeLinks(s, true);
   for (const re of ROLE_MARKER_RES) s = s.replace(re, '?');
   s = s.replace(ROLE_PREFIX_RE, (_m, lead: string) => `${lead}?`);
   s = s.replace(/\s+/gu, ' ').trim();
@@ -162,7 +167,7 @@ export function filterModelOutput(text: unknown): string {
   s = s.normalize('NFKC').replace(/\r\n?/g, '\n').replace(/\t/g, ' ');
   s = s.split('\n').map(stripInvisible).join('\n');
   s = s.replace(MARKDOWN_LINK_RE, (_m, label: string) => (label.trim() ? label : LINK_PLACEHOLDER));
-  return removeLinks(s);
+  return removeLinks(s, false);
 }
 
 /** Truncate by code point (never splits a surrogate pair), keeping the result within maxLen. */

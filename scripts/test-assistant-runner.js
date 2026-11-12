@@ -416,6 +416,55 @@ async function main() {
     check('executing a finished card again does not add twice', w.calls.filter((c) => c[0] === 'addTorrent').length === 1);
   }
   {
+    // A timed-out action keeps running in the engine. Retry must join it, never start a second one (wave 3, item 4).
+    const { w, runner } = await openedRunner();
+    await call(runner, 'get_result_details', resolveArgs(runner, 'get_result_details', { result_id: 'r1' }));
+    await runner.prepareCard('c1', 'propose_add', resolveArgs(runner, 'propose_add', { result_id: 'r1', reason: 'x' }));
+    let finish;
+    w.addResult = new Promise((resolve) => { finish = resolve; });
+    const first = runner.execute('c1'); // the caller gives up on this one after its timeout, but the call is still running
+    for (let i = 0; i < 5; i++) await new Promise((r) => setImmediate(r));
+    const rv = await runner.revalidate('c1');
+    check('a Retry recheck skips an action that is still running', rv.ok === true, rv);
+    const second = runner.execute('c1');
+    for (let i = 0; i < 5; i++) await new Promise((r) => setImmediate(r));
+    check('Retry does not start the engine call again', w.calls.filter((c) => c[0] === 'addTorrent').length === 1);
+    finish({ ok: true });
+    const [r1, r2] = await Promise.all([first, second]);
+    check('both callers get the result of the one call', r1.ok && r2.ok && r2.summary === 'Added.' && w.calls.filter((c) => c[0] === 'addTorrent').length === 1, [r1, r2]);
+    check('and it is recorded as done', (await runner.execute('c1')).ok && w.calls.filter((c) => c[0] === 'addTorrent').length === 1);
+  }
+  {
+    // The first waiter is gone (timed out) and the call finishes later: the result is still recorded.
+    const { w, runner } = await openedRunner();
+    await call(runner, 'get_result_details', resolveArgs(runner, 'get_result_details', { result_id: 'r1' }));
+    await runner.prepareCard('c1', 'propose_add', resolveArgs(runner, 'propose_add', { result_id: 'r1', reason: 'x' }));
+    let finish;
+    w.addResult = new Promise((resolve) => { finish = resolve; });
+    void runner.execute('c1');
+    for (let i = 0; i < 5; i++) await new Promise((r) => setImmediate(r));
+    finish({ ok: true });
+    for (let i = 0; i < 5; i++) await new Promise((r) => setImmediate(r));
+    const again = await runner.execute('c1');
+    check('a late finish is recorded, so a later Retry adds nothing', again.ok && w.calls.filter((c) => c[0] === 'addTorrent').length === 1, again);
+  }
+  {
+    // A joined call that failed is not the end: Retry then tries once more itself.
+    const { w, runner } = await openedRunner();
+    await call(runner, 'get_result_details', resolveArgs(runner, 'get_result_details', { result_id: 'r1' }));
+    await runner.prepareCard('c1', 'propose_add', resolveArgs(runner, 'propose_add', { result_id: 'r1', reason: 'x' }));
+    let finish;
+    w.addResult = new Promise((resolve) => { finish = resolve; });
+    void runner.execute('c1');
+    for (let i = 0; i < 5; i++) await new Promise((r) => setImmediate(r));
+    const joined = runner.execute('c1');
+    for (let i = 0; i < 5; i++) await new Promise((r) => setImmediate(r));
+    w.addResult = { ok: true };
+    finish({ ok: false, code: 'DISK_FULL', message: 'full' });
+    const r = await joined;
+    check('a joined failure is retried once with a fresh call', r.ok === true && w.calls.filter((c) => c[0] === 'addTorrent').length === 2, [r, w.calls.filter((c) => c[0] === 'addTorrent').length]);
+  }
+  {
     // Partial selection and first files.
     const { w, runner } = await openedRunner();
     await call(runner, 'get_result_details', resolveArgs(runner, 'get_result_details', { result_id: 'r1' }));

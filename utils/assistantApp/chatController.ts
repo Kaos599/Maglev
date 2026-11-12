@@ -211,6 +211,9 @@ export function createChatController(deps: ChatDeps): ChatController {
    * off) but were mid-action when asked: cardMachine ignores EXPIRE there. Value: the caption to show.
    */
   const expireOnSettle = new Map<string, string>();
+  /** Cards whose prepareCard has not finished, and the ones to drop when it does (expired or switched off meanwhile). */
+  const preparing = new Set<string>();
+  const dropPrepared = new Set<string>();
 
   // ---- snapshot -------------------------------------------------------------------------------------
   const listeners = new Set<() => void>();
@@ -346,6 +349,8 @@ export function createChatController(deps: ChatDeps): ChatController {
       planSizes.clear();
       planDone.clear();
       expireOnSettle.clear();
+      preparing.clear();
+      dropPrepared.clear();
     }
     if (turn.kind !== 'streaming') closeStreaming();
   }
@@ -408,6 +413,7 @@ export function createChatController(deps: ChatDeps): ChatController {
         break;
       case 'expireCards':
         for (const i of items) if (i.kind === 'card') expireCard(i.id, CARD_EXPIRED_CAPTION);
+        for (const id of preparing) expireCard(id, CARD_EXPIRED_CAPTION);
         break;
       case 'addUsage':
         deps.addUsage({ input: e.input, output: e.output });
@@ -621,6 +627,7 @@ export function createChatController(deps: ChatDeps): ChatController {
 
   // ---- cards ----------------------------------------------------------------------------------------
   function createCard(cardId: string, callId: string, tool: string, args: Record<string, unknown>): void {
+    preparing.add(cardId);
     const job = (async () => {
       let result: ProposalCardView | { error: string };
       try {
@@ -632,7 +639,13 @@ export function createChatController(deps: ChatDeps): ChatController {
       } catch {
         result = { error: 'That could not be set up.' };
       }
-      // Cleared, disabled or expired while preparing: nothing to show.
+      preparing.delete(cardId);
+      // Cleared, expired (target gone, replaced) or the Assistant turned off while preparing: nothing to show.
+      // The turn machine still lists the card as pending, so it is settled as expired here.
+      if (dropPrepared.delete(cardId) || !getPrefs().enabled) {
+        if (turn.pendingCards.includes(cardId)) dispatch({ type: 'CardSettled', cardId, kind: 'expired' });
+        return;
+      }
       if (!turn.pendingCards.includes(cardId)) return;
       if ('error' in result) {
         refused.set(callId, result.error);
@@ -667,6 +680,11 @@ export function createChatController(deps: ChatDeps): ChatController {
 
   /** EXPIRE a card. One that is mid-action ignores it, so it expires the moment its action stops. */
   function expireCard(cardId: string, caption: string): void {
+    if (preparing.has(cardId)) {
+      // Not on screen yet: drop it when it is ready (and let the turn stop waiting for it now).
+      dropPrepared.add(cardId);
+      return;
+    }
     cardEvent(cardId, { type: 'EXPIRE', caption });
     const k = cardItem(cardId)?.state.kind;
     if (k === 'confirming' || k === 'executing') expireOnSettle.set(cardId, caption);

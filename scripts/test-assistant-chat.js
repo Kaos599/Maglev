@@ -863,6 +863,49 @@ async function main() {
     check('plan step timeout: the plan stops at that step', st.kind === 'failed' && /^Step 2 of 3 stopped: .*too long/i.test(st.error) && /Step 3 did not run\.$/.test(st.error), st);
   }
 
+  // ---- Assistant turned off (or the card replaced) while its card is still being prepared (wave 3, item 1) ---------------
+  {
+    const s = setup();
+    let release;
+    s.runner.handlers.prepare = (cardId) => new Promise((resolve) => { release = () => resolve(cardView(cardId)); });
+    s.fetch.queue.push({ chunks: sseTools([{ id: 'k1', name: 'propose_pause_resume', args: { transfer_id: 't1', action: 'pause', reason: 'Because.' } }]) });
+    s.fetch.queue.push({ chunks: sseText(['On a card.']) });
+    s.chat().send('pause');
+    await settle();
+    await s.timers.advance(60);
+    s.env.prefs = { ...s.env.prefs, enabled: false };
+    s.controller.refresh();
+    await settle();
+    release();
+    await settle();
+    await s.timers.advance(60);
+    check('Disabled while a card is being built: it never shows up live', !s.chat().items.some((i) => i.kind === 'card'), s.chat().items.map((i) => i.kind));
+    check('Disabled while a card is being built: no further request goes out and the turn is not busy', s.fetch.requests.length === 1 && !s.chat().busy);
+    s.env.prefs = { ...s.env.prefs, enabled: true };
+    s.controller.refresh();
+    s.fetch.queue.push({ chunks: sseText(['Hi.']) });
+    s.chat().send('hello again');
+    await settle();
+    check('after turning it back on a Confirm for the dropped card does nothing', (s.chat().confirm('c1'), s.calls.revalidate.length === 0));
+  }
+  {
+    // A card replaced while it is still being built is dropped, not shown next to its replacement.
+    const s = setup();
+    const releases = [];
+    s.runner.handlers.prepare = (cardId) => new Promise((resolve) => { releases.push(() => resolve(cardView(cardId))); });
+    s.fetch.queue.push({ chunks: sseTools([{ id: 'k1', name: 'propose_pause_resume', args: { transfer_id: 't1', action: 'pause', reason: 'Because.' } }]) });
+    s.fetch.queue.push({ chunks: sseText(['One.']) });
+    s.chat().send('pause');
+    await settle();
+    await s.timers.advance(60);
+    // A TargetGone while preparing.
+    s.controller.targetGone('t1');
+    await settle();
+    releases[0]();
+    await settle();
+    check('TargetGone while a card is being built: it is dropped', !s.chat().items.some((i) => i.kind === 'card'), s.chat().items.map((i) => i.kind));
+  }
+
   // ---- askAbout shows the title, not the handle (item 6) -----------------------------------------------------
   {
     const s = setup();

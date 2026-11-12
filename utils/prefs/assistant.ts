@@ -308,8 +308,17 @@ export interface AssistantPrefsStore {
    * Stores the key under keyNameFor(presetId), deletes every other provider's key, then in ONE update sets
    * keyRef and, when `settings` is given, presetId, baseUrl and model. If the secret write throws, prefs are untouched.
    * Returns the key name.
+   *
+   * Save and remove run one after the other (a Remove during a save waits for it, then removes). `stillWanted`
+   * is checked before and after the secret write; when it says no, whatever was written is deleted, prefs stay
+   * as they were, and the result is null.
    */
-  saveKey(presetId: PresetId, key: string, settings?: { baseUrl: string; model: string }): Promise<string>;
+  saveKey(
+    presetId: PresetId,
+    key: string,
+    settings?: { baseUrl: string; model: string },
+    stillWanted?: () => boolean,
+  ): Promise<string | null>;
   readKey(presetId: PresetId): Promise<string | null>;
   /** Removes every provider's key (`assistant.<preset>`) and clears keyRef. */
   removeKey(): Promise<void>;
@@ -318,6 +327,13 @@ export interface AssistantPrefsStore {
 export function createAssistantPrefsStore(kv: KeyValueStore, secrets: SecretStore): AssistantPrefsStore {
   let cache: AssistantPrefs | null = null;
   const listeners = new Set<() => void>();
+  /** Save and remove never overlap: each waits for the one before it, whether that one worked or not. */
+  let chain: Promise<unknown> = Promise.resolve();
+  function exclusive<T>(fn: () => Promise<T>): Promise<T> {
+    const run = chain.then(fn, fn);
+    chain = run.catch(() => undefined);
+    return run;
+  }
 
   function load(): AssistantPrefs {
     if (cache) return cache;
@@ -372,12 +388,25 @@ export function createAssistantPrefsStore(kv: KeyValueStore, secrets: SecretStor
         listeners.delete(listener);
       };
     },
-    async saveKey(presetId, key, settings) {
-      const name = keyNameFor(presetId);
-      await secrets.set(name, key.trim());
-      await removeOthers(presetId);
-      set(normalizeAssistantPrefs({ ...load(), ...(settings ? { presetId, ...settings } : {}), keyRef: name }));
-      return name;
+    saveKey(presetId, key, settings, stillWanted) {
+      return exclusive(async () => {
+        const name = keyNameFor(presetId);
+        const wanted = () => stillWanted === undefined || stillWanted();
+        if (!wanted()) return null;
+        await secrets.set(name, key.trim());
+        if (!wanted()) {
+          // Revoked (Remove key) while the write ran: take back what was written.
+          try {
+            await secrets.remove(name);
+          } catch {
+            // Nothing more to do.
+          }
+          return null;
+        }
+        await removeOthers(presetId);
+        set(normalizeAssistantPrefs({ ...load(), ...(settings ? { presetId, ...settings } : {}), keyRef: name }));
+        return name;
+      });
     },
     async readKey(presetId) {
       try {
@@ -386,9 +415,11 @@ export function createAssistantPrefsStore(kv: KeyValueStore, secrets: SecretStor
         return null;
       }
     },
-    async removeKey() {
-      await removeOthers(null);
-      set({ ...load(), keyRef: null });
+    removeKey() {
+      return exclusive(async () => {
+        await removeOthers(null);
+        set({ ...load(), keyRef: null });
+      });
     },
   };
 }

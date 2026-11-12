@@ -111,9 +111,17 @@ export function useProviderSetup(opts?: { onExpireCards?: () => void }) {
               // if the phone refuses it, nothing switches and the user can try again.
               try {
                 if (fx.key) {
-                  await assistantPrefs.saveKey(fx.preset as PresetId, fx.key, { baseUrl: fx.baseUrl, model: fx.model });
+                  const saved = await assistantPrefs.saveKey(
+                    fx.preset as PresetId,
+                    fx.key,
+                    { baseUrl: fx.baseUrl, model: fx.model },
+                    // Remove key during the write revokes it: the store deletes what it wrote.
+                    () => probeMayStore({ aborted: ctl.signal.aborted, state: stateRef.current }),
+                  );
+                  if (saved === null) return;
                 } else {
                   await assistantPrefs.removeKey();
+                  if (!probeMayStore({ aborted: ctl.signal.aborted, state: stateRef.current })) return;
                   assistantPrefs.update({ presetId: fx.preset as PresetId, baseUrl: fx.baseUrl, model: fx.model });
                 }
               } catch {

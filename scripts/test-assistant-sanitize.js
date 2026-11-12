@@ -196,10 +196,15 @@ async function main() {
   }
 
   console.log('sanitize: bare two-label names are not links');
+  // App-derived names (tool results, parsed titles, transfer names) keep them; model prose does not (a model can write a site name).
   for (const keep of ['Movie.Pro', 'Show.Ru', 'Try Movie.Pro tonight', 'I liked Show.Ru a lot']) {
     check(`sanitizeText keeps ${keep}`, sanitizeText(keep) === keep, sanitizeText(keep));
-    check(`filterModelOutput keeps ${keep}`, filterModelOutput(keep) === keep, filterModelOutput(keep));
   }
+  for (const gone of ['Movie.Pro', 'Show.Ru', 'RUTRACKER.RU', 'Kickass.Download', 'Codecs.Site', 'Evil.Ru', 'Visit Evil.Ru now']) {
+    const out = filterModelOutput(gone);
+    check(`filterModelOutput strips ${gone}`, out.includes('[link removed]') && !/\.(Pro|Ru|RU|Download|Site)\b/.test(out), out);
+  }
+  check('filterModelOutput still keeps a long release name', filterModelOutput('Try The.Last.Harbor.2023.1080p.WEB-DL.x265-GRP') === 'Try The.Last.Harbor.2023.1080p.WEB-DL.x265-GRP');
   for (const [input, gone] of [
     ['Get it at https://Movie.Pro/x', 'Movie.Pro'], ['Get it at Movie.Pro/free', 'Movie.Pro'], ['see www.Show.Ru now', 'Show.Ru'],
     ['visit Evil.com now', 'Evil.com'], ['visit movie.pro now', 'movie.pro'], ['go Show.Ru:8080', 'Show.Ru'],

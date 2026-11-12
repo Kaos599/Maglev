@@ -288,6 +288,51 @@ async function main() {
     check('and leaves the old key alone', secrets.data.get('assistant.openai') === 'k1');
   }
   {
+    // Save and Remove run one after the other. Remove during a save's write cannot be overtaken (wave 3, item 2).
+    const secrets = memorySecrets();
+    const log = [];
+    let finishSet;
+    const slow = {
+      ...secrets,
+      async set(n, v) { log.push('set:start'); await new Promise((r) => { finishSet = r; }); await secrets.set(n, v); log.push('set:end'); },
+      async remove(n) { log.push(`remove:${n}`); return secrets.remove(n); },
+    };
+    const store = createAssistantPrefsStore(memoryKv(), slow);
+    const saving = store.saveKey('openai', 'sk-late', { baseUrl: 'https://api.openai.com/v1', model: 'gpt-5-nano' });
+    await new Promise((r) => setImmediate(r));
+    const removing = store.removeKey();
+    await new Promise((r) => setImmediate(r));
+    check('Remove waits for the write that is in progress', log.join() === 'set:start', log.join());
+    finishSet();
+    await Promise.all([saving, removing]);
+    check('the key is gone afterwards and keyRef is cleared', secrets.data.size === 0 && store.get().keyRef === null, [...secrets.data.keys()]);
+    check('the write finished before any removal ran', log.indexOf('set:end') < log.findIndex((l) => l.startsWith('remove:')), log.join());
+  }
+  {
+    // A save that is revoked while it writes deletes what it wrote and changes nothing.
+    const secrets = memorySecrets();
+    const store = createAssistantPrefsStore(memoryKv(), secrets);
+    let wanted = true;
+    const slow = { ...secrets, async set(n, v) { await secrets.set(n, v); wanted = false; } };
+    const store2 = createAssistantPrefsStore(memoryKv(), slow);
+    const r = await store2.saveKey('openai', 'sk-x', { baseUrl: 'https://api.openai.com/v1', model: 'gpt-5-nano' }, () => wanted);
+    check('revoked during the write: returns null, key deleted, prefs untouched', r === null && secrets.data.size === 0 && store2.get().keyRef === null && store2.get().presetId === 'openrouter', [r, [...secrets.data.keys()]]);
+    check('not revoked: saves as before', (await store.saveKey('openai', 'sk-y', undefined, () => true)) === 'assistant.openai' && secrets.data.get('assistant.openai') === 'sk-y');
+    const store3 = createAssistantPrefsStore(memoryKv(), memorySecrets());
+    check('revoked before the write: nothing is written', (await store3.saveKey('openai', 'sk-z', undefined, () => false)) === null && store3.get().keyRef === null);
+  }
+  {
+    // One failing step does not jam the queue.
+    const secrets = memorySecrets();
+    let n = 0;
+    const flaky = { ...secrets, async set(k, v) { if (n++ === 0) throw new Error('keystore'); return secrets.set(k, v); } };
+    const store = createAssistantPrefsStore(memoryKv(), flaky);
+    let threw = false;
+    try { await store.saveKey('openai', 'a'); } catch { threw = true; }
+    const ok = await store.saveKey('openai', 'b');
+    check('a failed save throws and the next one still runs', threw && ok === 'assistant.openai' && secrets.data.get('assistant.openai') === 'b');
+  }
+  {
     const cur = { presetId: 'groq', keyRef: 'assistant.groq' };
     check('keyFor: same preset returns the key', keyFor({ presetId: 'groq', key: 'k' }, cur) === 'k');
     check('keyFor: a key loaded for another preset is never returned', keyFor({ presetId: 'openai', key: 'old' }, cur) === null);
