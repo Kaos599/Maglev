@@ -4,7 +4,7 @@
 // so Node tests run this file with a fake.
 
 import { chatCompletionsUrl, type PresetId } from '../prefs/assistant.ts';
-import { createStreamParser, requestExtras } from '../assistant/sse.ts';
+import { MAX_DETAIL_CHARS, createStreamParser, requestExtras, sanitizeSnippet } from '../assistant/sse.ts';
 import type { RequestEffect, TurnEvent } from '../assistant/turnMachine.ts';
 
 /** The small part of the WinterCG fetch this client uses. expo/fetch fits it. */
@@ -34,6 +34,10 @@ export type StreamFn = (params: StreamParams, onEvent: (event: TurnEvent) => voi
 
 /** SM-31 / §8.6: abort when nothing arrives for this long. */
 export const FIRST_BYTE_TIMEOUT_MS = 20_000;
+/** Abort a stream that goes quiet for this long after the first byte (SSE comments count as bytes). */
+export const IDLE_TIMEOUT_MS = 45_000;
+/** An error body is read only up to this many bytes. It is matched against, never shown. */
+const ERROR_BODY_MAX_BYTES = 8 * 1024;
 
 /**
  * Providers whose docs (§8.2) list parallel_tool_calls as a request parameter. Groq is left out: its gpt-oss
@@ -84,31 +88,104 @@ export interface ClientTimers {
   clearTimeout(handle: unknown): void;
 }
 
+/** The status inside a JSON error: a number, or a three-digit string. */
+function codeToStatus(code: unknown): number | undefined {
+  if (typeof code === 'number' && Number.isInteger(code) && code >= 100 && code <= 599) return code;
+  if (typeof code === 'string' && /^\d{3}$/.test(code)) return Number(code);
+  return undefined;
+}
+
+/**
+ * Reads at most ERROR_BODY_MAX_BYTES of a response body and returns it as a short sanitised snippet. Never throws.
+ * The text is only matched against (see turnMachine.statusStep). It is never logged or shown.
+ */
+async function readSnippet(res: FetchLikeResponse, signal: AbortSignal): Promise<string> {
+  const raw = await readBody(res, signal);
+  return sanitizeSnippet(raw, MAX_DETAIL_CHARS);
+}
+
+async function readBody(res: FetchLikeResponse, signal: AbortSignal): Promise<string> {
+  try {
+    if (res.body) {
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let out = '';
+      let bytes = 0;
+      const aborted = new Promise<null>((resolve) => {
+        if (signal.aborted) resolve(null);
+        else signal.addEventListener('abort', () => resolve(null), { once: true });
+      });
+      while (bytes < ERROR_BODY_MAX_BYTES) {
+        const r = await Promise.race([reader.read(), aborted]);
+        if (r === null || r.done) break;
+        if (!r.value) continue;
+        bytes += r.value.byteLength;
+        out += decoder.decode(r.value, { stream: true });
+      }
+      try {
+        await reader.cancel?.();
+      } catch {
+        // Nothing more is needed from the body.
+      }
+      return out;
+    }
+    if (res.text) return (await res.text()).slice(0, ERROR_BODY_MAX_BYTES);
+  } catch {
+    // An unreadable body is the same as no body.
+  }
+  return '';
+}
+
+/** `{error:{message,code}}` from a JSON error body, as the status and snippet an HttpErr carries. */
+function jsonError(raw: string): { status: number; body: string } | null {
+  try {
+    const v = JSON.parse(raw) as { error?: unknown };
+    const e = v && typeof v === 'object' ? v.error : undefined;
+    if (e === undefined || e === null) return null;
+    const err = (typeof e === 'object' ? e : { message: String(e) }) as { message?: unknown; code?: unknown; type?: unknown };
+    const status = codeToStatus(err.code) ?? 400;
+    const parts = [err.message, typeof err.code === 'string' ? err.code : '', err.type].filter((x) => typeof x === 'string');
+    return { status, body: sanitizeSnippet(parts.join(' ')) };
+  } catch {
+    return null;
+  }
+}
+
 export function createStreamFn(
   fetchImpl: FetchLike,
-  opts: { timers?: ClientTimers; firstByteMs?: number; now?: () => number } = {},
+  opts: { timers?: ClientTimers; firstByteMs?: number; idleMs?: number; now?: () => number } = {},
 ): StreamFn {
   const timers: ClientTimers = opts.timers ?? {
     setTimeout: (fn, ms) => setTimeout(fn, ms),
     clearTimeout: (h) => clearTimeout(h as ReturnType<typeof setTimeout>),
   };
   const firstByteMs = opts.firstByteMs ?? FIRST_BYTE_TIMEOUT_MS;
+  const idleMs = opts.idleMs ?? IDLE_TIMEOUT_MS;
   const now = opts.now ?? Date.now;
 
   return async function stream(params, onEvent, signal) {
     if (signal.aborted) return;
     const inner = new AbortController();
     let timedOut = false;
+    let idled = false;
     const onOuterAbort = () => inner.abort();
     signal.addEventListener('abort', onOuterAbort);
-    let timer: unknown = timers.setTimeout(() => {
-      timedOut = true;
-      inner.abort();
-    }, firstByteMs);
+    let timer: unknown;
     const stopTimer = () => {
       if (timer !== undefined) timers.clearTimeout(timer);
       timer = undefined;
     };
+    /** One watchdog: the first-byte limit until a byte arrives, then the idle limit, restarted on every chunk. */
+    const arm = (ms: number, onFire: () => void) => {
+      stopTimer();
+      timer = timers.setTimeout(() => {
+        onFire();
+        inner.abort();
+      }, ms);
+    };
+    arm(firstByteMs, () => {
+      timedOut = true;
+    });
     let gotFirstByte = false;
 
     const emit = (e: TurnEvent) => {
@@ -135,14 +212,38 @@ export function createStreamFn(
         return;
       }
       if (!res.ok) {
+        // The first-byte timer keeps running while the error body is read, so a stalled body cannot hang the turn.
+        const snippet = await readSnippet(res, inner.signal);
+        stopTimer();
+        if (signal.aborted) return;
+        const retryAfterMs = parseRetryAfter(res.headers.get('retry-after'), now());
+        emit({
+          type: 'HttpErr',
+          status: res.status,
+          ...(retryAfterMs !== undefined ? { retryAfterMs } : {}),
+          ...(snippet !== '' ? { body: snippet } : {}),
+        });
+        return;
+      }
+
+      // A 200 that is not an event stream: a JSON error body, or a captive portal's web page.
+      const contentType = (res.headers.get('content-type') ?? '').toLowerCase();
+      if (contentType.includes('text/html')) {
         stopTimer();
         try {
           await res.body?.getReader().cancel?.();
         } catch {
-          // The body is not needed.
+          // The page is not needed.
         }
-        const retryAfterMs = parseRetryAfter(res.headers.get('retry-after'), now());
-        emit({ type: 'HttpErr', status: res.status, ...(retryAfterMs !== undefined ? { retryAfterMs } : {}) });
+        emit({ type: 'PortalErr' });
+        return;
+      }
+      if (contentType.includes('application/json')) {
+        const raw = await readBody(res, inner.signal);
+        stopTimer();
+        if (signal.aborted) return;
+        const err = jsonError(raw);
+        emit(err ? { type: 'HttpErr', status: err.status, ...(err.body !== '' ? { body: err.body } : {}) } : { type: 'HttpErr', status: 400 });
         return;
       }
 
@@ -157,31 +258,53 @@ export function createStreamFn(
           // 'tool' progress and 'error' events are not needed here: finish() reports both.
         }
       };
+      const onIdle = () => {
+        idled = true;
+      };
       const firstByte = () => {
         if (gotFirstByte) return;
         gotFirstByte = true;
-        stopTimer();
         emit({ type: 'FirstByte' });
       };
 
       try {
         if (res.body) {
           const reader = res.body.getReader();
+          // A reader that ignores the abort signal must not keep the turn waiting, so the read races it.
+          const aborted = new Promise<null>((resolve) => {
+            if (inner.signal.aborted) resolve(null);
+            else inner.signal.addEventListener('abort', () => resolve(null), { once: true });
+          });
           while (true) {
-            const { done, value } = await reader.read();
-            if (done) break;
+            const r = await Promise.race([reader.read(), aborted]);
+            if (r === null) {
+              try {
+                await reader.cancel?.();
+              } catch {
+                // Already closed.
+              }
+              throw new Error('aborted');
+            }
+            if (r.done) break;
+            const value = r.value;
             if (!value || value.byteLength === 0) continue;
             firstByte();
+            arm(idleMs, onIdle);
             feed(decoder.decode(value, { stream: true }));
           }
+          stopTimer();
           feed(decoder.decode());
         } else if (res.text) {
           const all = await res.text();
+          stopTimer();
           if (all.length > 0) firstByte();
           feed(all);
         }
       } catch {
-        netFailure();
+        if (signal.aborted) return;
+        // Quiet for too long after the stream started: a cut-off answer, which the turn retries once.
+        if (idled) emit({ type: 'StreamFailed', error: { code: 'incomplete', message: 'The answer was cut off.' } });
+        else netFailure();
         return;
       }
       if (signal.aborted) return;

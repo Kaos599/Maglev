@@ -310,14 +310,14 @@ async function main() {
     s.chat().send('hi');
     await settle();
     const e = s.chat().items.at(-1);
-    check('401: error item "Check your key." with action settings', e.kind === 'error' && e.message === 'Check your key.' && e.action === 'settings' && !s.chat().busy, e);
+    check('401: error item names the provider, with action settings', e.kind === 'error' && e.message === "OpenRouter didn't accept your key. Sign in again in Settings → Assistant." && e.action === 'settings' && !s.chat().busy, e);
   }
   {
     const s = setup();
     s.fetch.queue.push({ status: 402, chunks: [] });
     s.chat().send('hi');
     await settle();
-    check('402: "Out of credits." with action settings', s.chat().items.at(-1).action === 'settings' && s.chat().items.at(-1).message === 'Out of credits.');
+    check('402: out of credit with the provider named, action settings', s.chat().items.at(-1).action === 'settings' && s.chat().items.at(-1).message === 'Your OpenRouter account is out of credit. Add credit on their site, or pick a free model in Settings.', s.chat().items.at(-1));
   }
   {
     const s = setup();
@@ -349,6 +349,143 @@ async function main() {
     await s.timers.advance(1000 + 250);
     const e = s.chat().items.at(-1);
     check('5xx twice: one retry (1 s plus jitter), then "The provider is having trouble."', s.fetch.requests.length === 2 && e.kind === 'error' && e.message === 'The provider is having trouble. Try again later.' && e.action === 'retry', e);
+  }
+
+  // ---- errors with a way forward (R1: no dead ends) ------------------------------------------------------
+  {
+    const cases = [
+      [400, 'This model does not support tools', "This model can't use Maglev's tools. Pick another model in Settings → Assistant.", 'settings'],
+      [404, '{"error":{"message":"No endpoints found"}}', "That model isn't available any more. Pick another in Settings → Assistant.", 'settings'],
+      [413, '', 'That was too much for this model. Clear the chat or ask a shorter question.', 'retry'],
+      [422, 'nope', 'The AI service refused this message. Try again, or pick another model in Settings.', 'retry'],
+      [429, '', "You've hit this model's limit for now. Try again later, or pick another model.", 'retry'],
+    ];
+    for (const [status, body, msg, action] of cases) {
+      const s = setup();
+      s.fetch.queue.push({ status, chunks: body ? [body] : [] });
+      s.chat().send('hi');
+      await settle();
+      const e = s.chat().items.at(-1);
+      check(`HTTP ${status}${body ? ' + body' : ''}: "${msg.slice(0, 32)}..." action ${action}`, e.kind === 'error' && e.message === msg && e.action === action && !s.chat().busy && s.fetch.requests.length === 1, e);
+    }
+    const s = setup({ prefs: { presetId: 'groq', baseUrl: presetById('groq').baseUrl } });
+    s.fetch.queue.push({ status: 400, chunks: ['{"error":{"message":"Failed to call a function.","code":"tool_use_failed"}}'] });
+    s.fetch.queue.push({ chunks: sseText(['Second try.']) });
+    s.chat().send('hi');
+    await settle();
+    await s.timers.advance(1000 + 250);
+    await s.timers.advance(60);
+    check('Groq tool_use_failed (400): retried once automatically, then the answer shows', s.fetch.requests.length === 2 && s.chat().items.at(-1).text === 'Second try.', s.chat().items.at(-1));
+    const s2 = setup();
+    s2.fetch.queue.push({ status: 400, chunks: ['tool_use_failed'] });
+    s2.fetch.queue.push({ status: 400, chunks: ['tool_use_failed'] });
+    s2.chat().send('hi');
+    await settle();
+    await s2.timers.advance(1000 + 250);
+    const e2 = s2.chat().items.at(-1);
+    check('tool_use_failed twice: "The model sent a broken request." with retry', s2.fetch.requests.length === 2 && e2.message === 'The model sent a broken request. Try again.' && e2.action === 'retry', e2);
+    const s3 = setup();
+    s3.fetch.queue.push({ chunks: [`data: ${JSON.stringify({ error: { code: 'tool_use_failed', message: 'Failed to call a function' } })}\n\n`] });
+    s3.fetch.queue.push({ chunks: sseText(['Fine now.']) });
+    s3.chat().send('hi');
+    await settle();
+    await s3.timers.advance(1000 + 250);
+    await s3.timers.advance(60);
+    check('in-stream string-coded tool_use_failed: retried once', s3.fetch.requests.length === 2 && s3.chat().items.at(-1).text === 'Fine now.', s3.chat().items.at(-1));
+    const s4 = setup();
+    s4.fetch.queue.push({ status: 400, chunks: ['x'.repeat(5000) + ' tools'] });
+    s4.chat().send('hi');
+    await settle();
+    check('an oversized error body is cut and never shown', !s4.chat().items.some((i) => JSON.stringify(i).includes('xxxx')), s4.chat().items.at(-1));
+  }
+
+  // ---- a 200 that is not a stream ---------------------------------------------------------------------
+  {
+    const s = setup();
+    s.fetch.queue.push({ headers: { 'content-type': 'application/json' }, chunks: ['{"error":{"message":"Insufficient credits","code":402}}'] });
+    s.chat().send('hi');
+    await settle();
+    const e = s.chat().items.at(-1);
+    check('200 JSON error with code 402: mapped like HTTP 402, not retried', e.kind === 'error' && e.action === 'settings' && e.message.includes('out of credit') && s.fetch.requests.length === 1, e);
+    const s2 = setup();
+    s2.fetch.queue.push({ headers: { 'content-type': 'application/json; charset=utf-8' }, chunks: ['{"error":{"message":"model does not support tools"}}'] });
+    s2.chat().send('hi');
+    await settle();
+    check('200 JSON error without a code: mapped by its message', s2.chat().items.at(-1).message.startsWith("This model can't use Maglev's tools"), s2.chat().items.at(-1));
+    const s3 = setup();
+    s3.fetch.queue.push({ headers: { 'content-type': 'text/html; charset=utf-8' }, chunks: ['<html>Sign in to Wi-Fi</html>'] });
+    s3.chat().send('hi');
+    await settle();
+    const e3 = s3.chat().items.at(-1);
+    check('200 HTML: public Wi-Fi copy with retry, not retried automatically', e3.kind === 'error' && e3.message === "Couldn't reach the AI service. If you're on public Wi-Fi, open your browser to sign in to it." && e3.action === 'retry' && s3.fetch.requests.length === 1, e3);
+    const s4 = setup();
+    s4.fetch.queue.push({ headers: { 'content-type': 'text/event-stream' }, chunks: sseText(['Hello.']) });
+    s4.chat().send('hi');
+    await settle();
+    await s4.timers.advance(60);
+    check('a real event-stream content type still streams', s4.chat().items.at(-1).text === 'Hello.');
+  }
+
+  // ---- idle watchdog after the first byte ------------------------------------------------------------
+  {
+    const s = setup();
+    s.fetch.queue.push({ chunks: [chunk({ content: 'Partial ' })], hang: true });
+    s.fetch.queue.push({ chunks: sseText(['Whole answer.']) });
+    s.chat().send('hi');
+    await settle();
+    await s.timers.advance(44_000);
+    check('idle: 44 s of silence after the first byte does nothing', s.fetch.requests.length === 1 && s.chat().busy);
+    await s.timers.advance(1_500);
+    await s.timers.advance(1_500);
+    await s.timers.advance(60);
+    const c = s.chat();
+    check('idle: 45 s of silence aborts and retries once; the partial is dropped and the answer shows', s.fetch.requests.length === 2 && s.fetch.requests[0].signal.aborted && c.items.filter((i) => i.kind === 'assistant').length === 1 && c.items.at(-1).text === 'Whole answer.' && !c.busy, c.items);
+    const s2 = setup();
+    s2.fetch.queue.push({ chunks: [chunk({ content: 'A' })], hang: true });
+    s2.fetch.queue.push({ chunks: [chunk({ content: 'B' })], hang: true });
+    s2.chat().send('hi');
+    await settle();
+    await s2.timers.advance(45_000);
+    await s2.timers.advance(1_500);
+    await s2.timers.advance(45_000);
+    const e2 = s2.chat().items.at(-1);
+    check('idle twice: "The answer was cut off." (no third try), not busy', s2.fetch.requests.length === 2 && e2.kind === 'error' && e2.message === 'The answer was cut off.' && !s2.chat().busy, e2);
+    const s3 = setup();
+    s3.fetch.queue.push({ chunks: [chunk({ content: 'A' })], hang: true });
+    s3.chat().send('hi');
+    await settle();
+    await s3.timers.advance(30_000);
+    check('idle: the timer is re-armed from now, not from the start', s3.timers.list.length > 0 && s3.fetch.requests.length === 1);
+  }
+
+  // ---- usage counted once -----------------------------------------------------------------------------
+  {
+    const s = setup();
+    const u = (i, o) => `data: ${JSON.stringify({ choices: [], usage: { prompt_tokens: i, completion_tokens: o } })}\n\n`;
+    s.fetch.queue.push({ chunks: [chunk({ content: 'Hi' }), u(10, 1), u(100, 20), chunk({}, 'stop') + u(100, 25) + 'data: [DONE]\n\n'] });
+    s.chat().send('hi');
+    await settle();
+    await s.timers.advance(60);
+    check('three usage chunks in one stream are added once with the last values', s.env.usage.length === 1 && s.env.usage[0].input === 100 && s.env.usage[0].output === 25, s.env.usage);
+  }
+
+  // ---- empty answer and background note ---------------------------------------------------------------
+  {
+    const s = setup();
+    s.fetch.queue.push({ chunks: [chunk({}, 'stop') + 'data: [DONE]\n\n'] });
+    s.chat().send('hi');
+    await settle();
+    const e = s.chat().items.at(-1);
+    check('empty answer: "The model didn\'t answer." with retry', e.kind === 'error' && e.message === "The model didn't answer. Try again." && e.action === 'retry' && !s.chat().busy, e);
+    const b = setup();
+    b.fetch.queue.push({ chunks: [chunk({ content: 'Partial ' })], hang: true });
+    b.chat().send('hi');
+    await settle();
+    await b.timers.advance(60);
+    b.controller.background();
+    await settle();
+    const eb = b.chat().items.at(-1);
+    check('Background: "Stopped when you left Maglev." with retry, not busy', eb.kind === 'error' && eb.message === 'Stopped when you left Maglev.' && eb.action === 'retry' && !b.chat().busy, eb);
   }
 
   // ---- Stop / Clear / Background ----------------------------------------------------------------------

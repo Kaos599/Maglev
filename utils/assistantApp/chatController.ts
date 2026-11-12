@@ -67,8 +67,29 @@ export interface ChatController {
   targetGone(target: string): void;
 }
 
-const ERROR_SETTINGS: ReadonlySet<string> = new Set([COPY.checkKey, COPY.noCredits, COPY.notEnabled, COPY.noWarning, COPY.noKey]);
-const ERROR_RETRY: ReadonlySet<string> = new Set([COPY.rateLimited, COPY.network, COPY.providerDown]);
+const ERROR_SETTINGS: ReadonlySet<string> = new Set([
+  COPY.checkKey,
+  COPY.noCredits,
+  COPY.notEnabled,
+  COPY.noWarning,
+  COPY.noKey,
+  COPY.noTools,
+  COPY.modelGone,
+]);
+/** Every other error offers Retry, so no message is a dead end. */
+const ERROR_RETRY: ReadonlySet<string> = new Set([
+  COPY.rateLimited,
+  COPY.rateLimitedLong,
+  COPY.network,
+  COPY.providerDown,
+  COPY.rejected,
+  COPY.providerStopped,
+  COPY.tooMuch,
+  COPY.toolBroken,
+  COPY.portal,
+  COPY.noAnswer,
+  COPY.stoppedAway,
+]);
 
 const HANDLE_RE = /^[rt][0-9]+$/;
 
@@ -220,7 +241,9 @@ export function createChatController(deps: ChatDeps): ChatController {
 
   function pushError(message: string): void {
     const action = ERROR_SETTINGS.has(message) ? 'settings' : ERROR_RETRY.has(message) ? 'retry' : undefined;
-    push({ kind: 'error', id: newId('e'), message, ...(action ? { action } : {}) });
+    // `{provider}` in the fixed copy is the provider's name.
+    const shown = message.replace('{provider}', presetById(getPrefs().presetId).label);
+    push({ kind: 'error', id: newId('e'), message: shown, ...(action ? { action } : {}) });
   }
 
   // ---- event loop -----------------------------------------------------------------------------------
@@ -284,7 +307,9 @@ export function createChatController(deps: ChatDeps): ChatController {
         break;
       case 'markCancelled':
         closeStreaming();
-        pushNote('Stopped.');
+        // Leaving the app is not the user's choice, so it offers Retry. The Stop button keeps the plain note.
+        if (e.background) pushError(COPY.stoppedAway);
+        else pushNote('Stopped.');
         break;
       case 'appendText':
         appendText(e.text);

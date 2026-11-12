@@ -20,6 +20,22 @@ export type StreamErrorCode = 'provider' | 'bad_response' | 'bad_args' | 'incomp
 export const MAX_TEXT_CHARS = 32 * 1024;
 /** Cap for the argument JSON of one tool call. */
 export const MAX_ARGS_CHARS = 16 * 1024;
+/** Cap for the unparsed SSE line buffer (one line with no newline, or the lines of one open event). */
+export const MAX_LINE_BUFFER_CHARS = 256 * 1024;
+/** Cap for tool-call slots in one response. A real model sends 1 to 3. */
+export const MAX_CALL_SLOTS = 16;
+/** Longest error snippet kept from a provider error (never logged, never shown raw). */
+export const MAX_DETAIL_CHARS = 500;
+
+/** Message of an error the provider sent inside the stream, with no status. */
+export const PROVIDER_STOPPED = 'The provider stopped mid-answer.';
+
+/** A short single-line snippet of provider text for matching. Control characters go, spaces collapse. */
+export function sanitizeSnippet(raw: unknown, max: number = MAX_DETAIL_CHARS): string {
+  if (typeof raw !== 'string') return '';
+  // eslint-disable-next-line no-control-regex
+  return raw.replace(/[\u0000-\u001f\u007f]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, max);
+}
 
 /**
  * Extra fields every streaming request body must carry so the provider sends a final `usage` chunk (R1-12).
@@ -41,6 +57,10 @@ export interface StreamFailure {
   message: string;
   /** HTTP-like status when the provider sent one inside the stream. */
   status?: number;
+  /** A string error code the provider sent (Groq: "tool_use_failed"). Short, sanitised. */
+  providerCode?: string;
+  /** Sanitised snippet of the provider's error message (at most 500 chars). For matching only: never show it. */
+  detail?: string;
 }
 
 export type StreamEvent =
@@ -117,12 +137,21 @@ const BAD_ARGS: StreamFailure = {
 };
 
 /** Maps a provider error status to plain English (SM-31 copy). */
-function providerFailure(status: number | undefined): StreamFailure {
-  let message = 'The provider stopped mid-answer.';
+function providerFailure(status: number | undefined, err?: Record<string, unknown>): StreamFailure {
+  let message = PROVIDER_STOPPED;
   if (status === 401 || status === 403) message = 'Check your key.';
   else if (status === 402) message = 'Out of credits.';
   else if (status === 429) message = 'Rate limited. Try again in a minute.';
-  return status === undefined ? { code: 'provider', message } : { code: 'provider', message, status };
+  const f: StreamFailure = status === undefined ? { code: 'provider', message } : { code: 'provider', message, status };
+  if (err) {
+    if (typeof err.code === 'string' && status === undefined) {
+      const c = sanitizeSnippet(err.code, 80);
+      if (c !== '') f.providerCode = c;
+    }
+    const detail = sanitizeSnippet(err.message);
+    if (detail !== '') f.detail = detail;
+  }
+  return f;
 }
 
 /** Accepts numeric or three-digit string codes, as providers send both. */
@@ -153,12 +182,14 @@ function readUsage(raw: unknown): StreamUsage | null {
 export function createStreamParser(): StreamParser {
   let buffer = '';
   let dataLines: string[] = [];
+  let dataChars = 0; // total length of dataLines, capped like the line buffer
   let state: StreamState = 'idle';
   let toolIndex: number | null = null;
   let text = '';
   const calls = new Map<number, CallAccumulator>();
   let finishReason: string | null = null;
   let usage: StreamUsage | null = null;
+  let maxIndex = -1; // highest call index seen, so the next free index is O(1)
   let lastIndex: number | null = null; // the call most recently written to, for fragments with no index and no id
   let sawDone = false; // `data: [DONE]` seen; later data is ignored
   let failure: StreamFailure | null = null;
@@ -182,7 +213,7 @@ export function createStreamParser(): StreamParser {
    */
   function fragmentIndex(raw: unknown, id: string | undefined, name: string | undefined): number {
     if (typeof raw === 'number' && Number.isInteger(raw) && raw >= 0) return raw;
-    const next = (): number => (calls.size === 0 ? 0 : Math.max(...calls.keys()) + 1);
+    const next = (): number => maxIndex + 1;
     if (id !== undefined) {
       for (const c of calls.values()) if (c.id === id) return c.index;
       return next();
@@ -214,7 +245,7 @@ export function createStreamParser(): StreamParser {
     }
     if (obj.error !== undefined) {
       const err = isRecord(obj.error) ? obj.error : {};
-      fail(providerFailure(asStatus(err.code)), out);
+      fail(providerFailure(asStatus(err.code), err), out);
       return;
     }
     // Usage can ride on any chunk, including a final chunk with an empty `choices` array.
@@ -248,6 +279,11 @@ export function createStreamParser(): StreamParser {
           const index = fragmentIndex(frag.index, fragId, fragName);
           let acc = calls.get(index);
           if (!acc) {
+            if (calls.size >= MAX_CALL_SLOTS) {
+              fail(TOO_LONG, out);
+              return;
+            }
+            if (index > maxIndex) maxIndex = index;
             acc = { index, args: '' };
             calls.set(index, acc);
           }
@@ -289,6 +325,7 @@ export function createStreamParser(): StreamParser {
     if (dataLines.length === 0) return;
     const payload = dataLines.join('\n');
     dataLines = [];
+    dataChars = 0;
     handleData(payload, out);
   }
 
@@ -305,6 +342,7 @@ export function createStreamParser(): StreamParser {
     let value = colon === -1 ? '' : line.slice(colon + 1);
     if (value.startsWith(' ')) value = value.slice(1);
     dataLines.push(value);
+    dataChars += value.length + 1;
   }
 
   function consumeLines(out: StreamEvent[]): void {
@@ -321,6 +359,12 @@ export function createStreamParser(): StreamParser {
     if (finished || failure || sawDone) return out;
     buffer += chunk;
     consumeLines(out);
+    if (!failure && !sawDone && (buffer.length > MAX_LINE_BUFFER_CHARS || dataChars > MAX_LINE_BUFFER_CHARS)) {
+      buffer = '';
+      dataLines = [];
+      dataChars = 0;
+      fail(TOO_LONG, out);
+    }
     return out;
   }
 

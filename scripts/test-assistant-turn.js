@@ -85,7 +85,9 @@ async function main() {
     check('idle + Send (no key) -> idle, notice', r.state.kind === 'idle' && r.state.history.length === 0 && JSON.stringify(r.effects) === JSON.stringify([{ type: 'showNotice', text: 'Add an API key in Settings → Assistant.' }]), r.effects);
   }
   check('requesting + FirstByte -> streaming', step(toRequesting(), FIRST).state.kind === 'streaming');
-  for (const [status, msg] of [[401, 'Check your key.'], [403, 'Check your key.'], [402, 'Out of credits.'], [429, 'Rate limited. Try again in a minute.']]) {
+  const KEY_MSG = "{provider} didn't accept your key. Sign in again in Settings → Assistant.";
+  const CREDIT_MSG = 'Your {provider} account is out of credit. Add credit on their site, or pick a free model in Settings.';
+  for (const [status, msg] of [[401, KEY_MSG], [403, KEY_MSG], [402, CREDIT_MSG], [429, "You've hit this model's limit for now. Try again later, or pick another model."]]) {
     const r = step(toRequesting(), { type: 'HttpErr', status });
     check(`requesting + HttpErr(${status}) -> idle, ErrorCard "${msg}"`, r.state.kind === 'idle' && JSON.stringify(r.effects) === JSON.stringify([{ type: 'errorCard', message: msg }]), r.effects);
   }
@@ -300,7 +302,7 @@ async function main() {
     const r2 = step(step(r.state, FIRST).state, bad('bad_response'));
     check('a second bad response -> idle with the provider message', r2.state.kind === 'idle' && r2.effects[0].type === 'errorCard' && r2.effects[0].message === 'Bad response from the provider.', r2.effects);
     const r3 = step(toStreaming(), { type: 'StreamFailed', error: { code: 'provider', message: 'x', status: 429 } });
-    check('a mid-stream 429 is not retried', r3.state.kind === 'idle' && r3.effects[0].message === 'Rate limited. Try again in a minute.');
+    check('a mid-stream 429 is not retried', r3.state.kind === 'idle' && r3.effects[0].message === "You've hit this model's limit for now. Try again later, or pick another model.");
     const r4 = step(toStreaming(), { type: 'StreamFailed', error: { code: 'incomplete', message: 'The answer was cut off.' } });
     check('an incomplete stream counts as a bad response (retried once)', types(r4.effects).join() === 'retryOnce');
     const after = run(toRequesting(), { type: 'NetErr' }, FIRST, { type: 'ToolCallsDone', calls: [searchCall('q')] }, { type: 'ToolsDone', results: okResults([searchCall('q')]) });
@@ -473,10 +475,83 @@ async function main() {
     check('ToolTimeout outside runningTools is a no-op', step(toStreaming(), { type: 'ToolTimeout', toolCallId: 's1' }).effects.length === 0);
   }
 
+  // ---- error mapping (no dead ends) -------------------------------------------------------------------------------
+  {
+    const err = (event) => {
+      const r = step(toRequesting(), event);
+      return r.effects.length === 1 && r.effects[0].type === 'errorCard' && r.state.kind === 'idle' ? r.effects[0].message : r;
+    };
+    const NO_TOOLS = "This model can't use Maglev's tools. Pick another model in Settings → Assistant.";
+    const GONE = "That model isn't available any more. Pick another in Settings → Assistant.";
+    const MUCH = 'That was too much for this model. Clear the chat or ask a shorter question.';
+    const REFUSED = 'The AI service refused this message. Try again, or pick another model in Settings.';
+    check('400 "does not support tools" -> pick another model', err({ type: 'HttpErr', status: 400, body: 'This model does not support tools' }) === NO_TOOLS);
+    check('400 "function calling not supported" -> pick another model', err({ type: 'HttpErr', status: 400, body: 'function calling is not supported' }) === NO_TOOLS);
+    check('404 "No endpoints found that support tool use" -> tools copy first', err({ type: 'HttpErr', status: 404, body: 'No endpoints found that support tool use' }) === NO_TOOLS);
+    check('404 plain -> model gone', err({ type: 'HttpErr', status: 404 }) === GONE);
+    check('400 "model not found" -> model gone', err({ type: 'HttpErr', status: 400, body: 'The model xyz does not exist' }) === GONE);
+    check('413 -> too much', err({ type: 'HttpErr', status: 413 }) === MUCH);
+    check('400 "maximum context length" -> too much', err({ type: 'HttpErr', status: 400, body: "This model's maximum context length is 8192 tokens" }) === MUCH);
+    check('other 4xx -> refused', err({ type: 'HttpErr', status: 422, body: 'bad field' }) === REFUSED && err({ type: 'HttpErr', status: 400 }) === REFUSED);
+    check('429 with Retry-After 20 s keeps "Rate limited."', err({ type: 'HttpErr', status: 429, retryAfterMs: 20_000 }) === 'Rate limited. Try again in a minute.');
+    check('429 with Retry-After 120 s -> limit for now', err({ type: 'HttpErr', status: 429, retryAfterMs: 120_000 }) === "You've hit this model's limit for now. Try again later, or pick another model.");
+    check('a 5xx body is not used (still retried)', step(toRequesting(), { type: 'HttpErr', status: 503, body: 'tools' }).effects[0].type === 'retryOnce');
+    // Groq tool_use_failed: retried once, then a plain message.
+    const t1 = step(toRequesting(), { type: 'HttpErr', status: 400, body: '{"error":{"code":"tool_use_failed"}}' });
+    check('400 tool_use_failed -> retried once', t1.state.kind === 'requesting' && types(t1.effects).join() === 'retryOnce' && t1.state.retried === true);
+    const t2 = step(step(t1.state, { type: 'HttpErr', status: 400, body: 'tool_use_failed' }).state, { type: 'HttpErr', status: 400, body: 'tool_use_failed' });
+    const t2b = step(t1.state, { type: 'HttpErr', status: 400, body: 'tool_use_failed' });
+    check('second tool_use_failed -> "The model sent a broken request."', t2b.effects[0].message === 'The model sent a broken request. Try again.', t2b.effects);
+    void t2;
+    const s1 = step(toStreaming(), { type: 'StreamFailed', error: { code: 'provider', message: 'x', providerCode: 'tool_use_failed' } });
+    check('in-stream tool_use_failed code -> retried once, partial discarded', types(s1.effects).join() === 'retryOnce' && s1.effects[0].discardPartial === true);
+    const s2 = step(step(s1.state, FIRST).state, { type: 'StreamFailed', error: { code: 'provider', message: 'x', providerCode: 'tool_use_failed' } });
+    check('in-stream tool_use_failed twice -> broken request copy', s2.effects[0].message === 'The model sent a broken request. Try again.');
+    const s3 = step(toStreaming(), { type: 'StreamFailed', error: { code: 'provider', message: 'x', status: 400, detail: 'tools not supported' } });
+    check('in-stream error with a status uses its detail', s3.effects[0].message === NO_TOOLS);
+    check('PortalErr -> public Wi-Fi copy', err({ type: 'PortalErr' }) === "Couldn't reach the AI service. If you're on public Wi-Fi, open your browser to sign in to it.");
+  }
+
+  // ---- empty answer and the background note ----------------------------------------------------------------------
+  {
+    const r = run(toRequesting(), FIRST, { type: 'Stop' });
+    check('a stop with no text and no tool calls -> "The model didn\'t answer." error card', r.state.kind === 'idle' && r.effects.length === 1 && r.effects[0].type === 'errorCard' && r.effects[0].message === "The model didn't answer. Try again.", r.effects);
+    const t = run(toRequesting(), FIRST, { type: 'TextDelta', text: 'Hi' }, { type: 'Stop' });
+    check('a stop with text shows no error', !t.effects.some((e) => e.type === 'errorCard'));
+    const c = run(mk(), send('pause it'), FIRST, { type: 'ToolCallsDone', calls: [proposePause()] }, FIRST, { type: 'Stop' });
+    check('an empty closing stop after a card is fine (the card answered)', !c.effects.some((e) => e.type === 'errorCard') && c.state.kind === 'awaitingConfirmation', c.effects);
+    const sa = run(mk(), send('go'), FIRST, { type: 'TextDelta', text: 'Looking.' }, { type: 'ToolCallsDone', calls: [searchCall('e1')] }, { type: 'ToolsDone', results: okResults([searchCall('e1')]) }, FIRST, { type: 'Stop' });
+    check('an empty stop after text in an earlier round is fine', !sa.effects.some((e) => e.type === 'errorCard'), sa.effects);
+    const bg = step(toStreaming(), { type: 'Background' });
+    const ab = step(toStreaming(), { type: 'Abort' });
+    check('Background -> markCancelled with background:true', bg.effects.some((e) => e.type === 'markCancelled' && e.background === true));
+    check('Abort/Stop -> plain markCancelled', ab.effects.some((e) => e.type === 'markCancelled' && e.background === undefined));
+  }
+
   // ---- usage --------------------------------------------------------------------------------------------------------
   {
     const r = step(toStreaming(), { type: 'Usage', input: 120, output: 45 });
-    check('streaming + Usage -> addUsage, state unchanged', r.state.kind === 'streaming' && JSON.stringify(r.effects) === JSON.stringify([{ type: 'addUsage', input: 120, output: 45 }]), r.effects);
+    check('streaming + Usage -> kept, no effect yet, state kind unchanged', r.state.kind === 'streaming' && r.effects.length === 0 && r.state.usage.input === 120, r.effects);
+    // Repeated usage chunks add once, at the end of the round-trip, with the last values.
+    const many = run(toStreaming(), { type: 'Usage', input: 10, output: 1 }, { type: 'Usage', input: 120, output: 45 }, { type: 'Usage', input: 120, output: 50 });
+    check('three Usage chunks -> still no addUsage', many.effects.length === 0);
+    const end = step(many.state, { type: 'TextDelta', text: 'Hi' });
+    const fin = step(end.state, { type: 'Stop' });
+    const adds = fin.effects.filter((e) => e.type === 'addUsage');
+    check('Stop adds the last usage once', adds.length === 1 && adds[0].input === 120 && adds[0].output === 50 && fin.state.usage === null, fin.effects);
+    const tools = run(many.state, { type: 'ToolCallsDone', calls: [searchCall('u1')] });
+    check('ToolCallsDone adds the usage once too', tools.effects.filter((e) => e.type === 'addUsage').length === 1);
+    const cut = step(many.state, { type: 'StreamFailed', error: { code: 'incomplete', message: 'x' } });
+    check('a failed stream adds the usage once, then the retry starts clean', cut.effects.filter((e) => e.type === 'addUsage').length === 1 && cut.state.usage === null);
+    const bg = step(many.state, { type: 'Background' });
+    check('Background adds the usage once', bg.effects.filter((e) => e.type === 'addUsage').length === 1);
+    const clamp = run(toStreaming(), { type: 'Usage', input: 5e12, output: -4 }, { type: 'Stop' });
+    const ca = clamp.effects.find((e) => e.type === 'addUsage');
+    check('usage is clamped to 10 million and negatives to 0', ca.input === 10_000_000 && ca.output === 0, ca);
+    const nan = run(toStreaming(), { type: 'Usage', input: 7, output: 3 }, { type: 'Usage', input: NaN, output: Infinity }, { type: 'Stop' });
+    const na = nan.effects.find((e) => e.type === 'addUsage');
+    check('non-finite usage is ignored (the last good one is kept)', na.input === 7 && na.output === 3, na);
+    check('a stop with no usage adds nothing', !run(toStreaming(), { type: 'TextDelta', text: 'x' }, { type: 'Stop' }).effects.some((e) => e.type === 'addUsage'));
   }
 
   // ---- card expiry (R1-3) -------------------------------------------------------------------------------------------

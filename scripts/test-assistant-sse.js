@@ -502,6 +502,74 @@ async function main() {
     }
   });
 
+  console.log('limits and error detail');
+
+  test('a string error code and a short detail are kept for the turn machine', () => {
+    const p = make();
+    p.push('data: {"error":{"code":"tool_use_failed","message":"Failed to call a\\nfunction \\u0007 x"}}\n\n');
+    const out = p.finish();
+    assert.strictEqual(out.error.code, 'provider');
+    assert.strictEqual(out.error.providerCode, 'tool_use_failed');
+    assert.strictEqual(out.error.status, undefined);
+    assert.strictEqual(out.error.detail, 'Failed to call a function x');
+  });
+
+  test('error detail is capped at 500 characters', () => {
+    const p = make();
+    p.push(`data: ${JSON.stringify({ error: { code: 400, message: 'a'.repeat(5000) } })}\n\n`);
+    assert.strictEqual(p.finish().error.detail.length, 500);
+  });
+
+  test('a line with no newline past 256 KB fails with too_long instead of growing', () => {
+    const p = make();
+    const events = p.push('data: ' + 'x'.repeat(300 * 1024));
+    assert.ok(events.some((e) => e.type === 'error' && e.error.code === 'too_long'));
+    assert.strictEqual(p.finish().ok, false);
+  });
+
+  test('an open event of many small data lines past 256 KB fails with too_long', () => {
+    const p = make();
+    let failedAt = -1;
+    for (let i = 0; i < 100; i++) {
+      const ev = p.push(('data: ' + 'y'.repeat(8 * 1024) + '\n').repeat(4));
+      if (ev.some((e) => e.type === 'error')) {
+        failedAt = i;
+        break;
+      }
+    }
+    assert.ok(failedAt > 0 && failedAt < 20, String(failedAt));
+  });
+
+  test('keep-alive comments never grow the buffer', () => {
+    const p = make();
+    for (let i = 0; i < 5000; i++) p.push(': OPENROUTER PROCESSING\n\n');
+    const out = p.finish();
+    assert.strictEqual(out.ok, false);
+    assert.strictEqual(out.error.code, 'incomplete');
+  });
+
+  test('more than 16 tool-call slots fail with too_long', () => {
+    const p = make();
+    let errored = false;
+    for (let i = 0; i < 40; i++) {
+      const ev = p.push(`data: ${JSON.stringify({ choices: [{ delta: { tool_calls: [{ index: i, id: `c${i}`, function: { name: 'search_torrents', arguments: '{}' } }] } }] })}\n\n`);
+      if (ev.some((e) => e.type === 'error' && e.error.code === 'too_long')) errored = true;
+    }
+    assert.ok(errored);
+  });
+
+  test('calls with no index get distinct slots quickly (no spread of all keys)', () => {
+    const p = make();
+    const t0 = Date.now();
+    for (let i = 0; i < 16; i++) {
+      p.push(`data: ${JSON.stringify({ choices: [{ delta: { tool_calls: [{ id: `n${i}`, function: { name: 'search_torrents', arguments: '{}' } }] } }] })}\n\n`);
+    }
+    p.push('data: {"choices":[{"delta":{},"finish_reason":"tool_calls"}]}\n\ndata: [DONE]\n\n');
+    const out = p.finish();
+    assert.ok(out.ok && out.toolCalls.length === 16, JSON.stringify(out).slice(0, 200));
+    assert.ok(Date.now() - t0 < 500);
+  });
+
   console.log(`\n${passed} passed, ${failed} failed`);
   if (failed > 0) process.exit(1);
 }

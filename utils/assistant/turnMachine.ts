@@ -29,7 +29,7 @@ import {
 } from './context.ts';
 import type { HandleRegistry } from './handles.ts';
 import { USER_TEXT_MAX, truncate } from './sanitize.ts';
-import type { AssistantToolCall, StreamFailure } from './sse.ts';
+import { PROVIDER_STOPPED, sanitizeSnippet, type AssistantToolCall, type StreamFailure } from './sse.ts';
 import { PROPOSAL_TOOLS, READ_TOOLS, TOOLS, validateArgs, type ToolDef } from './tools.ts';
 
 export type TurnKind = 'idle' | 'requesting' | 'streaming' | 'runningTools' | 'awaitingConfirmation';
@@ -39,9 +39,18 @@ export const COPY = {
   notEnabled: 'Turn on the Assistant in Settings first.',
   noWarning: 'Read the Assistant notice in Settings first.',
   noKey: 'Add an API key in Settings → Assistant.',
-  checkKey: 'Check your key.',
-  noCredits: 'Out of credits.',
+  // `{provider}` is filled with the provider's name by the chat controller when it shows the error.
+  checkKey: "{provider} didn't accept your key. Sign in again in Settings → Assistant.",
+  noCredits: 'Your {provider} account is out of credit. Add credit on their site, or pick a free model in Settings.',
   rateLimited: 'Rate limited. Try again in a minute.',
+  rateLimitedLong: "You've hit this model's limit for now. Try again later, or pick another model.",
+  noTools: "This model can't use Maglev's tools. Pick another model in Settings → Assistant.",
+  modelGone: "That model isn't available any more. Pick another in Settings → Assistant.",
+  tooMuch: 'That was too much for this model. Clear the chat or ask a shorter question.',
+  toolBroken: 'The model sent a broken request. Try again.',
+  portal: "Couldn't reach the AI service. If you're on public Wi-Fi, open your browser to sign in to it.",
+  noAnswer: "The model didn't answer. Try again.",
+  stoppedAway: 'Stopped when you left Maglev.',
   stopped: "I hit my limit for one question. Here's what I found. Ask me to keep going.",
   answerTooLong: 'The answer was too long. Ask a narrower question.',
   oneDelete: 'Only one delete per question. Ask again after this one.',
@@ -53,7 +62,8 @@ export const COPY = {
   tooLong: 'That message is too long. Try a shorter one.',
   network: "Couldn't reach the provider. Check your connection.",
   providerDown: 'The provider is having trouble. Try again later.',
-  rejected: 'The provider rejected the request.',
+  rejected: 'The AI service refused this message. Try again, or pick another model in Settings.',
+  providerStopped: PROVIDER_STOPPED,
   toolMissing: 'The tool did not return a result.',
 } as const;
 
@@ -94,6 +104,8 @@ export interface TurnState {
   pendingCards: string[];
   /** Target handle of each pending card (a result or transfer id), for "newer card for the same target". */
   cardTargets: Record<string, string>;
+  /** Last usage the provider reported in the current round-trip, added once when it ends. */
+  usage: { input: number; output: number } | null;
   /** Calls of the current round-trip (runningTools only). */
   calls: PendingCall[];
   /** True when calls were dropped by a cap in this round-trip. */
@@ -121,7 +133,8 @@ export type TurnEffect =
   | { type: 'abortFetch' }
   /** Stop the running read tools. `callIds` names one call (timeout); absent means all of them. */
   | { type: 'cancelTools'; callIds?: string[] }
-  | { type: 'markCancelled' }
+  /** `background`: the app left the foreground (not the Stop button). */
+  | { type: 'markCancelled'; background?: boolean }
   | { type: 'appendText'; text: string }
   | { type: 'runTool'; callId: string; name: string; args: Record<string, unknown> }
   | { type: 'createCard'; cardId: string; callId: string; tool: string; args: Record<string, unknown> }
@@ -142,8 +155,13 @@ export type CardSettledKind = 'done' | 'dismissed' | 'expired' | 'failed';
 export type TurnEvent =
   | { type: 'Send'; text: string; enabled: boolean; warningAccepted: boolean; hasKey: boolean }
   | { type: 'FirstByte' }
-  /** `retryAfterMs` is the parsed Retry-After header, when the provider sent one. */
-  | { type: 'HttpErr'; status: number; retryAfterMs?: number }
+  /**
+   * `retryAfterMs` is the parsed Retry-After header, when the provider sent one. `body` is a short sanitised
+   * snippet of the error body (at most 500 chars). It is only matched against, never logged or shown.
+   */
+  | { type: 'HttpErr'; status: number; retryAfterMs?: number; body?: string }
+  /** A 200 that is a web page (captive portal), not the provider's stream. */
+  | { type: 'PortalErr' }
   | { type: 'NetErr' }
   /** A stream that failed after it started. `truncated` is true when it ended with finish_reason "length". */
   | { type: 'StreamFailed'; error: StreamFailure; truncated?: boolean }
@@ -187,6 +205,7 @@ export function turnInitial(config: TurnConfig): TurnState {
     streamText: '',
     pendingCards: [],
     cardTargets: {},
+    usage: null,
     calls: [],
     capHit: false,
   };
@@ -232,11 +251,28 @@ function toolError(message: string): string {
   return JSON.stringify({ ok: false, error: message });
 }
 
-function statusStep(s: TurnState, status: number, retryAfterMs?: number): TurnStep {
+const NO_TOOLS_RE = /\btools?\b|function[ _-]?calling/i;
+const TOO_MUCH_RE = /context[ _-]?(length|window)|too (long|large|many)|token limit|max(imum)?\b.*\btokens\b|\btokens\b.*\b(exceed|limit)/i;
+const TOOL_USE_FAILED_RE = /tool_use_failed/i;
+/** A Retry-After longer than this on a 429 means "later", not "in a moment". */
+export const RATE_LIMIT_SHORT_MS = 60_000;
+
+function statusStep(s: TurnState, status: number, retryAfterMs?: number, body?: string): TurnStep {
+  const text = sanitizeSnippet(body);
   if (status === 401 || status === 403) return failTurn(s, COPY.checkKey);
   if (status === 402) return failTurn(s, COPY.noCredits);
-  if (status === 429) return failTurn(s, COPY.rateLimited);
+  if (status === 429) {
+    const short = retryAfterMs !== undefined && retryAfterMs <= RATE_LIMIT_SHORT_MS;
+    return failTurn(s, short ? COPY.rateLimited : COPY.rateLimitedLong);
+  }
   if (status >= 500) return retryStep(s, COPY.providerDown, retryAfterMs);
+  // Other 4xx: the model's own malformed call is retried once, then the body decides the wording.
+  if (TOOL_USE_FAILED_RE.test(text)) return retryStep(s, COPY.toolBroken);
+  if (status === 413 || TOO_MUCH_RE.test(text)) return failTurn(s, COPY.tooMuch);
+  if (NO_TOOLS_RE.test(text)) return failTurn(s, COPY.noTools);
+  if (status === 404 || /model.{0,40}(not found|does not exist|not available|unavailable)/i.test(text)) {
+    return failTurn(s, COPY.modelGone);
+  }
   return failTurn(s, COPY.rejected);
 }
 
@@ -429,7 +465,21 @@ function toolCallsDone(s: TurnState, calls: AssistantToolCall[], truncated: bool
 
 function stopStep(s: TurnState, truncated: boolean): TurnStep {
   if (truncated) return truncatedStep(s);
-  return endTurn(s, withAssistantText(s), []);
+  const silent = s.streamText === '' && s.pendingCards.length === 0 && !saidSomething(s);
+  const step = endTurn(s, withAssistantText(s), []);
+  // A stop with no text and no tool calls would show nothing. A card or earlier text already answered.
+  if (silent) return { state: step.state, effects: [{ type: 'errorCard', message: COPY.noAnswer }] };
+  return step;
+}
+
+/** True when the model already wrote text in an earlier round-trip of this turn. */
+function saidSomething(s: TurnState): boolean {
+  for (let i = s.history.length - 1; i >= 0; i--) {
+    const m = s.history[i];
+    if (m.role === 'user') return false;
+    if (m.role === 'assistant' && typeof m.content === 'string' && m.content !== '') return true;
+  }
+  return false;
 }
 
 /** finish_reason "length": never retried. Keep what arrived and tell the user. */
@@ -439,15 +489,47 @@ function truncatedStep(s: TurnState): TurnStep {
 
 // ---- reducer ----------------------------------------------------------------------------------------
 
+const MAX_USAGE_TOKENS = 10_000_000;
+
+/** One token count: finite, whole, between 0 and 10 million. Anything else counts as 0. */
+function clampTokens(n: number): number {
+  return typeof n === 'number' && Number.isFinite(n) ? Math.min(MAX_USAGE_TOKENS, Math.max(0, Math.floor(n))) : 0;
+}
+
+function clampUsage(input: number, output: number): { input: number; output: number } | null {
+  const ok = (n: unknown) => typeof n === 'number' && Number.isFinite(n);
+  if (!ok(input) && !ok(output)) return null;
+  return { input: clampTokens(input), output: clampTokens(output) };
+}
+
+/** Events that end a round-trip (or the turn): the usage kept so far is added now, once. */
+const ENDS_ROUND_TRIP: ReadonlySet<TurnEvent['type']> = new Set([
+  'Stop', 'ToolCallsDone', 'StreamFailed', 'HttpErr', 'NetErr', 'PortalErr', 'Abort', 'Background', 'Clear', 'Disabled',
+]);
+
 /** One step of the SM-31 machine. Returns the next state and the effects to run. Never throws. */
 export function turnStep(state: TurnState, event: TurnEvent): TurnStep {
+  const r = turnStepInner(state, event);
+  if (!state.usage || !ENDS_ROUND_TRIP.has(event.type)) return r;
+  if (state.kind !== 'requesting' && state.kind !== 'streaming' && event.type !== 'Clear' && event.type !== 'Disabled') return r;
+  const { input, output } = state.usage;
+  return {
+    state: r.state.usage ? { ...r.state, usage: null } : r.state,
+    effects: [...r.effects, { type: 'addUsage', input, output }],
+  };
+}
+
+function turnStepInner(state: TurnState, event: TurnEvent): TurnStep {
   const same: TurnStep = { state, effects: [] };
   const s = state;
 
   // Accounting and cards do not depend on the turn state.
   switch (event.type) {
-    case 'Usage':
-      return { state, effects: [{ type: 'addUsage', input: event.input, output: event.output }] };
+    case 'Usage': {
+      // A provider may repeat usage on several chunks. Keep the last one, add it once when the round-trip ends.
+      const usage = clampUsage(event.input, event.output);
+      return usage ? { state: { ...s, usage }, effects: [] } : same;
+    }
     case 'Clear':
       return clearStep(s, true);
     case 'Disabled':
@@ -477,14 +559,17 @@ export function turnStep(state: TurnState, event: TurnEvent): TurnStep {
         case 'FirstByte':
           return { state: { ...s, kind: 'streaming', streamText: '' }, effects: [] };
         case 'HttpErr':
-          return statusStep(s, event.status, event.retryAfterMs);
+          return statusStep(s, event.status, event.retryAfterMs, event.body);
+        case 'PortalErr':
+          return failTurn(s, COPY.portal);
         case 'NetErr':
           return retryStep(s, COPY.network);
         case 'StreamFailed':
           return streamFailed(s, event.error, event.truncated === true);
         case 'Abort':
-        case 'Background':
           return abort(s);
+        case 'Background':
+          return abort(s, true);
         default:
           return same;
       }
@@ -504,8 +589,9 @@ export function turnStep(state: TurnState, event: TurnEvent): TurnStep {
         case 'StreamFailed':
           return streamFailed(s, event.error, event.truncated === true);
         case 'Abort':
-        case 'Background':
           return abort(s);
+        case 'Background':
+          return abort(s, true);
         default:
           return same;
       }
@@ -518,8 +604,9 @@ export function turnStep(state: TurnState, event: TurnEvent): TurnStep {
           return toolTimeout(s, event.toolCallId);
         case 'Abort':
         case 'Stop':
-        case 'Background':
           return abort(s);
+        case 'Background':
+          return abort(s, true);
         default:
           return same;
       }
@@ -561,26 +648,33 @@ function send(s: TurnState, e: Extract<TurnEvent, { type: 'Send' }>): TurnStep {
 
 function streamFailed(s: TurnState, error: StreamFailure, truncated: boolean): TurnStep {
   if (truncated) return truncatedStep(s);
-  if (error.code === 'provider' && error.status !== undefined) return statusStep(s, error.status);
-  if (error.code === 'provider') return failTurn(s, error.message);
+  if (error.code === 'provider') {
+    // Groq: the model's own malformed tool call comes as an error with a string code. Retry once.
+    if (error.providerCode === 'tool_use_failed' || TOOL_USE_FAILED_RE.test(error.detail ?? '')) {
+      return retryStep(s, COPY.toolBroken);
+    }
+    if (error.status !== undefined) return statusStep(s, error.status, undefined, error.detail);
+    return failTurn(s, error.message);
+  }
   // bad_response, bad_args, incomplete: a bad response. One retry, then the plain message.
   return retryStep(s, error.message);
 }
 
 /** Abort, Stop (button) and Background: cancel what is in flight and go to rest. Pending cards stay. */
-function abort(s: TurnState): TurnStep {
+function abort(s: TurnState, background = false): TurnStep {
+  const cancelled: TurnEffect = background ? { type: 'markCancelled', background: true } : { type: 'markCancelled' };
   if (s.kind === 'runningTools') {
     const { history, effects } = cancelledCalls(s);
     const next: TurnState = { ...s, history, streamText: '', calls: [], capHit: false };
     return {
       state: { ...next, kind: restKind(next) },
-      effects: [{ type: 'cancelTools' }, ...effects, { type: 'markCancelled' }],
+      effects: [{ type: 'cancelTools' }, ...effects, cancelled],
     };
   }
   const next: TurnState = { ...s, history: withAssistantText(s), streamText: '', calls: [], capHit: false };
   return {
     state: { ...next, kind: restKind(next) },
-    effects: [{ type: 'abortFetch' }, { type: 'markCancelled' }],
+    effects: [{ type: 'abortFetch' }, cancelled],
   };
 }
 
