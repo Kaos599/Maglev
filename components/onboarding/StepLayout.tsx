@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef } from 'react';
-import { Animated, Easing, StyleSheet, Text, View } from 'react-native';
+import { Animated, Easing, StyleProp, StyleSheet, Text, View, ViewStyle } from 'react-native';
 import { useTheme } from '../../context/ThemeContext';
 import { ThemeColors, spacing, type } from '../../constants/theme';
 
@@ -15,7 +15,7 @@ export interface StepLayoutProps {
 }
 
 /** One chunk fades in and rises 8dp; chunks are staggered by 70ms. Remount (key) replays it. */
-function Chunk({ delay, children }: { delay: number; children: React.ReactNode }) {
+function Chunk({ delay, style, children }: { delay: number; style?: StyleProp<ViewStyle>; children: React.ReactNode }) {
   const v = useRef(new Animated.Value(0)).current;
   useEffect(() => {
     Animated.timing(v, {
@@ -28,7 +28,7 @@ function Chunk({ delay, children }: { delay: number; children: React.ReactNode }
   }, [v, delay]);
   return (
     <Animated.View
-      style={{ opacity: v, transform: [{ translateY: v.interpolate({ inputRange: [0, 1], outputRange: [8, 0] }) }] }}
+      style={[style, { opacity: v, transform: [{ translateY: v.interpolate({ inputRange: [0, 1], outputRange: [8, 0] }) }] }]}
     >
       {children}
     </Animated.View>
@@ -50,7 +50,9 @@ export function StepLayout({ hero, title, body, extra, actions }: StepLayoutProp
           </Text>
           <Text style={styles.body}>{body}</Text>
         </Chunk>
-        {extra ? <Chunk delay={140}>{extra}</Chunk> : null}
+        {/* The main column centres its children, so this wrapper must take the full width itself:
+            otherwise it shrinks to its content and rows inside that stretch collapse to a sliver. */}
+        {extra ? <Chunk delay={140} style={styles.extra}>{extra}</Chunk> : null}
       </View>
       <Chunk delay={extra ? 210 : 140}>
         <View style={styles.actions}>{actions}</View>
@@ -64,6 +66,7 @@ const makeStyles = (c: ThemeColors) =>
     wrap: { flex: 1, justifyContent: 'space-between', paddingHorizontal: spacing.xxl, paddingBottom: spacing.xxl },
     main: { flex: 1, justifyContent: 'center', alignItems: 'center' },
     hero: { alignItems: 'center', justifyContent: 'center', marginBottom: spacing.xxl },
+    extra: { alignSelf: 'stretch' },
     title: { ...type.bodyStrong, fontSize: 22, lineHeight: 28, color: c.text, textAlign: 'center' },
     body: {
       ...type.body,
