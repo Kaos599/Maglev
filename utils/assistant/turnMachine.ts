@@ -104,6 +104,8 @@ export interface TurnState {
   pendingCards: string[];
   /** Target handle of each pending card (a result or transfer id), for "newer card for the same target". */
   cardTargets: Record<string, string>;
+  /** propose_plan cards: every handle a step acts on. The plan expires when any of them is gone. */
+  planTargets: Record<string, string[]>;
   /** Last usage the provider reported in the current round-trip, added once when it ends. */
   usage: { input: number; output: number } | null;
   /**
@@ -150,7 +152,8 @@ export type TurnEffect =
   /** Runner: drive cardMachine DISMISS for this card. Reports back with CardSettled. */
   | { type: 'dismissCard'; cardId: string }
   /** Runner: drive cardMachine EXPIRE for one card (target gone, or a newer card for the same target). */
-  | { type: 'expireCard'; cardId: string }
+  /** `replaced`: a newer card for the same target took its place (the card says so; an action in flight is not interrupted). */
+  | { type: 'expireCard'; cardId: string; replaced?: true }
   | { type: 'expireCards' }
   | { type: 'addUsage'; input: number; output: number }
   | { type: 'clearHandles' }
@@ -218,6 +221,7 @@ export function turnInitial(config: TurnConfig): TurnState {
     streamText: '',
     pendingCards: [],
     cardTargets: {},
+    planTargets: {},
     usage: null,
     cardFacts: [],
     calls: [],
@@ -351,6 +355,20 @@ function targetOf(args: Record<string, unknown>): string | undefined {
   return undefined;
 }
 
+/** Every handle the steps of a plan act on, once each. */
+function planTargetsOf(args: Record<string, unknown>): string[] {
+  const out: string[] = [];
+  const steps = Array.isArray(args.steps) ? args.steps : [];
+  for (const st of steps) {
+    const a = (st as { args?: unknown } | null)?.args;
+    if (a && typeof a === 'object') {
+      const t = targetOf(a as Record<string, unknown>);
+      if (t !== undefined && !out.includes(t)) out.push(t);
+    }
+  }
+  return out;
+}
+
 // ---- ToolsDone ------------------------------------------------------------------------------------
 
 function toolsDone(s: TurnState, results: { toolCallId: string; content: string }[]): TurnStep {
@@ -393,6 +411,7 @@ function toolCallsDone(s: TurnState, calls: AssistantToolCall[], truncated: bool
   const effects: TurnEffect[] = [];
   const pendingCards = [...s.pendingCards];
   const cardTargets = { ...s.cardTargets };
+  const planTargets = { ...s.planTargets };
   let proposals = s.proposals;
   let destructive = s.destructive;
   let details = s.details;
@@ -440,16 +459,16 @@ function toolCallsDone(s: TurnState, calls: AssistantToolCall[], truncated: bool
       const cardId = s.config.registry.issue('card', `${s.history.length}:${id}`);
       const target = targetOf(call.arguments);
       if (target !== undefined) {
-        // A newer card for the same target replaces the older one.
-        for (const old of [...pendingCards]) {
-          if (cardTargets[old] === target) {
-            effects.push({ type: 'expireCard', cardId: old });
-            pendingCards.splice(pendingCards.indexOf(old), 1);
-            delete cardTargets[old];
-          }
+        // A newer card for the same target replaces the older one. The older card leaves pendingCards only when it
+        // reaches a final state (CardSettled): one that is confirming or executing cannot be expired at once, and
+        // must keep working Dismiss and Retry if its action then fails.
+        for (const old of pendingCards) {
+          if (cardTargets[old] === target) effects.push({ type: 'expireCard', cardId: old, replaced: true });
         }
         cardTargets[cardId] = target;
       }
+      const planned = call.name === 'propose_plan' ? planTargetsOf(call.arguments) : [];
+      if (planned.length > 0) planTargets[cardId] = planned;
       pendingCards.push(cardId);
       effects.push({ type: 'createCard', cardId, callId: id, tool: call.name, args: v.args });
       entry.content = JSON.stringify({ status: 'proposed', card_id: cardId });
@@ -469,6 +488,7 @@ function toolCallsDone(s: TurnState, calls: AssistantToolCall[], truncated: bool
     details,
     pendingCards,
     cardTargets,
+    planTargets,
     calls: pending,
     capHit,
     streamText: '',
@@ -716,6 +736,8 @@ function streamFailed(s: TurnState, error: StreamFailure, truncated: boolean): T
     if (error.status !== undefined) return statusStep(s, error.status, undefined, error.detail);
     return failTurn(s, error.message);
   }
+  // Over the local size cap: asking again would give the same answer. The message says what to do.
+  if (error.code === 'too_long') return failTurn(s, error.message);
   // bad_response, bad_args, incomplete: a bad response. One retry, then the plain message.
   return retryStep(s, error.message);
 }
@@ -768,7 +790,16 @@ function clearStep(s: TurnState, drop: boolean): TurnStep {
   } else if (s.kind === 'streaming') {
     history = withAssistantText(s);
   }
-  return { state: { ...turnInitial(s.config), history }, effects };
+  // Cards stay pending until each reports a final state: one that is mid-action cannot be expired, and when it
+  // fails the user must still be able to dismiss it. Expiry is applied by the runner (expireCards).
+  const base: TurnState = {
+    ...turnInitial(s.config),
+    history,
+    pendingCards: s.pendingCards,
+    cardTargets: s.cardTargets,
+    planTargets: s.planTargets,
+  };
+  return { state: { ...base, kind: restKind(base) }, effects };
 }
 
 function addFact(s: TurnState, note: string | undefined): string[] {
@@ -784,13 +815,15 @@ function cardSettled(s: TurnState, cardId: string, kind: CardSettledKind, note?:
   const pendingCards = s.pendingCards.filter((c) => c !== cardId);
   const cardTargets = { ...s.cardTargets };
   delete cardTargets[cardId];
-  const next: TurnState = { ...s, pendingCards, cardTargets, cardFacts };
+  const planTargets = { ...s.planTargets };
+  delete planTargets[cardId];
+  const next: TurnState = { ...s, pendingCards, cardTargets, planTargets, cardFacts };
   const atRest = s.kind === 'idle' || s.kind === 'awaitingConfirmation';
   return { state: atRest ? { ...next, kind: restKind(next) } : next, effects: [] };
 }
 
 function targetGone(s: TurnState, target: string): TurnStep {
-  const gone = s.pendingCards.filter((c) => s.cardTargets[c] === target);
+  const gone = s.pendingCards.filter((c) => s.cardTargets[c] === target || (s.planTargets[c]?.includes(target) ?? false));
   if (gone.length === 0) return { state: s, effects: [] };
   // The runner drives cardMachine EXPIRE and reports each card back with CardSettled.
   return { state: s, effects: gone.map((cardId) => ({ type: 'expireCard' as const, cardId })) };

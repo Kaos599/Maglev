@@ -20,6 +20,7 @@ import { PRESETS, presetById, type PresetId, type ProviderPreset } from '../../.
 import { assistantPrefs, useAssistantPrefs } from '../../../utils/prefs/assistantApp';
 import { createOpenRouterAuth, parseAuthCode } from '../../../utils/assistantApp/openrouterAuth';
 import { probeModel, type ProbeFetch } from '../../../utils/assistantApp/probe';
+import { probeMayStore } from '../../../utils/assistant/providerSave';
 
 export interface ProviderForm {
   preset: PresetId;
@@ -103,6 +104,8 @@ export function useProviderSetup(opts?: { onExpireCards?: () => void }) {
             ctl.signal,
           ).then(async (ev) => {
             if (!ev) return;
+            // Remove key (or a newer test) aborted this probe: a late answer must not save the key again.
+            if (!probeMayStore({ aborted: ctl.signal.aborted, state: stateRef.current })) return;
             if (ev.type === 'PROBE_OK' && ev.toolCallsWork) {
               // R1-14: settings and key are saved only once the probe passes, in one step. The key is written first;
               // if the phone refuses it, nothing switches and the user can try again.

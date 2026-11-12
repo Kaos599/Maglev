@@ -88,6 +88,13 @@ async function main() {
     const dismissed = m.cardStep(st, { type: 'DISMISS' }).state;
     check('a card with a failed revalidation can still be dismissed', dismissed.kind === 'dismissed');
   }
+  {
+    const r = m.cardStep(at('proposed'), { type: 'EXPIRE', caption: 'A newer card replaced this one.' });
+    check('EXPIRE with a caption keeps it', r.state.kind === 'expired' && r.state.caption === 'A newer card replaced this one.', r.state);
+    const f = m.cardStep(at('failed', { error: 'x' }), { type: 'EXPIRE', caption: 'A newer card replaced this one.' });
+    check('failed + EXPIRE with a caption expires with it', f.state.kind === 'expired' && f.state.caption === 'A newer card replaced this one.', f.state);
+    check('EXPIRE without a caption uses the default', m.cardStep(at('proposed'), { type: 'EXPIRE' }).state.caption === m.CARD_EXPIRED_CAPTION);
+  }
   // cardSettledKind tells the runner what to report to the turn machine.
   for (const [kind, want] of [['proposed', null], ['confirming', null], ['executing', null], ['done', 'done'], ['dismissed', 'dismissed'], ['expired', 'expired'], ['failed', 'failed']]) {
     check(`cardSettledKind(${kind}) is ${want}`, m.cardSettledKind(at(kind)) === want);

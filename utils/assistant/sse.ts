@@ -147,9 +147,17 @@ function mergeExtra(dst: Record<string, unknown>, src: Record<string, unknown>, 
   }
 }
 
+/** Messages of the stream failures. The chat controller offers Retry for the ones where trying again can help. */
+export const STREAM_COPY = {
+  cutOff: 'The answer was cut off.',
+  badResponse: 'Bad response from the provider.',
+  badArgs: 'The assistant sent a tool request I could not read.',
+  tooLong: 'The answer was too long to handle. Ask a narrower question.',
+} as const;
+
 const BAD_RESPONSE: StreamFailure = {
   code: 'bad_response',
-  message: 'Bad response from the provider.',
+  message: STREAM_COPY.badResponse,
 };
 
 const TRUNCATED: StreamFailure = {
@@ -159,12 +167,12 @@ const TRUNCATED: StreamFailure = {
 
 const TOO_LONG: StreamFailure = {
   code: 'too_long',
-  message: 'The answer was too long to handle.',
+  message: STREAM_COPY.tooLong,
 };
 
 const BAD_ARGS: StreamFailure = {
   code: 'bad_args',
-  message: 'The assistant sent a tool request I could not read.',
+  message: STREAM_COPY.badArgs,
 };
 
 /** Maps a provider error status to plain English (SM-31 copy). */
@@ -427,7 +435,7 @@ export function createStreamParser(): StreamParser {
     });
     if (failure) return failed(failure);
     if (!sawDone && finishReason === null) {
-      return failed({ code: 'incomplete', message: 'The answer was cut off.' });
+      return failed({ code: 'incomplete', message: STREAM_COPY.cutOff });
     }
     const toolCalls: AssistantToolCall[] = [];
     const ordered = [...calls.values()].sort((a, b) => a.index - b.index);

@@ -171,7 +171,9 @@ async function main() {
 
     let two = run(mk(), send('both'), FIRST, { type: 'ToolCallsDone', calls: [proposePause('p1'), call('p2', 'propose_pause_resume', { transfer_id: 't1', action: 'resume', reason: 'x' })] });
     two = run(two.state, FIRST, { type: 'Stop' });
-    check('two proposals for the same target leave only the newer card (newer card for the same target)', two.state.pendingCards.length === 1, two.state.pendingCards);
+    check('two proposals for the same target: the older is asked to expire and stays until it settles', two.state.pendingCards.length === 2, two.state.pendingCards);
+    two = step(two.state, { type: 'CardSettled', cardId: two.state.pendingCards[0], kind: 'expired' });
+    check('once the older card settles only the newer card is left', two.state.pendingCards.length === 1, two.state.pendingCards);
     const reg = two.state.config.registry;
     reg.issue('transfer', 8);
     let three = run(two.state, send('more'), FIRST, { type: 'ToolCallsDone', calls: [pauseCall('p3', 't2')] }, FIRST, { type: 'Stop' });
@@ -562,9 +564,15 @@ async function main() {
     check('TargetGone expires the cards for that target (cardMachine EXPIRE via the runner)', JSON.stringify(gone.effects) === JSON.stringify([{ type: 'expireCard', cardId }]), gone.effects);
     check('TargetGone for another target does nothing', step(a.state, { type: 'TargetGone', target: 't9' }).effects.length === 0);
     const off = step(a.state, { type: 'Disabled' });
-    check('Disabled (Assistant turned off) expires all cards and keeps history', types(off.effects).join() === 'expireCards' && off.state.pendingCards.length === 0 && off.state.history.length === a.state.history.length);
+    check('Disabled (Assistant turned off) expires all cards and keeps history', types(off.effects).join() === 'expireCards' && off.state.history.length === a.state.history.length);
+    check('Disabled: a card stays pending until it reports a final state (so Confirm/Dismiss on one still in flight work)', off.state.pendingCards.includes(cardId) && step(off.state, { type: 'Dismiss', cardId }).effects.some((e) => e.type === 'dismissCard'), off.state.pendingCards);
+    check('Disabled: the card leaves when it settles', step(off.state, { type: 'CardSettled', cardId, kind: 'expired' }).state.pendingCards.length === 0);
     const newer = run(a.state, send('again'), FIRST, { type: 'ToolCallsDone', calls: [proposePause('again')] });
-    check('a newer card for the same target expires the older one', newer.effects.some((e) => e.type === 'expireCard' && e.cardId === cardId) && newer.state.pendingCards.length === 1 && newer.state.pendingCards[0] !== cardId, newer.effects);
+    check('a newer card for the same target asks the runner to expire the older one (as replaced)', newer.effects.some((e) => e.type === 'expireCard' && e.cardId === cardId && e.replaced === true), newer.effects);
+    check('the older card stays pending until it reaches a final state', newer.state.pendingCards.includes(cardId) && newer.state.pendingCards.length === 2, newer.state.pendingCards);
+    check('Confirm and Dismiss still reach a superseded card that is in flight', step(newer.state, { type: 'Dismiss', cardId }).effects.some((e) => e.type === 'dismissCard' && e.cardId === cardId));
+    const settledOld = step(newer.state, { type: 'CardSettled', cardId, kind: 'expired' });
+    check('when it settles it leaves, the new one stays', settledOld.state.pendingCards.length === 1 && settledOld.state.pendingCards[0] !== cardId);
   }
 
   // ---- usage is counted once (retries, stall retries, multi-round, late events) ----------------------------------------
@@ -653,6 +661,21 @@ async function main() {
     check('only the newest 6 facts are kept', many.cardFacts.length === 6 && many.cardFacts.at(-1) === 'n19', many.cardFacts);
     check('a card the turn does not know records no fact', step(a.state, { type: 'CardSettled', cardId: 'c99', kind: 'dismissed', note: 'x' }).state.cardFacts.length === 0);
     check('Clear drops the facts', step(settled.state, { type: 'Clear' }).state.cardFacts.length === 0);
+  }
+
+  // ---- plan cards expire when any step's target is gone -------------------------------------------------------------------
+  {
+    const st0 = mk();
+    st0.config.registry.issue('transfer', 8); // t2
+    const stepOf = (t) => ({ tool: 'propose_pause_resume', args: { transfer_id: t, action: 'pause', reason: 'x' } });
+    const plan = call('p1', 'propose_plan', { reason: 'x', steps: [stepOf('t1'), stepOf('t2')] });
+    const r = run(st0, send('pause both'), FIRST, { type: 'ToolCallsDone', calls: [plan] });
+    const planId = r.state.pendingCards[0];
+    const gone = step(r.state, { type: 'TargetGone', target: 't2' });
+    check('TargetGone for any step target expires the plan card', JSON.stringify(gone.effects) === JSON.stringify([{ type: 'expireCard', cardId: planId }]), gone.effects);
+    check('TargetGone for a handle the plan does not use does nothing', step(r.state, { type: 'TargetGone', target: 't9' }).effects.length === 0);
+    check('a plan does not replace single cards', !run(r.state, FIRST, { type: 'Stop' }, send('again'), FIRST, { type: 'ToolCallsDone', calls: [proposePause('z')] }).effects.some((e) => e.type === 'expireCard' && e.cardId === planId));
+    check('settling the plan clears its targets', Object.keys(step(r.state, { type: 'CardSettled', cardId: planId, kind: 'dismissed' }).state.planTargets).length === 0);
   }
 
   console.log(`\n${passed} passed, ${failed} failed`);

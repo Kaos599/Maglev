@@ -149,6 +149,7 @@ async function main() {
         return runner.handlers.execute(cardId);
       },
       cardTarget: () => undefined,
+      cardTargets: () => [],
       sourceFor: (h) => (h === 'r1' ? 'magnet:?xt=urn:btih:abc' : undefined),
       reset: () => {
         env.resets++;
@@ -713,6 +714,153 @@ async function main() {
     await settle(30);
     const st = s.chat().items.find((i) => i.kind === 'card').state;
     check('plan: the up-front check failing keeps the card proposed and runs nothing', st.kind === 'proposed' && st.reason === 'Step 3: That download is gone.' && !order.some((o) => o.startsWith('e:')), st);
+  }
+
+  // ---- a card that is superseded or disabled while in flight never keeps dead buttons (wave 2, item 1) ---------------
+  {
+    const s = setup();
+    const c1 = await proposalTurn(s);
+    let finish;
+    s.runner.handlers.execute = () => new Promise((resolve) => { finish = resolve; });
+    s.chat().confirm(c1.id);
+    await settle();
+    // The user keeps talking; the model proposes a newer card for the same transfer.
+    s.fetch.queue.push({ chunks: sseTools([{ id: 'k2', name: 'propose_pause_resume', args: { transfer_id: 't1', action: 'resume', reason: 'Because.' } }]) });
+    s.fetch.queue.push({ chunks: sseText(['New card.']) });
+    s.chat().send('actually resume it');
+    await settle();
+    await s.timers.advance(60);
+    const cards = () => s.chat().items.filter((i) => i.kind === 'card');
+    const c2 = cards().find((c) => c.id !== c1.id);
+    check('setup: c1 is executing, c2 is proposed', cards().find((c) => c.id === c1.id).state.kind === 'executing' && c2 && c2.state.kind === 'proposed', cards().map((c) => c.state.kind));
+    finish({ ok: false, code: 'DISK_FULL', message: 'Storage full.' });
+    await settle();
+    const old = cards().find((c) => c.id === c1.id).state;
+    check('the superseded card that fails ends as expired with the plain caption', old.kind === 'expired' && old.caption === 'A newer card replaced this one.', old);
+    s.chat().dismiss(c2.id);
+    await settle();
+    check('the newer card still works', cards().find((c) => c.id === c2.id).state.kind === 'dismissed');
+  }
+  {
+    // Assistant turned off while a card is confirming, then its action fails: expired, not stuck.
+    const s = setup();
+    const c1 = await proposalTurn(s);
+    let finish;
+    s.runner.handlers.execute = () => new Promise((resolve) => { finish = resolve; });
+    s.chat().confirm(c1.id);
+    await settle();
+    s.env.prefs = { ...s.env.prefs, enabled: false };
+    s.controller.refresh();
+    await settle();
+    finish({ ok: false, code: 'DISK_FULL', message: 'Storage full.' });
+    await settle();
+    check('Disabled while executing: the card that then fails ends expired', s.chat().items.find((i) => i.kind === 'card').state.kind === 'expired', s.chat().items.find((i) => i.kind === 'card').state);
+  }
+  {
+    // The superseded card is still in revalidation when it is replaced: it goes back to proposed, then expires.
+    const s = setup();
+    const c1 = await proposalTurn(s);
+    let release;
+    s.runner.handlers.revalidate = () => new Promise((resolve) => { release = resolve; });
+    s.chat().confirm(c1.id);
+    await settle();
+    s.fetch.queue.push({ chunks: sseTools([{ id: 'k2', name: 'propose_pause_resume', args: { transfer_id: 't1', action: 'resume', reason: 'Because.' } }]) });
+    s.fetch.queue.push({ chunks: sseText(['New card.']) });
+    s.chat().send('resume instead');
+    await settle();
+    await s.timers.advance(60);
+    release({ ok: false, reason: 'That download is gone.' });
+    await settle();
+    check('a superseded card whose recheck fails expires instead of going back to proposed', s.chat().items.find((i) => i.id === c1.id).state.kind === 'expired', s.chat().items.find((i) => i.id === c1.id).state);
+  }
+
+  // ---- errors: Retry where it can help (wave 2, item 3) ------------------------------------------------------------
+  {
+    const bad = async (chunks, label, wantAction) => {
+      const s = setup();
+      s.fetch.queue.push({ chunks });
+      s.fetch.queue.push({ chunks });
+      s.chat().send('hi');
+      await settle();
+      await s.timers.advance(5000);
+      await settle();
+      const e = s.chat().items.at(-1);
+      check(`${label}: error item ${wantAction ? 'offers Retry' : 'has no Retry'}`, e.kind === 'error' && e.action === wantAction, e);
+      return s;
+    };
+    await bad([chunk({ content: 'Hel' })], 'a cut-off answer', 'retry');
+    await bad(['data: {not json}\n\n'], 'a bad response', 'retry');
+    await bad([chunk({ tool_calls: [{ index: 0, id: 'k', function: { name: 'search_torrents', arguments: '{"query":' } }] }, 'tool_calls') + 'data: [DONE]\n\n'], 'unreadable tool arguments', 'retry');
+    const long = await bad(['data: ' + JSON.stringify({ choices: [{ delta: { content: 'x'.repeat(40 * 1024) } }] }) + '\n\n'], 'an over-long answer', undefined);
+    check('an over-long answer says what to do', /narrower|shorter/i.test(long.chat().items.at(-1).message), long.chat().items.at(-1).message);
+    const s = setup();
+    s.chat().send('x'.repeat(5000));
+    await settle();
+    const t = s.chat().items.at(-1);
+    check('"That message is too long" has no Retry but says to shorten it', t.kind === 'error' ? (t.action === undefined && /shorter/.test(t.message)) : true);
+  }
+
+  // ---- hung engine calls fail plainly and free the turn (wave 2, item 4) -----------------------------------------------
+  {
+    const s = setup();
+    s.runner.handlers.prepare = () => new Promise(() => {});
+    s.fetch.queue.push({ chunks: sseTools([{ id: 'k1', name: 'propose_pause_resume', args: { transfer_id: 't1', action: 'pause', reason: 'Because.' } }]) });
+    s.fetch.queue.push({ chunks: sseText(['Sorry.']) });
+    s.chat().send('pause');
+    await settle();
+    await s.timers.advance(60);
+    check('setup: the turn waits for the card', s.chat().busy && s.fetch.requests.length === 1);
+    await s.timers.advance(20_000);
+    await settle();
+    await s.timers.advance(60);
+    check('prepareCard timeout: no card, the model hears why, the turn finishes', !s.chat().items.some((i) => i.kind === 'card') && /too long/i.test(toolMsg(lastReqMsgs(s.fetch), 'k1').content) && !s.chat().busy, [s.chat().busy, toolMsg(lastReqMsgs(s.fetch), 'k1')]);
+  }
+  {
+    const s = setup();
+    const card = await proposalTurn(s);
+    s.runner.handlers.revalidate = () => new Promise(() => {});
+    s.chat().confirm(card.id);
+    await settle();
+    check('setup: confirming', s.chat().items.find((i) => i.kind === 'card').state.kind === 'confirming');
+    await s.timers.advance(20_000);
+    await settle();
+    const st = s.chat().items.find((i) => i.kind === 'card').state;
+    check('revalidate timeout: back to proposed with plain copy', st.kind === 'proposed' && /too long/i.test(st.reason), st);
+    s.runner.handlers.revalidate = async () => ({ ok: true });
+    s.chat().confirm(card.id);
+    await settle();
+    check('after a timeout the card can be confirmed again', s.chat().items.find((i) => i.kind === 'card').state.kind === 'done');
+  }
+  {
+    const s = setup();
+    const card = await proposalTurn(s);
+    s.runner.handlers.execute = () => new Promise(() => {});
+    s.chat().confirm(card.id);
+    await settle();
+    check('setup: executing', s.chat().items.find((i) => i.kind === 'card').state.kind === 'executing');
+    await s.timers.advance(59_000);
+    check('execute: still waiting before 60 s', s.chat().items.find((i) => i.kind === 'card').state.kind === 'executing');
+    await s.timers.advance(1_500);
+    await settle();
+    const st = s.chat().items.find((i) => i.kind === 'card').state;
+    check('execute timeout: failed with plain copy and a way to retry', st.kind === 'failed' && /too long/i.test(st.error), st);
+    s.fetch.queue.push({ chunks: sseText(['Ok.']) });
+    s.chat().send('what now');
+    await settle();
+    check('a timed-out card does not block Send', s.fetch.requests.length >= 3);
+  }
+  {
+    // A plan step that hangs stops the plan and says which step.
+    const s = setup();
+    const order = [];
+    const { card } = await planTurn(s, order);
+    s.runner.handlers.execute = (id) => (id.endsWith(':1') ? new Promise(() => {}) : Promise.resolve({ ok: true, summary: 'Paused.' }));
+    s.chat().confirm(card.id);
+    await settle(30);
+    await s.timers.advance(60_000);
+    await settle(30);
+    const st = s.chat().items.find((i) => i.kind === 'card').state;
+    check('plan step timeout: the plan stops at that step', st.kind === 'failed' && /^Step 2 of 3 stopped: .*too long/i.test(st.error) && /Step 3 did not run\.$/.test(st.error), st);
   }
 
   // ---- askAbout shows the title, not the handle (item 6) -----------------------------------------------------

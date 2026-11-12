@@ -300,6 +300,8 @@ interface CardRecord {
   tool: string;
   actions: Action[];
   target: string | undefined;
+  /** Every handle the card acts on (a plan has one per step). */
+  targets?: string[];
   /** Per action: the success summary once it ran. A step that ran is never run again. */
   done: (string | null)[];
 }
@@ -1351,7 +1353,8 @@ export function createToolRunner(deps: ToolRunnerDeps): ToolRunner {
     const addTotal = built.reduce((s, b) => s + b.addBytes, 0);
     const facts = [plural(n, 'step')];
     if (addTotal > 0) facts.push(`Adds ${formatBytes(addTotal)} in total`);
-    cards.set(cardId, { cardId, tool: 'propose_plan', actions: built.map((b) => b.action), target: undefined, done: built.map(() => null) });
+    const targets = built.map((b) => b.target).filter((t): t is string => t !== undefined);
+    cards.set(cardId, { cardId, tool: 'propose_plan', actions: built.map((b) => b.action), target: targets[0], targets, done: built.map(() => null) });
     const view: ProposalCardView = {
       cardId, tool: 'propose_plan', title: `Run these ${n} steps?`, facts, confirmLabel: `Run ${n} steps`, dismissLabel: 'Not now',
       danger: false, risky: built.some((b) => b.risky), steps: built.map((b) => b.line),
@@ -1577,6 +1580,10 @@ export function createToolRunner(deps: ToolRunnerDeps): ToolRunner {
     revalidate,
     execute,
     cardTarget: (cardId) => cards.get(cardId)?.target,
+    cardTargets: (cardId) => {
+      const rec = cards.get(cardId);
+      return rec ? (rec.targets ?? (rec.target ? [rec.target] : [])) : [];
+    },
     sourceFor,
     reset,
   };

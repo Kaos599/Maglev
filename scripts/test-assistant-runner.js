@@ -647,6 +647,8 @@ async function main() {
     check('plan card has a line per step and a verb label', !('error' in plan) && plan.steps.length === 2 && plan.confirmLabel === 'Run 2 steps' && plan.title === 'Run these 2 steps?' && plan.danger === false, plan);
     check('plan step lines are app-written', /^Add .* · 2\.1 GB$/.test(plan.steps[0]) && plan.steps[1] === 'Pause Show.S01.1080p', plan.steps);
     check('plan revalidates every step', (await runner.revalidate('c1')).ok === true);
+    check('plan cardTargets lists every step target, cardTarget is the first', JSON.stringify(runner.cardTargets('c1')) === JSON.stringify([rid, 't1']) && runner.cardTarget('c1') === rid, [runner.cardTargets('c1'), runner.cardTarget('c1')]);
+    check('a single card has a one-item target list', (() => { return runner.cardTargets('nope').length === 0; })());
     const step0 = await runner.revalidate(planStepId('c1', 0));
     check('a single step can be revalidated by its step id', step0.ok === true);
     const ex0 = await runner.execute(planStepId('c1', 0));

@@ -160,6 +160,8 @@ export interface ToolRunner {
   execute(cardId: string): Promise<ExecuteResult>;
   /** The transfer or result handle a card acts on, for TargetGone and "newer card for the same target". */
   cardTarget(cardId: string): string | undefined;
+  /** Every handle the card acts on: one for a single card, one per step for a plan. The card expires when any is gone. */
+  cardTargets?(cardId: string): string[];
   /** Magnet or .torrent URL for a result handle. */
   sourceFor(handle: string): string | undefined;
   /** Clear: forget results, cards and handles. */

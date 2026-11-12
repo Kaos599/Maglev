@@ -4,7 +4,7 @@
 // so Node tests run this file with a fake.
 
 import { chatCompletionsUrl, type PresetId } from '../prefs/assistant.ts';
-import { MAX_DETAIL_CHARS, createStreamParser, requestExtras, sanitizeSnippet } from '../assistant/sse.ts';
+import { MAX_DETAIL_CHARS, STREAM_COPY, createStreamParser, requestExtras, sanitizeSnippet } from '../assistant/sse.ts';
 import type { RequestEffect, TurnEvent } from '../assistant/turnMachine.ts';
 
 /** The small part of the WinterCG fetch this client uses. expo/fetch fits it. */
@@ -195,7 +195,7 @@ export function createStreamFn(
     const netFailure = () => {
       if (signal.aborted) return;
       if (!gotFirstByte || timedOut) emit({ type: 'NetErr' });
-      else emit({ type: 'StreamFailed', error: { code: 'incomplete', message: 'The answer was cut off.' } });
+      else emit({ type: 'StreamFailed', error: { code: 'incomplete', message: STREAM_COPY.cutOff } });
     };
 
     try {
@@ -303,7 +303,7 @@ export function createStreamFn(
       } catch {
         if (signal.aborted) return;
         // Quiet for too long after the stream started: a cut-off answer, which the turn retries once.
-        if (idled) emit({ type: 'StreamFailed', error: { code: 'incomplete', message: 'The answer was cut off.' } });
+        if (idled) emit({ type: 'StreamFailed', error: { code: 'incomplete', message: STREAM_COPY.cutOff } });
         else netFailure();
         return;
       }

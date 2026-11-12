@@ -22,7 +22,8 @@ export type CardEvent =
   | { type: 'REVALIDATED'; ok: boolean; reason?: string }
   | { type: 'EXEC_OK'; summary: string }
   | { type: 'EXEC_ERR'; code: string; message: string }
-  | { type: 'EXPIRE' }
+  /** `caption` replaces the default expired caption ("A newer card replaced this one."). */
+  | { type: 'EXPIRE'; caption?: string }
   | { type: 'RETRY' };
 
 export type CardEffect =
@@ -34,6 +35,9 @@ export interface CardStep {
   state: CardState;
   effects: CardEffect[];
 }
+
+/** Caption of a card a newer card for the same target replaced. */
+export const CARD_REPLACED_CAPTION = 'A newer card replaced this one.';
 
 /** Fixed copy for an expired card (SM-38). */
 export const CARD_EXPIRED_CAPTION = 'Expired. Ask again for a fresh plan.';
@@ -52,7 +56,7 @@ export function cardStep(state: CardState, event: CardEvent): CardStep {
       }
       if (event.type === 'DISMISS') return { state: { ...state, kind: 'dismissed' }, effects: [] };
       if (event.type === 'EXPIRE') {
-        return { state: { ...state, kind: 'expired', caption: CARD_EXPIRED_CAPTION }, effects: [] };
+        return { state: { ...state, kind: 'expired', caption: event.caption ?? CARD_EXPIRED_CAPTION }, effects: [] };
       }
       return same;
     }
@@ -84,7 +88,7 @@ export function cardStep(state: CardState, event: CardEvent): CardStep {
       }
       if (event.type === 'DISMISS') return { state: { ...state, kind: 'dismissed' }, effects: [] };
       if (event.type === 'EXPIRE') {
-        return { state: { ...state, kind: 'expired', caption: CARD_EXPIRED_CAPTION }, effects: [] };
+        return { state: { ...state, kind: 'expired', caption: event.caption ?? CARD_EXPIRED_CAPTION }, effects: [] };
       }
       return same;
     }

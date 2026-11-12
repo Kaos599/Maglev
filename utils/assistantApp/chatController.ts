@@ -4,7 +4,7 @@
 //
 // Events are queued and applied one at a time, so an effect that raises an event never re-enters the machine.
 
-import { cardSettledKind, cardStep, type CardEffect, type CardEvent, type CardState } from '../assistant/cardMachine.ts';
+import { CARD_EXPIRED_CAPTION, CARD_REPLACED_CAPTION, cardSettledKind, cardStep, type CardEffect, type CardEvent, type CardState } from '../assistant/cardMachine.ts';
 import { planInitial, planStep, type PlanEffect, type PlanEvent, type PlanState } from '../assistant/planMachine.ts';
 import type { ChatMessage } from '../assistant/context.ts';
 import { filterModelOutput } from '../assistant/sanitize.ts';
@@ -20,6 +20,7 @@ import type {
   ToolRunOutput,
   ToolRunner,
 } from '../assistant/runtime.ts';
+import { STREAM_COPY } from '../assistant/sse.ts';
 import { buildSystemPrompt } from '../assistant/systemPrompt.ts';
 import {
   COPY,
@@ -39,6 +40,15 @@ export const TOOL_TIMEOUT_MS = 60_000;
 export const TEXT_BATCH_MS = 50;
 /** Upper bound of the jitter added to a retry that had no Retry-After. SM-31 says "about 250 ms". */
 export const RETRY_JITTER_MS = 250;
+/** Time a card may take to be built, and to be rechecked on Confirm. A hung engine call fails the card instead. */
+export const PREP_TIMEOUT_MS = 20_000;
+export const REVALIDATE_TIMEOUT_MS = 20_000;
+/** Time one confirmed action (or one plan step) may take. */
+export const EXECUTE_TIMEOUT_MS = 60_000;
+
+const SLOW_PREP = 'That took too long. Ask me again.';
+const SLOW_CHECK = 'That took too long to check. Try again.';
+const SLOW_RUN = "That is taking too long. Check your downloads before you try again.";
 
 export interface ChatTimers {
   setTimeout(fn: () => void, ms: number): unknown;
@@ -92,7 +102,17 @@ const ERROR_RETRY: ReadonlySet<string> = new Set([
   COPY.portal,
   COPY.noAnswer,
   COPY.stoppedAway,
+  // A cut-off, unreadable or garbled answer often works the second time. An over-long answer does not
+  // (STREAM_COPY.tooLong says to ask a narrower question), and "That message is too long." says to shorten it.
+  STREAM_COPY.cutOff,
+  STREAM_COPY.badResponse,
+  STREAM_COPY.badArgs,
 ]);
+
+/** The one recovery an error offers: Settings, Retry, or none (the copy says what to change). */
+export function errorActionFor(message: string): 'settings' | 'retry' | undefined {
+  return ERROR_SETTINGS.has(message) ? 'settings' : ERROR_RETRY.has(message) ? 'retry' : undefined;
+}
 
 const HANDLE_RE = /^[rt][0-9]+$/;
 
@@ -186,6 +206,11 @@ export function createChatController(deps: ChatDeps): ChatController {
   /** propose_plan cards: step count, and how many steps already ran (a retry starts after them). */
   const planSizes = new Map<string, number>();
   const planDone = new Map<string, number>();
+  /**
+   * Cards that must expire as soon as their action stops (a newer card replaced them, or the Assistant was turned
+   * off) but were mid-action when asked: cardMachine ignores EXPIRE there. Value: the caption to show.
+   */
+  const expireOnSettle = new Map<string, string>();
 
   // ---- snapshot -------------------------------------------------------------------------------------
   const listeners = new Set<() => void>();
@@ -279,7 +304,7 @@ export function createChatController(deps: ChatDeps): ChatController {
   }
 
   function pushError(message: string): void {
-    const action = ERROR_SETTINGS.has(message) ? 'settings' : ERROR_RETRY.has(message) ? 'retry' : undefined;
+    const action = errorActionFor(message);
     // `{provider}` in the fixed copy is the provider's name.
     const shown = message.replace('{provider}', presetById(getPrefs().presetId).label);
     push({ kind: 'error', id: newId('e'), message: shown, ...(action ? { action } : {}) });
@@ -320,6 +345,7 @@ export function createChatController(deps: ChatDeps): ChatController {
       refused.clear();
       planSizes.clear();
       planDone.clear();
+      expireOnSettle.clear();
     }
     if (turn.kind !== 'streaming') closeStreaming();
   }
@@ -378,10 +404,10 @@ export function createChatController(deps: ChatDeps): ChatController {
         cardEvent(e.cardId, { type: 'DISMISS' });
         break;
       case 'expireCard':
-        cardEvent(e.cardId, { type: 'EXPIRE' });
+        expireCard(e.cardId, e.replaced ? CARD_REPLACED_CAPTION : CARD_EXPIRED_CAPTION);
         break;
       case 'expireCards':
-        for (const i of items) if (i.kind === 'card') cardEvent(i.id, { type: 'EXPIRE' });
+        for (const i of items) if (i.kind === 'card') expireCard(i.id, CARD_EXPIRED_CAPTION);
         break;
       case 'addUsage':
         deps.addUsage({ input: e.input, output: e.output });
@@ -598,7 +624,11 @@ export function createChatController(deps: ChatDeps): ChatController {
     const job = (async () => {
       let result: ProposalCardView | { error: string };
       try {
-        result = await runner.prepareCard(cardId, tool, args);
+        result = await timed(
+          runner.prepareCard(cardId, tool, args).catch((): { error: string } => ({ error: 'That could not be set up.' })),
+          PREP_TIMEOUT_MS,
+          { error: SLOW_PREP },
+        );
       } catch {
         result = { error: 'That could not be set up.' };
       }
@@ -618,6 +648,30 @@ export function createChatController(deps: ChatDeps): ChatController {
     preps.add(tracked);
   }
 
+  /** Resolves with `fallback` when `p` has not settled after `ms`. Whichever comes first wins, once. */
+  function timed<T>(p: Promise<T>, ms: number, fallback: T): Promise<T> {
+    return new Promise<T>((resolve) => {
+      const t = timers.setTimeout(() => resolve(fallback), ms);
+      void p.then(
+        (v) => {
+          timers.clearTimeout(t);
+          resolve(v);
+        },
+        () => {
+          timers.clearTimeout(t);
+          resolve(fallback);
+        },
+      );
+    });
+  }
+
+  /** EXPIRE a card. One that is mid-action ignores it, so it expires the moment its action stops. */
+  function expireCard(cardId: string, caption: string): void {
+    cardEvent(cardId, { type: 'EXPIRE', caption });
+    const k = cardItem(cardId)?.state.kind;
+    if (k === 'confirming' || k === 'executing') expireOnSettle.set(cardId, caption);
+  }
+
   function cardItem(cardId: string): (ChatItem & { kind: 'card' }) | undefined {
     const i = items.find((x) => x.kind === 'card' && x.id === cardId);
     return i && i.kind === 'card' ? i : undefined;
@@ -627,8 +681,16 @@ export function createChatController(deps: ChatDeps): ChatController {
   function cardEvent(cardId: string, event: CardEvent): void {
     const item = cardItem(cardId);
     if (!item) return;
-    const step = cardStep(item.state, event);
+    let step = cardStep(item.state, event);
     if (step.state === item.state) return;
+    const caption = expireOnSettle.get(cardId);
+    if (caption !== undefined) {
+      if (step.state.kind === 'proposed' || step.state.kind === 'failed') {
+        // The action stopped (recheck refused, or it failed): the card was already replaced or switched off.
+        expireOnSettle.delete(cardId);
+        step = cardStep(step.state, { type: 'EXPIRE', caption });
+      } else if (step.state.kind === 'done' || step.state.kind === 'dismissed' || step.state.kind === 'expired') expireOnSettle.delete(cardId);
+    }
     setCardState(cardId, step.state);
     for (const eff of step.effects) runCardEffect(eff, cardId);
     const kind = cardSettledKind(step.state);
@@ -662,15 +724,26 @@ export function createChatController(deps: ChatDeps): ChatController {
     switch (eff.type) {
       case 'revalidate': {
         const ac = new AbortController();
-        void runner
-          .revalidate(cardId, ac.signal)
-          .catch((): { ok: false; reason: string } => ({ ok: false, reason: 'Could not check this right now. Try again.' }))
+        void timed(
+          runner.revalidate(cardId, ac.signal).catch(
+            (): RevalidateResult => ({ ok: false, reason: 'Could not check this right now. Try again.' }),
+          ),
+          REVALIDATE_TIMEOUT_MS,
+          { ok: false, reason: SLOW_CHECK } as RevalidateResult,
+        )
           .then((r) => cardEvent(cardId, r.ok ? { type: 'REVALIDATED', ok: true } : { type: 'REVALIDATED', ok: false, reason: r.reason }));
         break;
       }
       case 'execute':
-        void (planSizes.has(cardId) ? runPlan(cardId, planSizes.get(cardId) as number) : runner.execute(cardId))
-          .catch((): { ok: false; code: string; message: string } => ({ ok: false, code: 'failed', message: 'That did not work. Try again.' }))
+        void (planSizes.has(cardId)
+          ? runPlan(cardId, planSizes.get(cardId) as number)
+          : timed(
+              runner.execute(cardId).catch((): ExecuteResult => ({ ok: false, code: 'failed', message: 'That did not work. Try again.' })),
+              EXECUTE_TIMEOUT_MS,
+              { ok: false, code: 'timeout', message: SLOW_RUN } as ExecuteResult,
+            )
+        )
+          .catch((): ExecuteResult => ({ ok: false, code: 'failed', message: 'That did not work. Try again.' }))
           .then((r) => cardEvent(cardId, r.ok ? { type: 'EXEC_OK', summary: r.summary } : { type: 'EXEC_ERR', code: r.code, message: r.message }));
         break;
       case 'appendToolNote': {
@@ -706,16 +779,20 @@ export function createChatController(deps: ChatDeps): ChatController {
     for (let eff = queue.shift(); eff; eff = queue.shift()) {
       switch (eff.type) {
         case 'revalidate': {
-          const r: RevalidateResult = await runner
-            .revalidate(stepId(cardId, eff.step))
-            .catch((): RevalidateResult => ({ ok: false, reason: 'Could not check this right now. Try again.' }));
+          const r: RevalidateResult = await timed(
+            runner.revalidate(stepId(cardId, eff.step)).catch((): RevalidateResult => ({ ok: false, reason: 'Could not check this right now. Try again.' })),
+            REVALIDATE_TIMEOUT_MS,
+            { ok: false, reason: SLOW_CHECK } as RevalidateResult,
+          );
           feed(r.ok ? { type: 'STEP_REVALIDATED', ok: true } : { type: 'STEP_REVALIDATED', ok: false, reason: r.reason });
           break;
         }
         case 'execute': {
-          const r: ExecuteResult = await runner
-            .execute(stepId(cardId, eff.step))
-            .catch((): ExecuteResult => ({ ok: false, code: 'failed', message: 'That did not work. Try again.' }));
+          const r: ExecuteResult = await timed(
+            runner.execute(stepId(cardId, eff.step)).catch((): ExecuteResult => ({ ok: false, code: 'failed', message: 'That did not work. Try again.' })),
+            EXECUTE_TIMEOUT_MS,
+            { ok: false, code: 'timeout', message: SLOW_RUN } as ExecuteResult,
+          );
           if (r.ok) {
             planDone.set(cardId, eff.step + 1);
             feed({ type: 'STEP_OK' });

@@ -76,7 +76,11 @@ export function useAssistantChat(runner: ToolRunner): AssistantChat {
     for (const id of live) seen.current.add(id);
     const targets = controller
       .getSnapshot()
-      .items.flatMap((i) => (i.kind === 'card' && (i.state.kind === 'proposed' || i.state.kind === 'failed') ? [runner.cardTarget(i.id)] : []));
+      .items.flatMap((i) =>
+        i.kind === 'card' && (i.state.kind === 'proposed' || i.state.kind === 'failed')
+          ? (runner.cardTargets?.(i.id) ?? [runner.cardTarget(i.id)])
+          : [],
+      );
     const resolve = (h: string) => {
       const v = runner.registry.resolve(h, 'transfer');
       return v === null ? null : String(v);
