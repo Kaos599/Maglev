@@ -56,3 +56,4 @@ docs/
 LEDGER.md
 .claude/
 scripts/eval-assistant/out/
+scripts/perf/out/
