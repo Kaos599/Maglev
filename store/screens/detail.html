@@ -1,0 +1,110 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Torrent detail</title>
+<link rel="stylesheet" href="app.css">
+<style>
+  /* app/torrent/[id].tsx */
+  .content { flex: 1; overflow: hidden; padding: 0 16px; }
+  .block { margin-bottom: 12px; }
+  .summary { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 16px; margin-bottom: 12px; display: flex; flex-direction: column; gap: 12px; }
+  .summary .top { display: flex; justify-content: space-between; align-items: center; }
+  .badge { padding: 2px 8px; border-radius: 6px; border: 1px solid var(--download); background: rgba(0, 229, 255, 0.12); color: var(--download); font-weight: 600; font-size: 12px; }
+  .pct { font: 700 22px 'SpaceMono'; }
+  /* components/detail/StatGrid.tsx */
+  .grid { display: flex; flex-wrap: wrap; gap: 8px; }
+  .cell { flex: 1 1 31%; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 12px; }
+  .cell .l { font-size: 11px; color: var(--muted); margin-bottom: 2px; }
+  .cell .v { font: 700 13px 'SpaceMono'; white-space: nowrap; }
+  /* components/SpeedChart.tsx */
+  .chart { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 16px; }
+  .chart .hd { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+  .chart .hd b { font-weight: 600; font-size: 13px; }
+  .chart .hd span { font: 11px 'SpaceMono'; color: var(--muted); }
+  .plot { height: 64px; display: flex; align-items: flex-end; gap: 2px; background: var(--bg); border-radius: 10px; padding: 4px; }
+  .col { flex: 1; height: 100%; display: flex; align-items: flex-end; gap: 1px; }
+  .col i { flex: 1; border-radius: 1px; display: block; }
+  .legend { display: flex; gap: 16px; margin-top: 12px; font: 11px 'SpaceMono'; }
+  .legend span { display: flex; align-items: center; gap: 8px; }
+  .legend span::before { content: ''; width: 10px; height: 10px; border-radius: 2px; background: currentColor; }
+  /* components/ui/SegmentedControl.tsx */
+  .seg { display: flex; height: 44px; padding: 3px; gap: 3px; border-radius: 10px; background: var(--surface); border: 1px solid var(--border); margin-bottom: 12px; }
+  .seg div { flex: 1; display: flex; align-items: center; justify-content: center; border-radius: 7px; font-weight: 600; font-size: 13px; color: var(--muted); }
+  .seg div.on { background: var(--accent); color: var(--on-accent); }
+  /* components/detail/FileListRow.tsx */
+  .file { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; margin-bottom: 8px; padding: 4px 8px 8px; }
+  .file .tp { display: flex; align-items: center; gap: 8px; min-height: 44px; }
+  .file .gl { width: 28px; display: flex; justify-content: center; }
+  .file .gl i.px { width: 20px; height: 20px; }
+  .file .nm { font: 13px 'SpaceMono'; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .file .mt { font: 11px 'SpaceMono'; color: var(--muted); margin-top: 2px; }
+  .file .first { display: flex; align-items: center; gap: 4px; border: 1px solid var(--accent); background: var(--first-bg); border-radius: 6px; padding: 2px 8px; font: 11px 'SpaceMono'; color: var(--accent); }
+  .file .first i.px { width: 16px; height: 16px; }
+  .file .keb { width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; color: var(--muted); }
+  .file .keb i.px { width: 20px; height: 20px; }
+  .file .pb { padding: 4px 4px 0; }
+  .file.skip { background: transparent; border-style: dashed; opacity: 0.6; }
+</style></head>
+<body>
+<div class="statusbar"></div>
+<div class="screenhead">
+  <div class="ib back"><i class="px" data-i="back"></i></div>
+  <div class="title">Sintel (2010) 4K open movie</div>
+  <div class="ib"><i class="px" data-i="pause"></i></div>
+  <div class="ib"><i class="px" data-i="more"></i></div>
+</div>
+<div class="content">
+  <div class="summary">
+    <div class="top"><span class="badge">Downloading</span><span class="pct">47.3%</span></div>
+    <div class="bar"><b style="width:47.3%"></b></div>
+  </div>
+  <div class="block grid">
+    <div class="cell"><div class="l">Download</div><div class="v" style="color:var(--download)">4.2 MB/s</div></div>
+    <div class="cell"><div class="l">Upload</div><div class="v" style="color:var(--upload)">312.0 KB/s</div></div>
+    <div class="cell"><div class="l">ETA</div><div class="v">8m 12s</div></div>
+    <div class="cell"><div class="l">Ratio</div><div class="v">0.08</div></div>
+    <div class="cell"><div class="l">Peers</div><div class="v">38/112</div></div>
+    <div class="cell"><div class="l">Size</div><div class="v">4.4 GB</div></div>
+  </div>
+  <div class="block chart">
+    <div class="hd"><b>Speed</b><span>Peak 5.1 MB/s</span></div>
+    <div class="plot" id="plot"></div>
+    <div class="legend"><span style="color:var(--download)">Down 4.2 MB/s</span><span style="color:var(--upload)">Up 312.0 KB/s</span></div>
+  </div>
+  <div class="seg"><div class="on">Files</div><div>Peers</div><div>Trackers</div><div>Pieces</div></div>
+  <div class="file">
+    <div class="tp"><div class="gl" style="color:var(--download)"><i class="px" data-i="file-video"></i></div>
+      <div class="fill"><div class="nm">Sintel.2010.4K.mkv</div><div class="mt">46% · 4.3 GB</div></div>
+      <div class="first"><i class="px" data-i="priority-first"></i>First</div>
+      <div class="keb"><i class="px" data-i="more"></i></div></div>
+    <div class="pb"><div class="bar"><b style="width:46%"></b></div></div>
+  </div>
+  <div class="file">
+    <div class="tp"><div class="gl" style="color:var(--success)"><i class="px" data-i="check"></i></div>
+      <div class="fill"><div class="nm">Sintel.2010.en.srt</div><div class="mt"><span style="color:var(--success)">Done</span> · 18.2 KB</div></div>
+      <div class="keb"><i class="px" data-i="more"></i></div></div>
+  </div>
+  <div class="file">
+    <div class="tp"><div class="gl" style="color:var(--success)"><i class="px" data-i="check"></i></div>
+      <div class="fill"><div class="nm">Sintel.2010.es.srt</div><div class="mt"><span style="color:var(--success)">Done</span> · 19.0 KB</div></div>
+      <div class="keb"><i class="px" data-i="more"></i></div></div>
+  </div>
+  <div class="file skip">
+    <div class="tp"><div class="gl" style="color:var(--faint)"><i class="px" data-i="file-image"></i></div>
+      <div class="fill"><div class="nm" style="color:var(--muted)">poster-print.tiff</div><div class="mt">Skipped · 96.4 MB</div></div></div>
+  </div>
+</div>
+<div class="navbar"></div>
+<script>
+  // 40 samples (SpeedChart SAMPLES), heights relative to the peak, as the chart draws them.
+  const plot = document.getElementById('plot');
+  const peak = 5.1, H = 56;
+  let html = '';
+  for (let i = 0; i < 40; i++) {
+    const down = Math.max(0.2, 3.4 + 1.1 * Math.sin(i * 0.45) + 0.5 * Math.sin(i * 1.7) + (i > 30 ? 0.4 : 0));
+    const up = 0.22 + 0.12 * Math.sin(i * 0.9 + 1);
+    const h = (v) => Math.max(2, Math.min(H, (v / peak) * H));
+    html += `<div class="col"><i style="height:${h(down)}px;background:var(--download)"></i><i style="height:${h(up)}px;background:var(--upload)"></i></div>`;
+  }
+  plot.innerHTML = html;
+</script>
+<script src="icons.js"></script><script src="app.js"></script>
+</body></html>

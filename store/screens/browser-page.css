@@ -1,0 +1,20 @@
+/* app/browser.tsx chrome, plus a made-up web page (openfilms.example) shown behind sheets. */
+.bbar { display: flex; align-items: center; padding: 0 4px; min-height: 56px; flex-shrink: 0; }
+.addr { flex: 1; min-width: 44px; height: 44px; display: flex; align-items: center; gap: 8px; padding: 0 12px; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; }
+.addr i.px { width: 16px; height: 16px; color: var(--muted); }
+.addr span { font: 13px 'SpaceMono'; }
+.prog { height: 3px; flex-shrink: 0; }
+.web { flex: 1; overflow: hidden; background: #F2EFE8; color: #1B1D21; font-family: Georgia, 'Times New Roman', serif; }
+.web .top { display: flex; justify-content: space-between; align-items: center; padding: 14px 16px; border-bottom: 1px solid #DDD8CC; font: 600 15px 'Inter'; letter-spacing: 0.2px; }
+.web .top em { font-style: normal; font-weight: 400; font-size: 13px; color: #6A6458; }
+.web .player { margin: 16px; aspect-ratio: 16 / 9; background: #1E2A33; border-radius: 6px; position: relative; overflow: hidden; }
+.web .player .sky { position: absolute; inset: 0 0 45% 0; background: #3B5566; }
+.web .player .hill { position: absolute; left: -10%; right: 30%; bottom: 0; height: 55%; background: #26343D; border-radius: 50% 50% 0 0; }
+.web .player .hill2 { position: absolute; left: 45%; right: -20%; bottom: 0; height: 40%; background: #1A252C; border-radius: 50% 50% 0 0; }
+.web .player .play { position: absolute; left: 50%; top: 50%; width: 56px; height: 56px; margin: -28px 0 0 -28px; border-radius: 50%; background: rgba(255,255,255,0.92); }
+.web .player .play::after { content: ''; position: absolute; left: 22px; top: 17px; border-left: 18px solid #1E2A33; border-top: 11px solid transparent; border-bottom: 11px solid transparent; }
+.web h1 { font-size: 26px; margin: 4px 16px 6px; font-weight: 700; }
+.web .by { font: 13px 'Inter'; color: #6A6458; margin: 0 16px 14px; }
+.web p { font-size: 15px; line-height: 23px; margin: 0 16px 12px; }
+.bfoot { min-height: 56px; flex-shrink: 0; display: flex; align-items: center; justify-content: space-between; padding: 0 16px; border-top: 1px solid var(--border); }
+.bfoot .blocked { font: 12px 'SpaceMono'; color: var(--muted); }

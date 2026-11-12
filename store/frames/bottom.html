@@ -1,0 +1,17 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Frame: text bottom</title>
+<link rel="stylesheet" href="frame.css">
+<style>
+  /* The phone reads in full; the speed lines pass behind it like rails under a train. */
+  .phone { left: 50%; width: 600px; margin-left: -300px; top: 96px; }
+  .rails { left: 0; top: 760px; }
+  .text { position: absolute; left: var(--gutter); right: var(--gutter); top: 1480px; }
+  .subline { margin-top: 28px; }
+</style></head>
+<body>
+<div class="grid"></div>
+<svg class="rails" width="1080" data-rows="4"></svg>
+<div class="phone"><img class="screen" alt=""></div>
+<div class="text"><h1 class="headline"></h1><p class="subline"></p></div>
+<script src="frame.js"></script>
+</body></html>

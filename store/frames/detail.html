@@ -1,0 +1,21 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Frame: detail crop</title>
+<link rel="stylesheet" href="frame.css">
+<style>
+  /* A window onto one part of the screen at native size (1px = 1px), running off the right
+     and bottom edges. focusX/focusY in screens.json pick the part. */
+  .flow { position: absolute; inset: 0; padding: 120px var(--gutter) 0; display: flex; flex-direction: column; }
+  .flow .rails { position: static; margin: 52px 0 0 calc(-1 * var(--gutter)); flex-shrink: 0; }
+  .window { position: relative; margin-top: 56px; width: 1200px; height: 1600px; flex-shrink: 0; border: 3px solid var(--hairline); border-radius: 56px; overflow: hidden; background: var(--void); }
+  .window .phone { border: 0; padding: 0; border-radius: 0; width: 1080px; }
+  .window .screen { border-radius: 0; }
+</style></head>
+<body>
+<div class="grid"></div>
+<div class="flow">
+  <div class="text"><h1 class="headline"></h1><p class="subline"></p></div>
+  <svg class="rails" width="1080" data-rows="3"></svg>
+  <div class="window"><div class="phone" data-anchor="0,0"><img class="screen" alt=""></div></div>
+</div>
+<script src="frame.js"></script>
+</body></html>

@@ -1,0 +1,135 @@
+/*
+ * Mock screens for the store listing. Every value below is copied from the app:
+ * constants/theme.ts (OLED palette, lime accent, spacing, radius, type) and the component
+ * StyleSheets named in each block. Units are dp; the page renders at 360x800 with a device
+ * scale factor of 3, so the PNG is 1080x2400.
+ */
+@font-face { font-family: 'Silkscreen'; src: url('../../node_modules/@expo-google-fonts/silkscreen/400Regular/Silkscreen_400Regular.ttf'); }
+@font-face { font-family: 'SpaceMono'; src: url('../../node_modules/@expo-google-fonts/space-mono/400Regular/SpaceMono_400Regular.ttf'); }
+@font-face { font-family: 'SpaceMono'; font-weight: 700; src: url('../../node_modules/@expo-google-fonts/space-mono/700Bold/SpaceMono_700Bold.ttf'); }
+@font-face { font-family: 'Inter'; font-weight: 400; src: url('../../node_modules/@expo-google-fonts/inter/400Regular/Inter_400Regular.ttf'); }
+@font-face { font-family: 'Inter'; font-weight: 600; src: url('../../node_modules/@expo-google-fonts/inter/600SemiBold/Inter_600SemiBold.ttf'); }
+
+:root {
+  /* palettes.oled + accents.lime (constants/theme.ts buildColors) */
+  --bg: #05070A;
+  --surface: #0D1117;
+  --raised: #161B22;
+  --border: #1F2937;
+  --border-strong: #6B7280;
+  --text: #F3F4F6;
+  --muted: #9CA3AF;
+  --faint: #7D8590;
+  --accent: #CCFF00;
+  --on-accent: #05070A;
+  --download: #00E5FF;
+  --upload: #CCFF00;
+  --paused: #8B949E;
+  --success: #3DDC84;
+  --warning: #FFB020;
+  --danger: #FF4D79;
+  --overlay: rgba(0, 0, 0, 0.85);
+  --first-bg: rgba(204, 255, 0, 0.1);
+  --sel-bg: rgba(204, 255, 0, 0.08);
+  --status-h: 28px;
+  --nav-h: 20px;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html, body { width: 360px; height: 800px; overflow: hidden; background: var(--bg); color: var(--text); }
+body { font-family: 'Inter', sans-serif; -webkit-font-smoothing: antialiased; display: flex; flex-direction: column; position: relative; }
+
+.mono { font-family: 'SpaceMono', monospace; font-variant-numeric: tabular-nums; }
+.monob { font-family: 'SpaceMono', monospace; font-weight: 700; font-variant-numeric: tabular-nums; }
+.brand { font-family: 'Silkscreen', sans-serif; }
+.strong { font-weight: 600; }
+.row { display: flex; flex-direction: row; align-items: center; }
+.fill { flex: 1; min-width: 0; min-height: 0; }
+.ell { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.clamp2 { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+
+/* Pixelarticons, filled by app.js from components/icons.generated.ts */
+i.px { display: inline-flex; flex-shrink: 0; width: 24px; height: 24px; }
+i.px svg { width: 100%; height: 100%; shape-rendering: crispEdges; }
+
+/* Android system bars (not app UI): neutral time, Wi-Fi, full battery, gesture handle */
+.statusbar { height: var(--status-h); flex-shrink: 0; display: flex; align-items: center; justify-content: space-between; padding: 0 18px 0 22px; font-size: 13px; font-weight: 600; color: var(--text); position: relative; z-index: 30; }
+.statusbar .sys { display: flex; gap: 6px; align-items: center; }
+.navbar { height: var(--nav-h); flex-shrink: 0; display: flex; align-items: center; justify-content: center; background: var(--bg); position: relative; z-index: 30; }
+.navbar::after { content: ''; width: 108px; height: 4px; border-radius: 2px; background: #C9CDD3; }
+
+/* components/HeaderBar.tsx */
+.headerbar { min-height: 56px; display: flex; align-items: center; padding: 0 8px; border-bottom: 1px solid var(--border); flex-shrink: 0; }
+.headerbar .brandrow { flex: 1; display: flex; align-items: center; gap: 12px; padding-left: 8px; }
+.headerbar .brandrow svg { height: 22px; width: auto; }
+.headerbar .brandrow span { font-family: 'Silkscreen'; font-size: 14px; }
+
+/* components/ui/Screen.tsx */
+.screenhead { min-height: 56px; display: flex; align-items: center; padding: 0 8px; flex-shrink: 0; }
+.screenhead .title { font-family: 'Silkscreen'; font-size: 17px; flex: 1; margin-left: 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.screenhead .back + .title { margin-left: 4px; }
+
+/* components/ui/IconButton.tsx */
+.ib { width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; position: relative; color: var(--text); }
+.ib i.px { width: 20px; height: 20px; }
+.ib .badge { position: absolute; top: 4px; right: 2px; min-width: 16px; height: 16px; padding: 0 4px; border-radius: 4px; background: var(--accent); color: var(--on-accent); font: 700 10px 'SpaceMono'; display: flex; align-items: center; justify-content: center; }
+
+/* components/ui/Button.tsx */
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; border-radius: 10px; border: 1px solid transparent; padding: 4px 20px; min-height: 44px; font-weight: 600; font-size: 15px; flex-shrink: 0; white-space: nowrap; }
+.btn i.px { width: 20px; height: 20px; }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+.btn.secondary { background: var(--surface); border-color: var(--border); color: var(--text); }
+.btn.ghost { background: transparent; color: var(--accent); }
+.btn.danger { background: transparent; border-color: var(--danger); color: var(--danger); }
+
+/* components/ui/Chip.tsx */
+.chips { display: flex; gap: 8px; padding: 0 16px; overflow: hidden; flex-shrink: 0; }
+.chip { min-height: 44px; display: inline-flex; align-items: center; gap: 8px; padding: 4px 16px; border-radius: 999px; border: 1px solid var(--border); background: var(--surface); font-weight: 600; font-size: 13px; color: var(--text); white-space: nowrap; flex-shrink: 0; }
+.chip .n { min-width: 20px; height: 20px; padding: 0 5px; border-radius: 4px; background: var(--raised); color: var(--muted); font: 11px 'SpaceMono'; display: flex; align-items: center; justify-content: center; }
+.chip.on { background: rgba(204, 255, 0, 0.15); border-color: var(--accent); color: var(--accent); }
+.chip.on .n { background: rgba(204, 255, 0, 0.2); color: var(--accent); }
+
+/* components/ui/ProgressBar.tsx */
+.bar { height: 6px; border-radius: 3px; background: var(--raised); overflow: hidden; }
+.bar > b { display: block; height: 6px; border-radius: 3px; background: var(--download); }
+.bar.seed > b { background: var(--upload); }
+.bar.paused > b { background: var(--paused); }
+
+/* components/TransferCard.tsx + transfers/DownloadCard.tsx */
+.tcard { min-height: 104px; margin: 0 16px; background: var(--surface); border: 1px solid var(--border); border-radius: 14px; position: relative; display: flex; flex-direction: column; justify-content: space-between; gap: 8px; padding: 12px 52px 12px 16px; flex-shrink: 0; }
+.tcard .name { font: 13px/18px 'SpaceMono'; min-height: 36px; }
+.tcard .status { display: flex; gap: 8px; font: 12px/18px 'SpaceMono'; color: var(--muted); font-variant-numeric: tabular-nums; }
+.tcard .status .lead { flex: 1; }
+.tcard .status.acc { color: var(--accent); }
+.tcard .act { position: absolute; right: 8px; top: 50%; margin-top: -22px; }
+
+/* components/ui/Sheet.tsx */
+.scrim { position: absolute; left: 0; right: 0; top: var(--status-h); bottom: 0; background: var(--overlay); z-index: 10; }
+.sheet { position: absolute; left: 0; right: 0; bottom: 0; z-index: 20; background: var(--surface); border: 1px solid var(--border); border-bottom: 0; border-radius: 20px 20px 0 0; padding: 8px 20px 0; }
+.sheet .grab { width: 36px; height: 4px; border-radius: 2px; background: var(--border-strong); margin: 0 auto 16px; }
+.sheet .stitle { font-weight: 600; font-size: 17px; }
+.sheet .ssub { font-size: 13px; color: var(--muted); margin-top: 4px; }
+.sheet .scontent { margin-top: 16px; padding-bottom: 4px; }
+
+/* components/ui/RadioCard.tsx */
+.radio { display: flex; align-items: center; gap: 12px; min-height: 64px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--bg); }
+.radio .ibox { width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; border: 1px solid var(--border); border-radius: 8px; color: var(--muted); }
+.radio .ibox i.px { width: 20px; height: 20px; }
+.radio .rt { font: 700 13px 'SpaceMono'; }
+.radio .rd { font-size: 12px; line-height: 17px; color: var(--muted); margin-top: 3px; }
+.radio .dot { width: 18px; height: 18px; border: 2px solid var(--border-strong); display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.radio.on { border-color: var(--accent); background: var(--sel-bg); }
+.radio.on .dot { border-color: var(--accent); }
+.radio.on .dot::after { content: ''; width: 8px; height: 8px; background: var(--accent); }
+
+/* app/(tabs)/_layout.tsx + components/tabBarStyle.ts */
+.tabbar { height: 64px; flex-shrink: 0; display: flex; border-top: 1px solid var(--border); background: var(--bg); }
+.tab { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+.tab .pill { width: 56px; height: 28px; border-radius: 8px; display: flex; align-items: center; justify-content: center; color: var(--muted); }
+.tab .pill i.px { width: 20px; height: 20px; }
+.tab .lbl { margin-top: 2px; font-size: 11px; color: var(--muted); }
+.tab.on .pill { background: rgba(204, 255, 0, 0.16); color: var(--accent); }
+.tab.on .lbl { color: var(--text); font-weight: 600; }
+
+/* components/FloatingActionButton.tsx */
+.fab { position: absolute; right: 16px; width: 56px; height: 56px; border-radius: 14px; background: var(--accent); color: var(--on-accent); display: flex; align-items: center; justify-content: center; z-index: 5; }

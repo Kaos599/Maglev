@@ -1,0 +1,76 @@
+/* Shared system for the store frames. Values mirror AGENTS.md §1 and constants/. */
+@font-face { font-family: 'Silkscreen'; src: url('../../node_modules/@expo-google-fonts/silkscreen/400Regular/Silkscreen_400Regular.ttf'); }
+@font-face { font-family: 'Space Mono'; src: url('../../node_modules/@expo-google-fonts/space-mono/400Regular/SpaceMono_400Regular.ttf'); }
+@font-face { font-family: 'Inter'; font-weight: 400; src: url('../../node_modules/@expo-google-fonts/inter/400Regular/Inter_400Regular.ttf'); }
+@font-face { font-family: 'Inter'; font-weight: 600; src: url('../../node_modules/@expo-google-fonts/inter/600SemiBold/Inter_600SemiBold.ttf'); }
+
+:root {
+  --void: #05070A;
+  --card: #0D1117;
+  --hairline: #1F2937;
+  --lime: #CCFF00;
+  --cyan: #00E5FF;
+  --text: #F3F4F6;
+  --muted: #8B949E;
+  --dot: #161C26;
+  --gutter: 88px;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+html, body {
+  width: 1080px; height: 1920px;
+  overflow: hidden;
+  background: var(--void);
+  -webkit-font-smoothing: antialiased;
+}
+
+body { position: relative; }
+
+/* Faint dot grid, the same 24px rhythm as the README header. */
+.grid {
+  position: absolute; inset: 0;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24'%3E%3Crect x='10' y='10' width='3' height='3' fill='%23161C26'/%3E%3C/svg%3E");
+  background-size: 24px 24px;
+}
+
+.headline {
+  font-family: 'Silkscreen', sans-serif;
+  font-size: 80px;
+  line-height: 1.08;
+  letter-spacing: -1px;
+  color: var(--text);
+  text-wrap: balance;
+}
+.headline.lime { color: var(--lime); }
+
+.subline {
+  font-family: 'Inter', sans-serif;
+  font-weight: 400;
+  font-size: 40px;
+  line-height: 1.38;
+  color: var(--muted);
+  text-wrap: pretty;
+  margin-top: 36px;
+}
+
+/* Device outline: a hairline rounded rect with a thin void inset. No hardware chrome, no shadow. */
+.phone {
+  position: absolute;
+  border: 3px solid var(--hairline);
+  border-radius: 72px;
+  padding: 16px;
+  background: var(--void);
+}
+.screen {
+  display: block;
+  width: 100%;
+  aspect-ratio: 9 / 20;
+  border-radius: 54px;
+  object-fit: cover;
+  object-position: top;
+  background: var(--card);
+}
+
+/* Pixel speed lines, drawn by frame.js. */
+.rails { position: absolute; display: block; shape-rendering: crispEdges; }

@@ -1,0 +1,66 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Assistant</title>
+<link rel="stylesheet" href="app.css">
+<style>
+  /* components/assistant/AssistantChatView.tsx */
+  .clear { min-width: 56px; min-height: 44px; display: flex; align-items: center; justify-content: center; padding: 0 8px; font-weight: 600; font-size: 14px; color: var(--muted); }
+  .chat { flex: 1; overflow: hidden; display: flex; flex-direction: column; justify-content: flex-end; gap: 12px; padding: 16px; }
+  /* components/assistant/Message.tsx */
+  .bubble { max-width: 92%; padding: 10px 12px; border-radius: 10px; border: 1px solid; font-size: 15px; line-height: 21px; }
+  .bubble.user { align-self: flex-end; border-color: var(--accent); }
+  .bubble.bot { align-self: flex-start; border-color: var(--border); background: var(--surface); }
+  .note { font-size: 13px; color: var(--muted); padding: 0 4px; }
+  /* components/assistant/ProposalCard.tsx */
+  .card { padding: 12px; display: flex; flex-direction: column; gap: 8px; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; }
+  .card .head { display: flex; align-items: center; gap: 8px; color: var(--accent); }
+  .card .head i.px { width: 16px; height: 16px; }
+  .card .ask { font-family: 'Silkscreen'; font-size: 12px; }
+  .card .title { font-weight: 600; font-size: 16px; }
+  .card .lbl { font-weight: 600; font-size: 12px; color: var(--muted); }
+  .card .fact { font: 13px/18px 'SpaceMono'; }
+  .card .facts { display: flex; flex-direction: column; gap: 4px; }
+  .card .says { font-size: 14px; line-height: 20px; font-style: italic; color: var(--muted); }
+  .card .foot { font-size: 12px; color: var(--faint); }
+  .card .acts { display: flex; gap: 8px; flex-wrap: wrap; }
+  /* components/assistant/Composer.tsx */
+  .composer { border-top: 1px solid var(--border); background: var(--bg); flex-shrink: 0; }
+  .composer .meta { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 0 16px; }
+  .composer .model { min-height: 44px; display: flex; align-items: center; gap: 4px; font: 12px 'SpaceMono'; color: var(--muted); }
+  .composer .model i.px { width: 16px; height: 16px; color: var(--muted); }
+  .composer .ctx { font: 12px 'SpaceMono'; color: var(--faint); }
+  .composer .barrow { display: flex; align-items: flex-end; gap: 8px; padding: 0 16px 8px; }
+  .composer .input { flex: 1; min-height: 44px; padding: 8px 12px; font-size: 15px; line-height: 26px; color: var(--faint); background: var(--surface); border: 1px solid var(--border); border-radius: 10px; }
+  .composer .send { min-width: 56px; min-height: 44px; display: flex; align-items: center; justify-content: center; font-family: 'Silkscreen'; font-size: 13px; color: var(--accent); opacity: 0.4; }
+</style></head>
+<body>
+<div class="statusbar"></div>
+<div class="screenhead">
+  <div class="title">ASSISTANT</div>
+  <div class="ib" style="color:var(--muted)"><i class="px" data-i="about"></i></div>
+  <div class="clear">Clear</div>
+</div>
+<div class="chat">
+  <div class="bubble user">Find Sintel in 4K and check it fits on my phone.</div>
+  <div class="bubble bot">Internet Archive has the 4K copy most people are sharing. It fits, with room to spare.</div>
+  <div class="card">
+    <div class="head"><i class="px" data-i="shield"></i><span class="ask">Needs your OK</span></div>
+    <div class="title">Add torrent?</div>
+    <div><div class="lbl">Name from the source</div><div class="fact">Sintel (2010) 4K open movie</div></div>
+    <div class="facts">
+      <div class="fact">3 files · 4.4 GB</div>
+      <div class="fact">Needs 4.4 GB · 38.2 GB left after</div>
+      <div class="fact">Saves to Download/Maglev</div>
+    </div>
+    <div><div class="lbl">Assistant says</div><div class="says">Most people sharing of the three 4K copies.</div></div>
+    <div class="foot">Sizes and space are checked by Maglev. The name comes from the source.</div>
+    <div class="acts"><div class="btn primary">Add · 4.4 GB</div><div class="btn secondary">Not now</div></div>
+  </div>
+</div>
+<div class="composer">
+  <div class="meta"><span class="model"><i class="px" data-i="assistant"></i>openrouter/auto</span><span class="ctx">3.4k tokens used</span></div>
+  <div class="barrow"><div class="input">Ask about a download</div><div class="send">Send</div></div>
+</div>
+<nav class="tabbar" data-on="assistant"></nav>
+<div class="navbar"></div>
+<script src="icons.js"></script><script src="app.js"></script>
+</body></html>

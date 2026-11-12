@@ -1,0 +1,19 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Frame: text top</title>
+<link rel="stylesheet" href="frame.css">
+<style>
+  /* Text, then the speed lines, then the phone, in normal flow so a 3-line headline pushes
+     the phone down instead of overlapping it. The phone runs off the bottom edge. */
+  .flow { position: absolute; inset: 0; padding: 120px var(--gutter) 0; display: flex; flex-direction: column; }
+  .flow .rails { position: static; margin: 52px 0 0 calc(-1 * var(--gutter)); flex-shrink: 0; }
+  .phone { position: relative; align-self: center; width: 780px; margin-top: 56px; flex-shrink: 0; }
+</style></head>
+<body>
+<div class="grid"></div>
+<div class="flow">
+  <div class="text"><h1 class="headline"></h1><p class="subline"></p></div>
+  <svg class="rails" width="1080" data-rows="3"></svg>
+  <div class="phone"><img class="screen" alt=""></div>
+</div>
+<script src="frame.js"></script>
+</body></html>

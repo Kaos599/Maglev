@@ -1,0 +1,62 @@
+{
+  "frameSize": {
+    "width": 1080,
+    "height": 1920
+  },
+  "screens": [
+    {
+      "id": "transfers",
+      "template": "top",
+      "color": "lime",
+      "headline": "Every download, one list",
+      "subline": "Torrents and web links side by side, with speed and time left."
+    },
+    {
+      "id": "search",
+      "template": "bottom",
+      "color": "white",
+      "headline": "Search 40+ sources at once",
+      "subline": "Results that point to the same torrent are shown once."
+    },
+    {
+      "id": "browser",
+      "template": "detail",
+      "color": "lime",
+      "focusX": 0,
+      "focusY": 0.307,
+      "headline": "Save what the page plays",
+      "subline": "Ads blocked before they load. Filter found files by type."
+    },
+    {
+      "id": "stream-sheet",
+      "template": "bottom",
+      "color": "white",
+      "headline": "Streams saved as one file",
+      "subline": "Pick the quality and audio language. Maglev joins the pieces."
+    },
+    {
+      "id": "assistant",
+      "template": "top",
+      "color": "lime",
+      "headline": "An assistant that asks first",
+      "subline": "Optional. It shows every change and waits for you to confirm."
+    },
+    {
+      "id": "detail",
+      "template": "bottom",
+      "color": "white",
+      "headline": "Every file, peer and piece",
+      "subline": "Pick files to fetch first, skip the rest, watch the speed."
+    },
+    {
+      "id": "feeds",
+      "template": "top",
+      "color": "lime",
+      "headline": "Follow feeds, get new releases",
+      "subline": "Add any RSS feed. New items that match your rules download."
+    }
+  ],
+  "feature": {
+    "subline": "Torrents, links and web video. One small app."
+  }
+}
