@@ -29,14 +29,37 @@ object FileActions {
         return SafStorageManager.findInTree(context, Uri.parse(tree), relPath)?.uri
     }
 
-    /** Returns null on success or a plain-English error. */
-    fun openFile(context: Context, outputFolder: String, relPath: String): String? {
-        val uri = resolveUri(context, outputFolder, relPath) ?: return "File not found"
+    /** What [open] did. */
+    sealed class OpenResult {
+        object Opened : OpenResult()
+        /** The file is fine but no installed app handles its type. */
+        object NoApp : OpenResult()
+        /** The file is missing or access was refused; [message] is plain English. */
+        data class Failed(val message: String) : OpenResult()
+    }
+
+    fun open(context: Context, outputFolder: String, relPath: String): OpenResult {
+        val uri = resolveUri(context, outputFolder, relPath) ?: return OpenResult.Failed("File not found")
         val intent = Intent(Intent.ACTION_VIEW)
             .setDataAndType(uri, SafStorageManager.mimeFor(relPath))
             .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
-        return start(context, intent, "No app can open this file")
+        return try {
+            context.startActivity(intent)
+            OpenResult.Opened
+        } catch (_: ActivityNotFoundException) {
+            OpenResult.NoApp
+        } catch (e: SecurityException) {
+            OpenResult.Failed(e.message ?: "Access denied")
+        }
     }
+
+    /** Returns null on success or a plain-English error. */
+    fun openFile(context: Context, outputFolder: String, relPath: String): String? =
+        when (val r = open(context, outputFolder, relPath)) {
+            OpenResult.Opened -> null
+            OpenResult.NoApp -> "No app can open this file"
+            is OpenResult.Failed -> r.message
+        }
 
     fun shareFile(context: Context, outputFolder: String, relPath: String): String? {
         val uri = resolveUri(context, outputFolder, relPath) ?: return "File not found"

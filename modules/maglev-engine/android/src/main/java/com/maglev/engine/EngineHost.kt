@@ -114,6 +114,8 @@ object EngineHost {
     private val pollLock = Any()
     private var initOnlySince = 0L
     private val cancelledCopies = ConcurrentHashMap.newKeySet<String>()
+    /** Copy keys whose removal asked for Delete file: their target in the chosen folder goes even when complete. */
+    private val deleteCopyTargets = ConcurrentHashMap.newKeySet<String>()
     /** Torrents whose staged copy was freed at the seed limit in this process. */
     private val seedLimitFreed = ConcurrentHashMap.newKeySet<String>()
     private var sawDownloading = false
@@ -834,7 +836,10 @@ object EngineHost {
             }
         }
         for (d in Json.list(list["downloads"])) {
-            if ((d["state"] as? String) in setOf("downloading", "queued", "resolving")) {
+            val st = d["state"] as? String
+            // A download that governance paused (Wi-Fi, battery, offline, ...) is held too, so it can't restart by itself.
+            val heldByRule = st == "paused" && d["paused_by"] != null && d["paused_by"] != "user"
+            if (st in setOf("downloading", "queued", "resolving") || heldByRule) {
                 val id = d["id"] as? String ?: continue
                 if (isOk(call { NativeCore.nativePauseDownload(id) })) n++
             }
@@ -1563,12 +1568,37 @@ object EngineHost {
     fun pauseDownload(id: String) = call { NativeCore.nativePauseDownload(id) }.also { pollNow() }
     fun resumeDownload(id: String) = call { NativeCore.nativeResumeDownload(id) }.also { pollNow() }
     fun retryDownload(id: String) = call { NativeCore.nativeRetryDownload(id) }.also { pollNow() }
+    /**
+     * The copy that Maglev made in the user's chosen folder for a finished download, as (tree, name), or null when
+     * there is none. Read before the record is removed.
+     */
+    private fun downloadCopyInTree(c: Context, id: String): Pair<android.net.Uri, String>? {
+        val list = call { NativeCore.nativeListTorrents() }
+        if (!isOk(list)) return null
+        val d = Json.list(list["downloads"]).firstOrNull { it["id"] == id } ?: return null
+        if (d["state"] != "finished") return null
+        val folder = d["folder"] as? String ?: return null
+        val name = d["name"] as? String ?: return null
+        val tree = StorageManager.customUri(c) ?: return null
+        if (!StorageManager.isStagingPath(c, folder) || !StorageManager.isCopied(c, DL_PREFIX + id, folder, tree)) return null
+        return android.net.Uri.parse(tree) to name
+    }
+
     fun removeDownload(id: String, deleteFiles: Boolean): Map<String, Any?> {
+        val copy = if (deleteFiles) ctx?.let { downloadCopyInTree(it, id) } else null
         val res = call { NativeCore.nativeRemoveDownload(id, deleteFiles) }
         if (isOk(res)) {
             val key = DL_PREFIX + id
             ctx?.let { StorageManager.clearCopied(it, key) }
-            if (copying.contains(key)) cancelledCopies.add(key)
+            // Delete file also removes the copy in the chosen folder (contract 17.z).
+            if (copy != null) {
+                try { ctx?.let { SafStorageManager.deleteFromTree(it, copy.first, copy.second) } }
+                catch (t: Throwable) { Log.w(TAG, "could not delete the copy", t) }
+            }
+            if (copying.contains(key)) {
+                cancelledCopies.add(key)
+                if (deleteFiles) deleteCopyTargets.add(key)
+            }
             copyFailedAt.remove(key)
             mediaScanned.remove(key)
         }
@@ -1748,7 +1778,15 @@ object EngineHost {
         val source = File(folder, name)
         // Null means the target exists with the source's size. A missing source is an error.
         val error = SafStorageManager.copyFileIntoTree(c, tree, name, source)
-        if (cancelledCopies.remove(key)) return // removed while copying
+        if (cancelledCopies.remove(key)) {
+            // Removed while copying. An incomplete copy never stays in the user's folder; a complete one stays
+            // unless Delete file was asked.
+            val deleteAsked = deleteCopyTargets.remove(key)
+            if (error != null || deleteAsked) {
+                try { SafStorageManager.deleteFromTree(c, tree, name) } catch (t: Throwable) { Log.w(TAG, "could not delete the copy", t) }
+            }
+            return
+        }
         if (error == null) {
             StorageManager.markCopied(c, key, folder, tree.toString())
             copyFailedAt.remove(key)
@@ -1801,15 +1839,13 @@ object EngineHost {
         val folder = d["folder"] as? String
         val name = d["name"] as? String
         if (folder == null || name.isNullOrEmpty()) return Json.failure("NOT_FOUND", "File not found")
-        return when (val err = FileActions.openFile(c, folder, name)) {
-            null -> linkedMapOf("ok" to true)
-            FILE_ACTIONS_NO_APP -> Json.failure("NO_APP", "No app on this phone can open this file")
-            else -> Json.failure("NOT_FOUND", err)
+        return when (val r = FileActions.open(c, folder, name)) {
+            FileActions.OpenResult.Opened -> linkedMapOf("ok" to true)
+            FileActions.OpenResult.NoApp -> Json.failure("NO_APP", "No app on this phone can open this file")
+            is FileActions.OpenResult.Failed -> Json.failure("NOT_FOUND", r.message)
         }
     }
 
-    /** The text `FileActions.openFile` returns when no activity handles the file. Keep in step with FileActions. */
-    private const val FILE_ACTIONS_NO_APP = "No app can open this file"
 
     fun openFolder(id: String): Map<String, Any?> {
         val c = requireCtx() ?: return Json.failure("ENGINE_UNAVAILABLE", "Module is not attached")
