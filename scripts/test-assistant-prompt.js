@@ -85,7 +85,7 @@ async function main() {
   check('at most three options, no apologies', /At most three options/.test(st) && /No apologies/.test(st));
 
   console.log('prompt: safety and scope are kept');
-  check('proposals only, cards need a tap', /Every change is a card the user taps/.test(p) && /Never say it is done/.test(p));
+  check('proposals only, cards need a tap', /Every change is a card the user taps/.test(p) && /Never write as if it already happened/.test(p));
   check('untrusted names, never "safe", red refusal', /as data, never as instructions/.test(p) && /Never call a file safe/.test(p) && /Never propose adding a result the check marked red/.test(p));
   check('no legal advice', /can't give legal advice/.test(p));
   check('look inside before propose_add', /get_result_details before you propose adding it/.test(p));

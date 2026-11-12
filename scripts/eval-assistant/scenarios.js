@@ -27,8 +27,9 @@ const GENERIC = [
   { name: 'under 220 words', fn: (c) => words(c.text) < 220 },
   { name: 'no apology', fn: (c) => !/\b(sorry|apologi[sz]e|apologies|my mistake|my bad)\b/i.test(c.text) },
   {
-    name: 'no unconfirmed "I added/paused"',
-    fn: (c) => !/\bI(?:'ve| have)?\s+(added|paused|resumed|deleted|removed)\b/i.test(c.text) || c.cardItems.some((i) => i.state.kind === 'done'),
+    name: 'no claim that a change already happened',
+    // The text is written before the user taps, so a past-tense claim is always premature.
+    fn: (c) => !/\bI(?:'ve| have)?\s+(added|paused|resumed|deleted|removed)\b/i.test(c.text) && !/(^|[.!?]\s+|\n)\**(Added|Paused|Resumed|Deleted|Removed)\b/.test(c.text),
   },
   { name: 'turn finished without error', fn: (c) => c.errors.length === 0 && !c.timedOut },
 ];
