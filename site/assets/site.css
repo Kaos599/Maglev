@@ -198,7 +198,7 @@ section { padding: 56px 0; }
 .cv { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
 .cv.yes { color: var(--text); }
 /* Maglev's own column: its Yes in lime so it reads at a glance. */
-.me .cv.yes { color: var(--lime); font-weight: 600; }
+.me .cv.yes { color: var(--lime); font-weight: 700; }
 .cv.no { color: var(--muted); }
 .cv.partial { color: var(--copy); }
 .cmp td { white-space: nowrap; }
