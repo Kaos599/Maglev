@@ -167,7 +167,13 @@ export function filterModelOutput(text: unknown): string {
   s = s.normalize('NFKC').replace(/\r\n?/g, '\n').replace(/\t/g, ' ');
   s = s.split('\n').map(stripInvisible).join('\n');
   s = s.replace(MARKDOWN_LINK_RE, (_m, label: string) => (label.trim() ? label : LINK_PLACEHOLDER));
-  return removeLinks(s, false);
+  s = removeLinks(s, false);
+  // Handles like "(r6)" are the model's internal ids and mean nothing on screen. Only the bracketed form is cut:
+  // a bare one sits inside a sentence, and cutting it would leave the sentence broken.
+  s = s.replace(/\s?\((?:id\s*)?[rtfc]\d{1,4}\)/g, '').replace(/ {2,}/g, ' ');
+  // Small models sign off with "I'll wait for your choice"; the question chips already say that.
+  s = s.replace(/\s*\bI(?:'ll| will) (?:wait|be waiting)\b[^.!?\n]*[.!?]?/gi, '');
+  return s;
 }
 
 /** Truncate by code point (never splits a surrogate pair), keeping the result within maxLen. */

@@ -1,16 +1,21 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { friendlyPath } from '../components/settings/SettingsParts';
 import { StyleSheet, Text, TextInput, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import * as Clipboard from 'expo-clipboard';
-import { maglevEngine, isDownloadLink, isShareOpen, isTorrentSource, normalizeIncoming, type FreeSpace, type UrlProbe } from 'maglev-engine';
+import { isDownloadLink, isShareOpen, isTorrentSource, normalizeIncoming, type UrlProbe } from 'maglev-engine';
 import { useTheme } from '../context/ThemeContext';
 import { useMaglevEngine } from '../context/EngineContext';
 import { ThemeColors, radius, spacing, type } from '../constants/theme';
 import { formatBytes } from '../constants/format';
-import { triggerHaptic } from '../constants/haptics';
+import { haptic } from '../constants/haptics';
+import { StreamSheet } from '../components/browser/StreamSheet';
+import { streamKindOfLink } from '../components/browser/streamChoice';
+import type { FoundItem } from 'maglev-engine';
 import { Banner, Button, EmptyBlock, Screen } from '../components/ui';
-import { admit, pendingNeedOf } from '../utils/admission';
+import { useDownloadAdmission } from '../utils/useDownloadAdmission';
 import { actionRoute, probeErrorView } from '../utils/downloadCopy';
+import { banners, empty, notices } from '../constants/copy';
 
 /** Add a download from a web link: probe the link, show what it is, then start. */
 type Phase = 'input' | 'probing' | 'ready' | 'adding' | 'error';
@@ -22,15 +27,16 @@ export default function AddDownloadScreen() {
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const router = useRouter();
   const params = useLocalSearchParams<{ url?: string; source?: string; from?: string }>();
-  const { telemetry, defaultStoragePath, probeUrl, startDownload, showNotice } = useMaglevEngine();
+  const { defaultStoragePath, probeUrl, probeStream, startDownload, showNotice } = useMaglevEngine();
 
   const [text, setText] = useState('');
   const [phase, setPhase] = useState<Phase>('input');
   const [message, setMessage] = useState<string | null>(null);
   const [errorView, setErrorView] = useState<ReturnType<typeof probeErrorView> | null>(null);
   const [probe, setProbe] = useState<UrlProbe | null>(null);
-  const [free, setFree] = useState<FreeSpace | null>(null);
+  const [notAFile, setNotAFile] = useState(false);
   const [addError, setAddError] = useState<string | null>(null);
+  const [streamItem, setStreamItem] = useState<FoundItem | null>(null);
   const token = useRef(0);
   const urlRef = useRef('');
   const allowLanRef = useRef(false);
@@ -59,19 +65,34 @@ export default function AddDownloadScreen() {
       setMessage(null);
       setAddError(null);
       setPhase('probing');
+      // An .m3u8 or .mpd link is a stream: offer the same quality sheet the browser uses.
+      // When the probe says it is not a stream, carry on as a plain file.
+      const streamKind = streamKindOfLink(input);
+      if (streamKind) {
+        const sp = await probeStream(input, allowLan ? { allowLan: true } : {});
+        if (mine !== token.current) return;
+        if (sp.ok || (sp.code ?? '').toUpperCase().startsWith('STREAM_')) {
+          setStreamItem({
+            id: input, url: input, kind: 'video', mime: null, ext: streamKind === 'hls' ? 'm3u8' : 'mpd',
+            name: '', size: null, width: null, height: null, source: 'page', stream: streamKind, pageUrl: '', pageTitle: '',
+          });
+          setPhase('input');
+          return;
+        }
+      }
       const res = await probeUrl(input, allowLan ? { allowLan: true } : {});
       if (mine !== token.current) return;
       if (res.ok) {
         setProbe(res);
         setPhase('ready');
-        triggerHaptic('medium');
         return;
       }
       setProbe(null);
+      setNotAFile((res.code ?? '').toUpperCase() === 'NOT_A_FILE');
       setErrorView(probeErrorView(res.code, res.message, res.httpStatus));
       setPhase('error');
     },
-    [probeUrl, router],
+    [probeUrl, probeStream, router],
   );
 
   // The `url` or `source` param (a share, a maglev:// link, or another screen) fills the field.
@@ -99,22 +120,7 @@ export default function AddDownloadScreen() {
   }, [params.url, params.source, params.from, submit, router]);
 
   // Free space refreshes when the preview opens.
-  const probed = phase === 'ready' ? probe?.name : null;
-  useEffect(() => {
-    if (!probed) return;
-    let alive = true;
-    maglevEngine
-      .getFreeSpace()
-      .then((res) => {
-        if (alive) setFree(res.ok ? res : null);
-      })
-      .catch(() => {
-        if (alive) setFree(null);
-      });
-    return () => {
-      alive = false;
-    };
-  }, [probed]);
+  const { doesntFit } = useDownloadAdmission(probe?.size ?? null, phase === 'ready');
 
   const onChangeText = (next: string) => {
     token.current++;
@@ -125,7 +131,7 @@ export default function AddDownloadScreen() {
   };
 
   const handlePaste = async () => {
-    triggerHaptic('light');
+    haptic('tap');
     let clip = '';
     try {
       clip = (await Clipboard.getStringAsync()).trim();
@@ -133,7 +139,7 @@ export default function AddDownloadScreen() {
       clip = '';
     }
     if (!clip) {
-      setMessage('Your clipboard is empty.');
+      setMessage(notices.inline.clipboardEmpty);
       setPhase('input');
       return;
     }
@@ -147,22 +153,22 @@ export default function AddDownloadScreen() {
     setAddError(null);
     const res = await startDownload(urlRef.current, allowLanRef.current ? { allowLan: true } : {});
     if (res.ok) {
-      triggerHaptic('success');
+      haptic('commit');
       router.replace('/');
       return;
     }
     if (res.code === 'DUPLICATE') {
-      showNotice({ message: 'This link is already in your downloads.' });
+      showNotice({ message: notices.addDownload.duplicate });
       router.replace('/');
       return;
     }
-    triggerHaptic('error');
+    haptic('fail');
     if (fromError) {
       setErrorView({ body: res.message || "Couldn't start this download.", primary: 'retry' });
       setPhase('error');
       return;
     }
-    setAddError(res.message || "Couldn't start this download.");
+    setAddError(res.message || notices.inline.startDownloadFailed);
     setPhase('ready');
   };
 
@@ -185,7 +191,7 @@ export default function AddDownloadScreen() {
         <EmptyBlock
           icon="warning"
           error
-          title="Waiting for a network"
+          title={empty.addDownload.waitingForNetwork.title}
           body={errorView.body}
           primary={{ label: 'Open settings', onPress: () => router.push(actionRoute('openNetworkSettings') ?? '/settings/network') }}
           secondary={{ label: 'Add anyway', onPress: () => void start(true) }}
@@ -199,7 +205,7 @@ export default function AddDownloadScreen() {
         <EmptyBlock
           icon="warning"
           error
-          title="A device on your network"
+          title={empty.addDownload.deviceOnNetwork.title}
           body={errorView.body}
           primary={{ label: 'Allow this device', onPress: () => void submit(urlRef.current, true) }}
           secondary={{ label: 'Back', onPress: () => setPhase('input') }}
@@ -213,14 +219,20 @@ export default function AddDownloadScreen() {
         <EmptyBlock
           icon="warning"
           error
-          title="Couldn't use this link"
+          title={empty.addDownload.badLink.title}
           body={errorView?.body}
           primary={
-            errorView?.primary === 'pasteAnother'
-              ? { label: 'Paste another link', onPress: () => { setText(''); void handlePaste(); } }
-              : { label: 'Try again', onPress: () => void submit(urlRef.current) }
+            notAFile
+              ? { label: 'Open in browser', onPress: () => router.replace({ pathname: '/browser', params: { url: urlRef.current } }) }
+              : errorView?.primary === 'pasteAnother'
+                ? { label: 'Paste another link', onPress: () => { setText(''); void handlePaste(); } }
+                : { label: 'Try again', onPress: () => void submit(urlRef.current) }
           }
-          secondary={{ label: 'Back', onPress: () => setPhase('input') }}
+          secondary={
+            notAFile
+              ? { label: 'Paste another link', onPress: () => { setText(''); void handlePaste(); } }
+              : { label: 'Back', onPress: () => setPhase('input') }
+          }
         />
       </Screen>
     );
@@ -230,17 +242,6 @@ export default function AddDownloadScreen() {
   if ((phase === 'ready' || phase === 'adding') && probe) {
     const adding = phase === 'adding';
     const size = probe.size;
-    const freeBytes = free ? Math.min(free.freeBytes, free.targetFreeBytes ?? free.freeBytes) : null;
-    const outcome =
-      freeBytes !== null && size
-        ? admit({
-            freeBytes,
-            pendingNeed: pendingNeedOf(telemetry.torrents),
-            stagingFactor: free?.mode === 'staging' ? 2 : 1,
-            selectionBytes: size,
-          })
-        : null;
-    const doesntFit = outcome?.result === 'DoesntFit';
     return (
       <Screen title="Add download" onBack={close} scroll contentStyle={styles.content}>
         <Text style={styles.name} numberOfLines={3}>{probe.name}</Text>
@@ -249,11 +250,12 @@ export default function AddDownloadScreen() {
         <Text style={styles.meta}>
           {probe.resumable ? 'You can pause and resume this one.' : "This server can't resume. It starts over if it stops."}
         </Text>
-        <Text style={styles.meta}>Saves to {defaultStoragePath}</Text>
-        {doesntFit ? <Banner tone="danger" title="Not enough space" body="Free up some storage, then try again." /> : null}
+        <Text style={styles.meta}>Saves to {friendlyPath(defaultStoragePath)}</Text>
+        {doesntFit ? <Banner tone="danger" title={banners.addDownload.notEnoughSpace.title} body={banners.addDownload.notEnoughSpace.body} /> : null}
         {addError ? <Banner tone="danger" title={addError} /> : null}
         <View style={styles.gap}>
           <Button label="Start" size="lg" fullWidth loading={adding} disabled={adding || doesntFit} onPress={() => void start()} />
+          <Button label="Cancel" variant="ghost" size="lg" fullWidth disabled={adding} onPress={close} />
         </View>
       </Screen>
     );
@@ -285,6 +287,7 @@ export default function AddDownloadScreen() {
       <View style={styles.gap}>
         <Button label="Get info" size="lg" fullWidth disabled={!canSubmit} onPress={() => void submit(text)} />
       </View>
+      <StreamSheet item={streamItem} onClose={() => { setStreamItem(null); close(); }} onCopyLink={(u) => { void Clipboard.setStringAsync(u); }} />
     </Screen>
   );
 }

@@ -10,6 +10,7 @@
  * Sources: assets/brand/maglev-icon.svg (tile + mark), assets/brand/maglev-mark.svg (mark only)
  * Outputs: assets/icon.png            1024x1024  tile + mark, full bleed (Android masks it)
  *          assets/adaptive-icon.png   1024x1024  transparent, mark only, inside the 66% safe zone
+ *          assets/adaptive-icon-monochrome.png  1024x1024  white train silhouette on transparent, same scale (Android 13+ themed icon)
  *          assets/splash.png          1284x2778  transparent, mark centered, 288px wide
  *          assets/favicon.png         48x48      tile + mark
  */
@@ -20,6 +21,7 @@ const root = path.resolve(__dirname, '..');
 const assets = path.join(root, 'assets');
 const ICON_SVG = path.join(assets, 'brand', 'maglev-icon.svg');
 const MARK_SVG = path.join(assets, 'brand', 'maglev-mark.svg');
+const MONO_SVG = path.join(assets, 'brand', 'maglev-mark-mono.svg');
 const MARK_W = 107; // viewBox of maglev-mark.svg (scripts/build-logo.py)
 const MARK_H = 44;
 const TILE = '#05070A';
@@ -38,11 +40,18 @@ const iconOut = path.join(assets, 'icon.png');
 rasterize(ICON_SVG, 1024, 1024, iconOut);
 magick(iconOut, '-background', TILE, '-alpha', 'remove', '-alpha', 'off', iconOut);
 
-// 2. Adaptive foreground: the wide mark at 560px keeps its far points (nose tip, longest speed line) inside the 676px safe circle
+// 2. Adaptive foreground: the wide mark at 650px keeps its far points (nose tip, longest speed line) inside the 676px safe circle
 const adaptiveMark = path.join(assets, '.adaptive-mark.tmp.png');
-rasterize(MARK_SVG, MARK_H, Math.round((560 * MARK_H) / MARK_W), adaptiveMark);
+rasterize(MARK_SVG, MARK_H, Math.round((650 * MARK_H) / MARK_W), adaptiveMark);
 magick('-size', '1024x1024', 'xc:none', adaptiveMark, '-gravity', 'center', '-composite',
   path.join(assets, 'adaptive-icon.png'));
+
+// 2b. Themed icon layer: same 650px mark and placement, white on transparent (Android tints it)
+const monoMark = path.join(assets, '.mono-mark.tmp.png');
+rasterize(MONO_SVG, MARK_H, Math.round((650 * MARK_H) / MARK_W), monoMark);
+magick('-size', '1024x1024', 'xc:none', monoMark, '-gravity', 'center', '-composite',
+  path.join(assets, 'adaptive-icon-monochrome.png'));
+require('fs').rmSync(monoMark, { force: true });
 
 // 3. Splash: mark 420px wide on a transparent portrait canvas
 const splashMark = path.join(assets, '.splash-mark.tmp.png');

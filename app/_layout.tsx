@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { View } from 'react-native';
-import { Stack, SplashScreen } from 'expo-router';
+import { Stack, SplashScreen, usePathname } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { useFonts } from 'expo-font';
@@ -17,16 +17,29 @@ SplashScreen.preventAutoHideAsync().catch(() => {});
 /** Safety net: if init never settles, stop waiting on the splash and show the engine error. */
 const ENGINE_RESOLVE_TIMEOUT_MS = 15000;
 
+/**
+ * Screens a launch link can open that call the engine as soon as they mount (a shared magnet or
+ * .torrent, a shared web link, a notification's torrent). Launched straight into one of these, the
+ * app waits for the engine as before instead of painting the cached shell, so the link is handled
+ * once the engine can answer rather than failing with "Engine not started" (the bridge does not
+ * queue calls made before start).
+ */
+const ENGINE_FIRST_ROUTE = /^\/(add-torrent|add-download|torrent\/)/;
+
 function AppNavigation() {
   const { colors, dark } = useTheme();
   const { settings } = useSettings();
-  const { engineStatus, telemetry } = useMaglevEngine();
+  const { engineStatus, hasCachedList } = useMaglevEngine();
   const [timedOut, setTimedOut] = useState(false);
+  // Decided once, from the route the app was launched into: a later link must never unmount the shell.
+  const pathname = usePathname();
+  const [launchNeedsEngine] = useState(() => ENGINE_FIRST_ROUTE.test(pathname ?? ''));
 
   // The bridge reports 'starting' until init settles to 'ready' or 'unavailable'.
   const starting = engineStatus.kind === 'starting';
-  // UI spec S10.3: an onboarded user with a cached list sees it at once while the engine starts.
-  const cachedBoot = starting && !timedOut && settings.onboarded && telemetry.torrents.some((t) => t.lastKnown);
+  // UI spec S10.3: an onboarded user with a saved list (even an empty one) sees it at once while the
+  // engine starts; EngineProvider starts the engine right after that first frame.
+  const cachedBoot = starting && !timedOut && settings.onboarded && hasCachedList && !launchNeedsEngine;
   const resolved = !starting || timedOut || cachedBoot;
 
   useEffect(() => {
@@ -99,7 +112,7 @@ function AppNavigation() {
 }
 
 export default function RootLayout() {
-  const [fontsLoaded] = useFonts({
+  const [fontsLoaded, fontError] = useFonts({
     [fontFamily.brand]: require('@expo-google-fonts/silkscreen/400Regular/Silkscreen_400Regular.ttf'),
     [fontFamily.mono]: require('@expo-google-fonts/space-mono/400Regular/SpaceMono_400Regular.ttf'),
     [fontFamily.monoBold]: require('@expo-google-fonts/space-mono/700Bold/SpaceMono_700Bold.ttf'),
@@ -108,7 +121,8 @@ export default function RootLayout() {
   });
 
   // Native splash stays visible until fonts load; AppNavigation hides it once the engine resolves.
-  if (!fontsLoaded) return null;
+  // A font that fails to load must not keep the splash up forever: carry on with the system font.
+  if (!fontsLoaded && !fontError) return null;
 
   return (
     <SafeAreaProvider>

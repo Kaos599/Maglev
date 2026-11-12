@@ -4,7 +4,9 @@ import { useTheme } from '../../../context/ThemeContext';
 import { ThemeColors, spacing, type } from '../../../constants/theme';
 import { Chip } from '../../ui';
 import type { ProviderPreset } from '../../../utils/prefs/assistant';
+import { modelDisplayName } from '../../../utils/assistant/models';
 import { Field } from './Field';
+import { ModelPicker } from './ModelPicker';
 
 /**
  * The model: a short list per provider (marked Free or Paid) plus "Other…" for a typed name.
@@ -13,12 +15,15 @@ import { Field } from './Field';
 export function ModelField({
   preset,
   value,
+  modelName,
   onChange,
   editable = true,
 }: {
   preset: ProviderPreset;
   value: string;
-  onChange: (t: string) => void;
+  modelName?: string | null;
+  /** `name` is the display name from the provider's list, when it has one. */
+  onChange: (id: string, name?: string | null) => void;
   editable?: boolean;
 }) {
   const { colors } = useTheme();
@@ -27,6 +32,17 @@ export function ModelField({
   // "Other…" opens the text field. A saved model that is not on the list also shows it.
   const [otherOpen, setOtherOpen] = useState(false);
   const other = otherOpen || (preset.models.length > 0 && !listed);
+
+  if (preset.id === 'openrouter') {
+    return (
+      <ModelPicker
+        value={value}
+        displayName={modelDisplayName({ presetId: 'openrouter', model: value, modelName })}
+        onChange={(id, name) => onChange(id, name)}
+        editable={editable}
+      />
+    );
+  }
 
   if (preset.models.length === 0) {
     return (

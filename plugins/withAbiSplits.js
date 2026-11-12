@@ -21,7 +21,8 @@ const splitsBlock = (abis) => `
     splits {
         abi {
             reset()
-            enable true
+            // An app bundle refuses ABI splits (issuetracker 402800800); bundleRelease builds the APK set instead.
+            enable !gradle.startParameter.taskNames.any { it.toLowerCase().contains("bundle") }
             universalApk true
             include ${abis.map((a) => `"${a}"`).join(', ')}
         }

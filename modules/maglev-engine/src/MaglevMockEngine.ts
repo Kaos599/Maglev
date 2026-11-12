@@ -3,6 +3,7 @@ import type {
   AggregatedTelemetry,
   Detail,
   DownloadOptions,
+  StreamProbe,
   EngineErrorCode,
   EngineResult,
   FeedAutomationConfig,
@@ -717,6 +718,10 @@ export class MaglevMockEngine implements MaglevEngineApi {
   // ---- URL downloads (NATIVE_CONTRACT 17) ----
   public probeUrl(url: string, options: DownloadOptions = {}, _timeoutMs = 15_000): Promise<EngineResult<UrlProbe>> {
     return this.downloads.probeUrl(url, options);
+  }
+  /** Dev and web only. The simulator can't fetch playlists, so it says so instead of inventing qualities. */
+  public probeStream(_url: string, _options: DownloadOptions = {}, _timeoutMs = 15_000): Promise<EngineResult<StreamProbe>> {
+    return Promise.resolve({ ok: false, code: 'STREAM_UNSUPPORTED', message: "Maglev can't save this kind of stream yet." });
   }
   public addDownload(url: string, options: DownloadOptions = {}): Promise<EngineResult<{ id: string }>> {
     return this.downloads.add(url, options);

@@ -1,15 +1,22 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { FlatList, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
-import { useRouter } from 'expo-router';
+import { AppState, Dimensions, ScrollView, StyleSheet, Text, TextInput, View, type LayoutChangeEvent, type NativeScrollEvent, type NativeSyntheticEvent } from 'react-native';
+import { FlashList } from '@shopify/flash-list';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useMaglevEngine } from '../../context/EngineContext';
+import { useSettings } from '../../context/SettingsContext';
 import { useTheme } from '../../context/ThemeContext';
 import { ThemeColors, radius, spacing, type } from '../../constants/theme';
 import { PixelIcon } from '../../components/PixelIcon';
 import { Button, Chip, EmptyBlock, IconButton, Screen, Sheet } from '../../components/ui';
 import { ResultRow } from '../../components/search/ResultRow';
-import { SkeletonRows } from '../../components/search/SkeletonRows';
+import { SKELETON_FIRST_COUNT, SKELETON_MORE_COUNT, SkeletonRows } from '../../components/search/SkeletonRows';
+import { seenRowCount, stableOrder } from '../../components/search/stableOrder';
+import { prefetchAllowed } from '../../components/search/prefetch';
+import { magnetHash, metadataPrefetch } from '../../components/search/metadataCache';
 import { SourceScoreboard, ScoreboardEntry } from '../../components/search/SourceScoreboard';
 import { SourcesCard } from '../../components/search/SourcesCard';
+import { FollowSheet } from '../../components/search/FollowSheet';
+import { followRuleFromResult, type FollowTarget } from '../../utils/follow';
 import { NoticeBanner, addErrorNotice, useNotice } from '../../components/search/Notice';
 import { buildExtraProviders, loadExtraProviders } from '../../components/search/extra';
 import { CATEGORY_LABEL, formatAge, providerMap } from '../../components/search/meta';
@@ -21,9 +28,16 @@ import { availableCategories, eligibleProviders, mergeInto, rerunProvider, resol
 import { CloudflareSolverSheet } from '../../components/search/CloudflareSolverSheet';
 import { tallySources, unansweredNote } from '../../utils/search/answered';
 import type { Category, MergedResult, SearchUpdate } from '../../utils/search/types';
+import { empty } from '../../constants/copy';
 
 const DEBOUNCE_MS = 400;
 const MIN_QUERY = 2;
+/** The top row must hold its place this long, while sources still answer, before its file list is read. */
+const PREFETCH_STABLE_MS = 1500;
+/** After every source answered, a short pause so the read never competes with the last render. */
+const PREFETCH_SETTLED_MS = 300;
+
+const keyOfResult = (r: MergedResult) => r.infoHash;
 
 type SortKey = 'seeders' | 'newest' | 'size' | 'name';
 const SORT_LABEL: Record<SortKey, string> = { seeders: 'Most seeders', newest: 'Newest', size: 'Largest', name: 'Name' };
@@ -49,10 +63,19 @@ export default function SearchScreen() {
   const { colors } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const router = useRouter();
-  const { startTorrent, telemetry, getFreeSpace } = useMaglevEngine();
+  const { startTorrent, telemetry, getFreeSpace, downloads } = useMaglevEngine();
+  const { settings } = useSettings();
   const [prefs, updatePrefs] = useSearchPrefs();
 
   const [query, setQuery] = useState('');
+  // An optional `q` route param (from assistant links) prefills the query once, then is cleared.
+  // The search effect below runs on the trimmed query, so setting it starts the search.
+  const { q: qParam } = useLocalSearchParams<{ q?: string }>();
+  useEffect(() => {
+    if (typeof qParam !== 'string' || !qParam.trim()) return;
+    setQuery(qParam);
+    router.setParams({ q: undefined });
+  }, [qParam, router]);
   const [searching, setSearching] = useState(false);
   const [stopped, setStopped] = useState(false);
   const [update, setUpdate] = useState<SearchUpdate | null>(null);
@@ -65,9 +88,19 @@ export default function SearchScreen() {
   const [retryTick, setRetryTick] = useState(0);
   const [confirm, setConfirm] = useState<{ result: MergedResult; reason: string } | null>(null);
   const [solving, setSolving] = useState<string | null>(null);
+  const [following, setFollowing] = useState<FollowTarget | null>(null);
+  const followCache = useRef(new Map<string, FollowTarget | null>());
   const { notice, show, dismiss } = useNotice();
   const reqId = useRef(0);
   const controller = useRef<AbortController | null>(null);
+  // Stable order while sources answer (components/search/stableOrder.ts): the keys last shown, and
+  // how far down the user has seen (bottom edge of the screen, in px of list content).
+  const shownKeys = useRef<string[]>([]);
+  const viewportH = useRef(0);
+  // Before the list is measured, the window height stands in (more rows pinned, never fewer).
+  const highWater = useRef(Dimensions.get('window').height);
+  // Bumped when the user picks a sort (even the same one): rank every row again from the top.
+  const [rankTick, setRankTick] = useState(0);
 
   const trimmed = query.trim();
   const providers = useMemo(() => providerMap(prefs), [prefs]);
@@ -93,6 +126,8 @@ export default function SearchScreen() {
   useEffect(() => {
     reqId.current += 1;
     const mine = reqId.current;
+    shownKeys.current = [];
+    highWater.current = viewportH.current || Dimensions.get('window').height;
     setUpdate(null);
     setFailed(false);
     setStopped(false);
@@ -172,7 +207,9 @@ export default function SearchScreen() {
     if (q.trim().length >= MIN_QUERY) setRecents(addRecentSearch(q));
   }, []);
 
-  const inList = useMemo(() => new Set(telemetry.torrents.map((t) => t.id.toLowerCase())), [telemetry.torrents]);
+  // Keyed by the ids, not the array: telemetry ticks every second, and a new Set would re-render every row.
+  const inListKey = useMemo(() => telemetry.torrents.map((t) => t.id.toLowerCase()).join(','), [telemetry.torrents]);
+  const inList = useMemo(() => new Set(inListKey ? inListKey.split(',') : []), [inListKey]);
 
   const handleAdd = useCallback(
     async (r: MergedResult) => {
@@ -208,6 +245,9 @@ export default function SearchScreen() {
             // Free space unknown: add as before.
           }
         }
+        // Added directly: a background read of the same torrent is no longer needed.
+        const readHash = magnetHash(ready.magnet);
+        if (readHash) metadataPrefetch.cancelIf(readHash);
         await startTorrent(ready.magnet);
         setSessionAdded((prev) => new Set(prev).add(r.infoHash));
         if (tightNotice) show({ tone: 'info', title: tightNotice });
@@ -237,6 +277,33 @@ export default function SearchScreen() {
     [handleAdd, providers, prefs.warnUnsafe],
   );
 
+  const followTargetOf = useCallback(
+    (r: MergedResult): FollowTarget | null => {
+      const cat = r.category ?? category;
+      const key = `${cat}|${trimmed}|${r.name}`;
+      const cache = followCache.current;
+      if (!cache.has(key)) {
+        if (cache.size > 400) cache.clear();
+        cache.set(key, followRuleFromResult(r.name, trimmed, cat));
+      }
+      return cache.get(key) ?? null;
+    },
+    [category, trimmed],
+  );
+
+  const onFollowed = useCallback(
+    (target: FollowTarget, status: 'followed' | 'already') => {
+      setFollowing(null);
+      show({
+        tone: 'success',
+        title: status === 'already' ? `Already following ${target.title}` : `Following ${target.title}`,
+        actionLabel: 'Open Feeds',
+        onAction: () => router.push('/feeds' as never),
+      });
+    },
+    [router, show],
+  );
+
   const nameOf = useCallback((id: string) => providers.get(id)?.name ?? id, [providers]);
 
   // After Stop, sources that never answered are left out of the scoreboard.
@@ -247,11 +314,58 @@ export default function SearchScreen() {
   const unanswered = unansweredNote(tally);
   const total = update?.sources.length ?? 0;
 
+  // Rows the user has had on screen keep their slots while later sources answer; new rows are ranked
+  // below them. A new sort, source filter or search ranks everything again (and the list starts at the top).
+  const rankKey = `${prefs.sort}|${sourceFilter ?? ''}|${rankTick}`;
+  const lastRankKey = useRef(rankKey);
   const shown = useMemo(() => {
     const base = update?.results ?? [];
     const filtered = sourceFilter ? base.filter((r) => r.sources.includes(sourceFilter)) : base;
-    return sortResults(filtered, prefs.sort);
-  }, [update, sourceFilter, prefs.sort]);
+    const ranked = sortResults(filtered, prefs.sort);
+    if (lastRankKey.current !== rankKey) return ranked;
+    return stableOrder(shownKeys.current, ranked, seenRowCount(highWater.current), keyOfResult);
+  }, [update, sourceFilter, prefs.sort, rankKey]);
+  useEffect(() => {
+    if (lastRankKey.current !== rankKey) {
+      lastRankKey.current = rankKey;
+      highWater.current = viewportH.current || Dimensions.get('window').height;
+    }
+    shownKeys.current = shown.map(keyOfResult);
+  }, [shown, rankKey]);
+
+  const onListLayout = useCallback((e: LayoutChangeEvent) => {
+    viewportH.current = e.nativeEvent.layout.height;
+    if (highWater.current < viewportH.current) highWater.current = viewportH.current;
+  }, []);
+  const onListScroll = useCallback((e: NativeSyntheticEvent<NativeScrollEvent>) => {
+    const { contentOffset, layoutMeasurement } = e.nativeEvent;
+    const edge = contentOffset.y + layoutMeasurement.height;
+    if (edge > highWater.current) highWater.current = edge;
+  }, []);
+
+  // Look inside before the tap: read the top result's file list in the background, once it has held
+  // its place (or every source answered), so Add -> choose files opens at once. One read at a time,
+  // magnets only, never a download (components/search/prefetch.ts), and only when the network rule allows.
+  const netOk = useMemo(
+    () => prefetchAllowed({ wifiOnly: settings.network.wifiOnly, torrents: telemetry.torrents, downloads }),
+    [settings.network.wifiOnly, telemetry.torrents, downloads],
+  );
+  const top = shown[0];
+  const topMagnet = top && top.magnet && !sessionAdded.has(top.infoHash) && !inList.has(top.infoHash.toLowerCase()) ? top.magnet : null;
+  const topKey = topMagnet ? magnetHash(topMagnet) : null;
+  useEffect(() => {
+    if (!topKey || !topMagnet || !netOk) return;
+    const timer = setTimeout(() => {
+      if (AppState.currentState === 'active') metadataPrefetch.start(topKey, topMagnet);
+    }, searching ? PREFETCH_STABLE_MS : PREFETCH_SETTLED_MS);
+    return () => clearTimeout(timer);
+  }, [topKey, topMagnet, netOk, searching]);
+  // A new top row, a new search, the network rule closing, or leaving the screen stops the read
+  // (unless the Add screen already took it).
+  useEffect(() => {
+    if (!topKey || !netOk) return;
+    return () => metadataPrefetch.cancelIf(topKey);
+  }, [topKey, netOk]);
 
   const entries: ScoreboardEntry[] = useMemo(() => sources.map((status) => ({ status, name: nameOf(status.providerId) })), [sources, nameOf]);
 
@@ -268,9 +382,10 @@ export default function SearchScreen() {
         added={sessionAdded.has(item.infoHash) || inList.has(item.infoHash)}
         busy={busyHash === item.infoHash}
         onAdd={() => requestAdd(item)}
+        onFollow={followTargetOf(item) ? () => setFollowing(followTargetOf(item)) : undefined}
       />
     ),
-    [busyHash, requestAdd, inList, nameOf, sessionAdded, providers, prefs.warnUnsafe],
+    [followTargetOf, busyHash, requestAdd, inList, nameOf, sessionAdded, providers, prefs.warnUnsafe],
   );
 
   const openProviders = useCallback(() => router.push('/settings/search-providers' as never), [router]);
@@ -306,8 +421,8 @@ export default function SearchScreen() {
       <EmptyBlock
         icon="warning"
         error
-        title="Search is unavailable right now"
-        body="Check your connection and try again."
+        title={empty.search.unavailable.title}
+        body={empty.search.unavailable.body}
         primary={{ label: 'Retry', icon: 'retry', onPress: () => setRetryTick((n) => n + 1) }}
       />
     );
@@ -315,38 +430,42 @@ export default function SearchScreen() {
     body = (
       <EmptyBlock
         icon="search"
-        title="No source covers this category"
-        body="Turn on a source that searches it."
+        title={empty.search.noSource.title}
+        body={empty.search.noSource.body}
         primary={{ label: 'Change sources', onPress: openProviders }}
       />
     );
   } else {
     const list = (
-      <FlatList
-        data={shown}
-        keyExtractor={(r) => r.infoHash}
-        renderItem={renderItem}
-        contentContainerStyle={styles.list}
-        keyboardShouldPersistTaps="handled"
-        initialNumToRender={12}
-        windowSize={7}
-        ListFooterComponent={searching ? <SkeletonRows count={hasResults ? 2 : 5} /> : undefined}
-        ListEmptyComponent={
-          !searching ? (
-            update && answered === 0 ? (
-              <EmptyBlock
-                icon="warning"
-                error
-                title="No source answered"
-                body="Check your connection or try other sources."
-                primary={{ label: 'Retry', icon: 'retry', onPress: () => setRetryTick((n) => n + 1) }}
-              />
+      <View style={styles.listWrap} onLayout={onListLayout}>
+        <FlashList
+          key={rankKey}
+          data={shown}
+          keyExtractor={keyOfResult}
+          renderItem={renderItem}
+          contentContainerStyle={styles.list}
+          keyboardShouldPersistTaps="handled"
+          onScroll={onListScroll}
+          ListFooterComponent={searching && shown.length > 0 ? <SkeletonRows count={SKELETON_MORE_COUNT} /> : null}
+          ListEmptyComponent={
+            searching ? (
+              <SkeletonRows count={SKELETON_FIRST_COUNT} />
             ) : (
-              <EmptyBlock icon="search" title={`No results for "${trimmed}"`} body="Try fewer words or another category." />
+              update && answered === 0 ? (
+                <EmptyBlock
+                  icon="warning"
+                  error
+                  title={empty.search.noAnswer.title}
+                  body={empty.search.noAnswer.body}
+                  primary={{ label: 'Retry', icon: 'retry', onPress: () => setRetryTick((n) => n + 1) }}
+                />
+              ) : (
+                <EmptyBlock icon="search" title={empty.search.noResults(trimmed).title} body={empty.search.noResults(trimmed).body} />
+              )
             )
-          ) : undefined
-        }
-      />
+          }
+        />
+      </View>
     );
     body = (
       <>
@@ -378,13 +497,16 @@ export default function SearchScreen() {
     <Screen
       title="Search"
       actions={
-        <IconButton
-          icon="filter"
-          badge={prefs.enabled.length}
-          selected={!!sourceFilter}
-          onPress={openProviders}
-          accessibilityLabel={`Search sources, ${prefs.enabled.length} on`}
-        />
+        <>
+          <IconButton icon="network" onPress={() => router.push('/browser')} accessibilityLabel="Browse the web" />
+          <IconButton
+            icon="filter"
+            badge={prefs.enabled.length}
+            selected={!!sourceFilter}
+            onPress={openProviders}
+            accessibilityLabel={`Search sources, ${prefs.enabled.length} on`}
+          />
+        </>
       }
     >
       <View style={styles.pad}>
@@ -432,6 +554,7 @@ export default function SearchScreen() {
           onSolved={handleSolved}
         />
       ) : null}
+      <FollowSheet target={following} onClose={() => setFollowing(null)} onDone={onFollowed} />
       <Sheet visible={sortOpen}onClose={() => setSortOpen(false)} title="Sort results">
         <View style={styles.wrapRow}>
           {SORT_ORDER.map((s) => (
@@ -441,6 +564,7 @@ export default function SearchScreen() {
               selected={prefs.sort === s}
               onPress={() => {
                 updatePrefs({ sort: s });
+                setRankTick((n) => n + 1);
                 setSortOpen(false);
               }}
             />
@@ -493,5 +617,6 @@ const makeStyles = (c: ThemeColors) =>
     summaryRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.sm },
     summary: { ...type.body, flex: 1, fontSize: 12, lineHeight: 17, color: c.textMuted },
     body: { flex: 1, marginTop: spacing.sm },
+    listWrap: { flex: 1 },
     list: { paddingHorizontal: spacing.lg, paddingBottom: spacing.xxxl },
   });

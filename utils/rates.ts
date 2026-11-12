@@ -16,7 +16,10 @@ export function smoothRate(prev: number | null | undefined, sample: number, dtMs
   if (prev == null || !Number.isFinite(prev) || dtMs > RESET_GAP_MS) return s;
   if (dtMs <= 0) return prev;
   const alpha = 1 - Math.exp(-dtMs / TAU_MS);
-  return prev + alpha * (s - prev);
+  const next = prev + alpha * (s - prev);
+  // The average never reaches 0 on its own. Below 1 B/s it reads "0 B/s" anyway, so it snaps to 0
+  // and the row stops changing (and re-rendering) once the transfer is idle.
+  return s === 0 && next < 1 ? 0 : next;
 }
 
 /** Seconds left, or -1 when the rate is under 1 KB/s. */

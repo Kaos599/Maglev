@@ -6,6 +6,7 @@ import type { TokenKey } from '../../utils/assistant/glossary';
 import type { ResultCardView } from '../../utils/assistant/runtime';
 import { Banner, Button } from '../ui';
 import { PixelIcon } from '../PixelIcon';
+import { WhatsInside } from './WhatsInside';
 
 export interface ResultCardProps {
   view: ResultCardView;
@@ -28,12 +29,14 @@ export const ResultCard = memo(function ResultCard({ view, canChoose, onChooseFi
 
   return (
     <View style={styles.card}>
-      {view.label ? (
-        <View style={styles.badge}>
-          <Text style={styles.badgeText}>{LABELS[view.label]}</Text>
-        </View>
-      ) : null}
-      <Text style={styles.title}>{view.title}</Text>
+      <View style={styles.head}>
+        <Text style={styles.title}>{view.title}</Text>
+        {view.label ? (
+          <View style={styles.badge}>
+            <Text style={styles.badgeText}>{LABELS[view.label]}</Text>
+          </View>
+        ) : null}
+      </View>
 
       {view.chips.length > 0 ? (
         <View style={styles.chips}>
@@ -94,6 +97,8 @@ export const ResultCard = memo(function ResultCard({ view, canChoose, onChooseFi
       ) : null}
       {view.safety?.level === 'green' ? <Text style={styles.reason}>{view.safety.text}</Text> : null}
 
+      {view.details ? <WhatsInside details={view.details} /> : null}
+
       <View style={styles.actions}>
         {/* R1-8: a red result can't be added, from a card or from here. */}
         <Button label="Choose files" variant="secondary" disabled={!canChoose || view.safety?.level === 'red'} onPress={onChooseFiles} />
@@ -107,16 +112,17 @@ const makeStyles = (c: ThemeColors) =>
   StyleSheet.create({
     card: {
       alignSelf: 'stretch',
-      padding: spacing.lg,
-      gap: spacing.sm,
+      padding: spacing.md,
+      gap: spacing.xs,
       backgroundColor: c.surface,
       borderWidth: 1,
       borderColor: c.border,
       borderRadius: radius.md,
     },
+    head: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.sm },
     badge: { alignSelf: 'flex-start', paddingHorizontal: spacing.sm, paddingVertical: 2, borderRadius: radius.sm, backgroundColor: c.firstBg, borderWidth: 1, borderColor: c.firstBorder },
     badgeText: { ...type.bodyStrong, fontSize: type.size.sm, color: c.firstFg },
-    title: { ...type.bodyStrong, fontSize: 15, lineHeight: 20, color: c.text },
+    title: { ...type.bodyStrong, flex: 1, fontSize: 15, lineHeight: 20, color: c.text },
     chips: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center' },
     chipItem: { flexDirection: 'row', alignItems: 'center' },
     chipText: { ...type.mono, fontSize: type.size.md, color: c.accentText, textDecorationLine: 'underline', textDecorationStyle: 'dotted', textDecorationColor: c.accentText },
@@ -131,5 +137,5 @@ const makeStyles = (c: ThemeColors) =>
     warnRow: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.sm },
     warnText: { ...type.body, flex: 1, fontSize: type.size.md, lineHeight: 18, color: c.warning },
     safety: { marginTop: spacing.xs },
-    actions: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: spacing.sm, marginTop: spacing.xs },
+    actions: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: spacing.sm, marginTop: 2 },
   });

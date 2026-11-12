@@ -38,6 +38,9 @@ async function main() {
   check('posts to /chat/completions without a doubled slash', seen.url === 'https://api.openai.com/v1/chat/completions', seen.url);
   check('POST method', seen.init.method === 'POST');
   check('bearer key in the header', seen.init.headers.Authorization === 'Bearer sk-secret');
+  check('no attribution headers to a non-OpenRouter provider', !('HTTP-Referer' in seen.init.headers) && !('X-Title' in seen.init.headers));
+  await probeModel({ ...INPUT, preset: 'openrouter', baseUrl: 'https://openrouter.ai/api/v1' }, spy);
+  check('OpenRouter probe sends attribution', seen.init.headers['HTTP-Referer'] === 'https://github.com/Kaos599/Maglev' && seen.init.headers['X-Title'] === 'Maglev' && seen.init.headers.Authorization === 'Bearer sk-secret');
   const body = JSON.parse(seen.init.body);
   check('model is sent', body.model === 'gpt-5-nano');
   check('non-streaming', body.stream === false);
@@ -119,6 +122,7 @@ async function main() {
   check('auth URL host and path', url.origin === 'https://openrouter.ai' && url.pathname === '/auth');
   check('auth URL carries the challenge and S256', url.searchParams.get('code_challenge') === challenge && url.searchParams.get('code_challenge_method') === 'S256');
   check('auth URL has no callback_url (headless mode)', !url.searchParams.has('callback_url'));
+  check('auth URL names the key Maglev', url.searchParams.get('key_label') === 'Maglev');
   check('auth URL never carries a verifier', !/verifier/.test(url.search));
 
   console.log('code parsing');

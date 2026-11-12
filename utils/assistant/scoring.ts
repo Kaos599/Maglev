@@ -14,12 +14,12 @@ import { formatBytes } from '../../constants/format.ts';
 import { admit } from '../admission.ts';
 import type { AdmissionResult } from '../admission.ts';
 import { riskySources } from '../search/safety.ts';
-import type { MergedResult } from '../search/types.ts';
+import type { Category, MergedResult } from '../search/types.ts';
 import type { PlaybackSupport } from '../../modules/maglev-engine/src/MaglevEngine.types';
 import type { SafetyLevel, SafetyResult } from './fileSafety.ts';
 import { playbackVerdict } from './playback.ts';
-import { parseRelease } from './releaseName.ts';
-import type { ParsedRelease, SourceKind } from './releaseName.ts';
+import { detectLanguages, hasAudioLanguage, languageLabel, parseRelease } from './releaseName.ts';
+import type { LanguageInfo, LanguageWant, ParsedRelease, SourceKind } from './releaseName.ts';
 import {
   DEFAULT_ANIME_EPISODE_RUNTIME_MIN, DEFAULT_EPISODE_RUNTIME_MIN, DEFAULT_FILM_RUNTIME_MIN, SMALL_FRACTION, TOO_SMALL_FRACTION, sizeBand,
 } from './sizeBands.ts';
@@ -44,11 +44,24 @@ export interface ScoreContext {
   playback?: PlaybackSupport | null;
   warnUnsafe: boolean;
   providers: ReadonlyMap<string, { name: string; unsafeReason?: string }>;
-  query: { title: string; year?: number; season?: number; episode?: number };
+  /**
+   * `raw` is the user's query text before parsing ("ubuntu 24.04"). Non-video releases are matched on it, so a
+   * version number the query parser read as part of a title still counts.
+   */
+  query: { title: string; year?: number; season?: number; episode?: number; raw?: string };
+  /** Extra. The category searched. apps, games, books, music and other are matched on the raw name, not as films. */
+  category?: Category;
   /** Extra. §3.2: CAM/TS/TC/SCR show only if the user says "earliest possible". */
   allowEarlySources?: boolean;
   /** Extra. §3.3 playability "+1 multiAudio when the user asked for a language the name lists". */
   wantsMultiAudio?: boolean;
+  /**
+   * Extra. The audio language the user asked for, from normalizeLanguage ("hindi", "multi" for dual audio, or a plain
+   * word Maglev doesn't list). Rows whose name gives it rank first; the rest stay in the list, lower, with a reason.
+   */
+  audioLanguage?: LanguageWant;
+  /** Extra. Subtitles the user asked for: "any", or a language. Rows whose name gives them rank first. */
+  subtitles?: 'any' | LanguageWant;
   /** Extra. Episode count per season pack, keyed by info hash. Needed for pack sanity and `partial_fits`. */
   packEpisodeCounts?: ReadonlyMap<string, number>;
   /** Extra. File-list safety keyed by info hash (see `safetyForShortlist`). A red row is never shortlisted. */
@@ -59,7 +72,7 @@ export interface ScoreContext {
 
 export type Tier = 'recommended' | 'ok' | 'avoid';
 export type Label = 'best-fit' | 'smaller' | 'best-quality';
-export type ExcludeReason = 'cam_source' | 'wrong_title' | 'adult';
+export type ExcludeReason = 'cam_source' | 'wrong_title' | 'adult' | 'broken_size';
 
 export interface Ranked {
   /** The info hash. Handles (r1, r2, ...) come from HandleRegistry in the runner, never from here. */
@@ -81,6 +94,8 @@ export interface Ranked {
   safety?: SafetyResult | null;
   /** Season pack that does not fit whole: how many episodes would. */
   partialEpisodes?: number;
+  /** Set only when the user asked for an audio language or subtitles: how well the name matches. */
+  preference?: { audio?: 'yes' | 'maybe' | 'no'; subtitles?: 'yes' | 'maybe' | 'no' };
 }
 
 export interface Excluded {
@@ -129,6 +144,27 @@ const SOURCE_LABEL: Record<SourceKind, string | undefined> = {
   bluray: 'BluRay', webdl: 'WEB-DL', remux: 'REMUX', webrip: 'WEBRip', web: 'WEB', hdtv: 'HDTV',
   hdrip: 'HDRip', dvdrip: 'DVDRip', cam: 'CAM', ts: 'TS', tc: 'TC', scr: 'SCR', unknown: undefined,
 };
+
+/**
+ * A video whose content size is below these is not what its name says (a placeholder, a text file, or a source that
+ * reported the .torrent file's own size). Any video category: under 1 MB. Movies and TV episodes: under 50 MB.
+ * Unknown sizes never count.
+ */
+const BROKEN_ANY_VIDEO_BYTES = 1024 * 1024;
+const BROKEN_MOVIE_TV_BYTES = 50 * 1024 * 1024;
+
+/** True when the size is known and far too small for a video of this kind. */
+function brokenSize(r: MergedResult, parsed: ParsedRelease): boolean {
+  if (r.sizeBytes === undefined || !(r.sizeBytes > 0)) return false;
+  const cat = r.category;
+  const videoCat = cat === 'movies' || cat === 'tv' || cat === 'anime';
+  // A row with no clear category counts as video only when its name says so (a resolution or a video source).
+  const nameSaysVideo = parsed.resolution !== undefined || (parsed.source !== 'unknown');
+  const isVideo = videoCat || ((cat === undefined || cat === 'all' || cat === 'other') && nameSaysVideo);
+  if (!isVideo) return false;
+  if (r.sizeBytes < BROKEN_ANY_VIDEO_BYTES) return true;
+  return cat !== 'anime' && r.sizeBytes < BROKEN_MOVIE_TV_BYTES;
+}
 
 const EARLY_SOURCES: ReadonlySet<SourceKind> = new Set(['cam', 'ts', 'tc', 'scr']);
 
@@ -249,12 +285,68 @@ function isBigPack(parsed: ParsedRelease, q: ScoreContext['query']): boolean {
   return parsed.completeSeries === true && parsed.season === undefined;
 }
 
+/**
+ * Words that ask for a kind of thing rather than name a title ("latest movies", "new tv shows this week").
+ * A query made only of these (and a year) is a browse query: every release of the kind is a match.
+ */
+const GENERIC_WORDS = new Set([
+  'movies', 'movie', 'films', 'film', 'shows', 'show', 'series', 'tv', 'anime', 'books', 'book', 'ebooks', 'audiobooks',
+  'comics', 'games', 'game', 'music', 'songs', 'albums', 'apps', 'app', 'software', 'programs', 'documentaries',
+  'documentary', 'cartoons', 'episodes', 'other', 'releases', 'release',
+  'latest', 'new', 'newest', 'recent', 'popular', 'trending', 'best', 'top', 'good', 'this', 'week', 'month', 'year',
+  'today', 'now',
+]);
+
+/** True when every word of the query is generic or a 4-digit year (there is no title to match). */
+export function isBrowseQuery(text: string): boolean {
+  const tokens = titleTokens(text);
+  return tokens.length > 0 && tokens.every((t) => GENERIC_WORDS.has(t) || /^(19|20)\d\d$/.test(t));
+}
+
+/** Categories whose releases are named like software, books or albums, not like films. */
+const NON_VIDEO_CATEGORIES: ReadonlySet<string> = new Set(['apps', 'games', 'books', 'music', 'other']);
+
+/** Whether the name reads like a film or an episode: a year, a season, an episode, a resolution or a video source. */
+function parsesAsVideo(parsed: ParsedRelease): boolean {
+  return parsed.year !== undefined || parsed.season !== undefined || (parsed.episodes?.length ?? 0) > 0
+    || parsed.resolution !== undefined || parsed.source !== 'unknown';
+}
+
+/** A row is matched as a non-video release when its category or the searched one says so, or its name is not a film's. */
+function isNonVideo(r: MergedResult, parsed: ParsedRelease, searched: Category | undefined): boolean {
+  if (r.category === 'movies' || r.category === 'tv' || r.category === 'anime') return false;
+  if (searched !== undefined && NON_VIDEO_CATEGORIES.has(searched)) return true;
+  if (r.category === 'apps' || r.category === 'games' || r.category === 'books' || r.category === 'music') return true;
+  return !parsesAsVideo(parsed);
+}
+
+/**
+ * Non-video match: the query's words against the words of the raw name, split on . _ - and spaces, so
+ * "ubuntu 24.04" matches "ubuntu-24.04.1-desktop-amd64.iso". Extra numbers are versions here, not sequels.
+ */
+function wrongRawName(name: string, q: ScoreContext['query']): TitleVerdict {
+  const want = titleTokens(q.raw ?? q.title);
+  if (want.length === 0) return { reason: null, partial: false };
+  const have = titleTokens(name);
+  const set = new Set(have);
+  const haveText = have.join('');
+  const missing = want.filter((t) => !hasToken(t, set, haveText));
+  // A version number the user typed must be there: "ubuntu 22.04" is not "ubuntu 24.04".
+  if (missing.length > 1 || (missing.length === 1 && want.length < 2) || missing.some((t) => /^\d+$/.test(t))) {
+    return { reason: `The name does not match "${q.raw ?? q.title}".`, partial: false };
+  }
+  return { reason: null, partial: missing.length === 1 };
+}
+
 interface TitleVerdict { reason: string | null; partial: boolean }
 
-/** Returns a plain-English reason when the result is the wrong title, else null. §3.2 row 2, R1-9. */
-function wrongTitle(parsed: ParsedRelease, q: ScoreContext['query']): TitleVerdict {
+/**
+ * Returns a plain-English reason when the result is the wrong title, else null. §3.2 row 2, R1-9.
+ * `browse`: the query names no title (see `isBrowseQuery`), so only the year, season and episode are checked.
+ */
+function wrongTitle(parsed: ParsedRelease, q: ScoreContext['query'], browse = false): TitleVerdict {
   let partial = false;
-  const want = titleTokens(q.title);
+  const want = browse ? [] : titleTokens(q.title);
   if (want.length > 0) {
     const have = titleTokens(parsed.title ?? '');
     if (have.length === 0) return { reason: 'The name does not show a title.', partial };
@@ -360,7 +452,7 @@ function playabilityOf(parsed: ParsedRelease, ctx: ScoreContext, flags: string[]
     pts -= 2; // "Subtract 2: hardcoded subs"
     flags.push('hardcoded_subs');
   }
-  if (parsed.multiAudio && ctx.wantsMultiAudio) pts += 1; // "Add 1 (cap 20): multiAudio ..."
+  if (parsed.multiAudio && (ctx.wantsMultiAudio || ctx.audioLanguage !== undefined)) pts += 1; // "Add 1 (cap 20): multiAudio ..."
   return Math.max(0, Math.min(20, pts));
 }
 
@@ -493,9 +585,66 @@ function extraReasons(
   return out;
 }
 
+// ---------------------------------------------------------------- language and subtitle preference
+
+type Match = 'yes' | 'maybe' | 'no';
+interface Preference { audio?: Match; subtitles?: Match; good: string[]; bad: string[]; rank: number }
+
+const MATCH_POINTS: Record<Match, number> = { yes: 2, maybe: 1, no: 0 };
+
+/**
+ * How a name meets the language and subtitle the user asked for. `rank` orders rows (audio before subtitles);
+ * nothing is dropped. Reasons are plain and only say what the name shows.
+ */
+function preferenceOf(name: string, ctx: ScoreContext): Preference | null {
+  const audioWant = ctx.audioLanguage;
+  const subWant = ctx.subtitles;
+  if (audioWant === undefined && subWant === undefined) return null;
+  const info: LanguageInfo = detectLanguages(name);
+  const pref: Preference = { good: [], bad: [], rank: 0 };
+  if (audioWant !== undefined) {
+    const label = languageLabel(audioWant);
+    if (audioWant === 'multi') {
+      pref.audio = info.multiAudio ? 'yes' : 'no';
+      if (info.multiAudio) pref.good.push(info.audio.length > 1 ? `Has ${info.audio.map(languageLabel).join(' and ')} audio` : 'Has more than one audio track');
+      else pref.bad.push('No sign of more than one audio track in the name');
+    } else if (hasAudioLanguage(info, audioWant)) {
+      pref.audio = 'yes';
+      pref.good.push(`Has ${label} audio`);
+    } else if (info.multiAudio && info.audio.length < 2) {
+      pref.audio = 'maybe';
+      pref.good.push(`Has more than one audio track, but the name doesn't say if ${label} is one`);
+    } else {
+      pref.audio = 'no';
+      pref.bad.push(`No sign of ${label} audio in the name`);
+    }
+  }
+  if (subWant !== undefined) {
+    if (subWant === 'any' || subWant === 'multi') {
+      pref.subtitles = info.subtitles ? 'yes' : 'no';
+      if (info.subtitles) pref.good.push(info.subtitleLanguages.length > 0 ? `Has ${info.subtitleLanguages.map(languageLabel).join(' and ')} subtitles` : 'Has subtitles');
+      else pref.bad.push('No sign of subtitles in the name');
+    } else {
+      const label = languageLabel(subWant);
+      if ((info.subtitleLanguages as string[]).includes(subWant)) {
+        pref.subtitles = 'yes';
+        pref.good.push(`Has ${label} subtitles`);
+      } else if (info.subtitles) {
+        pref.subtitles = 'maybe';
+        pref.good.push(info.multiSubs ? `Has subtitles in several languages; ${label} is likely but not named` : `Has subtitles, but the name doesn't say ${label}`);
+      } else {
+        pref.subtitles = 'no';
+        pref.bad.push(`No sign of ${label} subtitles in the name`);
+      }
+    }
+  }
+  pref.rank = (pref.audio ? MATCH_POINTS[pref.audio] * 3 : 0) + (pref.subtitles ? MATCH_POINTS[pref.subtitles] : 0);
+  return pref;
+}
+
 // ---------------------------------------------------------------- scoring one result
 
-interface Scored { ranked: Ranked; sizeKnown: boolean; eligible: boolean }
+interface Scored { ranked: Ranked; sizeKnown: boolean; eligible: boolean; prefRank: number }
 
 function scoreOne(
   r: MergedResult, parsed: ParsedRelease, ctx: ScoreContext, q: ScoreContext['query'], now: number, titlePartial: boolean,
@@ -578,15 +727,18 @@ function scoreOne(
     tier = 'ok';
   }
 
-  const reasons = [headline(r, parsed, admission), ...extraReasons(flags, parsed, r, ctx, partialEpisodes)];
+  // What the user asked for leads after the headline; a miss goes last so warnings stay in the first three.
+  const pref = preferenceOf(r.name, ctx);
+  const reasons = [headline(r, parsed, admission), ...(pref?.good ?? []), ...extraReasons(flags, parsed, r, ctx, partialEpisodes), ...(pref?.bad ?? [])];
   const ranked: Ranked = {
     id: r.infoHash, score, tier, labels: [], reasons, flags, admission, result: r, parsed,
     breakdown: { quality, playability, health, sanity: size.sanity, fit, penalties },
     ...(safety !== undefined ? { safety } : {}),
     ...(partialEpisodes !== undefined ? { partialEpisodes } : {}),
+    ...(pref ? { preference: { ...(pref.audio ? { audio: pref.audio } : {}), ...(pref.subtitles ? { subtitles: pref.subtitles } : {}) } } : {}),
   };
   return {
-    ranked, sizeKnown,
+    ranked, sizeKnown, prefRank: pref?.rank ?? 0,
     eligible: sizeKnown && tier !== 'avoid' && admission !== null && admission.result !== 'DoesntFit',
   };
 }
@@ -656,7 +808,7 @@ function pickShortlist(sorted: Scored[]): Ranked[] {
 
   // best-quality: highest quality component among Fits or Tight (both are in `unique`).
   const byQuality = preferSafe(unique).slice().sort(
-    (a, b) => b.ranked.breakdown.quality - a.ranked.breakdown.quality || b.ranked.score - a.ranked.score,
+    (a, b) => b.prefRank - a.prefRank || b.ranked.breakdown.quality - a.ranked.breakdown.quality || b.ranked.score - a.ranked.score,
   );
   if (byQuality[0] !== bestFit) give(byQuality[0], 'best-quality');
 
@@ -707,6 +859,7 @@ export function canPropose(
 export function scoreResults(results: readonly MergedResult[], ctx: ScoreContext): ScoreOutput {
   const now = ctx.now ?? Date.now();
   const q = resolveQuery(ctx.query);
+  const browse = isBrowseQuery(ctx.query.raw ?? ctx.query.title);
   const excluded: Excluded[] = [];
   const scored: Scored[] = [];
   const seen = new Set<string>();
@@ -721,7 +874,11 @@ export function scoreResults(results: readonly MergedResult[], ctx: ScoreContext
       excluded.push({ id: hash, result: r, reason: 'adult', detail: 'Adult content is never suggested.' });
       continue;
     }
-    const wrong = wrongTitle(parsed, q);
+    // Browse queries skip the title match; non-video releases are matched on their raw name (no year or
+    // sequel rules); films and episodes keep the full title, year, season and episode check.
+    const wrong = isNonVideo(r, parsed, ctx.category)
+      ? (browse ? { reason: null, partial: false } : wrongRawName(r.name, q))
+      : wrongTitle(parsed, q, browse);
     if (wrong.reason !== null) {
       excluded.push({ id: hash, result: r, reason: 'wrong_title', detail: wrong.reason });
       continue;
@@ -730,6 +887,13 @@ export function scoreResults(results: readonly MergedResult[], ctx: ScoreContext
       excluded.push({
         id: hash, result: r, reason: 'cam_source',
         detail: 'Recorded in a cinema or from an early source. The picture and sound are poor.',
+      });
+      continue;
+    }
+    if (brokenSize(r, parsed)) {
+      excluded.push({
+        id: hash, result: r, reason: 'broken_size',
+        detail: 'The size is far too small for a video, so it is probably a fake or broken upload.',
       });
       continue;
     }
@@ -744,6 +908,8 @@ export function scoreResults(results: readonly MergedResult[], ctx: ScoreContext
     .sort((a, b) =>
       rank(a.s) - rank(b.s)
       || pack(a.s) - pack(b.s)
+      // A language or subtitles the user asked for beats quality; rows without it stay, lower.
+      || b.s.prefRank - a.s.prefRank
       || b.s.ranked.score - a.s.ranked.score
       || (b.s.ranked.result.seeders ?? -1) - (a.s.ranked.result.seeders ?? -1)
       || a.i - b.i)

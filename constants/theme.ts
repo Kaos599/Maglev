@@ -212,3 +212,112 @@ export type Radius = typeof radius;
 
 /** Alias of `type` for modules where the bare word `type` reads badly. */
 export const fonts = type;
+
+/*
+ * MOTION. Pure tokens and helpers only: this file imports nothing, so node tests can load it.
+ * The hook that reads reduce motion and builds Reanimated easings is `useMotion` in
+ * components/ui/useMotion.ts. Every helper below carries a 'worklet' directive so gesture and
+ * animated-style callbacks can call it on the UI thread; in plain JS the directive is a no-op string.
+ * Rules: ease-out only, nothing longer than `motion.duration.max`, nothing at all with reduce motion on.
+ */
+export const motion = {
+  duration: {
+    /** Press feedback, both directions. */
+    press: 120,
+    /** Small fades (the finish check). */
+    fast: 150,
+    /** Bar fill, sheet in/out, spring back. */
+    base: 220,
+    /** Hard ceiling for any single animation. */
+    max: 250,
+  },
+  /** Ease-out cubic as a CSS-style bezier; the same curve as Easing.out(Easing.cubic). */
+  easeOutBezier: [0.33, 1, 0.68, 1] as const,
+  /** Pressed scale for rows and buttons. */
+  pressScale: 0.97,
+  /** How long the lime check stays after a download finishes, before it fades (a hold, not motion). */
+  finishHold: 900,
+  sheet: {
+    /** A release faster than this (points/s, downward) dismisses. */
+    flingVelocity: 900,
+    /** A drag past this share of the sheet height dismisses. */
+    distanceRatio: 0.3,
+    /** The distance threshold never needs more than this many points. */
+    maxDistance: 160,
+    /** Upward drags move at this share of the finger and stop at `overdrag`. */
+    resistance: 0.2,
+    overdrag: 16,
+  },
+} as const;
+
+/** Ease-out cubic, t in 0..1. */
+export function easeOutCubic(t: number): number {
+  'worklet';
+  const x = Math.min(1, Math.max(0, t));
+  return 1 - Math.pow(1 - x, 3);
+}
+
+/** Space Mono advance width as a share of the font size (612 / 1000 units, every glyph). */
+export const MONO_ADVANCE = 0.612;
+
+/**
+ * Minimum width (dp) of a Space Mono slot that fits `chars` glyphs, so a number that grows or
+ * shrinks by a digit never moves its neighbours. Scales with the system font size.
+ */
+export function monoSlotWidth(chars: number, fontSize: number, fontScale = 1): number {
+  const scale = Number.isFinite(fontScale) && fontScale > 0 ? fontScale : 1;
+  return Math.ceil(Math.max(0, chars) * fontSize * MONO_ADVANCE * scale);
+}
+
+/** translateX for a full-width fill clipped by its track: 0 is full, -width is empty. */
+export function fillTranslateX(progress: number, width: number): number {
+  'worklet';
+  const p = Number.isFinite(progress) ? Math.min(1, Math.max(0, progress)) : 0;
+  return -(1 - p) * Math.max(0, width);
+}
+
+/** Where the sheet sits for a finger translation: free downward, a short stiff overdrag upward. */
+export function sheetDragOffset(translationY: number): number {
+  'worklet';
+  if (!Number.isFinite(translationY)) return 0;
+  if (translationY >= 0) return translationY;
+  return Math.max(-motion.sheet.overdrag, translationY * motion.sheet.resistance);
+}
+
+/** On release: close the sheet (true) or send it back (false). An upward flick always keeps it. */
+export function shouldDismissSheet(offset: number, velocityY: number, sheetHeight: number): boolean {
+  'worklet';
+  if (!Number.isFinite(offset) || offset <= 0) return false;
+  if (velocityY < -motion.sheet.flingVelocity / 3) return false;
+  if (velocityY >= motion.sheet.flingVelocity) return true;
+  const h = Number.isFinite(sheetHeight) && sheetHeight > 0 ? sheetHeight : 0;
+  const threshold = h > 0 ? Math.min(motion.sheet.maxDistance, h * motion.sheet.distanceRatio) : motion.sheet.maxDistance;
+  return offset >= threshold;
+}
+
+/** Backdrop opacity while the sheet is `offset` points below its resting place. */
+export function backdropOpacity(offset: number, sheetHeight: number): number {
+  'worklet';
+  if (!(sheetHeight > 0)) return offset > 0 ? 0 : 1;
+  return Math.min(1, Math.max(0, 1 - offset / sheetHeight));
+}
+
+export interface FinishSnapshot {
+  id: string;
+  state: string;
+  pausedBy?: string | null;
+}
+
+/** True when a row's torrent is finished: done, seeding, or stopped by the seed limit. */
+export function isFinishedState(s: FinishSnapshot): boolean {
+  return s.state === 'COMPLETED' || s.state === 'SEEDING' || (s.state === 'PAUSED' && s.pausedBy === 'seed_limit');
+}
+
+/**
+ * The finish moment plays only when the same torrent goes from downloading to finished while
+ * its row is on screen. A recycled row (different id) or a first render never plays it.
+ */
+export function isFinishTransition(prev: FinishSnapshot | null | undefined, next: FinishSnapshot): boolean {
+  if (!prev || prev.id !== next.id) return false;
+  return prev.state === 'DOWNLOADING' && isFinishedState(next);
+}

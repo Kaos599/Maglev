@@ -98,6 +98,21 @@ export function loadTransferCache(): CachedTorrent[] {
   return parseCache(kvGet(KEY));
 }
 
+/**
+ * The saved list, or null when no list was ever saved (first launch, or the cache is unreadable).
+ * A saved empty list is `[]`: the engine had no torrents last time, which is a fact worth showing.
+ */
+export function readTransferCache(): CachedTorrent[] | null {
+  const raw = kvGet(KEY);
+  if (raw === null) return null;
+  try {
+    if (!Array.isArray(JSON.parse(raw))) return null;
+  } catch {
+    return null;
+  }
+  return parseCache(raw);
+}
+
 export function saveTransferCache(list: readonly TorrentTelemetry[]): void {
   try {
     kvSet(KEY, JSON.stringify(list.map(toCached)));

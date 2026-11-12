@@ -2,7 +2,7 @@
   "expo": {
     "name": "Maglev",
     "slug": "maglev",
-    "version": "0.10",
+    "version": "0.12",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "scheme": "maglev",
@@ -21,8 +21,10 @@
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
+        "monochromeImage": "./assets/adaptive-icon-monochrome.png",
         "backgroundColor": "#05070A"
       },
+      "predictiveBackGestureEnabled": true,
       "package": "com.maglev",
       "permissions": [
         "INTERNET",
@@ -103,7 +105,7 @@
           ]
         }
       ],
-      "versionCode": 10
+      "versionCode": 12
     },
     "web": {
       "favicon": "./assets/favicon.png",
@@ -115,7 +117,8 @@
       "./plugins/withSizeReduction.js",
       "./plugins/withShareIntents.js",
       "./plugins/withBackupRules.js",
-      "./plugins/withCleartextLan.js"
+      "./plugins/withCleartextLan.js",
+      "./plugins/withReleaseSigning.js"
     ],
     "experiments": {
       "typedRoutes": true

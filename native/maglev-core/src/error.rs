@@ -51,7 +51,21 @@ pub enum ErrorCode {
     LanAddress,
     /// Opening a finished file: no app on the phone can open it. Returned by the Kotlin layer only.
     NoApp,
+    /// Stream downloads (section 24.8): encrypted with something other than plain HLS AES-128, or DRM.
+    StreamProtected,
+    /// Stream downloads: a live stream with no end.
+    StreamLive,
+    /// Stream downloads: a kind of stream the engine can't read yet.
+    StreamUnsupported,
+    /// Stream downloads: joining the video and audio failed (Kotlin reported it).
+    MuxFailed,
 }
+
+/// Copy of the stream errors (contract section 24.8). `scripts/test-stream-contract.js` checks these strings.
+pub const STREAM_PROTECTED_MSG: &str = "This stream is protected. Maglev can't save it.";
+pub const STREAM_LIVE_MSG: &str = "This is a live stream. Maglev can only save videos that have an end.";
+pub const STREAM_UNSUPPORTED_MSG: &str = "Maglev can't save this kind of stream yet.";
+pub const MUX_FAILED_MSG: &str = "Couldn't join the video and audio. Try again.";
 
 impl ErrorCode {
     pub fn as_str(&self) -> &'static str {
@@ -84,6 +98,10 @@ impl ErrorCode {
             ErrorCode::Stalled => "STALLED",
             ErrorCode::NoApp => "NO_APP",
             ErrorCode::LanAddress => "LAN_ADDRESS",
+            ErrorCode::StreamProtected => "STREAM_PROTECTED",
+            ErrorCode::StreamLive => "STREAM_LIVE",
+            ErrorCode::StreamUnsupported => "STREAM_UNSUPPORTED",
+            ErrorCode::MuxFailed => "MUX_FAILED",
         }
     }
 }
@@ -440,5 +458,9 @@ mod tests {
         assert_eq!(serde_json::to_string(&ErrorCode::NoApp).unwrap(), "\"NO_APP\"");
         assert_eq!(ErrorCode::NoApp.as_str(), "NO_APP");
         assert_eq!(serde_json::to_string(&ErrorCode::LanAddress).unwrap(), "\"LAN_ADDRESS\"");
+        assert_eq!(serde_json::to_string(&ErrorCode::StreamProtected).unwrap(), "\"STREAM_PROTECTED\"");
+        assert_eq!(serde_json::to_string(&ErrorCode::StreamLive).unwrap(), "\"STREAM_LIVE\"");
+        assert_eq!(serde_json::to_string(&ErrorCode::StreamUnsupported).unwrap(), "\"STREAM_UNSUPPORTED\"");
+        assert_eq!(serde_json::to_string(&ErrorCode::MuxFailed).unwrap(), "\"MUX_FAILED\"");
     }
 }

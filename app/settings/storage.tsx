@@ -5,6 +5,7 @@ import { useSettings } from '../../context/SettingsContext';
 import { useMaglevEngine as useEngine } from '../../context/EngineContext';
 import { Banner, Button, ListRow } from '../../components/ui';
 import { Caption, Card, SettingsPage, friendlyPath } from '../../components/settings/SettingsParts';
+import { banners, notices } from '../../constants/copy';
 
 export default function StorageSettings() {
   const { settings, updateSettings } = useSettings();
@@ -19,7 +20,7 @@ export default function StorageSettings() {
       if ('cancelled' in res) return;
       updateSettings({ downloadFolder: { uri: res.uri, displayName: res.displayName, mode: res.mode } });
     } catch {
-      setError("Couldn't open the folder picker. Try again.");
+      setError(notices.inline.folderPickerFailed);
     }
   };
 
@@ -33,9 +34,9 @@ export default function StorageSettings() {
     <SettingsPage title="STORAGE">
       <Stack.Screen options={{ headerShown: false }} />
       {storageStatus?.safLost ? (
-        <Banner tone="danger" title="Folder access lost" body="Maglev can no longer write to your chosen folder." actionLabel="Pick again" onAction={change} />
+        <Banner tone="danger" title={banners.storage.folderAccessLost.title} body={banners.storage.folderAccessLost.body} actionLabel="Pick again" onAction={change} />
       ) : storageStatus?.fallback ? (
-        <Banner tone="warning" title="Files are saved in app storage" body="The download folder isn't available right now." actionLabel="Choose folder" onAction={change} />
+        <Banner tone="warning" title={banners.storage.appStorageFallback.title} body={banners.storage.appStorageFallback.body} actionLabel="Choose folder" onAction={change} />
       ) : null}
       {error ? <Banner tone="danger" title={error} actionLabel="Retry" onAction={change} /> : null}
       <Card>

@@ -2,6 +2,7 @@ import React from 'react';
 import { StyleSheet, View } from 'react-native';
 import { spacing } from '../../constants/theme';
 import { Banner } from '../ui';
+import { banners } from '../../constants/copy';
 
 export interface ClipboardChipProps {
   /** False for a link to a .torrent file. */
@@ -15,7 +16,7 @@ export function ClipboardChip({ magnet = true, onAdd, onDismiss }: ClipboardChip
     <View style={styles.wrap}>
       <Banner
         tone="info"
-        title={magnet ? 'Magnet in clipboard' : 'Torrent link in clipboard'}
+        title={magnet ? banners.transfers.magnetInClipboard.title : banners.transfers.torrentLinkInClipboard.title}
         actionLabel="Add"
         onAction={onAdd}
         onDismiss={onDismiss}

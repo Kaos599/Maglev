@@ -122,6 +122,9 @@ async function main() {
     check('enabled and warningAcceptedAt round-trip', on.enabled === true && on.warningAcceptedAt === 1700000000000);
     const junk = m.normalizeAssistantPrefs({ enabled: 'yes', warningAcceptedAt: -1 });
     check('junk enabled/warning values fall back to off and unseen', junk.enabled === false && junk.warningAcceptedAt === null);
+    check('capabilitiesSeenAt defaults to null', d.capabilitiesSeenAt === null);
+    check('capabilitiesSeenAt round-trips', m.normalizeAssistantPrefs({ capabilitiesSeenAt: 1700000000000 }).capabilitiesSeenAt === 1700000000000);
+    check('junk capabilitiesSeenAt falls back to null', m.normalizeAssistantPrefs({ capabilitiesSeenAt: 'x' }).capabilitiesSeenAt === null && m.normalizeAssistantPrefs({ capabilitiesSeenAt: -5 }).capabilitiesSeenAt === null);
   }
   check('unknown preset falls back to openrouter', m.normalizeAssistantPrefs({ presetId: 'mystery' }).presetId === 'openrouter');
   check('unknown preset keeps defaults for url and model', (() => {
@@ -349,6 +352,25 @@ async function main() {
       }
       check(`${p.id} has 2-4 models, the default first`, p.models.length >= 2 && p.models.length <= 4 && p.models[0].id === p.defaultModel);
     }
+  }
+
+  // ---- modelName ----
+  console.log('modelName');
+  {
+    const store = m.createAssistantPrefsStore(memoryKv(), memorySecrets());
+    check('modelName starts null', store.get().modelName === null);
+    store.update({ model: 'b/big:free', modelName: 'Big' });
+    check('modelName is saved with the model', store.get().modelName === 'Big');
+    store.update({ tokensUsed: { input: 1, output: 1 } });
+    check('unrelated update keeps it', store.get().modelName === 'Big');
+    store.update({ model: 'c/other:free' });
+    check('a new model without a name drops the old name', store.get().modelName === null);
+    await store.saveKey('openrouter', 'k', { baseUrl: 'https://openrouter.ai/api/v1', model: 'b/big:free', modelName: 'Big' });
+    check('saveKey stores the name', store.get().modelName === 'Big');
+    await store.saveKey('openrouter', 'k', { baseUrl: 'https://openrouter.ai/api/v1', model: 'x/y' });
+    check('saveKey without a name clears it', store.get().modelName === null);
+    check('selectPreset clears it', m.selectPreset({ ...store.get(), modelName: 'Z' }, 'groq').modelName === null);
+    check('junk modelName normalises to null', m.normalizeAssistantPrefs({ modelName: 5 }).modelName === null && m.normalizeAssistantPrefs({ modelName: 'x'.repeat(200) }).modelName === null);
   }
 
   if (failed) {

@@ -16,6 +16,7 @@ import { Banner, Button } from '../../ui';
 import { Card, Caption } from '../../settings/SettingsParts';
 import { providerName } from '../../../utils/assistant/providerMachine';
 import { presetById } from '../../../utils/prefs/assistant';
+import { modelDisplayName } from '../../../utils/assistant/models';
 import { Field } from './Field';
 import { KeyField } from './KeyField';
 import { ModelField } from './ModelField';
@@ -52,7 +53,7 @@ export function ProviderSection({ onExpireCards }: { onExpireCards?: () => void 
         <View style={s.body}>
           <Text style={s.title}>{saved.local ? 'Your server' : saved.label}</Text>
           <Text style={s.mono} numberOfLines={1}>
-            {p.saved.model}
+            {modelDisplayName({ presetId: p.saved.preset, model: p.saved.model, modelName: p.saved.modelName })}
           </Text>
           <Caption>{sentLine(p.saved.preset)}</Caption>
           {p.error ? <Text style={s.error}>{p.error}</Text> : null}
@@ -102,7 +103,13 @@ export function ProviderSection({ onExpireCards }: { onExpireCards?: () => void 
               />
             ) : null}
             {custom ? null : <KeyField value={form.key} onChange={(t) => p.setForm({ key: t })} editable={!testing} />}
-            <ModelField preset={preset} value={form.model} onChange={(t) => p.setForm({ model: t })} editable={!testing} />
+            <ModelField
+              preset={preset}
+              value={form.model}
+              modelName={form.modelName}
+              onChange={(t, name) => p.setForm({ model: t, modelName: name ?? null })}
+              editable={!testing}
+            />
             <Caption>{sentLine(form.preset)}</Caption>
             {p.error ? (
               <Text style={s.error} accessibilityLiveRegion="polite">

@@ -46,9 +46,9 @@ async function main() {
   const call = (id, name, args) => ({ id, name, arguments: args });
   const searchCall = (id = 'k1') => call(id, 'search_torrents', { query: 'The Last Harbor' });
   const proposePause = (id = 'k1') =>
-    call(id, 'propose_pause_resume', { transfer_id: 't1', action: 'pause', reason: 'Because.' });
-  const deleteCall = (id, t = 't1') => call(id, 'propose_delete', { transfer_id: t, reason: 'Not needed.' });
-  const pauseCall = (id, t) => call(id, 'propose_pause_resume', { transfer_id: t, action: 'pause', reason: 'Because.' });
+    call(id, 'propose_change', { transfer_id: 't1', action: 'pause', reason: 'Because.' });
+  const deleteCall = (id, t = 't1') => call(id, 'propose_change', { transfer_id: t, action: 'delete', reason: 'Not needed.' });
+  const pauseCall = (id, t) => call(id, 'propose_change', { transfer_id: t, action: 'pause', reason: 'Because.' });
   const detailsCall = (id) => call(id, 'get_result_details', { result_id: 'r1' });
   const toolMsgs = (state) => state.history.filter((h) => h.role === 'tool');
   const okResults = (calls) => calls.map((c) => ({ toolCallId: c.id, content: '{"ok":true}' }));
@@ -87,7 +87,7 @@ async function main() {
   check('requesting + FirstByte -> streaming', step(toRequesting(), FIRST).state.kind === 'streaming');
   const KEY_MSG = "{provider} didn't accept your key. Sign in again in Settings → Assistant.";
   const CREDIT_MSG = 'Your {provider} account is out of credit. Add credit on their site, or pick a free model in Settings.';
-  for (const [status, msg] of [[401, KEY_MSG], [403, KEY_MSG], [402, CREDIT_MSG], [429, "You've hit this model's limit for now. Try again later, or pick another model."]]) {
+  for (const [status, msg] of [[401, KEY_MSG], [403, KEY_MSG], [402, CREDIT_MSG], [429, 'Rate limited. Try again in a minute.']]) {
     const r = step(toRequesting(), { type: 'HttpErr', status });
     check(`requesting + HttpErr(${status}) -> idle, ErrorCard "${msg}"`, r.state.kind === 'idle' && JSON.stringify(r.effects) === JSON.stringify([{ type: 'errorCard', message: msg }]), r.effects);
   }
@@ -169,7 +169,7 @@ async function main() {
     check('CardSettled(failed) keeps the card (it can be retried)', failed.state.pendingCards.length === 1 && failed.state.kind === 'awaitingConfirmation');
     check('CardSettled for an unknown card is a no-op', step(a.state, { type: 'CardSettled', cardId: 'c99', kind: 'done' }).state === a.state);
 
-    let two = run(mk(), send('both'), FIRST, { type: 'ToolCallsDone', calls: [proposePause('p1'), call('p2', 'propose_pause_resume', { transfer_id: 't1', action: 'resume', reason: 'x' })] });
+    let two = run(mk(), send('both'), FIRST, { type: 'ToolCallsDone', calls: [proposePause('p1'), call('p2', 'propose_change', { transfer_id: 't1', action: 'resume', reason: 'x' })] });
     two = run(two.state, FIRST, { type: 'Stop' });
     check('two proposals for the same target: the older is asked to expire and stays until it settles', two.state.pendingCards.length === 2, two.state.pendingCards);
     two = step(two.state, { type: 'CardSettled', cardId: two.state.pendingCards[0], kind: 'expired' });
@@ -280,7 +280,7 @@ async function main() {
     check('bad handle -> {ok:false,error} tool message and no RunTool', r.state.kind === 'requesting' && JSON.parse(toolMsg.content).ok === false && !types(r.effects).includes('runTool'), r.effects);
   }
   {
-    const r = step(toStreaming(), { type: 'ToolCallsDone', calls: [call('b2', 'propose_pause_resume', { transfer_id: 't1', action: 'explode', reason: 'x' })] });
+    const r = step(toStreaming(), { type: 'ToolCallsDone', calls: [call('b2', 'propose_change', { transfer_id: 't1', action: 'explode', reason: 'x' })] });
     check('bad args on a proposal create no card', r.state.pendingCards.length === 0 && !types(r.effects).includes('createCard'));
   }
   {
@@ -304,7 +304,7 @@ async function main() {
     const r2 = step(step(r.state, FIRST).state, bad('bad_response'));
     check('a second bad response -> idle with the provider message', r2.state.kind === 'idle' && r2.effects[0].type === 'errorCard' && r2.effects[0].message === 'Bad response from the provider.', r2.effects);
     const r3 = step(toStreaming(), { type: 'StreamFailed', error: { code: 'provider', message: 'x', status: 429 } });
-    check('a mid-stream 429 is not retried', r3.state.kind === 'idle' && r3.effects[0].message === "You've hit this model's limit for now. Try again later, or pick another model.");
+    check('a mid-stream 429 is not retried', r3.state.kind === 'idle' && r3.effects[0].message === 'Rate limited. Try again in a minute.');
     const r4 = step(toStreaming(), { type: 'StreamFailed', error: { code: 'incomplete', message: 'The answer was cut off.' } });
     check('an incomplete stream counts as a bad response (retried once)', types(r4.effects).join() === 'retryOnce');
     const after = run(toRequesting(), { type: 'NetErr' }, FIRST, { type: 'ToolCallsDone', calls: [searchCall('q')] }, { type: 'ToolsDone', results: okResults([searchCall('q')]) });
@@ -399,7 +399,7 @@ async function main() {
     const creates = r.effects.filter((e) => e.type === 'createCard');
     const errs = toolMsgs(r.state).filter((m) => JSON.parse(m.content).ok === false).map((m) => JSON.parse(m.content).error);
     check('3 deletes in one round -> 1 card plus 2 tool errors', creates.length === 1 && errs.length === 2 && errs.every((e) => e === 'Only one delete per question. Ask again after this one.') && r.state.pendingCards.length === 1, { creates: creates.length, errs });
-    const later = run(r.state, FIRST, { type: 'ToolCallsDone', calls: [call('d4', 'propose_remove_files', { transfer_id: 't2', file_indices: [0], reason: 'x' })] });
+    const later = run(r.state, FIRST, { type: 'ToolCallsDone', calls: [call('d4', 'propose_change', { transfer_id: 't2', action: 'remove_files', file_indices: [0], reason: 'x' })] });
     check('the destructive cap is per turn: a remove_files in round 2 is refused too', !later.effects.some((e) => e.type === 'createCard') && JSON.parse(toolMsgs(later.state).at(-1).content).ok === false);
     const next = run(later.state, FIRST, { type: 'Stop' }, send('delete another'), FIRST, { type: 'ToolCallsDone', calls: [deleteCall('d5', 't3')] });
     check('a new turn resets the destructive cap', next.effects.some((e) => e.type === 'createCard'), next.effects);
@@ -410,9 +410,6 @@ async function main() {
     st.config.registry.issue('transfer', 9);
     const r = step(st, { type: 'ToolCallsDone', calls: [pauseCall('a', 't1'), pauseCall('b', 't2'), pauseCall('c', 't3')] });
     check('at most 2 proposal cards per turn: the third gets a tool error', r.effects.filter((e) => e.type === 'createCard').length === 2 && JSON.parse(toolMsgs(r.state).at(-1).content).ok === false && r.state.pendingCards.length === 2);
-    const plan = call('pl', 'propose_plan', { reason: 'One step.', steps: [{ tool: 'propose_pause_resume', args: { transfer_id: 't1', action: 'pause', reason: 'x' } }] });
-    const x = step(toStreaming(), { type: 'ToolCallsDone', calls: [plan, pauseCall('q', 't1')] });
-    check('a plan counts as a proposal card', x.state.proposals === 2, x.state.proposals);
   }
   {
     const r = step(toStreaming(), { type: 'ToolCallsDone', calls: [detailsCall('g1'), detailsCall('g2'), detailsCall('g3')] });
@@ -496,6 +493,7 @@ async function main() {
     check('400 "maximum context length" -> too much', err({ type: 'HttpErr', status: 400, body: "This model's maximum context length is 8192 tokens" }) === MUCH);
     check('other 4xx -> refused', err({ type: 'HttpErr', status: 422, body: 'bad field' }) === REFUSED && err({ type: 'HttpErr', status: 400 }) === REFUSED);
     check('429 with Retry-After 20 s keeps "Rate limited."', err({ type: 'HttpErr', status: 429, retryAfterMs: 20_000 }) === 'Rate limited. Try again in a minute.');
+    check('429 free daily cap names the cap and the fix', /today's free requests on OpenRouter/.test(err({ type: 'HttpErr', status: 429, body: '{"error":{"message":"Rate limit exceeded: free-models-per-day. Add 10 credits","code":429}}' })));
     check('429 with Retry-After 120 s -> limit for now', err({ type: 'HttpErr', status: 429, retryAfterMs: 120_000 }) === "You've hit this model's limit for now. Try again later, or pick another model.");
     check('a 5xx body is not used (still retried)', step(toRequesting(), { type: 'HttpErr', status: 503, body: 'tools' }).effects[0].type === 'retryOnce');
     // Groq tool_use_failed: retried once, then a plain message.
@@ -661,21 +659,6 @@ async function main() {
     check('only the newest 6 facts are kept', many.cardFacts.length === 6 && many.cardFacts.at(-1) === 'n19', many.cardFacts);
     check('a card the turn does not know records no fact', step(a.state, { type: 'CardSettled', cardId: 'c99', kind: 'dismissed', note: 'x' }).state.cardFacts.length === 0);
     check('Clear drops the facts', step(settled.state, { type: 'Clear' }).state.cardFacts.length === 0);
-  }
-
-  // ---- plan cards expire when any step's target is gone -------------------------------------------------------------------
-  {
-    const st0 = mk();
-    st0.config.registry.issue('transfer', 8); // t2
-    const stepOf = (t) => ({ tool: 'propose_pause_resume', args: { transfer_id: t, action: 'pause', reason: 'x' } });
-    const plan = call('p1', 'propose_plan', { reason: 'x', steps: [stepOf('t1'), stepOf('t2')] });
-    const r = run(st0, send('pause both'), FIRST, { type: 'ToolCallsDone', calls: [plan] });
-    const planId = r.state.pendingCards[0];
-    const gone = step(r.state, { type: 'TargetGone', target: 't2' });
-    check('TargetGone for any step target expires the plan card', JSON.stringify(gone.effects) === JSON.stringify([{ type: 'expireCard', cardId: planId }]), gone.effects);
-    check('TargetGone for a handle the plan does not use does nothing', step(r.state, { type: 'TargetGone', target: 't9' }).effects.length === 0);
-    check('a plan does not replace single cards', !run(r.state, FIRST, { type: 'Stop' }, send('again'), FIRST, { type: 'ToolCallsDone', calls: [proposePause('z')] }).effects.some((e) => e.type === 'expireCard' && e.cardId === planId));
-    check('settling the plan clears its targets', Object.keys(step(r.state, { type: 'CardSettled', cardId: planId, kind: 'dismissed' }).state.planTargets).length === 0);
   }
 
   console.log(`\n${passed} passed, ${failed} failed`);

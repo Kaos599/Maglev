@@ -7,6 +7,7 @@ import { loadExtraProviders } from '../../components/search/extra';
 import { providerMap } from '../../components/search/meta';
 import { getSearchPrefs } from '../prefs/search';
 import { resolveResult, searchAll } from '../search/aggregate';
+import { browseAll } from '../search/browse';
 import type { ToolRunner } from '../assistant/runtime';
 import { createToolRunner } from '../assistant/toolRunner';
 
@@ -22,6 +23,18 @@ export function createAppToolRunner(): ToolRunner {
         adult: false,
         enabled: prefs.enabled.filter((id) => !providers.get(id)?.nsfw),
         extraProviders,
+        signal: opts.signal,
+        onUpdate: opts.onUpdate,
+      });
+    },
+    async browse(kind, order, period, opts) {
+      const prefs = getSearchPrefs();
+      const providers = providerMap(prefs);
+      // Same prefs as search: enabled sources, per-source kinds, mirrors and wait. Never adult (D2).
+      return browseAll(kind, order, period, {
+        ...prefs,
+        adult: false,
+        enabled: prefs.enabled.filter((id) => !providers.get(id)?.nsfw),
         signal: opts.signal,
         onUpdate: opts.onUpdate,
       });

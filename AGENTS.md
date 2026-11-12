@@ -101,6 +101,7 @@ Work containing any of the following is rejected:
 - **Versions are `<major>.<minor>`** (for example 0.1, 0.2, 1.0). Bump with `npm run version:minor` or `npm run version:major`, which writes `app.json` (version and `android.versionCode = major*1000 + minor`) and mirrors `package.json` as `x.y.0`. Release tags are `v<major>.<minor>-beta` during the beta and `v<major>.<minor>` after; the release workflow refuses a tag that doesn't match `app.json`.
 - Use Conventional Commits: `feat|fix|refactor|test|docs|ci(<scope>): …`. Keep commits atomic.
 - After a merge, append to `LEDGER.md`: date, task IDs, commit, CI run URL, and the contract IDs that turned green.
+- **Release signing:** `plugins/withReleaseSigning.js` signs release builds (v2+v3) from repo secrets `MAGLEV_KEYSTORE_B64`, `MAGLEV_KEYSTORE_PASSWORD`, `MAGLEV_KEY_ALIAS`, `MAGLEV_KEY_PASSWORD`. Without them the build falls back to debug signing, so forks and PRs still build. CI fails a push to `main` or a tag if any APK still carries the Android debug certificate (other branches warn). With the secrets, main and tags also produce a signed bundletool APK set, uploaded as artifact `accrescent-apks` and attached to the release as `Maglev-<tag>.apks`. Owner steps: `docs/RELEASE_SIGNING.md`.
 
 ---
 

@@ -54,7 +54,7 @@ export const PRESETS: readonly ProviderPreset[] = [
     // for openrouter/free (router, 200k context) and google/gemma-4-31b-it:free. openai/gpt-5-nano is paid and has tools.
     defaultModel: 'openrouter/free',
     models: [
-      { id: 'openrouter/free', label: 'Free models (picked for you)', free: true },
+      { id: 'openrouter/free', label: 'Auto (any free model)', free: true },
       { id: 'google/gemma-4-31b-it:free', label: 'Gemma 4 31B', free: true },
       { id: 'openai/gpt-5-nano', label: 'GPT-5 Nano', free: false },
     ],
@@ -147,6 +147,8 @@ export interface AssistantPrefs {
   presetId: PresetId;
   baseUrl: string;
   model: string;
+  /** Display name of `model` from the provider's list (for the chat header). Null when unknown. Cleared whenever `model` changes without a name. */
+  modelName: string | null;
   /** Secure-store key NAME for the API key (keyNameFor(presetId)). Null when no key is saved. Never the key. */
   keyRef: string | null;
   /** Lifetime token counters from provider `usage`. Shown as tokens, never money (D4). */
@@ -155,6 +157,8 @@ export interface AssistantPrefs {
   enabled: boolean;
   /** When the user accepted the usage warning (ms since epoch), or null if never. */
   warningAcceptedAt: number | null;
+  /** When the user first closed "What the Assistant can do" (ms since epoch), or null if never. */
+  capabilitiesSeenAt: number | null;
 }
 
 export function presetById(id: PresetId): ProviderPreset {
@@ -169,7 +173,7 @@ function isPresetId(v: unknown): v is PresetId {
 
 export function defaultAssistantPrefs(): AssistantPrefs {
   const p = presetById('openrouter');
-  return { presetId: p.id, baseUrl: p.baseUrl, model: p.defaultModel, keyRef: null, tokensUsed: { input: 0, output: 0 }, enabled: false, warningAcceptedAt: null };
+  return { presetId: p.id, baseUrl: p.baseUrl, model: p.defaultModel, modelName: null, keyRef: null, tokensUsed: { input: 0, output: 0 }, enabled: false, warningAcceptedAt: null, capabilitiesSeenAt: null };
 }
 
 /** The key loaded for one preset. Used so a key is never sent to another preset's address. */
@@ -255,12 +259,15 @@ export function normalizeAssistantPrefs(raw: unknown): AssistantPrefs {
     typeof o.model === 'string' && o.model.trim() && o.model.trim().length <= MAX_MODEL_LENGTH
       ? o.model.trim()
       : preset.defaultModel;
+  const modelName =
+    typeof o.modelName === 'string' && o.modelName.trim() && o.modelName.trim().length <= MAX_MODEL_LENGTH ? o.modelName.trim() : null;
   const keyRef = typeof o.keyRef === 'string' && KEY_REF_PATTERN.test(o.keyRef) ? o.keyRef : null;
   const t = o.tokensUsed && typeof o.tokensUsed === 'object' ? (o.tokensUsed as Record<string, unknown>) : {};
   return {
     presetId,
     baseUrl,
     model,
+    modelName,
     keyRef,
     tokensUsed: { input: count(t.input), output: count(t.output) },
     enabled: o.enabled === true,
@@ -268,13 +275,17 @@ export function normalizeAssistantPrefs(raw: unknown): AssistantPrefs {
       typeof o.warningAcceptedAt === 'number' && Number.isFinite(o.warningAcceptedAt) && o.warningAcceptedAt > 0
         ? o.warningAcceptedAt
         : null,
+    capabilitiesSeenAt:
+      typeof o.capabilitiesSeenAt === 'number' && Number.isFinite(o.capabilitiesSeenAt) && o.capabilitiesSeenAt > 0
+        ? o.capabilitiesSeenAt
+        : null,
   };
 }
 
 /** Switching preset resets base URL and model to that preset's defaults and clears keyRef (the old key stays in secure store). */
 export function selectPreset(prefs: AssistantPrefs, presetId: PresetId): AssistantPrefs {
   const p = presetById(presetId);
-  return { ...prefs, presetId, baseUrl: p.baseUrl, model: p.defaultModel, keyRef: null };
+  return { ...prefs, presetId, baseUrl: p.baseUrl, model: p.defaultModel, modelName: null, keyRef: null };
 }
 
 export function addTokensUsed(prefs: AssistantPrefs, usage: { input?: number; output?: number }): AssistantPrefs {
@@ -316,7 +327,7 @@ export interface AssistantPrefsStore {
   saveKey(
     presetId: PresetId,
     key: string,
-    settings?: { baseUrl: string; model: string },
+    settings?: { baseUrl: string; model: string; modelName?: string | null },
     stillWanted?: () => boolean,
   ): Promise<string | null>;
   readKey(presetId: PresetId): Promise<string | null>;
@@ -380,7 +391,9 @@ export function createAssistantPrefsStore(kv: KeyValueStore, secrets: SecretStor
     update(change) {
       const prev = load();
       const patch = typeof change === 'function' ? change(prev) : change;
-      return set(normalizeAssistantPrefs({ ...prev, ...patch }));
+      // A new model without its name must not keep the old model's name.
+      const stale = patch.model !== undefined && patch.model !== prev.model && patch.modelName === undefined;
+      return set(normalizeAssistantPrefs({ ...prev, ...patch, ...(stale ? { modelName: null } : {}) }));
     },
     subscribe(listener) {
       listeners.add(listener);
@@ -404,7 +417,7 @@ export function createAssistantPrefsStore(kv: KeyValueStore, secrets: SecretStor
           return null;
         }
         await removeOthers(presetId);
-        set(normalizeAssistantPrefs({ ...load(), ...(settings ? { presetId, ...settings } : {}), keyRef: name }));
+        set(normalizeAssistantPrefs({ ...load(), ...(settings ? { presetId, modelName: null, ...settings } : {}), keyRef: name }));
         return name;
       });
     },

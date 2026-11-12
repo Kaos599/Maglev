@@ -128,6 +128,7 @@ export class MockDownloads {
       return fail('INVALID_ARGUMENT', 'Use 1 to 8 connections');
     }
     if (o.expectedHash) return fail('UNSUPPORTED', "Checking a checksum isn't available yet");
+    if (o.stream) return fail('STREAM_UNSUPPORTED', "Maglev can't save this kind of stream yet.");
     return null;
   }
 

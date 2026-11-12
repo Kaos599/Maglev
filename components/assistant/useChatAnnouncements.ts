@@ -45,6 +45,10 @@ export function useChatAnnouncements(items: ChatItem[]): void {
           sig = 'error';
           if (prev && !prev.has(it.id)) line = it.message;
           break;
+        case 'question':
+          sig = it.answered === undefined ? 'open' : 'answered';
+          if (prev && !prev.has(it.id)) line = it.question;
+          break;
         case 'note':
           sig = 'note';
           if (prev && !prev.has(it.id)) line = it.text;

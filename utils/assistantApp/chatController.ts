@@ -22,6 +22,7 @@ import type {
 } from '../assistant/runtime.ts';
 import { STREAM_COPY } from '../assistant/sse.ts';
 import { buildSystemPrompt } from '../assistant/systemPrompt.ts';
+import { modelDisplayName } from '../assistant/models.ts';
 import {
   COPY,
   turnInitial,
@@ -65,8 +66,14 @@ export interface ChatDeps {
   timers?: ChatTimers;
   /** Returns a number in [0, 1). */
   random?: () => number;
-  /** Defaults to buildSystemPrompt(). */
+  /** Defaults to buildSystemPrompt() with the current time, rebuilt for every new question. A fixed string is used as is. */
   systemPrompt?: string;
+  /** The clock for the system prompt ("this week", "latest"). Defaults to the real time. */
+  now?: () => Date;
+  /** IANA time zone for the system prompt, e.g. "Asia/Kolkata". Defaults to the phone's. */
+  timeZone?: string;
+  /** Device locale such as "fr-FR". Default: the runtime's. Tests set it. */
+  locale?: string;
 }
 
 export interface ChatController {
@@ -174,6 +181,22 @@ export function goneTargets(
   return out;
 }
 
+/**
+ * The device language as an English name ("French"), or undefined for English, an unknown locale, or a runtime
+ * without Intl.DisplayNames (Hermes may lack it). `locale` overrides the device locale for tests.
+ */
+export function nonEnglishLanguage(locale?: string): string | undefined {
+  try {
+    const tag = locale ?? Intl.DateTimeFormat().resolvedOptions().locale;
+    if (!tag || /^en(?:[-_]|$)/i.test(tag)) return undefined;
+    const lang = tag.split(/[-_]/)[0];
+    const name = new Intl.DisplayNames(['en'], { type: 'language' }).of(lang);
+    return name && name !== lang ? name : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 export function createChatController(deps: ChatDeps): ChatController {
   const { runner, stream, getPrefs, getKey } = deps;
   const timers: ChatTimers = deps.timers ?? {
@@ -182,7 +205,9 @@ export function createChatController(deps: ChatDeps): ChatController {
   };
   const random = deps.random ?? Math.random;
 
-  let turn: TurnState = turnInitial({ system: deps.systemPrompt ?? buildSystemPrompt(), registry: runner.registry });
+  const currentSystem = (): string =>
+    deps.systemPrompt ?? buildSystemPrompt({ now: (deps.now ?? (() => new Date()))(), timeZone: deps.timeZone, language: nonEnglishLanguage(deps.locale) });
+  let turn: TurnState = turnInitial({ system: currentSystem(), registry: runner.registry });
   let items: ChatItem[] = [];
   let nextId = 1;
   const newId = (prefix: string) => `${prefix}${nextId++}`;
@@ -244,6 +269,7 @@ export function createChatController(deps: ChatDeps): ChatController {
       gate: gate(),
       busy: turn.kind === 'requesting' || turn.kind === 'streaming' || turn.kind === 'runningTools',
       providerName: presetById(p.presetId).label,
+      modelName: modelDisplayName(p),
       tokensUsed: { ...p.tokensUsed },
       send,
       stop,
@@ -252,6 +278,7 @@ export function createChatController(deps: ChatDeps): ChatController {
       dismiss,
       retry: retryLast,
       askAbout,
+      answer,
       sourceFor: (handle) => runner.sourceFor(handle),
     };
   }
@@ -336,6 +363,10 @@ export function createChatController(deps: ChatDeps): ChatController {
   }
 
   function apply(event: TurnEvent): void {
+    // Each new question (and a retry) gets today's date and time in the system prompt.
+    if ((event.type === 'Send' || event.type === 'Retry') && deps.systemPrompt === undefined) {
+      turn = { ...turn, config: { ...turn.config, system: currentSystem() } };
+    }
     const step = turnStep(turn, event);
     turn = step.state;
     if (step.effects.some((e) => e.type === 'runTool')) startBatch(step.effects);
@@ -529,8 +560,8 @@ export function createChatController(deps: ChatDeps): ChatController {
     progressId = null;
   }
 
-  function progressFor(callId: string, text: string, state: ProgressStep['state']): void {
-    const step: ProgressStep = { callId, text, state };
+  function progressFor(callId: string, text: string, state: ProgressStep['state'], tool?: string): void {
+    const step: ProgressStep = { callId, text, state, ...(tool ? { tool } : {}) };
     if (progressId === null) {
       progressId = newId('p');
       push({ kind: 'progress', id: progressId, steps: [step] });
@@ -545,11 +576,16 @@ export function createChatController(deps: ChatDeps): ChatController {
     emit();
   }
 
-  function settleProgress(callId: string, failed: boolean): void {
+  function settleProgress(callId: string, failed: boolean, detail?: string): void {
     if (progressId === null) return;
     replace(progressId, (i) =>
       i.kind === 'progress'
-        ? { ...i, steps: i.steps.map((s) => (s.callId === callId && s.state === 'running' ? { ...s, state: failed ? 'failed' : 'done' } : s)) }
+        ? {
+            ...i,
+            steps: i.steps.map((s) =>
+              s.callId === callId && s.state === 'running' ? { ...s, state: failed ? 'failed' : 'done', ...(detail && !failed ? { detail } : {}) } : s,
+            ),
+          }
         : i,
     );
   }
@@ -578,7 +614,7 @@ export function createChatController(deps: ChatDeps): ChatController {
         {
           signal: ac.signal,
           progress: (text, state = 'running') => {
-            if (batch === mine && !ac.signal.aborted) progressFor(callId, text, state);
+            if (batch === mine && !ac.signal.aborted) progressFor(callId, text, state, name);
           },
         },
       );
@@ -592,8 +628,10 @@ export function createChatController(deps: ChatDeps): ChatController {
         clearToolTimer(callId);
         // Abandoned by Stop, Clear, timeout or a newer batch: the machine already has its answer.
         if (batch !== mine || ac.signal.aborted || !mine || !mine.pending.has(callId)) return;
-        settleProgress(callId, contentFailed(out.content));
+        settleProgress(callId, contentFailed(out.content), out.detail);
         if (out.results && out.results.length > 0) push({ kind: 'results', id: newId('s'), results: out.results as ResultCardView[] });
+        if (out.question) push({ kind: 'question', id: newId('q'), question: out.question.question, options: out.question.options });
+        if (out.link) push({ kind: 'link', id: newId('l'), label: out.link.label, target: out.link.target });
         mine.pending.delete(callId);
         mine.results.set(callId, out.content);
         if (mine.pending.size === 0) {
@@ -832,6 +870,14 @@ export function createChatController(deps: ChatDeps): ChatController {
   function send(text: string): void {
     const p = getPrefs();
     dispatch({ type: 'Send', text, enabled: p.enabled, warningAccepted: p.warningAcceptedAt !== null, hasKey: hasKey() });
+  }
+  /** A tap on a question chip: lock the question and send the option as the user's next message. */
+  function answer(itemId: string, option: string): void {
+    const q = items.find((i) => i.id === itemId);
+    if (!q || q.kind !== 'question' || q.answered !== undefined || !q.options.includes(option)) return;
+    if (turn.kind !== 'idle' && turn.kind !== 'awaitingConfirmation') return;
+    replace(itemId, (i) => (i.kind === 'question' ? { ...i, answered: option } : i));
+    send(option);
   }
   function stop(): void {
     // The turn machine's `Stop` means "the stream ended". The Stop button is `Abort`.

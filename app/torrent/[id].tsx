@@ -7,7 +7,7 @@ import { useTheme } from '../../context/ThemeContext';
 import { useMaglevEngine } from '../../context/EngineContext';
 import { ThemeColors, radius, spacing, type } from '../../constants/theme';
 import { formatBytes, formatEta, formatSpeed } from '../../constants/format';
-import { triggerHaptic } from '../../constants/haptics';
+import { haptic } from '../../constants/haptics';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { PixelIcon } from '../../components/PixelIcon';
 import { friendlyPath } from '../../components/settings/SettingsParts';
@@ -17,6 +17,7 @@ import { PiecesMatrix } from '../../components/PiecesMatrix';
 import { StateBadge } from '../../components/detail/StateBadge';
 import { StatGrid } from '../../components/detail/StatGrid';
 import { PeerRow, TrackerRow } from '../../components/detail/rows';
+import { DoneActions } from '../../components/detail/DoneActions';
 import { DeleteSheet, FileActionsSheet, RemoveFilesSheet, SavedTorrentSheet } from '../../components/detail/sheets';
 import { AddTrackerSheet, RemoveTrackerSheet } from '../../components/detail/TrackerSheets';
 import { REMOVE_FILES_INITIAL, buildRemoveRequest, removeFilesStep } from '../../components/detail/removeFilesMachine';
@@ -37,8 +38,12 @@ import { MoveSheet } from '../../components/detail/MoveSheet';
 import { useTorrentDetail } from '../../components/detail/useTorrentDetail';
 import { buildMagnet, clockTime, isStreamable, limitText, moveFailure } from '../../components/detail/torrentLabels';
 import { actionsFor, type ErrorAction } from '../../components/detail/errorActions';
+import { banners, empty, notices } from '../../constants/copy';
 
 type Tab = 'files' | 'peers' | 'trackers' | 'pieces';
+
+/** The Remove files and File health machines say success or warning; both warnings are failures. */
+const EFFECT_HAPTIC = { success: 'done', warning: 'fail' } as const;
 
 /**
  * Runs a pure machine (SM-27, SM-28). The reducer holds the state for rendering. `send` steps the machine on a ref
@@ -128,7 +133,7 @@ export default function TorrentDetailScreen() {
           showNotice({ tone: e.tone, text: e.text });
           break;
         case 'haptic':
-          triggerHaptic(e.style);
+          haptic(EFFECT_HAPTIC[e.style]);
           break;
         case 'clearSelection':
           setSelection(null);
@@ -204,7 +209,7 @@ export default function TorrentDetailScreen() {
     for (const e of effects) {
       switch (e.type) {
         case 'haptic':
-          triggerHaptic(e.style);
+          haptic(EFFECT_HAPTIC[e.style]);
           break;
         case 'pickFolder':
           maglevEngine
@@ -330,13 +335,13 @@ export default function TorrentDetailScreen() {
       const chosen = new Set(indices);
       const next = files.map((f) => ({ index: f.index, priority: chosen.has(f.index) ? priority : f.priority }));
       if (next.every((e) => e.priority === 'skip')) {
-        setPrioError('Keep at least one file');
+        setPrioError(notices.detail.keepOneFile);
         // From the selection bar there is no sheet to show the error in.
-        if (!prioTarget) showNotice({ tone: 'danger', text: 'Keep at least one file.' });
-        triggerHaptic('warning');
+        if (!prioTarget) showNotice({ tone: 'danger', text: notices.detail.keepOneFile });
+        haptic('fail');
         return;
       }
-      triggerHaptic('selection');
+      haptic('select');
       setPrioError(null);
       setPrioTarget(null);
       setSelection(null);
@@ -348,7 +353,7 @@ export default function TorrentDetailScreen() {
           for (const i of indices) delete rest[i];
           return rest;
         });
-        showNotice({ tone: 'danger', text: res.message || "Couldn't change the file priority." });
+        showNotice({ tone: 'danger', text: res.message || notices.detail.priorityFailed });
       }
     },
     [files, id, prioTarget, showNotice],
@@ -381,7 +386,7 @@ export default function TorrentDetailScreen() {
   }, [selection]);
 
   const handleFileLongPress = useCallback((file: DetailFile) => {
-    triggerHaptic('medium');
+    haptic('select');
     setSelection((prev) => (prev ? prev : new Set([file.index])));
   }, []);
 
@@ -391,12 +396,12 @@ export default function TorrentDetailScreen() {
     const res = await maglevEngine.reannounce(id);
     if (res.ok) {
       setRetryUntil(Date.now() + 60_000);
-      showNotice({ tone: 'info', text: 'Looking for more peers…' });
+      showNotice({ tone: 'info', text: notices.detail.lookingForPeers });
     } else if (res.retryAfterSecs) {
       setRetryUntil(Date.now() + res.retryAfterSecs * 1000);
-      showNotice({ tone: 'info', text: `Try again in ${res.retryAfterSecs} s.` });
+      showNotice({ tone: 'info', text: notices.detail.retryIn(res.retryAfterSecs) });
     } else {
-      showNotice({ tone: 'danger', text: res.message || "Couldn't ask for more peers." });
+      showNotice({ tone: 'danger', text: res.message || notices.detail.peersFailed });
     }
   }, [id, showNotice]);
 
@@ -405,10 +410,10 @@ export default function TorrentDetailScreen() {
     if (!id || !snap) return;
     try {
       await Clipboard.setStringAsync(buildMagnet(id, snap.name, trackers.map((t) => t.url)));
-      triggerHaptic('success');
-      showNotice({ tone: 'info', text: 'Magnet link copied.' });
+      haptic('done');
+      showNotice({ tone: 'info', text: notices.detail.magnetCopied });
     } catch {
-      showNotice({ tone: 'danger', text: "Couldn't copy the magnet link." });
+      showNotice({ tone: 'danger', text: notices.detail.magnetCopyFailed });
     }
   }, [id, snap, showNotice, trackers]);
 
@@ -419,7 +424,7 @@ export default function TorrentDetailScreen() {
       // Only the magnet link goes out: no title, no url, no extra text.
       await Share.share({ message: buildMagnet(id, snap.name, trackers.map((t) => t.url)) });
     } catch {
-      showNotice({ tone: 'danger', text: "Couldn't share the magnet link." });
+      showNotice({ tone: 'danger', text: notices.detail.magnetShareFailed });
     }
   }, [id, snap, showNotice, trackers]);
 
@@ -428,10 +433,10 @@ export default function TorrentDetailScreen() {
     if (!id) return;
     const res = await maglevEngine.exportTorrent(id);
     if (res.ok) {
-      triggerHaptic('success');
+      haptic('done');
       setSavedTorrent({ path: res.path, name: res.name, folder: res.folder });
     } else {
-      showNotice({ tone: 'danger', text: res.message || "Couldn't save the .torrent file." });
+      showNotice({ tone: 'danger', text: res.message || notices.detail.torrentSaveFailed });
     }
   }, [id, showNotice]);
 
@@ -442,7 +447,7 @@ export default function TorrentDetailScreen() {
       const res = await maglevEngine.setTorrentLimits(id, next);
       if (!res.ok) {
         setLimitPending(null);
-        showNotice({ tone: 'danger', text: res.message || "Couldn't change the speed limit." });
+        showNotice({ tone: 'danger', text: res.message || notices.detail.limitFailed });
       }
     },
     [id, showNotice],
@@ -457,10 +462,10 @@ export default function TorrentDetailScreen() {
         const res = await maglevEngine.moveStorage(id, target);
         if (res.ok) {
           setMoveOpen(false);
-          showNotice({ tone: 'info', text: 'Moving files…' });
+          showNotice({ tone: 'info', text: notices.detail.moving });
         } else {
           setMoveError(moveFailure(res.code, res.message));
-          triggerHaptic('warning');
+          haptic('fail');
         }
       } finally {
         setMoveBusy(false);
@@ -476,7 +481,7 @@ export default function TorrentDetailScreen() {
       if ('cancelled' in picked) return;
       await startMove({ kind: 'tree', uri: picked.uri });
     } catch {
-      setMoveError({ text: "Couldn't open the folder picker. Try again.", pickAgain: true });
+      setMoveError({ text: notices.inline.folderPickerFailed, pickAgain: true });
     }
   }, [startMove]);
 
@@ -484,7 +489,7 @@ export default function TorrentDetailScreen() {
     setMoreOpen(false);
     if (!id) return;
     const res = await maglevEngine.recheck(id);
-    showNotice(res.ok ? { tone: 'info', text: 'Checking files…' } : { tone: 'danger', text: res.message });
+    showNotice(res.ok ? { tone: 'info', text: notices.detail.checking } : { tone: 'danger', text: res.message });
   }, [id, showNotice]);
 
   const handleFreeSpace = useCallback(async () => {
@@ -499,7 +504,7 @@ export default function TorrentDetailScreen() {
     setMoreOpen(false);
     if (!id) return;
     const res = await maglevEngine.openFolder(id);
-    if (!res.ok) showNotice({ tone: 'danger', text: res.message || "Couldn't open the folder." });
+    if (!res.ok) showNotice({ tone: 'danger', text: res.message || notices.detail.openFolderFailed });
   }, [id, showNotice]);
 
   const handleDelete = useCallback(
@@ -510,11 +515,10 @@ export default function TorrentDetailScreen() {
       const ok = await deleteTorrent(id, withFiles);
       setDeleteBusy(false);
       if (ok) {
-        triggerHaptic('warning');
         setDeleteOpen(false);
         goBack();
       } else {
-        setDeleteError('The engine could not remove this torrent. Try again.');
+        setDeleteError(notices.inline.removeTorrentFailed);
       }
     },
     [deleteTorrent, goBack, id],
@@ -522,22 +526,22 @@ export default function TorrentDetailScreen() {
 
   const handlePlayPause = useCallback(async () => {
     if (!id || !snap) return;
-    triggerHaptic('light');
+    haptic('tap');
     const running = snap.state === 'DOWNLOADING' || snap.state === 'SEEDING' || snap.state === 'QUEUED';
     const ok = running ? await pauseTorrent(id) : await resumeTorrent(id);
-    if (!ok) showNotice({ tone: 'danger', text: "Couldn't change the torrent state." });
+    if (!ok) showNotice({ tone: 'danger', text: notices.detail.stateFailed });
   }, [id, pauseTorrent, resumeTorrent, showNotice, snap]);
 
   const handleScanFiles = useCallback(async () => {
     const res = await maglevEngine.scanFileHealth();
-    showNotice(res.ok ? { tone: 'info', text: 'Checking files…' } : { tone: 'danger', text: res.message });
+    showNotice(res.ok ? { tone: 'info', text: notices.detail.checking } : { tone: 'danger', text: res.message });
   }, [showNotice]);
 
   const handleKeepTrying = useCallback(async () => {
     if (!id) return;
-    triggerHaptic('light');
+    haptic('tap');
     const res = await maglevEngine.setHealth(id, '');
-    if (!res.ok) showNotice({ tone: 'danger', text: res.message || "Couldn't try again." });
+    if (!res.ok) showNotice({ tone: 'danger', text: res.message || notices.common.retryFailed });
   }, [id, showNotice]);
 
   const handleBannerButton = useCallback(
@@ -628,8 +632,8 @@ export default function TorrentDetailScreen() {
         <EmptyBlock
           icon="warning"
           error
-          title="Torrent not found"
-          body="It may have been removed."
+          title={empty.detail.notFound.title}
+          body={empty.detail.notFound.body}
           primary={{ label: 'Back to transfers', onPress: goBack }}
         />
       </Screen>
@@ -655,7 +659,7 @@ export default function TorrentDetailScreen() {
         <EmptyBlock
           icon="warning"
           error
-          title="Couldn't load this torrent"
+          title={empty.detail.loadFailed.title}
           body={error ?? undefined}
           primary={{ label: 'Retry', onPress: retry }}
           secondary={{ label: 'Back', onPress: goBack }}
@@ -699,6 +703,10 @@ export default function TorrentDetailScreen() {
   const tone =
     snap.state === 'ERROR' ? 'error' : snap.state === 'PAUSED' ? 'paused' : snap.state === 'SEEDING' || snap.state === 'COMPLETED' ? 'seed' : 'download';
 
+  // SM-17: every included file is complete, so Open / Share / Open folder show.
+  const includedFiles = files.filter((f) => f.included && f.length > 0);
+  const allDone = !moving && includedFiles.length > 0 && includedFiles.every((f) => f.progressBytes >= f.length);
+
   const header = (
     <View>
       {notice ? (
@@ -708,7 +716,7 @@ export default function TorrentDetailScreen() {
       ) : null}
       {error ? (
         <View style={styles.block}>
-          <Banner tone="warning" title="Updates paused" body={error} actionLabel="Retry" onAction={retry} />
+          <Banner tone="warning" title={banners.detail.updatesPaused.title} body={error} actionLabel="Retry" onAction={retry} />
         </View>
       ) : null}
       {healthBanner ? (
@@ -730,7 +738,7 @@ export default function TorrentDetailScreen() {
       ) : null}
       {snap.error && !healthBanner ? (
         <View style={styles.block}>
-          <Banner tone="danger" title="This torrent has a problem" body={errorMap?.message} />
+          <Banner tone="danger" title={banners.detail.torrentProblem.title} body={errorMap?.message} />
           {errorButtons.length ? (
             <View style={styles.errorActions}>
               {errorButtons.map((b) => (
@@ -756,6 +764,10 @@ export default function TorrentDetailScreen() {
           </View>
         ) : null}
       </View>
+
+      {allDone ? (
+        <DoneActions id={id} files={files} onNotice={showNotice} />
+      ) : null}
 
       <View style={styles.block}>
         <StatGrid
@@ -794,13 +806,13 @@ export default function TorrentDetailScreen() {
 
   const emptyFor = (): React.ReactElement | null => {
     if (tab === 'files')
-      return <EmptyBlock icon="file" title="No files yet" body="File info appears once the torrent has its metadata." />;
+      return <EmptyBlock icon="file" title={empty.detail.noFiles.title} body={empty.detail.noFiles.body} />;
     if (tab === 'peers' && snap && snap.peersLive > 0)
-      return <EmptyBlock icon="peers" title="Peer details aren't available yet" body={`${snap.peersLive} connected. The list fills in shortly.`} />;
+      return <EmptyBlock icon="peers" title={empty.detail.peersUnavailable(snap.peersLive).title} body={empty.detail.peersUnavailable(snap.peersLive).body} />;
     if (tab === 'peers')
-      return <EmptyBlock icon="peers" title="No peers connected" body="Peers show up while the torrent is running." />;
+      return <EmptyBlock icon="peers" title={empty.detail.noPeers.title} body={empty.detail.noPeers.body} />;
     if (tab === 'trackers')
-      return <EmptyBlock icon="tracker" title="No trackers" body="Peers can still be found without one. Add a tracker to look for more." />;
+      return <EmptyBlock icon="tracker" title={empty.detail.noTrackers.title} body={empty.detail.noTrackers.body} />;
     return null;
   };
 
@@ -943,6 +955,7 @@ export default function TorrentDetailScreen() {
         onDelete={() => {
           setMoreOpen(false);
           setDeleteError(null);
+          haptic('warn');
           setDeleteOpen(true);
         }}
       />

@@ -6,6 +6,7 @@
  * placed in the Authorization header of this one request; it is never logged or returned.
  */
 import { chatCompletionsUrl } from '../prefs/assistant.ts';
+import { attributionHeaders } from '../assistant/models.ts';
 
 export interface ProbeInput {
   baseUrl: string;
@@ -100,6 +101,7 @@ export async function probeModel(
   }, timeoutMs);
   try {
     const headers: Record<string, string> = { 'Content-Type': 'application/json', Accept: 'application/json' };
+    Object.assign(headers, attributionHeaders(input.preset));
     if (input.key) headers.Authorization = `Bearer ${input.key}`;
     const res = await fetchImpl(chatCompletionsUrl(input.baseUrl), {
       method: 'POST',

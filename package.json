@@ -1,13 +1,14 @@
 {
   "name": "maglev",
-  "version": "0.10.0",
+  "version": "0.12.0",
   "main": "expo-router/entry",
   "scripts": {
     "start": "expo start",
     "android": "expo start --android",
     "ios": "expo start --ios",
     "web": "expo start --web",
-    "test": "node scripts/test-abi-splits.js && node scripts/test-p3-reality-contracts.js && node scripts/test-feeds.js && node scripts/test-rates.js && node scripts/test-version.js && node scripts/test-format.js && node scripts/test-trackers.js && node scripts/test-error-actions.js && node scripts/test-admission.js && node scripts/test-remove-files.js && node scripts/test-tracker-edit.js && node scripts/test-plugins.js && node scripts/test-share-bulk.js && node scripts/test-file-health-ui.js && node scripts/test-wave2-edge.js && node scripts/test-mark-motion.js && node scripts/test-url-download.js && node scripts/test-transfer-filters.js && npm run test:assistant",
+    "eval:assistant": "node scripts/eval-assistant/run.js",
+    "test": "node scripts/test-abi-splits.js && node scripts/test-p3-reality-contracts.js && node scripts/test-feeds.js && node scripts/test-rates.js && node scripts/test-version.js && node scripts/test-format.js && node scripts/test-trackers.js && node scripts/test-error-actions.js && node scripts/test-admission.js && node scripts/test-remove-files.js && node scripts/test-tracker-edit.js && node scripts/test-plugins.js && node scripts/test-share-bulk.js && node scripts/test-file-health-ui.js && node scripts/test-wave2-edge.js && node scripts/test-mark-motion.js && node scripts/test-url-download.js && node scripts/test-transfer-filters.js && node scripts/test-transfers-render.js && node scripts/test-done-actions.js && node scripts/test-motion.js && node scripts/test-search-skeleton.js && node scripts/test-follow.js && node scripts/test-optimistic.js && npm run test:assistant && node scripts/test-tab-glyphs.js && node scripts/test-haptics.js && node scripts/test-copy-voice.js && node scripts/test-browser-contract.js && node scripts/test-browser-ui.js && node scripts/test-stream-contract.js",
     "test:contracts": "node scripts/test-p3-reality-contracts.js",
     "test:search": "node scripts/test-search.js && node scripts/test-search-general.js && node scripts/test-search-dht.js && node scripts/test-search-anime.js && node scripts/test-search-niche.js",
     "test:feeds": "node scripts/test-feeds.js",
@@ -22,13 +23,16 @@
     "test:admission": "node scripts/test-admission.js",
     "test:remove-files": "node scripts/test-remove-files.js",
     "test:tracker-edit": "node scripts/test-tracker-edit.js",
-    "test:assistant": "node scripts/test-assistant-card.js && node scripts/test-assistant-plan.js && node scripts/test-assistant-sanitize.js && node scripts/test-assistant-sse.js && node scripts/test-assistant-prefs.js && node scripts/test-assistant-provider.js && node scripts/test-assistant-safety.js && node scripts/test-assistant-providersave.js && node scripts/test-assistant-context.js && node scripts/test-assistant-release.js && node scripts/test-assistant-tools.js && node scripts/test-assistant-glossary.js && node scripts/test-assistant-playback.js && node scripts/test-assistant-scoring.js && node scripts/test-assistant-turn.js && node scripts/test-assistant-disk.js && node scripts/test-assistant-runner.js && node scripts/test-assistant-chat.js && node scripts/test-assistant-jargon.js && node scripts/test-assistant-probe.js",
+    "test:assistant": "node scripts/test-assistant-card.js && node scripts/test-assistant-plan.js && node scripts/test-assistant-sanitize.js && node scripts/test-assistant-sse.js && node scripts/test-assistant-prefs.js && node scripts/test-assistant-provider.js && node scripts/test-assistant-safety.js && node scripts/test-assistant-providersave.js && node scripts/test-assistant-context.js && node scripts/test-assistant-release.js && node scripts/test-assistant-tools.js && node scripts/test-assistant-prompt.js && node scripts/test-assistant-glossary.js && node scripts/test-assistant-playback.js && node scripts/test-assistant-scoring.js && node scripts/test-assistant-turn.js && node scripts/test-assistant-disk.js && node scripts/test-assistant-runner.js && node scripts/test-assistant-browse.js && node scripts/test-assistant-chat.js && node scripts/test-assistant-jargon.js && node scripts/test-assistant-chatview.js && node scripts/test-assistant-probe.js && node scripts/test-assistant-models.js && node scripts/test-assistant-capabilities.js",
+    "test:follow": "node scripts/test-follow.js",
+    "test:done-actions": "node scripts/test-done-actions.js",
     "test:url-download": "node scripts/test-url-download.js"
   },
   "dependencies": {
     "@expo-google-fonts/inter": "^0.4.2",
     "@expo-google-fonts/silkscreen": "^0.4.2",
     "@expo-google-fonts/space-mono": "^0.4.2",
+    "@shopify/flash-list": "2.3.2",
     "expo": "^58.0.22",
     "expo-asset": "^58.0.19",
     "expo-clipboard": "~58.0.4",
@@ -49,11 +53,14 @@
     "react": "19.3.0",
     "react-dom": "19.3.0",
     "react-native": "0.88.1",
+    "react-native-gesture-handler": "~3.3.0",
+    "react-native-reanimated": "4.7.1",
     "react-native-safe-area-context": "~5.10.1",
     "react-native-screens": "~4.30.1",
     "react-native-svg": "15.16.0",
     "react-native-web": "^0.21.4",
-    "react-native-webview": "14.0.1"
+    "react-native-webview": "14.0.1",
+    "react-native-worklets": "0.13.0"
   },
   "devDependencies": {
     "@babel/core": "^7.25.2",

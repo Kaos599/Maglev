@@ -44,6 +44,7 @@ export const COPY = {
   noCredits: 'Your {provider} account is out of credit. Add credit on their site, or pick a free model in Settings.',
   rateLimited: 'Rate limited. Try again in a minute.',
   rateLimitedLong: "You've hit this model's limit for now. Try again later, or pick another model.",
+  dailyLimit: "You've used today's free requests on OpenRouter (50 a day). They reset tomorrow, or adding $10 of credit there raises the limit to 1000 a day.",
   noTools: "This model can't use Maglev's tools. Pick another model in Settings → Assistant.",
   modelGone: "That model isn't available any more. Pick another in Settings → Assistant.",
   tooMuch: 'That was too much for this model. Clear the chat or ask a shorter question.',
@@ -81,6 +82,8 @@ interface PendingCall {
   name: string;
   /** Final tool message content, or undefined while a read tool is still running. */
   content?: string;
+  /** What validation fixed or ignored (an unknown field). Added to the tool result as `note`. */
+  note?: string;
 }
 
 export interface TurnState {
@@ -231,6 +234,12 @@ export function turnInitial(config: TurnConfig): TurnState {
 
 /** Proposal tools that remove something from the user's device. At most one per turn. */
 export const DESTRUCTIVE_TOOLS: ReadonlySet<string> = new Set(['propose_delete', 'propose_remove_files']);
+
+/** propose_change is destructive when its action removes files or the download. */
+function isDestructiveCall(name: string, args: Record<string, unknown>): boolean {
+  if (DESTRUCTIVE_TOOLS.has(name)) return true;
+  return name === 'propose_change' && (args.action === 'remove_files' || args.action === 'delete');
+}
 export const MAX_PROPOSALS_PER_TURN = 2;
 export const MAX_DESTRUCTIVE_PER_TURN = 1;
 export const MAX_DETAILS_PER_TURN = 2;
@@ -268,6 +277,18 @@ function failTurn(s: TurnState, message: string, extra: TurnEffect[] = []): Turn
   return { state: { ...next, kind: restKind(next) }, effects: [...extra, { type: 'errorCard', message }] };
 }
 
+/** Adds `note` to a JSON object result. Anything else is returned as it was. */
+function withNote(content: string, note: string | undefined): string {
+  if (!note) return content;
+  try {
+    const v = JSON.parse(content) as unknown;
+    if (v && typeof v === 'object' && !Array.isArray(v)) return JSON.stringify({ ...(v as Record<string, unknown>), note });
+  } catch {
+    // Not JSON: leave it.
+  }
+  return content;
+}
+
 function toolError(message: string): string {
   return JSON.stringify({ ok: false, error: message });
 }
@@ -275,6 +296,7 @@ function toolError(message: string): string {
 const NO_TOOLS_RE = /\btools?\b|function[ _-]?calling/i;
 const TOO_MUCH_RE = /context[ _-]?(length|window)|too (long|large|many)|token limit|max(imum)?\b.*\btokens\b|\btokens\b.*\b(exceed|limit)/i;
 const TOOL_USE_FAILED_RE = /tool_use_failed/i;
+const DAILY_LIMIT_RE = /free-models-per-day|requests? per day|daily limit/i;
 /** A Retry-After longer than this on a 429 means "later", not "in a moment". */
 export const RATE_LIMIT_SHORT_MS = 60_000;
 
@@ -283,7 +305,10 @@ function statusStep(s: TurnState, status: number, retryAfterMs?: number, body?: 
   if (status === 401 || status === 403) return failTurn(s, COPY.checkKey);
   if (status === 402) return failTurn(s, COPY.noCredits);
   if (status === 429) {
-    const short = retryAfterMs !== undefined && retryAfterMs <= RATE_LIMIT_SHORT_MS;
+    // OpenRouter's free daily cap: retrying in a minute won't help, so say what will.
+    if (DAILY_LIMIT_RE.test(text)) return failTurn(s, COPY.dailyLimit);
+    // No wait given: a free model's busy moment, so "a minute". Only a long wait is "later".
+    const short = retryAfterMs === undefined || retryAfterMs <= RATE_LIMIT_SHORT_MS;
     return failTurn(s, short ? COPY.rateLimited : COPY.rateLimitedLong);
   }
   if (status >= 500) return retryStep(s, COPY.providerDown, retryAfterMs);
@@ -376,7 +401,7 @@ function toolsDone(s: TurnState, results: { toolCallId: string; content: string 
   const messages: ChatMessage[] = [];
   const effects: TurnEffect[] = [];
   for (const c of s.calls) {
-    const content = c.content ?? byId.get(c.id) ?? toolError(COPY.toolMissing);
+    const content = withNote(c.content ?? byId.get(c.id) ?? toolError(COPY.toolMissing), c.note);
     messages.push({ role: 'tool', tool_call_id: c.id, content });
     effects.push({ type: 'appendToolMessage', toolCallId: c.id, content });
   }
@@ -429,6 +454,7 @@ function toolCallsDone(s: TurnState, calls: AssistantToolCall[], truncated: bool
       entry.content = toolError(v.error.message);
       return;
     }
+    if (v.notes && v.notes.length > 0) entry.note = v.notes.join(' ');
     if (READ_TOOLS.has(call.name)) {
       if (lastRound) {
         entry.content = toolError(COPY.outOfSteps);
@@ -445,7 +471,7 @@ function toolCallsDone(s: TurnState, calls: AssistantToolCall[], truncated: bool
       return;
     }
     if (PROPOSAL_TOOLS.has(call.name)) {
-      const isDestructive = DESTRUCTIVE_TOOLS.has(call.name);
+      const isDestructive = isDestructiveCall(call.name, v.args);
       if (isDestructive && destructive >= MAX_DESTRUCTIVE_PER_TURN) {
         entry.content = toolError(COPY.oneDelete);
         return;
@@ -471,7 +497,7 @@ function toolCallsDone(s: TurnState, calls: AssistantToolCall[], truncated: bool
       if (planned.length > 0) planTargets[cardId] = planned;
       pendingCards.push(cardId);
       effects.push({ type: 'createCard', cardId, callId: id, tool: call.name, args: v.args });
-      entry.content = JSON.stringify({ status: 'proposed', card_id: cardId });
+      entry.content = withNote(JSON.stringify({ status: 'proposed', card_id: cardId }), entry.note);
       return;
     }
     entry.content = toolError('There is no tool with that name.');

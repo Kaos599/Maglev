@@ -19,11 +19,13 @@ export interface ResultRowProps {
   added: boolean;
   busy?: boolean;
   onAdd: () => void;
+  /** Set only for TV and anime episodes or season packs. */
+  onFollow?: () => void;
 }
 
 const count = (n: number | undefined) => (n === undefined ? '—' : n.toLocaleString('en-US'));
 
-function ResultRowImpl({ name, sizeBytes, seeders, leechers, age, via, risky, added, busy, onAdd }: ResultRowProps) {
+function ResultRowImpl({ name, sizeBytes, seeders, leechers, age, via, risky, added, busy, onAdd, onFollow }: ResultRowProps) {
   const { colors } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const size = sizeBytes ? formatBytes(sizeBytes) : '—';
@@ -61,6 +63,7 @@ function ResultRowImpl({ name, sizeBytes, seeders, leechers, age, via, risky, ad
           via {via}
         </Text>
       </View>
+      {onFollow ? <IconButton icon="bell" color={colors.textMuted} accessibilityLabel={`Follow ${name}`} onPress={onFollow} /> : null}
       {added ? (
         <IconButton icon="check" color={colors.success} accessibilityLabel={`${name}, added`} disabled />
       ) : (

@@ -43,6 +43,37 @@ export interface ResultCardView {
   riskyWarning?: string;
   /** Present only after get_result_details looked inside. Red shows a danger banner. */
   safety?: { level: SafetyLevel; text: string };
+  /**
+   * 0.11: what is inside, present only after get_result_details looked inside. Rendered as small file rows
+   * under a "What's inside" toggle, collapsed by default, so non-technical users aren't shown it unasked.
+   */
+  details?: ResultDetailsView;
+}
+
+/** The contents of one result, app-computed from the torrent's file list. */
+export interface ResultDetailsView {
+  /** All files in the torrent. */
+  fileCount: number;
+  /** Sum of all file sizes, e.g. "4.2 GB". Never the size of the .torrent file itself. */
+  totalText: string;
+  /** Up to 8 rows, largest first. */
+  files: FileRowView[];
+  /** e.g. "and 12 more files". Empty when every file is listed. */
+  moreText: string;
+  /** Counts per kind, for a one-line summary such as "1 video · 3 subtitles". */
+  kinds: Partial<Record<FileKind, number>>;
+}
+
+export type FileKind = 'video' | 'audio' | 'subtitle' | 'image' | 'archive' | 'app' | 'book' | 'text' | 'other';
+
+export interface FileRowView {
+  /** File name without folders, sanitised. */
+  name: string;
+  /** e.g. "1.9 GB". */
+  sizeText: string;
+  kind: FileKind;
+  /** From the safety check: danger for an app or script hidden in media, warn for anything amber. */
+  flag?: 'danger' | 'warn';
 }
 
 /** A proposal awaiting the user's tap (§9 "Proposal cards"). */
@@ -79,6 +110,10 @@ export interface ProgressStep {
   /** Real facts only: "Searching 4 sources", "Looking inside r1", "Checking space", "Knaben didn't answer". */
   text: string;
   state: 'running' | 'done' | 'failed';
+  /** 0.11: the tool this step belongs to, e.g. "search_torrents". The UI maps it to a plain label and icon. */
+  tool?: string;
+  /** 0.11: one plain line shown when the step is expanded, e.g. "23 results from 4 sources, newest first". */
+  detail?: string;
 }
 
 export type ChatItem =
@@ -91,7 +126,25 @@ export type ChatItem =
   /** One-line app note: "Added.", "Freed 1.9 GB.", "Stopped." */
   | { kind: 'note'; id: string; text: string }
   /** SM-31 error copy. `action` is the one recovery the UI offers. */
-  | { kind: 'error'; id: string; message: string; action?: 'settings' | 'retry' };
+  | { kind: 'error'; id: string; message: string; action?: 'settings' | 'retry' }
+  /**
+   * 0.11 ask_user: a question with tappable answers (AI Elements "Questionnaire"). Tapping one calls
+   * answer(), which sends that option as the user's next message. `answered` is set once tapped; the chips lock.
+   */
+  | { kind: 'question'; id: string; question: string; options: string[]; answered?: string }
+  /**
+   * 0.11 open_screen: a button that takes the user somewhere in the app. Nothing navigates by itself; the user taps.
+   * `label` is app-written ("Open Transfers", "Open this download"); `target` is resolved by the app, never a URL.
+   */
+  | { kind: 'link'; id: string; label: string; target: ScreenTarget };
+
+/** Places the assistant may offer to open. The UI maps each to an expo-router route. */
+export type ScreenTarget =
+  | { screen: 'transfers'; filter?: 'all' | 'downloading' | 'paused' | 'done' | 'errors' }
+  | { screen: 'transfer'; id: string }
+  | { screen: 'search'; query?: string }
+  | { screen: 'add_download' }
+  | { screen: 'settings'; section?: 'storage' | 'network' | 'assistant' | 'search_providers' | 'schedule' };
 
 /** Why the composer is locked (R1-6 send gate). 'ready' means Send works. */
 export type ChatGate = 'ready' | 'disabled' | 'notAccepted' | 'noKey';
@@ -104,6 +157,8 @@ export interface AssistantChat {
   busy: boolean;
   /** e.g. "OpenRouter". Used in "Your messages and the names of your downloads go to <provider>." */
   providerName: string;
+  /** 0.11: the model in use as the user knows it, e.g. "Llama 3.3 70B (free)". Shown in the composer's model chip. */
+  modelName?: string;
   /** Tokens used on this provider, all time (D4: tokens, not money). */
   tokensUsed: { input: number; output: number };
   send(text: string): void;
@@ -122,6 +177,8 @@ export interface AssistantChat {
   askAbout(handle: string): void;
   /** "Choose files" on a result card: the magnet or .torrent URL to open in the Add sheet, if known. */
   sourceFor(handle: string): string | undefined;
+  /** 0.11: tap on a question chip. Locks the question and sends the option as the next user message. */
+  answer?(itemId: string, option: string): void;
 }
 
 // ---------------------------------------------------------------- tool runner (step 12)
@@ -138,6 +195,12 @@ export interface ToolRunOutput {
   content: string;
   /** search_torrents: the shortlist to render as result cards. */
   results?: ResultCardView[];
+  /** ask_user: a question to show with tappable answers. The chat adds a `question` item. */
+  question?: { question: string; options: string[] };
+  /** open_screen: a button to show. The chat adds a `link` item. */
+  link?: { label: string; target: ScreenTarget };
+  /** One plain line for the finished progress step, e.g. "23 results from 4 sources, newest first". Real facts only. */
+  detail?: string;
 }
 
 export type RevalidateResult = { ok: true } | { ok: false; reason: string };

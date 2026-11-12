@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/brand/readme-header.svg" alt="Maglev, a fast, minimal torrent client for Android" width="100%">
+  <img src="assets/brand/readme-header.svg" alt="Maglev, a fast, minimal downloader for Android" width="100%">
 </p>
 
 <p align="center">
@@ -11,12 +11,14 @@
 </p>
 
 <p align="center">
-  Maglev is a torrent client for Android, built to do on a phone what LibreTorrent and Flood do elsewhere.<br>
-  Paste a magnet link, pick your files, and put the phone in your pocket.
+  Maglev downloads anything on Android: torrents, ordinary links, and the videos and files on a web page.<br>
+  One small, fast app with a pixel-art look, a real Rust engine, and no ads.
 </p>
 
 <p align="center">
   <a href="https://github.com/Kaos599/Maglev/releases/latest"><b>Download the beta</b></a>
+  &nbsp;·&nbsp;
+  <a href="https://apps.obtainium.imranr.dev/redirect?r=obtainium://add/https://github.com/Kaos599/Maglev">Get updates with Obtainium</a>
   &nbsp;·&nbsp;
   <a href="#features">Features</a>
   &nbsp;·&nbsp;
@@ -27,37 +29,51 @@
 
 ## Features
 
-**Adding torrents**
-- Open magnet links and `.torrent` files straight from your browser, a chat app, or the clipboard.
-- See every file before you start. Choose which ones to download, and mark one to download first.
-- Maglev checks the free space on your phone and tells you what will be left before you tap Start.
+### Torrents, done properly
+- The engine is [librqbit](https://github.com/ikatson/rqbit), written in Rust, with DHT, trackers, local peer discovery and web seeds, so archive.org-style torrents download from their mirrors too.
+- Open magnet links and `.torrent` files from your browser, a chat app, the clipboard or a share.
+- See every file before you start, pick the ones you want and mark one to download first. Maglev tells you how much space will be left before you tap Start.
+- A queue decides how many run at once, and seeding stops at the ratio or time you set. Edit trackers, copy the magnet link or save the `.torrent` file.
+- Downloads keep going with the screen off. If Android closes the app, Maglev comes back and carries on. On Android 16 and later, progress shows as a live chip in the status bar.
 
-**Downloading**
-- The engine is [librqbit](https://github.com/ikatson/rqbit), written in Rust, with DHT, trackers and local peer discovery.
-- A queue decides how many torrents run at once. Seeding stops on its own at the ratio or time you set.
-- Downloads keep running with the screen off. If Android closes the app, Maglev restarts and carries on from where it was.
-- On Android 16 and later, progress shows as a live chip in the status bar.
+### Any link, with pause and resume
+- Paste or share any web link and Maglev downloads the file, with pause, resume and retry that survive a restart.
+- Expired links ask for a fresh one and continue where they stopped. Files that need a sign-in work while the app is open, and Maglev never saves your passwords or cookies to disk.
+- Links that point at devices on your own network are stopped unless you allow them.
 
-**Your files**
-- Everything lands in `Download/Maglev`, where any file manager can find it, or in any folder you choose.
-- Open, share or stream a file from the torrent's detail screen. Video can start playing before the download finishes.
+### A browser without ads that saves what you watch
+- Open any page inside Maglev. Ads and trackers are blocked before they load, using a built-in list of over 42,000 ad and tracker domains that you can update or replace in Settings.
+- Play a video and Maglev lists it. The page's files show up in a tray you can filter by Video, Audio, Image, Document and Other. Tap one to download it with the page's cookies, so files that need the site's session still work.
+- Streaming videos (HLS and DASH) are saved as one file: pick the quality and audio language and Maglev joins the pieces, including HLS streams with standard AES-128 encryption.
+- Popups you didn't tap, redirects into other apps, bad certificates and requests for your camera, microphone or location are refused. App installers come with a warning.
+- Maglev never gets around DRM. Netflix-style protected video, live streams and players that hide their video in the page (YouTube-style) can't be saved, and Maglev says so.
 
-**Search**
-- One search box queries Knaben, Torrents-CSV, Internet Archive, Nyaa and YTS together, and merges results that point to the same torrent.
-- Filter by category, sort by seeders, size or date, and pick which sources answer each category.
-- Add your own Jackett or Prowlarr indexer.
+### Search across 40+ sources
+- One search box asks public sources such as Knaben, Torrents-CSV, Internet Archive, Nyaa, YTS, EZTV and 1337x at the same time, and merges results that point to the same torrent.
+- Results from sources known for fake uploads carry a warning.
+- Filter by category, sort by seeders, size or date, and choose which sources answer each category. Add your own Jackett or Prowlarr indexer.
+- A source behind a Cloudflare check opens it once in Maglev so you can pass it yourself.
 
-**Control**
-- Wi-Fi only, pause on low battery, and download only while charging.
-- Speed limits for everything or per torrent, Pause all and Resume all, and Shut down from the notification.
-- A Quick Settings tile that pauses or resumes everything, and an alert when a download finishes.
-- A schedule for when downloads run or slow down, and feeds that add new episodes that match your rules.
-- Move a torrent's files to another folder, even mid-download.
-- OLED, Dim and Light themes with four accent colours.
+### Feeds that download new episodes
+- Follow a show from Search, or add any RSS feed, and Maglev adds new episodes that match your rules.
+
+### An assistant that asks first (optional)
+- Ask in plain words: "find the latest season of this show in 1080p", "why is this stuck?", "what's eating my storage?".
+- It searches, compares results, checks size and free space, and explains problems. It always shows what it wants to add or change and waits for you to tap Confirm.
+- It runs on your own [OpenRouter](https://openrouter.ai) key, kept in the phone's secure storage, and works with free models. Turn it off and the tab disappears.
+
+### You stay in control
+- Wi-Fi only, VPN required, pause on low battery, and download only while charging.
+- Speed limits for everything or per download, a schedule for when downloads run or slow down, and Pause all, Resume all and Shut down from the notification.
+- A Quick Settings tile, an alert when a download finishes, and Open, Share or Open folder right from the finished item.
+- Files land in `Download/Maglev`, where any file manager finds them, or in any folder you choose. Move a torrent's files mid-download, and stream video before it finishes.
+- OLED, Dim and Light themes with four accent colours, in a retro pixel-art style that stays easy to read.
 
 ## Install
 
-Download an APK from [Releases](https://github.com/Kaos599/Maglev/releases/latest).
+Download an APK from [Releases](https://github.com/Kaos599/Maglev/releases/latest), or add Maglev to [Obtainium](https://github.com/ImranR98/Obtainium) so new versions install as they come out:
+
+<a href="https://apps.obtainium.imranr.dev/redirect?r=obtainium://add/https://github.com/Kaos599/Maglev"><img src="https://raw.githubusercontent.com/ImranR98/Obtainium/main/assets/graphics/badge_obtainium.png" alt="Get it on Obtainium" height="54"></a>
 
 | File | Choose it if |
 |---|---|
@@ -68,14 +84,9 @@ Download an APK from [Releases](https://github.com/Kaos599/Maglev/releases/lates
 
 ## What's next
 
-**Now**
-- Downloading from web mirrors listed in a torrent (web seeds), so archive.org-style torrents work.
-- Warnings on search results from sources known for fake uploads.
-- Tracker editing and exporting a `.torrent` file.
-- Downloading ordinary files from any link, with pause and resume.
-
-**Later**
-- An optional assistant that runs on your own AI key. It can search, check a result before you add it, and explain why a download is stuck. It asks before it changes anything.
+- Search inside the browser's found files, and keeping a page's file list after you leave it.
+- Choosing which ad-block lists to combine, and per-site rules beyond "allow ads here".
+- A Google Play build.
 
 ## Contributing
 
@@ -107,11 +118,13 @@ CI also runs the Rust unit tests and checks every engine build for librqbit symb
 
 Icons are [Pixelarticons](https://github.com/halfmage/pixelarticons) by Gerrit Halfmann (MIT).
 
+The browser's built-in block list comes from the [StevenBlack/hosts](https://github.com/StevenBlack/hosts) base list (MIT), 42,042 domains, built 2026-11-12. Rebuild it with `node scripts/build-blocklist.js`.
+
 </details>
 
 ## Legal
 
-Maglev doesn't host or index any content. Search sends your query to public indexes run by third parties. What you download, and following the law where you live, is up to you.
+Maglev doesn't host or index any content. Search sends your query to public indexes run by third parties, and the browser talks only to the sites you open and the block-list addresses in Settings. The assistant sends your messages to OpenRouter only when you use it. What you download, and following the law where you live, is up to you.
 
 ## License
 

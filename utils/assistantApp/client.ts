@@ -4,6 +4,7 @@
 // so Node tests run this file with a fake.
 
 import { chatCompletionsUrl, type PresetId } from '../prefs/assistant.ts';
+import { attributionHeaders } from '../assistant/models.ts';
 import { MAX_DETAIL_CHARS, STREAM_COPY, createStreamParser, requestExtras, sanitizeSnippet } from '../assistant/sse.ts';
 import type { RequestEffect, TurnEvent } from '../assistant/turnMachine.ts';
 
@@ -66,8 +67,8 @@ export function buildRequestBody(p: StreamParams): Record<string, unknown> {
 
 export function buildHeaders(p: StreamParams): Record<string, string> {
   const headers: Record<string, string> = { 'Content-Type': 'application/json', Accept: 'text/event-stream' };
-  // §8.2 lists no extra headers for any preset. OpenRouter's attribution headers are optional and would
-  // identify the app, so they are not sent.
+  // OpenRouter only: app attribution (https://openrouter.ai/docs/api-reference/overview). No other provider gets them.
+  Object.assign(headers, attributionHeaders(p.presetId));
   if (p.apiKey) headers.Authorization = `Bearer ${p.apiKey}`;
   return headers;
 }
@@ -81,6 +82,25 @@ export function parseRetryAfter(value: string | null | undefined, now: number = 
   const t = Date.parse(v);
   if (Number.isNaN(t)) return undefined;
   return Math.max(0, t - now);
+}
+
+/**
+ * How long the provider asked us to wait: Retry-After, or OpenRouter's X-RateLimit-Reset (a Unix time in
+ * milliseconds, set when a free model's limit is hit). Never throws: an odd Response must not look like "no network".
+ */
+export function readWaitMs(headers: { get(name: string): string | null } | undefined, now: number): number | undefined {
+  try {
+    const after = parseRetryAfter(headers?.get('retry-after'), now);
+    if (after !== undefined) return after;
+    const reset = headers?.get('x-ratelimit-reset');
+    if (reset && /^\d{10,13}$/.test(reset.trim())) {
+      const n = Number(reset.trim());
+      return Math.max(0, (n < 1e11 ? n * 1000 : n) - now);
+    }
+  } catch {
+    // Headers that cannot be read count as no header.
+  }
+  return undefined;
 }
 
 export interface ClientTimers {
@@ -216,7 +236,7 @@ export function createStreamFn(
         const snippet = await readSnippet(res, inner.signal);
         stopTimer();
         if (signal.aborted) return;
-        const retryAfterMs = parseRetryAfter(res.headers.get('retry-after'), now());
+        const retryAfterMs = readWaitMs(res.headers, now());
         emit({
           type: 'HttpErr',
           status: res.status,

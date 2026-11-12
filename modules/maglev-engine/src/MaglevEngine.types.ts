@@ -150,7 +150,12 @@ export type EngineErrorCode =
   | 'LAN_ADDRESS'
   | 'NO_APP'
   /** The server stopped sending data and the retries ran out. */
-  | 'STALLED';
+  | 'STALLED'
+  /** NATIVE_CONTRACT 24.8 (saving HLS and DASH streams). */
+  | 'STREAM_PROTECTED'
+  | 'STREAM_LIVE'
+  | 'STREAM_UNSUPPORTED'
+  | 'MUX_FAILED';
 
 /** NATIVE_CONTRACT 12.1. */
 export interface ResolveActivity {
@@ -377,7 +382,7 @@ export type DownloadState =
 export interface DownloadError {
   code: Extract<
     EngineErrorCode,
-    'HTTP_STATUS' | 'AUTH_REQUIRED' | 'LINK_EXPIRED' | 'FILE_CHANGED' | 'NOT_A_FILE' | 'CHECKSUM_MISMATCH' | 'NETWORK' | 'PERMISSION' | 'STALLED' | 'LAN_ADDRESS' | 'LOCAL_REDIRECT' | 'BLOCKED'
+    'HTTP_STATUS' | 'AUTH_REQUIRED' | 'LINK_EXPIRED' | 'FILE_CHANGED' | 'NOT_A_FILE' | 'CHECKSUM_MISMATCH' | 'NETWORK' | 'PERMISSION' | 'STALLED' | 'LAN_ADDRESS' | 'LOCAL_REDIRECT' | 'BLOCKED' | 'STREAM_PROTECTED' | 'STREAM_LIVE' | 'STREAM_UNSUPPORTED' | 'MUX_FAILED'
   >;
   message: string;
   httpStatus?: number | null;
@@ -406,6 +411,54 @@ export interface DownloadSnapshot {
   notice?: string | null;
   /** True while downloading but no bytes arrived for 30 s. Absent means false. */
   stalled?: boolean;
+  /** NATIVE_CONTRACT 24.8: set for a saved HLS or DASH stream. `size` is an estimate until it finishes. */
+  stream?: DownloadStream | null;
+  /** True while the video and audio parts of a stream are being joined (state `verifying`). */
+  muxNeeded?: boolean;
+}
+
+/** NATIVE_CONTRACT 24.8. */
+export type StreamKind = 'hls' | 'dash';
+
+export interface DownloadStream {
+  kind: StreamKind;
+  segmentsDone: number;
+  segmentsTotal: number;
+}
+
+/** Which quality (and audio track) of a stream to save. Ids come from `probeStream`. */
+export interface StreamSelection {
+  kind: StreamKind;
+  variantId: string;
+  audioId?: string | null;
+}
+
+export interface StreamVariant {
+  id: string;
+  height: number | null;
+  width: number | null;
+  bandwidth: number;
+  codecs: string | null;
+  /** `bandwidth / 8 x duration`, null when either is unknown. */
+  estBytes: number | null;
+  /** `muxed` (audio inside), `separate` (its own track, joined at the end) or `none`. */
+  audio: 'muxed' | 'separate' | 'none';
+}
+
+export interface StreamAudioTrack {
+  id: string;
+  lang: string | null;
+  name: string | null;
+  bandwidth: number | null;
+}
+
+/** NATIVE_CONTRACT 24.8. Variants are sorted by height, tallest first. */
+export interface StreamProbe {
+  kind: StreamKind;
+  title: string | null;
+  durationSec: number;
+  variants: StreamVariant[];
+  audioTracks: StreamAudioTrack[];
 }
 
 export interface DownloadOptions {
@@ -420,6 +473,8 @@ export interface DownloadOptions {
   downLimitBps?: number;
   /** The user allowed the typed host even though it is on their own network. The module sends it as `allow_lan`. */
   allowLan?: boolean;
+  /** Save an HLS or DASH stream (NATIVE_CONTRACT 24.8). The link is the playlist. */
+  stream?: StreamSelection;
 }
 
 export interface UrlProbe {
@@ -630,6 +685,8 @@ export interface MaglevEngineApi {
   setGovernance(config: GovernanceConfig): Promise<EngineResult>;
   // URL downloads (NATIVE_CONTRACT 17)
   probeUrl(url: string, options: DownloadOptions, timeoutMs: number): Promise<EngineResult<UrlProbe>>;
+  /** NATIVE_CONTRACT 24.8. Errors: STREAM_PROTECTED, STREAM_LIVE, STREAM_UNSUPPORTED, plus the probeUrl ones. */
+  probeStream(url: string, options: DownloadOptions, timeoutMs: number): Promise<EngineResult<StreamProbe>>;
   addDownload(url: string, options: DownloadOptions): Promise<EngineResult<{ id: string }>>;
   pauseDownload(id: string): Promise<EngineResult>;
   resumeDownload(id: string): Promise<EngineResult>;

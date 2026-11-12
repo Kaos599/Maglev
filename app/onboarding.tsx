@@ -10,6 +10,7 @@ import { useMaglevEngine } from '../context/EngineContext';
 import { useSettings } from '../context/SettingsContext';
 import { useTheme } from '../context/ThemeContext';
 import { ThemeColors, radius, spacing, type } from '../constants/theme';
+import { notices } from '../constants/copy';
 
 type StepId = 'welcome' | 'notifications' | 'folder' | 'background' | 'mobileData';
 
@@ -101,7 +102,7 @@ export default function OnboardingScreen() {
         const res = await maglevEngine.requestLegacyStorage();
         const status = await refreshPermissions();
         if (!res.ok || status.legacyStorage === 'denied') {
-          setFolderNote('Storage access was refused. Files are saved in app storage instead.');
+          setFolderNote(notices.inline.storageRefused);
           return;
         }
       } finally {

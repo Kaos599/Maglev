@@ -26,6 +26,7 @@ const MAP = {
   close: 'close',
   back: 'arrow-left',
   'chevron-right': 'chevron-right',
+  'chevron-down': 'chevron-down',
   more: 'more-vertical',
   check: 'check',
   pause: 'pause',
@@ -91,6 +92,9 @@ const MAP = {
   'file-doc': 'file-text',
   'file-app': 'android',
   'file-disc': 'target',
+  // browser
+  lock: 'lock',
+  forward: 'arrow-right',
 };
 
 const out = {};

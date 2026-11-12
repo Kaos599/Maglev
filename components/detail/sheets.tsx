@@ -6,6 +6,7 @@ import { ThemeColors, spacing, type } from '../../constants/theme';
 import { formatBytes } from '../../constants/format';
 import { Banner, Button, ListRow, Sheet } from '../ui';
 import { fileName, isStreamable, streamReadiness } from './torrentLabels';
+import { banners, notices } from '../../constants/copy';
 
 interface DeleteSheetProps {
   visible: boolean;
@@ -24,7 +25,7 @@ export function DeleteSheet({ visible, name, busy, error, onClose, onRemove, onD
   const styles = useMemo(() => makeStyles(colors), [colors]);
   return (
     <Sheet visible={visible} onClose={onClose} title="Delete torrent?" subtitle={name}>
-      {error ? <Banner tone="danger" title="Couldn't delete" body={error} /> : null}
+      {error ? <Banner tone="danger" title={banners.detail.deleteFailed.title} body={error} /> : null}
       <View style={styles.stack}>
         <Button label="Remove from list" variant="secondary" fullWidth loading={busy} onPress={onRemove} />
         <Button label="Delete with files" variant="danger" fullWidth disabled={busy || storageGone} onPress={onDeleteFiles} />
@@ -53,7 +54,7 @@ export function RemoveFilesSheet({ visible, count, bytes, busy, error, onClose, 
   const styles = useMemo(() => makeStyles(colors), [colors]);
   return (
     <Sheet visible={visible} onClose={onClose} title={`Remove ${count} ${count === 1 ? 'file' : 'files'}?`}>
-      {error ? <Banner tone="danger" title="Couldn't remove" body={error} /> : null}
+      {error ? <Banner tone="danger" title={banners.detail.removeFailed.title} body={error} /> : null}
       <Text style={styles.hint}>
         {`Deletes ${formatBytes(bytes)} from your phone and stops downloading ${count === 1 ? 'it' : 'them'}. Other files keep going.`}
       </Text>
@@ -85,16 +86,16 @@ export function SavedTorrentSheet({ saved, onClose }: SavedTorrentSheetProps) {
     if (!saved) return;
     try {
       const res = await maglevEngine.shareExportedTorrent(saved.path);
-      if (!res.ok) setError(res.message || 'Sharing failed.');
+      if (!res.ok) setError(res.message || notices.inline.shareFailed);
       else onClose();
     } catch {
-      setError('Sharing failed.');
+      setError(notices.inline.shareFailed);
     }
   };
 
   return (
     <Sheet visible={!!saved} onClose={onClose} title="Saved" subtitle={saved ? `${saved.folder}/${saved.name}` : undefined}>
-      {error ? <Banner tone="danger" title="Couldn't share" body={error} /> : null}
+      {error ? <Banner tone="danger" title={banners.detail.shareFailed.title} body={error} /> : null}
       <Text style={styles.hint}>The file keeps this torrent's current trackers.</Text>
       <View style={styles.stack}>
         <Button label="Share" icon="share" variant="secondary" fullWidth onPress={share} />
@@ -150,23 +151,23 @@ export function FileActionsSheet({ id, file, torrentState, pausedBy, onResume, o
     try {
       const userPaused = torrentState === 'PAUSED' && pausedBy === 'user';
       if (userPaused && !(await onResume())) {
-        setError("Couldn't resume the torrent.");
+        setError(notices.inline.resumeFailed);
         return;
       }
       const url = await maglevEngine.streamUrl(id, file.index);
       if (!url.ok) {
-        setError(url.message || "Couldn't start the stream.");
+        setError(url.message || notices.inline.streamFailed);
         return;
       }
       const res = await maglevEngine.openStream(url.url, url.mime, fileName(file.path));
       if (!res.ok) {
-        setError(res.message || 'No video player found. Install VLC or another player.');
+        setError(res.message || notices.inline.noPlayer);
         return;
       }
-      if (userPaused) onNotice('Resumed to stream');
+      if (userPaused) onNotice(notices.detail.resumedToStream);
       onClose();
     } catch {
-      setError("Couldn't start the stream.");
+      setError(notices.inline.streamFailed);
     } finally {
       setBusy(false);
     }
@@ -182,7 +183,7 @@ export function FileActionsSheet({ id, file, torrentState, pausedBy, onResume, o
 
   return (
     <Sheet visible={!!file} onClose={onClose} title={file ? fileName(file.path) : 'File'}>
-      {error ? <Banner tone="danger" title="Couldn't do that" body={error} /> : null}
+      {error ? <Banner tone="danger" title={banners.detail.actionFailed.title} body={error} /> : null}
       {file && done ? (
         <>
           <ListRow title="Open" icon="file" onPress={() => run(maglevEngine.openFile(id, file.index), 'No app can open this file.')} />

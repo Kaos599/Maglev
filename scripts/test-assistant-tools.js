@@ -23,6 +23,7 @@ const REASON = 'One plain sentence.';
 function samples(R, T) {
   return {
     search_torrents: { query: 'The Last Harbor 2023', category: 'movies', max_size_gb: 5, limit: 6 },
+    browse_torrents: { kind: 'movies', order: 'new', period: 'week', limit: 6 },
     get_result_details: { result_id: R },
     parse_release_name: { names: ['The.Last.Harbor.2023.1080p.WEB-DL.DDP5.1.Atmos.H.265-LUMEN'] },
     get_free_space: {},
@@ -34,6 +35,9 @@ function samples(R, T) {
     propose_pause_resume: { transfer_id: T, action: 'pause', reason: REASON },
     propose_remove_files: { transfer_id: T, file_indices: [0, 1, 2], reason: REASON },
     propose_delete: { transfer_id: T, delete_files: false, reason: REASON },
+    propose_change: { transfer_id: T, action: 'select_files', file_indices: [0, 1], reason: REASON },
+    ask_user: { question: 'Which size?', options: ['Small', 'Big'] },
+    open_screen: { screen: 'transfer', transfer_id: T },
     propose_plan: {
       reason: REASON,
       steps: [{ tool: 'propose_pause_resume', args: { transfer_id: T, action: 'pause', reason: REASON } }],
@@ -68,13 +72,13 @@ async function main() {
   const R = reg.issue('result', HASH);
   const T = reg.issue('transfer', 42);
   const S = samples(R, T);
-  const bad = (name, args) => validateArgs(name, args, reg);
+  const bad = (name, args) => validateArgs(name, args, reg, true);
   const isBad = (r, code = 'bad_args') => !r.ok && r.error.code === code;
 
   console.log('tools: schema structure');
-  check('TOOLS has 13 entries', TOOLS.length === 13, TOOLS.length);
-  check('READ_TOOLS has the 7 read tools', READ_TOOLS.size === 7, [...READ_TOOLS]);
-  check('PROPOSAL_TOOLS has the 6 proposal tools', PROPOSAL_TOOLS.size === 6, [...PROPOSAL_TOOLS]);
+  check('TOOLS has exactly 8 entries', TOOLS.length === 8, TOOLS.length);
+  check('READ_TOOLS has the 6 read tools', READ_TOOLS.size === 6 && READ_TOOLS.has('browse_torrents'), [...READ_TOOLS]);
+  check('PROPOSAL_TOOLS has the 2 proposal tools', PROPOSAL_TOOLS.size === 2 && PROPOSAL_TOOLS.has('propose_change'), [...PROPOSAL_TOOLS]);
   check('READ and PROPOSAL cover TOOLS exactly', TOOLS.every((t) => READ_TOOLS.has(t.function.name) || PROPOSAL_TOOLS.has(t.function.name)));
   const names = TOOLS.map((t) => t.function.name);
   check('tool names are unique', new Set(names).size === names.length, names);
@@ -87,6 +91,63 @@ async function main() {
     checkClosed(p, n, problems);
     check(`${n}: closed, required ⊆ properties at every depth`, problems.length === 0, problems);
     check(`${n}: description is short plain text`, t.function.description.length > 20 && t.function.description.length < 300);
+  }
+
+  console.log('tools: the eight tools and the generated overview');
+  {
+    const { toolsOverview } = await import('../utils/assistant/tools.ts');
+    check('the model sees exactly these eight', names.join() === 'search_torrents,browse_torrents,get_result_details,list_transfers,ask_user,open_screen,propose_add,propose_change', names);
+    for (const old of ['parse_release_name', 'describe_tools', 'propose_plan', 'propose_setting', 'get_free_space', 'get_transfer_details', 'explain_error', 'propose_select_files', 'propose_pause_resume', 'propose_remove_files', 'propose_delete']) {
+      check(`${old} is not exposed to the model`, !names.includes(old) && isBad(validateArgs(old, {}, reg), 'unknown_tool'));
+    }
+    const text = toolsOverview();
+    const lines = text.split('\n');
+    check('overview has one line per tool', lines.length === TOOLS.length, lines.length);
+    check('overview names every tool', TOOLS.every((t) => lines.some((l) => l.startsWith(`- ${t.function.name}:`))));
+    const sl = lines.find((l) => l.startsWith('- search_torrents:'));
+    check('overview shows search key args and sort values', /query/.test(sl) && /category/.test(sl) && /sort best\|seeders\|newest/.test(sl), sl);
+    check('overview lines are short', lines.every((l) => l.length < 320), lines.map((l) => l.length));
+    check('overview does not show ids or the reason argument', !/reason|result_id/.test(text));
+    const ok = (n, a) => validateArgs(n, a, reg).ok === true;
+    check('propose_change: pause', ok('propose_change', { transfer_id: T, action: 'pause', reason: REASON }));
+    check('propose_change: select_files needs file_indices', isBad(validateArgs('propose_change', { transfer_id: T, action: 'select_files', reason: REASON }, reg)) && /file_indices/.test(validateArgs('propose_change', { transfer_id: T, action: 'select_files', reason: REASON }, reg).error.message));
+    check('propose_change: remove_files needs file_indices', isBad(validateArgs('propose_change', { transfer_id: T, action: 'remove_files', reason: REASON }, reg)));
+    check('propose_change: pause with file_indices is refused', isBad(validateArgs('propose_change', { transfer_id: T, action: 'pause', file_indices: [0], reason: REASON }, reg)));
+    check('propose_change: delete_files only with delete', isBad(validateArgs('propose_change', { transfer_id: T, action: 'pause', delete_files: true, reason: REASON }, reg)) && ok('propose_change', { transfer_id: T, action: 'delete', delete_files: true, reason: REASON }));
+    check('propose_change: bad action lists the choices', /pause, resume, select_files, remove_files, delete/.test(validateArgs('propose_change', { transfer_id: T, action: 'wipe', reason: REASON }, reg).error.message));
+    const resolved = validateArgs('propose_change', { transfer_id: T, action: 'resume', reason: REASON }, reg);
+    check('propose_change resolves the transfer handle', resolved.ok && resolved.args.transfer_id === 42, resolved);
+    check('propose_change rejects an unknown handle', isBad(validateArgs('propose_change', { transfer_id: 't77', action: 'pause', reason: REASON }, reg)));
+    check('ask_user: 2 to 5 options', ok('ask_user', { question: 'Which?', options: ['a', 'b'] }) && isBad(validateArgs('ask_user', { question: 'Which?', options: ['a'] }, reg)) && isBad(validateArgs('ask_user', { question: 'Which?', options: ['a', 'b', 'c', 'd', 'e', 'f'] }, reg)));
+    check('ask_user: duplicate options and long options are refused', isBad(validateArgs('ask_user', { question: 'Which?', options: ['a', 'a'] }, reg)) && isBad(validateArgs('ask_user', { question: 'Which?', options: ['a', 'x'.repeat(41)] }, reg)));
+    check('open_screen: each screen', ok('open_screen', { screen: 'transfers', filter: 'paused' }) && ok('open_screen', { screen: 'search', query: 'ubuntu' }) && ok('open_screen', { screen: 'add_download' }) && ok('open_screen', { screen: 'settings', section: 'network' }) && ok('open_screen', { screen: 'transfer', transfer_id: T }));
+    check('open_screen: transfer needs an id, others refuse one', isBad(validateArgs('open_screen', { screen: 'transfer' }, reg)) && isBad(validateArgs('open_screen', { screen: 'settings', transfer_id: T }, reg)));
+    check('open_screen: refuses a section on the wrong screen and a URL screen', isBad(validateArgs('open_screen', { screen: 'search', section: 'network' }, reg)) && isBad(validateArgs('open_screen', { screen: 'https://evil.example' }, reg)));
+    check('list_transfers takes an optional transfer_id', ok('list_transfers', { transfer_id: T }) && ok('list_transfers', {}));
+  }
+
+  console.log('tools: search_torrents audio_language and subtitles (0.12)');
+  {
+    const reg = new HandleRegistry();
+    const v = (a) => validateArgs('search_torrents', { query: 'rrr', ...a }, reg);
+    const props = TOOLS[0].function.parameters.properties;
+    check('search_torrents offers audio_language and subtitles', props.audio_language && props.audio_language.type === 'string' && props.subtitles && props.subtitles.type === 'string');
+    check('browse_torrents is unchanged (no language args)', !TOOLS.find((t) => t.function.name === 'browse_torrents').function.parameters.properties.audio_language);
+    const h = v({ audio_language: 'Hindi' });
+    check('audio_language "Hindi" becomes hindi', h.ok && h.args.audio_language === 'hindi', h);
+    check('audio_language aliases: hin, VFF, latino, pt-BR', v({ audio_language: 'hin' }).args.audio_language === 'hindi' && v({ audio_language: 'VFF' }).args.audio_language === 'french'
+      && v({ audio_language: 'latino' }).args.audio_language === 'spanish' && v({ audio_language: 'pt-BR' }).args.audio_language === 'portuguese');
+    check('audio_language "dual audio" becomes multi', v({ audio_language: 'dual audio' }).args.audio_language === 'multi');
+    check('an unknown language is kept as a plain word', v({ audio_language: 'Malayalam' }).args.audio_language === 'malayalam');
+    check('a list keeps its first language', v({ audio_language: ['Hindi', 'English'] }).args.audio_language === 'hindi');
+    check('an empty or null audio_language is dropped', !('audio_language' in v({ audio_language: '' }).args) && !('audio_language' in v({ audio_language: null }).args));
+    check('a number for audio_language is refused', isBad(v({ audio_language: 5 })));
+    check('field "language" is read as audio_language', v({ language: 'tamil' }).args.audio_language === 'tamil');
+    check('subtitles true and "yes" become any', v({ subtitles: true }).args.subtitles === 'any' && v({ subtitles: 'yes' }).args.subtitles === 'any');
+    check('subtitles "English" becomes english', v({ subtitles: 'English' }).args.subtitles === 'english' && v({ subtitles: 'eng' }).args.subtitles === 'english');
+    check('subtitles false, "false" and "no" are dropped', ['false', 'no', false].every((x) => { const r = v({ subtitles: x }); return r.ok && !('subtitles' in r.args); }));
+    check('field "subs" is read as subtitles', v({ subs: 'english' }).args.subtitles === 'english');
+    check('subtitles "multi" becomes any', v({ subtitles: 'multi' }).args.subtitles === 'any');
   }
 
   console.log('tools: wording');
@@ -113,16 +174,78 @@ async function main() {
   const planOk = bad('propose_plan', S.propose_plan);
   check('plan resolves step handles', planOk.ok && planOk.args.steps[0].args.transfer_id === 42, planOk);
 
-  console.log('tools: unknown keys rejected per tool');
+  console.log('tools: unknown keys are dropped and noted');
   for (const name of Object.keys(S)) {
     const r = bad(name, { ...S[name], not_a_field: 1 });
-    check(`${name}: unknown key gives bad_args`, isBad(r), r.ok ? 'accepted' : r.error.message);
+    check(`${name}: unknown key is dropped with a note`, r.ok && !('not_a_field' in r.args) && r.notes?.[0] === 'Ignored unknown field not_a_field.', r.ok ? r.notes : r.error.message);
   }
+  const multi = bad('search_torrents', { query: 'abc', year: 2020, foo: 1 });
+  check('several unknown keys share one note', multi.ok && multi.notes?.[0] === 'Ignored unknown fields year, foo.', multi);
   const planStepExtra = bad('propose_plan', {
     reason: REASON,
     steps: [{ tool: 'propose_pause_resume', args: { transfer_id: T, action: 'pause', reason: REASON, file_indices: [1] } }],
   });
-  check('plan step with a field its tool does not take is rejected', isBad(planStepExtra));
+  check('plan step: a field its tool does not take is dropped', planStepExtra.ok && !('file_indices' in planStepExtra.args.steps[0].args), planStepExtra);
+
+  console.log('tools: lenient coercion');
+  const sr = (a) => bad('search_torrents', { query: 'abc', ...a });
+  const eq = (name, a, key, want) => { const r = sr(a); check(name, r.ok && r.args[key] === want, r.ok ? r.args[key] : r.error.message); };
+  eq('"1080" becomes 1080', { max_resolution: '1080' }, 'max_resolution', 1080);
+  eq('"1080p" becomes 1080', { min_resolution: '1080p' }, 'min_resolution', 1080);
+  eq('"4k" becomes 2160', { max_resolution: '4K' }, 'max_resolution', 2160);
+  eq('"5" becomes 5', { limit: '5' }, 'limit', 5);
+  eq('"5 GB" becomes 5', { max_size_gb: '5 GB' }, 'max_size_gb', 5);
+  eq('"2.5gb" becomes 2.5', { max_size_gb: '2.5gb' }, 'max_size_gb', 2.5);
+  eq('"true" becomes true', { include_cam: 'True' }, 'include_cam', true);
+  eq('"false" becomes false', { include_cam: ' false ' }, 'include_cam', false);
+  eq('enum is trimmed and case-folded', { category: '  Movies ' }, 'category', 'movies');
+  for (const [from, to] of [['movie', 'movies'], ['Film', 'movies'], ['films', 'movies'], ['show', 'tv'], ['series', 'tv'], ['TV Shows', 'tv'], ['book', 'books'], ['game', 'games'], ['app', 'apps'], ['software', 'apps']]) {
+    eq(`category "${from}" becomes ${to}`, { category: from }, 'category', to);
+  }
+  for (const [from, to] of [['popular', 'seeders'], ['seeds', 'seeders'], ['Seeders', 'seeders'], ['latest', 'newest'], ['new', 'newest'], ['recent', 'newest']]) {
+    eq(`sort "${from}" becomes ${to}`, { sort: from }, 'sort', to);
+  }
+  check('a null optional is dropped', sr({ category: null }).ok && !('category' in sr({ category: null }).args));
+  check('a null required field is still rejected', isBad(bad('search_torrents', { query: null })));
+  check('adult stays rejected after folding', isBad(sr({ category: 'Adult' })));
+  check('out-of-range numeric string still rejected', isBad(sr({ limit: '99' })) && isBad(sr({ max_resolution: '1081' })));
+  check('wrong handle still rejected', isBad(bad('propose_add', { result_id: 'r99' })) && isBad(bad('propose_change', { transfer_id: 'zzz', action: 'pause' })));
+  check('missing required handle still rejected', isBad(bad('propose_add', {})) && isBad(bad('propose_change', { action: 'pause' })));
+  console.log('tools: browse_torrents');
+  {
+    const br = (a) => bad('browse_torrents', a);
+    const beq = (name, a, want) => { const r = br(a); const got = r.ok ? JSON.stringify(['kind', 'order', 'period', 'limit'].map((k) => r.args[k])) : r.error.message; check(name, got === JSON.stringify(want), got); };
+    beq('kind alone is enough (defaults stay to the runner)', { kind: 'movies' }, ['movies', undefined, undefined, undefined]);
+    beq('every field', { kind: 'tv', order: 'popular', period: 'month', limit: 10 }, ['tv', 'popular', 'month', 10]);
+    check('kind is required', isBad(br({ order: 'new' })) && /kind/.test(br({ order: 'new' }).error.message));
+    check('an unknown kind lists the choices', isBad(br({ kind: 'podcasts' })) && /movies, tv, anime, books, games, music, apps/.test(br({ kind: 'podcasts' }).error.message));
+    check('adult is not a kind', isBad(br({ kind: 'adult' })));
+    check('limit 1 to 10', isBad(br({ kind: 'movies', limit: 11 })) && isBad(br({ kind: 'movies', limit: 0 })) && br({ kind: 'movies', limit: '10' }).ok);
+    for (const [from, to] of [['Movies', 'movies'], ['film', 'movies'], ['films', 'movies'], ['movie', 'movies'], ['show', 'tv'], ['shows', 'tv'], ['series', 'tv'], ['TV shows', 'tv'], ['episodes', 'tv'], ['Anime', 'anime'], ['ebooks', 'books'], ['audiobooks', 'books'], ['game', 'games'], ['songs', 'music'], ['albums', 'music'], ['software', 'apps'], ['programs', 'apps']]) {
+      beq(`kind "${from}" becomes ${to}`, { kind: from }, [to, undefined, undefined, undefined]);
+    }
+    for (const [from, to] of [['latest', 'new'], ['Recent', 'new'], ['newest', 'new'], ['trending', 'popular'], ['top', 'popular'], ['best', 'popular'], ['seeders', 'popular'], ['most popular', 'popular']]) {
+      beq(`order "${from}" becomes ${to}`, { kind: 'movies', order: from }, ['movies', to, undefined, undefined]);
+    }
+    for (const [from, to] of [['this week', 'week'], ['Today', 'day'], ['24h', 'day'], ['this month', 'month'], ['weekly', 'week'], ['this year', 'year']]) {
+      beq(`period "${from}" becomes ${to}`, { kind: 'movies', period: from }, ['movies', undefined, to, undefined]);
+    }
+    beq('search-style field names are mapped: category, sort', { category: 'films', sort: 'newest' }, ['movies', 'new', undefined, undefined]);
+    beq('the real field wins over an alias', { kind: 'tv', category: 'movies' }, ['tv', undefined, undefined, undefined]);
+    const q = br({ kind: 'movies', query: 'latest movies' });
+    check('a query is dropped with a note, not an error', q.ok && !('query' in q.args) && q.notes.some((n) => /query/.test(n)), q);
+    check('a nonsense period is refused with the choices', isBad(br({ kind: 'movies', period: 'decade' })) && /day, week, month, year/.test(br({ kind: 'movies', period: 'decade' }).error.message));
+    const def = TOOLS.find((t) => t.function.name === 'browse_torrents').function;
+    check('browse description says when to use it', /new or popular/.test(def.description) && /latest/.test(def.description) && /no title/.test(def.description), def.description);
+    const { toolsOverview } = await import('../utils/assistant/tools.ts');
+    const line = toolsOverview().split('\n').find((l) => l.startsWith('- browse_torrents:'));
+    check('overview shows browse order and period values', /kind/.test(line) && /order new\|popular/.test(line) && /period day\|week\|month\|year/.test(line), line);
+    check('a sort of "popular" on search still means seeders', sr({ sort: 'popular' }).args.sort === 'seeders');
+  }
+
+  const searchDef = TOOLS.find((t) => t.function.name === 'search_torrents').function;
+  const JUST = 'Just the title. Add a year, season or episode only if the user gave one.';
+  check('search description and query hint say just the title', searchDef.description.includes(JUST) && searchDef.parameters.properties.query.description === JUST && !/short title/i.test(searchDef.description), searchDef.description);
 
   console.log('tools: bad, hash-like and wrong-kind handles');
   check('unknown result handle gives bad_args', isBad(bad('propose_add', { result_id: 'r99', reason: REASON })));
@@ -140,15 +263,17 @@ async function main() {
   check('handle error is plain English', !unknownMsg.ok && unknownMsg.error.message.length > 10);
 
   console.log('tools: types, enums and ranges');
-  check('string where number expected gives bad_args', isBad(bad('search_torrents', { query: 'abc', max_size_gb: '5' })));
+  check('non-numeric text where number expected gives bad_args', isBad(bad('search_torrents', { query: 'abc', max_size_gb: 'big' })));
+  check('MB is not guessed as GB', isBad(bad('search_torrents', { query: 'abc', max_size_gb: '500 MB' })));
   check('fraction where integer expected gives bad_args', isBad(bad('search_torrents', { query: 'abc', limit: 2.5 })));
   check('limit above 8 gives bad_args', isBad(bad('search_torrents', { query: 'abc', limit: 9 })));
   check('adult category gives bad_args', isBad(bad('search_torrents', { query: 'abc', category: 'adult' })));
   check('resolution 4320 gives bad_args', isBad(bad('search_torrents', { query: 'abc', max_resolution: 4320 })));
   check('min resolution above max gives bad_args', isBad(bad('search_torrents', { query: 'abc', min_resolution: 1080, max_resolution: 720 })));
   check('bad action enum gives bad_args', isBad(bad('propose_pause_resume', { transfer_id: 't1', action: 'delete', reason: REASON })));
-  check('boolean as string gives bad_args', isBad(bad('propose_delete', { transfer_id: 't1', delete_files: 'yes', reason: REASON })));
-  check('missing required reason gives bad_args', isBad(bad('propose_add', { result_id: 'r1' })));
+  check('boolean as unclear text gives bad_args', isBad(bad('propose_delete', { transfer_id: 't1', delete_files: 'maybe', reason: REASON })));
+  check('reason is optional on propose_add and propose_change', bad('propose_add', { result_id: 'r1' }).ok && bad('propose_change', { transfer_id: 't1', action: 'pause' }).ok);
+  check('reason is still required on legacy propose_delete', isBad(bad('propose_delete', { transfer_id: 't1' })));
   check('missing required query gives bad_args', isBad(bad('search_torrents', { category: 'movies' })));
   check('negative file index gives bad_args', isBad(bad('propose_remove_files', { transfer_id: 't1', file_indices: [-1], reason: REASON })));
   check('duplicate file indices give bad_args', isBad(bad('propose_remove_files', { transfer_id: 't1', file_indices: [1, 1], reason: REASON })));
@@ -176,11 +301,7 @@ async function main() {
   check('propose_setting_change is gone', isBad(bad('propose_setting_change', { key: 'wifi_only', value: true, reason: REASON }), 'unknown_tool'));
   check('no tool definition mentions the removed tools', !/url_download|setting_change/.test(JSON.stringify(TOOLS)));
   check('DESTRUCTIVE_TOOLS is delete and remove_files', DESTRUCTIVE_TOOLS.size === 2 && DESTRUCTIVE_TOOLS.has('propose_delete') && DESTRUCTIVE_TOOLS.has('propose_remove_files'), [...DESTRUCTIVE_TOOLS]);
-  check('destructive tools are proposal tools', [...DESTRUCTIVE_TOOLS].every((n) => PROPOSAL_TOOLS.has(n)));
-  const planDesc = TOOLS.find((t) => t.function.name === 'propose_plan').function.description;
-  check('plan description says steps are independent', /independent/.test(planDesc) && /cannot refer to a download created by an earlier step/.test(planDesc), planDesc);
-  const stepEnum = TOOLS.find((t) => t.function.name === 'propose_plan').function.parameters.properties.steps.items.properties.tool.enum;
-  check('plan step enum is add, select_files, pause_resume', JSON.stringify([...stepEnum].sort()) === JSON.stringify(['propose_add', 'propose_pause_resume', 'propose_select_files']), stepEnum);
+  check('propose_change is the one destructive proposal the model can call', PROPOSAL_TOOLS.has('propose_change'));
   const addStep = { tool: 'propose_add', args: { result_id: R, reason: REASON } };
   const selStep = { tool: 'propose_select_files', args: { transfer_id: T, include: [1], reason: REASON } };
   check('plan of add + select + pause is accepted', bad('propose_plan', { reason: REASON, steps: [addStep, selStep, { tool: 'propose_pause_resume', args: { transfer_id: T, action: 'pause', reason: REASON } }] }).ok === true);

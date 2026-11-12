@@ -3,9 +3,11 @@ import { Animated, Pressable, StyleSheet, View } from 'react-native';
 import { Tabs } from 'expo-router';
 import type { BottomTabBarButtonProps } from 'expo-router/build/layouts/Tabs';
 import { TAB_BAR_HEIGHT, useTabBarStyle } from '../../components/tabBarStyle';
-import { triggerHaptic } from '../../constants/haptics';
-import { PixelIcon, PixelIconName } from '../../components/PixelIcon';
-import { PRESS_SINK, animateTo, duration, useReduceMotion, useSnapOnActivate } from '../../components/motion';
+import { haptic } from '../../constants/haptics';
+import { PixelIconName } from '../../components/PixelIcon';
+import { TabGlyph, useTabMove } from '../../components/tabs/TabGlyph';
+import type { TabGlyphName } from '../../components/tabs/tabGlyphs';
+import { PRESS_SINK, animateTo, duration, useReduceMotion } from '../../components/motion';
 import { useTheme } from '../../context/ThemeContext';
 import { useAssistantPrefs } from '../../utils/prefs/assistantApp';
 import { ThemeColors, fontFamily, withAlpha } from '../../constants/theme';
@@ -25,7 +27,7 @@ type TabButtonProps = BottomTabBarButtonProps & { icon: PixelIconName; title: st
  * Motion, all on the native driver and only on press or focus change:
  * - press: icon and pill sink 2 px (120 ms down, 160 ms back), instead of a ripple
  * - focus: the pill grows out from the centre while the icon and label crossfade to the
- *   active look (180 ms), and the icon does one pixel snap (0.88 -> 1.04 -> 1)
+ *   active look (180 ms), and the icon plays its one signature move (components/tabs, 220 ms)
  */
 function TabButton({
   icon,
@@ -50,7 +52,7 @@ function TabButton({
 
   const focus = useRef(new Animated.Value(focused ? 1 : 0)).current;
   const sink = useRef(new Animated.Value(0)).current;
-  const snap = useSnapOnActivate(focused, reduce);
+  const move = useTabMove(focused, reduce);
 
   const anim = useRef({
     off: focus.interpolate({ inputRange: [0, 1], outputRange: [1, 0] }),
@@ -77,14 +79,14 @@ function TabButton({
     >
       <Animated.View style={[styles.iconWrap, { transform: [{ translateY: anim.sinkY }] }]}>
         <Animated.View style={[styles.pill, { opacity: focus, transform: [{ scaleX: anim.pillScaleX }] }]} />
-        <Animated.View style={[styles.glyph, { transform: [{ scale: snap }] }]}>
+        <View style={styles.glyph}>
           <Animated.View style={{ opacity: anim.off }}>
-            <PixelIcon name={icon} size={ICON} color={colors.textMuted} />
+            <TabGlyph name={icon as TabGlyphName} color={colors.textMuted} progress={move} />
           </Animated.View>
           <Animated.View style={[StyleSheet.absoluteFill, { opacity: focus }]}>
-            <PixelIcon name={icon} size={ICON} color={colors.accentText} />
+            <TabGlyph name={icon as TabGlyphName} color={colors.accentText} progress={move} />
           </Animated.View>
-        </Animated.View>
+        </View>
       </Animated.View>
       {/* Bold sits in flow (it is the wider of the two) so the regular copy always fits over it. */}
       <View style={styles.labelWrap}>
@@ -104,9 +106,10 @@ export default function TabLayout() {
 
   const assistant = useAssistantPrefs();
 
-  const tab = (name: string, title: string, icon: PixelIconName, hidden = false) => (
+  const tab = (name: string, title: string, icon: PixelIconName, hidden = false, freeze = false) => (
     <Tabs.Screen
       name={name}
+      activityEnabled={freeze}
       options={
         hidden
           ? // href null removes the tab entirely (Settings > Assistant off). expo-router throws if
@@ -124,17 +127,30 @@ export default function TabLayout() {
 
   return (
     <Tabs
-      screenListeners={{ tabPress: () => triggerHaptic('selection') }}
+      screenListeners={{ tabPress: () => haptic('select') }}
       screenOptions={{
+        // A tab renders (and its route module loads) only when first opened. This is already the
+        // default (createBottomTabNavigator passes lazyByDefault: true); set so it cannot regress.
+        lazy: true,
+        // freezeOnBlur is deprecated with no effect in Expo Router 58 (bottom-tabs/types.d.ts;
+        // ScreenFallback passes freezeOnBlur: false). Hidden tabs are frozen with React Activity
+        // instead, per tab, through `activityEnabled` below.
         headerShown: false,
         tabBarStyle,
         tabBarItemStyle: { height: TAB_BAR_HEIGHT, justifyContent: 'center' },
       }}
     >
+      {/*
+        React Activity (activityEnabled): a hidden tab keeps its state, its effects are cleaned up
+        and its renders drop to idle priority; coming back re-runs its effects.
+        Not for Transfers (its list must be current the moment it shows), Search (its search effect
+        would run the search again on return) or Assistant (its AppState listener must still see
+        the app go to the background while another tab is open).
+      */}
       {tab('index', 'Transfers', 'tab-transfers')}
       {tab('search', 'Search', 'tab-search')}
-      {tab('feeds', 'Feeds', 'tab-feeds')}
-      {tab('settings', 'Settings', 'tab-settings')}
+      {tab('feeds', 'Feeds', 'tab-feeds', false, true)}
+      {tab('settings', 'Settings', 'tab-settings', false, true)}
       {tab('assistant', 'Assistant', 'tab-assistant', !assistant.enabled)}
     </Tabs>
   );

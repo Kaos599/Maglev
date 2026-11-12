@@ -20,6 +20,7 @@ export function Chip({ label, selected = false, onPress, count, disabled = false
   return (
     <PressableScale
       onPress={onPress}
+      haptic="select"
       disabled={disabled}
       testID={testID}
       accessibilityRole="button"

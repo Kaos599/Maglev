@@ -6,6 +6,11 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
+import com.maglev.engine.browser.BlocklistException
+import com.maglev.engine.browser.BlocklistInfo
+import com.maglev.engine.browser.BlocklistStore
+import com.maglev.engine.browser.BrowserData
+import com.maglev.engine.browser.MaglevBrowserView
 import com.maglev.engine.feeds.FeedScheduler
 import com.maglev.engine.permissions.PermissionHelper
 import com.maglev.engine.schedule.ScheduleManager
@@ -63,6 +68,34 @@ class MaglevEngineModule : Module() {
 
     private fun native(promise: Promise, block: () -> String) = engine(promise) { EngineHost.call(block) }
 
+    /** Runs a block list call off the main thread. Failures resolve as the usual `{ ok: false, code, message }`. */
+    private fun blocklist(promise: Promise, block: (Context) -> Map<String, Any?>) {
+        val c = context
+        if (c == null) {
+            promise.resolve(Json.failure("ENGINE_UNAVAILABLE", "Module is not attached"))
+            return
+        }
+        EngineHost.ioScope.launch {
+            val result = try {
+                block(c)
+            } catch (e: BlocklistException) {
+                Json.failure(e.code, e.message ?: "The block list call failed")
+            } catch (t: Throwable) {
+                Json.failure("INTERNAL", t.message ?: "The block list call failed")
+            }
+            promise.resolve(Json.camelize(result))
+        }
+    }
+
+    private fun BlocklistInfo.toResult(): Map<String, Any?> = linkedMapOf(
+        "ok" to true,
+        "domains" to domains,
+        "bytes" to bytes.toDouble(),
+        "updatedAt" to updatedAt?.toDouble(),
+        "source" to source,
+        "urls" to urls,
+    )
+
     override fun definition() = ModuleDefinition {
         Name("MaglevEngine")
 
@@ -116,6 +149,9 @@ class MaglevEngineModule : Module() {
         // URL downloads (docs/NATIVE_CONTRACT.md section 17)
         AsyncFunction("probeUrl") { url: String, options: Map<String, Any?>?, timeoutMs: Double, promise: Promise ->
             io(promise) { EngineHost.probeUrl(url, options ?: emptyMap(), timeoutMs.toLong()) }
+        }
+        AsyncFunction("probeStream") { url: String, options: Map<String, Any?>?, timeoutMs: Double, promise: Promise ->
+            io(promise) { EngineHost.probeStream(url, options ?: emptyMap(), timeoutMs.toLong()) }
         }
         AsyncFunction("addDownload") { url: String, options: Map<String, Any?>?, promise: Promise ->
             io(promise) { EngineHost.addDownload(url, options ?: emptyMap()) }
@@ -352,6 +388,52 @@ class MaglevEngineModule : Module() {
                 cm.flush()
             }
             promise.resolve(removed)
+        }
+
+        // endregion
+
+        // region Browser (docs/NATIVE_CONTRACT.md section 24)
+
+        AsyncFunction("updateBlocklist") { urls: List<String>, promise: Promise ->
+            blocklist(promise) { c -> BlocklistStore.update(c, urls).toResult() }
+        }
+        AsyncFunction("getBlocklistInfo") { promise: Promise ->
+            blocklist(promise) { c -> BlocklistStore.info(c).toResult() }
+        }
+        AsyncFunction("resetBlocklist") { promise: Promise ->
+            blocklist(promise) { c ->
+                BlocklistStore.reset(c)
+                BlocklistStore.info(c).toResult()
+            }
+        }
+        // Cookies, cache, web storage and history of the browser. Works without the view mounted.
+        AsyncFunction("clearBrowserData") { promise: Promise ->
+            val c = context
+            if (c == null) {
+                promise.resolve(Json.failure("ENGINE_UNAVAILABLE", "Module is not attached"))
+            } else {
+                BrowserData.clear(c, null) { promise.resolve(mapOf("ok" to true)) }
+            }
+        }
+
+        View(MaglevBrowserView::class) {
+            Events("onPage", "onFound", "onBlockedCount", "onDownloadRequest", "onMagnet", "onRefused", "onCrashed", "onPageNote")
+
+            Prop("url") { view: MaglevBrowserView, url: String -> view.setUrl(url) }
+            Prop("adBlock") { view: MaglevBrowserView, enabled: Boolean -> view.setAdBlock(enabled) }
+            Prop("allowAdsHosts") { view: MaglevBrowserView, hosts: List<String> -> view.setAllowAdsHosts(hosts) }
+            Prop("desktopMode") { view: MaglevBrowserView, enabled: Boolean -> view.setDesktopMode(enabled) }
+
+            AsyncFunction("goBack") { view: MaglevBrowserView -> view.goBack() }
+            AsyncFunction("goForward") { view: MaglevBrowserView -> view.goForward() }
+            AsyncFunction("reload") { view: MaglevBrowserView -> view.reload() }
+            AsyncFunction("stop") { view: MaglevBrowserView -> view.stop() }
+            AsyncFunction("loadUrl") { view: MaglevBrowserView, url: String -> view.loadTyped(url) }
+            AsyncFunction("scan") { view: MaglevBrowserView -> view.scan() }
+            AsyncFunction("clearData") { view: MaglevBrowserView -> view.clearData() }
+
+            OnViewDidUpdateProps { view: MaglevBrowserView -> view.applyProps() }
+            OnViewDestroys { view: MaglevBrowserView -> view.destroyBrowser() }
         }
 
         // endregion

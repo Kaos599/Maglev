@@ -42,6 +42,7 @@ export function RadioCard({
   return (
     <PressableScale
       onPress={onPress}
+      haptic="select"
       testID={testID}
       scaleTo={0.99}
       accessibilityRole="radio"

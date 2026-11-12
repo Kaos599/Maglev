@@ -6,6 +6,7 @@ import { CARD_EXPIRED_CAPTION, type CardState } from '../../utils/assistant/card
 import type { ProposalCardView } from '../../utils/assistant/runtime';
 import { Button, Sheet } from '../ui';
 import { PixelIcon } from '../PixelIcon';
+import { Shimmer } from './Shimmer';
 
 export interface ProposalCardProps {
   view: ProposalCardView;
@@ -14,7 +15,10 @@ export interface ProposalCardProps {
   onDismiss: () => void;
 }
 
-/** A proposal awaiting the user's tap, and the one-line note it settles into. */
+/**
+ * A proposal awaiting the user's tap, after AI Elements' Confirmation (approve or deny) with its Plan list for
+ * multi-step proposals, and the one-line note it settles into.
+ */
 export const ProposalCard = memo(function ProposalCard({ view, state, onConfirm, onDismiss }: ProposalCardProps) {
   const { colors } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -56,6 +60,10 @@ export const ProposalCard = memo(function ProposalCard({ view, state, onConfirm,
 
   return (
     <View style={[styles.card, view.danger && styles.cardDanger]}>
+      <View style={styles.head}>
+        <PixelIcon name={view.danger ? 'warning' : 'shield'} size={16} color={view.danger ? colors.danger : colors.accentText} />
+        <Text style={[styles.ask, view.danger && { color: colors.danger }]}>Needs your OK</Text>
+      </View>
       <Text style={styles.title} accessibilityRole="header">
         {view.title}
       </Text>
@@ -76,11 +84,18 @@ export const ProposalCard = memo(function ProposalCard({ view, state, onConfirm,
       </View>
 
       {view.steps && view.steps.length > 0 ? (
-        <View style={styles.facts}>
-          {view.steps.map((s, i) => (
-            <Text key={`${i}-${s}`} style={styles.step}>
-              {i + 1}. {s}
-            </Text>
+        <View style={styles.plan}>
+          {view.steps.map((st, i) => (
+            <View key={`${i}-${st}`} style={styles.planRow}>
+              <View style={styles.planNum}>
+                <Text style={styles.planNumText}>{i + 1}</Text>
+              </View>
+              {state.kind === 'executing' ? (
+                <Shimmer text={st} style={styles.step} />
+              ) : (
+                <Text style={styles.step}>{st}</Text>
+              )}
+            </View>
           ))}
         </View>
       ) : null}
@@ -133,8 +148,8 @@ const makeStyles = (c: ThemeColors) =>
   StyleSheet.create({
     card: {
       alignSelf: 'stretch',
-      padding: spacing.lg,
-      gap: spacing.md,
+      padding: spacing.md,
+      gap: spacing.sm,
       backgroundColor: c.surface,
       borderWidth: 1,
       borderColor: c.border,
@@ -148,7 +163,13 @@ const makeStyles = (c: ThemeColors) =>
     sourceName: { gap: 2 },
     sourceLabel: { ...type.bodyStrong, fontSize: type.size.sm, color: c.textMuted },
     fact: { ...type.mono, fontSize: type.size.md, lineHeight: 18, color: c.text },
-    step: { ...type.body, fontSize: 14, lineHeight: 20, color: c.text },
+    head: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+    ask: { ...type.brand, fontSize: type.size.sm, color: c.accentText },
+    plan: { gap: spacing.sm },
+    planRow: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.sm },
+    planNum: { minWidth: 20, height: 20, borderRadius: radius.sm, borderWidth: 1, borderColor: c.border, alignItems: 'center', justifyContent: 'center' },
+    planNumText: { ...type.mono, fontSize: type.size.sm, color: c.textMuted },
+    step: { ...type.body, flex: 1, fontSize: 14, lineHeight: 20, color: c.text },
     says: { gap: 2 },
     saysLabel: { ...type.bodyStrong, fontSize: type.size.sm, color: c.textMuted },
     saysText: { ...type.body, fontSize: 14, lineHeight: 20, fontStyle: 'italic', color: c.textMuted },

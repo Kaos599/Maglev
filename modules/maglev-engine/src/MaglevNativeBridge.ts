@@ -3,6 +3,7 @@ import type {
   AddTorrentOptions,
   Detail,
   DownloadOptions,
+  StreamProbe,
   DownloadSnapshot,
   EngineErrorCode,
   EngineResult,
@@ -432,6 +433,9 @@ export class MaglevEngineBridge implements MaglevEngineApi {
   // URL downloads (NATIVE_CONTRACT 17). The module snake_cases option keys for Rust itself.
   public probeUrl(url: string, options: DownloadOptions = {}, timeoutMs = 15_000): Promise<EngineResult<UrlProbe>> {
     return this.route('probeUrl', url, options, timeoutMs);
+  }
+  public probeStream(url: string, options: DownloadOptions = {}, timeoutMs = 15_000): Promise<EngineResult<StreamProbe>> {
+    return this.route('probeStream', url, options, timeoutMs);
   }
   public addDownload(url: string, options: DownloadOptions = {}): Promise<EngineResult<{ id: string }>> {
     return this.route('addDownload', url, options);
