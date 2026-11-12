@@ -216,9 +216,11 @@ function TransferCardImpl({
   const { fontScale } = useWindowDimensions();
   const m = useMotion();
   // The time left only changes label when it moves more than 10% or crosses a step.
-  const etaRef = useRef<string | null>(null);
-  const etaLabel = formatEta(t.state === "DOWNLOADING" ? t.etaSeconds : -1, etaRef.current);
-  etaRef.current = etaLabel === "—" ? null : etaLabel;
+  // Keyed by id: FlashList recycles cards, and the hysteresis must not carry one torrent's label to another.
+  const etaRef = useRef<{ id: string; label: string } | null>(null);
+  const prevEta = etaRef.current && etaRef.current.id === t.id ? etaRef.current.label : null;
+  const etaLabel = formatEta(t.state === "DOWNLOADING" ? t.etaSeconds : -1, prevEta);
+  etaRef.current = etaLabel === "—" ? null : { id: t.id, label: etaLabel };
   const status = statusFor(t, etaLabel);
   const action = actionFor(t);
   const indeterminate = t.state === "INITIALIZING" || t.state === "CHECKING";
