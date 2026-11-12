@@ -22,5 +22,5 @@
       "headline": "An assistant that *asks first*",
       "subline": "Optional. It shows every change and waits for you to confirm." }
   ],
-  "feature": { "template": "feature-v2.html", "subline": "Videos, links and torrents. One small app." }
+  "feature": { "template": "feature.html", "subline": "Videos, links and torrents. One small app." }
 }
