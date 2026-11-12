@@ -262,7 +262,9 @@ export class MaglevEngineBridge implements MaglevEngineApi {
       const raw = await fn.apply(NativeModule, args);
       return camelizeKeys<T>(raw);
     } catch (e: any) {
-      return { ok: false, code: 'INTERNAL', message: String(e?.message ?? e) } as T;
+      // Expo rejections carry a code such as NO_APP. Keep it when it looks like an engine code.
+      const code = typeof e?.code === 'string' && /^[A-Z][A-Z_]+$/.test(e.code) ? e.code : 'INTERNAL';
+      return { ok: false, code, message: String(e?.message ?? e) } as T;
     }
   }
 
@@ -445,6 +447,9 @@ export class MaglevEngineBridge implements MaglevEngineApi {
   }
   public removeDownload(id: string, deleteFiles: boolean): Promise<EngineResult> {
     return this.route('removeDownload', id, deleteFiles);
+  }
+  public openDownload(id: string): Promise<EngineResult> {
+    return this.route('openDownload', id);
   }
   public refreshDownloadUrl(id: string, url: string, options: DownloadOptions = {}): Promise<EngineResult> {
     return this.route('refreshDownloadUrl', id, url, options);

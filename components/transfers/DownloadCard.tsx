@@ -5,7 +5,7 @@ import type { DownloadSnapshot } from 'maglev-engine';
 import { useTheme } from '../../context/ThemeContext';
 import { ThemeColors, radius, spacing, type } from '../../constants/theme';
 import { formatEta } from '../../utils/rates';
-import { actionRoute, downloadAction, downloadProgress, downloadStatus, type DownloadAction } from '../../utils/downloadCopy';
+import { actionRoute, downloadAction, downloadProgress, downloadProgressLabel, downloadStatus, isIndeterminate, type DownloadAction } from '../../utils/downloadCopy';
 import { IconButton, PressableScale, ProgressBar, ProgressTone } from '../ui';
 import { CARD_HEIGHT } from '../TransferCard';
 
@@ -49,7 +49,7 @@ function DownloadCardImpl({ download: d, onPress, onAction: onActionProp }: Down
   const status = downloadStatus(d, etaLabel);
   const action = downloadAction(d);
   const pct = Math.round(downloadProgress(d) * 100);
-  const indeterminate = d.state === 'resolving' || d.state === 'verifying';
+  const indeterminate = isIndeterminate(d);
   const statusColor = status.tone === 'danger' ? colors.danger : status.tone === 'accent' ? colors.accentText : colors.textMuted;
 
   return (
@@ -58,7 +58,7 @@ function DownloadCardImpl({ download: d, onPress, onAction: onActionProp }: Down
         onPress={() => onPress(d.id)}
         scaleTo={0.99}
         accessibilityRole="button"
-        accessibilityLabel={`${d.name}, ${status.text}, ${pct} percent`}
+        accessibilityLabel={`${d.name}, ${status.text}, ${downloadProgressLabel(d)}`}
         accessibilityActions={[
           { name: 'activate', label: 'Open' },
           ...(action ? [{ name: action.kind, label: action.label }] : []),
@@ -100,6 +100,7 @@ function same(a: DownloadCardProps, b: DownloadCardProps): boolean {
     x.size === y.size &&
     x.downloaded === y.downloaded &&
     x.downBps === y.downBps &&
+    x.stalled === y.stalled &&
     x.eta === y.eta &&
     x.error?.code === y.error?.code &&
     x.error?.message === y.error?.message

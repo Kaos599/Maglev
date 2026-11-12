@@ -145,7 +145,11 @@ export type EngineErrorCode =
   | 'LINK_EXPIRED'
   | 'FILE_CHANGED'
   | 'NOT_A_FILE'
-  | 'CHECKSUM_MISMATCH';
+  | 'CHECKSUM_MISMATCH'
+  /** Opening a finished download: no app can open it. */
+  | 'NO_APP'
+  /** The server stopped sending data and the retries ran out. */
+  | 'STALLED';
 
 /** NATIVE_CONTRACT 12.1. */
 export interface ResolveActivity {
@@ -372,7 +376,7 @@ export type DownloadState =
 export interface DownloadError {
   code: Extract<
     EngineErrorCode,
-    'HTTP_STATUS' | 'AUTH_REQUIRED' | 'LINK_EXPIRED' | 'FILE_CHANGED' | 'NOT_A_FILE' | 'CHECKSUM_MISMATCH' | 'NETWORK' | 'PERMISSION'
+    'HTTP_STATUS' | 'AUTH_REQUIRED' | 'LINK_EXPIRED' | 'FILE_CHANGED' | 'NOT_A_FILE' | 'CHECKSUM_MISMATCH' | 'NETWORK' | 'PERMISSION' | 'STALLED'
   >;
   message: string;
   httpStatus?: number | null;
@@ -399,6 +403,8 @@ export interface DownloadSnapshot {
   error: DownloadError | null;
   /** A one-line note, for example "Server sent the whole file again; starting over." */
   notice?: string | null;
+  /** True while downloading but no bytes arrived for 30 s. Absent means false. */
+  stalled?: boolean;
 }
 
 export interface DownloadOptions {
@@ -627,6 +633,8 @@ export interface MaglevEngineApi {
   /** After FILE_CHANGED this restarts from zero. */
   retryDownload(id: string): Promise<EngineResult>;
   removeDownload(id: string, deleteFiles: boolean): Promise<EngineResult>;
+  /** Opens a finished download in another app. NO_APP when none can open it. */
+  openDownload(id: string): Promise<EngineResult>;
   /** Only for `needs_link`. FILE_CHANGED when the new link is another file. */
   refreshDownloadUrl(id: string, url: string, options: DownloadOptions): Promise<EngineResult>;
   setDownloadLimits(id: string, limits: { downLimitBps: number }): Promise<EngineResult>;

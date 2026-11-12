@@ -14,13 +14,14 @@ export type DownloadActionKind =
   | 'restart'
   | 'newLink'
   | 'remove'
+  | 'open'
   | 'pickFolder'
   | 'openNetworkSettings';
 
 export interface DownloadAction {
   kind: DownloadActionKind;
   /** Icon name from the generated Pixelarticons set. */
-  icon: 'pause' | 'play' | 'retry' | 'link' | 'trash' | 'folder' | 'settings';
+  icon: 'pause' | 'play' | 'retry' | 'link' | 'trash' | 'folder' | 'settings' | 'external';
   label: string;
 }
 
@@ -42,6 +43,10 @@ export const PERMISSION_TEXT = "Maglev can't write to that folder.";
 export const WIFI_CAPTION = 'Wi-Fi only is on in Settings → Network.';
 export const NOT_A_FILE_BODY =
   'This is a web page, not a file. On the page, long-press the download button, tap Copy link address, then paste it here.';
+export const STALLED_TEXT = 'Waiting for the server';
+export const STALLED_ERROR_TEXT = 'The server stopped sending data.';
+export const AUTH_REQUIRED_TEXT = 'This link needs you to sign in again. Paste the link again.';
+export const NO_APP_TEXT = 'No app on this phone can open this file.';
 export const AUTH_BODY =
   'This site wants you to sign in. Sign in on the site in your browser, copy the download link again, and paste it here.';
 
@@ -60,6 +65,8 @@ type ErrorKind =
   | 'localBlocked'
   | 'policyBlocked'
   | 'httpGone'
+  | 'authRequired'
+  | 'stalled'
   | 'network'
   | 'other';
 
@@ -83,10 +90,28 @@ function errorKind(code: string | undefined, httpStatus?: number | null): ErrorK
   if (c === 'STORAGE_UNAVAILABLE') return 'folderGone';
   if (c === 'LOCAL_REDIRECT') return 'localBlocked';
   if (c === 'BLOCKED') return 'policyBlocked';
+  if (c === 'AUTH_REQUIRED') return 'authRequired';
+  if (c === 'STALLED') return 'stalled';
   return 'other';
 }
 
-/** 0 to 1. Unknown size reads as 0 (the bar is shown indeterminate while resolving). */
+/** True when the server has not said how big the file is, so a percentage would be a guess. */
+export function isSizeUnknown(d: DownloadSnapshot): boolean {
+  return d.state !== 'finished' && (!d.size || d.size <= 0);
+}
+
+/** Bar mode: indeterminate while resolving, finishing, or downloading a file of unknown size. */
+export function isIndeterminate(d: DownloadSnapshot): boolean {
+  return d.state === 'resolving' || d.state === 'verifying' || (d.state === 'downloading' && isSizeUnknown(d));
+}
+
+/** Screen-reader progress: a percentage when the size is known, bytes received when it is not. */
+export function downloadProgressLabel(d: DownloadSnapshot): string {
+  if (isSizeUnknown(d)) return d.downloaded > 0 ? `${formatBytes(d.downloaded)} so far` : 'size unknown';
+  return `${Math.round(downloadProgress(d) * 100)} percent`;
+}
+
+/** 0 to 1. Unknown size reads as 0; check `isSizeUnknown` and show an indeterminate bar instead. */
 export function downloadProgress(d: DownloadSnapshot): number {
   if (d.state === 'finished') return 1;
   if (!d.size || d.size <= 0) return 0;
@@ -101,7 +126,9 @@ export function downloadStatus(d: DownloadSnapshot, etaLabel?: string): { text: 
     case 'queued':
       return { text: 'Queued', tone: 'muted' };
     case 'downloading': {
+      if (d.stalled) return { text: STALLED_TEXT, tone: 'muted' };
       const speed = d.downBps > 0 ? formatSpeed(d.downBps) : '—';
+      if (isSizeUnknown(d)) return { text: `${formatBytes(d.downloaded)} so far · ${speed}`, tone: 'muted' };
       const eta = etaLabel ?? formatEta(d.eta, null);
       if (d.eta >= 0 && eta !== '—') return { text: `${eta} left · ${speed}`, tone: 'muted' };
       return { text: `Downloading · ${speed}`, tone: 'muted' };
@@ -146,6 +173,10 @@ function errorLine(d: DownloadSnapshot): string {
       return LOCAL_BLOCKED_TEXT;
     case 'policyBlocked':
       return POLICY_BLOCKED_TEXT;
+    case 'authRequired':
+      return AUTH_REQUIRED_TEXT;
+    case 'stalled':
+      return STALLED_ERROR_TEXT;
     default:
       return d.error?.message || 'Something went wrong';
   }
@@ -153,13 +184,14 @@ function errorLine(d: DownloadSnapshot): string {
 
 /** A longer line the sheet shows (the card line is one row and may be cut). Null when there is none. */
 export function downloadCaption(d: DownloadSnapshot): string | null {
+  if (d.state === 'downloading' && d.stalled) return STALLED_TEXT;
   if (d.state === 'paused' && d.pausedBy === 'wifi_only') return WIFI_CAPTION;
   if (d.state === 'paused' && d.pausedBy === 'storage_unavailable') return FOLDER_GONE_TEXT;
   if (d.state === 'needs_link' && d.error?.code === 'AUTH_REQUIRED') return AUTH_BODY;
   if (d.state === 'error') {
     const k = errorKind(d.error?.code, d.error?.httpStatus);
     if (k === 'notAFile') return NOT_A_FILE_BODY;
-    if (k === 'permission' || k === 'folderGone' || k === 'tooBig' || k === 'localBlocked' || k === 'policyBlocked') return errorLine(d);
+    if (k === 'permission' || k === 'folderGone' || k === 'tooBig' || k === 'localBlocked' || k === 'policyBlocked' || k === 'authRequired' || k === 'stalled') return errorLine(d);
   }
   return null;
 }
@@ -169,6 +201,7 @@ const A = {
   resume: { kind: 'resume', icon: 'play', label: 'Resume' },
   retry: { kind: 'retry', icon: 'retry', label: 'Retry' },
   restart: { kind: 'restart', icon: 'retry', label: 'Restart' },
+  open: { kind: 'open', icon: 'external', label: 'Open' },
   newLink: { kind: 'newLink', icon: 'link', label: 'Paste new link' },
   remove: { kind: 'remove', icon: 'trash', label: 'Remove' },
   pickFolder: { kind: 'pickFolder', icon: 'folder', label: 'Pick folder again' },
@@ -188,6 +221,8 @@ export function downloadActions(d: DownloadSnapshot): DownloadAction[] {
       return [A.resume];
     case 'needs_link':
       return [A.newLink];
+    case 'finished':
+      return [A.open];
     case 'error':
       switch (errorKind(d.error?.code, d.error?.httpStatus)) {
         case 'fileChanged':
@@ -198,6 +233,8 @@ export function downloadActions(d: DownloadSnapshot): DownloadAction[] {
         case 'localBlocked':
         case 'httpGone':
           return [A.remove];
+        case 'authRequired':
+          return [A.newLink];
         case 'permission':
           return [A.pickFolder, A.retry];
         case 'folderGone':
@@ -211,6 +248,17 @@ export function downloadActions(d: DownloadSnapshot): DownloadAction[] {
     default:
       return [];
   }
+}
+
+/** True when the sheet should ask for a new link (the link expired, or the site wants a sign-in again). */
+export function needsNewLink(d: DownloadSnapshot): boolean {
+  return d.state === 'needs_link' || (d.state === 'error' && errorKind(d.error?.code, d.error?.httpStatus) === 'authRequired');
+}
+
+/** What to tell the user when Open fails. */
+export function openFailureText(code: string | undefined, message?: string): string {
+  if ((code ?? '').toUpperCase() === 'NO_APP') return NO_APP_TEXT;
+  return message || "Couldn't open that file.";
 }
 
 /** The card's one button, or null when nothing can be done now. */

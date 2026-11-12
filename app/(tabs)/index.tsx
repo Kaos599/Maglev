@@ -14,7 +14,7 @@ import { ClipboardChip } from '../../components/transfers/ClipboardChip';
 import { DeleteSheet } from '../../components/transfers/DeleteSheet';
 import { SortSheet } from '../../components/transfers/SortSheet';
 import { TeachingEmptyState } from '../../components/transfers/TeachingEmptyState';
-import { FILTERS, TransferFilter, countByFilter, magnetHash, matchesFilter, sortTorrents } from '../../components/transfers/model';
+import { FILTERS, TransferFilter, countByFilter, downloadMatchesFilter, magnetHash, matchesFilter, sortTorrents } from '../../components/transfers/model';
 import { PixelIcon } from '../../components/PixelIcon';
 import { Banner, EmptyBlock, IconButton } from '../../components/ui/index';
 import * as DocumentPicker from 'expo-document-picker';
@@ -24,7 +24,7 @@ import { useMaglevEngine } from '../../context/EngineContext';
 import { useTheme } from '../../context/ThemeContext';
 import { ThemeColors, radius, spacing, type } from '../../constants/theme';
 import { takeNextShared } from '../../utils/shareQueue';
-import type { DownloadAction } from '../../utils/downloadCopy';
+import { openFailureText, type DownloadAction } from '../../utils/downloadCopy';
 import { BulkVerb, bulkSummary } from '../../utils/bulkSummary';
 import { TransferSort, loadTransferSort, saveTransferSort } from '../../utils/prefs/transfers';
 
@@ -69,14 +69,21 @@ export default function TransfersScreen() {
   const all = telemetry.torrents;
   const focused = useIsFocused();
   const cruising = focused && all.some((t) => t.state === 'DOWNLOADING');
-  // Downloads from links show above the torrents, under "All" only, and obey the name filter.
+  // Downloads from links show above the torrents, obey the same filters, and obey the name filter.
   const shownDownloads = useMemo(() => {
-    if (filter !== 'all') return [];
     const q = query.trim().toLowerCase();
-    return q ? downloads.filter((d) => d.name.toLowerCase().includes(q)) : downloads;
+    return downloads.filter((d) => downloadMatchesFilter(d, filter) && (!q || d.name.toLowerCase().includes(q)));
   }, [downloads, filter, query]);
   const sheetDownload = useMemo(() => downloads.find((d) => d.id === sheetDownloadId) ?? null, [downloads, sheetDownloadId]);
   const onDownloadPress = useCallback((id: string) => setSheetDownloadId(id), []);
+  const openDownload = useCallback(
+    (id: string) => {
+      void maglevEngine.openDownload(id).then((res) => {
+        if (!res.ok) showNotice({ message: openFailureText(res.code, res.message) });
+      });
+    },
+    [showNotice],
+  );
   const onDownloadAction = useCallback(
     (d: DownloadSnapshot, action: DownloadAction) => {
       switch (action.kind) {
@@ -93,13 +100,16 @@ export default function TransfersScreen() {
         case 'newLink':
           setSheetDownloadId(d.id);
           break;
+        case 'open':
+          openDownload(d.id);
+          break;
       }
     },
-    [pauseDownload, resumeDownload, retryDownload],
+    [pauseDownload, resumeDownload, retryDownload, openDownload],
   );
   const selectionMode = selectedIds.size > 0;
 
-  const counts = useMemo(() => countByFilter(all), [all]);
+  const counts = useMemo(() => countByFilter(all, downloads), [all, downloads]);
   const visible = useMemo(() => {
     const q = query.trim().toLowerCase();
     const filtered = all.filter((t) => matchesFilter(t, filter) && (!q || t.name.toLowerCase().includes(q)));
@@ -419,6 +429,7 @@ export default function TransfersScreen() {
         download={sheetDownload}
         onClose={() => setSheetDownloadId(null)}
         onRetry={(id) => void retryDownload(id)}
+        onOpen={openDownload}
         onRemove={(id, deleteFiles) => void removeDownload(id, deleteFiles)}
         onNewLink={refreshDownloadUrl}
       />

@@ -1,4 +1,4 @@
-import type { TorrentTelemetry } from 'maglev-engine';
+import type { DownloadSnapshot, TorrentTelemetry } from 'maglev-engine';
 import type { SortKey, TransferSort } from '../../utils/prefs/transfers';
 
 export type TransferFilter = 'all' | 'downloading' | 'seeding' | 'paused' | 'done' | 'errors';
@@ -41,10 +41,35 @@ export function matchesFilter(t: TorrentTelemetry, f: TransferFilter): boolean {
   }
 }
 
-export function countByFilter(list: readonly TorrentTelemetry[]): Record<TransferFilter, number> {
-  const out: Record<TransferFilter, number> = { all: list.length, downloading: 0, seeding: 0, paused: 0, done: 0, errors: 0 };
+/** Link downloads in the matching state. There is no "seeding" for a link, and a link that needs a new link is an error. */
+export function downloadMatchesFilter(d: DownloadSnapshot, f: TransferFilter): boolean {
+  switch (f) {
+    case 'all':
+      return true;
+    case 'downloading':
+      return d.state === 'resolving' || d.state === 'queued' || d.state === 'downloading' || d.state === 'verifying';
+    case 'seeding':
+      return false;
+    case 'paused':
+      return d.state === 'paused';
+    case 'done':
+      return d.state === 'finished';
+    case 'errors':
+      return d.state === 'error' || d.state === 'needs_link';
+  }
+}
+
+/** Counts torrents and link downloads together, with the same rule as the list. */
+export function countByFilter(
+  list: readonly TorrentTelemetry[],
+  downloads: readonly DownloadSnapshot[] = [],
+): Record<TransferFilter, number> {
+  const out: Record<TransferFilter, number> = { all: list.length + downloads.length, downloading: 0, seeding: 0, paused: 0, done: 0, errors: 0 };
   for (const t of list) {
     for (const f of FILTERS) if (f.id !== 'all' && matchesFilter(t, f.id)) out[f.id] += 1;
+  }
+  for (const d of downloads) {
+    for (const f of FILTERS) if (f.id !== 'all' && downloadMatchesFilter(d, f.id)) out[f.id] += 1;
   }
   return out;
 }

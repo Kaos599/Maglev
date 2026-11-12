@@ -7,7 +7,7 @@ import { isDownloadLink, normalizeIncoming } from 'maglev-engine';
 import { useTheme } from '../../context/ThemeContext';
 import { ThemeColors, radius, spacing, type } from '../../constants/theme';
 import { formatBytes } from '../../constants/format';
-import { actionRoute, downloadActions, downloadCaption, removeCopy } from '../../utils/downloadCopy';
+import { actionRoute, downloadActions, downloadCaption, needsNewLink, removeCopy } from '../../utils/downloadCopy';
 import { Banner, Button, Sheet } from '../ui';
 
 export interface DownloadSheetProps {
@@ -15,6 +15,8 @@ export interface DownloadSheetProps {
   download: DownloadSnapshot | null;
   onClose: () => void;
   onRetry: (id: string) => void;
+  /** Opens a finished download in another app. */
+  onOpen: (id: string) => void;
   onRemove: (id: string, deleteFiles: boolean) => void;
   onNewLink: (id: string, url: string) => Promise<EngineResult>;
 }
@@ -22,7 +24,7 @@ export interface DownloadSheetProps {
 type Step = 'main' | 'confirmDelete';
 
 /** What a tap on a download card opens: details, Retry or Restart, Paste new link, Remove (SM-30 Copy). */
-export function DownloadSheet({ download: d, onClose, onRetry, onRemove, onNewLink }: DownloadSheetProps) {
+export function DownloadSheet({ download: d, onClose, onRetry, onOpen, onRemove, onNewLink }: DownloadSheetProps) {
   const { colors } = useTheme();
   const router = useRouter();
   const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -96,7 +98,7 @@ export function DownloadSheet({ download: d, onClose, onRetry, onRemove, onNewLi
     <Sheet visible onClose={onClose} title={d.name} subtitle={subtitle}>
       <View style={styles.stack}>
         {d.notice ? <Banner tone="info" title={d.notice} /> : null}
-        {d.state === 'needs_link' ? (
+        {needsNewLink(d) ? (
           <View style={styles.stack}>
             <Text style={styles.label}>Paste a new link to the same file</Text>
             <TextInput
@@ -121,9 +123,9 @@ export function DownloadSheet({ download: d, onClose, onRetry, onRemove, onNewLi
           </View>
         ) : null}
         {caption ? <Text style={styles.hint}>{caption}</Text> : null}
-        {d.state === 'error' || d.state === 'paused'
+        {d.state === 'error' || d.state === 'paused' || d.state === 'finished'
           ? actions
-              .filter((a) => a.kind !== 'remove' && a.kind !== 'resume')
+              .filter((a) => a.kind !== 'remove' && a.kind !== 'resume' && a.kind !== 'newLink')
               .map((a, i) => (
                 <Button
                   key={a.kind}
@@ -134,6 +136,7 @@ export function DownloadSheet({ download: d, onClose, onRetry, onRemove, onNewLi
                   onPress={() => {
                     const route = actionRoute(a.kind);
                     if (route) router.push(route);
+                    else if (a.kind === 'open') onOpen(d.id);
                     else onRetry(d.id);
                     onClose();
                   }}

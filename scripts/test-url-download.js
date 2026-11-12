@@ -68,7 +68,7 @@ async function main() {
   check('needs link offers a new link', copy.downloadAction(d({ state: 'needs_link' }))?.kind === 'newLink');
   check('file changed offers restart', copy.downloadAction(d({ state: 'error', error: { code: 'FILE_CHANGED', message: '' } }))?.kind === 'restart');
   check('other errors offer retry', copy.downloadAction(d({ state: 'error', error: { code: 'NETWORK', message: '' } }))?.kind === 'retry');
-  check('finished has no button', copy.downloadAction(d({ state: 'finished' })) === null);
+  check('finished offers only Open', copy.downloadAction(d({ state: 'finished' }))?.kind === 'open');
   check('remove copy differs for a finished download', copy.removeCopy(d({ state: 'finished' })).keepLabel === 'Remove (keep file)' && copy.removeCopy(d({})).keepLabel.includes('partial'));
 
   // ---- recovery copy and actions ----
@@ -224,6 +224,22 @@ async function main() {
   check('remove drops the row', m.remove(paused.id, true).ok && !find(paused.id));
   check('remove of an unknown id is NOT_FOUND', m.remove('dl_nope', false).code === 'NOT_FOUND');
   check('the simulator told the app about its changes', changes > 0);
+
+  // ---- unknown size, stall, open, sign-in ----
+  console.log('unknown size, stall, open');
+  const unk = d({ size: null, downloaded: 120 * 1024 * 1024, downBps: 1000, eta: -1 });
+  check('unknown size is indeterminate with bytes so far', copy.isIndeterminate(unk) && /^120(\.0)? MB so far/.test(copy.downloadStatus(unk).text), copy.downloadStatus(unk).text);
+  check('known size is not indeterminate', !copy.isIndeterminate(d({})));
+  check('unknown size label has bytes, not a percent', /so far$/.test(copy.downloadProgressLabel(unk)) && copy.downloadProgressLabel(d({})) === '25 percent');
+  check('finished with no size is not unknown', !copy.isSizeUnknown(d({ state: 'finished', size: null })));
+  check('stalled shows Waiting for the server', copy.downloadStatus(d({ stalled: true })).text === 'Waiting for the server' && copy.downloadCaption(d({ stalled: true })) === 'Waiting for the server');
+  check('not stalled has no caption', copy.downloadCaption(d({ stalled: false })) === null && copy.downloadCaption(d({})) === null);
+  check('stalled error reads plainly and retries', copy.downloadStatus(err('STALLED')).text === 'The server stopped sending data.' && kinds(err('STALLED')) === 'retry');
+  check('finished offers Open', kinds(d({ state: 'finished' })) === 'open' && copy.downloadAction(d({ state: 'finished' })).label === 'Open');
+  check('NO_APP text', copy.openFailureText('NO_APP', 'x') === 'No app on this phone can open this file.');
+  check('other open errors keep their message', copy.openFailureText('INTERNAL', 'Boom') === 'Boom' && copy.openFailureText(undefined) === "Couldn't open that file.");
+  check('AUTH_REQUIRED error asks for the link again', copy.downloadStatus(err('AUTH_REQUIRED')).text === 'This link needs you to sign in again. Paste the link again.' && kinds(err('AUTH_REQUIRED')) === 'newLink' && copy.needsNewLink(err('AUTH_REQUIRED')));
+  check('codes match exactly', kinds(err('STALLED_X')) === 'retry' && copy.downloadStatus(err('STALLED_X')).text === 'x');
 
   if (failed) {
     console.error(`\n${failed} failed`);

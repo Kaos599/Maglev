@@ -733,6 +733,9 @@ export class MaglevMockEngine implements MaglevEngineApi {
   public async removeDownload(id: string, deleteFiles: boolean): Promise<EngineResult> {
     return this.downloads.remove(id, deleteFiles);
   }
+  public async openDownload(id: string): Promise<EngineResult> {
+    return this.downloads.snapshots().some((d) => d.id === id) ? { ok: true } : { ok: false, code: 'NOT_FOUND', message: 'No such download.' };
+  }
   public refreshDownloadUrl(id: string, url: string, options: DownloadOptions = {}): Promise<EngineResult> {
     return this.downloads.refreshUrl(id, url, options);
   }
