@@ -4,8 +4,10 @@ import { Tabs } from 'expo-router';
 import type { BottomTabBarButtonProps } from 'expo-router/build/layouts/Tabs';
 import { TAB_BAR_HEIGHT, useTabBarStyle } from '../../components/tabBarStyle';
 import { triggerHaptic } from '../../constants/haptics';
-import { PixelIcon, PixelIconName } from '../../components/PixelIcon';
-import { PRESS_SINK, animateTo, duration, useReduceMotion, useSnapOnActivate } from '../../components/motion';
+import { PixelIconName } from '../../components/PixelIcon';
+import { TabGlyph, useTabMove } from '../../components/tabs/TabGlyph';
+import type { TabGlyphName } from '../../components/tabs/tabGlyphs';
+import { PRESS_SINK, animateTo, duration, useReduceMotion } from '../../components/motion';
 import { useTheme } from '../../context/ThemeContext';
 import { useAssistantPrefs } from '../../utils/prefs/assistantApp';
 import { ThemeColors, fontFamily, withAlpha } from '../../constants/theme';
@@ -25,7 +27,7 @@ type TabButtonProps = BottomTabBarButtonProps & { icon: PixelIconName; title: st
  * Motion, all on the native driver and only on press or focus change:
  * - press: icon and pill sink 2 px (120 ms down, 160 ms back), instead of a ripple
  * - focus: the pill grows out from the centre while the icon and label crossfade to the
- *   active look (180 ms), and the icon does one pixel snap (0.88 -> 1.04 -> 1)
+ *   active look (180 ms), and the icon plays its one signature move (components/tabs, 220 ms)
  */
 function TabButton({
   icon,
@@ -50,7 +52,7 @@ function TabButton({
 
   const focus = useRef(new Animated.Value(focused ? 1 : 0)).current;
   const sink = useRef(new Animated.Value(0)).current;
-  const snap = useSnapOnActivate(focused, reduce);
+  const move = useTabMove(focused, reduce);
 
   const anim = useRef({
     off: focus.interpolate({ inputRange: [0, 1], outputRange: [1, 0] }),
@@ -77,14 +79,14 @@ function TabButton({
     >
       <Animated.View style={[styles.iconWrap, { transform: [{ translateY: anim.sinkY }] }]}>
         <Animated.View style={[styles.pill, { opacity: focus, transform: [{ scaleX: anim.pillScaleX }] }]} />
-        <Animated.View style={[styles.glyph, { transform: [{ scale: snap }] }]}>
+        <View style={styles.glyph}>
           <Animated.View style={{ opacity: anim.off }}>
-            <PixelIcon name={icon} size={ICON} color={colors.textMuted} />
+            <TabGlyph name={icon as TabGlyphName} color={colors.textMuted} progress={move} />
           </Animated.View>
           <Animated.View style={[StyleSheet.absoluteFill, { opacity: focus }]}>
-            <PixelIcon name={icon} size={ICON} color={colors.accentText} />
+            <TabGlyph name={icon as TabGlyphName} color={colors.accentText} progress={move} />
           </Animated.View>
-        </Animated.View>
+        </View>
       </Animated.View>
       {/* Bold sits in flow (it is the wider of the two) so the regular copy always fits over it. */}
       <View style={styles.labelWrap}>
