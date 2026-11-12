@@ -1,5 +1,5 @@
 import React, { useCallback, useMemo, useState } from 'react';
-import { FlatList, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { FlatList, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { router } from 'expo-router';
 import { useTheme } from '../../context/ThemeContext';
 import { ThemeColors, spacing, type } from '../../constants/theme';
@@ -17,6 +17,7 @@ import { Trace } from './Trace';
 import { ProposalCard } from './ProposalCard';
 import { ResultCard } from './ResultCard';
 import { useChatAnnouncements } from './useChatAnnouncements';
+import { useKeyboardInset } from './useKeyboardInset';
 
 export interface AssistantChatViewProps {
   chat: AssistantChat;
@@ -41,6 +42,7 @@ export function AssistantChatView({ chat, onOpenSettings, onChooseFiles, onOpenT
   const [confirmClear, setConfirmClear] = useState(false);
   const { items, gate, send } = chat;
   useChatAnnouncements(items);
+  const kb = useKeyboardInset();
 
   // Newest first, because the list is inverted: it stays pinned to the latest message while text streams in.
   const data = useMemo(() => [...items].reverse(), [items]);
@@ -158,7 +160,7 @@ export function AssistantChatView({ chat, onOpenSettings, onChooseFiles, onOpenT
 
   return (
     <Screen title="ASSISTANT" actions={clearAction}>
-      <KeyboardAvoidingView style={styles.fill} behavior="padding">
+      <View ref={kb.ref} style={[styles.fill, { paddingBottom: kb.inset }]} collapsable={false}>
         {body}
         {ready ? (
           <Composer
@@ -175,7 +177,7 @@ export function AssistantChatView({ chat, onOpenSettings, onChooseFiles, onOpenT
             <Button label="Open settings" variant="secondary" onPress={onOpenSettings} />
           </View>
         ) : null}
-      </KeyboardAvoidingView>
+      </View>
       <Sheet visible={confirmClear} onClose={() => setConfirmClear(false)} title="Clear this chat?" subtitle="Messages and cards go. Downloads stay.">
         <View style={styles.sheetActions}>
           <Button
