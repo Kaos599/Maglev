@@ -24,6 +24,12 @@ export const MAX_ARGS_CHARS = 16 * 1024;
 export const MAX_LINE_BUFFER_CHARS = 256 * 1024;
 /** Cap for tool-call slots in one response. A real model sends 1 to 3. */
 export const MAX_CALL_SLOTS = 16;
+/**
+ * Cap for the opaque per-call extras (serialised JSON). Gemini 3's compat layer puts a thought signature in
+ * `tool_calls[].extra_content.google.thought_signature` and rejects the next request without it. Over the cap, the
+ * extras are dropped and the call still runs.
+ */
+export const MAX_CALL_EXTRA_CHARS = 16 * 1024;
 /** Longest error snippet kept from a provider error (never logged, never shown raw). */
 export const MAX_DETAIL_CHARS = 500;
 
@@ -81,6 +87,11 @@ export interface AssistantToolCall {
   name: string;
   /** Parsed JSON object. Empty arguments are read as `{}`. */
   arguments: Record<string, unknown>;
+  /**
+   * Fields the provider put on the tool call besides index, id, type and function (Gemini:
+   * `{extra_content:{google:{thought_signature}}}`). Opaque. The turn machine sends them back unchanged in history.
+   */
+  extra?: Record<string, unknown>;
 }
 
 export interface StreamResult {
@@ -114,6 +125,26 @@ interface CallAccumulator {
   id?: string;
   name?: string;
   args: string;
+  extra?: Record<string, unknown>;
+  extraDropped?: boolean;
+}
+
+const OWN_CALL_KEYS: ReadonlySet<string> = new Set(['index', 'id', 'type', 'function']);
+const UNSAFE_KEYS: ReadonlySet<string> = new Set(['__proto__', 'constructor', 'prototype']);
+const MAX_EXTRA_DEPTH = 6;
+
+/** Copies `src` into `dst` (records merge, anything else replaces), skipping keys that could pollute a prototype. */
+function mergeExtra(dst: Record<string, unknown>, src: Record<string, unknown>, depth = 0): void {
+  if (depth > MAX_EXTRA_DEPTH) return;
+  for (const [k, v] of Object.entries(src)) {
+    if (UNSAFE_KEYS.has(k)) continue;
+    const cur = Object.prototype.hasOwnProperty.call(dst, k) ? dst[k] : undefined;
+    if (isRecord(v)) {
+      const next: Record<string, unknown> = isRecord(cur) ? cur : {};
+      mergeExtra(next, v, depth + 1);
+      dst[k] = next;
+    } else dst[k] = v;
+  }
 }
 
 const BAD_RESPONSE: StreamFailure = {
@@ -290,6 +321,24 @@ export function createStreamParser(): StreamParser {
           lastIndex = index;
           if (acc.id === undefined && fragId !== undefined) acc.id = fragId;
           if (acc.name === undefined && fragName !== undefined) acc.name = fragName;
+          if (!acc.extraDropped) {
+            const own: Record<string, unknown> = {};
+            for (const [k, v] of Object.entries(frag)) if (!OWN_CALL_KEYS.has(k)) own[k] = v;
+            if (Object.keys(own).length > 0) {
+              const merged = acc.extra ?? {};
+              mergeExtra(merged, own);
+              let size = 0;
+              try {
+                size = JSON.stringify(merged).length;
+              } catch {
+                size = Infinity;
+              }
+              if (size > MAX_CALL_EXTRA_CHARS) {
+                acc.extra = undefined;
+                acc.extraDropped = true;
+              } else acc.extra = merged;
+            }
+          }
           if (typeof fn.arguments === 'string') {
             if (acc.args.length + fn.arguments.length > MAX_ARGS_CHARS) {
               fail(TOO_LONG, out);
@@ -407,7 +456,7 @@ export function createStreamParser(): StreamParser {
         id = `call_${k}`;
         used.add(id);
       }
-      toolCalls.push({ id, name: acc.name, arguments: args });
+      toolCalls.push({ id, name: acc.name, arguments: args, ...(acc.extra ? { extra: acc.extra } : {}) });
     }
     return { ok: true, text, toolCalls, finishReason, truncated: lengthStop, usage };
   }

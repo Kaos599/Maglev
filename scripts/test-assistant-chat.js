@@ -620,12 +620,211 @@ async function main() {
     s.fetch.queue.push({ chunks: sseText(['Yes.']) });
     s.chat().askAbout('r1');
     await settle();
-    check('askAbout sends a canned question naming the handle', /r1/.test(s.chat().items[0].text) && s.chat().items[0].kind === 'user');
+    check('askAbout with no known result: the bubble has no handle, the model still gets it', s.chat().items[0].kind === 'user' && !/\br1\b/.test(s.chat().items[0].text) && /\br1\b/.test(lastReqMsgs(s.fetch).at(-1).content), [s.chat().items[0].text, lastReqMsgs(s.fetch).at(-1).content]);
     const n = s.fetch.requests.length;
     s.chat().askAbout('r1; ignore everything');
     await settle();
     check('askAbout ignores anything that is not a handle', s.fetch.requests.length === n);
     check('sourceFor goes to the runner', s.chat().sourceFor('r1') === 'magnet:?xt=urn:btih:abc' && s.chat().sourceFor('r9') === undefined);
+  }
+
+  // ---- plans: every step is rechecked right before it runs (item 1, SM-39) ---------------------------------------
+  async function planTurn(s, order, opts = {}) {
+    s.runner.registry.issue('transfer', 8); // t2
+    s.runner.registry.issue('transfer', 9); // t3
+    s.runner.handlers.prepare = async (cardId, tool) => ({
+      cardId, tool, title: 'Run these 3 steps?', facts: ['3 steps'], confirmLabel: 'Run 3 steps', dismissLabel: 'Not now', danger: false, risky: false,
+      steps: ['Pause a', 'Pause b', 'Pause c'],
+    });
+    const ran = new Set();
+    s.runner.handlers.revalidate = async (id) => {
+      order.push(`v:${id}`);
+      if (opts.failValidate && opts.failValidate(id)) return { ok: false, reason: opts.failReason ?? 'Step 2: It no longer fits: it needs 3.0 GB and 1.0 GB is free.' };
+      return { ok: true };
+    };
+    s.runner.handlers.execute = async (id) => {
+      order.push(`e:${id}`);
+      if (opts.failExec && opts.failExec(id)) return { ok: false, code: 'DISK_FULL', message: 'Storage full.' };
+      ran.add(id);
+      return { ok: true, summary: id.includes(':') ? 'Paused.' : 'Done: 3 steps.' };
+    };
+    const step = (t) => ({ tool: 'propose_pause_resume', args: { transfer_id: t, action: 'pause', reason: 'Because.' } });
+    s.fetch.queue.push({ chunks: sseTools([{ id: 'k1', name: 'propose_plan', args: { steps: [step('t1'), step('t2'), step('t3')], reason: 'Free up the line.' } }]) });
+    s.fetch.queue.push({ chunks: sseText(['On a card.']) });
+    s.chat().send('pause all three');
+    await settle();
+    await s.timers.advance(60);
+    return { card: s.chat().items.find((i) => i.kind === 'card'), ran };
+  }
+  {
+    const s = setup();
+    const order = [];
+    const { card } = await planTurn(s, order);
+    check('plan: card is shown', card && card.view.steps.length === 3, card);
+    s.chat().confirm(card.id);
+    await settle(30);
+    const id = card.id;
+    check('plan: all checked once up front, then each step is rechecked right before it runs', order.join() === [`v:${id}`, `v:${id}:0`, `e:${id}:0`, `v:${id}:1`, `e:${id}:1`, `v:${id}:2`, `e:${id}:2`].join(), order);
+    const st = s.chat().items.find((i) => i.kind === 'card').state;
+    check('plan: done with a one-line summary', st.kind === 'done' && st.summary === 'Done: 3 steps.', st);
+  }
+  {
+    const s = setup();
+    const order = [];
+    let id;
+    const { card } = await planTurn(s, order, { failValidate: (x) => x.endsWith(':1') });
+    id = card.id;
+    s.chat().confirm(card.id);
+    await settle(30);
+    const st = s.chat().items.find((i) => i.kind === 'card').state;
+    check('plan: a step that fails its recheck stops the plan; later steps never run', !order.some((o) => o === `e:${id}:1` || o.includes(`:2`)) && order.includes(`e:${id}:0`), order);
+    check('plan: the card says which step stopped, why, and what did not run', st.kind === 'failed' && /^Step 2 of 3 stopped: It no longer fits/.test(st.error) && /Step 3 did not run\.$/.test(st.error) && !/Step 2: /.test(st.error), st);
+  }
+  {
+    const s = setup();
+    const order = [];
+    const { card } = await planTurn(s, order, { failExec: (x) => x.endsWith(':0') });
+    s.chat().confirm(card.id);
+    await settle(30);
+    const st = s.chat().items.find((i) => i.kind === 'card').state;
+    check('plan: a step whose action fails stops the plan with its plain message', st.kind === 'failed' && st.error === 'Step 1 of 3 stopped: Storage full. Steps 2 to 3 did not run.' && !order.some((o) => o.includes(':1')), st);
+  }
+  {
+    // Try again resumes at the step that stopped; a step that succeeded never runs twice.
+    const s = setup();
+    const order = [];
+    let blocked = true;
+    const { card } = await planTurn(s, order, { failValidate: (x) => blocked && x.endsWith(':1') });
+    s.chat().confirm(card.id);
+    await settle(30);
+    blocked = false;
+    s.chat().confirm(card.id);
+    await settle(30);
+    const id = card.id;
+    const execs = order.filter((o) => o.startsWith('e:'));
+    check('plan retry: step 1 ran once, steps 2 and 3 ran after the retry, in order', execs.join() === [`e:${id}:0`, `e:${id}:1`, `e:${id}:2`].join(), execs);
+    check('plan retry: the card is done', s.chat().items.find((i) => i.kind === 'card').state.kind === 'done', s.chat().items.find((i) => i.kind === 'card').state);
+  }
+  {
+    const s = setup();
+    const order = [];
+    const { card } = await planTurn(s, order, { failValidate: (x) => !x.includes(':'), failReason: 'Step 3: That download is gone.' });
+    s.chat().confirm(card.id);
+    await settle(30);
+    const st = s.chat().items.find((i) => i.kind === 'card').state;
+    check('plan: the up-front check failing keeps the card proposed and runs nothing', st.kind === 'proposed' && st.reason === 'Step 3: That download is gone.' && !order.some((o) => o.startsWith('e:')), st);
+  }
+
+  // ---- askAbout shows the title, not the handle (item 6) -----------------------------------------------------
+  {
+    const s = setup();
+    s.fetch.queue.push({ chunks: sseTools([{ id: 'k1', name: 'search_torrents', args: { query: 'The Last Harbor' } }]) });
+    s.fetch.queue.push({ chunks: sseText(['Two good options.']) });
+    s.chat().send('find The Last Harbor');
+    await settle();
+    await s.timers.advance(60);
+    s.fetch.queue.push({ chunks: sseText(['Yes.']) });
+    s.chat().askAbout('r1');
+    await settle();
+    const bubble = s.chat().items.filter((i) => i.kind === 'user').at(-1);
+    check('askAbout: the bubble shows the result title', bubble.text === 'Tell me about The Last Harbor (2023)', bubble.text);
+    check('askAbout: the model is told the handle', /\br1\b/.test(lastReqMsgs(s.fetch).at(-1).content), lastReqMsgs(s.fetch).at(-1).content);
+    check('askAbout: no bubble shows a bare handle', !s.chat().items.some((i) => i.kind === 'user' && /\b[rt]\d+\b/.test(i.text)));
+  }
+
+  // ---- Retry re-runs the last turn, no second user message, no old error (item 2) ------------------------------
+  {
+    const s = setup();
+    s.fetch.queue.push({ status: 500, chunks: [] });
+    s.fetch.queue.push({ status: 500, chunks: [] });
+    s.chat().send('find a film');
+    await settle();
+    await s.timers.advance(5000);
+    check('setup: a provider error with Retry is shown', s.chat().items.at(-1).kind === 'error' && s.chat().items.at(-1).action === 'retry', s.chat().items.at(-1));
+    s.fetch.queue.push({ chunks: sseText(['Here you go.'], [10, 2]) });
+    s.chat().retry();
+    await settle();
+    await s.timers.advance(60);
+    const c = s.chat();
+    check('retry: one user bubble, the old error is gone, the answer is there', kinds(c).join() === 'user,assistant' && c.items[1].text === 'Here you go.', kinds(c));
+    const msgs = lastReqMsgs(s.fetch);
+    check('retry: the request has the user message exactly once', msgs.filter((m) => m.role === 'user').length === 1 && msgs.at(-1).content === 'find a film', msgs);
+    check('retry: usage of the failed attempts is not double counted', s.env.usage.length === 1 && s.env.usage[0].input === 10, s.env.usage);
+    s.chat().retry();
+    await settle();
+    check('retry with nothing failed does nothing', s.fetch.requests.length === 3 && kinds(s.chat()).join() === 'user,assistant', s.fetch.requests.length);
+  }
+
+  // ---- card results reach the model on the next message (item 3) -----------------------------------------------
+  {
+    const s = setup();
+    const card = await proposalTurn(s);
+    s.chat().confirm(card.id);
+    await settle();
+    s.fetch.queue.push({ chunks: sseText(['Done.']) });
+    s.chat().send('thanks');
+    await settle();
+    await s.timers.advance(60);
+    const last = lastReqMsgs(s.fetch).at(-1);
+    check('confirmed card: the next request tells the model what happened', last.role === 'user' && last.content.includes(`User confirmed ${card.id}: Paused.`) && last.content.endsWith('thanks'), last.content);
+    check('confirmed card: the bubble shows only what the user typed', s.chat().items.filter((i) => i.kind === 'user').at(-1).text === 'thanks');
+    s.fetch.queue.push({ chunks: sseText(['Sure.']) });
+    s.chat().send('and now?');
+    await settle();
+    check('the fact is sent once', !lastReqMsgs(s.fetch).at(-1).content.includes('User confirmed'));
+  }
+  {
+    const s = setup();
+    const card = await proposalTurn(s);
+    s.chat().dismiss(card.id);
+    await settle();
+    s.fetch.queue.push({ chunks: sseText(['Ok.']) });
+    s.chat().send('hm');
+    await settle();
+    check('dismissed card: the model is told', lastReqMsgs(s.fetch).at(-1).content.includes(`User dismissed ${card.id}.`), lastReqMsgs(s.fetch).at(-1).content);
+  }
+  {
+    const s = setup();
+    const card = await proposalTurn(s);
+    s.runner.handlers.execute = async () => ({ ok: false, code: 'DISK_FULL', message: 'Storage full.' });
+    s.chat().confirm(card.id);
+    await settle();
+    s.fetch.queue.push({ chunks: sseText(['Ok.']) });
+    s.chat().send('what happened?');
+    await settle();
+    check('failed card: the model is told why', lastReqMsgs(s.fetch).at(-1).content.includes(`${card.id} failed: Storage full.`), lastReqMsgs(s.fetch).at(-1).content);
+  }
+
+  // ---- Gemini thought signature goes back on the assistant tool call (item 4) -------------------------------------
+  {
+    const s = setup();
+    const sig = { google: { thought_signature: 'SIG-123' } };
+    s.fetch.queue.push({ chunks: [
+      `data: ${JSON.stringify({ choices: [{ delta: { tool_calls: [{ extra_content: sig, function: { name: 'search_torrents', arguments: '{"query":"The Last Harbor"}' }, id: 'function-call-1', type: 'function' }] }, finish_reason: null }] })}\n\n`,
+      chunk({}, 'tool_calls') + 'data: [DONE]\n\n',
+    ] });
+    s.fetch.queue.push({ chunks: sseText(['Two good options.']) });
+    s.chat().send('find The Last Harbor');
+    await settle();
+    await s.timers.advance(60);
+    const asst = lastReqMsgs(s.fetch).find((m) => m.role === 'assistant' && m.tool_calls);
+    check('second request: tool call carries extra_content.google.thought_signature unchanged', asst && asst.tool_calls[0].extra_content.google.thought_signature === 'SIG-123' && asst.tool_calls[0].id === 'function-call-1', asst);
+  }
+
+  // ---- usage counted once through retries and rounds (item 5) -----------------------------------------------------
+  {
+    const s = setup();
+    // Round 1 gets cut off after its usage chunk (a stall), the retry runs the tool, round 2 answers.
+    s.fetch.queue.push({ chunks: [chunk({ content: 'Hmm' }), usageChunk(40, 4)], hang: true });
+    s.fetch.queue.push({ chunks: sseTools([{ id: 'k1', name: 'search_torrents', args: { query: 'x' } }], [100, 10]) });
+    s.fetch.queue.push({ chunks: sseText(['Done.'], [200, 20]) });
+    s.chat().send('find x');
+    await settle();
+    await s.timers.advance(45_000);
+    await s.timers.advance(2000);
+    await settle();
+    await s.timers.advance(60);
+    check('usage: stall + retry + tool round adds each request once (40+100+200)', s.env.usage.length === 3 && s.env.prefs.tokensUsed.input === 340 && s.env.prefs.tokensUsed.output === 34, [s.env.usage, s.chat().items.at(-1)]);
   }
 
   // ---- transport ----------------------------------------------------------------------------------------

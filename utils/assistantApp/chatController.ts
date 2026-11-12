@@ -5,15 +5,18 @@
 // Events are queued and applied one at a time, so an effect that raises an event never re-enters the machine.
 
 import { cardSettledKind, cardStep, type CardEffect, type CardEvent, type CardState } from '../assistant/cardMachine.ts';
+import { planInitial, planStep, type PlanEffect, type PlanEvent, type PlanState } from '../assistant/planMachine.ts';
 import type { ChatMessage } from '../assistant/context.ts';
 import { filterModelOutput } from '../assistant/sanitize.ts';
 import type {
   AssistantChat,
   ChatGate,
   ChatItem,
+  ExecuteResult,
   ProgressStep,
   ProposalCardView,
   ResultCardView,
+  RevalidateResult,
   ToolRunOutput,
   ToolRunner,
 } from '../assistant/runtime.ts';
@@ -93,6 +96,26 @@ const ERROR_RETRY: ReadonlySet<string> = new Set([
 
 const HANDLE_RE = /^[rt][0-9]+$/;
 
+/** Id of one step of a plan card as the runner accepts it (`c3:0`). Same as toolRunner's planStepId. */
+const stepId = (cardId: string, index: number): string => `${cardId}:${index}`;
+
+/** A step reason from the runner starts with "Step 2: "; the plan message adds its own step label. */
+function bareReason(reason: string): string {
+  return reason.replace(/^Step \d+:\s*/, '');
+}
+
+function withStop(text: string): string {
+  return /[.!?]$/.test(text) ? text : `${text}.`;
+}
+
+/** "Step 2 of 3 stopped: It no longer fits. Step 3 did not run." */
+export function planStopMessage(step: number, total: number, reason: string, notRun: readonly number[]): string {
+  let out = `Step ${step + 1} of ${total} stopped: ${withStop(bareReason(reason))}`;
+  if (notRun.length === 1) out += ` Step ${notRun[0] + 1} did not run.`;
+  else if (notRun.length > 1) out += ` Steps ${notRun[0] + 1} to ${notRun[notRun.length - 1] + 1} did not run.`;
+  return out;
+}
+
 interface ToolBatch {
   pending: Set<string>;
   results: Map<string, string>;
@@ -160,6 +183,9 @@ export function createChatController(deps: ChatDeps): ChatController {
   /** Card preparations still running, and the proposals the runner refused (callId to message). */
   const preps = new Set<Promise<void>>();
   const refused = new Map<string, string>();
+  /** propose_plan cards: step count, and how many steps already ran (a retry starts after them). */
+  const planSizes = new Map<string, number>();
+  const planDone = new Map<string, number>();
 
   // ---- snapshot -------------------------------------------------------------------------------------
   const listeners = new Set<() => void>();
@@ -196,6 +222,7 @@ export function createChatController(deps: ChatDeps): ChatController {
       clear,
       confirm,
       dismiss,
+      retry: retryLast,
       askAbout,
       sourceFor: (handle) => runner.sourceFor(handle),
     };
@@ -239,6 +266,18 @@ export function createChatController(deps: ChatDeps): ChatController {
     push({ kind: 'note', id: newId('n'), text });
   }
 
+  /** Removes the error items of the failed turn (everything after the last user message). */
+  function dropTrailingErrors(): void {
+    let from = 0;
+    for (let i = items.length - 1; i >= 0; i--) {
+      if (items[i].kind === 'user') {
+        from = i + 1;
+        break;
+      }
+    }
+    setItems(items.filter((it, i) => i < from || it.kind !== 'error'));
+  }
+
   function pushError(message: string): void {
     const action = ERROR_SETTINGS.has(message) ? 'settings' : ERROR_RETRY.has(message) ? 'retry' : undefined;
     // `{provider}` in the fixed copy is the provider's name.
@@ -279,6 +318,8 @@ export function createChatController(deps: ChatDeps): ChatController {
       assistantId = null;
       rawText = '';
       refused.clear();
+      planSizes.clear();
+      planDone.clear();
     }
     if (turn.kind !== 'streaming') closeStreaming();
   }
@@ -347,6 +388,10 @@ export function createChatController(deps: ChatDeps): ChatController {
         break;
       case 'clearHandles':
         runner.reset();
+        break;
+      case 'dropError':
+        // Retry: the failed turn's error items go; the user's message stays and is not added again.
+        dropTrailingErrors();
         break;
     }
   }
@@ -565,6 +610,7 @@ export function createChatController(deps: ChatDeps): ChatController {
         return;
       }
       closeStreaming();
+      if (result.tool === 'propose_plan' && result.steps && result.steps.length > 0) planSizes.set(cardId, result.steps.length);
       push({ kind: 'card', id: cardId, view: result, state: { kind: 'proposed', cardId } });
       emit();
     })();
@@ -587,10 +633,25 @@ export function createChatController(deps: ChatDeps): ChatController {
     for (const eff of step.effects) runCardEffect(eff, cardId);
     const kind = cardSettledKind(step.state);
     if (kind) {
-      const settled: TurnEvent = { type: 'CardSettled', cardId, kind };
+      const note = cardNote(cardId, step.state);
+      const settled: TurnEvent = { type: 'CardSettled', cardId, kind, ...(note ? { note } : {}) };
       if (draining) queue.push(settled);
       else dispatch(settled);
     } else if (!draining) emit();
+  }
+
+  /** What the model should hear about a card the user settled. Expired cards say nothing. */
+  function cardNote(cardId: string, state: CardState): string | undefined {
+    switch (state.kind) {
+      case 'done':
+        return `User confirmed ${cardId}: ${state.summary ?? 'Done.'}`;
+      case 'dismissed':
+        return `User dismissed ${cardId}.`;
+      case 'failed':
+        return `${cardId} failed: ${state.error ?? 'It did not work.'}`;
+      default:
+        return undefined;
+    }
   }
 
   function setCardState(cardId: string, state: CardState): void {
@@ -608,8 +669,7 @@ export function createChatController(deps: ChatDeps): ChatController {
         break;
       }
       case 'execute':
-        void runner
-          .execute(cardId)
+        void (planSizes.has(cardId) ? runPlan(cardId, planSizes.get(cardId) as number) : runner.execute(cardId))
           .catch((): { ok: false; code: string; message: string } => ({ ok: false, code: 'failed', message: 'That did not work. Try again.' }))
           .then((r) => cardEvent(cardId, r.ok ? { type: 'EXEC_OK', summary: r.summary } : { type: 'EXEC_ERR', code: r.code, message: r.message }));
         break;
@@ -619,6 +679,58 @@ export function createChatController(deps: ChatDeps): ChatController {
         break;
       }
     }
+  }
+
+  /**
+   * Runs a multi-step plan card through SM-39 (planMachine). The card as a whole was checked on Confirm; here every
+   * step is checked again right before it runs (target exists, free space, admit), because the earlier steps change
+   * the world. A failing step stops the plan and the later steps never run. A retry starts after the steps that ran.
+   */
+  async function runPlan(cardId: string, total: number): Promise<ExecuteResult> {
+    const from = planDone.get(cardId) ?? 0;
+    let plan: PlanState;
+    let queue: PlanEffect[];
+    if (from > 0) {
+      plan = { kind: 'running', total, index: from, phase: 'revalidating' };
+      queue = [{ type: 'revalidate', step: from }];
+    } else {
+      const first = planStep(planInitial(total), { type: 'CONFIRM', checks: Array.from({ length: total }, () => ({ ok: true })) });
+      plan = first.state;
+      queue = [...first.effects];
+    }
+    const feed = (event: PlanEvent): void => {
+      const r = planStep(plan, event);
+      plan = r.state;
+      queue.push(...r.effects);
+    };
+    for (let eff = queue.shift(); eff; eff = queue.shift()) {
+      switch (eff.type) {
+        case 'revalidate': {
+          const r: RevalidateResult = await runner
+            .revalidate(stepId(cardId, eff.step))
+            .catch((): RevalidateResult => ({ ok: false, reason: 'Could not check this right now. Try again.' }));
+          feed(r.ok ? { type: 'STEP_REVALIDATED', ok: true } : { type: 'STEP_REVALIDATED', ok: false, reason: r.reason });
+          break;
+        }
+        case 'execute': {
+          const r: ExecuteResult = await runner
+            .execute(stepId(cardId, eff.step))
+            .catch((): ExecuteResult => ({ ok: false, code: 'failed', message: 'That did not work. Try again.' }));
+          if (r.ok) {
+            planDone.set(cardId, eff.step + 1);
+            feed({ type: 'STEP_OK' });
+          } else feed({ type: 'STEP_ERR', message: r.message });
+          break;
+        }
+        case 'halt':
+          return { ok: false, code: 'plan_halted', message: planStopMessage(eff.step, total, eff.message, eff.notRun) };
+        case 'summary':
+          return { ok: true, summary: eff.text };
+        default:
+          break;
+      }
+    }
+    return { ok: false, code: 'plan_halted', message: 'The plan stopped. Try again.' };
   }
 
   // ---- public actions -------------------------------------------------------------------------------
@@ -639,9 +751,31 @@ export function createChatController(deps: ChatDeps): ChatController {
   function dismiss(cardId: string): void {
     dispatch({ type: 'Dismiss', cardId });
   }
+  function retryLast(): void {
+    // Only a turn that ended in an error with Retry can be re-run.
+    const tail = items[items.length - 1];
+    if (!tail || tail.kind !== 'error' || tail.action !== 'retry') return;
+    const p = getPrefs();
+    dispatch({ type: 'Retry', enabled: p.enabled, warningAccepted: p.warningAcceptedAt !== null, hasKey: hasKey() });
+  }
+  /** The model is asked about the handle. The bubble shows the result's title, never "r3". */
   function askAbout(handle: string): void {
     if (!HANDLE_RE.test(handle)) return;
-    send(`Tell me more about ${handle}. Is it a good pick?`);
+    let title: string | undefined;
+    for (const i of items) {
+      if (i.kind !== 'results') continue;
+      const hit = i.results.find((r) => r.handle === handle);
+      if (hit) title = hit.title;
+    }
+    const p = getPrefs();
+    dispatch({
+      type: 'Send',
+      text: `Tell me more about ${handle}. Is it a good pick?`,
+      display: title ? `Tell me about ${title}` : 'Tell me more about this one. Is it a good pick?',
+      enabled: p.enabled,
+      warningAccepted: p.warningAcceptedAt !== null,
+      hasKey: hasKey(),
+    });
   }
 
   const controller: ChatController = {

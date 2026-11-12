@@ -570,6 +570,54 @@ async function main() {
     assert.ok(Date.now() - t0 < 500);
   });
 
+  // Gemini 3 (OpenAI compat): tool_calls[].extra_content.google.thought_signature must come back unchanged.
+  // https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/thought-signatures (Turn 1, Step 1 example)
+  const ev = (delta, fin) => `data: ${JSON.stringify({ choices: [{ delta, finish_reason: fin ?? null }] })}\n\n`;
+  const SIG = 'CvcQAdHtim/pKv/c0ClPFkYA==';
+  const sigStream =
+    ev({ tool_calls: [{ extra_content: { google: { thought_signature: SIG } }, function: { name: 'search_torrents', arguments: '{"query":' }, id: 'function-call-1', type: 'function' }] }) +
+    ev({ tool_calls: [{ index: 0, function: { arguments: '"x"}' } }] }) +
+    ev({}, 'tool_calls') + 'data: [DONE]\n\n';
+
+  test('extra_content on a tool call is kept, whole and split anywhere', () => {
+    const want = { extra_content: { google: { thought_signature: SIG } } };
+    const whole = feedWhole(make(), sigStream).outcome;
+    assert.ok(whole.ok, JSON.stringify(whole));
+    assert.deepStrictEqual(whole.toolCalls[0].extra, want);
+    for (const r of feedSplit2(make, sigStream)) assert.deepStrictEqual(r.outcome.toolCalls[0].extra, want);
+    assert.deepStrictEqual(feedOneByOne(make, sigStream).outcome.toolCalls[0].extra, want);
+  });
+  test('only the first of two parallel calls carries a signature; the second has no extra', () => {
+    const s2 = ev({ tool_calls: [
+      { index: 0, id: 'a', extra_content: { google: { thought_signature: SIG } }, function: { name: 'search_torrents', arguments: '{}' } },
+      { index: 1, id: 'b', function: { name: 'get_free_space', arguments: '{}' } },
+    ] }) + ev({}, 'tool_calls') + 'data: [DONE]\n\n';
+    const out = feedWhole(make(), s2).outcome;
+    assert.ok(out.ok && out.toolCalls[0].extra.extra_content.google.thought_signature === SIG && !('extra' in out.toolCalls[1]));
+  });
+  test('extra_content split across fragments is merged', () => {
+    const s3 = ev({ tool_calls: [{ index: 0, id: 'a', function: { name: 'get_free_space', arguments: '{}' } }] }) +
+      ev({ tool_calls: [{ index: 0, extra_content: { google: { thought_signature: SIG } } }] }) + ev({}, 'tool_calls') + 'data: [DONE]\n\n';
+    const out = feedWhole(make(), s3).outcome;
+    assert.ok(out.ok && out.toolCalls[0].extra.extra_content.google.thought_signature === SIG, JSON.stringify(out));
+  });
+  test('a call with no extra fields has no extra property', () => {
+    const out = feedWhole(make(), ev({ tool_calls: [{ index: 0, id: 'a', type: 'function', function: { name: 'get_free_space', arguments: '{}' } }] }) + ev({}, 'tool_calls') + 'data: [DONE]\n\n').outcome;
+    assert.ok(out.ok && !('extra' in out.toolCalls[0]));
+  });
+  test('an oversized extra is dropped, the call still runs', () => {
+    const big = 'A'.repeat(40 * 1024);
+    const out = feedWhole(make(), ev({ tool_calls: [{ index: 0, id: 'a', extra_content: { google: { thought_signature: big } }, function: { name: 'get_free_space', arguments: '{}' } }] }) + ev({}, 'tool_calls') + 'data: [DONE]\n\n').outcome;
+    assert.ok(out.ok && out.toolCalls.length === 1 && !('extra' in out.toolCalls[0]), JSON.stringify(out).slice(0, 200));
+  });
+  test('__proto__ and constructor keys are never copied', () => {
+    const raw = '{"choices":[{"delta":{"tool_calls":[{"index":0,"id":"a","__proto__":{"polluted":1},"constructor":{"x":1},"extra_content":{"__proto__":{"p":1},"google":{"k":"v"}},"function":{"name":"get_free_space","arguments":"{}"}}]},"finish_reason":"tool_calls"}]}';
+    const out = feedWhole(make(), `data: ${raw}\n\ndata: [DONE]\n\n`).outcome;
+    assert.ok(out.ok);
+    const ex = out.toolCalls[0].extra;
+    assert.ok(({}).polluted === undefined && Object.keys(ex).join() === 'extra_content' && Object.keys(ex.extra_content).join() === 'google' && !Object.prototype.hasOwnProperty.call(ex, '__proto__'), JSON.stringify(ex));
+  });
+
   console.log(`\n${passed} passed, ${failed} failed`);
   if (failed > 0) process.exit(1);
 }

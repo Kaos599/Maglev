@@ -28,7 +28,7 @@ import {
   type ToolCall,
 } from './context.ts';
 import type { HandleRegistry } from './handles.ts';
-import { USER_TEXT_MAX, truncate } from './sanitize.ts';
+import { USER_TEXT_MAX, sanitizeText, truncate } from './sanitize.ts';
 import { PROVIDER_STOPPED, sanitizeSnippet, type AssistantToolCall, type StreamFailure } from './sse.ts';
 import { PROPOSAL_TOOLS, READ_TOOLS, TOOLS, validateArgs, type ToolDef } from './tools.ts';
 
@@ -106,6 +106,11 @@ export interface TurnState {
   cardTargets: Record<string, string>;
   /** Last usage the provider reported in the current round-trip, added once when it ends. */
   usage: { input: number; output: number } | null;
+  /**
+   * Short sanitised lines about cards the user settled (confirmed, dismissed, failed), newest last, at most
+   * MAX_CARD_FACTS. The next Send puts them in front of the user's message for the model, once, then clears them.
+   */
+  cardFacts: string[];
   /** Calls of the current round-trip (runningTools only). */
   calls: PendingCall[];
   /** True when calls were dropped by a cap in this round-trip. */
@@ -148,12 +153,20 @@ export type TurnEffect =
   | { type: 'expireCard'; cardId: string }
   | { type: 'expireCards' }
   | { type: 'addUsage'; input: number; output: number }
-  | { type: 'clearHandles' };
+  | { type: 'clearHandles' }
+  /** Retry: the controller removes the old error item before the request goes out again. */
+  | { type: 'dropError' };
 
 export type CardSettledKind = 'done' | 'dismissed' | 'expired' | 'failed';
 
 export type TurnEvent =
-  | { type: 'Send'; text: string; enabled: boolean; warningAccepted: boolean; hasKey: boolean }
+  /** `display`: what the chat bubble shows when it differs from what the model gets ("Ask about this"). */
+  | { type: 'Send'; text: string; display?: string; enabled: boolean; warningAccepted: boolean; hasKey: boolean }
+  /**
+   * Re-run the last turn after an error: the same user message, no new bubble, a fresh retry budget. Whatever the
+   * failed turn added after that message (partial text, tool results) is dropped. Same gate as Send.
+   */
+  | { type: 'Retry'; enabled: boolean; warningAccepted: boolean; hasKey: boolean }
   | { type: 'FirstByte' }
   /**
    * `retryAfterMs` is the parsed Retry-After header, when the provider sent one. `body` is a short sanitised
@@ -178,7 +191,7 @@ export type TurnEvent =
   | { type: 'Confirm'; cardId: string }
   | { type: 'Dismiss'; cardId: string }
   /** cardMachine reached a final-ish state. done, dismissed and expired leave pendingCards; failed stays. */
-  | { type: 'CardSettled'; cardId: string; kind: CardSettledKind }
+  | { type: 'CardSettled'; cardId: string; kind: CardSettledKind; /** What the model should know next turn, e.g. "User confirmed c2: Added." */ note?: string }
   /** The transfer or result a card points at is gone (handle, e.g. "t1"). */
   | { type: 'TargetGone'; target: string }
   /** SM-42 CLEAR and KEY_REMOVED. */
@@ -206,6 +219,7 @@ export function turnInitial(config: TurnConfig): TurnState {
     pendingCards: [],
     cardTargets: {},
     usage: null,
+    cardFacts: [],
     calls: [],
     capHit: false,
   };
@@ -216,6 +230,9 @@ export const DESTRUCTIVE_TOOLS: ReadonlySet<string> = new Set(['propose_delete',
 export const MAX_PROPOSALS_PER_TURN = 2;
 export const MAX_DESTRUCTIVE_PER_TURN = 1;
 export const MAX_DETAILS_PER_TURN = 2;
+/** Card facts kept for the next message, and the length of one. */
+export const MAX_CARD_FACTS = 6;
+export const CARD_FACT_MAX = 200;
 /** Retry delay when the provider sends no Retry-After. The runner adds jitter. */
 export const RETRY_DELAY_MS = 1000;
 /** A Retry-After longer than this is not waited for. */
@@ -383,7 +400,8 @@ function toolCallsDone(s: TurnState, calls: AssistantToolCall[], truncated: bool
   used.forEach((call, i) => {
     const id = seen.has(call.id) ? `${call.id}-${i}` : call.id;
     seen.add(id);
-    toolCalls.push({ id, type: 'function', function: { name: call.name, arguments: JSON.stringify(call.arguments) } });
+    // Provider extras (Gemini 3 thought signature) go back unchanged; they can never replace our own fields.
+    toolCalls.push({ ...call.extra, id, type: 'function', function: { name: call.name, arguments: JSON.stringify(call.arguments) } } as ToolCall);
     const entry: PendingCall = { id, name: call.name };
     pending.push(entry);
 
@@ -527,6 +545,8 @@ function turnStepInner(state: TurnState, event: TurnEvent): TurnStep {
   switch (event.type) {
     case 'Usage': {
       // A provider may repeat usage on several chunks. Keep the last one, add it once when the round-trip ends.
+      // Only a request in flight has usage to report. A late chunk in any other state would be added to a later round-trip.
+      if (s.kind !== 'requesting' && s.kind !== 'streaming') return same;
       const usage = clampUsage(event.input, event.output);
       return usage ? { state: { ...s, usage }, effects: [] } : same;
     }
@@ -541,7 +561,7 @@ function turnStepInner(state: TurnState, event: TurnEvent): TurnStep {
       if (!s.pendingCards.includes(event.cardId)) return same;
       return { state, effects: [{ type: 'dismissCard', cardId: event.cardId }] };
     case 'CardSettled':
-      return cardSettled(s, event.cardId, event.kind);
+      return cardSettled(s, event.cardId, event.kind, event.note);
     case 'TargetGone':
       return targetGone(s, event.target);
     default:
@@ -552,6 +572,7 @@ function turnStepInner(state: TurnState, event: TurnEvent): TurnStep {
     case 'idle':
     case 'awaitingConfirmation': {
       if (event.type === 'Send') return send(s, event);
+      if (event.type === 'Retry') return retryTurn(s, event);
       return same;
     }
     case 'requesting': {
@@ -623,10 +644,12 @@ function send(s: TurnState, e: Extract<TurnEvent, { type: 'Send' }>): TurnStep {
   const text = truncate(e.text, USER_TEXT_MAX);
   if (text.trim() === '') return { state: s, effects: [] };
 
-  // Cards survive a new message. Only the per-turn counters reset.
+  // Cards survive a new message. Only the per-turn counters reset. What happened to cards since the last message
+  // goes in front of the text for the model (once); the chat bubble shows only what the user typed.
   const next: TurnState = {
     ...s,
-    history: [...s.history, { role: 'user', content: text }],
+    history: [...s.history, { role: 'user', content: withCardFacts(s.cardFacts, text) }],
+    cardFacts: [],
     rounds: 0,
     toolCalls: 0,
     retried: false,
@@ -637,13 +660,50 @@ function send(s: TurnState, e: Extract<TurnEvent, { type: 'Send' }>): TurnStep {
     calls: [],
     capHit: false,
   };
-  const r = startRequest(next, [{ type: 'appendUser', text }]);
+  const shown = e.display !== undefined && e.display.trim() !== '' ? truncate(e.display, USER_TEXT_MAX) : text;
+  const r = startRequest(next, [{ type: 'appendUser', text: shown }]);
   if (r.state.kind === 'requesting') return r;
   // buildContext refused (RangeError): the message does not enter history.
   return {
     state: { ...s, kind: restKind(s) },
     effects: [{ type: 'errorCard', message: COPY.tooLong }],
   };
+}
+
+/** "[Maglev: User confirmed c2: Added.]" lines in front of the user's text. Empty list: the text as it is. */
+function withCardFacts(facts: readonly string[], text: string): string {
+  if (facts.length === 0) return text;
+  return `${facts.map((f) => `[Maglev: ${f}]`).join('\n')}\n\n${text}`;
+}
+
+function retryTurn(s: TurnState, e: Extract<TurnEvent, { type: 'Retry' }>): TurnStep {
+  let last = -1;
+  for (let i = s.history.length - 1; i >= 0; i--) {
+    if (s.history[i].role === 'user') {
+      last = i;
+      break;
+    }
+  }
+  if (last < 0) return { state: s, effects: [] };
+  if (!e.enabled) return { state: s, effects: [{ type: 'showNotice', text: COPY.notEnabled }] };
+  if (!e.warningAccepted) return { state: s, effects: [{ type: 'showNotice', text: COPY.noWarning }] };
+  if (!e.hasKey) return { state: s, effects: [{ type: 'showNotice', text: COPY.noKey }] };
+  const next: TurnState = {
+    ...s,
+    history: s.history.slice(0, last + 1),
+    rounds: 0,
+    toolCalls: 0,
+    retried: false,
+    proposals: 0,
+    destructive: 0,
+    details: 0,
+    streamText: '',
+    calls: [],
+    capHit: false,
+  };
+  const r = startRequest(next, [{ type: 'dropError' }]);
+  if (r.state.kind === 'requesting') return r;
+  return { state: s, effects: [{ type: 'errorCard', message: COPY.tooLong }] };
 }
 
 function streamFailed(s: TurnState, error: StreamFailure, truncated: boolean): TurnStep {
@@ -711,12 +771,20 @@ function clearStep(s: TurnState, drop: boolean): TurnStep {
   return { state: { ...turnInitial(s.config), history }, effects };
 }
 
-function cardSettled(s: TurnState, cardId: string, kind: CardSettledKind): TurnStep {
-  if (kind === 'failed' || !s.pendingCards.includes(cardId)) return { state: s, effects: [] };
+function addFact(s: TurnState, note: string | undefined): string[] {
+  const fact = note === undefined ? '' : sanitizeText(note, CARD_FACT_MAX);
+  return fact === '' ? s.cardFacts : [...s.cardFacts, fact].slice(-MAX_CARD_FACTS);
+}
+
+function cardSettled(s: TurnState, cardId: string, kind: CardSettledKind, note?: string): TurnStep {
+  if (!s.pendingCards.includes(cardId)) return { state: s, effects: [] };
+  const cardFacts = addFact(s, note);
+  // A failed card stays pending (it can be retried), but the model still hears that it failed.
+  if (kind === 'failed') return { state: { ...s, cardFacts }, effects: [] };
   const pendingCards = s.pendingCards.filter((c) => c !== cardId);
   const cardTargets = { ...s.cardTargets };
   delete cardTargets[cardId];
-  const next: TurnState = { ...s, pendingCards, cardTargets };
+  const next: TurnState = { ...s, pendingCards, cardTargets, cardFacts };
   const atRest = s.kind === 'idle' || s.kind === 'awaitingConfirmation';
   return { state: atRest ? { ...next, kind: restKind(next) } : next, effects: [] };
 }

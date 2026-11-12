@@ -113,7 +113,12 @@ export interface AssistantChat {
   /** Call after any risky-source sheet was accepted. */
   confirm(cardId: string): void;
   dismiss(cardId: string): void;
-  /** "Ask about this" on a result card: sends a canned question naming the handle. */
+  /**
+   * Retry after an error: run the last question again. Adds no second user message and removes the old error.
+   * Does nothing when no turn failed.
+   */
+  retry(): void;
+  /** "Ask about this" on a result card: sends a canned question naming the handle to the model. The bubble shows the result's title, never the handle. */
   askAbout(handle: string): void;
   /** "Choose files" on a result card: the magnet or .torrent URL to open in the Add sheet, if known. */
   sourceFor(handle: string): string | undefined;

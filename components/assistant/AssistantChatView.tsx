@@ -40,15 +40,8 @@ export function AssistantChatView({ chat, onOpenSettings, onChooseFiles }: Assis
   // Newest first, because the list is inverted: it stays pinned to the latest message while text streams in.
   const data = useMemo(() => [...items].reverse(), [items]);
 
-  const retry = useCallback(() => {
-    for (let i = items.length - 1; i >= 0; i--) {
-      const it = items[i];
-      if (it.kind === 'user') {
-        send(it.text);
-        return;
-      }
-    }
-  }, [items, send]);
+  // Re-runs the last turn without adding the user's message again.
+  const retry = useCallback(() => chat.retry(), [chat]);
 
   const renderItem = useCallback(
     ({ item }: { item: ChatItem }) => {

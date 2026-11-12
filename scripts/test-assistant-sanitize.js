@@ -195,6 +195,21 @@ async function main() {
     check(`removes link in "${input}"`, !out.includes(gone) && out.includes('[link removed]'), out);
   }
 
+  console.log('sanitize: bare two-label names are not links');
+  for (const keep of ['Movie.Pro', 'Show.Ru', 'Try Movie.Pro tonight', 'I liked Show.Ru a lot']) {
+    check(`sanitizeText keeps ${keep}`, sanitizeText(keep) === keep, sanitizeText(keep));
+    check(`filterModelOutput keeps ${keep}`, filterModelOutput(keep) === keep, filterModelOutput(keep));
+  }
+  for (const [input, gone] of [
+    ['Get it at https://Movie.Pro/x', 'Movie.Pro'], ['Get it at Movie.Pro/free', 'Movie.Pro'], ['see www.Show.Ru now', 'Show.Ru'],
+    ['visit Evil.com now', 'Evil.com'], ['visit movie.pro now', 'movie.pro'], ['go Show.Ru:8080', 'Show.Ru'],
+  ]) {
+    for (const [label, fn] of [['sanitizeText', sanitizeText], ['filterModelOutput', filterModelOutput]]) {
+      const out = fn(input);
+      check(`${label} still removes the link in "${input}"`, !out.includes(gone) && out.includes('[link removed]'), out);
+    }
+  }
+
   console.log();
   if (failed) {
     console.error(`${failed} failed, ${passed} passed`);

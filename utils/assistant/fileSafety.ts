@@ -95,7 +95,8 @@ const EXECUTABLE_EXT = new Set([
   'exe', 'scr', 'bat', 'cmd', 'lnk', 'js', 'jse', 'vbs', 'vbe', 'wsf', 'wsh', 'reg', 'url', 'ps1', 'psm1',
   'msi', 'msp', 'jar', 'dll', 'com', 'pif', 'hta', 'cpl',
 ]);
-const APK_EXT = 'apk';
+/** Android packages: plain, split and bundle formats. All are programs, exactly like .apk. */
+const ANDROID_PKG_EXT: ReadonlySet<string> = new Set(['apk', 'xapk', 'apks', 'apkm', 'aab', 'apex']);
 
 /** Media or document extensions that a disguised program may hide behind. */
 const CARRIER_EXT = [
@@ -104,7 +105,7 @@ const CARRIER_EXT = [
   'jpg', 'jpeg', 'png', 'gif', 'pdf', 'txt', 'srt', 'sub', 'nfo',
 ];
 const DISGUISE_RE = new RegExp(
-  `\\.(${CARRIER_EXT.join('|')})\\.(${[...EXECUTABLE_EXT, APK_EXT].join('|')})$`,
+  `\\.(${CARRIER_EXT.join('|')})\\.(${[...EXECUTABLE_EXT, ...ANDROID_PKG_EXT].join('|')})$`,
   'i',
 );
 
@@ -186,7 +187,7 @@ function deriveCategory(name: string, files: readonly Normalised[]): EffectiveCa
     || parsed.codec !== 'unknown';
   // A bare channel layout such as "2.1" gives an 'unknown' audio codec; that is not evidence of music.
   const nameMusic = !nameVideo && parsed.audio.some((a) => a.codec !== 'unknown');
-  const hasExec = files.some((f) => EXECUTABLE_EXT.has(extOf(f.p)) || extOf(f.p) === APK_EXT);
+  const hasExec = files.some((f) => EXECUTABLE_EXT.has(extOf(f.p)) || ANDROID_PKG_EXT.has(extOf(f.p)));
   if (total > 0 && (video + audio) / total >= 0.5) return video >= audio ? 'video' : 'music';
   if (total === 0 && video + audio > 0) return video >= audio ? 'video' : 'music';
   if (nameVideo) return 'video';
@@ -224,7 +225,7 @@ function checkFiles(input: SafetyInput, files: readonly Normalised[], category: 
       findings.push({ code: 'hidden_program', level: 'red', name_untrusted: b });
     } else if (media && isExec) {
       findings.push({ code: 'program_in_media', level: 'red', name_untrusted: b });
-    } else if (media && ext === APK_EXT) {
+    } else if (media && ANDROID_PKG_EXT.has(ext)) {
       findings.push({ code: 'android_app_in_media', level: 'red', name_untrusted: b });
     } else if (!media && isExec) {
       unchecked ??= f;

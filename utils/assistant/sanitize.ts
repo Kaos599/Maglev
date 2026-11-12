@@ -74,6 +74,17 @@ const LINK_RES: RegExp[] = [
 const RELEASE_LABEL_RE =
   /^(?:s\d{1,3}(?:e\d{1,3})?|e\d{2,3}|\d{3,4}p|\d{4}|x26[45]|h26[45]|hevc|web(?:-?dl|rip)?|blu-?ray|bdrip|brrip|hdtv|dvdrip|remux|aac|flac|ac3|dts|10bit)$/i;
 
+// Suffixes that are also ordinary words or language tags. "Movie.Pro" and "Show.Ru" are names, not sites.
+const AMBIGUOUS_TLDS: ReadonlySet<string> = new Set([
+  'pro', 'ru', 'su', 'co', 'io', 'app', 'dev', 'uk', 'de', 'fr', 'cn', 'cc', 'ws', 'live', 'work', 'rest', 'fun',
+  'win', 'bid', 'loan', 'vip', 'download', 'stream', 'top', 'link', 'club', 'store', 'shop', 'online', 'site',
+]);
+
+/** Two Capitalised labels with an ambiguous suffix ("Movie.Pro"). No scheme, www., path or port, so not a link. */
+function isTitleCasePair(labels: string[]): boolean {
+  return labels.length === 2 && /^\p{Lu}/u.test(labels[0]) && /^\p{Lu}/u.test(labels[1]) && AMBIGUOUS_TLDS.has(labels[1].toLowerCase());
+}
+
 /**
  * A dotted name that only looks like a domain because its last label is a common suffix ("Stranger.Things.S04.ru",
  * "Movie.2020.Pro"). Spared when it has more than three labels, or any label is a release token. A match with a
@@ -82,6 +93,7 @@ const RELEASE_LABEL_RE =
 function isReleaseName(match: string): boolean {
   if (/[/?#:]/.test(match)) return false;
   const labels = match.split('.');
+  if (isTitleCasePair(labels)) return true;
   if (labels.length > 3) return true;
   return labels.slice(0, -1).some((l) => RELEASE_LABEL_RE.test(l));
 }
