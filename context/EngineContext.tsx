@@ -23,7 +23,18 @@ import {
   type UrlProbe,
 } from 'maglev-engine';
 import { etaSecs, smoothRate } from '../utils/rates';
-import { fromCached, loadTransferCache, saveTransferCache } from '../utils/transferCache';
+import { fromCached, readTransferCache, saveTransferCache } from '../utils/transferCache';
+import {
+  EMPTY_PENDING,
+  applyPending,
+  beginPending,
+  confirmGroup,
+  failGroup as dropGroup,
+  nextExpiry,
+  settlePending,
+  type PendingKind,
+  type PendingMap,
+} from '../utils/optimistic';
 import { shareRows } from '../components/transfers/snapshots';
 
 /** Bundle-load time, the zero point for the cold-start log (UI spec S10.3). */
@@ -38,6 +49,8 @@ export type TransferTelemetry = TorrentTelemetry & {
   lastKnown?: boolean;
   /** True while a pause or resume tap waits for the engine to confirm. */
   pending?: boolean;
+  /** What the pending tap was. 'resume' keeps the engine's state: show "Resuming…", not a guessed state. */
+  pendingAction?: PendingKind;
 };
 
 export type TransferAggregate = Omit<AggregatedTelemetry, 'torrents'> & { torrents: TransferTelemetry[] };
@@ -50,19 +63,12 @@ export interface EngineNotice {
   onAction?: () => void;
 }
 
-/** How long an optimistic pause or resume waits for the engine before it reverts. */
+/** How long an optimistic pause, resume or remove holds the row before telemetry is trusted again. */
 export const OVERRIDE_TIMEOUT_MS = 5000;
 /** How long "Removed X · Undo" stays before the engine delete runs. */
 export const UNDO_WINDOW_MS = 5000;
 const CACHE_SAVE_EVERY_MS = 5000;
 const ERROR_NOTICE_MS = 4000;
-
-type OverrideKind = 'pause' | 'resume';
-interface Override {
-  kind: OverrideKind;
-  since: number;
-  group: number;
-}
 
 export type FilterCategory = 'ALL' | 'DOWN' | 'UP' | 'PAUSED';
 
@@ -113,6 +119,11 @@ interface EngineContextType {
   watchDetail: (id: string) => () => void;
   startHttpStream: (id: string, fileIndex: number) => Promise<string>;
   isNative: boolean;
+  /**
+   * True when a list was saved on an earlier run (it may be empty). Read once at launch.
+   * With it, an onboarded user sees Transfers at once and the engine starts after that first frame.
+   */
+  hasCachedList: boolean;
   defaultStoragePath: string;
   engineStatus: EngineStatus;
   storageStatus: StorageStatus | null;
@@ -145,12 +156,29 @@ const EMPTY_AGGREGATE: TransferAggregate = {
   torrents: [],
 };
 
-/** The saved list as an aggregate with unknown speeds. Read once, before the engine answers. */
-function cachedAggregate(): TransferAggregate {
-  const cached = loadTransferCache();
+/** The saved list as an aggregate with unknown speeds, or null when none was ever saved. Read once, before the engine answers. */
+function cachedAggregate(): TransferAggregate | null {
+  const cached = readTransferCache();
+  if (cached === null) return null;
   if (cached.length === 0) return EMPTY_AGGREGATE;
   const torrents = cached.map((c) => ({ ...fromCached(c), rawDownBps: 0, rawUpBps: 0, lastKnown: true }));
   return { ...EMPTY_AGGREGATE, torrents };
+}
+
+/**
+ * Runs `fn` once the frame being rendered now has been handed to the screen: the next animation
+ * frame, then a macrotask so the work lands after that frame's commit, not inside it.
+ * (InteractionManager is removed in React Native 0.88: node_modules/react-native/index.js.)
+ */
+function afterFirstFrame(fn: () => void): () => void {
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  const raf = requestAnimationFrame(() => {
+    timer = setTimeout(fn, 0);
+  });
+  return () => {
+    cancelAnimationFrame(raf);
+    if (timer) clearTimeout(timer);
+  };
 }
 
 interface Smoothed {
@@ -192,26 +220,6 @@ function smoothAggregate(agg: AggregatedTelemetry, memo: Map<string, Smoothed>, 
   return { ...agg, totalDownloadSpeedBytes: down, totalUploadSpeedBytes: up, torrents };
 }
 
-function overrideSatisfied(t: TransferTelemetry, o: Override): boolean {
-  return o.kind === 'pause' ? t.state === 'PAUSED' : t.state !== 'PAUSED' && t.state !== 'ERROR';
-}
-
-function applyOverride(t: TransferTelemetry, o: Override): TransferTelemetry {
-  if (o.kind === 'pause') {
-    return {
-      ...t,
-      state: 'PAUSED',
-      pausedBy: 'user',
-      downloadSpeedBytes: 0,
-      uploadSpeedBytes: 0,
-      etaSeconds: -1,
-      pending: true,
-    };
-  }
-  const done = t.finished === true || t.progressPercent >= 100;
-  return { ...t, state: done ? 'SEEDING' : 'DOWNLOADING', pausedBy: null, error: null, pending: true };
-}
-
 const EngineContext = createContext<EngineContextType | null>(null);
 
 /** A magnet link or an http(s) link to a .torrent file. Same test for the chip and the Paste link button. */
@@ -225,9 +233,15 @@ function engineError(code: string, message: string, id?: string): Error {
 }
 
 export const EngineProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  // Engine truth (or the saved list until the engine answers), before overrides and pending removals.
-  const [liveTelemetry, setLiveTelemetry] = useState<TransferAggregate>(cachedAggregate);
-  const [overrides, setOverrides] = useState<Record<string, Override>>({});
+  // The saved list is read once, on the first render, so the first frame can show it.
+  const boot = useRef<{ cached: TransferAggregate | null } | null>(null);
+  if (boot.current === null) boot.current = { cached: cachedAggregate() };
+  const hasCachedList = boot.current.cached !== null;
+  // Engine truth (or the saved list until the engine answers), before pending taps and removals.
+  const [liveTelemetry, setLiveTelemetry] = useState<TransferAggregate>(() => boot.current?.cached ?? EMPTY_AGGREGATE);
+  // Optimistic pause / resume / remove (utils/optimistic.ts). The ref is the synchronous copy.
+  const [pending, setPendingState] = useState<PendingMap>(EMPTY_PENDING);
+  const pendingRef = useRef<PendingMap>(EMPTY_PENDING);
   const [removing, setRemoving] = useState<readonly string[]>([]);
   const [notice, setNotice] = useState<EngineNotice | null>(null);
   const [activeFilter, setActiveFilter] = useState<FilterCategory>('ALL');
@@ -251,9 +265,6 @@ export const EngineProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const noticeSeq = useRef(0);
   const noticeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const groupSeq = useRef(0);
-  const groupTimers = useRef<Map<number, ReturnType<typeof setTimeout>>>(new Map());
-  const overridesRef = useRef(overrides);
-  overridesRef.current = overrides;
   const liveRef = useRef(liveTelemetry);
   // Rows that arrived in the background live only in the refs until the app is active again.
   const heldWhileAway = useRef(false);
@@ -277,6 +288,14 @@ export const EngineProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     if (noticeTimer.current) clearTimeout(noticeTimer.current);
     noticeTimer.current = null;
     setNotice(null);
+  }, []);
+
+  /** Every change to the pending map goes through here, so the ref and React state never disagree. */
+  const updatePending = useCallback((fn: (m: PendingMap) => PendingMap) => {
+    const next = fn(pendingRef.current);
+    if (next === pendingRef.current) return;
+    pendingRef.current = next;
+    setPendingState(next);
   }, []);
 
   /** Saves the engine's list for the next cold start, at most once every 5 s. Background forces a write. */
@@ -305,7 +324,11 @@ export const EngineProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     (snapshots: Parameters<typeof aggregateSnapshots>[0]) => {
       gotLive.current = true;
       const prev = liveRef.current;
-      const smoothed = smoothAggregate(aggregateSnapshots(snapshots), smoothing.current, Date.now());
+      const now = Date.now();
+      const smoothed = smoothAggregate(aggregateSnapshots(snapshots), smoothing.current, now);
+      // Only engine data settles a pending tap: a local change (a deleted row dropped) must not,
+      // and a stale tick that still shows the old state changes nothing (utils/optimistic.ts).
+      updatePending((m) => settlePending(m, smoothed.torrents, now, OVERRIDE_TIMEOUT_MS));
       const torrents = shareRows(prev.torrents, smoothed.torrents) as TransferTelemetry[];
       const same =
         torrents === prev.torrents &&
@@ -320,7 +343,7 @@ export const EngineProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       else heldWhileAway.current = true;
       scheduleCacheSave();
     },
-    [scheduleCacheSave]
+    [scheduleCacheSave, updatePending]
   );
 
   /** Link downloads: same rule as torrents. */
@@ -441,22 +464,28 @@ export const EngineProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     });
     const offStorage = maglevEngine.onStorageStatus((s) => setStorageStatus(s));
 
-    (async () => {
+    const start = async () => {
       const status = await maglevEngine.start(settingsStore.getSettings());
       if (cancelled) return;
       syncState();
       await afterStart(status);
-    })();
+    };
+    // With a saved list the shell (tabs + last-known rows) paints first and the engine starts
+    // right after that frame, so its init and first list do not compete with the first paint.
+    // Without one (first launch, onboarding) the screen waits on the engine anyway: start now.
+    const cancelStart = hasCachedList && settingsStore.getSettings().onboarded ? afterFirstFrame(() => void start()) : null;
+    if (!cancelStart) void start();
 
     return () => {
       cancelled = true;
+      cancelStart?.();
       offState();
       offTelemetry();
       offCompleted();
       offAction();
       offStorage();
     };
-  }, [refreshDetail, afterStart, ingest, ingestDownloads, showNotice]);
+  }, [refreshDetail, afterStart, ingest, ingestDownloads, showNotice, hasCachedList]);
 
   // Clipboard and permissions are re-read whenever the app returns to the foreground.
   useEffect(() => {
@@ -474,46 +503,35 @@ export const EngineProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     setClipboardMagnet(null);
   }, []);
 
-  // Engine rows with optimistic pause/resume applied and pending removals hidden.
+  // Engine rows with pending taps applied (utils/optimistic.ts) and undo-window removals hidden.
   const telemetry = useMemo<TransferAggregate>(() => {
-    const hasOverrides = Object.keys(overrides).length > 0;
-    if (!hasOverrides && removing.length === 0) return liveTelemetry;
-    const hidden = new Set(removing);
-    const torrents: TransferTelemetry[] = [];
+    const torrents = applyPending(liveTelemetry.torrents, pending, removing.length > 0 ? new Set(removing) : undefined);
+    if (torrents === liveTelemetry.torrents) return liveTelemetry;
     let down = 0;
     let up = 0;
     let activeDownloads = 0;
     let activeUploads = 0;
-    for (const t of liveTelemetry.torrents) {
-      if (hidden.has(t.id)) continue;
-      const o = overrides[t.id];
-      const row = o && !overrideSatisfied(t, o) ? applyOverride(t, o) : t;
+    for (const row of torrents) {
       down += row.downloadSpeedBytes;
       up += row.uploadSpeedBytes;
       if (row.state === 'DOWNLOADING') activeDownloads++;
       else if (row.state === 'SEEDING') activeUploads++;
-      torrents.push(row);
     }
     return { totalDownloadSpeedBytes: down, totalUploadSpeedBytes: up, activeDownloads, activeUploads, torrents };
-  }, [liveTelemetry, overrides, removing]);
+  }, [liveTelemetry, pending, removing]);
 
-  // Overrides end as soon as the engine reports the expected state (or the torrent is gone).
+  // A pending tap ends when engine telemetry agrees (settled in `ingest`), or when it is older than
+  // OVERRIDE_TIMEOUT_MS: then telemetry is trusted again, silently. A failed engine call says so
+  // itself (endTap); a slow confirmation is not an error.
   useEffect(() => {
-    const current = overridesRef.current;
-    const ids = Object.keys(current);
-    if (ids.length === 0) return;
-    const byId = new Map(liveTelemetry.torrents.map((t) => [t.id, t]));
-    const done = ids.filter((id) => {
-      const t = byId.get(id);
-      return !t || overrideSatisfied(t, current[id]);
-    });
-    if (done.length === 0) return;
-    setOverrides((prev) => {
-      const next = { ...prev };
-      for (const id of done) delete next[id];
-      return next;
-    });
-  }, [liveTelemetry]);
+    const at = nextExpiry(pending, OVERRIDE_TIMEOUT_MS);
+    if (at === null) return;
+    const t = setTimeout(
+      () => updatePending((m) => settlePending(m, liveRef.current.torrents, Date.now(), OVERRIDE_TIMEOUT_MS)),
+      Math.max(0, at - Date.now())
+    );
+    return () => clearTimeout(t);
+  }, [pending, updatePending]);
 
   // First row on screen, from the saved list or from the engine. Read in adb logcat to measure cold start.
   useEffect(() => {
@@ -521,7 +539,16 @@ export const EngineProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     bootLogged.current = true;
     // Hermes performance.now() counts from device boot, so measure from bundle load instead.
     console.log('[Maglev] boot', Date.now() - JS_LOADED_AT);
+    // Device perf marker: read against the logcat timestamp of ActivityTaskManager's START line.
+    console.log('[maglev-perf] list-ready');
   }, [telemetry.torrents.length]);
+
+  const engineReadyLogged = useRef(false);
+  useEffect(() => {
+    if (engineReadyLogged.current || engineStatus.kind !== 'ready') return;
+    engineReadyLogged.current = true;
+    console.log('[maglev-perf] engine-ready');
+  }, [engineStatus.kind]);
 
   const filteredTorrents = useMemo(() => {
     switch (activeFilter) {
@@ -541,85 +568,96 @@ export const EngineProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
   const nameOf = useCallback((id: string) => liveRef.current.torrents.find((t) => t.id === id)?.name ?? 'torrent', []);
 
-  const failGroup = useCallback(
-    (group: number, kind: OverrideKind, label: string) => {
-      const stuck = Object.entries(overridesRef.current)
-        .filter(([, o]) => o.group === group)
-        .map(([id]) => id);
-      if (stuck.length === 0) return;
-      setOverrides((prev) => {
-        const next = { ...prev };
-        for (const id of stuck) delete next[id];
-        return next;
-      });
-      showNotice({ message: `Couldn't ${kind} ${label}. Try again.` });
-    },
-    [showNotice]
-  );
-
-  /** Marks torrents as pausing or resuming right now. Reverts after 5 s if the engine never confirms. */
-  const startOverrides = useCallback(
-    (ids: string[], kind: OverrideKind, label: string): number => {
+  /** Shows the rows as `kind` now. Returns the group to confirm or fail when the engine answers. */
+  const beginTap = useCallback(
+    (ids: string[], kind: PendingKind): number => {
       const group = ++groupSeq.current;
-      const since = Date.now();
-      setOverrides((prev) => {
-        const next = { ...prev };
-        for (const id of ids) next[id] = { kind, since, group };
-        return next;
-      });
-      const timer = setTimeout(() => {
-        groupTimers.current.delete(group);
-        failGroup(group, kind, label);
-      }, OVERRIDE_TIMEOUT_MS);
-      groupTimers.current.set(group, timer);
+      updatePending((m) => beginPending(m, ids, kind, group, Date.now()));
       return group;
     },
-    [failGroup]
+    [updatePending]
+  );
+
+  /** Engine answered. Ok keeps the hold until telemetry agrees; failure rolls the rows back to the engine snapshot. */
+  const endTap = useCallback(
+    (group: number, ok: boolean, failure?: string) => {
+      updatePending((m) => (ok ? confirmGroup(m, group) : dropGroup(m, group)));
+      if (!ok && failure) showNotice({ message: failure });
+    },
+    [updatePending, showNotice]
   );
 
   const pauseTorrent = useCallback(
     async (id: string) => {
-      if (overridesRef.current[id]) return false; // a tap is already in flight
+      if (pendingRef.current[id]) return false; // a tap is already in flight
       const label = nameOf(id);
-      const group = startOverrides([id], 'pause', label);
+      const group = beginTap([id], 'pause');
       const ok = (await maglevEngine.pause(id)).ok;
-      if (!ok) failGroup(group, 'pause', label);
+      endTap(group, ok, `Couldn't pause ${label}. Try again.`);
       return ok;
     },
-    [nameOf, startOverrides, failGroup]
+    [nameOf, beginTap, endTap]
   );
   const resumeTorrent = useCallback(
     async (id: string) => {
-      if (overridesRef.current[id]) return false;
+      if (pendingRef.current[id]) return false;
       const label = nameOf(id);
-      const group = startOverrides([id], 'resume', label);
+      const group = beginTap([id], 'resume');
       const ok = (await maglevEngine.resume(id)).ok;
-      if (!ok) failGroup(group, 'resume', label);
+      endTap(group, ok, `Couldn't resume ${label}. Try again.`);
       return ok;
     },
-    [nameOf, startOverrides, failGroup]
+    [nameOf, beginTap, endTap]
   );
   const pauseAll = useCallback(async () => {
     const ids = liveRef.current.torrents
-      .filter((t) => (t.state === 'DOWNLOADING' || t.state === 'SEEDING' || t.state === 'QUEUED') && !overridesRef.current[t.id])
+      .filter((t) => (t.state === 'DOWNLOADING' || t.state === 'SEEDING' || t.state === 'QUEUED') && !pendingRef.current[t.id])
       .map((t) => t.id);
-    const group = startOverrides(ids, 'pause', 'all');
+    const group = beginTap(ids, 'pause');
     const res = await maglevEngine.pauseAll();
-    if (!res.ok) failGroup(group, 'pause', 'all');
-  }, [startOverrides, failGroup]);
+    endTap(group, res.ok, "Couldn't pause all. Try again.");
+  }, [beginTap, endTap]);
   const resumeAll = useCallback(async () => {
     const ids = liveRef.current.torrents
-      .filter((t) => t.state === 'PAUSED' && (!t.pausedBy || t.pausedBy === 'user') && !overridesRef.current[t.id])
+      .filter((t) => t.state === 'PAUSED' && (!t.pausedBy || t.pausedBy === 'user') && !pendingRef.current[t.id])
       .map((t) => t.id);
-    const group = startOverrides(ids, 'resume', 'all');
+    const group = beginTap(ids, 'resume');
     const res = await maglevEngine.resumeAll();
-    if (!res.ok) failGroup(group, 'resume', 'all');
-  }, [startOverrides, failGroup]);
-  const deleteTorrent = useCallback(async (id: string, deleteFiles: boolean) => {
-    detailCache.current.delete(id);
-    watched.current.delete(id);
-    return (await maglevEngine.delete(id, deleteFiles)).ok;
+    endTap(group, res.ok, "Couldn't resume all. Try again.");
+  }, [beginTap, endTap]);
+
+  /** Drops rows the engine deleted from the engine list itself (React state too, unless away). */
+  const dropFromLive = useCallback((gone: readonly string[]) => {
+    if (gone.length === 0) return;
+    for (const id of gone) smoothing.current.delete(id);
+    const goneSet = new Set(gone);
+    // From the ref, not React state: rows held in the background are newer than the state.
+    const prev = liveRef.current;
+    const next = { ...prev, torrents: prev.torrents.filter((t) => !goneSet.has(t.id)) };
+    liveRef.current = next;
+    if (!isAway()) setLiveTelemetry(next);
+    else heldWhileAway.current = true;
   }, []);
+
+  /**
+   * Remove now (no undo window), with or without files. The row is hidden at once. The caller
+   * reports a failure (bulk summary on Transfers, the sheet's error on Detail); the row comes back.
+   */
+  const deleteTorrent = useCallback(
+    async (id: string, deleteFiles: boolean) => {
+      const group = beginTap([id], 'remove');
+      const ok = (await maglevEngine.delete(id, deleteFiles)).ok;
+      if (ok) {
+        detailCache.current.delete(id);
+        watched.current.delete(id);
+        dropFromLive([id]);
+      }
+      // Ok keeps the row hidden until a tick without it arrives, so a tick sent before the delete cannot bring it back.
+      endTap(group, ok);
+      return ok;
+    },
+    [beginTap, endTap, dropFromLive]
+  );
 
   /** Runs the engine delete for removals whose undo window ended. Failed rows come back with a notice. */
   const runRemoval = useCallback(
@@ -632,16 +670,9 @@ export const EngineProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         })
       );
       const gone = ids.filter((_, i) => results[i]);
-      if (gone.length > 0) {
-        for (const id of gone) smoothing.current.delete(id);
-        const goneSet = new Set(gone);
-        // From the ref, not React state: rows held in the background are newer than the state.
-        const prev = liveRef.current;
-        const next = { ...prev, torrents: prev.torrents.filter((t) => !goneSet.has(t.id)) };
-        liveRef.current = next;
-        if (!isAway()) setLiveTelemetry(next);
-        else heldWhileAway.current = true;
-      }
+      dropFromLive(gone);
+      // Deleted rows stay hidden as confirmed removals, so a tick sent before the delete cannot bring them back.
+      if (gone.length > 0) endTap(beginTap(gone, 'remove'), true);
       setRemoving((prev) => prev.filter((id) => !ids.includes(id)));
       const failedAt = results.findIndex((ok) => !ok);
       if (failedAt >= 0) {
@@ -649,7 +680,7 @@ export const EngineProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         showNotice({ message: failed === 1 ? `Couldn't remove ${names[failedAt]}. Try again.` : `Couldn't remove ${failed} torrents. Try again.` });
       }
     },
-    [showNotice]
+    [showNotice, dropFromLive, beginTap, endTap]
   );
 
   const flushRemoval = useCallback(() => {
@@ -703,10 +734,7 @@ export const EngineProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   }, [flushRemoval, saveCacheNow]);
 
   useEffect(() => {
-    const timers = groupTimers.current;
     return () => {
-      timers.forEach(clearTimeout);
-      timers.clear();
       if (noticeTimer.current) clearTimeout(noticeTimer.current);
       if (saveTimer.current) clearTimeout(saveTimer.current);
     };
@@ -858,6 +886,7 @@ export const EngineProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         watchDetail,
         startHttpStream,
         isNative,
+        hasCachedList,
         defaultStoragePath,
         engineStatus,
         storageStatus,

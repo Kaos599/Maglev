@@ -104,9 +104,10 @@ export default function TabLayout() {
 
   const assistant = useAssistantPrefs();
 
-  const tab = (name: string, title: string, icon: PixelIconName, hidden = false) => (
+  const tab = (name: string, title: string, icon: PixelIconName, hidden = false, freeze = false) => (
     <Tabs.Screen
       name={name}
+      activityEnabled={freeze}
       options={
         hidden
           ? // href null removes the tab entirely (Settings > Assistant off). expo-router throws if
@@ -126,15 +127,28 @@ export default function TabLayout() {
     <Tabs
       screenListeners={{ tabPress: () => triggerHaptic('selection') }}
       screenOptions={{
+        // A tab renders (and its route module loads) only when first opened. This is already the
+        // default (createBottomTabNavigator passes lazyByDefault: true); set so it cannot regress.
+        lazy: true,
+        // freezeOnBlur is deprecated with no effect in Expo Router 58 (bottom-tabs/types.d.ts;
+        // ScreenFallback passes freezeOnBlur: false). Hidden tabs are frozen with React Activity
+        // instead, per tab, through `activityEnabled` below.
         headerShown: false,
         tabBarStyle,
         tabBarItemStyle: { height: TAB_BAR_HEIGHT, justifyContent: 'center' },
       }}
     >
+      {/*
+        React Activity (activityEnabled): a hidden tab keeps its state, its effects are cleaned up
+        and its renders drop to idle priority; coming back re-runs its effects.
+        Not for Transfers (its list must be current the moment it shows), Search (its search effect
+        would run the search again on return) or Assistant (its AppState listener must still see
+        the app go to the background while another tab is open).
+      */}
       {tab('index', 'Transfers', 'tab-transfers')}
       {tab('search', 'Search', 'tab-search')}
-      {tab('feeds', 'Feeds', 'tab-feeds')}
-      {tab('settings', 'Settings', 'tab-settings')}
+      {tab('feeds', 'Feeds', 'tab-feeds', false, true)}
+      {tab('settings', 'Settings', 'tab-settings', false, true)}
       {tab('assistant', 'Assistant', 'tab-assistant', !assistant.enabled)}
     </Tabs>
   );
