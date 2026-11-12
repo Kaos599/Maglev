@@ -22,7 +22,7 @@
     "test:admission": "node scripts/test-admission.js",
     "test:remove-files": "node scripts/test-remove-files.js",
     "test:tracker-edit": "node scripts/test-tracker-edit.js",
-    "test:assistant": "node scripts/test-assistant-card.js && node scripts/test-assistant-plan.js && node scripts/test-assistant-session.js && node scripts/test-assistant-sanitize.js && node scripts/test-assistant-sse.js && node scripts/test-assistant-prefs.js && node scripts/test-assistant-provider.js && node scripts/test-assistant-safety.js && node scripts/test-assistant-context.js && node scripts/test-assistant-release.js && node scripts/test-assistant-tools.js && node scripts/test-assistant-glossary.js && node scripts/test-assistant-playback.js && node scripts/test-assistant-scoring.js && node scripts/test-assistant-turn.js && node scripts/test-assistant-disk.js",
+    "test:assistant": "node scripts/test-assistant-card.js && node scripts/test-assistant-plan.js && node scripts/test-assistant-session.js && node scripts/test-assistant-sanitize.js && node scripts/test-assistant-sse.js && node scripts/test-assistant-prefs.js && node scripts/test-assistant-provider.js && node scripts/test-assistant-safety.js && node scripts/test-assistant-context.js && node scripts/test-assistant-release.js && node scripts/test-assistant-tools.js && node scripts/test-assistant-glossary.js && node scripts/test-assistant-playback.js && node scripts/test-assistant-scoring.js && node scripts/test-assistant-turn.js && node scripts/test-assistant-disk.js && node scripts/test-assistant-runner.js && node scripts/test-assistant-chat.js && node scripts/test-assistant-jargon.js && node scripts/test-assistant-probe.js",
     "test:url-download": "node scripts/test-url-download.js"
   },
   "dependencies": {
@@ -33,6 +33,7 @@
     "expo-asset": "^58.0.19",
     "expo-clipboard": "~58.0.4",
     "expo-constants": "~58.0.14",
+    "expo-crypto": "~58.0.8",
     "expo-document-picker": "^58.0.4",
     "expo-file-system": "^58.0.13",
     "expo-font": "~58.0.11",
@@ -43,6 +44,7 @@
     "expo-secure-store": "~58.0.2",
     "expo-sqlite": "~58.0.15",
     "expo-status-bar": "~58.0.4",
+    "expo-web-browser": "~58.0.8",
     "maglev-engine": "file:./modules/maglev-engine",
     "react": "19.3.0",
     "react-dom": "19.3.0",

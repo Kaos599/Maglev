@@ -3,6 +3,8 @@ import { Stack } from 'expo-router';
 import { ListRow, Toggle } from '../../components/ui';
 import { Card, SettingsPage } from '../../components/settings/SettingsParts';
 import { assistantPrefs, useAssistantPrefs } from '../../utils/prefs/assistantApp';
+import { ProviderSection } from '../../components/assistant/provider/ProviderSection';
+import { SectionHeader } from '../../components/ui';
 
 const fmt = (n: number) => n.toLocaleString();
 
@@ -39,6 +41,8 @@ export default function AssistantSettings() {
           />
         ) : null}
       </Card>
+      <SectionHeader title="Provider" />
+      <ProviderSection />
     </SettingsPage>
   );
 }
