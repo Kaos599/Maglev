@@ -2,7 +2,7 @@
 //! retry timing and pacing (contract section 17). No IO, no clock, no randomness (the caller passes the jitter).
 
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use super::machine::Event;
 
@@ -281,7 +281,71 @@ pub fn is_local_host(host: &str) -> bool {
 
 /// A redirect may not lead onto the local network, unless the link the user typed was already there.
 pub fn redirect_host_allowed(original_host: &str, target_host: &str) -> bool {
-    !is_local_host(target_host) || is_local_host(original_host)
+    !is_lan_host(target_host) || is_lan_host(original_host)
+}
+
+/// A host on the local network: an IP literal that `is_local_ip` says is local, or a name that
+/// `looks_like_lan_name`. The redirect policy and the resolver both ask this, so they agree.
+pub fn is_lan_host(host: &str) -> bool {
+    let h = host.trim().trim_start_matches('[').trim_end_matches(']').trim_end_matches('.');
+    match h.parse::<IpAddr>() {
+        Ok(ip) => is_local_ip(ip),
+        Err(_) => looks_like_lan_name(h),
+    }
+}
+
+/// Which local addresses a download's connections may use (contract 17.w). Chosen from the download's own typed
+/// host, never from a list shared between downloads.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum LanScope {
+    /// A public link: no redirect target and no resolved address may be on the local network.
+    Public,
+    /// The typed host is itself local: local to local is fine.
+    LanOrigin,
+    /// The user allowed this typed host: only it, and only the pinned addresses, may be local.
+    Allow { host: String, pinned: Vec<IpAddr> },
+}
+
+impl LanScope {
+    /// `pinned` are the addresses the host had when the user allowed it (text form; bad entries are ignored).
+    pub fn for_host(typed_host: &str, allow_lan: bool, pinned: &[String]) -> LanScope {
+        if is_lan_host(typed_host) {
+            return LanScope::LanOrigin;
+        }
+        if allow_lan {
+            let mut ips: Vec<IpAddr> = pinned.iter().filter_map(|p| p.parse().ok()).collect();
+            ips.sort();
+            ips.dedup();
+            return LanScope::Allow { host: typed_host.trim_end_matches('.').to_ascii_lowercase(), pinned: ips };
+        }
+        LanScope::Public
+    }
+
+    /// May a redirect lead to this host?
+    pub fn redirect_allowed(&self, target_host: &str) -> bool {
+        if !is_lan_host(target_host) {
+            return true;
+        }
+        match self {
+            LanScope::Public => false,
+            LanScope::LanOrigin => true,
+            LanScope::Allow { host, .. } => {
+                host.eq_ignore_ascii_case(target_host.trim().trim_end_matches('.'))
+            }
+        }
+    }
+
+    /// The resolved addresses of `name` that a connection may use.
+    pub fn keep(&self, name: &str, addrs: &[IpAddr]) -> Vec<IpAddr> {
+        match self {
+            LanScope::Public => keep_resolved(false, addrs),
+            LanScope::LanOrigin => addrs.to_vec(),
+            LanScope::Allow { host, pinned } => {
+                let same = host.eq_ignore_ascii_case(name.trim_end_matches('.'));
+                addrs.iter().copied().filter(|a| !is_local_ip(*a) || (same && pinned.contains(a))).collect()
+            }
+        }
+    }
 }
 
 /// `Retry-After` in seconds. The HTTP-date form is not parsed; the normal backoff covers it.
@@ -323,8 +387,9 @@ pub fn slot_free(active: usize, max: u32) -> bool {
 
 /// No byte for this long: the card shows "Waiting for the server".
 pub const STALL_FLAG_AFTER: Duration = Duration::from_secs(30);
-/// No byte for this long: the connection is cut and retried.
-pub const STALL_SILENCE_ABORT: Duration = Duration::from_secs(60);
+/// No byte for this long: the connection is cut and retried. Under the client's 45 s read timeout, so a silent
+/// server is a stall (budget 5) and not a network error.
+pub const STALL_SILENCE_ABORT: Duration = Duration::from_secs(40);
 /// The length of the window the average speed is judged over.
 pub const STALL_WINDOW: Duration = Duration::from_secs(60);
 /// Average speed under this over a window counts as a stall.
@@ -365,6 +430,75 @@ pub fn check_stall(since_last_byte: Duration, window_elapsed: Duration, window_b
         return if window_bytes < needed { StallCheck::Stalled } else { StallCheck::Healthy };
     }
     StallCheck::Fine
+}
+
+/// The stall window of one transfer. It lives across reconnects, so a server that sends a little and then drops
+/// the connection can't start a fresh window each time. `now` is always passed in.
+#[derive(Debug, Clone, Copy)]
+pub struct StallClock {
+    win_start: Instant,
+    win_bytes: u64,
+    last_byte: Instant,
+}
+
+impl StallClock {
+    pub fn new(now: Instant) -> Self {
+        StallClock { win_start: now, win_bytes: 0, last_byte: now }
+    }
+
+    pub fn on_bytes(&mut self, now: Instant, n: u64) {
+        self.last_byte = now;
+        self.win_bytes = self.win_bytes.saturating_add(n);
+    }
+
+    /// Time spent waiting on our own limiter is nobody's stall: move both clocks forward by `waited`.
+    pub fn excuse(&mut self, waited: Duration, now: Instant) {
+        self.win_start = (self.win_start + waited).min(now);
+        self.last_byte = (self.last_byte + waited).min(now);
+    }
+
+    pub fn quiet(&self, now: Instant) -> Duration {
+        now.saturating_duration_since(self.last_byte)
+    }
+
+    /// A new window after a stall retry.
+    pub fn restart(&mut self, now: Instant) {
+        *self = StallClock::new(now);
+    }
+
+    /// Judges the transfer. A healthy answer also starts the next window.
+    pub fn check(&mut self, now: Instant, floor_bps: u64) -> StallCheck {
+        let r = check_stall(
+            self.quiet(now),
+            now.saturating_duration_since(self.win_start),
+            self.win_bytes,
+            floor_bps,
+        );
+        if r == StallCheck::Healthy {
+            self.win_start = now;
+            self.win_bytes = 0;
+        }
+        r
+    }
+
+    /// Did a connection that just broke have a poor window so far? Then the break counts toward the stall budget.
+    pub fn broken_is_stall(&self, now: Instant, floor_bps: u64) -> bool {
+        let elapsed = now.saturating_duration_since(self.win_start);
+        elapsed < STALL_WINDOW && (self.win_bytes as f64) < floor_bps as f64 * elapsed.as_secs_f64()
+    }
+}
+
+/// The names of the backups to delete so that only the newest `keep` stay. `corrupt-<secs>` names sort by time.
+pub fn backups_to_delete(names: &[String], keep: usize) -> Vec<String> {
+    let mut stamped: Vec<(i64, &String)> = names
+        .iter()
+        .filter_map(|n| {
+            let t = n.strip_prefix("maglev-downloads.corrupt-")?.strip_suffix(".json")?;
+            Some((t.parse::<i64>().ok()?, n))
+        })
+        .collect();
+    stamped.sort_by(|a, b| b.0.cmp(&a.0));
+    stamped.into_iter().skip(keep).map(|(_, n)| n.clone()).collect()
 }
 
 // ---- resolved addresses (DNS rebinding) ----
@@ -423,9 +557,11 @@ pub fn has_secret_query(url: &str) -> bool {
     let Ok(u) = reqwest::Url::parse(url) else {
         return false;
     };
-    const WORDS: [&str; 20] = [
+    const WORDS: [&str; 22] = [
         "token", "secret", "password", "passwd", "pwd", "signature", "sig", "credential", "credentials", "session",
         "sessionid", "apikey", "key", "auth", "authorization", "jwt", "sas", "expires", "expire", "sign",
+        // Discord CDN signs with `hm` (and `ex`, `is`); Dropbox shared links carry `rlkey`.
+        "hm", "rlkey",
     ];
     const PARTS: [&str; 5] = ["token", "apikey", "signature", "secret", "password"];
     u.query_pairs().any(|(k, _)| {
@@ -836,13 +972,14 @@ mod tests {
     #[test]
     fn the_window_is_not_judged_before_it_is_over() {
         assert_eq!(check_stall(secs(10), secs(59), 0, STALL_MIN_BPS), StallCheck::Fine);
-        assert_eq!(check_stall(secs(59), secs(59), 0, STALL_MIN_BPS), StallCheck::Fine);
+        assert_eq!(check_stall(secs(39), secs(59), 0, STALL_MIN_BPS), StallCheck::Fine);
     }
 
     #[test]
     fn a_minute_of_silence_is_a_stall_inside_the_window() {
-        assert_eq!(check_stall(secs(60), secs(60), 10_000_000, STALL_MIN_BPS), StallCheck::Stalled);
-        assert_eq!(check_stall(secs(60), secs(5), 10_000_000, STALL_MIN_BPS), StallCheck::Stalled);
+        assert_eq!(check_stall(secs(40), secs(60), 10_000_000, STALL_MIN_BPS), StallCheck::Stalled);
+        assert_eq!(check_stall(secs(40), secs(5), 10_000_000, STALL_MIN_BPS), StallCheck::Stalled);
+        assert!(STALL_SILENCE_ABORT < Duration::from_secs(45), "must fire before the client's read timeout");
     }
 
     #[test]
@@ -947,5 +1084,167 @@ mod tests {
         ] {
             assert!(!has_secret_query(u), "{u}");
         }
+    }
+
+    // ---- LAN scope ----
+
+    #[test]
+    fn a_public_link_may_not_redirect_to_a_lan_name_or_a_local_literal() {
+        let s = LanScope::for_host("files.example.com", false, &[]);
+        assert_eq!(s, LanScope::Public);
+        for t in ["router.lan", "nas", "box.home.arpa", "printer.local", "192.168.1.1", "100.64.0.9", "[fd00::1]", "224.0.0.1", "[64:ff9b::a00:1]", "localhost"] {
+            assert!(!s.redirect_allowed(t), "{t}");
+        }
+        assert!(s.redirect_allowed("cdn.example.org"));
+        assert!(s.redirect_allowed("8.8.8.8"));
+    }
+
+    #[test]
+    fn the_predicates_of_the_policy_and_the_resolver_agree() {
+        for h in ["router.lan", "nas", "100.64.1.1", "224.0.0.1", "255.255.255.255", "[64:ff9b::7f00:1]", "pc.localdomain"] {
+            assert!(is_lan_host(h), "{h}");
+        }
+        for h in ["example.com", "8.8.8.8", "[2001:4860:4860::8888]"] {
+            assert!(!is_lan_host(h), "{h}");
+        }
+        assert!(!redirect_host_allowed("cdn.example.com", "router.lan"));
+        assert!(!redirect_host_allowed("cdn.example.com", "224.0.0.1"));
+    }
+
+    #[test]
+    fn a_local_origin_may_redirect_locally() {
+        let s = LanScope::for_host("nas", false, &[]);
+        assert_eq!(s, LanScope::LanOrigin);
+        assert!(s.redirect_allowed("192.168.1.5"));
+        assert!(s.redirect_allowed("other.lan"));
+        assert_eq!(s.keep("192.168.1.5", &[ip("192.168.1.5")]), vec![ip("192.168.1.5")]);
+        assert_eq!(LanScope::for_host("192.168.1.9", false, &[]), LanScope::LanOrigin);
+        assert_eq!(LanScope::for_host("100.101.102.103", false, &[]), LanScope::LanOrigin);
+    }
+
+    #[test]
+    fn an_allowed_host_is_pinned_and_redirects_stay_checked() {
+        let s = LanScope::for_host("Files.Example.com", true, &["100.64.0.7".into(), "junk".into()]);
+        assert_eq!(s, LanScope::Allow { host: "files.example.com".into(), pinned: vec![ip("100.64.0.7")] });
+        // The pinned address of that host is kept; any other local address, or another name, is not.
+        assert_eq!(s.keep("files.example.com", &[ip("100.64.0.7"), ip("93.184.216.34")]), vec![ip("100.64.0.7"), ip("93.184.216.34")]);
+        assert!(s.keep("files.example.com", &[ip("192.168.1.1")]).is_empty());
+        assert!(s.keep("other.example.com", &[ip("100.64.0.7")]).is_empty());
+        // A redirect to the same host is fine; to another local target it is not.
+        assert!(s.redirect_allowed("files.example.com"));
+        assert!(!s.redirect_allowed("router.lan"));
+        assert!(!s.redirect_allowed("192.168.1.1"));
+        assert!(s.redirect_allowed("cdn.example.org"));
+    }
+
+    #[test]
+    fn allow_without_pinned_addresses_keeps_no_local_address() {
+        let s = LanScope::for_host("x.example.com", true, &[]);
+        assert!(s.keep("x.example.com", &[ip("10.0.0.2")]).is_empty());
+    }
+
+    #[test]
+    fn a_public_scope_drops_local_answers() {
+        assert!(LanScope::Public.keep("evil.example", &[ip("127.0.0.1")]).is_empty());
+        assert_eq!(LanScope::Public.keep("a.example", &[ip("10.0.0.1"), ip("1.1.1.1")]), vec![ip("1.1.1.1")]);
+    }
+
+    // ---- stall clock ----
+
+    #[test]
+    fn a_trickle_across_reconnects_is_judged_on_one_window() {
+        let t0 = Instant::now();
+        let mut c = StallClock::new(t0);
+        // 100 bytes now and then over a minute, however often the connection was remade.
+        c.on_bytes(t0 + secs(10), 100);
+        c.on_bytes(t0 + secs(40), 100);
+        assert_eq!(c.check(t0 + secs(59), 1024), StallCheck::Fine);
+        assert_eq!(c.check(t0 + secs(61), 1024), StallCheck::Stalled);
+    }
+
+    #[test]
+    fn a_healthy_window_starts_the_next_one() {
+        let t0 = Instant::now();
+        let mut c = StallClock::new(t0);
+        c.on_bytes(t0 + secs(55), 10_000_000);
+        assert_eq!(c.check(t0 + secs(60), 1024), StallCheck::Healthy);
+        assert_eq!(c.check(t0 + secs(90), 1024), StallCheck::Fine);
+    }
+
+    #[test]
+    fn silence_is_cut_before_the_read_timeout() {
+        let t0 = Instant::now();
+        let mut c = StallClock::new(t0);
+        c.on_bytes(t0 + secs(1), 5_000_000);
+        assert_eq!(c.check(t0 + secs(30), 1024), StallCheck::Fine);
+        assert_eq!(c.check(t0 + secs(41), 1024), StallCheck::Stalled);
+        assert!(waiting_for_server(c.quiet(t0 + secs(31))));
+    }
+
+    #[test]
+    fn waiting_on_our_own_limiter_is_not_a_stall() {
+        let t0 = Instant::now();
+        let mut c = StallClock::new(t0);
+        c.on_bytes(t0 + secs(1), 500);
+        // 70 s spent in the shared limiter's queue.
+        c.excuse(secs(70), t0 + secs(71));
+        assert!(c.quiet(t0 + secs(71)) < STALL_SILENCE_ABORT);
+        assert_eq!(c.check(t0 + secs(71), 1024), StallCheck::Fine);
+    }
+
+    #[test]
+    fn excuse_never_moves_a_clock_into_the_future() {
+        let t0 = Instant::now();
+        let mut c = StallClock::new(t0);
+        c.excuse(secs(500), t0 + secs(10));
+        assert_eq!(c.quiet(t0 + secs(10)), Duration::ZERO);
+    }
+
+    #[test]
+    fn a_break_with_a_poor_window_counts_as_a_stall() {
+        let t0 = Instant::now();
+        let mut c = StallClock::new(t0);
+        c.on_bytes(t0 + secs(1), 100);
+        // Sends 100 bytes, then the connection closes, again and again.
+        assert!(c.broken_is_stall(t0 + secs(5), 1024));
+        // A fast connection that drops is an ordinary retry.
+        c.on_bytes(t0 + secs(6), 5_000_000);
+        assert!(!c.broken_is_stall(t0 + secs(7), 1024));
+        // Past a full window the break is ordinary too.
+        let d = StallClock::new(t0);
+        assert!(!d.broken_is_stall(t0 + secs(61), 1024));
+    }
+
+    // ---- backups ----
+
+    #[test]
+    fn only_the_newest_three_backups_stay() {
+        let names: Vec<String> = [
+            "maglev-downloads.corrupt-100.json",
+            "maglev-downloads.corrupt-500.json",
+            "maglev-downloads.corrupt-300.json",
+            "maglev-downloads.corrupt-400.json",
+            "maglev-downloads.corrupt-200.json",
+            "maglev-downloads.json",
+            "other.json",
+        ]
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
+        let mut del = backups_to_delete(&names, 3);
+        del.sort();
+        assert_eq!(del, vec!["maglev-downloads.corrupt-100.json", "maglev-downloads.corrupt-200.json"]);
+        assert!(backups_to_delete(&names[..2], 3).is_empty());
+    }
+
+    #[test]
+    fn discord_and_dropbox_links_are_secrets() {
+        for u in [
+            "https://cdn.discordapp.com/attachments/1/2/f.zip?ex=65&is=64&hm=abcdef",
+            "https://www.dropbox.com/scl/fi/abc/f.zip?rlkey=xyz&dl=1",
+        ] {
+            assert!(has_secret_query(u), "{u}");
+        }
+        assert!(!has_secret_query("https://x.test/f.zip?dl=1&hmm=2"));
     }
 }

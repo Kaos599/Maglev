@@ -47,6 +47,8 @@ pub enum ErrorCode {
     Blocked,
     /// URL downloads: the server kept the connection open but sent almost nothing, again and again.
     Stalled,
+    /// URL downloads: the link's own address points to a device on the local network (the user may allow it).
+    LanAddress,
     /// Opening a finished file: no app on the phone can open it. Returned by the Kotlin layer only.
     NoApp,
 }
@@ -81,6 +83,7 @@ impl ErrorCode {
             ErrorCode::Blocked => "BLOCKED",
             ErrorCode::Stalled => "STALLED",
             ErrorCode::NoApp => "NO_APP",
+            ErrorCode::LanAddress => "LAN_ADDRESS",
         }
     }
 }
@@ -436,5 +439,6 @@ mod tests {
         assert_eq!(ErrorCode::Stalled.as_str(), "STALLED");
         assert_eq!(serde_json::to_string(&ErrorCode::NoApp).unwrap(), "\"NO_APP\"");
         assert_eq!(ErrorCode::NoApp.as_str(), "NO_APP");
+        assert_eq!(serde_json::to_string(&ErrorCode::LanAddress).unwrap(), "\"LAN_ADDRESS\"");
     }
 }

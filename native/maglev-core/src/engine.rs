@@ -3553,8 +3553,21 @@ impl MaglevEngine {
     }
 
     pub fn add_download(&self, url: &str, options_json: &str) -> Result<AddedDownload, EngineError> {
-        let r = self.downloads.add(url, options_json)?;
-        Ok(r)
+        match self.downloads.add(url, options_json) {
+            // The same link pasted again while that download waits for a new link (after a restart the saved link
+            // has no signed query): refresh it instead of adding a second one (contract 17.w).
+            Err(e) if e.code == ErrorCode::Duplicate && e.id.as_deref().is_some_and(|id| self.downloads.is_needs_link(id)) => {
+                let id = e.id.clone().unwrap_or_default();
+                self.run(Duration::from_secs(60), self.downloads.refresh_url(&id, url, options_json))??;
+                Ok(AddedDownload { id })
+            }
+            other => other,
+        }
+    }
+
+    /// The user allows the typed host of a download that failed with `LAN_ADDRESS`. The caller retries afterwards.
+    pub fn allow_lan_host(&self, id: &str) -> Result<(), EngineError> {
+        self.run(Duration::from_secs(15), self.downloads.allow_lan_host(id))?
     }
 
     pub fn pause_download(&self, id: &str) -> Result<(), EngineError> {

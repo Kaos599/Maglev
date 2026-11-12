@@ -55,6 +55,8 @@ pub enum DlError {
     StorageUnavailable,
     /// The file is bigger than the file system allows (FAT32 4 GB).
     FileTooLarge,
+    /// The link's own host resolved onto the local network and the user hasn't allowed it.
+    LanAddress,
     /// The server kept the connection open but sent almost nothing, again and again.
     Stalled,
 }
@@ -72,6 +74,7 @@ impl DlError {
             DlError::StorageUnavailable => "STORAGE_UNAVAILABLE",
             DlError::FileTooLarge => "FILE_TOO_LARGE",
             DlError::Stalled => "STALLED",
+            DlError::LanAddress => "LAN_ADDRESS",
         }
     }
 }
@@ -132,6 +135,8 @@ pub enum Event {
     HttpFatal,
     /// Extra: a redirect led to the local network (probe or transfer).
     LocalRedirect,
+    /// Extra: the typed host itself resolved onto the local network and was not allowed (probe or transfer).
+    LanAddress,
     /// Extra: the real GET answered with a web page.
     NotAFile,
     /// Extra: the folder is gone or the storage failed (ENOENT, EIO, ENODEV, ...).
@@ -233,6 +238,7 @@ pub fn step(state: State, event: Event) -> (State, Vec<Effect>) {
         }
         (S::Resolving, E::NetErr) => (S::Error(DlError::Network), vec![]),
         (S::Resolving, E::LocalRedirect) => (S::Error(DlError::LocalRedirect), vec![]),
+        (S::Resolving, E::LanAddress) => (S::Error(DlError::LanAddress), vec![]),
         // Extra: the user pauses while the probe runs. The probe is cancelled; it runs again from `Downloading`.
         (S::Resolving, E::UserPause) => (S::Paused(PauseReason::User), vec![Effect::CancelTasks]),
         // Extra: governance blocks while the probe runs. The probe is cancelled; it runs again from `Downloading`.
@@ -292,6 +298,7 @@ pub fn step(state: State, event: Event) -> (State, Vec<Effect>) {
         (S::Downloading, E::StorageGone) => (S::Error(DlError::StorageUnavailable), vec![Effect::KeepPart]),
         (S::Downloading, E::FileTooLarge) => (S::Error(DlError::FileTooLarge), vec![]),
         (S::Downloading, E::LocalRedirect) => (S::Error(DlError::LocalRedirect), vec![]),
+        (S::Downloading, E::LanAddress) => (S::Error(DlError::LanAddress), vec![]),
         (S::Downloading, E::NotAFile) => (S::Error(DlError::NotAFile), vec![]),
         (S::Downloading, E::AllBytes) => (S::Verifying, vec![]),
         // Extra.
@@ -791,5 +798,15 @@ mod tests {
         assert_eq!(step(S::Resolving, E::RestoreStartPaused), (S::Paused(PauseReason::User), vec![]));
         assert_eq!(step(S::Finished, E::RestoreStartPaused), (S::Finished, vec![]));
         assert_eq!(step(S::Paused(PauseReason::Network), E::RestoreStartPaused), (S::Paused(PauseReason::Network), vec![]));
+    }
+
+    #[test]
+    fn a_lan_address_is_its_own_error_and_can_be_retried() {
+        assert_eq!(step(S::Resolving, E::LanAddress), (S::Error(DlError::LanAddress), vec![]));
+        assert_eq!(step(S::Downloading, E::LanAddress), (S::Error(DlError::LanAddress), vec![]));
+        assert_eq!(DlError::LanAddress.as_str(), "LAN_ADDRESS");
+        assert_ne!(DlError::LanAddress.as_str(), DlError::LocalRedirect.as_str());
+        assert_eq!(step(S::Error(DlError::LanAddress), E::UserRetry), (S::Resolving, vec![F::Probe]));
+        assert_eq!(step(S::Queued, E::LanAddress), (S::Queued, vec![]));
     }
 }

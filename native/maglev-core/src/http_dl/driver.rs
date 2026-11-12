@@ -11,7 +11,7 @@
 //! previous, follow, error}`, `RequestBuilder::{header, basic_auth, send}`, `Response::{status, headers, url,
 //! chunk}`. `chunk()` needs no cargo feature, so only the `rustls` feature that librqbit already turns on is used.
 
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap};
 use std::fs::{File, OpenOptions};
 use std::io;
 use std::net::{IpAddr, SocketAddr};
@@ -37,9 +37,9 @@ use tracing::warn;
 use super::content_disposition::{choose_name, sanitize_filename, unique_name};
 use super::machine::{step, DlError, Effect, Event, Notice, PauseReason, State, MAX_ATTEMPTS, MAX_STALL_ATTEMPTS};
 use super::rules::{
-    backoff_delay, check_stall, classify_probe, fits, has_secret_query, judge_get, keep_resolved, looks_like_lan_name,
-    overruns, pace_delay, redirect_host_allowed, slot_free, stall_floor, waiting_for_server, Headers, ProbeInfo,
-    ProbeVerdict, Reply, StallCheck,
+    backoff_delay, backups_to_delete, classify_probe, fits, has_secret_query, judge_get, overruns, pace_delay,
+    is_lan_host, slot_free, stall_floor, waiting_for_server, Headers, LanScope, ProbeInfo, ProbeVerdict, Reply, StallCheck,
+    StallClock,
 };
 use super::sidecar::{final_path, part_path, safe_url, sidecar_path, Sidecar};
 use crate::error::{EngineError, ErrorCode};
@@ -64,7 +64,8 @@ const BLOCKED_MSG: &str = "Blocked by your Wi-Fi-only or VPN setting.";
 const AUTH_AGAIN_COPY: &str = "Sign in again: paste the link again.";
 const EXPIRED_COPY: &str = "This link has expired. Paste a new one.";
 const STALLED_COPY: &str = "The server stopped sending data. Try again later.";
-const LOCAL_REDIRECT_COPY: &str = "This link tried to send Maglev to a device on your network, so it was stopped.";
+const LOCAL_REDIRECT_COPY: &str = "A redirect tried to send Maglev to a device on your network, so it stopped.";
+const LAN_ADDRESS_COPY: &str = "This address points to a device on your network.";
 
 // ---- options ------------------------------------------------------------------------------------------------
 
@@ -96,6 +97,8 @@ pub struct DownloadOptions {
     pub headers: Option<HeaderOptions>,
     pub expected_hash: Option<ExpectedHash>,
     pub down_limit_bps: Option<u64>,
+    /// Allow the typed host to resolve onto the local network (after `LAN_ADDRESS`).
+    pub allow_lan: bool,
 }
 
 fn parse_options(json: &str) -> Result<DownloadOptions, EngineError> {
@@ -156,6 +159,10 @@ pub struct DlRecord {
     /// The link needs something that is never saved: a user name and password, a cookie, or a signed query.
     /// The flag is saved, the secret is not. After a restart the download waits for a new link (`AUTH_REQUIRED`).
     pub needs_login: bool,
+    /// The user allowed the typed host to be on the local network (contract 17.w). Not a secret.
+    pub allow_lan: bool,
+    /// The addresses of that host when it was allowed; its lookups may only return these.
+    pub lan_pinned: Vec<String>,
 }
 
 impl Default for DlRecord {
@@ -181,6 +188,8 @@ impl Default for DlRecord {
             error: None,
             notice: None,
             needs_login: false,
+            allow_lan: false,
+            lan_pinned: Vec::new(),
         }
     }
 }
@@ -329,6 +338,14 @@ fn is_local_redirect(e: &reqwest::Error) -> bool {
     chain_contains(e, LOCAL_REDIRECT_MSG)
 }
 
+/// The event for a request that failed because of the local-network rules.
+fn refusal_event(r: Refusal) -> Event {
+    match r {
+        Refusal::LanAddress => Event::LanAddress,
+        Refusal::Redirect => Event::LocalRedirect,
+    }
+}
+
 /// Free bytes for a normal app on the file system holding `path` (the nearest existing parent when the folder is
 /// not created yet). `None` when it can't be read; callers then let the download go on.
 #[cfg(unix)]
@@ -385,6 +402,7 @@ fn error_message(e: DlError, status: Option<u16>) -> String {
         DlError::ChecksumMismatch => "File doesn't match the checksum.".to_string(),
         DlError::Permission => "Maglev can't write to that folder.".to_string(),
         DlError::LocalRedirect => LOCAL_REDIRECT_COPY.to_string(),
+        DlError::LanAddress => LAN_ADDRESS_COPY.to_string(),
         DlError::StorageUnavailable => "The folder isn't available. Is the SD card in?".to_string(),
         DlError::FileTooLarge => {
             "This file is bigger than the card's format allows (4 GB). Use phone storage.".to_string()
@@ -402,6 +420,16 @@ fn needs_link_info(status: Option<u16>, needs_login: bool) -> DlErrInfo {
         message: if auth { AUTH_AGAIN_COPY } else { EXPIRED_COPY }.to_string(),
         http_status: status,
     }
+}
+
+/// Is `url` the link of this download? After a restart a link with a secret query is saved without it, so a
+/// download waiting for a new link (`needs_link`) also matches the same link by scheme, host and path: pasting it
+/// again refreshes that download instead of adding a second one.
+fn same_link(r: &DlRecord, url: &str, folder: &str) -> bool {
+    if r.folder != folder || matches!(r.state, State::Finished | State::Gone) {
+        return false;
+    }
+    r.url == url || (r.state == State::NeedsLink && r.needs_login && safe_url(&r.url) == safe_url(url))
 }
 
 /// The record as it is written to disk: no query that looks like a secret, and `final_url` cut down to host and path.
@@ -458,37 +486,79 @@ fn corrupt_backup_name(now: i64) -> String {
 
 // ---- resolving names ----------------------------------------------------------------------------------------------
 
-/// Hosts the user typed that are already on the home network. Only these may resolve to a local address.
-type LanHosts = Arc<Mutex<HashSet<String>>>;
-
-/// reqwest's resolver, with every answer checked (contract section 17.y). Runs for the first request and for every
-/// redirect hop, so a public name that answers a private address is refused (DNS rebinding).
+/// reqwest's resolver, with every answer checked against the download's own `LanScope` (contract 17.w). Runs for the
+/// first request and for every redirect hop, so a public name that answers a private address is refused (DNS
+/// rebinding).
 struct GuardedResolver {
-    lan: LanHosts,
+    scope: LanScope,
 }
 
 impl reqwest::dns::Resolve for GuardedResolver {
     fn resolve(&self, name: reqwest::dns::Name) -> reqwest::dns::Resolving {
         let host = name.as_str().trim_end_matches('.').to_ascii_lowercase();
-        let lan_ok = self.lan.lock().contains(&host);
+        let scope = self.scope.clone();
         Box::pin(async move {
-            guarded_lookup(host, lan_ok).await.map(|v| Box::new(v.into_iter()) as reqwest::dns::Addrs)
+            guarded_lookup(host, &scope).await.map(|v| Box::new(v.into_iter()) as reqwest::dns::Addrs)
         })
     }
 }
 
 async fn guarded_lookup(
     host: String,
-    lan_ok: bool,
+    scope: &LanScope,
 ) -> Result<Vec<SocketAddr>, Box<dyn std::error::Error + Send + Sync>> {
     let found: Vec<SocketAddr> = tokio::net::lookup_host((host.as_str(), 0u16)).await?.collect();
     let ips: Vec<IpAddr> = found.iter().map(|a| a.ip()).collect();
-    let keep = keep_resolved(lan_ok, &ips);
+    let keep = scope.keep(&host, &ips);
     if keep.is_empty() && !found.is_empty() {
-        // `is_local_redirect` finds this text in the error chain, so the download ends as LOCAL_REDIRECT.
-        return Err(LOCAL_REDIRECT_MSG.into());
+        // The error chain carries the host, so `refusal` can tell the typed host (LAN_ADDRESS) from a redirect.
+        return Err(format!("{LOCAL_REDIRECT_MSG} (host: {host})").into());
     }
     Ok(found.into_iter().filter(|a| keep.contains(&a.ip())).collect())
+}
+
+/// Why a request was refused by the local-network rules.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Refusal {
+    /// The typed host itself resolved onto the local network.
+    LanAddress,
+    /// A redirect led there.
+    Redirect,
+}
+
+/// Looks for the refusal in an error chain. `typed_host` is the host of the link the user typed.
+fn refusal(e: &(dyn std::error::Error + 'static), typed_host: &str) -> Option<Refusal> {
+    let mut cur: Option<&(dyn std::error::Error + 'static)> = Some(e);
+    while let Some(x) = cur {
+        let msg = x.to_string();
+        if let Some(at) = msg.find(LOCAL_REDIRECT_MSG) {
+            let host = msg[at..].split("(host: ").nth(1).and_then(|r| r.split(')').next());
+            return Some(match host {
+                Some(h) if h.eq_ignore_ascii_case(typed_host.trim_end_matches('.')) => Refusal::LanAddress,
+                _ => Refusal::Redirect,
+            });
+        }
+        cur = x.source();
+    }
+    None
+}
+
+/// The addresses of a host, as text, for pinning.
+async fn resolve_ips(host: &str) -> Result<Vec<String>, EngineError> {
+    let found = tokio::net::lookup_host((host, 0u16))
+        .await
+        .map_err(|_| EngineError::new(ErrorCode::Network, "Couldn't find that address. Check your connection."))?;
+    let mut ips: Vec<String> = found.map(|a| a.ip().to_string()).collect();
+    ips.sort();
+    ips.dedup();
+    if ips.is_empty() {
+        return Err(EngineError::new(ErrorCode::Network, "Couldn't find that address. Check your connection."));
+    }
+    Ok(ips)
+}
+
+fn host_of(url: &str) -> String {
+    reqwest::Url::parse(url).ok().and_then(|u| u.host_str().map(str::to_string)).unwrap_or_default()
 }
 
 /// Does a link to the same file match what was stored? Size must agree; validators must agree when both exist,
@@ -584,10 +654,11 @@ fn read_headers(h: &HeaderMap) -> Headers {
     }
 }
 
-fn build_client(proxy: Option<&str>, lan: LanHosts) -> Result<Client, String> {
+fn build_client(proxy: Option<&str>, scope: LanScope) -> Result<Client, String> {
     // Contract section 17: at most 10 redirects, and https to http is an error. Credentials headers that reqwest
     // marks sensitive (Cookie, Authorization) are dropped by reqwest itself on a cross-origin redirect.
-    let policy = redirect::Policy::custom(|attempt| {
+    let policy_scope = scope.clone();
+    let policy = redirect::Policy::custom(move |attempt| {
         if attempt.previous().len() >= 10 {
             return attempt.error("too many redirects");
         }
@@ -595,13 +666,9 @@ fn build_client(proxy: Option<&str>, lan: LanHosts) -> Result<Client, String> {
         if was_https && attempt.url().scheme() == "http" {
             return attempt.error("redirect from https to http");
         }
-        // A redirect may not lead onto the local network, unless the link the user typed was already there.
-        let local = {
-            let original = attempt.previous().first().and_then(|u| u.host_str()).unwrap_or("").to_string();
-            let target = attempt.url().host_str().unwrap_or("").to_string();
-            !redirect_host_allowed(&original, &target)
-        };
-        if local {
+        // A redirect may not lead onto the local network, unless the link the user typed was already there (the
+        // scope was chosen from the typed host; it also knows an allowed host).
+        if !policy_scope.redirect_allowed(attempt.url().host_str().unwrap_or("")) {
             return attempt.error(LOCAL_REDIRECT_MSG);
         }
         attempt.follow()
@@ -611,7 +678,7 @@ fn build_client(proxy: Option<&str>, lan: LanHosts) -> Result<Client, String> {
         .connect_timeout(Duration::from_secs(15))
         .read_timeout(Duration::from_secs(45))
         // Every connection, redirects included, goes through the address check. A proxy resolves names itself.
-        .dns_resolver(Arc::new(GuardedResolver { lan }))
+        .dns_resolver(Arc::new(GuardedResolver { scope }))
         .user_agent(USER_AGENT_DEFAULT);
     if let Some(p) = proxy {
         b = b.proxy(reqwest::Proxy::all(p).map_err(|e| e.to_string())?);
@@ -637,6 +704,8 @@ pub struct AddedDownload {
 #[derive(Debug)]
 enum ProbeFail {
     Net,
+    /// The typed host resolved onto the local network and wasn't allowed.
+    LanAddress,
     Auth(u16),
     Status(u16),
     Html,
@@ -668,11 +737,13 @@ pub struct Downloads {
     inner: Mutex<Inner>,
     blocked: Mutex<Vec<String>>,
     proxy: Mutex<Option<String>>,
-    client: Mutex<Option<(Option<String>, Client)>>,
+    /// One client per proxy and local-network scope (a handful at most).
+    clients: Mutex<HashMap<(Option<String>, LanScope), Client>>,
     counter: AtomicU64,
     /// `NativeConfig.max_active_downloads`; 0 = no limit.
     max_active: AtomicU32,
-    lan_hosts: LanHosts,
+    /// Held while a download takes a slot, so the cap can't be passed by two starts at once.
+    start_lock: Mutex<()>,
 }
 
 impl Downloads {
@@ -703,10 +774,10 @@ impl Downloads {
             inner: Mutex::new(Inner::default()),
             blocked: Mutex::new(blocked),
             proxy: Mutex::new(proxy),
-            client: Mutex::new(None),
+            clients: Mutex::new(HashMap::new()),
             counter: AtomicU64::new(1),
             max_active: AtomicU32::new(DEFAULT_MAX_ACTIVE_DOWNLOADS),
-            lan_hosts: Arc::new(Mutex::new(HashSet::new())),
+            start_lock: Mutex::new(()),
         });
         me.restore();
         me
@@ -732,9 +803,18 @@ impl Downloads {
                 if parsed.unreadable { " (the whole file)" } else { "" }
             );
             let backup = self.session_dir.join(corrupt_backup_name(now_secs()));
-            if let Err(e) = std::fs::write(&backup, &bytes) {
+            if parsed.unreadable {
+                // Moved, not copied: the next start finds no file, so the backup happens once.
+                if std::fs::rename(self.store_path(), &backup).is_err() {
+                    if let Err(e) = std::fs::write(&backup, &bytes) {
+                        warn!("could not keep a copy of the downloads list: {e}");
+                    }
+                    let _ = std::fs::remove_file(self.store_path());
+                }
+            } else if let Err(e) = std::fs::write(&backup, &bytes) {
                 warn!("could not keep a copy of the downloads list: {e}");
             }
+            self.prune_backups();
         }
         if parsed.unreadable {
             return;
@@ -774,12 +854,20 @@ impl Downloads {
                     rec.error = Some(needs_link_info(None, true));
                 }
             }
-            self.allow_lan_host(&rec.url);
             inner.live.insert(rec.id.clone(), Live::default());
             inner.records.insert(rec.id.clone(), rec);
         }
         drop(inner);
         self.save();
+    }
+
+    /// Keeps the newest 3 `maglev-downloads.corrupt-*` copies.
+    fn prune_backups(&self) {
+        let Ok(dir) = std::fs::read_dir(&self.session_dir) else { return };
+        let names: Vec<String> = dir.filter_map(|e| e.ok()).map(|e| e.file_name().to_string_lossy().into_owned()).collect();
+        for old in backups_to_delete(&names, 3) {
+            let _ = std::fs::remove_file(self.session_dir.join(old));
+        }
     }
 
     fn save(&self) {
@@ -794,15 +882,6 @@ impl Downloads {
                 }
             }
             Err(e) => warn!("could not encode the downloads list: {e}"),
-        }
-    }
-
-    /// Remembers a host the user typed when it is already on the home network, so it may resolve to a local address.
-    fn allow_lan_host(&self, url: &str) {
-        if let Some(host) = reqwest::Url::parse(url).ok().and_then(|u| u.host_str().map(str::to_ascii_lowercase)) {
-            if looks_like_lan_name(&host) {
-                self.lan_hosts.lock().insert(host.trim_end_matches('.').to_string());
-            }
         }
     }
 
@@ -826,20 +905,71 @@ impl Downloads {
         *self.proxy.lock() = proxy;
     }
 
-    fn client(&self) -> Result<Client, EngineError> {
+    /// The client for a link: its scope comes from the typed host, `allow_lan` and the pinned addresses.
+    fn client_for(&self, url: &str, allow_lan: bool, pinned: &[String]) -> Result<Client, EngineError> {
+        let scope = LanScope::for_host(&host_of(url), allow_lan, pinned);
         let proxy = self.proxy.lock().clone();
-        let mut slot = self.client.lock();
-        if let Some((p, c)) = slot.as_ref() {
-            if *p == proxy {
-                return Ok(c.clone());
-            }
+        let mut clients = self.clients.lock();
+        if let Some(c) = clients.get(&(proxy.clone(), scope.clone())) {
+            return Ok(c.clone());
         }
-        let c = build_client(proxy.as_deref(), self.lan_hosts.clone()).map_err(|e| {
+        let c = build_client(proxy.as_deref(), scope.clone()).map_err(|e| {
             warn!("download client failed: {e}");
             EngineError::new(ErrorCode::Network, "The download client couldn't start. Check the proxy address.")
         })?;
-        *slot = Some((proxy, c.clone()));
+        if clients.len() >= 16 {
+            clients.clear();
+        }
+        clients.insert((proxy, scope), c.clone());
         Ok(c)
+    }
+
+    /// A client for a link typed in the add sheet (or pasted again), with the host pinned when `allow_lan` is set.
+    async fn scoped_client(&self, url: &str, allow_lan: bool) -> Result<(Client, Vec<String>), EngineError> {
+        let host = host_of(url);
+        let pinned = if allow_lan && !is_lan_host(&host) { resolve_ips(&host).await? } else { Vec::new() };
+        Ok((self.client_for(url, allow_lan, &pinned)?, pinned))
+    }
+
+    /// Is this download waiting for a new link? The engine uses it to turn a pasted duplicate into a refresh.
+    pub fn is_needs_link(&self, id: &str) -> bool {
+        self.state_of(id) == Some(State::NeedsLink)
+    }
+
+    /// The client of a stored download.
+    fn client_for_id(&self, id: &str) -> Result<Client, EngineError> {
+        let (url, allow, pinned) = self
+            .update(id, |r, _| (r.url.clone(), r.allow_lan, r.lan_pinned.clone()))
+            .ok_or_else(EngineError::not_found)?;
+        self.client_for(&url, allow, &pinned)
+    }
+
+    /// Resolves the typed host once and keeps its addresses with the download (contract 17.w). Later lookups of that
+    /// host may only return these. Nothing to do when it is already pinned.
+    async fn pin_lan_host(&self, id: &str) -> Result<(), EngineError> {
+        let (url, allow, pinned) = self
+            .update(id, |r, _| (r.url.clone(), r.allow_lan, r.lan_pinned.clone()))
+            .ok_or_else(EngineError::not_found)?;
+        if !allow || !pinned.is_empty() {
+            return Ok(());
+        }
+        let ips = resolve_ips(&host_of(&url)).await?;
+        self.update(id, |r, _| r.lan_pinned = ips);
+        self.save();
+        Ok(())
+    }
+
+    /// The user allows the typed host of a download that failed with `LAN_ADDRESS`. The caller retries afterwards.
+    pub async fn allow_lan_host(self: &Arc<Self>, id: &str) -> Result<(), EngineError> {
+        let s = self.state_of(id).ok_or_else(EngineError::not_found)?;
+        if s != State::Error(DlError::LanAddress) {
+            return Err(EngineError::new(ErrorCode::InvalidState, "This download doesn't need that"));
+        }
+        self.update(id, |r, _| {
+            r.allow_lan = true;
+            r.lan_pinned.clear();
+        });
+        self.pin_lan_host(id).await
     }
 
     fn new_id(&self, inner: &Inner) -> String {
@@ -861,8 +991,9 @@ impl Downloads {
         self.blocked.lock().is_empty()
     }
 
+    /// The tag a new or retried download pauses for: the most user-actionable one (`top_block`).
     fn first_block(&self) -> Option<String> {
-        self.blocked.lock().first().cloned()
+        top_block(&self.blocked.lock()).cloned()
     }
 
     fn is_offline(&self) -> bool {
@@ -1027,15 +1158,10 @@ impl Downloads {
             .filter(|f| !f.trim().is_empty())
             .unwrap_or_else(|| self.default_dir.to_string_lossy().into_owned());
         let url_str = clean.to_string();
-        self.allow_lan_host(&url_str);
         let block = self.first_block();
         let id = {
             let mut inner = self.inner.lock();
-            if let Some(existing) = inner
-                .records
-                .values()
-                .find(|r| r.url == url_str && r.folder == folder && !matches!(r.state, State::Finished | State::Gone))
-            {
+            if let Some(existing) = inner.records.values().find(|r| same_link(r, &url_str, &folder)) {
                 let mut e = EngineError::duplicate(existing.id.clone());
                 e.message = "This link is already in your downloads".to_string();
                 return Err(e);
@@ -1070,6 +1196,7 @@ impl Downloads {
                 down_limit_bps: opts.down_limit_bps.unwrap_or(0),
                 segments: opts.segments.unwrap_or(1),
                 start_paused: opts.paused && block.is_none(),
+                allow_lan: opts.allow_lan,
                 ..DlRecord::default()
             };
             let h = opts.headers.clone().unwrap_or_default();
@@ -1184,9 +1311,8 @@ impl Downloads {
         if self.network_blocked() {
             return Err(EngineError::new(ErrorCode::Blocked, BLOCKED_MSG));
         }
-        self.allow_lan_host(clean.as_str());
+        let (client, _) = self.scoped_client(clean.as_str(), opts.allow_lan).await?;
         let h = opts.headers.unwrap_or_default();
-        let client = self.client()?;
         match probe_request(&client, clean.as_str(), auth.as_ref(), &h.cookie, &h.referer, &h.user_agent).await {
             Ok(r) => Ok(ProbeResult {
                 name: opts.name.as_deref().map(sanitize_filename).unwrap_or(r.name),
@@ -1211,9 +1337,8 @@ impl Downloads {
         if self.network_blocked() {
             return Err(EngineError::new(ErrorCode::Blocked, BLOCKED_MSG));
         }
-        self.allow_lan_host(clean.as_str());
+        let (client, pinned) = self.scoped_client(clean.as_str(), opts.allow_lan).await?;
         let h = opts.headers.unwrap_or_default();
-        let client = self.client()?;
         let reply = probe_request(&client, clean.as_str(), auth.as_ref(), &h.cookie, &h.referer, &h.user_agent)
             .await
             .map_err(probe_error)?;
@@ -1224,6 +1349,8 @@ impl Downloads {
                 rec.final_url = Some(reply.final_url.clone());
                 rec.status = None;
                 rec.needs_login = auth.is_some() || h.cookie.is_some() || has_secret_query(&rec.url);
+                rec.allow_lan = opts.allow_lan;
+                rec.lan_pinned = pinned;
                 live.auth = auth;
                 live.cookie = h.cookie;
                 live.referer = h.referer;
@@ -1415,8 +1542,9 @@ impl Downloads {
             queued.sort();
             queued.dedup();
             for (_, id) in queued {
-                let free = self.has_free_slot(&self.inner.lock());
-                if !free {
+                // Check the slot and take it under one lock, so a probe finishing now can't pass the cap too.
+                let _start = self.start_lock.lock();
+                if !self.has_free_slot(&self.inner.lock()) {
                     break;
                 }
                 if self.state_of(&id) == Some(State::Queued) {
@@ -1436,14 +1564,18 @@ impl Downloads {
                 let (start_paused, space_ok) = self
                     .update(&id, |r, _| (r.start_paused, fits(r.size, r.held, free_space(Path::new(&r.folder)))))
                     .unwrap_or((false, true));
-                let slot_free = self.has_free_slot(&self.inner.lock());
-                let gov_allows = self.gov_allows();
-                let ev = if start_paused {
-                    Event::ProbeOk { slot_free: false, gov_allows: true, space_ok }
-                } else {
-                    Event::ProbeOk { slot_free, gov_allows, space_ok }
+                // The slot is checked and taken under one lock, so two starts can't both pass the cap.
+                let (state, _) = {
+                    let _start = self.start_lock.lock();
+                    let slot_free = self.has_free_slot(&self.inner.lock());
+                    let gov_allows = self.gov_allows();
+                    let ev = if start_paused {
+                        Event::ProbeOk { slot_free: false, gov_allows: true, space_ok }
+                    } else {
+                        Event::ProbeOk { slot_free, gov_allows, space_ok }
+                    };
+                    self.dispatch(&id, ev)
                 };
-                let (state, _) = self.dispatch(&id, ev);
                 if start_paused && state == State::Queued {
                     self.update(&id, |r, _| r.start_paused = false);
                     self.dispatch(&id, Event::UserPause);
@@ -1463,6 +1595,9 @@ impl Downloads {
             Err(ProbeFail::LocalRedirect) => {
                 self.dispatch(&id, Event::LocalRedirect);
             }
+            Err(ProbeFail::LanAddress) => {
+                self.dispatch(&id, Event::LanAddress);
+            }
             Err(ProbeFail::Net) => {
                 if self.is_offline() {
                     // No network: wait for it instead of failing.
@@ -1479,19 +1614,24 @@ impl Downloads {
         let (url, auth, cookie, referer, ua) = self
             .update(id, |r, l| (r.url.clone(), l.auth.clone(), l.cookie.clone(), l.referer.clone(), l.user_agent.clone()))
             .ok_or(ProbeFail::Net)?;
-        let client = self.client().map_err(|_| ProbeFail::Net)?;
+        // An allowed host is pinned once, before its first request.
+        if self.pin_lan_host(id).await.is_err() {
+            return Err(ProbeFail::Net);
+        }
+        let client = self.client_for_id(id).map_err(|_| ProbeFail::Net)?;
         let reply = probe_request(&client, &url, auth.as_ref(), &cookie, &referer, &ua).await?;
-        // Pick a free name once, on the first probe. A resumed download keeps the name its part file has.
-        let taken_by_others: Vec<String> = {
-            let inner = self.inner.lock();
-            inner
-                .records
-                .values()
-                .filter(|r| r.id != id && !r.name.is_empty())
-                .map(|r| format!("{}\u{0}{}", r.folder, r.name))
-                .collect()
-        };
-        self.update(id, |rec, _| {
+        // Pick a free name once, on the first probe. A resumed download keeps the name its part file has. The names
+        // of the other downloads are read under the same lock that stores this one, so two downloads of the same
+        // name can't both take it.
+        let mut guard = self.inner.lock();
+        let inner = &mut *guard;
+        let taken_by_others: Vec<String> = inner
+            .records
+            .values()
+            .filter(|r| r.id != id && !r.name.is_empty())
+            .map(|r| format!("{}\u{0}{}", r.folder, r.name))
+            .collect();
+        if let Some(rec) = inner.records.get_mut(id) {
             rec.size = reply.info.size;
             rec.validator = reply.info.validator.clone();
             rec.resumable = reply.info.resumable;
@@ -1506,7 +1646,7 @@ impl Downloads {
                         || taken_by_others.contains(&format!("{key}\u{0}{n}"))
                 });
             }
-        });
+        }
         Ok(())
     }
 
@@ -1535,6 +1675,10 @@ impl Downloads {
                     self.dispatch(&id, Event::LocalRedirect);
                     return;
                 }
+                Err(ProbeFail::LanAddress) => {
+                    self.dispatch(&id, Event::LanAddress);
+                    return;
+                }
                 Err(ProbeFail::Net) => {
                     if !self.transient(&id, None).await {
                         return;
@@ -1542,7 +1686,11 @@ impl Downloads {
                 }
             }
         }
-        let client = match self.client() {
+        // An allowed host is pinned before the first request (a restored download may not be yet).
+        if self.pin_lan_host(&id).await.is_err() && !self.transient(&id, None).await {
+            return;
+        }
+        let client = match self.client_for_id(&id) {
             Ok(c) => c,
             Err(_) => {
                 self.dispatch(&id, Event::Transient { attempts: MAX_ATTEMPTS });
@@ -1557,7 +1705,11 @@ impl Downloads {
             }
         };
 
-        let folder = self.update(&id, |r, _| PathBuf::from(&r.folder)).unwrap_or_default();
+        let (folder, typed_host) = self
+            .update(&id, |r, _| (PathBuf::from(&r.folder), host_of(&r.url)))
+            .unwrap_or_default();
+        // One stall window for the whole transfer, across reconnects (contract 17.w).
+        let mut clock = StallClock::new(Instant::now());
         loop {
             if self.state_of(&id) != Some(State::Downloading) {
                 return;
@@ -1568,8 +1720,8 @@ impl Downloads {
             let resp = match builder.send().await {
                 Ok(r) => r,
                 Err(e) => {
-                    if is_local_redirect(&e) {
-                        self.dispatch(&id, Event::LocalRedirect);
+                    if let Some(r) = refusal(&e, &typed_host) {
+                        self.dispatch(&id, refusal_event(r));
                         return;
                     }
                     if !self.transient(&id, None).await {
@@ -1614,7 +1766,7 @@ impl Downloads {
                             }
                         }
                     }
-                    match self.stream_body(&id, resp, &file, offset, size).await {
+                    match self.stream_body(&id, resp, &file, offset, size, &mut clock).await {
                         Streamed::Stopped => return,
                         Streamed::Done(pos) => {
                             let complete = size.map(|s| pos >= s).unwrap_or(true);
@@ -1628,19 +1780,19 @@ impl Downloads {
                             }
                             // The server closed early: treat it as a broken connection.
                             held = self.resume_point(&id, pos);
-                            if !self.transient(&id, None).await {
+                            if !self.after_break(&id, &mut clock).await {
                                 return;
                             }
                         }
                         Streamed::Broken(pos) => {
                             held = self.resume_point(&id, pos);
-                            if !self.transient(&id, None).await {
+                            if !self.after_break(&id, &mut clock).await {
                                 return;
                             }
                         }
                         Streamed::Stalled(pos) => {
                             held = self.resume_point(&id, pos);
-                            if !self.stall_retry(&id).await {
+                            if !self.stall_retry(&id, Some(&mut clock)).await {
                                 return;
                             }
                         }
@@ -1827,6 +1979,7 @@ impl Downloads {
         file: &File,
         offset: u64,
         total: Option<u64>,
+        clock: &mut StallClock,
     ) -> Streamed {
         let mut pos = offset;
         let started = Instant::now();
@@ -1844,15 +1997,12 @@ impl Downloads {
         let mut side = Sidecar::new(&url, &name, total, validator);
         let side_path = sidecar_path(&folder, &name);
         let mut last_space = Instant::now();
-        // The stall rule (contract 17.y): the client's read timeout alone lets a server that sends one byte every
-        // 40 s hold a slot forever, so the clock is read here too.
-        let mut last_byte = Instant::now();
-        let mut win_start = Instant::now();
-        let mut win_pos = pos;
+        // The stall rule (contract 17.y, 17.w): the client's read timeout alone lets a server that sends one byte
+        // every 40 s hold a slot forever, so the clock is read here too. `clock` lives across reconnects.
         loop {
             let chunk = match tokio::time::timeout(STALL_TICK, resp.chunk()).await {
                 Ok(Ok(Some(c))) => {
-                    last_byte = Instant::now();
+                    clock.on_bytes(Instant::now(), c.len() as u64);
                     c
                 }
                 Ok(Ok(None)) => return Streamed::Done(pos),
@@ -1862,7 +2012,7 @@ impl Downloads {
                 }
                 Err(_) => {
                     // Nothing arrived for a few seconds.
-                    if self.stall_step(id, limit, last_byte, &mut win_start, &mut win_pos, pos) {
+                    if self.stall_step(id, limit, clock) {
                         self.flush_side(id, &mut side, &side_path, file, pos, resumable);
                         self.update(id, |rec, _| rec.held = pos);
                         return Streamed::Stalled(pos);
@@ -1877,6 +2027,7 @@ impl Downloads {
             // is served in pieces no larger than the limit itself (the burst can't be below the request).
             if let (Some(session), Some(bps)) = (self.session.as_ref(), self.global_down_bps()) {
                 let step_max = bps.get().min(16 * 1024) as usize;
+                let waiting_since = Instant::now();
                 let mut left = chunk.len();
                 while left > 0 {
                     let n = left.min(step_max.max(1));
@@ -1885,6 +2036,8 @@ impl Downloads {
                     }
                     left -= n;
                 }
+                // Our own limiter's queue is not the server's stall.
+                clock.excuse(waiting_since.elapsed(), Instant::now());
             }
             // More bytes than the probe promised: the file changed. Nothing is finished from this.
             if overruns(pos, chunk.len() as u64, total) {
@@ -1905,7 +2058,7 @@ impl Downloads {
                 };
             }
             pos += chunk.len() as u64;
-            if self.stall_step(id, limit, last_byte, &mut win_start, &mut win_pos, pos) {
+            if self.stall_step(id, limit, clock) {
                 self.flush_side(id, &mut side, &side_path, file, pos, resumable);
                 self.update(id, |rec, _| rec.held = pos);
                 return Streamed::Stalled(pos);
@@ -1949,40 +2102,42 @@ impl Downloads {
             if limit > 0 {
                 let wait = pace_delay(pos - offset, started.elapsed(), limit);
                 if !wait.is_zero() {
-                    tokio::time::sleep(wait.min(Duration::from_secs(2))).await;
+                    let slept = wait.min(Duration::from_secs(2));
+                    tokio::time::sleep(slept).await;
+                    clock.excuse(slept, Instant::now());
                 }
             }
         }
     }
 
-    /// Applies the stall rule once. Keeps the "waiting for the server" flag up to date, starts a new window after a
-    /// healthy one (and forgives earlier stalls), and says whether the transfer must be cut.
-    fn stall_step(
-        &self,
-        id: &str,
-        per_download_limit: u64,
-        last_byte: Instant,
-        win_start: &mut Instant,
-        win_pos: &mut u64,
-        pos: u64,
-    ) -> bool {
-        let quiet = last_byte.elapsed();
+    /// The slowest speed that still counts as moving for this download (a tiny speed limit lowers it).
+    fn stall_floor_for(&self, id: &str) -> u64 {
+        let per = self.update(id, |r, _| r.down_limit_bps).unwrap_or(0);
+        self.floor_for_limit(per)
+    }
+
+    fn floor_for_limit(&self, per_download_limit: u64) -> u64 {
         let global = self.global_down_bps().map(|n| n.get() as u64).unwrap_or(0);
         let limit = match (per_download_limit, global) {
             (0, g) => g,
             (l, 0) => l,
             (l, g) => l.min(g),
         };
-        match check_stall(quiet, win_start.elapsed(), pos.saturating_sub(*win_pos), stall_floor(limit)) {
+        stall_floor(limit)
+    }
+
+    /// Applies the stall rule once. Keeps the "waiting for the server" flag up to date, starts a new window after a
+    /// healthy one (and forgives earlier stalls), and says whether the transfer must be cut.
+    fn stall_step(&self, id: &str, per_download_limit: u64, clock: &mut StallClock) -> bool {
+        let now = Instant::now();
+        match clock.check(now, self.floor_for_limit(per_download_limit)) {
             StallCheck::Stalled => true,
             StallCheck::Healthy => {
-                *win_start = Instant::now();
-                *win_pos = pos;
                 self.update(id, |_, l| l.stalls = 0);
                 false
             }
             StallCheck::Fine => {
-                if waiting_for_server(quiet) {
+                if waiting_for_server(clock.quiet(now)) {
                     self.update(id, |_, l| l.stalled = true);
                 }
                 false
@@ -1990,8 +2145,22 @@ impl Downloads {
         }
     }
 
+    /// A connection broke or ended early. When the window average is still poor it counts as a stall (budget 5);
+    /// otherwise it is an ordinary retry.
+    async fn after_break(self: &Arc<Self>, id: &str, clock: &mut StallClock) -> bool {
+        if clock.broken_is_stall(Instant::now(), self.stall_floor_for(id)) {
+            self.stall_retry(id, None).await
+        } else {
+            self.transient(id, None).await
+        }
+    }
+
     /// One stall: wait the backoff and say whether to go on. Has its own, smaller budget than `transient`.
-    async fn stall_retry(self: &Arc<Self>, id: &str) -> bool {
+    /// `restart` is the clock to start afresh after a real stall verdict (a break keeps the window going).
+    async fn stall_retry(self: &Arc<Self>, id: &str, restart: Option<&mut StallClock>) -> bool {
+        if let Some(c) = restart {
+            c.restart(Instant::now());
+        }
         // Offline is not the server's fault: wait without using the budget.
         if self.is_offline() {
             return self.transient(id, None).await;
@@ -2013,8 +2182,6 @@ impl Downloads {
         self.state_of(id) == Some(State::Downloading)
     }
 
-    /// Writes the resume record, but only while the download is still in the list. `Remove` deletes the record and
-    /// the sidecar under the same lock, so a flush that runs late can't bring the sidecar back.
     fn flush_side(&self, id: &str, side: &mut Sidecar, path: &Path, file: &File, pos: u64, resumable: bool) {
         if !resumable {
             return;
@@ -2066,12 +2233,10 @@ async fn probe_request(
     if let Some((u, p)) = auth {
         b = b.basic_auth(u, Some(p));
     }
-    let resp = b.send().await.map_err(|e| {
-        if is_local_redirect(&e) {
-            ProbeFail::LocalRedirect
-        } else {
-            ProbeFail::Net
-        }
+    let resp = b.send().await.map_err(|e| match refusal(&e, &host_of(url)) {
+        Some(Refusal::LanAddress) => ProbeFail::LanAddress,
+        Some(Refusal::Redirect) => ProbeFail::LocalRedirect,
+        None => ProbeFail::Net,
     })?;
     let status = resp.status().as_u16();
     let headers = read_headers(resp.headers());
@@ -2109,6 +2274,7 @@ fn probe_error(f: ProbeFail) -> EngineError {
         ),
         ProbeFail::Html => EngineError::new(ErrorCode::NotAFile, "This link opens a web page, not a file."),
         ProbeFail::LocalRedirect => EngineError::new(ErrorCode::LocalRedirect, LOCAL_REDIRECT_COPY),
+        ProbeFail::LanAddress => EngineError::new(ErrorCode::LanAddress, LAN_ADDRESS_COPY),
     }
 }
 
@@ -2361,8 +2527,9 @@ mod tests {
         );
         assert_eq!(
             error_message(DlError::LocalRedirect, None),
-            "This link tried to send Maglev to a device on your network, so it was stopped."
+            "A redirect tried to send Maglev to a device on your network, so it stopped."
         );
+        assert_eq!(error_message(DlError::LanAddress, None), "This address points to a device on your network.");
     }
 
     #[test]
@@ -2520,18 +2687,63 @@ mod tests {
     #[tokio::test]
     async fn a_lookup_that_leads_to_the_home_network_is_refused() {
         // An IP literal resolves to itself: stands in for a public name that answers a private address.
-        let e = guarded_lookup("127.0.0.1".to_string(), false).await.unwrap_err();
+        let public = LanScope::Public;
+        let e = guarded_lookup("127.0.0.1".to_string(), &public).await.unwrap_err();
         assert!(e.to_string().contains(LOCAL_REDIRECT_MSG));
-        let e = guarded_lookup("192.168.1.1".to_string(), false).await.unwrap_err();
+        assert!(e.to_string().contains("(host: 127.0.0.1)"));
+        let e = guarded_lookup("192.168.1.1".to_string(), &public).await.unwrap_err();
         assert!(e.to_string().contains(LOCAL_REDIRECT_MSG));
-        assert!(!guarded_lookup("8.8.8.8".to_string(), false).await.unwrap().is_empty());
+        assert!(!guarded_lookup("8.8.8.8".to_string(), &public).await.unwrap().is_empty());
     }
 
     #[tokio::test]
-    async fn a_name_the_user_typed_as_local_may_resolve_locally() {
-        let a = guarded_lookup("127.0.0.1".to_string(), true).await.unwrap();
+    async fn a_local_origin_may_resolve_locally_and_an_allowed_host_only_to_its_pinned_addresses() {
+        let a = guarded_lookup("127.0.0.1".to_string(), &LanScope::LanOrigin).await.unwrap();
         assert_eq!(a.len(), 1);
         assert!(a[0].ip().is_loopback());
+        let allow = LanScope::Allow { host: "127.0.0.1".into(), pinned: vec!["127.0.0.1".parse().unwrap()] };
+        assert_eq!(guarded_lookup("127.0.0.1".to_string(), &allow).await.unwrap().len(), 1);
+        let other = LanScope::Allow { host: "127.0.0.1".into(), pinned: vec!["10.0.0.1".parse().unwrap()] };
+        assert!(guarded_lookup("127.0.0.1".to_string(), &other).await.is_err());
+    }
+
+    #[test]
+    fn the_typed_host_is_a_lan_address_and_a_redirect_is_a_redirect() {
+        let typed = std::io::Error::new(io::ErrorKind::Other, format!("{LOCAL_REDIRECT_MSG} (host: Files.Example.com)"));
+        assert_eq!(refusal(&typed, "files.example.com"), Some(Refusal::LanAddress));
+        let other = std::io::Error::new(io::ErrorKind::Other, format!("{LOCAL_REDIRECT_MSG} (host: router.lan)"));
+        assert_eq!(refusal(&other, "files.example.com"), Some(Refusal::Redirect));
+        let policy = std::io::Error::new(io::ErrorKind::Other, LOCAL_REDIRECT_MSG);
+        assert_eq!(refusal(&policy, "files.example.com"), Some(Refusal::Redirect));
+        let unrelated = std::io::Error::new(io::ErrorKind::Other, "timed out");
+        assert_eq!(refusal(&unrelated, "files.example.com"), None);
+        assert_eq!(refusal_event(Refusal::LanAddress), Event::LanAddress);
+        assert_eq!(refusal_event(Refusal::Redirect), Event::LocalRedirect);
+    }
+
+    #[test]
+    fn a_pasted_signed_link_matches_the_download_that_lost_its_query() {
+        let rec = DlRecord {
+            id: "dl_a".into(),
+            url: "https://cdn.discordapp.com/attachments/1/2/f.zip".into(),
+            folder: "/d".into(),
+            state: State::NeedsLink,
+            needs_login: true,
+            ..DlRecord::default()
+        };
+        let typed = "https://cdn.discordapp.com/attachments/1/2/f.zip?ex=1&is=2&hm=3";
+        assert!(same_link(&rec, typed, "/d"));
+        assert!(!same_link(&rec, typed, "/other"));
+        assert!(!same_link(&rec, "https://cdn.discordapp.com/attachments/9/9/g.zip?hm=3", "/d"));
+        // Only while it waits for a link, and only when it was saved stripped.
+        let queued = DlRecord { state: State::Queued, ..rec.clone() };
+        assert!(!same_link(&queued, typed, "/d"));
+        let plain = DlRecord { needs_login: false, ..rec.clone() };
+        assert!(!same_link(&plain, typed, "/d"));
+        // The exact same link is the same link in any live state.
+        assert!(same_link(&queued, "https://cdn.discordapp.com/attachments/1/2/f.zip", "/d"));
+        let done = DlRecord { state: State::Finished, ..rec };
+        assert!(!same_link(&done, typed, "/d"));
     }
 
     #[test]
@@ -2728,6 +2940,85 @@ mod tests {
         assert!(!side_path.exists());
         d.flush_side("dl_a", &mut sc, &side_path, &file, 7, true);
         assert!(!side_path.exists());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_new_download_pauses_for_the_top_tag_not_the_first() {
+        let (rt, dir) = (rt(), tmp("addtop"));
+        let d = manager(&rt, &dir, &["offline", "wifi_only"]);
+        let added = d.add("https://x.test/a.bin", "").unwrap();
+        assert_eq!(d.state_of(&added.id), Some(State::Paused(PauseReason::Network)));
+        assert_eq!(tag_of(&d, &added.id).as_deref(), Some("wifi_only"));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn retry_pauses_for_the_top_tag() {
+        let (rt, dir) = (rt(), tmp("retrytop"));
+        let d = manager(&rt, &dir, &["schedule", "battery"]);
+        put(&d, "dl_a", State::Error(DlError::Network), |_| {});
+        d.retry("dl_a").unwrap();
+        assert_eq!(d.state_of("dl_a"), Some(State::Paused(PauseReason::Battery)));
+        assert_eq!(tag_of(&d, "dl_a").as_deref(), Some("battery"));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn an_unreadable_list_is_backed_up_once() {
+        let (rt, dir) = (rt(), tmp("once"));
+        std::fs::write(dir.join(STORE_FILE), b"{ not json").unwrap();
+        let count = |dir: &Path| {
+            std::fs::read_dir(dir)
+                .unwrap()
+                .filter_map(|e| e.ok())
+                .filter(|e| e.file_name().to_string_lossy().starts_with("maglev-downloads.corrupt-"))
+                .count()
+        };
+        let _d = manager(&rt, &dir, &["wifi_only"]);
+        assert_eq!(count(&dir), 1);
+        // Moved, not copied: the damaged file is gone and the next start finds nothing to back up.
+        assert!(!dir.join(STORE_FILE).exists());
+        let _d2 = manager(&rt, &dir, &["wifi_only"]);
+        assert_eq!(count(&dir), 1);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn only_three_backups_are_kept() {
+        let (rt, dir) = (rt(), tmp("prune"));
+        for t in [100, 200, 300, 400, 500] {
+            std::fs::write(dir.join(corrupt_backup_name(t)), b"x").unwrap();
+        }
+        std::fs::write(dir.join(STORE_FILE), b"nope").unwrap();
+        let _d = manager(&rt, &dir, &["wifi_only"]);
+        let left: Vec<String> = std::fs::read_dir(&dir)
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .map(|e| e.file_name().to_string_lossy().into_owned())
+            .filter(|n| n.starts_with("maglev-downloads.corrupt-"))
+            .collect();
+        assert_eq!(left.len(), 3, "{left:?}");
+        assert!(!left.contains(&corrupt_backup_name(100)));
+        assert!(!left.contains(&corrupt_backup_name(200)));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+    async fn allowing_a_lan_host_pins_its_addresses_and_needs_the_lan_error() {
+        let dir = tmp("allow");
+        let d = Downloads::build(tokio::runtime::Handle::current(), None, &dir, &dir, None, tags(&["wifi_only"]));
+        put(&d, "dl_a", State::Error(DlError::LanAddress), |r| r.url = "https://localhost/a.bin".into());
+        put(&d, "dl_b", State::Queued, |_| {});
+        assert_eq!(d.allow_lan_host("dl_b").await.unwrap_err().code, ErrorCode::InvalidState);
+        assert_eq!(d.allow_lan_host("dl_zz").await.unwrap_err().code, ErrorCode::NotFound);
+        d.allow_lan_host("dl_a").await.unwrap();
+        let (allow, pinned) = d.update("dl_a", |r, _| (r.allow_lan, r.lan_pinned.clone())).unwrap();
+        assert!(allow);
+        assert!(!pinned.is_empty());
+        // Saved, and not a secret.
+        let saved = std::fs::read_to_string(dir.join(STORE_FILE)).unwrap();
+        assert!(saved.contains("\"allow_lan\":true"));
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

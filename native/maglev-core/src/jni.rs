@@ -656,6 +656,19 @@ pub extern "system" fn Java_com_maglev_engine_NativeCore_nativeRefreshDownloadUr
 }
 
 #[no_mangle]
+pub extern "system" fn Java_com_maglev_engine_NativeCore_nativeAllowLanHost(
+    mut env: JNIEnv,
+    _class: JClass,
+    id: JString,
+) -> jstring {
+    let out = match read_str(&mut env, &id) {
+        Some(id) => guarded(|| with_engine(|e| result_envelope(e.allow_lan_host(&id)))),
+        _ => bad_argument(),
+    };
+    reply(&mut env, &out)
+}
+
+#[no_mangle]
 pub extern "system" fn Java_com_maglev_engine_NativeCore_nativeSetDownloadLimits(
     mut env: JNIEnv,
     _class: JClass,
