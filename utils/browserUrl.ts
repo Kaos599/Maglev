@@ -75,12 +75,24 @@ export function noticeAllowed(lastAt: number, now: number, gapMs = 5000): boolea
 }
 
 /**
+ * expo-router hands `redirectSystemPath` the FULL url for a custom-scheme link
+ * (`maglev://browser?url=...`, see expo-router build/getLinkingConfig.js ~L90 and link/linking.js ~L155),
+ * not a bare route. Strips `maglev://` and `maglev:///` so route matching sees `/browser?...`.
+ * Other strings (magnet:, https:, file:, content:, plain paths) are returned unchanged.
+ */
+export function appPath(path: string): string {
+  const m = /^maglev:(?:\/\/\/?)?(.*)$/is.exec(path);
+  if (!m) return path;
+  return m[1].startsWith('/') ? m[1] : `/${m[1]}`;
+}
+
+/**
  * `maglev://browser?url=` arrives as a router path. It prefills the address bar and never loads
  * (section 24.7): the route carries `prefill`, not `url`, and every other parameter is dropped.
  * Returns null when the path is not the browser route.
  */
 export function browserIntentRoute(path: string): string | null {
-  const s = (path ?? '').trim();
+  const s = appPath((path ?? '').trim());
   const m = /^\/?browser(?:\/)?(?:\?([^#]*))?(?:#.*)?$/i.exec(s);
   if (!m) return null;
   let url = '';

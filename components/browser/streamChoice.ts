@@ -14,10 +14,18 @@ export function defaultVariant(variants: readonly StreamVariant[]): StreamVarian
   return best;
 }
 
-/** "1080p", or Low / Medium / High quality by bandwidth when the stream gives no height. */
+const VIDEO_CODEC = /(^|,)\s*(avc[1-4]|hvc1|hev1|vp0?[89]|av01|dv[ah][1e]|mp4v|theora)/i;
+
+/** True for a variant that has no picture: no height and CODECS that name no video codec. */
+export function isAudioOnly(v: StreamVariant): boolean {
+  return v.height == null && !!v.codecs?.trim() && !VIDEO_CODEC.test(v.codecs);
+}
+
+/** "1080p", "Audio only", or Low / Medium / High quality by bandwidth when the stream gives no height. */
 export function qualityName(v: StreamVariant, all: readonly StreamVariant[]): string {
   if (v.height != null) return `${v.height}p`;
-  const blind = all.filter((x) => x.height == null).sort((a, b) => a.bandwidth - b.bandwidth);
+  if (isAudioOnly(v)) return 'Audio only';
+  const blind = all.filter((x) => x.height == null && !isAudioOnly(x)).sort((a, b) => a.bandwidth - b.bandwidth);
   if (blind.length <= 1) return 'Medium quality';
   const i = blind.findIndex((x) => x.id === v.id);
   if (i <= 0) return 'Low quality';
@@ -51,4 +59,10 @@ export function buildSelection(kind: StreamKind, probe: Pick<StreamProbe, 'audio
   const sel: StreamSelection = { kind, variantId: v.id };
   if (v.audio === 'separate') sel.audioId = defaultAudio(probe.audioTracks, pickedAudio);
   return sel;
+}
+
+/** "hls" for a `.m3u8` address, "dash" for `.mpd`, else null. Looks at the path only (no network). */
+export function streamKindOfLink(url: string): StreamKind | null {
+  const path = (url ?? '').split(/[?#]/)[0].toLowerCase();
+  return path.endsWith('.m3u8') ? 'hls' : path.endsWith('.mpd') ? 'dash' : null;
 }

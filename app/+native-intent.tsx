@@ -6,7 +6,7 @@
  */
 
 import { parsePackedShare, setShareQueue } from '../utils/shareQueue';
-import { browserIntentRoute } from '../utils/browserUrl';
+import { appPath, browserIntentRoute } from '../utils/browserUrl';
 import { sharedDownloadRoute, stripShareMarker } from '../modules/maglev-engine/src/downloadLink';
 
 const ADD_ROUTE = '/add-torrent';
@@ -42,7 +42,7 @@ export function redirectSystemPath({ path }: { path: string; initial: boolean })
     // (any app or web page can send one) reaches the last line, where every `from` parameter is stripped.
     if (/^https?:\/\//i.test(raw)) return sharedDownloadRoute(raw);
     // A completed download's notification opens maglev://torrent/dl_<id>; Transfers shows downloads.
-    if (/^\/?torrent\/dl_[0-9a-f]+$/i.test(raw)) return '/';
+    if (/^\/?torrent\/dl_[0-9a-f]+$/i.test(appPath(raw).split(/[?#]/)[0])) return '/';
     // Some launchers hand a file:// intent over with the scheme stripped: a bare absolute path.
     // Treat it as the local file it is, so it resolves like the document picker.
     if (/^\/(?!add-torrent\b).*\.torrent$/i.test(raw.split(/[?#]/)[0]) && !/^\/(torrent|settings|search|feeds)\//i.test(raw)) {

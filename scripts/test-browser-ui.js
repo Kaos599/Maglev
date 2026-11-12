@@ -50,6 +50,16 @@ async function main() {
   check('url is prefilled, never loaded', r('/browser?url=' + encodeURIComponent('https://x.test/a')) === '/browser?prefill=' + encodeURIComponent('https://x.test/a'));
   check('other params are dropped', r('browser?go=1&url=https%3A%2F%2Fx.test&prefill=https%3A%2F%2Fevil.test') === '/browser?prefill=https%3A%2F%2Fx.test');
   check('non-web url is dropped', r('/browser?url=javascript%3Aalert(1)') === '/browser' && r('/browser?url=file%3A%2F%2F%2Fa') === '/browser');
+  const enc = encodeURIComponent('https://x.test/a');
+  check('full maglev://browser?url= only prefills', r('maglev://browser?url=' + enc) === '/browser?prefill=' + enc);
+  check('maglev:///browser?url= only prefills', r('maglev:///browser?url=' + enc) === '/browser?prefill=' + enc);
+  check('full url, no param, is the bare route', r('maglev://browser') === '/browser' && r('MAGLEV://browser/') === '/browser');
+  check('full url, evil scheme dropped', r('maglev://browser?url=javascript%3Aalert(1)') === '/browser');
+  check('appPath leaves other schemes', u.appPath('magnet:?xt=1') === 'magnet:?xt=1' && u.appPath('https://a.test/x') === 'https://a.test/x');
+  {
+    const src = read('app/+native-intent.tsx');
+    check('native intent normalises the full url for dl_ too', /appPath\(raw\)/.test(src));
+  }
   check('other routes are left alone', r('/add-download?url=x') === null && r('/settings/browser') === null);
 
   console.log('prefs');
@@ -72,6 +82,17 @@ async function main() {
   check('video: size desc, then newest', f.sortFound(items, 'video').map((i) => i.id).join() === 'f,c,a,d');
   check('others: newest first', f.sortFound(items, 'all').map((i) => i.id).join() === 'f,e,d,c,b,a');
   check('filter keeps one kind', f.sortFound(items, 'image').length === 1);
+  {
+    const h = (id, path, over = {}) => mk(id, 'video', { url: 'https://s.test' + path, stream: 'hls', pageUrl: 'https://p.test', ...over });
+    const m = h('m', '/x36/x36.m3u8');
+    const hid = f.hideVariantPlaylists([m, h('v0', '/x36/url_0/a.m3u8'), h('v1', '/x36/url_2/b.m3u8'), h('v2', '/x36/c.m3u8'), mk('mp4', 'video')]);
+    check('variants of a master are hidden', hid.map((i) => i.id).join() === 'm,mp4');
+    check('a lone stream is kept', f.hideVariantPlaylists([h('v0', '/x36/url_0/a.m3u8')]).length === 1);
+    check('a different page or origin is kept', f.hideVariantPlaylists([m, h('o', '/x36/o.m3u8', { pageUrl: 'https://q.test' }), h('p', '/x36/p.m3u8', { url: 'https://other.test/x36/p.m3u8' })]).length === 3);
+    check('a playlist in a sibling folder above is kept', f.hideVariantPlaylists([h('a', '/x/a/m.m3u8'), h('b', '/x/b.m3u8')]).length === 2);
+    check('a playlist at the server root hides nothing', f.hideVariantPlaylists([h('r', '/master.m3u8'), h('s', '/films/b/master.m3u8')]).length === 2);
+    check('browser wires hideVariantPlaylists', /hideVariantPlaylists\(foundAll\)/.test(read('app/browser.tsx')));
+  }
   check('empty filter falls back to All', f.effectiveFilter('audio', counts) === 'all' && f.effectiveFilter('video', counts) === 'video');
   const merged = f.mergeFound(items, [mk('a', 'video'), mk('z', 'audio')]);
   check('merge skips known ids', merged.length === 7 && merged[6].id === 'z');
@@ -89,6 +110,17 @@ async function main() {
   check('label has height and size', sc.qualityLabel(vs[1], vs) === '1080p · about 1.2 GB');
   check('label omits unknown size', sc.qualityLabel(vs[2], vs) === '480p');
   const blind = [V('x', null, 1e6, null), V('y', null, 2e6, null), V('z', null, 3e6, null)];
+  {
+    const au = { id: 'v9', height: null, width: null, bandwidth: 128000, codecs: 'mp4a.40.2', estBytes: 1015808, audio: 'muxed' };
+    const vid = { id: 'v1', height: 720, width: 1280, bandwidth: 2000000, codecs: 'avc1.4d401f,mp4a.40.2', estBytes: null, audio: 'muxed' };
+    check('audio-only variant is labelled Audio only', sc.qualityName(au, [au, vid]) === 'Audio only' && /^Audio only · about /.test(sc.qualityLabel(au, [au, vid])));
+    check('blind variant with a video codec is still tiered', sc.qualityName({ ...vid, height: null }, [{ ...vid, height: null }]) === 'Medium quality');
+    check('no codecs info is not called audio only', sc.isAudioOnly({ ...au, codecs: null }) === false);
+    const b1 = { ...vid, id: 'b1', height: null, bandwidth: 1 }, b2 = { ...vid, id: 'b2', height: null, bandwidth: 2 };
+    check('audio-only does not shift the quality tiers', sc.qualityName(b1, [b1, b2, au]) === 'Low quality' && sc.qualityName(b2, [b1, b2, au]) === 'High quality');
+  }
+  check('stream links are told by path', sc.streamKindOfLink('https://a.test/x/v.m3u8?t=1') === 'hls' && sc.streamKindOfLink('https://a.test/v.MPD#x') === 'dash' && sc.streamKindOfLink('https://a.test/v.mp4') === null && sc.streamKindOfLink('https://a.test/m3u8/file.zip') === null);
+  check('add download probes streams and opens the stream sheet', /streamKindOfLink\(input\)/.test(read('app/add-download.tsx')) && /<StreamSheet item=\{streamItem\}/.test(read('app/add-download.tsx')));
   check('no height falls back to bandwidth tiers', sc.qualityName(blind[0], blind) === 'Low quality' && sc.qualityName(blind[1], blind) === 'Medium quality' && sc.qualityName(blind[2], blind) === 'High quality' && sc.qualityName(blind[0], [blind[0]]) === 'Medium quality');
   const tr = [{ id: 't1', lang: 'en', name: 'English', bandwidth: null }, { id: 't2', lang: 'fr', name: null, bandwidth: null }, { id: 't3', lang: null, name: null, bandwidth: null }];
   check('audio label: name, lang, Track N', sc.audioLabel(tr[0], 0) === 'English' && sc.audioLabel(tr[1], 1) === 'fr' && sc.audioLabel(tr[2], 2) === 'Track 3');
@@ -109,6 +141,14 @@ async function main() {
   }
   check('stream sheet probes and starts with the stream selection', /probeStream/.test(read('components/browser/StreamSheet.tsx')) && /stream:/.test(read('components/browser/StreamSheet.tsx')) && /StreamSheet/.test(read('app/browser.tsx')));
   check('native intent routes maglev://browser', /browserIntentRoute/.test(read('app/+native-intent.tsx')));
+  {
+    const b = read('app/browser.tsx');
+    const k = read('modules/maglev-engine/android/src/main/java/com/maglev/engine/browser/MaglevBrowserView.kt');
+    check('a download hand-off ends loading in the screen', /onDownloadRequest = useCallback[\s\S]{0,200}loading: false/.test(b));
+    check('Stop always clears loading in the screen', /browserRef\.current\?\.stop\(\);\s*setPage\(\(p\) => \(p \? \{ \.\.\.p, loading: false \}/.test(b));
+    check('native download hand-off and stop emit loading false', /private fun onDownload[\s\S]{0,900}loading = false[\s\S]{0,40}emitPage/.test(k) && /fun stop\(\)[\s\S]{0,200}loading = false/.test(k));
+  }
+  check('perf measure prints null percentiles when no frames', /f\+0 == 0[\s\S]{0,120}\\"p50\\":null[\s\S]{0,200}no frames \(list empty\?\)/.test(read('scripts/perf/measure.sh')));
   check('search tab has Browse the web', /Browse the web/.test(read('app/(tabs)/search.tsx')));
   check('settings list has Browser row', /route: 'browser'/.test(read('app/(tabs)/settings.tsx')));
   check('add-download offers Open in browser', /Open in browser/.test(read('app/add-download.tsx')));

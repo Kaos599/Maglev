@@ -9,6 +9,9 @@ import { useMaglevEngine } from '../context/EngineContext';
 import { ThemeColors, radius, spacing, type } from '../constants/theme';
 import { formatBytes } from '../constants/format';
 import { haptic } from '../constants/haptics';
+import { StreamSheet } from '../components/browser/StreamSheet';
+import { streamKindOfLink } from '../components/browser/streamChoice';
+import type { FoundItem } from 'maglev-engine';
 import { Banner, Button, EmptyBlock, Screen } from '../components/ui';
 import { useDownloadAdmission } from '../utils/useDownloadAdmission';
 import { actionRoute, probeErrorView } from '../utils/downloadCopy';
@@ -24,7 +27,7 @@ export default function AddDownloadScreen() {
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const router = useRouter();
   const params = useLocalSearchParams<{ url?: string; source?: string; from?: string }>();
-  const { defaultStoragePath, probeUrl, startDownload, showNotice } = useMaglevEngine();
+  const { defaultStoragePath, probeUrl, probeStream, startDownload, showNotice } = useMaglevEngine();
 
   const [text, setText] = useState('');
   const [phase, setPhase] = useState<Phase>('input');
@@ -33,6 +36,7 @@ export default function AddDownloadScreen() {
   const [probe, setProbe] = useState<UrlProbe | null>(null);
   const [notAFile, setNotAFile] = useState(false);
   const [addError, setAddError] = useState<string | null>(null);
+  const [streamItem, setStreamItem] = useState<FoundItem | null>(null);
   const token = useRef(0);
   const urlRef = useRef('');
   const allowLanRef = useRef(false);
@@ -61,6 +65,21 @@ export default function AddDownloadScreen() {
       setMessage(null);
       setAddError(null);
       setPhase('probing');
+      // An .m3u8 or .mpd link is a stream: offer the same quality sheet the browser uses.
+      // When the probe says it is not a stream, carry on as a plain file.
+      const streamKind = streamKindOfLink(input);
+      if (streamKind) {
+        const sp = await probeStream(input, allowLan ? { allowLan: true } : {});
+        if (mine !== token.current) return;
+        if (sp.ok || (sp.code ?? '').toUpperCase().startsWith('STREAM_')) {
+          setStreamItem({
+            id: input, url: input, kind: 'video', mime: null, ext: streamKind === 'hls' ? 'm3u8' : 'mpd',
+            name: '', size: null, width: null, height: null, source: 'page', stream: streamKind, pageUrl: '', pageTitle: '',
+          });
+          setPhase('input');
+          return;
+        }
+      }
       const res = await probeUrl(input, allowLan ? { allowLan: true } : {});
       if (mine !== token.current) return;
       if (res.ok) {
@@ -73,7 +92,7 @@ export default function AddDownloadScreen() {
       setErrorView(probeErrorView(res.code, res.message, res.httpStatus));
       setPhase('error');
     },
-    [probeUrl, router],
+    [probeUrl, probeStream, router],
   );
 
   // The `url` or `source` param (a share, a maglev:// link, or another screen) fills the field.
@@ -268,6 +287,7 @@ export default function AddDownloadScreen() {
       <View style={styles.gap}>
         <Button label="Get info" size="lg" fullWidth disabled={!canSubmit} onPress={() => void submit(text)} />
       </View>
+      <StreamSheet item={streamItem} onClose={() => { setStreamItem(null); close(); }} onCopyLink={(u) => { void Clipboard.setStringAsync(u); }} />
     </Screen>
   );
 }

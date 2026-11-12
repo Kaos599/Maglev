@@ -22,7 +22,7 @@ import { Banner, Button, EmptyBlock, IconButton, ListRow, ProgressBar, Sheet, To
 import { FoundTray } from '../components/browser/FoundTray';
 import { StreamSheet } from '../components/browser/StreamSheet';
 import { FoundDownloadSheet, type DownloadTarget } from '../components/browser/FoundDownload';
-import { isInstaller, mergeFound } from '../components/browser/foundFilter';
+import { hideVariantPlaylists, isInstaller, mergeFound } from '../components/browser/foundFilter';
 import { updateBrowserPrefs, useBrowserPrefs } from '../utils/prefs/browser';
 import { hostOf, isAllowedHost, noticeAllowed, siteKey, toBrowserUrl, toggleAllowedHost } from '../utils/browserUrl';
 
@@ -53,7 +53,8 @@ export default function BrowserScreen() {
   const [prefillText, setPrefillText] = useState('');
   const [desktop, setDesktop] = useState(prefs.desktopMode);
   const [blocked, setBlocked] = useState(0);
-  const [found, setFound] = useState<FoundItem[]>([]);
+  const [foundAll, setFound] = useState<FoundItem[]>([]);
+  const found = useMemo(() => hideVariantPlaylists(foundAll), [foundAll]);
   const [trayOpen, setTrayOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [target, setTarget] = useState<DownloadTarget | null>(null);
@@ -161,14 +162,17 @@ export default function BrowserScreen() {
   );
 
   const onDownloadRequest = useCallback(
-    (e: BrowserDownloadRequestEvent) =>
+    (e: BrowserDownloadRequestEvent) => {
+      // The navigation became a download: the page is not loading any more.
+      setPage((p) => (p && p.loading ? { ...p, loading: false } : p));
       setTarget({
         url: e.url,
         name: e.name || nameFromUrl(e.url),
         size: e.size,
         pageUrl: e.referer || page?.url || '',
         userAgent: e.userAgent || page?.userAgent || '',
-      }),
+      });
+    },
     [page?.url, page?.userAgent],
   );
 
@@ -270,8 +274,10 @@ export default function BrowserScreen() {
           disabled={!started}
           onPress={() => {
             haptic('tap');
-            if (loading) browserRef.current?.stop();
-            else browserRef.current?.reload();
+            if (loading) {
+              browserRef.current?.stop();
+              setPage((p) => (p ? { ...p, loading: false } : p));
+            } else browserRef.current?.reload();
           }}
         />
         <IconButton icon="more" accessibilityLabel="More" disabled={!started} onPress={() => setMenuOpen(true)} />

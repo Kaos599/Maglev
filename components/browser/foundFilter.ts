@@ -69,3 +69,34 @@ export function isInstaller(item: Pick<FoundItem, 'ext' | 'name'>): boolean {
 export function streamTag(item: Pick<FoundItem, 'stream'>): 'HLS' | 'DASH' | null {
   return item.stream === 'hls' ? 'HLS' : item.stream === 'dash' ? 'DASH' : null;
 }
+
+function hlsParts(url: string): { origin: string; dir: string; path: string } | null {
+  const m = /^(https?:\/\/[^/?#]+)(\/[^?#]*)?/i.exec(url);
+  if (!m) return null;
+  const path = m[2] ?? '/';
+  return { origin: m[1].toLowerCase(), dir: path.slice(0, path.lastIndexOf('/') + 1), path };
+}
+
+/**
+ * Hides HLS media playlists that sit next to their master (section 24.8). The probe gives no variant addresses,
+ * so this is address-based: an HLS playlist is hidden only when an EARLIER HLS playlist from the same page and
+ * origin lives in the same folder or above it (a player asks for the master first, then the variants).
+ * A lone HLS item is never hidden, the first one found always stays, and a playlist at the server root
+ * hides nothing (it would otherwise cover every stream on that host).
+ */
+export function hideVariantPlaylists(items: readonly FoundItem[]): FoundItem[] {
+  const keep: FoundItem[] = [];
+  const masters: { pageUrl: string; origin: string; dir: string; path: string }[] = [];
+  for (const item of items) {
+    const hls = item.stream === 'hls' ? hlsParts(item.url) : null;
+    if (!hls) {
+      keep.push(item);
+      continue;
+    }
+    const covered = masters.some((m) => m.dir !== '/' && m.pageUrl === item.pageUrl && m.origin === hls.origin && m.path !== hls.path && hls.dir.startsWith(m.dir));
+    if (covered) continue;
+    masters.push({ pageUrl: item.pageUrl, ...hls });
+    keep.push(item);
+  }
+  return keep;
+}

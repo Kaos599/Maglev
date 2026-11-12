@@ -70,7 +70,11 @@ scroll() {
     /^90th percentile/ && !p90 {p90=$3}
     /^95th percentile/ && !p95 {p95=$3}
     /^99th percentile/ && !p99 {p99=$3}
-    END {gsub(/[()%]/,"",jp); printf "{\"frames\":%s,\"janky\":%s,\"janky_pct\":%s,\"p50\":\"%s\",\"p90\":\"%s\",\"p95\":\"%s\",\"p99\":\"%s\"}", f+0, j+0, jp+0, p50, p90, p95, p99}'
+    END {
+      gsub(/[()%]/,"",jp)
+      if (f+0 == 0) { printf "{\"frames\":0,\"janky\":0,\"janky_pct\":null,\"p50\":null,\"p90\":null,\"p95\":null,\"p99\":null}"; print "no frames (list empty?)" > "/dev/stderr"; exit }
+      printf "{\"frames\":%s,\"janky\":%s,\"janky_pct\":%s,\"p50\":\"%s\",\"p90\":\"%s\",\"p95\":\"%s\",\"p99\":\"%s\"}", f+0, j+0, jp+0, p50, p90, p95, p99
+    }'
 }
 
 # ---- Transfers (the first tab after launch)

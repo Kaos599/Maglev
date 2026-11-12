@@ -159,7 +159,11 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
     }
 
     fun stop() {
-        if (!destroyed) webView.stopLoading()
+        if (destroyed) return
+        webView.stopLoading()
+        // stopLoading does not always end with onPageFinished; the bar must not stay on Stop.
+        loading = false
+        emitPage()
     }
 
     /** A URL the user typed (or the screen set). Checked for scheme only; blocked and LAN hosts are allowed. */
@@ -379,6 +383,11 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
         val cleanMime = mime?.takeIf { it.isNotBlank() && it != "application/octet-stream" }
         val name = URLUtil.guessFileName(norm, disposition, mime)
         val size = if (length > 0) length else null
+        // A navigation that became a download never reaches onPageFinished.
+        if (loading) {
+            loading = false
+            emitPage()
+        }
         onDownloadRequest(
             mapOf(
                 "url" to norm,
