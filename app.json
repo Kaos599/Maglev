@@ -117,7 +117,8 @@
       "./plugins/withSizeReduction.js",
       "./plugins/withShareIntents.js",
       "./plugins/withBackupRules.js",
-      "./plugins/withCleartextLan.js"
+      "./plugins/withCleartextLan.js",
+      "./plugins/withReleaseSigning.js"
     ],
     "experiments": {
       "typedRoutes": true

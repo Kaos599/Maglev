@@ -78,6 +78,13 @@ jobs:
           done
           ls -lh reuse-apks
           echo "ready=true" >> "$GITHUB_OUTPUT"
+          # Optional: the Accrescent APK set exists only when CI had the signing secrets.
+          mkdir -p reuse-apkset
+          if gh run download "$RUN" --name accrescent-apks --dir reuse-apkset 2>/dev/null && [ -f reuse-apkset/maglev.apks ]; then
+            echo "apkset=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "No accrescent-apks artifact on run $RUN; releasing APKs only"
+          fi
 
       - name: Upload reused APKs
         if: steps.find.outputs.ready == 'true'
@@ -85,6 +92,15 @@ jobs:
         with:
           name: release-apks
           path: reuse-apks/*.apk
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Upload reused APK set
+        if: steps.find.outputs.apkset == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-apkset
+          path: reuse-apkset/maglev.apks
           if-no-files-found: error
           retention-days: 7
 
@@ -172,11 +188,62 @@ jobs:
       - name: Prebuild Android project
         run: npx expo prebuild --platform android --clean
 
+      - name: Decode release keystore (only when the secret exists)
+        env:
+          MAGLEV_KEYSTORE_B64: ${{ secrets.MAGLEV_KEYSTORE_B64 }}
+        run: |
+          if [ -n "$MAGLEV_KEYSTORE_B64" ]; then
+            (umask 077; printf '%s' "$MAGLEV_KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/maglev-release.jks")
+            echo "MAGLEV_KEYSTORE_PATH=$RUNNER_TEMP/maglev-release.jks" >> "$GITHUB_ENV"
+          else
+            echo "::warning::No release keystore secret; APKs are debug-signed"
+          fi
+
       - name: Build Android Release APK
+        env:
+          MAGLEV_KEYSTORE_PASSWORD: ${{ secrets.MAGLEV_KEYSTORE_PASSWORD }}
+          MAGLEV_KEY_ALIAS: ${{ secrets.MAGLEV_KEY_ALIAS }}
+          MAGLEV_KEY_PASSWORD: ${{ secrets.MAGLEV_KEY_PASSWORD }}
         run: |
           cd android
           chmod +x gradlew
           ./gradlew assembleRelease --stacktrace
+
+      - name: Verify APK signing (tags must not be debug-signed)
+        run: |
+          APKSIGNER=$(ls -d "$ANDROID_HOME"/build-tools/*/apksigner | sort -V | tail -n 1)
+          for apk in android/app/build/outputs/apk/release/*.apk; do
+            CERTS=$("$APKSIGNER" verify --print-certs "$apk")
+            echo "$(basename "$apk"): $(echo "$CERTS" | grep -m1 'certificate SHA-256 digest')"
+            if echo "$CERTS" | grep -q 'CN=Android Debug'; then
+              echo "::error::$(basename "$apk") is debug-signed. Set the MAGLEV_KEYSTORE_* secrets (docs/RELEASE_SIGNING.md)."; exit 1
+            fi
+          done
+
+      - name: Build signed APK set for Accrescent
+        if: env.MAGLEV_KEYSTORE_PATH != ''
+        env:
+          MAGLEV_KEYSTORE_PASSWORD: ${{ secrets.MAGLEV_KEYSTORE_PASSWORD }}
+          MAGLEV_KEY_ALIAS: ${{ secrets.MAGLEV_KEY_ALIAS }}
+          MAGLEV_KEY_PASSWORD: ${{ secrets.MAGLEV_KEY_PASSWORD }}
+          BUNDLETOOL_VERSION: '1.18.3'
+          BUNDLETOOL_SHA256: a099cfa1543f55593bc2ed16a70a7c67fe54b1747bb7301f37fdfd6d91028e29
+        run: |
+          set -euo pipefail
+          (cd android && ./gradlew bundleRelease --stacktrace)
+          AAB=android/app/build/outputs/bundle/release/app-release.aab
+          test -f "$AAB"
+          JAR="$RUNNER_TEMP/bundletool.jar"
+          curl -fsSL -o "$JAR" "https://github.com/google/bundletool/releases/download/${BUNDLETOOL_VERSION}/bundletool-all-${BUNDLETOOL_VERSION}.jar"
+          echo "$BUNDLETOOL_SHA256  $JAR" | sha256sum -c -
+          (umask 077
+           printf '%s' "$MAGLEV_KEYSTORE_PASSWORD" > "$RUNNER_TEMP/ks.pass"
+           printf '%s' "$MAGLEV_KEY_PASSWORD" > "$RUNNER_TEMP/key.pass")
+          trap 'rm -f "$RUNNER_TEMP/ks.pass" "$RUNNER_TEMP/key.pass"' EXIT
+          mkdir -p apkset
+          java -jar "$JAR" build-apks --bundle="$AAB" --output=apkset/maglev.apks \
+            --ks="$MAGLEV_KEYSTORE_PATH" --ks-key-alias="$MAGLEV_KEY_ALIAS" \
+            --ks-pass="file:$RUNNER_TEMP/ks.pass" --key-pass="file:$RUNNER_TEMP/key.pass"
 
       - name: List APKs
         run: ls -lh android/app/build/outputs/apk/release/*.apk
@@ -186,6 +253,15 @@ jobs:
         with:
           name: release-apks
           path: android/app/build/outputs/apk/release/*.apk
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Upload APK set
+        if: env.MAGLEV_KEYSTORE_PATH != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-apkset
+          path: apkset/maglev.apks
           if-no-files-found: error
           retention-days: 7
 
@@ -214,6 +290,21 @@ jobs:
           done
           ls -lh build-artifacts
 
+      - name: Download APK set (optional)
+        continue-on-error: true
+        uses: actions/download-artifact@v4
+        with:
+          name: release-apkset
+          path: release-apkset
+
+      - name: Name APK set
+        run: |
+          if [ -f release-apkset/maglev.apks ]; then
+            cp release-apkset/maglev.apks "build-artifacts/Maglev-${{ github.ref_name }}.apks"
+          else
+            echo "No APK set for this release"
+          fi
+
       - name: Create GitHub Release & Upload APKs
         uses: softprops/action-gh-release@v2
         with:
@@ -239,6 +330,7 @@ jobs:
             build-artifacts/Maglev-${{ github.ref_name }}-arm64-v8a.apk
             build-artifacts/Maglev-${{ github.ref_name }}-armeabi-v7a.apk
             build-artifacts/Maglev-${{ github.ref_name }}-x86_64.apk
+            build-artifacts/Maglev-${{ github.ref_name }}.apks
           draft: false
           # Beta is in the tag name; a normal release is what GitHub shows in the repo sidebar.
           prerelease: false

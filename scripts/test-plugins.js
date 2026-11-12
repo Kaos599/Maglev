@@ -74,4 +74,22 @@ assert(applyKeepRules('').includes('com.maglev.engine'));
   const app = require('../app.json').expo.android || require('../app.json').expo;
   assert((app.plugins || require('../app.json').expo.plugins).includes('./plugins/withCleartextLan.js'), 'registered');
 }
+// --- release signing (env-driven, debug fallback) ---
+{
+  const { applyReleaseSigning, MARKER } = require('../plugins/withReleaseSigning');
+  const fixture = 'apply plugin: "com.android.application"\n\nandroid {\n    signingConfigs {\n        debug {\n            storeFile file(\'debug.keystore\')\n        }\n    }\n    buildTypes {\n        release {\n            signingConfig signingConfigs.debug\n        }\n    }\n}\n';
+  const out = applyReleaseSigning(fixture);
+  assert(out.startsWith(fixture), 'template kept untouched (debug signing stays the fallback)');
+  for (const v of ['MAGLEV_KEYSTORE_PATH', 'MAGLEV_KEYSTORE_PASSWORD', 'MAGLEV_KEY_ALIAS', 'MAGLEV_KEY_PASSWORD']) {
+    assert(out.includes(`System.getenv("${v}")`), `reads ${v}`);
+  }
+  assert(/if \(maglevKeystorePath && new File\(maglevKeystorePath\)\.exists\(\)\)/.test(out), 'only signs when the keystore file exists');
+  assert(out.includes('signingConfig signingConfigs.release'), 'release build type uses the release config');
+  assert(out.includes('enableV1Signing = false') && out.includes('enableV2Signing = true') && out.includes('enableV3Signing = true'), 'v2+v3 on, v1 off');
+  assert(!/storePassword\s+["'][^"']+["']/.test(out), 'no literal passwords');
+  assert.strictEqual(out.split(MARKER).length - 1, 1, 'single marker');
+  assert.strictEqual(applyReleaseSigning(out), out, 'release signing not idempotent');
+  assert.throws(() => applyReleaseSigning('dependencies {}'), /android \{/);
+  assert(require('../app.json').expo.plugins.includes('./plugins/withReleaseSigning.js'), 'registered');
+}
 console.log('test-plugins: all assertions passed');
