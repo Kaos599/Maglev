@@ -149,16 +149,46 @@ async function main() {
   const planOk = bad('propose_plan', S.propose_plan);
   check('plan resolves step handles', planOk.ok && planOk.args.steps[0].args.transfer_id === 42, planOk);
 
-  console.log('tools: unknown keys rejected per tool');
+  console.log('tools: unknown keys are dropped and noted');
   for (const name of Object.keys(S)) {
     const r = bad(name, { ...S[name], not_a_field: 1 });
-    check(`${name}: unknown key gives bad_args`, isBad(r), r.ok ? 'accepted' : r.error.message);
+    check(`${name}: unknown key is dropped with a note`, r.ok && !('not_a_field' in r.args) && r.notes?.[0] === 'Ignored unknown field not_a_field.', r.ok ? r.notes : r.error.message);
   }
+  const multi = bad('search_torrents', { query: 'abc', year: 2020, foo: 1 });
+  check('several unknown keys share one note', multi.ok && multi.notes?.[0] === 'Ignored unknown fields year, foo.', multi);
   const planStepExtra = bad('propose_plan', {
     reason: REASON,
     steps: [{ tool: 'propose_pause_resume', args: { transfer_id: T, action: 'pause', reason: REASON, file_indices: [1] } }],
   });
-  check('plan step with a field its tool does not take is rejected', isBad(planStepExtra));
+  check('plan step: a field its tool does not take is dropped', planStepExtra.ok && !('file_indices' in planStepExtra.args.steps[0].args), planStepExtra);
+
+  console.log('tools: lenient coercion');
+  const sr = (a) => bad('search_torrents', { query: 'abc', ...a });
+  const eq = (name, a, key, want) => { const r = sr(a); check(name, r.ok && r.args[key] === want, r.ok ? r.args[key] : r.error.message); };
+  eq('"1080" becomes 1080', { max_resolution: '1080' }, 'max_resolution', 1080);
+  eq('"1080p" becomes 1080', { min_resolution: '1080p' }, 'min_resolution', 1080);
+  eq('"4k" becomes 2160', { max_resolution: '4K' }, 'max_resolution', 2160);
+  eq('"5" becomes 5', { limit: '5' }, 'limit', 5);
+  eq('"5 GB" becomes 5', { max_size_gb: '5 GB' }, 'max_size_gb', 5);
+  eq('"2.5gb" becomes 2.5', { max_size_gb: '2.5gb' }, 'max_size_gb', 2.5);
+  eq('"true" becomes true', { include_cam: 'True' }, 'include_cam', true);
+  eq('"false" becomes false', { include_cam: ' false ' }, 'include_cam', false);
+  eq('enum is trimmed and case-folded', { category: '  Movies ' }, 'category', 'movies');
+  for (const [from, to] of [['movie', 'movies'], ['Film', 'movies'], ['films', 'movies'], ['show', 'tv'], ['series', 'tv'], ['TV Shows', 'tv'], ['book', 'books'], ['game', 'games'], ['app', 'apps'], ['software', 'apps']]) {
+    eq(`category "${from}" becomes ${to}`, { category: from }, 'category', to);
+  }
+  for (const [from, to] of [['popular', 'seeders'], ['seeds', 'seeders'], ['Seeders', 'seeders'], ['latest', 'newest'], ['new', 'newest'], ['recent', 'newest']]) {
+    eq(`sort "${from}" becomes ${to}`, { sort: from }, 'sort', to);
+  }
+  check('a null optional is dropped', sr({ category: null }).ok && !('category' in sr({ category: null }).args));
+  check('a null required field is still rejected', isBad(bad('search_torrents', { query: null })));
+  check('adult stays rejected after folding', isBad(sr({ category: 'Adult' })));
+  check('out-of-range numeric string still rejected', isBad(sr({ limit: '99' })) && isBad(sr({ max_resolution: '1081' })));
+  check('wrong handle still rejected', isBad(bad('propose_add', { result_id: 'r99' })) && isBad(bad('propose_change', { transfer_id: 'zzz', action: 'pause' })));
+  check('missing required handle still rejected', isBad(bad('propose_add', {})) && isBad(bad('propose_change', { action: 'pause' })));
+  const searchDef = TOOLS.find((t) => t.function.name === 'search_torrents').function;
+  const JUST = 'Just the title. Add a year, season or episode only if the user gave one.';
+  check('search description and query hint say just the title', searchDef.description.includes(JUST) && searchDef.parameters.properties.query.description === JUST && !/short title/i.test(searchDef.description), searchDef.description);
 
   console.log('tools: bad, hash-like and wrong-kind handles');
   check('unknown result handle gives bad_args', isBad(bad('propose_add', { result_id: 'r99', reason: REASON })));
@@ -176,15 +206,17 @@ async function main() {
   check('handle error is plain English', !unknownMsg.ok && unknownMsg.error.message.length > 10);
 
   console.log('tools: types, enums and ranges');
-  check('string where number expected gives bad_args', isBad(bad('search_torrents', { query: 'abc', max_size_gb: '5' })));
+  check('non-numeric text where number expected gives bad_args', isBad(bad('search_torrents', { query: 'abc', max_size_gb: 'big' })));
+  check('MB is not guessed as GB', isBad(bad('search_torrents', { query: 'abc', max_size_gb: '500 MB' })));
   check('fraction where integer expected gives bad_args', isBad(bad('search_torrents', { query: 'abc', limit: 2.5 })));
   check('limit above 8 gives bad_args', isBad(bad('search_torrents', { query: 'abc', limit: 9 })));
   check('adult category gives bad_args', isBad(bad('search_torrents', { query: 'abc', category: 'adult' })));
   check('resolution 4320 gives bad_args', isBad(bad('search_torrents', { query: 'abc', max_resolution: 4320 })));
   check('min resolution above max gives bad_args', isBad(bad('search_torrents', { query: 'abc', min_resolution: 1080, max_resolution: 720 })));
   check('bad action enum gives bad_args', isBad(bad('propose_pause_resume', { transfer_id: 't1', action: 'delete', reason: REASON })));
-  check('boolean as string gives bad_args', isBad(bad('propose_delete', { transfer_id: 't1', delete_files: 'yes', reason: REASON })));
-  check('missing required reason gives bad_args', isBad(bad('propose_add', { result_id: 'r1' })));
+  check('boolean as unclear text gives bad_args', isBad(bad('propose_delete', { transfer_id: 't1', delete_files: 'maybe', reason: REASON })));
+  check('reason is optional on propose_add and propose_change', bad('propose_add', { result_id: 'r1' }).ok && bad('propose_change', { transfer_id: 't1', action: 'pause' }).ok);
+  check('reason is still required on legacy propose_delete', isBad(bad('propose_delete', { transfer_id: 't1' })));
   check('missing required query gives bad_args', isBad(bad('search_torrents', { category: 'movies' })));
   check('negative file index gives bad_args', isBad(bad('propose_remove_files', { transfer_id: 't1', file_indices: [-1], reason: REASON })));
   check('duplicate file indices give bad_args', isBad(bad('propose_remove_files', { transfer_id: 't1', file_indices: [1, 1], reason: REASON })));

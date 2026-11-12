@@ -84,6 +84,25 @@ export function parseRetryAfter(value: string | null | undefined, now: number = 
   return Math.max(0, t - now);
 }
 
+/**
+ * How long the provider asked us to wait: Retry-After, or OpenRouter's X-RateLimit-Reset (a Unix time in
+ * milliseconds, set when a free model's limit is hit). Never throws: an odd Response must not look like "no network".
+ */
+export function readWaitMs(headers: { get(name: string): string | null } | undefined, now: number): number | undefined {
+  try {
+    const after = parseRetryAfter(headers?.get('retry-after'), now);
+    if (after !== undefined) return after;
+    const reset = headers?.get('x-ratelimit-reset');
+    if (reset && /^\d{10,13}$/.test(reset.trim())) {
+      const n = Number(reset.trim());
+      return Math.max(0, (n < 1e11 ? n * 1000 : n) - now);
+    }
+  } catch {
+    // Headers that cannot be read count as no header.
+  }
+  return undefined;
+}
+
 export interface ClientTimers {
   setTimeout(fn: () => void, ms: number): unknown;
   clearTimeout(handle: unknown): void;
@@ -217,7 +236,7 @@ export function createStreamFn(
         const snippet = await readSnippet(res, inner.signal);
         stopTimer();
         if (signal.aborted) return;
-        const retryAfterMs = parseRetryAfter(res.headers.get('retry-after'), now());
+        const retryAfterMs = readWaitMs(res.headers, now());
         emit({
           type: 'HttpErr',
           status: res.status,

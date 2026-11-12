@@ -96,7 +96,7 @@ function makeTimers() {
 async function main() {
   const { HandleRegistry } = await import('../utils/assistant/handles.ts');
   const { buildSystemPrompt } = await import('../utils/assistant/systemPrompt.ts');
-  const { createStreamFn, buildRequestBody, buildHeaders, parseRetryAfter } = await import('../utils/assistantApp/client.ts');
+  const { createStreamFn, buildRequestBody, buildHeaders, parseRetryAfter, readWaitMs } = await import('../utils/assistantApp/client.ts');
   const { createChatController, TOOL_TIMEOUT_MS } = await import('../utils/assistantApp/chatController.ts');
   const { defaultAssistantPrefs, presetById } = await import('../utils/prefs/assistant.ts');
   const { turnInitial, turnStep } = await import('../utils/assistant/turnMachine.ts');
@@ -241,6 +241,47 @@ async function main() {
     check('tool round trip: second request carries the tool result', s.fetch.requests.length === 2 && toolMsg(lastReqMsgs(s.fetch), 'k1').content.includes('"ok":true'));
     check('tool round trip: usage of both requests added', s.env.usage.length === 2 && c.tokensUsed.input === 300);
     check('runner got validated args with the resolved handle', s.calls.run[0].call.name === 'search_torrents');
+  }
+
+  // ---- lenient tool calls: coerced values reach the runner, an unknown field is noted in the result --------------
+  {
+    const s = setup();
+    s.fetch.queue.push({ chunks: sseTools([{ id: 'k1', name: 'search_torrents', args: { query: 'Dune', year: 2021, category: 'Film', max_size_gb: '5 GB' } }]) });
+    s.fetch.queue.push({ chunks: sseText(['Done.']) });
+    s.chat().send('find Dune');
+    await settle();
+    await s.timers.advance(60);
+    const a = s.calls.run[0]?.call.args;
+    check('lenient call runs with coerced args and no unknown field', a && a.category === 'movies' && a.max_size_gb === 5 && !('year' in a), a);
+    const content = toolMsg(lastReqMsgs(s.fetch), 'k1')?.content ?? '';
+    check('the tool result carries note "Ignored unknown field year."', content.includes('"note":"Ignored unknown field year."') && content.includes('"ok":true'), content);
+  }
+  {
+    const s = setup();
+    s.fetch.queue.push({ chunks: sseTools([{ id: 'k1', name: 'propose_change', args: { transfer_id: 't1', action: 'pause' } }]) });
+    s.fetch.queue.push({ chunks: sseText(['Pausing.']) });
+    s.chat().send('pause it');
+    await settle();
+    await s.timers.advance(60);
+    check('propose_change without a reason makes a card', s.calls.prepare.length === 1 && s.chat().items.some((i) => i.kind === 'card'), kinds(s.chat()));
+  }
+
+  // ---- language from the device locale --------------------------------------------------------------------
+  {
+    const sys = (locale) => {
+      const s = setup({ deps: locale === undefined ? {} : { locale } });
+      return s.controller.getSnapshot() && s;
+    };
+    const send = async (locale) => {
+      const s = sys(locale);
+      s.fetch.queue.push({ chunks: sseText(['ok']) });
+      s.chat().send('hi');
+      await settle();
+      return s.fetch.requests[0].body.messages[0].content;
+    };
+    check('French locale adds "Answer in French."', (await send('fr-FR')).includes('Answer in French.'));
+    check('English locales add no language line', !(await send('en-US')).includes('Answer in') && !(await send('en')).includes('Answer in'));
+    check('a junk locale adds nothing and does not throw', !(await send('zz-ZZ-garbage!!')).includes('Answer in'));
   }
 
   // ---- 0.11: system prompt per question, step tool and detail, questions, links, model name -------------------------
@@ -409,6 +450,21 @@ async function main() {
     check('429: SM-31 does not retry it; error item "Rate limited." with action retry', s.fetch.requests.length === 1 && e.message === 'Rate limited. Try again in a minute.' && e.action === 'retry', e);
   }
   {
+    // A free model's 429 (OpenRouter JSON body, no Retry-After): rate-limited copy with Retry, never "couldn't reach".
+    const s = setup();
+    s.fetch.queue.push({ status: 429, chunks: ['{"error":{"message":"Provider returned error","code":429}}'] });
+    s.chat().send('hi');
+    await settle();
+    const e = s.chat().items.at(-1);
+    check('429 JSON body: "Rate limited. Try again in a minute." with Retry, one request', e.message === 'Rate limited. Try again in a minute.' && e.action === 'retry' && s.fetch.requests.length === 1 && !/reach/.test(e.message), e);
+    const t = setup();
+    t.fetch.queue.push({ status: 429, headers: { 'x-ratelimit-reset': String(Date.now() + 6 * 3600_000) }, chunks: [] });
+    t.chat().send('hi');
+    await settle();
+    check('429 with X-RateLimit-Reset hours away: "limit for now" copy', t.chat().items.at(-1).message === "You've hit this model's limit for now. Try again later, or pick another model.", t.chat().items.at(-1));
+    check('readWaitMs: Retry-After first, reset header next, throwing headers ignored', readWaitMs({ get: (n) => (n === 'retry-after' ? '2' : null) }, 0) === 2000 && readWaitMs({ get: (n) => (n === 'x-ratelimit-reset' ? '5000000000000' : null) }, 4999999999000) === 1000 && readWaitMs({ get: () => { throw new Error('x'); } }, 0) === undefined && readWaitMs(undefined, 0) === undefined);
+  }
+  {
     const s = setup();
     s.fetch.queue.push({ status: 503, headers: { 'retry-after': '2' }, chunks: [] });
     s.fetch.queue.push({ chunks: sseText(['Back again.']) });
@@ -439,7 +495,7 @@ async function main() {
       [404, '{"error":{"message":"No endpoints found"}}', "That model isn't available any more. Pick another in Settings → Assistant.", 'settings'],
       [413, '', 'That was too much for this model. Clear the chat or ask a shorter question.', 'retry'],
       [422, 'nope', 'The AI service refused this message. Try again, or pick another model in Settings.', 'retry'],
-      [429, '', "You've hit this model's limit for now. Try again later, or pick another model.", 'retry'],
+      [429, '', 'Rate limited. Try again in a minute.', 'retry'],
     ];
     for (const [status, body, msg, action] of cases) {
       const s = setup();

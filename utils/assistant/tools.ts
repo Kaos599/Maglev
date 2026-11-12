@@ -37,7 +37,7 @@ export interface ToolDef {
 }
 
 export type ValidateResult =
-  | { ok: true; args: Record<string, unknown> }
+  | { ok: true; args: Record<string, unknown>; /** Plain-English remarks about what was fixed or ignored, for the tool result. */ notes?: string[] }
   | { ok: false; error: { code: 'bad_args' | 'unknown_tool'; message: string } };
 
 /** The seven tools the model sees (docs/ASSISTANT_DESIGN.md, 0.11). Few tools, because free models call many tools badly. */
@@ -113,7 +113,7 @@ const REASON: JsonSchema = { type: 'string', maxLength: 200, description: 'One p
 const SEARCH_TORRENTS: JsonSchema = {
   type: 'object',
   properties: {
-    query: { type: 'string', minLength: 2, maxLength: QUERY_MAX, description: 'Title and year, or show and season.' },
+    query: { type: 'string', minLength: 2, maxLength: QUERY_MAX, description: 'Just the title. Add a year, season or episode only if the user gave one.' },
     category: {
       type: 'string',
       enum: ['all', 'movies', 'tv', 'anime', 'music', 'apps', 'games', 'books', 'other'],
@@ -192,7 +192,7 @@ const PROPOSE_ADD: JsonSchema = {
     sequential: { type: 'boolean', default: false, description: 'Download in order so it can be watched while downloading.' },
     reason: REASON,
   },
-  required: ['result_id', 'reason'],
+  required: ['result_id'],
   additionalProperties: false,
 };
 
@@ -310,7 +310,7 @@ const PROPOSE_CHANGE: JsonSchema = {
     delete_files: { type: 'boolean', default: false, description: 'delete only: also delete the files from the phone.' },
     reason: REASON,
   },
-  required: ['transfer_id', 'action', 'reason'],
+  required: ['transfer_id', 'action'],
   additionalProperties: false,
 };
 
@@ -366,7 +366,7 @@ const PARAMETERS: Record<ToolName, JsonSchema> = {
 // Short, plain English. Nothing here may mention adult content (D2).
 const DESCRIPTIONS: Record<ToolName, string> = {
   search_torrents:
-    'Search the enabled sources for torrents. Returns the best matches with size, sharing, upload age when known, and a space check. Use a short title and year, or show and season.',
+    'Search the enabled sources for torrents. Returns the best matches with size, sharing, upload age when known, and a space check. Just the title. Add a year, season or episode only if the user gave one.',
   get_result_details:
     'Look inside one search result: its files, file safety check and space check. Slow. Call it before proposing a result.',
   parse_release_name:
@@ -524,10 +524,13 @@ export function validateArgs(name: string, rawArgs: unknown, registry: HandleReg
 }
 
 function validateToolArgs(name: ToolName, input: Record<string, unknown>, registry: HandleRegistry): ValidateResult {
+  const dropped: string[] = [];
+  input = normalizeNode(PARAMETERS[name], input, '', dropped) as Record<string, unknown>;
   const schemaError = checkNode(PARAMETERS[name], input, 'arguments');
   if (schemaError) return bad(schemaError);
 
-  if (name === 'propose_plan') return validatePlan(input, registry);
+  const notes = dropped.length === 0 ? undefined : [ignoredNote(dropped)];
+  if (name === 'propose_plan') return withNotes(validatePlan(input, registry), notes);
 
   const args: Record<string, unknown> = { ...input };
   for (const field of Object.keys(HANDLE_FIELD_KIND)) {
@@ -540,13 +543,94 @@ function validateToolArgs(name: ToolName, input: Record<string, unknown>, regist
 
   const crossError = crossFieldError(name, args);
   if (crossError) return bad(crossError);
-  return { ok: true, args };
+  return notes ? { ok: true, args, notes } : { ok: true, args };
+}
+
+function withNotes(r: ValidateResult, notes: string[] | undefined): ValidateResult {
+  if (!r.ok || !notes) return r;
+  return { ...r, notes: [...(r.notes ?? []), ...notes] };
+}
+
+function ignoredNote(keys: string[]): string {
+  const shown = [...new Set(keys)].slice(0, 3).join(', ');
+  return `Ignored unknown field${new Set(keys).size === 1 ? '' : 's'} ${shown}.`;
+}
+
+// ---- Lenient input: small free models send slightly wrong shapes. Fix what is unambiguous, reject the rest. ----
+
+const ENUM_SYNONYMS: Record<string, Record<string, string>> = {
+  category: {
+    movie: 'movies', film: 'movies', films: 'movies', cinema: 'movies',
+    show: 'tv', shows: 'tv', series: 'tv', 'tv show': 'tv', 'tv shows': 'tv', 'tv series': 'tv', television: 'tv',
+    song: 'music', songs: 'music', album: 'music', albums: 'music',
+    book: 'books', ebook: 'books', ebooks: 'books',
+    game: 'games',
+    app: 'apps', software: 'apps', application: 'apps', applications: 'apps',
+  },
+  sort: {
+    popular: 'seeders', seeds: 'seeders', seeder: 'seeders', seeded: 'seeders', 'most seeded': 'seeders', 'most popular': 'seeders',
+    latest: 'newest', new: 'newest', recent: 'newest', newer: 'newest', date: 'newest',
+    relevance: 'best', relevant: 'best', default: 'best',
+  },
+};
+
+/** "1080", "1080p", "5", "5 GB", "90 min" → a number. Other units (MB, TB) are not guessed. */
+function coerceNumber(value: string, schema: JsonSchema): number | string {
+  const v = value.trim();
+  if (schema.enum?.includes(2160) && /^4k$/i.test(v)) return 2160;
+  const m = /^(-?\d+(?:\.\d+)?)\s*(?:p|gb|g|mins?|m)?$/i.exec(v);
+  return m ? Number(m[1]) : value;
+}
+
+/**
+ * Copies `value` with the safe fixes applied: numeric strings to numbers, "true"/"false" to booleans, enum text
+ * case-folded and mapped from near-synonyms, null optionals dropped, unknown keys dropped (their names go to `dropped`).
+ * Anything it cannot fix is returned as it was, and checkNode rejects it.
+ */
+function normalizeNode(schema: JsonSchema, value: unknown, name: string, dropped: string[]): unknown {
+  switch (schema.type) {
+    case 'object': {
+      if (!isPlainObject(value)) return value;
+      const props = schema.properties ?? {};
+      const out: Record<string, unknown> = {};
+      for (const key of Object.keys(value)) {
+        if (!hasOwn(props, key)) {
+          dropped.push(sanitizeText(key, 40));
+          continue;
+        }
+        if (value[key] === null && !(schema.required ?? []).includes(key)) continue;
+        out[key] = normalizeNode(props[key], value[key], key, dropped);
+      }
+      return out;
+    }
+    case 'array':
+      return Array.isArray(value) && schema.items ? value.map((v) => normalizeNode(schema.items as JsonSchema, v, name, dropped)) : value;
+    case 'integer':
+    case 'number':
+      return typeof value === 'string' ? coerceNumber(value, schema) : value;
+    case 'boolean': {
+      if (typeof value !== 'string') return value;
+      const v = value.trim().toLowerCase();
+      return v === 'true' ? true : v === 'false' ? false : value;
+    }
+    case 'string': {
+      if (typeof value !== 'string' || !schema.enum) return value;
+      const v = value.trim().toLowerCase();
+      const hit = schema.enum.find((e) => typeof e === 'string' && e.toLowerCase() === v);
+      if (hit !== undefined) return hit;
+      const mapped = hasOwn(ENUM_SYNONYMS, name) ? ENUM_SYNONYMS[name][v] : undefined;
+      return mapped !== undefined && schema.enum.includes(mapped) ? mapped : value;
+    }
+    default:
+      return value;
+  }
 }
 
 function validatePlan(input: Record<string, unknown>, registry: HandleRegistry): ValidateResult {
   const steps = input.steps as Array<{ tool: string; args: Record<string, unknown> }>;
   // The schema enum already limits step tools; this guards direct callers of validateToolArgs too.
   const resolved: Array<{ tool: string; args: Record<string, unknown> }> = [];
+  const notes: string[] = [];
   for (let i = 0; i < steps.length; i++) {
     const step = steps[i];
     if (!(PLAN_STEP_TOOL_NAMES as readonly string[]).includes(step.tool)) {
@@ -555,8 +639,9 @@ function validatePlan(input: Record<string, unknown>, registry: HandleRegistry):
     const result = validateToolArgs(step.tool as ToolName, step.args, registry);
     if (!result.ok) return bad(`Step ${i + 1}: ${result.error.message}`);
     resolved.push({ tool: step.tool, args: result.args });
+    for (const n of result.notes ?? []) if (!notes.includes(n)) notes.push(n);
   }
-  return { ok: true, args: { reason: input.reason, steps: resolved } };
+  return notes.length > 0 ? { ok: true, args: { reason: input.reason, steps: resolved }, notes } : { ok: true, args: { reason: input.reason, steps: resolved } };
 }
 
 /** Checks that need more than one field. Runs after handles are resolved. */

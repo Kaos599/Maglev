@@ -72,6 +72,8 @@ export interface ChatDeps {
   now?: () => Date;
   /** IANA time zone for the system prompt, e.g. "Asia/Kolkata". Defaults to the phone's. */
   timeZone?: string;
+  /** Device locale such as "fr-FR". Default: the runtime's. Tests set it. */
+  locale?: string;
 }
 
 export interface ChatController {
@@ -179,6 +181,22 @@ export function goneTargets(
   return out;
 }
 
+/**
+ * The device language as an English name ("French"), or undefined for English, an unknown locale, or a runtime
+ * without Intl.DisplayNames (Hermes may lack it). `locale` overrides the device locale for tests.
+ */
+export function nonEnglishLanguage(locale?: string): string | undefined {
+  try {
+    const tag = locale ?? Intl.DateTimeFormat().resolvedOptions().locale;
+    if (!tag || /^en(?:[-_]|$)/i.test(tag)) return undefined;
+    const lang = tag.split(/[-_]/)[0];
+    const name = new Intl.DisplayNames(['en'], { type: 'language' }).of(lang);
+    return name && name !== lang ? name : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 export function createChatController(deps: ChatDeps): ChatController {
   const { runner, stream, getPrefs, getKey } = deps;
   const timers: ChatTimers = deps.timers ?? {
@@ -187,7 +205,8 @@ export function createChatController(deps: ChatDeps): ChatController {
   };
   const random = deps.random ?? Math.random;
 
-  const currentSystem = (): string => deps.systemPrompt ?? buildSystemPrompt({ now: (deps.now ?? (() => new Date()))(), timeZone: deps.timeZone });
+  const currentSystem = (): string =>
+    deps.systemPrompt ?? buildSystemPrompt({ now: (deps.now ?? (() => new Date()))(), timeZone: deps.timeZone, language: nonEnglishLanguage(deps.locale) });
   let turn: TurnState = turnInitial({ system: currentSystem(), registry: runner.registry });
   let items: ChatItem[] = [];
   let nextId = 1;

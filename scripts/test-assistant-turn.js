@@ -87,7 +87,7 @@ async function main() {
   check('requesting + FirstByte -> streaming', step(toRequesting(), FIRST).state.kind === 'streaming');
   const KEY_MSG = "{provider} didn't accept your key. Sign in again in Settings → Assistant.";
   const CREDIT_MSG = 'Your {provider} account is out of credit. Add credit on their site, or pick a free model in Settings.';
-  for (const [status, msg] of [[401, KEY_MSG], [403, KEY_MSG], [402, CREDIT_MSG], [429, "You've hit this model's limit for now. Try again later, or pick another model."]]) {
+  for (const [status, msg] of [[401, KEY_MSG], [403, KEY_MSG], [402, CREDIT_MSG], [429, 'Rate limited. Try again in a minute.']]) {
     const r = step(toRequesting(), { type: 'HttpErr', status });
     check(`requesting + HttpErr(${status}) -> idle, ErrorCard "${msg}"`, r.state.kind === 'idle' && JSON.stringify(r.effects) === JSON.stringify([{ type: 'errorCard', message: msg }]), r.effects);
   }
@@ -304,7 +304,7 @@ async function main() {
     const r2 = step(step(r.state, FIRST).state, bad('bad_response'));
     check('a second bad response -> idle with the provider message', r2.state.kind === 'idle' && r2.effects[0].type === 'errorCard' && r2.effects[0].message === 'Bad response from the provider.', r2.effects);
     const r3 = step(toStreaming(), { type: 'StreamFailed', error: { code: 'provider', message: 'x', status: 429 } });
-    check('a mid-stream 429 is not retried', r3.state.kind === 'idle' && r3.effects[0].message === "You've hit this model's limit for now. Try again later, or pick another model.");
+    check('a mid-stream 429 is not retried', r3.state.kind === 'idle' && r3.effects[0].message === 'Rate limited. Try again in a minute.');
     const r4 = step(toStreaming(), { type: 'StreamFailed', error: { code: 'incomplete', message: 'The answer was cut off.' } });
     check('an incomplete stream counts as a bad response (retried once)', types(r4.effects).join() === 'retryOnce');
     const after = run(toRequesting(), { type: 'NetErr' }, FIRST, { type: 'ToolCallsDone', calls: [searchCall('q')] }, { type: 'ToolsDone', results: okResults([searchCall('q')]) });
