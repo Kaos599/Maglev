@@ -142,6 +142,20 @@ object StorageManager {
         }
     }
 
+    /**
+     * Frees a staged link download once its copy in the user's tree is verified by size: the file, then the
+     * unfinished `.part` and `.maglev-dl.json` leftovers (docs/NATIVE_CONTRACT.md section 17). Returns bytes freed.
+     * Blocking, call from IO.
+     */
+    fun freeStagedDownload(context: Context, folder: String, name: String): Long {
+        val tree = customUri(context)?.let { android.net.Uri.parse(it) } ?: return 0L
+        if (!isStagingPath(context, folder)) return 0L
+        val leftovers = setOf("$name.part", "$name.maglev-dl.json")
+        return StagingCleanup.free(stagingDir(context), File(folder), listOf(name) + leftovers) { rel, f ->
+            rel in leftovers || SafStorageManager.copyMatches(context, tree, rel, f)
+        }
+    }
+
     private fun copiedKey(id: String, folder: String, tree: String) = "$id|$folder|$tree"
 
     /** A marker is valid only for the same torrent, output folder and destination tree. */

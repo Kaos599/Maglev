@@ -56,4 +56,22 @@ assert(applyKeepRules('').includes('com.maglev.engine'));
   assert(filters.some((f) => f.action === 'SEND_MULTIPLE'), 'SEND_MULTIPLE filter');
   assert(app.plugins.includes('./plugins/withBackupRules.js') && app.plugins.includes('./plugins/withShareIntents.js'));
 }
+// --- cleartext for the home network (custom assistant provider) ---
+{
+  const { networkSecurityXml, applyNetworkSecurityConfig } = require('../plugins/withCleartextLan');
+  const xml = networkSecurityXml();
+  assert(xml.includes('<base-config cleartextTrafficPermitted="true">'), 'base config permits cleartext');
+  assert(xml.includes('<certificates src="system"/>'), 'system trust anchors');
+  assert(!xml.includes('src="user"'), 'no user CAs');
+  const node = { $: { 'android:allowBackup': 'true', 'android:usesCleartextTraffic': 'false' } };
+  assert.strictEqual(applyNetworkSecurityConfig(node), true);
+  assert.strictEqual(node.$['android:networkSecurityConfig'], '@xml/maglev_network_security_config');
+  assert.strictEqual(node.$['android:allowBackup'], 'true', 'unrelated attributes kept');
+  assert.strictEqual(applyNetworkSecurityConfig(node), true, 'idempotent');
+  const other = { $: { 'android:networkSecurityConfig': '@xml/other' } };
+  assert.strictEqual(applyNetworkSecurityConfig(other), false, 'existing config is kept');
+  assert.strictEqual(other.$['android:networkSecurityConfig'], '@xml/other');
+  const app = require('../app.json').expo.android || require('../app.json').expo;
+  assert((app.plugins || require('../app.json').expo.plugins).includes('./plugins/withCleartextLan.js'), 'registered');
+}
 console.log('test-plugins: all assertions passed');

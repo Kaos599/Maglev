@@ -78,11 +78,15 @@ object EngineHost {
     private const val NO_SPACE_MARGIN = 200L * 1024 * 1024
     const val KEY_KILLS = "background_kills"
     const val GOV_PREFS = "maglev_governance"
+    /** Governance tag for "no validated network". Rust applies it to link downloads, not to torrents. */
+    const val TAG_OFFLINE = "offline"
     const val ENGINE_PREFS = PREFS
     private const val REASON_FGS_TIMEOUT = "fgs_timeout"
     private const val SERVICE_RETRY_MS = 10_000L
     private const val TILE_REFRESH_MS = 2_000L
     private const val COPY_RETRY_MS = 60_000L
+    /** Prefix of link-download ids in the copy markers and sets, so they never collide with torrent ids. */
+    private const val DL_PREFIX = "dl:"
     private const val FEED_RESOLVE_MS = 20_000L
     private const val INIT_GIVE_UP_MS = 10 * 60_000L
 
@@ -474,6 +478,7 @@ object EngineHost {
         driveService(summary)
         healthTick(torrents, summary)
         copyStagedTorrents(torrents)
+        copyStagedDownloads(downloads)
         freeStagedAtSeedLimit(torrents)
         checkAutoExit(transfers)
     }
@@ -1133,6 +1138,10 @@ object EngineHost {
         send("charging_only", !chargingBlocked, force)
         send("network_unvalidated", !unvalidatedBlocked, force)
         send("vpn_required", !vpnBlocked, force)
+        // Link downloads only (contract section 17): no network, or none Android validated, means "offline".
+        // Unknown (callback not registered) is never offline. onChanged re-runs this on every network change.
+        val offline = n != null && n.monitoring && (!n.connected || !n.validated)
+        send(TAG_OFFLINE, !offline, force)
 
         val c = ctx ?: return
         val st = ScheduleManager.state(c)
@@ -1554,8 +1563,18 @@ object EngineHost {
     fun pauseDownload(id: String) = call { NativeCore.nativePauseDownload(id) }.also { pollNow() }
     fun resumeDownload(id: String) = call { NativeCore.nativeResumeDownload(id) }.also { pollNow() }
     fun retryDownload(id: String) = call { NativeCore.nativeRetryDownload(id) }.also { pollNow() }
-    fun removeDownload(id: String, deleteFiles: Boolean) =
-        call { NativeCore.nativeRemoveDownload(id, deleteFiles) }.also { pollNow() }
+    fun removeDownload(id: String, deleteFiles: Boolean): Map<String, Any?> {
+        val res = call { NativeCore.nativeRemoveDownload(id, deleteFiles) }
+        if (isOk(res)) {
+            val key = DL_PREFIX + id
+            ctx?.let { StorageManager.clearCopied(it, key) }
+            if (copying.contains(key)) cancelledCopies.add(key)
+            copyFailedAt.remove(key)
+            mediaScanned.remove(key)
+        }
+        pollNow()
+        return res
+    }
 
     fun refreshDownloadUrl(id: String, url: String, options: Map<String, Any?>) =
         call { NativeCore.nativeRefreshDownloadUrl(id, url, Json.toJson(Json.snakeify(options))) }.also { pollNow() }
@@ -1691,6 +1710,56 @@ object EngineHost {
             }
         } else {
             copyFailedAt[id] = SystemClock.elapsedRealtime()
+            lastCopyError = error
+        }
+        emitStorageStatus()
+    }
+
+    /**
+     * Copy-on-complete for link downloads written to the staging folder (a custom folder in staging mode).
+     * Same rules as torrents: idempotent through the copied marker, retried every [COPY_RETRY_MS] after a failure,
+     * errors shown through [storageStatus]. The staged file and its leftovers go once the copy is verified by size.
+     */
+    private fun copyStagedDownloads(downloads: List<Map<String, Any?>>) {
+        val c = ctx ?: return
+        val treeStr = StorageManager.customUri(c) ?: return
+        val tree = android.net.Uri.parse(treeStr)
+        for (d in downloads) {
+            if (d["state"] != "finished") continue
+            val id = d["id"] as? String ?: continue
+            val folder = d["folder"] as? String ?: continue
+            val name = d["name"] as? String ?: continue
+            val key = DL_PREFIX + id
+            if (!StorageManager.isStagingPath(c, folder) || StorageManager.isCopied(c, key, folder, treeStr)) continue
+            val failedAt = copyFailedAt[key]
+            if (failedAt != null && SystemClock.elapsedRealtime() - failedAt < COPY_RETRY_MS) continue
+            if (!copying.add(key)) continue
+            ioScope.launch {
+                try {
+                    copyOneDownload(c, tree, key, folder, name)
+                } finally {
+                    copying.remove(key)
+                }
+            }
+        }
+    }
+
+    private fun copyOneDownload(c: Context, tree: android.net.Uri, key: String, folder: String, name: String) {
+        val source = File(folder, name)
+        // Null means the target exists with the source's size. A missing source is an error.
+        val error = SafStorageManager.copyFileIntoTree(c, tree, name, source)
+        if (cancelledCopies.remove(key)) return // removed while copying
+        if (error == null) {
+            StorageManager.markCopied(c, key, folder, tree.toString())
+            copyFailedAt.remove(key)
+            lastCopyError = null
+            val treePath = SafStorageManager.treeToPosixPath(tree)
+            if (treePath != null && mediaScanned.add(key)) {
+                try { scanPaths(c, treePath, listOf(name)) } catch (t: Throwable) { Log.w(TAG, "media scan failed", t) }
+            }
+            try { StorageManager.freeStagedDownload(c, folder, name) } catch (t: Throwable) { Log.w(TAG, "staged cleanup failed", t) }
+        } else {
+            copyFailedAt[key] = SystemClock.elapsedRealtime()
             lastCopyError = error
         }
         emitStorageStatus()

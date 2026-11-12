@@ -114,7 +114,8 @@
       "./plugins/withAbiSplits.js",
       "./plugins/withSizeReduction.js",
       "./plugins/withShareIntents.js",
-      "./plugins/withBackupRules.js"
+      "./plugins/withBackupRules.js",
+      "./plugins/withCleartextLan.js"
     ],
     "experiments": {
       "typedRoutes": true
