@@ -28,6 +28,10 @@ import { availableCategories, eligibleProviders, mergeInto, rerunProvider, resol
 import { CloudflareSolverSheet } from '../../components/search/CloudflareSolverSheet';
 import { tallySources, unansweredNote } from '../../utils/search/answered';
 import type { Category, MergedResult, SearchUpdate } from '../../utils/search/types';
+import { ResultPreviewSheet } from '../../components/search/ResultPreviewSheet';
+import { MobileDataSheet } from '../../components/search/MobileDataSheet';
+import { passesResultFilter } from '../../components/search/sharing';
+import { oneTapAddNote } from '../../utils/addChecks';
 import { empty } from '../../constants/copy';
 
 const DEBOUNCE_MS = 400;
@@ -40,8 +44,13 @@ const PREFETCH_SETTLED_MS = 300;
 const keyOfResult = (r: MergedResult) => r.infoHash;
 
 type SortKey = 'seeders' | 'newest' | 'size' | 'name';
-const SORT_LABEL: Record<SortKey, string> = { seeders: 'Most seeders', newest: 'Newest', size: 'Largest', name: 'Name' };
+const SORT_LABEL: Record<SortKey, string> = { seeders: 'Most shared', newest: 'Newest', size: 'Largest', name: 'Name' };
 const SORT_ORDER: SortKey[] = ['seeders', 'newest', 'size', 'name'];
+const MIN_SIZES: { label: string; bytes: number }[] = [
+  { label: 'Any size', bytes: 0 },
+  { label: 'Over 100 MB', bytes: 100e6 },
+  { label: 'Over 1 GB', bytes: 1e9 },
+];
 
 /** Missing numbers sort last in every numeric order. */
 function sortResults(list: MergedResult[], sort: SortKey): MergedResult[] {
@@ -63,7 +72,7 @@ export default function SearchScreen() {
   const { colors } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const router = useRouter();
-  const { startTorrent, telemetry, getFreeSpace, downloads } = useMaglevEngine();
+  const { startTorrent, telemetry, getFreeSpace, downloads, onMeteredNetwork } = useMaglevEngine();
   const { settings } = useSettings();
   const [prefs, updatePrefs] = useSearchPrefs();
 
@@ -82,6 +91,10 @@ export default function SearchScreen() {
   const [failed, setFailed] = useState(false);
   const [sourceFilter, setSourceFilter] = useState<string | null>(null);
   const [sortOpen, setSortOpen] = useState(false);
+  const [hideNoShare, setHideNoShare] = useState(false);
+  const [minBytes, setMinBytes] = useState(0);
+  const [preview, setPreview] = useState<MergedResult | null>(null);
+  const [mobileAsk, setMobileAsk] = useState<{ result: MergedResult; note: string } | null>(null);
   const [recents, setRecents] = useState<string[]>(() => prefs.recents);
   const [sessionAdded, setSessionAdded] = useState<Set<string>>(() => new Set());
   const [busyHash, setBusyHash] = useState<string | null>(null);
@@ -212,7 +225,7 @@ export default function SearchScreen() {
   const inList = useMemo(() => new Set(inListKey ? inListKey.split(',') : []), [inListKey]);
 
   const handleAdd = useCallback(
-    async (r: MergedResult) => {
+    async (r: MergedResult, skipMobileAsk = false) => {
       setBusyHash(r.infoHash);
       remember(trimmed);
       const wait = new AbortController();
@@ -245,12 +258,24 @@ export default function SearchScreen() {
             // Free space unknown: add as before.
           }
         }
+        // On mobile data a big file should never start by surprise. With Wi-Fi only on, the add just waits.
+        const mobileNote = oneTapAddNote({ sizeBytes: size, onMetered: onMeteredNetwork, wifiOnly: settings.network.wifiOnly });
+        if (mobileNote && !settings.network.wifiOnly && !skipMobileAsk) {
+          setMobileAsk({ result: r, note: mobileNote });
+          return;
+        }
         // Added directly: a background read of the same torrent is no longer needed.
         const readHash = magnetHash(ready.magnet);
         if (readHash) metadataPrefetch.cancelIf(readHash);
         await startTorrent(ready.magnet);
         setSessionAdded((prev) => new Set(prev).add(r.infoHash));
-        if (tightNotice) show({ tone: 'info', title: tightNotice });
+        show({
+          tone: 'success',
+          title: 'Added to Transfers',
+          body: tightNotice ?? mobileNote ?? undefined,
+          actionLabel: 'View',
+          onAction: () => router.push('/' as never),
+        });
       } catch (e) {
         const { duplicate, notice: n } = addErrorNotice(e);
         if (duplicate) setSessionAdded((prev) => new Set(prev).add(r.infoHash));
@@ -260,7 +285,7 @@ export default function SearchScreen() {
         setBusyHash(null);
       }
     },
-    [remember, show, startTorrent, trimmed, getFreeSpace, telemetry.torrents, router],
+    [remember, show, startTorrent, trimmed, getFreeSpace, telemetry.torrents, router, onMeteredNetwork, settings.network.wifiOnly],
   );
 
   // Tapping Add on a warned row asks first; with the warning off it is one tap.
@@ -316,15 +341,16 @@ export default function SearchScreen() {
 
   // Rows the user has had on screen keep their slots while later sources answer; new rows are ranked
   // below them. A new sort, source filter or search ranks everything again (and the list starts at the top).
-  const rankKey = `${prefs.sort}|${sourceFilter ?? ''}|${rankTick}`;
+  const rankKey = `${prefs.sort}|${sourceFilter ?? ''}|${rankTick}|${hideNoShare}|${minBytes}`;
   const lastRankKey = useRef(rankKey);
   const shown = useMemo(() => {
     const base = update?.results ?? [];
-    const filtered = sourceFilter ? base.filter((r) => r.sources.includes(sourceFilter)) : base;
+    const bySource = sourceFilter ? base.filter((r) => r.sources.includes(sourceFilter)) : base;
+    const filtered = bySource.filter((r) => passesResultFilter(r, { hideDead: hideNoShare, minBytes }));
     const ranked = sortResults(filtered, prefs.sort);
     if (lastRankKey.current !== rankKey) return ranked;
     return stableOrder(shownKeys.current, ranked, seenRowCount(highWater.current), keyOfResult);
-  }, [update, sourceFilter, prefs.sort, rankKey]);
+  }, [update, sourceFilter, prefs.sort, rankKey, hideNoShare, minBytes]);
   useEffect(() => {
     if (lastRankKey.current !== rankKey) {
       lastRankKey.current = rankKey;
@@ -382,10 +408,11 @@ export default function SearchScreen() {
         added={sessionAdded.has(item.infoHash) || inList.has(item.infoHash)}
         busy={busyHash === item.infoHash}
         onAdd={() => requestAdd(item)}
+        onOpen={() => setPreview(item)}
         onFollow={followTargetOf(item) ? () => setFollowing(followTargetOf(item)) : undefined}
       />
     ),
-    [followTargetOf, busyHash, requestAdd, inList, nameOf, sessionAdded, providers, prefs.warnUnsafe],
+    [followTargetOf, busyHash, requestAdd, setPreview, inList, nameOf, sessionAdded, providers, prefs.warnUnsafe],
   );
 
   const openProviders = useCallback(() => router.push('/settings/search-providers' as never), [router]);
@@ -505,7 +532,7 @@ export default function SearchScreen() {
             badge={prefs.enabled.length}
             selected={!!sourceFilter}
             onPress={openProviders}
-            accessibilityLabel={`Search sources, ${prefs.enabled.length} on`}
+            accessibilityLabel={`Sources, ${prefs.enabled.length} on`}
           />
         </>
       }
@@ -556,7 +583,7 @@ export default function SearchScreen() {
         />
       ) : null}
       <FollowSheet target={following} onClose={() => setFollowing(null)} onDone={onFollowed} />
-      <Sheet visible={sortOpen}onClose={() => setSortOpen(false)} title="Sort results">
+      <Sheet visible={sortOpen} onClose={() => setSortOpen(false)} title="Sort and filter">
         <View style={styles.wrapRow}>
           {SORT_ORDER.map((s) => (
             <Chip
@@ -571,7 +598,49 @@ export default function SearchScreen() {
             />
           ))}
         </View>
+        <View style={[styles.wrapRow, styles.filterRow]}>
+          {MIN_SIZES.map((m) => (
+            <Chip key={m.bytes} label={m.label} selected={minBytes === m.bytes} onPress={() => setMinBytes(m.bytes)} />
+          ))}
+          <Chip label="Hide no one sharing" selected={hideNoShare} onPress={() => setHideNoShare((v) => !v)} />
+        </View>
       </Sheet>
+      <ResultPreviewSheet
+        result={
+          preview
+            ? {
+                name: preview.name,
+                sizeBytes: preview.sizeBytes,
+                seeders: preview.seeders,
+                leechers: preview.leechers,
+                age: formatAge(preview.publishedAt),
+                via: preview.sources.map(nameOf).join(' · '),
+                detailUrl: preview.detailUrl,
+                added: sessionAdded.has(preview.infoHash) || inList.has(preview.infoHash.toLowerCase()),
+              }
+            : null
+        }
+        onClose={() => setPreview(null)}
+        onAdd={() => {
+          const r = preview;
+          setPreview(null);
+          if (r) requestAdd(r);
+        }}
+        onOpenInBrowser={() => {
+          const url = preview?.detailUrl;
+          setPreview(null);
+          if (url) router.push({ pathname: '/browser', params: { url } });
+        }}
+      />
+      <MobileDataSheet
+        note={mobileAsk?.note ?? null}
+        onClose={() => setMobileAsk(null)}
+        onConfirm={() => {
+          const r = mobileAsk?.result;
+          setMobileAsk(null);
+          if (r) void handleAdd(r, true);
+        }}
+      />
       <Sheet visible={!!confirm} onClose={() => setConfirm(null)} title="Add from a risky source?" subtitle={confirm?.reason}>
         <View style={styles.confirmActions}>
           <Button
@@ -594,6 +663,7 @@ const makeStyles = (c: ThemeColors) =>
   StyleSheet.create({
     pad: { paddingHorizontal: spacing.lg },
     confirmActions: { gap: spacing.sm },
+    filterRow: { marginTop: spacing.md },
     field: {
       flexDirection: 'row',
       alignItems: 'center',

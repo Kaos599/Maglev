@@ -1,17 +1,18 @@
 import React, { useMemo } from 'react';
 import { Platform, StyleSheet, Text, View } from 'react-native';
 import { Stack } from 'expo-router';
-import { AccentName, AppearanceMode, maglevEngine } from 'maglev-engine';
+import { AccentName, AppearanceMode } from 'maglev-engine';
 import { useSettings } from '../../context/SettingsContext';
 import { useTheme } from '../../context/ThemeContext';
-import { useMaglevEngine } from '../../context/EngineContext';
 import { ThemeColors, accents, radius, spacing, type } from '../../constants/theme';
 import { PixelIcon } from '../../components/PixelIcon';
-import { ListRow, PressableScale, RadioCard, SegmentedControl } from '../../components/ui';
+import { PressableScale, RadioCard, SegmentedControl } from '../../components/ui';
 import { Card, Caption, SettingsPage } from '../../components/settings/SettingsParts';
 import { FontStyle, TelemetryDensity } from 'maglev-engine';
 import { fontFamilies, resolveFontStyle } from '../../constants/fontStyles';
-import { fontStyleCopy } from '../../constants/copy';
+import { fontStyleCopy, tabsCopy } from '../../constants/copy';
+import { TabsSection } from '../../components/tabs/TabsSection';
+import { AppIconSection } from '../../components/settings/AppIconSection';
 import type { PixelIconName } from '../../components/PixelIcon';
 
 const MODES = [
@@ -33,13 +34,7 @@ const ACCENTS: { name: AccentName; label: string }[] = [
 
 const FONT_ICONS: Record<FontStyle, PixelIconName> = { clean: 'interface', retro: 'grid', mono: 'file' };
 
-/** Live Updates (promoted notifications) exist from Android 16 (API 36). */
-const LIVE_UPDATES_API = 36;
-
 export default function InterfaceSettings() {
-  const { permissionStatus, openLiveUpdateSettings } = useMaglevEngine();
-  const showLiveUpdates = Platform.OS === 'android' && Number(Platform.Version) >= LIVE_UPDATES_API;
-  const liveUpdatesOn = permissionStatus?.liveUpdates === 'granted';
   const { settings, updateSettings } = useSettings();
   const { colors, dark } = useTheme();
   const s = useMemo(() => makeStyles(colors), [colors]);
@@ -48,7 +43,7 @@ export default function InterfaceSettings() {
   const set = (patch: Partial<typeof a>) => updateSettings((prev) => ({ appearance: { ...prev.appearance, ...patch } }));
 
   return (
-    <SettingsPage title="INTERFACE">
+    <SettingsPage title="Appearance">
       <Stack.Screen options={{ headerShown: false }} />
       <Card>
         <View style={s.block}>
@@ -123,25 +118,15 @@ export default function InterfaceSettings() {
           />
         </View>
       </Card>
+      <Card>
+        <View style={s.block}>
+          <Text style={s.label}>{tabsCopy.label}</Text>
+        </View>
+        <TabsSection />
+      </Card>
       {Platform.OS === 'android' ? (
         <Card>
-          <ListRow
-            title="Finished-download alerts"
-            subtitle="Choose sound and banners in Android settings."
-            onPress={() => void maglevEngine.openNotificationSettings('completed')}
-            accessibilityHint="Opens Android settings"
-          />
-        </Card>
-      ) : null}
-      {showLiveUpdates ? (
-        <Card>
-          <ListRow
-            title="Live progress in status bar"
-            subtitle="Shows download progress at the top of your screen."
-            value={liveUpdatesOn ? 'On' : 'Off'}
-            onPress={() => void openLiveUpdateSettings()}
-            accessibilityHint="Opens Android settings"
-          />
+          <AppIconSection />
         </Card>
       ) : null}
     </SettingsPage>

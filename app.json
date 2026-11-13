@@ -2,7 +2,7 @@
   "expo": {
     "name": "Maglev",
     "slug": "maglev",
-    "version": "0.13",
+    "version": "0.14",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "scheme": "maglev",
@@ -105,7 +105,7 @@
           ]
         }
       ],
-      "versionCode": 13
+      "versionCode": 14
     },
     "web": {
       "favicon": "./assets/favicon.png",
@@ -116,6 +116,7 @@
       "./plugins/withAbiSplits.js",
       "./plugins/withSizeReduction.js",
       "./plugins/withShareIntents.js",
+      "./plugins/withAppIcons.js",
       "./plugins/withBackupRules.js",
       "./plugins/withCleartextLan.js",
       "./plugins/withReleaseSigning.js"

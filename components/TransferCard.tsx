@@ -6,10 +6,10 @@ import { useTheme } from "../context/ThemeContext";
 import type { TransferTelemetry } from "../context/EngineContext";
 import { ThemeColors, alpha, isFinishTransition, monoSlotWidth, motion, radius, spacing, type } from "../constants/theme";
 import { formatEta } from "../utils/rates";
-import { PixelIcon, PixelIconName } from "./PixelIcon";
+import { PixelIcon } from "./PixelIcon";
 import { IconButton, PressableScale, ProgressBar, ProgressTone } from "./ui";
 import { useMotion } from "./ui/useMotion";
-import { torrentProgressPercent, torrentStatus } from "./transfers/model";
+import { torrentCardAction, torrentProgressPercent, torrentStatus } from "./transfers/model";
 
 /**
  * Name (two lines), one bar, one status line. At the default font size the height never changes
@@ -28,13 +28,11 @@ export interface TransferCardProps {
   onResume: (id: string) => void;
   /** SM-37: clears the no_peers tag so the torrent looks for peers again. */
   onKeepTrying?: (id: string) => void;
+  /** A finished card's button: opens the file (the detail screen when there are several). */
+  onOpen?: (id: string) => void;
+  /** Runs a paused torrent once although a rule (Wi-Fi only, battery, charger, schedule) paused it. */
+  onResumeAnyway?: (id: string) => void;
 }
-
-type CardAction = {
-  icon: PixelIconName;
-  label: string;
-  kind: "pause" | "resume" | "keepTrying";
-} | null;
 
 /** Status line font size; the value slot is sized in Space Mono glyphs at this size. */
 const STATUS_SIZE = 12;
@@ -84,42 +82,6 @@ const finishStyles = StyleSheet.create({
   mark: { ...StyleSheet.absoluteFill, alignItems: "flex-end", justifyContent: "center" },
 });
 
-function actionFor(t: TransferTelemetry): CardAction {
-  switch (t.state) {
-    case "DOWNLOADING":
-    case "SEEDING":
-      return { icon: "pause", label: "Pause", kind: "pause" };
-    case "PAUSED": {
-      const by: string | null | undefined = t.pausedBy;
-      if (by === "no_peers") return { icon: "retry", label: "Keep trying", kind: "keepTrying" };
-      if (
-        by === "files_missing" ||
-        by === "files_changed" ||
-        by === "storage_full" ||
-        by === "storage_unavailable"
-      )
-        return null;
-      if (
-        by === "wifi_only" ||
-        by === "battery" ||
-        by === "charging_only" ||
-        by === "fgs_timeout" ||
-        by === "schedule"
-      )
-        return null;
-      return {
-        icon: "play",
-        label: by === "seed_limit" ? "Seed again" : "Resume",
-        kind: "resume",
-      };
-    }
-    case "ERROR":
-      return { icon: "retry", label: "Retry", kind: "resume" };
-    default:
-      return null;
-  }
-}
-
 function toneFor(t: TransferTelemetry): ProgressTone {
   switch (t.state) {
     case "SEEDING":
@@ -143,6 +105,8 @@ function TransferCardImpl({
   onPause,
   onResume,
   onKeepTrying,
+  onOpen,
+  onResumeAnyway,
 }: TransferCardProps) {
   const { colors } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -155,7 +119,7 @@ function TransferCardImpl({
   const etaLabel = formatEta(t.state === "DOWNLOADING" ? t.etaSeconds : -1, prevEta);
   etaRef.current = etaLabel === "—" ? null : { id: t.id, label: etaLabel };
   const status = torrentStatus(t, etaLabel);
-  const action = actionFor(t);
+  const action = torrentCardAction(t);
   const indeterminate = t.state === "INITIALIZING" || t.state === "CHECKING";
   const moving = t.state === "MOVING";
   const pct = Math.min(
@@ -217,6 +181,12 @@ function TransferCardImpl({
             case "keepTrying":
               onKeepTrying?.(t.id);
               break;
+            case "open":
+              onOpen?.(t.id);
+              break;
+            case "resumeAnyway":
+              onResumeAnyway?.(t.id);
+              break;
           }
         }}
         accessibilityState={{ selected: selectionMode ? selected : undefined }}
@@ -268,13 +238,20 @@ function TransferCardImpl({
             icon={action.icon}
             disabled={actionBusy}
             accessibilityLabel={`${action.label} ${t.name}`}
-            onPress={() =>
-              action.kind === "pause"
-                ? onPause(t.id)
-                : action.kind === "keepTrying"
-                  ? onKeepTrying?.(t.id)
-                  : onResume(t.id)
-            }
+            onPress={() => {
+              switch (action.kind) {
+                case "pause":
+                  return onPause(t.id);
+                case "keepTrying":
+                  return onKeepTrying?.(t.id);
+                case "open":
+                  return onOpen?.(t.id);
+                case "resumeAnyway":
+                  return onResumeAnyway?.(t.id);
+                default:
+                  return onResume(t.id);
+              }
+            }}
           />
         </View>
       ) : null}
@@ -293,6 +270,8 @@ function sameCard(a: TransferCardProps, b: TransferCardProps): boolean {
     a.onPause === b.onPause &&
     a.onResume === b.onResume &&
     a.onKeepTrying === b.onKeepTrying &&
+    a.onOpen === b.onOpen &&
+    a.onResumeAnyway === b.onResumeAnyway &&
     x.id === y.id &&
     x.name === y.name &&
     x.state === y.state &&

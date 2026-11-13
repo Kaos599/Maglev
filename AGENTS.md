@@ -1,6 +1,6 @@
 # AGENTS.md: Operating Guide for AI Agents and Engineers
 
-> **Project:** Maglev, a minimal and fast Android torrent client
+> **Project:** Maglev, an Android app that downloads videos from web pages, ordinary links and torrents
 > **Stack:** React Native 0.88 + Expo SDK 58 (expo-router, Hermes, new arch) · Kotlin Expo Module · Rust (`librqbit` 9.x)
 > **Integration branch:** `dev` · **Releases:** `main` (tags)
 > **Rule 0:** Zero bloat, zero jargon, pure utility. **Rule 1:** Nothing is "done" until a contract proves it on real code.
@@ -9,7 +9,7 @@
 
 ## 1. Identity
 
-Maglev replaces LibreTorrent and Flood on a phone. It should feel minimal, quick and playful, with a retro feel that stays modern and readable for a general audience.
+Maglev replaces a torrent client (LibreTorrent, Flud) and a separate download manager on a phone: torrents, ordinary links and the videos on a web page, in one app. It should feel minimal, quick and playful, with a retro feel that stays modern and readable for a general audience.
 
 | Token | Value | Use |
 |---|---|---|

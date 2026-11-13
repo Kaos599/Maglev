@@ -9,6 +9,8 @@ import { empty } from '../../constants/copy';
 export interface TeachingEmptyStateProps {
   /** Paste link is enabled only when the clipboard holds a link, magnet or .torrent link. */
   canPaste: boolean;
+  /** Opens the add screen with an empty field. The main button. */
+  onType: () => void;
   onPaste: () => void;
   onOpenFile: () => void;
   /** Opens Search. The quiet "Search" button shows only when this is given. */
@@ -18,7 +20,7 @@ export interface TeachingEmptyStateProps {
 }
 
 /** Shown when there are no transfers. Teaches the ways to add one: paste a link, open a file, or find something. */
-export function TeachingEmptyState({ canPaste, onPaste, onOpenFile, onSearch, onBrowse }: TeachingEmptyStateProps) {
+export function TeachingEmptyState({ canPaste, onType, onPaste, onOpenFile, onSearch, onBrowse }: TeachingEmptyStateProps) {
   const { colors } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   return (
@@ -31,7 +33,9 @@ export function TeachingEmptyState({ canPaste, onPaste, onOpenFile, onSearch, on
       </Text>
       <Text style={styles.body}>{empty.transfers.none.body}</Text>
       <View style={styles.actions}>
-        <Button label="Paste link" icon="clipboard" disabled={!canPaste} onPress={onPaste} />
+        <Button label="Type a link" icon="link" onPress={onType} />
+        <Button label="Paste link" icon="clipboard" variant="secondary" disabled={!canPaste} onPress={onPaste} />
+        {canPaste ? null : <Text style={styles.hint}>Copy a link first to paste it.</Text>}
         <Button label="Open file" icon="file" variant="secondary" onPress={onOpenFile} />
       </View>
       {onSearch || onBrowse ? (
@@ -59,6 +63,7 @@ const makeStyles = (c: ThemeColors) =>
     },
     title: { ...type.bodyStrong, fontSize: 17, color: c.text, marginTop: spacing.lg, textAlign: 'center' },
     body: { ...type.body, fontSize: 13, lineHeight: 19, color: c.textMuted, marginTop: spacing.sm, textAlign: 'center', maxWidth: 300 },
+    hint: { ...type.body, fontSize: 12, lineHeight: 16, color: c.textMuted, textAlign: 'center' },
     finders: { marginTop: spacing.md, flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
     actions: { marginTop: spacing.xl, alignItems: 'center', gap: spacing.sm },
   });

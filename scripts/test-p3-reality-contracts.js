@@ -499,7 +499,7 @@ contract('C-W3-1', 'P1', 'Wave 3 JS side: file priority, reannounce, free space,
   const mock = read('modules/maglev-engine/src/MaglevMockEngine.ts');
   const add = read('app/add-torrent.tsx') + read('components/add/SpaceStrip.tsx');
   const detail = read('app/torrent/[id].tsx') + read('components/detail/TorrentMoreSheet.tsx') + read('components/detail/PrioritySheet.tsx');
-  const iface = read('app/settings/interface.tsx');
+  const iface = read('app/settings/notifications.tsx');
   for (const m of ['setFilePriorities', 'reannounce', 'getFreeSpace', 'openLiveUpdateSettings']) {
     assert(new RegExp(`public (async )?${m}\\(`).test(bridge), `bridge exposes ${m}`);
   }
@@ -510,7 +510,7 @@ contract('C-W3-1', 'P1', 'Wave 3 JS side: file priority, reannounce, free space,
   assert(/file_priorities|filePriorities/.test(add), 'add-torrent sends file priorities');
   assert(/reannounce/.test(detail) && /Find more peers/.test(detail), 'detail has Find more peers (reannounce)');
   assert(/Download first/.test(detail) && /setFilePriorities/.test(detail) && /notices\.detail\.keepOneFile/.test(detail) && /keepOneFile: 'Keep at least one file\.'/.test(read('constants/copy.ts')), 'detail has the priority sheet and blocks all-skip');
-  assert(/Platform\.Version/.test(iface) && /Live progress in status bar/.test(iface), 'Interface settings has the Live Updates row gated by API level');
+  assert(/Platform\.Version/.test(iface) && /Live progress in status bar/.test(iface), 'Notifications settings has the Live Updates row gated by API level');
 });
 
 // expo-router throws "Cannot use `href` and `tabBarButton` together" (TabsClient processScreens),

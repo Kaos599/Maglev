@@ -23,7 +23,7 @@ export function stateLabel(
     case 'DOWNLOADING':
       return 'Downloading';
     case 'SEEDING':
-      return 'Seeding';
+      return 'Done · Seeding';
     case 'CHECKING':
       return 'Checking';
     case 'ERROR':
@@ -39,6 +39,8 @@ export function stateLabel(
           return 'Paused to save battery';
         case 'seed_limit':
           return 'Done';
+        case 'seed_metered':
+          return 'Done · Seeding waits for Wi-Fi';
         case 'schedule':
           return extra?.resumesAt ? `Scheduled pause · resumes ${extra.resumesAt}` : 'Scheduled pause';
         default:

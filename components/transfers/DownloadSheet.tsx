@@ -7,7 +7,7 @@ import { isDownloadLink, normalizeIncoming } from 'maglev-engine';
 import { useTheme } from '../../context/ThemeContext';
 import { ThemeColors, radius, spacing, type } from '../../constants/theme';
 import { formatBytes } from '../../constants/format';
-import { actionRoute, downloadActions, downloadCaption, needsNewLink, removeCopy } from '../../utils/downloadCopy';
+import { WIFI_ANYWAY_NOTE, actionRoute, downloadActions, downloadCaption, needsNewLink, removeCopy } from '../../utils/downloadCopy';
 import { friendlyPath } from '../settings/SettingsParts';
 import { Banner, Button, ListRow, Sheet } from '../ui';
 
@@ -16,6 +16,10 @@ export interface DownloadSheetProps {
   download: DownloadSnapshot | null;
   onClose: () => void;
   onRetry: (id: string) => void;
+  onPause: (id: string) => void;
+  onResume: (id: string) => void;
+  /** Runs a paused download once although a rule (Wi-Fi only, battery, charger, schedule) paused it. */
+  onResumeAnyway: (id: string) => void;
   /** Opens a finished download in another app. */
   onOpen: (id: string) => void;
   /** Allows the download's host, then retries it. */
@@ -31,7 +35,7 @@ export interface DownloadSheetProps {
 type Step = 'main' | 'confirmDelete';
 
 /** What a tap on a download card opens: details, Retry or Restart, Paste new link, Remove (SM-30 Copy). */
-export function DownloadSheet({ download: d, onClose, onRetry, onOpen, onOpenFolder, onShare, onAllowDevice, onRemove, onNewLink }: DownloadSheetProps) {
+export function DownloadSheet({ download: d, onClose, onRetry, onPause, onResume, onResumeAnyway, onOpen, onOpenFolder, onShare, onAllowDevice, onRemove, onNewLink }: DownloadSheetProps) {
   const { colors } = useTheme();
   const router = useRouter();
   const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -139,9 +143,10 @@ export function DownloadSheet({ download: d, onClose, onRetry, onOpen, onOpenFol
           </View>
         ) : null}
         {caption ? <Text style={styles.hint}>{caption}</Text> : null}
-        {d.state === 'error' || d.state === 'paused' || d.state === 'finished'
+        {d.state === 'paused' && d.pausedBy === 'wifi_only' ? <Text style={styles.hint}>{WIFI_ANYWAY_NOTE}</Text> : null}
+        {d.state === 'error' || d.state === 'paused' || d.state === 'finished' || d.state === 'downloading' || d.state === 'queued'
           ? actions
-              .filter((a) => a.kind !== 'remove' && a.kind !== 'resume' && a.kind !== 'newLink')
+              .filter((a) => a.kind !== 'remove' && a.kind !== 'newLink')
               .map((a, i) => (
                 <Button
                   key={a.kind}
@@ -153,6 +158,9 @@ export function DownloadSheet({ download: d, onClose, onRetry, onOpen, onOpenFol
                     const route = actionRoute(a.kind);
                     if (route) router.push(route);
                     else if (a.kind === 'open') onOpen(d.id);
+                    else if (a.kind === 'pause') onPause(d.id);
+                    else if (a.kind === 'resume') onResume(d.id);
+                    else if (a.kind === 'resumeAnyway') onResumeAnyway(d.id);
                     else if (a.kind === 'allowDevice') onAllowDevice(d.id);
                     else onRetry(d.id);
                     onClose();

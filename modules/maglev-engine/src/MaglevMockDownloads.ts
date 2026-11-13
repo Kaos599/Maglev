@@ -17,6 +17,8 @@ import { displayUrl, nameFromUrl, parseDownloadUrl, sanitizeFileName } from './d
  * (needs_link), `changed` FILE_CHANGED half way, `noresume` a server without resume.
  */
 
+/** NATIVE_CONTRACT 25.1: rule tags an item can be exempted from. */
+const EXEMPTABLE = new Set(['wifi_only', 'battery', 'charging_only', 'schedule', 'seed_metered']);
 const MAX_ACTIVE = 3;
 const SPEED = 2_000_000;
 const MIN = 1_000_000;
@@ -109,6 +111,7 @@ export class MockDownloads {
         name: i.name,
         state: i.state,
         pausedBy: i.state === 'paused' ? i.pausedBy : null,
+        allowedAnyway: i.allowedAnyway === true,
         size: i.size,
         downloaded: i.downloaded,
         downBps: i.state === 'downloading' ? i.downBps : 0,
@@ -196,10 +199,19 @@ export class MockDownloads {
     if (i.state === 'downloading' || i.state === 'queued') {
       i.state = 'paused';
       i.pausedBy = 'user';
+      i.allowedAnyway = false;
       i.downBps = 0;
       this.hooks.changed();
     }
     return { ok: true };
+  }
+
+  /** Resume and exempt the item from the rule pauses until it finishes or the user pauses it. */
+  resumeAnyway(id: string): EngineResult {
+    const i = this.items.get(id);
+    if (!i) return fail('NOT_FOUND', "That download isn't in your list");
+    i.allowedAnyway = true;
+    return this.resume(id);
   }
 
   resume(id: string): EngineResult {
@@ -272,10 +284,11 @@ export class MockDownloads {
   /** Advances the simulation by `seconds`. Returns the downloads that finished in this step. */
   step(seconds: number): DownloadSnapshot[] {
     const done: DownloadSnapshot[] = [];
-    const blocked = this.hooks.blockedReason();
+    const blockedAll = this.hooks.blockedReason();
     let active = [...this.items.values()].filter((i) => i.state === 'downloading').length;
     let changed = false;
     for (const i of [...this.items.values()].sort((a, b) => a.addedAt - b.addedAt)) {
+      const blocked = i.allowedAnyway && blockedAll && EXEMPTABLE.has(blockedAll) ? null : blockedAll;
       switch (i.state) {
         case 'resolving': {
           if (--i.resolveTicks > 0) break;
@@ -355,6 +368,7 @@ export class MockDownloads {
         }
         case 'verifying': {
           i.state = 'finished';
+          i.allowedAnyway = false;
           changed = true;
           done.push(this.snapshots().find((s) => s.id === i.id)!);
           break;

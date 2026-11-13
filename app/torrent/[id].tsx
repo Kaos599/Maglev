@@ -33,6 +33,8 @@ import {
 } from '../../components/detail/fileHealthMachine';
 import { FileListRow } from '../../components/detail/FileListRow';
 import { PrioritySheet } from '../../components/detail/PrioritySheet';
+import { canResumeAnyway, resumeAnywayLabel } from '../../components/transfers/model';
+import { WIFI_ANYWAY_NOTE } from '../../utils/downloadCopy';
 import { TorrentMoreSheet } from '../../components/detail/TorrentMoreSheet';
 import { SpeedLimitSheet } from '../../components/detail/SpeedLimitSheet';
 import { MoveSheet } from '../../components/detail/MoveSheet';
@@ -533,6 +535,14 @@ export default function TorrentDetailScreen() {
     if (!ok) showNotice({ tone: 'danger', text: notices.detail.stateFailed });
   }, [id, pauseTorrent, resumeTorrent, showNotice, snap]);
 
+  // Runs this torrent once although a rule (Wi-Fi only, battery, charger, schedule) paused it.
+  const handleResumeAnyway = useCallback(async () => {
+    if (!id) return;
+    haptic('tap');
+    const res = await maglevEngine.resumeAnyway(id);
+    if (!res.ok) showNotice({ tone: 'danger', text: res.message || notices.detail.stateFailed });
+  }, [id, showNotice]);
+
   const handleScanFiles = useCallback(async () => {
     const res = await maglevEngine.scanFileHealth();
     showNotice(res.ok ? { tone: 'info', text: notices.detail.checking } : { tone: 'danger', text: res.message });
@@ -610,6 +620,7 @@ export default function TorrentDetailScreen() {
     [handleFreeSpace, handlePlayPause, handleRecheck, handleScanFiles, router],
   );
 
+  const ruleResume = snap?.state === 'PAUSED' && canResumeAnyway(snap.pausedBy);
   const headerActions = snap ? (
     <>
       {snap.state === 'CHECKING' || snap.state === 'INITIALIZING' || snap.state === 'MOVING' ? null : (
@@ -620,7 +631,7 @@ export default function TorrentDetailScreen() {
           accessibilityLabel={
             snap.state === 'ERROR' ? 'Retry' : snap.state === 'DOWNLOADING' || snap.state === 'SEEDING' || snap.state === 'QUEUED' ? 'Pause' : 'Resume'
           }
-          onPress={handlePlayPause}
+          onPress={ruleResume ? handleResumeAnyway : handlePlayPause}
         />
       )}
       <IconButton icon="more" accessibilityLabel="More options" onPress={() => setMoreOpen(true)} />
@@ -774,6 +785,13 @@ export default function TorrentDetailScreen() {
           </View>
         ) : null}
       </View>
+
+      {ruleResume ? (
+        <View style={[styles.block, { gap: spacing.sm }]}>
+          <Button label={resumeAnywayLabel(snap.pausedBy)} icon="play" size="lg" fullWidth onPress={() => void handleResumeAnyway()} />
+          {snap.pausedBy === 'wifi_only' ? <Text style={styles.muted}>{WIFI_ANYWAY_NOTE}</Text> : null}
+        </View>
+      ) : null}
 
       {allDone ? (
         <DoneActions id={id} files={files} onNotice={showNotice} />
@@ -956,6 +974,7 @@ export default function TorrentDetailScreen() {
         visible={moreOpen}
         onClose={() => setMoreOpen(false)}
         state={snap.state}
+        pausedBy={snap.pausedBy}
         retryInSecs={retryInSecs}
         onTogglePause={() => {
           setMoreOpen(false);

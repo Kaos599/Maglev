@@ -39,7 +39,7 @@ export default function NetworkSettings() {
   const blocklistName = n.ipFilterPath ? decodeURIComponent(n.ipFilterPath.split('/').pop() ?? '') : '';
 
   return (
-    <SettingsPage title="NETWORK">
+    <SettingsPage title="Network">
       <Stack.Screen options={{ headerShown: false }} />
       {restartRequired ? <Chip label="Takes effect next launch" selected /> : null}
 
@@ -48,6 +48,11 @@ export default function NetworkSettings() {
           title="Wi-Fi only"
           subtitle="Pause downloads on mobile data."
           accessory={sw('Wi-Fi only', n.wifiOnly, (v) => set({ wifiOnly: v }))}
+        />
+        <ListRow
+          title="Share on mobile data"
+          subtitle="Off: finished torrents stop uploading until you're on Wi-Fi."
+          accessory={sw('Share on mobile data', n.seedOnMobileData, (v) => set({ seedOnMobileData: v }))}
         />
         <ListRow
           title="Only download over a VPN"
@@ -83,7 +88,7 @@ export default function NetworkSettings() {
 
       <SectionHeader title="Connection" />
       <Card>
-        <ListRow title="Listen port" value={String(n.listeningPort)} onPress={() => setField('port')} />
+        <ListRow title="Incoming port" value={String(n.listeningPort)} onPress={() => setField('port')} />
         <ListRow title="UPnP" subtitle="Open the port on your router." accessory={sw('UPnP', n.upnpEnabled, (v) => set({ upnpEnabled: v }))} />
         <ListRow title="DHT" subtitle="Find peers without a tracker." accessory={sw('DHT', n.dhtEnabled, (v) => set({ dhtEnabled: v }))} />
         <ListRow title="Local peer discovery" subtitle="Find peers on your Wi-Fi." accessory={sw('Local peer discovery', n.lsdEnabled, (v) => set({ lsdEnabled: v }))} />
@@ -116,7 +121,7 @@ export default function NetworkSettings() {
 
       <InputSheet
         visible={field === 'port'}
-        title="Listen port"
+        title="Incoming port"
         subtitle="Enter a port from 1024 to 65535."
         initial={String(n.listeningPort)}
         numeric

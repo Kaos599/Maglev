@@ -362,7 +362,7 @@ const OPEN_SCREEN: JsonSchema = {
     query: { type: 'string', minLength: 1, maxLength: QUERY_MAX, description: 'search only: what to search for.' },
     section: {
       type: 'string',
-      enum: ['storage', 'network', 'assistant', 'search_providers', 'schedule'],
+      enum: ['storage', 'network', 'assistant', 'search_providers', 'schedule', 'speed', 'notifications'],
       description: 'settings only: which part of Settings.',
     },
   },

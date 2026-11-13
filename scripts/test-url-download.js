@@ -64,7 +64,8 @@ async function main() {
   check('queued pauses', copy.downloadAction(d({ state: 'queued' }))?.kind === 'pause');
   check('user pause resumes', copy.downloadAction(d({ state: 'paused', pausedBy: 'user' }))?.kind === 'resume');
   check('storage full pause resumes', copy.downloadAction(d({ state: 'paused', pausedBy: 'storage_full' }))?.kind === 'resume');
-  check('governance pause has no button', copy.downloadAction(d({ state: 'paused', pausedBy: 'schedule' })) === null);
+  check('rule pause offers Resume anyway (0.14)', copy.downloadAction(d({ state: 'paused', pausedBy: 'schedule' }))?.kind === 'resumeAnyway');
+  check('governance pause with nothing to override has no button', copy.downloadAction(d({ state: 'paused', pausedBy: 'fgs_timeout' })) === null);
   check('needs link offers a new link', copy.downloadAction(d({ state: 'needs_link' }))?.kind === 'newLink');
   check('file changed offers restart', copy.downloadAction(d({ state: 'error', error: { code: 'FILE_CHANGED', message: '' } }))?.kind === 'restart');
   check('other errors offer retry', copy.downloadAction(d({ state: 'error', error: { code: 'NETWORK', message: '' } }))?.kind === 'retry');
@@ -89,8 +90,8 @@ async function main() {
   check('too big for the card', copy.downloadStatus(err('FILE_TOO_LARGE')).text === "This file is bigger than the card's format allows (4 GB). Use phone storage." && kinds(err('FILE_TOO_LARGE')) === 'pickFolder');
   check('local redirect is blocked, Remove only', copy.downloadStatus(err('LOCAL_REDIRECT')).text === 'A redirect tried to send Maglev to a device on your network, so it stopped.' && kinds(err('LOCAL_REDIRECT')) === 'remove');
   check('policy block opens settings', copy.downloadStatus(err('BLOCKED')).text === 'Blocked by your Wi-Fi-only or VPN setting.' && kinds(err('BLOCKED')) === 'openNetworkSettings,retry');
-  check('wifi pause opens settings with a caption', kinds(d({ state: 'paused', pausedBy: 'wifi_only' })) === 'openNetworkSettings' && copy.downloadCaption(d({ state: 'paused', pausedBy: 'wifi_only' })) === 'Wi-Fi only is on in Settings → Network.');
-  check('battery pause still has no button', copy.downloadAction(d({ state: 'paused', pausedBy: 'battery' })) === null);
+  check('wifi pause offers mobile data, settings and a caption', kinds(d({ state: 'paused', pausedBy: 'wifi_only' })) === 'resumeAnyway,openNetworkSettings' && copy.downloadCaption(d({ state: 'paused', pausedBy: 'wifi_only' })) === 'Wi-Fi only is on in Settings → Network.');
+  check('battery pause offers Resume anyway', copy.downloadAction(d({ state: 'paused', pausedBy: 'battery' }))?.label === 'Resume anyway');
   check('settings actions have routes', copy.actionRoute('pickFolder') === '/settings/storage' && copy.actionRoute('openNetworkSettings') === '/settings/network' && copy.actionRoute('retry') === null);
   const pv = (code, status) => copy.probeErrorView(code, 'm', status);
   check('probe: page and sign-in say Paste another link', pv('NOT_A_FILE').primary === 'pasteAnother' && pv('AUTH_REQUIRED').primary === 'pasteAnother');

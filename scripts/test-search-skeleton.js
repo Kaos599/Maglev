@@ -201,7 +201,7 @@ async function main() {
   check('search: the read obeys the network rule', /prefetchAllowed\(/.test(search) && /settings\.network\.wifiOnly/.test(search));
   check('search: a direct add stops a read of the same torrent', /metadataPrefetch\.cancelIf\(readHash\)[\s\S]{0,80}startTorrent\(ready\.magnet\)/.test(search));
   check('transfers: list uses FlashList, not FlatList', /<FlashList\b/.test(transfers) && !/<FlatList\b/.test(transfers));
-  check('transfers: steadyRow still shapes each card', /torrent=\{steadyRow\(item\)\}/.test(transfers));
+  check('transfers: steadyRow still shapes each card', /torrent=\{steadyRow\(item\.torrent\)\}/.test(transfers));
   check('transfers: no scroll anchoring on a live-sorted list', /maintainVisibleContentPosition=\{NO_ANCHOR\}/.test(transfers));
   const SK_MIN = 'SKELETON_FIRST_COUNT = ';
   const n = Number(skeleton.slice(skeleton.indexOf(SK_MIN) + SK_MIN.length).match(/^\d+/)?.[0]);

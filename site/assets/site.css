@@ -127,9 +127,10 @@ section { padding: 56px 0; }
 .meta a { color: var(--copy); }
 .facts { display: flex; flex-wrap: wrap; gap: 8px; margin: 16px 0 0; padding: 0; list-style: none; }
 .facts li { font-size: 0.8125rem; color: var(--copy); padding: 4px 11px; border: 1px solid var(--hairline); border-radius: 999px; }
-.hero-art { position: relative; display: none; }
-.hero-art .mark { width: 100%; max-width: 440px; height: auto; margin-left: auto; image-rendering: pixelated; }
-.rails { margin-top: 28px; display: grid; gap: 10px; }
+/* Phones: the train sits under the facts at a smaller size; from 900px it moves beside the copy. */
+.hero-art { position: relative; display: block; }
+.hero-art .mark { width: 100%; max-width: 300px; height: auto; image-rendering: pixelated; }
+.rails { margin-top: 20px; display: grid; gap: 8px; }
 .rails i {
   display: block; height: 6px;
   background: repeating-linear-gradient(90deg, var(--cyan) 0 72px, transparent 72px 102px, var(--cyan) 102px 150px, transparent 150px 186px);
@@ -142,7 +143,8 @@ section { padding: 56px 0; }
 @media (min-width: 900px) {
   .hero { padding: 80px 0 88px; }
   .hero-in { grid-template-columns: 1.4fr 1fr; gap: 48px; }
-  .hero-art { display: block; }
+  .hero-art .mark { max-width: 440px; margin-left: auto; }
+  .rails { margin-top: 28px; gap: 10px; }
   .wordmark img { width: 280px; }
 }
 

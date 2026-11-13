@@ -58,6 +58,8 @@ data class Governance(
     val autoExitOnComplete: Boolean = false,
     /** Contract section 21: pause while the active network is not a VPN. */
     val vpnOnly: Boolean = false,
+    /** Contract section 25.2: seeding torrents keep going on mobile data. Off by default. */
+    val seedOnMobileData: Boolean = false,
 )
 
 /**
@@ -176,6 +178,7 @@ object EngineHost {
             batteryCutoffPct = p.getInt("batteryCutoffPct", 0),
             autoExitOnComplete = p.getBoolean("autoExitOnComplete", false),
             vpnOnly = p.getBoolean("vpnOnly", false),
+            seedOnMobileData = p.getBoolean("seedOnMobileData", false),
         )
     }
 
@@ -187,6 +190,7 @@ object EngineHost {
             .putInt("batteryCutoffPct", g.batteryCutoffPct)
             .putBoolean("autoExitOnComplete", g.autoExitOnComplete)
             .putBoolean("vpnOnly", g.vpnOnly)
+            .putBoolean("seedOnMobileData", g.seedOnMobileData)
             .apply()
     }
 
@@ -508,7 +512,7 @@ object EngineHost {
         var dlDone = 0L; var dlTotal = 0L
         var seedId: String? = null
         var wifiPaused = false; var batteryPaused = false; var chargingPaused = false
-        var unvalidatedPaused = false; var vpnPaused = false
+        var unvalidatedPaused = false; var vpnPaused = false; var seedMeteredPaused = false
         // §18.5: storage-paused torrents keep the service alive so the free-space poll and media receiver keep running.
         var spacePaused = false; var volumePaused = false
         var primary: Map<String, Any?>? = null
@@ -535,6 +539,8 @@ object EngineHost {
                     "wifi_only" -> { byRules++; wifiPaused = true }
                     "battery" -> { byRules++; batteryPaused = true }
                     "charging_only" -> { byRules++; chargingPaused = true }
+                    // Contract section 25.2: seeding waits for Wi-Fi.
+                    "seed_metered" -> { byRules++; seedMeteredPaused = true }
                     "network_unvalidated" -> { byRules++; unvalidatedPaused = true }
                     // Link downloads paused for a network blip (TAG_OFFLINE) stay wanted, so the service survives it.
                     TAG_OFFLINE -> { byRules++; unvalidatedPaused = true }
@@ -570,6 +576,7 @@ object EngineHost {
             vpnPaused -> "vpn_required"
             batteryPaused -> "battery"
             chargingPaused -> "charging_only"
+            seedMeteredPaused -> "seed_metered"
             spacePaused -> "storage_full"
             volumePaused -> "storage_unavailable"
             else -> null
@@ -1150,6 +1157,9 @@ object EngineHost {
         val batteryBlocked = g.batteryCutoffPct > 0 && !charging && level < g.batteryCutoffPct
         val chargingBlocked = g.chargingOnly && !charging
 
+        // Contract section 25.2. Same link check as Wi-Fi only (`unmeteredLink`); only judged while the link is known.
+        val seedMeteredBlocked = !g.seedOnMobileData && n != null && n.monitoring && n.connected && !n.unmeteredLink
+        send("seed_metered", !seedMeteredBlocked, force)
         send("wifi_only", !wifiBlocked, force)
         send("battery", !batteryBlocked, force)
         send("charging_only", !chargingBlocked, force)
@@ -1633,6 +1643,23 @@ object EngineHost {
 
     fun pauseDownload(id: String) = call { NativeCore.nativePauseDownload(id) }.also { pollNow() }
     fun resumeDownload(id: String) = call { NativeCore.nativeResumeDownload(id) }.also { pollNow() }
+
+    /** Contract section 25.1: resume one torrent and exempt it from the rule pauses. */
+    fun resumeAnyway(id: String): Map<String, Any?> = resumeExempt { NativeCore.nativeResumeAnyway(id) }
+
+    /** Contract section 25.1: the same for a link download. */
+    fun resumeDownloadAnyway(id: String): Map<String, Any?> = resumeExempt { NativeCore.nativeResumeDownloadAnyway(id) }
+
+    /**
+     * The exempt item is real work. `setWanted(true)` clears an earlier user stop, and the next poll counts the
+     * running item, which starts the service (`ensureServiceStarted`) even while the schedule had it down.
+     */
+    private fun resumeExempt(block: () -> String): Map<String, Any?> {
+        val res = call(block)
+        if (isOk(res)) ctx?.let { setWanted(it, true) }
+        pollNow()
+        return res
+    }
     fun retryDownload(id: String) = call { NativeCore.nativeRetryDownload(id) }.also { pollNow() }
     fun removeDownload(id: String, deleteFiles: Boolean): Map<String, Any?> {
         // The document this download's copy created, read before the marker goes. Delete file removes only it.

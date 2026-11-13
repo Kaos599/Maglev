@@ -5,12 +5,14 @@ import { useTheme } from '../../context/ThemeContext';
 import { useMaglevEngine } from '../../context/EngineContext';
 import { ThemeColors, radius, spacing, type } from '../../constants/theme';
 import { haptic } from '../../constants/haptics';
-import { banners, notices, streamSheet } from '../../constants/copy';
+import { banners, mobileDataLine, notices, streamSheet } from '../../constants/copy';
 import { probeErrorView } from '../../utils/downloadCopy';
 import { useDownloadAdmission } from '../../utils/useDownloadAdmission';
 import { hostOf } from '../../utils/browserUrl';
 import { Banner, Button, RadioCard, Sheet } from '../ui';
+import { useSettings } from '../../context/SettingsContext';
 import { downloadHeaders } from './FoundDownload';
+import { SaveToRow } from './SaveToRow';
 import { audioLabel, buildSelection, defaultAudio, defaultVariant, needsAudioPicker, qualityLabel } from './streamChoice';
 
 type Phase = 'probing' | 'ready' | 'error' | 'adding';
@@ -30,14 +32,17 @@ interface Props {
   /** The page address. Sent as the Referer when the item has none. */
   pageUrl?: string;
   onClose: () => void;
+  /** Called instead of onClose after a download started (or was a duplicate). Defaults to onClose. */
+  onStarted?: () => void;
   onCopyLink: (url: string) => void;
 }
 
 /** Pick a quality (and audio language) of an HLS or DASH stream, then Start. */
-export function StreamSheet({ item, pageTitle, userAgent = '', pageUrl = '', onClose, onCopyLink }: Props) {
+export function StreamSheet({ item, pageTitle, userAgent = '', pageUrl = '', onClose, onStarted, onCopyLink }: Props) {
   const { colors } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
-  const { probeStream, startDownload, showNotice } = useMaglevEngine();
+  const { probeStream, startDownload, showNotice, onMeteredNetwork } = useMaglevEngine();
+  const { settings } = useSettings();
   const last = useRef<FoundItem | null>(item);
   if (item) last.current = item;
   const it = item ?? last.current;
@@ -93,6 +98,7 @@ export function StreamSheet({ item, pageTitle, userAgent = '', pageUrl = '', onC
 
   if (!it) return null;
   const adding = phase === 'adding';
+  const mobileNote = phase === 'ready' ? mobileDataLine(onMeteredNetwork, settings.network.wifiOnly, variant?.estBytes ?? null) : null;
   const askAudio = probe ? needsAudioPicker(variant, probe.audioTracks) : false;
 
   const start = async () => {
@@ -109,12 +115,12 @@ export function StreamSheet({ item, pageTitle, userAgent = '', pageUrl = '', onC
     if (res.ok) {
       haptic('commit');
       showNotice({ message: notices.browser.addedToTransfers }, 3000);
-      onClose();
+      (onStarted ?? onClose)();
       return;
     }
     if (res.code === 'DUPLICATE') {
       showNotice({ message: notices.addDownload.duplicate });
-      onClose();
+      (onStarted ?? onClose)();
       return;
     }
     haptic('fail');
@@ -184,9 +190,11 @@ export function StreamSheet({ item, pageTitle, userAgent = '', pageUrl = '', onC
               editable={!adding}
               accessibilityLabel="File name"
             />
+            <SaveToRow disabled={adding} onError={setMessage} />
           </>
         ) : null}
 
+        {mobileNote ? <Banner tone="info" title={mobileNote} /> : null}
         {doesntFit ? <Banner tone="danger" title={banners.addDownload.notEnoughSpace.title} body={banners.addDownload.notEnoughSpace.body} /> : null}
         {message ? <Banner tone="danger" title={message} /> : null}
 

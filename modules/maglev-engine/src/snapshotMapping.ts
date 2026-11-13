@@ -53,6 +53,7 @@ export function snapshotToTelemetry(s: Snapshot): TorrentTelemetry {
     ratio: s.ratio,
     seedDurationSeconds: s.seedingSecs,
     pausedBy: s.pausedBy,
+    allowedAnyway: s.allowedAnyway ?? false,
     error: s.error,
     outputFolder: s.outputFolder,
     addedAt: s.addedAt,

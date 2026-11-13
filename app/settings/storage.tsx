@@ -31,7 +31,7 @@ export default function StorageSettings() {
       : 'Files are saved straight to this folder.';
 
   return (
-    <SettingsPage title="STORAGE">
+    <SettingsPage title="Storage">
       <Stack.Screen options={{ headerShown: false }} />
       {storageStatus?.safLost ? (
         <Banner tone="danger" title={banners.storage.folderAccessLost.title} body={banners.storage.folderAccessLost.body} actionLabel="Pick again" onAction={change} />

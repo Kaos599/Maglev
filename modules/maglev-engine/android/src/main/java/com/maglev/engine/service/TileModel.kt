@@ -29,6 +29,7 @@ data class TileModel(val state: TileUiState, val subtitle: String, val tapAction
                     "charging_only" -> "Waiting for charger"
                     "network_unvalidated" -> "Waiting for internet"
                     "vpn_required" -> "Waiting for VPN"
+                    "seed_metered" -> "Seeding waits for Wi-Fi"
                     else -> "Waiting for Wi-Fi"
                 }
                 s.pausedByUser == 0 && s.pausedBySchedule > 0 -> "Scheduled pause"

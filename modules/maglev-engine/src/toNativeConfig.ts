@@ -69,11 +69,13 @@ export function toGovernance(settings: MaglevSettings): GovernanceConfig {
     autoExitOnComplete: power.autoExitOnComplete,
     resumeAfterRestart: power.resumeAfterRestart,
     vpnOnly: network.vpnOnly,
+    seedOnMobileData: network.seedOnMobileData,
   };
 }
 
 /** Governance reason tags that appear in `Snapshot.pausedBy` (contract section 3). */
-export const GOVERNANCE_REASONS: Record<'wifiOnly' | 'chargingOnly' | 'batteryCutoff' | 'vpnOnly', PausedBy> = {
+export const GOVERNANCE_REASONS: Record<'wifiOnly' | 'chargingOnly' | 'batteryCutoff' | 'vpnOnly' | 'seedOnMobileData', PausedBy> = {
+  seedOnMobileData: 'seed_metered',
   vpnOnly: 'vpn_required',
   wifiOnly: 'wifi_only',
   chargingOnly: 'charging_only',
