@@ -426,7 +426,7 @@ export default function TransfersScreen() {
   );
   const selectedBytes = useMemo(
     () =>
-      all.reduce((sum, t) => (selectedIds.has(selectionKey('t', t.id)) ? sum + t.downloadedBytes : sum), 0) +
+      all.reduce((sum, t) => (selectedIds.has(selectionKey('t', t.id)) ? sum + (t.heldBytes ?? t.downloadedBytes) : sum), 0) +
       downloads.reduce((sum, d) => (selectedIds.has(selectionKey('d', d.id)) ? sum + d.downloaded : sum), 0),
     [all, downloads, selectedIds],
   );

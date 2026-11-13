@@ -77,6 +77,8 @@ export interface TorrentTelemetry {
   health?: HealthTag | null;
   /** NATIVE_CONTRACT 18.4. Sum of the included, non-padding file lengths. */
   includedBytes?: number;
+  /** NATIVE_CONTRACT 18.4. Downloaded bytes of every file, skipped ones too. Absent from an older engine. */
+  heldBytes?: number;
   /** NATIVE_CONTRACT 16. Web seeds configured for the torrent. */
   webSeeds?: number;
   /** NATIVE_CONTRACT 20. Seconds a magnet has been looking for its metadata, null once it has it. */
@@ -250,6 +252,8 @@ export interface Snapshot {
   health: HealthTag | null;
   /** NATIVE_CONTRACT 18.4. SM-35: `pendingNeed = sum(max(0, includedBytes - progressBytes))` over unfinished torrents. */
   includedBytes: number;
+  /** NATIVE_CONTRACT 18.4. What deleting the files frees: downloaded bytes of every file, skipped ones too. */
+  heldBytes?: number;
   /** NATIVE_CONTRACT 20. Seconds a magnet has been looking for its metadata; null once it has it. */
   resolvingSecs: number | null;
   /** NATIVE_CONTRACT 25.1. Absent from an older engine. */

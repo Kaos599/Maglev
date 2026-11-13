@@ -143,6 +143,16 @@ async function main() {
   const detail = fs.readFileSync(path.join(root, 'app/torrent/[id].tsx'), 'utf8');
   check('detail screen has Play', /pickPlayFile/.test(detail) && /playCopy/.test(detail));
 
+  // Delete size counts skipped files too (heldBytes, NATIVE_CONTRACT 18.4): deleting removes the whole folder.
+  {
+    const { snapshotToTelemetry } = await import('../modules/maglev-engine/src/snapshotMapping.ts');
+    const base = { id: 'a'.repeat(40), name: 'Sintel', state: 'SEEDING', finished: true, progressBytes: 1600, totalBytes: 1600, uploadedBytes: 0, downBps: 0, upBps: 0, peersLive: 0, peersSeen: 0, etaSecs: -1, ratio: 0, seedingSecs: 0, pausedBy: null, error: null, outputFolder: '/x', addedAt: 0 };
+    check('heldBytes reaches the app', snapshotToTelemetry({ ...base, heldBytes: 120001600 }).heldBytes === 120001600);
+    check('an older engine without heldBytes falls back to the downloaded bytes', snapshotToTelemetry(base).heldBytes === 1600);
+    const tabs = fs.readFileSync(path.join(root, 'app/(tabs)/index.tsx'), 'utf8');
+    check('Transfers delete size uses heldBytes', /heldBytes/.test(tabs.slice(tabs.indexOf('const selectedBytes'), tabs.indexOf('const selectedBytes') + 400)));
+  }
+
   console.log(failed ? `\n${failed} check(s) failed` : '\nAll play and storage checks passed');
   process.exit(failed ? 1 : 0);
 }

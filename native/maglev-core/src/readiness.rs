@@ -58,6 +58,45 @@ pub fn file_readiness(
     }
 }
 
+/// One file, as the byte totals below need it.
+#[derive(Debug, Clone, Copy)]
+pub struct FileBytes {
+    pub len: u64,
+    pub padding: bool,
+    pub included: bool,
+    /// librqbit's per-file have-bytes (exact to the file, unlike its piece-sized torrent totals).
+    pub have: u64,
+}
+
+/// A torrent's byte totals, built from its files.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct TorrentBytes {
+    /// Sum of the included, non-padding file lengths.
+    pub total: u64,
+    /// Downloaded bytes of those files. Never above `total`.
+    pub progress: u64,
+    /// Downloaded bytes of every file, skipped ones too: what deleting the files frees.
+    pub held: u64,
+}
+
+/// librqbit counts whole pieces, so a 1.6 KB file kept out of a torrent with 128 KB pieces read as
+/// "128 KB of 1.6 KB". Summing the per-file counts gives the real numbers.
+pub fn torrent_bytes(files: impl IntoIterator<Item = FileBytes>) -> TorrentBytes {
+    let mut out = TorrentBytes { total: 0, progress: 0, held: 0 };
+    for f in files {
+        if f.padding {
+            continue;
+        }
+        let have = f.have.min(f.len);
+        out.held += have;
+        if f.included {
+            out.total += f.len;
+            out.progress += have;
+        }
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -140,5 +179,18 @@ mod tests {
         let raw = [0b1111_0000u8];
         let r = file_readiness(0, 400, 100, |p| have_piece(&raw, p));
         assert_eq!(r, FileReadiness { stream_ready_bytes: 400, tail_ready: true });
+    }
+
+    #[test]
+    fn torrent_bytes_count_files_not_pieces() {
+        let f = |len, included, have| FileBytes { len, padding: false, included, have };
+        // One 1.6 KB subtitle kept, a 120 MB video skipped after it had downloaded.
+        let b = torrent_bytes([f(1_600, true, 1_600), f(120_000_000, false, 120_000_000)]);
+        assert_eq!(b, TorrentBytes { total: 1_600, progress: 1_600, held: 120_001_600 });
+        // Progress never passes the total, even if a count runs past the file.
+        assert_eq!(torrent_bytes([f(1_600, true, 131_072)]).progress, 1_600);
+        // Padding files hold nothing.
+        let pad = FileBytes { len: 500, padding: true, included: true, have: 500 };
+        assert_eq!(torrent_bytes([pad, f(10, true, 5)]), TorrentBytes { total: 10, progress: 5, held: 5 });
     }
 }
