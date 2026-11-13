@@ -20,7 +20,8 @@ const PILL_W = 56;
 const PILL_H = 28;
 const ICON = 20;
 
-type TabButtonProps = BottomTabBarButtonProps & { icon: PixelIconName; title: string; badge?: number };
+type TabIcon = PixelIconName | TabGlyphName;
+type TabButtonProps = BottomTabBarButtonProps & { icon: TabIcon; title: string; badge?: number };
 
 /**
  * The whole tab: pill, icon and label. It replaces the library's default button, which is a
@@ -54,7 +55,7 @@ function TabButton({
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const reduce = useReduceMotion();
   const focused = rest['aria-selected'] === true;
-  // Tabs without a signature move (Browser) draw their plain pixel icon.
+  // Every tab has a signature move; a plain pixel icon is the fallback for any future tab without one.
   const hasGlyph = icon in TAB_GLYPHS;
   const badgeText = badgeLabel(badge ?? 0);
   // The library sets aria-label from tabBarAccessibilityLabel; add the count for screen readers.
@@ -95,14 +96,14 @@ function TabButton({
             {hasGlyph ? (
               <TabGlyph name={icon as TabGlyphName} color={colors.textMuted} progress={move} />
             ) : (
-              <PixelIcon name={icon} size={ICON} color={colors.textMuted} />
+              <PixelIcon name={icon as PixelIconName} size={ICON} color={colors.textMuted} />
             )}
           </Animated.View>
           <Animated.View style={[StyleSheet.absoluteFill, { opacity: focus }]}>
             {hasGlyph ? (
               <TabGlyph name={icon as TabGlyphName} color={colors.accentText} progress={move} />
             ) : (
-              <PixelIcon name={icon} size={ICON} color={colors.accentText} />
+              <PixelIcon name={icon as PixelIconName} size={ICON} color={colors.accentText} />
             )}
           </Animated.View>
         </View>
@@ -136,7 +137,7 @@ export default function TabLayout() {
   // Count from stored data now, and again when the app returns to the foreground.
   useEffect(() => startFeedsBadge(), []);
 
-  const tab = (name: string, title: string, icon: PixelIconName, hidden = false, freeze = false, badge = 0) => (
+  const tab = (name: string, title: string, icon: TabIcon, hidden = false, freeze = false, badge = 0) => (
     <Tabs.Screen
       name={name}
       activityEnabled={freeze}
@@ -164,7 +165,7 @@ export default function TabLayout() {
     feeds: tab('feeds', 'Feeds', 'tab-feeds', !shown.includes('feeds'), true, feedsNew),
     settings: tab('settings', 'Settings', 'tab-settings', !shown.includes('settings'), true),
     assistant: tab('assistant', 'Assistant', 'tab-assistant', !shown.includes('assistant')),
-    browse: tab('browse', 'Browser', 'network', !shown.includes('browse')),
+    browse: tab('browse', 'Browser', 'tab-browse', !shown.includes('browse')),
   };
 
   // If the tab being shown is turned off, go to Transfers. Only a change of the bar triggers this,

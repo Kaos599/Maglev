@@ -7,8 +7,8 @@ import { PressableScale } from '../ui';
 import { useReduceMotion } from '../motion';
 
 export const MORE_BELOW_LABEL = 'More below';
-const FADE_HEIGHT = 48;
-const FADE_BANDS = 8;
+const FADE_HEIGHT = 72;
+const FADE_BANDS = 12;
 const BOB_CYCLES = 3;
 
 /** A soft fade into the background over the bottom edge of a scroll view, built from stacked bands (no gradient package). */

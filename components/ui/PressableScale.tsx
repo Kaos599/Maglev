@@ -1,5 +1,5 @@
 import React, { useCallback } from 'react';
-import { Pressable, PressableProps, StyleProp, StyleSheet, ViewStyle } from 'react-native';
+import { Pressable, PressableProps, StyleProp, StyleSheet, View, ViewStyle } from 'react-native';
 import Animated, { cancelAnimation, interpolate, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { haptic as buzz, HapticVerb } from '../../constants/haptics';
 import { motion } from '../../constants/theme';
@@ -21,6 +21,8 @@ export interface PressableScaleProps extends Omit<PressableProps, 'style' | 'chi
   feedback?: 'scale' | 'sink';
   /** Haptic verb played after the press, or false for none (default). Opt in only where it helps. */
   haptic?: HapticVerb | false;
+  /** Ref to the outer Pressable, e.g. to return screen reader focus to it. */
+  pressableRef?: React.Ref<any>;
 }
 
 const OUTER_KEYS = new Set([
@@ -52,6 +54,7 @@ export function PressableScale({
   scaleTo = motion.pressScale,
   feedback = 'scale',
   haptic = false,
+  pressableRef,
   onPress,
   onPressIn,
   onPressOut,
@@ -92,6 +95,7 @@ export function PressableScale({
   return (
     <Pressable
       {...rest}
+      ref={pressableRef}
       style={[outer, containerStyle]}
       disabled={disabled}
       onPressIn={(e) => {

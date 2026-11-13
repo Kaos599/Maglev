@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { AppState, Dimensions, ScrollView, StyleSheet, Text, TextInput, View, type LayoutChangeEvent, type NativeScrollEvent, type NativeSyntheticEvent } from 'react-native';
+import { AccessibilityInfo, AppState, Dimensions, ScrollView, StyleSheet, Text, TextInput, View, findNodeHandle, type LayoutChangeEvent, type NativeScrollEvent, type NativeSyntheticEvent } from 'react-native';
 import { FlashList } from '@shopify/flash-list';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useMaglevEngine } from '../../context/EngineContext';
@@ -33,6 +33,7 @@ import { MobileDataSheet } from '../../components/search/MobileDataSheet';
 import { passesResultFilter } from '../../components/search/sharing';
 import { oneTapAddNote } from '../../utils/addChecks';
 import { empty } from '../../constants/copy';
+import { Reveal } from '../../components/motion';
 
 const DEBOUNCE_MS = 400;
 const MIN_QUERY = 2;
@@ -42,6 +43,16 @@ const PREFETCH_STABLE_MS = 1500;
 const PREFETCH_SETTLED_MS = 300;
 
 const keyOfResult = (r: MergedResult) => r.infoHash;
+
+const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
+const announce = (text: string) => AccessibilityInfo.announceForAccessibility(text);
+/** Moves screen reader focus to a view after a beat, once the view it replaces has gone. */
+function focusView(node: unknown, delay = 100) {
+  setTimeout(() => {
+    const tag = node ? findNodeHandle(node as never) : null;
+    if (tag) AccessibilityInfo.setAccessibilityFocus(tag);
+  }, delay);
+}
 
 /** The one line in the list that is not a result: "N sources need a quick check". */
 interface FixHintItem {
@@ -112,6 +123,13 @@ export default function SearchScreen() {
   const fixing = useRef(false);
   const [focused, setFocused] = useState(false);
   const inputRef = useRef<React.ComponentRef<typeof TextInput>>(null);
+  const sortBtnRef = useRef<any>(null);
+  const fixBtnRef = useRef<any>(null);
+  const recentRows = useRef(new Map<string, any>());
+  // Per search (request id): which spoken updates have been made, so each is said once.
+  const spoken = useRef({ start: 0, end: 0, fix: 0 });
+  // The Fix banner animates in only the first time it shows in a search, not each time a list row is recycled.
+  const fixSeen = useRef(0);
   const tabs = useTabPrefs();
   const browserTabShown = !tabs.hidden.includes('browse');
   const [following, setFollowing] = useState<FollowTarget | null>(null);
@@ -166,6 +184,10 @@ export default function SearchScreen() {
     const ctl = new AbortController();
     controller.current = ctl;
     const debounce = setTimeout(() => {
+      if (spoken.current.start !== mine) {
+        spoken.current.start = mine;
+        announce(`Searching ${plural(eligible.length, 'source', 'sources')}`);
+      }
       const current = getSearchPrefs();
       loadExtraProviders(current.torznab).then((extraProviders) =>
         searchAll(trimmed, category, {
@@ -203,6 +225,7 @@ export default function SearchScreen() {
     const id = solving;
     setSolving(null);
     if (!id) return;
+    if (!fixing.current) focusView(fixBtnRef.current);
     updatePrefs((p) => ({ needsCheck: p.needsCheck.filter((x) => x !== id) }));
     const next = fixing.current
       ? (update?.sources ?? []).find((x) => x.state === 'challenge' && x.providerId !== id && providers.get(x.providerId)?.cloudflare)
@@ -296,6 +319,7 @@ export default function SearchScreen() {
         if (readHash) metadataPrefetch.cancelIf(readHash);
         await startTorrent(ready.magnet);
         setSessionAdded((prev) => new Set(prev).add(r.infoHash));
+        announce(`Added ${r.name}`);
         show({
           tone: 'success',
           title: 'Added to Transfers',
@@ -436,21 +460,41 @@ export default function SearchScreen() {
   }, [challenged]);
   const needsCheckOn = prefs.needsCheck.filter((id) => prefs.enabled.includes(id)).length > 0;
 
+  const fixLine = `${plural(challenged.length, 'source needs', 'sources need')} a quick check. They'll add more results.`;
+  const fixTitleText = challenged.length === 1 ? '1 source needs a quick check' : `${challenged.length} sources need a quick check`;
+  const dismissFix = useCallback(() => {
+    updatePrefs({ fixHintDismissedAt: Date.now() });
+    announce('Hidden for a day');
+    focusView(inputRef.current);
+  }, [updatePrefs]);
+  // Said once per search, the first time the line shows.
+  useEffect(() => {
+    if (!showFix || challenged.length === 0 || spoken.current.fix === reqId.current) return;
+    spoken.current.fix = reqId.current;
+    announce(fixLine);
+  }, [showFix, challenged.length, fixLine]);
+  const animateFix = fixSeen.current !== reqId.current;
+  useEffect(() => {
+    if (showFix) fixSeen.current = reqId.current;
+  }, [showFix, update]);
+
   const fixBanner = useMemo(
     () => (
-      <View style={styles.fix}>
-        <View style={styles.fixMark} importantForAccessibility="no-hide-descendants">
-          <Text style={styles.fixMarkText}>?</Text>
+      <Reveal visible animate={animateFix}>
+        <View style={styles.fix}>
+          <View style={styles.fixMark} importantForAccessibility="no-hide-descendants">
+            <Text style={styles.fixMarkText}>?</Text>
+          </View>
+          <View style={styles.fixText} accessible accessibilityLabel={fixLine}>
+            <Text style={styles.fixTitle}>{fixTitleText}</Text>
+            <Text style={styles.fixBody}>They'll add more results.</Text>
+          </View>
+          <Button label="Fix" variant="ghost" buttonRef={fixBtnRef} onPress={startFix} accessibilityLabel="Fix sources that need a quick check" />
+          <IconButton icon="close" size={16} onPress={dismissFix} accessibilityLabel="Dismiss" />
         </View>
-        <View style={styles.fixText}>
-          <Text style={styles.fixTitle}>{challenged.length === 1 ? '1 source needs a quick check' : `${challenged.length} sources need a quick check`}</Text>
-          <Text style={styles.fixBody}>They'll add more results.</Text>
-        </View>
-        <Button label="Fix" variant="ghost" onPress={startFix} accessibilityLabel="Fix sources that need a quick check" />
-        <IconButton icon="close" size={16} onPress={() => updatePrefs({ fixHintDismissedAt: Date.now() })} accessibilityLabel="Dismiss" />
-      </View>
+      </Reveal>
     ),
-    [styles, challenged.length, startFix, updatePrefs],
+    [styles, fixLine, fixTitleText, startFix, dismissFix, animateFix],
   );
 
   const listData = useMemo<readonly ListItem[]>(() => {
@@ -485,7 +529,35 @@ export default function SearchScreen() {
   const openProviders = useCallback(() => router.push('/settings/search-providers' as never), [router]);
 
   const idle = trimmed.length < MIN_QUERY;
+  // The result line is not a live region (it ticks too often); say the outcome once per search.
+  useEffect(() => {
+    if (searching || trimmed.length < MIN_QUERY || failed || (!update && !stopped)) return;
+    if (spoken.current.end === reqId.current) return;
+    spoken.current.end = reqId.current;
+    announce(shown.length === 0 ? 'No results' : plural(shown.length, 'result', 'results'));
+  }, [searching, trimmed, failed, update, stopped, shown.length]);
   const showRecents = focused && idle && recents.length > 0;
+  useEffect(() => {
+    if (showRecents) announce(`Recent searches, ${recents.length}`);
+    // Said when the list opens, not on each change.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showRecents]);
+  const removeRecent = useCallback(
+    (text: string) => {
+      const at = recents.indexOf(text);
+      const next = removeRecentSearch(text);
+      setRecents(next);
+      announce(`Removed ${text}`);
+      const nextText = next[at] ?? next[at - 1];
+      focusView(nextText !== undefined ? recentRows.current.get(nextText) : inputRef.current);
+    },
+    [recents],
+  );
+  const clearRecents = useCallback(() => {
+    setRecents(clearRecentSearches());
+    announce('Recent searches cleared');
+    focusView(inputRef.current);
+  }, []);
   const hasResults = (update?.results.length ?? 0) > 0;
 
   const enabledCount = prefs.enabled.length;
@@ -575,7 +647,7 @@ export default function SearchScreen() {
     );
     body = (
       <>
-        <View style={styles.sources} accessibilityLiveRegion="polite">
+        <View style={styles.sources}>
           {searching ? (
             <>
               <View style={styles.summaryRow}>
@@ -594,6 +666,7 @@ export default function SearchScreen() {
                   label={SORT_LABEL[prefs.sort]}
                   icon="sort"
                   variant="ghost"
+                  buttonRef={sortBtnRef}
                   onPress={() => setSortOpen(true)}
                   accessibilityLabel={`Sort: ${SORT_LABEL[prefs.sort]}`}
                 />
@@ -655,19 +728,23 @@ export default function SearchScreen() {
           />
           {query.length > 0 ? <IconButton icon="close" size={16} onPress={() => setQuery('')} accessibilityLabel="Clear search" /> : null}
         </View>
-        {showRecents ? (
-          // A scroll view with handled taps: a tap on a row registers before the field loses focus.
+        <Reveal visible={showRecents}>
+          {/* A scroll view with handled taps: a tap on a row registers before the field loses focus. */}
           <ScrollView keyboardShouldPersistTaps="handled" scrollEnabled={false} style={styles.recentsWrap}>
-            <View style={styles.recentsCard}>
+            <View style={styles.recentsCard} accessibilityLabel="Recent searches">
               <View style={styles.recentsHead}>
                 <Text style={styles.sectionLabel} accessibilityRole="header">
                   Recent
                 </Text>
-                <Button label="Clear" variant="ghost" onPress={() => setRecents(clearRecentSearches())} accessibilityLabel="Clear recent searches" />
+                <Button label="Clear" variant="ghost" onPress={clearRecents} accessibilityLabel="Clear recent searches" />
               </View>
               {recents.map((r) => (
                 <View key={r} style={styles.recentRow}>
                   <PressableScale
+                    pressableRef={(n) => {
+                      if (n) recentRows.current.set(r, n);
+                      else recentRows.current.delete(r);
+                    }}
                     containerStyle={styles.recentMain}
                     style={styles.recentMainInner}
                     onPress={() => {
@@ -683,18 +760,20 @@ export default function SearchScreen() {
                       {r}
                     </Text>
                   </PressableScale>
-                  <IconButton icon="close" size={16} onPress={() => setRecents(removeRecentSearch(r))} accessibilityLabel={`Remove ${r} from recent searches`} />
+                  <IconButton icon="close" size={16} onPress={() => removeRecent(r)} accessibilityLabel={`Remove ${r} from recent searches`} />
                 </View>
               ))}
             </View>
           </ScrollView>
-        ) : null}
+        </Reveal>
       </View>
+      <View accessibilityRole="radiogroup" accessibilityLabel="Category">
       <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.catScroll} contentContainerStyle={styles.chips}>
         {categories.map((c) => (
-          <Chip key={c} label={CATEGORY_LABEL[c]} selected={c === category} onPress={() => updatePrefs({ lastCategory: c })} />
+          <Chip key={c} role="radio" label={CATEGORY_LABEL[c]} selected={c === category} onPress={() => updatePrefs({ lastCategory: c })} />
         ))}
       </ScrollView>
+      </View>
       {notice ? (
         <View style={styles.pad}>
           <NoticeBanner notice={notice} onDismiss={dismiss} />
@@ -706,16 +785,20 @@ export default function SearchScreen() {
           visible
           providerName={solvingProvider.name}
           solverUrl={solvingProvider.cloudflare.solverUrl}
-          onClose={() => setSolving(null)}
+          onClose={() => {
+            setSolving(null);
+            focusView(fixBtnRef.current);
+          }}
           onSolved={handleSolved}
         />
       ) : null}
       <FollowSheet target={following} onClose={() => setFollowing(null)} onDone={onFollowed} />
-      <Sheet visible={sortOpen} onClose={() => setSortOpen(false)} title="Sort and filter">
-        <View style={styles.wrapRow}>
+      <Sheet visible={sortOpen} onClose={() => setSortOpen(false)} title="Sort and filter" returnFocusRef={sortBtnRef}>
+        <View style={styles.wrapRow} accessibilityRole="radiogroup" accessibilityLabel="Sort by">
           {SORT_ORDER.map((s) => (
             <Chip
               key={s}
+              role="radio"
               label={SORT_LABEL[s]}
               selected={prefs.sort === s}
               onPress={() => {
@@ -731,10 +814,10 @@ export default function SearchScreen() {
             <Text style={[styles.sectionLabel, styles.filterRow]} accessibilityRole="header">
               Source
             </Text>
-            <View style={[styles.wrapRow, styles.sourceChips]}>
-              <Chip label="All" selected={sourceFilter === null} onPress={() => setSourceFilter(null)} />
+            <View style={[styles.wrapRow, styles.sourceChips]} accessibilityRole="radiogroup" accessibilityLabel="Source">
+              <Chip role="radio" label="All" selected={sourceFilter === null} onPress={() => setSourceFilter(null)} />
               {sourceCounts.map(([id, n]) => (
-                <Chip key={id} label={`${nameOf(id)} ${n}`} selected={sourceFilter === id} onPress={() => setSourceFilter(id)} />
+                <Chip key={id} role="radio" label={`${nameOf(id)} ${n}`} selected={sourceFilter === id} onPress={() => setSourceFilter(id)} />
               ))}
             </View>
           </>
@@ -838,14 +921,14 @@ const makeStyles = (c: ThemeColors) =>
     track: { height: 2, backgroundColor: c.border },
     trackFill: { height: 2, backgroundColor: c.accent },
     fix: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, minHeight: 64, paddingVertical: spacing.sm, paddingLeft: spacing.md, paddingRight: spacing.xs, marginBottom: spacing.sm, borderRadius: radius.md, borderWidth: 1, borderColor: c.border, backgroundColor: c.surface },
-    fixMark: { width: 36, height: 36, alignItems: 'center', justifyContent: 'center', borderRadius: radius.sm + 2, borderWidth: 1, borderColor: c.accent },
+    fixMark: { width: 36, height: 36, alignItems: 'center', justifyContent: 'center', borderRadius: radius.sm, borderWidth: 1, borderColor: c.accent },
     fixMarkText: { ...type.monoBold, fontSize: 14, color: c.accentText },
     fixText: { flex: 1, gap: 2 },
-    fixTitle: { ...type.bodyStrong, fontSize: 13, color: c.text },
+    fixTitle: { ...type.bodyStrong, fontVariant: ['tabular-nums'], fontSize: 13, color: c.text },
     fixBody: { ...type.body, fontSize: 12, color: c.textMuted },
     sources: { paddingHorizontal: spacing.lg, paddingBottom: spacing.sm, gap: spacing.sm },
     summaryRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.sm },
-    summary: { ...type.body, flex: 1, fontSize: 12, lineHeight: 17, color: c.textMuted },
+    summary: { ...type.body, fontVariant: ['tabular-nums'], flex: 1, fontSize: 12, lineHeight: 17, color: c.textMuted },
     body: { flex: 1, marginTop: spacing.sm },
     listWrap: { flex: 1 },
     list: { paddingHorizontal: spacing.lg, paddingBottom: spacing.xxxl },

@@ -24,19 +24,19 @@ check('all four group titles exist', tpos.every((p) => p > 0));
 check('groups run App, Finding things, Downloads, Connection', tpos.every((p, i) => i === 0 || p > tpos[i - 1]));
 
 // Rows by group. Each group renders a named row list; the lists hold the rows.
-const aboutPos = at('<SettingsRow {...aboutRow} />');
+const endPos = at('</ScrollView>');
 const jsx = {
   App: index.slice(tpos[0], tpos[1]),
   'Finding things': index.slice(tpos[1], tpos[2]),
   Downloads: index.slice(tpos[2], tpos[3]),
-  Connection: index.slice(tpos[3], aboutPos),
+  Connection: index.slice(tpos[3], endPos),
 };
 const listOf = (name) => {
   const m = index.match(new RegExp(`const ${name}\\b[^=]*=([\\s\\S]*?);\\n`));
   return m ? m[1] : '';
 };
 const expected = {
-  App: ['appRows', ['Appearance', 'Notifications', 'Assistant']],
+  App: ['appRows', ['About', 'Appearance', 'Notifications', 'Assistant']],
   'Finding things': ['findRows', ['Search providers', 'Auto-download', 'Browser']],
   Downloads: [null, ['Storage', 'Speed & queue', 'Scheduling']],
   Connection: ['connectionRows', ['Network', 'Power']],
@@ -55,7 +55,7 @@ check('Downloads renders Storage, Speed & queue, Scheduling in order', (() => {
   const p = ['<StorageRow', '{...speedRow}', '{...scheduleRow}'].map((x) => d.indexOf(x));
   return p.every((x, i) => x >= 0 && (i === 0 || x > p[i - 1]));
 })());
-check('About comes after Connection', aboutPos > tpos[3] && !/SectionHeader title="About"/.test(index));
+check('About is the first App row, not its own section', /appRows[^=]*=\s*\[\s*\{[^}]*title: 'About'/.test(index) && !/SectionHeader title="About"/.test(index));
 check('NeedsAttention banners sit above the groups', at('<NeedsAttention />') > 0 && at('<NeedsAttention />') < tpos[0]);
 check('Interface row is titled Appearance, route kept', /title: 'Appearance'[^}]*route: 'interface'/.test(index) && !/title: 'Interface'/.test(index));
 check('merged row shows limits and queue', /`\$\{limits\} · \$\{queue\}`/.test(index) && /route: 'speed'/.test(index));

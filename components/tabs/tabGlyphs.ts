@@ -9,7 +9,7 @@
  * opacity. translateY is in grid units (the component converts to px, 1 unit = 20/24 px).
  */
 
-export type TabGlyphName = 'tab-transfers' | 'tab-search' | 'tab-feeds' | 'tab-settings' | 'tab-assistant';
+export type TabGlyphName = 'tab-transfers' | 'tab-search' | 'tab-feeds' | 'tab-settings' | 'tab-assistant' | 'tab-browse';
 
 export interface GlyphTrack {
   prop: 'translateY' | 'rotate' | 'opacity';
@@ -101,6 +101,23 @@ export const TAB_GLYPHS: Record<TabGlyphName, TabGlyphDef> = {
           inputRange: [0, 0.4, 0.4001, 0.7, 0.7001, 1],
           outputRange: [1, 1, 0, 0, 1, 1],
         },
+      },
+    ],
+  },
+  // The Browser tab draws the 'network' globe: rim first, then the equator, then the meridians.
+  'tab-browse': {
+    move: 'draw',
+    parts: [
+      {
+        id: 'rim',
+        // Same winding as the source icon: the reversed right-hand rects leave its 2 px equator gap.
+        d: 'M6 2h12v2H6zM6 20h12v2H6zM4 4h2v2H4zM20 4h-2v2h2zM2 6h2v12H2zM22 6h-2v12h2zM4 18h2v2H4zM20 18h-2v2h2z',
+      },
+      { id: 'equator', d: 'M3 11h18v2H3z', track: appearAt(0.34) },
+      {
+        id: 'meridians',
+        d: 'M9 4h2v2H9zM9 18h2v2H9zM13 18h2v2h-2zM13 4h2v2h-2zM7 6h2v12H7zM15 6h2v12h-2z',
+        track: appearAt(0.67),
       },
     ],
   },

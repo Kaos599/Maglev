@@ -1,5 +1,5 @@
 import React, { useCallback, useLayoutEffect, useMemo, useRef } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { AccessibilityInfo, StyleSheet, Text, View } from 'react-native';
 import Animated, { SharedValue, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { GestureDetector, usePanGesture } from 'react-native-gesture-handler';
 import { useTheme } from '../../context/ThemeContext';
@@ -17,6 +17,12 @@ import { setTabPrefs, useTabPrefs } from './tabPrefsStore';
 const ROW_HEIGHT = 64;
 const LONG_PRESS_MS = 250;
 const LIFT_SCALE = 1.03;
+
+/** Says where a tab landed after a reorder (drag drop or the Move up / Move down actions). `to` is zero-based. */
+function announceMove(id: TabId | undefined, to: number, count: number) {
+  if (!id) return;
+  AccessibilityInfo.announceForAccessibility(`${tabsCopy.names[id]} moved to position ${to + 1} of ${count}`);
+}
 
 /** Six small squares in two columns: the grip that says "hold and drag". */
 function Grip({ color }: { color: string }) {
@@ -180,7 +186,15 @@ export function TabsSection() {
   const rowsRef = useRef(rows);
   rowsRef.current = rows;
   const onReorder = useCallback((from: number, to: number) => {
+    const id = rowsRef.current[from];
     setTabPrefs((p) => reorderTabs(p, rowsRef.current, from, to));
+    announceMove(id, to, rowsRef.current.length);
+  }, []);
+  const onStep = useCallback((id: TabId, dir: 'up' | 'down') => {
+    const from = rowsRef.current.indexOf(id);
+    const to = dir === 'up' ? from - 1 : from + 1;
+    setTabPrefs((p) => moveTab(p, id, dir, rowsRef.current));
+    if (from >= 0 && to >= 0 && to < rowsRef.current.length) announceMove(id, to, rowsRef.current.length);
   }, []);
 
   const { colors } = useTheme();
@@ -200,7 +214,7 @@ export function TabsSection() {
             drag={drag}
             onReorder={onReorder}
             onShown={(v) => setTabPrefs((p) => setTabShown(p, id, v))}
-            onStep={(dir) => setTabPrefs((p) => moveTab(p, id, dir, rowsRef.current))}
+            onStep={(dir) => onStep(id, dir)}
           />
         ))}
       </View>

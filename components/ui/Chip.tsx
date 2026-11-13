@@ -11,9 +11,11 @@ export interface ChipProps {
   count?: number;
   disabled?: boolean;
   testID?: string;
+  /** `radio` for a single-choice group: reports a checked state. Default `button`. */
+  role?: 'button' | 'radio';
 }
 
-export function Chip({ label, selected = false, onPress, count, disabled = false, testID }: ChipProps) {
+export function Chip({ label, selected = false, onPress, count, disabled = false, testID, role = 'button' }: ChipProps) {
   const { colors } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const hasCount = typeof count === 'number';
@@ -23,9 +25,9 @@ export function Chip({ label, selected = false, onPress, count, disabled = false
       haptic="select"
       disabled={disabled}
       testID={testID}
-      accessibilityRole="button"
+      accessibilityRole={role}
       accessibilityLabel={hasCount ? `${label}, ${count}` : label}
-      accessibilityState={{ selected, disabled }}
+      accessibilityState={role === 'radio' ? { checked: selected, disabled } : { selected, disabled }}
       style={(pressed) => [
         styles.chip,
         selected ? styles.selected : pressed ? styles.pressed : styles.idle,

@@ -19,6 +19,8 @@ export interface ButtonProps {
   fullWidth?: boolean;
   accessibilityLabel?: string;
   testID?: string;
+  /** Ref to the button, e.g. to return screen reader focus to it. */
+  buttonRef?: React.Ref<any>;
 }
 
 /** Three square dots blinking in sequence; subtle, no pulsing of the whole control. */
@@ -58,6 +60,7 @@ export function Button({
   fullWidth = false,
   accessibilityLabel,
   testID,
+  buttonRef,
 }: ButtonProps) {
   const { colors } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -77,6 +80,7 @@ export function Button({
       onPress={inactive ? undefined : onPress}
       disabled={inactive}
       testID={testID}
+      pressableRef={buttonRef}
       accessibilityRole="button"
       accessibilityLabel={accessibilityLabel ?? label}
       accessibilityState={{ disabled: inactive, busy: loading }}

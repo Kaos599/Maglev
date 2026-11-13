@@ -1,7 +1,7 @@
 /** Whether the Settings "More below" pill has been dismissed. Persisted once, never shown again. */
 import { kvGet, kvSet } from './kv.ts';
 
-export const MORE_HINT_KEY = 'maglev.settings.moreHintSeen.v1';
+export const MORE_HINT_KEY = 'maglev.settings.moreHintSeen.v2';
 
 let seen: boolean | null = null;
 

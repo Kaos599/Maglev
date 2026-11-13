@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { KeyboardAvoidingView, LayoutChangeEvent, Modal, Platform, Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import { AccessibilityInfo, KeyboardAvoidingView, LayoutChangeEvent, Modal, Platform, Pressable, StyleSheet, Text, View, findNodeHandle, useWindowDimensions } from 'react-native';
 import { GestureDetector, GestureHandlerRootView, usePanGesture } from 'react-native-gesture-handler';
 import Animated, { cancelAnimation, useAnimatedStyle, useSharedValue, withSpring, withTiming } from 'react-native-reanimated';
 import { scheduleOnRN } from 'react-native-worklets';
@@ -15,6 +15,8 @@ export interface SheetProps {
   subtitle?: string;
   children?: React.ReactNode;
   testID?: string;
+  /** The control that opened the sheet. TalkBack focus goes back to it after the sheet closes. */
+  returnFocusRef?: React.RefObject<any>;
 }
 
 /**
@@ -27,7 +29,7 @@ export interface SheetProps {
  * A Modal is its own native window on Android, outside the app's root gesture view, so the sheet
  * brings its own GestureHandlerRootView.
  */
-export function Sheet({ visible, onClose, title, subtitle, children, testID }: SheetProps) {
+export function Sheet({ visible, onClose, title, subtitle, children, testID, returnFocusRef }: SheetProps) {
   const { colors } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const insets = useSafeAreaInsets();
@@ -40,18 +42,35 @@ export function Sheet({ visible, onClose, title, subtitle, children, testID }: S
   const offset = useSharedValue(height);
   const sheetH = useSharedValue(0);
   const pendingOpen = useRef(true);
+  const titleRef = useRef<any>(null);
+  const focusTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const returnRef = useRef(returnFocusRef);
+  returnRef.current = returnFocusRef;
+
+  const focusNode = useCallback((node: unknown, delay: number) => {
+    if (focusTimer.current) clearTimeout(focusTimer.current);
+    focusTimer.current = setTimeout(() => {
+      const tag = node ? findNodeHandle(node as never) : null;
+      if (tag) AccessibilityInfo.setAccessibilityFocus(tag);
+    }, delay);
+  }, []);
+  useEffect(() => () => { if (focusTimer.current) clearTimeout(focusTimer.current); }, []);
 
   const open = useCallback(() => {
     cancelAnimation(offset);
     if (m.disabled) offset.value = 0;
     else offset.value = withTiming(0, { duration: m.base, easing: m.easing });
-  }, [m, offset]);
+    // Move TalkBack focus to the title once the sheet has settled.
+    focusNode(titleRef.current, m.disabled ? 100 : m.base + 100);
+  }, [m, offset, focusNode]);
 
   // The next mount measures again and slides in from there.
   const unmount = useCallback(() => {
     pendingOpen.current = true;
     setMounted(false);
-  }, []);
+    // Hand TalkBack focus back to the opener once the sheet is gone.
+    if (returnRef.current?.current) focusNode(returnRef.current.current, 100);
+  }, [focusNode]);
 
   useEffect(() => {
     if (visible) {
@@ -154,7 +173,7 @@ export function Sheet({ visible, onClose, title, subtitle, children, testID }: S
             <GestureDetector gesture={pan}>
               <View style={styles.dragArea}>
                 <View style={styles.grabber} />
-                <Text style={styles.title} accessibilityRole="header">
+                <Text ref={titleRef} style={styles.title} accessibilityRole="header">
                   {title}
                 </Text>
                 {subtitle ? <Text style={styles.subtitle}>{subtitle}</Text> : null}
