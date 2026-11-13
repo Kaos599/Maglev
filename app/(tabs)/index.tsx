@@ -17,7 +17,7 @@ import { ClearFinishedSheet } from '../../components/transfers/ClearFinishedShee
 import { DeleteSheet } from '../../components/transfers/DeleteSheet';
 import { SortSheet } from '../../components/transfers/SortSheet';
 import { TeachingEmptyState } from '../../components/transfers/TeachingEmptyState';
-import { FILTERS, TransferFilter, countByFilter, downloadMatchesFilter, finishedTransfers, magnetHash, matchesFilter, sortTorrents } from '../../components/transfers/model';
+import { FILTERS, TransferFilter, countByFilter, downloadMatchesFilter, finishedTransfers, magnetHash, matchesFilter, mergeTransfers, sortTorrents, type TransferItem } from '../../components/transfers/model';
 import { PixelIcon } from '../../components/PixelIcon';
 import { Banner, Button, EmptyBlock, IconButton } from '../../components/ui/index';
 import { ProgressMotionContext, type ProgressMotion } from '../../components/ui/ProgressBar';
@@ -26,9 +26,10 @@ import { lowSpaceWarning, usableFreeOf, type LowSpaceWarning } from '../../compo
 import * as DocumentPicker from 'expo-document-picker';
 import { maglevEngine, type DownloadSnapshot } from 'maglev-engine';
 import { haptic } from '../../constants/haptics';
-import { useMaglevEngine } from '../../context/EngineContext';
+import { useMaglevEngine, type TransferTelemetry } from '../../context/EngineContext';
 import { useTheme } from '../../context/ThemeContext';
 import { ThemeColors, radius, spacing, type } from '../../constants/theme';
+import { pickMainFile } from '../../utils/mainFile';
 import { takeNextShared } from '../../utils/shareQueue';
 import { OPEN_FOLDER_FAILED_TEXT, SHARE_FAILED_TEXT, allowDeviceFailureText, openFailureText, type DownloadAction } from '../../utils/downloadCopy';
 import { BulkVerb, bulkSummary, selectionKey, splitSelection } from '../../utils/bulkSummary';
@@ -36,7 +37,8 @@ import { TransferSort, loadTransferSort, saveTransferSort } from '../../utils/pr
 import { empty, notices } from '../../constants/copy';
 
 const Separator = () => <View style={{ height: CARD_GAP }} />;
-const keyOfTorrent = (t: { id: string }) => t.id;
+const keyOfItem = (item: TransferItem<TransferTelemetry>) => item.key;
+const typeOfItem = (item: TransferItem<TransferTelemetry>) => item.kind;
 /**
  * Off: the list is re-sorted by live values (speed, progress), and FlashList's default anchoring
  * would scroll to follow whichever card was on top. FlatList never did that; neither does this.
@@ -86,9 +88,8 @@ export default function TransfersScreen() {
     resumeAll,
     deleteTorrent,
     removeTransfers,
-    notice,
+    // The notice banner is drawn by the global toast host in the root layout; here we only raise notices.
     showNotice,
-    dismissNotice,
     clipboardMagnet,
     clearClipboardMagnet,
     downloads: liveDownloads,
@@ -133,7 +134,7 @@ export default function TransfersScreen() {
 
   const all = telemetry.torrents;
   const cruising = focused && (all.some((t) => t.state === 'DOWNLOADING') || downloads.some((d) => d.state === 'downloading'));
-  // Downloads from links show above the torrents, obey the same filters, and obey the name filter.
+  // Link downloads obey the same filters and name filter as torrents, and share one sorted list with them.
   const shownDownloads = useMemo(() => {
     const q = query.trim().toLowerCase();
     return downloads.filter((d) => downloadMatchesFilter(d, filter) && (!q || d.name.toLowerCase().includes(q)));
@@ -175,6 +176,14 @@ export default function TransfersScreen() {
     },
     [showNotice, retryDownload],
   );
+  const resumeDownloadAnyway = useCallback(
+    (id: string) => {
+      void maglevEngine.resumeDownloadAnyway(id).then((res) => {
+        if (!res.ok) showNotice({ message: res.message || notices.common.retryFailed });
+      });
+    },
+    [showNotice],
+  );
   const onDownloadAction = useCallback(
     (d: DownloadSnapshot, action: DownloadAction) => {
       switch (action.kind) {
@@ -197,9 +206,12 @@ export default function TransfersScreen() {
         case 'allowDevice':
           allowDevice(d.id);
           break;
+        case 'resumeAnyway':
+          resumeDownloadAnyway(d.id);
+          break;
       }
     },
-    [pauseDownload, resumeDownload, retryDownload, openDownload, allowDevice],
+    [pauseDownload, resumeDownload, retryDownload, openDownload, allowDevice, resumeDownloadAnyway],
   );
   const selectionMode = selectedIds.size > 0;
   const finished = useMemo(() => finishedTransfers(all, downloads), [all, downloads]);
@@ -338,6 +350,31 @@ export default function TransfersScreen() {
     },
     [selectionMode, toggleSelected],
   );
+  const onResumeAnyway = useCallback(
+    (id: string) => {
+      void maglevEngine.resumeAnyway(id).then((res) => {
+        if (!res.ok) showNotice({ message: res.message || notices.common.retryFailed });
+      });
+    },
+    [showNotice],
+  );
+  // A finished card's Open: the main file when there is one clear choice, else the detail screen (several videos).
+  const onOpenTorrent = useCallback(
+    (id: string) => {
+      const toDetail = () => router.push({ pathname: '/torrent/[id]', params: { id } });
+      void maglevEngine
+        .getDetail(id)
+        .then((res) => {
+          const main = res.ok ? pickMainFile(res.files).main : null;
+          if (!main) return toDetail();
+          return maglevEngine.openFile(id, main.index).then((opened) => {
+            if (!opened.ok) showNotice({ message: opened.message || 'No app can open this file.' });
+          });
+        })
+        .catch(toDetail);
+    },
+    [router, showNotice],
+  );
   const onPause = useCallback((id: string) => void pauseTorrent(id), [pauseTorrent]);
   const onResume = useCallback((id: string) => void resumeTorrent(id), [resumeTorrent]);
   // SM-37: clear the no_peers tag so the torrent looks for peers again.
@@ -436,42 +473,40 @@ export default function TransfersScreen() {
     });
   }, []);
 
-  const renderItem = useCallback(
-    ({ item }: { item: (typeof visible)[number] }) => (
+  const renderTorrent = useCallback(
+    (item: TransferItem<TransferTelemetry> & { kind: 'torrent' }) => (
       <TransferCard
-        torrent={steadyRow(item)}
+        torrent={steadyRow(item.torrent)}
         selectionMode={selectionMode}
-        selected={selectedIds.has(selectionKey('t', item.id))}
+        selected={selectedIds.has(selectionKey('t', item.torrent.id))}
         onPress={onCardPress}
         onLongPress={startSelection}
         onPause={onPause}
         onResume={onResume}
         onKeepTrying={onKeepTrying}
+        onOpen={onOpenTorrent}
+        onResumeAnyway={onResumeAnyway}
       />
     ),
-    [selectionMode, selectedIds, onCardPress, startSelection, onPause, onResume, onKeepTrying],
+    [selectionMode, selectedIds, onCardPress, startSelection, onPause, onResume, onKeepTrying, onOpenTorrent, onResumeAnyway],
   );
-
-  // A new header element every render made the list re-render it on every telemetry tick.
-  const listHeader = useMemo(
-    () =>
-      shownDownloads.length > 0 ? (
-        <View style={styles.downloads}>
-          {shownDownloads.map((d) => (
-            <DownloadCard
-              key={d.id}
-              download={d}
-              onPress={onDownloadPress}
-              onAction={onDownloadAction}
-              selectionMode={selectionMode}
-              selected={selectedIds.has(selectionKey('d', d.id))}
-              onLongPress={startDownloadSelection}
-            />
-          ))}
-          {visible.length > 0 ? <Separator /> : null}
-        </View>
-      ) : undefined,
-    [shownDownloads, visible.length, styles, onDownloadPress, onDownloadAction, selectionMode, selectedIds, startDownloadSelection],
+  // One list: torrents and link downloads, ordered by the current sort.
+  const items = useMemo(() => mergeTransfers(visible, shownDownloads, sort), [visible, shownDownloads, sort]);
+  const renderItem = useCallback(
+    ({ item }: { item: TransferItem<TransferTelemetry> }) =>
+      item.kind === 'torrent' ? (
+        renderTorrent(item)
+      ) : (
+        <DownloadCard
+          download={item.download}
+          onPress={onDownloadPress}
+          onAction={onDownloadAction}
+          selectionMode={selectionMode}
+          selected={selectedIds.has(selectionKey('d', item.download.id))}
+          onLongPress={startDownloadSelection}
+        />
+      ),
+    [renderTorrent, onDownloadPress, onDownloadAction, selectionMode, selectedIds, startDownloadSelection],
   );
   const progressMotion = useMemo<ProgressMotion>(() => ({ active: focused, sweeps: LIST_SWEEPS }), [focused]);
 
@@ -560,7 +595,7 @@ export default function TransfersScreen() {
       ) : null}
 
       {nothingHere ? (
-        <TeachingEmptyState canPaste={!!clipboardMagnet && clipboardIsNew} onPaste={addClipboard} onOpenFile={openFile} onSearch={() => router.navigate('/search')} onBrowse={() => router.push('/browser')} />
+        <TeachingEmptyState canPaste={!!clipboardMagnet && clipboardIsNew} onType={goAdd} onPaste={addClipboard} onOpenFile={openFile} onSearch={() => router.navigate('/search')} onBrowse={() => router.push('/browser')} />
       ) : (
         <ProgressMotionContext.Provider value={progressMotion}>
           <FilterPills value={filter} counts={counts} onChange={setFilter} />
@@ -590,12 +625,12 @@ export default function TransfersScreen() {
             </View>
           ) : (
             <FlashList
-              data={visible}
-              keyExtractor={keyOfTorrent}
+              data={items}
+              keyExtractor={keyOfItem}
+              getItemType={typeOfItem}
               renderItem={renderItem}
               extraData={selectedIds}
               ItemSeparatorComponent={Separator}
-              ListHeaderComponent={listHeader}
               contentContainerStyle={styles.listContent}
               maintainVisibleContentPosition={NO_ANCHOR}
               showsVerticalScrollIndicator={false}
@@ -627,22 +662,13 @@ export default function TransfersScreen() {
         </>
       )}
 
-      {notice ? (
-        <View style={styles.notice} pointerEvents="box-none">
-          <Banner
-            tone="info"
-            title={notice.message}
-            actionLabel={notice.actionLabel}
-            onAction={notice.onAction}
-            onDismiss={notice.actionLabel ? undefined : dismissNotice}
-          />
-        </View>
-      ) : null}
-
       <DownloadSheet
         download={sheetDownload}
         onClose={() => setSheetDownloadId(null)}
         onRetry={(id) => void retryDownload(id)}
+        onPause={(id) => void pauseDownload(id)}
+        onResume={(id) => void resumeDownload(id)}
+        onResumeAnyway={resumeDownloadAnyway}
         onOpen={openDownload}
         onOpenFolder={openDownloadFolder}
         onShare={shareDownload}
@@ -659,7 +685,17 @@ export default function TransfersScreen() {
           removeTransfers(finished.torrents, finished.downloads);
         }}
       />
-      <SortSheet visible={sortOpen} sort={sort} onChange={changeSort} onClose={() => setSortOpen(false)} />
+      <SortSheet
+        visible={sortOpen}
+        sort={sort}
+        onChange={changeSort}
+        onClose={() => setSortOpen(false)}
+        finishedCount={finishedCount}
+        onClearFinished={() => {
+          setSortOpen(false);
+          setClearOpen(true);
+        }}
+      />
       <DeleteSheet visible={deleteOpen} count={selectedIds.size} bytes={selectedBytes} onClose={() => setDeleteOpen(false)} onConfirm={confirmDelete} />
     </View>
   );
@@ -690,13 +726,6 @@ const makeStyles = (c: ThemeColors) =>
     },
     fileError: { paddingHorizontal: spacing.lg, paddingBottom: spacing.sm },
     lowSpace: { paddingHorizontal: spacing.lg, paddingTop: spacing.sm },
-    notice: {
-      position: 'absolute',
-      left: spacing.lg,
-      right: spacing.lg,
-      bottom: spacing.lg + 56 + spacing.sm,
-    },
     noMatch: { flex: 1, justifyContent: 'center' },
-    downloads: { gap: CARD_GAP },
     listContent: { paddingTop: spacing.xs, paddingBottom: 96 },
   });

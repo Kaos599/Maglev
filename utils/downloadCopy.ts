@@ -10,6 +10,7 @@ export type DownloadTone = 'muted' | 'accent' | 'danger';
 export type DownloadActionKind =
   | 'pause'
   | 'resume'
+  | 'resumeAnyway'
   | 'retry'
   | 'restart'
   | 'newLink'
@@ -43,6 +44,7 @@ export const LAN_ADDRESS_TEXT = 'This address points to a device on your network
 export const LAN_ADDRESS_BODY = "If it's your own server, allow this device. Only do this for devices you trust.";
 export const POLICY_BLOCKED_TEXT = 'Blocked by your Wi-Fi-only or VPN setting.';
 export const PERMISSION_TEXT = "Maglev can't write to that folder.";
+export const WIFI_ANYWAY_NOTE = 'Just this one. Wi-Fi only stays on.';
 export const WIFI_CAPTION = 'Wi-Fi only is on in Settings → Network.';
 export const NOT_A_FILE_BODY =
   'This is a web page, not a file. On the page, long-press the download button, tap Copy link address, then paste it here.';
@@ -258,6 +260,8 @@ export function downloadCaption(d: DownloadSnapshot): string | null {
 const A = {
   pause: { kind: 'pause', icon: 'pause', label: 'Pause' },
   resume: { kind: 'resume', icon: 'play', label: 'Resume' },
+  resumeAnyway: { kind: 'resumeAnyway', icon: 'play', label: 'Resume anyway' },
+  resumeMobile: { kind: 'resumeAnyway', icon: 'play', label: 'Download now on mobile data' },
   retry: { kind: 'retry', icon: 'retry', label: 'Retry' },
   restart: { kind: 'restart', icon: 'retry', label: 'Restart' },
   allowDevice: { kind: 'allowDevice', icon: 'link', label: 'Allow this device' },
@@ -276,7 +280,9 @@ export function downloadActions(d: DownloadSnapshot): DownloadAction[] {
       return [A.pause];
     case 'paused':
       if (d.pausedBy === 'storage_unavailable') return [A.pickFolder];
-      if (d.pausedBy === 'wifi_only' || d.pausedBy === 'vpn_required') return [A.openSettings];
+      if (d.pausedBy === 'wifi_only') return [A.resumeMobile, A.openSettings];
+      if (d.pausedBy === 'vpn_required') return [A.openSettings];
+      if (d.pausedBy === 'battery' || d.pausedBy === 'charging_only' || d.pausedBy === 'schedule') return [A.resumeAnyway];
       if (isGovernancePause(d.pausedBy)) return [];
       return [A.resume];
     case 'needs_link':

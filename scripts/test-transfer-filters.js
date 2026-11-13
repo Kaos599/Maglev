@@ -45,9 +45,9 @@ async function main() {
   check('downloading adds links', c.downloading === 5);
   check('seeding counts torrents only', c.seeding === 1);
   check('paused', c.paused === 1);
-  check('done', c.done === 2);
+  check('done includes the seeding torrent (0.14)', c.done === 3);
   check('errors', c.errors === 2);
-  check('torrent-only call still works', m.countByFilter(torrents).all === 3 && m.countByFilter(torrents).done === 1);
+  check('torrent-only call still works', m.countByFilter(torrents).all === 3 && m.countByFilter(torrents).done === 2);
 
   if (failed) {
     console.error(`\n${failed} failed`);

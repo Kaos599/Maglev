@@ -51,7 +51,7 @@ async function main() {
   s = model.torrentStatus(torrent({ state: 'COMPLETED', finished: true, downloadedBytes: 1.2 * GB }), '—');
   check('done shows total, no progress line', s.lead === 'Done' && s.value === '1.2 GB' && !s.sub);
   s = model.torrentStatus(torrent({ state: 'SEEDING', finished: true }), '—');
-  check('seeding has no progress line', s.lead === 'Seeding' && !s.sub);
+  check('seeding has no progress line', s.lead === 'Done · Seeding' && !s.sub);
   s = model.torrentStatus(torrent({ state: 'PAUSED', pausedBy: 'user', downloadedBytes: 0 }), '—');
   check('paused with nothing downloaded has no progress line', !s.sub);
   check('progress percent uses included bytes', Math.round(model.torrentProgressPercent(torrent({ includedBytes: 824 * MB }))) === 50);
