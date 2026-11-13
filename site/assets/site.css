@@ -203,6 +203,7 @@ section { padding: 56px 0; }
 .me .cv.yes { color: var(--lime); font-weight: 700; }
 .cv.no { color: var(--muted); }
 .cv.partial { color: var(--copy); }
+.cv.soon { color: var(--muted); font-style: italic; }
 .cmp td { white-space: nowrap; }
 .cv.t { white-space: normal; color: var(--copy); }
 .cmp sup a { margin-left: 3px; font-size: 0.6875rem; color: var(--cyan); }

@@ -86,7 +86,7 @@ const PERSON_REF = { '@id': PERSON['@id'] };
 
 // ---------------------------------------------------------------- comparison data
 
-const CELL = { yes: 'Yes', no: 'No', partial: 'Partial' };
+const CELL = { yes: 'Yes', no: 'No', partial: 'Partial', 'not yet': 'Not yet' };
 const VERSION_ROW = 'min-android';
 
 /** Reads and checks compare.json. Returns null when it doesn't exist yet. */
@@ -120,11 +120,13 @@ function cellValue(row, appId) {
   // A version row keeps its text ("Not listed" there can't mean No); everywhere else unlisted means No.
   if (v == null || v === '' || (row.id !== VERSION_ROW && /^not listed$/i.test(String(v).trim()))) v = 'No';
   const key = String(v).trim().toLowerCase();
-  return CELL[key] ? { kind: key, text: CELL[key] } : { kind: 'text', text: String(v) };
+  if (!CELL[key]) return { kind: 'text', text: String(v) };
+  return { kind: key === 'not yet' ? 'soon' : key, text: CELL[key] };
 }
 const MARK = {
   yes: icon('check', 'px s'),
   no: icon('close', 'px s'),
+  soon: icon('clock', 'px s'),
   partial: '<svg class="px s" viewBox="0 0 24 24" width="24" height="24" aria-hidden="true" focusable="false"><path fill="currentColor" d="M5 5h14v14H5zm2 2v10h5V7z"/></svg>',
 };
 const renderCell = (c) => (c.kind === 'text' ? `<span class="cv t">${esc(c.text)}</span>` : `<span class="cv ${c.kind}">${MARK[c.kind]}${c.text}</span>`);
@@ -540,7 +542,7 @@ ${header(A, HOME, { current: 'compare' })}
 <section class="cmp-full" aria-labelledby="table-title">
   <div class="wrap">
     <h2 id="table-title" class="h2">Feature by feature</h2>
-    <p class="section-lede">${MARK.yes.replace('class="px s"', 'class="px s inl"')} Yes, ${MARK.partial.replace('class="px s"', 'class="px s inl"')} Partial, ${MARK.no.replace('class="px s"', 'class="px s inl"')} No. Anything an app's own pages don't list counts as No. The table scrolls sideways on small screens.</p>
+    <p class="section-lede">${MARK.yes.replace('class="px s"', 'class="px s inl"')} Yes, ${MARK.partial.replace('class="px s"', 'class="px s inl"')} Partial, ${MARK.no.replace('class="px s"', 'class="px s inl"')} No, ${MARK.soon.replace('class="px s"', 'class="px s inl"')} Not yet (Maglev doesn't do this today; it may come in a later version). Anything an app's own pages don't list counts as No. The table scrolls sideways on small screens.</p>
     ${table}
 ${foot.length ? `    <ol class="notes">\n${foot.map((f) => `      <li id="note-${f.n}"><b>${esc(f.app)}, ${esc(f.row)}:</b> ${md(f.text)} <a href="#ref-${f.n}" aria-label="Back to the table">↩</a></li>`).join('\n')}\n    </ol>` : ''}
     <h3 class="src-h">Where each answer comes from</h3>
