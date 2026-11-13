@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/brand/readme-header.svg" alt="Maglev, a fast, minimal downloader for Android" width="100%">
+  <img src="assets/brand/readme-header.svg" alt="Maglev: videos, links and torrents in one small Android app" width="100%">
 </p>
 
 <p align="center">

@@ -33,6 +33,10 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/')
         run: node scripts/bump-version.js check "${{ github.ref_name }}"
 
+      - name: Release notes exist for this version (release-notes/<version>.md)
+        if: startsWith(github.ref, 'refs/tags/')
+        run: node scripts/release-notes.js build "${{ github.ref_name }}" > /dev/null
+
       - name: Find and download the CI APKs for this commit
         id: find
         # Never fail the release because reuse was not possible; the build job is the fallback.
@@ -273,6 +277,15 @@ jobs:
     permissions:
       contents: write
     steps:
+      # Only for release-notes/ and scripts/release-notes.js; the APKs come from the jobs above.
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            release-notes
+            scripts/release-notes.js
+            app.json
+
       - name: Download APKs
         uses: actions/download-artifact@v4
         with:
@@ -305,26 +318,15 @@ jobs:
             echo "No APK set for this release"
           fi
 
+      - name: Write release notes
+        run: node scripts/release-notes.js build "${{ github.ref_name }}" > release-body.md
+
       - name: Create GitHub Release & Upload APKs
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.ref_name }}
           name: Maglev ${{ github.ref_name }}
-          body: |
-            # Maglev ${{ github.ref_name }}
-
-            Minimal Android torrent client. Beta build.
-
-            ### Which APK?
-            * Most phones: `arm64-v8a`.
-            * Older 32-bit phones: `armeabi-v7a`.
-            * Not sure: `universal` (larger, works everywhere).
-            * `x86_64` is for emulators and Chromebooks.
-
-            ### Install
-            1. Download one APK from the Assets list below.
-            2. Open it on your Android device to install.
-            3. Allow notifications so downloads keep running in the background.
+          body_path: release-body.md
           files: |
             build-artifacts/Maglev-${{ github.ref_name }}-universal.apk
             build-artifacts/Maglev-${{ github.ref_name }}-arm64-v8a.apk
