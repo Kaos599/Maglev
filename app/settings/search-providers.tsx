@@ -1,20 +1,21 @@
 import React, { useCallback, useMemo, useState } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Stack } from 'expo-router';
 import { useTheme } from '../../context/ThemeContext';
 import { ThemeColors, spacing, type } from '../../constants/theme';
-import { ListRow, SectionHeader, Toggle } from '../../components/ui';
+import { Chip, ListRow, SectionHeader, Toggle } from '../../components/ui';
 import { Caption, Card, ChipGroup, SettingsPage } from '../../components/settings/SettingsParts';
 import { ProviderRow } from '../../components/search-providers/ProviderRow';
 import { ProviderSheet, TestOutcome } from '../../components/search-providers/ProviderSheet';
 import { TorznabDraft, TorznabSheet } from '../../components/search-providers/TorznabSheet';
-import { ProviderInfo, TORZNAB_PREFIX, allProviderInfo, coverage, formatSeconds } from '../../components/search/meta';
+import { CATEGORY_LABEL, ProviderInfo, TORZNAB_PREFIX, allProviderInfo, coverage, formatSeconds } from '../../components/search/meta';
 import { loadExtraProviders } from '../../components/search/extra';
 import { clearCookies } from 'maglev-engine';
 import { SearchPrefs, clearSiteChecks, deleteTorznabApiKey, setTorznabApiKey, useSearchPrefs } from '../../utils/prefs/search';
 import { CloudflareSolverSheet } from '../../components/search/CloudflareSolverSheet';
 import { testProvider } from '../../utils/search/aggregate';
-import type { Category } from '../../utils/search/types';
+import { CATEGORY_ORDER, type Category } from '../../utils/search/types';
+import { providerCovers } from '../../utils/search/providerFilter';
 
 const WAITS = [
   { value: 5, label: '5 s' },
@@ -42,6 +43,7 @@ export default function SearchProvidersSettings() {
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const [prefs, update] = useSearchPrefs();
   const [openId, setOpenId] = useState<string | null>(null);
+  const [category, setCategory] = useState<Category>('all');
   const [torznabOpen, setTorznabOpen] = useState(false);
   const [tests, setTests] = useState<Record<string, TestOutcome>>({});
   const [testing, setTesting] = useState<string | null>(null);
@@ -60,6 +62,9 @@ export default function SearchProvidersSettings() {
     () => all.filter((p) => !prefs.enabled.includes(p.id) && (prefs.adult || !p.nsfw)),
     [all, prefs.enabled, prefs.adult],
   );
+  // The category filter narrows On and Off; sources needing a check always show.
+  const shownOn = useMemo(() => onList.filter((p) => providerCovers(p, category)), [onList, category]);
+  const shownOff = useMemo(() => offList.filter((p) => providerCovers(p, category)), [offList, category]);
 
   const setEnabled = useCallback(
     (id: string, on: boolean) =>
@@ -239,10 +244,19 @@ export default function SearchProvidersSettings() {
       </View>
 
       <View style={styles.section}>
+        <SectionHeader title="Show sources for" />
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterRow} accessibilityRole="radiogroup" accessibilityLabel="Show sources for">
+          {CATEGORY_ORDER.filter((c) => c !== 'adult' || prefs.adult).map((c) => (
+            <Chip key={c} label={CATEGORY_LABEL[c]} role="radio" selected={category === c} onPress={() => setCategory(c)} />
+          ))}
+        </ScrollView>
+      </View>
+
+      <View style={styles.section}>
         <SectionHeader title={`On · ${prefs.enabled.length}`} />
         <Card>
-          {onList.length === 0 ? <Text style={styles.empty}>Nothing is on. Turn on a source below.</Text> : null}
-          {onList.map((p, i) => {
+          {onList.length === 0 ? <Text style={styles.empty}>Nothing is on. Turn on a source below.</Text> : shownOn.length === 0 ? <Text style={styles.empty}>No source that's on covers {CATEGORY_LABEL[category]}.</Text> : null}
+          {shownOn.map((p, i) => {
             const n = note(p);
             return (
               <ProviderRow
@@ -261,11 +275,11 @@ export default function SearchProvidersSettings() {
         </Card>
       </View>
 
-      {offList.length > 0 ? (
+      {shownOff.length > 0 ? (
         <View style={styles.section}>
           <SectionHeader title="Off" />
           <Card>
-            {offList.map((p, i) => {
+            {shownOff.map((p, i) => {
               const n = note(p);
               return (
                 <ProviderRow
@@ -334,6 +348,7 @@ export default function SearchProvidersSettings() {
 
 const makeStyles = (c: ThemeColors) =>
   StyleSheet.create({
+    filterRow: { gap: spacing.sm, paddingVertical: spacing.xs },
     section: { gap: spacing.sm },
     empty: { ...type.body, fontSize: 13, color: c.textMuted, padding: spacing.lg },
   });
