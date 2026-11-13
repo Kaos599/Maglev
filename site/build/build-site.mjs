@@ -350,7 +350,7 @@ function teaser(d) {
   const others = d.apps.filter((a) => a.id !== 'maglev');
   const picked = [...prefer.map((id) => others.find((a) => a.id === id)).filter(Boolean), ...others].filter((a, i, all) => all.indexOf(a) === i).slice(0, 4);
   const apps = [d.apps.find((a) => a.id === 'maglev'), ...picked];
-  const want = ['torrents', 'plain-links', 'browser', 'hls', 'torrent-search', 'rss', 'ai', 'open-source', 'ads'];
+  const want = ['torrents', 'plain-links', 'torrent-search', 'browser', 'hls', 'rss', 'ai', 'no-ads', 'open-source'];
   const rows = want.map((id) => d.rows.find((x) => x.id === id)).filter(Boolean);
   for (const r of d.rows) if (rows.length < 9 && !rows.includes(r)) rows.push(r);
   return compareTable(d, apps, rows, { caption: `Maglev compared with ${picked.map((a) => a.name).join(', ')}` }).html;
