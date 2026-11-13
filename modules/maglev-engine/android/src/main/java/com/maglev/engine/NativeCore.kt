@@ -41,6 +41,7 @@ object NativeCore {
     @JvmStatic external fun nativeGetDetail(id: String): String
     @JvmStatic external fun nativePause(id: String): String
     @JvmStatic external fun nativeResume(id: String): String
+    @JvmStatic external fun nativeResumeAnyway(id: String): String
     @JvmStatic external fun nativeRecheck(id: String): String
     @JvmStatic external fun nativeDelete(id: String, deleteFiles: Boolean): String
     @JvmStatic external fun nativeSetIncludedFiles(id: String, indicesJson: String): String
@@ -67,6 +68,7 @@ object NativeCore {
     @JvmStatic external fun nativeAddDownload(url: String, optionsJson: String): String
     @JvmStatic external fun nativePauseDownload(id: String): String
     @JvmStatic external fun nativeResumeDownload(id: String): String
+    @JvmStatic external fun nativeResumeDownloadAnyway(id: String): String
     @JvmStatic external fun nativeRetryDownload(id: String): String
     @JvmStatic external fun nativeRemoveDownload(id: String, deleteFiles: Boolean): String
     @JvmStatic external fun nativeRefreshDownloadUrl(id: String, url: String, optionsJson: String): String

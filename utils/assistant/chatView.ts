@@ -273,6 +273,8 @@ const SETTINGS_PATH: Record<NonNullable<Extract<ScreenTarget, { screen: 'setting
   assistant: '/settings/assistant',
   search_providers: '/settings/search-providers',
   schedule: '/settings/scheduling',
+  speed: '/settings/speed',
+  notifications: '/settings/notifications',
 };
 
 /**

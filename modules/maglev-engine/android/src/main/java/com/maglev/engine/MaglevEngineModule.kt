@@ -6,6 +6,7 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
+import com.maglev.engine.appicon.AppIconManager
 import com.maglev.engine.browser.BlocklistException
 import com.maglev.engine.browser.BlocklistInfo
 import com.maglev.engine.browser.BlocklistStore
@@ -112,6 +113,7 @@ class MaglevEngineModule : Module() {
         }
 
         OnDestroy {
+            context?.let { AppIconManager.applyPending(it) }
             EngineHost.emitter = null
             pendingPick?.resolve(mapOf("ok" to true, "cancelled" to true))
             pendingPick = null
@@ -119,6 +121,11 @@ class MaglevEngineModule : Module() {
 
         OnActivityEntersForeground {
             EngineHost.onForeground()
+        }
+
+        // The launcher icon switch waits until the app is out of sight (NATIVE_CONTRACT section 26).
+        OnActivityEntersBackground {
+            context?.let { AppIconManager.applyPending(it) }
         }
 
         // region Engine
@@ -162,6 +169,9 @@ class MaglevEngineModule : Module() {
         AsyncFunction("resumeDownload") { id: String, promise: Promise ->
             engine(promise) { EngineHost.resumeDownload(id) }
         }
+        AsyncFunction("resumeDownloadAnyway") { id: String, promise: Promise ->
+            engine(promise) { EngineHost.resumeDownloadAnyway(id) }
+        }
         AsyncFunction("retryDownload") { id: String, promise: Promise ->
             engine(promise) { EngineHost.retryDownload(id) }
         }
@@ -197,6 +207,9 @@ class MaglevEngineModule : Module() {
         }
         AsyncFunction("resume") { id: String, promise: Promise ->
             engine(promise) { EngineHost.call { NativeCore.nativeResume(id) }.also { EngineHost.pollNow() } }
+        }
+        AsyncFunction("resumeAnyway") { id: String, promise: Promise ->
+            engine(promise) { EngineHost.resumeAnyway(id) }
         }
         AsyncFunction("recheck") { id: String, promise: Promise ->
             io(promise) { EngineHost.call { NativeCore.nativeRecheck(id) } }
@@ -349,6 +362,20 @@ class MaglevEngineModule : Module() {
         AsyncFunction("requestNotifications") { promise: Promise ->
             requestRuntimePermission(promise, Manifest.permission.POST_NOTIFICATIONS, Build.VERSION_CODES.TIRAMISU, true)
         }
+        AsyncFunction("getAppIcon") { promise: Promise ->
+            val c = context
+            promise.resolve(
+                if (c == null) Json.failure("ENGINE_UNAVAILABLE", "Module is not attached")
+                else mapOf("ok" to true, "id" to AppIconManager.current(c)),
+            )
+        }
+        AsyncFunction("setAppIcon") { id: String, promise: Promise ->
+            val err = AppIconManager.request(id)
+            promise.resolve(
+                if (err == null) mapOf("ok" to true, "id" to id, "appliesWhenLeaving" to true)
+                else Json.failure("INVALID_ARGUMENT", err),
+            )
+        }
         AsyncFunction("openBatterySettings") { promise: Promise ->
             val c = context
             val err = if (c == null) "Module is not attached" else PermissionHelper.openBatterySettings(c)
@@ -463,6 +490,7 @@ class MaglevEngineModule : Module() {
                         batteryCutoffPct = (rules["batteryCutoffPct"] as? Number)?.toInt() ?: 0,
                         autoExitOnComplete = rules["autoExitOnComplete"] == true,
                         vpnOnly = rules["vpnOnly"] == true,
+                        seedOnMobileData = rules["seedOnMobileData"] == true,
                     ),
                 )
             }

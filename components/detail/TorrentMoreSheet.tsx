@@ -1,11 +1,13 @@
 import React from 'react';
-import type { TorrentState } from 'maglev-engine';
+import type { PausedBy, TorrentState } from 'maglev-engine';
 import { ListRow, Sheet } from '../ui';
 
 interface Props {
   visible: boolean;
   onClose: () => void;
   state: TorrentState;
+  /** `seed_limit` turns Resume into Seed again. */
+  pausedBy?: PausedBy | null;
   /** Whole seconds until "Find more peers" is allowed again, or 0. */
   retryInSecs: number;
   onTogglePause: () => void;
@@ -31,6 +33,7 @@ export function TorrentMoreSheet({
   visible,
   onClose,
   state,
+  pausedBy,
   retryInSecs,
   onTogglePause,
   onRecheck,
@@ -58,7 +61,7 @@ export function TorrentMoreSheet({
   return (
     <Sheet visible={visible} onClose={onClose} title="Torrent options">
       <ListRow
-        title={running ? 'Pause' : 'Resume'}
+        title={running ? 'Pause' : state === 'PAUSED' && pausedBy === 'seed_limit' ? 'Seed again' : 'Resume'}
         icon={running ? 'pause' : 'play'}
         disabled={!canTogglePause}
         onPress={onTogglePause}

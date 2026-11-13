@@ -10,9 +10,12 @@ export interface SortSheetProps {
   sort: TransferSort;
   onChange: (next: TransferSort) => void;
   onClose: () => void;
+  /** When more than 0, a Clear finished row shows under the sort choices, so it works from every filter. */
+  finishedCount?: number;
+  onClearFinished?: () => void;
 }
 
-export function SortSheet({ visible, sort, onChange, onClose }: SortSheetProps) {
+export function SortSheet({ visible, sort, onChange, onClose, finishedCount = 0, onClearFinished }: SortSheetProps) {
   return (
     <Sheet visible={visible} onClose={onClose} title="Sort by">
       <View style={styles.dir}>
@@ -36,6 +39,9 @@ export function SortSheet({ visible, sort, onChange, onClose }: SortSheetProps) 
           }}
         />
       ))}
+      {finishedCount > 0 && onClearFinished ? (
+        <ListRow title="Clear finished" subtitle={`${finishedCount} done`} icon="trash" onPress={onClearFinished} />
+      ) : null}
     </Sheet>
   );
 }

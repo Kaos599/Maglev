@@ -9,6 +9,7 @@ import { ThemeProvider, useTheme } from '../context/ThemeContext';
 import { EngineProvider, useMaglevEngine } from '../context/EngineContext';
 import { FONT_NAMES } from '../constants/fontStyles';
 import NavigationBarSync from '../components/NavigationBarSync';
+import { NoticeHost } from '../components/ui/NoticeHost';
 import { syncScheduleToNative } from '../utils/prefs/schedule';
 import { syncFeedAutomationToNative } from '../utils/prefs/feedAutomation';
 
@@ -120,13 +121,16 @@ function AppNavigation() {
           <Stack.Screen name="settings/feeds" />
           <Stack.Screen name="settings/interface" />
           <Stack.Screen name="settings/network" />
+          <Stack.Screen name="settings/notifications" />
           <Stack.Screen name="settings/power" />
           <Stack.Screen name="settings/queue" />
           <Stack.Screen name="settings/scheduling" />
           <Stack.Screen name="settings/search-providers" />
+          <Stack.Screen name="settings/speed" />
           <Stack.Screen name="settings/storage" />
         </Stack.Protected>
       </Stack>
+      {main ? <NoticeHost /> : null}
     </>
   );
 }

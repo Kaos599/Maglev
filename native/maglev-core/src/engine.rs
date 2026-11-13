@@ -725,6 +725,7 @@ impl MaglevEngine {
             health: m.health.clone(),
             included_bytes: included_bytes(h),
             resolving_secs: None,
+            allowed_anyway: m.allowed_anyway,
         }
     }
 
@@ -769,6 +770,7 @@ impl MaglevEngine {
             health: m.health.clone(),
             included_bytes: e.total_bytes,
             resolving_secs: None,
+            allowed_anyway: m.allowed_anyway,
         }
     }
 
@@ -814,6 +816,7 @@ impl MaglevEngine {
             health: m.health.clone(),
             included_bytes: 0,
             resolving_secs: resolving,
+            allowed_anyway: false,
         }
     }
 
@@ -1519,6 +1522,9 @@ impl MaglevEngine {
                 .update(&id, |m| {
                     m.paused_by = Some(PAUSED_BY_USER.to_string());
                     m.queued = false;
+                    // A pause by the user ends "Resume anyway" (section 25).
+                    m.allowed_anyway = false;
+                    m.allowed_anyway_seeding = false;
                 })
                 .is_some();
             if !found {
@@ -1533,6 +1539,16 @@ impl MaglevEngine {
     }
 
     pub fn resume(&self, id: &str) -> Result<(), EngineError> {
+        self.resume_with(id, false)
+    }
+
+    /// "Resume anyway" (section 25): resume, and exempt the torrent from the rule tags until it finishes,
+    /// is removed or the user pauses it.
+    pub fn resume_anyway(&self, id: &str) -> Result<(), EngineError> {
+        self.resume_with(id, true)
+    }
+
+    fn resume_with(&self, id: &str, allow: bool) -> Result<(), EngineError> {
         let (id, hash) = Self::parse_id(id)?;
         self.reject_if_moving(&id)?;
         // A health tag keeps a torrent stopped (section 18.2). Resume does not override it, except a
@@ -1586,8 +1602,13 @@ impl MaglevEngine {
                     meta.insert(&id, default_meta(hh, now_secs()));
                 }
             }
+            let finished_now = h.as_ref().map(|hh| real_finished(hh, &hh.stats())).unwrap_or(false);
             let found = meta
                 .update(&id, |m| {
+                    if allow {
+                        m.allowed_anyway = true;
+                        m.allowed_anyway_seeding = finished_now;
+                    }
                     if m.paused_by.as_deref() == Some(PAUSED_BY_SEED_LIMIT) {
                         m.limits_waived = true;
                     }
@@ -2835,6 +2856,10 @@ impl MaglevEngine {
                 let mut changed = false;
                 let Some(m) = meta.get_mut(&id) else { continue };
                 let before = m.clone();
+                // "Resume anyway" ends when the download finishes (section 25).
+                if m.allowed_anyway && stats.finished && !m.allowed_anyway_seeding {
+                    m.allowed_anyway = false;
+                }
 
                 let (uploaded, base, last) =
                     uploaded_total(m.uploaded_base, m.last_uploaded_seen, stats.uploaded_bytes);
@@ -2897,6 +2922,7 @@ impl MaglevEngine {
                     seeding_secs: (m.seeding_ms / 1000) as i64,
                     limits_waived: m.limits_waived,
                     health: m.health.clone(),
+                    exempt: m.allowed_anyway,
                 });
                 if *m != before {
                     changed = true;
@@ -3592,6 +3618,10 @@ impl MaglevEngine {
 
     pub fn resume_download(&self, id: &str) -> Result<(), EngineError> {
         self.downloads.resume(id)
+    }
+
+    pub fn resume_download_anyway(&self, id: &str) -> Result<(), EngineError> {
+        self.downloads.resume_anyway(id)
     }
 
     pub fn retry_download(&self, id: &str) -> Result<(), EngineError> {

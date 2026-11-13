@@ -316,6 +316,9 @@ export class MaglevEngineBridge implements MaglevEngineApi {
   public resume(id: string): Promise<EngineResult> {
     return this.route('resume', id);
   }
+  public resumeAnyway(id: string): Promise<EngineResult> {
+    return this.route('resumeAnyway', id);
+  }
   public recheck(id: string): Promise<EngineResult> {
     return this.route('recheck', id);
   }
@@ -450,6 +453,9 @@ export class MaglevEngineBridge implements MaglevEngineApi {
   public resumeDownload(id: string): Promise<EngineResult> {
     return this.route('resumeDownload', id);
   }
+  public resumeDownloadAnyway(id: string): Promise<EngineResult> {
+    return this.route('resumeDownloadAnyway', id);
+  }
   public retryDownload(id: string): Promise<EngineResult> {
     return this.route('retryDownload', id);
   }
@@ -516,6 +522,17 @@ export class MaglevEngineBridge implements MaglevEngineApi {
   }
   public async openBatterySettings(): Promise<void> {
     if (this.usingNative) await this.callNative('openBatterySettings');
+  }
+  public async getAppIcon(): Promise<string> {
+    if (this.usingNative) {
+      const res = await this.callNative<{ ok?: boolean; id?: string }>('getAppIcon');
+      return res && res.ok !== false && typeof res.id === 'string' ? res.id : 'teal';
+    }
+    return this.impl ? this.impl.getAppIcon() : 'teal';
+  }
+  public async setAppIcon(id: string): Promise<EngineResult> {
+    if (this.usingNative) return this.callNative<EngineResult>('setAppIcon', id);
+    return this.impl ? this.impl.setAppIcon(id) : { ok: true };
   }
   public requestLegacyStorage(): Promise<EngineResult> {
     return this.permissionCall('requestLegacyStorage');

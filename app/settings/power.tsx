@@ -17,7 +17,7 @@ export default function PowerSettings() {
   const p = settings.power;
   const set = (patch: Partial<typeof p>) => updateSettings((prev) => ({ power: { ...prev.power, ...patch } }));
   return (
-    <SettingsPage title="POWER">
+    <SettingsPage title="Power">
       <Stack.Screen options={{ headerShown: false }} />
       <Card>
         <ListRow

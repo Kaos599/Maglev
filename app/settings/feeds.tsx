@@ -98,7 +98,7 @@ export default function AutoDownloadSettings() {
   };
 
   return (
-    <SettingsPage title="AUTO-DOWNLOAD">
+    <SettingsPage title="Auto-download">
       <Stack.Screen options={{ headerShown: false }} />
       <Card>
         <ListRow

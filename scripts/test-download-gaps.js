@@ -24,8 +24,8 @@ async function main() {
     [t('a', 'COMPLETED'), t('b', 'SEEDING'), t('c', 'PAUSED', 'seed_limit'), t('d', 'PAUSED', 'user'), t('e', 'DOWNLOADING'), t('f', 'ERROR')],
     [d('x', 'finished'), d('y', 'downloading'), d('z', 'error'), d('w', 'paused')],
   );
-  check('finished torrents: completed and seed-limit only', JSON.stringify(r.torrents) === '["a","c"]', JSON.stringify(r.torrents));
-  check('seeding torrents are kept', !r.torrents.includes('b'));
+  check('finished torrents: completed, seeding and seed-limit (0.14)', JSON.stringify(r.torrents) === '["a","b","c"]', JSON.stringify(r.torrents));
+  check('seeding torrents are cleared too (0.14)', r.torrents.includes('b'));
   check('finished link downloads only', JSON.stringify(r.downloads) === '["x"]', JSON.stringify(r.downloads));
   check('nothing finished gives empty lists', finishedTransfers([t('a', 'DOWNLOADING')], [d('x', 'paused')]).torrents.length === 0);
 

@@ -203,7 +203,7 @@ export const banners = {
 // ---------------------------------------------------------------------------------------------
 export const empty = {
   transfers: {
-    none: { title: 'No downloads yet', body: 'Paste a link or magnet, open a .torrent file, or find something to download.' },
+    none: { title: 'No transfers yet', body: 'Type or paste a link, open a .torrent file, or find something to download.' },
     noMatch: { title: 'No matching transfers', body: 'Try a different search.' },
     noneInFilter: (filter: string | number) => ({
       title: `No ${toName(filter).toLowerCase()} transfers`,
@@ -232,7 +232,7 @@ export const empty = {
     readFailed: { title: "Couldn't read this torrent" },
   },
   addDownload: {
-    waitingForNetwork: { title: 'Waiting for a network' },
+    waitingForNetwork: { title: 'Waiting for Wi-Fi' },
     deviceOnNetwork: { title: 'A device on your network' },
     badLink: { title: "Couldn't use this link" },
   },
@@ -332,4 +332,28 @@ export const fontStyleCopy = {
     { value: 'retro', title: 'Retro', description: 'Pixel titles and fixed-width numbers, like an old terminal.' },
     { value: 'mono', title: 'Mono', description: 'Fixed-width titles, names and numbers. Labels and text stay easy to read.' },
   ],
+} as const;
+
+/** Settings > Interface > Tabs. */
+export const tabsCopy = {
+  label: 'Tabs',
+  hint: 'Choose which tabs show and their order. Applies as soon as you change it.',
+  alwaysShown: 'Always shown',
+  assistantNote: 'Turn the Assistant on in Settings to add its tab here.',
+  names: {
+    index: 'Transfers',
+    search: 'Search',
+    feeds: 'Feeds',
+    assistant: 'Assistant',
+    browse: 'Browser',
+    settings: 'Settings',
+  },
+} as const;
+
+/** Settings > Appearance > App icon. The hint is linted like a banner body: at most 16 words, ends with a period. */
+export const appIconCopy = {
+  label: 'App icon',
+  hint: 'Changes when you leave Maglev. Your home screen may take a moment to update.',
+  /** "Teal app icon, selected" */
+  a11y: (name: string, selected: boolean) => `${name} app icon${selected ? ', selected' : ''}`,
 } as const;

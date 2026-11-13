@@ -45,6 +45,10 @@ pub struct TorrentMeta {
     /// Highest verified byte count seen; used to tell "never started" from "files were deleted".
     pub max_progress_bytes: u64,
     pub limits_waived: bool,
+    /// "Resume anyway" (contract section 25): the exemptable rule tags do not pause this torrent.
+    pub allowed_anyway: bool,
+    /// The exemption was granted while the torrent was already complete (seeding), so finishing does not clear it.
+    pub allowed_anyway_seeding: bool,
     pub sequential: bool,
     pub last_error: Option<ErrorInfo>,
     pub pending: Option<PendingAdd>,

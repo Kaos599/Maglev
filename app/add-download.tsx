@@ -209,7 +209,7 @@ export default function AddDownloadScreen() {
   // ---------- Probing ----------
   if (phase === 'probing') {
     return (
-      <Screen title="Add download" onBack={close}>
+      <Screen title="Add a link" onBack={close}>
         <View style={styles.centered}>
           <Text style={styles.heading}>Checking the link…</Text>
           <Button label="Cancel" variant="ghost" onPress={() => { token.current++; setPhase('input'); }} />
@@ -221,11 +221,12 @@ export default function AddDownloadScreen() {
   // ---------- Error ----------
   if (phase === 'error' && errorView?.primary === 'blocked') {
     return (
-      <Screen title="Add download" onBack={close}>
+      <Screen title="Add a link" onBack={close}>
         <EmptyBlock
           icon="warning"
           error
-          title={empty.addDownload.waitingForNetwork.title}
+          // BLOCKED comes from Wi-Fi only or from the VPN rule; only the first is "waiting for Wi-Fi".
+          title={settings.network.wifiOnly ? empty.addDownload.waitingForNetwork.title : 'Blocked by your network settings'}
           body={errorView.body}
           primary={{ label: 'Open settings', onPress: () => router.push(actionRoute('openNetworkSettings') ?? '/settings/network') }}
           secondary={{ label: 'Add anyway', onPress: () => void start(true) }}
@@ -235,7 +236,7 @@ export default function AddDownloadScreen() {
   }
   if (phase === 'error' && errorView?.primary === 'allowDevice') {
     return (
-      <Screen title="Add download" onBack={close}>
+      <Screen title="Add a link" onBack={close}>
         <EmptyBlock
           icon="warning"
           error
@@ -249,7 +250,7 @@ export default function AddDownloadScreen() {
   }
   if (phase === 'error') {
     return (
-      <Screen title="Add download" onBack={close}>
+      <Screen title="Add a link" onBack={close}>
         <EmptyBlock
           icon="warning"
           error
@@ -278,7 +279,7 @@ export default function AddDownloadScreen() {
     const size = probe.size;
     const mobileNote = mobileDataLine(onMeteredNetwork, settings.network.wifiOnly, size);
     return (
-      <Screen title="Add download" onBack={close} scroll contentStyle={styles.content}>
+      <Screen title="Add a link" onBack={close} scroll contentStyle={styles.content}>
         <View style={[styles.nameRow, nameInvalid ? styles.fieldInvalid : null]}>
           <TextInput
             value={baseName}
@@ -322,7 +323,7 @@ export default function AddDownloadScreen() {
   // ---------- Input ----------
   const canSubmit = text.trim().length > 0;
   return (
-    <Screen title="Add download" onBack={close} scroll contentStyle={styles.content}>
+    <Screen title="Add a link" onBack={close} scroll contentStyle={styles.content}>
       <Text style={styles.label}>Link to a file</Text>
       <TextInput
         value={text}
@@ -345,7 +346,7 @@ export default function AddDownloadScreen() {
       <View style={styles.gap}>
         <Button label="Get info" size="lg" fullWidth disabled={!canSubmit} onPress={() => void submit(text)} />
       </View>
-      <StreamSheet item={streamItem} onClose={() => { setStreamItem(null); close(); }} onCopyLink={(u) => { void Clipboard.setStringAsync(u); }} />
+      <StreamSheet item={streamItem} onClose={() => setStreamItem(null)} onStarted={() => { setStreamItem(null); close(); }} onCopyLink={(u) => { void Clipboard.setStringAsync(u); }} />
     </Screen>
   );
 }

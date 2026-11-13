@@ -77,7 +77,7 @@ export default function SchedulingSettings() {
   };
 
   return (
-    <SettingsPage title="SCHEDULING">
+    <SettingsPage title="Scheduling">
       <Stack.Screen options={{ headerShown: false }} />
       <Card>
         <ListRow

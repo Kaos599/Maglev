@@ -206,6 +206,19 @@ pub extern "system" fn Java_com_maglev_engine_NativeCore_nativeResume(
 }
 
 #[no_mangle]
+pub extern "system" fn Java_com_maglev_engine_NativeCore_nativeResumeAnyway(
+    mut env: JNIEnv,
+    _class: JClass,
+    id: JString,
+) -> jstring {
+    let out = match read_str(&mut env, &id) {
+        Some(id) => guarded(|| with_engine(|e| result_envelope(e.resume_anyway(&id)))),
+        None => bad_argument(),
+    };
+    reply(&mut env, &out)
+}
+
+#[no_mangle]
 pub extern "system" fn Java_com_maglev_engine_NativeCore_nativeRecheck(
     mut env: JNIEnv,
     _class: JClass,
@@ -635,6 +648,19 @@ pub extern "system" fn Java_com_maglev_engine_NativeCore_nativeResumeDownload(
 ) -> jstring {
     let out = match read_str(&mut env, &id) {
         Some(id) => guarded(|| with_engine(|e| result_envelope(e.resume_download(&id)))),
+        None => bad_argument(),
+    };
+    reply(&mut env, &out)
+}
+
+#[no_mangle]
+pub extern "system" fn Java_com_maglev_engine_NativeCore_nativeResumeDownloadAnyway(
+    mut env: JNIEnv,
+    _class: JClass,
+    id: JString,
+) -> jstring {
+    let out = match read_str(&mut env, &id) {
+        Some(id) => guarded(|| with_engine(|e| result_envelope(e.resume_download_anyway(&id)))),
         None => bad_argument(),
     };
     reply(&mut env, &out)

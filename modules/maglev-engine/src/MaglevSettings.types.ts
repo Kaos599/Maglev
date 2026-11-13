@@ -29,6 +29,8 @@ export interface NetworkSettings {
   wifiOnly: boolean;
   /** NATIVE_CONTRACT 21: pause while the active network is not a VPN. */
   vpnOnly: boolean;
+  /** NATIVE_CONTRACT 25.2: keep seeding on mobile data. Default false: seeding waits for Wi-Fi. */
+  seedOnMobileData: boolean;
   ssidWhitelistEnabled: boolean;
   allowedSsids: string[];
   currentSsid?: string;
@@ -153,6 +155,7 @@ export const DEFAULT_SETTINGS: MaglevSettings = {
   network: {
     wifiOnly: false,
     vpnOnly: false,
+    seedOnMobileData: false,
     ssidWhitelistEnabled: false,
     allowedSsids: [],
     networkType: 'WIFI',

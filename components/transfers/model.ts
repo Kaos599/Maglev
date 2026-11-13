@@ -2,6 +2,7 @@ import type { DownloadSnapshot, TorrentTelemetry } from 'maglev-engine';
 import type { SortKey, TransferSort } from '../../utils/prefs/transfers';
 import { formatBytes, formatSpeed } from '../../constants/format.ts';
 import { healthLabel, resolvingLine } from '../detail/fileHealthMachine.ts';
+import { downloadProgress } from '../../utils/downloadCopy.ts';
 
 export type TransferFilter = 'all' | 'downloading' | 'seeding' | 'paused' | 'done' | 'errors';
 
@@ -25,7 +26,7 @@ export const SORT_LABELS: Record<SortKey, string> = {
   ratio: 'Ratio',
 };
 
-/** Paused with `seed_limit` means the torrent finished seeding, so it counts as Done. */
+/** Done means the files are all here: completed, seeding, finished seeding (`seed_limit`) or seeding that waits for Wi-Fi (`seed_metered`). */
 export function matchesFilter(t: TorrentTelemetry, f: TransferFilter): boolean {
   switch (f) {
     case 'all':
@@ -35,9 +36,9 @@ export function matchesFilter(t: TorrentTelemetry, f: TransferFilter): boolean {
     case 'seeding':
       return t.state === 'SEEDING';
     case 'paused':
-      return t.state === 'PAUSED' && t.pausedBy !== 'seed_limit';
+      return t.state === 'PAUSED' && t.pausedBy !== 'seed_limit' && t.pausedBy !== 'seed_metered';
     case 'done':
-      return t.state === 'COMPLETED' || (t.state === 'PAUSED' && t.pausedBy === 'seed_limit');
+      return t.state === 'COMPLETED' || t.state === 'SEEDING' || (t.state === 'PAUSED' && (t.pausedBy === 'seed_limit' || t.pausedBy === 'seed_metered'));
     case 'errors':
       return t.state === 'ERROR';
   }
@@ -194,8 +195,9 @@ export function torrentStatus(t: StatusRow, etaLabel: string): TorrentStatus {
       return line('Downloading', 'muted', speed, 'speed', progress);
     }
     case 'SEEDING':
-      return line('Seeding', 'accent', `↑ ${t.lastKnown ? '—' : formatSpeed(t.uploadSpeedBytes)}`, 'upload');
+      return line('Done · Seeding', 'accent', `↑ ${t.lastKnown ? '—' : formatSpeed(t.uploadSpeedBytes)}`, 'upload');
     case 'PAUSED':
+      if (t.pausedBy === 'seed_metered') return line('Done · Seeding waits for Wi-Fi', 'accent', total, 'size');
       if (t.pausedBy === 'seed_limit') return line('Done', 'accent', total, 'size');
       return line(pausedReason(t.pausedBy), 'muted', undefined, undefined, started);
     case 'COMPLETED':
@@ -216,7 +218,7 @@ export function torrentStatus(t: StatusRow, etaLabel: string): TorrentStatus {
   }
 }
 
-/** Ids of everything that is done: completed or finished-seeding torrents, and finished link downloads. Seeding torrents stay. */
+/** Ids of everything that is done: completed, seeding and finished-seeding torrents, and finished link downloads. */
 export function finishedTransfers(
   list: readonly TorrentTelemetry[],
   downloads: readonly DownloadSnapshot[] = [],
@@ -231,7 +233,101 @@ export function finishedTransfers(
 export function clearFinishedCopy(count: number): { title: string; body: string; confirm: string } {
   return {
     title: `Clear ${count} finished ${count === 1 ? 'transfer' : 'transfers'}?`,
-    body: 'They leave this list. The files stay on your device.',
+    body: 'Anything still seeding stops. They leave this list. The files stay on your device.',
     confirm: 'Clear',
   };
+}
+
+// ---- Resume anyway ----
+
+/** Pauses a rule caused. One tap can override them for this torrent only. */
+const RULE_PAUSES: readonly string[] = ['wifi_only', 'battery', 'charging_only', 'schedule'];
+
+export function canResumeAnyway(pausedBy: string | null | undefined): boolean {
+  return !!pausedBy && RULE_PAUSES.includes(pausedBy);
+}
+
+/** Wi-Fi only is the one with a different name: it means "use mobile data now". */
+export function resumeAnywayLabel(pausedBy: string | null | undefined): string {
+  return pausedBy === 'wifi_only' ? 'Download now on mobile data' : 'Resume anyway';
+}
+
+// ---- Torrent card button ----
+
+export type TorrentCardActionKind = 'pause' | 'resume' | 'keepTrying' | 'open' | 'resumeAnyway';
+export interface TorrentCardAction {
+  icon: 'pause' | 'play' | 'retry' | 'external' | 'speed-limit';
+  label: string;
+  kind: TorrentCardActionKind;
+}
+
+/** The card's one button, or null when nothing can be done from the list. */
+export function torrentCardAction(t: Pick<TorrentTelemetry, 'state' | 'pausedBy'>): TorrentCardAction | null {
+  switch (t.state) {
+    case 'DOWNLOADING':
+    case 'SEEDING':
+      return { icon: 'pause', label: 'Pause', kind: 'pause' };
+    case 'PAUSED': {
+      const by = t.pausedBy;
+      if (by === 'no_peers') return { icon: 'retry', label: 'Keep trying', kind: 'keepTrying' };
+      // Finished by the seed limit: the button opens the file. Seed again lives in the detail screen.
+      if (by === 'seed_limit') return { icon: 'external', label: 'Open', kind: 'open' };
+      if (by === 'files_missing' || by === 'files_changed' || by === 'storage_full' || by === 'storage_unavailable') return null;
+      if (canResumeAnyway(by)) return { icon: 'play', label: resumeAnywayLabel(by), kind: 'resumeAnyway' };
+      // Waiting on something that clears by itself (or seeding that waits for Wi-Fi).
+      if (by === 'fgs_timeout' || by === 'seed_metered') return null;
+      return { icon: 'play', label: 'Resume', kind: 'resume' };
+    }
+    case 'ERROR':
+      return { icon: 'retry', label: 'Retry', kind: 'resume' };
+    default:
+      return null;
+  }
+}
+
+// ---- One list ----
+
+export type TransferItem<T extends TorrentTelemetry = TorrentTelemetry> =
+  | { kind: 'torrent'; key: string; torrent: T }
+  | { kind: 'download'; key: string; download: DownloadSnapshot };
+
+function downloadValue(d: DownloadSnapshot, key: SortKey): number {
+  switch (key) {
+    case 'progress':
+      return downloadProgress(d) * 100;
+    case 'downSpeed':
+      return d.downBps;
+    case 'upSpeed':
+      return 0;
+    case 'eta':
+      return d.eta > 0 && Number.isFinite(d.eta) ? d.eta : Number.MAX_SAFE_INTEGER;
+    case 'size':
+      return d.size ?? 0;
+    case 'added':
+      return d.addedAt ?? 0;
+    default:
+      return 0;
+  }
+}
+
+/** Torrents and link downloads in one list, ordered by the current sort. Keys are `t:<id>` and `d:<id>`. */
+export function mergeTransfers<T extends TorrentTelemetry>(
+  torrents: readonly T[],
+  downloads: readonly DownloadSnapshot[],
+  sort: TransferSort,
+): TransferItem<T>[] {
+  const mul = sort.dir === 'asc' ? 1 : -1;
+  const items: TransferItem<T>[] = [
+    ...torrents.map((torrent): TransferItem<T> => ({ kind: 'torrent', key: `t:${torrent.id}`, torrent })),
+    ...downloads.map((download): TransferItem<T> => ({ kind: 'download', key: `d:${download.id}`, download })),
+  ];
+  const nameOf = (i: TransferItem<T>) => (i.kind === 'torrent' ? i.torrent.name : i.download.name);
+  const valueOf = (i: TransferItem<T>) => (i.kind === 'torrent' ? value(i.torrent, sort.key) : downloadValue(i.download, sort.key));
+  return items.sort((a, b) => {
+    const cmp =
+      sort.key === 'name'
+        ? nameOf(a).localeCompare(nameOf(b), undefined, { sensitivity: 'base', numeric: true })
+        : valueOf(a) - valueOf(b);
+    return cmp !== 0 ? cmp * mul : a.key.localeCompare(b.key);
+  });
 }

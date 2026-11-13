@@ -42,7 +42,7 @@ export default function AboutSettings() {
   ].filter(Boolean) as { title: string; url: string }[];
 
   return (
-    <SettingsPage title="ABOUT">
+    <SettingsPage title="About">
       <Stack.Screen options={{ headerShown: false }} />
       <View style={s.brand}>
         <MaglevMark height={64} cruising tappable />

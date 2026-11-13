@@ -111,7 +111,7 @@ export default function BrowserSettings() {
   const source = prefs.blocklistUrls.length === 1 ? hostOf(prefs.blocklistUrls[0]) : `${prefs.blocklistUrls.length} lists`;
 
   return (
-    <SettingsPage title="BROWSER">
+    <SettingsPage title="Browser">
       <Stack.Screen options={{ headerShown: false }} />
 
       <Card>

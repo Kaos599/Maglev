@@ -15,7 +15,7 @@ export default function AssistantSettings() {
   const p = useAssistantPrefs();
   const used = p.tokensUsed.input + p.tokensUsed.output;
   return (
-    <SettingsPage title="ASSISTANT">
+    <SettingsPage title="Assistant">
       <Stack.Screen options={{ headerShown: false }} />
       <Card>
         <ListRow
