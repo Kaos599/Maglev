@@ -264,3 +264,14 @@ export const streamSheet = {
   audio: 'Audio',
   name: 'Name',
 } as const;
+
+/** The + button's menu (components/add/AddMenuSheet.tsx). */
+export const addMenu = {
+  title: 'Add',
+  magnet: 'Magnet link',
+  copyFirst: 'Copy a link first',
+  typeHint: 'Enter a web link or magnet link',
+  fileHint: 'Pick one from your phone',
+  searchHint: 'Look in your sources',
+  browseHint: 'Find a file or video on a web page',
+} as const;
