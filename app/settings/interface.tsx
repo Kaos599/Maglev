@@ -11,7 +11,8 @@ import { ListRow, PressableScale, RadioCard, SegmentedControl } from '../../comp
 import { Card, Caption, SettingsPage } from '../../components/settings/SettingsParts';
 import { FontStyle, TelemetryDensity } from 'maglev-engine';
 import { fontFamilies, resolveFontStyle } from '../../constants/fontStyles';
-import { fontStyleCopy } from '../../constants/copy';
+import { fontStyleCopy, tabsCopy } from '../../constants/copy';
+import { TabsSection } from '../../components/tabs/TabsSection';
 import type { PixelIconName } from '../../components/PixelIcon';
 
 const MODES = [
@@ -122,6 +123,12 @@ export default function InterfaceSettings() {
             accessibilityLabel="Transfer details"
           />
         </View>
+      </Card>
+      <Card>
+        <View style={s.block}>
+          <Text style={s.label}>{tabsCopy.label}</Text>
+        </View>
+        <TabsSection />
       </Card>
       {Platform.OS === 'android' ? (
         <Card>

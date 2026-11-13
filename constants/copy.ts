@@ -333,3 +333,19 @@ export const fontStyleCopy = {
     { value: 'mono', title: 'Mono', description: 'Fixed-width titles, names and numbers. Labels and text stay easy to read.' },
   ],
 } as const;
+
+/** Settings > Interface > Tabs. */
+export const tabsCopy = {
+  label: 'Tabs',
+  hint: 'Choose which tabs show and their order. Applies as soon as you change it.',
+  alwaysShown: 'Always shown',
+  assistantNote: 'Turn the Assistant on in Settings to add its tab here.',
+  names: {
+    index: 'Transfers',
+    search: 'Search',
+    feeds: 'Feeds',
+    assistant: 'Assistant',
+    browse: 'Browser',
+    settings: 'Settings',
+  },
+} as const;
