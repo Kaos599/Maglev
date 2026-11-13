@@ -8,14 +8,15 @@ import { PressableScale } from './ui';
 export interface FloatingActionButtonProps {
   onPress: () => void;
   accessibilityLabel?: string;
+  buttonRef?: React.Ref<any>;
 }
 
-export function FloatingActionButton({ onPress, accessibilityLabel = 'Add a link or torrent' }: FloatingActionButtonProps) {
+export function FloatingActionButton({ onPress, accessibilityLabel = 'Add a link or torrent', buttonRef }: FloatingActionButtonProps) {
   const { colors } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   return (
     <View style={styles.anchor} pointerEvents="box-none">
-      <PressableScale onPress={onPress} haptic="tap" accessibilityRole="button" accessibilityLabel={accessibilityLabel} style={styles.fab}>
+      <PressableScale pressableRef={buttonRef} onPress={onPress} haptic="tap" accessibilityRole="button" accessibilityLabel={accessibilityLabel} style={styles.fab}>
         <PixelIcon name="plus" size={24} color={colors.onAccent} />
       </PressableScale>
     </View>

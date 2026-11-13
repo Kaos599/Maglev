@@ -57,8 +57,8 @@ function stepped(progress: Animated.Value, reach: number): Animated.AnimatedInte
 
 /** A lime ticket asking for a GitHub star. The whole ticket is one button. */
 export function StarTicket() {
-  const { colors } = useTheme();
-  const s = useMemo(() => makeStyles(colors), [colors]);
+  const { colors, dark } = useTheme();
+  const s = useMemo(() => makeStyles(colors, dark), [colors, dark]);
   const reduceMotion = useReduceMotion();
   const progress = useRef(new Animated.Value(0)).current;
 
@@ -103,7 +103,7 @@ export function StarTicket() {
         <View style={[s.notch, s.notchLeft]} />
         <View style={[s.notch, s.notchRight]} />
       </PressableScale>
-      <View style={s.burst} pointerEvents="none">
+      <View style={s.burst} pointerEvents="none" accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
         {DIRS.map(([dx, dy], i) => (
           <Animated.View
             key={i}
@@ -119,7 +119,9 @@ export function StarTicket() {
   );
 }
 
-const makeStyles = (c: ThemeColors) =>
+// On the dark themes the lime fill gives dark text high contrast, so the top line and body can sit softer.
+// On light the fill is the darker accent and white text needs full opacity.
+const makeStyles = (c: ThemeColors, dark: boolean) =>
   StyleSheet.create({
     wrap: { alignSelf: 'stretch' },
     ticket: {
@@ -130,9 +132,9 @@ const makeStyles = (c: ThemeColors) =>
       minHeight: 96,
     },
     main: { flex: 1, paddingVertical: spacing.lg, paddingLeft: spacing.xl, paddingRight: spacing.md, gap: spacing.xs, justifyContent: 'center' },
-    top: { ...type.brand, fontSize: 9, letterSpacing: 0.5, color: c.onAccent, opacity: 0.7 },
+    top: { ...type.brand, fontSize: 9, letterSpacing: 0.5, color: c.onAccent, opacity: dark ? 0.7 : 1 },
     title: { ...type.bodyStrong, fontSize: 16, color: c.onAccent },
-    body: { ...type.body, fontSize: 12, lineHeight: 16, color: c.onAccent, opacity: 0.8 },
+    body: { ...type.body, fontSize: 12, lineHeight: 16, color: c.onAccent, opacity: dark ? 0.8 : 1 },
     dashes: { width: 2, marginVertical: spacing.md, justifyContent: 'space-between' },
     dash: { width: 2, height: 4, backgroundColor: c.onAccent, opacity: 0.45 },
     stub: { width: 76, alignItems: 'center', justifyContent: 'center', gap: spacing.xs },

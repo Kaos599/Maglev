@@ -440,6 +440,7 @@ export default function TransfersScreen() {
 
   // + opens a menu of every way in (paste, type, file, Search, Browser), not the torrent screen directly.
   const [addMenuOpen, setAddMenuOpen] = useState(false);
+  const addFabRef = useRef<any>(null);
   const goAdd = useCallback(() => router.push('/add-torrent'), [router]);
   const addClipboard = useCallback(() => {
     if (!clipboardMagnet) return;
@@ -650,9 +651,10 @@ export default function TransfersScreen() {
         />
       ) : (
         <>
-          <FloatingActionButton onPress={() => setAddMenuOpen(true)} />
+          <FloatingActionButton buttonRef={addFabRef} onPress={() => setAddMenuOpen(true)} />
           <AddMenuSheet
             visible={addMenuOpen}
+            returnFocusRef={addFabRef}
             onClose={() => setAddMenuOpen(false)}
             clipboard={clipboardMagnet ?? undefined}
             onPaste={addClipboard}
