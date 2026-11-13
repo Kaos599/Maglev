@@ -203,7 +203,7 @@ export const banners = {
 // ---------------------------------------------------------------------------------------------
 export const empty = {
   transfers: {
-    none: { title: 'No transfers yet', body: 'Type or paste a link, open a .torrent file, or find something to download.' },
+    none: { title: 'Nothing downloading', body: 'Add a link or a .torrent file, or find something.' },
     noMatch: { title: 'No matching transfers', body: 'Try a different search.' },
     noneInFilter: (filter: string | number) => ({
       title: `No ${toName(filter).toLowerCase()} transfers`,
@@ -213,6 +213,10 @@ export const empty = {
   search: {
     unavailable: { title: 'Search is unavailable right now', body: 'Check your connection and try again.' },
     noSource: { title: 'No source covers this category', body: 'Turn on a source that searches it.' },
+    idle: (sources: number | string) => ({
+      title: `Search ${toName(sources)} ${Number(sources) === 1 ? 'source' : 'sources'} at once`,
+      body: 'Tap the box to see your recent searches.',
+    }),
     noAnswer: { title: 'No source answered', body: 'Check your connection or try other sources.' },
     noResults: (query: string | number) => ({
       title: 'No results',
@@ -338,6 +342,7 @@ export const fontStyleCopy = {
 export const tabsCopy = {
   label: 'Tabs',
   hint: 'Choose which tabs show and their order. Applies as soon as you change it.',
+  reorderHint: 'Hold a tab and drag to reorder.',
   alwaysShown: 'Always shown',
   assistantNote: 'Turn the Assistant on in Settings to add its tab here.',
   names: {

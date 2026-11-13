@@ -112,6 +112,14 @@ const makeStyles = (c: ThemeColors) =>
       alignItems: 'center',
       justifyContent: 'center',
     },
-    circle: { width: PREVIEW, height: PREVIEW, borderRadius: PREVIEW / 2, overflow: 'hidden' },
+    // Hairline edge so dark previews (Mono, All dark) don't melt into the card.
+    circle: {
+      width: PREVIEW,
+      height: PREVIEW,
+      borderRadius: PREVIEW / 2,
+      overflow: 'hidden',
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: c.borderStrong,
+    },
     name: { ...type.body, fontSize: type.size.xs, color: c.textMuted, textAlign: 'center' },
   });

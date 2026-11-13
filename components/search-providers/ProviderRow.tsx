@@ -21,16 +21,18 @@ export interface ProviderRowProps {
   /** 1-based priority in the On list; omitted for Off rows. */
   position?: number;
   note: string;
-  noteTone?: 'normal' | 'warning' | 'danger';
+  noteTone?: 'normal' | 'warning' | 'danger' | 'accent';
   first: boolean;
   onOpen: () => void;
   onToggle: (next: boolean) => void;
+  /** Set when the source needs a quick check: shows a "?" button that opens the site once. */
+  onCheck?: () => void;
 }
 
-export function ProviderRow({ provider, enabled, position, note, noteTone = 'normal', first, onOpen, onToggle }: ProviderRowProps) {
+export function ProviderRow({ provider, enabled, position, note, noteTone = 'normal', first, onOpen, onToggle, onCheck }: ProviderRowProps) {
   const { colors } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
-  const noteColor = noteTone === 'danger' ? colors.danger : noteTone === 'warning' ? colors.warning : colors.textMuted;
+  const noteColor = noteTone === 'accent' ? colors.accentText : noteTone === 'danger' ? colors.danger : noteTone === 'warning' ? colors.warning : colors.textMuted;
   const unsafe = !!provider.unsafeReason;
   return (
     <View style={[styles.row, !first && styles.divider]}>
@@ -64,6 +66,16 @@ export function ProviderRow({ provider, enabled, position, note, noteTone = 'nor
           </Text>
         </View>
       </PressableScale>
+      {onCheck ? (
+        <PressableScale
+          onPress={onCheck}
+          style={styles.check}
+          accessibilityRole="button"
+          accessibilityLabel={`Open ${provider.name} once to pass its check`}
+        >
+          <Text style={styles.checkText}>?</Text>
+        </PressableScale>
+      ) : null}
       <Toggle value={enabled} onValueChange={onToggle} accessibilityLabel={`Use ${provider.name} for search`} />
     </View>
   );
@@ -89,6 +101,8 @@ const makeStyles = (c: ThemeColors) =>
       backgroundColor: alpha(c.warning, 0.12),
     },
     badgeText: { ...type.bodyStrong, fontSize: 11, color: c.warning },
+    check: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center', borderRadius: radius.md, borderWidth: 1, borderColor: c.accent },
+    checkText: { ...type.monoBold, fontSize: 16, color: c.accentText },
     mono: {
       width: 36,
       height: 36,

@@ -9,10 +9,9 @@ import { ListRow } from '../../components/ui';
 import { Card, SettingsPage } from '../../components/settings/SettingsParts';
 import { Wordmark } from '../../components/settings/Wordmark';
 import { MaglevMark } from '../../components/brand/MaglevMark';
+import { REPO_URL, StarTicket } from '../../components/settings/StarTicket';
 
-const REPO_URL = 'https://github.com/Kaos599/Maglev';
-
-type Extra = { license?: string; homepage?: string; sourceUrl?: string; privacyUrl?: string };
+type Extra = { homepage?: string; sourceUrl?: string; privacyUrl?: string };
 
 export default function AboutSettings() {
   const { colors } = useTheme();
@@ -48,13 +47,13 @@ export default function AboutSettings() {
         <MaglevMark height={64} cruising tappable />
         <Wordmark />
       </View>
+      <StarTicket />
       <Card>
         <ListRow title="App version" value={appVersion} />
         <ListRow title="Engine" value={engine} />
-        {extra.license ? <ListRow title="License" value={extra.license} /> : null}
         <ListRow
-          title="Made with love by Kaos"
-          subtitle="github.com/Kaos599/Maglev"
+          title="Built by Kaos"
+          subtitle="Source code on GitHub"
           icon="github"
           onPress={() => void Linking.openURL(REPO_URL)}
           accessibilityHint="Opens the Maglev source code on GitHub"

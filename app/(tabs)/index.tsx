@@ -33,6 +33,7 @@ import { pickMainFile } from '../../utils/mainFile';
 import { takeNextShared } from '../../utils/shareQueue';
 import { OPEN_FOLDER_FAILED_TEXT, SHARE_FAILED_TEXT, allowDeviceFailureText, openFailureText, type DownloadAction } from '../../utils/downloadCopy';
 import { BulkVerb, bulkSummary, selectionKey, splitSelection } from '../../utils/bulkSummary';
+import { useSearchPrefs } from '../../utils/prefs/search';
 import { TransferSort, loadTransferSort, saveTransferSort } from '../../utils/prefs/transfers';
 import { empty, notices } from '../../constants/copy';
 
@@ -80,6 +81,7 @@ export default function TransfersScreen() {
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const [searchPrefs] = useSearchPrefs();
   const {
     telemetry: liveTelemetry,
     pauseTorrent,
@@ -595,7 +597,7 @@ export default function TransfersScreen() {
       ) : null}
 
       {nothingHere ? (
-        <TeachingEmptyState canPaste={!!clipboardMagnet && clipboardIsNew} onType={goAdd} onPaste={addClipboard} onOpenFile={openFile} onSearch={() => router.navigate('/search')} onBrowse={() => router.push('/browser')} />
+        <TeachingEmptyState onAdd={goAdd} onOpenFile={openFile} onSearch={() => router.navigate('/search')} onBrowse={() => router.push('/browser')} searchSources={searchPrefs.enabled.length} />
       ) : (
         <ProgressMotionContext.Provider value={progressMotion}>
           <FilterPills value={filter} counts={counts} onChange={setFilter} />

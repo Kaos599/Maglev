@@ -37,3 +37,20 @@ export function unansweredNote(t: SourceTally): string {
   if (t.failed > 0) parts.push(t.failed === 1 ? "1 didn't respond" : `${t.failed} didn't respond`);
   return parts.join(' · ');
 }
+
+/** After the user closes the "needs a quick check" line, it stays away this long. */
+export const FIX_HINT_QUIET_MS = 24 * 60 * 60 * 1000;
+
+/** Show the fix line when a source needs a check and the user has not closed it in the last 24 hours. */
+export function shouldShowFixHint(now: number, dismissedAt: number, needsCheck: number): boolean {
+  if (needsCheck <= 0) return false;
+  if (!dismissedAt || dismissedAt > now) return true;
+  return now - dismissedAt >= FIX_HINT_QUIET_MS;
+}
+
+/** Providers that need a check after a search: the ones now behind a check, plus earlier ones that did not answer this time. */
+export function nextNeedsCheck(previous: string[], sources: SourceStatus[]): string[] {
+  const behind = sources.filter((s) => s.state === 'challenge').map((s) => s.providerId);
+  const answered = new Set(sources.filter(hasAnswered).map((s) => s.providerId));
+  return [...new Set([...previous.filter((id) => !answered.has(id)), ...behind])];
+}

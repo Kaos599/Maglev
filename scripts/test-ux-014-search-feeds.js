@@ -77,7 +77,7 @@ check('settings page titles are sentence case', caps.length === 0, caps.join('; 
 const queue = read('components/settings/QueueSection.tsx');
 check('queue: no "Active seeds" / "Seed ratio limit"', !/Active seeds|Seed ratio limit/.test(queue) && /Sharing at once/.test(queue) && /Upload until shared/.test(queue));
 const copy = read('constants/copy.ts');
-check('copy: empty transfers title', /none: \{ title: 'No transfers yet'/.test(copy));
+check('copy: empty transfers title', /none: \{ title: 'Nothing downloading'/.test(copy));
 check('copy: Wi-Fi wait title', /waitingForNetwork: \{ title: 'Waiting for Wi-Fi' \}/.test(copy));
 
 console.log(failed ? `\nux-014 search/feeds: ${failed} failed` : '\nux-014 search/feeds: all passed');

@@ -99,7 +99,8 @@ async function main() {
 
   // ---- the wordmark stays Silkscreen: only the header wordmark uses type.brand
   const brandUsers = walk('app').concat(walk('components')).filter((f) => /type\.brand|fontFamily\.brand|family\.brand/.test(read(f)));
-  check('only HeaderBar uses the brand (wordmark) font', brandUsers.join() === 'components/HeaderBar.tsx', brandUsers.join(', '));
+  // 0.15: the GitHub star ticket in About is a second approved user of the Silkscreen brand face (ticket stamp text).
+  check('only HeaderBar and the star ticket use the brand (wordmark) font', brandUsers.sort().join() === 'components/HeaderBar.tsx,components/settings/StarTicket.tsx', brandUsers.join(', '));
   check('no file hardcodes the Silkscreen name outside constants and _layout', walk('app').concat(walk('components'), walk('context'), walk('utils')).every((f) => !/'Silkscreen'/.test(read(f))));
   check('screen titles use the heading slot', /type\.heading/.test(read('components/ui/Screen.tsx')));
 

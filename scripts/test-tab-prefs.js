@@ -69,7 +69,8 @@ check('layout falls back to Transfers when the open tab is hidden', /go\('index'
 check('layout draws non-glyph icons with PixelIcon', /PixelIcon/.test(layout) && /TAB_GLYPHS/.test(layout));
 check('browse tab route reuses the browser screen', /from '\.\.\/browser'/.test(read('app/(tabs)/browse.tsx')));
 check('interface screen shows the Tabs section', /TabsSection/.test(iface));
-check('section has move up and down labels', /Move \$\{name\} \$\{dir\}/.test(section) && /dir="up"/.test(section) && /dir="down"/.test(section));
+// 0.15: arrow buttons became hold-and-drag; Move up / Move down stay as accessibility actions on the grip.
+check('section reorders by drag and keeps Move up / Move down for TalkBack', /GestureDetector/.test(section) && /Move up/.test(section) && /Move down/.test(section) && /accessibilityActions/.test(section));
 check('section captions locked tabs "Always shown"', /alwaysShown/.test(section) && /Always shown/.test(read('constants/copy.ts')));
 check('section hides the Assistant row when the assistant is off', /assistant\.enabled/.test(section));
 check('section uses a 44px target', /touch\./.test(section) || /44/.test(section));

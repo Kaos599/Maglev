@@ -31,6 +31,10 @@ export interface SearchPrefs {
   torznab: TorznabConfig[];
   /** Hosts the user passed a Cloudflare check on (SEARCH_CONTRACT section 8). Cookies live in the WebView jar, never here. */
   clearances: Clearance[];
+  /** Sources that last answered with a Cloudflare check; they need the user to open the site once. */
+  needsCheck: string[];
+  /** When the user last closed the "needs a quick check" line (ms since epoch, 0 = never). */
+  fixHintDismissedAt: number;
 }
 
 const KEY = 'maglev.search.prefs.v2';
@@ -59,6 +63,8 @@ function defaults(): SearchPrefs {
     recents: [],
     torznab: [],
     clearances: [],
+    needsCheck: [],
+    fixHintDismissedAt: 0,
   };
 }
 
@@ -114,6 +120,8 @@ export function normalizeSearchPrefs(raw: unknown, legacyRecents: string[]): Sea
     recents,
     torznab,
     clearances,
+    needsCheck: [...new Set(strings(o.needsCheck))],
+    fixHintDismissedAt: typeof o.fixHintDismissedAt === 'number' && Number.isFinite(o.fixHintDismissedAt) && o.fixHintDismissedAt > 0 ? o.fixHintDismissedAt : 0,
   };
 }
 
@@ -226,6 +234,12 @@ export function addRecentSearch(query: string): string[] {
   if (!q) return current;
   const recents = [q, ...current.filter((r) => r.toLowerCase() !== q.toLowerCase())].slice(0, MAX_RECENTS);
   return updateSearchPrefs({ recents }).recents;
+}
+
+/** Removes one recent search (case-insensitive). Returns the new list. */
+export function removeRecentSearch(query: string): string[] {
+  const q = query.trim().toLowerCase();
+  return updateSearchPrefs({ recents: load().recents.filter((r) => r.toLowerCase() !== q) }).recents;
 }
 
 export function clearRecentSearches(): string[] {
