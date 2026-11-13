@@ -523,6 +523,17 @@ export class MaglevEngineBridge implements MaglevEngineApi {
   public async openBatterySettings(): Promise<void> {
     if (this.usingNative) await this.callNative('openBatterySettings');
   }
+  public async getAppIcon(): Promise<string> {
+    if (this.usingNative) {
+      const res = await this.callNative<{ ok?: boolean; id?: string }>('getAppIcon');
+      return res && res.ok !== false && typeof res.id === 'string' ? res.id : 'teal';
+    }
+    return this.impl ? this.impl.getAppIcon() : 'teal';
+  }
+  public async setAppIcon(id: string): Promise<EngineResult> {
+    if (this.usingNative) return this.callNative<EngineResult>('setAppIcon', id);
+    return this.impl ? this.impl.setAppIcon(id) : { ok: true };
+  }
   public requestLegacyStorage(): Promise<EngineResult> {
     return this.permissionCall('requestLegacyStorage');
   }

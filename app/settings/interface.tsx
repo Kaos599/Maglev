@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { Platform, StyleSheet, Text, View } from 'react-native';
 import { Stack } from 'expo-router';
 import { AccentName, AppearanceMode } from 'maglev-engine';
 import { useSettings } from '../../context/SettingsContext';
@@ -12,6 +12,7 @@ import { FontStyle, TelemetryDensity } from 'maglev-engine';
 import { fontFamilies, resolveFontStyle } from '../../constants/fontStyles';
 import { fontStyleCopy, tabsCopy } from '../../constants/copy';
 import { TabsSection } from '../../components/tabs/TabsSection';
+import { AppIconSection } from '../../components/settings/AppIconSection';
 import type { PixelIconName } from '../../components/PixelIcon';
 
 const MODES = [
@@ -123,6 +124,11 @@ export default function InterfaceSettings() {
         </View>
         <TabsSection />
       </Card>
+      {Platform.OS === 'android' ? (
+        <Card>
+          <AppIconSection />
+        </Card>
+      ) : null}
     </SettingsPage>
   );
 }

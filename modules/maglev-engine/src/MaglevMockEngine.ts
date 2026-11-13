@@ -1316,6 +1316,16 @@ export class MaglevMockEngine implements MaglevEngineApi {
 
   public async openBatterySettings(): Promise<void> {}
 
+  private appIcon = 'teal';
+  /** Dev and web only: the choice lives in memory and nothing changes on screen. */
+  public async getAppIcon(): Promise<string> {
+    return this.appIcon;
+  }
+  public async setAppIcon(id: string): Promise<EngineResult> {
+    this.appIcon = id;
+    return ok();
+  }
+
   public async requestLegacyStorage(): Promise<EngineResult> {
     return ok();
   }

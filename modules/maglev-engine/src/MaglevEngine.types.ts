@@ -700,6 +700,10 @@ export interface MaglevEngineApi {
   getPermissionStatus(): Promise<NativePermissionStatus>;
   requestNotifications(): Promise<EngineResult>;
   openBatterySettings(): Promise<void>;
+  /** Launcher icon id now chosen (NATIVE_CONTRACT 26). 'teal' when it cannot be read. */
+  getAppIcon(): Promise<string>;
+  /** Choose a launcher icon. Native applies it when the app leaves the foreground. Unknown id: INVALID_ARGUMENT. */
+  setAppIcon(id: string): Promise<EngineResult>;
   requestLegacyStorage(): Promise<EngineResult>;
   // Governance
   setGovernance(config: GovernanceConfig): Promise<EngineResult>;

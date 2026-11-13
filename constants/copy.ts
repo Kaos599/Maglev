@@ -349,3 +349,11 @@ export const tabsCopy = {
     settings: 'Settings',
   },
 } as const;
+
+/** Settings > Appearance > App icon. The hint is linted like a banner body: at most 16 words, ends with a period. */
+export const appIconCopy = {
+  label: 'App icon',
+  hint: 'Changes when you leave Maglev. Your home screen may take a moment to update.',
+  /** "Teal app icon, selected" */
+  a11y: (name: string, selected: boolean) => `${name} app icon${selected ? ', selected' : ''}`,
+} as const;

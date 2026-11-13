@@ -116,6 +116,7 @@
       "./plugins/withAbiSplits.js",
       "./plugins/withSizeReduction.js",
       "./plugins/withShareIntents.js",
+      "./plugins/withAppIcons.js",
       "./plugins/withBackupRules.js",
       "./plugins/withCleartextLan.js",
       "./plugins/withReleaseSigning.js"
