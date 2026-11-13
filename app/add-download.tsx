@@ -3,10 +3,10 @@ import { friendlyPath } from '../components/settings/SettingsParts';
 import { StyleSheet, Text, TextInput, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import * as Clipboard from 'expo-clipboard';
-import { isDownloadLink, isShareOpen, isTorrentSource, normalizeIncoming, type UrlProbe } from 'maglev-engine';
+import { maglevEngine, isDownloadLink, isShareOpen, isTorrentSource, normalizeIncoming, type UrlProbe } from 'maglev-engine';
 import { useTheme } from '../context/ThemeContext';
 import { useMaglevEngine } from '../context/EngineContext';
-import { ThemeColors, radius, spacing, type } from '../constants/theme';
+import { ThemeColors, radius, spacing, touch, type } from '../constants/theme';
 import { formatBytes } from '../constants/format';
 import { haptic } from '../constants/haptics';
 import { StreamSheet } from '../components/browser/StreamSheet';
@@ -36,6 +36,7 @@ export default function AddDownloadScreen() {
   const [probe, setProbe] = useState<UrlProbe | null>(null);
   const [notAFile, setNotAFile] = useState(false);
   const [addError, setAddError] = useState<string | null>(null);
+  const [folderLabel, setFolderLabel] = useState<string | null>(null);
   const [streamItem, setStreamItem] = useState<FoundItem | null>(null);
   const token = useRef(0);
   const urlRef = useRef('');
@@ -148,6 +149,19 @@ export default function AddDownloadScreen() {
     void submit(link);
   };
 
+  // The picked folder is stored by the engine as the active target, and EngineHost.addDownload
+  // fills `folder` from it, so nothing is passed to startDownload (same as Add torrent).
+  const handleChangeFolder = async () => {
+    haptic('tap');
+    try {
+      const res = await maglevEngine.pickDownloadFolder();
+      if ('cancelled' in res) return;
+      setFolderLabel(res.displayName);
+    } catch {
+      setAddError(notices.inline.folderPickerFailed);
+    }
+  };
+
   const start = async (fromError = false) => {
     setPhase('adding');
     setAddError(null);
@@ -250,7 +264,15 @@ export default function AddDownloadScreen() {
         <Text style={styles.meta}>
           {probe.resumable ? 'You can pause and resume this one.' : "This server can't resume. It starts over if it stops."}
         </Text>
-        <Text style={styles.meta}>Saves to {friendlyPath(defaultStoragePath)}</Text>
+        <View style={styles.destRow}>
+          <View style={styles.destText}>
+            <Text style={styles.meta}>Save to</Text>
+            <Text style={styles.dest} numberOfLines={1} ellipsizeMode="middle" accessibilityLabel={`Save to ${friendlyPath(folderLabel ?? defaultStoragePath)}`}>
+              {friendlyPath(folderLabel ?? defaultStoragePath)}
+            </Text>
+          </View>
+          <Button label="Change" variant="secondary" disabled={adding} onPress={() => void handleChangeFolder()} />
+        </View>
         {doesntFit ? <Banner tone="danger" title={banners.addDownload.notEnoughSpace.title} body={banners.addDownload.notEnoughSpace.body} /> : null}
         {addError ? <Banner tone="danger" title={addError} /> : null}
         <View style={styles.gap}>
@@ -315,4 +337,17 @@ const makeStyles = (c: ThemeColors) =>
     heading: { ...type.bodyStrong, fontSize: type.size.xl, color: c.text, textAlign: 'center' },
     name: { ...type.mono, fontSize: type.size.lg, color: c.text },
     meta: { ...type.mono, fontSize: type.size.sm, color: c.textMuted },
+    destRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.md,
+      backgroundColor: c.surface,
+      borderWidth: 1,
+      borderColor: c.border,
+      borderRadius: radius.md,
+      padding: spacing.md,
+      minHeight: touch.min,
+    },
+    destText: { flex: 1 },
+    dest: { ...type.mono, fontSize: type.size.md, color: c.text, marginTop: 2 },
   });

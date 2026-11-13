@@ -178,8 +178,9 @@ export const banners = {
     loadFailed: (name: string | number) => ({ title: `Couldn't load ${toName(name)}` }),
   },
   transfers: {
-    magnetInClipboard: { title: 'Magnet link in clipboard' },
-    torrentLinkInClipboard: { title: 'Torrent link in clipboard' },
+    magnetInClipboard: { title: 'Add the magnet you copied?' },
+    torrentLinkInClipboard: { title: 'Add the torrent link you copied?' },
+    linkInClipboard: { title: 'Add the link you copied?' },
   },
   detail: {
     updatesPaused: { title: 'Updates paused' },
@@ -200,7 +201,7 @@ export const banners = {
 // ---------------------------------------------------------------------------------------------
 export const empty = {
   transfers: {
-    none: { title: 'No transfers yet', body: 'Paste a magnet link, open a .torrent file or tap one in your browser.' },
+    none: { title: 'No downloads yet', body: 'Paste a link or magnet, open a .torrent file, or find something to download.' },
     noMatch: { title: 'No matching transfers', body: 'Try a different search.' },
     noneInFilter: (filter: string | number) => ({
       title: `No ${toName(filter).toLowerCase()} transfers`,
