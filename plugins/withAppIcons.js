@@ -2,7 +2,7 @@
 //
 // Android switches the launcher icon by enabling one <activity-alias> and disabling the others
 // (PackageManager.setComponentEnabledSetting). So at prebuild this plugin:
-//   1. copies the generated drawables and mipmaps from assets/app-icons/ (scripts/build-app-icons.py) into
+//   1. copies the generated drawables, colours and mipmaps from assets/app-icons/ (scripts/build-app-icons.py) into
 //      android/app/src/main/res/, and
 //   2. moves MainActivity's MAIN/LAUNCHER intent filter onto one alias per icon. MainActivity keeps every
 //      other filter (maglev:// links, magnet:, .torrent, share), so deep links and shares are unaffected.
@@ -22,7 +22,7 @@ const ICON_IDS = [
 const DEFAULT_ICON = 'teal';
 const PACKAGE = 'com.maglev';
 const RES_PREFIX = 'ic_launcher_alt_';
-const RES_DIRS = ['drawable', 'mipmap-anydpi', 'mipmap-anydpi-v26'];
+const RES_DIRS = ['drawable', 'mipmap-anydpi', 'mipmap-anydpi-v26', 'values'];
 
 const resName = (id) => RES_PREFIX + id.replace(/-/g, '_');
 /** Fully qualified, so it does not depend on how the manifest package is resolved. */
@@ -77,18 +77,33 @@ function withAppIcons(config) {
     (c) => {
       const from = path.join(c.modRequest.projectRoot, 'assets', 'app-icons');
       const res = path.join(c.modRequest.platformProjectRoot, 'app', 'src', 'main', 'res');
-      let copied = 0;
       for (const dir of RES_DIRS) {
         const src = path.join(from, dir);
         if (!fs.existsSync(src)) throw new Error(`withAppIcons: ${src} is missing. Run scripts/build-app-icons.py.`);
         fs.mkdirSync(path.join(res, dir), { recursive: true });
+        // Drop what an earlier prebuild left, so renamed or merged drawables do not pile up.
+        for (const old of fs.readdirSync(path.join(res, dir))) {
+          if (old.startsWith(RES_PREFIX)) fs.rmSync(path.join(res, dir, old));
+        }
         for (const file of fs.readdirSync(src)) {
-          if (!file.startsWith(RES_PREFIX)) continue;
-          fs.copyFileSync(path.join(src, file), path.join(res, dir, file));
-          copied += 1;
+          if (file.startsWith(RES_PREFIX)) fs.copyFileSync(path.join(src, file), path.join(res, dir, file));
         }
       }
-      if (copied !== ICON_IDS.length * 5) throw new Error(`withAppIcons: expected ${ICON_IDS.length * 5} resources, copied ${copied}`);
+      // Every icon needs its two mipmaps, and every drawable or colour they name must have arrived.
+      const have = (dir, file) => fs.existsSync(path.join(res, dir, file));
+      for (const id of ICON_IDS) {
+        const mip = resName(id) + '.xml';
+        for (const dir of ['mipmap-anydpi', 'mipmap-anydpi-v26']) {
+          if (!have(dir, mip)) throw new Error(`withAppIcons: ${dir}/${mip} was not copied`);
+        }
+        const adaptive = fs.readFileSync(path.join(res, 'mipmap-anydpi-v26', mip), 'utf8');
+        for (const m of adaptive.matchAll(/@(drawable|color)\/([A-Za-z0-9_]+)/g)) {
+          const ok = m[1] === 'drawable'
+            ? have('drawable', `${m[2]}.xml`)
+            : fs.readFileSync(path.join(res, 'values', 'ic_launcher_alt_colors.xml'), 'utf8').includes(`name="${m[2]}"`);
+          if (!ok) throw new Error(`withAppIcons: ${mip} uses @${m[1]}/${m[2]}, which was not copied`);
+        }
+      }
       return c;
     },
   ]);

@@ -48,30 +48,43 @@ async function main() {
   // ---- generated resources
   const res = 'assets/app-icons';
   const have = (rel) => fs.existsSync(path.join(root, res, rel));
+  const colorsXml = have('values/ic_launcher_alt_colors.xml') ? read(`${res}/values/ic_launcher_alt_colors.xml`) : '';
+  check('solid tiles live in one colours file', /<color name="ic_launcher_alt_bg_[0-9A-F]{6}">#[0-9A-F]{6}<\/color>/.test(colorsXml));
+  const used = new Set(['values/ic_launcher_alt_colors.xml']);
+  const monoSeen = new Set();
   for (const id of OWNER_IDS) {
     const base = `ic_launcher_alt_${rid(id)}`;
-    const files = {
-      fg: `drawable/${base}_fg.xml`,
-      bg: `drawable/${base}_bg.xml`,
-      mono: `drawable/${base}_mono.xml`,
-      adaptive: `mipmap-anydpi-v26/${base}.xml`,
-      legacy: `mipmap-anydpi/${base}.xml`,
-    };
-    check(`${id}: fg, bg, mono, adaptive and legacy files exist`, Object.values(files).every(have));
-    if (!Object.values(files).every(have)) continue;
-    const ad = read(`${res}/${files.adaptive}`);
+    const adaptive = `mipmap-anydpi-v26/${base}.xml`;
+    const legacyFile = `mipmap-anydpi/${base}.xml`;
+    check(`${id}: adaptive and legacy files exist`, have(adaptive) && have(legacyFile));
+    if (!have(adaptive) || !have(legacyFile)) continue;
+    used.add(adaptive); used.add(legacyFile);
+    const ad = read(`${res}/${adaptive}`);
+    const ref = (tag) => (ad.match(new RegExp(`<${tag} android:drawable="@(drawable|color)/([A-Za-z0-9_]+)"`)) || []);
+    const [, , bgName] = ref('background'); const [, , fgName] = ref('foreground'); const [, , monoName] = ref('monochrome');
+    check(`${id}: adaptive icon has background, foreground and monochrome`, !!(bgName && fgName && monoName));
+    const bgKind = ref('background')[1];
     check(
-      `${id}: adaptive icon has background, foreground and monochrome`,
-      ad.includes(`@drawable/${base}_bg`) && ad.includes(`@drawable/${base}_fg`) && ad.includes(`@drawable/${base}_mono`) && ad.includes('<monochrome'),
+      `${id}: background resolves (colour in the colours file, or a drawable)`,
+      bgKind === 'color' ? colorsXml.includes(`name="${bgName}"`) : have(`drawable/${bgName}.xml`),
+      bgName,
     );
-    const fg = read(`${res}/${files.fg}`);
+    if (bgKind === 'drawable') used.add(`drawable/${bgName}.xml`);
+    check(`${id}: foreground and monochrome drawables exist`, have(`drawable/${fgName}.xml`) && have(`drawable/${monoName}.xml`), `${fgName} ${monoName}`);
+    used.add(`drawable/${fgName}.xml`); used.add(`drawable/${monoName}.xml`); monoSeen.add(monoName);
+    if (!have(`drawable/${fgName}.xml`)) continue;
+    const fg = read(`${res}/drawable/${fgName}.xml`);
     check(`${id}: foreground is a 108dp vector with a path`, /android:width="108dp"/.test(fg) && /android:viewportWidth="108"/.test(fg) && fg.includes('android:pathData='));
-    const legacy = read(`${res}/${files.legacy}`);
+    const mono = read(`${res}/drawable/${monoName}.xml`);
+    check(`${id}: monochrome is a white 108dp vector`, /android:width="108dp"/.test(mono) && /fillColor="#FFFFFF"/.test(mono) && !/fillColor="#(?!FFFFFF)/.test(mono));
+    const legacy = read(`${res}/${legacyFile}`);
     check(`${id}: API 24-25 icon is one 48dp vector over a 72 viewport`, /<vector/.test(legacy) && /android:width="48dp"/.test(legacy) && /android:viewportWidth="72"/.test(legacy));
   }
-  const strays = ['drawable', 'mipmap-anydpi', 'mipmap-anydpi-v26']
-    .flatMap((d) => fs.readdirSync(path.join(root, res, d)).map((f) => `${d}/${f}`))
-    .filter((f) => !OWNER_IDS.some((id) => f.includes(`ic_launcher_alt_${rid(id)}`)));
+  check('monochrome drawables are shared per shape (5 shapes for 20 icons)', monoSeen.size === 5, [...monoSeen].join(','));
+  const allFiles = ['drawable', 'mipmap-anydpi', 'mipmap-anydpi-v26', 'values'].flatMap((d) => fs.readdirSync(path.join(root, res, d)).map((f) => `${d}/${f}`));
+  const orphans = allFiles.filter((f) => !used.has(f));
+  check('every generated resource is used by some icon, none is left over', orphans.length === 0, orphans.join(','));
+  const strays = allFiles.filter((f) => !f.includes('ic_launcher_alt_'));
   check('no stray generated resources', strays.length === 0, strays.join(','));
   check('generated resources never clash with Expo ic_launcher', !fs.readdirSync(path.join(root, res, 'drawable')).some((f) => /^ic_launcher(_|\.)/.test(f) && !f.startsWith('ic_launcher_alt_')));
 
@@ -79,7 +92,10 @@ async function main() {
   const pv = await import('../assets/app-icons/previews.ts');
   check('previews cover the same ids in order', same(Object.keys(pv.APP_ICON_PREVIEWS), OWNER_IDS));
   check('every preview has a tile and artwork layers', OWNER_IDS.every((id) => pv.APP_ICON_PREVIEWS[id].length >= 3 || id.startsWith('m-bare')));
-  check('preview layers are [fill, path, evenodd]', OWNER_IDS.every((id) => pv.APP_ICON_PREVIEWS[id].every(([f, d, e]) => /^#[0-9A-F]{6}$/.test(f) && /^M[\d. HVMZ-]+$/.test(d) && typeof e === 'boolean')));
+  check('preview layers are [fill, path, evenodd, transform?]', OWNER_IDS.every((id) => pv.APP_ICON_PREVIEWS[id].every(([f, d, e, t]) => /^#[0-9A-F]{6}$/.test(f) && /^M[\d. HVhvMmLlZz-]+$/.test(d) && typeof e === 'boolean' && (t === undefined || /^(translate\([-\d. ]+\) ?|scale\([-\d. ]+\) ?)+$/.test(t)))));
+  const dupShapes = new Set(); let layerCount = 0;
+  for (const id of OWNER_IDS) for (const l of pv.APP_ICON_PREVIEWS[id]) { layerCount++; dupShapes.add(l[1]); }
+  check('previews share shapes instead of repeating them', dupShapes.size < layerCount / 2, `${dupShapes.size} shapes for ${layerCount} layers`);
   check('previews are cropped like a launcher (middle 72 of 108)', pv.APP_ICON_PREVIEW_VIEWBOX === '18 18 72 72');
 
   // ---- plugin

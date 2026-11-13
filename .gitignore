@@ -63,3 +63,5 @@ store/out/
 
 # The landing site generator and its data are source, not build output.
 !site/build/
+
+__pycache__/

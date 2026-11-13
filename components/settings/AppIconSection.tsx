@@ -20,8 +20,8 @@ function IconPreview({ id }: { id: string }) {
   const layers = APP_ICON_PREVIEWS[id] ?? [];
   return (
     <Svg width={PREVIEW} height={PREVIEW} viewBox={APP_ICON_PREVIEW_VIEWBOX}>
-      {layers.map(([fill, d, evenOdd], i) => (
-        <Path key={i} d={d} fill={fill} fillRule={evenOdd ? 'evenodd' : undefined} />
+      {layers.map(([fill, d, evenOdd, transform], i) => (
+        <Path key={i} d={d} fill={fill} fillRule={evenOdd ? 'evenodd' : undefined} transform={transform} />
       ))}
     </Svg>
   );

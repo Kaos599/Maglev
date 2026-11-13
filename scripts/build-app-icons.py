@@ -6,12 +6,18 @@ Reads the train geometry from scripts/build-logo.py (only the part above its fil
 draws the pixel M from the cell grids below, and writes text only into assets/app-icons/:
 
   drawable/ic_launcher_alt_<rid>_fg.xml     VectorDrawable 108dp, the artwork, transparent
-  drawable/ic_launcher_alt_<rid>_bg.xml     VectorDrawable 108dp, the tile
-  drawable/ic_launcher_alt_<rid>_mono.xml   VectorDrawable 108dp, white, for Android 13 themed icons
+  drawable/ic_launcher_alt_<rid>_bg.xml     VectorDrawable 108dp, the tile (only for a tile that is not one colour: CRT)
+  drawable/ic_launcher_alt_mono_<shape>.xml VectorDrawable 108dp, white, for Android 13 themed icons
+  values/ic_launcher_alt_colors.xml             one <color> per distinct solid tile (@color/ic_launcher_alt_bg_<HEX>)
   mipmap-anydpi-v26/ic_launcher_alt_<rid>.xml   <adaptive-icon> (bg + fg + monochrome), API 26+
   mipmap-anydpi/ic_launcher_alt_<rid>.xml       API 24-25 fallback: ONE vector (tile + artwork), 48dp,
                                                 cropped to the middle 72 of 108 so it fills the icon
-  previews.ts                                   the same artwork as path data for react-native-svg
+  previews.ts                                   the same artwork for react-native-svg: shared shapes + a table
+
+Size work: pixel staircases are traced into outlines and written in the shortest M/H/V form (relative or
+absolute per command). Files with identical content are written once: every train colourway shares one
+mono drawable, every keycap shares another, and fg drawables that match (teal/all-dark, mono-white/mono-gray)
+are one file. A solid tile is a colour resource, not a vector. previews.ts keeps each shape once.
 
 <rid> is the icon id with "-" turned into "_" (Android resource names cannot contain "-").
 plugins/withAppIcons.js copies drawable/ and the two mipmap folders into android/app/src/main/res at prebuild.
@@ -80,30 +86,98 @@ def num(v, places):
     t = f"{v:.{places}f}".rstrip("0").rstrip(".")
     return "0" if t in ("", "-0") else t
 
-def bake(d, s, tx, ty, places=2):
-    """Apply x' = s*x + tx to an absolute M/H/V/Z path (uniform scale keeps H and V axis-aligned)."""
-    out = []
+def fnum(v):
+    """Shortest number text, 4 places, no leading zero (".75", "-.5"). Valid in Android PathParser and SVG."""
+    t = num(v, 4)
+    if t.startswith("0."): t = t[1:]
+    elif t.startswith("-0."): t = "-" + t[2:]
+    return t
+
+def polygons(d):
+    """Absolute M/H/V/Z path -> list of vertex lists (one per subpath)."""
+    polys, cur, x, y = [], None, 0.0, 0.0
     for cmd, nums in re.findall(r"([MHVZ])([^MHVZ]*)", d):
         n = [float(v) for v in nums.replace(",", " ").split()]
-        if cmd == "M": out.append(f"M{num(s * n[0] + tx, places)} {num(s * n[1] + ty, places)}")
-        elif cmd == "H": out.append(f"H{num(s * n[-1] + tx, places)}")
-        elif cmd == "V": out.append(f"V{num(s * n[-1] + ty, places)}")
-        else: out.append("Z")
+        if cmd == "M":
+            cur = []; polys.append(cur); x, y = n[0], n[1]; cur.append((x, y))
+        elif cmd == "H": x = n[-1]; cur.append((x, y))
+        elif cmd == "V": y = n[-1]; cur.append((x, y))
+    return polys
+
+def simplify(poly):
+    """Drop repeated and collinear vertices (axis-aligned runs merge into one step)."""
+    p = [(round(a, 4), round(b, 4)) for a, b in poly]
+    out = [v for i, v in enumerate(p) if v != p[i - 1]]
+    changed = True
+    while changed and len(out) > 2:
+        changed = False
+        for i in range(len(out)):
+            a, b, c = out[i - 1], out[i], out[(i + 1) % len(out)]
+            if (a[0] == b[0] == c[0]) or (a[1] == b[1] == c[1]):
+                out.pop(i); changed = True; break
+    return out
+
+def emit(polys):
+    """Vertex lists -> the shortest path string. Each command is relative or absolute, whichever is shorter."""
+    out, cx, cy = [], 0.0, 0.0
+    def pick(rel, ab): return rel if len(rel) <= len(ab) else ab
+    for poly in polys:
+        poly = simplify(poly)
+        if len(poly) < 3: continue
+        x0, y0 = poly[0]
+        out.append(pick(f"m{fnum(x0 - cx)} {fnum(y0 - cy)}", f"M{fnum(x0)} {fnum(y0)}") if out else f"M{fnum(x0)} {fnum(y0)}")
+        cx, cy = x0, y0
+        for x, y in poly[1:]:
+            if x == cx and y == cy: continue
+            if y == cy: out.append(pick(f"h{fnum(x - cx)}", f"H{fnum(x)}"))
+            elif x == cx: out.append(pick(f"v{fnum(y - cy)}", f"V{fnum(y)}"))
+            else: out.append(pick(f"l{fnum(x - cx)} {fnum(y - cy)}", f"L{fnum(x)} {fnum(y)}"))
+            cx, cy = x, y
+        out.append("z"); cx, cy = x0, y0
+    return "".join(out)
+
+def compact(d):
+    """Shrink an absolute M/H/V/Z path without changing the shape."""
+    return emit(polygons(d))
+
+def trace(cells):
+    """Union of unit grid cells {(col,row)} -> vertex lists of its outline (shared edges cancel)."""
+    edges = {}
+    def add(a, b):
+        if (b, a) in edges: del edges[(b, a)]
+        else: edges[(a, b)] = True
+    for c, r in sorted(cells):
+        add((c, r), (c + 1, r)); add((c + 1, r), (c + 1, r + 1)); add((c + 1, r + 1), (c, r + 1)); add((c, r + 1), (c, r))
+    nxt = {}
+    for a, b in edges: nxt.setdefault(a, []).append(b)
+    polys = []
+    for start in sorted(nxt):
+        if not nxt.get(start): continue
+        poly, cur = [start], start
+        while True:
+            n = nxt[cur].pop(0)
+            if n == start: break
+            poly.append(n); cur = n
+        polys.append(poly)
+    return polys
+
+def abs_path(polys):
+    """Vertex lists -> absolute M/H/V/Z text (the form the builders and fit() work with)."""
+    out = []
+    for poly in polys:
+        poly = simplify(poly)
+        out.append(f"M{num(poly[0][0], 4)} {num(poly[0][1], 4)}")
+        for (px, py), (x, y) in zip(poly, poly[1:]):
+            out.append(f"H{num(x, 4)}" if y == py else f"V{num(y, 4)}")
+        out.append("Z")
     return " ".join(out)
 
 # ---- cell grids (pixel M, keycap) ------------------------------------------------------------
 def cells_path(rows, u, ox=0.0, oy=0.0, ch="X"):
-    """Union of grid cells as one path: one rect per horizontal run."""
-    out = []
-    for r, row in enumerate(rows):
-        c = 0
-        while c < len(row):
-            if row[c] == ch:
-                e = c
-                while e < len(row) and row[e] == ch: e += 1
-                out.append(rect(ox + c * u, oy + r * u, (e - c) * u, u)); c = e
-            else: c += 1
-    return " ".join(out)
+    """Union of grid cells as one outline path, scaled by u and moved by (ox, oy)."""
+    cells = {(c, r) for r, row in enumerate(rows) for c, v in enumerate(row) if v == ch}
+    polys = [[(round(ox + c * u, 4), round(oy + r * u, 4)) for c, r in poly] for poly in trace(cells)]
+    return abs_path(polys)
 def inset_rows(width, insets, ch="X"):
     return ["." * i + ch * (width - 2 * i) + "." * i for i in insets]
 
@@ -117,12 +191,13 @@ M_ROWS = ["XX....XX",
 
 # ---- icon builders: each returns (layers, mono) ----------------------------------------------
 # layers: list of (fill, d, evenodd, transform) in 108 coords. mono: list of (d, evenodd, transform).
+# The third value names the mono geometry: icons that share it share one mono drawable.
 def train(tile, body, lines, rails=None, radius=32.0):
     rails = rails or lines
     s, tx, ty = fit([BODY, LINES_D, RAILS], radius)
     tf = f"translate({tx:.3f} {ty:.3f}) scale({s:.4f})"
     layers = [(body, BODY, True, tf), (lines, LINES_D, False, tf), (rails, RAILS, False, tf)]
-    return layers, [(BODY, True, tf), (RAILS, False, tf)]
+    return layers, [(BODY, True, tf), (RAILS, False, tf)], "train"
 
 def train_nose(tile, body, lines):
     # The front of the train, big, running in from the left edge. Nose tip inside the safe circle.
@@ -130,7 +205,7 @@ def train_nose(tile, body, lines):
     tx, ty = 86 - 115 * s, 54 - 64.1 * s
     tf = f"translate({tx:.3f} {ty:.3f}) scale({s:.4f})"
     layers = [(body, BODY, True, tf), (lines, RAILS, False, tf), (lines, LINES_D, False, tf)]
-    return layers, [(BODY, True, tf), (RAILS, False, tf)]
+    return layers, [(BODY, True, tf), (RAILS, False, tf)], "nose"
 
 def train_dash(tile, body, lines):
     # Peak frame of the compact dash loop: long trails and two stepped afterimages, flattened to solids.
@@ -150,13 +225,13 @@ def train_dash(tile, body, lines):
         layers.append((lines if o >= 1 else blend(lines, tile, o), d, False, tf))
         if o >= 1: core.append(d)
     layers += [(body, BODY, True, tf), (lines, RAILS, False, tf)]
-    return layers, [(BODY, True, tf), (RAILS, False, tf), (" ".join(core), False, tf)]
+    return layers, [(BODY, True, tf), (RAILS, False, tf), (" ".join(core), False, tf)], "dash"
 
 def m_bare(tile, m, radius=29.0):
     d = cells_path(M_ROWS, 1)
     s, tx, ty = fit([d], radius)
     tf = f"translate({tx:.3f} {ty:.3f}) scale({s:.4f})"
-    return [(m, d, False, tf)], [(d, False, tf)]
+    return [(m, d, False, tf)], [(d, False, tf)], "m"
 
 KEY_U = 3.25
 KEY_OUTER = inset_rows(16, [2, 1] + [0] * 12 + [1, 2])
@@ -173,7 +248,7 @@ def m_keycap(tile, outline, side, face, m):
     layers += [(side, outer if not outline else sidep, False, ""), (face, facep, False, ""), (m, mp, False, "")]
     # Themed icon: the cap as a frame with the M inside.
     ring = outer + " " + cells_path(KEY_SIDE, u, o, o + u)
-    return layers, [(ring, True, ""), (mp, False, "")]
+    return layers, [(ring, True, ""), (mp, False, "")], "keycap"
 
 # ---- the catalogue: the 20 icons the owner chose, in picker order -----------------------------
 TEAL, VOID, CARD, BORDER, MUTED = "#0B2A30", "#05070A", "#0D1117", "#1F2937", "#8B949E"
@@ -218,12 +293,18 @@ def tile_layers(icon_id, tile):
 
 # ---- VectorDrawable writers ------------------------------------------------------------------
 NS = 'xmlns:android="http://schemas.android.com/apk/res/android"'
+HEAD = '<?xml version="1.0" encoding="utf-8"?>\n<!-- Generated by scripts/build-app-icons.py. Do not edit. -->\n'
 def n3(v):
     return num(v, 3)
 
 def vd_path(fill, d, eo, indent):
     ft = ' android:fillType="evenOdd"' if eo else ""
-    return f'{indent}<path android:fillColor="{fill}"{ft} android:pathData="{d}"/>\n'
+    return f'{indent}<path android:fillColor="{fill}"{ft} android:pathData="{compact(d)}"/>\n'
+
+def group_attrs(tf):
+    s, tx, ty = parse_tf(tf)
+    return (f'android:translateX="{n3(tx)}" android:translateY="{n3(ty)}" '
+            f'android:scaleX="{num(s, 5)}" android:scaleY="{num(s, 5)}"')
 
 def vd_layers(layers, indent="    "):
     """Layers as <path> (no transform) or <group> + <path> (translate + uniform scale)."""
@@ -232,15 +313,11 @@ def vd_layers(layers, indent="    "):
         if not tf:
             out += vd_path(fill, d, eo, indent)
             continue
-        s, tx, ty = parse_tf(tf)
-        out += (f'{indent}<group android:translateX="{n3(tx)}" android:translateY="{n3(ty)}" '
-                f'android:scaleX="{num(s, 5)}" android:scaleY="{num(s, 5)}">\n'
-                f'{vd_path(fill, d, eo, indent + "    ")}{indent}</group>\n')
+        out += f'{indent}<group {group_attrs(tf)}>\n{vd_path(fill, d, eo, indent + "    ")}{indent}</group>\n'
     return out
 
 def vd(layers, size_dp=108, viewport=108, inner_translate=0):
-    head = (f'<?xml version="1.0" encoding="utf-8"?>\n<!-- Generated by scripts/build-app-icons.py. Do not edit. -->\n'
-            f'<vector {NS}\n    android:width="{size_dp}dp"\n    android:height="{size_dp}dp"\n'
+    head = (f'{HEAD}<vector {NS}\n    android:width="{size_dp}dp"\n    android:height="{size_dp}dp"\n'
             f'    android:viewportWidth="{viewport}"\n    android:viewportHeight="{viewport}">\n')
     if inner_translate:
         body = (f'    <group android:translateX="{inner_translate}" android:translateY="{inner_translate}">\n'
@@ -249,72 +326,92 @@ def vd(layers, size_dp=108, viewport=108, inner_translate=0):
         body = vd_layers(layers)
     return head + body + "</vector>\n"
 
-def adaptive(r):
-    return (f'<?xml version="1.0" encoding="utf-8"?>\n<!-- Generated by scripts/build-app-icons.py. Do not edit. -->\n'
-            f'<adaptive-icon {NS}>\n'
-            f'    <background android:drawable="@drawable/ic_launcher_alt_{r}_bg" />\n'
-            f'    <foreground android:drawable="@drawable/ic_launcher_alt_{r}_fg" />\n'
-            f'    <monochrome android:drawable="@drawable/ic_launcher_alt_{r}_mono" />\n'
+def color_name(hexv):
+    return f"ic_launcher_alt_bg_{hexv.lstrip('#').upper()}"
+
+def adaptive(bg_ref, fg, mono):
+    return (f'{HEAD}<adaptive-icon {NS}>\n'
+            f'    <background android:drawable="{bg_ref}" />\n'
+            f'    <foreground android:drawable="@drawable/{fg}" />\n'
+            f'    <monochrome android:drawable="@drawable/{mono}" />\n'
             f'</adaptive-icon>\n')
 
 # ---- previews.ts -----------------------------------------------------------------------------
-def preview_layers(layers):
-    out = []
-    for fill, d, eo, tf in layers:
-        s, tx, ty = parse_tf(tf)
-        out.append((fill, bake(d, s, tx, ty) if tf else bake(d, 1, 0, 0), eo))
-    return out
-
 def write(path, text):
     os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path, "w") as f:
         f.write(text)
 
 def main():
-    for sub in ("drawable", "mipmap-anydpi", "mipmap-anydpi-v26"):
+    for sub in ("drawable", "mipmap-anydpi", "mipmap-anydpi-v26", "values"):
         d = os.path.join(OUT, sub)
         if os.path.isdir(d):
             for fn in os.listdir(d):
                 if fn.startswith("ic_launcher_alt_"):
                     os.remove(os.path.join(d, fn))
-    previews = {}
-    total = 0
+    files, colors, preview_rows = {}, {}, {}
+    owner = {}                       # drawable text -> the resource name it was first written under
+    def share(text, wanted):
+        """Write a drawable once; later icons with the same content reuse the first name."""
+        if text not in owner:
+            owner[text] = wanted
+            files[f"drawable/{wanted}.xml"] = text
+        return owner[text]
     for icon_id, tile, build in ICONS:
-        layers, mono = build(tile)
+        layers, mono, mkey = build(tile)
         r, base = rid(icon_id), name(icon_id)
         bg = tile_layers(icon_id, tile)
-        mono_layers = [("#FFFFFF", d, eo, tf) for d, eo, tf in mono]
-        files = {
-            f"drawable/{base}_fg.xml": vd(layers),
-            f"drawable/{base}_bg.xml": vd(bg),
-            f"drawable/{base}_mono.xml": vd(mono_layers),
-            f"mipmap-anydpi-v26/{base}.xml": adaptive(r),
-            # API 24-25: tile + artwork in one 48dp vector whose viewport is the middle 72 of 108.
-            f"mipmap-anydpi/{base}.xml": vd(bg + layers, size_dp=48, viewport=72, inner_translate=-18),
-        }
-        for rel, text in files.items():
-            write(os.path.join(OUT, rel), text)
-            total += len(text.encode())
-        previews[icon_id] = preview_layers(bg + layers)
+        fg = share(vd(layers), f"{base}_fg")
+        mn = share(vd([("#FFFFFF", d, eo, tf) for d, eo, tf in mono]), f"ic_launcher_alt_mono_{mkey}")
+        if len(bg) == 1:             # one solid colour: a <color> resource, not a vector
+            colors[color_name(tile)] = tile.upper()
+            bg_ref = f"@color/{color_name(tile)}"
+        else:
+            bg_ref = f"@drawable/{share(vd(bg), f'{base}_bg')}"
+        files[f"mipmap-anydpi-v26/{base}.xml"] = adaptive(bg_ref, fg, mn)
+        # API 24-25: tile + artwork in one 48dp vector whose viewport is the middle 72 of 108.
+        files[f"mipmap-anydpi/{base}.xml"] = vd(bg + layers, size_dp=48, viewport=72, inner_translate=-18)
+        preview_rows[icon_id] = bg + layers
+    files["values/ic_launcher_alt_colors.xml"] = (
+        f'{HEAD}<resources>\n' + "".join(f'    <color name="{k}">{colors[k]}</color>\n' for k in sorted(colors)) + "</resources>\n")
+    total = 0
+    for rel, text in files.items():
+        write(os.path.join(OUT, rel), text)
+        total += len(text.encode())
 
+    # previews.ts: each distinct shape and transform once, then one row of [fill, shape, evenodd, transform?] per icon.
+    shapes, tfs = {}, {}
+    def sref(table, key, prefix):
+        if key not in table: table[key] = f"{prefix}{len(table)}"
+        return table[key]
+    rows = []
+    for icon_id, layers in preview_rows.items():
+        parts = []
+        for fill, d, eo, tf in layers:
+            row = f"['{fill}', {sref(shapes, compact(d), 'd')}, {'true' if eo else 'false'}"
+            if tf:
+                s_, tx_, ty_ = parse_tf(tf)
+                row += f", {sref(tfs, tf, 't')}"
+            parts.append(row + "]")
+        rows.append(f"  '{icon_id}': [\n" + "".join(f"    {p},\n" for p in parts) + "  ],\n")
     ts = ["// Generated by scripts/build-app-icons.py. Do not edit.\n",
           "// Preview artwork for Settings > Appearance > App icon, in the same 108 x 108 space as the launcher\n",
-          "// icons. Transforms are baked in, so a preview is plain <Path> elements. These colours belong to the\n",
-          "// icons themselves, not to the app theme.\n\n",
-          "/** One filled path: [fill, path data, evenodd]. */\n",
-          "export type PreviewLayer = readonly [fill: string, d: string, evenOdd: boolean];\n\n",
-          "/** The part of the 108 square a launcher shows (the middle 72). Draw each preview with this viewBox. */\n",
-          "export const APP_ICON_PREVIEW_VIEWBOX = '18 18 72 72';\n\n",
-          "export const APP_ICON_PREVIEWS: Readonly<Record<string, readonly PreviewLayer[]>> = {\n"]
-    for icon_id, layers in previews.items():
-        ts.append(f"  '{icon_id}': [\n")
-        for fill, d, eo in layers:
-            ts.append(f"    ['{fill}', '{d}', {'true' if eo else 'false'}],\n")
-        ts.append("  ],\n")
+          "// icons. Each shape is written once and shared by every icon that uses it. A layer is\n",
+          "// [fill, shape, evenodd, transform?]; draw it as a <Path transform={transform}>. These colours belong to\n",
+          "// the icons themselves, not to the app theme.\n\n"]
+    ts += [f"const {n} = '{k}';\n" for k, n in shapes.items()]
+    ts.append("\n")
+    ts += [f"const {n} = '{k}';\n" for k, n in tfs.items()]
+    ts += ["\n/** One filled path: [fill, path data, evenodd, optional SVG transform]. */\n",
+           "export type PreviewLayer = readonly [fill: string, d: string, evenOdd: boolean, transform?: string];\n\n",
+           "/** The part of the 108 square a launcher shows (the middle 72). Draw each preview with this viewBox. */\n",
+           "export const APP_ICON_PREVIEW_VIEWBOX = '18 18 72 72';\n\n",
+           "export const APP_ICON_PREVIEWS: Readonly<Record<string, readonly PreviewLayer[]>> = {\n"]
+    ts += rows
     ts.append("};\n")
     text = "".join(ts)
     write(os.path.join(OUT, "previews.ts"), text)
-    print(f"{len(ICONS)} icons, {total} bytes of XML, previews.ts {len(text.encode())} bytes")
+    print(f"{len(ICONS)} icons, {len(files)} files, {total} bytes of XML, previews.ts {len(text.encode())} bytes")
 
 if __name__ == "__main__":
     main()

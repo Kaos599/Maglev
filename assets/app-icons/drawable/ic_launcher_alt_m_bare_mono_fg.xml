@@ -6,6 +6,6 @@
     android:viewportWidth="108"
     android:viewportHeight="108">
     <group android:translateX="32.175" android:translateY="34.903" android:scaleX="5.4562" android:scaleY="5.4562">
-        <path android:fillColor="#E9EEF2" android:pathData="M0 0 H2 V1 H0 Z M6 0 H8 V1 H6 Z M0 1 H3 V2 H0 Z M5 1 H8 V2 H5 Z M0 2 H8 V3 H0 Z M0 3 H2 V4 H0 Z M3 3 H5 V4 H3 Z M6 3 H8 V4 H6 Z M0 4 H2 V5 H0 Z M6 4 H8 V5 H6 Z M0 5 H2 V6 H0 Z M6 5 H8 V6 H6 Z M0 6 H2 V7 H0 Z M6 6 H8 V7 H6 Z"/>
+        <path android:fillColor="#E9EEF2" android:pathData="M0 0h2v1h1v1h2V1h1V0h2v7H6V3H5v1H3V3H2v4H0z"/>
     </group>
 </vector>
