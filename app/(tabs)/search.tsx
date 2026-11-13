@@ -933,3 +933,5 @@ const makeStyles = (c: ThemeColors) =>
     listWrap: { flex: 1 },
     list: { paddingHorizontal: spacing.lg, paddingBottom: spacing.xxxl },
   });
+
+export { ErrorBoundary } from '../../components/ErrorScreen';

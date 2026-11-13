@@ -362,3 +362,18 @@ export const appIconCopy = {
   /** "Teal app icon, selected" */
   a11y: (name: string, selected: boolean) => `${name} app icon${selected ? ', selected' : ''}`,
 } as const;
+
+/** The screen shown when a screen crashes, and the crash log row in Settings > About. */
+export const errorScreenCopy = {
+  title: 'Something went wrong',
+  body: 'Maglev hit a problem on this screen. Reload to try again.',
+  reload: 'Reload',
+  copy: 'Copy crash report',
+  copied: 'Report copied',
+  copyFailed: 'Couldn\'t copy the report',
+  about: {
+    title: 'Crash report',
+    subtitle: 'Saved on this phone only. Nothing is sent.',
+    clear: 'Clear crash log',
+  },
+} as const;

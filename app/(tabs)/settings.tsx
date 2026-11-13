@@ -260,3 +260,5 @@ const styles = StyleSheet.create({
   content: { padding: spacing.lg, gap: spacing.lg, paddingBottom: spacing.xxxl },
   section: { gap: spacing.sm },
 });
+
+export { ErrorBoundary } from '../../components/ErrorScreen';

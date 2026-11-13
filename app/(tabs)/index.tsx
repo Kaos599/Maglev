@@ -733,3 +733,5 @@ const makeStyles = (c: ThemeColors) =>
     noMatch: { flex: 1, justifyContent: 'center' },
     listContent: { paddingTop: spacing.xs, paddingBottom: 96 },
   });
+
+export { ErrorBoundary } from '../../components/ErrorScreen';

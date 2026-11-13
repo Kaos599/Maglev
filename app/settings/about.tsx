@@ -9,6 +9,8 @@ import { ListRow } from '../../components/ui';
 import { Card, SettingsPage } from '../../components/settings/SettingsParts';
 import { Wordmark } from '../../components/settings/Wordmark';
 import { MaglevMark } from '../../components/brand/MaglevMark';
+import { errorScreenCopy } from '../../constants/copy';
+import { clearCrashLog, copyCrashReport, getCrashLog } from '../../utils/crashLog';
 import { REPO_URL, StarTicket } from '../../components/settings/StarTicket';
 
 type Extra = { homepage?: string; sourceUrl?: string; privacyUrl?: string };
@@ -16,6 +18,7 @@ type Extra = { homepage?: string; sourceUrl?: string; privacyUrl?: string };
 export default function AboutSettings() {
   const { colors } = useTheme();
   const s = useMemo(() => makeStyles(colors), [colors]);
+  const [crashCount, setCrashCount] = useState(() => getCrashLog().length);
   const [engine, setEngine] = useState<string>('—');
   const appVersion = Constants.expoConfig?.version ?? '—';
   const extra = (Constants.expoConfig?.extra ?? {}) as Extra;
@@ -62,6 +65,24 @@ export default function AboutSettings() {
           <ListRow key={l.url} title={l.title} onPress={() => void Linking.openURL(l.url)} />
         ))}
       </Card>
+      {crashCount > 0 ? (
+        <Card>
+          <ListRow
+            title={errorScreenCopy.copy}
+            subtitle={errorScreenCopy.about.subtitle}
+            icon="copy"
+            onPress={() => void copyCrashReport()}
+          />
+          <ListRow
+            title={errorScreenCopy.about.clear}
+            icon="trash"
+            onPress={() => {
+              clearCrashLog();
+              setCrashCount(0);
+            }}
+          />
+        </Card>
+      ) : null}
     </SettingsPage>
   );
 }

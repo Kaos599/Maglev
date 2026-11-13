@@ -13,6 +13,13 @@ import NavigationBarSync from '../components/NavigationBarSync';
 import { NoticeHost } from '../components/ui/NoticeHost';
 import { syncScheduleToNative } from '../utils/prefs/schedule';
 import { syncFeedAutomationToNative } from '../utils/prefs/feedAutomation';
+import { installGlobalHandler, setCurrentRoute } from '../utils/crashLog';
+
+// Record uncaught JS errors on this phone, then let React Native handle them as before.
+installGlobalHandler();
+
+/** A route crash anywhere keeps the tab bar only if the tab has its own boundary; this one is the last resort. */
+export { ErrorBoundary } from '../components/ErrorScreen';
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
 
@@ -35,6 +42,7 @@ function AppNavigation() {
   const [timedOut, setTimedOut] = useState(false);
   // Decided once, from the route the app was launched into: a later link must never unmount the shell.
   const pathname = usePathname();
+  useEffect(() => setCurrentRoute(pathname ?? ''), [pathname]);
   const [launchNeedsEngine] = useState(() => ENGINE_FIRST_ROUTE.test(pathname ?? ''));
 
   // The bridge reports 'starting' until init settles to 'ready' or 'unavailable'.
