@@ -48,8 +48,11 @@
     {
       "id": "transfers",
       "title": "Every download in one list",
-      "text": "Torrents, ordinary links and saved streams sit in the same list, each with its progress, speed and time left. A queue decides how many run at once. Pause, resume and retry survive a restart, and downloads keep going with the screen off.",
+      "text": "Torrents, ordinary links and saved streams sit in the same list, each with its size, progress, speed and time left, such as 412 MB of 1.2 GB. A queue decides how many run at once. Pause, resume and retry survive a restart, and downloads keep going with the screen off.",
       "specs": [
+        "One + button for a link you paste or type, a .torrent file, Search or the browser",
+        "Open any download's folder in one tap, and share a finished file",
+        "On mobile data, the add screen shows the size before you start",
         "Pause all, Resume all and Shut down from the notification",
         "A live chip in the status bar on Android 16 and later",
         "Unknown times show as unknown, never guessed"
