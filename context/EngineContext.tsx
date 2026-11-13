@@ -38,6 +38,8 @@ import {
 } from '../utils/optimistic';
 import { shareRows } from '../components/transfers/snapshots';
 import { notices } from '../constants/copy';
+import { isAddableLink } from '../utils/addableLink';
+import { smoothDownloadsSpeed } from '../utils/downloadCopy';
 
 /** Bundle-load time, the zero point for the cold-start log (UI spec S10.3). */
 const JS_LOADED_AT = Date.now();
@@ -226,11 +228,7 @@ function smoothAggregate(agg: AggregatedTelemetry, memo: Map<string, Smoothed>, 
 
 const EngineContext = createContext<EngineContextType | null>(null);
 
-/** A magnet link or an http(s) link to a .torrent file. Same test for the chip and the Paste link button. */
-export function isAddableLink(text: string): boolean {
-  if (text.startsWith('magnet:?xt=')) return true;
-  return /^https?:\/\/\S+\.torrent(?:[?#]\S*)?$/i.test(text);
-}
+export { isAddableLink };
 
 function engineError(code: string, message: string, id?: string): Error {
   return Object.assign(new Error(message), { code, id });
@@ -274,6 +272,10 @@ export const EngineProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const heldWhileAway = useRef(false);
   if (!heldWhileAway.current) liveRef.current = liveTelemetry;
   const downloadsRef = useRef<DownloadSnapshot[]>([]);
+  // Smoothed total of running link downloads, added to the torrents' total in the header.
+  const linkSmoothing = useRef(new Map<string, Smoothed>());
+  const linkDownRef = useRef(0);
+  const [linkDown, setLinkDown] = useState(0);
   const pendingRemoval = useRef<{ ids: string[]; names: string[]; timer: ReturnType<typeof setTimeout>; noticeId: number } | null>(null);
   const lastSave = useRef(0);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -355,8 +357,11 @@ export const EngineProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     const shared = shareRows(downloadsRef.current, list) as DownloadSnapshot[];
     if (shared === downloadsRef.current) return;
     downloadsRef.current = shared;
-    if (!isAway()) setDownloads(shared);
-    else heldWhileAway.current = true;
+    linkDownRef.current = smoothDownloadsSpeed(shared, linkSmoothing.current, Date.now());
+    if (!isAway()) {
+      setDownloads(shared);
+      setLinkDown(linkDownRef.current);
+    } else heldWhileAway.current = true;
   }, []);
 
   // Back in the foreground: hand React whatever arrived while away.
@@ -366,6 +371,7 @@ export const EngineProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       heldWhileAway.current = false;
       setLiveTelemetry(liveRef.current);
       setDownloads(downloadsRef.current);
+      setLinkDown(linkDownRef.current);
     });
     return () => sub.remove();
   }, []);
@@ -508,7 +514,7 @@ export const EngineProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   }, []);
 
   // Engine rows with pending taps applied (utils/optimistic.ts) and undo-window removals hidden.
-  const telemetry = useMemo<TransferAggregate>(() => {
+  const torrentTelemetry = useMemo<TransferAggregate>(() => {
     const torrents = applyPending(liveTelemetry.torrents, pending, removing.length > 0 ? new Set(removing) : undefined);
     if (torrents === liveTelemetry.torrents) return liveTelemetry;
     let down = 0;
@@ -523,6 +529,12 @@ export const EngineProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }
     return { totalDownloadSpeedBytes: down, totalUploadSpeedBytes: up, activeDownloads, activeUploads, torrents };
   }, [liveTelemetry, pending, removing]);
+
+  // The header total counts running link downloads too, not only torrents.
+  const telemetry = useMemo<TransferAggregate>(
+    () => (linkDown > 0 ? { ...torrentTelemetry, totalDownloadSpeedBytes: torrentTelemetry.totalDownloadSpeedBytes + linkDown } : torrentTelemetry),
+    [torrentTelemetry, linkDown],
+  );
 
   // A pending tap ends when engine telemetry agrees (settled in `ingest`), or when it is older than
   // OVERRIDE_TIMEOUT_MS: then telemetry is trusted again, silently. A failed engine call says so

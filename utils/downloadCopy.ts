@@ -4,7 +4,7 @@
  */
 import type { DownloadSnapshot } from 'maglev-engine';
 import { formatBytes, formatSpeed } from '../constants/format.ts';
-import { formatEta } from './rates.ts';
+import { formatEta, smoothRate } from './rates.ts';
 
 export type DownloadTone = 'muted' | 'accent' | 'danger';
 export type DownloadActionKind =
@@ -125,27 +125,53 @@ export function downloadProgress(d: DownloadSnapshot): number {
   return Math.min(1, Math.max(0, d.downloaded / d.size));
 }
 
-/** The one status line under the bar. `etaLabel` is the stable label from `formatEta`. */
-export function downloadStatus(d: DownloadSnapshot, etaLabel?: string): { text: string; tone: DownloadTone } {
+/**
+ * "412 MB of 1.2 GB · 34%" for a known size, "412 MB so far" when the server has not said, null when
+ * nothing has arrived and no size is known. A stream's size is an estimate, so it reads "~1.2 GB".
+ */
+export function downloadProgressText(d: DownloadSnapshot): string | null {
+  if (d.state === 'finished') return null;
+  if (d.size && d.size > 0) {
+    const raw = downloadProgress(d) * 100;
+    const pct = raw >= 100 ? 100 : Math.min(99, Math.round(raw));
+    return `${formatBytes(d.downloaded)} of ${d.stream ? '~' : ''}${formatBytes(d.size)} · ${pct}%`;
+  }
+  return d.downloaded > 0 ? `${formatBytes(d.downloaded)} so far` : null;
+}
+
+export interface DownloadStatus {
+  /** The state line: time left and speed, a pause reason, an error. */
+  text: string;
+  tone: DownloadTone;
+  /** How far it got, under the state line. Absent when there is nothing to say yet. */
+  sub?: string;
+}
+
+/** The status under the bar. `etaLabel` is the stable label from `formatEta`. */
+export function downloadStatus(d: DownloadSnapshot, etaLabel?: string): DownloadStatus {
   switch (d.state) {
     case 'resolving':
       return { text: 'Getting info…', tone: 'muted' };
     case 'queued':
       return { text: 'Queued', tone: 'muted' };
     case 'downloading': {
-      if (d.stalled) return { text: STALLED_TEXT, tone: 'muted' };
+      if (d.stalled) return { text: STALLED_TEXT, tone: 'muted', sub: downloadProgressText(d) ?? undefined };
       const speed = d.downBps > 0 ? formatSpeed(d.downBps) : '—';
+      // Unknown size: the line already says how much has arrived.
       if (isSizeUnknown(d)) return { text: `${formatBytes(d.downloaded)} so far · ${speed}`, tone: 'muted' };
+      const sub = downloadProgressText(d) ?? undefined;
       const eta = etaLabel ?? formatEta(d.eta, null);
-      if (d.eta >= 0 && eta !== '—') return { text: `${eta} left · ${speed}`, tone: 'muted' };
-      return { text: `Downloading · ${speed}`, tone: 'muted' };
+      if (d.eta >= 0 && eta !== '—') return { text: `${eta} left · ${speed}`, tone: 'muted', sub };
+      return { text: `Downloading · ${speed}`, tone: 'muted', sub };
     }
-    case 'paused':
-      if (d.pausedBy === 'storage_full') return { text: 'Storage full', tone: 'danger' };
-      if (d.pausedBy === 'storage_unavailable') return { text: FOLDER_GONE_TEXT, tone: 'danger' };
-      if (d.pausedBy === 'offline') return { text: OFFLINE_TEXT, tone: 'muted' };
-      if (d.pausedBy && GOVERNANCE_TEXT[d.pausedBy]) return { text: GOVERNANCE_TEXT[d.pausedBy], tone: 'muted' };
-      return { text: 'Paused', tone: 'muted' };
+    case 'paused': {
+      const sub = downloadProgressText(d) ?? undefined;
+      if (d.pausedBy === 'storage_full') return { text: 'Storage full', tone: 'danger', sub };
+      if (d.pausedBy === 'storage_unavailable') return { text: FOLDER_GONE_TEXT, tone: 'danger', sub };
+      if (d.pausedBy === 'offline') return { text: OFFLINE_TEXT, tone: 'muted', sub };
+      if (d.pausedBy && GOVERNANCE_TEXT[d.pausedBy]) return { text: GOVERNANCE_TEXT[d.pausedBy], tone: 'muted', sub };
+      return { text: 'Paused', tone: 'muted', sub };
+    }
     case 'verifying':
       return { text: 'Finishing…', tone: 'muted' };
     case 'finished':
@@ -160,6 +186,29 @@ export function downloadStatus(d: DownloadSnapshot, etaLabel?: string): { text: 
     default:
       return { text: 'Getting info…', tone: 'muted' };
   }
+}
+
+/**
+ * Total speed of the running link downloads, each smoothed like a torrent's (utils/rates smoothRate)
+ * so the header does not jump. `memo` carries each row's last value and is pruned of rows that left.
+ */
+export function smoothDownloadsSpeed(
+  list: readonly DownloadSnapshot[],
+  memo: Map<string, { down: number; up: number; at: number }>,
+  now: number,
+): number {
+  let total = 0;
+  const live = new Set<string>();
+  for (const d of list) {
+    if (d.state !== 'downloading') continue;
+    live.add(d.id);
+    const prev = memo.get(d.id);
+    const sd = smoothRate(prev ? prev.down : null, d.downBps, prev ? now - prev.at : 0);
+    memo.set(d.id, { down: sd, up: 0, at: now });
+    total += sd;
+  }
+  for (const id of [...memo.keys()]) if (!live.has(id)) memo.delete(id);
+  return total;
 }
 
 function errorLine(d: DownloadSnapshot): string {
