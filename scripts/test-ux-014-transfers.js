@@ -77,8 +77,9 @@ async function main() {
   check('link sheet shows the explainer', /WIFI_ANYWAY_NOTE/.test(dsheet));
   check('link sheet no longer hides Pause and Resume', !/a\.kind !== 'resume'/.test(dsheet));
   const empty = read('components/transfers/TeachingEmptyState.tsx');
-  check('empty state primary is Type a link', /label="Type a link"/.test(empty) && /onType/.test(empty));
-  check('Paste is secondary', /label="Paste link"[^>]*variant="secondary"/.test(empty));
+  // 0.15: one primary "Add a link" (the add screen has Paste); the separate Paste link button is gone.
+  check('empty state primary is Add a link', /label="Add a link"/.test(empty) && /onAdd/.test(empty));
+  check('empty state has no separate Paste link button', !/Paste link/.test(empty));
   const pills = read('components/FilterPills.tsx');
   check('filter pills have a fade edge', /fade/i.test(pills));
   check('seeding is no longer plain "Seeding" on the card', !/line\('Seeding'/.test(read('components/transfers/model.ts')));

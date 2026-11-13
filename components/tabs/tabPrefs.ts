@@ -64,6 +64,28 @@ export function moveTab(prefs: TabPrefs, id: TabId, dir: 'up' | 'down', listed?:
   return { order, hidden: prefs.hidden };
 }
 
+/** A copy of `list` with the item at `from` moved to index `to`. Out-of-range or equal indices return a plain copy. */
+export function moveItem<T>(list: readonly T[], from: number, to: number): T[] {
+  const out = [...list];
+  if (from === to || from < 0 || to < 0 || from >= out.length || to >= out.length) return out;
+  const [item] = out.splice(from, 1);
+  out.splice(to, 0, item);
+  return out;
+}
+
+/**
+ * Drag and drop: move the listed row at `from` to listed row index `to`. `listed` is the rows the screen
+ * shows, in order. Tabs that are not listed (Assistant while it is off) keep their slots in the saved order.
+ */
+export function reorderTabs(prefs: TabPrefs, listed: readonly TabId[], from: number, to: number): TabPrefs {
+  const rows = prefs.order.filter((x) => listed.includes(x));
+  if (from === to || from < 0 || to < 0 || from >= rows.length || to >= rows.length) return prefs;
+  const next = moveItem(rows, from, to);
+  let at = 0;
+  const order = prefs.order.map((x) => (listed.includes(x) ? next[at++] : x));
+  return { order, hidden: prefs.hidden };
+}
+
 /** The tabs on the bar, in order. */
 export function visibleTabs(prefs: TabPrefs, opts: { assistantEnabled: boolean }): TabId[] {
   const shown = prefs.order.filter(
