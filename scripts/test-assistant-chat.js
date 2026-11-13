@@ -606,7 +606,7 @@ async function main() {
     check('three usage chunks in one stream are added once with the last values', s.env.usage.length === 1 && s.env.usage[0].input === 100 && s.env.usage[0].output === 25, s.env.usage);
   }
 
-  // ---- empty answer and background note ---------------------------------------------------------------
+  // ---- empty answer and background (the turn goes on) ---------------------------------------------------------------
   {
     const s = setup();
     s.fetch.queue.push({ chunks: [chunk({}, 'stop') + 'data: [DONE]\n\n'] });
@@ -621,11 +621,10 @@ async function main() {
     await b.timers.advance(60);
     b.controller.background();
     await settle();
-    const eb = b.chat().items.at(-1);
-    check('Background: "Stopped when you left Maglev." with retry, not busy', eb.kind === 'error' && eb.message === 'Stopped when you left Maglev.' && eb.action === 'retry' && !b.chat().busy, eb);
+    check('Background: the turn keeps going (0.17), no "stopped away" error', b.chat().busy && !b.chat().items.some((i) => i.kind === 'error'), b.chat().items.map((i) => i.kind));
   }
 
-  // ---- Stop / Clear / Background ----------------------------------------------------------------------
+  // ---- Stop / Clear ----------------------------------------------------------------------
   {
     const s = setup();
     s.fetch.queue.push({ chunks: [chunk({ content: 'Partial ' })], hang: true });
@@ -662,7 +661,7 @@ async function main() {
     await settle();
     s.controller.background();
     await settle();
-    check('Background aborts the stream', s.fetch.requests[0].signal.aborted && !s.chat().busy);
+    check('Background does not abort the stream (0.17)', !s.fetch.requests[0].signal.aborted && s.chat().busy);
   }
   {
     const s = setup();

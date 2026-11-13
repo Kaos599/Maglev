@@ -1,6 +1,6 @@
 {
   "name": "maglev",
-  "version": "0.16.0",
+  "version": "0.17.0",
   "main": "expo-router/entry",
   "scripts": {
     "start": "expo start",
@@ -24,7 +24,7 @@
     "test:admission": "node scripts/test-admission.js",
     "test:remove-files": "node scripts/test-remove-files.js",
     "test:tracker-edit": "node scripts/test-tracker-edit.js",
-    "test:assistant": "node scripts/test-assistant-card.js && node scripts/test-assistant-plan.js && node scripts/test-assistant-sanitize.js && node scripts/test-assistant-sse.js && node scripts/test-assistant-prefs.js && node scripts/test-assistant-provider.js && node scripts/test-assistant-safety.js && node scripts/test-assistant-providersave.js && node scripts/test-assistant-context.js && node scripts/test-assistant-release.js && node scripts/test-assistant-tools.js && node scripts/test-assistant-prompt.js && node scripts/test-assistant-glossary.js && node scripts/test-assistant-playback.js && node scripts/test-assistant-scoring.js && node scripts/test-assistant-turn.js && node scripts/test-assistant-disk.js && node scripts/test-assistant-runner.js && node scripts/test-assistant-browse.js && node scripts/test-assistant-chat.js && node scripts/test-assistant-jargon.js && node scripts/test-assistant-chatview.js && node scripts/test-assistant-probe.js && node scripts/test-assistant-models.js && node scripts/test-assistant-capabilities.js",
+    "test:assistant": "node scripts/test-assistant-card.js && node scripts/test-assistant-plan.js && node scripts/test-assistant-sanitize.js && node scripts/test-assistant-sse.js && node scripts/test-assistant-prefs.js && node scripts/test-assistant-provider.js && node scripts/test-assistant-safety.js && node scripts/test-assistant-providersave.js && node scripts/test-assistant-context.js && node scripts/test-assistant-release.js && node scripts/test-assistant-tools.js && node scripts/test-assistant-prompt.js && node scripts/test-assistant-glossary.js && node scripts/test-assistant-playback.js && node scripts/test-assistant-scoring.js && node scripts/test-assistant-turn.js && node scripts/test-assistant-disk.js && node scripts/test-assistant-runner.js && node scripts/test-assistant-browse.js && node scripts/test-assistant-chat.js && node scripts/test-assistant-jargon.js && node scripts/test-assistant-chatview.js && node scripts/test-assistant-probe.js && node scripts/test-assistant-models.js && node scripts/test-assistant-capabilities.js && node scripts/test-assistant-017.js",
     "test:follow": "node scripts/test-follow.js",
     "test:done-actions": "node scripts/test-done-actions.js",
     "test:url-download": "node scripts/test-url-download.js"

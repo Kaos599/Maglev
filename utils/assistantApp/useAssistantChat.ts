@@ -2,12 +2,13 @@
 // AppState into createChatController. The controller is kept per runner so the chat survives leaving the screen
 // (SM-42: history lives in memory for the session).
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
-import { AppState } from 'react-native';
+import { useIsFocused } from 'expo-router';
 import { fetch as expoFetch } from 'expo/fetch'; // Streaming fetch: response.body.getReader() (SDK 52+).
 import type { AssistantChat, ToolRunner } from '../assistant/runtime.ts';
 import { addTokensUsed, keyFor, type TaggedKey } from '../prefs/assistant.ts';
 import { assistantPrefs, useAssistantPrefs } from '../prefs/assistantApp';
 import { createStreamFn, type FetchLike } from './client.ts';
+import { setUnseenReply } from './unseenReply.ts';
 import { createChatController, goneTargets, type ChatController } from './chatController.ts';
 import { useMaglevEngine } from '../../context/EngineContext';
 
@@ -23,6 +24,7 @@ function controllerFor(runner: ToolRunner): ChatController {
       stream: createStreamFn(expoFetch as unknown as FetchLike),
       getPrefs: () => assistantPrefs.get(),
       getKey: () => keyFor(loadedKey, assistantPrefs.get()),
+      onUnseenChange: setUnseenReply,
       addUsage: (usage) => {
         assistantPrefs.update((p) => addTokensUsed(p, usage));
       },
@@ -61,12 +63,12 @@ export function useAssistantChat(runner: ToolRunner): AssistantChat {
     controller.refresh();
   }, [controller, prefs, loaded, loadPending]);
 
+  // Going to the background does not stop a turn: it keeps running while the OS lets the app. Whether the
+  // Assistant tab is in view decides if a finished reply is marked unseen.
+  const focused = useIsFocused();
   useEffect(() => {
-    const sub = AppState.addEventListener('change', (s) => {
-      if (s === 'background') controller.background();
-    });
-    return () => sub.remove();
-  }, [controller]);
+    controller.setFocused(focused);
+  }, [controller, focused]);
 
   // R1-3: a card whose download was removed elsewhere expires instead of looking valid until Confirm.
   const { telemetry, downloads } = useMaglevEngine();

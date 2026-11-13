@@ -593,6 +593,32 @@ async function main() {
     check('any subtitles asked: Multi-Sub leads', sa.ranked[0].id === iMsub.infoHash && sa.ranked[0].reasons.includes('Has subtitles'), sa.ranked[0].reasons.join(' / '));
   }
 
+  // ---------------------------------------------------------------- 0.17: joined words, strict two-word titles, filler words
+  console.log('joined title words and filler words');
+  {
+    const { cleanSearchQuery } = await import('../utils/assistant/scoring.ts');
+    const ctxQ = (title, over = {}) => baseCtx({ freeBytes: 500 * GB, query: { title }, ...over });
+    const prime = row('Primetime.2026.1080p.WEB-DL.DDP5.1.H.264-GRP', 3 * GB, 200);
+    const suspect = row('Prime.Suspect.S01.1080p.BluRay.x264-GRP', 8 * GB, 50, ['knaben'], { category: 'tv' });
+    const bandits = row('Time.Bandits.1981.1080p.BluRay.x264-GRP', 2 * GB, 90);
+    const o = scoreResults([prime, suspect, bandits], ctxQ('prime time'));
+    check('"prime time" matches Primetime.2026.1080p (joined words)', o.ranked.some((r) => r.id === prime.infoHash), o.excluded.map((x) => x.detail).join(' | '));
+    check('"Prime Suspect S01" is excluded as wrong_title for "prime time"', o.excluded.some((x) => x.id === suspect.infoHash && x.reason === 'wrong_title'));
+    check('"Time Bandits 1981" is excluded as wrong_title for "prime time"', o.excluded.some((x) => x.id === bandits.infoHash && x.reason === 'wrong_title'));
+    const split = row('Prime.Time.2026.1080p.WEB-DL.x264-GRP', 2 * GB, 40);
+    check('"primetime" matches Prime.Time.2026 (the release splits the word)', scoreResults([split], ctxQ('primetime')).excluded.length === 0);
+    check('"prime time" still matches Prime.Time.2026', scoreResults([split], ctxQ('prime time')).excluded.length === 0);
+    check('a longer title keeps its one-word tolerance (6 words, 1 missing)',
+      scoreResults([row('Pirates.Of.The.Caribbean.Dead.Mans.Chest.2006.1080p.BluRay.x264-GRP', 2 * GB, 90)], ctxQ('Pirates Caribbean Dead Mans Chest Curse')).excluded.length === 0);
+
+    check('cleanSearchQuery: "best prime time movie torrents" -> "prime time"', cleanSearchQuery('best prime time movie torrents') === 'prime time', cleanSearchQuery('best prime time movie torrents'));
+    check('cleanSearchQuery: "find me the best prime time movies torrent download"', cleanSearchQuery('find me the best prime time movies torrent download') === 'prime time');
+    check('cleanSearchQuery keeps real titles ("Scary Movie", "Top Gun", "Free Guy", "The Matrix")',
+      ['Scary Movie', 'Top Gun', 'Free Guy', 'The Matrix', 'Me Before You'].every((t) => cleanSearchQuery(t) === t));
+    check('cleanSearchQuery never empties the query', cleanSearchQuery('best') === 'best' && cleanSearchQuery('torrents') === 'torrents' && cleanSearchQuery('best movies') === 'movies');
+    check('cleanSearchQuery: trailing "hd" and "free" go', cleanSearchQuery('Inception 2010 hd free') === 'Inception 2010');
+  }
+
   // ---------------------------------------------------------------- purity
   for (const file of ['scoring.ts', 'sizeBands.ts']) {
     const src = fs.readFileSync(path.join(__dirname, '..', 'utils', 'assistant', file), 'utf8');

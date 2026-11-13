@@ -11,6 +11,7 @@ import { filterModelOutput } from '../assistant/sanitize.ts';
 import type {
   AssistantChat,
   ChatGate,
+  ChatPhase,
   ChatItem,
   ExecuteResult,
   ProgressStep,
@@ -68,6 +69,8 @@ export interface ChatDeps {
   random?: () => number;
   /** Defaults to buildSystemPrompt() with the current time, rebuilt for every new question. A fixed string is used as is. */
   systemPrompt?: string;
+  /** Called when a finished reply is waiting unseen (true) or has been seen (false): the tab badge. */
+  onUnseenChange?: (unseen: boolean) => void;
   /** The clock for the system prompt ("this week", "latest"). Defaults to the real time. */
   now?: () => Date;
   /** IANA time zone for the system prompt, e.g. "Asia/Kolkata". Defaults to the phone's. */
@@ -81,8 +84,13 @@ export interface ChatController {
   subscribe(listener: () => void): () => void;
   /** Re-read prefs and key. Call when either changed. Key removed means Clear; Assistant turned off means Disabled. */
   refresh(): void;
-  /** The app went to the background (SM-42): abort the stream and the running tools. */
+  /**
+   * The app went to the background. Does nothing: the turn keeps going. If the system ends the process the turn
+   * is lost with it, and the chat starts empty (chats are not saved), so there is nothing to retry.
+   */
   background(): void;
+  /** Whether the Assistant tab is in view. A reply that finishes out of view sets `unseenReply`; seeing it clears it. */
+  setFocused(focused: boolean): void;
   /** A card's target (a transfer or result handle) is gone. */
   targetGone(target: string): void;
 }
@@ -244,6 +252,9 @@ export function createChatController(deps: ChatDeps): ChatController {
   const listeners = new Set<() => void>();
   let snapshot: AssistantChat | null = null;
   let textTimer: unknown;
+  let focused = true;
+  let unseen = false;
+  let wasBusy = false;
   let lastEnabled = getPrefs().enabled;
   let lastHadKey = hasKey();
 
@@ -262,12 +273,29 @@ export function createChatController(deps: ChatDeps): ChatController {
     return 'ready';
   }
 
+  const isBusy = (): boolean => turn.kind === 'requesting' || turn.kind === 'streaming' || turn.kind === 'runningTools';
+
+  function phase(): ChatPhase {
+    if (!isBusy()) return 'idle';
+    if (assistantId !== null && rawText.length > 0) return 'writing';
+    if (batch !== null && batch.pending.size > 0) return 'tools';
+    return 'thinking';
+  }
+
+  function setUnseen(next: boolean): void {
+    if (unseen === next) return;
+    unseen = next;
+    deps.onUnseenChange?.(next);
+  }
+
   function build(): AssistantChat {
     const p = getPrefs();
     return {
       items,
       gate: gate(),
-      busy: turn.kind === 'requesting' || turn.kind === 'streaming' || turn.kind === 'runningTools',
+      busy: isBusy(),
+      phase: phase(),
+      unseenReply: unseen,
       providerName: presetById(p.presetId).label,
       modelName: modelDisplayName(p),
       tokensUsed: { ...p.tokensUsed },
@@ -358,6 +386,11 @@ export function createChatController(deps: ChatDeps): ChatController {
     } finally {
       draining = false;
     }
+    const busyNow = isBusy();
+    // A turn that ended while the tab was out of view leaves a reply to look at. Clear and Stop do not.
+    if (wasBusy && !busyNow && !focused && items.length > 0 && items[items.length - 1].kind !== 'note') setUnseen(true);
+    if (items.length === 0) setUnseen(false);
+    wasBusy = busyNow;
     if (onlyText) emitSoon();
     else emit();
   }
@@ -410,6 +443,8 @@ export function createChatController(deps: ChatDeps): ChatController {
         break;
       case 'markCancelled':
         closeStreaming();
+        // Stop must not leave the next question waiting on a card that is still being built.
+        preps.clear();
         // Leaving the app is not the user's choice, so it offers Retry. The Stop button keeps the plain note.
         if (e.background) pushError(COPY.stoppedAway);
         else pushNote('Stopped.');
@@ -560,8 +595,8 @@ export function createChatController(deps: ChatDeps): ChatController {
     progressId = null;
   }
 
-  function progressFor(callId: string, text: string, state: ProgressStep['state'], tool?: string): void {
-    const step: ProgressStep = { callId, text, state, ...(tool ? { tool } : {}) };
+  function progressFor(callId: string, text: string, state: ProgressStep['state'], tool?: string, detail?: string): void {
+    const step: ProgressStep = { callId, text, state, ...(tool ? { tool } : {}), ...(detail ? { detail } : {}) };
     if (progressId === null) {
       progressId = newId('p');
       push({ kind: 'progress', id: progressId, steps: [step] });
@@ -569,25 +604,38 @@ export function createChatController(deps: ChatDeps): ChatController {
       replace(progressId, (i) => {
         if (i.kind !== 'progress') return i;
         const at = i.steps.findIndex((s) => s.callId === callId && s.text === text);
-        const steps = at >= 0 ? i.steps.map((s, k) => (k === at ? step : s)) : [...i.steps, step];
+        // A later update of the same line keeps the live detail it had unless it brings a new one.
+        const steps = at >= 0 ? i.steps.map((s, k) => (k === at ? { ...step, ...(!step.detail && s.detail ? { detail: s.detail } : {}) } : s)) : [...i.steps, step];
         return { ...i, steps };
       });
     }
     emit();
   }
 
+  /**
+   * Settles the steps of one tool call. The call's first step is its main one: it takes the final detail whatever
+   * its state (a tool marks it done before it returns). Other steps of the call (a source that did not answer)
+   * only change state if still running.
+   */
   function settleProgress(callId: string, failed: boolean, detail?: string): void {
     if (progressId === null) return;
-    replace(progressId, (i) =>
-      i.kind === 'progress'
-        ? {
-            ...i,
-            steps: i.steps.map((s) =>
-              s.callId === callId && s.state === 'running' ? { ...s, state: failed ? 'failed' : 'done', ...(detail && !failed ? { detail } : {}) } : s,
-            ),
+    replace(progressId, (i) => {
+      if (i.kind !== 'progress') return i;
+      const main = i.steps.findIndex((s) => s.callId === callId);
+      return {
+        ...i,
+        steps: i.steps.map((s, k) => {
+          if (s.callId !== callId) return s;
+          const state = s.state === 'running' ? (failed ? 'failed' : 'done') : s.state;
+          if (k === main) {
+            // The main step drops its live line; a final detail (only on success) replaces it.
+            const base: ProgressStep = { callId: s.callId, text: s.text, state, ...(s.tool ? { tool: s.tool } : {}) };
+            return !failed && detail ? { ...base, detail } : base;
           }
-        : i,
-    );
+          return { ...s, state };
+        }),
+      };
+    });
   }
 
   function clearToolTimer(callId: string): void {
@@ -613,8 +661,8 @@ export function createChatController(deps: ChatDeps): ChatController {
         { id: callId, name, args },
         {
           signal: ac.signal,
-          progress: (text, state = 'running') => {
-            if (batch === mine && !ac.signal.aborted) progressFor(callId, text, state, name);
+          progress: (text, state = 'running', detail) => {
+            if (batch === mine && !ac.signal.aborted) progressFor(callId, text, state, name, detail);
           },
         },
       );
@@ -942,7 +990,14 @@ export function createChatController(deps: ChatDeps): ChatController {
       else emit();
     },
     background() {
-      dispatch({ type: 'Background' });
+      // Intentionally nothing: leaving the app does not stop a turn.
+    },
+    setFocused(f) {
+      focused = f;
+      if (f && unseen) {
+        setUnseen(false);
+        emit();
+      }
     },
     targetGone(target) {
       dispatch({ type: 'TargetGone', target });
