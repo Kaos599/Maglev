@@ -1582,51 +1582,26 @@ object EngineHost {
     fun probeStream(url: String, options: Map<String, Any?>, timeoutMs: Long): Map<String, Any?> =
         call { NativeCore.nativeProbeStream(url, Json.toJson(Json.snakeify(options)), timeoutMs) }
 
-    /** Ids whose join was started and whose state hasn't left `verifying` yet. Guarded by itself. */
-    private val muxStarted = HashSet<String>()
+    /** Downloads whose join was started and whose state hasn't left `verifying` yet (see [MuxTracker]). */
+    private val muxTracker = MuxTracker()
 
     /**
      * A stream download with separate video and audio parts waits in `verifying` with `mux_needed` (contract 24.8).
      * Joins them once per wait on an IO thread (no re-encode), then tells Rust. Runs before the copy into a chosen
      * folder, which only looks at `finished`. A failure goes to Rust as `MUX_FAILED`; Retry makes the state
-     * `verifying` again and this joins again. After a process restart the wait is still there and starts again.
+     * `verifying` again and this joins again. After a process restart the wait is still there and starts again
+     * (an output finished before the restart is reported as joined). The logic lives in [MuxRunner] (JVM-tested).
      */
     private fun runPendingMuxes(downloads: List<Map<String, Any?>>) {
-        val waiting = ArrayList<Map<String, Any?>>()
-        synchronized(muxStarted) {
-            val ids = HashSet<String>()
-            for (d in downloads) {
-                val id = d["id"] as? String ?: continue
-                if (d["state"] == "verifying" && d["mux_needed"] == true) {
-                    ids.add(id)
-                    if (muxStarted.add(id)) waiting.add(d)
-                }
-            }
-            muxStarted.retainAll(ids)
-        }
-        for (d in waiting) {
-            val id = d["id"] as? String ?: continue
-            val folder = d["folder"] as? String ?: continue
-            val name = d["name"] as? String ?: continue
+        for (job in muxTracker.claim(downloads)) {
             ioScope.launch {
-                var ok = false
-                var message: String? = null
-                val out = File(folder, name)
-                try {
-                    StreamMuxer.mux(File(folder, "$name.video.part"), File(folder, "$name.audio.part"), out)
-                    ok = true
-                } catch (e: StreamMuxer.MuxException) {
-                    message = e.message
-                } catch (t: Throwable) {
-                    message = t.javaClass.simpleName
-                }
-                val res = call { NativeCore.nativeFinishMux(id, ok, message ?: "") }
-                if (!isOk(res)) {
-                    // The download was removed, or Rust couldn't be told: don't leave an orphan file, and let the
-                    // next poll try again if the download is still waiting.
-                    if (ok) try { out.delete() } catch (t: Throwable) { Log.w(TAG, "could not remove the joined file", t) }
-                    synchronized(muxStarted) { muxStarted.remove(id) }
-                }
+                val outcome = MuxRunner.run(
+                    job,
+                    mux = { v, a, o -> StreamMuxer.mux(v, a, o) },
+                    finish = { id, ok, message -> isOk(call { NativeCore.nativeFinishMux(id, ok, message) }) },
+                )
+                // The download was removed, or Rust couldn't be told: let the next poll try again if it still waits.
+                if (outcome == MuxOutcome.NOT_REPORTED) muxTracker.release(job.id)
                 pollNow()
             }
         }

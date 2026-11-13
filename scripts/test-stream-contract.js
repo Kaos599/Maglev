@@ -34,6 +34,7 @@ const machine = read('native/maglev-core/src/http_dl/machine.rs');
 const nativeCore = stripKotlinComments(read(`${KT}/NativeCore.kt`));
 const mod = stripKotlinComments(read(`${KT}/MaglevEngineModule.kt`));
 const host = stripKotlinComments(read(`${KT}/EngineHost.kt`));
+const muxJobs = stripKotlinComments(read(`${KT}/MuxJobs.kt`));
 const muxer = stripKotlinComments(read(`${KT}/storage/StreamMuxer.kt`));
 const types = read('modules/maglev-engine/src/MaglevEngine.types.ts');
 const bridge = read('modules/maglev-engine/src/MaglevNativeBridge.ts');
@@ -116,8 +117,10 @@ check('the join runs before the copy into the user folder', () => {
 check('the join waits in verifying, once per wait, on an IO thread, then tells Rust', () => {
   const fn = host.slice(host.indexOf('private fun runPendingMuxes'));
   const body = fn.slice(0, fn.indexOf('\n    }\n\n') + 8);
-  assert(/"verifying"/.test(body) && /mux_needed/.test(body), 'must wait for verifying with mux_needed');
-  assert(/muxStarted\.add\(id\)/.test(body), 'must start each wait once');
+  const jobs = stripKotlinComments(read(`${KT}/MuxJobs.kt`));
+  assert(/"verifying"/.test(jobs) && /mux_needed/.test(jobs), 'must wait for verifying with mux_needed');
+  assert(/started\.add\(id\)/.test(jobs), 'must start each wait once');
+  assert(/muxTracker\.claim\(downloads\)/.test(body), 'must ask the tracker which waits are new');
   assert(/ioScope\.launch/.test(body), 'must run on the IO scope');
   assert(/StreamMuxer\.mux\(/.test(body) && /nativeFinishMux\(id, ok,/.test(body), 'must mux then call nativeFinishMux');
 });
@@ -136,7 +139,7 @@ check('the part and temp names agree between Rust and Kotlin', () => {
   const rs = read('native/maglev-core/src/http_dl/stream/plan.rs');
   const driver = read('native/maglev-core/src/http_dl/driver.rs');
   assert(/\{name\}\.video\.part/.test(rs) && /\{name\}\.audio\.part/.test(rs), 'Rust part names');
-  assert(/"\$name\.video\.part"/.test(host) && /"\$name\.audio\.part"/.test(host), 'Kotlin part names');
+  assert(/"\$name\.video\.part"/.test(muxJobs) && /"\$name\.audio\.part"/.test(muxJobs), 'Kotlin part names');
   assert(driver.includes('".mux.tmp"') && /\.mux\.tmp/.test(muxer), 'temp name on both sides');
 });
 
