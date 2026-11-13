@@ -119,6 +119,7 @@ const APP_VERSION = Constants.expoConfig?.version ?? '';
 
 export default function SettingsIndex() {
   const { settings } = useSettings();
+  const { permissionStatus } = useEngine();
   const [searchPrefs] = useSearchPrefs();
   const [schedule] = useSchedule();
   const [feedAuto] = useFeedAutomation();
@@ -144,28 +145,63 @@ export default function SettingsIndex() {
   const providers = `${searchPrefs.enabled.length} on`;
   const auto = feedAutomationSummary(feedAuto);
 
-  const rows: RowSpec[] = [
-    { icon: 'bandwidth', title: 'Bandwidth', value: limits, route: 'bandwidth' },
-    { icon: 'queue', title: 'Torrents & queue', value: queue, route: 'queue' },
-    { icon: 'interface', title: 'Interface', value: interfaceValue, route: 'interface' },
-    { icon: 'network', title: 'Network', value: network, route: 'network' },
-    { icon: 'power', title: 'Power', value: power, route: 'power' },
-    { icon: 'schedule', title: 'Scheduling', value: scheduling, route: 'scheduling' },
+  const alerts = permissionStatus?.notifications === 'granted' ? 'On' : 'Off';
+
+  const appRows: RowSpec[] = [
+    { icon: 'interface', title: 'Appearance', value: interfaceValue, route: 'interface' },
+    { icon: 'bell', title: 'Notifications', value: alerts, route: 'notifications' },
+    { icon: 'assistant', title: 'Assistant', value: assistant.enabled ? 'Experimental · On' : 'Experimental · Off', route: 'assistant' },
+  ];
+  const findRows: RowSpec[] = [
     { icon: 'search', title: 'Search providers', value: providers, route: 'search-providers' },
     { icon: 'feeds', title: 'Auto-download', value: auto, route: 'feeds' },
     { icon: 'network', title: 'Browser', value: browserPrefs.adBlock ? 'Ad blocking on' : 'Ad blocking off', route: 'browser' },
-    { icon: 'assistant', title: 'Assistant', value: assistant.enabled ? 'Experimental · On' : 'Experimental · Off', route: 'assistant' },
-    { icon: 'about', title: 'About', value: APP_VERSION, route: 'about' },
   ];
+  const speedRow: RowSpec = { icon: 'bandwidth', title: 'Speed & queue', value: `${limits} · ${queue}`, route: 'speed' };
+  const scheduleRow: RowSpec = { icon: 'schedule', title: 'Scheduling', value: scheduling, route: 'scheduling' };
+  const connectionRows: RowSpec[] = [
+    { icon: 'network', title: 'Network', value: network, route: 'network' },
+    { icon: 'power', title: 'Power', value: power, route: 'power' },
+  ];
+  const aboutRow: RowSpec = { icon: 'about', title: 'About', value: APP_VERSION, route: 'about' };
 
   return (
     <Screen title="SETTINGS" scroll contentStyle={styles.content}>
       <NeedsAttention />
+      <View style={styles.section}>
+        <SectionHeader title="App" />
+        <Card>
+          {appRows.map((r) => (
+            <SettingsRow key={r.route} {...r} />
+          ))}
+        </Card>
+      </View>
+      <View style={styles.section}>
+        <SectionHeader title="Finding things" />
+        <Card>
+          {findRows.map((r) => (
+            <SettingsRow key={r.route} {...r} />
+          ))}
+        </Card>
+      </View>
+      <View style={styles.section}>
+        <SectionHeader title="Downloads" />
+        <Card>
+          <StorageRow />
+          <SettingsRow {...speedRow} />
+          <SettingsRow {...scheduleRow} />
+        </Card>
+      </View>
+      <View style={styles.section}>
+        <SectionHeader title="Connection" />
+        <Card>
+          {connectionRows.map((r) => (
+            <SettingsRow key={r.route} {...r} />
+          ))}
+        </Card>
+      </View>
       <Card>
-        <StorageRow />
-        {rows.map((r) => (
-          <SettingsRow key={r.route} {...r} />
-        ))}
+        <SettingsRow {...aboutRow} />
       </Card>
     </Screen>
   );

@@ -144,7 +144,7 @@ export type ScreenTarget =
   | { screen: 'transfer'; id: string }
   | { screen: 'search'; query?: string }
   | { screen: 'add_download' }
-  | { screen: 'settings'; section?: 'storage' | 'network' | 'assistant' | 'search_providers' | 'schedule' };
+  | { screen: 'settings'; section?: 'storage' | 'network' | 'assistant' | 'search_providers' | 'schedule' | 'speed' | 'notifications' };
 
 /** Why the composer is locked (R1-6 send gate). 'ready' means Send works. */
 export type ChatGate = 'ready' | 'disabled' | 'notAccepted' | 'noKey';

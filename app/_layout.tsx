@@ -121,10 +121,12 @@ function AppNavigation() {
           <Stack.Screen name="settings/feeds" />
           <Stack.Screen name="settings/interface" />
           <Stack.Screen name="settings/network" />
+          <Stack.Screen name="settings/notifications" />
           <Stack.Screen name="settings/power" />
           <Stack.Screen name="settings/queue" />
           <Stack.Screen name="settings/scheduling" />
           <Stack.Screen name="settings/search-providers" />
+          <Stack.Screen name="settings/speed" />
           <Stack.Screen name="settings/storage" />
         </Stack.Protected>
       </Stack>

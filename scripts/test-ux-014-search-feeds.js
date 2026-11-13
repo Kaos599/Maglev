@@ -74,7 +74,7 @@ for (const f of fs.readdirSync(settingsDir)) {
   for (const m of src.matchAll(/SettingsPage title="([^"]+)"/g)) if (m[1] === m[1].toUpperCase() && /[A-Z]{2}/.test(m[1])) caps.push(`${f}: ${m[1]}`);
 }
 check('settings page titles are sentence case', caps.length === 0, caps.join('; '));
-const queue = read('app/settings/queue.tsx');
+const queue = read('components/settings/QueueSection.tsx');
 check('queue: no "Active seeds" / "Seed ratio limit"', !/Active seeds|Seed ratio limit/.test(queue) && /Sharing at once/.test(queue) && /Upload until shared/.test(queue));
 const copy = read('constants/copy.ts');
 check('copy: empty transfers title', /none: \{ title: 'No transfers yet'/.test(copy));
