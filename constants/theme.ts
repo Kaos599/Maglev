@@ -40,6 +40,8 @@ export interface ThemeColors {
   surfaceRaised: string;
   border: string;
   borderStrong: string;
+  /** Image edge: white 10% on dark themes, black 10% on light. */
+  outline: string;
   text: string;
   textMuted: string;
   textFaint: string;
@@ -91,6 +93,8 @@ interface Palette {
   surfaceRaised: string;
   border: string;
   borderStrong: string;
+  /** Image edge: white 10% on dark themes, black 10% on light. */
+  outline: string;
   text: string;
   textMuted: string;
   textFaint: string;
@@ -108,7 +112,7 @@ interface Palette {
 export const palettes: Record<ThemeMode, Palette> = {
   oled: {
     bg: '#05070A', surface: '#0D1117', surfaceRaised: '#161B22',
-    border: '#1F2937', borderStrong: '#6B7280',
+    border: '#1F2937', borderStrong: '#6B7280', outline: 'rgba(255, 255, 255, 0.1)',
     text: '#F3F4F6', textMuted: '#9CA3AF', textFaint: '#7D8590',
     download: '#00E5FF', upload: '#CCFF00', paused: '#8B949E',
     success: '#3DDC84', warning: '#FFB020', danger: '#FF4D79', onDanger: '#05070A',
@@ -116,7 +120,7 @@ export const palettes: Record<ThemeMode, Palette> = {
   },
   dim: {
     bg: '#111317', surface: '#181B21', surfaceRaised: '#1F232A',
-    border: '#2A2F38', borderStrong: '#6B7380',
+    border: '#2A2F38', borderStrong: '#6B7380', outline: 'rgba(255, 255, 255, 0.1)',
     text: '#ECEEF1', textMuted: '#A3AAB5', textFaint: '#7F8793',
     download: '#00E5FF', upload: '#CCFF00', paused: '#9AA2AD',
     success: '#3DDC84', warning: '#FFB020', danger: '#FF4D79', onDanger: '#111317',
@@ -124,7 +128,7 @@ export const palettes: Record<ThemeMode, Palette> = {
   },
   light: {
     bg: '#F5F5F0', surface: '#FFFFFF', surfaceRaised: '#ECECE4',
-    border: '#DAD9CF', borderStrong: '#85837A',
+    border: '#DAD9CF', borderStrong: '#85837A', outline: 'rgba(0, 0, 0, 0.1)',
     text: '#15171A', textMuted: '#52555C', textFaint: '#6F7178',
     download: '#0369A1', upload: '#3F6212', paused: '#5F636B',
     success: '#15803D', warning: '#8A5200', danger: '#C71F4B', onDanger: '#FFFFFF',
@@ -158,6 +162,7 @@ export function buildColors(mode: ThemeMode, accent: AccentName, pureBlack = fal
     surfaceRaised: p.surfaceRaised,
     border: p.border,
     borderStrong: p.borderStrong,
+    outline: p.outline,
     text: p.text,
     textMuted: p.textMuted,
     textFaint: p.textFaint,

@@ -112,14 +112,14 @@ const makeStyles = (c: ThemeColors) =>
       alignItems: 'center',
       justifyContent: 'center',
     },
-    // Hairline edge so dark previews (Mono, All dark) don't melt into the card.
+    // Image outline (10% white on dark, 10% black on light) so dark previews (Mono, All dark) don't melt into the card.
     circle: {
       width: PREVIEW,
       height: PREVIEW,
       borderRadius: PREVIEW / 2,
       overflow: 'hidden',
       borderWidth: StyleSheet.hairlineWidth,
-      borderColor: c.borderStrong,
+      borderColor: c.outline,
     },
     name: { ...type.body, fontSize: type.size.xs, color: c.textMuted, textAlign: 'center' },
   });

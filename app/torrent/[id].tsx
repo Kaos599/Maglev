@@ -861,16 +861,24 @@ export default function TorrentDetailScreen() {
   };
 
   const data: unknown[] = tab === 'files' ? files : tab === 'peers' ? detail.peers : tab === 'trackers' ? trackers : [];
+  // Peers and trackers can repeat (one address on two ports lists twice; a tracker can be added twice). Each row's key is
+  // its address or URL plus how many times that value appeared earlier in the list: stable, never the render index.
+  const rowKeys = new Map<unknown, string>();
+  if (tab === 'peers' || tab === 'trackers') {
+    const seen = new Map<string, number>();
+    for (const item of data) {
+      const base = tab === 'peers' ? (item as { addr: string }).addr : (item as { url: string }).url;
+      const n = seen.get(base) ?? 0;
+      seen.set(base, n + 1);
+      rowKeys.set(item, n === 0 ? base : `${base}#${n}`);
+    }
+  }
 
   return (
     <Screen title={snap.name || 'Torrent'} onBack={goBack} actions={headerActions}>
       <FlatList
         data={data}
-        keyExtractor={(item, i) => {
-          if (tab === 'files') return String((item as DetailFile).index);
-          if (tab === 'peers') return `${(item as { addr: string }).addr}-${i}`;
-          return `${(item as { url: string }).url}-${i}`;
-        }}
+        keyExtractor={(item) => (tab === 'files' ? String((item as DetailFile).index) : (rowKeys.get(item) ?? String(item)))}
         renderItem={({ item }) => {
           if (tab === 'files')
             return (

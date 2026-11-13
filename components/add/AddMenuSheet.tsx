@@ -14,6 +14,8 @@ export interface AddMenuSheetProps {
   onOpenFile: () => void;
   onSearch: () => void;
   onBrowse: () => void;
+  /** The + button, so screen reader focus returns to it when the menu closes. */
+  returnFocusRef?: React.RefObject<any>;
 }
 
 /** "example.com" for a web link, "Magnet link" for a magnet, null when the text is neither. */
@@ -30,7 +32,7 @@ export function clipboardHint(clip?: string): string | null {
 }
 
 /** What the + button opens: five ways to add something, one tap each. */
-export function AddMenuSheet({ visible, onClose, clipboard, onPaste, onType, onOpenFile, onSearch, onBrowse }: AddMenuSheetProps) {
+export function AddMenuSheet({ visible, onClose, clipboard, onPaste, onType, onOpenFile, onSearch, onBrowse, returnFocusRef }: AddMenuSheetProps) {
   const hint = clipboardHint(clipboard);
   // Close first so the sheet slides away while the next screen opens.
   const pick = (fn: () => void) => () => {
@@ -38,7 +40,7 @@ export function AddMenuSheet({ visible, onClose, clipboard, onPaste, onType, onO
     fn();
   };
   return (
-    <Sheet visible={visible} onClose={onClose} title={addMenu.title} testID="add-menu-sheet">
+    <Sheet visible={visible} onClose={onClose} title={addMenu.title} testID="add-menu-sheet" returnFocusRef={returnFocusRef}>
       <View style={styles.stack}>
         <ListRow icon="clipboard" title="Paste link" subtitle={hint ?? addMenu.copyFirst} disabled={!hint} onPress={pick(onPaste)} />
         <ListRow icon="link" title="Type a link" subtitle={addMenu.typeHint} onPress={pick(onType)} />
