@@ -7,14 +7,18 @@ import { Button } from '../ui';
 import { empty } from '../../constants/copy';
 
 export interface TeachingEmptyStateProps {
-  /** Paste link is enabled only when the clipboard holds a magnet or .torrent link. */
+  /** Paste link is enabled only when the clipboard holds a link, magnet or .torrent link. */
   canPaste: boolean;
   onPaste: () => void;
   onOpenFile: () => void;
+  /** Opens Search. The quiet "Search" button shows only when this is given. */
+  onSearch?: () => void;
+  /** Opens the in-app Browser. The quiet "Browser" button shows only when this is given. */
+  onBrowse?: () => void;
 }
 
-/** Shown when there are no transfers. Teaches the two ways to add one. */
-export function TeachingEmptyState({ canPaste, onPaste, onOpenFile }: TeachingEmptyStateProps) {
+/** Shown when there are no transfers. Teaches the ways to add one: paste a link, open a file, or find something. */
+export function TeachingEmptyState({ canPaste, onPaste, onOpenFile, onSearch, onBrowse }: TeachingEmptyStateProps) {
   const { colors } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   return (
@@ -30,6 +34,12 @@ export function TeachingEmptyState({ canPaste, onPaste, onOpenFile }: TeachingEm
         <Button label="Paste link" icon="clipboard" disabled={!canPaste} onPress={onPaste} />
         <Button label="Open file" icon="file" variant="secondary" onPress={onOpenFile} />
       </View>
+      {onSearch || onBrowse ? (
+        <View style={styles.finders}>
+          {onSearch ? <Button label="Search" icon="search" variant="ghost" onPress={onSearch} /> : null}
+          {onBrowse ? <Button label="Browser" icon="network" variant="ghost" onPress={onBrowse} /> : null}
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -49,5 +59,6 @@ const makeStyles = (c: ThemeColors) =>
     },
     title: { ...type.bodyStrong, fontSize: 17, color: c.text, marginTop: spacing.lg, textAlign: 'center' },
     body: { ...type.body, fontSize: 13, lineHeight: 19, color: c.textMuted, marginTop: spacing.sm, textAlign: 'center', maxWidth: 300 },
+    finders: { marginTop: spacing.md, flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
     actions: { marginTop: spacing.xl, alignItems: 'center', gap: spacing.sm },
   });

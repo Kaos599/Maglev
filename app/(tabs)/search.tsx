@@ -498,7 +498,8 @@ export default function SearchScreen() {
       title="Search"
       actions={
         <>
-          <IconButton icon="network" onPress={() => router.push('/browser')} accessibilityLabel="Browse the web" />
+          {/* Labelled, not icon-only: people could not tell the globe opened the browser. */}
+          <Button label="Browser" icon="network" variant="secondary" onPress={() => router.push('/browser')} accessibilityLabel="Open the browser" />
           <IconButton
             icon="filter"
             badge={prefs.enabled.length}

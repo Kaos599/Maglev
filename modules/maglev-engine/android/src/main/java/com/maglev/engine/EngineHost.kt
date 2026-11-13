@@ -147,6 +147,8 @@ object EngineHost {
     private var lastScheduleTick = 0L
     @Volatile private var serviceBlocked = false
     private var lastServiceAttempt = 0L
+    /** Link downloads waiting for a new link, as last announced. Resets with the process, so a restore posts again. */
+    @Volatile private var needsLinkShown = 0
     private var lastHeartbeat = 0L
 
     private val copying = ConcurrentHashMap.newKeySet<String>()
@@ -312,7 +314,11 @@ object EngineHost {
                 evaluateGovernance(force = false)
             }
             val list = call { NativeCore.nativeListTorrents() }
-            val summary = summarize(Json.list(list["torrents"]), list["streaming"] == true)
+            val torrents = Json.list(list["torrents"])
+            val downloads = Json.list(list["downloads"])
+            // Link downloads count like torrents, or a restart with only a download running stops the service.
+            val summary = summarize(allTransfers(torrents, downloads), list["streaming"] == true)
+            notifyNeedsLink(downloads)
             val counted = summary.busy + summary.pausedByRules + summary.pausedBySchedule
             if (RestartPolicy.decide(intent.copy(activeTorrents = counted)) == RestartDecision.StayStopped) {
                 setWanted(c, false)
@@ -470,7 +476,8 @@ object EngineHost {
         detectCompletions(torrents)
         detectDownloadCompletions(downloads)
         // URL downloads count as transfers: they keep the service up and show in the notification (section 17).
-        val transfers = torrents + downloadsAsTransfers(downloads)
+        val transfers = allTransfers(torrents, downloads)
+        notifyNeedsLink(downloads)
         val summary = summarize(transfers, res["streaming"] == true)
         lastSummary = summary
         refreshTile(summary)
@@ -529,6 +536,8 @@ object EngineHost {
                     "battery" -> { byRules++; batteryPaused = true }
                     "charging_only" -> { byRules++; chargingPaused = true }
                     "network_unvalidated" -> { byRules++; unvalidatedPaused = true }
+                    // Link downloads paused for a network blip (TAG_OFFLINE) stay wanted, so the service survives it.
+                    TAG_OFFLINE -> { byRules++; unvalidatedPaused = true }
                     "vpn_required" -> { byRules++; vpnPaused = true }
                     "storage_full" -> { byRules++; spacePaused = true }
                     "storage_unavailable" -> { byRules++; volumePaused = true }
@@ -1656,6 +1665,25 @@ object EngineHost {
 
     fun setDownloadLimits(id: String, limits: Map<String, Any?>) =
         call { NativeCore.nativeSetDownloadLimits(id, Json.toJson(Json.snakeify(limits))) }
+
+    /** Torrents plus active link downloads: the list [summarize] and every service decision must use (section 17). */
+    private fun allTransfers(
+        torrents: List<Map<String, Any?>>,
+        downloads: List<Map<String, Any?>>,
+    ): List<Map<String, Any?>> = torrents + downloadsAsTransfers(downloads)
+
+    /**
+     * Downloads restored without their link (cookies and signed URLs live in memory only) sit in `needs_link`.
+     * They hold no service, so say so once with a dismissible notification that opens the app. The count is
+     * updated when it changes and the notification goes away when none are left.
+     */
+    private fun notifyNeedsLink(downloads: List<Map<String, Any?>>) {
+        val c = ctx ?: return
+        val count = downloads.count { it["state"] == "needs_link" }
+        if (count == needsLinkShown) return
+        needsLinkShown = count
+        if (count > 0) Notifications.notifyNeedsLink(c, count) else Notifications.cancel(c, Notifications.ID_NEEDS_LINK)
+    }
 
     /**
      * Active downloads in the shape [summarize] reads, so the service stays up and the notification shows them.
