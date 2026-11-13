@@ -1,12 +1,15 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, FlatList, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { FlatList, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useMaglevEngine } from '../../context/EngineContext';
+import { useSettings } from '../../context/SettingsContext';
 import { useTheme } from '../../context/ThemeContext';
 import { ThemeColors, spacing, type } from '../../constants/theme';
-import { Banner, Button, Chip, EmptyBlock, Screen } from '../../components/ui';
+import { Banner, Button, Chip, EmptyBlock, Screen, Sheet } from '../../components/ui';
 import { FeedItemRow } from '../../components/feeds/FeedItemRow';
 import { NewFeedSheet } from '../../components/feeds/NewFeedSheet';
+import { MobileDataSheet } from '../../components/search/MobileDataSheet';
+import { oneTapAddNote } from '../../utils/addChecks';
 import { SkeletonRows } from '../../components/search/SkeletonRows';
 import { NoticeBanner, addErrorNotice, useNotice } from '../../components/search/Notice';
 import {
@@ -15,10 +18,14 @@ import {
   fetchFeed,
   hostOf,
   loadFeeds,
+  countNewFromStored,
+  loadFeedItemIds,
   loadSeen,
   normalizeFeedUrl,
+  saveFeedItemIds,
   saveFeeds,
   saveSeen,
+  setFeedsNewCount,
 } from '../../utils/feeds';
 import { syncFeedAutomationToNative } from '../../utils/prefs/feedAutomation';
 import { banners, empty } from '../../constants/copy';
@@ -30,12 +37,15 @@ interface FeedState {
 }
 
 const ALL = 'all';
+/** Opening the tab refreshes the feeds, but never more than once in this long. */
+const REFRESH_MIN_MS = 2 * 60 * 1000;
 
 export default function FeedsScreen() {
   const { colors } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const router = useRouter();
-  const { startTorrent, telemetry } = useMaglevEngine();
+  const { startTorrent, telemetry, onMeteredNetwork } = useMaglevEngine();
+  const { settings } = useSettings();
 
   const [feeds, setFeeds] = useState<Feed[]>(() => loadFeeds());
   const [states, setStates] = useState<Record<string, FeedState>>({});
@@ -45,6 +55,9 @@ export default function FeedsScreen() {
   const [seen, setSeen] = useState<Record<string, string[]>>(() => loadSeen());
   const [sessionAdded, setSessionAdded] = useState<Set<string>>(() => new Set());
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [removing, setRemoving] = useState<Feed | null>(null);
+  const [mobileAsk, setMobileAsk] = useState<{ item: FeedItem; note: string } | null>(null);
+  const lastRefresh = useRef(0);
   const { notice, show, dismiss } = useNotice();
 
   // Ids that were unseen when this visit began; keeps "new" stable while the screen is open.
@@ -93,32 +106,31 @@ export default function FeedsScreen() {
       setFeeds((prev) => (JSON.stringify(prev) === JSON.stringify(latest) ? prev : latest));
       const fresh = latest.filter((f) => !statesRef.current[f.id]);
       if (fresh.length > 0) void refreshAll(fresh);
+      // Come back after a while: check the feeds that were not just loaded.
+      const now = Date.now();
+      if (lastRefresh.current === 0) lastRefresh.current = now;
+      else if (now - lastRefresh.current >= REFRESH_MIN_MS) {
+        lastRefresh.current = now;
+        const stale = latest.filter((f) => statesRef.current[f.id]);
+        if (stale.length > 0) void refreshAll(stale);
+      }
     }, [refreshAll]),
   );
 
-  // Leaving the tab marks everything shown as seen.
-  useFocusEffect(
-    useCallback(() => {
-      return () => {
-        const next = { ...seenRef.current };
-        let changed = false;
-        for (const [fid, st] of Object.entries(statesRef.current)) {
-          if (st.status !== 'ok') continue;
-          const merged = Array.from(new Set([...(next[fid] ?? []), ...st.items.map((i) => i.id)]));
-          if (merged.length !== (next[fid] ?? []).length) {
-            next[fid] = merged;
-            changed = true;
-          }
-        }
-        if (changed) {
-          setSeen(next);
-          saveSeen(next);
-        }
-      };
-    }, []),
-  );
+  // "New" stays until the user acts on an item or taps Mark all seen; leaving the tab changes nothing.
+  const markSeen = useCallback((ids: { feedId: string; id: string }[]) => {
+    const next = { ...seenRef.current };
+    for (const { feedId, id } of ids) {
+      const list = next[feedId] ?? [];
+      if (!list.includes(id)) next[feedId] = [...list, id];
+    }
+    seenRef.current = next;
+    setSeen(next);
+    saveSeen(next);
+  }, []);
 
   const onRefresh = useCallback(async () => {
+    lastRefresh.current = Date.now();
     setRefreshing(true);
     await refreshAll(feeds);
     setRefreshing(false);
@@ -157,28 +169,20 @@ export default function FeedsScreen() {
 
   const removeFeed = useCallback(
     (feed: Feed) => {
-      Alert.alert(`Remove ${feed.name}?`, 'Torrents you already added stay in your list.', [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Remove',
-          style: 'destructive',
-          onPress: () => {
-            const next = feeds.filter((f) => f.id !== feed.id);
-            setFeeds(next);
-            saveFeeds(next);
-            void syncFeedAutomationToNative();
-            setStates((p) => {
-              const { [feed.id]: _gone, ...rest } = p;
-              return rest;
-            });
-            const nextSeen = { ...seenRef.current };
-            delete nextSeen[feed.id];
-            setSeen(nextSeen);
-            saveSeen(nextSeen);
-            setSelected(ALL);
-          },
-        },
-      ]);
+      const next = feeds.filter((f) => f.id !== feed.id);
+      setFeeds(next);
+      saveFeeds(next);
+      void syncFeedAutomationToNative();
+      setStates((p) => {
+        const { [feed.id]: _gone, ...rest } = p;
+        return rest;
+      });
+      const nextSeen = { ...seenRef.current };
+      delete nextSeen[feed.id];
+      setSeen(nextSeen);
+      saveSeen(nextSeen);
+      setSelected(ALL);
+      setRemoving(null);
     },
     [feeds],
   );
@@ -197,6 +201,21 @@ export default function FeedsScreen() {
     return n;
   }, [feeds, states, seen]);
 
+  // Publish the count to the tab badge. Feeds not loaded yet fall back to their last stored ids.
+  useEffect(() => {
+    const stored = loadFeedItemIds();
+    const ids: Record<string, string[]> = {};
+    for (const f of feeds) {
+      const st = states[f.id];
+      const live = st && (st.status === 'ok' || st.items.length > 0);
+      ids[f.id] = live ? st.items.map((i) => i.id) : stored[f.id] ?? [];
+    }
+    saveFeedItemIds(ids);
+    setFeedsNewCount(countNewFromStored(feeds, ids, seen));
+  }, [feeds, states, seen]);
+
+  const isNew = useCallback((item: FeedItem) => !(seen[item.feedId] ?? []).includes(item.id), [seen]);
+
   const visibleFeeds = selected === ALL ? feeds : feeds.filter((f) => f.id === selected);
   const items = useMemo(() => {
     const all: FeedItem[] = [];
@@ -212,13 +231,20 @@ export default function FeedsScreen() {
   );
 
   const handleAdd = useCallback(
-    async (item: FeedItem) => {
+    async (item: FeedItem, skipMobileAsk = false) => {
       if (!item.source) return;
+      const note = oneTapAddNote({ sizeBytes: item.sizeBytes, onMetered: onMeteredNetwork, wifiOnly: settings.network.wifiOnly });
+      if (note && !settings.network.wifiOnly && !skipMobileAsk) {
+        setMobileAsk({ item, note });
+        return;
+      }
       const key = `${item.feedId}:${item.id}`;
       setBusyId(key);
       try {
         await startTorrent(item.source);
         setSessionAdded((p) => new Set(p).add(key));
+        markSeen([item]);
+        show({ tone: 'success', title: 'Added to Transfers', body: note ?? undefined, actionLabel: 'View', onAction: () => router.push('/' as never) });
       } catch (e) {
         const { duplicate, notice: n } = addErrorNotice(e);
         if (duplicate) setSessionAdded((p) => new Set(p).add(key));
@@ -227,7 +253,7 @@ export default function FeedsScreen() {
         setBusyId(null);
       }
     },
-    [show, startTorrent],
+    [show, startTorrent, onMeteredNetwork, settings.network.wifiOnly, markSeen, router],
   );
 
   const renderItem = useCallback(
@@ -241,12 +267,32 @@ export default function FeedsScreen() {
         added={isAdded(item)}
         busy={busyId === `${item.feedId}:${item.id}`}
         onAdd={() => handleAdd(item)}
+        isNew={isNew(item)}
       />
     ),
-    [busyId, feedById, handleAdd, isAdded],
+    [busyId, feedById, handleAdd, isAdded, isNew],
   );
 
-  const sheet = <NewFeedSheet visible={sheetOpen} onClose={() => setSheetOpen(false)} onSubmit={addFeed} />;
+  const sheet = (
+    <>
+      <NewFeedSheet visible={sheetOpen} onClose={() => setSheetOpen(false)} onSubmit={addFeed} />
+      <Sheet visible={!!removing} onClose={() => setRemoving(null)} title={`Remove ${removing?.name ?? 'feed'}?`} subtitle="Torrents you already added stay in your list.">
+        <View style={styles.stack}>
+          <Button label="Remove feed" variant="danger" fullWidth onPress={() => removing && removeFeed(removing)} />
+          <Button label="Cancel" variant="ghost" fullWidth onPress={() => setRemoving(null)} />
+        </View>
+      </Sheet>
+      <MobileDataSheet
+        note={mobileAsk?.note ?? null}
+        onClose={() => setMobileAsk(null)}
+        onConfirm={() => {
+          const it = mobileAsk?.item;
+          setMobileAsk(null);
+          if (it) void handleAdd(it, true);
+        }}
+      />
+    </>
+  );
 
   if (feeds.length === 0) {
     return (
@@ -291,6 +337,13 @@ export default function FeedsScreen() {
         <Button label="New feed" icon="plus" onPress={() => setSheetOpen(true)} />
       </View>
       <View style={styles.autoRow}>
+        {newCount > 0 ? (
+          <Button
+            label="Mark all seen"
+            variant="ghost"
+            onPress={() => markSeen(feeds.flatMap((f) => (states[f.id]?.items ?? []).map((i) => ({ feedId: f.id, id: i.id }))))}
+          />
+        ) : null}
         <Button label="Auto-download rules" icon="rule" variant="ghost" onPress={() => router.push('/settings/feeds' as never)} />
       </View>
       <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chipScroll} contentContainerStyle={styles.chips}>
@@ -304,7 +357,7 @@ export default function FeedsScreen() {
           <Text style={styles.feedHost} numberOfLines={1}>
             {hostOf(selectedFeed.url)}
           </Text>
-          <Button label="Remove feed" variant="danger" onPress={() => removeFeed(selectedFeed)} />
+          <Button label="Remove feed" variant="danger" onPress={() => setRemoving(selectedFeed)} />
         </View>
       ) : null}
       <FlatList
@@ -339,6 +392,7 @@ const makeStyles = (c: ThemeColors) =>
     chips: { paddingHorizontal: spacing.lg, gap: spacing.sm },
     feedBar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: spacing.lg, marginBottom: spacing.sm },
     feedHost: { ...type.mono, flex: 1, fontSize: 12, color: c.textMuted, marginRight: spacing.md },
+    stack: { gap: spacing.sm },
     errorWrap: { marginBottom: spacing.sm },
     list: { paddingHorizontal: spacing.lg, paddingBottom: spacing.xxxl, flexGrow: 1 },
   });

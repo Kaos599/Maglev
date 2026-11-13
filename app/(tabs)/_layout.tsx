@@ -11,12 +11,14 @@ import { PRESS_SINK, animateTo, duration, useReduceMotion } from '../../componen
 import { useTheme } from '../../context/ThemeContext';
 import { useAssistantPrefs } from '../../utils/prefs/assistantApp';
 import { ThemeColors, fontFamily, withAlpha } from '../../constants/theme';
+import { badgeLabel, useFeedsNewCount } from '../../utils/feeds';
+import { startFeedsBadge } from '../../utils/feedsBadgeStart';
 
 const PILL_W = 56;
 const PILL_H = 28;
 const ICON = 20;
 
-type TabButtonProps = BottomTabBarButtonProps & { icon: PixelIconName; title: string };
+type TabButtonProps = BottomTabBarButtonProps & { icon: PixelIconName; title: string; badge?: number };
 
 /**
  * The whole tab: pill, icon and label. It replaces the library's default button, which is a
@@ -32,6 +34,7 @@ type TabButtonProps = BottomTabBarButtonProps & { icon: PixelIconName; title: st
 function TabButton({
   icon,
   title,
+  badge,
   // Library props this button does not use: no ripple, no hover, no fade, own children.
   children: _children,
   href: _href,
@@ -49,6 +52,9 @@ function TabButton({
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const reduce = useReduceMotion();
   const focused = rest['aria-selected'] === true;
+  const badgeText = badgeLabel(badge ?? 0);
+  // The library sets aria-label from tabBarAccessibilityLabel; add the count for screen readers.
+  const a11yLabel = badgeText ? `${rest['aria-label'] ?? title}, ${badge} new` : rest['aria-label'];
 
   const focus = useRef(new Animated.Value(focused ? 1 : 0)).current;
   const sink = useRef(new Animated.Value(0)).current;
@@ -67,6 +73,7 @@ function TabButton({
   return (
     <Pressable
       {...rest}
+      aria-label={a11yLabel}
       style={[style, styles.button]}
       onPressIn={(e) => {
         animateTo(sink, 1, duration.press, reduce);
@@ -87,6 +94,13 @@ function TabButton({
             <TabGlyph name={icon as TabGlyphName} color={colors.accentText} progress={move} />
           </Animated.View>
         </View>
+        {badgeText ? (
+          <View style={styles.badge} pointerEvents="none" importantForAccessibility="no-hide-descendants">
+            <Animated.Text numberOfLines={1} style={styles.badgeText}>
+              {badgeText}
+            </Animated.Text>
+          </View>
+        ) : null}
       </Animated.View>
       {/* Bold sits in flow (it is the wider of the two) so the regular copy always fits over it. */}
       <View style={styles.labelWrap}>
@@ -105,8 +119,11 @@ export default function TabLayout() {
   const tabBarStyle = useTabBarStyle();
 
   const assistant = useAssistantPrefs();
+  const feedsNew = useFeedsNewCount();
+  // Count from stored data now, and again when the app returns to the foreground.
+  useEffect(() => startFeedsBadge(), []);
 
-  const tab = (name: string, title: string, icon: PixelIconName, hidden = false, freeze = false) => (
+  const tab = (name: string, title: string, icon: PixelIconName, hidden = false, freeze = false, badge = 0) => (
     <Tabs.Screen
       name={name}
       activityEnabled={freeze}
@@ -119,7 +136,7 @@ export default function TabLayout() {
               title,
               tabBarAccessibilityLabel: title,
               // TabButton draws the icon and label itself (see the note on TabButton).
-              tabBarButton: (props) => <TabButton {...props} icon={icon} title={title} />,
+              tabBarButton: (props) => <TabButton {...props} icon={icon} title={title} badge={badge} />,
             }
       }
     />
@@ -149,7 +166,7 @@ export default function TabLayout() {
       */}
       {tab('index', 'Transfers', 'tab-transfers')}
       {tab('search', 'Search', 'tab-search')}
-      {tab('feeds', 'Feeds', 'tab-feeds', false, true)}
+      {tab('feeds', 'Feeds', 'tab-feeds', false, true, feedsNew)}
       {tab('settings', 'Settings', 'tab-settings', false, true)}
       {tab('assistant', 'Assistant', 'tab-assistant', !assistant.enabled)}
     </Tabs>
@@ -168,6 +185,20 @@ const makeStyles = (c: ThemeColors) =>
       borderRadius: 8,
       backgroundColor: withAlpha(c.accent, 0.16),
     },
+    // Neutral pill (text on bg) so lime stays with the active tab. Sits on the icon's top-right.
+    badge: {
+      position: 'absolute',
+      top: -4,
+      right: 2,
+      minWidth: 16,
+      height: 16,
+      paddingHorizontal: 4,
+      borderRadius: 8,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: c.text,
+    },
+    badgeText: { fontSize: 10, lineHeight: 12, fontFamily: fontFamily.bodyStrong, color: c.bg, fontVariant: ['tabular-nums'] },
     glyph: { width: ICON, height: ICON },
     labelWrap: { marginTop: 2, alignItems: 'center' },
     label: { fontSize: 11, textAlign: 'center' },

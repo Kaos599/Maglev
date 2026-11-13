@@ -1,4 +1,7 @@
 import Storage from 'expo-sqlite/kv-store';
+import { countNewFromStored, setFeedsNewCount } from './feedsBadge';
+
+export { badgeLabel, countNewFromStored, getFeedsNewCount, setFeedsNewCount, useFeedsNewCount } from './feedsBadge';
 
 export interface Feed {
   id: string;
@@ -75,6 +78,39 @@ export function saveSeen(seen: Record<string, string[]>): void {
     // memory only
   }
 }
+
+const IDS_KEY = 'maglev.feeds.lastids.v1';
+let memIds: Record<string, string[]> | null = null;
+
+/** Item ids last fetched for each feed. Lets the tab badge count new items before the network is touched. */
+export function loadFeedItemIds(): Record<string, string[]> {
+  try {
+    const raw = Storage.getItemSync(IDS_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === 'object') return parsed as Record<string, string[]>;
+    }
+  } catch {
+    // fall through
+  }
+  return memIds ?? {};
+}
+
+export function saveFeedItemIds(ids: Record<string, string[]>): void {
+  memIds = ids;
+  try {
+    Storage.setItemSync(IDS_KEY, JSON.stringify(ids));
+  } catch {
+    // memory only
+  }
+}
+
+/** Recompute the badge from stored feeds, last fetched ids and seen ids. No network. */
+export function refreshFeedsNewCountFromStorage(): void {
+  setFeedsNewCount(countNewFromStored(loadFeeds(), loadFeedItemIds(), loadSeen()));
+}
+
+/** Call once at app start: sets the badge now and again whenever the app returns to the foreground. */
 
 /** Returns an http(s) URL string or null. */
 export function normalizeFeedUrl(input: string): string | null {
