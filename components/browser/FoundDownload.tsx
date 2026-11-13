@@ -6,12 +6,13 @@ import { useMaglevEngine } from '../../context/EngineContext';
 import { ThemeColors, radius, spacing, type } from '../../constants/theme';
 import { formatBytes } from '../../constants/format';
 import { haptic } from '../../constants/haptics';
-import { banners, notices } from '../../constants/copy';
+import { banners, mobileDataLine, notices } from '../../constants/copy';
 import { probeErrorView } from '../../utils/downloadCopy';
 import { useDownloadAdmission } from '../../utils/useDownloadAdmission';
 import { hostOf } from '../../utils/browserUrl';
 import { Banner, Button, Sheet } from '../ui';
-import { friendlyPath } from '../settings/SettingsParts';
+import { useSettings } from '../../context/SettingsContext';
+import { SaveToRow } from './SaveToRow';
 
 /** A file the browser found, or one a page offered as a download. */
 export interface DownloadTarget {
@@ -41,7 +42,8 @@ export async function downloadHeaders(t: Pick<DownloadTarget, 'url' | 'pageUrl' 
 export function FoundDownloadSheet({ target, onClose }: { target: DownloadTarget | null; onClose: () => void }) {
   const { colors } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
-  const { defaultStoragePath, probeUrl, startDownload, showNotice } = useMaglevEngine();
+  const { probeUrl, startDownload, showNotice, onMeteredNetwork } = useMaglevEngine();
+  const { settings } = useSettings();
   const last = useRef<DownloadTarget | null>(target);
   if (target) last.current = target;
   const t = target ?? last.current;
@@ -82,6 +84,7 @@ export function FoundDownloadSheet({ target, onClose }: { target: DownloadTarget
   const { doesntFit } = useDownloadAdmission(size, phase === 'ready');
 
   if (!t) return null;
+  const mobileNote = phase === 'ready' ? mobileDataLine(onMeteredNetwork, settings.network.wifiOnly, size) : null;
   const adding = phase === 'adding';
 
   const start = async () => {
@@ -125,7 +128,8 @@ export function FoundDownloadSheet({ target, onClose }: { target: DownloadTarget
           accessibilityLabel="File name"
         />
         <Text style={styles.meta}>{phase === 'probing' ? 'Checking the file' : size != null ? formatBytes(size) : 'Size unknown'}</Text>
-        <Text style={styles.meta}>Saves to {friendlyPath(defaultStoragePath)}</Text>
+        <SaveToRow disabled={adding} onError={setMessage} />
+        {mobileNote ? <Banner tone="info" title={mobileNote} /> : null}
         {t.installer ? <Banner tone="warning" title={banners.browser.installer.title} body={banners.browser.installer.body} /> : null}
         {doesntFit ? <Banner tone="danger" title={banners.addDownload.notEnoughSpace.title} body={banners.addDownload.notEnoughSpace.body} /> : null}
         {message ? <Banner tone="danger" title={message} /> : null}

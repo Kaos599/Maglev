@@ -9,6 +9,7 @@ import { ThemeProvider, useTheme } from '../context/ThemeContext';
 import { EngineProvider, useMaglevEngine } from '../context/EngineContext';
 import { FONT_NAMES } from '../constants/fontStyles';
 import NavigationBarSync from '../components/NavigationBarSync';
+import { NoticeHost } from '../components/ui/NoticeHost';
 import { syncScheduleToNative } from '../utils/prefs/schedule';
 import { syncFeedAutomationToNative } from '../utils/prefs/feedAutomation';
 
@@ -127,6 +128,7 @@ function AppNavigation() {
           <Stack.Screen name="settings/storage" />
         </Stack.Protected>
       </Stack>
+      {main ? <NoticeHost /> : null}
     </>
   );
 }
