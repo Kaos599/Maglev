@@ -566,7 +566,7 @@
       "label": "Saves live streams",
       "help": "Saves a broadcast while it is still running.",
       "values": {
-        "maglev": "No",
+        "maglev": "Not yet",
         "libretorrent": "No",
         "biglybt": "No",
         "seal": "No",
@@ -578,7 +578,7 @@
         "fdm": "No"
       },
       "notes": {
-        "maglev": "Maglev does not save live streams and says so when it meets one."
+        "maglev": "Maglev doesn't save live streams yet and says so when it meets one. It may come in a later version."
       }
     },
     {
@@ -587,7 +587,7 @@
       "label": "YouTube downloads",
       "help": "Saves videos from YouTube itself.",
       "values": {
-        "maglev": "No",
+        "maglev": "Not yet",
         "libretorrent": "No",
         "biglybt": "No",
         "seal": "Yes",
@@ -603,7 +603,8 @@
         "ytdlnis": "Through yt-dlp",
         "newpipe": "NewPipe is a YouTube client. Its page lists downloading videos, audio and subtitles.",
         "1dm": "Its Play page says downloading from YouTube is not supported.",
-        "fdm": "Its Play page says downloading from YouTube is not supported."
+        "fdm": "Its Play page says downloading from YouTube is not supported.",
+        "maglev": "Not yet. It may come in a later version."
       }
     },
     {
