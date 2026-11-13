@@ -5,10 +5,12 @@
 
 export const RESERVE_FLOOR_BYTES = 500 * 1024 * 1024;
 export const RESERVE_HYSTERESIS_BYTES = 200 * 1024 * 1024;
+/** Largest reserve: 2% of a 256 GB phone is 5 GB, which paused every download on a phone with 4 GB free. */
+export const RESERVE_CAP_BYTES = 1024 * 1024 * 1024;
 
-/** `max(500 MiB, 2% of the volume)`. An unknown size (0) gives the floor. */
+/** `min(1 GiB, max(500 MiB, 2% of the volume))`. An unknown size (0) gives the floor. */
 export function reserveBytes(total: number): number {
-  return Math.max(RESERVE_FLOOR_BYTES, Math.floor(total / 50));
+  return Math.min(RESERVE_CAP_BYTES, Math.max(RESERVE_FLOOR_BYTES, Math.floor(total / 50)));
 }
 
 /** Not blocked: block under the reserve. Blocked: stay blocked until the reserve plus 200 MiB is free. */

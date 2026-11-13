@@ -33,6 +33,19 @@ class StorageGuardTest {
         }
     }
 
+    /** The share card judges space against what the storage rule keeps free, not only Admission's 200 MiB. */
+    @Test fun shareCardFreeLeavesTheReserve() {
+        val gib = 1024L * 1024 * 1024
+        val mib = 1024L * 1024
+        val total = 231 * gib // reserve is capped at 1 GiB
+        // Admission already keeps 200 MiB, so the card takes off the other 824 MiB.
+        assertEquals(3 * gib - (gib - 200 * mib), StorageGuard.shareCardFree(3 * gib, total))
+        // Under the reserve nothing is usable, never a negative number.
+        assertEquals(0L, StorageGuard.shareCardFree(500 * mib, total))
+        // A small volume: reserve is the 500 MiB floor, so 300 MiB more than Admission keeps.
+        assertEquals(2 * gib - 300 * mib, StorageGuard.shareCardFree(2 * gib, 16 * gib))
+    }
+
     @Test fun notificationCopy() {
         assertEquals("Paused: phone storage is almost full", StorageGuard.PAUSED_TITLE)
         assertEquals("Free up space", StorageGuard.PAUSED_TEXT)

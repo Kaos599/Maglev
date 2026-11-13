@@ -8,12 +8,14 @@
 pub const RESERVE_FLOOR_BYTES: u64 = 500 * 1024 * 1024;
 /// The reserve is this share of the volume, when that is larger than the floor (1 / 50 = 2%).
 pub const RESERVE_DIVISOR: u64 = 50;
+/// Largest reserve: 2% of a 256 GB phone is 5 GB, which paused every download on a phone with 4 GB free.
+pub const RESERVE_CAP_BYTES: u64 = 1024 * 1024 * 1024;
 /// Free space must climb this far above the reserve before paused transfers resume.
 pub const HYSTERESIS_BYTES: u64 = 200 * 1024 * 1024;
 
-/// `max(500 MiB, 2% of the volume)`. An unknown volume size (0) gives the floor.
+/// `min(1 GiB, max(500 MiB, 2% of the volume))`. An unknown volume size (0) gives the floor.
 pub fn reserve_bytes(total: u64) -> u64 {
-    RESERVE_FLOOR_BYTES.max(total / RESERVE_DIVISOR)
+    RESERVE_FLOOR_BYTES.max(total / RESERVE_DIVISOR).min(RESERVE_CAP_BYTES)
 }
 
 /// Free space is under the reserve: transfers must pause.
@@ -52,9 +54,16 @@ mod tests {
     }
 
     #[test]
-    fn reserve_is_two_percent_on_big_volumes() {
-        assert_eq!(reserve_bytes(64 * GIB), 64 * GIB / 50);
-        assert_eq!(reserve_bytes(256 * GIB), 256 * GIB / 50);
+    fn reserve_is_two_percent_between_floor_and_cap() {
+        assert_eq!(reserve_bytes(40 * GIB), 40 * GIB / 50);
+    }
+
+    #[test]
+    fn reserve_is_capped_at_one_gib_on_big_volumes() {
+        assert_eq!(reserve_bytes(64 * GIB), GIB);
+        assert_eq!(reserve_bytes(256 * GIB), GIB);
+        // A 231 GiB phone with 3.7 GiB free keeps downloading.
+        assert!(!is_low(37 * GIB / 10, 231 * GIB));
     }
 
     #[test]

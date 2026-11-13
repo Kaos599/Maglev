@@ -7,6 +7,7 @@ import com.maglev.engine.EngineHost
 import com.maglev.engine.NativeCore
 import com.maglev.engine.service.BackgroundStart
 import com.maglev.engine.service.MaglevTorrentService
+import com.maglev.engine.service.StorageGuard
 import com.maglev.engine.storage.Admission
 import com.maglev.engine.util.Json
 import java.io.File
@@ -132,8 +133,11 @@ object QuickShareAdd {
                 pending += (Json.long(t["total_bytes"]) - Json.long(t["progress_bytes"])).coerceAtLeast(0L)
             }
         }
-        val out = Admission.admit(free, pending, if (staged) 2 else 1, needBytes)
-        return if (out.result == Admission.Result.DoesntFit) LowSpace(out.need, free) else null
+        // Judge against what the storage rule keeps free (StorageGuard), or the card offers Download for a
+        // transfer that is paused as Storage full the moment it starts. The text shows the space Maglev can use.
+        val usable = StorageGuard.shareCardFree(free, Json.long(space["totalBytes"]))
+        val out = Admission.admit(usable, pending, if (staged) 2 else 1, needBytes)
+        return if (out.result == Admission.Result.DoesntFit) LowSpace(out.need, (usable - Admission.RESERVE_BYTES).coerceAtLeast(0L)) else null
     }
 
     /**
