@@ -15,9 +15,11 @@ export interface FeedItemRowProps {
   added: boolean;
   busy?: boolean;
   onAdd: () => void;
+  /** Not seen yet: stays marked until the user acts on it or taps Mark all seen. */
+  isNew?: boolean;
 }
 
-function FeedItemRowImpl({ title, feedName, sizeBytes, publishedAt, hasSource, added, busy, onAdd }: FeedItemRowProps) {
+function FeedItemRowImpl({ title, feedName, sizeBytes, publishedAt, hasSource, added, busy, onAdd, isNew }: FeedItemRowProps) {
   const { colors } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const meta = [sizeBytes ? formatBytes(sizeBytes) : null, relativeTime(publishedAt) || null, feedName]
@@ -29,6 +31,7 @@ function FeedItemRowImpl({ title, feedName, sizeBytes, publishedAt, hasSource, a
         <Text style={styles.title} numberOfLines={2}>
           {title}
         </Text>
+        {isNew ? <Text style={styles.newTag}>New</Text> : null}
         <Text style={styles.meta} numberOfLines={1}>
           {hasSource ? meta : `${meta} · No torrent link`}
         </Text>
@@ -67,5 +70,6 @@ const makeStyles = (c: ThemeColors) =>
     },
     text: { flex: 1, gap: spacing.xs },
     title: { ...type.bodyStrong, fontSize: 14, lineHeight: 19, color: c.text },
+    newTag: { ...type.bodyStrong, fontSize: 11, color: c.accentText },
     meta: { ...type.body, fontSize: 12, color: c.textMuted },
   });

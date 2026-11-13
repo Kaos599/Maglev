@@ -203,7 +203,7 @@ export const banners = {
 // ---------------------------------------------------------------------------------------------
 export const empty = {
   transfers: {
-    none: { title: 'No downloads yet', body: 'Paste a link or magnet, open a .torrent file, or find something to download.' },
+    none: { title: 'No transfers yet', body: 'Type or paste a link, open a .torrent file, or find something to download.' },
     noMatch: { title: 'No matching transfers', body: 'Try a different search.' },
     noneInFilter: (filter: string | number) => ({
       title: `No ${toName(filter).toLowerCase()} transfers`,
@@ -232,7 +232,7 @@ export const empty = {
     readFailed: { title: "Couldn't read this torrent" },
   },
   addDownload: {
-    waitingForNetwork: { title: 'Waiting for a network' },
+    waitingForNetwork: { title: 'Waiting for Wi-Fi' },
     deviceOnNetwork: { title: 'A device on your network' },
     badLink: { title: "Couldn't use this link" },
   },

@@ -48,7 +48,7 @@ export default function InterfaceSettings() {
   const set = (patch: Partial<typeof a>) => updateSettings((prev) => ({ appearance: { ...prev.appearance, ...patch } }));
 
   return (
-    <SettingsPage title="INTERFACE">
+    <SettingsPage title="Interface">
       <Stack.Screen options={{ headerShown: false }} />
       <Card>
         <View style={s.block}>

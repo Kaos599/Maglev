@@ -159,7 +159,7 @@ export default function SearchProvidersSettings() {
   const openPos = open ? prefs.enabled.indexOf(open.id) : -1;
 
   return (
-    <SettingsPage title="SEARCH PROVIDERS">
+    <SettingsPage title="Search sources">
       <Stack.Screen options={{ headerShown: false }} />
       <Caption>Maglev asks every source you turn on at the same time. Open a source to set which one wins when two return the same torrent.</Caption>
 
@@ -202,7 +202,7 @@ export default function SearchProvidersSettings() {
           <ChipGroup label="Results per source" options={LIMITS} value={prefs.limit} onChange={(limit) => update({ limit })} />
           <ListRow
             title="Hide dead torrents"
-            subtitle="Results with no seeders"
+            subtitle="Results no one is sharing"
             accessory={<Toggle value={prefs.hideDead} onValueChange={(hideDead) => update({ hideDead })} accessibilityLabel="Hide dead torrents" />}
           />
         </Card>

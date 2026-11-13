@@ -38,7 +38,7 @@ export default function BandwidthSettings() {
     preset === 'CUSTOM' ? `Custom: ${formatLimit(bps)}` : undefined;
 
   return (
-    <SettingsPage title="BANDWIDTH">
+    <SettingsPage title="Bandwidth">
       <Stack.Screen options={{ headerShown: false }} />
       <Card>
         <ChipGroup

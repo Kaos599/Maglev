@@ -7,10 +7,10 @@ import { Card, ChipGroup, InputSheet, SettingsPage, parseIntIn } from '../../com
 const COUNTS = [1, 2, 3, 5, 10];
 const RATIOS: { value: SeedingRatioLimit; label: string }[] = [
   { value: 0, label: 'Unlimited' },
-  { value: 1.0, label: '1.0' },
-  { value: 1.5, label: '1.5' },
-  { value: 2.0, label: '2.0' },
-  { value: 3.0, label: '3.0' },
+  { value: 1.0, label: '×1' },
+  { value: 1.5, label: '×1.5' },
+  { value: 2.0, label: '×2' },
+  { value: 3.0, label: '×3' },
 ];
 const DURATIONS: { value: SeedingDurationLimit; label: string }[] = [
   { value: 0, label: 'Unlimited' },
@@ -35,7 +35,7 @@ export default function QueueSettings() {
   const pickCount = (field: Field) => (n: number) => (n === -1 ? setCustom(field) : set(field, n));
 
   return (
-    <SettingsPage title="TORRENTS & QUEUE">
+    <SettingsPage title="Torrents and queue">
       <Stack.Screen options={{ headerShown: false }} />
       <Card>
         <ChipGroup
@@ -46,7 +46,7 @@ export default function QueueSettings() {
           onChange={pickCount('maxActiveDownloads')}
         />
         <ChipGroup
-          label="Active seeds"
+          label="Sharing at once"
           options={options(b.maxActiveUploads)}
           value={COUNTS.includes(b.maxActiveUploads) ? b.maxActiveUploads : -1}
           onChange={pickCount('maxActiveUploads')}
@@ -54,15 +54,15 @@ export default function QueueSettings() {
       </Card>
       <Card>
         <ChipGroup
-          label="Seed ratio limit"
-          caption="Stop seeding when this ratio is reached."
+          label="Upload until shared ×N"
+          caption="Stop sharing after you upload this many times the size. 1.0 means one full copy."
           options={RATIOS}
           value={b.seedingRatioLimit}
           onChange={(v) => updateSettings((prev) => ({ bandwidth: { ...prev.bandwidth, seedingRatioLimit: v } }))}
         />
         <ChipGroup
-          label="Seed time limit"
-          caption="Stop seeding after this long."
+          label="Share for at most"
+          caption="Stop sharing after this long."
           options={DURATIONS}
           value={b.seedingDurationLimitSeconds}
           onChange={(v) => updateSettings((prev) => ({ bandwidth: { ...prev.bandwidth, seedingDurationLimitSeconds: v } }))}
@@ -70,7 +70,7 @@ export default function QueueSettings() {
       </Card>
       <InputSheet
         visible={custom !== null}
-        title={custom === 'maxActiveUploads' ? 'Active seeds' : 'Active downloads'}
+        title={custom === 'maxActiveUploads' ? 'Sharing at once' : 'Active downloads'}
         subtitle="Enter a number from 1 to 50."
         initial={custom ? String(b[custom]) : ''}
         numeric
