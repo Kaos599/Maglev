@@ -128,7 +128,7 @@ const makeStyles = (c: ThemeColors) =>
   StyleSheet.create({
     root: { flex: 1, backgroundColor: c.bg },
     head: { paddingHorizontal: spacing.lg, paddingVertical: spacing.md, gap: spacing.xs },
-    title: { ...type.brand, fontSize: type.size.xl, color: c.text },
+    title: { ...type.heading, fontSize: type.size.xl, color: c.text },
     caption: { ...type.body, fontSize: type.size.md, color: c.textMuted },
     web: { flex: 1, borderTopWidth: 1, borderBottomWidth: 1, borderColor: c.border },
     webview: { flex: 1, backgroundColor: c.bg },

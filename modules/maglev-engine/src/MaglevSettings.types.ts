@@ -1,5 +1,7 @@
 export type ThemeMode = 'TACTICAL_DARK' | 'PURE_OLED';
 export type TelemetryDensity = 'COMPACT' | 'VERBOSE';
+/** UI font style. Never sent to the engine. */
+export type FontStyle = 'clean' | 'retro' | 'mono';
 export type AppearanceMode = 'oled' | 'dim' | 'light' | 'system';
 export type AccentName = 'lime' | 'cyan' | 'pink' | 'orange';
 export type StorageMode = 'POSIX' | 'SAF';
@@ -84,6 +86,7 @@ export interface AppearanceSettings {
   mode: AppearanceMode;
   accent: AccentName;
   telemetryDensity: TelemetryDensity;
+  fontStyle: FontStyle;
 }
 
 export type DownloadFolderMode = 'direct' | 'staging';
@@ -126,6 +129,7 @@ export const DEFAULT_SETTINGS: MaglevSettings = {
     mode: 'oled',
     accent: 'lime',
     telemetryDensity: 'COMPACT',
+    fontStyle: 'clean',
   },
   storage: {
     storageMode: 'POSIX',

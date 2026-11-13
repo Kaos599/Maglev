@@ -247,7 +247,7 @@ function TransferCardImpl({
             {status.lead}
           </Text>
           {status.value ? (
-            <View style={[styles.slot, { minWidth: monoSlotWidth(SLOT_CHARS[status.slot ?? "speed"], STATUS_SIZE, fontScale) }]}>
+            <View style={[styles.slot, { minWidth: monoSlotWidth(SLOT_CHARS[status.slot ?? "speed"], STATUS_SIZE, fontScale, type.slotAdvance) }]}>
               <Text style={[styles.status, styles.value, { color: statusColor }]} numberOfLines={1}>
                 {status.value}
               </Text>
