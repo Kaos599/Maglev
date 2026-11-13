@@ -35,6 +35,7 @@ import {
 } from '../assistant/turnMachine.ts';
 import { presetById, type AssistantPrefs } from '../prefs/assistant.ts';
 import type { StreamFn } from './client.ts';
+import { restoreItems, type ChatStore } from './chatStore.ts';
 
 /** R1-5: a read tool that has not finished after this long is answered "That took too long." */
 export const TOOL_TIMEOUT_MS = 60_000;
@@ -47,6 +48,11 @@ export const PREP_TIMEOUT_MS = 20_000;
 export const REVALIDATE_TIMEOUT_MS = 20_000;
 /** Time one confirmed action (or one plan step) may take. */
 export const EXECUTE_TIMEOUT_MS = 60_000;
+
+/** Shown when a saved chat was mid-turn and the process ended. Offers Retry, which asks the last question again. */
+export const INTERRUPTED = 'Interrupted. Tap Retry to ask again.';
+/** Debounce for saving the chat while it changes. A turn start and a turn end save at once. */
+export const SAVE_DEBOUNCE_MS = 500;
 
 const SLOW_PREP = 'That took too long. Ask me again.';
 const SLOW_CHECK = 'That took too long to check. Try again.';
@@ -77,6 +83,8 @@ export interface ChatDeps {
   timeZone?: string;
   /** Device locale such as "fr-FR". Default: the runtime's. Tests set it. */
   locale?: string;
+  /** Saves the chat so it survives the process ending. Read once, synchronously, when the controller is created. */
+  store?: ChatStore;
 }
 
 export interface ChatController {
@@ -85,8 +93,8 @@ export interface ChatController {
   /** Re-read prefs and key. Call when either changed. Key removed means Clear; Assistant turned off means Disabled. */
   refresh(): void;
   /**
-   * The app went to the background. Does nothing: the turn keeps going. If the system ends the process the turn
-   * is lost with it, and the chat starts empty (chats are not saved), so there is nothing to retry.
+   * The app went to the background. Does nothing: the turn keeps going. If the system ends the process the chat
+   * is already saved; it comes back with an "Interrupted" row that offers Retry.
    */
   background(): void;
   /** Whether the Assistant tab is in view. A reply that finishes out of view sets `unseenReply`; seeing it clears it. */
@@ -117,6 +125,7 @@ const ERROR_RETRY: ReadonlySet<string> = new Set([
   COPY.portal,
   COPY.noAnswer,
   COPY.stoppedAway,
+  INTERRUPTED,
   // A cut-off, unreadable or garbled answer often works the second time. An over-long answer does not
   // (STREAM_COPY.tooLong says to ask a narrower question), and "That message is too long." says to shorten it.
   STREAM_COPY.cutOff,
@@ -282,6 +291,56 @@ export function createChatController(deps: ChatDeps): ChatController {
     return 'thinking';
   }
 
+  // ---- saved chat -----------------------------------------------------------------------------------
+  // The store is read synchronously (expo-sqlite kv), so a restored chat is in the first snapshot and the screen
+  // never flashes an empty state. Not saved: the unseen flag, the model's tool history, API keys.
+  const store = deps.store;
+  let saveTimer: unknown;
+
+  function saveNow(): void {
+    if (!store) return;
+    if (saveTimer !== undefined) {
+      timers.clearTimeout(saveTimer);
+      saveTimer = undefined;
+    }
+    if (items.length === 0) store.clear();
+    else store.save(items, isBusy());
+  }
+
+  /** Debounced: at most one write per SAVE_DEBOUNCE_MS while the chat keeps changing (streaming text). */
+  function saveSoon(): void {
+    if (!store || saveTimer !== undefined) return;
+    saveTimer = timers.setTimeout(() => {
+      saveTimer = undefined;
+      saveNow();
+    }, SAVE_DEBOUNCE_MS);
+  }
+
+  if (store && hasKey()) {
+    const saved = store.load();
+    if (saved) {
+      const restoredItems = restoreItems(saved.items);
+      let maxId = 0;
+      for (const i of restoredItems) {
+        const n = Number(i.id.replace(/^[a-z]+/, ''));
+        if (Number.isFinite(n) && n > maxId) maxId = n;
+      }
+      nextId = maxId + 1;
+      items = restoredItems;
+      // The model gets the plain text of the conversation back (no tool calls): enough to retry or carry on.
+      const history: ChatMessage[] = [];
+      for (const i of restoredItems) {
+        if (i.kind === 'user') history.push({ role: 'user', content: i.text });
+        else if (i.kind === 'assistant' && i.text) history.push({ role: 'assistant', content: i.text });
+      }
+      turn = { ...turn, history };
+      if (saved.busy && history.some((m) => m.role === 'user')) {
+        items = [...items, { kind: 'error', id: newId('e'), message: INTERRUPTED, action: 'retry' }];
+        store.save(items, false); // not busy any more: a second restart must not add a second row
+      }
+    } else store.clear();
+  } else if (store) store.clear();
+
   function setUnseen(next: boolean): void {
     if (unseen === next) return;
     unseen = next;
@@ -390,7 +449,12 @@ export function createChatController(deps: ChatDeps): ChatController {
     // A turn that ended while the tab was out of view leaves a reply to look at. Clear and Stop do not.
     if (wasBusy && !busyNow && !focused && items.length > 0 && items[items.length - 1].kind !== 'note') setUnseen(true);
     if (items.length === 0) setUnseen(false);
+    const turnChanged = wasBusy !== busyNow;
     wasBusy = busyNow;
+    if (store) {
+      if (turnChanged || items.length === 0) saveNow();
+      else saveSoon();
+    }
     if (onlyText) emitSoon();
     else emit();
   }
@@ -954,7 +1018,10 @@ export function createChatController(deps: ChatDeps): ChatController {
     for (const i of items) {
       if (i.kind !== 'results') continue;
       const hit = i.results.find((r) => r.handle === handle);
-      if (hit) title = hit.title;
+      if (hit) {
+        if (hit.expired) return; // restored from a saved chat: the handle is from a past session
+        title = hit.title;
+      }
     }
     const p = getPrefs();
     dispatch({
