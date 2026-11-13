@@ -80,6 +80,8 @@ async function main() {
   check('user pause is kept, rule pause is not', t1.paused === true && b.torrents.find((t) => t.infoHash === H3).paused === false);
   check('torrent without detail still exports a magnet', parseMagnet(b.torrents.find((t) => t.infoHash === H3).magnet)?.infoHash === H3);
   check('folder and added date kept', t1.folder === FOLDER && t1.addedAt === 1000);
+  const dlp = (state, pausedBy) => E.downloadToBackup({ id: 'd9', urlDisplay: 'https://a.example/f.zip', name: 'f.zip', state, pausedBy, size: 1, downloaded: 0, downBps: 0, eta: -1, segmentsActive: 0, resumable: true, folder: '/x', addedAt: 1, error: null });
+  check('link download: user pause is kept, rule pauses (storage_full, wifi_only) export as not paused', dlp('paused', 'user').paused === true && dlp('paused', 'storage_full').paused === false && dlp('paused', 'wifi_only').paused === false && dlp('paused', null).paused === true && dlp('downloading', null).paused === false);
   check('torrentData failure does not stop the export', (await E.buildBackup({ ...deps, torrentData: async () => { throw new Error('x'); } })).torrents.length === 3);
   check('file name', E.backupFileName(Date.UTC(2026, 10, 13)) === 'maglev-2026-11-13.maglev-backup.json');
 

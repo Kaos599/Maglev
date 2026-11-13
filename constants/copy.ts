@@ -385,6 +385,7 @@ export const playCopy = {
   label: 'Play',
   a11y: (name: string) => `Play ${name}`,
   needsResume: 'Resume the download first.',
+  storageFull: 'Phone storage is full. Free up space to keep downloading.',
   noFile: "There's nothing to play in this torrent yet.",
   failed: "Couldn't start playing.",
   resumedToPlay: 'Resumed so it can play.',

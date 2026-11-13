@@ -75,7 +75,8 @@ export function downloadToBackup(d: DownloadSnapshot): BackupDownload | null {
     url: scrubUrl(d.urlDisplay),
     name: d.name,
     folder: d.folder || null,
-    paused: d.pausedBy === 'user' || d.state === 'paused',
+    // Same rule as a torrent: a pause a rule made (storage full, Wi-Fi only...) is not the user's choice.
+    paused: d.pausedBy === 'user' || (d.state === 'paused' && !d.pausedBy),
     state: d.state,
     addedAt: d.addedAt,
   };

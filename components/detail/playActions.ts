@@ -27,7 +27,7 @@ export async function playFile(
       const res = await maglevEngine.openFile(id, file.index);
       return res.ok ? { ok: true } : { ok: false, message: res.message || notices.inline.openFileFailed };
     }
-    if (plan.kind === 'blocked') return { ok: false, message: playCopy.needsResume };
+    if (plan.kind === 'blocked') return { ok: false, message: plan.reason === 'storageFull' ? playCopy.storageFull : playCopy.needsResume };
     if (plan.resumeFirst && !(await resume())) return { ok: false, message: notices.inline.resumeFailed };
     const url = await maglevEngine.streamUrl(id, file.index);
     if (!url.ok) return { ok: false, message: url.message || notices.inline.streamFailed };

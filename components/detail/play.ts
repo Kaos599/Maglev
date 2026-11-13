@@ -47,7 +47,7 @@ export function cardCanPlay(t: PlayState & { name: string }): boolean {
 export type PlayPlan =
   | { kind: 'open' }
   | { kind: 'stream'; resumeFirst: boolean }
-  | { kind: 'blocked'; reason: 'needsResume' };
+  | { kind: 'blocked'; reason: 'needsResume' | 'storageFull' };
 
 /**
  * What pressing Play does. A fully downloaded file opens normally. Otherwise it streams (a stream read already
@@ -61,6 +61,8 @@ export function playPlan(
   if (file.length > 0 && file.progressBytes >= file.length) return { kind: 'open' };
   if (t.state === 'PAUSED') {
     if (t.pausedBy === 'user') return { kind: 'stream', resumeFirst: true };
+    // Resuming cannot work until space is freed, so say that instead of "resume first".
+    if (t.pausedBy === 'storage_full') return { kind: 'blocked', reason: 'storageFull' };
     return { kind: 'blocked', reason: 'needsResume' };
   }
   return { kind: 'stream', resumeFirst: false };

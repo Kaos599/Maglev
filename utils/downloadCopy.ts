@@ -18,7 +18,8 @@ export type DownloadActionKind =
   | 'remove'
   | 'open'
   | 'pickFolder'
-  | 'openNetworkSettings';
+  | 'openNetworkSettings'
+  | 'freeSpace';
 
 export interface DownloadAction {
   kind: DownloadActionKind;
@@ -116,6 +117,11 @@ export function isIndeterminate(d: DownloadSnapshot): boolean {
 
 /** Screen-reader progress: a percentage when the size is known, bytes received when it is not. */
 export function downloadProgressLabel(d: DownloadSnapshot): string {
+  // A finished file is known by its size, or by the bytes it has when the server never said.
+  if (d.state === 'finished') {
+    const known = d.size && d.size > 0 ? d.size : d.downloaded;
+    return known > 0 ? `done, ${formatBytes(known)}` : 'done';
+  }
   if (isSizeUnknown(d)) return d.downloaded > 0 ? `${formatBytes(d.downloaded)} so far` : 'size unknown';
   return `${Math.round(downloadProgress(d) * 100)} percent`;
 }
@@ -168,7 +174,8 @@ export function downloadStatus(d: DownloadSnapshot, etaLabel?: string): Download
     }
     case 'paused': {
       const sub = downloadProgressText(d) ?? undefined;
-      if (d.pausedBy === 'storage_full') return { text: 'Storage full', tone: 'danger', sub };
+      // Same as a torrent: muted, with the way out as the sub-line (docs/contracts-0.19/play-and-storage.md section 2).
+      if (d.pausedBy === 'storage_full') return { text: 'Storage full', tone: 'muted', sub: 'Free up space' };
       if (d.pausedBy === 'storage_unavailable') return { text: FOLDER_GONE_TEXT, tone: 'danger', sub };
       if (d.pausedBy === 'offline') return { text: OFFLINE_TEXT, tone: 'muted', sub };
       if (d.pausedBy && GOVERNANCE_TEXT[d.pausedBy]) return { text: GOVERNANCE_TEXT[d.pausedBy], tone: 'muted', sub };
@@ -270,6 +277,7 @@ const A = {
   remove: { kind: 'remove', icon: 'trash', label: 'Remove' },
   pickFolder: { kind: 'pickFolder', icon: 'folder', label: 'Pick folder again' },
   openSettings: { kind: 'openNetworkSettings', icon: 'settings', label: 'Open settings' },
+  freeSpace: { kind: 'freeSpace', icon: 'trash', label: 'Free up space' },
 } as const satisfies Record<string, DownloadAction>;
 
 /** Every action that makes sense now, the most useful first. The card shows the first; the sheet shows all. */
@@ -280,6 +288,7 @@ export function downloadActions(d: DownloadSnapshot): DownloadAction[] {
       return [A.pause];
     case 'paused':
       if (d.pausedBy === 'storage_unavailable') return [A.pickFolder];
+      if (d.pausedBy === 'storage_full') return [A.freeSpace];
       if (d.pausedBy === 'wifi_only') return [A.resumeMobile, A.openSettings];
       if (d.pausedBy === 'vpn_required') return [A.openSettings];
       if (d.pausedBy === 'battery' || d.pausedBy === 'charging_only' || d.pausedBy === 'schedule') return [A.resumeAnyway];
@@ -343,9 +352,10 @@ export function downloadAction(d: DownloadSnapshot): DownloadAction | null {
 }
 
 /** Where the settings-style actions go. Null for the ones the engine or the sheet handles. */
-export function actionRoute(kind: DownloadActionKind): '/settings/storage' | '/settings/network' | null {
+export function actionRoute(kind: DownloadActionKind): '/settings/storage' | '/settings/network' | '/free-space' | null {
   if (kind === 'pickFolder') return '/settings/storage';
   if (kind === 'openNetworkSettings') return '/settings/network';
+  if (kind === 'freeSpace') return '/free-space';
   return null;
 }
 

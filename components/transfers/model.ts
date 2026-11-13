@@ -199,6 +199,8 @@ export function torrentStatus(t: StatusRow, etaLabel: string): TorrentStatus {
     case 'PAUSED':
       if (t.pausedBy === 'seed_metered') return line('Done · Seeding waits for Wi-Fi', 'accent', total, 'size');
       if (t.pausedBy === 'seed_limit') return line('Done', 'accent', total, 'size');
+      // Storage full: the sub-line is the way out (docs/contracts-0.19/play-and-storage.md section 2).
+      if (t.pausedBy === 'storage_full') return line(pausedReason(t.pausedBy), 'muted', undefined, undefined, 'Free up space');
       return line(pausedReason(t.pausedBy), 'muted', undefined, undefined, started);
     case 'COMPLETED':
       return line('Done', 'accent', total, 'size');

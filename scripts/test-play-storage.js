@@ -59,6 +59,33 @@ async function main() {
   check('a user-paused torrent resumes first', user.kind === 'stream' && user.resumeFirst === true);
   check('a rule-paused torrent is not resumed by Play', playPlan(half, { state: 'PAUSED', pausedBy: 'wifi_only' }).kind === 'blocked');
 
+  const sp = playPlan(half, { state: 'PAUSED', pausedBy: 'storage_full' });
+  check('a storage-paused torrent is blocked with a storage reason', sp.kind === 'blocked' && sp.reason === 'storageFull', JSON.stringify(sp));
+  check('storage-blocked Play message points to freeing space', /free up space/i.test(copy.playCopy.storageFull ?? '') && !/resume/i.test(copy.playCopy.storageFull ?? ''));
+  const pa = fs.readFileSync(path.join(root, 'components/detail/playActions.ts'), 'utf8');
+  check('playActions uses the storage message for a storage block', /storageFull/.test(pa));
+
+  // Card status for "Storage full": same for a torrent and a link download.
+  const model = await import('../components/transfers/model.ts');
+  const dcopy = await import('../utils/downloadCopy.ts');
+  const tor = { id: 'aa', name: 'x', state: 'PAUSED', pausedBy: 'storage_full', totalSizeBytes: 100, includedBytes: 100, downloadedBytes: 40, progressPercent: 40, etaSeconds: -1 };
+  const ts = model.torrentStatus(tor, '—');
+  const dl = { id: 'dl:1', name: 'f.pdf', urlDisplay: 'https://a.example/f.pdf', state: 'paused', pausedBy: 'storage_full', size: 13000, downloaded: 5000, downBps: 0, eta: -1, error: null };
+  const ds = dcopy.downloadStatus(dl);
+  check('torrent Storage full: muted, sub-line Free up space', ts.lead === 'Storage full' && ts.tone === 'muted' && ts.sub === 'Free up space', JSON.stringify(ts));
+  check('download Storage full: muted, sub-line Free up space', ds.text === 'Storage full' && ds.tone === 'muted' && ds.sub === 'Free up space', JSON.stringify(ds));
+  const da = dcopy.downloadActions(dl)[0];
+  const ta = model.torrentCardAction(tor);
+  check('download Storage full action is Free up space, like the torrent', da && da.kind === 'freeSpace' && da.label === 'Free up space' && ta.kind === 'freeSpace' && da.icon === ta.icon, JSON.stringify(da));
+  check('freeSpace routes to /free-space', dcopy.actionRoute('freeSpace') === '/free-space');
+
+  // Screen-reader progress for a link download uses the known size.
+  const fmt = (await import('../constants/format.ts')).formatBytes;
+  const fin = { ...dl, state: 'finished', pausedBy: null, downloaded: 13000 };
+  check('finished download label names its size, not "size unknown"', dcopy.downloadProgressLabel(fin).includes(fmt(13000)) && !/unknown/i.test(dcopy.downloadProgressLabel(fin)), dcopy.downloadProgressLabel(fin));
+  const finNoSize = { ...fin, size: null };
+  check('finished download with only downloaded bytes uses them', !/unknown/i.test(dcopy.downloadProgressLabel(finNoSize)) && dcopy.downloadProgressLabel(finNoSize).includes(fmt(13000)), dcopy.downloadProgressLabel(finNoSize));
+
   // Reserve math and the shared vectors.
   const vectors = JSON.parse(fs.readFileSync(path.join(root, 'scripts/fixtures/storage-reserve-vectors.json'), 'utf8'));
   let vectorsOk = vectors.length >= 10;
