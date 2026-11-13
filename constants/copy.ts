@@ -267,6 +267,32 @@ export const streamSheet = {
   name: 'Name',
 } as const;
 
+// ---------------------------------------------------------------------------------------------
+// Onboarding: what each step says. Plain, concrete, no hype.
+// ---------------------------------------------------------------------------------------------
+export const onboarding = {
+  welcome: {
+    title: 'Maglev',
+    body: 'Torrents, web links and videos in one place.',
+    detail: 'Search many sources at once, find videos in the browser, and follow feeds for new releases.',
+  },
+  notifications: {
+    title: 'Know when it is done',
+    body: 'Maglev tells you when a download finishes, and shows progress while it runs in the background.',
+  },
+  folder: {
+    title: 'Download folder',
+    body: 'Finished files are saved here. You can change it later in Settings.',
+  },
+  background: {
+    title: 'Keep running',
+    body: 'Android may stop downloads to save battery. Allow Maglev to keep running?',
+  },
+  mobileData: {
+    title: 'Download on mobile data?',
+    body: 'Large downloads can use a lot of your data plan.',
+  },
+};
 /** The + button's menu (components/add/AddMenuSheet.tsx). */
 export const addMenu = {
   title: 'Add',
