@@ -5,12 +5,11 @@ import { scheduleOnRN } from "react-native-worklets";
 import { useTheme } from "../context/ThemeContext";
 import type { TransferTelemetry } from "../context/EngineContext";
 import { ThemeColors, alpha, isFinishTransition, monoSlotWidth, motion, radius, spacing, type } from "../constants/theme";
-import { formatBytes, formatSpeed } from "../constants/format";
 import { formatEta } from "../utils/rates";
 import { PixelIcon, PixelIconName } from "./PixelIcon";
 import { IconButton, PressableScale, ProgressBar, ProgressTone } from "./ui";
 import { useMotion } from "./ui/useMotion";
-import { healthLabel, resolvingLine } from "./detail/fileHealthMachine";
+import { torrentProgressPercent, torrentStatus } from "./transfers/model";
 
 /**
  * Name (two lines), one bar, one status line. At the default font size the height never changes
@@ -37,8 +36,6 @@ type CardAction = {
   kind: "pause" | "resume" | "keepTrying";
 } | null;
 
-type StatusTone = "muted" | "accent" | "danger";
-
 /** Status line font size; the value slot is sized in Space Mono glyphs at this size. */
 const STATUS_SIZE = 12;
 const STATUS_LINE = 18;
@@ -48,70 +45,6 @@ const STATUS_LINE = 18;
  * A fixed minimum width means a speed that gains a digit never shifts the text beside it.
  */
 const SLOT_CHARS = { speed: 11, upload: 13, size: 9 } as const;
-
-interface Status {
-  /** The whole line, for screen readers. */
-  text: string;
-  /** Left part: what is happening ("12 min left", "Seeding", "Paused: waiting for Wi-Fi"). */
-  lead: string;
-  /** Right part, a number in a fixed-width slot (speed or size), when there is one. */
-  value?: string;
-  slot?: keyof typeof SLOT_CHARS;
-  tone: StatusTone;
-}
-
-function line(lead: string, tone: StatusTone, value?: string, slot?: keyof typeof SLOT_CHARS): Status {
-  return { text: value ? `${lead} · ${value}` : lead, lead, value, slot, tone };
-}
-
-function pausedReason(pausedBy: string | null | undefined): string {
-  switch (pausedBy) {
-    case "wifi_only":
-      return "Paused: waiting for Wi-Fi";
-    case "battery":
-      return "Paused: battery is low";
-    case "charging_only":
-      return "Paused: waiting for charger";
-    case "fgs_timeout":
-      return "Paused: stopped in background";
-    case "schedule":
-      return "Paused: by schedule";
-    default:
-      return healthLabel(pausedBy) ?? "Paused";
-  }
-}
-
-/** The one status line under the bar. `etaLabel` is the hysteresis-stable time left. */
-function statusFor(t: TransferTelemetry, etaLabel: string): Status {
-  const total = t.totalSizeBytes > 0 ? formatBytes(t.totalSizeBytes) : "—";
-  switch (t.state) {
-    case "DOWNLOADING": {
-      const speed = t.lastKnown || t.downloadSpeedBytes <= 0 ? "—" : formatSpeed(t.downloadSpeedBytes);
-      if (!t.lastKnown && t.etaSeconds >= 0 && etaLabel !== "—") return line(`${etaLabel} left`, "muted", speed, "speed");
-      return line("Downloading", "muted", speed, "speed");
-    }
-    case "SEEDING":
-      return line("Seeding", "accent", `↑ ${t.lastKnown ? "—" : formatSpeed(t.uploadSpeedBytes)}`, "upload");
-    case "PAUSED":
-      if (t.pausedBy === "seed_limit") return line("Done", "accent", total, "size");
-      return line(pausedReason(t.pausedBy), "muted");
-    case "COMPLETED":
-      return line("Done", "accent", total, "size");
-    case "MOVING":
-      return line(t.moveProgress != null ? `Moving files… ${Math.round(t.moveProgress * 100)}%` : "Moving files…", "accent");
-    case "ERROR":
-      return line(t.error?.message ? t.error.message : "Something went wrong", "danger");
-    case "QUEUED":
-      return line("Queued", "muted");
-    case "CHECKING":
-      return line("Checking files…", "muted");
-    case "INITIALIZING":
-      if (t.resolvingSecs != null) return line(resolvingLine(t.peersTotal, t.resolvingSecs), "muted");
-      return line("Getting info…", "muted");
-    default:
-      return line("Getting info…", "muted");
-  }
-}
 
 /**
  * The finish moment: a lime check fades in over the value slot (150 ms) once the bar has filled,
@@ -221,13 +154,13 @@ function TransferCardImpl({
   const prevEta = etaRef.current && etaRef.current.id === t.id ? etaRef.current.label : null;
   const etaLabel = formatEta(t.state === "DOWNLOADING" ? t.etaSeconds : -1, prevEta);
   etaRef.current = etaLabel === "—" ? null : { id: t.id, label: etaLabel };
-  const status = statusFor(t, etaLabel);
+  const status = torrentStatus(t, etaLabel);
   const action = actionFor(t);
   const indeterminate = t.state === "INITIALIZING" || t.state === "CHECKING";
   const moving = t.state === "MOVING";
   const pct = Math.min(
     100,
-    Math.max(0, moving ? (t.moveProgress ?? 0) * 100 : t.progressPercent),
+    Math.max(0, moving ? (t.moveProgress ?? 0) * 100 : torrentProgressPercent(t)),
   );
   const statusColor =
     status.tone === "danger"
@@ -308,18 +241,25 @@ function TransferCardImpl({
           accessibilityLabel={`${t.name} progress`}
           resetKey={t.id}
         />
+        <View style={styles.statusBlock}>
         <View style={styles.statusRow}>
           <Text style={[styles.status, styles.lead, { color: statusColor }]} numberOfLines={1}>
             {status.lead}
           </Text>
           {status.value ? (
-            <View style={[styles.slot, { minWidth: monoSlotWidth(SLOT_CHARS[status.slot ?? "speed"], STATUS_SIZE, fontScale) }]}>
+            <View style={[styles.slot, { minWidth: monoSlotWidth(SLOT_CHARS[status.slot ?? "speed"], STATUS_SIZE, fontScale, type.slotAdvance) }]}>
               <Text style={[styles.status, styles.value, { color: statusColor }]} numberOfLines={1}>
                 {status.value}
               </Text>
               {finishing ? <FinishMark key={t.id} color={colors.accentText} cover={colors.surface} onDone={endFinish} /> : null}
             </View>
           ) : null}
+        </View>
+        {status.sub ? (
+          <Text style={[styles.status, { color: colors.textMuted }]} numberOfLines={1}>
+            {status.sub}
+          </Text>
+        ) : null}
         </View>
       </PressableScale>
       {action && !selectionMode ? (
@@ -366,6 +306,7 @@ function sameCard(a: TransferCardProps, b: TransferCardProps): boolean {
     x.progressPercent === y.progressPercent &&
     x.moveProgress === y.moveProgress &&
     x.downloadedBytes === y.downloadedBytes &&
+    x.includedBytes === y.includedBytes &&
     x.totalSizeBytes === y.totalSizeBytes &&
     x.etaSeconds === y.etaSeconds &&
     x.pending === y.pending &&
@@ -414,6 +355,7 @@ const makeStyles = (c: ThemeColors) =>
     },
     name: { ...type.mono, fontSize: 13, lineHeight: 18, color: c.text, flex: 1 },
     // One line, always present, at a fixed minimum height: rows never grow or shrink as the text changes.
+    statusBlock: { gap: 0 },
     statusRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm, minHeight: STATUS_LINE },
     status: { ...type.mono, fontSize: STATUS_SIZE, lineHeight: STATUS_LINE },
     lead: { flex: 1, flexShrink: 1 },

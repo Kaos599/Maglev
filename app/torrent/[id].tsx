@@ -10,14 +10,15 @@ import { formatBytes, formatEta, formatSpeed } from '../../constants/format';
 import { haptic } from '../../constants/haptics';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { PixelIcon } from '../../components/PixelIcon';
+import { OPEN_FOLDER_FAILED_TEXT } from '../../utils/downloadCopy';
 import { friendlyPath } from '../../components/settings/SettingsParts';
-import { Banner, Button, EmptyBlock, IconButton, ProgressBar, Screen, SegmentedControl } from '../../components/ui';
+import { Banner, Button, EmptyBlock, IconButton, ListRow, ProgressBar, Screen, SegmentedControl } from '../../components/ui';
 import { SpeedChart } from '../../components/SpeedChart';
 import { PiecesMatrix } from '../../components/PiecesMatrix';
 import { StateBadge } from '../../components/detail/StateBadge';
 import { StatGrid } from '../../components/detail/StatGrid';
 import { PeerRow, TrackerRow } from '../../components/detail/rows';
-import { DoneActions } from '../../components/detail/DoneActions';
+import { DoneActions, OpenFolderButton } from '../../components/detail/DoneActions';
 import { DeleteSheet, FileActionsSheet, RemoveFilesSheet, SavedTorrentSheet } from '../../components/detail/sheets';
 import { AddTrackerSheet, RemoveTrackerSheet } from '../../components/detail/TrackerSheets';
 import { REMOVE_FILES_INITIAL, buildRemoveRequest, removeFilesStep } from '../../components/detail/removeFilesMachine';
@@ -707,6 +708,15 @@ export default function TorrentDetailScreen() {
   const includedFiles = files.filter((f) => f.included && f.length > 0);
   const allDone = !moving && includedFiles.length > 0 && includedFiles.every((f) => f.progressBytes >= f.length);
 
+  const openSavedFolder = async () => {
+    try {
+      const res = await maglevEngine.openFolder(id);
+      if (!res.ok) showNotice({ tone: 'danger', text: res.message || OPEN_FOLDER_FAILED_TEXT });
+    } catch {
+      showNotice({ tone: 'danger', text: OPEN_FOLDER_FAILED_TEXT });
+    }
+  };
+
   const header = (
     <View>
       {notice ? (
@@ -767,7 +777,11 @@ export default function TorrentDetailScreen() {
 
       {allDone ? (
         <DoneActions id={id} files={files} onNotice={showNotice} />
-      ) : null}
+      ) : (
+        <View style={styles.block}>
+          <OpenFolderButton id={id} onNotice={showNotice} />
+        </View>
+      )}
 
       <View style={styles.block}>
         <StatGrid
@@ -781,6 +795,18 @@ export default function TorrentDetailScreen() {
           ]}
         />
       </View>
+
+      {snap.outputFolder ? (
+        <View style={styles.block}>
+          <ListRow
+            title="Saved to"
+            subtitle={friendlyPath(snap.outputFolder)}
+            icon="folder"
+            onPress={() => void openSavedFolder()}
+            accessibilityLabel={`Saved to ${friendlyPath(snap.outputFolder)}. Opens the folder.`}
+          />
+        </View>
+      ) : null}
 
       <View style={styles.block}>
         <SpeedChart downBps={snap.downBps} upBps={snap.upBps} sampleId={tick} />

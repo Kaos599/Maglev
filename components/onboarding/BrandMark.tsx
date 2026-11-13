@@ -6,7 +6,7 @@ export interface BrandMarkProps {
   height?: number;
 }
 
-/** The onboarding hero: the Maglev mark, cruising. */
+/** The onboarding hero: the Maglev mark, arriving from the left the first time, then cruising. */
 export function BrandMark({ height = 96 }: BrandMarkProps) {
-  return <MaglevMark height={height} cruising />;
+  return <MaglevMark height={height} cruising tappable arrive />;
 }

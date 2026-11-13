@@ -58,7 +58,7 @@ const makeStyles = (c: ThemeColors) =>
     root: { flex: 1, backgroundColor: c.bg },
     fill: { flex: 1 },
     header: { minHeight: 56, flexDirection: 'row', alignItems: 'center', paddingHorizontal: spacing.sm },
-    title: { ...type.brand, fontSize: 17, color: c.text, flex: 1, marginLeft: spacing.xs },
+    title: { ...type.heading, fontSize: 17, color: c.text, flex: 1, marginLeft: spacing.xs },
     titleNoBack: { marginLeft: spacing.sm },
     actions: { flexDirection: 'row', alignItems: 'center' },
   });
