@@ -27,7 +27,7 @@ class ShareClassifyTest {
         for (i in 0 until v.length()) {
             val o = v.getJSONObject(i)
             val got = ShareClassify.classify(str(o, "text"), str(o, "mime"))
-            val label = o.getString("name")
+            val label = o.getString("label")
             assertEquals(label, o.getString("kind").uppercase(), got.kind.name)
             assertEquals("$label source", str(o, "source"), got.source)
             assertEquals("$label name", str(o, "name"), got.name)

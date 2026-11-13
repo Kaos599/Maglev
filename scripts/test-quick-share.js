@@ -32,7 +32,7 @@ async function main() {
     } catch (e) {
       ok = false;
     }
-    check(`classify: ${v.name}`, ok, JSON.stringify(got));
+    check(`classify: ${v.label}`, ok, JSON.stringify(got));
   }
   const kt = read(ENGINE_KT + 'share/ShareClassify.kt');
   check('Kotlin classifier exists with the same entry point', /object ShareClassify/.test(kt) && /fun classify\(text: String\?, mime: String\?\)/.test(kt));
