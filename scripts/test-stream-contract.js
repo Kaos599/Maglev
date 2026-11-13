@@ -26,14 +26,15 @@ function check(name, fn) {
 }
 
 const KT = 'modules/maglev-engine/android/src/main/java/com/maglev/engine';
-const contract = read('docs/NATIVE_CONTRACT.md');
-const sec = contract.slice(contract.indexOf('### 24.8'));
+const contract = require('./lib/privateDocs').readPrivateDoc('NATIVE_CONTRACT.md');
+const sec = contract === null ? null : contract.slice(contract.indexOf('### 24.8'));
 const jni = read('native/maglev-core/src/jni.rs');
 const errorRs = read('native/maglev-core/src/error.rs');
 const machine = read('native/maglev-core/src/http_dl/machine.rs');
 const nativeCore = stripKotlinComments(read(`${KT}/NativeCore.kt`));
 const mod = stripKotlinComments(read(`${KT}/MaglevEngineModule.kt`));
 const host = stripKotlinComments(read(`${KT}/EngineHost.kt`));
+const muxJobs = stripKotlinComments(read(`${KT}/MuxJobs.kt`));
 const muxer = stripKotlinComments(read(`${KT}/storage/StreamMuxer.kt`));
 const types = read('modules/maglev-engine/src/MaglevEngine.types.ts');
 const bridge = read('modules/maglev-engine/src/MaglevNativeBridge.ts');
@@ -58,6 +59,7 @@ check('JNI names match between jni.rs, NativeCore.kt and the module', () => {
 });
 
 check('the contract names the same two calls', () => {
+  if (sec === null) return;
   assert(/nativeProbeStream\(url, optionsJson, timeoutMs\)/.test(sec));
   assert(/nativeFinishMux\(id, ok, errorMessage\|null\)/.test(sec));
 });
@@ -71,7 +73,7 @@ const CODES = [
 
 check('error codes and messages in error.rs match section 24.8', () => {
   for (const [code, constName, message] of CODES) {
-    assert(sec.includes(`\`${code}\``) && sec.includes(message), `${code} or its message is missing from the contract`);
+    if (sec !== null) assert(sec.includes(`\`${code}\``) && sec.includes(message), `${code} or its message is missing from the contract`);
     assert(errorRs.includes(`"${code}"`), `${code} missing in error.rs as_str`);
     const m = errorRs.match(new RegExp(`pub const ${constName}: &str = "((?:[^"\\\\]|\\\\.)*)";`));
     assert(m, `${constName} missing in error.rs`);
@@ -116,8 +118,10 @@ check('the join runs before the copy into the user folder', () => {
 check('the join waits in verifying, once per wait, on an IO thread, then tells Rust', () => {
   const fn = host.slice(host.indexOf('private fun runPendingMuxes'));
   const body = fn.slice(0, fn.indexOf('\n    }\n\n') + 8);
-  assert(/"verifying"/.test(body) && /mux_needed/.test(body), 'must wait for verifying with mux_needed');
-  assert(/muxStarted\.add\(id\)/.test(body), 'must start each wait once');
+  const jobs = stripKotlinComments(read(`${KT}/MuxJobs.kt`));
+  assert(/"verifying"/.test(jobs) && /mux_needed/.test(jobs), 'must wait for verifying with mux_needed');
+  assert(/started\.add\(id\)/.test(jobs), 'must start each wait once');
+  assert(/muxTracker\.claim\(downloads\)/.test(body), 'must ask the tracker which waits are new');
   assert(/ioScope\.launch/.test(body), 'must run on the IO scope');
   assert(/StreamMuxer\.mux\(/.test(body) && /nativeFinishMux\(id, ok,/.test(body), 'must mux then call nativeFinishMux');
 });
@@ -136,7 +140,7 @@ check('the part and temp names agree between Rust and Kotlin', () => {
   const rs = read('native/maglev-core/src/http_dl/stream/plan.rs');
   const driver = read('native/maglev-core/src/http_dl/driver.rs');
   assert(/\{name\}\.video\.part/.test(rs) && /\{name\}\.audio\.part/.test(rs), 'Rust part names');
-  assert(/"\$name\.video\.part"/.test(host) && /"\$name\.audio\.part"/.test(host), 'Kotlin part names');
+  assert(/"\$name\.video\.part"/.test(muxJobs) && /"\$name\.audio\.part"/.test(muxJobs), 'Kotlin part names');
   assert(driver.includes('".mux.tmp"') && /\.mux\.tmp/.test(muxer), 'temp name on both sides');
 });
 
@@ -167,7 +171,7 @@ check('AES-128: pinned crates, keys in memory only, 16 byte keys, PKCS#7 CBC', (
   assert(/Pkcs7/.test(fetch) && /Aes128CbcDec/.test(fetch), 'PKCS#7 CBC decryption');
   const sidecar = read('native/maglev-core/src/http_dl/sidecar.rs');
   assert(!/key|iv\b/i.test(sidecar.slice(sidecar.indexOf('pub struct TrackSide'), sidecar.indexOf('pub struct Sidecar'))), 'no key material in the sidecar');
-  assert(/AES-128 \(HLS\)/.test(sec), 'contract documents AES-128');
+  if (sec !== null) assert(/AES-128 \(HLS\)/.test(sec), 'contract documents AES-128');
 });
 
 check('segments go through the shared download rules', () => {

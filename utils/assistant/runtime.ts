@@ -48,6 +48,8 @@ export interface ResultCardView {
    * under a "What's inside" toggle, collapsed by default, so non-technical users aren't shown it unasked.
    */
   details?: ResultDetailsView;
+  /** Restored from a saved chat: its handle belongs to a past session, so Choose files and Ask about this are off. */
+  expired?: boolean;
 }
 
 /** The contents of one result, app-computed from the torrent's file list. */

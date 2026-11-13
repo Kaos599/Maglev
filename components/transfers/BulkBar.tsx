@@ -1,6 +1,5 @@
 import React, { useMemo } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../../context/ThemeContext';
 import { ThemeColors, radius, spacing, type } from '../../constants/theme';
 import { PixelIcon, PixelIconName } from '../PixelIcon';
@@ -16,7 +15,6 @@ export interface BulkBarProps {
 export function BulkBar({ disabled, onPause, onResume, onDelete }: BulkBarProps) {
   const { colors } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
-  const insets = useSafeAreaInsets();
   const cell = (label: string, icon: PixelIconName, onPress: () => void, tint: string) => (
     <PressableScale
       onPress={onPress}
@@ -33,7 +31,8 @@ export function BulkBar({ disabled, onPause, onResume, onDelete }: BulkBarProps)
     </PressableScale>
   );
   return (
-    <View style={[styles.bar, { paddingBottom: Math.max(insets.bottom, spacing.sm) }]}>
+    // The tab bar below already clears the system navigation bar, so no safe-area inset here.
+    <View style={styles.bar}>
       {cell('Pause', 'pause', onPause, colors.text)}
       {cell('Resume', 'play', onResume, colors.text)}
       {cell('Delete', 'trash', onDelete, colors.danger)}
@@ -51,7 +50,7 @@ const makeStyles = (c: ThemeColors) =>
       flexDirection: 'row',
       gap: spacing.sm,
       paddingHorizontal: spacing.lg,
-      paddingTop: spacing.sm,
+      paddingVertical: spacing.sm,
       backgroundColor: c.surface,
       borderTopWidth: 1,
       borderTopColor: c.border,

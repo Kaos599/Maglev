@@ -21,6 +21,10 @@ pub const EXEMPTABLE_TAGS: [&str; 5] = ["wifi_only", "battery", "charging_only",
 /// Pause tag for seeding on a metered link. It applies to finished torrents only.
 pub const TAG_SEED_METERED: &str = "seed_metered";
 
+/// Governance tag for the low-storage reserve (contract 0.19 play-and-storage section 2). Same string as
+/// `HEALTH_STORAGE_FULL`, so a paused transfer shows the one "Storage full" state either way.
+pub const TAG_STORAGE_FULL: &str = HEALTH_STORAGE_FULL;
+
 pub fn is_exemptable(tag: &str) -> bool {
     EXEMPTABLE_TAGS.contains(&tag)
 }
@@ -29,6 +33,10 @@ pub fn is_exemptable(tag: &str) -> bool {
 /// only touches finished torrents.
 fn tag_blocks(tag: &str, f: &TorrentFacts) -> bool {
     if tag == TAG_SEED_METERED && !f.finished {
+        return false;
+    }
+    // Seeding writes nothing, so the low-storage reserve never stops a finished torrent.
+    if tag == TAG_STORAGE_FULL && f.finished {
         return false;
     }
     !(f.exempt && is_exemptable(tag))
@@ -665,6 +673,35 @@ mod tests {
         parked.running = false;
         parked.queued = true;
         assert_eq!(plan(&[parked], &cfg(), &[]), vec![pause("p", "storage_full")]);
+    }
+
+    #[test]
+    fn storage_reserve_tag_pauses_unfinished_and_spares_seeders() {
+        let blocked = vec![TAG_STORAGE_FULL.to_string()];
+        let mut seeding = f("s", 1);
+        seeding.finished = true;
+        let facts = vec![f("d", 2), seeding];
+        let actions = plan(&facts, &cfg(), &blocked);
+        assert!(actions.contains(&pause("d", "storage_full")));
+        assert!(!actions.iter().any(|a| matches!(a, Action::Pause { id, .. } if id == "s")));
+    }
+
+    #[test]
+    fn storage_reserve_tag_clearing_resumes_what_it_paused() {
+        let mut t = f("d", 1);
+        t.running = false;
+        t.paused_by = Some("storage_full".into());
+        // Still blocked: stays paused. Cleared: it runs again.
+        assert!(plan(&[t.clone()], &cfg(), &[TAG_STORAGE_FULL.to_string()]).is_empty());
+        assert_eq!(plan(&[t], &cfg(), &[]), vec![Action::Resume { id: "d".into() }]);
+    }
+
+    #[test]
+    fn storage_reserve_never_overrides_a_user_pause() {
+        let mut t = f("u", 1);
+        t.running = false;
+        t.paused_by = Some("user".into());
+        assert!(plan(&[t], &cfg(), &[TAG_STORAGE_FULL.to_string()]).is_empty());
     }
 
     #[test]

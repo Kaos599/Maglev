@@ -1,0 +1,23 @@
+# Copy: constants/copy.ts (onboarding), buttons: app/onboarding.tsx
+appId: com.maglev
+---
+- tapOn: "Get started"
+- extendedWaitUntil:
+    visible: "Know when it is done"
+    timeout: 10000
+- tapOn: "Not now"
+- extendedWaitUntil:
+    visible: "Download folder"
+    timeout: 10000
+- tapOn: "Skip"
+- extendedWaitUntil:
+    visible: "Keep running"
+    timeout: 10000
+- tapOn: "Skip"
+- extendedWaitUntil:
+    visible: "Download on mobile data\\?"
+    timeout: 10000
+- tapOn: "Continue"
+- extendedWaitUntil:
+    visible: "Transfers"
+    timeout: 20000

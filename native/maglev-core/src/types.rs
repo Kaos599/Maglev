@@ -37,6 +37,8 @@ pub struct Snapshot {
     pub finished: bool,
     pub progress_bytes: u64,
     pub total_bytes: u64,
+    /// Downloaded bytes of every file, skipped ones too: what deleting the files frees (section 18.4).
+    pub held_bytes: u64,
     pub uploaded_bytes: u64,
     pub down_bps: u64,
     pub up_bps: u64,

@@ -199,6 +199,8 @@ export function torrentStatus(t: StatusRow, etaLabel: string): TorrentStatus {
     case 'PAUSED':
       if (t.pausedBy === 'seed_metered') return line('Done · Seeding waits for Wi-Fi', 'accent', total, 'size');
       if (t.pausedBy === 'seed_limit') return line('Done', 'accent', total, 'size');
+      // Storage full: the sub-line is the way out (docs/contracts-0.19/play-and-storage.md section 2).
+      if (t.pausedBy === 'storage_full') return line(pausedReason(t.pausedBy), 'muted', undefined, undefined, 'Free up space');
       return line(pausedReason(t.pausedBy), 'muted', undefined, undefined, started);
     case 'COMPLETED':
       return line('Done', 'accent', total, 'size');
@@ -254,9 +256,9 @@ export function resumeAnywayLabel(pausedBy: string | null | undefined): string {
 
 // ---- Torrent card button ----
 
-export type TorrentCardActionKind = 'pause' | 'resume' | 'keepTrying' | 'open' | 'resumeAnyway';
+export type TorrentCardActionKind = 'pause' | 'resume' | 'keepTrying' | 'open' | 'resumeAnyway' | 'freeSpace';
 export interface TorrentCardAction {
-  icon: 'pause' | 'play' | 'retry' | 'external' | 'speed-limit';
+  icon: 'pause' | 'play' | 'retry' | 'external' | 'speed-limit' | 'trash';
   label: string;
   kind: TorrentCardActionKind;
 }
@@ -272,7 +274,9 @@ export function torrentCardAction(t: Pick<TorrentTelemetry, 'state' | 'pausedBy'
       if (by === 'no_peers') return { icon: 'retry', label: 'Keep trying', kind: 'keepTrying' };
       // Finished by the seed limit: the button opens the file. Seed again lives in the detail screen.
       if (by === 'seed_limit') return { icon: 'external', label: 'Open', kind: 'open' };
-      if (by === 'files_missing' || by === 'files_changed' || by === 'storage_full' || by === 'storage_unavailable') return null;
+      // Storage full: the card's button opens the list of finished downloads to remove (play-and-storage section 3).
+      if (by === 'storage_full') return { icon: 'trash', label: 'Free up space', kind: 'freeSpace' };
+      if (by === 'files_missing' || by === 'files_changed' || by === 'storage_unavailable') return null;
       if (canResumeAnyway(by)) return { icon: 'play', label: resumeAnywayLabel(by), kind: 'resumeAnyway' };
       // Waiting on something that clears by itself (or seeding that waits for Wi-Fi).
       if (by === 'fgs_timeout' || by === 'seed_metered') return null;

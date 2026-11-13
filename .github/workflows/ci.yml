@@ -44,6 +44,37 @@ jobs:
         continue-on-error: true
         run: cargo clippy --manifest-path native/maglev-core/Cargo.toml --no-default-features -- -D warnings
 
+  js:
+    name: JS checks (typecheck, tests, assistant eval)
+    runs-on: ubuntu-latest
+    # Runs in parallel with the APK build (which takes far longer); a failure here still fails the run.
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          # Tests import .ts files directly with type stripping, which needs Node 22.18 or newer.
+          node-version: '22.18'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --legacy-peer-deps || npm install --legacy-peer-deps
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Unit and contract tests
+        run: npm test
+
+      - name: Assistant tests
+        run: npm run test:assistant
+
+      - name: Assistant eval (scripted model, no key)
+        # run.js exits 1 when any check fails or a scenario errors.
+        run: node scripts/eval-assistant/run.js --fake
+
   rust-android:
     name: Rust Android
     uses: ./.github/workflows/_rust-android.yml
@@ -168,6 +199,20 @@ jobs:
       - name: List APKs
         run: ls -lh android/app/build/outputs/apk/release/*.apk
 
+      - name: Verify versionCodes (base*10 + ABI digit; universal is base*10)
+        shell: bash
+        run: |
+          AAPT2=$(ls -d "$ANDROID_HOME"/build-tools/*/aapt2 | sort -V | tail -n 1)
+          BASE=$(node -p "const a=require('./app.json');(a.expo||a).android.versionCode")
+          declare -A DIGIT=([universal]=0 [armeabi-v7a]=1 [x86_64]=3 [arm64-v8a]=4)
+          for apk in android/app/build/outputs/apk/release/*.apk; do
+            NAME=$(basename "$apk" -release.apk); ABI=${NAME#app-}
+            GOT=$("$AAPT2" dump badging "$apk" | sed -n "s/.*versionCode='\([0-9]*\)'.*/\1/p" | head -n 1)
+            WANT=$((BASE * 10 + ${DIGIT[$ABI]}))
+            echo "$NAME: versionCode $GOT (want $WANT)"
+            [ "$GOT" = "$WANT" ] || { echo "::error::$NAME has versionCode $GOT, expected $WANT"; exit 1; }
+          done
+
       - name: Upload APKs
         uses: actions/upload-artifact@v4
         with:
@@ -193,6 +238,11 @@ jobs:
           JAR="$RUNNER_TEMP/bundletool.jar"
           curl -fsSL -o "$JAR" "https://github.com/google/bundletool/releases/download/${BUNDLETOOL_VERSION}/bundletool-all-${BUNDLETOOL_VERSION}.jar"
           echo "$BUNDLETOOL_SHA256  $JAR" | sha256sum -c -
+          # The AAB must carry the same scheme as the universal APK (base*10), or the APK set cannot upgrade it.
+          WANT=$(( $(node -p "const a=require('./app.json');(a.expo||a).android.versionCode") * 10 ))
+          GOT=$(java -jar "$JAR" dump manifest --bundle="$AAB" --xpath /manifest/@android:versionCode)
+          echo "AAB versionCode $GOT (want $WANT)"
+          [ "$GOT" = "$WANT" ] || { echo "::error::AAB versionCode $GOT, expected $WANT"; exit 1; }
           # bundletool takes passwords as pass: or file: only (no env:), so use 0600 files and remove them after.
           (umask 077
            printf '%s' "$MAGLEV_KEYSTORE_PASSWORD" > "$RUNNER_TEMP/ks.pass"

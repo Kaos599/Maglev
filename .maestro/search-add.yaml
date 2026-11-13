@@ -1,0 +1,24 @@
+# Search for a public-domain title, add the first result, expect it in Transfers.
+appId: com.maglev
+name: search-add
+---
+- runFlow: subflows/onboard-if-needed.yaml
+- tapOn: "Search"
+- tapOn:
+    text: "Search torrents"
+- inputText: "Sintel"
+- pressKey: Enter
+- extendedWaitUntil:
+    visible: "Add .*"
+    timeout: 90000
+- tapOn:
+    text: "Add .*"
+    index: 0
+- extendedWaitUntil:
+    visible: "Added to Transfers"
+    timeout: 60000
+- tapOn: "Transfers"
+- extendedWaitUntil:
+    visible: ".*percent.*"
+    timeout: 30000
+- runFlow: subflows/remove-all-with-files.yaml

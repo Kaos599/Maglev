@@ -80,6 +80,8 @@ export interface StorageSettings {
   autoMoveCompleted: boolean;
   autoMoveDestinationPath: string;
   preAllocateDisk: boolean;
+  /** Quick share (contracts-0.19/quick-share.md): add a shared magnet, .torrent or file link at once, with no card. Read in Kotlin. */
+  addWithoutAsking: boolean;
 }
 
 export interface AppearanceSettings {
@@ -139,6 +141,7 @@ export const DEFAULT_SETTINGS: MaglevSettings = {
     autoMoveCompleted: false,
     autoMoveDestinationPath: '/storage/emulated/0/Download/MaglevCompleted',
     preAllocateDisk: true,
+    addWithoutAsking: false,
   },
   bandwidth: {
     downloadLimitBytesPerSec: 0,

@@ -1,0 +1,92 @@
+name: E2E (Maestro, report-only)
+
+# Runs the Maestro flows in .maestro/ on an API 34 x86_64 emulator against the APK that CI built.
+# Report-only: nothing waits on this workflow, and release-apk.yml does not depend on it.
+# CI builds x86_64 only on main (ci.yml MAGLEV_ABIS). On other refs the artifact has no x86_64 APK and this job exits green with a notice.
+on:
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: 'CI run id to take the apks artifact from (default: the latest successful CI run for this commit)'
+        required: false
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  maestro:
+    name: Maestro flows
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Find the CI run and download the x86_64 APK
+        id: apk
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          INPUT_RUN: ${{ inputs.run_id }}
+        run: |
+          RUN="$INPUT_RUN"
+          if [ -z "$RUN" ]; then
+            RUN=$(gh run list --workflow ci.yml --commit "$GITHUB_SHA" --status success --limit 1 --json databaseId --jq '.[0].databaseId // empty')
+          fi
+          if [ -z "$RUN" ]; then echo "::notice::No successful CI run for $GITHUB_SHA; skipping E2E."; exit 0; fi
+          rm -rf ci-apks; mkdir -p ci-apks
+          if ! gh run download "$RUN" --name apks --dir ci-apks; then
+            echo "::notice::CI run $RUN has no live apks artifact; skipping E2E."; exit 0
+          fi
+          APK=$(find ci-apks -type f -name 'app-x86_64-release.apk' | head -n 1)
+          if [ -z "$APK" ]; then echo "::notice::Run $RUN has no x86_64 APK (only main builds it); skipping E2E."; exit 0; fi
+          echo "apk=$APK" >> "$GITHUB_OUTPUT"
+
+      - name: Enable KVM
+        if: steps.apk.outputs.apk != ''
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Setup Java 17
+        if: steps.apk.outputs.apk != ''
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Install Maestro CLI
+        if: steps.apk.outputs.apk != ''
+        run: |
+          curl -fsSL "https://get.maestro.mobile.dev" | bash
+          echo "$HOME/.maestro/bin" >> "$GITHUB_PATH"
+
+      - name: Run flows on the emulator
+        if: steps.apk.outputs.apk != ''
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          arch: x86_64
+          target: google_apis
+          profile: pixel_6
+          disable-animations: true
+          script: |
+            adb install -r "${{ steps.apk.outputs.apk }}"
+            maestro test .maestro/ --format junit --output maestro-report.xml --debug-output maestro-debug --flatten-debug-output || (adb logcat -d > maestro-logcat.txt; exit 1)
+
+      - name: Upload Maestro output
+        if: always() && steps.apk.outputs.apk != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: maestro-output
+          path: |
+            maestro-report.xml
+            maestro-debug/
+            maestro-logcat.txt
+          if-no-files-found: ignore
+          retention-days: 7

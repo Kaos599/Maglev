@@ -241,7 +241,12 @@ function engineError(code: string, message: string, id?: string): Error {
 export const EngineProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   // The saved list is read once, on the first render, so the first frame can show it.
   const boot = useRef<{ cached: TransferAggregate | null } | null>(null);
-  if (boot.current === null) boot.current = { cached: cachedAggregate() };
+  if (boot.current === null) {
+    boot.current = { cached: cachedAggregate() };
+    // The start below can wait a frame (cached boot) and child screens mount before it runs: a shared link
+    // that calls the engine in that gap waits for the start instead of failing with "Engine not started".
+    maglevEngine.expectStart();
+  }
   const hasCachedList = boot.current.cached !== null;
   // Engine truth (or the saved list until the engine answers), before pending taps and removals.
   const [liveTelemetry, setLiveTelemetry] = useState<TransferAggregate>(() => boot.current?.cached ?? EMPTY_AGGREGATE);

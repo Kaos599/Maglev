@@ -1,12 +1,14 @@
 // React hook for the assistant chat (build step 13). Thin: wires real prefs, the secure-store key, expo/fetch and
 // AppState into createChatController. The controller is kept per runner so the chat survives leaving the screen
-// (SM-42: history lives in memory for the session).
+// (SM-42; the chat is also saved to the kv-store and restored when the controller is created).
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { useIsFocused } from 'expo-router';
 import { fetch as expoFetch } from 'expo/fetch'; // Streaming fetch: response.body.getReader() (SDK 52+).
 import type { AssistantChat, ToolRunner } from '../assistant/runtime.ts';
 import { addTokensUsed, keyFor, type TaggedKey } from '../prefs/assistant.ts';
 import { assistantPrefs, useAssistantPrefs } from '../prefs/assistantApp';
+import { kvGet, kvSet } from '../prefs/kv';
+import { createChatStore } from './chatStore.ts';
 import { createStreamFn, type FetchLike } from './client.ts';
 import { setUnseenReply } from './unseenReply.ts';
 import { createChatController, goneTargets, type ChatController } from './chatController.ts';
@@ -15,6 +17,7 @@ import { useMaglevEngine } from '../../context/EngineContext';
 // The loaded key is tagged with the preset it belongs to; keyFor() returns it only for that preset.
 let loadedKey: TaggedKey | null = null;
 const controllers = new WeakMap<ToolRunner, ChatController>();
+const chatStore = createChatStore({ getItem: kvGet, setItem: kvSet });
 
 function controllerFor(runner: ToolRunner): ChatController {
   let c = controllers.get(runner);
@@ -25,6 +28,7 @@ function controllerFor(runner: ToolRunner): ChatController {
       getPrefs: () => assistantPrefs.get(),
       getKey: () => keyFor(loadedKey, assistantPrefs.get()),
       onUnseenChange: setUnseenReply,
+      store: chatStore,
       addUsage: (usage) => {
         assistantPrefs.update((p) => addTokensUsed(p, usage));
       },

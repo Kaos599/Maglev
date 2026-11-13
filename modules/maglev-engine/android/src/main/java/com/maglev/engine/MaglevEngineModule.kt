@@ -482,6 +482,8 @@ class MaglevEngineModule : Module() {
                 val ssids = (rules["ssidWhitelist"] as? List<Any?>)?.mapNotNull { it?.toString() } ?: emptyList()
                 // §19: read headless by RestartEntry after a reboot or update, so it lives in SharedPreferences.
                 context?.let { RestartPrefs.setResumeAfterRestart(it, rules["resumeAfterRestart"] != false) }
+                // Quick share reads these headless, in its own activity (docs/contracts-0.19/quick-share.md section 6).
+                context?.let { com.maglev.engine.share.QuickSharePrefs.save(it, rules) }
                 EngineHost.setGovernance(
                     Governance(
                         wifiOnly = rules["wifiOnly"] == true,

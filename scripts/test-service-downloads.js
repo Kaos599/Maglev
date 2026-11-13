@@ -18,7 +18,7 @@ const host = read(path.join(kt, 'EngineHost.kt'));
 const notif = read(path.join(kt, 'service/Notifications.kt'));
 const entry = read(path.join(kt, 'RestartEntry.kt'));
 const policy = read(path.join(kt, 'RestartPolicy.kt'));
-const contract = read(path.join(root, 'docs/NATIVE_CONTRACT.md'));
+const contract = require('./lib/privateDocs').readPrivateDoc('NATIVE_CONTRACT.md');
 
 let failed = 0;
 function check(name, ok) {
@@ -62,8 +62,8 @@ check('that check is guarded by an SDK version', /SDK_INT\s*(?:>=|<)\s*(?:Build\
 check('it looks for REASON_USER_REQUESTED', /REASON_USER_REQUESTED/.test(entry));
 
 check('RestartPolicy doc covers link downloads', /link download/i.test(policy));
-const sec8 = (contract.match(/## 8\. Background survival[\s\S]*?(?=\n## 9\.)/) || [''])[0];
-check('NATIVE_CONTRACT section 8 mentions link downloads', /link download/i.test(sec8));
-check('section 8 mentions offline', /offline/i.test(sec8));
+const sec8 = contract === null ? null : (contract.match(/## 8\. Background survival[\s\S]*?(?=\n## 9\.)/) || [''])[0];
+if (sec8 !== null) check('NATIVE_CONTRACT section 8 mentions link downloads', /link download/i.test(sec8));
+if (sec8 !== null) check('section 8 mentions offline', /offline/i.test(sec8));
 
 process.exit(failed ? 1 : 0);

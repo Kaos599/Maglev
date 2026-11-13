@@ -97,7 +97,14 @@ impl TorrentStorage for FilesystemStorage {
         #[cfg(windows)]
         f.try_mark_sparse()?;
         // MAGLEV PATCH (hunk 25): never creates a file just to cut or grow it.
-        Ok(f.lock_or_open(false)?.set_len(len)?)
+        let f = f.lock_or_open(false)?;
+        // MAGLEV PATCH (hunk 26): leave a file that already has the right length alone. Every start calls this
+        // for every included file, and `set_len` stamps a new modified time even when the length does not
+        // change, so Maglev's file-health check read finished files as changed after each restart.
+        if f.metadata().map(|m| m.len() == len).unwrap_or(false) {
+            return Ok(());
+        }
+        Ok(f.set_len(len)?)
     }
 
     /// MAGLEV PATCH (hunk 25): see `TorrentStorage::close_file`.
