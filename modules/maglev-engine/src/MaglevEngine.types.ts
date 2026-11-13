@@ -345,6 +345,12 @@ export interface FreeSpace {
   targetFreeBytes?: number | null;
 }
 
+export interface NetworkState {
+  /** True on any link that is not an unmetered Wi-Fi or Ethernet one (mobile data, or Wi-Fi marked metered). */
+  metered: boolean;
+  connected: boolean;
+}
+
 export interface GovernanceConfig {
   wifiOnly: boolean;
   ssidWhitelist: string[];
@@ -664,6 +670,8 @@ export interface MaglevEngineApi {
   openFile(id: string, fileIndex: number): Promise<EngineResult>;
   shareFile(id: string, fileIndex: number): Promise<EngineResult>;
   openFolder(id: string): Promise<EngineResult>;
+  /** Opens a link download's folder in any state (downloading, paused, finished). Same result as `openFolder`. NOT_FOUND when the id or folder is unknown or no file manager can open it. */
+  openDownloadFolder(id: string): Promise<EngineResult>;
   // Wave 4 (NATIVE_CONTRACT section 11)
   /** 0 means no limit. Only error: NOT_FOUND. */
   setTorrentLimits(id: string, limits: TorrentLimits): Promise<EngineResult>;
@@ -697,6 +705,10 @@ export interface MaglevEngineApi {
   allowLanHost(id: string): Promise<EngineResult>;
   /** Opens a finished download in another app. NO_APP when none can open it. */
   openDownload(id: string): Promise<EngineResult>;
+  /** Opens the share sheet for a finished download. NOT_FOUND, INVALID_STATE (not finished). */
+  shareDownload(id: string): Promise<EngineResult>;
+  /** Whether the phone is online and on mobile data. Cheap: reads the active network. */
+  getNetworkState(): Promise<EngineResult<NetworkState>>;
   /** Only for `needs_link`. FILE_CHANGED when the new link is another file. */
   refreshDownloadUrl(id: string, url: string, options: DownloadOptions): Promise<EngineResult>;
   setDownloadLimits(id: string, limits: { downLimitBps: number }): Promise<EngineResult>;

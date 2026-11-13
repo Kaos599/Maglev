@@ -15,10 +15,18 @@ import type { FoundItem } from 'maglev-engine';
 import { Banner, Button, EmptyBlock, Screen } from '../components/ui';
 import { useDownloadAdmission } from '../utils/useDownloadAdmission';
 import { actionRoute, probeErrorView } from '../utils/downloadCopy';
-import { banners, empty, notices } from '../constants/copy';
+import { banners, empty, mobileDataLine, notices } from '../constants/copy';
+import { useSettings } from '../context/SettingsContext';
 
 /** Add a download from a web link: probe the link, show what it is, then start. */
 type Phase = 'input' | 'probing' | 'ready' | 'adding' | 'error';
+
+/** Splits "movie.final.mp4" into "movie.final" and ".mp4". A leading dot or a long tail is not an extension. */
+function splitName(name: string): { base: string; ext: string } {
+  const i = name.lastIndexOf('.');
+  if (i <= 0 || name.length - i > 9 || /\s/.test(name.slice(i))) return { base: name, ext: '' };
+  return { base: name.slice(0, i), ext: name.slice(i) };
+}
 
 const INVALID_TEXT = "That isn't a web link. Use a link that starts with http or https.";
 
@@ -27,7 +35,8 @@ export default function AddDownloadScreen() {
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const router = useRouter();
   const params = useLocalSearchParams<{ url?: string; source?: string; from?: string }>();
-  const { defaultStoragePath, probeUrl, probeStream, startDownload, showNotice } = useMaglevEngine();
+  const { defaultStoragePath, probeUrl, probeStream, startDownload, showNotice, onMeteredNetwork } = useMaglevEngine();
+  const { settings } = useSettings();
 
   const [text, setText] = useState('');
   const [phase, setPhase] = useState<Phase>('input');
@@ -38,6 +47,7 @@ export default function AddDownloadScreen() {
   const [addError, setAddError] = useState<string | null>(null);
   const [folderLabel, setFolderLabel] = useState<string | null>(null);
   const [streamItem, setStreamItem] = useState<FoundItem | null>(null);
+  const [baseName, setBaseName] = useState('');
   const token = useRef(0);
   const urlRef = useRef('');
   const allowLanRef = useRef(false);
@@ -85,6 +95,7 @@ export default function AddDownloadScreen() {
       if (mine !== token.current) return;
       if (res.ok) {
         setProbe(res);
+        setBaseName(splitName(res.name).base);
         setPhase('ready');
         return;
       }
@@ -162,10 +173,19 @@ export default function AddDownloadScreen() {
     }
   };
 
+  const nameInvalid = baseName.trim().length === 0 || /[\\/]/.test(baseName);
+  const nameError = nameInvalid ? (baseName.trim().length === 0 ? 'Enter a file name.' : "A file name can't contain a slash.") : null;
+
   const start = async (fromError = false) => {
     setPhase('adding');
     setAddError(null);
-    const res = await startDownload(urlRef.current, allowLanRef.current ? { allowLan: true } : {});
+    const renamed = !fromError && probe && !nameInvalid && baseName.trim() + splitName(probe.name).ext !== probe.name
+      ? baseName.trim() + splitName(probe.name).ext
+      : null;
+    const res = await startDownload(urlRef.current, {
+      ...(allowLanRef.current ? { allowLan: true } : {}),
+      ...(renamed ? { name: renamed } : {}),
+    });
     if (res.ok) {
       haptic('commit');
       router.replace('/');
@@ -256,9 +276,24 @@ export default function AddDownloadScreen() {
   if ((phase === 'ready' || phase === 'adding') && probe) {
     const adding = phase === 'adding';
     const size = probe.size;
+    const mobileNote = mobileDataLine(onMeteredNetwork, settings.network.wifiOnly, size);
     return (
       <Screen title="Add download" onBack={close} scroll contentStyle={styles.content}>
-        <Text style={styles.name} numberOfLines={3}>{probe.name}</Text>
+        <View style={[styles.nameRow, nameInvalid ? styles.fieldInvalid : null]}>
+          <TextInput
+            value={baseName}
+            onChangeText={setBaseName}
+            editable={!adding}
+            autoCapitalize="none"
+            autoCorrect={false}
+            spellCheck={false}
+            multiline
+            style={styles.nameInput}
+            accessibilityLabel="File name"
+          />
+          {splitName(probe.name).ext ? <Text style={styles.ext}>{splitName(probe.name).ext}</Text> : null}
+        </View>
+        {nameError ? <Text style={styles.nameError}>{nameError}</Text> : null}
         <Text style={styles.meta}>{size != null ? formatBytes(size) : 'Size unknown'}</Text>
         <Text style={styles.meta} numberOfLines={2}>{probe.urlDisplay}</Text>
         <Text style={styles.meta}>
@@ -273,10 +308,11 @@ export default function AddDownloadScreen() {
           </View>
           <Button label="Change" variant="secondary" disabled={adding} onPress={() => void handleChangeFolder()} />
         </View>
+        {mobileNote ? <Banner tone="info" title={mobileNote} /> : null}
         {doesntFit ? <Banner tone="danger" title={banners.addDownload.notEnoughSpace.title} body={banners.addDownload.notEnoughSpace.body} /> : null}
         {addError ? <Banner tone="danger" title={addError} /> : null}
         <View style={styles.gap}>
-          <Button label="Start" size="lg" fullWidth loading={adding} disabled={adding || doesntFit} onPress={() => void start()} />
+          <Button label="Start" size="lg" fullWidth loading={adding} disabled={adding || doesntFit || nameInvalid} onPress={() => void start()} />
           <Button label="Cancel" variant="ghost" size="lg" fullWidth disabled={adding} onPress={close} />
         </View>
       </Screen>
@@ -335,7 +371,19 @@ const makeStyles = (c: ThemeColors) =>
     gap: { marginTop: spacing.sm },
     centered: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: spacing.lg, paddingHorizontal: spacing.xxxl },
     heading: { ...type.bodyStrong, fontSize: type.size.xl, color: c.text, textAlign: 'center' },
-    name: { ...type.mono, fontSize: type.size.lg, color: c.text },
+    nameRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor: c.surface,
+      borderWidth: 1,
+      borderColor: c.borderStrong,
+      borderRadius: radius.md,
+      paddingHorizontal: spacing.md,
+      minHeight: touch.min,
+    },
+    nameInput: { ...type.mono, fontSize: type.size.lg, color: c.text, flexShrink: 1, flexGrow: 1, paddingVertical: spacing.sm },
+    ext: { ...type.mono, fontSize: type.size.lg, color: c.textMuted },
+    nameError: { ...type.body, fontSize: type.size.sm, color: c.danger },
     meta: { ...type.mono, fontSize: type.size.sm, color: c.textMuted },
     destRow: {
       flexDirection: 'row',

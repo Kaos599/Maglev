@@ -13,6 +13,7 @@ import type {
   FileHealthEntry,
   FilePriorityEntry,
   FreeSpace,
+  NetworkState,
   HealthTag,
   ResolveFilesAction,
   TorrentExport,
@@ -430,6 +431,9 @@ export class MaglevEngineBridge implements MaglevEngineApi {
   public openFolder(id: string): Promise<EngineResult> {
     return this.route('openFolder', id);
   }
+  public openDownloadFolder(id: string): Promise<EngineResult> {
+    return this.route('openDownloadFolder', id);
+  }
   // URL downloads (NATIVE_CONTRACT 17). The module snake_cases option keys for Rust itself.
   public probeUrl(url: string, options: DownloadOptions = {}, timeoutMs = 15_000): Promise<EngineResult<UrlProbe>> {
     return this.route('probeUrl', url, options, timeoutMs);
@@ -457,6 +461,12 @@ export class MaglevEngineBridge implements MaglevEngineApi {
   }
   public openDownload(id: string): Promise<EngineResult> {
     return this.route('openDownload', id);
+  }
+  public shareDownload(id: string): Promise<EngineResult> {
+    return this.route('shareDownload', id);
+  }
+  public getNetworkState(): Promise<EngineResult<NetworkState>> {
+    return this.route('getNetworkState');
   }
   public refreshDownloadUrl(id: string, url: string, options: DownloadOptions = {}): Promise<EngineResult> {
     return this.route('refreshDownloadUrl', id, url, options);

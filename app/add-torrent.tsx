@@ -19,7 +19,8 @@ import { fileExt } from '../components/detail/torrentLabels';
 import { admit, pendingNeedOf, type AdmissionOutcome } from '../utils/admission';
 import { admissionCaption } from '../utils/admissionCopy';
 import { takePrefetchedMetadata } from '../components/search/metadataCache';
-import { banners, empty, notices } from '../constants/copy';
+import { banners, empty, mobileDataLine, notices } from '../constants/copy';
+import { useSettings } from '../context/SettingsContext';
 
 /** SM-9 add flow states. */
 type Phase = 'input' | 'validating' | 'invalid' | 'resolving' | 'timeout' | 'error' | 'duplicate' | 'preview' | 'adding' | 'added';
@@ -48,7 +49,8 @@ export default function AddTorrentScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const params = useLocalSearchParams<{ source?: string; uri?: string; magnet?: string }>();
-  const { telemetry, defaultStoragePath, showNotice } = useMaglevEngine();
+  const { telemetry, defaultStoragePath, showNotice, onMeteredNetwork } = useMaglevEngine();
+  const { settings } = useSettings();
 
   const [text, setText] = useState('');
   const [phase, setPhase] = useState<Phase>('input');
@@ -404,6 +406,7 @@ export default function AddTorrentScreen() {
           })
         : null;
     const doesntFit = admission?.result === 'DoesntFit';
+    const mobileNote = mobileDataLine(onMeteredNetwork, settings.network.wifiOnly, selectedBytes);
     const prioFile = prioIndex === null ? null : meta.files.find((f) => f.index === prioIndex) ?? null;
 
     const header = (
@@ -454,6 +457,7 @@ export default function AddTorrentScreen() {
           </View>
           <Button label="Change" variant="secondary" disabled={adding} onPress={handleChangeFolder} />
         </View>
+        {mobileNote ? <Banner tone="info" title={mobileNote} /> : null}
         {addError ? <Banner tone="danger" title={banners.addTorrent.addFailed.title} body={addError} /> : null}
       </View>
     );

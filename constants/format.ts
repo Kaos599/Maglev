@@ -3,9 +3,15 @@ const BYTE_UNITS = ['B', 'KB', 'MB', 'GB', 'TB'];
 /** Total: anything that is not a positive finite number reads as "0 B". Fractions below 1 B round to 0 B. */
 export function formatBytes(bytes: number): string {
   if (typeof bytes !== 'number' || !Number.isFinite(bytes) || bytes < 1) return '0 B';
-  const i = Math.min(Math.max(Math.floor(Math.log(bytes) / Math.log(1024)), 0), BYTE_UNITS.length - 1);
-  const val = bytes / Math.pow(1024, i);
-  return `${val.toFixed(i === 0 ? 0 : 1)} ${BYTE_UNITS[i]}`;
+  let i = Math.min(Math.max(Math.floor(Math.log(bytes) / Math.log(1024)), 0), BYTE_UNITS.length - 1);
+  let val = bytes / Math.pow(1024, i);
+  // A value that would print as 1024 of a unit reads as 1.0 of the next one ("1.0 GB", not "1024 MB").
+  if (val >= 1023.5 && i < BYTE_UNITS.length - 1) {
+    i += 1;
+    val /= 1024;
+  }
+  // One decimal below 100 ("3.2 MB", "45.5 MB"); whole numbers from 100 up ("412 MB"), where a decimal is noise.
+  return `${val.toFixed(i === 0 || val >= 99.95 ? 0 : 1)} ${BYTE_UNITS[i]}`;
 }
 
 export function formatSpeed(bytesPerSec: number): string {
