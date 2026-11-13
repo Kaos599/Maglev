@@ -1731,7 +1731,13 @@ object EngineHost {
             val id = d["id"] as? String ?: continue
             val name = d["name"] as? String ?: id
             val folder = d["folder"] as? String
-            Notifications.notifyCompleted(c, id, name, Json.long(d["size"]), null)
+            // Open for the finished file: its staged path, else the copy Maglev made in the user's folder.
+            val open = try {
+                val uri = (if (folder != null) viewUri(c, folder, name) else null)
+                    ?: StorageManager.copiedUri(c, DL_PREFIX + id)?.let { Uri.parse(it) }
+                if (uri != null) Notifications.openFileAction(c, id, uri, SafStorageManager.mimeFor(name)) else null
+            } catch (t: Throwable) { Log.w(TAG, "open action failed", t); null }
+            Notifications.notifyCompleted(c, id, name, Json.long(d["size"]), open)
             if (folder != null) ioScope.launch { try { scanPaths(c, folder, listOf(name)) } catch (t: Throwable) { Log.w(TAG, "media scan failed", t) } }
         }
     }
@@ -1940,6 +1946,19 @@ object EngineHost {
         @Suppress("UNCHECKED_CAST")
         val folder = (d["snapshot"] as? Map<String, Any?>)?.get("output_folder") as? String
             ?: return Json.failure("NOT_FOUND", "Folder not found")
+        val err = FileActions.openFolder(c, folder)
+        return if (err == null) linkedMapOf("ok" to true) else Json.failure("NOT_FOUND", err)
+    }
+
+    /** Opens the folder of a link download in any state. Same result shape as [openFolder]. */
+    fun openDownloadFolder(id: String): Map<String, Any?> {
+        val c = requireCtx() ?: return Json.failure("ENGINE_UNAVAILABLE", "Module is not attached")
+        val res = call { NativeCore.nativeListTorrents() }
+        if (!isOk(res)) return res
+        val d = Json.list(res["downloads"]).firstOrNull { it["id"] == id }
+            ?: return Json.failure("NOT_FOUND", "That download isn't in your list")
+        val folder = d["folder"] as? String
+        if (folder.isNullOrEmpty()) return Json.failure("NOT_FOUND", "Folder not found")
         val err = FileActions.openFolder(c, folder)
         return if (err == null) linkedMapOf("ok" to true) else Json.failure("NOT_FOUND", err)
     }

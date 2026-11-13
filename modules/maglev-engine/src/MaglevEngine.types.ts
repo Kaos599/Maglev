@@ -664,6 +664,8 @@ export interface MaglevEngineApi {
   openFile(id: string, fileIndex: number): Promise<EngineResult>;
   shareFile(id: string, fileIndex: number): Promise<EngineResult>;
   openFolder(id: string): Promise<EngineResult>;
+  /** Opens a link download's folder in any state (downloading, paused, finished). Same result as `openFolder`. NOT_FOUND when the id or folder is unknown or no file manager can open it. */
+  openDownloadFolder(id: string): Promise<EngineResult>;
   // Wave 4 (NATIVE_CONTRACT section 11)
   /** 0 means no limit. Only error: NOT_FOUND. */
   setTorrentLimits(id: string, limits: TorrentLimits): Promise<EngineResult>;

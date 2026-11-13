@@ -322,6 +322,9 @@ class MaglevEngineModule : Module() {
         AsyncFunction("openFolder") { id: String, promise: Promise ->
             engine(promise) { EngineHost.openFolder(id) }
         }
+        AsyncFunction("openDownloadFolder") { id: String, promise: Promise ->
+            engine(promise) { EngineHost.openDownloadFolder(id) }
+        }
 
         OnActivityResult { _, payload ->
             if (payload.requestCode == REQ_PICK_FOLDER) handlePickResult(payload.resultCode, payload.data)
