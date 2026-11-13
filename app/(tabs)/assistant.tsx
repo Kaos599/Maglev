@@ -82,7 +82,7 @@ export default function AssistantTab() {
 const makeStyles = (c: ThemeColors) =>
   StyleSheet.create({
     notice: { padding: spacing.lg, gap: spacing.lg, paddingBottom: spacing.xxxl },
-    lead: { ...type.brand, fontSize: type.size.xl, color: c.text },
+    lead: { ...type.heading, fontSize: type.size.xl, color: c.text },
     point: { flexDirection: 'row', gap: spacing.md, alignItems: 'flex-start' },
     pointText: { flex: 1, gap: spacing.xs },
     pointTitle: { ...type.bodyStrong, fontSize: type.size.lg, color: c.text },

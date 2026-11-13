@@ -119,7 +119,7 @@ const makeStyles = (c: ThemeColors) =>
       borderRadius: radius.md,
     },
     action: { minWidth: 56, minHeight: 44, paddingHorizontal: spacing.xs, alignItems: 'center', justifyContent: 'center', borderRadius: radius.md },
-    actionText: { ...type.brand, fontSize: 13 },
+    actionText: { ...type.heading, fontSize: 13 },
     pressed: { backgroundColor: c.surfaceRaised },
     off: { opacity: 0.4 },
   });
