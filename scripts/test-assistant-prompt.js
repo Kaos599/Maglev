@@ -37,7 +37,7 @@ async function main() {
   const lines = section.split('\n');
   check('one line per tool', lines.length === TOOLS.length && TOOLS.every((t) => lines.some((l) => l.startsWith(`- ${t.function.name}:`))), lines.length);
   check('search_torrents line shows sort values and category', /search_torrents:.*category.*sort best\|seeders\|newest/.test(section));
-  check('exactly eight tools are mentioned', TOOLS.length === 8);
+  check('exactly nine tools are mentioned', TOOLS.length === 9);
   check('browse_torrents is listed', /^- browse_torrents: /m.test(section), section);
   for (const gone of ['parse_release_name', 'describe_tools', 'propose_plan', 'propose_setting', 'get_free_space', 'get_transfer_details', 'explain_error', 'propose_select_files', 'propose_pause_resume', 'propose_remove_files', 'propose_delete', 'propose_url_download']) {
     check(`the prompt never mentions ${gone}`, !p.includes(gone));

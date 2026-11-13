@@ -369,6 +369,10 @@ export interface GovernanceConfig {
   vpnOnly: boolean;
   /** NATIVE_CONTRACT 25.2: keep seeding on mobile data. Default false. */
   seedOnMobileData: boolean;
+  /** Quick share: add a shared magnet, .torrent or file link without the card. Saved for Kotlin (contracts-0.19/quick-share.md). */
+  quickAdd?: boolean;
+  /** Quick share card theme: the saved Appearance mode. */
+  appearanceMode?: 'oled' | 'dim' | 'light' | 'system';
 }
 
 export type NotificationActionName = 'pause_all' | 'resume_all' | 'shutdown';

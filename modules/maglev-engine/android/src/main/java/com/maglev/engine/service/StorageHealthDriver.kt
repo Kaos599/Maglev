@@ -79,6 +79,38 @@ object StorageHealthDriver {
         notifyErrors(c, torrents)
         syncNotifications(c, torrents)
         pollFreeSpace(torrents)
+        guardReserve()
+    }
+
+    @Volatile private var reserveBlocked = false
+    private var lastGuardAt = 0L
+
+    /**
+     * Proactive low-storage protection (docs/contracts-0.19/play-and-storage.md section 2). Every 15 s reads free and
+     * total bytes of the download target and applies [StorageGuard.next]. A change is sent as the governance tag
+     * `storage_full`, which pauses unfinished transfers with that reason and resumes only those carrying it.
+     * Unknown free space changes nothing.
+     */
+    private fun guardReserve() {
+        val now = android.os.SystemClock.elapsedRealtime()
+        synchronized(lock) {
+            if (lastGuardAt != 0L && now - lastGuardAt < StorageGuard.POLL_MS) return
+            lastGuardAt = now
+        }
+        EngineHost.ioScope.launch {
+            val fs = EngineHost.freeSpace()
+            if (fs["ok"] != true) return@launch
+            val own = (fs["freeBytes"] as? Number)?.toLong() ?: return@launch
+            val total = (fs["totalBytes"] as? Number)?.toLong() ?: 0L
+            // Staged copies need room on both volumes: the smaller free space is what writes can use.
+            val target = (fs["targetFreeBytes"] as? Number)?.toLong()
+            val free = if (target != null) minOf(own, target) else own
+            val next = StorageGuard.next(reserveBlocked, free, total)
+            if (next != reserveBlocked) {
+                reserveBlocked = next
+                EngineHost.setStorageReserveBlocked(next)
+            }
+        }
     }
 
     /** SM-36: one notification on the edge into ERROR while the app is not in front. */

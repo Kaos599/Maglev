@@ -60,7 +60,7 @@ export function toNativeConfig(settings: MaglevSettings): NativeConfig {
 
 /** Payload for `setGovernance`. Kotlin watches connectivity and battery; Rust only sees allowed/not allowed. */
 export function toGovernance(settings: MaglevSettings): GovernanceConfig {
-  const { network, power } = settings;
+  const { network, power, storage, appearance } = settings;
   return {
     wifiOnly: network.wifiOnly,
     ssidWhitelist: network.ssidWhitelistEnabled ? [...network.allowedSsids] : [],
@@ -70,6 +70,8 @@ export function toGovernance(settings: MaglevSettings): GovernanceConfig {
     resumeAfterRestart: power.resumeAfterRestart,
     vpnOnly: network.vpnOnly,
     seedOnMobileData: network.seedOnMobileData,
+    quickAdd: storage.addWithoutAsking,
+    appearanceMode: appearance.mode,
   };
 }
 

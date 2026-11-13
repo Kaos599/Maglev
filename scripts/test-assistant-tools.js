@@ -76,9 +76,9 @@ async function main() {
   const isBad = (r, code = 'bad_args') => !r.ok && r.error.code === code;
 
   console.log('tools: schema structure');
-  check('TOOLS has exactly 8 entries', TOOLS.length === 8, TOOLS.length);
+  check('TOOLS has exactly 9 entries', TOOLS.length === 9, TOOLS.length);
   check('READ_TOOLS has the 6 read tools', READ_TOOLS.size === 6 && READ_TOOLS.has('browse_torrents'), [...READ_TOOLS]);
-  check('PROPOSAL_TOOLS has the 2 proposal tools', PROPOSAL_TOOLS.size === 2 && PROPOSAL_TOOLS.has('propose_change'), [...PROPOSAL_TOOLS]);
+  check('PROPOSAL_TOOLS has the 3 proposal tools', PROPOSAL_TOOLS.size === 3 && PROPOSAL_TOOLS.has('watch_title') && PROPOSAL_TOOLS.has('propose_change'), [...PROPOSAL_TOOLS]);
   check('READ and PROPOSAL cover TOOLS exactly', TOOLS.every((t) => READ_TOOLS.has(t.function.name) || PROPOSAL_TOOLS.has(t.function.name)));
   const names = TOOLS.map((t) => t.function.name);
   check('tool names are unique', new Set(names).size === names.length, names);
@@ -96,7 +96,7 @@ async function main() {
   console.log('tools: the eight tools and the generated overview');
   {
     const { toolsOverview } = await import('../utils/assistant/tools.ts');
-    check('the model sees exactly these eight', names.join() === 'search_torrents,browse_torrents,get_result_details,list_transfers,ask_user,open_screen,propose_add,propose_change', names);
+    check('the model sees exactly these nine', names.join() === 'search_torrents,browse_torrents,get_result_details,list_transfers,ask_user,open_screen,propose_add,propose_change,watch_title', names);
     for (const old of ['parse_release_name', 'describe_tools', 'propose_plan', 'propose_setting', 'get_free_space', 'get_transfer_details', 'explain_error', 'propose_select_files', 'propose_pause_resume', 'propose_remove_files', 'propose_delete']) {
       check(`${old} is not exposed to the model`, !names.includes(old) && isBad(validateArgs(old, {}, reg), 'unknown_tool'));
     }

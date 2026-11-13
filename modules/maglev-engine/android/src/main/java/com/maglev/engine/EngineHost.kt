@@ -333,6 +333,13 @@ object EngineHost {
         }
     }
 
+    /**
+     * Quick share (docs/contracts-0.19/quick-share.md section 5): starts the engine from Rust's saved config when no
+     * JS and no service did. Blocking, so call it off the main thread. Safe when already running (returns ok), because
+     * `nativeInit` is idempotent.
+     */
+    @Synchronized fun ensureStarted(): Map<String, Any?> = if (initialized) mapOf("ok" to true) else startEngine("")
+
     private fun prefs(c: Context) = c.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
 
     private fun setWanted(c: Context, wanted: Boolean) {
@@ -1090,6 +1097,16 @@ object EngineHost {
 
     // region governance
 
+    /** Low-storage reserve (play-and-storage 2): pauses or resumes unfinished transfers with `paused_by: storage_full`. */
+    fun setStorageReserveBlocked(blocked: Boolean) {
+        storageReserveBlocked = blocked
+        if (!initialized) return
+        send("storage_full", !blocked, false)
+    }
+
+    /** Kept so an engine restart or a forced governance pass sends the current state again. */
+    @Volatile private var storageReserveBlocked = false
+
     fun setGovernance(g: Governance): Map<String, Any?> {
         governance = g
         val c = ctx
@@ -1160,6 +1177,7 @@ object EngineHost {
         // Contract section 25.2. Same link check as Wi-Fi only (`unmeteredLink`); only judged while the link is known.
         val seedMeteredBlocked = !g.seedOnMobileData && n != null && n.monitoring && n.connected && !n.unmeteredLink
         send("seed_metered", !seedMeteredBlocked, force)
+        if (force || storageReserveBlocked) send("storage_full", !storageReserveBlocked, force)
         send("wifi_only", !wifiBlocked, force)
         send("battery", !batteryBlocked, force)
         send("charging_only", !chargingBlocked, force)

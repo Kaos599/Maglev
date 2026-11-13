@@ -27,12 +27,13 @@ import { availableCategories, eligibleProviders, mergeInto, rerunProvider, resol
 import { CloudflareSolverSheet } from '../../components/search/CloudflareSolverSheet';
 import { nextNeedsCheck, shouldShowFixHint, tallySources } from '../../utils/search/answered';
 import { formatAgeLong } from '../../utils/search/age';
-import type { Category, MergedResult, SearchUpdate } from '../../utils/search/types';
+import { CATEGORY_ORDER, type Category, type MergedResult, type SearchUpdate } from '../../utils/search/types';
 import { ResultPreviewSheet } from '../../components/search/ResultPreviewSheet';
 import { MobileDataSheet } from '../../components/search/MobileDataSheet';
 import { passesResultFilter } from '../../components/search/sharing';
 import { oneTapAddNote } from '../../utils/addChecks';
-import { empty } from '../../constants/copy';
+import { empty, watchCopy } from '../../constants/copy';
+import { addWatchToStore } from '../../utils/watch/store';
 import { Reveal } from '../../components/motion';
 
 const DEBOUNCE_MS = 400;
@@ -97,11 +98,14 @@ export default function SearchScreen() {
   const [query, setQuery] = useState('');
   // An optional `q` route param (from assistant links) prefills the query once, then is cleared.
   // The search effect below runs on the trimmed query, so setting it starts the search.
-  const { q: qParam } = useLocalSearchParams<{ q?: string }>();
+  // `c` (a category) comes with it from a Watch notification.
+  const { q: qParam, c: cParam } = useLocalSearchParams<{ q?: string; c?: string }>();
   useEffect(() => {
     if (typeof qParam !== 'string' || !qParam.trim()) return;
     setQuery(qParam);
-    router.setParams({ q: undefined });
+    if (typeof cParam === 'string' && (CATEGORY_ORDER as string[]).includes(cParam)) updatePrefs({ lastCategory: cParam as Category });
+    router.setParams({ q: undefined, c: undefined });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [qParam, router]);
   const [searching, setSearching] = useState(false);
   const [stopped, setStopped] = useState(false);
@@ -526,6 +530,12 @@ export default function SearchScreen() {
     [fixBanner, followTargetOf, busyHash, requestAdd, setPreview, inList, nameOf, sessionAdded, providers, prefs.warnUnsafe],
   );
 
+  const watchThisSearch = useCallback(() => {
+    const r = addWatchToStore({ query: trimmed, category });
+    if (r.ok) show({ tone: 'success', title: watchCopy.watching(r.watch.query), body: watchCopy.watchingBody });
+    else show({ tone: 'info', title: r.error });
+  }, [trimmed, category, show]);
+
   const openProviders = useCallback(() => router.push('/settings/search-providers' as never), [router]);
 
   const idle = trimmed.length < MIN_QUERY;
@@ -661,16 +671,25 @@ export default function SearchScreen() {
           ) : (
             <View style={styles.summaryRow}>
               <Text style={styles.summary}>{`${stopped ? 'Stopped · ' : ''}${shown.length} ${shown.length === 1 ? 'result' : 'results'}`}</Text>
-              {hasResults ? (
+              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                 <Button
-                  label={SORT_LABEL[prefs.sort]}
-                  icon="sort"
+                  label={watchCopy.watchButton}
+                  icon="alarm"
                   variant="ghost"
-                  buttonRef={sortBtnRef}
-                  onPress={() => setSortOpen(true)}
-                  accessibilityLabel={`Sort: ${SORT_LABEL[prefs.sort]}`}
+                  onPress={watchThisSearch}
+                  accessibilityLabel={watchCopy.watchHint}
                 />
-              ) : null}
+                {hasResults ? (
+                  <Button
+                    label={SORT_LABEL[prefs.sort]}
+                    icon="sort"
+                    variant="ghost"
+                    buttonRef={sortBtnRef}
+                    onPress={() => setSortOpen(true)}
+                    accessibilityLabel={`Sort: ${SORT_LABEL[prefs.sort]}`}
+                  />
+                ) : null}
+              </View>
             </View>
           )}
         </View>

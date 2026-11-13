@@ -16,7 +16,8 @@ import { useAssistantPrefs } from '../../utils/prefs/assistantApp';
 import { useBrowserPrefs } from '../../utils/prefs/browser';
 import { Card, formatLimit, friendlyPath } from '../../components/settings/SettingsParts';
 import { spacing } from '../../constants/theme';
-import { banners } from '../../constants/copy';
+import { banners, watchCopy } from '../../constants/copy';
+import { useWatches } from '../../utils/watch/store';
 
 const ACCENT_LABEL = { lime: 'Lime', cyan: 'Cyan', pink: 'Pink', orange: 'Orange' } as const;
 const MODE_LABEL = { oled: 'OLED', dim: 'Dim', light: 'Light', system: 'System' } as const;
@@ -126,6 +127,7 @@ export default function SettingsIndex() {
   const [schedule] = useSchedule();
   const [feedAuto] = useFeedAutomation();
   const assistant = useAssistantPrefs();
+  const watches = useWatches();
   const [browserPrefs] = useBrowserPrefs();
   const { bandwidth: b, network: n, power: p, appearance: a } = settings;
 
@@ -154,10 +156,12 @@ export default function SettingsIndex() {
     { icon: 'interface', title: 'Appearance', value: interfaceValue, route: 'interface' },
     { icon: 'bell', title: 'Notifications', value: alerts, route: 'notifications' },
     { icon: 'assistant', title: 'Assistant', value: assistant.enabled ? 'Experimental · On' : 'Experimental · Off', route: 'assistant' },
+    { icon: 'upload', title: 'Backup and restore', value: 'Settings and torrents', route: 'backup' },
   ];
   const findRows: RowSpec[] = [
     { icon: 'search', title: 'Search providers', value: providers, route: 'search-providers' },
     { icon: 'feeds', title: 'Auto-download', value: auto, route: 'feeds' },
+    { icon: 'alarm', title: watchCopy.rowTitle, value: watchCopy.rowValue(watches.length), route: 'watch' },
     { icon: 'network', title: 'Browser', value: browserPrefs.adBlock ? 'Ad blocking on' : 'Ad blocking off', route: 'browser' },
   ];
   const speedRow: RowSpec = { icon: 'bandwidth', title: 'Speed & queue', value: `${limits} · ${queue}`, route: 'speed' };

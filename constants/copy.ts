@@ -377,3 +377,140 @@ export const errorScreenCopy = {
     clear: 'Clear crash log',
   },
 } as const;
+
+// ---------------------------------------------------------------------------------------------
+// play (0.19: Play while downloading; docs/contracts-0.19/play-and-storage.md section 1)
+// ---------------------------------------------------------------------------------------------
+export const playCopy = {
+  label: 'Play',
+  a11y: (name: string) => `Play ${name}`,
+  needsResume: 'Resume the download first.',
+  noFile: "There's nothing to play in this torrent yet.",
+  failed: "Couldn't start playing.",
+  resumedToPlay: 'Resumed so it can play.',
+} as const;
+
+// ---------------------------------------------------------------------------------------------
+// storage (0.19: low-storage protection and the Free up space screen; same contract, sections 2 and 3)
+// ---------------------------------------------------------------------------------------------
+export const storageCopy = {
+  /** Same words as the notification: StorageGuard.PAUSED_TITLE / PAUSED_TEXT. */
+  pausedTitle: 'Paused: phone storage is almost full',
+  freeUp: 'Free up space',
+  screenTitle: 'Free up space',
+  freeLabel: 'Free now',
+  reserveLabel: 'Kept free for your phone',
+  unknown: '—',
+  listTitle: 'Finished downloads, largest first',
+  emptyTitle: 'Nothing finished to remove',
+  emptyBody: 'Finished torrents and downloads show up here, largest first.',
+  removeAction: 'Remove and delete files',
+  removeSelected: (n: number) => `Remove and delete ${n} ${n === 1 ? 'item' : 'items'}`,
+  confirmTitle: 'Delete files from your phone?',
+  confirmBody: (count: number, size: string) =>
+    `This removes ${count} ${count === 1 ? 'item' : 'items'} and deletes ${size} from your phone. There is no undo.`,
+  removed: (count: number) => `Removed ${count} ${count === 1 ? 'item' : 'items'}.`,
+  removeFailed: "Couldn't remove everything. Try again.",
+  selectNone: 'Select none',
+  selectAll: 'Select all',
+} as const;
+
+// ---- backup (Settings > Backup and restore) ----
+export const backupCopy = {
+  title: 'Backup and restore',
+  export: { title: 'Export backup', subtitle: 'Save your settings and lists to one file.' },
+  restore: { title: 'Restore from backup', subtitle: 'Pick a backup file from this phone.' },
+  last: (when: string) => `Last backup ${when}`,
+  never: 'No backup yet',
+  secrets: 'Passwords, API keys and tokens are never saved in a backup.',
+  notIncluded: 'Downloaded files, chat history and the crash log are not included.',
+  exportDone: (name: string) => `Saved ${name}`,
+  exportFailed: "Couldn't save the backup",
+  readFailed: "Couldn't read that file",
+  previewTitle: 'Restore this backup',
+  partsHeader: 'What to restore',
+  parts: {
+    settings: 'Settings',
+    search: 'Search sources',
+    feeds: 'Feeds and rules',
+    schedule: 'Schedule',
+    assistant: 'Assistant',
+    torrents: 'Torrents',
+    downloads: 'Downloads',
+  },
+  torrentsNote: 'Torrents and downloads are added paused. Files are not in the backup, so Maglev checks the saved folder first.',
+  settingsConfirm: {
+    title: 'Replace your settings?',
+    body: 'The settings in this backup replace the ones on this phone.',
+    action: 'Replace and restore',
+  },
+  restoreAction: 'Restore',
+  restoring: 'Restoring',
+  doneTitle: 'Restore finished',
+  added: (n: number) => `${n} added`,
+  skipped: (n: number) => `${n} already here, skipped`,
+  failed: (n: number) => `${n} couldn't be added`,
+  defaultFolder: (n: number) => `${n} saved to the default folder, because the old folder isn't on this phone`,
+  restartNote: 'Some changes show after you restart Maglev.',
+  startAll: 'Start all',
+  started: (n: number) => `Started ${n}`,
+  done: 'Done',
+} as const;
+
+// region quick share
+/** The card that floats over the app you shared from (docs/contracts-0.19/quick-share.md). Mirrored in share/QuickShareText.kt; scripts/test-quick-share.js keeps them equal. */
+export const quickShareCopy = {
+  setting: {
+    title: 'Add without asking',
+    subtitle: 'Shared magnets, torrent files and file links start at once. Web pages still show the card.',
+  },
+  gettingDetails: 'Getting details…',
+  magnetName: 'Magnet link',
+  torrentName: 'Torrent file',
+  adding: 'Adding…',
+  sizeUnknown: 'Size unknown',
+  savesTo: 'Saves to',
+  download: 'Download',
+  downloadAnyway: 'Download anyway',
+  openInMaglev: 'Open in Maglev',
+  freeUpSpace: 'Free up space',
+  findVideos: 'Find videos on this page',
+  close: 'Close',
+  webPage: 'This is a web page, not a file',
+  noLink: 'No link in what you shared',
+  alreadyIn: 'Already in Maglev',
+  added: 'Added to Maglev',
+  addedServiceLater: 'Added to Maglev. It starts when you open the app.',
+  couldNotAdd: "Couldn't add that. Try again.",
+  engineFailed: "Maglev couldn't start. Open the app and try again.",
+} as const;
+// endregion quick share
+
+// region watch
+/** Watch for a title (docs/contracts-0.19/watch.md). Screens: Settings > Watches, the Watch button on Search. */
+export const watchCopy = {
+  title: 'Watches',
+  rowTitle: 'Watches',
+  rowValue: (n: number) => (n === 0 ? 'None' : n === 1 ? '1 title' : `${n} titles`),
+  intro: 'Maglev checks for new copies of a title in the background and tells you when one shows up.',
+  empty: 'You are not watching anything yet. Search for a title and tap Watch.',
+  watchButton: 'Watch',
+  watchHint: 'Watch this search',
+  watching: (q: string) => `Watching "${q}"`,
+  watchingBody: 'You will get a notification when a new copy shows up. Change it in Settings, Watches.',
+  capNotice: 'You can watch up to 20 titles. Delete one first.',
+  alreadyNotice: 'You are already watching that.',
+  mobileData: 'Use mobile data',
+  mobileDataHint: 'Off means Wi-Fi only.',
+  pause: 'Pause',
+  resume: 'Resume',
+  paused: 'Paused',
+  delete: 'Delete',
+  deleteTitle: 'Delete this watch?',
+  deleteBody: 'You will stop getting notifications for it.',
+  lastNew: (name: string) => `Last new: ${name}`,
+  noneNew: 'Nothing new yet',
+  every: 'Check every',
+  backgroundNote: 'Android decides the exact time, so a check can come later than you chose. It does not run after you force-stop Maglev, until you open it again.',
+} as const;
+// endregion watch

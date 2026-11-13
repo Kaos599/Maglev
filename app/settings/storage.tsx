@@ -3,9 +3,9 @@ import { Stack } from 'expo-router';
 import { maglevEngine } from 'maglev-engine';
 import { useSettings } from '../../context/SettingsContext';
 import { useMaglevEngine as useEngine } from '../../context/EngineContext';
-import { Banner, Button, ListRow } from '../../components/ui';
+import { Banner, Button, ListRow, Toggle } from '../../components/ui';
 import { Caption, Card, SettingsPage, friendlyPath } from '../../components/settings/SettingsParts';
-import { banners, notices } from '../../constants/copy';
+import { banners, notices, quickShareCopy } from '../../constants/copy';
 
 export default function StorageSettings() {
   const { settings, updateSettings } = useSettings();
@@ -51,6 +51,19 @@ export default function StorageSettings() {
       {folder ? (
         <Button label="Use default folder" onPress={() => updateSettings({ downloadFolder: null })} variant="ghost" />
       ) : null}
+      <Card>
+        <ListRow
+          title={quickShareCopy.setting.title}
+          subtitle={quickShareCopy.setting.subtitle}
+          accessory={
+            <Toggle
+              value={settings.storage.addWithoutAsking}
+              onValueChange={(v) => updateSettings((prev) => ({ storage: { ...prev.storage, addWithoutAsking: v } }))}
+              accessibilityLabel={quickShareCopy.setting.title}
+            />
+          }
+        />
+      </Card>
     </SettingsPage>
   );
 }

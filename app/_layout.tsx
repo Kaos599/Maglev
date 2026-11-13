@@ -123,8 +123,10 @@ function AppNavigation() {
           */}
           <Stack.Screen name="add-download" />
           <Stack.Screen name="browser" />
+          <Stack.Screen name="free-space" />
           <Stack.Screen name="settings/about" />
           <Stack.Screen name="settings/assistant" />
+          <Stack.Screen name="settings/backup" />
           <Stack.Screen name="settings/bandwidth" />
           <Stack.Screen name="settings/browser" />
           <Stack.Screen name="settings/feeds" />
@@ -137,6 +139,7 @@ function AppNavigation() {
           <Stack.Screen name="settings/search-providers" />
           <Stack.Screen name="settings/speed" />
           <Stack.Screen name="settings/storage" />
+          <Stack.Screen name="settings/watch" />
         </Stack.Protected>
       </Stack>
       {main ? <NoticeHost /> : null}

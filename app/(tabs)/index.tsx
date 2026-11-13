@@ -15,6 +15,7 @@ import { ClipboardChip } from '../../components/transfers/ClipboardChip';
 import { AddMenuSheet } from '../../components/add/AddMenuSheet';
 import { ClearFinishedSheet } from '../../components/transfers/ClearFinishedSheet';
 import { DeleteSheet } from '../../components/transfers/DeleteSheet';
+import { playTorrentById } from '../../components/detail/playActions';
 import { SortSheet } from '../../components/transfers/SortSheet';
 import { TeachingEmptyState } from '../../components/transfers/TeachingEmptyState';
 import { FILTERS, TransferFilter, countByFilter, downloadMatchesFilter, finishedTransfers, magnetHash, matchesFilter, mergeTransfers, sortTorrents, type TransferItem } from '../../components/transfers/model';
@@ -35,7 +36,7 @@ import { OPEN_FOLDER_FAILED_TEXT, SHARE_FAILED_TEXT, allowDeviceFailureText, ope
 import { BulkVerb, bulkSummary, selectionKey, splitSelection } from '../../utils/bulkSummary';
 import { useSearchPrefs } from '../../utils/prefs/search';
 import { TransferSort, loadTransferSort, saveTransferSort } from '../../utils/prefs/transfers';
-import { empty, notices } from '../../constants/copy';
+import { empty, notices, playCopy } from '../../constants/copy';
 
 const Separator = () => <View style={{ height: CARD_GAP }} />;
 const keyOfItem = (item: TransferItem<TransferTelemetry>) => item.key;
@@ -377,6 +378,20 @@ export default function TransfersScreen() {
     },
     [router, showNotice],
   );
+  // Play on a card (0.19): the file list is fetched, the largest video or audio file is picked, then it opens or streams.
+  const playListRef = useRef(all);
+  playListRef.current = all;
+  const onPlay = useCallback(
+    (id: string) => {
+      const t = playListRef.current.find((x) => x.id === id);
+      if (!t) return;
+      void playTorrentById(id, t, () => resumeTorrent(id)).then((res) => {
+        if (!res.ok) showNotice({ message: res.message || playCopy.failed });
+        else if (res.resumed) showNotice({ message: playCopy.resumedToPlay });
+      });
+    },
+    [resumeTorrent, showNotice],
+  );
   const onPause = useCallback((id: string) => void pauseTorrent(id), [pauseTorrent]);
   const onResume = useCallback((id: string) => void resumeTorrent(id), [resumeTorrent]);
   // SM-37: clear the no_peers tag so the torrent looks for peers again.
@@ -489,9 +504,10 @@ export default function TransfersScreen() {
         onKeepTrying={onKeepTrying}
         onOpen={onOpenTorrent}
         onResumeAnyway={onResumeAnyway}
+        onPlay={onPlay}
       />
     ),
-    [selectionMode, selectedIds, onCardPress, startSelection, onPause, onResume, onKeepTrying, onOpenTorrent, onResumeAnyway],
+    [selectionMode, selectedIds, onCardPress, startSelection, onPause, onResume, onKeepTrying, onOpenTorrent, onResumeAnyway, onPlay],
   );
   // One list: torrents and link downloads, ordered by the current sort.
   const items = useMemo(() => mergeTransfers(visible, shownDownloads, sort), [visible, shownDownloads, sort]);

@@ -10,9 +10,11 @@ import { resolveResult, searchAll } from '../search/aggregate';
 import { browseAll } from '../search/browse';
 import type { ToolRunner } from '../assistant/runtime';
 import { createToolRunner } from '../assistant/toolRunner';
+import { watchApi } from '../watch/store';
 
 export function createAppToolRunner(): ToolRunner {
   return createToolRunner({
+    watch: watchApi,
     async search(query, category, opts) {
       const prefs = getSearchPrefs();
       const providers = providerMap(prefs);
