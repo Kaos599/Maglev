@@ -14,6 +14,26 @@ use serde::{Deserialize, Serialize};
 pub const PAUSED_BY_USER: &str = "user";
 pub const PAUSED_BY_SEED_LIMIT: &str = "seed_limit";
 
+/// Rule tags a single torrent or download can be exempted from ("Resume anyway", contract section 25).
+/// Safety and physical tags (storage, VPN, offline, unvalidated) are never in this list.
+pub const EXEMPTABLE_TAGS: [&str; 5] = ["wifi_only", "battery", "charging_only", "schedule", "seed_metered"];
+
+/// Pause tag for seeding on a metered link. It applies to finished torrents only.
+pub const TAG_SEED_METERED: &str = "seed_metered";
+
+pub fn is_exemptable(tag: &str) -> bool {
+    EXEMPTABLE_TAGS.contains(&tag)
+}
+
+/// Does `tag` pause this torrent? An exempt torrent ignores the exemptable tags, and `seed_metered`
+/// only touches finished torrents.
+fn tag_blocks(tag: &str, f: &TorrentFacts) -> bool {
+    if tag == TAG_SEED_METERED && !f.finished {
+        return false;
+    }
+    !(f.exempt && is_exemptable(tag))
+}
+
 pub fn is_governance_tag(tag: &str) -> bool {
     tag != PAUSED_BY_USER && tag != PAUSED_BY_SEED_LIMIT
 }
@@ -200,6 +220,8 @@ pub struct TorrentFacts {
     /// A health tag (section 18.2). While set the torrent is not a candidate and is kept paused with
     /// that tag, unless the user or a seed limit paused it first.
     pub health: Option<String>,
+    /// "Resume anyway" (section 25): the exemptable rule tags do not pause this torrent.
+    pub exempt: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -250,23 +272,26 @@ pub fn plan(facts: &[TorrentFacts], cfg: &SchedulerConfig, blocked: &[String]) -
         }
         match f.paused_by.as_deref() {
             None => candidates.push(f),
-            Some(tag) if is_governance_tag(tag) && !blocked.iter().any(|b| b == tag) => {
+            Some(tag) if is_governance_tag(tag) && !blocked.iter().any(|b| b == tag && tag_blocks(b, f)) => {
                 candidates.push(f)
             }
             Some(_) => {}
         }
     }
 
-    // Governance gate: pause everything that is still a candidate with the first blocking reason.
-    if let Some(reason) = blocked.first() {
-        for f in candidates {
-            actions.push(Action::Pause {
+    // Governance gate: a candidate that a blocking tag still applies to is paused with the first such tag.
+    // The rest go on to seed limits and the queue.
+    let mut free: Vec<&TorrentFacts> = Vec::new();
+    for f in candidates {
+        match blocked.iter().find(|b| tag_blocks(b, f)) {
+            Some(reason) => actions.push(Action::Pause {
                 id: f.id.clone(),
                 reason: reason.clone(),
-            });
+            }),
+            None => free.push(f),
         }
-        return actions;
     }
+    let candidates = free;
 
     // Seed limits.
     let mut remaining: Vec<&TorrentFacts> = Vec::new();
@@ -358,6 +383,7 @@ mod tests {
             seeding_secs: 0,
             limits_waived: false,
             health: None,
+            exempt: false,
         }
     }
 
@@ -825,5 +851,35 @@ mod tests {
         // Counter restarted after a pause or an app restart.
         assert_eq!(uploaded_total(0, 800, 100), (900, 800, 100));
         assert_eq!(uploaded_total(800, 100, 150), (950, 800, 150));
+    }
+
+    #[test]
+    fn exempt_torrent_ignores_rule_tags_but_not_safety_tags() {
+        let mut t = f("a", 1);
+        t.exempt = true;
+        let wifi = vec!["wifi_only".to_string()];
+        assert!(plan(&[t.clone()], &cfg(), &wifi).is_empty());
+        let mut paused = t.clone();
+        paused.running = false;
+        paused.paused_by = Some("wifi_only".into());
+        assert_eq!(plan(&[paused], &cfg(), &wifi), vec![Action::Resume { id: "a".into() }]);
+        let vpn = vec!["vpn_required".to_string()];
+        assert_eq!(plan(&[t], &cfg(), &vpn), vec![pause("a", "vpn_required")]);
+    }
+
+    #[test]
+    fn seed_metered_pauses_seeds_only() {
+        let blocked = vec!["seed_metered".to_string()];
+        let facts = vec![f("dl", 1), seed(f("s", 2))];
+        assert_eq!(plan(&facts, &cfg(), &blocked), vec![pause("s", "seed_metered")]);
+        let mut exempt_seed = seed(f("s", 2));
+        exempt_seed.exempt = true;
+        assert!(plan(&[exempt_seed], &cfg(), &blocked).is_empty());
+    }
+
+    #[test]
+    fn exemptable_set_has_no_safety_tags() {
+        assert!(is_exemptable("schedule") && is_exemptable("seed_metered"));
+        assert!(!is_exemptable("storage_full") && !is_exemptable("vpn_required") && !is_exemptable("offline"));
     }
 }

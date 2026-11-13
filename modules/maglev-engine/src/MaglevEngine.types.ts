@@ -40,6 +40,8 @@ export type PausedBy =
   | 'network_unvalidated'
   /** NATIVE_CONTRACT 21: `network.vpnOnly` is on and no VPN is connected. */
   | 'vpn_required'
+  /** NATIVE_CONTRACT 25.2: finished torrent on a metered link while `network.seedOnMobileData` is off. */
+  | 'seed_metered'
   | HealthTag;
 
 export interface TorrentTelemetry {
@@ -61,6 +63,8 @@ export interface TorrentTelemetry {
   sequential?: boolean;
   seedDurationSeconds?: number;
   pausedBy?: PausedBy | null;
+  /** NATIVE_CONTRACT 25.1: "Resume anyway" is active, so the Wi-Fi, battery, charging, schedule and seeding rules do not pause it. */
+  allowedAnyway?: boolean;
   error?: { code: string; message: string } | null;
   outputFolder?: string;
   addedAt?: number;
@@ -248,6 +252,8 @@ export interface Snapshot {
   includedBytes: number;
   /** NATIVE_CONTRACT 20. Seconds a magnet has been looking for its metadata; null once it has it. */
   resolvingSecs: number | null;
+  /** NATIVE_CONTRACT 25.1. Absent from an older engine. */
+  allowedAnyway?: boolean;
 }
 
 export type FilePriority = 'first' | 'normal' | 'skip';
@@ -361,6 +367,8 @@ export interface GovernanceConfig {
   resumeAfterRestart: boolean;
   /** NATIVE_CONTRACT 21: pause while the active network is not a VPN. */
   vpnOnly: boolean;
+  /** NATIVE_CONTRACT 25.2: keep seeding on mobile data. Default false. */
+  seedOnMobileData: boolean;
 }
 
 export type NotificationActionName = 'pause_all' | 'resume_all' | 'shutdown';
@@ -402,6 +410,8 @@ export interface DownloadSnapshot {
   state: DownloadState;
   /** Why a `paused` download is stopped: `user`, `storage_full`, or a governance tag. */
   pausedBy: string | null;
+  /** NATIVE_CONTRACT 25.1. "Resume anyway" is active for this download. Absent means false. */
+  allowedAnyway?: boolean;
   /** Bytes, or null while the server has not said. */
   size: number | null;
   downloaded: number;
@@ -608,6 +618,8 @@ export interface MaglevEngineApi {
   getDetail(id: string): Promise<EngineResult<Detail>>;
   pause(id: string): Promise<EngineResult>;
   resume(id: string): Promise<EngineResult>;
+  /** NATIVE_CONTRACT 25.1: resume and exempt this torrent from the rule pauses until it finishes, is removed or is paused. */
+  resumeAnyway(id: string): Promise<EngineResult>;
   recheck(id: string): Promise<EngineResult>;
   pauseAll(): Promise<EngineResult>;
   resumeAll(): Promise<EngineResult>;
@@ -698,6 +710,8 @@ export interface MaglevEngineApi {
   addDownload(url: string, options: DownloadOptions): Promise<EngineResult<{ id: string }>>;
   pauseDownload(id: string): Promise<EngineResult>;
   resumeDownload(id: string): Promise<EngineResult>;
+  /** NATIVE_CONTRACT 25.1: the same for a link download. */
+  resumeDownloadAnyway(id: string): Promise<EngineResult>;
   /** After FILE_CHANGED this restarts from zero. */
   retryDownload(id: string): Promise<EngineResult>;
   removeDownload(id: string, deleteFiles: boolean): Promise<EngineResult>;

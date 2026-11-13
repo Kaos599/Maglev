@@ -173,6 +173,9 @@ pub struct DlRecord {
     pub stream: Option<StreamRec>,
     /// All bytes of a stream with separate video and audio parts are in, and the join has not finished yet.
     pub mux_needed: bool,
+    /// "Resume anyway" (contract section 25): the exemptable rule tags do not pause this download.
+    /// Cleared when it finishes or the user pauses it. Saved, so it survives a restart.
+    pub allowed_anyway: bool,
 }
 
 impl Default for DlRecord {
@@ -202,6 +205,7 @@ impl Default for DlRecord {
             lan_pinned: Vec::new(),
             stream: None,
             mux_needed: false,
+            allowed_anyway: false,
         }
     }
 }
@@ -297,6 +301,24 @@ pub fn reason_for_tag(tag: &str) -> PauseReason {
 /// offline just fails as a network error, and an add while offline is paused instead.
 fn blocks_network(tags: &[String]) -> bool {
     tags.iter().any(|t| t != OFFLINE_TAG && reason_for_tag(t) == PauseReason::Network)
+}
+
+/// The tags that pause one download: an exempt one ignores the exemptable rule tags (section 25).
+fn effective_blocked(allowed_anyway: bool, blocked: &[String]) -> Vec<String> {
+    blocked
+        .iter()
+        .filter(|t| !(allowed_anyway && crate::scheduler::is_exemptable(t)))
+        .cloned()
+        .collect()
+}
+
+/// Tags that only concern torrents (`seed_metered`, section 25) never pause a link download.
+fn download_tags(blocked: &[String]) -> Vec<String> {
+    blocked
+        .iter()
+        .filter(|t| t.as_str() != crate::scheduler::TAG_SEED_METERED)
+        .cloned()
+        .collect()
 }
 
 /// How user-actionable a blocking tag is; the lowest rank wins when several apply (contract 17.z).
@@ -790,7 +812,7 @@ impl Downloads {
             session_dir: session_dir.to_path_buf(),
             default_dir: default_dir.to_path_buf(),
             inner: Mutex::new(Inner::default()),
-            blocked: Mutex::new(blocked),
+            blocked: Mutex::new(download_tags(&blocked)),
             proxy: Mutex::new(proxy),
             clients: Mutex::new(HashMap::new()),
             counter: AtomicU64::new(1),
@@ -1006,8 +1028,14 @@ impl Downloads {
 
     // ---- state changes ------------------------------------------------------------------------------------------
 
-    fn gov_allows(&self) -> bool {
-        self.blocked.lock().is_empty()
+    /// The blocking tags that apply to one download, after its "Resume anyway" exemption.
+    fn blocked_for(&self, id: &str) -> Vec<String> {
+        let allowed = self.inner.lock().records.get(id).map(|r| r.allowed_anyway).unwrap_or(false);
+        effective_blocked(allowed, &self.blocked.lock())
+    }
+
+    fn gov_allows_for(&self, id: &str) -> bool {
+        self.blocked_for(id).is_empty()
     }
 
     /// The tag a new or retried download pauses for: the most user-actionable one (`top_block`).
@@ -1054,6 +1082,9 @@ impl Downloads {
                 }
             }
             _ => rec.paused_tag = None,
+        }
+        if next == State::Finished {
+            rec.allowed_anyway = false;
         }
         match next {
             State::Error(e) => {
@@ -1273,9 +1304,22 @@ impl Downloads {
             _ => false,
         };
         if can {
-            self.update(id, |r, _| r.start_paused = false);
+            self.update(id, |r, _| {
+                r.start_paused = false;
+                r.allowed_anyway = false;
+            });
             self.dispatch(id, Event::UserPause);
         }
+        Ok(())
+    }
+
+    /// "Resume anyway" (section 25): exempt the download from the rule tags, then resume it.
+    pub fn resume_anyway(self: &Arc<Self>, id: &str) -> Result<(), EngineError> {
+        self.state_of(id).ok_or_else(EngineError::not_found)?;
+        self.update(id, |r, _| r.allowed_anyway = true);
+        self.resume(id)?;
+        // A download that is already queued or running only needs a governance pass.
+        self.pump();
         Ok(())
     }
 
@@ -1309,7 +1353,7 @@ impl Downloads {
             });
         }
         // Wi-Fi-only, VPN-only, offline and the other reasons gate the request here too.
-        if let Some(tag) = self.first_block() {
+        if let Some(tag) = top_block(&self.blocked_for(id)).cloned() {
             self.dispatch_tagged(id, Event::UserRetryBlocked(reason_for_tag(&tag)), Some(tag.as_str()));
             return Ok(());
         }
@@ -1432,6 +1476,7 @@ impl Downloads {
                     "name": name,
                     "state": state_name(r.state),
                     "paused_by": if matches!(r.state, State::Paused(_)) { r.paused_tag.clone() } else { None },
+                    "allowed_anyway": r.allowed_anyway,
                     "size": r.size,
                     "downloaded": r.held,
                     "down_bps": bps,
@@ -1490,7 +1535,7 @@ impl Downloads {
     // ---- governance ---------------------------------------------------------------------------------------------------
 
     pub fn set_blocked(self: &Arc<Self>, blocked: &[String]) {
-        *self.blocked.lock() = blocked.to_vec();
+        *self.blocked.lock() = download_tags(blocked);
         self.govern();
     }
 
@@ -1502,7 +1547,6 @@ impl Downloads {
     /// One governance pass: block or clear by the engine's reasons, restart dead tasks, fill free slots.
     pub fn govern(self: &Arc<Self>) {
         let blocked = self.blocked.lock().clone();
-        let first = blocked.first().cloned();
 
         // Snapshot the facts, then act without holding the lock.
         struct Fact {
@@ -1514,6 +1558,7 @@ impl Downloads {
             folder: String,
             size: Option<u64>,
             held: u64,
+            allowed: bool,
         }
         let facts: Vec<Fact> = {
             let inner = self.inner.lock();
@@ -1534,6 +1579,7 @@ impl Downloads {
                     folder: r.folder.clone(),
                     size: r.size,
                     held: r.held,
+                    allowed: r.allowed_anyway,
                 })
                 .collect()
         };
@@ -1554,7 +1600,8 @@ impl Downloads {
                     }
                 }
                 State::Paused(r) if r != PauseReason::User && r != PauseReason::Storage => {
-                    let still = f.tag.as_ref().map(|t| blocked.contains(t)).unwrap_or(false);
+                    let mine = effective_blocked(f.allowed, &blocked);
+                    let still = f.tag.as_ref().map(|t| mine.contains(t)).unwrap_or(false);
                     if !still {
                         self.dispatch(&f.id, Event::GovClear(r));
                     }
@@ -1570,17 +1617,18 @@ impl Downloads {
             let ids: Vec<String> = facts.iter().map(|f| f.id.clone()).collect();
             for id in ids {
                 let Some(state) = self.state_of(&id) else { continue };
-                if let Some((ev, tag)) = gov_event(state, &blocked) {
+                if let Some((ev, tag)) = gov_event(state, &self.blocked_for(&id)) {
                     self.dispatch_tagged(&id, ev, Some(tag.as_str()));
                 }
             }
         }
 
         // Queued downloads start in `added_at` order while slots are free and nothing blocks.
-        if first.is_none() {
+        {
             let mut queued: Vec<(i64, String)> = facts
                 .iter()
                 .filter(|f| matches!(f.state, State::Queued) || self.state_of(&f.id) == Some(State::Queued))
+                .filter(|f| self.gov_allows_for(&f.id))
                 .map(|f| (f.added_at, f.id.clone()))
                 .collect();
             queued.sort();
@@ -1612,7 +1660,7 @@ impl Downloads {
                 let (state, _) = {
                     let _start = self.start_lock.lock();
                     let slot_free = self.has_free_slot(&self.inner.lock());
-                    let gov_allows = self.gov_allows();
+                    let gov_allows = self.gov_allows_for(&id);
                     let ev = if start_paused {
                         Event::ProbeOk { slot_free: false, gov_allows: true, space_ok }
                     } else {
@@ -3102,5 +3150,26 @@ mod tests {
         let saved = std::fs::read_to_string(dir.join(STORE_FILE)).unwrap();
         assert!(saved.contains("\"allow_lan\":true"));
         let _ = std::fs::remove_dir_all(&dir);
+    }
+}
+
+#[cfg(test)]
+mod resume_anyway_tests {
+    use super::*;
+
+    fn tags(v: &[&str]) -> Vec<String> {
+        v.iter().map(|s| s.to_string()).collect()
+    }
+
+    #[test]
+    fn exempt_download_ignores_rule_tags_only() {
+        let b = tags(&["wifi_only", "schedule", "storage_full", "vpn_required"]);
+        assert_eq!(effective_blocked(false, &b), b);
+        assert_eq!(effective_blocked(true, &b), tags(&["storage_full", "vpn_required"]));
+    }
+
+    #[test]
+    fn seed_metered_never_reaches_downloads() {
+        assert_eq!(download_tags(&tags(&["seed_metered", "battery"])), tags(&["battery"]));
     }
 }

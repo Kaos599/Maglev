@@ -162,6 +162,9 @@ class MaglevEngineModule : Module() {
         AsyncFunction("resumeDownload") { id: String, promise: Promise ->
             engine(promise) { EngineHost.resumeDownload(id) }
         }
+        AsyncFunction("resumeDownloadAnyway") { id: String, promise: Promise ->
+            engine(promise) { EngineHost.resumeDownloadAnyway(id) }
+        }
         AsyncFunction("retryDownload") { id: String, promise: Promise ->
             engine(promise) { EngineHost.retryDownload(id) }
         }
@@ -197,6 +200,9 @@ class MaglevEngineModule : Module() {
         }
         AsyncFunction("resume") { id: String, promise: Promise ->
             engine(promise) { EngineHost.call { NativeCore.nativeResume(id) }.also { EngineHost.pollNow() } }
+        }
+        AsyncFunction("resumeAnyway") { id: String, promise: Promise ->
+            engine(promise) { EngineHost.resumeAnyway(id) }
         }
         AsyncFunction("recheck") { id: String, promise: Promise ->
             io(promise) { EngineHost.call { NativeCore.nativeRecheck(id) } }
@@ -463,6 +469,7 @@ class MaglevEngineModule : Module() {
                         batteryCutoffPct = (rules["batteryCutoffPct"] as? Number)?.toInt() ?: 0,
                         autoExitOnComplete = rules["autoExitOnComplete"] == true,
                         vpnOnly = rules["vpnOnly"] == true,
+                        seedOnMobileData = rules["seedOnMobileData"] == true,
                     ),
                 )
             }

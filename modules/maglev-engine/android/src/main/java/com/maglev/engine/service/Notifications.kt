@@ -38,7 +38,7 @@ data class TransferSummary(
     val downloadingPct: Int = -1,
     /** Id when exactly one torrent is downloading (or, with nothing downloading, exactly one is seeding). */
     val singleTorrentId: String? = null,
-    /** Governance reason of rule-paused torrents: "wifi_only", "battery", "charging_only", "network_unvalidated", "vpn_required", or null. */
+    /** Governance reason of rule-paused torrents: "wifi_only", "battery", "charging_only", "network_unvalidated", "vpn_required", "seed_metered", or null. */
     val ruleReason: String? = null,
     /** Torrents paused by the schedule (not counted in [pausedByRules], so they never keep the service alive). */
     val pausedBySchedule: Int = 0,
@@ -135,6 +135,7 @@ object Notifications {
             s.downloading == 1 -> name
             s.downloading > 1 -> "$name +${s.downloading - 1} more"
             s.seeding > 0 -> if (s.seeding == 1) "Seeding 1 torrent" else "Seeding ${s.seeding} torrents"
+            rulesOnly(s) && s.ruleReason == "seed_metered" -> "Paused: seeding waits for Wi-Fi"
             rulesOnly(s) -> "Paused: waiting for ${reasonLabel(s.ruleReason)}"
             s.busy == 0 && s.pausedBySchedule > 0 -> "Scheduled pause"
             s.busy == 0 && s.pausedByUser > 0 -> "Paused \u00B7 ${s.pausedByUser} torrents"

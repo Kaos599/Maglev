@@ -316,6 +316,9 @@ export class MaglevEngineBridge implements MaglevEngineApi {
   public resume(id: string): Promise<EngineResult> {
     return this.route('resume', id);
   }
+  public resumeAnyway(id: string): Promise<EngineResult> {
+    return this.route('resumeAnyway', id);
+  }
   public recheck(id: string): Promise<EngineResult> {
     return this.route('recheck', id);
   }
@@ -449,6 +452,9 @@ export class MaglevEngineBridge implements MaglevEngineApi {
   }
   public resumeDownload(id: string): Promise<EngineResult> {
     return this.route('resumeDownload', id);
+  }
+  public resumeDownloadAnyway(id: string): Promise<EngineResult> {
+    return this.route('resumeDownloadAnyway', id);
   }
   public retryDownload(id: string): Promise<EngineResult> {
     return this.route('retryDownload', id);

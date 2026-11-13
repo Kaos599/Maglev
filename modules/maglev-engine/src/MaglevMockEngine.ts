@@ -55,7 +55,7 @@ import { checkTrackerLines, trackerKey } from './trackerUrl.ts';
 import { restartReasons, toNativeConfig } from './toNativeConfig.ts';
 import { MockDownloads } from './MaglevMockDownloads.ts';
 
-const GOVERNANCE_TAGS: ReadonlySet<PausedBy | null> = new Set<PausedBy | null>(['wifi_only', 'battery', 'charging_only', 'network_unvalidated', 'vpn_required']);
+const GOVERNANCE_TAGS: ReadonlySet<PausedBy | null> = new Set<PausedBy | null>(['wifi_only', 'battery', 'charging_only', 'network_unvalidated', 'vpn_required', 'seed_metered']);
 const DEFAULT_PAYLOAD_BYTES = 1_610_612_736; // 1.5 GiB when a magnet carries no xl=
 
 /** Thrown by the legacy synchronous `startTorrent`; carries the contract error code. */
@@ -72,6 +72,10 @@ export class MaglevEngineError extends Error {
 
 interface TorrentMeta {
   pausedBy: PausedBy | null;
+  /** NATIVE_CONTRACT 25.1: "Resume anyway" is active. */
+  allowedAnyway?: boolean;
+  /** Granted while already complete (seeding), so finishing does not clear it. */
+  allowedSeeding?: boolean;
   addedAt: number;
   priorState?: TorrentState;
   downLimitBps?: number;
@@ -413,6 +417,7 @@ export class MaglevMockEngine implements MaglevEngineApi {
     if (!t) return false;
     t.state = 'PAUSED';
     this.metaOf(id).pausedBy = 'user';
+    this.metaOf(id).allowedAnyway = false;
     t.downloadSpeedBytes = 0;
     t.uploadSpeedBytes = 0;
     this.recalculateGovernance();
@@ -443,6 +448,7 @@ export class MaglevMockEngine implements MaglevEngineApi {
     this.torrents.forEach((t) => {
       t.state = 'PAUSED';
       this.metaOf(t.id).pausedBy = 'user';
+      this.metaOf(t.id).allowedAnyway = false;
       t.downloadSpeedBytes = 0;
       t.uploadSpeedBytes = 0;
     });
@@ -583,6 +589,7 @@ export class MaglevMockEngine implements MaglevEngineApi {
       // The finished edge never fires while files are missing (NATIVE_CONTRACT 18.3).
       finished: t.totalSizeBytes > 0 && t.downloadedBytes >= t.totalSizeBytes && m.health !== 'files_missing',
       pausedBy: t.state === 'PAUSED' ? m.pausedBy : null,
+      allowedAnyway: m.allowedAnyway === true,
       progressBytes: t.downloadedBytes,
       totalBytes: t.totalSizeBytes,
       uploadedBytes: t.uploadedBytes,
@@ -733,6 +740,9 @@ export class MaglevMockEngine implements MaglevEngineApi {
   public async resumeDownload(id: string): Promise<EngineResult> {
     return this.downloads.resume(id);
   }
+  public async resumeDownloadAnyway(id: string): Promise<EngineResult> {
+    return this.downloads.resumeAnyway(id);
+  }
   public async retryDownload(id: string): Promise<EngineResult> {
     return this.downloads.retry(id);
   }
@@ -814,6 +824,16 @@ export class MaglevMockEngine implements MaglevEngineApi {
       m.health = null;
     }
     return this.resumeTorrent(id) ? ok() : fail('NOT_FOUND', 'Torrent not found.');
+  }
+
+  /** NATIVE_CONTRACT 25.1. */
+  public async resumeAnyway(id: string): Promise<EngineResult> {
+    const t = this.torrents.get(id);
+    if (!t) return fail('NOT_FOUND', 'Torrent not found.');
+    const m = this.metaOf(id);
+    m.allowedAnyway = true;
+    m.allowedSeeding = t.progressPercent >= 100;
+    return this.resume(id);
   }
 
   public async recheck(id: string): Promise<EngineResult> {
@@ -1309,6 +1329,7 @@ export class MaglevMockEngine implements MaglevEngineApi {
     pwr.downloadOnlyWhileCharging = g.chargingOnly;
     pwr.batteryCutoffThreshold = g.batteryCutoffPct as typeof pwr.batteryCutoffThreshold;
     pwr.autoExitOnComplete = g.autoExitOnComplete;
+    net.seedOnMobileData = g.seedOnMobileData === true;
     this.recalculateGovernance();
     this.broadcast();
     return ok();
@@ -1392,17 +1413,22 @@ export class MaglevMockEngine implements MaglevEngineApi {
           ? 'charging_only'
           : 'battery'
         : null;
+    const seedMetered = !net.seedOnMobileData && net.networkType === 'CELLULAR';
     this.torrents.forEach((t) => {
       const m = this.metaOf(t.id);
       if (t.state === 'ERROR') return;
-      if (govReason) {
+      // NATIVE_CONTRACT 25: seed_metered touches finished torrents only; an exempt torrent ignores the rule
+      // tags (a missing network is not a rule).
+      const exempt = m.allowedAnyway === true && net.networkType !== 'NONE';
+      const own: PausedBy | null = exempt ? null : (govReason ?? (seedMetered && t.progressPercent >= 100 ? 'seed_metered' : null));
+      if (own) {
         if (t.state !== 'PAUSED') {
           t.state = 'PAUSED';
-          m.pausedBy = govReason;
+          m.pausedBy = own;
           t.downloadSpeedBytes = 0;
           t.uploadSpeedBytes = 0;
         } else if (GOVERNANCE_TAGS.has(m.pausedBy)) {
-          m.pausedBy = govReason;
+          m.pausedBy = own;
         }
       } else if (t.state === 'PAUSED' && GOVERNANCE_TAGS.has(m.pausedBy)) {
         m.pausedBy = null;
@@ -1618,6 +1644,8 @@ export class MaglevMockEngine implements MaglevEngineApi {
         t.etaSeconds = 0;
         t.progressPercent = 100.0;
         t.seedDurationSeconds = 0;
+        const doneMeta = this.metaOf(t.id);
+        if (!doneMeta.allowedSeeding) doneMeta.allowedAnyway = false;
         this.completedListeners.forEach((l) => l({ id: t.id, name: t.name }));
 
         // Auto-Move Completed Downloads (Task 2.11)
