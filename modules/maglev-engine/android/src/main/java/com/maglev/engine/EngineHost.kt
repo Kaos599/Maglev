@@ -1939,6 +1939,51 @@ object EngineHost {
     }
 
 
+    /**
+     * Opens the share sheet for a finished link download. Same lookup and file resolution as [openDownload]:
+     * FileProvider for a POSIX path, else the document Maglev created in the user's folder.
+     * Errors: NOT_FOUND (unknown id, or the file is gone), INVALID_STATE (not finished).
+     */
+    fun shareDownload(id: String): Map<String, Any?> {
+        val c = requireCtx() ?: return Json.failure("ENGINE_UNAVAILABLE", "Module is not attached")
+        val res = call { NativeCore.nativeListTorrents() }
+        if (!isOk(res)) return res
+        val d = Json.list(res["downloads"]).firstOrNull { it["id"] == id }
+            ?: return Json.failure("NOT_FOUND", "That download isn't in your list")
+        if (d["state"] != "finished") return Json.failure("INVALID_STATE", "This download isn't finished yet")
+        val folder = d["folder"] as? String
+        val name = d["name"] as? String
+        if (folder == null || name.isNullOrEmpty()) return Json.failure("NOT_FOUND", "File not found")
+        val copyUri = StorageManager.copiedUri(c, DL_PREFIX + id)
+        val err = if (copyUri != null && !File(folder, name).exists()) {
+            FileActions.shareUri(c, android.net.Uri.parse(copyUri), name)
+        } else {
+            FileActions.shareFile(c, folder, name)
+        }
+        return if (err == null) linkedMapOf("ok" to true) else Json.failure("NOT_FOUND", err)
+    }
+
+    /**
+     * Whether the phone is online and whether the current link counts as mobile data. `metered` is true on any
+     * link that is not an unmetered Wi-Fi or Ethernet one: the same test Wi-Fi only uses (see
+     * NetworkGovernanceManager). Read straight from ConnectivityManager so it works when no rule is watching.
+     * https://developer.android.com/reference/android/net/NetworkCapabilities#NET_CAPABILITY_NOT_METERED
+     */
+    fun networkState(): Map<String, Any?> {
+        val c = requireCtx() ?: return Json.failure("ENGINE_UNAVAILABLE", "Module is not attached")
+        val cm = c.getSystemService(Context.CONNECTIVITY_SERVICE) as? android.net.ConnectivityManager
+        val caps = try {
+            cm?.activeNetwork?.let { cm.getNetworkCapabilities(it) }
+        } catch (_: Exception) {
+            null
+        }
+        val unmetered = caps != null &&
+            caps.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_NOT_METERED) &&
+            (caps.hasTransport(android.net.NetworkCapabilities.TRANSPORT_WIFI) ||
+                caps.hasTransport(android.net.NetworkCapabilities.TRANSPORT_ETHERNET))
+        return linkedMapOf("ok" to true, "metered" to (caps != null && !unmetered), "connected" to (caps != null))
+    }
+
     fun openFolder(id: String): Map<String, Any?> {
         val c = requireCtx() ?: return Json.failure("ENGINE_UNAVAILABLE", "Module is not attached")
         val d = call { NativeCore.nativeGetDetail(id) }

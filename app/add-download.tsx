@@ -15,7 +15,8 @@ import type { FoundItem } from 'maglev-engine';
 import { Banner, Button, EmptyBlock, Screen } from '../components/ui';
 import { useDownloadAdmission } from '../utils/useDownloadAdmission';
 import { actionRoute, probeErrorView } from '../utils/downloadCopy';
-import { banners, empty, notices } from '../constants/copy';
+import { banners, empty, mobileDataLine, notices } from '../constants/copy';
+import { useSettings } from '../context/SettingsContext';
 
 /** Add a download from a web link: probe the link, show what it is, then start. */
 type Phase = 'input' | 'probing' | 'ready' | 'adding' | 'error';
@@ -34,7 +35,8 @@ export default function AddDownloadScreen() {
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const router = useRouter();
   const params = useLocalSearchParams<{ url?: string; source?: string; from?: string }>();
-  const { defaultStoragePath, probeUrl, probeStream, startDownload, showNotice } = useMaglevEngine();
+  const { defaultStoragePath, probeUrl, probeStream, startDownload, showNotice, onMeteredNetwork } = useMaglevEngine();
+  const { settings } = useSettings();
 
   const [text, setText] = useState('');
   const [phase, setPhase] = useState<Phase>('input');
@@ -274,6 +276,7 @@ export default function AddDownloadScreen() {
   if ((phase === 'ready' || phase === 'adding') && probe) {
     const adding = phase === 'adding';
     const size = probe.size;
+    const mobileNote = mobileDataLine(onMeteredNetwork, settings.network.wifiOnly, size);
     return (
       <Screen title="Add download" onBack={close} scroll contentStyle={styles.content}>
         <View style={[styles.nameRow, nameInvalid ? styles.fieldInvalid : null]}>
@@ -305,6 +308,7 @@ export default function AddDownloadScreen() {
           </View>
           <Button label="Change" variant="secondary" disabled={adding} onPress={() => void handleChangeFolder()} />
         </View>
+        {mobileNote ? <Banner tone="info" title={mobileNote} /> : null}
         {doesntFit ? <Banner tone="danger" title={banners.addDownload.notEnoughSpace.title} body={banners.addDownload.notEnoughSpace.body} /> : null}
         {addError ? <Banner tone="danger" title={addError} /> : null}
         <View style={styles.gap}>

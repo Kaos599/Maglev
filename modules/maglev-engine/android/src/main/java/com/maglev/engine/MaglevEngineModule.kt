@@ -180,6 +180,12 @@ class MaglevEngineModule : Module() {
         AsyncFunction("openDownload") { id: String, promise: Promise ->
             engine(promise) { EngineHost.openDownload(id) }
         }
+        AsyncFunction("shareDownload") { id: String, promise: Promise ->
+            engine(promise) { EngineHost.shareDownload(id) }
+        }
+        AsyncFunction("getNetworkState") { promise: Promise ->
+            engine(promise) { EngineHost.networkState() }
+        }
         AsyncFunction("listTorrents") { promise: Promise ->
             native(promise) { NativeCore.nativeListTorrents() }
         }

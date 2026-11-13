@@ -384,3 +384,6 @@ export function removeCopy(d: DownloadSnapshot): { keepLabel: string; deleteLabe
 
 /** What to tell the user when no file manager opens the folder. */
 export const OPEN_FOLDER_FAILED_TEXT = "Couldn't open the folder.";
+
+/** What to tell the user when the share sheet can't open for a finished download. */
+export const SHARE_FAILED_TEXT = "Couldn't share this file.";

@@ -1,3 +1,5 @@
+import { formatBytes } from './format.ts';
+
 /**
  * One voice for notices, banners and empty states. Every string a notice, banner or empty state
  * shows lives here, grouped by screen, so scripts/test-copy-voice.js can lint them all.
@@ -275,3 +277,18 @@ export const addMenu = {
   searchHint: 'Look in your sources',
   browseHint: 'Find a file or video on a web page',
 } as const;
+
+// ---------------------------------------------------------------------------------------------
+// Mobile data note on the add screens (one quiet line; the size is formatted at run time)
+// ---------------------------------------------------------------------------------------------
+/**
+ * The one line the add screens show under the size. Null when there is nothing to say: not on mobile data,
+ * or on mobile data with Wi-Fi only off and no known size. With Wi-Fi only on the download waits, so the
+ * size doesn't matter.
+ */
+export function mobileDataLine(onMetered: boolean, wifiOnly: boolean, sizeBytes: number | null): string | null {
+  if (!onMetered) return null;
+  if (wifiOnly) return 'This waits for Wi-Fi.';
+  if (sizeBytes == null || !(sizeBytes > 0)) return null;
+  return `You're on mobile data. This is ${formatBytes(sizeBytes)}.`;
+}

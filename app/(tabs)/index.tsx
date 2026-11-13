@@ -30,7 +30,7 @@ import { useMaglevEngine } from '../../context/EngineContext';
 import { useTheme } from '../../context/ThemeContext';
 import { ThemeColors, radius, spacing, type } from '../../constants/theme';
 import { takeNextShared } from '../../utils/shareQueue';
-import { OPEN_FOLDER_FAILED_TEXT, allowDeviceFailureText, openFailureText, type DownloadAction } from '../../utils/downloadCopy';
+import { OPEN_FOLDER_FAILED_TEXT, SHARE_FAILED_TEXT, allowDeviceFailureText, openFailureText, type DownloadAction } from '../../utils/downloadCopy';
 import { BulkVerb, bulkSummary, selectionKey, splitSelection } from '../../utils/bulkSummary';
 import { TransferSort, loadTransferSort, saveTransferSort } from '../../utils/prefs/transfers';
 import { empty, notices } from '../../constants/copy';
@@ -151,6 +151,14 @@ export default function TransfersScreen() {
     (id: string) => {
       void maglevEngine.openDownloadFolder(id).then((res) => {
         if (!res.ok) showNotice({ message: res.message || OPEN_FOLDER_FAILED_TEXT });
+      });
+    },
+    [showNotice],
+  );
+  const shareDownload = useCallback(
+    (id: string) => {
+      void maglevEngine.shareDownload(id).then((res) => {
+        if (!res.ok) showNotice({ message: res.message || SHARE_FAILED_TEXT });
       });
     },
     [showNotice],
@@ -637,6 +645,7 @@ export default function TransfersScreen() {
         onRetry={(id) => void retryDownload(id)}
         onOpen={openDownload}
         onOpenFolder={openDownloadFolder}
+        onShare={shareDownload}
         onAllowDevice={allowDevice}
         onRemove={(id, deleteFiles) => void removeDownload(id, deleteFiles)}
         onNewLink={refreshDownloadUrl}

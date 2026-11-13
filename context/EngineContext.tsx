@@ -116,6 +116,8 @@ interface EngineContextType {
   /** Result carries `retryAfterSecs` when rate limited. */
   reannounce: (id: string) => Promise<EngineResult<{ retryAfterSecs?: number }>>;
   getFreeSpace: () => Promise<EngineResult<FreeSpace>>;
+  /** True while the phone is on mobile data (any link that is not unmetered Wi-Fi or Ethernet). Refreshed when the app comes back. */
+  onMeteredNetwork: boolean;
   openLiveUpdateSettings: () => Promise<void>;
   /** 256 cells, contract values: 0 missing, 1 have, 2 partial. */
   getPieceBitfield: (id: string) => Promise<Uint8Array>;
@@ -819,6 +821,28 @@ export const EngineProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   );
   const reannounce = useCallback((id: string) => maglevEngine.reannounce(id), []);
   const getFreeSpace = useCallback(() => maglevEngine.getFreeSpace(), []);
+
+  // Mobile data: asked once at start and again each time the app becomes active. Unknown counts as not metered.
+  const [onMeteredNetwork, setOnMeteredNetwork] = useState(false);
+  useEffect(() => {
+    let alive = true;
+    const refresh = () => {
+      void maglevEngine
+        .getNetworkState()
+        .then((res) => {
+          if (alive && res.ok) setOnMeteredNetwork(res.metered && res.connected);
+        })
+        .catch(() => {});
+    };
+    refresh();
+    const sub = AppState.addEventListener('change', (next) => {
+      if (next === 'active') refresh();
+    });
+    return () => {
+      alive = false;
+      sub.remove();
+    };
+  }, []);
   const openLiveUpdateSettings = useCallback(() => maglevEngine.openLiveUpdateSettings(), []);
 
   const getPieceBitfield = useCallback(async (id: string) => {
@@ -922,6 +946,7 @@ export const EngineProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         setFilePriorities,
         reannounce,
         getFreeSpace,
+        onMeteredNetwork,
         openLiveUpdateSettings,
         getPieceBitfield,
         getTorrentDetail,

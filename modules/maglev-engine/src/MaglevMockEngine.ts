@@ -11,6 +11,7 @@ import type {
   FileHealthEntry,
   FilePriorityEntry,
   FreeSpace,
+  NetworkState,
   GovernanceConfig,
   HealthTag,
   MaglevEngineApi,
@@ -749,6 +750,12 @@ export class MaglevMockEngine implements MaglevEngineApi {
   }
   public async openDownload(id: string): Promise<EngineResult> {
     return this.downloads.snapshots().some((d) => d.id === id) ? { ok: true } : { ok: false, code: 'NOT_FOUND', message: 'No such download.' };
+  }
+  public async shareDownload(id: string): Promise<EngineResult> {
+    return this.downloads.snapshots().some((d) => d.id === id) ? { ok: true } : { ok: false, code: 'NOT_FOUND', message: 'No such download.' };
+  }
+  public async getNetworkState(): Promise<EngineResult<NetworkState>> {
+    return { ok: true, metered: false, connected: true };
   }
   public refreshDownloadUrl(id: string, url: string, options: DownloadOptions = {}): Promise<EngineResult> {
     return this.downloads.refreshUrl(id, url, options);

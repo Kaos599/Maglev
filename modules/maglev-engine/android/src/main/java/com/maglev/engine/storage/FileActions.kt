@@ -86,6 +86,16 @@ object FileActions {
         return start(context, chooser, "Sharing is not available")
     }
 
+    /** Shares a document by its URI (the copy Maglev made in the user's folder). Null on success, else a plain message. */
+    fun shareUri(context: Context, uri: Uri, name: String): String? {
+        val send = Intent(Intent.ACTION_SEND)
+            .setType(SafStorageManager.mimeFor(name))
+            .putExtra(Intent.EXTRA_STREAM, uri)
+            .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        val chooser = Intent.createChooser(send, null).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        return start(context, chooser, "Sharing is not available")
+    }
+
     /** Shares a file at a POSIX path the FileProvider covers. Returns null on success or a plain-English error. */
     fun shareLocalFile(context: Context, file: File, mime: String): String? {
         val uri = try {
