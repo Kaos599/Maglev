@@ -12,12 +12,14 @@ import { FloatingActionButton } from '../../components/FloatingActionButton';
 import { SpeedTelemetryHeader } from '../../components/SpeedTelemetryHeader';
 import { BulkBar } from '../../components/transfers/BulkBar';
 import { ClipboardChip } from '../../components/transfers/ClipboardChip';
+import { AddMenuSheet } from '../../components/add/AddMenuSheet';
+import { ClearFinishedSheet } from '../../components/transfers/ClearFinishedSheet';
 import { DeleteSheet } from '../../components/transfers/DeleteSheet';
 import { SortSheet } from '../../components/transfers/SortSheet';
 import { TeachingEmptyState } from '../../components/transfers/TeachingEmptyState';
-import { FILTERS, TransferFilter, countByFilter, downloadMatchesFilter, magnetHash, matchesFilter, sortTorrents } from '../../components/transfers/model';
+import { FILTERS, TransferFilter, countByFilter, downloadMatchesFilter, finishedTransfers, magnetHash, matchesFilter, sortTorrents } from '../../components/transfers/model';
 import { PixelIcon } from '../../components/PixelIcon';
-import { Banner, EmptyBlock, IconButton } from '../../components/ui/index';
+import { Banner, Button, EmptyBlock, IconButton } from '../../components/ui/index';
 import { ProgressMotionContext, type ProgressMotion } from '../../components/ui/ProgressBar';
 import { steadyResolvingSecs } from '../../components/transfers/snapshots';
 import { lowSpaceWarning, usableFreeOf, type LowSpaceWarning } from '../../components/transfers/lowSpace';
@@ -28,7 +30,7 @@ import { useMaglevEngine } from '../../context/EngineContext';
 import { useTheme } from '../../context/ThemeContext';
 import { ThemeColors, radius, spacing, type } from '../../constants/theme';
 import { takeNextShared } from '../../utils/shareQueue';
-import { allowDeviceFailureText, openFailureText, type DownloadAction } from '../../utils/downloadCopy';
+import { OPEN_FOLDER_FAILED_TEXT, allowDeviceFailureText, openFailureText, type DownloadAction } from '../../utils/downloadCopy';
 import { BulkVerb, bulkSummary, selectionKey, splitSelection } from '../../utils/bulkSummary';
 import { TransferSort, loadTransferSort, saveTransferSort } from '../../utils/prefs/transfers';
 import { empty, notices } from '../../constants/copy';
@@ -83,7 +85,7 @@ export default function TransfersScreen() {
     pauseAll,
     resumeAll,
     deleteTorrent,
-    removeTorrents,
+    removeTransfers,
     notice,
     showNotice,
     dismissNotice,
@@ -118,6 +120,16 @@ export default function TransfersScreen() {
   const [selectedIds, setSelectedIds] = useState<ReadonlySet<string>>(() => new Set());
   const [fileError, setFileError] = useState<string | null>(null);
   const [sheetDownloadId, setSheetDownloadId] = useState<string | null>(null);
+  const [clearOpen, setClearOpen] = useState(false);
+  // A link-download notification opens with `download=<id>`: show that download's sheet once, then clear the param.
+  const { download: downloadParam } = useLocalSearchParams<{
+    download?: string;
+  }>();
+  useEffect(() => {
+    if (typeof downloadParam !== 'string' || !downloadParam) return;
+    setSheetDownloadId(downloadParam);
+    router.setParams({ download: undefined });
+  }, [downloadParam, router]);
 
   const all = telemetry.torrents;
   const cruising = focused && (all.some((t) => t.state === 'DOWNLOADING') || downloads.some((d) => d.state === 'downloading'));
@@ -135,10 +147,21 @@ export default function TransfersScreen() {
     },
     [showNotice],
   );
+  const openDownloadFolder = useCallback(
+    (id: string) => {
+      void maglevEngine.openDownloadFolder(id).then((res) => {
+        if (!res.ok) showNotice({ message: res.message || OPEN_FOLDER_FAILED_TEXT });
+      });
+    },
+    [showNotice],
+  );
   const allowDevice = useCallback(
     (id: string) => {
       void maglevEngine.allowLanHost(id).then((res) => {
-        if (!res.ok) showNotice({ message: allowDeviceFailureText(res.code, res.message) });
+        if (!res.ok)
+          showNotice({
+            message: allowDeviceFailureText(res.code, res.message),
+          });
         else void retryDownload(id);
       });
     },
@@ -171,6 +194,8 @@ export default function TransfersScreen() {
     [pauseDownload, resumeDownload, retryDownload, openDownload, allowDevice],
   );
   const selectionMode = selectedIds.size > 0;
+  const finished = useMemo(() => finishedTransfers(all, downloads), [all, downloads]);
+  const finishedCount = finished.torrents.length + finished.downloads.length;
 
   const counts = useMemo(() => countByFilter(all, downloads), [all, downloads]);
   const visible = useMemo(() => {
@@ -199,7 +224,11 @@ export default function TransfersScreen() {
   const needRows = useMemo(
     () => [
       ...all,
-      ...downloads.map((d) => ({ finished: d.state === 'finished', includedBytes: d.size ?? 0, downloadedBytes: d.downloaded })),
+      ...downloads.map((d) => ({
+        finished: d.state === 'finished',
+        includedBytes: d.size ?? 0,
+        downloadedBytes: d.downloaded,
+      })),
     ],
     [all, downloads],
   );
@@ -345,14 +374,13 @@ export default function TransfersScreen() {
       if (deleteFiles) {
         void bulk('Deleted', (id) => deleteTorrent(id, true), (id) => removeDownload(id, true));
       } else {
-        // Keep files: torrent rows leave now and the notice offers Undo for 5 seconds. Link downloads go at once.
+        // Keep files: rows leave now and the notice offers Undo for 5 seconds, torrents and links alike.
         const { torrents: tIds, downloads: dIds } = splitSelection(selectedIds);
         exitSelection();
-        if (tIds.length > 0) removeTorrents(tIds);
-        for (const id of dIds) void removeDownload(id, false);
+        removeTransfers(tIds, dIds);
       }
     },
-    [bulk, deleteTorrent, removeTorrents, removeDownload, selectedIds, exitSelection],
+    [bulk, deleteTorrent, removeTransfers, removeDownload, selectedIds, exitSelection],
   );
 
   // Files shared together: when this screen is focused again (the add flow closed), open the next one.
@@ -363,10 +391,15 @@ export default function TransfersScreen() {
     }, [router]),
   );
 
+  // + opens a menu of every way in (paste, type, file, Search, Browser), not the torrent screen directly.
+  const [addMenuOpen, setAddMenuOpen] = useState(false);
   const goAdd = useCallback(() => router.push('/add-torrent'), [router]);
   const addClipboard = useCallback(() => {
     if (!clipboardMagnet) return;
-    router.push({ pathname: '/add-torrent', params: { source: clipboardMagnet } });
+    router.push({
+      pathname: '/add-torrent',
+      params: { source: clipboardMagnet },
+    });
   }, [clipboardMagnet, router]);
 
   const openFile = useCallback(async () => {
@@ -444,7 +477,12 @@ export default function TransfersScreen() {
         cruising={cruising}
         selection={
           selectionMode
-            ? { count: selectedIds.size, allSelected: selectedIds.size === selectableCount, onClose: exitSelection, onSelectAll: selectAll }
+            ? {
+                count: selectedIds.size,
+                allSelected: selectedIds.size === selectableCount,
+                onClose: exitSelection,
+                onSelectAll: selectAll,
+              }
             : undefined
         }
         actions={
@@ -518,6 +556,11 @@ export default function TransfersScreen() {
       ) : (
         <ProgressMotionContext.Provider value={progressMotion}>
           <FilterPills value={filter} counts={counts} onChange={setFilter} />
+          {filter === 'done' && finishedCount > 0 && !selectionMode ? (
+            <View style={styles.clearRow}>
+              <Button label="Clear finished" icon="trash" variant="secondary" fullWidth onPress={() => setClearOpen(true)} />
+            </View>
+          ) : null}
           {visible.length === 0 && shownDownloads.length === 0 ? (
             <View style={styles.noMatch}>
               <EmptyBlock
@@ -561,7 +604,19 @@ export default function TransfersScreen() {
           onDelete={() => setDeleteOpen(true)}
         />
       ) : (
-        <FloatingActionButton onPress={goAdd} />
+        <>
+          <FloatingActionButton onPress={() => setAddMenuOpen(true)} />
+          <AddMenuSheet
+            visible={addMenuOpen}
+            onClose={() => setAddMenuOpen(false)}
+            clipboard={clipboardMagnet ?? undefined}
+            onPaste={addClipboard}
+            onType={goAdd}
+            onOpenFile={() => void openFile()}
+            onSearch={() => router.navigate('/search')}
+            onBrowse={() => router.push('/browser')}
+          />
+        </>
       )}
 
       {notice ? (
@@ -581,9 +636,19 @@ export default function TransfersScreen() {
         onClose={() => setSheetDownloadId(null)}
         onRetry={(id) => void retryDownload(id)}
         onOpen={openDownload}
+        onOpenFolder={openDownloadFolder}
         onAllowDevice={allowDevice}
         onRemove={(id, deleteFiles) => void removeDownload(id, deleteFiles)}
         onNewLink={refreshDownloadUrl}
+      />
+      <ClearFinishedSheet
+        visible={clearOpen}
+        count={finished.torrents.length + finished.downloads.length}
+        onClose={() => setClearOpen(false)}
+        onConfirm={() => {
+          setClearOpen(false);
+          removeTransfers(finished.torrents, finished.downloads);
+        }}
       />
       <SortSheet visible={sortOpen} sort={sort} onChange={changeSort} onClose={() => setSortOpen(false)} />
       <DeleteSheet visible={deleteOpen} count={selectedIds.size} bytes={selectedBytes} onClose={() => setDeleteOpen(false)} onConfirm={confirmDelete} />
@@ -594,6 +659,7 @@ export default function TransfersScreen() {
 const makeStyles = (c: ThemeColors) =>
   StyleSheet.create({
     root: { flex: 1, backgroundColor: c.bg },
+    clearRow: { paddingHorizontal: spacing.lg, paddingBottom: spacing.sm },
     searchWrap: { paddingHorizontal: spacing.lg, paddingTop: spacing.sm },
     searchField: {
       minHeight: 44,
@@ -606,10 +672,21 @@ const makeStyles = (c: ThemeColors) =>
       borderColor: c.border,
       borderRadius: radius.md,
     },
-    searchInput: { ...type.mono, flex: 1, fontSize: 13, color: c.text, paddingVertical: 0 },
+    searchInput: {
+      ...type.mono,
+      flex: 1,
+      fontSize: 13,
+      color: c.text,
+      paddingVertical: 0,
+    },
     fileError: { paddingHorizontal: spacing.lg, paddingBottom: spacing.sm },
     lowSpace: { paddingHorizontal: spacing.lg, paddingTop: spacing.sm },
-    notice: { position: 'absolute', left: spacing.lg, right: spacing.lg, bottom: spacing.lg + 56 + spacing.sm },
+    notice: {
+      position: 'absolute',
+      left: spacing.lg,
+      right: spacing.lg,
+      bottom: spacing.lg + 56 + spacing.sm,
+    },
     noMatch: { flex: 1, justifyContent: 'center' },
     downloads: { gap: CARD_GAP },
     listContent: { paddingTop: spacing.xs, paddingBottom: 96 },

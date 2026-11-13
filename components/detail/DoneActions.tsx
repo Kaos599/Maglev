@@ -4,6 +4,7 @@ import { maglevEngine, type DetailFile } from 'maglev-engine';
 import { useTheme } from '../../context/ThemeContext';
 import { ThemeColors, spacing, type } from '../../constants/theme';
 import { formatBytes } from '../../constants/format';
+import { OPEN_FOLDER_FAILED_TEXT } from '../../utils/downloadCopy';
 import { fileKind } from '../../utils/fileKind';
 import { pickMainFile } from '../../utils/mainFile';
 import { Button, ListRow, Sheet } from '../ui';
@@ -38,7 +39,7 @@ export function DoneActions({ id, files, onNotice }: DoneActionsProps) {
   };
   const open = (index: number) => report(maglevEngine.openFile(id, index), 'No app can open this file.');
   const share = (index: number) => report(maglevEngine.shareFile(id, index), 'Sharing failed.');
-  const folder = () => report(maglevEngine.openFolder(id), "Couldn't open the folder.");
+  const folder = () => report(maglevEngine.openFolder(id), OPEN_FOLDER_FAILED_TEXT);
 
   const onOpen = () => (askFirst ? setChooser('open') : target && void open(target.index));
   const onShare = () => (askFirst ? setChooser('share') : target && void share(target.index));
@@ -78,3 +79,16 @@ const makeStyles = (c: ThemeColors) =>
     half: { flex: 1 },
     hint: { ...type.body, fontSize: type.size.md, color: c.textMuted, paddingVertical: spacing.sm },
   });
+
+/** Open folder works in every state, so it lives outside the finished-only actions. */
+export function OpenFolderButton({ id, onNotice }: { id: string; onNotice: DoneActionsProps['onNotice'] }) {
+  const onPress = async () => {
+    try {
+      const res = await maglevEngine.openFolder(id);
+      if (!res.ok) onNotice({ tone: 'danger', text: res.message || OPEN_FOLDER_FAILED_TEXT });
+    } catch {
+      onNotice({ tone: 'danger', text: OPEN_FOLDER_FAILED_TEXT });
+    }
+  };
+  return <Button label="Open folder" icon="folder" variant="secondary" fullWidth onPress={() => void onPress()} />;
+}

@@ -215,3 +215,23 @@ export function torrentStatus(t: StatusRow, etaLabel: string): TorrentStatus {
       return line('Getting info…', 'muted');
   }
 }
+
+/** Ids of everything that is done: completed or finished-seeding torrents, and finished link downloads. Seeding torrents stay. */
+export function finishedTransfers(
+  list: readonly TorrentTelemetry[],
+  downloads: readonly DownloadSnapshot[] = [],
+): { torrents: string[]; downloads: string[] } {
+  return {
+    torrents: list.filter((t) => matchesFilter(t, 'done')).map((t) => t.id),
+    downloads: downloads.filter((d) => downloadMatchesFilter(d, 'done')).map((d) => d.id),
+  };
+}
+
+/** Sheet copy for "Clear finished". Files always stay on the device. */
+export function clearFinishedCopy(count: number): { title: string; body: string; confirm: string } {
+  return {
+    title: `Clear ${count} finished ${count === 1 ? 'transfer' : 'transfers'}?`,
+    body: 'They leave this list. The files stay on your device.',
+    confirm: 'Clear',
+  };
+}

@@ -94,6 +94,8 @@ interface EngineContextType {
    * `UNDO_WINDOW_MS` unless `undoRemove` is called, or at once when the app goes to the background.
    */
   removeTorrents: (ids: string[]) => void;
+  /** Removes torrents and link downloads together, keeping files, behind one Undo notice. */
+  removeTransfers: (torrentIds: string[], downloadIds: string[]) => void;
   undoRemove: () => void;
   notice: EngineNotice | null;
   dismissNotice: () => void;
@@ -256,7 +258,10 @@ export const EngineProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const [permissionStatus, setPermissionStatus] = useState<NativePermissionStatus | null>(null);
   const [lastCompleted, setLastCompleted] = useState<TorrentCompletedEvent | null>(null);
   const [, setDetailVersion] = useState(0);
-  const [downloads, setDownloads] = useState<DownloadSnapshot[]>([]);
+  const [allDownloads, setDownloads] = useState<DownloadSnapshot[]>([]);
+  // Link downloads hidden while their undo window runs (or after a confirmed removal).
+  const [removingDl, setRemovingDl] = useState<readonly string[]>([]);
+  const downloads = useMemo(() => (removingDl.length === 0 ? allDownloads : allDownloads.filter((d) => !removingDl.includes(d.id))), [allDownloads, removingDl]);
 
   const detailCache = useRef<Map<string, TorrentDetailData>>(new Map());
   const watched = useRef<Map<string, number>>(new Map());
@@ -276,7 +281,7 @@ export const EngineProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const linkSmoothing = useRef(new Map<string, Smoothed>());
   const linkDownRef = useRef(0);
   const [linkDown, setLinkDown] = useState(0);
-  const pendingRemoval = useRef<{ ids: string[]; names: string[]; timer: ReturnType<typeof setTimeout>; noticeId: number } | null>(null);
+  const pendingRemoval = useRef<{ ids: string[]; downloadIds: string[]; names: string[]; timer: ReturnType<typeof setTimeout>; noticeId: number } | null>(null);
   const lastSave = useRef(0);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -677,23 +682,29 @@ export const EngineProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
   /** Runs the engine delete for removals whose undo window ended. Failed rows come back with a notice. */
   const runRemoval = useCallback(
-    async (ids: string[], names: string[]) => {
-      const results = await Promise.all(
-        ids.map(async (id) => {
+    async (ids: string[], names: string[], downloadIds: string[] = []) => {
+      const results = await Promise.all([
+        ...ids.map(async (id) => {
           detailCache.current.delete(id);
           watched.current.delete(id);
           return (await maglevEngine.delete(id, false)).ok;
-        })
-      );
+        }),
+        ...downloadIds.map(async (id) => (await maglevEngine.removeDownload(id, false)).ok),
+      ]);
+      // Link rows that were removed stay hidden (ids are never reused); failed ones come back.
+      const failedDl = downloadIds.filter((_, i) => !results[ids.length + i]);
+      if (failedDl.length > 0) setRemovingDl((prev) => prev.filter((id) => !failedDl.includes(id)));
       const gone = ids.filter((_, i) => results[i]);
       dropFromLive(gone);
       // Deleted rows stay hidden as confirmed removals, so a tick sent before the delete cannot bring them back.
       if (gone.length > 0) endTap(beginTap(gone, 'remove'), true);
       setRemoving((prev) => prev.filter((id) => !ids.includes(id)));
-      const failedAt = results.findIndex((ok) => !ok);
+      const failedAt = results.slice(0, ids.length).findIndex((ok) => !ok);
       if (failedAt >= 0) {
-        const failed = results.filter((ok) => !ok).length;
+        const failed = results.slice(0, ids.length).filter((ok) => !ok).length;
         showNotice({ message: failed === 1 ? notices.engine.removeFailed(names[failedAt]) : notices.engine.removeFailedMany(failed) });
+      } else if (failedDl.length > 0) {
+        showNotice({ message: failedDl.length === 1 ? notices.engine.removeFailed(names[ids.length]) : notices.engine.removeFailedMany(failedDl.length) });
       }
     },
     [showNotice, dropFromLive, beginTap, endTap]
@@ -705,7 +716,7 @@ export const EngineProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     clearTimeout(p.timer);
     pendingRemoval.current = null;
     setNotice((n) => (n && n.id === p.noticeId ? null : n));
-    void runRemoval(p.ids, p.names);
+    void runRemoval(p.ids, p.names, p.downloadIds);
   }, [runRemoval]);
 
   const undoRemove = useCallback(() => {
@@ -714,21 +725,24 @@ export const EngineProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     clearTimeout(p.timer);
     pendingRemoval.current = null;
     setRemoving((prev) => prev.filter((id) => !p.ids.includes(id)));
+    setRemovingDl((prev) => prev.filter((id) => !p.downloadIds.includes(id)));
     setNotice((n) => (n && n.id === p.noticeId ? null : n));
   }, []);
 
-  const removeTorrents = useCallback(
-    (ids: string[]) => {
-      if (ids.length === 0) return;
+  const removeTransfers = useCallback(
+    (ids: string[], downloadIds: string[]) => {
+      if (ids.length === 0 && downloadIds.length === 0) return;
       flushRemoval(); // a second removal ends the first one's undo window
-      const names = ids.map(nameOf);
-      setRemoving((prev) => [...prev, ...ids]);
+      // Names come before the rows are hidden. Torrent names first, then link names, matching runRemoval's order.
+      const names = [...ids.map(nameOf), ...downloadIds.map((id) => downloadsRef.current.find((d) => d.id === id)?.name ?? 'download')];
+      if (ids.length > 0) setRemoving((prev) => [...prev, ...ids]);
+      if (downloadIds.length > 0) setRemovingDl((prev) => [...prev, ...downloadIds]);
       const timer = setTimeout(flushRemoval, UNDO_WINDOW_MS);
       const noticeId = noticeSeq.current + 1;
-      pendingRemoval.current = { ids, names, timer, noticeId };
+      pendingRemoval.current = { ids, downloadIds, names, timer, noticeId };
       showNotice(
         {
-          message: ids.length === 1 ? notices.engine.removed(names[0]) : notices.engine.removedMany(ids.length),
+          message: names.length === 1 ? notices.engine.removed(names[0]) : notices.engine.removedMany(names.length),
           actionLabel: 'Undo',
           onAction: undoRemove,
         },
@@ -737,6 +751,7 @@ export const EngineProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     },
     [flushRemoval, nameOf, showNotice, undoRemove]
   );
+  const removeTorrents = useCallback((ids: string[]) => removeTransfers(ids, []), [removeTransfers]);
 
   // Leaving the app ends any undo window at once and saves the list for the next cold start.
   useEffect(() => {
@@ -859,8 +874,17 @@ export const EngineProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const resumeDownload = useCallback((id: string) => downloadCall('resume', () => maglevEngine.resumeDownload(id)), [downloadCall]);
   const retryDownload = useCallback((id: string) => downloadCall('retry', () => maglevEngine.retryDownload(id)), [downloadCall]);
   const removeDownload = useCallback(
-    (id: string, deleteFiles: boolean) => downloadCall('remove', () => maglevEngine.removeDownload(id, deleteFiles)),
-    [downloadCall]
+    async (id: string, deleteFiles: boolean) => {
+      // Keeping the files goes through the Undo window; deleting them is confirmed by the caller and happens now.
+      if (!deleteFiles) {
+        removeTransfers([], [id]);
+        return true;
+      }
+      const ok = await downloadCall('remove', () => maglevEngine.removeDownload(id, true));
+      if (ok) setRemovingDl((prev) => [...prev, id]);
+      return ok;
+    },
+    [downloadCall, removeTransfers]
   );
   const refreshDownloadUrl = useCallback((id: string, url: string) => maglevEngine.refreshDownloadUrl(id, url, {}), []);
 
@@ -886,6 +910,7 @@ export const EngineProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         resumeAll,
         deleteTorrent,
         removeTorrents,
+        removeTransfers,
         undoRemove,
         notice,
         dismissNotice,

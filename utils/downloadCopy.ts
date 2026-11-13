@@ -381,3 +381,6 @@ export function removeCopy(d: DownloadSnapshot): { keepLabel: string; deleteLabe
     subtitle: 'The part that was downloaded can stay on your device or be deleted too.',
   };
 }
+
+/** What to tell the user when no file manager opens the folder. */
+export const OPEN_FOLDER_FAILED_TEXT = "Couldn't open the folder.";
