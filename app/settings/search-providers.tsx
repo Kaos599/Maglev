@@ -12,6 +12,7 @@ import { ProviderInfo, TORZNAB_PREFIX, allProviderInfo, coverage, formatSeconds 
 import { loadExtraProviders } from '../../components/search/extra';
 import { clearCookies } from 'maglev-engine';
 import { SearchPrefs, clearSiteChecks, deleteTorznabApiKey, setTorznabApiKey, useSearchPrefs } from '../../utils/prefs/search';
+import { CloudflareSolverSheet } from '../../components/search/CloudflareSolverSheet';
 import { testProvider } from '../../utils/search/aggregate';
 import type { Category } from '../../utils/search/types';
 
@@ -44,10 +45,17 @@ export default function SearchProvidersSettings() {
   const [torznabOpen, setTorznabOpen] = useState(false);
   const [tests, setTests] = useState<Record<string, TestOutcome>>({});
   const [testing, setTesting] = useState<string | null>(null);
+  const [solving, setSolving] = useState<string | null>(null);
 
   const all = useMemo(() => allProviderInfo(prefs), [prefs]);
   const byId = useMemo(() => new Map(all.map((p) => [p.id, p])), [all]);
-  const onList = useMemo(() => prefs.enabled.map((id) => byId.get(id)).filter((p): p is ProviderInfo => !!p), [prefs.enabled, byId]);
+  // Sources that last sat behind a Cloudflare check get their own section on top and are not listed twice.
+  const checkList = useMemo(
+    () => prefs.needsCheck.filter((id) => prefs.enabled.includes(id)).map((id) => byId.get(id)).filter((p): p is ProviderInfo => !!p?.cloudflare),
+    [prefs.needsCheck, prefs.enabled, byId],
+  );
+  const checkIds = useMemo(() => new Set(checkList.map((p) => p.id)), [checkList]);
+  const onList = useMemo(() => prefs.enabled.filter((id) => !checkIds.has(id)).map((id) => byId.get(id)).filter((p): p is ProviderInfo => !!p), [prefs.enabled, byId, checkIds]);
   const offList = useMemo(
     () => all.filter((p) => !prefs.enabled.includes(p.id) && (prefs.adult || !p.nsfw)),
     [all, prefs.enabled, prefs.adult],
@@ -155,6 +163,7 @@ export default function SearchProvidersSettings() {
     return { text: t?.ok ? `${coverage(p)} · ${formatSeconds(t.ms)}` : coverage(p), tone: 'normal' };
   };
 
+  const solvingProvider = solving ? byId.get(solving) : undefined;
   const open = openId ? byId.get(openId) ?? null : null;
   const openPos = open ? prefs.enabled.indexOf(open.id) : -1;
 
@@ -162,6 +171,27 @@ export default function SearchProvidersSettings() {
     <SettingsPage title="Search sources">
       <Stack.Screen options={{ headerShown: false }} />
       <Caption>Maglev asks every source you turn on at the same time. Open a source to set which one wins when two return the same torrent.</Caption>
+
+      {checkList.length > 0 ? (
+        <View style={styles.section}>
+          <SectionHeader title="Needs a quick check" />
+          <Card>
+            {checkList.map((p, i) => (
+              <ProviderRow
+                key={p.id}
+                provider={p}
+                enabled
+                note="Tap ? to open the site once"
+                noteTone="accent"
+                first={i === 0}
+                onOpen={() => setOpenId(p.id)}
+                onToggle={(on) => setEnabled(p.id, on)}
+                onCheck={() => setSolving(p.id)}
+              />
+            ))}
+          </Card>
+        </View>
+      ) : null}
 
       <View style={styles.section}>
         <SectionHeader title="What sources to show" />
@@ -209,7 +239,7 @@ export default function SearchProvidersSettings() {
       </View>
 
       <View style={styles.section}>
-        <SectionHeader title={`On · ${onList.length}`} />
+        <SectionHeader title={`On · ${prefs.enabled.length}`} />
         <Card>
           {onList.length === 0 ? <Text style={styles.empty}>Nothing is on. Turn on a source below.</Text> : null}
           {onList.map((p, i) => {
@@ -219,7 +249,7 @@ export default function SearchProvidersSettings() {
                 key={p.id}
                 provider={p}
                 enabled
-                position={i + 1}
+                position={prefs.enabled.indexOf(p.id) + 1}
                 note={n.text}
                 noteTone={n.tone}
                 first={i === 0}
@@ -284,6 +314,19 @@ export default function SearchProvidersSettings() {
         onAddress={(v) => open && setAddress(open, v)}
         onRemove={open?.custom ? () => removeTorznab(open.id) : undefined}
       />
+      {solvingProvider?.cloudflare ? (
+        <CloudflareSolverSheet
+          visible
+          providerName={solvingProvider.name}
+          solverUrl={solvingProvider.cloudflare.solverUrl}
+          onClose={() => setSolving(null)}
+          onSolved={() => {
+            const id = solving;
+            setSolving(null);
+            if (id) update((p) => ({ needsCheck: p.needsCheck.filter((x) => x !== id) }));
+          }}
+        />
+      ) : null}
       <TorznabSheet visible={torznabOpen} onClose={() => setTorznabOpen(false)} onAdd={addTorznab} />
     </SettingsPage>
   );

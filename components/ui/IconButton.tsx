@@ -14,6 +14,8 @@ export interface IconButtonProps {
   color?: string;
   /** Count shown in a small badge; 0 or undefined hides it. */
   badge?: number;
+  /** A small lime dot in the corner: something here needs a look. */
+  dot?: boolean;
   disabled?: boolean;
   /** In use (e.g. a filter is applied): the icon turns accent and grows. No box behind it. */
   selected?: boolean;
@@ -35,6 +37,7 @@ export function IconButton({
   size = 20,
   color,
   badge,
+  dot = false,
   disabled = false,
   selected,
   testID,
@@ -88,6 +91,7 @@ export function IconButton({
           <Text style={styles.badgeText}>{badge > 99 ? '99+' : badge}</Text>
         </View>
       ) : null}
+      {dot ? <View style={styles.dot} /> : null}
     </PressableScale>
   );
 }
@@ -108,5 +112,6 @@ const makeStyles = (c: ThemeColors) =>
       alignItems: 'center',
       justifyContent: 'center',
     },
+    dot: { position: 'absolute', top: 8, right: 8, width: 8, height: 8, borderRadius: 4, backgroundColor: c.accent },
     badgeText: { ...type.monoBold, fontSize: 10, color: c.onAccent },
   });

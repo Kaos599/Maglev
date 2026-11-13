@@ -7,14 +7,13 @@ import { useSettings } from '../../context/SettingsContext';
 import { useTheme } from '../../context/ThemeContext';
 import { ThemeColors, radius, spacing, type } from '../../constants/theme';
 import { PixelIcon } from '../../components/PixelIcon';
-import { Button, Chip, EmptyBlock, IconButton, Screen, Sheet } from '../../components/ui';
+import { Button, Chip, EmptyBlock, IconButton, PressableScale, Screen, Sheet } from '../../components/ui';
 import { ResultRow } from '../../components/search/ResultRow';
 import { SKELETON_FIRST_COUNT, SKELETON_MORE_COUNT, SkeletonRows } from '../../components/search/SkeletonRows';
 import { seenRowCount, stableOrder } from '../../components/search/stableOrder';
 import { prefetchAllowed } from '../../components/search/prefetch';
 import { magnetHash, metadataPrefetch } from '../../components/search/metadataCache';
-import { SourceScoreboard, ScoreboardEntry } from '../../components/search/SourceScoreboard';
-import { SourcesCard } from '../../components/search/SourcesCard';
+import { useTabPrefs } from '../../components/tabs/tabPrefsStore';
 import { FollowSheet } from '../../components/search/FollowSheet';
 import { followRuleFromResult, type FollowTarget } from '../../utils/follow';
 import { NoticeBanner, addErrorNotice, useNotice } from '../../components/search/Notice';
@@ -23,10 +22,11 @@ import { CATEGORY_LABEL, formatAge, providerMap } from '../../components/search/
 import { admit, oneTapDecision, pendingNeedOf } from '../../utils/admission';
 import { formatBytes } from '../../constants/format';
 import { riskySources } from '../../utils/search/safety';
-import { addRecentSearch, clearRecentSearches, getSearchPrefs, useSearchPrefs } from '../../utils/prefs/search';
+import { addRecentSearch, clearRecentSearches, getSearchPrefs, removeRecentSearch, useSearchPrefs } from '../../utils/prefs/search';
 import { availableCategories, eligibleProviders, mergeInto, rerunProvider, resolveResult, searchAll } from '../../utils/search/aggregate';
 import { CloudflareSolverSheet } from '../../components/search/CloudflareSolverSheet';
-import { tallySources, unansweredNote } from '../../utils/search/answered';
+import { nextNeedsCheck, shouldShowFixHint, tallySources } from '../../utils/search/answered';
+import { formatAgeLong } from '../../utils/search/age';
 import type { Category, MergedResult, SearchUpdate } from '../../utils/search/types';
 import { ResultPreviewSheet } from '../../components/search/ResultPreviewSheet';
 import { MobileDataSheet } from '../../components/search/MobileDataSheet';
@@ -42,6 +42,13 @@ const PREFETCH_STABLE_MS = 1500;
 const PREFETCH_SETTLED_MS = 300;
 
 const keyOfResult = (r: MergedResult) => r.infoHash;
+
+/** The one line in the list that is not a result: "N sources need a quick check". */
+interface FixHintItem {
+  fixHint: true;
+}
+type ListItem = MergedResult | FixHintItem;
+const FIX_AFTER = 3;
 
 type SortKey = 'seeders' | 'newest' | 'size' | 'name';
 const SORT_LABEL: Record<SortKey, string> = { seeders: 'Most shared', newest: 'Newest', size: 'Largest', name: 'Name' };
@@ -101,6 +108,12 @@ export default function SearchScreen() {
   const [retryTick, setRetryTick] = useState(0);
   const [confirm, setConfirm] = useState<{ result: MergedResult; reason: string } | null>(null);
   const [solving, setSolving] = useState<string | null>(null);
+  // True while the user is working through the "needs a quick check" line: after one solve, the next opens.
+  const fixing = useRef(false);
+  const [focused, setFocused] = useState(false);
+  const inputRef = useRef<React.ComponentRef<typeof TextInput>>(null);
+  const tabs = useTabPrefs();
+  const browserTabShown = !tabs.hidden.includes('browse');
   const [following, setFollowing] = useState<FollowTarget | null>(null);
   const followCache = useRef(new Map<string, FollowTarget | null>());
   const { notice, show, dismiss } = useNotice();
@@ -190,6 +203,12 @@ export default function SearchScreen() {
     const id = solving;
     setSolving(null);
     if (!id) return;
+    updatePrefs((p) => ({ needsCheck: p.needsCheck.filter((x) => x !== id) }));
+    const next = fixing.current
+      ? (update?.sources ?? []).find((x) => x.state === 'challenge' && x.providerId !== id && providers.get(x.providerId)?.cloudflare)
+      : undefined;
+    if (next) setSolving(next.providerId);
+    else fixing.current = false;
     const mine = reqId.current;
     setUpdate((u) => (u ? { ...u, sources: u.sources.map((s) => (s.providerId === id ? { ...s, state: 'searching' as const } : s)) } : u));
     loadExtraProviders(getSearchPrefs().torznab)
@@ -207,7 +226,15 @@ export default function SearchScreen() {
         );
       })
       .catch(() => {});
-  }, [solving, trimmed, category]);
+  }, [solving, trimmed, category, update, providers, updatePrefs]);
+
+  // Remember which sources sat behind a check, so Settings and the header dot can say so after the search is gone.
+  useEffect(() => {
+    if (!update?.done) return;
+    const prev = getSearchPrefs().needsCheck;
+    const next = nextNeedsCheck(prev, update.sources);
+    if (next.length !== prev.length || next.some((id, i) => id !== prev[i])) updatePrefs({ needsCheck: next });
+  }, [update, updatePrefs]);
 
   const stop = useCallback(() => {
     reqId.current += 1;
@@ -336,7 +363,6 @@ export default function SearchScreen() {
   // A source behind a Cloudflare check, or one that failed, has not answered.
   const tally = useMemo(() => tallySources(sources), [sources]);
   const answered = tally.answered;
-  const unanswered = unansweredNote(tally);
   const total = update?.sources.length ?? 0;
 
   // Rows the user has had on screen keep their slots while later sources answer; new rows are ranked
@@ -393,16 +419,57 @@ export default function SearchScreen() {
     return () => metadataPrefetch.cancelIf(topKey);
   }, [topKey, netOk]);
 
-  const entries: ScoreboardEntry[] = useMemo(() => sources.map((status) => ({ status, name: nameOf(status.providerId) })), [sources, nameOf]);
+  // Sources that returned results, most first: the choices for "show only one source".
+  const sourceCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const r of update?.results ?? []) for (const id of r.sources) counts.set(id, (counts.get(id) ?? 0) + 1);
+    return [...counts.entries()].sort((a, b) => b[1] - a[1]);
+  }, [update]);
+
+  const challenged = useMemo(() => sources.filter((s) => s.state === 'challenge' && providers.get(s.providerId)?.cloudflare), [sources, providers]);
+  const showFix = shouldShowFixHint(Date.now(), prefs.fixHintDismissedAt, challenged.length);
+  const startFix = useCallback(() => {
+    const first = challenged[0];
+    if (!first) return;
+    fixing.current = true;
+    setSolving(first.providerId);
+  }, [challenged]);
+  const needsCheckOn = prefs.needsCheck.filter((id) => prefs.enabled.includes(id)).length > 0;
+
+  const fixBanner = useMemo(
+    () => (
+      <View style={styles.fix}>
+        <View style={styles.fixMark} importantForAccessibility="no-hide-descendants">
+          <Text style={styles.fixMarkText}>?</Text>
+        </View>
+        <View style={styles.fixText}>
+          <Text style={styles.fixTitle}>{challenged.length === 1 ? '1 source needs a quick check' : `${challenged.length} sources need a quick check`}</Text>
+          <Text style={styles.fixBody}>They'll add more results.</Text>
+        </View>
+        <Button label="Fix" variant="ghost" onPress={startFix} accessibilityLabel="Fix sources that need a quick check" />
+        <IconButton icon="close" size={16} onPress={() => updatePrefs({ fixHintDismissedAt: Date.now() })} accessibilityLabel="Dismiss" />
+      </View>
+    ),
+    [styles, challenged.length, startFix, updatePrefs],
+  );
+
+  const listData = useMemo<readonly ListItem[]>(() => {
+    if (!showFix || shown.length === 0) return shown;
+    return [...shown.slice(0, FIX_AFTER), { fixHint: true }, ...shown.slice(FIX_AFTER)];
+  }, [shown, showFix]);
 
   const renderItem = useCallback(
-    ({ item }: { item: MergedResult }) => (
+    ({ item }: { item: ListItem }) =>
+      'fixHint' in item ? (
+        fixBanner
+      ) : (
       <ResultRow
         name={item.name}
+        category={item.category}
         sizeBytes={item.sizeBytes}
         seeders={item.seeders}
         leechers={item.leechers}
-        age={formatAge(item.publishedAt)}
+        age={formatAgeLong(item.publishedAt)}
         via={item.sources.map(nameOf).join(' · ')}
         risky={riskySources(item, providers, prefs.warnUnsafe)}
         added={sessionAdded.has(item.infoHash) || inList.has(item.infoHash)}
@@ -411,38 +478,40 @@ export default function SearchScreen() {
         onOpen={() => setPreview(item)}
         onFollow={followTargetOf(item) ? () => setFollowing(followTargetOf(item)) : undefined}
       />
-    ),
-    [followTargetOf, busyHash, requestAdd, setPreview, inList, nameOf, sessionAdded, providers, prefs.warnUnsafe],
+      ),
+    [fixBanner, followTargetOf, busyHash, requestAdd, setPreview, inList, nameOf, sessionAdded, providers, prefs.warnUnsafe],
   );
 
   const openProviders = useCallback(() => router.push('/settings/search-providers' as never), [router]);
 
   const idle = trimmed.length < MIN_QUERY;
+  const showRecents = focused && idle && recents.length > 0;
   const hasResults = (update?.results.length ?? 0) > 0;
 
+  const enabledCount = prefs.enabled.length;
   let body: React.ReactNode;
   if (idle) {
-    body = (
-      <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.idle}>
-        {recents.length > 0 ? (
-          <View>
-            <View style={styles.recentsHead}>
-              <Text style={styles.sectionLabel} accessibilityRole="header">
-                Recent
-              </Text>
-              <Button label="Clear" variant="ghost" onPress={() => setRecents(clearRecentSearches())} accessibilityLabel="Clear recent searches" />
-            </View>
-            <View style={styles.wrapRow}>
-              {recents.map((r) => (
-                <Chip key={r} label={r} onPress={() => setQuery(r)} />
-              ))}
-            </View>
+    body =
+      enabledCount === 0 ? (
+        <EmptyBlock
+          icon="search"
+          title={empty.search.noSource.title}
+          body={empty.search.noSource.body}
+          primary={{ label: 'Change sources', onPress: openProviders }}
+        />
+      ) : (
+        <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.idle}>
+          <EmptyBlock
+            icon="search"
+            title={empty.search.idle(enabledCount).title}
+            body={empty.search.idle(enabledCount).body}
+          />
+          <View style={styles.disclaimerRow}>
+            <PixelIcon name="shield" size={16} color={colors.textMuted} />
+            <Text style={styles.disclaimer}>Maglev doesn't host or index anything. You're responsible for what you download.</Text>
           </View>
-        ) : null}
-        <SourcesCard providers={onProviders} onChange={openProviders} />
-        <Text style={styles.disclaimer}>Maglev doesn't host or index anything. You're responsible for what you download.</Text>
-      </ScrollView>
-    );
+        </ScrollView>
+      );
   } else if (failed) {
     body = (
       <EmptyBlock
@@ -463,12 +532,25 @@ export default function SearchScreen() {
       />
     );
   } else {
+    const emptyResults =
+      update && answered === 0 ? (
+        <EmptyBlock
+          icon="warning"
+          error
+          title={empty.search.noAnswer.title}
+          body={empty.search.noAnswer.body}
+          primary={{ label: 'Retry', icon: 'retry', onPress: () => setRetryTick((n) => n + 1) }}
+        />
+      ) : (
+        <EmptyBlock icon="search" title={empty.search.noResults(trimmed).title} body={empty.search.noResults(trimmed).body} />
+      );
     const list = (
       <View style={styles.listWrap} onLayout={onListLayout}>
         <FlashList
           key={rankKey}
-          data={shown}
-          keyExtractor={keyOfResult}
+          data={listData}
+          keyExtractor={(item: ListItem) => ('fixHint' in item ? 'fix-hint' : keyOfResult(item))}
+          getItemType={(item: ListItem) => ('fixHint' in item ? 'fix' : 'result')}
           renderItem={renderItem}
           contentContainerStyle={styles.list}
           keyboardShouldPersistTaps="handled"
@@ -478,16 +560,13 @@ export default function SearchScreen() {
             searching ? (
               <SkeletonRows count={SKELETON_FIRST_COUNT} />
             ) : (
-              update && answered === 0 ? (
-                <EmptyBlock
-                  icon="warning"
-                  error
-                  title={empty.search.noAnswer.title}
-                  body={empty.search.noAnswer.body}
-                  primary={{ label: 'Retry', icon: 'retry', onPress: () => setRetryTick((n) => n + 1) }}
-                />
+              showFix ? (
+                <>
+                  {fixBanner}
+                  {emptyResults}
+                </>
               ) : (
-                <EmptyBlock icon="search" title={empty.search.noResults(trimmed).title} body={empty.search.noResults(trimmed).body} />
+                emptyResults
               )
             )
           }
@@ -497,23 +576,30 @@ export default function SearchScreen() {
     body = (
       <>
         <View style={styles.sources} accessibilityLiveRegion="polite">
-          <View style={styles.summaryRow}>
-            <Text style={styles.summary}>
-              {searching
-                ? `${answered}/${total || eligible.length} sources answered, results appear as they arrive`
-                : `${stopped ? 'Stopped. ' : ''}${answered}/${total} sources answered${unanswered ? ` · ${unanswered}` : ''} · ${update?.results.length ?? 0} results`}
-            </Text>
-            {!searching && hasResults ? (
-              <Button
-                label={SORT_LABEL[prefs.sort]}
-                icon="sort"
-                variant="ghost"
-                onPress={() => setSortOpen(true)}
-                accessibilityLabel={`Sort: ${SORT_LABEL[prefs.sort]}`}
-              />
-            ) : null}
-          </View>
-          {entries.length > 0 ? <SourceScoreboard entries={entries} selected={sourceFilter} onSelect={setSourceFilter} onSolve={(id) => providers.get(id)?.cloudflare && setSolving(id)} /> : null}
+          {searching ? (
+            <>
+              <View style={styles.summaryRow}>
+                <Text style={styles.summary}>{`Searching… ${answered} of ${total || eligible.length} sources`}</Text>
+                <Button label="Stop" variant="ghost" onPress={stop} accessibilityLabel="Stop searching" />
+              </View>
+              <View style={styles.track} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
+                <View style={[styles.trackFill, { width: `${Math.min(100, Math.round((answered / Math.max(1, total || eligible.length)) * 100))}%` }]} />
+              </View>
+            </>
+          ) : (
+            <View style={styles.summaryRow}>
+              <Text style={styles.summary}>{`${stopped ? 'Stopped · ' : ''}${shown.length} ${shown.length === 1 ? 'result' : 'results'}`}</Text>
+              {hasResults ? (
+                <Button
+                  label={SORT_LABEL[prefs.sort]}
+                  icon="sort"
+                  variant="ghost"
+                  onPress={() => setSortOpen(true)}
+                  accessibilityLabel={`Sort: ${SORT_LABEL[prefs.sort]}`}
+                />
+              ) : null}
+            </View>
+          )}
         </View>
         {list}
       </>
@@ -525,14 +611,23 @@ export default function SearchScreen() {
       title="Search"
       actions={
         <>
-          {/* Labelled, not icon-only: people could not tell the globe opened the browser. */}
-          <Button label="Browser" icon="network" variant="secondary" onPress={() => router.push('/browser')} accessibilityLabel="Open the browser" />
+          {/* Labelled, not icon-only: people could not tell the globe opened the browser. Hidden when the Browser tab is on. */}
+          {!browserTabShown ? (
+            <PressableScale
+              onPress={() => router.push('/browser')}
+              style={styles.browserBtn}
+              accessibilityRole="button"
+              accessibilityLabel="Open the browser"
+            >
+              <PixelIcon name="network" size={16} color={colors.text} />
+              <Text style={styles.browserText}>Browser</Text>
+            </PressableScale>
+          ) : null}
           <IconButton
             icon="filter"
-            badge={prefs.enabled.length}
-            selected={!!sourceFilter}
+            dot={needsCheckOn}
             onPress={openProviders}
-            accessibilityLabel={`Sources, ${prefs.enabled.length} on`}
+            accessibilityLabel={`Sources, ${prefs.enabled.length} on${needsCheckOn ? ', some need a quick check' : ''}`}
           />
         </>
       }
@@ -554,13 +649,46 @@ export default function SearchScreen() {
             autoCorrect={false}
             returnKeyType="search"
             accessibilityLabel="Search torrents"
+            ref={inputRef}
+            onFocus={() => setFocused(true)}
+            onBlur={() => setFocused(false)}
           />
-          {searching ? (
-            <Button label="Stop" variant="ghost" onPress={stop} accessibilityLabel="Stop searching" />
-          ) : query.length > 0 ? (
-            <IconButton icon="close" size={16} onPress={() => setQuery('')} accessibilityLabel="Clear search" />
-          ) : null}
+          {query.length > 0 ? <IconButton icon="close" size={16} onPress={() => setQuery('')} accessibilityLabel="Clear search" /> : null}
         </View>
+        {showRecents ? (
+          // A scroll view with handled taps: a tap on a row registers before the field loses focus.
+          <ScrollView keyboardShouldPersistTaps="handled" scrollEnabled={false} style={styles.recentsWrap}>
+            <View style={styles.recentsCard}>
+              <View style={styles.recentsHead}>
+                <Text style={styles.sectionLabel} accessibilityRole="header">
+                  Recent
+                </Text>
+                <Button label="Clear" variant="ghost" onPress={() => setRecents(clearRecentSearches())} accessibilityLabel="Clear recent searches" />
+              </View>
+              {recents.map((r) => (
+                <View key={r} style={styles.recentRow}>
+                  <PressableScale
+                    containerStyle={styles.recentMain}
+                    style={styles.recentMainInner}
+                    onPress={() => {
+                      setQuery(r);
+                      remember(r);
+                      inputRef.current?.blur();
+                    }}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Search ${r}`}
+                  >
+                    <PixelIcon name="clock" size={16} color={colors.textMuted} />
+                    <Text style={styles.recentText} numberOfLines={1}>
+                      {r}
+                    </Text>
+                  </PressableScale>
+                  <IconButton icon="close" size={16} onPress={() => setRecents(removeRecentSearch(r))} accessibilityLabel={`Remove ${r} from recent searches`} />
+                </View>
+              ))}
+            </View>
+          </ScrollView>
+        ) : null}
       </View>
       <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.catScroll} contentContainerStyle={styles.chips}>
         {categories.map((c) => (
@@ -598,6 +726,19 @@ export default function SearchScreen() {
             />
           ))}
         </View>
+        {sourceCounts.length > 1 ? (
+          <>
+            <Text style={[styles.sectionLabel, styles.filterRow]} accessibilityRole="header">
+              Source
+            </Text>
+            <View style={[styles.wrapRow, styles.sourceChips]}>
+              <Chip label="All" selected={sourceFilter === null} onPress={() => setSourceFilter(null)} />
+              {sourceCounts.map(([id, n]) => (
+                <Chip key={id} label={`${nameOf(id)} ${n}`} selected={sourceFilter === id} onPress={() => setSourceFilter(id)} />
+              ))}
+            </View>
+          </>
+        ) : null}
         <View style={[styles.wrapRow, styles.filterRow]}>
           {MIN_SIZES.map((m) => (
             <Chip key={m.bytes} label={m.label} selected={minBytes === m.bytes} onPress={() => setMinBytes(m.bytes)} />
@@ -680,10 +821,28 @@ const makeStyles = (c: ThemeColors) =>
     catScroll: { flexGrow: 0, marginTop: spacing.md, marginBottom: spacing.sm },
     chips: { paddingHorizontal: spacing.lg, gap: spacing.sm },
     idle: { paddingHorizontal: spacing.lg, paddingTop: spacing.md, paddingBottom: spacing.xxxl, gap: spacing.xxl },
-    recentsHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+    recentsWrap: { flexGrow: 0, marginTop: spacing.sm },
+    recentsCard: { borderRadius: radius.lg, borderWidth: 1, borderColor: c.border, backgroundColor: c.surface, paddingBottom: spacing.xs },
+    recentsHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingLeft: spacing.lg, paddingRight: spacing.xs },
+    recentRow: { flexDirection: 'row', alignItems: 'center', paddingLeft: spacing.lg, paddingRight: spacing.xs },
+    recentMain: { flex: 1, minHeight: 44 },
+    recentMainInner: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, minHeight: 44 },
+    recentText: { ...type.body, flex: 1, fontSize: 14, color: c.text },
+    sourceChips: { marginTop: spacing.sm },
     sectionLabel: { ...type.bodyStrong, fontSize: 12, color: c.textMuted },
     wrapRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
-    disclaimer: { ...type.body, fontSize: 11, lineHeight: 16, color: c.textMuted },
+    disclaimerRow: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.sm, paddingTop: spacing.lg, borderTopWidth: 1, borderTopColor: c.border },
+    disclaimer: { ...type.body, flex: 1, fontSize: 11, lineHeight: 16, color: c.textMuted, textAlign: 'left' },
+    browserBtn: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs + 2, height: 44, paddingHorizontal: spacing.md, borderRadius: radius.md, borderWidth: 1, borderColor: c.borderStrong, backgroundColor: c.surface },
+    browserText: { ...type.bodyStrong, fontSize: 13, color: c.text },
+    track: { height: 2, backgroundColor: c.border },
+    trackFill: { height: 2, backgroundColor: c.accent },
+    fix: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, minHeight: 64, paddingVertical: spacing.sm, paddingLeft: spacing.md, paddingRight: spacing.xs, marginBottom: spacing.sm, borderRadius: radius.md, borderWidth: 1, borderColor: c.border, backgroundColor: c.surface },
+    fixMark: { width: 36, height: 36, alignItems: 'center', justifyContent: 'center', borderRadius: radius.sm + 2, borderWidth: 1, borderColor: c.accent },
+    fixMarkText: { ...type.monoBold, fontSize: 14, color: c.accentText },
+    fixText: { flex: 1, gap: 2 },
+    fixTitle: { ...type.bodyStrong, fontSize: 13, color: c.text },
+    fixBody: { ...type.body, fontSize: 12, color: c.textMuted },
     sources: { paddingHorizontal: spacing.lg, paddingBottom: spacing.sm, gap: spacing.sm },
     summaryRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.sm },
     summary: { ...type.body, flex: 1, fontSize: 12, lineHeight: 17, color: c.textMuted },
