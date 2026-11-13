@@ -263,3 +263,19 @@ export const streamSheet = {
   audio: 'Audio',
   name: 'Name',
 } as const;
+
+/**
+ * Settings > Interface > Font. Each description is linted by scripts/test-copy-voice.js like a
+ * banner body: at most 16 words, ends with a period. The sample is a made-up file shown in each style.
+ */
+export const fontStyleCopy = {
+  label: 'Font',
+  hint: 'Applies as soon as you pick it.',
+  sampleName: 'Big Buck Bunny 1080p',
+  sampleSize: '691 MB',
+  options: [
+    { value: 'clean', title: 'Clean', description: 'Easy to read. Inter for titles, names and numbers.' },
+    { value: 'retro', title: 'Retro', description: 'Pixel titles and fixed-width numbers, like an old terminal.' },
+    { value: 'mono', title: 'Mono', description: 'Fixed-width titles, names and numbers. Labels and text stay easy to read.' },
+  ],
+} as const;

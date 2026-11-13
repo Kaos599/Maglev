@@ -74,6 +74,7 @@ export function migrateSettings(raw: unknown): MaglevSettings {
   const defaults: MaglevSettings = JSON.parse(JSON.stringify(DEFAULT_SETTINGS));
   const body = isPlainObject(raw) && isPlainObject(raw.settings) ? raw.settings : raw;
   const merged = mergeWithDefaults(defaults, body);
+  if (!['clean', 'retro', 'mono'].includes(merged.appearance.fontStyle)) merged.appearance.fontStyle = 'clean';
   merged.downloadFolder = sanitizeFolder(isPlainObject(body) ? body.downloadFolder : null);
   return merged;
 }

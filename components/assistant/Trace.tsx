@@ -79,7 +79,7 @@ const TraceStep = memo(function TraceStep({ step }: { step: ProgressStep }) {
 const makeStyles = (c: ThemeColors) =>
   StyleSheet.create({
     wrap: { alignSelf: 'stretch', paddingHorizontal: spacing.md, borderWidth: 1, borderColor: c.border, borderRadius: radius.md },
-    title: { ...type.brand, fontSize: type.size.sm, color: c.textMuted },
+    title: { ...type.heading, fontSize: type.size.sm, color: c.textMuted },
     summary: { ...type.body, flex: 1, fontSize: type.size.md, color: c.textMuted },
     list: { paddingBottom: spacing.sm, gap: spacing.xs },
     stepRow: { minHeight: 32, flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
