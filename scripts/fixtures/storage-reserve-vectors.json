@@ -1,0 +1,14 @@
+[
+  {"name": "small volume uses the 500 MiB floor", "total": 17179869184, "free": 629145600, "blocked": false, "reserve": 524288000, "expectBlocked": false},
+  {"name": "one byte under the reserve pauses", "total": 17179869184, "free": 524287999, "blocked": false, "reserve": 524288000, "expectBlocked": true},
+  {"name": "exactly the reserve does not pause", "total": 17179869184, "free": 524288000, "blocked": false, "reserve": 524288000, "expectBlocked": false},
+  {"name": "paused stays paused at the reserve", "total": 17179869184, "free": 524288000, "blocked": true, "reserve": 524288000, "expectBlocked": true},
+  {"name": "paused stays paused one byte under reserve plus 200 MiB", "total": 17179869184, "free": 734003199, "blocked": true, "reserve": 524288000, "expectBlocked": true},
+  {"name": "paused resumes at reserve plus 200 MiB", "total": 17179869184, "free": 734003200, "blocked": true, "reserve": 524288000, "expectBlocked": false},
+  {"name": "unknown total uses the floor", "total": 0, "free": 524287999, "blocked": false, "reserve": 524288000, "expectBlocked": true},
+  {"name": "mid volume uses 2 percent between floor and cap", "total": 42949672960, "free": 858993458, "blocked": false, "reserve": 858993459, "expectBlocked": true},
+  {"name": "big volume caps the reserve at 1 GiB", "total": 68719476736, "free": 1073741823, "blocked": false, "reserve": 1073741824, "expectBlocked": true},
+  {"name": "big volume stays paused one byte short", "total": 68719476736, "free": 1283457023, "blocked": true, "reserve": 1073741824, "expectBlocked": true},
+  {"name": "big volume resumes at 1 GiB plus 200 MiB", "total": 68719476736, "free": 1283457024, "blocked": true, "reserve": 1073741824, "expectBlocked": false},
+  {"name": "231 GiB phone with 3.7 GiB free keeps downloading", "total": 248034361344, "free": 3972844748, "blocked": false, "reserve": 1073741824, "expectBlocked": false}
+]

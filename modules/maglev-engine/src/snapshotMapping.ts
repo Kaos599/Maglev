@@ -62,6 +62,7 @@ export function snapshotToTelemetry(s: Snapshot): TorrentTelemetry {
     moveProgress: s.state === 'MOVING' ? (s.moveProgress ?? 0) : null,
     health: s.health ?? null,
     includedBytes: s.includedBytes ?? 0,
+    heldBytes: s.heldBytes ?? s.progressBytes,
     webSeeds: s.webSeeds ?? 0,
     resolvingSecs: s.resolvingSecs ?? null,
   };

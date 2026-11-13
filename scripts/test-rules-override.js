@@ -11,7 +11,7 @@ const kt = 'modules/maglev-engine/android/src/main/java/com/maglev/engine/';
 const src = 'modules/maglev-engine/src/';
 const rs = 'native/maglev-core/src/';
 
-const contract = read('docs/NATIVE_CONTRACT.md');
+const contract = require('./lib/privateDocs').readPrivateDoc('NATIVE_CONTRACT.md');
 const host = read(kt + 'EngineHost.kt');
 const mod = read(kt + 'MaglevEngineModule.kt');
 const nativeCore = read(kt + 'NativeCore.kt');
@@ -34,9 +34,9 @@ function check(name, ok) {
   if (!ok) failed++;
 }
 
-check('contract documents resumeAnyway and resumeDownloadAnyway', /resumeAnyway/.test(contract) && /resumeDownloadAnyway/.test(contract));
-check('contract documents seed_metered and seedOnMobileData', /seed_metered/.test(contract) && /seedOnMobileData/.test(contract));
-check('contract documents allowed_anyway', /allowed_anyway/.test(contract));
+if (contract) check('contract documents resumeAnyway and resumeDownloadAnyway', /resumeAnyway/.test(contract) && /resumeDownloadAnyway/.test(contract));
+if (contract) check('contract documents seed_metered and seedOnMobileData', /seed_metered/.test(contract) && /seedOnMobileData/.test(contract));
+if (contract) check('contract documents allowed_anyway', /allowed_anyway/.test(contract));
 
 for (const fn of ['resumeAnyway', 'resumeDownloadAnyway']) {
   check(`module exposes ${fn}`, new RegExp(`AsyncFunction\\("${fn}"\\)`).test(mod));

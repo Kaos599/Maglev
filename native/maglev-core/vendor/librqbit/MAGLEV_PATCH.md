@@ -47,6 +47,12 @@ Behaviour notes: the order only changes which file's pieces are requested first.
 Already-requested pieces are not cancelled. Files that are not selected (`only_files`) are skipped by
 `iter_queued_pieces` through the `queue_pieces` filter, wherever they sit in the list.
 
+26. `src/storage/filesystem/fs.rs` (`ensure_file_length`)
+    Returns early when the open file already has the wanted length. `TorrentStateInitializing` calls it for every
+    included file on each start (`torrent_state/initializing.rs`, "Ensure file lengths are correct"); `ftruncate` to the
+    same length still updates the file's mtime on Linux/Android, so a finished torrent's files read as "changed" by
+    Maglev's file-health check (`file_health.rs`, size and mtime) after every restart. Found on device (0.19 test).
+
 ## Per-torrent speed limits (hunks 7-11, Wave 4, contract section 11.2)
 
 Why: librqbit builds the per-torrent limiter (`TorrentStateLive::ratelimits`) once, from

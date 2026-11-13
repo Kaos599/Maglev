@@ -49,7 +49,7 @@ use crate::scheduler::{
     pending_view, plan, uploaded_total, Action, RqState, StateInputs, TorrentFacts, TorrentState, HEALTH_FILES_CHANGED, HEALTH_FILES_MISSING, HEALTH_NO_PEERS,
     HEALTH_STORAGE_FULL, HEALTH_STORAGE_UNAVAILABLE, PAUSED_BY_SEED_LIMIT, PAUSED_BY_USER,
 };
-use crate::readiness::{file_readiness, have_piece};
+use crate::readiness::{file_readiness, have_piece, torrent_bytes, FileBytes};
 use crate::relocate::{
     check_destination, destination_folder, execute_moves, move_error, plan_moves, probe_writable,
     remove_empty_dirs, rollback, MoveProgress,
@@ -677,17 +677,41 @@ impl MaglevEngine {
             ),
             None => (0, 0, 0, 0),
         };
-        let remaining = stats.total_bytes.saturating_sub(stats.progress_bytes);
+        // Byte totals from the per-file counts (exact), not librqbit's piece-sized totals, which read
+        // "128 KB of 1.6 KB" for a small file kept out of a torrent with big pieces. While librqbit has
+        // no per-file counts (still checking), its totals stand, with progress kept under the total.
+        let only: Option<HashSet<usize>> = h.only_files().map(|o| o.into_iter().collect());
+        let exact = if stats.file_progress.is_empty() {
+            None
+        } else {
+            h.with_metadata(|md| {
+                torrent_bytes(md.file_infos.iter().enumerate().map(|(i, fi)| FileBytes {
+                    len: fi.len,
+                    padding: fi.attrs.padding,
+                    included: only.as_ref().map(|o| o.contains(&i)).unwrap_or(true),
+                    have: stats.file_progress.get(i).copied().unwrap_or(0),
+                }))
+            })
+            .ok()
+        };
+        let (total_bytes, progress_bytes, held_bytes) = match exact {
+            Some(b) => (b.total, b.progress, b.held),
+            None => {
+                let p = stats.progress_bytes.min(stats.total_bytes);
+                (stats.total_bytes, p, p)
+            }
+        };
+        let remaining = total_bytes.saturating_sub(progress_bytes);
         let eta_secs = if finished || down_bps == 0 || remaining == 0 {
             -1
         } else {
             (remaining / down_bps) as i64
         };
         let (uploaded, _, _) = uploaded_total(m.uploaded_base, m.last_uploaded_seen, stats.uploaded_bytes);
-        let ratio = if stats.progress_bytes == 0 {
+        let ratio = if progress_bytes == 0 {
             0.0
         } else {
-            uploaded as f64 / stats.progress_bytes as f64
+            uploaded as f64 / progress_bytes as f64
         };
         let (down_limit_bps, up_limit_bps) = self.limit_pair(id);
         // MOVING is set by the engine and wins over everything librqbit says.
@@ -705,8 +729,9 @@ impl MaglevEngine {
             paused_by: m.paused_by.clone(),
             // The finished edge never fires while files are missing (section 18.3).
             finished: finished && m.health.as_deref() != Some(HEALTH_FILES_MISSING),
-            progress_bytes: stats.progress_bytes,
-            total_bytes: stats.total_bytes,
+            progress_bytes,
+            total_bytes,
+            held_bytes,
             uploaded_bytes: uploaded,
             down_bps,
             up_bps,
@@ -723,7 +748,7 @@ impl MaglevEngine {
             up_limit_bps,
             move_progress: moving.map(|e| e.progress.fraction()),
             health: m.health.clone(),
-            included_bytes: included_bytes(h),
+            included_bytes: if exact.is_some() { total_bytes } else { included_bytes(h) },
             resolving_secs: None,
             allowed_anyway: m.allowed_anyway,
         }
@@ -748,6 +773,7 @@ impl MaglevEngine {
             finished: e.finished,
             progress_bytes: e.progress_bytes,
             total_bytes: e.total_bytes,
+            held_bytes: e.progress_bytes,
             uploaded_bytes: m.uploaded_base.saturating_add(m.last_uploaded_seen),
             down_bps: 0,
             up_bps: 0,
@@ -795,6 +821,7 @@ impl MaglevEngine {
             finished: false,
             progress_bytes: 0,
             total_bytes: 0,
+            held_bytes: 0,
             uploaded_bytes: 0,
             down_bps: 0,
             up_bps: 0,

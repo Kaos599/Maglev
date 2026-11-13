@@ -240,6 +240,11 @@ jobs:
           JAR="$RUNNER_TEMP/bundletool.jar"
           curl -fsSL -o "$JAR" "https://github.com/google/bundletool/releases/download/${BUNDLETOOL_VERSION}/bundletool-all-${BUNDLETOOL_VERSION}.jar"
           echo "$BUNDLETOOL_SHA256  $JAR" | sha256sum -c -
+          # The AAB must carry the same scheme as the universal APK (base*10), or the APK set cannot upgrade it.
+          WANT=$(( $(node -p "const a=require('./app.json');(a.expo||a).android.versionCode") * 10 ))
+          GOT=$(java -jar "$JAR" dump manifest --bundle="$AAB" --xpath /manifest/@android:versionCode)
+          echo "AAB versionCode $GOT (want $WANT)"
+          [ "$GOT" = "$WANT" ] || { echo "::error::AAB versionCode $GOT, expected $WANT"; exit 1; }
           (umask 077
            printf '%s' "$MAGLEV_KEYSTORE_PASSWORD" > "$RUNNER_TEMP/ks.pass"
            printf '%s' "$MAGLEV_KEY_PASSWORD" > "$RUNNER_TEMP/key.pass")

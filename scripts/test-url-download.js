@@ -63,7 +63,7 @@ async function main() {
   check('downloading pauses', copy.downloadAction(d({}))?.kind === 'pause');
   check('queued pauses', copy.downloadAction(d({ state: 'queued' }))?.kind === 'pause');
   check('user pause resumes', copy.downloadAction(d({ state: 'paused', pausedBy: 'user' }))?.kind === 'resume');
-  check('storage full pause resumes', copy.downloadAction(d({ state: 'paused', pausedBy: 'storage_full' }))?.kind === 'resume');
+  check('storage full pause offers Free up space (resuming cannot work until space is freed)', copy.downloadAction(d({ state: 'paused', pausedBy: 'storage_full' }))?.kind === 'freeSpace');
   check('rule pause offers Resume anyway (0.14)', copy.downloadAction(d({ state: 'paused', pausedBy: 'schedule' }))?.kind === 'resumeAnyway');
   check('governance pause with nothing to override has no button', copy.downloadAction(d({ state: 'paused', pausedBy: 'fgs_timeout' })) === null);
   check('needs link offers a new link', copy.downloadAction(d({ state: 'needs_link' }))?.kind === 'newLink');
@@ -101,7 +101,7 @@ async function main() {
 
   check('probe: blocked offers settings and Add anyway, not Try again', pv('BLOCKED').primary === 'blocked' && /Open settings/.test(pv('BLOCKED').body) && /add it anyway and it starts when downloads are allowed/.test(pv('BLOCKED').body) && pv('blocked').primary === 'blocked');
   check('probe: other codes are not blocked', pv('BLOCKED_X').primary === 'retry');
-  check('paused tags: storage_unavailable is a folder problem, storage_full is a full disk', copy.downloadStatus(d({ state: 'paused', pausedBy: 'storage_unavailable' })).text !== copy.downloadStatus(d({ state: 'paused', pausedBy: 'storage_full' })).text && kinds(d({ state: 'paused', pausedBy: 'storage_unavailable' })) === 'pickFolder' && kinds(d({ state: 'paused', pausedBy: 'storage_full' })) === 'resume' && !copy.isGovernancePause('storage_unavailable') && !copy.isGovernancePause('storage_full'));
+  check('paused tags: storage_unavailable is a folder problem, storage_full is a full disk', copy.downloadStatus(d({ state: 'paused', pausedBy: 'storage_unavailable' })).text !== copy.downloadStatus(d({ state: 'paused', pausedBy: 'storage_full' })).text && kinds(d({ state: 'paused', pausedBy: 'storage_unavailable' })) === 'pickFolder' && kinds(d({ state: 'paused', pausedBy: 'storage_full' })) === 'freeSpace' && !copy.isGovernancePause('storage_unavailable') && !copy.isGovernancePause('storage_full'));
 
   check('LAN_ADDRESS copy and actions', copy.downloadStatus(err('LAN_ADDRESS')).text === 'This address points to a device on your network.' && kinds(err('LAN_ADDRESS')) === 'allowDevice,remove' && copy.downloadAction(err('LAN_ADDRESS')).label === 'Allow this device' && /Only do this for devices you trust/.test(copy.downloadCaption(err('LAN_ADDRESS'))));
   check('LAN_ADDRESS matches exactly', kinds(err('LAN_ADDRESS_X')) === 'retry' && kinds(err('LOCAL_REDIRECT')) === 'remove');

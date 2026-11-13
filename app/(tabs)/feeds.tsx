@@ -396,3 +396,5 @@ const makeStyles = (c: ThemeColors) =>
     errorWrap: { marginBottom: spacing.sm },
     list: { paddingHorizontal: spacing.lg, paddingBottom: spacing.xxxl, flexGrow: 1 },
   });
+
+export { ErrorBoundary } from '../../components/ErrorScreen';

@@ -90,3 +90,5 @@ const makeStyles = (c: ThemeColors) =>
     legal: { ...type.body, fontSize: type.size.sm, color: c.textMuted },
     actions: { gap: spacing.sm, marginTop: spacing.sm },
   });
+
+export { ErrorBoundary } from '../../components/ErrorScreen';

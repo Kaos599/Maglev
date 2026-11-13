@@ -44,7 +44,7 @@ export type ValidateResult =
 /** The eight tools the model sees (docs/ASSISTANT_DESIGN.md, 0.11). Few tools, because free models call many tools badly. */
 export const READ_TOOL_NAMES = ['search_torrents', 'browse_torrents', 'get_result_details', 'list_transfers', 'ask_user', 'open_screen'] as const;
 
-export const PROPOSAL_TOOL_NAMES = ['propose_add', 'propose_change'] as const;
+export const PROPOSAL_TOOL_NAMES = ['propose_add', 'propose_change', 'watch_title'] as const;
 
 /**
  * Tools the model no longer sees. The runner still builds its cards and answers from the same code, and
@@ -336,6 +336,23 @@ const PROPOSE_CHANGE: JsonSchema = {
   additionalProperties: false,
 };
 
+const WATCH_TITLE: JsonSchema = {
+  type: 'object',
+  properties: {
+    query: { type: 'string', minLength: 2, maxLength: QUERY_MAX, description: 'Just the title.' },
+    category: {
+      type: 'string',
+      enum: ['all', 'movies', 'tv', 'anime', 'music', 'apps', 'games', 'books', 'other'],
+      default: 'all',
+    },
+    min_resolution: { type: 'integer', enum: [480, 720, 1080, 2160] },
+    max_size_gb: { type: 'number', minimum: 0.1, maximum: 200 },
+    reason: REASON,
+  },
+  required: ['query'],
+  additionalProperties: false,
+};
+
 const ASK_USER: JsonSchema = {
   type: 'object',
   properties: {
@@ -380,6 +397,7 @@ const PARAMETERS: Record<ToolName, JsonSchema> = {
   explain_error: EXPLAIN_ERROR,
   list_transfers: LIST_TRANSFERS_V2,
   propose_change: PROPOSE_CHANGE,
+  watch_title: WATCH_TITLE,
   ask_user: ASK_USER,
   open_screen: OPEN_SCREEN,
   ...PROPOSE_TOOL_SCHEMAS,
@@ -406,6 +424,8 @@ const DESCRIPTIONS: Record<ToolName, string> = {
     'Why a download is stuck, paused or failed, in plain words, with the fix the app offers. Use before guessing.',
   propose_change:
     'Propose a change to one download: pause, resume, select_files, remove_files or delete. Nothing changes until the user taps Confirm.',
+  watch_title:
+    'Propose watching for a title. Maglev checks in the background and notifies when a new match appears. Nothing starts until the user taps Confirm.',
   ask_user:
     'Ask the user to pick one option. Shows tappable answers. Use it instead of asking a question in text. Then stop and wait.',
   open_screen:

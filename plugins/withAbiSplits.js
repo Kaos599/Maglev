@@ -29,6 +29,17 @@ const splitsBlock = (abis) => `
     }
 `;
 
+// One scheme for every output: versionCode = base * 10 + ABI digit. Split APKs get their ABI digit; the
+// universal APK and the app bundle (which bundletool turns into the Accrescent APK set) get digit 0.
+// Android refuses an install whose versionCode is lower than the installed one, so all channels must share
+// one scheme. See https://developer.android.com/build/configure-apk-splits (version codes for multiple APKs).
+const ABI_DIGITS = { 'armeabi-v7a': 1, x86_64: 3, 'arm64-v8a': 4 };
+
+/** Mirror of the Gradle block below, so tests can pin the numbers. */
+function versionCodeFor(base, abi) {
+  return base * 10 + (ABI_DIGITS[abi] || 0);
+}
+
 // Top-level (outside android {}). Uses the stable androidComponents API, which
 // works on AGP 8.x and 9.x (applicationVariants / OutputFile were removed in 9).
 const VERSION_CODE_BLOCK = `
@@ -38,10 +49,8 @@ androidComponents {
     onVariants(selector().all()) { variant ->
         variant.outputs.each { output ->
             def abiFilter = output.filters.find { it.filterType.name() == "ABI" }
-            if (abiFilter != null) {
-                def base = output.versionCode.getOrElse(1)
-                output.versionCode.set(base * 10 + abiCodes.get(abiFilter.identifier, 0))
-            }
+            def base = output.versionCode.getOrElse(1)
+            output.versionCode.set(base * 10 + abiCodes.get(abiFilter?.identifier, 0))
         }
     }
 }
@@ -84,3 +93,5 @@ module.exports = withAbiSplits;
 module.exports.applyAbiSplits = applyAbiSplits;
 module.exports.applyArchitectures = applyArchitectures;
 module.exports.resolveAbis = resolveAbis;
+module.exports.versionCodeFor = versionCodeFor;
+module.exports.ABI_DIGITS = ABI_DIGITS;

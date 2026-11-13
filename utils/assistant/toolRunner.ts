@@ -71,6 +71,15 @@ export interface ToolRunnerDeps {
    */
   browse?(kind: BrowseKind, order: BrowseOrder, period: BrowsePeriod, opts: { signal: AbortSignal; onUpdate?: (u: SearchUpdate) => void }): Promise<SearchUpdate>;
   engine: RunnerEngine;
+  /**
+   * The saved watches (utils/watch, docs/contracts-0.19/watch.md). Optional: without it watch_title fails plainly.
+   * `add` is only called after the user taps Confirm on the card.
+   */
+  watch?: {
+    count(): number;
+    has(query: string, category: string): boolean;
+    add(input: { query: string; category: string; minResolution?: number; maxSizeGb?: number }): { ok: true } | { ok: false; error: string };
+  };
   /** What this phone can decode (`getPlaybackSupport`). null when unknown. */
   playbackSupport(): Promise<PlaybackSupport | null>;
   /** Epoch ms. */
@@ -88,6 +97,8 @@ const MAX_FILES_IN_RESULT = 40;
 const MAX_REASON_CHARS = 200;
 const DL_PREFIX = 'dl:';
 
+/** Same cap as utils/watch/logic.ts MAX_WATCHES (this file stays free of app imports). */
+const WATCH_MAX = 20;
 const NO_SPACE_READ = "Couldn't check free space, so Maglev can't add this right now.";
 const GONE = 'That download is gone.';
 
@@ -326,7 +337,8 @@ type Action =
   | { kind: 'select'; ref: TransferRef; entries: FilePriorityEntry[]; fileCount: number }
   | { kind: 'pause' | 'resume'; ref: TransferRef }
   | { kind: 'remove_files'; ref: TransferRef; indices: number[] }
-  | { kind: 'delete'; ref: TransferRef; deleteFiles: boolean };
+  | { kind: 'delete'; ref: TransferRef; deleteFiles: boolean }
+  | { kind: 'watch'; query: string; category: string; minResolution?: number; maxSizeGb?: number };
 
 interface Built {
   action: Action;
@@ -1522,6 +1534,7 @@ export function createToolRunner(deps: ToolRunnerDeps): ToolRunner {
       case 'propose_remove_files': return buildRemoveFiles(args);
       case 'propose_delete': return buildDelete(args, space);
       case 'propose_change': return buildChange(args, space);
+      case 'watch_title': return buildWatch(args);
       default: return { error: 'That is not something a card can do.' };
     }
   }
@@ -1663,6 +1676,45 @@ export function createToolRunner(deps: ToolRunnerDeps): ToolRunner {
     if (row.bucket !== 'paused') return row.bucket === 'error' ? 'It stopped because of an error, so resuming does nothing.' : 'It is not paused.';
     if (row.state === 'needs_link') return 'The link stopped working, so it needs a fresh link.';
     return null;
+  }
+
+  /** watch_title: a card that saves a background watch once confirmed (docs/contracts-0.19/watch.md section 8). */
+  function watchProblem(query: string, category: string): string | null {
+    const w = deps.watch;
+    if (!w) return 'Watching is not available right now.';
+    if (w.has(query, category)) return 'You are already watching that.';
+    if (w.count() >= WATCH_MAX) return `You can watch up to ${WATCH_MAX} titles. Delete one first.`;
+    return null;
+  }
+
+  function buildWatch(args: Data): Built | { error: string } {
+    const query = clean(typeof args.query === 'string' ? args.query : '', 120);
+    if (query.length < 2) return { error: 'Give the title to watch for.' };
+    const category = typeof args.category === 'string' ? args.category : 'all';
+    const problem = watchProblem(query, category);
+    if (problem) return { error: problem };
+    const minResolution = typeof args.min_resolution === 'number' ? args.min_resolution : undefined;
+    const maxSizeGb = typeof args.max_size_gb === 'number' ? args.max_size_gb : undefined;
+    const used = deps.watch?.count() ?? 0;
+    const facts = ['Checks every 6 hours · Wi-Fi only'];
+    const limits: string[] = [];
+    if (minResolution !== undefined) limits.push(`${minResolution}p or better`);
+    if (maxSizeGb !== undefined) limits.push(`up to ${maxSizeGb} GB`);
+    if (limits.length > 0) facts.push(limits.join(' · '));
+    facts.push(`${used} of ${WATCH_MAX} watches used`);
+    return {
+      action: { kind: 'watch', query, category, minResolution, maxSizeGb },
+      title: 'Watch for this title?',
+      confirmLabel: 'Watch',
+      facts,
+      sourceName: query,
+      line: `Watch for ${query}`,
+      danger: false,
+      risky: false,
+      target: undefined,
+      key: `w:${query.toLowerCase()}:${category}`,
+      addBytes: 0,
+    };
   }
 
   /** propose_change: one tool for the four things a card can do to a download. Each action reuses its own builder. */
@@ -1914,6 +1966,8 @@ export function createToolRunner(deps: ToolRunnerDeps): ToolRunner {
       }
       case 'delete':
         return rowFor(space, a.ref) ? null : GONE;
+      case 'watch':
+        return watchProblem(a.query, a.category);
     }
   }
 
@@ -1984,6 +2038,11 @@ export function createToolRunner(deps: ToolRunnerDeps): ToolRunner {
       case 'delete': {
         const res = await callEngine(() => a.ref.kind === 'link' ? eng.removeDownload(a.ref.id, a.deleteFiles) : eng.delete(a.ref.id, a.deleteFiles));
         return res.ok ? { ok: true, summary: a.deleteFiles ? 'Removed and deleted the files.' : 'Removed.' } : failed(res.code);
+      }
+      case 'watch': {
+        const res = deps.watch?.add({ query: a.query, category: a.category, minResolution: a.minResolution, maxSizeGb: a.maxSizeGb });
+        if (!res) return { ok: false, code: 'UNAVAILABLE', message: 'Watching is not available right now.' };
+        return res.ok ? { ok: true, summary: 'Watching.' } : { ok: false, code: 'WATCH', message: res.error };
       }
     }
   }

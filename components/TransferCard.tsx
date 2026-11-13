@@ -10,6 +10,9 @@ import { PixelIcon } from "./PixelIcon";
 import { IconButton, PressableScale, ProgressBar, ProgressTone } from "./ui";
 import { useMotion } from "./ui/useMotion";
 import { torrentCardAction, torrentProgressPercent, torrentStatus } from "./transfers/model";
+import { cardCanPlay } from "./detail/play";
+import { playCopy } from "../constants/copy";
+import { useRouter } from "expo-router";
 
 /**
  * Name (two lines), one bar, one status line. At the default font size the height never changes
@@ -32,6 +35,8 @@ export interface TransferCardProps {
   onOpen?: (id: string) => void;
   /** Runs a paused torrent once although a rule (Wi-Fi only, battery, charger, schedule) paused it. */
   onResumeAnyway?: (id: string) => void;
+  /** Play button (0.19): streams or opens the torrent's video or audio file. Shown only when the card can tell it is playable. */
+  onPlay?: (id: string) => void;
 }
 
 /** Status line font size; the value slot is sized in Space Mono glyphs at this size. */
@@ -107,7 +112,9 @@ function TransferCardImpl({
   onKeepTrying,
   onOpen,
   onResumeAnyway,
+  onPlay,
 }: TransferCardProps) {
+  const router = useRouter();
   const { colors } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const { fontScale } = useWindowDimensions();
@@ -152,6 +159,9 @@ function TransferCardImpl({
   // and stops taking presses. No spinner, no fake progress; the next engine update settles it.
   const actionBusy = !!t.pending || !!t.lastKnown;
   const canAct = !!action && !selectionMode && !actionBusy;
+  // Play sits left of the state button; the card has no file list, so it needs a media file name (cardCanPlay).
+  const showPlay = !!onPlay && !selectionMode && cardCanPlay(t);
+  const playRight = spacing.sm + (action ? 44 : 0);
   const a11yActions = [
     { name: "activate", label: selectionMode ? (selected ? "Deselect" : "Select") : "Open" },
     ...(canAct && action ? [{ name: action.kind, label: action.label }] : []),
@@ -187,10 +197,13 @@ function TransferCardImpl({
             case "resumeAnyway":
               onResumeAnyway?.(t.id);
               break;
+            case "freeSpace":
+              router.push("/free-space");
+              break;
           }
         }}
         accessibilityState={{ selected: selectionMode ? selected : undefined }}
-        style={styles.press}
+        style={[styles.press, showPlay && { paddingRight: 44 + playRight }]}
       >
         <View style={styles.nameRow}>
           {selectionMode ? (
@@ -232,6 +245,11 @@ function TransferCardImpl({
         ) : null}
         </View>
       </PressableScale>
+      {showPlay ? (
+        <View style={[styles.actionAnchor, { right: playRight }]}>
+          <IconButton icon="play" disabled={actionBusy} accessibilityLabel={playCopy.a11y(t.name)} onPress={() => onPlay?.(t.id)} />
+        </View>
+      ) : null}
       {action && !selectionMode ? (
         <View style={styles.actionAnchor}>
           <IconButton
@@ -248,6 +266,8 @@ function TransferCardImpl({
                   return onOpen?.(t.id);
                 case "resumeAnyway":
                   return onResumeAnyway?.(t.id);
+                case "freeSpace":
+                  return router.push("/free-space");
                 default:
                   return onResume(t.id);
               }
@@ -272,6 +292,7 @@ function sameCard(a: TransferCardProps, b: TransferCardProps): boolean {
     a.onKeepTrying === b.onKeepTrying &&
     a.onOpen === b.onOpen &&
     a.onResumeAnyway === b.onResumeAnyway &&
+    a.onPlay === b.onPlay &&
     x.id === y.id &&
     x.name === y.name &&
     x.state === y.state &&

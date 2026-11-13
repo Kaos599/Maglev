@@ -85,6 +85,10 @@ export class MaglevEngineBridge implements MaglevEngineApi {
   private status: EngineStatus = { kind: 'starting', message: 'Starting…' };
   private started = false;
   private startPromise: Promise<EngineStatus> | null = null;
+  /** Set by expectStart(): a start is about to be requested. Calls wait for it. Settled when start() is called. */
+  private startExpected: { promise: Promise<void>; release: () => void } | null = null;
+  /** How long a call waits for a start that is in flight or expected (the 15 s safety net of app/_layout.tsx). */
+  public static startWaitMs = 15_000;
   private lastConfig: NativeConfig | null = null;
   private restartNeeded = false;
   private warning: string | null = null;
@@ -139,6 +143,7 @@ export class MaglevEngineBridge implements MaglevEngineApi {
    */
   public start(settings: MaglevSettings): Promise<EngineStatus> {
     this.lastSettings = settings;
+    this.startExpected?.release();
     if (!this.startPromise) {
       this.startPromise = (async () => {
         const config = toNativeConfig(settings);
@@ -154,6 +159,37 @@ export class MaglevEngineBridge implements MaglevEngineApi {
       })();
     }
     return this.startPromise;
+  }
+
+  /**
+   * Tells the bridge a start() is coming (the provider defers it one frame after the first paint, and child
+   * screens mount before it). Engine calls made meanwhile wait for that start instead of failing with
+   * "Engine not started", for at most `startWaitMs`. Without this (or a start) calls still fail fast.
+   */
+  public expectStart(): void {
+    if (this.started || this.startPromise || this.startExpected) return;
+    let release!: () => void;
+    const promise = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    this.startExpected = { promise, release };
+  }
+
+  /** Waits for an in-flight or expected start, up to `startWaitMs`. Returns at once when there is none. */
+  private async awaitStart(): Promise<void> {
+    if (this.usingNative || this.impl) return;
+    const gate = this.startPromise ?? this.startExpected?.promise ?? null;
+    if (!gate) return;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const timeout = new Promise<void>((resolve) => {
+      timer = setTimeout(resolve, MaglevEngineBridge.startWaitMs);
+    });
+    const settled = (async () => {
+      await gate;
+      if (this.startPromise) await this.startPromise;
+    })().catch(() => {});
+    await Promise.race([settled, timeout]);
+    if (timer) clearTimeout(timer);
   }
 
   /** Re-attempts engine start with the latest settings after a failure. No-op while ready. */
@@ -272,6 +308,7 @@ export class MaglevEngineBridge implements MaglevEngineApi {
 
   /** Routes to native or simulator. Before a successful start, returns a typed failure. */
   private async route<T>(method: keyof MaglevEngineApi, ...args: unknown[]): Promise<T> {
+    if (!this.usingNative && !this.impl) await this.awaitStart();
     if (this.usingNative) return this.callNative<T>(method, ...args);
     if (this.impl) {
       try {

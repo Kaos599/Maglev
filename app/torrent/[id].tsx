@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
-import { FlatList, Linking, Share, StyleSheet, Text, View } from 'react-native';
+import { FlatList, Share, StyleSheet, Text, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import * as Clipboard from 'expo-clipboard';
 import { maglevEngine, type DetailFile, type FilePriority, type TorrentLimits } from 'maglev-engine';
@@ -41,7 +41,9 @@ import { MoveSheet } from '../../components/detail/MoveSheet';
 import { useTorrentDetail } from '../../components/detail/useTorrentDetail';
 import { buildMagnet, clockTime, isStreamable, limitText, moveFailure } from '../../components/detail/torrentLabels';
 import { actionsFor, type ErrorAction } from '../../components/detail/errorActions';
-import { banners, empty, notices } from '../../constants/copy';
+import { banners, empty, notices, playCopy } from '../../constants/copy';
+import { pickPlayFile, playVisible } from '../../components/detail/play';
+import { playFile } from '../../components/detail/playActions';
 
 type Tab = 'files' | 'peers' | 'trackers' | 'pieces';
 
@@ -495,13 +497,22 @@ export default function TorrentDetailScreen() {
     showNotice(res.ok ? { tone: 'info', text: notices.detail.checking } : { tone: 'danger', text: res.message });
   }, [id, showNotice]);
 
+  // Free up space opens the list of finished downloads, largest first (docs/contracts-0.19/play-and-storage.md section 3).
   const handleFreeSpace = useCallback(async () => {
-    try {
-      await Linking.sendIntent('android.settings.INTERNAL_STORAGE_SETTINGS');
-    } catch {
-      await Linking.openSettings();
-    }
-  }, []);
+    router.push('/free-space');
+  }, [router]);
+
+  // Play: the largest video (else audio) among the included files. A finished file opens, a partial one streams.
+  const playTarget = useMemo(() => pickPlayFile(files), [files]);
+  const [playBusy, setPlayBusy] = useState(false);
+  const handlePlay = useCallback(async () => {
+    if (!snap || !playTarget || !id) return;
+    setPlayBusy(true);
+    const res = await playFile(id, playTarget, snap, () => resumeTorrent(id));
+    setPlayBusy(false);
+    if (!res.ok) showNotice({ tone: 'danger', text: res.message || playCopy.failed });
+    else if (res.resumed) showNotice({ tone: 'info', text: playCopy.resumedToPlay });
+  }, [snap, playTarget, id, resumeTorrent, showNotice]);
 
   const handleOpenFolder = useCallback(async () => {
     setMoreOpen(false);
@@ -790,6 +801,12 @@ export default function TorrentDetailScreen() {
         <View style={[styles.block, { gap: spacing.sm }]}>
           <Button label={resumeAnywayLabel(snap.pausedBy)} icon="play" size="lg" fullWidth onPress={() => void handleResumeAnyway()} />
           {snap.pausedBy === 'wifi_only' ? <Text style={styles.muted}>{WIFI_ANYWAY_NOTE}</Text> : null}
+        </View>
+      ) : null}
+
+      {!allDone && playTarget && playVisible(snap, playTarget) ? (
+        <View style={styles.block}>
+          <Button label={playCopy.label} icon="play" size="lg" fullWidth loading={playBusy} onPress={() => void handlePlay()} />
         </View>
       ) : null}
 

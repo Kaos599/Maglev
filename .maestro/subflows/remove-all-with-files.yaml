@@ -1,0 +1,14 @@
+# Cleanup: removes the one transfer on screen and deletes its files.
+# Long-press selects the card (its label is "<name>, <status>, N percent").
+appId: com.maglev
+---
+- extendedWaitUntil:
+    visible: ".*percent.*"
+    timeout: 30000
+- longPressOn: ".*percent.*"
+- tapOn: "Delete selected"
+- tapOn: "Remove and delete files"
+- tapOn: "Delete files|Delete [0-9.]+ (B|KB|MB|GB|TB)"
+- extendedWaitUntil:
+    notVisible: ".*percent.*"
+    timeout: 30000

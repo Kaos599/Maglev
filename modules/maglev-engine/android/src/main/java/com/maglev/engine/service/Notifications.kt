@@ -84,8 +84,10 @@ object Notifications {
     }
 
     /** Opens the app. With a torrent id, deep-links to maglev://torrent/<id> (app.json scheme "maglev"). */
-    private fun contentIntent(context: Context, torrentId: String? = null): PendingIntent? {
-        val intent = if (torrentId != null) {
+    private fun contentIntent(context: Context, torrentId: String? = null, route: String? = null): PendingIntent? {
+        val intent = if (route != null) {
+            Intent(Intent.ACTION_VIEW, Uri.parse("maglev://$route")).setPackage(context.packageName)
+        } else if (torrentId != null) {
             Intent(Intent.ACTION_VIEW, Uri.parse("maglev://torrent/" + Uri.encode(torrentId))).setPackage(context.packageName)
         } else {
             context.packageManager.getLaunchIntentForPackage(context.packageName) ?: return null
@@ -136,6 +138,7 @@ object Notifications {
             s.downloading > 1 -> "$name +${s.downloading - 1} more"
             s.seeding > 0 -> if (s.seeding == 1) "Seeding 1 torrent" else "Seeding ${s.seeding} torrents"
             rulesOnly(s) && s.ruleReason == "seed_metered" -> "Paused: seeding waits for Wi-Fi"
+            rulesOnly(s) && s.ruleReason == "storage_full" -> StorageGuard.PAUSED_TITLE
             rulesOnly(s) -> "Paused: waiting for ${reasonLabel(s.ruleReason)}"
             s.busy == 0 && s.pausedBySchedule > 0 -> "Scheduled pause"
             s.busy == 0 && s.pausedByUser > 0 -> "Paused \u00B7 ${s.pausedByUser} torrents"
@@ -152,6 +155,7 @@ object Notifications {
         ).joinToString(" \u00B7 ")
         s.downloading > 1 -> "${s.downloading} downloading \u00B7 \u2193 ${speed(s.downBps)}"
         s.seeding > 0 -> "\u2191 ${speed(s.upBps)}"
+        rulesOnly(s) && s.ruleReason == "storage_full" -> StorageGuard.PAUSED_TEXT
         rulesOnly(s) -> ""
         s.busy == 0 && s.pausedBySchedule > 0 -> s.scheduleResumeAt?.let { "Resumes $it" } ?: ""
         s.lookingForInfo -> "Looking for torrent info\u2026"
@@ -199,7 +203,10 @@ object Notifications {
             .setShowWhen(false)
             .setCategory(NotificationCompat.CATEGORY_PROGRESS)
             .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
-            .setContentIntent(contentIntent(context, s.singleTorrentId))
+            .setContentIntent(
+                if (rulesOnly(s) && s.ruleReason == "storage_full") contentIntent(context, route = "free-space")
+                else contentIntent(context, s.singleTorrentId),
+            )
         val text = text(s)
         if (text.isNotEmpty()) b.setContentText(text)
         if (s.downloading > 0) {
@@ -366,7 +373,7 @@ object Notifications {
                 .setAutoCancel(true)
                 .setOnlyAlertOnce(true)
                 .setCategory(NotificationCompat.CATEGORY_STATUS)
-                .setContentIntent(contentIntent(context))
+                .setContentIntent(contentIntent(context, route = if (id == ID_STORAGE_FULL) "free-space" else null))
                 .build(),
         )
     }

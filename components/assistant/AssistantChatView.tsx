@@ -169,7 +169,7 @@ export function AssistantChatView({ chat, onOpenSettings, onChooseFiles, onOpenT
       <ScrollView contentContainerStyle={styles.empty} keyboardShouldPersistTaps="handled">
         <Suggestions onPick={send} />
         <Text style={styles.privacy}>Your messages and the names of your downloads go to {chat.providerName}.</Text>
-        <Text style={styles.privacy}>Chats aren't saved. Leaving Maglev or tapping Clear ends this chat.</Text>
+        <Text style={styles.privacy}>This chat is saved on your phone until you tap Clear.</Text>
         <View style={styles.link}>
           <Button label="What can it do?" variant="ghost" onPress={() => setCapsOpen(true)} />
         </View>

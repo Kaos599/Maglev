@@ -101,8 +101,8 @@ export const ResultCard = memo(function ResultCard({ view, canChoose, onChooseFi
 
       <View style={styles.actions}>
         {/* R1-8: a red result can't be added, from a card or from here. */}
-        <Button label="Choose files" variant="secondary" disabled={!canChoose || view.safety?.level === 'red'} onPress={onChooseFiles} />
-        <Button label="Ask about this" variant="ghost" onPress={onAskAbout} />
+        <Button label="Choose files" variant="secondary" disabled={!canChoose || !!view.expired || view.safety?.level === 'red'} onPress={onChooseFiles} />
+        <Button label="Ask about this" variant="ghost" disabled={!!view.expired} onPress={onAskAbout} />
       </View>
     </View>
   );
