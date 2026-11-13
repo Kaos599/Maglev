@@ -361,6 +361,8 @@ async function main() {
   console.log(`\nScenarios: ${tally}`);
   console.log(`Model requests used: ${total}`);
   console.log(`Transcripts: ${path.relative(ROOT, outDir)}`);
+  // A failed check or a harness error fails the run (CI gates on this). Rate limits are not scored, so they do not.
+  if (bad > 0 || other > 0) process.exitCode = 1;
 }
 
 main().catch((e) => { console.error(scrub(e && e.stack ? e.stack : e)); process.exit(1); });
