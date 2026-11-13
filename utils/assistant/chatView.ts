@@ -3,7 +3,7 @@
  * the "What's inside" summary, a tiny safe text formatter, token wording and the starter prompts.
  * Everything here is plain English and total: unknown input degrades to a sensible fallback, never throws.
  */
-import type { FileKind, ProgressStep, ResultDetailsView, ScreenTarget } from './runtime.ts';
+import type { ChatPhase, FileKind, ProgressStep, ResultDetailsView, ScreenTarget } from './runtime.ts';
 
 /** Icon names this file may ask for. All exist in components/icons.generated.ts. */
 export type ViewIcon =
@@ -98,6 +98,19 @@ export function stepsSummary(steps: ProgressStep[]): string {
   if (parts.length > 3) parts.splice(3, parts.length - 3, `${parts.length - 3} more`);
   if (failed > 0) parts.push(failed === 1 ? '1 step failed' : `${failed} steps failed`);
   return parts.join(' · ');
+}
+
+/**
+ * Whether the "Steps" list is open. The user's own choice (`true`/`false`) always wins; with none, it opens by
+ * itself while a step runs so its progress is visible, and rests closed once the turn is over.
+ */
+export function traceOpen(userChoice: boolean | null, steps: ProgressStep[]): boolean {
+  return userChoice ?? stepsRunning(steps);
+}
+
+/** The words next to the working squares, or null when the turn already shows its own progress. */
+export function workingLabel(phase: ChatPhase | undefined): string | null {
+  return phase === 'thinking' ? 'Thinking\u2026' : null;
 }
 
 /** True when any step is still running. */

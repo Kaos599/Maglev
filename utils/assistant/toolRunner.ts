@@ -40,7 +40,7 @@ import type {
   ExecuteResult, FileKind, FileRowView, ProposalCardView, ResultCardView, ResultDetailsView, RevalidateResult, ScreenTarget, ToolRunContext,
   ToolRunOutput, ToolRunner,
 } from './runtime.ts';
-import { canPropose, isBrowseQuery, parseQuery, scoreResults } from './scoring.ts';
+import { canPropose, cleanSearchQuery, isBrowseQuery, parseQuery, scoreResults } from './scoring.ts';
 import type { Label, ParsedQuery, Profile, Ranked, ScoreContext } from './scoring.ts';
 import { MESSAGE_MAX, NAME_MAX, QUERY_MAX, filterModelOutput, looksLikeInstruction, sanitizeText, toToolJson, truncate, untrustedField } from './sanitize.ts';
 
@@ -605,9 +605,24 @@ export function createToolRunner(deps: ToolRunnerDeps): ToolRunner {
   // ------------------------------------------------------------ read tools
 
   /** Reports each source that fails as its own progress line, once. Returns the onUpdate listener. */
-  function watchSources(ctx: ToolRunContext, names: (id: string) => string): (u: SearchUpdate) => void {
+  function watchSources(ctx: ToolRunContext, names: (id: string) => string, progressText?: string): (u: SearchUpdate) => void {
     const failedSeen = new Set<string>();
+    const answeredSeen = new Set<string>();
     return (u: SearchUpdate): void => {
+      // Live line on the main step: "Knaben answered · 12 of 28 sources". Real counts from the search only.
+      if (progressText !== undefined) {
+        let latest: string | undefined;
+        for (const s of u.sources) {
+          if (s.state !== 'searching' && !answeredSeen.has(s.providerId)) {
+            answeredSeen.add(s.providerId);
+            latest = s.providerId;
+          }
+        }
+        if (latest !== undefined && u.sources.length > 0) {
+          const answered = u.sources.filter((s) => s.state !== 'searching').length;
+          ctx.progress(progressText, 'running', `${names(latest)} ${isDown(u.sources.find((s) => s.providerId === latest)?.state ?? '') ? "didn't answer" : 'answered'} \u00b7 ${answered} of ${u.sources.length} sources`);
+        }
+      }
       for (const s of u.sources) {
         if (isDown(s.state) && !failedSeen.has(s.providerId)) {
           failedSeen.add(s.providerId);
@@ -754,7 +769,8 @@ export function createToolRunner(deps: ToolRunnerDeps): ToolRunner {
   }
 
   async function searchTorrents(args: Data, ctx: ToolRunContext): Promise<ToolRunOutput> {
-    const queryText = clean(args.query, QUERY_MAX);
+    // Words that ask for a kind of result, not a title ('best', 'torrent', 'movie'), are taken off before anything else.
+    const queryText = cleanSearchQuery(clean(args.query, QUERY_MAX));
     if (queryText.length < 2) return fail('bad_args', 'The search needs a title.');
     const category = (typeof args.category === 'string' ? args.category : 'all') as Category;
     const profile = (typeof args.profile === 'string' ? args.profile : 'phone') as Profile;
@@ -780,7 +796,7 @@ export function createToolRunner(deps: ToolRunnerDeps): ToolRunner {
     const names = (id: string): string => clean(prefs.providers.get(id)?.name ?? id, 40);
     const progressText = `Searching: ${queryText}`;
     ctx.progress(progressText, 'running');
-    const onUpdate = watchSources(ctx, names);
+    const onUpdate = watchSources(ctx, names, progressText);
 
     let update: SearchUpdate;
     try {
@@ -794,8 +810,14 @@ export function createToolRunner(deps: ToolRunnerDeps): ToolRunner {
 
     // R1-9: the model's free text becomes title, year, season and episode here, not in the model.
     const parsedQuery = parseQuery(queryText);
+    const stopped = (): void => {
+      if (ctx.signal.aborted) throw new CancelledError();
+    };
+    stopped();
     const space = await readSpace();
+    stopped();
     const support = await deps.playbackSupport().catch(() => null);
+    stopped();
 
     // Names are cleaned before they are parsed or stored: invisible and bidi characters and links are gone first.
     const named = update.results
@@ -864,7 +886,9 @@ export function createToolRunner(deps: ToolRunnerDeps): ToolRunner {
     const notes = [...out.notes, ...common.first];
     // Small models search for a title the user already has ("only the subtitles from sintel"). Point them back.
     if (suspicious > 0) notes.unshift(suspiciousNote(suspicious));
+    stopped();
     const owned = await ownedMatch(queryText);
+    stopped();
     if (owned) notes.unshift(`Already in your downloads: ${owned}. To choose its files, pause or delete it, use list_transfers and propose_change instead.`);
     const hiddenCam = hidden.cam_source ?? 0;
     if (args.include_cam !== true && hiddenCam > 0 && rowsData.length === 0) {
@@ -919,7 +943,7 @@ export function createToolRunner(deps: ToolRunnerDeps): ToolRunner {
     const names = (id: string): string => clean(prefs.providers.get(id)?.name ?? id, 40);
     const progressText = `Looking at ${order === 'new' ? 'new' : 'popular'} ${KIND_TEXT[kind]} ${PERIOD_TEXT[period]}`;
     ctx.progress(progressText, 'running');
-    const onUpdate = watchSources(ctx, names);
+    const onUpdate = watchSources(ctx, names, progressText);
 
     let update: SearchUpdate;
     try {

@@ -3,7 +3,7 @@ import { StyleSheet, Text, View } from 'react-native';
 import { useTheme } from '../../context/ThemeContext';
 import { ThemeColors, radius, spacing, type } from '../../constants/theme';
 import type { ProgressStep } from '../../utils/assistant/runtime';
-import { stepDetail, stepIcon, stepLabel, stepsRunning, stepsSummary } from '../../utils/assistant/chatView';
+import { stepDetail, stepIcon, stepLabel, stepsRunning, stepsSummary, traceOpen } from '../../utils/assistant/chatView';
 import { PixelIcon } from '../PixelIcon';
 import { Collapsible } from './Collapsible';
 import { Shimmer } from './Shimmer';
@@ -15,8 +15,10 @@ import { Shimmer } from './Shimmer';
 export const Trace = memo(function Trace({ steps }: { steps: ProgressStep[] }) {
   const { colors } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
-  const [open, setOpen] = useState(false);
+  // null until the user taps: then it opens by itself while a step runs, and their choice wins from then on.
+  const [choice, setChoice] = useState<boolean | null>(null);
   if (steps.length === 0) return null;
+  const open = traceOpen(choice, steps);
   const running = stepsRunning(steps);
   const summary = stepsSummary(steps);
 
@@ -24,7 +26,7 @@ export const Trace = memo(function Trace({ steps }: { steps: ProgressStep[] }) {
     <View style={styles.wrap}>
       <Collapsible
         open={open}
-        onToggle={() => setOpen((o) => !o)}
+        onToggle={() => setChoice(!open)}
         accessibilityLabel={`Steps. ${summary}`}
         header={
           <>
@@ -67,6 +69,15 @@ const TraceStep = memo(function TraceStep({ step }: { step: ProgressStep }) {
     </>
   );
   if (!detail) return <View style={styles.stepRow}>{row}</View>;
+  // A running step shows its live line right under it, with nothing to tap open.
+  if (step.state === 'running') {
+    return (
+      <View>
+        <View style={styles.stepRow}>{row}</View>
+        <Text style={styles.detail}>{detail}</Text>
+      </View>
+    );
+  }
   return (
     <View>
       <Collapsible open={open} onToggle={() => setOpen((o) => !o)} accessibilityLabel={label} header={row}>

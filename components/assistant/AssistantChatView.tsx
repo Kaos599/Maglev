@@ -5,7 +5,7 @@ import { useTheme } from '../../context/ThemeContext';
 import { ThemeColors, spacing, type } from '../../constants/theme';
 import type { TokenKey } from '../../utils/assistant/glossary';
 import type { AssistantChat, ChatGate, ChatItem, ScreenTarget } from '../../utils/assistant/runtime';
-import { modelChipText, shouldAutoOpenCapabilities, tokensLine } from '../../utils/assistant/chatView';
+import { modelChipText, shouldAutoOpenCapabilities, tokensLine, workingLabel } from '../../utils/assistant/chatView';
 import { Button, EmptyBlock, Screen, Sheet } from '../ui';
 import { assistantPrefs, useAssistantPrefs } from '../../utils/prefs/assistantApp';
 import { PixelIcon } from '../PixelIcon';
@@ -17,6 +17,7 @@ import { Questionnaire } from './Questionnaire';
 import { routeForTarget } from '../../utils/assistant/chatView';
 import { Suggestions } from './Suggestions';
 import { Trace } from './Trace';
+import { WorkingRow } from './WorkingRow';
 import { ProposalCard } from './ProposalCard';
 import { ResultCard } from './ResultCard';
 import { useChatAnnouncements } from './useChatAnnouncements';
@@ -150,6 +151,7 @@ export function AssistantChatView({ chat, onOpenSettings, onChooseFiles, onOpenT
     </View>
   );
 
+  const working = chat.busy ? workingLabel(chat.phase) : null;
   const ready = gate === 'ready';
   const gateLine = ready ? '' : GATE_LINE[gate];
 
@@ -183,6 +185,8 @@ export function AssistantChatView({ chat, onOpenSettings, onChooseFiles, onOpenT
         keyExtractor={(it) => it.id}
         renderItem={renderItem}
         ItemSeparatorComponent={Separator}
+        // The list is inverted, so the header sits at the newest end, under the last message.
+        ListHeaderComponent={working ? <WorkingRow label={working} /> : undefined}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="on-drag"
       />

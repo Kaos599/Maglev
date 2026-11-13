@@ -271,6 +271,36 @@ async function main() {
     const wl = world({ rows: harborRows(), throwList: true });
     const jl = parse(await call(createToolRunner(wl.deps), 'search_torrents', { query: 'The Last Harbor 2023' }));
     check('unknown free space gives fit "unknown", never a guess', jl.ok && jl.data.results.every((r) => r.fit === 'unknown'), jl.data?.results?.map((r) => r.fit));
+
+    // 0.17: filler words leave the query, live progress, Stop between the awaits after the search.
+    const wq = world({ rows: [merged({ name: 'Primetime.2026.1080p.WEB-DL.x265-GRP', infoHash: hash('p'), sizeBytes: 2 * GB, seeders: 80 })] });
+    const jq = parse(await call(createToolRunner(wq.deps), 'search_torrents', { query: 'best prime time movie torrents' }));
+    check('search: "best prime time movie torrents" is searched as "prime time"', wq.lastQuery?.q === 'prime time', wq.lastQuery);
+    check('search: the Primetime release is found for "prime time"', jq.ok && jq.data.results.some((r) => /Primetime/.test(r.name_untrusted ?? r.name ?? JSON.stringify(r))), JSON.stringify(jq.data?.results?.[0]));
+    const wp = world({ rows: harborRows() });
+    wp.sources = [
+      { providerId: 'knaben', state: 'done', count: 5, ms: 5 },
+      { providerId: 'yts', state: 'searching', count: 0, ms: 0 },
+    ];
+    const cp = ctxOf();
+    const live = [];
+    cp.progress = (text, state, detail) => live.push([text, state ?? 'running', detail]);
+    await call(createToolRunner(wp.deps), 'search_torrents', { query: 'The Last Harbor' }, cp);
+    check('search: live detail names the source and counts answers ("Knaben answered · 1 of 2 sources")', live.some((l) => l[1] === 'running' && l[2] === 'Knaben answered \u00b7 1 of 2 sources'), live);
+
+    const wa = world({ rows: harborRows() });
+    const aa = new AbortController();
+    let supportCalled = false;
+    wa.deps.engine.getFreeSpace = async () => {
+      aa.abort();
+      return { ok: true, ...wa.free };
+    };
+    wa.deps.playbackSupport = async () => {
+      supportCalled = true;
+      return null;
+    };
+    const ja = parse(await call(createToolRunner(wa.deps), 'search_torrents', { query: 'The Last Harbor' }, ctxOf(aa.signal)));
+    check('Stop right after the search: cancelled, and no further lookups run', ja.ok === false && ja.error.code === 'cancelled' && !supportCalled, ja);
   }
 
   console.log('search: upload age, broken sizes, newest sort (0.11)');
