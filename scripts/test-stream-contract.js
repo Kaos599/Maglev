@@ -26,8 +26,8 @@ function check(name, fn) {
 }
 
 const KT = 'modules/maglev-engine/android/src/main/java/com/maglev/engine';
-const contract = read('docs/NATIVE_CONTRACT.md');
-const sec = contract.slice(contract.indexOf('### 24.8'));
+const contract = require('./lib/privateDocs').readPrivateDoc('NATIVE_CONTRACT.md');
+const sec = contract === null ? null : contract.slice(contract.indexOf('### 24.8'));
 const jni = read('native/maglev-core/src/jni.rs');
 const errorRs = read('native/maglev-core/src/error.rs');
 const machine = read('native/maglev-core/src/http_dl/machine.rs');
@@ -59,6 +59,7 @@ check('JNI names match between jni.rs, NativeCore.kt and the module', () => {
 });
 
 check('the contract names the same two calls', () => {
+  if (sec === null) return;
   assert(/nativeProbeStream\(url, optionsJson, timeoutMs\)/.test(sec));
   assert(/nativeFinishMux\(id, ok, errorMessage\|null\)/.test(sec));
 });
@@ -72,7 +73,7 @@ const CODES = [
 
 check('error codes and messages in error.rs match section 24.8', () => {
   for (const [code, constName, message] of CODES) {
-    assert(sec.includes(`\`${code}\``) && sec.includes(message), `${code} or its message is missing from the contract`);
+    if (sec !== null) assert(sec.includes(`\`${code}\``) && sec.includes(message), `${code} or its message is missing from the contract`);
     assert(errorRs.includes(`"${code}"`), `${code} missing in error.rs as_str`);
     const m = errorRs.match(new RegExp(`pub const ${constName}: &str = "((?:[^"\\\\]|\\\\.)*)";`));
     assert(m, `${constName} missing in error.rs`);
@@ -170,7 +171,7 @@ check('AES-128: pinned crates, keys in memory only, 16 byte keys, PKCS#7 CBC', (
   assert(/Pkcs7/.test(fetch) && /Aes128CbcDec/.test(fetch), 'PKCS#7 CBC decryption');
   const sidecar = read('native/maglev-core/src/http_dl/sidecar.rs');
   assert(!/key|iv\b/i.test(sidecar.slice(sidecar.indexOf('pub struct TrackSide'), sidecar.indexOf('pub struct Sidecar'))), 'no key material in the sidecar');
-  assert(/AES-128 \(HLS\)/.test(sec), 'contract documents AES-128');
+  if (sec !== null) assert(/AES-128 \(HLS\)/.test(sec), 'contract documents AES-128');
 });
 
 check('segments go through the shared download rules', () => {

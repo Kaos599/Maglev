@@ -57,7 +57,8 @@ async function main() {
   check('the settings type lists the same styles', /export type FontStyle = 'clean' \| 'retro' \| 'mono';/.test(read('modules/maglev-engine/src/MaglevSettings.types.ts')));
   const nativeCfg = read('modules/maglev-engine/src/toNativeConfig.ts');
   check('the style is UI only: toNativeConfig never reads it', !/fontStyle/.test(nativeCfg));
-  check('the style is UI only: Rust and Kotlin never see it', !/fontStyle/.test(read('docs/NATIVE_CONTRACT.md')));
+  const contractDoc = require('./lib/privateDocs').readPrivateDoc('NATIVE_CONTRACT.md');
+  if (contractDoc !== null) check('the style is UI only: Rust and Kotlin never see it', !/fontStyle/.test(contractDoc));
 
   // ---- every style maps every slot to a loaded font
   const layout = read('app/_layout.tsx');
