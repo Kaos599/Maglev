@@ -264,6 +264,30 @@ function hasToken(want: string, have: Set<string>, haveText: string): boolean {
   return pairs.filter((b) => haveText.includes(b)).length / pairs.length >= 0.75;
 }
 
+/**
+ * The wanted title words that the name does not show. A release often glues or splits a word the user typed the
+ * other way ("prime time" against "Primetime", "primetime" against "Prime.Time"), so two adjacent words that join
+ * into one the other side has count as matched, and so do the two sides joined whole.
+ */
+function missingTokens(want: readonly string[], have: readonly string[]): string[] {
+  const set = new Set(have);
+  const haveText = have.join('');
+  if (want.join('') === haveText) return [];
+  const joined = new Set<string>();
+  for (let i = 0; i + 1 < have.length; i++) {
+    joined.add(have[i] + have[i + 1]);
+    if (i + 2 < have.length) joined.add(have[i] + have[i + 1] + have[i + 2]);
+  }
+  const covered = new Set<number>();
+  for (let i = 0; i + 1 < want.length; i++) {
+    if (set.has(want[i] + want[i + 1])) {
+      covered.add(i);
+      covered.add(i + 1);
+    }
+  }
+  return want.filter((t, i) => !covered.has(i) && !hasToken(t, set, haveText) && !joined.has(t));
+}
+
 /** Seasons a name covers: the range of a multi-season pack, else the single season (empty when it names none). */
 function coveredSeasons(parsed: ParsedRelease): number[] {
   if (parsed.seasons && parsed.seasons.length > 1) return parsed.seasons;
@@ -303,6 +327,42 @@ export function isBrowseQuery(text: string): boolean {
   return tokens.length > 0 && tokens.every((t) => GENERIC_WORDS.has(t) || /^(19|20)\d\d$/.test(t));
 }
 
+const LEAD_FILLER = new Set(['find', 'get', 'download', 'please', 'best', 'good']);
+const KIND_FILLER = new Set(['movie', 'movies', 'film', 'films']);
+const TAIL_FILLER = new Set(['torrent', 'torrents', 'download', 'downloads', 'hd', 'free', 'best']);
+
+/**
+ * Takes the words that ask for a kind of result, not a title, off the ends of a model's query: "best prime time
+ * movie torrents" becomes "prime time". Only the ends are touched and a title's own words stay ("Scary Movie",
+ * "Top Gun", "Free Guy"). Movie and film words go only when two or more words remain. Never returns an empty query.
+ */
+export function cleanSearchQuery(text: string): string {
+  let words = text.trim().split(/\s+/).filter((w) => w.length > 0);
+  const low = (w: string | undefined): string => (w ?? '').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '');
+  for (let again = true; again && words.length > 1; ) {
+    again = false;
+    const first = low(words[0]);
+    const second = low(words[1]);
+    const last = low(words[words.length - 1]);
+    let cut = 0;
+    if (first === 'the' && (second === 'best' || second === 'good')) cut = 2;
+    else if ((first === 'find' || first === 'get' || first === 'show') && second === 'me') cut = 2;
+    else if (LEAD_FILLER.has(first)) cut = 1;
+    else if (first === 'top' && /^\d+$/.test(second)) cut = 1;
+    else if (KIND_FILLER.has(first) && words.length - 1 >= 2) cut = 1;
+    if (cut > 0 && words.length - cut >= 1) {
+      words = words.slice(cut);
+      again = true;
+      continue;
+    }
+    if ((TAIL_FILLER.has(last) || (KIND_FILLER.has(last) && words.length - 1 >= 2)) && words.length > 1) {
+      words = words.slice(0, -1);
+      again = true;
+    }
+  }
+  return words.join(' ');
+}
+
 /** Categories whose releases are named like software, books or albums, not like films. */
 const NON_VIDEO_CATEGORIES: ReadonlySet<string> = new Set(['apps', 'games', 'books', 'music', 'other']);
 
@@ -328,9 +388,7 @@ function wrongRawName(name: string, q: ScoreContext['query']): TitleVerdict {
   const want = titleTokens(q.raw ?? q.title);
   if (want.length === 0) return { reason: null, partial: false };
   const have = titleTokens(name);
-  const set = new Set(have);
-  const haveText = have.join('');
-  const missing = want.filter((t) => !hasToken(t, set, haveText));
+  const missing = missingTokens(want, have);
   // A version number the user typed must be there: "ubuntu 22.04" is not "ubuntu 24.04".
   if (missing.length > 1 || (missing.length === 1 && want.length < 2) || missing.some((t) => /^\d+$/.test(t))) {
     return { reason: `The name does not match "${q.raw ?? q.title}".`, partial: false };
@@ -350,11 +408,10 @@ function wrongTitle(parsed: ParsedRelease, q: ScoreContext['query'], browse = fa
   if (want.length > 0) {
     const have = titleTokens(parsed.title ?? '');
     if (have.length === 0) return { reason: 'The name does not show a title.', partial };
-    const set = new Set(have);
-    const haveText = have.join('');
-    const missing = want.filter((t) => !hasToken(t, set, haveText));
-    // Exclude only when most of the title is missing. One missing word in a longer title is a partial match.
-    if (missing.length > 1 || (missing.length === 1 && want.length < 2)) {
+    const missing = missingTokens(want, have);
+    // Exclude when more than one word is missing. One missing word is a partial match only in a title of 3+ words
+    // (an existing contract): in a two-word one it is the other film ("Prime Suspect" is not "Prime Time").
+    if (missing.length > 1 || (missing.length === 1 && want.length < 3)) {
       return { reason: `The title does not match "${q.title}".`, partial };
     }
     if (missing.length === 1) partial = true;

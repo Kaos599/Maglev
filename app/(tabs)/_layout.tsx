@@ -15,13 +15,14 @@ import { useAssistantPrefs } from '../../utils/prefs/assistantApp';
 import { ThemeColors, fontFamily, withAlpha } from '../../constants/theme';
 import { badgeLabel, useFeedsNewCount } from '../../utils/feeds';
 import { startFeedsBadge } from '../../utils/feedsBadgeStart';
+import { useUnseenReply } from '../../utils/assistantApp/unseenReply';
 
 const PILL_W = 56;
 const PILL_H = 28;
 const ICON = 20;
 
 type TabIcon = PixelIconName | TabGlyphName;
-type TabButtonProps = BottomTabBarButtonProps & { icon: TabIcon; title: string; badge?: number };
+type TabButtonProps = BottomTabBarButtonProps & { icon: TabIcon; title: string; badge?: number; dot?: boolean };
 
 /**
  * The whole tab: pill, icon and label. It replaces the library's default button, which is a
@@ -38,6 +39,7 @@ function TabButton({
   icon,
   title,
   badge,
+  dot,
   // Library props this button does not use: no ripple, no hover, no fade, own children.
   children: _children,
   href: _href,
@@ -59,7 +61,7 @@ function TabButton({
   const hasGlyph = icon in TAB_GLYPHS;
   const badgeText = badgeLabel(badge ?? 0);
   // The library sets aria-label from tabBarAccessibilityLabel; add the count for screen readers.
-  const a11yLabel = badgeText ? `${rest['aria-label'] ?? title}, ${badge} new` : rest['aria-label'];
+  const a11yLabel = badgeText ? `${rest['aria-label'] ?? title}, ${badge} new` : dot ? `${rest['aria-label'] ?? title}, new reply` : rest['aria-label'];
 
   const focus = useRef(new Animated.Value(focused ? 1 : 0)).current;
   const sink = useRef(new Animated.Value(0)).current;
@@ -113,6 +115,8 @@ function TabButton({
               {badgeText}
             </Animated.Text>
           </View>
+        ) : dot && !focused ? (
+          <View style={styles.dot} pointerEvents="none" importantForAccessibility="no-hide-descendants" />
         ) : null}
       </Animated.View>
       {/* Bold sits in flow (it is the wider of the two) so the regular copy always fits over it. */}
@@ -134,10 +138,11 @@ export default function TabLayout() {
   const assistant = useAssistantPrefs();
   const prefs = useTabPrefs();
   const feedsNew = useFeedsNewCount();
+  const unseenReply = useUnseenReply();
   // Count from stored data now, and again when the app returns to the foreground.
   useEffect(() => startFeedsBadge(), []);
 
-  const tab = (name: string, title: string, icon: TabIcon, hidden = false, freeze = false, badge = 0) => (
+  const tab = (name: string, title: string, icon: TabIcon, hidden = false, freeze = false, badge = 0, dot = false) => (
     <Tabs.Screen
       name={name}
       activityEnabled={freeze}
@@ -150,7 +155,7 @@ export default function TabLayout() {
               title,
               tabBarAccessibilityLabel: title,
               // TabButton draws the icon and label itself (see the note on TabButton).
-              tabBarButton: (props) => <TabButton {...props} icon={icon} title={title} badge={badge} />,
+              tabBarButton: (props) => <TabButton {...props} icon={icon} title={title} badge={badge} dot={dot} />,
             }
       }
     />
@@ -164,7 +169,7 @@ export default function TabLayout() {
     search: tab('search', 'Search', 'tab-search', !shown.includes('search')),
     feeds: tab('feeds', 'Feeds', 'tab-feeds', !shown.includes('feeds'), true, feedsNew),
     settings: tab('settings', 'Settings', 'tab-settings', !shown.includes('settings'), true),
-    assistant: tab('assistant', 'Assistant', 'tab-assistant', !shown.includes('assistant')),
+    assistant: tab('assistant', 'Assistant', 'tab-assistant', !shown.includes('assistant'), false, 0, unseenReply),
     browse: tab('browse', 'Browser', 'tab-browse', !shown.includes('browse')),
   };
 
@@ -202,8 +207,8 @@ export default function TabLayout() {
         React Activity (activityEnabled): a hidden tab keeps its state, its effects are cleaned up
         and its renders drop to idle priority; coming back re-runs its effects.
         Not for Transfers (its list must be current the moment it shows), Search (its search effect
-        would run the search again on return) or Assistant (its AppState listener must still see
-        the app go to the background while another tab is open).
+        would run the search again on return) or Assistant (a running turn keeps streaming and
+        updating its steps while another tab is open).
       */}
       {prefs.order.map((id) => screens[id])}
     </Tabs>
@@ -235,6 +240,8 @@ const makeStyles = (c: ThemeColors) =>
       justifyContent: 'center',
       backgroundColor: c.text,
     },
+    // A small square dot: a reply is waiting in the Assistant.
+    dot: { position: 'absolute', top: -2, right: 6, width: 8, height: 8, backgroundColor: c.accent },
     badgeText: { fontSize: 10, lineHeight: 12, fontFamily: fontFamily.bodyStrong, color: c.bg, fontVariant: ['tabular-nums'] },
     glyph: { width: ICON, height: ICON },
     labelWrap: { marginTop: 2, alignItems: 'center' },

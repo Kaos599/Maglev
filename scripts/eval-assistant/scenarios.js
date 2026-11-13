@@ -1,4 +1,4 @@
-// 27 eval scenarios for the assistant. Each has: id, messages (first is the prompt; later entries are follow-ups,
+// 28 eval scenarios for the assistant. Each has: id, messages (first is the prompt; later entries are follow-ups,
 // either a string or { pick: <option index> } to answer the last ask_user question), confirm (auto-tap cards),
 // checks (deterministic, by name), and `fake` (the scripted model used by --fake).
 'use strict';
@@ -420,6 +420,26 @@ add({
     { name: 'top card has ESub or Multi-Sub in the name', fn: (c) => /esubs?|msubs?|multi[ ._-]?subs?/i.test(topCardName(c)) },
   ],
   fake: [call('search_torrents', { query: 'interstellar', category: 'movies', subtitles: 'English' }), say('The first card is Interstellar with English subtitles in the name. Want me to look inside it?')],
+});
+
+// 0.17: filler words ("best", "movie", "torrents") are not part of the title, and "Prime Time" is released as "Primetime".
+add({
+  id: 28, messages: ['find me the best prime time movie torrents'], freeGB: 20,
+  fixture: () => rows([
+    { name: 'Primetime.2026.1080p.WEB-DL.DDP5.1.H.264-FLUX', mb: 3400, seeders: 210, ageDays: 20 },
+    { name: 'Primetime.2026.720p.WEBRip.x264-GalaxyRG', mb: 1100, seeders: 95, ageDays: 20 },
+    { name: 'Primetime.2026.2160p.WEB-DL.DDP5.1.HDR.H.265-APEX', mb: 11800, seeders: 40, ageDays: 20 },
+    { name: 'Prime.Suspect.S01.1080p.BluRay.x264-GRP', mb: 9000, seeders: 300, ageDays: 3000, category: 'tv' },
+    { name: 'Time.Bandits.1981.1080p.BluRay.x264-GRP', mb: 2100, seeders: 150, ageDays: 3000 },
+    { name: 'Mangal.Time.2019.720p.WEB-DL.x264-GRP', mb: 1200, seeders: 60, ageDays: 900 },
+  ]),
+  checks: [
+    { name: 'the query the app searched has no best, torrent or movie', fn: (c) => searches(c).length > 0 && searches(c).every((t) => { const q = String((t.args.query ?? '')); let title = ''; try { title = String(JSON.parse(t.full ?? t.content).data.query.title); } catch { /* none */ } return !/\b(best|top|torrents?|movies?|films?)\b/i.test(q) && !/\b(best|top|torrents?|movies?|films?)\b/i.test(title); }) },
+    { name: 'a Primetime release is on a card', fn: (c) => searches(c).some((t) => cardRowsOf(t).some((r) => /primetime/i.test(String(r.name_untrusted)))) },
+    { name: 'no unrelated title on a card', fn: (c) => searches(c).every((t) => cardRowsOf(t).every((r) => /primetime/i.test(String(r.name_untrusted)))) },
+    { name: 'no unrelated title proposed', fn: (c) => c.cards.every((k) => !/suspect|bandits|mangal/i.test(JSON.stringify(k.view ?? k.args))) },
+  ],
+  fake: [call('search_torrents', { query: 'prime time', category: 'movies' }), say('The first card is Primetime, a 2026 release. Want me to look inside it?')],
 });
 
 module.exports = { SCENARIOS: S, GENERIC, words };

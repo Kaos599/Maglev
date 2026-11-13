@@ -18,7 +18,7 @@ const FAKE = argv.includes('--fake');
 const onlyIdx = argv.indexOf('--only');
 const ONLY = onlyIdx >= 0 ? new Set((argv[onlyIdx + 1] || '').split(',').map((s) => Number(s.trim())).filter(Boolean)) : null;
 const flag = (name) => { const i = argv.indexOf(name); return i >= 0 ? argv[i + 1] : undefined; };
-const MODEL = flag('--model') || process.env.MAGLEV_EVAL_MODEL || 'meta-llama/llama-3.3-70b-instruct:free';
+const MODEL = flag('--model') || process.env.MAGLEV_EVAL_MODEL || 'nvidia/nemotron-3-ultra-550b-a55b:free';
 const gapArg = Number(flag('--gap'));
 const MIN_GAP_MS = FAKE ? 0 : (Number.isFinite(gapArg) && gapArg >= 0 && flag('--gap') !== undefined ? gapArg : 4) * 1000;
 const TURN_TIMEOUT_MS = 180_000;

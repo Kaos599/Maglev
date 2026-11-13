@@ -391,7 +391,7 @@ const DESCRIPTIONS: Record<ToolName, string> = {
   search_torrents:
     'Search the enabled sources for torrents. Returns the best matches with size, sharing, upload age when known, and a space check. Just the title. Add a year, season or episode only if the user gave one.',
   browse_torrents:
-    'List what is new or popular in a kind of thing, with no title. Use it for latest, new, recent, popular, trending, top requests.',
+    'List what is new or popular in a kind of thing, with no title. Use it for latest, new, recent, popular, trending, top requests. If any other words are left, they are a title: use search_torrents.',
   get_result_details:
     'Look inside one search result: its files, file safety check and space check. Slow. Call it before proposing a result.',
   parse_release_name:

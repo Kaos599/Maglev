@@ -284,8 +284,13 @@ function checkFiles(input: SafetyInput, files: readonly Normalised[], category: 
 
   if (videos.length === 1 && input.queryTitle) {
     const v = videos[0];
-    const vWords = new Set(words(stemOf(v.p)));
-    const missing = words(input.queryTitle).some((w) => !vWords.has(w));
+    const vList = words(stemOf(v.p));
+    const vWords = new Set(vList);
+    const want = words(input.queryTitle);
+    // A file often glues or splits the title the other way ("prime time" against Primetime.mkv), so the title
+    // written without spaces inside the file name, also without spaces, counts as a match.
+    const glued = want.join('');
+    const missing = !(glued.length > 0 && vList.join('').includes(glued)) && want.some((w) => !vWords.has(w));
     if (missing) {
       findings.push({ code: 'title_mismatch', level: 'amber', name_untrusted: basename(v.p) });
     }

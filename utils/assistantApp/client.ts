@@ -221,12 +221,20 @@ export function createStreamFn(
     try {
       let res: FetchLikeResponse;
       try {
-        res = await fetchImpl(chatCompletionsUrl(params.baseUrl), {
+        // A connect that ignores the abort signal must not keep Stop waiting, so the fetch races it like the reads below.
+        const connecting = fetchImpl(chatCompletionsUrl(params.baseUrl), {
           method: 'POST',
           headers: buildHeaders(params),
           body: JSON.stringify(buildRequestBody(params)),
           signal: inner.signal,
         });
+        const connectAborted = new Promise<never>((_, reject) => {
+          if (inner.signal.aborted) reject(new Error('aborted'));
+          else inner.signal.addEventListener('abort', () => reject(new Error('aborted')), { once: true });
+        });
+        connecting.catch(() => {}); // The loser of the race must not become an unhandled rejection.
+        connectAborted.catch(() => {});
+        res = await Promise.race([connecting, connectAborted]);
       } catch {
         netFailure();
         return;

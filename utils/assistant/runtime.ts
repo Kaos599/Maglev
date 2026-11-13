@@ -146,6 +146,9 @@ export type ScreenTarget =
   | { screen: 'add_download' }
   | { screen: 'settings'; section?: 'storage' | 'network' | 'assistant' | 'search_providers' | 'schedule' | 'speed' | 'notifications' };
 
+/** What a busy turn is doing. See AssistantChat.phase. */
+export type ChatPhase = 'idle' | 'thinking' | 'tools' | 'writing';
+
 /** Why the composer is locked (R1-6 send gate). 'ready' means Send works. */
 export type ChatGate = 'ready' | 'disabled' | 'notAccepted' | 'noKey';
 
@@ -155,6 +158,13 @@ export interface AssistantChat {
   gate: ChatGate;
   /** A turn is in flight (requesting, streaming or running tools): Send becomes Stop. */
   busy: boolean;
+  /**
+   * What the turn is doing right now. 'thinking': waiting for the model with nothing else to show (before the first
+   * word, between tools): the chat shows a working row. 'tools': a step is running. 'writing': text is streaming.
+   */
+  phase?: ChatPhase;
+  /** A reply finished while the Assistant tab was not in view. Cleared when the tab is seen again. */
+  unseenReply?: boolean;
   /** e.g. "OpenRouter". Used in "Your messages and the names of your downloads go to <provider>." */
   providerName: string;
   /** 0.11: the model in use as the user knows it, e.g. "Llama 3.3 70B (free)". Shown in the composer's model chip. */
@@ -186,8 +196,11 @@ export interface AssistantChat {
 export interface ToolRunContext {
   /** Aborted on Stop, Clear, key removal, backgrounding and the 60 s tool timeout (R1-5). */
   signal: AbortSignal;
-  /** Report a progress line for this call. Calling again with the same text updates its state. */
-  progress(text: string, state?: ProgressStep['state']): void;
+  /**
+   * Report a progress line for this call. Calling again with the same text updates its state. `detail` is a live
+   * sub-line for the step while it runs ("Knaben answered · 12 of 28 sources"); the final `detail` of the output replaces it.
+   */
+  progress(text: string, state?: ProgressStep['state'], detail?: string): void;
 }
 
 export interface ToolRunOutput {
