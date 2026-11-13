@@ -272,10 +272,10 @@ export const fontStyleCopy = {
   label: 'Font',
   hint: 'Applies as soon as you pick it.',
   sampleName: 'Big Buck Bunny 1080p',
-  sampleSize: '691.2 MB',
+  sampleSize: '691 MB',
   options: [
     { value: 'clean', title: 'Clean', description: 'Easy to read. Inter for titles, names and numbers.' },
     { value: 'retro', title: 'Retro', description: 'Pixel titles and fixed-width numbers, like an old terminal.' },
-    { value: 'mono', title: 'Mono', description: 'Fixed-width type everywhere, with bold titles.' },
+    { value: 'mono', title: 'Mono', description: 'Fixed-width titles, names and numbers. Labels and text stay easy to read.' },
   ],
 } as const;
