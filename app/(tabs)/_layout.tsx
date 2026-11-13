@@ -164,7 +164,7 @@ export default function TabLayout() {
     feeds: tab('feeds', 'Feeds', 'tab-feeds', !shown.includes('feeds'), true, feedsNew),
     settings: tab('settings', 'Settings', 'tab-settings', !shown.includes('settings'), true),
     assistant: tab('assistant', 'Assistant', 'tab-assistant', !shown.includes('assistant')),
-    browse: tab('browse', 'Browser', 'network', !shown.includes('browse')),
+    browse: tab('browse', 'Browser', 'tab-browse', !shown.includes('browse')),
   };
 
   // If the tab being shown is turned off, go to Transfers. Only a change of the bar triggers this,

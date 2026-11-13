@@ -84,13 +84,15 @@ const count = (g) => g.flat().reduce((s, v) => s + v, 0);
 async function main() {
   const { ICON_PATHS } = await import('../components/icons.generated.ts');
   const G = await import('../components/tabs/tabGlyphs.ts');
-  const names = ['tab-transfers', 'tab-search', 'tab-feeds', 'tab-settings', 'tab-assistant'];
+  const names = ['tab-transfers', 'tab-search', 'tab-feeds', 'tab-settings', 'tab-assistant', 'tab-browse'];
+  // The Browser tab animates the plain 'network' icon.
+  const source = (name) => ICON_PATHS[name === 'tab-browse' ? 'network' : name];
 
-  check('glyphs: exactly the five tab icons', JSON.stringify(Object.keys(G.TAB_GLYPHS).sort()) === JSON.stringify([...names].sort()));
+  check('glyphs: exactly the six tab icons', JSON.stringify(Object.keys(G.TAB_GLYPHS).sort()) === JSON.stringify([...names].sort()));
 
   for (const name of names) {
     const glyph = G.TAB_GLYPHS[name];
-    const want = raster(ICON_PATHS[name]);
+    const want = raster(source(name));
     const got = raster(glyph.parts.map((p) => p.d).join(''));
     check(`${name}: parts rasterize to the original icon`, same(want, got), `want ${count(want)} px, got ${count(got)} px`);
     check(`${name}: has named parts`, glyph.parts.length > 0 && glyph.parts.every((p) => p.id && p.d));

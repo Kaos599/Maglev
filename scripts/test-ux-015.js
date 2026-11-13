@@ -49,7 +49,7 @@ check('About row says "Built by Kaos" with source subtitle', /title="Built by Ka
 const settings = read('app/(tabs)/settings.tsx');
 const more = read('components/settings/MoreBelow.tsx');
 const hint = require(path.join(root, 'utils/prefs/moreHint.ts'));
-check('hint flag key', hint.MORE_HINT_KEY === 'maglev.settings.moreHintSeen.v1');
+check('hint flag key', hint.MORE_HINT_KEY === 'maglev.settings.moreHintSeen.v2');
 check('hint flag starts unseen and sticks once marked', hint.getMoreHintSeen() === false && (hint.markMoreHintSeen(), hint.getMoreHintSeen() === true));
 check('near the end within 24px', hint.nearEnd(976, 600, 1600) && !hint.nearEnd(900, 600, 1600) && hint.nearEnd(0, 800, 700));
 check('pill says "More below" with a chevron-down', /More below/.test(more) && /chevron-down/.test(more));

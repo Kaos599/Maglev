@@ -150,6 +150,7 @@ export default function SettingsIndex() {
   const alerts = permissionStatus?.notifications === 'granted' ? 'On' : 'Off';
 
   const appRows: RowSpec[] = [
+    { icon: 'about', title: 'About', value: APP_VERSION, route: 'about' },
     { icon: 'interface', title: 'Appearance', value: interfaceValue, route: 'interface' },
     { icon: 'bell', title: 'Notifications', value: alerts, route: 'notifications' },
     { icon: 'assistant', title: 'Assistant', value: assistant.enabled ? 'Experimental · On' : 'Experimental · Off', route: 'assistant' },
@@ -165,30 +166,30 @@ export default function SettingsIndex() {
     { icon: 'network', title: 'Network', value: network, route: 'network' },
     { icon: 'power', title: 'Power', value: power, route: 'power' },
   ];
-  const aboutRow: RowSpec = { icon: 'about', title: 'About', value: APP_VERSION, route: 'about' };
 
-  // "More below": a fade over the bottom edge until the end is near, and a first-visit pill that goes for good once used.
+  // "More below": a fade over the bottom edge until the end is near, and a pill that stays until the end has been reached once (or it is tapped).
   const scrollRef = useRef<ScrollViewInstance>(null);
   const metrics = useRef({ y: 0, viewport: 0, content: 0 });
   const [atEnd, setAtEnd] = useState(false);
   const [hintSeen, setHintSeen] = useState(getMoreHintSeen);
-  const refresh = useCallback(() => {
-    const m = metrics.current;
-    const end = m.viewport > 0 && m.content > 0 && nearEnd(m.y, m.viewport, m.content);
-    setAtEnd((prev) => (prev === end ? prev : end));
-  }, []);
   const dismissHint = useCallback(() => {
     if (getMoreHintSeen()) return;
     markMoreHintSeen();
     setHintSeen(true);
   }, []);
+  const refresh = useCallback(() => {
+    const m = metrics.current;
+    const end = m.viewport > 0 && m.content > 0 && nearEnd(m.y, m.viewport, m.content);
+    setAtEnd((prev) => (prev === end ? prev : end));
+    // Seen once the end has been reached by scrolling, not on the first nudge.
+    if (end && m.y > 0) dismissHint();
+  }, [dismissHint]);
   const onScroll = useCallback(
     (e: NativeSyntheticEvent<NativeScrollEvent>) => {
       metrics.current.y = e.nativeEvent.contentOffset.y;
-      if (metrics.current.y > 4) dismissHint();
       refresh();
     },
-    [dismissHint, refresh],
+    [refresh],
   );
   const scrollDown = useCallback(() => {
     const m = metrics.current;
@@ -204,6 +205,7 @@ export default function SettingsIndex() {
         contentContainerStyle={styles.content}
         onScroll={onScroll}
         scrollEventThrottle={32}
+        persistentScrollbar
         onLayout={(e) => {
           metrics.current.viewport = e.nativeEvent.layout.height;
           refresh();
@@ -246,9 +248,6 @@ export default function SettingsIndex() {
             ))}
           </Card>
         </View>
-        <Card>
-          <SettingsRow {...aboutRow} />
-        </Card>
       </ScrollView>
       <BottomFade hidden={atEnd} />
       {!hintSeen && !atEnd ? <MoreBelowPill onPress={scrollDown} /> : null}
