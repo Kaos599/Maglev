@@ -1,11 +1,13 @@
-import React, { useCallback, useMemo } from 'react';
-import { Linking, StyleSheet, View } from 'react-native';
+import React, { useCallback, useMemo, useRef, useState } from 'react';
+import { Linking, NativeScrollEvent, NativeSyntheticEvent, ScrollView, ScrollViewInstance, StyleSheet, View } from 'react-native';
 import { router } from 'expo-router';
 import Constants from 'expo-constants';
 import { maglevEngine } from 'maglev-engine';
 import { useSettings } from '../../context/SettingsContext';
 import { useMaglevEngine as useEngine } from '../../context/EngineContext';
 import { Banner, ListRow, Screen, SectionHeader } from '../../components/ui';
+import { BottomFade, MoreBelowPill } from '../../components/settings/MoreBelow';
+import { getMoreHintSeen, markMoreHintSeen, nearEnd } from '../../utils/prefs/moreHint';
 import { PixelIconName } from '../../components/PixelIcon';
 import { useSearchPrefs } from '../../utils/prefs/search';
 import { scheduleSummary, useSchedule } from '../../utils/prefs/schedule';
@@ -165,49 +167,97 @@ export default function SettingsIndex() {
   ];
   const aboutRow: RowSpec = { icon: 'about', title: 'About', value: APP_VERSION, route: 'about' };
 
+  // "More below": a fade over the bottom edge until the end is near, and a first-visit pill that goes for good once used.
+  const scrollRef = useRef<ScrollViewInstance>(null);
+  const metrics = useRef({ y: 0, viewport: 0, content: 0 });
+  const [atEnd, setAtEnd] = useState(false);
+  const [hintSeen, setHintSeen] = useState(getMoreHintSeen);
+  const refresh = useCallback(() => {
+    const m = metrics.current;
+    const end = m.viewport > 0 && m.content > 0 && nearEnd(m.y, m.viewport, m.content);
+    setAtEnd((prev) => (prev === end ? prev : end));
+  }, []);
+  const dismissHint = useCallback(() => {
+    if (getMoreHintSeen()) return;
+    markMoreHintSeen();
+    setHintSeen(true);
+  }, []);
+  const onScroll = useCallback(
+    (e: NativeSyntheticEvent<NativeScrollEvent>) => {
+      metrics.current.y = e.nativeEvent.contentOffset.y;
+      if (metrics.current.y > 4) dismissHint();
+      refresh();
+    },
+    [dismissHint, refresh],
+  );
+  const scrollDown = useCallback(() => {
+    const m = metrics.current;
+    dismissHint();
+    scrollRef.current?.scrollTo({ y: Math.min(m.y + m.viewport * 0.6, Math.max(0, m.content - m.viewport)), animated: true });
+  }, [dismissHint]);
+
   return (
-    <Screen title="SETTINGS" scroll contentStyle={styles.content}>
-      <NeedsAttention />
-      <View style={styles.section}>
-        <SectionHeader title="App" />
+    <Screen title="SETTINGS" contentStyle={styles.body}>
+      <ScrollView
+        ref={scrollRef}
+        style={styles.body}
+        contentContainerStyle={styles.content}
+        onScroll={onScroll}
+        scrollEventThrottle={32}
+        onLayout={(e) => {
+          metrics.current.viewport = e.nativeEvent.layout.height;
+          refresh();
+        }}
+        onContentSizeChange={(_, h) => {
+          metrics.current.content = h;
+          refresh();
+        }}
+      >
+        <NeedsAttention />
+        <View style={styles.section}>
+          <SectionHeader title="App" />
+          <Card>
+            {appRows.map((r) => (
+              <SettingsRow key={r.route} {...r} />
+            ))}
+          </Card>
+        </View>
+        <View style={styles.section}>
+          <SectionHeader title="Finding things" />
+          <Card>
+            {findRows.map((r) => (
+              <SettingsRow key={r.route} {...r} />
+            ))}
+          </Card>
+        </View>
+        <View style={styles.section}>
+          <SectionHeader title="Downloads" />
+          <Card>
+            <StorageRow />
+            <SettingsRow {...speedRow} />
+            <SettingsRow {...scheduleRow} />
+          </Card>
+        </View>
+        <View style={styles.section}>
+          <SectionHeader title="Connection" />
+          <Card>
+            {connectionRows.map((r) => (
+              <SettingsRow key={r.route} {...r} />
+            ))}
+          </Card>
+        </View>
         <Card>
-          {appRows.map((r) => (
-            <SettingsRow key={r.route} {...r} />
-          ))}
+          <SettingsRow {...aboutRow} />
         </Card>
-      </View>
-      <View style={styles.section}>
-        <SectionHeader title="Finding things" />
-        <Card>
-          {findRows.map((r) => (
-            <SettingsRow key={r.route} {...r} />
-          ))}
-        </Card>
-      </View>
-      <View style={styles.section}>
-        <SectionHeader title="Downloads" />
-        <Card>
-          <StorageRow />
-          <SettingsRow {...speedRow} />
-          <SettingsRow {...scheduleRow} />
-        </Card>
-      </View>
-      <View style={styles.section}>
-        <SectionHeader title="Connection" />
-        <Card>
-          {connectionRows.map((r) => (
-            <SettingsRow key={r.route} {...r} />
-          ))}
-        </Card>
-      </View>
-      <Card>
-        <SettingsRow {...aboutRow} />
-      </Card>
+      </ScrollView>
+      <BottomFade hidden={atEnd} />
+      {!hintSeen && !atEnd ? <MoreBelowPill onPress={scrollDown} /> : null}
     </Screen>
   );
 }
 
 const styles = StyleSheet.create({
+  body: { flex: 1 },
   content: { padding: spacing.lg, gap: spacing.lg, paddingBottom: spacing.xxxl },
   section: { gap: spacing.sm },
 });

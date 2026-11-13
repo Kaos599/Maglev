@@ -196,7 +196,8 @@ async function main() {
   check('search: results use FlashList, not FlatList', /<FlashList\b/.test(search) && !/\bFlatList\b/.test(search));
   check('search: skeleton rows before the first result', /ListEmptyComponent=\{\s*searching \?\s*\(\s*<SkeletonRows count=\{SKELETON_FIRST_COUNT\}/.test(search));
   check('search: stable order applied to the shown rows', /stableOrder\(shownKeys\.current/.test(search));
-  check('search: per-source status line kept', /sources answered, results appear as they arrive/.test(search));
+  // 0.15: the scoreboard is gone; one line says how many sources have answered while results stream in.
+  check('search: progress line while sources answer', /Searching… \$\{answered\} of \$\{/.test(search));
   check('search: the read waits for the top row to hold its place', /PREFETCH_STABLE_MS = 1500/.test(search) && /metadataPrefetch\.start\(/.test(search));
   check('search: the read obeys the network rule', /prefetchAllowed\(/.test(search) && /settings\.network\.wifiOnly/.test(search));
   check('search: a direct add stops a read of the same torrent', /metadataPrefetch\.cancelIf\(readHash\)[\s\S]{0,80}startTorrent\(ready\.magnet\)/.test(search));

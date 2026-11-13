@@ -36,9 +36,10 @@ check('add-download has a Save to row', addDownload.includes('Save to'));
 check('add-download can change the folder', /pickDownloadFolder/.test(addDownload) && /Change/.test(addDownload));
 check('add-download keeps 44px row', /touch\.min/.test(addDownload));
 
-check('empty state copy mentions links and torrents', /No transfers yet/.test(copy) && /link/i.test(copy.match(/none:\s*\{[^}]*\}/)[0]) && /torrent/i.test(copy.match(/none:\s*\{[^}]*\}/)[0]));
-check('empty state offers optional Search and Browser actions', /onSearch\?/.test(empty) && /onBrowse\?/.test(empty) && /label="Search"/.test(empty) && /label="Browser"/.test(empty));
-check('empty state renders them only when provided', /onSearch\s*\?/.test(empty) || /onSearch\s*&&/.test(empty) || /\(onSearch \|\| onBrowse\)/.test(empty));
+check('empty state copy mentions links and torrents', /Nothing downloading/.test(copy) && /link/i.test(copy.match(/none:\s*\{[^}]*\}/)[0]) && /torrent/i.test(copy.match(/none:\s*\{[^}]*\}/)[0]));  // 0.15: new title
+// 0.15: Search and Browser are now always-shown tiles (required props), not optional quiet buttons.
+check('empty state offers Search and Browser tiles', /onSearch:/.test(empty) && /onBrowse:/.test(empty) && /title="Search"/.test(empty) && /title="Browser"/.test(empty));
+check('empty state tiles are wired to Search and Browser', /onPress=\{onSearch\}/.test(empty) && /onPress=\{onBrowse\}/.test(empty));
 check('clipboard copy works for any link', /Add the link you copied/.test(copy) && !/Magnet link in clipboard/.test(copy));
 check('clipboard chip can show the link host', /link\?:\s*string/.test(chip) && /new URL|host/i.test(chip));
 check('FAB label mentions link and torrent', /Add a link or torrent/.test(fab));

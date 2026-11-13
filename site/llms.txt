@@ -1,6 +1,6 @@
 # Maglev
 
-> Maglev is a free, open source Android downloader with no ads. It saves videos from web pages (including on-demand HLS and DASH streams), downloads ordinary links with pause and resume, and runs torrents, in one app. Android 7 and later. Version 0.14, beta.
+> Maglev is a free, open source Android downloader with no ads. It saves videos from web pages (including on-demand HLS and DASH streams), downloads ordinary links with pause and resume, and runs torrents, in one app. Android 7 and later. Version 0.15, beta.
 
 Made by Harsh Dayal (https://harshdayal.dev, GitHub: https://github.com/Kaos599). License: GPL-3.0.
 
@@ -32,17 +32,22 @@ Made by Harsh Dayal (https://harshdayal.dev, GitHub: https://github.com/Kaos599)
 - [Get updates with Obtainium](https://apps.obtainium.imranr.dev/redirect?r=obtainium://add/https://github.com/Kaos599/Maglev)
 - [License](https://github.com/Kaos599/Maglev/blob/main/LICENSE)
 
-## Comparison (checked 2026-11-12; anything not listed on an app's own pages counts as No)
+## Comparison (checked 2026-11-13; anything not listed on an app's own pages counts as No)
 
 - Torrents: Maglev Yes; LibreTorrent Yes; BiglyBT (Android) Yes; Seal No; YTDLnis No; NewPipe No; Flud Yes; 1DM+ Yes; Advanced Download Manager (ADM) Yes; Free Download Manager (FDM) Yes
 - Magnet links: Maglev Yes; LibreTorrent Yes; BiglyBT (Android) No; Seal No; YTDLnis No; NewPipe No; Flud Yes; 1DM+ Yes; Advanced Download Manager (ADM) Yes; Free Download Manager (FDM) Yes
 - Search many torrent sources: Maglev Yes; LibreTorrent No; BiglyBT (Android) No; Seal No; YTDLnis No; NewPipe No; Flud No; 1DM+ No; Advanced Download Manager (ADM) No; Free Download Manager (FDM) No
+- Merged results and fake-upload warnings: Maglev Yes; LibreTorrent No; BiglyBT (Android) No; Seal No; YTDLnis No; NewPipe No; Flud No; 1DM+ No; Advanced Download Manager (ADM) No; Free Download Manager (FDM) No
+- Add your own Jackett or Prowlarr indexer: Maglev Yes; LibreTorrent No; BiglyBT (Android) No; Seal No; YTDLnis No; NewPipe No; Flud No; 1DM+ No; Advanced Download Manager (ADM) No; Free Download Manager (FDM) No
+- Follow a show from search: Maglev Yes; LibreTorrent No; BiglyBT (Android) No; Seal No; YTDLnis No; NewPipe No; Flud No; 1DM+ No; Advanced Download Manager (ADM) No; Free Download Manager (FDM) No
 - RSS feeds with auto-download rules: Maglev Yes; LibreTorrent Yes; BiglyBT (Android) Yes; Seal No; YTDLnis Partial; NewPipe No; Flud Yes; 1DM+ No; Advanced Download Manager (ADM) No; Free Download Manager (FDM) No
 - Pick files inside a torrent: Maglev Yes; LibreTorrent Yes; BiglyBT (Android) Yes; Seal No; YTDLnis No; NewPipe No; Flud Yes; 1DM+ No; Advanced Download Manager (ADM) Yes; Free Download Manager (FDM) Yes
 - Plain web links (http/https): Maglev Yes; LibreTorrent No; BiglyBT (Android) No; Seal No; YTDLnis No; NewPipe No; Flud No; 1DM+ Yes; Advanced Download Manager (ADM) Yes; Free Download Manager (FDM) Yes
 - Pause and resume for links: Maglev Yes; LibreTorrent No; BiglyBT (Android) No; Seal No; YTDLnis No; NewPipe No; Flud No; 1DM+ Partial; Advanced Download Manager (ADM) Yes; Free Download Manager (FDM) Yes
 - Background downloads with a notification: Maglev Yes; LibreTorrent No; BiglyBT (Android) Yes; Seal No; YTDLnis Partial; NewPipe No; Flud No; 1DM+ Yes; Advanced Download Manager (ADM) Yes; Free Download Manager (FDM) No
 - Play while downloading: Maglev Yes; LibreTorrent Yes; BiglyBT (Android) No; Seal No; YTDLnis No; NewPipe No; Flud Partial; 1DM+ No; Advanced Download Manager (ADM) No; Free Download Manager (FDM) No
+- Open a download's folder: Maglev Yes; LibreTorrent No; BiglyBT (Android) No; Seal No; YTDLnis No; NewPipe No; Flud No; 1DM+ No; Advanced Download Manager (ADM) No; Free Download Manager (FDM) No
+- Asks before a big add on mobile data: Maglev Yes; LibreTorrent No; BiglyBT (Android) No; Seal No; YTDLnis No; NewPipe No; Flud No; 1DM+ No; Advanced Download Manager (ADM) No; Free Download Manager (FDM) No
 - Built-in browser: Maglev Yes; LibreTorrent No; BiglyBT (Android) No; Seal No; YTDLnis Partial; NewPipe No; Flud No; 1DM+ Yes; Advanced Download Manager (ADM) Yes; Free Download Manager (FDM) No
 - Ad blocking in the browser: Maglev Yes; LibreTorrent No; BiglyBT (Android) No; Seal No; YTDLnis No; NewPipe No; Flud No; 1DM+ Yes; Advanced Download Manager (ADM) No; Free Download Manager (FDM) No
 - Finds videos and files on a web page: Maglev Yes; LibreTorrent No; BiglyBT (Android) No; Seal No; YTDLnis No; NewPipe No; Flud No; 1DM+ Yes; Advanced Download Manager (ADM) Partial; Free Download Manager (FDM) No
@@ -50,18 +55,23 @@ Made by Harsh Dayal (https://harshdayal.dev, GitHub: https://github.com/Kaos599)
 - Saves DASH streams: Maglev Yes; LibreTorrent No; BiglyBT (Android) No; Seal No; YTDLnis No; NewPipe No; Flud No; 1DM+ No; Advanced Download Manager (ADM) No; Free Download Manager (FDM) No
 - Saves AES-128 encrypted HLS: Maglev Yes; LibreTorrent No; BiglyBT (Android) No; Seal No; YTDLnis No; NewPipe No; Flud No; 1DM+ No; Advanced Download Manager (ADM) No; Free Download Manager (FDM) No
 - Picks stream quality and audio language: Maglev Yes; LibreTorrent No; BiglyBT (Android) No; Seal No; YTDLnis Partial; NewPipe No; Flud No; 1DM+ No; Advanced Download Manager (ADM) No; Free Download Manager (FDM) No
-- Saves live streams: Maglev No; LibreTorrent No; BiglyBT (Android) No; Seal No; YTDLnis No; NewPipe No; Flud No; 1DM+ No; Advanced Download Manager (ADM) No; Free Download Manager (FDM) No
-- YouTube downloads: Maglev No; LibreTorrent No; BiglyBT (Android) No; Seal Yes; YTDLnis Yes; NewPipe Yes; Flud No; 1DM+ No; Advanced Download Manager (ADM) No; Free Download Manager (FDM) No
+- Saves live streams: Maglev Not yet; LibreTorrent No; BiglyBT (Android) No; Seal No; YTDLnis No; NewPipe No; Flud No; 1DM+ No; Advanced Download Manager (ADM) No; Free Download Manager (FDM) No
+- YouTube downloads: Maglev Not yet; LibreTorrent No; BiglyBT (Android) No; Seal Yes; YTDLnis Yes; NewPipe Yes; Flud No; 1DM+ No; Advanced Download Manager (ADM) No; Free Download Manager (FDM) No
 - Wi-Fi only option: Maglev Yes; LibreTorrent No; BiglyBT (Android) No; Seal No; YTDLnis No; NewPipe No; Flud Yes; 1DM+ Yes; Advanced Download Manager (ADM) Yes; Free Download Manager (FDM) Yes
 - Speed limits: Maglev Yes; LibreTorrent No; BiglyBT (Android) No; Seal No; YTDLnis No; NewPipe No; Flud No; 1DM+ Yes; Advanced Download Manager (ADM) Yes; Free Download Manager (FDM) Partial
 - Download scheduling: Maglev Yes; LibreTorrent Yes; BiglyBT (Android) No; Seal No; YTDLnis Yes; NewPipe No; Flud No; 1DM+ Yes; Advanced Download Manager (ADM) Yes; Free Download Manager (FDM) Yes
+- Only download over a VPN: Maglev Yes; LibreTorrent No; BiglyBT (Android) No; Seal No; YTDLnis No; NewPipe No; Flud No; 1DM+ No; Advanced Download Manager (ADM) No; Free Download Manager (FDM) No
+- Pauses on low battery: Maglev Yes; LibreTorrent Partial; BiglyBT (Android) No; Seal No; YTDLnis No; NewPipe No; Flud No; 1DM+ No; Advanced Download Manager (ADM) Yes; Free Download Manager (FDM) No
+- Quick Settings tile: Maglev Yes; LibreTorrent No; BiglyBT (Android) No; Seal No; YTDLnis No; NewPipe No; Flud No; 1DM+ No; Advanced Download Manager (ADM) No; Free Download Manager (FDM) No
 - Optional AI assistant: Maglev Yes; LibreTorrent No; BiglyBT (Android) No; Seal No; YTDLnis No; NewPipe No; Flud No; 1DM+ No; Advanced Download Manager (ADM) No; Free Download Manager (FDM) No
+- Dark and light themes: Maglev Yes; LibreTorrent Yes; BiglyBT (Android) Yes; Seal Partial; YTDLnis Partial; NewPipe No; Flud Yes; 1DM+ Yes; Advanced Download Manager (ADM) Yes; Free Download Manager (FDM) No
 - Minimum Android version: Maglev Android 7; LibreTorrent Android 7; BiglyBT (Android) Android 4.1; Seal Android 5; YTDLnis Android 7; NewPipe Android 6; Flud Not listed; 1DM+ Not listed; Advanced Download Manager (ADM) Not listed; Free Download Manager (FDM) Not listed
 - Open source: Maglev Yes; LibreTorrent Yes; BiglyBT (Android) Yes; Seal Yes; YTDLnis Yes; NewPipe Yes; Flud No; 1DM+ No; Advanced Download Manager (ADM) No; Free Download Manager (FDM) No
-- Contains ads: Maglev No; LibreTorrent No; BiglyBT (Android) No; Seal No; YTDLnis No; NewPipe No; Flud Yes; 1DM+ No; Advanced Download Manager (ADM) Yes; Free Download Manager (FDM) No
-- In-app purchases: Maglev No; LibreTorrent No; BiglyBT (Android) Yes; Seal No; YTDLnis No; NewPipe No; Flud Yes; 1DM+ No; Advanced Download Manager (ADM) Yes; Free Download Manager (FDM) No
+- No ads: Maglev Yes; LibreTorrent Yes; BiglyBT (Android) Yes; Seal Yes; YTDLnis Yes; NewPipe Yes; Flud No; 1DM+ Yes; Advanced Download Manager (ADM) No; Free Download Manager (FDM) Yes
+- No analytics or tracking: Maglev Yes; LibreTorrent Yes; BiglyBT (Android) No; Seal Yes; YTDLnis Yes; NewPipe Yes; Flud No; 1DM+ No; Advanced Download Manager (ADM) No; Free Download Manager (FDM) Yes
+- No in-app purchases: Maglev Yes; LibreTorrent Yes; BiglyBT (Android) No; Seal Yes; YTDLnis Yes; NewPipe Yes; Flud No; 1DM+ Yes; Advanced Download Manager (ADM) No; Free Download Manager (FDM) Yes
 - Free: Maglev Yes; LibreTorrent Yes; BiglyBT (Android) Yes; Seal Yes; YTDLnis Yes; NewPipe Yes; Flud Yes; 1DM+ Yes; Advanced Download Manager (ADM) Yes; Free Download Manager (FDM) Yes
-- Needs an account: Maglev No; LibreTorrent No; BiglyBT (Android) No; Seal No; YTDLnis No; NewPipe No; Flud No; 1DM+ No; Advanced Download Manager (ADM) No; Free Download Manager (FDM) No
+- No account needed: Maglev Yes; LibreTorrent Yes; BiglyBT (Android) Yes; Seal Yes; YTDLnis Yes; NewPipe Yes; Flud Yes; 1DM+ Yes; Advanced Download Manager (ADM) Yes; Free Download Manager (FDM) Yes
 
 ## FAQ
 
