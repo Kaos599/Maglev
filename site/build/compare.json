@@ -1,6 +1,6 @@
 {
-  "checkedOn": "2026-11-12",
-  "method": "Values come from each app's official pages (its website, GitHub or GitLab README, F-Droid listing or Google Play listing) as checked on this date; a feature that those pages do not list is marked No.",
+  "checkedOn": "2026-11-13",
+  "method": "Values come from each app's official pages (its website, GitHub or GitLab README, F-Droid listing or Google Play listing) as checked on this date. A feature those pages do not list is marked No. For the no-ads, no-tracking and no-purchases rows, a store listing that carries no \"Contains ads\", Tracking or in-app purchases label counts as Yes.",
   "apps": [
     {
       "id": "maglev",
@@ -175,6 +175,74 @@
       "notes": {}
     },
     {
+      "id": "search-quality",
+      "group": "Torrents",
+      "label": "Merged results and fake-upload warnings",
+      "help": "Lists one torrent once even when several sources have it, and warns about sources known for fake uploads.",
+      "values": {
+        "maglev": "Yes",
+        "libretorrent": "No",
+        "biglybt": "No",
+        "seal": "No",
+        "ytdlnis": "No",
+        "newpipe": "No",
+        "flud": "No",
+        "1dm": "No",
+        "adm": "No",
+        "fdm": "No"
+      },
+      "notes": {
+        "maglev": "Both are in the README: results that point to the same torrent are merged, and results from sources known for fake uploads carry a warning.",
+        "libretorrent": "None of the apps' pages describe a search across torrent sites, which the existing search row also records."
+      }
+    },
+    {
+      "id": "add-indexer",
+      "group": "Torrents",
+      "label": "Add your own Jackett or Prowlarr indexer",
+      "help": "Adds your own indexer to the search, with its API key kept in secure storage.",
+      "values": {
+        "maglev": "Yes",
+        "libretorrent": "No",
+        "biglybt": "No",
+        "seal": "No",
+        "ytdlnis": "No",
+        "newpipe": "No",
+        "flud": "No",
+        "1dm": "No",
+        "adm": "No",
+        "fdm": "No"
+      },
+      "notes": {
+        "maglev": "In the README: \"Add your own Jackett or Prowlarr indexer.\"",
+        "libretorrent": "None of the apps' pages describe a search across torrent sites, which the existing search row also records."
+      }
+    },
+    {
+      "id": "follow-show",
+      "group": "Torrents",
+      "label": "Follow a show from search",
+      "help": "Follow a show from the search results and get new episodes added by rule.",
+      "values": {
+        "maglev": "Yes",
+        "libretorrent": "No",
+        "biglybt": "No",
+        "seal": "No",
+        "ytdlnis": "No",
+        "newpipe": "No",
+        "flud": "No",
+        "1dm": "No",
+        "adm": "No",
+        "fdm": "No"
+      },
+      "notes": {
+        "maglev": "In the README: \"Follow a show from Search\".",
+        "libretorrent": "Lists an Atom/RSS manager with auto-downloading. It does not list following a show from a search.",
+        "biglybt": "Lists RSS feed subscriptions. It does not list following a show from a search.",
+        "flud": "Lists RSS feed support with automatic downloading. It does not list following a show from a search."
+      }
+    },
+    {
       "id": "rss",
       "group": "Torrents",
       "label": "RSS feeds with auto-download rules",
@@ -298,6 +366,50 @@
       },
       "notes": {
         "flud": "Lists sequential downloads, which fetch pieces in order. It does not say you can stream a video from them."
+      }
+    },
+    {
+      "id": "open-folder",
+      "group": "Downloads",
+      "label": "Open a download's folder",
+      "help": "Jumps from a finished download to its folder in your file manager.",
+      "values": {
+        "maglev": "Yes",
+        "libretorrent": "No",
+        "biglybt": "No",
+        "seal": "No",
+        "ytdlnis": "No",
+        "newpipe": "No",
+        "flud": "No",
+        "1dm": "No",
+        "adm": "No",
+        "fdm": "No"
+      },
+      "notes": {
+        "maglev": "The README lists Open, Share and Open folder on a finished item.",
+        "adm": "Lists opening a completed download. It does not list opening its folder.",
+        "1dm": "Lists \"Open/Share downloaded files\". It does not list opening the folder."
+      }
+    },
+    {
+      "id": "mobile-size",
+      "group": "Downloads",
+      "label": "Asks before a big add on mobile data",
+      "help": "Shows the size and asks first when you add something on mobile data.",
+      "values": {
+        "maglev": "Yes",
+        "libretorrent": "No",
+        "biglybt": "No",
+        "seal": "No",
+        "ytdlnis": "No",
+        "newpipe": "No",
+        "flud": "No",
+        "1dm": "No",
+        "adm": "No",
+        "fdm": "No"
+      },
+      "notes": {
+        "maglev": "Search and Feeds show the size and ask \"Add on mobile data?\" before a one-tap add. The README also lists a Wi-Fi only option."
       }
     },
     {
@@ -555,10 +667,10 @@
       "notes": {}
     },
     {
-      "id": "ai",
+      "id": "vpn",
       "group": "Control",
-      "label": "Optional AI assistant",
-      "help": "A chat helper that can search and suggest downloads. It asks before it changes anything.",
+      "label": "Only download over a VPN",
+      "help": "Pauses downloads when no VPN is connected.",
       "values": {
         "maglev": "Yes",
         "libretorrent": "No",
@@ -572,7 +684,101 @@
         "fdm": "No"
       },
       "notes": {
-        "maglev": "Optional. It runs on your own OpenRouter key and can be turned off."
+        "maglev": "Settings > Network has \"Only download over a VPN\"."
+      }
+    },
+    {
+      "id": "battery",
+      "group": "Control",
+      "label": "Pauses on low battery",
+      "help": "Stops downloads when the battery is low. Maglev also has a charging-only option.",
+      "values": {
+        "maglev": "Yes",
+        "libretorrent": "Partial",
+        "biglybt": "No",
+        "seal": "No",
+        "ytdlnis": "No",
+        "newpipe": "No",
+        "flud": "No",
+        "1dm": "No",
+        "adm": "Yes",
+        "fdm": "No"
+      },
+      "notes": {
+        "maglev": "Settings > Power has a battery cut-off level and a \"Charging only\" switch.",
+        "libretorrent": "Lists \"Customisable network, battery, and UI settings\". It does not say what the battery settings are.",
+        "adm": "Its Play page lists \"autostop process if the battery charge level is low\"."
+      }
+    },
+    {
+      "id": "qs-tile",
+      "group": "Control",
+      "label": "Quick Settings tile",
+      "help": "A tile in the Android quick settings panel.",
+      "values": {
+        "maglev": "Yes",
+        "libretorrent": "No",
+        "biglybt": "No",
+        "seal": "No",
+        "ytdlnis": "No",
+        "newpipe": "No",
+        "flud": "No",
+        "1dm": "No",
+        "adm": "No",
+        "fdm": "No"
+      },
+      "notes": {
+        "maglev": "Lists a Quick Settings tile in the README, and the app declares one in its Android manifest.",
+        "adm": "Lists a widget on the home screen. It does not list a Quick Settings tile."
+      }
+    },
+    {
+      "id": "ai",
+      "group": "Control",
+      "label": "Optional AI assistant",
+      "help": "A chat helper that can search and suggest downloads. It asks before it changes anything, and it works with free models.",
+      "values": {
+        "maglev": "Yes",
+        "libretorrent": "No",
+        "biglybt": "No",
+        "seal": "No",
+        "ytdlnis": "No",
+        "newpipe": "No",
+        "flud": "No",
+        "1dm": "No",
+        "adm": "No",
+        "fdm": "No"
+      },
+      "notes": {
+        "maglev": "Optional. It runs on your own OpenRouter key, works with free models and can be turned off."
+      }
+    },
+    {
+      "id": "themes",
+      "group": "Control",
+      "label": "Dark and light themes",
+      "help": "Choose a dark or light look for the app.",
+      "values": {
+        "maglev": "Yes",
+        "libretorrent": "Yes",
+        "biglybt": "Yes",
+        "seal": "Partial",
+        "ytdlnis": "Partial",
+        "newpipe": "No",
+        "flud": "Yes",
+        "1dm": "Yes",
+        "adm": "Yes",
+        "fdm": "No"
+      },
+      "notes": {
+        "maglev": "OLED, Dim and Light themes, plus a retro pixel style.",
+        "libretorrent": "Lists \"dark and black theme\".",
+        "biglybt": "Its Play page lists \"Dark or Light Theme\".",
+        "seal": "Lists a Material You style UI with a dynamic colour theme. It does not name dark or light.",
+        "ytdlnis": "Lists Material You design with theming options. It does not name dark or light.",
+        "flud": "Its Play page lists \"Ability to change theme (Light and Dark)\".",
+        "1dm": "Its Play page lists \"Dark and Light themes\".",
+        "adm": "Its Play page lists \"interface customization and themes\"."
       }
     },
     {
@@ -626,55 +832,92 @@
       }
     },
     {
-      "id": "ads",
+      "id": "no-ads",
       "group": "Price and privacy",
-      "label": "Contains ads",
-      "help": "Shows adverts inside the app. Yes means it does.",
+      "label": "No ads",
+      "help": "The app shows no adverts.",
       "values": {
-        "maglev": "No",
-        "libretorrent": "No",
-        "biglybt": "No",
-        "seal": "No",
-        "ytdlnis": "No",
-        "newpipe": "No",
-        "flud": "Yes",
-        "1dm": "No",
-        "adm": "Yes",
-        "fdm": "No"
+        "maglev": "Yes",
+        "libretorrent": "Yes",
+        "biglybt": "Yes",
+        "seal": "Yes",
+        "ytdlnis": "Yes",
+        "newpipe": "Yes",
+        "flud": "No",
+        "1dm": "Yes",
+        "adm": "No",
+        "fdm": "Yes"
       },
       "notes": {
-        "libretorrent": "Its pages do not say it contains ads. They also do not say it is ad free.",
-        "seal": "Its pages do not say it contains ads.",
-        "ytdlnis": "Its pages do not say it contains ads.",
-        "newpipe": "Says it is used without annoying ads. It does not say ad free.",
+        "maglev": "No ads, per the README.",
+        "libretorrent": "F-Droid lists no Ads anti-feature for it.",
+        "seal": "F-Droid lists no Ads anti-feature for it.",
+        "ytdlnis": "F-Droid lists no Ads anti-feature for it.",
+        "newpipe": "Its site says it is used without annoying ads, and F-Droid lists no Ads anti-feature.",
+        "biglybt": "Its site and Play page say it is ad-free.",
+        "1dm": "Its Play page says \"Ad free\".",
         "flud": "Its Play listing says it contains ads.",
         "adm": "Its Play listing says it contains ads.",
-        "fdm": "Its Play page does not say it contains ads or that it is ad free.",
-        "1dm": "Its Play page says it is ad free.",
-        "biglybt": "Its site says it is ad-free."
+        "fdm": "Its Play page shows no \"Contains ads\" label."
       }
     },
     {
-      "id": "iap",
+      "id": "no-tracking",
       "group": "Price and privacy",
-      "label": "In-app purchases",
-      "help": "Paid extras inside the app. Yes means the app sells them.",
+      "label": "No analytics or tracking",
+      "help": "The app does not collect usage data. Maglev sends data only to the sites and sources you use.",
       "values": {
-        "maglev": "No",
-        "libretorrent": "No",
-        "biglybt": "Yes",
-        "seal": "No",
-        "ytdlnis": "No",
-        "newpipe": "No",
-        "flud": "Yes",
+        "maglev": "Yes",
+        "libretorrent": "Yes",
+        "biglybt": "No",
+        "seal": "Yes",
+        "ytdlnis": "Yes",
+        "newpipe": "Yes",
+        "flud": "No",
         "1dm": "No",
-        "adm": "Yes",
-        "fdm": "No"
+        "adm": "No",
+        "fdm": "Yes"
       },
       "notes": {
+        "maglev": "The app has no analytics or ads SDK in its dependencies, and the compare page says so.",
+        "libretorrent": "F-Droid lists no Tracking anti-feature.",
+        "seal": "F-Droid lists no Tracking anti-feature.",
+        "ytdlnis": "F-Droid lists no Tracking anti-feature.",
+        "newpipe": "F-Droid lists no Tracking anti-feature, and its README says the app does not collect data without your consent.",
+        "biglybt": "F-Droid lists a Tracking anti-feature: it connects to version.biglybt.com at start. Its Play page says it may collect app activity and performance data.",
+        "flud": "Its Play data safety section says it may collect app activity, app info and device IDs.",
+        "1dm": "Its Play data safety section says it may collect device IDs.",
+        "adm": "Its Play data safety section says it may share data types with third parties.",
+        "fdm": "Its Play data safety section says no data is collected or shared."
+      }
+    },
+    {
+      "id": "no-iap",
+      "group": "Price and privacy",
+      "label": "No in-app purchases",
+      "help": "Nothing inside the app is for sale.",
+      "values": {
+        "maglev": "Yes",
+        "libretorrent": "Yes",
+        "biglybt": "No",
+        "seal": "Yes",
+        "ytdlnis": "Yes",
+        "newpipe": "Yes",
+        "flud": "No",
+        "1dm": "Yes",
+        "adm": "No",
+        "fdm": "Yes"
+      },
+      "notes": {
+        "libretorrent": "Open source on F-Droid, which lists no paid features.",
+        "seal": "Open source on F-Droid, which lists no paid features.",
+        "ytdlnis": "Open source on F-Droid, which lists no paid features.",
+        "newpipe": "Open source on F-Droid, which lists no paid features.",
         "biglybt": "Its Play listing shows in-app purchases.",
         "flud": "Its Play listing shows in-app purchases.",
-        "adm": "Its Play listing shows in-app purchases."
+        "adm": "Its Play listing shows in-app purchases.",
+        "1dm": "Its Play page shows no in-app purchases label. A separate paid version exists.",
+        "fdm": "Its Play page shows no in-app purchases label."
       }
     },
     {
@@ -702,21 +945,21 @@
       }
     },
     {
-      "id": "account",
+      "id": "no-account",
       "group": "Price and privacy",
-      "label": "Needs an account",
-      "help": "Yes means you must sign in to the app before it works.",
+      "label": "No account needed",
+      "help": "You can use the app without signing in.",
       "values": {
-        "maglev": "No",
-        "libretorrent": "No",
-        "biglybt": "No",
-        "seal": "No",
-        "ytdlnis": "No",
-        "newpipe": "No",
-        "flud": "No",
-        "1dm": "No",
-        "adm": "No",
-        "fdm": "No"
+        "maglev": "Yes",
+        "libretorrent": "Yes",
+        "biglybt": "Yes",
+        "seal": "Yes",
+        "ytdlnis": "Yes",
+        "newpipe": "Yes",
+        "flud": "Yes",
+        "1dm": "Yes",
+        "adm": "Yes",
+        "fdm": "Yes"
       },
       "notes": {
         "maglev": "The README does not mention accounts, and the app has no sign-in step.",
@@ -767,7 +1010,7 @@
         "heading": "Privacy and ads",
         "body": [
           "Maglev has no ads SDK and no analytics. Its browser blocks ads and trackers with a built-in list of over 42,000 domains that you can update in Settings. It contacts only the sites you open, the sources you search, the block-list addresses and OpenRouter when you use the assistant.",
-          "BiglyBT says it is ad-free, and 1DM+ says it is ad free. Flud and ADM say on their Play pages that they contain ads."
+          "BiglyBT says it is ad-free, and 1DM+ says it is ad free. Flud and ADM say on their Play pages that they contain ads. The other apps show no ads label on their F-Droid or Play listings. On data, F-Droid flags BiglyBT for tracking, and the Play pages of Flud, 1DM+ and ADM declare some data collection or sharing."
         ]
       },
       {
@@ -793,7 +1036,7 @@
       },
       {
         "q": "Does Maglev have ads, and do the other apps?",
-        "a": "No, Maglev has no ads. Flud and ADM say on their Google Play pages that they contain ads. BiglyBT and 1DM+ say they are ad free, and the other apps on this page do not say either way."
+        "a": "No, Maglev has no ads. Flud and ADM say on their Google Play pages that they contain ads. BiglyBT and 1DM+ say they are ad free, and the other apps show no ads label on their store pages."
       },
       {
         "q": "Can Maglev save HLS and DASH streams?",

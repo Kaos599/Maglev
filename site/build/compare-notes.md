@@ -19,8 +19,7 @@ Not used: the Uptodown, Aptoide, AppBrain and similar mirror pages that turned u
 
 ## Deviations from the brief
 
-- **Row labels changed for two rows.** "No ads" is now "Contains ads", and "No in-app purchases" is now "In-app purchases", with Yes meaning the app has the feature. Under the "not listed means No" rule, a "No ads" row would have shown "No" for apps whose pages say nothing, which reads as "has ads". The schema labels are otherwise as briefed.
-- **"Needs an account" replaces "No account needed"** for the same reason. Yes means sign-in is required.
+- **Row labels (revised 2026-11-13).** Ads, in-app purchases and account rows now read "No ads", "No in-app purchases" and "No account needed", so Yes is always the good answer. Yes needs a source: an explicit "ad free", or a store listing with no Ads, Tracking or in-app purchases label. Flud and ADM carry the Contains ads label.
 - **Version row** uses text ("Android 7", "Not listed") as the brief allows.
 - **Closed or open source:** the brief groups Flud, 1DM+, ADM and FDM as closed source. Their pages do not state a license, so "No" is a "not listed" value.
 
@@ -68,3 +67,15 @@ Not used: the Uptodown, Aptoide, AppBrain and similar mirror pages that turned u
 - https://www.1dm.app/ returned invalid_url; not used.
 - Guessed Play IDs for a separate ADM-style 1DM listing (idm.internetdownloadmanager) and FDM (com.fdmandroid) returned 404; not used.
 - https://biglybt.com/android and https://github.com/BiglyBT/BiglyBT returned 404; not used.
+
+## Rows added 2026-11-13
+
+Maglev evidence is the README and the code: merged results and fake-upload warnings (utils/search/aggregate.ts, utils/search/safety.ts), Jackett or Prowlarr (components/search-providers/TorznabSheet.tsx), follow a show (components/search/FollowSheet.tsx), open folder (components/transfers/DownloadSheet.tsx), mobile data note (utils/addChecks.ts, components/search/MobileDataSheet.tsx), VPN only (app/settings/network.tsx), battery and charging (app/settings/power.tsx), Quick Settings tile (modules/maglev-engine/android MaglevTileService), themes (app/settings/interface.tsx). No analytics SDK appears in package.json or app.json.
+
+Competitor sources: Play pages for Flud, 1DM+, ADM, FDM and BiglyBT (read through a text extractor because the plain fetch returned empty pages), F-Droid listings for LibreTorrent, BiglyBT, Seal, YTDLnis and NewPipe, and the READMEs. Rows with Maglev-only Yes (search merging, warnings, indexers, follow, VPN, tile, mobile-data prompt) have no competitor page that lists the feature.
+
+- **No analytics or tracking:** Yes for F-Droid apps with no Tracking anti-feature and FDM ("No data collected" on Play). BiglyBT has the Tracking anti-feature. Flud, 1DM+ and ADM declare collection or sharing in Play data safety.
+- **No ads and No in-app purchases:** Yes where the page says ad free, or where the store listing has no Contains ads or In-app purchases label. This is a looser reading than "must be listed", because a label the store requires is absent. Check again if a store adds a label.
+- **Pauses on low battery:** ADM Yes (its page lists autostop on low battery). LibreTorrent Partial (lists "battery settings" without detail).
+- **Dark and light themes:** Seal and YTDLnis Partial (theming named, dark or light not).
+- **No account needed:** Yes for every app, as before (no page mentions a sign-in requirement). Maglev's value still comes from the brief and the app having no sign-in step.
