@@ -320,6 +320,12 @@ async function main() {
     createChatStore(st2).save([{ kind: 'user', id: 'u1', text: 'hi' }], false);
     const nk = reboot(st2, { key: null });
     check('no API key: nothing restored and the save is wiped', nk.chat().items.length === 0 && createChatStore(st2).load() === null);
+    // Cold start: a key is saved (keyRef set) but secure storage has not answered yet, so getKey() is still null.
+    const st4 = fakeStorage();
+    createChatStore(st4).save([{ kind: 'user', id: 'u1', text: 'hi' }, { kind: 'assistant', id: 'a2', text: 'Hello.' }], false);
+    const cold = reboot(st4, { key: null, prefs: { keyRef: 'assistant.key.openrouter' } });
+    check('cold start, key still loading: the chat is restored', cold.chat().items.length === 2, cold.chat().items);
+    check('cold start, key still loading: the save is kept', createChatStore(st4).load() !== null);
     const st3 = fakeStorage();
     const a = first(st3);
     a.fetch.queue.push({ chunks: sseText(['Hi.']) });

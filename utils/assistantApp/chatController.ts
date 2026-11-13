@@ -316,7 +316,10 @@ export function createChatController(deps: ChatDeps): ChatController {
     }, SAVE_DEBOUNCE_MS);
   }
 
-  if (store && hasKey()) {
+  // Restore when a key is saved, not only when it is loaded: on a cold start the key is still being read from
+  // secure storage (getKey() is null until then), and checking hasKey() alone wiped every saved chat.
+  // A key removed later still clears the chat through refresh() (KEY_REMOVED).
+  if (store && (hasKey() || getPrefs().keyRef !== null)) {
     const saved = store.load();
     if (saved) {
       const restoredItems = restoreItems(saved.items);
