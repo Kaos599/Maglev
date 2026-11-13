@@ -6,11 +6,13 @@ import { PixelIcon, PixelIconName } from '../components/PixelIcon';
 import { BrandMark } from '../components/onboarding/BrandMark';
 import { ProgressSquares } from '../components/onboarding/ProgressSquares';
 import { StepLayout } from '../components/onboarding/StepLayout';
+import { StepSlide } from '../components/onboarding/StepSlide';
 import { useMaglevEngine } from '../context/EngineContext';
 import { useSettings } from '../context/SettingsContext';
 import { useTheme } from '../context/ThemeContext';
 import { ThemeColors, radius, spacing, type } from '../constants/theme';
-import { notices } from '../constants/copy';
+import { notices, onboarding as copy } from '../constants/copy';
+import { haptic } from '../constants/haptics';
 
 type StepId = 'welcome' | 'notifications' | 'folder' | 'background' | 'mobileData';
 
@@ -39,6 +41,8 @@ export default function OnboardingScreen() {
   const { settings, updateSettings } = useSettings();
   const { storageStatus, permissionStatus, refreshPermissions } = useMaglevEngine();
   const [index, setIndex] = useState(0);
+  // Which way the last move went, so the next step slides in from the right side.
+  const [direction, setDirection] = useState<1 | -1>(1);
   const [busy, setBusy] = useState(false);
   const [folderNote, setFolderNote] = useState<string | null>(null);
   // Wi-Fi only is pre-selected. The setting changes only when the user taps Continue.
@@ -50,13 +54,17 @@ export default function OnboardingScreen() {
   }, [updateSettings]);
 
   const saveNetwork = useCallback(() => {
+    haptic('commit');
     updateSettings((prev) => ({ network: { ...prev.network, wifiOnly }, onboarded: true }));
   }, [updateSettings, wifiOnly]);
 
   const next = useCallback(() => {
     setFolderNote(null);
     if (index >= STEPS.length - 1) finish();
-    else setIndex(index + 1);
+    else {
+      setDirection(1);
+      setIndex(index + 1);
+    }
   }, [index, finish]);
 
   // Back goes to the previous step. On step 1 the system default (leave the app) applies.
@@ -64,6 +72,7 @@ export default function OnboardingScreen() {
     const sub = BackHandler.addEventListener('hardwareBackPress', () => {
       if (index > 0) {
         setFolderNote(null);
+        setDirection(-1);
         setIndex(index - 1);
         return true;
       }
@@ -75,8 +84,9 @@ export default function OnboardingScreen() {
   const allowNotifications = useCallback(async () => {
     setBusy(true);
     try {
-      await maglevEngine.requestNotifications();
+      const res = await maglevEngine.requestNotifications();
       await refreshPermissions();
+      if (res.ok) haptic('done');
     } finally {
       setBusy(false);
     }
@@ -96,6 +106,7 @@ export default function OnboardingScreen() {
   }, [updateSettings]);
 
   const useFolder = useCallback(async () => {
+    haptic('tap');
     if (NEEDS_LEGACY_STORAGE && permissionStatus?.legacyStorage !== 'granted') {
       setBusy(true);
       try {
@@ -131,8 +142,9 @@ export default function OnboardingScreen() {
     content = (
       <StepLayout
         hero={<BrandMark height={96} />}
-        title="Maglev"
-        body="Fast, simple torrents."
+        title={copy.welcome.title}
+        body={copy.welcome.body}
+        detail={copy.welcome.detail}
         actions={
           <>
             <Button label="Get started" size="lg" fullWidth onPress={next} />
@@ -145,8 +157,8 @@ export default function OnboardingScreen() {
     content = (
       <StepLayout
         hero={<IconTile name="bell" />}
-        title="Stay in the loop"
-        body="Get notified when downloads finish and keep them running in the background."
+        title={copy.notifications.title}
+        body={copy.notifications.body}
         actions={
           <>
             <Button label="Allow" size="lg" fullWidth loading={busy} onPress={allowNotifications} />
@@ -159,8 +171,8 @@ export default function OnboardingScreen() {
     content = (
       <StepLayout
         hero={<IconTile name="folder" />}
-        title="Download folder"
-        body="Choose where finished files are saved."
+        title={copy.folder.title}
+        body={copy.folder.body}
         extra={
           <View style={styles.folderWrap}>
             <View style={styles.folderRow} accessible accessibilityLabel={`Current folder ${folderLabel}`}>
@@ -188,8 +200,8 @@ export default function OnboardingScreen() {
     content = (
       <StepLayout
         hero={<IconTile name="power" />}
-        title="Keep running"
-        body="Android may stop downloads to save battery. Allow Maglev to keep running?"
+        title={copy.background.title}
+        body={copy.background.body}
         actions={
           <>
             <Button label="Allow" size="lg" fullWidth loading={busy} onPress={allowBackground} />
@@ -202,21 +214,27 @@ export default function OnboardingScreen() {
     content = (
       <StepLayout
         hero={<IconTile name="wifi" />}
-        title="Download on mobile data?"
-        body="Large downloads can use a lot of your data plan."
+        title={copy.mobileData.title}
+        body={copy.mobileData.body}
         extra={
           <View style={styles.optionWrap}>
             <ListRow
               title="Wi-Fi only (recommended)"
               subtitle="Downloads wait until you are on Wi-Fi"
               selected={wifiOnly}
-              onPress={() => setWifiOnly(true)}
+              onPress={() => {
+                if (!wifiOnly) haptic('select');
+                setWifiOnly(true);
+              }}
             />
             <ListRow
               title="Wi-Fi and mobile data"
               subtitle="Downloads also run on mobile data"
               selected={!wifiOnly}
-              onPress={() => setWifiOnly(false)}
+              onPress={() => {
+                if (wifiOnly) haptic('select');
+                setWifiOnly(false);
+              }}
             />
           </View>
         }
@@ -230,16 +248,15 @@ export default function OnboardingScreen() {
       <View style={styles.progress}>
         <ProgressSquares index={index} total={STEPS.length} />
       </View>
-      <View key={step} style={styles.fill}>
+      <StepSlide key={step} direction={direction}>
         {content}
-      </View>
+      </StepSlide>
     </Screen>
   );
 }
 
 const makeStyles = (c: ThemeColors) =>
   StyleSheet.create({
-    fill: { flex: 1 },
     progress: { alignItems: 'center', paddingTop: spacing.xl, paddingBottom: spacing.sm },
     tile: {
       width: 56,
