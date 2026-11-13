@@ -26,6 +26,12 @@ async function main() {
   check('4.1 KB/s', formatSpeed(4.1 * 1024) === '4.1 KB/s', formatSpeed(4.1 * 1024));
   check('1 B', formatBytes(1) === '1 B');
   check('huge values clamp to TB', /TB$/.test(formatBytes(1e30)));
+  // Whole numbers from 100 up: "412 MB", not "412.0 MB". Below 100 one decimal stays useful.
+  check('412 MB has no decimal', formatBytes(412 * 1024 * 1024) === '412 MB');
+  check('1.2 GB keeps one decimal', formatBytes(1.2 * 1024 ** 3) === '1.2 GB');
+  check('45.5 MB keeps one decimal', formatBytes(45.5 * 1024 * 1024) === '45.5 MB');
+  check('999.96 MB rolls up to 1.0 GB, never 1000 MB', formatBytes(1023.96 * 1024 * 1024) === '1.0 GB');
+  check('speed 3.2 MB/s unchanged', formatSpeed(3.2 * 1024 * 1024) === '3.2 MB/s');
 
   if (failed) {
     console.error(`\n${failed} failed`);

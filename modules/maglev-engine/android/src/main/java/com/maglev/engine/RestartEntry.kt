@@ -1,5 +1,6 @@
 package com.maglev.engine
 
+import android.app.ActivityManager
 import android.content.Context
 import android.os.Build
 import android.util.Log
@@ -61,6 +62,8 @@ object RestartPrefs {
     const val KEY_LAST_ACTIVE = "lastActiveCount"
     const val KEY_HEARTBEAT = "heartbeat_at"
     const val KEY_RESUME_AFTER_RESTART = "resumeAfterRestart"
+    /** Timestamp of the newest user-requested exit already acted on, so one exit restarts the service once. */
+    const val KEY_EXIT_HANDLED = "user_exit_handled_at"
     private const val HEARTBEAT_EVERY_MS = 10_000L
 
     @Volatile private var lastBeat = 0L
@@ -120,6 +123,25 @@ object RestartEntry {
     }
 
     /**
+     * True once per user-requested exit: the newest process exit of this app was REASON_USER_REQUESTED and is
+     * newer than the last one handled. API 30+ only (https://developer.android.com/reference/android/app/ActivityManager#getHistoricalProcessExitReasons(java.lang.String,%20int,%20int)).
+     */
+    private fun userStoppedSinceLastCheck(c: Context, p: android.content.SharedPreferences): Boolean {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return false
+        return try {
+            val am = c.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
+            val last = am.getHistoricalProcessExitReasons(c.packageName, 0, 1).firstOrNull() ?: return false
+            if (last.reason != android.app.ApplicationExitInfo.REASON_USER_REQUESTED) return false
+            if (last.timestamp <= p.getLong(RestartPrefs.KEY_EXIT_HANDLED, 0L)) return false
+            p.edit().putLong(RestartPrefs.KEY_EXIT_HANDLED, last.timestamp).apply()
+            true
+        } catch (t: Throwable) {
+            Log.w(TAG, "exit reasons unavailable", t)
+            false
+        }
+    }
+
+    /**
      * AppOpen row. Returns true when the one-time notice is due: the service is started again and the caller
      * tells JS. The heartbeat is reset so the notice cannot repeat.
      */
@@ -130,8 +152,12 @@ object RestartEntry {
             !p.getBoolean(RestartPrefs.KEY_USER_SHUTDOWN, false) &&
             !p.getBoolean(RestartPrefs.KEY_USER_PAUSED_ALL, false)
         val now = System.currentTimeMillis()
-        val due = RestartEntryPolicy.shouldShowStoppedNotice(
-            now, p.getLong(RestartPrefs.KEY_HEARTBEAT, 0L), running, MaglevTorrentService.instance != null,
+        val serviceRunning = MaglevTorrentService.instance != null
+        // Task Manager "Stop" (API 33+) removes the foreground notification and kills the process with no callback.
+        // The heartbeat gap may be under 2 minutes, so the exit reason decides too. Work that was running comes back.
+        val userStopped = running && !serviceRunning && userStoppedSinceLastCheck(c, p)
+        val due = userStopped || RestartEntryPolicy.shouldShowStoppedNotice(
+            now, p.getLong(RestartPrefs.KEY_HEARTBEAT, 0L), running, serviceRunning,
         )
         if (due) {
             p.edit().putLong(RestartPrefs.KEY_HEARTBEAT, now).apply()

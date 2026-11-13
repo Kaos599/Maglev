@@ -351,6 +351,7 @@ object Notifications {
     const val ID_STORAGE_FULL = 4104
     const val ID_SD_REMOVED = 4105
     const val ID_CONTINUE = 4106
+    const val ID_NEEDS_LINK = 4107
     const val GROUP_ERRORS = "maglev_errors"
     const val ID_ERRORS_SUMMARY = 4998
 
@@ -378,6 +379,26 @@ object Notifications {
                 .setContentTitle(com.maglev.engine.RestartEntryPolicy.reminderTitle(count))
                 .setAutoCancel(true)
                 .setCategory(NotificationCompat.CATEGORY_REMINDER)
+                .setContentIntent(contentIntent(context))
+                .build(),
+        )
+    }
+
+    /**
+     * Link downloads that lost their link after a restart. A normal, dismissible notification (not the foreground
+     * one). Tapping opens the app on Transfers, where each download offers a new link. Same id, so the count updates in place.
+     */
+    fun notifyNeedsLink(context: Context, count: Int) {
+        val title = if (count == 1) "1 download needs a new link" else "$count downloads need a new link"
+        post(
+            context, ID_NEEDS_LINK,
+            NotificationCompat.Builder(context, CH_REMINDERS)
+                .setSmallIcon(R.drawable.ic_tile_maglev)
+                .setContentTitle(title)
+                .setContentText("Open Maglev to paste the link again.")
+                .setAutoCancel(true)
+                .setOnlyAlertOnce(true)
+                .setCategory(NotificationCompat.CATEGORY_STATUS)
                 .setContentIntent(contentIntent(context))
                 .build(),
         )

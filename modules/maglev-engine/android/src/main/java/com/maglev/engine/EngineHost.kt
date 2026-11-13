@@ -147,6 +147,8 @@ object EngineHost {
     private var lastScheduleTick = 0L
     @Volatile private var serviceBlocked = false
     private var lastServiceAttempt = 0L
+    /** Link downloads waiting for a new link, as last announced. Resets with the process, so a restore posts again. */
+    @Volatile private var needsLinkShown = 0
     private var lastHeartbeat = 0L
 
     private val copying = ConcurrentHashMap.newKeySet<String>()
@@ -312,7 +314,11 @@ object EngineHost {
                 evaluateGovernance(force = false)
             }
             val list = call { NativeCore.nativeListTorrents() }
-            val summary = summarize(Json.list(list["torrents"]), list["streaming"] == true)
+            val torrents = Json.list(list["torrents"])
+            val downloads = Json.list(list["downloads"])
+            // Link downloads count like torrents, or a restart with only a download running stops the service.
+            val summary = summarize(allTransfers(torrents, downloads), list["streaming"] == true)
+            notifyNeedsLink(downloads)
             val counted = summary.busy + summary.pausedByRules + summary.pausedBySchedule
             if (RestartPolicy.decide(intent.copy(activeTorrents = counted)) == RestartDecision.StayStopped) {
                 setWanted(c, false)
@@ -470,7 +476,8 @@ object EngineHost {
         detectCompletions(torrents)
         detectDownloadCompletions(downloads)
         // URL downloads count as transfers: they keep the service up and show in the notification (section 17).
-        val transfers = torrents + downloadsAsTransfers(downloads)
+        val transfers = allTransfers(torrents, downloads)
+        notifyNeedsLink(downloads)
         val summary = summarize(transfers, res["streaming"] == true)
         lastSummary = summary
         refreshTile(summary)
@@ -529,6 +536,8 @@ object EngineHost {
                     "battery" -> { byRules++; batteryPaused = true }
                     "charging_only" -> { byRules++; chargingPaused = true }
                     "network_unvalidated" -> { byRules++; unvalidatedPaused = true }
+                    // Link downloads paused for a network blip (TAG_OFFLINE) stay wanted, so the service survives it.
+                    TAG_OFFLINE -> { byRules++; unvalidatedPaused = true }
                     "vpn_required" -> { byRules++; vpnPaused = true }
                     "storage_full" -> { byRules++; spacePaused = true }
                     "storage_unavailable" -> { byRules++; volumePaused = true }
@@ -1657,6 +1666,25 @@ object EngineHost {
     fun setDownloadLimits(id: String, limits: Map<String, Any?>) =
         call { NativeCore.nativeSetDownloadLimits(id, Json.toJson(Json.snakeify(limits))) }
 
+    /** Torrents plus active link downloads: the list [summarize] and every service decision must use (section 17). */
+    private fun allTransfers(
+        torrents: List<Map<String, Any?>>,
+        downloads: List<Map<String, Any?>>,
+    ): List<Map<String, Any?>> = torrents + downloadsAsTransfers(downloads)
+
+    /**
+     * Downloads restored without their link (cookies and signed URLs live in memory only) sit in `needs_link`.
+     * They hold no service, so say so once with a dismissible notification that opens the app. The count is
+     * updated when it changes and the notification goes away when none are left.
+     */
+    private fun notifyNeedsLink(downloads: List<Map<String, Any?>>) {
+        val c = ctx ?: return
+        val count = downloads.count { it["state"] == "needs_link" }
+        if (count == needsLinkShown) return
+        needsLinkShown = count
+        if (count > 0) Notifications.notifyNeedsLink(c, count) else Notifications.cancel(c, Notifications.ID_NEEDS_LINK)
+    }
+
     /**
      * Active downloads in the shape [summarize] reads, so the service stays up and the notification shows them.
      * They have no `id`, so a single download never links to the torrent screen. Finished and failed ones are left out.
@@ -1703,7 +1731,13 @@ object EngineHost {
             val id = d["id"] as? String ?: continue
             val name = d["name"] as? String ?: id
             val folder = d["folder"] as? String
-            Notifications.notifyCompleted(c, id, name, Json.long(d["size"]), null)
+            // Open for the finished file: its staged path, else the copy Maglev made in the user's folder.
+            val open = try {
+                val uri = (if (folder != null) viewUri(c, folder, name) else null)
+                    ?: StorageManager.copiedUri(c, DL_PREFIX + id)?.let { Uri.parse(it) }
+                if (uri != null) Notifications.openFileAction(c, id, uri, SafStorageManager.mimeFor(name)) else null
+            } catch (t: Throwable) { Log.w(TAG, "open action failed", t); null }
+            Notifications.notifyCompleted(c, id, name, Json.long(d["size"]), open)
             if (folder != null) ioScope.launch { try { scanPaths(c, folder, listOf(name)) } catch (t: Throwable) { Log.w(TAG, "media scan failed", t) } }
         }
     }
@@ -1905,6 +1939,51 @@ object EngineHost {
     }
 
 
+    /**
+     * Opens the share sheet for a finished link download. Same lookup and file resolution as [openDownload]:
+     * FileProvider for a POSIX path, else the document Maglev created in the user's folder.
+     * Errors: NOT_FOUND (unknown id, or the file is gone), INVALID_STATE (not finished).
+     */
+    fun shareDownload(id: String): Map<String, Any?> {
+        val c = requireCtx() ?: return Json.failure("ENGINE_UNAVAILABLE", "Module is not attached")
+        val res = call { NativeCore.nativeListTorrents() }
+        if (!isOk(res)) return res
+        val d = Json.list(res["downloads"]).firstOrNull { it["id"] == id }
+            ?: return Json.failure("NOT_FOUND", "That download isn't in your list")
+        if (d["state"] != "finished") return Json.failure("INVALID_STATE", "This download isn't finished yet")
+        val folder = d["folder"] as? String
+        val name = d["name"] as? String
+        if (folder == null || name.isNullOrEmpty()) return Json.failure("NOT_FOUND", "File not found")
+        val copyUri = StorageManager.copiedUri(c, DL_PREFIX + id)
+        val err = if (copyUri != null && !File(folder, name).exists()) {
+            FileActions.shareUri(c, android.net.Uri.parse(copyUri), name)
+        } else {
+            FileActions.shareFile(c, folder, name)
+        }
+        return if (err == null) linkedMapOf("ok" to true) else Json.failure("NOT_FOUND", err)
+    }
+
+    /**
+     * Whether the phone is online and whether the current link counts as mobile data. `metered` is true on any
+     * link that is not an unmetered Wi-Fi or Ethernet one: the same test Wi-Fi only uses (see
+     * NetworkGovernanceManager). Read straight from ConnectivityManager so it works when no rule is watching.
+     * https://developer.android.com/reference/android/net/NetworkCapabilities#NET_CAPABILITY_NOT_METERED
+     */
+    fun networkState(): Map<String, Any?> {
+        val c = requireCtx() ?: return Json.failure("ENGINE_UNAVAILABLE", "Module is not attached")
+        val cm = c.getSystemService(Context.CONNECTIVITY_SERVICE) as? android.net.ConnectivityManager
+        val caps = try {
+            cm?.activeNetwork?.let { cm.getNetworkCapabilities(it) }
+        } catch (_: Exception) {
+            null
+        }
+        val unmetered = caps != null &&
+            caps.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_NOT_METERED) &&
+            (caps.hasTransport(android.net.NetworkCapabilities.TRANSPORT_WIFI) ||
+                caps.hasTransport(android.net.NetworkCapabilities.TRANSPORT_ETHERNET))
+        return linkedMapOf("ok" to true, "metered" to (caps != null && !unmetered), "connected" to (caps != null))
+    }
+
     fun openFolder(id: String): Map<String, Any?> {
         val c = requireCtx() ?: return Json.failure("ENGINE_UNAVAILABLE", "Module is not attached")
         val d = call { NativeCore.nativeGetDetail(id) }
@@ -1912,6 +1991,19 @@ object EngineHost {
         @Suppress("UNCHECKED_CAST")
         val folder = (d["snapshot"] as? Map<String, Any?>)?.get("output_folder") as? String
             ?: return Json.failure("NOT_FOUND", "Folder not found")
+        val err = FileActions.openFolder(c, folder)
+        return if (err == null) linkedMapOf("ok" to true) else Json.failure("NOT_FOUND", err)
+    }
+
+    /** Opens the folder of a link download in any state. Same result shape as [openFolder]. */
+    fun openDownloadFolder(id: String): Map<String, Any?> {
+        val c = requireCtx() ?: return Json.failure("ENGINE_UNAVAILABLE", "Module is not attached")
+        val res = call { NativeCore.nativeListTorrents() }
+        if (!isOk(res)) return res
+        val d = Json.list(res["downloads"]).firstOrNull { it["id"] == id }
+            ?: return Json.failure("NOT_FOUND", "That download isn't in your list")
+        val folder = d["folder"] as? String
+        if (folder.isNullOrEmpty()) return Json.failure("NOT_FOUND", "Folder not found")
         val err = FileActions.openFolder(c, folder)
         return if (err == null) linkedMapOf("ok" to true) else Json.failure("NOT_FOUND", err)
     }

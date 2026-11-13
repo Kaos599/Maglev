@@ -149,7 +149,7 @@ async function main() {
     check('native download hand-off and stop emit loading false', /private fun onDownload[\s\S]{0,900}loading = false[\s\S]{0,40}emitPage/.test(k) && /fun stop\(\)[\s\S]{0,200}loading = false/.test(k));
   }
   check('perf measure prints null percentiles when no frames', /f\+0 == 0[\s\S]{0,120}\\"p50\\":null[\s\S]{0,200}no frames \(list empty\?\)/.test(read('scripts/perf/measure.sh')));
-  check('search tab has Browse the web', /Browse the web/.test(read('app/(tabs)/search.tsx')));
+  check('search tab has a labelled Browser button', /label="Browser"/.test(read('app/(tabs)/search.tsx')));
   check('settings list has Browser row', /route: 'browser'/.test(read('app/(tabs)/settings.tsx')));
   check('add-download offers Open in browser', /Open in browser/.test(read('app/add-download.tsx')));
 

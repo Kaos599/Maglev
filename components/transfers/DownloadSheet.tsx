@@ -8,7 +8,8 @@ import { useTheme } from '../../context/ThemeContext';
 import { ThemeColors, radius, spacing, type } from '../../constants/theme';
 import { formatBytes } from '../../constants/format';
 import { actionRoute, downloadActions, downloadCaption, needsNewLink, removeCopy } from '../../utils/downloadCopy';
-import { Banner, Button, Sheet } from '../ui';
+import { friendlyPath } from '../settings/SettingsParts';
+import { Banner, Button, ListRow, Sheet } from '../ui';
 
 export interface DownloadSheetProps {
   /** The download to act on, or null when the sheet is closed. */
@@ -18,6 +19,10 @@ export interface DownloadSheetProps {
   /** Opens a finished download in another app. */
   onOpen: (id: string) => void;
   /** Allows the download's host, then retries it. */
+  /** Opens the folder the file is saved in, in any state. */
+  onOpenFolder: (id: string) => void;
+  /** Shares a finished file. The Share button shows only when this is given. */
+  onShare?: (id: string) => void;
   onAllowDevice: (id: string) => void;
   onRemove: (id: string, deleteFiles: boolean) => void;
   onNewLink: (id: string, url: string) => Promise<EngineResult>;
@@ -26,7 +31,7 @@ export interface DownloadSheetProps {
 type Step = 'main' | 'confirmDelete';
 
 /** What a tap on a download card opens: details, Retry or Restart, Paste new link, Remove (SM-30 Copy). */
-export function DownloadSheet({ download: d, onClose, onRetry, onOpen, onAllowDevice, onRemove, onNewLink }: DownloadSheetProps) {
+export function DownloadSheet({ download: d, onClose, onRetry, onOpen, onOpenFolder, onShare, onAllowDevice, onRemove, onNewLink }: DownloadSheetProps) {
   const { colors } = useTheme();
   const router = useRouter();
   const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -99,6 +104,15 @@ export function DownloadSheet({ download: d, onClose, onRetry, onOpen, onAllowDe
   return (
     <Sheet visible onClose={onClose} title={d.name} subtitle={subtitle}>
       <View style={styles.stack}>
+        {d.folder ? (
+          <ListRow
+            title="Saved to"
+            subtitle={friendlyPath(d.folder)}
+            icon="folder"
+            onPress={() => { onOpenFolder(d.id); onClose(); }}
+            accessibilityLabel={`Saved to ${friendlyPath(d.folder)}. Opens the folder.`}
+          />
+        ) : null}
         {d.notice ? <Banner tone="info" title={d.notice} /> : null}
         {needsNewLink(d) ? (
           <View style={styles.stack}>
@@ -146,6 +160,10 @@ export function DownloadSheet({ download: d, onClose, onRetry, onOpen, onAllowDe
                 />
               ))
           : null}
+        {d.state === 'finished' && onShare ? (
+          <Button label="Share" icon="share" variant="secondary" fullWidth onPress={() => { onShare(d.id); onClose(); }} />
+        ) : null}
+        <Button label="Open folder" icon="folder" variant="secondary" fullWidth onPress={() => { onOpenFolder(d.id); onClose(); }} />
         <Text style={styles.hint}>{copy.subtitle}</Text>
         <Button label={copy.keepLabel} variant="secondary" fullWidth onPress={() => { onRemove(d.id, false); onClose(); }} />
         <Button label={copy.deleteLabel} variant="danger" icon="trash" fullWidth onPress={() => setStep('confirmDelete')} />

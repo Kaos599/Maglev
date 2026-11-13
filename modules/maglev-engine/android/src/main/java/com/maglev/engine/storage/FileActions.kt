@@ -86,6 +86,16 @@ object FileActions {
         return start(context, chooser, "Sharing is not available")
     }
 
+    /** Shares a document by its URI (the copy Maglev made in the user's folder). Null on success, else a plain message. */
+    fun shareUri(context: Context, uri: Uri, name: String): String? {
+        val send = Intent(Intent.ACTION_SEND)
+            .setType(SafStorageManager.mimeFor(name))
+            .putExtra(Intent.EXTRA_STREAM, uri)
+            .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        val chooser = Intent.createChooser(send, null).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        return start(context, chooser, "Sharing is not available")
+    }
+
     /** Shares a file at a POSIX path the FileProvider covers. Returns null on success or a plain-English error. */
     fun shareLocalFile(context: Context, file: File, mime: String): String? {
         val uri = try {
@@ -101,7 +111,10 @@ object FileActions {
         return start(context, chooser, "Sharing is not available")
     }
 
-    /** Opens the folder in a file manager, falling back to the system Downloads view. */
+    /**
+     * Opens the folder. Tries ACTION_VIEW on the folder's document URI (the system Files app and most file
+     * managers open it), then the system Downloads list. Returns null on success, else a plain message.
+     */
     fun openFolder(context: Context, outputFolder: String): String? {
         val docUri = folderDocumentUri(context, outputFolder)
         if (docUri != null) {
@@ -109,9 +122,10 @@ object FileActions {
                 .setDataAndType(docUri, DocumentsContract.Document.MIME_TYPE_DIR)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_GRANT_READ_URI_PERMISSION)
             if (start(context, view, "") == null) return null
+            // Not ACTION_OPEN_DOCUMENT_TREE: that is a "grant access to this folder" picker, not a file browser.
         }
         val fallback = Intent(DownloadManager.ACTION_VIEW_DOWNLOADS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        return start(context, fallback, "No file manager found")
+        return if (start(context, fallback, "") == null) null else "No file manager could open this folder"
     }
 
     private fun folderDocumentUri(context: Context, outputFolder: String): Uri? {

@@ -7,7 +7,7 @@ import { useFonts } from 'expo-font';
 import { SettingsProvider, useSettings } from '../context/SettingsContext';
 import { ThemeProvider, useTheme } from '../context/ThemeContext';
 import { EngineProvider, useMaglevEngine } from '../context/EngineContext';
-import { fontFamily } from '../constants/theme';
+import { FONT_NAMES } from '../constants/fontStyles';
 import NavigationBarSync from '../components/NavigationBarSync';
 import { syncScheduleToNative } from '../utils/prefs/schedule';
 import { syncFeedAutomationToNative } from '../utils/prefs/feedAutomation';
@@ -133,11 +133,13 @@ function AppNavigation() {
 
 export default function RootLayout() {
   const [fontsLoaded, fontError] = useFonts({
-    [fontFamily.brand]: require('@expo-google-fonts/silkscreen/400Regular/Silkscreen_400Regular.ttf'),
-    [fontFamily.mono]: require('@expo-google-fonts/space-mono/400Regular/SpaceMono_400Regular.ttf'),
-    [fontFamily.monoBold]: require('@expo-google-fonts/space-mono/700Bold/SpaceMono_700Bold.ttf'),
-    [fontFamily.body]: require('@expo-google-fonts/inter/400Regular/Inter_400Regular.ttf'),
-    [fontFamily.bodyStrong]: require('@expo-google-fonts/inter/600SemiBold/Inter_600SemiBold.ttf'),
+    [FONT_NAMES.silkscreen]: require('@expo-google-fonts/silkscreen/400Regular/Silkscreen_400Regular.ttf'),
+    [FONT_NAMES.spaceMono]: require('@expo-google-fonts/space-mono/400Regular/SpaceMono_400Regular.ttf'),
+    [FONT_NAMES.spaceMonoBold]: require('@expo-google-fonts/space-mono/700Bold/SpaceMono_700Bold.ttf'),
+    [FONT_NAMES.inter]: require('@expo-google-fonts/inter/400Regular/Inter_400Regular.ttf'),
+    [FONT_NAMES.interMedium]: require('@expo-google-fonts/inter/500Medium/Inter_500Medium.ttf'),
+    [FONT_NAMES.interSemiBold]: require('@expo-google-fonts/inter/600SemiBold/Inter_600SemiBold.ttf'),
+    [FONT_NAMES.interBold]: require('@expo-google-fonts/inter/700Bold/Inter_700Bold.ttf'),
   });
 
   // Native splash stays visible until fonts load; AppNavigation hides it once the engine resolves.

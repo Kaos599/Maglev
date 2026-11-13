@@ -1,3 +1,5 @@
+import { formatBytes } from './format.ts';
+
 /**
  * One voice for notices, banners and empty states. Every string a notice, banner or empty state
  * shows lives here, grouped by screen, so scripts/test-copy-voice.js can lint them all.
@@ -178,8 +180,9 @@ export const banners = {
     loadFailed: (name: string | number) => ({ title: `Couldn't load ${toName(name)}` }),
   },
   transfers: {
-    magnetInClipboard: { title: 'Magnet link in clipboard' },
-    torrentLinkInClipboard: { title: 'Torrent link in clipboard' },
+    magnetInClipboard: { title: 'Add the magnet you copied?' },
+    torrentLinkInClipboard: { title: 'Add the torrent link you copied?' },
+    linkInClipboard: { title: 'Add the link you copied?' },
   },
   detail: {
     updatesPaused: { title: 'Updates paused' },
@@ -200,7 +203,7 @@ export const banners = {
 // ---------------------------------------------------------------------------------------------
 export const empty = {
   transfers: {
-    none: { title: 'No transfers yet', body: 'Paste a magnet link, open a .torrent file or tap one in your browser.' },
+    none: { title: 'No downloads yet', body: 'Paste a link or magnet, open a .torrent file, or find something to download.' },
     noMatch: { title: 'No matching transfers', body: 'Try a different search.' },
     noneInFilter: (filter: string | number) => ({
       title: `No ${toName(filter).toLowerCase()} transfers`,
@@ -290,3 +293,43 @@ export const onboarding = {
     body: 'Large downloads can use a lot of your data plan.',
   },
 };
+/** The + button's menu (components/add/AddMenuSheet.tsx). */
+export const addMenu = {
+  title: 'Add',
+  magnet: 'Magnet link',
+  copyFirst: 'Copy a link first',
+  typeHint: 'Enter a web link or magnet link',
+  fileHint: 'Pick one from your phone',
+  searchHint: 'Look in your sources',
+  browseHint: 'Find a file or video on a web page',
+} as const;
+
+// ---------------------------------------------------------------------------------------------
+// Mobile data note on the add screens (one quiet line; the size is formatted at run time)
+// ---------------------------------------------------------------------------------------------
+/**
+ * The one line the add screens show under the size. Null when there is nothing to say: not on mobile data,
+ * or on mobile data with Wi-Fi only off and no known size. With Wi-Fi only on the download waits, so the
+ * size doesn't matter.
+ */
+export function mobileDataLine(onMetered: boolean, wifiOnly: boolean, sizeBytes: number | null): string | null {
+  if (!onMetered) return null;
+  if (wifiOnly) return 'This waits for Wi-Fi.';
+  if (sizeBytes == null || !(sizeBytes > 0)) return null;
+  return `You're on mobile data. This is ${formatBytes(sizeBytes)}.`;
+}
+/**
+ * Settings > Interface > Font. Each description is linted by scripts/test-copy-voice.js like a
+ * banner body: at most 16 words, ends with a period. The sample is a made-up file shown in each style.
+ */
+export const fontStyleCopy = {
+  label: 'Font',
+  hint: 'Applies as soon as you pick it.',
+  sampleName: 'Big Buck Bunny 1080p',
+  sampleSize: '691 MB',
+  options: [
+    { value: 'clean', title: 'Clean', description: 'Easy to read. Inter for titles, names and numbers.' },
+    { value: 'retro', title: 'Retro', description: 'Pixel titles and fixed-width numbers, like an old terminal.' },
+    { value: 'mono', title: 'Mono', description: 'Fixed-width titles, names and numbers. Labels and text stay easy to read.' },
+  ],
+} as const;

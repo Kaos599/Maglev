@@ -12,12 +12,14 @@ import { FloatingActionButton } from '../../components/FloatingActionButton';
 import { SpeedTelemetryHeader } from '../../components/SpeedTelemetryHeader';
 import { BulkBar } from '../../components/transfers/BulkBar';
 import { ClipboardChip } from '../../components/transfers/ClipboardChip';
+import { AddMenuSheet } from '../../components/add/AddMenuSheet';
+import { ClearFinishedSheet } from '../../components/transfers/ClearFinishedSheet';
 import { DeleteSheet } from '../../components/transfers/DeleteSheet';
 import { SortSheet } from '../../components/transfers/SortSheet';
 import { TeachingEmptyState } from '../../components/transfers/TeachingEmptyState';
-import { FILTERS, TransferFilter, countByFilter, downloadMatchesFilter, magnetHash, matchesFilter, sortTorrents } from '../../components/transfers/model';
+import { FILTERS, TransferFilter, countByFilter, downloadMatchesFilter, finishedTransfers, magnetHash, matchesFilter, sortTorrents } from '../../components/transfers/model';
 import { PixelIcon } from '../../components/PixelIcon';
-import { Banner, EmptyBlock, IconButton } from '../../components/ui/index';
+import { Banner, Button, EmptyBlock, IconButton } from '../../components/ui/index';
 import { ProgressMotionContext, type ProgressMotion } from '../../components/ui/ProgressBar';
 import { steadyResolvingSecs } from '../../components/transfers/snapshots';
 import { lowSpaceWarning, usableFreeOf, type LowSpaceWarning } from '../../components/transfers/lowSpace';
@@ -28,8 +30,8 @@ import { useMaglevEngine } from '../../context/EngineContext';
 import { useTheme } from '../../context/ThemeContext';
 import { ThemeColors, radius, spacing, type } from '../../constants/theme';
 import { takeNextShared } from '../../utils/shareQueue';
-import { allowDeviceFailureText, openFailureText, type DownloadAction } from '../../utils/downloadCopy';
-import { BulkVerb, bulkSummary } from '../../utils/bulkSummary';
+import { OPEN_FOLDER_FAILED_TEXT, SHARE_FAILED_TEXT, allowDeviceFailureText, openFailureText, type DownloadAction } from '../../utils/downloadCopy';
+import { BulkVerb, bulkSummary, selectionKey, splitSelection } from '../../utils/bulkSummary';
 import { TransferSort, loadTransferSort, saveTransferSort } from '../../utils/prefs/transfers';
 import { empty, notices } from '../../constants/copy';
 
@@ -83,7 +85,7 @@ export default function TransfersScreen() {
     pauseAll,
     resumeAll,
     deleteTorrent,
-    removeTorrents,
+    removeTransfers,
     notice,
     showNotice,
     dismissNotice,
@@ -118,16 +120,25 @@ export default function TransfersScreen() {
   const [selectedIds, setSelectedIds] = useState<ReadonlySet<string>>(() => new Set());
   const [fileError, setFileError] = useState<string | null>(null);
   const [sheetDownloadId, setSheetDownloadId] = useState<string | null>(null);
+  const [clearOpen, setClearOpen] = useState(false);
+  // A link-download notification opens with `download=<id>`: show that download's sheet once, then clear the param.
+  const { download: downloadParam } = useLocalSearchParams<{
+    download?: string;
+  }>();
+  useEffect(() => {
+    if (typeof downloadParam !== 'string' || !downloadParam) return;
+    setSheetDownloadId(downloadParam);
+    router.setParams({ download: undefined });
+  }, [downloadParam, router]);
 
   const all = telemetry.torrents;
-  const cruising = focused && all.some((t) => t.state === 'DOWNLOADING');
+  const cruising = focused && (all.some((t) => t.state === 'DOWNLOADING') || downloads.some((d) => d.state === 'downloading'));
   // Downloads from links show above the torrents, obey the same filters, and obey the name filter.
   const shownDownloads = useMemo(() => {
     const q = query.trim().toLowerCase();
     return downloads.filter((d) => downloadMatchesFilter(d, filter) && (!q || d.name.toLowerCase().includes(q)));
   }, [downloads, filter, query]);
   const sheetDownload = useMemo(() => downloads.find((d) => d.id === sheetDownloadId) ?? null, [downloads, sheetDownloadId]);
-  const onDownloadPress = useCallback((id: string) => setSheetDownloadId(id), []);
   const openDownload = useCallback(
     (id: string) => {
       void maglevEngine.openDownload(id).then((res) => {
@@ -136,10 +147,29 @@ export default function TransfersScreen() {
     },
     [showNotice],
   );
+  const openDownloadFolder = useCallback(
+    (id: string) => {
+      void maglevEngine.openDownloadFolder(id).then((res) => {
+        if (!res.ok) showNotice({ message: res.message || OPEN_FOLDER_FAILED_TEXT });
+      });
+    },
+    [showNotice],
+  );
+  const shareDownload = useCallback(
+    (id: string) => {
+      void maglevEngine.shareDownload(id).then((res) => {
+        if (!res.ok) showNotice({ message: res.message || SHARE_FAILED_TEXT });
+      });
+    },
+    [showNotice],
+  );
   const allowDevice = useCallback(
     (id: string) => {
       void maglevEngine.allowLanHost(id).then((res) => {
-        if (!res.ok) showNotice({ message: allowDeviceFailureText(res.code, res.message) });
+        if (!res.ok)
+          showNotice({
+            message: allowDeviceFailureText(res.code, res.message),
+          });
         else void retryDownload(id);
       });
     },
@@ -172,6 +202,8 @@ export default function TransfersScreen() {
     [pauseDownload, resumeDownload, retryDownload, openDownload, allowDevice],
   );
   const selectionMode = selectedIds.size > 0;
+  const finished = useMemo(() => finishedTransfers(all, downloads), [all, downloads]);
+  const finishedCount = finished.torrents.length + finished.downloads.length;
 
   const counts = useMemo(() => countByFilter(all, downloads), [all, downloads]);
   const visible = useMemo(() => {
@@ -196,15 +228,24 @@ export default function TransfersScreen() {
   // moment, so the numbers agree with each other (and the text changes every 30 s, not every tick).
   // Read again when the unfinished set changes. Unknown free space shows nothing.
   const [lowSpace, setLowSpace] = useState<LowSpaceWarning | null>(null);
-  const allRef = useRef(all);
-  allRef.current = all;
+  // Link downloads count too: a known size is what they still need, an unknown one needs nothing yet.
+  const needRows = useMemo(
+    () => [
+      ...all,
+      ...downloads.map((d) => ({
+        finished: d.state === 'finished',
+        includedBytes: d.size ?? 0,
+        downloadedBytes: d.downloaded,
+      })),
+    ],
+    [all, downloads],
+  );
+  const allRef = useRef(needRows);
+  allRef.current = needRows;
   const unfinishedKey = useMemo(
     () =>
-      all
-        .filter((t) => !t.finished)
-        .map((t) => t.id)
-        .join(','),
-    [all],
+      [...all.filter((t) => !t.finished).map((t) => t.id), ...downloads.filter((d) => d.state !== 'finished').map((d) => `d:${d.id}`)].join(','),
+    [all, downloads],
   );
   useEffect(() => {
     if (!focused) return;
@@ -236,10 +277,10 @@ export default function TransfersScreen() {
   // Drop selections that no longer exist (deleted or removed elsewhere).
   useEffect(() => {
     if (selectedIds.size === 0) return;
-    const live = new Set(all.map((t) => t.id));
-    const next = new Set([...selectedIds].filter((id) => live.has(id)));
+    const live = new Set([...all.map((t) => selectionKey('t', t.id)), ...downloads.map((d) => selectionKey('d', d.id))]);
+    const next = new Set([...selectedIds].filter((key) => live.has(key)));
     if (next.size !== selectedIds.size) setSelectedIds(next);
-  }, [all, selectedIds]);
+  }, [all, downloads, selectedIds]);
 
   // The tab bar stays mounted and visible during selection. The bulk bar sits above it (the screen
   // ends where the tab bar begins), so no hide/show happens under the finger while a tap lands.
@@ -257,28 +298,45 @@ export default function TransfersScreen() {
   }, [selectionMode]);
 
   const exitSelection = useCallback(() => setSelectedIds(new Set()), []);
-  const toggleSelected = useCallback((id: string) => {
+  // Selection keys carry the kind ("t:" torrent, "d:" link download) so the two id spaces never collide.
+  const toggleSelected = useCallback((key: string) => {
     setSelectedIds((prev) => {
       const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
       return next;
     });
   }, []);
   const startSelection = useCallback((id: string) => {
     haptic('select');
-    setSelectedIds((prev) => (prev.has(id) ? prev : new Set(prev).add(id)));
+    setSelectedIds((prev) => (prev.has(selectionKey('t', id)) ? prev : new Set(prev).add(selectionKey('t', id))));
   }, []);
+  const startDownloadSelection = useCallback((id: string) => {
+    haptic('select');
+    setSelectedIds((prev) => (prev.has(selectionKey('d', id)) ? prev : new Set(prev).add(selectionKey('d', id))));
+  }, []);
+  const selectableCount = visible.length + shownDownloads.length;
   const selectAll = useCallback(() => {
-    setSelectedIds((prev) => (prev.size === visible.length ? new Set() : new Set(visible.map((t) => t.id))));
-  }, [visible]);
+    setSelectedIds((prev) =>
+      prev.size === selectableCount
+        ? new Set()
+        : new Set([...visible.map((t) => selectionKey('t', t.id)), ...shownDownloads.map((d) => selectionKey('d', d.id))]),
+    );
+  }, [visible, shownDownloads, selectableCount]);
 
   const onCardPress = useCallback(
     (id: string) => {
-      if (selectionMode) toggleSelected(id);
+      if (selectionMode) toggleSelected(selectionKey('t', id));
       else router.push({ pathname: '/torrent/[id]', params: { id } });
     },
     [selectionMode, toggleSelected, router],
+  );
+  const onDownloadPress = useCallback(
+    (id: string) => {
+      if (selectionMode) toggleSelected(selectionKey('d', id));
+      else setSheetDownloadId(id);
+    },
+    [selectionMode, toggleSelected],
   );
   const onPause = useCallback((id: string) => void pauseTorrent(id), [pauseTorrent]);
   const onResume = useCallback((id: string) => void resumeTorrent(id), [resumeTorrent]);
@@ -298,11 +356,14 @@ export default function TransfersScreen() {
   }, []);
 
   const bulk = useCallback(
-    async (verb: BulkVerb, fn: (id: string) => Promise<boolean>) => {
-      const ids = [...selectedIds];
+    async (verb: BulkVerb, torrentFn: (id: string) => Promise<boolean>, downloadFn: (id: string) => Promise<boolean>) => {
+      const { torrents: tIds, downloads: dIds } = splitSelection(selectedIds);
       // Leave selection after the press has fully finished, never inside the onPress frame.
       setTimeout(exitSelection, 0);
-      const results = await Promise.all(ids.map((id) => fn(id).catch(() => false)));
+      const results = await Promise.all([
+        ...tIds.map((id) => torrentFn(id).catch(() => false)),
+        ...dIds.map((id) => downloadFn(id).catch(() => false)),
+      ]);
       // One notice for the whole action. It replaces the per-row "Couldn't pause X" notices.
       const summary = bulkSummary(verb, results);
       if (summary) showNotice({ message: summary });
@@ -310,22 +371,24 @@ export default function TransfersScreen() {
     [selectedIds, exitSelection, showNotice],
   );
   const selectedBytes = useMemo(
-    () => all.reduce((sum, t) => (selectedIds.has(t.id) ? sum + t.downloadedBytes : sum), 0),
-    [all, selectedIds],
+    () =>
+      all.reduce((sum, t) => (selectedIds.has(selectionKey('t', t.id)) ? sum + t.downloadedBytes : sum), 0) +
+      downloads.reduce((sum, d) => (selectedIds.has(selectionKey('d', d.id)) ? sum + d.downloaded : sum), 0),
+    [all, downloads, selectedIds],
   );
   const confirmDelete = useCallback(
     (deleteFiles: boolean) => {
       setDeleteOpen(false);
       if (deleteFiles) {
-        void bulk('Deleted', (id) => deleteTorrent(id, true));
+        void bulk('Deleted', (id) => deleteTorrent(id, true), (id) => removeDownload(id, true));
       } else {
-        // Keep files: the rows leave now and the notice offers Undo for 5 seconds.
-        const ids = [...selectedIds];
+        // Keep files: rows leave now and the notice offers Undo for 5 seconds, torrents and links alike.
+        const { torrents: tIds, downloads: dIds } = splitSelection(selectedIds);
         exitSelection();
-        removeTorrents(ids);
+        removeTransfers(tIds, dIds);
       }
     },
-    [bulk, deleteTorrent, removeTorrents, selectedIds, exitSelection],
+    [bulk, deleteTorrent, removeTransfers, removeDownload, selectedIds, exitSelection],
   );
 
   // Files shared together: when this screen is focused again (the add flow closed), open the next one.
@@ -336,10 +399,15 @@ export default function TransfersScreen() {
     }, [router]),
   );
 
+  // + opens a menu of every way in (paste, type, file, Search, Browser), not the torrent screen directly.
+  const [addMenuOpen, setAddMenuOpen] = useState(false);
   const goAdd = useCallback(() => router.push('/add-torrent'), [router]);
   const addClipboard = useCallback(() => {
     if (!clipboardMagnet) return;
-    router.push({ pathname: '/add-torrent', params: { source: clipboardMagnet } });
+    router.push({
+      pathname: '/add-torrent',
+      params: { source: clipboardMagnet },
+    });
   }, [clipboardMagnet, router]);
 
   const openFile = useCallback(async () => {
@@ -373,7 +441,7 @@ export default function TransfersScreen() {
       <TransferCard
         torrent={steadyRow(item)}
         selectionMode={selectionMode}
-        selected={selectedIds.has(item.id)}
+        selected={selectedIds.has(selectionKey('t', item.id))}
         onPress={onCardPress}
         onLongPress={startSelection}
         onPause={onPause}
@@ -390,12 +458,20 @@ export default function TransfersScreen() {
       shownDownloads.length > 0 ? (
         <View style={styles.downloads}>
           {shownDownloads.map((d) => (
-            <DownloadCard key={d.id} download={d} onPress={onDownloadPress} onAction={onDownloadAction} />
+            <DownloadCard
+              key={d.id}
+              download={d}
+              onPress={onDownloadPress}
+              onAction={onDownloadAction}
+              selectionMode={selectionMode}
+              selected={selectedIds.has(selectionKey('d', d.id))}
+              onLongPress={startDownloadSelection}
+            />
           ))}
           {visible.length > 0 ? <Separator /> : null}
         </View>
       ) : undefined,
-    [shownDownloads, visible.length, styles, onDownloadPress, onDownloadAction],
+    [shownDownloads, visible.length, styles, onDownloadPress, onDownloadAction, selectionMode, selectedIds, startDownloadSelection],
   );
   const progressMotion = useMemo<ProgressMotion>(() => ({ active: focused, sweeps: LIST_SWEEPS }), [focused]);
 
@@ -409,7 +485,12 @@ export default function TransfersScreen() {
         cruising={cruising}
         selection={
           selectionMode
-            ? { count: selectedIds.size, allSelected: selectedIds.size === visible.length, onClose: exitSelection, onSelectAll: selectAll }
+            ? {
+                count: selectedIds.size,
+                allSelected: selectedIds.size === selectableCount,
+                onClose: exitSelection,
+                onSelectAll: selectAll,
+              }
             : undefined
         }
         actions={
@@ -469,7 +550,7 @@ export default function TransfersScreen() {
       ) : null}
 
       {clipboardMagnet && clipboardIsNew && !selectionMode ? (
-        <ClipboardChip magnet={clipboardMagnet.startsWith('magnet:')} onAdd={addClipboard} onDismiss={clearClipboardMagnet} />
+        <ClipboardChip link={clipboardMagnet} onAdd={addClipboard} onDismiss={clearClipboardMagnet} />
       ) : null}
 
       {fileError && all.length === 0 ? (
@@ -479,10 +560,15 @@ export default function TransfersScreen() {
       ) : null}
 
       {nothingHere ? (
-        <TeachingEmptyState canPaste={!!clipboardMagnet && clipboardIsNew} onPaste={addClipboard} onOpenFile={openFile} />
+        <TeachingEmptyState canPaste={!!clipboardMagnet && clipboardIsNew} onPaste={addClipboard} onOpenFile={openFile} onSearch={() => router.navigate('/search')} onBrowse={() => router.push('/browser')} />
       ) : (
         <ProgressMotionContext.Provider value={progressMotion}>
           <FilterPills value={filter} counts={counts} onChange={setFilter} />
+          {filter === 'done' && finishedCount > 0 && !selectionMode ? (
+            <View style={styles.clearRow}>
+              <Button label="Clear finished" icon="trash" variant="secondary" fullWidth onPress={() => setClearOpen(true)} />
+            </View>
+          ) : null}
           {visible.length === 0 && shownDownloads.length === 0 ? (
             <View style={styles.noMatch}>
               <EmptyBlock
@@ -521,12 +607,24 @@ export default function TransfersScreen() {
       {selectionMode ? (
         <BulkBar
           disabled={false}
-          onPause={() => void bulk('Paused', pauseTorrent)}
-          onResume={() => void bulk('Resumed', resumeTorrent)}
+          onPause={() => void bulk('Paused', pauseTorrent, pauseDownload)}
+          onResume={() => void bulk('Resumed', resumeTorrent, resumeDownload)}
           onDelete={() => setDeleteOpen(true)}
         />
       ) : (
-        <FloatingActionButton onPress={goAdd} />
+        <>
+          <FloatingActionButton onPress={() => setAddMenuOpen(true)} />
+          <AddMenuSheet
+            visible={addMenuOpen}
+            onClose={() => setAddMenuOpen(false)}
+            clipboard={clipboardMagnet ?? undefined}
+            onPaste={addClipboard}
+            onType={goAdd}
+            onOpenFile={() => void openFile()}
+            onSearch={() => router.navigate('/search')}
+            onBrowse={() => router.push('/browser')}
+          />
+        </>
       )}
 
       {notice ? (
@@ -546,9 +644,20 @@ export default function TransfersScreen() {
         onClose={() => setSheetDownloadId(null)}
         onRetry={(id) => void retryDownload(id)}
         onOpen={openDownload}
+        onOpenFolder={openDownloadFolder}
+        onShare={shareDownload}
         onAllowDevice={allowDevice}
         onRemove={(id, deleteFiles) => void removeDownload(id, deleteFiles)}
         onNewLink={refreshDownloadUrl}
+      />
+      <ClearFinishedSheet
+        visible={clearOpen}
+        count={finished.torrents.length + finished.downloads.length}
+        onClose={() => setClearOpen(false)}
+        onConfirm={() => {
+          setClearOpen(false);
+          removeTransfers(finished.torrents, finished.downloads);
+        }}
       />
       <SortSheet visible={sortOpen} sort={sort} onChange={changeSort} onClose={() => setSortOpen(false)} />
       <DeleteSheet visible={deleteOpen} count={selectedIds.size} bytes={selectedBytes} onClose={() => setDeleteOpen(false)} onConfirm={confirmDelete} />
@@ -559,6 +668,7 @@ export default function TransfersScreen() {
 const makeStyles = (c: ThemeColors) =>
   StyleSheet.create({
     root: { flex: 1, backgroundColor: c.bg },
+    clearRow: { paddingHorizontal: spacing.lg, paddingBottom: spacing.sm },
     searchWrap: { paddingHorizontal: spacing.lg, paddingTop: spacing.sm },
     searchField: {
       minHeight: 44,
@@ -571,10 +681,21 @@ const makeStyles = (c: ThemeColors) =>
       borderColor: c.border,
       borderRadius: radius.md,
     },
-    searchInput: { ...type.mono, flex: 1, fontSize: 13, color: c.text, paddingVertical: 0 },
+    searchInput: {
+      ...type.mono,
+      flex: 1,
+      fontSize: 13,
+      color: c.text,
+      paddingVertical: 0,
+    },
     fileError: { paddingHorizontal: spacing.lg, paddingBottom: spacing.sm },
     lowSpace: { paddingHorizontal: spacing.lg, paddingTop: spacing.sm },
-    notice: { position: 'absolute', left: spacing.lg, right: spacing.lg, bottom: spacing.lg + 56 + spacing.sm },
+    notice: {
+      position: 'absolute',
+      left: spacing.lg,
+      right: spacing.lg,
+      bottom: spacing.lg + 56 + spacing.sm,
+    },
     noMatch: { flex: 1, justifyContent: 'center' },
     downloads: { gap: CARD_GAP },
     listContent: { paddingTop: spacing.xs, paddingBottom: 96 },

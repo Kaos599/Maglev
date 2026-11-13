@@ -117,7 +117,7 @@ async function main() {
   check('lowSpace: exactly the reserve left is fine', lowSpaceWarning(1 * GB + ADMISSION_RESERVE_BYTES, [t(1 * GB, 0)]) === null);
   const under = lowSpaceWarning(1 * GB + ADMISSION_RESERVE_BYTES - 1, [t(1 * GB, 0)]);
   check('lowSpace: one byte under the reserve shows the banner', !!under);
-  check('lowSpace: under the reserve but not over free says so', under && /need 1\.0 GB of the 1\.2 GB free\. That leaves less than 200\.0 MB for your phone\./.test(under.body), under && under.body);
+  check('lowSpace: under the reserve but not over free says so', under && /need 1\.0 GB of the 1\.2 GB free\. That leaves less than 200 MB for your phone\./.test(under.body), under && under.body);
   check('lowSpace: unknown free space shows nothing', lowSpaceWarning(null, [t(5 * GB, 0)]) === null && lowSpaceWarning(undefined, [t(5 * GB, 0)]) === null && lowSpaceWarning(NaN, [t(5 * GB, 0)]) === null);
   check('lowSpace: no unfinished downloads shows nothing', lowSpaceWarning(10 * MB, []) === null && lowSpaceWarning(10 * MB, [t(5 * GB, 0, true)]) === null);
   check('lowSpace: fully downloaded rows need nothing', lowSpaceWarning(10 * MB, [t(5 * GB, 5 * GB)]) === null);

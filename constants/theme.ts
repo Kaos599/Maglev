@@ -1,3 +1,5 @@
+import { DEFAULT_FONT_STYLE, fontFamilies, resolveFontStyle, slotAdvance, type FontStyleName } from './fontStyles.ts';
+
 /**
  * Maglev theme foundation.
  *
@@ -9,8 +11,8 @@
  * Never write hex or rgba literals outside this file. Use `colors.*`, and
  * `alpha(colors.accent, 0.15)` for tints. Fonts come from `type`:
  *   spread `...type.mono` for numbers, filenames and telemetry (tabular-nums),
- *   `...type.body` / `...type.bodyStrong` for copy, `...type.brand` for
- *   brand wordmark and headers only. Custom faces have no synthetic bold on
+ *   `...type.body` / `...type.bodyStrong` for copy, `...type.heading` for titles,
+ *   `...type.brand` for the MAGLEV wordmark only (Silkscreen in every font style). Custom faces have no synthetic bold on
  *   Android, so never pair fontWeight with them; use the Bold/SemiBold face.
  *
  * CONTRAST (WCAG 2.x, computed by the helper below, verified with node):
@@ -188,23 +190,45 @@ export const radius = { sm: 6, md: 10, lg: 14, xl: 20, pill: 999 } as const;
 /** Minimum interactive target, in dp. */
 export const touch = { min: 44 } as const;
 
+/**
+ * Live font tokens. `ThemeProvider` calls `setActiveFontStyle` while rendering, before any child reads
+ * a token, and rebuilds `colors` so every `useMemo(() => makeStyles(colors), [colors])` re-spreads
+ * `type.*` with the new fonts. The getters read the active style at call time. Never copy a token into
+ * a module-level constant or a module-level StyleSheet: it would keep the font it was created with.
+ */
+let activeFontStyle: FontStyleName = DEFAULT_FONT_STYLE;
+
+export function setActiveFontStyle(style: unknown): void {
+  activeFontStyle = resolveFontStyle(style);
+}
+
+export function getActiveFontStyle(): FontStyleName {
+  return activeFontStyle;
+}
+
 export const fontFamily = {
-  brand: 'Silkscreen',
-  mono: 'SpaceMono',
-  monoBold: 'SpaceMonoBold',
-  body: 'Inter',
-  bodyStrong: 'InterSemiBold',
-} as const;
+  get brand() { return fontFamilies[activeFontStyle].brand; },
+  get heading() { return fontFamilies[activeFontStyle].heading; },
+  get mono() { return fontFamilies[activeFontStyle].mono; },
+  get monoBold() { return fontFamilies[activeFontStyle].monoBold; },
+  get body() { return fontFamilies[activeFontStyle].body; },
+  get bodyStrong() { return fontFamilies[activeFontStyle].bodyStrong; },
+};
 
 export const type = {
   family: fontFamily,
   size: { xs: 11, sm: 12, md: 13, lg: 15, xl: 17, xxl: 22 },
-  brand: { fontFamily: fontFamily.brand },
-  mono: { fontFamily: fontFamily.mono, fontVariant: ['tabular-nums' as const] },
-  monoBold: { fontFamily: fontFamily.monoBold, fontVariant: ['tabular-nums' as const] },
-  body: { fontFamily: fontFamily.body },
-  bodyStrong: { fontFamily: fontFamily.bodyStrong },
-} as const;
+  /** The MAGLEV wordmark only. Silkscreen in every style. */
+  get brand() { return { fontFamily: fontFamily.brand }; },
+  /** Screen and sheet titles: Inter Bold (Clean), Silkscreen (Retro), Space Mono Bold (Mono). */
+  get heading() { return { fontFamily: fontFamily.heading }; },
+  get mono() { return { fontFamily: fontFamily.mono, fontVariant: ['tabular-nums' as const] }; },
+  get monoBold() { return { fontFamily: fontFamily.monoBold, fontVariant: ['tabular-nums' as const] }; },
+  get body() { return { fontFamily: fontFamily.body }; },
+  get bodyStrong() { return { fontFamily: fontFamily.bodyStrong }; },
+  /** Advance of a telemetry glyph in the active style, for `monoSlotWidth`. */
+  get slotAdvance() { return slotAdvance[activeFontStyle]; },
+};
 
 export type Type = typeof type;
 export type Spacing = typeof spacing;
@@ -264,9 +288,9 @@ export const MONO_ADVANCE = 0.612;
  * Minimum width (dp) of a Space Mono slot that fits `chars` glyphs, so a number that grows or
  * shrinks by a digit never moves its neighbours. Scales with the system font size.
  */
-export function monoSlotWidth(chars: number, fontSize: number, fontScale = 1): number {
+export function monoSlotWidth(chars: number, fontSize: number, fontScale = 1, advance = MONO_ADVANCE): number {
   const scale = Number.isFinite(fontScale) && fontScale > 0 ? fontScale : 1;
-  return Math.ceil(Math.max(0, chars) * fontSize * MONO_ADVANCE * scale);
+  return Math.ceil(Math.max(0, chars) * fontSize * advance * scale);
 }
 
 /** translateX for a full-width fill clipped by its track: 0 is full, -width is empty. */

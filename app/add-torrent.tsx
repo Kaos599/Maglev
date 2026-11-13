@@ -19,7 +19,8 @@ import { fileExt } from '../components/detail/torrentLabels';
 import { admit, pendingNeedOf, type AdmissionOutcome } from '../utils/admission';
 import { admissionCaption } from '../utils/admissionCopy';
 import { takePrefetchedMetadata } from '../components/search/metadataCache';
-import { banners, empty, notices } from '../constants/copy';
+import { banners, empty, mobileDataLine, notices } from '../constants/copy';
+import { useSettings } from '../context/SettingsContext';
 
 /** SM-9 add flow states. */
 type Phase = 'input' | 'validating' | 'invalid' | 'resolving' | 'timeout' | 'error' | 'duplicate' | 'preview' | 'adding' | 'added';
@@ -48,7 +49,8 @@ export default function AddTorrentScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const params = useLocalSearchParams<{ source?: string; uri?: string; magnet?: string }>();
-  const { telemetry, defaultStoragePath, showNotice } = useMaglevEngine();
+  const { telemetry, defaultStoragePath, showNotice, onMeteredNetwork } = useMaglevEngine();
+  const { settings } = useSettings();
 
   const [text, setText] = useState('');
   const [phase, setPhase] = useState<Phase>('input');
@@ -404,6 +406,7 @@ export default function AddTorrentScreen() {
           })
         : null;
     const doesntFit = admission?.result === 'DoesntFit';
+    const mobileNote = mobileDataLine(onMeteredNetwork, settings.network.wifiOnly, selectedBytes);
     const prioFile = prioIndex === null ? null : meta.files.find((f) => f.index === prioIndex) ?? null;
 
     const header = (
@@ -454,6 +457,7 @@ export default function AddTorrentScreen() {
           </View>
           <Button label="Change" variant="secondary" disabled={adding} onPress={handleChangeFolder} />
         </View>
+        {mobileNote ? <Banner tone="info" title={mobileNote} /> : null}
         {addError ? <Banner tone="danger" title={banners.addTorrent.addFailed.title} body={addError} /> : null}
       </View>
     );
@@ -583,12 +587,12 @@ export default function AddTorrentScreen() {
   // ---------- Input (and Invalid, Added) ----------
   const canSubmit = text.trim().length > 0 && phase !== 'added';
   return (
-    <Screen title="Add torrent" onBack={close} scroll contentStyle={styles.inputContent}>
-      <Text style={styles.label}>Magnet, torrent or file link</Text>
+    <Screen title="Add a link or torrent" onBack={close} scroll contentStyle={styles.inputContent}>
+      <Text style={styles.label}>Link, magnet or .torrent</Text>
       <TextInput
         value={text}
         onChangeText={onChangeText}
-        placeholder="magnet:?xt=urn:btih:…"
+        placeholder="Paste a link or magnet"
         placeholderTextColor={colors.textFaint}
         autoCapitalize="none"
         autoCorrect={false}
@@ -597,7 +601,7 @@ export default function AddTorrentScreen() {
         onSubmitEditing={() => canSubmit && submit(text)}
         multiline
         style={[styles.field, phase === 'invalid' && styles.fieldInvalid]}
-        accessibilityLabel="Magnet, torrent or file link"
+        accessibilityLabel="Link, magnet or .torrent"
       />
       {phase === 'invalid' && message ? (
         <View style={styles.gap}>
