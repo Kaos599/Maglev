@@ -126,5 +126,15 @@ check('the test is chained after test-browser-tabs.js', /node scripts\/test-brow
 const tabRoute = read('app/(tabs)/browse.tsx');
 check('in the tab bar the screen skips the bottom inset (the tab bar already pads for it)', /<BrowserScreen inTab \/>/.test(tabRoute) && /edges=\{inTab \? \['top', 'left', 'right'\] : \['top', 'left', 'right', 'bottom'\]\}/.test(scr));
 
+// 24.11 history from a blank tab
+const recentPath = path.join(root, 'components/browser/RecentHistory.tsx');
+const recent = fs.existsSync(recentPath) ? fs.readFileSync(recentPath, 'utf8') : '';
+check('⋮ is enabled on a blank tab (gated on ready, not on a page)', /icon="more" accessibilityLabel="More" disabled=\{!ready\}/.test(scr) && !/icon="more"[^\n]*disabled=\{!hasPage\}/.test(scr));
+check('with no page the sheet is titled Browser', /title=\{hasPage \? historyCopy\.menuTitlePage : historyCopy\.menuTitleBlank\}/.test(scr) && /menuTitleBlank: 'Browser'/.test(read('constants/copy.ts')));
+check('page-only rows sit behind hasPage; History and Browser settings do not', /\{hasPage \? \(\s*<>[\s\S]*?title="Forward"[\s\S]*?findCopy\.menuRow[\s\S]*?textSizeCopy\.menuRow[\s\S]*?Desktop site[\s\S]*?Copy page link[\s\S]*?<\/>\s*\) : null\}\s*<ListRow\s+icon="clock"/.test(scr));
+check('a blank tab shows Recent, falling back to the start block', /<RecentHistory[\s\S]{0,200}fallback=\{<EmptyBlock icon="network"/.test(scr));
+check('Recent lists 6 from history, refreshes on change, and links to the History screen', /listHistory\(\{ limit: RECENT_LIMIT \}\)/.test(recent) && /RECENT_LIMIT = 6/.test(recent) && /useHistoryVersion\(\)/.test(recent) && /\/browser-history/.test(recent) && /historyCopy\.recent\.seeAll/.test(recent));
+check('Recent shows nothing when Save history is off or the store fails', /saveHistory/.test(recent) && /\(\) => \{\s*if \(live\) setRows\(\[\]\)/.test(recent));
+
 if (failed) { console.error(`${failed} check(s) failed`); process.exit(1); }
 console.log('all passed');
