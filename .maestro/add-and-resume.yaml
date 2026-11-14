@@ -9,13 +9,14 @@ name: add-and-resume
     timeout: 120000
 - tapOn: "Start download.*"
 - extendedWaitUntil:
-    visible: ".*, [1-9][0-9]* percent"
+    visible: "Sintel.*, [1-9][0-9]* percent"  # card label starts with the name; a bare percent regex matches the battery
     timeout: 180000
 - pressKey: Home
 - killApp
 - launchApp
 - extendedWaitUntil:
-    visible: ".*percent.*"
+    visible:
+      id: "transfer-card"
     timeout: 45000
 - extendedWaitUntil:
     visible: "Pause .*"
