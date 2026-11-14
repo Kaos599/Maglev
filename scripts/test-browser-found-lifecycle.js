@@ -84,7 +84,7 @@ async function screen() {
   console.log('screen wiring (app/browser.tsx, FoundTray)');
   const scr = read('app/browser.tsx');
   const tray = read('components/browser/FoundTray.tsx');
-  check('screen keeps a dismissed set', /useState<ReadonlySet<string>>|useState<Set<string>>|dismissed: ReadonlySet<string>/.test(scr) && /dismissed/.test(scr));
+  check('screen keeps a dismissed set', /useState<ReadonlySet<string>>|useState<Set<string>>|dismissed: ReadonlySet<string>/.test(scr + read('utils/browser/tabData.ts')) && /dismissed/.test(scr));
   check('the tray list hides dismissed ids', /visibleFound\(/.test(scr));
   check('Remove dismisses instead of deleting from the list', !/removeFound\(/.test(scr) && /dismissIds\(/.test(scr));
   check('Clear dismisses instead of emptying the list', !/clearFound\(/.test(scr) && /dismissAllVisible\(/.test(scr));

@@ -293,6 +293,8 @@ export function createHistoryStore(db: HistoryDb, prefs: () => HistoryPrefs) {
   function saveTabs(rows: TabRow[], activeId: string | null): Promise<boolean> {
     const job = tabsQueue.then(async () => {
       if (tabsBroken) return false;
+      // With "Save history" off tabs stay in memory (section 30).
+      if (!prefs().saveHistory) return false;
       try {
         await init();
         for (const r of rows) {
@@ -315,6 +317,20 @@ export function createHistoryStore(db: HistoryDb, prefs: () => HistoryPrefs) {
         tabsBroken = true;
         return false;
       }
+    });
+    tabsQueue = job;
+    return job;
+  }
+
+  /** Deletes every saved tab and the active id (after "Save history" turns off). Runs after pending saves. Never throws. */
+  function deleteTabs(): Promise<void> {
+    const job = tabsQueue.then(async () => {
+      try {
+        await init();
+      } catch {
+        return;
+      }
+      await wipeTabs();
     });
     tabsQueue = job;
     return job;
@@ -348,6 +364,7 @@ export function createHistoryStore(db: HistoryDb, prefs: () => HistoryPrefs) {
     init,
     saveTabs,
     loadTabs,
+    deleteTabs,
     prune,
     recordVisit,
     list,

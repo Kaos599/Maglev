@@ -301,3 +301,19 @@ export async function setHistoryWipeOnClose(enabled: boolean): Promise<void> {
     // The JS cold-start wipe still runs.
   }
 }
+
+/**
+ * How many times native emptied the history because Maglev closed (contract section 30). JS compares it with the last
+ * count it saw to know the in-memory tabs are stale. 0 where there is no native module (the mock).
+ */
+export async function getHistoryWipeCount(): Promise<number> {
+  try {
+    if (typeof Native?.getHistoryWipeCount === 'function') {
+      const n = Number(await Native.getHistoryWipeCount());
+      return Number.isFinite(n) ? n : 0;
+    }
+  } catch {
+    // Treated as no wipe.
+  }
+  return 0;
+}

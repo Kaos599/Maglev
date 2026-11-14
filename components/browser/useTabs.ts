@@ -1,108 +1,50 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
-import {
-  closeAll as closeAllTabs,
-  closeTab,
-  createTabsState,
-  openTab,
-  restoreTabs,
-  selectTab,
-  toRows,
-  undoClose,
-  updateTab,
-  type OpenResult,
-  type TabsState,
-  type UndoClose,
-} from '../../utils/browser/tabs';
-import { flushTabs, loadTabs, scheduleSaveTabs } from '../../utils/history';
+import { useEffect, useSyncExternalStore } from 'react';
+import { getHistoryWipeCount } from 'maglev-engine';
+import type { TabsState } from '../../utils/browser/tabs';
+import { tabStore } from '../../utils/browser/tabStore';
+import { deleteSavedTabs, flushTabs, loadTabs, scheduleSaveTabs } from '../../utils/history';
+import { getBrowserPrefs, subscribeBrowserPrefs } from '../../utils/prefs/browser';
+
+// Section 30: bind the one store to the history database, the prefs and the native wipe counter, once per process.
+tabStore.bind({
+  load: loadTabs,
+  scheduleSave: scheduleSaveTabs,
+  flush: flushTabs,
+  deleteSaved: deleteSavedTabs,
+  saveHistory: () => getBrowserPrefs().saveHistory,
+  subscribePrefs: subscribeBrowserPrefs,
+  wipeCount: getHistoryWipeCount,
+});
+
+/** Always the latest state, for callbacks that must not close over a render. */
+const ref = {
+  get current(): TabsState | null {
+    return tabStore.getState();
+  },
+};
+
+const actions = {
+  ref,
+  open: tabStore.open,
+  select: tabStore.select,
+  update: tabStore.update,
+  close: tabStore.close,
+  closeAll: tabStore.closeAll,
+  undo: tabStore.undo,
+};
 
 /**
- * The tabs of the open browser screen (contract 24.10). The state is pure (utils/browser/tabs.ts); this hook holds it,
- * restores it from the history database the first time the screen opens in this process, and saves it 500 ms after
- * every change. Closing the screen keeps the state in memory, so opening it again brings the same tabs back.
+ * The tabs of every browser screen (contract section 30). The state lives in utils/browser/tabStore.ts and is shared by
+ * the Browse tab and the /browser stack route; this hook only reads it and restores it the first time it is needed.
  */
-let remembered: TabsState | null = null;
-
-const env = () => ({ now: Date.now() });
-
 export function useTabs() {
-  const [state, setState] = useState<TabsState | null>(remembered);
-  const ref = useRef<TabsState | null>(remembered);
-
-  const commit = useCallback((next: TabsState) => {
-    ref.current = next;
-    remembered = next;
-    setState(next);
-    const { rows, activeId } = toRows(next);
-    scheduleSaveTabs(rows, activeId);
-  }, []);
-
-  // First open in this process: read the saved tabs. Any failure leaves one blank tab.
+  const state = useSyncExternalStore(tabStore.subscribe, tabStore.getState, tabStore.getState);
   useEffect(() => {
-    if (ref.current) return;
-    let gone = false;
-    loadTabs()
-      .then((saved) => restoreTabs(saved.tabs, saved.activeId, env()))
-      .catch(() => createTabsState(env()))
-      .then((next) => {
-        if (gone || ref.current) return;
-        ref.current = next;
-        remembered = next;
-        setState(next);
-      });
+    void tabStore.ensureRestored();
+    void tabStore.checkWipe();
     return () => {
-      gone = true;
+      void tabStore.flush();
     };
   }, []);
-
-  useEffect(
-    () => () => {
-      void flushTabs();
-    },
-    [],
-  );
-
-  const open = useCallback(
-    (opts: { url?: string; title?: string; opener?: string | null; background?: boolean }): OpenResult => {
-      const cur = ref.current ?? createTabsState(env());
-      const r = openTab(cur, opts, env());
-      if (r.result === 'ok') commit(r.state);
-      return r;
-    },
-    [commit],
-  );
-  const select = useCallback(
-    (id: string) => {
-      if (ref.current) commit(selectTab(ref.current, id, env()));
-    },
-    [commit],
-  );
-  const update = useCallback(
-    (id: string, patch: { url?: string; title?: string }) => {
-      if (ref.current) commit(updateTab(ref.current, id, patch));
-    },
-    [commit],
-  );
-  const close = useCallback(
-    (id: string): UndoClose | null => {
-      if (!ref.current) return null;
-      const r = closeTab(ref.current, id, env());
-      if (r.undo) commit(r.state);
-      return r.undo;
-    },
-    [commit],
-  );
-  const closeEvery = useCallback((): UndoClose | null => {
-    if (!ref.current) return null;
-    const r = closeAllTabs(ref.current, env());
-    commit(r.state);
-    return r.undo;
-  }, [commit]);
-  const undo = useCallback(
-    (payload: UndoClose) => {
-      if (ref.current) commit(undoClose(ref.current, payload, env()));
-    },
-    [commit],
-  );
-
-  return { state, ref, open, select, update, close, closeAll: closeEvery, undo };
+  return { state, ...actions };
 }

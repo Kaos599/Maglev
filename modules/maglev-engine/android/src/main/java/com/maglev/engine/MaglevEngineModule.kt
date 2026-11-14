@@ -476,6 +476,12 @@ class MaglevEngineModule : Module() {
             }
         }
 
+        // How many times the history was emptied because Maglev closed (section 30). JS compares it with the last count it saw.
+        AsyncFunction("getHistoryWipeCount") { promise: Promise ->
+            val c = context
+            promise.resolve(if (c == null) 0 else HistoryWipe.wipeCount(c))
+        }
+
         View(MaglevBrowserView::class) {
             Events("onPage", "onFound", "onBlockedCount", "onDownloadRequest", "onMagnet", "onRefused", "onCrashed", "onPageNote",
                 "onNewWindow", "onPopupRequest", "onPopupBlocked", "onLongPress", "onFindResult")
@@ -526,12 +532,12 @@ class MaglevEngineModule : Module() {
             }
         }
         // Blocks for the whole download, so it stays off the serialized engine thread. A second call joins the first.
-        AsyncFunction("downloadUpdate") { url: String, sha256: String, size: Double, promise: Promise ->
+        AsyncFunction("downloadUpdate") { url: String, sha256: String, size: Double, requireVpn: Boolean, promise: Promise ->
             val c = context
             if (c == null) {
                 promise.resolve(Json.failure("ENGINE_UNAVAILABLE", "Module is not attached"))
             } else {
-                EngineHost.ioScope.launch { promise.resolve(Json.camelize(AppUpdater.download(c, url, sha256, size.toLong()))) }
+                EngineHost.ioScope.launch { promise.resolve(Json.camelize(AppUpdater.download(c, url, sha256, size.toLong(), requireVpn))) }
             }
         }
         AsyncFunction("getUpdateNetwork") { promise: Promise ->
@@ -542,12 +548,12 @@ class MaglevEngineModule : Module() {
             AppUpdater.cancelDownload()
             promise.resolve(mapOf("ok" to true))
         }
-        AsyncFunction("installUpdate") { path: String, silent: Boolean, promise: Promise ->
+        AsyncFunction("installUpdate") { path: String, silent: Boolean, sha256: String, promise: Promise ->
             val c = context
             if (c == null) {
                 promise.resolve(Json.failure("ENGINE_UNAVAILABLE", "Module is not attached"))
             } else {
-                EngineHost.ioScope.launch { promise.resolve(Json.camelize(AppUpdater.install(c, path, silent))) }
+                EngineHost.ioScope.launch { promise.resolve(Json.camelize(AppUpdater.install(c, path, silent, sha256))) }
             }
         }
         AsyncFunction("openInstallPermissionSettings") { promise: Promise ->
@@ -555,21 +561,21 @@ class MaglevEngineModule : Module() {
             val err = if (c == null) "Module is not attached" else AppUpdater.openInstallPermissionSettings(c)
             promise.resolve(if (err == null) mapOf("ok" to true) else Json.failure("INTERNAL", err))
         }
-        AsyncFunction("cleanupUpdates") { keepPath: String?, promise: Promise ->
+        AsyncFunction("cleanupUpdates") { keepPath: String?, keepSha: String?, promise: Promise ->
             val c = context
             if (c == null) {
                 promise.resolve(Json.failure("ENGINE_UNAVAILABLE", "Module is not attached"))
             } else {
                 EngineHost.ioScope.launch {
-                    AppUpdater.cleanup(c, keepPath)
+                    AppUpdater.cleanup(c, keepPath, keepSha)
                     promise.resolve(mapOf("ok" to true))
                 }
             }
         }
         // kind: "available" | "ready". The "updated" notice comes from UpdateReplacedReceiver.
-        AsyncFunction("postUpdateNotice") { kind: String, version: String, promise: Promise ->
+        AsyncFunction("postUpdateNotice") { kind: String, version: String, path: String?, sha256: String?, promise: Promise ->
             val c = context
-            val shown = c != null && (kind == "available" || kind == "ready") && UpdateNotices.show(c, kind, version)
+            val shown = c != null && (kind == "available" || kind == "ready") && UpdateNotices.show(c, kind, version, path, sha256)
             promise.resolve(if (shown) mapOf("ok" to true) else Json.failure("INVALID_ARGUMENT", "Unknown notice"))
         }
         AsyncFunction("clearUpdateNotice") { kind: String, promise: Promise ->

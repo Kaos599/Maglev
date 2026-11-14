@@ -99,6 +99,11 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
     private var popupAllowHosts: List<String> = emptyList()
     // The current document has finished loading at least once. Redirects during its first load are part of the page.
     private var loadedOnce = false
+    // Section 30: a view mounted hidden finishes its first load before it is paused (a paused WebView may not load).
+    private var firstLoadDone = false
+    private var pausePending = false
+    // Section 30: pop-up capture WebViews that exist right now. Main thread only.
+    private val captures = HashSet<WebView>()
     // The last main-frame navigation was a server redirect: it continues the load, so it does not start a new document.
     private var redirectInFlight = false
     // One-shot allowance for the exact URL followRedirect loads, so the redirect rule does not hold it again.
@@ -206,11 +211,21 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
     /** Hidden tab: stop the WebView's rendering and silence media. Timers are never paused: that would stall every WebView in the process. */
     private fun applyActive() {
         if (active) {
+            pausePending = false
             webView.onResume()
-        } else {
-            webView.onPause()
-            webView.evaluateJavascript(PAUSE_MEDIA_JS, null)
+        } else if (firstLoadDone) {
+            pauseNow()
+        } else if (!pausePending) {
+            // First load not finished: pause after onPageFinished, or after FIRST_LOAD_PAUSE_MS at the latest.
+            pausePending = true
+            mainHandler.postDelayed({ if (pausePending && !destroyed && !active) pauseNow() }, FIRST_LOAD_PAUSE_MS)
         }
+    }
+
+    private fun pauseNow() {
+        pausePending = false
+        webView.onPause()
+        webView.evaluateJavascript(PAUSE_MEDIA_JS, null)
     }
 
     fun setPopupPolicy(value: String) {
@@ -327,12 +342,18 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
                 intent.addCategory(Intent.CATEGORY_BROWSABLE)
                 intent.component = null
                 intent.selector = null
+                intent.clipData = null
+                intent.removeExtra("browser_fallback_url")
+                // Section 30: never aim a page's intent at Maglev itself.
+                if (intent.`package` == context.packageName) return Pair(false, fallback)
                 val dataScheme = intent.data?.scheme?.lowercase()
-                if (dataScheme != null && dataScheme in DANGEROUS_SCHEMES) return Pair(false, fallback)
+                if (dataScheme != null && (dataScheme in DANGEROUS_SCHEMES || dataScheme == "maglev")) return Pair(false, fallback)
             } else {
                 intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
                 intent.addCategory(Intent.CATEGORY_BROWSABLE)
             }
+            // Section 30: the page chose the flags. Clear them all (every FLAG_GRANT_*, CLEAR_TASK...) and keep only NEW_TASK.
+            intent.flags = 0
             intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             context.startActivity(intent)
             return Pair(true, null)
@@ -395,8 +416,19 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
         if (destroyed) return
         destroyed = true
         mainHandler.removeCallbacksAndMessages(null)
+        for (c in captures.toList()) destroyCapture(c)
         exitFullscreen()
         tearDown(webView)
+    }
+
+    /** Stops and destroys one pop-up capture view. Safe to call twice. Main thread. */
+    private fun destroyCapture(c: WebView) {
+        if (!captures.remove(c)) return
+        try {
+            c.stopLoading()
+            c.destroy()
+        } catch (_: Throwable) {
+        }
     }
 
     // endregion
@@ -861,6 +893,10 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
             loading = false
             progress = 100
             loadedOnce = true
+            if (!firstLoadDone) {
+                firstLoadDone = true
+                if (!active && pausePending) pauseNow()
+            }
             injectScripts(view)
             if (scanAfterLoad) {
                 scanAfterLoad = false
@@ -928,17 +964,29 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
 
         override fun onCreateWindow(view: WebView, isDialog: Boolean, isUserGesture: Boolean, resultMsg: Message): Boolean {
             val transport = resultMsg.obj as? WebView.WebViewTransport ?: return false
+            if (destroyed) return false
+            // Section 30: at most MAX_CAPTURES at once. Returning false without sending resultMsg is valid
+            // (WebChromeClient.onCreateWindow: "Otherwise, return false"; window.open then returns null).
+            if (captures.size >= MAX_CAPTURES) {
+                emitBlocked("", "window")
+                return false
+            }
             val capture = WebView(view.context)
             capture.settings.javaScriptEnabled = false
+            captures.add(capture)
             val handled = AtomicBoolean(false)
             fun handle(url: String) {
                 if (!handled.compareAndSet(false, true)) return
                 mainHandler.post {
-                    capture.stopLoading()
-                    capture.destroy()
+                    destroyCapture(capture)
                     if (!destroyed) handleNewWindow(url, isUserGesture)
                 }
             }
+            // Section 30: a capture that never reports a target is destroyed after CAPTURE_TIMEOUT_MS.
+            mainHandler.postDelayed({
+                handled.set(true)
+                destroyCapture(capture)
+            }, CAPTURE_TIMEOUT_MS)
             capture.webViewClient = object : WebViewClient() {
                 // The capture view never loads anything: every request is answered empty.
                 override fun shouldInterceptRequest(v: WebView, r: WebResourceRequest): WebResourceResponse? {
@@ -1082,6 +1130,9 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
         private val DANGEROUS_SCHEMES = setOf("file", "content", "javascript", "data", "blob")
         private val NEVER_START_SCHEMES = DANGEROUS_SCHEMES + setOf("http", "https", "about")
 
+        private const val MAX_CAPTURES = 3
+        private const val CAPTURE_TIMEOUT_MS = 3000L
+        private const val FIRST_LOAD_PAUSE_MS = 10_000L
         private const val PAUSE_MEDIA_JS = "document.querySelectorAll('video,audio').forEach(function(m){m.pause()})"
     }
 }

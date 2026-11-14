@@ -38,6 +38,7 @@ import { BulkVerb, bulkSummary, selectionKey, splitSelection } from '../../utils
 import { useSearchPrefs } from '../../utils/prefs/search';
 import { TransferSort, loadTransferSort, saveTransferSort } from '../../utils/prefs/transfers';
 import { empty, notices, playCopy } from '../../constants/copy';
+import { openBrowser } from '../../utils/browser/openBrowser';
 
 const Separator = () => <View style={{ height: CARD_GAP }} />;
 const keyOfItem = (item: TransferItem<TransferTelemetry>) => item.key;
@@ -617,7 +618,7 @@ export default function TransfersScreen() {
       ) : null}
 
       {nothingHere ? (
-        <TeachingEmptyState onAdd={goAdd} onOpenFile={openFile} onSearch={() => router.navigate('/search')} onBrowse={() => router.push('/browser')} searchSources={searchPrefs.enabled.length} />
+        <TeachingEmptyState onAdd={goAdd} onOpenFile={openFile} onSearch={() => router.navigate('/search')} onBrowse={() => openBrowser(router)} searchSources={searchPrefs.enabled.length} />
       ) : (
         <ProgressMotionContext.Provider value={progressMotion}>
           <FilterPills value={filter} counts={counts} onChange={setFilter} />
@@ -680,7 +681,7 @@ export default function TransfersScreen() {
             onType={goAdd}
             onOpenFile={() => void openFile()}
             onSearch={() => router.navigate('/search')}
-            onBrowse={() => router.push('/browser')}
+            onBrowse={() => openBrowser(router)}
           />
         </>
       )}

@@ -279,6 +279,106 @@ async function main() {
   await createHistoryStore(db, () => ({ ...p2, clearHistoryOnClose: true })).init(30);
   check('wipe leaves other meta keys', db.raw.prepare("SELECT value FROM meta WHERE key='other'").all().length === 1);
 
+  console.log('Undo after use (section 30)');
+  {
+    let u = T.createTabsState(env(1));
+    u = T.openTab(u, { url: 'https://u1.test/' }, env(2)).state;
+    const closed = T.closeAll(u, env(3));
+    const blankId = closed.undo.blankId;
+    const typed = T.updateTab(closed.state, blankId, { url: 'https://typed.test/' });
+    const back = T.undoClose(typed, closed.undo, env(4));
+    check('undo keeps a blank tab the user has since used', T.getTab(back, blankId) && T.getTab(back, blankId).url === 'https://typed.test/' && back.tabs.length === 3);
+    const back2 = T.undoClose(closed.state, closed.undo, env(5));
+    check('undo still drops the blank tab while it is blank', !T.getTab(back2, blankId) && back2.tabs.length === 2);
+  }
+
+  console.log('Tab store (section 30)');
+  {
+    const { createTabStore } = await import('../utils/browser/tabStore.ts');
+    const mk = (opts = {}) => {
+      const log = { saved: [], deleted: 0, loads: 0 };
+      let saveHistory = opts.saveHistory ?? true;
+      let wipe = 0;
+      const prefLs = new Set();
+      const store = createTabStore();
+      store.bind({
+        load: async () => { log.loads++; return opts.saved ?? { tabs: [], activeId: null }; },
+        scheduleSave: (rows, activeId) => log.saved.push({ rows, activeId }),
+        flush: async () => {},
+        deleteSaved: async () => { log.deleted++; },
+        saveHistory: () => saveHistory,
+        subscribePrefs: (fn) => { prefLs.add(fn); return () => prefLs.delete(fn); },
+        wipeCount: async () => wipe,
+      });
+      return { store, log, setSave: (v) => { saveHistory = v; prefLs.forEach((f) => f()); }, setWipe: (v) => { wipe = v; } };
+    };
+    const m = mk();
+    await m.store.ensureRestored();
+    await m.store.ensureRestored();
+    check('restores once per process', m.log.loads === 1 && m.store.getState().tabs.length === 1);
+    let seenA = 0; let seenB = 0;
+    const offA = m.store.subscribe(() => seenA++);
+    m.store.subscribe(() => seenB++);
+    const opened = m.store.open({ url: 'https://shared.test/' });
+    check('two subscribers both see a change and read the same state', seenA === 1 && seenB === 1 && m.store.getState().activeId === opened.id && m.store.getState().tabs.length === 2);
+    offA();
+    m.store.select(m.store.getState().tabs[0].id);
+    check('an unsubscribed listener stops hearing', seenA === 1 && seenB === 2);
+    check('every change is scheduled for saving', m.log.saved.length === 2 && m.log.saved[0].rows.length === 2);
+    const u = m.store.closeAll();
+    m.store.undo(u);
+    check('close all and undo go through the store', m.store.getState().tabs.length === 2);
+
+    // Save history off: nothing written, rows deleted when it turns off
+    const off = mk({ saveHistory: false, saved: { tabs: [{ id: 'old', url: 'https://old.test/', title: '', position: 0, opener: null, lastActive: 1 }], activeId: 'old' } });
+    await off.store.ensureRestored();
+    check('Save history off: saved tabs are not read', off.log.loads === 0 && off.store.getState().tabs.length === 1 && off.store.getState().tabs[0].url === '');
+    off.store.open({ url: 'https://mem.test/' });
+    off.store.select(off.store.getState().tabs[0].id);
+    check('Save history off: no writes at all', off.log.saved.length === 0 && off.log.deleted === 0);
+    const on = mk();
+    await on.store.ensureRestored();
+    on.store.open({ url: 'https://x.test/' });
+    const before = on.log.saved.length;
+    on.setSave(false);
+    check('turning Save history off deletes the saved rows', on.log.deleted === 1);
+    on.store.open({ url: 'https://y.test/' });
+    check('and later changes are not written', on.log.saved.length === before && on.store.getState().tabs.length === 3);
+    on.setSave(true);
+    check('turning it on again saves the current tabs', on.log.saved.length === before + 1 && on.log.saved[before].rows.length === 3);
+    on.setSave(true);
+    check('a pref change that leaves it unchanged does nothing', on.log.deleted === 1 && on.log.saved.length === before + 1);
+
+    // wipe counter
+    const w = mk();
+    await w.store.ensureRestored();
+    await w.store.checkWipe();
+    w.store.open({ url: 'https://keep.test/' });
+    await w.store.checkWipe();
+    check('same wipe count keeps the tabs', w.store.getState().tabs.length === 2);
+    w.setWipe(1);
+    await w.store.checkWipe();
+    check('a new wipe count drops the in-memory tabs to one blank tab', w.store.getState().tabs.length === 1 && w.store.getState().tabs[0].url === '');
+    w.store.open({ url: 'https://again.test/' });
+    await w.store.checkWipe();
+    check('and the count is remembered', w.store.getState().tabs.length === 2);
+  }
+
+  console.log('Tab rows deletion (section 30)');
+  {
+    const dbx = nodeDb();
+    const pr = { saveHistory: true, suggestFromHistory: true, clearHistoryOnClose: false };
+    const st = createHistoryStore(dbx, () => pr);
+    await st.init(1);
+    const r0 = T.toRows(T.openTab(T.createTabsState(env(1)), { url: 'https://p.test/' }, env(2)).state);
+    await st.saveTabs(r0.rows, r0.activeId);
+    await st.deleteTabs();
+    const l = await st.loadTabs();
+    check('deleteTabs removes rows and the active id', l.tabs.length === 0 && l.activeId === null);
+    pr.saveHistory = false;
+    check('saveTabs writes nothing while Save history is off', (await st.saveTabs(r0.rows, r0.activeId)) === false && (await st.loadTabs()).tabs.length === 0);
+  }
+
   console.log('Prefs');
   const dp = defaultBrowserPrefs();
   check('defaults', dp.popupPolicy === 'ask' && eq(dp.popupAllowHosts, []));

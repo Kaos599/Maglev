@@ -130,6 +130,20 @@ export async function loadTabs(): Promise<{ tabs: TabRow[]; activeId: string | n
   }
 }
 
+/** Deletes every saved tab (after "Save history" turns off) and drops anything waiting to be saved. Never throws. */
+export async function deleteSavedTabs(): Promise<void> {
+  if (tabsTimer) {
+    clearTimeout(tabsTimer);
+    tabsTimer = null;
+  }
+  pendingTabs = null;
+  try {
+    await (await ensure()).deleteTabs();
+  } catch {
+    // Unavailable: nothing saved to delete.
+  }
+}
+
 /** Saves now. Resolves false when it couldn't. Never throws. */
 export async function saveTabs(rows: TabRow[], activeId: string | null): Promise<boolean> {
   try {

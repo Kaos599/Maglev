@@ -156,10 +156,11 @@ export function closeAll(s: TabsState, env: TabsEnv): CloseResult {
 /**
  * Undo: puts the closed tabs back where they were. The previous active tab is active again when it came back,
  * and wakes. Closed tabs return asleep, except the one that becomes active. The blank tab a close-all or
- * close-last left behind goes away.
+ * close-last left behind goes away, but only while it is still blank.
  */
 export function undoClose(s: TabsState, undo: UndoClose, env: TabsEnv): TabsState {
-  let tabs = undo.blankId ? s.tabs.filter((t) => t.id !== undo.blankId) : [...s.tabs];
+  // The blank tab goes only while it is still blank; a tab the user typed into is kept.
+  let tabs = undo.blankId ? s.tabs.filter((t) => !(t.id === undo.blankId && isBlank(t))) : [...s.tabs];
   const have = new Set(tabs.map((t) => t.id));
   for (const { tab, index } of [...undo.closed].sort((a, b) => a.index - b.index)) {
     if (have.has(tab.id) || tabs.length >= MAX_TABS) continue;

@@ -1,6 +1,6 @@
-import React, { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
-import { BackHandler, Keyboard, StyleSheet, Text, TextInput, View } from 'react-native';
-import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
+import React, { useCallback, useEffect, useId, useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import { AppState, BackHandler, Keyboard, StyleSheet, Text, TextInput, View } from 'react-native';
+import { useFocusEffect, useIsFocused, useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as Clipboard from 'expo-clipboard';
 import {
@@ -41,7 +41,21 @@ import { updateBrowserPrefs, useBrowserPrefs } from '../utils/prefs/browser';
 import { flushTabs, recordVisit } from '../utils/history';
 import { activeTab, backTarget, getTab, isBlank, liveTabs, switcherOrder } from '../utils/browser/tabs';
 import * as popupsApi from '../utils/browser/popups';
-import { emptyPopups, hostAllowed, type PopupRequest, type PopupsState } from '../utils/browser/popups';
+import {
+  getPopups,
+  getTabData,
+  getViewOwner,
+  initialUrls,
+  notifyTabData,
+  releaseViewOwner,
+  setPopupsState,
+  setViewOwner,
+  subscribeTabData,
+  tabData,
+  tabDataVersion,
+  type TabData,
+} from '../utils/browser/tabData';
+import { hostAllowed, type PopupRequest, type PopupsState } from '../utils/browser/popups';
 import { hostOf, isAllowedHost, noticeAllowed, siteKey, toBrowserUrl, toggleAllowedHost } from '../utils/browserUrl';
 
 /** A quiet notice for these, at most one every 5 seconds. */
@@ -54,21 +68,6 @@ const QUIET_NOTICE: Partial<Record<BrowserRefusalReason, string>> = {
 /** How long the Undo row stays after Remove, Clear or closing tabs. */
 const UNDO_MS = 5000;
 
-/** What the screen knows about one tab. Lives in a map keyed by tab id, so switching tabs costs nothing. */
-type TabData = {
-  page: BrowserPageEvent | null;
-  found: FoundItem[];
-  // Remove and Clear only hide ids (NATIVE_CONTRACT 24.6a): the view keeps its tracker, so a re-requested file stays hidden.
-  dismissed: ReadonlySet<string>;
-  blocked: number;
-  crashed: boolean;
-  refused: 'ssl' | 'local' | null;
-  lastUrl: string;
-  notes: Set<string>;
-};
-
-const newData = (): TabData => ({ page: null, found: [], dismissed: new Set(), blocked: 0, crashed: false, refused: null, lastUrl: '', notes: new Set() });
-
 export default function BrowserScreen() {
   const { colors } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -80,6 +79,20 @@ export default function BrowserScreen() {
   const tabsState = tabs.state;
   const ready = tabsState != null;
 
+  // Section 30: the Browse tab and the /browser stack route can both exist and share one tab set. Only the focused
+  // instance mounts native views (it takes the owner token on focus), and a blurred or backgrounded browser pauses them.
+  const instanceId = useId();
+  const focused = useIsFocused();
+  const [appForeground, setAppForeground] = useState(AppState.currentState === 'active');
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (st) => setAppForeground(st === 'active'));
+    return () => sub.remove();
+  }, []);
+  const isOwner = useSyncExternalStore(subscribeTabData, () => getViewOwner() === instanceId, () => false);
+  useEffect(() => () => releaseViewOwner(instanceId), [instanceId]);
+  // Shared per-tab data and pop-up prompts changed (any instance): render again.
+  useSyncExternalStore(subscribeTabData, tabDataVersion, tabDataVersion);
+
   const inputRef = useRef<React.ComponentRef<typeof TextInput>>(null);
   // One view ref per live tab.
   const viewRefs = useRef(new Map<string, React.RefObject<MaglevBrowserRef | null>>());
@@ -87,28 +100,11 @@ export default function BrowserScreen() {
     if (r) viewRefs.current.set(id, r);
     else viewRefs.current.delete(id);
   }, []);
-  // The address each view loaded when it mounted. It never follows the page (onPage.url is not fed back).
-  const initialUrls = useRef(new Map<string, string>());
-
-  // Per-tab state: a map in a ref plus a counter that asks for a render.
-  const dataRef = useRef(new Map<string, TabData>());
-  const [, bump] = useReducer((n: number) => n + 1, 0);
-  const getData = (id: string): TabData => {
-    let d = dataRef.current.get(id);
-    if (!d) {
-      d = newData();
-      dataRef.current.set(id, d);
-    }
-    return d;
-  };
+  // Per-tab state is shared by every instance (utils/browser/tabData.ts); `patch` changes it and asks every screen to render.
+  const getData = getTabData;
   const patch = useCallback((id: string, fn: (d: TabData) => void) => {
-    let d = dataRef.current.get(id);
-    if (!d) {
-      d = newData();
-      dataRef.current.set(id, d);
-    }
-    fn(d);
-    bump();
+    fn(getTabData(id));
+    notifyTabData();
   }, []);
 
   const tab = tabsState ? activeTab(tabsState) : null;
@@ -143,12 +139,8 @@ export default function BrowserScreen() {
   const [target, setTarget] = useState<DownloadTarget | null>(null);
   const [batchItems, setBatchItems] = useState<FoundItem[] | null>(null);
   const [streamItem, setStreamItem] = useState<FoundItem | null>(null);
-  const [popups, setPopupsState] = useState<PopupsState>(emptyPopups);
-  const popupsRef = useRef(popups);
-  const setPopups = useCallback((fn: (p: PopupsState) => PopupsState) => {
-    popupsRef.current = fn(popupsRef.current);
-    setPopupsState(popupsRef.current);
-  }, []);
+  const popups = getPopups();
+  const setPopups = useCallback((fn: (p: PopupsState) => PopupsState) => setPopupsState(fn(getPopups())), []);
   const lastNoticeAt = useRef(0);
   // H1: a refused page and a crash page are never recorded. Both clear when the next page starts loading (kept per tab in `crashed` and `refused`).
 
@@ -161,9 +153,9 @@ export default function BrowserScreen() {
   useEffect(() => {
     if (!tabsState) return;
     const live = new Set(liveTabs(tabsState).map((t) => t.id));
-    for (const id of [...dataRef.current.keys()]) if (id && !live.has(id)) dataRef.current.delete(id);
-    for (const id of [...initialUrls.current.keys()]) if (!live.has(id)) initialUrls.current.delete(id);
-    const ids = new Set([...Object.keys(popupsRef.current.prompts), ...Object.keys(popupsRef.current.blocked)]);
+    for (const id of [...tabData.keys()]) if (id && !live.has(id)) tabData.delete(id);
+    for (const id of [...initialUrls.keys()]) if (!live.has(id)) initialUrls.delete(id);
+    const ids = new Set([...Object.keys(getPopups().prompts), ...Object.keys(getPopups().blocked)]);
     for (const id of ids) if (!live.has(id)) setPopups((p) => popupsApi.drop(p, id, 'closed').state);
   }, [tabsState, setPopups]);
 
@@ -321,14 +313,14 @@ export default function BrowserScreen() {
   );
   const popupOpen = useCallback(() => {
     const id = activeIdRef.current;
-    const r = popupsApi.open(popupsRef.current, id);
+    const r = popupsApi.open(getPopups(), id);
     setPopups(() => r.state);
     if (r.request) runRequest(id, r.request);
   }, [setPopups, runRequest]);
   const popupBlock = useCallback(() => setPopups((p) => popupsApi.block(p, activeIdRef.current)), [setPopups]);
   const popupAlways = useCallback(() => {
     const id = activeIdRef.current;
-    const r = popupsApi.allowForSite(popupsRef.current, id, prefs.popupAllowHosts);
+    const r = popupsApi.allowForSite(getPopups(), id, prefs.popupAllowHosts);
     setPopups(() => r.state);
     if (r.host) updateBrowserPrefs(() => ({ popupAllowHosts: r.allowHosts }));
     if (r.request) runRequest(id, r.request);
@@ -372,12 +364,13 @@ export default function BrowserScreen() {
   }, [editing, findOpen, closeFind, switcherOpen, linkTarget, prompt, popupBlock, tabs, activeId, page?.canGoBack, view]);
   useFocusEffect(
     useCallback(() => {
+      setViewOwner(instanceId);
       const sub = BackHandler.addEventListener('hardwareBackPress', handleBack);
       return () => {
         sub.remove();
         void flushTabs();
       };
-    }, [handleBack]),
+    }, [handleBack, instanceId]),
   );
 
   // ---- found list (per active tab) ----
@@ -712,17 +705,17 @@ export default function BrowserScreen() {
       <View style={styles.progress}>{loading ? <ProgressBar progress={(page?.progress ?? 0) / 100} indeterminate={!page || page.progress <= 0} /> : null}</View>
 
       <View style={styles.body}>
-        {tabsState
+        {tabsState && isOwner
           ? liveTabs(tabsState)
               .filter((t) => !isBlank(t))
               .map((t) => {
-                if (!initialUrls.current.has(t.id)) initialUrls.current.set(t.id, t.url);
+                if (!initialUrls.has(t.id)) initialUrls.set(t.id, t.url);
                 return (
                   <TabWebView
                     key={t.id}
                     id={t.id}
-                    url={initialUrls.current.get(t.id) ?? t.url}
-                    active={t.id === activeId}
+                    url={initialUrls.get(t.id) ?? t.url}
+                    active={focused && appForeground && t.id === activeId}
                     adBlock={prefs.adBlock}
                     allowAdsHosts={prefs.allowAdsHosts}
                     desktopMode={desktop}

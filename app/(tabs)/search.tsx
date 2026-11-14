@@ -35,6 +35,7 @@ import { oneTapAddNote } from '../../utils/addChecks';
 import { empty, watchCopy } from '../../constants/copy';
 import { addWatchToStore } from '../../utils/watch/store';
 import { Reveal } from '../../components/motion';
+import { openBrowser } from '../../utils/browser/openBrowser';
 
 const DEBOUNCE_MS = 400;
 const MIN_QUERY = 2;
@@ -706,7 +707,7 @@ export default function SearchScreen() {
           {/* Labelled, not icon-only: people could not tell the globe opened the browser. Hidden when the Browser tab is on. */}
           {!browserTabShown ? (
             <PressableScale
-              onPress={() => router.push('/browser')}
+              onPress={() => openBrowser(router)}
               style={styles.browserBtn}
               accessibilityRole="button"
               accessibilityLabel="Open the browser"
@@ -872,7 +873,7 @@ export default function SearchScreen() {
         onOpenInBrowser={() => {
           const url = preview?.detailUrl;
           setPreview(null);
-          if (url) router.push({ pathname: '/browser', params: { url } });
+          if (url) openBrowser(router, { url });
         }}
       />
       <MobileDataSheet

@@ -17,6 +17,7 @@ import { useDownloadAdmission } from '../utils/useDownloadAdmission';
 import { actionRoute, probeErrorView } from '../utils/downloadCopy';
 import { banners, empty, mobileDataLine, notices } from '../constants/copy';
 import { useSettings } from '../context/SettingsContext';
+import { openBrowser } from '../utils/browser/openBrowser';
 
 /** Add a download from a web link: probe the link, show what it is, then start. */
 type Phase = 'input' | 'probing' | 'ready' | 'adding' | 'error';
@@ -258,7 +259,7 @@ export default function AddDownloadScreen() {
           body={errorView?.body}
           primary={
             notAFile
-              ? { label: 'Open in browser', onPress: () => router.replace({ pathname: '/browser', params: { url: urlRef.current } }) }
+              ? { label: 'Open in browser', onPress: () => openBrowser(router, { url: urlRef.current }, 'replace') }
               : errorView?.primary === 'pasteAnother'
                 ? { label: 'Paste another link', onPress: () => { setText(''); void handlePaste(); } }
                 : { label: 'Try again', onPress: () => void submit(urlRef.current) }

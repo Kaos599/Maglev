@@ -12,6 +12,7 @@ import java.io.File
 object HistoryWipe {
     private const val PREFS = "maglev.history"
     private const val KEY = "wipeOnClose"
+    private const val COUNT_KEY = "wipeCount"
     private const val DB_NAME = "maglev-history.db"
 
     fun setArmed(context: Context, enabled: Boolean) {
@@ -20,6 +21,15 @@ object HistoryWipe {
 
     fun isArmed(context: Context): Boolean =
         context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getBoolean(KEY, false)
+
+    /** How many times `wipeIfArmed` actually emptied the database. JS uses it to drop its in-memory tabs (section 30). */
+    fun wipeCount(context: Context): Int =
+        context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getInt(COUNT_KEY, 0)
+
+    private fun bumpWipeCount(context: Context) {
+        val p = context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        p.edit().putInt(COUNT_KEY, p.getInt(COUNT_KEY, 0) + 1).apply()
+    }
 
     /** Opens the database file (never creates it) and deletes every page. A missing file or any error is ignored. */
     fun wipeIfArmed(context: Context) {
@@ -42,6 +52,7 @@ object HistoryWipe {
             } finally {
                 db.close()
             }
+            bumpWipeCount(context)
         } catch (_: Throwable) {
         }
     }

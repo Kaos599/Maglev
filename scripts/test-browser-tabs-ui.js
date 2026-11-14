@@ -14,6 +14,9 @@ const HEX = /#[0-9a-fA-F]{3,8}\b/;
 const scr = read('app/browser.tsx');
 const view = read('components/browser/TabWebView.tsx');
 const hook = read('components/browser/useTabs.ts');
+const store = read('utils/browser/tabStore.ts');
+const shared = read('utils/browser/tabData.ts');
+const opener = read('utils/browser/openBrowser.ts');
 const sw = read('components/browser/TabSwitcher.tsx');
 const menu = read('components/browser/LinkMenu.tsx');
 const card = read('components/browser/PopupCard.tsx');
@@ -23,7 +26,7 @@ const pkg = read('package.json');
 
 console.log('one view per live tab');
 check('the screen maps liveTabs to TabWebView', /liveTabs\(tabsState\)[\s\S]{0,600}<TabWebView/.test(scr));
-check('each view is keyed by its tab id and gets active={t.id === activeId}', /key=\{t\.id\}/.test(scr) && /active=\{t\.id === activeId\}/.test(scr));
+check('each view is keyed by its tab id and gets active={t.id === activeId}', /key=\{t\.id\}/.test(scr) && /active=\{focused && appForeground && t\.id === activeId\}/.test(scr));
 check('the screen no longer mounts MaglevBrowser itself', !/<MaglevBrowser\b/.test(scr));
 check('the view forwards active to the native view', /active=\{active\}/.test(view));
 check('an inactive view is hidden: opacity 0 and pointerEvents none', /opacity: 0/.test(view) && /pointerEvents=\{active \? 'auto' : 'none'\}/.test(view));
@@ -31,14 +34,31 @@ check('views are stacked with absolute fill', /StyleSheet\.absoluteFill/.test(vi
 check('every event handler gets the tab id', ['onPage', 'onFound', 'onBlockedCount', 'onDownloadRequest', 'onMagnet', 'onRefused', 'onCrashed', 'onPageNote', 'onNewWindow', 'onPopupRequest', 'onPopupBlocked', 'onLongPress'].every((n) => new RegExp(`${n}=\\{\\([^)]*\\) => h\\.${n}\\(id`).test(view)));
 check('the view takes the pop-up policy and allow list', /popupPolicy=\{popupPolicy\}/.test(view) && /popupAllowHosts=\{popupAllowHosts\}/.test(view) && /popupPolicy=\{prefs\.popupPolicy\}/.test(scr) && /popupAllowHosts=\{prefs\.popupAllowHosts\}/.test(scr));
 check('the initial address never follows the page', /initialUrls/.test(scr) && !/url=\{page\.url/.test(scr));
-check('per-tab state is keyed by tab id (page, found, dismissed, blocked)', /new Map<string, TabData>/.test(scr) && /dismissed: ReadonlySet<string>/.test(scr) && /blocked: number/.test(scr));
-check('a tab that sleeps or closes loses its page state', /!live\.has\(id\)\) dataRef\.current\.delete\(id\)/.test(scr));
+check('per-tab state is keyed by tab id (page, found, dismissed, blocked)', /new Map<string, TabData>/.test(shared) && /dismissed: ReadonlySet<string>/.test(shared) && /blocked: number/.test(shared));
+check('a tab that sleeps or closes loses its page state', /!live\.has\(id\)\) tabData\.delete\(id\)/.test(scr));
 
 console.log('tab state and saving');
-check('first open restores through loadTabs and restoreTabs, else one blank tab', /loadTabs\(\)/.test(hook) && /restoreTabs\(/.test(hook) && /createTabsState\(/.test(hook));
-check('state is kept in memory for the process', /let remembered: TabsState \| null/.test(hook));
-check('every change is saved with scheduleSaveTabs', /scheduleSaveTabs\(rows, activeId\)/.test(hook));
-check('tabs are flushed on blur and unmount', /flushTabs\(\)/.test(scr) && /flushTabs\(\)/.test(hook));
+check('first open restores through loadTabs and restoreTabs, else one blank tab', /deps\.load\(\)/.test(store) && /restoreTabs\(/.test(store) && /createTabsState\(/.test(store) && /load: loadTabs/.test(hook));
+check('state is module-level and read with useSyncExternalStore', /let state: TabsState \| null/.test(store) && /export const tabStore = createTabStore\(\)/.test(store) && /useSyncExternalStore\(tabStore\.subscribe/.test(hook));
+check('the hook holds no per-instance tab state', !/useState|useRef/.test(hook));
+check('every change is saved with scheduleSave', /deps\.scheduleSave\(rows, activeId\)/.test(store) && /scheduleSave: scheduleSaveTabs/.test(hook));
+check('tabs are flushed on blur and unmount', /flushTabs\(\)/.test(scr) && /tabStore\.flush\(\)/.test(hook));
+check('Save history off: memory only, saved rows deleted when it turns off', /if \(!deps\.saveHistory\(\)\) return/.test(store) && /deps\.deleteSaved\(\)/.test(store) && /subscribePrefs: subscribeBrowserPrefs/.test(hook) && /deleteSaved: deleteSavedTabs/.test(hook));
+check('a screen mount checks the native wipe count', /tabStore\.checkWipe\(\)/.test(hook) && /wipeCount: getHistoryWipeCount/.test(hook));
+
+console.log('one screen, one tab set (section 30)');
+check('only the owner instance renders TabWebView', /tabsState && isOwner\s*\?\s*liveTabs\(tabsState\)/.test(scr));
+check('the owner token is set on focus and released on unmount', /setViewOwner\(instanceId\)/.test(scr) && /releaseViewOwner\(instanceId\)/.test(scr) && /export function setViewOwner/.test(shared));
+check('a blur alone does not release the token (a blurred browser keeps its pages)', !/blur[\s\S]{0,80}releaseViewOwner/.test(scr));
+check('active includes focus and app foreground', /useIsFocused\(\)/.test(scr) && /AppState\.addEventListener\('change'/.test(scr) && /active=\{focused && appForeground && t\.id === activeId\}/.test(scr));
+check('found, page and pop-up state are shared between instances', /export const tabData = new Map/.test(shared) && /export function setPopupsState/.test(shared) && !/useReducer/.test(scr) && !/const dataRef/.test(scr));
+const sites = ['app/(tabs)/index.tsx', 'app/(tabs)/search.tsx', 'app/add-download.tsx', 'app/browser-history.tsx'];
+check('every /browser navigation goes through openBrowser', sites.every((f) => /openBrowser\(router/.test(read(f)) && /utils\/browser\/openBrowser/.test(read(f))));
+const walk = (d) => fs.readdirSync(path.join(root, d), { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? walk(path.join(d, e.name)) : [path.join(d, e.name)]));
+const raw = [...walk('app'), ...walk('components')].filter((f) => /\.tsx?$/.test(f)).filter((f) => /(push|replace|navigate|dismissTo)\(\s*(\{\s*pathname:\s*)?['"]\/browser['"]/.test(read(f)));
+check('no raw push/replace/dismissTo to /browser outside the helper', raw.length === 0, raw.join());
+check('the helper goes to the Browse tab when shown, else the stack route', /visibleTabs\(getTabPrefs\(\)/.test(opener) && /includes\('browse'\)/.test(opener) && /pathname: '\/browse'/.test(opener) && /pathname: '\/browser'/.test(opener) && /params: clean/.test(opener));
+
 check('a route url opens a new active tab, prefill only fills the bar', /params\.url/.test(scr) && /openTabChecked\(\{ url: t\.url \}\)/.test(scr) && /setPrefillText\(params\.prefill\)/.test(scr));
 check('the cap shows the notice and opens nothing', /r\.result === 'cap'/.test(scr) && /browserTabs\.capNotice/.test(scr));
 check('a window request opens a tab with this tab as opener', /onNewWindow: \(id, e\) => void openTabChecked\(\{ url: e\.url, opener: id \}\)/.test(scr));
