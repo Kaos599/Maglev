@@ -243,7 +243,17 @@ jobs:
         run: |
           cd android
           chmod +x gradlew
-          ./gradlew assembleRelease --stacktrace
+          # --profile writes per-task timings to android/build/reports/profile (uploaded below).
+          ./gradlew assembleRelease --stacktrace --profile
+
+      - name: Upload Gradle profile (per-task build times)
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: gradle-profile
+          path: android/build/reports/profile/
+          if-no-files-found: ignore
+          retention-days: 7
 
       - name: Verify APK signing
         # Fails on main, pull requests into main and tags when an APK still carries the Android debug certificate; warns elsewhere.
