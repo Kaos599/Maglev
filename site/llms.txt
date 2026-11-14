@@ -1,6 +1,6 @@
 # Maglev
 
-> Maglev is a free, open source Android downloader with no ads. It saves videos from web pages (including on-demand HLS and DASH streams), downloads ordinary links with pause and resume, and runs torrents, in one app. Android 7 and later. Version 0.20, beta.
+> Maglev is a free, open source Android downloader with no ads. It saves videos from web pages (including on-demand HLS and DASH streams), downloads ordinary links with pause and resume, and runs torrents, in one app. Android 7 and later. Version 0.20.
 
 Made by Harsh Dayal (https://harshdayal.dev, GitHub: https://github.com/Kaos599). License: GPL-3.0.
 
@@ -201,7 +201,7 @@ Yes. Maglev is free software under the GNU General Public License v3.0: you can 
 
 ### Is Maglev finished?
 
-Not yet. Maglev is in beta, so expect rough edges. If something goes wrong, please report it on GitHub.
+Maglev is stable, and it keeps growing: new search sources and features arrive in regular updates. If something goes wrong, please report it on GitHub.
 
 ### Who makes Maglev?
 

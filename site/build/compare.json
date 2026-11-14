@@ -1021,7 +1021,7 @@
         "heading": "When another app is the better pick",
         "body": [
           "Pick Seal, YTDLnis or NewPipe if you mainly want YouTube or music from YouTube. Pick LibreTorrent or BiglyBT if you want a torrent client with nothing else. Pick 1DM+ or ADM if you want a closed source download manager and do not mind its ads or purchases. Pick FDM if you want a desktop-style manager that also runs on Android.",
-          "Maglev is in beta, so expect rough edges. It is also not on Google Play yet, so you install it from GitHub Releases or with Obtainium."
+          "Maglev is not on Google Play yet, so you install it from GitHub Releases or with Obtainium."
         ]
       }
     ],
