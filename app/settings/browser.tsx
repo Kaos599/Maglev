@@ -1,8 +1,7 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
-import { Stack } from 'expo-router';
+import { Stack, useRouter } from 'expo-router';
 import {
-  clearBrowserData,
   getBlocklistInfo,
   resetBlocklist,
   updateBlocklist,
@@ -13,11 +12,11 @@ import { useTheme } from '../../context/ThemeContext';
 import { useMaglevEngine } from '../../context/EngineContext';
 import { ThemeColors, spacing, type } from '../../constants/theme';
 import { haptic } from '../../constants/haptics';
-import { empty, notices } from '../../constants/copy';
-import { Button, EmptyBlock, IconButton, ListRow, RadioCard, SectionHeader, Sheet, Toggle } from '../../components/ui';
+import { empty, historyCopy, notices } from '../../constants/copy';
+import { Button, EmptyBlock, IconButton, ListRow, RadioCard, SectionHeader, Toggle } from '../../components/ui';
 import { Card, Caption, InputSheet, SettingsPage } from '../../components/settings/SettingsParts';
 import { DEFAULT_BLOCKLIST_URL, updateBrowserPrefs, useBrowserPrefs } from '../../utils/prefs/browser';
-import { clearSiteChecks } from '../../utils/prefs/search';
+import { ClearHistorySheet, type ClearMode } from '../../components/browser/ClearHistorySheet';
 import { SEARCH_URLS, hostOf, isHttpsUrl, type SearchEngine } from '../../utils/browserUrl';
 
 const ENGINES: { value: SearchEngine; title: string }[] = [
@@ -42,13 +41,16 @@ export default function BrowserSettings() {
   const { colors } = useTheme();
   const s = useMemo(() => makeStyles(colors), [colors]);
   const { showNotice } = useMaglevEngine();
+  const router = useRouter();
   const [prefs, setPrefs] = useBrowserPrefs();
   const [info, setInfo] = useState<BlocklistInfo | null>(null);
   const [unavailable, setUnavailable] = useState(false);
   const [updating, setUpdating] = useState(false);
   const [addOpen, setAddOpen] = useState(false);
-  const [confirmOpen, setConfirmOpen] = useState(false);
-  const [clearing, setClearing] = useState(false);
+  const [clearMode, setClearMode] = useState<ClearMode | null>(null);
+  // The sheet keeps its last mode while it slides out.
+  const lastMode = useRef<ClearMode>('browsing-data');
+  if (clearMode) lastMode.current = clearMode;
 
   const refresh = useCallback(async () => {
     const res = await getBlocklistInfo();
@@ -88,22 +90,6 @@ export default function BrowserSettings() {
     } else {
       haptic('fail');
       showNotice({ message: listErrorText(res.code) });
-    }
-  };
-
-  const clear = async () => {
-    setClearing(true);
-    const res = await clearBrowserData();
-    setClearing(false);
-    setConfirmOpen(false);
-    if (res.ok) {
-      // The Cloudflare checks live in the same cookies, so Search forgets them too.
-      clearSiteChecks();
-      haptic('done');
-      showNotice({ message: notices.browser.dataCleared }, 3000);
-    } else {
-      haptic('fail');
-      showNotice({ message: notices.browser.dataClearFailed });
     }
   };
 
@@ -208,6 +194,37 @@ export default function BrowserSettings() {
         />
       </Card>
 
+      <View style={s.section}>
+        <SectionHeader title={historyCopy.settings.section} />
+        <Card>
+          <ListRow
+            title={historyCopy.settings.save}
+            subtitle={historyCopy.settings.saveSubtitle}
+            accessory={<Toggle value={prefs.saveHistory} onValueChange={(saveHistory) => setPrefs({ saveHistory })} accessibilityLabel={historyCopy.settings.save} />}
+          />
+          <ListRow
+            title={historyCopy.settings.suggest}
+            subtitle={historyCopy.settings.suggestSubtitle}
+            accessory={<Toggle value={prefs.suggestFromHistory} onValueChange={(suggestFromHistory) => setPrefs({ suggestFromHistory })} accessibilityLabel={historyCopy.settings.suggest} />}
+          />
+          <ListRow
+            title={historyCopy.settings.clearOnClose}
+            subtitle={historyCopy.settings.clearOnCloseSubtitle}
+            accessory={<Toggle value={prefs.clearHistoryOnClose} onValueChange={(clearHistoryOnClose) => setPrefs({ clearHistoryOnClose })} accessibilityLabel={historyCopy.settings.clearOnClose} />}
+          />
+          <ListRow icon="clock" title={historyCopy.settings.open} onPress={() => router.push('/browser-history')} />
+          <ListRow
+            icon="trash"
+            title={historyCopy.settings.clear}
+            destructive
+            onPress={() => {
+              haptic('warn');
+              setClearMode('range');
+            }}
+          />
+        </Card>
+      </View>
+
       <Card>
         <ListRow
           icon="trash"
@@ -215,7 +232,7 @@ export default function BrowserSettings() {
           destructive
           onPress={() => {
             haptic('warn');
-            setConfirmOpen(true);
+            setClearMode('browsing-data');
           }}
         />
       </Card>
@@ -236,17 +253,7 @@ export default function BrowserSettings() {
         }}
       />
 
-      <Sheet
-        visible={confirmOpen}
-        onClose={() => !clearing && setConfirmOpen(false)}
-        title="Clear browsing data?"
-        subtitle="This clears cookies, saved pages and history for every site, so you sign out everywhere. It also clears the checks Search passed with Cloudflare, so those sources may ask you again."
-      >
-        <View style={s.sheetActions}>
-          <Button label="Cancel" variant="ghost" disabled={clearing} onPress={() => setConfirmOpen(false)} />
-          <Button label="Clear" variant="danger" loading={clearing} disabled={clearing} onPress={() => void clear()} />
-        </View>
-      </Sheet>
+      <ClearHistorySheet visible={clearMode != null} mode={lastMode.current} onClose={() => setClearMode(null)} />
     </SettingsPage>
   );
 }
@@ -257,5 +264,4 @@ const makeStyles = (c: ThemeColors) =>
     actions: { padding: spacing.lg, flexDirection: 'row' },
     urlRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingLeft: spacing.lg, paddingRight: spacing.xs, minHeight: 56 },
     url: { ...type.mono, flex: 1, fontSize: type.size.sm, color: c.text },
-    sheetActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: spacing.sm, marginTop: spacing.lg },
   });

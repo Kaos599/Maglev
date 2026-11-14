@@ -13,6 +13,7 @@ import NavigationBarSync from '../components/NavigationBarSync';
 import { NoticeHost } from '../components/ui/NoticeHost';
 import { syncScheduleToNative } from '../utils/prefs/schedule';
 import { syncFeedAutomationToNative } from '../utils/prefs/feedAutomation';
+import { initHistory } from '../utils/history';
 import { installGlobalHandler, setCurrentRoute } from '../utils/crashLog';
 
 // Record uncaught JS errors on this phone, then let React Native handle them as before.
@@ -61,6 +62,11 @@ function AppNavigation() {
   useEffect(() => {
     if (resolved) SplashScreen.hideAsync().catch(() => {});
   }, [resolved]);
+
+  // H4 cold start: open history, then wipe or prune. Never blocks render; the History screen waits on it itself.
+  useEffect(() => {
+    initHistory().catch(() => {});
+  }, []);
 
   // Push the saved schedule and feed rules to Kotlin once the engine is up.
   const engineReady = engineStatus.kind === 'ready';
@@ -123,6 +129,7 @@ function AppNavigation() {
           */}
           <Stack.Screen name="add-download" />
           <Stack.Screen name="browser" />
+          <Stack.Screen name="browser-history" />
           <Stack.Screen name="free-space" />
           <Stack.Screen name="settings/about" />
           <Stack.Screen name="settings/assistant" />
