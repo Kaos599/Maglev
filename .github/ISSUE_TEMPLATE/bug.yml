@@ -1,0 +1,73 @@
+name: Bug report
+description: Something in Maglev doesn't work the way it should.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting. If you opened this from Maglev (About → Report a bug), the version and device fields are already filled in.
+        Please don't paste magnet links or addresses of pages you were downloading from unless they're needed to reproduce the bug.
+  - type: input
+    id: version
+    attributes:
+      label: Maglev version
+      description: Settings → About.
+      placeholder: "0.22"
+    validations:
+      required: true
+  - type: input
+    id: android
+    attributes:
+      label: Android version
+      placeholder: "15"
+    validations:
+      required: true
+  - type: input
+    id: device
+    attributes:
+      label: Phone
+      placeholder: "Pixel 8"
+    validations:
+      required: true
+  - type: dropdown
+    id: install
+    attributes:
+      label: Installed from
+      options:
+        - GitHub release
+        - Obtainium
+        - Maglev F-Droid repo
+        - Built from source
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: What you did
+      description: The steps, one per line, so someone else can repeat them.
+      placeholder: |
+        1. Opened Search and typed "big buck bunny"
+        2. Tapped the first result
+        3. Tapped Add
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: What happened instead
+      description: Screenshots help. Drag them into this box.
+    validations:
+      required: true
+  - type: textarea
+    id: crash
+    attributes:
+      label: Crash log
+      description: If Maglev crashed, open Settings → About → Copy crash report, and paste it here.
+      render: text

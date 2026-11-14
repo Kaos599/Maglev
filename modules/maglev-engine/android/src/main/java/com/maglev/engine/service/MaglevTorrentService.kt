@@ -16,6 +16,7 @@ import androidx.core.app.ServiceCompat
 import com.maglev.engine.EngineHost
 import com.maglev.engine.RestartEntry
 import com.maglev.engine.RestartEntryKind
+import com.maglev.engine.browser.HistoryWipe
 
 /**
  * Foreground service (type dataSync) that keeps the process alive while torrents run.
@@ -187,6 +188,12 @@ class MaglevTorrentService : Service() {
         } catch (_: Exception) {
         }
         lockAcquiredAt = 0L
+    }
+
+    /** The app was swiped away while the service runs: empty the browser history if the user asked for that (contract 24.9). */
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        HistoryWipe.wipeIfArmed(applicationContext)
+        super.onTaskRemoved(rootIntent)
     }
 
     override fun onDestroy() {

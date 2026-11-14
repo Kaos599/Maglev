@@ -1,6 +1,8 @@
 import React, { useMemo, useRef } from 'react';
 import { Animated, Easing, Linking, StyleSheet, Text, View } from 'react-native';
 import { useTheme } from '../../context/ThemeContext';
+import { updateStarState } from '../../utils/prefs/star';
+import { afterStarred } from '../../utils/star';
 import { ThemeColors, radius, spacing, type } from '../../constants/theme';
 import { PressableScale } from '../ui';
 import { useReduceMotion } from '../motion';
@@ -68,6 +70,8 @@ export function StarTicket() {
       Animated.timing(progress, { toValue: 1, duration: BURST_MS, easing: Easing.linear, useNativeDriver: true }).start();
     }
     void Linking.openURL(REPO_URL);
+    // Starring from About also stops the star prompt (contract 33).
+    updateStarState(afterStarred);
   };
 
   const fade = progress.interpolate({ inputRange: [0, 0.01, 0.7, 1], outputRange: [0, 1, 1, 0] });

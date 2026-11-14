@@ -66,8 +66,11 @@
       "title": "A browser that blocks ads and finds the files on a page",
       "text": "Open any page inside Maglev. Ads and trackers are blocked before they load. Play a video and Maglev lists it, together with the page's other files, in a tray you can filter by type. Tap one to download it with the page's cookies, so files behind a sign-in still work.",
       "specs": [
-        "Over 42,000 blocked domains from [StevenBlack/hosts](https://github.com/StevenBlack/hosts), updatable in Settings",
-        "Popups you didn't tap, redirects into other apps and bad certificates are refused",
+        "Over 42,000 blocked domains from [StevenBlack/hosts](https://github.com/StevenBlack/hosts), refreshed once a day on its own. Add your own lists and they refresh too",
+        "Tabs with a long-press menu on links and images: new tab, background tab, copy, share or download",
+        "Pop-ups and redirects you didn't tap for wait until you choose Open, Block or Always allow on this site",
+        "Find in page and text size",
+        "A history you can search, with suggestions as you type. It can clear itself when you close Maglev",
         "App installers come with a warning"
       ],
       "screen": "browser"
@@ -90,6 +93,7 @@
       "specs": [
         "Filter results by category, and sort by seeders, size or date",
         "40 built-in sources; choose which answer each category",
+        "Source addresses update once a day from a signed list, so a source that moves keeps working without an app update",
         "Add your own Jackett or Prowlarr indexer",
         "Sources known for fake uploads carry a warning"
       ],
@@ -124,6 +128,8 @@
       "title": "You stay in control",
       "text": "Rules for when and how Maglev downloads, so it fits your data plan, your battery and your storage.",
       "specs": [
+        "Maglev updates itself: a daily check and Check for updates in About. It downloads on Wi-Fi and asks before installing, or installs on its own if you choose. F-Droid and Obtainium installs keep their own updates",
+        "The ad block list, search sources and default trackers refresh once a day without an app update, or when you tap Check now",
         "Download only on Wi-Fi, only over a VPN, or only while charging",
         "Pause when the battery runs low",
         "Speed limits for everything or for one download",
@@ -145,7 +151,7 @@
     ],
     [
       "Does Maglev have ads?",
-      "No. Maglev has no ads and no ads SDK. Its built-in browser also blocks ads and trackers on the pages you open, using a list of over 42,000 ad and tracker domains that you can update or replace in Settings."
+      "No. Maglev has no ads and no ads SDK. Its built-in browser also blocks ads and trackers on the pages you open, using a list of over 42,000 ad and tracker domains. Once a day Maglev refreshes that list, the search source addresses and the default trackers, from harshdayal.dev/maglev/lists/sources.json and raw.githubusercontent.com, with no cookies and no identifiers. You can replace the list or turn the updates off in Settings."
     ],
     [
       "Is Maglev safe to install?",
@@ -197,7 +203,7 @@
     ],
     [
       "Is there an ad-free browser for Android that downloads videos?",
-      "Yes, Maglev's built-in browser is one. It blocks ads and trackers before they load, lists the videos and files a page plays or links to, and saves them with the page's cookies. Popups you didn't tap and redirects into other apps are refused."
+      "Yes, Maglev's built-in browser is one. It blocks ads and trackers before they load, lists the videos and files a page plays or links to, and saves them with the page's cookies. Pop-ups and redirects you didn't tap for wait until you choose Open, Block or Always allow on this site."
     ],
     [
       "What is a torrent, in plain words?",
@@ -254,6 +260,10 @@
     [
       "How do I get updates?",
       "Add Maglev to [Obtainium](https://github.com/ImranR98/Obtainium) and new versions install as they come out. Or download the new APK from GitHub Releases and install it over the old one; your downloads and settings stay."
+    ],
+    [
+      "Does Maglev check for updates, and what does that send?",
+      "Once a day, and when you tap Check for updates, Maglev asks api.github.com for the latest release. GitHub sees your IP address and the app version. Turning off Check automatically in Settings → About stops the daily request. The update file downloads from GitHub's release file servers. By default Maglev downloads updates on Wi-Fi and asks before installing. Pick 'Tell me' to decide each time."
     ],
     [
       "What does the AI assistant do, and do I need it?",
@@ -325,10 +335,24 @@
         ]
       },
       {
+        "heading": "Lists that update themselves",
+        "body": [
+          "Once a day, and when you tap Check now in Settings → About, Maglev fetches harshdayal.dev/maglev/lists/sources.json and the ad block list addresses (raw.githubusercontent.com by default). The first holds search source addresses, any source Maglev turned off, and the default trackers. Maglev checks its signature before it uses it.",
+          "These requests carry no cookies and no identifiers. The sites see your IP address, like any download. Turning off Update lists automatically in Settings → About stops the daily requests."
+        ]
+      },
+      {
         "heading": "The assistant",
         "body": [
           "The assistant is off until you set it up. If you turn it on, your messages go to the AI provider you pick: OpenRouter, OpenAI, Anthropic, Groq, or an address you enter. So do the results of actions it runs for you, such as search results or the names and sizes of your transfers.",
           "You use your own key, kept in Android's encrypted storage on the phone. Maglev never receives the key or the chat. The provider's own privacy policy covers what it does with your messages."
+        ]
+      },
+      {
+        "heading": "Updates",
+        "body": [
+          "Once a day, and when you tap Check for updates, Maglev asks api.github.com for the latest release. GitHub sees your IP address and the app version. Turning off Check automatically in Settings → About stops the daily request.",
+          "The update file downloads from GitHub's release file servers. By default Maglev downloads updates on Wi-Fi and asks before installing. Pick 'Tell me' to decide each time."
         ]
       },
       {

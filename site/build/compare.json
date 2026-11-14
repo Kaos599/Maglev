@@ -44,7 +44,8 @@
       "sources": [
         "https://github.com/JunkFood02/Seal",
         "https://github.com/JunkFood02/Seal/blob/main/README.md",
-        "https://f-droid.org/packages/com.junkfood.seal/"
+        "https://f-droid.org/packages/com.junkfood.seal/",
+        "https://github.com/JunkFood02/Seal/blob/main/CHANGELOG.md"
       ],
       "summary": "An open source Android app built on yt-dlp for downloading audio and video from the sites yt-dlp supports."
     },
@@ -56,7 +57,8 @@
       "sources": [
         "https://github.com/deniscerri/ytdlnis",
         "https://github.com/deniscerri/ytdlnis/blob/main/README.md",
-        "https://f-droid.org/packages/com.deniscerri.ytdl/"
+        "https://f-droid.org/packages/com.deniscerri.ytdl/",
+        "https://github.com/deniscerri/ytdlnis/releases"
       ],
       "summary": "An open source Android app built on yt-dlp, with queues, scheduling and tools for editing downloaded videos."
     },
@@ -68,7 +70,8 @@
       "sources": [
         "https://newpipe.net/",
         "https://github.com/TeamNewPipe/NewPipe",
-        "https://f-droid.org/packages/org.schabi.newpipe/"
+        "https://f-droid.org/packages/org.schabi.newpipe/",
+        "https://newpipe.net/blog/pinned/release/newpipe-0.24.0/"
       ],
       "summary": "An open source Android client for YouTube and a few other services, which can also save videos and audio."
     },
@@ -457,6 +460,86 @@
       }
     },
     {
+      "id": "browser-tabs",
+      "group": "Browser and streams",
+      "label": "Browser tabs",
+      "help": "Keeps several pages open at once and switches between them.",
+      "values": {
+        "maglev": "Yes",
+        "libretorrent": "No",
+        "biglybt": "No",
+        "seal": "No",
+        "ytdlnis": "No",
+        "newpipe": "No",
+        "flud": "No",
+        "1dm": "Yes",
+        "adm": "Yes",
+        "fdm": "No"
+      },
+      "notes": {}
+    },
+    {
+      "id": "popup-control",
+      "group": "Browser and streams",
+      "label": "Pop-up and redirect control",
+      "help": "Holds pop-ups and redirects to another site until you allow them.",
+      "values": {
+        "maglev": "Yes",
+        "libretorrent": "No",
+        "biglybt": "No",
+        "seal": "No",
+        "ytdlnis": "No",
+        "newpipe": "No",
+        "flud": "No",
+        "1dm": "No",
+        "adm": "No",
+        "fdm": "No"
+      },
+      "notes": {
+        "1dm": "Its Play page describes an adblock browser but does not mention pop-ups or redirects."
+      }
+    },
+    {
+      "id": "adlist-updates",
+      "group": "Browser and streams",
+      "label": "Ad list updates itself",
+      "help": "Refreshes the ad and tracker block list in the background, without an app update.",
+      "values": {
+        "maglev": "Yes",
+        "libretorrent": "No",
+        "biglybt": "No",
+        "seal": "No",
+        "ytdlnis": "No",
+        "newpipe": "No",
+        "flud": "No",
+        "1dm": "No",
+        "adm": "No",
+        "fdm": "No"
+      },
+      "notes": {
+        "1dm": "Its Play page describes ad blocking but does not say the list refreshes."
+      }
+    },
+    {
+      "id": "find-in-page",
+      "group": "Browser and streams",
+      "label": "Find in page",
+      "help": "Searches for words on the page open in the built-in browser.",
+      "values": {
+        "maglev": "Yes",
+        "libretorrent": "No",
+        "biglybt": "No",
+        "seal": "No",
+        "ytdlnis": "No",
+        "newpipe": "No",
+        "flud": "No",
+        "1dm": "No",
+        "adm": "No",
+        "fdm": "No"
+      },
+      "notes": {}
+    },
+    {
       "id": "finds-files",
       "group": "Browser and streams",
       "label": "Finds videos and files on a web page",
@@ -783,6 +866,33 @@
         "flud": "Its Play page lists \"Ability to change theme (Light and Dark)\".",
         "1dm": "Its Play page lists \"Dark and Light themes\".",
         "adm": "Its Play page lists \"interface customization and themes\"."
+      }
+    },
+    {
+      "id": "in-app-update",
+      "group": "Control",
+      "label": "Updates itself outside a store",
+      "help": "Checks for a new version and installs it, when installed from GitHub rather than a store.",
+      "values": {
+        "maglev": "Yes",
+        "libretorrent": "No",
+        "biglybt": "No",
+        "seal": "Yes",
+        "ytdlnis": "Yes",
+        "newpipe": "Partial",
+        "flud": "No",
+        "1dm": "No",
+        "adm": "No",
+        "fdm": "No"
+      },
+      "notes": {
+        "seal": "Its changelog (1.9.0) lists auto-update settings. The README and F-Droid page do not mention it.",
+        "ytdlnis": "Only the GitHub build updates itself. Its release notes say the F-Droid and FOSS builds have it turned off.",
+        "newpipe": "Its site says it notifies you about new versions; the download then opens on the GitHub releases page.",
+        "flud": "Updates through Google Play only. Store updates are not counted here.",
+        "1dm": "Updates through Google Play only. Store updates are not counted here.",
+        "adm": "Updates through Google Play only. Store updates are not counted here.",
+        "fdm": "Updates through Google Play only. Store updates are not counted here."
       }
     },
     {

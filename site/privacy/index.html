@@ -116,9 +116,15 @@
     <h2 class="h2">Search, feeds, links and the browser</h2>
     <p>A search sends your search words to the sources you have turned on in Settings → Search sources. Feeds fetch the addresses you added. A link downloads from its own server, and the browser loads pages like any other browser. Each of those sites sees your IP address and follows its own privacy policy.</p>
     <p>Ad blocking downloads a public blocklist from GitHub (raw.githubusercontent.com). GitHub sees an ordinary download request.</p>
+    <h2 class="h2">Lists that update themselves</h2>
+    <p>Once a day, and when you tap Check now in Settings → About, Maglev fetches harshdayal.dev/maglev/lists/sources.json and the ad block list addresses (raw.githubusercontent.com by default). The first holds search source addresses, any source Maglev turned off, and the default trackers. Maglev checks its signature before it uses it.</p>
+    <p>These requests carry no cookies and no identifiers. The sites see your IP address, like any download. Turning off Update lists automatically in Settings → About stops the daily requests.</p>
     <h2 class="h2">The assistant</h2>
     <p>The assistant is off until you set it up. If you turn it on, your messages go to the AI provider you pick: OpenRouter, OpenAI, Anthropic, Groq, or an address you enter. So do the results of actions it runs for you, such as search results or the names and sizes of your transfers.</p>
     <p>You use your own key, kept in Android's encrypted storage on the phone. Maglev never receives the key or the chat. The provider's own privacy policy covers what it does with your messages.</p>
+    <h2 class="h2">Updates</h2>
+    <p>Once a day, and when you tap Check for updates, Maglev asks api.github.com for the latest release. GitHub sees your IP address and the app version. Turning off Check automatically in Settings → About stops the daily request.</p>
+    <p>The update file downloads from GitHub's release file servers. By default Maglev downloads updates on Wi-Fi and asks before installing. Pick 'Tell me' to decide each time.</p>
     <h2 class="h2">Children</h2>
     <p>Maglev is not made for children under 13.</p>
     <h2 class="h2">Changes and contact</h2>
@@ -139,7 +145,7 @@
       <li><a href="/maglev/privacy">Privacy</a></li>
       <li><a href="https://github.com/Kaos599/Maglev/blob/main/LICENSE" rel="noopener">GPL-3.0 licence</a></li>
     </ul>
-    <p class="fine">Icons are <a href="https://github.com/halfmage/pixelarticons" rel="noopener">Pixelarticons</a> by Gerrit Halfmann (MIT). Fonts are Inter and Silkscreen (SIL Open Font License), served from this site. Maglev v0.20, page updated 14 November 2026.</p>
+    <p class="fine">Icons are <a href="https://github.com/halfmage/pixelarticons" rel="noopener">Pixelarticons</a> by Gerrit Halfmann (MIT). Fonts are Inter and Silkscreen (SIL Open Font License), served from this site. Maglev v0.23, page updated 14 November 2026.</p>
   </div>
 </footer>
 </body>

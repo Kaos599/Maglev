@@ -2,8 +2,9 @@ name: CI
 
 # Docs-only changes skip CI entirely (the README badge keeps the last real result).
 on:
+  # Pushes run CI only on main and dev; every other branch is covered by its pull request, so CI doesn't run twice.
   push:
-    branches: ['**']
+    branches: [main, dev]
     paths-ignore: ['**/*.md', 'docs/**', 'screens/**', 'LICENSE']
   pull_request:
     paths-ignore: ['**/*.md', 'docs/**', 'screens/**', 'LICENSE']

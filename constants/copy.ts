@@ -48,7 +48,7 @@ export const glossary = {
 export const ACRONYMS = ['VPN', 'URL', 'RSS', 'SD', 'DHT', 'IP', 'ID', 'USB', 'UI', 'OK', 'API', 'VLC', 'HTTP', 'HTTPS', 'UPnP'] as const;
 
 /** Capitalised words that may appear mid-sentence. */
-export const PROPER_WORDS = ['Maglev', 'Android', 'Transfers', 'Wi-Fi', 'Atom', 'Settings', 'Search', 'Feeds', 'Undo', 'Retry'] as const;
+export const PROPER_WORDS = ['Maglev', "Maglev's", 'Android', 'Transfers', 'Wi-Fi', 'Atom', 'Settings', 'Search', 'Feeds', 'Undo', 'Retry'] as const;
 
 const toName = (s: string | number) => String(s);
 
@@ -119,6 +119,13 @@ export const notices = {
     listAddressAdded: 'List address added.',
     dataCleared: 'Browsing data cleared.',
     dataClearFailed: "Couldn't clear browsing data.",
+    historyCleared: 'History cleared.',
+    historyClearFailed: "Couldn't clear history.",
+    historyRemoved: 'Removed from history.',
+    historyHostRemoved: (count: string | number, host: string | number) =>
+      `Removed ${toName(count)} ${Number(count) === 1 ? 'page' : 'pages'} from ${toName(host)}.`,
+    historyRemoveFailed: "Couldn't remove that page.",
+    historyRestoreFailed: "Couldn't bring it back.",
     /** Block list update errors, keyed by the native error code. */
     listError: {
       NETWORK: "Couldn't reach the list. Check your connection.",
@@ -264,9 +271,111 @@ export const empty = {
     crashed: { title: 'This page stopped working', body: 'Reload to try it again.' },
     noFiles: { title: 'No files found yet', body: 'Play a video or open a page with files. Maglev lists what it finds here.' },
     noAllowedSites: { title: 'No sites allowed', body: 'Sites you allow ads on show up here.' },
+    historyEmpty: { title: 'No history yet', body: 'Pages you open in the browser show up here.' },
+    historyOff: { title: 'History is off', body: 'Turn it on in the browser settings to keep pages you open.' },
+    historyNoResults: { title: 'No matches', body: 'Try another word or part of an address.' },
+    historyFailed: { title: "History isn't available", body: "Maglev couldn't open it. Try again." },
   },
   engineError: {
     title: 'Engine failed to start',
+  },
+} as const;
+
+/** Labels for browser history (NATIVE_CONTRACT 24.9): the screen, the suggestions, the clear sheet and its settings. */
+export const historyCopy = {
+  title: 'History',
+  menuRow: 'History',
+  searchPlaceholder: 'Search history',
+  searchLabel: 'Search history',
+  clear: 'Clear history',
+  clearLabel: 'Clear history',
+  today: 'Today',
+  yesterday: 'Yesterday',
+  rowMenuLabel: (title: string | number) => `Options for ${title}`,
+  remove: 'Remove',
+  removeHost: (host: string | number) => `Remove all from ${host}`,
+  loadMore: 'Loading more',
+  retry: 'Retry',
+  suggestionsLabel: 'Suggestions from history',
+  settings: {
+    section: 'History',
+    save: 'Save history',
+    saveSubtitle: 'Keeps the pages you open on this phone.',
+    suggest: 'Suggest from history',
+    suggestSubtitle: 'Shows matching pages while you type an address.',
+    clearOnClose: 'Clear history when Maglev closes',
+    clearOnCloseSubtitle: 'Clears history when you close Maglev, and again when it next starts.',
+    open: 'History',
+    clear: 'Clear history',
+  },
+  sheet: {
+    rangeTitle: 'Clear history',
+    rangeSubtitle: 'Removes pages you opened in the browser.',
+    dataTitle: 'Clear browsing data',
+    dataSubtitle: 'Cookies sign you out of sites. Clearing them also resets the checks Search passed with Cloudflare.',
+    ranges: { hour: 'Last hour', today: 'Today', week: 'Last 7 days', all: 'All time' },
+    history: 'History',
+    cookies: 'Cookies and site data',
+    cache: 'Cache',
+    clear: 'Clear',
+    cancel: 'Cancel',
+    retry: 'Retry',
+    clearing: 'Clearing',
+  },
+} as const;
+
+/** Labels for browser tabs, the link menu and pop-ups (NATIVE_CONTRACT 24.10). */
+export const browserTabs = {
+  tabButtonLabel: (count: number | string) => `Tabs, ${count} open`,
+  /** Shown in the tab button above 99. */
+  tabButtonMany: ':D',
+  switcher: {
+    title: 'Tabs',
+    newTab: 'New tab',
+    menuLabel: 'Tab options',
+    closeAll: 'Close all tabs',
+    closeTabLabel: (title: string | number) => `Close ${title}`,
+    blankTitle: 'New tab',
+  },
+  closedTab: 'Tab closed.',
+  closedAll: 'All tabs closed.',
+  undo: 'Undo',
+  capNotice: 'You have 50 tabs open. Close some to open more.',
+  longPress: {
+    openNewTab: 'Open in new tab',
+    openBackground: 'Open in background tab',
+    copyLink: 'Copy link',
+    downloadLink: 'Download link',
+    shareLink: 'Share link',
+    openImageNewTab: 'Open image in new tab',
+    downloadImage: 'Download image',
+    copyImageLink: 'Copy image link',
+    shareImageLink: 'Share image link',
+    addTorrent: 'Add torrent',
+  },
+  openedInNewTab: 'Opened in a new tab.',
+  switchTo: 'Switch',
+  popup: {
+    windowTitle: 'This page wants to open a pop-up',
+    redirectTitle: 'This page wants to take you to another site',
+    appTitle: 'This link wants to open another app',
+    open: 'Open',
+    block: 'Block',
+    alwaysAllow: (host: string | number) => `Always allow on ${host}`,
+    moreBlocked: (n: number | string) => `and ${n} more blocked`,
+    noApp: 'No app can open this link.',
+  },
+  thisPage: {
+    popupsRow: 'Pop-ups',
+    blockedOnPage: (n: number | string) => `${n} blocked on this page`,
+  },
+  settings: {
+    section: 'Pop-ups and redirects',
+    ask: 'Ask',
+    block: 'Block without asking',
+    allow: 'Allow',
+    allowedSites: 'Sites allowed to open pop-ups',
+    remove: 'Remove',
   },
 } as const;
 
@@ -564,3 +673,127 @@ export const watchCopy = {
   backgroundNote: 'Android decides the exact time, so a check can come later than you chose. It does not run after you force-stop Maglev, until you open it again.',
 } as const;
 // endregion watch
+
+// region updates
+/** In-app updates and Report a bug (docs/NATIVE_CONTRACT.md section 27). Screens: Settings > About. */
+export const updateCopy = {
+  versionBadge: 'Update available',
+  check: { title: 'Check for updates', checking: 'Checking…', upToDate: "You're up to date", failed: "Couldn't check. Try again." },
+  available: (version: string) => `Maglev ${version} is available`,
+  managedBy: (by: 'fdroid' | 'obtainium' | 'play' | 'accrescent' | 'store') =>
+    by === 'accrescent'
+      ? 'Updates come from Accrescent.'
+      : by === 'store'
+        ? 'Updates come from the app store you installed Maglev from.'
+        : `Updates come from ${by === 'fdroid' ? 'F-Droid' : by === 'obtainium' ? 'Obtainium' : 'Google Play'}.`,
+  updatesRow: { title: 'Updates', autoCheck: 'Check automatically', autoCheckHint: 'Once a day, Maglev asks GitHub for the latest version.' },
+  modes: [
+    { value: 'ask', title: 'Tell me', description: 'Get a notification when a new version is out.' },
+    { value: 'download', title: 'Download on Wi-Fi, then ask', description: 'The file downloads on Wi-Fi. You choose when to install.' },
+    { value: 'auto', title: 'Install automatically', description: 'Downloads on Wi-Fi, then installs when nothing is transferring.' },
+  ],
+  card: {
+    title: (version: string) => `Maglev ${version}`,
+    whatsNew: "What's new",
+    noNotes: 'No release notes.',
+    download: 'Download',
+    later: 'Later',
+    skip: 'Skip this version',
+    install: 'Install',
+    retry: 'Try again',
+    allowInstalls: 'Allow installs',
+    downloading: 'Downloading',
+    waitingForWifi: 'Waiting for Wi-Fi',
+    installing: 'Installing',
+    confirm: 'Confirm on the screen Android shows.',
+    ready: (version: string) => `Maglev ${version} is ready`,
+  },
+  notices: {
+    invalid: "This update didn't pass Maglev's checks, so it wasn't installed.",
+    needsPermission: 'To install updates, allow Maglev to install apps.',
+    restartWarning: 'Maglev restarts to finish. Downloads pick up where they left off.',
+    downloadFailed: "Couldn't download the update. Try again.",
+    blocked: 'Your network settings block this download right now.',
+    storageFull: "There isn't enough space for the update.",
+    installFailed: "Android didn't install the update. Try again.",
+  },
+  hints: {
+    firstUpdate: 'Android asks you to confirm the first update. After that, updates can install on their own.',
+  },
+  report: {
+    title: 'Report a bug',
+    subtitle: 'Opens GitHub with your version and phone filled in.',
+  },
+} as const;
+// endregion updates
+
+// region self-updating lists (docs/NATIVE_CONTRACT.md section 31)
+export const listsCopy = {
+  autoUpdate: 'Update lists automatically',
+  checkNow: 'Check now',
+  checking: 'Checking',
+  adList: {
+    title: 'Ad block list',
+    info: (domains: number | string, when: string) => `${domains} domains · updated ${when}`,
+    builtIn: (domains: number | string) => `${domains} domains · built in`,
+  },
+  sources: {
+    title: 'Search sources and trackers',
+    updated: (when: string) => `Updated ${when}`,
+    builtIn: 'Built in',
+  },
+  /** Short results shown in the row value. */
+  values: {
+    upToDate: 'Up to date',
+    updated: 'Updated',
+    updatedSources: (n: number | string) => `Updated. ${n} sources changed`,
+    failed: "Couldn't check. Try again.",
+  },
+  /** Sentences shown under a row. */
+  hints: {
+    autoUpdateSubtitle: 'Ad block list, search sources and trackers, once a day.',
+    rejected: "The list didn't pass Maglev's checks, so it wasn't used.",
+    blocked: 'Your network settings block this download right now.',
+  },
+  providers: {
+    turnedOff: 'Turned off by Maglev',
+    turnedOffWithNote: (note: string) => `Turned off by Maglev. ${note}`,
+  },
+  browser: {
+    upToDate: 'The block list is already up to date.',
+  },
+} as const;
+// endregion self-updating lists
+
+// region browser find and text size (docs/NATIVE_CONTRACT.md section 28)
+export const findCopy = {
+  menuRow: 'Find in page',
+  placeholder: 'Find in page',
+  noMatches: 'No matches',
+  count: (n: number | string, total: number | string) => `${n}/${total}`,
+  matchLabel: (n: number | string, total: number | string) => `Match ${n} of ${total}`,
+  previous: 'Previous match',
+  next: 'Next match',
+  close: 'Close find',
+} as const;
+
+export const textSizeCopy = {
+  menuRow: 'Text size',
+  title: 'Text size',
+  settingsLabel: 'Text size',
+  value: (percent: number | string) => `${percent}%`,
+  smaller: 'Smaller text',
+  larger: 'Larger text',
+  reset: 'Reset',
+} as const;
+// endregion browser find and text size
+
+// region star prompt (docs/NATIVE_CONTRACT.md section 33)
+export const starCopy = {
+  title: 'Enjoying Maglev?',
+  body: 'A star on GitHub helps other people find it.',
+  star: 'Star on GitHub',
+  notNow: 'Not now',
+  never: "Don't ask again",
+} as const;
+// endregion star prompt

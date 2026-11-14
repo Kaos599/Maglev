@@ -14,7 +14,21 @@ import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
 
 /** What the list holds and where it came from (docs/NATIVE_CONTRACT.md section 24.4 `getBlocklistInfo`). */
-data class BlocklistInfo(val domains: Int, val updatedAt: Long?, val source: String, val urls: List<String>, val bytes: Long = 0L)
+data class BlocklistInfo(
+    val domains: Int,
+    val updatedAt: Long?,
+    val source: String,
+    val urls: List<String>,
+    val bytes: Long = 0L,
+    /** False when a conditional update found every address unchanged (section 31.2). */
+    val changed: Boolean = true,
+)
+
+/** What a server said about one address: the body (null on 304) and the validators to send next time. */
+internal class Fetched(val body: String?, val etag: String?, val lastModified: String?)
+
+/** `If-None-Match` and `If-Modified-Since` values stored for one address. */
+internal class Validators(val etag: String?, val lastModified: String?)
 
 /**
  * Holds the active block list. The matcher is an immutable [DomainSet] swapped atomically, so WebView's request
@@ -114,7 +128,7 @@ object BlocklistStore {
      * main thread. Throws [BlocklistException] with code NETWORK, HTTP_STATUS, LIST_TOO_LARGE, LIST_INVALID, BLOCKED
      * or INVALID_ARGUMENT. The current list stays when anything fails.
      */
-    fun update(context: Context, urls: List<String>): BlocklistInfo {
+    fun update(context: Context, urls: List<String>, conditional: Boolean = false): BlocklistInfo {
         val clean = urls.map { it.trim() }.filter { it.isNotEmpty() }.distinct()
         if (clean.isEmpty()) throw BlocklistException("INVALID_ARGUMENT", "Add at least one list address.")
         if (clean.any { !BlocklistParser.isHttpsUrl(it) }) {
@@ -122,8 +136,18 @@ object BlocklistStore {
         }
         BrowserGovernance.blockedReason(context)?.let { throw BlocklistException("BLOCKED", it) }
         warm(context)
+        // A conditional request is skipped when the downloaded list is missing (section 31.2).
+        val stored = if (conditional && File(dir(context), FILE).isFile) readValidators(context) else emptyMap()
+        val answers = LinkedHashMap<String, Fetched>()
+        for (u in clean) answers[u] = fetch(u, stored[u])
+        if (answers.values.all { it.body == null }) {
+            // Every address answered 304: nothing is rewritten.
+            return info(context).copy(changed = false)
+        }
+        // A 304 has no body to merge, so an address that didn't change is fetched again in full.
+        for (u in clean) if (answers[u]?.body == null) answers[u] = fetch(u, null)
         val all = HashSet<String>()
-        for (u in clean) all.addAll(BlocklistParser.parse(fetch(u)))
+        for (u in clean) all.addAll(BlocklistParser.parse(answers[u]?.body ?: ""))
         BlocklistParser.requireEnough(all)
         synchronized(writeLock) {
             val d = dir(context)
@@ -133,14 +157,37 @@ object BlocklistStore {
                 for (x in all.sorted()) append(x).append('\n')
             }
             writeAtomic(File(d, FILE), body.toByteArray(Charsets.UTF_8))
-            val meta = JSONObject().put("urls", JSONArray(clean)).toString()
+            val validators = JSONObject()
+            for (u in clean) {
+                val a = answers[u] ?: continue
+                if (a.etag == null && a.lastModified == null) continue
+                validators.put(u, JSONObject().put("etag", a.etag ?: JSONObject.NULL).put("lastModified", a.lastModified ?: JSONObject.NULL))
+            }
+            val meta = JSONObject().put("urls", JSONArray(clean)).put("validators", validators).toString()
             writeAtomic(File(d, META), meta.toByteArray(Charsets.UTF_8))
             set.set(DomainSet(all))
             val written = File(d, FILE)
-            val i = BlocklistInfo(all.size, written.lastModified(), "downloaded", clean, written.length())
+            val i = BlocklistInfo(all.size, written.lastModified(), "downloaded", clean, written.length(), true)
             info.set(i)
             return i
         }
+    }
+
+    /** ETag and Last-Modified stored per address by the last update. Empty when there are none. */
+    private fun readValidators(context: Context): Map<String, Validators> = try {
+        val o = JSONObject(File(dir(context), META).readText()).optJSONObject("validators")
+        val out = HashMap<String, Validators>()
+        if (o != null) {
+            for (key in o.keys()) {
+                val v = o.optJSONObject(key) ?: continue
+                val etag = if (v.isNull("etag")) null else v.optString("etag").ifEmpty { null }
+                val lm = if (v.isNull("lastModified")) null else v.optString("lastModified").ifEmpty { null }
+                if (etag != null || lm != null) out[key] = Validators(etag, lm)
+            }
+        }
+        out
+    } catch (_: Exception) {
+        emptyMap()
     }
 
     /** Temp file in the same folder, fsync, then rename over the target. */
@@ -159,7 +206,7 @@ object BlocklistStore {
         }
     }
 
-    private fun fetch(startUrl: String): String {
+    private fun fetch(startUrl: String, validators: Validators?): Fetched {
         var url = startUrl
         var hops = 0
         while (true) {
@@ -173,6 +220,8 @@ object BlocklistStore {
                 conn.readTimeout = TIMEOUT_MS
                 conn.instanceFollowRedirects = false
                 conn.setRequestProperty("Accept", "text/plain, */*")
+                validators?.etag?.let { conn.setRequestProperty("If-None-Match", it) }
+                validators?.lastModified?.let { conn.setRequestProperty("If-Modified-Since", it) }
                 val code = conn.responseCode
                 if (code in 300..399) {
                     val next = conn.getHeaderField("Location")
@@ -183,11 +232,13 @@ object BlocklistStore {
                     url = resolved
                     continue
                 }
+                if (code == 304 && validators != null) return Fetched(null, validators.etag, validators.lastModified)
                 if (code != 200) throw BlocklistException("HTTP_STATUS", "The list server answered $code.")
                 if (conn.contentLengthLong > BlocklistParser.MAX_BYTES) {
                     throw BlocklistException("LIST_TOO_LARGE", "That list is too big (over ${BlocklistParser.MAX_BYTES / (1024 * 1024)} MB).")
                 }
-                return conn.inputStream.use { BlocklistParser.readCapped(it) }
+                val text = conn.inputStream.use { BlocklistParser.readCapped(it) }
+                return Fetched(text, conn.getHeaderField("ETag"), conn.getHeaderField("Last-Modified"))
             } catch (e: BlocklistException) {
                 throw e
             } catch (e: IOException) {

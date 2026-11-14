@@ -1,0 +1,35 @@
+name: Security audit
+
+# Weekly check of the Rust and npm dependencies against known advisories. A failed run emails the repo owner.
+on:
+  schedule:
+    - cron: '17 4 * * 1'
+  workflow_dispatch:
+  pull_request:
+    paths: ['package-lock.json', 'native/maglev-core/Cargo.lock']
+
+permissions:
+  contents: read
+
+jobs:
+  cargo:
+    name: cargo audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install cargo-audit
+        run: cargo install cargo-audit --locked
+      - name: Audit Cargo.lock
+        working-directory: native/maglev-core
+        run: cargo audit
+
+  npm:
+    name: npm audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Audit runtime dependencies (high and critical)
+        run: npm audit --omit=dev --audit-level=high

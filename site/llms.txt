@@ -1,18 +1,18 @@
 # Maglev
 
-> Maglev is a free, open source Android downloader with no ads. It saves videos from web pages (including on-demand HLS and DASH streams), downloads ordinary links with pause and resume, and runs torrents, in one app. Android 7 and later. Version 0.20.
+> Maglev is a free, open source Android downloader with no ads. It saves videos from web pages (including on-demand HLS and DASH streams), downloads ordinary links with pause and resume, and runs torrents, in one app. Android 7 and later. Version 0.23.
 
 Made by Harsh Dayal (https://harshdayal.dev, GitHub: https://github.com/Kaos599). License: GPL-3.0.
 
 ## Key facts
 
 - Every download in one list: Torrents, ordinary links and saved streams sit in the same list, each with its size, progress, speed and time left, such as 412 MB of 1.2 GB. A queue decides how many run at once. Pause, resume and retry survive a restart, and downloads keep going with the screen off. One + button for a link you paste or type, a .torrent file, Search or the browser. Share a magnet, a .torrent file or a file link to Maglev from any app, or open .torrent files from your file manager. Play a video while it downloads, from its card or its screen. Open any download's folder in one tap, and share a finished file. On mobile data, the add screen shows the size before you start. Pause all, Resume all and Shut down from the notification. A live chip in the status bar on Android 16 and later. Unknown times show as unknown, never guessed.
-- A browser that blocks ads and finds the files on a page: Open any page inside Maglev. Ads and trackers are blocked before they load. Play a video and Maglev lists it, together with the page's other files, in a tray you can filter by type. Tap one to download it with the page's cookies, so files behind a sign-in still work. Over 42,000 blocked domains from StevenBlack/hosts, updatable in Settings. Popups you didn't tap, redirects into other apps and bad certificates are refused. App installers come with a warning.
+- A browser that blocks ads and finds the files on a page: Open any page inside Maglev. Ads and trackers are blocked before they load. Play a video and Maglev lists it, together with the page's other files, in a tray you can filter by type. Tap one to download it with the page's cookies, so files behind a sign-in still work. Over 42,000 blocked domains from StevenBlack/hosts, refreshed once a day on its own. Add your own lists and they refresh too. Tabs with a long-press menu on links and images: new tab, background tab, copy, share or download. Pop-ups and redirects you didn't tap for wait until you choose Open, Block or Always allow on this site. Find in page and text size. A history you can search, with suggestions as you type. It can clear itself when you close Maglev. App installers come with a warning.
 - Streaming video, saved as one file: Many sites play video as hundreds of small pieces listed in a playlist: HLS (.m3u8) or DASH. Maglev reads the playlist, lets you pick the quality and audio language, downloads the pieces and joins them into one video file. On-demand HLS and DASH, including HLS with standard AES-128 encryption. DRM-protected video and live streams are refused, and Maglev says why. Separate video and audio are joined without re-encoding.
-- One search, many sources, one list: Type once and Maglev asks up to 40 built-in public torrent indexes at the same time, including ones you can switch off by category. Results that point to the same torrent are merged, so you see one row with every source that has it. Filter results by category, and sort by seeders, size or date. 40 built-in sources; choose which answer each category. Add your own Jackett or Prowlarr indexer. Sources known for fake uploads carry a warning.
+- One search, many sources, one list: Type once and Maglev asks up to 40 built-in public torrent indexes at the same time, including ones you can switch off by category. Results that point to the same torrent are merged, so you see one row with every source that has it. Filter results by category, and sort by seeders, size or date. 40 built-in sources; choose which answer each category. Source addresses update once a day from a signed list, so a source that moves keeps working without an app update. Add your own Jackett or Prowlarr indexer. Sources known for fake uploads carry a warning.
 - Feeds that download new episodes for you: Follow a show from Search, or add any RSS feed. When a new item matches your rule, Maglev adds it to your downloads. Items that don't match are left alone. Works with any RSS feed. Rules decide what gets added. Watch for a title: Maglev checks every 1, 6 or 24 hours (Wi-Fi only unless you allow mobile data) and tells you when something new turns up.
 - An assistant that asks first (optional): Ask in plain words, like "find the latest season of this show in 1080p" or "what's eating my storage?". It searches, compares results, checks size and free space, and shows what it wants to add. Nothing is added or changed until you confirm. Runs on your own OpenRouter key, kept in the phone's secure storage. Can use free models. Keeps working when you switch tabs or leave the app. Chats are saved and come back after a restart. Turn it off and its tab disappears.
-- You stay in control: Rules for when and how Maglev downloads, so it fits your data plan, your battery and your storage. Download only on Wi-Fi, only over a VPN, or only while charging. Pause when the battery runs low. Speed limits for everything or for one download. A schedule for when downloads run or slow down. Pick the files in a torrent and mark one to download first. Pause all, Resume all and Shut down from the notification, and a Quick Settings tile. Files land in Download/Maglev, where any file manager finds them, or in any folder you choose. Move a torrent's files mid-download, and stream video before it finishes. Pauses before the phone runs out of space, keeping 500 MB to 1 GB free, and resumes when space comes back. Backup and restore in Settings: your settings, search sources, torrents and downloads in one file. API keys are never included. No analytics or ads SDKs.
+- You stay in control: Rules for when and how Maglev downloads, so it fits your data plan, your battery and your storage. Maglev updates itself: a daily check and Check for updates in About. It downloads on Wi-Fi and asks before installing, or installs on its own if you choose. F-Droid and Obtainium installs keep their own updates. The ad block list, search sources and default trackers refresh once a day without an app update, or when you tap Check now. Download only on Wi-Fi, only over a VPN, or only while charging. Pause when the battery runs low. Speed limits for everything or for one download. A schedule for when downloads run or slow down. Pick the files in a torrent and mark one to download first. Pause all, Resume all and Shut down from the notification, and a Quick Settings tile. Files land in Download/Maglev, where any file manager finds them, or in any folder you choose. Move a torrent's files mid-download, and stream video before it finishes. Pauses before the phone runs out of space, keeping 500 MB to 1 GB free, and resumes when space comes back. Backup and restore in Settings: your settings, search sources, torrents and downloads in one file. API keys are never included. No analytics or ads SDKs.
 - Maglev never gets around DRM. Protected video, live streams and YouTube-style players can't be saved.
 - Release signing certificate SHA-256: c8e15bd47fb39fb2248d8b501a677e61be564d52ba535e31a1608564e35df3c4
 
@@ -50,6 +50,10 @@ Made by Harsh Dayal (https://harshdayal.dev, GitHub: https://github.com/Kaos599)
 - Asks before a big add on mobile data: Maglev Yes; LibreTorrent No; BiglyBT (Android) No; Seal No; YTDLnis No; NewPipe No; Flud No; 1DM+ No; Advanced Download Manager (ADM) No; Free Download Manager (FDM) No
 - Built-in browser: Maglev Yes; LibreTorrent No; BiglyBT (Android) No; Seal No; YTDLnis Partial; NewPipe No; Flud No; 1DM+ Yes; Advanced Download Manager (ADM) Yes; Free Download Manager (FDM) No
 - Ad blocking in the browser: Maglev Yes; LibreTorrent No; BiglyBT (Android) No; Seal No; YTDLnis No; NewPipe No; Flud No; 1DM+ Yes; Advanced Download Manager (ADM) No; Free Download Manager (FDM) No
+- Browser tabs: Maglev Yes; LibreTorrent No; BiglyBT (Android) No; Seal No; YTDLnis No; NewPipe No; Flud No; 1DM+ Yes; Advanced Download Manager (ADM) Yes; Free Download Manager (FDM) No
+- Pop-up and redirect control: Maglev Yes; LibreTorrent No; BiglyBT (Android) No; Seal No; YTDLnis No; NewPipe No; Flud No; 1DM+ No; Advanced Download Manager (ADM) No; Free Download Manager (FDM) No
+- Ad list updates itself: Maglev Yes; LibreTorrent No; BiglyBT (Android) No; Seal No; YTDLnis No; NewPipe No; Flud No; 1DM+ No; Advanced Download Manager (ADM) No; Free Download Manager (FDM) No
+- Find in page: Maglev Yes; LibreTorrent No; BiglyBT (Android) No; Seal No; YTDLnis No; NewPipe No; Flud No; 1DM+ No; Advanced Download Manager (ADM) No; Free Download Manager (FDM) No
 - Finds videos and files on a web page: Maglev Yes; LibreTorrent No; BiglyBT (Android) No; Seal No; YTDLnis No; NewPipe No; Flud No; 1DM+ Yes; Advanced Download Manager (ADM) Partial; Free Download Manager (FDM) No
 - Saves HLS (m3u8) streams: Maglev Yes; LibreTorrent No; BiglyBT (Android) No; Seal No; YTDLnis No; NewPipe No; Flud No; 1DM+ Partial; Advanced Download Manager (ADM) No; Free Download Manager (FDM) No
 - Saves DASH streams: Maglev Yes; LibreTorrent No; BiglyBT (Android) No; Seal No; YTDLnis No; NewPipe No; Flud No; 1DM+ No; Advanced Download Manager (ADM) No; Free Download Manager (FDM) No
@@ -65,6 +69,7 @@ Made by Harsh Dayal (https://harshdayal.dev, GitHub: https://github.com/Kaos599)
 - Quick Settings tile: Maglev Yes; LibreTorrent No; BiglyBT (Android) No; Seal No; YTDLnis No; NewPipe No; Flud No; 1DM+ No; Advanced Download Manager (ADM) No; Free Download Manager (FDM) No
 - Optional AI assistant: Maglev Yes; LibreTorrent No; BiglyBT (Android) No; Seal No; YTDLnis No; NewPipe No; Flud No; 1DM+ No; Advanced Download Manager (ADM) No; Free Download Manager (FDM) No
 - Dark and light themes: Maglev Yes; LibreTorrent Yes; BiglyBT (Android) Yes; Seal Partial; YTDLnis Partial; NewPipe No; Flud Yes; 1DM+ Yes; Advanced Download Manager (ADM) Yes; Free Download Manager (FDM) No
+- Updates itself outside a store: Maglev Yes; LibreTorrent No; BiglyBT (Android) No; Seal Yes; YTDLnis Yes; NewPipe Partial; Flud No; 1DM+ No; Advanced Download Manager (ADM) No; Free Download Manager (FDM) No
 - Minimum Android version: Maglev Android 7; LibreTorrent Android 7; BiglyBT (Android) Android 4.1; Seal Android 5; YTDLnis Android 7; NewPipe Android 6; Flud Not listed; 1DM+ Not listed; Advanced Download Manager (ADM) Not listed; Free Download Manager (FDM) Not listed
 - Open source: Maglev Yes; LibreTorrent Yes; BiglyBT (Android) Yes; Seal Yes; YTDLnis Yes; NewPipe Yes; Flud No; 1DM+ No; Advanced Download Manager (ADM) No; Free Download Manager (FDM) No
 - No ads: Maglev Yes; LibreTorrent Yes; BiglyBT (Android) Yes; Seal Yes; YTDLnis Yes; NewPipe Yes; Flud No; 1DM+ Yes; Advanced Download Manager (ADM) No; Free Download Manager (FDM) Yes
@@ -81,7 +86,7 @@ Yes. Maglev is free to download and use, with no ads and nothing to buy. It is f
 
 ### Does Maglev have ads?
 
-No. Maglev has no ads and no ads SDK. Its built-in browser also blocks ads and trackers on the pages you open, using a list of over 42,000 ad and tracker domains that you can update or replace in Settings.
+No. Maglev has no ads and no ads SDK. Its built-in browser also blocks ads and trackers on the pages you open, using a list of over 42,000 ad and tracker domains. Once a day Maglev refreshes that list, the search source addresses and the default trackers, from harshdayal.dev/maglev/lists/sources.json and raw.githubusercontent.com, with no cookies and no identifiers. You can replace the list or turn the updates off in Settings.
 
 ### Is Maglev safe to install?
 
@@ -133,7 +138,7 @@ Sometimes. Maglev has no special support for any one site. It saves video files 
 
 ### Is there an ad-free browser for Android that downloads videos?
 
-Yes, Maglev's built-in browser is one. It blocks ads and trackers before they load, lists the videos and files a page plays or links to, and saves them with the page's cookies. Popups you didn't tap and redirects into other apps are refused.
+Yes, Maglev's built-in browser is one. It blocks ads and trackers before they load, lists the videos and files a page plays or links to, and saves them with the page's cookies. Pop-ups and redirects you didn't tap for wait until you choose Open, Block or Always allow on this site.
 
 ### What is a torrent, in plain words?
 
@@ -190,6 +195,10 @@ It uses battery while it downloads, like any download app, and torrents also use
 ### How do I get updates?
 
 Add Maglev to Obtainium and new versions install as they come out. Or download the new APK from GitHub Releases and install it over the old one; your downloads and settings stay.
+
+### Does Maglev check for updates, and what does that send?
+
+Once a day, and when you tap Check for updates, Maglev asks api.github.com for the latest release. GitHub sees your IP address and the app version. Turning off Check automatically in Settings → About stops the daily request. The update file downloads from GitHub's release file servers. By default Maglev downloads updates on Wi-Fi and asks before installing. Pick 'Tell me' to decide each time.
 
 ### What does the AI assistant do, and do I need it?
 

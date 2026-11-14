@@ -20,7 +20,7 @@ export function NoticeHost() {
   return (
     <View style={[styles.wrap, { bottom: insets.bottom + spacing.lg + TAB_BAR_CLEARANCE }]} pointerEvents="box-none">
       <Banner
-        tone="info"
+        tone="neutral"
         title={notice.message}
         actionLabel={notice.actionLabel}
         onAction={notice.onAction}

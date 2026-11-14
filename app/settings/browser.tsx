@@ -1,11 +1,9 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
-import { Stack } from 'expo-router';
+import { Stack, useRouter } from 'expo-router';
 import {
-  clearBrowserData,
   getBlocklistInfo,
   resetBlocklist,
-  updateBlocklist,
   type BlocklistErrorCode,
   type BlocklistInfo,
 } from 'maglev-engine';
@@ -13,11 +11,13 @@ import { useTheme } from '../../context/ThemeContext';
 import { useMaglevEngine } from '../../context/EngineContext';
 import { ThemeColors, spacing, type } from '../../constants/theme';
 import { haptic } from '../../constants/haptics';
-import { empty, notices } from '../../constants/copy';
-import { Button, EmptyBlock, IconButton, ListRow, RadioCard, SectionHeader, Sheet, Toggle } from '../../components/ui';
-import { Card, Caption, InputSheet, SettingsPage } from '../../components/settings/SettingsParts';
-import { DEFAULT_BLOCKLIST_URL, updateBrowserPrefs, useBrowserPrefs } from '../../utils/prefs/browser';
-import { clearSiteChecks } from '../../utils/prefs/search';
+import { browserTabs, empty, historyCopy, listsCopy, notices, textSizeCopy } from '../../constants/copy';
+import { Button, EmptyBlock, IconButton, ListRow, RadioCard, SectionHeader, Toggle } from '../../components/ui';
+import { Card, Caption, ChipGroup, InputSheet, SettingsPage } from '../../components/settings/SettingsParts';
+import { updateBrowserPrefs, useBrowserPrefs, type PopupPolicy } from '../../utils/prefs/browser';
+import { getDefaultBlocklistUrls } from '../../utils/prefs/lists';
+import { updateAdList } from '../../utils/lists';
+import { ClearHistorySheet, type ClearMode } from '../../components/browser/ClearHistorySheet';
 import { SEARCH_URLS, hostOf, isHttpsUrl, type SearchEngine } from '../../utils/browserUrl';
 
 const ENGINES: { value: SearchEngine; title: string }[] = [
@@ -25,6 +25,15 @@ const ENGINES: { value: SearchEngine; title: string }[] = [
   { value: 'google', title: 'Google' },
   { value: 'bing', title: 'Bing' },
   { value: 'brave', title: 'Brave' },
+];
+
+/** Exact sizes in percent. normalizeTextZoom keeps every one of them as it is. */
+const TEXT_SIZES = [80, 90, 100, 115, 130, 150, 175, 200].map((v) => ({ value: v, label: textSizeCopy.value(v) }));
+
+const POPUP_CHOICES: { value: PopupPolicy; title: string }[] = [
+  { value: 'ask', title: browserTabs.settings.ask },
+  { value: 'block', title: browserTabs.settings.block },
+  { value: 'allow', title: browserTabs.settings.allow },
 ];
 
 const listErrorText = (code: BlocklistErrorCode): string =>
@@ -42,13 +51,16 @@ export default function BrowserSettings() {
   const { colors } = useTheme();
   const s = useMemo(() => makeStyles(colors), [colors]);
   const { showNotice } = useMaglevEngine();
+  const router = useRouter();
   const [prefs, setPrefs] = useBrowserPrefs();
   const [info, setInfo] = useState<BlocklistInfo | null>(null);
   const [unavailable, setUnavailable] = useState(false);
   const [updating, setUpdating] = useState(false);
   const [addOpen, setAddOpen] = useState(false);
-  const [confirmOpen, setConfirmOpen] = useState(false);
-  const [clearing, setClearing] = useState(false);
+  const [clearMode, setClearMode] = useState<ClearMode | null>(null);
+  // The sheet keeps its last mode while it slides out.
+  const lastMode = useRef<ClearMode>('browsing-data');
+  if (clearMode) lastMode.current = clearMode;
 
   const refresh = useCallback(async () => {
     const res = await getBlocklistInfo();
@@ -66,12 +78,13 @@ export default function BrowserSettings() {
   const update = async () => {
     haptic('tap');
     setUpdating(true);
-    const res = await updateBlocklist(prefs.blocklistUrls);
+    // Update now always downloads in full (conditional: false), unlike the daily check (contract 31.2).
+    const res = await updateAdList({ conditional: false });
     setUpdating(false);
     if (res.ok) {
       setInfo(res);
       haptic('done');
-      showNotice({ message: notices.browser.listUpdated(res.domains.toLocaleString()) }, 3000);
+      showNotice({ message: res.changed === false ? listsCopy.browser.upToDate : notices.browser.listUpdated(res.domains.toLocaleString()) }, 3000);
     } else {
       haptic('fail');
       showNotice({ message: listErrorText(res.code) });
@@ -81,29 +94,14 @@ export default function BrowserSettings() {
   const reset = async () => {
     haptic('tap');
     const res = await resetBlocklist();
-    setPrefs({ blocklistUrls: [DEFAULT_BLOCKLIST_URL] });
+    // The default address now in force: the source list's, else the built-in one (contract 31.1).
+    setPrefs({ blocklistUrls: getDefaultBlocklistUrls() });
     if (res.ok) {
       setInfo(res);
       showNotice({ message: notices.browser.listReset }, 3000);
     } else {
       haptic('fail');
       showNotice({ message: listErrorText(res.code) });
-    }
-  };
-
-  const clear = async () => {
-    setClearing(true);
-    const res = await clearBrowserData();
-    setClearing(false);
-    setConfirmOpen(false);
-    if (res.ok) {
-      // The Cloudflare checks live in the same cookies, so Search forgets them too.
-      clearSiteChecks();
-      haptic('done');
-      showNotice({ message: notices.browser.dataCleared }, 3000);
-    } else {
-      haptic('fail');
-      showNotice({ message: notices.browser.dataClearFailed });
     }
   };
 
@@ -186,6 +184,47 @@ export default function BrowserSettings() {
       </View>
 
       <View style={s.section}>
+        <SectionHeader title={browserTabs.settings.section} />
+        <Card>
+          {POPUP_CHOICES.map((c) => (
+            <ListRow
+              key={c.value}
+              title={c.title}
+              selected={prefs.popupPolicy === c.value}
+              accessibilityLabel={c.title}
+              onPress={() => {
+                haptic('select');
+                setPrefs({ popupPolicy: c.value });
+              }}
+            />
+          ))}
+        </Card>
+      </View>
+
+      {prefs.popupAllowHosts.length > 0 ? (
+        <View style={s.section}>
+          <SectionHeader title={browserTabs.settings.allowedSites} />
+          <Card>
+            {prefs.popupAllowHosts.map((h) => (
+              <View key={h} style={s.urlRow}>
+                <Text style={s.url} numberOfLines={1}>
+                  {h}
+                </Text>
+                <IconButton
+                  icon="close"
+                  accessibilityLabel={`${browserTabs.settings.remove} ${h}`}
+                  onPress={() => {
+                    haptic('tap');
+                    setPrefs({ popupAllowHosts: prefs.popupAllowHosts.filter((x) => x !== h) });
+                  }}
+                />
+              </View>
+            ))}
+          </Card>
+        </View>
+      ) : null}
+
+      <View style={s.section}>
         <SectionHeader title="Search engine" />
         {ENGINES.map((e) => (
           <RadioCard
@@ -208,6 +247,39 @@ export default function BrowserSettings() {
         />
       </Card>
 
+      <ChipGroup label={textSizeCopy.settingsLabel} options={TEXT_SIZES} value={prefs.browserTextZoom} onChange={(browserTextZoom) => setPrefs({ browserTextZoom })} />
+
+      <View style={s.section}>
+        <SectionHeader title={historyCopy.settings.section} />
+        <Card>
+          <ListRow
+            title={historyCopy.settings.save}
+            subtitle={historyCopy.settings.saveSubtitle}
+            accessory={<Toggle value={prefs.saveHistory} onValueChange={(saveHistory) => setPrefs({ saveHistory })} accessibilityLabel={historyCopy.settings.save} />}
+          />
+          <ListRow
+            title={historyCopy.settings.suggest}
+            subtitle={historyCopy.settings.suggestSubtitle}
+            accessory={<Toggle value={prefs.suggestFromHistory} onValueChange={(suggestFromHistory) => setPrefs({ suggestFromHistory })} accessibilityLabel={historyCopy.settings.suggest} />}
+          />
+          <ListRow
+            title={historyCopy.settings.clearOnClose}
+            subtitle={historyCopy.settings.clearOnCloseSubtitle}
+            accessory={<Toggle value={prefs.clearHistoryOnClose} onValueChange={(clearHistoryOnClose) => setPrefs({ clearHistoryOnClose })} accessibilityLabel={historyCopy.settings.clearOnClose} />}
+          />
+          <ListRow icon="clock" title={historyCopy.settings.open} onPress={() => router.push('/browser-history')} />
+          <ListRow
+            icon="trash"
+            title={historyCopy.settings.clear}
+            destructive
+            onPress={() => {
+              haptic('warn');
+              setClearMode('range');
+            }}
+          />
+        </Card>
+      </View>
+
       <Card>
         <ListRow
           icon="trash"
@@ -215,7 +287,7 @@ export default function BrowserSettings() {
           destructive
           onPress={() => {
             haptic('warn');
-            setConfirmOpen(true);
+            setClearMode('browsing-data');
           }}
         />
       </Card>
@@ -236,17 +308,7 @@ export default function BrowserSettings() {
         }}
       />
 
-      <Sheet
-        visible={confirmOpen}
-        onClose={() => !clearing && setConfirmOpen(false)}
-        title="Clear browsing data?"
-        subtitle="This clears cookies, saved pages and history for every site, so you sign out everywhere. It also clears the checks Search passed with Cloudflare, so those sources may ask you again."
-      >
-        <View style={s.sheetActions}>
-          <Button label="Cancel" variant="ghost" disabled={clearing} onPress={() => setConfirmOpen(false)} />
-          <Button label="Clear" variant="danger" loading={clearing} disabled={clearing} onPress={() => void clear()} />
-        </View>
-      </Sheet>
+      <ClearHistorySheet visible={clearMode != null} mode={lastMode.current} onClose={() => setClearMode(null)} />
     </SettingsPage>
   );
 }
@@ -257,5 +319,4 @@ const makeStyles = (c: ThemeColors) =>
     actions: { padding: spacing.lg, flexDirection: 'row' },
     urlRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingLeft: spacing.lg, paddingRight: spacing.xs, minHeight: 56 },
     url: { ...type.mono, flex: 1, fontSize: type.size.sm, color: c.text },
-    sheetActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: spacing.sm, marginTop: spacing.lg },
   });

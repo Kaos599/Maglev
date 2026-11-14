@@ -1,0 +1,5 @@
+- Browser tabs, with a tab list and a long-press menu on links and images.
+- Pop-ups and redirects you didn't tap for wait for Open, Block or Always allow.
+- Find in page and text size, in ⋮.
+- Maglev can update itself: a daily check, Check for updates in About, and three modes. F-Droid installs keep updating through F-Droid.
+- Report a bug in About fills in your version and phone.

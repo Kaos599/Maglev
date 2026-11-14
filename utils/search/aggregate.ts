@@ -7,6 +7,7 @@ import { ProviderError } from './http.ts';
 import { pausedFor, recordFailure, recordSuccess } from './health.ts';
 import { CATEGORY_ORDER } from './types.ts';
 import { decodeEntities } from './text.ts';
+import { applyListOverrides, listDisabled } from '../lists/store.ts';
 import type { Category, MergedResult, SearchProvider, SearchResult, SearchUpdate, SortKey, SourceStatus } from './types.ts';
 
 export { PROVIDERS, createTorznabProvider };
@@ -37,8 +38,13 @@ export interface SearchOptions extends ProviderPrefs {
   onUpdate?: (update: SearchUpdate) => void;
 }
 
+/**
+ * Built-in providers carry the applied source list's mirrors and warning (docs/NATIVE_CONTRACT.md section 31.1).
+ * Mirror precedence: the user's own override (runProvider), then the file's mirrors, then the built-in ones.
+ */
 function lookup(id: string, extra?: SearchProvider[]): SearchProvider | undefined {
-  return PROVIDERS.find((p) => p.id === id) ?? extra?.find((p) => p.id === id);
+  const builtIn = PROVIDERS.find((p) => p.id === id);
+  return builtIn ? applyListOverrides(builtIn) : extra?.find((p) => p.id === id);
 }
 
 /**
@@ -69,6 +75,8 @@ export function eligibleProviders(category: Category, prefs: ProviderPrefs): Sea
     seen.add(id);
     const p = lookup(id, prefs.extraProviders);
     if (!p) continue;
+    // Turned off by the source list: skipped until a later file turns it back on.
+    if (listDisabled(p.id)) continue;
     if (p.nsfw && !prefs.adult) continue;
     if (category === 'adult' && !prefs.adult) continue;
     const eff = effectiveCategories(p, prefs);
