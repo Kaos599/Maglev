@@ -56,6 +56,7 @@
 - Open any page inside Maglev. Ads and trackers are blocked before they load, using a built-in list of over 42,000 ad and tracker domains that you can update or replace in Settings.
 - Play a video and Maglev lists it. The page's files show up in a tray you can filter by Video, Audio, Image, Document and Other. Tap one to download it with the page's cookies, so files that need the site's session still work.
 - Streaming videos (HLS and DASH) are saved as one file: pick the quality and audio language and Maglev joins the pieces, including HLS streams with standard AES-128 encryption.
+- A history of the pages you open, with search, suggestions as you type and clearing by time. It can clear itself when you close Maglev, and it never leaves your phone.
 - Popups you didn't tap, redirects into other apps, bad certificates and requests for your camera, microphone or location are refused. App installers come with a warning.
 - Maglev never gets around DRM. Netflix-style protected video, live streams and players that hide their video in the page (YouTube-style) can't be saved, and Maglev says so.
 
@@ -95,6 +96,8 @@ Download an APK from [Releases](https://github.com/Kaos599/Maglev/releases/lates
 
 ## What's next
 
+- **Tabs in the browser (0.22).** Open several pages at once, and long-press a link or image to open it in a new tab, copy it, share it or download it. Links that open a new window open a tab when you tap them, and your tabs come back after a restart.
+- **A choice for pop-ups (0.22).** When a page tries to open a pop-up or send you to another app, Maglev asks first: Open, Block, or Always allow on this site. Settings has Ask, Block without asking, or Allow.
 - Search inside the browser's found files, and keeping a page's file list after you leave it.
 - Choosing which ad-block lists to combine, and per-site rules beyond "allow ads here".
 - A Google Play build.

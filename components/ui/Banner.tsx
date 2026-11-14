@@ -6,7 +6,8 @@ import { PixelIcon, PixelIconName } from '../PixelIcon';
 import { Button } from './Button';
 import { IconButton } from './IconButton';
 
-export type BannerTone = 'info' | 'warning' | 'danger' | 'success';
+/** `neutral` is a solid card (surface + hairline border): for notices that float over content, such as a web page. */
+export type BannerTone = 'info' | 'warning' | 'danger' | 'success' | 'neutral';
 
 export interface BannerProps {
   tone?: BannerTone;
@@ -23,15 +24,17 @@ const ICONS: Record<BannerTone, PixelIconName> = {
   warning: 'warning',
   danger: 'warning',
   success: 'check',
+  neutral: 'about',
 };
 
 export function Banner({ tone = 'info', title, body, actionLabel, onAction, onDismiss, testID }: BannerProps) {
   const { colors } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
-  const tint = { info: colors.download, warning: colors.warning, danger: colors.danger, success: colors.success }[tone];
+  const tint = { info: colors.download, warning: colors.warning, danger: colors.danger, success: colors.success, neutral: colors.textMuted }[tone];
+  const surface = tone === 'neutral' ? { backgroundColor: colors.surface, borderColor: colors.border } : { backgroundColor: alpha(tint, 0.1), borderColor: alpha(tint, 0.4) };
   return (
     <View
-      style={[styles.wrap, { backgroundColor: alpha(tint, 0.1), borderColor: alpha(tint, 0.4) }]}
+      style={[styles.wrap, surface]}
       testID={testID}
       accessibilityRole={tone === 'danger' || tone === 'warning' ? 'alert' : undefined}
       accessibilityLiveRegion={tone === 'danger' ? 'assertive' : 'polite'}

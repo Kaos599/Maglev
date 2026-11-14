@@ -10,7 +10,8 @@ import { banners, foundTray, mobileDataLine, notices } from '../../constants/cop
 import { probeErrorView } from '../../utils/downloadCopy';
 import { useDownloadAdmission } from '../../utils/useDownloadAdmission';
 import { hostOf } from '../../utils/browserUrl';
-import { Banner, Button, Sheet } from '../ui';
+import { Banner, Button } from '../ui';
+import { FloatingSheet, afterSheetCloses, NoteRow } from './FloatingSheet';
 import { useSettings } from '../../context/SettingsContext';
 import { SaveToChoice } from './SaveToChoice';
 import { saveFolder } from './saveTo';
@@ -103,13 +104,14 @@ export function FoundDownloadSheet({ target, onClose, onView }: { target: Downlo
     const res = await startDownload(t.url, { headers, ...(edited ? { name: clean } : {}), ...(folder ? { folder } : {}) });
     if (res.ok) {
       haptic('commit');
-      showNotice({ message: notices.browser.addedToTransfers, actionLabel: foundTray.view, onAction: () => onView?.(res.id) }, 5000);
+      // Close first: the sheet is a Modal (its own window), so a notice raised while it is still up is hidden under it.
       onClose();
+      afterSheetCloses(() => showNotice({ message: notices.browser.addedToTransfers, actionLabel: foundTray.view, onAction: () => onView?.(res.id) }, 5000));
       return;
     }
     if (res.code === 'DUPLICATE') {
-      showNotice({ message: notices.addDownload.duplicate });
       onClose();
+      afterSheetCloses(() => showNotice({ message: notices.addDownload.duplicate }));
       return;
     }
     haptic('fail');
@@ -118,7 +120,7 @@ export function FoundDownloadSheet({ target, onClose, onView }: { target: Downlo
   };
 
   return (
-    <Sheet visible={target != null} onClose={onClose} title="Download" subtitle={hostOf(t.url)}>
+    <FloatingSheet visible={target != null} onClose={onClose} title="Download" subtitle={hostOf(t.url)}>
       <View style={styles.body}>
         <Text style={styles.label}>Name</Text>
         <TextInput
@@ -136,7 +138,7 @@ export function FoundDownloadSheet({ target, onClose, onView }: { target: Downlo
         />
         <Text style={styles.meta}>{phase === 'probing' ? 'Checking the file' : size != null ? formatBytes(size) : 'Size unknown'}</Text>
         <SaveToChoice value={sub} onChange={setSub} root={root} disabled={adding} />
-        {mobileNote ? <Banner tone="info" title={mobileNote} /> : null}
+        {mobileNote ? <NoteRow text={mobileNote} /> : null}
         {t.installer ? <Banner tone="warning" title={banners.browser.installer.title} body={banners.browser.installer.body} /> : null}
         {doesntFit ? <Banner tone="danger" title={banners.addDownload.notEnoughSpace.title} body={banners.addDownload.notEnoughSpace.body} /> : null}
         {message ? <Banner tone="danger" title={message} /> : null}
@@ -149,7 +151,7 @@ export function FoundDownloadSheet({ target, onClose, onView }: { target: Downlo
           )}
         </View>
       </View>
-    </Sheet>
+    </FloatingSheet>
   );
 }
 

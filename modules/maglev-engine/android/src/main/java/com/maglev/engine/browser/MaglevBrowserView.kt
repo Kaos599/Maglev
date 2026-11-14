@@ -219,9 +219,15 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
             x.query.orEmpty() == y.query.orEmpty()
     }
 
-    fun clearData() {
+    fun clearData(cookies: Boolean, cache: Boolean) {
         if (destroyed) return
-        BrowserData.clear(context, webView) { }
+        BrowserData.clear(context, webView, cookies, cache) { }
+    }
+
+    /** Forgets this screen's back/forward list (history is cleared from the history screen's side too). Main thread. */
+    fun clearHistoryList() {
+        if (destroyed) return
+        webView.clearHistory()
     }
 
     /** Called by React Native when the view is dropped (OnViewDestroys). */

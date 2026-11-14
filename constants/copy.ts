@@ -119,6 +119,13 @@ export const notices = {
     listAddressAdded: 'List address added.',
     dataCleared: 'Browsing data cleared.',
     dataClearFailed: "Couldn't clear browsing data.",
+    historyCleared: 'History cleared.',
+    historyClearFailed: "Couldn't clear history.",
+    historyRemoved: 'Removed from history.',
+    historyHostRemoved: (count: string | number, host: string | number) =>
+      `Removed ${toName(count)} ${Number(count) === 1 ? 'page' : 'pages'} from ${toName(host)}.`,
+    historyRemoveFailed: "Couldn't remove that page.",
+    historyRestoreFailed: "Couldn't bring it back.",
     /** Block list update errors, keyed by the native error code. */
     listError: {
       NETWORK: "Couldn't reach the list. Check your connection.",
@@ -264,9 +271,56 @@ export const empty = {
     crashed: { title: 'This page stopped working', body: 'Reload to try it again.' },
     noFiles: { title: 'No files found yet', body: 'Play a video or open a page with files. Maglev lists what it finds here.' },
     noAllowedSites: { title: 'No sites allowed', body: 'Sites you allow ads on show up here.' },
+    historyEmpty: { title: 'No history yet', body: 'Pages you open in the browser show up here.' },
+    historyOff: { title: 'History is off', body: 'Turn it on in the browser settings to keep pages you open.' },
+    historyNoResults: { title: 'No matches', body: 'Try another word or part of an address.' },
+    historyFailed: { title: "History isn't available", body: "Maglev couldn't open it. Try again." },
   },
   engineError: {
     title: 'Engine failed to start',
+  },
+} as const;
+
+/** Labels for browser history (NATIVE_CONTRACT 24.9): the screen, the suggestions, the clear sheet and its settings. */
+export const historyCopy = {
+  title: 'History',
+  menuRow: 'History',
+  searchPlaceholder: 'Search history',
+  searchLabel: 'Search history',
+  clear: 'Clear history',
+  clearLabel: 'Clear history',
+  today: 'Today',
+  yesterday: 'Yesterday',
+  rowMenuLabel: (title: string | number) => `Options for ${title}`,
+  remove: 'Remove',
+  removeHost: (host: string | number) => `Remove all from ${host}`,
+  loadMore: 'Loading more',
+  retry: 'Retry',
+  suggestionsLabel: 'Suggestions from history',
+  settings: {
+    section: 'History',
+    save: 'Save history',
+    saveSubtitle: 'Keeps the pages you open on this phone.',
+    suggest: 'Suggest from history',
+    suggestSubtitle: 'Shows matching pages while you type an address.',
+    clearOnClose: 'Clear history when Maglev closes',
+    clearOnCloseSubtitle: 'Clears history when you close Maglev, and again when it next starts.',
+    open: 'History',
+    clear: 'Clear history',
+  },
+  sheet: {
+    rangeTitle: 'Clear history',
+    rangeSubtitle: 'Removes pages you opened in the browser.',
+    dataTitle: 'Clear browsing data',
+    dataSubtitle: 'Cookies sign you out of sites. Clearing them also resets the checks Search passed with Cloudflare.',
+    ranges: { hour: 'Last hour', today: 'Today', week: 'Last 7 days', all: 'All time' },
+    history: 'History',
+    cookies: 'Cookies and site data',
+    cache: 'Cache',
+    clear: 'Clear',
+    cancel: 'Cancel',
+    retry: 'Retry',
+    clearing: 'Clearing',
   },
 } as const;
 

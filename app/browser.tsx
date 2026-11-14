@@ -16,10 +16,11 @@ import { useTheme } from '../context/ThemeContext';
 import { useMaglevEngine } from '../context/EngineContext';
 import { ThemeColors, radius, spacing, type } from '../constants/theme';
 import { haptic } from '../constants/haptics';
-import { banners, empty, foundTray, notices } from '../constants/copy';
+import { banners, empty, foundTray, historyCopy, notices } from '../constants/copy';
 import { PixelIcon } from '../components/PixelIcon';
 import { Banner, Button, EmptyBlock, IconButton, ListRow, PressableScale, ProgressBar, Sheet, Toggle } from '../components/ui';
 import { FoundTray } from '../components/browser/FoundTray';
+import { HistorySuggestions } from '../components/browser/HistorySuggestions';
 import { StreamSheet } from '../components/browser/StreamSheet';
 import { FoundDownloadSheet, downloadHeaders, type DownloadTarget } from '../components/browser/FoundDownload';
 import { BatchSheet } from '../components/browser/BatchSheet';
@@ -29,6 +30,7 @@ import { isInstaller, mergeFound, pruneToPage } from '../components/browser/foun
 import { activeLabel, activeSummary, matchTransfers } from '../components/browser/foundTransfers';
 import { dismissAllVisible, dismissIds, restoreIds, visibleFound } from '../components/browser/foundDismiss';
 import { updateBrowserPrefs, useBrowserPrefs } from '../utils/prefs/browser';
+import { recordVisit } from '../utils/history';
 import { hostOf, isAllowedHost, noticeAllowed, siteKey, toBrowserUrl, toggleAllowedHost } from '../utils/browserUrl';
 
 /** A quiet notice for these, at most one every 5 seconds. */
@@ -76,6 +78,9 @@ export default function BrowserScreen() {
   const [refused, setRefused] = useState<'ssl' | 'local' | null>(null);
   const lastNoticeAt = useRef(0);
   const lastPageUrl = useRef('');
+  // H1: a refused page and a crash page are never recorded. Both clear when the next page starts loading.
+  const crashedRef = useRef(false);
+  const refusedRef = useRef(false);
   const notesShown = useRef(new Set<string>());
 
   const leave = useCallback(() => {
@@ -155,6 +160,13 @@ export default function BrowserScreen() {
 
   const onPage = useCallback((e: BrowserPageEvent) => {
     setPage(e);
+    if (e.loading) {
+      crashedRef.current = false;
+      refusedRef.current = false;
+    } else if (e.loading === false && !crashedRef.current && !refusedRef.current) {
+      // H1: only a finished load is recorded. The store skips non-web addresses, repeats and the off setting.
+      recordVisit({ url: e.url, title: e.title ?? '' }).catch(() => {});
+    }
     if (e.url !== lastPageUrl.current) {
       lastPageUrl.current = e.url;
       notesShown.current.clear();
@@ -211,6 +223,7 @@ export default function BrowserScreen() {
   const onRefused = useCallback(
     (e: { reason: BrowserRefusalReason }) => {
       if (e.reason === 'ssl' || e.reason === 'local') {
+        refusedRef.current = true;
         setRefused(e.reason);
         return;
       }
@@ -390,12 +403,27 @@ export default function BrowserScreen() {
             onDownloadRequest={onDownloadRequest}
             onMagnet={(e) => toAddTorrent(e.uri)}
             onRefused={onRefused}
-            onCrashed={() => setCrashed(true)}
+            onCrashed={() => {
+              crashedRef.current = true;
+              setCrashed(true);
+            }}
             onPageNote={onPageNote}
           />
         ) : (
           <EmptyBlock icon="network" title={empty.browser.start.title} body={empty.browser.start.body} />
         )}
+        {editing ? (
+          <HistorySuggestions
+            text={draft}
+            skip={page?.url || prefillText}
+            onPick={(u) => {
+              haptic('tap');
+              inputRef.current?.blur();
+              Keyboard.dismiss();
+              go(u);
+            }}
+          />
+        ) : null}
         {refused ? (
           <View style={styles.floating}>
             <Banner
@@ -424,42 +452,36 @@ export default function BrowserScreen() {
             />
           </View>
         ) : null}
-      </View>
-
-      {started ? (
-        <View style={styles.footer}>
-          <Text style={styles.blocked} accessibilityLiveRegion="none">
-            {prefs.adBlock && blocked > 0 ? `${blocked} blocked` : ''}
-          </Text>
-          <View style={styles.footerActions}>
-          {active ? (
-            <PressableScale
+        {started ? (
+          <View style={styles.overlay} pointerEvents="box-none">
+            {active ? (
+              <PressableScale
+                onPress={() => {
+                  haptic('select');
+                  openTransfers();
+                }}
+                accessibilityRole="button"
+                accessibilityLabel={foundTray.downloadingLabel(activeLabel(active))}
+                style={styles.activeChip}
+              >
+                <Text style={styles.activeText} numberOfLines={1}>
+                  {activeLabel(active)}
+                </Text>
+              </PressableScale>
+            ) : null}
+            <Button
+              label={`Files · ${found.length}`}
+              icon="file"
+              variant="secondary"
+              accessibilityLabel={`Files, ${found.length} found`}
               onPress={() => {
                 haptic('select');
-                openTransfers();
+                setTrayOpen(true);
               }}
-              accessibilityRole="button"
-              accessibilityLabel={foundTray.downloadingLabel(activeLabel(active))}
-              style={styles.activeChip}
-            >
-              <Text style={styles.activeText} numberOfLines={1}>
-                {activeLabel(active)}
-              </Text>
-            </PressableScale>
-          ) : null}
-          <Button
-            label={`Files · ${found.length}`}
-            icon="file"
-            variant="secondary"
-            accessibilityLabel={`Files, ${found.length} found`}
-            onPress={() => {
-              haptic('select');
-              setTrayOpen(true);
-            }}
-          />
+            />
           </View>
-        </View>
-      ) : null}
+        ) : null}
+      </View>
 
       <FoundTray visible={trayOpen} items={found} userAgent={page?.userAgent ?? ''} onRemove={removeOne} onClear={clearAll} transfers={transfers} onOpenTransfer={openTransfer} onScanAgain={scanAgain} onDownloadSelected={(items) => { setTrayOpen(false); setBatchItems(items); }} undo={undo} onUndo={undoDismiss} onClose={() => setTrayOpen(false)} onPick={pickFile} onPickStream={(item) => { setTrayOpen(false); setStreamItem(item); }} />
       <BatchSheet items={batchItems} onClose={() => setBatchItems(null)} onStart={(items) => void runBatchFor(items)} />
@@ -493,6 +515,7 @@ export default function BrowserScreen() {
           <ListRow
             icon="shield"
             title={allowedHere ? 'Block ads on this site' : 'Allow ads on this site'}
+            subtitle={allowedHere ? 'Ads are allowed here' : blocked > 0 ? `${blocked} blocked on this page` : undefined}
             onPress={toggleAds}
           />
         ) : null}
@@ -503,6 +526,14 @@ export default function BrowserScreen() {
           onPress={() => {
             setMenuOpen(false);
             if (page?.url) void copy(page.url);
+          }}
+        />
+        <ListRow
+          icon="clock"
+          title={historyCopy.menuRow}
+          onPress={() => {
+            setMenuOpen(false);
+            router.push('/browser-history');
           }}
         />
         <ListRow
@@ -542,16 +573,17 @@ const makeStyles = (c: ThemeColors) =>
     web: { flex: 1 },
     floating: { position: 'absolute', left: spacing.md, right: spacing.md, top: spacing.md },
     crashed: { ...StyleSheet.absoluteFill, backgroundColor: c.bg, justifyContent: 'center' },
-    footer: {
-      minHeight: 56,
+    // Floats over the page, bottom-right. The body already ends at the tab bar and the safe area, so 12 px from the edges is enough.
+    overlay: {
+      position: 'absolute',
+      left: spacing.md,
+      right: spacing.md,
+      bottom: spacing.md,
       flexDirection: 'row',
       alignItems: 'center',
-      justifyContent: 'space-between',
-      paddingHorizontal: spacing.lg,
-      borderTopWidth: 1,
-      borderTopColor: c.border,
+      justifyContent: 'flex-end',
+      gap: spacing.sm,
     },
-    footerActions: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, flexShrink: 1 },
     activeChip: {
       minHeight: 44,
       paddingHorizontal: spacing.md,
@@ -559,8 +591,8 @@ const makeStyles = (c: ThemeColors) =>
       borderRadius: radius.md,
       borderWidth: 1,
       borderColor: c.download,
+      backgroundColor: c.surface,
       flexShrink: 1,
     },
     activeText: { ...type.mono, fontSize: type.size.sm, color: c.download },
-    blocked: { ...type.mono, fontSize: type.size.sm, color: c.textMuted },
   });

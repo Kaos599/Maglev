@@ -11,6 +11,7 @@ import com.maglev.engine.browser.BlocklistException
 import com.maglev.engine.browser.BlocklistInfo
 import com.maglev.engine.browser.BlocklistStore
 import com.maglev.engine.browser.BrowserData
+import com.maglev.engine.browser.HistoryWipe
 import com.maglev.engine.browser.MaglevBrowserView
 import com.maglev.engine.feeds.FeedScheduler
 import com.maglev.engine.permissions.PermissionHelper
@@ -117,6 +118,12 @@ class MaglevEngineModule : Module() {
             EngineHost.emitter = null
             pendingPick?.resolve(mapOf("ok" to true, "cancelled" to true))
             pendingPick = null
+        }
+
+        // "Clear history when I close Maglev": only when the activity is really finishing, not on a rotation (contract 24.9).
+        OnActivityDestroys {
+            val a = appContext.currentActivity
+            if (a != null && a.isFinishing) context?.let { HistoryWipe.wipeIfArmed(it) }
         }
 
         OnActivityEntersForeground {
@@ -442,13 +449,25 @@ class MaglevEngineModule : Module() {
                 BlocklistStore.info(c).toResult()
             }
         }
-        // Cookies, cache, web storage and history of the browser. Works without the view mounted.
-        AsyncFunction("clearBrowserData") { promise: Promise ->
+        // Cookies and web storage (`cookies`), cache and form data (`cache`). History is cleared by the JS store.
+        // Works without the view mounted.
+        AsyncFunction("clearBrowserData") { options: Map<String, Any?>, promise: Promise ->
             val c = context
             if (c == null) {
                 promise.resolve(Json.failure("ENGINE_UNAVAILABLE", "Module is not attached"))
             } else {
-                BrowserData.clear(c, null) { promise.resolve(mapOf("ok" to true)) }
+                BrowserData.clear(c, null, options["cookies"] == true, options["cache"] == true) { promise.resolve(mapOf("ok" to true)) }
+            }
+        }
+
+        // The "Clear history when I close Maglev" flag (contract 24.9). JS sends it at start and on every change.
+        AsyncFunction("setHistoryWipeOnClose") { enabled: Boolean, promise: Promise ->
+            val c = context
+            if (c == null) {
+                promise.resolve(Json.failure("ENGINE_UNAVAILABLE", "Module is not attached"))
+            } else {
+                HistoryWipe.setArmed(c, enabled)
+                promise.resolve(mapOf("ok" to true))
             }
         }
 
@@ -467,7 +486,10 @@ class MaglevEngineModule : Module() {
             AsyncFunction("loadUrl") { view: MaglevBrowserView, url: String -> view.loadTyped(url) }
             AsyncFunction("scan") { view: MaglevBrowserView -> view.scan() }
             AsyncFunction("resetFound") { view: MaglevBrowserView, promise: Promise -> view.resetFound(promise) }
-            AsyncFunction("clearData") { view: MaglevBrowserView -> view.clearData() }
+            AsyncFunction("clearData") { view: MaglevBrowserView, options: Map<String, Any?> ->
+                view.clearData(options["cookies"] == true, options["cache"] == true)
+            }
+            AsyncFunction("clearHistoryList") { view: MaglevBrowserView -> view.clearHistoryList() }
 
             OnViewDidUpdateProps { view: MaglevBrowserView -> view.applyProps() }
             OnViewDestroys { view: MaglevBrowserView -> view.destroyBrowser() }
