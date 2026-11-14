@@ -1,7 +1,9 @@
 package com.maglev.engine.browser
 
 import android.annotation.SuppressLint
+import android.content.ActivityNotFoundException
 import android.content.Context
+import android.content.Intent
 import android.content.pm.ActivityInfo
 import android.graphics.Bitmap
 import android.graphics.Color
@@ -38,6 +40,7 @@ import expo.modules.kotlin.Promise
 import expo.modules.kotlin.viewevent.EventDispatcher
 import expo.modules.kotlin.views.ExpoView
 import java.io.ByteArrayInputStream
+import java.net.URISyntaxException
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 
@@ -58,6 +61,10 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
     private val onRefused by EventDispatcher<Map<String, Any?>>()
     private val onCrashed by EventDispatcher<Map<String, Any?>>()
     private val onPageNote by EventDispatcher<Map<String, Any?>>()
+    private val onNewWindow by EventDispatcher<Map<String, Any?>>()
+    private val onPopupRequest by EventDispatcher<Map<String, Any?>>()
+    private val onPopupBlocked by EventDispatcher<Map<String, Any?>>()
+    private val onLongPress by EventDispatcher<Map<String, Any?>>()
 
     override val shouldUseAndroidLayout: Boolean = true
 
@@ -82,6 +89,17 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
     private var desktopMode = false
     private var pendingUrl: String? = null
     private var requestedUrl: String? = null
+
+    // 24.10. Main thread only.
+    private var active = true
+    private var popupPolicy = "ask"
+    private var popupAllowHosts: List<String> = emptyList()
+    // The current document has finished loading at least once. Redirects during its first load are part of the page.
+    private var loadedOnce = false
+    // The last main-frame navigation was a server redirect: it continues the load, so it does not start a new document.
+    private var redirectInFlight = false
+    // One-shot allowance for the exact URL followRedirect loads, so the redirect rule does not hold it again.
+    private var followAllowUrl: String? = null
 
     // Per page load.
     @Volatile private var pageHost: String? = null
@@ -139,6 +157,34 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
         if (!destroyed && webView.url != null) webView.reload()
     }
 
+    fun setActive(value: Boolean) {
+        if (value == active) return
+        active = value
+        if (destroyed) return
+        applyActive()
+    }
+
+    /** Hidden tab: stop the WebView's rendering and silence media. Timers are never paused: that would stall every WebView in the process. */
+    private fun applyActive() {
+        if (active) {
+            webView.onResume()
+        } else {
+            webView.onPause()
+            webView.evaluateJavascript(PAUSE_MEDIA_JS, null)
+        }
+    }
+
+    fun setPopupPolicy(value: String) {
+        popupPolicy = when (value) {
+            "block", "allow" -> value
+            else -> "ask"
+        }
+    }
+
+    fun setPopupAllowHosts(hosts: List<String>) {
+        popupAllowHosts = hosts.map { it.trim().lowercase().trimStart('.') }.filter { it.isNotEmpty() }
+    }
+
     /** Called after all props of an update are set. Loads the url prop when it changed. */
     fun applyProps() {
         val u = pendingUrl ?: return
@@ -185,7 +231,82 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
         }
         typedUrl = url
         typedHost = uri.host?.lowercase()
+        // A new typed load: its own script redirects are part of the page until it has finished once.
+        loadedOnce = false
+        redirectInFlight = false
         webView.loadUrl(url)
+    }
+
+    /**
+     * 24.10: loads a held redirect the user said yes to. Not typed, so the 24.5 refusals (scheme, blocked host, LAN)
+     * still apply. The redirect rule does not hold this exact URL again.
+     */
+    fun followRedirect(raw: String, promise: Promise) {
+        if (destroyed) {
+            promise.reject("VIEW_GONE", "The browser was closed.", null)
+            return
+        }
+        val url = raw.trim()
+        val reason = mainFrameRefusal(Uri.parse(url))
+        if (reason != null) {
+            refuse(url, reason)
+        } else {
+            followAllowUrl = url
+            webView.loadUrl(url)
+        }
+        promise.resolve(null)
+    }
+
+    /**
+     * 24.10: opens an intent:, market:, tel:, mailto: or custom-scheme URL in another app. Only called after the user
+     * said yes (or the policy allows). Never throws: a failure is `opened:false`.
+     */
+    fun openApp(raw: String, promise: Promise) {
+        if (destroyed) {
+            promise.reject("VIEW_GONE", "The browser was closed.", null)
+            return
+        }
+        val result = startApp(raw.trim())
+        promise.resolve(mapOf("opened" to result.first, "fallbackUrl" to result.second))
+    }
+
+    /** Returns (opened, fallbackUrl). Never throws. */
+    private fun startApp(url: String): Pair<Boolean, String?> {
+        var fallback: String? = null
+        try {
+            val scheme = Uri.parse(url).scheme?.lowercase() ?: return Pair(false, null)
+            if (scheme in NEVER_START_SCHEMES) return Pair(false, null)
+            val intent: Intent
+            if (scheme == "intent") {
+                intent = try {
+                    Intent.parseUri(url, Intent.URI_INTENT_SCHEME)
+                } catch (_: URISyntaxException) {
+                    return Pair(false, null)
+                }
+                fallback = intent.getStringExtra("browser_fallback_url")?.takeIf { isWebUrl(it) }
+                // The page chose these fields: drop the ones that could aim the intent at a specific component.
+                intent.addCategory(Intent.CATEGORY_BROWSABLE)
+                intent.component = null
+                intent.selector = null
+                val dataScheme = intent.data?.scheme?.lowercase()
+                if (dataScheme != null && dataScheme in DANGEROUS_SCHEMES) return Pair(false, fallback)
+            } else {
+                intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
+                intent.addCategory(Intent.CATEGORY_BROWSABLE)
+            }
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            context.startActivity(intent)
+            return Pair(true, null)
+        } catch (_: ActivityNotFoundException) {
+            return Pair(false, fallback)
+        } catch (_: Throwable) {
+            return Pair(false, fallback)
+        }
+    }
+
+    private fun isWebUrl(u: String): Boolean {
+        val s = Uri.parse(u).scheme?.lowercase()
+        return s == "http" || s == "https"
     }
 
     fun scan() {
@@ -253,7 +374,8 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
         s.allowFileAccess = false
         s.allowContentAccess = false
         s.setSupportMultipleWindows(true)
-        s.javaScriptCanOpenWindowsAutomatically = false
+        // 24.10: untapped window.open must reach onCreateWindow so the view can decide (ask, block or allow).
+        s.javaScriptCanOpenWindowsAutomatically = true
         s.mediaPlaybackRequiresUserGesture = true
         s.setSupportZoom(true)
         s.builtInZoomControls = true
@@ -274,6 +396,8 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
         w.setDownloadListener { url, userAgent, contentDisposition, mimeType, contentLength ->
             onDownload(url, userAgent, contentDisposition, mimeType, contentLength)
         }
+        // 24.10: long press on a link or image opens the screen's menu instead of the system one.
+        w.setOnLongClickListener { v -> onLongPressed(v as WebView) }
         // Let the page scroll inside React Native parents.
         w.setOnTouchListener { _, _ ->
             requestDisallowInterceptTouchEvent(true)
@@ -311,6 +435,9 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
         resetPageState()
         webView = createWebView()
         addView(webView, ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+        loadedOnce = false
+        redirectInFlight = false
+        if (!active) webView.onPause()
         loading = false
         progress = 0
         onCrashed(emptyMap())
@@ -474,6 +601,130 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
         return null
     }
 
+    private fun currentHost(): String? = webView.url?.let { Uri.parse(it).host } ?: pageHost
+
+    private fun hostAllowsPopups(host: String?): Boolean {
+        if (host == null) return false
+        val h = host.lowercase()
+        return popupAllowHosts.any { h == it || h.endsWith(".$it") }
+    }
+
+    private fun decide(gesture: Boolean, kind: String): String =
+        PopupRules.decide(popupPolicy, hostAllowsPopups(currentHost() ?: pageHost), gesture, kind)
+
+    private fun sourceUrl(): String = webView.url ?: curUrl
+
+    private fun emitBlocked(url: String, kind: String) {
+        onPopupBlocked(mapOf("url" to url, "kind" to kind))
+    }
+
+    private fun emitRequest(url: String, kind: String) {
+        onPopupRequest(mapOf("url" to url, "kind" to kind, "sourceUrl" to sourceUrl()))
+    }
+
+    /** True for a scheme that hands the URL to another app (24.10), as opposed to web, magnet and the always-refused ones. */
+    private fun isAppScheme(scheme: String?): Boolean =
+        scheme != null && scheme != "http" && scheme != "https" && scheme != "about" && scheme != "magnet" &&
+            scheme !in DANGEROUS_SCHEMES
+
+    /** A main-frame navigation to another app's scheme (24.10 "Other apps"). */
+    private fun handleAppNavigation(url: String, gesture: Boolean) {
+        when (decide(gesture, "app")) {
+            PopupRules.OPEN -> {
+                val r = startApp(url)
+                // Same as the card's Open: an app that isn't there falls back to the page the link offers.
+                val fb = r.second
+                if (!r.first && fb != null && mainFrameRefusal(Uri.parse(fb)) == null) {
+                    followAllowUrl = fb
+                    webView.loadUrl(fb)
+                }
+            }
+            PopupRules.ASK -> emitRequest(url, "app")
+            else -> emitBlocked(url, "app")
+        }
+    }
+
+    /** A new window the page asked for (24.10 onCreateWindow rules). Main thread. */
+    private fun handleNewWindow(raw: String, gesture: Boolean) {
+        val url = raw.trim()
+        if (url.isEmpty() || url.equals("about:blank", ignoreCase = true)) return
+        val reason = mainFrameRefusal(Uri.parse(url))
+        if (reason != null) {
+            refuse(url, reason)
+            return
+        }
+        if (gesture) {
+            onNewWindow(mapOf("url" to url, "gesture" to true))
+            return
+        }
+        when (decide(false, "window")) {
+            PopupRules.OPEN -> onNewWindow(mapOf("url" to url, "gesture" to false))
+            PopupRules.ASK -> emitRequest(url, "window")
+            else -> emitBlocked(url, "window")
+        }
+    }
+
+    /** Long press on a link or image (24.10). Returns true only when it emits, which suppresses the system menu. */
+    private fun onLongPressed(w: WebView): Boolean {
+        if (destroyed || !active || w !== webView) return false
+        val hit = w.hitTestResult
+        val extra = hit.extra
+        when (hit.type) {
+            WebView.HitTestResult.SRC_ANCHOR_TYPE -> {
+                if (!isLongPressUrl(extra, allowMagnet = true)) return false
+                requestLinkDetails(w, "link", extra, null)
+                return true
+            }
+            WebView.HitTestResult.IMAGE_TYPE -> {
+                if (!isLongPressUrl(extra, allowMagnet = false)) return false
+                emitLongPress("image", null, extra, null)
+                return true
+            }
+            WebView.HitTestResult.SRC_IMAGE_ANCHOR_TYPE -> {
+                if (!isLongPressUrl(extra, allowMagnet = false)) return false
+                requestLinkDetails(w, "imageLink", null, extra)
+                return true
+            }
+            else -> return false
+        }
+    }
+
+    private fun isLongPressUrl(u: String?, allowMagnet: Boolean): Boolean {
+        if (u.isNullOrBlank()) return false
+        val s = Uri.parse(u).scheme?.lowercase()
+        return s == "http" || s == "https" || (allowMagnet && s == "magnet")
+    }
+
+    /**
+     * Asks the WebView for the focused link's url and title (requestFocusNodeHref, "url" key). Emits once: from the
+     * answer, or after 400 ms from what the hit test already gave.
+     */
+    private fun requestLinkDetails(w: WebView, kind: String, fallbackUrl: String?, imageUrl: String?) {
+        val emitted = AtomicBoolean(false)
+        fun emit(url: String?, title: String?, src: String?) {
+            if (!emitted.compareAndSet(false, true) || destroyed) return
+            val href = url?.takeIf { isLongPressUrl(it, allowMagnet = true) } ?: fallbackUrl?.takeIf { isLongPressUrl(it, allowMagnet = true) }
+            val image = imageUrl ?: src?.takeIf { isLongPressUrl(it, allowMagnet = false) }
+            val text = title?.trim()?.takeIf { it.isNotEmpty() }
+            when {
+                kind == "imageLink" && href == null -> if (image != null) emitLongPress("image", null, image, null)
+                kind == "imageLink" -> emitLongPress("imageLink", href, image, text)
+                href != null -> emitLongPress("link", href, null, text)
+            }
+        }
+        val reply = Handler(Looper.getMainLooper()) { m ->
+            val data = m.data
+            emit(data?.getString("url"), data?.getString("title"), data?.getString("src"))
+            true
+        }
+        mainHandler.postDelayed({ emit(null, null, null) }, 400L)
+        w.requestFocusNodeHref(reply.obtainMessage())
+    }
+
+    private fun emitLongPress(kind: String, url: String?, imageUrl: String?, text: String?) {
+        onLongPress(mapOf("kind" to kind, "url" to url, "imageUrl" to imageUrl, "text" to text))
+    }
+
     // endregion
 
     // region Clients
@@ -510,9 +761,30 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
                 // Sub-frames: only web pages load; anything else is refused, but never reported as a refusal of the page.
                 return scheme != "http" && scheme != "https" && uri.toString() != "about:blank"
             }
+            redirectInFlight = request.isRedirect
+            if (isAppScheme(scheme)) {
+                redirectInFlight = false
+                handleAppNavigation(uri.toString(), request.hasGesture())
+                return true
+            }
             val reason = mainFrameRefusal(uri)
             if (reason != null) {
+                redirectInFlight = false
                 refuse(uri.toString(), reason)
+                return true
+            }
+            // 24.10 held redirect: untapped, not a server redirect, after the document finished once, to another site.
+            val allowedOnce = followAllowUrl != null && followAllowUrl == uri.toString()
+            if (allowedOnce) followAllowUrl = null
+            val held = !allowedOnce && scheme != "about" && !request.hasGesture() && !request.isRedirect && loadedOnce &&
+                !RegistrableHost.same(uri.host, currentHost())
+            if (held) {
+                when (decide(false, "redirect")) {
+                    PopupRules.OPEN -> return false
+                    PopupRules.ASK -> emitRequest(uri.toString(), "redirect")
+                    else -> emitBlocked(uri.toString(), "redirect")
+                }
+                redirectInFlight = false
                 return true
             }
             return false
@@ -522,6 +794,10 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
             if (destroyed) return
             pageHost = url?.let { Uri.parse(it).host?.lowercase() }
             docUrl = url
+            // A new top-level load starts a new document; a server redirect hop continues the current load.
+            if (!redirectInFlight) loadedOnce = false
+            redirectInFlight = false
+            followAllowUrl = null
             mainHandler.removeCallbacks(scanRunnable)
             scanAfterLoad = false
             resetPageState()
@@ -541,6 +817,7 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
             if (destroyed) return
             loading = false
             progress = 100
+            loadedOnce = true
             injectScripts(view)
             if (scanAfterLoad) {
                 scanAfterLoad = false
@@ -616,7 +893,7 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
                 mainHandler.post {
                     capture.stopLoading()
                     capture.destroy()
-                    if (!destroyed) openPopupTarget(url, isUserGesture)
+                    if (!destroyed) handleNewWindow(url, isUserGesture)
                 }
             }
             capture.webViewClient = object : WebViewClient() {
@@ -680,22 +957,6 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
             filePathCallback.onReceiveValue(null)
             return true
         }
-    }
-
-    /** A popup the page opened: loads in this view only with a user gesture and when the target would load anyway. */
-    private fun openPopupTarget(url: String, gesture: Boolean) {
-        val uri = Uri.parse(url)
-        if (!gesture) {
-            refuse(url, "popup")
-            return
-        }
-        val reason = mainFrameRefusal(uri)
-        if (reason != null) {
-            refuse(url, reason)
-            return
-        }
-        // Not typed: the popup target gets no special allowance.
-        webView.loadUrl(url)
     }
 
     private fun emptyResponse() =
@@ -773,5 +1034,11 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
     companion object {
         /** Found items and the blocked count go out at most this often (docs/NATIVE_CONTRACT.md section 24.2). */
         const val FLUSH_MS = 250L
+
+        /** Never handed to another app by openApp (24.10); web pages and about: are not "apps" either. */
+        private val DANGEROUS_SCHEMES = setOf("file", "content", "javascript", "data", "blob")
+        private val NEVER_START_SCHEMES = DANGEROUS_SCHEMES + setOf("http", "https", "about")
+
+        private const val PAUSE_MEDIA_JS = "document.querySelectorAll('video,audio').forEach(function(m){m.pause()})"
     }
 }

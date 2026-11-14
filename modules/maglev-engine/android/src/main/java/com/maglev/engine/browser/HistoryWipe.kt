@@ -30,6 +30,15 @@ object HistoryWipe {
             val db = SQLiteDatabase.openDatabase(file.path, null, SQLiteDatabase.OPEN_READWRITE)
             try {
                 db.execSQL("DELETE FROM pages")
+                // 24.10: tabs are not restored after a wipe. An older database has no tabs table, so each statement has its own try.
+                try {
+                    db.execSQL("DELETE FROM tabs")
+                } catch (_: Throwable) {
+                }
+                try {
+                    db.execSQL("DELETE FROM meta WHERE key='active_tab'")
+                } catch (_: Throwable) {
+                }
             } finally {
                 db.close()
             }

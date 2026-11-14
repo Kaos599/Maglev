@@ -472,12 +472,16 @@ class MaglevEngineModule : Module() {
         }
 
         View(MaglevBrowserView::class) {
-            Events("onPage", "onFound", "onBlockedCount", "onDownloadRequest", "onMagnet", "onRefused", "onCrashed", "onPageNote")
+            Events("onPage", "onFound", "onBlockedCount", "onDownloadRequest", "onMagnet", "onRefused", "onCrashed", "onPageNote",
+                "onNewWindow", "onPopupRequest", "onPopupBlocked", "onLongPress")
 
             Prop("url") { view: MaglevBrowserView, url: String -> view.setUrl(url) }
             Prop("adBlock") { view: MaglevBrowserView, enabled: Boolean -> view.setAdBlock(enabled) }
             Prop("allowAdsHosts") { view: MaglevBrowserView, hosts: List<String> -> view.setAllowAdsHosts(hosts) }
             Prop("desktopMode") { view: MaglevBrowserView, enabled: Boolean -> view.setDesktopMode(enabled) }
+            Prop("active") { view: MaglevBrowserView, value: Boolean -> view.setActive(value) }
+            Prop("popupPolicy") { view: MaglevBrowserView, value: String -> view.setPopupPolicy(value) }
+            Prop("popupAllowHosts") { view: MaglevBrowserView, hosts: List<String> -> view.setPopupAllowHosts(hosts) }
 
             AsyncFunction("goBack") { view: MaglevBrowserView -> view.goBack() }
             AsyncFunction("goForward") { view: MaglevBrowserView -> view.goForward() }
@@ -489,6 +493,8 @@ class MaglevEngineModule : Module() {
             AsyncFunction("clearData") { view: MaglevBrowserView, options: Map<String, Any?> ->
                 view.clearData(options["cookies"] == true, options["cache"] == true)
             }
+            AsyncFunction("followRedirect") { view: MaglevBrowserView, url: String, promise: Promise -> view.followRedirect(url, promise) }
+            AsyncFunction("openApp") { view: MaglevBrowserView, url: String, promise: Promise -> view.openApp(url, promise) }
             AsyncFunction("clearHistoryList") { view: MaglevBrowserView -> view.clearHistoryList() }
 
             OnViewDidUpdateProps { view: MaglevBrowserView -> view.applyProps() }
