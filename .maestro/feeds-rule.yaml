@@ -1,0 +1,45 @@
+# Auto-download rule: follow the same archive.org feed, create a rule, check it is listed, delete it, remove the feed.
+appId: com.maglev
+name: feeds-rule
+---
+- runFlow: subflows/onboard-if-needed.yaml
+- tapOn: "Feeds"                                    # from app/(tabs)/_layout.tsx:170
+- tapOn: "New feed"                                 # from app/(tabs)/feeds.tsx:337
+- inputText: "https://archive.org/services/collection-rss.php?collection=opensource_movies"
+- tapOn: "Add feed"                                 # from components/feeds/NewFeedSheet.tsx:65
+- extendedWaitUntil:
+    visible: "archive.org"                          # from app/(tabs)/feeds.tsx:358
+    timeout: 90000
+- tapOn: "Auto-download rules"                      # from app/(tabs)/feeds.tsx:347 (button label)
+- extendedWaitUntil:
+    visible: "Auto-download"                        # from app/settings/feeds.tsx:101 (SettingsPage title)
+    timeout: 15000
+- tapOn: "Add rule"                                 # from app/settings/feeds.tsx:146
+- extendedWaitUntil:
+    visible: "New rule"                             # from components/feeds/RuleEditorSheet.tsx:54 (sheet title)
+    timeout: 10000
+- tapOn: "Rule name"                                # from components/feeds/RuleEditorSheet.tsx:64 (accessibilityLabel)
+- inputText: "Maestro rule"
+- tapOn: "Words the title must include"              # from components/feeds/RuleEditorSheet.tsx:85 (accessibilityLabel)
+- inputText: "debian"
+- tapOn: "Save"                                     # from components/feeds/RuleEditorSheet.tsx:155 (button label)
+- extendedWaitUntil:
+    visible: "Maestro rule"                         # from app/settings/feeds.tsx:137 (rule row title)
+    timeout: 15000
+- assertVisible: "debian.*"                         # from app/settings/feeds.tsx:20 (ruleSubtitle: "<include> · <feeds>")
+- tapOn: "Maestro rule"                             # from app/settings/feeds.tsx:140 (row onPress opens the editor)
+- extendedWaitUntil:
+    visible: "Edit rule"                            # from components/feeds/RuleEditorSheet.tsx:54
+    timeout: 10000
+- tapOn: "Delete"                                   # from components/feeds/RuleEditorSheet.tsx:151 (button label)
+- extendedWaitUntil:
+    notVisible: "Maestro rule"                      # from app/settings/feeds.tsx:137: rule gone
+    timeout: 10000
+- back
+- tapOn: "Remove feed"                              # from app/(tabs)/feeds.tsx:360 (feed bar button)
+- tapOn:
+    text: "Remove feed"                             # from app/(tabs)/feeds.tsx:281 (sheet confirm); second match, UNVERIFIED on device
+    index: 1
+- extendedWaitUntil:
+    visible: "No feeds yet"                         # from constants/copy.ts:227
+    timeout: 10000

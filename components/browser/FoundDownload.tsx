@@ -6,13 +6,14 @@ import { useMaglevEngine } from '../../context/EngineContext';
 import { ThemeColors, radius, spacing, type } from '../../constants/theme';
 import { formatBytes } from '../../constants/format';
 import { haptic } from '../../constants/haptics';
-import { banners, mobileDataLine, notices } from '../../constants/copy';
+import { banners, foundTray, mobileDataLine, notices } from '../../constants/copy';
 import { probeErrorView } from '../../utils/downloadCopy';
 import { useDownloadAdmission } from '../../utils/useDownloadAdmission';
 import { hostOf } from '../../utils/browserUrl';
 import { Banner, Button, Sheet } from '../ui';
 import { useSettings } from '../../context/SettingsContext';
-import { SaveToRow } from './SaveToRow';
+import { SaveToChoice } from './SaveToChoice';
+import { saveFolder } from './saveTo';
 
 /** A file the browser found, or one a page offered as a download. */
 export interface DownloadTarget {
@@ -39,7 +40,7 @@ export async function downloadHeaders(t: Pick<DownloadTarget, 'url' | 'pageUrl' 
 }
 
 /** Name, size and folder for one file, then Start. Same checks as Add download (probe, free space, admission). */
-export function FoundDownloadSheet({ target, onClose }: { target: DownloadTarget | null; onClose: () => void }) {
+export function FoundDownloadSheet({ target, onClose, onView }: { target: DownloadTarget | null; onClose: () => void; /** Opens the new download in Transfers (the View action on the notice). */ onView?: (id: string) => void }) {
   const { colors } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const { probeUrl, startDownload, showNotice, onMeteredNetwork } = useMaglevEngine();
@@ -53,6 +54,8 @@ export function FoundDownloadSheet({ target, onClose }: { target: DownloadTarget
   const [probe, setProbe] = useState<UrlProbe | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [tries, setTries] = useState(0);
+  // null = the default folder. Else the subfolder name typed for this download only.
+  const [sub, setSub] = useState<string | null>(null);
   const token = useRef(0);
 
   const url = target?.url ?? null;
@@ -63,6 +66,7 @@ export function FoundDownloadSheet({ target, onClose }: { target: DownloadTarget
     setProbe(null);
     setMessage(null);
     setName(target.name);
+    setSub(null);
     void (async () => {
       const headers = await downloadHeaders(target);
       const res = await probeUrl(url, { headers });
@@ -86,6 +90,9 @@ export function FoundDownloadSheet({ target, onClose }: { target: DownloadTarget
   if (!t) return null;
   const mobileNote = phase === 'ready' ? mobileDataLine(onMeteredNetwork, settings.network.wifiOnly, size) : null;
   const adding = phase === 'adding';
+  const root = settings.storage.defaultPath;
+  const folder = sub != null ? saveFolder(root, sub) : null;
+  const folderMissing = sub != null && folder == null;
 
   const start = async () => {
     setPhase('adding');
@@ -93,10 +100,10 @@ export function FoundDownloadSheet({ target, onClose }: { target: DownloadTarget
     const clean = sanitizeFileName(name.trim());
     const edited = name.trim() !== '' && clean !== (probe?.name ?? t.name);
     const headers = await downloadHeaders(t);
-    const res = await startDownload(t.url, { headers, ...(edited ? { name: clean } : {}) });
+    const res = await startDownload(t.url, { headers, ...(edited ? { name: clean } : {}), ...(folder ? { folder } : {}) });
     if (res.ok) {
       haptic('commit');
-      showNotice({ message: notices.browser.addedToTransfers }, 3000);
+      showNotice({ message: notices.browser.addedToTransfers, actionLabel: foundTray.view, onAction: () => onView?.(res.id) }, 5000);
       onClose();
       return;
     }
@@ -128,7 +135,7 @@ export function FoundDownloadSheet({ target, onClose }: { target: DownloadTarget
           accessibilityLabel="File name"
         />
         <Text style={styles.meta}>{phase === 'probing' ? 'Checking the file' : size != null ? formatBytes(size) : 'Size unknown'}</Text>
-        <SaveToRow disabled={adding} onError={setMessage} />
+        <SaveToChoice value={sub} onChange={setSub} root={root} disabled={adding} />
         {mobileNote ? <Banner tone="info" title={mobileNote} /> : null}
         {t.installer ? <Banner tone="warning" title={banners.browser.installer.title} body={banners.browser.installer.body} /> : null}
         {doesntFit ? <Banner tone="danger" title={banners.addDownload.notEnoughSpace.title} body={banners.addDownload.notEnoughSpace.body} /> : null}
@@ -138,7 +145,7 @@ export function FoundDownloadSheet({ target, onClose }: { target: DownloadTarget
           {phase === 'error' ? (
             <Button label="Try again" onPress={() => setTries((n) => n + 1)} />
           ) : (
-            <Button label="Start" loading={adding} disabled={phase !== 'ready' || doesntFit} onPress={() => void start()} />
+            <Button label="Start" loading={adding} disabled={phase !== 'ready' || doesntFit || folderMissing} onPress={() => void start()} />
           )}
         </View>
       </View>

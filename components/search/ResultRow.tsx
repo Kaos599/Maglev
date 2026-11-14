@@ -6,6 +6,7 @@ import { formatBytes } from '../../constants/format';
 import { PixelIcon, type PixelIconName } from '../PixelIcon';
 import { MEDIA_WORD, mediaKind, type MediaKind } from '../../utils/search/mediaType';
 import { IconButton } from '../ui';
+import { useSearchPrefs } from '../../utils/prefs/search';
 import { isLowShare, sharingBadge } from './sharing';
 
 export interface ResultRowProps {
@@ -46,6 +47,7 @@ const KIND_ICON: Record<MediaKind, PixelIconName> = {
 function ResultRowImpl({ name, category, sizeBytes, seeders, leechers, age, via, risky, added, busy, onAdd, onOpen, onFollow }: ResultRowProps) {
   const { colors } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
+  const [{ resultNameLines }] = useSearchPrefs();
   const size = sizeBytes ? formatBytes(sizeBytes) : '—';
   const kind = mediaKind({ name, category });
   const seedWords = seeders === undefined ? 'seeders unknown' : `${seeders.toLocaleString('en-US')} seeding`;
@@ -59,7 +61,7 @@ function ResultRowImpl({ name, category, sizeBytes, seeders, leechers, age, via,
           <PixelIcon name={KIND_ICON[kind]} size={20} color={colors.text} />
         </View>
         <View style={styles.text}>
-          <Text style={styles.name} numberOfLines={1}>
+          <Text style={styles.name} numberOfLines={resultNameLines === 0 ? undefined : resultNameLines}>
             {name}
           </Text>
           <View style={styles.meta}>

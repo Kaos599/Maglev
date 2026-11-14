@@ -1,0 +1,49 @@
+# Open a torrent's detail screen, check its sections, open one file's sheet, then go back.
+# Sections come from app/torrent/[id].tsx:78-83 (TABS: Files, Peers, Trackers, Pieces) and the stat labels at :820-830.
+appId: com.maglev
+name: transfers-detail
+---
+- runFlow: subflows/onboard-if-needed.yaml
+- openLink: "magnet:?xt=urn:btih:08ada5a7a6183aae1e09d831df6748d566095a10&dn=Sintel&tr=udp%3A%2F%2Ftracker.opentrackr.org%3A1337%2Fannounce&tr=udp%3A%2F%2Fopen.tracker.cl%3A1337%2Fannounce&tr=udp%3A%2F%2Ftracker.openbittorrent.com%3A6969%2Fannounce&tr=udp%3A%2F%2Fexplodie.org%3A6969%2Fannounce"
+- extendedWaitUntil:
+    visible: "Start download.*"
+    timeout: 120000
+- tapOn: "Start download.*"
+# from app/add-torrent.tsx:499
+- extendedWaitUntil:
+    visible:
+      id: "transfer-card"
+    timeout: 60000
+# testID "transfer-card": components/TransferCard.tsx:179
+- tapOn:
+    id: "transfer-card"
+- extendedWaitUntil:
+    visible: "Detail section"
+    timeout: 60000
+# SegmentedControl accessibilityLabel: app/torrent/[id].tsx:851
+- assertVisible: "Files"
+- assertVisible: "Peers"
+- assertVisible: "Trackers"
+- assertVisible: "Pieces"
+# Tab labels: app/torrent/[id].tsx:78-83, rendered by components/ui SegmentedControl (accessibilityLabel = label)
+- assertVisible: "Download"
+- assertVisible: "Size"
+# Stat grid labels: app/torrent/[id].tsx:820-830 (components/detail/StatGrid.tsx)
+- tapOn: "Files"
+- extendedWaitUntil:
+    visible: ".*\\.mp4, .*"
+    timeout: 90000
+# File row label: `${file.path}, ${size}, ${pct} percent, ${priority}` (components/detail/FileListRow.tsx:48).
+# The file name Sintel.mp4 is taken from the torrent's file list; not verified on a device.
+- tapOn: ".*\\.mp4, .*"
+- assertVisible: "File priority"
+# Priority sheet title for one file: app/torrent/[id].tsx:974
+- tapOn: "Close"
+# Sheet close: components/ui/Sheet.tsx:164
+- tapOn: "Go back"
+# Screen back button: components/ui/Screen.tsx:38
+- extendedWaitUntil:
+    visible:
+      id: "transfer-card"
+    timeout: 20000
+- runFlow: subflows/remove-all-with-files.yaml

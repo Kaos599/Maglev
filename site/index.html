@@ -66,7 +66,7 @@
         "height": 630
       },
       "datePublished": "2026-11-12",
-      "dateModified": "2026-11-13",
+      "dateModified": "2026-11-14",
       "author": {
         "@id": "https://harshdayal.dev/#person"
       },
@@ -94,9 +94,9 @@
       "applicationCategory": "UtilitiesApplication",
       "applicationSubCategory": "Download manager",
       "operatingSystem": "Android 7.0 or later",
-      "softwareVersion": "0.15",
+      "softwareVersion": "0.20",
       "datePublished": "2026-11-12",
-      "dateModified": "2026-11-13",
+      "dateModified": "2026-11-14",
       "offers": {
         "@type": "Offer",
         "price": "0",
@@ -320,7 +320,7 @@
       "name": "Where can I find torrents to download?",
       "acceptedAnswer": {
         "@type": "Answer",
-        "text": "In Maglev's Search tab. One search asks up to 40 built-in public sources, such as Knaben, Torrents-CSV, Internet Archive, Nyaa, YTS, EZTV and 1337x, and merges results that point to the same torrent. Results from sources known for fake uploads carry a warning. You can also add your own Jackett or Prowlarr indexer."
+        "text": "In Maglev's Search tab. One search asks up to 40 built-in public torrent indexes, and merges results that point to the same torrent. Results from sources known for fake uploads carry a warning. You can also add your own Jackett or Prowlarr indexer."
       }
     },
     {
@@ -484,7 +484,7 @@
         <a class="btn" href="https://apps.obtainium.imranr.dev/redirect?r=obtainium://add/https://github.com/Kaos599/Maglev" rel="noopener"><svg class="px" viewBox="0 0 24 24" width="24" height="24" aria-hidden="true" focusable="false"><path fill="currentColor" d="M16 4h2v6h-2zm-2-2h2v2h-2zm0 2h2v8h-2zM4 8H2v5h2zM4 6h16v2H4zm4 14H6v-6h2zm2 2H8v-2h2zm0-2H8v-8h2zm10-4h2v-5h-2zM20 18H4v-2h16z"/></svg><span>Get updates with Obtainium</span></a>
       </div>
       <p class="cta-note">On the release page, tap the file ending in <span class="file">arm64-v8a.apk</span>. Not sure? <a href="#install">See which file to pick</a>.</p>
-      <p class="meta">v0.15 beta · updated <time datetime="2026-11-13">13 November 2026</time> · by <a href="https://harshdayal.dev" rel="author">Harsh Dayal</a></p>
+      <p class="meta">v0.20 beta · updated <time datetime="2026-11-14">14 November 2026</time> · by <a href="https://harshdayal.dev" rel="author">Harsh Dayal</a></p>
       <ul class="facts" aria-label="At a glance">
         <li>Free</li><li>No ads</li><li>Open source, GPL-3.0</li><li>Android 7 and up</li>
       </ul>
@@ -507,6 +507,8 @@
         <p>Torrents, ordinary links and saved streams sit in the same list, each with its size, progress, speed and time left, such as 412 MB of 1.2 GB. A queue decides how many run at once. Pause, resume and retry survive a restart, and downloads keep going with the screen off.</p>
         <ul class="specs">
           <li>One + button for a link you paste or type, a .torrent file, Search or the browser</li>
+          <li>Share a magnet, a .torrent file or a file link to Maglev from any app, or open .torrent files from your file manager</li>
+          <li>Play a video while it downloads, from its card or its screen</li>
           <li>Open any download's folder in one tap, and share a finished file</li>
           <li>On mobile data, the add screen shows the size before you start</li>
           <li>Pause all, Resume all and Shut down from the notification</li>
@@ -561,8 +563,9 @@
     <article class="ft flip" id="search">
       <div class="ft-text">
         <h3>One search, many sources, one list</h3>
-        <p>Type once and Maglev asks public sources such as Knaben, Torrents-CSV, Internet Archive, Nyaa, YTS, EZTV and 1337x at the same time. Results that point to the same torrent are merged, so you see one row with every source that has it.</p>
+        <p>Type once and Maglev asks up to 40 built-in public torrent indexes at the same time, including ones you can switch off by category. Results that point to the same torrent are merged, so you see one row with every source that has it.</p>
         <ul class="specs">
+          <li>Filter results by category, and sort by seeders, size or date</li>
           <li>40 built-in sources; choose which answer each category</li>
           <li>Add your own Jackett or Prowlarr indexer</li>
           <li>Sources known for fake uploads carry a warning</li>
@@ -583,6 +586,7 @@
         <ul class="specs">
           <li>Works with any RSS feed</li>
           <li>Rules decide what gets added</li>
+          <li>Watch for a title: Maglev checks every 1, 6 or 24 hours (Wi-Fi only unless you allow mobile data) and tells you when something new turns up</li>
         </ul>
       </div>
       <figure class="phone">
@@ -600,6 +604,8 @@
         <ul class="specs">
           <li>Runs on your own <a href="https://openrouter.ai" rel="noopener">OpenRouter</a> key, kept in the phone's secure storage</li>
           <li>Can use free models</li>
+          <li>Keeps working when you switch tabs or leave the app</li>
+          <li>Chats are saved and come back after a restart</li>
           <li>Turn it off and its tab disappears</li>
         </ul>
       </div>
@@ -625,6 +631,8 @@
         <li>Pause all, Resume all and Shut down from the notification, and a Quick Settings tile</li>
         <li>Files land in Download/Maglev, where any file manager finds them, or in any folder you choose</li>
         <li>Move a torrent's files mid-download, and stream video before it finishes</li>
+        <li>Pauses before the phone runs out of space, keeping 500 MB to 1 GB free, and resumes when space comes back</li>
+        <li>Backup and restore in Settings: your settings, search sources, torrents and downloads in one file. API keys are never included</li>
         <li>No analytics or ads SDKs</li>
       </ul>
     </article>
@@ -783,7 +791,7 @@
     </details>
     <details>
       <summary><span class="q">Where can I find torrents to download?</span><svg class="px chev" viewBox="0 0 24 24" width="24" height="24" aria-hidden="true" focusable="false"><path fill="currentColor" d="M13 16h-2v-2h2v2Zm-2-2H9v-2h2v2Zm4 0h-2v-2h2v2Zm-6-2H7v-2h2v2Zm8 0h-2v-2h2v2ZM7 10H5V8h2v2Zm12 0h-2V8h2v2Z"/></svg></summary>
-      <div class="a"><p>In Maglev's Search tab. One search asks up to 40 built-in public sources, such as Knaben, Torrents-CSV, Internet Archive, Nyaa, YTS, EZTV and 1337x, and merges results that point to the same torrent. Results from sources known for fake uploads carry a warning. You can also add your own Jackett or Prowlarr indexer.</p></div>
+      <div class="a"><p>In Maglev's Search tab. One search asks up to 40 built-in public torrent indexes, and merges results that point to the same torrent. Results from sources known for fake uploads carry a warning. You can also add your own Jackett or Prowlarr indexer.</p></div>
     </details>
     <details>
       <summary><span class="q">Which APK file should I download?</span><svg class="px chev" viewBox="0 0 24 24" width="24" height="24" aria-hidden="true" focusable="false"><path fill="currentColor" d="M13 16h-2v-2h2v2Zm-2-2H9v-2h2v2Zm4 0h-2v-2h2v2Zm-6-2H7v-2h2v2Zm8 0h-2v-2h2v2ZM7 10H5V8h2v2Zm12 0h-2V8h2v2Z"/></svg></summary>
@@ -869,7 +877,7 @@
       <li><a href="https://github.com/Kaos599/Maglev/issues" rel="noopener">Report a bug</a></li>
       <li><a href="https://github.com/Kaos599/Maglev/blob/main/LICENSE" rel="noopener">GPL-3.0 licence</a></li>
     </ul>
-    <p class="fine">Icons are <a href="https://github.com/halfmage/pixelarticons" rel="noopener">Pixelarticons</a> by Gerrit Halfmann (MIT). Fonts are Inter and Silkscreen (SIL Open Font License), served from this site. Maglev v0.15 beta, page updated 13 November 2026.</p>
+    <p class="fine">Icons are <a href="https://github.com/halfmage/pixelarticons" rel="noopener">Pixelarticons</a> by Gerrit Halfmann (MIT). Fonts are Inter and Silkscreen (SIL Open Font License), served from this site. Maglev v0.20 beta, page updated 14 November 2026.</p>
   </div>
 </footer>
 </body>

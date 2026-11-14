@@ -51,6 +51,8 @@
       "text": "Torrents, ordinary links and saved streams sit in the same list, each with its size, progress, speed and time left, such as 412 MB of 1.2 GB. A queue decides how many run at once. Pause, resume and retry survive a restart, and downloads keep going with the screen off.",
       "specs": [
         "One + button for a link you paste or type, a .torrent file, Search or the browser",
+        "Share a magnet, a .torrent file or a file link to Maglev from any app, or open .torrent files from your file manager",
+        "Play a video while it downloads, from its card or its screen",
         "Open any download's folder in one tap, and share a finished file",
         "On mobile data, the add screen shows the size before you start",
         "Pause all, Resume all and Shut down from the notification",
@@ -84,8 +86,9 @@
     {
       "id": "search",
       "title": "One search, many sources, one list",
-      "text": "Type once and Maglev asks public sources such as Knaben, Torrents-CSV, Internet Archive, Nyaa, YTS, EZTV and 1337x at the same time. Results that point to the same torrent are merged, so you see one row with every source that has it.",
+      "text": "Type once and Maglev asks up to 40 built-in public torrent indexes at the same time, including ones you can switch off by category. Results that point to the same torrent are merged, so you see one row with every source that has it.",
       "specs": [
+        "Filter results by category, and sort by seeders, size or date",
         "40 built-in sources; choose which answer each category",
         "Add your own Jackett or Prowlarr indexer",
         "Sources known for fake uploads carry a warning"
@@ -98,7 +101,8 @@
       "text": "Follow a show from Search, or add any RSS feed. When a new item matches your rule, Maglev adds it to your downloads. Items that don't match are left alone.",
       "specs": [
         "Works with any RSS feed",
-        "Rules decide what gets added"
+        "Rules decide what gets added",
+        "Watch for a title: Maglev checks every 1, 6 or 24 hours (Wi-Fi only unless you allow mobile data) and tells you when something new turns up"
       ],
       "screen": "feeds"
     },
@@ -109,6 +113,8 @@
       "specs": [
         "Runs on your own [OpenRouter](https://openrouter.ai) key, kept in the phone's secure storage",
         "Can use free models",
+        "Keeps working when you switch tabs or leave the app",
+        "Chats are saved and come back after a restart",
         "Turn it off and its tab disappears"
       ],
       "screen": "assistant"
@@ -126,6 +132,8 @@
         "Pause all, Resume all and Shut down from the notification, and a Quick Settings tile",
         "Files land in Download/Maglev, where any file manager finds them, or in any folder you choose",
         "Move a torrent's files mid-download, and stream video before it finishes",
+        "Pauses before the phone runs out of space, keeping 500 MB to 1 GB free, and resumes when space comes back",
+        "Backup and restore in Settings: your settings, search sources, torrents and downloads in one file. API keys are never included",
         "No analytics or ads SDKs"
       ]
     }
@@ -205,7 +213,7 @@
     ],
     [
       "Where can I find torrents to download?",
-      "In Maglev's Search tab. One search asks up to 40 built-in public sources, such as Knaben, Torrents-CSV, Internet Archive, Nyaa, YTS, EZTV and 1337x, and merges results that point to the same torrent. Results from sources known for fake uploads carry a warning. You can also add your own Jackett or Prowlarr indexer."
+      "In Maglev's Search tab. One search asks up to 40 built-in public torrent indexes, and merges results that point to the same torrent. Results from sources known for fake uploads carry a warning. You can also add your own Jackett or Prowlarr indexer."
     ],
     [
       "Which APK file should I download?",

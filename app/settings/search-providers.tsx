@@ -28,6 +28,13 @@ const LIMITS = [
   { value: 100, label: '100' },
 ] as const;
 
+const NAME_LINES = [
+  { value: 1, label: '1' },
+  { value: 2, label: '2' },
+  { value: 3, label: '3' },
+  { value: 0, label: 'Full name' },
+] as const;
+
 /** Torznab entries default to every category except adult; the user narrows it per source. */
 const TORZNAB_DEFAULT_CATEGORIES: Category[] = ['movies', 'tv', 'anime', 'music', 'apps', 'games', 'books', 'other'];
 
@@ -235,6 +242,7 @@ export default function SearchProvidersSettings() {
             onChange={(waitSeconds) => update({ waitSeconds })}
           />
           <ChipGroup label="Results per source" options={LIMITS} value={prefs.limit} onChange={(limit) => update({ limit })} />
+          <ChipGroup label="Result name lines" options={NAME_LINES} value={prefs.resultNameLines} onChange={(resultNameLines) => update({ resultNameLines })} />
           <ListRow
             title="Hide dead torrents"
             subtitle="Results no one is sharing"

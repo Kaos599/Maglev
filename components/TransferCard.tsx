@@ -176,6 +176,7 @@ function TransferCardImpl({
         scaleTo={0.99}
         accessibilityRole="button"
         accessibilityLabel={a11yLabel}
+        testID="transfer-card"
         accessibilityActions={a11yActions}
         onAccessibilityAction={(e) => {
           switch (e.nativeEvent.actionName) {

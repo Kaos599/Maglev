@@ -6,7 +6,7 @@ import { useSettings } from '../../context/SettingsContext';
 import { useTheme } from '../../context/ThemeContext';
 import { ThemeColors, accents, radius, spacing, type } from '../../constants/theme';
 import { PixelIcon } from '../../components/PixelIcon';
-import { PressableScale, RadioCard, SegmentedControl } from '../../components/ui';
+import { ListRow, PressableScale, RadioCard, SegmentedControl, Toggle } from '../../components/ui';
 import { Card, Caption, SettingsPage } from '../../components/settings/SettingsParts';
 import { FontStyle, TelemetryDensity } from 'maglev-engine';
 import { fontFamilies, resolveFontStyle } from '../../constants/fontStyles';
@@ -117,6 +117,17 @@ export default function InterfaceSettings() {
             accessibilityLabel="Transfer details"
           />
         </View>
+        <ListRow
+          title="Speed totals"
+          subtitle="Shows total download and upload speed above your transfers, with Pause all."
+          accessory={
+            <Toggle
+              value={a.showSpeedTotals}
+              onValueChange={(showSpeedTotals) => set({ showSpeedTotals })}
+              accessibilityLabel="Speed totals"
+            />
+          }
+        />
       </Card>
       <Card>
         <View style={s.block}>

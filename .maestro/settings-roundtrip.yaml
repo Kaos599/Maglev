@@ -1,0 +1,127 @@
+# Change three settings in three groups, kill the app, relaunch, and check they persisted. Then restore the defaults.
+# Defaults: fontStyle "clean" (constants/copy.ts fontStyleCopy), network.wifiOnly false (modules/maglev-engine/src/MaglevSettings.types.ts:159),
+# bandwidth.downloadPreset "UNLIMITED" (context/SettingsContext.tsx).
+appId: com.maglev
+name: settings-roundtrip
+---
+- runFlow: subflows/onboard-if-needed.yaml
+- tapOn: "Settings"
+# Settings tab label: constants/copy.ts tabsCopy.names.settings
+# 1. Appearance > Font: a RadioCard whose label is "<title>. <description>" (app/settings/interface.tsx:96)
+- tapOn: "Appearance"
+- extendedWaitUntil:
+    visible: "Font"
+    timeout: 20000
+# Group label: app/settings/interface.tsx:85
+- tapOn: "Retro\\..*"
+- assertVisible:
+    text: "Retro\\..*"
+    checked: true
+- back
+# Android back returns to Settings
+# 2. Connection > Network > Wi-Fi only: a Toggle labelled "Wi-Fi only" (app/settings/network.tsx:48).
+#    The row title is also "Wi-Fi only", so index 1 is the switch.
+- scrollUntilVisible:
+    element: "Network"
+    direction: DOWN
+    timeout: 30000
+- tapOn: "Network"
+- extendedWaitUntil:
+    visible: "Wi-Fi only"
+    timeout: 20000
+- tapOn:
+    text: "Wi-Fi only"
+    index: 1
+- assertVisible:
+    text: "Wi-Fi only"
+    index: 1
+    checked: true
+- back
+# 3. Downloads > Speed & queue > Download limit: ChipGroup chip "2 MB/s" (components/settings/SpeedSection.tsx:24-50).
+#    The same chip text is in the Upload limit group, so index 0 is the download group.
+- scrollUntilVisible:
+    element: "Speed & queue"
+    direction: DOWN
+    timeout: 30000
+- tapOn: "Speed & queue"
+- extendedWaitUntil:
+    visible: "Download limit"
+    timeout: 20000
+- tapOn:
+    text: "2 MB/s"
+    index: 0
+- assertVisible:
+    text: "2 MB/s"
+    index: 0
+    selected: true
+- back
+# Kill the process and relaunch. Persistence goes through the settings store, not the screen.
+- stopApp
+- launchApp
+- extendedWaitUntil:
+    visible: "Get started|Transfers"
+    timeout: 45000
+- tapOn: "Settings"
+- tapOn: "Appearance"
+- extendedWaitUntil:
+    visible: "Font"
+    timeout: 20000
+- assertVisible:
+    text: "Retro\\..*"
+    checked: true
+- back
+- scrollUntilVisible:
+    element: "Network"
+    direction: DOWN
+    timeout: 30000
+- tapOn: "Network"
+- extendedWaitUntil:
+    visible: "Wi-Fi only"
+    timeout: 20000
+- assertVisible:
+    text: "Wi-Fi only"
+    index: 1
+    checked: true
+- back
+- scrollUntilVisible:
+    element: "Speed & queue"
+    direction: DOWN
+    timeout: 30000
+- tapOn: "Speed & queue"
+- extendedWaitUntil:
+    visible: "Download limit"
+    timeout: 20000
+- assertVisible:
+    text: "2 MB/s"
+    index: 0
+    selected: true
+# Restore the defaults
+- tapOn:
+    text: "Unlimited"
+    index: 0
+- back
+- scrollUntilVisible:
+    element: "Network"
+    direction: DOWN
+    timeout: 30000
+- tapOn: "Network"
+- extendedWaitUntil:
+    visible: "Wi-Fi only"
+    timeout: 20000
+- tapOn:
+    text: "Wi-Fi only"
+    index: 1
+- assertVisible:
+    text: "Wi-Fi only"
+    index: 1
+    checked: false
+- back
+- back
+- tapOn: "Appearance"
+- extendedWaitUntil:
+    visible: "Font"
+    timeout: 20000
+- tapOn: "Clean\\..*"
+- assertVisible:
+    text: "Clean\\..*"
+    checked: true

@@ -80,7 +80,7 @@ async function main() {
   check('counts', counts.all === 6 && counts.video === 4 && counts.image === 1 && counts.audio === 0);
   check('zero segments hidden, All kept', f.visibleFilters(counts).join() === 'all,video,image,document' && f.visibleFilters(f.countByKind([])).join() === 'all');
   check('video: size desc, then newest', f.sortFound(items, 'video').map((i) => i.id).join() === 'f,c,a,d');
-  check('others: newest first', f.sortFound(items, 'all').map((i) => i.id).join() === 'f,e,d,c,b,a');
+  check('all: size desc for every kind, unknown last, then newest (0.20)', f.sortFound(items, 'all').map((i) => i.id).join() === 'f,c,a,e,d,b');
   check('filter keeps one kind', f.sortFound(items, 'image').length === 1);
   {
     const h = (id, path, over = {}) => mk(id, 'video', { url: 'https://s.test' + path, stream: 'hls', pageUrl: 'https://p.test', ...over });
@@ -91,7 +91,7 @@ async function main() {
     check('a different page or origin is kept', f.hideVariantPlaylists([m, h('o', '/x36/o.m3u8', { pageUrl: 'https://q.test' }), h('p', '/x36/p.m3u8', { url: 'https://other.test/x36/p.m3u8' })]).length === 3);
     check('a playlist in a sibling folder above is kept', f.hideVariantPlaylists([h('a', '/x/a/m.m3u8'), h('b', '/x/b.m3u8')]).length === 2);
     check('a playlist at the server root hides nothing', f.hideVariantPlaylists([h('r', '/master.m3u8'), h('s', '/films/b/master.m3u8')]).length === 2);
-    check('browser wires hideVariantPlaylists', /hideVariantPlaylists\(foundAll\)/.test(read('app/browser.tsx')));
+    check('browser wires hideVariantPlaylists (through visibleFound, which also hides dismissed rows)', /visibleFound\(foundAll/.test(read('app/browser.tsx')) && /hideVariantPlaylists\(items\)/.test(read('components/browser/foundDismiss.ts')));
   }
   check('empty filter falls back to All', f.effectiveFilter('audio', counts) === 'all' && f.effectiveFilter('video', counts) === 'video');
   const merged = f.mergeFound(items, [mk('a', 'video'), mk('z', 'audio')]);

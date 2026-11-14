@@ -1,0 +1,4 @@
+- Search results show the full torrent name over two lines. Pick 1, 2 or 3 lines, or the full name, in Settings → Search sources.
+- In the browser, each file Maglev finds shows its size ("~" for a stream estimate, "—" when the site doesn't say).
+- Clear the browser's file list, or remove one file. The list now shows only the page you're on.
+- Maglev no longer asks for the "draw over other apps" or fingerprint permissions. It never used them.

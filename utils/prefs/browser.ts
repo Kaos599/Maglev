@@ -19,6 +19,8 @@ export interface BrowserPrefs {
   /** https addresses of block lists. */
   blocklistUrls: string[];
   desktopMode: boolean;
+  /** Hide video and audio under 1 MB and images under 50 KB in the found-files list. */
+  hideSmallFiles: boolean;
   searchEngine: SearchEngine;
 }
 
@@ -30,6 +32,7 @@ export function defaultBrowserPrefs(): BrowserPrefs {
     allowAdsHosts: [],
     blocklistUrls: [DEFAULT_BLOCKLIST_URL],
     desktopMode: false,
+    hideSmallFiles: true,
     searchEngine: 'duckduckgo',
   };
 }
@@ -48,6 +51,7 @@ export function normalizeBrowserPrefs(raw: unknown): BrowserPrefs {
     allowAdsHosts: [...new Set(strings(o.allowAdsHosts).map((h) => h.toLowerCase()))],
     blocklistUrls: urls.length ? urls : d.blocklistUrls,
     desktopMode: o.desktopMode === true,
+    hideSmallFiles: o.hideSmallFiles !== false,
     searchEngine: (SEARCH_ENGINES as readonly unknown[]).includes(o.searchEngine) ? (o.searchEngine as SearchEngine) : d.searchEngine,
   };
 }

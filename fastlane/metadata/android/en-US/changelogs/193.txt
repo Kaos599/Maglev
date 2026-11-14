@@ -1,0 +1,7 @@
+- Share a magnet, .torrent file or file link to Maglev from any app and add it with one tap.
+- Watch for a title and get told when something new turns up.
+- Backup and restore in Settings. API keys are never included.
+- Play a video while it downloads.
+- Downloads pause before the phone runs out of space.
+- Assistant chats are saved across restarts.
+- Error screens with Reload instead of closing.
