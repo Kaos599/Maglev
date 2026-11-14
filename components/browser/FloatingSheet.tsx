@@ -7,6 +7,7 @@ import { useTheme } from '../../context/ThemeContext';
 import { ThemeColors, radius, spacing, type } from '../../constants/theme';
 import { PixelIcon } from '../PixelIcon';
 import { useMotion } from '../ui/useMotion';
+import { useOverlayTracking } from '../../utils/overlayTracker';
 
 export interface FloatingSheetProps {
   visible: boolean;
@@ -34,6 +35,7 @@ export function FloatingSheet({ visible, onClose, title, subtitle, children, tes
   const insets = useSafeAreaInsets();
   const { height } = useWindowDimensions();
   const m = useMotion();
+  useOverlayTracking(visible);
 
   // The Modal stays mounted while the card fades out.
   const [mounted, setMounted] = useState(visible);

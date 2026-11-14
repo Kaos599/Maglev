@@ -11,6 +11,7 @@ import { EngineProvider, useMaglevEngine } from '../context/EngineContext';
 import { FONT_NAMES } from '../constants/fontStyles';
 import NavigationBarSync from '../components/NavigationBarSync';
 import { NoticeHost } from '../components/ui/NoticeHost';
+import { StarPrompt } from '../components/StarPrompt';
 import { syncScheduleToNative } from '../utils/prefs/schedule';
 import { syncFeedAutomationToNative } from '../utils/prefs/feedAutomation';
 import { initHistory } from '../utils/history';
@@ -157,6 +158,7 @@ function AppNavigation() {
         </Stack.Protected>
       </Stack>
       {main ? <NoticeHost /> : null}
+      {main ? <StarPrompt /> : null}
     </>
   );
 }

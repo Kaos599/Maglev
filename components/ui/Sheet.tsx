@@ -7,6 +7,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../../context/ThemeContext';
 import { ThemeColors, backdropOpacity, motion, radius, sheetDragOffset, shouldDismissSheet, spacing, type } from '../../constants/theme';
 import { useMotion } from './useMotion';
+import { useOverlayTracking } from '../../utils/overlayTracker';
 
 export interface SheetProps {
   visible: boolean;
@@ -35,6 +36,7 @@ export function Sheet({ visible, onClose, title, subtitle, children, testID, ret
   const insets = useSafeAreaInsets();
   const { height } = useWindowDimensions();
   const m = useMotion();
+  useOverlayTracking(visible);
 
   // The Modal stays mounted while the sheet slides out.
   const [mounted, setMounted] = useState(visible);

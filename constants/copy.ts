@@ -787,3 +787,13 @@ export const textSizeCopy = {
   reset: 'Reset',
 } as const;
 // endregion browser find and text size
+
+// region star prompt (docs/NATIVE_CONTRACT.md section 33)
+export const starCopy = {
+  title: 'Enjoying Maglev?',
+  body: 'A star on GitHub helps other people find it.',
+  star: 'Star on GitHub',
+  notNow: 'Not now',
+  never: "Don't ask again",
+} as const;
+// endregion star prompt
