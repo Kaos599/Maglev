@@ -24,7 +24,7 @@ jobs:
     timeout-minutes: 45
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Find the CI run and download the x86_64 APK
         id: apk
@@ -55,7 +55,7 @@ jobs:
 
       - name: Setup Java 17
         if: steps.apk.outputs.apk != ''
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '17'
@@ -81,7 +81,7 @@ jobs:
 
       - name: Upload Maestro output
         if: always() && steps.apk.outputs.apk != ''
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: maestro-output
           path: |
