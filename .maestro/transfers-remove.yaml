@@ -1,0 +1,42 @@
+# Remove a transfer and keep its files, then add it again and remove it with its files. Check the empty state.
+# Sheet copy: components/transfers/DeleteSheet.tsx:44-48. Undo notice: context/EngineContext.tsx:753.
+appId: com.maglev
+name: transfers-remove
+---
+- runFlow: subflows/onboard-if-needed.yaml
+- openLink: "magnet:?xt=urn:btih:08ada5a7a6183aae1e09d831df6748d566095a10&dn=Sintel&tr=udp%3A%2F%2Ftracker.opentrackr.org%3A1337%2Fannounce&tr=udp%3A%2F%2Fopen.tracker.cl%3A1337%2Fannounce&tr=udp%3A%2F%2Ftracker.openbittorrent.com%3A6969%2Fannounce&tr=udp%3A%2F%2Fexplodie.org%3A6969%2Fannounce"
+- extendedWaitUntil:
+    visible: "Start download.*"
+    timeout: 120000
+- tapOn: "Start download.*"
+# from app/add-torrent.tsx:499
+- extendedWaitUntil:
+    visible:
+      id: "transfer-card"
+    timeout: 60000
+# testID "transfer-card": components/TransferCard.tsx:179
+- longPressOn:
+    id: "transfer-card"
+- tapOn: "Delete selected"
+# from components/transfers/BulkBar.tsx:23
+- tapOn: "Remove (keep files)"
+# from components/transfers/DeleteSheet.tsx:46
+- extendedWaitUntil:
+    notVisible:
+      id: "transfer-card"
+    timeout: 30000
+- assertVisible: "Nothing downloading"
+# empty.transfers.none.title (constants/copy.ts), TeachingEmptyState.tsx:49
+- openLink: "magnet:?xt=urn:btih:08ada5a7a6183aae1e09d831df6748d566095a10&dn=Sintel&tr=udp%3A%2F%2Ftracker.opentrackr.org%3A1337%2Fannounce&tr=udp%3A%2F%2Fopen.tracker.cl%3A1337%2Fannounce&tr=udp%3A%2F%2Ftracker.openbittorrent.com%3A6969%2Fannounce&tr=udp%3A%2F%2Fexplodie.org%3A6969%2Fannounce"
+# Re-adding after keep-files: the engine may still hold the item during the 5 s Undo window, so the wait below covers it.
+- extendedWaitUntil:
+    visible: "Start download.*"
+    timeout: 120000
+- tapOn: "Start download.*"
+- extendedWaitUntil:
+    visible:
+      id: "transfer-card"
+    timeout: 60000
+- runFlow: subflows/remove-all-with-files.yaml
+# Cleanup subflow: long-press, Delete selected, Remove and delete files, Delete files / Delete <size>.
+- assertVisible: "Nothing downloading"
