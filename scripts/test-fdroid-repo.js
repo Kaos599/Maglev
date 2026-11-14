@@ -45,6 +45,7 @@ check('repo icon goes to repo/icons/icon.png', /repo\/icons\/icon\.png/.test(sh)
 check('publishes only repo/ (never config.yml or the keystore)',
   /cp -R[^\n]*repo\/\.?["']?\s+["']?\$OUT/.test(sh) && !/cp[^\n]*config\.yml[^\n]*\$OUT/.test(sh) && !/cp[^\n]*keystore[^\n]*\$OUT/.test(sh));
 check('works outside the published folder', /WORK=.*mktemp -d/.test(sh));
+check('output path is made absolute before the script changes folder', (() => { const i = sh.search(/OUT="\$\(cd "\$OUT" && pwd\)"/); const j = sh.indexOf('cd "$WORK"'); return i > -1 && j > -1 && i < j; })());
 
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);
