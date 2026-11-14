@@ -510,7 +510,7 @@ function comparePage(d) {
         '@id': `${url}#breadcrumb`,
         itemListElement: [
           { '@type': 'ListItem', position: 1, name: 'Maglev', item: SITE_URL },
-          { '@type': 'ListItem', position: 2, name: 'How Maglev is different', item: url },
+          { '@type': 'ListItem', position: 2, name: p.title, item: url },
         ],
       },
       PERSON,
@@ -532,8 +532,8 @@ ${header(A, HOME, { current: 'compare' })}
 <section class="page-head" aria-labelledby="page-title">
   <div class="grid-bg" aria-hidden="true"></div>
   <div class="wrap">
-    <nav class="crumbs" aria-label="Breadcrumb"><ol><li><a href="${HOME}">Maglev</a></li><li aria-current="page">How Maglev is different</li></ol></nav>
-    <h1 id="page-title">How Maglev is different</h1>
+    <nav class="crumbs" aria-label="Breadcrumb"><ol><li><a href="${HOME}">Maglev</a></li><li aria-current="page">${esc(p.title)}</li></ol></nav>
+    <h1 id="page-title">${esc(p.title)}</h1>
     ${p.intro ? `<p class="lede">${md(p.intro)}</p>` : ''}
     <p class="meta">Checked ${esc(human(d.checkedOn))} · ${esc(d.method)}</p>
   </div>
@@ -645,7 +645,7 @@ ${C.howItWorks.map((h) => `- ${h.title}: ${plain(h.text)}`).join('\n')}
 
 ## Links
 
-- [Website](${SITE_URL})${cmp ? `\n- [How Maglev is different (comparison with ${cmp.apps.filter((a) => a.id !== 'maglev').map((a) => a.name).join(', ')})](${abs('compare')})` : ''}
+- [Website](${SITE_URL})${cmp ? `\n- [${cmp.page.title} (comparison with ${cmp.apps.filter((a) => a.id !== 'maglev').map((a) => a.name).join(', ')})](${abs('compare')})` : ''}
 - [Download (latest release)](${RELEASES})
 - [Source code](${REPO})
 - [Report a bug](${ISSUES})
