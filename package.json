@@ -70,7 +70,7 @@
     "react-native-worklets": "0.13.0"
   },
   "devDependencies": {
-    "@babel/core": "^7.25.2",
+    "@babel/core": "^8.1.0",
     "@types/react": "~18.3.12",
     "pixelarticons": "^2.4.2",
     "typescript": "^5.3.3"
