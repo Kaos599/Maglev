@@ -64,8 +64,29 @@ export type BrowserRefusedEvent = { url: string; reason: BrowserRefusalReason };
 /** `drm`: the page uses protected video. `blob`: the player streams in a way Maglev can't save. */
 export type BrowserNoteEvent = { note: 'drm' | 'blob' };
 
+export type PopupKind = 'window' | 'redirect' | 'app';
+/** Open `url` in a new foreground tab with this tab as its opener. `gesture` is true for a tapped link or `window.open`. */
+export type BrowserNewWindowEvent = { url: string; gesture: boolean };
+/** The policy is `ask` and something the user didn't tap for wants to run. Nothing has happened yet. */
+export type BrowserPopupRequestEvent = { url: string; kind: PopupKind; sourceUrl: string };
+/** Refused under `block`, or by the always-refuse rules. Count it; never show a notice. */
+export type BrowserPopupBlockedEvent = { url: string; kind: PopupKind };
+/** A long press on a link or an image. `url` is an absolute http(s) address or `magnet:`; `imageUrl` an absolute http(s) address. */
+export type BrowserLongPressEvent = {
+  kind: 'link' | 'image' | 'imageLink';
+  url: string | null;
+  imageUrl: string | null;
+  text: string | null;
+};
+export type OpenAppResult = { opened: boolean; fallbackUrl: string | null };
+
 export type MaglevBrowserProps = {
   url?: string;
+  /** False for a tab in the background: the view pauses its page and media. Default true. */
+  active?: boolean;
+  popupPolicy?: 'ask' | 'block' | 'allow';
+  /** Sites allowed to open pop-ups and redirects, matched on the page host by suffix. */
+  popupAllowHosts?: string[];
   adBlock?: boolean;
   allowAdsHosts?: string[];
   desktopMode?: boolean;
@@ -78,6 +99,10 @@ export type MaglevBrowserProps = {
   onRefused?: (e: BrowserRefusedEvent) => void;
   onCrashed?: () => void;
   onPageNote?: (e: BrowserNoteEvent) => void;
+  onNewWindow?: (e: BrowserNewWindowEvent) => void;
+  onPopupRequest?: (e: BrowserPopupRequestEvent) => void;
+  onPopupBlocked?: (e: BrowserPopupBlockedEvent) => void;
+  onLongPress?: (e: BrowserLongPressEvent) => void;
 };
 
 export type MaglevBrowserRef = {
@@ -94,11 +119,18 @@ export type MaglevBrowserRef = {
   clearData(options: BrowserClearOptions): void;
   /** Forget this screen's back/forward list. */
   clearHistoryList(): void;
+  /** Loads a held redirect. Unlike `loadUrl` it doesn't count as typed, so the refusals still apply. */
+  followRedirect(url: string): Promise<void>;
+  /** Opens an intent:, market:, tel:, mailto: or custom-scheme address in another app. Call only after the user said yes. Never rejects. */
+  openApp(url: string): Promise<OpenAppResult>;
 };
 
 type NativeEvent<T> = { nativeEvent: T };
 type NativeProps = {
   url?: string;
+  active?: boolean;
+  popupPolicy?: 'ask' | 'block' | 'allow';
+  popupAllowHosts?: string[];
   adBlock?: boolean;
   allowAdsHosts?: string[];
   desktopMode?: boolean;
@@ -111,6 +143,10 @@ type NativeProps = {
   onRefused?: (e: NativeEvent<BrowserRefusedEvent>) => void;
   onCrashed?: (e: NativeEvent<object>) => void;
   onPageNote?: (e: NativeEvent<BrowserNoteEvent>) => void;
+  onNewWindow?: (e: NativeEvent<BrowserNewWindowEvent>) => void;
+  onPopupRequest?: (e: NativeEvent<BrowserPopupRequestEvent>) => void;
+  onPopupBlocked?: (e: NativeEvent<BrowserPopupBlockedEvent>) => void;
+  onLongPress?: (e: NativeEvent<BrowserLongPressEvent>) => void;
 };
 
 let Native: any = null;
@@ -129,7 +165,7 @@ const NativeBrowser: React.ComponentType<NativeProps & React.RefAttributes<Magle
 const NOT_AVAILABLE = "The browser isn't available in this build.";
 
 export const MaglevBrowser = React.forwardRef<MaglevBrowserRef, MaglevBrowserProps>(function MaglevBrowser(
-  { onPage, onFound, onBlockedCount, onDownloadRequest, onMagnet, onRefused, onCrashed, onPageNote, ...rest },
+  { onPage, onFound, onBlockedCount, onDownloadRequest, onMagnet, onRefused, onCrashed, onPageNote, onNewWindow, onPopupRequest, onPopupBlocked, onLongPress, ...rest },
   ref,
 ) {
   const nativeRef = React.useRef<MaglevBrowserRef | null>(null);
@@ -145,6 +181,14 @@ export const MaglevBrowser = React.forwardRef<MaglevBrowserRef, MaglevBrowserPro
       resetFound: () => nativeRef.current?.resetFound() ?? Promise.resolve(),
       clearData: (options: BrowserClearOptions) => nativeRef.current?.clearData(options),
       clearHistoryList: () => nativeRef.current?.clearHistoryList(),
+      followRedirect: (url: string) => nativeRef.current?.followRedirect(url) ?? Promise.resolve(),
+      openApp: async (url: string): Promise<OpenAppResult> => {
+        try {
+          return (await nativeRef.current?.openApp(url)) ?? { opened: false, fallbackUrl: null };
+        } catch {
+          return { opened: false, fallbackUrl: null };
+        }
+      },
     }),
     [],
   );
@@ -168,6 +212,10 @@ export const MaglevBrowser = React.forwardRef<MaglevBrowserRef, MaglevBrowserPro
       onRefused={onRefused ? (e) => onRefused(e.nativeEvent) : undefined}
       onCrashed={onCrashed ? () => onCrashed() : undefined}
       onPageNote={onPageNote ? (e) => onPageNote(e.nativeEvent) : undefined}
+      onNewWindow={onNewWindow ? (e) => onNewWindow(e.nativeEvent) : undefined}
+      onPopupRequest={onPopupRequest ? (e) => onPopupRequest(e.nativeEvent) : undefined}
+      onPopupBlocked={onPopupBlocked ? (e) => onPopupBlocked(e.nativeEvent) : undefined}
+      onLongPress={onLongPress ? (e) => onLongPress(e.nativeEvent) : undefined}
     />
   );
 });

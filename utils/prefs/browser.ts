@@ -28,7 +28,14 @@ export interface BrowserPrefs {
   suggestFromHistory: boolean;
   /** Empty the history when Maglev closes, and again on the next start. */
   clearHistoryOnClose: boolean;
+  /** What to do with pop-ups and redirects the user didn't tap for (section 24.10). */
+  popupPolicy: PopupPolicy;
+  /** Sites allowed to open pop-ups and redirects, without `www.`. */
+  popupAllowHosts: string[];
 }
+
+export type PopupPolicy = 'ask' | 'block' | 'allow';
+const POPUP_POLICIES: readonly PopupPolicy[] = ['ask', 'block', 'allow'];
 
 const KEY = 'maglev.browser.prefs.v1';
 
@@ -43,6 +50,8 @@ export function defaultBrowserPrefs(): BrowserPrefs {
     saveHistory: true,
     suggestFromHistory: true,
     clearHistoryOnClose: false,
+    popupPolicy: 'ask',
+    popupAllowHosts: [],
   };
 }
 
@@ -65,6 +74,8 @@ export function normalizeBrowserPrefs(raw: unknown): BrowserPrefs {
     saveHistory: o.saveHistory !== false,
     suggestFromHistory: o.suggestFromHistory !== false,
     clearHistoryOnClose: o.clearHistoryOnClose === true,
+    popupPolicy: POPUP_POLICIES.includes(o.popupPolicy as PopupPolicy) ? (o.popupPolicy as PopupPolicy) : 'ask',
+    popupAllowHosts: [...new Set(strings(o.popupAllowHosts).map((h) => h.toLowerCase()))],
   };
 }
 

@@ -324,6 +324,61 @@ export const historyCopy = {
   },
 } as const;
 
+/** Labels for browser tabs, the link menu and pop-ups (NATIVE_CONTRACT 24.10). */
+export const browserTabs = {
+  tabButtonLabel: (count: number | string) => `Tabs, ${count} open`,
+  /** Shown in the tab button above 99. */
+  tabButtonMany: ':D',
+  switcher: {
+    title: 'Tabs',
+    newTab: 'New tab',
+    menuLabel: 'Tab options',
+    closeAll: 'Close all tabs',
+    closeTabLabel: (title: string | number) => `Close ${title}`,
+    blankTitle: 'New tab',
+  },
+  closedTab: 'Tab closed.',
+  closedAll: 'All tabs closed.',
+  undo: 'Undo',
+  capNotice: 'You have 50 tabs open. Close some to open more.',
+  longPress: {
+    openNewTab: 'Open in new tab',
+    openBackground: 'Open in background tab',
+    copyLink: 'Copy link',
+    downloadLink: 'Download link',
+    shareLink: 'Share link',
+    openImageNewTab: 'Open image in new tab',
+    downloadImage: 'Download image',
+    copyImageLink: 'Copy image link',
+    shareImageLink: 'Share image link',
+    addTorrent: 'Add torrent',
+  },
+  openedInNewTab: 'Opened in a new tab.',
+  switchTo: 'Switch',
+  popup: {
+    windowTitle: 'This page wants to open a pop-up',
+    redirectTitle: 'This page wants to take you to another site',
+    appTitle: 'This link wants to open another app',
+    open: 'Open',
+    block: 'Block',
+    alwaysAllow: (host: string | number) => `Always allow on ${host}`,
+    moreBlocked: (n: number | string) => `and ${n} more blocked`,
+    noApp: 'No app can open this link.',
+  },
+  thisPage: {
+    popupsRow: 'Pop-ups',
+    blockedOnPage: (n: number | string) => `${n} blocked on this page`,
+  },
+  settings: {
+    section: 'Pop-ups and redirects',
+    ask: 'Ask',
+    block: 'Block without asking',
+    allow: 'Allow',
+    allowedSites: 'Sites allowed to open pop-ups',
+    remove: 'Remove',
+  },
+} as const;
+
 /** Labels on the browser's found-files list. Short field names, not notices. */
 export const foundTray = {
   title: 'Files',
