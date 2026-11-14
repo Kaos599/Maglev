@@ -1,0 +1,5 @@
+# GitHub's language bar counts bytes. These folders are saved web pages used as test fixtures, vendored
+# third-party crates and the built website, so they're left out of the count. Nothing else changes.
+scripts/fixtures/** linguist-vendored
+native/maglev-core/vendor/** linguist-vendored
+site/** linguist-documentation
