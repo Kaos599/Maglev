@@ -2,9 +2,10 @@ name: CI
 
 # Docs-only changes skip CI entirely (the README badge keeps the last real result).
 on:
-  # Pushes run CI only on main and dev; every other branch is covered by its pull request, so CI doesn't run twice.
+  # Every change is built once, on its pull request. Pushes run CI only on main, and a merge from a pull
+  # request that already built release APKs (base main) reuses them instead of building again (job `reuse`).
   push:
-    branches: [main, dev]
+    branches: [main]
     paths-ignore: ['**/*.md', 'docs/**', 'screens/**', 'LICENSE']
   pull_request:
     paths-ignore: ['**/*.md', 'docs/**', 'screens/**', 'LICENSE']
@@ -77,23 +78,90 @@ jobs:
         # run.js exits 1 when any check fails or a scenario errors.
         run: node scripts/eval-assistant/run.js --fake
 
+  # On a push to main: if this merge commit has exactly the tree of the pull request it came from, and that
+  # pull request's CI (base main) passed, take its APKs instead of building them again. Otherwise build.
+  reuse:
+    name: Reuse pull request APKs
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+    outputs:
+      found: ${{ steps.find.outputs.found }}
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - name: Checkout repository (with the merged pull request's head)
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 2
+
+      - name: Find and download the pull request's APKs
+        id: find
+        # Never fails the run: when reuse isn't possible, the build jobs run as usual.
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -uo pipefail
+          echo "found=false" >> "$GITHUB_OUTPUT"
+          HEAD2=$(git rev-parse -q --verify HEAD^2) || { echo "Not reusing: not a merge commit"; exit 0; }
+          if [ "$(git rev-parse HEAD^{tree})" != "$(git rev-parse HEAD^2^{tree})" ]; then
+            echo "Not reusing: the merge changed files beyond the pull request ($HEAD2)"; exit 0
+          fi
+          RUN=$(gh run list --workflow ci.yml --commit "$HEAD2" --event pull_request --status success --limit 5 \
+            --json databaseId --jq '.[0].databaseId // empty') || RUN=""
+          if [ -z "$RUN" ]; then echo "Not reusing: no successful pull request CI run for $HEAD2"; exit 0; fi
+          echo "Pull request CI run: $RUN"
+          rm -rf pr-apks pr-set
+          gh run download "$RUN" --name apks --dir pr-apks || { echo "Not reusing: run $RUN has no apks artifact"; exit 0; }
+          for abi in universal arm64-v8a armeabi-v7a x86_64; do
+            test -f "pr-apks/app-${abi}-release.apk" || { echo "Not reusing: app-${abi}-release.apk missing (run $RUN was not a release build)"; exit 0; }
+          done
+          gh run download "$RUN" --name accrescent-apks --dir pr-set || echo "Run $RUN has no APK set (no signing secrets); none is reused"
+          echo "found=true" >> "$GITHUB_OUTPUT"
+          echo "Reusing APKs from pull request CI run $RUN"
+
+      - name: Upload APKs
+        if: steps.find.outputs.found == 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: apks
+          path: pr-apks/*.apk
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Upload APK set
+        if: steps.find.outputs.found == 'true' && hashFiles('pr-set/maglev.apks') != ''
+        uses: actions/upload-artifact@v7
+        with:
+          name: accrescent-apks
+          path: pr-set/maglev.apks
+          retention-days: 7
+
   rust-android:
     name: Rust Android
+    needs: reuse
+    # Runs whenever reuse didn't happen (reuse is skipped off main, or found nothing).
+    if: ${{ !cancelled() && needs.reuse.outputs.found != 'true' }}
     uses: ./.github/workflows/_rust-android.yml
     with:
-      # main builds all three ABIs so release-apk.yml can reuse the APKs; other refs build arm64 only.
-      abis: ${{ github.ref == 'refs/heads/main' && 'arm64-v8a,armeabi-v7a,x86_64' || 'arm64-v8a' }}
+      # Release builds (main, and pull requests into main) build all three ABIs; everything else builds arm64 only.
+      abis: ${{ (github.ref == 'refs/heads/main' || github.base_ref == 'main') && 'arm64-v8a,armeabi-v7a,x86_64' || 'arm64-v8a' }}
 
   apk:
     name: Build APK
     needs: rust-android
+    # Explicit: rust-android's own `needs` (reuse) is skipped off main, which would otherwise skip this job too.
+    if: ${{ !cancelled() && needs.rust-android.result == 'success' }}
     runs-on: ubuntu-latest
     env:
       ANDROID_HOME: /usr/local/lib/android/sdk
       GRADLE_OPTS: "-Xmx4g -Dorg.gradle.jvmargs=-Xmx4g -Dorg.gradle.daemon=false -Dorg.gradle.caching=true"
-      # Everyday CI builds arm64 only (plugins/withAbiSplits.js). main builds all three, and
-      # release-apk.yml reuses that run's `apks` artifact (app-{universal,arm64-v8a,armeabi-v7a,x86_64}-release.apk).
-      MAGLEV_ABIS: ${{ github.ref == 'refs/heads/main' && 'arm64-v8a,armeabi-v7a,x86_64' || 'arm64-v8a' }}
+      # Everyday CI builds arm64 only (plugins/withAbiSplits.js). main and pull requests into main build all three;
+      # main reuses a pull request's set when nothing changed (job reuse), and release-apk.yml reuses main's `apks` artifact (app-{universal,arm64-v8a,armeabi-v7a,x86_64}-release.apk).
+      MAGLEV_ABIS: ${{ (github.ref == 'refs/heads/main' || github.base_ref == 'main') && 'arm64-v8a,armeabi-v7a,x86_64' || 'arm64-v8a' }}
 
     steps:
       - name: Checkout repository
@@ -177,13 +245,13 @@ jobs:
           ./gradlew assembleRelease --stacktrace
 
       - name: Verify APK signing
-        # Fails on main and tags when an APK still carries the Android debug certificate; warns elsewhere.
+        # Fails on main, pull requests into main and tags when an APK still carries the Android debug certificate; warns elsewhere.
         # Only the public SHA-256 certificate digest is printed.
         shell: bash
         run: |
           APKSIGNER=$(ls -d "$ANDROID_HOME"/build-tools/*/apksigner | sort -V | tail -n 1)
           STRICT=false
-          if [ "${{ github.ref }}" = "refs/heads/main" ] || [[ "${{ github.ref }}" == refs/tags/* ]]; then STRICT=true; fi
+          if [ "${{ github.ref }}" = "refs/heads/main" ] || [ "${{ github.base_ref }}" = "main" ] || [[ "${{ github.ref }}" == refs/tags/* ]]; then STRICT=true; fi
           BAD=0
           for apk in android/app/build/outputs/apk/release/*.apk; do
             CERTS=$("$APKSIGNER" verify --print-certs "$apk") || { echo "::error::apksigner rejected $apk"; exit 1; }
@@ -223,8 +291,8 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
-      - name: Build signed APK set for Accrescent (main and tags, when signing secrets exist)
-        if: env.MAGLEV_KEYSTORE_PATH != '' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/'))
+      - name: Build signed APK set for Accrescent (main, pull requests into main and tags, when signing secrets exist)
+        if: env.MAGLEV_KEYSTORE_PATH != '' && (github.ref == 'refs/heads/main' || github.base_ref == 'main' || startsWith(github.ref, 'refs/tags/'))
         env:
           MAGLEV_KEYSTORE_PASSWORD: ${{ secrets.MAGLEV_KEYSTORE_PASSWORD }}
           MAGLEV_KEY_ALIAS: ${{ secrets.MAGLEV_KEY_ALIAS }}
@@ -257,7 +325,7 @@ jobs:
           ls -lh apkset/maglev.apks
 
       - name: Upload APK set
-        if: env.MAGLEV_KEYSTORE_PATH != '' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/'))
+        if: env.MAGLEV_KEYSTORE_PATH != '' && (github.ref == 'refs/heads/main' || github.base_ref == 'main' || startsWith(github.ref, 'refs/tags/'))
         uses: actions/upload-artifact@v7
         with:
           name: accrescent-apks
