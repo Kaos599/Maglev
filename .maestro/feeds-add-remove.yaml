@@ -1,0 +1,36 @@
+# Follow a public-domain RSS feed (archive.org Open Source Movies collection), check items load, then remove it.
+appId: com.maglev
+name: feeds-add-remove
+---
+- runFlow: subflows/onboard-if-needed.yaml
+- tapOn: "Feeds"                                    # from app/(tabs)/_layout.tsx:170 (tab title "Feeds")
+- tapOn: "New feed"                                 # from app/(tabs)/feeds.tsx:337 (or the empty-state primary button, constants/copy.ts:227 area)
+- extendedWaitUntil:
+    visible: "Paste the address of an RSS or Atom feed."   # from components/feeds/NewFeedSheet.tsx:39 (subtitle)
+    timeout: 10000
+- inputText: "https://archive.org/services/collection-rss.php?collection=opensource_movies"
+- tapOn: "Add feed"                                 # from components/feeds/NewFeedSheet.tsx:65 (label "Add feed")
+- extendedWaitUntil:
+    visible: "archive.org"                          # from app/(tabs)/feeds.tsx:358 (feedHost shows hostOf(url) when a feed is selected)
+    timeout: 90000
+- extendedWaitUntil:
+    visible: "[0-9]+ feeds? · [0-9]+ new"          # from app/(tabs)/feeds.tsx:335 (count line)
+    timeout: 30000
+# Items load: each row is "Add <title>" (feeds.tsx FeedItemRow.tsx:45) or "<title>, no torrent link" (FeedItemRow.tsx:45).
+- extendedWaitUntil:
+    visible: "Add .*|.*, no torrent link"           # from components/feeds/FeedItemRow.tsx:45 (IconButton label)
+    timeout: 60000
+- assertVisible:                                    # from components/feeds/FeedItemRow.tsx:34 (new tag on unseen items)
+    text: "New"
+    optional: true
+- tapOn: "Remove feed"                              # from app/(tabs)/feeds.tsx:360 (feedBar button)
+- extendedWaitUntil:
+    visible: "Remove .*\\?"                         # from app/(tabs)/feeds.tsx:279 (sheet title "Remove <name>?")
+    timeout: 10000
+# The sheet's confirm is the second "Remove feed" on screen (the feed bar button is behind the sheet). UNVERIFIED on device.
+- tapOn:
+    text: "Remove feed"                             # from app/(tabs)/feeds.tsx:281 (sheet button)
+    index: 1
+- extendedWaitUntil:
+    visible: "No feeds yet"                         # from constants/copy.ts:227 (empty.feeds.none.title)
+    timeout: 10000

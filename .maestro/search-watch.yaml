@@ -1,0 +1,39 @@
+# Watch a search, check it is listed under Settings, Watches, then delete it.
+# If "Sintel" is already watched, the Watch tap shows "You are already watching that." and the flow still continues.
+appId: com.maglev
+name: search-watch
+---
+- runFlow: subflows/onboard-if-needed.yaml
+- tapOn: "Search"                                   # from app/(tabs)/_layout.tsx:169
+- tapOn:
+    text: "Search torrents"                         # from app/(tabs)/search.tsx:743
+- inputText: "Sintel"
+- pressKey: Enter
+- extendedWaitUntil:
+    visible: "Add .*"                               # from components/search/ResultRow.tsx:109
+    timeout: 90000
+- tapOn:
+    text: "Watch this search|Watch"                 # from app/(tabs)/search.tsx:675-680 (accessibilityLabel "Watch this search", copy.ts:499; label "Watch", copy.ts:498)
+- extendedWaitUntil:
+    visible: "Watching \"Sintel\""                   # from app/(tabs)/search.tsx:535 and constants/copy.ts:500 (watchCopy.watching)
+    timeout: 10000
+- tapOn: "Settings"                                 # from app/(tabs)/_layout.tsx:171
+- scrollUntilVisible:
+    element: "Watches"                              # from app/(tabs)/settings.tsx:164 and constants/copy.ts:494 (watchCopy.rowTitle)
+    direction: DOWN
+    timeout: 20000
+- tapOn: "Watches"                                  # from app/(tabs)/settings.tsx:164
+- extendedWaitUntil:
+    visible: "Sintel"                               # from app/settings/watch.tsx:52 (row title = w.query)
+    timeout: 15000
+- tapOn: "Delete"                                   # from app/settings/watch.tsx:79 and constants/copy.ts:509 (watchCopy.delete)
+- extendedWaitUntil:
+    visible: "Delete this watch\\?"                 # from constants/copy.ts:510 (watchCopy.deleteTitle)
+    timeout: 10000
+# The Alert's Delete is the second "Delete" on screen (the card's button is behind it). UNVERIFIED on device.
+- tapOn:
+    text: "Delete"                                  # from constants/copy.ts:509 (watchCopy.delete) in the Alert, app/settings/watch.tsx:39
+    index: 1
+- extendedWaitUntil:
+    notVisible: "Sintel"                            # from app/settings/watch.tsx:52: row gone after delete
+    timeout: 10000

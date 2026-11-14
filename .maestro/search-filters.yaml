@@ -1,0 +1,54 @@
+# Search "Sintel", switch category chips, change the sort, check results stay and the count updates.
+appId: com.maglev
+name: search-filters
+---
+- runFlow: subflows/onboard-if-needed.yaml
+- tapOn: "Search"                                   # from app/(tabs)/_layout.tsx:169 (tab title "Search")
+- tapOn:
+    text: "Search torrents"                         # from app/(tabs)/search.tsx:743 (input accessibilityLabel)
+- inputText: "Sintel"
+- pressKey: Enter
+- extendedWaitUntil:
+    visible: "(Stopped · )?[0-9]+ results?"         # from app/(tabs)/search.tsx:673 (count line "N results")
+    timeout: 90000
+- extendedWaitUntil:
+    visible: "Add .*"                               # from components/search/ResultRow.tsx:109 (Add button label "Add <name>")
+    timeout: 90000
+# Category chips: radiogroup "Category" (search.tsx:789), chip labels from components/search/meta.ts:6-15
+- tapOn:                                            # from components/search/meta.ts:7 (CATEGORY_LABEL.movies); search.tsx:792 chip
+    text: "Movies"
+    optional: true
+- extendedWaitUntil:
+    visible: "(Stopped · )?[0-9]+ results?"         # from app/(tabs)/search.tsx:673 (search restarts on category change)
+    timeout: 90000
+- tapOn: "All"                                      # from components/search/meta.ts:6 (CATEGORY_LABEL.all); search.tsx:792 chip
+- extendedWaitUntil:
+    visible: "(Stopped · )?[0-9]+ results?"         # from app/(tabs)/search.tsx:673
+    timeout: 90000
+# Sort: the button label is "Sort: <current sort>" (search.tsx:689), opens the "Sort and filter" sheet (search.tsx:815)
+- tapOn: "Sort: .*"                                 # from app/(tabs)/search.tsx:689 (accessibilityLabel "Sort: ...")
+- extendedWaitUntil:
+    visible: "Sort and filter"                      # from app/(tabs)/search.tsx:815 (Sheet title)
+    timeout: 10000
+- tapOn: "Newest"                                   # from app/(tabs)/search.tsx:821 + copy label constants in search.tsx:66 (SORT_LABEL.newest)
+- extendedWaitUntil:
+    visible: "Sort: Newest"                         # from app/(tabs)/search.tsx:689 (label reflects the choice)
+    timeout: 10000
+- assertVisible: "Add .*"                           # from components/search/ResultRow.tsx:109: results stay visible after the sort
+- assertVisible: "(Stopped · )?[0-9]+ results?"     # from app/(tabs)/search.tsx:673: count still shown
+- tapOn: "Sort: .*"                                 # from app/(tabs)/search.tsx:689
+- extendedWaitUntil:
+    visible: "Sort and filter"                      # from app/(tabs)/search.tsx:815
+    timeout: 10000
+- tapOn: "Largest"                                  # from app/(tabs)/search.tsx:821 (SORT_LABEL.size = "Largest", search.tsx:66)
+- extendedWaitUntil:
+    visible: "Sort: Largest"                        # from app/(tabs)/search.tsx:689
+    timeout: 10000
+- assertVisible: "Add .*"                           # from components/search/ResultRow.tsx:109
+- assertVisible: "(Stopped · )?[0-9]+ results?"     # from app/(tabs)/search.tsx:673
+# Restore the default sort ("Most shared", search.tsx:66) so the next run starts clean.
+- tapOn: "Sort: .*"                                 # from app/(tabs)/search.tsx:689
+- tapOn: "Most shared"                              # from app/(tabs)/search.tsx:66 (SORT_LABEL.seeders); chip at search.tsx:821
+- extendedWaitUntil:
+    visible: "Sort: Most shared"                    # from app/(tabs)/search.tsx:689
+    timeout: 10000

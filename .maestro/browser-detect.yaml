@@ -1,0 +1,46 @@
+# Open the Browser on a public test page with direct MP4 links, see the Files list with sizes,
+# download one file, find it in Transfers, then remove it and its files.
+# Test page: https://test-videos.co.uk/bigbuckbunny/mp4-h264 (Big Buck Bunny, CC BY 3.0). Checked with curl.
+appId: com.maglev
+name: browser-detect
+---
+- runFlow: subflows/onboard-if-needed.yaml
+# maglev://browser?url= loads the page (utils/browserUrl.ts browserIntentRoute; NATIVE_CONTRACT 24.7).
+- openLink: "maglev://browser?url=https%3A%2F%2Ftest-videos.co.uk%2Fbigbuckbunny%2Fmp4-h264"
+- extendedWaitUntil:
+    visible: "Address" # app/browser.tsx:268 TextInput accessibilityLabel="Address"
+    timeout: 30000
+# Found-files indicator: "Files · N" (app/browser.tsx:344), accessibilityLabel "Files, N found" (:347).
+- extendedWaitUntil:
+    visible: "Files . [1-9][0-9]*" # app/browser.tsx:344
+    timeout: 90000
+- tapOn: "Files . [1-9][0-9]*" # app/browser.tsx:348-352 opens FoundTray
+- assertVisible: "Files" # components/browser/FoundTray.tsx:103 Sheet title "Files"
+# Each row shows a size or "—" in its meta line (FoundTray.tsx:36, constants/format.ts formatBytes).
+# NEW: depends on found-files size/clear change (today the meta line omits the size when it is unknown).
+- assertVisible: ".*(KB|MB|GB|—).*"
+# Row label is "<name>, <size> · <host>" (FoundTray.tsx:42).
+- tapOn: ".*Big_Buck_Bunny_1080_10s_1MB\\.mp4.*" # FoundTray.tsx:118 tap starts FoundDownloadSheet
+# Name, size and folder sheet (FoundDownload.tsx:114 title "Download"). Start enables after the probe.
+- extendedWaitUntil:
+    visible: "Start" # components/browser/FoundDownload.tsx:141 Button label "Start"
+    timeout: 60000
+- tapOn: "Start"
+- extendedWaitUntil:
+    visible: "Added to Transfers." # constants/copy.ts:106 notices.browser.addedToTransfers
+    timeout: 30000
+# Leave the browser stack screen (it covers the tabs). "Go back" is app/browser.tsx:220.
+- repeat:
+    while:
+      notVisible: "Transfers" # the tab label, constants/copy.ts:349 tabsCopy.names.index
+    commands:
+      - tapOn: "Go back"
+- tapOn: "Transfers"
+# Progress is not checked by label text here: cards are matched by testID, and the card label
+# carries the status and progress. NEW: a progress testID or a percent-free status would let this check progress > 0.
+- extendedWaitUntil:
+    visible:
+      id: "transfer-card" # components/TransferCard.tsx:179 testID="transfer-card"
+      text: ".*Big_Buck_Bunny_1080_10s_1MB.*"
+    timeout: 120000
+- runFlow: subflows/remove-all-with-files.yaml
