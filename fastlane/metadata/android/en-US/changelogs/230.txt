@@ -1,0 +1,5 @@
+- Browser tabs, a long-press menu on links and images, find in page and text size.
+- Pop-ups and redirects you didn't tap for wait for Open, Block or Always allow.
+- Browser history with search and suggestions; it can clear itself on close.
+- Maglev updates itself from GitHub; F-Droid installs keep updating here.
+- Ad block list, search sources and trackers refresh daily on their own.

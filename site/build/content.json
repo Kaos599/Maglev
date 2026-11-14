@@ -66,8 +66,11 @@
       "title": "A browser that blocks ads and finds the files on a page",
       "text": "Open any page inside Maglev. Ads and trackers are blocked before they load. Play a video and Maglev lists it, together with the page's other files, in a tray you can filter by type. Tap one to download it with the page's cookies, so files behind a sign-in still work.",
       "specs": [
-        "Over 42,000 blocked domains from [StevenBlack/hosts](https://github.com/StevenBlack/hosts), updatable in Settings",
-        "Tabs, find in page and text size; pop-ups and redirects you didn't tap for wait until you choose Open or Block",
+        "Over 42,000 blocked domains from [StevenBlack/hosts](https://github.com/StevenBlack/hosts), refreshed once a day on its own. Add your own lists and they refresh too",
+        "Tabs with a long-press menu on links and images: new tab, background tab, copy, share or download",
+        "Pop-ups and redirects you didn't tap for wait until you choose Open, Block or Always allow on this site",
+        "Find in page and text size",
+        "A history you can search, with suggestions as you type. It can clear itself when you close Maglev",
         "App installers come with a warning"
       ],
       "screen": "browser"
@@ -90,6 +93,7 @@
       "specs": [
         "Filter results by category, and sort by seeders, size or date",
         "40 built-in sources; choose which answer each category",
+        "Source addresses update once a day from a signed list, so a source that moves keeps working without an app update",
         "Add your own Jackett or Prowlarr indexer",
         "Sources known for fake uploads carry a warning"
       ],
@@ -124,6 +128,8 @@
       "title": "You stay in control",
       "text": "Rules for when and how Maglev downloads, so it fits your data plan, your battery and your storage.",
       "specs": [
+        "Maglev updates itself: a daily check and Check for updates in About. It downloads on Wi-Fi and asks before installing, or installs on its own if you choose. F-Droid and Obtainium installs keep their own updates",
+        "The ad block list, search sources and default trackers refresh once a day without an app update, or when you tap Check now",
         "Download only on Wi-Fi, only over a VPN, or only while charging",
         "Pause when the battery runs low",
         "Speed limits for everything or for one download",

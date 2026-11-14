@@ -53,7 +53,7 @@
 - Links that point at devices on your own network are stopped unless you allow them.
 
 ### A browser without ads that saves what you watch
-- Open any page inside Maglev. Ads and trackers are blocked before they load, using a built-in list of over 42,000 ad and tracker domains that you can update or replace in Settings.
+- Open any page inside Maglev. Ads and trackers are blocked before they load, using a built-in list of over 42,000 ad and tracker domains. The list refreshes itself once a day, and so do any lists you add in Settings.
 - Play a video and Maglev lists it. The page's files show up in a tray you can filter by Video, Audio, Image, Document and Other. Tap one to download it with the page's cookies, so files that need the site's session still work.
 - Streaming videos (HLS and DASH) are saved as one file: pick the quality and audio language and Maglev joins the pieces, including HLS streams with standard AES-128 encryption.
 - A history of the pages you open, with search, suggestions as you type and clearing by time. It can clear itself when you close Maglev, and it never leaves your phone.
@@ -64,6 +64,7 @@
 ### Search across 40+ sources
 - One search box asks public sources such as Knaben, Torrents-CSV, Internet Archive, Nyaa, YTS, EZTV and 1337x at the same time, and merges results that point to the same torrent.
 - Results from sources known for fake uploads carry a warning.
+- Source addresses and the default trackers come from a signed list that refreshes once a day, so a source that moves keeps working without an app update.
 - Filter by category, sort by seeders, size or date, and choose which sources answer each category. Add your own Jackett or Prowlarr indexer.
 - A source behind a Cloudflare check opens it once in Maglev so you can pass it yourself.
 
@@ -98,7 +99,7 @@ Download an APK from [Releases](https://github.com/Kaos599/Maglev/releases/lates
 
 ## What's next
 
-- **Browser basics (0.23).** Bookmarks and a new-tab page, file upload on web forms, sign-in prompts for routers and NAS pages, site dialogs (confirm and alert), and HTTPS first for typed addresses.
+- **Browser basics (0.24).** Bookmarks and a new-tab page, file upload on web forms, sign-in prompts for routers and NAS pages, site dialogs (confirm and alert), and HTTPS first for typed addresses.
 - Search inside the browser's found files, and keeping a page's file list after you leave it.
 - Choosing which ad-block lists to combine, and per-site rules beyond "allow ads here".
 - A Google Play build.
