@@ -77,6 +77,11 @@ async function main() {
   collect(copy.updateCopy.notices, ['updateCopy', 'notices'], 'notice', items);
   collect(copy.updateCopy.hints, ['updateCopy', 'hints'], 'banner.body', items);
   for (const m of copy.updateCopy.modes) collect(m.description, ['updateCopy', 'modes', m.value], 'banner.body', items);
+  // Self-updating lists (contract 31): sentences follow the banner body rules, row values the universal rules.
+  collect(copy.listsCopy.hints, ['listsCopy', 'hints'], 'banner.body', items);
+  collect(copy.listsCopy.values, ['listsCopy', 'values'], 'value', items);
+  collect(copy.listsCopy.providers, ['listsCopy', 'providers'], 'value', items);
+  collect(copy.listsCopy.browser, ['listsCopy', 'browser'], 'notice', items);
   check('copy.ts exports strings to lint', items.length > 60, String(items.length));
 
   const problems = [];

@@ -1,6 +1,7 @@
 import { PROVIDERS } from '../../utils/search/aggregate';
 import type { Category, SearchProvider } from '../../utils/search/types';
 import type { SearchPrefs } from '../../utils/prefs/search';
+import { applyListOverrides, listDisabled } from '../../utils/lists/store';
 
 export const CATEGORY_LABEL: Record<Category, string> = {
   all: 'All',
@@ -19,7 +20,11 @@ export const CATEGORY_LABEL: Record<Category, string> = {
 export type ProviderInfo = Pick<
   SearchProvider,
   'id' | 'name' | 'abbr' | 'method' | 'categories' | 'nsfw' | 'unsafeReason' | 'mirrors' | 'enabledByDefault' | 'cloudflare'
-> & { custom?: boolean };
+> & {
+  custom?: boolean;
+  /** Turned off by the source list (contract 31.1): `note` is shown with the row, and the toggle can't be used. */
+  turnedOff?: { note: string | null };
+};
 
 export const TORZNAB_PREFIX = 'torznab:';
 
@@ -36,7 +41,12 @@ export function allProviderInfo(prefs: SearchPrefs): ProviderInfo[] {
     enabledByDefault: false,
     custom: true,
   }));
-  return [...PROVIDERS, ...custom];
+  const builtIn: ProviderInfo[] = PROVIDERS.map((p) => {
+    const q: ProviderInfo = applyListOverrides(p);
+    const off = listDisabled(p.id);
+    return off ? { ...q, turnedOff: off } : q;
+  });
+  return [...builtIn, ...custom];
 }
 
 export function providerMap(prefs: SearchPrefs): Map<string, ProviderInfo> {

@@ -1,5 +1,7 @@
 // Magnet and info-hash helpers.
+import { listTrackers } from '../lists/store.ts';
 
+/** The built-in trackers. A signed source list (docs/NATIVE_CONTRACT.md section 31) can replace them: see defaultTrackers(). */
 export const DEFAULT_TRACKERS = [
   'udp://tracker.opentrackr.org:1337/announce',
   'udp://open.demonii.com:1337/announce',
@@ -8,6 +10,11 @@ export const DEFAULT_TRACKERS = [
   'udp://exodus.desync.com:6969/announce',
   'udp://tracker.tiny-vps.com:6969/announce',
 ];
+
+/** The default trackers in force now: the applied source list's, else the built-in ones. */
+export function defaultTrackers(): string[] {
+  return listTrackers() ?? DEFAULT_TRACKERS;
+}
 
 const B32 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
 
@@ -43,7 +50,7 @@ export function infoHashFromMagnet(magnet: string | undefined | null): string | 
 }
 
 export function buildMagnet(infoHash: string, name: string, extraTrackers: string[] = []): string {
-  const trackers = [...extraTrackers, ...DEFAULT_TRACKERS];
+  const trackers = [...extraTrackers, ...defaultTrackers()];
   let out = `magnet:?xt=urn:btih:${infoHash.toLowerCase()}&dn=${encodeURIComponent(name)}`;
   for (const t of trackers) out += `&tr=${encodeURIComponent(t)}`;
   return out;

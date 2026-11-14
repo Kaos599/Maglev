@@ -731,6 +731,9 @@ export interface MaglevEngineApi {
   /** kind: "available" or "ready". For "ready", `path` and `sha256` make the notice's Install action start the install. */
   postUpdateNotice(kind: 'available' | 'ready', version: string, path?: string | null, sha256?: string | null): Promise<EngineResult>;
   clearUpdateNotice(kind: 'available' | 'ready'): Promise<EngineResult>;
+  // Lists that update themselves (NATIVE_CONTRACT 31)
+  /** True only when `sigB64` is a valid ECDSA P-256 signature of `body` under the key embedded in the app. Never throws. */
+  verifyListSignature(body: string, sigB64: string): Promise<boolean>;
   // Governance
   setGovernance(config: GovernanceConfig): Promise<EngineResult>;
   // URL downloads (NATIVE_CONTRACT 17)

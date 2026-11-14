@@ -2,14 +2,14 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Linking, Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Stack } from 'expo-router';
 import Constants from 'expo-constants';
-import { maglevEngine } from 'maglev-engine';
+import { getBlocklistInfo, maglevEngine, type BlocklistInfo } from 'maglev-engine';
 import { ThemeColors, radius, spacing, type } from '../../constants/theme';
 import { useTheme } from '../../context/ThemeContext';
 import { Button, ListRow, RadioCard, Sheet, Toggle } from '../../components/ui';
 import { Caption, Card, SettingsPage } from '../../components/settings/SettingsParts';
 import { Wordmark } from '../../components/settings/Wordmark';
 import { MaglevMark } from '../../components/brand/MaglevMark';
-import { errorScreenCopy, updateCopy } from '../../constants/copy';
+import { errorScreenCopy, listsCopy, updateCopy } from '../../constants/copy';
 import { clearCrashLog, copyCrashReport, getCrashLog } from '../../utils/crashLog';
 import { REPO_URL, StarTicket } from '../../components/settings/StarTicket';
 import { buildIssueUrl, plainNotes } from '../../utils/update/check';
@@ -29,6 +29,10 @@ import {
   useUpdateState,
 } from '../../utils/update';
 import { useUpdatePrefs } from '../../utils/prefs/update';
+import { useListPrefs } from '../../utils/prefs/lists';
+import { checkListsNow, useListsState } from '../../utils/lists';
+import { adBusy, sourcesBusy, type AdState, type SourcesState } from '../../utils/lists/machine';
+import { relativeTime } from '../../utils/feeds';
 import type { PixelIconName } from '../../components/PixelIcon';
 
 type Extra = { homepage?: string; sourceUrl?: string; privacyUrl?: string };
@@ -38,6 +42,41 @@ const MODE_ICONS: Record<'ask' | 'download' | 'auto', PixelIconName> = { ask: 'b
 /** The update this state is about, when there is one the card can show. */
 function updateInfoOf(s: UpdateState) {
   return 'info' in s ? s.info : null;
+}
+
+/** The result line under the "Search sources and trackers" row (contract 31.3), or null before any check. */
+function sourcesResult(st: SourcesState): string | null {
+  switch (st.kind) {
+    case 'checking':
+    case 'verifying':
+      return listsCopy.checking;
+    case 'unchanged':
+      return listsCopy.values.upToDate;
+    case 'applied':
+      return st.changed > 0 ? listsCopy.values.updatedSources(st.changed) : listsCopy.values.updated;
+    case 'rejected':
+      return listsCopy.hints.rejected;
+    case 'failed':
+      return st.why === 'blocked' ? listsCopy.hints.blocked : listsCopy.values.failed;
+    default:
+      return null;
+  }
+}
+
+/** The result line under the "Ad block list" row, or null before any check or when the automatic check skipped it. */
+function adResult(st: AdState): string | null {
+  switch (st.kind) {
+    case 'downloading':
+      return listsCopy.checking;
+    case 'notModified':
+      return listsCopy.values.upToDate;
+    case 'updated':
+      return listsCopy.values.updated;
+    case 'failed':
+      return st.why === 'blocked' ? listsCopy.hints.blocked : st.why === 'invalid' ? listsCopy.hints.rejected : listsCopy.values.failed;
+    default:
+      return null;
+  }
 }
 
 /** What went wrong, in plain English, from the engine code. */
@@ -69,6 +108,31 @@ export default function AboutSettings() {
   const [prefs, setPrefs] = useUpdatePrefs();
   const managedBy = getManagedBy();
   const info = updateInfoOf(update);
+  const lists = useListsState();
+  const [listPrefs, setListPrefs] = useListPrefs();
+  const [adInfo, setAdInfo] = useState<BlocklistInfo | null>(null);
+  const listsChecking = sourcesBusy(lists) || adBusy(lists);
+
+  // The ad list facts come from native; read them again after each check.
+  useEffect(() => {
+    let alive = true;
+    void getBlocklistInfo().then((r) => {
+      if (alive && r.ok) setAdInfo(r);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [lists.ad]);
+
+  const adLine = adInfo
+    ? adInfo.updatedAt != null
+      ? listsCopy.adList.info(adInfo.domains.toLocaleString(), relativeTime(adInfo.updatedAt))
+      : listsCopy.adList.builtIn(adInfo.domains.toLocaleString())
+    : null;
+  const sourcesStamp = listPrefs.sourcesFile ? Date.parse(listPrefs.sourcesFile.generatedAt) || listPrefs.lastListCheckAt : null;
+  const sourcesLine =
+    listPrefs.appliedSerial > 0 && sourcesStamp ? listsCopy.sources.updated(relativeTime(sourcesStamp)) : listsCopy.sources.builtIn;
+  const lines = (...parts: (string | null)[]) => parts.filter(Boolean).join('\n');
 
   useEffect(() => {
     let alive = true;
@@ -186,6 +250,43 @@ export default function AboutSettings() {
             />
           </>
         )}
+        <ListRow
+          title={listsCopy.autoUpdate}
+          subtitle={listsCopy.hints.autoUpdateSubtitle}
+          accessory={
+            <Toggle
+              value={listPrefs.listsAutoCheck}
+              onValueChange={(listsAutoCheck) => setListPrefs({ listsAutoCheck })}
+              accessibilityLabel={listsCopy.autoUpdate}
+            />
+          }
+        />
+        <ListRow
+          title={listsCopy.adList.title}
+          subtitle={lines(adLine, adResult(lists.ad))}
+          accessory={
+            <Button
+              label={listsCopy.checkNow}
+              variant="secondary"
+              loading={listsChecking}
+              onPress={() => void checkListsNow()}
+              accessibilityLabel={`${listsCopy.checkNow}: ${listsCopy.adList.title}`}
+            />
+          }
+        />
+        <ListRow
+          title={listsCopy.sources.title}
+          subtitle={lines(sourcesLine, sourcesResult(lists.sources))}
+          accessory={
+            <Button
+              label={listsCopy.checkNow}
+              variant="secondary"
+              loading={listsChecking}
+              onPress={() => void checkListsNow()}
+              accessibilityLabel={`${listsCopy.checkNow}: ${listsCopy.sources.title}`}
+            />
+          }
+        />
         <ListRow title={updateCopy.report.title} subtitle={updateCopy.report.subtitle} icon="external" onPress={reportBug} />
         <ListRow title="Engine" value={engine} />
         <ListRow

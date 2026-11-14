@@ -602,6 +602,15 @@ export class MaglevEngineBridge implements MaglevEngineApi {
   public getUpdateNetwork(): Promise<EngineResult<UpdateNetwork>> {
     return this.updateCall('getUpdateNetwork');
   }
+  /** NATIVE_CONTRACT 31.1. False when the native module is missing: an unverified list is never applied. */
+  public async verifyListSignature(body: string, sigB64: string): Promise<boolean> {
+    if (!NativeModule) return false;
+    try {
+      return (await this.callNative<boolean>('verifyListSignature', body, sigB64)) === true;
+    } catch {
+      return false;
+    }
+  }
   public cancelUpdateDownload(): Promise<EngineResult> {
     return this.updateCall('cancelUpdateDownload');
   }

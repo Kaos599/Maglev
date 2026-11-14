@@ -727,6 +727,44 @@ export const updateCopy = {
 } as const;
 // endregion updates
 
+// region self-updating lists (docs/NATIVE_CONTRACT.md section 31)
+export const listsCopy = {
+  autoUpdate: 'Update lists automatically',
+  checkNow: 'Check now',
+  checking: 'Checking',
+  adList: {
+    title: 'Ad block list',
+    info: (domains: number | string, when: string) => `${domains} domains · updated ${when}`,
+    builtIn: (domains: number | string) => `${domains} domains · built in`,
+  },
+  sources: {
+    title: 'Search sources and trackers',
+    updated: (when: string) => `Updated ${when}`,
+    builtIn: 'Built in',
+  },
+  /** Short results shown in the row value. */
+  values: {
+    upToDate: 'Up to date',
+    updated: 'Updated',
+    updatedSources: (n: number | string) => `Updated. ${n} sources changed`,
+    failed: "Couldn't check. Try again.",
+  },
+  /** Sentences shown under a row. */
+  hints: {
+    autoUpdateSubtitle: 'Ad block list, search sources and trackers, once a day.',
+    rejected: "The list didn't pass Maglev's checks, so it wasn't used.",
+    blocked: 'Your network settings block this download right now.',
+  },
+  providers: {
+    turnedOff: 'Turned off by Maglev',
+    turnedOffWithNote: (note: string) => `Turned off by Maglev. ${note}`,
+  },
+  browser: {
+    upToDate: 'The block list is already up to date.',
+  },
+} as const;
+// endregion self-updating lists
+
 // region browser find and text size (docs/NATIVE_CONTRACT.md section 28)
 export const findCopy = {
   menuRow: 'Find in page',

@@ -81,7 +81,7 @@ Yes. Maglev is free to download and use, with no ads and nothing to buy. It is f
 
 ### Does Maglev have ads?
 
-No. Maglev has no ads and no ads SDK. Its built-in browser also blocks ads and trackers on the pages you open, using a list of over 42,000 ad and tracker domains that you can update or replace in Settings.
+No. Maglev has no ads and no ads SDK. Its built-in browser also blocks ads and trackers on the pages you open, using a list of over 42,000 ad and tracker domains. Once a day Maglev refreshes that list, the search source addresses and the default trackers, from harshdayal.dev/maglev/lists/sources.json and raw.githubusercontent.com, with no cookies and no identifiers. You can replace the list or turn the updates off in Settings.
 
 ### Is Maglev safe to install?
 

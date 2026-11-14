@@ -99,6 +99,7 @@ class MaglevEngineModule : Module() {
         "updatedAt" to updatedAt?.toDouble(),
         "source" to source,
         "urls" to urls,
+        "changed" to changed,
     )
 
     override fun definition() = ModuleDefinition {
@@ -442,8 +443,14 @@ class MaglevEngineModule : Module() {
 
         // region Browser (docs/NATIVE_CONTRACT.md section 24)
 
-        AsyncFunction("updateBlocklist") { urls: List<String>, promise: Promise ->
-            blocklist(promise) { c -> BlocklistStore.update(c, urls).toResult() }
+        // `options.conditional` sends If-None-Match / If-Modified-Since (section 31.2). The result carries `changed`.
+        AsyncFunction("updateBlocklist") { urls: List<String>, options: Map<String, Any?>, promise: Promise ->
+            val conditional = options["conditional"] == true
+            blocklist(promise) { c -> BlocklistStore.update(c, urls, conditional).toResult() }
+        }
+        // Checks a signed list file against the key embedded in the app (section 31.1). Never throws.
+        AsyncFunction("verifyListSignature") { body: String, sigB64: String, promise: Promise ->
+            promise.resolve(com.maglev.engine.lists.ListSignature.verify(body, sigB64))
         }
         AsyncFunction("getBlocklistInfo") { promise: Promise ->
             blocklist(promise) { c -> BlocklistStore.info(c).toResult() }

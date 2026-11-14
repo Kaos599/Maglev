@@ -1345,6 +1345,10 @@ export class MaglevMockEngine implements MaglevEngineApi {
   public async getUpdateNetwork(): Promise<EngineResult<UpdateNetwork>> {
     return { ok: true, connected: true, metered: false, vpn: false };
   }
+  /** Dev and web: no embedded key, so nothing verifies and no list is applied. */
+  public async verifyListSignature(): Promise<boolean> {
+    return false;
+  }
   public async cancelUpdateDownload(): Promise<EngineResult> {
     return ok();
   }

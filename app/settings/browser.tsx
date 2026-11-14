@@ -4,7 +4,6 @@ import { Stack, useRouter } from 'expo-router';
 import {
   getBlocklistInfo,
   resetBlocklist,
-  updateBlocklist,
   type BlocklistErrorCode,
   type BlocklistInfo,
 } from 'maglev-engine';
@@ -12,10 +11,12 @@ import { useTheme } from '../../context/ThemeContext';
 import { useMaglevEngine } from '../../context/EngineContext';
 import { ThemeColors, spacing, type } from '../../constants/theme';
 import { haptic } from '../../constants/haptics';
-import { browserTabs, empty, historyCopy, notices, textSizeCopy } from '../../constants/copy';
+import { browserTabs, empty, historyCopy, listsCopy, notices, textSizeCopy } from '../../constants/copy';
 import { Button, EmptyBlock, IconButton, ListRow, RadioCard, SectionHeader, Toggle } from '../../components/ui';
 import { Card, Caption, ChipGroup, InputSheet, SettingsPage } from '../../components/settings/SettingsParts';
-import { DEFAULT_BLOCKLIST_URL, updateBrowserPrefs, useBrowserPrefs, type PopupPolicy } from '../../utils/prefs/browser';
+import { updateBrowserPrefs, useBrowserPrefs, type PopupPolicy } from '../../utils/prefs/browser';
+import { getDefaultBlocklistUrls } from '../../utils/prefs/lists';
+import { updateAdList } from '../../utils/lists';
 import { ClearHistorySheet, type ClearMode } from '../../components/browser/ClearHistorySheet';
 import { SEARCH_URLS, hostOf, isHttpsUrl, type SearchEngine } from '../../utils/browserUrl';
 
@@ -77,12 +78,13 @@ export default function BrowserSettings() {
   const update = async () => {
     haptic('tap');
     setUpdating(true);
-    const res = await updateBlocklist(prefs.blocklistUrls);
+    // Update now always downloads in full (conditional: false), unlike the daily check (contract 31.2).
+    const res = await updateAdList({ conditional: false });
     setUpdating(false);
     if (res.ok) {
       setInfo(res);
       haptic('done');
-      showNotice({ message: notices.browser.listUpdated(res.domains.toLocaleString()) }, 3000);
+      showNotice({ message: res.changed === false ? listsCopy.browser.upToDate : notices.browser.listUpdated(res.domains.toLocaleString()) }, 3000);
     } else {
       haptic('fail');
       showNotice({ message: listErrorText(res.code) });
@@ -92,7 +94,8 @@ export default function BrowserSettings() {
   const reset = async () => {
     haptic('tap');
     const res = await resetBlocklist();
-    setPrefs({ blocklistUrls: [DEFAULT_BLOCKLIST_URL] });
+    // The default address now in force: the source list's, else the built-in one (contract 31.1).
+    setPrefs({ blocklistUrls: getDefaultBlocklistUrls() });
     if (res.ok) {
       setInfo(res);
       showNotice({ message: notices.browser.listReset }, 3000);

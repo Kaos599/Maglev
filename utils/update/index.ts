@@ -13,6 +13,7 @@ import { autoCheckDue, initialState, reduce, type UpdateEvent, type UpdateState 
 import { autoDownloadAllowed, isUploading, networkAllows, safeToInstall, type UpdateNet } from './rules.ts';
 import { getUpdatePrefs, updateUpdatePrefs } from '../prefs/update.ts';
 import { isNewer } from './check.ts';
+import { startListUpdates } from '../lists/index.ts';
 
 let state: UpdateState = initialState;
 const listeners = new Set<() => void>();
@@ -293,6 +294,9 @@ export function startUpdates(): () => void {
   if (started) return () => {};
   started = true;
   const subs: (() => void)[] = [];
+  // The lists (ad block list, search sources, trackers) share this foreground hook but keep their own gate and prefs
+  // (section 31.3). Store installs still get them: the lists are data, not the app.
+  subs.push(startListUpdates());
   void (async () => {
     await loadSource();
     if (!managedBy) {

@@ -265,6 +265,8 @@ export type BlocklistInfo = {
   source: 'bundled' | 'downloaded';
   urls: string[];
   bytes: number;
+  /** False when a conditional update found every address unchanged (contract 31.2). Absent from older builds. */
+  changed?: boolean;
 };
 
 const unavailable = (): { ok: false; code: BlocklistErrorCode; message: string } => ({
@@ -282,8 +284,12 @@ async function call<T>(name: string, ...args: unknown[]): Promise<BlocklistResul
   }
 }
 
-/** Fetches the lists (https only), merges them and replaces the active list. The old list stays on failure. */
-export const updateBlocklist = (urls: string[]) => call<BlocklistInfo>('updateBlocklist', urls);
+/**
+ * Fetches the lists (https only), merges them and replaces the active list. The old list stays on failure.
+ * `conditional: true` sends If-None-Match and If-Modified-Since, and `changed: false` means every address answered 304.
+ */
+export const updateBlocklist = (urls: string[], options: { conditional: boolean } = { conditional: false }) =>
+  call<BlocklistInfo>('updateBlocklist', urls, options);
 export const getBlocklistInfo = () => call<BlocklistInfo>('getBlocklistInfo');
 /** Back to the built-in list. */
 export const resetBlocklist = () => call<BlocklistInfo>('resetBlocklist');
