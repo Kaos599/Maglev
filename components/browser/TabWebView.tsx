@@ -4,6 +4,7 @@ import {
   MaglevBrowser,
   type BrowserBlockedCountEvent,
   type BrowserDownloadRequestEvent,
+  type BrowserFindResultEvent,
   type BrowserFoundEvent,
   type BrowserLongPressEvent,
   type BrowserMagnetEvent,
@@ -31,6 +32,7 @@ export type TabHandlers = {
   onPopupRequest(id: string, e: BrowserPopupRequestEvent): void;
   onPopupBlocked(id: string, e: BrowserPopupBlockedEvent): void;
   onLongPress(id: string, e: BrowserLongPressEvent): void;
+  onFindResult(id: string, e: BrowserFindResultEvent): void;
 };
 
 export interface TabWebViewProps {
@@ -41,6 +43,8 @@ export interface TabWebViewProps {
   adBlock: boolean;
   allowAdsHosts: string[];
   desktopMode: boolean;
+  /** Page text size in percent (applies to every live tab). */
+  textZoom: number;
   popupPolicy: PopupPolicy;
   popupAllowHosts: string[];
   handlers: TabHandlers;
@@ -52,7 +56,7 @@ export interface TabWebViewProps {
  * One native browser view for one tab. Stacked with the others by absolute fill; an inactive one is invisible and
  * ignores touches but stays mounted, so switching back is instant.
  */
-export function TabWebView({ id, url, active, adBlock, allowAdsHosts, desktopMode, popupPolicy, popupAllowHosts, handlers: h, register }: TabWebViewProps) {
+export function TabWebView({ id, url, active, adBlock, allowAdsHosts, desktopMode, textZoom, popupPolicy, popupAllowHosts, handlers: h, register }: TabWebViewProps) {
   const ref = useRef<MaglevBrowserRef>(null);
   useEffect(() => {
     register(id, ref);
@@ -67,6 +71,7 @@ export function TabWebView({ id, url, active, adBlock, allowAdsHosts, desktopMod
       adBlock={adBlock}
       allowAdsHosts={allowAdsHosts}
       desktopMode={desktopMode}
+      textZoom={textZoom}
       popupPolicy={popupPolicy}
       popupAllowHosts={popupAllowHosts}
       style={styles.fill}
@@ -82,6 +87,7 @@ export function TabWebView({ id, url, active, adBlock, allowAdsHosts, desktopMod
       onPopupRequest={(e) => h.onPopupRequest(id, e)}
       onPopupBlocked={(e) => h.onPopupBlocked(id, e)}
       onLongPress={(e) => h.onLongPress(id, e)}
+      onFindResult={(e) => h.onFindResult(id, e)}
     />
     </View>
   );

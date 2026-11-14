@@ -16,12 +16,14 @@ import { useTheme } from '../context/ThemeContext';
 import { useMaglevEngine } from '../context/EngineContext';
 import { ThemeColors, radius, spacing, type } from '../constants/theme';
 import { haptic } from '../constants/haptics';
-import { banners, browserTabs, empty, foundTray, historyCopy, notices } from '../constants/copy';
+import { banners, browserTabs, empty, findCopy, foundTray, historyCopy, notices, textSizeCopy } from '../constants/copy';
 import { PixelIcon } from '../components/PixelIcon';
 import { Banner, Button, EmptyBlock, IconButton, ListRow, PressableScale, ProgressBar, Sheet, Toggle } from '../components/ui';
 import { FoundTray } from '../components/browser/FoundTray';
 import { TabWebView, type TabHandlers } from '../components/browser/TabWebView';
 import { TabSwitcher } from '../components/browser/TabSwitcher';
+import { FindBar, type FindResult } from '../components/browser/FindBar';
+import { TextSizeSheet } from '../components/browser/TextSizeSheet';
 import { LinkMenu } from '../components/browser/LinkMenu';
 import { PopupCard } from '../components/browser/PopupCard';
 import { useTabs } from '../components/browser/useTabs';
@@ -132,6 +134,11 @@ export default function BrowserScreen() {
   const [trayOpen, setTrayOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [switcherOpen, setSwitcherOpen] = useState(false);
+  // Find in page (contract section 28) acts on one tab's view: findTab is the tab it was opened on.
+  const [findOpen, setFindOpen] = useState(false);
+  const [findResult, setFindResult] = useState<FindResult | null>(null);
+  const findTab = useRef<string | null>(null);
+  const [textSizeOpen, setTextSizeOpen] = useState(false);
   const [linkTarget, setLinkTarget] = useState<BrowserLongPressEvent | null>(null);
   const [target, setTarget] = useState<DownloadTarget | null>(null);
   const [batchItems, setBatchItems] = useState<FoundItem[] | null>(null);
@@ -165,6 +172,29 @@ export default function BrowserScreen() {
     setLinkTarget(null);
     setUndo(null);
   }, [activeId]);
+
+  // Removes the highlights and brings the address bar back. VIEW_GONE (the view is already gone) is ignored.
+  const closeFind = useCallback(() => {
+    const id = findTab.current;
+    findTab.current = null;
+    setFindOpen(false);
+    setFindResult(null);
+    if (id) view(id)?.clearFind().catch(() => {});
+  }, [view]);
+
+  // Switching tabs closes find on the tab you left.
+  useEffect(() => {
+    if (findTab.current && findTab.current !== activeId) closeFind();
+  }, [activeId, closeFind]);
+
+  const openFind = useCallback(() => {
+    setMenuOpen(false);
+    afterSheetCloses(() => {
+      findTab.current = activeIdRef.current;
+      setFindResult(null);
+      setFindOpen(true);
+    });
+  }, []);
 
   const openTabChecked = useCallback(
     (opts: { url?: string; opener?: string | null; background?: boolean }) => {
@@ -306,11 +336,15 @@ export default function BrowserScreen() {
 
   // ---- back ----
   // Android back: leave a fullscreen video (the view reports canGoBack while one is up), then close the address bar,
-  // the switcher, the long-press menu or the pop-up card, then go back in the page, then close a tab that has an opener, then leave.
+  // find in page, the switcher, the long-press menu or the pop-up card, then go back in the page, then close a tab that has an opener, then leave.
   const handleBack = useCallback((): boolean => {
     if (editing) {
       inputRef.current?.blur();
       Keyboard.dismiss();
+      return true;
+    }
+    if (findOpen) {
+      closeFind();
       return true;
     }
     if (switcherOpen) {
@@ -335,7 +369,7 @@ export default function BrowserScreen() {
     if (next === 'leave') return false;
     tabs.close(activeId);
     return true;
-  }, [editing, switcherOpen, linkTarget, prompt, popupBlock, tabs, activeId, page?.canGoBack, view]);
+  }, [editing, findOpen, closeFind, switcherOpen, linkTarget, prompt, popupBlock, tabs, activeId, page?.canGoBack, view]);
   useFocusEffect(
     useCallback(() => {
       const sub = BackHandler.addEventListener('hardwareBackPress', handleBack);
@@ -402,6 +436,7 @@ export default function BrowserScreen() {
   const impl: TabHandlers = {
     onPage: (id, e) => {
       let skipRecord = false;
+      let newDocument = false;
       patch(id, (d) => {
         d.page = e;
         if (e.loading) {
@@ -410,6 +445,7 @@ export default function BrowserScreen() {
         }
         skipRecord = d.crashed || d.refused != null;
         if (e.url !== d.lastUrl) {
+          newDocument = true;
           d.lastUrl = e.url;
           d.notes.clear();
           // A new document starts a new list. Files already tagged with it (found before this event) stay.
@@ -417,6 +453,8 @@ export default function BrowserScreen() {
           d.dismissed = new Set();
         }
       });
+      // A new document drops the highlights with it, so the find bar closes.
+      if (newDocument && id === findTab.current) closeFind();
       // H1: only a finished load is recorded. The store skips non-web addresses, repeats and the off setting.
       if (e.loading === false && !skipRecord) {
         recordVisit({ url: e.url, title: e.title ?? '' }).catch(() => {});
@@ -468,6 +506,9 @@ export default function BrowserScreen() {
     onPopupBlocked: (id) => setPopups((p) => popupsApi.noteBlocked(p, id)),
     onLongPress: (id, e) => {
       if (id === activeIdRef.current) setLinkTarget(e);
+    },
+    onFindResult: (id, e) => {
+      if (id === findTab.current) setFindResult(e);
     },
   };
   const implRef = useRef(impl);
@@ -569,6 +610,21 @@ export default function BrowserScreen() {
 
   return (
     <SafeAreaView style={styles.root} edges={['top', 'left', 'right', 'bottom']}>
+      {findOpen ? (
+        <FindBar
+          result={findResult}
+          onSearch={(q) => {
+            setFindResult(null);
+            const id = findTab.current;
+            if (id) view(id)?.findInPage(q).catch(() => {});
+          }}
+          onStep={(forward) => {
+            const id = findTab.current;
+            if (id) view(id)?.findNext(forward).catch(() => {});
+          }}
+          onClose={closeFind}
+        />
+      ) : (
       <View style={styles.bar}>
         <IconButton
           icon="back"
@@ -652,6 +708,7 @@ export default function BrowserScreen() {
         </PressableScale>
         <IconButton icon="more" accessibilityLabel="More" disabled={!hasPage} onPress={() => setMenuOpen(true)} />
       </View>
+      )}
       <View style={styles.progress}>{loading ? <ProgressBar progress={(page?.progress ?? 0) / 100} indeterminate={!page || page.progress <= 0} /> : null}</View>
 
       <View style={styles.body}>
@@ -669,6 +726,7 @@ export default function BrowserScreen() {
                     adBlock={prefs.adBlock}
                     allowAdsHosts={prefs.allowAdsHosts}
                     desktopMode={desktop}
+                    textZoom={prefs.browserTextZoom}
                     popupPolicy={prefs.popupPolicy}
                     popupAllowHosts={prefs.popupAllowHosts}
                     handlers={handlers}
@@ -775,6 +833,16 @@ export default function BrowserScreen() {
             view()?.goForward();
           }}
         />
+        <ListRow icon="search" title={findCopy.menuRow} onPress={openFind} />
+        <ListRow
+          icon="text-size"
+          title={textSizeCopy.menuRow}
+          value={textSizeCopy.value(prefs.browserTextZoom)}
+          onPress={() => {
+            setMenuOpen(false);
+            afterSheetCloses(() => setTextSizeOpen(true));
+          }}
+        />
         <ListRow
           icon="interface"
           title="Desktop site"
@@ -823,6 +891,13 @@ export default function BrowserScreen() {
           }}
         />
       </Sheet>
+
+      <TextSizeSheet
+        visible={textSizeOpen}
+        value={prefs.browserTextZoom}
+        onChange={(browserTextZoom) => updateBrowserPrefs({ browserTextZoom })}
+        onClose={() => setTextSizeOpen(false)}
+      />
 
       {switcherOpen && tabsState ? (
         <TabSwitcher

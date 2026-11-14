@@ -721,3 +721,26 @@ export const updateCopy = {
   },
 } as const;
 // endregion updates
+
+// region browser find and text size (docs/NATIVE_CONTRACT.md section 28)
+export const findCopy = {
+  menuRow: 'Find in page',
+  placeholder: 'Find in page',
+  noMatches: 'No matches',
+  count: (n: number | string, total: number | string) => `${n}/${total}`,
+  matchLabel: (n: number | string, total: number | string) => `Match ${n} of ${total}`,
+  previous: 'Previous match',
+  next: 'Next match',
+  close: 'Close find',
+} as const;
+
+export const textSizeCopy = {
+  menuRow: 'Text size',
+  title: 'Text size',
+  settingsLabel: 'Text size',
+  value: (percent: number | string) => `${percent}%`,
+  smaller: 'Smaller text',
+  larger: 'Larger text',
+  reset: 'Reset',
+} as const;
+// endregion browser find and text size

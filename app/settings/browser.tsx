@@ -12,9 +12,9 @@ import { useTheme } from '../../context/ThemeContext';
 import { useMaglevEngine } from '../../context/EngineContext';
 import { ThemeColors, spacing, type } from '../../constants/theme';
 import { haptic } from '../../constants/haptics';
-import { browserTabs, empty, historyCopy, notices } from '../../constants/copy';
+import { browserTabs, empty, historyCopy, notices, textSizeCopy } from '../../constants/copy';
 import { Button, EmptyBlock, IconButton, ListRow, RadioCard, SectionHeader, Toggle } from '../../components/ui';
-import { Card, Caption, InputSheet, SettingsPage } from '../../components/settings/SettingsParts';
+import { Card, Caption, ChipGroup, InputSheet, SettingsPage } from '../../components/settings/SettingsParts';
 import { DEFAULT_BLOCKLIST_URL, updateBrowserPrefs, useBrowserPrefs, type PopupPolicy } from '../../utils/prefs/browser';
 import { ClearHistorySheet, type ClearMode } from '../../components/browser/ClearHistorySheet';
 import { SEARCH_URLS, hostOf, isHttpsUrl, type SearchEngine } from '../../utils/browserUrl';
@@ -25,6 +25,9 @@ const ENGINES: { value: SearchEngine; title: string }[] = [
   { value: 'bing', title: 'Bing' },
   { value: 'brave', title: 'Brave' },
 ];
+
+/** Exact sizes in percent. normalizeTextZoom keeps every one of them as it is. */
+const TEXT_SIZES = [80, 90, 100, 115, 130, 150, 175, 200].map((v) => ({ value: v, label: textSizeCopy.value(v) }));
 
 const POPUP_CHOICES: { value: PopupPolicy; title: string }[] = [
   { value: 'ask', title: browserTabs.settings.ask },
@@ -240,6 +243,8 @@ export default function BrowserSettings() {
           accessory={<Toggle value={prefs.desktopMode} onValueChange={(desktopMode) => setPrefs({ desktopMode })} accessibilityLabel="Desktop site" />}
         />
       </Card>
+
+      <ChipGroup label={textSizeCopy.settingsLabel} options={TEXT_SIZES} value={prefs.browserTextZoom} onChange={(browserTextZoom) => setPrefs({ browserTextZoom })} />
 
       <View style={s.section}>
         <SectionHeader title={historyCopy.settings.section} />

@@ -78,6 +78,8 @@ export type BrowserLongPressEvent = {
   imageUrl: string | null;
   text: string | null;
 };
+/** `active` is 0-based. `total` is 0 when nothing matches. `done` is false while the page is still being counted. */
+export type BrowserFindResultEvent = { active: number; total: number; done: boolean };
 export type OpenAppResult = { opened: boolean; fallbackUrl: string | null };
 
 export type MaglevBrowserProps = {
@@ -90,6 +92,8 @@ export type MaglevBrowserProps = {
   adBlock?: boolean;
   allowAdsHosts?: string[];
   desktopMode?: boolean;
+  /** Page text size in percent, 50 to 200. Default 100. Pinch zoom is separate. */
+  textZoom?: number;
   style?: StyleProp<ViewStyle>;
   onPage?: (e: BrowserPageEvent) => void;
   onFound?: (e: BrowserFoundEvent) => void;
@@ -103,6 +107,7 @@ export type MaglevBrowserProps = {
   onPopupRequest?: (e: BrowserPopupRequestEvent) => void;
   onPopupBlocked?: (e: BrowserPopupBlockedEvent) => void;
   onLongPress?: (e: BrowserLongPressEvent) => void;
+  onFindResult?: (e: BrowserFindResultEvent) => void;
 };
 
 export type MaglevBrowserRef = {
@@ -123,6 +128,12 @@ export type MaglevBrowserRef = {
   followRedirect(url: string): Promise<void>;
   /** Opens an intent:, market:, tel:, mailto: or custom-scheme address in another app. Call only after the user said yes. Never rejects. */
   openApp(url: string): Promise<OpenAppResult>;
+  /** Highlights matches of `query` and reports them through onFindResult. Rejects with VIEW_GONE once the view is destroyed. */
+  findInPage(query: string): Promise<void>;
+  /** Moves to the next (`true`) or previous match. Rejects with VIEW_GONE once the view is destroyed. */
+  findNext(forward: boolean): Promise<void>;
+  /** Removes the highlights. Rejects with VIEW_GONE once the view is destroyed. */
+  clearFind(): Promise<void>;
 };
 
 type NativeEvent<T> = { nativeEvent: T };
@@ -134,6 +145,7 @@ type NativeProps = {
   adBlock?: boolean;
   allowAdsHosts?: string[];
   desktopMode?: boolean;
+  textZoom?: number;
   style?: StyleProp<ViewStyle>;
   onPage?: (e: NativeEvent<BrowserPageEvent>) => void;
   onFound?: (e: NativeEvent<BrowserFoundEvent>) => void;
@@ -147,6 +159,7 @@ type NativeProps = {
   onPopupRequest?: (e: NativeEvent<BrowserPopupRequestEvent>) => void;
   onPopupBlocked?: (e: NativeEvent<BrowserPopupBlockedEvent>) => void;
   onLongPress?: (e: NativeEvent<BrowserLongPressEvent>) => void;
+  onFindResult?: (e: NativeEvent<BrowserFindResultEvent>) => void;
 };
 
 let Native: any = null;
@@ -165,7 +178,7 @@ const NativeBrowser: React.ComponentType<NativeProps & React.RefAttributes<Magle
 const NOT_AVAILABLE = "The browser isn't available in this build.";
 
 export const MaglevBrowser = React.forwardRef<MaglevBrowserRef, MaglevBrowserProps>(function MaglevBrowser(
-  { onPage, onFound, onBlockedCount, onDownloadRequest, onMagnet, onRefused, onCrashed, onPageNote, onNewWindow, onPopupRequest, onPopupBlocked, onLongPress, ...rest },
+  { onPage, onFound, onBlockedCount, onDownloadRequest, onMagnet, onRefused, onCrashed, onPageNote, onNewWindow, onPopupRequest, onPopupBlocked, onLongPress, onFindResult, ...rest },
   ref,
 ) {
   const nativeRef = React.useRef<MaglevBrowserRef | null>(null);
@@ -182,6 +195,9 @@ export const MaglevBrowser = React.forwardRef<MaglevBrowserRef, MaglevBrowserPro
       clearData: (options: BrowserClearOptions) => nativeRef.current?.clearData(options),
       clearHistoryList: () => nativeRef.current?.clearHistoryList(),
       followRedirect: (url: string) => nativeRef.current?.followRedirect(url) ?? Promise.resolve(),
+      findInPage: (query: string) => nativeRef.current?.findInPage(query) ?? Promise.resolve(),
+      findNext: (forward: boolean) => nativeRef.current?.findNext(forward) ?? Promise.resolve(),
+      clearFind: () => nativeRef.current?.clearFind() ?? Promise.resolve(),
       openApp: async (url: string): Promise<OpenAppResult> => {
         try {
           return (await nativeRef.current?.openApp(url)) ?? { opened: false, fallbackUrl: null };
@@ -216,6 +232,7 @@ export const MaglevBrowser = React.forwardRef<MaglevBrowserRef, MaglevBrowserPro
       onPopupRequest={onPopupRequest ? (e) => onPopupRequest(e.nativeEvent) : undefined}
       onPopupBlocked={onPopupBlocked ? (e) => onPopupBlocked(e.nativeEvent) : undefined}
       onLongPress={onLongPress ? (e) => onLongPress(e.nativeEvent) : undefined}
+      onFindResult={onFindResult ? (e) => onFindResult(e.nativeEvent) : undefined}
     />
   );
 });

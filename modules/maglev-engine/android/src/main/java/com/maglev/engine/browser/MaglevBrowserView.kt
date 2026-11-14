@@ -65,6 +65,7 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
     private val onPopupRequest by EventDispatcher<Map<String, Any?>>()
     private val onPopupBlocked by EventDispatcher<Map<String, Any?>>()
     private val onLongPress by EventDispatcher<Map<String, Any?>>()
+    private val onFindResult by EventDispatcher<Map<String, Any?>>()
 
     override val shouldUseAndroidLayout: Boolean = true
 
@@ -87,6 +88,8 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
     @Volatile private var adBlock = true
     @Volatile private var allowHosts: List<String> = emptyList()
     private var desktopMode = false
+    // 28: text size in percent, 50..200. Applied again to every WebView this view creates.
+    private var textZoom = 100
     private var pendingUrl: String? = null
     private var requestedUrl: String? = null
 
@@ -155,6 +158,42 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
         desktopMode = value
         applyUserAgent()
         if (!destroyed && webView.url != null) webView.reload()
+    }
+
+    /** 28: text size in percent. Clamped to 50..200. Pinch zoom is separate and stays on. */
+    fun setTextZoom(value: Int) {
+        val v = value.coerceIn(50, 200)
+        if (v == textZoom) return
+        textZoom = v
+        if (!destroyed) webView.settings.textZoom = v
+    }
+
+    /** 28: highlight matches of [query] in the page. An empty query clears them. Results come as onFindResult. */
+    fun findInPage(query: String, promise: Promise) {
+        if (destroyed) {
+            promise.reject("VIEW_GONE", "The browser was closed.", null)
+            return
+        }
+        if (query.isEmpty()) webView.clearMatches() else webView.findAllAsync(query)
+        promise.resolve(null)
+    }
+
+    fun findNext(forward: Boolean, promise: Promise) {
+        if (destroyed) {
+            promise.reject("VIEW_GONE", "The browser was closed.", null)
+            return
+        }
+        webView.findNext(forward)
+        promise.resolve(null)
+    }
+
+    fun clearFind(promise: Promise) {
+        if (destroyed) {
+            promise.reject("VIEW_GONE", "The browser was closed.", null)
+            return
+        }
+        webView.clearMatches()
+        promise.resolve(null)
     }
 
     fun setActive(value: Boolean) {
@@ -380,6 +419,10 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
         s.setSupportZoom(true)
         s.builtInZoomControls = true
         s.displayZoomControls = false
+        s.textZoom = textZoom
+        w.setFindListener { ordinal, total, done ->
+            if (!destroyed) onFindResult(mapOf("active" to ordinal, "total" to total, "done" to done))
+        }
         s.useWideViewPort = true
         s.loadWithOverviewMode = true
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) s.setSafeBrowsingEnabled(true)
