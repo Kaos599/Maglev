@@ -29,6 +29,7 @@ import { PopupCard } from '../components/browser/PopupCard';
 import { useTabs } from '../components/browser/useTabs';
 import { afterSheetCloses } from '../components/browser/FloatingSheet';
 import { HistorySuggestions } from '../components/browser/HistorySuggestions';
+import { RecentHistory } from '../components/browser/RecentHistory';
 import { StreamSheet } from '../components/browser/StreamSheet';
 import { FoundDownloadSheet, downloadHeaders, type DownloadTarget } from '../components/browser/FoundDownload';
 import { BatchSheet } from '../components/browser/BatchSheet';
@@ -700,7 +701,7 @@ export default function BrowserScreen({ inTab = false }: { inTab?: boolean }) {
             </Text>
           </View>
         </PressableScale>
-        <IconButton icon="more" accessibilityLabel="More" disabled={!hasPage} onPress={() => setMenuOpen(true)} />
+        <IconButton icon="more" accessibilityLabel="More" disabled={!ready} onPress={() => setMenuOpen(true)} />
       </View>
       )}
       <View style={styles.progress}>{loading ? <ProgressBar progress={(page?.progress ?? 0) / 100} indeterminate={!page || page.progress <= 0} /> : null}</View>
@@ -729,7 +730,15 @@ export default function BrowserScreen({ inTab = false }: { inTab?: boolean }) {
                 );
               })
           : null}
-        {!hasPage ? <EmptyBlock icon="network" title={empty.browser.start.title} body={empty.browser.start.body} /> : null}
+        {!hasPage ? (
+          <RecentHistory
+            onPick={(u) => {
+              haptic('tap');
+              go(u);
+            }}
+            fallback={<EmptyBlock icon="network" title={empty.browser.start.title} body={empty.browser.start.body} />}
+          />
+        ) : null}
         {editing ? (
           <HistorySuggestions
             text={draft}
@@ -817,7 +826,9 @@ export default function BrowserScreen({ inTab = false }: { inTab?: boolean }) {
       <LinkMenu target={linkTarget} onClose={() => setLinkTarget(null)} openInTab={openLinkInTab} download={downloadLink} addTorrent={toAddTorrent} notify={notify} />
       <PopupCard prompt={prompt} onOpen={popupOpen} onBlock={popupBlock} onAlwaysAllow={popupAlways} />
 
-      <Sheet visible={menuOpen} onClose={() => setMenuOpen(false)} title="This page" subtitle={pageHost || undefined}>
+      <Sheet visible={menuOpen} onClose={() => setMenuOpen(false)} title={hasPage ? historyCopy.menuTitlePage : historyCopy.menuTitleBlank} subtitle={(hasPage && pageHost) || undefined}>
+        {hasPage ? (
+          <>
         <ListRow
           icon="forward"
           title="Forward"
@@ -868,6 +879,8 @@ export default function BrowserScreen({ inTab = false }: { inTab?: boolean }) {
             if (page?.url) void copy(page.url);
           }}
         />
+          </>
+        ) : null}
         <ListRow
           icon="clock"
           title={historyCopy.menuRow}
