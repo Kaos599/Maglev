@@ -34,7 +34,7 @@ libc = "0.2"
 # `cbc` needs `alloc` for the `*_vec_mut` helpers. Versions are pinned exactly (cipher 0.4 generation).
 roxmltree = "=0.20.0"
 aes = "=0.8.4"
-cbc = { version = "=0.1.2", features = ["alloc"] }
+cbc = { version = "=0.2.1", features = ["alloc"] }
 
 # reqwest 0.13's `rustls` feature hard-wires rustls-platform-verifier, which on Android needs a JNI
 # init plus a Kotlin companion component. reqwest has no feature to pick another verifier and
