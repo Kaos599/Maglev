@@ -99,7 +99,7 @@ Download an APK from [Releases](https://github.com/Kaos599/Maglev/releases/lates
 
 ## What's next
 
-- **Browser basics (0.24).** Bookmarks and a new-tab page, file upload on web forms, sign-in prompts for routers and NAS pages, site dialogs (confirm and alert), and HTTPS first for typed addresses.
+- **Browser basics (0.25).** Bookmarks and a new-tab page, file upload on web forms, sign-in prompts for routers and NAS pages, site dialogs (confirm and alert), and HTTPS first for typed addresses.
 - Search inside the browser's found files, and keeping a page's file list after you leave it.
 - Choosing which ad-block lists to combine, and per-site rules beyond "allow ads here".
 - A Google Play build.
