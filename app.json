@@ -37,6 +37,11 @@
         "POST_NOTIFICATIONS",
         "REQUEST_IGNORE_BATTERY_OPTIMIZATIONS"
       ],
+      "blockedPermissions": [
+        "android.permission.SYSTEM_ALERT_WINDOW",
+        "android.permission.USE_BIOMETRIC",
+        "android.permission.USE_FINGERPRINT"
+      ],
       "intentFilters": [
         {
           "action": "VIEW",
