@@ -2,10 +2,11 @@ name: CI
 
 # Docs-only changes skip CI entirely (the README badge keeps the last real result).
 on:
-  # Every change is built once, on its pull request. Pushes run CI only on main, and a merge from a pull
-  # request that already built release APKs (base main) reuses them instead of building again (job `reuse`).
+  # Flow: feature branches → PR into dev → dev (the main CI run, where features converge) → PR dev → main
+  # (the release build: all three ABIs, strict signing, APK set) → main reuses that PR's APKs (job `reuse`),
+  # and release-apk.yml publishes them. Main only builds if the merge changed anything the PR didn't build.
   push:
-    branches: [main]
+    branches: [main, dev]
     paths-ignore: ['**/*.md', 'docs/**', 'screens/**', 'LICENSE']
   pull_request:
     paths-ignore: ['**/*.md', 'docs/**', 'screens/**', 'LICENSE']
