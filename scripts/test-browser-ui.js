@@ -91,7 +91,7 @@ async function main() {
     check('a different page or origin is kept', f.hideVariantPlaylists([m, h('o', '/x36/o.m3u8', { pageUrl: 'https://q.test' }), h('p', '/x36/p.m3u8', { url: 'https://other.test/x36/p.m3u8' })]).length === 3);
     check('a playlist in a sibling folder above is kept', f.hideVariantPlaylists([h('a', '/x/a/m.m3u8'), h('b', '/x/b.m3u8')]).length === 2);
     check('a playlist at the server root hides nothing', f.hideVariantPlaylists([h('r', '/master.m3u8'), h('s', '/films/b/master.m3u8')]).length === 2);
-    check('browser wires hideVariantPlaylists', /hideVariantPlaylists\(foundAll\)/.test(read('app/browser.tsx')));
+    check('browser wires hideVariantPlaylists (through visibleFound, which also hides dismissed rows)', /visibleFound\(foundAll/.test(read('app/browser.tsx')) && /hideVariantPlaylists\(items\)/.test(read('components/browser/foundDismiss.ts')));
   }
   check('empty filter falls back to All', f.effectiveFilter('audio', counts) === 'all' && f.effectiveFilter('video', counts) === 'video');
   const merged = f.mergeFound(items, [mk('a', 'video'), mk('z', 'audio')]);

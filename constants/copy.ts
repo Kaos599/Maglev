@@ -104,6 +104,14 @@ export const notices = {
     linkCopied: 'Link copied.',
     linkCopyFailed: "Couldn't copy the link.",
     addedToTransfers: 'Added to Transfers.',
+    /** The summary after a batch. `duplicate` is files already in Transfers. */
+    batchDone: (added: string | number, duplicate: string | number, failed: string | number) => {
+      const a = Number(added);
+      const d = Number(duplicate);
+      const f = Number(failed);
+      if (a === 0 && d === 0) return `Couldn't add ${f} ${f === 1 ? 'file' : 'files'}.`;
+      return [a > 0 ? `Added ${a}.` : '', d > 0 ? `${d} already in Transfers.` : '', f > 0 ? `${f} failed.` : ''].filter(Boolean).join(' ');
+    },
     adsAllowed: (site: string | number) => `Ads allowed on ${toName(site)}.`,
     adsBlocked: (site: string | number) => `Blocking ads on ${toName(site)}.`,
     listUpdated: (domains: string | number) => `Block list updated. ${toName(domains)} domains.`,
@@ -273,6 +281,34 @@ export const foundTray = {
   hidden: (n: string | number) => `${n} hidden`,
   showHidden: (n: string | number) => `Show ${n} hidden small files`,
   hideAgain: 'Hide small files again',
+  inTransfers: 'In Transfers',
+  view: 'View',
+  downloading: (n: string | number) => `${n} downloading`,
+  downloadingLabel: (text: string) => `${text}. Open Transfers`,
+  selectAll: 'Select all',
+  selectNone: 'Select none',
+  cancelSelect: 'Cancel',
+  downloadN: (n: string | number) => `Download (${n})`,
+  copyLink: 'Copy link',
+  selectedLabel: (n: string | number) => `${n} selected`,
+  capNote: (n: string | number) => `Up to ${n} files at once.`,
+  batchTitle: (n: string | number) => `Download ${n} files`,
+  batchKnown: (size: string) => `${size} in total`,
+  unknownSizes: (n: string | number) => (Number(n) === 1 ? '1 file has no known size, so it is not counted.' : `${n} files have no known size, so they are not counted.`),
+  scanAgain: 'Scan again',
+  scanAgainLabel: 'Forget this list and scan the page again',
+  undo: 'Undo',
+  removed: (name: string | number) => `Removed ${name}.`,
+  cleared: (n: string | number) => `Cleared ${n} files.`,
+} as const;
+
+/** Labels for the one-download folder choice in the browser's download sheet. Short field names. */
+export const saveTo = {
+  title: 'Save to',
+  defaultFolder: 'Default folder',
+  subfolder: 'Subfolder',
+  namePlaceholder: 'Folder name',
+  onlyThis: 'Only for this download.',
 } as const;
 
 /** Labels on the browser's stream sheet. Not linted as notices; they are short field names. */

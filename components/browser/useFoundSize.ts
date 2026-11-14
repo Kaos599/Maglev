@@ -49,3 +49,11 @@ export function useFoundSize(item: FoundItem, userAgent: string, probeStream: Pr
 
   return own != null ? { size: own, estimate: false, height: null } : found;
 }
+
+/** The size to count for a row right now: the engine's own, else an answer a row already probed. Null when unknown. */
+export function knownSizeOf(item: FoundItem): number | null {
+  if (item.size != null && item.size > 0) return item.size;
+  const key = `${item.stream ? 's' : 'f'}:${item.url}`;
+  const cached = prober.peek<FoundSize>(key);
+  return cached?.size != null && cached.size > 0 ? cached.size : null;
+}
