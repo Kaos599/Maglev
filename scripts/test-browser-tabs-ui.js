@@ -123,5 +123,8 @@ check('no hex colours and no system monospace in the new files', [view, hook, sw
 check('icons come from PixelIcon only', [sw, menu, card].every((s) => !/@expo\/vector-icons/.test(s)));
 check('the test is chained after test-browser-tabs.js', /node scripts\/test-browser-tabs\.js && node scripts\/test-browser-tabs-ui\.js/.test(pkg));
 
+const tabRoute = read('app/(tabs)/browse.tsx');
+check('in the tab bar the screen skips the bottom inset (the tab bar already pads for it)', /<BrowserScreen inTab \/>/.test(tabRoute) && /edges=\{inTab \? \['top', 'left', 'right'\] : \['top', 'left', 'right', 'bottom'\]\}/.test(scr));
+
 if (failed) { console.error(`${failed} check(s) failed`); process.exit(1); }
 console.log('all passed');

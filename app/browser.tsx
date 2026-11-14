@@ -68,7 +68,8 @@ const QUIET_NOTICE: Partial<Record<BrowserRefusalReason, string>> = {
 /** How long the Undo row stays after Remove, Clear or closing tabs. */
 const UNDO_MS = 5000;
 
-export default function BrowserScreen() {
+/** inTab: shown inside the tab bar, which already pads for the system navigation area, so the bottom inset is skipped. */
+export default function BrowserScreen({ inTab = false }: { inTab?: boolean }) {
   const { colors } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const router = useRouter();
@@ -602,7 +603,7 @@ export default function BrowserScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.root} edges={['top', 'left', 'right', 'bottom']}>
+    <SafeAreaView style={styles.root} edges={inTab ? ['top', 'left', 'right'] : ['top', 'left', 'right', 'bottom']}>
       {findOpen ? (
         <FindBar
           result={findResult}

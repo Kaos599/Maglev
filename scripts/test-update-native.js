@@ -140,6 +140,7 @@ check('_layout starts the updater once the engine is ready', /startUpdates\(\)/.
 const about = read('app/settings/about.tsx');
 check('About has the check, mode picker, auto-check toggle and Report a bug', /updateCopy\.check\.title/.test(about) && /updateCopy\.modes\.map/.test(about) && /updateAutoCheck/.test(about) && /updateCopy\.report\.title/.test(about) && /buildIssueUrl/.test(about));
 check('Report a bug sends version, Android release and device', /Platform\.constants/.test(about) && /buildIssueUrl\(\{ version: appVersion, android, device \}\)/.test(about));
+check('the device name goes through deviceLabel (no repeated maker)', /deviceLabel\(c\.Manufacturer, c\.Model\)/.test(about));
 check('managed installs see "Updates come from"', /updateCopy\.managedBy\(managedBy\)/.test(about));
 check('the card uses the app Sheet and shows release notes as plain text', /<Sheet/.test(about) && /plainNotes\(notes\)/.test(about));
 check('no raw hex colours in the updater UI', !/#[0-9a-fA-F]{6}\b/.test(about));

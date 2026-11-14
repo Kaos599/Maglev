@@ -221,6 +221,8 @@ const release = (tag, over = {}) => ({
   check('opens the bug form with every value encoded', url === 'https://github.com/Kaos599/Maglev/issues/new?template=bug.yml&version=0.21&android=14&device=Google%20Pixel%208%20%26%20Co%2Fx%3F');
   check('a hostile value cannot add a parameter', !/[?&]evil=/.test(c.buildIssueUrl({ version: '1&evil=1', android: '#', device: '"><b>' })) && c.buildIssueUrl({ version: '1&evil=1', android: '#', device: 'a' }).includes('version=1%26evil%3D1'));
 
+  check('device name does not repeat the maker', c.deviceLabel('motorola', 'motorola edge 60 pro') === 'motorola edge 60 pro' && c.deviceLabel('Google', 'Pixel 8') === 'Google Pixel 8' && c.deviceLabel('samsung', 'SM-S918B') === 'samsung SM-S918B' && c.deviceLabel(undefined, 'X1') === 'X1' && c.deviceLabel('OnePlus', '') === 'OnePlus');
+
   console.log(`\n${passed} passed, ${failed} failed`);
   process.exit(failed ? 1 : 0);
 })();

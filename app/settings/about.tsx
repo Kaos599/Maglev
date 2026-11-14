@@ -12,7 +12,7 @@ import { MaglevMark } from '../../components/brand/MaglevMark';
 import { errorScreenCopy, listsCopy, updateCopy } from '../../constants/copy';
 import { clearCrashLog, copyCrashReport, getCrashLog } from '../../utils/crashLog';
 import { REPO_URL, StarTicket } from '../../components/settings/StarTicket';
-import { buildIssueUrl, plainNotes } from '../../utils/update/check';
+import { buildIssueUrl, deviceLabel, plainNotes } from '../../utils/update/check';
 import type { UpdateState } from '../../utils/update/machine';
 import {
   checkNow,
@@ -91,7 +91,7 @@ function failureText(code: string): string {
 /** Phone details for the bug form (Android only; other platforms send what they have). */
 function phoneDetails() {
   const c = (Platform.constants ?? {}) as { Release?: string; Model?: string; Manufacturer?: string };
-  const device = [c.Manufacturer, c.Model].filter(Boolean).join(' ');
+  const device = deviceLabel(c.Manufacturer, c.Model);
   return { android: String(c.Release ?? Platform.Version ?? ''), device };
 }
 

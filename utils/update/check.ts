@@ -169,6 +169,14 @@ export function plainNotes(markdown: string, max = NOTES_MAX_CHARS): string {
     .slice(0, max);
 }
 
+/** Maker and model for the bug form, without repeating the maker when the model already starts with it ("motorola motorola edge"). */
+export function deviceLabel(manufacturer: string | undefined, model: string | undefined): string {
+  const make = (manufacturer ?? '').trim();
+  const name = (model ?? '').trim();
+  if (make && name.toLowerCase().startsWith(make.toLowerCase())) return name;
+  return [make, name].filter(Boolean).join(' ');
+}
+
 /** The bug form with version and phone filled in (27.6). Every value is URL-encoded. */
 export function buildIssueUrl(v: { version: string; android: string; device: string }): string {
   const q = [
