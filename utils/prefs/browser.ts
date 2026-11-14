@@ -22,6 +22,12 @@ export interface BrowserPrefs {
   /** Hide video and audio under 1 MB and images under 50 KB in the found-files list. */
   hideSmallFiles: boolean;
   searchEngine: SearchEngine;
+  /** Keep a history of the pages opened in the browser (section 24.9). */
+  saveHistory: boolean;
+  /** Offer history matches under the address bar. */
+  suggestFromHistory: boolean;
+  /** Empty the history when Maglev closes, and again on the next start. */
+  clearHistoryOnClose: boolean;
 }
 
 const KEY = 'maglev.browser.prefs.v1';
@@ -34,6 +40,9 @@ export function defaultBrowserPrefs(): BrowserPrefs {
     desktopMode: false,
     hideSmallFiles: true,
     searchEngine: 'duckduckgo',
+    saveHistory: true,
+    suggestFromHistory: true,
+    clearHistoryOnClose: false,
   };
 }
 
@@ -53,6 +62,9 @@ export function normalizeBrowserPrefs(raw: unknown): BrowserPrefs {
     desktopMode: o.desktopMode === true,
     hideSmallFiles: o.hideSmallFiles !== false,
     searchEngine: (SEARCH_ENGINES as readonly unknown[]).includes(o.searchEngine) ? (o.searchEngine as SearchEngine) : d.searchEngine,
+    saveHistory: o.saveHistory !== false,
+    suggestFromHistory: o.suggestFromHistory !== false,
+    clearHistoryOnClose: o.clearHistoryOnClose === true,
   };
 }
 
@@ -83,6 +95,11 @@ export function updateBrowserPrefs(change: Partial<BrowserPrefs> | ((p: BrowserP
   }
   listeners.forEach((l) => l());
   return cache;
+}
+
+/** Called after every change to the browser prefs. */
+export function subscribeBrowserPrefs(l: () => void): () => void {
+  return subscribe(l);
 }
 
 function subscribe(l: () => void): () => void {

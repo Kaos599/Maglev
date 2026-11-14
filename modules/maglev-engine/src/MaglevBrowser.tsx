@@ -30,6 +30,8 @@ export type FoundItem = {
   pageTitle: string;
 };
 
+export type BrowserClearOptions = { cookies: boolean; cache: boolean };
+
 export type BrowserRefusalReason = 'popup' | 'scheme' | 'ssl' | 'permission' | 'local';
 
 export type BrowserPageEvent = {
@@ -88,7 +90,10 @@ export type MaglevBrowserRef = {
   scan(): void;
   /** Forget the files this page reported and scan it again. Rejects with VIEW_GONE once the view is destroyed. */
   resetFound(): Promise<void>;
-  clearData(): void;
+  /** Cookies and web storage (`cookies`), cache and form data (`cache`). History is not part of it (contract 24.9). */
+  clearData(options: BrowserClearOptions): void;
+  /** Forget this screen's back/forward list. */
+  clearHistoryList(): void;
 };
 
 type NativeEvent<T> = { nativeEvent: T };
@@ -138,7 +143,8 @@ export const MaglevBrowser = React.forwardRef<MaglevBrowserRef, MaglevBrowserPro
       loadUrl: (url: string) => nativeRef.current?.loadUrl(url),
       scan: () => nativeRef.current?.scan(),
       resetFound: () => nativeRef.current?.resetFound() ?? Promise.resolve(),
-      clearData: () => nativeRef.current?.clearData(),
+      clearData: (options: BrowserClearOptions) => nativeRef.current?.clearData(options),
+      clearHistoryList: () => nativeRef.current?.clearHistoryList(),
     }),
     [],
   );
@@ -216,5 +222,17 @@ export const updateBlocklist = (urls: string[]) => call<BlocklistInfo>('updateBl
 export const getBlocklistInfo = () => call<BlocklistInfo>('getBlocklistInfo');
 /** Back to the built-in list. */
 export const resetBlocklist = () => call<BlocklistInfo>('resetBlocklist');
-/** Clears the browser's cookies, cache, storage and history. Works without the browser screen open. */
-export const clearBrowserData = () => call<object>('clearBrowserData');
+/**
+ * Clears the browser's cookies and web storage (`cookies`) and cache and form data (`cache`). History is cleared by
+ * `clearHistoryRange('all')` in utils/history. Works without the browser screen open.
+ */
+export const clearBrowserData = (options: BrowserClearOptions = { cookies: true, cache: true }) => call<object>('clearBrowserData', options);
+
+/** Tells native whether to empty the history when Maglev closes (contract 24.9). Resolves quietly where there is no native module. */
+export async function setHistoryWipeOnClose(enabled: boolean): Promise<void> {
+  try {
+    if (typeof Native?.setHistoryWipeOnClose === 'function') await Native.setHistoryWipeOnClose(enabled);
+  } catch {
+    // The JS cold-start wipe still runs.
+  }
+}
