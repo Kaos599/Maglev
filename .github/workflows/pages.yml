@@ -32,7 +32,7 @@ jobs:
     runs-on: ubuntu-latest
     environment:
       name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
+      url: ${{ steps.first.outputs.page_url || steps.retry.outputs.page_url }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
@@ -63,6 +63,18 @@ jobs:
         with:
           path: _site
 
+      # deploy-pages sometimes lists artifacts before a large upload (the F-Droid APKs make it ~300 MB) is visible
+      # and fails with "No artifacts named github-pages". Wait, then try once more.
       - name: Deploy to GitHub Pages
-        id: deployment
+        id: first
+        continue-on-error: true
+        uses: actions/deploy-pages@v5
+
+      - name: Wait before retrying the deploy
+        if: steps.first.outcome == 'failure'
+        run: sleep 30
+
+      - name: Deploy to GitHub Pages (retry)
+        id: retry
+        if: steps.first.outcome == 'failure'
         uses: actions/deploy-pages@v5
