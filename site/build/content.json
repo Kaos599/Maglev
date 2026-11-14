@@ -257,7 +257,7 @@
     ],
     [
       "Does Maglev check for updates, and what does that send?",
-      "Once a day, and when you tap Check for updates, Maglev asks api.github.com for the latest release. GitHub sees your IP address and the app version. Turning off Check automatically in Settings → About stops the daily request. The update file downloads from GitHub's release file servers."
+      "Once a day, and when you tap Check for updates, Maglev asks api.github.com for the latest release. GitHub sees your IP address and the app version. Turning off Check automatically in Settings → About stops the daily request. The update file downloads from GitHub's release file servers. By default Maglev downloads updates on Wi-Fi and asks before installing. Pick 'Tell me' to decide each time."
     ],
     [
       "What does the AI assistant do, and do I need it?",
@@ -339,7 +339,7 @@
         "heading": "Updates",
         "body": [
           "Once a day, and when you tap Check for updates, Maglev asks api.github.com for the latest release. GitHub sees your IP address and the app version. Turning off Check automatically in Settings → About stops the daily request.",
-          "The update file downloads from GitHub's release file servers, and only when you choose it or pick an update mode that downloads on Wi-Fi."
+          "The update file downloads from GitHub's release file servers. By default Maglev downloads updates on Wi-Fi and asks before installing. Pick 'Tell me' to decide each time."
         ]
       },
       {

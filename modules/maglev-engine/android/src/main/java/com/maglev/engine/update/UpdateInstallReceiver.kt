@@ -15,6 +15,7 @@ class UpdateInstallReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent?) {
         if (intent == null) return
         val app = context.applicationContext
+        if (intent.action == ACTION_INSTALL) return startInstall(app, intent)
         when (intent.getIntExtra(PackageInstaller.EXTRA_STATUS, PackageInstaller.STATUS_FAILURE)) {
             PackageInstaller.STATUS_PENDING_USER_ACTION -> {
                 val confirm = confirmIntent(intent) ?: return emit(failure("INSTALL_FAILED", "Android didn't install the update."))
@@ -48,6 +49,31 @@ class UpdateInstallReceiver : BroadcastReceiver() {
         }
     }
 
+    /** The notification's Install action (section 30). Falls back to the plain "ready" notice, which opens About. */
+    private fun startInstall(app: Context, intent: Intent) {
+        val path = intent.getStringExtra(EXTRA_PATH)
+        val sha = intent.getStringExtra(EXTRA_SHA)
+        val version = intent.getStringExtra(EXTRA_VERSION) ?: ""
+        if (path == null || sha == null) {
+            UpdateNotices.show(app, "ready", version)
+            return
+        }
+        val pending = goAsync()
+        Thread {
+            try {
+                val res = AppUpdater.install(app, path, false, sha)
+                if (res["ok"] != true) {
+                    emit(res)
+                    UpdateNotices.show(app, "ready", version)
+                } else if (res["status"] == "needs_permission") {
+                    UpdateNotices.show(app, "ready", version)
+                }
+            } finally {
+                pending.finish()
+            }
+        }.start()
+    }
+
     private fun confirmIntent(intent: Intent): Intent? =
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             intent.getParcelableExtra(Intent.EXTRA_INTENT, Intent::class.java)
@@ -65,5 +91,9 @@ class UpdateInstallReceiver : BroadcastReceiver() {
 
     companion object {
         const val ACTION_STATUS = "com.maglev.engine.update.INSTALL_STATUS"
+        const val ACTION_INSTALL = "com.maglev.engine.update.INSTALL_NOW"
+        const val EXTRA_PATH = "path"
+        const val EXTRA_SHA = "sha256"
+        const val EXTRA_VERSION = "version"
     }
 }

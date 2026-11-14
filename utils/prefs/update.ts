@@ -16,13 +16,17 @@ export interface UpdatePrefs {
   /** A version the automatic check ignores. The manual check still shows it. */
   skippedVersion: string | null;
   pending: { info: UpdateInfo; path: string } | null;
+  /** The release the last check found, kept so a restart re-routes it instead of waiting 24 h (section 30). */
+  available: UpdateInfo | null;
+  /** `<kind>:<version>` of the last notice posted, so a restored update doesn't post again. */
+  notifiedVersion: string | null;
 }
 
 export const UPDATE_MODES: readonly UpdateMode[] = ['ask', 'download', 'auto'];
 const KEY = 'maglev.update.prefs.v1';
 
 export function defaultUpdatePrefs(): UpdatePrefs {
-  return { updateMode: 'download', updateAutoCheck: true, lastCheckAt: null, skippedVersion: null, pending: null };
+  return { updateMode: 'download', updateAutoCheck: true, lastCheckAt: null, skippedVersion: null, pending: null, available: null, notifiedVersion: null };
 }
 
 function normalizeInfo(raw: unknown): UpdateInfo | null {
@@ -58,6 +62,8 @@ export function normalizeUpdatePrefs(raw: unknown): UpdatePrefs {
     lastCheckAt: typeof o.lastCheckAt === 'number' && Number.isFinite(o.lastCheckAt) ? o.lastCheckAt : null,
     skippedVersion: typeof o.skippedVersion === 'string' && o.skippedVersion !== '' ? o.skippedVersion : null,
     pending: info && p && typeof p.path === 'string' && p.path !== '' ? { info, path: p.path } : null,
+    available: normalizeInfo(o.available),
+    notifiedVersion: typeof o.notifiedVersion === 'string' && o.notifiedVersion !== '' ? o.notifiedVersion : null,
   };
 }
 

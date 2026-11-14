@@ -72,8 +72,10 @@ object AppUpdater {
     }
 
     /** Blocking. Call off the main thread. A second call while one runs joins the first. */
-    fun download(context: Context, url: String, sha256: String, size: Long): Map<String, Any?> {
+    fun download(context: Context, url: String, sha256: String, size: Long, requireVpn: Boolean = false): Map<String, Any?> {
         managed(context)?.let { return it }
+        // VPN only (Settings > Network) also covers a download the user started by hand (section 30).
+        if (requireVpn && network(context)["vpn"] != true) return failure("BLOCKED", "Your network settings block this download right now.")
         if (!isAllowedUrl(url)) return failure("UPDATE_INVALID", "This update didn't pass Maglev's checks, so it wasn't installed.")
         if (!Regex("^[0-9a-fA-F]{64}$").matches(sha256)) return failure("UPDATE_INVALID", "This update didn't pass Maglev's checks, so it wasn't installed.")
         val task: FutureTask<Map<String, Any?>>
@@ -281,6 +283,13 @@ object AppUpdater {
         return sigs.map { s -> MessageDigest.getInstance("SHA-256").digest(s.toByteArray()).joinToString("") { "%02x".format(it) } }.toSet()
     }
 
+    /** The archive's signing certificate history (API 28+). Empty below that or when it has no lineage. */
+    private fun signerHistory(info: PackageInfo): Set<String> {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.P) return emptySet()
+        val sigs = info.signingInfo?.signingCertificateHistory ?: return emptySet()
+        return sigs.map { s -> MessageDigest.getInstance("SHA-256").digest(s.toByteArray()).joinToString("") { "%02x".format(it) } }.toSet()
+    }
+
     /** The active network as the update rules see it: online, on a metered link (not NET_CAPABILITY_NOT_METERED), on a VPN. */
     fun network(context: Context): Map<String, Any?> {
         val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as android.net.ConnectivityManager
@@ -320,7 +329,9 @@ object AppUpdater {
         val installed = try { installedInfo(pm, context.packageName) } catch (e: Exception) { return "installed app unreadable" }
         if (versionOf(archive) <= versionOf(installed)) return "not newer"
         val a = signers(archive)
-        if (a.isEmpty() || a != signers(installed)) return "different signer"
+        val own = signers(installed)
+        // Key rotation: the archive's signingCertificateHistory may contain the installed signer (API 28+).
+        if (a.isEmpty() || (a != own && own.intersect(signerHistory(archive)).isEmpty())) return "different signer"
         return null
     }
 
@@ -335,10 +346,12 @@ object AppUpdater {
     }
 
     /** Verifies again, then commits a PackageInstaller session. [silent] asks Android for no confirmation where it allows it. */
-    fun install(context: Context, path: String, silent: Boolean): Map<String, Any?> {
+    fun install(context: Context, path: String, silent: Boolean, sha256: String): Map<String, Any?> {
         managed(context)?.let { return it }
         val file = inUpdatesDir(context, path) ?: return failure("UPDATE_INVALID", "This update didn't pass Maglev's checks, so it wasn't installed.")
-        val sha = file.name.removeSuffix(".apk")
+        // The release sha comes from the caller (pending), not from the file name.
+        if (!Regex("^[0-9a-fA-F]{64}$").matches(sha256)) return failure("UPDATE_INVALID", "This update didn't pass Maglev's checks, so it wasn't installed.")
+        val sha = sha256.lowercase()
         if (verify(context, file, sha) != null) {
             file.delete()
             return failure("UPDATE_INVALID", "This update didn't pass Maglev's checks, so it wasn't installed.")
@@ -348,8 +361,9 @@ object AppUpdater {
             return mapOf("ok" to true, "status" to "needs_permission")
         }
         val version = archiveInfo(pm, file.absolutePath)?.versionName
+        val installer = pm.packageInstaller
+        var sessionId = -1
         return try {
-            val installer = pm.packageInstaller
             val params = PackageInstaller.SessionParams(PackageInstaller.SessionParams.MODE_FULL_INSTALL)
             params.setAppPackageName(PACKAGE)
             params.setSize(file.length())
@@ -361,6 +375,7 @@ object AppUpdater {
                 try { params.setRequestUpdateOwnership(true) } catch (e: SecurityException) { /* not granted */ }
             }
             val id = installer.createSession(params)
+            sessionId = id
             installer.openSession(id).use { session ->
                 file.inputStream().use { input ->
                     session.openWrite("maglev.apk", 0, file.length()).use { out ->
@@ -378,6 +393,7 @@ object AppUpdater {
             }
             mapOf("ok" to true, "status" to "started")
         } catch (e: IOException) {
+            abandon(installer, sessionId)
             clearInstalling(context)
             if ((e.message ?: "").contains("ENOSPC") || (e.message ?: "").contains("No space left")) {
                 failure("STORAGE_FULL", "There isn't enough space to install the update.")
@@ -385,9 +401,15 @@ object AppUpdater {
                 failure("INSTALL_FAILED", "Android didn't install the update.")
             }
         } catch (e: Exception) {
+            abandon(installer, sessionId)
             clearInstalling(context)
             failure("INSTALL_FAILED", "Android didn't install the update.")
         }
+    }
+
+    private fun abandon(installer: PackageInstaller, id: Int) {
+        if (id < 0) return
+        try { installer.abandonSession(id) } catch (e: Exception) { /* already gone */ }
     }
 
     /** Opens "Install unknown apps" for Maglev (ACTION_MANAGE_UNKNOWN_APP_SOURCES). Returns an error message or null. */
@@ -416,10 +438,16 @@ object AppUpdater {
 
     fun clearInstalling(context: Context) = setInstalling(context, null)
 
-    /** Deletes everything in cacheDir/updates except [keepPath] (the pending update), at startup. */
-    fun cleanup(context: Context, keepPath: String?) {
+    /**
+     * Deletes everything in cacheDir/updates except [keepPath] (the pending update) and the `.apk` / `.apk.part` of
+     * [keepSha] (the pending or available release, so a half download resumes), at startup.
+     */
+    fun cleanup(context: Context, keepPath: String?, keepSha: String? = null) {
         val keep = keepPath?.let { runCatching { File(it).canonicalFile }.getOrNull() }
+        val sha = keepSha?.lowercase()?.takeIf { Regex("^[0-9a-f]{64}$").matches(it) }
         updatesDir(context).listFiles()?.forEach { f ->
+            val matchesSha = sha != null && (f.name == "$sha.apk" || f.name == "$sha.apk.part")
+            if (matchesSha) return@forEach
             if (keep == null || f.canonicalFile != keep) f.delete()
         }
     }

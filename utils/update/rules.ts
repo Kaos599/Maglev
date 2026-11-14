@@ -34,15 +34,18 @@ export interface SafeFacts {
   lastUploadAt: number | null;
   torrents: ReadonlyArray<{ state: string; upBps?: number }>;
   downloads: ReadonlyArray<{ state: string }>;
+  /** The in-app player screen is open (setPlayerOpen). Absent means closed. */
+  playerOpen?: boolean;
 }
 
 /**
  * An install restarts the app, so `auto` installs silently only when:
  *  - no torrent is downloading (or moving files) or seeding with an upload in the last 60 s;
  *  - no plain or stream download is running.
- * The "player open" part of 27.5 has no signal in JS, see the report.
+ *  - the player screen isn't open (section 30).
  */
 export function safeToInstall(f: SafeFacts): boolean {
+  if (f.playerOpen) return false;
   if (f.torrents.some((t) => t.state === 'DOWNLOADING' || t.state === 'MOVING')) return false;
   if (f.torrents.some((t) => t.state === 'SEEDING' && (t.upBps ?? 0) > 0)) return false;
   if (f.lastUploadAt !== null && f.now - f.lastUploadAt < UPLOAD_QUIET_MS) return false;

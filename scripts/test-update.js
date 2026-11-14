@@ -5,6 +5,7 @@
 process.removeAllListeners('warning');
 
 const Module = require('module');
+const fs0 = require('fs');
 
 let passed = 0;
 let failed = 0;
@@ -89,6 +90,7 @@ const release = (tag, over = {}) => ({
   const got = await c.checkForUpdate(okFetch(release('v0.22')), inst);
   check('request is GET releases/latest with the right headers only', calls[0].url === 'https://api.github.com/repos/Kaos599/Maglev/releases/latest' && calls[0].init.headers.Accept === 'application/vnd.github+json' && calls[0].init.headers['User-Agent'] === 'Maglev/0.21' && Object.keys(calls[0].init.headers).length === 2 && !('Authorization' in calls[0].init.headers));
   check('parsed result', got && got.version === '0.22');
+  check('the request omits credentials, so no github.com cookies go out', calls[0].init.credentials === 'omit');
   check('up to date gives null', (await c.checkForUpdate(okFetch(release('v0.21')), inst)) === null);
   const fails = async (f) => {
     try {
@@ -155,6 +157,7 @@ const release = (tag, over = {}) => ({
   check('NeedsUser -> Done', kind(run([{ type: 'installed' }], run([{ type: 'installStatus', status: 'needs_user' }], tapped))) === 'done');
   check('Installing -> InstallFailed, then a tap installs again', (() => { const f = run([{ type: 'installFailed', code: 'INSTALL_FAILED' }], tapped); return f.kind === 'installFailed' && kind(m.reduce(f, { type: 'install' })) === 'installing'; })());
   check('Restore: a file from an earlier run is Ready', kind(run([{ type: 'restore', info, path: '/x.apk' }])) === 'ready');
+  check('Restore of an available release: check, checked(manual), route puts it back in Waiting, WaitingForWifi or Downloading', kind(run([{ type: 'check' }, { type: 'checked', info, skippedVersion: null, manual: true }, { type: 'route', mode: 'ask', unmetered: true }])) === 'waiting' && kind(run([{ type: 'check' }, { type: 'checked', info, skippedVersion: null, manual: true }, { type: 'route', mode: 'download', unmetered: false }])) === 'waitingForWifi' && kind(run([{ type: 'check' }, { type: 'checked', info, skippedVersion: null, manual: true }, { type: 'route', mode: 'download', unmetered: true }])) === 'downloading');
   check('Restore is ignored after a check started', kind(run([{ type: 'check' }, { type: 'restore', info, path: '/x.apk' }])) === 'checking');
   check('events that do not apply change nothing', (() => { const s = m.initialState; return m.reduce(s, { type: 'downloaded', path: '/x' }) === s && m.reduce(s, { type: 'installed' }) === s && m.reduce(s, { type: 'install' }) === s && m.reduce(s, { type: 'skip' }) === s; })());
 
@@ -168,6 +171,9 @@ const release = (tag, over = {}) => ({
   check('a skipped state can be checked again', kind(m.reduce(skipped, { type: 'check' })) === 'checking');
 
   console.log('\n[managed]');
+  for (const by of ['accrescent', 'store']) check(`managed by ${by} is never due`, !m.autoCheckDue({ now: NOW, lastCheckAt: null, autoCheck: true, managedBy: by }));
+  const copy = fs0.readFileSync(require('path').join(__dirname, '../constants/copy.ts'), 'utf8');
+  check('About copy for Accrescent and other stores', /'Updates come from Accrescent\.'/.test(copy) && /'Updates come from the app store you installed Maglev from\.'/.test(copy));
   for (const by of ['fdroid', 'obtainium', 'play']) check(`Any -> Managed(${by})`, [m.initialState, run(found), run(ready), tapped].every((s) => { const x = m.reduce(s, { type: 'managed', by }); return x.kind === 'managed' && x.by === by; }));
   const managed = m.reduce(m.initialState, { type: 'managed', by: 'play' });
   check('Managed is final: no check, download or install', ['check', 'download', 'install', 'wifi'].every((t) => m.reduce(managed, { type: t }) === managed) && m.reduce(managed, { type: 'route', mode: 'auto', unmetered: true }) === managed);
@@ -188,6 +194,14 @@ const release = (tag, over = {}) => ({
   check('seeding with no upload is safe', r.safeToInstall(facts({ torrents: [{ state: 'SEEDING', upBps: 0 }] })));
   check('upload in the last 60 s is not safe, older is', !r.safeToInstall(facts({ lastUploadAt: NOW - 59_000 })) && r.safeToInstall(facts({ lastUploadAt: NOW - 61_000 })));
   check('a running plain or stream download is not safe', ['downloading', 'resolving', 'verifying'].every((state) => !r.safeToInstall(facts({ downloads: [{ state }] }))));
+  check('an open player screen is not safe', !r.safeToInstall(facts({ playerOpen: true })) && r.safeToInstall(facts({ playerOpen: false })));
+  // The telemetry event carries plain and stream downloads in `downloads` (TelemetryEvent in MaglevEngine.types.ts,
+  // read by EngineContext and by utils/update/index.ts, which feeds `e.downloads` to safeToInstall).
+  const fs = require('fs');
+  const types = fs.readFileSync(require('path').join(__dirname, '../modules/maglev-engine/src/MaglevEngine.types.ts'), 'utf8');
+  const idx = fs.readFileSync(require('path').join(__dirname, '../utils/update/index.ts'), 'utf8');
+  check('telemetry carries plain and stream downloads in `downloads`, and the updater reads that field', /interface TelemetryEvent \{[^}]*downloads\?: DownloadSnapshot\[\]/s.test(types) && /downloads: e\.downloads \?\? \[\]/.test(idx) && /safeToInstall\(\{[^}]*\.\.\.telemetry/.test(idx));
+  check('every running download state blocks an install', ['resolving', 'downloading', 'verifying'].every((state) => !r.safeToInstall(facts({ downloads: [{ state }] }))));
   check('paused and finished transfers are safe', r.safeToInstall(facts({ torrents: [{ state: 'PAUSED' }, { state: 'COMPLETED' }], downloads: [{ state: 'paused' }, { state: 'finished' }] })));
 
   console.log('\n[prefs]');
@@ -198,6 +212,8 @@ const release = (tag, over = {}) => ({
   const pend = prefs.normalizeUpdatePrefs({ pending: { info, path: '/x.apk' } }).pending;
   check('a pending update survives normalizing', pend && pend.path === '/x.apk' && pend.info.sha256 === SHA && pend.info.version === '0.22');
   check('a pending update without a good hash is dropped', prefs.normalizeUpdatePrefs({ pending: { info: { ...info, sha256: 'zz' }, path: '/x.apk' } }).pending === null);
+  check('available and notifiedVersion default to null and survive normalizing', d.available === null && d.notifiedVersion === null && (() => { const n = prefs.normalizeUpdatePrefs({ available: info, notifiedVersion: 'ready:0.22' }); return n.available && n.available.sha256 === SHA && n.notifiedVersion === 'ready:0.22'; })());
+  check('an available update without a good hash is dropped', prefs.normalizeUpdatePrefs({ available: { ...info, sha256: 'zz' } }).available === null);
   check('round-trips through update', prefs.updateUpdatePrefs({ updateMode: 'ask', skippedVersion: '0.23', lastCheckAt: NOW }).updateMode === 'ask' && prefs.getUpdatePrefs().skippedVersion === '0.23' && prefs.getUpdatePrefs().lastCheckAt === NOW);
 
   console.log('\n[report a bug]');

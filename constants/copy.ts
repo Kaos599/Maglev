@@ -680,7 +680,12 @@ export const updateCopy = {
   versionBadge: 'Update available',
   check: { title: 'Check for updates', checking: 'Checking…', upToDate: "You're up to date", failed: "Couldn't check. Try again." },
   available: (version: string) => `Maglev ${version} is available`,
-  managedBy: (by: 'fdroid' | 'obtainium' | 'play') => `Updates come from ${by === 'fdroid' ? 'F-Droid' : by === 'obtainium' ? 'Obtainium' : 'Google Play'}.`,
+  managedBy: (by: 'fdroid' | 'obtainium' | 'play' | 'accrescent' | 'store') =>
+    by === 'accrescent'
+      ? 'Updates come from Accrescent.'
+      : by === 'store'
+        ? 'Updates come from the app store you installed Maglev from.'
+        : `Updates come from ${by === 'fdroid' ? 'F-Droid' : by === 'obtainium' ? 'Obtainium' : 'Google Play'}.`,
   updatesRow: { title: 'Updates', autoCheck: 'Check automatically', autoCheckHint: 'Once a day, Maglev asks GitHub for the latest version.' },
   modes: [
     { value: 'ask', title: 'Tell me', description: 'Get a notification when a new version is out.' },
@@ -708,7 +713,7 @@ export const updateCopy = {
     needsPermission: 'To install updates, allow Maglev to install apps.',
     restartWarning: 'Maglev restarts to finish. Downloads pick up where they left off.',
     downloadFailed: "Couldn't download the update. Try again.",
-    blocked: 'Your network settings are blocking the download.',
+    blocked: 'Your network settings block this download right now.',
     storageFull: "There isn't enough space for the update.",
     installFailed: "Android didn't install the update. Try again.",
   },

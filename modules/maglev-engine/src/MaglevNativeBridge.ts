@@ -596,8 +596,8 @@ export class MaglevEngineBridge implements MaglevEngineApi {
     }
     return { installer: null, managedBy: null, versionCode: null };
   }
-  public downloadUpdate(url: string, sha256: string, size: number): Promise<EngineResult<{ path: string }>> {
-    return this.updateCall('downloadUpdate', url, sha256, size);
+  public downloadUpdate(url: string, sha256: string, size: number, requireVpn: boolean): Promise<EngineResult<{ path: string }>> {
+    return this.updateCall('downloadUpdate', url, sha256, size, requireVpn);
   }
   public getUpdateNetwork(): Promise<EngineResult<UpdateNetwork>> {
     return this.updateCall('getUpdateNetwork');
@@ -605,17 +605,17 @@ export class MaglevEngineBridge implements MaglevEngineApi {
   public cancelUpdateDownload(): Promise<EngineResult> {
     return this.updateCall('cancelUpdateDownload');
   }
-  public installUpdate(path: string, silent: boolean): Promise<EngineResult<{ status: 'started' | 'needs_permission' | 'needs_user' }>> {
-    return this.updateCall('installUpdate', path, silent);
+  public installUpdate(path: string, silent: boolean, sha256: string): Promise<EngineResult<{ status: 'started' | 'needs_permission' | 'needs_user' }>> {
+    return this.updateCall('installUpdate', path, silent, sha256);
   }
   public openInstallPermissionSettings(): Promise<EngineResult> {
     return this.updateCall('openInstallPermissionSettings');
   }
-  public cleanupUpdates(keepPath: string | null): Promise<EngineResult> {
-    return this.updateCall('cleanupUpdates', keepPath);
+  public cleanupUpdates(keepPath: string | null, keepSha: string | null = null): Promise<EngineResult> {
+    return this.updateCall('cleanupUpdates', keepPath, keepSha);
   }
-  public postUpdateNotice(kind: 'available' | 'ready', version: string): Promise<EngineResult> {
-    return this.updateCall('postUpdateNotice', kind, version);
+  public postUpdateNotice(kind: 'available' | 'ready', version: string, path: string | null = null, sha256: string | null = null): Promise<EngineResult> {
+    return this.updateCall('postUpdateNotice', kind, version, path, sha256);
   }
   public clearUpdateNotice(kind: 'available' | 'ready'): Promise<EngineResult> {
     return this.updateCall('clearUpdateNotice', kind);

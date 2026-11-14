@@ -17,13 +17,26 @@ object InstallSource {
     )
     private const val OBTAINIUM = "dev.imranr.obtainium"
     private const val PLAY = "com.android.vending"
+    private const val ACCRESCENT = "app.accrescent.client"
+    /** Other app stores that own updates (docs/NATIVE_CONTRACT.md section 30). A sideload is never in this set. */
+    private val STORES = setOf(
+        "com.aurora.store",
+        "com.sec.android.app.samsungapps",
+        "com.amazon.venezia",
+        "com.xiaomi.market",
+        "com.huawei.appmarket",
+        "com.heytap.market",
+        "com.oppo.market",
+    )
 
-    /** Pure mapping: "fdroid", "obtainium", "play" or null (self-update allowed). */
+    /** Pure mapping: "fdroid", "obtainium", "play", "accrescent", "store" or null (self-update allowed). */
     fun managedBy(installer: String?): String? = when {
         installer == null -> null
         installer in FDROID -> "fdroid"
         installer == OBTAINIUM || installer.startsWith("$OBTAINIUM.") -> "obtainium"
         installer == PLAY -> "play"
+        installer == ACCRESCENT -> "accrescent"
+        installer in STORES -> "store"
         else -> null
     }
 

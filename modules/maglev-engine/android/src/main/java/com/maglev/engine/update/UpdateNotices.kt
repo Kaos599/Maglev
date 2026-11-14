@@ -34,7 +34,7 @@ object UpdateNotices {
         return PendingIntent.getActivity(context, 4201, i, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
     }
 
-    private fun post(context: Context, id: Int, title: String, text: String?, tap: PendingIntent?, actionLabel: String? = null) {
+    private fun post(context: Context, id: Int, title: String, text: String?, tap: PendingIntent?, actionLabel: String? = null, action: PendingIntent? = tap) {
         ensureChannel(context)
         val nm = NotificationManagerCompat.from(context)
         if (!nm.areNotificationsEnabled()) return
@@ -46,7 +46,7 @@ object UpdateNotices {
         if (text != null) b.setContentText(text)
         if (tap != null) {
             b.setContentIntent(tap)
-            if (actionLabel != null) b.addAction(0, actionLabel, tap)
+            if (actionLabel != null && action != null) b.addAction(0, actionLabel, action)
         }
         try {
             nm.notify(id, b.build())
@@ -55,11 +55,30 @@ object UpdateNotices {
         }
     }
 
-    /** kind: "available" (ask mode), "ready" (downloaded), "updated" (after MY_PACKAGE_REPLACED). */
-    fun show(context: Context, kind: String, version: String): Boolean {
+    /**
+     * The Install action of a "ready" notice: a broadcast to [UpdateInstallReceiver] that starts the install
+     * (section 30). The tap on the body still opens About.
+     */
+    private fun installAction(context: Context, version: String, path: String, sha256: String): PendingIntent {
+        val i = Intent(context, UpdateInstallReceiver::class.java).setAction(UpdateInstallReceiver.ACTION_INSTALL)
+            .putExtra(UpdateInstallReceiver.EXTRA_PATH, path)
+            .putExtra(UpdateInstallReceiver.EXTRA_SHA, sha256)
+            .putExtra(UpdateInstallReceiver.EXTRA_VERSION, version)
+        return PendingIntent.getBroadcast(context, 4204, i, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
+    }
+
+    /**
+     * kind: "available" (ask mode), "ready" (downloaded), "updated" (after MY_PACKAGE_REPLACED).
+     * For "ready", [path] and [sha256] make the Install action start the install itself; without them it opens About.
+     */
+    fun show(context: Context, kind: String, version: String, path: String? = null, sha256: String? = null): Boolean {
         when (kind) {
             "available" -> post(context, ID_AVAILABLE, "Maglev $version is available", null, aboutIntent(context))
-            "ready" -> post(context, ID_READY, "Maglev $version is ready", null, aboutIntent(context), "Install")
+            "ready" -> {
+                val about = aboutIntent(context)
+                val action = if (path != null && sha256 != null) installAction(context, version, path, sha256) else about
+                post(context, ID_READY, "Maglev $version is ready", null, about, "Install", action)
+            }
             "updated" -> post(context, ID_UPDATED, "Maglev was updated to $version", null, aboutIntent(context))
             else -> return false
         }

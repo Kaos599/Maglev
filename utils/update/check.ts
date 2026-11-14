@@ -112,7 +112,7 @@ export function parseRelease(json: unknown, installed: Installed): UpdateInfo | 
   };
 }
 
-export type FetchLike = (url: string, init: { headers: Record<string, string>; signal?: AbortSignal }) => Promise<{
+export type FetchLike = (url: string, init: { headers: Record<string, string>; signal?: AbortSignal; credentials?: 'omit' | 'same-origin' | 'include' }) => Promise<{
   ok: boolean;
   status: number;
   json(): Promise<unknown>;
@@ -135,6 +135,8 @@ export async function checkForUpdate(
       res = await fetchImpl(RELEASES_URL, {
         headers: { Accept: 'application/vnd.github+json', 'User-Agent': `Maglev/${installed.version}` },
         signal: controller?.signal,
+        // Never send the browser's github.com cookies (docs/NATIVE_CONTRACT.md section 30).
+        credentials: 'omit',
       });
     } catch {
       throw new CheckError('network', 'request failed');

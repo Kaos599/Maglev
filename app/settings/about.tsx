@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Linking, Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Stack } from 'expo-router';
 import Constants from 'expo-constants';
@@ -20,6 +20,8 @@ import {
   downloadNow,
   firstUpdateAsks,
   getManagedBy,
+  getManagedCheck,
+  getUpdateState,
   installNow,
   openInstallPermission,
   skipThisVersion,
@@ -67,7 +69,6 @@ export default function AboutSettings() {
   const [prefs, setPrefs] = useUpdatePrefs();
   const managedBy = getManagedBy();
   const info = updateInfoOf(update);
-  const pending = useRef(false);
 
   useEffect(() => {
     let alive = true;
@@ -82,14 +83,6 @@ export default function AboutSettings() {
       alive = false;
     };
   }, []);
-
-  // A manual check that finds a version opens the card.
-  useEffect(() => {
-    if (pending.current && update.kind !== 'checking') {
-      pending.current = false;
-      if (info) setCardOpen(true);
-    }
-  }, [update, info]);
 
   const links = [
     extra.homepage && { title: 'Website', url: extra.homepage },
@@ -114,9 +107,13 @@ export default function AboutSettings() {
     void Linking.openURL(buildIssueUrl({ version: appVersion, android, device }));
   };
 
+  // Only a check this tap started opens the card (a check that was already running, or an automatic one, doesn't).
   const runCheck = () => {
-    pending.current = true;
-    void checkNow({ manual: true });
+    void checkNow({ manual: true }).then((started) => {
+      if (!started) return;
+      const st = getUpdateState();
+      if ((updateInfoOf(st) && st.kind !== 'done') || getManagedCheck().status === 'newer') setCardOpen(true);
+    });
   };
 
   return (

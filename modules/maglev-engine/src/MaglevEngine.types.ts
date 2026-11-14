@@ -714,21 +714,22 @@ export interface MaglevEngineApi {
   setAppIcon(id: string): Promise<EngineResult>;
   requestLegacyStorage(): Promise<EngineResult>;
   // In-app updates (NATIVE_CONTRACT 27)
-  /** Who installed Maglev. `managedBy` is non-null when F-Droid, Obtainium or Google Play owns updates. */
+  /** Who installed Maglev. `managedBy` is non-null when F-Droid, Obtainium, Google Play, Accrescent or another app store owns updates. */
   getInstallSource(): Promise<InstallSource>;
-  /** Downloads and verifies the APK. Errors: NETWORK, HTTP_STATUS, STORAGE_FULL, UPDATE_INVALID, MANAGED, CANCELLED. */
-  downloadUpdate(url: string, sha256: string, size: number): Promise<EngineResult<{ path: string }>>;
+  /** Downloads and verifies the APK. Errors: NETWORK, HTTP_STATUS, STORAGE_FULL, BLOCKED (VPN only and no VPN), UPDATE_INVALID, MANAGED, CANCELLED. */
+  downloadUpdate(url: string, sha256: string, size: number, requireVpn: boolean): Promise<EngineResult<{ path: string }>>;
   /** Online, on a metered link, on a VPN: the facts the update rules need. */
   getUpdateNetwork(): Promise<EngineResult<UpdateNetwork>>;
   cancelUpdateDownload(): Promise<EngineResult>;
   /** Errors: UPDATE_INVALID, MANAGED, INSTALL_FAILED, STORAGE_FULL. */
-  installUpdate(path: string, silent: boolean): Promise<EngineResult<{ status: 'started' | 'needs_permission' | 'needs_user' }>>;
+  /** `sha256` is the release hash from `pending`; native verifies against it, not the file name. */
+  installUpdate(path: string, silent: boolean, sha256: string): Promise<EngineResult<{ status: 'started' | 'needs_permission' | 'needs_user' }>>;
   /** Opens "Install unknown apps" for Maglev. */
   openInstallPermissionSettings(): Promise<EngineResult>;
   /** Deletes downloaded updates except the pending one. */
-  cleanupUpdates(keepPath: string | null): Promise<EngineResult>;
-  /** kind: "available" or "ready". */
-  postUpdateNotice(kind: 'available' | 'ready', version: string): Promise<EngineResult>;
+  cleanupUpdates(keepPath: string | null, keepSha?: string | null): Promise<EngineResult>;
+  /** kind: "available" or "ready". For "ready", `path` and `sha256` make the notice's Install action start the install. */
+  postUpdateNotice(kind: 'available' | 'ready', version: string, path?: string | null, sha256?: string | null): Promise<EngineResult>;
   clearUpdateNotice(kind: 'available' | 'ready'): Promise<EngineResult>;
   // Governance
   setGovernance(config: GovernanceConfig): Promise<EngineResult>;
@@ -764,7 +765,7 @@ export interface MaglevEngineApi {
   onUpdateResult(listener: (event: UpdateResultEvent) => void): Unsubscribe;
 }
 
-export type ManagedBy = 'fdroid' | 'obtainium' | 'play';
+export type ManagedBy = 'fdroid' | 'obtainium' | 'play' | 'accrescent' | 'store';
 export interface InstallSource {
   installer: string | null;
   managedBy: ManagedBy | null;

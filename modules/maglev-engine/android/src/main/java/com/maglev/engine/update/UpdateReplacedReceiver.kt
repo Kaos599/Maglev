@@ -13,10 +13,12 @@ class UpdateReplacedReceiver : BroadcastReceiver() {
         if (intent?.action != Intent.ACTION_MY_PACKAGE_REPLACED) return
         val app = context.applicationContext
         val version = AppUpdater.installingVersion(app) ?: return
+        // Always cleared. When a different version got installed (by hand, say), no "updated to" notice.
         AppUpdater.clearInstalling(app)
         AppUpdater.cleanup(app, null)
         UpdateNotices.clear(app, "available")
         UpdateNotices.clear(app, "ready")
-        UpdateNotices.show(app, "updated", version)
+        val installed = try { app.packageManager.getPackageInfo(app.packageName, 0).versionName } catch (e: Exception) { null }
+        if (installed == null || installed == version) UpdateNotices.show(app, "updated", version)
     }
 }
