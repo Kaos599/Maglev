@@ -24,9 +24,9 @@ const sugg = read('components/browser/HistorySuggestions.tsx');
 const copy = read('constants/copy.ts');
 
 console.log('recording (H1)');
-check('recordVisit is called from onPage', /onPage = useCallback[\s\S]{0,900}recordVisit\(/.test(browser));
+check('recordVisit is called from onPage', /onPage: \(id, e\) =>[\s\S]{0,1500}recordVisit\(/.test(browser));
 check('recordVisit is guarded by loading === false', /e\.loading === false[^)]*\)\s*\{[^}]*recordVisit\(/.test(browser));
-check('refused and crashed pages are never recorded', /!crashedRef\.current && !refusedRef\.current\) \{[^}]*recordVisit/.test(browser) && /refusedRef\.current = true/.test(browser) && /crashedRef\.current = true/.test(browser));
+check('refused and crashed pages are never recorded', /!skipRecord\) \{[^}]*recordVisit/.test(browser) && /skipRecord = d\.crashed \|\| d\.refused != null/.test(browser) && /d\.refused = e\.reason/.test(browser) && /d\.crashed = true/.test(browser));
 check('recordVisit is called nowhere else', (browser.match(/recordVisit\(/g) || []).length === 1);
 
 console.log('browser menu and suggestions');
@@ -62,7 +62,7 @@ check('screen is registered', /<Stack\.Screen name="browser-history" \/>/.test(l
 check('initHistory is called in _layout', /import \{ initHistory \} from '\.\.\/utils\/history'/.test(layout) && /initHistory\(\)\.catch/.test(layout));
 check('rows page 100 at a time', /const PAGE = 100/.test(screen) && /before: last\.lastVisited/.test(screen));
 check('groups Today, Yesterday, weekday-date', /historyCopy\.today/.test(screen) && /historyCopy\.yesterday/.test(screen) && /weekday: 'long'/.test(screen));
-check('tapping a row opens /browser with url', /pathname: '\/browser', params: \{ url \}/.test(screen));
+check('tapping a row opens /browser with url', /openBrowser\(router, \{ url \}, 'dismissTo'\)/.test(screen));
 check('row menu has Remove and Remove all from host, with a 5 s Undo through restorePages', /historyCopy\.remove\b/.test(screen) && /historyCopy\.removeHost/.test(screen) && /UNDO_MS = 5000/.test(screen) && /restorePages\(removed\)/.test(screen) && /actionLabel: 'Undo'/.test(screen));
 check('Clear opens the range sheet', /<ClearHistorySheet visible=\{clearOpen\} mode="range"/.test(screen));
 check('Empty, NoResults and Failed(Retry) states', /historyEmpty/.test(screen) && /historyNoResults/.test(screen) && /historyFailed/.test(screen) && /setAttempt/.test(screen));

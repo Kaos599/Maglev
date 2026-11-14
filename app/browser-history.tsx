@@ -19,6 +19,7 @@ import {
   useHistoryVersion,
   type HistoryEntry,
 } from '../utils/history';
+import { openBrowser } from '../utils/browser/openBrowser';
 
 /** Rows asked for at a time. */
 const PAGE = 100;
@@ -151,7 +152,7 @@ export default function BrowserHistoryScreen() {
   const open = useCallback(
     (url: string) => {
       haptic('tap');
-      router.dismissTo({ pathname: '/browser', params: { url } });
+      openBrowser(router, { url }, 'dismissTo');
     },
     [router],
   );

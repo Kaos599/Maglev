@@ -5,7 +5,7 @@
 
 export interface HistoryDb {
   exec(sql: string): Promise<void>;
-  run(sql: string, params?: (string | number)[]): Promise<{ changes: number }>;
+  run(sql: string, params?: (string | number | null)[]): Promise<{ changes: number }>;
   all<T = Record<string, unknown>>(sql: string, params?: (string | number)[]): Promise<T[]>;
 }
 
@@ -44,7 +44,21 @@ const SCHEMA = [
   )`,
   'CREATE INDEX IF NOT EXISTS pages_last ON pages(last_visited DESC)',
   'CREATE INDEX IF NOT EXISTS pages_host ON pages(host)',
+  // Tabs (24.10). Same database, so one open and one wipe.
+  `CREATE TABLE IF NOT EXISTS tabs (
+    id TEXT PRIMARY KEY,
+    url TEXT NOT NULL,
+    title TEXT NOT NULL DEFAULT '',
+    position INTEGER NOT NULL,
+    opener TEXT,
+    last_active INTEGER NOT NULL
+  )`,
+  'CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT)',
 ];
+
+/** A saved tab (24.10). `url` is '' for a page that isn't http(s). */
+export type TabRow = { id: string; url: string; title: string; position: number; opener: string | null; lastActive: number };
+
 
 type Row = { url: string; title: string; host: string; first_visited: number; last_visited: number; visits: number };
 
@@ -116,12 +130,24 @@ export function createHistoryStore(db: HistoryDb, prefs: () => HistoryPrefs) {
     return n;
   }
 
+  /** Each statement on its own try: an older database may have no tabs table. */
+  async function wipeTabs(): Promise<void> {
+    for (const sql of ['DELETE FROM tabs', "DELETE FROM meta WHERE key = 'active_tab'"]) {
+      try {
+        await db.run(sql);
+      } catch {
+        // Nothing to wipe.
+      }
+    }
+  }
+
   function init(now: number = Date.now()): Promise<void> {
     if (!initPromise) {
       initPromise = (async () => {
         for (const sql of SCHEMA) await db.exec(sql);
         if (prefs().clearHistoryOnClose) {
           await db.run('DELETE FROM pages');
+          await wipeTabs();
           notify();
         }
         await prune(now);
@@ -257,8 +283,88 @@ export function createHistoryStore(db: HistoryDb, prefs: () => HistoryPrefs) {
     return r.changes;
   }
 
+  let tabsQueue: Promise<unknown> = Promise.resolve();
+  let tabsBroken = false;
+
+  /**
+   * Replaces the saved tabs (upsert each row, then delete the rest, then the active id). Saves run one after another.
+   * Returns false when it couldn't save; after a failure saving is a no-op for the session (24.10 Errors).
+   */
+  function saveTabs(rows: TabRow[], activeId: string | null): Promise<boolean> {
+    const job = tabsQueue.then(async () => {
+      if (tabsBroken) return false;
+      // With "Save history" off tabs stay in memory (section 30).
+      if (!prefs().saveHistory) return false;
+      try {
+        await init();
+        for (const r of rows) {
+          await db.run('INSERT OR REPLACE INTO tabs (id, url, title, position, opener, last_active) VALUES (?, ?, ?, ?, ?, ?)', [
+            r.id,
+            r.url,
+            r.title,
+            r.position,
+            r.opener,
+            r.lastActive,
+          ]);
+        }
+        const ids = rows.map((r) => r.id);
+        if (ids.length) await db.run(`DELETE FROM tabs WHERE id NOT IN (${ids.map(() => '?').join(',')})`, ids);
+        else await db.run('DELETE FROM tabs');
+        if (activeId) await db.run("INSERT OR REPLACE INTO meta (key, value) VALUES ('active_tab', ?)", [activeId]);
+        else await db.run("DELETE FROM meta WHERE key = 'active_tab'");
+        return true;
+      } catch {
+        tabsBroken = true;
+        return false;
+      }
+    });
+    tabsQueue = job;
+    return job;
+  }
+
+  /** Deletes every saved tab and the active id (after "Save history" turns off). Runs after pending saves. Never throws. */
+  function deleteTabs(): Promise<void> {
+    const job = tabsQueue.then(async () => {
+      try {
+        await init();
+      } catch {
+        return;
+      }
+      await wipeTabs();
+    });
+    tabsQueue = job;
+    return job;
+  }
+
+  /** The saved tabs in position order. A missing table or any error gives an empty result. Never throws. */
+  async function loadTabs(): Promise<{ tabs: TabRow[]; activeId: string | null }> {
+    try {
+      await init().catch(() => {});
+      const rows = await db.all<{ id: string; url: string; title: string; position: number; opener: string | null; last_active: number }>(
+        'SELECT * FROM tabs ORDER BY position ASC',
+      );
+      const meta = await db.all<{ value: string }>("SELECT value FROM meta WHERE key = 'active_tab'");
+      return {
+        tabs: rows.map((r) => ({
+          id: String(r.id),
+          url: String(r.url ?? ''),
+          title: String(r.title ?? ''),
+          position: Number(r.position),
+          opener: r.opener == null ? null : String(r.opener),
+          lastActive: Number(r.last_active),
+        })),
+        activeId: meta[0]?.value != null ? String(meta[0].value) : null,
+      };
+    } catch {
+      return { tabs: [], activeId: null };
+    }
+  }
+
   return {
     init,
+    saveTabs,
+    loadTabs,
+    deleteTabs,
     prune,
     recordVisit,
     list,

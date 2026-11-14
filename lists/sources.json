@@ -1,0 +1,17 @@
+{
+  "schema": 1,
+  "serial": 2026111401,
+  "generatedAt": "2026-11-14T14:50:00Z",
+  "sources": {},
+  "trackers": [
+    "udp://tracker.opentrackr.org:1337/announce",
+    "udp://open.demonii.com:1337/announce",
+    "udp://tracker.torrent.eu.org:451/announce",
+    "udp://open.stealth.si:80/announce",
+    "udp://exodus.desync.com:6969/announce",
+    "udp://tracker.tiny-vps.com:6969/announce"
+  ],
+  "blocklistUrls": [
+    "https://raw.githubusercontent.com/StevenBlack/hosts/master/hosts"
+  ]
+}

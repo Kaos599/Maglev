@@ -19,6 +19,9 @@ import com.maglev.engine.schedule.ScheduleManager
 import com.maglev.engine.service.Notifications
 import com.maglev.engine.storage.SafStorageManager
 import com.maglev.engine.storage.StorageManager
+import com.maglev.engine.update.AppUpdater
+import com.maglev.engine.update.InstallSource
+import com.maglev.engine.update.UpdateNotices
 import com.maglev.engine.util.Json
 import expo.modules.interfaces.permissions.PermissionsResponseListener
 import expo.modules.kotlin.Promise
@@ -96,12 +99,13 @@ class MaglevEngineModule : Module() {
         "updatedAt" to updatedAt?.toDouble(),
         "source" to source,
         "urls" to urls,
+        "changed" to changed,
     )
 
     override fun definition() = ModuleDefinition {
         Name("MaglevEngine")
 
-        Events("onTelemetry", "onTorrentCompleted", "onNotificationAction", "onStorageStatus")
+        Events("onTelemetry", "onTorrentCompleted", "onNotificationAction", "onStorageStatus", "onUpdateProgress", "onUpdateResult")
 
         OnCreate {
             context?.let {
@@ -127,11 +131,13 @@ class MaglevEngineModule : Module() {
         }
 
         OnActivityEntersForeground {
+            AppUpdater.inForeground = true
             EngineHost.onForeground()
         }
 
         // The launcher icon switch waits until the app is out of sight (NATIVE_CONTRACT section 26).
         OnActivityEntersBackground {
+            AppUpdater.inForeground = false
             context?.let { AppIconManager.applyPending(it) }
         }
 
@@ -437,8 +443,14 @@ class MaglevEngineModule : Module() {
 
         // region Browser (docs/NATIVE_CONTRACT.md section 24)
 
-        AsyncFunction("updateBlocklist") { urls: List<String>, promise: Promise ->
-            blocklist(promise) { c -> BlocklistStore.update(c, urls).toResult() }
+        // `options.conditional` sends If-None-Match / If-Modified-Since (section 31.2). The result carries `changed`.
+        AsyncFunction("updateBlocklist") { urls: List<String>, options: Map<String, Any?>, promise: Promise ->
+            val conditional = options["conditional"] == true
+            blocklist(promise) { c -> BlocklistStore.update(c, urls, conditional).toResult() }
+        }
+        // Checks a signed list file against the key embedded in the app (section 31.1). Never throws.
+        AsyncFunction("verifyListSignature") { body: String, sigB64: String, promise: Promise ->
+            promise.resolve(com.maglev.engine.lists.ListSignature.verify(body, sigB64))
         }
         AsyncFunction("getBlocklistInfo") { promise: Promise ->
             blocklist(promise) { c -> BlocklistStore.info(c).toResult() }
@@ -471,13 +483,24 @@ class MaglevEngineModule : Module() {
             }
         }
 
+        // How many times the history was emptied because Maglev closed (section 30). JS compares it with the last count it saw.
+        AsyncFunction("getHistoryWipeCount") { promise: Promise ->
+            val c = context
+            promise.resolve(if (c == null) 0 else HistoryWipe.wipeCount(c))
+        }
+
         View(MaglevBrowserView::class) {
-            Events("onPage", "onFound", "onBlockedCount", "onDownloadRequest", "onMagnet", "onRefused", "onCrashed", "onPageNote")
+            Events("onPage", "onFound", "onBlockedCount", "onDownloadRequest", "onMagnet", "onRefused", "onCrashed", "onPageNote",
+                "onNewWindow", "onPopupRequest", "onPopupBlocked", "onLongPress", "onFindResult")
 
             Prop("url") { view: MaglevBrowserView, url: String -> view.setUrl(url) }
             Prop("adBlock") { view: MaglevBrowserView, enabled: Boolean -> view.setAdBlock(enabled) }
             Prop("allowAdsHosts") { view: MaglevBrowserView, hosts: List<String> -> view.setAllowAdsHosts(hosts) }
             Prop("desktopMode") { view: MaglevBrowserView, enabled: Boolean -> view.setDesktopMode(enabled) }
+            Prop("active") { view: MaglevBrowserView, value: Boolean -> view.setActive(value) }
+            Prop("popupPolicy") { view: MaglevBrowserView, value: String -> view.setPopupPolicy(value) }
+            Prop("popupAllowHosts") { view: MaglevBrowserView, hosts: List<String> -> view.setPopupAllowHosts(hosts) }
+            Prop("textZoom") { view: MaglevBrowserView, value: Int -> view.setTextZoom(value) }
 
             AsyncFunction("goBack") { view: MaglevBrowserView -> view.goBack() }
             AsyncFunction("goForward") { view: MaglevBrowserView -> view.goForward() }
@@ -489,10 +512,82 @@ class MaglevEngineModule : Module() {
             AsyncFunction("clearData") { view: MaglevBrowserView, options: Map<String, Any?> ->
                 view.clearData(options["cookies"] == true, options["cache"] == true)
             }
+            AsyncFunction("followRedirect") { view: MaglevBrowserView, url: String, promise: Promise -> view.followRedirect(url, promise) }
+            AsyncFunction("openApp") { view: MaglevBrowserView, url: String, promise: Promise -> view.openApp(url, promise) }
             AsyncFunction("clearHistoryList") { view: MaglevBrowserView -> view.clearHistoryList() }
+            AsyncFunction("findInPage") { view: MaglevBrowserView, query: String, promise: Promise -> view.findInPage(query, promise) }
+            AsyncFunction("findNext") { view: MaglevBrowserView, forward: Boolean, promise: Promise -> view.findNext(forward, promise) }
+            AsyncFunction("clearFind") { view: MaglevBrowserView, promise: Promise -> view.clearFind(promise) }
 
             OnViewDidUpdateProps { view: MaglevBrowserView -> view.applyProps() }
             OnViewDestroys { view: MaglevBrowserView -> view.destroyBrowser() }
+        }
+
+        // endregion
+
+        // region In-app updates (docs/NATIVE_CONTRACT.md section 27)
+
+        AsyncFunction("getInstallSource") { promise: Promise ->
+            val c = context
+            if (c == null) {
+                promise.resolve(Json.failure("ENGINE_UNAVAILABLE", "Module is not attached"))
+            } else {
+                EngineHost.ioScope.launch {
+                    val installer = InstallSource.installer(c)
+                    promise.resolve(mapOf("ok" to true, "installer" to installer, "managedBy" to InstallSource.managedBy(installer), "versionCode" to AppUpdater.installedVersionCode(c)?.toDouble()))
+                }
+            }
+        }
+        // Blocks for the whole download, so it stays off the serialized engine thread. A second call joins the first.
+        AsyncFunction("downloadUpdate") { url: String, sha256: String, size: Double, requireVpn: Boolean, promise: Promise ->
+            val c = context
+            if (c == null) {
+                promise.resolve(Json.failure("ENGINE_UNAVAILABLE", "Module is not attached"))
+            } else {
+                EngineHost.ioScope.launch { promise.resolve(Json.camelize(AppUpdater.download(c, url, sha256, size.toLong(), requireVpn))) }
+            }
+        }
+        AsyncFunction("getUpdateNetwork") { promise: Promise ->
+            val c = context
+            promise.resolve(if (c == null) Json.failure("ENGINE_UNAVAILABLE", "Module is not attached") else AppUpdater.network(c))
+        }
+        AsyncFunction("cancelUpdateDownload") { promise: Promise ->
+            AppUpdater.cancelDownload()
+            promise.resolve(mapOf("ok" to true))
+        }
+        AsyncFunction("installUpdate") { path: String, silent: Boolean, sha256: String, promise: Promise ->
+            val c = context
+            if (c == null) {
+                promise.resolve(Json.failure("ENGINE_UNAVAILABLE", "Module is not attached"))
+            } else {
+                EngineHost.ioScope.launch { promise.resolve(Json.camelize(AppUpdater.install(c, path, silent, sha256))) }
+            }
+        }
+        AsyncFunction("openInstallPermissionSettings") { promise: Promise ->
+            val c = context
+            val err = if (c == null) "Module is not attached" else AppUpdater.openInstallPermissionSettings(c)
+            promise.resolve(if (err == null) mapOf("ok" to true) else Json.failure("INTERNAL", err))
+        }
+        AsyncFunction("cleanupUpdates") { keepPath: String?, keepSha: String?, promise: Promise ->
+            val c = context
+            if (c == null) {
+                promise.resolve(Json.failure("ENGINE_UNAVAILABLE", "Module is not attached"))
+            } else {
+                EngineHost.ioScope.launch {
+                    AppUpdater.cleanup(c, keepPath, keepSha)
+                    promise.resolve(mapOf("ok" to true))
+                }
+            }
+        }
+        // kind: "available" | "ready". The "updated" notice comes from UpdateReplacedReceiver.
+        AsyncFunction("postUpdateNotice") { kind: String, version: String, path: String?, sha256: String?, promise: Promise ->
+            val c = context
+            val shown = c != null && (kind == "available" || kind == "ready") && UpdateNotices.show(c, kind, version, path, sha256)
+            promise.resolve(if (shown) mapOf("ok" to true) else Json.failure("INVALID_ARGUMENT", "Unknown notice"))
+        }
+        AsyncFunction("clearUpdateNotice") { kind: String, promise: Promise ->
+            context?.let { UpdateNotices.clear(it, kind) }
+            promise.resolve(mapOf("ok" to true))
         }
 
         // endregion

@@ -21,7 +21,7 @@ check('no full-width footer bar is left', !/styles\.footer\b/.test(scr) && !/\n 
 const overlay = styleBlock(scr, 'overlay');
 check('the controls row is absolutely positioned', /position: 'absolute'/.test(overlay) && /bottom: spacing\.md/.test(overlay) && /right: spacing\.md/.test(overlay));
 check('the overlay lets touches through to the page', /styles\.overlay\} pointerEvents="box-none"/.test(scr));
-check('the overlay sits inside the body, above the web view', scr.indexOf('<MaglevBrowser') < scr.indexOf('styles.overlay}') && scr.indexOf('styles.overlay}') < scr.indexOf('<FoundTray'));
+check('the overlay sits inside the body, above the web view', scr.indexOf('<TabWebView') < scr.indexOf('styles.overlay}') && scr.indexOf('styles.overlay}') < scr.indexOf('<FoundTray'));
 check('Files label and accessibility label are unchanged', /label=\{`Files · \$\{found\.length\}`\}/.test(scr) && /accessibilityLabel=\{`Files, \$\{found\.length\} found`\}/.test(scr));
 check('the blocked count is not an overlay pill', !/blockedPill/.test(scr));
 check('the blocked count shows in the This page menu, on the ads row', /subtitle=\{allowedHere \? [^}]*blocked > 0 \? `\$\{blocked\} blocked on this page`/.test(scr));

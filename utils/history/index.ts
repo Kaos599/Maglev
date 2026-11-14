@@ -7,9 +7,9 @@ import { useSyncExternalStore } from 'react';
 import { setHistoryWipeOnClose } from 'maglev-engine';
 import { getBrowserPrefs, subscribeBrowserPrefs } from '../prefs/browser';
 import { openHistoryDb } from './db';
-import { createHistoryStore, type HistoryEntry, type HistoryRange, type HistoryStore, type RecordResult } from './store';
+import { createHistoryStore, type HistoryEntry, type HistoryRange, type HistoryStore, type RecordResult, type TabRow } from './store';
 
-export type { HistoryEntry, HistoryRange, RecordResult };
+export type { HistoryEntry, HistoryRange, RecordResult, TabRow };
 
 let store: HistoryStore | null = null;
 let opening: Promise<HistoryStore> | null = null;
@@ -113,4 +113,63 @@ const snapshot = () => (store ? store.version() : 0) + unavailableVersion;
 /** Changes after every write, so a screen can reload its list. */
 export function useHistoryVersion(): number {
   return useSyncExternalStore(subscribeHistory, snapshot, snapshot);
+}
+
+// ---- tabs (24.10) ----
+
+const TABS_DELAY_MS = 500;
+let pendingTabs: { rows: TabRow[]; activeId: string | null } | null = null;
+let tabsTimer: ReturnType<typeof setTimeout> | null = null;
+
+/** The saved tabs, or none when the table is missing or history can't open. Never throws. */
+export async function loadTabs(): Promise<{ tabs: TabRow[]; activeId: string | null }> {
+  try {
+    return await (await ensure()).loadTabs();
+  } catch {
+    return { tabs: [], activeId: null };
+  }
+}
+
+/** Deletes every saved tab (after "Save history" turns off) and drops anything waiting to be saved. Never throws. */
+export async function deleteSavedTabs(): Promise<void> {
+  if (tabsTimer) {
+    clearTimeout(tabsTimer);
+    tabsTimer = null;
+  }
+  pendingTabs = null;
+  try {
+    await (await ensure()).deleteTabs();
+  } catch {
+    // Unavailable: nothing saved to delete.
+  }
+}
+
+/** Saves now. Resolves false when it couldn't. Never throws. */
+export async function saveTabs(rows: TabRow[], activeId: string | null): Promise<boolean> {
+  try {
+    return await (await ensure()).saveTabs(rows, activeId);
+  } catch {
+    return false;
+  }
+}
+
+/** Saves 500 ms after the last call. Only the latest rows are written. */
+export function scheduleSaveTabs(rows: TabRow[], activeId: string | null): void {
+  pendingTabs = { rows, activeId };
+  if (tabsTimer) clearTimeout(tabsTimer);
+  tabsTimer = setTimeout(() => {
+    tabsTimer = null;
+    void flushTabs();
+  }, TABS_DELAY_MS);
+}
+
+/** Writes the pending tabs right away (screen blur). Does nothing when nothing is pending. */
+export async function flushTabs(): Promise<void> {
+  if (tabsTimer) {
+    clearTimeout(tabsTimer);
+    tabsTimer = null;
+  }
+  const p = pendingTabs;
+  pendingTabs = null;
+  if (p) await saveTabs(p.rows, p.activeId);
 }

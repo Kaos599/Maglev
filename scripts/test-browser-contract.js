@@ -82,7 +82,7 @@ check('WebView settings', () => {
   assert(view.includes('setSupportMultipleWindows(true)'), 'setSupportMultipleWindows(true)');
   assert(view.includes('MIXED_CONTENT_NEVER_ALLOW'), 'MIXED_CONTENT_NEVER_ALLOW');
   assert(/mediaPlaybackRequiresUserGesture\s*=\s*true/.test(view), 'mediaPlaybackRequiresUserGesture = true');
-  assert(/javaScriptCanOpenWindowsAutomatically\s*=\s*false/.test(view), 'javaScriptCanOpenWindowsAutomatically = false');
+  assert(/javaScriptCanOpenWindowsAutomatically\s*=\s*true/.test(view), 'javaScriptCanOpenWindowsAutomatically = true (24.10 supersedes 24.5)');
   assert(/allowFileAccess\s*=\s*false/.test(view), 'allowFileAccess = false');
   assert(/allowContentAccess\s*=\s*false/.test(view), 'allowContentAccess = false');
   assert(view.includes('setSafeBrowsingEnabled(true)'), 'safe browsing on');
@@ -134,7 +134,7 @@ check('fullscreen video uses the custom view callbacks', () => {
 
 check('popups use a capture view and need a user gesture', () => {
   assert(view.includes('onCreateWindow') && view.includes('WebViewTransport'), 'onCreateWindow with transport');
-  assert(/if \(!gesture\)[\s\S]*?"popup"/.test(view), 'no gesture means refused popup');
+  assert(/handleNewWindow[\s\S]*?gesture[\s\S]*?onPopupBlocked|decide\(false, "window"\)/.test(view), 'untapped popup follows the policy (24.10 supersedes 24.5)');
 });
 
 check('the WebView is destroyed when the view is dropped', () => {

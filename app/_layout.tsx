@@ -11,9 +11,11 @@ import { EngineProvider, useMaglevEngine } from '../context/EngineContext';
 import { FONT_NAMES } from '../constants/fontStyles';
 import NavigationBarSync from '../components/NavigationBarSync';
 import { NoticeHost } from '../components/ui/NoticeHost';
+import { StarPrompt } from '../components/StarPrompt';
 import { syncScheduleToNative } from '../utils/prefs/schedule';
 import { syncFeedAutomationToNative } from '../utils/prefs/feedAutomation';
 import { initHistory } from '../utils/history';
+import { startUpdates } from '../utils/update';
 import { installGlobalHandler, setCurrentRoute } from '../utils/crashLog';
 
 // Record uncaught JS errors on this phone, then let React Native handle them as before.
@@ -74,6 +76,12 @@ function AppNavigation() {
     if (!engineReady) return;
     void syncScheduleToNative();
     void syncFeedAutomationToNative();
+  }, [engineReady]);
+
+  // In-app updates (contract 27): the daily check when the app becomes active, and the download and install triggers.
+  useEffect(() => {
+    if (!engineReady) return;
+    return startUpdates();
   }, [engineReady]);
 
   // Native splash stays up (see preventAutoHideAsync); render the background only, no navigator, until resolved.
@@ -150,6 +158,7 @@ function AppNavigation() {
         </Stack.Protected>
       </Stack>
       {main ? <NoticeHost /> : null}
+      {main ? <StarPrompt /> : null}
     </>
   );
 }

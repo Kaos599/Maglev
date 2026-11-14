@@ -23,6 +23,10 @@ const MAP = {
   'tab-settings': 'settings-cog',
   // actions
   plus: 'plus',
+  minus: 'minus',
+  'arrow-up': 'arrow-up',
+  'arrow-down': 'arrow-down',
+  'text-size': 'zoom-in',
   close: 'close',
   back: 'arrow-left',
   'chevron-right': 'chevron-right',

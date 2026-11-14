@@ -80,6 +80,20 @@
             </intent-filter>
         </receiver>
 
+        <!-- Section 27: PackageInstaller status for the in-app updater. Not exported; the PendingIntent is explicit. -->
+        <receiver
+            android:name=".update.UpdateInstallReceiver"
+            android:exported="false" />
+
+        <!-- Section 27.5: "Maglev was updated to {version}" after a self-update. MY_PACKAGE_REPLACED is only ever sent to this app. -->
+        <receiver
+            android:name=".update.UpdateReplacedReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
+
         <provider
             android:name=".storage.MaglevFileProvider"
             android:authorities="${applicationId}.maglev.fileprovider"

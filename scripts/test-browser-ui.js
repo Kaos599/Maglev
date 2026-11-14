@@ -144,8 +144,8 @@ async function main() {
   {
     const b = read('app/browser.tsx');
     const k = read('modules/maglev-engine/android/src/main/java/com/maglev/engine/browser/MaglevBrowserView.kt');
-    check('a download hand-off ends loading in the screen', /onDownloadRequest = useCallback[\s\S]{0,200}loading: false/.test(b));
-    check('Stop always clears loading in the screen', /browserRef\.current\?\.stop\(\);\s*setPage\(\(p\) => \(p \? \{ \.\.\.p, loading: false \}/.test(b));
+    check('a download hand-off ends loading in the screen', /onDownloadRequest: \(id, e\)[\s\S]{0,400}loading: false/.test(b));
+    check('Stop always clears loading in the screen', /view\(\)\?\.stop\(\);\s*patch\(activeId, \(d\) => void \(d\.page = d\.page \? \{ \.\.\.d\.page, loading: false \}/.test(b));
     check('native download hand-off and stop emit loading false', /private fun onDownload[\s\S]{0,900}loading = false[\s\S]{0,40}emitPage/.test(k) && /fun stop\(\)[\s\S]{0,200}loading = false/.test(k));
   }
   check('perf measure prints null percentiles when no frames', /f\+0 == 0[\s\S]{0,120}\\"p50\\":null[\s\S]{0,200}no frames \(list empty\?\)/.test(read('scripts/perf/measure.sh')));

@@ -104,7 +104,7 @@ export function ProviderSheet({
         <View style={styles.headRow}>
           <Monogram abbr={provider.abbr} tint={enabled} />
           <Text style={styles.headText}>{enabled ? 'Used when you search' : 'Not used for search'}</Text>
-          <Toggle value={enabled} onValueChange={onToggle} accessibilityLabel={`Use ${provider.name} for search`} />
+          <Toggle value={enabled} onValueChange={onToggle} disabled={!!provider.turnedOff} accessibilityLabel={`Use ${provider.name} for search`} />
         </View>
 
         <View style={styles.testRow} accessibilityLiveRegion="polite">

@@ -4,7 +4,6 @@ import { Stack, useRouter } from 'expo-router';
 import {
   getBlocklistInfo,
   resetBlocklist,
-  updateBlocklist,
   type BlocklistErrorCode,
   type BlocklistInfo,
 } from 'maglev-engine';
@@ -12,10 +11,12 @@ import { useTheme } from '../../context/ThemeContext';
 import { useMaglevEngine } from '../../context/EngineContext';
 import { ThemeColors, spacing, type } from '../../constants/theme';
 import { haptic } from '../../constants/haptics';
-import { empty, historyCopy, notices } from '../../constants/copy';
+import { browserTabs, empty, historyCopy, listsCopy, notices, textSizeCopy } from '../../constants/copy';
 import { Button, EmptyBlock, IconButton, ListRow, RadioCard, SectionHeader, Toggle } from '../../components/ui';
-import { Card, Caption, InputSheet, SettingsPage } from '../../components/settings/SettingsParts';
-import { DEFAULT_BLOCKLIST_URL, updateBrowserPrefs, useBrowserPrefs } from '../../utils/prefs/browser';
+import { Card, Caption, ChipGroup, InputSheet, SettingsPage } from '../../components/settings/SettingsParts';
+import { updateBrowserPrefs, useBrowserPrefs, type PopupPolicy } from '../../utils/prefs/browser';
+import { getDefaultBlocklistUrls } from '../../utils/prefs/lists';
+import { updateAdList } from '../../utils/lists';
 import { ClearHistorySheet, type ClearMode } from '../../components/browser/ClearHistorySheet';
 import { SEARCH_URLS, hostOf, isHttpsUrl, type SearchEngine } from '../../utils/browserUrl';
 
@@ -24,6 +25,15 @@ const ENGINES: { value: SearchEngine; title: string }[] = [
   { value: 'google', title: 'Google' },
   { value: 'bing', title: 'Bing' },
   { value: 'brave', title: 'Brave' },
+];
+
+/** Exact sizes in percent. normalizeTextZoom keeps every one of them as it is. */
+const TEXT_SIZES = [80, 90, 100, 115, 130, 150, 175, 200].map((v) => ({ value: v, label: textSizeCopy.value(v) }));
+
+const POPUP_CHOICES: { value: PopupPolicy; title: string }[] = [
+  { value: 'ask', title: browserTabs.settings.ask },
+  { value: 'block', title: browserTabs.settings.block },
+  { value: 'allow', title: browserTabs.settings.allow },
 ];
 
 const listErrorText = (code: BlocklistErrorCode): string =>
@@ -68,12 +78,13 @@ export default function BrowserSettings() {
   const update = async () => {
     haptic('tap');
     setUpdating(true);
-    const res = await updateBlocklist(prefs.blocklistUrls);
+    // Update now always downloads in full (conditional: false), unlike the daily check (contract 31.2).
+    const res = await updateAdList({ conditional: false });
     setUpdating(false);
     if (res.ok) {
       setInfo(res);
       haptic('done');
-      showNotice({ message: notices.browser.listUpdated(res.domains.toLocaleString()) }, 3000);
+      showNotice({ message: res.changed === false ? listsCopy.browser.upToDate : notices.browser.listUpdated(res.domains.toLocaleString()) }, 3000);
     } else {
       haptic('fail');
       showNotice({ message: listErrorText(res.code) });
@@ -83,7 +94,8 @@ export default function BrowserSettings() {
   const reset = async () => {
     haptic('tap');
     const res = await resetBlocklist();
-    setPrefs({ blocklistUrls: [DEFAULT_BLOCKLIST_URL] });
+    // The default address now in force: the source list's, else the built-in one (contract 31.1).
+    setPrefs({ blocklistUrls: getDefaultBlocklistUrls() });
     if (res.ok) {
       setInfo(res);
       showNotice({ message: notices.browser.listReset }, 3000);
@@ -172,6 +184,47 @@ export default function BrowserSettings() {
       </View>
 
       <View style={s.section}>
+        <SectionHeader title={browserTabs.settings.section} />
+        <Card>
+          {POPUP_CHOICES.map((c) => (
+            <ListRow
+              key={c.value}
+              title={c.title}
+              selected={prefs.popupPolicy === c.value}
+              accessibilityLabel={c.title}
+              onPress={() => {
+                haptic('select');
+                setPrefs({ popupPolicy: c.value });
+              }}
+            />
+          ))}
+        </Card>
+      </View>
+
+      {prefs.popupAllowHosts.length > 0 ? (
+        <View style={s.section}>
+          <SectionHeader title={browserTabs.settings.allowedSites} />
+          <Card>
+            {prefs.popupAllowHosts.map((h) => (
+              <View key={h} style={s.urlRow}>
+                <Text style={s.url} numberOfLines={1}>
+                  {h}
+                </Text>
+                <IconButton
+                  icon="close"
+                  accessibilityLabel={`${browserTabs.settings.remove} ${h}`}
+                  onPress={() => {
+                    haptic('tap');
+                    setPrefs({ popupAllowHosts: prefs.popupAllowHosts.filter((x) => x !== h) });
+                  }}
+                />
+              </View>
+            ))}
+          </Card>
+        </View>
+      ) : null}
+
+      <View style={s.section}>
         <SectionHeader title="Search engine" />
         {ENGINES.map((e) => (
           <RadioCard
@@ -193,6 +246,8 @@ export default function BrowserSettings() {
           accessory={<Toggle value={prefs.desktopMode} onValueChange={(desktopMode) => setPrefs({ desktopMode })} accessibilityLabel="Desktop site" />}
         />
       </Card>
+
+      <ChipGroup label={textSizeCopy.settingsLabel} options={TEXT_SIZES} value={prefs.browserTextZoom} onChange={(browserTextZoom) => setPrefs({ browserTextZoom })} />
 
       <View style={s.section}>
         <SectionHeader title={historyCopy.settings.section} />

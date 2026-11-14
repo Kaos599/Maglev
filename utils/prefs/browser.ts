@@ -28,7 +28,32 @@ export interface BrowserPrefs {
   suggestFromHistory: boolean;
   /** Empty the history when Maglev closes, and again on the next start. */
   clearHistoryOnClose: boolean;
+  /** What to do with pop-ups and redirects the user didn't tap for (section 24.10). */
+  popupPolicy: PopupPolicy;
+  /** Sites allowed to open pop-ups and redirects, without `www.`. */
+  popupAllowHosts: string[];
+  /** Page text size in percent (section 28). Always one of the values `normalizeTextZoom` returns. */
+  browserTextZoom: number;
 }
+
+export const TEXT_ZOOM_MIN = 50;
+export const TEXT_ZOOM_MAX = 200;
+export const TEXT_ZOOM_DEFAULT = 100;
+/** The size sheet moves in steps of this many percent. */
+export const TEXT_ZOOM_STEP = 10;
+
+/**
+ * Not a number: 100. Otherwise clamped to 50..200 and rounded to the nearest 5. The Settings chips include 115 and
+ * 175, which a step of 10 would move, and every other chip and every sheet step (from a multiple of 5) already sits
+ * on a multiple of 5, so a step of 5 keeps them all exact.
+ */
+export function normalizeTextZoom(v: unknown): number {
+  if (typeof v !== 'number' || !Number.isFinite(v)) return TEXT_ZOOM_DEFAULT;
+  return Math.round(Math.min(TEXT_ZOOM_MAX, Math.max(TEXT_ZOOM_MIN, v)) / 5) * 5;
+}
+
+export type PopupPolicy = 'ask' | 'block' | 'allow';
+const POPUP_POLICIES: readonly PopupPolicy[] = ['ask', 'block', 'allow'];
 
 const KEY = 'maglev.browser.prefs.v1';
 
@@ -43,6 +68,9 @@ export function defaultBrowserPrefs(): BrowserPrefs {
     saveHistory: true,
     suggestFromHistory: true,
     clearHistoryOnClose: false,
+    popupPolicy: 'ask',
+    popupAllowHosts: [],
+    browserTextZoom: TEXT_ZOOM_DEFAULT,
   };
 }
 
@@ -65,6 +93,9 @@ export function normalizeBrowserPrefs(raw: unknown): BrowserPrefs {
     saveHistory: o.saveHistory !== false,
     suggestFromHistory: o.suggestFromHistory !== false,
     clearHistoryOnClose: o.clearHistoryOnClose === true,
+    popupPolicy: POPUP_POLICIES.includes(o.popupPolicy as PopupPolicy) ? (o.popupPolicy as PopupPolicy) : 'ask',
+    popupAllowHosts: [...new Set(strings(o.popupAllowHosts).map((h) => h.toLowerCase()))],
+    browserTextZoom: normalizeTextZoom(o.browserTextZoom),
   };
 }
 

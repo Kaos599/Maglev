@@ -27,9 +27,11 @@ export interface ProviderRowProps {
   onToggle: (next: boolean) => void;
   /** Set when the source needs a quick check: shows a "?" button that opens the site once. */
   onCheck?: () => void;
+  /** The source list turned this source off: the toggle can't be used (contract 31.1). */
+  locked?: boolean;
 }
 
-export function ProviderRow({ provider, enabled, position, note, noteTone = 'normal', first, onOpen, onToggle, onCheck }: ProviderRowProps) {
+export function ProviderRow({ provider, enabled, position, note, noteTone = 'normal', first, onOpen, onToggle, onCheck, locked }: ProviderRowProps) {
   const { colors } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const noteColor = noteTone === 'accent' ? colors.accentText : noteTone === 'danger' ? colors.danger : noteTone === 'warning' ? colors.warning : colors.textMuted;
@@ -76,7 +78,7 @@ export function ProviderRow({ provider, enabled, position, note, noteTone = 'nor
           <Text style={styles.checkText}>?</Text>
         </PressableScale>
       ) : null}
-      <Toggle value={enabled} onValueChange={onToggle} accessibilityLabel={`Use ${provider.name} for search`} />
+      <Toggle value={enabled} onValueChange={onToggle} disabled={locked} accessibilityLabel={`Use ${provider.name} for search`} />
     </View>
   );
 }

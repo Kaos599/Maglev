@@ -12,6 +12,8 @@ import { CATEGORY_LABEL, ProviderInfo, TORZNAB_PREFIX, allProviderInfo, coverage
 import { loadExtraProviders } from '../../components/search/extra';
 import { clearCookies } from 'maglev-engine';
 import { SearchPrefs, clearSiteChecks, deleteTorznabApiKey, setTorznabApiKey, useSearchPrefs } from '../../utils/prefs/search';
+import { listsCopy } from '../../constants/copy';
+import { useListsVersion } from '../../utils/lists/hooks';
 import { CloudflareSolverSheet } from '../../components/search/CloudflareSolverSheet';
 import { testProvider } from '../../utils/search/aggregate';
 import { CATEGORY_ORDER, type Category } from '../../utils/search/types';
@@ -26,13 +28,6 @@ const LIMITS = [
   { value: 25, label: '25' },
   { value: 50, label: '50' },
   { value: 100, label: '100' },
-] as const;
-
-const NAME_LINES = [
-  { value: 1, label: '1' },
-  { value: 2, label: '2' },
-  { value: 3, label: '3' },
-  { value: 0, label: 'Full name' },
 ] as const;
 
 /** Torznab entries default to every category except adult; the user narrows it per source. */
@@ -56,17 +51,19 @@ export default function SearchProvidersSettings() {
   const [testing, setTesting] = useState<string | null>(null);
   const [solving, setSolving] = useState<string | null>(null);
 
-  const all = useMemo(() => allProviderInfo(prefs), [prefs]);
+  // A new source list changes mirrors, warnings and which sources are turned off.
+  const listsVersion = useListsVersion();
+  const all = useMemo(() => allProviderInfo(prefs), [prefs, listsVersion]);
   const byId = useMemo(() => new Map(all.map((p) => [p.id, p])), [all]);
   // Sources that last sat behind a Cloudflare check get their own section on top and are not listed twice.
   const checkList = useMemo(
-    () => prefs.needsCheck.filter((id) => prefs.enabled.includes(id)).map((id) => byId.get(id)).filter((p): p is ProviderInfo => !!p?.cloudflare),
+    () => prefs.needsCheck.filter((id) => prefs.enabled.includes(id) && !byId.get(id)?.turnedOff).map((id) => byId.get(id)).filter((p): p is ProviderInfo => !!p?.cloudflare),
     [prefs.needsCheck, prefs.enabled, byId],
   );
   const checkIds = useMemo(() => new Set(checkList.map((p) => p.id)), [checkList]);
-  const onList = useMemo(() => prefs.enabled.filter((id) => !checkIds.has(id)).map((id) => byId.get(id)).filter((p): p is ProviderInfo => !!p), [prefs.enabled, byId, checkIds]);
+  const onList = useMemo(() => prefs.enabled.filter((id) => !checkIds.has(id)).map((id) => byId.get(id)).filter((p): p is ProviderInfo => !!p && !p.turnedOff), [prefs.enabled, byId, checkIds]);
   const offList = useMemo(
-    () => all.filter((p) => !prefs.enabled.includes(p.id) && (prefs.adult || !p.nsfw)),
+    () => all.filter((p) => (!prefs.enabled.includes(p.id) || !!p.turnedOff) && (prefs.adult || !p.nsfw)),
     [all, prefs.enabled, prefs.adult],
   );
   // The category filter narrows On and Off; sources needing a check always show.
@@ -169,6 +166,7 @@ export default function SearchProvidersSettings() {
   );
 
   const note = (p: ProviderInfo): { text: string; tone: 'normal' | 'warning' | 'danger' } => {
+    if (p.turnedOff) return { text: p.turnedOff.note ? listsCopy.providers.turnedOffWithNote(p.turnedOff.note) : listsCopy.providers.turnedOff, tone: 'warning' };
     const t = tests[p.id];
     if (t && !t.ok) return { text: `${coverage(p)} · not responding`, tone: 'danger' };
     if (p.unsafeReason) return { text: p.unsafeReason, tone: 'warning' };
@@ -242,7 +240,6 @@ export default function SearchProvidersSettings() {
             onChange={(waitSeconds) => update({ waitSeconds })}
           />
           <ChipGroup label="Results per source" options={LIMITS} value={prefs.limit} onChange={(limit) => update({ limit })} />
-          <ChipGroup label="Result name lines" options={NAME_LINES} value={prefs.resultNameLines} onChange={(resultNameLines) => update({ resultNameLines })} />
           <ListRow
             title="Hide dead torrents"
             subtitle="Results no one is sharing"
@@ -261,7 +258,7 @@ export default function SearchProvidersSettings() {
       </View>
 
       <View style={styles.section}>
-        <SectionHeader title={`On · ${prefs.enabled.length}`} />
+        <SectionHeader title={`On · ${onList.length + checkList.length}`} />
         <Card>
           {onList.length === 0 ? <Text style={styles.empty}>Nothing is on. Turn on a source below.</Text> : shownOn.length === 0 ? <Text style={styles.empty}>No source that's on covers {CATEGORY_LABEL[category]}.</Text> : null}
           {shownOn.map((p, i) => {
@@ -297,6 +294,7 @@ export default function SearchProvidersSettings() {
                   note={n.text}
                   noteTone={n.tone}
                   first={i === 0}
+                  locked={!!p.turnedOff}
                   onOpen={() => setOpenId(p.id)}
                   onToggle={(on) => setEnabled(p.id, on)}
                 />
@@ -323,7 +321,7 @@ export default function SearchProvidersSettings() {
       <ProviderSheet
         provider={open}
         prefs={prefs}
-        enabled={!!open && prefs.enabled.includes(open.id)}
+        enabled={!!open && prefs.enabled.includes(open.id) && !open.turnedOff}
         position={openPos}
         onCount={prefs.enabled.length}
         test={open ? tests[open.id] : undefined}
