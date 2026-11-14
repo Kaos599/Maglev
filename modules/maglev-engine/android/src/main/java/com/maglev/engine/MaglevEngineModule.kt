@@ -19,6 +19,9 @@ import com.maglev.engine.schedule.ScheduleManager
 import com.maglev.engine.service.Notifications
 import com.maglev.engine.storage.SafStorageManager
 import com.maglev.engine.storage.StorageManager
+import com.maglev.engine.update.AppUpdater
+import com.maglev.engine.update.InstallSource
+import com.maglev.engine.update.UpdateNotices
 import com.maglev.engine.util.Json
 import expo.modules.interfaces.permissions.PermissionsResponseListener
 import expo.modules.kotlin.Promise
@@ -101,7 +104,7 @@ class MaglevEngineModule : Module() {
     override fun definition() = ModuleDefinition {
         Name("MaglevEngine")
 
-        Events("onTelemetry", "onTorrentCompleted", "onNotificationAction", "onStorageStatus")
+        Events("onTelemetry", "onTorrentCompleted", "onNotificationAction", "onStorageStatus", "onUpdateProgress", "onUpdateResult")
 
         OnCreate {
             context?.let {
@@ -127,11 +130,13 @@ class MaglevEngineModule : Module() {
         }
 
         OnActivityEntersForeground {
+            AppUpdater.inForeground = true
             EngineHost.onForeground()
         }
 
         // The launcher icon switch waits until the app is out of sight (NATIVE_CONTRACT section 26).
         OnActivityEntersBackground {
+            AppUpdater.inForeground = false
             context?.let { AppIconManager.applyPending(it) }
         }
 
@@ -499,6 +504,73 @@ class MaglevEngineModule : Module() {
 
             OnViewDidUpdateProps { view: MaglevBrowserView -> view.applyProps() }
             OnViewDestroys { view: MaglevBrowserView -> view.destroyBrowser() }
+        }
+
+        // endregion
+
+        // region In-app updates (docs/NATIVE_CONTRACT.md section 27)
+
+        AsyncFunction("getInstallSource") { promise: Promise ->
+            val c = context
+            if (c == null) {
+                promise.resolve(Json.failure("ENGINE_UNAVAILABLE", "Module is not attached"))
+            } else {
+                EngineHost.ioScope.launch {
+                    val installer = InstallSource.installer(c)
+                    promise.resolve(mapOf("ok" to true, "installer" to installer, "managedBy" to InstallSource.managedBy(installer), "versionCode" to AppUpdater.installedVersionCode(c)?.toDouble()))
+                }
+            }
+        }
+        // Blocks for the whole download, so it stays off the serialized engine thread. A second call joins the first.
+        AsyncFunction("downloadUpdate") { url: String, sha256: String, size: Double, promise: Promise ->
+            val c = context
+            if (c == null) {
+                promise.resolve(Json.failure("ENGINE_UNAVAILABLE", "Module is not attached"))
+            } else {
+                EngineHost.ioScope.launch { promise.resolve(Json.camelize(AppUpdater.download(c, url, sha256, size.toLong()))) }
+            }
+        }
+        AsyncFunction("getUpdateNetwork") { promise: Promise ->
+            val c = context
+            promise.resolve(if (c == null) Json.failure("ENGINE_UNAVAILABLE", "Module is not attached") else AppUpdater.network(c))
+        }
+        AsyncFunction("cancelUpdateDownload") { promise: Promise ->
+            AppUpdater.cancelDownload()
+            promise.resolve(mapOf("ok" to true))
+        }
+        AsyncFunction("installUpdate") { path: String, silent: Boolean, promise: Promise ->
+            val c = context
+            if (c == null) {
+                promise.resolve(Json.failure("ENGINE_UNAVAILABLE", "Module is not attached"))
+            } else {
+                EngineHost.ioScope.launch { promise.resolve(Json.camelize(AppUpdater.install(c, path, silent))) }
+            }
+        }
+        AsyncFunction("openInstallPermissionSettings") { promise: Promise ->
+            val c = context
+            val err = if (c == null) "Module is not attached" else AppUpdater.openInstallPermissionSettings(c)
+            promise.resolve(if (err == null) mapOf("ok" to true) else Json.failure("INTERNAL", err))
+        }
+        AsyncFunction("cleanupUpdates") { keepPath: String?, promise: Promise ->
+            val c = context
+            if (c == null) {
+                promise.resolve(Json.failure("ENGINE_UNAVAILABLE", "Module is not attached"))
+            } else {
+                EngineHost.ioScope.launch {
+                    AppUpdater.cleanup(c, keepPath)
+                    promise.resolve(mapOf("ok" to true))
+                }
+            }
+        }
+        // kind: "available" | "ready". The "updated" notice comes from UpdateReplacedReceiver.
+        AsyncFunction("postUpdateNotice") { kind: String, version: String, promise: Promise ->
+            val c = context
+            val shown = c != null && (kind == "available" || kind == "ready") && UpdateNotices.show(c, kind, version)
+            promise.resolve(if (shown) mapOf("ok" to true) else Json.failure("INVALID_ARGUMENT", "Unknown notice"))
+        }
+        AsyncFunction("clearUpdateNotice") { kind: String, promise: Promise ->
+            context?.let { UpdateNotices.clear(it, kind) }
+            promise.resolve(mapOf("ok" to true))
         }
 
         // endregion

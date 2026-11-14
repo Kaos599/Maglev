@@ -37,6 +37,10 @@ import type {
   TorrentLimits,
   UrlProbe,
   Unsubscribe,
+  InstallSource,
+  UpdateProgressEvent,
+  UpdateNetwork,
+  UpdateResultEvent,
 } from './MaglevEngine.types.ts';
 import type { MaglevSettings } from './MaglevSettings.types.ts';
 import { mockEngine } from './MaglevMockEngine.ts';
@@ -573,6 +577,58 @@ export class MaglevEngineBridge implements MaglevEngineApi {
   }
   public requestLegacyStorage(): Promise<EngineResult> {
     return this.permissionCall('requestLegacyStorage');
+  }
+
+  // ---- in-app updates (NATIVE_CONTRACT 27) ---------------------------------------
+  // These talk to the native module directly (no engine start needed). Without it, only the dev simulator
+  // answers, and it refuses to download or install.
+
+  private updateCall<T>(method: string, ...args: unknown[]): Promise<T> {
+    if (NativeModule) return this.callNative<T>(method, ...args);
+    const sim = simulatorIfAllowed();
+    if (!sim) return Promise.resolve(unavailable('The native engine module is not installed in this build.') as T);
+    return (sim as unknown as Record<string, (...a: unknown[]) => Promise<T>>)[method](...args);
+  }
+  public async getInstallSource(): Promise<InstallSource> {
+    const res = await this.updateCall<Partial<InstallSource> & { ok?: boolean }>('getInstallSource');
+    if (res && res.ok !== false) {
+      return { installer: res.installer ?? null, managedBy: res.managedBy ?? null, versionCode: res.versionCode ?? null };
+    }
+    return { installer: null, managedBy: null, versionCode: null };
+  }
+  public downloadUpdate(url: string, sha256: string, size: number): Promise<EngineResult<{ path: string }>> {
+    return this.updateCall('downloadUpdate', url, sha256, size);
+  }
+  public getUpdateNetwork(): Promise<EngineResult<UpdateNetwork>> {
+    return this.updateCall('getUpdateNetwork');
+  }
+  public cancelUpdateDownload(): Promise<EngineResult> {
+    return this.updateCall('cancelUpdateDownload');
+  }
+  public installUpdate(path: string, silent: boolean): Promise<EngineResult<{ status: 'started' | 'needs_permission' | 'needs_user' }>> {
+    return this.updateCall('installUpdate', path, silent);
+  }
+  public openInstallPermissionSettings(): Promise<EngineResult> {
+    return this.updateCall('openInstallPermissionSettings');
+  }
+  public cleanupUpdates(keepPath: string | null): Promise<EngineResult> {
+    return this.updateCall('cleanupUpdates', keepPath);
+  }
+  public postUpdateNotice(kind: 'available' | 'ready', version: string): Promise<EngineResult> {
+    return this.updateCall('postUpdateNotice', kind, version);
+  }
+  public clearUpdateNotice(kind: 'available' | 'ready'): Promise<EngineResult> {
+    return this.updateCall('clearUpdateNotice', kind);
+  }
+  public onUpdateProgress(listener: (e: UpdateProgressEvent) => void): Unsubscribe {
+    if (!NativeModule) return () => {};
+    const sub = NativeModule.addListener('onUpdateProgress', (p: unknown) => listener(camelizeKeys<UpdateProgressEvent>(p)));
+    return () => sub.remove();
+  }
+  public onUpdateResult(listener: (e: UpdateResultEvent) => void): Unsubscribe {
+    if (!NativeModule) return () => {};
+    const sub = NativeModule.addListener('onUpdateResult', (p: unknown) => listener(camelizeKeys<UpdateResultEvent>(p)));
+    return () => sub.remove();
   }
   private async permissionCall(method: string): Promise<EngineResult> {
     if (!this.usingNative) return { ok: true };

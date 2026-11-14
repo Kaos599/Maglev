@@ -40,6 +40,8 @@ import type {
   TrackerInfo,
   TrackersAdded,
   Unsubscribe,
+  InstallSource,
+  UpdateNetwork,
   UrlProbe,
 } from './MaglevEngine.types.ts';
 import { HEALTH_TAGS } from './MaglevEngine.types.ts';
@@ -1328,6 +1330,44 @@ export class MaglevMockEngine implements MaglevEngineApi {
 
   public async requestLegacyStorage(): Promise<EngineResult> {
     return ok();
+  }
+
+  // In-app updates (NATIVE_CONTRACT 27). Dev and web only: never pretends to download or install.
+  public async getInstallSource(): Promise<InstallSource> {
+    return { installer: null, managedBy: null, versionCode: null };
+  }
+  private updateUnavailable(): EngineResult<never> {
+    return { ok: false, code: 'UNSUPPORTED', message: 'Updates only work in a real build (the dev simulator cannot download or install).' } as EngineResult<never>;
+  }
+  public async downloadUpdate(): Promise<EngineResult<{ path: string }>> {
+    return this.updateUnavailable();
+  }
+  public async getUpdateNetwork(): Promise<EngineResult<UpdateNetwork>> {
+    return { ok: true, connected: true, metered: false, vpn: false };
+  }
+  public async cancelUpdateDownload(): Promise<EngineResult> {
+    return ok();
+  }
+  public async installUpdate(): Promise<EngineResult<{ status: 'started' | 'needs_permission' | 'needs_user' }>> {
+    return this.updateUnavailable();
+  }
+  public async openInstallPermissionSettings(): Promise<EngineResult> {
+    return ok();
+  }
+  public async cleanupUpdates(): Promise<EngineResult> {
+    return ok();
+  }
+  public async postUpdateNotice(): Promise<EngineResult> {
+    return ok();
+  }
+  public async clearUpdateNotice(): Promise<EngineResult> {
+    return ok();
+  }
+  public onUpdateProgress(): Unsubscribe {
+    return () => {};
+  }
+  public onUpdateResult(): Unsubscribe {
+    return () => {};
   }
 
   public async setGovernance(g: GovernanceConfig): Promise<EngineResult> {

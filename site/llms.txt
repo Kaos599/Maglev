@@ -191,6 +191,10 @@ It uses battery while it downloads, like any download app, and torrents also use
 
 Add Maglev to Obtainium and new versions install as they come out. Or download the new APK from GitHub Releases and install it over the old one; your downloads and settings stay.
 
+### Does Maglev check for updates, and what does that send?
+
+Once a day, and when you tap Check for updates, Maglev asks api.github.com for the latest release. GitHub sees your IP address and the app version. Turning off Check automatically in Settings → About stops the daily request. The update file downloads from GitHub's release file servers.
+
 ### What does the AI assistant do, and do I need it?
 
 You don't need it. The assistant is optional: it searches, compares results, checks size and free space, and explains problems, and it always waits for you to tap Confirm. It runs on your own OpenRouter key, kept in secure storage, and can use free models. Turn it off and its tab disappears.

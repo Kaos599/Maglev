@@ -124,7 +124,8 @@
       "./plugins/withAppIcons.js",
       "./plugins/withBackupRules.js",
       "./plugins/withCleartextLan.js",
-      "./plugins/withReleaseSigning.js"
+      "./plugins/withReleaseSigning.js",
+      "./plugins/withSelfUpdate.js"
     ],
     "experiments": {
       "typedRoutes": true

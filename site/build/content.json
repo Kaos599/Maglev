@@ -256,6 +256,10 @@
       "Add Maglev to [Obtainium](https://github.com/ImranR98/Obtainium) and new versions install as they come out. Or download the new APK from GitHub Releases and install it over the old one; your downloads and settings stay."
     ],
     [
+      "Does Maglev check for updates, and what does that send?",
+      "Once a day, and when you tap Check for updates, Maglev asks api.github.com for the latest release. GitHub sees your IP address and the app version. Turning off Check automatically in Settings → About stops the daily request. The update file downloads from GitHub's release file servers."
+    ],
+    [
       "What does the AI assistant do, and do I need it?",
       "You don't need it. The assistant is optional: it searches, compares results, checks size and free space, and explains problems, and it always waits for you to tap Confirm. It runs on your own OpenRouter key, kept in secure storage, and can use free models. Turn it off and its tab disappears."
     ],
@@ -329,6 +333,13 @@
         "body": [
           "The assistant is off until you set it up. If you turn it on, your messages go to the AI provider you pick: OpenRouter, OpenAI, Anthropic, Groq, or an address you enter. So do the results of actions it runs for you, such as search results or the names and sizes of your transfers.",
           "You use your own key, kept in Android's encrypted storage on the phone. Maglev never receives the key or the chat. The provider's own privacy policy covers what it does with your messages."
+        ]
+      },
+      {
+        "heading": "Updates",
+        "body": [
+          "Once a day, and when you tap Check for updates, Maglev asks api.github.com for the latest release. GitHub sees your IP address and the app version. Turning off Check automatically in Settings → About stops the daily request.",
+          "The update file downloads from GitHub's release file servers, and only when you choose it or pick an update mode that downloads on Wi-Fi."
         ]
       },
       {

@@ -713,6 +713,23 @@ export interface MaglevEngineApi {
   /** Choose a launcher icon. Native applies it when the app leaves the foreground. Unknown id: INVALID_ARGUMENT. */
   setAppIcon(id: string): Promise<EngineResult>;
   requestLegacyStorage(): Promise<EngineResult>;
+  // In-app updates (NATIVE_CONTRACT 27)
+  /** Who installed Maglev. `managedBy` is non-null when F-Droid, Obtainium or Google Play owns updates. */
+  getInstallSource(): Promise<InstallSource>;
+  /** Downloads and verifies the APK. Errors: NETWORK, HTTP_STATUS, STORAGE_FULL, UPDATE_INVALID, MANAGED, CANCELLED. */
+  downloadUpdate(url: string, sha256: string, size: number): Promise<EngineResult<{ path: string }>>;
+  /** Online, on a metered link, on a VPN: the facts the update rules need. */
+  getUpdateNetwork(): Promise<EngineResult<UpdateNetwork>>;
+  cancelUpdateDownload(): Promise<EngineResult>;
+  /** Errors: UPDATE_INVALID, MANAGED, INSTALL_FAILED, STORAGE_FULL. */
+  installUpdate(path: string, silent: boolean): Promise<EngineResult<{ status: 'started' | 'needs_permission' | 'needs_user' }>>;
+  /** Opens "Install unknown apps" for Maglev. */
+  openInstallPermissionSettings(): Promise<EngineResult>;
+  /** Deletes downloaded updates except the pending one. */
+  cleanupUpdates(keepPath: string | null): Promise<EngineResult>;
+  /** kind: "available" or "ready". */
+  postUpdateNotice(kind: 'available' | 'ready', version: string): Promise<EngineResult>;
+  clearUpdateNotice(kind: 'available' | 'ready'): Promise<EngineResult>;
   // Governance
   setGovernance(config: GovernanceConfig): Promise<EngineResult>;
   // URL downloads (NATIVE_CONTRACT 17)
@@ -743,7 +760,31 @@ export interface MaglevEngineApi {
   onTorrentCompleted(listener: (event: TorrentCompletedEvent) => void): Unsubscribe;
   onNotificationAction(listener: (event: NotificationActionEvent) => void): Unsubscribe;
   onStorageStatus(listener: (event: StorageStatus) => void): Unsubscribe;
+  onUpdateProgress(listener: (event: UpdateProgressEvent) => void): Unsubscribe;
+  onUpdateResult(listener: (event: UpdateResultEvent) => void): Unsubscribe;
 }
+
+export type ManagedBy = 'fdroid' | 'obtainium' | 'play';
+export interface InstallSource {
+  installer: string | null;
+  managedBy: ManagedBy | null;
+  /** The installed versionCode (base * 10 + ABI digit), or null when it cannot be read. */
+  versionCode?: number | null;
+}
+export interface UpdateNetwork {
+  connected: boolean;
+  metered: boolean;
+  vpn: boolean;
+}
+export interface UpdateProgressEvent {
+  bytes: number;
+  /** 0 when the server did not say. */
+  total: number;
+}
+/** From the install session. `ok: true` carries `status`; `ok: false` carries a code and a plain message. */
+export type UpdateResultEvent =
+  | { ok: true; status: 'needs_user' | 'installed' }
+  | { ok: false; code: string; message: string };
 
 export type CodecSupport = 'hardware' | 'software' | 'none' | 'unknown';
 

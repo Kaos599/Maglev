@@ -48,7 +48,7 @@ export const glossary = {
 export const ACRONYMS = ['VPN', 'URL', 'RSS', 'SD', 'DHT', 'IP', 'ID', 'USB', 'UI', 'OK', 'API', 'VLC', 'HTTP', 'HTTPS', 'UPnP'] as const;
 
 /** Capitalised words that may appear mid-sentence. */
-export const PROPER_WORDS = ['Maglev', 'Android', 'Transfers', 'Wi-Fi', 'Atom', 'Settings', 'Search', 'Feeds', 'Undo', 'Retry'] as const;
+export const PROPER_WORDS = ['Maglev', "Maglev's", 'Android', 'Transfers', 'Wi-Fi', 'Atom', 'Settings', 'Search', 'Feeds', 'Undo', 'Retry'] as const;
 
 const toName = (s: string | number) => String(s);
 
@@ -673,3 +673,51 @@ export const watchCopy = {
   backgroundNote: 'Android decides the exact time, so a check can come later than you chose. It does not run after you force-stop Maglev, until you open it again.',
 } as const;
 // endregion watch
+
+// region updates
+/** In-app updates and Report a bug (docs/NATIVE_CONTRACT.md section 27). Screens: Settings > About. */
+export const updateCopy = {
+  versionBadge: 'Update available',
+  check: { title: 'Check for updates', checking: 'Checking…', upToDate: "You're up to date", failed: "Couldn't check. Try again." },
+  available: (version: string) => `Maglev ${version} is available`,
+  managedBy: (by: 'fdroid' | 'obtainium' | 'play') => `Updates come from ${by === 'fdroid' ? 'F-Droid' : by === 'obtainium' ? 'Obtainium' : 'Google Play'}.`,
+  updatesRow: { title: 'Updates', autoCheck: 'Check automatically', autoCheckHint: 'Once a day, Maglev asks GitHub for the latest version.' },
+  modes: [
+    { value: 'ask', title: 'Tell me', description: 'Get a notification when a new version is out.' },
+    { value: 'download', title: 'Download on Wi-Fi, then ask', description: 'The file downloads on Wi-Fi. You choose when to install.' },
+    { value: 'auto', title: 'Install automatically', description: 'Downloads on Wi-Fi, then installs when nothing is transferring.' },
+  ],
+  card: {
+    title: (version: string) => `Maglev ${version}`,
+    whatsNew: "What's new",
+    noNotes: 'No release notes.',
+    download: 'Download',
+    later: 'Later',
+    skip: 'Skip this version',
+    install: 'Install',
+    retry: 'Try again',
+    allowInstalls: 'Allow installs',
+    downloading: 'Downloading',
+    waitingForWifi: 'Waiting for Wi-Fi',
+    installing: 'Installing',
+    confirm: 'Confirm on the screen Android shows.',
+    ready: (version: string) => `Maglev ${version} is ready`,
+  },
+  notices: {
+    invalid: "This update didn't pass Maglev's checks, so it wasn't installed.",
+    needsPermission: 'To install updates, allow Maglev to install apps.',
+    restartWarning: 'Maglev restarts to finish. Downloads pick up where they left off.',
+    downloadFailed: "Couldn't download the update. Try again.",
+    blocked: 'Your network settings are blocking the download.',
+    storageFull: "There isn't enough space for the update.",
+    installFailed: "Android didn't install the update. Try again.",
+  },
+  hints: {
+    firstUpdate: 'Android asks you to confirm the first update. After that, updates can install on their own.',
+  },
+  report: {
+    title: 'Report a bug',
+    subtitle: 'Opens GitHub with your version and phone filled in.',
+  },
+} as const;
+// endregion updates
