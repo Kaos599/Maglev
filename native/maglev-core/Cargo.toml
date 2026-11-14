@@ -32,7 +32,7 @@ libc = "0.2"
 # HLS and DASH downloads (docs/NATIVE_CONTRACT.md section 24.8). `roxmltree` parses the MPD: read-only, no unsafe, no
 # dependencies, MIT/Apache-2.0. `aes` + `cbc` (RustCrypto, MIT/Apache-2.0) decrypt HLS METHOD=AES-128 segments;
 # `cbc` needs `alloc` for the `*_vec_mut` helpers. Versions are pinned exactly (cipher 0.4 generation).
-roxmltree = "=0.20.0"
+roxmltree = "=0.21.2"
 aes = "=0.8.4"
 cbc = { version = "=0.1.2", features = ["alloc"] }
 
