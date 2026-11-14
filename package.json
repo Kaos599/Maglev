@@ -28,7 +28,8 @@
     "test:follow": "node scripts/test-follow.js",
     "test:done-actions": "node scripts/test-done-actions.js",
     "test:url-download": "node scripts/test-url-download.js",
-    "test:manifest-permissions": "node scripts/test-manifest-permissions.js"
+    "test:manifest-permissions": "node scripts/test-manifest-permissions.js",
+    "e2e:phone": "bash scripts/e2e-phone.sh"
   },
   "dependencies": {
     "@expo-google-fonts/inter": "^0.4.2",
