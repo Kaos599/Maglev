@@ -289,5 +289,61 @@
       "title": "Browser",
       "text": "Android's own WebView inside a native view that sees every request, so it can block ads and notice the video a player loads. No browser engine is bundled."
     }
-  ]
+  ],
+  "privacy": {
+    "title": "Privacy policy",
+    "description": "Maglev has no account, no ads and no analytics. This page lists every time the app talks to the internet and what it sends.",
+    "updated": "2026-11-14",
+    "contact": "yojzt6j3@anonaddy.me",
+    "intro": "Maglev has no account, no ads, no analytics and no server of its own. This page lists every time the app talks to the internet, and what it sends.",
+    "sections": [
+      {
+        "heading": "What Maglev collects",
+        "body": [
+          "Nothing. The app contains no analytics, crash reporting or tracking code, and no Maglev server receives anything from it. There is no account to make."
+        ]
+      },
+      {
+        "heading": "What stays on your phone",
+        "body": [
+          "Your transfers, settings, feeds, watched searches, the assistant chat if you use it, and a crash log. They stay on the phone. Clearing Maglev's data or uninstalling it deletes them.",
+          "The crash log leaves the phone only if you copy it from About and send it somewhere yourself. A backup is a file you save where you choose."
+        ]
+      },
+      {
+        "heading": "Torrents",
+        "body": [
+          "BitTorrent connects your phone to other people sharing the same file. Those peers, the trackers and the DHT network can see your IP address and which torrent you are downloading or sharing. Every torrent app works this way.",
+          "If you don't want that, use a VPN. Settings → Network → Only download over a VPN pauses downloads whenever no VPN is connected."
+        ]
+      },
+      {
+        "heading": "Search, feeds, links and the browser",
+        "body": [
+          "A search sends your search words to the sources you have turned on in Settings → Search sources. Feeds fetch the addresses you added. A link downloads from its own server, and the browser loads pages like any other browser. Each of those sites sees your IP address and follows its own privacy policy.",
+          "Ad blocking downloads a public blocklist from GitHub (raw.githubusercontent.com). GitHub sees an ordinary download request."
+        ]
+      },
+      {
+        "heading": "The assistant",
+        "body": [
+          "The assistant is off until you set it up. If you turn it on, your messages go to the AI provider you pick: OpenRouter, OpenAI, Anthropic, Groq, or an address you enter. So do the results of actions it runs for you, such as search results or the names and sizes of your transfers.",
+          "You use your own key, kept in Android's encrypted storage on the phone. Maglev never receives the key or the chat. The provider's own privacy policy covers what it does with your messages."
+        ]
+      },
+      {
+        "heading": "Children",
+        "body": [
+          "Maglev is not made for children under 13."
+        ]
+      },
+      {
+        "heading": "Changes and contact",
+        "body": [
+          "If any of this changes, this page will change with it and show a new date.",
+          "Questions: write to [yojzt6j3@anonaddy.me](mailto:yojzt6j3@anonaddy.me) or [open an issue on GitHub](https://github.com/Kaos599/Maglev/issues)."
+        ]
+      }
+    ]
+  }
 }

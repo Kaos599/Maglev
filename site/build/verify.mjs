@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Checks the built site (index.html, compare/index.html, 404.html). Exits 1 on any problem.
+// Checks the built site (index.html, compare/index.html, privacy/index.html, 404.html). Exits 1 on any problem.
 //   node site/build/verify.mjs                 static checks only (no browser)
 //   node site/build/verify.mjs --shots <dir> [--prefix v4]   also renders index and 404 at 390x844 and 1440x900 with
 //                                              Playwright, checks layout, and writes screenshots to <dir>
@@ -80,8 +80,9 @@ function checkLinks(name, html) {
 }
 
 function staticChecks() {
-  const pages = ['index.html', 'compare/index.html'].filter((p) => fs.existsSync(path.join(SITE, p)));
+  const pages = ['index.html', 'compare/index.html', 'privacy/index.html'].filter((p) => fs.existsSync(path.join(SITE, p)));
   if (!pages.includes('compare/index.html')) fail('compare/index.html missing (is site/build/compare.json there?)');
+  if (!pages.includes('privacy/index.html')) fail('privacy/index.html missing (content.json needs a privacy section)');
   for (const name of pages) {
     const html = fs.readFileSync(path.join(SITE, name), 'utf8');
     const f = checkFaq(name, html);
@@ -103,6 +104,7 @@ function staticChecks() {
   // The sitemap lists every indexable page.
   const sm = fs.readFileSync(path.join(SITE, 'sitemap.xml'), 'utf8');
   if (pages.includes('compare/index.html') && !sm.includes('/maglev/compare</loc>')) fail('sitemap.xml lacks /maglev/compare');
+  if (pages.includes('privacy/index.html') && !sm.includes('/maglev/privacy</loc>')) fail('sitemap.xml lacks /maglev/privacy');
   if (/<loc>[^<]*\/<\/loc>/.test(sm)) fail('sitemap.xml has a URL with a trailing slash');
 }
 
@@ -149,7 +151,7 @@ async function browserChecks(outDir) {
   const srv = await serve();
   const base = `http://localhost:${srv.address().port}${BASE_PATH}`;
 
-  for (const [name, url] of [['index', base], ['compare', `${base}/compare`], ['404', `${base}/no/such/page`]]) {
+  for (const [name, url] of [['index', base], ['compare', `${base}/compare`], ['privacy', `${base}/privacy`], ['404', `${base}/no/such/page`]]) {
     for (const vp of [{ width: 390, height: 844 }, { width: 1440, height: 900 }]) {
       const ctx = await browser.newContext({ viewport: vp });
       const p = await ctx.newPage();
