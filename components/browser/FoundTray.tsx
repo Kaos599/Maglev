@@ -7,11 +7,11 @@ import { useMaglevEngine } from '../../context/EngineContext';
 import { ThemeColors, radius, spacing, type } from '../../constants/theme';
 import { haptic } from '../../constants/haptics';
 import { banners, empty, foundTray, notices } from '../../constants/copy';
-import { hostOf } from '../../utils/browserUrl';
+import { useBrowserPrefs } from '../../utils/prefs/browser';
 import { PixelIcon, PixelIconName } from '../PixelIcon';
 import { Chip, EmptyBlock, PressableScale, Sheet } from '../ui';
 import { useFoundSize } from './useFoundSize';
-import { FILTER_LABEL, countByKind, effectiveFilter, foundDetail, foundSizeLabel, isInstaller, sortFound, streamTag, visibleFilters, type FoundFilter } from './foundFilter';
+import { FILTER_LABEL, chosenFilter, countByKind, defaultFilter, effectiveFilter, foundDetail, foundSizeLabel, isInstaller, pageKeyOf, sortFound, sourceLabel, splitSmall, visibleFilters, type FoundFilter } from './foundFilter';
 
 const KIND_ICON: Record<FoundItem['kind'], PixelIconName> = {
   video: 'file-video',
@@ -48,7 +48,7 @@ function Row({
   const probed = useFoundSize(item, userAgent, probeStream);
   const detail = foundDetail({ ...item, height: item.height ?? probed.height });
   const sizeText = foundSizeLabel(probed);
-  const meta = [sizeText, detail, hostOf(item.url)].filter(Boolean).join(' · ');
+  const meta = [sizeText, detail, sourceLabel(item)].filter(Boolean).join(' · ');
   return (
     <View style={styles.rowWrap}>
       <PressableScale
@@ -118,10 +118,16 @@ export function FoundTray({ visible, items, onClose, onPick, onPickStream, onRem
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const { showNotice } = useMaglevEngine();
   const { height } = useWindowDimensions();
-  const [filter, setFilter] = useState<FoundFilter>('all');
-  const counts = useMemo(() => countByKind(items), [items]);
-  const active = effectiveFilter(filter, counts);
-  const shown = useMemo(() => sortFound(items, active), [items, active]);
+  const [prefs, updatePrefs] = useBrowserPrefs();
+  const [choice, setChoice] = useState<{ key: string; filter: FoundFilter } | null>(null);
+  const [revealed, setRevealed] = useState<string | null>(null);
+  const pageKey = useMemo(() => pageKeyOf(items), [items]);
+  const small = useMemo(() => splitSmall(items), [items]);
+  const hiding = prefs.hideSmallFiles && revealed !== pageKey && small.hidden.length > 0;
+  const listed = hiding ? small.shown : items;
+  const counts = useMemo(() => countByKind(listed), [listed]);
+  const active = effectiveFilter(chosenFilter(choice, pageKey) ?? defaultFilter(counts), counts);
+  const shown = useMemo(() => sortFound(listed, active), [listed, active]);
 
   const copyLink = async (item: FoundItem) => {
     try {
@@ -143,7 +149,7 @@ export function FoundTray({ visible, items, onClose, onPick, onPickStream, onRem
           <View style={styles.chipRow}>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chipScroll} contentContainerStyle={styles.chips} accessibilityRole="radiogroup">
               {visibleFilters(counts).map((f) => (
-                <Chip key={f} label={FILTER_LABEL[f]} count={counts[f]} selected={f === active} onPress={() => setFilter(f)} />
+                <Chip key={f} label={FILTER_LABEL[f]} count={counts[f]} selected={f === active} onPress={() => setChoice({ key: pageKey, filter: f })} />
               ))}
             </ScrollView>
             <PressableScale
@@ -155,6 +161,27 @@ export function FoundTray({ visible, items, onClose, onPick, onPickStream, onRem
             >
               <Text style={styles.clearText}>{foundTray.clear}</Text>
             </PressableScale>
+          </View>
+          <View style={styles.smallRow}>
+            <Chip
+              label={foundTray.hideSmall}
+              selected={prefs.hideSmallFiles}
+              onPress={() => {
+                updatePrefs({ hideSmallFiles: !prefs.hideSmallFiles });
+                setRevealed(null);
+              }}
+            />
+            {small.hidden.length > 0 && prefs.hideSmallFiles ? (
+              <PressableScale
+                onPress={() => setRevealed(hiding ? pageKey : null)}
+                haptic="select"
+                accessibilityRole="button"
+                accessibilityLabel={hiding ? foundTray.showHidden(small.hidden.length) : foundTray.hideAgain}
+                style={styles.hiddenButton}
+              >
+                <Text style={styles.hiddenText}>{hiding ? foundTray.hidden(small.hidden.length) : foundTray.hideAgain}</Text>
+              </PressableScale>
+            ) : null}
           </View>
           <FlatList
             data={shown}
@@ -183,6 +210,9 @@ const makeStyles = (c: ThemeColors) =>
     chips: { flexDirection: 'row', gap: spacing.sm },
     clear: { minWidth: 44, minHeight: 44, paddingHorizontal: spacing.sm, alignItems: 'center', justifyContent: 'center' },
     clearText: { ...type.mono, fontSize: type.size.md, color: c.danger },
+    smallRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingBottom: spacing.sm },
+    hiddenButton: { minHeight: 44, paddingHorizontal: spacing.sm, justifyContent: 'center' },
+    hiddenText: { ...type.mono, fontSize: type.size.sm, color: c.accent },
     rowWrap: { flexDirection: 'row', alignItems: 'center' },
     rowMain: { flex: 1, minWidth: 44 },
     row: { minHeight: 56, flexDirection: 'row', alignItems: 'center', gap: spacing.md, paddingVertical: spacing.sm },

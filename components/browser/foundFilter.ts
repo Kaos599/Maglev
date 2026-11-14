@@ -4,6 +4,7 @@
  */
 import type { FoundItem, FoundKind } from '../../modules/maglev-engine/src/MaglevBrowser';
 import { formatBytes } from '../../constants/format.ts';
+import { hostOf } from '../../utils/browserUrl.ts';
 
 export type FoundFilter = 'all' | FoundKind;
 
@@ -48,15 +49,68 @@ export function effectiveFilter(filter: FoundFilter, counts: Record<FoundFilter,
   return filter === 'all' || counts[filter] > 0 ? filter : 'all';
 }
 
-/** Filters and orders for display. Video: biggest first, then newest. Everything else: newest first. */
+/** The chip a page opens on: Video when it has a video, otherwise All. */
+export function defaultFilter(counts: Record<FoundFilter, number>): FoundFilter {
+  return counts.video > 0 ? 'video' : 'all';
+}
+
+/** Identifies the page the list belongs to (the first item's document, #fragment ignored). '' for an empty list. */
+export function pageKeyOf(items: readonly FoundItem[]): string {
+  return items.length ? documentOf(items[0].pageUrl) : '';
+}
+
+/** The user's filter pick, kept only while the page is the one they picked it on. */
+export function chosenFilter(choice: { key: string; filter: FoundFilter } | null, pageKey: string): FoundFilter | null {
+  return choice && choice.key === pageKey ? choice.filter : null;
+}
+
+const SECOND_LEVEL = new Set(['co', 'com', 'org', 'net', 'ac', 'gov', 'edu']);
+
+/** The site's own host without subdomains ("video.example.co.uk" gives "example.co.uk"). A short heuristic, not a suffix list. */
+export function registrableHost(url: string): string {
+  const host = hostOf(url);
+  if (!host || /^[\d.]+$/.test(host) || host.startsWith('[')) return host;
+  const labels = host.split('.');
+  if (labels.length <= 2) return host;
+  const tld = labels[labels.length - 1];
+  const keep = tld.length === 2 && SECOND_LEVEL.has(labels[labels.length - 2]) ? 3 : 2;
+  return labels.slice(-keep).join('.');
+}
+
+/** The line that says where a file came from: the page title, else the site's host. Never the CDN host. */
+export function sourceLabel(item: Pick<FoundItem, 'pageTitle' | 'pageUrl'>): string {
+  return item.pageTitle?.trim() || registrableHost(item.pageUrl);
+}
+
+export const SMALL_MEDIA_BYTES = 1024 * 1024;
+export const SMALL_IMAGE_BYTES = 50 * 1024;
+
+/**
+ * Splits out files too small to be what the user wants: video and audio under 1 MB, images under 50 KB.
+ * Unknown sizes, streams, documents and other files always stay shown.
+ */
+export function splitSmall(
+  items: readonly FoundItem[],
+  sizeOf: (item: FoundItem) => number | null | undefined = (i) => i.size,
+): { shown: FoundItem[]; hidden: FoundItem[] } {
+  const shown: FoundItem[] = [];
+  const hidden: FoundItem[] = [];
+  for (const item of items) {
+    const size = sizeOf(item);
+    const known = typeof size === 'number' && Number.isFinite(size) && size > 0;
+    const limit = item.kind === 'image' ? SMALL_IMAGE_BYTES : item.kind === 'video' || item.kind === 'audio' ? SMALL_MEDIA_BYTES : 0;
+    (!item.stream && known && size < limit ? hidden : shown).push(item);
+  }
+  return { shown, hidden };
+}
+
+/** Filters and orders for display: largest first for every kind (unknown size last), then newest. */
 export function sortFound(items: readonly FoundItem[], filter: FoundFilter): FoundItem[] {
   const indexed = items.map((item, index) => ({ item, index })).filter((x) => filter === 'all' || x.item.kind === filter);
   indexed.sort((a, b) => {
-    if (filter === 'video') {
-      const sa = a.item.size ?? -1;
-      const sb = b.item.size ?? -1;
-      if (sa !== sb) return sb - sa;
-    }
+    const sa = a.item.size ?? -1;
+    const sb = b.item.size ?? -1;
+    if (sa !== sb) return sb - sa;
     return b.index - a.index;
   });
   return indexed.map((x) => x.item);

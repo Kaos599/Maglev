@@ -80,7 +80,7 @@ async function main() {
   check('counts', counts.all === 6 && counts.video === 4 && counts.image === 1 && counts.audio === 0);
   check('zero segments hidden, All kept', f.visibleFilters(counts).join() === 'all,video,image,document' && f.visibleFilters(f.countByKind([])).join() === 'all');
   check('video: size desc, then newest', f.sortFound(items, 'video').map((i) => i.id).join() === 'f,c,a,d');
-  check('others: newest first', f.sortFound(items, 'all').map((i) => i.id).join() === 'f,e,d,c,b,a');
+  check('all: size desc for every kind, unknown last, then newest (0.20)', f.sortFound(items, 'all').map((i) => i.id).join() === 'f,c,a,e,d,b');
   check('filter keeps one kind', f.sortFound(items, 'image').length === 1);
   {
     const h = (id, path, over = {}) => mk(id, 'video', { url: 'https://s.test' + path, stream: 'hls', pageUrl: 'https://p.test', ...over });

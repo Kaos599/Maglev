@@ -269,6 +269,10 @@ export const foundTray = {
   clear: 'Clear',
   clearLabel: 'Clear the list of found files',
   remove: (name: string | number) => `Remove ${name} from the list`,
+  hideSmall: 'Hide small files',
+  hidden: (n: string | number) => `${n} hidden`,
+  showHidden: (n: string | number) => `Show ${n} hidden small files`,
+  hideAgain: 'Hide small files again',
 } as const;
 
 /** Labels on the browser's stream sheet. Not linted as notices; they are short field names. */
