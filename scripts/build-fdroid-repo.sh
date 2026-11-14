@@ -13,6 +13,8 @@
 set -euo pipefail
 
 OUT="${1:?usage: build-fdroid-repo.sh <output dir>}"
+# Absolute now: the script cd's into a temp folder below, and a relative path would land there and be deleted.
+mkdir -p "$OUT" && OUT="$(cd "$OUT" && pwd)"
 KEEP_RELEASES=${KEEP_RELEASES:-5}
 REPO="${GITHUB_REPOSITORY:-Kaos599/Maglev}"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
