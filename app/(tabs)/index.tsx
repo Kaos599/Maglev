@@ -28,6 +28,7 @@ import * as DocumentPicker from 'expo-document-picker';
 import { maglevEngine, type DownloadSnapshot } from 'maglev-engine';
 import { haptic } from '../../constants/haptics';
 import { useMaglevEngine, type TransferTelemetry } from '../../context/EngineContext';
+import { useSettings } from '../../context/SettingsContext';
 import { useTheme } from '../../context/ThemeContext';
 import { ThemeColors, radius, spacing, type } from '../../constants/theme';
 import { pickMainFile } from '../../utils/mainFile';
@@ -82,6 +83,7 @@ export default function TransfersScreen() {
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const { settings } = useSettings();
   const [searchPrefs] = useSearchPrefs();
   const {
     telemetry: liveTelemetry,
@@ -592,7 +594,8 @@ export default function TransfersScreen() {
         </View>
       ) : null}
 
-      {!nothingHere ? (
+      {/* Off by default (Settings → Appearance → Speed totals); Pause all / Resume all also live in the notification. */}
+      {settings.appearance.showSpeedTotals && !nothingHere ? (
         <SpeedTelemetryHeader
           downloadBytes={telemetry.totalDownloadSpeedBytes}
           uploadBytes={telemetry.totalUploadSpeedBytes}
