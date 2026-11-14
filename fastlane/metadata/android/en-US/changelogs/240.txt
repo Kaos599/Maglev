@@ -1,0 +1,3 @@
+- A new tab lists the pages you visited recently, with See all for your full history.
+- ⋮ works on a new tab too, so History and Browser settings are always one tap away.
+- Updated libraries and build tools.

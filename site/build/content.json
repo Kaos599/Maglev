@@ -70,7 +70,7 @@
         "Tabs with a long-press menu on links and images: new tab, background tab, copy, share or download",
         "Pop-ups and redirects you didn't tap for wait until you choose Open, Block or Always allow on this site",
         "Find in page and text size",
-        "A history you can search, with suggestions as you type. It can clear itself when you close Maglev",
+        "A history you can search, with suggestions as you type and recent pages on every new tab. It can clear itself when you close Maglev",
         "App installers come with a warning"
       ],
       "screen": "browser"
