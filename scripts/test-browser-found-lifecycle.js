@@ -84,14 +84,14 @@ async function screen() {
   console.log('screen wiring (app/browser.tsx, FoundTray)');
   const scr = read('app/browser.tsx');
   const tray = read('components/browser/FoundTray.tsx');
-  check('screen keeps a dismissed set', /useState<ReadonlySet<string>>|useState<Set<string>>/.test(scr) && /dismissed/.test(scr));
+  check('screen keeps a dismissed set', /useState<ReadonlySet<string>>|useState<Set<string>>|dismissed: ReadonlySet<string>/.test(scr) && /dismissed/.test(scr));
   check('the tray list hides dismissed ids', /visibleFound\(/.test(scr));
   check('Remove dismisses instead of deleting from the list', !/removeFound\(/.test(scr) && /dismissIds\(/.test(scr));
   check('Clear dismisses instead of emptying the list', !/clearFound\(/.test(scr) && /dismissAllVisible\(/.test(scr));
-  check('the dismissed set resets on a new document', /setDismissed\(new Set\(\)\)/.test(block(scr, /const onPage = useCallback/)));
+  check('the dismissed set resets on a new document', /d\.dismissed = new Set\(\)/.test(block(scr, /onPage: \(id, e\) =>/)));
   check('Undo lasts 5 seconds', /UNDO_MS\s*=\s*5000/.test(scr) && /UNDO_MS/.test(scr.replace(/UNDO_MS\s*=\s*5000/, '')));
   check('Undo restores the ids', /restoreIds\(/.test(scr));
-  check('Scan again empties dismissed and the list, then calls resetFound', /scanAgain/.test(scr) && /setDismissed\(new Set\(\)\)/.test(block(scr, /const scanAgain = useCallback/)) && /setFound\(\[\]\)/.test(block(scr, /const scanAgain = useCallback/)) && /resetFound\(\)/.test(block(scr, /const scanAgain = useCallback/)));
+  check('Scan again empties dismissed and the list, then calls resetFound', /scanAgain/.test(scr) && /d\.dismissed = new Set\(\)/.test(block(scr, /const scanAgain = useCallback/)) && /d\.found = \[\]/.test(block(scr, /const scanAgain = useCallback/)) && /resetFound\(\)/.test(block(scr, /const scanAgain = useCallback/)));
   check('a VIEW_GONE rejection is ignored', /resetFound\(\)[\s\S]{0,80}\.catch\(/.test(scr));
   check('the tray has a Scan again row', /onScanAgain/.test(tray) && /foundTray\.scanAgain/.test(tray));
   check('the empty tray offers Scan again too', /EmptyBlock[\s\S]{0,400}onScanAgain/.test(tray));

@@ -12,10 +12,10 @@ import { useTheme } from '../../context/ThemeContext';
 import { useMaglevEngine } from '../../context/EngineContext';
 import { ThemeColors, spacing, type } from '../../constants/theme';
 import { haptic } from '../../constants/haptics';
-import { empty, historyCopy, notices } from '../../constants/copy';
+import { browserTabs, empty, historyCopy, notices } from '../../constants/copy';
 import { Button, EmptyBlock, IconButton, ListRow, RadioCard, SectionHeader, Toggle } from '../../components/ui';
 import { Card, Caption, InputSheet, SettingsPage } from '../../components/settings/SettingsParts';
-import { DEFAULT_BLOCKLIST_URL, updateBrowserPrefs, useBrowserPrefs } from '../../utils/prefs/browser';
+import { DEFAULT_BLOCKLIST_URL, updateBrowserPrefs, useBrowserPrefs, type PopupPolicy } from '../../utils/prefs/browser';
 import { ClearHistorySheet, type ClearMode } from '../../components/browser/ClearHistorySheet';
 import { SEARCH_URLS, hostOf, isHttpsUrl, type SearchEngine } from '../../utils/browserUrl';
 
@@ -24,6 +24,12 @@ const ENGINES: { value: SearchEngine; title: string }[] = [
   { value: 'google', title: 'Google' },
   { value: 'bing', title: 'Bing' },
   { value: 'brave', title: 'Brave' },
+];
+
+const POPUP_CHOICES: { value: PopupPolicy; title: string }[] = [
+  { value: 'ask', title: browserTabs.settings.ask },
+  { value: 'block', title: browserTabs.settings.block },
+  { value: 'allow', title: browserTabs.settings.allow },
 ];
 
 const listErrorText = (code: BlocklistErrorCode): string =>
@@ -170,6 +176,47 @@ export default function BrowserSettings() {
           </Card>
         )}
       </View>
+
+      <View style={s.section}>
+        <SectionHeader title={browserTabs.settings.section} />
+        <Card>
+          {POPUP_CHOICES.map((c) => (
+            <ListRow
+              key={c.value}
+              title={c.title}
+              selected={prefs.popupPolicy === c.value}
+              accessibilityLabel={c.title}
+              onPress={() => {
+                haptic('select');
+                setPrefs({ popupPolicy: c.value });
+              }}
+            />
+          ))}
+        </Card>
+      </View>
+
+      {prefs.popupAllowHosts.length > 0 ? (
+        <View style={s.section}>
+          <SectionHeader title={browserTabs.settings.allowedSites} />
+          <Card>
+            {prefs.popupAllowHosts.map((h) => (
+              <View key={h} style={s.urlRow}>
+                <Text style={s.url} numberOfLines={1}>
+                  {h}
+                </Text>
+                <IconButton
+                  icon="close"
+                  accessibilityLabel={`${browserTabs.settings.remove} ${h}`}
+                  onPress={() => {
+                    haptic('tap');
+                    setPrefs({ popupAllowHosts: prefs.popupAllowHosts.filter((x) => x !== h) });
+                  }}
+                />
+              </View>
+            ))}
+          </Card>
+        </View>
+      ) : null}
 
       <View style={s.section}>
         <SectionHeader title="Search engine" />

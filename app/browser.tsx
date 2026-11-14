@@ -1,12 +1,12 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import { BackHandler, Keyboard, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as Clipboard from 'expo-clipboard';
 import {
-  MaglevBrowser,
   nameFromUrl,
   type BrowserDownloadRequestEvent,
+  type BrowserLongPressEvent,
   type BrowserPageEvent,
   type BrowserRefusalReason,
   type FoundItem,
@@ -16,10 +16,16 @@ import { useTheme } from '../context/ThemeContext';
 import { useMaglevEngine } from '../context/EngineContext';
 import { ThemeColors, radius, spacing, type } from '../constants/theme';
 import { haptic } from '../constants/haptics';
-import { banners, empty, foundTray, historyCopy, notices } from '../constants/copy';
+import { banners, browserTabs, empty, foundTray, historyCopy, notices } from '../constants/copy';
 import { PixelIcon } from '../components/PixelIcon';
 import { Banner, Button, EmptyBlock, IconButton, ListRow, PressableScale, ProgressBar, Sheet, Toggle } from '../components/ui';
 import { FoundTray } from '../components/browser/FoundTray';
+import { TabWebView, type TabHandlers } from '../components/browser/TabWebView';
+import { TabSwitcher } from '../components/browser/TabSwitcher';
+import { LinkMenu } from '../components/browser/LinkMenu';
+import { PopupCard } from '../components/browser/PopupCard';
+import { useTabs } from '../components/browser/useTabs';
+import { afterSheetCloses } from '../components/browser/FloatingSheet';
 import { HistorySuggestions } from '../components/browser/HistorySuggestions';
 import { StreamSheet } from '../components/browser/StreamSheet';
 import { FoundDownloadSheet, downloadHeaders, type DownloadTarget } from '../components/browser/FoundDownload';
@@ -30,7 +36,10 @@ import { isInstaller, mergeFound, pruneToPage } from '../components/browser/foun
 import { activeLabel, activeSummary, matchTransfers } from '../components/browser/foundTransfers';
 import { dismissAllVisible, dismissIds, restoreIds, visibleFound } from '../components/browser/foundDismiss';
 import { updateBrowserPrefs, useBrowserPrefs } from '../utils/prefs/browser';
-import { recordVisit } from '../utils/history';
+import { flushTabs, recordVisit } from '../utils/history';
+import { activeTab, backTarget, getTab, isBlank, liveTabs, switcherOrder } from '../utils/browser/tabs';
+import * as popupsApi from '../utils/browser/popups';
+import { emptyPopups, hostAllowed, type PopupRequest, type PopupsState } from '../utils/browser/popups';
 import { hostOf, isAllowedHost, noticeAllowed, siteKey, toBrowserUrl, toggleAllowedHost } from '../utils/browserUrl';
 
 /** A quiet notice for these, at most one every 5 seconds. */
@@ -40,8 +49,23 @@ const QUIET_NOTICE: Partial<Record<BrowserRefusalReason, string>> = {
   permission: notices.browser.permission,
 };
 
-/** How long the Undo row stays after Remove or Clear. */
+/** How long the Undo row stays after Remove, Clear or closing tabs. */
 const UNDO_MS = 5000;
+
+/** What the screen knows about one tab. Lives in a map keyed by tab id, so switching tabs costs nothing. */
+type TabData = {
+  page: BrowserPageEvent | null;
+  found: FoundItem[];
+  // Remove and Clear only hide ids (NATIVE_CONTRACT 24.6a): the view keeps its tracker, so a re-requested file stays hidden.
+  dismissed: ReadonlySet<string>;
+  blocked: number;
+  crashed: boolean;
+  refused: 'ssl' | 'local' | null;
+  lastUrl: string;
+  notes: Set<string>;
+};
+
+const newData = (): TabData => ({ page: null, found: [], dismissed: new Set(), blocked: 0, crashed: false, refused: null, lastUrl: '', notes: new Set() });
 
 export default function BrowserScreen() {
   const { colors } = useTheme();
@@ -50,56 +74,122 @@ export default function BrowserScreen() {
   const params = useLocalSearchParams<{ url?: string; prefill?: string }>();
   const { showNotice, downloads, probeUrl, startDownload } = useMaglevEngine();
   const [prefs] = useBrowserPrefs();
+  const tabs = useTabs();
+  const tabsState = tabs.state;
+  const ready = tabsState != null;
 
-  const browserRef = useRef<MaglevBrowserRef>(null);
   const inputRef = useRef<React.ComponentRef<typeof TextInput>>(null);
-  // `propUrl` is only ever what the user asked for. The address bar text comes from `page`, never from the prop.
-  const [propUrl, setPropUrl] = useState<string | undefined>(undefined);
-  const [started, setStarted] = useState(false);
-  const [page, setPage] = useState<BrowserPageEvent | null>(null);
+  // One view ref per live tab.
+  const viewRefs = useRef(new Map<string, React.RefObject<MaglevBrowserRef | null>>());
+  const registerView = useCallback((id: string, r: React.RefObject<MaglevBrowserRef | null> | null) => {
+    if (r) viewRefs.current.set(id, r);
+    else viewRefs.current.delete(id);
+  }, []);
+  // The address each view loaded when it mounted. It never follows the page (onPage.url is not fed back).
+  const initialUrls = useRef(new Map<string, string>());
+
+  // Per-tab state: a map in a ref plus a counter that asks for a render.
+  const dataRef = useRef(new Map<string, TabData>());
+  const [, bump] = useReducer((n: number) => n + 1, 0);
+  const getData = (id: string): TabData => {
+    let d = dataRef.current.get(id);
+    if (!d) {
+      d = newData();
+      dataRef.current.set(id, d);
+    }
+    return d;
+  };
+  const patch = useCallback((id: string, fn: (d: TabData) => void) => {
+    let d = dataRef.current.get(id);
+    if (!d) {
+      d = newData();
+      dataRef.current.set(id, d);
+    }
+    fn(d);
+    bump();
+  }, []);
+
+  const tab = tabsState ? activeTab(tabsState) : null;
+  const activeId = tab?.id ?? '';
+  const activeIdRef = useRef(activeId);
+  activeIdRef.current = activeId;
+  const data = getData(activeId);
+  const page = data.page;
+  const hasPage = !!tab && !isBlank(tab);
+  const view = useCallback((id?: string) => viewRefs.current.get(id ?? activeIdRef.current)?.current ?? null, []);
+
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState('');
   const [selection, setSelection] = useState<{ start: number; end: number } | undefined>(undefined);
   const [prefillText, setPrefillText] = useState('');
   const [desktop, setDesktop] = useState(prefs.desktopMode);
-  const [blocked, setBlocked] = useState(0);
-  const [foundAll, setFound] = useState<FoundItem[]>([]);
-  // Remove and Clear only hide ids (NATIVE_CONTRACT 24.6a): the view keeps its tracker, so a re-requested file stays hidden.
-  const [dismissed, setDismissed] = useState<ReadonlySet<string>>(() => new Set());
+  const blocked = data.blocked;
+  const foundAll = data.found;
+  const dismissed = data.dismissed;
   const [undo, setUndo] = useState<{ message: string; ids: string[] } | null>(null);
   const undoTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const found = useMemo(() => visibleFound(foundAll, dismissed), [foundAll, dismissed]);
   const [trayOpen, setTrayOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [switcherOpen, setSwitcherOpen] = useState(false);
+  const [linkTarget, setLinkTarget] = useState<BrowserLongPressEvent | null>(null);
   const [target, setTarget] = useState<DownloadTarget | null>(null);
   const [batchItems, setBatchItems] = useState<FoundItem[] | null>(null);
   const [streamItem, setStreamItem] = useState<FoundItem | null>(null);
-  const [crashed, setCrashed] = useState(false);
-  const [refused, setRefused] = useState<'ssl' | 'local' | null>(null);
+  const [popups, setPopupsState] = useState<PopupsState>(emptyPopups);
+  const popupsRef = useRef(popups);
+  const setPopups = useCallback((fn: (p: PopupsState) => PopupsState) => {
+    popupsRef.current = fn(popupsRef.current);
+    setPopupsState(popupsRef.current);
+  }, []);
   const lastNoticeAt = useRef(0);
-  const lastPageUrl = useRef('');
-  // H1: a refused page and a crash page are never recorded. Both clear when the next page starts loading.
-  const crashedRef = useRef(false);
-  const refusedRef = useRef(false);
-  const notesShown = useRef(new Set<string>());
+  // H1: a refused page and a crash page are never recorded. Both clear when the next page starts loading (kept per tab in `crashed` and `refused`).
 
   const leave = useCallback(() => {
     if (router.canGoBack()) router.back();
     else router.replace('/');
   }, [router]);
 
+  // A tab that sleeps or closes loses its page state and any waiting pop-up (a waiting card counts as Blocked).
+  useEffect(() => {
+    if (!tabsState) return;
+    const live = new Set(liveTabs(tabsState).map((t) => t.id));
+    for (const id of [...dataRef.current.keys()]) if (id && !live.has(id)) dataRef.current.delete(id);
+    for (const id of [...initialUrls.current.keys()]) if (!live.has(id)) initialUrls.current.delete(id);
+    const ids = new Set([...Object.keys(popupsRef.current.prompts), ...Object.keys(popupsRef.current.blocked)]);
+    for (const id of ids) if (!live.has(id)) setPopups((p) => popupsApi.drop(p, id, 'closed').state);
+  }, [tabsState, setPopups]);
+
+  // Switching tabs dismisses the long-press menu and the found list's Undo (they belong to the tab you left).
+  useEffect(() => {
+    setLinkTarget(null);
+    setUndo(null);
+  }, [activeId]);
+
+  const openTabChecked = useCallback(
+    (opts: { url?: string; opener?: string | null; background?: boolean }) => {
+      const r = tabs.open(opts);
+      if (r.result === 'cap') showNotice({ message: browserTabs.capNotice }, 4000);
+      return r;
+    },
+    [tabs, showNotice],
+  );
+
+  // Loads an address in the active tab. A blank tab has no view yet, so it gets the address and mounts one.
   const open = useCallback(
     (url: string) => {
-      setCrashed(false);
-      setRefused(null);
-      if (!started) {
-        setStarted(true);
-        setPropUrl(url);
-      } else {
-        browserRef.current?.loadUrl(url);
-      }
+      const id = activeIdRef.current;
+      const cur = tabs.ref.current ? getTab(tabs.ref.current, id) : undefined;
+      if (!cur) return;
+      patch(id, (d) => {
+        d.crashed = false;
+        d.refused = null;
+      });
+      setPrefillText('');
+      if (isBlank(cur)) tabs.update(id, { url });
+      else view(id)?.loadUrl(url);
     },
-    [started],
+    [tabs, patch, view],
   );
 
   const transfers = useMemo(() => matchTransfers(found, downloads), [found, downloads]);
@@ -128,55 +218,135 @@ export default function BrowserScreen() {
     [prefs.searchEngine, open, toAddTorrent],
   );
 
-  // `url` comes from this app (Add download) and loads. `prefill` comes from maglev://browser and only fills the bar.
+  // `url` comes from this app (Add download, Open in browser) and opens in a new active tab (the active one when it is blank).
+  // `prefill` comes from maglev://browser and only fills the bar of a blank tab.
   const handled = useRef<string | null>(null);
   useEffect(() => {
+    if (!ready) return;
     const key = `${params.url ?? ''}|${params.prefill ?? ''}`;
     if (key === '|' || key === handled.current) return;
     handled.current = key;
-    if (typeof params.url === 'string' && params.url.trim()) go(params.url);
-    else if (typeof params.prefill === 'string') setPrefillText(params.prefill);
-  }, [params.url, params.prefill, go]);
+    const cur = tabs.ref.current ? activeTab(tabs.ref.current) : null;
+    if (typeof params.url === 'string' && params.url.trim()) {
+      const t = toBrowserUrl(params.url, prefs.searchEngine);
+      if (t.kind === 'magnet') return toAddTorrent(t.uri);
+      if (t.kind === 'empty') return;
+      if (cur && isBlank(cur)) open(t.url);
+      else openTabChecked({ url: t.url });
+    } else if (typeof params.prefill === 'string') {
+      if (cur && !isBlank(cur)) openTabChecked({});
+      setPrefillText(params.prefill);
+    }
+  }, [ready, params.url, params.prefill, prefs.searchEngine, open, openTabChecked, toAddTorrent, tabs.ref]);
 
-  // Back leaves a fullscreen video or goes to the previous page first, then leaves the screen.
+  // ---- tabs ----
+  const closeWithUndo = useCallback(
+    (ids: string[] | 'all') => {
+      const u = ids === 'all' ? tabs.closeAll() : tabs.close(ids[0]);
+      if (!u) return;
+      showNotice(
+        { message: ids === 'all' ? browserTabs.closedAll : browserTabs.closedTab, actionLabel: browserTabs.undo, onAction: () => tabs.undo(u) },
+        UNDO_MS,
+      );
+    },
+    [tabs, showNotice],
+  );
+
+  const newTab = useCallback(() => {
+    const r = openTabChecked({});
+    if (r.result !== 'ok') return;
+    setSwitcherOpen(false);
+    haptic('select');
+    setTimeout(() => inputRef.current?.focus(), 150);
+  }, [openTabChecked]);
+
+  const selectTab = useCallback(
+    (id: string) => {
+      setSwitcherOpen(false);
+      setPrefillText('');
+      tabs.select(id);
+    },
+    [tabs],
+  );
+
+  // ---- pop-up card (T5) ----
+  const prompt = popupsApi.promptFor(popups, activeId);
+  const runRequest = useCallback(
+    (id: string, req: PopupRequest) => {
+      if (req.kind === 'window') {
+        openTabChecked({ url: req.url, opener: id });
+      } else if (req.kind === 'redirect') {
+        view(id)?.followRedirect(req.url).catch(() => {});
+      } else {
+        view(id)
+          ?.openApp(req.url)
+          .then((r) => {
+            if (r.opened) return;
+            if (r.fallbackUrl) view(id)?.followRedirect(r.fallbackUrl).catch(() => {});
+            else showNotice({ message: browserTabs.popup.noApp }, 4000);
+          });
+      }
+    },
+    [openTabChecked, view, showNotice],
+  );
+  const popupOpen = useCallback(() => {
+    const id = activeIdRef.current;
+    const r = popupsApi.open(popupsRef.current, id);
+    setPopups(() => r.state);
+    if (r.request) runRequest(id, r.request);
+  }, [setPopups, runRequest]);
+  const popupBlock = useCallback(() => setPopups((p) => popupsApi.block(p, activeIdRef.current)), [setPopups]);
+  const popupAlways = useCallback(() => {
+    const id = activeIdRef.current;
+    const r = popupsApi.allowForSite(popupsRef.current, id, prefs.popupAllowHosts);
+    setPopups(() => r.state);
+    if (r.host) updateBrowserPrefs(() => ({ popupAllowHosts: r.allowHosts }));
+    if (r.request) runRequest(id, r.request);
+  }, [setPopups, runRequest, prefs.popupAllowHosts]);
+
+  // ---- back ----
+  // Android back: leave a fullscreen video (the view reports canGoBack while one is up), then close the address bar,
+  // the switcher, the long-press menu or the pop-up card, then go back in the page, then close a tab that has an opener, then leave.
   const handleBack = useCallback((): boolean => {
     if (editing) {
       inputRef.current?.blur();
       Keyboard.dismiss();
       return true;
     }
-    if (page?.canGoBack) {
-      browserRef.current?.goBack();
+    if (switcherOpen) {
+      setSwitcherOpen(false);
       return true;
     }
-    return false;
-  }, [editing, page?.canGoBack]);
+    if (linkTarget) {
+      setLinkTarget(null);
+      return true;
+    }
+    if (prompt) {
+      popupBlock();
+      return true;
+    }
+    const cur = tabs.ref.current;
+    if (!cur) return false;
+    const next = backTarget(cur, activeId, !!page?.canGoBack);
+    if (next === 'goBack') {
+      view()?.goBack();
+      return true;
+    }
+    if (next === 'leave') return false;
+    tabs.close(activeId);
+    return true;
+  }, [editing, switcherOpen, linkTarget, prompt, popupBlock, tabs, activeId, page?.canGoBack, view]);
   useFocusEffect(
     useCallback(() => {
       const sub = BackHandler.addEventListener('hardwareBackPress', handleBack);
-      return () => sub.remove();
+      return () => {
+        sub.remove();
+        void flushTabs();
+      };
     }, [handleBack]),
   );
 
-  const onPage = useCallback((e: BrowserPageEvent) => {
-    setPage(e);
-    if (e.loading) {
-      crashedRef.current = false;
-      refusedRef.current = false;
-    } else if (e.loading === false && !crashedRef.current && !refusedRef.current) {
-      // H1: only a finished load is recorded. The store skips non-web addresses, repeats and the off setting.
-      recordVisit({ url: e.url, title: e.title ?? '' }).catch(() => {});
-    }
-    if (e.url !== lastPageUrl.current) {
-      lastPageUrl.current = e.url;
-      notesShown.current.clear();
-      // A new document starts a new list. Files already tagged with it (found before this event) stay.
-      setFound((prev) => pruneToPage(prev, e.url));
-      setDismissed(new Set());
-      setUndo(null);
-    }
-  }, []);
-
+  // ---- found list (per active tab) ----
   useEffect(() => () => {
     if (undoTimer.current) clearTimeout(undoTimer.current);
   }, []);
@@ -191,74 +361,144 @@ export default function BrowserScreen() {
   const removeOne = useCallback(
     (item: FoundItem) => {
       const r = dismissIds(dismissed, found, [item.id]);
-      setDismissed(r.next);
+      patch(activeIdRef.current, (d) => {
+        d.dismissed = r.next;
+      });
       offerUndo(foundTray.removed(item.name), r.added);
     },
-    [dismissed, found, offerUndo],
+    [dismissed, found, offerUndo, patch],
   );
 
   const clearAll = useCallback(() => {
     const r = dismissAllVisible(dismissed, found);
-    setDismissed(r.next);
+    patch(activeIdRef.current, (d) => {
+      d.dismissed = r.next;
+    });
     offerUndo(foundTray.cleared(r.added.length), r.added);
-  }, [dismissed, found, offerUndo]);
+  }, [dismissed, found, offerUndo, patch]);
 
   const undoDismiss = useCallback(() => {
     if (!undo) return;
-    setDismissed((d) => restoreIds(d, undo.ids));
+    patch(activeIdRef.current, (d) => {
+      d.dismissed = restoreIds(d.dismissed, undo.ids);
+    });
     if (undoTimer.current) clearTimeout(undoTimer.current);
     setUndo(null);
-  }, [undo]);
+  }, [undo, patch]);
 
   // Empties what the screen hid and what it listed, then asks the view to report the page again.
   // VIEW_GONE means the view is already gone (the screen is closing), so a rejection is ignored.
   const scanAgain = useCallback(() => {
-    setDismissed(new Set());
-    setFound([]);
+    patch(activeIdRef.current, (d) => {
+      d.dismissed = new Set();
+      d.found = [];
+    });
     setUndo(null);
     haptic('select');
-    browserRef.current?.resetFound().catch(() => {});
-  }, []);
+    view()?.resetFound().catch(() => {});
+  }, [patch, view]);
 
-  const onRefused = useCallback(
-    (e: { reason: BrowserRefusalReason }) => {
-      if (e.reason === 'ssl' || e.reason === 'local') {
-        refusedRef.current = true;
-        setRefused(e.reason);
-        return;
+  // ---- events from each tab's view (the id is the tab that raised it) ----
+  const impl: TabHandlers = {
+    onPage: (id, e) => {
+      let skipRecord = false;
+      patch(id, (d) => {
+        d.page = e;
+        if (e.loading) {
+          d.crashed = false;
+          d.refused = null;
+        }
+        skipRecord = d.crashed || d.refused != null;
+        if (e.url !== d.lastUrl) {
+          d.lastUrl = e.url;
+          d.notes.clear();
+          // A new document starts a new list. Files already tagged with it (found before this event) stay.
+          d.found = pruneToPage(d.found, e.url);
+          d.dismissed = new Set();
+        }
+      });
+      // H1: only a finished load is recorded. The store skips non-web addresses, repeats and the off setting.
+      if (e.loading === false && !skipRecord) {
+        recordVisit({ url: e.url, title: e.title ?? '' }).catch(() => {});
       }
-      const message = QUIET_NOTICE[e.reason];
-      const now = Date.now();
-      if (!message || !noticeAllowed(lastNoticeAt.current, now)) return;
-      lastNoticeAt.current = now;
-      showNotice({ message }, 3000);
+      const cur = tabs.ref.current ? getTab(tabs.ref.current, id) : undefined;
+      if (cur && e.url && (cur.url !== e.url || cur.title !== (e.title ?? ''))) {
+        tabs.update(id, { url: e.url, title: e.title ?? '' });
+        if (cur.url !== e.url) {
+          setPopups((p) => popupsApi.drop(p, id, 'navigated').state);
+          if (id === activeIdRef.current) setUndo(null);
+        }
+      }
     },
-    [showNotice],
-  );
-
-  const onPageNote = useCallback(
-    (e: { note: 'drm' | 'blob' }) => {
-      if (notesShown.current.has(e.note)) return;
-      notesShown.current.add(e.note);
-      showNotice({ message: e.note === 'drm' ? notices.browser.drm : notices.browser.blob }, 5000);
-    },
-    [showNotice],
-  );
-
-  const onDownloadRequest = useCallback(
-    (e: BrowserDownloadRequestEvent) => {
+    onFound: (id, e) => patch(id, (d) => void (d.found = mergeFound(d.found, e.items))),
+    onBlockedCount: (id, e) => patch(id, (d) => void (d.blocked = e.page)),
+    onDownloadRequest: (id, e) => {
+      const d = getData(id);
       // The navigation became a download: the page is not loading any more.
-      setPage((p) => (p && p.loading ? { ...p, loading: false } : p));
+      patch(id, (x) => void (x.page = x.page && x.page.loading ? { ...x.page, loading: false } : x.page));
       setTarget({
         url: e.url,
         name: e.name || nameFromUrl(e.url),
         size: e.size,
-        pageUrl: e.referer || page?.url || '',
-        userAgent: e.userAgent || page?.userAgent || '',
+        pageUrl: e.referer || d.page?.url || '',
+        userAgent: e.userAgent || d.page?.userAgent || '',
       });
     },
-    [page?.url, page?.userAgent],
+    onMagnet: (_id, e) => toAddTorrent(e.uri),
+    onRefused: (id, e) => {
+      if (e.reason === 'ssl' || e.reason === 'local') {
+        patch(id, (d) => void (d.refused = e.reason as 'ssl' | 'local'));
+        return;
+      }
+      const message = QUIET_NOTICE[e.reason];
+      const now = Date.now();
+      if (id !== activeIdRef.current || !message || !noticeAllowed(lastNoticeAt.current, now)) return;
+      lastNoticeAt.current = now;
+      showNotice({ message }, 3000);
+    },
+    onCrashed: (id) => patch(id, (d) => void (d.crashed = true)),
+    onPageNote: (id, e) => {
+      const d = getData(id);
+      if (id !== activeIdRef.current || d.notes.has(e.note)) return;
+      d.notes.add(e.note);
+      showNotice({ message: e.note === 'drm' ? notices.browser.drm : notices.browser.blob }, 5000);
+    },
+    onNewWindow: (id, e) => void openTabChecked({ url: e.url, opener: id }),
+    onPopupRequest: (id, e) => setPopups((p) => popupsApi.request(p, id, { url: e.url, kind: e.kind, sourceUrl: e.sourceUrl })),
+    onPopupBlocked: (id) => setPopups((p) => popupsApi.noteBlocked(p, id)),
+    onLongPress: (id, e) => {
+      if (id === activeIdRef.current) setLinkTarget(e);
+    },
+  };
+  const implRef = useRef(impl);
+  implRef.current = impl;
+  // The views get one stable object that always calls the latest handlers.
+  const handlers = useMemo<TabHandlers>(() => {
+    const keys = Object.keys(impl) as (keyof TabHandlers)[];
+    return Object.fromEntries(keys.map((k) => [k, (...a: unknown[]) => (implRef.current[k] as (...x: unknown[]) => void)(...a)])) as unknown as TabHandlers;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // ---- link menu actions ----
+  const openLinkInTab = useCallback(
+    (url: string, background: boolean) => {
+      const r = openTabChecked({ url, opener: activeIdRef.current, background });
+      const id = r.id;
+      if (background && id) {
+        afterSheetCloses(() => showNotice({ message: browserTabs.openedInNewTab, actionLabel: browserTabs.switchTo, onAction: () => tabs.select(id) }, 5000));
+      }
+    },
+    [openTabChecked, showNotice, tabs],
   );
+  const downloadLink = useCallback(
+    (url: string) => {
+      const d = getData(activeIdRef.current);
+      setTarget({ url, name: nameFromUrl(url), size: null, pageUrl: d.page?.url ?? '', userAgent: d.page?.userAgent ?? '' });
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [],
+  );
+  const notify = useCallback((message: string) => showNotice({ message }, 2500), [showNotice]);
 
   // Each file goes through the single-download path. One failure never stops the rest; Retry runs the failed ones.
   const runBatchFor = useCallback(
@@ -303,10 +543,13 @@ export default function BrowserScreen() {
     }
   };
 
-  const pageHost = page ? hostOf(page.url) : '';
-  const idleText = page?.url ? pageHost : prefillText;
+  const pageHost = page ? hostOf(page.url) : tab?.url ? hostOf(tab.url) : '';
+  const idleText = page?.url ? pageHost : tab?.url ? pageHost : prefillText;
   const allowedHere = isAllowedHost(prefs.allowAdsHosts, pageHost);
+  const popupsAllowedHere = hostAllowed(pageHost, prefs.popupAllowHosts);
+  const popupsBlockedHere = popupsApi.blockedOnPage(popups, activeId);
   const loading = !!page?.loading;
+  const tabCount = tabsState?.tabs.length ?? 1;
 
   const toggleAds = () => {
     const key = siteKey(pageHost);
@@ -315,7 +558,13 @@ export default function BrowserScreen() {
     haptic('select');
     setMenuOpen(false);
     showNotice({ message: nowAllowed ? notices.browser.adsAllowed(key) : notices.browser.adsBlocked(key) }, 3000);
-    browserRef.current?.reload();
+    view()?.reload();
+  };
+
+  const togglePopups = () => {
+    updateBrowserPrefs((p) => ({ popupAllowHosts: toggleAllowedHost(p.popupAllowHosts, pageHost) }));
+    haptic('select');
+    setMenuOpen(false);
   };
 
   return (
@@ -345,7 +594,7 @@ export default function BrowserScreen() {
               setDraft(t);
             }}
             onFocus={() => {
-              const full = page?.url || prefillText;
+              const full = page?.url || tab?.url || prefillText;
               setDraft(full);
               setEditing(true);
               setSelection({ start: 0, end: full.length });
@@ -375,47 +624,64 @@ export default function BrowserScreen() {
         <IconButton
           icon={loading ? 'stop' : 'retry'}
           accessibilityLabel={loading ? 'Stop loading' : 'Reload'}
-          disabled={!started}
+          disabled={!hasPage}
           onPress={() => {
             haptic('tap');
             if (loading) {
-              browserRef.current?.stop();
-              setPage((p) => (p ? { ...p, loading: false } : p));
-            } else browserRef.current?.reload();
+              view()?.stop();
+              patch(activeId, (d) => void (d.page = d.page ? { ...d.page, loading: false } : d.page));
+            } else view()?.reload();
           }}
         />
-        <IconButton icon="more" accessibilityLabel="More" disabled={!started} onPress={() => setMenuOpen(true)} />
+        <PressableScale
+          onPress={() => {
+            haptic('select');
+            setSwitcherOpen(true);
+          }}
+          onLongPress={newTab}
+          accessibilityRole="button"
+          accessibilityLabel={browserTabs.tabButtonLabel(tabCount)}
+          disabled={!ready}
+          style={styles.tabButton}
+        >
+          <View style={styles.tabBox}>
+            <Text style={styles.tabCount} numberOfLines={1}>
+              {tabCount > 99 ? browserTabs.tabButtonMany : tabCount}
+            </Text>
+          </View>
+        </PressableScale>
+        <IconButton icon="more" accessibilityLabel="More" disabled={!hasPage} onPress={() => setMenuOpen(true)} />
       </View>
       <View style={styles.progress}>{loading ? <ProgressBar progress={(page?.progress ?? 0) / 100} indeterminate={!page || page.progress <= 0} /> : null}</View>
 
       <View style={styles.body}>
-        {started ? (
-          <MaglevBrowser
-            ref={browserRef}
-            url={propUrl}
-            adBlock={prefs.adBlock}
-            allowAdsHosts={prefs.allowAdsHosts}
-            desktopMode={desktop}
-            style={styles.web}
-            onPage={onPage}
-            onFound={(e) => setFound((prev) => mergeFound(prev, e.items))}
-            onBlockedCount={(e) => setBlocked(e.page)}
-            onDownloadRequest={onDownloadRequest}
-            onMagnet={(e) => toAddTorrent(e.uri)}
-            onRefused={onRefused}
-            onCrashed={() => {
-              crashedRef.current = true;
-              setCrashed(true);
-            }}
-            onPageNote={onPageNote}
-          />
-        ) : (
-          <EmptyBlock icon="network" title={empty.browser.start.title} body={empty.browser.start.body} />
-        )}
+        {tabsState
+          ? liveTabs(tabsState)
+              .filter((t) => !isBlank(t))
+              .map((t) => {
+                if (!initialUrls.current.has(t.id)) initialUrls.current.set(t.id, t.url);
+                return (
+                  <TabWebView
+                    key={t.id}
+                    id={t.id}
+                    url={initialUrls.current.get(t.id) ?? t.url}
+                    active={t.id === activeId}
+                    adBlock={prefs.adBlock}
+                    allowAdsHosts={prefs.allowAdsHosts}
+                    desktopMode={desktop}
+                    popupPolicy={prefs.popupPolicy}
+                    popupAllowHosts={prefs.popupAllowHosts}
+                    handlers={handlers}
+                    register={registerView}
+                  />
+                );
+              })
+          : null}
+        {!hasPage ? <EmptyBlock icon="network" title={empty.browser.start.title} body={empty.browser.start.body} /> : null}
         {editing ? (
           <HistorySuggestions
             text={draft}
-            skip={page?.url || prefillText}
+            skip={page?.url || tab?.url || prefillText}
             onPick={(u) => {
               haptic('tap');
               inputRef.current?.blur();
@@ -424,17 +690,17 @@ export default function BrowserScreen() {
             }}
           />
         ) : null}
-        {refused ? (
+        {data.refused ? (
           <View style={styles.floating}>
             <Banner
               tone="warning"
-              title={refused === 'ssl' ? banners.browser.sslRefused.title : banners.browser.localRefused.title}
-              body={refused === 'ssl' ? banners.browser.sslRefused.body : banners.browser.localRefused.body}
-              onDismiss={() => setRefused(null)}
+              title={data.refused === 'ssl' ? banners.browser.sslRefused.title : banners.browser.localRefused.title}
+              body={data.refused === 'ssl' ? banners.browser.sslRefused.body : banners.browser.localRefused.body}
+              onDismiss={() => patch(activeId, (d) => void (d.refused = null))}
             />
           </View>
         ) : null}
-        {crashed ? (
+        {data.crashed ? (
           <View style={styles.crashed}>
             <EmptyBlock
               icon="warning"
@@ -445,14 +711,14 @@ export default function BrowserScreen() {
                 label: 'Reload',
                 onPress: () => {
                   haptic('tap');
-                  setCrashed(false);
-                  browserRef.current?.reload();
+                  patch(activeId, (d) => void (d.crashed = false));
+                  view()?.reload();
                 },
               }}
             />
           </View>
         ) : null}
-        {started ? (
+        {hasPage ? (
           <View style={styles.overlay} pointerEvents="box-none">
             {active ? (
               <PressableScale
@@ -496,6 +762,9 @@ export default function BrowserScreen() {
         onCopyLink={(u) => void copy(u)}
       />
 
+      <LinkMenu target={linkTarget} onClose={() => setLinkTarget(null)} openInTab={openLinkInTab} download={downloadLink} addTorrent={toAddTorrent} notify={notify} />
+      <PopupCard prompt={prompt} onOpen={popupOpen} onBlock={popupBlock} onAlwaysAllow={popupAlways} />
+
       <Sheet visible={menuOpen} onClose={() => setMenuOpen(false)} title="This page" subtitle={pageHost || undefined}>
         <ListRow
           icon="forward"
@@ -503,7 +772,7 @@ export default function BrowserScreen() {
           disabled={!page?.canGoForward}
           onPress={() => {
             setMenuOpen(false);
-            browserRef.current?.goForward();
+            view()?.goForward();
           }}
         />
         <ListRow
@@ -517,6 +786,15 @@ export default function BrowserScreen() {
             title={allowedHere ? 'Block ads on this site' : 'Allow ads on this site'}
             subtitle={allowedHere ? 'Ads are allowed here' : blocked > 0 ? `${blocked} blocked on this page` : undefined}
             onPress={toggleAds}
+          />
+        ) : null}
+        {pageHost ? (
+          <ListRow
+            icon="external"
+            title={browserTabs.thisPage.popupsRow}
+            subtitle={popupsBlockedHere > 0 ? browserTabs.thisPage.blockedOnPage(popupsBlockedHere) : undefined}
+            accessory={<Toggle value={popupsAllowedHere} onValueChange={togglePopups} accessibilityLabel={browserTabs.thisPage.popupsRow} />}
+            onPress={togglePopups}
           />
         ) : null}
         <ListRow
@@ -545,6 +823,21 @@ export default function BrowserScreen() {
           }}
         />
       </Sheet>
+
+      {switcherOpen && tabsState ? (
+        <TabSwitcher
+          tabs={switcherOrder(tabsState)}
+          activeId={activeId}
+          onSelect={selectTab}
+          onClose={(id) => closeWithUndo([id])}
+          onNewTab={newTab}
+          onCloseAll={() => {
+            setSwitcherOpen(false);
+            closeWithUndo('all');
+          }}
+          onDismiss={() => setSwitcherOpen(false)}
+        />
+      ) : null}
     </SafeAreaView>
   );
 }
@@ -568,6 +861,17 @@ const makeStyles = (c: ThemeColors) =>
     },
     addressEditing: { borderColor: c.borderStrong },
     input: { ...type.mono, flex: 1, minWidth: 0, fontSize: type.size.md, color: c.text, paddingVertical: 0 },
+    tabButton: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
+    tabBox: {
+      paddingHorizontal: 6,
+      paddingVertical: 2,
+      alignItems: 'center',
+      justifyContent: 'center',
+      borderRadius: radius.sm,
+      borderWidth: 2,
+      borderColor: c.textMuted,
+    },
+    tabCount: { ...type.monoBold, fontSize: type.size.xs, lineHeight: 16, color: c.text },
     progress: { height: 3, overflow: 'hidden' },
     body: { flex: 1 },
     web: { flex: 1 },
