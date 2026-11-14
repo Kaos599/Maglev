@@ -9,7 +9,8 @@ import { banners, mobileDataLine, notices, streamSheet } from '../../constants/c
 import { probeErrorView } from '../../utils/downloadCopy';
 import { useDownloadAdmission } from '../../utils/useDownloadAdmission';
 import { hostOf } from '../../utils/browserUrl';
-import { Banner, Button, RadioCard, Sheet } from '../ui';
+import { Banner, Button, RadioCard } from '../ui';
+import { FloatingSheet, afterSheetCloses, NoteRow } from './FloatingSheet';
 import { useSettings } from '../../context/SettingsContext';
 import { downloadHeaders } from './FoundDownload';
 import { SaveToRow } from './SaveToRow';
@@ -114,13 +115,13 @@ export function StreamSheet({ item, pageTitle, userAgent = '', pageUrl = '', onC
     });
     if (res.ok) {
       haptic('commit');
-      showNotice({ message: notices.browser.addedToTransfers }, 3000);
       (onStarted ?? onClose)();
+      afterSheetCloses(() => showNotice({ message: notices.browser.addedToTransfers }, 3000));
       return;
     }
     if (res.code === 'DUPLICATE') {
-      showNotice({ message: notices.addDownload.duplicate });
       (onStarted ?? onClose)();
+      afterSheetCloses(() => showNotice({ message: notices.addDownload.duplicate }));
       return;
     }
     haptic('fail');
@@ -129,7 +130,7 @@ export function StreamSheet({ item, pageTitle, userAgent = '', pageUrl = '', onC
   };
 
   return (
-    <Sheet visible={item != null} onClose={onClose} title={streamSheet.title} subtitle={hostOf(it.url)}>
+    <FloatingSheet visible={item != null} onClose={onClose} title={streamSheet.title} subtitle={hostOf(it.url)}>
       <View style={styles.body}>
         {phase === 'probing' ? (
           <View style={styles.reading} accessibilityLiveRegion="polite">
@@ -194,7 +195,7 @@ export function StreamSheet({ item, pageTitle, userAgent = '', pageUrl = '', onC
           </>
         ) : null}
 
-        {mobileNote ? <Banner tone="info" title={mobileNote} /> : null}
+        {mobileNote ? <NoteRow text={mobileNote} /> : null}
         {doesntFit ? <Banner tone="danger" title={banners.addDownload.notEnoughSpace.title} body={banners.addDownload.notEnoughSpace.body} /> : null}
         {message ? <Banner tone="danger" title={message} /> : null}
 
@@ -207,7 +208,7 @@ export function StreamSheet({ item, pageTitle, userAgent = '', pageUrl = '', onC
           )}
         </View>
       </View>
-    </Sheet>
+    </FloatingSheet>
   );
 }
 

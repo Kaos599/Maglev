@@ -8,7 +8,8 @@ import { ThemeColors, spacing, type } from '../../constants/theme';
 import { formatBytes } from '../../constants/format';
 import { banners, foundTray, mobileDataLine } from '../../constants/copy';
 import { useDownloadAdmission } from '../../utils/useDownloadAdmission';
-import { Banner, Button, Sheet } from '../ui';
+import { Banner, Button } from '../ui';
+import { FloatingSheet, NoteRow } from './FloatingSheet';
 import { batchTotals } from './foundBatch';
 import { isInstaller } from './foundFilter';
 import { knownSizeOf } from './useFoundSize';
@@ -31,11 +32,11 @@ export function BatchSheet({ items, onClose, onStart }: { items: FoundItem[] | n
   const mobileNote = mobileDataLine(onMeteredNetwork, settings.network.wifiOnly, totals.unknownCount > 0 ? null : totals.knownBytes);
 
   return (
-    <Sheet visible={items != null} onClose={onClose} title={foundTray.batchTitle(list.length)}>
+    <FloatingSheet visible={items != null} onClose={onClose} title={foundTray.batchTitle(list.length)}>
       <View style={styles.body}>
         <Text style={styles.meta}>{totals.knownCount > 0 ? foundTray.batchKnown(formatBytes(totals.knownBytes)) : 'Size unknown'}</Text>
-        {totals.unknownCount > 0 && totals.knownCount > 0 ? <Banner tone="info" title={foundTray.unknownSizes(totals.unknownCount)} /> : null}
-        {mobileNote ? <Banner tone="info" title={mobileNote} /> : null}
+        {totals.unknownCount > 0 && totals.knownCount > 0 ? <NoteRow text={foundTray.unknownSizes(totals.unknownCount)} /> : null}
+        {mobileNote ? <NoteRow text={mobileNote} /> : null}
         {installers ? <Banner tone="warning" title={banners.browser.installer.title} body={banners.browser.installer.body} /> : null}
         {doesntFit ? <Banner tone="danger" title={banners.addDownload.notEnoughSpace.title} body={banners.addDownload.notEnoughSpace.body} /> : null}
         <View style={styles.actions}>
@@ -50,7 +51,7 @@ export function BatchSheet({ items, onClose, onStart }: { items: FoundItem[] | n
           />
         </View>
       </View>
-    </Sheet>
+    </FloatingSheet>
   );
 }
 
