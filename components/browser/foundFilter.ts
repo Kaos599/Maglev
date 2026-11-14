@@ -3,6 +3,7 @@
  * Items arrive in the order they were found, so a higher index is newer.
  */
 import type { FoundItem, FoundKind } from '../../modules/maglev-engine/src/MaglevBrowser';
+import { formatBytes } from '../../constants/format.ts';
 
 export type FoundFilter = 'all' | FoundKind;
 
@@ -99,4 +100,52 @@ export function hideVariantPlaylists(items: readonly FoundItem[]): FoundItem[] {
     keep.push(item);
   }
   return keep;
+}
+
+/** The list after Clear. */
+export function clearFound(): FoundItem[] {
+  return [];
+}
+
+/**
+ * Removes one item. Variant playlists that were hidden behind it (hideVariantPlaylists) go too,
+ * so removing a master does not make its variants appear.
+ */
+export function removeFound(items: readonly FoundItem[], id: string): FoundItem[] {
+  const rest = items.filter((i) => i.id !== id);
+  if (rest.length === items.length) return rest;
+  const before = new Set(hideVariantPlaylists(items).map((i) => i.id));
+  const after = hideVariantPlaylists(rest);
+  return rest.filter((i) => before.has(i.id) || !after.includes(i));
+}
+
+function documentOf(url: string): string {
+  const i = url.indexOf('#');
+  return i < 0 ? url : url.slice(0, i);
+}
+
+/**
+ * Keeps only the files found on the document now showing. A new address (a different path or query) is a new
+ * document, a #fragment is not. An empty address or about:blank (the gap during a load) changes nothing.
+ */
+export function pruneToPage(items: readonly FoundItem[], pageUrl: string): FoundItem[] {
+  if (!pageUrl || pageUrl.startsWith('about:')) return items as FoundItem[];
+  const now = documentOf(pageUrl);
+  const kept = items.filter((i) => documentOf(i.pageUrl) === now);
+  return kept.length === items.length ? (items as FoundItem[]) : kept;
+}
+
+/** "5.2 MB", "~1.2 GB" for an estimate, "\u2014" when the size is not known. Never a made-up number. */
+export function foundSizeLabel({ size, estimate = false }: { size?: number | null; estimate?: boolean }): string {
+  if (typeof size !== 'number' || !Number.isFinite(size) || size <= 0) return '\u2014';
+  return `${estimate ? '~' : ''}${formatBytes(size)}`;
+}
+
+/** The quality when known ("1080p"), else the type ("HLS", "MP4"), else null. */
+export function foundDetail(item: Pick<FoundItem, 'stream' | 'height' | 'ext'>): string | null {
+  if (item.height) return `${item.height}p`;
+  const tag = streamTag(item);
+  if (tag) return tag;
+  const ext = item.ext?.replace(/^\./, '').trim();
+  return ext ? ext.toUpperCase() : null;
 }

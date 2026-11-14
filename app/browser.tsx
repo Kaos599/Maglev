@@ -22,7 +22,7 @@ import { Banner, Button, EmptyBlock, IconButton, ListRow, ProgressBar, Sheet, To
 import { FoundTray } from '../components/browser/FoundTray';
 import { StreamSheet } from '../components/browser/StreamSheet';
 import { FoundDownloadSheet, type DownloadTarget } from '../components/browser/FoundDownload';
-import { hideVariantPlaylists, isInstaller, mergeFound } from '../components/browser/foundFilter';
+import { clearFound, hideVariantPlaylists, isInstaller, mergeFound, pruneToPage, removeFound } from '../components/browser/foundFilter';
 import { updateBrowserPrefs, useBrowserPrefs } from '../utils/prefs/browser';
 import { hostOf, isAllowedHost, noticeAllowed, siteKey, toBrowserUrl, toggleAllowedHost } from '../utils/browserUrl';
 
@@ -134,6 +134,8 @@ export default function BrowserScreen() {
     if (e.url !== lastPageUrl.current) {
       lastPageUrl.current = e.url;
       notesShown.current.clear();
+      // A new document starts a new list. Files already tagged with it (found before this event) stay.
+      setFound((prev) => pruneToPage(prev, e.url));
     }
   }, []);
 
@@ -353,7 +355,7 @@ export default function BrowserScreen() {
         </View>
       ) : null}
 
-      <FoundTray visible={trayOpen} items={found} onClose={() => setTrayOpen(false)} onPick={pickFile} onPickStream={(item) => { setTrayOpen(false); setStreamItem(item); }} />
+      <FoundTray visible={trayOpen} items={found} userAgent={page?.userAgent ?? ''} onRemove={(item) => setFound((prev) => removeFound(prev, item.id))} onClear={() => setFound(clearFound())} onClose={() => setTrayOpen(false)} onPick={pickFile} onPickStream={(item) => { setTrayOpen(false); setStreamItem(item); }} />
       <FoundDownloadSheet target={target} onClose={() => setTarget(null)} />
 
       <StreamSheet

@@ -5,13 +5,13 @@ import type { FoundItem } from 'maglev-engine';
 import { useTheme } from '../../context/ThemeContext';
 import { useMaglevEngine } from '../../context/EngineContext';
 import { ThemeColors, radius, spacing, type } from '../../constants/theme';
-import { formatBytes } from '../../constants/format';
 import { haptic } from '../../constants/haptics';
-import { banners, empty, notices } from '../../constants/copy';
+import { banners, empty, foundTray, notices } from '../../constants/copy';
 import { hostOf } from '../../utils/browserUrl';
 import { PixelIcon, PixelIconName } from '../PixelIcon';
 import { Chip, EmptyBlock, PressableScale, Sheet } from '../ui';
-import { FILTER_LABEL, countByKind, effectiveFilter, isInstaller, sortFound, streamTag, visibleFilters, type FoundFilter } from './foundFilter';
+import { useFoundSize } from './useFoundSize';
+import { FILTER_LABEL, countByKind, effectiveFilter, foundDetail, foundSizeLabel, isInstaller, sortFound, streamTag, visibleFilters, type FoundFilter } from './foundFilter';
 
 const KIND_ICON: Record<FoundItem['kind'], PixelIconName> = {
   video: 'file-video',
@@ -27,43 +27,72 @@ function iconFor(item: FoundItem): PixelIconName {
   return KIND_ICON[item.kind];
 }
 
-function Row({ item, onPress, onLongPress }: { item: FoundItem; onPress: () => void; onLongPress: () => void }) {
+function Row({
+  item,
+  userAgent,
+  onPress,
+  onLongPress,
+  onRemove,
+}: {
+  item: FoundItem;
+  userAgent: string;
+  onPress: () => void;
+  onLongPress: () => void;
+  onRemove: () => void;
+}) {
   const { colors } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
+  const { probeStream } = useMaglevEngine();
   const [thumbFailed, setThumbFailed] = useState(false);
-  const tag = streamTag(item);
   const installer = isInstaller(item);
-  const meta = [item.size != null ? formatBytes(item.size) : null, hostOf(item.url), tag].filter(Boolean).join(' · ');
+  const probed = useFoundSize(item, userAgent, probeStream);
+  const detail = foundDetail({ ...item, height: item.height ?? probed.height });
+  const sizeText = foundSizeLabel(probed);
+  const meta = [sizeText, detail, hostOf(item.url)].filter(Boolean).join(' · ');
   return (
-    <PressableScale
-      onPress={onPress}
-      onLongPress={onLongPress}
-      accessibilityRole="button"
-      accessibilityLabel={`${item.name}, ${meta}`}
-      accessibilityHint="Long-press to copy the link"
-      style={styles.row}
-    >
-      <View style={styles.thumb}>
-        {item.kind === 'image' && !thumbFailed ? (
-          <Image source={{ uri: item.url }} style={styles.thumbImage} resizeMode="cover" onError={() => setThumbFailed(true)} />
-        ) : (
-          <PixelIcon name={iconFor(item)} size={20} color={installer ? colors.warning : colors.textMuted} />
-        )}
-      </View>
-      <View style={styles.main}>
-        <Text style={styles.name} numberOfLines={1}>
-          {item.name}
-        </Text>
-        <Text style={styles.meta} numberOfLines={1}>
-          {meta}
-        </Text>
-        {installer ? (
-          <Text style={styles.warning}>
-            {banners.browser.installer.title}. {banners.browser.installer.body}
+    <View style={styles.rowWrap}>
+      <PressableScale
+        onPress={onPress}
+        onLongPress={onLongPress}
+        accessibilityRole="button"
+        accessibilityLabel={`${item.name}, ${meta}`}
+        accessibilityHint="Long-press to copy the link"
+        style={styles.row}
+        containerStyle={styles.rowMain}
+      >
+        <View style={styles.thumb}>
+          {item.kind === 'image' && !thumbFailed ? (
+            <Image source={{ uri: item.url }} style={styles.thumbImage} resizeMode="cover" onError={() => setThumbFailed(true)} />
+          ) : (
+            <PixelIcon name={iconFor(item)} size={20} color={installer ? colors.warning : colors.textMuted} />
+          )}
+        </View>
+        <View style={styles.main}>
+          <Text style={styles.name} numberOfLines={1}>
+            {item.name}
           </Text>
-        ) : null}
-      </View>
-    </PressableScale>
+          <Text style={styles.meta} numberOfLines={1}>
+            {meta}
+          </Text>
+          {installer ? (
+            <Text style={styles.warning}>
+              {banners.browser.installer.title}. {banners.browser.installer.body}
+            </Text>
+          ) : null}
+        </View>
+      </PressableScale>
+      <PressableScale
+        onPress={onRemove}
+        haptic="select"
+        feedback="sink"
+        hitSlop={8}
+        accessibilityRole="button"
+        accessibilityLabel={foundTray.remove(item.name)}
+        style={styles.remove}
+      >
+        <PixelIcon name="close" size={20} color={colors.textMuted} />
+      </PressableScale>
+    </View>
   );
 }
 
@@ -75,10 +104,16 @@ export interface FoundTrayProps {
   onPick: (item: FoundItem) => void;
   /** A stream row (HLS or DASH) was tapped. */
   onPickStream: (item: FoundItem) => void;
+  /** Removes one file from the list. */
+  onRemove: (item: FoundItem) => void;
+  /** Empties the list. */
+  onClear: () => void;
+  /** The user agent the page used. Sent with size requests, like a download. */
+  userAgent?: string;
 }
 
 /** The files the page loaded or links to, filtered by kind. Tap a row to download it. */
-export function FoundTray({ visible, items, onClose, onPick, onPickStream }: FoundTrayProps) {
+export function FoundTray({ visible, items, onClose, onPick, onPickStream, onRemove, onClear, userAgent = '' }: FoundTrayProps) {
   const { colors } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const { showNotice } = useMaglevEngine();
@@ -100,22 +135,39 @@ export function FoundTray({ visible, items, onClose, onPick, onPickStream }: Fou
   };
 
   return (
-    <Sheet visible={visible} onClose={onClose} title="Files" subtitle={items.length ? `${items.length} found on your pages` : undefined}>
+    <Sheet visible={visible} onClose={onClose} title={foundTray.title} subtitle={items.length ? foundTray.count(items.length) : undefined}>
       {items.length === 0 ? (
         <EmptyBlock icon="file" title={empty.browser.noFiles.title} body={empty.browser.noFiles.body} />
       ) : (
         <View>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips} accessibilityRole="radiogroup">
-            {visibleFilters(counts).map((f) => (
-              <Chip key={f} label={FILTER_LABEL[f]} count={counts[f]} selected={f === active} onPress={() => setFilter(f)} />
-            ))}
-          </ScrollView>
+          <View style={styles.chipRow}>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chipScroll} contentContainerStyle={styles.chips} accessibilityRole="radiogroup">
+              {visibleFilters(counts).map((f) => (
+                <Chip key={f} label={FILTER_LABEL[f]} count={counts[f]} selected={f === active} onPress={() => setFilter(f)} />
+              ))}
+            </ScrollView>
+            <PressableScale
+              onPress={onClear}
+              haptic="select"
+              accessibilityRole="button"
+              accessibilityLabel={foundTray.clearLabel}
+              style={styles.clear}
+            >
+              <Text style={styles.clearText}>{foundTray.clear}</Text>
+            </PressableScale>
+          </View>
           <FlatList
             data={shown}
             keyExtractor={(i) => i.id}
             style={{ maxHeight: height * 0.55 }}
             renderItem={({ item }) => (
-              <Row item={item} onPress={() => (item.stream ? onPickStream(item) : onPick(item))} onLongPress={() => void copyLink(item)} />
+              <Row
+                item={item}
+                userAgent={userAgent}
+                onPress={() => (item.stream ? onPickStream(item) : onPick(item))}
+                onLongPress={() => void copyLink(item)}
+                onRemove={() => onRemove(item)}
+              />
             )}
           />
         </View>
@@ -126,8 +178,15 @@ export function FoundTray({ visible, items, onClose, onPick, onPickStream }: Fou
 
 const makeStyles = (c: ThemeColors) =>
   StyleSheet.create({
-    chips: { flexDirection: 'row', gap: spacing.sm, paddingBottom: spacing.md },
+    chipRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingBottom: spacing.md },
+    chipScroll: { flex: 1 },
+    chips: { flexDirection: 'row', gap: spacing.sm },
+    clear: { minWidth: 44, minHeight: 44, paddingHorizontal: spacing.sm, alignItems: 'center', justifyContent: 'center' },
+    clearText: { ...type.mono, fontSize: type.size.md, color: c.danger },
+    rowWrap: { flexDirection: 'row', alignItems: 'center' },
+    rowMain: { flex: 1, minWidth: 44 },
     row: { minHeight: 56, flexDirection: 'row', alignItems: 'center', gap: spacing.md, paddingVertical: spacing.sm },
+    remove: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
     thumb: {
       width: 40,
       height: 40,

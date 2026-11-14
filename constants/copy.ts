@@ -262,6 +262,15 @@ export const empty = {
   },
 } as const;
 
+/** Labels on the browser's found-files list. Short field names, not notices. */
+export const foundTray = {
+  title: 'Files',
+  count: (n: string | number) => `${n} found on this page`,
+  clear: 'Clear',
+  clearLabel: 'Clear the list of found files',
+  remove: (name: string | number) => `Remove ${name} from the list`,
+} as const;
+
 /** Labels on the browser's stream sheet. Not linted as notices; they are short field names. */
 export const streamSheet = {
   title: 'Video stream',
