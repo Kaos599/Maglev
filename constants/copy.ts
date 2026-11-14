@@ -297,6 +297,11 @@ export const historyCopy = {
   loadMore: 'Loading more',
   retry: 'Retry',
   suggestionsLabel: 'Suggestions from history',
+  /** The ⋮ sheet title: with a page open, and on a blank tab (24.11). */
+  menuTitlePage: 'This page',
+  menuTitleBlank: 'Browser',
+  /** "Recent" on the new-tab page (24.11). */
+  recent: { title: 'Recent', label: 'Recent pages', seeAll: 'See all', seeAllLabel: 'See all history' },
   settings: {
     section: 'History',
     save: 'Save history',
