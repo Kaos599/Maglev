@@ -1,11 +1,19 @@
 name: Pages
 
 # Publishes site/ to GitHub Pages. The HTML is committed output of site/build/build-site.mjs, so CI runs no build.
-# Only pushes to main that touch site/ or this file deploy; ci.yml runs on these pushes too (its own paths filter).
+# Pushes to main that touch site/ or this file deploy; ci.yml runs on these pushes too (its own paths filter).
+# The same deploy also builds the self-hosted F-Droid repo at /fdroid/repo from release APKs
+# (scripts/build-fdroid-repo.sh). Releases are created with GITHUB_TOKEN, which never fires `release` events,
+# so the repo refreshes when the release workflow completes, plus once a day as a fallback.
 on:
   push:
     branches: [main]
-    paths: ['site/**', '.github/workflows/pages.yml']
+    paths: ['site/**', '.github/workflows/pages.yml', 'scripts/build-fdroid-repo.sh', 'fastlane/**']
+  workflow_run:
+    workflows: ["Build and Release Android APK"]
+    types: [completed]
+  schedule:
+    - cron: '17 3 * * *'
   workflow_dispatch:
 
 permissions:
@@ -39,6 +47,16 @@ jobs:
       # The generator and its checker stay in the repo, not on the site.
       - name: Stage site without build sources
         run: rsync -a --exclude build/ site/ _site/
+
+      # Skipped until the three FDROID_* secrets exist, so the site keeps deploying without them.
+      - name: Build F-Droid repo
+        env:
+          FDROID_KEYSTORE_B64: ${{ secrets.FDROID_KEYSTORE_B64 }}
+          FDROID_KEYSTORE_PASS: ${{ secrets.FDROID_KEYSTORE_PASS }}
+          FDROID_KEY_ALIAS: ${{ secrets.FDROID_KEY_ALIAS }}
+          GH_TOKEN: ${{ github.token }}
+        if: env.FDROID_KEYSTORE_B64 != ''
+        run: scripts/build-fdroid-repo.sh _site/fdroid/repo
 
       - name: Upload site
         uses: actions/upload-pages-artifact@v5

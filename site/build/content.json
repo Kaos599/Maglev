@@ -51,6 +51,8 @@
       "text": "Torrents, ordinary links and saved streams sit in the same list, each with its size, progress, speed and time left, such as 412 MB of 1.2 GB. A queue decides how many run at once. Pause, resume and retry survive a restart, and downloads keep going with the screen off.",
       "specs": [
         "One + button for a link you paste or type, a .torrent file, Search or the browser",
+        "Share a magnet, a .torrent file or a file link to Maglev from any app, or open .torrent files from your file manager",
+        "Play a video while it downloads, from its card or its screen",
         "Open any download's folder in one tap, and share a finished file",
         "On mobile data, the add screen shows the size before you start",
         "Pause all, Resume all and Shut down from the notification",
@@ -84,8 +86,9 @@
     {
       "id": "search",
       "title": "One search, many sources, one list",
-      "text": "Type once and Maglev asks public sources such as Knaben, Torrents-CSV, Internet Archive, Nyaa, YTS, EZTV and 1337x at the same time. Results that point to the same torrent are merged, so you see one row with every source that has it.",
+      "text": "Type once and Maglev asks up to 40 built-in public torrent indexes at the same time, including ones you can switch off by category. Results that point to the same torrent are merged, so you see one row with every source that has it.",
       "specs": [
+        "Filter results by category, and sort by seeders, size or date",
         "40 built-in sources; choose which answer each category",
         "Add your own Jackett or Prowlarr indexer",
         "Sources known for fake uploads carry a warning"
@@ -98,7 +101,8 @@
       "text": "Follow a show from Search, or add any RSS feed. When a new item matches your rule, Maglev adds it to your downloads. Items that don't match are left alone.",
       "specs": [
         "Works with any RSS feed",
-        "Rules decide what gets added"
+        "Rules decide what gets added",
+        "Watch for a title: Maglev checks every 1, 6 or 24 hours (Wi-Fi only unless you allow mobile data) and tells you when something new turns up"
       ],
       "screen": "feeds"
     },
@@ -109,6 +113,8 @@
       "specs": [
         "Runs on your own [OpenRouter](https://openrouter.ai) key, kept in the phone's secure storage",
         "Can use free models",
+        "Keeps working when you switch tabs or leave the app",
+        "Chats are saved and come back after a restart",
         "Turn it off and its tab disappears"
       ],
       "screen": "assistant"
@@ -126,6 +132,8 @@
         "Pause all, Resume all and Shut down from the notification, and a Quick Settings tile",
         "Files land in Download/Maglev, where any file manager finds them, or in any folder you choose",
         "Move a torrent's files mid-download, and stream video before it finishes",
+        "Pauses before the phone runs out of space, keeping 500 MB to 1 GB free, and resumes when space comes back",
+        "Backup and restore in Settings: your settings, search sources, torrents and downloads in one file. API keys are never included",
         "No analytics or ads SDKs"
       ]
     }
@@ -205,7 +213,7 @@
     ],
     [
       "Where can I find torrents to download?",
-      "In Maglev's Search tab. One search asks up to 40 built-in public sources, such as Knaben, Torrents-CSV, Internet Archive, Nyaa, YTS, EZTV and 1337x, and merges results that point to the same torrent. Results from sources known for fake uploads carry a warning. You can also add your own Jackett or Prowlarr indexer."
+      "In Maglev's Search tab. One search asks up to 40 built-in public torrent indexes, and merges results that point to the same torrent. Results from sources known for fake uploads carry a warning. You can also add your own Jackett or Prowlarr indexer."
     ],
     [
       "Which APK file should I download?",
@@ -257,7 +265,7 @@
     ],
     [
       "Is Maglev finished?",
-      "Not yet. Maglev is in beta, so expect rough edges. If something goes wrong, please report it on GitHub."
+      "Maglev is stable, and it keeps growing: new search sources and features arrive in regular updates. If something goes wrong, please report it on GitHub."
     ],
     [
       "Who makes Maglev?",
@@ -281,5 +289,61 @@
       "title": "Browser",
       "text": "Android's own WebView inside a native view that sees every request, so it can block ads and notice the video a player loads. No browser engine is bundled."
     }
-  ]
+  ],
+  "privacy": {
+    "title": "Privacy policy",
+    "description": "Maglev has no account, no ads and no analytics. This page lists every time the app talks to the internet and what it sends.",
+    "updated": "2026-11-14",
+    "contact": "yojzt6j3@anonaddy.me",
+    "intro": "Maglev has no account, no ads, no analytics and no server of its own. This page lists every time the app talks to the internet, and what it sends.",
+    "sections": [
+      {
+        "heading": "What Maglev collects",
+        "body": [
+          "Nothing. The app contains no analytics, crash reporting or tracking code, and no Maglev server receives anything from it. There is no account to make."
+        ]
+      },
+      {
+        "heading": "What stays on your phone",
+        "body": [
+          "Your transfers, settings, feeds, watched searches, the assistant chat if you use it, and a crash log. They stay on the phone. Clearing Maglev's data or uninstalling it deletes them.",
+          "The crash log leaves the phone only if you copy it from About and send it somewhere yourself. A backup is a file you save where you choose."
+        ]
+      },
+      {
+        "heading": "Torrents",
+        "body": [
+          "BitTorrent connects your phone to other people sharing the same file. Those peers, the trackers and the DHT network can see your IP address and which torrent you are downloading or sharing. Every torrent app works this way.",
+          "If you don't want that, use a VPN. Settings → Network → Only download over a VPN pauses downloads whenever no VPN is connected."
+        ]
+      },
+      {
+        "heading": "Search, feeds, links and the browser",
+        "body": [
+          "A search sends your search words to the sources you have turned on in Settings → Search sources. Feeds fetch the addresses you added. A link downloads from its own server, and the browser loads pages like any other browser. Each of those sites sees your IP address and follows its own privacy policy.",
+          "Ad blocking downloads a public blocklist from GitHub (raw.githubusercontent.com). GitHub sees an ordinary download request."
+        ]
+      },
+      {
+        "heading": "The assistant",
+        "body": [
+          "The assistant is off until you set it up. If you turn it on, your messages go to the AI provider you pick: OpenRouter, OpenAI, Anthropic, Groq, or an address you enter. So do the results of actions it runs for you, such as search results or the names and sizes of your transfers.",
+          "You use your own key, kept in Android's encrypted storage on the phone. Maglev never receives the key or the chat. The provider's own privacy policy covers what it does with your messages."
+        ]
+      },
+      {
+        "heading": "Children",
+        "body": [
+          "Maglev is not made for children under 13."
+        ]
+      },
+      {
+        "heading": "Changes and contact",
+        "body": [
+          "If any of this changes, this page will change with it and show a new date.",
+          "Questions: write to [yojzt6j3@anonaddy.me](mailto:yojzt6j3@anonaddy.me) or [open an issue on GitHub](https://github.com/Kaos599/Maglev/issues)."
+        ]
+      }
+    ]
+  }
 }

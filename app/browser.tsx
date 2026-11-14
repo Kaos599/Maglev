@@ -16,13 +16,18 @@ import { useTheme } from '../context/ThemeContext';
 import { useMaglevEngine } from '../context/EngineContext';
 import { ThemeColors, radius, spacing, type } from '../constants/theme';
 import { haptic } from '../constants/haptics';
-import { banners, empty, notices } from '../constants/copy';
+import { banners, empty, foundTray, notices } from '../constants/copy';
 import { PixelIcon } from '../components/PixelIcon';
-import { Banner, Button, EmptyBlock, IconButton, ListRow, ProgressBar, Sheet, Toggle } from '../components/ui';
+import { Banner, Button, EmptyBlock, IconButton, ListRow, PressableScale, ProgressBar, Sheet, Toggle } from '../components/ui';
 import { FoundTray } from '../components/browser/FoundTray';
 import { StreamSheet } from '../components/browser/StreamSheet';
-import { FoundDownloadSheet, type DownloadTarget } from '../components/browser/FoundDownload';
-import { hideVariantPlaylists, isInstaller, mergeFound } from '../components/browser/foundFilter';
+import { FoundDownloadSheet, downloadHeaders, type DownloadTarget } from '../components/browser/FoundDownload';
+import { BatchSheet } from '../components/browser/BatchSheet';
+import { runBatch } from '../components/browser/foundBatch';
+import { startFound } from '../components/browser/startFound';
+import { isInstaller, mergeFound, pruneToPage } from '../components/browser/foundFilter';
+import { activeLabel, activeSummary, matchTransfers } from '../components/browser/foundTransfers';
+import { dismissAllVisible, dismissIds, restoreIds, visibleFound } from '../components/browser/foundDismiss';
 import { updateBrowserPrefs, useBrowserPrefs } from '../utils/prefs/browser';
 import { hostOf, isAllowedHost, noticeAllowed, siteKey, toBrowserUrl, toggleAllowedHost } from '../utils/browserUrl';
 
@@ -33,12 +38,15 @@ const QUIET_NOTICE: Partial<Record<BrowserRefusalReason, string>> = {
   permission: notices.browser.permission,
 };
 
+/** How long the Undo row stays after Remove or Clear. */
+const UNDO_MS = 5000;
+
 export default function BrowserScreen() {
   const { colors } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const router = useRouter();
   const params = useLocalSearchParams<{ url?: string; prefill?: string }>();
-  const { showNotice } = useMaglevEngine();
+  const { showNotice, downloads, probeUrl, startDownload } = useMaglevEngine();
   const [prefs] = useBrowserPrefs();
 
   const browserRef = useRef<MaglevBrowserRef>(null);
@@ -54,10 +62,15 @@ export default function BrowserScreen() {
   const [desktop, setDesktop] = useState(prefs.desktopMode);
   const [blocked, setBlocked] = useState(0);
   const [foundAll, setFound] = useState<FoundItem[]>([]);
-  const found = useMemo(() => hideVariantPlaylists(foundAll), [foundAll]);
+  // Remove and Clear only hide ids (NATIVE_CONTRACT 24.6a): the view keeps its tracker, so a re-requested file stays hidden.
+  const [dismissed, setDismissed] = useState<ReadonlySet<string>>(() => new Set());
+  const [undo, setUndo] = useState<{ message: string; ids: string[] } | null>(null);
+  const undoTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const found = useMemo(() => visibleFound(foundAll, dismissed), [foundAll, dismissed]);
   const [trayOpen, setTrayOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [target, setTarget] = useState<DownloadTarget | null>(null);
+  const [batchItems, setBatchItems] = useState<FoundItem[] | null>(null);
   const [streamItem, setStreamItem] = useState<FoundItem | null>(null);
   const [crashed, setCrashed] = useState(false);
   const [refused, setRefused] = useState<'ssl' | 'local' | null>(null);
@@ -82,6 +95,17 @@ export default function BrowserScreen() {
       }
     },
     [started],
+  );
+
+  const transfers = useMemo(() => matchTransfers(found, downloads), [found, downloads]);
+  const active = useMemo(() => activeSummary(downloads), [downloads]);
+  const openTransfers = useCallback(() => router.push('/'), [router]);
+  const openTransfer = useCallback(
+    (id: string) => {
+      setTrayOpen(false);
+      router.push({ pathname: '/', params: { download: id } });
+    },
+    [router],
   );
 
   const toAddTorrent = useCallback(
@@ -134,7 +158,54 @@ export default function BrowserScreen() {
     if (e.url !== lastPageUrl.current) {
       lastPageUrl.current = e.url;
       notesShown.current.clear();
+      // A new document starts a new list. Files already tagged with it (found before this event) stay.
+      setFound((prev) => pruneToPage(prev, e.url));
+      setDismissed(new Set());
+      setUndo(null);
     }
+  }, []);
+
+  useEffect(() => () => {
+    if (undoTimer.current) clearTimeout(undoTimer.current);
+  }, []);
+
+  const offerUndo = useCallback((message: string, ids: string[]) => {
+    if (undoTimer.current) clearTimeout(undoTimer.current);
+    if (ids.length === 0) return setUndo(null);
+    setUndo({ message, ids });
+    undoTimer.current = setTimeout(() => setUndo(null), UNDO_MS);
+  }, []);
+
+  const removeOne = useCallback(
+    (item: FoundItem) => {
+      const r = dismissIds(dismissed, found, [item.id]);
+      setDismissed(r.next);
+      offerUndo(foundTray.removed(item.name), r.added);
+    },
+    [dismissed, found, offerUndo],
+  );
+
+  const clearAll = useCallback(() => {
+    const r = dismissAllVisible(dismissed, found);
+    setDismissed(r.next);
+    offerUndo(foundTray.cleared(r.added.length), r.added);
+  }, [dismissed, found, offerUndo]);
+
+  const undoDismiss = useCallback(() => {
+    if (!undo) return;
+    setDismissed((d) => restoreIds(d, undo.ids));
+    if (undoTimer.current) clearTimeout(undoTimer.current);
+    setUndo(null);
+  }, [undo]);
+
+  // Empties what the screen hid and what it listed, then asks the view to report the page again.
+  // VIEW_GONE means the view is already gone (the screen is closing), so a rejection is ignored.
+  const scanAgain = useCallback(() => {
+    setDismissed(new Set());
+    setFound([]);
+    setUndo(null);
+    haptic('select');
+    browserRef.current?.resetFound().catch(() => {});
   }, []);
 
   const onRefused = useCallback(
@@ -174,6 +245,26 @@ export default function BrowserScreen() {
       });
     },
     [page?.url, page?.userAgent],
+  );
+
+  // Each file goes through the single-download path. One failure never stops the rest; Retry runs the failed ones.
+  const runBatchFor = useCallback(
+    async (items: FoundItem[]) => {
+      const deps = { headersFor: downloadHeaders, probeUrl, startDownload };
+      const userAgent = page?.userAgent ?? '';
+      const result = await runBatch(items, (item) =>
+        startFound(deps, { url: item.url, pageUrl: item.pageUrl || page?.url || '', userAgent }),
+      );
+      haptic(result.failed.length === 0 ? 'commit' : 'fail');
+      showNotice(
+        {
+          message: notices.browser.batchDone(result.added, result.duplicate, result.failed.length),
+          ...(result.failed.length > 0 ? { actionLabel: 'Retry', onAction: () => void runBatchFor(result.failed) } : {}),
+        },
+        result.failed.length > 0 ? 8000 : 5000,
+      );
+    },
+    [page?.url, page?.userAgent, probeUrl, startDownload, showNotice],
   );
 
   const pickFile = (item: FoundItem) => {
@@ -340,6 +431,22 @@ export default function BrowserScreen() {
           <Text style={styles.blocked} accessibilityLiveRegion="none">
             {prefs.adBlock && blocked > 0 ? `${blocked} blocked` : ''}
           </Text>
+          <View style={styles.footerActions}>
+          {active ? (
+            <PressableScale
+              onPress={() => {
+                haptic('select');
+                openTransfers();
+              }}
+              accessibilityRole="button"
+              accessibilityLabel={foundTray.downloadingLabel(activeLabel(active))}
+              style={styles.activeChip}
+            >
+              <Text style={styles.activeText} numberOfLines={1}>
+                {activeLabel(active)}
+              </Text>
+            </PressableScale>
+          ) : null}
           <Button
             label={`Files · ${found.length}`}
             icon="file"
@@ -350,11 +457,13 @@ export default function BrowserScreen() {
               setTrayOpen(true);
             }}
           />
+          </View>
         </View>
       ) : null}
 
-      <FoundTray visible={trayOpen} items={found} onClose={() => setTrayOpen(false)} onPick={pickFile} onPickStream={(item) => { setTrayOpen(false); setStreamItem(item); }} />
-      <FoundDownloadSheet target={target} onClose={() => setTarget(null)} />
+      <FoundTray visible={trayOpen} items={found} userAgent={page?.userAgent ?? ''} onRemove={removeOne} onClear={clearAll} transfers={transfers} onOpenTransfer={openTransfer} onScanAgain={scanAgain} onDownloadSelected={(items) => { setTrayOpen(false); setBatchItems(items); }} undo={undo} onUndo={undoDismiss} onClose={() => setTrayOpen(false)} onPick={pickFile} onPickStream={(item) => { setTrayOpen(false); setStreamItem(item); }} />
+      <BatchSheet items={batchItems} onClose={() => setBatchItems(null)} onStart={(items) => void runBatchFor(items)} />
+      <FoundDownloadSheet target={target} onClose={() => setTarget(null)} onView={openTransfer} />
 
       <StreamSheet
         item={streamItem}
@@ -442,5 +551,16 @@ const makeStyles = (c: ThemeColors) =>
       borderTopWidth: 1,
       borderTopColor: c.border,
     },
+    footerActions: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, flexShrink: 1 },
+    activeChip: {
+      minHeight: 44,
+      paddingHorizontal: spacing.md,
+      justifyContent: 'center',
+      borderRadius: radius.md,
+      borderWidth: 1,
+      borderColor: c.download,
+      flexShrink: 1,
+    },
+    activeText: { ...type.mono, fontSize: type.size.sm, color: c.download },
     blocked: { ...type.mono, fontSize: type.size.sm, color: c.textMuted },
   });

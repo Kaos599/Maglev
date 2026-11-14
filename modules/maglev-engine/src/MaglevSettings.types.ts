@@ -91,6 +91,8 @@ export interface AppearanceSettings {
   accent: AccentName;
   telemetryDensity: TelemetryDensity;
   fontStyle: FontStyle;
+  /** Transfers screen: show the total speeds strip with Pause all / Resume all. Off by default. */
+  showSpeedTotals: boolean;
 }
 
 export type DownloadFolderMode = 'direct' | 'staging';
@@ -134,6 +136,7 @@ export const DEFAULT_SETTINGS: MaglevSettings = {
     accent: 'lime',
     telemetryDensity: 'COMPACT',
     fontStyle: 'clean',
+    showSpeedTotals: false,
   },
   storage: {
     storageMode: 'POSIX',

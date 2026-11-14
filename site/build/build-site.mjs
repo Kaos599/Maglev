@@ -239,9 +239,10 @@ const footer = (home, { compare = true } = {}) => `<footer class="foot">
       <li><a href="${REPO}" rel="noopener">Source code</a></li>${compare ? `\n      <li><a href="${COMPARE}">Compare apps</a></li>` : ''}
       <li><a href="${home}#faq">FAQ</a></li>
       <li><a href="${ISSUES}" rel="noopener">Report a bug</a></li>
+      <li><a href="${BASE_PATH}/privacy">Privacy</a></li>
       <li><a href="${LICENSE_URL}" rel="noopener">GPL-3.0 licence</a></li>
     </ul>
-    <p class="fine">Icons are <a href="https://github.com/halfmage/pixelarticons" rel="noopener">Pixelarticons</a> by Gerrit Halfmann (MIT). Fonts are Inter and Silkscreen (SIL Open Font License), served from this site. Maglev v${esc(VERSION)} beta, page updated ${esc(UPDATED_HUMAN)}.</p>
+    <p class="fine">Icons are <a href="https://github.com/halfmage/pixelarticons" rel="noopener">Pixelarticons</a> by Gerrit Halfmann (MIT). Fonts are Inter and Silkscreen (SIL Open Font License), served from this site. Maglev v${esc(VERSION)}, page updated ${esc(UPDATED_HUMAN)}.</p>
   </div>
 </footer>`;
 
@@ -380,7 +381,7 @@ ${header(A, HOME, { compare: !!cmp })}
         <a class="btn" href="${OBTAINIUM}" rel="noopener">${icon('retry')}<span>Get updates with Obtainium</span></a>
       </div>
       <p class="cta-note">On the release page, tap the file ending in <span class="file">arm64-v8a.apk</span>. Not sure? <a href="#install">See which file to pick</a>.</p>
-      <p class="meta">v${esc(VERSION)} beta · updated <time datetime="${UPDATED}">${esc(UPDATED_HUMAN)}</time> · by <a href="${MAKER.url}" rel="author">${MAKER.name}</a></p>
+      <p class="meta">v${esc(VERSION)} · updated <time datetime="${UPDATED}">${esc(UPDATED_HUMAN)}</time> · by <a href="${MAKER.url}" rel="author">${MAKER.name}</a></p>
       <ul class="facts" aria-label="At a glance">
         <li>Free</li><li>No ads</li><li>Open source, GPL-3.0</li><li>Android 7 and up</li>
       </ul>
@@ -510,7 +511,7 @@ function comparePage(d) {
         '@id': `${url}#breadcrumb`,
         itemListElement: [
           { '@type': 'ListItem', position: 1, name: 'Maglev', item: SITE_URL },
-          { '@type': 'ListItem', position: 2, name: 'How Maglev is different', item: url },
+          { '@type': 'ListItem', position: 2, name: p.title, item: url },
         ],
       },
       PERSON,
@@ -532,8 +533,8 @@ ${header(A, HOME, { current: 'compare' })}
 <section class="page-head" aria-labelledby="page-title">
   <div class="grid-bg" aria-hidden="true"></div>
   <div class="wrap">
-    <nav class="crumbs" aria-label="Breadcrumb"><ol><li><a href="${HOME}">Maglev</a></li><li aria-current="page">How Maglev is different</li></ol></nav>
-    <h1 id="page-title">How Maglev is different</h1>
+    <nav class="crumbs" aria-label="Breadcrumb"><ol><li><a href="${HOME}">Maglev</a></li><li aria-current="page">${esc(p.title)}</li></ol></nav>
+    <h1 id="page-title">${esc(p.title)}</h1>
     ${p.intro ? `<p class="lede">${md(p.intro)}</p>` : ''}
     <p class="meta">Checked ${esc(human(d.checkedOn))} · ${esc(d.method)}</p>
   </div>
@@ -581,6 +582,57 @@ ${footer(HOME)}
 `;
 }
 
+// ---------------------------------------------------------------- privacy/index.html
+
+function privacyPage(p, cmp) {
+  const url = abs('privacy');
+  const ld = {
+    '@context': 'https://schema.org',
+    '@graph': [
+      {
+        '@type': 'WebPage',
+        '@id': `${url}#webpage`,
+        url,
+        name: p.title,
+        description: p.description,
+        isPartOf: { '@id': `${SITE_URL}#website` },
+        about: { '@id': `${SITE_URL}#app` },
+        dateModified: p.updated,
+        author: PERSON_REF,
+        inLanguage: 'en',
+      },
+      PERSON,
+    ],
+  };
+  return `${head({ title: `${p.title} | Maglev`, desc: p.description, base: A, canonical: url })}
+${ogTags({ title: `${p.title} | Maglev`, desc: p.description, url })}
+${ldBlock(ld)}
+</head>
+<body>
+${header(A, HOME, { compare: !!cmp })}
+<script src="${A}assets/site.js" defer></script>
+<main id="main">
+<section class="page-head" aria-labelledby="page-title">
+  <div class="grid-bg" aria-hidden="true"></div>
+  <div class="wrap">
+    <nav class="crumbs" aria-label="Breadcrumb"><ol><li><a href="${HOME}">Maglev</a></li><li aria-current="page">${esc(p.title)}</li></ol></nav>
+    <h1 id="page-title">${esc(p.title)}</h1>
+    <p class="lede">${md(p.intro)}</p>
+    <p class="meta">Updated ${esc(human(p.updated))}</p>
+  </div>
+</section>
+<section class="prose-sec" aria-label="${esc(p.title)}">
+  <div class="wrap narrow prose">
+${p.sections.map((x) => `    <h2 class="h2">${esc(x.heading)}</h2>\n${x.body.map((b) => `    <p>${md(b)}</p>`).join('\n')}`).join('\n')}
+  </div>
+</section>
+</main>
+${footer(HOME, { compare: !!cmp })}
+</body>
+</html>
+`;
+}
+
 // ---------------------------------------------------------------- 404.html
 
 // GitHub Pages serves 404.html at whatever path was asked for, so relative paths would break:
@@ -617,6 +669,10 @@ const sitemap = (cmp) => `<?xml version="1.0" encoding="UTF-8"?>
   <url>
     <loc>${abs('compare')}</loc>
     <lastmod>${cmp.checkedOn > UPDATED ? cmp.checkedOn : UPDATED}</lastmod>
+  </url>` : ''}${C.privacy ? `
+  <url>
+    <loc>${abs('privacy')}</loc>
+    <lastmod>${C.privacy.updated}</lastmod>
   </url>` : ''}
 </urlset>
 `;
@@ -629,7 +685,7 @@ Sitemap: ${abs('sitemap.xml')}
 
 const llms = (cmp) => `# Maglev
 
-> Maglev is a free, open source Android downloader with no ads. It saves videos from web pages (including on-demand HLS and DASH streams), downloads ordinary links with pause and resume, and runs torrents, in one app. Android 7 and later. Version ${VERSION}, beta.
+> Maglev is a free, open source Android downloader with no ads. It saves videos from web pages (including on-demand HLS and DASH streams), downloads ordinary links with pause and resume, and runs torrents, in one app. Android 7 and later. Version ${VERSION}.
 
 Made by ${MAKER.name} (${MAKER.url}, GitHub: ${MAKER.github}). License: GPL-3.0.
 
@@ -645,7 +701,7 @@ ${C.howItWorks.map((h) => `- ${h.title}: ${plain(h.text)}`).join('\n')}
 
 ## Links
 
-- [Website](${SITE_URL})${cmp ? `\n- [How Maglev is different (comparison with ${cmp.apps.filter((a) => a.id !== 'maglev').map((a) => a.name).join(', ')})](${abs('compare')})` : ''}
+- [Website](${SITE_URL})${cmp ? `\n- [${cmp.page.title} (comparison with ${cmp.apps.filter((a) => a.id !== 'maglev').map((a) => a.name).join(', ')})](${abs('compare')})` : ''}
 - [Download (latest release)](${RELEASES})
 - [Source code](${REPO})
 - [Report a bug](${ISSUES})
@@ -676,6 +732,7 @@ const files = {
   'llms.txt': llms(cmp),
 };
 if (cmp) files['compare/index.html'] = comparePage(cmp);
+if (C.privacy) files['privacy/index.html'] = privacyPage(C.privacy, cmp);
 else fs.rmSync(path.join(SITE, 'compare'), { recursive: true, force: true });
 for (const [name, body] of Object.entries(files)) {
   fs.mkdirSync(path.dirname(path.join(SITE, name)), { recursive: true });

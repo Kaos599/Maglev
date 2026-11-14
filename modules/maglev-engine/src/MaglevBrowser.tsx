@@ -86,6 +86,8 @@ export type MaglevBrowserRef = {
   /** For a URL the user typed. Blocked hosts and local addresses may open when typed. */
   loadUrl(url: string): void;
   scan(): void;
+  /** Forget the files this page reported and scan it again. Rejects with VIEW_GONE once the view is destroyed. */
+  resetFound(): Promise<void>;
   clearData(): void;
 };
 
@@ -135,6 +137,7 @@ export const MaglevBrowser = React.forwardRef<MaglevBrowserRef, MaglevBrowserPro
       stop: () => nativeRef.current?.stop(),
       loadUrl: (url: string) => nativeRef.current?.loadUrl(url),
       scan: () => nativeRef.current?.scan(),
+      resetFound: () => nativeRef.current?.resetFound() ?? Promise.resolve(),
       clearData: () => nativeRef.current?.clearData(),
     }),
     [],

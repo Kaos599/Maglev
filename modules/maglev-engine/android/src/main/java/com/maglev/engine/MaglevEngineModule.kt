@@ -466,6 +466,7 @@ class MaglevEngineModule : Module() {
             AsyncFunction("stop") { view: MaglevBrowserView -> view.stop() }
             AsyncFunction("loadUrl") { view: MaglevBrowserView, url: String -> view.loadTyped(url) }
             AsyncFunction("scan") { view: MaglevBrowserView -> view.scan() }
+            AsyncFunction("resetFound") { view: MaglevBrowserView, promise: Promise -> view.resetFound(promise) }
             AsyncFunction("clearData") { view: MaglevBrowserView -> view.clearData() }
 
             OnViewDidUpdateProps { view: MaglevBrowserView -> view.applyProps() }

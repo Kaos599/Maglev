@@ -25,6 +25,8 @@ export interface SearchPrefs {
   waitSeconds: 5 | 8 | 15;
   limit: 25 | 50 | 100;
   hideDead: boolean;
+  /** Lines of a result name before the ellipsis. 0 shows the full name. UI only; never reaches the engine. */
+  resultNameLines: 0 | 1 | 2 | 3;
   sort: 'seeders' | 'newest' | 'size' | 'name';
   lastCategory: Category;
   recents: string[];
@@ -58,6 +60,7 @@ function defaults(): SearchPrefs {
     waitSeconds: 8,
     limit: 50,
     hideDead: true,
+    resultNameLines: 2,
     sort: 'seeders',
     lastCategory: 'all',
     recents: [],
@@ -115,6 +118,7 @@ export function normalizeSearchPrefs(raw: unknown, legacyRecents: string[]): Sea
     waitSeconds: o.waitSeconds === 5 || o.waitSeconds === 15 ? o.waitSeconds : 8,
     limit: o.limit === 25 || o.limit === 100 ? o.limit : 50,
     hideDead: o.hideDead !== false,
+    resultNameLines: o.resultNameLines === 0 || o.resultNameLines === 1 || o.resultNameLines === 3 ? o.resultNameLines : 2,
     sort: (SORTS as readonly unknown[]).includes(o.sort) ? (o.sort as SearchPrefs['sort']) : d.sort,
     lastCategory: (CATEGORIES as readonly unknown[]).includes(o.lastCategory) ? (o.lastCategory as Category) : 'all',
     recents,

@@ -1,0 +1,40 @@
+# Find files on a public test page, remove one, clear the rest, then check that the list resets on the next page.
+# Test pages (Big Buck Bunny and Jellyfish, CC BY 3.0, direct MP4 links, checked with curl).
+# Nothing is downloaded here, so there is no transfer to clean up.
+appId: com.maglev
+name: browser-clear
+---
+- runFlow: subflows/onboard-if-needed.yaml
+- openLink: "maglev://browser?url=https%3A%2F%2Ftest-videos.co.uk%2Fbigbuckbunny%2Fmp4-h264"
+- extendedWaitUntil:
+    visible: "Address" # app/browser.tsx:268
+    timeout: 30000
+- extendedWaitUntil:
+    visible: "Files . [1-9][0-9]*" # app/browser.tsx:344 "Files · N"
+    timeout: 90000
+- tapOn: "Files . [1-9][0-9]*" # app/browser.tsx:348 opens FoundTray
+- extendedWaitUntil:
+    visible: ".*Big_Buck_Bunny_1080_10s_1MB\\.mp4.*" # FoundTray.tsx:42 row label "<name>, <meta>"
+    timeout: 30000
+# Remove one item. NEW: depends on found-files size/clear change. Per-item "Remove" does not exist yet.
+# Assumes a long-press on the row opens a menu with "Remove". Today a long-press copies the link (FoundTray.tsx:118).
+- longPressOn: ".*Big_Buck_Bunny_1080_10s_1MB\\.mp4.*"
+- tapOn: "Remove" # NEW: label not in source yet, use "Remove" until it lands
+- assertNotVisible: ".*Big_Buck_Bunny_1080_10s_1MB\\.mp4.*"
+- assertVisible: ".*Big_Buck_Bunny_1080_10s_2MB\\.mp4.*" # another file is still listed
+# Clear all. NEW: depends on found-files size/clear change. Label "Clear" is not in source yet.
+# Assumes no confirmation sheet. If one appears, add a second tapOn for its confirm button.
+- tapOn: "Clear" # NEW: label not in source yet, use "Clear" until it lands
+- assertVisible: "No files found yet" # constants/copy.ts:257 empty.browser.noFiles.title (FoundTray.tsx:105)
+# Close the tray and open the next page in the address bar. Address field is app/browser.tsx:268.
+# Assumption: Back closes the open Sheet (components/ui/Sheet.tsx) before the browser's own back handler runs. Verify on device.
+- pressKey: Back
+- tapOn: "Address"
+- inputText: "https://test-videos.co.uk/jellyfish/mp4-h264"
+- pressKey: Enter
+- tapOn: "Files . [0-9]+" # app/browser.tsx:344, reopen the tray after loading the new page
+# NEW: depends on found-files size/clear change. Navigating does not reset the list yet (mergeFound keeps old items).
+- assertNotVisible: ".*Big_Buck_Bunny.*"
+- extendedWaitUntil:
+    visible: ".*Jellyfish.*" # files from the new page only
+    timeout: 90000

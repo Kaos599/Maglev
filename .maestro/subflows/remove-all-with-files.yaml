@@ -1,14 +1,18 @@
 # Cleanup: removes the one transfer on screen and deletes its files.
-# Long-press selects the card (its label is "<name>, <status>, N percent").
+# Cards carry testID "transfer-card" (components/TransferCard.tsx). Never match on "percent":
+# the status bar battery reads "Battery charging, 85 percent." and matches any percent regex.
 appId: com.maglev
 ---
 - extendedWaitUntil:
-    visible: ".*percent.*"
+    visible:
+      id: "transfer-card"
     timeout: 30000
-- longPressOn: ".*percent.*"
+- longPressOn:
+    id: "transfer-card"
 - tapOn: "Delete selected"
 - tapOn: "Remove and delete files"
 - tapOn: "Delete files|Delete [0-9.]+ (B|KB|MB|GB|TB)"
 - extendedWaitUntil:
-    notVisible: ".*percent.*"
+    notVisible:
+      id: "transfer-card"
     timeout: 30000

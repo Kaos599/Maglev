@@ -1,0 +1,92 @@
+# Open every Settings group and its sub-screen, check the page title and one key control, screenshot each.
+# Rows: "app/(tabs)/settings.tsx" (App, Finding things, Downloads, Connection, plus Storage at the top).
+# Page titles: each settings page passes title= to SettingsPage (components/settings/SettingsParts.tsx:9).
+# Key controls are the labelled rows or toggles of each page (cited per row).
+appId: com.maglev
+name: settings-screens
+---
+- runFlow: subflows/onboard-if-needed.yaml
+- tapOn: "Settings"
+# Settings tab label: constants/copy.ts tabsCopy.names.settings
+# App group
+- tapOn: "Storage"
+- assertVisible: "Download folder"
+# app/settings/storage.tsx:45
+- takeScreenshot: settings-storage
+- back
+- tapOn: "About"
+- assertVisible: "App version"
+# app/settings/about.tsx:55
+- takeScreenshot: settings-about
+- back
+- tapOn: "Appearance"
+- assertVisible: "Font"
+# app/settings/interface.tsx:85
+- takeScreenshot: settings-appearance
+- back
+- tapOn: "Notifications"
+- assertVisible: "Finished-download alerts"
+# app/settings/notifications.tsx:23
+- takeScreenshot: settings-notifications
+- back
+- tapOn: "Assistant"
+- assertVisible: "Adds an Assistant tab.*"
+# app/settings/assistant.tsx:23 (subtitle)
+- takeScreenshot: settings-assistant
+- back
+- tapOn: "Backup and restore"
+- assertVisible: "Export backup"
+# constants/copy.ts backupCopy.export.title
+- takeScreenshot: settings-backup
+- back
+# Finding things group
+- tapOn: "Search providers"
+- assertVisible: "Show adult sources"
+# app/settings/search-providers.tsx:212
+- takeScreenshot: settings-search-sources
+- back
+- tapOn: "Auto-download"
+- assertVisible: "Download new items automatically"
+# app/settings/feeds.tsx:106
+- takeScreenshot: settings-auto-download
+- back
+- tapOn: "Watches"
+- assertVisible: "Maglev checks for new copies.*"
+# constants/copy.ts watchCopy.intro (app/settings/watch.tsx:44)
+- takeScreenshot: settings-watches
+- back
+- tapOn: "Browser"
+- assertVisible: "Ad blocking"
+# app/settings/browser.tsx:119
+- takeScreenshot: settings-browser
+- back
+# Downloads group
+- scrollUntilVisible:
+    element: "Speed & queue"
+    direction: DOWN
+    timeout: 30000
+- tapOn: "Speed & queue"
+- assertVisible: "Download limit"
+# components/settings/SpeedSection.tsx:24
+- takeScreenshot: settings-speed-queue
+- back
+- tapOn: "Scheduling"
+- assertVisible: "Use a schedule"
+# app/settings/scheduling.tsx:85
+- takeScreenshot: settings-scheduling
+- back
+# Connection group
+- scrollUntilVisible:
+    element: "Network"
+    direction: DOWN
+    timeout: 30000
+- tapOn: "Network"
+- assertVisible: "Wi-Fi only"
+# app/settings/network.tsx:48
+- takeScreenshot: settings-network
+- back
+- tapOn: "Power"
+- assertVisible: "Charging only"
+# app/settings/power.tsx:24
+- takeScreenshot: settings-power
+- back

@@ -28,7 +28,7 @@ Not used: the Uptodown, Aptoide, AppBrain and similar mirror pages that turned u
 - **Maglev, "Needs an account" = No.** The README and content.json do not say this. The value is from the brief (sign-in: none needed). Confirm before publishing.
 - **Maglev, "Minimum Android version" = Android 7.** From the README badge and content.json FAQ.
 - **LibreTorrent, background downloads = No.** Its pages do not describe background downloads or notifications, though it lists a foreground-service permission on F-Droid. Marked No because the pages do not state it.
-- **LibreTorrent, speed limits = No, Wi-Fi only = No, plain links = No.** Not listed on its pages. Its README mentions "customisable network settings" without detail.
+- **LibreTorrent, speed limits = Yes, Wi-Fi only = Yes (checked 2026-11-14).** Its source strings list "Max. ⬇ speed", "Max. ⬆ speed" and "Only use connections without a quota (for example Wi-Fi or Ethernet)": https://github.com/proninyaroslav/libretorrent/blob/master/app/src/main/res/values/strings.xml. **Plain links = No:** not listed on its pages.
 - **BiglyBT, magnet links = No.** The Android pages do not mention magnets; the desktop project does. Worth a second look, since a torrent client almost certainly supports magnets.
 - **BiglyBT, free = Partial.** No price is shown; the Play listing has in-app purchases.
 - **BiglyBT, minimum Android = 4.1.** From the F-Droid build (version 1.3.4.3). The Play listing did not show a version.

@@ -5,7 +5,7 @@
 <p align="center">
   <a href="https://github.com/Kaos599/Maglev/actions/workflows/ci.yml"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/Kaos599/Maglev/ci.yml?style=flat-square&label=CI&labelColor=05070A"></a>
   <a href="https://github.com/Kaos599/Maglev/releases"><img alt="Release" src="https://img.shields.io/github/v/release/Kaos599/Maglev?include_prereleases&style=flat-square&label=release&labelColor=05070A&color=CCFF00"></a>
-  <img alt="Status: beta" src="https://img.shields.io/badge/status-beta-CCFF00?style=flat-square&labelColor=05070A">
+  <img alt="Status: stable" src="https://img.shields.io/badge/status-stable-CCFF00?style=flat-square&labelColor=05070A">
   <img alt="Android 7+" src="https://img.shields.io/badge/Android-7%2B-00E5FF?style=flat-square&labelColor=05070A">
   <img alt="Engine: Rust + librqbit" src="https://img.shields.io/badge/engine-Rust%20%C2%B7%20librqbit-E8ECEF?style=flat-square&labelColor=05070A">
 </p>
@@ -16,7 +16,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/Kaos599/Maglev/releases/latest"><b>Download the beta</b></a>
+  <a href="https://github.com/Kaos599/Maglev/releases/latest"><b>Download Maglev</b></a>
   &nbsp;·&nbsp;
   <a href="https://apps.obtainium.imranr.dev/redirect?r=obtainium://add/https://github.com/Kaos599/Maglev">Get updates with Obtainium</a>
   &nbsp;·&nbsp;

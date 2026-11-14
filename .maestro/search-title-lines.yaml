@@ -1,0 +1,81 @@
+# Long torrent names: screenshot the default, then Result name lines 1 and Full name, and restore 2.
+# NEW: depends on result-name-lines change (Settings, Search sources, "Result name lines" chips in
+# app/settings/search-providers.tsx:245; prefs in utils/prefs/search.ts; wrap in components/search/ResultRow.tsx:64).
+appId: com.maglev
+name: search-title-lines
+---
+- runFlow: subflows/onboard-if-needed.yaml
+- tapOn: "Search"                                   # from app/(tabs)/_layout.tsx:169
+- tapOn:
+    text: "Search torrents"                         # from app/(tabs)/search.tsx:743
+- inputText: "debian"
+- pressKey: Enter
+- extendedWaitUntil:
+    visible: "Add .*"                               # from components/search/ResultRow.tsx:109
+    timeout: 90000
+# NEW: depends on result-name-lines change. Start from the default (2 lines) so the first screenshot is the default.
+- tapOn: "Settings"                                 # from app/(tabs)/_layout.tsx:171 (tab title "Settings")
+- scrollUntilVisible:
+    element: "Search providers"                     # from app/(tabs)/settings.tsx:162 (row title)
+    direction: DOWN
+    timeout: 20000
+- tapOn: "Search providers"                          # from app/(tabs)/settings.tsx:162
+- extendedWaitUntil:
+    visible: "Search sources"                       # from app/settings/search-providers.tsx:183 (page title)
+    timeout: 10000
+- scrollUntilVisible:
+    element: "Result name lines"                    # NEW: depends on result-name-lines change (app/settings/search-providers.tsx:245)
+    direction: DOWN
+    timeout: 20000
+- tapOn:
+    text: "2"                                       # NEW: depends on result-name-lines change (chip label, NAME_LINES in search-providers.tsx)
+    below: "Result name lines"                      # NEW: depends on result-name-lines change
+- back
+- tapOn: "Search"                                   # from app/(tabs)/_layout.tsx:169
+- extendedWaitUntil:
+    visible: "Add .*"                               # from components/search/ResultRow.tsx:109
+    timeout: 30000
+- takeScreenshot: search-title-lines-default         # default (2 lines)
+# Change to 1 line.
+- tapOn: "Settings"                                 # from app/(tabs)/_layout.tsx:171
+- tapOn: "Search providers"                         # from app/(tabs)/settings.tsx:162
+- scrollUntilVisible:
+    element: "Result name lines"                    # NEW: depends on result-name-lines change (search-providers.tsx:245)
+    direction: DOWN
+    timeout: 20000
+- tapOn:
+    text: "1"                                       # NEW: depends on result-name-lines change (NAME_LINES label "1")
+    below: "Result name lines"                      # NEW: depends on result-name-lines change
+- back
+- tapOn: "Search"                                   # from app/(tabs)/_layout.tsx:169
+- extendedWaitUntil:
+    visible: "Add .*"                               # from components/search/ResultRow.tsx:109
+    timeout: 30000
+- takeScreenshot: search-title-lines-1-line
+# Change to Full name.
+- tapOn: "Settings"                                 # from app/(tabs)/_layout.tsx:171
+- tapOn: "Search providers"                         # from app/(tabs)/settings.tsx:162
+- scrollUntilVisible:
+    element: "Result name lines"                    # NEW: depends on result-name-lines change (search-providers.tsx:245)
+    direction: DOWN
+    timeout: 20000
+- tapOn:
+    text: "Full name"                               # NEW: depends on result-name-lines change (NAME_LINES label "Full name")
+    below: "Result name lines"                      # NEW: depends on result-name-lines change
+- back
+- tapOn: "Search"                                   # from app/(tabs)/_layout.tsx:169
+- extendedWaitUntil:
+    visible: "Add .*"                               # from components/search/ResultRow.tsx:109
+    timeout: 30000
+- takeScreenshot: search-title-lines-full-name
+# Restore the default (2 lines).
+- tapOn: "Settings"                                 # from app/(tabs)/_layout.tsx:171
+- tapOn: "Search providers"                         # from app/(tabs)/settings.tsx:162
+- scrollUntilVisible:
+    element: "Result name lines"                    # NEW: depends on result-name-lines change (search-providers.tsx:245)
+    direction: DOWN
+    timeout: 20000
+- tapOn:
+    text: "2"                                       # NEW: depends on result-name-lines change
+    below: "Result name lines"                      # NEW: depends on result-name-lines change
+- back

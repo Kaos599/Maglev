@@ -24,7 +24,8 @@ check(/pickDownloadFolder/.test(saveTo) && /Save to/.test(saveTo) && /Change/.te
 for (const f of ['components/browser/FoundDownload.tsx', 'components/browser/StreamSheet.tsx']) {
   const s = read(f);
   check(/mobileDataLine/.test(s) && /onMeteredNetwork/.test(s) && /wifiOnly/.test(s), `${f} shows the mobile-data note`);
-  check(/<SaveToRow/.test(s), `${f} has a Save to / Change folder row`);
+  // The found-file sheet picks a folder for this download only (SaveToChoice, R5). The stream sheet still uses the global picker.
+  check(f.endsWith('FoundDownload.tsx') ? /<SaveToChoice/.test(s) : /<SaveToRow/.test(s), `${f} has a Save to / Change folder row`);
 }
 
 const add = read('app/add-download.tsx');

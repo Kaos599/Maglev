@@ -19,6 +19,7 @@ name: search-add
     timeout: 60000
 - tapOn: "Transfers"
 - extendedWaitUntil:
-    visible: ".*percent.*"
+    visible:
+      id: "transfer-card"
     timeout: 30000
 - runFlow: subflows/remove-all-with-files.yaml

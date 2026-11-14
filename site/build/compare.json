@@ -614,7 +614,7 @@
       "help": "Downloads start only on Wi-Fi, so mobile data is not used.",
       "values": {
         "maglev": "Yes",
-        "libretorrent": "No",
+        "libretorrent": "Yes",
         "biglybt": "No",
         "seal": "No",
         "ytdlnis": "No",
@@ -624,7 +624,9 @@
         "adm": "Yes",
         "fdm": "Yes"
       },
-      "notes": {}
+      "notes": {
+        "libretorrent": "Its settings have \"Only use connections without a quota (for example Wi-Fi or Ethernet).\" (pref_umnetered_connections_only_summary in app/src/main/res/values/strings.xml). Its README does not name Wi-Fi."
+      }
     },
     {
       "id": "speed",
@@ -633,7 +635,7 @@
       "help": "Caps how fast downloads or uploads run.",
       "values": {
         "maglev": "Yes",
-        "libretorrent": "No",
+        "libretorrent": "Yes",
         "biglybt": "No",
         "seal": "No",
         "ytdlnis": "No",
@@ -644,6 +646,7 @@
         "fdm": "Partial"
       },
       "notes": {
+        "libretorrent": "Its settings have \"Max. ⬇ speed\" and \"Max. ⬆ speed\" (pref_max_download_speed_title, pref_max_upload_speed_title) and a per-torrent \"Speed limit\" in app/src/main/res/values/strings.xml. The README does not list them.",
         "flud": "Its Play page says there are no speed limits on downloads or uploads.",
         "fdm": "Says it adjusts traffic usage. It does not describe a fixed speed cap."
       }
@@ -975,7 +978,7 @@
     }
   ],
   "page": {
-    "title": "How Maglev is different",
+    "title": "Maglev vs LibreTorrent and other Android download apps",
     "description": "Maglev is a free, open source Android app for torrents, web links and streams, with an ad-free browser. Here is how it compares with other apps.",
     "intro": "Maglev is one Android app for torrents, ordinary links and the videos on a web page. This page compares it with other Android apps, using only what each app's own pages say.",
     "sections": [
@@ -1018,7 +1021,7 @@
         "heading": "When another app is the better pick",
         "body": [
           "Pick Seal, YTDLnis or NewPipe if you mainly want YouTube or music from YouTube. Pick LibreTorrent or BiglyBT if you want a torrent client with nothing else. Pick 1DM+ or ADM if you want a closed source download manager and do not mind its ads or purchases. Pick FDM if you want a desktop-style manager that also runs on Android.",
-          "Maglev is in beta, so expect rough edges. It is also not on Google Play yet, so you install it from GitHub Releases or with Obtainium."
+          "Maglev is not on Google Play yet, so you install it from GitHub Releases or with Obtainium."
         ]
       }
     ],
