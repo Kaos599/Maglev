@@ -67,7 +67,7 @@
       "text": "Open any page inside Maglev. Ads and trackers are blocked before they load. Play a video and Maglev lists it, together with the page's other files, in a tray you can filter by type. Tap one to download it with the page's cookies, so files behind a sign-in still work.",
       "specs": [
         "Over 42,000 blocked domains from [StevenBlack/hosts](https://github.com/StevenBlack/hosts), updatable in Settings",
-        "Popups you didn't tap, redirects into other apps and bad certificates are refused",
+        "Tabs, find in page and text size; pop-ups and redirects you didn't tap for wait until you choose Open or Block",
         "App installers come with a warning"
       ],
       "screen": "browser"
@@ -197,7 +197,7 @@
     ],
     [
       "Is there an ad-free browser for Android that downloads videos?",
-      "Yes, Maglev's built-in browser is one. It blocks ads and trackers before they load, lists the videos and files a page plays or links to, and saves them with the page's cookies. Popups you didn't tap and redirects into other apps are refused."
+      "Yes, Maglev's built-in browser is one. It blocks ads and trackers before they load, lists the videos and files a page plays or links to, and saves them with the page's cookies. Pop-ups and redirects you didn't tap for wait until you choose Open, Block or Always allow on this site."
     ],
     [
       "What is a torrent, in plain words?",
