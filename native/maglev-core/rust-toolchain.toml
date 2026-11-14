@@ -1,0 +1,6 @@
+# Pinned Rust toolchain for the Android native core (librqbit build).
+# Keep `channel` in sync with `toolchain:` in .github/workflows/_rust-android.yml and ci.yml.
+[toolchain]
+channel = "1.100.0"
+profile = "minimal"
+targets = ["aarch64-linux-android", "armv7-linux-androideabi", "x86_64-linux-android"]
