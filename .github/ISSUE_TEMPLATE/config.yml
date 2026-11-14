@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security problem
+    url: https://github.com/Kaos599/Maglev/security/advisories/new
+    about: Report a security problem privately instead of opening a public issue.
+  - name: Privacy policy
+    url: https://harshdayal.dev/maglev/privacy
+    about: What Maglev sends where.

@@ -1,0 +1,35 @@
+# Weekly dependency update pull requests, grouped so they don't pile up.
+# The vendored librqbit crates under native/maglev-core/vendor are path dependencies and are not touched.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    target-branch: dev
+    schedule: { interval: weekly }
+    open-pull-requests-limit: 5
+    groups:
+      npm-minor-patch:
+        update-types: [minor, patch]
+    ignore:
+      # Expo SDK and React Native move together through `npx expo install --fix`, never one package at a time.
+      - dependency-name: "expo*"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "react-native*"
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
+      - dependency-name: "react"
+        update-types: ["version-update:semver-major"]
+  - package-ecosystem: cargo
+    directory: /native/maglev-core
+    target-branch: dev
+    schedule: { interval: weekly }
+    open-pull-requests-limit: 5
+    groups:
+      cargo-minor-patch:
+        update-types: [minor, patch]
+  - package-ecosystem: github-actions
+    directory: /
+    target-branch: dev
+    schedule: { interval: weekly }
+    groups:
+      actions:
+        patterns: ["*"]
