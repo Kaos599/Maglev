@@ -2,7 +2,7 @@
   "expo": {
     "name": "Maglev",
     "slug": "maglev",
-    "version": "0.20",
+    "version": "0.21",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "scheme": "maglev",
@@ -110,7 +110,7 @@
           ]
         }
       ],
-      "versionCode": 20
+      "versionCode": 21
     },
     "web": {
       "favicon": "./assets/favicon.png",
