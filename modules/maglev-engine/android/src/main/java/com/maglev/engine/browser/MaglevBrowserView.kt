@@ -34,6 +34,7 @@ import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import expo.modules.kotlin.AppContext
+import expo.modules.kotlin.Promise
 import expo.modules.kotlin.viewevent.EventDispatcher
 import expo.modules.kotlin.views.ExpoView
 import java.io.ByteArrayInputStream
@@ -66,6 +67,10 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
     private val blockedTotal = AtomicInteger(0)
     private val flushScheduled = AtomicBoolean(false)
     private val flushRunnable = Runnable { flush() }
+    // Delayed page scan after a same-document navigation (24.6a). Main thread only.
+    private val scanRunnable = Runnable { if (!destroyed) scan() }
+    // resetFound() arrived while the page was loading: scan once the load ends (24.6a).
+    private var scanAfterLoad = false
 
     private var webView: WebView
     private var defaultUserAgent: String = ""
@@ -81,6 +86,8 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
     // Per page load.
     @Volatile private var pageHost: String? = null
     @Volatile private var curUrl: String = ""
+    // URL of the current document, kept to tell a same-document navigation (pushState) from a fragment change.
+    private var docUrl: String? = null
     @Volatile private var curTitle: String = ""
     @Volatile private var nonce: String = ""
     @Volatile private var hlsSeen = false
@@ -185,6 +192,31 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
         if (destroyed || webView.url == null) return
         webView.evaluateJavascript(PageScan.scanScript(nonce.ifEmpty { newNonce() }), null)
         webView.evaluateJavascript(PageScan.RESCAN_JS, null)
+    }
+
+    /**
+     * 24.6a: forget what this document reported and scan again. Idempotent. A page still loading is scanned
+     * when the load ends. A destroyed view rejects with VIEW_GONE.
+     */
+    fun resetFound(promise: Promise) {
+        if (destroyed) {
+            promise.reject("VIEW_GONE", "The browser was closed.", null)
+            return
+        }
+        tracker.clear()
+        if (loading) scanAfterLoad = true else scan()
+        promise.resolve(null)
+    }
+
+    /** True when both URLs are the same document: scheme, host, path and query equal, fragment ignored. */
+    private fun sameDocument(a: String?, b: String?): Boolean {
+        if (a == null || b == null) return a == b
+        val x = Uri.parse(a)
+        val y = Uri.parse(b)
+        return x.scheme.equals(y.scheme, ignoreCase = true) &&
+            x.host.equals(y.host, ignoreCase = true) &&
+            x.path.orEmpty() == y.path.orEmpty() &&
+            x.query.orEmpty() == y.query.orEmpty()
     }
 
     fun clearData() {
@@ -483,6 +515,9 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
         override fun onPageStarted(view: WebView, url: String?, favicon: Bitmap?) {
             if (destroyed) return
             pageHost = url?.let { Uri.parse(it).host?.lowercase() }
+            docUrl = url
+            mainHandler.removeCallbacks(scanRunnable)
+            scanAfterLoad = false
             resetPageState()
             loading = true
             progress = 0
@@ -501,12 +536,35 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
             loading = false
             progress = 100
             injectScripts(view)
+            if (scanAfterLoad) {
+                scanAfterLoad = false
+                scan()
+            }
             emitPage()
         }
 
         override fun doUpdateVisitedHistory(view: WebView, url: String?, isReload: Boolean) {
             if (destroyed) return
             pageHost = url?.let { Uri.parse(it).host?.lowercase() } ?: pageHost
+            // 24.6a: pushState/replaceState to another document URL never fires onPageStarted. Treat it as a new
+            // document. A fragment-only change, a reload, or a URL we have already seen does nothing here.
+            val prev = docUrl
+            // While a load is in flight this is a server redirect or the load committing, not an SPA navigation:
+            // remember the final URL but keep what the load has found so far.
+            if (loading && url != null) {
+                docUrl = url
+                emitPage()
+                return
+            }
+            if (!isReload && url != null && prev != null && !sameDocument(prev, url)) {
+                docUrl = url
+                mainHandler.removeCallbacks(scanRunnable)
+                resetPageState()
+                emitPage()
+                mainHandler.postDelayed(scanRunnable, 600L)
+                return
+            }
+            if (!isReload && url != null && prev == null) docUrl = url
             emitPage()
         }
 
