@@ -242,7 +242,7 @@ const footer = (home, { compare = true } = {}) => `<footer class="foot">
       <li><a href="${BASE_PATH}/privacy">Privacy</a></li>
       <li><a href="${LICENSE_URL}" rel="noopener">GPL-3.0 licence</a></li>
     </ul>
-    <p class="fine">Icons are <a href="https://github.com/halfmage/pixelarticons" rel="noopener">Pixelarticons</a> by Gerrit Halfmann (MIT). Fonts are Inter and Silkscreen (SIL Open Font License), served from this site. Maglev v${esc(VERSION)} beta, page updated ${esc(UPDATED_HUMAN)}.</p>
+    <p class="fine">Icons are <a href="https://github.com/halfmage/pixelarticons" rel="noopener">Pixelarticons</a> by Gerrit Halfmann (MIT). Fonts are Inter and Silkscreen (SIL Open Font License), served from this site. Maglev v${esc(VERSION)}, page updated ${esc(UPDATED_HUMAN)}.</p>
   </div>
 </footer>`;
 
@@ -381,7 +381,7 @@ ${header(A, HOME, { compare: !!cmp })}
         <a class="btn" href="${OBTAINIUM}" rel="noopener">${icon('retry')}<span>Get updates with Obtainium</span></a>
       </div>
       <p class="cta-note">On the release page, tap the file ending in <span class="file">arm64-v8a.apk</span>. Not sure? <a href="#install">See which file to pick</a>.</p>
-      <p class="meta">v${esc(VERSION)} beta · updated <time datetime="${UPDATED}">${esc(UPDATED_HUMAN)}</time> · by <a href="${MAKER.url}" rel="author">${MAKER.name}</a></p>
+      <p class="meta">v${esc(VERSION)} · updated <time datetime="${UPDATED}">${esc(UPDATED_HUMAN)}</time> · by <a href="${MAKER.url}" rel="author">${MAKER.name}</a></p>
       <ul class="facts" aria-label="At a glance">
         <li>Free</li><li>No ads</li><li>Open source, GPL-3.0</li><li>Android 7 and up</li>
       </ul>
@@ -685,7 +685,7 @@ Sitemap: ${abs('sitemap.xml')}
 
 const llms = (cmp) => `# Maglev
 
-> Maglev is a free, open source Android downloader with no ads. It saves videos from web pages (including on-demand HLS and DASH streams), downloads ordinary links with pause and resume, and runs torrents, in one app. Android 7 and later. Version ${VERSION}, beta.
+> Maglev is a free, open source Android downloader with no ads. It saves videos from web pages (including on-demand HLS and DASH streams), downloads ordinary links with pause and resume, and runs torrents, in one app. Android 7 and later. Version ${VERSION}.
 
 Made by ${MAKER.name} (${MAKER.url}, GitHub: ${MAKER.github}). License: GPL-3.0.
 

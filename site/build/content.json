@@ -265,7 +265,7 @@
     ],
     [
       "Is Maglev finished?",
-      "Not yet. Maglev is in beta, so expect rough edges. If something goes wrong, please report it on GitHub."
+      "Maglev is stable, and it keeps growing: new search sources and features arrive in regular updates. If something goes wrong, please report it on GitHub."
     ],
     [
       "Who makes Maglev?",
