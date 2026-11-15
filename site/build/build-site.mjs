@@ -223,10 +223,10 @@ const header = (base, home, { compare = true, current = '' } = {}) => {
       <summary aria-label="Menu">${icon('more')}<span>Menu</span></summary>
       <nav aria-label="Main">
         ${links.map(a).join('\n        ')}
-        <a class="menu-home" href="${MAKER.url}" rel="author">${icon('external')}<span>harshdayal.dev</span></a>
+        <a class="menu-home dither" href="${MAKER.url}" rel="author">${icon('external')}<span>harshdayal.dev</span></a>
       </nav>
     </details>
-    <a class="gh home" href="${MAKER.url}" rel="author" aria-label="harshdayal.dev" title="harshdayal.dev">${icon('external')}<span>harshdayal.dev</span></a>
+    <a class="gh home dither" href="${MAKER.url}" rel="author" aria-label="harshdayal.dev" title="harshdayal.dev">${icon('external')}<span>harshdayal.dev</span></a>
     <a class="gh" href="${REPO}" rel="noopener" aria-label="GitHub">${icon('github')}<span>GitHub</span></a>
     <a class="btn primary dl" href="${RELEASES}" rel="noopener">${icon('download')}<span>Download</span></a>
   </div>
