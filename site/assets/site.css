@@ -69,6 +69,9 @@ code { font: 0.9em/1.5 ui-monospace, 'SF Mono', Menlo, Consolas, monospace; colo
 .menu[open] summary { color: var(--text); background: var(--card); }
 .menu nav { position: absolute; right: var(--gutter); top: calc(100% + 8px); display: grid; min-width: 200px; padding: 6px; background: var(--card); border: 1px solid var(--hairline); border-radius: 12px; }
 .menu nav a { justify-content: flex-start; }
+/* The maker's site: its own button on wide screens, the last menu item below that. */
+.menu nav .menu-home { margin-top: 6px; padding-top: 6px; border-top: 1px solid var(--hairline); border-radius: 0 0 8px 8px; }
+.top .home { display: none; }
 /* Compact primary: 40px to the eye, 44px to the finger. */
 .btn.dl { position: relative; min-height: 40px; padding: 0 14px; margin-left: 6px; gap: 8px; font-size: 0.875rem; border-radius: 10px; }
 .btn.dl::before { content: ''; position: absolute; inset: -2px 0; }
@@ -79,7 +82,10 @@ code { font: 0.9em/1.5 ui-monospace, 'SF Mono', Menlo, Consolas, monospace; colo
   .links { display: flex; }
   .menu { display: none; }
   .top .gh span { display: inline; }
+  .top .home { display: inline-flex; }
+  .top .home span { display: none; }
 }
+@media (min-width: 1000px) { .top .home span { display: inline; } }
 
 /* Shared */
 .h2 { font-size: clamp(1.5rem, 1.1rem + 1.2vw, 2rem); line-height: 1.2; }
