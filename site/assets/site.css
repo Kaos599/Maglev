@@ -70,24 +70,32 @@ code { font: 0.9em/1.5 ui-monospace, 'SF Mono', Menlo, Consolas, monospace; colo
 .menu nav { position: absolute; right: var(--gutter); top: calc(100% + 8px); display: grid; min-width: 200px; padding: 6px; background: var(--card); border: 1px solid var(--hairline); border-radius: 12px; }
 .menu nav a { justify-content: flex-start; }
 /* The maker's site: its own button on wide screens, the last menu item below that. */
-.menu nav .menu-home { margin-top: 6px; padding-top: 6px; border-top: 1px solid var(--hairline); border-radius: 0 0 8px 8px; }
-.top .home { display: none; }
-
-/* Dither: a 4x4 Bayer pattern drawn in 2px dots, masked over the lime token. Rest shows 2/16 of the dots,
-   hover 8/16 and shimmering, press 12/16. Steps instead of fades, so it dissolves like a pixel screen. */
+/* Dither: a 4x4 Bayer pattern in 2px dots, masked over the lime token. Rest shows 4/16 of the dots, hover 8/16
+   and shimmering, press 12/16. Opacity moves in steps, not a fade, so it dissolves like a pixel screen. */
 .dither { position: relative; isolation: isolate; overflow: hidden; }
 .dither > * { position: relative; z-index: 1; }
 .dither::before, .dither::after { content: ''; position: absolute; inset: 0; z-index: 0; background: var(--lime); pointer-events: none;
   -webkit-mask-size: 8px 8px; mask-size: 8px 8px; transition: opacity 180ms steps(3, end); }
-.dither::before { -webkit-mask-image: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='4' height='4' shape-rendering='crispEdges'><rect x='0' y='0' width='1' height='1'/><rect x='2' y='2' width='1' height='1'/></svg>"); mask-image: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='4' height='4' shape-rendering='crispEdges'><rect x='0' y='0' width='1' height='1'/><rect x='2' y='2' width='1' height='1'/></svg>"); opacity: 0.3; }
+.dither::before { -webkit-mask-image: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='4' height='4' shape-rendering='crispEdges'><rect x='0' y='0' width='1' height='1'/><rect x='2' y='0' width='1' height='1'/><rect x='0' y='2' width='1' height='1'/><rect x='2' y='2' width='1' height='1'/></svg>"); mask-image: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='4' height='4' shape-rendering='crispEdges'><rect x='0' y='0' width='1' height='1'/><rect x='2' y='0' width='1' height='1'/><rect x='0' y='2' width='1' height='1'/><rect x='2' y='2' width='1' height='1'/></svg>"); opacity: 0.5; }
 .dither::after { -webkit-mask-image: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='4' height='4' shape-rendering='crispEdges'><rect x='0' y='0' width='1' height='1'/><rect x='2' y='0' width='1' height='1'/><rect x='1' y='1' width='1' height='1'/><rect x='3' y='1' width='1' height='1'/><rect x='0' y='2' width='1' height='1'/><rect x='2' y='2' width='1' height='1'/><rect x='1' y='3' width='1' height='1'/><rect x='3' y='3' width='1' height='1'/></svg>"); mask-image: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='4' height='4' shape-rendering='crispEdges'><rect x='0' y='0' width='1' height='1'/><rect x='2' y='0' width='1' height='1'/><rect x='1' y='1' width='1' height='1'/><rect x='3' y='1' width='1' height='1'/><rect x='0' y='2' width='1' height='1'/><rect x='2' y='2' width='1' height='1'/><rect x='1' y='3' width='1' height='1'/><rect x='3' y='3' width='1' height='1'/></svg>"); opacity: 0; }
-.dither:hover::after, .dither:focus-visible::after { opacity: 0.28; animation: dither-shimmer 600ms steps(1, end) infinite; }
-.dither:hover, .dither:focus-visible { color: var(--text); }
-.dither:active::after { -webkit-mask-image: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='4' height='4' shape-rendering='crispEdges'><rect x='0' y='0' width='1' height='1'/><rect x='1' y='0' width='1' height='1'/><rect x='2' y='0' width='1' height='1'/><rect x='3' y='0' width='1' height='1'/><rect x='1' y='1' width='1' height='1'/><rect x='3' y='1' width='1' height='1'/><rect x='0' y='2' width='1' height='1'/><rect x='1' y='2' width='1' height='1'/><rect x='2' y='2' width='1' height='1'/><rect x='3' y='2' width='1' height='1'/><rect x='1' y='3' width='1' height='1'/><rect x='3' y='3' width='1' height='1'/></svg>"); mask-image: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='4' height='4' shape-rendering='crispEdges'><rect x='0' y='0' width='1' height='1'/><rect x='1' y='0' width='1' height='1'/><rect x='2' y='0' width='1' height='1'/><rect x='3' y='0' width='1' height='1'/><rect x='1' y='1' width='1' height='1'/><rect x='3' y='1' width='1' height='1'/><rect x='0' y='2' width='1' height='1'/><rect x='1' y='2' width='1' height='1'/><rect x='2' y='2' width='1' height='1'/><rect x='3' y='2' width='1' height='1'/><rect x='1' y='3' width='1' height='1'/><rect x='3' y='3' width='1' height='1'/></svg>"); opacity: 0.32; animation: none; }
-.dither:active { transform: translateY(1px); }
+.dither:hover::after, .dither:focus-visible::after { opacity: 0.38; animation: dither-shimmer 600ms steps(1, end) infinite; }
+.dither:active::after { -webkit-mask-image: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='4' height='4' shape-rendering='crispEdges'><rect x='0' y='0' width='1' height='1'/><rect x='1' y='0' width='1' height='1'/><rect x='2' y='0' width='1' height='1'/><rect x='3' y='0' width='1' height='1'/><rect x='1' y='1' width='1' height='1'/><rect x='3' y='1' width='1' height='1'/><rect x='0' y='2' width='1' height='1'/><rect x='1' y='2' width='1' height='1'/><rect x='2' y='2' width='1' height='1'/><rect x='3' y='2' width='1' height='1'/><rect x='1' y='3' width='1' height='1'/><rect x='3' y='3' width='1' height='1'/></svg>"); mask-image: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='4' height='4' shape-rendering='crispEdges'><rect x='0' y='0' width='1' height='1'/><rect x='1' y='0' width='1' height='1'/><rect x='2' y='0' width='1' height='1'/><rect x='3' y='0' width='1' height='1'/><rect x='1' y='1' width='1' height='1'/><rect x='3' y='1' width='1' height='1'/><rect x='0' y='2' width='1' height='1'/><rect x='1' y='2' width='1' height='1'/><rect x='2' y='2' width='1' height='1'/><rect x='3' y='2' width='1' height='1'/><rect x='1' y='3' width='1' height='1'/><rect x='3' y='3' width='1' height='1'/></svg>"); opacity: 0.34; animation: none; }
 @keyframes dither-shimmer { 0% { -webkit-mask-position: 0 0; mask-position: 0 0; } 50% { -webkit-mask-position: 2px 0; mask-position: 2px 0; } }
 @media (prefers-reduced-motion: reduce) { .dither:hover::after, .dither:focus-visible::after { animation: none; } .dither::before, .dither::after { transition: none; } }
-.top .home { border: 1px solid var(--hairline); }
+.maker-link { display: inline-flex; align-items: center; gap: 8px; color: var(--text); font-weight: 700; text-decoration: none; }
+.maker-link .px { width: 18px; height: 18px; color: var(--lime); }
+.maker-link:hover .px, .maker-link:focus-visible .px { color: var(--text); }
+/* A band above the header linking to the maker's site. */
+.maker-link.strip { display: block; font-size: 0.875rem; border-bottom: 1px solid var(--hairline); }
+.strip-in { display: flex; align-items: center; justify-content: center; gap: 8px; min-height: 36px; }
+.strip-url { font-weight: 400; color: var(--copy); }
+.strip-url::before { content: '·'; margin-right: 8px; color: var(--muted); }
+.maker-link.strip:active .strip-in { transform: translateY(1px); }
+.maker-link { white-space: nowrap; }
+@media (max-width: 359px) { .strip-url { display: none; } }
+/* The words sit on a solid plate, so the dither frames them instead of running under them. */
+.plate { display: inline-flex; align-items: center; gap: 8px; background: var(--void); color: var(--text); }
+.strip .plate { padding: 4px 12px; border-radius: 6px; }
 /* Compact primary: 40px to the eye, 44px to the finger. */
 .btn.dl { position: relative; min-height: 40px; padding: 0 14px; margin-left: 6px; gap: 8px; font-size: 0.875rem; border-radius: 10px; }
 .btn.dl::before { content: ''; position: absolute; inset: -2px 0; }
@@ -98,10 +106,7 @@ code { font: 0.9em/1.5 ui-monospace, 'SF Mono', Menlo, Consolas, monospace; colo
   .links { display: flex; }
   .menu { display: none; }
   .top .gh span { display: inline; }
-  .top .home { display: inline-flex; }
-  .top .home span { display: none; }
 }
-@media (min-width: 1000px) { .top .home span { display: inline; } }
 
 /* Shared */
 .h2 { font-size: clamp(1.5rem, 1.1rem + 1.2vw, 2rem); line-height: 1.2; }
