@@ -213,6 +213,7 @@ const header = (base, home, { compare = true, current = '' } = {}) => {
   ];
   const a = ([label, href, cur]) => `<a href="${href}"${cur ? ' aria-current="page"' : ''}>${label}</a>`;
   return `<a class="skip" href="#main">Skip to content</a>
+<a class="maker-link strip dither" href="${MAKER.url}" rel="author"><span class="wrap strip-in"><span class="plate">${icon('external')}<span>More by Harsh</span><span class="strip-url">harshdayal.dev</span></span></span></a>
 <header class="top">
   <div class="wrap top-in">
     <a class="brand" href="${home}"><img src="${base}assets/mark.svg" width="46" height="19" alt=""><span class="word">Maglev</span></a>
