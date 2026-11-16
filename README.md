@@ -10,20 +10,25 @@
   <img alt="Engine: Rust + librqbit" src="https://img.shields.io/badge/engine-Rust%20%C2%B7%20librqbit-E8ECEF?style=flat-square&labelColor=05070A">
 </p>
 
-<p align="center">
-  Maglev downloads anything on Android: torrents, ordinary links, and the videos and files on a web page.<br>
-  One small, fast app with a pixel-art look, a real Rust engine, and no ads.
-</p>
+## Table of contents
 
-<p align="center">
-  <a href="https://github.com/Kaos599/Maglev/releases/latest"><b>Download Maglev</b></a>
-  &nbsp;·&nbsp;
-  <a href="https://apps.obtainium.imranr.dev/redirect?r=obtainium://add/https://github.com/Kaos599/Maglev">Get updates with Obtainium</a>
-  &nbsp;·&nbsp;
-  <a href="#features">Features</a>
-  &nbsp;·&nbsp;
-  <a href="#whats-next">What's next</a>
-</p>
+- [Intro](#intro)
+- [Screenshots](#screenshots)
+- [Download](#download)
+  - [Check the APK is genuine](#check-the-apk-is-genuine)
+- [Coming from another app?](#coming-from-another-app)
+- [Features](#features)
+- [What's next](#whats-next)
+- [Building from source](#building-from-source)
+- [Contributing](#contributing)
+- [Disclaimer](#disclaimer)
+- [License](#license)
+
+## Intro
+
+Maglev is a free, open-source Android app that downloads torrents, ordinary links, and the videos and files on a web page, in one place. It replaces a torrent client, a download manager and a video saver with one small app that has no ads, no tracking and no account. It runs on Android 7 and later.
+
+## Screenshots
 
 <p align="center">
   <img src="store/images/canon/browser.png" alt="Save videos from any page: the files Maglev found on a page" width="32%">
@@ -36,59 +41,15 @@
   <img src="store/images/canon/assistant.png" alt="An assistant that asks first: a proposed download waiting for confirmation" width="32%">
 </p>
 
----
+## Download
 
-## Features
+> [!NOTE]
+> Maglev needs Android 7.0 or later. It isn't on Google Play yet, so you install it from GitHub, or with Obtainium to get updates automatically.
 
-### Torrents, done properly
-- The engine is [librqbit](https://github.com/ikatson/rqbit), written in Rust, with DHT, trackers, local peer discovery and web seeds, so archive.org-style torrents download from their mirrors too.
-- Open magnet links and `.torrent` files from your browser, a chat app, the clipboard or a share.
-- See every file before you start, pick the ones you want and mark one to download first. Maglev tells you how much space will be left before you tap Start.
-- A queue decides how many run at once, and seeding stops at the ratio or time you set. Edit trackers, copy the magnet link or save the `.torrent` file.
-- Downloads keep going with the screen off. If Android closes the app, Maglev comes back and carries on. On Android 16 and later, progress shows as a live chip in the status bar.
+[<img src="https://raw.githubusercontent.com/machiav3lli/oandbackupx/034b226cea5c1b30eb4f6a6f313e4dadcbb0ece4/badge_github.png" alt="Get it on GitHub" height="80">](https://github.com/Kaos599/Maglev/releases/latest)
+[<img src="https://raw.githubusercontent.com/ImranR98/Obtainium/main/assets/graphics/badge_obtainium.png" alt="Get it on Obtainium" height="80">](https://apps.obtainium.imranr.dev/redirect?r=obtainium://add/https://github.com/Kaos599/Maglev)
 
-### Any link, with pause and resume
-- Paste or share any web link and Maglev downloads the file, with pause, resume and retry that survive a restart.
-- Expired links ask for a fresh one and continue where they stopped. Files that need a sign-in work while the app is open, and Maglev never saves your passwords or cookies to disk.
-- Links that point at devices on your own network are stopped unless you allow them.
-
-### A browser without ads that saves what you watch
-- Open any page inside Maglev. Ads and trackers are blocked before they load, using a built-in list of over 42,000 ad and tracker domains. The list refreshes itself once a day, and so do any lists you add in Settings.
-- Play a video and Maglev lists it. The page's files show up in a tray you can filter by Video, Audio, Image, Document and Other. Tap one to download it with the page's cookies, so files that need the site's session still work.
-- Streaming videos (HLS and DASH) are saved as one file: pick the quality and audio language and Maglev joins the pieces, including HLS streams with standard AES-128 encryption.
-- A history of the pages you open, with search, suggestions as you type and clearing by time. It can clear itself when you close Maglev, and it never leaves your phone.
-- Tabs, with a tab list and a long-press menu on links and images: open in a new or background tab, copy, share or download. Find in page and text size are in ⋮.
-- Pop-ups and redirects you didn't tap for wait until you choose Open, Block or Always allow on this site. Bad certificates and requests for your camera, microphone or location are refused. App installers come with a warning.
-- Maglev never gets around DRM. Netflix-style protected video, live streams and players that hide their video in the page (YouTube-style) can't be saved, and Maglev says so.
-
-### Search across 40+ sources
-- One search box asks public sources such as Knaben, Torrents-CSV, Internet Archive, Nyaa, YTS, EZTV and 1337x at the same time, and merges results that point to the same torrent.
-- Results from sources known for fake uploads carry a warning.
-- Source addresses and the default trackers come from a signed list that refreshes once a day, so a source that moves keeps working without an app update.
-- Filter by category, sort by seeders, size or date, and choose which sources answer each category. Add your own Jackett or Prowlarr indexer.
-- A source behind a Cloudflare check opens it once in Maglev so you can pass it yourself.
-
-### Feeds that download new episodes
-- Follow a show from Search, or add any RSS feed, and Maglev adds new episodes that match your rules.
-
-### An assistant that asks first (optional)
-- Ask in plain words: "find the latest season of this show in 1080p", "why is this stuck?", "what's eating my storage?".
-- It searches, compares results, checks size and free space, and explains problems. It always shows what it wants to add or change and waits for you to tap Confirm.
-- It runs on your own [OpenRouter](https://openrouter.ai) key, kept in the phone's secure storage, and works with free models. Turn it off and the tab disappears.
-
-### You stay in control
-- Wi-Fi only, VPN required, pause on low battery, and download only while charging.
-- Speed limits for everything or per download, a schedule for when downloads run or slow down, and Pause all, Resume all and Shut down from the notification.
-- A Quick Settings tile, an alert when a download finishes, and Open, Share or Open folder right from the finished item.
-- Files land in `Download/Maglev`, where any file manager finds them, or in any folder you choose. Move a torrent's files mid-download, and stream video before it finishes.
-- Updates from inside the app: a daily check, downloads on Wi-Fi, and an install you confirm (or let run on its own). F-Droid, Obtainium and store installs keep their own updates.
-- OLED, Dim and Light themes with four accent colours, in a retro pixel-art style that stays easy to read.
-
-## Install
-
-Download an APK from [Releases](https://github.com/Kaos599/Maglev/releases/latest), or add Maglev to [Obtainium](https://github.com/ImranR98/Obtainium) so new versions install as they come out:
-
-<a href="https://apps.obtainium.imranr.dev/redirect?r=obtainium://add/https://github.com/Kaos599/Maglev"><img src="https://raw.githubusercontent.com/ImranR98/Obtainium/main/assets/graphics/badge_obtainium.png" alt="Get it on Obtainium" height="54"></a>
+Each release has four APKs. Pick the one for your phone:
 
 | File | Choose it if |
 |---|---|
@@ -97,6 +58,68 @@ Download an APK from [Releases](https://github.com/Kaos599/Maglev/releases/lates
 | `Maglev-<version>-x86_64.apk` | you use an emulator or a Chromebook. |
 | `Maglev-<version>-universal.apk` | you aren't sure. It runs on every device. |
 
+### Check the APK is genuine
+
+Release APKs are built by GitHub Actions from this repository, and every one is signed with the same key. Its SHA-256 certificate fingerprint is:
+
+```
+c8e15bd47fb39fb2248d8b501a677e61be564d52ba535e31a1608564e35df3c4
+```
+
+To check a file before you install it, run `apksigner verify --print-certs` on it (apksigner comes with the Android SDK build tools) and compare the `SHA-256 digest` line with the fingerprint above.
+
+## Coming from another app?
+
+Side-by-side guides for the apps people most often replace with Maglev, with what is the same, what is different and when the other app is the better pick:
+
+- [Maglev vs 1DM+](https://harshdayal.dev/maglev/1dm-alternative)
+- [Maglev vs ADM](https://harshdayal.dev/maglev/adm-alternative)
+- [Maglev vs LibreTorrent](https://harshdayal.dev/maglev/libretorrent-alternative)
+- [Maglev vs Flud](https://harshdayal.dev/maglev/flud-alternative)
+
+The [full comparison](https://harshdayal.dev/maglev/compare) covers ten Android apps, row by row, with a source for every answer.
+
+## Features
+
+### Torrents
+- Open magnet links and `.torrent` files from any app.
+- Pick which files to download before you start.
+- Keeps going with the screen off, and picks up again if Android closes the app.
+- Stop seeding at a ratio or time you choose.
+
+### Any link
+- Paste or share a link to download the file.
+- Pause, resume and retry, even after a restart.
+- An expired link asks for a fresh one and carries on where it stopped.
+
+### A browser that saves videos
+- Blocks ads and trackers before they load.
+- Play a video and Maglev lists it, along with the page's other files.
+- Saves streaming video (HLS and DASH) as one file, at the quality you pick.
+- Tabs, history and pop-up blocking.
+- Doesn't get around DRM. Netflix-style video, live streams and YouTube-style players can't be saved, and Maglev says so.
+
+### Search
+- One search box across 40+ public sources, with duplicate results merged.
+- A warning on sources known for fake uploads.
+- Add your own Jackett or Prowlarr indexer.
+
+### Feeds
+- Follow a show or add any RSS feed, and new episodes download by your rules.
+
+### Assistant (optional)
+- Ask in plain words, like "why is this stuck?" or "what's eating my storage?".
+- It shows what it wants to do and waits for you to confirm.
+- Runs on your own [OpenRouter](https://openrouter.ai) key. Turn it off and the tab disappears.
+
+### You stay in control
+- Wi-Fi only, VPN only or charging only, and a pause when the battery runs low.
+- Speed limits and a schedule for when downloads run.
+- Files go to `Download/Maglev`, or any folder you choose.
+- OLED, Dim and Light themes.
+
+Everything else is on the [Maglev website](https://harshdayal.dev/maglev#features).
+
 ## What's next
 
 - **Browser basics (0.25).** Bookmarks and a new-tab page, file upload on web forms, sign-in prompts for routers and NAS pages, site dialogs (confirm and alert), and HTTPS first for typed addresses.
@@ -104,14 +127,15 @@ Download an APK from [Releases](https://github.com/Kaos599/Maglev/releases/lates
 - Choosing which ad-block lists to combine, and per-site rules beyond "allow ads here".
 - A Google Play build.
 
-## Contributing
+## Building from source
 
-<details>
-<summary>Build from source and run the tests</summary>
+**Requirements:**
 
-### Build from source
+- Node 22
+- The Android SDK
+- A phone or emulator
 
-You need Node 22, the Android SDK and a device or emulator. CI compiles the Rust engine (`libmaglev_core.so`) on every push, so there's no Rust toolchain to install.
+You don't need Rust. CI compiles the engine (`libmaglev_core.so`) on every push.
 
 ```bash
 git clone https://github.com/Kaos599/Maglev.git && cd Maglev
@@ -119,9 +143,9 @@ npm install --legacy-peer-deps
 npx expo run:android
 ```
 
-Debug builds use a mock engine until the native library is present. For the real engine, download the `jniLibs-<abi>` artifact from a CI run and unpack it into `modules/maglev-engine/android/src/main/jniLibs/`. Maglev ships its own native module, so it runs as a development build (`expo run:android`) rather than in Expo Go.
+Debug builds use a mock engine until the native library is present. For the real engine, download the `jniLibs-<abi>` artifact from a CI run and unpack it into `modules/maglev-engine/android/src/main/jniLibs/`. Maglev ships its own native module, so it runs as a development build (`expo run:android`), not in Expo Go.
 
-### Tests
+**Tests:**
 
 ```bash
 npm test                 # ABI-split plugin + contract suite
@@ -132,15 +156,19 @@ node scripts/test-plugins.js
 
 CI also runs the Rust unit tests and checks every engine build for librqbit symbols and 16 KB page alignment.
 
-Icons are [Pixelarticons](https://github.com/halfmage/pixelarticons) by Gerrit Halfmann (MIT).
+Icons are [Pixelarticons](https://github.com/halfmage/pixelarticons) by Gerrit Halfmann (MIT). The browser's built-in block list comes from the [StevenBlack/hosts](https://github.com/StevenBlack/hosts) base list (MIT); rebuild it with `node scripts/build-blocklist.js`.
 
-The browser's built-in block list comes from the [StevenBlack/hosts](https://github.com/StevenBlack/hosts) base list (MIT), 42,042 domains, built 2026-11-12. Rebuild it with `node scripts/build-blocklist.js`.
+## Contributing
 
-</details>
+Bug reports, fixes and ideas are welcome. Read [CONTRIBUTING.md](CONTRIBUTING.md) before you open a pull request. To report a bug, use **About → Report a bug** in the app, or the [bug report form](https://github.com/Kaos599/Maglev/issues/new?template=bug.yml). Security problems go through [private reporting](https://github.com/Kaos599/Maglev/security/advisories/new).
 
-## Legal
+Much of Maglev's code is written by AI agents from my specs. I review every change, and contract tests decide what ships.
 
-Maglev doesn't host or index any content. Search sends your query to public indexes run by third parties, and the browser talks only to the sites you open and the block-list addresses in Settings. The assistant sends your messages to OpenRouter only when you use it. What you download, and following the law where you live, is up to you.
+## Disclaimer
+
+Maglev **does not host, store or distribute any content**. Search sends your query to public indexes run by third parties, and the browser talks only to the sites you open and the block-list addresses in Settings. The assistant sends your messages to OpenRouter only when you use it.
+
+What you download, and following the law where you live, is up to you.
 
 ## License
 
