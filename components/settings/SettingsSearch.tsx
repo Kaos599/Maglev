@@ -1,6 +1,6 @@
 import React, { useMemo } from 'react';
 import { StyleSheet, Text, TextInput, View } from 'react-native';
-import { router } from 'expo-router';
+import { useRouter } from 'expo-router';
 import { useTheme } from '../../context/ThemeContext';
 import { ThemeColors, radius, spacing, type } from '../../constants/theme';
 import { PixelIcon } from '../PixelIcon';
@@ -49,6 +49,7 @@ export function SettingsSearchResults({ query }: { query: string }) {
 }
 
 function ResultRow({ entry }: { entry: SettingEntry }) {
+  const router = useRouter();
   const subtitle = entry.section ? `${entry.pageTitle} · ${entry.section}` : entry.pageTitle;
   const onPress = () =>
     router.push({
