@@ -43,9 +43,9 @@ export interface SearchPrefs {
 
 /**
  * Sources that became defaults after first release. A saved source list never picks up new defaults by itself,
- * so each of these is switched on once for existing installs (0.25: Bitsearch).
+ * so each of these is switched on once for existing installs. Only safe, trusted sources become defaults.
  */
-const LATER_DEFAULTS: readonly string[] = ['bitsearch'];
+export const LATER_DEFAULTS: readonly string[] = [];
 
 const KEY = 'maglev.search.prefs.v2';
 const LEGACY_RECENTS_KEY = 'maglev.search.recents.v1';

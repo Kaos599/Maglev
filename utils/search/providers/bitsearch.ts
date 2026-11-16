@@ -69,7 +69,7 @@ export const bitsearch: SearchProvider = {
   mirrors: ['https://bitsearch.eu'],
   categories: ['movies', 'tv', 'anime', 'music', 'apps', 'games', 'books', 'other'],
   nsfw: false,
-  enabledByDefault: true,
+  enabledByDefault: false,
   method: 'html',
   canPage: true,
   async search(q, category, page, ctx) {

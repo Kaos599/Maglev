@@ -24,23 +24,19 @@ const check = (name, cond) => {
   });
   const { PROVIDERS } = await import(path.join(root, 'utils/search/providers/index.ts'));
   const { normalizeSearchPrefs } = await import(path.join(root, 'utils/prefs/search.ts'));
+  const { LATER_DEFAULTS } = await import(path.join(root, 'utils/prefs/search.ts'));
   const on = PROVIDERS.filter((p) => p.enabledByDefault).map((p) => p.id).sort();
-  check('defaults are archive, bitsearch, knaben, nyaa, torrentscsv, yts', on.join() === 'archive,bitsearch,knaben,nyaa,torrentscsv,yts');
-  check('tpb stays off by default', PROVIDERS.find((p) => p.id === 'tpb')?.enabledByDefault === false);
+  // Defaults are only safe, trusted sources. Open-upload sites and DHT/aggregator indexes stay off.
+  check('defaults are archive, knaben, nyaa, torrentscsv, yts', on.join() === 'archive,knaben,nyaa,torrentscsv,yts', on.join());
+  check('tpb, bitsearch and torrentdownload stay off', ['tpb', 'bitsearch', 'torrentdownload'].every((id) => PROVIDERS.find((p) => p.id === id)?.enabledByDefault === false));
   check('no nsfw source is on by default', PROVIDERS.every((p) => !p.enabledByDefault || !p.nsfw));
+  check('every later default is also a default', LATER_DEFAULTS.every((id) => on.includes(id)));
 
+  // The once-only mechanism, exercised with a fake later default.
   const fresh = normalizeSearchPrefs(undefined, []);
-  check('new install has bitsearch on', fresh.enabled.includes('bitsearch'));
-
-  const old = normalizeSearchPrefs({ enabled: ['knaben', 'yts'] }, []);
-  check('existing install gets bitsearch once', old.enabled.includes('bitsearch') && old.enabled.includes('knaben') && old.enabled.includes('yts'));
-  check('and it is recorded as offered', old.defaultsAdded.includes('bitsearch'));
-
-  const turnedOff = normalizeSearchPrefs({ enabled: ['knaben'], defaultsAdded: ['bitsearch'] }, []);
-  check('turned off after the offer stays off', !turnedOff.enabled.includes('bitsearch'));
-
-  const twice = normalizeSearchPrefs(old, []);
-  check('normalising again adds no duplicate', twice.enabled.filter((x) => x === 'bitsearch').length === 1);
+  check('new install gets the defaults', on.every((id) => fresh.enabled.includes(id)));
+  const kept = normalizeSearchPrefs({ enabled: ['knaben'] }, []);
+  check('a saved list is kept as it is', kept.enabled.join() === 'knaben');
 
   if (failed) { console.log(`${failed} failed`); process.exit(1); }
   console.log('default sources: all passed');
