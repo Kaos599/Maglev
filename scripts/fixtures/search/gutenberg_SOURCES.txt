@@ -1,0 +1,4 @@
+gutenberg_search.xml  https://www.gutenberg.org/ebooks/search.opds/?query=pride+prejudice  (captured 2026-11-16)
+gutenberg_empty.xml   https://www.gutenberg.org/ebooks/search.opds/?query=zzzqqqxx  (captured 2026-11-16)
+The search feed has no acquisition links. The EPUB URL https://www.gutenberg.org/ebooks/<id>.epub3.images is listed on each book's
+own OPDS page (https://www.gutenberg.org/ebooks/1342.opds) and redirects to the EPUB (200, application/epub+zip).

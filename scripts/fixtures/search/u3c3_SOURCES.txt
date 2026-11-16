@@ -1,0 +1,2 @@
+u3c3_search.html: https://u3c3.com/?search2=<token>&search=asian (2026-11-16), trimmed to the first 14 rows (includes the two pinned ad rows).
+u3c3_home_token.html: excerpt of the search21() function from https://u3c3.com/ (2026-11-16). The search2 token rotates (the old fixed value now returns the plain list), so the provider reads it from the home page first.

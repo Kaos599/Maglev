@@ -1,0 +1,2 @@
+tpb_status_search.json  first 12 rows of https://apibay.org/q.php?q=ubuntu&cat=0 (2026-11-16). The live rows were all vip or trusted,
+so the status field was rewritten by hand to mix member, helper, moderator, supermod and admin; row 4 has no status field.

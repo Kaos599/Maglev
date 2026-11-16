@@ -24,7 +24,7 @@ import { admit, oneTapDecision, pendingNeedOf } from '../../utils/admission';
 import { formatBytes } from '../../constants/format';
 import { riskySources } from '../../utils/search/safety';
 import { addRecentSearch, clearRecentSearches, getSearchPrefs, removeRecentSearch, useSearchPrefs } from '../../utils/prefs/search';
-import { availableCategories, eligibleProviders, mergeInto, rerunProvider, resolveResult, searchAll } from '../../utils/search/aggregate';
+import { availableCategories, directAddRoute, eligibleProviders, mergeInto, rerunProvider, resolveResult, searchAll } from '../../utils/search/aggregate';
 import { CloudflareSolverSheet } from '../../components/search/CloudflareSolverSheet';
 import { nextNeedsCheck, shouldShowFixHint, tallySources } from '../../utils/search/answered';
 import { formatAgeLong } from '../../utils/search/age';
@@ -275,6 +275,13 @@ export default function SearchScreen() {
 
   const handleAdd = useCallback(
     async (r: MergedResult, skipMobileAsk = false) => {
+      const direct = directAddRoute(r);
+      if (direct) {
+        // A plain file (SEARCH_CONTRACT section 9): the link flow probes, names and starts it.
+        remember(trimmed);
+        router.push(direct);
+        return;
+      }
       setBusyHash(r.infoHash);
       remember(trimmed);
       const wait = new AbortController();

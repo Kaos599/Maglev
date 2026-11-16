@@ -1049,6 +1049,7 @@ export function createToolRunner(deps: ToolRunnerDeps): ToolRunner {
     const lookText = `Looking inside ${handle}`;
     ctx.progress(lookText, 'running');
 
+    if (stored.merged.directUrl && !stored.merged.magnet) return fail('source_error', 'This result is a plain file, not a torrent, so it can\'t be opened here. Add it from Search.');
     if (!stored.magnet && stored.merged.magnet) stored.magnet = stored.merged.magnet;
     if (stored.magnet && !stored.realHash) {
       // A magnet from the result list must name the hash the result is keyed by.
