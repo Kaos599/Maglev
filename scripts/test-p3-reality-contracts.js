@@ -523,6 +523,20 @@ contract('C-NAV-1', 'P0', 'A hidden tab sets href:null without tabBarButton', ()
 });
 
 // The assistant's logic stays pure and testable in node: only the tool runner may reach the engine or React Native.
+contract('C-PORT-1', 'P1', 'A busy listening port falls back to a free port with a warning (issue #76, NATIVE_CONTRACT 9)', () => {
+  const src = code('native/maglev-core/src/engine.rs');
+  const doc = read('docs/NATIVE_CONTRACT.md');
+  const msg = 'Port {port} is used by another app, so Maglev picked a free port for now. Change it in Settings > Network > Incoming port if you need a fixed one.';
+  assert(src.includes(msg), 'engine.rs holds the exact warning text');
+  if (doc) assert(doc.includes(msg.replace('{port}', '<n>')), 'NATIVE_CONTRACT.md holds the same text');
+  else skip('docs/ not present (CI has no private docs)');
+  assert(/cfg\.listen_port\s*!=\s*0\s*&&\s*is_addr_in_use\(/.test(src), 'retry only when a fixed port was busy');
+  assert(/free_port_config\(&cfg\)/.test(src) && /listen_port\s*=\s*0/.test(src), 'retry config sets listen_port = 0');
+  assert(/build_options\(&retry_cfg,/.test(src), 'the retry builds options from the retry config');
+  assert(/busy_port_warning\(cfg\.listen_port\)/.test(src), 'the warning names the user port');
+  assert(/Pick another port in Settings/.test(src), 'the old error stays for when the retry also fails');
+});
+
 contract('C-ASSIST-8', 'P1', 'Assistant modules import neither react-native nor the engine (toolRunner.ts excepted)', () => {
   const files = walk('utils/assistant', ['.ts', '.tsx']).filter((f) => path.basename(f) !== 'toolRunner.ts');
   if (files.length === 0) return skip('no assistant modules yet');
