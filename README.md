@@ -23,6 +23,7 @@
 - [Contributing](#contributing)
 - [Disclaimer](#disclaimer)
 - [License](#license)
+- [Star History](#star-history)
 
 ## Intro
 
@@ -183,3 +184,13 @@ What you download, and following the law where you live, is up to you.
 Maglev is free software under the [GNU General Public License v3.0](LICENSE). You can use, study, change and share it. If you distribute a changed version, its source must stay available under the same licence.
 
 It includes a modified copy of [librqbit](https://github.com/ikatson/rqbit) by Igor Katson, under the [Apache License 2.0](native/maglev-core/vendor/librqbit/LICENSE). The changes are listed in [`MAGLEV_PATCH.md`](native/maglev-core/vendor/librqbit/MAGLEV_PATCH.md).
+
+## Star History
+
+<a href="https://www.star-history.com/?repos=kaos599%2Fmaglev&type=date&legend=bottom-right">
+ <picture>
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=kaos599/maglev&type=date&theme=dark&legend=bottom-right" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=kaos599/maglev&type=date&legend=bottom-right" />
+   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=kaos599/maglev&type=date&legend=bottom-right" />
+ </picture>
+</a>
