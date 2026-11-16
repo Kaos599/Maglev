@@ -150,6 +150,7 @@ section { padding: 56px 0; }
 .hero h1 { margin-top: 20px; font-size: clamp(1.125rem, 1rem + 0.6vw, 1.375rem); line-height: 1.4; font-weight: 400; letter-spacing: -0.01em; color: var(--text); max-width: 36ch; }
 .lede { margin-top: 12px; line-height: 1.6; color: var(--muted); max-width: 54ch; }
 .cta-note { margin-top: 12px; font-size: 0.875rem; color: var(--muted); }
+.cta-note[hidden] { display: none; }
 .meta { margin-top: 16px; font-size: 0.875rem; color: var(--muted); }
 .meta a { color: var(--copy); }
 .facts { display: flex; flex-wrap: wrap; gap: 8px; margin: 16px 0 0; padding: 0; list-style: none; }
@@ -278,6 +279,33 @@ section { padding: 56px 0; }
 .fp { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 12px; }
 .fp code { flex: 1 1 240px; display: block; padding: 10px 12px; font-size: 0.875rem; letter-spacing: 0.02em; }
 .obtainium .btn { margin-top: 16px; }
+
+/* Other versions and files, and the phone QR code (download.js fills and reveals them) */
+.dl-more { display: grid; gap: 16px; margin-top: 16px; align-items: start; }
+@media (min-width: 900px) { .dl-more:has(.qr:not([hidden])) { grid-template-columns: 3fr 2fr; } }
+.dl-more h3 { font-size: 1.125rem; line-height: 1.35; }
+.dl-more p { margin-top: 8px; }
+.steps .ctas { margin-top: 16px; }
+.steps .btn { text-align: center; white-space: nowrap; }
+.files-body { margin-top: 12px; }
+.ver-list, .ver-files, .ver-row { margin: 0; padding: 0; list-style: none; }
+.dl-more .ver-head { margin: 0; color: var(--text); font-weight: 700; }
+.ver-date, .ver-size { color: var(--muted); font-weight: 400; font-size: 0.875rem; }
+.ver-files a { display: inline-flex; align-items: center; min-height: 44px; }
+.ver-row { display: flex; flex-wrap: wrap; gap: 0 16px; }
+.ver-row a { display: inline-flex; align-items: center; min-height: 44px; font-size: 0.875rem; }
+.older { margin-top: 8px; border-top: 1px solid var(--hairline); }
+.older summary { display: flex; align-items: center; justify-content: space-between; min-height: 48px; cursor: pointer; color: var(--text); font-weight: 700; list-style: none; }
+.older summary::-webkit-details-marker { display: none; }
+.older summary::after { content: ''; width: 8px; height: 8px; border-right: 2px solid var(--muted); border-bottom: 2px solid var(--muted); transform: rotate(45deg); transition: transform 0.2s ease; }
+.older[open] summary::after { transform: rotate(-135deg); }
+.older .ver { padding: 8px 0; border-top: 1px solid var(--hairline); }
+.ver-all { padding-top: 4px; border-top: 1px solid var(--hairline); }
+.ver-all a { display: inline-flex; align-items: center; min-height: 44px; }
+.qr { display: grid; justify-items: start; gap: 16px; }
+.qr[hidden] { display: none; }
+.qr img { width: 184px; height: 184px; flex: none; border-radius: 10px; image-rendering: pixelated; }
+.qr h3 { margin: 0; }
 
 /* FAQ */
 .faq .h2 { margin-bottom: 20px; }
