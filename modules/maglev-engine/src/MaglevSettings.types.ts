@@ -3,7 +3,7 @@ export type TelemetryDensity = 'COMPACT' | 'VERBOSE';
 /** UI font style. Never sent to the engine. */
 export type FontStyle = 'clean' | 'retro' | 'mono';
 export type AppearanceMode = 'oled' | 'dim' | 'light' | 'system';
-export type AccentName = 'lime' | 'cyan' | 'pink' | 'orange';
+export type AccentName = 'lime' | 'cyan' | 'pink' | 'orange' | 'violet' | 'blue' | 'amber' | 'mint';
 export type StorageMode = 'POSIX' | 'SAF';
 export type EncryptionMode = 'REQUIRED' | 'PREFERRED' | 'DISABLED';
 export type ProxyType = 'SOCKS5' | 'HTTP';
@@ -12,6 +12,9 @@ export type SpeedPreset = 'UNLIMITED' | '1MB' | '2MB' | '5MB' | '10MB' | 'CUSTOM
 export type BatteryCutoffThreshold = 0 | 15 | 20 | 30; // 0 = disabled
 export type SeedingRatioLimit = 0 | 1.0 | 1.5 | 2.0 | 3.0; // 0 = unlimited
 export type SeedingDurationLimit = 0 | 3600 | 21600 | 86400; // 0 = unlimited, 1h, 6h, 24h
+export type AutoRetryMode = 'off' | 'after';
+export type AutoRetryDelayMin = 1 | 5 | 15 | 60;
+export const AUTO_RETRY_DELAYS: readonly AutoRetryDelayMin[] = [1, 5, 15, 60];
 export type PortForwardingStatus = 'MAPPED' | 'MAPPING' | 'DISABLED' | 'FAILED';
 
 export interface ProxyConfig {
@@ -60,6 +63,11 @@ export interface BandwidthSettings {
   globalPeerCeiling: number;
   seedingRatioLimit: SeedingRatioLimit;
   seedingDurationLimitSeconds: SeedingDurationLimit;
+  /** Retry a failed link download by itself after `autoRetryDelayMin`. Read in Kotlin (WorkManager), never sent to Rust. */
+  autoRetry: AutoRetryMode;
+  autoRetryDelayMin: AutoRetryDelayMin;
+  /** False: give up after 3 automatic tries per download. True: keep trying every delay. */
+  autoRetryAlways: boolean;
 }
 
 export interface PowerSettings {
@@ -82,6 +90,8 @@ export interface StorageSettings {
   preAllocateDisk: boolean;
   /** Quick share (contracts-0.19/quick-share.md): add a shared magnet, .torrent or file link at once, with no card. Read in Kotlin. */
   addWithoutAsking: boolean;
+  /** Write a `.nomedia` in the download folder and skip the media scan, so Photos and video apps do not list Maglev's files. Read in Kotlin. */
+  hideFromGallery: boolean;
 }
 
 export interface AppearanceSettings {
@@ -145,6 +155,7 @@ export const DEFAULT_SETTINGS: MaglevSettings = {
     autoMoveDestinationPath: '/storage/emulated/0/Download/MaglevCompleted',
     preAllocateDisk: true,
     addWithoutAsking: false,
+    hideFromGallery: false,
   },
   bandwidth: {
     downloadLimitBytesPerSec: 0,
@@ -157,6 +168,9 @@ export const DEFAULT_SETTINGS: MaglevSettings = {
     globalPeerCeiling: 200,
     seedingRatioLimit: 1.5,
     seedingDurationLimitSeconds: 21600, // 6 hours
+    autoRetry: 'after',
+    autoRetryDelayMin: 5,
+    autoRetryAlways: false,
   },
   network: {
     wifiOnly: false,
@@ -195,3 +209,11 @@ export const DEFAULT_SETTINGS: MaglevSettings = {
     batteryPercentage: 85,
   },
 };
+
+/** Settings that only Kotlin reads. They ride in the `setGovernance` payload and are saved in SharedPreferences. */
+export interface KotlinOnlySettings {
+  hideFromGallery: boolean;
+  autoRetry: AutoRetryMode;
+  autoRetryDelayMin: AutoRetryDelayMin;
+  autoRetryAlways: boolean;
+}

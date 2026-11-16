@@ -3,9 +3,16 @@ import { Stack } from 'expo-router';
 import { maglevEngine } from 'maglev-engine';
 import { useSettings } from '../../context/SettingsContext';
 import { useMaglevEngine as useEngine } from '../../context/EngineContext';
-import { Banner, Button, ListRow, Toggle } from '../../components/ui';
+import { Banner, Button, ListRow, SectionHeader, Toggle } from '../../components/ui';
 import { Caption, Card, SettingsPage, friendlyPath } from '../../components/settings/SettingsParts';
+import { ClipboardSetting } from '../../components/settings/ClipboardSetting';
 import { banners, notices, quickShareCopy } from '../../constants/copy';
+
+const hideCopy = {
+  title: 'Hide from gallery',
+  subtitle: "Photos and video apps won't list Maglev's downloads. Your files stay in the folder.",
+  caption: 'Turning this off shows only new files. Files already hidden show up the next time they are scanned.',
+} as const;
 
 export default function StorageSettings() {
   const { settings, updateSettings } = useSettings();
@@ -53,6 +60,21 @@ export default function StorageSettings() {
       ) : null}
       <Card>
         <ListRow
+          title={hideCopy.title}
+          subtitle={hideCopy.subtitle}
+          accessory={
+            <Toggle
+              value={settings.storage.hideFromGallery}
+              onValueChange={(v) => updateSettings((prev) => ({ storage: { ...prev.storage, hideFromGallery: v } }))}
+              accessibilityLabel={hideCopy.title}
+            />
+          }
+        />
+      </Card>
+      <Caption>{hideCopy.caption}</Caption>
+      <SectionHeader title="Adding downloads" />
+      <Card>
+        <ListRow
           title={quickShareCopy.setting.title}
           subtitle={quickShareCopy.setting.subtitle}
           accessory={
@@ -63,6 +85,7 @@ export default function StorageSettings() {
             />
           }
         />
+        <ClipboardSetting />
       </Card>
     </SettingsPage>
   );

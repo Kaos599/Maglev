@@ -31,7 +31,7 @@ export interface MockDownloadHooks {
   changed: () => void;
 }
 
-interface Item extends DownloadSnapshot {
+interface Item extends Omit<DownloadSnapshot, 'downLimitBps'> {
   url: string;
   limit: number;
   /** Ticks left in `resolving` before the probe answers. */
@@ -117,6 +117,7 @@ export class MockDownloads {
         downBps: i.state === 'downloading' ? i.downBps : 0,
         eta: i.state === 'downloading' && i.size != null && i.downBps > 0 ? Math.ceil((i.size - i.downloaded) / i.downBps) : -1,
         segmentsActive: i.state === 'downloading' ? 1 : 0,
+        downLimitBps: i.limit,
         resumable: i.resumable,
         folder: i.folder,
         addedAt: i.addedAt,

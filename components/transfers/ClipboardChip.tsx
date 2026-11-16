@@ -1,49 +1,54 @@
-import React from 'react';
-import { StyleSheet, View } from 'react-native';
-import { spacing } from '../../constants/theme';
-import { Banner } from '../ui';
-import { banners } from '../../constants/copy';
+import React, { useMemo } from 'react';
+import { StyleSheet, Text, View } from 'react-native';
+import { useTheme } from '../../context/ThemeContext';
+import { ThemeColors, radius, spacing, type } from '../../constants/theme';
+import { clipboardCopy, clipboardLabel } from '../../constants/clipboardCopy';
+import { Button } from '../ui';
 
 export interface ClipboardChipProps {
-  /** False for a link to a .torrent file. Ignored when `link` is given. */
-  magnet?: boolean;
-  /** The copied text. Its kind picks the title and its host is shown under it. */
+  /** The copied text. Its host, file name or magnet name is shown under the title. */
   link?: string;
   onAdd: () => void;
   onDismiss: () => void;
 }
 
-/** "example.com" for a web link, null for anything else (a magnet has no readable host). */
-function hostOf(link: string): string | null {
-  try {
-    const u = new URL(link);
-    return /^https?:$/.test(u.protocol) ? u.host.replace(/^www\./, '') : null;
-  } catch {
-    return null;
-  }
-}
-
-export function ClipboardChip({ magnet = true, link, onAdd, onDismiss }: ClipboardChipProps) {
-  const isMagnet = link ? link.trim().toLowerCase().startsWith('magnet:') : magnet;
-  const isTorrent = !isMagnet && (!link || /\.torrent(\?|#|$)/i.test(link));
-  const title = isMagnet
-    ? banners.transfers.magnetInClipboard.title
-    : isTorrent
-      ? banners.transfers.torrentLinkInClipboard.title
-      : banners.transfers.linkInClipboard.title;
-  const host = link && !isMagnet ? hostOf(link.trim()) : null;
+/** "Download the copied link?" prompt card on Transfers. */
+export function ClipboardChip({ link, onAdd, onDismiss }: ClipboardChipProps) {
+  const { colors } = useTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   return (
     <View style={styles.wrap}>
-      <Banner
-        tone="info"
-        title={title}
-        body={host ?? undefined}
-        actionLabel="Add"
-        onAction={onAdd}
-        onDismiss={onDismiss}
-      />
+      <View style={styles.card} accessibilityRole="alert">
+        <Text style={styles.title}>{clipboardCopy.title}</Text>
+        <Text style={styles.name} numberOfLines={1}>
+          {clipboardLabel(link ?? "")}
+        </Text>
+        <View style={styles.actions}>
+          <View style={styles.action}>
+            <Button label={clipboardCopy.download} fullWidth onPress={onAdd} />
+          </View>
+          <View style={styles.action}>
+            <Button label={clipboardCopy.notNow} variant="secondary" fullWidth onPress={onDismiss} />
+          </View>
+        </View>
+      </View>
     </View>
   );
 }
 
-const styles = StyleSheet.create({ wrap: { paddingHorizontal: spacing.lg, paddingBottom: spacing.sm } });
+const makeStyles = (c: ThemeColors) =>
+  StyleSheet.create({
+    wrap: { paddingHorizontal: spacing.lg, paddingBottom: spacing.sm },
+    card: {
+      backgroundColor: c.surface,
+      borderWidth: 1,
+      borderColor: c.border,
+      borderRadius: radius.md,
+      padding: spacing.md,
+      gap: spacing.xs,
+    },
+    title: { ...type.heading, fontSize: type.size.md, color: c.text },
+    name: { ...type.mono, fontSize: 13, color: c.textMuted },
+    actions: { flexDirection: 'row', gap: spacing.sm, marginTop: spacing.sm },
+    action: { flex: 1 },
+  });

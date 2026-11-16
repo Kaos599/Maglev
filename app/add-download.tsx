@@ -1,9 +1,10 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { friendlyPath } from '../components/settings/SettingsParts';
+import { ChipGroup, friendlyPath } from '../components/settings/SettingsParts';
+import { DownloadParts, PART_CHOICES, useLinkDownloadPrefs } from '../utils/prefs/linkDownloads';
 import { StyleSheet, Text, TextInput, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import * as Clipboard from 'expo-clipboard';
-import { maglevEngine, isDownloadLink, isShareOpen, isTorrentSource, normalizeIncoming, type UrlProbe } from 'maglev-engine';
+import { maglevEngine, infoHashToMagnet, isDownloadLink, isShareOpen, isTorrentSource, normalizeIncoming, type UrlProbe } from 'maglev-engine';
 import { useTheme } from '../context/ThemeContext';
 import { useMaglevEngine } from '../context/EngineContext';
 import { ThemeColors, radius, spacing, touch, type } from '../constants/theme';
@@ -31,6 +32,8 @@ function splitName(name: string): { base: string; ext: string } {
 
 const INVALID_TEXT = "That isn't a web link. Use a link that starts with http or https.";
 
+const PART_OPTIONS: { value: DownloadParts; label: string }[] = PART_CHOICES.map((n) => ({ value: n, label: String(n) }));
+
 export default function AddDownloadScreen() {
   const { colors } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -49,6 +52,10 @@ export default function AddDownloadScreen() {
   const [folderLabel, setFolderLabel] = useState<string | null>(null);
   const [streamItem, setStreamItem] = useState<FoundItem | null>(null);
   const [baseName, setBaseName] = useState('');
+  // Parts default to the Speed & queue pref; the chips below override it for this download only.
+  const [linkPrefs] = useLinkDownloadPrefs();
+  const [partsOverride, setPartsOverride] = useState<DownloadParts | null>(null);
+  const parts = partsOverride ?? linkPrefs.downloadParts;
   const token = useRef(0);
   const urlRef = useRef('');
   const allowLanRef = useRef(false);
@@ -64,6 +71,12 @@ export default function AddDownloadScreen() {
       // A magnet or a .torrent link is a torrent: hand it to Add torrent instead of refusing it.
       if (isTorrentSource(input)) {
         router.replace({ pathname: '/add-torrent', params: { source: input } });
+        return;
+      }
+      // A bare info hash (40 hex or 32 base32) is a torrent too.
+      const hashMagnet = infoHashToMagnet(input);
+      if (hashMagnet) {
+        router.replace({ pathname: '/add-torrent', params: { source: hashMagnet } });
         return;
       }
       if (!isDownloadLink(input)) {
@@ -186,6 +199,7 @@ export default function AddDownloadScreen() {
     const res = await startDownload(urlRef.current, {
       ...(allowLanRef.current ? { allowLan: true } : {}),
       ...(renamed ? { name: renamed } : {}),
+      segments: parts,
     });
     if (res.ok) {
       haptic('commit');
@@ -310,7 +324,8 @@ export default function AddDownloadScreen() {
           </View>
           <Button label="Change" variant="secondary" disabled={adding} onPress={() => void handleChangeFolder()} />
         </View>
-        {mobileNote ? <Banner tone="info" title={mobileNote} /> : null}
+        <ChipGroup label="Parts" options={PART_OPTIONS} value={parts} onChange={(v) => setPartsOverride(v)} />
+        {mobileNote ?<Banner tone="info" title={mobileNote} /> : null}
         {doesntFit ? <Banner tone="danger" title={banners.addDownload.notEnoughSpace.title} body={banners.addDownload.notEnoughSpace.body} /> : null}
         {addError ? <Banner tone="danger" title={addError} /> : null}
         <View style={styles.gap}>

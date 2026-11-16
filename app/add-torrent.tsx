@@ -4,7 +4,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Clipboard from 'expo-clipboard';
 import * as DocumentPicker from 'expo-document-picker';
-import { maglevEngine, isDownloadLink, parseSource, type FilePriority, type FreeSpace, type Metadata } from 'maglev-engine';
+import { maglevEngine, isDownloadLink, infoHashToMagnet, parseSource, type FilePriority, type FreeSpace, type Metadata } from 'maglev-engine';
 import { useTheme } from '../context/ThemeContext';
 import { useMaglevEngine } from '../context/EngineContext';
 import { ThemeColors, radius, spacing, touch, type } from '../constants/theme';
@@ -178,7 +178,8 @@ export default function AddTorrentScreen() {
         showDuplicate(parsed.infoHash);
         return;
       }
-      void resolve(input);
+      // A bare info hash goes to the engine as the magnet it means.
+      void resolve(infoHashToMagnet(input) ?? input);
     },
     [resolve, router, showDuplicate, telemetry.torrents],
   );
@@ -603,6 +604,7 @@ export default function AddTorrentScreen() {
         style={[styles.field, phase === 'invalid' && styles.fieldInvalid]}
         accessibilityLabel="Link, magnet or .torrent"
       />
+      <Text style={styles.help}>Magnet link, .torrent link or info hash</Text>
       {phase === 'invalid' && message ? (
         <View style={styles.gap}>
           <Banner tone="danger" title={message} />
@@ -638,6 +640,7 @@ const makeStyles = (c: ThemeColors) =>
       padding: spacing.md,
     },
     fieldInvalid: { borderColor: c.danger },
+    help: { ...type.body, fontSize: type.size.sm, color: c.textMuted },
     actions: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
     gap: { marginTop: spacing.sm },
     centered: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: spacing.lg, paddingHorizontal: spacing.xxxl },
