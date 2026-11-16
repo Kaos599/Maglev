@@ -248,7 +248,7 @@ function TransferCardImpl({
       </PressableScale>
       {showPlay ? (
         <View style={[styles.actionAnchor, { right: playRight }]}>
-          <IconButton icon="play" disabled={actionBusy} accessibilityLabel={playCopy.a11y(t.name)} onPress={() => onPlay?.(t.id)} />
+          <IconButton icon="file-video" disabled={actionBusy} accessibilityLabel={playCopy.a11y(t.name)} onPress={() => onPlay?.(t.id)} />
         </View>
       ) : null}
       {action && !selectionMode ? (

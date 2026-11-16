@@ -120,6 +120,10 @@ async function main() {
   check('paused title matches the notification', copy.storageCopy.pausedTitle === 'Paused: phone storage is almost full');
   check('free up space action', copy.storageCopy.freeUp === 'Free up space' && copy.storageCopy.removeAction === 'Remove and delete files');
   check('play label', copy.playCopy.label === 'Play');
+  {
+    const card = fs.readFileSync(path.join(__dirname, '..', 'components', 'TransferCard.tsx'), 'utf8');
+    check('row Play uses the video icon, not the Resume triangle', /<IconButton icon="file-video"[^>]*playCopy\.a11y/.test(card) && !/<IconButton icon="play"[^>]*playCopy\.a11y/.test(card));
+  }
   const kt = fs.readFileSync(path.join(root, 'modules/maglev-engine/android/src/main/java/com/maglev/engine/service/StorageGuard.kt'), 'utf8');
   check('Kotlin notification copy equals the app copy', kt.includes(`"${copy.storageCopy.pausedTitle}"`) && kt.includes(`"${copy.storageCopy.freeUp}"`));
   const noBang = Object.values({ ...copy.storageCopy, ...copy.playCopy }).filter((v) => typeof v === 'string').every((s) => !/!|please|successfully/i.test(s));
