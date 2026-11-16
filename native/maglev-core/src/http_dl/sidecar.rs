@@ -86,10 +86,25 @@ impl Sidecar {
 
     /// Bytes already stored, summed over the segments.
     pub fn held(&self) -> u64 {
-        self.segments
-            .iter()
-            .map(|s| s.pos.saturating_sub(s.start).min(s.end.saturating_sub(s.start).saturating_add(1)))
-            .sum()
+        held_of(&self.segments)
+    }
+
+    /// More than one range: a download split over several connections (contract section 17, Segments). A build
+    /// from before splitting reads such a record as "no single offset" (`resume_offset` is 0) and starts over.
+    pub fn is_split(&self) -> bool {
+        self.segments.len() > 1
+    }
+
+    /// Bytes from offset 0 on that are all in the file, whatever the segment layout.
+    pub fn contiguous_prefix(&self) -> u64 {
+        contiguous_prefix(&self.segments)
+    }
+
+    /// Back to one segment that stands at the contiguous prefix (a split download that goes on over one connection).
+    pub fn collapse_to_prefix(&mut self) {
+        let pos = self.contiguous_prefix();
+        let end = self.total.map(|t| t.saturating_sub(1)).unwrap_or(u64::MAX);
+        self.segments = vec![Segment { start: 0, end, pos }];
     }
 
     /// The single-segment resume offset, or 0 when the layout is anything else.
@@ -128,6 +143,31 @@ impl Sidecar {
         }
         Some(s)
     }
+}
+
+/// Bytes stored by a set of segments (each counted up to its own end).
+pub fn held_of(segments: &[Segment]) -> u64 {
+    segments
+        .iter()
+        .map(|s| s.pos.saturating_sub(s.start).min(s.end.saturating_sub(s.start).saturating_add(1)))
+        .sum()
+}
+
+/// The length of the run of finished bytes that starts at offset 0. Segments are in file order: a finished one
+/// extends the run, the first unfinished one ends it at its own position.
+pub fn contiguous_prefix(segments: &[Segment]) -> u64 {
+    let mut prefix = 0u64;
+    for s in segments {
+        if s.start != prefix {
+            break;
+        }
+        let reached = s.pos.clamp(s.start, s.end.saturating_add(1));
+        prefix = reached;
+        if reached <= s.end {
+            break;
+        }
+    }
+    prefix
 }
 
 pub fn part_path(folder: &Path, name: &str) -> PathBuf {
@@ -269,6 +309,64 @@ mod tests {
         std::fs::write(&p, br#"{"version":1,"url":"u","name":"n","total":null,"validator":null,"segments":[{"start":0,"end":1,"pos":0}]}"#).unwrap();
         assert_eq!(Sidecar::load(&p).unwrap().stream, None);
         let _ = std::fs::remove_dir_all(&d);
+    }
+
+    fn split_record() -> Sidecar {
+        let mut s = Sidecar::new("https://x.test/a.bin", "a.bin", Some(1000), Some("\"v\"".into()));
+        s.segments = vec![
+            Segment { start: 0, end: 249, pos: 250 },
+            Segment { start: 250, end: 499, pos: 300 },
+            Segment { start: 500, end: 749, pos: 700 },
+            Segment { start: 750, end: 999, pos: 750 },
+        ];
+        s
+    }
+
+    #[test]
+    fn a_split_record_round_trips_with_every_offset() {
+        let d = temp_dir("split");
+        let p = sidecar_path(&d, "a.bin");
+        let s = split_record();
+        assert!(s.is_split());
+        s.save(&p).unwrap();
+        let back = Sidecar::load(&p).unwrap();
+        assert_eq!(back, s);
+        assert_eq!(back.held(), 250 + 50 + 200);
+        // An older build has no single offset to resume from, so it starts over instead of trusting one.
+        assert_eq!(back.resume_offset(), 0);
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn an_old_single_segment_record_still_loads_and_is_not_split() {
+        let d = temp_dir("oldsingle");
+        let p = sidecar_path(&d, "a.bin");
+        std::fs::write(&p, br#"{"version":1,"url":"https://x.test/a.bin","name":"a.bin","total":10,"validator":"\"v\"","segments":[{"start":0,"end":9,"pos":4}]}"#).unwrap();
+        let s = Sidecar::load(&p).unwrap();
+        assert!(!s.is_split());
+        assert_eq!(s.resume_offset(), 4);
+        assert_eq!(s.contiguous_prefix(), 4);
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn the_contiguous_prefix_stops_at_the_first_unfinished_segment() {
+        let s = split_record();
+        // Segment 0 is done and segment 1 stands at 300; later segments do not extend the run.
+        assert_eq!(s.contiguous_prefix(), 300);
+        assert_eq!(contiguous_prefix(&[Segment { start: 0, end: 9, pos: 3 }, Segment { start: 10, end: 19, pos: 19 }]), 3);
+        assert_eq!(contiguous_prefix(&[Segment { start: 0, end: 9, pos: 10 }, Segment { start: 10, end: 19, pos: 20 }]), 20);
+        // A layout that does not start at 0 has no prefix.
+        assert_eq!(contiguous_prefix(&[Segment { start: 5, end: 9, pos: 8 }]), 0);
+    }
+
+    #[test]
+    fn collapsing_keeps_only_the_prefix_over_one_segment() {
+        let mut s = split_record();
+        s.collapse_to_prefix();
+        assert_eq!(s.segments, vec![Segment { start: 0, end: 999, pos: 300 }]);
+        assert_eq!(s.resume_offset(), 300);
+        assert!(!s.is_split());
     }
 
     #[test]
