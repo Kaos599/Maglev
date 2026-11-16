@@ -1,0 +1,242 @@
+[
+ {
+  "tag_name": "v0.25",
+  "name": "Maglev v0.25",
+  "draft": false,
+  "prerelease": false,
+  "published_at": "2026-11-16T12:32:35Z",
+  "html_url": "https://github.com/Kaos599/Maglev/releases/tag/v0.25",
+  "assets": [
+   {
+    "name": "Maglev-v0.25-arm64-v8a.apk",
+    "size": 23715651,
+    "content_type": "application/vnd.android.package-archive",
+    "browser_download_url": "https://github.com/Kaos599/Maglev/releases/download/v0.25/Maglev-v0.25-arm64-v8a.apk"
+   },
+   {
+    "name": "Maglev-v0.25-armeabi-v7a.apk",
+    "size": 22121525,
+    "content_type": "application/vnd.android.package-archive",
+    "browser_download_url": "https://github.com/Kaos599/Maglev/releases/download/v0.25/Maglev-v0.25-armeabi-v7a.apk"
+   },
+   {
+    "name": "Maglev-v0.25-universal.apk",
+    "size": 54858588,
+    "content_type": "application/vnd.android.package-archive",
+    "browser_download_url": "https://github.com/Kaos599/Maglev/releases/download/v0.25/Maglev-v0.25-universal.apk"
+   },
+   {
+    "name": "Maglev-v0.25-x86_64.apk",
+    "size": 24400502,
+    "content_type": "application/vnd.android.package-archive",
+    "browser_download_url": "https://github.com/Kaos599/Maglev/releases/download/v0.25/Maglev-v0.25-x86_64.apk"
+   },
+   {
+    "name": "Maglev-v0.25.apks",
+    "size": 155216410,
+    "content_type": "application/octet-stream",
+    "browser_download_url": "https://github.com/Kaos599/Maglev/releases/download/v0.25/Maglev-v0.25.apks"
+   }
+  ]
+ },
+ {
+  "tag_name": "v0.24",
+  "name": "Maglev v0.24",
+  "draft": false,
+  "prerelease": false,
+  "published_at": "2026-11-14T18:50:49Z",
+  "html_url": "https://github.com/Kaos599/Maglev/releases/tag/v0.24",
+  "assets": [
+   {
+    "name": "Maglev-v0.24-arm64-v8a.apk",
+    "size": 23618711,
+    "content_type": "application/vnd.android.package-archive",
+    "browser_download_url": "https://github.com/Kaos599/Maglev/releases/download/v0.24/Maglev-v0.24-arm64-v8a.apk"
+   },
+   {
+    "name": "Maglev-v0.24-armeabi-v7a.apk",
+    "size": 22024417,
+    "content_type": "application/vnd.android.package-archive",
+    "browser_download_url": "https://github.com/Kaos599/Maglev/releases/download/v0.24/Maglev-v0.24-armeabi-v7a.apk"
+   },
+   {
+    "name": "Maglev-v0.24-universal.apk",
+    "size": 54761516,
+    "content_type": "application/vnd.android.package-archive",
+    "browser_download_url": "https://github.com/Kaos599/Maglev/releases/download/v0.24/Maglev-v0.24-universal.apk"
+   },
+   {
+    "name": "Maglev-v0.24-x86_64.apk",
+    "size": 24303442,
+    "content_type": "application/vnd.android.package-archive",
+    "browser_download_url": "https://github.com/Kaos599/Maglev/releases/download/v0.24/Maglev-v0.24-x86_64.apk"
+   },
+   {
+    "name": "Maglev-v0.24.apks",
+    "size": 154905114,
+    "content_type": "application/octet-stream",
+    "browser_download_url": "https://github.com/Kaos599/Maglev/releases/download/v0.24/Maglev-v0.24.apks"
+   }
+  ]
+ },
+ {
+  "tag_name": "v0.23",
+  "name": "Maglev v0.23",
+  "draft": false,
+  "prerelease": false,
+  "published_at": "2026-11-14T16:28:34Z",
+  "html_url": "https://github.com/Kaos599/Maglev/releases/tag/v0.23",
+  "assets": [
+   {
+    "name": "Maglev-v0.23-arm64-v8a.apk",
+    "size": 23654459,
+    "content_type": "application/vnd.android.package-archive",
+    "browser_download_url": "https://github.com/Kaos599/Maglev/releases/download/v0.23/Maglev-v0.23-arm64-v8a.apk"
+   },
+   {
+    "name": "Maglev-v0.23-armeabi-v7a.apk",
+    "size": 22060005,
+    "content_type": "application/vnd.android.package-archive",
+    "browser_download_url": "https://github.com/Kaos599/Maglev/releases/download/v0.23/Maglev-v0.23-armeabi-v7a.apk"
+   },
+   {
+    "name": "Maglev-v0.23-universal.apk",
+    "size": 54781988,
+    "content_type": "application/vnd.android.package-archive",
+    "browser_download_url": "https://github.com/Kaos599/Maglev/releases/download/v0.23/Maglev-v0.23-universal.apk"
+   },
+   {
+    "name": "Maglev-v0.23-x86_64.apk",
+    "size": 24338262,
+    "content_type": "application/vnd.android.package-archive",
+    "browser_download_url": "https://github.com/Kaos599/Maglev/releases/download/v0.23/Maglev-v0.23-x86_64.apk"
+   },
+   {
+    "name": "Maglev-v0.23.apks",
+    "size": 154966554,
+    "content_type": "application/octet-stream",
+    "browser_download_url": "https://github.com/Kaos599/Maglev/releases/download/v0.23/Maglev-v0.23.apks"
+   }
+  ]
+ },
+ {
+  "tag_name": "v0.20",
+  "name": "Maglev v0.20",
+  "draft": false,
+  "prerelease": false,
+  "published_at": "2026-11-14T13:22:11Z",
+  "html_url": "https://github.com/Kaos599/Maglev/releases/tag/v0.20",
+  "assets": [
+   {
+    "name": "Maglev-v0.20-arm64-v8a.apk",
+    "size": 23432579,
+    "content_type": "application/vnd.android.package-archive",
+    "browser_download_url": "https://github.com/Kaos599/Maglev/releases/download/v0.20/Maglev-v0.20-arm64-v8a.apk"
+   },
+   {
+    "name": "Maglev-v0.20-armeabi-v7a.apk",
+    "size": 21838125,
+    "content_type": "application/vnd.android.package-archive",
+    "browser_download_url": "https://github.com/Kaos599/Maglev/releases/download/v0.20/Maglev-v0.20-armeabi-v7a.apk"
+   },
+   {
+    "name": "Maglev-v0.20-universal.apk",
+    "size": 54560108,
+    "content_type": "application/vnd.android.package-archive",
+    "browser_download_url": "https://github.com/Kaos599/Maglev/releases/download/v0.20/Maglev-v0.20-universal.apk"
+   },
+   {
+    "name": "Maglev-v0.20-x86_64.apk",
+    "size": 24116378,
+    "content_type": "application/vnd.android.package-archive",
+    "browser_download_url": "https://github.com/Kaos599/Maglev/releases/download/v0.20/Maglev-v0.20-x86_64.apk"
+   },
+   {
+    "name": "Maglev-v0.20.apks",
+    "size": 154196506,
+    "content_type": "application/octet-stream",
+    "browser_download_url": "https://github.com/Kaos599/Maglev/releases/download/v0.20/Maglev-v0.20.apks"
+   }
+  ]
+ },
+ {
+  "tag_name": "v0.19-beta",
+  "name": "Maglev v0.19-beta",
+  "draft": false,
+  "prerelease": false,
+  "published_at": "2026-11-13T20:46:39Z",
+  "html_url": "https://github.com/Kaos599/Maglev/releases/tag/v0.19-beta",
+  "assets": [
+   {
+    "name": "Maglev-v0.19-beta-arm64-v8a.apk",
+    "size": 23394875,
+    "content_type": "application/vnd.android.package-archive",
+    "browser_download_url": "https://github.com/Kaos599/Maglev/releases/download/v0.19-beta/Maglev-v0.19-beta-arm64-v8a.apk"
+   },
+   {
+    "name": "Maglev-v0.19-beta-armeabi-v7a.apk",
+    "size": 21800421,
+    "content_type": "application/vnd.android.package-archive",
+    "browser_download_url": "https://github.com/Kaos599/Maglev/releases/download/v0.19-beta/Maglev-v0.19-beta-armeabi-v7a.apk"
+   },
+   {
+    "name": "Maglev-v0.19-beta-universal.apk",
+    "size": 54522400,
+    "content_type": "application/vnd.android.package-archive",
+    "browser_download_url": "https://github.com/Kaos599/Maglev/releases/download/v0.19-beta/Maglev-v0.19-beta-universal.apk"
+   },
+   {
+    "name": "Maglev-v0.19-beta-x86_64.apk",
+    "size": 24078678,
+    "content_type": "application/vnd.android.package-archive",
+    "browser_download_url": "https://github.com/Kaos599/Maglev/releases/download/v0.19-beta/Maglev-v0.19-beta-x86_64.apk"
+   },
+   {
+    "name": "Maglev-v0.19-beta.apks",
+    "size": 154081818,
+    "content_type": "application/octet-stream",
+    "browser_download_url": "https://github.com/Kaos599/Maglev/releases/download/v0.19-beta/Maglev-v0.19-beta.apks"
+   }
+  ]
+ },
+ {
+  "tag_name": "v0.17-beta",
+  "name": "Maglev v0.17-beta",
+  "draft": false,
+  "prerelease": false,
+  "published_at": "2026-11-13T13:46:11Z",
+  "html_url": "https://github.com/Kaos599/Maglev/releases/tag/v0.17-beta",
+  "assets": [
+   {
+    "name": "Maglev-v0.17-beta-arm64-v8a.apk",
+    "size": 23225866,
+    "content_type": "application/vnd.android.package-archive",
+    "browser_download_url": "https://github.com/Kaos599/Maglev/releases/download/v0.17-beta/Maglev-v0.17-beta-arm64-v8a.apk"
+   },
+   {
+    "name": "Maglev-v0.17-beta-armeabi-v7a.apk",
+    "size": 21635224,
+    "content_type": "application/vnd.android.package-archive",
+    "browser_download_url": "https://github.com/Kaos599/Maglev/releases/download/v0.17-beta/Maglev-v0.17-beta-armeabi-v7a.apk"
+   },
+   {
+    "name": "Maglev-v0.17-beta-universal.apk",
+    "size": 54353671,
+    "content_type": "application/vnd.android.package-archive",
+    "browser_download_url": "https://github.com/Kaos599/Maglev/releases/download/v0.17-beta/Maglev-v0.17-beta-universal.apk"
+   },
+   {
+    "name": "Maglev-v0.17-beta-x86_64.apk",
+    "size": 23910377,
+    "content_type": "application/vnd.android.package-archive",
+    "browser_download_url": "https://github.com/Kaos599/Maglev/releases/download/v0.17-beta/Maglev-v0.17-beta-x86_64.apk"
+   },
+   {
+    "name": "Maglev-v0.17-beta.apks",
+    "size": 153417753,
+    "content_type": "application/octet-stream",
+    "browser_download_url": "https://github.com/Kaos599/Maglev/releases/download/v0.17-beta/Maglev-v0.17-beta.apks"
+   }
+  ]
+ }
+]

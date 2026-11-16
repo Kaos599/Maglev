@@ -18,4 +18,12 @@
       );
     });
   });
+
+  // A link to a closed <details> (like #other-files) opens it.
+  function openTarget() {
+    var t = location.hash && document.getElementById(location.hash.slice(1));
+    if (t && t.tagName === 'DETAILS') t.open = true;
+  }
+  window.addEventListener('hashchange', openTarget);
+  openTarget();
 })();

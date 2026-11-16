@@ -23,7 +23,32 @@ Node 22, no dependencies. `--shots` finds `playwright-core` the way `store/rende
 | Icons | `components/icons.generated.ts` (Pixelarticons), inlined as SVG |
 | JSON-LD: `WebSite`, `WebPage`, `Person`, `SoftwareApplication` and `FAQPage` on the home page; `WebPage`, `BreadcrumbList` and `FAQPage` on compare/ | Generated from the above. Each `FAQPage` text is that page's visible FAQ with links stripped. |
 
-Hand-written files: `assets/site.css`, `assets/site.js`, the fonts in `assets/fonts/` (Inter 400 and 700, and Silkscreen, subset to woff2 with `pyftsubset`), the icons, and `assets/og.png`. `og.png` is a 1200x630 render of the layout in `store/frames/feature.html`. 
+Hand-written files: `assets/site.css`, `assets/site.js`, `assets/download.js`, `assets/qr-maglev.svg`, the fonts in `assets/fonts/` (Inter 400 and 700, and Silkscreen, subset to woff2 with `pyftsubset`), the icons, and `assets/og.png`. `og.png` is a 1200x630 render of the layout in `store/frames/feature.html`. 
+
+## Smart Download
+
+`assets/download.js` points every `[data-dl]` button at the right APK of the newest GitHub release (arm64 only on a positive signal, x86_64 only on Android with a positive signal, universal for any other Android, desktop mode with a QR code elsewhere). The build bakes each button's `href` to the universal APK of the `app.json` version, so the click still downloads a file without JavaScript or when the API fails. Test: `node scripts/test-site-download.js` (fixture: `scripts/fixtures/site/releases.json`).
+
+`assets/qr-maglev.svg` is the code for `https://harshdayal.dev/maglev` (dark `#05070A` on light `#F3F4F6`, 4-module quiet zone). Regenerate it if `SITE_URL` changes:
+
+```bash
+python3 -I - <<'PY'
+import qrcode
+from qrcode.constants import ERROR_CORRECT_M
+q = qrcode.QRCode(error_correction=ERROR_CORRECT_M, border=4, box_size=1)
+q.add_data('https://harshdayal.dev/maglev'); q.make(fit=True)
+m = q.get_matrix(); n = len(m); d = []
+for y, row in enumerate(m):
+    x = 0
+    while x < n:
+        if row[x]:
+            s = x
+            while x < n and row[x]: x += 1
+            d.append(f'M{s} {y}h{x-s}v1h-{x-s}z')
+        else: x += 1
+open('site/assets/qr-maglev.svg', 'w').write(f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {n} {n}" width="{n*6}" height="{n*6}" shape-rendering="crispEdges" role="img" aria-label="QR code for harshdayal.dev/maglev"><rect width="{n}" height="{n}" fill="#F3F4F6"/><path fill="#05070A" d="{"".join(d)}"/></svg>\n')
+PY
+```
 
 ## Rules
 
