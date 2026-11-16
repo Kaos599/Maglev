@@ -499,12 +499,28 @@ fn write_record_sidecar(rec: &DlRecord, live: &Live) {
     if !(rec.resumable && rec.validator.is_some() && !rec.name.is_empty()) {
         return;
     }
+    let path = sidecar_path(Path::new(&rec.folder), &rec.name);
     let mut sc = Sidecar::new(rec.final_url.as_deref().unwrap_or(&rec.url), &rec.name, rec.size, rec.validator.clone());
     match &live.parts {
         Some(p) => sc.segments = p.snapshot(),
-        None => sc.set_single_pos(rec.held),
+        None => match single_pos_to_write(Sidecar::load(&path).as_ref(), rec.held) {
+            Some(pos) => sc.set_single_pos(pos),
+            None => return,
+        },
     }
-    let _ = sc.save(&sidecar_path(Path::new(&rec.folder), &rec.name));
+    let _ = sc.save(&path);
+}
+
+/// With no split run live, the single offset to record, or None to keep the sidecar on disk.
+/// After a restart a split download's `held` is the sum of its parts, not a contiguous prefix. Writing it as one
+/// offset (a pause, an offline pause or storage full before the parts start again) would make the next resume
+/// skip the unfinished middle of every part and finish with holes. A split sidecar stays as it is; the parts run
+/// (or its fall-back to one connection, which collapses to the prefix) owns it.
+fn single_pos_to_write(existing: Option<&Sidecar>, held: u64) -> Option<u64> {
+    match existing {
+        Some(sc) if sc.is_split() => None,
+        _ => Some(held),
+    }
 }
 
 /// What `maglev-downloads.json` held, entry by entry.
@@ -3202,6 +3218,41 @@ mod tests {
         let saved = std::fs::read_to_string(dir.join(STORE_FILE)).unwrap();
         assert!(saved.contains("\"allow_lan\":true"));
         let _ = std::fs::remove_dir_all(&dir);
+    }
+}
+
+#[cfg(test)]
+mod split_sidecar_tests {
+    use super::*;
+    use super::super::sidecar::Segment;
+
+    fn split() -> Sidecar {
+        let mut sc = Sidecar::new("https://example.com/f.bin", "f.bin", Some(400), Some("\"v1\"".into()));
+        sc.segments = vec![
+            Segment { start: 0, end: 99, pos: 10 },
+            Segment { start: 100, end: 199, pos: 200 },
+            Segment { start: 200, end: 299, pos: 250 },
+            Segment { start: 300, end: 399, pos: 400 },
+        ];
+        sc
+    }
+
+    #[test]
+    fn split_sidecar_is_never_overwritten_with_the_sum_of_its_parts() {
+        let sc = split();
+        assert!(sc.is_split());
+        // held after a restart is the sum (10 + 100 + 50 + 100), far past the contiguous prefix (10).
+        assert_eq!(sc.held(), 260);
+        assert_eq!(single_pos_to_write(Some(&sc), sc.held()), None);
+    }
+
+    #[test]
+    fn single_or_missing_sidecar_records_held() {
+        let mut one = Sidecar::new("https://example.com/f.bin", "f.bin", Some(400), Some("\"v1\"".into()));
+        one.set_single_pos(120);
+        assert!(!one.is_split());
+        assert_eq!(single_pos_to_write(Some(&one), 150), Some(150));
+        assert_eq!(single_pos_to_write(None, 150), Some(150));
     }
 }
 

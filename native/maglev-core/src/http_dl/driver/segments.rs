@@ -488,8 +488,10 @@ impl Downloads {
 
     fn flush_parts(&self, id: &str, shared: &PartsShared, side: &mut Sidecar, path: &Path) {
         tokio::task::block_in_place(|| {
-            let _ = shared.file.sync_data();
+            // Snapshot first, then sync: a position only advances after its bytes are written, so every byte the
+            // snapshot claims is on disk once sync_data returns. Syncing first could record bytes written after it.
             side.segments = shared.snapshot();
+            let _ = shared.file.sync_data();
             let guard = self.inner.lock();
             if guard.records.contains_key(id) {
                 let _ = side.save(path);
