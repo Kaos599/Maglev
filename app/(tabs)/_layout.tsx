@@ -185,6 +185,12 @@ export default function TabLayout() {
 
   return (
     <Tabs
+      // Back on any other tab goes to Transfers (never closes the app). `initialRoute` finds the
+      // route by name, so it holds when the user reorders or hides tabs; the default `firstRoute`
+      // would pick whichever tab is first in the saved order. Transfers itself falls through to
+      // Android's default (leave the app) once its own handlers have nothing to clear.
+      backBehavior="initialRoute"
+      initialRouteName="index"
       screenListeners={({ route, navigation }) => ({
         tabPress: () => haptic('select'),
         focus: () => {
