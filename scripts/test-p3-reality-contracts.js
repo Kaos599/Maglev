@@ -535,6 +535,12 @@ contract('C-PORT-1', 'P1', 'A busy listening port falls back to a free port with
   assert(/build_options\(&retry_cfg,/.test(src), 'the retry builds options from the retry config');
   assert(/busy_port_warning\(cfg\.listen_port\)/.test(src), 'the warning names the user port');
   assert(/Pick another port in Settings/.test(src), 'the old error stays for when the retry also fails');
+  // The service usually starts the engine before JS (headless start at launch), so JS init takes the
+  // already-running path. Kotlin must hand the start warning to that path too (found on a phone test).
+  const host = code('modules/maglev-engine/android/src/main/java/com/maglev/engine/EngineHost.kt');
+  assert(/startWarning\s*=\s*\(res\["config_warning"\]/.test(host), 'startEngine keeps Rust config_warning');
+  assert(/out\["alreadyRunning"\]\s*=\s*true[\s\S]{0,120}startWarning\?\.let\s*\{\s*out\["config_warning"\]/.test(host), 'already-running init returns the kept warning');
+  assert(/fun shutdownEngine\(\)[\s\S]{0,120}startWarning\s*=\s*null/.test(host), 'shutdown clears the kept warning');
 });
 
 contract('C-ASSIST-8', 'P1', 'Assistant modules import neither react-native nor the engine (toolRunner.ts excepted)', () => {
