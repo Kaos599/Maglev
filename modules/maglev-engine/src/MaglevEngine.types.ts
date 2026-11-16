@@ -83,6 +83,16 @@ export interface TorrentTelemetry {
   webSeeds?: number;
   /** NATIVE_CONTRACT 20. Seconds a magnet has been looking for its metadata, null once it has it. */
   resolvingSecs?: number | null;
+  /** NATIVE_CONTRACT 34.1. Seconds spent downloading (not paused, queued, waiting, checking or seeding). 0 for items from before 0.26: show "—". */
+  activeSecs?: number;
+  /** NATIVE_CONTRACT 34.1. Unix seconds when the item first finished. 0 until then. */
+  finishedAt?: number;
+  /** NATIVE_CONTRACT 34.1. Payload bytes this engine downloaded for the item (not bytes already on disk). Average speed = sessionBytes / activeSecs. */
+  sessionBytes?: number;
+  /** NATIVE_CONTRACT 34.1. Of the bytes moved (downloaded, plus uploaded for a torrent): on an unmetered link. */
+  bytesWifi?: number;
+  /** NATIVE_CONTRACT 34.1. The same on a metered link. */
+  bytesMobile?: number;
 }
 
 export interface AggregatedTelemetry {
@@ -258,6 +268,16 @@ export interface Snapshot {
   resolvingSecs: number | null;
   /** NATIVE_CONTRACT 25.1. Absent from an older engine. */
   allowedAnyway?: boolean;
+  /** NATIVE_CONTRACT 34.1. Seconds spent downloading (not paused, queued, waiting, checking or seeding). 0 for items from before 0.26: show "—". */
+  activeSecs?: number;
+  /** NATIVE_CONTRACT 34.1. Unix seconds when the item first finished. 0 until then. */
+  finishedAt?: number;
+  /** NATIVE_CONTRACT 34.1. Payload bytes this engine downloaded for the item (not bytes already on disk). Average speed = sessionBytes / activeSecs. */
+  sessionBytes?: number;
+  /** NATIVE_CONTRACT 34.1. Of the bytes moved (downloaded, plus uploaded for a torrent): on an unmetered link. */
+  bytesWifi?: number;
+  /** NATIVE_CONTRACT 34.1. The same on a metered link. */
+  bytesMobile?: number;
 }
 
 export type FilePriority = 'first' | 'normal' | 'skip';
@@ -441,6 +461,16 @@ export interface DownloadSnapshot {
   stream?: DownloadStream | null;
   /** True while the video and audio parts of a stream are being joined (state `verifying`). */
   muxNeeded?: boolean;
+  /** NATIVE_CONTRACT 34.1. Seconds spent downloading (not paused, queued, waiting, checking or seeding). 0 for items from before 0.26: show "—". */
+  activeSecs?: number;
+  /** NATIVE_CONTRACT 34.1. Unix seconds when the item first finished. 0 until then. */
+  finishedAt?: number;
+  /** NATIVE_CONTRACT 34.1. Payload bytes this engine downloaded for the item (not bytes already on disk). Average speed = sessionBytes / activeSecs. */
+  sessionBytes?: number;
+  /** NATIVE_CONTRACT 34.1. Of the bytes moved (downloaded, plus uploaded for a torrent): on an unmetered link. */
+  bytesWifi?: number;
+  /** NATIVE_CONTRACT 34.1. The same on a metered link. */
+  bytesMobile?: number;
 }
 
 /** NATIVE_CONTRACT 24.8. */

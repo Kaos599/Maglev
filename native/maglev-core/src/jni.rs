@@ -499,6 +499,22 @@ pub extern "system" fn Java_com_maglev_engine_NativeCore_nativeSetTransfersAllow
     reply(&mut env, &out)
 }
 
+/// Contract section 34.1: whether the active network is metered. Splits the bytes an item moved; never pauses anything.
+#[no_mangle]
+pub extern "system" fn Java_com_maglev_engine_NativeCore_nativeSetNetworkMetered(
+    mut env: JNIEnv,
+    _class: JClass,
+    metered: jboolean,
+) -> jstring {
+    let out = guarded(|| {
+        with_engine(|e| {
+            e.set_network_metered(metered != 0);
+            result_envelope(Ok(()))
+        })
+    });
+    reply(&mut env, &out)
+}
+
 #[no_mangle]
 pub extern "system" fn Java_com_maglev_engine_NativeCore_nativeGetPieceBitfield(
     mut env: JNIEnv,

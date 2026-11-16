@@ -17,7 +17,7 @@ use std::io;
 use std::net::{IpAddr, SocketAddr};
 use std::num::NonZeroU32;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
@@ -45,6 +45,7 @@ use super::sidecar::{final_path, part_path, safe_url, sidecar_path, Sidecar};
 use super::stream::{StreamError, StreamRec, StreamSpec};
 use crate::error::{EngineError, ErrorCode};
 use crate::meta::write_atomic;
+use crate::timing::{gained, Timing};
 
 /// How many link downloads transfer at once until the engine passes `max_active_downloads` (0 = no limit).
 /// Torrents have their own plan (`scheduler.rs`).
@@ -184,6 +185,8 @@ pub struct DlRecord {
     /// "Resume anyway" (contract section 25): the exemptable rule tags do not pause this download.
     /// Cleared when it finishes or the user pauses it. Saved, so it survives a restart.
     pub allowed_anyway: bool,
+    /// Active time, finish time, bytes by network (contract section 34.1). Records from before 0.26 load with zeros.
+    pub timing: Timing,
 }
 
 impl Default for DlRecord {
@@ -216,6 +219,8 @@ impl Default for DlRecord {
             stream: None,
             mux_needed: false,
             allowed_anyway: false,
+            // Not `Timing::new()`: a record read from an old file must stay untracked (no made-up finish time).
+            timing: Timing::default(),
         }
     }
 }
@@ -237,6 +242,8 @@ struct Live {
     stalled: bool,
     /// The positions of a download that runs over several connections right now.
     parts: Option<Arc<PartsShared>>,
+    /// The last `held` the timing pass saw (section 34.1); bytes between two readings are what was downloaded.
+    acct: Option<u64>,
 }
 
 #[derive(Default)]
@@ -252,6 +259,35 @@ struct StoreFile {
 }
 
 // ---- pure helpers ---------------------------------------------------------------------------------------------
+
+/// How often a running download's timing is written to disk. A crash or kill loses at most this much (section 34.1).
+const TIMING_SAVE_EVERY: Duration = Duration::from_secs(30);
+
+/// One second of timing for one download (section 34.1): time and bytes count only while it is `Downloading`.
+/// Returns whether it was downloading, so the caller knows the record changed.
+fn account_one(rec: &mut DlRecord, live: &mut Live, elapsed: Duration, metered: bool) -> bool {
+    let downloading = rec.state == State::Downloading;
+    rec.timing.tick(elapsed, downloading);
+    let got = gained(&mut live.acct, downloading, rec.held);
+    rec.timing.add_down(got, metered);
+    downloading
+}
+
+/// A download leaves `Downloading` (or the machine ran an event while it downloads): counts the bytes of the stretch
+/// that ended. Call it before the effects touch `held`.
+fn account_leave(rec: &mut DlRecord, live: &mut Live, before: State, metered: bool) {
+    if before == State::Downloading {
+        let got = gained(&mut live.acct, true, rec.held);
+        rec.timing.add_down(got, metered);
+    }
+}
+
+/// After a state change: the baseline follows `held` so bytes already on disk at a resume are never counted, and
+/// the finish is stamped once (section 34.1).
+fn account_settle(rec: &mut DlRecord, live: &mut Live, now: i64) {
+    live.acct = Some(rec.held);
+    rec.timing.observe_finished(rec.state == State::Finished, now);
+}
 
 /// `scheme://host[:port]/path` with no user name, password, query or fragment. Safe to show and to log.
 pub fn display_url(url: &str) -> String {
@@ -812,6 +848,10 @@ pub struct Downloads {
     max_active: AtomicU32,
     /// Held while a download takes a slot, so the cap can't be passed by two starts at once.
     start_lock: Mutex<()>,
+    /// The active network is metered, as the engine last said (section 34.1). Splits bytes only.
+    metered: AtomicBool,
+    /// When the list was last written; the timing pass writes again once this is older than `TIMING_SAVE_EVERY`.
+    last_save: Mutex<Instant>,
 }
 
 impl Downloads {
@@ -846,6 +886,8 @@ impl Downloads {
             counter: AtomicU64::new(1),
             max_active: AtomicU32::new(DEFAULT_MAX_ACTIVE_DOWNLOADS),
             start_lock: Mutex::new(()),
+            metered: AtomicBool::new(false),
+            last_save: Mutex::new(Instant::now()),
         });
         me.restore();
         me
@@ -891,6 +933,8 @@ impl Downloads {
         for mut rec in parsed.records {
             let (next, _) = step(rec.state, Event::Restore);
             rec.state = next;
+            // Seen unfinished now: a later finish is a real edge. A finished record from before 0.26 stays at 0.
+            rec.timing.observe_finished(rec.state == State::Finished, 0);
             // A download that was verifying has all its bytes; the first request answers 416 and finishes it.
             // A stream whose parts are all in waits for the join (`mux_needed`); it keeps `verifying`.
             if rec.state == State::Verifying && !rec.mux_needed {
@@ -940,6 +984,7 @@ impl Downloads {
     }
 
     fn save(&self) {
+        *self.last_save.lock() = Instant::now();
         let file = StoreFile {
             version: 1,
             downloads: self.inner.lock().records.values().map(persisted).collect(),
@@ -1098,6 +1143,8 @@ impl Downloads {
         let (next, effects) = step(before, ev);
         rec.state = next;
         let live = inner.live.entry(id.to_string()).or_default();
+        // Count what the stretch that is ending downloaded, before the effects touch `held`.
+        account_leave(rec, live, before, self.metered.load(Ordering::Relaxed));
 
         match next {
             State::Paused(PauseReason::User) => rec.paused_tag = Some("user".to_string()),
@@ -1189,6 +1236,7 @@ impl Downloads {
             }
         }
 
+        account_settle(rec, live, now_secs());
         let final_state = rec.state;
         if final_state == State::Gone {
             inner.records.remove(id);
@@ -1268,6 +1316,7 @@ impl Downloads {
                 segments: opts.segments.unwrap_or(1),
                 start_paused: opts.paused && block.is_none(),
                 allow_lan: opts.allow_lan,
+                timing: Timing::new(),
                 stream: opts.stream.as_ref().map(|s| StreamRec {
                     kind: s.kind,
                     variant_id: s.variant_id.clone(),
@@ -1361,9 +1410,15 @@ impl Downloads {
             return Ok(());
         }
         if e == DlError::FileChanged || e == DlError::ChecksumMismatch {
-            self.update(id, |rec, _| {
+            let changed = e == DlError::FileChanged;
+            self.update(id, |rec, live| {
                 delete_partial(rec);
                 rec.held = 0;
+                // A different file: the time, finish and bytes counted so far belong to the old one (section 34.1).
+                if changed {
+                    rec.timing.reset();
+                    live.acct = Some(0);
+                }
                 rec.validator = None;
                 rec.size = None;
                 rec.resumable = false;
@@ -1469,6 +1524,30 @@ impl Downloads {
         }
     }
 
+    /// The engine's network word (section 34.1): metered or not. Only splits bytes; never pauses anything.
+    pub fn set_metered(&self, metered: bool) {
+        self.metered.store(metered, Ordering::Relaxed);
+    }
+
+    /// The one-second timing pass, called from the engine's governance tick (section 34.1). `elapsed` is the wall time
+    /// since the previous pass. Time and bytes count only for a download in `Downloading`; the list is written at
+    /// most every `TIMING_SAVE_EVERY` while something downloads, so a kill loses no more than that.
+    pub fn account(&self, elapsed: Duration, metered: bool) {
+        self.metered.store(metered, Ordering::Relaxed);
+        let mut any = false;
+        {
+            let mut guard = self.inner.lock();
+            let inner = &mut *guard;
+            for (id, rec) in inner.records.iter_mut() {
+                let live = inner.live.entry(id.clone()).or_default();
+                any |= account_one(rec, live, elapsed, metered);
+            }
+        }
+        if any && self.last_save.lock().elapsed() >= TIMING_SAVE_EVERY {
+            self.save();
+        }
+    }
+
     pub fn snapshots(&self) -> Vec<Value> {
         let inner = self.inner.lock();
         let mut recs: Vec<&DlRecord> = inner.records.values().collect();
@@ -1518,6 +1597,11 @@ impl Downloads {
                     "added_at": r.added_at,
                     "error": r.error,
                     "notice": r.notice,
+                    "active_secs": r.timing.active_secs(),
+                    "finished_at": r.timing.finished_at,
+                    "session_bytes": r.timing.session_bytes,
+                    "bytes_wifi": r.timing.bytes_wifi,
+                    "bytes_mobile": r.timing.bytes_mobile,
                 })
             })
             .collect()
@@ -3223,5 +3307,196 @@ mod resume_anyway_tests {
     #[test]
     fn seed_metered_never_reaches_downloads() {
         assert_eq!(download_tags(&tags(&["seed_metered", "battery"])), tags(&["battery"]));
+    }
+}
+
+#[cfg(test)]
+mod timing_tests {
+    use super::*;
+
+    fn tags(v: &[&str]) -> Vec<String> {
+        v.iter().map(|s| s.to_string()).collect()
+    }
+
+    fn tmp(name: &str) -> PathBuf {
+        let d = std::env::temp_dir().join(format!("maglev-dl-timing-{name}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(&d).unwrap();
+        d
+    }
+
+    fn rt() -> tokio::runtime::Runtime {
+        tokio::runtime::Builder::new_multi_thread().worker_threads(1).enable_all().build().unwrap()
+    }
+
+    fn manager(rt: &tokio::runtime::Runtime, dir: &Path, blocked: &[&str]) -> Arc<Downloads> {
+        Downloads::build(rt.handle().clone(), None, dir, dir, None, tags(blocked))
+    }
+
+    fn put(d: &Arc<Downloads>, id: &str, state: State, f: impl FnOnce(&mut DlRecord)) {
+        let mut rec = DlRecord {
+            id: id.into(),
+            url: "https://x.test/a.bin".into(),
+            state,
+            folder: d.default_dir.to_string_lossy().into_owned(),
+            timing: Timing::new(),
+            ..DlRecord::default()
+        };
+        f(&mut rec);
+        let mut inner = d.inner.lock();
+        inner.live.insert(id.into(), Live::default());
+        inner.records.insert(id.into(), rec);
+    }
+
+    fn snap(d: &Arc<Downloads>, id: &str) -> Value {
+        d.snapshots().into_iter().find(|s| s["id"] == id).unwrap()
+    }
+
+    fn set_held(d: &Arc<Downloads>, id: &str, held: u64) {
+        d.update(id, |r, _| r.held = held).unwrap();
+    }
+
+    const SEC: Duration = Duration::from_secs(1);
+
+    #[test]
+    fn only_a_downloading_download_counts() {
+        let (rt, dir) = (rt(), tmp("only"));
+        let d = manager(&rt, &dir, &[]);
+        put(&d, "dl_d", State::Downloading, |r| r.held = 1000);
+        for (id, st) in [
+            ("dl_paused", State::Paused(PauseReason::User)),
+            ("dl_wifi", State::Paused(PauseReason::Network)),
+            ("dl_queued", State::Queued),
+            ("dl_resolving", State::Resolving),
+            ("dl_verifying", State::Verifying),
+            ("dl_error", State::Error(DlError::Network)),
+            ("dl_done", State::Finished),
+        ] {
+            put(&d, id, st, |r| r.held = 1000);
+        }
+        d.account(SEC, false); // first reading is the baseline
+        for id in ["dl_d", "dl_paused", "dl_wifi", "dl_queued", "dl_resolving", "dl_verifying", "dl_error", "dl_done"] {
+            set_held(&d, id, 1500);
+        }
+        d.account(SEC, true);
+        let s = snap(&d, "dl_d");
+        assert_eq!(s["active_secs"], 2);
+        assert_eq!(s["session_bytes"], 500);
+        assert_eq!((s["bytes_wifi"].as_u64(), s["bytes_mobile"].as_u64()), (Some(0), Some(500)));
+        for id in ["dl_paused", "dl_wifi", "dl_queued", "dl_resolving", "dl_verifying", "dl_error", "dl_done"] {
+            let s = snap(&d, id);
+            assert_eq!((s["active_secs"].as_i64(), s["session_bytes"].as_u64()), (Some(0), Some(0)), "{id}");
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn wifi_and_mobile_split_follows_the_network_at_the_time() {
+        let (rt, dir) = (rt(), tmp("split"));
+        let d = manager(&rt, &dir, &[]);
+        put(&d, "dl_a", State::Downloading, |r| r.held = 0);
+        d.account(SEC, false);
+        set_held(&d, "dl_a", 700);
+        d.account(SEC, false);
+        set_held(&d, "dl_a", 1000);
+        d.account(SEC, true);
+        let s = snap(&d, "dl_a");
+        assert_eq!((s["bytes_wifi"].as_u64(), s["bytes_mobile"].as_u64(), s["session_bytes"].as_u64()), (Some(700), Some(300), Some(1000)));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn bytes_on_disk_at_a_resume_are_not_counted_and_the_tail_before_a_pause_is() {
+        let (rt, dir) = (rt(), tmp("resume"));
+        let d = manager(&rt, &dir, &[]);
+        put(&d, "dl_a", State::Downloading, |r| r.held = 5000);
+        d.update("dl_a", |_, l| l.acct = Some(5000)).unwrap();
+        set_held(&d, "dl_a", 5400);
+        // The user pauses before the next one-second pass: the 400 bytes still count.
+        d.dispatch("dl_a", Event::UserPause);
+        assert_eq!(d.state_of("dl_a"), Some(State::Paused(PauseReason::User)));
+        assert_eq!(snap(&d, "dl_a")["session_bytes"], 400);
+        // Paused: nothing counts, the baseline follows the file.
+        set_held(&d, "dl_a", 9000);
+        d.account(SEC, false);
+        assert_eq!(snap(&d, "dl_a")["session_bytes"], 400);
+        assert_eq!(snap(&d, "dl_a")["active_secs"], 0);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn finished_at_is_set_once_by_the_state_change() {
+        let mut rec = DlRecord { state: State::Downloading, timing: Timing::new(), ..DlRecord::default() };
+        let mut live = Live::default();
+        account_settle(&mut rec, &mut live, 100);
+        assert_eq!(rec.timing.finished_at, 0);
+        rec.state = State::Finished;
+        account_settle(&mut rec, &mut live, 200);
+        account_settle(&mut rec, &mut live, 300);
+        assert_eq!(rec.timing.finished_at, 200);
+    }
+
+    #[test]
+    fn a_failed_item_that_the_old_file_never_finished_can_still_finish_after_restore() {
+        let (rt, dir) = (rt(), tmp("old"));
+        // Records as 0.25 wrote them: no `timing` key at all.
+        let mut done = serde_json::to_value(DlRecord { id: "dl_done".into(), state: State::Finished, ..DlRecord::default() }).unwrap();
+        let mut open = serde_json::to_value(DlRecord { id: "dl_open".into(), state: State::Queued, ..DlRecord::default() }).unwrap();
+        done.as_object_mut().unwrap().remove("timing");
+        open.as_object_mut().unwrap().remove("timing");
+        std::fs::write(dir.join(STORE_FILE), json!({ "version": 1, "downloads": [done, open] }).to_string()).unwrap();
+        let d = manager(&rt, &dir, &[]);
+        for id in ["dl_done", "dl_open"] {
+            let s = snap(&d, id);
+            assert_eq!((s["active_secs"].as_i64(), s["finished_at"].as_i64(), s["session_bytes"].as_u64()), (Some(0), Some(0), Some(0)));
+        }
+        // The old finished one never gets a made-up time; the old unfinished one stamps when it really finishes.
+        d.update("dl_done", |r, l| account_settle(r, l, 500)).unwrap();
+        assert_eq!(snap(&d, "dl_done")["finished_at"], 0);
+        d.update("dl_open", |r, l| {
+            r.state = State::Finished;
+            account_settle(r, l, 600)
+        })
+        .unwrap();
+        assert_eq!(snap(&d, "dl_open")["finished_at"], 600);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn timing_survives_a_restart_and_the_timing_pass_saves_by_itself() {
+        let (rt, dir) = (rt(), tmp("persist"));
+        let d = manager(&rt, &dir, &[]);
+        put(&d, "dl_a", State::Downloading, |r| r.held = 10);
+        d.account(SEC, true);
+        // A recent save: the pass does not write again.
+        assert!(!std::fs::read_to_string(dir.join(STORE_FILE)).unwrap_or_default().contains("dl_a"));
+        // Older than the save interval: the pass writes the list, so a kill loses at most that long.
+        *d.last_save.lock() = Instant::now().checked_sub(TIMING_SAVE_EVERY + SEC).unwrap_or_else(Instant::now);
+        d.account(SEC, true);
+        drop(d);
+        let d2 = manager(&rt, &dir, &[]);
+        assert_eq!(snap(&d2, "dl_a")["active_secs"], 2);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn file_changed_retry_resets_the_counters_but_other_retries_keep_them() {
+        let (rt, dir) = (rt(), tmp("reset"));
+        let d = manager(&rt, &dir, &["battery"]);
+        let counted = |r: &mut DlRecord| {
+            r.timing.active_ms = 9000;
+            r.timing.finished_at = 5;
+            r.timing.session_bytes = 100;
+            r.timing.bytes_wifi = 100;
+        };
+        put(&d, "dl_changed", State::Error(DlError::FileChanged), counted);
+        put(&d, "dl_net", State::Error(DlError::Network), counted);
+        d.retry("dl_changed").unwrap();
+        d.retry("dl_net").unwrap();
+        let s = snap(&d, "dl_changed");
+        assert_eq!((s["active_secs"].as_i64(), s["finished_at"].as_i64(), s["session_bytes"].as_u64(), s["bytes_wifi"].as_u64()), (Some(0), Some(0), Some(0), Some(0)));
+        let s = snap(&d, "dl_net");
+        assert_eq!((s["active_secs"].as_i64(), s["finished_at"].as_i64(), s["session_bytes"].as_u64()), (Some(9), Some(5), Some(100)));
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

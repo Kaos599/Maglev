@@ -91,6 +91,12 @@ interface TorrentMeta {
   health?: HealthTag | null;
   /** NATIVE_CONTRACT 18.3 (dev only): files the simulator treats as deleted or changed outside Maglev. */
   fileStates?: Map<number, 'missing' | 'changed'>;
+  /** NATIVE_CONTRACT 34.1 timing: milliseconds downloading, first finish (unix seconds, 0 = not yet) and bytes by network. */
+  activeMs?: number;
+  finishedAt?: number;
+  sessionBytes?: number;
+  bytesWifi?: number;
+  bytesMobile?: number;
 }
 
 /** Messages for a Resume the engine refuses while a health tag is set, same as the Rust engine. */
@@ -103,6 +109,7 @@ const HEALTH_RESUME_REFUSAL: Partial<Record<HealthTag, { code: EngineErrorCode; 
 
 /** Simulated time a magnet needs to resolve (dev only). */
 const MOCK_RESOLVE_MS = 7000;
+const STEP_MS = 500; // one stepSimulation tick
 const MOVE_STEPS = 6; // stepSimulation runs twice a second, so about 3 s
 const DEFAULT_MOVE_DIR = '/storage/emulated/0/Download/Maglev';
 const MAX_LIMIT_BPS = 4_294_967_295; // u32::MAX, larger values are clamped
@@ -156,6 +163,7 @@ export class MaglevMockEngine implements MaglevEngineApi {
     },
     folder: () => this.getDefaultStoragePath(),
     changed: () => this.broadcast(),
+    metered: () => this.settings.network.networkType === 'CELLULAR',
   });
 
   // System & Governance state
@@ -615,7 +623,22 @@ export class MaglevMockEngine implements MaglevEngineApi {
       includedBytes: t.files.filter((f) => f.priority > 0).reduce((n, f) => n + f.length, 0),
       // Dev torrents have their metadata at once; only the native engine has a magnet that is still looking.
       resolvingSecs: null,
+      activeSecs: Math.floor((m.activeMs ?? 0) / 1000),
+      finishedAt: m.finishedAt ?? 0,
+      sessionBytes: m.sessionBytes ?? 0,
+      bytesWifi: m.bytesWifi ?? 0,
+      bytesMobile: m.bytesMobile ?? 0,
     };
+  }
+
+  /** NATIVE_CONTRACT 34.1: adds active time and bytes; the network split follows the simulated link type. */
+  private countTiming(id: string, ms: number, downBytes: number, upBytes: number): void {
+    const m = this.metaOf(id);
+    m.activeMs = (m.activeMs ?? 0) + ms;
+    m.sessionBytes = (m.sessionBytes ?? 0) + downBytes;
+    const moved = downBytes + upBytes;
+    if (this.settings.network.networkType === 'CELLULAR') m.bytesMobile = (m.bytesMobile ?? 0) + moved;
+    else m.bytesWifi = (m.bytesWifi ?? 0) + moved;
   }
 
   private snapshots(): Snapshot[] {
@@ -1677,7 +1700,10 @@ export class MaglevMockEngine implements MaglevEngineApi {
 
       // Increment downloaded bytes (0.5 sec tick)
       const delta = Math.floor(t.downloadSpeedBytes * 0.5);
+      const before = t.downloadedBytes;
       t.downloadedBytes = Math.min(t.totalSizeBytes, t.downloadedBytes + delta);
+      // NATIVE_CONTRACT 34.1: only a torrent that is downloading counts time and bytes.
+      this.countTiming(t.id, STEP_MS, t.downloadedBytes - before, 0);
       t.progressPercent = parseFloat(((t.downloadedBytes / t.totalSizeBytes) * 100).toFixed(1));
 
       if (t.downloadSpeedBytes > 0) {
@@ -1707,6 +1733,7 @@ export class MaglevMockEngine implements MaglevEngineApi {
         t.progressPercent = 100.0;
         t.seedDurationSeconds = 0;
         const doneMeta = this.metaOf(t.id);
+        if (!doneMeta.finishedAt) doneMeta.finishedAt = Math.max(1, Math.floor(Date.now() / 1000));
         if (!doneMeta.allowedSeeding) doneMeta.allowedAnyway = false;
         this.completedListeners.forEach((l) => l({ id: t.id, name: t.name }));
 
@@ -1729,6 +1756,7 @@ export class MaglevMockEngine implements MaglevEngineApi {
 
       const deltaUp = Math.floor(t.uploadSpeedBytes * 0.5);
       t.uploadedBytes += deltaUp;
+      this.countTiming(t.id, 0, 0, deltaUp);
       if (t.downloadedBytes > 0) {
         t.ratio = parseFloat((t.uploadedBytes / t.downloadedBytes).toFixed(2));
       }

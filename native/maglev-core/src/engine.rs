@@ -57,6 +57,7 @@ use crate::relocate::{
 use crate::simd::{downsample_bitfield, MATRIX_SIZE};
 use crate::source::{check_supported, parse_source, Source};
 use crate::streaming::{mime_for_extension, stream_active, StreamServer};
+use crate::timing::{gained, Timing};
 use crate::torrent_limits::{parse_limits, LimitsStore, TorrentLimits};
 use crate::trackers::{
     announce_urls_from_torrent, apply_edits, build_torrent_file, check_export_path, find_tracker, parse_url_list, plan_add,
@@ -272,6 +273,7 @@ fn default_meta(h: &Handle20, now: i64) -> TorrentMeta {
         } else {
             None
         },
+        timing: Timing::new(),
         ..Default::default()
     }
 }
@@ -384,6 +386,11 @@ pub struct MaglevEngine {
     scanning: AtomicBool,
     /// Downloads from http(s) links (section 17), persisted in `maglev-downloads.json`.
     downloads: Arc<Downloads>,
+    /// The active network is metered (mobile data), as Kotlin last said. False when unknown (section 34.1).
+    network_metered: AtomicBool,
+    /// Last progress reading per torrent, to count downloaded bytes between passes. Not persisted: bytes already on
+    /// disk at a restart are never counted (section 34.1).
+    progress_seen: Mutex<HashMap<String, Option<u64>>>,
 }
 
 /// Keeps a registry entry and its peer-counting task alive for one magnet resolve. Dropping it (any
@@ -589,6 +596,8 @@ impl MaglevEngine {
             filehealth: Mutex::new(filehealth),
             scanning: AtomicBool::new(false),
             downloads,
+            network_metered: AtomicBool::new(false),
+            progress_seen: Mutex::new(HashMap::new()),
         });
 
         engine.restore_priorities();
@@ -751,6 +760,11 @@ impl MaglevEngine {
             included_bytes: if exact.is_some() { total_bytes } else { included_bytes(h) },
             resolving_secs: None,
             allowed_anyway: m.allowed_anyway,
+            active_secs: m.timing.active_secs(),
+            finished_at: m.timing.finished_at,
+            session_bytes: m.timing.session_bytes,
+            bytes_wifi: m.timing.bytes_wifi,
+            bytes_mobile: m.timing.bytes_mobile,
         }
     }
 
@@ -797,6 +811,11 @@ impl MaglevEngine {
             included_bytes: e.total_bytes,
             resolving_secs: None,
             allowed_anyway: m.allowed_anyway,
+            active_secs: m.timing.active_secs(),
+            finished_at: m.timing.finished_at,
+            session_bytes: m.timing.session_bytes,
+            bytes_wifi: m.timing.bytes_wifi,
+            bytes_mobile: m.timing.bytes_mobile,
         }
     }
 
@@ -844,6 +863,11 @@ impl MaglevEngine {
             included_bytes: 0,
             resolving_secs: resolving,
             allowed_anyway: false,
+            active_secs: m.timing.active_secs(),
+            finished_at: m.timing.finished_at,
+            session_bytes: m.timing.session_bytes,
+            bytes_wifi: m.timing.bytes_wifi,
+            bytes_mobile: m.timing.bytes_mobile,
         }
     }
 
@@ -1363,6 +1387,7 @@ impl MaglevEngine {
             queued: !opts.paused,
             sequential: opts.sequential,
             pending,
+            timing: Timing::new(),
             ..Default::default()
         };
 
@@ -2691,6 +2716,13 @@ impl MaglevEngine {
         Ok(())
     }
 
+    /// Kotlin's word on the active network: metered (mobile data) or not. Used only to split the bytes an item moved
+    /// (contract section 34.1); it never pauses anything. Unknown counts as unmetered, so Kotlin sends false then.
+    pub fn set_network_metered(&self, metered: bool) {
+        self.network_metered.store(metered, Ordering::Relaxed);
+        self.downloads.set_metered(metered);
+    }
+
     // ---- governance tick ------------------------------------------------------------------------
 
     fn start_tick_loop(self: &Arc<Self>) {
@@ -2855,6 +2887,8 @@ impl MaglevEngine {
         let blocked = self.blocked.lock().clone();
         // URL downloads follow the same governance reasons as torrents (section 17).
         self.downloads.set_blocked(&blocked);
+        let metered = self.network_metered.load(Ordering::Relaxed);
+        self.downloads.account(elapsed, metered);
         let mut facts: Vec<TorrentFacts> = Vec::with_capacity(handles.len());
         let mut by_id: HashMap<String, Handle20> = HashMap::with_capacity(handles.len());
         // Torrents being moved are not startable, not counted against the queue and never touched.
@@ -2888,6 +2922,7 @@ impl MaglevEngine {
                     m.allowed_anyway = false;
                 }
 
+                let prev_uploaded = m.uploaded_base.saturating_add(m.last_uploaded_seen);
                 let (uploaded, base, last) =
                     uploaded_total(m.uploaded_base, m.last_uploaded_seen, stats.uploaded_bytes);
                 m.uploaded_base = base;
@@ -2932,6 +2967,20 @@ impl MaglevEngine {
                     elapsed,
                     state == TorrentState::Seeding,
                 );
+                // Section 34.1: active time, bytes by network, the finish edge. Only a torrent that is downloading
+                // counts; uploads count in any state.
+                {
+                    let downloading = state == TorrentState::Downloading;
+                    m.timing.tick(elapsed, downloading);
+                    let got = {
+                        let mut seen = self.progress_seen.lock();
+                        let base = seen.entry(id.clone()).or_insert(None);
+                        gained(base, downloading, stats.progress_bytes)
+                    };
+                    m.timing.add_down(got, metered);
+                    m.timing.add_up(uploaded.saturating_sub(prev_uploaded), metered);
+                    m.timing.observe_finished(stats.finished, now);
+                }
                 let ratio = if stats.progress_bytes == 0 {
                     0.0
                 } else {
@@ -2976,6 +3025,7 @@ impl MaglevEngine {
             for id in stale {
                 meta.remove(&id);
             }
+            self.progress_seen.lock().retain(|k, _| by_id.contains_key(k));
 
             // A magnet that found no one for ten minutes stops looking and shows `no_peers`, so it
             // holds no work and the service can stop (section 20). A user pause is left alone.
