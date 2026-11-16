@@ -1,0 +1,4 @@
+librivox_title.json   https://librivox.org/api/feed/audiobooks?title=pride+and+prejudice&format=json&limit=5  (captured 2026-11-16)
+librivox_author.json  https://librivox.org/api/feed/audiobooks?author=austen&format=json&limit=3  (captured 2026-11-16)
+librivox_empty.json   https://librivox.org/api/feed/audiobooks?title=zzzqqqxx&format=json  (HTTP 404, body kept)
+The API has no info hash; url_zip_file is an archive.org compress link (spaces must be %20).

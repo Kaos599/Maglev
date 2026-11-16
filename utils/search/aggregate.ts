@@ -20,6 +20,8 @@ export interface ProviderPrefs {
   /** Per-provider category restriction; missing = all of the provider's categories. */
   useFor?: Record<string, Category[]>;
   adult?: boolean;
+  /** Drop results from untrusted uploaders on sources that report an uploader status (TPB). */
+  trustedUploadersOnly?: boolean;
   /** User-added providers (for example from createTorznabProvider). */
   extraProviders?: SearchProvider[];
 }
@@ -52,11 +54,16 @@ function lookup(id: string, extra?: SearchProvider[]): SearchProvider | undefine
  * Throws a ProviderError (for example 'challenge' when the site wants its check again).
  */
 export async function resolveResult<T extends SearchResult>(r: T, signal: AbortSignal, extra?: SearchProvider[]): Promise<T> {
-  if (r.magnet) return r;
+  if (r.magnet || r.directUrl) return r; // a direct file has nothing to resolve (SEARCH_CONTRACT section 9)
   const p = lookup(r.providerId, extra);
   if (!p?.resolveMagnet) throw new ProviderError('parse', 'No magnet link for this result');
   const { magnet, infoHash } = await p.resolveMagnet(r, signal);
   return { ...r, magnet, infoHash };
+}
+
+/** Where Add sends a direct-file result: the link flow. Null for a magnet result. */
+export function directAddRoute(r: Pick<SearchResult, 'directUrl'>): { pathname: '/add-download'; params: { source: string } } | null {
+  return r.directUrl && /^https:\/\//i.test(r.directUrl) ? { pathname: '/add-download', params: { source: r.directUrl } } : null;
 }
 
 export function effectiveCategories(p: SearchProvider, prefs: Pick<ProviderPrefs, 'useFor' | 'adult'>): Category[] {
@@ -182,6 +189,7 @@ interface RunArgs {
   limit: number;
   hideAdult: boolean;
   hideDead: boolean;
+  trustedOnly?: boolean;
   waitMs: number;
   mirrorOverride?: string;
   cancel?: AbortSignal;
@@ -240,6 +248,7 @@ async function runProvider(a: RunArgs): Promise<RunOutcome> {
           signal: controller.signal,
           hideAdult: a.hideAdult,
           limit: a.limit,
+          trustedOnly: a.trustedOnly,
         });
       } catch (e) {
         lastErr = e;
@@ -328,6 +337,7 @@ export async function searchAll(q: string, category: Category, opts: SearchOptio
         limit,
         hideAdult,
         hideDead,
+        trustedOnly: opts.trustedUploadersOnly,
         waitMs,
         mirrorOverride: opts.mirrorOverride?.[p.id] || undefined,
         cancel: opts.signal,
@@ -371,6 +381,7 @@ export async function rerunProvider(
     limit: opts.limit ?? 50,
     hideAdult: !opts.adult,
     hideDead: opts.hideDead ?? true,
+    trustedOnly: opts.trustedUploadersOnly,
     waitMs: (opts.waitSeconds ?? 8) * 1000,
     mirrorOverride: opts.mirrorOverride?.[p.id] || undefined,
     cancel: opts.signal,

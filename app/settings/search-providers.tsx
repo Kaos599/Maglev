@@ -251,6 +251,11 @@ export default function SearchProvidersSettings() {
             subtitle="Results no one is sharing"
             accessory={<Toggle value={prefs.hideDead} onValueChange={(hideDead) => update({ hideDead })} accessibilityLabel="Hide dead torrents" />}
           />
+          <ListRow
+            title="Trusted uploaders only"
+            subtitle="Hide Pirate Bay uploads from ordinary members"
+            accessory={<Toggle value={prefs.trustedUploadersOnly} onValueChange={(trustedUploadersOnly) => update({ trustedUploadersOnly })} accessibilityLabel="Trusted uploaders only" />}
+          />
         </Card>
       </View>
 

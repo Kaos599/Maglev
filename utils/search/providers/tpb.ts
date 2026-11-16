@@ -29,6 +29,13 @@ function tpbCategory(code: number | undefined): Category | undefined {
   return 'other';
 }
 
+/** apibay uploader statuses that count as trusted: everything except a plain 'member' or a missing status. */
+export function isTrustedUploader(status: unknown): boolean {
+  if (typeof status !== 'string') return false;
+  const s = status.trim().toLowerCase();
+  return s !== '' && s !== 'member';
+}
+
 export function parse(body: string, ctx: ParseContext): SearchResult[] {
   const rows = parseJson(body);
   if (!Array.isArray(rows)) throw new ProviderError('parse', 'Unexpected response');
@@ -38,6 +45,7 @@ export function parse(body: string, ctx: ParseContext): SearchResult[] {
     if (!r || String(r.id) === '0') continue;
     const hash = normalizeInfoHash(r.info_hash);
     if (!hash || typeof r.name !== 'string') continue;
+    if (ctx.trustedOnly && !isTrustedUploader(r.status)) continue;
     const name = decodeEntities(r.name);
     const category = tpbCategory(toInt(r.category));
     if (ctx.hideAdult && category === 'adult') continue;
@@ -76,6 +84,6 @@ export const tpb: SearchProvider = {
     const cat = TPB_CODES[category] ?? 0;
     const url = `${joinUrl(ctx.baseUrl, '/q.php')}?q=${encodeURIComponent(q)}&cat=${cat}`;
     const text = await httpText(url, { signal: ctx.signal, accept: 'application/json' });
-    return parse(text, { baseUrl: ctx.baseUrl, category, hideAdult: ctx.hideAdult, limit: ctx.limit });
+    return parse(text, { baseUrl: ctx.baseUrl, category, hideAdult: ctx.hideAdult, limit: ctx.limit, trustedOnly: ctx.trustedOnly });
   },
 };
