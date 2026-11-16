@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Feature 5: parts per link download. The pref (1, 2, 4 or 8, default 4) lives in utils/prefs/linkDownloads.ts,
-// PartsSection renders it on Speed & queue, and add-download passes `segments` with every plain-file add.
+// PartsSection renders it on Settings > Downloads, and add-download passes `segments` with every plain-file add.
 // Streams (HLS/DASH) go through StreamSheet and get no parts control.
 // Needs Node 22.18+ (runs the TypeScript source directly via type stripping).
 

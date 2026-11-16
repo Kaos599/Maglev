@@ -37,13 +37,13 @@ name: settings-roundtrip
     index: 1
     checked: true
 - back
-# 3. Downloads > Speed & queue > Download limit: ChipGroup chip "2 MB/s" (components/settings/SpeedSection.tsx:24-50).
+# 3. Downloads > Speed and sharing > Download limit: ChipGroup chip "2 MB/s" (components/settings/SpeedSection.tsx:24-50).
 #    The same chip text is in the Upload limit group, so index 0 is the download group.
 - scrollUntilVisible:
-    element: "Speed & queue"
+    element: "Speed and sharing"
     direction: DOWN
     timeout: 30000
-- tapOn: "Speed & queue"
+- tapOn: "Speed and sharing"
 - extendedWaitUntil:
     visible: "Download limit"
     timeout: 20000
@@ -84,10 +84,10 @@ name: settings-roundtrip
     checked: true
 - back
 - scrollUntilVisible:
-    element: "Speed & queue"
+    element: "Speed and sharing"
     direction: DOWN
     timeout: 30000
-- tapOn: "Speed & queue"
+- tapOn: "Speed and sharing"
 - extendedWaitUntil:
     visible: "Download limit"
     timeout: 20000

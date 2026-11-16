@@ -4,7 +4,7 @@ import { DownloadParts, PART_CHOICES, useLinkDownloadPrefs } from '../../utils/p
 
 const OPTIONS: { value: DownloadParts; label: string }[] = PART_CHOICES.map((n) => ({ value: n, label: String(n) }));
 
-/** Parts per link download. Rendered on Settings > Speed & queue. */
+/** Parts per link download. Rendered on Settings > Downloads. */
 export function PartsSection() {
   const [prefs, update] = useLinkDownloadPrefs();
   return (

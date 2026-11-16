@@ -56,7 +56,10 @@ async function main() {
   check('subtitle', /Photos and video apps won't list Maglev's downloads\. Your files stay in the folder\./.test(ui));
   check('caption says only new files change', /new files/i.test(ui));
   check('toggle writes settings.storage.hideFromGallery', /hideFromGallery: v/.test(ui));
-  check('clipboard setting under Adding downloads', /SectionHeader title="Adding downloads"/.test(ui) && /<ClipboardSetting \/>/.test(ui));
+  {
+    const dl = read('app/settings/downloads.tsx');
+    check('clipboard setting under Adding downloads (Downloads page since 0.25)', /SectionHeader title="Adding downloads"/.test(dl) && /<ClipboardSetting \/>/.test(dl));
+  }
 
   if (failed) {
     console.error(`\n${failed} check(s) failed`);

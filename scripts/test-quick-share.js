@@ -62,8 +62,8 @@ async function main() {
   const prefs = read(ENGINE_KT + 'share/QuickSharePrefs.kt');
   check('Kotlin reads add_without_asking, default false', /add_without_asking/.test(prefs) && /getBoolean\(KEY_ADD_WITHOUT_ASKING, false\)/.test(prefs));
   check('prefs read the keys JS sends', /"quickAdd"/.test(prefs) && /"appearanceMode"/.test(prefs));
-  const storage = read('app/settings/storage.tsx');
-  check('Storage screen has the toggle', /addWithoutAsking/.test(storage) && /<Toggle/.test(storage));
+  const storage = read('app/settings/downloads.tsx');
+  check('Downloads screen has the toggle (moved from Storage in 0.25)', /addWithoutAsking/.test(storage) && /<Toggle/.test(storage));
   const copy = read('constants/copy.ts');
   const m = /\/\/ region quick share[\s\S]*?\/\/ endregion quick share/.exec(copy);
   check('copy block is marked', !!m);

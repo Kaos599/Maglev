@@ -19,7 +19,7 @@ const OPTIONS = [
   { value: '60', label: 'After 1 hour' },
 ] as const;
 
-/** Wait before a failed link download tries again by itself. Read in Kotlin (WorkManager). Rendered on Settings > Speed & queue. */
+/** Wait before a failed link download tries again by itself. Read in Kotlin (WorkManager). Rendered on Settings > Downloads. */
 export function RetrySection() {
   const { settings, updateSettings } = useSettings();
   const b = settings.bandwidth;

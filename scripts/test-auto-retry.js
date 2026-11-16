@@ -63,8 +63,8 @@ async function main() {
   check('title', /Retry failed downloads/.test(sec));
   check('options', /Off/.test(sec) && /After 1 min/.test(sec) && /After 5 min/.test(sec) && /After 15 min/.test(sec) && /After 1 hour/.test(sec));
   check('Keep trying toggle', /Keep trying/.test(sec) && /Off: stop after 3 tries\./.test(sec));
-  const speed = read('app/settings/speed.tsx');
-  check('rendered on the speed page', /<RetrySection \/>/.test(speed) && /<PartsSection \/>/.test(speed));
+  const downloads = read('app/settings/downloads.tsx');
+  check('rendered on the downloads page', /<RetrySection \/>/.test(downloads) && /<PartsSection \/>/.test(downloads));
 
   if (failed) {
     console.error(`\n${failed} check(s) failed`);

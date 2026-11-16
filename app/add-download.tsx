@@ -52,7 +52,7 @@ export default function AddDownloadScreen() {
   const [folderLabel, setFolderLabel] = useState<string | null>(null);
   const [streamItem, setStreamItem] = useState<FoundItem | null>(null);
   const [baseName, setBaseName] = useState('');
-  // Parts default to the Speed & queue pref; the chips below override it for this download only.
+  // Parts default to the Settings > Downloads pref; the chips below override it for this download only.
   const [linkPrefs] = useLinkDownloadPrefs();
   const [partsOverride, setPartsOverride] = useState<DownloadParts | null>(null);
   const parts = partsOverride ?? linkPrefs.downloadParts;

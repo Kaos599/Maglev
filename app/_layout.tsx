@@ -142,15 +142,14 @@ function AppNavigation() {
           <Stack.Screen name="settings/about" />
           <Stack.Screen name="settings/assistant" />
           <Stack.Screen name="settings/backup" />
-          <Stack.Screen name="settings/bandwidth" />
           <Stack.Screen name="settings/browser" />
+          <Stack.Screen name="settings/downloads" />
           <Stack.Screen name="settings/feeds" />
           <Stack.Screen name="settings/interface" />
           <Stack.Screen name="settings/licenses" />
           <Stack.Screen name="settings/network" />
           <Stack.Screen name="settings/notifications" />
           <Stack.Screen name="settings/power" />
-          <Stack.Screen name="settings/queue" />
           <Stack.Screen name="settings/scheduling" />
           <Stack.Screen name="settings/search-providers" />
           <Stack.Screen name="settings/speed" />

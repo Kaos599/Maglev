@@ -42,28 +42,46 @@ export const SETTINGS_INDEX: SettingEntry[] = [
     ["version", "build", "release", "about"],
     "App",
   ),
-  e("about-report-bug", "Report a bug", "about", "About", [
+  e(
+    "about-report-bug",
+    "Report a bug",
+    "about",
+    "About",
+    [
     "bug",
     "issue",
     "github",
     "problem",
     "feedback",
     "report",
-  ]),
-  e("about-built-by", "Built by Kaos", "about", "About", [
+  ],
+  ),
+  e(
+    "about-built-by",
+    "Built by Kaos",
+    "about",
+    "About",
+    [
     "author",
     "developer",
     "kaos",
     "source code",
     "github",
-  ]),
-  e("about-crash-log", "Clear crash log", "about", "About", [
+  ],
+  ),
+  e(
+    "about-crash-log",
+    "Clear crash log",
+    "about",
+    "About",
+    [
     "crash",
     "error",
     "log",
     "report",
     "copy crash report",
-  ]),
+  ],
+  ),
 
   // Updates (new page)
   e(
@@ -136,7 +154,12 @@ export const SETTINGS_INDEX: SettingEntry[] = [
   ),
 
   // Appearance
-  e("appearance-mode", "Mode", "interface", "Appearance", [
+  e(
+    "appearance-mode",
+    "Mode",
+    "interface",
+    "Appearance",
+    [
     "dark",
     "light",
     "oled",
@@ -148,8 +171,14 @@ export const SETTINGS_INDEX: SettingEntry[] = [
     "color",
     "colour",
     "day",
-  ]),
-  e("appearance-accent", "Accent", "interface", "Appearance", [
+  ],
+  ),
+  e(
+    "appearance-accent",
+    "Accent",
+    "interface",
+    "Appearance",
+    [
     "color",
     "colour",
     "theme",
@@ -166,8 +195,14 @@ export const SETTINGS_INDEX: SettingEntry[] = [
     "magenta",
     "yellow",
     "green",
-  ]),
-  e("appearance-font", "Font", "interface", "Appearance", [
+  ],
+  ),
+  e(
+    "appearance-font",
+    "Font",
+    "interface",
+    "Appearance",
+    [
     "font style",
     "typeface",
     "text",
@@ -178,7 +213,8 @@ export const SETTINGS_INDEX: SettingEntry[] = [
     "pixel",
     "change font",
     "font size",
-  ]),
+  ],
+  ),
   e(
     "appearance-transfer-details",
     "Transfer details",
@@ -194,13 +230,24 @@ export const SETTINGS_INDEX: SettingEntry[] = [
       "density",
     ],
   ),
-  e("appearance-speed-totals", "Speed totals", "interface", "Appearance", [
+  e(
+    "appearance-speed-totals",
+    "Speed totals",
+    "interface",
+    "Appearance",
+    [
     "speed",
     "total",
     "pause all",
     "transfers",
-  ]),
-  e("appearance-tabs", "Tabs", "interface", "Appearance", [
+  ],
+  ),
+  e(
+    "appearance-tabs",
+    "Tabs",
+    "interface",
+    "Appearance",
+    [
     "tab bar",
     "navigation",
     "show",
@@ -216,18 +263,30 @@ export const SETTINGS_INDEX: SettingEntry[] = [
     "remove",
     "remove tab",
     "hide tab",
-  ]),
-  e("appearance-app-icon", "App icon", "interface", "Appearance", [
+  ],
+  ),
+  e(
+    "appearance-app-icon",
+    "App icon",
+    "interface",
+    "Appearance",
+    [
     "icon",
     "launcher",
     "home screen",
     "teal",
     "logo",
     "theme",
-  ]),
+  ],
+  ),
 
   // Assistant
-  e("assistant-enable", "Assistant", "assistant", "Assistant", [
+  e(
+    "assistant-enable",
+    "Assistant",
+    "assistant",
+    "Assistant",
+    [
     "ai",
     "chat",
     "bot",
@@ -237,15 +296,22 @@ export const SETTINGS_INDEX: SettingEntry[] = [
     "enable",
     "on",
     "off",
-  ]),
-  e("assistant-tokens", "Tokens used", "assistant", "Assistant", [
+  ],
+  ),
+  e(
+    "assistant-tokens",
+    "Tokens used",
+    "assistant",
+    "Assistant",
+    [
     "usage",
     "tokens",
     "cost",
     "input",
     "output",
     "billing",
-  ]),
+  ],
+  ),
   e(
     "assistant-notice",
     "Show the usage notice again",
@@ -292,21 +358,33 @@ export const SETTINGS_INDEX: SettingEntry[] = [
   ),
 
   // Backup
-  e("backup-export", "Export backup", "backup", "Backup and restore", [
+  e(
+    "backup-export",
+    "Export backup",
+    "backup",
+    "Backup and restore",
+    [
     "save",
     "backup",
     "file",
     "export",
     "settings",
     "lists",
-  ]),
-  e("backup-restore", "Restore from backup", "backup", "Backup and restore", [
+  ],
+  ),
+  e(
+    "backup-restore",
+    "Restore from backup",
+    "backup",
+    "Backup and restore",
+    [
     "restore",
     "import",
     "backup",
     "file",
     "load",
-  ]),
+  ],
+  ),
   e(
     "backup-part-settings",
     "Settings",
@@ -365,41 +443,75 @@ export const SETTINGS_INDEX: SettingEntry[] = [
   ),
 
   // Browser
-  e("browser-ad-blocking", "Ad blocking", "browser", "Browser", [
+  e(
+    "browser-ad-blocking",
+    "Ad blocking",
+    "browser",
+    "Browser",
+    [
     "ads",
     "adblock",
     "trackers",
     "block",
     "ad block",
     "privacy",
-  ]),
-  e("browser-add-list", "Add list address", "browser", "Browser", [
+  ],
+  ),
+  e(
+    "browser-add-list",
+    "Add list address",
+    "browser",
+    "Browser",
+    [
     "block list",
     "hosts",
     "domain list",
     "url",
     "https",
     "filter",
-  ]),
-  e("browser-reset-list", "Reset to built-in list", "browser", "Browser", [
+  ],
+    "List addresses",
+  ),
+  e(
+    "browser-reset-list",
+    "Reset to built-in list",
+    "browser",
+    "Browser",
+    [
     "block list",
     "default",
     "factory",
     "built in",
-  ]),
-  e("browser-update-list", "Update now", "browser", "Browser", [
+  ],
+    "List addresses",
+  ),
+  e(
+    "browser-update-list",
+    "Update now",
+    "browser",
+    "Browser",
+    [
     "block list",
     "refresh",
     "fetch",
     "ads",
     "download",
-  ]),
-  e("browser-allowed-ads", "Sites allowed to show ads", "browser", "Browser", [
+  ],
+    "Block list",
+  ),
+  e(
+    "browser-allowed-ads",
+    "Sites allowed to show ads",
+    "browser",
+    "Browser",
+    [
     "allow",
     "whitelist",
     "ads",
     "exception",
-  ]),
+  ],
+    "Sites allowed to show ads",
+  ),
   e(
     "browser-engine-duckduckgo",
     "DuckDuckGo",
@@ -439,7 +551,12 @@ export const SETTINGS_INDEX: SettingEntry[] = [
     ["search engine", "search", "default", "change search engine"],
     "Search engine",
   ),
-  e("browser-desktop-site", "Desktop site", "browser", "Browser", [
+  e(
+    "browser-desktop-site",
+    "Desktop site",
+    "browser",
+    "Browser",
+    [
     "desktop",
     "mobile",
     "user agent",
@@ -448,8 +565,15 @@ export const SETTINGS_INDEX: SettingEntry[] = [
     "request",
     "desktop mode",
     "mode",
-  ]),
-  e("browser-text-size", "Text size", "browser", "Browser", [
+  ],
+    "Search engine",
+  ),
+  e(
+    "browser-text-size",
+    "Text size",
+    "browser",
+    "Browser",
+    [
     "zoom",
     "font",
     "larger",
@@ -458,7 +582,9 @@ export const SETTINGS_INDEX: SettingEntry[] = [
     "percent",
     "big",
     "small",
-  ]),
+  ],
+    "Search engine",
+  ),
   e(
     "browser-popups-ask",
     "Ask",
@@ -489,9 +615,14 @@ export const SETTINGS_INDEX: SettingEntry[] = [
     "browser",
     "Browser",
     ["pop-up", "popup", "redirect", "allow", "exception"],
-    "Pop-ups and redirects",
+    "Sites allowed to open pop-ups",
   ),
-  e("browser-clear-data", "Clear browsing data", "browser", "Browser", [
+  e(
+    "browser-clear-data",
+    "Clear browsing data",
+    "browser",
+    "Browser",
+    [
     "cookies",
     "cache",
     "history",
@@ -499,8 +630,15 @@ export const SETTINGS_INDEX: SettingEntry[] = [
     "sign out",
     "site data",
     "privacy",
-  ]),
-  e("browser-save-history", "Save history", "browser", "Browser", [
+  ],
+    "History",
+  ),
+  e(
+    "browser-save-history",
+    "Save history",
+    "browser",
+    "Browser",
+    [
     "history",
     "record",
     "pages",
@@ -509,14 +647,23 @@ export const SETTINGS_INDEX: SettingEntry[] = [
     "private",
     "private browsing",
     "incognito",
-  ]),
-  e("browser-suggest-history", "Suggest from history", "browser", "Browser", [
+  ],
+    "History",
+  ),
+  e(
+    "browser-suggest-history",
+    "Suggest from history",
+    "browser",
+    "Browser",
+    [
     "history",
     "suggestions",
     "autocomplete",
     "address bar",
     "type",
-  ]),
+  ],
+    "History",
+  ),
   e(
     "browser-clear-on-close",
     "Clear history when Maglev closes",
@@ -536,19 +683,34 @@ export const SETTINGS_INDEX: SettingEntry[] = [
       "app",
       "when app closes",
     ],
+    "History",
   ),
-  e("browser-open-history", "History", "browser", "Browser", [
+  e(
+    "browser-open-history",
+    "History",
+    "browser",
+    "Browser",
+    [
     "history",
     "pages",
     "visited",
     "log",
-  ]),
-  e("browser-clear-history", "Clear history", "browser", "Browser", [
+  ],
+    "History",
+  ),
+  e(
+    "browser-clear-history",
+    "Clear history",
+    "browser",
+    "Browser",
+    [
     "history",
     "delete",
     "remove",
     "erase",
-  ]),
+  ],
+    "History",
+  ),
 
   // Auto-download (feeds)
   e(
@@ -569,36 +731,68 @@ export const SETTINGS_INDEX: SettingEntry[] = [
       "new items",
     ],
   ),
-  e("feeds-interval", "Check every", "feeds", "Auto-download", [
+  e(
+    "feeds-interval",
+    "Check every",
+    "feeds",
+    "Auto-download",
+    [
     "interval",
     "minutes",
     "how often",
     "frequency",
     "schedule",
     "timer",
-  ]),
-  e("feeds-add-rule", "Add rule", "feeds", "Auto-download", [
+  ],
+  ),
+  e(
+    "feeds-add-rule",
+    "Add rule",
+    "feeds",
+    "Auto-download",
+    [
     "rule",
     "filter",
     "match",
     "include",
     "new rule",
-  ]),
-  e("feeds-check-now", "Check now", "feeds", "Auto-download", [
+  ],
+    "Rules",
+  ),
+  e(
+    "feeds-check-now",
+    "Check now",
+    "feeds",
+    "Auto-download",
+    [
     "refresh",
     "run",
     "recheck",
     "feeds",
-  ]),
-  e("feeds-open", "Open Feeds", "feeds", "Auto-download", [
+  ],
+    "Status",
+  ),
+  e(
+    "feeds-open",
+    "Open Feeds",
+    "feeds",
+    "Auto-download",
+    [
     "feeds",
     "rss",
     "follow",
     "tab",
-  ]),
+  ],
+    "Rules",
+  ),
 
   // Network
-  e("network-wifi-only", "Wi-Fi only", "network", "Network", [
+  e(
+    "network-wifi-only",
+    "Wi-Fi only",
+    "network",
+    "Network",
+    [
     "wifi",
     "wlan",
     "wireless",
@@ -612,8 +806,14 @@ export const SETTINGS_INDEX: SettingEntry[] = [
     "downloads",
     "download over wifi",
     "save data",
-  ]),
-  e("network-share-mobile", "Share on mobile data", "network", "Network", [
+  ],
+  ),
+  e(
+    "network-share-mobile",
+    "Share on mobile data",
+    "network",
+    "Network",
+    [
     "seed",
     "upload",
     "mobile data",
@@ -627,15 +827,27 @@ export const SETTINGS_INDEX: SettingEntry[] = [
     "lte",
     "share on 4g",
     "seed on mobile data",
-  ]),
-  e("network-vpn-only", "Only download over a VPN", "network", "Network", [
+  ],
+  ),
+  e(
+    "network-vpn-only",
+    "Only download over a VPN",
+    "network",
+    "Network",
+    [
     "vpn",
     "privacy",
     "tunnel",
     "secure",
     "network",
-  ]),
-  e("network-ssid-enable", "Only on these networks", "network", "Network", [
+  ],
+  ),
+  e(
+    "network-ssid-enable",
+    "Only on these networks",
+    "network",
+    "Network",
+    [
     "wifi",
     "wi-fi",
     "ssid",
@@ -646,8 +858,14 @@ export const SETTINGS_INDEX: SettingEntry[] = [
     "home",
     "home wifi",
     "home network",
-  ]),
-  e("network-ssid-add", "Add network name", "network", "Network", [
+  ],
+  ),
+  e(
+    "network-ssid-add",
+    "Add network name",
+    "network",
+    "Network",
+    [
     "wifi",
     "wi-fi",
     "ssid",
@@ -655,15 +873,28 @@ export const SETTINGS_INDEX: SettingEntry[] = [
     "add",
     "home",
     "home wifi",
-  ]),
-  e("network-port", "Incoming port", "network", "Network", [
+  ],
+  ),
+  e(
+    "network-port",
+    "Incoming port",
+    "network",
+    "Network",
+    [
     "port",
     "listening",
     "firewall",
     "peers",
     "connection",
-  ]),
-  e("network-upnp", "UPnP", "network", "Network", [
+  ],
+    "Connection",
+  ),
+  e(
+    "network-upnp",
+    "UPnP",
+    "network",
+    "Network",
+    [
     "router",
     "port",
     "forward",
@@ -671,57 +902,113 @@ export const SETTINGS_INDEX: SettingEntry[] = [
     "firewall",
     "upnp",
     "port forwarding",
-  ]),
-  e("network-dht", "DHT", "network", "Network", [
+  ],
+    "Connection",
+  ),
+  e(
+    "network-dht",
+    "DHT",
+    "network",
+    "Network",
+    [
     "peers",
     "trackers",
     "distributed",
     "find peers",
     "torrent",
-  ]),
-  e("network-lsd", "Local peer discovery", "network", "Network", [
+  ],
+    "Connection",
+  ),
+  e(
+    "network-lsd",
+    "Local peer discovery",
+    "network",
+    "Network",
+    [
     "lan",
     "wifi",
     "wi-fi",
     "local",
     "peers",
     "discovery",
-  ]),
-  e("network-proxy-enable", "SOCKS5 proxy", "network", "Network", [
+  ],
+    "Connection",
+  ),
+  e(
+    "network-proxy-enable",
+    "SOCKS5 proxy",
+    "network",
+    "Network",
+    [
     "proxy",
     "socks",
     "socks5",
     "tunnel",
     "vpn",
-  ]),
-  e("network-proxy-host", "Host", "network", "Network", [
+  ],
+    "Proxy",
+  ),
+  e(
+    "network-proxy-host",
+    "Host",
+    "network",
+    "Network",
+    [
     "proxy",
     "socks",
     "address",
     "ip",
     "server",
     "hostname",
-  ]),
-  e("network-proxy-port", "Port", "network", "Network", [
+  ],
+    "Proxy",
+  ),
+  e(
+    "network-proxy-port",
+    "Port",
+    "network",
+    "Network",
+    [
     "proxy",
     "socks",
     "number",
-  ]),
-  e("network-proxy-user", "Username", "network", "Network", [
+  ],
+    "Proxy",
+  ),
+  e(
+    "network-proxy-user",
+    "Username",
+    "network",
+    "Network",
+    [
     "proxy",
     "socks",
     "login",
     "user",
     "account",
-  ]),
-  e("network-proxy-pass", "Password", "network", "Network", [
+  ],
+    "Proxy",
+  ),
+  e(
+    "network-proxy-pass",
+    "Password",
+    "network",
+    "Network",
+    [
     "proxy",
     "socks",
     "login",
     "secret",
     "pass",
-  ]),
-  e("network-ip-blocklist", "Block listed IPs", "network", "Network", [
+  ],
+    "Proxy",
+  ),
+  e(
+    "network-ip-blocklist",
+    "Block listed IPs",
+    "network",
+    "Network",
+    [
     "ip filter",
     "blocklist",
     "block list",
@@ -729,7 +1016,9 @@ export const SETTINGS_INDEX: SettingEntry[] = [
     "firewall",
     "ip",
     "file",
-  ]),
+  ],
+    "IP blocklist",
+  ),
 
   // Notifications
   e(
@@ -768,41 +1057,72 @@ export const SETTINGS_INDEX: SettingEntry[] = [
   ),
 
   // Power
-  e("power-charging-only", "Charging only", "power", "Power", [
+  e(
+    "power-charging-only",
+    "Charging only",
+    "power",
+    "Power",
+    [
     "battery",
     "charging",
     "plug",
     "power",
     "charger",
     "wall",
-  ]),
-  e("power-close-when-done", "Close when done", "power", "Power", [
+  ],
+  ),
+  e(
+    "power-close-when-done",
+    "Close when done",
+    "downloads",
+    "Downloads",
+    [
     "exit",
     "quit",
     "shut down",
     "battery",
     "stop",
     "finish",
-  ]),
-  e("power-resume-restart", "Resume after restart", "power", "Power", [
+  ],
+    "When downloads finish",
+  ),
+  e(
+    "power-resume-restart",
+    "Resume after restart",
+    "downloads",
+    "Downloads",
+    [
     "restart",
     "reboot",
     "continue",
     "boot",
     "startup",
     "resume",
-  ]),
-  e("power-pause-below", "Pause below", "power", "Power", [
+  ],
+    "When downloads finish",
+  ),
+  e(
+    "power-pause-below",
+    "Pause below",
+    "power",
+    "Power",
+    [
     "battery",
     "cutoff",
     "low battery",
     "percent",
     "power",
     "threshold",
-  ]),
+  ],
+  ),
 
   // Scheduling
-  e("scheduling-use", "Use a schedule", "scheduling", "Scheduling", [
+  e(
+    "scheduling-use",
+    "Use a schedule",
+    "scheduling",
+    "Scheduling",
+    [
     "timer",
     "time",
     "times",
@@ -814,8 +1134,14 @@ export const SETTINGS_INDEX: SettingEntry[] = [
     "downloads",
     "timetable",
     "time of day",
-  ]),
-  e("scheduling-night", "Only download at night", "scheduling", "Scheduling", [
+  ],
+  ),
+  e(
+    "scheduling-night",
+    "Only download at night",
+    "scheduling",
+    "Scheduling",
+    [
     "night",
     "time",
     "sleep",
@@ -823,15 +1149,23 @@ export const SETTINGS_INDEX: SettingEntry[] = [
     "morning",
     "pause daytime",
     "preset",
-  ]),
-  e("scheduling-add-rule", "Add rule", "scheduling", "Scheduling", [
+  ],
+  ),
+  e(
+    "scheduling-add-rule",
+    "Add rule",
+    "scheduling",
+    "Scheduling",
+    [
     "rule",
     "time",
     "limit",
     "pause",
     "new rule",
     "speed",
-  ]),
+  ],
+    "Rules",
+  ),
 
   // Search sources
   e(
@@ -851,6 +1185,7 @@ export const SETTINGS_INDEX: SettingEntry[] = [
       "porn sites",
       "block",
     ],
+    "What sources to show",
   ),
   e(
     "search-warn-unsafe",
@@ -867,6 +1202,7 @@ export const SETTINGS_INDEX: SettingEntry[] = [
       "safety",
       "risky",
     ],
+    "What sources to show",
   ),
   e(
     "search-clear-checks",
@@ -882,6 +1218,7 @@ export const SETTINGS_INDEX: SettingEntry[] = [
       "site",
       "sign out",
     ],
+    "What sources to show",
   ),
   e(
     "search-wait-slow",
@@ -889,6 +1226,7 @@ export const SETTINGS_INDEX: SettingEntry[] = [
     "search-providers",
     "Search sources",
     ["timeout", "slow", "seconds", "wait", "time", "delay", "speed"],
+    "How search behaves",
   ),
   e(
     "search-results-per-source",
@@ -905,6 +1243,7 @@ export const SETTINGS_INDEX: SettingEntry[] = [
       "per site",
       "per source",
     ],
+    "How search behaves",
   ),
   e(
     "search-hide-dead",
@@ -921,6 +1260,7 @@ export const SETTINGS_INDEX: SettingEntry[] = [
       "empty",
       "filter",
     ],
+    "How search behaves",
   ),
   e(
     "search-category",
@@ -939,6 +1279,7 @@ export const SETTINGS_INDEX: SettingEntry[] = [
       "only movies",
       "only",
     ],
+    "Show sources for",
   ),
   e(
     "search-name-lines",
@@ -976,6 +1317,7 @@ export const SETTINGS_INDEX: SettingEntry[] = [
       "own server",
       "tracker",
     ],
+    "Your own indexer",
   ),
 
   // Speed & queue
@@ -983,7 +1325,7 @@ export const SETTINGS_INDEX: SettingEntry[] = [
     "speed-download-limit",
     "Download limit",
     "speed",
-    "Speed & queue",
+    "Speed and sharing",
     [
       "bandwidth",
       "throttle",
@@ -1001,7 +1343,7 @@ export const SETTINGS_INDEX: SettingEntry[] = [
     "speed-upload-limit",
     "Upload limit",
     "speed",
-    "Speed & queue",
+    "Speed and sharing",
     [
       "bandwidth",
       "throttle",
@@ -1016,7 +1358,12 @@ export const SETTINGS_INDEX: SettingEntry[] = [
     ],
     "Speed",
   ),
-  e("speed-connections", "Connections per torrent", "speed", "Speed & queue", [
+  e(
+    "speed-connections",
+    "Connections per torrent",
+    "speed",
+    "Speed and sharing",
+    [
     "peers",
     "threads",
     "connections",
@@ -1025,8 +1372,15 @@ export const SETTINGS_INDEX: SettingEntry[] = [
     "per torrent",
     "more",
     "more connections",
-  ]),
-  e("speed-active-downloads", "Active downloads", "speed", "Speed & queue", [
+  ],
+    "Speed",
+  ),
+  e(
+    "speed-active-downloads",
+    "Active downloads",
+    "speed",
+    "Speed and sharing",
+    [
     "queue",
     "at a time",
     "concurrent",
@@ -1036,8 +1390,15 @@ export const SETTINGS_INDEX: SettingEntry[] = [
     "downloads",
     "at once",
     "downloads at once",
-  ]),
-  e("speed-sharing-at-once", "Sharing at once", "speed", "Speed & queue", [
+  ],
+    "Queue",
+  ),
+  e(
+    "speed-sharing-at-once",
+    "Sharing at once",
+    "speed",
+    "Speed and sharing",
+    [
     "queue",
     "seeding",
     "seed",
@@ -1045,15 +1406,23 @@ export const SETTINGS_INDEX: SettingEntry[] = [
     "share",
     "at a time",
     "concurrent",
-  ]),
+  ],
+    "Queue",
+  ),
   e(
     "speed-upload-until-shared",
     "Upload until shared ×N",
     "speed",
-    "Speed & queue",
+    "Speed and sharing",
     ["ratio", "seed ratio", "share ratio", "upload", "seeding", "share"],
+    "Queue",
   ),
-  e("speed-share-for", "Share for at most", "speed", "Speed & queue", [
+  e(
+    "speed-share-for",
+    "Share for at most",
+    "speed",
+    "Speed and sharing",
+    [
     "seed time",
     "seeding",
     "hours",
@@ -1061,10 +1430,17 @@ export const SETTINGS_INDEX: SettingEntry[] = [
     "upload",
     "time",
     "stop sharing",
-  ]),
+  ],
+    "Queue",
+  ),
 
   // Storage
-  e("storage-folder", "Download folder", "storage", "Storage", [
+  e(
+    "storage-folder",
+    "Download folder",
+    "storage",
+    "Storage",
+    [
     "folder",
     "location",
     "sd card",
@@ -1074,8 +1450,14 @@ export const SETTINGS_INDEX: SettingEntry[] = [
     "where",
     "storage",
     "default folder",
-  ]),
-  e("storage-change", "Change folder", "storage", "Storage", [
+  ],
+  ),
+  e(
+    "storage-change",
+    "Change folder",
+    "storage",
+    "Storage",
+    [
     "folder",
     "location",
     "sd card",
@@ -1088,15 +1470,27 @@ export const SETTINGS_INDEX: SettingEntry[] = [
     "files",
     "where files go",
     "move downloads",
-  ]),
-  e("storage-default", "Use default folder", "storage", "Storage", [
+  ],
+  ),
+  e(
+    "storage-default",
+    "Use default folder",
+    "storage",
+    "Storage",
+    [
     "folder",
     "location",
     "reset",
     "default",
     "path",
-  ]),
-  e("storage-add-without-asking", "Add without asking", "storage", "Storage", [
+  ],
+  ),
+  e(
+    "storage-add-without-asking",
+    "Add without asking",
+    "downloads",
+    "Downloads",
+    [
     "magnet",
     "torrent",
     "share",
@@ -1105,10 +1499,17 @@ export const SETTINGS_INDEX: SettingEntry[] = [
     "skip",
     "shared links",
     "file links",
-  ]),
+  ],
+    "Adding downloads",
+  ),
 
   // Watches
-  e("watch-mobile-data", "Use mobile data", "watch", "Watches", [
+  e(
+    "watch-mobile-data",
+    "Use mobile data",
+    "watch",
+    "Watches",
+    [
     "wifi",
     "wi-fi",
     "cellular",
@@ -1116,16 +1517,28 @@ export const SETTINGS_INDEX: SettingEntry[] = [
     "metered",
     "check",
     "watch",
-  ]),
-  e("watch-interval", "Check every", "watch", "Watches", [
+  ],
+  ),
+  e(
+    "watch-interval",
+    "Check every",
+    "watch",
+    "Watches",
+    [
     "interval",
     "hours",
     "how often",
     "frequency",
     "watch",
     "timer",
-  ]),
-  e("watch-list", "Watches", "watch", "Watches", [
+  ],
+  ),
+  e(
+    "watch-list",
+    "Watches",
+    "watch",
+    "Watches",
+    [
     "watch",
     "titles",
     "new copies",
@@ -1134,86 +1547,116 @@ export const SETTINGS_INDEX: SettingEntry[] = [
     "search",
     "new episodes",
     "episodes",
-  ]),
+  ],
+  ),
   e(
     "storage-hide-gallery",
     "Hide from gallery",
     "storage",
     "Storage",
     ["photos", "gallery", "video", "media", "pictures", "scan", "hide", "apps"],
-    "Adding downloads",
   ),
   e(
     "storage-offer-links",
     "Offer to download copied links",
-    "storage",
-    "Storage",
+    "downloads",
+    "Downloads",
     ["clipboard", "copied", "copy", "paste", "links", "magnet", "share", "ask"],
     "Adding downloads",
   ),
   e(
     "speed-parts",
     "Parts per download",
-    "speed",
-    "Speed & queue",
+    "downloads",
+    "Downloads",
     ["parts", "threads", "split", "segments", "connections", "faster", "speed", "link"],
-    "Parts",
+    "Link downloads",
   ),
   e(
     "speed-retry",
     "Retry failed downloads",
-    "speed",
-    "Speed & queue",
+    "downloads",
+    "Downloads",
     ["retry", "again", "failed", "fail", "tries", "attempts", "error"],
-    "Retry",
+    "Link downloads",
   ),
   e(
     "speed-keep-trying",
     "Keep trying",
-    "speed",
-    "Speed & queue",
+    "downloads",
+    "Downloads",
     ["retry", "keep", "tries", "forever", "stop", "no peers", "after 3 tries"],
-    "Retry",
+    "Link downloads",
   ),
-  e("licenses-read", "Read the licence", "licenses", "Licences", [
+  e(
+    "licenses-read",
+    "Read the licence",
+    "licenses",
+    "Licences",
+    [
     "licence",
     "license",
     "gpl",
     "terms",
     "legal",
     "copyright",
-  ]),
-  e("licenses-built-with", "Built with", "licenses", "Licences", [
+  ],
+  ),
+  e(
+    "licenses-built-with",
+    "Built with",
+    "licenses",
+    "Licences",
+    [
     "libraries",
     "packages",
     "credits",
     "dependencies",
     "open source",
     "software",
-  ]),
-  e("about-open-source-licence", "Open-source licence", "about", "About", [
+  ],
+  ),
+  e(
+    "about-open-source-licence",
+    "Open-source licence",
+    "about",
+    "About",
+    [
     "licence",
     "license",
     "gpl",
     "gpl-3.0",
     "legal",
     "open source",
-  ]),
-  e("about-source-code", "Source code on GitHub", "about", "About", [
+  ],
+  ),
+  e(
+    "about-source-code",
+    "Source code on GitHub",
+    "about",
+    "About",
+    [
     "github",
     "code",
     "repo",
     "source",
     "open source",
-  ]),
-  e("whats-new-latest", "What's new", "whats-new", "What's new", [
+  ],
+  ),
+  e(
+    "whats-new-latest",
+    "What's new",
+    "whats-new",
+    "What's new",
+    [
     "changelog",
     "release notes",
     "changes",
     "new",
     "version",
     "update",
-  ]),
+  ],
+  ),
 ];
 
 const MAX_RESULTS = 30;
