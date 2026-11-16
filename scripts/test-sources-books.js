@@ -107,6 +107,11 @@ async function main() {
     globalThis.fetch = realFetch;
   }
 
+  {
+    // A direct file over http (a mirror override) must stop with a message, never fall into the torrent path.
+    const tab = fs.readFileSync(path.join(__dirname, '..', 'app', '(tabs)', 'search.tsx'), 'utf8');
+    check('Search refuses an http direct file instead of adding it as a torrent', /if \(r\.directUrl && !r\.magnet\) \{[\s\S]{0,200}show\([\s\S]{0,120}return;/.test(tab));
+  }
   console.log(`\n${passed} passed, ${failed} failed`);
   process.exit(failed ? 1 : 0);
 }

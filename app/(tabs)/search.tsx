@@ -282,6 +282,11 @@ export default function SearchScreen() {
         router.push(direct);
         return;
       }
+      if (r.directUrl && !r.magnet) {
+        // A plain file over http (a mirror override): the link flow only takes https, and it is not a torrent.
+        show({ tone: 'danger', title: "This link isn't secure, so Maglev won't download it" });
+        return;
+      }
       setBusyHash(r.infoHash);
       remember(trimmed);
       const wait = new AbortController();

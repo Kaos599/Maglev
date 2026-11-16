@@ -62,6 +62,8 @@ async function main() {
   globalThis.fetch = async (url, init) => {
     const u2 = new URL(url);
     seen.push(String(url));
+    if (u2.hostname === 'acg.rip' && u2.pathname.endsWith('.torrent')) return new Response(fxb('acgrip_367408.torrent'), { status: 200 });
+    if (u2.hostname === 'big.test') return new Response(new Uint8Array(4), { status: 200, headers: { 'content-length': String(64 * 1024 * 1024) } });
     if (u2.hostname === 'acg.test') {
       if (u2.pathname.endsWith('.torrent')) return new Response(fxb('acgrip_367408.torrent'), { status: 200 });
       return new Response(fx('acgrip_search.xml'), { status: 200, headers: { 'content-type': 'application/rss+xml' } });
@@ -77,7 +79,16 @@ async function main() {
   const rows = await ac.acgrip.search('one piece', 'anime', 1, sctx('https://acg.test'));
   check('acgrip.search: url has the term', rows.length > 0 && seen[0] === 'https://acg.test/.xml?term=one%20piece', seen[0]);
   const res = await ac.acgrip.resolveMagnet({ ...rows[0], detailUrl: 'https://acg.test/t/367408' }, sig);
-  check('acgrip.resolveMagnet: fetches <detail>.torrent, returns real hash and magnet', res.infoHash === '0636226361b50c81ef91ff57beb32f547dceaf78' && res.magnet.startsWith('magnet:?xt=urn:btih:0636226361b50c81ef91ff57beb32f547dceaf78') && seen.at(-1) === 'https://acg.test/t/367408.torrent', seen.at(-1));
+  check('acgrip.resolveMagnet: fetches <detail>.torrent, returns real hash and magnet', res.infoHash === '0636226361b50c81ef91ff57beb32f547dceaf78' && res.magnet.startsWith('magnet:?xt=urn:btih:0636226361b50c81ef91ff57beb32f547dceaf78') && seen.at(-1) === 'https://acg.rip/t/367408.torrent', seen.at(-1));
+  {
+    const before = seen.length;
+    await ac.acgrip.resolveMagnet({ ...rows[0], detailUrl: 'http://192.168.1.1/t/367408' }, sig).catch(() => {});
+    check('acgrip.resolveMagnet: a feed host is never fetched; only the id is used, over https on acg.rip', seen.slice(before).every((u) => u === 'https://acg.rip/t/367408.torrent'), seen.slice(before).join(' '));
+  }
+  {
+    const tf = await import('../utils/search/torrentFile.ts');
+    check('fetchTorrentBytes: a declared oversize body is refused before it is read', await rejects(() => tf.fetchTorrentBytes('https://big.test/x.torrent', sig, 'ua'), 'parse'));
+  }
   check('acgrip.resolveMagnet: no detail url -> parse error', await rejects(() => ac.acgrip.resolveMagnet({ ...rows[0], detailUrl: undefined }, sig), 'parse'));
   seen.length = 0;
   const ur = await u3.u3c3.search('asian', 'adult', 1, sctx('https://u3.test'));

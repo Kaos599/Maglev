@@ -54,8 +54,11 @@ export const acgrip: SearchProvider = {
     return parse(text, { baseUrl: ctx.baseUrl, category, hideAdult: ctx.hideAdult, limit: ctx.limit });
   },
   async resolveMagnet(result, signal) {
-    if (!result.detailUrl || !/^https?:\/\/[^/]+\/t\/\d+$/.test(result.detailUrl)) throw new ProviderError('parse', 'No torrent file for this result');
-    const bytes = await fetchTorrentBytes(`${result.detailUrl}.torrent`, signal, USER_AGENT);
+    // Only the numeric id comes from the feed; the host is always ACG.RIP over https, so a hostile feed
+    // can't point the add at another server.
+    const id = result.detailUrl ? /\/t\/(\d+)$/.exec(result.detailUrl)?.[1] : undefined;
+    if (!id) throw new ProviderError('parse', 'No torrent file for this result');
+    const bytes = await fetchTorrentBytes(`${acgrip.mirrors[0]}/t/${id}.torrent`, signal, USER_AGENT);
     const hash = infoHashFromTorrent(bytes);
     return { magnet: buildMagnet(hash, result.name), infoHash: hash };
   },

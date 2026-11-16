@@ -96,6 +96,9 @@ export async function fetchTorrentBytes(url: string, signal: AbortSignal, userAg
     throw new ProviderError('network', e instanceof Error ? e.message : 'Network error');
   }
   if (!res.ok) throw new ProviderError('http', `HTTP ${res.status}`, res.status);
+  // Refuse a declared oversize body before reading it: arrayBuffer() holds the whole response in memory.
+  const declared = Number(res.headers.get('content-length'));
+  if (Number.isFinite(declared) && declared > maxBytes) throw new ProviderError('parse', 'Torrent file is too large');
   let bytes: Uint8Array;
   try {
     bytes = new Uint8Array(await res.arrayBuffer());
