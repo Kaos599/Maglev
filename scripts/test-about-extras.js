@@ -50,7 +50,7 @@ const exists = (p) => fs.existsSync(path.join(root, p));
   const pkg = JSON.parse(read('package.json'));
   check('every runtime dependency is listed', Object.keys(pkg.dependencies).filter((d) => d !== 'maglev-engine').every((d) => find(d)));
 
-  check('What\'s new row in About uses installed version', /What's new in/.test(about + copy) && about.includes('/settings/whats-new'));
+  check('Release notes row in About shows installed version', /Release notes/.test(copy) && /aboutExtrasCopy\.releaseNotes\b/.test(about) && /value=\{appVersion\}/.test(about) && about.includes('/settings/whats-new'));
   check('whats-new page exists and is registered', exists('app/settings/whats-new.tsx') && layout.includes('name="settings/whats-new"'));
   const wn = exists('app/settings/whats-new.tsx') ? read('app/settings/whats-new.tsx') : '';
   check('whats-new reads bundled notes, no fetch', /releaseNotes\.generated/.test(wn) && !/fetch\(/.test(wn));

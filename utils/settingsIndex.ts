@@ -1645,10 +1645,12 @@ export const SETTINGS_INDEX: SettingEntry[] = [
   ),
   e(
     "whats-new-latest",
-    "What's new",
+    "Release notes",
     "whats-new",
-    "What's new",
+    "Release notes",
     [
+    "what's new",
+    "whats new",
     "changelog",
     "release notes",
     "changes",

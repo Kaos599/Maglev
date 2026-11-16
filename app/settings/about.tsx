@@ -88,7 +88,8 @@ export default function AboutSettings() {
           accessibilityHint={aboutExtrasCopy.licence.hint}
         />
         <ListRow
-          title={aboutExtrasCopy.whatsNew(appVersion)}
+          title={aboutExtrasCopy.releaseNotes}
+          value={appVersion}
           icon="clock"
           onPress={() => router.push('/settings/whats-new' as Href)}
         />

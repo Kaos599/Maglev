@@ -17,11 +17,11 @@ const check = (name, ok) => {
 const index = read('app/(tabs)/settings.tsx');
 const at = (s) => index.indexOf(s);
 
-// Group titles, in order (0.25: General, Finding things, Downloads, Network and power, App).
-const titles = ['General', 'Finding things', 'Downloads', 'Network and power', 'App'];
+// Group titles, in order (0.25: App, General, Finding things, Downloads, Network and power).
+const titles = ['App', 'General', 'Finding things', 'Downloads', 'Network and power'];
 const tpos = titles.map((t) => at(`<SectionHeader title="${t}"`));
 check('all five group titles exist', tpos.every((p) => p > 0));
-check('groups run General, Finding things, Downloads, Network and power, App', tpos.every((p, i) => i === 0 || p > tpos[i - 1]));
+check('groups run App, General, Finding things, Downloads, Network and power', tpos.every((p, i) => i === 0 || p > tpos[i - 1]));
 
 const endPos = at('</ScrollView>');
 const jsx = Object.fromEntries(titles.map((t, i) => [t, index.slice(tpos[i], i + 1 < titles.length ? tpos[i + 1] : endPos)]));

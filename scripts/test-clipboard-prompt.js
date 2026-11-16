@@ -18,7 +18,7 @@ function check(name, cond) {
   check('title', copy.clipboardCopy.title === 'Download the copied link?');
   check('buttons', copy.clipboardCopy.download === 'Download' && copy.clipboardCopy.notNow === 'Not now');
   check('setting title', copy.clipboardCopy.settingTitle === 'Offer to download copied links');
-  check('setting subtitle', copy.clipboardCopy.settingSubtitle.startsWith('When you open Maglev with a link copied.') && /Android shows a short notice/.test(copy.clipboardCopy.settingSubtitle));
+  check('setting subtitle', /when you open Maglev with a link copied/i.test(copy.clipboardCopy.settingSubtitle) && /Android shows a notice/.test(copy.clipboardCopy.settingSubtitle) && copy.clipboardCopy.settingSubtitle.length <= 90);
 
   const hash = 'magnet:?xt=urn:btih:0123456789abcdef0123456789abcdef01234567';
   check('magnet without name never shows the hash', copy.clipboardLabel(hash) === 'Torrent from your clipboard');

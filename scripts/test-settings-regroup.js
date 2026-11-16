@@ -23,10 +23,10 @@ async function main() {
   const at = (s) => list.indexOf(s);
 
   // Main list: groups, order, rows.
-  const groups = ['General', 'Finding things', 'Downloads', 'Network and power', 'App'];
+  const groups = ['App', 'General', 'Finding things', 'Downloads', 'Network and power'];
   const gpos = groups.map((g) => at(`<SectionHeader title="${g}"`));
   check('all five group titles exist', gpos.every((p) => p > 0));
-  check('groups run General, Finding things, Downloads, Network and power, App', gpos.every((p, i) => i === 0 || p > gpos[i - 1]));
+  check('groups run App, General, Finding things, Downloads, Network and power', gpos.every((p, i) => i === 0 || p > gpos[i - 1]));
   check('no leftover "Connection" group', !/SectionHeader title="Connection"/.test(list));
   const end = at('</ScrollView>');
   const jsx = groups.map((g, i) => list.slice(gpos[i], i + 1 < groups.length ? gpos[i + 1] : end));
@@ -45,7 +45,7 @@ async function main() {
   orderOf('Network and power', 'networkRows', ['Network', 'Power', 'Browser']);
   orderOf('App', 'appRows', ['Updates', 'About']);
   {
-    const d = jsx[2];
+    const d = jsx[groups.indexOf('Downloads')];
     const p = ['{...downloadsRow}', '{...speedRow}', '<StorageRow', '{...scheduleRow}', '{...watchRow}'].map((x) => d.indexOf(x));
     check('Downloads renders Downloads, Speed and sharing, Storage, Scheduling, Watches in order', p.every((x, i) => x >= 0 && (i === 0 || x > p[i - 1])));
   }

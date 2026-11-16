@@ -4,7 +4,8 @@ export const LICENCE_URL = `${REPO_URL}/blob/main/LICENSE`;
 
 export const aboutExtrasCopy = {
   licence: { title: 'Open-source licence', value: 'GPL-3.0', hint: 'Opens the licence page' },
-  whatsNew: (version: string) => `What's new in ${version}`,
+  releaseNotes: 'Release notes',
+  releaseNotesFor: (version: string) => `Release notes for ${version}`,
   licences: {
     title: 'Licences',
     intro: 'Maglev is free software under the GNU General Public License v3.0.',

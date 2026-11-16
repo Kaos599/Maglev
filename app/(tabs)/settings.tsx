@@ -247,6 +247,14 @@ export default function SettingsIndex() {
           <>
             <NeedsAttention />
             <View style={styles.section}>
+              <SectionHeader title="App" />
+              <Card>
+                {appRows.map((r) => (
+                  <SettingsRow key={r.route} {...r} />
+                ))}
+              </Card>
+            </View>
+            <View style={styles.section}>
               <SectionHeader title="General" />
               <Card>
                 {generalRows.map((r) => (
@@ -276,14 +284,6 @@ export default function SettingsIndex() {
               <SectionHeader title="Network and power" />
               <Card>
                 {networkRows.map((r) => (
-                  <SettingsRow key={r.route} {...r} />
-                ))}
-              </Card>
-            </View>
-            <View style={styles.section}>
-              <SectionHeader title="App" />
-              <Card>
-                {appRows.map((r) => (
                   <SettingsRow key={r.route} {...r} />
                 ))}
               </Card>

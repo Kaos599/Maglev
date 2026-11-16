@@ -474,7 +474,7 @@ async function main() {
     "Read the licence",
     "Built with",
     "Open-source licence",
-    "What's new",
+    "Release notes",
     "Source code on GitHub",
   ]) {
     check(`index has "${t}"`, SETTINGS_INDEX.some((e) => e.title === t));

@@ -17,7 +17,7 @@ export default function WhatsNewSettings() {
   const version = Constants.expoConfig?.version ?? '';
   const sections = useMemo(() => parseReleaseNotes(RELEASE_NOTES[version] ?? ''), [version]);
   return (
-    <SettingsPage title={aboutExtrasCopy.whatsNew(version || '—')}>
+    <SettingsPage title={aboutExtrasCopy.releaseNotesFor(version || '—')}>
       <Stack.Screen options={{ headerShown: false }} />
       {sections.length === 0 ? (
         <Card>
