@@ -104,7 +104,7 @@ export function StatCard({ title, onPress, value, pre, sub, picture, box = 'half
     <PressableScale
       onPress={onPress}
       containerStyle={full ? s.fullWrap : s.halfWrap}
-      style={[s.card, s.stretch]}
+      style={[s.card, full ? s.stretchFull : s.stretch]}
       accessibilityRole="button"
       accessibilityLabel={accessibilityLabel}
       accessibilityHint="Opens details"
@@ -130,6 +130,8 @@ export const makeStyles = (c: ThemeColors) =>
     halfWrap: { flexBasis: '45%', flexGrow: 1, minHeight: 122 },
     fullWrap: { flexBasis: '100%' },
     stretch: { flexGrow: 1, minHeight: 122 },
+    // A full card is as tall as its content: the value block never drops away from the title.
+    stretchFull: { flexGrow: 1 },
     titleRow: { flexDirection: 'row', alignItems: 'center', gap: 6, height: 16, paddingRight: 24 },
     title: { ...type.bodyStrong, fontSize: 12, lineHeight: 16, color: c.textMuted, flexShrink: 1 },
     chev: { position: 'absolute', top: 14, right: 14 },

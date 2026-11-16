@@ -10,6 +10,7 @@ import { formatBytes } from '../../constants/format';
 import { WIFI_ANYWAY_NOTE, actionRoute, downloadActions, downloadCaption, needsNewLink, removeCopy } from '../../utils/downloadCopy';
 import { friendlyPath, formatLimit } from '../settings/SettingsParts';
 import { SpeedLimitSheet } from '../detail/SpeedLimitSheet';
+import { TimingDetails, TimingRow } from '../detail/TimingRow';
 import { Banner, Button, ListRow, Sheet } from '../ui';
 
 export interface DownloadSheetProps {
@@ -35,7 +36,7 @@ export interface DownloadSheetProps {
   onSetLimit: (id: string, downLimitBps: number) => void;
 }
 
-type Step = 'main' | 'confirmDelete' | 'limit';
+type Step = 'main' | 'confirmDelete' | 'limit' | 'timing';
 
 /** What a tap on a download card opens: details, Retry or Restart, Paste new link, Remove (SM-30 Copy). */
 export function DownloadSheet({ download: d, onClose, onRetry, onPause, onResume, onResumeAnyway, onOpen, onOpenFolder, onShare, onAllowDevice, onRemove, onNewLink, onSetLimit }: DownloadSheetProps) {
@@ -109,6 +110,23 @@ export function DownloadSheet({ download: d, onClose, onRetry, onPause, onResume
   }
 
   const limit = d.downLimitBps;
+  // NATIVE_CONTRACT 34.1, for a finished link download: "Took 2 s · Avg download 5.0 MB/s", opening the Timing sheet.
+  const timing = {
+    activeSecs: d.activeSecs,
+    finishedAt: d.finishedAt,
+    addedAt: d.addedAt,
+    sessionBytes: d.sessionBytes,
+    bytesWifi: d.bytesWifi,
+    bytesMobile: d.bytesMobile,
+  };
+
+  if (step === 'timing') {
+    return (
+      <Sheet visible onClose={() => setStep('main')} title="Timing">
+        <TimingDetails timing={timing} />
+      </Sheet>
+    );
+  }
 
   if (step === 'limit') {
     return (
@@ -136,6 +154,7 @@ export function DownloadSheet({ download: d, onClose, onRetry, onPause, onResume
             accessibilityLabel={`Saved to ${friendlyPath(d.folder)}. Opens the folder.`}
           />
         ) : null}
+        {d.state === 'finished' ? <TimingRow timing={timing} onOpen={() => setStep('timing')} /> : null}
         <ListRow
           title="Speed limit"
           icon="speed-limit"

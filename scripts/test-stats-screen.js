@@ -166,7 +166,7 @@ async function main() {
   const R = I.rangeStats({ records: rsRecs, daily: rsDaily, now: Date.UTC(2026, 10, 16, 12), tz: 0 }, wk2);
   check('totals from the daily rows in range', R.downloaded === 8 * GB && R.uploaded === GB && R.mobile === 200 * MBy && R.finished === 3 && R.failed === 1 && R.cancelled === 1);
   check('time spent from records in range', R.activeSecs === 411);
-  check('average speed skips items under 3 s', R.avgBps === (5 * GB) / 410);
+  check('average speed is all bytes / all active time', R.avgBps === (5 * GB + 10) / 411);
   check('biggest in range', R.biggest.name === 'big' && R.biggest.size === 4 * GB);
   check('quickest in range', R.quickest.name === 'fast');
   check('longest in range', R.longest.name === 'big' && R.longest.activeSecs === 400);
@@ -249,7 +249,27 @@ async function main() {
   check('timing while downloading', run.tookLabel === 'Downloading for' && run.took === '5 min 34 s' && run.finished === null && run.span === null);
   const pre = F.timingView({ activeSecs: 0, finishedAt: 0 }, NOW, 0);
   check('timing before 0.26 is unknown, never made up', !pre.known && pre.took === null && pre.avg === null && pre.network === null);
-  check('average hidden under 3 s', F.timingView({ activeSecs: 2, sessionBytes: 5 * MBy }, NOW, 0).avg === null);
+  check('average shown for a 2 s download (bytes / time)', F.timingView({ activeSecs: 2, finishedAt: added + 2, sessionBytes: 10 * MBy }, NOW, 0).avg === '5.0 MB/s');
+  check('no average without bytes or time', F.timingView({ activeSecs: 0, sessionBytes: 5 * MBy }, NOW, 0).avg === null && F.timingView({ activeSecs: 4, sessionBytes: 0 }, NOW, 0).avg === null);
+
+  console.log('phone fixes');
+  // 1. A 10 MB link download that took 2 s: Average speed is 5 MB/s, not "—".
+  const quick = rec('quick', { kind: 'link', size: 10 * MBy, sessionBytes: 10 * MBy, activeSecs: 2, finishedAt: at('2026-11-16', 11) });
+  const RQ = I.rangeStats({ records: [quick], daily: [{ ...zero, day: '2026-11-16', downloaded: 10 * MBy, finished: 1 }], now: Date.UTC(2026, 10, 16, 12), tz: 0 }, wk);
+  check('average speed of a 2 s, 10 MB download is 5 MB/s', RQ.avgBps === 5 * MBy && F.fmtSpeed(RQ.avgBps) === '5.0 MB/s');
+  check('the 2 s download is the quickest record', RQ.quickest && RQ.quickest.name === 'quick');
+  // 2. A download already holding its bytes when stats first looked still counts them when it finishes.
+  const Rc = await import('../utils/stats/recorder.ts');
+  const ctx = { now: Date.UTC(2026, 10, 16, 11), tz: 0, origin: () => ({ source: null, category: null }) };
+  const item = (o) => ({ id: 'L1', kind: 'link', name: 'six.bin', size: 6 * MBy, urlDisplay: '', errored: false, activeSecs: 1, finishedAt: 0, sessionBytes: 6 * MBy, uploaded: 0, bytesWifi: 6 * MBy, bytesMobile: 0, addedAt: 1, ...o });
+  const look = Rc.planWrites(null, [item()], ctx);
+  const fin = Rc.planWrites(look.baseline, [item({ finishedAt: 1763290000 })], ctx);
+  check('bytes seen at the first look are counted when it finishes', fin.finished.length === 1 && fin.delta.downloaded === 6 * MBy && fin.delta.wifi === 6 * MBy);
+  const a1 = Rc.planWrites({}, [item({ sessionBytes: 2 * MBy, bytesWifi: 2 * MBy })], ctx);
+  const a2 = Rc.planWrites(a1.baseline, [item({ sessionBytes: 6 * MBy, bytesWifi: 6 * MBy, finishedAt: 1763290000 })], ctx);
+  check('bytes counted along the way are not counted twice', a1.delta.downloaded + a2.delta.downloaded === 6 * MBy);
+  const legacy = { L1: { d: 6 * MBy, u: 0, w: 6 * MBy, m: 0, fin: 0, err: 0, r: 0 } };
+  check('an older baseline entry is trusted as counted', Rc.planWrites(legacy, [item({ finishedAt: 1763290000 })], ctx).delta.downloaded === 0);
 
   console.log('wiring');
   const screen = read('app/stats.tsx');
@@ -267,6 +287,14 @@ async function main() {
   const detail = read('app/torrent/[id].tsx');
   check('detail shows the timing row', /TimingRow/.test(detail));
   check('transfers rows say Done in', /doneLead/.test(read('components/transfers/model.ts')) && /doneLead/.test(read('utils/downloadCopy.ts')));
+  const city = read('components/stats/PixelCity.tsx');
+  check('city pan activates on a small horizontal move and fails on vertical', /activeOffsetX:\s*\[-8, 8\]/.test(city) && /failOffsetY:\s*\[-12, 12\]/.test(city) && /onUpdate/.test(city));
+  check('city answers a plain tap too', /useTapGesture/.test(city));
+  check('the busiest or current building is filled like the rest', !/if \(!b\.current\)/.test(city));
+  const kit = read('components/stats/StatsKit.tsx');
+  check('Finished keeps a sub-line when nothing failed', /none failed/.test(kit));
+  const dsheet = read('components/transfers/DownloadSheet.tsx');
+  check('link download sheet shows the timing row', /TimingRow/.test(dsheet));
   check('no pink in categories', !/accents\.pink|\bpink\b/.test(all));
 
   if (failed) {

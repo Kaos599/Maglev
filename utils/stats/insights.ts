@@ -531,7 +531,7 @@ export interface RangeStats {
   cancelled: number;
   /** Seconds spent downloading, from items that finished in the range. */
   activeSecs: number;
-  /** Bytes per second over items of at least MIN_SPEED_SECS; null with none. */
+  /** Bytes per second: all bytes / all active time of items with both; null with none. */
   avgBps: number | null;
   biggest: (RecordAt & { size: number }) | null;
   quickest: (RecordAt & { bps: number }) | null;
@@ -567,7 +567,8 @@ export function rangeStats(input: Pick<InsightsInput, 'records' | 'daily' | 'now
   sumDaily(inDays, t);
   const recs = recordsIn(records, r, tz);
   const activeSecs = recs.reduce((s, x) => s + x.activeSecs, 0);
-  const timed = recs.filter(speedOk);
+  // Any item with bytes and time counts, however short: average speed is bytes / active time (a 2 s, 10 MB download is 5 MB/s).
+  const timed = recs.filter((x) => x.activeSecs > 0 && x.sessionBytes > 0);
   const avgBps = ratio(timed.reduce((s, x) => s + x.sessionBytes, 0), timed.reduce((s, x) => s + x.activeSecs, 0));
   const top = <T>(rs: readonly StatsRecord[], score: (x: StatsRecord) => number, make: (x: StatsRecord, s: number) => T): T | null => {
     let best: StatsRecord | null = null;

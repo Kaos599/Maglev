@@ -181,7 +181,7 @@ export function timingView(t: TimingInput, nowMs: number, tz?: number) {
   const active = t.activeSecs ?? 0;
   const done = (t.finishedAt ?? 0) > 0;
   const known = active > 0 || done;
-  const avg = active >= 3 && (t.sessionBytes ?? 0) > 0 ? (t.sessionBytes ?? 0) / active : null;
+  const avg = active > 0 && (t.sessionBytes ?? 0) > 0 ? (t.sessionBytes ?? 0) / active : null;
   const span = done && (t.addedAt ?? 0) > 0 ? Math.max(active, t.finishedAt! - t.addedAt!) : null;
   const wifi = t.bytesWifi ?? 0;
   const mobile = t.bytesMobile ?? 0;

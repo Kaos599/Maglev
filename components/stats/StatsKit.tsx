@@ -51,13 +51,18 @@ export function StatsKit({ range, today, stats: A, mostSecs, mobileLimitBytes, o
 
   // Downloads
   const per = crateUnit(A.finished);
+  // Always one line under the number, chips or not, so the card keeps one height and the number one place.
   const chips =
     A.failed || A.cancelled ? (
-      <View style={s.chips}>
-        {A.failed ? <Text style={[s.chip, s.chipBad]}>{`${A.failed} failed`}</Text> : null}
-        {A.cancelled ? <Text style={s.chip}>{`${A.cancelled} cancelled`}</Text> : null}
+      <View style={s.notes}>
+        {A.failed ? <Text style={[s.note, s.noteBad]}>{`${A.failed} failed`}</Text> : null}
+        {A.cancelled ? <Text style={s.note}>{`${A.cancelled} cancelled`}</Text> : null}
       </View>
-    ) : null;
+    ) : (
+      <View style={s.notes}>
+        <Text style={s.noteLine}>{A.finished ? 'none failed' : ' '}</Text>
+      </View>
+    );
   const finished = (
     <StatCard
       full
@@ -301,9 +306,10 @@ const makeStyles = (c: ThemeColors) =>
     sectionTitle: { ...type.bodyStrong, fontSize: 12, color: c.textMuted, paddingHorizontal: spacing.xs, paddingBottom: spacing.sm },
     grid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
     sub: { ...type.body, fontSize: 12, lineHeight: 16, color: c.textMuted },
-    chips: { flexDirection: 'row', gap: 6 },
-    chip: { ...type.body, fontSize: 11, lineHeight: 18, height: 20, paddingHorizontal: 6, borderRadius: radius.sm, borderWidth: 1, borderColor: c.borderStrong, color: c.textMuted, overflow: 'hidden' },
-    chipBad: { borderColor: c.danger, color: c.danger },
+    notes: { flexDirection: 'row', gap: 6 },
+    note: { ...type.body, fontSize: 11, lineHeight: 18, height: 20, paddingHorizontal: 6, borderRadius: radius.sm, borderWidth: 1, borderColor: c.borderStrong, color: c.textMuted, overflow: 'hidden' },
+    noteBad: { borderColor: c.danger, color: c.danger },
+    noteLine: { ...type.body, fontSize: 12, lineHeight: 20, height: 20, color: c.textMuted },
     card: { backgroundColor: c.surface, borderWidth: 1, borderColor: c.border, borderRadius: radius.lg, padding: 14 },
     fullWrap: { flexBasis: '100%' },
     what: { flexBasis: '100%', gap: 10 },

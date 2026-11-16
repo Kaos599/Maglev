@@ -5,7 +5,8 @@
  * every shape a crisp rectangle. Drag across it, or use the steppers, to read one building.
  */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { LayoutChangeEvent, StyleSheet, Text, View, type AccessibilityActionEvent, type GestureResponderEvent } from 'react-native';
+import { LayoutChangeEvent, StyleSheet, Text, View, type AccessibilityActionEvent } from 'react-native';
+import { GestureDetector, useExclusiveGestures, usePanGesture, useTapGesture } from 'react-native-gesture-handler';
 import Svg, { Path, Text as SvgText } from 'react-native-svg';
 import { useTheme } from '../../context/ThemeContext';
 import { easeOutCubic, type ThemeColors, type as typeTokens } from '../../constants/theme';
@@ -142,16 +143,15 @@ export function PixelCity({ kind, buckets, busiest, selected, minIndex, peakHour
         now += frameD(px, BASE - nh, L.bw, nh);
       }
       if (h > 0) {
-        if (!b.current) {
-          if (i % 2) bB += rectD(px, top, L.bw, h);
-          else bA += rectD(px, top, L.bw, h);
-        }
+        // Every building is filled, today's and the busiest too; their outlines are drawn on top.
+        if (i % 2) bB += rectD(px, top, L.bw, h);
+        else bA += rectD(px, top, L.bw, h);
         let k = 0;
         for (let y = BASE - 1 - L.wr; y >= top + 2; y -= L.wr) {
           for (let c = 0; c < L.wc.length; c++, k++) {
             const w = rectD(px + L.wc[c], y, L.ws, L.ws === 2 && L.wr === 2 ? 1 : L.ws);
             if (k < b.finished) wOn += w;
-            else if (!b.current) wOff += w;
+            else wOff += w;
           }
         }
       }
@@ -203,7 +203,23 @@ export function PixelCity({ kind, buckets, busiest, selected, minIndex, peakHour
     [scale, L, minIndex, buckets.length],
   );
   const offsetX = (width - W * scale) / 2;
-  const onTouch = useCallback((e: GestureResponderEvent) => onPick(unitAt(e.nativeEvent.locationX - offsetX)), [onPick, unitAt, offsetX]);
+  // The gesture callbacks run on the JS thread and read the latest layout through a ref.
+  const live = useRef({ inert, onPick, unitAt, offsetX });
+  live.current = { inert, onPick, unitAt, offsetX };
+  const pickAt = (x: number) => {
+    const l = live.current;
+    if (!l.inert) l.onPick(l.unitAt(x - l.offsetX));
+  };
+  // A horizontal drag scrubs from the first 8 dp; a vertical move of 12 dp fails it so the page scrolls instead.
+  const pan = usePanGesture({
+    runOnJS: true,
+    activeOffsetX: [-8, 8],
+    failOffsetY: [-12, 12],
+    onActivate: (e) => pickAt(e.x),
+    onUpdate: (e) => pickAt(e.x),
+  });
+  const tap = useTapGesture({ runOnJS: true, onActivate: (e) => pickAt(e.x) });
+  const touch = useExclusiveGestures(pan, tap);
   const onAction = useCallback(
     (e: AccessibilityActionEvent) => {
       const cur = selected < 0 ? Math.max(minIndex, busiest) : selected;
@@ -241,43 +257,42 @@ export function PixelCity({ kind, buckets, busiest, selected, minIndex, peakHour
 
   return (
     <View onLayout={onLayout}>
-      <View
-        style={{ height: H * scale }}
-        accessible
-        accessibilityRole="adjustable"
-        accessibilityLabel={accessibilityLabel}
-        accessibilityValue={{ text: valueText }}
-        accessibilityActions={inert ? [] : [{ name: 'increment' }, { name: 'decrement' }]}
-        onAccessibilityAction={onAction}
-        onStartShouldSetResponder={() => !inert}
-        onResponderGrant={onTouch}
-        onResponderMove={onTouch}
-      >
-        {width > 0 ? (
-          <Svg width={W * scale} height={H * scale} viewBox={`0 0 ${W} ${H}`} style={{ marginLeft: offsetX }} pointerEvents="none" {...crisp}>
-            <Path d={rectD(0, 0, W, BASE)} fill={sky && !sky.night ? ink.skyDay : ink.sky} {...crisp} />
-            {sky ? <Path d={sky.main} fill={ink.muted} {...crisp} /> : null}
-            {sky?.star ? <Path d={sky.star} fill={ink.faint} {...crisp} /> : null}
-            <Path d={paths.gB} fill={ink.groundB} {...crisp} />
-            <Path d={paths.gA} fill={ink.groundA} {...crisp} />
-            <Path d={paths.bA} fill={ink.bldA} {...crisp} />
-            <Path d={paths.bB} fill={ink.bldB} {...crisp} />
-            <Path d={paths.wOff} fill={ink.winOff} {...crisp} />
-            <Path d={paths.wOn} fill={ink.winOn} {...crisp} />
-            <Path d={paths.now} fill={ink.lineStrong} {...crisp} />
-            <Path d={paths.busy} fill={ink.hi} {...crisp} />
-            <Path d={paths.fence} fill={ink.line} {...crisp} />
-            {tick ? <Path d={tick} fill={ink.hi} {...crisp} /> : null}
-            {labels.map((l, i) => (
-              <SvgText key={i} x={l.x} y={l.y} textAnchor="middle" fontSize={5.5} fontFamily={font} fill={l.fill}>
-                {l.text}
-              </SvgText>
-            ))}
-            <Path d={sel} fill={ink.text} {...crisp} />
-            <Path d={rectD(0, BASE, W, 1) + rectD(0, RAIL_Y, W, 1)} fill={ink.line} {...crisp} />
-          </Svg>
-        ) : null}
-      </View>
+      <GestureDetector gesture={touch}>
+        <View
+          style={{ height: H * scale }}
+          accessible
+          accessibilityRole="adjustable"
+          accessibilityLabel={accessibilityLabel}
+          accessibilityValue={{ text: valueText }}
+          accessibilityActions={inert ? [] : [{ name: 'increment' }, { name: 'decrement' }]}
+          onAccessibilityAction={onAction}
+        >
+          {width > 0 ? (
+            <Svg width={W * scale} height={H * scale} viewBox={`0 0 ${W} ${H}`} style={{ marginLeft: offsetX }} pointerEvents="none" {...crisp}>
+              <Path d={rectD(0, 0, W, BASE)} fill={sky && !sky.night ? ink.skyDay : ink.sky} {...crisp} />
+              {sky ? <Path d={sky.main} fill={ink.muted} {...crisp} /> : null}
+              {sky?.star ? <Path d={sky.star} fill={ink.faint} {...crisp} /> : null}
+              <Path d={paths.gB} fill={ink.groundB} {...crisp} />
+              <Path d={paths.gA} fill={ink.groundA} {...crisp} />
+              <Path d={paths.bA} fill={ink.bldA} {...crisp} />
+              <Path d={paths.bB} fill={ink.bldB} {...crisp} />
+              <Path d={paths.wOff} fill={ink.winOff} {...crisp} />
+              <Path d={paths.wOn} fill={ink.winOn} {...crisp} />
+              <Path d={paths.now} fill={ink.lineStrong} {...crisp} />
+              <Path d={paths.busy} fill={ink.hi} {...crisp} />
+              <Path d={paths.fence} fill={ink.line} {...crisp} />
+              {tick ? <Path d={tick} fill={ink.hi} {...crisp} /> : null}
+              {labels.map((l, i) => (
+                <SvgText key={i} x={l.x} y={l.y} textAnchor="middle" fontSize={5.5} fontFamily={font} fill={l.fill}>
+                  {l.text}
+                </SvgText>
+              ))}
+              <Path d={sel} fill={ink.text} {...crisp} />
+              <Path d={rectD(0, BASE, W, 1) + rectD(0, RAIL_Y, W, 1)} fill={ink.line} {...crisp} />
+            </Svg>
+          ) : null}
+        </View>
+      </GestureDetector>
       {width > 0 ? (
         <View style={[s.train, { left: offsetX + TRAIN_X * scale, top: trainTop }]}>
           <MaglevMark height={trainH} cruising={cruising} tappable />

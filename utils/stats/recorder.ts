@@ -63,7 +63,12 @@ export function toItems(torrents: readonly Snapshot[], downloads: readonly Downl
   return out;
 }
 
-/** What was seen for one item at the last write. d/u/w/m: downloaded, uploaded, wifi, mobile. fin: finished_at. err: 0/1. r: retries. */
+/**
+ * What was seen for one item at the last write. d/u/w/m: downloaded, uploaded, wifi, mobile. fin: finished_at. err: 0/1. r: retries.
+ * cd/cw/cm: how many of its downloaded, Wi-Fi and mobile bytes are already in stats_daily. Bytes an item already had when stats
+ * first looked are not counted then; they are counted on the day it finishes, so a finished item's bytes are always in the
+ * day totals (the Stats page's totals then agree with its records). An entry without them (older app) is fully counted.
+ */
 export interface BaselineEntry {
   d: number;
   u: number;
@@ -72,6 +77,9 @@ export interface BaselineEntry {
   fin: number;
   err: 0 | 1;
   r: number;
+  cd?: number;
+  cw?: number;
+  cm?: number;
 }
 export type Baseline = Record<string, BaselineEntry>;
 
@@ -103,20 +111,39 @@ export function planWrites(baseline: Baseline | null, items: readonly StatsItem[
   const next: Baseline = {};
   const delta = zeroDay();
   const finished: StatsRecord[] = [];
-  const entryOf = (i: StatsItem, r: number): BaselineEntry => ({ d: i.sessionBytes, u: i.uploaded, w: i.bytesWifi, m: i.bytesMobile, fin: i.finishedAt, err: i.errored ? 1 : 0, r });
+  const entryOf = (i: StatsItem, r: number, c: { d: number; w: number; m: number }): BaselineEntry => ({
+    d: i.sessionBytes, u: i.uploaded, w: i.bytesWifi, m: i.bytesMobile, fin: i.finishedAt, err: i.errored ? 1 : 0, r, cd: c.d, cw: c.w, cm: c.m,
+  });
 
   if (baseline === null) {
-    for (const i of items) next[i.id] = entryOf(i, 0);
+    // Nothing is counted at the first look. An unfinished item's bytes so far wait for its finish; a finished one never counts.
+    for (const i of items) next[i.id] = entryOf(i, 0, i.finishedAt > 0 ? { d: i.sessionBytes, w: i.bytesWifi, m: i.bytesMobile } : { d: 0, w: 0, m: 0 });
     return { baseline: next, finished, delta, hasEvents: false };
   }
 
   for (const i of items) {
     const prev = baseline[i.id];
-    const p = prev ?? { d: 0, u: 0, w: 0, m: 0, fin: 0, err: 0 as const, r: 0 };
-    delta.downloaded += step(p.d, i.sessionBytes);
+    const p: BaselineEntry = prev ?? { d: 0, u: 0, w: 0, m: 0, fin: 0, err: 0, r: 0, cd: 0, cw: 0, cm: 0 };
+    const sd = step(p.d, i.sessionBytes);
+    const sw = step(p.w, i.bytesWifi);
+    const sm = step(p.m, i.bytesMobile);
+    const c = { d: (p.cd ?? p.d) + sd, w: (p.cw ?? p.w) + sw, m: (p.cm ?? p.m) + sm };
+    delta.downloaded += sd;
     delta.uploaded += step(p.u, i.uploaded);
-    delta.wifi += step(p.w, i.bytesWifi);
-    delta.mobile += step(p.m, i.bytesMobile);
+    delta.wifi += sw;
+    delta.mobile += sm;
+    if (p.fin === 0 && i.finishedAt > 0) {
+      // Finished: count whatever of its bytes is not in the day totals yet.
+      const xd = Math.max(0, i.sessionBytes - c.d);
+      const xw = Math.max(0, i.bytesWifi - c.w);
+      const xm = Math.max(0, i.bytesMobile - c.m);
+      delta.downloaded += xd;
+      delta.wifi += xw;
+      delta.mobile += xm;
+      c.d += xd;
+      c.w += xw;
+      c.m += xm;
+    }
     let retries = p.r;
     if (!p.err && i.errored) delta.failed += 1;
     if (p.err && !i.errored && i.finishedAt === 0) retries += 1;
@@ -128,7 +155,7 @@ export function planWrites(baseline: Baseline | null, items: readonly StatsItem[
         addedAt: i.addedAt, finishedAt: i.finishedAt, retries,
       });
     }
-    next[i.id] = entryOf(i, retries);
+    next[i.id] = entryOf(i, retries, c);
   }
   const present = new Set(items.map((i) => i.id));
   for (const id of Object.keys(baseline)) {

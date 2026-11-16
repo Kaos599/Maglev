@@ -12,7 +12,11 @@ import { fmtSize, fmtTook, timingView, type TimingInput } from '../../utils/stat
 import { PixelIcon } from '../PixelIcon';
 import { PressableScale, Sheet } from '../ui';
 
-export function TimingRow({ timing }: { timing: TimingInput }) {
+/**
+ * `onOpen`: open the Timing sheet somewhere else (a host that is itself a sheet shows it as its own step, with
+ * `TimingDetails`). Without it the row opens its own sheet.
+ */
+export function TimingRow({ timing, onOpen }: { timing: TimingInput; onOpen?: () => void }) {
   const { colors } = useTheme();
   const s = useMemo(() => makeStyles(colors), [colors]);
   const [open, setOpen] = useState(false);
@@ -47,7 +51,7 @@ export function TimingRow({ timing }: { timing: TimingInput }) {
     <>
       <PressableScale
         pressableRef={ref}
-        onPress={() => setOpen(true)}
+        onPress={() => (onOpen ? onOpen() : setOpen(true))}
         style={[s.row, s.box]}
         accessibilityRole="button"
         accessibilityLabel={label}
@@ -58,34 +62,48 @@ export function TimingRow({ timing }: { timing: TimingInput }) {
           <PixelIcon name="chevron-right" size={20} color={colors.textMuted} />
         </View>
       </PressableScale>
-      <Sheet visible={open} onClose={() => setOpen(false)} title="Timing" returnFocusRef={ref}>
-        {v.added ? <Row k="Added" v={v.added} s={s} first /> : null}
-        {v.finished ? <Row k="Finished" v={v.finished} s={s} /> : null}
-        {v.span ? (
-          <Strip
-            s={s}
-            title="From added to finished"
-            total={fmtTook(v.span.total)}
-            parts={[
-              { label: 'Downloading', value: fmtTook(v.span.downloading), n: v.span.downloading, color: colors.download },
-              { label: 'Queued, paused or waiting', value: fmtTook(v.span.waiting), n: v.span.waiting, color: colors.borderStrong },
-            ]}
-          />
-        ) : null}
-        {v.network ? (
-          <Strip
-            s={s}
-            title="Network"
-            total={fmtSize(v.network.wifi + v.network.mobile)}
-            parts={[
-              { label: 'Wi-Fi', value: fmtSize(v.network.wifi), n: v.network.wifi, color: colors.download },
-              { label: 'Mobile', value: fmtSize(v.network.mobile), n: v.network.mobile, color: colors.borderStrong },
-            ]}
-          />
-        ) : null}
-        {v.seeding ? <Row k="Seeding for" v={v.seeding} s={s} /> : null}
-        {v.uploaded ? <Row k="Uploaded" v={v.uploaded} s={s} /> : null}
-      </Sheet>
+      {onOpen ? null : (
+        <Sheet visible={open} onClose={() => setOpen(false)} title="Timing" returnFocusRef={ref}>
+          <TimingDetails timing={timing} />
+        </Sheet>
+      )}
+    </>
+  );
+}
+
+/** The Timing sheet's rows. Rows with nothing to say are left out. */
+export function TimingDetails({ timing }: { timing: TimingInput }) {
+  const { colors } = useTheme();
+  const s = useMemo(() => makeStyles(colors), [colors]);
+  const v = timingView(timing, Date.now());
+  return (
+    <>
+      {v.added ? <Row k="Added" v={v.added} s={s} first /> : null}
+      {v.finished ? <Row k="Finished" v={v.finished} s={s} /> : null}
+      {v.span ? (
+        <Strip
+          s={s}
+          title="From added to finished"
+          total={fmtTook(v.span.total)}
+          parts={[
+            { label: 'Downloading', value: fmtTook(v.span.downloading), n: v.span.downloading, color: colors.download },
+            { label: 'Queued, paused or waiting', value: fmtTook(v.span.waiting), n: v.span.waiting, color: colors.borderStrong },
+          ]}
+        />
+      ) : null}
+      {v.network ? (
+        <Strip
+          s={s}
+          title="Network"
+          total={fmtSize(v.network.wifi + v.network.mobile)}
+          parts={[
+            { label: 'Wi-Fi', value: fmtSize(v.network.wifi), n: v.network.wifi, color: colors.download },
+            { label: 'Mobile', value: fmtSize(v.network.mobile), n: v.network.mobile, color: colors.borderStrong },
+          ]}
+        />
+      ) : null}
+      {v.seeding ? <Row k="Seeding for" v={v.seeding} s={s} /> : null}
+      {v.uploaded ? <Row k="Uploaded" v={v.uploaded} s={s} /> : null}
     </>
   );
 }
