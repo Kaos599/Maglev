@@ -70,6 +70,10 @@ const LAN_ADDRESS_COPY: &str = "This address points to a device on your network.
 
 /// HLS and DASH downloads (contract section 24.8): probe, transfer, join and refresh live in this child module.
 mod stream_run;
+/// Several connections for one link download (contract section 17, Segments).
+mod segments;
+
+use segments::{Parts, PartsEnd, PartsShared};
 
 // ---- options ------------------------------------------------------------------------------------------------
 
@@ -158,6 +162,10 @@ pub struct DlRecord {
     pub added_at: i64,
     pub down_limit_bps: u64,
     pub segments: u32,
+    /// The probe answered `Range: bytes=0-0` with 206 and the server says `Accept-Ranges: bytes`.
+    pub parts_ok: bool,
+    /// A segment was refused or the file drifted: this download stays on one connection for good.
+    pub split_off: bool,
     pub start_paused: bool,
     pub status: Option<u16>,
     pub error: Option<DlErrInfo>,
@@ -196,6 +204,8 @@ impl Default for DlRecord {
             added_at: 0,
             down_limit_bps: 0,
             segments: 1,
+            parts_ok: false,
+            split_off: false,
             start_paused: false,
             status: None,
             error: None,
@@ -225,6 +235,8 @@ struct Live {
     stalls: u32,
     /// Active, but no byte for 30 s.
     stalled: bool,
+    /// The positions of a download that runs over several connections right now.
+    parts: Option<Arc<PartsShared>>,
 }
 
 #[derive(Default)]
@@ -479,6 +491,36 @@ fn persisted(rec: &DlRecord) -> DlRecord {
         r.needs_login = true;
     }
     r
+}
+
+/// Writes the resume record of a download that stops now: one offset, or the offsets of every segment when it runs
+/// over several connections.
+fn write_record_sidecar(rec: &DlRecord, live: &Live) {
+    if !(rec.resumable && rec.validator.is_some() && !rec.name.is_empty()) {
+        return;
+    }
+    let path = sidecar_path(Path::new(&rec.folder), &rec.name);
+    let mut sc = Sidecar::new(rec.final_url.as_deref().unwrap_or(&rec.url), &rec.name, rec.size, rec.validator.clone());
+    match &live.parts {
+        Some(p) => sc.segments = p.snapshot(),
+        None => match single_pos_to_write(Sidecar::load(&path).as_ref(), rec.held) {
+            Some(pos) => sc.set_single_pos(pos),
+            None => return,
+        },
+    }
+    let _ = sc.save(&path);
+}
+
+/// With no split run live, the single offset to record, or None to keep the sidecar on disk.
+/// After a restart a split download's `held` is the sum of its parts, not a contiguous prefix. Writing it as one
+/// offset (a pause, an offline pause or storage full before the parts start again) would make the next resume
+/// skip the unfinished middle of every part and finish with holes. A split sidecar stays as it is; the parts run
+/// (or its fall-back to one connection, which collapses to the prefix) owns it.
+fn single_pos_to_write(existing: Option<&Sidecar>, held: u64) -> Option<u64> {
+    match existing {
+        Some(sc) if sc.is_split() => None,
+        _ => Some(held),
+    }
 }
 
 /// What `maglev-downloads.json` held, entry by entry.
@@ -754,6 +796,8 @@ enum ProbeFail {
 
 struct ProbeReply {
     info: ProbeInfo,
+    /// Segments are allowed by what the probe saw (206 and `Accept-Ranges: bytes`).
+    ranges_ok: bool,
     name: String,
     final_url: String,
 }
@@ -1140,18 +1184,7 @@ impl Downloads {
                         t.abort();
                     }
                 }
-                Effect::FlushSidecar => {
-                    if rec.resumable && rec.validator.is_some() && !rec.name.is_empty() {
-                        let mut sc = Sidecar::new(
-                            rec.final_url.as_deref().unwrap_or(&rec.url),
-                            &rec.name,
-                            rec.size,
-                            rec.validator.clone(),
-                        );
-                        sc.set_single_pos(rec.held);
-                        let _ = sc.save(&sidecar_path(Path::new(&rec.folder), &rec.name));
-                    }
-                }
+                Effect::FlushSidecar => write_record_sidecar(rec, live),
                 Effect::Notice(Notice::ServerSentWholeFile) => rec.notice = Some(WHOLE_FILE_NOTICE.to_string()),
                 Effect::Notice(Notice::DiskFull) => rec.notice = None,
                 Effect::RenamePart => {
@@ -1350,6 +1383,8 @@ impl Downloads {
                 rec.validator = None;
                 rec.size = None;
                 rec.resumable = false;
+                // A different file: splitting may be tried again after the new probe.
+                rec.split_off = false;
             });
         }
         // Wi-Fi-only, VPN-only, offline and the other reasons gate the request here too.
@@ -1482,7 +1517,11 @@ impl Downloads {
                     "down_bps": bps,
                     "stalled": stalled,
                     "eta": eta,
-                    "segments_active": if r.state == State::Downloading { 1 } else { 0 },
+                    "segments_active": if r.state == State::Downloading {
+                        inner.live.get(&r.id).and_then(|l| l.parts.as_ref()).map(|p| p.active()).unwrap_or(1)
+                    } else {
+                        0
+                    },
                     "down_limit_bps": r.down_limit_bps,
                     "resumable": r.resumable || r.stream.is_some(),
                     "stream": r.stream.as_ref().map(|s| json!({
@@ -1511,16 +1550,7 @@ impl Downloads {
                     if let Some(t) = live.task.take() {
                         t.abort();
                     }
-                    if rec.resumable && rec.validator.is_some() && !rec.name.is_empty() {
-                        let mut sc = Sidecar::new(
-                            rec.final_url.as_deref().unwrap_or(&rec.url),
-                            &rec.name,
-                            rec.size,
-                            rec.validator.clone(),
-                        );
-                        sc.set_single_pos(rec.held);
-                        let _ = sc.save(&sidecar_path(Path::new(&rec.folder), &rec.name));
-                    }
+                    write_record_sidecar(rec, live);
                 });
             } else {
                 self.update(&id, |_, live| {
@@ -1734,6 +1764,7 @@ impl Downloads {
             rec.size = reply.info.size;
             rec.validator = reply.info.validator.clone();
             rec.resumable = reply.info.resumable;
+            rec.parts_ok = reply.ranges_ok;
             rec.final_url = Some(reply.final_url.clone());
             if rec.name.is_empty() {
                 let wanted = rec.requested_name.clone().unwrap_or_else(|| reply.name.clone());
@@ -1800,6 +1831,15 @@ impl Downloads {
                 return;
             }
         };
+        // Several connections when the file allows it (and the download has not fallen back). A fallback comes back
+        // here with the sidecar already cut down to the contiguous prefix, so the single connection resumes from it.
+        if let Parts::Split { segs, fresh } = tokio::task::block_in_place(|| self.choose_parts(&id)) {
+            let host = self.update(&id, |r, _| host_of(&r.url)).unwrap_or_default();
+            match self.run_parts(&id, &client, segs, fresh, &host).await {
+                PartsEnd::Done | PartsEnd::Stop => return,
+                PartsEnd::Fallback => {}
+            }
+        }
         let (file, mut held) = match tokio::task::block_in_place(|| self.prepare_part(&id)) {
             Ok(x) => x,
             Err(ev) => {
@@ -2348,7 +2388,8 @@ async fn probe_request(
     match classify_probe(status, &headers, &final_url) {
         ProbeVerdict::Ok(info) => {
             let name = choose_name(headers.content_disposition.as_deref(), &final_url);
-            Ok(ProbeReply { info, name, final_url: display_url(&final_url) })
+            let ranges_ok = segments::parts_probe_ok(&info, &headers);
+            Ok(ProbeReply { info, ranges_ok, name, final_url: display_url(&final_url) })
         }
         ProbeVerdict::Auth => Err(ProbeFail::Auth(status)),
         ProbeVerdict::Status(s) => Err(ProbeFail::Status(s)),
@@ -3177,6 +3218,41 @@ mod tests {
         let saved = std::fs::read_to_string(dir.join(STORE_FILE)).unwrap();
         assert!(saved.contains("\"allow_lan\":true"));
         let _ = std::fs::remove_dir_all(&dir);
+    }
+}
+
+#[cfg(test)]
+mod split_sidecar_tests {
+    use super::*;
+    use super::super::sidecar::Segment;
+
+    fn split() -> Sidecar {
+        let mut sc = Sidecar::new("https://example.com/f.bin", "f.bin", Some(400), Some("\"v1\"".into()));
+        sc.segments = vec![
+            Segment { start: 0, end: 99, pos: 10 },
+            Segment { start: 100, end: 199, pos: 200 },
+            Segment { start: 200, end: 299, pos: 250 },
+            Segment { start: 300, end: 399, pos: 400 },
+        ];
+        sc
+    }
+
+    #[test]
+    fn split_sidecar_is_never_overwritten_with_the_sum_of_its_parts() {
+        let sc = split();
+        assert!(sc.is_split());
+        // held after a restart is the sum (10 + 100 + 50 + 100), far past the contiguous prefix (10).
+        assert_eq!(sc.held(), 260);
+        assert_eq!(single_pos_to_write(Some(&sc), sc.held()), None);
+    }
+
+    #[test]
+    fn single_or_missing_sidecar_records_held() {
+        let mut one = Sidecar::new("https://example.com/f.bin", "f.bin", Some(400), Some("\"v1\"".into()));
+        one.set_single_pos(120);
+        assert!(!one.is_split());
+        assert_eq!(single_pos_to_write(Some(&one), 150), Some(150));
+        assert_eq!(single_pos_to_write(None, 150), Some(150));
     }
 }
 
