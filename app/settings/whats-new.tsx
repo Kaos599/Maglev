@@ -4,32 +4,52 @@ import { Stack } from 'expo-router';
 import Constants from 'expo-constants';
 import { ThemeColors, spacing, type } from '../../constants/theme';
 import { useTheme } from '../../context/ThemeContext';
+import { SectionHeader } from '../../components/ui';
 import { Card, SettingsPage } from '../../components/settings/SettingsParts';
 import { aboutExtrasCopy } from '../../constants/aboutCopy';
 import { RELEASE_NOTES } from '../../constants/releaseNotes.generated';
-import { plainNotes } from '../../utils/update/check';
+import { parseReleaseNotes } from '../../utils/releaseNotesParse';
 
+/** The bundled notes for the installed version: one card per heading, one row per change. */
 export default function WhatsNewSettings() {
   const { colors } = useTheme();
   const s = useMemo(() => makeStyles(colors), [colors]);
   const version = Constants.expoConfig?.version ?? '';
-  const raw = RELEASE_NOTES[version];
+  const sections = useMemo(() => parseReleaseNotes(RELEASE_NOTES[version] ?? ''), [version]);
   return (
     <SettingsPage title={aboutExtrasCopy.whatsNew(version || '—')}>
       <Stack.Screen options={{ headerShown: false }} />
-      <Card>
-        <View style={s.body}>
-          <Text style={s.text} selectable>
-            {raw ? plainNotes(raw, 20000) : aboutExtrasCopy.notes.none}
-          </Text>
-        </View>
-      </Card>
+      {sections.length === 0 ? (
+        <Card>
+          <Text style={[s.text, s.empty]}>{aboutExtrasCopy.notes.none}</Text>
+        </Card>
+      ) : (
+        sections.map((section, si) => (
+          <View key={`${si}-${section.title}`}>
+            {section.title ? <SectionHeader title={section.title} /> : null}
+            <Card>
+              {section.items.map((item, i) => (
+                <View key={i} style={[s.item, i > 0 && s.divider]}>
+                  <View style={s.bullet} />
+                  <Text style={s.text} selectable>
+                    {item}
+                  </Text>
+                </View>
+              ))}
+            </Card>
+          </View>
+        ))
+      )}
     </SettingsPage>
   );
 }
 
 const makeStyles = (c: ThemeColors) =>
   StyleSheet.create({
-    body: { padding: spacing.lg },
-    text: { ...type.body, fontSize: 15, lineHeight: 22, color: c.text },
+    item: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.md, paddingHorizontal: spacing.lg, paddingVertical: spacing.md },
+    divider: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: c.border },
+    // A small square in the accent colour, in keeping with the pixel style; centred on the first line of text.
+    bullet: { width: 6, height: 6, marginTop: 8, backgroundColor: c.accent },
+    text: { ...type.body, flex: 1, fontSize: 15, lineHeight: 22, color: c.text },
+    empty: { padding: spacing.lg },
   });

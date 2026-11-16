@@ -54,7 +54,7 @@ const exists = (p) => fs.existsSync(path.join(root, p));
   check('whats-new page exists and is registered', exists('app/settings/whats-new.tsx') && layout.includes('name="settings/whats-new"'));
   const wn = exists('app/settings/whats-new.tsx') ? read('app/settings/whats-new.tsx') : '';
   check('whats-new reads bundled notes, no fetch', /releaseNotes\.generated/.test(wn) && !/fetch\(/.test(wn));
-  check('whats-new renders with plainNotes', /plainNotes/.test(wn));
+  check('whats-new renders parsed sections', /parseReleaseNotes/.test(wn));
   const rn = await import('../constants/releaseNotes.generated.ts');
   check('bundled notes include the installed version or an older one', typeof rn.RELEASE_NOTES === 'object' && Object.keys(rn.RELEASE_NOTES).length > 5);
   check('bundled notes match release-notes/*.md', fs.readdirSync(path.join(root, 'release-notes')).filter((f) => /^\d+\.\d+\.md$/.test(f)).every((f) => rn.RELEASE_NOTES[f.replace('.md', '')]));
