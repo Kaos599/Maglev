@@ -78,6 +78,13 @@ Made by Harsh Dayal (https://harshdayal.dev, GitHub: https://github.com/Kaos599)
 - Free: Maglev Yes; LibreTorrent Yes; BiglyBT (Android) Yes; Seal Yes; YTDLnis Yes; NewPipe Yes; Flud Yes; 1DM+ Yes; Advanced Download Manager (ADM) Yes; Free Download Manager (FDM) Yes
 - No account needed: Maglev Yes; LibreTorrent Yes; BiglyBT (Android) Yes; Seal Yes; YTDLnis Yes; NewPipe Yes; Flud Yes; 1DM+ Yes; Advanced Download Manager (ADM) Yes; Free Download Manager (FDM) Yes
 
+## Switching from another app
+
+- [Maglev as an alternative to 1DM+](https://harshdayal.dev/maglev/1dm-alternative): Maglev and 1DM+ both download ordinary web links and torrents with no ads. Maglev is open source under GPL-3.0, saves DASH streams as well as HLS, and searches torrent sites from one box. 1DM+ is on Google Play, and Maglev is not there yet.
+- [Maglev as an alternative to ADM](https://harshdayal.dev/maglev/adm-alternative): Maglev and ADM both download ordinary web links and torrents, with a browser and a battery cut-off. ADM's Play listing says it contains ads and in-app purchases. Maglev has no ads, and its code is open under GPL-3.0.
+- [Maglev as an alternative to LibreTorrent](https://harshdayal.dev/maglev/libretorrent-alternative): Maglev runs torrents the way LibreTorrent does, and both are open source under GPL-3.0 with no ads. Maglev also downloads ordinary web links, saves videos from web pages and searches torrent sites in one box. LibreTorrent's pages do not list web file downloads or a browser.
+- [Maglev as an alternative to Flud](https://harshdayal.dev/maglev/flud-alternative): Maglev and Flud both run torrents, with magnet links, RSS feeds and file selection. Maglev has no ads, and Flud's Google Play listing says it contains ads and in-app purchases. Maglev is open source. Flud's Play page does not say it is.
+
 ## FAQ
 
 ### Is Maglev free?
