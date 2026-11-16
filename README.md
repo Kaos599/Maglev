@@ -68,6 +68,14 @@ c8e15bd47fb39fb2248d8b501a677e61be564d52ba535e31a1608564e35df3c4
 
 To check a file before you install it, run `apksigner verify --print-certs` on it (apksigner comes with the Android SDK build tools) and compare the `SHA-256 digest` line with the fingerprint above.
 
+Each release also has a `SHA256SUMS` file listing the SHA-256 hash of every APK in it. Download it next to the APK and run:
+
+```
+sha256sum -c --ignore-missing SHA256SUMS
+```
+
+It prints `OK` for each file that matches. On Windows, `Get-FileHash <file> -Algorithm SHA256` gives the same hash to compare by hand. The hashes change with every release; the certificate fingerprint above never does.
+
 ## Coming from another app?
 
 Side-by-side guides for the apps people most often replace with Maglev, with what is the same, what is different and when the other app is the better pick:
