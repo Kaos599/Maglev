@@ -296,6 +296,13 @@ async function main() {
   const dsheet = read('components/transfers/DownloadSheet.tsx');
   check('link download sheet shows the timing row', /TimingRow/.test(dsheet));
   check('no pink in categories', !/accents\.pink|\bpink\b/.test(all));
+  // The global `router` from expo-router throws "unavailable before the first render has finished" while its
+  // bridge is unbound (seen on a cold start: Settings > Stats crashed). Screens use the useRouter() hook instead.
+  const walkTsx = (d) => fs.readdirSync(path.join(root, d), { withFileTypes: true }).flatMap((e) =>
+    e.isDirectory() ? walkTsx(path.join(d, e.name)) : /\.tsx?$/.test(e.name) ? [path.join(d, e.name)] : []);
+  const globalRouter = ['app', 'components'].flatMap(walkTsx)
+    .filter((f) => /import\s*\{[^}]*\brouter\b[^}]*\}\s*from\s*['"]expo-router['"]/.test(read(f)));
+  check('no screen imports the global expo-router router (use useRouter)', globalRouter.length === 0, globalRouter.join(', '));
 
   if (failed) {
     console.error(`\n${failed} failed`);
