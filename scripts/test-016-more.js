@@ -25,7 +25,7 @@ const check = (name, ok) => {
 
   const st = read('app/(tabs)/settings.tsx');
   check('About is the first App row', /appRows[^=]*=\s*\[\s*\{[^}]*title: 'About'/.test(st));
-  check('scrollbar stays visible', /persistentScrollbar/.test(st));
+  check('no persistent scrollbar (0.25: removed on request)', !/persistentScrollbar/.test(st));
   check('pill is dismissed by reaching the end, not a nudge', /if \(end && m\.y > 0\) dismissHint\(\)/.test(st) && !/y > 4\) dismissHint/.test(st));
 
   const layout = read('app/(tabs)/_layout.tsx');

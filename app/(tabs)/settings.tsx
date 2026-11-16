@@ -18,8 +18,19 @@ import { Card, formatLimit, friendlyPath } from '../../components/settings/Setti
 import { spacing } from '../../constants/theme';
 import { banners, watchCopy } from '../../constants/copy';
 import { useWatches } from '../../utils/watch/store';
+import { useUpdatePrefs } from '../../utils/prefs/update';
+import { SettingsSearchField, SettingsSearchResults } from '../../components/settings/SettingsSearch';
 
-const ACCENT_LABEL = { lime: 'Lime', cyan: 'Cyan', pink: 'Pink', orange: 'Orange' } as const;
+const ACCENT_LABEL = {
+  lime: 'Lime',
+  cyan: 'Cyan',
+  pink: 'Pink',
+  orange: 'Orange',
+  violet: 'Violet',
+  blue: 'Blue',
+  amber: 'Amber',
+  mint: 'Mint',
+} as const;
 const MODE_LABEL = { oled: 'OLED', dim: 'Dim', light: 'Light', system: 'System' } as const;
 
 interface RowSpec {
@@ -129,6 +140,9 @@ export default function SettingsIndex() {
   const assistant = useAssistantPrefs();
   const watches = useWatches();
   const [browserPrefs] = useBrowserPrefs();
+  const [updatePrefs] = useUpdatePrefs();
+  const [query, setQuery] = useState('');
+  const searching = query.trim().length > 0;
   const { bandwidth: b, network: n, power: p, appearance: a } = settings;
 
   // Strings only, so the memoised rows below see equal props until a value really changes.
@@ -153,13 +167,14 @@ export default function SettingsIndex() {
 
   const appRows: RowSpec[] = [
     { icon: 'about', title: 'About', value: APP_VERSION, route: 'about' },
+    { icon: 'download', title: 'Updates', value: updatePrefs.updateAutoCheck ? 'Checks daily' : 'Manual', route: 'updates' },
     { icon: 'interface', title: 'Appearance', value: interfaceValue, route: 'interface' },
     { icon: 'bell', title: 'Notifications', value: alerts, route: 'notifications' },
     { icon: 'assistant', title: 'Assistant', value: assistant.enabled ? 'Experimental · On' : 'Experimental · Off', route: 'assistant' },
     { icon: 'upload', title: 'Backup and restore', value: 'Settings and torrents', route: 'backup' },
   ];
   const findRows: RowSpec[] = [
-    { icon: 'search', title: 'Search providers', value: providers, route: 'search-providers' },
+    { icon: 'search', title: 'Search sources', value: providers, route: 'search-providers' },
     { icon: 'feeds', title: 'Auto-download', value: auto, route: 'feeds' },
     { icon: 'alarm', title: watchCopy.rowTitle, value: watchCopy.rowValue(watches.length), route: 'watch' },
     { icon: 'network', title: 'Browser', value: browserPrefs.adBlock ? 'Ad blocking on' : 'Ad blocking off', route: 'browser' },
@@ -209,7 +224,7 @@ export default function SettingsIndex() {
         contentContainerStyle={styles.content}
         onScroll={onScroll}
         scrollEventThrottle={32}
-        persistentScrollbar
+        keyboardShouldPersistTaps="handled"
         onLayout={(e) => {
           metrics.current.viewport = e.nativeEvent.layout.height;
           refresh();
@@ -219,39 +234,46 @@ export default function SettingsIndex() {
           refresh();
         }}
       >
-        <NeedsAttention />
-        <View style={styles.section}>
-          <SectionHeader title="App" />
-          <Card>
-            {appRows.map((r) => (
-              <SettingsRow key={r.route} {...r} />
-            ))}
-          </Card>
-        </View>
-        <View style={styles.section}>
-          <SectionHeader title="Finding things" />
-          <Card>
-            {findRows.map((r) => (
-              <SettingsRow key={r.route} {...r} />
-            ))}
-          </Card>
-        </View>
-        <View style={styles.section}>
-          <SectionHeader title="Downloads" />
-          <Card>
-            <StorageRow />
-            <SettingsRow {...speedRow} />
-            <SettingsRow {...scheduleRow} />
-          </Card>
-        </View>
-        <View style={styles.section}>
-          <SectionHeader title="Connection" />
-          <Card>
-            {connectionRows.map((r) => (
-              <SettingsRow key={r.route} {...r} />
-            ))}
-          </Card>
-        </View>
+        <SettingsSearchField query={query} onChangeQuery={setQuery} />
+        {searching ? (
+          <SettingsSearchResults query={query} />
+        ) : (
+          <>
+            <NeedsAttention />
+            <View style={styles.section}>
+              <SectionHeader title="App" />
+              <Card>
+                {appRows.map((r) => (
+                  <SettingsRow key={r.route} {...r} />
+                ))}
+              </Card>
+            </View>
+            <View style={styles.section}>
+              <SectionHeader title="Finding things" />
+              <Card>
+                {findRows.map((r) => (
+                  <SettingsRow key={r.route} {...r} />
+                ))}
+              </Card>
+            </View>
+            <View style={styles.section}>
+              <SectionHeader title="Downloads" />
+              <Card>
+                <StorageRow />
+                <SettingsRow {...speedRow} />
+                <SettingsRow {...scheduleRow} />
+              </Card>
+            </View>
+            <View style={styles.section}>
+              <SectionHeader title="Connection" />
+              <Card>
+                {connectionRows.map((r) => (
+                  <SettingsRow key={r.route} {...r} />
+                ))}
+              </Card>
+            </View>
+          </>
+        )}
       </ScrollView>
       <BottomFade hidden={atEnd} />
       {!hintSeen && !atEnd ? <MoreBelowPill onPress={scrollDown} /> : null}

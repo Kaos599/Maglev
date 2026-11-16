@@ -37,7 +37,7 @@ const listOf = (name) => {
 };
 const expected = {
   App: ['appRows', ['About', 'Appearance', 'Notifications', 'Assistant']],
-  'Finding things': ['findRows', ['Search providers', 'Auto-download', 'Browser']],
+  'Finding things': ['findRows', ['Search sources', 'Auto-download', 'Browser']],
   Downloads: [null, ['Storage', 'Speed & queue', 'Scheduling']],
   Connection: ['connectionRows', ['Network', 'Power']],
 };
