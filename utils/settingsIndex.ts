@@ -1564,14 +1564,7 @@ export const SETTINGS_INDEX: SettingEntry[] = [
     ["clipboard", "copied", "copy", "paste", "links", "magnet", "share", "ask"],
     "Adding downloads",
   ),
-  e(
-    "speed-parts",
-    "Parts per download",
-    "downloads",
-    "Downloads",
-    ["parts", "threads", "split", "segments", "connections", "faster", "speed", "link"],
-    "Link downloads",
-  ),
+  // "Parts per download" (id speed-parts, Downloads > Link downloads) comes back with PARTS_ENABLED in 0.26.
   e(
     "speed-retry",
     "Retry failed downloads",

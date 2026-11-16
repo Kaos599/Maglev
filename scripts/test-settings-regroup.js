@@ -63,7 +63,7 @@ async function main() {
   check('downloads.tsx has the three sections in order', dpos.every((p, i) => p > 0 && (i === 0 || p > dpos[i - 1])));
   check('downloads.tsx title is Downloads', /<SettingsPage title="Downloads"/.test(dl));
   check('downloads.tsx has Add without asking and clipboard row', /quickShareCopy\.setting\.title/.test(dl) && /<ClipboardSetting/.test(dl));
-  check('downloads.tsx renders Parts then Retry', dl.indexOf('<PartsSection') > 0 && dl.indexOf('<RetrySection') > dl.indexOf('<PartsSection'));
+  check('downloads.tsx renders Parts (behind PARTS_ENABLED) then Retry', dl.indexOf('PARTS_ENABLED ? <PartsSection') > 0 && dl.indexOf('<RetrySection') > dl.indexOf('<PartsSection'));
   check('downloads.tsx has Close when done and Resume after restart', /Close when done/.test(dl) && /Resume after restart/.test(dl) && /autoExitOnComplete/.test(dl) && /resumeAfterRestart/.test(dl));
   check('Link downloads sits between Adding and When downloads finish', dl.indexOf('<PartsSection') > dpos[1] && dl.indexOf('<RetrySection') < dpos[2]);
   check('layout registers settings/downloads', read('app/_layout.tsx').includes('name="settings/downloads"'));
@@ -101,7 +101,6 @@ async function main() {
   const moved = {
     'storage-add-without-asking': 'Adding downloads',
     'storage-offer-links': 'Adding downloads',
-    'speed-parts': 'Link downloads',
     'speed-retry': 'Link downloads',
     'speed-keep-trying': 'Link downloads',
     'power-close-when-done': 'When downloads finish',

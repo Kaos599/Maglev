@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ChipGroup, friendlyPath } from '../components/settings/SettingsParts';
-import { DownloadParts, PART_CHOICES, useLinkDownloadPrefs } from '../utils/prefs/linkDownloads';
+import { DownloadParts, PART_CHOICES, PARTS_ENABLED, useLinkDownloadPrefs } from '../utils/prefs/linkDownloads';
 import { StyleSheet, Text, TextInput, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import * as Clipboard from 'expo-clipboard';
@@ -55,7 +55,7 @@ export default function AddDownloadScreen() {
   // Parts default to the Settings > Downloads pref; the chips below override it for this download only.
   const [linkPrefs] = useLinkDownloadPrefs();
   const [partsOverride, setPartsOverride] = useState<DownloadParts | null>(null);
-  const parts = partsOverride ?? linkPrefs.downloadParts;
+  const parts: DownloadParts = PARTS_ENABLED ? (partsOverride ?? linkPrefs.downloadParts) : 1;
   const token = useRef(0);
   const urlRef = useRef('');
   const allowLanRef = useRef(false);
@@ -324,7 +324,7 @@ export default function AddDownloadScreen() {
           </View>
           <Button label="Change" variant="secondary" disabled={adding} onPress={() => void handleChangeFolder()} />
         </View>
-        <ChipGroup label="Parts" options={PART_OPTIONS} value={parts} onChange={(v) => setPartsOverride(v)} />
+        {PARTS_ENABLED ? <ChipGroup label="Parts" options={PART_OPTIONS} value={parts} onChange={(v) => setPartsOverride(v)} /> : null}
         {mobileNote ?<Banner tone="info" title={mobileNote} /> : null}
         {doesntFit ? <Banner tone="danger" title={banners.addDownload.notEnoughSpace.title} body={banners.addDownload.notEnoughSpace.body} /> : null}
         {addError ? <Banner tone="danger" title={addError} /> : null}
