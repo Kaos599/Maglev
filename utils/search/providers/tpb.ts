@@ -29,11 +29,14 @@ function tpbCategory(code: number | undefined): Category | undefined {
   return 'other';
 }
 
-/** apibay uploader statuses that count as trusted: everything except a plain 'member' or a missing status. */
+/**
+ * apibay uploader statuses that count as trusted: the ones The Pirate Bay's staff hand out (VIP, Trusted) and staff
+ * accounts. A fixed list, so a status the site adds later (for example 'banned') is never trusted by accident.
+ */
+const TRUSTED_STATUSES = new Set(['vip', 'trusted', 'helper', 'moderator', 'supermod', 'admin']);
+
 export function isTrustedUploader(status: unknown): boolean {
-  if (typeof status !== 'string') return false;
-  const s = status.trim().toLowerCase();
-  return s !== '' && s !== 'member';
+  return typeof status === 'string' && TRUSTED_STATUSES.has(status.trim().toLowerCase());
 }
 
 export function parse(body: string, ctx: ParseContext): SearchResult[] {

@@ -159,6 +159,7 @@ async function main() {
   console.log('\n[6] tpb trusted uploaders');
   check('isTrustedUploader: trusted statuses', ['vip', 'trusted', 'helper', 'moderator', 'supermod', 'admin', 'VIP'].every(tpb.isTrustedUploader));
   check('isTrustedUploader: member, missing, junk are not', ['member', 'Member', '', undefined, null, 5].every((s) => !tpb.isTrustedUploader(s)));
+  check('isTrustedUploader: a status the site adds later is not trusted', ['banned', 'suspended', 'newbie', 'vipp'].every((s) => !tpb.isTrustedUploader(s)));
   const body = fx('tpb_status_search.json');
   const all = tpb.parse(body, ctx());
   check('no trustedOnly keeps every row', all.length === 12, String(all.length));
