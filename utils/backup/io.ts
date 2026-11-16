@@ -19,10 +19,12 @@ import { assistantPrefs } from '../prefs/assistantApp';
 import { normalizeAssistantPrefs } from '../prefs/assistant';
 import { loadFeeds, refreshFeedsNewCountFromStorage, saveFeeds } from '../feeds';
 import { setTabPrefs } from '../../components/tabs/tabPrefsStore';
+import { getStatsStore } from '../stats';
+import { buildStatsSection } from '../stats/backup';
 import { backupFileName, buildBackup, serializeBackup } from './export';
 import { parseBackup, type ParseResult } from './migrate';
 import { restoreBackup, type RestoreResult } from './import';
-import { PREF_KEYS, isPlainObject, type Backup, type BackupPart, type PrefKey } from './format';
+import { PREF_KEYS, isPlainObject, type Backup, type BackupPart, type PrefKey, type RestorePart } from './format';
 
 const LAST_BACKUP_KEY = 'maglev.backup.lastAt.v1';
 
@@ -40,11 +42,20 @@ function readPref(key: PrefKey): unknown {
   }
 }
 
-export async function collectBackup(): Promise<Backup> {
+export async function collectBackup(opts: { includeStats?: boolean } = {}): Promise<Backup> {
   const list = await maglevEngine.listTorrents();
   const torrents = list.ok ? list.torrents : [];
   const downloads = list.ok ? (list.downloads ?? []) : [];
+  let stats = null;
+  if (opts.includeStats) {
+    try {
+      stats = buildStatsSection(await (await getStatsStore()).exportSection());
+    } catch {
+      stats = null;
+    }
+  }
   return buildBackup({
+    stats,
     appVersion: Constants.expoConfig?.version ?? '',
     now: () => Date.now(),
     settings: settingsStore.getSettings(),
@@ -65,7 +76,7 @@ export async function collectBackup(): Promise<Backup> {
 export type SaveOutcome = { ok: true; fileName: string; count: number } | { cancelled: true } | { ok: false };
 
 /** Builds the backup and writes it to a folder the user picks. */
-export async function exportBackup(): Promise<SaveOutcome> {
+export async function exportBackup(opts: { includeStats?: boolean } = {}): Promise<SaveOutcome> {
   let dir: Directory;
   try {
     dir = await Directory.pickDirectoryAsync();
@@ -74,7 +85,7 @@ export async function exportBackup(): Promise<SaveOutcome> {
     return { cancelled: true };
   }
   try {
-    const backup = await collectBackup();
+    const backup = await collectBackup(opts);
     const fileName = backupFileName(Date.now());
     const file = dir.createFile(fileName, 'application/json');
     await file.write(serializeBackup(backup));
@@ -152,7 +163,7 @@ function folderExists(path: string): boolean {
 }
 
 /** Applies the chosen parts to this phone. */
-export async function applyBackup(backup: Backup, parts: ReadonlySet<BackupPart>): Promise<RestoreResult> {
+export async function applyBackup(backup: Backup, parts: ReadonlySet<RestorePart>): Promise<RestoreResult> {
   const list = await maglevEngine.listTorrents();
   const existingHashes = new Set((list.ok ? list.torrents : []).map((t) => t.id.toLowerCase()));
   const existingUrls = (list.ok ? (list.downloads ?? []) : []).map((d) => d.urlDisplay);
@@ -166,6 +177,7 @@ export async function applyBackup(backup: Backup, parts: ReadonlySet<BackupPart>
       settingsStore.updateSettings(s);
     },
     applyPref,
+    applyStats: async (section) => (await getStatsStore()).importSection(section),
     syncNative: async () => {
       await syncScheduleToNative();
       await syncFeedAutomationToNative();

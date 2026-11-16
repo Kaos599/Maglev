@@ -39,6 +39,7 @@ import {
 import { shareRows } from '../components/transfers/snapshots';
 import { notices } from '../constants/copy';
 import { isAddableLink } from '../utils/addableLink';
+import { noteRemoved, recordSnapshot } from '../utils/stats';
 import { getCatchCopiedLinks } from '../utils/prefs/clipboard';
 import { smoothDownloadsSpeed } from '../utils/downloadCopy';
 
@@ -439,6 +440,7 @@ export const EngineProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         if (list.ok) {
           ingest(list.torrents);
           if (list.downloads) ingestDownloads(list.downloads);
+          void recordSnapshot(list.torrents, list.downloads);
         }
         setStorageStatus(storage);
       }
@@ -468,6 +470,7 @@ export const EngineProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     const offTelemetry = maglevEngine.onTelemetry((event) => {
       ingest(event.torrents);
       if (event.downloads) ingestDownloads(event.downloads);
+      void recordSnapshot(event.torrents, event.downloads);
       // Detail screens are not on screen in the background; they refresh on the next tick back.
       if (isAway()) return;
       watched.current.forEach((_count, id) => {
@@ -710,6 +713,7 @@ export const EngineProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       const failedDl = downloadIds.filter((_, i) => !results[ids.length + i]);
       if (failedDl.length > 0) setRemovingDl((prev) => prev.filter((id) => !failedDl.includes(id)));
       const gone = ids.filter((_, i) => results[i]);
+      noteRemoved([...gone, ...downloadIds.filter((id) => !failedDl.includes(id))]);
       dropFromLive(gone);
       // Deleted rows stay hidden as confirmed removals, so a tick sent before the delete cannot bring them back.
       if (gone.length > 0) endTap(beginTap(gone, 'remove'), true);
@@ -922,7 +926,10 @@ export const EngineProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         return true;
       }
       const ok = await downloadCall('remove', () => maglevEngine.removeDownload(id, true));
-      if (ok) setRemovingDl((prev) => [...prev, id]);
+      if (ok) {
+        noteRemoved([id]);
+        setRemovingDl((prev) => [...prev, id]);
+      }
       return ok;
     },
     [downloadCall, removeTransfers]

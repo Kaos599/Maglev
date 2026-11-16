@@ -37,6 +37,7 @@ import { empty, watchCopy } from '../../constants/copy';
 import { addWatchToStore } from '../../utils/watch/store';
 import { Reveal } from '../../components/motion';
 import { openBrowser } from '../../utils/browser/openBrowser';
+import { noteOrigin } from '../../utils/stats/sourceStore';
 
 const DEBOUNCE_MS = 400;
 const MIN_QUERY = 2;
@@ -282,6 +283,8 @@ export default function SearchScreen() {
       try {
         // Some sources only show the magnet on a detail page: read it now.
         const ready = await resolveResult(r, wait.signal);
+        // Stats (NATIVE_CONTRACT 34.2): remember which source this came from for when it finishes.
+        noteOrigin(ready.magnet, { source: r.sources?.[0] ?? r.providerId, category: (r.category ?? category) === 'all' ? null : (r.category ?? category) });
         // SM-35: the metadata size is not known before the add, so the search result's size decides.
         let tightNotice: string | null = null;
         const size = ready.sizeBytes ?? r.sizeBytes;
