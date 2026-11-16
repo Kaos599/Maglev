@@ -79,8 +79,15 @@ function checkLinks(name, html) {
   return refs.length;
 }
 
+/** Slugs of the one-page-per-app pages, from compare.json (their pages are <slug>/index.html). */
+function altSlugs() {
+  const file = path.join(HERE, 'compare.json');
+  if (!fs.existsSync(file)) return [];
+  return (JSON.parse(fs.readFileSync(file, 'utf8')).alternatives || []).map((a) => a.slug);
+}
+
 function staticChecks() {
-  const pages = ['index.html', 'compare/index.html', 'privacy/index.html'].filter((p) => fs.existsSync(path.join(SITE, p)));
+  const pages = ['index.html', 'compare/index.html', 'privacy/index.html', ...altSlugs().map((s) => `${s}/index.html`)].filter((p) => fs.existsSync(path.join(SITE, p)));
   if (!pages.includes('compare/index.html')) fail('compare/index.html missing (is site/build/compare.json there?)');
   if (!pages.includes('privacy/index.html')) fail('privacy/index.html missing (content.json needs a privacy section)');
   for (const name of pages) {
@@ -105,6 +112,7 @@ function staticChecks() {
   const sm = fs.readFileSync(path.join(SITE, 'sitemap.xml'), 'utf8');
   if (pages.includes('compare/index.html') && !sm.includes('/maglev/compare</loc>')) fail('sitemap.xml lacks /maglev/compare');
   if (pages.includes('privacy/index.html') && !sm.includes('/maglev/privacy</loc>')) fail('sitemap.xml lacks /maglev/privacy');
+  for (const s of altSlugs()) if (pages.includes(`${s}/index.html`) && !sm.includes(`/maglev/${s}</loc>`)) fail(`sitemap.xml lacks /maglev/${s}`);
   if (/<loc>[^<]*\/<\/loc>/.test(sm)) fail('sitemap.xml has a URL with a trailing slash');
 }
 
@@ -151,7 +159,8 @@ async function browserChecks(outDir) {
   const srv = await serve();
   const base = `http://localhost:${srv.address().port}${BASE_PATH}`;
 
-  for (const [name, url] of [['index', base], ['compare', `${base}/compare`], ['privacy', `${base}/privacy`], ['404', `${base}/no/such/page`]]) {
+  const targets = [['index', base], ['compare', `${base}/compare`], ['privacy', `${base}/privacy`], ...altSlugs().map((s) => [s, `${base}/${s}`]), ['404', `${base}/no/such/page`]];
+  for (const [name, url] of targets) {
     for (const vp of [{ width: 390, height: 844 }, { width: 1440, height: 900 }]) {
       const ctx = await browser.newContext({ viewport: vp });
       const p = await ctx.newPage();

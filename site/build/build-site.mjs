@@ -419,7 +419,8 @@ ${cmp ? `
     <h2 id="compare-title" class="h2">How Maglev compares</h2>
     <p class="section-lede">As listed on each app's own pages, checked ${esc(human(cmp.checkedOn))}. Anything an app's pages don't list counts as No.</p>
     ${teaser(cmp)}
-    <p class="more-link"><a class="btn" href="${COMPARE}">${icon('chevron-right')}<span>See the full comparison</span></a></p>
+    <p class="more-link"><a class="btn" href="${COMPARE}">${icon('chevron-right')}<span>See the full comparison</span></a></p>${(cmp.alternatives || []).length ? `
+    <p class="switch-links">Switching from another app? ${cmp.alternatives.map((x) => `<a href="${BASE_PATH}/${esc(x.slug)}">Maglev vs ${esc((cmp.apps.find((a) => a.id === x.app) || {}).name || x.app)}</a>`).join(' · ')}</p>` : ''}
   </div>
 </section>
 ` : ''}
@@ -485,6 +486,13 @@ ${footer(HOME, { compare: !!cmp })}
 
 // ---------------------------------------------------------------- compare/index.html
 
+/** "Where each answer comes from": one item per app, with its sources and summary. */
+function sourceItems(apps) {
+  return apps
+    .map((a) => `      <li><b>${esc(a.name)}</b>${a.kind ? ` <span class="kind">${esc(a.kind)}</span>` : ''}: ${(a.sources && a.sources.length ? a.sources : [a.url]).map((s, i) => `<a href="${esc(s)}" rel="noopener">${i ? `source ${i + 1}` : new URL(s).hostname.replace(/^www\./, '')}</a>`).join(', ')}${a.summary ? `. ${esc(a.summary)}` : ''}</li>`)
+    .join('\n');
+}
+
 function comparePage(d) {
   const url = abs('compare');
   const p = d.page;
@@ -518,9 +526,19 @@ function comparePage(d) {
       PERSON,
     ],
   };
-  const sources = d.apps
-    .map((a) => `      <li><b>${esc(a.name)}</b>${a.kind ? ` <span class="kind">${esc(a.kind)}</span>` : ''}: ${(a.sources && a.sources.length ? a.sources : [a.url]).map((s, i) => `<a href="${esc(s)}" rel="noopener">${i ? `source ${i + 1}` : new URL(s).hostname.replace(/^www\./, '')}</a>`).join(', ')}${a.summary ? `. ${esc(a.summary)}` : ''}</li>`)
-    .join('\n');
+  const sources = sourceItems(d.apps);
+  // Switching guides: one page per app people replace with Maglev, listed near the top so visitors see them.
+  const appName = (id) => (d.apps.find((a) => a.id === id) || {}).name || id;
+  const altList = (d.alternatives || []).length ? `
+<section class="prose-sec" aria-labelledby="alt-title">
+  <div class="wrap narrow prose">
+    <h2 id="alt-title" class="h2">Switching from another app?</h2>
+    <p>Side-by-side guides for the apps people most often replace with Maglev: what is the same, what is different, and when the other app is the better pick.</p>
+    <ul class="alt-list">
+${d.alternatives.map((x) => `      <li><a href="${BASE_PATH}/${esc(x.slug)}">Maglev vs ${esc(appName(x.app))}</a>. ${md(x.answer)}</li>`).join('\n')}
+    </ul>
+  </div>
+</section>` : '';
 
   return `${head({ title: p.title, desc: p.description, base: A, canonical: url })}
 ${ogTags({ title: p.title, desc: p.description, url })}
@@ -540,6 +558,8 @@ ${header(A, HOME, { current: 'compare' })}
     <p class="meta">Checked ${esc(human(d.checkedOn))} · ${esc(d.method)}</p>
   </div>
 </section>
+
+${altList}
 
 <section class="cmp-full" aria-labelledby="table-title">
   <div class="wrap">
@@ -573,6 +593,119 @@ ${faqList(faq)}
       <h2 class="h3">Try Maglev</h2>
       <p>Free, open source and without ads. Android 7 and up.</p>
       <div class="ctas"><a class="btn primary" href="${RELEASES}" rel="noopener">${icon('download')}<span>Download for most phones (arm64)</span></a><a class="btn" href="${HOME}#install">How to install</a></div>
+    </div>
+  </div>
+</section>
+</main>
+${footer(HOME)}
+</body>
+</html>
+`;
+}
+
+// ---------------------------------------------------------------- <app>-alternative/index.html
+
+/** Rows where Maglev and the other app differ, judged after the "unlisted means No" rule. */
+function differingRows(d, appId) {
+  return d.rows.filter((r) => {
+    const a = cellValue(r, 'maglev');
+    const b = cellValue(r, appId);
+    return a.kind !== b.kind || a.text !== b.text;
+  });
+}
+
+/** One page for one app that people replace with Maglev. Content comes from compare.json `alternatives`. */
+function alternativePage(d, alt) {
+  const url = abs(alt.slug);
+  const maglev = d.apps.find((a) => a.id === 'maglev');
+  const other = d.apps.find((a) => a.id === alt.app);
+  if (!other) throw new Error(`compare.json: alternative ${alt.slug} names unknown app ${alt.app}`);
+  const faq = alt.faq.map((x) => [x.q, x.a]);
+  const { html: table, foot } = compareTable(d, [maglev, other], differingRows(d, alt.app), {
+    notes: true,
+    grouped: true,
+    caption: `Maglev compared with ${other.name}, only the rows where they differ`,
+  });
+  const ld = {
+    '@context': 'https://schema.org',
+    '@graph': [
+      {
+        '@type': 'WebPage',
+        '@id': `${url}#webpage`,
+        url,
+        name: alt.title,
+        description: alt.description,
+        isPartOf: { '@id': `${SITE_URL}#website` },
+        about: { '@id': `${SITE_URL}#app` },
+        datePublished: PUBLISHED,
+        dateModified: d.checkedOn > UPDATED ? d.checkedOn : UPDATED,
+        author: PERSON_REF,
+        breadcrumb: { '@id': `${url}#breadcrumb` },
+        inLanguage: 'en',
+      },
+      {
+        '@type': 'BreadcrumbList',
+        '@id': `${url}#breadcrumb`,
+        itemListElement: [
+          { '@type': 'ListItem', position: 1, name: 'Maglev', item: SITE_URL },
+          { '@type': 'ListItem', position: 2, name: 'Compare apps', item: abs('compare') },
+          { '@type': 'ListItem', position: 3, name: alt.title, item: url },
+        ],
+      },
+      PERSON,
+    ],
+  };
+  return `${head({ title: alt.title, desc: alt.description, base: A, canonical: url })}
+${ogTags({ title: alt.title, desc: alt.description, url })}
+${ldBlock(ld)}
+${ldBlock(faqLd(faq))}
+</head>
+<body>
+${header(A, HOME, { current: 'compare' })}
+<script src="${A}assets/site.js" defer></script>
+<main id="main">
+<section class="page-head" aria-labelledby="page-title">
+  <div class="grid-bg" aria-hidden="true"></div>
+  <div class="wrap">
+    <nav class="crumbs" aria-label="Breadcrumb"><ol><li><a href="${HOME}">Maglev</a></li><li><a href="${COMPARE}">Compare apps</a></li><li aria-current="page">${esc(alt.title)}</li></ol></nav>
+    <h1 id="page-title">${esc(alt.title)}</h1>
+    <p class="lede">${md(alt.answer)}</p>
+    <p class="meta">Checked ${esc(human(d.checkedOn))} against ${esc(other.name)}'s own pages and store listing. Anything those pages don't list counts as No.</p>
+  </div>
+</section>
+
+<section class="cmp-full" aria-labelledby="table-title">
+  <div class="wrap">
+    <h2 id="table-title" class="h2">Side by side</h2>
+    <p class="section-lede">Only the rows where the two apps differ. The <a href="${COMPARE}">full comparison</a> has every row.</p>
+    ${table}
+${foot.length ? `    <ol class="notes">\n${foot.map((f) => `      <li id="note-${f.n}"><b>${esc(f.app)}, ${esc(f.row)}:</b> ${md(f.text)} <a href="#ref-${f.n}" aria-label="Back to the table">↩</a></li>`).join('\n')}\n    </ol>` : ''}
+    <h3 class="src-h">Where each answer comes from</h3>
+    <ul class="sources">
+${sourceItems([maglev, other])}
+    </ul>
+  </div>
+</section>
+
+<section class="prose-sec" aria-label="More about ${esc(other.name)} and Maglev">
+  <div class="wrap narrow prose">
+${alt.sections.map((s) => `    <h2 class="h2">${esc(s.heading)}</h2>\n${s.body.map((b) => `    <p>${md(b)}</p>`).join('\n')}`).join('\n')}
+  </div>
+</section>
+
+<section id="faq" class="faq" aria-labelledby="faq-title">
+  <div class="wrap narrow">
+    <h2 id="faq-title" class="h2">Questions about switching</h2>
+${faqList(faq)}
+  </div>
+</section>
+
+<section class="maker">
+  <div class="wrap narrow">
+    <div class="card cta-card">
+      <h2 class="h3">Try Maglev</h2>
+      <p>Free, open source and without ads. Android 7 and up.</p>
+      <div class="ctas"><a class="btn primary" href="${RELEASES}" rel="noopener">${icon('download')}<span>Download for most phones (arm64)</span></a><a class="btn" href="${COMPARE}">Compare all apps</a></div>
     </div>
   </div>
 </section>
@@ -670,7 +803,11 @@ const sitemap = (cmp) => `<?xml version="1.0" encoding="UTF-8"?>
   <url>
     <loc>${abs('compare')}</loc>
     <lastmod>${cmp.checkedOn > UPDATED ? cmp.checkedOn : UPDATED}</lastmod>
-  </url>` : ''}${C.privacy ? `
+  </url>` : ''}${cmp ? (cmp.alternatives || []).map((x) => `
+  <url>
+    <loc>${abs(x.slug)}</loc>
+    <lastmod>${cmp.checkedOn > UPDATED ? cmp.checkedOn : UPDATED}</lastmod>
+  </url>`).join('') : ''}${C.privacy ? `
   <url>
     <loc>${abs('privacy')}</loc>
     <lastmod>${C.privacy.updated}</lastmod>
@@ -712,6 +849,10 @@ ${cmp ? `
 ## Comparison (checked ${cmp.checkedOn}; anything not listed on an app's own pages counts as No)
 
 ${cmp.rows.map((r) => `- ${r.label}: ${cmp.apps.map((a) => `${a.name} ${cellValue(r, a.id).text}`).join('; ')}`).join('\n')}
+` : ''}${cmp && (cmp.alternatives || []).length ? `
+## Switching from another app
+
+${cmp.alternatives.map((x) => `- [${x.title}](${abs(x.slug)}): ${plain(x.answer)}`).join('\n')}
 ` : ''}
 ## FAQ
 
@@ -733,6 +874,7 @@ const files = {
   'llms.txt': llms(cmp),
 };
 if (cmp) files['compare/index.html'] = comparePage(cmp);
+if (cmp) for (const alt of cmp.alternatives || []) files[`${alt.slug}/index.html`] = alternativePage(cmp, alt);
 if (C.privacy) files['privacy/index.html'] = privacyPage(C.privacy, cmp);
 else fs.rmSync(path.join(SITE, 'compare'), { recursive: true, force: true });
 for (const [name, body] of Object.entries(files)) {

@@ -79,3 +79,9 @@ Competitor sources: Play pages for Flud, 1DM+, ADM, FDM and BiglyBT (read throug
 - **Pauses on low battery:** ADM Yes (its page lists autostop on low battery). LibreTorrent Partial (lists "battery settings" without detail).
 - **Dark and light themes:** Seal and YTDLnis Partial (theming named, dark or light not).
 - **No account needed:** Yes for every app, as before (no page mentions a sign-in requirement). Maglev's value still comes from the brief and the app having no sign-in step.
+
+## Alternative pages (added with the one-page-per-app pages)
+
+Pages: `1dm-alternative`, `adm-alternative`, `libretorrent-alternative`, `flud-alternative`. Their claims about other apps reuse the sources and dates above (checked 2026-11-12 and 2026-11-13); no new fetches were made for them. Each page's "When X is the better choice" section names only what the sources list: Google Play installs and updates for 1DM+, ADM and Flud, F-Droid for LibreTorrent, ADM's home-screen widget, LibreTorrent's own F-Droid description, and Flud's speed-limit wording. Points that depend on a page not listing a feature are phrased as "does not list" and match the "Not listed counts as No" rule.
+
+Not built: BiglyBT and FDM pages (no separate search demand was checked, and the hub table already covers them). Stremio and Nuvio left out on purpose. YouTube downloaders are covered by one paragraph on the compare page, not by their own pages.

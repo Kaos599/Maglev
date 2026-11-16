@@ -259,6 +259,9 @@ section { padding: 56px 0; }
 .prose .h2 { margin-top: 40px; }
 .prose .h2:first-child { margin-top: 0; }
 .prose p { margin-top: 12px; color: var(--copy); }
+.alt-list { margin: 12px 0 0; padding: 0; list-style: none; color: var(--copy); }
+.alt-list li { padding: 12px 0; border-bottom: 1px solid var(--hairline); }
+.alt-list a { color: var(--text); }
 .cta-card p { margin-top: 8px; }
 .cta-card .ctas { margin-top: 18px; }
 
