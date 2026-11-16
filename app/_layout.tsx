@@ -146,6 +146,7 @@ function AppNavigation() {
           <Stack.Screen name="settings/browser" />
           <Stack.Screen name="settings/feeds" />
           <Stack.Screen name="settings/interface" />
+          <Stack.Screen name="settings/licenses" />
           <Stack.Screen name="settings/network" />
           <Stack.Screen name="settings/notifications" />
           <Stack.Screen name="settings/power" />
@@ -154,6 +155,8 @@ function AppNavigation() {
           <Stack.Screen name="settings/search-providers" />
           <Stack.Screen name="settings/speed" />
           <Stack.Screen name="settings/storage" />
+          <Stack.Screen name="settings/updates" />
+          <Stack.Screen name="settings/whats-new" />
           <Stack.Screen name="settings/watch" />
         </Stack.Protected>
       </Stack>

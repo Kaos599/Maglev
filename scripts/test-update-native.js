@@ -138,12 +138,13 @@ console.log('\n[About and wiring]');
 const layout = read('app/_layout.tsx');
 check('_layout starts the updater once the engine is ready', /startUpdates\(\)/.test(layout));
 const about = read('app/settings/about.tsx');
-check('About has the check, mode picker, auto-check toggle and Report a bug', /updateCopy\.check\.title/.test(about) && /updateCopy\.modes\.map/.test(about) && /updateAutoCheck/.test(about) && /updateCopy\.report\.title/.test(about) && /buildIssueUrl/.test(about));
+const updates = read('app/settings/updates.tsx');
+check('Updates has the check, mode picker and auto-check toggle; About has Report a bug', /updateCopy\.check\.title/.test(updates) && /updateCopy\.modes\.map/.test(updates) && /updateAutoCheck/.test(updates) && /updateCopy\.report\.title/.test(about) && /buildIssueUrl/.test(about));
 check('Report a bug sends version, Android release and device', /Platform\.constants/.test(about) && /buildIssueUrl\(\{ version: appVersion, android, device \}\)/.test(about));
 check('the device name goes through deviceLabel (no repeated maker)', /deviceLabel\(c\.Manufacturer, c\.Model\)/.test(about));
-check('managed installs see "Updates come from"', /updateCopy\.managedBy\(managedBy\)/.test(about));
-check('the card uses the app Sheet and shows release notes as plain text', /<Sheet/.test(about) && /plainNotes\(notes\)/.test(about));
-check('no raw hex colours in the updater UI', !/#[0-9a-fA-F]{6}\b/.test(about));
+check('managed installs see "Updates come from"', /updateCopy\.managedBy\(managedBy\)/.test(updates));
+check('the card uses the app Sheet and shows release notes as plain text', /<Sheet/.test(updates) && /plainNotes\(notes\)/.test(updates));
+check('no raw hex colours in the updater UI', !/#[0-9a-fA-F]{6}\b/.test(about + updates));
 
 const idx = read('utils/update/index.ts');
 console.log('\n[wiring: network rules, restore, notices, player, check flag]');
@@ -157,7 +158,7 @@ check('notifiedVersion stops a restored update from posting again', /notifiedVer
 check('the ready notice carries the file so Install starts the install', /notify\('ready', next\.info\.version, \{ path: next\.path, sha256: next\.info\.sha256 \}\)/.test(idx));
 check('setPlayerOpen exists and feeds safeToInstall', /export function setPlayerOpen\(open: boolean\)/.test(idx) && (idx.match(/playerOpen, \.\.\.telemetry/g) || []).length === 2);
 check('there is no in-app player screen to call it from (playback goes to another app), so no route calls it', !fs.readdirSync(path.join(root, 'app'), { recursive: true }).some((f) => /player/i.test(String(f))));
-check('checkNow returns whether a check started, and About opens the card only for that', /Promise<boolean>/.test(idx) && /checkNow\(\{ manual: true \}\)\.then\(\(started\) =>/.test(about) && /if \(!started\) return;/.test(about) && !/pending\.current/.test(about));
+check('checkNow returns whether a check started, and Updates opens the card only for that', /Promise<boolean>/.test(idx) && /checkNow\(\{ manual: true \}\)\.then\(\(started\) =>/.test(updates) && /if \(!started\) return;/.test(updates) && !/pending\.current/.test(updates));
 
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);
