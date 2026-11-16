@@ -19,6 +19,7 @@ import { spacing } from '../../constants/theme';
 import { banners, watchCopy } from '../../constants/copy';
 import { useWatches } from '../../utils/watch/store';
 import { useUpdatePrefs } from '../../utils/prefs/update';
+import { useStatsPrefs } from '../../utils/stats/prefs';
 import { useLinkDownloadPrefs } from '../../utils/prefs/linkDownloads';
 import { SettingsSearchField, SettingsSearchResults } from '../../components/settings/SettingsSearch';
 
@@ -46,6 +47,13 @@ const SettingsRow = React.memo(function SettingsRow({ icon, title, value, route 
   const onPress = useCallback(() => router.push(`/settings/${route}` as never), [route]);
   return <ListRow icon={icon} title={title} value={value} onPress={onPress} />;
 });
+
+/** Stats row: opens the Stats screen, which lives outside /settings. */
+function StatsRow() {
+  const keep = useStatsPrefs().keepStats;
+  const onPress = useCallback(() => router.push('/stats' as never), []);
+  return <ListRow icon="grid" title="Stats" value={keep ? 'Your downloads, by day' : 'Off'} onPress={onPress} />;
+}
 
 /** Storage row: the only row that reads the engine, kept apart so the rest of the list stays still. */
 function StorageRow() {
@@ -249,6 +257,7 @@ export default function SettingsIndex() {
             <View style={styles.section}>
               <SectionHeader title="App" />
               <Card>
+                <StatsRow />
                 {appRows.map((r) => (
                   <SettingsRow key={r.route} {...r} />
                 ))}
