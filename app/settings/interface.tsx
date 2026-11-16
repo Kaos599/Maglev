@@ -7,12 +7,11 @@ import { useTheme } from '../../context/ThemeContext';
 import { ThemeColors, accents, radius, spacing, type } from '../../constants/theme';
 import { PixelIcon } from '../../components/PixelIcon';
 import { ListRow, PressableScale, RadioCard, SegmentedControl, Toggle } from '../../components/ui';
-import { Card, Caption, ChipGroup, SettingsPage } from '../../components/settings/SettingsParts';
+import { Card, Caption, SettingsPage } from '../../components/settings/SettingsParts';
 import { FontStyle, TelemetryDensity } from 'maglev-engine';
 import { fontFamilies, resolveFontStyle } from '../../constants/fontStyles';
 import { fontStyleCopy, tabsCopy } from '../../constants/copy';
 import { TabsSection } from '../../components/tabs/TabsSection';
-import { useSearchPrefs } from '../../utils/prefs/search';
 import { AppIconSection } from '../../components/settings/AppIconSection';
 import type { PixelIconName } from '../../components/PixelIcon';
 
@@ -31,14 +30,11 @@ const ACCENTS: { name: AccentName; label: string }[] = [
   { name: 'cyan', label: 'Cyan' },
   { name: 'pink', label: 'Pink' },
   { name: 'orange', label: 'Orange' },
+  { name: 'violet', label: 'Violet' },
+  { name: 'blue', label: 'Blue' },
+  { name: 'amber', label: 'Amber' },
+  { name: 'mint', label: 'Mint' },
 ];
-
-const NAME_LINES = [
-  { value: 1, label: '1' },
-  { value: 2, label: '2' },
-  { value: 3, label: '3' },
-  { value: 0, label: 'Full name' },
-] as const;
 
 const FONT_ICONS: Record<FontStyle, PixelIconName> = { clean: 'interface', retro: 'grid', mono: 'file' };
 
@@ -48,7 +44,6 @@ export default function InterfaceSettings() {
   const s = useMemo(() => makeStyles(colors), [colors]);
   const a = settings.appearance;
   const fontStyle = resolveFontStyle(a.fontStyle);
-  const [searchPrefs, updateSearchPrefs] = useSearchPrefs();
   const set = (patch: Partial<typeof a>) => updateSettings((prev) => ({ appearance: { ...prev.appearance, ...patch } }));
 
   return (
@@ -117,12 +112,6 @@ export default function InterfaceSettings() {
           })}
           <Caption>{fontStyleCopy.hint}</Caption>
         </View>
-        <ChipGroup
-          label="Search results: name lines"
-          options={NAME_LINES}
-          value={searchPrefs.resultNameLines}
-          onChange={(resultNameLines) => updateSearchPrefs({ resultNameLines })}
-        />
         <View style={s.block}>
           <Text style={s.label}>Transfer details</Text>
           <SegmentedControl<TelemetryDensity>
@@ -163,8 +152,9 @@ const makeStyles = (c: ThemeColors) =>
   StyleSheet.create({
     block: { padding: spacing.lg, gap: spacing.sm },
     label: { ...type.bodyStrong, fontSize: 14, color: c.text },
-    swatches: { flexDirection: 'row', gap: spacing.sm },
-    swatchItem: { minWidth: 64, alignItems: 'center', gap: 4 },
+    // Two rows of four: each item is a quarter of the row, so 8 swatches fit a 360dp screen.
+    swatches: { flexDirection: 'row', flexWrap: 'wrap', rowGap: spacing.md },
+    swatchItem: { width: '25%', alignItems: 'center', gap: 4 },
     swatchLabel: { ...type.body, fontSize: 12, color: c.textMuted },
     // 44px outer target; the ring sits inside it so the swatch itself is 34px.
     swatchRing: {
