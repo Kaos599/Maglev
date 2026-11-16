@@ -46,7 +46,9 @@ import type {
 } from './MaglevEngine.types.ts';
 import { HEALTH_TAGS } from './MaglevEngine.types.ts';
 import {
+  AUTO_RETRY_DELAYS,
   DEFAULT_SETTINGS,
+  type KotlinOnlySettings,
   type MaglevSettings,
   SPEED_PRESET_MAP,
 } from './MaglevSettings.types.ts';
@@ -1384,6 +1386,12 @@ export class MaglevMockEngine implements MaglevEngineApi {
     pwr.batteryCutoffThreshold = g.batteryCutoffPct as typeof pwr.batteryCutoffThreshold;
     pwr.autoExitOnComplete = g.autoExitOnComplete;
     net.seedOnMobileData = g.seedOnMobileData === true;
+    // Kotlin-only settings (they ride in this payload): echoed back so the round trip can be checked.
+    const k = g as GovernanceConfig & Partial<KotlinOnlySettings>;
+    if (typeof k.hideFromGallery === 'boolean') this.settings.storage.hideFromGallery = k.hideFromGallery;
+    if (k.autoRetry === 'off' || k.autoRetry === 'after') this.settings.bandwidth.autoRetry = k.autoRetry;
+    if (k.autoRetryDelayMin !== undefined && AUTO_RETRY_DELAYS.includes(k.autoRetryDelayMin)) this.settings.bandwidth.autoRetryDelayMin = k.autoRetryDelayMin;
+    if (typeof k.autoRetryAlways === 'boolean') this.settings.bandwidth.autoRetryAlways = k.autoRetryAlways;
     this.recalculateGovernance();
     this.broadcast();
     return ok();

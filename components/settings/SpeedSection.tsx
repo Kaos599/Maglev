@@ -20,7 +20,7 @@ const PRESETS = [
   { value: 'CUSTOM', label: 'Custom' },
 ] as const;
 
-/** Download and upload limits and connections per torrent. Rendered on Settings > Speed & queue. */
+/** Download and upload limits and connections per torrent. Rendered on Settings > Speed and sharing. */
 export function SpeedSection() {
   const { settings, updateSettings, setSpeedPreset } = useSettings();
   const b = settings.bandwidth;

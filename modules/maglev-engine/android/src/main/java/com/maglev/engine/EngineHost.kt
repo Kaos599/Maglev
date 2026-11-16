@@ -29,6 +29,7 @@ import com.maglev.engine.service.MaglevTorrentService
 import com.maglev.engine.service.Notifications
 import com.maglev.engine.service.TransferSummary
 import com.maglev.engine.storage.FileActions
+import com.maglev.engine.storage.GalleryHide
 import com.maglev.engine.storage.SafStorageManager
 import com.maglev.engine.storage.MediaScanPaths
 import com.maglev.engine.storage.StorageManager
@@ -254,6 +255,8 @@ object EngineHost {
         if (!isOk(res)) return res
 
         initialized = true
+        // "Hide from gallery": make sure the .nomedia in the active folder matches the setting.
+        ioScope.launch { GalleryHide.apply(c) }
         liftFgsTimeoutBlock(c)
         synchronized(prevFinished) { prevFinished.clear(); sawDownloadingById.clear() }
         lastSummary = null
@@ -489,6 +492,7 @@ object EngineHost {
         // URL downloads count as transfers: they keep the service up and show in the notification (section 17).
         val transfers = allTransfers(torrents, downloads)
         notifyNeedsLink(downloads)
+        ctx?.let { AutoRetry.onDownloads(it, downloads) }
         val summary = summarize(transfers, res["streaming"] == true)
         lastSummary = summary
         refreshTile(summary)
@@ -735,6 +739,7 @@ object EngineHost {
 
     /** Filters to public storage and asks the system scanner. API 1+, see MediaScannerConnection.scanFile. */
     private fun scanPaths(c: Context, baseDir: String, rels: List<String>) {
+        if (GalleryHide.hidden(c)) return // "Hide from gallery": a .nomedia sits in the folder, so nothing is scanned
         val privateRoots = listOfNotNull(
             StorageManager.stagingDir(c).path,
             c.getExternalFilesDir(null)?.path,
@@ -1392,7 +1397,9 @@ object EngineHost {
         } else {
             folder = friendlyFolder(dir.absolutePath)
             try {
-                MediaScannerConnection.scanFile(c, arrayOf(dest.absolutePath), arrayOf("application/x-bittorrent"), null)
+                if (!GalleryHide.hidden(c)) {
+                    MediaScannerConnection.scanFile(c, arrayOf(dest.absolutePath), arrayOf("application/x-bittorrent"), null)
+                }
             } catch (e: Exception) {
                 Log.w(TAG, "media scan skipped: ${e.message}")
             }
@@ -1653,7 +1660,40 @@ object EngineHost {
         pollNow()
         return res
     }
-    fun retryDownload(id: String) = call { NativeCore.nativeRetryDownload(id) }.also { pollNow() }
+    fun retryDownload(id: String): Map<String, Any?> {
+        ctx?.let { AutoRetry.reset(it, id) } // a retry by hand starts the automatic count again
+        return call { NativeCore.nativeRetryDownload(id) }.also { pollNow() }
+    }
+
+    /** True while a Wi-Fi only, VPN, battery, schedule or offline rule has transfers stopped. */
+    private fun governanceBlocked(): Boolean = lastAllowed.values.any { it == false }
+
+    /**
+     * Automatic retry of one link download (AutoRetry worker). Starts the engine in this process when needed.
+     * Returns true when a retry was started, false when there was nothing to retry, and null when a rule blocks
+     * transfers right now (the worker tries again later).
+     */
+    suspend fun autoRetryDownload(id: String): Boolean? = kotlinx.coroutines.withContext(control) {
+        val c = ctx ?: return@withContext false
+        if (!AutoRetry.enabled(c)) return@withContext false
+        if (RestartPolicy.decide(RestartPrefs.input(c).copy(activeTorrents = RestartPolicy.UNKNOWN_COUNT)) == RestartDecision.StayStopped) {
+            return@withContext false
+        }
+        if (!initialized && !isOk(startEngine(""))) return@withContext null
+        val list = call { NativeCore.nativeListTorrents() }
+        if (!isOk(list)) return@withContext null
+        val d = Json.list(list["downloads"]).firstOrNull { it["id"] == id }
+        if (d == null) {
+            AutoRetry.forget(c, id)
+            return@withContext false
+        }
+        if (!AutoRetry.retryable(d)) return@withContext false
+        if (governanceBlocked()) return@withContext null
+        AutoRetry.countRound(c, id)
+        val res = call { NativeCore.nativeRetryDownload(id) }
+        pollNow()
+        isOk(res)
+    }
     fun removeDownload(id: String, deleteFiles: Boolean): Map<String, Any?> {
         // The document this download's copy created, read before the marker goes. Delete file removes only it.
         val copyUri = if (deleteFiles) ctx?.let { StorageManager.copiedUri(it, DL_PREFIX + id) } else null

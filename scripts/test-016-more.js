@@ -24,8 +24,8 @@ const check = (name, ok) => {
   check('settings: adult chip only when adult sources are shown', /c !== 'adult' \|\| prefs\.adult/.test(sp));
 
   const st = read('app/(tabs)/settings.tsx');
-  check('About is the first App row', /appRows[^=]*=\s*\[\s*\{[^}]*title: 'About'/.test(st));
-  check('scrollbar stays visible', /persistentScrollbar/.test(st));
+  check('About closes the App group (0.25: Updates then About)', /appRows[^=]*=\s*\[\s*\{[^}]*title: 'Updates'[\s\S]*?title: 'About'/.test(st));
+  check('no persistent scrollbar (0.25: removed on request)', !/persistentScrollbar/.test(st));
   check('pill is dismissed by reaching the end, not a nudge', /if \(end && m\.y > 0\) dismissHint\(\)/.test(st) && !/y > 4\) dismissHint/.test(st));
 
   const layout = read('app/(tabs)/_layout.tsx');

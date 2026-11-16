@@ -20,7 +20,7 @@ const DURATIONS: { value: SeedingDurationLimit; label: string }[] = [
 
 type Field = 'maxActiveDownloads' | 'maxActiveUploads';
 
-/** Active downloads, sharing at once and seeding limits. Rendered on Settings > Speed & queue. */
+/** Active downloads, sharing at once and seeding limits. Rendered on Settings > Speed and sharing. */
 export function QueueSection() {
   const { settings, updateSettings } = useSettings();
   const b = settings.bandwidth;

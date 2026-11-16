@@ -7,7 +7,7 @@ import { QueueSection } from '../../components/settings/QueueSection';
 
 export default function SpeedSettings() {
   return (
-    <SettingsPage title="Speed & queue">
+    <SettingsPage title="Speed and sharing">
       <Stack.Screen options={{ headerShown: false }} />
       <SectionHeader title="Speed" />
       <SpeedSection />

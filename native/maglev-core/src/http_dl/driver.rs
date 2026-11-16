@@ -1483,6 +1483,7 @@ impl Downloads {
                     "stalled": stalled,
                     "eta": eta,
                     "segments_active": if r.state == State::Downloading { 1 } else { 0 },
+                    "down_limit_bps": r.down_limit_bps,
                     "resumable": r.resumable || r.stream.is_some(),
                     "stream": r.stream.as_ref().map(|s| json!({
                         "kind": s.kind,
@@ -2973,6 +2974,32 @@ mod tests {
         d.set_blocked(&[]);
         assert_eq!(d.state_of("dl_gov"), Some(State::Paused(PauseReason::User)));
         assert_eq!(d.state_of("dl_probe"), Some(State::Paused(PauseReason::User)));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn snapshot_carries_the_download_limit_and_it_survives_a_restart() {
+        let (rt, dir) = (rt(), tmp("limit_snap"));
+        let d = manager(&rt, &dir, &[]);
+        put(&d, "dl_a", State::Paused(PauseReason::User), |r| r.paused_tag = Some("user".into()));
+        put(&d, "dl_b", State::Paused(PauseReason::User), |r| {
+            r.paused_tag = Some("user".into());
+            r.added_at = 1;
+        });
+        // No limit is 0, never a made-up value.
+        assert_eq!(d.snapshots()[0]["down_limit_bps"], 0);
+        d.set_limits("dl_b", r#"{"down_limit_bps":250000}"#).unwrap();
+        let snap = d.snapshots();
+        let b = snap.iter().find(|s| s["id"] == "dl_b").unwrap();
+        assert_eq!(b["down_limit_bps"], 250_000);
+        let a = snap.iter().find(|s| s["id"] == "dl_a").unwrap();
+        assert_eq!(a["down_limit_bps"], 0);
+        // A new manager on the same folder reads the saved list.
+        drop(d);
+        let d2 = manager(&rt, &dir, &[]);
+        let snap = d2.snapshots();
+        let b = snap.iter().find(|s| s["id"] == "dl_b").unwrap();
+        assert_eq!(b["down_limit_bps"], 250_000);
         let _ = std::fs::remove_dir_all(&dir);
     }
 

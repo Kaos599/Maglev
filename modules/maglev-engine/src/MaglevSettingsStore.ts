@@ -1,6 +1,8 @@
 import {
+  AUTO_RETRY_DELAYS,
   DEFAULT_SETTINGS,
   SETTINGS_SCHEMA_VERSION,
+  type AccentName,
   type DownloadFolder,
   type MaglevSettings,
 } from './MaglevSettings.types.ts';
@@ -69,13 +71,19 @@ function sanitizeFolder(v: unknown): DownloadFolder | null {
   };
 }
 
+/** Every accent the app knows; anything else saved falls back to lime. */
+const ACCENT_NAMES: readonly AccentName[] = ['lime', 'cyan', 'pink', 'orange', 'violet', 'blue', 'amber', 'mint'];
+
 /** Upgrades any persisted payload (any version, or none) to the current schema with defaults for missing fields. */
 export function migrateSettings(raw: unknown): MaglevSettings {
   const defaults: MaglevSettings = JSON.parse(JSON.stringify(DEFAULT_SETTINGS));
   const body = isPlainObject(raw) && isPlainObject(raw.settings) ? raw.settings : raw;
   const merged = mergeWithDefaults(defaults, body);
+  if (!ACCENT_NAMES.includes(merged.appearance.accent)) merged.appearance.accent = 'lime';
   if (!['clean', 'retro', 'mono'].includes(merged.appearance.fontStyle)) merged.appearance.fontStyle = 'clean';
   if (merged.appearance.showSpeedTotals !== true) merged.appearance.showSpeedTotals = false;
+  if (merged.bandwidth.autoRetry !== 'off' && merged.bandwidth.autoRetry !== 'after') merged.bandwidth.autoRetry = 'after';
+  if (!AUTO_RETRY_DELAYS.includes(merged.bandwidth.autoRetryDelayMin)) merged.bandwidth.autoRetryDelayMin = 5;
   merged.downloadFolder = sanitizeFolder(isPlainObject(body) ? body.downloadFolder : null);
   return merged;
 }

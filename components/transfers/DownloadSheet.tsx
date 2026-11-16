@@ -8,7 +8,8 @@ import { useTheme } from '../../context/ThemeContext';
 import { ThemeColors, radius, spacing, type } from '../../constants/theme';
 import { formatBytes } from '../../constants/format';
 import { WIFI_ANYWAY_NOTE, actionRoute, downloadActions, downloadCaption, needsNewLink, removeCopy } from '../../utils/downloadCopy';
-import { friendlyPath } from '../settings/SettingsParts';
+import { friendlyPath, formatLimit } from '../settings/SettingsParts';
+import { SpeedLimitSheet } from '../detail/SpeedLimitSheet';
 import { Banner, Button, ListRow, Sheet } from '../ui';
 
 export interface DownloadSheetProps {
@@ -30,12 +31,14 @@ export interface DownloadSheetProps {
   onAllowDevice: (id: string) => void;
   onRemove: (id: string, deleteFiles: boolean) => void;
   onNewLink: (id: string, url: string) => Promise<EngineResult>;
+  /** Speed limit for this download in bytes per second, 0 = no limit. */
+  onSetLimit: (id: string, downLimitBps: number) => void;
 }
 
-type Step = 'main' | 'confirmDelete';
+type Step = 'main' | 'confirmDelete' | 'limit';
 
 /** What a tap on a download card opens: details, Retry or Restart, Paste new link, Remove (SM-30 Copy). */
-export function DownloadSheet({ download: d, onClose, onRetry, onPause, onResume, onResumeAnyway, onOpen, onOpenFolder, onShare, onAllowDevice, onRemove, onNewLink }: DownloadSheetProps) {
+export function DownloadSheet({ download: d, onClose, onRetry, onPause, onResume, onResumeAnyway, onOpen, onOpenFolder, onShare, onAllowDevice, onRemove, onNewLink, onSetLimit }: DownloadSheetProps) {
   const { colors } = useTheme();
   const router = useRouter();
   const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -105,6 +108,22 @@ export function DownloadSheet({ download: d, onClose, onRetry, onPause, onResume
     );
   }
 
+  const limit = d.downLimitBps;
+
+  if (step === 'limit') {
+    return (
+      <SpeedLimitSheet
+        visible
+        mode="download"
+        onClose={() => setStep('main')}
+        limits={{ downBps: limit, upBps: 0 }}
+        onChange={(l) => {
+          onSetLimit(d.id, l.downBps);
+        }}
+      />
+    );
+  }
+
   return (
     <Sheet visible onClose={onClose} title={d.name} subtitle={subtitle}>
       <View style={styles.stack}>
@@ -117,6 +136,13 @@ export function DownloadSheet({ download: d, onClose, onRetry, onPause, onResume
             accessibilityLabel={`Saved to ${friendlyPath(d.folder)}. Opens the folder.`}
           />
         ) : null}
+        <ListRow
+          title="Speed limit"
+          icon="speed-limit"
+          value={limit > 0 ? formatLimit(limit) : 'No limit'}
+          onPress={() => setStep('limit')}
+          accessibilityLabel={`Speed limit, ${limit > 0 ? formatLimit(limit) : 'No limit'}. Opens the speed limit options.`}
+        />
         {d.notice ? <Banner tone="info" title={d.notice} /> : null}
         {needsNewLink(d) ? (
           <View style={styles.stack}>

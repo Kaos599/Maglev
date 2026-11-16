@@ -29,6 +29,12 @@ const LIMITS = [
   { value: 50, label: '50' },
   { value: 100, label: '100' },
 ] as const;
+const RESULT_NAME_LINES = [
+  { value: 1, label: '1' },
+  { value: 2, label: '2' },
+  { value: 3, label: '3' },
+  { value: 0, label: 'Full name' },
+] as const;
 
 /** Torznab entries default to every category except adult; the user narrows it per source. */
 const TORZNAB_DEFAULT_CATEGORIES: Category[] = ['movies', 'tv', 'anime', 'music', 'apps', 'games', 'books', 'other'];
@@ -246,6 +252,19 @@ export default function SearchProvidersSettings() {
             accessory={<Toggle value={prefs.hideDead} onValueChange={(hideDead) => update({ hideDead })} accessibilityLabel="Hide dead torrents" />}
           />
         </Card>
+      </View>
+
+      <View style={styles.section}>
+        <SectionHeader title="Results" />
+        <Card>
+          <ChipGroup
+            label="Result name lines"
+            options={RESULT_NAME_LINES}
+            value={prefs.resultNameLines}
+            onChange={(resultNameLines) => update({ resultNameLines })}
+          />
+        </Card>
+        <Caption>How many lines a long result name can use in Search.</Caption>
       </View>
 
       <View style={styles.section}>

@@ -602,6 +602,12 @@ class MaglevEngineModule : Module() {
                 context?.let { RestartPrefs.setResumeAfterRestart(it, rules["resumeAfterRestart"] != false) }
                 // Quick share reads these headless, in its own activity (docs/contracts-0.19/quick-share.md section 6).
                 context?.let { com.maglev.engine.share.QuickSharePrefs.save(it, rules) }
+                // Hide from gallery and automatic retry are read in Kotlin only (never sent to Rust).
+                context?.let { c ->
+                    com.maglev.engine.storage.GalleryHide.save(c, rules)
+                    AutoRetry.save(c, rules)
+                    EngineHost.ioScope.launch { com.maglev.engine.storage.GalleryHide.apply(c) }
+                }
                 EngineHost.setGovernance(
                     Governance(
                         wifiOnly = rules["wifiOnly"] == true,
@@ -687,6 +693,7 @@ class MaglevEngineModule : Module() {
             val mode = if (direct) "direct" else "staging"
             val name = SafStorageManager.displayName(c, tree)
             if (saves) StorageManager.saveCustomFolder(c, tree.toString(), if (direct) path else null, mode, name)
+            if (saves) com.maglev.engine.storage.GalleryHide.apply(c) // the folder changed: re-check the .nomedia
             promise.resolve(
                 linkedMapOf(
                     "ok" to true,

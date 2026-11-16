@@ -27,9 +27,9 @@ object UpdateNotices {
         nm.createNotificationChannel(ch)
     }
 
-    /** Opens About, where the update card is. */
+    /** Opens Updates, where the update card is. */
     private fun aboutIntent(context: Context): PendingIntent {
-        val i = Intent(Intent.ACTION_VIEW, Uri.parse("maglev://settings/about")).setPackage(context.packageName)
+        val i = Intent(Intent.ACTION_VIEW, Uri.parse("maglev://settings/updates")).setPackage(context.packageName)
         i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
         return PendingIntent.getActivity(context, 4201, i, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
     }

@@ -63,7 +63,7 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         : rawMode && rawMode in { oled: 1, dim: 1, light: 1 }
           ? rawMode
           : DEFAULT_MODE;
-    const accent: AccentName = rawAccent && rawAccent in accents ? rawAccent : DEFAULT_ACCENT;
+    const accent: AccentName = rawAccent && Object.prototype.hasOwnProperty.call(accents, rawAccent) ? rawAccent : DEFAULT_ACCENT;
     // Fonts are live tokens (constants/theme.ts). Set them before any child reads `type`; the new
     // `colors` object below makes every memoised makeStyles(colors) run again with the new fonts.
     setActiveFontStyle(fontStyle);
