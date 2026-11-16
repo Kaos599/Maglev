@@ -44,6 +44,10 @@ check('no hex colours', !/#[0-9a-fA-F]{6}\b/.test(comp));
 check('search.tsx renders SortFilterSheet', /<SortFilterSheet\b/.test(search));
 check('search.tsx no old inline hide chip', !search.includes('Hide no one sharing'));
 check('search.tsx no inline "Sort and filter" Sheet', !/<Sheet[^>]*title="Sort and filter"/.test(search));
+// The sheet's hide toggle and Settings > Search sources > Hide dead torrents are one saved setting.
+check('sheet hide toggle reads the saved hideDead pref', /const hideNoShare = prefs\.hideDead;/.test(search));
+check('sheet hide toggle writes the saved hideDead pref', /updatePrefs\(\{ hideDead \}\)/.test(search));
+check('no separate session-only hide state', !/\[hideNoShare, setHideNoShare\] = useState/.test(search));
 
 if (failed) { console.error(`\n${failed} check(s) failed`); process.exit(1); }
 console.log('\nall sort-filter checks passed');

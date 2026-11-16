@@ -106,7 +106,9 @@ export default function SearchScreen() {
   const [failed, setFailed] = useState(false);
   const [sourceFilter, setSourceFilter] = useState<string | null>(null);
   const [sortOpen, setSortOpen] = useState(false);
-  const [hideNoShare, setHideNoShare] = useState(false);
+  // One switch with Settings > Search sources > Hide dead torrents: the sheet shows and changes the saved setting.
+  const hideNoShare = prefs.hideDead;
+  const setHideNoShare = useCallback((hideDead: boolean) => updatePrefs({ hideDead }), [updatePrefs]);
   const [minBytes, setMinBytes] = useState(0);
   const [preview, setPreview] = useState<MergedResult | null>(null);
   const [mobileAsk, setMobileAsk] = useState<{ result: MergedResult; note: string } | null>(null);
@@ -826,7 +828,7 @@ export default function SearchScreen() {
         onReset={() => {
           setSourceFilter(null);
           setMinBytes(0);
-          setHideNoShare(false);
+          setHideNoShare(true);
         }}
       />
       <ResultPreviewSheet
