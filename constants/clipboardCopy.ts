@@ -5,8 +5,7 @@ export const clipboardCopy = {
   notNow: 'Not now',
   torrentFallback: 'Torrent from your clipboard',
   settingTitle: 'Offer to download copied links',
-  settingSubtitle:
-    'When you open Maglev with a link copied. Android shows a short notice each time Maglev reads the clipboard.',
+  settingSubtitle: 'Asks when you open Maglev with a link copied. Android shows a notice when it reads it.',
 } as const;
 
 const MAGNET = /^magnet:/i;
