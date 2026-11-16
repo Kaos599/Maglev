@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AccessibilityInfo, Animated, Easing, Pressable, StyleSheet, View, useWindowDimensions, type HostInstance } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
 import { haptic } from '../../constants/haptics';
+import { useTheme } from '../../context/ThemeContext';
 import { useReduceMotion } from '../motion/useReduceMotion';
 import { BOOST_ENTER_AT, BOOST_FRAMES, boostTravel, claimArrival, createTapGate, hitSlopFor, steppedRanges } from './markMotion';
 import {
@@ -56,12 +57,24 @@ const px = (units: number, scale: number) =>
 const trailReach = (fx: MarkFx, scale: number) =>
   Math.max(0, VB_X - Math.min(...fx.sprites.map((sp) => Math.min(...sp.frames.map(([x]) => x))))) * scale;
 
+/**
+ * Brand colours per theme. Dark themes keep the lime body and cyan speed lines; light mode is mono:
+ * near-black body, a softer ink for the speed lines and rails so the train still reads as moving.
+ */
+function useMarkInk() {
+  const { colors, dark } = useTheme();
+  return dark
+    ? { body: MARK_LIME, lines: MARK_CYAN }
+    : { body: colors.text, lines: colors.textMuted };
+}
+
 function StillMark({ width, height }: { width: number; height: number }) {
+  const ink = useMarkInk();
   return (
     <Svg width={width} height={height} viewBox={MARK_VIEWBOX}>
-      <Path d={MARK_LINES} fill={MARK_CYAN} />
-      <Path d={MARK_BODY} fill={MARK_LIME} fillRule="evenodd" />
-      <Path d={MARK_RAILS} fill={MARK_CYAN} />
+      <Path d={MARK_LINES} fill={ink.lines} />
+      <Path d={MARK_BODY} fill={ink.body} fillRule="evenodd" />
+      <Path d={MARK_RAILS} fill={ink.lines} />
     </Svg>
   );
 }
@@ -76,6 +89,7 @@ type Shot = { from: number; dx: number[] };
  */
 export function MaglevMark({ height = 96, cruising = false, tappable = false, arrive = false }: MaglevMarkProps) {
   const reduce = useReduceMotion();
+  const ink = useMarkInk();
   const { width: screenWidth } = useWindowDimensions();
   const scale = height / VB_H;
   const width = height * MARK_RATIO;
@@ -207,7 +221,7 @@ export function MaglevMark({ height = 96, cruising = false, tappable = false, ar
           <Animated.View key={`a${j}`} style={[StyleSheet.absoluteFill, { opacity: a.o, transform: [{ translateX: a.x }] }]}>
             <Svg width={width} height={height} viewBox={MARK_VIEWBOX}>
               {/* Only the band ends smear (MARK_GHOST), so nothing shows in the cut-ins or the window. */}
-              <Path d={MARK_GHOST} fill={MARK_LIME} />
+              <Path d={MARK_GHOST} fill={ink.body} />
             </Svg>
           </Animated.View>
         ))}
@@ -220,23 +234,23 @@ export function MaglevMark({ height = 96, cruising = false, tappable = false, ar
               top: sp.top,
               width: sp.width,
               height: sp.height,
-              backgroundColor: MARK_CYAN,
+              backgroundColor: ink.lines,
               opacity: sp.o,
               transform: [{ translateX: sp.x }, { scaleX: sp.sx }],
             }}
           />
         ))}
         <Svg width={width} height={height} viewBox={MARK_VIEWBOX} style={StyleSheet.absoluteFill}>
-          <Path d={MARK_BODY} fill={MARK_LIME} fillRule="evenodd" />
+          <Path d={MARK_BODY} fill={ink.body} fillRule="evenodd" />
         </Svg>
       </Animated.View>
       <Svg width={width} height={height} viewBox={MARK_VIEWBOX} style={StyleSheet.absoluteFill}>
-        <Path d={MARK_RAILS} fill={MARK_CYAN} />
+        <Path d={MARK_RAILS} fill={ink.lines} />
       </Svg>
     </>
   ) : waiting ? (
     <Svg width={width} height={height} viewBox={MARK_VIEWBOX}>
-      <Path d={MARK_RAILS} fill={MARK_CYAN} />
+      <Path d={MARK_RAILS} fill={ink.lines} />
     </Svg>
   ) : (
     <StillMark width={width} height={height} />

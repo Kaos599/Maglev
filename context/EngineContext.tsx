@@ -39,6 +39,7 @@ import {
 import { shareRows } from '../components/transfers/snapshots';
 import { notices } from '../constants/copy';
 import { isAddableLink } from '../utils/addableLink';
+import { getCatchCopiedLinks } from '../utils/prefs/clipboard';
 import { smoothDownloadsSpeed } from '../utils/downloadCopy';
 
 /** Bundle-load time, the zero point for the cold-start log (UI spec S10.3). */
@@ -154,6 +155,8 @@ interface EngineContextType {
   resumeDownload: (id: string) => Promise<boolean>;
   /** After a changed file this restarts from zero. */
   retryDownload: (id: string) => Promise<boolean>;
+  /** Limit for one link download in bytes per second, 0 = no limit. */
+  setDownloadLimits: (id: string, downLimitBps: number) => Promise<boolean>;
   removeDownload: (id: string, deleteFiles: boolean) => Promise<boolean>;
   refreshDownloadUrl: (id: string, url: string) => Promise<EngineResult>;
 }
@@ -411,6 +414,11 @@ export const EngineProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   }, []);
 
   const checkClipboard = useCallback(async () => {
+    // Off: never read it. Android 13+ shows a notice on every read.
+    if (!getCatchCopiedLinks()) {
+      setClipboardMagnet(null);
+      return;
+    }
     try {
       const content = await Clipboard.getStringAsync();
       const clip = content?.trim() ?? '';
@@ -902,6 +910,10 @@ export const EngineProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const pauseDownload = useCallback((id: string) => downloadCall('pause', () => maglevEngine.pauseDownload(id)), [downloadCall]);
   const resumeDownload = useCallback((id: string) => downloadCall('resume', () => maglevEngine.resumeDownload(id)), [downloadCall]);
   const retryDownload = useCallback((id: string) => downloadCall('retry', () => maglevEngine.retryDownload(id)), [downloadCall]);
+  const setDownloadLimits = useCallback(
+    (id: string, downLimitBps: number) => downloadCall('set the speed limit', () => maglevEngine.setDownloadLimits(id, { downLimitBps })),
+    [downloadCall]
+  );
   const removeDownload = useCallback(
     async (id: string, deleteFiles: boolean) => {
       // Keeping the files goes through the Undo window; deleting them is confirmed by the caller and happens now.
@@ -975,6 +987,7 @@ export const EngineProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         pauseDownload,
         resumeDownload,
         retryDownload,
+        setDownloadLimits,
         removeDownload,
         refreshDownloadUrl,
       }}

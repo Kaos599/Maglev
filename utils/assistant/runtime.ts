@@ -146,7 +146,7 @@ export type ScreenTarget =
   | { screen: 'transfer'; id: string }
   | { screen: 'search'; query?: string }
   | { screen: 'add_download' }
-  | { screen: 'settings'; section?: 'storage' | 'network' | 'assistant' | 'search_providers' | 'schedule' | 'speed' | 'notifications' };
+  | { screen: 'settings'; section?: 'storage' | 'network' | 'assistant' | 'search_providers' | 'schedule' | 'speed' | 'downloads' | 'notifications' };
 
 /** What a busy turn is doing. See AssistantChat.phase. */
 export type ChatPhase = 'idle' | 'thinking' | 'tools' | 'writing';

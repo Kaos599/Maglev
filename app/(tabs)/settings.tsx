@@ -18,8 +18,20 @@ import { Card, formatLimit, friendlyPath } from '../../components/settings/Setti
 import { spacing } from '../../constants/theme';
 import { banners, watchCopy } from '../../constants/copy';
 import { useWatches } from '../../utils/watch/store';
+import { useUpdatePrefs } from '../../utils/prefs/update';
+import { PARTS_ENABLED, useLinkDownloadPrefs } from '../../utils/prefs/linkDownloads';
+import { SettingsSearchField, SettingsSearchResults } from '../../components/settings/SettingsSearch';
 
-const ACCENT_LABEL = { lime: 'Lime', cyan: 'Cyan', pink: 'Pink', orange: 'Orange' } as const;
+const ACCENT_LABEL = {
+  lime: 'Lime',
+  cyan: 'Cyan',
+  pink: 'Pink',
+  orange: 'Orange',
+  violet: 'Violet',
+  blue: 'Blue',
+  amber: 'Amber',
+  mint: 'Mint',
+} as const;
 const MODE_LABEL = { oled: 'OLED', dim: 'Dim', light: 'Light', system: 'System' } as const;
 
 interface RowSpec {
@@ -129,6 +141,10 @@ export default function SettingsIndex() {
   const assistant = useAssistantPrefs();
   const watches = useWatches();
   const [browserPrefs] = useBrowserPrefs();
+  const [updatePrefs] = useUpdatePrefs();
+  const [linkPrefs] = useLinkDownloadPrefs();
+  const [query, setQuery] = useState('');
+  const searching = query.trim().length > 0;
   const { bandwidth: b, network: n, power: p, appearance: a } = settings;
 
   // Strings only, so the memoised rows below see equal props until a value really changes.
@@ -149,26 +165,31 @@ export default function SettingsIndex() {
   const providers = `${searchPrefs.enabled.length} on`;
   const auto = feedAutomationSummary(feedAuto);
 
+  const downloadsValue = PARTS_ENABLED ? (linkPrefs.downloadParts === 1 ? '1 part' : `${linkPrefs.downloadParts} parts`) : 'Adding, retry, finish';
   const alerts = permissionStatus?.notifications === 'granted' ? 'On' : 'Off';
 
-  const appRows: RowSpec[] = [
-    { icon: 'about', title: 'About', value: APP_VERSION, route: 'about' },
+  const generalRows: RowSpec[] = [
     { icon: 'interface', title: 'Appearance', value: interfaceValue, route: 'interface' },
-    { icon: 'bell', title: 'Notifications', value: alerts, route: 'notifications' },
     { icon: 'assistant', title: 'Assistant', value: assistant.enabled ? 'Experimental · On' : 'Experimental · Off', route: 'assistant' },
+    { icon: 'bell', title: 'Notifications', value: alerts, route: 'notifications' },
     { icon: 'upload', title: 'Backup and restore', value: 'Settings and torrents', route: 'backup' },
   ];
   const findRows: RowSpec[] = [
-    { icon: 'search', title: 'Search providers', value: providers, route: 'search-providers' },
+    { icon: 'search', title: 'Search sources', value: providers, route: 'search-providers' },
     { icon: 'feeds', title: 'Auto-download', value: auto, route: 'feeds' },
-    { icon: 'alarm', title: watchCopy.rowTitle, value: watchCopy.rowValue(watches.length), route: 'watch' },
-    { icon: 'network', title: 'Browser', value: browserPrefs.adBlock ? 'Ad blocking on' : 'Ad blocking off', route: 'browser' },
   ];
-  const speedRow: RowSpec = { icon: 'bandwidth', title: 'Speed & queue', value: `${limits} · ${queue}`, route: 'speed' };
+  const downloadsRow: RowSpec = { icon: 'arrow-down', title: 'Downloads', value: downloadsValue, route: 'downloads' };
+  const speedRow: RowSpec = { icon: 'bandwidth', title: 'Speed and sharing', value: `${limits} · ${queue}`, route: 'speed' };
   const scheduleRow: RowSpec = { icon: 'schedule', title: 'Scheduling', value: scheduling, route: 'scheduling' };
-  const connectionRows: RowSpec[] = [
+  const watchRow: RowSpec = { icon: 'alarm', title: watchCopy.rowTitle, value: watchCopy.rowValue(watches.length), route: 'watch' };
+  const networkRows: RowSpec[] = [
     { icon: 'network', title: 'Network', value: network, route: 'network' },
     { icon: 'power', title: 'Power', value: power, route: 'power' },
+    { icon: 'network', title: 'Browser', value: browserPrefs.adBlock ? 'Ad blocking on' : 'Ad blocking off', route: 'browser' },
+  ];
+  const appRows: RowSpec[] = [
+    { icon: 'download', title: 'Updates', value: updatePrefs.updateAutoCheck ? 'Checks daily' : 'Manual', route: 'updates' },
+    { icon: 'about', title: 'About', value: APP_VERSION, route: 'about' },
   ];
 
   // "More below": a fade over the bottom edge until the end is near, and a pill that stays until the end has been reached once (or it is tapped).
@@ -209,7 +230,7 @@ export default function SettingsIndex() {
         contentContainerStyle={styles.content}
         onScroll={onScroll}
         scrollEventThrottle={32}
-        persistentScrollbar
+        keyboardShouldPersistTaps="handled"
         onLayout={(e) => {
           metrics.current.viewport = e.nativeEvent.layout.height;
           refresh();
@@ -219,39 +240,56 @@ export default function SettingsIndex() {
           refresh();
         }}
       >
-        <NeedsAttention />
-        <View style={styles.section}>
-          <SectionHeader title="App" />
-          <Card>
-            {appRows.map((r) => (
-              <SettingsRow key={r.route} {...r} />
-            ))}
-          </Card>
-        </View>
-        <View style={styles.section}>
-          <SectionHeader title="Finding things" />
-          <Card>
-            {findRows.map((r) => (
-              <SettingsRow key={r.route} {...r} />
-            ))}
-          </Card>
-        </View>
-        <View style={styles.section}>
-          <SectionHeader title="Downloads" />
-          <Card>
-            <StorageRow />
-            <SettingsRow {...speedRow} />
-            <SettingsRow {...scheduleRow} />
-          </Card>
-        </View>
-        <View style={styles.section}>
-          <SectionHeader title="Connection" />
-          <Card>
-            {connectionRows.map((r) => (
-              <SettingsRow key={r.route} {...r} />
-            ))}
-          </Card>
-        </View>
+        <SettingsSearchField query={query} onChangeQuery={setQuery} />
+        {searching ? (
+          <SettingsSearchResults query={query} />
+        ) : (
+          <>
+            <NeedsAttention />
+            <View style={styles.section}>
+              <SectionHeader title="App" />
+              <Card>
+                {appRows.map((r) => (
+                  <SettingsRow key={r.route} {...r} />
+                ))}
+              </Card>
+            </View>
+            <View style={styles.section}>
+              <SectionHeader title="General" />
+              <Card>
+                {generalRows.map((r) => (
+                  <SettingsRow key={r.route} {...r} />
+                ))}
+              </Card>
+            </View>
+            <View style={styles.section}>
+              <SectionHeader title="Finding things" />
+              <Card>
+                {findRows.map((r) => (
+                  <SettingsRow key={r.route} {...r} />
+                ))}
+              </Card>
+            </View>
+            <View style={styles.section}>
+              <SectionHeader title="Downloads" />
+              <Card>
+                <SettingsRow {...downloadsRow} />
+                <SettingsRow {...speedRow} />
+                <StorageRow />
+                <SettingsRow {...scheduleRow} />
+                <SettingsRow {...watchRow} />
+              </Card>
+            </View>
+            <View style={styles.section}>
+              <SectionHeader title="Network and power" />
+              <Card>
+                {networkRows.map((r) => (
+                  <SettingsRow key={r.route} {...r} />
+                ))}
+              </Card>
+            </View>
+          </>
+        )}
       </ScrollView>
       <BottomFade hidden={atEnd} />
       {!hintSeen && !atEnd ? <MoreBelowPill onPress={scrollDown} /> : null}

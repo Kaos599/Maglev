@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Settings tab grouping (0.14): four titled groups, About alone, merged Speed & queue, Notifications page.
+// Settings tab grouping (0.14): four titled groups, About alone, Speed and sharing, Notifications page.
 const fs = require('fs');
 const path = require('path');
 
@@ -17,45 +17,39 @@ const check = (name, ok) => {
 const index = read('app/(tabs)/settings.tsx');
 const at = (s) => index.indexOf(s);
 
-// Group titles, in order.
-const titles = ['App', 'Finding things', 'Downloads', 'Connection'];
+// Group titles, in order (0.25: App, General, Finding things, Downloads, Network and power).
+const titles = ['App', 'General', 'Finding things', 'Downloads', 'Network and power'];
 const tpos = titles.map((t) => at(`<SectionHeader title="${t}"`));
-check('all four group titles exist', tpos.every((p) => p > 0));
-check('groups run App, Finding things, Downloads, Connection', tpos.every((p, i) => i === 0 || p > tpos[i - 1]));
+check('all five group titles exist', tpos.every((p) => p > 0));
+check('groups run App, General, Finding things, Downloads, Network and power', tpos.every((p, i) => i === 0 || p > tpos[i - 1]));
 
-// Rows by group. Each group renders a named row list; the lists hold the rows.
 const endPos = at('</ScrollView>');
-const jsx = {
-  App: index.slice(tpos[0], tpos[1]),
-  'Finding things': index.slice(tpos[1], tpos[2]),
-  Downloads: index.slice(tpos[2], tpos[3]),
-  Connection: index.slice(tpos[3], endPos),
-};
+const jsx = Object.fromEntries(titles.map((t, i) => [t, index.slice(tpos[i], i + 1 < titles.length ? tpos[i + 1] : endPos)]));
 const listOf = (name) => {
   const m = index.match(new RegExp(`const ${name}\\b[^=]*=([\\s\\S]*?);\\n`));
   return m ? m[1] : '';
 };
 const expected = {
-  App: ['appRows', ['About', 'Appearance', 'Notifications', 'Assistant']],
-  'Finding things': ['findRows', ['Search providers', 'Auto-download', 'Browser']],
-  Downloads: [null, ['Storage', 'Speed & queue', 'Scheduling']],
-  Connection: ['connectionRows', ['Network', 'Power']],
+  General: ['generalRows', ['Appearance', 'Assistant', 'Notifications', 'Backup and restore']],
+  'Finding things': ['findRows', ['Search sources', 'Auto-download']],
+  Downloads: [null, ['Downloads', 'Speed and sharing', 'Storage', 'Scheduling']],
+  'Network and power': ['networkRows', ['Network', 'Power', 'Browser']],
+  App: ['appRows', ['Updates', 'About']],
 };
 for (const [g, [list, rows]] of Object.entries(expected)) {
   if (list) check(`${g} renders ${list}`, jsx[g].includes(`${list}.map`));
-  let last = -1;
   for (const r of rows) {
-    const where = list ? listOf(list) : jsx[g] + listOf('speedRow') + listOf('scheduleRow');
+    const where = list ? listOf(list) : listOf('downloadsRow') + listOf('speedRow') + listOf('scheduleRow');
     const ok = r === 'Storage' ? /<StorageRow/.test(jsx[g]) : where.includes(`title: '${r}'`);
     check(`${r} is in ${g}`, ok);
   }
 }
-check('Downloads renders Storage, Speed & queue, Scheduling in order', (() => {
+check('Downloads renders Downloads, Speed and sharing, Storage, Scheduling, Watches in order', (() => {
   const d = jsx.Downloads;
-  const p = ['<StorageRow', '{...speedRow}', '{...scheduleRow}'].map((x) => d.indexOf(x));
+  const p = ['{...downloadsRow}', '{...speedRow}', '<StorageRow', '{...scheduleRow}', '{...watchRow}'].map((x) => d.indexOf(x));
   return p.every((x, i) => x >= 0 && (i === 0 || x > p[i - 1]));
 })());
-check('About is the first App row, not its own section', /appRows[^=]*=\s*\[\s*\{[^}]*title: 'About'/.test(index) && !/SectionHeader title="About"/.test(index));
+check('Updates then About close the App group, not their own sections', /appRows[^=]*=\s*\[\s*\{[^}]*title: 'Updates'/.test(index) && !/SectionHeader title="About"/.test(index));
 check('NeedsAttention banners sit above the groups', at('<NeedsAttention />') > 0 && at('<NeedsAttention />') < tpos[0]);
 check('Interface row is titled Appearance, route kept', /title: 'Appearance'[^}]*route: 'interface'/.test(index) && !/title: 'Interface'/.test(index));
 check('merged row shows limits and queue', /`\$\{limits\} · \$\{queue\}`/.test(index) && /route: 'speed'/.test(index));
@@ -73,20 +67,19 @@ check('notifications.tsx has both moved rows', /Finished-download alerts/.test(n
 check('notifications.tsx uses SettingsPage and Card', /<SettingsPage title="Notifications"/.test(notif) && /Card/.test(notif));
 check('notifications.tsx keeps the API 36 gate', /Platform\.Version/.test(notif));
 
-// Speed & queue.
+// Speed and sharing.
 const speed = read('app/settings/speed.tsx');
 check('speed.tsx renders SpeedSection under a Speed header', /<SectionHeader title="Speed"/.test(speed) && /<SpeedSection/.test(speed));
 check('speed.tsx renders QueueSection under a Queue header', /<SectionHeader title="Queue"/.test(speed) && /<QueueSection/.test(speed));
 check('speed section holds the limits', /Download limit/.test(read('components/settings/SpeedSection.tsx')) && /Connections per torrent/.test(read('components/settings/SpeedSection.tsx')));
 check('queue section holds the queue', /Active downloads/.test(read('components/settings/QueueSection.tsx')) && /Share for at most/.test(read('components/settings/QueueSection.tsx')));
 for (const f of ['bandwidth', 'queue']) {
-  const src = read(`app/settings/${f}.tsx`);
-  check(`${f}.tsx redirects to /settings/speed`, /<Redirect href=\{?['"]\/settings\/speed['"]/.test(src) && !/SettingsPage/.test(src));
+  check(`${f}.tsx redirect page is gone (0.25)`, !fs.existsSync(path.join(root, `app/settings/${f}.tsx`)));
 }
 
 // Routes registered.
 const layout = read('app/_layout.tsx');
-for (const r of ['speed', 'notifications', 'interface', 'bandwidth', 'queue']) check(`layout registers settings/${r}`, layout.includes(`name="settings/${r}"`));
+for (const r of ['speed', 'notifications', 'interface', 'downloads']) check(`layout registers settings/${r}`, layout.includes(`name="settings/${r}"`));
 
 // Assistant knows the new sections.
 check('assistant open_screen lists speed and notifications', /'speed'/.test(read('utils/assistant/tools.ts')) && /notifications: '\/settings\/notifications'/.test(read('utils/assistant/chatView.ts')) && /speed: '\/settings\/speed'/.test(read('utils/assistant/chatView.ts')));

@@ -427,6 +427,8 @@ export interface DownloadSnapshot {
   /** Seconds left, -1 = unknown. */
   eta: number;
   segmentsActive: number;
+  /** This download's own speed limit in bytes per second. 0 = no limit. Saved, so it survives a restart. */
+  downLimitBps: number;
   resumable: boolean;
   folder: string;
   addedAt: number;

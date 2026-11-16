@@ -4,6 +4,7 @@ import { useTheme } from '../../context/ThemeContext';
 import { ThemeColors, radius, spacing, type } from '../../constants/theme';
 import { PixelIcon, PixelIconName } from '../PixelIcon';
 import { PressableScale } from './PressableScale';
+import { FocusAnchor, rowKey } from '../settings/settingsFocus';
 
 export interface ListRowProps {
   title: string;
@@ -23,7 +24,15 @@ export interface ListRowProps {
   testID?: string;
 }
 
-export function ListRow({
+export function ListRow(props: ListRowProps) {
+  return (
+    <FocusAnchor anchorKey={rowKey(props.title)}>
+      <ListRowBody {...props} />
+    </FocusAnchor>
+  );
+}
+
+function ListRowBody({
   title,
   subtitle,
   icon,
@@ -81,7 +90,12 @@ export function ListRow({
 
   if (!onPress) {
     return (
-      <View style={styles.row} testID={testID} accessible={!accessory} accessibilityLabel={accessibilityLabel ?? (subtitle ? `${title}, ${subtitle}` : title)}>
+      <View
+        style={styles.row}
+        testID={testID}
+        accessible={!accessory}
+        accessibilityLabel={accessibilityLabel ?? (subtitle ? `${title}, ${subtitle}` : title)}
+      >
         {body}
       </View>
     );

@@ -5,7 +5,13 @@ import { useSettings } from '../../context/SettingsContext';
 import { useMaglevEngine as useEngine } from '../../context/EngineContext';
 import { Banner, Button, ListRow, Toggle } from '../../components/ui';
 import { Caption, Card, SettingsPage, friendlyPath } from '../../components/settings/SettingsParts';
-import { banners, notices, quickShareCopy } from '../../constants/copy';
+import { banners, notices } from '../../constants/copy';
+
+const hideCopy = {
+  title: 'Hide from gallery',
+  subtitle: "Photos and video apps won't list Maglev's downloads. Your files stay in the folder.",
+  caption: 'Turning this off shows only new files. Files already hidden show up the next time they are scanned.',
+} as const;
 
 export default function StorageSettings() {
   const { settings, updateSettings } = useSettings();
@@ -53,17 +59,18 @@ export default function StorageSettings() {
       ) : null}
       <Card>
         <ListRow
-          title={quickShareCopy.setting.title}
-          subtitle={quickShareCopy.setting.subtitle}
+          title={hideCopy.title}
+          subtitle={hideCopy.subtitle}
           accessory={
             <Toggle
-              value={settings.storage.addWithoutAsking}
-              onValueChange={(v) => updateSettings((prev) => ({ storage: { ...prev.storage, addWithoutAsking: v } }))}
-              accessibilityLabel={quickShareCopy.setting.title}
+              value={settings.storage.hideFromGallery}
+              onValueChange={(v) => updateSettings((prev) => ({ storage: { ...prev.storage, hideFromGallery: v } }))}
+              accessibilityLabel={hideCopy.title}
             />
           }
         />
       </Card>
+      <Caption>{hideCopy.caption}</Caption>
     </SettingsPage>
   );
 }

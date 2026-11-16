@@ -62,10 +62,10 @@ name: settings-screens
 - back
 # Downloads group
 - scrollUntilVisible:
-    element: "Speed & queue"
+    element: "Speed and sharing"
     direction: DOWN
     timeout: 30000
-- tapOn: "Speed & queue"
+- tapOn: "Speed and sharing"
 - assertVisible: "Download limit"
 # components/settings/SpeedSection.tsx:24
 - takeScreenshot: settings-speed-queue

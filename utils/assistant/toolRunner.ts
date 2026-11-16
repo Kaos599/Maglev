@@ -1368,7 +1368,7 @@ export function createToolRunner(deps: ToolRunnerDeps): ToolRunner {
   }
 
   const SETTINGS_SECTION: Record<string, string> = {
-    storage: 'Storage', network: 'Network', assistant: 'Assistant', search_providers: 'Search sources', schedule: 'Schedule', speed: 'Speed & queue', notifications: 'Notifications',
+    storage: 'Storage', network: 'Network', assistant: 'Assistant', search_providers: 'Search sources', schedule: 'Schedule', speed: 'Speed and sharing', downloads: 'Downloads', notifications: 'Notifications',
   };
 
   function openScreen(args: Data): ToolRunOutput {

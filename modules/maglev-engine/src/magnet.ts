@@ -96,11 +96,32 @@ export function parseMagnet(uri: string): ParsedSource | null {
   return { kind: 'magnet', infoHash, name, trackers, exactLength };
 }
 
-/** Accepts a magnet URI, an http(s) URL to a .torrent, or an absolute/file/content path to a .torrent. */
+/**
+ * True when the whole text is a bare info hash: exactly 40 hex or 32 base32 characters.
+ * A hash inside other text is not a bare hash.
+ */
+export function isBareInfoHash(text: string): boolean {
+  const t = (text ?? '').trim();
+  return /^[0-9a-fA-F]{40}$/.test(t) || /^[2-7a-zA-Z]{32}$/.test(t);
+}
+
+/** Turns a bare info hash into `magnet:?xt=urn:btih:<hex>`. Returns null for any other text. */
+export function infoHashToMagnet(text: string): string | null {
+  if (!isBareInfoHash(text)) return null;
+  const hash = normalizeInfoHash(text);
+  return hash ? `magnet:?xt=urn:btih:${hash}` : null;
+}
+
+/**
+ * Accepts a magnet URI, a bare info hash (40 hex or 32 base32), an http(s) URL to a .torrent,
+ * or an absolute/file/content path to a .torrent.
+ */
 export function parseSource(source: string): ParsedSource | null {
   const clean = (source ?? '').trim();
   if (!clean) return null;
   if (/^magnet:/i.test(clean)) return parseMagnet(clean);
+  const magnet = infoHashToMagnet(clean);
+  if (magnet) return parseMagnet(magnet);
 
   const isUrl = /^https?:\/\/[^\s/]+\S*$/i.test(clean);
   const isFile = /^file:\/\/\S+$/i.test(clean) || (/^\/[^\0]+$/.test(clean) && !/^\/\//.test(clean));

@@ -38,6 +38,8 @@ import { BulkVerb, bulkSummary, selectionKey, splitSelection } from '../../utils
 import { useSearchPrefs } from '../../utils/prefs/search';
 import { TransferSort, loadTransferSort, saveTransferSort } from '../../utils/prefs/transfers';
 import { empty, notices, playCopy } from '../../constants/copy';
+import { clipboardRoute } from '../../constants/clipboardCopy';
+import { dismissClip, isDismissedClip } from '../../utils/prefs/clipboard';
 import { openBrowser } from '../../utils/browser/openBrowser';
 
 const Separator = () => <View style={{ height: CARD_GAP }} />;
@@ -102,6 +104,7 @@ export default function TransfersScreen() {
     pauseDownload,
     resumeDownload,
     retryDownload,
+    setDownloadLimits,
     removeDownload,
     refreshDownloadUrl,
     getFreeSpace,
@@ -287,7 +290,7 @@ export default function TransfersScreen() {
   }, [focused, unfinishedKey, getFreeSpace]);
 
   const clipboardIsNew = useMemo(() => {
-    if (!clipboardMagnet) return false;
+    if (!clipboardMagnet || isDismissedClip(clipboardMagnet)) return false;
     const hash = magnetHash(clipboardMagnet);
     return !(hash && all.some((t) => t.id.toLowerCase() === hash));
   }, [clipboardMagnet, all]);
@@ -462,11 +465,12 @@ export default function TransfersScreen() {
   const goAdd = useCallback(() => router.push('/add-torrent'), [router]);
   const addClipboard = useCallback(() => {
     if (!clipboardMagnet) return;
-    router.push({
-      pathname: '/add-torrent',
-      params: { source: clipboardMagnet },
-    });
+    router.push(clipboardRoute(clipboardMagnet));
   }, [clipboardMagnet, router]);
+  const dismissClipboard = useCallback(() => {
+    if (clipboardMagnet) dismissClip(clipboardMagnet);
+    clearClipboardMagnet();
+  }, [clipboardMagnet, clearClipboardMagnet]);
 
   const openFile = useCallback(async () => {
     setFileError(null);
@@ -608,7 +612,7 @@ export default function TransfersScreen() {
       ) : null}
 
       {clipboardMagnet && clipboardIsNew && !selectionMode ? (
-        <ClipboardChip link={clipboardMagnet} onAdd={addClipboard} onDismiss={clearClipboardMagnet} />
+        <ClipboardChip link={clipboardMagnet} onAdd={addClipboard} onDismiss={dismissClipboard} />
       ) : null}
 
       {fileError && all.length === 0 ? (
@@ -698,6 +702,7 @@ export default function TransfersScreen() {
         onShare={shareDownload}
         onAllowDevice={allowDevice}
         onRemove={(id, deleteFiles) => void removeDownload(id, deleteFiles)}
+        onSetLimit={(id, bps) => void setDownloadLimits(id, bps)}
         onNewLink={refreshDownloadUrl}
       />
       <ClearFinishedSheet

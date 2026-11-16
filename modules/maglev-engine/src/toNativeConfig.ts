@@ -1,5 +1,5 @@
 import type { GovernanceConfig, NativeConfig, NativeEncryption, PausedBy } from './MaglevEngine.types.ts';
-import { SPEED_PRESET_MAP, type MaglevSettings } from './MaglevSettings.types.ts';
+import { SPEED_PRESET_MAP, type KotlinOnlySettings, type MaglevSettings } from './MaglevSettings.types.ts';
 
 /**
  * Pure mapping from persisted UI settings to the Rust `NativeConfig` (docs/NATIVE_CONTRACT.md section 3).
@@ -59,8 +59,8 @@ export function toNativeConfig(settings: MaglevSettings): NativeConfig {
 }
 
 /** Payload for `setGovernance`. Kotlin watches connectivity and battery; Rust only sees allowed/not allowed. */
-export function toGovernance(settings: MaglevSettings): GovernanceConfig {
-  const { network, power, storage, appearance } = settings;
+export function toGovernance(settings: MaglevSettings): GovernanceConfig & KotlinOnlySettings {
+  const { network, power, storage, appearance, bandwidth } = settings;
   return {
     wifiOnly: network.wifiOnly,
     ssidWhitelist: network.ssidWhitelistEnabled ? [...network.allowedSsids] : [],
@@ -72,6 +72,10 @@ export function toGovernance(settings: MaglevSettings): GovernanceConfig {
     seedOnMobileData: network.seedOnMobileData,
     quickAdd: storage.addWithoutAsking,
     appearanceMode: appearance.mode,
+    hideFromGallery: storage.hideFromGallery,
+    autoRetry: bandwidth.autoRetry,
+    autoRetryDelayMin: bandwidth.autoRetryDelayMin,
+    autoRetryAlways: bandwidth.autoRetryAlways,
   };
 }
 

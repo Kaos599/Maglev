@@ -32,7 +32,7 @@ import { DEFAULT_FONT_STYLE, fontFamilies, resolveFontStyle, slotAdvance, type F
  */
 
 export type ThemeMode = 'oled' | 'dim' | 'light';
-export type AccentName = 'lime' | 'cyan' | 'pink' | 'orange';
+export type AccentName = 'lime' | 'cyan' | 'pink' | 'orange' | 'violet' | 'blue' | 'amber' | 'mint';
 
 export interface ThemeColors {
   bg: string;
@@ -136,12 +136,24 @@ export const palettes: Record<ThemeMode, Palette> = {
   },
 };
 
-/** Bright brand accent (dark modes) and its AA-safe darker variant (light mode). */
+/**
+ * Bright brand accent (dark modes) and its AA-safe darker variant (light mode).
+ * Rules every entry meets (scripts/test-accents.js enforces them): dark onAccent (#05070A) on `bright` >= 4.5,
+ * `bright` on the dark pages and cards >= 4.5, white onAccent on `deep` >= 4.5, `deepText` on the light page
+ * and cards >= 4.5, and a hue at least 20 degrees from danger (345) so no accent reads as an error.
+ * Pink sits at hue ~320 (magenta-pink) for that reason; blue is 222-224, well away from the downloading cyan.
+ * Strongest in light mode: violet (#6D28D9, 6.5:1 on the page) and blue (#1D4ED8, 6.1:1), both rich
+ * saturated fills; pink and cyan follow. Mint and amber are the quietest on paper (5.3 and 5.1 on the page).
+ */
 export const accents: Record<AccentName, { bright: string; deep: string; deepText: string }> = {
   lime: { bright: '#CCFF00', deep: '#4D7C0F', deepText: '#3F6212' },
   cyan: { bright: '#00E5FF', deep: '#00697A', deepText: '#00697A' },
-  pink: { bright: '#FF5CA8', deep: '#B8135F', deepText: '#B8135F' },
+  pink: { bright: '#F864C8', deep: '#A8137F', deepText: '#A8137F' },
   orange: { bright: '#FF9F1C', deep: '#9A4F00', deepText: '#9A4F00' },
+  violet: { bright: '#A78BFA', deep: '#6D28D9', deepText: '#6D28D9' },
+  blue: { bright: '#5B8CFF', deep: '#1D4ED8', deepText: '#1D4ED8' },
+  amber: { bright: '#FFC83D', deep: '#8A6100', deepText: '#8A6100' },
+  mint: { bright: '#52F0B8', deep: '#0A7452', deepText: '#0A7452' },
 };
 
 export const DEFAULT_MODE: ThemeMode = 'oled';

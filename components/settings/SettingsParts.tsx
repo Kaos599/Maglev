@@ -1,6 +1,8 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { StyleSheet, Text, TextInput, View, StyleProp, ViewStyle } from 'react-native';
-import { useRouter } from 'expo-router';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { ScrollView, StyleSheet, Text, TextInput, View, StyleProp, ViewStyle } from 'react-native';
+import { useLocalSearchParams, useRouter } from 'expo-router';
+import { SETTINGS_INDEX } from '../../utils/settingsIndex';
+import { FocusAnchor, SettingsFocusProvider, rowKey } from './settingsFocus';
 import { useTheme } from '../../context/ThemeContext';
 import { ThemeColors, radius, spacing, touch, type } from '../../constants/theme';
 import { Button, Chip, Screen, Sheet } from '../ui';
@@ -8,20 +10,36 @@ import { Button, Chip, Screen, Sheet } from '../ui';
 /** Sub-screen shell: header with back, scrolling body, instant-apply content. */
 export function SettingsPage({ title, children }: { title: string; children: React.ReactNode }) {
   const router = useRouter();
+  const { focus } = useLocalSearchParams<{ focus?: string }>();
+  const scrollRef = useRef<React.ComponentRef<typeof ScrollView>>(null);
+  const contentRef = useRef<React.ComponentRef<typeof View>>(null);
+  // The search result's index entry says which row title and section to look for on this page.
+  const target = useMemo(() => {
+    const entry = focus ? SETTINGS_INDEX.find((e) => e.id === focus) : null;
+    return entry ? { title: entry.title, section: entry.section } : null;
+  }, [focus]);
+  const scrollTo = useCallback((y: number, animated: boolean) => scrollRef.current?.scrollTo({ y, animated }), []);
+  // Clear the param so coming back to this page does not scroll again.
+  const onDone = useCallback(() => router.setParams({ focus: undefined } as never), [router]);
   return (
-    <Screen
-      title={title}
-      onBack={() => router.back()}
-      scroll
-      edges={['top', 'left', 'right', 'bottom']}
-      contentStyle={pageStyle}
-    >
-      {children}
+    <Screen title={title} onBack={() => router.back()} edges={['top', 'left', 'right', 'bottom']}>
+      <ScrollView ref={scrollRef} style={pageFill} keyboardShouldPersistTaps="handled">
+        <View ref={contentRef} collapsable={false} style={pageStyle}>
+          <SettingsFocusProvider target={target} contentRef={contentRef} scrollTo={scrollTo} onDone={onDone}>
+            {children}
+          </SettingsFocusProvider>
+        </View>
+      </ScrollView>
     </Screen>
   );
 }
 
-const pageStyle: StyleProp<ViewStyle> = { padding: spacing.lg, gap: spacing.lg, paddingBottom: spacing.xxxl };
+const pageFill: StyleProp<ViewStyle> = { flex: 1 };
+const pageStyle: StyleProp<ViewStyle> = {
+  padding: spacing.lg,
+  gap: spacing.lg,
+  paddingBottom: spacing.xxxl,
+};
 
 /** Surface card that groups rows. */
 export function Card({ children }: { children: React.ReactNode }) {
@@ -54,15 +72,17 @@ export function ChipGroup<T extends string | number>({
   const { colors } = useTheme();
   const s = useMemo(() => makeStyles(colors), [colors]);
   return (
-    <View style={s.group} accessibilityRole="radiogroup" accessibilityLabel={label}>
-      <Text style={s.groupLabel}>{label}</Text>
-      <View style={s.chips}>
-        {options.map((o) => (
-          <Chip key={String(o.value)} label={o.label} selected={o.value === value} onPress={() => onChange(o.value)} />
-        ))}
+    <FocusAnchor anchorKey={rowKey(label)}>
+      <View style={s.group} accessibilityRole="radiogroup" accessibilityLabel={label}>
+        <Text style={s.groupLabel}>{label}</Text>
+        <View style={s.chips}>
+          {options.map((o) => (
+            <Chip key={String(o.value)} label={o.label} selected={o.value === value} onPress={() => onChange(o.value)} />
+          ))}
+        </View>
+        {caption ? <Caption>{caption}</Caption> : null}
       </View>
-      {caption ? <Caption>{caption}</Caption> : null}
-    </View>
+    </FocusAnchor>
   );
 }
 
@@ -200,6 +220,16 @@ const makeStyles = (c: ThemeColors) =>
       borderRadius: radius.md,
     },
     unit: { ...type.mono, fontSize: 13, color: c.textMuted },
-    error: { ...type.body, fontSize: 12, color: c.danger, marginTop: spacing.sm },
-    sheetActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: spacing.sm, marginTop: spacing.lg },
+    error: {
+      ...type.body,
+      fontSize: 12,
+      color: c.danger,
+      marginTop: spacing.sm,
+    },
+    sheetActions: {
+      flexDirection: 'row',
+      justifyContent: 'flex-end',
+      gap: spacing.sm,
+      marginTop: spacing.lg,
+    },
   });

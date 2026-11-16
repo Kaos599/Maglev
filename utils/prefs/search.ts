@@ -37,7 +37,15 @@ export interface SearchPrefs {
   needsCheck: string[];
   /** When the user last closed the "needs a quick check" line (ms since epoch, 0 = never). */
   fixHintDismissedAt: number;
+  /** Sources from LATER_DEFAULTS already switched on once for this install; turning one off afterwards sticks. */
+  defaultsAdded: string[];
 }
+
+/**
+ * Sources that became defaults after first release. A saved source list never picks up new defaults by itself,
+ * so each of these is switched on once for existing installs. Only safe, trusted sources become defaults.
+ */
+export const LATER_DEFAULTS: readonly string[] = [];
 
 const KEY = 'maglev.search.prefs.v2';
 const LEGACY_RECENTS_KEY = 'maglev.search.recents.v1';
@@ -68,6 +76,7 @@ function defaults(): SearchPrefs {
     clearances: [],
     needsCheck: [],
     fixHintDismissedAt: 0,
+    defaultsAdded: [...LATER_DEFAULTS],
   };
 }
 
@@ -109,8 +118,17 @@ export function normalizeSearchPrefs(raw: unknown, legacyRecents: string[]): Sea
         return [{ host: x.host.toLowerCase(), userAgent: x.userAgent, at: typeof x.at === 'number' ? x.at : 0 }];
       })
     : [];
+  // Switch on each later default once for installs that saved a source list before it existed.
+  const savedAdded = strings(o.defaultsAdded);
+  const hadList = Array.isArray(o.enabled);
+  const enabled = hadList ? strings(o.enabled) : [...d.enabled];
+  for (const id of LATER_DEFAULTS) {
+    if (hadList && !savedAdded.includes(id) && !enabled.includes(id)) enabled.push(id);
+  }
+  const defaultsAdded = [...new Set([...savedAdded, ...LATER_DEFAULTS])];
   return {
-    enabled: Array.isArray(o.enabled) ? strings(o.enabled) : d.enabled,
+    enabled,
+    defaultsAdded,
     useFor: recordOf(o.useFor, (x) => (Array.isArray(x) ? categories(x) : null)),
     mirrorOverride: recordOf(o.mirrorOverride, (x) => (typeof x === 'string' && x ? x : null)),
     adult: o.adult === true,

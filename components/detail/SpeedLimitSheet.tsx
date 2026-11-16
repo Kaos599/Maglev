@@ -23,6 +23,8 @@ interface Props {
   limits: TorrentLimits;
   /** Applied right away, no Save button. */
   onChange: (limits: TorrentLimits) => void;
+  /** 'download' is for one link download: only a download limit, no upload field. */
+  mode?: 'both' | 'download';
 }
 
 /** Overall limit from settings in bytes per second, 0 = none. */
@@ -40,7 +42,7 @@ function groupValue(bps: number, customPicked: boolean): number {
 }
 
 /** Per-torrent download and upload limits (NATIVE_CONTRACT 11.2). The overall limit still applies. */
-export function SpeedLimitSheet({ visible, onClose, limits, onChange }: Props) {
+export function SpeedLimitSheet({ visible, onClose, limits, onChange, mode = 'both' }: Props) {
   const [custom, setCustom] = useState<Dir | null>(null);
   const [customPicked, setCustomPicked] = useState<Record<Dir, boolean>>({ down: false, up: false });
   const globalDown = useGlobalLimit('down');
@@ -63,13 +65,13 @@ export function SpeedLimitSheet({ visible, onClose, limits, onChange }: Props) {
   const caption = (dir: Dir) => {
     const own = bps(dir);
     if (own <= 0) return undefined;
-    const base = `This torrent: ${formatLimit(own)}.`;
+    const base = `${mode === 'download' ? 'This download' : 'This torrent'}: ${formatLimit(own)}.`;
     return globalOf(dir) > 0 ? `${base} The overall limit still applies.` : base;
   };
 
   return (
     <>
-      <Sheet visible={visible && custom === null} onClose={onClose} title="Speed limit" subtitle="Only for this torrent">
+      <Sheet visible={visible && custom === null} onClose={onClose} title="Speed limit" subtitle={mode === 'download' ? 'Only for this download' : 'Only for this torrent'}>
         <ChipGroup
           label="Download"
           caption={caption('down')}
@@ -77,6 +79,7 @@ export function SpeedLimitSheet({ visible, onClose, limits, onChange }: Props) {
           value={groupValue(limits.downBps, customPicked.down)}
           onChange={(v) => pick('down', v)}
         />
+        {mode !== 'download' ? (
         <ChipGroup
           label="Upload"
           caption={caption('up')}
@@ -84,7 +87,8 @@ export function SpeedLimitSheet({ visible, onClose, limits, onChange }: Props) {
           value={groupValue(limits.upBps, customPicked.up)}
           onChange={(v) => pick('up', v)}
         />
-        {globalDown > 0 || globalUp > 0 ? (
+        ) : null}
+        {(mode === 'download' ? globalDown > 0 : globalDown > 0 || globalUp > 0) ? (
           <Caption>The overall limit in Settings still applies. The lower of the two wins.</Caption>
         ) : null}
       </Sheet>

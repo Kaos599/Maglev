@@ -54,10 +54,9 @@ function check(name, cond, extra) {
   console.log('\n[settings screen]');
   const sp = read('app/settings/search-providers.tsx');
   const itf = read('app/settings/interface.tsx');
-  check('Interface offers "Search results: name lines" (contract 29)', /Search results: name lines/.test(itf) && /resultNameLines/.test(itf));
-  check('options 1, 2, 3 and Full name', /value: 1, label: '1'/.test(itf) && /value: 2, label: '2'/.test(itf) && /value: 3, label: '3'/.test(itf) && /value: 0, label: 'Full name'/.test(itf));
-  check('it sits under the font style', itf.indexOf('fontStyleCopy.hint') > -1 && itf.indexOf('fontStyleCopy.hint') < itf.indexOf('Search results: name lines'));
-  check('Search providers no longer has it', !/Result name lines|resultNameLines|NAME_LINES/.test(sp));
+  check('Search sources offers "Result name lines" in a Results section', /SectionHeader title="Results"/.test(sp) && /Result name lines/.test(sp) && /resultNameLines/.test(sp));
+  check('options 1, 2, 3 and Full name', /value: 1, label: '1'/.test(sp) && /value: 2, label: '2'/.test(sp) && /value: 3, label: '3'/.test(sp) && /value: 0, label: 'Full name'/.test(sp));
+  check('Appearance no longer has it', !/name lines|resultNameLines/.test(itf));
 
   console.log('\n[full name]');
   const sheet = read('components/search/ResultPreviewSheet.tsx');
