@@ -196,8 +196,8 @@ export default function SettingsIndex() {
     { icon: 'network', title: 'Browser', value: browserPrefs.adBlock ? 'Ad blocking on' : 'Ad blocking off', route: 'browser' },
   ];
   const appRows: RowSpec[] = [
-    { icon: 'download', title: 'Updates', value: updatePrefs.updateAutoCheck ? 'Checks daily' : 'Manual', route: 'updates' },
     { icon: 'about', title: 'About', value: APP_VERSION, route: 'about' },
+    { icon: 'download', title: 'Updates', value: updatePrefs.updateAutoCheck ? 'Checks daily' : 'Manual', route: 'updates' },
   ];
 
   // "More below": a fade over the bottom edge until the end is near, and a pill that stays until the end has been reached once (or it is tapped).
@@ -257,10 +257,10 @@ export default function SettingsIndex() {
             <View style={styles.section}>
               <SectionHeader title="App" />
               <Card>
-                <StatsRow />
                 {appRows.map((r) => (
                   <SettingsRow key={r.route} {...r} />
                 ))}
+                <StatsRow />
               </Card>
             </View>
             <View style={styles.section}>
