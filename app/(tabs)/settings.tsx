@@ -19,7 +19,7 @@ import { spacing } from '../../constants/theme';
 import { banners, watchCopy } from '../../constants/copy';
 import { useWatches } from '../../utils/watch/store';
 import { useUpdatePrefs } from '../../utils/prefs/update';
-import { PARTS_ENABLED, useLinkDownloadPrefs } from '../../utils/prefs/linkDownloads';
+import { useLinkDownloadPrefs } from '../../utils/prefs/linkDownloads';
 import { SettingsSearchField, SettingsSearchResults } from '../../components/settings/SettingsSearch';
 
 const ACCENT_LABEL = {
@@ -170,7 +170,7 @@ export default function SettingsIndex() {
   const providers = `${searchPrefs.enabled.length} on`;
   const auto = feedAutomationSummary(feedAuto);
 
-  const downloadsValue = PARTS_ENABLED ? (linkPrefs.downloadParts === 1 ? '1 part' : `${linkPrefs.downloadParts} parts`) : 'Adding, retry, finish';
+  const downloadsValue = linkPrefs.downloadParts === 1 ? '1 part' : `${linkPrefs.downloadParts} parts`;
   const alerts = permissionStatus?.notifications === 'granted' ? 'On' : 'Off';
 
   const generalRows: RowSpec[] = [

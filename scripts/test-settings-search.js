@@ -468,7 +468,7 @@ async function main() {
   for (const t of [
     "Hide from gallery",
     "Offer to download copied links",
-    // "Parts per download" returns with PARTS_ENABLED in 0.26.
+    "Parts per download",
     "Retry failed downloads",
     "Keep trying",
     "Read the licence",

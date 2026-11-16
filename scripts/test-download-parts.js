@@ -67,15 +67,16 @@ async function main() {
   })());
   check('parts override defaults to the pref', /useLinkDownloadPrefs\(\)/.test(add));
 
-  // 0.25: the engine does not split yet, so Parts is hidden and every add sends 1 (reality rule 6).
-  console.log('hidden until the engine splits');
-  check('PARTS_ENABLED is false', P.PARTS_ENABLED === false);
-  check('add-download sends 1 part while disabled', /PARTS_ENABLED \? \(partsOverride \?\? linkPrefs\.downloadParts\) : 1/.test(add));
-  check('add-download hides the Parts chips while disabled', /PARTS_ENABLED \? <ChipGroup label="Parts"/.test(add));
-  check('Settings > Downloads hides PartsSection while disabled', /PARTS_ENABLED \? <PartsSection \/>/.test(read('app/settings/downloads.tsx')));
-  check('main list row does not show a parts count while disabled', /PARTS_ENABLED \?[^\n]*parts`\) : '/.test(read('app/(tabs)/settings.tsx')));
+  // 0.26: the engine splits downloads (#70), so Parts is shown and an add sends the chosen count (reality rule 6).
+  console.log('parts reach the engine');
+  check('no PARTS_ENABLED flag left', !('PARTS_ENABLED' in P) && !/PARTS_ENABLED/.test(add));
+  check('default is 4 parts', P.DEFAULT_DOWNLOAD_PARTS === 4);
+  check('add-download sends the override or the pref', /const parts: DownloadParts = partsOverride \?\? linkPrefs\.downloadParts;/.test(add) && /segments: parts/.test(add));
+  check('add-download shows the Parts chips', /<ChipGroup label="Parts"/.test(add));
+  check('Settings > Downloads shows PartsSection', /<PartsSection \/>/.test(read('app/settings/downloads.tsx')));
+  check('main list row shows the parts count', /downloadParts === 1 \? '1 part'/.test(read('app/(tabs)/settings.tsx')));
   const idx = await import('../utils/settingsIndex.ts');
-  check('settings search has no Parts entry while disabled', !idx.SETTINGS_INDEX.some((e) => e.id === 'speed-parts'));
+  check('settings search has the Parts entry', idx.SETTINGS_INDEX.some((e) => e.id === 'speed-parts'));
 
   if (failed) {
     console.log(`\n${failed} failed`);
