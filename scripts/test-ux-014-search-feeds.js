@@ -48,9 +48,10 @@ if (exists('components/search/ResultPreviewSheet.tsx')) {
 }
 check('search wires the preview', /ResultPreviewSheet/.test(search));
 check('added feedback names Transfers with a View action', /Added to Transfers/.test(search) && /actionLabel: 'View'/.test(search));
-check('sort labels have no "seeders"', !/Most seeders|Seeders'/.test(search) && /Most shared/.test(search));
+const sortSheet = read('components/search/SortFilterSheet.tsx');
+check('sort labels have no "seeders"', !/Most seeders|Seeders'/.test(search + sortSheet) && /Most shared/.test(sortSheet));
 check('header filter is labelled Sources', /accessibilityLabel=\{`Sources,/.test(search));
-check('sort sheet has a result filter', /Hide no one sharing/.test(search) || /Hide results no one shares/.test(search));
+check('sort sheet has a result filter', /Hide torrents no one is sharing/.test(sortSheet) && /SortFilterSheet/.test(search));
 check('search uses oneTapAddNote', /oneTapAddNote/.test(search) && /MobileDataSheet/.test(search));
 check('mobile data sheet exists', exists('components/search/MobileDataSheet.tsx'));
 

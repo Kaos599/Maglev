@@ -14,6 +14,7 @@ import { seenRowCount, stableOrder } from '../../components/search/stableOrder';
 import { prefetchAllowed } from '../../components/search/prefetch';
 import { magnetHash, metadataPrefetch } from '../../components/search/metadataCache';
 import { useTabPrefs } from '../../components/tabs/tabPrefsStore';
+import { SORT_LABEL, SortFilterSheet, type SortKey } from '../../components/search/SortFilterSheet';
 import { FollowSheet } from '../../components/search/FollowSheet';
 import { followRuleFromResult, type FollowTarget } from '../../utils/follow';
 import { NoticeBanner, addErrorNotice, useNotice } from '../../components/search/Notice';
@@ -62,15 +63,6 @@ interface FixHintItem {
 }
 type ListItem = MergedResult | FixHintItem;
 const FIX_AFTER = 3;
-
-type SortKey = 'seeders' | 'newest' | 'size' | 'name';
-const SORT_LABEL: Record<SortKey, string> = { seeders: 'Most shared', newest: 'Newest', size: 'Largest', name: 'Name' };
-const SORT_ORDER: SortKey[] = ['seeders', 'newest', 'size', 'name'];
-const MIN_SIZES: { label: string; bytes: number }[] = [
-  { label: 'Any size', bytes: 0 },
-  { label: 'Over 100 MB', bytes: 100e6 },
-  { label: 'Over 1 GB', bytes: 1e9 },
-];
 
 /** Missing numbers sort last in every numeric order. */
 function sortResults(list: MergedResult[], sort: SortKey): MergedResult[] {
@@ -813,42 +805,30 @@ export default function SearchScreen() {
         />
       ) : null}
       <FollowSheet target={following} onClose={() => setFollowing(null)} onDone={onFollowed} />
-      <Sheet visible={sortOpen} onClose={() => setSortOpen(false)} title="Sort and filter" returnFocusRef={sortBtnRef}>
-        <View style={styles.wrapRow} accessibilityRole="radiogroup" accessibilityLabel="Sort by">
-          {SORT_ORDER.map((s) => (
-            <Chip
-              key={s}
-              role="radio"
-              label={SORT_LABEL[s]}
-              selected={prefs.sort === s}
-              onPress={() => {
-                updatePrefs({ sort: s });
-                setRankTick((n) => n + 1);
-                setSortOpen(false);
-              }}
-            />
-          ))}
-        </View>
-        {sourceCounts.length > 1 ? (
-          <>
-            <Text style={[styles.sectionLabel, styles.filterRow]} accessibilityRole="header">
-              Source
-            </Text>
-            <View style={[styles.wrapRow, styles.sourceChips]} accessibilityRole="radiogroup" accessibilityLabel="Source">
-              <Chip role="radio" label="All" selected={sourceFilter === null} onPress={() => setSourceFilter(null)} />
-              {sourceCounts.map(([id, n]) => (
-                <Chip key={id} role="radio" label={`${nameOf(id)} ${n}`} selected={sourceFilter === id} onPress={() => setSourceFilter(id)} />
-              ))}
-            </View>
-          </>
-        ) : null}
-        <View style={[styles.wrapRow, styles.filterRow]}>
-          {MIN_SIZES.map((m) => (
-            <Chip key={m.bytes} label={m.label} selected={minBytes === m.bytes} onPress={() => setMinBytes(m.bytes)} />
-          ))}
-          <Chip label="Hide no one sharing" selected={hideNoShare} onPress={() => setHideNoShare((v) => !v)} />
-        </View>
-      </Sheet>
+      <SortFilterSheet
+        visible={sortOpen}
+        onClose={() => setSortOpen(false)}
+        returnFocusRef={sortBtnRef}
+        sort={prefs.sort}
+        onSortChange={(s) => {
+          updatePrefs({ sort: s });
+          setRankTick((n) => n + 1);
+        }}
+        sources={sourceCounts.map(([id, count]) => ({ id, name: nameOf(id), count }))}
+        sourceFilter={sourceFilter}
+        onSourceChange={setSourceFilter}
+        minBytes={minBytes}
+        onMinBytesChange={setMinBytes}
+        hideNoShare={hideNoShare}
+        onHideNoShareChange={setHideNoShare}
+        shownCount={shown.length}
+        totalCount={update?.results.length ?? 0}
+        onReset={() => {
+          setSourceFilter(null);
+          setMinBytes(0);
+          setHideNoShare(false);
+        }}
+      />
       <ResultPreviewSheet
         result={
           preview
