@@ -11,6 +11,15 @@
   var ALL_RELEASES = 'https://github.com/Kaos599/Maglev/releases';
   var CACHE_KEY = 'maglev-releases-v1';
   var TIMEOUT_MS = 5000;
+  var BASE = ''; // folder this script was loaded from, for the QR image (set in the browser)
+  var WORDS = { arm64: 'For most phones', universal: 'For any device', x86_64: 'For Chromebooks and emulators', desktop: 'For any device' };
+  var MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+  /** "2026-11-16T12:32:35Z" -> "16 Nov 2026"; '' when unknown. */
+  function formatDate(iso) {
+    var m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(iso || ''));
+    return m && MONTHS[+m[2] - 1] ? (+m[3]) + ' ' + MONTHS[+m[2] - 1] + ' ' + m[1] : '';
+  }
 
   var FILES = [
     { kind: 'arm64', part: 'arm64-v8a', label: 'Most phones from the last six years' },
@@ -78,14 +87,79 @@
 
   function versionOf(tag) { return String(tag || '').replace(/^v/i, ''); }
 
-  function buttonLabel(release, asset) {
+  // The visible label never changes; the version and size live in the title and aria-label.
+  function buttonLabel() { return 'Download latest'; }
+
+  function buttonTitle(release, asset) {
     var size = formatSize(asset && asset.size);
-    return 'Download ' + versionOf(release.tag_name) + (size ? ' \u00b7 ' + size : '');
+    return 'Download Maglev ' + versionOf(release.tag_name) + (size ? ', ' + size : '');
   }
 
   function fileLabel(kind) {
     var f = FILES.filter(function (x) { return x.kind === kind; })[0];
     return f ? f.label : kind;
+  }
+
+  /**
+   * Everything the "download started" dialog shows, as plain data (the browser renders it with renderDialog).
+   * releases: the usable releases, newest first (the first is `release`).
+   */
+  function buildDialog(release, env, releases) {
+    var picked = pickAsset(release, env);
+    if (!picked) return null;
+    var desktop = picked.kind === 'desktop';
+    var size = formatSize(picked.asset.size);
+    var files = [];
+    FILES.forEach(function (f) {
+      var a = findFile(release, f.part);
+      if (!a) return;
+      var isPick = a.name === picked.asset.name;
+      files.push({
+        part: f.part, name: f.label, tech: f.part, size: formatSize(a.size), url: a.browser_download_url,
+        picked: isPick, badge: isPick ? (desktop ? 'Recommended' : 'Picked for your phone') : '',
+      });
+    });
+    var older = recentReleases(releases || [release], 5).filter(function (r) { return r.tag_name !== release.tag_name; }).map(function (r) {
+      return {
+        version: versionOf(r.tag_name), date: String(r.published_at || '').slice(0, 10),
+        files: FILES.map(function (f) {
+          var a = findFile(r, f.part);
+          return a ? { part: f.part, label: f.label, size: formatSize(a.size), url: a.browser_download_url } : null;
+        }).filter(Boolean),
+      };
+    });
+    var date = formatDate(release.published_at);
+    var part = (FILES.filter(function (f) { return findFile(release, f.part) === picked.asset; })[0] || {}).part || '';
+    var version = versionOf(release.tag_name);
+    // Desktop: nothing is downloaded, so no "started" or "tap the file" lines; the QR leads.
+    return {
+      heading: desktop ? 'Get Maglev on your phone' : 'Downloading Maglev ' + version,
+      summary: desktop ? '' : [WORDS[picked.kind], part, size].filter(Boolean).join(' \u00b7 '),
+      released: desktop ? 'Latest: Maglev ' + version + (date ? ' \u00b7 Released ' + date : '') : (date ? 'Released ' + date : ''),
+      retryUrl: desktop ? '' : picked.asset.browser_download_url,
+      next: desktop ? '' : 'Next: tap the file to install. Step 2 below shows how.',
+      pickTitle: desktop ? 'Or download a file' : 'Pick a different file',
+      files: files,
+      olderTitle: 'Older versions',
+      older: older,
+      allReleasesUrl: ALL_RELEASES,
+      desktop: desktop,
+      qr: desktop ? { title: 'Scan with your Android phone', text: 'Maglev is an Android app. Scan this with your phone to get it.' } : null,
+    };
+  }
+
+  /** The dialog when GitHub's API has not answered: the baked version and link, no file list. */
+  function fallbackDialog(version, url, desktop) {
+    return {
+      heading: desktop ? 'Get Maglev on your phone' : 'Downloading Maglev ' + version,
+      summary: desktop ? '' : 'For any device \u00b7 universal',
+      released: desktop ? 'Latest: Maglev ' + version : '',
+      retryUrl: desktop ? '' : url,
+      next: desktop ? '' : 'Next: tap the file to install. Step 2 below shows how.',
+      pickTitle: '', files: [], olderTitle: '', older: [],
+      allReleasesUrl: ALL_RELEASES, desktop: !!desktop,
+      qr: desktop ? { title: 'Scan with your Android phone', text: 'Maglev is an Android app. Scan this with your phone to get it.' } : null,
+    };
   }
 
   /** Browser only: resolves to the env pickAsset needs. Never rejects. */
@@ -129,68 +203,113 @@
       }, function (err) { clearTimeout(timer); throw err; });
   }
 
-  function releaseHead(r) {
-    var head = el('p', 'ver-head');
-    head.appendChild(el('span', 'ver-name', 'Maglev ' + versionOf(r.tag_name)));
-    var day = String(r.published_at || '').slice(0, 10);
-    if (day) head.appendChild(el('span', 'ver-date', ' ' + day));
-    return head;
+  function link(href, text, cls) {
+    var a = el('a', cls || null, text);
+    a.href = href; a.rel = 'noopener';
+    return a;
   }
 
-  // The newest release: one plain-English line per file.
-  function latestFiles(r) {
-    var files = el('ul', 'ver-files');
-    FILES.forEach(function (f) {
-      var a = findFile(r, f.part);
-      if (!a) return;
-      var item = el('li');
-      var link = el('a', null, f.label);
-      link.href = a.browser_download_url; link.rel = 'noopener';
-      item.appendChild(link);
-      item.appendChild(el('span', 'ver-size', ' ' + f.part + ', ' + formatSize(a.size)));
-      files.appendChild(item);
-    });
-    return files;
-  }
-
-  // Older releases: one wrapped row of small links, the plain-English name kept as title and aria-label.
-  function compactFiles(r) {
-    var row = el('ul', 'ver-row');
-    FILES.forEach(function (f) {
-      var a = findFile(r, f.part);
-      if (!a) return;
-      var item = el('li');
-      var link = el('a', null, f.part + ' \u00b7 ' + formatSize(a.size));
-      link.href = a.browser_download_url; link.rel = 'noopener';
-      link.title = f.label; link.setAttribute('aria-label', f.label + ' (' + f.part + '), ' + formatSize(a.size));
-      item.appendChild(link);
-      row.appendChild(item);
-    });
-    return row;
-  }
-
-  function renderVersions(box, list) {
-    box.textContent = '';
-    var cur = el('div', 'ver');
-    cur.appendChild(releaseHead(list[0]));
-    cur.appendChild(latestFiles(list[0]));
-    box.appendChild(cur);
-    if (list.length > 1) {
-      var d = el('details', 'older');
-      d.appendChild(el('summary', null, 'Older versions'));
-      list.slice(1).forEach(function (r) {
-        var v = el('div', 'ver');
-        v.appendChild(releaseHead(r));
-        v.appendChild(compactFiles(r));
-        d.appendChild(v);
-      });
-      box.appendChild(d);
+  function renderDialog(d) {
+    var dlg = el('dialog', 'dlg');
+    dlg.setAttribute('aria-labelledby', 'dlg-title');
+    var inn = el('div', 'dlg-in');
+    var close = el('button', 'btn small dlg-close', 'Close');
+    close.type = 'button';
+    close.addEventListener('click', function () { dlg.close(); });
+    inn.appendChild(close);
+    var h = el('h2', 'h3', d.heading); h.id = 'dlg-title';
+    inn.appendChild(h);
+    if (d.summary) inn.appendChild(el('p', 'dlg-sum', d.summary));
+    if (d.released) inn.appendChild(el('p', 'dlg-date', d.released));
+    if (d.retryUrl) {
+      var again = el('p', 'dlg-again', 'Didn\u2019t start? ');
+      again.appendChild(link(d.retryUrl, 'Download again'));
+      inn.appendChild(again);
     }
-    var more = el('p', 'ver-all');
-    var all = el('a', null, 'All releases on GitHub');
-    all.href = ALL_RELEASES; all.rel = 'noopener';
-    more.appendChild(all);
-    box.appendChild(more);
+    if (d.next) inn.appendChild(el('p', 'dlg-next', d.next));
+    if (d.qr) {
+      var q = el('div', 'dlg-qr');
+      var img = el('img');
+      img.src = BASE + 'qr-maglev.svg'; img.width = 176; img.height = 176; img.alt = 'QR code that opens this page on a phone';
+      q.appendChild(img);
+      var qt = el('div');
+      qt.appendChild(el('p', 'dlg-qr-title', d.qr.title));
+      qt.appendChild(el('p', null, d.qr.text));
+      q.appendChild(qt);
+      inn.appendChild(q);
+    }
+    if (d.files.length) inn.appendChild(el('h3', 'dlg-h', d.pickTitle));
+    var rows = el('ul', 'dlg-files');
+    d.files.forEach(function (f) {
+      var li = el('li');
+      var a = link(f.url, null, 'dlg-row' + (f.picked ? ' picked' : ''));
+      var main = el('span', 'dlg-row-main');
+      main.appendChild(el('strong', null, f.name));
+      main.appendChild(el('span', 'dlg-row-sub', f.tech + ' \u00b7 ' + f.size));
+      a.appendChild(main);
+      if (f.badge) a.appendChild(el('span', 'dlg-badge', f.badge));
+      li.appendChild(a);
+      rows.appendChild(li);
+    });
+    if (d.files.length) inn.appendChild(rows);
+    if (d.older.length) {
+      var det = el('details', 'older');
+      det.appendChild(el('summary', null, d.olderTitle));
+      d.older.forEach(function (r) {
+        var v = el('div', 'ver');
+        var head = el('p', 'ver-head');
+        head.appendChild(el('span', 'ver-name', 'Maglev ' + r.version));
+        if (r.date) head.appendChild(el('span', 'ver-date', ' ' + r.date));
+        v.appendChild(head);
+        var row = el('ul', 'ver-row');
+        r.files.forEach(function (f) {
+          var li = el('li');
+          var a = link(f.url, f.part + ' \u00b7 ' + f.size);
+          a.title = f.label; a.setAttribute('aria-label', f.label + ' (' + f.part + '), ' + f.size);
+          li.appendChild(a); row.appendChild(li);
+        });
+        v.appendChild(row);
+        det.appendChild(v);
+      });
+      inn.appendChild(det);
+    }
+    var all = el('p', 'ver-all');
+    all.appendChild(link(d.allReleasesUrl, 'All releases on GitHub'));
+    inn.appendChild(all);
+    dlg.appendChild(inn);
+    // Backdrop click: the dialog element itself is the backdrop area (its content fills the box).
+    dlg.addEventListener('click', function (e) { if (e.target === dlg) dlg.close(); });
+    return { dlg: dlg, close: close };
+  }
+
+  var state = null; // { release, list, env } once GitHub has answered
+  var open = null;
+
+  var envNow = null; // set once detectEnv answers
+
+  function showDialog(opener, e) {
+    if (typeof HTMLDialogElement === 'undefined') return;
+    var desktop = !!envNow && classify(envNow) === 'desktop';
+    if (desktop && e) e.preventDefault(); // an APK is useless on a computer: show the QR instead
+    var d = state && buildDialog(state.release, state.env, state.list);
+    if (!d) {
+      var v = /\/download\/v([^/]+)\//.exec(opener.href || '');
+      if (!v) return;
+      d = fallbackDialog(v[1], opener.href, desktop);
+    }
+    if (open) { open.dlg.remove(); open = null; }
+    var r = renderDialog(d);
+    document.body.appendChild(r.dlg);
+    document.documentElement.classList.add('dlg-lock');
+    r.dlg.addEventListener('close', function () {
+      document.documentElement.classList.remove('dlg-lock');
+      r.dlg.remove();
+      if (open === r) open = null;
+      if (opener && opener.focus) opener.focus();
+    });
+    open = r;
+    r.dlg.showModal();
+    r.close.focus();
   }
 
   function applyRelease(release, picked) {
@@ -199,15 +318,21 @@
       a.href = asset.browser_download_url;
       if (a.getAttribute('data-dl') === 'main') {
         var label = a.querySelector('[data-dl-label]');
-        if (label) label.textContent = buttonLabel(release, asset);
+        if (label) label.textContent = buttonLabel();
+        a.title = buttonTitle(release, asset);
+        a.setAttribute('aria-label', a.title);
       }
     });
   }
 
   function init() {
+    // Wired at load, so a click before GitHub answers still shows the dialog (for the baked version).
+    document.querySelectorAll('[data-dl]').forEach(function (a) { a.addEventListener('click', function (e) { showDialog(a, e); }); });
+    try { var cs = document.currentScript; if (cs && cs.src) BASE = cs.src.replace(/[^\/]*$/, ''); } catch (e) {}
     var envP = detectEnv();
     // Desktop mode does not need GitHub: show the QR code as soon as we know it is not an Android phone.
     envP.then(function (env) {
+      envNow = env;
       if (classify(env) !== 'desktop') return;
       document.querySelectorAll('[data-dl-qr]').forEach(function (q) { q.hidden = false; });
       document.querySelectorAll('[data-dl-note]').forEach(function (n) { n.hidden = true; });
@@ -218,14 +343,14 @@
       var latest = list[0];
       if (!latest) return;
       var picked = pickAsset(latest, res[0]);
+      state = { release: latest, list: list, env: res[0] };
       if (picked) applyRelease(latest, picked);
-      document.querySelectorAll('[data-dl-versions]').forEach(function (box) { renderVersions(box, list); });
     }).catch(function () { /* the baked links stay */ });
   }
 
   return {
     pickLatest: pickLatest, pickAsset: pickAsset, detectEnv: detectEnv, formatSize: formatSize,
-    recentReleases: recentReleases, versionOf: versionOf, buttonLabel: buttonLabel, fileLabel: fileLabel,
+    recentReleases: recentReleases, buildDialog: buildDialog, fallbackDialog: fallbackDialog, formatDate: formatDate, versionOf: versionOf, buttonLabel: buttonLabel, buttonTitle: buttonTitle, fileLabel: fileLabel,
     classify: classify, init: init,
   };
 });

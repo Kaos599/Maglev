@@ -49,7 +49,7 @@ const APK_FILES = [
   { kind: 'universal', label: 'Any device, if you are not sure' },
 ];
 /** The smart Download button. download.js points it at the right file of the newest release and adds the version and size. */
-const dlButton = () => `<a class="btn primary" href="${BAKED_APK}" data-dl="main" rel="noopener">${icon('download')}<span data-dl-label>Download ${esc(VERSION)}</span></a>`;
+const dlButton = () => `<a class="btn primary" href="${BAKED_APK}" data-dl="main" title="Download Maglev ${esc(VERSION)}" aria-label="Download Maglev ${esc(VERSION)}" rel="noopener">${icon('download')}<span data-dl-label>Download latest</span></a>`;
 const UPDATED = process.env.SITE_DATE || new Date().toISOString().slice(0, 10);
 const human = (iso) => new Date(`${iso}T12:00:00Z`).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' });
 const UPDATED_HUMAN = human(UPDATED);
@@ -394,8 +394,8 @@ ${header(A, HOME, { compare: !!cmp })}
         ${dlButton()}
         <a class="btn" href="${OBTAINIUM}" rel="noopener">${icon('retry')}<span>Get updates with Obtainium</span></a>
       </div>
-      <p class="cta-note" data-dl-note>The button picks the right file for your phone. Want a different one? <a href="#other-files">See all files</a>.</p>
-      <p class="cta-note" data-dl-note-desktop hidden>Maglev is an Android app. Open this page on your phone, or scan the code under <a href="#install">How to install</a>.</p>
+      <p class="cta-note" data-dl-note>The button picks the right file for your phone, and you can choose another one after you tap it.</p>
+      <p class="cta-note" data-dl-note-desktop hidden>Maglev is an Android app. Click Download, then scan the code that appears with your phone.</p>
       <p class="meta">v${esc(VERSION)} · updated <time datetime="${UPDATED}">${esc(UPDATED_HUMAN)}</time> · by <a href="${MAKER.url}" rel="author">${MAKER.name}</a></p>
       <ul class="facts" aria-label="At a glance">
         <li>Free</li><li>No ads</li><li>Open source, GPL-3.0</li><li>Android 7 and up</li>
@@ -460,40 +460,17 @@ ${cmp ? `
         <p>Open the app and follow the short setup. Your downloads go to the Download/Maglev folder unless you pick another one.</p>
       </li>
     </ol>
-    <div class="dl-more">
-      <div class="card" id="other-files">
-        <h3>Other versions and files</h3>
-        <p>Want a different file, or an older version? Pick one here.</p>
-        <div class="files-body" data-dl-versions>
-          <div class="ver">
-            <p class="ver-head"><span class="ver-name">Maglev ${esc(VERSION)}</span></p>
-            <ul class="ver-files">
-${APK_FILES.map((f) => `              <li><a href="${apkUrl(f.kind)}" rel="noopener">${f.label}</a> <span class="ver-size">${f.kind}</span></li>`).join('\n')}
-            </ul>
-          </div>
-          <p class="ver-all"><a href="${ALL_RELEASES}" rel="noopener">All releases on GitHub</a></p>
+    <div class="dl-row">
+      <details class="more" id="verify">
+        <summary>Check it's the real Maglev</summary>
+        <div class="more-body">
+          <p>Official APKs are built by GitHub Actions from the public source and signed with one key. Its SHA-256 fingerprint is:</p>
+          <div class="fp"><code id="fingerprint">${FINGERPRINT}</code><button type="button" class="btn small copy" data-copy="fingerprint" hidden>${icon('copy')}<span>Copy</span></button></div>
+          <p>To check a file on a computer with the Android SDK, run <code>apksigner verify --print-certs</code> on the APK and compare the line "Signer #1 certificate SHA-256 digest" with the fingerprint above. If it doesn't match, don't install it.</p>
         </div>
-      </div>
-      <div class="card qr" data-dl-qr hidden>
-        <img src="${A}assets/qr-maglev.svg" width="222" height="222" alt="QR code that opens this page on a phone">
-        <div>
-          <h3>Get it on your phone</h3>
-          <p>Maglev is an Android app. Scan this with your phone to get it.</p>
-        </div>
-      </div>
-    </div>
-    <div class="install-more">
-      <div class="card verify" id="verify">
-        <h3>Check it's the real Maglev</h3>
-        <p>Official APKs are built by GitHub Actions from the public source and signed with one key. Its SHA-256 fingerprint is:</p>
-        <div class="fp"><code id="fingerprint">${FINGERPRINT}</code><button type="button" class="btn small copy" data-copy="fingerprint" hidden>${icon('copy')}<span>Copy</span></button></div>
-        <p>To check a file on a computer with the Android SDK, run <code>apksigner verify --print-certs</code> on the APK and compare the line "Signer #1 certificate SHA-256 digest" with the fingerprint above. If it doesn't match, don't install it.</p>
-      </div>
-      <div class="card obtainium">
-        <h3>Get updates without checking</h3>
-        <p><a href="${OBTAINIUM_REPO}" rel="noopener">Obtainium</a> is a free, open source app that installs new versions from GitHub as they come out. Add Maglev to it in one tap.</p>
-        <a class="btn" href="${OBTAINIUM}" rel="noopener">${icon('retry')}<span>Add to Obtainium</span></a>
-      </div>
+      </details>
+      <noscript><p class="nojs">Other files: ${APK_FILES.map((f) => `<a href="${apkUrl(f.kind)}" rel="noopener">${f.kind}</a>`).join(', ')}. <a href="${ALL_RELEASES}" rel="noopener">All releases on GitHub</a></p></noscript>
+      <a class="btn small" href="${OBTAINIUM}" rel="noopener" aria-label="Add Maglev to Obtainium, a free app that installs new versions from GitHub as they come out">${icon('retry')}<span>Add to Obtainium</span></a>
     </div>
   </div>
 </section>

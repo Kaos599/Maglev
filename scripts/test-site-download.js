@@ -73,9 +73,35 @@ check('formatSize: 3.5 MB keeps a decimal', dl.formatSize(3.5e6) === '3.5 MB');
 check('formatSize: 500 KB', dl.formatSize(500000) === '500 KB');
 check('formatSize: junk -> empty', dl.formatSize(undefined) === '' && dl.formatSize(-1) === '' && dl.formatSize(NaN) === '');
 check('versionOf strips the v', dl.versionOf('v0.25') === '0.25' && dl.versionOf('v0.19-beta') === '0.19-beta');
-check('buttonLabel: Download 0.25 \u00b7 24 MB', dl.buttonLabel(latest, r1.asset) === 'Download 0.25 \u00b7 24 MB');
+check('buttonLabel is always "Download latest"', dl.buttonLabel(latest, r1.asset) === 'Download latest');
+check('buttonTitle: Download Maglev 0.25, 24 MB', dl.buttonTitle(latest, r1.asset) === 'Download Maglev 0.25, 24 MB');
 check('recentReleases: at most 5, newest first, only usable', (() => { const l = dl.recentReleases(releases, 5); return l.length === 5 && l[0].tag_name === 'v0.25'; })());
 check('fileLabel: plain English', /most phones/i.test(dl.fileLabel('arm64')) && /any device/i.test(dl.fileLabel('universal')));
+
+// ---- download dialog model
+const all = dl.recentReleases(releases, 5);
+const dAnd = dl.buildDialog(latest, { userAgent: ANDROID, platform: 'Linux aarch64' }, all);
+check('dialog: heading names the version', dAnd.heading === 'Downloading Maglev 0.25');
+check('dialog: second line names the kind, file and size', dAnd.summary === 'For most phones \u00b7 arm64-v8a \u00b7 24 MB');
+check('dialog: release date in words', dAnd.released === 'Released 16 Nov 2026');
+check('dialog: retry link is the picked file', dAnd.retryUrl.endsWith('Maglev-v0.25-arm64-v8a.apk'));
+check('dialog: 4 files, only the pick is marked "Picked for your phone"', dAnd.files.length === 4 && dAnd.files.filter((f) => f.picked).length === 1 && dAnd.files.find((f) => f.picked).part === 'arm64-v8a' && dAnd.files.find((f) => f.picked).badge === 'Picked for your phone');
+check('dialog: rows carry plain name, technical name and size', dAnd.files.every((f) => f.name && f.tech && /MB$/.test(f.size) && /^https:\/\//.test(f.url)));
+check('dialog: no QR on a phone', dAnd.qr === null && dAnd.desktop === false);
+check('dialog: older versions exclude the latest, 4 of them, 4 files each', dAnd.older.length === 4 && dAnd.older[0].version === '0.24' && dAnd.older.every((o) => o.files.length === 4));
+check('dialog: All releases link and next-step line', dAnd.allReleasesUrl === 'https://github.com/Kaos599/Maglev/releases' && /Step 2 below/.test(dAnd.next));
+const dDesk = dl.buildDialog(latest, { userAgent: MAC, platform: 'MacIntel' }, all);
+check('dialog desktop: heading says get it on your phone', dDesk.heading === 'Get Maglev on your phone');
+check('dialog desktop: no "started", "Download again" or "tap the file" lines', dDesk.retryUrl === '' && dDesk.next === '' && dDesk.summary === '');
+check('dialog desktop: QR leads with the Android-phone title and copy', dDesk.qr && dDesk.qr.title === 'Scan with your Android phone' && dDesk.qr.text === 'Maglev is an Android app. Scan this with your phone to get it.');
+check('dialog desktop: "Or download a file" with universal Recommended', dDesk.pickTitle === 'Or download a file' && dDesk.files.length === 4 && dDesk.files.find((f) => f.picked).part === 'universal' && dDesk.files.find((f) => f.picked).badge === 'Recommended');
+check('dialog desktop: still has older versions and All releases', dDesk.older.length === 4 && /releases$/.test(dDesk.allReleasesUrl));
+check('dialog: Android with no signal -> universal line', dl.buildDialog(latest, { userAgent: ANDROID, platform: 'Linux' }, all).summary === 'For any device \u00b7 universal \u00b7 55 MB');
+check('dialog: null for a release without APKs', dl.buildDialog({ tag_name: 'v1', assets: [] }, {}, []) === null);
+const fb = dl.fallbackDialog('0.25', 'https://x/u.apk');
+check('dialog fallback desktop: QR, no retry', dl.fallbackDialog('0.25', 'https://x/u.apk', true).qr && dl.fallbackDialog('0.25', 'https://x/u.apk', true).retryUrl === '');
+check('dialog fallback: baked version heading, no files', fb.heading === 'Downloading Maglev 0.25' && fb.files.length === 0 && fb.retryUrl === 'https://x/u.apk');
+check('formatDate', dl.formatDate('2026-11-16T12:32:35Z') === '16 Nov 2026' && dl.formatDate('') === '' && dl.formatDate('junk') === '');
 
 // ---- generated page
 const html = fs.readFileSync(path.join(ROOT, 'site/index.html'), 'utf8');
@@ -92,10 +118,12 @@ check('index.html: every smart button bakes the universal APK of the app.json ve
 check('index.html: no button text says arm64 any more', !dlButtons.some((a) => /arm64/.test(a)));
 check('index.html: "All releases on GitHub" link exists', /<a[^>]*href="https:\/\/github\.com\/Kaos599\/Maglev\/releases"[^>]*>[^<]*All releases on GitHub/.test(html));
 check('index.html: static fallback lists the baked version\'s four APKs', ['arm64-v8a', 'armeabi-v7a', 'x86_64', 'universal'].every((k) => html.includes(`/download/v${version}/Maglev-v${version}-${k}.apk"`)));
+check('index.html: main button label is "Download latest"', /data-dl="main"[^>]*>[\s\S]*?<span data-dl-label>Download latest<\/span>/.test(html));
 check('index.html: includes download.js with defer', /<script src="\/maglev\/assets\/download\.js" defer><\/script>/.test(html));
-check('index.html: QR block points at the committed svg', html.includes('assets/qr-maglev.svg') && fs.existsSync(path.join(ROOT, 'site/assets/qr-maglev.svg')));
+check('QR svg is committed and download.js uses it', fs.existsSync(path.join(ROOT, 'site/assets/qr-maglev.svg')) && fs.readFileSync(path.join(ROOT, 'site/assets/download.js'), 'utf8').includes('qr-maglev.svg'));
+check('index.html: no Other-files block left in the install section', !html.includes('id="other-files"') && !html.includes('data-dl-versions'));
+check('index.html: files and All releases still reachable without JS (noscript)', /<noscript>[\s\S]*All releases on GitHub[\s\S]*<\/noscript>/.test(html));
 check('index.html: JSON-LD downloadUrl unchanged', html.includes('"downloadUrl":"https://github.com/Kaos599/Maglev/releases/latest"') || html.includes('"downloadUrl": "https://github.com/Kaos599/Maglev/releases/latest"'));
-check('index.html: QR line is the agreed copy', html.includes('Maglev is an Android app. Scan this with your phone to get it.'));
 
 if (failed) { console.log(`\n${failed} check(s) failed`); process.exit(1); }
 console.log('\nall checks passed');
