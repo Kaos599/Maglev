@@ -5,7 +5,6 @@ import { ListRow, SectionHeader, Toggle } from '../../components/ui';
 import { Card, SettingsPage } from '../../components/settings/SettingsParts';
 import { ClipboardSetting } from '../../components/settings/ClipboardSetting';
 import { PartsSection } from '../../components/settings/PartsSection';
-import { PARTS_ENABLED } from '../../utils/prefs/linkDownloads';
 import { RetrySection } from '../../components/settings/RetrySection';
 import { quickShareCopy } from '../../constants/copy';
 
@@ -32,7 +31,7 @@ export default function DownloadsSettings() {
         <ClipboardSetting />
       </Card>
       <SectionHeader title="Link downloads" />
-      {PARTS_ENABLED ? <PartsSection /> : null}
+      <PartsSection />
       <RetrySection />
       <SectionHeader title="When downloads finish" />
       <Card>
