@@ -170,6 +170,9 @@ async function main() {
   check('average speed is downloaded / active seconds of the range', Math.abs(live1.avgBps - (300 * MBy) / 200) < 1, `got ${live1.avgBps}`);
   const nolive = I.rangeStats({ records: recs, daily: [row('2026-11-16', { downloaded: 100 * MBy, finished: 1 })], now, tz: 0 }, wk);
   check('a day before 0.27 shows its finished items’ time', nolive.activeSecs === 50 && nolive.avgBps === 2 * MBy);
+  // A download that ran while the app was in the background: the live count saw only 10 s, the engine measured 50 s.
+  const bg = I.rangeStats({ records: recs, daily: [row('2026-11-16', { downloaded: 100 * MBy, finished: 1, activeSecs: 10 })], now, tz: 0 }, wk);
+  check('a day takes the larger of live seconds and its finished items’ time (background time is not lost)', bg.activeSecs === 50 && bg.avgBps === 2 * MBy, `got ${bg.activeSecs}`);
   const zero = I.rangeStats({ records: [], daily: [row('2026-11-18', { downloaded: 5 })], now, tz: 0 }, wk);
   check('no seconds: time 0 and speed unknown', zero.activeSecs === 0 && zero.avgBps === null);
   const most = I.mostInOneRange(recs, wk, 0, N('2026-11-10'), [row('2026-11-17', { activeSecs: 100 }), row('2026-11-18', { activeSecs: 50 })]);

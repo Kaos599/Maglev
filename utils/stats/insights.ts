@@ -449,7 +449,8 @@ const recordsIn = (records: readonly StatsRecord[], r: StatsRange, tz?: number) 
 
 /**
  * Seconds spent downloading in a range (NATIVE_CONTRACT 34.2, 0.27). Each day's figure comes from stats_daily, which counts live;
- * a day with none stored (before 0.27) falls back to the time of the items that finished that day. No backfill beyond that.
+ * each day counts the larger of that and the time of the items that finished that day (covers time in the background and days
+ * before 0.27). No backfill beyond that.
  */
 export function activeSecsIn(daily: readonly DailyRow[], records: readonly StatsRecord[], r: StatsRange, tz?: number): number {
   const stored = new Map<number, number>();
@@ -458,9 +459,15 @@ export function activeSecsIn(daily: readonly DailyRow[], records: readonly Stats
     const v = Number(d.activeSecs);
     if (rangeHolds(r, n) && Number.isFinite(v) && v > 0) stored.set(n, (stored.get(n) ?? 0) + v);
   }
+  // Per day, the larger of the live count and the finished items' own time: the live count can miss time while the app was
+  // in the background, and a finished item's time is measured by the engine, so the larger is the honest floor.
+  const finished = new Map<number, number>();
+  for (const x of recordsIn(records, r, tz)) {
+    const n = finishDay(x, tz);
+    finished.set(n, (finished.get(n) ?? 0) + (Number.isFinite(x.activeSecs) && x.activeSecs > 0 ? x.activeSecs : 0));
+  }
   let total = 0;
-  for (const v of stored.values()) total += v;
-  for (const x of recordsIn(records, r, tz)) if (!stored.has(finishDay(x, tz))) total += x.activeSecs;
+  for (const n of new Set([...stored.keys(), ...finished.keys()])) total += Math.max(stored.get(n) ?? 0, finished.get(n) ?? 0);
   return total;
 }
 
