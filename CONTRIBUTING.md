@@ -6,7 +6,7 @@ Bug reports, fixes and ideas are welcome. This page covers what you need to send
 
 For anything other than a small bug fix or a typo, **open an issue before you write code**: a new feature, a change to how something works, a new search source, a new setting, a redesign or a refactor.
 
-1. [Open an issue](https://github.com/Kaos599/Maglev/issues/new) that says what you want to change and why. Screenshots or a rough sketch help.
+1. [Open a feature request](https://github.com/Kaos599/Maglev/issues/new?template=feature.yml) that says what you want to change and why. Screenshots or a rough sketch help.
 2. Wait for the maintainer to reply. If the idea fits, the issue gets the `approved` label, sometimes with notes on how it should work.
 3. Then open your pull request against `dev`, and link the issue in it (`Closes #123`).
 
