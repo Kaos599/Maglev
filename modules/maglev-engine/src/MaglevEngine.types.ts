@@ -774,6 +774,10 @@ export interface MaglevEngineApi {
   verifyListSignature(body: string, sigB64: string): Promise<boolean>;
   // Governance
   setGovernance(config: GovernanceConfig): Promise<EngineResult>;
+  /** NATIVE_CONTRACT 35: every rule holding transfers right now. Empty when nothing blocks. Never throws. */
+  getActiveBlocks(): Promise<ActiveBlock[]>;
+  /** NATIVE_CONTRACT 35: fires with the full list whenever it changes. Returns an unsubscribe function. */
+  addBlocksListener(listener: (blocks: ActiveBlock[]) => void): () => void;
   // URL downloads (NATIVE_CONTRACT 17)
   probeUrl(url: string, options: DownloadOptions, timeoutMs: number): Promise<EngineResult<UrlProbe>>;
   /** NATIVE_CONTRACT 24.8. Errors: STREAM_PROTECTED, STREAM_LIVE, STREAM_UNSUPPORTED, plus the probeUrl ones. */
@@ -846,4 +850,32 @@ export interface PlaybackSupport {
   hlg: boolean | null;
   /** True only for the dev mock. Never set by the native probe. */
   mock?: boolean;
+}
+
+/**
+ * NATIVE_CONTRACT 35. One rule that is holding transfers right now, as Kotlin governance last judged it.
+ * `tag` is the same string that lands in `pausedBy` (except `offline`, which torrents never carry).
+ */
+export type ActiveBlockTag =
+  | 'wifi_only'
+  | 'battery'
+  | 'charging_only'
+  | 'network_unvalidated'
+  | 'vpn_required'
+  | 'offline'
+  | 'schedule'
+  | 'storage_full'
+  | 'seed_metered';
+
+export interface ActiveBlock {
+  tag: ActiveBlockTag;
+  /** wifi_only: `metered` (on mobile data) or `ssid` (on a Wi-Fi network that is not in the allowed list). */
+  cause?: 'metered' | 'ssid';
+  /** battery: the cut-off from settings and the current level, both 0-100. */
+  thresholdPct?: number;
+  levelPct?: number;
+  /** schedule: epoch ms when the schedule next allows transfers, or null when unknown. */
+  resumesAtMs?: number | null;
+  /** Epoch ms when this block started (Kotlin's clock). */
+  sinceMs: number;
 }

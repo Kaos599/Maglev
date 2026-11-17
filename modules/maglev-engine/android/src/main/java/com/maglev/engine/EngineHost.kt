@@ -380,6 +380,7 @@ object EngineHost {
     /** Stops the engine, the poller, the governance watchers and the service. */
     fun shutdownEngine(): Map<String, Any?> {
         initialized = false
+        clearBlocks()
         startWarning = null
         pollJob?.cancel()
         pollJob = null
@@ -1118,6 +1119,7 @@ object EngineHost {
         storageReserveBlocked = blocked
         if (!initialized) return
         send("storage_full", !blocked, false)
+        if (setBlock("storage_full", blocked, null)) emitBlocks()
     }
 
     /** Kept so an engine restart or a forced governance pass sends the current state again. */
@@ -1171,12 +1173,18 @@ object EngineHost {
         val p = power
 
         var wifiBlocked = false
+        // Contract section 35.1: why wifi_only is on. "metered" is mobile data, "ssid" is a Wi-Fi not in the list.
+        var wifiCause: String? = null
         if (g.wifiOnly && n != null && n.monitoring) {
             wifiBlocked = !n.unmeteredLink
+            if (wifiBlocked) wifiCause = "metered"
             if (!wifiBlocked && g.ssidWhitelist.isNotEmpty()) {
                 val ssid = n.currentSsid()
                 // Unreadable SSID means the whitelist cannot be enforced. Do not block.
-                if (ssid != null && g.ssidWhitelist.none { it.trim() == ssid }) wifiBlocked = true
+                if (ssid != null && g.ssidWhitelist.none { it.trim() == ssid }) {
+                    wifiBlocked = true
+                    wifiCause = "ssid"
+                }
             }
         }
         // Contract section 21. Only judged while the callback is registered and a network exists: no network at
@@ -1211,13 +1219,76 @@ object EngineHost {
         val offline = n != null && n.monitoring && (!n.connected || !n.validated)
         send(TAG_OFFLINE, !offline, force)
 
-        val c = ctx ?: return
+        // Contract section 35.1: the blocks that are ON, with detail. Compared by value; emitted only on a change.
+        var blocksChanged = false
+        blocksChanged = setBlock("storage_full", storageReserveBlocked, null) or blocksChanged
+        blocksChanged = setBlock("offline", offline, null) or blocksChanged
+        blocksChanged = setBlock("network_unvalidated", unvalidatedBlocked, null) or blocksChanged
+        blocksChanged = setBlock("vpn_required", vpnBlocked, null) or blocksChanged
+        blocksChanged = setBlock("wifi_only", wifiBlocked, mapOf("cause" to wifiCause)) or blocksChanged
+        blocksChanged = setBlock("charging_only", chargingBlocked, null) or blocksChanged
+        blocksChanged = setBlock(
+            "battery", batteryBlocked,
+            mapOf("thresholdPct" to g.batteryCutoffPct.toDouble(), "levelPct" to level.toDouble()),
+        ) or blocksChanged
+        blocksChanged = setBlock("seed_metered", seedMeteredBlocked, null) or blocksChanged
+
+        val c = ctx
+        if (c == null) {
+            if (blocksChanged) emitBlocks()
+            return
+        }
         val st = ScheduleManager.state(c)
         val held = ScheduleManager.isHeld(c)
         // Schedule allows transfers again but the service is down: start it. The service clears the hold.
         if (held && !st.paused) ScheduleManager.requestResumeIfAllowed(c)
         send("schedule", !st.paused && !held, force)
+        // The next boundary is when the current pause rule ends. Unknown (null) when only the hold is left.
+        val resumesAt = if (st.paused) ScheduleManager.nextBoundaryEpoch(c) else null
+        blocksChanged = setBlock("schedule", st.paused || held, mapOf("resumesAtMs" to resumesAt?.toDouble())) or blocksChanged
+        if (blocksChanged) emitBlocks()
         applyLimits(st, force)
+    }
+
+    /** Fixed order, so the list never reshuffles when a block turns off and on. */
+    private val blockOrder = listOf(
+        "storage_full", "offline", "network_unvalidated", "vpn_required", "wifi_only",
+        "charging_only", "battery", "schedule", "seed_metered",
+    )
+    private val activeBlocks = HashMap<String, Map<String, Any?>>()
+    private val blocksLock = Any()
+
+    /**
+     * Turns [tag] on or off with [detail]. Returns true when the set or a detail field changed. A battery
+     * `levelPct` change alone is stored but returns false, so telemetry ticks send no event (section 35.1).
+     */
+    private fun setBlock(tag: String, on: Boolean, detail: Map<String, Any?>?): Boolean = synchronized(blocksLock) {
+        val old = activeBlocks[tag]
+        if (!on) return@synchronized activeBlocks.remove(tag) != null
+        val fields = LinkedHashMap<String, Any?>()
+        fields["tag"] = tag
+        detail?.forEach { (k, v) -> if (v != null) fields[k] = v }
+        if (tag == "schedule") fields["resumesAtMs"] = detail?.get("resumesAtMs")
+        fields["sinceMs"] = old?.get("sinceMs") ?: System.currentTimeMillis().toDouble()
+        activeBlocks[tag] = fields
+        if (old == null) return@synchronized true
+        val keys = old.keys + fields.keys
+        keys.any { it != "levelPct" && old[it] != fields[it] }
+    }
+
+    /** Current blocks, in [blockOrder]. Each map is a copy, safe to hand to JS. */
+    fun activeBlocksList(): List<Map<String, Any?>> = synchronized(blocksLock) {
+        if (!initialized) return@synchronized emptyList()
+        blockOrder.mapNotNull { activeBlocks[it]?.let { m -> LinkedHashMap(m) } }
+    }
+
+    private fun emitBlocks() {
+        emit("onBlocksChanged", mapOf("blocks" to activeBlocksList()))
+    }
+
+    private fun clearBlocks() {
+        val had = synchronized(blocksLock) { val h = activeBlocks.isNotEmpty(); activeBlocks.clear(); h }
+        if (had) emit("onBlocksChanged", mapOf("blocks" to emptyList<Map<String, Any?>>()))
     }
 
     private fun pushLimits(down: Long, up: Long) {

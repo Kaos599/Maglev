@@ -1,4 +1,5 @@
 import type {
+  ActiveBlock,
   AddTorrentOptions,
   AggregatedTelemetry,
   Detail,
@@ -141,6 +142,8 @@ export class MaglevMockEngine implements MaglevEngineApi {
   private completedListeners: Set<(e: TorrentCompletedEvent) => void> = new Set();
   private notificationListeners: Set<(e: NotificationActionEvent) => void> = new Set();
   private storageListeners: Set<(e: StorageStatus) => void> = new Set();
+  private blocksListeners: Set<(blocks: ActiveBlock[]) => void> = new Set();
+  private activeBlocks: ActiveBlock[] = [];
   private nativeConfig: NativeConfig | null = null;
   private initialized = false;
 
@@ -1449,6 +1452,48 @@ export class MaglevMockEngine implements MaglevEngineApi {
     };
   }
 
+  /** NATIVE_CONTRACT 35. Same rules as Kotlin's evaluateGovernance, from the mock's own settings. */
+  public async getActiveBlocks(): Promise<ActiveBlock[]> {
+    return this.activeBlocks.map((b) => ({ ...b }));
+  }
+
+  public addBlocksListener(listener: (blocks: ActiveBlock[]) => void): () => void {
+    this.blocksListeners.add(listener);
+    return () => {
+      this.blocksListeners.delete(listener);
+    };
+  }
+
+  /** Rebuilds the block list; notifies only when the set or a detail field changes (battery level alone does not). */
+  private updateBlocks(): void {
+    const net = this.settings.network;
+    const pwr = this.settings.power;
+    const now = Date.now();
+    const next: ActiveBlock[] = [];
+    const add = (b: Omit<ActiveBlock, 'sinceMs'>) => {
+      const prev = this.activeBlocks.find((o) => o.tag === b.tag);
+      next.push({ ...b, sinceMs: prev ? prev.sinceMs : now });
+    };
+    if (net.networkType === 'NONE') add({ tag: 'offline' });
+    if (net.wifiOnly && net.networkType === 'CELLULAR') {
+      add({ tag: 'wifi_only', cause: 'metered' });
+    } else if (net.networkType === 'WIFI' && net.ssidWhitelistEnabled && net.allowedSsids.length > 0 && !net.allowedSsids.includes(net.currentSsid || '')) {
+      add({ tag: 'wifi_only', cause: 'ssid' });
+    }
+    if (!pwr.isCharging && pwr.downloadOnlyWhileCharging) add({ tag: 'charging_only' });
+    if (!pwr.isCharging && pwr.batteryCutoffThreshold > 0 && pwr.batteryPercentage < pwr.batteryCutoffThreshold) {
+      add({ tag: 'battery', thresholdPct: pwr.batteryCutoffThreshold, levelPct: pwr.batteryPercentage });
+    }
+    if (!net.seedOnMobileData && net.networkType === 'CELLULAR') add({ tag: 'seed_metered' });
+    const key = (list: ActiveBlock[]) => JSON.stringify(list.map((b) => ({ ...b, levelPct: undefined })));
+    const changed = key(next) !== key(this.activeBlocks);
+    this.activeBlocks = next;
+    if (changed) {
+      const snapshot = next.map((b) => ({ ...b }));
+      this.blocksListeners.forEach((l) => l(snapshot));
+    }
+  }
+
   public onStorageStatus(listener: (event: StorageStatus) => void): Unsubscribe {
     this.storageListeners.add(listener);
     return () => {
@@ -1522,6 +1567,8 @@ export class MaglevMockEngine implements MaglevEngineApi {
         t.state = t.progressPercent >= 100 ? 'SEEDING' : 'DOWNLOADING';
       }
     });
+
+    this.updateBlocks();
 
     // 3. Count active transfers and manage WakeLock & Rate Limit Clamping
     const effectiveDown = this.getEffectiveDownloadLimit();

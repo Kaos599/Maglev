@@ -105,7 +105,7 @@ class MaglevEngineModule : Module() {
     override fun definition() = ModuleDefinition {
         Name("MaglevEngine")
 
-        Events("onTelemetry", "onTorrentCompleted", "onNotificationAction", "onStorageStatus", "onUpdateProgress", "onUpdateResult")
+        Events("onTelemetry", "onTorrentCompleted", "onNotificationAction", "onStorageStatus", "onUpdateProgress", "onUpdateResult", "onBlocksChanged")
 
         OnCreate {
             context?.let {
@@ -208,6 +208,15 @@ class MaglevEngineModule : Module() {
         }
         AsyncFunction("getNetworkState") { promise: Promise ->
             engine(promise) { EngineHost.networkState() }
+        }
+        // Contract section 35.1: every rule holding transfers now. [] before init. Never rejects.
+        AsyncFunction("getActiveBlocks") { promise: Promise ->
+            val list = try {
+                EngineHost.activeBlocksList()
+            } catch (t: Throwable) {
+                emptyList<Map<String, Any?>>()
+            }
+            promise.resolve(list)
         }
         AsyncFunction("listTorrents") { promise: Promise ->
             native(promise) { NativeCore.nativeListTorrents() }

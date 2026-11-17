@@ -1,5 +1,6 @@
 import { Platform, requireOptionalNativeModule } from 'expo-modules-core';
 import type {
+  ActiveBlock,
   AddTorrentOptions,
   Detail,
   DownloadOptions,
@@ -83,6 +84,22 @@ const unavailable = (message: string, code: EngineErrorCode = 'ENGINE_UNAVAILABL
 
 type StateListener = () => void;
 
+const BLOCK_TAGS: ReadonlySet<string> = new Set([
+  'wifi_only', 'battery', 'charging_only', 'network_unvalidated', 'vpn_required', 'offline', 'schedule', 'storage_full', 'seed_metered',
+]);
+
+/** Keeps only entries with a known tag and a numeric `sinceMs`. Input is already camelized or still raw. */
+function cleanBlocks(raw: unknown): ActiveBlock[] {
+  if (!Array.isArray(raw)) return [];
+  const out: ActiveBlock[] = [];
+  for (const item of camelizeKeys<unknown[]>(raw)) {
+    const b = item as Partial<ActiveBlock> | null;
+    if (!b || typeof b.tag !== 'string' || !BLOCK_TAGS.has(b.tag)) continue;
+    out.push({ ...b, tag: b.tag, sinceMs: typeof b.sinceMs === 'number' ? b.sinceMs : 0 } as ActiveBlock);
+  }
+  return out;
+}
+
 export class MaglevEngineBridge implements MaglevEngineApi {
   private impl: MaglevEngineApi | null = null;
   private usingNative = false;
@@ -103,6 +120,7 @@ export class MaglevEngineBridge implements MaglevEngineApi {
   private completedListeners = new Set<(e: TorrentCompletedEvent) => void>();
   private actionListeners = new Set<(e: NotificationActionEvent) => void>();
   private storageListeners = new Set<(e: StorageStatus) => void>();
+  private blocksListeners = new Set<(blocks: ActiveBlock[]) => void>();
   private detach: Unsubscribe[] = [];
 
   // ---- state surface for the UI ------------------------------------------------
@@ -281,6 +299,10 @@ export class MaglevEngineBridge implements MaglevEngineApi {
       sub('onTorrentCompleted', (p) => this.completedListeners.forEach((l) => l(p)));
       sub('onNotificationAction', (p) => this.actionListeners.forEach((l) => l(p)));
       sub('onStorageStatus', (p) => this.storageListeners.forEach((l) => l(p)));
+      sub('onBlocksChanged', (p) => {
+        const blocks = cleanBlocks(p?.blocks);
+        this.blocksListeners.forEach((l) => l(blocks));
+      });
     } else {
       if (!sim) return;
       this.impl = sim;
@@ -288,7 +310,8 @@ export class MaglevEngineBridge implements MaglevEngineApi {
         sim.onTelemetry((e) => this.telemetryListeners.forEach((l) => l(e))),
         sim.onTorrentCompleted((e) => this.completedListeners.forEach((l) => l(e))),
         sim.onNotificationAction((e) => this.actionListeners.forEach((l) => l(e))),
-        sim.onStorageStatus((e) => this.storageListeners.forEach((l) => l(e)))
+        sim.onStorageStatus((e) => this.storageListeners.forEach((l) => l(e))),
+        sim.addBlocksListener((b) => this.blocksListeners.forEach((l) => l(b)))
       );
     }
   }
@@ -511,6 +534,21 @@ export class MaglevEngineBridge implements MaglevEngineApi {
   }
   public shareDownload(id: string): Promise<EngineResult> {
     return this.route('shareDownload', id);
+  }
+  /** NATIVE_CONTRACT 35. Never throws: any failure is an empty list. Unknown tags are dropped. */
+  public async getActiveBlocks(): Promise<ActiveBlock[]> {
+    try {
+      const raw = await this.route<unknown>('getActiveBlocks');
+      return cleanBlocks(raw);
+    } catch {
+      return [];
+    }
+  }
+  public addBlocksListener(listener: (blocks: ActiveBlock[]) => void): () => void {
+    this.blocksListeners.add(listener);
+    return () => {
+      this.blocksListeners.delete(listener);
+    };
   }
   public getNetworkState(): Promise<EngineResult<NetworkState>> {
     return this.route('getNetworkState');
