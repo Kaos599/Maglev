@@ -29,6 +29,8 @@ export interface MockDownloadHooks {
   blockedReason: () => string | null;
   folder: () => string;
   changed: () => void;
+  /** The simulated link is mobile data (NATIVE_CONTRACT 34.1). Absent means unmetered. */
+  metered?: () => boolean;
 }
 
 interface Item extends Omit<DownloadSnapshot, 'downLimitBps'> {
@@ -40,6 +42,8 @@ interface Item extends Omit<DownloadSnapshot, 'downLimitBps'> {
   sawExpire: boolean;
   sawChanged: boolean;
   needsRestart: boolean;
+  /** NATIVE_CONTRACT 34.1: milliseconds spent in `downloading`. The seconds, finish time and byte counts live on the snapshot fields. */
+  activeMs: number;
 }
 
 function hash(s: string): number {
@@ -123,6 +127,11 @@ export class MockDownloads {
         addedAt: i.addedAt,
         error: i.error,
         notice: i.notice ?? null,
+        activeSecs: Math.floor(i.activeMs / 1000),
+        finishedAt: i.finishedAt ?? 0,
+        sessionBytes: i.sessionBytes ?? 0,
+        bytesWifi: i.bytesWifi ?? 0,
+        bytesMobile: i.bytesMobile ?? 0,
       }));
   }
 
@@ -187,6 +196,11 @@ export class MockDownloads {
       sawExpire: false,
       sawChanged: false,
       needsRestart: false,
+      activeMs: 0,
+      finishedAt: 0,
+      sessionBytes: 0,
+      bytesWifi: 0,
+      bytesMobile: 0,
     };
     if (options?.paused) item.pausedBy = 'user';
     this.items.set(id, item);
@@ -235,6 +249,14 @@ export class MockDownloads {
       i.size = null;
       i.needsRestart = false;
       i.sawChanged = true; // the restarted file is the new one
+      if (i.error?.code === 'FILE_CHANGED') {
+        // NATIVE_CONTRACT 34.1: a different file, so the old counts go.
+        i.activeMs = 0;
+        i.finishedAt = 0;
+        i.sessionBytes = 0;
+        i.bytesWifi = 0;
+        i.bytesMobile = 0;
+      }
     }
     i.state = 'resolving';
     i.resolveTicks = 1;
@@ -345,7 +367,14 @@ export class MockDownloads {
           }
           const speed = i.limit > 0 ? Math.min(i.limit, SPEED) : SPEED;
           i.downBps = speed;
+          const had = i.downloaded;
           i.downloaded = Math.min(i.size ?? 0, i.downloaded + Math.floor(speed * seconds));
+          // NATIVE_CONTRACT 34.1: time and bytes count only while downloading.
+          const got = i.downloaded - had;
+          i.activeMs += Math.round(seconds * 1000);
+          i.sessionBytes = (i.sessionBytes ?? 0) + got;
+          if (this.hooks.metered?.()) i.bytesMobile = (i.bytesMobile ?? 0) + got;
+          else i.bytesWifi = (i.bytesWifi ?? 0) + got;
           const frac = i.size ? i.downloaded / i.size : 0;
           if (!i.sawExpire && i.url.toLowerCase().includes('expire') && frac >= 0.5) {
             i.sawExpire = true;
@@ -369,6 +398,7 @@ export class MockDownloads {
         }
         case 'verifying': {
           i.state = 'finished';
+          if (!i.finishedAt) i.finishedAt = Math.max(1, Math.floor(Date.now() / 1000));
           i.allowedAnyway = false;
           changed = true;
           done.push(this.snapshots().find((s) => s.id === i.id)!);

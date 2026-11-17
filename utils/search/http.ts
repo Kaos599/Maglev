@@ -35,6 +35,9 @@ export interface HttpOptions {
   headers?: Record<string, string>;
 }
 
+/** Words a bot-check page carries (DDoS-Guard, Cloudflare, captcha walls). A plain maintenance page has none. */
+const BOT_CHECK_MARKERS = /ddos-guard|ddos guard|cloudflare|cf-chl|challenge-platform|just a moment|checking your browser|captcha|attention required|enable javascript and cookies|sucuri|verify you are human/i;
+
 export async function httpText(url: string, opts: HttpOptions): Promise<string> {
   const cleared = clearanceFor(url);
   const headers: Record<string, string> = { ...opts.headers, 'User-Agent': cleared?.userAgent ?? USER_AGENT, Accept: opts.accept };
@@ -66,10 +69,13 @@ export async function httpText(url: string, opts: HttpOptions): Promise<string> 
     if (cleared) dropClearance(hostOf(url));
     throw new ProviderError('challenge', 'Needs a quick check', res.status);
   }
-  if (res.status === 403 || res.status === 503) {
-    if (/html/i.test(type) || /^\s*<(!doctype|html)/i.test(text)) {
-      throw new ProviderError('blocked', 'Blocked by a bot check', res.status);
-    }
+  const isHtml = /html/i.test(type) || /^\s*<(!doctype|html)/i.test(text);
+  if (res.status === 403 || (res.status === 503 && isHtml && BOT_CHECK_MARKERS.test(text))) {
+    if (isHtml) throw new ProviderError('blocked', 'Blocked by a bot check', res.status);
+  }
+  // A 502/503/504 without bot-check markers is the site being down (a maintenance page), not a bot check.
+  if (res.status === 502 || res.status === 503 || res.status === 504) {
+    throw new ProviderError('http', res.status === 503 ? 'Down for maintenance' : 'Not answering right now', res.status);
   }
   if (!res.ok) throw new ProviderError('http', `HTTP ${res.status}`, res.status);
   return text;

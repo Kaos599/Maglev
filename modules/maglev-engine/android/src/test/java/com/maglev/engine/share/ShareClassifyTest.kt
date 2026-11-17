@@ -35,5 +35,45 @@ class ShareClassifyTest {
         }
     }
 
+    // Contract section 8.1 (issue #89): Kiwi sends VIEW <url> with the file name in com.android.extra.filename.
+    private fun page(url: String) = ShareClassify.classify(url, null)
+
+    @Test fun handOffNameTurnsAPageLinkIntoAFile() {
+        val c = ShareClassify.withHandOffName(page("https://cdn.example.com/dl?id=5"), "Report 2026.pdf")
+        assertEquals(ShareKind.FILE_LINK, c.kind)
+        assertEquals("https://cdn.example.com/dl?id=5", c.source)
+        assertEquals("Report 2026.pdf", c.name)
+    }
+
+    @Test fun handOffNameFillsAMissingName() {
+        val typed = ShareClassify.classify("https://x.example/get", "application/octet-stream")
+        assertEquals(null, typed.name)
+        assertEquals("disk.iso", ShareClassify.withHandOffName(typed, "disk.iso").name)
+    }
+
+    @Test fun handOffNameKeepsTheLinkName() {
+        val c = ShareClassify.withHandOffName(page("https://x.example/a/movie.mkv"), "other.mkv")
+        assertEquals(ShareKind.FILE_LINK, c.kind)
+        assertEquals("movie.mkv", c.name)
+    }
+
+    @Test fun handOffTorrentName() {
+        val c = ShareClassify.withHandOffName(page("https://x.example/t?id=9"), "ubuntu.torrent")
+        assertEquals(ShareKind.TORRENT_FILE, c.kind)
+        assertEquals("ubuntu", c.name)
+    }
+
+    @Test fun handOffNameIsOnlyTheLastSegment() {
+        assertEquals("evil.zip", ShareClassify.withHandOffName(page("https://x.example/d"), "../../evil.zip").name)
+    }
+
+    @Test fun noOrBlankHandOffNameChangesNothing() {
+        val p = page("https://x.example/news/article")
+        assertEquals(p, ShareClassify.withHandOffName(p, null))
+        assertEquals(p, ShareClassify.withHandOffName(p, "  "))
+        val m = ShareClassify.classify("magnet:?xt=urn:btih:0123456789abcdef0123456789abcdef01234567", null)
+        assertEquals(m, ShareClassify.withHandOffName(m, "x.zip"))
+    }
+
     @Test fun nullTextIsNone() = assertEquals(ShareKind.NONE, ShareClassify.classify(null, null).kind)
 }

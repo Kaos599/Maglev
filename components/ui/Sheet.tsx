@@ -7,6 +7,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../../context/ThemeContext';
 import { ThemeColors, backdropOpacity, motion, radius, sheetDragOffset, shouldDismissSheet, spacing, type } from '../../constants/theme';
 import { useMotion } from './useMotion';
+import { useKeyboardInset } from '../assistant/useKeyboardInset';
 import { useOverlayTracking } from '../../utils/overlayTracker';
 
 export interface SheetProps {
@@ -36,6 +37,10 @@ export function Sheet({ visible, onClose, title, subtitle, children, testID, ret
   const insets = useSafeAreaInsets();
   const { height } = useWindowDimensions();
   const m = useMotion();
+  // Android with edge-to-edge does not resize the window for the keyboard, and KeyboardAvoidingView is unreliable
+  // in a Modal: pad by how much the keyboard actually covers the sheet's window. iOS keeps KeyboardAvoidingView.
+  const { ref: kbRef, inset } = useKeyboardInset();
+  const kb = Platform.OS === 'android' ? inset : 0;
   useOverlayTracking(visible);
 
   // The Modal stays mounted while the sheet slides out.
@@ -158,6 +163,7 @@ export function Sheet({ visible, onClose, title, subtitle, children, testID, ret
     >
       <GestureHandlerRootView style={styles.root}>
         <KeyboardAvoidingView style={styles.fill} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+          <View ref={kbRef} style={[styles.fill, { paddingBottom: kb }]}>
           <Animated.View style={[styles.backdrop, backdropStyle]}>
             <Pressable
               style={StyleSheet.absoluteFill}
@@ -170,7 +176,7 @@ export function Sheet({ visible, onClose, title, subtitle, children, testID, ret
             testID={testID}
             accessibilityViewIsModal
             onLayout={onSheetLayout}
-            style={[styles.sheet, { maxHeight: height * 0.85, paddingBottom: Math.max(insets.bottom, spacing.lg) }, sheetStyle]}
+            style={[styles.sheet, { maxHeight: Math.min(height * 0.85, height - kb - insets.top - spacing.lg), paddingBottom: kb > 0 ? spacing.lg : Math.max(insets.bottom, spacing.lg) }, sheetStyle]}
           >
             <GestureDetector gesture={pan}>
               <View style={styles.dragArea}>
@@ -183,6 +189,7 @@ export function Sheet({ visible, onClose, title, subtitle, children, testID, ret
             </GestureDetector>
             <View style={styles.content}>{children}</View>
           </Animated.View>
+          </View>
         </KeyboardAvoidingView>
       </GestureHandlerRootView>
     </Modal>

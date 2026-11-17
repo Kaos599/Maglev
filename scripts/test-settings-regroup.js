@@ -43,7 +43,7 @@ async function main() {
   orderOf('General', 'generalRows', ['Appearance', 'Assistant', 'Notifications', 'Backup and restore']);
   orderOf('Finding things', 'findRows', ['Search sources', 'Auto-download']);
   orderOf('Network and power', 'networkRows', ['Network', 'Power', 'Browser']);
-  orderOf('App', 'appRows', ['Updates', 'About']);
+  orderOf('App', 'appRows', ['About', 'Updates']);
   {
     const d = jsx[groups.indexOf('Downloads')];
     const p = ['{...downloadsRow}', '{...speedRow}', '<StorageRow', '{...scheduleRow}', '{...watchRow}'].map((x) => d.indexOf(x));

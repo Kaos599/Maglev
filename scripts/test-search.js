@@ -277,7 +277,7 @@ async function main() {
   installFetch({ 'api.knaben.org': () => jsonRes(fx('knaben.json')) });
   const tp = await agg.testProvider('knaben');
   check('testProvider ok', tp.ok && tp.count === 2 && tp.ms >= 0, JSON.stringify(tp));
-  installFetch({ 'api.knaben.org': () => jsonRes('<html></html>', 503, 'text/html') });
+  installFetch({ 'api.knaben.org': () => jsonRes('<html></html>', 403, 'text/html') });
   const tp2 = await agg.testProvider('knaben');
   check('testProvider reports blocked', !tp2.ok && /bot check/i.test(tp2.message), tp2.message);
   health.resetHealth();

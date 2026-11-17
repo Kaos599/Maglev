@@ -89,6 +89,32 @@ const WEB_MIME_TYPES = [
   'application/x-bittorrent', 'video/*', 'audio/*',
 ];
 
+/**
+ * Download manager pickers (issue #89; contract quick-share section 8.1). Kiwi and its forks fill "External download
+ * manager" with the apps that answer VIEW http://test.com/file.rar with NO type, then send each download to the chosen
+ * activity by name. A typed filter never matches that probe, so this one matches by path instead: any host, a path
+ * that ends in a file extension. A page link (/news/article) still matches nothing. Same list as ShareClassify.kt
+ * FILE_EXTENSIONS, minus apk, plus torrent. scripts/test-quick-share.js keeps the two lists equal.
+ */
+const PICKER_EXTENSIONS = [
+  'zip', '7z', 'rar', 'tar', 'gz', 'tgz', 'xz', 'bz2', 'iso', 'img', 'dmg', 'exe', 'msi', 'deb',
+  'mp4', 'mkv', 'webm', 'avi', 'mov', 'm4v', 'mp3', 'flac', 'wav', 'ogg', 'opus', 'm4a', 'aac',
+  'pdf', 'epub', 'cbz', 'cbr', 'torrent',
+];
+/**
+ * PatternMatcher's ".*" stops at the first later match of the next character, so ".*\\.rar" fails on "/v1.2/a.rar".
+ * Repeating the pattern with one and two extra dots covers real paths; pathSuffix (API 31+) is exact.
+ * https://developer.android.com/guide/topics/manifest/data-element#path
+ */
+function pickerData() {
+  const data = [{ scheme: 'http' }, { scheme: 'https' }, { host: '*' }];
+  for (const e of PICKER_EXTENSIONS) {
+    data.push({ pathSuffix: `.${e}` });
+    for (const pre of ['.*', '.*\\..*', '.*\\..*\\..*']) data.push({ pathPattern: `${pre}\\.${e}` });
+  }
+  return data;
+}
+
 const filter = (actions, categories, data) => ({
   action: actions.map((a) => ({ $: { 'android:name': A + a } })),
   category: categories.map((c) => ({ $: { 'android:name': C + c } })),
@@ -111,6 +137,8 @@ function quickShareFilters() {
       { scheme: 'http' }, { scheme: 'https' },
       ...WEB_MIME_TYPES.map((mimeType) => ({ mimeType })),
     ]),
+    // Download manager pickers: no type, file paths only. DEFAULT only, so a web page cannot start it.
+    filter(['VIEW'], ['DEFAULT'], pickerData()),
   ];
 }
 

@@ -12,11 +12,12 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { PixelIcon } from '../../components/PixelIcon';
 import { OPEN_FOLDER_FAILED_TEXT } from '../../utils/downloadCopy';
 import { friendlyPath } from '../../components/settings/SettingsParts';
-import { Banner, Button, EmptyBlock, IconButton, ListRow, ProgressBar, Screen, SegmentedControl } from '../../components/ui';
+import { Banner, Button, EmptyBlock, IconButton, ListRow, PressableScale, ProgressBar, Screen, SegmentedControl } from '../../components/ui';
 import { SpeedChart } from '../../components/SpeedChart';
 import { PiecesMatrix } from '../../components/PiecesMatrix';
 import { StateBadge } from '../../components/detail/StateBadge';
 import { StatGrid } from '../../components/detail/StatGrid';
+import { TimingRow } from '../../components/detail/TimingRow';
 import { PeerRow, TrackerRow } from '../../components/detail/rows';
 import { DoneActions, OpenFolderButton } from '../../components/detail/DoneActions';
 import { DeleteSheet, FileActionsSheet, RemoveFilesSheet, SavedTorrentSheet } from '../../components/detail/sheets';
@@ -98,6 +99,7 @@ export default function TorrentDetailScreen() {
   const { detail, pieces, status, error, tick, retry } = useTorrentDetail(id, tab === 'pieces');
 
   const [moreOpen, setMoreOpen] = useState(false);
+  const [speedOpen, setSpeedOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleteBusy, setDeleteBusy] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
@@ -829,13 +831,25 @@ export default function TorrentDetailScreen() {
             { label: 'Size', value: snap.totalBytes > 0 ? formatBytes(snap.totalBytes) : '—' },
           ]}
         />
+        <TimingRow
+          timing={{
+            activeSecs: snap.activeSecs,
+            finishedAt: snap.finishedAt,
+            addedAt: snap.addedAt,
+            sessionBytes: snap.sessionBytes,
+            bytesWifi: snap.bytesWifi,
+            bytesMobile: snap.bytesMobile,
+            seedingSecs: snap.seedingSecs,
+            uploaded: snap.uploadedBytes,
+          }}
+        />
       </View>
 
       {snap.outputFolder ? (
         <View style={styles.block}>
           <ListRow
             title="Saved to"
-            subtitle={friendlyPath(snap.outputFolder)}
+            value={friendlyPath(snap.outputFolder)}
             icon="folder"
             onPress={() => void openSavedFolder()}
             accessibilityLabel={`Saved to ${friendlyPath(snap.outputFolder)}. Opens the folder.`}
@@ -844,7 +858,28 @@ export default function TorrentDetailScreen() {
       ) : null}
 
       <View style={styles.block}>
-        <SpeedChart downBps={snap.downBps} upBps={snap.upBps} sampleId={tick} />
+        <PressableScale
+          onPress={() => setSpeedOpen((v) => !v)}
+          style={styles.speedRow}
+          accessibilityRole="button"
+          accessibilityState={{ expanded: speedOpen }}
+          accessibilityLabel={`Speed: down ${formatSpeed(snap.downBps)}, up ${formatSpeed(snap.upBps)}`}
+          accessibilityHint={speedOpen ? 'Hides the chart' : 'Shows the chart'}
+        >
+          <Text style={styles.speedTitle}>Speed</Text>
+          <Text style={styles.speedValue} numberOfLines={1}>
+            <Text style={{ color: colors.download }}>{`↓ ${formatSpeed(snap.downBps)}`}</Text>
+            {' · '}
+            <Text style={{ color: colors.upload }}>{`↑ ${formatSpeed(snap.upBps)}`}</Text>
+          </Text>
+          <View style={speedOpen ? styles.flipY : null}>
+            <PixelIcon name="chevron-down" size={20} color={colors.textMuted} />
+          </View>
+        </PressableScale>
+        {/* Kept mounted while folded so the chart keeps its history. */}
+        <View style={speedOpen ? styles.speedChart : styles.hidden}>
+          <SpeedChart downBps={snap.downBps} upBps={snap.upBps} sampleId={tick} />
+        </View>
       </View>
 
       <View style={styles.tabs}>
@@ -1085,6 +1120,23 @@ const makeStyles = (c: ThemeColors) =>
   StyleSheet.create({
     content: { paddingHorizontal: spacing.lg, paddingBottom: spacing.xxxl },
     block: { marginBottom: spacing.md },
+    speedRow: {
+      minHeight: 48,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.md,
+      paddingVertical: spacing.sm,
+      paddingHorizontal: 14,
+      backgroundColor: c.surface,
+      borderWidth: 1,
+      borderColor: c.border,
+      borderRadius: radius.md,
+    },
+    speedTitle: { ...type.body, fontSize: 14, color: c.text },
+    speedValue: { ...type.mono, fontSize: 12, color: c.textMuted, flex: 1, textAlign: 'right' },
+    flipY: { transform: [{ scaleY: -1 }] },
+    speedChart: { marginTop: spacing.sm },
+    hidden: { display: 'none' },
     errorActions: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginTop: spacing.sm },
     summary: {
       backgroundColor: c.surface,

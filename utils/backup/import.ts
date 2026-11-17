@@ -3,6 +3,7 @@
  * Settings and prefs replace what is there; torrents and downloads are only added, always paused.
  */
 import type { MaglevSettings } from '../../modules/maglev-engine/src/MaglevSettings.types.ts';
+import type { StatsSection } from '../stats/store.ts';
 import type { AddTorrentOptions, DownloadOptions, EngineResult } from '../../modules/maglev-engine/src/MaglevEngine.types.ts';
 import {
   PART_PREFS,
@@ -10,6 +11,7 @@ import {
   type Backup,
   type BackupDownload,
   type BackupPart,
+  type RestorePart,
   type BackupTorrent,
   type PrefKey,
 } from './format.ts';
@@ -36,6 +38,8 @@ export interface ImportDeps {
   applyPref: (key: PrefKey, value: unknown) => void;
   /** Pushes schedule and feed rules to the engine. */
   syncNative?: () => Promise<void>;
+  /** Adds the stats rows this phone does not have (part `stats`). */
+  applyStats?: (section: StatsSection) => Promise<unknown>;
 }
 
 /** Same address, ignoring a trailing slash, the case of the host and any query or fragment. */
@@ -128,7 +132,7 @@ export interface RestoreResult {
 }
 
 /** Applies the chosen parts. Never throws: a failed item is counted, not raised. */
-export async function restoreBackup(backup: Backup, parts: ReadonlySet<BackupPart>, deps: ImportDeps): Promise<RestoreResult> {
+export async function restoreBackup(backup: Backup, parts: ReadonlySet<RestorePart>, deps: ImportDeps): Promise<RestoreResult> {
   const result: RestoreResult = {
     settingsApplied: false,
     prefsApplied: [],
@@ -169,6 +173,14 @@ export async function restoreBackup(backup: Backup, parts: ReadonlySet<BackupPar
       await deps.syncNative();
     } catch {
       // the next change or app start pushes it
+    }
+  }
+
+  if (parts.has('stats') && backup.stats && deps.applyStats) {
+    try {
+      await deps.applyStats(backup.stats);
+    } catch {
+      // stats stay as they were
     }
   }
 
