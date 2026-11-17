@@ -55,10 +55,22 @@ pub(super) fn split_count(f: &SplitFacts) -> Option<u32> {
     Some(f.requested.min(MAX_PARTS))
 }
 
-/// The probe allows segments: it got a 206 and the server says it counts in bytes.
+/// The probe allows segments: it got a 206 for `bytes=0-0`, and either the server says it counts in bytes or the
+/// 206 itself carries `Content-Range: bytes 0-0/<total>` (RFC 9110 §14.4: that already proves byte ranges work).
+/// nginx sends `Accept-Ranges` only on its 200 replies, so requiring it on the 206 kept nginx files at one part.
+/// `Accept-Ranges: none` still forbids splitting.
 pub(super) fn parts_probe_ok(info: &ProbeInfo, h: &Headers) -> bool {
-    info.probe_was_206
-        && h.accept_ranges.as_deref().map(|a| a.to_ascii_lowercase().contains("bytes")).unwrap_or(false)
+    if !info.probe_was_206 {
+        return false;
+    }
+    let ar = h.accept_ranges.as_deref().map(|a| a.trim().to_ascii_lowercase());
+    if ar.as_deref() == Some("none") {
+        return false;
+    }
+    if ar.map(|a| a.contains("bytes")).unwrap_or(false) {
+        return true;
+    }
+    matches!(h.content_range.as_deref().and_then(parse_content_range), Some((Some(0), Some(0), Some(total))) if total > 0)
 }
 
 /// `total` bytes cut into `n` ranges of nearly equal size. The first `total % n` ranges take one byte more, so the
@@ -783,6 +795,25 @@ mod tests {
         assert!(!parts_probe_ok(&info(false), &h(Some("bytes"))));
         assert!(!parts_probe_ok(&info(true), &h(Some("none"))));
         assert!(!parts_probe_ok(&info(true), &h(None)));
+    }
+
+    #[test]
+    fn a_206_with_content_range_is_enough_without_accept_ranges() {
+        // nginx (proof.ovh.net, Hetzner): 206 + Content-Range, no Accept-Ranges on the 206.
+        let info = |is206| ProbeInfo { size: Some(104_857_600), validator: Some("v".into()), resumable: true, probe_was_206: is206 };
+        let h = |ar: Option<&str>, cr: Option<&str>| Headers {
+            accept_ranges: ar.map(str::to_string),
+            content_range: cr.map(str::to_string),
+            ..Headers::default()
+        };
+        assert!(parts_probe_ok(&info(true), &h(None, Some("bytes 0-0/104857600"))));
+        assert!(!parts_probe_ok(&info(false), &h(None, Some("bytes 0-0/104857600"))));
+        // Accept-Ranges: none still wins.
+        assert!(!parts_probe_ok(&info(true), &h(Some("none"), Some("bytes 0-0/104857600"))));
+        // Unknown total, wrong range or no Content-Range at all: not proven.
+        assert!(!parts_probe_ok(&info(true), &h(None, Some("bytes 0-0/*"))));
+        assert!(!parts_probe_ok(&info(true), &h(None, Some("bytes 0-99/104857600"))));
+        assert!(!parts_probe_ok(&info(true), &h(None, None)));
     }
 
     #[test]
