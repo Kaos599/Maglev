@@ -12,6 +12,9 @@ import { friendlyPath, formatLimit } from '../settings/SettingsParts';
 import { SpeedLimitSheet } from '../detail/SpeedLimitSheet';
 import { TimingDetails, TimingRow } from '../detail/TimingRow';
 import { Banner, Button, ListRow, Sheet } from '../ui';
+import { WhyHeld } from './WhyHeld';
+import { useBlockContext } from '../../utils/blocks/useActiveBlocks';
+import { reasonsForItem } from '../../utils/blocks/reasons';
 
 export interface DownloadSheetProps {
   /** The download to act on, or null when the sheet is closed. */
@@ -47,6 +50,7 @@ export function DownloadSheet({ download: d, onClose, onRetry, onPause, onResume
   const [link, setLink] = useState('');
   const [linkError, setLinkError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const blockCtx = useBlockContext();
 
   const id = d?.id ?? null;
   useEffect(() => {
@@ -59,7 +63,10 @@ export function DownloadSheet({ download: d, onClose, onRetry, onPause, onResume
   if (!d) return <Sheet visible={false} onClose={onClose} title="" />;
 
   const copy = removeCopy(d);
-  const actions = downloadActions(d);
+  const heldItem = { finished: d.state === 'finished', paused: d.state === 'paused', queued: d.state === 'queued', downloading: d.state === 'downloading', pausedBy: d.pausedBy };
+  const showWhy = reasonsForItem(heldItem, blockCtx.blocks ?? [], blockCtx.queueLimit).length > 0;
+  // "Why it's paused" carries each rule's own settings button, so the generic one is not repeated.
+  const actions = downloadActions(d, blockCtx).filter((a) => !(showWhy && a.kind === 'openNetworkSettings' && a.route));
   const caption = downloadCaption(d);
   const size = d.size ? formatBytes(d.size) : 'Size unknown';
   const subtitle = `${d.urlDisplay} · ${size}`;
@@ -187,6 +194,7 @@ export function DownloadSheet({ download: d, onClose, onRetry, onPause, onResume
             <Button label="Use this link" fullWidth disabled={!link.trim() || busy} onPress={() => void applyLink(link)} />
           </View>
         ) : null}
+        {showWhy ? <WhyHeld item={heldItem} blocks={blockCtx.blocks ?? []} queueLimit={blockCtx.queueLimit} onNavigate={onClose} /> : null}
         {caption ? <Text style={styles.hint}>{caption}</Text> : null}
         {d.state === 'paused' && d.pausedBy === 'wifi_only' ? <Text style={styles.hint}>{WIFI_ANYWAY_NOTE}</Text> : null}
         {d.state === 'error' || d.state === 'paused' || d.state === 'finished' || d.state === 'downloading' || d.state === 'queued'
@@ -200,7 +208,7 @@ export function DownloadSheet({ download: d, onClose, onRetry, onPause, onResume
                   variant={i === 0 ? 'primary' : 'secondary'}
                   fullWidth
                   onPress={() => {
-                    const route = actionRoute(a.kind);
+                    const route = actionRoute(a.kind, a.route);
                     if (route) router.push(route);
                     else if (a.kind === 'open') onOpen(d.id);
                     else if (a.kind === 'pause') onPause(d.id);

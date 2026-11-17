@@ -10,6 +10,7 @@ import { PixelIcon } from "./PixelIcon";
 import { IconButton, PressableScale, ProgressBar, ProgressTone } from "./ui";
 import { useMotion } from "./ui/useMotion";
 import { torrentCardAction, torrentProgressPercent, torrentStatus } from "./transfers/model";
+import { useBlockContext } from "../utils/blocks/useActiveBlocks";
 import { cardCanPlay } from "./detail/play";
 import { playCopy } from "../constants/copy";
 import { useRouter } from "expo-router";
@@ -125,8 +126,9 @@ function TransferCardImpl({
   const prevEta = etaRef.current && etaRef.current.id === t.id ? etaRef.current.label : null;
   const etaLabel = formatEta(t.state === "DOWNLOADING" ? t.etaSeconds : -1, prevEta);
   etaRef.current = etaLabel === "—" ? null : { id: t.id, label: etaLabel };
-  const status = torrentStatus(t, etaLabel);
-  const action = torrentCardAction(t);
+  const blockCtx = useBlockContext();
+  const status = torrentStatus(t, etaLabel, blockCtx);
+  const action = torrentCardAction(t, blockCtx);
   const indeterminate = t.state === "INITIALIZING" || t.state === "CHECKING";
   const moving = t.state === "MOVING";
   const pct = Math.min(
@@ -201,6 +203,9 @@ function TransferCardImpl({
             case "freeSpace":
               router.push("/free-space");
               break;
+            case "setting":
+              if (action?.route) router.push(action.route as never);
+              break;
           }
         }}
         accessibilityState={{ selected: selectionMode ? selected : undefined }}
@@ -269,6 +274,8 @@ function TransferCardImpl({
                   return onResumeAnyway?.(t.id);
                 case "freeSpace":
                   return router.push("/free-space");
+                case "setting":
+                  return action.route ? router.push(action.route as never) : undefined;
                 default:
                   return onResume(t.id);
               }

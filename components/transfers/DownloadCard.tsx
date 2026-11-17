@@ -9,6 +9,7 @@ import { actionRoute, downloadAction, downloadProgress, downloadProgressLabel, d
 import { PixelIcon } from '../PixelIcon';
 import { IconButton, PressableScale, ProgressBar, ProgressTone } from '../ui';
 import { CARD_HEIGHT } from '../TransferCard';
+import { useBlockContext } from '../../utils/blocks/useActiveBlocks';
 
 export interface DownloadCardProps {
   download: DownloadSnapshot;
@@ -42,8 +43,8 @@ function DownloadCardImpl({ download: d, onPress, onAction: onActionProp, select
   // Settings actions go to their screen and Remove opens the sheet (which has the keep/delete choice) here,
   // so the card works without the list screen knowing about them. The rest go to the list screen.
   const onAction = (dl: DownloadSnapshot, a: DownloadAction) => {
-    const route = actionRoute(a.kind);
-    if (route) router.push(route);
+    const route = actionRoute(a.kind, a.route);
+    if (route) router.push(route as never);
     else if (a.kind === 'remove') onPress(dl.id);
     else onActionProp(dl, a);
   };
@@ -51,8 +52,9 @@ function DownloadCardImpl({ download: d, onPress, onAction: onActionProp, select
   const etaRef = useRef<string | null>(null);
   const etaLabel = formatEta(d.state === 'downloading' ? d.eta : -1, etaRef.current);
   etaRef.current = etaLabel === '—' ? null : etaLabel;
-  const status = downloadStatus(d, etaLabel);
-  const action = downloadAction(d);
+  const blockCtx = useBlockContext();
+  const status = downloadStatus(d, etaLabel, blockCtx);
+  const action = downloadAction(d, blockCtx);
   const pct = Math.round(downloadProgress(d) * 100);
   const indeterminate = isIndeterminate(d);
   const statusColor = status.tone === 'danger' ? colors.danger : status.tone === 'accent' ? colors.accentText : colors.textMuted;

@@ -53,7 +53,7 @@ async function main() {
   check('not a file copy', copy.downloadStatus(d({ state: 'error', error: { code: 'NOT_A_FILE', message: 'x' } })).text === 'This link opens a web page, not a file');
   check('checksum copy', copy.downloadStatus(d({ state: 'error', error: { code: 'CHECKSUM_MISMATCH', message: 'x' } })).text === "File doesn't match the checksum");
   check('http status shows the engine message', copy.downloadStatus(d({ state: 'error', error: { code: 'HTTP_STATUS', message: 'The server returned an error (500).' } })).text === 'The server returned an error (500).');
-  check('wifi pause copy', copy.downloadStatus(d({ state: 'paused', pausedBy: 'wifi_only' })).text === 'Paused: waiting for Wi-Fi');
+  check('wifi pause copy', copy.downloadStatus(d({ state: 'paused', pausedBy: 'wifi_only' })).text === 'Waiting for Wi-Fi');
   check('done copy has the size', copy.downloadStatus(d({ state: 'finished', downloaded: 1000 })).text === 'Done · 1000.0 B' || /^Done · /.test(copy.downloadStatus(d({ state: 'finished' })).text));
   check('downloading shows speed', /\/s$/.test(copy.downloadStatus(d({}), '8s').text));
   check('unknown speed is a dash', copy.downloadStatus(d({ downBps: 0, eta: -1 })).text === 'Downloading · —');
@@ -65,7 +65,8 @@ async function main() {
   check('user pause resumes', copy.downloadAction(d({ state: 'paused', pausedBy: 'user' }))?.kind === 'resume');
   check('storage full pause offers Free up space (resuming cannot work until space is freed)', copy.downloadAction(d({ state: 'paused', pausedBy: 'storage_full' }))?.kind === 'freeSpace');
   check('rule pause offers Resume anyway (0.14)', copy.downloadAction(d({ state: 'paused', pausedBy: 'schedule' }))?.kind === 'resumeAnyway');
-  check('governance pause with nothing to override has no button', copy.downloadAction(d({ state: 'paused', pausedBy: 'fgs_timeout' })) === null);
+  check('governance pause with nothing to override or change has no button', copy.downloadAction(d({ state: 'paused', pausedBy: 'network_unvalidated' })) === null && copy.downloadAction(d({ state: 'paused', pausedBy: 'offline' })) === null);
+  check('a background stop offers a plain Resume (NATIVE_CONTRACT 35.2)', copy.downloadAction(d({ state: 'paused', pausedBy: 'fgs_timeout' }))?.kind === 'resume');
   check('needs link offers a new link', copy.downloadAction(d({ state: 'needs_link' }))?.kind === 'newLink');
   check('file changed offers restart', copy.downloadAction(d({ state: 'error', error: { code: 'FILE_CHANGED', message: '' } }))?.kind === 'restart');
   check('other errors offer retry', copy.downloadAction(d({ state: 'error', error: { code: 'NETWORK', message: '' } }))?.kind === 'retry');
@@ -84,13 +85,13 @@ async function main() {
   check('network offers Retry', kinds(err('NETWORK')) === 'retry');
   check('5xx offers Retry, 404 offers Remove', kinds(err('HTTP_STATUS', { httpStatus: 503 })) === 'retry' && kinds(err('HTTP_STATUS', { httpStatus: 404 })) === 'remove' && kinds(err('HTTP_STATUS', { httpStatus: 429 })) === 'retry');
   check('unknown code is a generic retry', kinds(err('WHATEVER')) === 'retry' && copy.downloadStatus(d({ state: 'error', error: null })).text === 'Something went wrong');
-  check('offline pause', copy.downloadStatus(d({ state: 'paused', pausedBy: 'offline' })).text === 'Waiting for a connection' && copy.downloadAction(d({ state: 'paused', pausedBy: 'offline' })) === null);
+  check('offline pause', copy.downloadStatus(d({ state: 'paused', pausedBy: 'offline' })).text === 'No internet connection' && copy.downloadAction(d({ state: 'paused', pausedBy: 'offline' })) === null);
   check('folder gone pause offers Pick folder again', copy.downloadStatus(d({ state: 'paused', pausedBy: 'storage_unavailable' })).text === "The folder isn't available. Is the SD card in?" && kinds(d({ state: 'paused', pausedBy: 'storage_unavailable' })) === 'pickFolder');
   check('folder gone error', copy.downloadStatus(err('STORAGE_UNAVAILABLE')).text === "The folder isn't available. Is the SD card in?" && kinds(err('STORAGE_UNAVAILABLE')) === 'pickFolder');
   check('too big for the card', copy.downloadStatus(err('FILE_TOO_LARGE')).text === "This file is bigger than the card's format allows (4 GB). Use phone storage." && kinds(err('FILE_TOO_LARGE')) === 'pickFolder');
   check('local redirect is blocked, Remove only', copy.downloadStatus(err('LOCAL_REDIRECT')).text === 'A redirect tried to send Maglev to a device on your network, so it stopped.' && kinds(err('LOCAL_REDIRECT')) === 'remove');
   check('policy block opens settings', copy.downloadStatus(err('BLOCKED')).text === 'Blocked by your Wi-Fi-only or VPN setting.' && kinds(err('BLOCKED')) === 'openNetworkSettings,retry');
-  check('wifi pause offers mobile data, settings and a caption', kinds(d({ state: 'paused', pausedBy: 'wifi_only' })) === 'resumeAnyway,openNetworkSettings' && copy.downloadCaption(d({ state: 'paused', pausedBy: 'wifi_only' })) === 'Wi-Fi only is on in Settings → Network.');
+  check('wifi pause offers mobile data and the setting', kinds(d({ state: 'paused', pausedBy: 'wifi_only' })) === 'resumeAnyway,openNetworkSettings' && copy.downloadActions(d({ state: 'paused', pausedBy: 'wifi_only' }))[1].route === '/settings/network');
   check('battery pause offers Resume anyway', copy.downloadAction(d({ state: 'paused', pausedBy: 'battery' }))?.label === 'Resume anyway');
   check('settings actions have routes', copy.actionRoute('pickFolder') === '/settings/storage' && copy.actionRoute('openNetworkSettings') === '/settings/network' && copy.actionRoute('retry') === null);
   const pv = (code, status) => copy.probeErrorView(code, 'm', status);

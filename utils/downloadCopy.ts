@@ -6,6 +6,7 @@ import type { DownloadSnapshot } from 'maglev-engine';
 import { formatBytes, formatSpeed } from '../constants/format.ts';
 import { formatEta, smoothRate } from './rates.ts';
 import { doneLead } from './stats/format.ts';
+import { reasonFor, type BlockContext } from './blocks/reasons.ts';
 
 export type DownloadTone = 'muted' | 'accent' | 'danger';
 export type DownloadActionKind =
@@ -27,18 +28,10 @@ export interface DownloadAction {
   /** Icon name from the generated Pixelarticons set. */
   icon: 'pause' | 'play' | 'retry' | 'link' | 'trash' | 'folder' | 'settings' | 'external';
   label: string;
+  /** The settings screen a settings action opens, when it is not the default for its kind. */
+  route?: string;
 }
 
-const GOVERNANCE_TEXT: Record<string, string> = {
-  wifi_only: 'Paused: waiting for Wi-Fi',
-  vpn_required: 'Paused: waiting for VPN',
-  battery: 'Paused: battery is low',
-  charging_only: 'Paused: waiting for charger',
-  fgs_timeout: 'Paused: stopped in background',
-  schedule: 'Paused: by schedule',
-};
-
-export const OFFLINE_TEXT = 'Waiting for a connection';
 export const FOLDER_GONE_TEXT = "The folder isn't available. Is the SD card in?";
 export const TOO_BIG_TEXT = "This file is bigger than the card's format allows (4 GB). Use phone storage.";
 export const LOCAL_BLOCKED_TEXT = 'A redirect tried to send Maglev to a device on your network, so it stopped.';
@@ -47,7 +40,6 @@ export const LAN_ADDRESS_BODY = "If it's your own server, allow this device. Onl
 export const POLICY_BLOCKED_TEXT = 'Blocked by your Wi-Fi-only or VPN setting.';
 export const PERMISSION_TEXT = "Maglev can't write to that folder.";
 export const WIFI_ANYWAY_NOTE = 'Just this one. Wi-Fi only stays on.';
-export const WIFI_CAPTION = 'Wi-Fi only is on in Settings → Network.';
 export const NOT_A_FILE_BODY =
   'This is a web page, not a file. On the page, long-press the download button, tap Copy link address, then paste it here.';
 export const STALLED_TEXT = 'Waiting for the server';
@@ -157,12 +149,12 @@ export interface DownloadStatus {
 }
 
 /** The status under the bar. `etaLabel` is the stable label from `formatEta`. */
-export function downloadStatus(d: DownloadSnapshot, etaLabel?: string): DownloadStatus {
+export function downloadStatus(d: DownloadSnapshot, etaLabel?: string, ctx: BlockContext = {}): DownloadStatus {
   switch (d.state) {
     case 'resolving':
       return { text: 'Getting info…', tone: 'muted' };
     case 'queued':
-      return { text: 'Queued', tone: 'muted' };
+      return { text: reasonFor('queued', ctx)!.short, tone: 'muted' };
     case 'downloading': {
       if (d.stalled) return { text: STALLED_TEXT, tone: 'muted', sub: downloadProgressText(d) ?? undefined };
       const speed = d.downBps > 0 ? formatSpeed(d.downBps) : '—';
@@ -176,11 +168,9 @@ export function downloadStatus(d: DownloadSnapshot, etaLabel?: string): Download
     case 'paused': {
       const sub = downloadProgressText(d) ?? undefined;
       // Same as a torrent: muted, with the way out as the sub-line (docs/contracts-0.19/play-and-storage.md section 2).
-      if (d.pausedBy === 'storage_full') return { text: 'Storage full', tone: 'muted', sub: 'Free up space' };
+      if (d.pausedBy === 'storage_full') return { text: reasonFor('storage_full')!.short, tone: 'muted', sub: 'Free up space' };
       if (d.pausedBy === 'storage_unavailable') return { text: FOLDER_GONE_TEXT, tone: 'danger', sub };
-      if (d.pausedBy === 'offline') return { text: OFFLINE_TEXT, tone: 'muted', sub };
-      if (d.pausedBy && GOVERNANCE_TEXT[d.pausedBy]) return { text: GOVERNANCE_TEXT[d.pausedBy], tone: 'muted', sub };
-      return { text: 'Paused', tone: 'muted', sub };
+      return { text: reasonFor(d.pausedBy, ctx)?.short ?? 'Paused', tone: 'muted', sub };
     }
     case 'verifying':
       return { text: 'Finishing…', tone: 'muted' };
@@ -253,7 +243,6 @@ function errorLine(d: DownloadSnapshot): string {
 /** A longer line the sheet shows (the card line is one row and may be cut). Null when there is none. */
 export function downloadCaption(d: DownloadSnapshot): string | null {
   if (d.state === 'downloading' && d.stalled) return STALLED_TEXT;
-  if (d.state === 'paused' && d.pausedBy === 'wifi_only') return WIFI_CAPTION;
   if (d.state === 'paused' && d.pausedBy === 'storage_unavailable') return FOLDER_GONE_TEXT;
   if (d.state === 'needs_link' && d.error?.code === 'AUTH_REQUIRED') return AUTH_BODY;
   if (d.state === 'error') {
@@ -282,19 +271,25 @@ const A = {
 } as const satisfies Record<string, DownloadAction>;
 
 /** Every action that makes sense now, the most useful first. The card shows the first; the sheet shows all. */
-export function downloadActions(d: DownloadSnapshot): DownloadAction[] {
+export function downloadActions(d: DownloadSnapshot, ctx: BlockContext = {}): DownloadAction[] {
   switch (d.state) {
     case 'downloading':
     case 'queued':
       return [A.pause];
-    case 'paused':
+    case 'paused': {
       if (d.pausedBy === 'storage_unavailable') return [A.pickFolder];
       if (d.pausedBy === 'storage_full') return [A.freeSpace];
-      if (d.pausedBy === 'wifi_only') return [A.resumeMobile, A.openSettings];
-      if (d.pausedBy === 'vpn_required') return [A.openSettings];
-      if (d.pausedBy === 'battery' || d.pausedBy === 'charging_only' || d.pausedBy === 'schedule') return [A.resumeAnyway];
-      if (isGovernancePause(d.pausedBy)) return [];
+      if (d.pausedBy === 'fgs_timeout') return [A.resume];
+      if (isGovernancePause(d.pausedBy)) {
+        // The table decides: a rule that allows an override offers it, then the setting that holds it (NATIVE_CONTRACT 35.2).
+        const reason = reasonFor(d.pausedBy, ctx);
+        const out: DownloadAction[] = [];
+        if (reason?.override) out.push(d.pausedBy === 'wifi_only' ? A.resumeMobile : A.resumeAnyway);
+        if (reason?.setting) out.push({ kind: 'openNetworkSettings', icon: 'settings', label: 'Change in Settings', route: reason.setting.route });
+        return out;
+      }
       return [A.resume];
+    }
     case 'needs_link':
       return [A.newLink];
     case 'finished':
@@ -348,14 +343,14 @@ export function openFailureText(code: string | undefined, message?: string): str
 }
 
 /** The card's one button, or null when nothing can be done now. */
-export function downloadAction(d: DownloadSnapshot): DownloadAction | null {
-  return downloadActions(d)[0] ?? null;
+export function downloadAction(d: DownloadSnapshot, ctx: BlockContext = {}): DownloadAction | null {
+  return downloadActions(d, ctx)[0] ?? null;
 }
 
 /** Where the settings-style actions go. Null for the ones the engine or the sheet handles. */
-export function actionRoute(kind: DownloadActionKind): '/settings/storage' | '/settings/network' | '/free-space' | null {
+export function actionRoute(kind: DownloadActionKind, route?: string | null): string | null {
   if (kind === 'pickFolder') return '/settings/storage';
-  if (kind === 'openNetworkSettings') return '/settings/network';
+  if (kind === 'openNetworkSettings') return route || '/settings/network';
   if (kind === 'freeSpace') return '/free-space';
   return null;
 }

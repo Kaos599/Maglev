@@ -24,6 +24,8 @@ import { Banner, Button, EmptyBlock, IconButton } from '../../components/ui/inde
 import { ProgressMotionContext, type ProgressMotion } from '../../components/ui/ProgressBar';
 import { steadyResolvingSecs } from '../../components/transfers/snapshots';
 import { lowSpaceWarning, usableFreeOf, type LowSpaceWarning } from '../../components/transfers/lowSpace';
+import { BlockBanner } from '../../components/transfers/BlockBanner';
+import { BlockContextProvider, queueLimitOf, useActiveBlocks } from '../../utils/blocks/useActiveBlocks';
 import * as DocumentPicker from 'expo-document-picker';
 import { maglevEngine, type DownloadSnapshot } from 'maglev-engine';
 import { haptic } from '../../constants/haptics';
@@ -244,6 +246,13 @@ export default function TransfersScreen() {
     [all, downloads],
   );
   const nothingHere = all.length === 0 && downloads.length === 0;
+
+  // Why transfers are held (NATIVE_CONTRACT 35): one list for the banner and every card's line.
+  const activeBlocks = useActiveBlocks();
+  const queueLimit = queueLimitOf(settings.bandwidth.maxActiveDownloads);
+  const blockCtx = useMemo(() => ({ blocks: activeBlocks, queueLimit }), [activeBlocks, queueLimit]);
+  const hasUnfinished = useMemo(() => all.some((t) => !t.finished) || downloads.some((d) => d.state !== 'finished'), [all, downloads]);
+  const hasSeedEligible = useMemo(() => all.some((t) => t.finished || t.state === 'SEEDING' || t.state === 'COMPLETED'), [all]);
 
   // Low-space banner. Free space and what unfinished downloads still need are read at the same
   // moment, so the numbers agree with each other (and the text changes every 30 s, not every tick).
@@ -541,6 +550,7 @@ export default function TransfersScreen() {
   const emptyFilter = query.trim() ? empty.transfers.noMatch : empty.transfers.noneInFilter(filterLabel);
 
   return (
+    <BlockContextProvider value={blockCtx}>
     <View style={[styles.root, { paddingTop: insets.top }]}>
       <HeaderBar
         cruising={cruising}
@@ -587,16 +597,14 @@ export default function TransfersScreen() {
         </View>
       ) : null}
 
-      {lowSpace && !nothingHere ? (
-        <View style={styles.lowSpace}>
-          <Banner
-            tone="warning"
-            title={lowSpace.title}
-            body={lowSpace.body}
-            actionLabel="Free up space"
-            onAction={() => void openStorageSettings()}
-          />
-        </View>
+      {!nothingHere ? (
+        <BlockBanner
+          blocks={activeBlocks}
+          hasUnfinished={hasUnfinished}
+          hasSeedEligible={hasSeedEligible}
+          lowSpace={lowSpace}
+          onFreeSpace={() => void openStorageSettings()}
+        />
       ) : null}
 
       {/* Off by default (Settings → Appearance → Speed totals); Pause all / Resume all also live in the notification. */}
@@ -727,6 +735,7 @@ export default function TransfersScreen() {
       />
       <DeleteSheet visible={deleteOpen} count={selectedIds.size} bytes={selectedBytes} onClose={() => setDeleteOpen(false)} onConfirm={confirmDelete} />
     </View>
+    </BlockContextProvider>
   );
 }
 
@@ -754,7 +763,6 @@ const makeStyles = (c: ThemeColors) =>
       paddingVertical: 0,
     },
     fileError: { paddingHorizontal: spacing.lg, paddingBottom: spacing.sm },
-    lowSpace: { paddingHorizontal: spacing.lg, paddingTop: spacing.sm },
     noMatch: { flex: 1, justifyContent: 'center' },
     listContent: { paddingTop: spacing.xs, paddingBottom: 96 },
   });
