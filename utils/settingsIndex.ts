@@ -1246,6 +1246,23 @@ export const SETTINGS_INDEX: SettingEntry[] = [
     "How search behaves",
   ),
   e(
+    "search-trusted-uploaders",
+    "Trusted uploaders only",
+    "search-providers",
+    "Search sources",
+    [
+      "trusted",
+      "vip",
+      "fake",
+      "malware",
+      "pirate bay",
+      "tpb",
+      "safe",
+      "uploader",
+    ],
+    "How search behaves",
+  ),
+  e(
     "search-hide-dead",
     "Hide dead torrents",
     "search-providers",

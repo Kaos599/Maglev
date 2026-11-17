@@ -172,6 +172,7 @@ async function main() {
     'nyaa.si': () => jsonRes(fx('nyaa.xml'), 200, 'application/rss+xml'),
     'archive.org': () => jsonRes(fx('archive.json')),
     'torrents-csv.com': () => jsonRes(fx('torrentscsv.json')),
+    'bitsearch.eu': () => jsonRes(fx('bitsearch.html'), 200, 'text/html'),
   });
   const upd = await agg.searchAll('matrix', 'movies', { enabled: defaults, waitSeconds: 2 });
   check('movies search: yts called, nyaa not', calls.some((c) => c.url.includes('accel.li')) && !calls.some((c) => c.url.includes('nyaa.si')));

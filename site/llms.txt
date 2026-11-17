@@ -1,6 +1,6 @@
 # Maglev
 
-> Maglev is a free, open source Android downloader with no ads. It saves videos from web pages (including on-demand HLS and DASH streams), downloads ordinary links with pause and resume, and runs torrents, in one app. Android 7 and later. Version 0.24.
+> Maglev is a free, open source Android downloader with no ads. It saves videos from web pages (including on-demand HLS and DASH streams), downloads ordinary links with pause and resume, and runs torrents, in one app. Android 7 and later. Version 0.26.
 
 Made by Harsh Dayal (https://harshdayal.dev, GitHub: https://github.com/Kaos599). License: GPL-3.0.
 
@@ -165,7 +165,7 @@ In Maglev's Search tab. One search asks up to 40 built-in public torrent indexes
 
 ### Which APK file should I download?
 
-The file ending in arm64-v8a.apk, if your phone is from the last six years. Pick armeabi-v7a for an older 32-bit phone, x86_64 for an emulator or a Chromebook, or universal if you aren't sure, because it runs on every device.
+You don't have to choose. The Download button picks the right file for your phone. If you want to pick yourself: arm64-v8a is for most phones from the last six years, armeabi-v7a for an older 32-bit phone, x86_64 for an emulator or a Chromebook, and universal if you aren't sure, because it runs on every device.
 
 ### What permissions does Maglev need, and why?
 

@@ -124,4 +124,20 @@ object ShareClassify {
         if (known) return ShareClass(ShareKind.FILE_LINK, url, seg, null)
         return ShareClass(ShareKind.WEB_PAGE, url, null, null)
     }
+
+    /**
+     * A download a browser handed over by name (contract quick-share 8.1, issue #89). Kiwi and its forks send
+     * VIEW <url> with no type and the name in `com.android.extra.filename`, so `/dl?id=5` would read as a web page.
+     * The name wins only when the link has none; only its last path segment is used. Magnets are left alone.
+     */
+    fun withHandOffName(c: ShareClass, fileName: String?): ShareClass {
+        val name = (fileName ?: "").replace('\\', '/').substringAfterLast('/').trim()
+        if (name.isEmpty() || c.source == null) return c
+        if (c.kind != ShareKind.WEB_PAGE && c.kind != ShareKind.FILE_LINK) return c
+        if (c.kind == ShareKind.FILE_LINK && c.name != null) return c
+        if (Regex("\\.torrent$", I).containsMatchIn(name)) {
+            return ShareClass(ShareKind.TORRENT_FILE, c.source, name.replace(Regex("\\.torrent$", I), "").ifEmpty { null }, null)
+        }
+        return ShareClass(ShareKind.FILE_LINK, c.source, name, null)
+    }
 }

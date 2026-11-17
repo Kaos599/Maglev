@@ -1,0 +1,2 @@
+acgrip_search.xml: curl https://acg.rip/.xml?term=one+piece (2026-11-16)
+acgrip_367408.torrent: curl https://acg.rip/t/367408.torrent (2026-11-16); info hash 0636226361b50c81ef91ff57beb32f547dceaf78 (computed with python bencode + sha1)

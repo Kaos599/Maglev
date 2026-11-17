@@ -67,10 +67,13 @@ function StorageRow() {
 
 /** Warning banners. Reads engine state itself, so engine ticks re-render only this block. */
 function NeedsAttention() {
-  const { permissionStatus, storageStatus, refreshPermissions } = useEngine();
+  const { permissionStatus, storageStatus, refreshPermissions, configWarning } = useEngine();
   const router = useRouter();
   const attention = useMemo(() => {
     const items: React.ReactElement[] = [];
+    if (configWarning) {
+      items.push(<Banner key="config" tone="warning" title={configWarning} />);
+    }
     if (permissionStatus?.notifications === 'denied') {
       items.push(
         <Banner
@@ -130,7 +133,7 @@ function NeedsAttention() {
       );
     }
     return items;
-  }, [permissionStatus, storageStatus, refreshPermissions, router]);
+  }, [permissionStatus, storageStatus, refreshPermissions, configWarning, router]);
 
   if (attention.length === 0) return null;
   return (

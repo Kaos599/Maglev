@@ -52,6 +52,7 @@ class QuickShareActivity : Activity() {
         }
         val (text, mime) = extract(original)
         cls = ShareClassify.classify(text, mime)
+        if (original.action == Intent.ACTION_VIEW) cls = ShareClassify.withHandOffName(cls, handOffName(original))
         val addable = cls.kind == ShareKind.MAGNET || cls.kind == ShareKind.TORRENT_FILE || cls.kind == ShareKind.FILE_LINK
         if (addable && QuickSharePrefs.addWithoutAsking(applicationContext)) {
             setContentView(View(this))
@@ -82,6 +83,13 @@ class QuickShareActivity : Activity() {
             Intent.ACTION_VIEW -> i.dataString to i.type
             else -> null to null
         }
+    }
+
+    /** The file name a browser sends with a download hand-off (contract 8.1): ADM's extra first, then the generic one. */
+    private fun handOffName(i: Intent): String? = try {
+        i.getStringExtra("com.android.extra.filename") ?: i.getStringExtra("filename")
+    } catch (e: Exception) {
+        null // a caller can put any type under these keys
     }
 
     /** MainActivity with the original intent, or with [uri] when given. Then this card goes away. */

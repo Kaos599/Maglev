@@ -110,6 +110,12 @@ object EngineHost {
     val ioScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     @Volatile private var initialized = false
+    /**
+     * Rust's `config_warning` from the call that started this session. The service often starts the engine
+     * before JS does (headless start at launch), so JS's own init lands on the already-running path and has to
+     * get the warning from here (issue #76: busy port note).
+     */
+    @Volatile private var startWarning: String? = null
     private var pollJob: Job? = null
     private val prevFinished = HashMap<String, Boolean>()
     private val prevState = HashMap<String, String?>()
@@ -239,6 +245,7 @@ object EngineHost {
             val out = LinkedHashMap<String, Any?>(applied)
             out["ok"] = true
             out["alreadyRunning"] = true
+            startWarning?.let { out["config_warning"] = it }
             out["storage"] = storageStatus()
             return out
         }
@@ -256,6 +263,7 @@ object EngineHost {
         val res = call { NativeCore.nativeInit(configJson, session, target.path) }
         if (!isOk(res)) return res
 
+        startWarning = (res["config_warning"] as? String)?.takeIf { it.isNotEmpty() }
         initialized = true
         // "Hide from gallery": make sure the .nomedia in the active folder matches the setting.
         ioScope.launch { GalleryHide.apply(c) }
@@ -372,6 +380,7 @@ object EngineHost {
     /** Stops the engine, the poller, the governance watchers and the service. */
     fun shutdownEngine(): Map<String, Any?> {
         initialized = false
+        startWarning = null
         pollJob?.cancel()
         pollJob = null
         net?.stop(); net = null

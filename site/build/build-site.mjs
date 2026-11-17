@@ -27,6 +27,7 @@ const COMPARE = `${BASE_PATH}/compare`;
 const abs = (p = '') => (p ? `${SITE_URL}/${p}` : SITE_URL);
 const REPO = 'https://github.com/Kaos599/Maglev';
 const RELEASES = `${REPO}/releases/latest`;
+const ALL_RELEASES = `${REPO}/releases`;
 const ISSUES = `${REPO}/issues`;
 const LICENSE_URL = `${REPO}/blob/main/LICENSE`;
 const OBTAINIUM = 'https://apps.obtainium.imranr.dev/redirect?r=obtainium://add/https://github.com/Kaos599/Maglev';
@@ -38,6 +39,17 @@ const PUBLISHED = '2026-11-12';
 
 const app = JSON.parse(fs.readFileSync(path.join(ROOT, 'app.json'), 'utf8')).expo;
 const VERSION = app.version; // "<major>.<minor>"
+/** Direct link to one of the current version's APKs. The fallback for every Download button when download.js can't run. */
+const apkUrl = (kind) => `${REPO}/releases/download/v${VERSION}/Maglev-v${VERSION}-${kind}.apk`;
+const BAKED_APK = apkUrl('universal');
+const APK_FILES = [
+  { kind: 'arm64-v8a', label: 'Most phones from the last six years' },
+  { kind: 'armeabi-v7a', label: 'Older 32-bit phones' },
+  { kind: 'x86_64', label: 'Chromebooks and emulators' },
+  { kind: 'universal', label: 'Any device, if you are not sure' },
+];
+/** The smart Download button. download.js points it at the right file of the newest release and adds the version and size. */
+const dlButton = () => `<a class="btn primary" href="${BAKED_APK}" data-dl="main" title="Download Maglev ${esc(VERSION)}" aria-label="Download Maglev ${esc(VERSION)}" rel="noopener">${icon('download')}<span data-dl-label>Download latest</span></a>`;
 const UPDATED = process.env.SITE_DATE || new Date().toISOString().slice(0, 10);
 const human = (iso) => new Date(`${iso}T12:00:00Z`).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' });
 const UPDATED_HUMAN = human(UPDATED);
@@ -227,7 +239,7 @@ const header = (base, home, { compare = true, current = '' } = {}) => {
       </nav>
     </details>
     <a class="gh" href="${REPO}" rel="noopener" aria-label="GitHub">${icon('github')}<span>GitHub</span></a>
-    <a class="btn primary dl" href="${RELEASES}" rel="noopener">${icon('download')}<span>Download</span></a>
+    <a class="btn primary dl" href="${BAKED_APK}" data-dl="link" rel="noopener">${icon('download')}<span>Download</span></a>
   </div>
 </header>`;
 };
@@ -236,7 +248,7 @@ const footer = (home, { compare = true } = {}) => `<footer class="foot">
   <div class="wrap foot-in">
     <p class="made">Made by <a href="${MAKER.url}" rel="author">${MAKER.name}</a></p>
     <ul class="foot-links">
-      <li><a href="${RELEASES}" rel="noopener">Download</a></li>
+      <li><a href="${BAKED_APK}" data-dl="link" rel="noopener">Download</a></li>
       <li><a href="${REPO}" rel="noopener">Source code</a></li>${compare ? `\n      <li><a href="${COMPARE}">Compare apps</a></li>` : ''}
       <li><a href="${home}#faq">FAQ</a></li>
       <li><a href="${ISSUES}" rel="noopener">Report a bug</a></li>
@@ -364,6 +376,7 @@ function index(cmp) {
   return `${head({ title: TITLE, desc: DESC, base: A, canonical: SITE_URL })}
 ${ogTags({ title: TITLE, desc: DESC, url: SITE_URL })}
 <script src="${A}assets/site.js" defer></script>
+<script src="${A}assets/download.js" defer></script>
 ${ldBlock(indexLd())}
 ${ldBlock(faqLd(C.faq))}
 </head>
@@ -378,10 +391,11 @@ ${header(A, HOME, { compare: !!cmp })}
       <h1 id="hero-title">Download videos, links and torrents on Android</h1>
       <p class="lede">A free, open source Android downloader. Save videos from web pages through an ad-free browser, download any link with pause and resume, and run torrents, in one small app with no ads.</p>
       <div class="ctas">
-        <a class="btn primary" href="${RELEASES}" rel="noopener">${icon('download')}<span>Download for most phones (arm64)</span></a>
+        ${dlButton()}
         <a class="btn" href="${OBTAINIUM}" rel="noopener">${icon('retry')}<span>Get updates with Obtainium</span></a>
       </div>
-      <p class="cta-note">On the release page, tap the file ending in <span class="file">arm64-v8a.apk</span>. Not sure? <a href="#install">See which file to pick</a>.</p>
+      <p class="cta-note" data-dl-note>The button picks the right file for your phone, and you can choose another one after you tap it.</p>
+      <p class="cta-note" data-dl-note-desktop hidden>Maglev is an Android app. Click Download, then scan the code that appears with your phone.</p>
       <p class="meta">v${esc(VERSION)} · updated <time datetime="${UPDATED}">${esc(UPDATED_HUMAN)}</time> · by <a href="${MAKER.url}" rel="author">${MAKER.name}</a></p>
       <ul class="facts" aria-label="At a glance">
         <li>Free</li><li>No ads</li><li>Open source, GPL-3.0</li><li>Android 7 and up</li>
@@ -427,12 +441,13 @@ ${cmp ? `
 <section id="install" class="install" aria-labelledby="install-title">
   <div class="wrap">
     <h2 id="install-title" class="h2">How to install Maglev</h2>
-    <p class="section-lede">Maglev isn't on Google Play yet, so you install it from its GitHub page.</p>
+    <p class="section-lede">Maglev isn't on Google Play yet. Download it here and install it in three steps.</p>
     <ol class="steps">
       <li class="card">
         <span class="n">1</span>
         <h3>Download the APK</h3>
-        <p>Open the <a href="${RELEASES}" rel="noopener">latest release</a> on your phone and tap the file ending in <span class="file">arm64-v8a.apk</span>. Most phones from the last six years want this one. Pick <span class="file">armeabi-v7a</span> for an older 32-bit phone, <span class="file">x86_64</span> for a Chromebook or emulator, or <span class="file">universal</span> if you aren't sure.</p>
+        <p>Tap Download on your phone. The button picks the right file for your phone and the newest version, and the file starts downloading.</p>
+        <div class="ctas">${dlButton()}</div>
       </li>
       <li class="card">
         <span class="n">2</span>
@@ -445,18 +460,17 @@ ${cmp ? `
         <p>Open the app and follow the short setup. Your downloads go to the Download/Maglev folder unless you pick another one.</p>
       </li>
     </ol>
-    <div class="install-more">
-      <div class="card verify" id="verify">
-        <h3>Check it's the real Maglev</h3>
-        <p>Official APKs are built by GitHub Actions from the public source and signed with one key. Its SHA-256 fingerprint is:</p>
-        <div class="fp"><code id="fingerprint">${FINGERPRINT}</code><button type="button" class="btn small copy" data-copy="fingerprint" hidden>${icon('copy')}<span>Copy</span></button></div>
-        <p>To check a file on a computer with the Android SDK, run <code>apksigner verify --print-certs</code> on the APK and compare the line "Signer #1 certificate SHA-256 digest" with the fingerprint above. If it doesn't match, don't install it.</p>
-      </div>
-      <div class="card obtainium">
-        <h3>Get updates without checking</h3>
-        <p><a href="${OBTAINIUM_REPO}" rel="noopener">Obtainium</a> is a free, open source app that installs new versions from GitHub as they come out. Add Maglev to it in one tap.</p>
-        <a class="btn" href="${OBTAINIUM}" rel="noopener">${icon('retry')}<span>Add to Obtainium</span></a>
-      </div>
+    <div class="dl-row">
+      <details class="more" id="verify">
+        <summary>Check it's the real Maglev</summary>
+        <div class="more-body">
+          <p>Official APKs are built by GitHub Actions from the public source and signed with one key. Its SHA-256 fingerprint is:</p>
+          <div class="fp"><code id="fingerprint">${FINGERPRINT}</code><button type="button" class="btn small copy" data-copy="fingerprint" hidden>${icon('copy')}<span>Copy</span></button></div>
+          <p>To check a file on a computer with the Android SDK, run <code>apksigner verify --print-certs</code> on the APK and compare the line "Signer #1 certificate SHA-256 digest" with the fingerprint above. If it doesn't match, don't install it.</p>
+        </div>
+      </details>
+      <noscript><p class="nojs">Other files: ${APK_FILES.map((f) => `<a href="${apkUrl(f.kind)}" rel="noopener">${f.kind}</a>`).join(', ')}. <a href="${ALL_RELEASES}" rel="noopener">All releases on GitHub</a></p></noscript>
+      <a class="btn small" href="${OBTAINIUM}" rel="noopener" aria-label="Add Maglev to Obtainium, a free app that installs new versions from GitHub as they come out">${icon('retry')}<span>Add to Obtainium</span></a>
     </div>
   </div>
 </section>
@@ -548,6 +562,7 @@ ${faq.length ? ldBlock(faqLd(faq)) : ''}
 <body>
 ${header(A, HOME, { current: 'compare' })}
 <script src="${A}assets/site.js" defer></script>
+<script src="${A}assets/download.js" defer></script>
 <main id="main">
 <section class="page-head" aria-labelledby="page-title">
   <div class="grid-bg" aria-hidden="true"></div>
@@ -592,7 +607,7 @@ ${faqList(faq)}
     <div class="card cta-card">
       <h2 class="h3">Try Maglev</h2>
       <p>Free, open source and without ads. Android 7 and up.</p>
-      <div class="ctas"><a class="btn primary" href="${RELEASES}" rel="noopener">${icon('download')}<span>Download for most phones (arm64)</span></a><a class="btn" href="${HOME}#install">How to install</a></div>
+      <div class="ctas">${dlButton()}<a class="btn" href="${HOME}#install">How to install</a></div>
     </div>
   </div>
 </section>
@@ -663,6 +678,7 @@ ${ldBlock(faqLd(faq))}
 <body>
 ${header(A, HOME, { current: 'compare' })}
 <script src="${A}assets/site.js" defer></script>
+<script src="${A}assets/download.js" defer></script>
 <main id="main">
 <section class="page-head" aria-labelledby="page-title">
   <div class="grid-bg" aria-hidden="true"></div>
@@ -705,7 +721,7 @@ ${faqList(faq)}
     <div class="card cta-card">
       <h2 class="h3">Try Maglev</h2>
       <p>Free, open source and without ads. Android 7 and up.</p>
-      <div class="ctas"><a class="btn primary" href="${RELEASES}" rel="noopener">${icon('download')}<span>Download for most phones (arm64)</span></a><a class="btn" href="${COMPARE}">Compare all apps</a></div>
+      <div class="ctas">${dlButton()}<a class="btn" href="${COMPARE}">Compare all apps</a></div>
     </div>
   </div>
 </section>
@@ -745,6 +761,7 @@ ${ldBlock(ld)}
 <body>
 ${header(A, HOME, { compare: !!cmp })}
 <script src="${A}assets/site.js" defer></script>
+<script src="${A}assets/download.js" defer></script>
 <main id="main">
 <section class="page-head" aria-labelledby="page-title">
   <div class="grid-bg" aria-hidden="true"></div>

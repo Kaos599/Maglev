@@ -1,0 +1,2 @@
+distrowatch_list.html  https://distrowatch.com/dwres.php?resource=bittorrent  fetched live with curl on 2026-11-16, unedited (196 torrents).
+distrowatch_NetBSD.torrent  https://distrowatch.com/dwres/torrents/NetBSD-11.1-amd64.iso.torrent  fetched 2026-11-16, unedited.

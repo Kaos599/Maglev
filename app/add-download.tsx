@@ -55,7 +55,7 @@ export default function AddDownloadScreen() {
   // Parts default to the Settings > Downloads pref; the chips below override it for this download only.
   const [linkPrefs] = useLinkDownloadPrefs();
   const [partsOverride, setPartsOverride] = useState<DownloadParts | null>(null);
-  const parts = partsOverride ?? linkPrefs.downloadParts;
+  const parts: DownloadParts = partsOverride ?? linkPrefs.downloadParts;
   const token = useRef(0);
   const urlRef = useRef('');
   const allowLanRef = useRef(false);

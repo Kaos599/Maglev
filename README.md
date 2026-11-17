@@ -23,6 +23,7 @@
 - [Contributing](#contributing)
 - [Disclaimer](#disclaimer)
 - [License](#license)
+- [Star History](#star-history)
 
 ## Intro
 
@@ -67,6 +68,14 @@ c8e15bd47fb39fb2248d8b501a677e61be564d52ba535e31a1608564e35df3c4
 ```
 
 To check a file before you install it, run `apksigner verify --print-certs` on it (apksigner comes with the Android SDK build tools) and compare the `SHA-256 digest` line with the fingerprint above.
+
+Each release also has a `SHA256SUMS` file listing the SHA-256 hash of every APK in it. Download it next to the APK and run:
+
+```
+sha256sum -c --ignore-missing SHA256SUMS
+```
+
+It prints `OK` for each file that matches. On Windows, `Get-FileHash <file> -Algorithm SHA256` gives the same hash to compare by hand. The hashes change with every release; the certificate fingerprint above never does.
 
 ## Coming from another app?
 
@@ -175,3 +184,13 @@ What you download, and following the law where you live, is up to you.
 Maglev is free software under the [GNU General Public License v3.0](LICENSE). You can use, study, change and share it. If you distribute a changed version, its source must stay available under the same licence.
 
 It includes a modified copy of [librqbit](https://github.com/ikatson/rqbit) by Igor Katson, under the [Apache License 2.0](native/maglev-core/vendor/librqbit/LICENSE). The changes are listed in [`MAGLEV_PATCH.md`](native/maglev-core/vendor/librqbit/MAGLEV_PATCH.md).
+
+## Star History
+
+<a href="https://www.star-history.com/?repos=kaos599%2Fmaglev&type=date&legend=bottom-right">
+ <picture>
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=kaos599/maglev&type=date&theme=dark&legend=bottom-right" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=kaos599/maglev&type=date&legend=bottom-right" />
+   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=kaos599/maglev&type=date&legend=bottom-right" />
+ </picture>
+</a>

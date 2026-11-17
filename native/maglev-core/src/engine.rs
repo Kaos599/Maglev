@@ -412,6 +412,47 @@ impl Drop for ResolveGuard {
     }
 }
 
+/// True when a session start error means the listening port is taken by another app.
+fn is_addr_in_use(raw: &str) -> bool {
+    raw.to_ascii_lowercase().contains("address already in use")
+}
+
+/// The error shown when the session can't start.
+fn session_start_error(raw: &str) -> EngineError {
+    if is_addr_in_use(raw) {
+        EngineError::new(
+            ErrorCode::EngineUnavailable,
+            "The connection port is already in use. Pick another port in Settings.",
+        )
+    } else {
+        EngineError::new(
+            ErrorCode::EngineUnavailable,
+            "The download engine couldn't start",
+        )
+    }
+}
+
+/// The saved config with `listen_port = 0` (the system picks a free port). Nothing else changes.
+fn free_port_config(cfg: &NativeConfig) -> NativeConfig {
+    let mut c = cfg.clone();
+    c.listen_port = 0;
+    c
+}
+
+/// Shown when the saved port is busy and the engine picked a free one (issue #76).
+fn busy_port_warning(port: u16) -> String {
+    format!(
+        "Port {port} is used by another app, so Maglev picked a free port for now. Change it in Settings > Network > Incoming port if you need a fixed one."
+    )
+}
+
+fn join_warnings(existing: Option<String>, new: String) -> String {
+    match existing {
+        Some(e) if !e.is_empty() => format!("{e} {new}"),
+        _ => new,
+    }
+}
+
 fn build_options(cfg: &NativeConfig, session_dir: &Path) -> SessionOptions {
     let dht = if cfg.enable_dht {
         Some(DhtSessionConfig {
@@ -529,26 +570,43 @@ impl MaglevEngine {
 
         let _ = librqbit::try_increase_nofile_limit();
 
-        let session = runtime
-            .block_on(Session::new_with_opts(
-                default_dir.clone(),
-                build_options(&cfg, &session_dir),
-            ))
-            .map_err(|e| {
+        let first = runtime.block_on(Session::new_with_opts(
+            default_dir.clone(),
+            build_options(&cfg, &session_dir),
+        ));
+        let session = match first {
+            Ok(s) => s,
+            Err(e) => {
                 warn!("session start failed: {e:#}");
-                let raw = format!("{e:#}").to_ascii_lowercase();
-                if raw.contains("address already in use") {
-                    EngineError::new(
-                        ErrorCode::EngineUnavailable,
-                        "The connection port is already in use. Pick another port in Settings.",
-                    )
+                let raw = format!("{e:#}");
+                if cfg.listen_port != 0 && is_addr_in_use(&raw) {
+                    // Another app holds the port (issue #76). Retry once on a free port. The saved
+                    // setting keeps the user's port; only this run uses a different one.
+                    let retry_cfg = free_port_config(&cfg);
+                    match runtime.block_on(Session::new_with_opts(
+                        default_dir.clone(),
+                        build_options(&retry_cfg, &session_dir),
+                    )) {
+                        Ok(s) => {
+                            warn!(
+                                "port {} is busy, listening on {:?} instead",
+                                cfg.listen_port,
+                                s.listen_addr()
+                            );
+                            let w = busy_port_warning(cfg.listen_port);
+                            config_warning = Some(join_warnings(config_warning.take(), w));
+                            s
+                        }
+                        Err(e2) => {
+                            warn!("session retry on a free port failed: {e2:#}");
+                            return Err(session_start_error(&format!("{e2:#}")));
+                        }
+                    }
                 } else {
-                    EngineError::new(
-                        ErrorCode::EngineUnavailable,
-                        "The download engine couldn't start",
-                    )
+                    return Err(session_start_error(&raw));
                 }
-            })?;
+            }
+        };
 
         let stream = runtime
             .block_on(StreamServer::start(session.clone()))
@@ -3725,6 +3783,48 @@ impl MaglevEngine {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn address_in_use_is_detected_case_insensitively() {
+        assert!(is_addr_in_use("error starting TCP listener: Address already in use (os error 98)"));
+        assert!(is_addr_in_use("address already in use"));
+        assert!(!is_addr_in_use("permission denied"));
+    }
+
+    #[test]
+    fn busy_port_warning_matches_the_contract() {
+        assert_eq!(
+            busy_port_warning(6881),
+            "Port 6881 is used by another app, so Maglev picked a free port for now. Change it in Settings > Network > Incoming port if you need a fixed one."
+        );
+    }
+
+    #[test]
+    fn warnings_join_with_a_space() {
+        assert_eq!(join_warnings(None, "b".into()), "b");
+        assert_eq!(join_warnings(Some("a.".into()), "b".into()), "a. b");
+    }
+
+    #[test]
+    fn free_port_config_changes_only_the_port() {
+        let mut cfg = NativeConfig::default();
+        cfg.listen_port = 6881;
+        cfg.enable_upnp = !cfg.enable_upnp;
+        cfg.download_limit_bps = 1234;
+        let retry = free_port_config(&cfg);
+        assert_eq!(retry.listen_port, 0);
+        let mut expect = cfg.clone();
+        expect.listen_port = 0;
+        assert_eq!(retry, expect);
+        assert_eq!(cfg.listen_port, 6881);
+    }
+
+    #[test]
+    fn session_start_error_keeps_the_busy_port_message_when_retry_fails() {
+        let e = session_start_error("Address already in use");
+        assert!(e.message.contains("already in use"));
+        assert!(session_start_error("boom").message.contains("couldn't start"));
+    }
 
     #[test]
     fn file_urls_escape_url_syntax_characters() {

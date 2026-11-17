@@ -1,6 +1,6 @@
-import React, { useEffect, useMemo, useRef } from 'react';
-import { Animated, Pressable, StyleSheet, View } from 'react-native';
-import { Tabs } from 'expo-router';
+import React, { useCallback, useEffect, useMemo, useRef } from 'react';
+import { Animated, BackHandler, Pressable, StyleSheet, View } from 'react-native';
+import { Tabs, useFocusEffect } from 'expo-router';
 import type { BottomTabBarButtonProps } from 'expo-router/build/layouts/Tabs';
 import { TAB_BAR_HEIGHT, useTabBarStyle } from '../../components/tabBarStyle';
 import { haptic } from '../../constants/haptics';
@@ -182,6 +182,24 @@ export default function TabLayout() {
     if (open && was.current.includes(open.name as TabId) && !shown.includes(open.name as TabId)) open.go('index');
     was.current = shown;
   }, [shown.join()]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Issue #77: Back on any tab other than Transfers goes to Transfers instead of leaving the app.
+  // Found by name, so it holds when the user reorders or hides tabs (the router's own back goes to the
+  // first tab in the saved order, and expo-router does not pass initialRouteName to Tabs). Registered
+  // only while the tab bar is focused, so stack screens on top (Settings pages, a download's details,
+  // the browser) keep their own Back. On Transfers this returns false: its own handler clears a
+  // selection first, then Android leaves the app as usual.
+  useFocusEffect(
+    useCallback(() => {
+      const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+        const open = current.current;
+        if (!open || open.name === 'index') return false;
+        open.go('index');
+        return true;
+      });
+      return () => sub.remove();
+    }, []),
+  );
 
   return (
     <Tabs
