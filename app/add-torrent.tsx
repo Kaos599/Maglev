@@ -163,9 +163,10 @@ export default function AddTorrentScreen() {
         void resolve(BARE_TORRENT_PATH.test(input) ? `file://${input}` : input);
         return;
       }
-      // A plain web link (not a .torrent) is a download from a link: hand it to that flow.
+      // A plain web link (not a .torrent) is a download from a link: hand it to that flow. The marker lets that
+      // screen run Get info at once, so the user doesn't tap it twice (an outside maglev:// link can't send it).
       if (isDownloadLink(input)) {
-        router.replace({ pathname: '/add-download', params: { url: input } });
+        router.replace({ pathname: '/add-download', params: { url: input, from: 'add-torrent' } });
         return;
       }
       const parsed = parseSource(input);

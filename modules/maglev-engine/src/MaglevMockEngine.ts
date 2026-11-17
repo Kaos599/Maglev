@@ -628,6 +628,7 @@ export class MaglevMockEngine implements MaglevEngineApi {
       sessionBytes: m.sessionBytes ?? 0,
       bytesWifi: m.bytesWifi ?? 0,
       bytesMobile: m.bytesMobile ?? 0,
+      stalledSecs: null,
     };
   }
 
@@ -666,6 +667,7 @@ export class MaglevMockEngine implements MaglevEngineApi {
     bw.uploadLimitBytesPerSec = cfg.upload_limit_bps;
     bw.seedingRatioLimit = cfg.seed_ratio_limit as typeof bw.seedingRatioLimit;
     bw.seedingDurationLimitSeconds = (cfg.seed_time_limit_mins * 60) as typeof bw.seedingDurationLimitSeconds;
+    bw.peerTimeoutMins = Math.floor((cfg.peer_timeout_secs ?? 600) / 60) as typeof bw.peerTimeoutMins;
     this.nativeConfig = { ...cfg };
     this.recalculateGovernance();
     this.broadcast();

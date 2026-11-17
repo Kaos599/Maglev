@@ -1,0 +1,6 @@
+Recorded 2026-11-17 from https://www.gutenberg.org/
+HTTP/2 503
+retry-after: 3600
+cache-control: no-store
+content-type: text/html; charset=utf-8
+No server: cloudflare header, no challenge markers.

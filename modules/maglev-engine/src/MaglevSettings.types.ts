@@ -14,6 +14,10 @@ export type SeedingRatioLimit = 0 | 1.0 | 1.5 | 2.0 | 3.0; // 0 = unlimited
 export type SeedingDurationLimit = 0 | 3600 | 21600 | 86400; // 0 = unlimited, 1h, 6h, 24h
 export type AutoRetryMode = 'off' | 'after';
 export type AutoRetryDelayMin = 1 | 5 | 15 | 60;
+/** "Stop waiting for peers after", minutes. 0 = never (NATIVE_CONTRACT 20.1). */
+export type PeerTimeoutMins = 0 | 10 | 30 | 60 | 360;
+export const PEER_TIMEOUT_OPTIONS: readonly PeerTimeoutMins[] = [10, 30, 60, 360, 0];
+export const DEFAULT_PEER_TIMEOUT_MINS: PeerTimeoutMins = 10;
 export const AUTO_RETRY_DELAYS: readonly AutoRetryDelayMin[] = [1, 5, 15, 60];
 export type PortForwardingStatus = 'MAPPED' | 'MAPPING' | 'DISABLED' | 'FAILED';
 
@@ -63,6 +67,8 @@ export interface BandwidthSettings {
   globalPeerCeiling: number;
   seedingRatioLimit: SeedingRatioLimit;
   seedingDurationLimitSeconds: SeedingDurationLimit;
+  /** Give up on a torrent that finds no peers after this long (0 = never). Sent to Rust as `peer_timeout_secs`. */
+  peerTimeoutMins: PeerTimeoutMins;
   /** Retry a failed link download by itself after `autoRetryDelayMin`. Read in Kotlin (WorkManager), never sent to Rust. */
   autoRetry: AutoRetryMode;
   autoRetryDelayMin: AutoRetryDelayMin;
@@ -168,6 +174,7 @@ export const DEFAULT_SETTINGS: MaglevSettings = {
     globalPeerCeiling: 200,
     seedingRatioLimit: 1.5,
     seedingDurationLimitSeconds: 21600, // 6 hours
+    peerTimeoutMins: 10,
     autoRetry: 'after',
     autoRetryDelayMin: 5,
     autoRetryAlways: false,

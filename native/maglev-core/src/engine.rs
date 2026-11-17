@@ -45,8 +45,8 @@ use crate::priority::{
     priority_of_file, PriorityPlan, PriorityStore, ReannounceLimiter, REANNOUNCE_MIN_INTERVAL,
 };
 use crate::scheduler::{
-    accumulate_seed_ms, carry_resolving_since, derive_state, finished_is_real, is_health_tag, no_peers_due,
-    pending_view, plan, uploaded_total, Action, RqState, StateInputs, TorrentFacts, TorrentState, HEALTH_FILES_CHANGED, HEALTH_FILES_MISSING, HEALTH_NO_PEERS,
+    accumulate_seed_ms, carry_resolving_since, derive_state, finished_is_real, is_health_tag, is_waiting_for_peers,
+    no_peers_due, peer_timeout_ms, pending_view, plan, resolving_secs, stall_step, StallInputs, uploaded_total, Action, RqState, StateInputs, TorrentFacts, TorrentState, HEALTH_FILES_CHANGED, HEALTH_FILES_MISSING, HEALTH_NO_PEERS,
     HEALTH_STORAGE_FULL, HEALTH_STORAGE_UNAVAILABLE, PAUSED_BY_SEED_LIMIT, PAUSED_BY_USER,
 };
 use crate::readiness::{file_readiness, have_piece, torrent_bytes, FileBytes};
@@ -262,6 +262,11 @@ fn is_running(rq: RqState) -> bool {
         rq,
         RqState::Live | RqState::Initializing { paused: false }
     )
+}
+
+/// True when the saved config says "Stop waiting for peers after: Never" (section 20.1).
+fn peer_timeout_is_never(cfg: &NativeConfig) -> bool {
+    cfg.peer_timeout_secs == 0
 }
 
 fn default_meta(h: &Handle20, now: i64) -> TorrentMeta {
@@ -817,6 +822,7 @@ impl MaglevEngine {
             health: m.health.clone(),
             included_bytes: if exact.is_some() { total_bytes } else { included_bytes(h) },
             resolving_secs: None,
+            stalled_secs: m.stalled_since_ms.map(|since| resolving_secs(since, now_ms())),
             allowed_anyway: m.allowed_anyway,
             active_secs: m.timing.active_secs(),
             finished_at: m.timing.finished_at,
@@ -868,6 +874,7 @@ impl MaglevEngine {
             health: m.health.clone(),
             included_bytes: e.total_bytes,
             resolving_secs: None,
+            stalled_secs: None,
             allowed_anyway: m.allowed_anyway,
             active_secs: m.timing.active_secs(),
             finished_at: m.timing.finished_at,
@@ -920,6 +927,7 @@ impl MaglevEngine {
             health: m.health.clone(),
             included_bytes: 0,
             resolving_secs: resolving,
+            stalled_secs: None,
             allowed_anyway: false,
             active_secs: m.timing.active_secs(),
             finished_at: m.timing.finished_at,
@@ -1603,10 +1611,15 @@ impl MaglevEngine {
                 .unwrap_or(false);
             // A restart inside the ten minute window keeps the clock; otherwise a magnet on a phone whose
             // engine restarts every few minutes would never reach `no_peers`.
+            let timeout_secs = self.config.lock().peer_timeout_secs;
             self.meta.lock().update(&id, |m| {
                 m.pending = Some(p.clone());
                 if !given_up {
-                    m.resolving_since_ms = Some(carry_resolving_since(m.resolving_since_ms, now_ms()));
+                    m.resolving_since_ms = Some(carry_resolving_since(
+                        m.resolving_since_ms,
+                        now_ms(),
+                        peer_timeout_ms(timeout_secs),
+                    ));
                 }
             });
             if !given_up {
@@ -2733,7 +2746,7 @@ impl MaglevEngine {
         Ok(())
     }
 
-    pub fn apply_config(&self, config_json: &str) -> Result<ApplyConfigResult, EngineError> {
+    pub fn apply_config(self: &Arc<Self>, config_json: &str) -> Result<ApplyConfigResult, EngineError> {
         let new = NativeConfig::from_json(config_json)?;
         let old = self.config.lock().clone();
         let restart_required = old.restart_required(&new);
@@ -2747,6 +2760,22 @@ impl MaglevEngine {
             m.mark_dirty();
         }
         self.save_meta();
+        // Never (section 20.1): a torrent that gave up waiting for peers is released at once. Clearing
+        // the tag the same way Keep trying does lets the planner resume it (or restarts a magnet's lookup).
+        if peer_timeout_is_never(&self.config.lock()) {
+            let gave_up: Vec<String> = self
+                .meta
+                .lock()
+                .data
+                .torrents
+                .iter()
+                .filter(|(_, m)| m.health.as_deref() == Some(HEALTH_NO_PEERS))
+                .map(|(id, _)| id.clone())
+                .collect();
+            for id in gave_up {
+                let _ = self.set_health(&id, "");
+            }
+        }
         let _ = self.run(OP_TIMEOUT, self.tick_soon());
         Ok(ApplyConfigResult { restart_required })
     }
@@ -3044,6 +3073,40 @@ impl MaglevEngine {
                 } else {
                     uploaded as f64 / stats.progress_bytes as f64
                 };
+                // A torrent with metadata that never began: no peer, no byte, for the whole timeout.
+                // It gets `no_peers` like a magnet that found no one (section 20.1), so the planner
+                // frees its slot. Peers, bytes or any pause reset the clock; Never never runs it.
+                let (peers_now, fetched) = match &stats.live {
+                    Some(l) => (
+                        l.snapshot.peer_stats.live as u64,
+                        l.snapshot.fetched_bytes,
+                    ),
+                    None => (0, 0),
+                };
+                let held = stats.file_progress.iter().sum::<u64>().max(stats.progress_bytes);
+                let waiting = is_waiting_for_peers(&StallInputs {
+                    live: rq == RqState::Live,
+                    finished: stats.finished,
+                    queued: m.queued,
+                    paused_by: m.paused_by.as_deref(),
+                    health: m.health.as_deref(),
+                    errored,
+                    peers_live: peers_now,
+                    held_bytes: held,
+                    max_progress_bytes: m.max_progress_bytes,
+                    fetched_bytes: fetched,
+                });
+                let (stalled_since, give_up) = stall_step(
+                    m.stalled_since_ms,
+                    waiting,
+                    now_ms(),
+                    peer_timeout_ms(cfg.peer_timeout_secs),
+                );
+                m.stalled_since_ms = stalled_since;
+                if give_up {
+                    m.health = Some(HEALTH_NO_PEERS.to_string());
+                    m.stalled_since_ms = None;
+                }
                 facts.push(TorrentFacts {
                     id: id.clone(),
                     added_at: m.added_at,
@@ -3088,6 +3151,7 @@ impl MaglevEngine {
             // A magnet that found no one for ten minutes stops looking and shows `no_peers`, so it
             // holds no work and the service can stop (section 20). A user pause is left alone.
             let now_ms = now_ms();
+            let timeout_ms = peer_timeout_ms(cfg.peer_timeout_secs);
             for (id, m) in meta.data.torrents.iter_mut() {
                 let looking = m.pending.as_ref().map(|p| p.error.is_none()).unwrap_or(false);
                 if !looking
@@ -3098,7 +3162,7 @@ impl MaglevEngine {
                     continue;
                 }
                 if let Some(since) = m.resolving_since_ms {
-                    if no_peers_due(since, now_ms) {
+                    if no_peers_due(since, now_ms, timeout_ms) {
                         m.health = Some(HEALTH_NO_PEERS.to_string());
                         gave_up.push(id.clone());
                     }
@@ -3405,6 +3469,8 @@ impl MaglevEngine {
             .update(&id, |m| {
                 let before = m.health.take();
                 m.health = if tag.is_empty() { None } else { Some(tag.to_string()) };
+                // Keep trying (and any health change) starts the stall clock over (section 20.1).
+                m.stalled_since_ms = None;
                 before
             })
             .flatten();

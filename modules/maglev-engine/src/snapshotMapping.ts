@@ -70,6 +70,7 @@ export function snapshotToTelemetry(s: Snapshot): TorrentTelemetry {
     sessionBytes: s.sessionBytes ?? 0,
     bytesWifi: s.bytesWifi ?? 0,
     bytesMobile: s.bytesMobile ?? 0,
+    stalledSecs: s.stalledSecs ?? null,
   };
 }
 
