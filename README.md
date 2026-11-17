@@ -100,7 +100,6 @@ What differs:
 - Maglev is open source (GPL-3.0). Its browser blocks ads and trackers, and the app has no ads and no analytics.
 - It saves streaming video (HLS and DASH) as one file at the quality you pick.
 - It searches torrent sites from one box.
-- It isn't on Google Play yet. 1DM+ and ADM are.
 
 Side-by-side guides, with what is the same, what is different and when the other app is the better pick:
 
@@ -243,10 +242,6 @@ Yes. Open a magnet link or `.torrent` file from any app, pick the files you want
 ### Does Maglev have ads or tracking?
 
 No. The app has no ads, no analytics SDKs and no account. The built-in browser blocks ads and trackers on the pages you open.
-
-### How do I get updates?
-
-Add the repository to [Obtainium](https://apps.obtainium.imranr.dev/redirect?r=obtainium://add/https://github.com/Kaos599/Maglev) and it tells you about each new release. You can also download the latest APK from [GitHub Releases](https://github.com/Kaos599/Maglev/releases/latest). Maglev is not on F-Droid or Google Play yet.
 
 ### Which Android versions does Maglev support?
 
