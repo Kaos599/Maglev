@@ -5,6 +5,7 @@
 process.removeAllListeners('warning');
 const fs = require('fs');
 const path = require('path');
+const { readPrivateDoc } = require('./lib/privateDocs');
 const root = path.join(__dirname, '..');
 const read = (p) => fs.readFileSync(path.join(root, p), 'utf8');
 
@@ -86,7 +87,10 @@ async function main() {
   check('Keep trying resets the stall clock', /m\.stalled_since_ms = None;/.test(eng2));
   check('snapshot exports stalled_secs', /pub stalled_secs: Option<i64>/.test(read('native/maglev-core/src/types.rs')));
   check('meta keeps stalled_since_ms in memory only (fresh window per process)', /#\[serde\(skip\)\]\s*pub stalled_since_ms: Option<i64>/.test(read('native/maglev-core/src/meta.rs')));
-  check('contract section exists', /### 20\.1 Stop waiting for peers after/.test(read('docs/NATIVE_CONTRACT.md')));
+  {
+    const contract = readPrivateDoc('NATIVE_CONTRACT.md');
+    if (contract !== null) check('contract section exists', /### 20\.1 Stop waiting for peers after/.test(contract));
+  }
 
   if (failed) {
     console.error(`\n${failed} check(s) failed`);
