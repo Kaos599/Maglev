@@ -19,9 +19,10 @@
 - [Screenshots](#screenshots)
 - [Download](#download)
   - [Check the APK is genuine](#check-the-apk-is-genuine)
-- [A 1DM, ADM and IDM+ alternative](#a-1dm-adm-and-idm-alternative)
-- [A LibreTorrent and Flud alternative](#a-libretorrent-and-flud-alternative)
 - [Features](#features)
+- [Comparison with other apps](#comparison-with-other-apps)
+  - [A 1DM, ADM and IDM+ alternative](#a-1dm-adm-and-idm-alternative)
+  - [A LibreTorrent and Flud alternative](#a-libretorrent-and-flud-alternative)
 - [What's next](#whats-next)
 - [Building from source](#building-from-source)
 - [Contributing](#contributing)
@@ -84,51 +85,6 @@ sha256sum -c --ignore-missing SHA256SUMS
 
 It prints `OK` for each file that matches. On Windows, `Get-FileHash <file> -Algorithm SHA256` gives the same hash to compare by hand. The hashes change with every release; the certificate fingerprint above never does.
 
-## A 1DM, ADM and IDM+ alternative
-
-Looking for a 1DM alternative, an IDM-style download manager for Android, or an ADM (Advanced Download Manager) alternative? Maglev covers the same everyday jobs, and its code is open.
-
-What carries over:
-
-- Download ordinary links in several parts at once, with pause, resume and retry, even after a restart.
-- A built-in browser that finds the videos and files on a page.
-- Torrents and magnet links in the same app.
-- Wi-Fi only, speed limits, a schedule and a pause on low battery.
-
-What differs:
-
-- Maglev is open source (GPL-3.0). Its browser blocks ads and trackers, and the app has no ads and no analytics.
-- It saves streaming video (HLS and DASH) as one file at the quality you pick.
-- It searches torrent sites from one box.
-
-Side-by-side guides, with what is the same, what is different and when the other app is the better pick:
-
-- [Maglev vs 1DM+](https://harshdayal.dev/maglev/1dm-alternative)
-- [Maglev vs ADM](https://harshdayal.dev/maglev/adm-alternative)
-
-## A LibreTorrent and Flud alternative
-
-Looking for an open-source torrent client for Android? Maglev opens magnet links and `.torrent` files, lets you pick files, follows RSS feeds and runs in the background, like LibreTorrent and Flud.
-
-What carries over:
-
-- Magnet links, `.torrent` files and file selection.
-- RSS feeds with download rules.
-- A Wi-Fi only option.
-
-What differs:
-
-- Maglev also downloads ordinary links and saves videos from web pages, so you don't need a second app.
-- Search runs across 40+ public sources with duplicates merged. You can add your own Jackett or Prowlarr indexer.
-- It has no ads and no tracking. Maglev is open source, as LibreTorrent is. Flud's source isn't published.
-
-Side-by-side guides:
-
-- [Maglev vs LibreTorrent](https://harshdayal.dev/maglev/libretorrent-alternative)
-- [Maglev vs Flud](https://harshdayal.dev/maglev/flud-alternative)
-
-The [full comparison](https://harshdayal.dev/maglev/compare) covers ten Android apps, row by row, with a source for every answer.
-
 ## Features
 
 ### Torrents and magnet links
@@ -170,6 +126,53 @@ The [full comparison](https://harshdayal.dev/maglev/compare) covers ten Android 
 - OLED, Dim and Light themes.
 
 Everything else is on the [Maglev website](https://harshdayal.dev/maglev#features).
+
+## Comparison with other apps
+
+The [full comparison](https://harshdayal.dev/maglev/compare) covers ten Android apps, row by row, with a source for every answer.
+
+### A 1DM, ADM and IDM+ alternative
+
+Looking for a 1DM alternative, an IDM-style download manager for Android, or an ADM (Advanced Download Manager) alternative? Maglev covers the same everyday jobs, and its code is open.
+
+What carries over:
+
+- Download ordinary links in several parts at once, with pause, resume and retry, even after a restart.
+- A built-in browser that finds the videos and files on a page.
+- Torrents and magnet links in the same app.
+- Wi-Fi only, speed limits, a schedule and a pause on low battery.
+
+What differs:
+
+- Maglev is open source (GPL-3.0). Its browser blocks ads and trackers, and the app has no ads and no analytics.
+- It saves streaming video (HLS and DASH) as one file at the quality you pick.
+- It searches torrent sites from one box.
+
+Side-by-side guides, with what is the same, what is different and when the other app is the better pick:
+
+- [Maglev vs 1DM+](https://harshdayal.dev/maglev/1dm-alternative)
+- [Maglev vs ADM](https://harshdayal.dev/maglev/adm-alternative)
+
+### A LibreTorrent and Flud alternative
+
+Looking for an open-source torrent client for Android? Maglev opens magnet links and `.torrent` files, lets you pick files, follows RSS feeds and runs in the background, like LibreTorrent and Flud.
+
+What carries over:
+
+- Magnet links, `.torrent` files and file selection.
+- RSS feeds with download rules.
+- A Wi-Fi only option.
+
+What differs:
+
+- Maglev also downloads ordinary links and saves videos from web pages, so you don't need a second app.
+- Search runs across 40+ public sources with duplicates merged. You can add your own Jackett or Prowlarr indexer.
+- It has no ads and no tracking. Maglev is open source, as LibreTorrent is. Flud's source isn't published.
+
+Side-by-side guides:
+
+- [Maglev vs LibreTorrent](https://harshdayal.dev/maglev/libretorrent-alternative)
+- [Maglev vs Flud](https://harshdayal.dev/maglev/flud-alternative)
 
 ## What's next
 
