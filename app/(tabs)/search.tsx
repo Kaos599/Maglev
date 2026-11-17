@@ -26,10 +26,11 @@ import { riskySources } from '../../utils/search/safety';
 import { addRecentSearch, clearRecentSearches, getSearchPrefs, removeRecentSearch, useSearchPrefs } from '../../utils/prefs/search';
 import { availableCategories, directAddRoute, eligibleProviders, mergeInto, rerunProvider, resolveResult, searchAll } from '../../utils/search/aggregate';
 import { CloudflareSolverSheet } from '../../components/search/CloudflareSolverSheet';
-import { nextNeedsCheck, shouldShowFixHint, tallySources } from '../../utils/search/answered';
+import { allFailed, nextNeedsCheck, resultsSummary, shouldShowFixHint, tallySources, unansweredNote, unansweredSources } from '../../utils/search/answered';
 import { formatAgeLong } from '../../utils/search/age';
 import { CATEGORY_ORDER, type Category, type MergedResult, type SearchUpdate } from '../../utils/search/types';
 import { ResultPreviewSheet } from '../../components/search/ResultPreviewSheet';
+import { UnansweredSheet } from '../../components/search/UnansweredSheet';
 import { MobileDataSheet } from '../../components/search/MobileDataSheet';
 import { passesResultFilter } from '../../components/search/sharing';
 import { oneTapAddNote } from '../../utils/addChecks';
@@ -398,6 +399,9 @@ export default function SearchScreen() {
   // A source behind a Cloudflare check, or one that failed, has not answered.
   const tally = useMemo(() => tallySources(sources), [sources]);
   const answered = tally.answered;
+  const [unansweredOpen, setUnansweredOpen] = useState(false);
+  const noteBtnRef = useRef<any>(null);
+  const missed = useMemo(() => unansweredSources(sources, nameOf), [sources, nameOf]);
   const total = update?.sources.length ?? 0;
 
   // Rows the user has had on screen keep their slots while later sources answer; new rows are ranked
@@ -677,7 +681,20 @@ export default function SearchScreen() {
             </>
           ) : (
             <View style={styles.summaryRow}>
-              <Text style={styles.summary}>{`${stopped ? 'Stopped · ' : ''}${shown.length} ${shown.length === 1 ? 'result' : 'results'}`}</Text>
+              <View style={styles.summaryText}>
+                <Text style={[styles.summary, styles.summaryFit]}>{`${stopped ? 'Stopped · ' : ''}${shown.length} ${shown.length === 1 ? 'result' : 'results'}`}</Text>
+                {unansweredNote(tally) ? (
+                  <PressableScale
+                    pressableRef={noteBtnRef}
+                    onPress={() => setUnansweredOpen(true)}
+                    style={styles.noteBtn}
+                    accessibilityRole="button"
+                    accessibilityLabel={`${resultsSummary(shown.length, tally, stopped)}. Show which sources did not respond`}
+                  >
+                    <Text style={[styles.note, allFailed(tally) && styles.noteBad]}>{`· ${unansweredNote(tally)}`}</Text>
+                  </PressableScale>
+                ) : null}
+              </View>
               <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                 <Button
                   label={watchCopy.watchButton}
@@ -818,6 +835,7 @@ export default function SearchScreen() {
           onSolved={handleSolved}
         />
       ) : null}
+      <UnansweredSheet sources={unansweredOpen ? missed : null} onClose={() => setUnansweredOpen(false)} returnFocusRef={noteBtnRef} />
       <FollowSheet target={following} onClose={() => setFollowing(null)} onDone={onFollowed} />
       <SortFilterSheet
         visible={sortOpen}
@@ -942,6 +960,11 @@ const makeStyles = (c: ThemeColors) =>
     fixBody: { ...type.body, fontSize: 12, color: c.textMuted },
     sources: { paddingHorizontal: spacing.lg, paddingBottom: spacing.sm, gap: spacing.sm },
     summaryRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.sm },
+    summaryText: { flex: 1, flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap' },
+    summaryFit: { flex: 0, flexShrink: 1 },
+    noteBtn: { minHeight: 44, justifyContent: 'center', paddingHorizontal: spacing.xs },
+    note: { ...type.body, fontSize: 12, lineHeight: 17, color: c.textMuted },
+    noteBad: { color: c.danger },
     summary: { ...type.body, fontVariant: ['tabular-nums'], flex: 1, fontSize: 12, lineHeight: 17, color: c.textMuted },
     body: { flex: 1, marginTop: spacing.sm },
     listWrap: { flex: 1 },

@@ -38,6 +38,43 @@ export function unansweredNote(t: SourceTally): string {
   return parts.join(' · ');
 }
 
+/** True when no source answered at all (and there was at least one). */
+export function allFailed(t: SourceTally): boolean {
+  return t.total > 0 && t.answered === 0 && t.needsCheck + t.failed === t.total;
+}
+
+/** "84 results · 1 didn't respond"; "Stopped · " leads when the user stopped the search. */
+export function resultsSummary(count: number, t: SourceTally, stopped: boolean): string {
+  const base = `${stopped ? 'Stopped · ' : ''}${count} ${count === 1 ? 'result' : 'results'}`;
+  const note = unansweredNote(t);
+  return note ? `${base} · ${note}` : base;
+}
+
+/** A plain reason a source did not answer. Built from the state and the message the search already keeps. */
+export function unansweredReason(s: SourceStatus): string {
+  if (s.state === 'timeout') return "Didn't answer in time";
+  if (s.state === 'blocked') return 'Blocked by a bot check';
+  if (s.state === 'challenge') return 'Needs a quick check';
+  const m = s.message ?? '';
+  if (m === 'Down for maintenance' || m === 'Not answering right now') return m;
+  if (/^HTTP 5\d\d$/.test(m)) return 'Not answering right now';
+  if (/network|failed to fetch|offline|connection|dns|resolve|timed? ?out/i.test(m)) return 'No connection';
+  return "Didn't respond";
+}
+
+export interface UnansweredSource {
+  providerId: string;
+  name: string;
+  reason: string;
+}
+
+/** The sources that did not answer, with their names and reasons, for the sheet behind the note. */
+export function unansweredSources(sources: SourceStatus[], nameOf: (id: string) => string): UnansweredSource[] {
+  return sources
+    .filter((s) => s.state !== 'searching' && !hasAnswered(s))
+    .map((s) => ({ providerId: s.providerId, name: nameOf(s.providerId), reason: unansweredReason(s) }));
+}
+
 /** After the user closes the "needs a quick check" line, it stays away this long. */
 export const FIX_HINT_QUIET_MS = 24 * 60 * 60 * 1000;
 
