@@ -53,6 +53,7 @@ export function toNativeConfig(settings: MaglevSettings): NativeConfig {
     upload_limit_bps: speedLimitBps(bandwidth.uploadPreset, bandwidth.uploadLimitBytesPerSec),
     seed_ratio_limit: bandwidth.seedingRatioLimit,
     seed_time_limit_mins: Math.floor(bandwidth.seedingDurationLimitSeconds / 60),
+    peer_timeout_secs: bandwidth.peerTimeoutMins * 60,
     proxy_url: buildProxyUrl(network.proxy),
     ip_filter_path: network.ipFilterEnabled && network.ipFilterPath ? network.ipFilterPath : null,
   };

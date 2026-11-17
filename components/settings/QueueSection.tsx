@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { SeedingDurationLimit, SeedingRatioLimit } from 'maglev-engine';
+import type { PeerTimeoutMins, SeedingDurationLimit, SeedingRatioLimit } from 'maglev-engine';
 import { useSettings } from '../../context/SettingsContext';
 import { Card, ChipGroup, InputSheet, parseIntIn } from './SettingsParts';
 
@@ -16,6 +16,14 @@ const DURATIONS: { value: SeedingDurationLimit; label: string }[] = [
   { value: 3600, label: '1 hour' },
   { value: 21600, label: '6 hours' },
   { value: 86400, label: '24 hours' },
+];
+
+const PEER_TIMEOUTS: { value: PeerTimeoutMins; label: string }[] = [
+  { value: 10, label: '10 min' },
+  { value: 30, label: '30 min' },
+  { value: 60, label: '1 hour' },
+  { value: 360, label: '6 hours' },
+  { value: 0, label: 'Never' },
 ];
 
 type Field = 'maxActiveDownloads' | 'maxActiveUploads';
@@ -49,6 +57,13 @@ export function QueueSection() {
           options={options(b.maxActiveUploads)}
           value={COUNTS.includes(b.maxActiveUploads) ? b.maxActiveUploads : -1}
           onChange={pickCount('maxActiveUploads')}
+        />
+        <ChipGroup
+          label="Stop waiting for peers after"
+          caption="A download that finds no one stops and frees its place. Keep trying brings it back."
+          options={PEER_TIMEOUTS}
+          value={b.peerTimeoutMins}
+          onChange={(v) => updateSettings((prev) => ({ bandwidth: { ...prev.bandwidth, peerTimeoutMins: v } }))}
         />
       </Card>
       <Card>

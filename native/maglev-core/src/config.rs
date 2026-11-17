@@ -3,7 +3,7 @@
 use serde::{Deserialize, Deserializer, Serialize};
 
 use crate::error::{EngineError, ErrorCode};
-use crate::scheduler::SchedulerConfig;
+use crate::scheduler::{SchedulerConfig, DEFAULT_PEER_TIMEOUT_SECS};
 
 /// Accepts `5`, `5.0` and `null` for an unsigned field. Negative or non-finite values become 0.
 fn lenient_u64<'de, D: Deserializer<'de>>(d: D) -> Result<u64, D::Error> {
@@ -69,6 +69,9 @@ pub struct NativeConfig {
     /// 0 = none.
     #[serde(deserialize_with = "lenient_u32")]
     pub seed_time_limit_mins: u32,
+    /// "Stop waiting for peers after" (contract section 20.1), seconds. 0 = never.
+    #[serde(deserialize_with = "lenient_u32")]
+    pub peer_timeout_secs: u32,
     /// `socks5://user:pass@host:port`, or null.
     pub proxy_url: Option<String>,
     /// Absolute path to a PeerGuardian style text list (`name:1.2.3.4-1.2.3.255`), plain or gzip.
@@ -91,6 +94,7 @@ impl Default for NativeConfig {
             upload_limit_bps: 0,
             seed_ratio_limit: 0.0,
             seed_time_limit_mins: 0,
+            peer_timeout_secs: DEFAULT_PEER_TIMEOUT_SECS,
             proxy_url: None,
             ip_filter_path: None,
         }
@@ -173,6 +177,23 @@ mod tests {
         assert_eq!(cfg.max_connections_per_torrent, 50);
         assert!(cfg.enable_dht && cfg.enable_upnp && cfg.enable_lsd && cfg.enable_pex);
         assert_eq!(cfg.encryption, Encryption::Prefer);
+    }
+
+    #[test]
+    fn peer_timeout_defaults_to_ten_minutes_and_zero_means_never() {
+        assert_eq!(NativeConfig::from_json("{}").unwrap().peer_timeout_secs, 600);
+        assert_eq!(
+            NativeConfig::from_json(r#"{"peer_timeout_secs":0}"#).unwrap().peer_timeout_secs,
+            0
+        );
+        assert_eq!(
+            NativeConfig::from_json(r#"{"peer_timeout_secs":3600.0}"#).unwrap().peer_timeout_secs,
+            3600
+        );
+        // A changed timeout needs no restart.
+        let a = NativeConfig::default();
+        let b = NativeConfig { peer_timeout_secs: 0, ..NativeConfig::default() };
+        assert!(!a.restart_required(&b));
     }
 
     #[test]

@@ -83,6 +83,8 @@ export interface TorrentTelemetry {
   webSeeds?: number;
   /** NATIVE_CONTRACT 20. Seconds a magnet has been looking for its metadata, null once it has it. */
   resolvingSecs?: number | null;
+  /** NATIVE_CONTRACT 20.1. Seconds a torrent with metadata has waited with no peer and no byte, null otherwise. */
+  stalledSecs?: number | null;
 }
 
 export interface AggregatedTelemetry {
@@ -199,6 +201,8 @@ export interface NativeConfig {
   upload_limit_bps: number;
   seed_ratio_limit: number;
   seed_time_limit_mins: number;
+  /** NATIVE_CONTRACT 20.1. Seconds to wait for peers before `no_peers`; 0 = never. */
+  peer_timeout_secs: number;
   proxy_url: string | null;
   ip_filter_path: string | null;
 }
@@ -256,6 +260,8 @@ export interface Snapshot {
   heldBytes?: number;
   /** NATIVE_CONTRACT 20. Seconds a magnet has been looking for its metadata; null once it has it. */
   resolvingSecs: number | null;
+  /** NATIVE_CONTRACT 20.1. Seconds a torrent with metadata has waited with no peer and no byte; null otherwise. */
+  stalledSecs?: number | null;
   /** NATIVE_CONTRACT 25.1. Absent from an older engine. */
   allowedAnyway?: boolean;
 }
