@@ -11,7 +11,7 @@
   <img alt="Engine: Rust + librqbit" src="https://img.shields.io/badge/engine-Rust%20%C2%B7%20librqbit-E8ECEF?style=flat-square&labelColor=05070A">
 </p>
 
-# Maglev: open-source download manager, video downloader and torrent client for Android
+<h3 align="center">Maglev: open-source download manager, video downloader and torrent client for Android</h3>
 
 ## Table of contents
 
