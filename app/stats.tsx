@@ -13,13 +13,15 @@ import { Button, IconButton, Screen, SegmentedControl, Sheet } from '../componen
 import { useMotion } from '../components/ui/useMotion';
 import { PixelCity } from '../components/stats/PixelCity';
 import { StatsKit, type SheetSpec } from '../components/stats/StatsKit';
-import { getStatsStore } from '../utils/stats';
+import { getLiveCounts, getStatsStore, subscribeLive } from '../utils/stats';
+import type { LiveCounts } from '../utils/stats/recorder';
+import { hourReady, isThinData, mergeLive, summarySentence, vsLastWeek } from '../utils/stats/delight';
 import { setStatsPrefs, useStatsPrefs } from '../utils/stats/prefs';
 import {
-  bucketsFor, busiestBucket, canStepRange, firstBucketIndex, firstStatsDay, mostInOneRange, rangeOf, rangeStats, stepRange, switchRangeKind,
+  bucketsFor, busiestBucket, canStepRange, firstBucketIndex, firstStatsDay, mostInOneRange, rangeHolds, rangeOf, rangeStats, stepRange, switchRangeKind,
   type RangeKind, type StatsRange,
 } from '../utils/stats/insights';
-import { bucketReadout, fmtSize, rangeCaption, rangeTitle } from '../utils/stats/format';
+import { bucketReadout, fmtSize, rangeCaption, rangeTitle, shortDate } from '../utils/stats/format';
 import { dayKey, dayNumber } from '../utils/stats/time';
 import type { DailyRow, StatsRecord } from '../utils/stats/types';
 
@@ -36,13 +38,26 @@ interface Rows {
 }
 
 /** The stats tables, reloaded (at most twice a second) whenever the store changes. Null until the first read. */
-function useStatsRows(): { rows: Rows | null; failed: boolean } {
+const NO_LIVE: LiveCounts = { days: {}, running: false };
+
+function useStatsRows(): { rows: Rows | null; failed: boolean; live: LiveCounts } {
   const [rows, setRows] = useState<Rows | null>(null);
+  // Today's bytes and seconds the recorder has counted but not written yet, so today moves while a download runs.
+  const [live, setLive] = useState<LiveCounts>(NO_LIVE);
   const [failed, setFailed] = useState(false);
   useEffect(() => {
     let alive = true;
     let unsub: (() => void) | undefined;
     let timer: ReturnType<typeof setTimeout> | undefined;
+    let liveTimer: ReturnType<typeof setTimeout> | undefined;
+    setLive(getLiveCounts());
+    const unsubLive = subscribeLive(() => {
+      if (liveTimer) return;
+      liveTimer = setTimeout(() => {
+        liveTimer = undefined;
+        if (alive) setLive(getLiveCounts());
+      }, 500);
+    });
     getStatsStore()
       .then((store) => {
         const load = () =>
@@ -62,10 +77,12 @@ function useStatsRows(): { rows: Rows | null; failed: boolean } {
     return () => {
       alive = false;
       unsub?.();
+      unsubLive();
       if (timer) clearTimeout(timer);
+      if (liveTimer) clearTimeout(liveTimer);
     };
   }, []);
-  return { rows, failed };
+  return { rows, failed, live };
 }
 
 const EMPTY: Rows = { records: [], daily: [], now: Date.now() };
@@ -77,11 +94,12 @@ export default function StatsScreen() {
   const m = useMotion();
   const prefs = useStatsPrefs();
   const off = !prefs.keepStats;
-  const { rows: loaded, failed } = useStatsRows();
+  const { rows: loaded, failed, live } = useStatsRows();
   const rows = loaded ?? EMPTY;
   const today = dayNumber(dayKey(rows.now));
-  const input = useMemo(() => ({ records: rows.records, daily: rows.daily, now: rows.now }), [rows]);
-  const firstDay = useMemo(() => firstStatsDay(rows.daily), [rows.daily]);
+  const daily = useMemo(() => mergeLive(rows.daily, live), [rows.daily, live]);
+  const input = useMemo(() => ({ records: rows.records, daily, now: rows.now }), [rows.records, daily, rows.now]);
+  const firstDay = useMemo(() => firstStatsDay(daily), [daily]);
   const dayOne = !off && loaded != null && firstDay == null;
 
   // `range` follows the controls at once; `shown` is what the city and the kit draw, swapped mid cross-fade.
@@ -114,10 +132,14 @@ export default function StatsScreen() {
   );
 
   const stats = useMemo(() => rangeStats(input, shown), [input, shown]);
-  const buckets = useMemo(() => bucketsFor(shown, rows.daily, today), [shown, rows.daily, today]);
+  const buckets = useMemo(() => bucketsFor(shown, daily, today), [shown, daily, today]);
   const busiest = useMemo(() => busiestBucket(buckets), [buckets]);
   const minIndex = useMemo(() => firstBucketIndex(buckets, firstDay), [buckets, firstDay]);
-  const mostSecs = useMemo(() => mostInOneRange(rows.records, shown, undefined, firstDay), [rows.records, shown, firstDay]);
+  const mostSecs = useMemo(() => mostInOneRange(rows.records, shown, undefined, firstDay, daily), [rows.records, shown, firstDay, daily]);
+  const thin = useMemo(() => isThinData(firstDay, today), [firstDay, today]);
+  const sentence = useMemo(() => (off ? null : summarySentence(stats, shown, today)), [off, stats, shown, today]);
+  const vs = useMemo(() => (off ? null : vsLastWeek(daily, shown, today)), [off, daily, shown, today]);
+  const sinceDay = firstDay != null && rangeHolds(shown, firstDay) ? firstDay : null;
   const inert = off || loaded == null || dayOne || stats.empty;
 
   const [sel, setSel] = useState(-1);
@@ -125,7 +147,9 @@ export default function StatsScreen() {
     const d = pendingDay.current;
     pendingDay.current = null;
     const at = d != null ? buckets.findIndex((b) => d >= b.start && d <= b.end) : -1;
-    setSel(inert ? -1 : at >= 0 ? at : busiest);
+    // The train rests on today in the current range; a past range opens on its busiest building.
+    const cur = buckets.findIndex((b) => b.current);
+    setSel(inert ? -1 : at >= 0 ? at : cur >= 0 ? cur : busiest);
   }, [buckets, busiest, inert]);
 
   const [info, setInfo] = useState(false);
@@ -173,7 +197,7 @@ export default function StatsScreen() {
   } else if (b) {
     r1 = `${b.label}${b.current ? ' · so far' : ''}${sel === busiest ? ` · busiest ${b.noun}` : ''}`;
     r2 = bucketReadout(b);
-    hint = 'Drag across the city to read it';
+    hint = 'Drag the train to read each day';
   } else r1 = '';
 
   const nudge = (d: number) => {
@@ -216,12 +240,21 @@ export default function StatsScreen() {
 
         <View style={s.city}>
           <View style={s.hero}>
-            <Text style={s.big}>{off ? '—' : fmtSize(stats.downloaded)}</Text>
+            {sentence ? (
+              <Text style={s.sentence} accessibilityLabel={`${sentence.lead}${sentence.rest}`}>
+                <Text style={s.big}>{sentence.lead}</Text>
+                {sentence.rest}
+              </Text>
+            ) : (
+              <Text style={s.big}>{off ? '—' : fmtSize(stats.downloaded)}</Text>
+            )}
+            {vs ? <Text style={s.vs}>{vs.text}</Text> : null}
+            {sinceDay != null ? <Text style={s.since}>{`Since ${shortDate(sinceDay)}`}</Text> : null}
             <View style={s.lblRow}>
-              <Text style={s.lbl}>{off ? 'Stats are off' : rangeCaption(shown, today)}</Text>
+              <Text style={s.lbl}>{sentence ? ' ' : off ? 'Stats are off' : rangeCaption(shown, today)}</Text>
               <IconButton icon="about" size={16} color={colors.textMuted} accessibilityLabel="What is this?" onPress={() => setInfo((v) => !v)} />
             </View>
-            {info ? <Text style={s.cap}>{`Each building is one ${unit}. Taller means more downloaded.`}</Text> : null}
+            {info ? <Text style={s.cap}>{`Each building is one ${unit}. Taller means more downloaded. The train shows the day: drag it along the rail.`}</Text> : null}
           </View>
           <Animated.View style={fadeStyle}>
             <PixelCity
@@ -230,7 +263,9 @@ export default function StatsScreen() {
               busiest={inert ? -1 : busiest}
               selected={sel}
               minIndex={minIndex}
-              peakHour={inert ? null : stats.peakHour}
+              peakHour={inert || !hourReady(stats.hours) ? null : stats.peakHour}
+              finished={inert ? 0 : stats.finished}
+              live={live.running && stats.includesToday}
               inert={inert}
               onPick={setSel}
               accessibilityLabel={`Pixel city for ${rangeTitle(shown, today)}. Each building is one ${unit}.`}
@@ -267,6 +302,7 @@ export default function StatsScreen() {
               stats={stats}
               mostSecs={mostSecs}
               mobileLimitBytes={prefs.mobileLimitMb != null ? prefs.mobileLimitMb * 1024 * 1024 : null}
+              thin={thin}
               onOpen={openSheet}
             />
           </Animated.View>
@@ -303,6 +339,9 @@ const makeStyles = (c: ThemeColors) =>
     lblRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: -8, marginRight: -10, marginBottom: -10 },
     lbl: { ...type.body, fontSize: 13, color: c.textMuted, flex: 1 },
     cap: { ...type.body, fontSize: 13, color: c.text, marginTop: 4 },
+    sentence: { ...type.body, fontSize: 15, lineHeight: 37, color: c.text },
+    vs: { ...type.body, fontSize: 13, color: c.textMuted, fontVariant: ['tabular-nums'] },
+    since: { ...type.body, fontSize: 12, color: c.textMuted },
     readRow: { flexDirection: 'row', alignItems: 'center', borderTopWidth: 1, borderTopColor: c.border, paddingHorizontal: 2, minHeight: 64 },
     readout: { flex: 1, paddingVertical: 10, paddingHorizontal: 4, alignItems: 'center', gap: 2 },
     r1: { ...type.bodyStrong, fontSize: 14, color: c.text, textAlign: 'center' },

@@ -6,7 +6,7 @@ import type { DownloadSnapshot, Snapshot } from '../../modules/maglev-engine/src
 import { kvGet, kvSet } from '../prefs/kv.ts';
 import { openStatsDb } from './db.ts';
 import { getStatsPrefs } from './prefs.ts';
-import { createRecorder, type Baseline } from './recorder.ts';
+import { createRecorder, type Baseline, type LiveCounts } from './recorder.ts';
 import { originTags } from './sourceStore.ts';
 import { createStatsStore, type StatsStore } from './store.ts';
 
@@ -16,10 +16,31 @@ let storePromise: Promise<StatsStore> | null = null;
 let recorder: ReturnType<typeof createRecorder> | null = null;
 let lastDownloads: DownloadSnapshot[] | null = null;
 const removedIds = new Set<string>();
+const liveListeners = new Set<() => void>();
 
 /** Call when the engine confirms the user removed these items: an unfinished one counts as cancelled. */
 export function noteRemoved(ids: readonly string[]): void {
   for (const id of ids) removedIds.add(id);
+}
+
+const noLive: LiveCounts = { days: {}, running: false };
+
+/** What the recorder has counted but not written yet (today's bytes and seconds), so the Stats screen can move while a download runs. */
+export function getLiveCounts(): LiveCounts {
+  return recorder ? recorder.getLive() : noLive;
+}
+
+/** Calls `l` after every snapshot the recorder handles. Returns the unsubscribe. */
+export function subscribeLive(l: () => void): () => void {
+  liveListeners.add(l);
+  return () => {
+    liveListeners.delete(l);
+  };
+}
+
+/** Writes anything waiting (app going to the background). */
+export function flushStats(): Promise<void> {
+  return recorder ? recorder.flush() : Promise.resolve();
 }
 
 /** The store, opened (and migrated) on first use. A failed open is retried on the next call. */
@@ -80,6 +101,7 @@ export async function recordSnapshot(torrents: readonly Snapshot[], downloads?: 
         now: () => Date.now(),
         removed: removedIds,
       });
+      recorder.subscribeLive(() => liveListeners.forEach((l) => l()));
     }
     await recorder.onSnapshot(torrents, lastDownloads);
   } catch {

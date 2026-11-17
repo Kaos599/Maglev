@@ -1,5 +1,6 @@
 /**
- * The card kit under the city, in five sections: Downloads, Habits, Data, Records, What you download. Every card means
+ * The card kit under the city, in five sections: Downloads, Habits, Data, Records, What you download. While stats are thin (under a
+ * week old) Habits and Records fold into one quiet line. Every card means
  * the same in every range and reads only `RangeStats`. Unknown is "—"; a card with nothing to say has no chevron.
  */
 import React, { useMemo } from 'react';
@@ -14,7 +15,8 @@ import { largestRemainder, type RangeStats, type StatsRange } from '../../utils/
 import { PressableScale } from '../ui';
 import { PixelIcon, type PixelIconName } from '../PixelIcon';
 import { BigValue, StatCard } from './StatCard';
-import { Battery, Crates, Hourglass, HourDial, Lamps, Phone, Speedo, UpDown } from './pictures';
+import { Battery, Clock, Crates, CRATE_CAP, Fire, Hourglass, Phone, Speedo, UpDown } from './pictures';
+import { fireStage, hourReady, SHOW_STREAK_CARD } from '../../utils/stats/delight';
 import { statsInk } from './ink';
 
 const MB = 1024 * 1024;
@@ -33,10 +35,12 @@ export interface StatsKitProps {
   /** The most time spent downloading in one range of this kind (for the hourglass). */
   mostSecs: number;
   mobileLimitBytes: number | null;
+  /** Stats are under a week old: Habits and Records fold into one quiet line. */
+  thin: boolean;
   onOpen: (s: SheetSpec) => void;
 }
 
-export function StatsKit({ range, today, stats: A, mostSecs, mobileLimitBytes, onOpen }: StatsKitProps) {
+export function StatsKit({ range, today, stats: A, mostSecs, mobileLimitBytes, thin, onOpen }: StatsKitProps) {
   const { colors } = useTheme();
   const s = useMemo(() => makeStyles(colors), [colors]);
   const ink = useMemo(() => statsInk(colors), [colors]);
@@ -50,7 +54,7 @@ export function StatsKit({ range, today, stats: A, mostSecs, mobileLimitBytes, o
   );
 
   // Downloads
-  const per = crateUnit(A.finished);
+  const per = crateUnit(A.finished, CRATE_CAP);
   // Always one line under the number, chips or not, so the card keeps one height and the number one place.
   const chips =
     A.failed || A.cancelled ? (
@@ -98,47 +102,46 @@ export function StatsKit({ range, today, stats: A, mostSecs, mobileLimitBytes, o
     />
   );
 
+  // Streak card: built, and off until the owner decides (SHOW_STREAK_CARD in utils/stats/delight.ts). Its fire starts at the flame.
+  const streak = SHOW_STREAK_CARD ? (
+    <StatCard
+      full
+      box="full"
+      title="Longest streak"
+      value={A.knownDays.length === 0 ? <BigValue /> : <BigValue parts={[{ n: String(A.streak.days), unit: A.streak.days === 1 ? 'day' : 'days' }]} tone={A.streak.days ? 'normal' : 'dim'} />}
+      sub={A.includesToday && A.knownDays.length > 0 ? <Text style={s.sub}>{`Now: ${fmtDays(A.currentStreak)}`}</Text> : null}
+      picture={<Fire stage={fireStage(A.includesToday ? A.currentStreak : 0)} ink={ink} />}
+      onPress={
+        A.knownDays.length === 0
+          ? undefined
+          : () =>
+              onOpen({
+                title: 'Longest streak',
+                rows: [
+                  ['Longest', A.streak.days ? fmtDays(A.streak.days) : '—'],
+                  ['When', A.streak.days > 1 && A.streak.from != null && A.streak.to != null ? `${shortDate(A.streak.from)}–${shortDate(A.streak.to)}` : A.streak.from != null ? shortDate(A.streak.from) : '—'],
+                  ...(A.includesToday ? ([['Now', fmtDays(A.currentStreak)]] as [string, string][]) : []),
+                  ['A day counts when', 'something finishes'],
+                ],
+              })
+      }
+      accessibilityLabel={A.knownDays.length === 0 ? 'Longest streak: unknown' : `Longest streak: ${fmtDays(A.streak.days)}${A.includesToday ? `. Now: ${fmtDays(A.currentStreak)}` : ''}`}
+    />
+  ) : null;
+
   // Habits
-  let streak: React.ReactNode;
-  if (A.knownDays.length === 0) {
-    streak = <StatCard full box="none" title="Longest streak" value={<BigValue />} accessibilityLabel="Longest streak: unknown" />;
-  } else if (A.sinceFirst > 0 && A.sinceFirst <= 3 && A.includesToday) {
-    streak = <StatCard full box="none" title="Stats started" value={<BigValue text={`Day ${A.sinceFirst}`} />} accessibilityLabel={`Stats started ${A.sinceFirst} days ago`} />;
-  } else {
-    const when = A.streak.days > 1 && A.streak.from != null && A.streak.to != null ? `${shortDate(A.streak.from)}–${shortDate(A.streak.to)}` : A.streak.from != null ? shortDate(A.streak.from) : '—';
-    streak = (
-      <StatCard
-        full
-        box="full"
-        title="Longest streak"
-        value={<BigValue parts={[{ n: String(A.streak.days), unit: A.streak.days === 1 ? 'day' : 'days' }]} tone={A.streak.days ? 'normal' : 'dim'} />}
-        sub={A.includesToday ? <Text style={s.sub}>{`Now: ${fmtDays(A.currentStreak)}`}</Text> : null}
-        picture={<Lamps days={A.knownDays} today={today} ink={ink} />}
-        onPress={() =>
-          onOpen({
-            title: 'Longest streak',
-            rows: [
-              ['Longest', A.streak.days ? fmtDays(A.streak.days) : '—'],
-              ['When', when],
-              ...(A.includesToday ? ([['Now', fmtDays(A.currentStreak)]] as [string, string][]) : []),
-              ['A day counts when', 'something finishes'],
-            ],
-          })
-        }
-        accessibilityLabel={`Longest streak: ${fmtDays(A.streak.days)}${A.includesToday ? `. Now: ${fmtDays(A.currentStreak)}` : ''}`}
-      />
-    );
-  }
+  const ready = A.peakHour != null && hourReady(A.hours);
   const hour = (
     <StatCard
       full
-      box="dial"
+      box="full"
       title="Downloads usually finish"
-      pre={A.peakHour != null ? <Text style={s.sub}>around</Text> : null}
-      value={A.peakHour != null ? <BigValue text={fmtHour(A.peakHour)} /> : <BigValue />}
-      picture={<HourDial hours={A.peakHour != null ? A.hours : null} peak={A.peakHour} ink={ink} />}
-      onPress={A.peakHour != null ? () => onOpen({ title: 'Downloads usually finish', rows: [['Around', fmtHour(A.peakHour!)], ['Counted from', 'when each download finished']] }) : undefined}
-      accessibilityLabel={A.peakHour != null ? `Downloads usually finish around ${fmtHour(A.peakHour)}` : 'Downloads usually finish: unknown'}
+      pre={ready ? <Text style={s.sub}>around</Text> : null}
+      value={ready ? <BigValue text={fmtHour(A.peakHour!)} /> : <BigValue text={A.peakHour != null ? 'Not yet' : undefined} tone="dim" />}
+      sub={ready ? null : A.peakHour != null ? <Text style={s.sub}>Shows after 5 finished downloads</Text> : null}
+      picture={<Clock hour={ready ? A.peakHour : null} ink={ink} />}
+      onPress={ready ? () => onOpen({ title: 'Downloads usually finish', rows: [['Around', fmtHour(A.peakHour!)], ['Counted from', 'when each download finished']] }) : undefined}
+      accessibilityLabel={ready ? `Downloads usually finish around ${fmtHour(A.peakHour!)}` : 'Downloads usually finish: not enough downloads yet'}
     />
   );
 
@@ -215,10 +218,14 @@ export function StatsKit({ range, today, stats: A, mostSecs, mobileLimitBytes, o
 
   return (
     <View>
-      {sec('Downloads', <>{finished}{time}{speed}</>)}
-      {sec('Habits', <>{streak}{hour}</>)}
+      {sec('Downloads', <>{finished}{time}{speed}{streak}</>)}
+      {thin ? (
+        <Text style={s.quiet}>Habits and records show up after a week of downloads.</Text>
+      ) : (
+        sec('Habits', hour)
+      )}
       {sec('Data', <>{mobile}{shared}</>)}
-      {sec('Records', records)}
+      {thin ? null : sec('Records', records)}
       {sec('What you download', <WhatYouDownload stats={A} onOpen={onOpen} />)}
     </View>
   );
@@ -306,6 +313,7 @@ const makeStyles = (c: ThemeColors) =>
     sectionTitle: { ...type.bodyStrong, fontSize: 12, color: c.textMuted, paddingHorizontal: spacing.xs, paddingBottom: spacing.sm },
     grid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
     sub: { ...type.body, fontSize: 12, lineHeight: 16, color: c.textMuted },
+    quiet: { ...type.body, fontSize: 13, lineHeight: 18, color: c.textMuted, marginTop: spacing.xxl, paddingHorizontal: spacing.xs },
     notes: { flexDirection: 'row', gap: 6 },
     note: { ...type.body, fontSize: 11, lineHeight: 18, height: 20, paddingHorizontal: 6, borderRadius: radius.sm, borderWidth: 1, borderColor: c.borderStrong, color: c.textMuted, overflow: 'hidden' },
     noteBad: { borderColor: c.danger, color: c.danger },

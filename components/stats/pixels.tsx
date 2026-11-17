@@ -43,10 +43,10 @@ export interface PicLabel {
 
 const crisp = { shapeRendering: 'crispEdges' } as object;
 
-/** A picture at 1 unit = 1 dp, drawn crisp. */
-export function PixelPic({ w, h, layers, labels, label }: { w: number; h: number; layers: Layer[]; labels?: PicLabel[]; label: string }) {
+/** A picture drawn crisp. `scale` is dp per unit (default 1). */
+export function PixelPic({ w, h, layers, labels, label, scale = 1 }: { w: number; h: number; layers: Layer[]; labels?: PicLabel[]; label: string; scale?: number }) {
   return (
-    <Svg width={w} height={h} viewBox={`0 0 ${w} ${h}`} accessible accessibilityRole="image" accessibilityLabel={label} {...crisp}>
+    <Svg width={w * scale} height={h * scale} viewBox={`0 0 ${w} ${h}`} accessible accessibilityRole="image" accessibilityLabel={label} {...crisp}>
       {layers.map((l, i) => (l.d ? <Path key={i} d={l.d} fill={l.fill} {...crisp} /> : null))}
       {labels?.map((t, i) => (
         <SvgText key={`t${i}`} x={t.x} y={t.y} textAnchor={t.anchor} fontSize={11} fontFamily={t.fontFamily} fill={t.fill}>
@@ -55,4 +55,76 @@ export function PixelPic({ w, h, layers, labels, label }: { w: number; h: number
       ))}
     </Svg>
   );
+}
+
+/** Which colour an art pixel takes: `s` structure (muted), `a` the accent. */
+export type Key = 's' | 'a';
+
+/** A square pixel-art grid. Build with p/h/v/line/ring/frame, then `layers(structure, accent)` gives one path per colour. */
+export class Pix {
+  private cells = new Map<string, Key>();
+  constructor(readonly n: number) {}
+  p(x: number, y: number, k: Key): this {
+    if (x >= 0 && y >= 0 && x < this.n && y < this.n) this.cells.set(`${x},${y}`, k);
+    return this;
+  }
+  h(x0: number, x1: number, y: number, k: Key): this {
+    for (let x = x0; x <= x1; x++) this.p(x, y, k);
+    return this;
+  }
+  v(x: number, y0: number, y1: number, k: Key): this {
+    for (let y = y0; y <= y1; y++) this.p(x, y, k);
+    return this;
+  }
+  frame(x: number, y: number, w: number, hh: number, k: Key): this {
+    return this.h(x, x + w - 1, y, k).h(x, x + w - 1, y + hh - 1, k).v(x, y, y + hh - 1, k).v(x + w - 1, y, y + hh - 1, k);
+  }
+  fill(x: number, y: number, w: number, hh: number, k: Key): this {
+    for (let j = 0; j < hh; j++) this.h(x, x + w - 1, y + j, k);
+    return this;
+  }
+  /** A one-pixel line (Bresenham). */
+  line(x0: number, y0: number, x1: number, y1: number, k: Key): this {
+    const dx = Math.abs(x1 - x0);
+    const dy = -Math.abs(y1 - y0);
+    const sx = x0 < x1 ? 1 : -1;
+    const sy = y0 < y1 ? 1 : -1;
+    let err = dx + dy;
+    let x = x0;
+    let y = y0;
+    for (;;) {
+      this.p(x, y, k);
+      if (x === x1 && y === y1) break;
+      const e2 = 2 * err;
+      if (e2 >= dy) {
+        err += dy;
+        x += sx;
+      }
+      if (e2 <= dx) {
+        err += dx;
+        y += sy;
+      }
+    }
+    return this;
+  }
+  /** A one-pixel circle outline; `pick` may choose the colour per pixel. */
+  ring(cx: number, cy: number, r: number, pick: (x: number, y: number) => Key): this {
+    for (let y = cy - r; y <= cy + r; y++) {
+      for (let x = cx - r; x <= cx + r; x++) {
+        const d = Math.hypot(x - cx, y - cy);
+        if (d <= r + 0.35 && d > r - 0.85) this.p(x, y, pick(x, y));
+      }
+    }
+    return this;
+  }
+  layers(structure: string, accent: string): Layer[] {
+    let s = '';
+    let a = '';
+    this.cells.forEach((k, key) => {
+      const [x, y] = key.split(',').map(Number);
+      if (k === 'a') a += rectD(x, y, 1, 1);
+      else s += rectD(x, y, 1, 1);
+    });
+    return [{ d: s, fill: structure }, { d: a, fill: accent }];
+  }
 }

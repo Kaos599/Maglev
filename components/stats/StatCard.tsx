@@ -45,7 +45,7 @@ export interface StatCardProps {
   /** Under the value: inside the value block on a full card, in the fixed sub-line row on a half tile. */
   sub?: React.ReactNode;
   picture?: React.ReactNode;
-  /** half 44 x 44, full 132 x 56, dial 132 x 88. */
+  /** Every picture sits in the same 40 dp box (20 art pixels at 2 dp). 'none' for a card without one. */
   box?: 'half' | 'full' | 'dial' | 'none';
   full?: boolean;
   icon?: PixelIconName;
@@ -53,7 +53,8 @@ export interface StatCardProps {
   accessibilityLabel: string;
 }
 
-const BOX = { half: { width: 44, height: 44 }, full: { width: 132, height: 56 }, dial: { width: 132, height: 88 }, none: { width: 0, height: 0 } };
+const PIC_BOX = { width: 40, height: 40 };
+const BOX = { half: PIC_BOX, full: PIC_BOX, dial: PIC_BOX, none: { width: 0, height: 0 } };
 
 export function StatCard({ title, onPress, value, pre, sub, picture, box = 'half', full = false, icon, iconColor, accessibilityLabel }: StatCardProps) {
   const { colors } = useTheme();

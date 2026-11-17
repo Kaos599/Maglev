@@ -447,6 +447,23 @@ export function longestStreakIn(daily: readonly DailyRow[], r: StatsRange, today
 const finishDay = (r: StatsRecord, tz?: number) => dayNumber(dayKey(r.finishedAt * 1000, tz));
 const recordsIn = (records: readonly StatsRecord[], r: StatsRange, tz?: number) => records.filter((x) => x.finishedAt > 0 && rangeHolds(r, finishDay(x, tz)));
 
+/**
+ * Seconds spent downloading in a range (NATIVE_CONTRACT 34.2, 0.27). Each day's figure comes from stats_daily, which counts live;
+ * a day with none stored (before 0.27) falls back to the time of the items that finished that day. No backfill beyond that.
+ */
+export function activeSecsIn(daily: readonly DailyRow[], records: readonly StatsRecord[], r: StatsRange, tz?: number): number {
+  const stored = new Map<number, number>();
+  for (const d of daily) {
+    const n = dayNumber(d.day);
+    const v = Number(d.activeSecs);
+    if (rangeHolds(r, n) && Number.isFinite(v) && v > 0) stored.set(n, (stored.get(n) ?? 0) + v);
+  }
+  let total = 0;
+  for (const v of stored.values()) total += v;
+  for (const x of recordsIn(records, r, tz)) if (!stored.has(finishDay(x, tz))) total += x.activeSecs;
+  return total;
+}
+
 /** Finished items per local hour inside the range, and the hour most finished in (null with none). */
 export function finishHours(records: readonly StatsRecord[], r: StatsRange, tz?: number): { hours: number[]; peak: number | null } {
   const hours = new Array<number>(24).fill(0);
@@ -529,9 +546,9 @@ export interface RangeStats {
   finished: number;
   failed: number;
   cancelled: number;
-  /** Seconds spent downloading, from items that finished in the range. */
+  /** Seconds spent downloading in the range, from stats_daily (live), else from the items that finished that day (before 0.27). */
   activeSecs: number;
-  /** Bytes per second: all bytes / all active time of items with both; null with none. */
+  /** Bytes per second: the range's downloaded bytes / its active seconds; null when either is 0. */
   avgBps: number | null;
   biggest: (RecordAt & { size: number }) | null;
   quickest: (RecordAt & { bps: number }) | null;
@@ -566,10 +583,10 @@ export function rangeStats(input: Pick<InsightsInput, 'records' | 'daily' | 'now
   const inDays = daily.filter((d) => rangeHolds(r, dayNumber(d.day)));
   sumDaily(inDays, t);
   const recs = recordsIn(records, r, tz);
-  const activeSecs = recs.reduce((s, x) => s + x.activeSecs, 0);
-  // Any item with bytes and time counts, however short: average speed is bytes / active time (a 2 s, 10 MB download is 5 MB/s).
+  const activeSecs = activeSecsIn(daily, records, r, tz);
+  // Average speed is what the range downloaded over the time it spent downloading, so it moves while a download runs ("—" when either is 0).
   const timed = recs.filter((x) => x.activeSecs > 0 && x.sessionBytes > 0);
-  const avgBps = ratio(timed.reduce((s, x) => s + x.sessionBytes, 0), timed.reduce((s, x) => s + x.activeSecs, 0));
+  const avgBps = ratio(t.downloaded, activeSecs);
   const top = <T>(rs: readonly StatsRecord[], score: (x: StatsRecord) => number, make: (x: StatsRecord, s: number) => T): T | null => {
     let best: StatsRecord | null = null;
     let bs = 0;
@@ -626,12 +643,12 @@ export function rangeStats(input: Pick<InsightsInput, 'records' | 'daily' | 'now
 }
 
 /** The most time spent downloading in one range of this kind, looking back up to 12 ranges (not before the first stats day). */
-export function mostInOneRange(records: readonly StatsRecord[], r: StatsRange, tz: number | undefined, firstDay: number | null): number {
+export function mostInOneRange(records: readonly StatsRecord[], r: StatsRange, tz: number | undefined, firstDay: number | null, daily: readonly DailyRow[] = []): number {
   if (firstDay == null) return 0;
   let best = 0;
   let cur = r;
   for (let i = 0; i < 12 && cur.end >= firstDay; i++) {
-    best = Math.max(best, recordsIn(records, cur, tz).reduce((s, x) => s + x.activeSecs, 0));
+    best = Math.max(best, activeSecsIn(daily, records, cur, tz));
     cur = stepRange(cur, -1);
   }
   return best;

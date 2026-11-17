@@ -166,7 +166,7 @@ async function main() {
   const R = I.rangeStats({ records: rsRecs, daily: rsDaily, now: Date.UTC(2026, 10, 16, 12), tz: 0 }, wk2);
   check('totals from the daily rows in range', R.downloaded === 8 * GB && R.uploaded === GB && R.mobile === 200 * MBy && R.finished === 3 && R.failed === 1 && R.cancelled === 1);
   check('time spent from records in range', R.activeSecs === 411);
-  check('average speed is all bytes / all active time', R.avgBps === (5 * GB + 10) / 411);
+  check('average speed is the range\u2019s downloaded bytes / its active seconds (0.27, from stats_daily)', R.avgBps === (8 * GB) / 411);
   check('biggest in range', R.biggest.name === 'big' && R.biggest.size === 4 * GB);
   check('quickest in range', R.quickest.name === 'fast');
   check('longest in range', R.longest.name === 'big' && R.longest.activeSecs === 400);

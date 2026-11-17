@@ -20,6 +20,8 @@ export function statsInk(c: ThemeColors) {
     data: c.download,
     dataSoft: alpha(c.download, 0.5),
     heat: [alpha(c.download, 0.45), alpha(c.download, 0.7), c.download] as const,
+    /** Card pictures: structure is muted at 60%, plus one accent (accent for done and finish, `data` cyan for time and speed). */
+    pic: alpha(c.textMuted, 0.6),
     hi: c.accentText,
     text: c.text,
     muted: c.textMuted,

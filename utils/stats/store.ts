@@ -14,7 +14,7 @@ type RecRow = {
   active_secs: number; session_bytes: number; uploaded: number; bytes_wifi: number; bytes_mobile: number;
   added_at: number; finished_at: number; retries: number;
 };
-type DayRow = { day: string; downloaded: number; uploaded: number; mobile: number; wifi: number; finished: number; failed: number; cancelled: number };
+type DayRow = { day: string; downloaded: number; uploaded: number; mobile: number; wifi: number; finished: number; failed: number; cancelled: number; active_secs?: number };
 type MonRow = { month: string; downloaded: number; uploaded: number; wifi: number; mobile: number; finished: number; active_secs: number; retried: number };
 
 const toRecord = (r: RecRow): StatsRecord => ({
@@ -25,7 +25,7 @@ const toRecord = (r: RecRow): StatsRecord => ({
 });
 const toDaily = (r: DayRow): DailyRow => ({
   day: String(r.day), downloaded: Number(r.downloaded), uploaded: Number(r.uploaded), mobile: Number(r.mobile),
-  wifi: Number(r.wifi), finished: Number(r.finished), failed: Number(r.failed), cancelled: Number(r.cancelled),
+  wifi: Number(r.wifi), finished: Number(r.finished), failed: Number(r.failed), cancelled: Number(r.cancelled), activeSecs: Number(r.active_secs ?? 0),
 });
 const toMonthly = (r: MonRow): MonthlyRow => ({
   month: String(r.month), downloaded: Number(r.downloaded), uploaded: Number(r.uploaded), wifi: Number(r.wifi),
@@ -48,13 +48,13 @@ export function createStatsStore(db: StatsDb, _prefs: () => StatsPrefs) {
   };
 
   async function addDaily(day: string, d: Partial<DayCounts>): Promise<void> {
-    const v = { downloaded: 0, uploaded: 0, mobile: 0, wifi: 0, finished: 0, failed: 0, cancelled: 0, ...d };
+    const v = { downloaded: 0, uploaded: 0, mobile: 0, wifi: 0, finished: 0, failed: 0, cancelled: 0, activeSecs: 0, ...d };
     await db.run(
-      `INSERT INTO stats_daily (day, downloaded, uploaded, mobile, wifi, finished, failed, cancelled) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      `INSERT INTO stats_daily (day, downloaded, uploaded, mobile, wifi, finished, failed, cancelled, active_secs) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(day) DO UPDATE SET downloaded = downloaded + excluded.downloaded, uploaded = uploaded + excluded.uploaded,
          mobile = mobile + excluded.mobile, wifi = wifi + excluded.wifi, finished = finished + excluded.finished,
-         failed = failed + excluded.failed, cancelled = cancelled + excluded.cancelled`,
-      [day, v.downloaded, v.uploaded, v.mobile, v.wifi, v.finished, v.failed, v.cancelled],
+         failed = failed + excluded.failed, cancelled = cancelled + excluded.cancelled, active_secs = active_secs + excluded.active_secs`,
+      [day, v.downloaded, v.uploaded, v.mobile, v.wifi, v.finished, v.failed, v.cancelled, Math.max(0, Math.floor(v.activeSecs))],
     );
     notify();
   }
@@ -145,8 +145,8 @@ export function createStatsStore(db: StatsDb, _prefs: () => StatsPrefs) {
     }
     for (const d of s.daily) {
       const res = await db.run(
-        'INSERT OR IGNORE INTO stats_daily (day, downloaded, uploaded, mobile, wifi, finished, failed, cancelled) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-        [d.day, d.downloaded, d.uploaded, d.mobile, d.wifi, d.finished, d.failed, d.cancelled],
+        'INSERT OR IGNORE INTO stats_daily (day, downloaded, uploaded, mobile, wifi, finished, failed, cancelled, active_secs) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        [d.day, d.downloaded, d.uploaded, d.mobile, d.wifi, d.finished, d.failed, d.cancelled, d.activeSecs ?? 0],
       );
       out.daily += res.changes;
     }

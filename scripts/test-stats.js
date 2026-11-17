@@ -228,11 +228,11 @@ async function main() {
     mk('r4', { finishedAt: S(Date.UTC(2026, 10, 16, 3, 0)), sessionBytes: 2000, size: 2000, activeSecs: 100, source: 'tpb' }),
   ];
   const daily = [
-    { day: '2026-10-30', downloaded: 100, uploaded: 10, mobile: 0, wifi: 110, finished: 1, failed: 0, cancelled: 0 },
-    { day: '2026-10-31', downloaded: 300, uploaded: 0, mobile: 50, wifi: 250, finished: 1, failed: 1, cancelled: 0 },
-    { day: '2026-11-01', downloaded: 9000, uploaded: 0, mobile: 9000, wifi: 0, finished: 2, failed: 0, cancelled: 1 },
-    { day: '2026-11-15', downloaded: 500, uploaded: 5, mobile: 0, wifi: 505, finished: 1, failed: 0, cancelled: 0 },
-    { day: '2026-11-16', downloaded: 2000, uploaded: 0, mobile: 0, wifi: 2000, finished: 1, failed: 0, cancelled: 0 },
+    { day: '2026-10-30', downloaded: 100, uploaded: 10, mobile: 0, wifi: 110, finished: 1, failed: 0, cancelled: 0, activeSecs: 0 },
+    { day: '2026-10-31', downloaded: 300, uploaded: 0, mobile: 50, wifi: 250, finished: 1, failed: 1, cancelled: 0, activeSecs: 0 },
+    { day: '2026-11-01', downloaded: 9000, uploaded: 0, mobile: 9000, wifi: 0, finished: 2, failed: 0, cancelled: 1, activeSecs: 0 },
+    { day: '2026-11-15', downloaded: 500, uploaded: 5, mobile: 0, wifi: 505, finished: 1, failed: 0, cancelled: 0, activeSecs: 0 },
+    { day: '2026-11-16', downloaded: 2000, uploaded: 0, mobile: 0, wifi: 2000, finished: 1, failed: 0, cancelled: 0, activeSecs: 0 },
   ];
   const monthly = [{ month: '2024-01', downloaded: 100, uploaded: 0, wifi: 100, mobile: 0, finished: 3, activeSecs: 30, retried: 1 }];
   const ins = Ins.computeInsights({ records: fx, daily, monthly, now: T0, tz: 330, mobileLimitMb: 10 });

@@ -77,9 +77,9 @@ export const dayLabel = dayLabelOf;
 export const shortDate = shortDateOf;
 export const spanLabel = spanLabelOf;
 
-/** One crate stands for this many finished downloads, so the train never carries more than 24 crates. */
-export function crateUnit(finished: number): number {
-  return [1, 2, 5, 10, 20, 50, 100, 200, 500].find((n) => Math.ceil(finished / n) <= 24) ?? 1000;
+/** One crate stands for this many finished downloads, so a picture never carries more than `cap` crates (24 by default). */
+export function crateUnit(finished: number, cap = 24): number {
+  return [1, 2, 5, 10, 20, 50, 100, 200, 500].find((n) => Math.ceil(finished / n) <= cap) ?? 1000;
 }
 
 /** The speedometer's top, in MB/s. */

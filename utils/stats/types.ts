@@ -29,6 +29,8 @@ export interface DayCounts {
   finished: number;
   failed: number;
   cancelled: number;
+  /** Seconds items spent Downloading that day, summed over items (NATIVE_CONTRACT 34.2, 0.27). Days before 0.27 read 0. */
+  activeSecs: number;
 }
 
 /** `day` is the local calendar day, YYYY-MM-DD. */
@@ -48,4 +50,4 @@ export interface MonthlyRow {
   retried: number;
 }
 
-export const zeroDay = (): DayCounts => ({ downloaded: 0, uploaded: 0, mobile: 0, wifi: 0, finished: 0, failed: 0, cancelled: 0 });
+export const zeroDay = (): DayCounts => ({ downloaded: 0, uploaded: 0, mobile: 0, wifi: 0, finished: 0, failed: 0, cancelled: 0, activeSecs: 0 });

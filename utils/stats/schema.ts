@@ -12,7 +12,15 @@ export interface StatsDb {
 export const STATS_DB_NAME = 'maglev-stats.db';
 
 /** One entry per schema version, oldest first. Never edit a shipped entry: add a new one. */
-export const MIGRATIONS: readonly (readonly string[])[] = [
+/** A step is SQL, or a function for a change SQL cannot make safely twice (ALTER TABLE ADD COLUMN). */
+export type Step = string | ((db: StatsDb) => Promise<void>);
+
+async function addColumn(db: StatsDb, table: string, column: string, ddl: string): Promise<void> {
+  const cols = await db.all<{ name: string }>(`PRAGMA table_info(${table})`);
+  if (!cols.some((c) => c.name === column)) await db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${ddl}`);
+}
+
+export const MIGRATIONS: readonly (readonly Step[])[] = [
   [
     `CREATE TABLE IF NOT EXISTS stats (
       id TEXT PRIMARY KEY,
@@ -52,6 +60,8 @@ export const MIGRATIONS: readonly (readonly string[])[] = [
       retried INTEGER NOT NULL DEFAULT 0
     )`,
   ],
+  // 0.27: live time. Old rows read 0; a crash between the ALTER and the version bump is harmless because the column is checked first.
+  [(db) => addColumn(db, 'stats_daily', 'active_secs', 'INTEGER NOT NULL DEFAULT 0')],
 ];
 
 export const STATS_VERSION = MIGRATIONS.length;
@@ -61,7 +71,7 @@ export async function migrate(db: StatsDb): Promise<void> {
   const rows = await db.all<{ user_version: number }>('PRAGMA user_version');
   let current = Number(rows[0]?.user_version ?? 0);
   while (current < STATS_VERSION) {
-    for (const sql of MIGRATIONS[current]) await db.exec(sql);
+    for (const step of MIGRATIONS[current]) await (typeof step === 'string' ? db.exec(step) : step(db));
     current++;
     await db.exec(`PRAGMA user_version = ${current}`);
   }

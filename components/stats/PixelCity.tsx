@@ -2,19 +2,26 @@
  * The Pixel city: one building per bucket (days in a week or month, Monday-start weeks in a year). Height is bytes
  * downloaded, lit windows are downloads finished, the busiest building has an accent outline and label, the moon or sun
  * sits at the hour most downloads finished. Drawn with react-native-svg at an integer scale where the width allows,
- * every shape a crisp rectangle. Drag across it, or use the steppers, to read one building.
+ * every shape a crisp rectangle.
+ *
+ * The train is the day cursor (0.27): it rides the rail under the buildings, follows a finger and snaps to the nearest day on
+ * release, with a small lime tick under the selected day. The first open plays a run, Monday to today, raising each building
+ * as the train reaches it. The rail ends at the last built day in a drawn buffer stop; past it the train just stops (no
+ * bounce). Finished downloads are wagons behind the train. Reduce motion: no run, the train sits on a whole day.
  */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { LayoutChangeEvent, StyleSheet, Text, View, type AccessibilityActionEvent } from 'react-native';
+import { Animated, Easing, LayoutChangeEvent, StyleSheet, Text, View, type AccessibilityActionEvent } from 'react-native';
 import { GestureDetector, useExclusiveGestures, usePanGesture, useTapGesture } from 'react-native-gesture-handler';
 import Svg, { Path, Text as SvgText } from 'react-native-svg';
 import { useTheme } from '../../context/ThemeContext';
 import { easeOutCubic, type ThemeColors, type as typeTokens } from '../../constants/theme';
+import { haptic } from '../../constants/haptics';
 import { MaglevMark } from '../brand/MaglevMark';
-import { MARK_FX_COMPACT } from '../brand/markPaths';
+import { MARK_FX_COMPACT, MARK_RATIO } from '../brand/markPaths';
 import { useReduceMotion } from '../motion';
 import { fmtSize } from '../../utils/stats/format';
 import { dayOfDate, partsOf, weekdayOf } from '../../utils/stats/time';
+import { centreOf, cursorAt, lastBuilt, riseStart, snapIndex, wagonCount } from './trainMath';
 import type { Bucket, RangeKind } from '../../utils/stats/insights';
 import { frameD, rectD, spriteD, SPRITES } from './pixels';
 import { statsInk } from './ink';
@@ -23,11 +30,16 @@ const H = 78;
 const BASE = 62;
 const RAIL_Y = 75;
 const TRAIN_H = 8;
-const TRAIN_X = 2;
+/** The mark is 44 view-box units tall and drawn 8 scene units tall; its body centre is at x = 71.5 of a view box that starts at 10. */
+const VS = 44 / TRAIN_H;
+const BODYC = (71.5 - 10) / VS;
+const TRAIN_TOP = RAIL_Y - (83.25 - 42) / VS;
+const RUN_MS = 1200;
 const DESIGN_W = 163;
 const MONTHS = ['J', 'F', 'M', 'A', 'M', 'J', 'J', 'A', 'S', 'O', 'N', 'D'];
 const DOW = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const CRUISE_LOOPS = 3;
+const WAGON_CAP = 6;
 
 /** The city rises once per app run; after that a range change is a cross-fade. */
 let roseThisRun = false;
@@ -57,6 +69,10 @@ export interface PixelCityProps {
   minIndex: number;
   /** Hour most downloads finished in the range, or null. */
   peakHour: number | null;
+  /** Downloads finished in the range: one wagon each behind the train, never more than six. */
+  finished: number;
+  /** Something is downloading now: today's roof is cyan. */
+  live: boolean;
   /** Off, day one or an empty range: the city is still and does not answer touches. */
   inert: boolean;
   onPick: (i: number) => void;
@@ -64,7 +80,7 @@ export interface PixelCityProps {
   valueText: string;
 }
 
-export function PixelCity({ kind, buckets, busiest, selected, minIndex, peakHour, inert, onPick, accessibilityLabel, valueText }: PixelCityProps) {
+export function PixelCity({ kind, buckets, busiest, selected, minIndex, peakHour, finished, live, inert, onPick, accessibilityLabel, valueText }: PixelCityProps) {
   const { colors } = useTheme();
   const ink = useMemo(() => statsInk(colors), [colors]);
   const s = useMemo(() => makeStyles(colors), [colors]);
@@ -82,15 +98,21 @@ export function PixelCity({ kind, buckets, busiest, selected, minIndex, peakHour
     return buckets.map((b) => (b.downloaded > 0 && mx > 0 ? Math.max(2, Math.round((L.maxh * b.downloaded) / mx)) : 0));
   }, [buckets, L.maxh]);
 
-  // First open: buildings rise (220 ms each, staggered, ease-out). Reduce motion: still.
+  const hi = useMemo(() => lastBuilt(buckets), [buckets]);
+
+  // First open: the train runs from the first day to the last built one and each building rises (220 ms, ease-out) as it
+  // is reached. Reduce motion or a range with nothing to show: still.
   const [t, setT] = useState<number | null>(() => (roseThisRun || reduce ? null : 0));
+  const cx = useRef(new Animated.Value(0)).current;
   useEffect(() => {
     if (t === null || width === 0 || buckets.length === 0) return;
     roseThisRun = true;
-    const stagger = Math.min(8, 300 / buckets.length);
-    const total = 220 + stagger * buckets.length;
+    const total = RUN_MS + 220;
     let raf = 0;
     const t0 = Date.now();
+    cx.setValue(centreOf(L, Math.max(0, minIndex)));
+    const run = Animated.timing(cx, { toValue: centreOf(L, Math.max(0, hi)), duration: RUN_MS, easing: Easing.linear, useNativeDriver: true });
+    run.start();
     const step = () => {
       const e = Date.now() - t0;
       if (e >= total) {
@@ -101,12 +123,15 @@ export function PixelCity({ kind, buckets, busiest, selected, minIndex, peakHour
       raf = requestAnimationFrame(step);
     };
     raf = requestAnimationFrame(step);
-    return () => cancelAnimationFrame(raf);
+    return () => {
+      cancelAnimationFrame(raf);
+      run.stop();
+    };
     // Runs once, when the city first has a size.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [width > 0, buckets.length > 0]);
 
-  // The train dashes a few loops on first open, then rests.
+  // The train settles briefly after the run, then rests. It carries wagons instead of speed lines when it has any.
   const [cruising, setCruising] = useState(false);
   useEffect(() => {
     if (reduce || inert) return;
@@ -126,8 +151,8 @@ export function PixelCity({ kind, buckets, busiest, selected, minIndex, peakHour
     let wOff = '';
     let wOn = '';
     let now = '';
+    let roof = '';
     let busy = '';
-    const stagger = Math.min(8, 300 / Math.max(1, buckets.length));
     buckets.forEach((b, i) => {
       const px = ux(i);
       const alt = kind === 'year' ? partsOf(b.start).m % 2 === 1 : b.weekend;
@@ -136,11 +161,12 @@ export function PixelCity({ kind, buckets, busiest, selected, minIndex, peakHour
       else gA += g;
       if (b.future) for (let k = 0; k < L.bw; k += 2) fence += rectD(px + k, BASE - 1, 1, 1);
       const full = heights[i];
-      const h = t == null ? full : Math.round(full * easeOutCubic((t - i * stagger) / 220));
+      const h = t == null ? full : Math.round(full * easeOutCubic((t - riseStart(i, Math.max(0, hi), RUN_MS)) / 220));
       const top = BASE - h;
       if (b.current) {
         const nh = Math.max(3, h);
         now += frameD(px, BASE - nh, L.bw, nh);
+        if (live && h > 0) roof += rectD(px, BASE - h, L.bw, 1);
       }
       if (h > 0) {
         // Every building is filled, today's and the busiest too; their outlines are drawn on top.
@@ -157,8 +183,8 @@ export function PixelCity({ kind, buckets, busiest, selected, minIndex, peakHour
       }
       if (i === busiest && (h > 0 || t == null)) busy += frameD(px - 1, BASE - Math.max(3, h) - 1, L.bw + 2, Math.max(3, h) + 1);
     });
-    return { gA, gB, fence, bA, bB, wOff, wOn, now, busy };
-  }, [buckets, heights, t, ux, L, kind, busiest]);
+    return { gA, gB, fence, bA, bB, wOff, wOn, now, roof, busy };
+  }, [buckets, heights, t, ux, L, kind, busiest, hi, live]);
 
   const sky = useMemo(() => {
     if (peakHour == null) return null;
@@ -175,12 +201,12 @@ export function PixelCity({ kind, buckets, busiest, selected, minIndex, peakHour
     if (kind === 'week') {
       buckets.forEach((b, i) => {
         if (b.future) return;
-        const cx = ux(i) + L.bw / 2;
+        const mid = ux(i) + L.bw / 2;
         const top = BASE - Math.max(heights[i], 3);
         if (i === busiest) {
-          out.push({ x: cx, y: top - 9, text: 'Busiest', fill: ink.hi });
-          out.push({ x: cx, y: top - 3, text: fmtSize(b.downloaded), fill: ink.hi });
-        } else out.push({ x: cx, y: top - 3, text: b.downloaded > 0 ? fmtSize(b.downloaded) : '0', fill: ink.muted });
+          out.push({ x: mid, y: top - 9, text: 'Busiest', fill: ink.hi });
+          out.push({ x: mid, y: top - 3, text: fmtSize(b.downloaded), fill: ink.hi });
+        } else out.push({ x: mid, y: top - 3, text: b.downloaded > 0 ? fmtSize(b.downloaded) : '0', fill: ink.muted });
       });
       return out;
     }
@@ -192,33 +218,77 @@ export function PixelCity({ kind, buckets, busiest, selected, minIndex, peakHour
   }, [t, kind, buckets, ux, L.bw, heights, busiest, ink, W]);
   const tick = kind !== 'week' && busiest >= 0 && t == null ? rectD(ux(busiest) + Math.floor(L.bw / 2), BASE - heights[busiest] - 5, 1, 3) : '';
 
-  const sel = selected >= 0 && buckets[selected] ? frameD(ux(selected) - 2, BASE - Math.max(3, heights[selected]) - 2, L.bw + 4, Math.max(3, heights[selected]) + 2) : '';
+  // The lime tick under the selected day (the train sits above it).
+  const tickD = t == null && selected >= 0 && buckets[selected] ? rectD(Math.round(centreOf(L, selected) - 1), RAIL_Y + 1, 2, 2) : '';
 
-  // One touch across the whole city: snap to the nearest building by x.
-  const unitAt = useCallback(
-    (xDp: number) => {
-      const i = Math.round((xDp / scale - L.x0 - L.bw / 2) / L.pitch);
-      return Math.max(minIndex, Math.min(buckets.length - 1, i));
-    },
-    [scale, L, minIndex, buckets.length],
-  );
+  // The rail ends at the last built day in a buffer stop; beyond it the track is only dotted (days to come). The buffer is
+  // left out when it would not fit inside the scene.
+  const rail = useMemo(() => {
+    const future = hi >= 0 && hi < buckets.length - 1;
+    const pad = hi >= 0 ? ux(hi) + L.bw + 2 : W;
+    const fits = hi >= 0 && pad + 4 <= W;
+    const end = future && fits ? pad + 4 : W;
+    let dots = '';
+    if (future && fits) for (let x = end + 1; x < W; x += 2) dots += rectD(x, RAIL_Y, 1, 1);
+    return {
+      laid: rectD(0, RAIL_Y, end, 1),
+      dots,
+      post: fits ? rectD(pad, 68, 1, 1) + rectD(pad + 1, 68, 1, 7) + rectD(pad + 2, 70, 1, 1) + rectD(pad + 3, 71, 1, 4) : '',
+      pad: fits ? rectD(pad, 69, 1, 3) : '',
+    };
+  }, [hi, buckets.length, ux, L.bw, W]);
+
+  // Hold the train on the selected day, except while a finger or the opening run is moving it.
+  const dragging = useRef(false);
+  useEffect(() => {
+    if (width === 0 || t !== null || dragging.current) return;
+    const at = selected >= 0 && buckets[selected] ? selected : Math.max(0, hi);
+    const to = centreOf(L, at);
+    if (reduce) cx.setValue(to);
+    else Animated.timing(cx, { toValue: to, duration: 140, easing: Easing.out(Easing.cubic), useNativeDriver: true }).start();
+    // The train follows the selection and the layout, nothing else.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selected, hi, L, width, t, reduce, buckets.length]);
+
   const offsetX = (width - W * scale) / 2;
   // The gesture callbacks run on the JS thread and read the latest layout through a ref.
-  const live = useRef({ inert, onPick, unitAt, offsetX });
-  live.current = { inert, onPick, unitAt, offsetX };
-  const pickAt = (x: number) => {
-    const l = live.current;
-    if (!l.inert) l.onPick(l.unitAt(x - l.offsetX));
+  const live2 = useRef({ inert, onPick, L, minIndex, hi, scale, offsetX, reduce, selected });
+  live2.current = { inert, onPick, L, minIndex, hi, scale, offsetX, reduce, selected };
+  const pickAt = (x: number, release: boolean) => {
+    const l = live2.current;
+    if (l.inert || l.hi < 0) return;
+    const xs = (x - l.offsetX) / l.scale;
+    const idx = snapIndex(xs, l.L, l.minIndex, l.hi);
+    // The train follows the finger and stops at the first and last day; with Reduce motion it moves a whole day at a time.
+    if (!release) cx.setValue(cursorAt(xs, l.L, l.minIndex, l.hi, l.reduce));
+    if (idx !== l.selected) {
+      haptic('select');
+      l.onPick(idx);
+    }
+    live2.current.selected = idx;
+    if (release) {
+      dragging.current = false;
+      const to = centreOf(l.L, idx);
+      if (l.reduce) cx.setValue(to);
+      else Animated.timing(cx, { toValue: to, duration: 120, easing: Easing.out(Easing.cubic), useNativeDriver: true }).start();
+    }
   };
   // A horizontal drag scrubs from the first 8 dp; a vertical move of 12 dp fails it so the page scrolls instead.
   const pan = usePanGesture({
     runOnJS: true,
     activeOffsetX: [-8, 8],
     failOffsetY: [-12, 12],
-    onActivate: (e) => pickAt(e.x),
-    onUpdate: (e) => pickAt(e.x),
+    onActivate: (e) => {
+      dragging.current = true;
+      cx.stopAnimation();
+      pickAt(e.x, false);
+    },
+    onUpdate: (e) => pickAt(e.x, false),
+    onFinalize: (e) => {
+      if (dragging.current) pickAt(e.x, true);
+    },
   });
-  const tap = useTapGesture({ runOnJS: true, onActivate: (e) => pickAt(e.x) });
+  const tap = useTapGesture({ runOnJS: true, onActivate: (e) => pickAt(e.x, true) });
   const touch = useExclusiveGestures(pan, tap);
   const onAction = useCallback(
     (e: AccessibilityActionEvent) => {
@@ -253,7 +323,20 @@ export function PixelCity({ kind, buckets, busiest, selected, minIndex, peakHour
 
   const crisp = { shapeRendering: 'crispEdges' } as object;
   const trainH = Math.round(TRAIN_H * scale);
-  const trainTop = (RAIL_Y - (83.25 - 42) * (TRAIN_H / 44)) * scale;
+  const trainW = trainH * MARK_RATIO;
+  const wagonN = wagonCount(finished, WAGON_CAP);
+  // The train and its wagons move as one: translate by the cursor (scene units) to the host's left edge.
+  const move = useMemo(() => Animated.add(Animated.multiply(Animated.add(cx, -BODYC), scale), offsetX), [cx, scale, offsetX]);
+  const wagonD = useMemo(() => {
+    let deck = '';
+    let crate = '';
+    for (let w = 0; w < wagonN; w++) {
+      const x = 8 * (wagonN - 1 - w);
+      deck += rectD(x, 5, 7, 1) + rectD(x + 7, 4, 1, 1);
+      crate += frameD(x + 1, 0, 5, 5) + rectD(x + 2, 2, 3, 1);
+    }
+    return { deck, crate };
+  }, [wagonN]);
 
   return (
     <View onLayout={onLayout}>
@@ -279,6 +362,7 @@ export function PixelCity({ kind, buckets, busiest, selected, minIndex, peakHour
               <Path d={paths.wOff} fill={ink.winOff} {...crisp} />
               <Path d={paths.wOn} fill={ink.winOn} {...crisp} />
               <Path d={paths.now} fill={ink.lineStrong} {...crisp} />
+              <Path d={paths.roof} fill={ink.data} {...crisp} />
               <Path d={paths.busy} fill={ink.hi} {...crisp} />
               <Path d={paths.fence} fill={ink.line} {...crisp} />
               {tick ? <Path d={tick} fill={ink.hi} {...crisp} /> : null}
@@ -287,17 +371,33 @@ export function PixelCity({ kind, buckets, busiest, selected, minIndex, peakHour
                   {l.text}
                 </SvgText>
               ))}
-              <Path d={sel} fill={ink.text} {...crisp} />
-              <Path d={rectD(0, BASE, W, 1) + rectD(0, RAIL_Y, W, 1)} fill={ink.line} {...crisp} />
+              <Path d={rectD(0, BASE, W, 1)} fill={ink.line} {...crisp} />
+              <Path d={rail.laid} fill={ink.lineStrong} {...crisp} />
+              <Path d={rail.dots} fill={ink.line} {...crisp} />
+              <Path d={rail.post} fill={ink.lineStrong} {...crisp} />
+              <Path d={rail.pad} fill={ink.muted} {...crisp} />
+              <Path d={tickD} fill={ink.hi} {...crisp} />
             </Svg>
+          ) : null}
+          {width > 0 ? (
+            <Animated.View style={[s.train, { top: TRAIN_TOP * scale, width: trainW, height: trainH, transform: [{ translateX: move }] }]} pointerEvents="none">
+              {wagonN > 0 ? (
+                <Svg
+                  width={8 * wagonN * scale}
+                  height={6 * scale}
+                  viewBox={`0 0 ${8 * wagonN} 6`}
+                  style={{ position: 'absolute', left: (BODYC - 16 - 8 * (wagonN - 1)) * scale, top: (68 - TRAIN_TOP) * scale }}
+                  {...crisp}
+                >
+                  <Path d={wagonD.deck} fill={ink.lineStrong} {...crisp} />
+                  <Path d={wagonD.crate} fill={ink.hi} {...crisp} />
+                </Svg>
+              ) : null}
+              <MaglevMark height={trainH} cruising={cruising && wagonN === 0} />
+            </Animated.View>
           ) : null}
         </View>
       </GestureDetector>
-      {width > 0 ? (
-        <View style={[s.train, { left: offsetX + TRAIN_X * scale, top: trainTop }]}>
-          <MaglevMark height={trainH} cruising={cruising} tappable />
-        </View>
-      ) : null}
       <View style={s.axis} pointerEvents="none" importantForAccessibility="no-hide-descendants">
         {axis.map((a) => (
           <Text key={a.key} style={[s.axisText, a.centre ? [s.centre, { left: offsetX + a.left - 16 }] : { left: offsetX + a.left }]}>
@@ -311,7 +411,7 @@ export function PixelCity({ kind, buckets, busiest, selected, minIndex, peakHour
 
 const makeStyles = (c: ThemeColors) =>
   StyleSheet.create({
-    train: { position: 'absolute' },
+    train: { position: 'absolute', left: 0 },
     axis: { height: 16, marginTop: 2 },
     axisText: { ...typeTokens.mono, position: 'absolute', top: 0, fontSize: 11, lineHeight: 14, color: c.textMuted },
     centre: { width: 32, textAlign: 'center' },
