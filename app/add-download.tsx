@@ -123,7 +123,7 @@ export default function AddDownloadScreen() {
 
   // The `url` or `source` param (a share, a maglev:// link, or another screen) fills the field.
   // Only a share (`from=share`, set by app/+native-intent.tsx and stripped from every outside link)
-  // checks the link at once. Anything else waits for a tap, so a web page or app cannot make the
+  // or the Add torrent hand-off (`from=add-torrent`) checks the link at once. Anything else waits for a tap, so a web page or app cannot make the
   // phone fetch a link by opening maglev://add-download.
   const lastIncoming = useRef<string | null>(null);
   useEffect(() => {
@@ -133,7 +133,10 @@ export default function AddDownloadScreen() {
     lastIncoming.current = incoming;
     const shared = isShareOpen({ url: params.url, from: params.from });
     const clean = normalizeIncoming(incoming);
-    if (shared) {
+    // Add torrent hands a plain web link over with `from=add-torrent` (also stripped from outside links):
+    // the user already tapped Get info there, so run it once here instead of asking again.
+    const handoff = params.from === 'add-torrent' && isDownloadLink(clean);
+    if (shared || handoff) {
       setText(clean);
       void submit(clean);
       return;

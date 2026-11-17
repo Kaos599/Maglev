@@ -29,7 +29,7 @@
     "test:follow": "node scripts/test-follow.js",
     "test:done-actions": "node scripts/test-done-actions.js",
     "test:url-download": "node scripts/test-url-download.js",
-    "test:update": "node scripts/test-update.js && node scripts/test-update-native.js",
+    "test:update": "node scripts/test-update.js && node scripts/test-update-native.js && node scripts/test-ux-027.js",
     "test:manifest-permissions": "node scripts/test-manifest-permissions.js",
     "e2e:phone": "bash scripts/e2e-phone.sh"
   },
