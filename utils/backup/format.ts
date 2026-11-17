@@ -3,6 +3,7 @@
  * so node tests run it directly.
  */
 import type { MaglevSettings } from '../../modules/maglev-engine/src/MaglevSettings.types.ts';
+import type { StatsSection } from '../stats/store.ts';
 
 export const BACKUP_FORMAT = 'maglev-backup';
 export const BACKUP_VERSION = 1;
@@ -22,6 +23,8 @@ export type PrefKey = (typeof PREF_KEYS)[keyof typeof PREF_KEYS];
 export const PREF_KEY_LIST: readonly PrefKey[] = Object.values(PREF_KEYS);
 
 export type BackupPart = 'settings' | 'search' | 'feeds' | 'schedule' | 'assistant' | 'torrents' | 'downloads';
+/** A part restore understands. `stats` is optional and not in BACKUP_PARTS: the Backup screen adds its own tick. */
+export type RestorePart = BackupPart | 'stats';
 export const BACKUP_PARTS: readonly BackupPart[] = ['settings', 'search', 'feeds', 'schedule', 'assistant', 'torrents', 'downloads'];
 
 /** Which prefs belong to which part. `settings` also covers tab and browser prefs. */
@@ -65,6 +68,8 @@ export interface Backup {
   prefs: Partial<Record<PrefKey, unknown>>;
   torrents: BackupTorrent[];
   downloads: BackupDownload[];
+  /** Local stats (NATIVE_CONTRACT 34.2). Present only when the user ticked it at backup time. */
+  stats?: StatsSection;
 }
 
 export function isPlainObject(v: unknown): v is Record<string, unknown> {

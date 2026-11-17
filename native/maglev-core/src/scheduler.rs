@@ -64,12 +64,24 @@ pub fn is_health_tag(tag: &str) -> bool {
     HEALTH_TAGS.contains(&tag)
 }
 
-/// A magnet that is still looking for its metadata gives up and shows `no_peers` after this long (section 20).
-pub const NO_PEERS_AFTER_MS: i64 = 10 * 60 * 1000;
+/// Default for "Stop waiting for peers after" (section 20.1), in seconds.
+pub const DEFAULT_PEER_TIMEOUT_SECS: u32 = 10 * 60;
 
-/// True when a magnet has been resolving for `NO_PEERS_AFTER_MS` or more.
-pub fn no_peers_due(resolving_since_ms: i64, now_ms: i64) -> bool {
-    now_ms.saturating_sub(resolving_since_ms) >= NO_PEERS_AFTER_MS
+/// The window as milliseconds, or `None` when the user chose Never (`0`).
+pub fn peer_timeout_ms(secs: u32) -> Option<i64> {
+    if secs == 0 {
+        None
+    } else {
+        Some(i64::from(secs) * 1000)
+    }
+}
+
+/// True when a magnet has been resolving for the timeout or more. Never (`None`) is never due.
+pub fn no_peers_due(resolving_since_ms: i64, now_ms: i64, timeout_ms: Option<i64>) -> bool {
+    match timeout_ms {
+        Some(t) => now_ms.saturating_sub(resolving_since_ms) >= t,
+        None => false,
+    }
 }
 
 /// Whole seconds a magnet has been resolving, never negative.
@@ -78,12 +90,12 @@ pub fn resolving_secs(resolving_since_ms: i64, now_ms: i64) -> i64 {
 }
 
 /// The clock a magnet resumes with after the engine starts again (section 20). A lookup still inside
-/// its ten minute window keeps its start time, so restarts do not push `no_peers` back for ever. A
-/// clock that is already older than the window belongs to a process that was not running, so the
-/// lookup gets a fresh window.
-pub fn carry_resolving_since(existing: Option<i64>, now_ms: i64) -> i64 {
+/// its window keeps its start time, so restarts do not push `no_peers` back for ever. A clock that is
+/// already older than the window belongs to a process that was not running, so the lookup gets a
+/// fresh window.
+pub fn carry_resolving_since(existing: Option<i64>, now_ms: i64, timeout_ms: Option<i64>) -> i64 {
     match existing {
-        Some(since) if since <= now_ms && !no_peers_due(since, now_ms) => since,
+        Some(since) if since <= now_ms && !no_peers_due(since, now_ms, timeout_ms) => since,
         _ => now_ms,
     }
 }
@@ -119,6 +131,60 @@ pub fn pending_view(
 /// selected total is known and non-zero.
 pub fn finished_is_real(finished: bool, total_bytes: u64, included_bytes: u64) -> bool {
     finished && (total_bytes > 0 || included_bytes == 0)
+}
+
+/// What the tick knows about one torrent that has its metadata (section 20.1).
+#[derive(Debug, Clone, Copy)]
+pub struct StallInputs<'a> {
+    /// librqbit says it is live: not checking, not paused, not in error.
+    pub live: bool,
+    pub finished: bool,
+    pub queued: bool,
+    pub paused_by: Option<&'a str>,
+    pub health: Option<&'a str>,
+    pub errored: bool,
+    pub peers_live: u64,
+    /// Verified bytes the torrent holds (any file, skipped ones too).
+    pub held_bytes: u64,
+    /// Highest verified byte count ever seen for it.
+    pub max_progress_bytes: u64,
+    /// Bytes fetched from peers this session, including pieces not yet verified.
+    pub fetched_bytes: u64,
+}
+
+/// True while a torrent is "sent to download but never began": downloading, no connected peer, and not
+/// one byte held or received. Everything else (user pause, seeding, finished, checking, queued, a
+/// health tag, an error, any data at all) is excluded.
+pub fn is_waiting_for_peers(i: &StallInputs) -> bool {
+    i.live
+        && !i.finished
+        && !i.queued
+        && i.paused_by.is_none()
+        && i.health.is_none()
+        && !i.errored
+        && i.peers_live == 0
+        && i.held_bytes == 0
+        && i.max_progress_bytes == 0
+        && i.fetched_bytes == 0
+}
+
+/// One step of the stall clock: `(new stalled_since_ms, give_up_now)`. The clock starts the first
+/// tick a torrent is waiting, is dropped as soon as it is not (a peer connected, a byte arrived, it
+/// was paused or resumed), and never runs when the timeout is Never. A clock from the future (the
+/// phone's time moved back) starts over.
+pub fn stall_step(
+    since: Option<i64>,
+    waiting: bool,
+    now_ms: i64,
+    timeout_ms: Option<i64>,
+) -> (Option<i64>, bool) {
+    if !waiting || timeout_ms.is_none() {
+        return (None, false);
+    }
+    match since {
+        Some(s) if s <= now_ms => (Some(s), no_peers_due(s, now_ms, timeout_ms)),
+        _ => (Some(now_ms), false),
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -783,9 +849,14 @@ mod tests {
     #[test]
     fn no_peers_after_ten_minutes() {
         let t0 = 1_000_000;
-        assert!(!no_peers_due(t0, t0));
-        assert!(!no_peers_due(t0, t0 + NO_PEERS_AFTER_MS - 1));
-        assert!(no_peers_due(t0, t0 + NO_PEERS_AFTER_MS));
+        let ten = peer_timeout_ms(DEFAULT_PEER_TIMEOUT_SECS);
+        assert_eq!(ten, Some(600_000));
+        assert!(!no_peers_due(t0, t0, ten));
+        assert!(!no_peers_due(t0, t0 + 600_000 - 1, ten));
+        assert!(no_peers_due(t0, t0 + 600_000, ten));
+        assert!(!no_peers_due(t0, t0 + 10_000_000_000, None), "Never is never due");
+        assert_eq!(peer_timeout_ms(0), None);
+        assert_eq!(peer_timeout_ms(3600), Some(3_600_000));
         assert_eq!(resolving_secs(t0, t0 + 61_500), 61);
         assert_eq!(resolving_secs(t0, t0 - 5), 0);
     }
@@ -793,13 +864,15 @@ mod tests {
     #[test]
     fn resolving_clock_survives_a_quick_restart_but_not_a_long_gap() {
         let t0 = 5_000_000;
-        assert_eq!(carry_resolving_since(Some(t0), t0 + 60_000), t0);
-        assert_eq!(
-            carry_resolving_since(Some(t0), t0 + NO_PEERS_AFTER_MS),
-            t0 + NO_PEERS_AFTER_MS
-        );
-        assert_eq!(carry_resolving_since(None, t0), t0);
-        assert_eq!(carry_resolving_since(Some(t0 + 10), t0), t0);
+        let ten = peer_timeout_ms(DEFAULT_PEER_TIMEOUT_SECS);
+        assert_eq!(carry_resolving_since(Some(t0), t0 + 60_000, ten), t0);
+        assert_eq!(carry_resolving_since(Some(t0), t0 + 600_000, ten), t0 + 600_000);
+        assert_eq!(carry_resolving_since(None, t0, ten), t0);
+        assert_eq!(carry_resolving_since(Some(t0 + 10), t0, ten), t0);
+        // A longer setting widens the window; Never keeps any clock that is not from the future.
+        let hour = peer_timeout_ms(3600);
+        assert_eq!(carry_resolving_since(Some(t0), t0 + 600_000, hour), t0);
+        assert_eq!(carry_resolving_since(Some(t0), t0 + 900_000_000, None), t0);
     }
 
     #[test]
@@ -813,6 +886,109 @@ mod tests {
         assert_eq!(s, S::Error);
         let (s, by, _) = pending_view(None, Some("user"), false, None, 0);
         assert_eq!((s, by.as_deref()), (S::Initializing, Some("user")));
+    }
+
+    fn waiting() -> StallInputs<'static> {
+        StallInputs {
+            live: true,
+            finished: false,
+            queued: false,
+            paused_by: None,
+            health: None,
+            errored: false,
+            peers_live: 0,
+            held_bytes: 0,
+            max_progress_bytes: 0,
+            fetched_bytes: 0,
+        }
+    }
+
+    #[test]
+    fn a_live_torrent_with_no_peer_and_no_byte_is_waiting() {
+        assert!(is_waiting_for_peers(&waiting()));
+    }
+
+    #[test]
+    fn stall_exclusions() {
+        let w = waiting();
+        let no = |i: StallInputs| assert!(!is_waiting_for_peers(&i));
+        no(StallInputs { live: false, ..w }); // checking, paused or errored in librqbit
+        no(StallInputs { finished: true, ..w }); // seeding or finished
+        no(StallInputs { queued: true, ..w });
+        no(StallInputs { paused_by: Some("user"), ..w });
+        no(StallInputs { paused_by: Some("wifi_only"), ..w });
+        no(StallInputs { health: Some("storage_full"), ..w });
+        no(StallInputs { health: Some("no_peers"), ..w });
+        no(StallInputs { errored: true, ..w });
+        no(StallInputs { peers_live: 1, ..w });
+        no(StallInputs { held_bytes: 1, ..w }); // holds data, e.g. a rechecked partial file
+        no(StallInputs { max_progress_bytes: 1, ..w }); // had data earlier
+        no(StallInputs { fetched_bytes: 1, ..w }); // received a byte this session
+    }
+
+    #[test]
+    fn stall_gives_up_at_the_timeout() {
+        let t0 = 10_000_000;
+        let ten = peer_timeout_ms(600);
+        let (since, due) = stall_step(None, true, t0, ten);
+        assert_eq!((since, due), (Some(t0), false));
+        let (since, due) = stall_step(since, true, t0 + 599_999, ten);
+        assert_eq!((since, due), (Some(t0), false));
+        let (since, due) = stall_step(since, true, t0 + 600_000, ten);
+        assert_eq!((since, due), (Some(t0), true));
+    }
+
+    #[test]
+    fn a_peer_one_tick_before_the_limit_resets_the_clock() {
+        let t0 = 10_000_000;
+        let ten = peer_timeout_ms(600);
+        let (since, _) = stall_step(None, true, t0, ten);
+        // A peer connects at t0 + 599 s: not waiting, the clock goes.
+        let (since, due) = stall_step(since, false, t0 + 599_000, ten);
+        assert_eq!((since, due), (None, false));
+        // It drops again: the window starts over, so t0 + 600 s is not the limit any more.
+        let (since, due) = stall_step(since, true, t0 + 600_000, ten);
+        assert_eq!((since, due), (Some(t0 + 600_000), false));
+        let (_, due) = stall_step(since, true, t0 + 1_199_999, ten);
+        assert!(!due);
+        let (_, due) = stall_step(since, true, t0 + 1_200_000, ten);
+        assert!(due);
+    }
+
+    #[test]
+    fn never_does_not_run_the_stall_clock() {
+        let (since, due) = stall_step(Some(1), true, 9_000_000_000, None);
+        assert_eq!((since, due), (None, false));
+    }
+
+    #[test]
+    fn a_live_config_change_applies_to_the_running_clock() {
+        let t0 = 10_000_000;
+        let (since, _) = stall_step(None, true, t0, peer_timeout_ms(600));
+        // The user moves the limit to 30 minutes after 5 minutes: no give up at 10 minutes.
+        let (since, due) = stall_step(since, true, t0 + 600_000, peer_timeout_ms(1800));
+        assert!(!due);
+        // Back to 10 minutes: it is already past, so it gives up on the next pass.
+        let (_, due) = stall_step(since, true, t0 + 600_000, peer_timeout_ms(600));
+        assert!(due);
+        // Never clears the clock.
+        let (since, due) = stall_step(since, true, t0 + 600_000, None);
+        assert_eq!((since, due), (None, false));
+    }
+
+    #[test]
+    fn a_clock_from_the_future_starts_over() {
+        let (since, due) = stall_step(Some(5_000), true, 1_000, peer_timeout_ms(600));
+        assert_eq!((since, due), (Some(1_000), false));
+    }
+
+    #[test]
+    fn a_stalled_torrent_with_no_peers_tag_is_paused_by_the_planner() {
+        // Same planner rule as a magnet that gave up (18.2): the slot is freed.
+        let mut t = f("a", 1);
+        t.health = Some("no_peers".into());
+        let acts = plan(&[t], &cfg(), &[]);
+        assert!(acts.iter().any(|a| matches!(a, Action::Pause { reason, .. } if reason == "no_peers")), "{acts:?}");
     }
 
     #[test]

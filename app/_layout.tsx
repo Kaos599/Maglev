@@ -157,6 +157,7 @@ function AppNavigation() {
           <Stack.Screen name="settings/updates" />
           <Stack.Screen name="settings/whats-new" />
           <Stack.Screen name="settings/watch" />
+          <Stack.Screen name="stats" />
         </Stack.Protected>
       </Stack>
       {main ? <NoticeHost /> : null}

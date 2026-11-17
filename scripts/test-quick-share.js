@@ -113,17 +113,40 @@ async function main() {
   check('quick share gets SEND_MULTIPLE', hasAction('SEND_MULTIPLE'));
   check('quick share gets the magnet filter', qf.some((f) => f.actions.includes('VIEW') && f.data.some((d) => d['android:scheme'] === 'magnet')));
   check('quick share gets the torrent file filter', qf.some((f) => f.actions.includes('VIEW') && f.data.some((d) => d['android:pathPattern'] === '.*\\.torrent')));
-  const web = qf.filter((f) => f.data.some((d) => d['android:scheme'] === 'http' || d['android:scheme'] === 'https'));
-  check('one http(s) filter for other browsers', web.length === 1);
+  const isHttp = (f) => f.data.some((d) => d['android:scheme'] === 'http' || d['android:scheme'] === 'https');
+  const web = qf.filter((f) => isHttp(f) && f.data.some((d) => d['android:mimeType']));
+  check('one typed http(s) filter for other browsers', web.length === 1);
   const w = web[0] || { data: [], cats: [] };
   const mimes = w.data.map((d) => d['android:mimeType']).filter(Boolean);
   check('http(s) filter has both schemes', w.data.some((d) => d['android:scheme'] === 'http') && w.data.some((d) => d['android:scheme'] === 'https'));
   check('http(s) filter lists the types', ['application/octet-stream', 'application/zip', 'application/x-7z-compressed', 'application/x-iso9660-image', 'application/x-bittorrent', 'video/*', 'audio/*'].every((t) => mimes.includes(t)), mimes.join(','));
   check('no APK type', !mimes.some((t) => /android\.package-archive/.test(t)));
   check('http(s) filter is not BROWSABLE', !w.cats.includes('BROWSABLE') && w.cats.includes('DEFAULT'));
-  const allHttp = qf.concat(flat(main)).filter((f) => f.data.some((d) => /^https?$/.test(d['android:scheme'] || '')));
-  check('no bare http(s) filter anywhere: every one has a mime type', allHttp.length > 0 && allHttp.every((f) => f.data.some((d) => d['android:mimeType'])));
-  check('no filter at all with http(s) and a path or host only', allHttp.every((f) => f.data.every((d) => !d['android:host'] && !d['android:pathPattern'])));
+
+  // Section 8.1: download manager pickers (issue #89). Kiwi and its forks list apps that answer
+  // VIEW http://test.com/file.rar with no type, so a typed filter never shows up there.
+  const hand = qf.filter((f) => isHttp(f) && !f.data.some((d) => d['android:mimeType']));
+  check('one untyped http(s) filter, for download manager pickers', hand.length === 1);
+  const h = hand[0] || { data: [], cats: [], actions: [] };
+  const paths = h.data.map((d) => d['android:pathPattern']).filter(Boolean);
+  const suffixes = h.data.map((d) => d['android:pathSuffix']).filter(Boolean);
+  check('picker filter is VIEW, DEFAULT only, never BROWSABLE', h.actions.join() === 'VIEW' && h.cats.join() === 'DEFAULT');
+  check('picker filter has both schemes and any host', ['http', 'https'].every((s) => h.data.some((d) => d['android:scheme'] === s)) && h.data.some((d) => d['android:host'] === '*'));
+  check('picker filter never matches a bare link: every path rule ends in a file extension', paths.length > 0 && paths.every((p) => /\\\.[a-z0-9]+$/.test(p)) && suffixes.every((p) => /^\.[a-z0-9]+$/.test(p)));
+  check('picker filter has no path, pathPrefix or type that would widen it', h.data.every((d) => !d['android:path'] && !d['android:pathPrefix'] && !d['android:pathAdvancedPattern']));
+  const exts = new Set(suffixes.map((p) => p.slice(1)));
+  check('picker filter covers rar (the Kiwi probe), zip, mp4, iso, torrent', ['rar', 'zip', 'mp4', 'iso', 'torrent'].every((e) => exts.has(e)), [...exts].join(','));
+  check('picker filter has no apk', !exts.has('apk') && !paths.some((p) => /apk$/.test(p)));
+  const ktExt = (read('modules/maglev-engine/android/src/main/java/com/maglev/engine/share/ShareClassify.kt').match(/FILE_EXTENSIONS = setOf\(([\s\S]*?)\)/) || [])[1] || '';
+  const classifyExts = [...ktExt.matchAll(/"([a-z0-9]+)"/g)].map((m) => m[1]).filter((e) => e !== 'apk');
+  check('picker extensions are the classifier list (minus apk) plus torrent', classifyExts.length > 20 && classifyExts.every((e) => exts.has(e)) && exts.size === classifyExts.length + 1, `${exts.size} vs ${classifyExts.length}`);
+  // PatternMatcher's ".*" stops at the first later dot, so "/v1.2/a.rar" needs ".*\..*\.rar". pathSuffix fixes it on API 31+.
+  check('picker filter repeats each pattern for paths with more dots (pre-API 31)', paths.includes('.*\\.rar') && paths.includes('.*\\..*\\.rar') && paths.includes('.*\\..*\\..*\\.rar'));
+
+  const allHttp = qf.concat(flat(main)).filter(isHttp);
+  check('every http(s) filter has a mime type or file extension paths', allHttp.length === 2 && allHttp.every((f) => f.data.some((d) => d['android:mimeType']) || f.data.some((d) => d['android:pathPattern'])));
+  check('no http(s) filter is BROWSABLE', allHttp.every((f) => !f.cats.includes('BROWSABLE')));
+  check('MainActivity has no http(s) filter', flat(main).filter(isHttp).length === 0);
   const mf = flat(main);
   check('MainActivity lost SEND, SEND_MULTIPLE, magnet and torrent filters', mf.every((f) => !f.actions.some((a) => /^SEND/.test(a)) && !f.data.some((d) => d['android:scheme'] === 'magnet' || /torrent/.test(d['android:mimeType'] || '') || /torrent/.test(d['android:pathPattern'] || ''))));
   check('MainActivity keeps its own scheme filter', mf.some((f) => f.data.some((d) => d['android:scheme'] === 'maglev')));
@@ -132,6 +155,10 @@ async function main() {
   assert.throws(() => run({ manifest: { application: [{ activity: [] }] } }), /MainActivity/);
 
   console.log('native wiring');
+  {
+    const qa = read('modules/maglev-engine/android/src/main/java/com/maglev/engine/share/QuickShareActivity.kt');
+    check('VIEW hand-offs use the browser file name (8.1)', /ACTION_VIEW\) cls = ShareClassify\.withHandOffName\(cls, handOffName\(original\)\)/.test(qa) && /"com\.android\.extra\.filename"/.test(qa));
+  }
   const styles = read('modules/maglev-engine/android/src/main/res/values/quick_share.xml');
   check('theme resource', /name="MaglevQuickShare"/.test(styles) && /windowIsTranslucent/.test(styles));
   const act = read(ENGINE_KT + 'share/QuickShareActivity.kt');

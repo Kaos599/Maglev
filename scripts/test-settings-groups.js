@@ -34,7 +34,7 @@ const expected = {
   'Finding things': ['findRows', ['Search sources', 'Auto-download']],
   Downloads: [null, ['Downloads', 'Speed and sharing', 'Storage', 'Scheduling']],
   'Network and power': ['networkRows', ['Network', 'Power', 'Browser']],
-  App: ['appRows', ['Updates', 'About']],
+  App: ['appRows', ['About', 'Updates']],
 };
 for (const [g, [list, rows]] of Object.entries(expected)) {
   if (list) check(`${g} renders ${list}`, jsx[g].includes(`${list}.map`));
@@ -49,7 +49,7 @@ check('Downloads renders Downloads, Speed and sharing, Storage, Scheduling, Watc
   const p = ['{...downloadsRow}', '{...speedRow}', '<StorageRow', '{...scheduleRow}', '{...watchRow}'].map((x) => d.indexOf(x));
   return p.every((x, i) => x >= 0 && (i === 0 || x > p[i - 1]));
 })());
-check('Updates then About close the App group, not their own sections', /appRows[^=]*=\s*\[\s*\{[^}]*title: 'Updates'/.test(index) && !/SectionHeader title="About"/.test(index));
+check('App group is About, Updates, then Stats, with no sections of their own', /appRows[^=]*=\s*\[\s*\{[^}]*title: 'About'[\s\S]*?title: 'Updates'/.test(index) && /<SettingsRow key=\{r\.route\} \{\.\.\.r\} \/>\s*\)\)\}\s*<StatsRow \/>/.test(index) && !/SectionHeader title="About"/.test(index));
 check('NeedsAttention banners sit above the groups', at('<NeedsAttention />') > 0 && at('<NeedsAttention />') < tpos[0]);
 check('Interface row is titled Appearance, route kept', /title: 'Appearance'[^}]*route: 'interface'/.test(index) && !/title: 'Interface'/.test(index));
 check('merged row shows limits and queue', /`\$\{limits\} · \$\{queue\}`/.test(index) && /route: 'speed'/.test(index));

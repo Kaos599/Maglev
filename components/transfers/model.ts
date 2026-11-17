@@ -3,6 +3,7 @@ import type { SortKey, TransferSort } from '../../utils/prefs/transfers';
 import { formatBytes, formatSpeed } from '../../constants/format.ts';
 import { healthLabel, resolvingLine } from '../detail/fileHealthMachine.ts';
 import { downloadProgress } from '../../utils/downloadCopy.ts';
+import { doneLead } from '../../utils/stats/format.ts';
 
 export type TransferFilter = 'all' | 'downloading' | 'seeding' | 'paused' | 'done' | 'errors';
 
@@ -138,7 +139,7 @@ type StatusRow = Pick<
   TorrentTelemetry,
   | 'state' | 'pausedBy' | 'error' | 'downloadSpeedBytes' | 'uploadSpeedBytes' | 'downloadedBytes' | 'totalSizeBytes'
   | 'includedBytes' | 'progressPercent' | 'etaSeconds' | 'moveProgress' | 'resolvingSecs' | 'peersTotal'
-> & { lastKnown?: boolean };
+> & Partial<Pick<TorrentTelemetry, 'activeSecs' | 'finishedAt'>> & { lastKnown?: boolean };
 
 /** What the torrent is working toward: the files the user kept, or everything when none were deselected. */
 function targetBytes(t: Pick<TorrentTelemetry, 'includedBytes' | 'totalSizeBytes'>): number {
@@ -198,12 +199,12 @@ export function torrentStatus(t: StatusRow, etaLabel: string): TorrentStatus {
       return line('Done · Seeding', 'accent', `↑ ${t.lastKnown ? '—' : formatSpeed(t.uploadSpeedBytes)}`, 'upload');
     case 'PAUSED':
       if (t.pausedBy === 'seed_metered') return line('Done · Seeding waits for Wi-Fi', 'accent', total, 'size');
-      if (t.pausedBy === 'seed_limit') return line('Done', 'accent', total, 'size');
+      if (t.pausedBy === 'seed_limit') return line(doneLead(t.activeSecs, t.finishedAt), 'accent', total, 'size');
       // Storage full: the sub-line is the way out (docs/contracts-0.19/play-and-storage.md section 2).
       if (t.pausedBy === 'storage_full') return line(pausedReason(t.pausedBy), 'muted', undefined, undefined, 'Free up space');
       return line(pausedReason(t.pausedBy), 'muted', undefined, undefined, started);
     case 'COMPLETED':
-      return line('Done', 'accent', total, 'size');
+      return line(doneLead(t.activeSecs, t.finishedAt), 'accent', total, 'size');
     case 'MOVING':
       return line(t.moveProgress != null ? `Moving files… ${Math.round(t.moveProgress * 100)}%` : 'Moving files…', 'accent');
     case 'ERROR':

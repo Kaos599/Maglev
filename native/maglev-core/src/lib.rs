@@ -21,6 +21,7 @@ pub mod simd;
 pub mod source;
 pub mod storage_guard;
 pub mod streaming;
+pub mod timing;
 pub mod torrent_limits;
 pub mod trackers;
 pub mod types;
