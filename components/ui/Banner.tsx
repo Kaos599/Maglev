@@ -16,6 +16,8 @@ export interface BannerProps {
   actionLabel?: string;
   onAction?: () => void;
   onDismiss?: () => void;
+  /** Sits next to the action button, for example a "+2 more" button that belongs to this banner. */
+  extraAction?: React.ReactNode;
   testID?: string;
 }
 
@@ -27,7 +29,7 @@ const ICONS: Record<BannerTone, PixelIconName> = {
   neutral: 'about',
 };
 
-export function Banner({ tone = 'info', title, body, actionLabel, onAction, onDismiss, testID }: BannerProps) {
+export function Banner({ tone = 'info', title, body, actionLabel, onAction, onDismiss, extraAction, testID }: BannerProps) {
   const { colors } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const tint = { info: colors.download, warning: colors.warning, danger: colors.danger, success: colors.success, neutral: colors.textMuted }[tone];
@@ -45,9 +47,10 @@ export function Banner({ tone = 'info', title, body, actionLabel, onAction, onDi
       <View style={styles.text}>
         <Text style={styles.title}>{title}</Text>
         {body ? <Text style={styles.body}>{body}</Text> : null}
-        {actionLabel && onAction ? (
+        {(actionLabel && onAction) || extraAction ? (
           <View style={styles.action}>
-            <Button label={actionLabel} onPress={onAction} variant="secondary" />
+            {actionLabel && onAction ? <Button label={actionLabel} onPress={onAction} variant="secondary" /> : null}
+            {extraAction}
           </View>
         ) : null}
       </View>
@@ -70,5 +73,5 @@ const makeStyles = (c: ThemeColors) =>
     text: { flex: 1 },
     title: { ...type.bodyStrong, fontSize: 14, color: c.text },
     body: { ...type.body, fontSize: 13, color: c.textMuted, marginTop: 2, lineHeight: 18 },
-    action: { marginTop: spacing.md, alignSelf: 'flex-start' },
+    action: { marginTop: spacing.md, flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: spacing.sm },
   });

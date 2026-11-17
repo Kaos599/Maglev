@@ -29,6 +29,8 @@ export interface Reason {
 export interface BlockContext {
   blocks?: readonly ActiveBlock[];
   queueLimit?: number;
+  /** The current time, for a schedule's "Resumes at". Defaults to now; tests pass their own. */
+  nowMs?: number;
 }
 
 /** Everything a card or banner can be held for, in the order a banner shows them (NATIVE_CONTRACT 35.3). */
@@ -86,7 +88,8 @@ export function reasonFor(key: string | null | undefined, ctx: BlockContext = {}
     case 'offline':
       return fixed(key, 'No internet connection', 'No internet connection', "Transfers continue when you're back online.", null, false);
     case 'schedule': {
-      const at = block?.resumesAtMs;
+      // A time that has already passed is stale: say the generic line instead of a past clock time.
+      const at = block?.resumesAtMs != null && block.resumesAtMs > (ctx.nowMs ?? Date.now()) ? block.resumesAtMs : null;
       const body = at != null ? `Resumes at ${clock(at)}.` : "Your schedule doesn't allow transfers now.";
       return fixed(key, 'Paused by your schedule', 'Paused by your schedule', body, { label: 'Schedule', route: '/settings/scheduling' }, true);
     }
@@ -127,8 +130,8 @@ export function reasonFor(key: string | null | undefined, ctx: BlockContext = {}
 }
 
 /** A block's own reason (numbers and cause come from the block itself). */
-export function reasonForBlock(block: ActiveBlock, queueLimit?: number): Reason {
-  return reasonFor(block.tag, { blocks: [block], queueLimit }) as Reason;
+export function reasonForBlock(block: ActiveBlock, queueLimit?: number, nowMs?: number): Reason {
+  return reasonFor(block.tag, { blocks: [block], queueLimit, nowMs }) as Reason;
 }
 
 function rank(tag: string): number {
@@ -149,6 +152,25 @@ export function visibleBlocks(blocks: readonly ActiveBlock[], ctx: { hasUnfinish
   return sortBlocks(blocks).filter((b) => (b.tag === 'seed_metered' ? ctx.hasSeedEligible : ctx.hasUnfinished));
 }
 
+/**
+ * The number on "+N more": entries after the first. A seed-only hold (`seed_metered`) holds no download,
+ * so it is left out of the count while a download-holding entry is shown. It still appears in the sheet.
+ */
+export function moreCount(keys: readonly string[]): number {
+  if (keys.length <= 1) return 0;
+  const rest = keys.slice(1);
+  const holdsDownload = keys.some((k) => k !== 'seed_metered');
+  return holdsDownload ? rest.filter((k) => k !== 'seed_metered').length : rest.length;
+}
+
+/**
+ * Whether a Wi-Fi-only hold may be overridden with "Download now on mobile data". Not while another rule
+ * that holds downloads (charger, battery, schedule, storage, VPN...) is also on: the override would not start it.
+ */
+export function wifiOverrideAllowed(blocks: readonly ActiveBlock[] | undefined): boolean {
+  return !(blocks ?? []).some((b) => b.tag !== 'wifi_only' && b.tag !== 'seed_metered');
+}
+
 export interface HeldItem {
   finished: boolean;
   paused: boolean;
@@ -163,9 +185,9 @@ const NOT_A_RULE = new Set(['user', 'seed_limit', 'files_missing', 'files_change
  * Every reason that holds this item, for the "Why it's paused" block. Lists each active block that
  * applies (not only the tag the item carries), then the queue. A user pause is not explained by blocks.
  */
-export function reasonsForItem(item: HeldItem, blocks: readonly ActiveBlock[], queueLimit?: number): Reason[] {
+export function reasonsForItem(item: HeldItem, blocks: readonly ActiveBlock[], queueLimit?: number, nowMs?: number): Reason[] {
   if (item.finished) return [];
-  const ctx: BlockContext = { blocks, queueLimit };
+  const ctx: BlockContext = { blocks, queueLimit, nowMs };
   const out: Reason[] = [];
   const add = (key: string) => {
     if (out.some((r) => r.key === key)) return;

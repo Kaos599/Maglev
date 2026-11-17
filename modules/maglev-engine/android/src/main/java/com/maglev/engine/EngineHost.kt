@@ -1260,7 +1260,7 @@ object EngineHost {
 
     /**
      * Turns [tag] on or off with [detail]. Returns true when the set or a detail field changed. A battery
-     * `levelPct` change alone is stored but returns false, so telemetry ticks send no event (section 35.1).
+     * `levelPct` change counts too, so the banner never shows a stale percentage; the battery level changes rarely.
      */
     private fun setBlock(tag: String, on: Boolean, detail: Map<String, Any?>?): Boolean = synchronized(blocksLock) {
         val old = activeBlocks[tag]
@@ -1273,7 +1273,7 @@ object EngineHost {
         activeBlocks[tag] = fields
         if (old == null) return@synchronized true
         val keys = old.keys + fields.keys
-        keys.any { it != "levelPct" && old[it] != fields[it] }
+        keys.any { old[it] != fields[it] }
     }
 
     /** Current blocks, in [blockOrder]. Each map is a copy, safe to hand to JS. */

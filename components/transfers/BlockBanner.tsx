@@ -1,10 +1,11 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import type { ActiveBlock } from 'maglev-engine';
 import { useTheme } from '../../context/ThemeContext';
 import { ThemeColors, radius, spacing, type } from '../../constants/theme';
-import { reasonForBlock, visibleBlocks } from '../../utils/blocks/reasons';
+import { moreCount, reasonForBlock, visibleBlocks } from '../../utils/blocks/reasons';
+import { useMinuteTick } from '../../utils/blocks/useMinuteTick';
 import { Banner, Button, Sheet } from '../ui';
 import type { LowSpaceWarning } from './lowSpace';
 
@@ -36,16 +37,19 @@ export function BlockBanner({ blocks, hasUnfinished, hasSeedEligible, lowSpace, 
   const { colors } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const [open, setOpen] = useState(false);
+  const shownBlocks = useMemo(() => visibleBlocks(blocks, { hasUnfinished, hasSeedEligible }), [blocks, hasUnfinished, hasSeedEligible]);
+  // A schedule's "Resumes at" must not show a time that has passed.
+  const now = useMinuteTick(shownBlocks.some((b) => b.tag === 'schedule'));
 
   const entries = useMemo(() => {
-    const out: Entry[] = visibleBlocks(blocks, { hasUnfinished, hasSeedEligible }).map((b) => {
-      const r = reasonForBlock(b);
+    const out: Entry[] = shownBlocks.map((b) => {
+      const r = reasonForBlock(b, undefined, now);
       const s = r.setting;
       return {
         key: b.tag,
         title: r.title,
         body: r.body,
-        button: s ? { label: 'Change in Settings', onPress: () => router.push(s.route as never) } : null,
+        button: s ? { label: s.label, onPress: () => router.push(s.route as never) } : null,
       };
     });
     if (lowSpace && hasUnfinished) {
@@ -55,11 +59,18 @@ export function BlockBanner({ blocks, hasUnfinished, hasSeedEligible, lowSpace, 
       else out.unshift(storage);
     }
     return out;
-  }, [blocks, hasUnfinished, hasSeedEligible, lowSpace, onFreeSpace, router]);
+  }, [shownBlocks, now, hasUnfinished, lowSpace, onFreeSpace, router]);
 
-  if (entries.length === 0) return null;
+  // The sheet must not stay open (and pop up again) once there is nothing to show.
+  const empty = entries.length === 0;
+  useEffect(() => {
+    if (empty) setOpen(false);
+  }, [empty]);
+
+  if (empty) return null;
   const first = entries[0];
-  const more = entries.length - 1;
+  const more = moreCount(entries.map((e) => e.key));
+  const hasExtra = entries.length > 1;
 
   return (
     <View style={styles.wrap} testID="block-banner">
@@ -69,17 +80,17 @@ export function BlockBanner({ blocks, hasUnfinished, hasSeedEligible, lowSpace, 
         body={first.body}
         actionLabel={first.button?.label}
         onAction={first.button?.onPress}
+        extraAction={
+          hasExtra ? (
+            <Button
+              label={more > 0 ? `+${more} more` : 'See all'}
+              variant="ghost"
+              onPress={() => setOpen(true)}
+              accessibilityLabel={more > 0 ? `Show ${more} more ${more === 1 ? 'reason' : 'reasons'} transfers are held` : 'Show everything that holds transfers'}
+            />
+          ) : undefined
+        }
       />
-      {more > 0 ? (
-        <View style={styles.more}>
-          <Button
-            label={`+${more} more`}
-            variant="ghost"
-            onPress={() => setOpen(true)}
-            accessibilityLabel={`Show ${more} more ${more === 1 ? 'reason' : 'reasons'} transfers are held`}
-          />
-        </View>
-      ) : null}
       <Sheet visible={open} onClose={() => setOpen(false)} title="Why transfers are held">
         {entries.map((e) => (
           <View key={e.key} style={styles.item}>
@@ -107,7 +118,6 @@ export function BlockBanner({ blocks, hasUnfinished, hasSeedEligible, lowSpace, 
 const makeStyles = (c: ThemeColors) =>
   StyleSheet.create({
     wrap: { paddingHorizontal: spacing.lg, paddingTop: spacing.sm },
-    more: { alignSelf: 'flex-end', marginTop: spacing.xs },
     item: { paddingVertical: spacing.md, borderTopWidth: 1, borderColor: c.border },
     itemTitle: { ...type.bodyStrong, fontSize: 14, color: c.text },
     itemBody: { ...type.body, fontSize: 13, color: c.textMuted, marginTop: 2, lineHeight: 18, borderRadius: radius.sm },

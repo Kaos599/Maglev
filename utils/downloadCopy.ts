@@ -6,7 +6,7 @@ import type { DownloadSnapshot } from 'maglev-engine';
 import { formatBytes, formatSpeed } from '../constants/format.ts';
 import { formatEta, smoothRate } from './rates.ts';
 import { doneLead } from './stats/format.ts';
-import { reasonFor, type BlockContext } from './blocks/reasons.ts';
+import { reasonFor, wifiOverrideAllowed, type BlockContext } from './blocks/reasons.ts';
 
 export type DownloadTone = 'muted' | 'accent' | 'danger';
 export type DownloadActionKind =
@@ -284,7 +284,7 @@ export function downloadActions(d: DownloadSnapshot, ctx: BlockContext = {}): Do
         // The table decides: a rule that allows an override offers it, then the setting that holds it (NATIVE_CONTRACT 35.2).
         const reason = reasonFor(d.pausedBy, ctx);
         const out: DownloadAction[] = [];
-        if (reason?.override) out.push(d.pausedBy === 'wifi_only' ? A.resumeMobile : A.resumeAnyway);
+        if (reason?.override && (d.pausedBy !== 'wifi_only' || wifiOverrideAllowed(ctx?.blocks))) out.push(d.pausedBy === 'wifi_only' ? A.resumeMobile : A.resumeAnyway);
         if (reason?.setting) out.push({ kind: 'openNetworkSettings', icon: 'settings', label: 'Change in Settings', route: reason.setting.route });
         return out;
       }

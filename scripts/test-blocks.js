@@ -54,8 +54,11 @@ async function main() {
   check('vpn copy', R.reasonFor('vpn_required').title === 'Waiting for VPN' && R.reasonFor('vpn_required').body === 'VPN only is on, and no VPN is connected.');
   check('offline copy', R.reasonFor('offline').title === 'No internet connection' && R.reasonFor('offline').body === "Transfers continue when you're back online.");
   const at = new Date(2026, 0, 1, 7, 5).getTime();
-  const sch = R.reasonFor('schedule', ctx([{ tag: 'schedule', resumesAtMs: at, sinceMs: 1 }]));
+  const sch = R.reasonFor('schedule', { ...ctx([{ tag: 'schedule', resumesAtMs: at, sinceMs: 1 }]), nowMs: at - 60_000 });
   check('schedule copy with a time', sch.title === 'Paused by your schedule' && sch.body === 'Resumes at 07:05.', sch.body);
+  const past = R.reasonFor('schedule', { ...ctx([{ tag: 'schedule', resumesAtMs: at, sinceMs: 1 }]), nowMs: at + 60_000 });
+  check('schedule copy drops a time that has passed', past.body === "Your schedule doesn't allow transfers now.", past.body);
+  check('schedule copy drops a time that is exactly now', R.reasonFor('schedule', { ...ctx([{ tag: 'schedule', resumesAtMs: at, sinceMs: 1 }]), nowMs: at }).body === "Your schedule doesn't allow transfers now.");
   check('schedule copy without a time', R.reasonFor('schedule').body === "Your schedule doesn't allow transfers now.");
   check('storage copy', R.reasonFor('storage_full').title === 'Storage almost full' && R.reasonFor('storage_full').body === 'Maglev keeps some space free on your phone. Free up space to continue.');
   check('seed_metered copy', R.reasonFor('seed_metered').title === 'Sharing waits for Wi-Fi' && R.reasonFor('seed_metered').body === 'Seeding on mobile data is off.');
@@ -84,6 +87,21 @@ async function main() {
   check('seed_metered shows when a finished torrent can seed', R.visibleBlocks([B('seed_metered')], { hasUnfinished: false, hasSeedEligible: true }).length === 1);
   check('nothing unfinished: only seed_metered can show', R.visibleBlocks([B('offline'), B('seed_metered')], { hasUnfinished: false, hasSeedEligible: true }).map((b) => b.tag).join() === 'seed_metered');
   check('empty list shows nothing', R.visibleBlocks([], { hasUnfinished: true, hasSeedEligible: true }).length === 0);
+
+  // 5b. "+N more" counts only what holds a download.
+  check('moreCount: one entry has no more', R.moreCount(['battery']) === 0 && R.moreCount([]) === 0);
+  check('moreCount: seed_metered is not counted next to a download hold', R.moreCount(['wifi_only', 'seed_metered']) === 0 && R.moreCount(['storage_full', 'battery', 'seed_metered']) === 1);
+  check('moreCount: download holds are all counted', R.moreCount(['offline', 'wifi_only', 'battery']) === 2);
+  check('moreCount: seed-only entries count when nothing holds a download', R.moreCount(['seed_metered', 'seed_metered']) === 1);
+
+  // 5c. The Wi-Fi override only shows when the network is the only download hold.
+  check('wifi override allowed alone or with seed_metered', R.wifiOverrideAllowed([]) && R.wifiOverrideAllowed(undefined) && R.wifiOverrideAllowed([B('wifi_only'), B('seed_metered')]));
+  check('wifi override hidden when battery, charger, schedule or storage also hold', ['battery', 'charging_only', 'schedule', 'storage_full'].every((tag) => !R.wifiOverrideAllowed([B('wifi_only'), B(tag)])));
+  const wctx = (...tags) => ({ blocks: tags.map((x) => B(x, x === 'wifi_only' ? { cause: 'metered' } : {})) });
+  check('canResumeAnyway: wifi alone offers it, wifi plus battery does not', model.canResumeAnyway('wifi_only', wctx('wifi_only')) && !model.canResumeAnyway('wifi_only', wctx('wifi_only', 'battery')));
+  check('card: wifi plus charging_only points at the setting, not mobile data', model.torrentCardAction({ state: 'PAUSED', pausedBy: 'wifi_only' }, wctx('wifi_only', 'charging_only')).kind === 'setting');
+  const dlw = { id: 'd', name: 'd', state: 'paused', pausedBy: 'wifi_only', size: 1, downloaded: 0 };
+  check('link: mobile-data button only when wifi is the only hold', copy.downloadActions(dlw, wctx('wifi_only')).some((a) => a.label === 'Download now on mobile data') && !copy.downloadActions(dlw, wctx('wifi_only', 'battery')).some((a) => a.label === 'Download now on mobile data'));
 
   // 6. Per item.
   const item = (o) => ({ finished: false, paused: false, queued: false, downloading: false, pausedBy: null, ...o });
@@ -141,7 +159,8 @@ async function main() {
   check('hook exists and unsubscribes', exists('utils/blocks/useActiveBlocks.ts') && /addBlocksListener/.test(read('utils/blocks/useActiveBlocks.ts')) && /getActiveBlocks/.test(read('utils/blocks/useActiveBlocks.ts')) && /return \(\) =>/.test(read('utils/blocks/useActiveBlocks.ts')));
   const banner = exists('components/transfers/BlockBanner.tsx') ? read('components/transfers/BlockBanner.tsx') : '';
   check('BlockBanner uses Banner, Sheet and the table', /Banner/.test(banner) && /Sheet/.test(banner) && /visibleBlocks/.test(banner) && /router\.push/.test(banner));
-  check('BlockBanner offers "Change in Settings" and "+N more"', /Change in Settings/.test(banner) && /more/.test(banner));
+  check('BlockBanner names each setting and offers "+N more" inside the banner', /setting\.label|s\.label/.test(banner) && /moreCount/.test(banner) && /extraAction/.test(banner) && !/styles\.more/.test(banner));
+  check('BlockBanner closes its sheet when there is nothing to show', /useEffect/.test(banner) && /setOpen\(false\)/.test(banner));
   const idx = read('app/(tabs)/index.tsx');
   check('Transfers tab shows the block banner', /<BlockBanner/.test(idx));
   check('Transfers tab has one banner for holds (low space merged in)', !/<Banner[^>]*lowSpace/.test(idx) && !/title=\{lowSpace\.title\}/.test(idx));
@@ -152,9 +171,14 @@ async function main() {
   check('link detail shows "Why it\'s paused"', /<WhyHeld/.test(sheet));
 
   // 11. Native and mock sources.
+  const diff = await import('../modules/maglev-engine/src/blocksDiff.ts');
+  const b1 = [{ tag: 'battery', thresholdPct: 20, levelPct: 15, sinceMs: 1 }];
+  check('mock: a battery level change alone is a change', diff.blocksChanged([{ ...b1[0], levelPct: 5 }], b1) && !diff.blocksChanged([{ ...b1[0] }], b1));
+  check('mock: a new or removed block is a change', diff.blocksChanged([], b1) && diff.blocksChanged(b1, []));
   const kt = read('modules/maglev-engine/android/src/main/java/com/maglev/engine/EngineHost.kt');
   const mod = read('modules/maglev-engine/android/src/main/java/com/maglev/engine/MaglevEngineModule.kt');
   check('Kotlin: getActiveBlocks function and event registered', /AsyncFunction\("getActiveBlocks"\)/.test(mod) && /Events\([^)]*"onBlocksChanged"/.test(mod) && /fun activeBlocksList/.test(kt));
+  check('Kotlin: setBlock reports a levelPct change', !/it != "levelPct"/.test(kt) && /keys\.any \{ old\[it\] != fields\[it\] \}/.test(kt));
   check('Kotlin: onBlocksChanged', /onBlocksChanged/.test(kt));
   check('Kotlin: ssid branch', /"ssid"/.test(kt));
   const mock = read('modules/maglev-engine/src/MaglevMockEngine.ts');

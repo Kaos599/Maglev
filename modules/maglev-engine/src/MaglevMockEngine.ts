@@ -46,6 +46,7 @@ import type {
   UrlProbe,
 } from './MaglevEngine.types.ts';
 import { HEALTH_TAGS } from './MaglevEngine.types.ts';
+import { blocksChanged } from './blocksDiff.ts';
 import {
   AUTO_RETRY_DELAYS,
   DEFAULT_SETTINGS,
@@ -1464,7 +1465,7 @@ export class MaglevMockEngine implements MaglevEngineApi {
     };
   }
 
-  /** Rebuilds the block list; notifies only when the set or a detail field changes (battery level alone does not). */
+  /** Rebuilds the block list; notifies when the set or a detail field changes, including the battery level (it changes rarely, so it stays quiet). */
   private updateBlocks(): void {
     const net = this.settings.network;
     const pwr = this.settings.power;
@@ -1485,8 +1486,7 @@ export class MaglevMockEngine implements MaglevEngineApi {
       add({ tag: 'battery', thresholdPct: pwr.batteryCutoffThreshold, levelPct: pwr.batteryPercentage });
     }
     if (!net.seedOnMobileData && net.networkType === 'CELLULAR') add({ tag: 'seed_metered' });
-    const key = (list: ActiveBlock[]) => JSON.stringify(list.map((b) => ({ ...b, levelPct: undefined })));
-    const changed = key(next) !== key(this.activeBlocks);
+    const changed = blocksChanged(next, this.activeBlocks);
     this.activeBlocks = next;
     if (changed) {
       const snapshot = next.map((b) => ({ ...b }));

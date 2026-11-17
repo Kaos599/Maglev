@@ -2,7 +2,7 @@ import type { DownloadSnapshot, TorrentTelemetry } from 'maglev-engine';
 import type { SortKey, TransferSort } from '../../utils/prefs/transfers';
 import { formatBytes, formatSpeed } from '../../constants/format.ts';
 import { resolvingLine } from '../detail/fileHealthMachine.ts';
-import { reasonFor, type BlockContext } from '../../utils/blocks/reasons.ts';
+import { reasonFor, wifiOverrideAllowed, type BlockContext } from '../../utils/blocks/reasons.ts';
 import { downloadProgress } from '../../utils/downloadCopy.ts';
 import { doneLead } from '../../utils/stats/format.ts';
 
@@ -236,6 +236,7 @@ export function clearFinishedCopy(count: number): { title: string; body: string;
 
 /** Whether one tap may override the rule for this torrent only. The table decides (NATIVE_CONTRACT 35.2). */
 export function canResumeAnyway(pausedBy: string | null | undefined, ctx: BlockContext = {}): boolean {
+  if (pausedBy === 'wifi_only' && !wifiOverrideAllowed(ctx.blocks)) return false;
   return !!reasonFor(pausedBy, ctx)?.override;
 }
 

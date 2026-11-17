@@ -4,6 +4,7 @@ import { useRouter } from 'expo-router';
 import type { ActiveBlock } from 'maglev-engine';
 import { useTheme } from '../../context/ThemeContext';
 import { ThemeColors, spacing, type } from '../../constants/theme';
+import { useMinuteTick } from '../../utils/blocks/useMinuteTick';
 import { reasonsForItem, type HeldItem } from '../../utils/blocks/reasons';
 import { Button } from '../ui';
 
@@ -20,7 +21,8 @@ export function WhyHeld({ item, blocks, queueLimit, onNavigate }: WhyHeldProps) 
   const router = useRouter();
   const { colors } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
-  const reasons = useMemo(() => reasonsForItem(item, blocks, queueLimit), [item, blocks, queueLimit]);
+  const now = useMinuteTick(blocks.some((b) => b.tag === 'schedule'));
+  const reasons = useMemo(() => reasonsForItem(item, blocks, queueLimit, now), [item, blocks, queueLimit, now]);
   if (reasons.length === 0) return null;
   return (
     <View style={styles.wrap} testID="why-held">
@@ -34,7 +36,7 @@ export function WhyHeld({ item, blocks, queueLimit, onNavigate }: WhyHeldProps) 
           {r.setting ? (
             <View style={styles.action}>
               <Button
-                label={r.key === 'queued' ? 'Active downloads' : 'Change in Settings'}
+                label={r.setting.label}
                 variant="secondary"
                 onPress={() => {
                   onNavigate?.();
