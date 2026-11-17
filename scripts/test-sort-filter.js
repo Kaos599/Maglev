@@ -24,8 +24,10 @@ for (const [t, c] of [
 }
 for (const s of ['Sort by', 'Source', 'Size']) check(`section label "${s}"`, comp.includes(`title="${s}"`) || comp.includes(`'${s}'`));
 check('source caption', comp.includes('Show results from one source.'));
-check('size caption', comp.includes('Hide files smaller than this.'));
-for (const m of ['Any size', 'Over 100 MB', 'Over 1 GB']) check(`size chip "${m}"`, comp.includes(m));
+check('size caption', comp.includes('Files of unknown size always show.'));
+check('size section uses the range slider', /<RangeSlider\b/.test(comp) && comp.includes('rangeLabel('));
+check('size chips are gone', !comp.includes('Over 100 MB') && !comp.includes('MIN_SIZES'));
+check('dirty covers the size range', /sizeRange\.low !== 0 \|\| sizeRange\.high !== LAST_STOP/.test(comp));
 check('toggle title', comp.includes('Hide torrents no one is sharing'));
 check('toggle subtitle', comp.includes('They rarely finish.'));
 check('Toggle used', /<Toggle\b/.test(comp));
@@ -33,7 +35,8 @@ check('footer count line', comp.includes('Showing ') && comp.includes(' results'
 check('Done button', comp.includes('label="Done"'));
 check('Reset button', comp.includes('label="Reset"') && comp.includes('ghost'));
 check('Reset only when not default', /showReset|isDirty|dirty/.test(comp));
-check('radiogroup roles', (comp.match(/accessibilityRole="radiogroup"/g) || []).length >= 3);
+check('search.tsx resets the size range to full', /setSizeRange\(\{ low: 0, high: SIZE_STOPS\.length - 1 \}\)/.test(search));
+check('radiogroup roles', (comp.match(/accessibilityRole="radiogroup"/g) || []).length >= 2);
 const sortBlock = (comp.match(/SORT_ORDER\.map[\s\S]*?\n\s+\)\)\}/) || [''])[0];
 check('sort block found', sortBlock.length > 20);
 check('selecting a sort does not close', !/onClose/.test(sortBlock));

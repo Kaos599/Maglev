@@ -35,6 +35,7 @@ if (exists('components/search/sharing.ts')) {
   check('hide-no-one filter drops 0 only', s.passesResultFilter({ seeders: 0 }, { hideDead: true, minBytes: 0 }) === false && s.passesResultFilter({ seeders: 5 }, { hideDead: true, minBytes: 0 }) === true);
   check('hide-no-one keeps unknown counts', s.passesResultFilter({ seeders: undefined }, { hideDead: true, minBytes: 0 }) === true);
   check('min size filter', s.passesResultFilter({ seeders: 5, sizeBytes: 10 }, { hideDead: false, minBytes: 100 }) === false);
+  check('max size filter drops big files, keeps unknown sizes', s.passesResultFilter({ seeders: 5, sizeBytes: 200 }, { hideDead: false, minBytes: 0, maxBytes: 100 }) === false && s.passesResultFilter({ seeders: 5 }, { hideDead: false, minBytes: 0, maxBytes: 100 }) === true);
 }
 check('row shows the zero-seeder badge', /sharingBadge/.test(row));
 check('row is dimmed for low sharing', /isLowShare/.test(row) && /opacity/.test(row));

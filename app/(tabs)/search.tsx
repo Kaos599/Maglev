@@ -33,6 +33,7 @@ import { ResultPreviewSheet } from '../../components/search/ResultPreviewSheet';
 import { UnansweredSheet } from '../../components/search/UnansweredSheet';
 import { MobileDataSheet } from '../../components/search/MobileDataSheet';
 import { passesResultFilter } from '../../components/search/sharing';
+import { SIZE_STOPS, toFilter } from '../../components/search/sizeRange';
 import { oneTapAddNote } from '../../utils/addChecks';
 import { empty, watchCopy } from '../../constants/copy';
 import { addWatchToStore } from '../../utils/watch/store';
@@ -111,7 +112,7 @@ export default function SearchScreen() {
   // One switch with Settings > Search sources > Hide dead torrents: the sheet shows and changes the saved setting.
   const hideNoShare = prefs.hideDead;
   const setHideNoShare = useCallback((hideDead: boolean) => updatePrefs({ hideDead }), [updatePrefs]);
-  const [minBytes, setMinBytes] = useState(0);
+  const [sizeRange, setSizeRange] = useState({ low: 0, high: SIZE_STOPS.length - 1 });
   const [preview, setPreview] = useState<MergedResult | null>(null);
   const [mobileAsk, setMobileAsk] = useState<{ result: MergedResult; note: string } | null>(null);
   const [recents, setRecents] = useState<string[]>(() => prefs.recents);
@@ -409,16 +410,16 @@ export default function SearchScreen() {
 
   // Rows the user has had on screen keep their slots while later sources answer; new rows are ranked
   // below them. A new sort, source filter or search ranks everything again (and the list starts at the top).
-  const rankKey = `${prefs.sort}|${sourceFilter ?? ''}|${rankTick}|${hideNoShare}|${minBytes}`;
+  const rankKey = `${prefs.sort}|${sourceFilter ?? ''}|${rankTick}|${hideNoShare}|${sizeRange.low}-${sizeRange.high}`;
   const lastRankKey = useRef(rankKey);
   const shown = useMemo(() => {
     const base = update?.results ?? [];
     const bySource = sourceFilter ? base.filter((r) => r.sources.includes(sourceFilter)) : base;
-    const filtered = bySource.filter((r) => passesResultFilter(r, { hideDead: hideNoShare, minBytes }));
+    const filtered = bySource.filter((r) => passesResultFilter(r, { hideDead: hideNoShare, ...toFilter(sizeRange.low, sizeRange.high) }));
     const ranked = sortResults(filtered, prefs.sort);
     if (lastRankKey.current !== rankKey) return ranked;
     return stableOrder(shownKeys.current, ranked, seenRowCount(highWater.current), keyOfResult);
-  }, [update, sourceFilter, prefs.sort, rankKey, hideNoShare, minBytes]);
+  }, [update, sourceFilter, prefs.sort, rankKey, hideNoShare, sizeRange]);
   useEffect(() => {
     if (lastRankKey.current !== rankKey) {
       lastRankKey.current = rankKey;
@@ -852,15 +853,15 @@ export default function SearchScreen() {
         sources={sourceCounts.map(([id, count]) => ({ id, name: nameOf(id), count }))}
         sourceFilter={sourceFilter}
         onSourceChange={setSourceFilter}
-        minBytes={minBytes}
-        onMinBytesChange={setMinBytes}
+        sizeRange={sizeRange}
+        onSizeRangeChange={(low, high) => setSizeRange({ low, high })}
         hideNoShare={hideNoShare}
         onHideNoShareChange={setHideNoShare}
         shownCount={shown.length}
         totalCount={update?.results.length ?? 0}
         onReset={() => {
           setSourceFilter(null);
-          setMinBytes(0);
+          setSizeRange({ low: 0, high: SIZE_STOPS.length - 1 });
           setHideNoShare(true);
         }}
       />

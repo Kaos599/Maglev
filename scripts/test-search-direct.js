@@ -48,6 +48,7 @@ async function main() {
 
   check('hideDead keeps a direct result (seeders unknown)', sharing.passesResultFilter(d, { hideDead: true, minBytes: 0 }));
   check('hideDead still drops a dead torrent', !sharing.passesResultFilter(magnetRow({ seeders: 0 }), { hideDead: true, minBytes: 0 }));
+  check('size range keeps a direct result of unknown size', sharing.passesResultFilter(d, { hideDead: false, minBytes: 100, maxBytes: 200 }));
 
   const sorted = agg.sortResults(merged, 'seeders');
   check('sorts with unknown seeders (magnet row first, direct last)', sorted[0].infoHash === HASH && sorted[1].infoHash === 'gutenberg:1342');

@@ -26,3 +26,5 @@ export { PressableScale } from './PressableScale';
 export type { PressableScaleProps } from './PressableScale';
 export { RadioCard } from './RadioCard';
 export type { RadioCardProps } from './RadioCard';
+export { RangeSlider } from './RangeSlider';
+export type { RangeSliderProps } from './RangeSlider';
