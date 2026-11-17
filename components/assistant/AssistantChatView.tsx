@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { FlatList, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { router } from 'expo-router';
+import { useRouter } from 'expo-router';
 import { useTheme } from '../../context/ThemeContext';
 import { ThemeColors, spacing, type } from '../../constants/theme';
 import type { TokenKey } from '../../utils/assistant/glossary';
@@ -40,6 +40,7 @@ const GATE_LINE: Record<Exclude<ChatGate, 'ready'>, string> = {
 
 /** The chat screen. Renders an AssistantChat and calls its methods; never talks to the model, the engine or search. */
 export function AssistantChatView({ chat, onOpenSettings, onChooseFiles, onOpenTarget }: AssistantChatViewProps) {
+  const router = useRouter();
   const { colors } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const [term, setTerm] = useState<TokenKey | null>(null);

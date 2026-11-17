@@ -20,6 +20,8 @@ export interface SearchPrefs {
   useFor: Record<string, Category[]>;
   mirrorOverride: Record<string, string>;
   adult: boolean;
+  /** Hide results from uploaders without a trusted status (TPB). */
+  trustedUploadersOnly: boolean;
   /** Mark results whose every source is known for fake or harmful uploads. */
   warnUnsafe: boolean;
   waitSeconds: 5 | 8 | 15;
@@ -45,7 +47,7 @@ export interface SearchPrefs {
  * Sources that became defaults after first release. A saved source list never picks up new defaults by itself,
  * so each of these is switched on once for existing installs. Only safe, trusted sources become defaults.
  */
-export const LATER_DEFAULTS: readonly string[] = [];
+export const LATER_DEFAULTS: readonly string[] = ['gutenberg', 'librivox'];
 
 const KEY = 'maglev.search.prefs.v2';
 const LEGACY_RECENTS_KEY = 'maglev.search.recents.v1';
@@ -64,6 +66,7 @@ function defaults(): SearchPrefs {
     useFor: {},
     mirrorOverride: {},
     adult: false,
+    trustedUploadersOnly: true,
     warnUnsafe: true,
     waitSeconds: 8,
     limit: 50,
@@ -132,6 +135,7 @@ export function normalizeSearchPrefs(raw: unknown, legacyRecents: string[]): Sea
     useFor: recordOf(o.useFor, (x) => (Array.isArray(x) ? categories(x) : null)),
     mirrorOverride: recordOf(o.mirrorOverride, (x) => (typeof x === 'string' && x ? x : null)),
     adult: o.adult === true,
+    trustedUploadersOnly: o.trustedUploadersOnly !== false,
     warnUnsafe: o.warnUnsafe !== false,
     waitSeconds: o.waitSeconds === 5 || o.waitSeconds === 15 ? o.waitSeconds : 8,
     limit: o.limit === 25 || o.limit === 100 ? o.limit : 50,

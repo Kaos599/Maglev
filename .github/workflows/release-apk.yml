@@ -323,6 +323,13 @@ jobs:
             echo "No APK set for this release"
           fi
 
+      # One checksum line per published file, so anyone can check a download with `sha256sum -c`.
+      - name: Write SHA256SUMS
+        run: |
+          cd build-artifacts
+          sha256sum Maglev-*.apk $(ls Maglev-*.apks 2>/dev/null) > SHA256SUMS
+          cat SHA256SUMS
+
       - name: Write release notes
         run: node scripts/release-notes.js build "${{ github.ref_name }}" > release-body.md
 
@@ -338,6 +345,7 @@ jobs:
             build-artifacts/Maglev-${{ github.ref_name }}-armeabi-v7a.apk
             build-artifacts/Maglev-${{ github.ref_name }}-x86_64.apk
             build-artifacts/Maglev-${{ github.ref_name }}.apks
+            build-artifacts/SHA256SUMS
           draft: false
           # Beta is in the tag name; a normal release is what GitHub shows in the repo sidebar.
           prerelease: false

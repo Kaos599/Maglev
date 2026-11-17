@@ -1,6 +1,6 @@
 import React, { useCallback, useMemo } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
-import { router } from 'expo-router';
+import { useRouter } from 'expo-router';
 import { useTheme } from '../../context/ThemeContext';
 import { ThemeColors, spacing, type } from '../../constants/theme';
 import { PixelIcon, PixelIconName } from '../../components/PixelIcon';
@@ -45,12 +45,13 @@ let runner: ToolRunner | null = null;
 const appRunner = () => (runner ??= createAppToolRunner());
 
 export default function AssistantTab() {
+  const router = useRouter();
   const { colors } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const prefs = useAssistantPrefs();
   const chat = useAssistantChat(appRunner());
-  const openSettings = useCallback(() => router.push('/settings/assistant' as never), []);
-  const chooseFiles = useCallback((source: string) => router.push({ pathname: '/add-torrent', params: { source } }), []);
+  const openSettings = useCallback(() => router.push('/settings/assistant' as never), [router]);
+  const chooseFiles = useCallback((source: string) => router.push({ pathname: '/add-torrent', params: { source } }), [router]);
 
   if (!prefs.warningAcceptedAt) {
     return (

@@ -59,6 +59,8 @@
   { "query": "trackers", "expect": ["updates-sources", "updates-lists-auto", "network-dht"], "why": "bare keyword" },
   { "query": "search providers", "expect": ["search-adult", "search-jackett", "updates-sources"], "why": "bare keyword" },
   { "query": "hide dead torrents", "expect": ["search-hide-dead"], "why": "exact label" },
+  { "query": "trusted uploaders only", "expect": ["search-trusted-uploaders"], "why": "exact label" },
+  { "query": "hide fake pirate bay uploads", "expect": ["search-trusted-uploaders"], "why": "goal: safer TPB results" },
   { "query": "no seeders", "expect": ["search-hide-dead"], "why": "phrase from results" },
   { "query": "movies only", "expect": ["search-category"], "why": "goal: category filter" },
   { "query": "malware warning", "expect": ["search-warn-unsafe"], "why": "goal: risky source warning" },

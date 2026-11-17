@@ -65,3 +65,15 @@ import { xxxtracker } from './xxxtracker.ts';
 PROVIDERS.push(limetorrents, torrentdownloads, torrentdownload, therarbg, ext, mypornclub, xxxclub, xxxtracker);
 
 export { limetorrents, torrentdownloads, torrentdownload, therarbg, ext, mypornclub, xxxclub, xxxtracker };
+
+// Books, feeds and niche sources. Gutenberg and LibriVox return direct files (SEARCH_CONTRACT section 9) and are on by default.
+import { gutenberg } from './gutenberg.ts';
+import { librivox } from './librivox.ts';
+import { showrss } from './showrss.ts';
+import { distrowatch } from './distrowatch.ts';
+import { acgrip } from './acgrip.ts';
+import { u3c3 } from './u3c3.ts';
+
+PROVIDERS.push(gutenberg, librivox, showrss, distrowatch, acgrip, u3c3);
+
+export { gutenberg, librivox, showrss, distrowatch, acgrip, u3c3 };

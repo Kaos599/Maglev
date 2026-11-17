@@ -6,12 +6,6 @@
 import { useSyncExternalStore } from 'react';
 import { kvGet, kvSet } from './kv.ts';
 
-/**
- * Off until the engine splits downloads (0.26). While false, Settings and Add download show no Parts control,
- * every add sends 1 part, and the saved choice is kept for when it comes back.
- */
-export const PARTS_ENABLED = false;
-
 export const PART_CHOICES = [1, 2, 4, 8] as const;
 export type DownloadParts = (typeof PART_CHOICES)[number];
 

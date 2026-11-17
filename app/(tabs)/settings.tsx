@@ -1,6 +1,6 @@
 import React, { useCallback, useMemo, useRef, useState } from 'react';
 import { Linking, NativeScrollEvent, NativeSyntheticEvent, ScrollView, ScrollViewInstance, StyleSheet, View } from 'react-native';
-import { router } from 'expo-router';
+import { useRouter } from 'expo-router';
 import Constants from 'expo-constants';
 import { maglevEngine } from 'maglev-engine';
 import { useSettings } from '../../context/SettingsContext';
@@ -19,7 +19,7 @@ import { spacing } from '../../constants/theme';
 import { banners, watchCopy } from '../../constants/copy';
 import { useWatches } from '../../utils/watch/store';
 import { useUpdatePrefs } from '../../utils/prefs/update';
-import { PARTS_ENABLED, useLinkDownloadPrefs } from '../../utils/prefs/linkDownloads';
+import { useLinkDownloadPrefs } from '../../utils/prefs/linkDownloads';
 import { SettingsSearchField, SettingsSearchResults } from '../../components/settings/SettingsSearch';
 
 const ACCENT_LABEL = {
@@ -43,7 +43,8 @@ interface RowSpec {
 
 /** One settings row. Memoised so a telemetry tick or an unrelated change never re-renders the list. */
 const SettingsRow = React.memo(function SettingsRow({ icon, title, value, route }: RowSpec) {
-  const onPress = useCallback(() => router.push(`/settings/${route}` as never), [route]);
+  const router = useRouter();
+  const onPress = useCallback(() => router.push(`/settings/${route}` as never), [router, route]);
   return <ListRow icon={icon} title={title} value={value} onPress={onPress} />;
 });
 
@@ -57,9 +58,13 @@ function StorageRow() {
 
 /** Warning banners. Reads engine state itself, so engine ticks re-render only this block. */
 function NeedsAttention() {
-  const { permissionStatus, storageStatus, refreshPermissions } = useEngine();
+  const { permissionStatus, storageStatus, refreshPermissions, configWarning } = useEngine();
+  const router = useRouter();
   const attention = useMemo(() => {
     const items: React.ReactElement[] = [];
+    if (configWarning) {
+      items.push(<Banner key="config" tone="warning" title={configWarning} />);
+    }
     if (permissionStatus?.notifications === 'denied') {
       items.push(
         <Banner
@@ -119,7 +124,7 @@ function NeedsAttention() {
       );
     }
     return items;
-  }, [permissionStatus, storageStatus, refreshPermissions]);
+  }, [permissionStatus, storageStatus, refreshPermissions, configWarning, router]);
 
   if (attention.length === 0) return null;
   return (
@@ -165,7 +170,7 @@ export default function SettingsIndex() {
   const providers = `${searchPrefs.enabled.length} on`;
   const auto = feedAutomationSummary(feedAuto);
 
-  const downloadsValue = PARTS_ENABLED ? (linkPrefs.downloadParts === 1 ? '1 part' : `${linkPrefs.downloadParts} parts`) : 'Adding, retry, finish';
+  const downloadsValue = linkPrefs.downloadParts === 1 ? '1 part' : `${linkPrefs.downloadParts} parts`;
   const alerts = permissionStatus?.notifications === 'granted' ? 'On' : 'Off';
 
   const generalRows: RowSpec[] = [

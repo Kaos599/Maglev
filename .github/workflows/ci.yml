@@ -377,7 +377,7 @@ jobs:
         run: node scripts/test-plugins.js
 
       - name: Search providers (offline fixtures)
-        run: node scripts/test-search.js
+        run: node scripts/test-search.js && node scripts/test-search-direct.js && node scripts/test-sources-books.js && node scripts/test-sources-feeds.js && node scripts/test-sources-anime-adult-games.js
 
       - name: Feed rules (shared vectors)
         run: node scripts/test-feeds.js
