@@ -2,6 +2,18 @@
 
 Bug reports, fixes and ideas are welcome. This page covers what you need to send a pull request that can be merged.
 
+## Open an issue first
+
+For anything other than a small bug fix or a typo, **open an issue before you write code**: a new feature, a change to how something works, a new search source, a new setting, a redesign or a refactor.
+
+1. [Open an issue](https://github.com/Kaos599/Maglev/issues/new) that says what you want to change and why. Screenshots or a rough sketch help.
+2. Wait for the maintainer to reply. If the idea fits, the issue gets the `approved` label, sometimes with notes on how it should work.
+3. Then open your pull request against `dev`, and link the issue in it (`Closes #123`).
+
+Pull requests for features or changes that don't have an approved issue may be closed without review, however good the code is. This saves you from building something that can't be merged.
+
+Bug fixes don't need approval first, but please link the bug report if there is one.
+
 ## Reporting a bug
 
 Use **About → Report a bug** in the app. It opens a GitHub issue with your Maglev version, Android version and phone filled in. You can also open one directly with the [bug report form](https://github.com/Kaos599/Maglev/issues/new?template=bug.yml).
@@ -13,7 +25,7 @@ Security problems go through [private reporting](https://github.com/Kaos599/Magl
 You need Node 22, the Android SDK and a phone or emulator. You don't need Rust: CI builds the engine (`libmaglev_core.so`) on every push.
 
 ```bash
-git clone https://github.com/Kaos599/Maglev.git && cd Maglev
+git clone -b dev https://github.com/Kaos599/Maglev.git && cd Maglev
 npm install --legacy-peer-deps
 npx expo run:android
 ```
@@ -48,7 +60,7 @@ Some checks read design documents that aren't in this repository. Those checks s
 - **No analytics, ads or tracking libraries,** and nothing that sends data anywhere except where the user asked.
 - **Every setting has to do something.** A toggle that isn't wired to the engine won't be merged.
 
-Small, focused pull requests get reviewed fastest. For anything large, open an issue first so we can agree on the approach.
+Small, focused pull requests get reviewed fastest. Anything beyond a bug fix needs an approved issue first (see [Open an issue first](#open-an-issue-first)).
 
 ## Licence
 
