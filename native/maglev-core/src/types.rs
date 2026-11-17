@@ -68,6 +68,16 @@ pub struct Snapshot {
     /// "Resume anyway" (contract section 25): the rule pauses (Wi-Fi only, battery, charging, schedule,
     /// seeding on mobile data) do not apply to this torrent.
     pub allowed_anyway: bool,
+    /// Seconds spent downloading, not counting pauses, queue, checking or seeding (section 34.1). 0 for items from before 0.26.
+    pub active_secs: i64,
+    /// Unix seconds when every wanted piece was first in. 0 until then, and 0 for items that were done before 0.26.
+    pub finished_at: i64,
+    /// Payload bytes this engine downloaded for the torrent, not counting bytes already on disk.
+    pub session_bytes: u64,
+    /// Of `session_bytes` plus `uploaded_bytes`: moved on an unmetered link.
+    pub bytes_wifi: u64,
+    /// The same on a metered link.
+    pub bytes_mobile: u64,
 }
 
 #[derive(Debug, Clone, Serialize)]

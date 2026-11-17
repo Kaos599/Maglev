@@ -5,6 +5,7 @@
 import type { DownloadSnapshot } from 'maglev-engine';
 import { formatBytes, formatSpeed } from '../constants/format.ts';
 import { formatEta, smoothRate } from './rates.ts';
+import { doneLead } from './stats/format.ts';
 
 export type DownloadTone = 'muted' | 'accent' | 'danger';
 export type DownloadActionKind =
@@ -184,7 +185,7 @@ export function downloadStatus(d: DownloadSnapshot, etaLabel?: string): Download
     case 'verifying':
       return { text: 'Finishing…', tone: 'muted' };
     case 'finished':
-      return { text: d.size ? `Done · ${formatBytes(d.size)}` : 'Done', tone: 'accent' };
+      return { text: d.size ? `${doneLead(d.activeSecs, d.finishedAt)} · ${formatBytes(d.size)}` : doneLead(d.activeSecs, d.finishedAt), tone: 'accent' };
     case 'needs_link':
       return {
         text: d.error?.code === 'AUTH_REQUIRED' ? 'Needs sign-in · Paste new link' : 'Link expired · Paste new link',

@@ -65,6 +65,11 @@ export function snapshotToTelemetry(s: Snapshot): TorrentTelemetry {
     heldBytes: s.heldBytes ?? s.progressBytes,
     webSeeds: s.webSeeds ?? 0,
     resolvingSecs: s.resolvingSecs ?? null,
+    activeSecs: s.activeSecs ?? 0,
+    finishedAt: s.finishedAt ?? 0,
+    sessionBytes: s.sessionBytes ?? 0,
+    bytesWifi: s.bytesWifi ?? 0,
+    bytesMobile: s.bytesMobile ?? 0,
     stalledSecs: s.stalledSecs ?? null,
   };
 }

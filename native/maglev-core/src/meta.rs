@@ -12,6 +12,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::config::NativeConfig;
 use crate::priority::FilePriorityEntry;
+use crate::timing::Timing;
 use crate::types::ErrorInfo;
 
 pub const META_FILE: &str = "maglev_meta.json";
@@ -58,6 +59,8 @@ pub struct TorrentMeta {
     /// Wall-clock milliseconds when a magnet started looking for its metadata (section 20).
     /// Set when the magnet is added, cleared when the metadata arrives.
     pub resolving_since_ms: Option<i64>,
+    /// Active time, finish time and the network split (contract section 34.1). Missing in files from before 0.26.
+    pub timing: Timing,
     /// Wall-clock milliseconds since a torrent with metadata, 0 bytes and no connected peer began
     /// waiting for peers (section 20.1). Cleared as soon as a peer connects or a byte arrives.
     /// Never saved: each process start gets a fresh window, so time the app was not running never counts
@@ -228,6 +231,23 @@ mod tests {
         assert!(m.paused_by.is_none() && !m.queued);
         // Files written before health existed load with no health and no resolve clock.
         assert!(m.health.is_none() && m.resolving_since_ms.is_none() && m.stalled_since_ms.is_none());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn timing_round_trips_and_old_files_have_none() {
+        let dir = temp_dir("timing");
+        let mut s = MetaStore::load(&dir);
+        let mut t = Timing::new();
+        t.active_ms = 61_000;
+        t.session_bytes = 10;
+        t.bytes_mobile = 10;
+        s.insert("abc", TorrentMeta { timing: t.clone(), ..Default::default() });
+        s.insert("old", TorrentMeta { added_at: 1, ..Default::default() });
+        s.save().unwrap();
+        let s2 = MetaStore::load(&dir);
+        assert_eq!(s2.get("abc").unwrap().timing, t);
+        assert_eq!(s2.get("old").unwrap().timing, Timing::default());
         let _ = std::fs::remove_dir_all(&dir);
     }
 

@@ -2,6 +2,7 @@
  * Builds the backup object from what the app already has. Pure: the engine and the stores are injected.
  */
 import { SETTINGS_SCHEMA_VERSION, type MaglevSettings } from '../../modules/maglev-engine/src/MaglevSettings.types.ts';
+import type { StatsSection } from '../stats/store.ts';
 import type { DownloadSnapshot, Snapshot } from '../../modules/maglev-engine/src/MaglevEngine.types.ts';
 import {
   BACKUP_EXTENSION,
@@ -35,6 +36,8 @@ export interface ExportDeps {
   downloads: DownloadSnapshot[];
   /** Trackers and file selection for one torrent (from getDetail). Null when the engine can't say. */
   torrentData: (id: string) => Promise<TorrentRestoreData | null>;
+  /** Stats rows, only when the user ticked "Include stats". Left out of the file otherwise. */
+  stats?: StatsSection | null;
 }
 
 /** The assistant prefs without anything that points at a key. The key itself lives in secure store and is never read. */
@@ -111,6 +114,7 @@ export async function buildBackup(deps: ExportDeps): Promise<Backup> {
     prefs,
     torrents,
     downloads,
+    ...(deps.stats ? { stats: deps.stats } : {}),
   };
 }
 

@@ -142,6 +142,8 @@ object EngineHost {
 
     @Volatile private var governance = Governance()
     private val lastAllowed = HashMap<String, Boolean>()
+    /** Last metered flag pushed to the engine (contract section 34.1); null forces the next push. */
+    private var lastMetered: Boolean? = null
     private var net: NetworkGovernanceManager? = null
     private var power: PowerGovernanceManager? = null
 
@@ -1191,6 +1193,13 @@ object EngineHost {
         // Contract section 25.2. Same link check as Wi-Fi only (`unmeteredLink`); only judged while the link is known.
         val seedMeteredBlocked = !g.seedOnMobileData && n != null && n.monitoring && n.connected && !n.unmeteredLink
         send("seed_metered", !seedMeteredBlocked, force)
+        // Contract section 34.1: the engine only splits bytes by network with this; it never pauses anything.
+        // Unknown (no callback, no network) counts as unmetered.
+        val metered = n != null && n.monitoring && n.connected && !n.unmeteredLink
+        if (force || lastMetered != metered) {
+            lastMetered = metered
+            call { NativeCore.nativeSetNetworkMetered(metered) }
+        }
         if (force || storageReserveBlocked) send("storage_full", !storageReserveBlocked, force)
         send("wifi_only", !wifiBlocked, force)
         send("battery", !batteryBlocked, force)

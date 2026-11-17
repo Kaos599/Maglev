@@ -3,6 +3,7 @@
  * normalisers the app uses for its own stored data. Pure TypeScript.
  */
 import { migrateSettings } from '../../modules/maglev-engine/src/MaglevSettingsStore.ts';
+import { parseStatsSection } from '../stats/backup.ts';
 import { normalizeInfoHash } from '../../modules/maglev-engine/src/magnet.ts';
 import {
   BACKUP_FORMAT,
@@ -135,6 +136,7 @@ export function migrateBackup(raw: unknown): ParseResult {
     }
   }
 
+  const stats = parseStatsSection(raw.stats);
   return {
     ok: true,
     backup: {
@@ -146,6 +148,7 @@ export function migrateBackup(raw: unknown): ParseResult {
       prefs,
       torrents,
       downloads,
+      ...(stats ? { stats } : {}),
     },
   };
 }

@@ -19,6 +19,7 @@ import { spacing } from '../../constants/theme';
 import { banners, watchCopy } from '../../constants/copy';
 import { useWatches } from '../../utils/watch/store';
 import { useUpdatePrefs } from '../../utils/prefs/update';
+import { useStatsPrefs } from '../../utils/stats/prefs';
 import { useLinkDownloadPrefs } from '../../utils/prefs/linkDownloads';
 import { SettingsSearchField, SettingsSearchResults } from '../../components/settings/SettingsSearch';
 
@@ -47,6 +48,14 @@ const SettingsRow = React.memo(function SettingsRow({ icon, title, value, route 
   const onPress = useCallback(() => router.push(`/settings/${route}` as never), [router, route]);
   return <ListRow icon={icon} title={title} value={value} onPress={onPress} />;
 });
+
+/** Stats row: opens the Stats screen, which lives outside /settings. */
+function StatsRow() {
+  const keep = useStatsPrefs().keepStats;
+  const router = useRouter();
+  const onPress = useCallback(() => router.push('/stats' as never), [router]);
+  return <ListRow icon="grid" title="Stats" value={keep ? 'Your downloads, by day' : 'Off'} onPress={onPress} />;
+}
 
 /** Storage row: the only row that reads the engine, kept apart so the rest of the list stays still. */
 function StorageRow() {
@@ -193,8 +202,8 @@ export default function SettingsIndex() {
     { icon: 'network', title: 'Browser', value: browserPrefs.adBlock ? 'Ad blocking on' : 'Ad blocking off', route: 'browser' },
   ];
   const appRows: RowSpec[] = [
-    { icon: 'download', title: 'Updates', value: updatePrefs.updateAutoCheck ? 'Checks daily' : 'Manual', route: 'updates' },
     { icon: 'about', title: 'About', value: APP_VERSION, route: 'about' },
+    { icon: 'download', title: 'Updates', value: updatePrefs.updateAutoCheck ? 'Checks daily' : 'Manual', route: 'updates' },
   ];
 
   // "More below": a fade over the bottom edge until the end is near, and a pill that stays until the end has been reached once (or it is tapped).
@@ -257,6 +266,7 @@ export default function SettingsIndex() {
                 {appRows.map((r) => (
                   <SettingsRow key={r.route} {...r} />
                 ))}
+                <StatsRow />
               </Card>
             </View>
             <View style={styles.section}>
