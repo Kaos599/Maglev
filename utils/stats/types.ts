@@ -29,7 +29,7 @@ export interface DayCounts {
   finished: number;
   failed: number;
   cancelled: number;
-  /** Seconds items spent Downloading that day, summed over items (NATIVE_CONTRACT 34.2, 0.27). Days before 0.27 read 0. */
+  /** Seconds that day while anything was Downloading, wall-clock (NATIVE_CONTRACT 34.3, 0.27). Days before 0.27 read 0. */
   activeSecs: number;
 }
 

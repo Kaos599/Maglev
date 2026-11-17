@@ -24,12 +24,12 @@ export const FLUSH_MS = 60_000;
 export const TICK_MS = 1000;
 
 /**
- * Item-seconds to add for one snapshot tick (NATIVE_CONTRACT 34.2, 0.27): the time since the previous tick for each
- * downloading item, capped at 2 x the tick interval so a sleeping phone never adds the gap. 0 without an earlier tick.
+ * Seconds to add for one snapshot tick (NATIVE_CONTRACT 34.3, 0.27): the wall-clock time since the previous tick while any
+ * item is Downloading, capped at 2 x the tick interval so a sleeping phone never adds the gap. 0 without an earlier tick.
  */
 export function activeTickSecs(lastAt: number, now: number, downloading: number, tickMs: number = TICK_MS): number {
   if (!(lastAt > 0) || !(now > lastAt) || downloading <= 0) return 0;
-  // Wall-clock time while anything downloads (contract 34.2): two downloads at once still count one second per second.
+  // Wall-clock time while anything downloads (contract 34.3): two downloads at once still count one second per second.
   return Math.min(now - lastAt, 2 * tickMs) / 1000;
 }
 
