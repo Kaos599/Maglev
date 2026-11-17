@@ -58,6 +58,12 @@ pub struct TorrentMeta {
     /// Wall-clock milliseconds when a magnet started looking for its metadata (section 20).
     /// Set when the magnet is added, cleared when the metadata arrives.
     pub resolving_since_ms: Option<i64>,
+    /// Wall-clock milliseconds since a torrent with metadata, 0 bytes and no connected peer began
+    /// waiting for peers (section 20.1). Cleared as soon as a peer connects or a byte arrives.
+    /// Never saved: each process start gets a fresh window, so time the app was not running never counts
+    /// (a fast-resumed torrent can go live without a check that would reset it).
+    #[serde(skip)]
+    pub stalled_since_ms: Option<i64>,
 }
 
 #[derive(Debug, Default, Serialize, Deserialize)]
@@ -221,7 +227,7 @@ mod tests {
         assert_eq!(m.added_at, 5);
         assert!(m.paused_by.is_none() && !m.queued);
         // Files written before health existed load with no health and no resolve clock.
-        assert!(m.health.is_none() && m.resolving_since_ms.is_none());
+        assert!(m.health.is_none() && m.resolving_since_ms.is_none() && m.stalled_since_ms.is_none());
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -234,6 +240,7 @@ mod tests {
             TorrentMeta {
                 health: Some("files_missing".into()),
                 resolving_since_ms: Some(1_700_000_000_000),
+                stalled_since_ms: Some(1_700_000_005_000),
                 ..Default::default()
             },
         );
@@ -242,6 +249,8 @@ mod tests {
         let m = s2.get("abc").unwrap();
         assert_eq!(m.health.as_deref(), Some("files_missing"));
         assert_eq!(m.resolving_since_ms, Some(1_700_000_000_000));
+        // The stall clock is not saved (section 20.1): a reload starts a fresh window.
+        assert_eq!(m.stalled_since_ms, None);
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

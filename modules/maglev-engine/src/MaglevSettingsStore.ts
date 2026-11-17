@@ -1,5 +1,7 @@
 import {
   AUTO_RETRY_DELAYS,
+  DEFAULT_PEER_TIMEOUT_MINS,
+  PEER_TIMEOUT_OPTIONS,
   DEFAULT_SETTINGS,
   SETTINGS_SCHEMA_VERSION,
   type AccentName,
@@ -84,6 +86,7 @@ export function migrateSettings(raw: unknown): MaglevSettings {
   if (merged.appearance.showSpeedTotals !== true) merged.appearance.showSpeedTotals = false;
   if (merged.bandwidth.autoRetry !== 'off' && merged.bandwidth.autoRetry !== 'after') merged.bandwidth.autoRetry = 'after';
   if (!AUTO_RETRY_DELAYS.includes(merged.bandwidth.autoRetryDelayMin)) merged.bandwidth.autoRetryDelayMin = 5;
+  if (!PEER_TIMEOUT_OPTIONS.includes(merged.bandwidth.peerTimeoutMins)) merged.bandwidth.peerTimeoutMins = DEFAULT_PEER_TIMEOUT_MINS;
   merged.downloadFolder = sanitizeFolder(isPlainObject(body) ? body.downloadFolder : null);
   return merged;
 }
