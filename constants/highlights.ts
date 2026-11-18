@@ -16,7 +16,7 @@ export interface Highlight {
 export const HIGHLIGHTS: Record<string, Highlight> = {
   '0.28': {
     title: 'Subtitles',
-    body: "Find and save subtitles for videos you've downloaded, from dozens of free sources.",
+    body: "Find and save subtitles for videos you've downloaded, from 21 free sources. No account needed.",
     icon: 'subtitles',
     tryRoute: '/settings/subtitles',
     tryLabel: 'Set up subtitles',

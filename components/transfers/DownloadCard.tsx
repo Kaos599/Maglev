@@ -99,18 +99,19 @@ function DownloadCardImpl({ download: d, onPress, onAction: onActionProp, select
         }}
         style={styles.press}
       >
-        <View style={styles.nameRow}>
-          {selectionMode ? (
-            <PixelIcon name={selected ? 'select' : 'checkbox-empty'} size={20} color={selected ? colors.accentText : colors.textMuted} />
-          ) : showFileIcon ? (
-            <View style={styles.kindIcon} importantForAccessibility="no-hide-descendants" accessibilityElementsHidden>
-              <PixelIcon name={downloadCardGlyph(d.name, !!d.stream)} size={20} color={colors.textMuted} />
-            </View>
-          ) : null}
-          <Text style={styles.name} numberOfLines={2} ellipsizeMode="tail">
-            {d.name}
-          </Text>
-        </View>
+        {selectionMode ? (
+          <View style={styles.rail}>
+            <PixelIcon name={selected ? 'select' : 'checkbox-empty'} size={24} color={selected ? colors.accentText : colors.textMuted} />
+          </View>
+        ) : showFileIcon ? (
+          <View style={styles.rail} importantForAccessibility="no-hide-descendants" accessibilityElementsHidden>
+            <PixelIcon name={downloadCardGlyph(d.name, !!d.stream)} size={24} color={colors.textMuted} />
+          </View>
+        ) : null}
+        <View style={styles.body}>
+        <Text style={styles.name} numberOfLines={2} ellipsizeMode="tail">
+          {d.name}
+        </Text>
         <ProgressBar progress={pct / 100} tone={toneFor(d)} indeterminate={indeterminate} accessibilityLabel={`${d.name} progress`} />
         <View>
           <Text style={[styles.status, { color: statusColor }]} numberOfLines={1}>
@@ -121,6 +122,7 @@ function DownloadCardImpl({ download: d, onPress, onAction: onActionProp, select
               {status.sub}
             </Text>
           ) : null}
+        </View>
         </View>
       </PressableScale>
       {subtitle && onSubtitles && !selectionMode ? (
@@ -187,19 +189,20 @@ const makeStyles = (c: ThemeColors) =>
       borderRadius: radius.lg,
       overflow: 'hidden',
     },
+    // A row: the left rail (file icon or selection box, full card height) and the text column.
     press: {
       flexGrow: 1,
-      gap: spacing.sm,
+      flexDirection: 'row',
+      gap: spacing.md,
       paddingLeft: spacing.lg,
       paddingRight: 44 + spacing.sm,
       paddingVertical: spacing.md,
-      justifyContent: 'space-between',
     },
+    rail: { width: 24, alignSelf: 'stretch', alignItems: 'center', justifyContent: 'center' },
+    body: { flex: 1, gap: spacing.sm, justifyContent: 'space-between' },
     actionAnchor: { position: 'absolute', right: spacing.sm, top: '50%', marginTop: -22, width: 44, height: 44 },
     subtitleAnchor: { position: 'absolute', right: spacing.sm + 8, top: 4, width: 28, height: 28 },
     cardSelected: { borderColor: c.accent, backgroundColor: alpha(c.accent, 0.08) },
-    nameRow: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.sm },
-    kindIcon: { width: 20, height: 18, alignItems: 'center', justifyContent: 'center' },
     name: { ...type.mono, fontSize: 13, lineHeight: 18, color: c.text, flex: 1 },
     status: { ...type.mono, fontSize: 12, lineHeight: 18 },
   });

@@ -830,7 +830,7 @@ export const subtitleSettingsCopy = {
     caption: 'Subtitles that also describe sounds. Show both lists them next to the others.',
   },
   sources: {
-    title: 'Sources',
+    title: 'Subtitle sources',
     pageTitle: 'Subtitle sources',
     caption: 'Maglev asks the sources you turn on when you tap Find subtitles.',
     empty: 'No sources yet',

@@ -239,18 +239,17 @@ function TransferCardImpl({
         accessibilityState={{ selected: selectionMode ? selected : undefined }}
         style={[styles.press, showPlay && { paddingRight: 44 + playRight }]}
       >
+        {selectionMode ? (
+          <View style={styles.rail}>
+            <PixelIcon name={selected ? "select" : "checkbox-empty"} size={24} color={selected ? colors.accentText : colors.textMuted} />
+          </View>
+        ) : showFileIcon ? (
+          <View style={styles.rail} importantForAccessibility="no-hide-descendants" accessibilityElementsHidden>
+            <PixelIcon name={torrentCardGlyph(t.name, t.mainFile ? [{ path: t.mainFile, length: 1 }] : null)} size={24} color={colors.textMuted} />
+          </View>
+        ) : null}
+        <View style={styles.body}>
         <View style={styles.nameRow}>
-          {selectionMode ? (
-            <PixelIcon
-              name={selected ? "select" : "checkbox-empty"}
-              size={20}
-              color={selected ? colors.accentText : colors.textMuted}
-            />
-          ) : showFileIcon ? (
-            <View style={styles.kindIcon} importantForAccessibility="no-hide-descendants" accessibilityElementsHidden>
-              <PixelIcon name={torrentCardGlyph(t.name)} size={20} color={colors.textMuted} />
-            </View>
-          ) : null}
           <Text style={styles.name} numberOfLines={2} ellipsizeMode="tail">
             {t.name}
           </Text>
@@ -281,6 +280,7 @@ function TransferCardImpl({
             {status.sub}
           </Text>
         ) : null}
+        </View>
         </View>
       </PressableScale>
       {subtitle && onSubtitles && !selectionMode ? (
@@ -352,6 +352,7 @@ function sameCard(a: TransferCardProps, b: TransferCardProps): boolean {
     a.showFileIcon === b.showFileIcon &&
     x.id === y.id &&
     x.name === y.name &&
+    x.mainFile === y.mainFile &&
     x.state === y.state &&
     x.pausedBy === y.pausedBy &&
     x.health === y.health &&
@@ -384,14 +385,17 @@ const makeStyles = (c: ThemeColors) =>
       borderRadius: radius.lg,
       overflow: "hidden",
     },
+    // A row: the left rail (file icon or selection box, full card height) and the text column.
     press: {
       flexGrow: 1,
-      gap: spacing.sm,
+      flexDirection: "row",
+      gap: spacing.md,
       paddingLeft: spacing.lg,
       paddingRight: 44 + spacing.sm,
       paddingVertical: spacing.md,
-      justifyContent: "space-between",
     },
+    rail: { width: 24, alignSelf: "stretch", alignItems: "center", justifyContent: "center" },
+    body: { flex: 1, gap: spacing.sm, justifyContent: "space-between" },
     actionAnchor: {
       position: "absolute",
       right: spacing.sm,
@@ -412,8 +416,6 @@ const makeStyles = (c: ThemeColors) =>
       gap: spacing.sm,
       minHeight: 36,
     },
-    // Same 20px glyph slot as the selection checkbox, centred on the first title line.
-    kindIcon: { width: 20, height: 18, alignItems: "center", justifyContent: "center" },
     name: { ...type.mono, fontSize: 13, lineHeight: 18, color: c.text, flex: 1 },
     // One line, always present, at a fixed minimum height: rows never grow or shrink as the text changes.
     statusBlock: { gap: 0 },
