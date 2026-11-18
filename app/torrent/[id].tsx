@@ -851,7 +851,8 @@ export default function TorrentDetailScreen() {
         </View>
       )}
 
-      <View style={styles.block}>
+      {/* The Timing row sits under the grid with the grid's own cell gap, so the six cells and the row read as one block. */}
+      <View style={[styles.block, { gap: spacing.sm }]}>
         <StatGrid
           stats={[
             { label: 'Download', value: formatSpeed(snap.downBps), tint: colors.download },
