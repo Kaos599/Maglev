@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import { ScrollView, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useIsFocused, useRouter } from 'expo-router';
 import { maglevEngine } from 'maglev-engine';
 import { useTheme } from '../../context/ThemeContext';
 import { useSettings } from '../../context/SettingsContext';
@@ -34,9 +34,13 @@ import {
   OTHER_LANGUAGE_TAB,
   SHEET_TITLE,
   alreadyHasCopy,
+  TURN_ON_MORE_SOURCES,
   errorCopy,
+  offSourcesLine,
   privacyNotice,
 } from '../../utils/subtitles/copy';
+import { looksLikeAnime } from '../../utils/subtitles/offSources';
+import { useSubtitleOffSources } from './useSubtitleEntry';
 import { SUBTITLE_PROVIDERS } from '../../utils/subtitles/providers';
 import {
   didntRespondLine,
@@ -82,6 +86,10 @@ export function SubtitleSheet({ target, onClose, initial = 'results' }: Props) {
   const [state, dispatch] = useReducer(sheetReducer, CLOSED);
   const [picker, setPicker] = useState(false);
   const [showSources, setShowSources] = useState(false);
+  // 45.5: "Turn on more sources" hides the sheet while Settings is open; coming back runs the search again.
+  const [away, setAway] = useState<string | null>(null);
+  const blurred = useRef(false);
+  const focused = useIsFocused();
   const [runKey, setRunKey] = useState(0);
   const [dlKey, setDlKey] = useState(0);
   const prevPhase = useRef(state.phase);
@@ -100,6 +108,7 @@ export function SubtitleSheet({ target, onClose, initial = 'results' }: Props) {
     [sub, listsVersion],
   );
   const languages = useMemo(() => effectiveLanguages(sub), [sub]);
+  const offSources = useSubtitleOffSources(looksLikeAnime(target?.fileName ?? ''));
   const providersRef = useRef(providers);
   providersRef.current = providers;
 
@@ -240,6 +249,22 @@ export function SubtitleSheet({ target, onClose, initial = 'results' }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.phase]);
 
+  // Back from Settings: search again once, and only when the set of sources on has changed.
+  useEffect(() => {
+    if (away === null) return;
+    if (!focused) {
+      blurred.current = true;
+      return;
+    }
+    if (!blurred.current) return;
+    blurred.current = false;
+    const changed = providers.map((p) => p.id).join(',') !== away;
+    setAway(null);
+    if (changed && providers.length > 0 && stateRef.current.phase !== 'closed') send({ type: 'RETRY_SEARCH' });
+    // Only the focus matters here.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focused, away]);
+
   const send = useCallback((e: Parameters<typeof dispatch>[0]) => {
     dispatch(e);
     if (e.type === 'NOTICE_CONTINUE' || e.type === 'RETRY_SEARCH' || e.type === 'SEARCH_NAME' || e.type === 'USE_FILE_NAME') setRunKey((k) => k + 1);
@@ -281,6 +306,11 @@ export function SubtitleSheet({ target, onClose, initial = 'results' }: Props) {
       case 'other-language':
         setPicker(true);
         break;
+      case 'more-sources':
+        blurred.current = false;
+        setAway(providers.map((p) => p.id).join(','));
+        router.push('/settings/subtitle-sources' as never);
+        break;
       case 'other-source':
         close();
         router.push('/settings/subtitles' as never);
@@ -301,7 +331,7 @@ export function SubtitleSheet({ target, onClose, initial = 'results' }: Props) {
     }
   };
 
-  const visible = !!target && state.phase !== 'closed';
+  const visible = !!target && state.phase !== 'closed' && away === null;
   const tabs = tabsOf(state);
   const rows = rowsOf(state);
   const status = tabStatus(state);
@@ -437,6 +467,12 @@ export function SubtitleSheet({ target, onClose, initial = 'results' }: Props) {
         {status === 'nothing' ? (
           <View style={styles.stack}>
             <Text style={styles.heading}>{target?.existing && hasExistingSubtitle(target.existing.videoPath, state.language, target.existing.files) ? alreadyHasCopy(state.language) : errorCopy('nothing', { language: state.language }).message}</Text>
+            {offSources.count > 0 && !(target?.existing && hasExistingSubtitle(target.existing.videoPath, state.language, target.existing.files)) ? (
+              <>
+                <Text style={styles.hint}>{offSourcesLine(offSources.count, offSources.animeName)}</Text>
+                <Button label={TURN_ON_MORE_SOURCES} fullWidth onPress={() => runAction('more-sources')} />
+              </>
+            ) : null}
             <Button label={errorCopy('nothing').action} variant="secondary" fullWidth onPress={() => setPicker(true)} />
           </View>
         ) : null}

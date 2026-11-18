@@ -216,6 +216,10 @@ export const banners = {
 // ---------------------------------------------------------------------------------------------
 // Empty states: a title (what is empty) and a body (how to fill it)
 // ---------------------------------------------------------------------------------------------
+/** NATIVE_CONTRACT 45.5 */
+export const SEARCH_TURN_ON_MORE = 'Turn on more sources';
+export const offSourcesSentence = (k: number): string => (k === 1 ? '1 more source is off.' : `${k} more sources are off.`);
+
 export const empty = {
   transfers: {
     none: { title: 'Nothing downloading', body: 'Add a link or a .torrent file, or find something.' },
@@ -233,9 +237,10 @@ export const empty = {
       body: 'Tap the box to see your recent searches.',
     }),
     noAnswer: { title: 'No source answered', body: 'Check your connection or try other sources.' },
-    noResults: (query: string | number) => ({
+    /** `off`: NATIVE_CONTRACT 45.5, the sources that are switched off and could have answered. */
+    noResults: (query: string | number, off = 0) => ({
       title: 'No results',
-      body: `Nothing matches "${toName(query)}". Try fewer words or another category.`,
+      body: `Nothing matches "${toName(query)}". Try fewer words or another category.${off > 0 ? ` ${offSourcesSentence(off)}` : ''}`,
     }),
   },
   feeds: {

@@ -14,6 +14,19 @@ export function formatBytes(bytes: number): string {
   return `${val.toFixed(i === 0 || val >= 99.95 ? 0 : 1)} ${BYTE_UNITS[i]}`;
 }
 
+/**
+ * NATIVE_CONTRACT 45.2: the compact amount, "134/587 MB" when both sides format to the same unit and
+ * "820 MB/2.1 GB" when they differ. `done` drops a trailing ".0". `approx` goes before the total ("~", a stream's estimate).
+ */
+export function formatCompactAmount(done: number, total: number, approx = ''): string {
+  const d = formatBytes(done);
+  const t = formatBytes(total);
+  const [dNum, dUnit] = d.split(' ');
+  const [, tUnit] = t.split(' ');
+  const num = dNum.replace(/\.0$/, '');
+  return dUnit === tUnit ? `${num}/${approx}${t}` : `${num} ${dUnit}/${approx}${t}`;
+}
+
 export function formatSpeed(bytesPerSec: number): string {
   return `${formatBytes(bytesPerSec)}/s`;
 }

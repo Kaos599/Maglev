@@ -4,6 +4,7 @@
  */
 import { pickMainFile } from '../../utils/mainFile.ts';
 import {
+  MORE_SOURCES,
   ROW_BUTTONS,
   ROW_CLOSE_MATCH,
   ROW_FAILED,
@@ -21,6 +22,7 @@ import {
   foundInOtherOnly,
   rowHasAlready,
   rowLabel,
+  rowNoneOff,
   rowPackLine,
   rowSaved,
   rowSavedNoLanguage,
@@ -29,7 +31,7 @@ import type { FileRun, RequestPhase } from '../../utils/subtitles/requests.ts';
 import { downloadEntryMode, fileStarted, torrentEntryMode, type CardIconModel, type FileLike, type SubtitleTarget } from './flow.ts';
 
 /** What the button does. 'find', 'change', 'pick', 'edit-name' and 'find-more' open the one-video sheet; the sheet's start differs. */
-export type RowAction = 'find' | 'cancel' | 'pick' | 'edit-name' | 'see-all' | 'try-again' | 'review' | 'ask-pack';
+export type RowAction = 'find' | 'cancel' | 'pick' | 'edit-name' | 'see-all' | 'try-again' | 'review' | 'ask-pack' | 'more-sources';
 
 /** How the sheet opens: on its results (the default) or with the 42 name field already open. */
 export type SheetStart = 'results' | 'edit-name';
@@ -55,6 +57,8 @@ export interface RowInput {
   canAskPack?: boolean;
   /** 44.15 D10: the privacy notice has not been accepted, so a request waits. */
   needsOk?: boolean;
+  /** 45.5: how many sources are off and could have answered. Shown only with "No match yet". */
+  offSources?: number;
 }
 
 export type RowGlyph = 'getting' | 'saved' | 'needs-look' | 'none';
@@ -68,6 +72,8 @@ export interface RowModel {
   glyph: RowGlyph;
   start: SheetStart;
   a11y: string;
+  /** 45.5: a second text button, "More sources", opening Settings > Subtitles > Sources. */
+  extra?: { label: string; action: 'more-sources' };
 }
 
 /** Counts for a season pack from the request's per-file runs. Null unless there are two or more videos. */
@@ -143,8 +149,11 @@ export function rowModel(i: RowInput): RowModel {
       return make(language ? rowSaved(language) : rowSavedNoLanguage, false, sheet(ROW_BUTTONS.change, 'find'), 'saved');
     case 'needs-pick':
       return make(i.otherLang ? foundInOtherOnly(i.otherLang) : ROW_CLOSE_MATCH, false, sheet(ROW_BUTTONS.pick, 'pick'), 'needs-look');
-    case 'none':
-      return make(ROW_NONE, false, sheet(ROW_BUTTONS.editName, 'edit-name'), 'none', 'edit-name');
+    case 'none': {
+      const k = i.offSources ?? 0;
+      const m = make(k > 0 ? rowNoneOff(k) : ROW_NONE, false, sheet(ROW_BUTTONS.editName, 'edit-name'), 'none', 'edit-name');
+      return k > 0 ? { ...m, extra: { label: MORE_SOURCES, action: 'more-sources' } } : m;
+    }
     case 'has-already':
       return make(rowHasAlready(language), false, sheet(ROW_BUTTONS.findMore, 'find'), 'none');
     case 'offline':

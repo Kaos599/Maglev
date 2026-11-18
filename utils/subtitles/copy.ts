@@ -118,6 +118,18 @@ export function errorCopy(code: SubtitleErrorCode, a: CopyArgs = {}): ErrorCopy 
 /** 44.6. The switch's line in Settings > Subtitles. */
 export const AUTO_NEW_VIDEOS_SUBTITLE = 'In your languages, while Maglev is open';
 
+/** 45.4: the confirm sheet for the Settings switch. It always shows, because names go out in the background. */
+export const AUTO_CONFIRM_TITLE = 'Get subtitles for new videos?';
+export const AUTO_CONFIRM_BODY =
+  'While Maglev is open, it sends the names of new videos you add to your subtitle sources, and saves a subtitle when one fits. Close matches wait for you.';
+export const AUTO_CONFIRM_TURN_ON = 'Turn on';
+export const AUTO_CONFIRM_NOT_NOW = NOTICE_NOT_NOW;
+
+/** 45.4: the sheet's text. When the one-time notice was never accepted, it comes first and Turn on accepts both. */
+export function autoConfirmBody(needsNotice: boolean, names: readonly string[]): string {
+  return needsNotice ? `${privacyNotice(names)}\n\n${AUTO_CONFIRM_BODY}` : AUTO_CONFIRM_BODY;
+}
+
 /** 44.7: results only in languages the user didn't pick. */
 export const foundInOtherOnly = (language: string): string => `Found in ${languageName(language)} only`;
 
@@ -210,3 +222,21 @@ export function rowPackLine(c: { saved: number; total: number; needYou: number }
 }
 /** What TalkBack reads: "Subtitles, {line}, button {label}". */
 export const rowLabel = (line: string, button: string | null): string => (button ? `${ROW_LABEL}, ${line}, button ${button}` : `${ROW_LABEL}, ${line}`);
+
+// ---------------------------------------------------------------- NATIVE_CONTRACT 45.5: sources that are off
+
+export const TURN_ON_MORE_SOURCES = 'Turn on more sources';
+export const MORE_SOURCES = 'More sources';
+
+/** The sheet's line. When the video is anime and an anime source is off, it names that source. */
+export function offSourcesLine(k: number, animeName: string | null = null): string {
+  const line = k === 1 ? '1 more subtitle source is off' : `${k} more subtitle sources are off`;
+  if (!animeName) return line;
+  return k === 1 ? `${line} (${animeName})` : `${line}, including ${animeName}`;
+}
+
+/** The multi-video sheet's summary tail, joined to the status summary. */
+export const offSourcesTail = (k: number): string => (k === 1 ? '1 source off' : `${k} sources off`);
+
+/** The page row's line: "No match yet · 2 sources off". */
+export const rowNoneOff = (k: number): string => `${ROW_NONE} \u00B7 ${offSourcesTail(k)}`;
