@@ -134,6 +134,53 @@ fn included_bytes(h: &Handle20) -> u64 {
     .unwrap_or(0)
 }
 
+/// The largest included, non-padding file's name, last path part only (contract section 38).
+fn main_file(h: &Handle20) -> Option<String> {
+    let only: Option<HashSet<usize>> = h.only_files().map(|o| o.into_iter().collect());
+    h.with_metadata(|md| {
+        largest_file_name(md.file_infos.iter().enumerate().filter_map(|(i, fi)| {
+            let included = !fi.attrs.padding && only.as_ref().map(|o| o.contains(&i)).unwrap_or(true);
+            included.then(|| (fi.relative_filename.as_path(), fi.len))
+        }))
+    })
+    .ok()
+    .flatten()
+}
+
+/// Pure: the name of the largest file; the first one wins a tie. None for no files.
+fn largest_file_name<'a>(files: impl Iterator<Item = (&'a Path, u64)>) -> Option<String> {
+    let mut best: Option<(&Path, u64)> = None;
+    for (p, len) in files {
+        if best.map(|(_, b)| len > b).unwrap_or(true) {
+            best = Some((p, len));
+        }
+    }
+    best.and_then(|(p, _)| p.file_name()).map(|n| n.to_string_lossy().into_owned())
+}
+
+#[cfg(test)]
+mod main_file_tests {
+    use super::largest_file_name;
+    use std::path::Path;
+
+    #[test]
+    fn picks_the_largest_and_keeps_only_the_name() {
+        let files = [
+            (Path::new("Big Buck Bunny/Big Buck Bunny.en.srt"), 140u64),
+            (Path::new("Big Buck Bunny/Big Buck Bunny.mp4"), 276_134_947),
+            (Path::new("Big Buck Bunny/poster.jpg"), 310_380),
+        ];
+        assert_eq!(largest_file_name(files.into_iter()).as_deref(), Some("Big Buck Bunny.mp4"));
+    }
+
+    #[test]
+    fn first_wins_a_tie_and_none_for_no_files() {
+        let files = [(Path::new("a.mkv"), 5u64), (Path::new("b.txt"), 5)];
+        assert_eq!(largest_file_name(files.into_iter()).as_deref(), Some("a.mkv"));
+        assert_eq!(largest_file_name(std::iter::empty()), None);
+    }
+}
+
 /// `stats` with `finished` cleared when it only means "librqbit could not read the chunk tracker"
 /// (a live torrent with selected total 0 although files are included). See `finished_is_real`.
 fn real_finished(h: &Handle20, stats: &TorrentStats) -> bool {
@@ -821,6 +868,7 @@ impl MaglevEngine {
             move_progress: moving.map(|e| e.progress.fraction()),
             health: m.health.clone(),
             included_bytes: if exact.is_some() { total_bytes } else { included_bytes(h) },
+            main_file: main_file(h),
             resolving_secs: None,
             stalled_secs: m.stalled_since_ms.map(|since| resolving_secs(since, now_ms())),
             allowed_anyway: m.allowed_anyway,
@@ -873,6 +921,7 @@ impl MaglevEngine {
             move_progress: Some(e.progress.fraction()),
             health: m.health.clone(),
             included_bytes: e.total_bytes,
+            main_file: None,
             resolving_secs: None,
             stalled_secs: None,
             allowed_anyway: m.allowed_anyway,
@@ -926,6 +975,7 @@ impl MaglevEngine {
             move_progress: None,
             health: m.health.clone(),
             included_bytes: 0,
+            main_file: None,
             resolving_secs: resolving,
             stalled_secs: None,
             allowed_anyway: false,

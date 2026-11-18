@@ -54,6 +54,14 @@ function check(name, cond) {
   check('icon is decorative', /importantForAccessibility="no-hide-descendants"/.test(card) && /importantForAccessibility="no-hide-descendants"/.test(dl));
   check('memo comparators include the prop', /showFileIcon/.test(card.split('function sameCard')[1]) && /showFileIcon/.test(dl.split('function same(')[1]));
   check('screen passes the setting', (screen.match(/showFileIcon=\{showFileIcons\}/g) || []).length === 2);
+  console.log('[biggest file from the engine, NATIVE_CONTRACT 38]');
+  check('a torrent named without extension takes its biggest file', t('Big Buck Bunny', [{ path: 'Big Buck Bunny.mp4', length: 1 }]) === 'file-video');
+  check('the card passes mainFile to the choice', /torrentCardGlyph\(t\.name, t\.mainFile/.test(card));
+  check('the memo compares mainFile', /x\.mainFile === y\.mainFile/.test(card.split('function sameCard')[1]));
+  const map = read('modules/maglev-engine/src/snapshotMapping.ts');
+  check('the mapping carries main_file', /mainFile: s\.mainFile \?\? null/.test(map));
+  const rs = read('native/maglev-core/src/types.rs') + read('native/maglev-core/src/engine.rs');
+  check('Rust snapshot has main_file and sets it in every snapshot', /pub main_file: Option<String>/.test(rs) && (rs.match(/main_file: (main_file\(h\)|None),/g) || []).length === 3);
   check('no hex in the cards', !/#[0-9A-Fa-f]{6}\b/.test(card + dl));
   if (failed) {
     console.error(`${failed} failed`);

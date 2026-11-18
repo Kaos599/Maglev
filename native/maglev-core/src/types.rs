@@ -61,6 +61,9 @@ pub struct Snapshot {
     pub health: Option<String>,
     /// Sum of the lengths of the included, non-padding files. 0 until the metadata is known.
     pub included_bytes: u64,
+    /// File name (last path part) of the largest included, non-padding file (section 38), so the list can
+    /// show the file's kind. Null until the metadata is known.
+    pub main_file: Option<String>,
     /// Seconds a magnet has been looking for its metadata, or null once it has it (section 20).
     pub resolving_secs: Option<i64>,
     /// Seconds a torrent with metadata has waited with no peer and no byte (section 20.1), or null.
