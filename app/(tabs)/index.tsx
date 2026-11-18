@@ -414,6 +414,7 @@ export default function TransfersScreen() {
   const onSwipeRemove = useCallback((id: string) => removeTransfers([id], []), [removeTransfers]);
   const onSwipeRemoveDownload = useCallback((id: string) => removeTransfers([], [id]), [removeTransfers]);
   const swipeEnabled = settings.appearance.swipeActions;
+  const showFileIcons = settings.appearance.showFileIcons;
   // SM-37: clear the no_peers tag so the torrent looks for peers again.
   const onKeepTrying = useCallback(
     (id: string) => {
@@ -528,9 +529,10 @@ export default function TransfersScreen() {
         onPlay={onPlay}
         onRemove={onSwipeRemove}
         swipeEnabled={swipeEnabled}
+        showFileIcon={showFileIcons}
       />
     ),
-    [selectionMode, selectedIds, onCardPress, startSelection, onPause, onResume, onKeepTrying, onOpenTorrent, onResumeAnyway, onPlay, onSwipeRemove, swipeEnabled],
+    [selectionMode, selectedIds, onCardPress, startSelection, onPause, onResume, onKeepTrying, onOpenTorrent, onResumeAnyway, onPlay, onSwipeRemove, swipeEnabled, showFileIcons],
   );
   // One list: torrents and link downloads, ordered by the current sort.
   const items = useMemo(() => mergeTransfers(visible, shownDownloads, sort), [visible, shownDownloads, sort]);
@@ -548,9 +550,10 @@ export default function TransfersScreen() {
           onLongPress={startDownloadSelection}
           onRemove={onSwipeRemoveDownload}
           swipeEnabled={swipeEnabled}
+          showFileIcon={showFileIcons}
         />
       ),
-    [renderTorrent, onDownloadPress, onDownloadAction, selectionMode, selectedIds, startDownloadSelection, onSwipeRemoveDownload, swipeEnabled],
+    [renderTorrent, onDownloadPress, onDownloadAction, selectionMode, selectedIds, startDownloadSelection, onSwipeRemoveDownload, swipeEnabled, showFileIcons],
   );
   const progressMotion = useMemo<ProgressMotion>(() => ({ active: focused, sweeps: LIST_SWEEPS }), [focused]);
 
