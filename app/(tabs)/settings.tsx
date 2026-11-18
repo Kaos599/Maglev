@@ -195,7 +195,7 @@ export default function SettingsIndex() {
     { icon: 'feeds', title: 'Auto-download', value: auto, route: 'feeds' },
     { icon: 'subtitles', title: 'Subtitles', value: subtitles.enabled ? 'On' : 'Off', route: 'subtitles' },
   ];
-  const downloadsRow: RowSpec = { icon: 'arrow-down', title: 'Downloads', value: downloadsValue, route: 'downloads' };
+  const downloadsRow: RowSpec = { icon: 'arrow-down', title: 'Adding and finishing', value: downloadsValue, route: 'downloads' };
   const speedRow: RowSpec = { icon: 'bandwidth', title: 'Speed and sharing', value: `${limits} · ${queue}`, route: 'speed' };
   const scheduleRow: RowSpec = { icon: 'schedule', title: 'Scheduling', value: scheduling, route: 'scheduling' };
   const watchRow: RowSpec = { icon: 'alarm', title: watchCopy.rowTitle, value: watchCopy.rowValue(watches.length), route: 'watch' };
@@ -289,7 +289,7 @@ export default function SettingsIndex() {
               </Card>
             </View>
             <View style={styles.section}>
-              <SectionHeader title="Downloads" />
+              <SectionHeader title="Transfers" />
               <Card>
                 <SettingsRow {...downloadsRow} />
                 <SettingsRow {...speedRow} />
