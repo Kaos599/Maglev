@@ -27,7 +27,7 @@ Maglev downloads torrents, ordinary links and the videos and files on a web page
 <ul>
 <li>Find subtitles for a video you've downloaded, from 21 free sources with no account. Open a finished download or a video in a torrent's Files tab and tap Find subtitles.</li>
 <li>Results are grouped by how well they fit the file. The subtitle is saved next to the video, so players pick it up.</li>
-<li>Choose your languages and turn sources on or off in Settings. Two sources match by file fingerprint; the rest match by name.</li>
+<li>Choose your languages and turn sources on or off in Settings (Subtitle sources). Two sources match by file fingerprint; the rest match by name.</li>
 </ul>
 
 <b>Search and feeds</b>
@@ -39,10 +39,11 @@ Maglev downloads torrents, ordinary links and the videos and files on a web page
 <b>You stay in control</b>
 <ul>
 <li>Wi-Fi only, VPN required, pause on low battery, and download only while charging.</li>
-<li>Transfers says why a download is held, with a button to change that setting. Swipe a row to pause, resume or remove it.</li>
+<li>Transfers says why a download is held, with a button to change that setting. Swipe a row to pause, resume or remove it. Each card shows a file type icon; a torrent's comes from its biggest file.</li>
 <li>Speed limits, a schedule, and Pause all, Resume all and Shut down from the notification.</li>
 <li>Files go to Download/Maglev or any folder you choose.</li>
 <li>Backup and restore your settings, torrents, downloads and, if you choose, stats in one file. API keys are not included.</li>
+<li>Search your settings from the top of Settings. After an update, a short sheet shows the main new feature.</li>
 </ul>
 
 <b>Optional assistant</b>

@@ -103,3 +103,26 @@ Maglev evidence: `utils/subtitles/providers/` (21 sources), `utils/subtitles/nam
 - **FDM**, No: Play description excerpts (https://play.google.com/store/apps/details?id=org.freedownloadmanager.fdm&hl=en_US) list none. Excerpts only.
 
 `checkedOn` at the top of compare.json is unchanged; only this row was checked on 2026-11-18.
+
+## Backup, size filter and mining/HTTPS rows (added 2026-11-18, for 0.28)
+
+Rows `backup` (Control), `search-size-filter` (Torrents) and `mining-https` (Browser and streams, after pop-up control). Same rule as the subtitles row: a feature the app's own pages do not list is No. Partial means the page lists a narrower version. Pages read on 2026-11-18. The Play pages were read in full ("About this app" text), not as excerpts.
+
+Maglev evidence: `utils/backup/format.ts` and `export.ts` (parts: settings, search sources, feeds, schedule, assistant, torrents, downloads; the assistant key reference is stripped; stats are an optional tick in `app/settings/backup.tsx`), `components/search/sizeRange.ts` (slider stops 50 MB to 64 GB, no minimum, no maximum), `utils/browser/hardening.ts` (`upgradeToHttps` with fall back) and `modules/maglev-engine/android/.../BlocklistStore.kt` (`miners.txt` merged into every active list), `release-notes/0.28.md`.
+
+Backup and restore:
+- **LibreTorrent**, Partial: strings.xml https://raw.githubusercontent.com/proninyaroslav/libretorrent/master/app/src/main/res/values/strings.xml has "Save backup", "Restore backup", "Channels saved" (RSS channels only). README https://raw.githubusercontent.com/proninyaroslav/libretorrent/master/README.md and F-Droid https://f-droid.org/packages/org.proninyaroslav.libretorrent/ list no backup.
+- **BiglyBT**, No: Play description (full text, https://play.google.com/store/apps/details?id=com.biglybt.android.client&hl=en&gl=US) and F-Droid https://f-droid.org/en/packages/com.biglybt.android.client/ list none.
+- **Seal**, No: README https://raw.githubusercontent.com/JunkFood02/Seal/main/README.md lists none.
+- **YTDLnis**, Yes: README https://raw.githubusercontent.com/deniscerri/ytdlnis/main/README.md, "Backup and restore almost everything, right from the welcome screen too".
+- **NewPipe**, Partial: README https://github.com/TeamNewPipe/NewPipe says to use Settings > Backup and Restore > Export Database "so you keep your history, subscriptions, and playlists". Settings are not named.
+- **Flud**, No: Play description (full text, https://play.google.com/store/apps/details?id=com.delphicoder.flud&hl=en&gl=US) lists none.
+- **1DM+**, Partial: Play description (full text, https://play.google.com/store/apps/details?id=idm.internet.download.manager.plus&hl=en) lists "Import download links from a text file" and "Export download links" only.
+- **ADM**, Yes: Play description (full text, https://play.google.com/store/apps/details?id=com.dv.adm&hl=en&gl=US), "backup list of downloads and settings".
+- **FDM**, No: Play description (full text, https://play.google.com/store/apps/details?id=org.freedownloadmanager.fdm&hl=en_US) lists none.
+
+Filter search results by size: only Maglev lists a size filter on search results. Apps with no search of their own (LibreTorrent, Flud, 1DM+, FDM, Seal, YTDLnis) are No, the same way the torrent-search row treats them. BiglyBT (Play page) filters the files inside a torrent, and ADM (Play page) searches and sorts the files inside a torrent; neither is a search-result filter. NewPipe (README) searches videos and playlists and lists no size filter. YTDLnis README lists feeding search queries from a text file, no size filter.
+
+Blocks crypto-mining scripts and upgrades to HTTPS: only 1DM+ and ADM have a general browser. Their full Play descriptions (URLs above) list an adblock browser, tabs, history, bookmarks and a media downloader, and mention neither mining scripts nor HTTPS. Seal and YTDLnis use a browser only to sign in for cookies (README) and FDM says it is not a browser (existing note), so all three are No. LibreTorrent, BiglyBT, NewPipe and Flud pages list no browser. This is "not listed", not a statement that the app does not do it.
+
+`checkedOn` at the top of compare.json is unchanged; only these rows were checked on 2026-11-18. A fourth candidate row, "says why a download is paused", was dropped by the owner and is not in the table.

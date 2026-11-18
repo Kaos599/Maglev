@@ -54,7 +54,7 @@
         "Share a magnet, a .torrent file or a file link to Maglev from any app, or open .torrent files from your file manager",
         "Transfers says why a download is held (Wi-Fi only, battery, schedule, storage full and more), with a button to change that setting",
         "Swipe a row right to pause or resume it, or left to remove it from the list (files are kept). You can turn this off",
-        "A file type icon on each card, which you can turn off",
+        "A file type icon on each card (a torrent's comes from its biggest file), which you can turn off",
         "Play a video while it downloads, from its card or its screen",
         "Open any download's folder in one tap, and share a finished file",
         "On mobile data, the add screen shows the size before you start",
@@ -98,7 +98,7 @@
       "specs": [
         "Open a finished link download's menu in Transfers, a torrent's options, or the ⋯ next to a video in its Files tab",
         "Saved as <video name>.<lang>.srt (or .ass or .vtt). If that name exists, you choose Replace or Keep both",
-        "Pick and order languages, set a hearing-impaired preference and turn each source on or off in Settings > Finding things > Subtitles",
+        "Pick and order languages, set a hearing-impaired preference and turn each source on or off in Settings > Finding things > Subtitle sources",
         "Two sources match by file fingerprint: Subtis for Spanish and Napisy24 for Polish. The rest match by name, so check the fit",
         "The source list updates itself from Maglev's signed list",
         "Nothing is looked up until you tap Find subtitles"
@@ -159,6 +159,7 @@
         "Move a torrent's files mid-download, and stream video before it finishes",
         "Pauses before the phone runs out of space, keeping 500 MB to 1 GB free, and resumes when space comes back",
         "Backup and restore in Settings: your settings, search sources, torrents and downloads in one file, and your stats if you tick Include stats. API keys are never included",
+        "Search your settings from the top of Settings. After an update, a short sheet shows the main new feature, and you can turn it off in Settings > Updates",
         "No analytics or ads SDKs"
       ]
     }
@@ -255,6 +256,10 @@
     [
       "Do I need root or a VPN to use Maglev?",
       "No. Maglev needs no root and no VPN. If you use a VPN, you can tell Maglev to download only while the VPN is connected, and it pauses whenever the VPN drops."
+    ],
+    [
+      "Can I back up Maglev and restore it on a new phone?",
+      "Yes. In Settings > Backup, export one file with your settings, search sources, torrents and downloads, and your stats if you tick Include stats. API keys are never included. On the new phone, open the file in Settings > Backup and choose what to restore."
     ],
     [
       "Where does Maglev save downloaded files?",
@@ -354,7 +359,7 @@
         "heading": "Search, feeds, links and the browser",
         "body": [
           "A search sends your search words to the sources you have turned on in Settings → Search sources. Feeds fetch the addresses you added. A link downloads from its own server, and the browser loads pages like any other browser. Each of those sites sees your IP address and follows its own privacy policy.",
-          "Find subtitles sends the video's file name to the subtitle sources you have turned on in Settings → Finding things → Subtitles. Two of them, Subtis and Napisy24, also get a fingerprint of the file: its size and a hash of its first and last 64 KB. Nothing is sent until you tap Find subtitles. Each source sees your IP address and follows its own privacy policy.",
+          "Find subtitles sends the video's file name to the subtitle sources you have turned on in Settings → Finding things → Subtitle sources. Two of them, Subtis and Napisy24, also get a fingerprint of the file: its size and a hash of its first and last 64 KB. Nothing is sent until you tap Find subtitles. Each source sees your IP address and follows its own privacy policy.",
           "Ad blocking downloads a public blocklist from GitHub (raw.githubusercontent.com). GitHub sees an ordinary download request."
         ]
       },

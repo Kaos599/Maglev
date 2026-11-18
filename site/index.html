@@ -358,6 +358,14 @@
     },
     {
       "@type": "Question",
+      "name": "Can I back up Maglev and restore it on a new phone?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Yes. In Settings > Backup, export one file with your settings, search sources, torrents and downloads, and your stats if you tick Include stats. API keys are never included. On the new phone, open the file in Settings > Backup and choose what to restore."
+      }
+    },
+    {
+      "@type": "Question",
       "name": "Where does Maglev save downloaded files?",
       "acceptedAnswer": {
         "@type": "Answer",
@@ -529,7 +537,7 @@
           <li>Share a magnet, a .torrent file or a file link to Maglev from any app, or open .torrent files from your file manager</li>
           <li>Transfers says why a download is held (Wi-Fi only, battery, schedule, storage full and more), with a button to change that setting</li>
           <li>Swipe a row right to pause or resume it, or left to remove it from the list (files are kept). You can turn this off</li>
-          <li>A file type icon on each card, which you can turn off</li>
+          <li>A file type icon on each card (a torrent's comes from its biggest file), which you can turn off</li>
           <li>Play a video while it downloads, from its card or its screen</li>
           <li>Open any download's folder in one tap, and share a finished file</li>
           <li>On mobile data, the add screen shows the size before you start</li>
@@ -595,7 +603,7 @@
       <ul class="specs cols">
         <li>Open a finished link download's menu in Transfers, a torrent's options, or the ⋯ next to a video in its Files tab</li>
         <li>Saved as &lt;video name&gt;.&lt;lang&gt;.srt (or .ass or .vtt). If that name exists, you choose Replace or Keep both</li>
-        <li>Pick and order languages, set a hearing-impaired preference and turn each source on or off in Settings &gt; Finding things &gt; Subtitles</li>
+        <li>Pick and order languages, set a hearing-impaired preference and turn each source on or off in Settings &gt; Finding things &gt; Subtitle sources</li>
         <li>Two sources match by file fingerprint: Subtis for Spanish and Napisy24 for Polish. The rest match by name, so check the fit</li>
         <li>The source list updates itself from Maglev's signed list</li>
         <li>Nothing is looked up until you tap Find subtitles</li>
@@ -678,6 +686,7 @@
         <li>Move a torrent's files mid-download, and stream video before it finishes</li>
         <li>Pauses before the phone runs out of space, keeping 500 MB to 1 GB free, and resumes when space comes back</li>
         <li>Backup and restore in Settings: your settings, search sources, torrents and downloads in one file, and your stats if you tick Include stats. API keys are never included</li>
+        <li>Search your settings from the top of Settings. After an update, a short sheet shows the main new feature, and you can turn it off in Settings &gt; Updates</li>
         <li>No analytics or ads SDKs</li>
       </ul>
     </article>
@@ -854,6 +863,10 @@
     <details>
       <summary><span class="q">Do I need root or a VPN to use Maglev?</span><svg class="px chev" viewBox="0 0 24 24" width="24" height="24" aria-hidden="true" focusable="false"><path fill="currentColor" d="M13 16h-2v-2h2v2Zm-2-2H9v-2h2v2Zm4 0h-2v-2h2v2Zm-6-2H7v-2h2v2Zm8 0h-2v-2h2v2ZM7 10H5V8h2v2Zm12 0h-2V8h2v2Z"/></svg></summary>
       <div class="a"><p>No. Maglev needs no root and no VPN. If you use a VPN, you can tell Maglev to download only while the VPN is connected, and it pauses whenever the VPN drops.</p></div>
+    </details>
+    <details>
+      <summary><span class="q">Can I back up Maglev and restore it on a new phone?</span><svg class="px chev" viewBox="0 0 24 24" width="24" height="24" aria-hidden="true" focusable="false"><path fill="currentColor" d="M13 16h-2v-2h2v2Zm-2-2H9v-2h2v2Zm4 0h-2v-2h2v2Zm-6-2H7v-2h2v2Zm8 0h-2v-2h2v2ZM7 10H5V8h2v2Zm12 0h-2V8h2v2Z"/></svg></summary>
+      <div class="a"><p>Yes. In Settings &gt; Backup, export one file with your settings, search sources, torrents and downloads, and your stats if you tick Include stats. API keys are never included. On the new phone, open the file in Settings &gt; Backup and choose what to restore.</p></div>
     </details>
     <details>
       <summary><span class="q">Where does Maglev save downloaded files?</span><svg class="px chev" viewBox="0 0 24 24" width="24" height="24" aria-hidden="true" focusable="false"><path fill="currentColor" d="M13 16h-2v-2h2v2Zm-2-2H9v-2h2v2Zm4 0h-2v-2h2v2Zm-6-2H7v-2h2v2Zm8 0h-2v-2h2v2ZM7 10H5V8h2v2Zm12 0h-2V8h2v2Z"/></svg></summary>

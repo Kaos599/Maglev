@@ -113,7 +113,7 @@ It prints `OK` for each file that matches. On Windows, `Get-FileHash <file> -Alg
 - Open a finished link download's menu in Transfers, a torrent's options, or the ⋯ next to a video in its Files tab, then tap **Find subtitles**.
 - Results are grouped as "Fits this file", "Probably fits" and "May be out of sync".
 - The subtitle is saved next to the video as `<video name>.<lang>.srt` (or `.ass` or `.vtt`), so players pick it up. If one is already there, you choose Replace or Keep both.
-- In Settings > Finding things > Subtitles you pick and order languages, set a hearing-impaired preference and turn each source on or off. The source list updates itself from Maglev's signed list.
+- In Settings > Finding things > Subtitle sources you pick and order languages, set a hearing-impaired preference and turn each source on or off. The source list updates itself from Maglev's signed list.
 - Two sources match by file fingerprint: Subtis for Spanish and Napisy24 for Polish. The rest match by name.
 - Maglev sends the video's name to the sources you turn on, and for those two a fingerprint of the file (its size and a hash of its first and last 64 KB). Nothing else, and nothing until you tap Find subtitles.
 
@@ -136,8 +136,9 @@ It prints `OK` for each file that matches. On Windows, `Get-FileHash <file> -Alg
 - Transfers says why a download is held, with a button to change that setting.
 - Speed limits and a schedule for when downloads run.
 - Files go to `Download/Maglev`, or any folder you choose.
-- Swipe a row in Transfers to pause, resume or remove it, and see a file type icon on each card.
-- Backups can include your stats.
+- Swipe a row in Transfers to pause, resume or remove it, and see a file type icon on each card (a torrent's comes from its biggest file).
+- Backup and restore: your settings, search sources, torrents and downloads in one file, and your stats if you tick Include stats. API keys are never included.
+- Search your settings from the top of Settings. After an update, a short sheet shows the main new feature.
 - OLED, Dim and Light themes.
 
 Everything else is on the [Maglev website](https://harshdayal.dev/maglev#features).
@@ -193,7 +194,7 @@ Side-by-side guides:
 
 ## What's next
 
-- **Browser basics (0.25).** Bookmarks and a new-tab page, file upload on web forms, sign-in prompts for routers and NAS pages, and site dialogs (confirm and alert).
+- Bookmarks, and sign-in prompts for routers and NAS pages. (The rest of Browser basics, from 0.25, has shipped: a new-tab page, file upload on web forms, and site dialogs.)
 - Search inside the browser's found files, and keeping a page's file list after you leave it.
 - Choosing which ad-block lists to combine, and per-site rules beyond "allow ads here".
 - A Google Play build.
@@ -266,6 +267,10 @@ Yes. Open a magnet link or `.torrent` file from any app, pick the files you want
 ### Does Maglev have ads or tracking?
 
 No. The app has no ads, no analytics SDKs and no account. The built-in browser blocks ads and trackers on the pages you open.
+
+### Can I back up Maglev and restore it on a new phone?
+
+Yes. In Settings > Backup, export one file with your settings, search sources, torrents and downloads, and your stats if you tick Include stats. API keys are never included. On the new phone, open the file in Settings > Backup and choose what to restore.
 
 ### Which Android versions does Maglev support?
 
