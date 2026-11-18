@@ -30,7 +30,8 @@ name: search-filters
 - extendedWaitUntil:
     visible: "Sort and filter"                      # from app/(tabs)/search.tsx:815 (Sheet title)
     timeout: 10000
-- tapOn: "Newest"                                   # from app/(tabs)/search.tsx:821 + copy label constants in search.tsx:66 (SORT_LABEL.newest)
+- tapOn: "Newest"                                   # sheet row; choosing a row does NOT close the sheet (SortFilterSheet), it has a Done button
+- tapOn: "Done"
 - extendedWaitUntil:
     visible: "Sort: Newest"                         # from app/(tabs)/search.tsx:689 (label reflects the choice)
     timeout: 10000
@@ -40,7 +41,8 @@ name: search-filters
 - extendedWaitUntil:
     visible: "Sort and filter"                      # from app/(tabs)/search.tsx:815
     timeout: 10000
-- tapOn: "Largest"                                  # from app/(tabs)/search.tsx:821 (SORT_LABEL.size = "Largest", search.tsx:66)
+- tapOn: "Largest"                                  # sheet row
+- tapOn: "Done"
 - extendedWaitUntil:
     visible: "Sort: Largest"                        # from app/(tabs)/search.tsx:689
     timeout: 10000
@@ -48,7 +50,11 @@ name: search-filters
 - assertVisible: "(Stopped · )?[0-9]+ results?"     # from app/(tabs)/search.tsx:673
 # Restore the default sort ("Most shared", search.tsx:66) so the next run starts clean.
 - tapOn: "Sort: .*"                                 # from app/(tabs)/search.tsx:689
-- tapOn: "Most shared"                              # from app/(tabs)/search.tsx:66 (SORT_LABEL.seeders); chip at search.tsx:821
+- extendedWaitUntil:
+    visible: "Sort and filter"
+    timeout: 10000
+- tapOn: "Most shared"                              # sheet row
+- tapOn: "Done"
 - extendedWaitUntil:
     visible: "Sort: Most shared"                    # from app/(tabs)/search.tsx:689
     timeout: 10000

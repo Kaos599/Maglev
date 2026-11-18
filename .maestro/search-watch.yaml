@@ -18,11 +18,10 @@ name: search-watch
     visible: "Watching \"Sintel\""                   # from app/(tabs)/search.tsx:535 and constants/copy.ts:500 (watchCopy.watching)
     timeout: 10000
 - tapOn: "Settings"                                 # from app/(tabs)/_layout.tsx:171
-- scrollUntilVisible:
-    element: "Watches"                              # from app/(tabs)/settings.tsx:164 and constants/copy.ts:494 (watchCopy.rowTitle)
-    direction: DOWN
-    timeout: 20000
-- tapOn: "Watches"                                  # from app/(tabs)/settings.tsx:164
+- runFlow:
+    file: subflows/open-settings-row.yaml
+    env:
+      ROW: "Watches"
 - extendedWaitUntil:
     visible: "Sintel"                               # from app/settings/watch.tsx:52 (row title = w.query)
     timeout: 15000
@@ -30,10 +29,9 @@ name: search-watch
 - extendedWaitUntil:
     visible: "Delete this watch\\?"                 # from constants/copy.ts:510 (watchCopy.deleteTitle)
     timeout: 10000
-# The Alert's Delete is the second "Delete" on screen (the card's button is behind it). UNVERIFIED on device.
+# The native Alert (title "Delete this watch?") hides the card behind it, so its DELETE button (id android:id/button1) is the only match.
 - tapOn:
-    text: "Delete"                                  # from constants/copy.ts:509 (watchCopy.delete) in the Alert, app/settings/watch.tsx:39
-    index: 1
+    id: "android:id/button1"
 - extendedWaitUntil:
     notVisible: "Sintel"                            # from app/settings/watch.tsx:52: row gone after delete
     timeout: 10000

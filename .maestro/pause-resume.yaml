@@ -3,11 +3,10 @@ appId: com.maglev
 name: pause-resume
 ---
 - runFlow: subflows/onboard-if-needed.yaml
-- openLink: "magnet:?xt=urn:btih:08ada5a7a6183aae1e09d831df6748d566095a10&dn=Sintel&tr=udp%3A%2F%2Ftracker.opentrackr.org%3A1337%2Fannounce&tr=udp%3A%2F%2Fopen.tracker.cl%3A1337%2Fannounce&tr=udp%3A%2F%2Ftracker.openbittorrent.com%3A6969%2Fannounce&tr=udp%3A%2F%2Fexplodie.org%3A6969%2Fannounce"
-- extendedWaitUntil:
-    visible: "Start download.*"
-    timeout: 120000
-- tapOn: "Start download.*"
+- runFlow:
+    file: subflows/add-from-card.yaml
+    env:
+      LINK: "magnet:?xt=urn:btih:08ada5a7a6183aae1e09d831df6748d566095a10&dn=Sintel&tr=udp%3A%2F%2Ftracker.opentrackr.org%3A1337%2Fannounce&tr=udp%3A%2F%2Fopen.tracker.cl%3A1337%2Fannounce&tr=udp%3A%2F%2Ftracker.openbittorrent.com%3A6969%2Fannounce&tr=udp%3A%2F%2Fexplodie.org%3A6969%2Fannounce"
 - extendedWaitUntil:
     visible: "Pause .*"
     timeout: 60000

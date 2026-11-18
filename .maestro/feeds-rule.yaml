@@ -7,6 +7,12 @@ name: feeds-rule
 - tapOn: "New feed"                                 # from app/(tabs)/feeds.tsx:337
 - inputText: "https://archive.org/services/collection-rss.php?collection=opensource_movies"
 - tapOn: "Add feed"                                 # from components/feeds/NewFeedSheet.tsx:65
+# A leftover feed from an earlier run makes the sheet say "You already follow this feed." and stay open: close it and use that feed.
+- runFlow:
+    when:
+      visible: "You already follow this feed."
+    commands:
+      - tapOn: "Cancel"
 - extendedWaitUntil:
     visible: "archive.org"                          # from app/(tabs)/feeds.tsx:358
     timeout: 90000
@@ -35,11 +41,13 @@ name: feeds-rule
 - extendedWaitUntil:
     notVisible: "Maestro rule"                      # from app/settings/feeds.tsx:137: rule gone
     timeout: 10000
-- back
+- tapOn: "Go back"                                  # in-app back button (components/ui/Screen.tsx:38)
 - tapOn: "Remove feed"                              # from app/(tabs)/feeds.tsx:360 (feed bar button)
-- tapOn:
-    text: "Remove feed"                             # from app/(tabs)/feeds.tsx:281 (sheet confirm); second match, UNVERIFIED on device
-    index: 1
+- extendedWaitUntil:
+    visible: "Remove .*\\?"                         # sheet title "Remove <name>?" (feeds.tsx:279)
+    timeout: 10000
+# The sheet hides the feed bar behind it, so this matches only the sheet's confirm button.
+- tapOn: "Remove feed"                              # from app/(tabs)/feeds.tsx:281 (sheet confirm)
 - extendedWaitUntil:
     visible: "No feeds yet"                         # from constants/copy.ts:227
     timeout: 10000
