@@ -51,6 +51,7 @@ object BlocklistStore {
     private val ready = CountDownLatch(1)
     private val writeLock = Any()
     @Volatile private var miners: Set<String> = emptySet()
+    @Volatile private var minerSet = DomainSet.EMPTY
 
     /** Starts loading in the background, once. Safe to call from any thread. */
     fun warm(context: Context) {
@@ -73,6 +74,12 @@ object BlocklistStore {
         return set.get()
     }
 
+    /** NATIVE_CONTRACT 39.2 B4: the mining domains alone. Checked on every subresource request, with ad blocking on or off. Request threads only. */
+    fun minerMatcher(): DomainSet {
+        if (ready.count > 0) ready.await(3, TimeUnit.SECONDS)
+        return minerSet
+    }
+
     /** The current matcher without waiting: empty until the first load is done. For the main thread. */
     fun peek(): DomainSet = set.get()
 
@@ -91,6 +98,7 @@ object BlocklistStore {
         } catch (_: Exception) {
             emptySet()
         }
+        minerSet = DomainSet(miners)
     }
 
     /** The matcher for [domains] plus the mining domains. `info.domains` still counts only [domains]. */

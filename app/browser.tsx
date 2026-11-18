@@ -57,7 +57,7 @@ import {
   tabDataVersion,
   type TabData,
 } from '../utils/browser/tabData';
-import { FOUND_HINT_MS, foundHintDue, foundHintText, opensSaveSheet } from '../utils/browser/hardening';
+import { DOWNLOAD_HELD_ACTION, DOWNLOAD_HELD_NOTICE, FOUND_HINT_MS, foundHintDue, foundHintText, opensSaveSheet } from '../utils/browser/hardening';
 import { hostAllowed, type PopupRequest, type PopupsState } from '../utils/browser/popups';
 import { hostOf, isAllowedHost, noticeAllowed, siteKey, toBrowserUrl, toggleAllowedHost } from '../utils/browserUrl';
 
@@ -489,7 +489,13 @@ export default function BrowserScreen({ inTab = false }: { inTab?: boolean }) {
       // The navigation became a download: the page is not loading any more.
       patch(id, (x) => void (x.page = x.page && x.page.loading ? { ...x.page, loading: false } : x.page));
       // 24.11: a download the page started without a tap only joins the Files list (the view already added it).
-      if (!opensSaveSheet(e.tapped)) return;
+      if (!opensSaveSheet(e.tapped)) {
+        // NATIVE_CONTRACT 39.2 B1: a held download is never silent; the notice opens the Files tray where it was listed.
+        if (id === activeIdRef.current) {
+          showNotice({ message: DOWNLOAD_HELD_NOTICE, actionLabel: DOWNLOAD_HELD_ACTION, onAction: () => setTrayOpen(true) }, 6000);
+        }
+        return;
+      }
       setTarget({
         url: e.url,
         name: e.name || nameFromUrl(e.url),
