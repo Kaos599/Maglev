@@ -1,0 +1,3 @@
+Recorded 2026-11-18, unedited.
+search_inception_2010.json  GET https://api.regielive.ro/bazarr/search.php?nume=Inception&an=2010 (header RL-API: API-BAZARR-YTZ-SL)
+download.zip  GET https://subtitrari.regielive.ro/descarca-14880-677974.zip (a zip with one .srt and a .url file)
