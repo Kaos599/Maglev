@@ -12,7 +12,14 @@ import { TimingRow } from '../detail/TimingRow';
  * Compact mode can swap it. A 2x2 grid (Speed, Time left, Downloaded, Connections), then the timing row in every state.
  * Nothing is invented: a value the engine does not know, or that has no meaning right now, reads "—".
  */
-export function DownloadStats({ download: d }: { download: DownloadSnapshot }) {
+export type DownloadStatsInput = Pick<
+  DownloadSnapshot,
+  'state' | 'downBps' | 'eta' | 'size' | 'downloaded' | 'segmentsActive' | 'activeSecs' | 'finishedAt' | 'addedAt' | 'sessionBytes' | 'bytesWifi' | 'bytesMobile'
+>;
+
+// NATIVE_CONTRACT 41.2: this is the link page's Detailed block. It takes only the fields it draws, so the Download page
+// sheet can render it from fixed sample data.
+export function DownloadStats({ download: d }: { download: DownloadStatsInput }) {
   const { colors } = useTheme();
   const running = d.state === 'downloading';
   return (

@@ -101,6 +101,9 @@ const MAP = {
   forward: 'arrow-right',
   // subtitles
   subtitles: 'badge-captions',
+  // download page density (NATIVE_CONTRACT 41.4)
+  'card-text': 'card-text',
+  'grid-3x2': 'grid-3x2',
 };
 
 const out = {};

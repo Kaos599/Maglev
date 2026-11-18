@@ -6,7 +6,7 @@ import { maglevEngine, type DetailFile, type FilePriority, type TorrentLimits } 
 import { useTheme } from '../../context/ThemeContext';
 import { useMaglevEngine } from '../../context/EngineContext';
 import { ThemeColors, radius, spacing, type } from '../../constants/theme';
-import { formatBytes, formatEta, formatSpeed } from '../../constants/format';
+import { formatProgressPercent, formatSpeed } from '../../constants/format';
 import { haptic } from '../../constants/haptics';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { PixelIcon } from '../../components/PixelIcon';
@@ -19,8 +19,10 @@ import { Banner, Button, EmptyBlock, IconButton, ListRow, PressableScale, Progre
 import { SpeedChart } from '../../components/SpeedChart';
 import { PiecesMatrix } from '../../components/PiecesMatrix';
 import { StateBadge } from '../../components/detail/StateBadge';
-import { StatGrid } from '../../components/detail/StatGrid';
-import { TimingRow } from '../../components/detail/TimingRow';
+import { TorrentStats } from '../../components/detail/TorrentStats';
+import { CompactLine } from '../../components/detail/CompactLine';
+import { ProgressCard } from '../../components/detail/ProgressCard';
+import { useSettings } from '../../context/SettingsContext';
 import { PeerRow, TrackerRow } from '../../components/detail/rows';
 import { DoneActions, OpenFolderButton } from '../../components/detail/DoneActions';
 import { DeleteSheet, FileActionsSheet, RemoveFilesSheet, SavedTorrentSheet } from '../../components/detail/sheets';
@@ -96,6 +98,8 @@ interface Notice {
 
 export default function TorrentDetailScreen() {
   const { colors } = useTheme();
+  // NATIVE_CONTRACT 41: Compact or Detailed, from Settings > Appearance > Download page.
+  const compact = useSettings().settings.appearance.telemetryDensity === 'COMPACT';
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -808,21 +812,24 @@ export default function TorrentDetailScreen() {
         </View>
       ) : null}
 
-      <View style={styles.summary}>
-        <View style={styles.summaryTop}>
-          <StateBadge state={snap.state} pausedBy={snap.pausedBy} moveProgress={snap.moveProgress} resumesAt={resumesAt} resolving={resolving} blocks={blockCtx} />
-          <Text style={styles.percent} accessibilityLabel={`${(frac * 100).toFixed(1)} percent`}>
-            {(frac * 100).toFixed(1)}%
-          </Text>
-        </View>
-        <ProgressBar progress={frac} tone={tone} accessibilityLabel={moving ? 'Move progress' : 'Download progress'} />
+      {/* NATIVE_CONTRACT 41.1: in Compact the one speed and time line sits inside the card under the bar. */}
+      <ProgressCard
+        badge={<StateBadge state={snap.state} pausedBy={snap.pausedBy} moveProgress={snap.moveProgress} resumesAt={resumesAt} resolving={resolving} blocks={blockCtx} />}
+        percent={formatProgressPercent(frac)}
+        percentLabel={`${(frac * 100).toFixed(1)} percent`}
+        progress={frac}
+        tone={tone}
+        barLabel={moving ? 'Move progress' : 'Download progress'}
+      >
+        {compact && snap.state === 'DOWNLOADING' ? <CompactLine down={snap.downBps} up={snap.upBps} etaSecs={snap.etaSecs > 0 ? snap.etaSecs : undefined} /> : null}
+        {compact && snap.state === 'SEEDING' ? <CompactLine up={snap.upBps} /> : null}
         {limitSummary ? (
           <View style={styles.limitRow} accessibilityLabel={`Speed limit: ${limitSummary}`}>
             <PixelIcon name="speed-limit" size={16} color={colors.textMuted} />
             <Text style={styles.limitText}>{limitSummary}</Text>
           </View>
         ) : null}
-      </View>
+      </ProgressCard>
 
       {ruleResume ? (
         <View style={[styles.block, { gap: spacing.sm }]}>
@@ -851,31 +858,30 @@ export default function TorrentDetailScreen() {
         </View>
       )}
 
-      {/* The Timing row sits under the grid with the grid's own cell gap, so the six cells and the row read as one block. */}
-      <View style={[styles.block, { gap: spacing.sm }]}>
-        <StatGrid
-          stats={[
-            { label: 'Download', value: formatSpeed(snap.downBps), tint: colors.download },
-            { label: 'Upload', value: formatSpeed(snap.upBps), tint: colors.upload },
-            { label: 'ETA', value: snap.etaSecs > 0 ? formatEta(snap.etaSecs) : '—' },
-            { label: 'Ratio', value: snap.ratio >= 0 ? snap.ratio.toFixed(2) : '—' },
-            { label: 'Peers', value: `${snap.peersLive}/${snap.peersSeen}` },
-            { label: 'Size', value: snap.totalBytes > 0 ? formatBytes(snap.totalBytes) : '—' },
-          ]}
-        />
-        <TimingRow
-          timing={{
-            activeSecs: snap.activeSecs,
-            finishedAt: snap.finishedAt,
-            addedAt: snap.addedAt,
-            sessionBytes: snap.sessionBytes,
-            bytesWifi: snap.bytesWifi,
-            bytesMobile: snap.bytesMobile,
-            seedingSecs: snap.seedingSecs,
-            uploaded: snap.uploadedBytes,
-          }}
-        />
-      </View>
+      {/* NATIVE_CONTRACT 41.2: Detailed is today's page, the six boxes and the Timing row. 41.1: Compact shows neither. */}
+      {!compact ? (
+        <View style={styles.block}>
+          <TorrentStats
+            downBps={snap.downBps}
+            upBps={snap.upBps}
+            etaSecs={snap.etaSecs}
+            ratio={snap.ratio}
+            peersLive={snap.peersLive}
+            peersSeen={snap.peersSeen}
+            totalBytes={snap.totalBytes}
+            timing={{
+              activeSecs: snap.activeSecs,
+              finishedAt: snap.finishedAt,
+              addedAt: snap.addedAt,
+              sessionBytes: snap.sessionBytes,
+              bytesWifi: snap.bytesWifi,
+              bytesMobile: snap.bytesMobile,
+              seedingSecs: snap.seedingSecs,
+              uploaded: snap.uploadedBytes,
+            }}
+          />
+        </View>
+      ) : null}
 
       {snap.outputFolder ? (
         <View style={styles.block}>
@@ -1181,17 +1187,6 @@ const makeStyles = (c: ThemeColors) =>
     speedChart: { marginTop: spacing.sm },
     hidden: { display: 'none' },
     errorActions: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginTop: spacing.sm },
-    summary: {
-      backgroundColor: c.surface,
-      borderWidth: 1,
-      borderColor: c.border,
-      borderRadius: radius.lg,
-      padding: spacing.lg,
-      marginBottom: spacing.md,
-      gap: spacing.md,
-    },
-    summaryTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-    percent: { ...type.monoBold, fontSize: type.size.xxl, color: c.text },
     limitRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
     limitText: { ...type.mono, fontSize: type.size.xs, color: c.textMuted },
     tabs: { marginBottom: spacing.md },

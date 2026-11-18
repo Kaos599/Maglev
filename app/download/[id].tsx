@@ -5,7 +5,7 @@ import * as Clipboard from 'expo-clipboard';
 import { isDownloadLink, normalizeIncoming, type DownloadSnapshot } from 'maglev-engine';
 import { useTheme } from '../../context/ThemeContext';
 import { useMaglevEngine } from '../../context/EngineContext';
-import { ThemeColors, alpha, radius, spacing, type } from '../../constants/theme';
+import { ThemeColors, radius, spacing, type } from '../../constants/theme';
 import { formatBytes } from '../../constants/format';
 import { haptic } from '../../constants/haptics';
 import { empty, notices } from '../../constants/copy';
@@ -26,8 +26,11 @@ import {
 } from '../../utils/downloadCopy';
 import { friendlyPath, formatLimit } from '../../components/settings/SettingsParts';
 import { SpeedLimitSheet } from '../../components/detail/SpeedLimitSheet';
-import { Banner, Button, EmptyBlock, IconButton, ListRow, ProgressBar, Screen, Sheet, type ProgressTone } from '../../components/ui';
+import { Banner, Button, EmptyBlock, IconButton, ListRow, Screen, Sheet, type ProgressTone } from '../../components/ui';
 import { toneColor } from '../../components/transfers/StatusLine';
+import { ProgressBadge, ProgressCard } from '../../components/detail/ProgressCard';
+import { CompactLine } from '../../components/detail/CompactLine';
+import { useSettings } from '../../context/SettingsContext';
 import { WhyHeld } from '../../components/transfers/WhyHeld';
 import { DownloadStats } from '../../components/transfers/DownloadStats';
 import { useDownloadActions } from '../../components/transfers/useDownloadActions';
@@ -61,6 +64,8 @@ function barTone(d: DownloadSnapshot): ProgressTone {
  */
 export default function DownloadScreen() {
   const { colors } = useTheme();
+  // NATIVE_CONTRACT 41: Compact or Detailed, from Settings > Appearance > Download page.
+  const compact = useSettings().settings.appearance.telemetryDensity === 'COMPACT';
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -206,17 +211,17 @@ export default function DownloadScreen() {
       testID="download-page"
     >
       {/* NATIVE_CONTRACT 40.2 Progress card: the state in the card's words and colour, the percent, then the bar. */}
-      <View style={styles.summary} accessible accessibilityLabel={`${status.lead}, ${unknownSize ? downloadProgressLabel(d) : percent}`}>
-        <View style={styles.summaryTop}>
-          <View style={[styles.badge, { borderColor: tint, backgroundColor: alpha(tint, 0.12) }]}>
-            <Text style={[styles.badgeText, { color: tint }]} numberOfLines={1}>
-              {status.lead}
-            </Text>
-          </View>
-          <Text style={styles.percent}>{percent}</Text>
-        </View>
-        <ProgressBar progress={frac} tone={barTone(d)} accessibilityLabel="Download progress" />
-      </View>
+      <ProgressCard
+        badge={<ProgressBadge label={status.lead} tint={tint} />}
+        percent={percent}
+        progress={frac}
+        tone={barTone(d)}
+        barLabel="Download progress"
+        accessibilityLabel={`${status.lead}, ${unknownSize ? downloadProgressLabel(d) : percent}`}
+      >
+        {/* NATIVE_CONTRACT 41.1: Compact, downloading: "↓ speed · time left" under the bar; no line in any other state. */}
+        {compact && d.state === 'downloading' ? <CompactLine down={d.downBps} etaSecs={d.eta >= 0 ? d.eta : undefined} /> : null}
+      </ProgressCard>
 
       {/* NATIVE_CONTRACT 40.2: the one-line hint while a download that can't resume is running. */}
       {d.state === 'downloading' && !d.resumable ? <Text style={[styles.hint, styles.hintTight]}>{CANT_RESUME_HINT}</Text> : null}
@@ -304,10 +309,12 @@ export default function DownloadScreen() {
         )}
       </View>
 
-      {/* NATIVE_CONTRACT 40.2 Stats */}
-      <View style={styles.block}>
-        <DownloadStats download={d} />
-      </View>
+      {/* NATIVE_CONTRACT 40.2 Stats. 41.1: Compact leaves the boxes and the Timing row out; 41.2: Detailed is today's block. */}
+      {!compact ? (
+        <View style={styles.block}>
+          <DownloadStats download={d} />
+        </View>
+      ) : null}
 
       {/* NATIVE_CONTRACT 40.2 Rows */}
       <View style={[styles.block, styles.stack]}>
@@ -328,13 +335,16 @@ export default function DownloadScreen() {
             accessibilityLabel={`Saved to ${friendlyPath(d.folder)}. Opens the folder.`}
           />
         ) : null}
-        <ListRow
-          title="Speed limit"
-          icon="speed-limit"
-          value={limitText}
-          onPress={() => setLimitOpen(true)}
-          accessibilityLabel={`Speed limit, ${limitText}. Opens the speed limit options.`}
-        />
+        {/* NATIVE_CONTRACT 41.1: in Compact the Speed limit row moves into the ⋮ menu. 41.2: Detailed keeps the row. */}
+        {!compact ? (
+          <ListRow
+            title="Speed limit"
+            icon="speed-limit"
+            value={limitText}
+            onPress={() => setLimitOpen(true)}
+            accessibilityLabel={`Speed limit, ${limitText}. Opens the speed limit options.`}
+          />
+        ) : null}
         {subtitles !== 'hidden' ? (
           <ListRow
             title={FIND_SUBTITLES}
@@ -349,8 +359,20 @@ export default function DownloadScreen() {
         ) : null}
       </View>
 
-      {/* NATIVE_CONTRACT 40.2 Header menu: Remove… only. */}
+      {/* NATIVE_CONTRACT 40.2 Header menu: Remove…. 41.1: Compact adds Speed limit… above it. */}
       <Sheet visible={moreOpen} onClose={() => setMoreOpen(false)} title={d.name}>
+        {compact ? (
+          <ListRow
+            title="Speed limit…"
+            icon="speed-limit"
+            value={limitText}
+            onPress={() => {
+              setMoreOpen(false);
+              setLimitOpen(true);
+            }}
+            accessibilityLabel={`Speed limit, ${limitText}. Opens the speed limit options.`}
+          />
+        ) : null}
         <ListRow
           title="Remove…"
           icon="trash"
@@ -394,19 +416,6 @@ const makeStyles = (c: ThemeColors) =>
     stack: { gap: spacing.sm },
     row: { flexDirection: 'row', gap: spacing.sm },
     half: { flex: 1 },
-    summary: {
-      backgroundColor: c.surface,
-      borderWidth: 1,
-      borderColor: c.border,
-      borderRadius: radius.lg,
-      padding: spacing.lg,
-      marginBottom: spacing.md,
-      gap: spacing.md,
-    },
-    summaryTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: spacing.md },
-    badge: { flexShrink: 1, alignSelf: 'flex-start', paddingHorizontal: spacing.sm, paddingVertical: 2, borderRadius: radius.sm, borderWidth: 1 },
-    badgeText: { ...type.bodyStrong, fontSize: type.size.sm },
-    percent: { ...type.monoBold, fontSize: type.size.xxl, color: c.text },
     hint: { ...type.body, fontSize: 13, color: c.textMuted },
     hintTight: { marginTop: -spacing.xs, marginBottom: spacing.md },
     // Same look as WhyHeld: a heading, then each reason's title and text. No side stripe.

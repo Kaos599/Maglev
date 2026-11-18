@@ -285,7 +285,8 @@ async function main() {
   check('reduce motion respected', /useReduceMotion|useMotion/.test(all));
   check('records sheet offers Show this day', /Show this day/.test(all));
   const detail = read('app/torrent/[id].tsx');
-  check('detail shows the timing row', /TimingRow/.test(detail));
+  // NATIVE_CONTRACT 41.2: the torrent page draws its Detailed numbers (boxes and Timing row) through TorrentStats.
+  check('detail shows the timing row', /<TorrentStats/.test(detail) && /<TimingRow/.test(read('components/detail/TorrentStats.tsx')));
   check('transfers rows say Done in', /doneLead/.test(read('components/transfers/model.ts')) && /doneLead/.test(read('utils/downloadCopy.ts')));
   const city = read('components/stats/PixelCity.tsx');
   check('city pan activates on a small horizontal move and fails on vertical', /activeOffsetX:\s*\[-8, 8\]/.test(city) && /failOffsetY:\s*\[-12, 12\]/.test(city) && /onUpdate/.test(city));

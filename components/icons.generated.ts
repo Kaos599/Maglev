@@ -85,4 +85,6 @@ export const ICON_PATHS = {
   "lock": "M5 8h14v2H5zm0 12h14v2H5zM3 10h2v10H3zm16 0h2v10h-2zM7 4h2v4H7zm2-2h6v2H9zm6 2h2v4h-2z",
   "forward": "M4 11v2h16v-2zm12 2v2h2v-2zm-2 2v2h2v-2zm-2 2v2h2v-2zm4-6V9h2v2zM14 15V7h2v8zm-2 2V5h2v12z",
   "subtitles": "M3 4h18v2H3zm0 14h18v2H3zM1 6h2v12H1zm20 0h2v12h-2zm-6 8h4v2h-4zM5 10h4v2H5zm0 4h8v2H5zm6-4h8v2h-8z",
+  "card-text": "M6 8h12v2H6zm0 4h8v2H6zM4 4h16v2H4zm0 14h16v2H4zM2 6h2v12H2zm18 0h2v12h-2z",
+  "grid-3x2": "M4 2h16v2H4zm0 18h16v2H4zM2 4h2v16H2zm18 0h2v16h-2zM4 11h16v2H4zM8 4h2v16H8zm6 0h2v16h-2z",
 } as const;
