@@ -13,7 +13,7 @@ use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
-use crate::meta::write_atomic;
+use crate::meta::{write_atomic, TorrentMeta};
 use crate::scheduler::{HEALTH_FILES_CHANGED, HEALTH_FILES_MISSING};
 
 pub const SIDECAR_FILE: &str = "maglev-filehealth.json";
@@ -57,8 +57,10 @@ pub struct FileProbe {
     pub on_disk: OnDisk,
 }
 
-/// The state of one file. `finished` enables the size and time comparison; `snap` is the stamp taken
-/// when the torrent finished (None when there is no snapshot yet, which never counts as a change).
+/// The state of one file. `finished` enables the size comparison; `snap` is the stamp taken when the
+/// torrent finished (None when there is no snapshot yet, which never counts as a change). Only a
+/// different size counts as changed (section 47.1): the media scanner, file managers and players touch
+/// timestamps without touching the contents. `refresh_mtimes` brings such stamps up to date.
 pub fn classify_file(p: &FileProbe, finished: bool, snap: Option<&FileStamp>) -> FileState {
     if p.padding || !p.included {
         return FileState::Ok;
@@ -73,10 +75,34 @@ pub fn classify_file(p: &FileProbe, finished: bool, snap: Option<&FileStamp>) ->
             }
         }
         OnDisk::Present(now) => match snap {
-            Some(s) if finished && *s != now => FileState::Changed,
+            Some(s) if finished && s.size != now.size => FileState::Changed,
             _ => FileState::Ok,
         },
     }
+}
+
+/// The snapshot with the modified time of every included file that kept its size but got a new
+/// modified time. `None` when no stamp needs updating. Only for a finished torrent with a snapshot;
+/// a file with a different size is left alone (it is reported as changed) and so is one that is gone.
+pub fn refresh_mtimes(
+    probes: &[FileProbe],
+    finished: bool,
+    snapshot: &BTreeMap<u32, FileStamp>,
+) -> Option<BTreeMap<u32, FileStamp>> {
+    if !finished {
+        return None;
+    }
+    let mut next = snapshot.clone();
+    let mut touched = false;
+    for p in probes.iter().filter(|p| p.included && !p.padding) {
+        if let (OnDisk::Present(now), Some(old)) = (p.on_disk, snapshot.get(&p.index)) {
+            if old.size == now.size && old.mtime_ms != now.mtime_ms {
+                next.insert(p.index, now);
+                touched = true;
+            }
+        }
+    }
+    touched.then_some(next)
 }
 
 /// `(index, state)` for every included, non-padding file.
@@ -125,6 +151,25 @@ pub fn snapshot_step(has_snapshot: bool, finished: bool, health_clear: bool) -> 
         (false, true) => SnapshotStep::Drop,
         _ => SnapshotStep::Keep,
     }
+}
+
+/// True for the two tags a file check owns. Resume does not clear them; Recheck does.
+pub fn is_file_health_tag(tag: &str) -> bool {
+    tag == HEALTH_FILES_CHANGED || tag == HEALTH_FILES_MISSING
+}
+
+/// The end of a Recheck (section 47.2), once librqbit has checked every piece. The health tag goes, and
+/// so does the pause it left behind (`paused_by` set to a file health tag), so the planner may start the
+/// torrent. A pause by the user or a seed limit stays. Returns true when the caller must take the file
+/// snapshot now: every piece is valid (`finished`), so the files on disk are the finished torrent. With bad
+/// pieces the torrent downloads them again and the tick takes the snapshot when it finishes.
+pub fn settle_recheck(m: &mut TorrentMeta, finished: bool) -> bool {
+    m.health = None;
+    if m.paused_by.as_deref().map(is_file_health_tag).unwrap_or(false) {
+        m.paused_by = None;
+        m.queued = true;
+    }
+    finished
 }
 
 /// True when the scan may look at a torrent whose health is `current`. Storage and no-peers tags
@@ -308,13 +353,98 @@ mod tests {
         let p = probe(0, OnDisk::Present(stamp(10, 200)));
         let snap = stamp(10, 100);
         assert_eq!(classify_file(&p, true, Some(&snap)), FileState::Changed);
-        // Same size and time: fine. Size differs alone: changed. Time differs alone: changed.
+        // Same size and time: fine. Size differs: changed. Time differs alone: fine (section 47.1).
         assert_eq!(classify_file(&p, true, Some(&stamp(10, 200))), FileState::Ok);
         assert_eq!(classify_file(&p, true, Some(&stamp(11, 200))), FileState::Changed);
+        assert_eq!(classify_file(&p, true, Some(&stamp(10, 100))), FileState::Ok);
         // Still downloading: files grow, so nothing is compared.
         assert_eq!(classify_file(&p, false, Some(&snap)), FileState::Ok);
         // No snapshot yet: nothing to compare with.
         assert_eq!(classify_file(&p, true, None), FileState::Ok);
+    }
+
+    #[test]
+    fn mtime_only_change_is_not_changed_and_refreshes_the_snapshot() {
+        let probes = [
+            probe(0, OnDisk::Present(stamp(10, 900))),
+            probe(1, OnDisk::Present(stamp(20, 50))),
+        ];
+        let mut snap = BTreeMap::new();
+        snap.insert(0u32, stamp(10, 100));
+        snap.insert(1u32, stamp(20, 50));
+        // No tag: every file is fine although file 0 has a new time.
+        let states = classify_files(&probes, true, Some(&snap));
+        assert_eq!(rollup(&states), None);
+        // The snapshot takes the new time for file 0 and keeps file 1.
+        let next = refresh_mtimes(&probes, true, &snap).expect("file 0 needs a new stamp");
+        assert_eq!(next.get(&0), Some(&stamp(10, 900)));
+        assert_eq!(next.get(&1), Some(&stamp(20, 50)));
+        // Once refreshed there is nothing more to do.
+        assert_eq!(refresh_mtimes(&probes, true, &next), None);
+        // Not finished: nothing is refreshed.
+        assert_eq!(refresh_mtimes(&probes, false, &snap), None);
+    }
+
+    #[test]
+    fn size_change_is_changed_and_is_not_refreshed() {
+        let probes = [probe(0, OnDisk::Present(stamp(11, 900)))];
+        let mut snap = BTreeMap::new();
+        snap.insert(0u32, stamp(10, 100));
+        let states = classify_files(&probes, true, Some(&snap));
+        assert_eq!(states, vec![(0, FileState::Changed)]);
+        assert_eq!(rollup(&states), Some("files_changed"));
+        assert_eq!(refresh_mtimes(&probes, true, &snap), None);
+    }
+
+    #[test]
+    fn missing_file_is_missing_not_refreshed() {
+        let probes = [probe(0, OnDisk::Absent)];
+        let mut snap = BTreeMap::new();
+        snap.insert(0u32, stamp(10, 100));
+        let states = classify_files(&probes, true, Some(&snap));
+        assert_eq!(states, vec![(0, FileState::Missing)]);
+        assert_eq!(rollup(&states), Some("files_missing"));
+        assert_eq!(refresh_mtimes(&probes, true, &snap), None);
+    }
+
+    #[test]
+    fn recheck_with_good_pieces_clears_the_tag_and_asks_for_a_snapshot() {
+        let dir = temp_dir("recheck");
+        let mut m = TorrentMeta::default();
+        m.health = Some("files_changed".to_string());
+        m.paused_by = Some("files_changed".to_string());
+        m.queued = false;
+        assert!(settle_recheck(&mut m, true));
+        assert_eq!(m.health, None);
+        assert_eq!(m.paused_by, None);
+        assert!(m.queued);
+        // The snapshot is taken in the same flow: the stamps are stored and read back.
+        let mut store = HealthStore::load(&dir);
+        let mut stamps = BTreeMap::new();
+        stamps.insert(0u32, stamp(10, 100));
+        store.set("abc", &stamps);
+        assert!(store.has("abc"));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn recheck_with_bad_pieces_takes_no_snapshot() {
+        let mut m = TorrentMeta::default();
+        m.health = Some("files_missing".to_string());
+        m.paused_by = Some("files_missing".to_string());
+        assert!(!settle_recheck(&mut m, false));
+        assert_eq!(m.health, None);
+        assert_eq!(m.paused_by, None);
+    }
+
+    #[test]
+    fn recheck_keeps_a_pause_by_the_user() {
+        let mut m = TorrentMeta::default();
+        m.health = Some("files_changed".to_string());
+        m.paused_by = Some("user".to_string());
+        assert!(settle_recheck(&mut m, true));
+        assert_eq!(m.health, None);
+        assert_eq!(m.paused_by.as_deref(), Some("user"));
     }
 
     #[test]

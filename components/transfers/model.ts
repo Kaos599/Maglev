@@ -148,7 +148,7 @@ type StatusRow = Pick<
   TorrentTelemetry,
   | 'state' | 'pausedBy' | 'error' | 'downloadSpeedBytes' | 'uploadSpeedBytes' | 'downloadedBytes' | 'totalSizeBytes'
   | 'includedBytes' | 'progressPercent' | 'etaSeconds' | 'moveProgress' | 'resolvingSecs' | 'peersTotal'
-> & Partial<Pick<TorrentTelemetry, 'activeSecs' | 'finishedAt'>> & { lastKnown?: boolean };
+> & Partial<Pick<TorrentTelemetry, 'activeSecs' | 'finishedAt' | 'finished' | 'health'>> & { lastKnown?: boolean };
 
 /** What the torrent is working toward: the files the user kept, or everything when none were deselected. */
 function targetBytes(t: Pick<TorrentTelemetry, 'includedBytes' | 'totalSizeBytes'>): number {
@@ -162,15 +162,25 @@ export function torrentProgressPercent(t: Pick<TorrentTelemetry, 'includedBytes'
   return Math.min(100, Math.max(0, t.progressPercent || 0));
 }
 
-/** Whole percent, or null when the size is unknown. A percent never rounds up to 100 before it is done. */
-function wholePercent(t: Pick<TorrentTelemetry, 'includedBytes' | 'totalSizeBytes' | 'downloadedBytes' | 'progressPercent'>): number | null {
+/** Every byte of the target is here (NATIVE_CONTRACT 47.3). The engine's `finished` flag counts too. */
+function isFinished(t: Pick<TorrentTelemetry, 'includedBytes' | 'totalSizeBytes' | 'downloadedBytes'> & { finished?: boolean }): boolean {
+  const target = targetBytes(t);
+  return t.finished === true || (target > 0 && t.downloadedBytes >= target);
+}
+
+/**
+ * Whole percent, or null when the size is unknown. An unfinished torrent never rounds up to 100 (cap 99);
+ * one the engine says is finished is 100 (NATIVE_CONTRACT 47.3), and the card shows no percent for it.
+ */
+function wholePercent(t: Pick<TorrentTelemetry, 'includedBytes' | 'totalSizeBytes' | 'downloadedBytes' | 'progressPercent'> & { finished?: boolean }): number | null {
   if (!(targetBytes(t) > 0)) return null;
-  // Only done items say 100%, and they show no percent at all.
+  // Only the engine's own finished flag says 100. Full bytes alone can be the last second before it flips.
+  if (t.finished === true) return 100;
   return Math.min(99, Math.round(torrentProgressPercent(t)));
 }
 
 /** "412 MB of 1.2 GB · 34%", or null when the size is unknown. */
-export function torrentProgressText(t: Pick<TorrentTelemetry, 'includedBytes' | 'totalSizeBytes' | 'downloadedBytes' | 'progressPercent'>): string | null {
+export function torrentProgressText(t: Pick<TorrentTelemetry, 'includedBytes' | 'totalSizeBytes' | 'downloadedBytes' | 'progressPercent'> & { finished?: boolean }): string | null {
   const pct = wholePercent(t);
   if (pct == null) return null;
   return `${formatBytes(t.downloadedBytes)} of ${formatBytes(targetBytes(t))} · ${pct}%`;
@@ -281,6 +291,11 @@ export function torrentStatus(t: StatusRow, etaLabel: string, ctx: BlockContext 
     case 'PAUSED':
       if (t.pausedBy === 'seed_metered') return line(`Done · ${pausedReason(t.pausedBy, ctx)}`, 'accent', null, total, 'size');
       if (t.pausedBy === 'seed_limit') return line(doneLead(t.activeSecs, t.finishedAt), 'accent', null, total, 'size');
+      // NATIVE_CONTRACT 47.3: a finished torrent never reads 99%. "Done · {reason}", no percent, the size on the right.
+      if (t.pausedBy !== 'storage_full' && isFinished(t)) {
+        const fileTag = t.health === 'files_changed' || t.health === 'files_missing' ? t.health : null;
+        return line(`Done · ${pausedReason(fileTag ?? t.pausedBy, ctx)}`, 'muted', null, total, 'size');
+      }
       // Storage full: the card's button ("Free up space") is the way out (docs/contracts-0.19/play-and-storage.md section 2).
       if (t.pausedBy === 'storage_full') return held(pausedReason(t.pausedBy, ctx), 'danger');
       return held(pausedReason(t.pausedBy, ctx), 'muted');
@@ -349,14 +364,22 @@ export interface TorrentCardAction {
   route?: string;
 }
 
+/** True when a file health tag holds the torrent (`files_changed` or `files_missing`). Resume is not offered; Recheck on the page is. */
+export function isHeldByFiles(t: { pausedBy?: string | null; health?: string | null }): boolean {
+  const tags = ['files_changed', 'files_missing'];
+  return (!!t.health && tags.includes(t.health)) || (!!t.pausedBy && tags.includes(t.pausedBy));
+}
+
 /** The card's one button, or null when nothing can be done from the list. */
-export function torrentCardAction(t: Pick<TorrentTelemetry, 'state' | 'pausedBy'>, ctx: BlockContext = {}): TorrentCardAction | null {
+export function torrentCardAction(t: Pick<TorrentTelemetry, 'state' | 'pausedBy'> & Partial<Pick<TorrentTelemetry, 'health'>>, ctx: BlockContext = {}): TorrentCardAction | null {
   switch (t.state) {
     case 'DOWNLOADING':
     case 'SEEDING':
       return { icon: 'pause', label: 'Pause', kind: 'pause' };
     case 'PAUSED': {
       const by = t.pausedBy;
+      // NATIVE_CONTRACT 47.4: a file health tag needs Recheck, never Resume, even when the user paused it first.
+      if (isHeldByFiles(t)) return null;
       if (by === 'no_peers') return { icon: 'retry', label: 'Keep trying', kind: 'keepTrying' };
       // Finished by the seed limit: the button opens the file. Seed again lives in the detail screen.
       if (by === 'seed_limit') return { icon: 'external', label: 'Open', kind: 'open' };

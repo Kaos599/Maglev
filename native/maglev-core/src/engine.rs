@@ -36,8 +36,8 @@ use crate::config::NativeConfig;
 use crate::error::{classify_add_error, classify_runtime_error, EngineError, ErrorCode};
 use crate::http_dl::{AddedDownload, Downloads, ProbeResult};
 use crate::file_health::{
-    classify_files, folder_scannable, health_change, rollup, scan_owns, snapshot_step, stat_path, FileProbe,
-    FileStamp, FileState, HealthChange, HealthStore, OnDisk, SnapshotStep,
+    classify_files, folder_scannable, health_change, refresh_mtimes, rollup, scan_owns, settle_recheck,
+    snapshot_step, stat_path, FileProbe, FileStamp, FileState, HealthChange, HealthStore, OnDisk, SnapshotStep,
 };
 use crate::meta::{write_atomic, MetaStore, PendingAdd, TorrentMeta};
 use crate::priority::{
@@ -72,6 +72,9 @@ type Handle20 = Arc<ManagedTorrent>;
 
 const OP_TIMEOUT: Duration = Duration::from_secs(20);
 const DELETE_TIMEOUT: Duration = Duration::from_secs(90);
+/// How long Recheck waits for librqbit to check every piece before it hands the torrent back (section 47.2).
+/// Shorter than `DELETE_TIMEOUT`, so a slow check on a big torrent never turns Recheck into an error.
+const RECHECK_SETTLE: Duration = Duration::from_secs(45);
 const SOFT_SAVE_INTERVAL: Duration = Duration::from_secs(30);
 /// Meta entries with no torrent behind them are dropped after this long.
 const ORPHAN_GRACE_SECS: i64 = 180;
@@ -1920,8 +1923,35 @@ impl MaglevEngine {
             added
         };
         self.forget_file_snapshot(id);
+        if added.is_ok() {
+            self.settle_after_check(id, hash).await;
+        }
         self.save_meta();
         added
+    }
+
+    /// The end of a Recheck (section 47.2). The health tag still holds the torrent paused, so the planner
+    /// cannot start it yet. Wait for librqbit to check every piece; when they are all valid take the file
+    /// snapshot now, then clear the health tag and the pause it left behind. If the check takes longer than
+    /// `RECHECK_SETTLE` the callers clear the tag as before, and the tick takes the snapshot once the
+    /// torrent has finished.
+    async fn settle_after_check(&self, id: &str, hash: Id20) {
+        let Some(h) = self.find(hash) else { return };
+        match tokio::time::timeout(RECHECK_SETTLE, h.wait_until_initialized()).await {
+            Ok(Ok(())) => {}
+            _ => return,
+        }
+        let stats = h.stats();
+        if !matches!(rq_state(&stats), RqState::Live | RqState::Paused) {
+            return;
+        }
+        let finished = real_finished(&h, &stats);
+        if finished {
+            self.snapshot_files(id, &h);
+        }
+        self.meta.lock().update(id, |m| {
+            settle_recheck(m, finished);
+        });
     }
 
     pub fn delete(&self, id: &str, delete_files: bool) -> Result<(), EngineError> {
@@ -3313,7 +3343,19 @@ impl MaglevEngine {
             return None;
         }
         let probes = self.probe_files(h, stats);
-        let snapshot = self.filehealth.lock().get(id).map(|s| s.by_index());
+        let mut snapshot = self.filehealth.lock().get(id).map(|s| s.by_index());
+        // Only a size change counts as changed (section 47.1). A file that kept its size but got a new
+        // modified time (media scanner, file manager, player) gets its stamp refreshed in this pass.
+        if let Some(snap) = snapshot.as_ref() {
+            if let Some(next) = refresh_mtimes(&probes, stats.finished, snap) {
+                let mut store = self.filehealth.lock();
+                store.set(id, &next);
+                if let Err(e) = store.save() {
+                    warn!("could not save the file snapshot: {e}");
+                }
+                snapshot = Some(next);
+            }
+        }
         let states = classify_files(&probes, stats.finished, snapshot.as_ref());
         Some((probes, states))
     }

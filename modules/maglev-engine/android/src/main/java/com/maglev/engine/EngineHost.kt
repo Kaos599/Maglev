@@ -934,14 +934,17 @@ object EngineHost {
         return linkedMapOf("ok" to true, "count" to n)
     }
 
-    /** Resumes user-paused torrents. Governance-paused ones stay paused until their gate opens. */
+    /** Resumes user-paused torrents. Governance-paused ones stay paused until their gate opens, and so do torrents held by a file health tag. */
     fun resumeAll(): Map<String, Any?> {
         val list = call { NativeCore.nativeListTorrents() }
         if (!isOk(list)) return list
         var n = 0
         for (t in Json.list(list["torrents"])) {
             val by = t["paused_by"]
-            if (t["state"] == "PAUSED" && (by == null || by == "user")) {
+            // A torrent held by a file health tag needs Recheck, not Resume (contract 47.4): skip it.
+            val health = t["health"]
+            val heldByFiles = health == "files_changed" || health == "files_missing"
+            if (t["state"] == "PAUSED" && (by == null || by == "user") && !heldByFiles) {
                 val id = t["id"] as? String ?: continue
                 if (isOk(call { NativeCore.nativeResume(id) })) n++
             }
