@@ -165,3 +165,27 @@ export function statusSummary(c: { saved: number; needsYou: number; waiting: num
   if (c.waiting > 0) parts.push(`${c.waiting} getting`);
   return parts.join(' \u00B7 ');
 }
+
+// 44.14 The Subtitles row on the download page.
+export const ROW_LABEL = 'Subtitles';
+export const ROW_NOT_STARTED = FILE_NOT_STARTED;
+export const ROW_NOT_ASKED = 'Not asked yet';
+export const ROW_QUEUED_NO_LIST = 'Starts when the file list arrives';
+export const ROW_QUEUED = 'Waiting for the file';
+export const ROW_SEARCHING = 'Getting subtitles…';
+export const ROW_CLOSE_MATCH = 'Close match found';
+export const ROW_NONE = 'No match yet';
+export const ROW_OFFLINE = 'Waiting for internet';
+export const ROW_LIMITED = 'A source is busy · retrying soon';
+export const ROW_SKIPPED = 'Skipped';
+export const ROW_BUTTONS = { find: 'Find', cancel: 'Cancel', change: 'Change', pick: 'Pick one', editName: 'Edit name', findMore: 'Find more', seeAll: 'See all' } as const;
+export const rowSaved = (language: string): string => `${languageName(language)} · fits this release`;
+export const rowSavedNoLanguage = 'Saved';
+export const rowHasAlready = (language: string | null): string => (language ? `Already has ${languageName(language)} subtitles` : 'Already has subtitles');
+/** Season pack: "8 of 10 saved · 2 need you". */
+export function rowPackLine(c: { saved: number; total: number; needYou: number }): string {
+  const base = `${c.saved} of ${c.total} saved`;
+  return c.needYou > 0 ? `${base} · ${c.needYou} ${c.needYou === 1 ? 'needs' : 'need'} you` : base;
+}
+/** What TalkBack reads: "Subtitles, {line}, button {label}". */
+export const rowLabel = (line: string, button: string | null): string => (button ? `${ROW_LABEL}, ${line}, button ${button}` : `${ROW_LABEL}, ${line}`);

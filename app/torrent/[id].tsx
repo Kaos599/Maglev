@@ -11,6 +11,10 @@ import { haptic } from '../../constants/haptics';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { PixelIcon } from '../../components/PixelIcon';
 import { SubtitleSheet } from '../../components/subtitles/SubtitleSheet';
+import { MultiSubtitleSheet } from '../../components/subtitles/MultiSubtitleSheet';
+import { SubtitlesRow } from '../../components/subtitles/SubtitlesRow';
+import { torrentRowFacts, type SheetStart } from '../../components/subtitles/rowModel';
+import { getRequests } from '../../utils/subtitles/requests';
 import { useSubtitleAvailability } from '../../components/subtitles/useSubtitleEntry';
 import { fileEntryMode, torrentEntryMode, torrentTarget, type SubtitleTarget } from '../../components/subtitles/flow';
 import { OPEN_FOLDER_FAILED_TEXT } from '../../utils/downloadCopy';
@@ -118,6 +122,8 @@ export default function TorrentDetailScreen() {
   const [fileSheet, setFileSheet] = useState<DetailFile | null>(null);
   const subtitleAvail = useSubtitleAvailability();
   const [subtitleTarget, setSubtitleTarget] = useState<SubtitleTarget | null>(null);
+  const [subtitleStart, setSubtitleStart] = useState<SheetStart>('results');
+  const [subtitlesAll, setSubtitlesAll] = useState(false);
   const [notice, setNotice] = useState<Notice | null>(null);
   const [pending, setPending] = useState<Record<number, FilePriority>>({});
   const [prioTarget, setPrioTarget] = useState<number[] | null>(null);
@@ -745,6 +751,14 @@ export default function TorrentDetailScreen() {
     subtitleAvail,
   );
 
+  // NATIVE_CONTRACT 44.14: the Subtitles row, under the progress card and the why block.
+  const subtitleRow = torrentRowFacts(
+    { finished: !!snap.finished || snap.state === 'COMPLETED' || snap.state === 'SEEDING', folder: snap.outputFolder },
+    files,
+    subtitleAvail,
+    !!getRequests()[`t:${id.toLowerCase()}`]?.files,
+  );
+
   const errorMap = snap.error ? actionsFor(snap.error.code, { pausedBy: snap.pausedBy }) : null;
   const errorButtons: { action: ErrorAction; label: string; variant: 'primary' | 'secondary' }[] = [];
   if (errorMap) {
@@ -854,6 +868,21 @@ export default function TorrentDetailScreen() {
 
       {/* NATIVE_CONTRACT 43.4: only while connecting or waiting, in Compact and Detailed; gone once data flows. */}
       {whyModel ? <WhyStuck model={whyModel} onAskTrackers={() => void handleReannounce()} retryInSecs={retryInSecs} /> : null}
+
+      {subtitleRow.show ? (
+        <SubtitlesRow
+          requestKey={`t:${id.toLowerCase()}`}
+          stateKey={`t:${id}`}
+          started={subtitleRow.started}
+          canOpenSheet={subtitleRow.canOpenSheet}
+          onOpenSheet={(start) => {
+            if (!subtitleRow.file) return;
+            setSubtitleStart(start);
+            setSubtitleTarget(torrentTarget(id, snap.outputFolder, subtitleRow.file, downloadedFiles));
+          }}
+          onSeeAll={() => setSubtitlesAll(true)}
+        />
+      ) : null}
 
       {ruleResume ? (
         <View style={[styles.block, { gap: spacing.sm }]}>
@@ -1184,7 +1213,21 @@ export default function TorrentDetailScreen() {
           setSubtitleTarget(torrentTarget(id, snap.outputFolder, f, downloadedFiles));
         }}
       />
-      <SubtitleSheet target={subtitleTarget} onClose={() => setSubtitleTarget(null)} />
+      <SubtitleSheet
+        target={subtitleTarget}
+        initial={subtitleStart}
+        onClose={() => {
+          setSubtitleTarget(null);
+          setSubtitleStart('results');
+        }}
+      />
+      <MultiSubtitleSheet
+        visible={subtitlesAll}
+        mode="status"
+        asks={getRequests()[`t:${id.toLowerCase()}`] ? [getRequests()[`t:${id.toLowerCase()}`].ask] : []}
+        onConfirm={() => setSubtitlesAll(false)}
+        onClose={() => setSubtitlesAll(false)}
+      />
     </Screen>
   );
 }

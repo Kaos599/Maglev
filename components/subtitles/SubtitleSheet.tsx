@@ -58,6 +58,8 @@ interface Props {
   /** The video to find subtitles for, or null when the sheet is closed. */
   target: SubtitleTarget | null;
   onClose: () => void;
+  /** How it opens: on the results (default), or with the "Searching for" field already open (44.14 "Edit name"). */
+  initial?: 'results' | 'edit-name';
 }
 
 const GROUP_TAG: Record<SubtitleGroup, string> = { fits: 'Fits', probably: 'Probably', maybe: 'Out of sync' };
@@ -68,7 +70,7 @@ const nameOf = (id: string): string => SUBTITLE_PROVIDERS.find((p) => p.id === i
  * The result sheet (36.10): one-time notice, language tabs, grouped results, Download subtitle, and the plain
  * errors. All rules live in `sheetMachine.ts` and `flow.ts`; this component runs the search and the save.
  */
-export function SubtitleSheet({ target, onClose }: Props) {
+export function SubtitleSheet({ target, onClose, initial = 'results' }: Props) {
   const { colors } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const router = useRouter();
@@ -114,7 +116,7 @@ export function SubtitleSheet({ target, onClose }: Props) {
     prepared.current = null;
     setPicker(false);
     setShowSources(false);
-    dispatch({ type: 'OPEN', languages, needsNotice: needsPrivacyNotice(sub) });
+    dispatch({ type: 'OPEN', languages, needsNotice: needsPrivacyNotice(sub), editName: initial === 'edit-name' ? searchText(targetRef.current?.fileName ?? '', null, true) : undefined });
     setRunKey((k) => k + 1);
     // Re-run only when the video changes.
     // eslint-disable-next-line react-hooks/exhaustive-deps

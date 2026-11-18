@@ -39,6 +39,8 @@ import { WhyHeld } from '../../components/transfers/WhyHeld';
 import { DownloadStats } from '../../components/transfers/DownloadStats';
 import { useDownloadActions } from '../../components/transfers/useDownloadActions';
 import { SubtitleSheet } from '../../components/subtitles/SubtitleSheet';
+import { SubtitlesRow } from '../../components/subtitles/SubtitlesRow';
+import { downloadRowFacts, type SheetStart } from '../../components/subtitles/rowModel';
 import { useSubtitleAvailability } from '../../components/subtitles/useSubtitleEntry';
 import { downloadEntryMode, entrySubtitle, type SubtitleTarget } from '../../components/subtitles/flow';
 import { FIND_SUBTITLES } from '../../utils/subtitles/copy';
@@ -82,6 +84,7 @@ export default function DownloadScreen() {
   const [removeStep, setRemoveStep] = useState<RemoveStep>('closed');
   const [limitOpen, setLimitOpen] = useState(false);
   const [subtitleTarget, setSubtitleTarget] = useState<SubtitleTarget | null>(null);
+  const [subtitleStart, setSubtitleStart] = useState<SheetStart>('results');
   const [link, setLink] = useState('');
   const [linkError, setLinkError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -186,6 +189,7 @@ export default function DownloadScreen() {
   const limit = d.downLimitBps;
   const limitText = limit > 0 ? formatLimit(limit) : 'No limit';
   const subtitles = downloadEntryMode(d, subtitleAvail);
+  const subtitleRow = downloadRowFacts(d, subtitleAvail);
   const copy = removeCopy(d);
   const finished = d.state === 'finished';
   const problem = needsNewLink(d) ? linkProblem(d) : null;
@@ -238,6 +242,22 @@ export default function DownloadScreen() {
       {/* NATIVE_CONTRACT 40.2: the one-line hint while a download that can't resume is running. */}
       {/* NATIVE_CONTRACT 43.5: only while connecting or waiting; it carries that hint itself when the link can't resume. */}
       {whyModel ? <WhyStuck model={whyModel} /> : null}
+
+      {/* NATIVE_CONTRACT 44.14: the Subtitles row, right under the why block. */}
+      {subtitleRow.show ? (
+        <SubtitlesRow
+          requestKey={`d:${d.id}`}
+          started={subtitleRow.started}
+          canOpenSheet={subtitleRow.canOpenSheet}
+          onOpenSheet={(start) => {
+            const t = actions.findSubtitles(d);
+            if (!t) return;
+            setSubtitleStart(start);
+            setSubtitleTarget(t);
+          }}
+          onSeeAll={() => undefined}
+        />
+      ) : null}
       {d.state === 'downloading' && !d.resumable && !whyModel?.note ? <Text style={[styles.hint, styles.hintTight]}>{CANT_RESUME_HINT}</Text> : null}
 
       {d.notice ? (
@@ -418,7 +438,14 @@ export default function DownloadScreen() {
         </View>
       </Sheet>
       <SpeedLimitSheet visible={limitOpen} mode="download" onClose={() => setLimitOpen(false)} limits={{ downBps: limit, upBps: 0 }} onChange={(l) => actions.setLimit(d.id, l.downBps)} />
-      <SubtitleSheet target={subtitleTarget} onClose={() => setSubtitleTarget(null)} />
+      <SubtitleSheet
+        target={subtitleTarget}
+        initial={subtitleStart}
+        onClose={() => {
+          setSubtitleTarget(null);
+          setSubtitleStart('results');
+        }}
+      />
     </Screen>
   );
 }

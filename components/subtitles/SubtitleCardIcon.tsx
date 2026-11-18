@@ -22,6 +22,23 @@ export const BADGE_BITMAPS = {
 
 type BadgeState = keyof typeof BADGE_BITMAPS;
 
+/** The small check or ? drawn on a 2 dp grid (44.8), shared with the Subtitles row (44.14). Place it over the glyph's top right. */
+export function SubtitleBadge({ state, color }: { state: BadgeState; color: string }) {
+  const { colors } = useTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
+  return (
+    <View style={styles.badge} importantForAccessibility="no-hide-descendants">
+      {BADGE_BITMAPS[state].map((row, y) => (
+        <View key={y} style={styles.row}>
+          {row.split('').map((c, x) => (
+            <View key={x} style={{ width: CELL, height: CELL, backgroundColor: c === '#' ? color : 'transparent' }} />
+          ))}
+        </View>
+      ))}
+    </View>
+  );
+}
+
 /**
  * Top right of a transfer card, only after subtitles were asked for on that item (36.10, 44.8). The state is told
  * by shape, not by colour alone:
@@ -49,17 +66,7 @@ function SubtitleCardIconImpl({ model, onPress }: Props) {
     >
       {model.state === 'getting' ? <View style={[styles.ring, { borderColor: colors.textMuted }]} /> : null}
       <PixelIcon name="subtitles" size={20} color={glyph} />
-      {badge ? (
-        <View style={styles.badge} importantForAccessibility="no-hide-descendants">
-          {BADGE_BITMAPS[badge].map((row, y) => (
-            <View key={y} style={styles.row}>
-              {row.split('').map((c, x) => (
-                <View key={x} style={{ width: CELL, height: CELL, backgroundColor: c === '#' ? badgeColor : 'transparent' }} />
-              ))}
-            </View>
-          ))}
-        </View>
-      ) : null}
+      {badge ? <SubtitleBadge state={badge} color={badgeColor} /> : null}
     </PressableScale>
   );
 }

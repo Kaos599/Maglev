@@ -58,7 +58,8 @@ export interface SheetState {
 }
 
 export type SheetEvent =
-  | { type: 'OPEN'; languages: string[]; needsNotice: boolean }
+  /** `editName`: open with the 42 name field already open, holding this text (44.14 "Edit name"). */
+  | { type: 'OPEN'; languages: string[]; needsNotice: boolean; editName?: string }
   | { type: 'NOTICE_CONTINUE' }
   | { type: 'NOTICE_NOT_NOW' }
   | { type: 'SEARCH_UPDATE'; ranked: RankedSubtitle[]; sources: SubtitleSourceStatus[]; done: boolean }
@@ -182,7 +183,7 @@ export function sheetReducer(s: SheetState, e: SheetEvent): SheetState {
   switch (e.type) {
     case 'OPEN': {
       const languages = e.languages.length > 0 ? e.languages.slice() : ['en'];
-      const base: SheetState = { ...CLOSED, languages, language: languages[0] };
+      const base: SheetState = { ...CLOSED, languages, language: languages[0], ...(e.editName !== undefined ? { editing: true, draft: e.editName } : {}) };
       return e.needsNotice ? { ...base, phase: 'notice' } : startSearch(base);
     }
     case 'NOTICE_CONTINUE':

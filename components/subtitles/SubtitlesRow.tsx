@@ -1,0 +1,122 @@
+import React, { memo, useMemo } from 'react';
+import { StyleSheet, Text, View } from 'react-native';
+import { useTheme } from '../../context/ThemeContext';
+import { ThemeColors, radius, spacing, type } from '../../constants/theme';
+import { PixelIcon } from '../PixelIcon';
+import { PressableScale } from '../ui';
+import { ROW_LABEL } from '../../utils/subtitles/copy';
+import { getRequests, skipSubtitles, useRequestPhases } from '../../utils/subtitles/requests';
+import { cardIconModel } from './flow';
+import { SubtitleBadge } from './SubtitleCardIcon';
+import { packCounts, rowModel, type SheetStart } from './rowModel';
+import { stateFor } from './stateStore';
+import { useSubtitleStateVersion } from './useSubtitleStates';
+
+interface Props {
+  /** `t:<infoHash lowercase>` or `d:<downloadId>`. */
+  requestKey: string;
+  /** Key of the stored per-video state (`t:<id>` as the card writes it). Defaults to `requestKey`. */
+  stateKey?: string;
+  /** The video has some bytes on disk (42.1). */
+  started: boolean;
+  /** One video's sheet can open from here; the page owns the sheet and the target. */
+  canOpenSheet: boolean;
+  /** Opens the page's SubtitleSheet: on its results, or with the 42 name field open. */
+  onOpenSheet: (start: SheetStart) => void;
+  /** Season pack: opens MultiSubtitleSheet in status mode. */
+  onSeeAll: () => void;
+}
+
+/**
+ * NATIVE_CONTRACT 44.14: one card under the progress card and the "why" block. The icon, the label with the state
+ * line, and one text button. Tapping anywhere does what the button does. The page decides whether it shows.
+ */
+function SubtitlesRowImpl({ requestKey, stateKey = requestKey, started, canOpenSheet, onOpenSheet, onSeeAll }: Props) {
+  const { colors } = useTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
+  const phases = useRequestPhases([requestKey]);
+  const stateVersion = useSubtitleStateVersion();
+  const entry = getRequests()[requestKey];
+  const stored = useMemo(() => cardIconModel(stateFor(stateKey), Date.now()), [stateKey, stateVersion, phases[requestKey]]); // eslint-disable-line react-hooks/exhaustive-deps
+  const m = rowModel({
+    phase: phases[requestKey],
+    otherLang: entry?.otherLang,
+    fileListKnown: !!entry?.files,
+    pack: packCounts(entry?.files),
+    stored,
+    language: stored?.lang,
+    started,
+    canOpenSheet,
+  });
+
+  const act = () => {
+    if (!m.button) return;
+    if (m.button.action === 'cancel') skipSubtitles(requestKey);
+    else if (m.button.action === 'see-all') onSeeAll();
+    else onOpenSheet(m.start);
+  };
+
+  const glyph = m.glyph === 'saved' ? colors.accentText : m.glyph === 'needs-look' ? colors.text : colors.textMuted;
+  const badge = m.glyph === 'saved' ? 'saved' : m.glyph === 'needs-look' ? 'needs-look' : null;
+  const body = (
+    <>
+      <View style={styles.icon} importantForAccessibility="no-hide-descendants">
+        {m.glyph === 'getting' ? <View style={[styles.ring, { borderColor: colors.textMuted }]} /> : null}
+        <PixelIcon name="subtitles" size={20} color={glyph} />
+        {badge ? <SubtitleBadge state={badge} color={m.glyph === 'saved' ? colors.accentText : colors.text} /> : null}
+      </View>
+      <View style={styles.text}>
+        <Text style={styles.label}>{ROW_LABEL}</Text>
+        <Text style={[styles.line, m.muted ? { color: colors.textMuted } : null]} numberOfLines={2}>
+          {m.line}
+        </Text>
+      </View>
+      {m.button ? (
+        <View style={styles.button} importantForAccessibility="no-hide-descendants">
+          <Text style={styles.buttonText}>{m.button.label}</Text>
+        </View>
+      ) : null}
+    </>
+  );
+
+  if (!m.button) {
+    return (
+      <View style={styles.card} accessible accessibilityLabel={m.a11y} testID="subtitles-row">
+        {body}
+      </View>
+    );
+  }
+  return (
+    <PressableScale onPress={act} scaleTo={0.99} accessibilityRole="button" accessibilityLabel={m.a11y} style={styles.card} testID="subtitles-row">
+      {body}
+    </PressableScale>
+  );
+}
+
+export const SubtitlesRow = memo(SubtitlesRowImpl);
+
+const makeStyles = (c: ThemeColors) =>
+  StyleSheet.create({
+    card: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.md,
+      backgroundColor: c.surface,
+      borderWidth: 1,
+      borderColor: c.border,
+      borderRadius: radius.lg,
+      paddingVertical: spacing.sm,
+      paddingLeft: spacing.lg,
+      paddingRight: spacing.sm,
+      minHeight: 56,
+      marginBottom: spacing.md,
+    },
+    icon: { width: 28, height: 28, alignItems: 'center', justifyContent: 'center' },
+    ring: { position: 'absolute', width: 28, height: 28, borderRadius: 14, borderWidth: 1, borderStyle: 'dotted' },
+    text: { flex: 1, gap: 2 },
+    label: { ...type.heading, fontSize: type.size.md, color: c.text },
+    line: { ...type.body, fontSize: 13, color: c.text },
+    // The button's hit area is at least 44 dp; tapping the row does the same.
+    button: { minWidth: 44, minHeight: 44, paddingHorizontal: spacing.md, alignItems: 'center', justifyContent: 'center' },
+    buttonText: { ...type.body, fontSize: 14, color: c.accentText },
+  });
