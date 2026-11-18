@@ -65,8 +65,11 @@ export const AMBIGUOUS_PACK = "This file has subtitles for several episodes and 
 export const UNREADABLE_TEXT = "Maglev can't read this subtitle's text.";
 export const UNSUPPORTED_FILE = "This subtitle's file type isn't supported.";
 
+/** "1 video", "2 videos": the noun takes the singular for exactly 1 (46.1). */
+export const plural = (n: number, one: string, many = `${one}s`): string => (n === 1 ? one : many);
+
 export function groupFoundLine(count: number): string {
-  return count === 1 ? '1 subtitle' : `${count} subtitles`;
+  return `${count} ${plural(count, 'subtitle')}`;
 }
 
 export interface CopyArgs {
@@ -145,7 +148,8 @@ export const CARD_ICON_WORDS = {
 export const CONSENT_NOTICE_ACTION = NOTICE_CONTINUE;
 
 // 44.9 The multi-video sheet.
-export const multiTitle = (n: number): string => `Subtitles for ${n} videos`;
+/** 44.9 / 46.1: "Subtitles for 1 video", "Subtitles for 23 episodes". The singular is used for 1. */
+export const multiTitle = (n: number, episodes = false): string => `Subtitles for ${n} ${plural(n, episodes ? 'episode' : 'video')}`;
 export const USES_YOUR_LANGUAGES = 'Uses your subtitle languages';
 export const CHANGE_LANGUAGES = 'Change';
 export const MULTI_BUTTON_NONE = 'Get subtitles';
@@ -158,7 +162,7 @@ export function ordinalSuffix(n: number): string {
   return ` \u00B7 ${n}${word}`;
 }
 export const nonVideoOne = (name: string): string => `${name} is music, so it gets no subtitles.`;
-export const nonVideoMany = (k: number): string => `${k} other adds are not videos, so they get no subtitles.`;
+export const nonVideoMany = (k: number): string => `${k} other ${k === 1 ? 'add is' : 'adds are'} not ${k === 1 ? 'a video' : 'videos'}, so ${k === 1 ? 'it gets' : 'they get'} no subtitles.`;
 
 /** 44.9 status mode: a phase in words. */
 export const PHASE_WORDS = {
@@ -240,3 +244,21 @@ export const offSourcesTail = (k: number): string => (k === 1 ? '1 source off' :
 
 /** The page row's line: "No match yet · 2 sources off". */
 export const rowNoneOff = (k: number): string => `${ROW_NONE} \u00B7 ${offSourcesTail(k)}`;
+
+// ---------------------------------------------------------------- NATIVE_CONTRACT 46: a season
+
+/** 46.1: the main line of an episode row. */
+export const episodeMain = (code: string, title: string): string => (title ? `${code} \u00B7 ${title}` : code);
+/** 46.1: "Saved · English". */
+export const episodeSaved = (language: string | null): string => (language ? `Saved \u00B7 ${languageName(language)}` : 'Saved');
+/** 46.3: the button in the status sheet. */
+export const useBestMatchFor = (k: number): string => `Use the best match for ${k}`;
+/** 46.5: the page row's button. */
+export const USE_BEST_MATCH = 'Use best match';
+/** 46.3: while it runs. */
+export const bulkProgress = (i: number, k: number): string => `Saving ${i} of ${k}\u2026`;
+/** 46.3: the line after it finished. The second part is left out when nothing is left. */
+export function bulkResult(saved: number, stillNeed: number): string {
+  const head = `Saved ${saved}.`;
+  return stillNeed > 0 ? `${head} ${stillNeed} still ${stillNeed === 1 ? 'needs' : 'need'} you.` : head;
+}

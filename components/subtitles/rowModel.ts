@@ -19,6 +19,8 @@ import {
   ROW_SEARCHING,
   ROW_SKIPPED,
   ROW_UNAVAILABLE,
+  USE_BEST_MATCH,
+  bulkProgress,
   foundInOtherOnly,
   rowHasAlready,
   rowLabel,
@@ -28,10 +30,11 @@ import {
   rowSavedNoLanguage,
 } from '../../utils/subtitles/copy.ts';
 import type { FileRun, RequestPhase } from '../../utils/subtitles/requests.ts';
+import { bulkIndex, pageRowAction } from '../../utils/subtitles/season.ts';
 import { downloadEntryMode, fileStarted, torrentEntryMode, type CardIconModel, type FileLike, type SubtitleTarget } from './flow.ts';
 
 /** What the button does. 'find', 'change', 'pick', 'edit-name' and 'find-more' open the one-video sheet; the sheet's start differs. */
-export type RowAction = 'find' | 'cancel' | 'pick' | 'edit-name' | 'see-all' | 'try-again' | 'review' | 'ask-pack' | 'more-sources';
+export type RowAction = 'find' | 'cancel' | 'pick' | 'edit-name' | 'see-all' | 'try-again' | 'review' | 'ask-pack' | 'more-sources' | 'use-best' | 'busy';
 
 /** How the sheet opens: on its results (the default) or with the 42 name field already open. */
 export type SheetStart = 'results' | 'edit-name';
@@ -59,6 +62,10 @@ export interface RowInput {
   needsOk?: boolean;
   /** 45.5: how many sources are off and could have answered. Shown only with "No match yet". */
   offSources?: number;
+  /** 46.5: a pack's needs-pick runs whose best stored candidate qualifies (46.3's `k`). */
+  bestK?: number;
+  /** 46.3: a bulk save is running for this pack: how many have ended, of how many. */
+  bulk?: { done: number; total: number } | null;
 }
 
 export type RowGlyph = 'getting' | 'saved' | 'needs-look' | 'none';
@@ -72,8 +79,8 @@ export interface RowModel {
   glyph: RowGlyph;
   start: SheetStart;
   a11y: string;
-  /** 45.5: a second text button, "More sources", opening Settings > Subtitles > Sources. */
-  extra?: { label: string; action: 'more-sources' };
+  /** A second text button: "More sources" (45.5), or "See all" next to "Use best match" (46.5). */
+  extra?: { label: string; action: 'more-sources' | 'see-all' };
 }
 
 /** Counts for a season pack from the request's per-file runs. Null unless there are two or more videos. */
@@ -135,7 +142,13 @@ export function rowModel(i: RowInput): RowModel {
 
   // Season pack: a count, and "See all" opens the status sheet.
   if (i.pack && phase !== 'skipped') {
-    return make(rowPackLine(i.pack), false, { label: ROW_BUTTONS.seeAll, action: 'see-all' }, GLYPH[phase]);
+    const line = rowPackLine(i.pack);
+    if (i.bulk) return make(line, false, { label: bulkProgress(bulkIndex(i.bulk.done, i.bulk.total), i.bulk.total), action: 'busy' }, GLYPH[phase]);
+    // 46.5: "Use best match" when a run qualifies; every other pack keeps "See all". The list stays one tap away.
+    if (pageRowAction(i.bestK ?? 0) === 'use-best') {
+      return { ...make(line, false, { label: USE_BEST_MATCH, action: 'use-best' }, GLYPH[phase]), extra: { label: ROW_BUTTONS.seeAll, action: 'see-all' } };
+    }
+    return make(line, false, { label: ROW_BUTTONS.seeAll, action: 'see-all' }, GLYPH[phase]);
   }
 
   const language = i.language ?? i.stored?.lang ?? null;

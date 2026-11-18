@@ -5,6 +5,8 @@ import { useTheme } from '../../context/ThemeContext';
 import { ThemeColors, radius, spacing, type } from '../../constants/theme';
 import { PixelIcon } from '../PixelIcon';
 import { PressableScale } from '../ui';
+import { useMaglevEngine } from '../../context/EngineContext';
+import { useSeasonBulk } from './bulkSave';
 import { ROW_LABEL } from '../../utils/subtitles/copy';
 import { getRequests, retryRequest, skipSubtitles, useRequestPhases } from '../../utils/subtitles/requests';
 import { useSubtitleConsent } from './useSubtitleConsent';
@@ -44,6 +46,8 @@ function SubtitlesRowImpl({ requestKey, stateKey = requestKey, started, canOpenS
   const consent = useSubtitleConsent();
   const router = useRouter();
   const off = useSubtitleOffSources(false);
+  const bulk = useSeasonBulk();
+  const { showNotice } = useMaglevEngine();
   const entry = getRequests()[requestKey];
   const stored = useMemo(() => cardIconModel(stateFor(stateKey), Date.now()), [stateKey, stateVersion, phases[requestKey]]); // eslint-disable-line react-hooks/exhaustive-deps
   const m = rowModel({
@@ -58,13 +62,20 @@ function SubtitlesRowImpl({ requestKey, stateKey = requestKey, started, canOpenS
     canAskPack: !!onAskPack && !canOpenSheet && !entry,
     needsOk: consent.needsOk && !!entry,
     offSources: off.count,
+    bestK: bulk.best([requestKey]),
+    bulk: bulk.progress([requestKey]),
   });
-  const moreSources = () => router.push('/settings/subtitle-sources' as never);
+  const extraAct = () => {
+    if (m.extra?.action === 'see-all') onSeeAll();
+    else router.push('/settings/subtitle-sources' as never);
+  };
 
   const act = () => {
     if (!m.button) return;
     if (m.button.action === 'cancel') skipSubtitles(requestKey);
     else if (m.button.action === 'see-all') onSeeAll();
+    else if (m.button.action === 'busy') return;
+    else if (m.button.action === 'use-best') void bulk.start([requestKey]).then((text) => text && showNotice({ message: text }, 6000));
     else if (m.button.action === 'try-again') retryRequest(requestKey);
     else if (m.button.action === 'review') consent.require(() => {});
     else if (m.button.action === 'ask-pack') consent.require(() => onAskPack?.());
@@ -108,7 +119,7 @@ function SubtitlesRowImpl({ requestKey, stateKey = requestKey, started, canOpenS
               {body}
             </View>
           )}
-          <PressableScale onPress={moreSources} accessibilityRole="button" accessibilityLabel={m.extra.label} style={styles.moreButton} testID="subtitles-row-more-sources">
+          <PressableScale onPress={extraAct} accessibilityRole="button" accessibilityLabel={m.extra.label} style={styles.moreButton} testID={m.extra.action === 'see-all' ? 'subtitles-row-see-all' : 'subtitles-row-more-sources'}>
             <Text style={styles.buttonText}>{m.extra.label}</Text>
           </PressableScale>
         </View>

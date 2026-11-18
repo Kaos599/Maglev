@@ -59,6 +59,7 @@ import {
   type RequestEntry,
   type RunKind,
 } from '../../utils/subtitles/requests';
+import { toStored } from '../../utils/subtitles/season';
 import { downloadAndSave, downloadTarget, hashIfComplete, torrentTarget, type SubtitleTarget } from './flow';
 import { forgetAll, forgetOwnerState, forgetState, forgetVideoState, recallTarget, recordOwnerState, recordState, recordVideoState } from './stateStore';
 
@@ -227,8 +228,10 @@ export function useSubtitleRequests(): void {
       const ctl = new AbortController();
       registerRun(key, fileKey, ctl);
       const base = { vp: target.videoPath, saved: prev.saved };
+      // 46.4: a pack's run that ends in needs-pick keeps its top candidate per language (at most 2) for "Use best match".
+      let cands: ReturnType<typeof toStored> = [];
       const finish = (phase: FileRun['phase'], tries: number, extra?: { otherLang?: string | null }) => {
-        setRun(key, fileKey, { ...base, phase, tries }, { ...extra, epoch });
+        setRun(key, fileKey, { ...base, phase, tries, ...(phase === 'needs-pick' && pack && cands.length > 0 ? { cands } : {}) }, { ...extra, epoch });
       };
       setRun(key, fileKey, { ...base, phase: 'searching', tries: prev.tries, fails: prev.fails }, { epoch });
       writeCard(ref, target, 'getting', languages[0]);
@@ -267,6 +270,7 @@ export function useSubtitleRequests(): void {
         }
         const out = outcomeFromRanked(res.ranked, languages);
         const tries = prev.tries + 1;
+        if (pack && out.phase !== 'none') cands = toStored(res.ranked, languages);
         if (out.phase === 'saved' && out.pick) {
           const provider = providers.find((p) => p.id === out.pick!.candidate.providerId);
           if (!provider) {
@@ -399,7 +403,7 @@ export function useSubtitleRequests(): void {
           continue;
         }
         const pack = videos.length > 1;
-        setFileList(key, videos.map((f) => f.path));
+        setFileList(key, videos.map((f) => f.path), Object.fromEntries(videos.map((f) => [f.path, f.length])));
         const cur = getRequests()[key] ?? entry;
         const ref = { key, epoch: cur.epoch ?? 0, pack };
         const allPaths = info.files.filter((f) => f.length > 0 && f.progressBytes >= f.length).map((f) => f.path);

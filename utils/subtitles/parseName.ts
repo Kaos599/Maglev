@@ -30,6 +30,9 @@ const EXTRA = /(?:^|[^a-z0-9])(sample|trailer|extras?|featurettes?)(?![a-z0-9])/
 const TAGS =
   /(?:^|[^a-z0-9])(?:\d{3,4}x\d{3,4}|480p|576p|720p|1080p|1080i|2160p|4k|uhd|hdr10?|dv|bluray|blu-ray|bdrip|brrip|bdremux|remux|webrip|web-dl|webdl|web|hdtv|pdtv|dvdrip|dvd|hdrip|x264|x265|h\.?264|h\.?265|hevc|avc|xvid|divx|aac|ac3|dts|ddp?\d?|atmos|proper|repack|extended|unrated|remastered|multi|dual|internal)(?![a-z0-9])/i;
 
+/** The release tags the title stops at (`tidyTitle`); also where an episode title ends (NATIVE_CONTRACT 46.1). */
+export const RELEASE_TAGS = TAGS;
+
 /** The file name without folders and without a video or subtitle extension. */
 export function stripName(fileName: string): string {
   const base = fileName.replace(/^.*[\\/]/, '');
