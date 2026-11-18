@@ -8,14 +8,14 @@ import { FilterPills } from '../../components/FilterPills';
 import { CARD_GAP, TransferCard } from '../../components/TransferCard';
 import { DownloadCard } from '../../components/transfers/DownloadCard';
 import { closeOpenSwipe } from '../../components/transfers/SwipeRow';
-import { DownloadSheet } from '../../components/transfers/DownloadSheet';
+import { useDownloadActions } from '../../components/transfers/useDownloadActions';
 import { FloatingActionButton } from '../../components/FloatingActionButton';
 import { SpeedTelemetryHeader } from '../../components/SpeedTelemetryHeader';
 import { BulkBar } from '../../components/transfers/BulkBar';
 import { SubtitleSheet } from '../../components/subtitles/SubtitleSheet';
 import { useSubtitleAvailability } from '../../components/subtitles/useSubtitleEntry';
 import { useSubtitleStateVersion } from '../../components/subtitles/useSubtitleStates';
-import { cardIconModel, downloadEntryMode, downloadTarget, type SubtitleTarget } from '../../components/subtitles/flow';
+import { cardIconModel, type SubtitleTarget } from '../../components/subtitles/flow';
 import { recallTarget, stateFor } from '../../components/subtitles/stateStore';
 import { ClipboardChip } from '../../components/transfers/ClipboardChip';
 import { AddMenuSheet } from '../../components/add/AddMenuSheet';
@@ -41,7 +41,7 @@ import { useTheme } from '../../context/ThemeContext';
 import { ThemeColors, radius, spacing, type } from '../../constants/theme';
 import { pickMainFile } from '../../utils/mainFile';
 import { takeNextShared } from '../../utils/shareQueue';
-import { OPEN_FOLDER_FAILED_TEXT, SHARE_FAILED_TEXT, allowDeviceFailureText, openFailureText, type DownloadAction } from '../../utils/downloadCopy';
+import type { DownloadAction } from '../../utils/downloadCopy';
 import { BulkVerb, bulkSummary, selectionKey, splitSelection } from '../../utils/bulkSummary';
 import { useSearchPrefs } from '../../utils/prefs/search';
 import { TransferSort, loadTransferSort, saveTransferSort } from '../../utils/prefs/transfers';
@@ -111,13 +111,11 @@ export default function TransfersScreen() {
     downloads: liveDownloads,
     pauseDownload,
     resumeDownload,
-    retryDownload,
-    setDownloadLimits,
     removeDownload,
-    refreshDownloadUrl,
     getFreeSpace,
   } = useMaglevEngine();
   const focused = useIsFocused();
+  const downloadActions = useDownloadActions();
   const subtitleAvail = useSubtitleAvailability();
   const subtitleVersion = useSubtitleStateVersion();
   const [subtitleTarget, setSubtitleTarget] = useState<SubtitleTarget | null>(null);
@@ -153,17 +151,7 @@ export default function TransfersScreen() {
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [selectedIds, setSelectedIds] = useState<ReadonlySet<string>>(() => new Set());
   const [fileError, setFileError] = useState<string | null>(null);
-  const [sheetDownloadId, setSheetDownloadId] = useState<string | null>(null);
   const [clearOpen, setClearOpen] = useState(false);
-  // A link-download notification opens with `download=<id>`: show that download's sheet once, then clear the param.
-  const { download: downloadParam } = useLocalSearchParams<{
-    download?: string;
-  }>();
-  useEffect(() => {
-    if (typeof downloadParam !== 'string' || !downloadParam) return;
-    setSheetDownloadId(downloadParam);
-    router.setParams({ download: undefined });
-  }, [downloadParam, router]);
 
   const all = telemetry.torrents;
   const cruising = focused && (all.some((t) => t.state === 'DOWNLOADING') || downloads.some((d) => d.state === 'downloading'));
@@ -172,80 +160,8 @@ export default function TransfersScreen() {
     const q = query.trim().toLowerCase();
     return downloads.filter((d) => downloadMatchesFilter(d, filter) && (!q || d.name.toLowerCase().includes(q)));
   }, [downloads, filter, query]);
-  const sheetDownload = useMemo(() => downloads.find((d) => d.id === sheetDownloadId) ?? null, [downloads, sheetDownloadId]);
-  const openDownload = useCallback(
-    (id: string) => {
-      void maglevEngine.openDownload(id).then((res) => {
-        if (!res.ok) showNotice({ message: openFailureText(res.code, res.message) });
-      });
-    },
-    [showNotice],
-  );
-  const openDownloadFolder = useCallback(
-    (id: string) => {
-      void maglevEngine.openDownloadFolder(id).then((res) => {
-        if (!res.ok) showNotice({ message: res.message || OPEN_FOLDER_FAILED_TEXT });
-      });
-    },
-    [showNotice],
-  );
-  const shareDownload = useCallback(
-    (id: string) => {
-      void maglevEngine.shareDownload(id).then((res) => {
-        if (!res.ok) showNotice({ message: res.message || SHARE_FAILED_TEXT });
-      });
-    },
-    [showNotice],
-  );
-  const allowDevice = useCallback(
-    (id: string) => {
-      void maglevEngine.allowLanHost(id).then((res) => {
-        if (!res.ok)
-          showNotice({
-            message: allowDeviceFailureText(res.code, res.message),
-          });
-        else void retryDownload(id);
-      });
-    },
-    [showNotice, retryDownload],
-  );
-  const resumeDownloadAnyway = useCallback(
-    (id: string) => {
-      void maglevEngine.resumeDownloadAnyway(id).then((res) => {
-        if (!res.ok) showNotice({ message: res.message || notices.common.retryFailed });
-      });
-    },
-    [showNotice],
-  );
-  const onDownloadAction = useCallback(
-    (d: DownloadSnapshot, action: DownloadAction) => {
-      switch (action.kind) {
-        case 'pause':
-          void pauseDownload(d.id);
-          break;
-        case 'resume':
-          void resumeDownload(d.id);
-          break;
-        case 'retry':
-        case 'restart':
-          void retryDownload(d.id);
-          break;
-        case 'newLink':
-          setSheetDownloadId(d.id);
-          break;
-        case 'open':
-          openDownload(d.id);
-          break;
-        case 'allowDevice':
-          allowDevice(d.id);
-          break;
-        case 'resumeAnyway':
-          resumeDownloadAnyway(d.id);
-          break;
-      }
-    },
-    [pauseDownload, resumeDownload, retryDownload, openDownload, allowDevice, resumeDownloadAnyway],
-  );
+  // NATIVE_CONTRACT 40.4: the card buttons run the same handlers as the download page. "Paste new link" opens the page (40.1).
+  const onDownloadAction = useCallback((d: DownloadSnapshot, action: DownloadAction) => downloadActions.run(d, action), [downloadActions]);
   const selectionMode = selectedIds.size > 0;
   const finished = useMemo(() => finishedTransfers(all, downloads), [all, downloads]);
   const finishedCount = finished.torrents.length + finished.downloads.length;
@@ -386,9 +302,10 @@ export default function TransfersScreen() {
   const onDownloadPress = useCallback(
     (id: string) => {
       if (selectionMode) toggleSelected(selectionKey('d', id));
-      else setSheetDownloadId(id);
+      // NATIVE_CONTRACT 40.1: a tap on a link-download card opens its page.
+      else router.push({ pathname: '/download/[id]', params: { id } });
     },
-    [selectionMode, toggleSelected],
+    [selectionMode, toggleSelected, router],
   );
   const onResumeAnyway = useCallback(
     (id: string) => {
@@ -736,27 +653,6 @@ export default function TransfersScreen() {
         </>
       )}
 
-      <DownloadSheet
-        download={sheetDownload}
-        onClose={() => setSheetDownloadId(null)}
-        onRetry={(id) => void retryDownload(id)}
-        onPause={(id) => void pauseDownload(id)}
-        onResume={(id) => void resumeDownload(id)}
-        onResumeAnyway={resumeDownloadAnyway}
-        onOpen={openDownload}
-        onOpenFolder={openDownloadFolder}
-        onShare={shareDownload}
-        onAllowDevice={allowDevice}
-        onRemove={(id, deleteFiles) => void removeDownload(id, deleteFiles)}
-        onSetLimit={(id, bps) => void setDownloadLimits(id, bps)}
-        onNewLink={refreshDownloadUrl}
-        subtitles={sheetDownload ? downloadEntryMode(sheetDownload, subtitleAvail) : 'hidden'}
-        onFindSubtitles={(id) => {
-          const d = downloads.find((x) => x.id === id);
-          const t = d ? downloadTarget(d) : null;
-          if (t) setSubtitleTarget(t);
-        }}
-      />
       <SubtitleSheet target={subtitleTarget} onClose={() => setSubtitleTarget(null)} />
       <ClearFinishedSheet
         visible={clearOpen}

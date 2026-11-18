@@ -69,13 +69,14 @@ async function main() {
   check('index feeds one list (no downloads header)', !/ListHeaderComponent/.test(index) && /mergeTransfers/.test(index));
   check('Clear finished reachable from every filter (sort sheet)', /onClearFinished=/.test(index) && /onClearFinished/.test(read('components/transfers/SortSheet.tsx')));
   const card = read('components/TransferCard.tsx');
-  const dsheet = read('components/transfers/DownloadSheet.tsx');
+  const dsheet = read('app/download/[id].tsx');
+  const dhook = read('components/transfers/useDownloadActions.ts');
   const detail = read('app/torrent/[id].tsx');
   check('torrent card uses resumeAnyway', /resumeAnyway/.test(card) || /onResumeAnyway/.test(card));
   check('torrent detail uses resumeAnyway', /resumeAnyway/.test(detail));
-  check('link sheet uses resumeDownloadAnyway', /resumeDownloadAnyway/.test(index + dsheet));
-  check('link sheet shows the explainer', /WIFI_ANYWAY_NOTE/.test(dsheet));
-  check('link sheet no longer hides Pause and Resume', !/a\.kind !== 'resume'/.test(dsheet));
+  check('link page uses resumeDownloadAnyway (through the shared handlers)', /resumeDownloadAnyway/.test(dhook) && /actions\.run/.test(dsheet));
+  check('link page shows the explainer', /WIFI_ANYWAY_NOTE/.test(dsheet));
+  check('link page no longer hides Pause and Resume', !/a\.kind !== 'resume'/.test(dsheet));
   const empty = read('components/transfers/TeachingEmptyState.tsx');
   // 0.15: one primary "Add a link" (the add screen has Paste); the separate Paste link button is gone.
   check('empty state primary is Add a link', /label="Add a link"/.test(empty) && /onAdd/.test(empty));

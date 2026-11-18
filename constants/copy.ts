@@ -257,6 +257,8 @@ export const empty = {
   },
   detail: {
     notFound: { title: 'Torrent not found', body: 'It may have been removed.' },
+    /** The page of a link download whose id is not in the list (removed, or a stale link). */
+    downloadNotFound: { title: 'Download not found', body: 'It may have been removed.' },
     loadFailed: { title: "Couldn't load this torrent" },
     noFiles: { title: 'No files yet', body: 'File info appears once the torrent has its metadata.' },
     peersUnavailable: (connected: string | number) => ({

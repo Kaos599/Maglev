@@ -37,7 +37,7 @@ const ENGINE_RESOLVE_TIMEOUT_MS = 15000;
  * once the engine can answer rather than failing with "Engine not started" (the bridge does not
  * queue calls made before start).
  */
-const ENGINE_FIRST_ROUTE = /^\/(add-torrent|add-download|torrent\/)/;
+const ENGINE_FIRST_ROUTE = /^\/(add-torrent|add-download|torrent\/|download\/)/;
 
 function AppNavigation() {
   const { colors, dark } = useTheme();
@@ -124,6 +124,15 @@ function AppNavigation() {
           />
           <Stack.Screen
             name="torrent/[id]"
+            options={{
+              animation: 'ios_from_right',
+              gestureEnabled: true,
+              headerShown: false,
+            }}
+          />
+          {/* NATIVE_CONTRACT 40.1: the page of a link download, registered like the torrent page. */}
+          <Stack.Screen
+            name="download/[id]"
             options={{
               animation: 'ios_from_right',
               gestureEnabled: true,

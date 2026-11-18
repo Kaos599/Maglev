@@ -285,7 +285,8 @@ async function main() {
   check('reduce motion respected', /useReduceMotion|useMotion/.test(all));
   check('records sheet offers Show this day', /Show this day/.test(all));
   const detail = read('app/torrent/[id].tsx');
-  check('detail shows the timing row', /TimingRow/.test(detail));
+  // NATIVE_CONTRACT 41.2: the torrent page draws its Detailed numbers (boxes and Timing row) through TorrentStats.
+  check('detail shows the timing row', /<TorrentStats/.test(detail) && /<TimingRow/.test(read('components/detail/TorrentStats.tsx')));
   check('transfers rows say Done in', /doneLead/.test(read('components/transfers/model.ts')) && /doneLead/.test(read('utils/downloadCopy.ts')));
   const city = read('components/stats/PixelCity.tsx');
   check('city pan activates on a small horizontal move and fails on vertical', /activeOffsetX:\s*\[-8, 8\]/.test(city) && /failOffsetY:\s*\[-12, 12\]/.test(city) && /onUpdate/.test(city));
@@ -293,8 +294,8 @@ async function main() {
   check('the busiest or current building is filled like the rest', !/if \(!b\.current\)/.test(city));
   const kit = read('components/stats/StatsKit.tsx');
   check('Finished keeps a sub-line when nothing failed', /none failed/.test(kit));
-  const dsheet = read('components/transfers/DownloadSheet.tsx');
-  check('link download sheet shows the timing row', /TimingRow/.test(dsheet));
+  const dsheet = read('components/transfers/DownloadStats.tsx');
+  check('link download page shows the timing row', /TimingRow/.test(dsheet));
   check('no pink in categories', !/accents\.pink|\bpink\b/.test(all));
   // The global `router` from expo-router throws "unavailable before the first render has finished" while its
   // bridge is unbound (seen on a cold start: Settings > Stats crashed). Screens use the useRouter() hook instead.

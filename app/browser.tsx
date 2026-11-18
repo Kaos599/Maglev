@@ -240,7 +240,8 @@ export default function BrowserScreen({ inTab = false }: { inTab?: boolean }) {
   const openTransfer = useCallback(
     (id: string) => {
       setTrayOpen(false);
-      router.push({ pathname: '/', params: { download: id } });
+      // NATIVE_CONTRACT 40.1: "go to the download" opens its page.
+      router.push({ pathname: '/download/[id]', params: { id } });
     },
     [router],
   );

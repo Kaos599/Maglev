@@ -30,7 +30,7 @@ check('bridge routes openDownloadFolder', /openDownloadFolder\(id: string\)[\s\S
 check('mock has openDownloadFolder', /async openDownloadFolder\(/.test(mock));
 check('link completion passes an open action', /Notifications\.notifyCompleted\(c, id, name, Json\.long\(d\["size"\]\), (?!null)/.test(host));
 check('folder open has a fallback chain and plain error', /No file manager could open this folder/.test(files) && /ACTION_OPEN_DOCUMENT_TREE/.test(files));
-check('native-intent routes dl_ ids to a download param', /\/\?download=\$\{/.test(intent));
+check('native-intent routes dl_ ids to the download page', /`\/download\/\$\{dl\[1\]\}`/.test(intent));
 if (contract) check('contract documents openDownloadFolder', /openDownloadFolder/.test(contract));
 
 if (failed) { console.error(`\n${failed} check(s) failed`); process.exit(1); }
