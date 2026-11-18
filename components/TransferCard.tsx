@@ -16,6 +16,8 @@ import { playCopy } from "../constants/copy";
 import { useRouter } from "expo-router";
 import { SwipeRow } from "./transfers/SwipeRow";
 import { swipePlan } from "./transfers/swipe";
+import { SubtitleCardIcon } from "./subtitles/SubtitleCardIcon";
+import { sameCardIcon, type CardIconModel } from "./subtitles/flow";
 
 /**
  * Name (two lines), one bar, one status line. At the default font size the height never changes
@@ -44,6 +46,10 @@ export interface TransferCardProps {
   onRemove?: (id: string) => void;
   /** The "Swipe to pause or remove" setting. Off: the card has no swipe wrapper at all. */
   swipeEnabled?: boolean;
+  /** Subtitle icon (36.10), top right: only after the user asked for subtitles on this item. */
+  subtitle?: CardIconModel | null;
+  /** Taps the subtitle icon: opens the subtitle sheet. */
+  onSubtitles?: (id: string) => void;
 }
 
 /** Status line font size; the value slot is sized in Space Mono glyphs at this size. */
@@ -122,6 +128,8 @@ function TransferCardImpl({
   onPlay,
   onRemove,
   swipeEnabled = false,
+  subtitle = null,
+  onSubtitles,
 }: TransferCardProps) {
   const router = useRouter();
   const { colors } = useTheme();
@@ -267,6 +275,11 @@ function TransferCardImpl({
         ) : null}
         </View>
       </PressableScale>
+      {subtitle && onSubtitles && !selectionMode ? (
+        <View style={styles.subtitleAnchor}>
+          <SubtitleCardIcon model={subtitle} onPress={() => onSubtitles(t.id)} />
+        </View>
+      ) : null}
       {showPlay ? (
         <View style={[styles.actionAnchor, { right: playRight }]}>
           <IconButton icon="file-video" disabled={actionBusy} accessibilityLabel={playCopy.a11y(t.name)} onPress={() => onPlay?.(t.id)} />
@@ -326,6 +339,8 @@ function sameCard(a: TransferCardProps, b: TransferCardProps): boolean {
     a.onPlay === b.onPlay &&
     a.onRemove === b.onRemove &&
     a.swipeEnabled === b.swipeEnabled &&
+    a.onSubtitles === b.onSubtitles &&
+    sameCardIcon(a.subtitle, b.subtitle) &&
     x.id === y.id &&
     x.name === y.name &&
     x.state === y.state &&
@@ -376,6 +391,8 @@ const makeStyles = (c: ThemeColors) =>
       width: 44,
       height: 44,
     },
+    // Over the top of the action column (44 wide, right spacing.sm), above the button's own area.
+    subtitleAnchor: { position: "absolute", right: spacing.sm + 8, top: 4, width: 28, height: 28 },
     cardSelected: {
       borderColor: c.accent,
       backgroundColor: alpha(c.accent, 0.08),

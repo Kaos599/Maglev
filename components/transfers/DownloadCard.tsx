@@ -12,6 +12,8 @@ import { CARD_HEIGHT } from '../TransferCard';
 import { useBlockContext } from '../../utils/blocks/useActiveBlocks';
 import { SwipeRow } from './SwipeRow';
 import { swipePlan } from './swipe';
+import { SubtitleCardIcon } from '../subtitles/SubtitleCardIcon';
+import { sameCardIcon, type CardIconModel } from '../subtitles/flow';
 
 export interface DownloadCardProps {
   download: DownloadSnapshot;
@@ -26,6 +28,10 @@ export interface DownloadCardProps {
   onRemove?: (id: string) => void;
   /** The "Swipe to pause or remove" setting. Off: the card has no swipe wrapper at all. */
   swipeEnabled?: boolean;
+  /** Subtitle icon (36.10), top right: only after the user asked for subtitles on this item. */
+  subtitle?: CardIconModel | null;
+  /** Taps the subtitle icon: opens the subtitle sheet. */
+  onSubtitles?: (id: string) => void;
 }
 
 function toneFor(d: DownloadSnapshot): ProgressTone {
@@ -43,7 +49,7 @@ function toneFor(d: DownloadSnapshot): ProgressTone {
 }
 
 /** Same card as a torrent: name, one bar, one status line, one button. The sheet behind a tap has the rest. */
-function DownloadCardImpl({ download: d, onPress, onAction: onActionProp, selectionMode = false, selected = false, onLongPress, onRemove, swipeEnabled = false }: DownloadCardProps) {
+function DownloadCardImpl({ download: d, onPress, onAction: onActionProp, selectionMode = false, selected = false, onLongPress, onRemove, swipeEnabled = false, subtitle = null, onSubtitles }: DownloadCardProps) {
   const { colors } = useTheme();
   const router = useRouter();
   // Settings actions go to their screen and Remove opens the sheet (which has the keep/delete choice) here,
@@ -110,6 +116,11 @@ function DownloadCardImpl({ download: d, onPress, onAction: onActionProp, select
           ) : null}
         </View>
       </PressableScale>
+      {subtitle && onSubtitles && !selectionMode ? (
+        <View style={styles.subtitleAnchor}>
+          <SubtitleCardIcon model={subtitle} onPress={() => onSubtitles(d.id)} />
+        </View>
+      ) : null}
       {action && !selectionMode ? (
         <View style={styles.actionAnchor}>
           <IconButton icon={action.icon} accessibilityLabel={`${action.label} ${d.name}`} onPress={() => onAction(d, action)} />
@@ -137,6 +148,8 @@ function same(a: DownloadCardProps, b: DownloadCardProps): boolean {
     a.onLongPress === b.onLongPress &&
     a.onRemove === b.onRemove &&
     a.swipeEnabled === b.swipeEnabled &&
+    a.onSubtitles === b.onSubtitles &&
+    sameCardIcon(a.subtitle, b.subtitle) &&
     x.id === y.id &&
     x.name === y.name &&
     x.state === y.state &&
@@ -175,6 +188,7 @@ const makeStyles = (c: ThemeColors) =>
       justifyContent: 'space-between',
     },
     actionAnchor: { position: 'absolute', right: spacing.sm, top: '50%', marginTop: -22, width: 44, height: 44 },
+    subtitleAnchor: { position: 'absolute', right: spacing.sm + 8, top: 4, width: 28, height: 28 },
     cardSelected: { borderColor: c.accent, backgroundColor: alpha(c.accent, 0.08) },
     nameRow: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.sm },
     name: { ...type.mono, fontSize: 13, lineHeight: 18, color: c.text, flex: 1 },

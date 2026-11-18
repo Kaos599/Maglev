@@ -13,6 +13,8 @@ import { SpeedLimitSheet } from '../detail/SpeedLimitSheet';
 import { TimingDetails, TimingRow } from '../detail/TimingRow';
 import { Banner, Button, ListRow, Sheet } from '../ui';
 import { WhyHeld } from './WhyHeld';
+import { DISABLED_ENTRY_SUBTITLE, type EntryMode } from '../subtitles/flow';
+import { FIND_SUBTITLES } from '../../utils/subtitles/copy';
 import { useBlockContext } from '../../utils/blocks/useActiveBlocks';
 import { reasonsForItem } from '../../utils/blocks/reasons';
 
@@ -37,12 +39,15 @@ export interface DownloadSheetProps {
   onNewLink: (id: string, url: string) => Promise<EngineResult>;
   /** Speed limit for this download in bytes per second, 0 = no limit. */
   onSetLimit: (id: string, downLimitBps: number) => void;
+  /** Find subtitles… (36.10): a finished video. Default hidden. */
+  subtitles?: EntryMode;
+  onFindSubtitles?: (id: string) => void;
 }
 
 type Step = 'main' | 'confirmDelete' | 'limit' | 'timing';
 
 /** What a tap on a download card opens: details, Retry or Restart, Paste new link, Remove (SM-30 Copy). */
-export function DownloadSheet({ download: d, onClose, onRetry, onPause, onResume, onResumeAnyway, onOpen, onOpenFolder, onShare, onAllowDevice, onRemove, onNewLink, onSetLimit }: DownloadSheetProps) {
+export function DownloadSheet({ download: d, onClose, onRetry, onPause, onResume, onResumeAnyway, onOpen, onOpenFolder, onShare, onAllowDevice, onRemove, onNewLink, onSetLimit, subtitles = 'hidden', onFindSubtitles }: DownloadSheetProps) {
   const { colors } = useTheme();
   const router = useRouter();
   const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -223,6 +228,15 @@ export function DownloadSheet({ download: d, onClose, onRetry, onPause, onResume
           : null}
         {d.state === 'finished' && onShare ? (
           <Button label="Share" icon="share" variant="secondary" fullWidth onPress={() => { onShare(d.id); onClose(); }} />
+        ) : null}
+        {subtitles !== 'hidden' ? (
+          <ListRow
+            title={FIND_SUBTITLES}
+            subtitle={subtitles === 'disabled' ? DISABLED_ENTRY_SUBTITLE : undefined}
+            icon="file-doc"
+            disabled={subtitles === 'disabled'}
+            onPress={() => { onFindSubtitles?.(d.id); onClose(); }}
+          />
         ) : null}
         <Button label="Open folder" icon="folder" variant="secondary" fullWidth onPress={() => { onOpenFolder(d.id); onClose(); }} />
         <Text style={styles.hint}>{copy.subtitle}</Text>
