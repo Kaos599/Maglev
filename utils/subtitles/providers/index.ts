@@ -5,8 +5,13 @@
 import type { SubtitleProvider } from '../types.ts';
 import type { SourceEntry } from '../../lists/schema.ts';
 import type { SubtitleSettings } from '../../../modules/maglev-engine/src/MaglevSettings.types.ts';
+import { BATCH_1 } from './batch1.ts';
+import { BATCH_2 } from './batch2.ts';
+import { BATCH_3 } from './batch3.ts';
+import { BATCH_4 } from './batch4.ts';
+import { BATCH_5 } from './batch5.ts';
 
-export const SUBTITLE_PROVIDERS: SubtitleProvider[] = [];
+export const SUBTITLE_PROVIDERS: SubtitleProvider[] = [...BATCH_1, ...BATCH_2, ...BATCH_3, ...BATCH_4, ...BATCH_5];
 
 export type ListOverrides = Record<string, SourceEntry> | null | undefined;
 
