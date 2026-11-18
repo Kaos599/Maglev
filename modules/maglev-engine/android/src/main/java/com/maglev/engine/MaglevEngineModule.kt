@@ -19,6 +19,9 @@ import com.maglev.engine.schedule.ScheduleManager
 import com.maglev.engine.service.Notifications
 import com.maglev.engine.storage.SafStorageManager
 import com.maglev.engine.storage.StorageManager
+import com.maglev.engine.subtitles.SubtitleException
+import com.maglev.engine.subtitles.SubtitleFiles
+import com.maglev.engine.subtitles.SubtitleZip
 import com.maglev.engine.update.AppUpdater
 import com.maglev.engine.update.InstallSource
 import com.maglev.engine.update.UpdateNotices
@@ -91,6 +94,33 @@ class MaglevEngineModule : Module() {
             promise.resolve(Json.camelize(result))
         }
     }
+
+    /**
+     * Runs a subtitle call (NATIVE_CONTRACT 36.6) off the main thread. The result resolves; a [SubtitleException]
+     * rejects with its contract code, anything else rejects `IO`.
+     */
+    private fun subtitles(promise: Promise, block: () -> Any?) {
+        EngineHost.ioScope.launch {
+            val result: Any? = try {
+                block()
+            } catch (e: SubtitleException) {
+                promise.reject(e.code, e.message ?: e.code, null)
+                return@launch
+            } catch (t: Throwable) {
+                promise.reject("IO", t.message ?: "The subtitle call failed", null)
+                return@launch
+            }
+            promise.resolve(result)
+        }
+    }
+
+    private fun decodeBase64(b64: String): ByteArray = try {
+        android.util.Base64.decode(b64, android.util.Base64.DEFAULT)
+    } catch (e: IllegalArgumentException) {
+        throw SubtitleException("CANT_WRITE", "The subtitle data is not valid")
+    }
+
+    private fun requireContext(): Context = context ?: throw SubtitleException("IO", "Module is not attached")
 
     private fun BlocklistInfo.toResult(): Map<String, Any?> = linkedMapOf(
         "ok" to true,
@@ -446,6 +476,41 @@ class MaglevEngineModule : Module() {
                 cm.flush()
             }
             promise.resolve(removed)
+        }
+
+        // endregion
+
+        // region Subtitles (docs/NATIVE_CONTRACT.md section 36.6)
+
+        // OpenSubtitles 64-bit hash of a finished video. Errors: FILE_TOO_SMALL, NOT_FOUND, IO.
+        AsyncFunction("subtitleHash") { pathOrUri: String, promise: Promise ->
+            subtitles(promise) {
+                val (hash, bytes) = SubtitleFiles.hash(requireContext(), pathOrUri)
+                linkedMapOf("hash" to hash, "bytes" to bytes.toDouble())
+            }
+        }
+
+        // Writes a subtitle next to the video. Errors: NAME_TAKEN, VERIFY_FAILED, CANT_WRITE, NO_SPACE.
+        AsyncFunction("saveSubtitle") { videoPathOrUri: String, fileName: String, base64: String, replace: Boolean, promise: Promise ->
+            subtitles(promise) {
+                val data = decodeBase64(base64)
+                val path = SubtitleFiles.save(requireContext(), videoPathOrUri, fileName, data, replace)
+                linkedMapOf("path" to path)
+            }
+        }
+
+        // Subtitle members of a zip, in memory. Error: ARCHIVE_UNSAFE.
+        AsyncFunction("unzipSubtitles") { base64: String, promise: Promise ->
+            subtitles(promise) {
+                val zip = try {
+                    android.util.Base64.decode(base64, android.util.Base64.DEFAULT)
+                } catch (e: IllegalArgumentException) {
+                    throw SubtitleException("ARCHIVE_UNSAFE", "This is not a readable zip")
+                }
+                SubtitleZip.unzip(zip).map {
+                    linkedMapOf("name" to it.name, "base64" to android.util.Base64.encodeToString(it.bytes, android.util.Base64.NO_WRAP))
+                }
+            }
         }
 
         // endregion
