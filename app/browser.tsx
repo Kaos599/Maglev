@@ -56,6 +56,7 @@ import {
   tabDataVersion,
   type TabData,
 } from '../utils/browser/tabData';
+import { FOUND_HINT_MS, foundHintDue, foundHintText, opensSaveSheet } from '../utils/browser/hardening';
 import { hostAllowed, type PopupRequest, type PopupsState } from '../utils/browser/popups';
 import { hostOf, isAllowedHost, noticeAllowed, siteKey, toBrowserUrl, toggleAllowedHost } from '../utils/browserUrl';
 
@@ -141,6 +142,22 @@ export default function BrowserScreen({ inTab = false }: { inTab?: boolean }) {
   const [target, setTarget] = useState<DownloadTarget | null>(null);
   const [batchItems, setBatchItems] = useState<FoundItem[] | null>(null);
   const [streamItem, setStreamItem] = useState<FoundItem | null>(null);
+  // 24.11: a one-line "Maglev found N files" note, once per page, until the tray opens or a few seconds pass.
+  const [hintTab, setHintTab] = useState<string | null>(null);
+  const hintShown = hintTab === activeId && data.hint === 'shown' && found.length > 0 && !trayOpen;
+  useEffect(() => {
+    if (!hasPage || !foundHintDue(found.length, data.hint, trayOpen)) return;
+    patch(activeId, (d) => void (d.hint = 'shown'));
+    setHintTab(activeId);
+  }, [hasPage, found.length, data.hint, trayOpen, activeId, patch]);
+  useEffect(() => {
+    if (trayOpen && data.hint !== 'done') patch(activeId, (d) => void (d.hint = 'done'));
+  }, [trayOpen, data.hint, activeId, patch]);
+  useEffect(() => {
+    if (!hintShown) return;
+    const t = setTimeout(() => patch(activeId, (d) => void (d.hint = 'done')), FOUND_HINT_MS);
+    return () => clearTimeout(t);
+  }, [hintShown, activeId, patch]);
   const popups = getPopups();
   const setPopups = useCallback((fn: (p: PopupsState) => PopupsState) => setPopupsState(fn(getPopups())), []);
   const lastNoticeAt = useRef(0);
@@ -443,6 +460,7 @@ export default function BrowserScreen({ inTab = false }: { inTab?: boolean }) {
           newDocument = true;
           d.lastUrl = e.url;
           d.notes.clear();
+          d.hint = 'idle';
           // A new document starts a new list. Files already tagged with it (found before this event) stay.
           d.found = pruneToPage(d.found, e.url);
           d.dismissed = new Set();
@@ -469,6 +487,8 @@ export default function BrowserScreen({ inTab = false }: { inTab?: boolean }) {
       const d = getData(id);
       // The navigation became a download: the page is not loading any more.
       patch(id, (x) => void (x.page = x.page && x.page.loading ? { ...x.page, loading: false } : x.page));
+      // 24.11: a download the page started without a tap only joins the Files list (the view already added it).
+      if (!opensSaveSheet(e.tapped)) return;
       setTarget({
         url: e.url,
         name: e.name || nameFromUrl(e.url),
@@ -808,6 +828,11 @@ export default function BrowserScreen({ inTab = false }: { inTab?: boolean }) {
             />
           </View>
         ) : null}
+        {hintShown ? (
+          <View style={styles.hint} pointerEvents="none" accessibilityLiveRegion="polite">
+            <Text style={styles.hintText}>{foundHintText(found.length)}</Text>
+          </View>
+        ) : null}
       </View>
 
       <FoundTray visible={trayOpen} items={found} userAgent={page?.userAgent ?? ''} onRemove={removeOne} onClear={clearAll} transfers={transfers} onOpenTransfer={openTransfer} onScanAgain={scanAgain} onDownloadSelected={(items) => { setTrayOpen(false); setBatchItems(items); }} undo={undo} onUndo={undoDismiss} onClose={() => setTrayOpen(false)} onPick={pickFile} onPickStream={(item) => { setTrayOpen(false); setStreamItem(item); }} />
@@ -981,4 +1006,18 @@ const makeStyles = (c: ThemeColors) =>
       flexShrink: 1,
     },
     activeText: { ...type.mono, fontSize: type.size.sm, color: c.download },
+    // A one-line note above the Files button, bottom-right: 12 px edge + 44 px button + 8 px gap.
+    hint: {
+      position: 'absolute',
+      right: spacing.md,
+      bottom: spacing.md + 44 + spacing.sm,
+      maxWidth: '80%',
+      paddingHorizontal: spacing.md,
+      paddingVertical: spacing.sm,
+      borderRadius: radius.md,
+      borderWidth: 1,
+      borderColor: c.border,
+      backgroundColor: c.surface,
+    },
+    hintText: { ...type.body, fontSize: type.size.sm, color: c.textMuted },
   });
