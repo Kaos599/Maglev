@@ -10,12 +10,13 @@ import { backupCopy as copy } from '../../constants/copy';
 import { relativeTime } from '../../utils/feeds';
 import { applyBackup, exportBackup, getLastBackupAt, pickBackup } from '../../utils/backup/io';
 import { BACKUP_PARTS, previewCounts, previewSentence, type Backup, type BackupPart } from '../../utils/backup/format';
+import { exportOptions, getIncludeStats, hasStats, restoreParts, setIncludeStats } from '../../utils/backup/statsOption';
 import { startAdded, type RestoreResult } from '../../utils/backup/import';
 
 type Step =
   | { kind: 'idle' }
   | { kind: 'busy' }
-  | { kind: 'preview'; backup: Backup; parts: BackupPart[]; confirming: boolean }
+  | { kind: 'preview'; backup: Backup; parts: BackupPart[]; stats: boolean; confirming: boolean }
   | { kind: 'done'; result: RestoreResult; started: number | null };
 
 /** The parts a backup actually holds, so an empty one is not offered. */
@@ -47,11 +48,12 @@ export default function BackupSettings() {
   const [step, setStep] = useState<Step>({ kind: 'idle' });
   const [message, setMessage] = useState<{ tone: 'success' | 'danger'; text: string } | null>(null);
   const [lastAt, setLastAt] = useState(getLastBackupAt);
+  const [includeStats, setIncludeStatsState] = useState(getIncludeStats);
 
   const doExport = async () => {
     setMessage(null);
     setStep({ kind: 'busy' });
-    const res = await exportBackup();
+    const res = await exportBackup(exportOptions(includeStats));
     setStep({ kind: 'idle' });
     if ('cancelled' in res) return;
     if (res.ok) {
@@ -76,18 +78,18 @@ export default function BackupSettings() {
       return setMessage({ tone: 'danger', text: res.result.message });
     }
     const backup = res.result.backup;
-    setStep({ kind: 'preview', backup, parts: availableParts(backup), confirming: false });
+    setStep({ kind: 'preview', backup, parts: availableParts(backup), stats: hasStats(backup), confirming: false });
   };
 
-  const doRestore = async (backup: Backup, parts: BackupPart[]) => {
+  const doRestore = async (backup: Backup, parts: BackupPart[], stats: boolean) => {
     setStep({ kind: 'busy' });
-    const result = await applyBackup(backup, new Set(parts));
+    const result = await applyBackup(backup, new Set(restoreParts(backup, parts, stats)));
     setStep({ kind: 'done', result, started: null });
   };
 
   const onRestore = (st: Extract<Step, { kind: 'preview' }>) => {
     if (st.parts.includes('settings') && !st.confirming) return setStep({ ...st, confirming: true });
-    void doRestore(st.backup, st.parts);
+    void doRestore(st.backup, st.parts, st.stats);
   };
 
   const startAll = async (st: Extract<Step, { kind: 'done' }>) => {
@@ -117,7 +119,22 @@ export default function BackupSettings() {
               onPress={step.kind === 'busy' ? undefined : doPick}
               disabled={step.kind === 'busy'}
             />
+            <ListRow
+              title={copy.includeStats.title}
+              accessory={
+                <Toggle
+                  value={includeStats}
+                  accessibilityLabel={copy.includeStats.title}
+                  onValueChange={(on) => {
+                    setIncludeStats(on);
+                    setIncludeStatsState(on);
+                  }}
+                />
+              }
+              disabled={step.kind === 'busy'}
+            />
           </Card>
+          <Caption>{copy.includeStats.note}</Caption>
           <Caption>{lastAt ? copy.last(relativeTime(lastAt)) : copy.never}</Caption>
           <Caption>{copy.secrets}</Caption>
           <Caption>{copy.notIncluded}</Caption>
@@ -148,6 +165,18 @@ export default function BackupSettings() {
                 }
               />
             ))}
+            {hasStats(step.backup) ? (
+              <ListRow
+                title={copy.includeStats.restore}
+                accessory={
+                  <Toggle
+                    value={step.stats}
+                    accessibilityLabel={copy.includeStats.restore}
+                    onValueChange={(on) => setStep({ ...step, stats: on })}
+                  />
+                }
+              />
+            ) : null}
           </Card>
           {step.parts.includes('torrents') || step.parts.includes('downloads') ? <Caption>{copy.torrentsNote}</Caption> : null}
           {step.confirming ? (
@@ -156,7 +185,7 @@ export default function BackupSettings() {
           <Button
             label={step.confirming ? copy.settingsConfirm.action : copy.restoreAction}
             variant={step.confirming ? 'danger' : 'primary'}
-            disabled={step.parts.length === 0}
+            disabled={step.parts.length === 0 && !step.stats}
             onPress={() => onRestore(step)}
           />
           <Button label="Cancel" variant="ghost" onPress={() => setStep({ kind: 'idle' })} />
