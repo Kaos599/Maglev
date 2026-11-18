@@ -194,6 +194,14 @@ export const SETTINGS_INDEX: SettingEntry[] = [
     "Where from",
   ),
   e(
+    "subtitles-opensubtitles-account",
+    "OpenSubtitles account",
+    "subtitles",
+    "Subtitles",
+    ["opensubtitles", "account", "api key", "login", "sign in", "subtitles", "captions", "download limit"],
+    "Where from",
+  ),
+  e(
     "subtitles-privacy",
     "Subtitle privacy",
     "subtitles",

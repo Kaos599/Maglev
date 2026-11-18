@@ -4,6 +4,7 @@ import { Stack, useRouter } from 'expo-router';
 import { spacing } from '../../constants/theme';
 import { ListRow, SectionHeader, Toggle } from '../../components/ui';
 import { Caption, Card, ChipGroup, SettingsPage } from '../../components/settings/SettingsParts';
+import { FocusAnchor, rowKey } from '../../components/settings/settingsFocus';
 import { useSubtitleSettings } from '../../components/subtitles-settings/useSubtitleSettings';
 import { useListsVersion } from '../../utils/lists/hooks';
 import { listSubtitleEntries } from '../../utils/lists/store';
@@ -26,7 +27,7 @@ export default function SubtitlesSettings() {
       <Stack.Screen options={{ headerShown: false }} />
       <Card>
         <ListRow
-          title={SETTINGS_TITLE}
+          title="Subtitles"
           subtitle={SETTINGS_SWITCH_SUBTITLE}
           accessory={<Toggle value={sub.enabled} onValueChange={(enabled) => patch({ enabled })} accessibilityLabel={SETTINGS_TITLE} />}
         />
@@ -70,7 +71,10 @@ export default function SubtitlesSettings() {
         </View>
       </View>
 
-      <Caption>{PRIVACY_LINE}</Caption>
+      {/* The privacy line is searchable as "Subtitle privacy". */}
+      <FocusAnchor anchorKey={rowKey('Subtitle privacy')}>
+        <Caption>{PRIVACY_LINE}</Caption>
+      </FocusAnchor>
     </SettingsPage>
   );
 }
