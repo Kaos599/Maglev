@@ -480,6 +480,25 @@ async function main() {
     check(`index has "${t}"`, SETTINGS_INDEX.some((e) => e.title === t));
   }
 
+  // Rows added with swipe, file icons, tab swipe and stats backup are searchable.
+  for (const [q, id] of [
+    ["swipe", "appearance-swipe-actions"],
+    ["swipe to remove a download", "appearance-swipe-actions"],
+    ["file icon", "appearance-file-icons"],
+    ["file type icons", "appearance-file-icons"],
+    ["address bar", "browser-swipe-tabs"],
+    ["swipe address bar", "browser-swipe-tabs"],
+    ["url bar tabs", "browser-swipe-tabs"],
+    ["backup stats", "backup-include-stats"],
+    ["export statistics", "backup-include-stats"],
+  ]) {
+    check(
+      `search: '${q}' finds ${id} in top 3`,
+      top(q, 3).includes(id),
+      top(q, 3).join(","),
+    );
+  }
+
   if (failed > 0) {
     console.error(`\n${failed} check(s) failed`);
     process.exit(1);

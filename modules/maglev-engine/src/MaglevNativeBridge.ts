@@ -257,7 +257,7 @@ export class MaglevEngineBridge implements MaglevEngineApi {
         return this.markReady('Native engine running.', false);
       }
       if (res.code !== 'ENGINE_UNAVAILABLE') {
-        this.setState({ status: { kind: 'unavailable', message: res.message } });
+        this.setState({ status: { kind: 'unavailable', message: res.message, code: res.code } });
         return res;
       }
       return this.fallbackOrFail(res.message, config);
@@ -337,10 +337,55 @@ export class MaglevEngineBridge implements MaglevEngineApi {
     }
   }
 
+  /** One shared restart of the native engine after it was stopped behind the bridge's back. */
+  private restartPromise: Promise<EngineResult> | null = null;
+
+  /**
+   * The engine can be stopped natively (notification "Shut down", auto-exit) while this JS runtime survives.
+   * Starts it again with the last config. Kotlin init is idempotent. Parallel callers share one attempt.
+   */
+  private restartNative(config: NativeConfig): Promise<EngineResult> {
+    if (!this.restartPromise) {
+      this.restartPromise = (async () => {
+        const res = await this.callNative<EngineResult>('init', config);
+        if (!res.ok) return res; // The caller shows the reason with a "Start engine" action; screens stay where they are.
+        this.setState({ status: { kind: 'ready', message: 'Native engine running.', simulated: false } });
+        if (this.lastSettings) await this.pushGovernanceAndLimits(this.lastSettings, config);
+        return res;
+      })().finally(() => {
+        this.restartPromise = null;
+      });
+    }
+    return this.restartPromise;
+  }
+
+  /** A native call that restarts the engine once, and retries once, when it answers NOT_INITIALIZED. */
+  private async callNativeRecovering<T>(method: string, ...args: unknown[]): Promise<T> {
+    const first = await this.callNative<T>(method, ...args);
+    const r = first as unknown as { ok?: boolean; code?: string };
+    if (r?.ok !== false || r.code !== 'NOT_INITIALIZED' || method === 'init' || method === 'shutdown' || !this.lastConfig) {
+      return first;
+    }
+    const restarted = await this.restartNative(this.lastConfig);
+    // `engineStopped` tells the UI to offer "Start engine" with the real reason in `message`.
+    if (!restarted.ok) return { ...restarted, engineStopped: true } as unknown as T;
+    return this.callNative<T>(method, ...args);
+  }
+
+  /**
+   * The "Start engine" button. Restarts the native engine with the last config (or starts it, when it never
+   * came up). Resolves ok when the engine runs; otherwise the failure carries the real reason.
+   */
+  public async restart(settings?: MaglevSettings): Promise<EngineResult> {
+    if (this.usingNative && this.lastConfig) return this.restartNative(this.lastConfig);
+    const st = await this.retry(settings);
+    return st.kind === 'ready' ? { ok: true } : unavailable(st.message);
+  }
+
   /** Routes to native or simulator. Before a successful start, returns a typed failure. */
   private async route<T>(method: keyof MaglevEngineApi, ...args: unknown[]): Promise<T> {
     if (!this.usingNative && !this.impl) await this.awaitStart();
-    if (this.usingNative) return this.callNative<T>(method, ...args);
+    if (this.usingNative) return this.callNativeRecovering<T>(method, ...args);
     if (this.impl) {
       try {
         return await (this.impl[method] as (...a: unknown[]) => Promise<T>)(...args);
