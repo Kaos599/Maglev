@@ -28,7 +28,8 @@ export function DownloadStats({ download: d }: { download: DownloadStatsInput })
         columns={2}
         stats={[
           { label: 'Speed', value: running ? formatSpeed(d.downBps) : '—', tint: colors.download },
-          { label: 'Time left', value: running && d.eta >= 0 ? formatEta(d.eta) : '—' },
+          // Finished: "Done" here; the average speed is already on the timing row below, so Speed stays "—".
+          { label: 'Time left', value: d.state === 'finished' ? 'Done' : running && d.eta >= 0 ? formatEta(d.eta) : '—' },
           { label: 'Downloaded', value: d.size ? `${formatBytes(d.downloaded)} of ${formatBytes(d.size)}` : formatBytes(d.downloaded) },
           { label: 'Connections', value: running ? String(d.segmentsActive) : '—' },
         ]}
