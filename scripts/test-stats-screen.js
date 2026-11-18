@@ -305,6 +305,15 @@ async function main() {
     .filter((f) => /import\s*\{[^}]*\brouter\b[^}]*\}\s*from\s*['"]expo-router['"]/.test(read(f)));
   check('no screen imports the global expo-router router (use useRouter)', globalRouter.length === 0, globalRouter.join(', '));
 
+  // 2026-11-19 user report: picking an earlier day snapped back to today about a second later, because live counts
+  // refresh the buckets while something downloads. The pick is redone only when the range changes.
+  {
+    const scr = fs.readFileSync(path.join(__dirname, '..', 'app', 'stats.tsx'), 'utf8');
+    check('the day pick survives live refreshes (keyed on the shown range)', /pickedFor\.current === key && d == null/.test(scr) && /\[buckets, busiest, inert, shown\]/.test(scr));
+    const city = fs.readFileSync(path.join(__dirname, '..', 'components', 'stats', 'PixelCity.tsx'), 'utf8');
+    check('the building outline follows the selected day, not only today', /i === \(selected >= 0 \? selected/.test(city) && /live, selected\]\);/.test(city));
+  }
+
   if (failed) {
     console.error(`\n${failed} failed`);
     process.exit(1);
