@@ -44,7 +44,7 @@ export default function FeedsScreen() {
   const { colors } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const router = useRouter();
-  const { startTorrent, telemetry, onMeteredNetwork } = useMaglevEngine();
+  const { startTorrent, restartEngine, telemetry, onMeteredNetwork } = useMaglevEngine();
   const { settings } = useSettings();
 
   const [feeds, setFeeds] = useState<Feed[]>(() => loadFeeds());
@@ -246,14 +246,18 @@ export default function FeedsScreen() {
         markSeen([item]);
         show({ tone: 'success', title: 'Added to Transfers', body: note ?? undefined, actionLabel: 'View', onAction: () => router.push('/' as never) });
       } catch (e) {
-        const { duplicate, notice: n } = addErrorNotice(e);
+        const { duplicate, notice: n } = addErrorNotice(e, () => {
+          void restartEngine().then((ok) => {
+            if (ok) void handleAdd(item, true);
+          });
+        });
         if (duplicate) setSessionAdded((p) => new Set(p).add(key));
         show(n);
       } finally {
         setBusyId(null);
       }
     },
-    [show, startTorrent, onMeteredNetwork, settings.network.wifiOnly, markSeen, router],
+    [show, startTorrent, restartEngine, onMeteredNetwork, settings.network.wifiOnly, markSeen, router],
   );
 
   const renderItem = useCallback(

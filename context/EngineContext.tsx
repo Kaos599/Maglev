@@ -144,6 +144,8 @@ interface EngineContextType {
   configWarning: string | null;
   /** Re-attempts engine start after a failure. */
   retryEngine: () => Promise<void>;
+  /** The "Start engine" button: restarts the native engine. Resolves true when it runs. */
+  restartEngine: () => Promise<boolean>;
   lastCompleted: TorrentCompletedEvent | null;
   /** Downloads from http(s) links (NATIVE_CONTRACT 17), oldest first. */
   downloads: DownloadSnapshot[];
@@ -238,8 +240,8 @@ const EngineContext = createContext<EngineContextType | null>(null);
 
 export { isAddableLink };
 
-function engineError(code: string, message: string, id?: string): Error {
-  return Object.assign(new Error(message), { code, id });
+function engineError(code: string, message: string, id?: string, engineStopped?: boolean): Error {
+  return Object.assign(new Error(message), { code, id, engineStopped });
 }
 
 export const EngineProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -450,10 +452,18 @@ export const EngineProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   );
 
   const retryEngine = useCallback(async () => {
-    const status = await maglevEngine.retry(settingsStore.getSettings());
+    await maglevEngine.restart(settingsStore.getSettings());
     setEngineStatus(maglevEngine.engineStatus);
     setConfigWarning(maglevEngine.configWarning);
-    await afterStart(status);
+    await afterStart(maglevEngine.engineStatus);
+  }, [afterStart]);
+
+  const restartEngine = useCallback(async () => {
+    const res = await maglevEngine.restart(settingsStore.getSettings());
+    setEngineStatus(maglevEngine.engineStatus);
+    setConfigWarning(maglevEngine.configWarning);
+    if (res.ok) await afterStart(maglevEngine.engineStatus);
+    return res.ok;
   }, [afterStart]);
 
   // Engine start, status mirroring and event subscriptions. Events only: no polling.
@@ -810,7 +820,7 @@ export const EngineProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         sequential,
         onlyFiles: selectedFileIndices && selectedFileIndices.length > 0 ? selectedFileIndices : null,
       });
-      if (res.ok === false) throw engineError(res.code, res.message, res.id);
+      if (res.ok === false) throw engineError(res.code, res.message, res.id, (res as { engineStopped?: boolean }).engineStopped);
       return res.id;
     },
     [defaultStoragePath]
@@ -986,6 +996,7 @@ export const EngineProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         restartRequired,
         configWarning,
         retryEngine,
+        restartEngine,
         lastCompleted,
         downloads,
         probeUrl,

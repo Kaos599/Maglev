@@ -540,7 +540,7 @@ contract('C-PORT-1', 'P1', 'A busy listening port falls back to a free port with
   const host = code('modules/maglev-engine/android/src/main/java/com/maglev/engine/EngineHost.kt');
   assert(/startWarning\s*=\s*\(res\["config_warning"\]/.test(host), 'startEngine keeps Rust config_warning');
   assert(/out\["alreadyRunning"\]\s*=\s*true[\s\S]{0,120}startWarning\?\.let\s*\{\s*out\["config_warning"\]/.test(host), 'already-running init returns the kept warning');
-  assert(/fun shutdownEngine\(\)[\s\S]{0,120}startWarning\s*=\s*null/.test(host), 'shutdown clears the kept warning');
+  assert(/fun shutdownEngineLocked\(\)[\s\S]{0,120}startWarning\s*=\s*null/.test(host), 'shutdown clears the kept warning');
 });
 
 contract('C-ASSIST-8', 'P1', 'Assistant modules import neither react-native nor the engine (toolRunner.ts excepted)', () => {

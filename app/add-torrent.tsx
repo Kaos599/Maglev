@@ -21,6 +21,7 @@ import { admissionCaption } from '../utils/admissionCopy';
 import { takePrefetchedMetadata } from '../components/search/metadataCache';
 import { banners, empty, mobileDataLine, notices } from '../constants/copy';
 import { useSettings } from '../context/SettingsContext';
+import { START_ENGINE_LABEL, engineStoppedBody, isEngineStopped } from '../utils/addErrorNotice';
 
 /** SM-9 add flow states. */
 type Phase = 'input' | 'validating' | 'invalid' | 'resolving' | 'timeout' | 'error' | 'duplicate' | 'preview' | 'adding' | 'added';
@@ -49,7 +50,7 @@ export default function AddTorrentScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const params = useLocalSearchParams<{ source?: string; uri?: string; magnet?: string }>();
-  const { telemetry, defaultStoragePath, showNotice, onMeteredNetwork } = useMaglevEngine();
+  const { telemetry, defaultStoragePath, showNotice, onMeteredNetwork, restartEngine } = useMaglevEngine();
   const { settings } = useSettings();
 
   const [text, setText] = useState('');
@@ -60,6 +61,9 @@ export default function AddTorrentScreen() {
   const [dupId, setDupId] = useState<string | null>(null);
   const [folder, setFolder] = useState<Folder | null>(null);
   const [addError, setAddError] = useState<string | null>(null);
+  /** The add failed because the engine is stopped: the banner offers "Start engine" and retries `lastAdd`. */
+  const [addStopped, setAddStopped] = useState(false);
+  const lastAdd = useRef<(() => void) | null>(null);
   const [freeSpace, setFreeSpace] = useState<FreeSpace | null>(null);
   /** Files marked "Download first". Skip is an unchecked file. */
   const [firsts, setFirsts] = useState<Set<number>>(new Set());
@@ -95,6 +99,7 @@ export default function AddTorrentScreen() {
       const mine = ++token.current;
       sourceRef.current = source;
       setMessage(null);
+      setAddStopped(false);
       setAddError(null);
       setPhase('resolving');
       let res;
@@ -140,7 +145,8 @@ export default function AddTorrentScreen() {
           setPhase('timeout');
           break;
         default:
-          setMessage(res.message || notices.addTorrent.addFailed);
+          setAddStopped(isEngineStopped(res));
+          setMessage(isEngineStopped(res) ? engineStoppedBody(res) : res.message || notices.addTorrent.addFailed);
           setPhase('error');
       }
     },
@@ -283,8 +289,25 @@ export default function AddTorrentScreen() {
     }
   };
 
+  /** Message for a failed add result. Marks a stopped engine so the banner can offer "Start engine". */
+  const failAdd = (res: { code?: string; message?: string }): string | undefined => {
+    const stopped = isEngineStopped(res);
+    setAddStopped(stopped);
+    return stopped ? engineStoppedBody(res) : res.message;
+  };
+
+  const startEngineAndRetry = async () => {
+    if (await restartEngine()) {
+      setAddError(null);
+      setAddStopped(false);
+      lastAdd.current?.();
+    }
+  };
+
   const doAdd = async (onlyAll: boolean, paused = false) => {
+    lastAdd.current = () => void doAdd(onlyAll, paused);
     setAddError(null);
+    setAddStopped(false);
     setPhase('adding');
     const onlyFiles = !onlyAll && meta && selected.size < meta.files.length ? [...selected].sort((a, b) => a - b) : null;
     const filePriorities =
@@ -310,13 +333,14 @@ export default function AddTorrentScreen() {
       showDuplicate(res.id ?? null);
       return;
     }
-    setAddError(res.message || notices.addTorrent.addFailed);
+    setAddError(failAdd(res) || notices.addTorrent.addFailed);
     haptic('fail');
     setPhase(meta ? 'preview' : 'timeout');
   };
 
   /** 12.1: stop the wait, add the magnet with every file, and let Transfers show it. */
   const startNow = async () => {
+    lastAdd.current = () => void startNow();
     const source = sourceRef.current;
     const hash = parseSource(source)?.infoHash;
     if (!hash || starting) return;
@@ -347,7 +371,7 @@ export default function AddTorrentScreen() {
       showDuplicate(res.id ?? null);
       return;
     }
-    setAddError(res.message || notices.addTorrent.addFailed);
+    setAddError(failAdd(res) || notices.addTorrent.addFailed);
     haptic('fail');
     setPhase('timeout');
   };
@@ -460,7 +484,13 @@ export default function AddTorrentScreen() {
           <Button label="Change" variant="secondary" disabled={adding} onPress={handleChangeFolder} />
         </View>
         {mobileNote ? <Banner tone="info" title={mobileNote} /> : null}
-        {addError ? <Banner tone="danger" title={banners.addTorrent.addFailed.title} body={addError} /> : null}
+        {addError ? (
+          addStopped ? (
+            <Banner tone="danger" title={empty.engineStopped.title} body={addError} actionLabel={START_ENGINE_LABEL} onAction={() => void startEngineAndRetry()} />
+          ) : (
+            <Banner tone="danger" title={banners.addTorrent.addFailed.title} body={addError} />
+          )
+        ) : null}
       </View>
     );
 
@@ -557,14 +587,18 @@ export default function AddTorrentScreen() {
       <Screen title="Add torrent" onBack={close}>
         <EmptyBlock
           icon="clock"
-          title={empty.addTorrent.timedOut.title}
+          title={addStopped ? empty.engineStopped.title : empty.addTorrent.timedOut.title}
           body={
             addError ??
             (isMagnetSource
               ? empty.addTorrent.timedOutMagnet
               : empty.addTorrent.timedOutFile)
           }
-          primary={{ label: 'Retry', onPress: () => resolve(sourceRef.current) }}
+          primary={
+            addStopped
+              ? { label: START_ENGINE_LABEL, onPress: () => void startEngineAndRetry() }
+              : { label: 'Retry', onPress: () => resolve(sourceRef.current) }
+          }
           secondary={isMagnetSource ? { label: 'Add anyway', onPress: () => doAdd(true) } : { label: 'Back', onPress: () => setPhase('input') }}
         />
       </Screen>
@@ -577,9 +611,13 @@ export default function AddTorrentScreen() {
         <EmptyBlock
           icon="warning"
           error
-          title={empty.addTorrent.readFailed.title}
+          title={addStopped ? empty.engineStopped.title : empty.addTorrent.readFailed.title}
           body={message ?? undefined}
-          primary={{ label: 'Retry', onPress: () => resolve(sourceRef.current) }}
+          primary={
+            addStopped
+              ? { label: START_ENGINE_LABEL, onPress: async () => { if (await restartEngine()) { setAddStopped(false); resolve(sourceRef.current); } } }
+              : { label: 'Retry', onPress: () => resolve(sourceRef.current) }
+          }
           secondary={{ label: 'Back', onPress: () => setPhase('input') }}
         />
       </Screen>
