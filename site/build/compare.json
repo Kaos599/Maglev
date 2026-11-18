@@ -200,6 +200,30 @@
       }
     },
     {
+      "id": "search-size-filter",
+      "group": "Torrents",
+      "label": "Filter search results by size",
+      "help": "Hides search results that are smaller or bigger than a size range you set.",
+      "values": {
+        "maglev": "Yes",
+        "libretorrent": "No",
+        "biglybt": "No",
+        "seal": "No",
+        "ytdlnis": "No",
+        "newpipe": "No",
+        "flud": "No",
+        "1dm": "No",
+        "adm": "No",
+        "fdm": "No"
+      },
+      "notes": {
+        "maglev": "Search has a size range slider, from no minimum up to 64 GB and no maximum.",
+        "biglybt": "Its Play page lists \"Sort and filter files in torrent\", which works on the files inside one torrent, not on search results. Checked 2026-11-18.",
+        "newpipe": "Its README lists searching videos and playlists and does not list a size filter. Checked 2026-11-18.",
+        "adm": "Its Play page lists \"search by name, sorting\" for the files inside a torrent and a Torrents and Seeding filter. It does not list a torrent search or a size filter for results. Checked 2026-11-18."
+      }
+    },
+    {
       "id": "add-indexer",
       "group": "Torrents",
       "label": "Add your own Jackett or Prowlarr indexer",
@@ -395,6 +419,30 @@
       }
     },
     {
+      "id": "subtitles",
+      "group": "Downloads",
+      "label": "Finds subtitles for saved videos",
+      "help": "Looks up subtitle files for a video you already have and saves one next to it, so players pick it up.",
+      "values": {
+        "maglev": "Yes",
+        "libretorrent": "No",
+        "biglybt": "No",
+        "seal": "No",
+        "ytdlnis": "No",
+        "newpipe": "No",
+        "flud": "No",
+        "1dm": "Not listed",
+        "adm": "No",
+        "fdm": "No"
+      },
+      "notes": {
+        "maglev": "Find subtitles searches 21 free sources and saves the subtitle next to the video. Two sources match by file fingerprint; the rest match by name.",
+        "seal": "Its README lists \"Embed subtitles into the downloaded videos\". That uses subtitles the video's own site offers; it does not list a search of subtitle sites for a video you already have. Checked 2026-11-18.",
+        "ytdlnis": "Its README lists embedding and burning in subtitles. That uses subtitles the video's own site offers; it does not list a search of subtitle sites for a video you already have. Checked 2026-11-18.",
+        "1dm": "The Play description excerpts checked on 2026-11-18 do not mention subtitles. The full description did not load in that check, so this stays Not listed."
+      }
+    },
+    {
       "id": "mobile-size",
       "group": "Downloads",
       "label": "Asks before a big add on mobile data",
@@ -497,6 +545,29 @@
       },
       "notes": {
         "1dm": "Its Play page describes an adblock browser but does not mention pop-ups or redirects."
+      }
+    },
+    {
+      "id": "mining-https",
+      "group": "Browser and streams",
+      "label": "Blocks crypto-mining scripts and upgrades to HTTPS",
+      "help": "The browser blocks known crypto-mining scripts and opens a page over HTTPS when the site supports it.",
+      "values": {
+        "maglev": "Yes",
+        "libretorrent": "No",
+        "biglybt": "No",
+        "seal": "No",
+        "ytdlnis": "No",
+        "newpipe": "No",
+        "flud": "No",
+        "1dm": "No",
+        "adm": "No",
+        "fdm": "No"
+      },
+      "notes": {
+        "maglev": "Known mining domains are on the browser's block list, and an http address is opened over https first, with a fall back to http if the site does not answer.",
+        "1dm": "Its Play description lists an adblock browser, tabs, history and incognito mode. It does not mention mining scripts or HTTPS. Checked 2026-11-18.",
+        "adm": "Its Play description lists a browser with tabs, history, bookmarks and a media downloader. It does not mention mining scripts or HTTPS. Checked 2026-11-18."
       }
     },
     {
@@ -896,6 +967,32 @@
       }
     },
     {
+      "id": "backup",
+      "group": "Control",
+      "label": "Backup and restore",
+      "help": "Saves the app's settings and list to a file you can restore later.",
+      "values": {
+        "maglev": "Yes",
+        "libretorrent": "Partial",
+        "biglybt": "No",
+        "seal": "No",
+        "ytdlnis": "Yes",
+        "newpipe": "Partial",
+        "flud": "No",
+        "1dm": "Partial",
+        "adm": "Yes",
+        "fdm": "No"
+      },
+      "notes": {
+        "maglev": "Settings > Backup saves your settings, search sources, torrents and downloads in one file, and your stats if you tick Include stats. API keys are never included.",
+        "libretorrent": "Its source strings list \"Save backup\" and \"Restore backup\" for RSS channels only. Its README and F-Droid page list no backup of settings or downloads. Checked 2026-11-18.",
+        "ytdlnis": "Its README lists \"Backup and restore almost everything\". Checked 2026-11-18.",
+        "newpipe": "Its README describes exporting and importing a database of history, subscriptions and playlists (Settings > Backup and Restore). It does not say settings are included. Checked 2026-11-18.",
+        "1dm": "Its Play description lists \"Import download links from a text file\" and \"Export download links\", which saves the list of links but not settings. Checked 2026-11-18.",
+        "adm": "Its Play description lists \"backup list of downloads and settings\". Checked 2026-11-18."
+      }
+    },
+    {
       "id": "min-android",
       "group": "Control",
       "label": "Minimum Android version",
@@ -1184,7 +1281,9 @@
             "Maglev is open source, under GPL-3.0, so you can read the code. 1DM+'s Play page does not say it is open source.",
             "Maglev saves DASH streams, and HLS streams with standard AES-128 encryption. 1DM+'s Play page says it supports HLS websites and does not mention DASH or AES-128. You pick the quality and audio language, and Maglev joins the pieces into one file.",
             "One search box asks more than 40 public torrent sources at once and merges results that point to the same torrent. Results from sources known for fake uploads carry a warning. You can add your own Jackett or Prowlarr indexer. Maglev can also follow a show from search and add RSS feeds, so new episodes download by rule. 1DM+'s Play page lists none of these.",
-            "Maglev has a setting to download only over a VPN, and it opens a finished download's folder in one tap."
+            "Maglev has a setting to download only over a VPN, and it opens a finished download's folder in one tap.",
+            "Maglev finds subtitles for videos you have downloaded, from 21 free sources, and saves one next to the video. 1DM+'s Play page does not list subtitles.",
+            "Maglev's browser blocks known crypto-mining scripts and opens pages over HTTPS when the site supports it. 1DM+'s Play page does not list either. Maglev's backup also holds your settings, search sources, torrents and downloads in one file, and 1DM+'s page lists only exporting download links."
           ]
         },
         {
@@ -1246,7 +1345,9 @@
             "Maglev has no ads and no in-app purchases. ADM's Play listing says it contains both. Maglev's browser blocks ads and trackers before they load. ADM's page describes a browser but does not mention ad blocking.",
             "Maglev lists the videos and files a page plays, so you can pick one to save. ADM's page says it has an advanced media downloader, but it does not say how that downloader finds files.",
             "Maglev saves HLS and DASH streams as one file after you pick the quality and audio language. ADM's page does not list either.",
-            "One Maglev search box covers more than 40 public torrent sources and merges duplicates. ADM's page does not list a torrent search. Maglev also opens a finished download's folder, which ADM's page does not list. ADM's page lists opening the completed download."
+            "One Maglev search box covers more than 40 public torrent sources and merges duplicates. ADM's page does not list a torrent search. Maglev also opens a finished download's folder, which ADM's page does not list. ADM's page lists opening the completed download.",
+            "Maglev finds subtitles for videos you have downloaded, from 21 free sources, and saves one next to the video. ADM's page does not list subtitles.",
+            "Maglev's browser blocks known crypto-mining scripts and opens pages over HTTPS when the site supports it. ADM's page does not list either."
           ]
         },
         {
@@ -1304,7 +1405,9 @@
             "Maglev downloads ordinary web links with pause, resume and retry that survive a restart. LibreTorrent's pages describe HTTP support only for links to .torrent files.",
             "Maglev has a built-in browser that lists the videos and files on a page, and it saves HLS and DASH streams as one file. LibreTorrent's pages do not list either.",
             "One search box covers more than 40 public torrent sources, and Maglev can follow a show from the results. LibreTorrent's pages do not list a torrent search.",
-            "Maglev can download only over a VPN and pauses on low battery. LibreTorrent's pages do not list a VPN option. LibreTorrent's pages mention battery settings but do not say what they do."
+            "Maglev can download only over a VPN and pauses on low battery. LibreTorrent's pages do not list a VPN option. LibreTorrent's pages mention battery settings but do not say what they do.",
+            "Maglev finds subtitles for the videos in a torrent or a link download, from 21 free sources, and saves one next to the video. LibreTorrent's pages do not list subtitles.",
+            "Maglev's backup holds your settings, search sources, torrents and downloads in one file. LibreTorrent's pages list a backup of RSS channels only. Search also has a size range slider; LibreTorrent's pages do not list a torrent search."
           ]
         },
         {
@@ -1365,7 +1468,9 @@
             "Maglev downloads ordinary web links with pause and resume. Flud's Play page does not list plain web downloads.",
             "Maglev has a browser that blocks ads and trackers, lists the videos and files a page plays, and saves HLS and DASH streams as one file. Flud's page lists none of these.",
             "Maglev has speed limits for everything or for one download, and a schedule for when downloads run or slow down. Flud's Play page says there are no speed limits on downloads or uploads, and it does not list a schedule.",
-            "One Maglev search box covers more than 40 public torrent sources. Flud's page does not list a torrent search."
+            "One Maglev search box covers more than 40 public torrent sources. Flud's page does not list a torrent search.",
+            "Maglev finds subtitles for the videos in a torrent or a link download, from 21 free sources, and saves one next to the video. Flud's page does not list subtitles.",
+            "Maglev's backup holds your settings, search sources, torrents and downloads in one file, and Search has a size range slider. Flud's page lists neither."
           ]
         },
         {
