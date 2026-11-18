@@ -2,7 +2,8 @@
 import { decodeEntities, stripTags } from '../../search/text.ts';
 import { baseLanguage } from '../languages.ts';
 import type { SubFormat, SubtitleCandidate, SubtitleContext, SubtitleProvider, SubtitleQuery } from '../types.ts';
-import { httpPage, httpRaw, joinBase, pathOf, resolveHref, titleMatches, toPayload } from './b5common.ts';
+import { httpBytes, httpPageBytes, toPayload } from '../http.ts';
+import { joinBase, pathOf, resolveHref, titleMatches } from '../match.ts';
 
 export const ID = 'subclub';
 
@@ -110,11 +111,11 @@ export const subclub: SubtitleProvider = {
     const title = q.title.trim();
     if (!title) return [];
     const url = `${joinBase(ctx.baseUrl, '/jutud.php')}?otsing=${encodeURIComponent(title)}`;
-    const hits = parseSearch(await httpPage(url, { signal: ctx.signal, accept: 'text/html' })).filter((h) => hitFits(h, q)).slice(0, 5);
+    const hits = parseSearch(await httpPageBytes(url, { signal: ctx.signal, accept: 'text/html' })).filter((h) => hitFits(h, q)).slice(0, 5);
     const out: SubtitleCandidate[] = [];
     const seen = new Set<string>();
     for (const h of hits) {
-      const list = parseArchiveList(await httpPage(`${joinBase(ctx.baseUrl, '/subtitles_archivecontent.php')}?id=${h.archiveId}`, { signal: ctx.signal, accept: 'text/html', referer: url }), ctx.baseUrl);
+      const list = parseArchiveList(await httpPageBytes(`${joinBase(ctx.baseUrl, '/subtitles_archivecontent.php')}?id=${h.archiveId}`, { signal: ctx.signal, accept: 'text/html', referer: url }), ctx.baseUrl);
       for (const c of candidatesFor(h, list)) {
         if (seen.has(c.id)) continue;
         seen.add(c.id);
@@ -124,7 +125,7 @@ export const subclub: SubtitleProvider = {
     return out;
   },
   async download(c: SubtitleCandidate, ctx: SubtitleContext) {
-    const res = await httpRaw(joinBase(ctx.baseUrl, c.id), { signal: ctx.signal, referer: joinBase(ctx.baseUrl, '/') });
+    const res = await httpBytes(joinBase(ctx.baseUrl, c.id), { signal: ctx.signal, referer: joinBase(ctx.baseUrl, '/') });
     return toPayload(res.bytes);
   },
 };

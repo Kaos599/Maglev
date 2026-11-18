@@ -4,7 +4,8 @@ import type { SubtitleCandidate, SubtitleContext, SubtitlePayload, SubtitleProvi
 import { ProviderError } from '../../search/http.ts';
 import { stripTags, toInt } from '../../search/text.ts';
 import { languageRank, normalizeLanguage } from '../languages.ts';
-import { absUrl, hasAllWords, httpBytes, httpPage, isEpisodeQuery, norm, safePath, toPayload, withoutYear, yearOf } from './batch2Common.ts';
+import { httpBytes, httpPage, toPayload } from '../http.ts';
+import { absUrl, hasAllWords, isEpisodeQuery, norm, safePath, withoutYear, yearOf } from '../match.ts';
 
 export const ID = 'tvsubtitles';
 
@@ -137,6 +138,6 @@ export const tvsubtitles: SubtitleProvider = {
     const html = await httpPage(page, { signal: ctx.signal, referer: absUrl(ctx.baseUrl, `/subtitle-${encodeURIComponent(c.id)}.html`) });
     const path = parseFilePath(html);
     if (!path) throw new ProviderError('parse', 'Unexpected response');
-    return toPayload(await httpBytes(absUrl(ctx.baseUrl, safePath(path.replace(/^\/+/, ''))), { signal: ctx.signal, referer: page }), c.language);
+    return toPayload((await httpBytes(absUrl(ctx.baseUrl, safePath(path.replace(/^\/+/, ''))), { signal: ctx.signal, referer: page })).bytes, c.language);
   },
 };

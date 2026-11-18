@@ -2,7 +2,8 @@
 import type { SubtitleCandidate, SubtitleContext, SubtitleProvider, SubtitleQuery, SubFormat } from '../types.ts';
 import { httpText, parseJson, ProviderError } from '../../search/http.ts';
 import { baseLanguage } from '../languages.ts';
-import { httpBytes, payloadFromBytes, stripSlash } from './batch1Http.ts';
+import { httpBytes, toPayload } from '../http.ts';
+import { stripSlash } from '../match.ts';
 
 export const ID = 'subtis';
 
@@ -83,7 +84,7 @@ export const subtis: SubtitleProvider = {
     return [];
   },
   async download(c: SubtitleCandidate, ctx: SubtitleContext) {
-    const bytes = await httpBytes(downloadUrl(ctx.baseUrl, c.id), { signal: ctx.signal });
-    return payloadFromBytes(bytes, 'es');
+    const { bytes } = await httpBytes(downloadUrl(ctx.baseUrl, c.id), { signal: ctx.signal });
+    return toPayload(bytes, 'es');
   },
 };

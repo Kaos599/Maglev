@@ -54,7 +54,8 @@ const throws = async (fn) => {
 
 async function main() {
   const types = await import('../utils/subtitles/providers/batch5.ts');
-  const common = await import('../utils/subtitles/providers/b5common.ts');
+  const common = await import('../utils/subtitles/http.ts');
+  const match = await import('../utils/subtitles/match.ts');
   const ss = await import('../utils/subtitles/providers/soustitreseu.ts');
   const sy = await import('../utils/subtitles/providers/subsynchro.ts');
   const sc = await import('../utils/subtitles/providers/subclub.ts');
@@ -74,11 +75,11 @@ async function main() {
     check('kinds and matches are set', types.BATCH_5.every((p) => p.kinds.length > 0 && p.matches.length > 0));
   }
 
-  console.log('b5common');
+  console.log('shared helpers');
   {
-    check('resolveHref: relative, parent, root, absolute', common.resolveHref('https://a.test/films/x.html', 'download/y.zip') === 'https://a.test/films/download/y.zip' && common.resolveHref('https://a.test/films/x.html', '../img/a.jpg') === 'https://a.test/img/a.jpg' && common.resolveHref('https://a.test/films/x.html', '/z') === 'https://a.test/z' && common.resolveHref('https://a.test/', 'https://b.test/q') === 'https://b.test/q');
-    check('pathOf keeps path and query', common.pathOf('https://a.test/d.php?id=1&f=2') === '/d.php?id=1&f=2');
-    check('titleMatches folds accents and needs every word', common.titleMatches('Amélie', 'AMELIE (2001)') && !common.titleMatches('The Matrix', 'Matrix Reloaded'));
+    check('resolveHref: relative, parent, root, absolute', match.resolveHref('https://a.test/films/x.html', 'download/y.zip') === 'https://a.test/films/download/y.zip' && match.resolveHref('https://a.test/films/x.html', '../img/a.jpg') === 'https://a.test/img/a.jpg' && match.resolveHref('https://a.test/films/x.html', '/z') === 'https://a.test/z' && match.resolveHref('https://a.test/', 'https://b.test/q') === 'https://b.test/q');
+    check('pathOf keeps path and query', match.pathOf('https://a.test/d.php?id=1&f=2') === '/d.php?id=1&f=2');
+    check('titleMatches folds accents and needs every word', match.titleMatches('Amélie', 'AMELIE (2001)') && !match.titleMatches('The Matrix', 'Matrix Reloaded'));
     const zip = common.toPayload(bytes('soustitreseu/download.zip'));
     check('a zip stays a zip', zip.kind === 'zip' && archiveKind(zip.bytes) === 'zip');
     const srt = common.toPayload(bytes('subclub/download.srt'));
@@ -93,9 +94,9 @@ async function main() {
     const ass = common.toPayload(new TextEncoder().encode('[Script Info]\nTitle: x\n[V4+ Styles]\n'));
     check('ASS is recognised', ass.kind === 'text' && ass.format === 'ass');
     globalThis.fetch = fakeFetch({ 'https://a.test/limit': { status: 429, body: 'slow down' }, 'https://a.test/bot': { status: 403, body: '<html>Just a moment... cloudflare</html>' }, 'https://a.test/down': { status: 503, body: 'x', type: 'text/plain' } });
-    const lim = await throws(() => common.httpRaw('https://a.test/limit', { signal: new AbortController().signal }));
+    const lim = await throws(() => common.httpBytes('https://a.test/limit', { signal: new AbortController().signal }));
     check('HTTP 429 is a limit (kind http, status 429)', lim?.kind === 'http' && lim.status === 429);
-    const bot = await throws(() => common.httpRaw('https://a.test/bot', { signal: new AbortController().signal }));
+    const bot = await throws(() => common.httpBytes('https://a.test/bot', { signal: new AbortController().signal }));
     check('a Cloudflare page is a challenge', bot?.kind === 'challenge');
     globalThis.fetch = realFetch;
   }

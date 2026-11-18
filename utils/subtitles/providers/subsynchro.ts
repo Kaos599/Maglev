@@ -3,7 +3,8 @@ import { ProviderError } from '../../search/http.ts';
 import { decodeEntities, stripTags } from '../../search/text.ts';
 import { baseLanguage } from '../languages.ts';
 import type { SubFormat, SubtitleCandidate, SubtitleContext, SubtitleProvider } from '../types.ts';
-import { httpPage, httpRaw, joinBase, pathOf, resolveHref, titleMatches, toPayload, tokens } from './b5common.ts';
+import { httpBytes, httpPageBytes, toPayload } from '../http.ts';
+import { joinBase, pathOf, resolveHref, titleMatches, tokens } from '../match.ts';
 
 export const ID = 'subsynchro';
 
@@ -161,7 +162,7 @@ export const subsynchro: SubtitleProvider = {
     if (!title) return [];
     const searchPage = joinBase(ctx.baseUrl, '/tous-les-films.html');
     // One match redirects to the film; several come back as a list.
-    const first = await httpPage(searchPage, {
+    const first = await httpPageBytes(searchPage, {
       signal: ctx.signal,
       accept: 'text/html',
       method: 'POST',
@@ -174,7 +175,7 @@ export const subsynchro: SubtitleProvider = {
         .filter((f) => titleMatches(title, f.title) && !(q.year && f.year && f.year !== q.year))
         .slice(0, 3);
       pages = [];
-      for (const f of films) pages.push(await httpPage(f.url, { signal: ctx.signal, accept: 'text/html', referer: searchPage }));
+      for (const f of films) pages.push(await httpPageBytes(f.url, { signal: ctx.signal, accept: 'text/html', referer: searchPage }));
     }
     for (const page of pages) {
       const head = parseFilmHeader(page);
@@ -184,7 +185,7 @@ export const subsynchro: SubtitleProvider = {
         .slice(0, 6);
       const out: SubtitleCandidate[] = [];
       for (const r of releases) {
-        const body = await httpPage(r.url, { signal: ctx.signal, accept: 'text/html', referer: searchPage });
+        const body = await httpPageBytes(r.url, { signal: ctx.signal, accept: 'text/html', referer: searchPage });
         out.push(...candidatesFromFiles(parseFiles(body, ctx.baseUrl), r));
       }
       if (out.length) return out;
@@ -192,7 +193,7 @@ export const subsynchro: SubtitleProvider = {
     return [];
   },
   async download(c: SubtitleCandidate, ctx: SubtitleContext) {
-    const res = await httpRaw(joinBase(ctx.baseUrl, c.id), { signal: ctx.signal, referer: joinBase(ctx.baseUrl, '/') });
+    const res = await httpBytes(joinBase(ctx.baseUrl, c.id), { signal: ctx.signal, referer: joinBase(ctx.baseUrl, '/') });
     if (/html/i.test(res.contentType)) throw new ProviderError('parse', 'The source sent a page, not a subtitle');
     return toPayload(res.bytes);
   },

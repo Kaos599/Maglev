@@ -34,7 +34,8 @@ async function rejects(fn, kind, status) {
   const { BATCH_1 } = await import('../utils/subtitles/providers/batch1.ts');
   const reg = await import('../utils/subtitles/providers/index.ts');
   const pay = await import('../utils/subtitles/payload.ts');
-  const H = await import('../utils/subtitles/providers/batch1Http.ts');
+  const H = await import('../utils/subtitles/http.ts');
+  const M = await import('../utils/subtitles/match.ts');
   const gd = await import('../utils/subtitles/providers/gestdown.ts');
   const n24 = await import('../utils/subtitles/providers/napisy24.ts');
   const rl = await import('../utils/subtitles/providers/regielive.ts');
@@ -66,7 +67,7 @@ async function rejects(fn, kind, status) {
   check('hearing impaired flag', gd.parseSubtitles(JSON.stringify({ matchingSubtitles: [{ subtitleId: 'abc', completed: true, hearingImpaired: true, language: 'French', version: 'a,b' }] }), 'S', 1, 2)[0].hearingImpaired === true);
   check('language names', gd.gestdownLanguage('pt-BR') === 'Portuguese (Brazilian)' && gd.gestdownLanguage('es-419') === 'Spanish' && gd.gestdownLanguage('zh-TW') === null && gd.gestdownLanguage('xx') === null);
   check('urls', gd.showsUrl('https://api.gestdown.info/', 'Breaking Bad') === 'https://api.gestdown.info/shows/search/Breaking%20Bad' && gd.subtitlesUrl('https://api.gestdown.info', 'abc', 1, 2, 'Portuguese (Brazilian)') === 'https://api.gestdown.info/subtitles/get/abc/1/2/Portuguese%20(Brazilian)' && gd.downloadUrl('https://api.gestdown.info', 'a/b') === null);
-  check('a download is text with a format', (() => { const p = H.payloadFromBytes(u8(raw('gestdown', 'download_head.srt')), 'en'); return p.kind === 'text' && p.format === 'srt'; })());
+  check('a download is text with a format', (() => { const p = H.toPayload(u8(raw('gestdown', 'download_head.srt')), 'en'); return p.kind === 'text' && p.format === 'srt'; })());
   check('movies are skipped', (await BATCH_1.find((p) => p.id === 'gestdown').search(q(), { signal: new AbortController().signal, baseUrl: 'https://x.test' })).length === 0);
 
   console.log('subtis');
@@ -78,7 +79,7 @@ async function rejects(fn, kind, status) {
   const sq = q({ hash: '4e63ff4da5d016d8', videoBytes: 61878609, fileName: 'A B.mkv' });
   check('urls: hash, bytes, name, alternative', st.findUrl('https://api.subt.is', 'hash', sq) === 'https://api.subt.is/v1/subtitle/find/file/hash/4e63ff4da5d016d8' && st.findUrl('https://api.subt.is/', 'bytes', sq) === 'https://api.subt.is/v1/subtitle/find/file/bytes/61878609' && st.findUrl('https://api.subt.is', 'name', sq) === 'https://api.subt.is/v1/subtitle/find/file/name/A%20B.mkv' && st.findUrl('https://api.subt.is', 'alternative', sq) === 'https://api.subt.is/v1/subtitle/file/alternative/A%20B.mkv' && st.findUrl('https://api.subt.is', 'hash', q()) === null);
   check('download url', st.downloadUrl('https://api.subt.is', '25826') === 'https://api.subt.is/v1/subtitle/link/25826');
-  check('a download is text', H.payloadFromBytes(u8(raw('subtis', 'download_head.srt')), 'es').kind === 'text');
+  check('a download is text', H.toPayload(u8(raw('subtis', 'download_head.srt')), 'es').kind === 'text');
   check('Spanish only, movies only', (await st.subtis.search(q({ languages: ['en'] }), { signal: new AbortController().signal, baseUrl: 'https://x.test' })).length === 0 && (await st.subtis.search(q({ languages: ['es'], season: 1, episode: 1 }), { signal: new AbortController().signal, baseUrl: 'https://x.test' })).length === 0);
 
   console.log('regielive');
@@ -90,7 +91,7 @@ async function rejects(fn, kind, status) {
   check('download url comes from the id', rl.downloadUrl('descarca-14880-677974.zip') === 'https://subtitrari.regielive.ro/descarca-14880-677974.zip' && rl.downloadUrl('../x') === null);
   check('empty and odd answers', rl.parseSearch('{"rezultate":[]}').length === 0 && rl.parseSearch('{}').length === 0);
   check('search url: movie with year, episode', rl.searchUrl('https://api.regielive.ro', q({ title: 'Inception', year: 2010 })) === 'https://api.regielive.ro/bazarr/search.php?nume=Inception&an=2010' && rl.searchUrl('https://api.regielive.ro', q({ title: 'Breaking Bad', season: 1, episode: 2 })) === 'https://api.regielive.ro/bazarr/search.php?nume=Breaking+Bad&sezon=1&episod=2' && rl.searchUrl('https://api.regielive.ro', q({ title: ' ' })) === null);
-  const rp = H.payloadFromBytes(u8(raw('regielive', 'download.zip')), 'ro');
+  const rp = H.toPayload(u8(raw('regielive', 'download.zip')), 'ro');
   check('download is a zip', rp.kind === 'zip' && pay.archiveKind(rp.bytes) === 'zip');
 
   console.log('vladoon');
@@ -103,7 +104,7 @@ async function rejects(fn, kind, status) {
   check('episode: a pack of another season is dropped', vl.parseSearch(txt('vladoon', 'search_breaking_bad_s01e01.json'), q({ title: 'Breaking Bad', season: 2, episode: 1, episodeConfidence: 'sure' })).length === 0);
   check('episode query text and urls', vl.searchQuery(q({ title: 'Breaking Bad', season: 1, episode: 2 })) === 'Breaking Bad S01E02' && vl.searchUrl('https://vladoon.com', q({ title: 'Inception' })) === 'https://vladoon.com/subs/search-subtitles?q=Inception' && vl.downloadUrl('https://vladoon.com', '6705') === 'https://vladoon.com/subs/download/6705' && vl.downloadUrl('https://vladoon.com', '../1') === null);
   check('bad response is a parse error', (() => { try { vl.parseSearch('<html>', q({ title: 'x' })); return false; } catch (e) { return e.kind === 'blocked' || e.kind === 'parse'; } })() && (() => { try { vl.parseSearch('{"results":3}', q({ title: 'x' })); return false; } catch (e) { return e.kind === 'parse'; } })());
-  const vp = H.payloadFromBytes(u8(raw('vladoon', 'download.zip')), 'bg');
+  const vp = H.toPayload(u8(raw('vladoon', 'download.zip')), 'bg');
   check('download is a zip', vp.kind === 'zip');
 
   console.log('napisy24');
@@ -126,11 +127,11 @@ async function rejects(fn, kind, status) {
 
   console.log('payload');
   const pngish = u8(Buffer.from('<!doctype html><html>nope</html>'));
-  check('an HTML page is not a subtitle', await rejects(async () => H.payloadFromBytes(pngish), 'parse'));
-  check('RAR and 7z are refused with the plain message', await rejects(async () => H.payloadFromBytes(u8([0x52, 0x61, 0x72, 0x21, 0x1a, 0x07, 0x00])), 'parse') && await rejects(async () => H.payloadFromBytes(u8([0x37, 0x7a, 0xbc, 0xaf, 0x27, 0x1c])), 'parse'));
-  check('empty is refused', await rejects(async () => H.payloadFromBytes(u8([])), 'parse'));
+  check('an HTML page is not a subtitle', await rejects(async () => H.toPayload(pngish), 'parse'));
+  check('RAR and 7z are refused with the plain message', await rejects(async () => H.toPayload(u8([0x52, 0x61, 0x72, 0x21, 0x1a, 0x07, 0x00])), 'parse') && await rejects(async () => H.toPayload(u8([0x37, 0x7a, 0xbc, 0xaf, 0x27, 0x1c])), 'parse'));
+  check('empty is refused', await rejects(async () => H.toPayload(u8([])), 'parse'));
   check('format sniffing: ass, vtt, srt', H.sniffFormat(u8(Buffer.from('[Script Info]\nTitle: x\n[V4+ Styles]'))) === 'ass' && H.sniffFormat(u8(Buffer.from('WEBVTT\n\n00:00.000 --> 00:01.000\nHi'))) === 'vtt' && H.sniffFormat(u8(Buffer.from('1\n00:00:01,000 --> 00:00:02,000\nHi'))) === 'srt');
-  check('title words compare without accents and case', H.sameTitle('Amélie', 'amelie') && !H.sameTitle('Dune', 'Dune Part Two'));
+  check('title words compare without accents and case', M.sameTitle('Amélie', 'amelie') && !M.sameTitle('Dune', 'Dune Part Two'));
 
   if (failed) {
     console.error(`\n${failed} check(s) failed`);

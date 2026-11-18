@@ -1,5 +1,6 @@
 // Ported from LavX/bazarr-provider-catalog, providers/kitsunekko (MIT), https://github.com/LavX/bazarr-provider-catalog/blob/main/providers/kitsunekko/provider.py
-import { httpText, ProviderError, USER_AGENT } from '../../search/http.ts';
+import { httpText, ProviderError } from '../../search/http.ts';
+import { httpBytes } from '../http.ts';
 import { decodeEntities, stripTags } from '../../search/text.ts';
 import { archiveKind, decodeSubtitleText, detectFormat } from '../payload.ts';
 import type { SubFormat, SubtitleCandidate, SubtitleContext, SubtitlePayload, SubtitleProvider, SubtitleQuery } from '../types.ts';
@@ -188,22 +189,11 @@ export function toPayload(bytes: Uint8Array, hint?: { language?: string; format?
 }
 
 async function fetchBytes(url: string, signal: AbortSignal): Promise<Uint8Array> {
-  let res: Response;
   try {
-    res = await fetch(url, { signal, headers: { 'User-Agent': USER_AGENT, Accept: '*/*' }, credentials: 'omit' });
+    return (await httpBytes(url, { signal })).bytes;
   } catch (e) {
-    if (signal.aborted) throw new ProviderError('cancelled', 'Cancelled');
-    throw new ProviderError('network', e instanceof Error ? e.message : 'Network error');
-  }
-  if (res.status === 429) throw new ProviderError('http', 'Too many requests', 429);
-  if (res.status === 403) throw new ProviderError('blocked', 'Blocked by a bot check', 403);
-  if (res.status === 404) throw new ProviderError('http', 'The file is gone', 404);
-  if (!res.ok) throw new ProviderError('http', `HTTP ${res.status}`, res.status);
-  try {
-    return new Uint8Array(await res.arrayBuffer());
-  } catch (e) {
-    if (signal.aborted) throw new ProviderError('cancelled', 'Cancelled');
-    throw new ProviderError('network', e instanceof Error ? e.message : 'Network error');
+    if (e instanceof ProviderError && e.status === 404) throw new ProviderError('http', 'The file is gone', 404);
+    throw e;
   }
 }
 

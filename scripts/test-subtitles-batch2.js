@@ -50,7 +50,8 @@ const epQ = (over = {}) => ({ fileName: 'Breaking.Bad.S05E16.720p.HDTV.mkv', vid
 
 (async () => {
   const reg = await import('../utils/subtitles/providers/index.ts');
-  const common = await import('../utils/subtitles/providers/batch2Common.ts');
+  const common = await import('../utils/subtitles/http.ts');
+  const match = await import('../utils/subtitles/match.ts');
   const yify = await import('../utils/subtitles/providers/yifysubtitles.ts');
   const cat = await import('../utils/subtitles/providers/subtitlecat.ts');
   const ms = await import('../utils/subtitles/providers/moviesubtitles.ts');
@@ -71,10 +72,10 @@ const epQ = (over = {}) => ({ fileName: 'Breaking.Bad.S05E16.720p.HDTV.mkv', vid
 
   // ------------------------------------------------------------------ helpers
   console.log('[batch 2 helpers]');
-  check('tokens fold accents and punctuation', eq(common.tokens('Amélie, 2001!'), ['amelie', '2001']));
-  check('hasEpisode reads S05E16 and 5x16', common.hasEpisode('Show.S05E16.720p', 5, 16) && common.hasEpisode('Show 5x16', 5, 16) && !common.hasEpisode('Show.S05E15', 5, 16));
-  check('isSeasonPack: complete season yes, a single episode no', common.isSeasonPack('Show Complete Season 5', 5) && common.isSeasonPack('Show.S05.720p', 5) && !common.isSeasonPack('Show.S05E01.720p', 5));
-  check('safePath encodes spaces and brackets, keeps %XX', common.safePath('/files/A B[1].zip') === '/files/A%20B%5B1%5D.zip' && common.safePath('/a%20b') === '/a%20b');
+  check('tokens fold accents and punctuation', eq(match.tokens('Amélie, 2001!'), ['amelie', '2001']));
+  check('hasEpisode reads S05E16 and 5x16', match.hasEpisode('Show.S05E16.720p', 5, 16) && match.hasEpisode('Show 5x16', 5, 16) && !match.hasEpisode('Show.S05E15', 5, 16));
+  check('isSeasonPack: complete season yes, a single episode no', match.isSeasonPack('Show Complete Season 5', 5) && match.isSeasonPack('Show.S05.720p', 5) && !match.isSeasonPack('Show.S05E01.720p', 5));
+  check('safePath encodes spaces and brackets, keeps %XX', match.safePath('/files/A B[1].zip') === '/files/A%20B%5B1%5D.zip' && match.safePath('/a%20b') === '/a%20b');
   check('toPayload: zip stays a zip', common.toPayload(buf('yifysubtitles', 'download_inception-2010-english-yify-392136.zip')).kind === 'zip');
   const srtP = common.toPayload(new Uint8Array(Buffer.from('1\n00:00:01,000 --> 00:00:02,000\nHi\n')));
   check('toPayload: plain text is typed srt', srtP.kind === 'text' && srtP.format === 'srt');

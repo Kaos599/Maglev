@@ -5,7 +5,8 @@ import type { SubtitleCandidate, SubtitleContext, SubtitlePayload, SubtitleProvi
 import { ProviderError } from '../../search/http.ts';
 import { decodeEntities, stripTags } from '../../search/text.ts';
 import { baseLanguage, languageRank } from '../languages.ts';
-import { absUrl, hasAllWords, hasEpisode, httpBytes, httpPage, isEpisodeQuery, isSeasonPack, looksHearingImpaired, norm, toPayload, withoutYear, yearOf } from './batch2Common.ts';
+import { httpBytes, httpPage, toPayload } from '../http.ts';
+import { absUrl, hasAllWords, hasEpisode, isEpisodeQuery, isSeasonPack, looksHearingImpaired, norm, withoutYear, yearOf } from '../match.ts';
 
 export const ID = 'subf2m';
 /** Language pages read per search, and title pages: each language page is about 150 KB. */
@@ -193,6 +194,6 @@ export const subf2m: SubtitleProvider = {
     const page = absUrl(ctx.baseUrl, c.id);
     const path = parseDownloadPath(await httpPage(page, { signal: ctx.signal, referer: ctx.baseUrl }));
     if (!path) throw new ProviderError('parse', 'Unexpected response');
-    return toPayload(await httpBytes(absUrl(ctx.baseUrl, path), { signal: ctx.signal, referer: page }), c.language);
+    return toPayload((await httpBytes(absUrl(ctx.baseUrl, path), { signal: ctx.signal, referer: page })).bytes, c.language);
   },
 };

@@ -7,7 +7,8 @@ import { stripTags } from '../../search/text.ts';
 import { ProviderError, httpText } from '../../search/http.ts';
 import { normalizeLanguage } from '../languages.ts';
 import type { SubtitleCandidate, SubtitleProvider, SubtitleQuery } from '../types.ts';
-import { bestRelease, httpBytes, parseDate, payloadFromBody, titleMatches } from './b4util.ts';
+import { httpBytes, toPayload } from '../http.ts';
+import { bestRelease, parseDate, titleMatchesAlias } from '../match.ts';
 
 export const ID = 'titrari';
 
@@ -89,7 +90,7 @@ export function toCandidates(rows: TitrariRow[], q: SubtitleQuery): SubtitleCand
   const episodic = q.season !== undefined && q.episodeConfidence !== 'none';
   const out: SubtitleCandidate[] = [];
   for (const r of rows) {
-    if (!titleMatches(q.title, r.title)) continue;
+    if (!titleMatchesAlias(q.title, r.title)) continue;
     if (episodic) {
       if (r.season === undefined || r.season !== q.season) continue;
       if (r.episode !== undefined && q.episode !== undefined && r.episode !== q.episode) continue;
@@ -153,6 +154,6 @@ export const titrari: SubtitleProvider = {
   async download(c, ctx) {
     // get.php sends a visitor with no Referer back to the film's page instead of the file.
     const { bytes } = await httpBytes(downloadUrl(ctx.baseUrl, c.id), { signal: ctx.signal, accept: '*/*', headers: { Referer: `${ctx.baseUrl.replace(/\/+$/, '')}/` } });
-    return payloadFromBody(bytes, c.language);
+    return toPayload(bytes, { language: c.language, requireCues: true });
   },
 };

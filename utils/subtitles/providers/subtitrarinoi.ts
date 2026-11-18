@@ -5,7 +5,8 @@ import { decodeEntities, stripTags } from '../../search/text.ts';
 import { ProviderError, httpText } from '../../search/http.ts';
 import { normalizeLanguage } from '../languages.ts';
 import type { SubtitleCandidate, SubtitleProvider, SubtitleQuery } from '../types.ts';
-import { bestRelease, httpBytes, parseDate, payloadFromBody, titleMatches } from './b4util.ts';
+import { httpBytes, toPayload } from '../http.ts';
+import { bestRelease, parseDate, titleMatchesAlias } from '../match.ts';
 
 export const ID = 'subtitrarinoi';
 
@@ -75,7 +76,7 @@ export function toCandidates(rows: NoiRow[], q: SubtitleQuery): SubtitleCandidat
   const out: SubtitleCandidate[] = [];
   for (const r of rows) {
     const bare = r.title.replace(/\s*-\s*Sezonul\s+\d+\s*$/i, '');
-    if (!titleMatches(q.title, bare)) continue;
+    if (!titleMatchesAlias(q.title, bare)) continue;
     if (episodic) {
       const seasons = seasonsOf(`${r.title} ${r.comment}`);
       if (!seasons.includes(q.season as number)) continue;
@@ -133,6 +134,6 @@ export const subtitrarinoi: SubtitleProvider = {
   async download(c, ctx) {
     const base = ctx.baseUrl.replace(/\/+$/, '');
     const { bytes } = await httpBytes(downloadUrl(ctx.baseUrl, c.id), { signal: ctx.signal, accept: '*/*', headers: { Referer: `${base}/` } });
-    return payloadFromBody(bytes, c.language);
+    return toPayload(bytes, { language: c.language, requireCues: true });
   },
 };

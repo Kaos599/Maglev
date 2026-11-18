@@ -3,7 +3,8 @@
 import type { SubtitleCandidate, SubtitleContext, SubtitlePayload, SubtitleProvider, SubtitleQuery } from '../types.ts';
 import { stripTags, toInt } from '../../search/text.ts';
 import { languageRank, normalizeLanguage } from '../languages.ts';
-import { absUrl, hasAllWords, httpBytes, httpPageLoose, isEpisodeQuery, norm, toPayload, withoutYear, yearOf } from './batch2Common.ts';
+import { httpBytes, httpPageLoose, toPayload } from '../http.ts';
+import { absUrl, hasAllWords, isEpisodeQuery, norm, withoutYear, yearOf } from '../match.ts';
 
 export const ID = 'moviesubtitles';
 const MAX_MOVIES = 2;
@@ -117,7 +118,7 @@ export const moviesubtitles: SubtitleProvider = {
     return out;
   },
   async download(c: SubtitleCandidate, ctx: SubtitleContext): Promise<SubtitlePayload> {
-    const bytes = await httpBytes(absUrl(ctx.baseUrl, `/download-${encodeURIComponent(c.id)}.html`), { signal: ctx.signal, referer: absUrl(ctx.baseUrl, `/subtitle-${encodeURIComponent(c.id)}.html`) });
+    const { bytes } = await httpBytes(absUrl(ctx.baseUrl, `/download-${encodeURIComponent(c.id)}.html`), { signal: ctx.signal, referer: absUrl(ctx.baseUrl, `/subtitle-${encodeURIComponent(c.id)}.html`) });
     return toPayload(bytes, c.language);
   },
 };

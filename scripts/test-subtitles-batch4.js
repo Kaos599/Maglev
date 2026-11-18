@@ -60,18 +60,19 @@ async function main() {
   const no = await import('../utils/subtitles/providers/subtitrarinoi.ts');
   const su = await import('../utils/subtitles/providers/subsunacs.ts');
   const b4 = await import('../utils/subtitles/providers/batch4.ts');
-  const util = await import('../utils/subtitles/providers/b4util.ts');
+  const util = await import('../utils/subtitles/http.ts');
+  const match = await import('../utils/subtitles/match.ts');
   const { isLanguageCode } = await import('../utils/subtitles/languages.ts');
 
   console.log('\n[1] shared helpers');
   {
-    check('titles compare without case, accents, "The" or punctuation', util.sameTitle('The Walking Dead', 'walking dead') && util.sameTitle('Amélie', 'Amelie') && !util.sameTitle('Fight Club', 'Zombie Fight Club'));
-    check('"A / B" and "(aka B)" titles match either part', util.titleMatches('Female Fight Club', 'Female Fight Squad / Female Fight Club') && util.titleMatches('The Bad Guys: Breaking In', 'The Bad Guys: The Series (aka. The Bad Guys: Breaking In)'));
-    const a = util.bestRelease({ fileName: 'Movie.2019.720p.NF.WEB-DL.DDP5.1.x264-NTG.mkv' }, 'Movie 2020 1080p BluRay x264-CMRG ( NOU! ); Movie.2019.720p.NF.WEB-DL.DDP5.1.x264-NTG; Movie.2019.HDRip.XviD-EVO si Movie.2019.WEB.X264-AMRAP.');
+    check('titles compare without case, accents, "The" or punctuation', match.sameTitleStrict('The Walking Dead', 'walking dead') && match.sameTitleStrict('Amélie', 'Amelie') && !match.sameTitleStrict('Fight Club', 'Zombie Fight Club'));
+    check('"A / B" and "(aka B)" titles match either part', match.titleMatchesAlias('Female Fight Club', 'Female Fight Squad / Female Fight Club') && match.titleMatchesAlias('The Bad Guys: Breaking In', 'The Bad Guys: The Series (aka. The Bad Guys: Breaking In)'));
+    const a = match.bestRelease({ fileName: 'Movie.2019.720p.NF.WEB-DL.DDP5.1.x264-NTG.mkv' }, 'Movie 2020 1080p BluRay x264-CMRG ( NOU! ); Movie.2019.720p.NF.WEB-DL.DDP5.1.x264-NTG; Movie.2019.HDRip.XviD-EVO si Movie.2019.WEB.X264-AMRAP.');
     check('bestRelease picks the listed release closest to the file', a.name === 'Movie.2019.720p.NF.WEB-DL.DDP5.1.x264-NTG' && a.matchedBy === 'release', JSON.stringify(a));
-    const far = util.bestRelease({ fileName: 'Other.Thing.mkv' }, 'Movie.2019.720p.NF.WEB-DL-NTG; Movie.2019.HDRip.XviD-EVO');
+    const far = match.bestRelease({ fileName: 'Other.Thing.mkv' }, 'Movie.2019.720p.NF.WEB-DL-NTG; Movie.2019.HDRip.XviD-EVO');
     check('bestRelease falls back to the first release, matched by title', far.name === 'Movie.2019.720p.NF.WEB-DL-NTG' && far.matchedBy === 'title');
-    check('dates', util.parseDate('2026-06-03') === Date.UTC(2026, 5, 3) && util.parseDate('26.11.2009г. 19:42') === Date.UTC(2009, 10, 26) && util.parseDate('x') === undefined);
+    check('dates', match.parseDate('2026-06-03') === Date.UTC(2026, 5, 3) && match.parseDate('26.11.2009г. 19:42') === Date.UTC(2009, 10, 26) && match.parseDate('x') === undefined);
   }
 
   console.log('\n[2] SuperSubtitles (feliratok.eu)');
@@ -99,9 +100,9 @@ async function main() {
     const bad = await rejects((async () => ss.parseRows('plain'))());
     check('a page that is not HTML is a parse error', bad && bad.kind === 'parse');
 
-    const srt = util.payloadFromBody(raw('supersubtitles/download_movie.srt'), 'hu', 'x.srt');
+    const srt = util.toPayload(raw('supersubtitles/download_movie.srt'), { language: 'hu', nameHint: 'x.srt', requireCues: true });
     check('download: BOM text is passed on as text/srt', srt.kind === 'text' && srt.format === 'srt' && srt.bytes.length === 2500);
-    const zip = util.payloadFromBody(raw('supersubtitles/download_pack_head.zip'), 'hu');
+    const zip = util.toPayload(raw('supersubtitles/download_pack_head.zip'), { language: 'hu', requireCues: true });
     check('download: a pack is a zip payload', zip.kind === 'zip');
 
     // search end to end
@@ -146,10 +147,10 @@ async function main() {
     check('wanted site languages: known ones only, in order, no duplicates', tr.wantedSiteIds(q({ languages: ['ro', 'xx', 'en', 'ro'] })).join() === '1,2' && tr.wantedSiteIds(q({ languages: ['ja'] })).length === 0);
     check('search url', tr.searchUrl('https://www.titrari.ro/', 'fight club', '1') === 'https://www.titrari.ro/index.php?page=cautare&z1=0&z2=fight+club&z3=1&z4=1');
 
-    const rarErr = await rejects((async () => util.payloadFromBody(raw('titrari/download_rar_head.rar'), 'ro'))());
+    const rarErr = await rejects((async () => util.toPayload(raw('titrari/download_rar_head.rar'), { language: 'ro', requireCues: true }))());
     check('download: RAR is "file type isn\'t supported"', rarErr && rarErr.kind === 'parse' && /file type isn't supported/.test(rarErr.message));
-    check('download: zip is a zip payload', util.payloadFromBody(raw('titrari/download_zip_head.zip'), 'ro').kind === 'zip');
-    const t = util.payloadFromBody(raw('titrari/download_text_cp1252.srt'), 'ro');
+    check('download: zip is a zip payload', util.toPayload(raw('titrari/download_zip_head.zip'), { language: 'ro', requireCues: true }).kind === 'zip');
+    const t = util.toPayload(raw('titrari/download_text_cp1252.srt'), { language: 'ro', requireCues: true });
     check('download: single-byte Romanian text is passed on as it is, format srt', t.kind === 'text' && t.format === 'srt' && t.bytes.length === 2500);
 
     const run = await withFetch(
@@ -181,9 +182,9 @@ async function main() {
 
     const direct = await rejects((async () => no.parseRows('<link rel="stylesheet" href="css/table.css">\nAcces direct interzis.'))());
     check('the "direct access refused" answer is a parse error', direct && direct.kind === 'parse');
-    const gone = await rejects((async () => util.payloadFromBody(raw('subtitrarinoi/download_unavailable.txt'), 'ro'))());
+    const gone = await rejects((async () => util.toPayload(raw('subtitrarinoi/download_unavailable.txt'), { language: 'ro', requireCues: true }))());
     check('download: the "not available" message is a failure, not a subtitle', gone && gone.kind === 'parse');
-    check('download: zip', util.payloadFromBody(raw('subtitrarinoi/download_zip_head.zip'), 'ro').kind === 'zip');
+    check('download: zip', util.toPayload(raw('subtitrarinoi/download_zip_head.zip'), { language: 'ro', requireCues: true }).kind === 'zip');
 
     const run = await withFetch(() => [text('subtitrarinoi/movie_search.html'), { status: 200, headers: { 'content-type': 'text/html' } }], () => no.subtitrarinoi.search(q({ languages: ['ro'] }), ctx('https://www.subtitrari-noi.ro')));
     const call = run.calls[0];

@@ -6,7 +6,8 @@ import { decodeEntities, stripTags } from '../../search/text.ts';
 import { ProviderError, httpText } from '../../search/http.ts';
 import { normalizeLanguage } from '../languages.ts';
 import type { SubtitleCandidate, SubtitleProvider, SubtitleQuery } from '../types.ts';
-import { formatFromName, httpBytes, matchKind, parseDate, payloadFromBody, titleMatches } from './b4util.ts';
+import { formatFromName, httpBytes, toPayload } from '../http.ts';
+import { matchKind, parseDate, titleMatchesAlias } from '../match.ts';
 
 export const ID = 'supersubtitles';
 
@@ -92,7 +93,7 @@ export function toCandidates(rows: SuperRow[], q: SubtitleQuery): SubtitleCandid
   const out: SubtitleCandidate[] = [];
   for (const r of rows) {
     if (!wanted.has(r.language) || /\.(rar|7z)$/i.test(r.fileName)) continue;
-    if (!titleMatches(q.title, r.title)) continue;
+    if (!titleMatchesAlias(q.title, r.title)) continue;
     if (episodic) {
       if (r.season === undefined || r.season !== q.season) continue;
       if (!r.pack && r.episode !== q.episode) continue;
@@ -132,6 +133,6 @@ export const supersubtitles: SubtitleProvider = {
   },
   async download(c, ctx) {
     const { bytes } = await httpBytes(downloadUrl(ctx.baseUrl, c.id), { signal: ctx.signal, accept: '*/*', headers: { Referer: `${ctx.baseUrl.replace(/\/+$/, '')}/` } });
-    return payloadFromBody(bytes, c.language, c.format ? `x.${c.format}` : '');
+    return toPayload(bytes, { language: c.language, nameHint: c.format ? `x.${c.format}` : '', requireCues: true });
   },
 };

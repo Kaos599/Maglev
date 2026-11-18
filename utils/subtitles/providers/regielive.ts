@@ -2,7 +2,8 @@
 import type { SubtitleCandidate, SubtitleContext, SubtitleProvider, SubtitleQuery } from '../types.ts';
 import { httpText, parseJson, ProviderError } from '../../search/http.ts';
 import { baseLanguage } from '../languages.ts';
-import { httpBytes, payloadFromBytes, stripSlash } from './batch1Http.ts';
+import { httpBytes, toPayload } from '../http.ts';
+import { stripSlash } from '../match.ts';
 
 export const ID = 'regielive';
 
@@ -77,9 +78,9 @@ export const regielive: SubtitleProvider = {
   async download(c: SubtitleCandidate, ctx: SubtitleContext) {
     const url = downloadUrl(c.id);
     if (!url) throw new ProviderError('parse', 'Bad subtitle id');
-    const bytes = await httpBytes(url, { signal: ctx.signal });
+    const { bytes } = await httpBytes(url, { signal: ctx.signal });
     // The site answers a failed download with the text "500".
     if (bytes.length < 16) throw new ProviderError('http', 'Not answering right now', 500);
-    return payloadFromBytes(bytes, 'ro');
+    return toPayload(bytes, 'ro');
   },
 };

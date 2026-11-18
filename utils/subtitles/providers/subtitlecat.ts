@@ -4,7 +4,8 @@
 import type { SubtitleCandidate, SubtitleContext, SubtitlePayload, SubtitleProvider, SubtitleQuery } from '../types.ts';
 import { decodeEntities, stripTags, toInt } from '../../search/text.ts';
 import { languageRank, normalizeLanguage } from '../languages.ts';
-import { absUrl, hasAllWords, hasEpisode, httpBytes, httpPage, isEpisodeQuery, isSeasonPack, safePath, toPayload, tokens, withoutYear } from './batch2Common.ts';
+import { httpBytes, httpPage, toPayload } from '../http.ts';
+import { absUrl, hasAllWords, hasEpisode, isEpisodeQuery, isSeasonPack, safePath, tokens, withoutYear } from '../match.ts';
 
 export const ID = 'subtitlecat';
 /** Release pages fetched per search: each one is a few hundred KB. */
@@ -122,6 +123,6 @@ export const subtitlecat: SubtitleProvider = {
     return out;
   },
   async download(c: SubtitleCandidate, ctx: SubtitleContext): Promise<SubtitlePayload> {
-    return toPayload(await httpBytes(absUrl(ctx.baseUrl, c.id), { signal: ctx.signal, referer: ctx.baseUrl }), c.language);
+    return toPayload((await httpBytes(absUrl(ctx.baseUrl, c.id), { signal: ctx.signal, referer: ctx.baseUrl })).bytes, c.language);
   },
 };

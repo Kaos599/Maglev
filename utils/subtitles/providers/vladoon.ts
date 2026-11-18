@@ -2,7 +2,8 @@
 import type { SubtitleCandidate, SubtitleContext, SubtitleProvider, SubtitleQuery } from '../types.ts';
 import { httpText, parseJson, ProviderError } from '../../search/http.ts';
 import { baseLanguage } from '../languages.ts';
-import { episodeOf, httpBytes, payloadFromBytes, sameTitle, stripSlash } from './batch1Http.ts';
+import { httpBytes, toPayload } from '../http.ts';
+import { episodeOf, sameTitle, stripSlash } from '../match.ts';
 
 export const ID = 'vladoon';
 
@@ -106,7 +107,7 @@ export const vladoon: SubtitleProvider = {
   async download(c: SubtitleCandidate, ctx: SubtitleContext) {
     const url = downloadUrl(ctx.baseUrl, c.id);
     if (!url) throw new ProviderError('parse', 'Bad subtitle id');
-    const bytes = await httpBytes(url, { signal: ctx.signal, accept: 'application/zip, */*', headers: { Referer: `${stripSlash(ctx.baseUrl)}/subs/` } });
-    return payloadFromBytes(bytes, 'bg');
+    const { bytes } = await httpBytes(url, { signal: ctx.signal, accept: 'application/zip, */*', headers: { Referer: `${stripSlash(ctx.baseUrl)}/subs/` } });
+    return toPayload(bytes, 'bg');
   },
 };

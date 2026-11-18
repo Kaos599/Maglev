@@ -3,7 +3,8 @@ import { ProviderError } from '../../search/http.ts';
 import { decodeEntities, stripTags } from '../../search/text.ts';
 import { baseLanguage } from '../languages.ts';
 import type { SubtitleCandidate, SubtitleContext, SubtitleProvider, SubtitleQuery } from '../types.ts';
-import { httpRaw, joinBase, pathOf, resolveHref, textOf, titleMatches, toPayload } from './b5common.ts';
+import { httpBytes, textOf, toPayload } from '../http.ts';
+import { joinBase, pathOf, resolveHref, titleMatches } from '../match.ts';
 
 export const ID = 'nekur';
 
@@ -71,7 +72,7 @@ export const nekur: SubtitleProvider = {
     const title = q.title.trim();
     if (!title) return [];
     // The site answers its search with HTTP 500 and the result table in the body.
-    const res = await httpRaw(joinBase(ctx.baseUrl, '/modules/Subtitles.php'), {
+    const res = await httpBytes(joinBase(ctx.baseUrl, '/modules/Subtitles.php'), {
       signal: ctx.signal,
       accept: 'text/html',
       method: 'POST',
@@ -92,7 +93,7 @@ export const nekur: SubtitleProvider = {
     return out;
   },
   async download(c: SubtitleCandidate, ctx: SubtitleContext) {
-    const res = await httpRaw(joinBase(ctx.baseUrl, c.id), { signal: ctx.signal, referer: joinBase(ctx.baseUrl, '/') });
+    const res = await httpBytes(joinBase(ctx.baseUrl, c.id), { signal: ctx.signal, referer: joinBase(ctx.baseUrl, '/') });
     return toPayload(res.bytes);
   },
 };

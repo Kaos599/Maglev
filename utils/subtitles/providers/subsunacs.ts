@@ -9,7 +9,8 @@ import { ProviderError } from '../../search/http.ts';
 import { archiveKind, decodeUtf8Strict, releaseSimilarity } from '../payload.ts';
 import { normalizeLanguage } from '../languages.ts';
 import type { SubFormat, SubtitleCandidate, SubtitleProvider, SubtitleQuery } from '../types.ts';
-import { UNSUPPORTED_TYPE, bestRelease, formatFromName, httpBytes, parseDate, payloadFromBody, titleMatches } from './b4util.ts';
+import { UNSUPPORTED_TYPE, formatFromName, httpBytes, toPayload } from '../http.ts';
+import { bestRelease, parseDate, titleMatchesAlias } from '../match.ts';
 
 export const ID = 'subsunacs';
 
@@ -101,7 +102,7 @@ export function toCandidates(rows: UnacsRow[], q: SubtitleQuery): SubtitleCandid
   for (const r of rows) {
     if (!wanted.has(r.language)) continue;
     if (/^(sub|idx|smi)$/i.test(r.format)) continue;
-    if (!titleMatches(q.title, r.title)) continue;
+    if (!titleMatchesAlias(q.title, r.title)) continue;
     if (episodic) {
       if (r.season !== q.season || r.episode !== q.episode) continue;
     } else {
@@ -174,10 +175,10 @@ export const subsunacs: SubtitleProvider = {
     const base = ctx.baseUrl.replace(/\/+$/, '');
     const page = absUrl(base, `${c.id.replace(/\/*$/, '/')}!`);
     const first = await httpBytes(page, { signal: ctx.signal, accept: '*/*', headers: { Referer: `${base}/search.php` } });
-    if (archiveKind(first.bytes) || !/html/i.test(first.contentType)) return payloadFromBody(first.bytes, c.language);
+    if (archiveKind(first.bytes) || !/html/i.test(first.contentType)) return toPayload(first.bytes, { language: c.language, requireCues: true });
     const entry = pickEntry(parseEntries(decodePage(first.bytes)), c.releaseName);
     if (!entry) throw new ProviderError('parse', UNSUPPORTED_TYPE);
     const file = await httpBytes(absUrl(base, entry.url), { signal: ctx.signal, accept: '*/*', headers: { Referer: page } });
-    return payloadFromBody(file.bytes, c.language, formatFromName(entry.name) ? entry.name : '');
+    return toPayload(file.bytes, { language: c.language, nameHint: formatFromName(entry.name) ? entry.name : '', requireCues: true });
   },
 };

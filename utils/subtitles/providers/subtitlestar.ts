@@ -3,7 +3,8 @@ import { ProviderError } from '../../search/http.ts';
 import { decodeEntities, stripTags } from '../../search/text.ts';
 import { baseLanguage } from '../languages.ts';
 import type { SubtitleCandidate, SubtitleContext, SubtitleProvider, SubtitleQuery } from '../types.ts';
-import { httpPage, httpRaw, joinBase, resolveHref, titleMatches, toPayload, tokens } from './b5common.ts';
+import { httpBytes, httpPageBytes, toPayload } from '../http.ts';
+import { joinBase, resolveHref, titleMatches, tokens } from '../match.ts';
 
 export const ID = 'subtitlestar';
 
@@ -129,12 +130,12 @@ export const subtitlestar: SubtitleProvider = {
     const seenPages = new Set<string>();
     for (const query of queriesFor(q)) {
       const url = `${joinBase(ctx.baseUrl, '/')}?s=${encodeURIComponent(query)}&post_type=post`;
-      const posts = parseSearch(await httpPage(url, { signal: ctx.signal, accept: 'text/html' })).filter((p) => postFits(p, q)).slice(0, 3);
+      const posts = parseSearch(await httpPageBytes(url, { signal: ctx.signal, accept: 'text/html' })).filter((p) => postFits(p, q)).slice(0, 3);
       const out: SubtitleCandidate[] = [];
       for (const p of posts) {
         if (seenPages.has(p.url)) continue;
         seenPages.add(p.url);
-        const detail = parseDetail(await httpPage(p.url, { signal: ctx.signal, accept: 'text/html', referer: url }));
+        const detail = parseDetail(await httpPageBytes(p.url, { signal: ctx.signal, accept: 'text/html', referer: url }));
         if (detail) out.push(...candidatesFor(detail, q));
       }
       if (out.length) return out;
@@ -143,7 +144,7 @@ export const subtitlestar: SubtitleProvider = {
   },
   async download(c: SubtitleCandidate, ctx: SubtitleContext) {
     if (!DL_HOST.test(c.id)) throw new ProviderError('parse', 'Unexpected response');
-    const res = await httpRaw(c.id, { signal: ctx.signal, referer: joinBase(ctx.baseUrl, '/') });
+    const res = await httpBytes(c.id, { signal: ctx.signal, referer: joinBase(ctx.baseUrl, '/') });
     return toPayload(res.bytes);
   },
 };

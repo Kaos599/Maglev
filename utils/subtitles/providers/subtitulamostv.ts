@@ -2,7 +2,8 @@
 import { decodeEntities, stripTags } from '../../search/text.ts';
 import { baseLanguage, normalizeLanguage } from '../languages.ts';
 import type { SubtitleCandidate, SubtitleContext, SubtitleProvider } from '../types.ts';
-import { fold, httpPage, httpRaw, joinBase, parseJsonList, pathOf, resolveHref, toPayload } from './b5common.ts';
+import { httpBytes, httpPageBytes, toPayload } from '../http.ts';
+import { fold, joinBase, parseJsonList, pathOf, resolveHref } from '../match.ts';
 
 export const ID = 'subtitulamostv';
 
@@ -133,10 +134,10 @@ export const subtitulamostv: SubtitleProvider = {
     if (!q.languages.some((l) => ['es', 'ca', 'en', 'gl', 'pt'].includes(baseLanguage(l)))) return [];
     const series = q.title.trim();
     if (!series) return [];
-    const get = (url: string, referer?: string) => httpPage(url, { signal: ctx.signal, accept: 'text/html', referer });
+    const get = (url: string, referer?: string) => httpPageBytes(url, { signal: ctx.signal, accept: 'text/html', referer });
     const queries = q.year ? [`${series} (${q.year})`, series] : [series];
     for (const query of queries) {
-      const shows = exactShows(parseShows(await httpPage(`${joinBase(ctx.baseUrl, '/search/query')}?q=${encodeURIComponent(query)}`, { signal: ctx.signal, accept: 'application/json', referer: joinBase(ctx.baseUrl, '/') })), query);
+      const shows = exactShows(parseShows(await httpPageBytes(`${joinBase(ctx.baseUrl, '/search/query')}?q=${encodeURIComponent(query)}`, { signal: ctx.signal, accept: 'application/json', referer: joinBase(ctx.baseUrl, '/') })), query);
       for (const show of shows) {
         let pageUrl = joinBase(ctx.baseUrl, `/shows/${show.id}`);
         let page = await get(pageUrl, joinBase(ctx.baseUrl, '/'));
@@ -162,7 +163,7 @@ export const subtitulamostv: SubtitleProvider = {
     return [];
   },
   async download(c: SubtitleCandidate, ctx: SubtitleContext) {
-    const res = await httpRaw(joinBase(ctx.baseUrl, c.id), { signal: ctx.signal, referer: joinBase(ctx.baseUrl, '/') });
+    const res = await httpBytes(joinBase(ctx.baseUrl, c.id), { signal: ctx.signal, referer: joinBase(ctx.baseUrl, '/') });
     return toPayload(res.bytes);
   },
 };

@@ -4,7 +4,8 @@ import type { SubtitleCandidate, SubtitleContext, SubtitlePayload, SubtitleProvi
 import { ProviderError, httpText, parseJson } from '../../search/http.ts';
 import { decodeEntities, stripTags } from '../../search/text.ts';
 import { languageRank, normalizeLanguage } from '../languages.ts';
-import { absUrl, hasAllWords, httpBytes, httpPage, isEpisodeQuery, looksHearingImpaired, toPayload, tokens, withoutYear } from './batch2Common.ts';
+import { httpBytes, httpPage, toPayload } from '../http.ts';
+import { absUrl, hasAllWords, isEpisodeQuery, looksHearingImpaired, tokens, withoutYear } from '../match.ts';
 
 export const ID = 'yifysubtitles';
 
@@ -120,6 +121,6 @@ export const yifysubtitles: SubtitleProvider = {
     const path = parseDownloadPath(html);
     if (!path) throw new ProviderError('parse', 'Unexpected response');
     // The zip is only served with the subtitle page as referer.
-    return toPayload(await httpBytes(absUrl(ctx.baseUrl, path), { signal: ctx.signal, referer: page }), c.language);
+    return toPayload((await httpBytes(absUrl(ctx.baseUrl, path), { signal: ctx.signal, referer: page })).bytes, c.language);
   },
 };

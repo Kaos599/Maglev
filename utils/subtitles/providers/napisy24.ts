@@ -4,7 +4,8 @@ import type { SubtitleCandidate, SubtitleContext, SubtitleProvider, SubtitleQuer
 import { ProviderError } from '../../search/http.ts';
 import { baseLanguage } from '../languages.ts';
 import { archiveKind } from '../payload.ts';
-import { httpBytes, payloadFromBytes, stripSlash } from './batch1Http.ts';
+import { httpBytes, toPayload } from '../http.ts';
+import { stripSlash } from '../match.ts';
 
 export const ID = 'napisy24';
 
@@ -83,7 +84,7 @@ export function toCandidates(r: N24Response, q: Pick<SubtitleQuery, 'hash' | 'vi
 }
 
 async function lookup(base: string, hash: string, bytes: number, fileName: string, ctx: SubtitleContext): Promise<N24Response> {
-  const body = await httpBytes(`${stripSlash(base)}/run/CheckSubAgent.php`, {
+  const { bytes: body } = await httpBytes(`${stripSlash(base)}/run/CheckSubAgent.php`, {
     signal: ctx.signal,
     method: 'POST',
     body: requestBody(hash, bytes, fileName),
@@ -115,6 +116,6 @@ export const napisy24: SubtitleProvider = {
     const r = await lookup(ctx.baseUrl, id.hash, id.bytes, id.fileName, ctx);
     if (r.status === 'login error') throw new ProviderError('http', 'Napisy24 login failed', 401);
     if (r.status !== 'OK-2' || r.archive.length === 0) throw new ProviderError('parse', 'Subtitle is no longer there');
-    return payloadFromBytes(r.archive, 'pl');
+    return toPayload(r.archive, 'pl');
   },
 };

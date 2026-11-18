@@ -3,7 +3,8 @@ import { ProviderError } from '../../search/http.ts';
 import { decodeEntities, stripTags } from '../../search/text.ts';
 import { baseLanguage } from '../languages.ts';
 import type { SubtitleCandidate, SubtitleContext, SubtitleProvider, SubtitleQuery } from '../types.ts';
-import { fold, httpPage, httpRaw, joinBase, pathOf, resolveHref, titleMatches, toPayload, tokens } from './b5common.ts';
+import { httpBytes, httpPageBytes, toPayload } from '../http.ts';
+import { fold, joinBase, pathOf, resolveHref, titleMatches, tokens } from '../match.ts';
 
 export const ID = 'soustitreseu';
 
@@ -179,16 +180,16 @@ export const soustitreseu: SubtitleProvider = {
     const episode = q.episodeConfidence === 'sure' && q.season !== undefined && q.episode !== undefined;
     if (!q.title.trim() || tokens(q.title).length === 0) return [];
     const url = searchUrl(ctx.baseUrl, q.title.trim());
-    const rows = rankRows(parseSearch(await httpPage(url, { signal: ctx.signal, accept: 'text/html' }), url), q.title, episode ? 'series' : 'film', episode ? undefined : q.year).slice(0, 3);
+    const rows = rankRows(parseSearch(await httpPageBytes(url, { signal: ctx.signal, accept: 'text/html' }), url), q.title, episode ? 'series' : 'film', episode ? undefined : q.year).slice(0, 3);
     for (const row of rows) {
-      const body = await httpPage(row.url, { signal: ctx.signal, accept: 'text/html', referer: url });
+      const body = await httpPageBytes(row.url, { signal: ctx.signal, accept: 'text/html', referer: url });
       const found = candidatesFor(parseArchives(body, row.url), row, q);
       if (found.length) return found;
     }
     return [];
   },
   async download(c: SubtitleCandidate, ctx: SubtitleContext) {
-    const res = await httpRaw(joinBase(ctx.baseUrl, c.id), { signal: ctx.signal, referer: joinBase(ctx.baseUrl, '/') });
+    const res = await httpBytes(joinBase(ctx.baseUrl, c.id), { signal: ctx.signal, referer: joinBase(ctx.baseUrl, '/') });
     return toPayload(res.bytes);
   },
 };
