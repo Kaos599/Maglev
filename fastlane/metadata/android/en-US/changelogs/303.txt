@@ -1,4 +1,5 @@
-- Find subtitles for videos you've downloaded, from 21 free sources with no account. Open a finished download or a video in a torrent's Files tab.
+- Subtitles for videos you've downloaded, from 21 free sources, no account. Open a finished download, or a video in a torrent's Files tab.
+- Link downloads get their own page. Choose Compact or Detailed in Appearance.
 - Transfers says why a download is held, with a button to fix it.
 - Search has a size range slider. Swipe a Transfers row to pause or remove it.
 - Swipe the browser address bar to switch tabs. Stricter browser blocking.
