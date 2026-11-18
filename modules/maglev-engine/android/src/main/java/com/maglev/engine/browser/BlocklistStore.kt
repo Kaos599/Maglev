@@ -37,6 +37,8 @@ internal class Validators(val etag: String?, val lastModified: String?)
  */
 object BlocklistStore {
     private const val ASSET = "blocklist.txt"
+    /** Crypto-mining domains (section 24.4a). Merged into every active list, so a custom list never drops them. */
+    private const val MINERS_ASSET = "miners.txt"
     private const val DIR = "browser"
     private const val FILE = "blocklist.txt"
     private const val META = "blocklist.json"
@@ -48,6 +50,7 @@ object BlocklistStore {
     private val started = AtomicBoolean(false)
     private val ready = CountDownLatch(1)
     private val writeLock = Any()
+    @Volatile private var miners: Set<String> = emptySet()
 
     /** Starts loading in the background, once. Safe to call from any thread. */
     fun warm(context: Context) {
@@ -82,13 +85,25 @@ object BlocklistStore {
 
     private fun dir(context: Context) = File(context.filesDir, DIR)
 
+    private fun loadMiners(context: Context) {
+        miners = try {
+            context.assets.open(MINERS_ASSET).use { BlocklistParser.parse(BlocklistParser.readCapped(it)) }
+        } catch (_: Exception) {
+            emptySet()
+        }
+    }
+
+    /** The matcher for [domains] plus the mining domains. `info.domains` still counts only [domains]. */
+    private fun withMiners(domains: Set<String>): DomainSet = DomainSet(if (miners.isEmpty()) domains else domains + miners)
+
     private fun load(context: Context) {
+        loadMiners(context)
         val f = File(dir(context), FILE)
         if (f.isFile) {
             try {
                 val domains = f.inputStream().use { BlocklistParser.parse(BlocklistParser.readCapped(it)) }
                 BlocklistParser.requireEnough(domains)
-                set.set(DomainSet(domains))
+                set.set(withMiners(domains))
                 info.set(BlocklistInfo(domains.size, f.lastModified(), "downloaded", readUrls(context)))
                 return
             } catch (_: Exception) {
@@ -100,7 +115,7 @@ object BlocklistStore {
 
     private fun loadBundled(context: Context) {
         val domains = context.assets.open(ASSET).use { BlocklistParser.parse(BlocklistParser.readCapped(it)) }
-        set.set(DomainSet(domains))
+        set.set(withMiners(domains))
         info.set(BlocklistInfo(domains.size, null, "bundled", emptyList()))
     }
 
@@ -136,6 +151,7 @@ object BlocklistStore {
         }
         BrowserGovernance.blockedReason(context)?.let { throw BlocklistException("BLOCKED", it) }
         warm(context)
+        ready.await(10, TimeUnit.SECONDS)
         // A conditional request is skipped when the downloaded list is missing (section 31.2).
         val stored = if (conditional && File(dir(context), FILE).isFile) readValidators(context) else emptyMap()
         val answers = LinkedHashMap<String, Fetched>()
@@ -165,7 +181,7 @@ object BlocklistStore {
             }
             val meta = JSONObject().put("urls", JSONArray(clean)).put("validators", validators).toString()
             writeAtomic(File(d, META), meta.toByteArray(Charsets.UTF_8))
-            set.set(DomainSet(all))
+            set.set(withMiners(all))
             val written = File(d, FILE)
             val i = BlocklistInfo(all.size, written.lastModified(), "downloaded", clean, written.length(), true)
             info.set(i)

@@ -51,7 +51,9 @@ export type BrowserPageEvent = {
 export type BrowserFoundEvent = { items: FoundItem[] };
 /** `page` is the count for this page load; `total` is the count since the browser opened. */
 export type BrowserBlockedCountEvent = { page: number; total: number };
+/** `tapped`: the user typed or tapped to get this file. A download the page starts on its own has `tapped: false` and only joins the Files list. */
 export type BrowserDownloadRequestEvent = {
+  tapped: boolean;
   url: string;
   mime: string | null;
   size: number | null;
