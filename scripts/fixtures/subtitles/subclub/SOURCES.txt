@@ -1,0 +1,5 @@
+Fetched live with curl (generic Maglev User-Agent, no cookies) on 2026-11-18.
+search_inception.html https://www.subclub.eu/jutud.php?otsing=Inception, trimmed to the first result row
+archive_list.html     https://www.subclub.eu/subtitles_archivecontent.php?id=10100 (unedited)
+download.srt          https://www.subclub.eu/down.php?id=10100&filename=SW5jZXB0aW9uLjcyMHAuQmx1UmF5LngyNjQtQ1JPU1NCT1cuc3J0 (unedited, ISO-8859 text)
+Note: https://www.subclub.eu/down.php?id=10100 alone is a RAR archive; only the per-file links are used.
