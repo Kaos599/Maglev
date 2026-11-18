@@ -22,6 +22,7 @@ import { Banner, Button, EmptyBlock, IconButton, ListRow, PressableScale, Progre
 import { FoundTray } from '../components/browser/FoundTray';
 import { TabWebView, type TabHandlers } from '../components/browser/TabWebView';
 import { TabSwitcher } from '../components/browser/TabSwitcher';
+import { AddressSwipe } from '../components/browser/AddressSwipe';
 import { FindBar, type FindResult } from '../components/browser/FindBar';
 import { TextSizeSheet } from '../components/browser/TextSizeSheet';
 import { LinkMenu } from '../components/browser/LinkMenu';
@@ -648,6 +649,13 @@ export default function BrowserScreen({ inTab = false }: { inTab?: boolean }) {
             if (!handleBack()) leave();
           }}
         />
+        <AddressSwipe
+          strip={tabsState ? switcherOrder(tabsState) : []}
+          activeId={activeId}
+          enabled={prefs.swipeTabs && !editing && ready}
+          onSelect={selectTab}
+          onOpenSwitcher={() => setSwitcherOpen(true)}
+        >
         <View style={[styles.address, editing && styles.addressEditing]}>
           {!editing && page?.url ? (
             <PixelIcon
@@ -692,6 +700,7 @@ export default function BrowserScreen({ inTab = false }: { inTab?: boolean }) {
             accessibilityLabel="Address"
           />
         </View>
+        </AddressSwipe>
         <IconButton
           icon={loading ? 'stop' : 'retry'}
           accessibilityLabel={loading ? 'Stop loading' : 'Reload'}
