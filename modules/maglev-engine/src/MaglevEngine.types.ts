@@ -645,7 +645,7 @@ export interface FeedAutomationStatus {
 export type EngineStatus =
   | { kind: 'starting'; message: string }
   | { kind: 'ready'; message: string; simulated: boolean }
-  | { kind: 'unavailable'; message: string };
+  | { kind: 'unavailable'; message: string; /** Engine error code of the failed start, when known. */ code?: string };
 
 export type Unsubscribe = () => void;
 

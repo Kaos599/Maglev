@@ -87,7 +87,7 @@ export default function SearchScreen() {
   const { colors } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const router = useRouter();
-  const { startTorrent, telemetry, getFreeSpace, downloads, onMeteredNetwork } = useMaglevEngine();
+  const { startTorrent, restartEngine, telemetry, getFreeSpace, downloads, onMeteredNetwork } = useMaglevEngine();
   const { settings } = useSettings();
   const [prefs, updatePrefs] = useSearchPrefs();
 
@@ -344,7 +344,11 @@ export default function SearchScreen() {
           onAction: () => router.push('/' as never),
         });
       } catch (e) {
-        const { duplicate, notice: n } = addErrorNotice(e);
+        const { duplicate, notice: n } = addErrorNotice(e, () => {
+          void restartEngine().then((ok) => {
+            if (ok) void handleAdd(r);
+          });
+        });
         if (duplicate) setSessionAdded((prev) => new Set(prev).add(r.infoHash));
         show(n);
       } finally {
@@ -352,7 +356,7 @@ export default function SearchScreen() {
         setBusyHash(null);
       }
     },
-    [remember, show, startTorrent, trimmed, getFreeSpace, telemetry.torrents, router, onMeteredNetwork, settings.network.wifiOnly],
+    [remember, show, startTorrent, restartEngine, trimmed, getFreeSpace, telemetry.torrents, router, onMeteredNetwork, settings.network.wifiOnly],
   );
 
   // Tapping Add on a warned row asks first; with the warning off it is one tap.

@@ -1,16 +1,19 @@
 import React, { useCallback, useMemo } from 'react';
-import { BackHandler, Platform, StyleSheet, View } from 'react-native';
+import { Platform, StyleSheet, View } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
 import { Screen, EmptyBlock } from '../components/ui';
 import { useMaglevEngine } from '../context/EngineContext';
 import { useTheme } from '../context/ThemeContext';
 import { ThemeColors } from '../constants/theme';
 import { empty } from '../constants/copy';
+import { maglevEngine } from 'maglev-engine';
+import { START_ENGINE_LABEL, engineFailureAction } from '../utils/addErrorNotice';
 
 export default function EngineErrorScreen() {
   const { colors } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
-  const { engineStatus } = useMaglevEngine();
+  const { engineStatus, retryEngine } = useMaglevEngine();
+  const failure = engineFailureAction(engineStatus.kind === 'unavailable' ? engineStatus.code : undefined);
   const message = engineStatus.kind === 'starting'
     ? 'The download engine took too long to start.'
     : engineStatus.message || 'The engine did not report a reason.';
@@ -28,6 +31,18 @@ export default function EngineErrorScreen() {
     }
   }, [message]);
 
+  // Pick folder again: choose a folder (it is persisted as the target), then start the engine.
+  const primaryPress = useCallback(async () => {
+    if (failure.action === 'pickFolder') {
+      try {
+        await maglevEngine.pickDownloadFolder();
+      } catch {
+        // The picker failed; starting again below still reports the real reason.
+      }
+    }
+    await retryEngine();
+  }, [failure.action, retryEngine]);
+
   return (
     <Screen edges={['top', 'bottom', 'left', 'right']} testID="engine-error">
       <View style={styles.center}>
@@ -36,8 +51,12 @@ export default function EngineErrorScreen() {
           error
           title={empty.engineError.title}
           body={message}
-          primary={{ label: 'Copy details', icon: 'copy', onPress: copyDetails }}
-          secondary={{ label: 'Close app', onPress: () => BackHandler.exitApp() }}
+          primary={{ label: failure.label, onPress: primaryPress }}
+          secondary={
+            failure.action === 'pickFolder'
+              ? { label: START_ENGINE_LABEL, onPress: () => void retryEngine() }
+              : { label: 'Copy details', onPress: copyDetails }
+          }
         />
       </View>
     </Screen>

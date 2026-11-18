@@ -279,6 +279,11 @@ export const empty = {
   engineError: {
     title: 'Engine failed to start',
   },
+  /** utils/addErrorNotice.ts, app/add-torrent.tsx, app/engine-error.tsx */
+  engineStopped: {
+    title: 'The download engine stopped',
+    noReason: "It couldn't be started again.",
+  },
 } as const;
 
 /** Labels for browser history (NATIVE_CONTRACT 24.9): the screen, the suggestions, the clear sheet and its settings. */

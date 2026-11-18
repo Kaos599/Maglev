@@ -122,6 +122,13 @@ object EngineHost {
     /** Info-hashes already handed to the media scanner for their current completion (contract 12.2). */
     private val mediaScanned = ConcurrentHashMap.newKeySet<String>()
     private val pollLock = Any()
+
+    /**
+     * Serializes init, ensureStarted and shutdownEngine. Without it an init that runs while a shutdown is in flight
+     * starts a fresh Rust engine that the shutdown then takes, leaving `initialized == true` and no engine.
+     * Order: lifecycleLock, then pollLock. Nothing holding pollLock may call these three.
+     */
+    private val lifecycleLock = Any()
     private var initOnlySince = 0L
     private val cancelledCopies = ConcurrentHashMap.newKeySet<String>()
     /** Copy keys whose removal asked for Delete file: their target in the chosen folder goes even when complete. */
@@ -230,7 +237,9 @@ object EngineHost {
      * JS entry point. Idempotent: if the engine was already started headlessly after a process restart,
      * the JS config is applied to the running engine instead of starting a second one.
      */
-    fun init(config: Map<String, Any?>): Map<String, Any?> {
+    fun init(config: Map<String, Any?>): Map<String, Any?> = synchronized(lifecycleLock) { initLocked(config) }
+
+    private fun initLocked(config: Map<String, Any?>): Map<String, Any?> {
         val snake = Json.snakeify(config) as Map<*, *>
         val configJson = Json.toJson(snake)
         captureGlobalLimits(snake)
@@ -351,7 +360,9 @@ object EngineHost {
      * JS and no service did. Blocking, so call it off the main thread. Safe when already running (returns ok), because
      * `nativeInit` is idempotent.
      */
-    @Synchronized fun ensureStarted(): Map<String, Any?> = if (initialized) mapOf("ok" to true) else startEngine("")
+    fun ensureStarted(): Map<String, Any?> = synchronized(lifecycleLock) {
+        if (initialized) mapOf("ok" to true) else startEngine("")
+    }
 
     private fun prefs(c: Context) = c.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
 
@@ -378,7 +389,9 @@ object EngineHost {
     }
 
     /** Stops the engine, the poller, the governance watchers and the service. */
-    fun shutdownEngine(): Map<String, Any?> {
+    fun shutdownEngine(): Map<String, Any?> = synchronized(lifecycleLock) { shutdownEngineLocked() }
+
+    private fun shutdownEngineLocked(): Map<String, Any?> {
         initialized = false
         clearBlocks()
         startWarning = null
