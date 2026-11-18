@@ -7,6 +7,7 @@ import { useSyncExternalStore } from 'react';
 import { AppState } from 'react-native';
 import { maglevEngine, settingsStore, updateBlocklist } from 'maglev-engine';
 import { PROVIDERS } from '../search/aggregate.ts';
+import { SUBTITLE_PROVIDERS } from '../subtitles/providers/index.ts';
 import { getBrowserPrefs, updateBrowserPrefs } from '../prefs/browser.ts';
 import { getListPrefs, updateListPrefs } from '../prefs/lists.ts';
 import { autoCheckDue, busy, initialState, reduce, type ListsEvent, type ListsNet, type ListsState } from './machine.ts';
@@ -14,7 +15,7 @@ import { countChangedSources, nextBlocklistUrls, runListCheck, adResultOf, type 
 import { setAppliedFile } from './store.ts';
 import type { SourcesFile } from './schema.ts';
 
-export { getAppliedFile, getListsVersion, subscribeLists, listTrackers } from './store.ts';
+export { getAppliedFile, getListsVersion, subscribeLists, listTrackers, listSubtitleDisabled, listSubtitleMirrors, listSubtitleEntries } from './store.ts';
 
 let state: ListsState = initialState;
 const listeners = new Set<() => void>();
@@ -92,6 +93,7 @@ const deps = (): ListDeps => ({
   fetch: ((url, init) => fetch(url, init as RequestInit)) as TextFetch,
   verify: (body, sig) => maglevEngine.verifyListSignature(body, sig),
   known: new Set(PROVIDERS.map((p) => p.id)),
+  knownSubtitles: new Set(SUBTITLE_PROVIDERS.map((p) => p.id)),
   net: readNet,
   rules,
   appliedSerial: () => getListPrefs().appliedSerial,

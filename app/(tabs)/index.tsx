@@ -12,6 +12,11 @@ import { DownloadSheet } from '../../components/transfers/DownloadSheet';
 import { FloatingActionButton } from '../../components/FloatingActionButton';
 import { SpeedTelemetryHeader } from '../../components/SpeedTelemetryHeader';
 import { BulkBar } from '../../components/transfers/BulkBar';
+import { SubtitleSheet } from '../../components/subtitles/SubtitleSheet';
+import { useSubtitleAvailability } from '../../components/subtitles/useSubtitleEntry';
+import { useSubtitleStateVersion } from '../../components/subtitles/useSubtitleStates';
+import { cardIconModel, downloadEntryMode, downloadTarget, type SubtitleTarget } from '../../components/subtitles/flow';
+import { recallTarget, stateFor } from '../../components/subtitles/stateStore';
 import { ClipboardChip } from '../../components/transfers/ClipboardChip';
 import { AddMenuSheet } from '../../components/add/AddMenuSheet';
 import { ClearFinishedSheet } from '../../components/transfers/ClearFinishedSheet';
@@ -113,6 +118,22 @@ export default function TransfersScreen() {
     getFreeSpace,
   } = useMaglevEngine();
   const focused = useIsFocused();
+  const subtitleAvail = useSubtitleAvailability();
+  const subtitleVersion = useSubtitleStateVersion();
+  const [subtitleTarget, setSubtitleTarget] = useState<SubtitleTarget | null>(null);
+  const onCardSubtitles = useCallback((ownerKey: string) => {
+    const t = recallTarget(ownerKey);
+    if (t) setSubtitleTarget(t);
+  }, []);
+  const onTorrentSubtitles = useCallback((id: string) => onCardSubtitles(`t:${id}`), [onCardSubtitles]);
+  const onDownloadSubtitles = useCallback((id: string) => onCardSubtitles(`d:${id}`), [onCardSubtitles]);
+  // The card icon needs the switch on and a source on, like every other entry point; the stored state does the rest.
+  const subtitleIcon = useCallback(
+    (ownerKey: string) => (subtitleAvail.master && subtitleAvail.sourcesOn > 0 ? cardIconModel(stateFor(ownerKey), Date.now()) : null),
+    // The version changes when any subtitle state is written.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [subtitleAvail, subtitleVersion],
+  );
   const telemetry = useHeldWhileBlurred(liveTelemetry, focused);
   const downloads = useHeldWhileBlurred(liveDownloads, focused);
 
@@ -529,10 +550,12 @@ export default function TransfersScreen() {
         onPlay={onPlay}
         onRemove={onSwipeRemove}
         swipeEnabled={swipeEnabled}
+        subtitle={subtitleIcon(`t:${item.torrent.id}`)}
+        onSubtitles={onTorrentSubtitles}
         showFileIcon={showFileIcons}
       />
     ),
-    [selectionMode, selectedIds, onCardPress, startSelection, onPause, onResume, onKeepTrying, onOpenTorrent, onResumeAnyway, onPlay, onSwipeRemove, swipeEnabled, showFileIcons],
+    [selectionMode, selectedIds, onCardPress, startSelection, onPause, onResume, onKeepTrying, onOpenTorrent, onResumeAnyway, onPlay, onSwipeRemove, swipeEnabled, subtitleIcon, onTorrentSubtitles, showFileIcons],
   );
   // One list: torrents and link downloads, ordered by the current sort.
   const items = useMemo(() => mergeTransfers(visible, shownDownloads, sort), [visible, shownDownloads, sort]);
@@ -550,10 +573,12 @@ export default function TransfersScreen() {
           onLongPress={startDownloadSelection}
           onRemove={onSwipeRemoveDownload}
           swipeEnabled={swipeEnabled}
+          subtitle={subtitleIcon(`d:${item.download.id}`)}
+          onSubtitles={onDownloadSubtitles}
           showFileIcon={showFileIcons}
         />
       ),
-    [renderTorrent, onDownloadPress, onDownloadAction, selectionMode, selectedIds, startDownloadSelection, onSwipeRemoveDownload, swipeEnabled, showFileIcons],
+    [renderTorrent, onDownloadPress, onDownloadAction, selectionMode, selectedIds, startDownloadSelection, onSwipeRemoveDownload, swipeEnabled, subtitleIcon, onDownloadSubtitles, showFileIcons],
   );
   const progressMotion = useMemo<ProgressMotion>(() => ({ active: focused, sweeps: LIST_SWEEPS }), [focused]);
 
@@ -725,7 +750,14 @@ export default function TransfersScreen() {
         onRemove={(id, deleteFiles) => void removeDownload(id, deleteFiles)}
         onSetLimit={(id, bps) => void setDownloadLimits(id, bps)}
         onNewLink={refreshDownloadUrl}
+        subtitles={sheetDownload ? downloadEntryMode(sheetDownload, subtitleAvail) : 'hidden'}
+        onFindSubtitles={(id) => {
+          const d = downloads.find((x) => x.id === id);
+          const t = d ? downloadTarget(d) : null;
+          if (t) setSubtitleTarget(t);
+        }}
       />
+      <SubtitleSheet target={subtitleTarget} onClose={() => setSubtitleTarget(null)} />
       <ClearFinishedSheet
         visible={clearOpen}
         count={finished.torrents.length + finished.downloads.length}

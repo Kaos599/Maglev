@@ -99,6 +99,8 @@ const MAP = {
   // browser
   lock: 'lock',
   forward: 'arrow-right',
+  // subtitles
+  subtitles: 'badge-captions',
 };
 
 const out = {};

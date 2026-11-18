@@ -1,5 +1,8 @@
 import type {
   ActiveBlock,
+  SubtitleHashResult,
+  SubtitleSaveResult,
+  SubtitleZipEntry,
   AddTorrentOptions,
   AggregatedTelemetry,
   Detail,
@@ -45,7 +48,7 @@ import type {
   UpdateNetwork,
   UrlProbe,
 } from './MaglevEngine.types.ts';
-import { HEALTH_TAGS } from './MaglevEngine.types.ts';
+import { HEALTH_TAGS, subtitleError } from './MaglevEngine.types.ts';
 import { blocksChanged } from './blocksDiff.ts';
 import {
   AUTO_RETRY_DELAYS,
@@ -137,6 +140,62 @@ type Listener = (telemetry: AggregatedTelemetry) => void;
  * contract's validation and state rules. It also keeps a legacy synchronous surface (startTorrent,
  * getAggregatedTelemetry, stepSimulation, ...) used by the Node test suites.
  */
+// ---- subtitles (NATIVE_CONTRACT 36.6): dev and web only ----------------------------------------------------------
+function b64ToBytes(b64: string): Uint8Array {
+  const bin = atob(b64);
+  const out = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+  return out;
+}
+function bytesToB64(bytes: Uint8Array): string {
+  let bin = '';
+  for (let i = 0; i < bytes.length; i += 8192) bin += String.fromCharCode(...bytes.subarray(i, i + 8192));
+  return btoa(bin);
+}
+const SUBTITLE_EXT = /\.(srt|ass|ssa|vtt)$/i;
+/** Stable 32-bit FNV-1a, used only to make the mock hash look like a hash. */
+function fnv1a(text: string, seed: number): number {
+  let h = seed >>> 0;
+  for (let i = 0; i < text.length; i++) {
+    h ^= text.charCodeAt(i);
+    h = Math.imul(h, 16777619) >>> 0;
+  }
+  return h >>> 0;
+}
+/** Reads a ZIP whose members are all stored (method 0), keeping subtitle members. The mock's fixture format. */
+export function mockUnzipSubtitles(base64: string): SubtitleZipEntry[] {
+  let zip: Uint8Array;
+  try {
+    zip = b64ToBytes(base64);
+  } catch {
+    throw subtitleError('ARCHIVE_UNSAFE', 'This is not a readable zip');
+  }
+  const dv = new DataView(zip.buffer, zip.byteOffset, zip.byteLength);
+  const out: SubtitleZipEntry[] = [];
+  let pos = 0;
+  let count = 0;
+  let total = 0;
+  while (pos + 30 <= zip.length && dv.getUint32(pos, true) === 0x04034b50) {
+    if (++count > 200) throw subtitleError('ARCHIVE_UNSAFE', 'The archive has too many files');
+    const method = dv.getUint16(pos + 8, true);
+    const size = dv.getUint32(pos + 22, true);
+    const nameLen = dv.getUint16(pos + 26, true);
+    const extraLen = dv.getUint16(pos + 28, true);
+    const start = pos + 30 + nameLen + extraLen;
+    if (method !== 0 || start + size > zip.length) throw subtitleError('ARCHIVE_UNSAFE', 'The mock reads stored zips only');
+    total += size;
+    if (total > 100 * zip.length) throw subtitleError('ARCHIVE_UNSAFE', 'The archive expands too much');
+    const full = String.fromCharCode(...zip.subarray(pos + 30, pos + 30 + nameLen));
+    const base = full.split(/[\\/]/).pop() ?? '';
+    if (base && !full.endsWith('/') && SUBTITLE_EXT.test(base)) {
+      if (size > 5 * 1024 * 1024) throw subtitleError('ARCHIVE_UNSAFE', 'A file in the archive is too big');
+      out.push({ name: base, base64: bytesToB64(zip.subarray(start, start + size)) });
+    }
+    pos = start + size;
+  }
+  return out;
+}
+
 export class MaglevMockEngine implements MaglevEngineApi {
   private meta: Map<string, TorrentMeta> = new Map();
   private snapshotListeners: Set<(e: TelemetryEvent) => void> = new Set();
@@ -1361,6 +1420,29 @@ export class MaglevMockEngine implements MaglevEngineApi {
 
   public async requestLegacyStorage(): Promise<EngineResult> {
     return ok();
+  }
+
+  // Subtitles (NATIVE_CONTRACT 36.6). Deterministic and in memory; nothing touches a disk.
+  private savedSubtitles = new Map<string, string>();
+  public async subtitleHash(pathOrUri: string): Promise<SubtitleHashResult> {
+    if (!pathOrUri) throw subtitleError('NOT_FOUND', 'The video was not found');
+    const bytes = 200_000_000 + (fnv1a(pathOrUri, 2166136261) % 1_000_000_000);
+    const hi = fnv1a(pathOrUri, 7);
+    const lo = fnv1a(`${pathOrUri}:${bytes}`, 13);
+    return { hash: hi.toString(16).padStart(8, '0') + lo.toString(16).padStart(8, '0'), bytes };
+  }
+  public async saveSubtitle(videoPathOrUri: string, fileName: string, base64: string, replace: boolean): Promise<SubtitleSaveResult> {
+    if (!fileName || fileName.includes('/') || fileName.includes('..') || new TextEncoder().encode(fileName).length > 255) {
+      throw subtitleError('CANT_WRITE', "That file name can't be used");
+    }
+    const dir = videoPathOrUri.includes('/') ? videoPathOrUri.slice(0, videoPathOrUri.lastIndexOf('/') + 1) : '';
+    const path = dir + fileName;
+    if (this.savedSubtitles.has(path) && !replace) throw subtitleError('NAME_TAKEN', 'A file with this name already exists');
+    this.savedSubtitles.set(path, base64);
+    return { path };
+  }
+  public async unzipSubtitles(base64: string): Promise<SubtitleZipEntry[]> {
+    return mockUnzipSubtitles(base64);
   }
 
   // In-app updates (NATIVE_CONTRACT 27). Dev and web only: never pretends to download or install.

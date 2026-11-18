@@ -1,0 +1,3 @@
+Fetched live with curl (generic Maglev User-Agent, no cookies) on 2026-11-18.
+search_inception.html POST ajax=1&sSearch=Inception to https://subtitri.nekur.net/modules/Subtitles.php (the site answers HTTP 500 with this body; unedited)
+download.zip          https://subtitri.nekur.net/filmu-subtitri/download/a5f2dfe46e3d41cb342349b881d03cb0 (unedited)

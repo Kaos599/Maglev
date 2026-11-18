@@ -140,6 +140,44 @@ export type PieceMatrix = Uint8Array; // 256 bytes (16x16)
 // NativeConfig is the exception: it is passed to Rust as-is, so it keeps snake_case keys.
 // ---------------------------------------------------------------------------
 
+/** NATIVE_CONTRACT 36.6. `UNSUPPORTED` is added by the bridge when no engine can answer. */
+export type SubtitleErrorCode =
+  | 'FILE_TOO_SMALL'
+  | 'NOT_FOUND'
+  | 'IO'
+  | 'NAME_TAKEN'
+  | 'VERIFY_FAILED'
+  | 'CANT_WRITE'
+  | 'NO_SPACE'
+  | 'ARCHIVE_UNSAFE'
+  | 'UNSUPPORTED';
+
+export interface SubtitleError extends Error {
+  code: SubtitleErrorCode;
+}
+
+/** An Error carrying a subtitle error code, the way a native rejection does. */
+export function subtitleError(code: SubtitleErrorCode, message: string): SubtitleError {
+  return Object.assign(new Error(message), { code }) as SubtitleError;
+}
+
+export interface SubtitleHashResult {
+  /** 16 lowercase hex digits. */
+  hash: string;
+  /** File size in bytes. */
+  bytes: number;
+}
+
+export interface SubtitleSaveResult {
+  /** Path or document URI of the file that was written. */
+  path: string;
+}
+
+export interface SubtitleZipEntry {
+  name: string;
+  base64: string;
+}
+
 export type EngineErrorCode =
   | 'INVALID_SOURCE'
   | 'DUPLICATE'
@@ -751,6 +789,16 @@ export interface MaglevEngineApi {
   /** Choose a launcher icon. Native applies it when the app leaves the foreground. Unknown id: INVALID_ARGUMENT. */
   setAppIcon(id: string): Promise<EngineResult>;
   requestLegacyStorage(): Promise<EngineResult>;
+  // Subtitles (NATIVE_CONTRACT 36.6). These reject with an Error whose `code` is a SubtitleErrorCode.
+  /** OpenSubtitles 64-bit hash of a finished video (POSIX path or SAF document URI). Errors: FILE_TOO_SMALL, NOT_FOUND, IO. */
+  subtitleHash(pathOrUri: string): Promise<SubtitleHashResult>;
+  /**
+   * Writes a subtitle next to the video. `videoPathOrUri` is an absolute POSIX path, `file://` path or a SAF document
+   * URI inside a granted tree. Errors: NAME_TAKEN (name exists and `replace` is false), VERIFY_FAILED, CANT_WRITE, NO_SPACE.
+   */
+  saveSubtitle(videoPathOrUri: string, fileName: string, base64: string, replace: boolean): Promise<SubtitleSaveResult>;
+  /** Subtitle members (.srt/.ass/.ssa/.vtt, base name) of a zip, in memory. Error: ARCHIVE_UNSAFE. */
+  unzipSubtitles(base64: string): Promise<SubtitleZipEntry[]>;
   // In-app updates (NATIVE_CONTRACT 27)
   /** Who installed Maglev. `managedBy` is non-null when F-Droid, Obtainium, Google Play, Accrescent or another app store owns updates. */
   getInstallSource(): Promise<InstallSource>;

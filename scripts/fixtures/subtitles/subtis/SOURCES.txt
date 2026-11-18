@@ -1,0 +1,4 @@
+Recorded 2026-11-18.
+find_name.json  GET https://api.subt.is/v1/subtitle/find/file/name/Just.Play.Dead.2026.1080p.WEBRip.x264.AAC5.1-[YTS.GG - YTS.BZ].mp4, unedited.
+download_head.srt  first 1200 bytes of GET https://api.subt.is/v1/subtitle/link/25826 (302 to the file, followed).
+Hash and size lookups answered 404 for every file we tried, so those two paths are covered only by the URL builder.

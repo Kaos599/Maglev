@@ -28,6 +28,8 @@ const ALLOW = {
   "updates: updateCopy.available((info?.version ?? newerManaged?.version) as string)": "status row built from the new version number",
   "about: l.title": "list of project links",
   "licenses: l.name": "one row per open-source licence",
+  "subtitle-languages: phoneLanguageLabel()": "the phone's own language, a fixed first row of the list",
+  "subtitle-languages: Name": "one row per language in the add list, indexed as 'All languages'",
   "network: name": "one row per saved Wi-Fi name",
   "scheduling: `${r.start}–${r.end} · ${actionLabel(r)}`": "one row per schedule rule",
   "feeds: r.name || 'Untitled rule'": "one row per feed rule",

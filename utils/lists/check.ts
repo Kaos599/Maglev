@@ -70,11 +70,13 @@ export async function fetchSources(fetchImpl: TextFetch, timeoutMs: number = FET
 
 /** How many provider entries differ between two files (added, removed or changed). */
 export function countChangedSources(prev: SourcesFile | null, next: SourcesFile): number {
-  const a = prev?.sources ?? {};
-  const b = next.sources;
   let n = 0;
-  for (const id of new Set([...Object.keys(a), ...Object.keys(b)])) {
-    if (JSON.stringify(a[id] ?? null) !== JSON.stringify(b[id] ?? null)) n++;
+  for (const key of ['sources', 'subtitles'] as const) {
+    const a = prev?.[key] ?? {};
+    const b = next[key] ?? {};
+    for (const id of new Set([...Object.keys(a), ...Object.keys(b)])) {
+      if (JSON.stringify(a[id] ?? null) !== JSON.stringify(b[id] ?? null)) n++;
+    }
   }
   return n;
 }
@@ -104,6 +106,8 @@ export interface ListDeps {
   verify(body: string, sigB64: string): Promise<boolean>;
   /** Provider ids the file may describe. */
   known: ReadonlySet<string>;
+  /** Subtitle provider ids the file may describe (section 36.9). Omit to keep every id. */
+  knownSubtitles?: ReadonlySet<string>;
   net(): Promise<ListsNet | null>;
   rules(): NetRules;
   appliedSerial(): number;
@@ -148,7 +152,7 @@ async function checkSourcesHalf(d: ListDeps): Promise<SourcesResult> {
     signed = false;
   }
   if (!signed) return { kind: 'rejected', why: 'signature' };
-  const parsed = parseSourcesFile(got.body, d.known);
+  const parsed = parseSourcesFile(got.body, d.known, d.knownSubtitles);
   if (!parsed.ok) return { kind: 'rejected', why: 'schema' };
   const decision = serialDecision(parsed.file.serial, d.appliedSerial());
   if (decision === 'rollback') return { kind: 'rejected', why: 'serial' };

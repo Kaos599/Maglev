@@ -15,8 +15,11 @@ export function Monogram({ abbr, dashed, tint }: { abbr: string; dashed?: boolea
   );
 }
 
+/** What the row needs from a source: search sources and subtitle sources both fit. */
+export type RowProvider = Pick<ProviderInfo, 'name' | 'abbr'> & { unsafeReason?: string };
+
 export interface ProviderRowProps {
-  provider: ProviderInfo;
+  provider: RowProvider;
   enabled: boolean;
   /** 1-based priority in the On list; omitted for Off rows. */
   position?: number;
@@ -29,9 +32,11 @@ export interface ProviderRowProps {
   onCheck?: () => void;
   /** The source list turned this source off: the toggle can't be used (contract 31.1). */
   locked?: boolean;
+  /** Switch label for TalkBack. Search sources by default. */
+  toggleLabel?: string;
 }
 
-export function ProviderRow({ provider, enabled, position, note, noteTone = 'normal', first, onOpen, onToggle, onCheck, locked }: ProviderRowProps) {
+export function ProviderRow({ provider, enabled, position, note, noteTone = 'normal', first, onOpen, onToggle, onCheck, locked, toggleLabel }: ProviderRowProps) {
   const { colors } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const noteColor = noteTone === 'accent' ? colors.accentText : noteTone === 'danger' ? colors.danger : noteTone === 'warning' ? colors.warning : colors.textMuted;
@@ -78,7 +83,7 @@ export function ProviderRow({ provider, enabled, position, note, noteTone = 'nor
           <Text style={styles.checkText}>?</Text>
         </PressableScale>
       ) : null}
-      <Toggle value={enabled} onValueChange={onToggle} disabled={locked} accessibilityLabel={`Use ${provider.name} for search`} />
+      <Toggle value={enabled} onValueChange={onToggle} disabled={locked} accessibilityLabel={toggleLabel ?? `Use ${provider.name} for search`} />
     </View>
   );
 }

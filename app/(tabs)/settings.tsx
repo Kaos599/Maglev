@@ -21,6 +21,7 @@ import { useWatches } from '../../utils/watch/store';
 import { useUpdatePrefs } from '../../utils/prefs/update';
 import { useStatsPrefs } from '../../utils/stats/prefs';
 import { useLinkDownloadPrefs } from '../../utils/prefs/linkDownloads';
+import { useSubtitleSettings } from '../../components/subtitles-settings/useSubtitleSettings';
 import { SettingsSearchField, SettingsSearchResults } from '../../components/settings/SettingsSearch';
 
 const ACCENT_LABEL = {
@@ -157,6 +158,7 @@ export default function SettingsIndex() {
   const [browserPrefs] = useBrowserPrefs();
   const [updatePrefs] = useUpdatePrefs();
   const [linkPrefs] = useLinkDownloadPrefs();
+  const [subtitles] = useSubtitleSettings();
   const [query, setQuery] = useState('');
   const searching = query.trim().length > 0;
   const { bandwidth: b, network: n, power: p, appearance: a } = settings;
@@ -191,6 +193,7 @@ export default function SettingsIndex() {
   const findRows: RowSpec[] = [
     { icon: 'search', title: 'Search sources', value: providers, route: 'search-providers' },
     { icon: 'feeds', title: 'Auto-download', value: auto, route: 'feeds' },
+    { icon: 'subtitles', title: 'Subtitles', value: subtitles.enabled ? 'On' : 'Off', route: 'subtitles' },
   ];
   const downloadsRow: RowSpec = { icon: 'arrow-down', title: 'Downloads', value: downloadsValue, route: 'downloads' };
   const speedRow: RowSpec = { icon: 'bandwidth', title: 'Speed and sharing', value: `${limits} · ${queue}`, route: 'speed' };

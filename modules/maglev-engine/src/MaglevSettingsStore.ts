@@ -73,6 +73,29 @@ function sanitizeFolder(v: unknown): DownloadFolder | null {
   };
 }
 
+const LANGUAGE_TAG = /^[a-z]{2}(?:-[A-Za-z0-9]{2,4})?$/;
+
+/** Subtitle settings (section 36.2): tolerant read; anything of the wrong type falls back to its default. */
+function sanitizeSubtitles(v: unknown): MaglevSettings['subtitles'] {
+  const d = DEFAULT_SETTINGS.subtitles;
+  const o = isPlainObject(v) ? v : {};
+  const languages: string[] = [];
+  if (Array.isArray(o.languages)) {
+    for (const l of o.languages) if (typeof l === 'string' && LANGUAGE_TAG.test(l) && !languages.includes(l)) languages.push(l);
+  }
+  const sourceEnabled: Record<string, boolean> = {};
+  if (isPlainObject(o.sourceEnabled)) {
+    for (const [id, on] of Object.entries(o.sourceEnabled)) if (typeof on === 'boolean') sourceEnabled[id] = on;
+  }
+  return {
+    enabled: o.enabled !== false,
+    languages,
+    hearingImpaired: o.hearingImpaired === 'prefer' || o.hearingImpaired === 'avoid' ? o.hearingImpaired : d.hearingImpaired,
+    sourceEnabled,
+    privacyAck: o.privacyAck === true,
+  };
+}
+
 /** Every accent the app knows; anything else saved falls back to lime. */
 const ACCENT_NAMES: readonly AccentName[] = ['lime', 'cyan', 'pink', 'orange', 'violet', 'blue', 'amber', 'mint'];
 
@@ -89,6 +112,7 @@ export function migrateSettings(raw: unknown): MaglevSettings {
   if (merged.bandwidth.autoRetry !== 'off' && merged.bandwidth.autoRetry !== 'after') merged.bandwidth.autoRetry = 'after';
   if (!AUTO_RETRY_DELAYS.includes(merged.bandwidth.autoRetryDelayMin)) merged.bandwidth.autoRetryDelayMin = 5;
   if (!PEER_TIMEOUT_OPTIONS.includes(merged.bandwidth.peerTimeoutMins)) merged.bandwidth.peerTimeoutMins = DEFAULT_PEER_TIMEOUT_MINS;
+  merged.subtitles = sanitizeSubtitles(isPlainObject(body) ? body.subtitles : null);
   merged.downloadFolder = sanitizeFolder(isPlainObject(body) ? body.downloadFolder : null);
   return merged;
 }
@@ -149,6 +173,7 @@ export class MaglevSettingsStore {
         },
       },
       power: { ...this.settings.power, ...(patch.power || {}) },
+      subtitles: { ...this.settings.subtitles, ...(patch.subtitles || {}) },
     };
 
     // Dispatch immediately to listeners
