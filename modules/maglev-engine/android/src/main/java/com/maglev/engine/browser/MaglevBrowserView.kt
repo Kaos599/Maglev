@@ -26,6 +26,7 @@ import android.webkit.SslErrorHandler
 import android.webkit.URLUtil
 import android.webkit.ValueCallback
 import android.webkit.WebChromeClient
+import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
 import android.webkit.WebSettings
@@ -108,6 +109,19 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
     private var redirectInFlight = false
     // One-shot allowance for the exact URL followRedirect loads, so the redirect rule does not hold it again.
     private var followAllowUrl: String? = null
+    // When the last tap ended (uptimeMillis), 0 while a touch is still down. Main thread.
+    private var tapAt = 0L
+    // Windows and cross-site navigations already let through for the current tap. A second one in one tap is not the user's.
+    private var tapUses = 0
+    // 24.11 Back-button hijacking: what made each history entry, whether the navigation in flight is the user's, and
+    // how many entries and downloads the current tap has already vouched for.
+    private val history = HistoryFlags()
+    private var pendingUserNav = false
+    private var entryTapUses = 0
+    private var dlTapUses = 0
+    // 24.11 HTTPS-first: the https try that has not loaded yet (cleared once it shows or fails).
+    private class HttpsTry(val host: String, val httpsUrl: String, val httpUrl: String)
+    private var upgrade: HttpsTry? = null
 
     // Per page load.
     @Volatile private var pageHost: String? = null
@@ -253,7 +267,10 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
             exitFullscreen()
             return
         }
-        if (webView.canGoBack()) webView.goBack()
+        if (!webView.canGoBack()) return
+        // 24.11: Back steps over entries the page added without a tap, to the last one the user made.
+        val steps = BackRules.steps(history.flags(), webView.copyBackForwardList().currentIndex)
+        if (steps > 1) webView.goBackOrForward(-steps) else webView.goBack()
     }
 
     fun goForward() {
@@ -288,7 +305,12 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
         // A new typed load: its own script redirects are part of the page until it has finished once.
         loadedOnce = false
         redirectInFlight = false
-        webView.loadUrl(url)
+        pendingUserNav = true
+        // 24.11 HTTPS-first: a typed http:// address is tried as https:// first.
+        val https = HttpsFirst.upgrade(url, httpsFallbackHosts)
+        val host = HttpsFirst.hostOf(https)
+        upgrade = if (https != null && host != null) HttpsTry(host, https, url) else null
+        webView.loadUrl(https ?: url)
     }
 
     /**
@@ -474,8 +496,9 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
         // 24.10: long press on a link or image opens the screen's menu instead of the system one.
         w.setOnLongClickListener { v -> onLongPressed(v as WebView) }
         // Let the page scroll inside React Native parents.
-        w.setOnTouchListener { _, _ ->
+        w.setOnTouchListener { _, ev ->
             requestDisallowInterceptTouchEvent(true)
+            noteTouch(ev.actionMasked)
             false
         }
         return w
@@ -512,6 +535,9 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
         addView(webView, ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
         loadedOnce = false
         redirectInFlight = false
+        history.clear()
+        pendingUserNav = false
+        upgrade = null
         if (!active) webView.onPause()
         loading = false
         progress = 0
@@ -628,8 +654,13 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
             loading = false
             emitPage()
         }
+        // 24.11: a download counts as asked for when the user typed or tapped to get it. Otherwise it only joins the Files list.
+        val tapped = DownloadRules.tapped(tapAge(), dlTapUses, pendingUserNav)
+        dlTapUses++
+        pendingUserNav = false
         onDownloadRequest(
             mapOf(
+                "tapped" to tapped,
                 "url" to norm,
                 "mime" to mime?.takeIf { it.isNotBlank() },
                 "size" to size?.toDouble(),
@@ -674,6 +705,61 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
         if (adBlock && !hostAllowsAds(host) && BlocklistStore.peek().matches(host)) return "popup"
         if (LocalHost.isLanHost(host)) return "local"
         return null
+    }
+
+    /** Remembers when the user last tapped, so a pop-up or a jump to another site can be told from a tap on a real link. */
+    private fun noteTouch(action: Int) {
+        if (action == android.view.MotionEvent.ACTION_DOWN) {
+            tapUses = 0
+            entryTapUses = 0
+            dlTapUses = 0
+            tapAt = 0L
+        } else if (action == android.view.MotionEvent.ACTION_UP) {
+            tapAt = SystemClock.uptimeMillis()
+        }
+    }
+
+    /** Milliseconds since the last tap ended, or null when there was none (or a touch is still down). */
+    private fun tapAge(): Long? = if (tapAt == 0L) null else SystemClock.uptimeMillis() - tapAt
+
+    private fun recentTap(): Boolean = tapAge()?.let { it in 0..PopupRules.TAP_MS } == true
+
+    /** Writes the history entry WebView just made, with whether the user made it (24.11). */
+    private fun recordHistory(url: String) {
+        val index = webView.copyBackForwardList().currentIndex
+        val userMade = pendingUserNav || (recentTap() && entryTapUses++ == 0)
+        pendingUserNav = false
+        history.visited(url, index, userMade)
+    }
+
+    /** The https try failed (error, certificate or a redirect back to http): load the http address once, and never upgrade this host again this session. */
+    private fun fallBackToHttp() {
+        val up = upgrade ?: return
+        upgrade = null
+        httpsFallbackHosts.add(up.host)
+        // The failed https page must not be a Back stop, and the http load is still the user's request.
+        history.skipIfUrl(up.httpsUrl)
+        pendingUserNav = true
+        mainHandler.post { if (!destroyed) webView.loadUrl(up.httpUrl) }
+    }
+
+    /** True when the last tap ended recently on a link that leads to [host]'s site ("*": an image link, address unknown). */
+    private fun tappedLinkTo(host: String?): Boolean {
+        if (tapAt == 0L || SystemClock.uptimeMillis() - tapAt > PopupRules.TAP_MS) return false
+        val hit = webView.hitTestResult
+        val linkHost = when (hit.type) {
+            WebView.HitTestResult.SRC_ANCHOR_TYPE -> hit.extra?.let { Uri.parse(it).host?.lowercase() }
+            WebView.HitTestResult.SRC_IMAGE_ANCHOR_TYPE -> "*"
+            else -> null
+        }
+        return PopupRules.tapMatchesLink(linkHost, host)
+    }
+
+    /** Tap trust for a window or a jump to [host]; counts it so a second one from the same tap is not trusted. */
+    private fun trustTap(gesture: Boolean, host: String?): Boolean {
+        val ok = PopupRules.trusted(gesture, RegistrableHost.same(host, currentHost()), tappedLinkTo(host), tapUses)
+        if (gesture) tapUses++
+        return ok
     }
 
     private fun currentHost(): String? = webView.url?.let { Uri.parse(it).host } ?: pageHost
@@ -728,7 +814,9 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
             refuse(url, reason)
             return
         }
-        if (gesture) {
+        // A tap only opens a window freely when it was on a link to that site (or the site is the page's own), and only
+        // the first window of a tap. Overlay taps and a burst of windows from one tap follow the pop-up setting instead.
+        if (trustTap(gesture, Uri.parse(url).host)) {
             onNewWindow(mapOf("url" to url, "gesture" to true))
             return
         }
@@ -837,6 +925,8 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
                 return scheme != "http" && scheme != "https" && uri.toString() != "about:blank"
             }
             redirectInFlight = request.isRedirect
+            // 24.11: a link the user tapped (or a navigation with a gesture) is theirs; a script's jump is not.
+            if (!request.isRedirect) pendingUserNav = request.hasGesture() || (recentTap() && entryTapUses++ == 0)
             if (isAppScheme(scheme)) {
                 redirectInFlight = false
                 handleAppNavigation(uri.toString(), request.hasGesture())
@@ -851,8 +941,9 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
             // 24.10 held redirect: untapped, not a server redirect, after the document finished once, to another site.
             val allowedOnce = followAllowUrl != null && followAllowUrl == uri.toString()
             if (allowedOnce) followAllowUrl = null
-            val held = !allowedOnce && scheme != "about" && !request.hasGesture() && !request.isRedirect && loadedOnce &&
-                !RegistrableHost.same(uri.host, currentHost())
+            // Also held: a tap that is not on a link to that site (an invisible overlay, an onclick on a blank area).
+            val held = !allowedOnce && scheme != "about" && !request.isRedirect && loadedOnce &&
+                !RegistrableHost.same(uri.host, currentHost()) && !trustTap(request.hasGesture(), uri.host)
             if (held) {
                 when (decide(false, "redirect")) {
                     PopupRules.OPEN -> return false
@@ -862,7 +953,29 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
                 redirectInFlight = false
                 return true
             }
+            // 24.11 HTTPS-first: try the https twin of an http address. A redirect from it back to http on the same host is a loop.
+            if (scheme == "http") {
+                val pending = upgrade
+                if (pending != null && HttpsFirst.isLoop(pending.host, uri.toString())) {
+                    httpsFallbackHosts.add(pending.host)
+                    upgrade = null
+                } else {
+                    val https = HttpsFirst.upgrade(uri.toString(), httpsFallbackHosts)
+                    val host = HttpsFirst.hostOf(https)
+                    if (https != null && host != null) {
+                        upgrade = HttpsTry(host, https, uri.toString())
+                        redirectInFlight = false
+                        mainHandler.post { if (!destroyed) webView.loadUrl(https) }
+                        return true
+                    }
+                }
+            }
             return false
+        }
+
+        override fun onReceivedError(view: WebView, request: WebResourceRequest, error: WebResourceError) {
+            val pending = upgrade ?: return
+            if (request.isForMainFrame && HttpsFirst.isUpgradeFailure(pending.host, request.url?.toString())) fallBackToHttp()
         }
 
         override fun onPageStarted(view: WebView, url: String?, favicon: Bitmap?) {
@@ -884,6 +997,7 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
 
         override fun onPageCommitVisible(view: WebView, url: String?) {
             if (destroyed) return
+            if (HttpsFirst.sameHost(upgrade?.host, url)) upgrade = null
             injectScripts(view)
             emitPage()
         }
@@ -893,6 +1007,7 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
             loading = false
             progress = 100
             loadedOnce = true
+            if (HttpsFirst.sameHost(upgrade?.host, url)) upgrade = null
             if (!firstLoadDone) {
                 firstLoadDone = true
                 if (!active && pausePending) pauseNow()
@@ -907,6 +1022,7 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
 
         override fun doUpdateVisitedHistory(view: WebView, url: String?, isReload: Boolean) {
             if (destroyed) return
+            if (url != null && !isReload) recordHistory(url)
             pageHost = url?.let { Uri.parse(it).host?.lowercase() } ?: pageHost
             // 24.6a: pushState/replaceState to another document URL never fires onPageStarted. Treat it as a new
             // document. A fragment-only change, a reload, or a URL we have already seen does nothing here.
@@ -932,6 +1048,11 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
 
         override fun onReceivedSslError(view: WebView, handler: SslErrorHandler, error: SslError) {
             handler.cancel()
+            // 24.11: a certificate problem on the https try is not shown as a refusal; the http address loads once instead.
+            if (HttpsFirst.isUpgradeFailure(upgrade?.host, error.url)) {
+                fallBackToHttp()
+                return
+            }
             sslFailed = true
             refuse(error.url ?: view.url ?: "", "ssl")
         }
@@ -1129,6 +1250,10 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
         /** Never handed to another app by openApp (24.10); web pages and about: are not "apps" either. */
         private val DANGEROUS_SCHEMES = setOf("file", "content", "javascript", "data", "blob")
         private val NEVER_START_SCHEMES = DANGEROUS_SCHEMES + setOf("http", "https", "about")
+
+        /** Hosts whose https try failed this app session (24.11). They are not upgraded again. */
+        private val httpsFallbackHosts: MutableSet<String> =
+            java.util.Collections.newSetFromMap(java.util.concurrent.ConcurrentHashMap<String, Boolean>())
 
         private const val MAX_CAPTURES = 3
         private const val CAPTURE_TIMEOUT_MS = 3000L

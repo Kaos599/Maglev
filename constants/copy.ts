@@ -381,6 +381,8 @@ export const browserTabs = {
     allow: 'Allow',
     allowedSites: 'Sites allowed to open pop-ups',
     remove: 'Remove',
+    swipeTabs: 'Swipe the address bar to switch tabs',
+    swipeTabsSubtitle: 'Swipe left or right on the address bar to move between tabs, or down to see all tabs.',
   },
 } as const;
 
@@ -584,6 +586,7 @@ export const backupCopy = {
   title: 'Backup and restore',
   export: { title: 'Export backup', subtitle: 'Save your settings and lists to one file.' },
   restore: { title: 'Restore from backup', subtitle: 'Pick a backup file from this phone.' },
+  includeStats: { title: 'Include stats', restore: 'Stats', note: 'Stats include the names of what you downloaded.' },
   last: (when: string) => `Last backup ${when}`,
   never: 'No backup yet',
   secrets: 'Passwords, API keys and tokens are never saved in a backup.',

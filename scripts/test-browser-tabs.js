@@ -183,6 +183,18 @@ async function main() {
   check('tapped app: ask / block / allow / allowed', dn('ask', false, true, 'app') === 'ask' && dn('block', false, true, 'app') === 'blocked' && dn('allow', false, true, 'app') === 'openApp' && dn('ask', true, true, 'app') === 'openApp');
   check('untapped app is blocked always', ['ask', 'block', 'allow'].every((p) => dn(p, true, false, 'app') === 'blocked'));
 
+  console.log('T4 tap trust (click-jack and window bursts)');
+  const tt = (gesture, same, link, nth = 0) => P.trustedTap({ gesture, sameSite: same, onMatchingLink: link, nthInGesture: nth });
+  check('no gesture is never trusted', !tt(false, true, true));
+  check('tap on a link to that site is trusted', tt(true, false, true));
+  check('tap to the page\'s own site is trusted', tt(true, true, false));
+  check('tap on a blank area that jumps to another site is not trusted', !tt(true, false, false));
+  check('a second window from one tap is not trusted', !tt(true, true, true, 1) && !tt(true, false, true, 2));
+  check('tapMatchesLink: same site, other site, no link, image link', P.tapMatchesLink('ads.example.com', 'example.com') && !P.tapMatchesLink('good.com', 'ad.test') && !P.tapMatchesLink(null, 'ad.test') && P.tapMatchesLink('*', 'anything.test'));
+  check('untrusted tap follows the policy (window: ask / block)', dn('ask', false, tt(true, false, false), 'window') === 'ask' && dn('block', false, tt(true, false, false), 'window') === 'blocked');
+  check('untrusted tap redirect: ask / block', dn('ask', false, tt(true, false, false), 'redirect') === 'ask' && dn('block', false, tt(true, false, false), 'redirect') === 'blocked');
+  check('TAP_MS matches Kotlin', P.TAP_MS === 3000 && /TAP_MS = 3000L/.test(require('fs').readFileSync(require('path').join(__dirname, '..', 'modules/maglev-engine/android/src/main/java/com/maglev/engine/browser/RegistrableHost.kt'), 'utf8')));
+
   console.log('T5 pop-up prompt');
   const rq = (url, kind = 'window', sourceUrl = 'https://www.Source.com/page') => ({ url, kind, sourceUrl });
   let ps = P.emptyPopups();
