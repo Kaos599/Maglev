@@ -5,6 +5,7 @@
  */
 import type { BrowserPageEvent, FoundItem } from 'maglev-engine';
 import { emptyPopups, type PopupsState } from './popups.ts';
+import type { FoundHintState } from './hardening.ts';
 
 /** What the screen knows about one tab. */
 export type TabData = {
@@ -17,9 +18,11 @@ export type TabData = {
   refused: 'ssl' | 'local' | null;
   lastUrl: string;
   notes: Set<string>;
+  // The "Maglev found N files" hint: once per page load (24.11).
+  hint: FoundHintState;
 };
 
-export const newTabData = (): TabData => ({ page: null, found: [], dismissed: new Set(), blocked: 0, crashed: false, refused: null, lastUrl: '', notes: new Set() });
+export const newTabData = (): TabData => ({ page: null, found: [], dismissed: new Set(), blocked: 0, crashed: false, refused: null, lastUrl: '', notes: new Set(), hint: 'idle' });
 
 export const tabData = new Map<string, TabData>();
 /** The address each view loaded when it mounted. It never follows the page. */
