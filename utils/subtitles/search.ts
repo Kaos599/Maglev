@@ -5,7 +5,7 @@
 import { ProviderError } from '../search/http.ts';
 import { parseName } from './parseName.ts';
 import { rankCandidates, type RankedSubtitle } from './rank.ts';
-import { archiveKind, base64ToBytes, bytesToBase64, pickZipMember, prepareText, SubtitleError, type SubtitleErrorCode, type ZipMember } from './payload.ts';
+import { archiveKind, base64ToBytes, bytesToBase64, decodeSubtitleText, hasSubtitleCues, pickZipMember, prepareText, SubtitleError, type SubtitleErrorCode, type ZipMember } from './payload.ts';
 import { subtitleFileName } from './naming.ts';
 import type { SubFormat, SubtitleCandidate, SubtitleProvider, SubtitleQuery } from './types.ts';
 
@@ -228,11 +228,18 @@ export async function downloadAndPrepare(c: SubtitleCandidate, d: DownloadDeps):
     } catch {
       throw new SubtitleError('unsupported_archive');
     }
-    const pick = pickZipMember(members, { fileName: d.query.fileName, season: d.query.season, episode: d.query.episode, absoluteEpisode: d.query.absoluteEpisode });
+    // NATIVE_CONTRACT 39.1 S1: a member counts only when its decoded text holds a cue.
+    const real = members.filter((m) => {
+      const r = decodeSubtitleText(m.bytes, c.language);
+      return r.ok ? hasSubtitleCues(r.text) : true; // unreadable text is reported as unreadable_text below
+    });
+    const pick = pickZipMember(real, { fileName: d.query.fileName, season: d.query.season, episode: d.query.episode, absoluteEpisode: d.query.absoluteEpisode });
     if (!pick.ok) throw new SubtitleError(pick.code);
     bytes = pick.member.bytes;
   }
   const prepared = prepareText(bytes, c.language);
+  // NATIVE_CONTRACT 39.1 S1: once more on the final text, before anything is saved.
+  if (!hasSubtitleCues(prepared.text)) throw new SubtitleError('unreadable_text');
   return {
     text: prepared.text,
     format: prepared.format,

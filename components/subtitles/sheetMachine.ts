@@ -41,6 +41,12 @@ export interface SheetState {
   /** Set on saved. */
   savedName: string | null;
   savedLang: string | null;
+  /** Rows whose download failed in this sheet; Pick another and the default selection skip them (39.1 S7). */
+  failedKeys: string[];
+  /** Every row of the active tab already failed, so Pick another has nothing left (39.1 S7). */
+  noneLeft: boolean;
+  /** Copies .2 to .9 all exist: only Replace or Cancel are offered (39.1 S8). */
+  copiesFull: boolean;
 }
 
 export type SheetEvent =
@@ -56,6 +62,8 @@ export type SheetEvent =
   | { type: 'DOWNLOAD' }
   | { type: 'DOWNLOAD_FAILED'; error: FlowError }
   | { type: 'NAME_TAKEN'; fileName: string }
+  | { type: 'COPIES_FULL'; fileName: string }
+  | { type: 'PICK_ANOTHER' }
   | { type: 'CHOOSE'; choice: 'replace' | 'keep-both' | 'cancel' }
   | { type: 'SAVED'; fileName: string; language: string }
   | { type: 'CLOSE' };
@@ -78,6 +86,9 @@ export const CLOSED: SheetState = {
   takenName: null,
   savedName: null,
   savedLang: null,
+  failedKeys: [],
+  noneLeft: false,
+  copiesFull: false,
 };
 
 /** Tabs: the chosen languages, then the one picked from "Other…" when it isn't among them. */
@@ -113,15 +124,24 @@ export function canDownload(s: SheetState): boolean {
   return (s.phase === 'results' || s.phase === 'searching') && selectedRow(s) !== null;
 }
 
+/** The rows of the active tab that did not fail in this sheet. */
+export function untriedRows(s: Pick<SheetState, 'ranked' | 'language' | 'failedKeys'>): RankedSubtitle[] {
+  return rowsOf(s).filter((r) => !s.failedKeys.includes(rowKey(r)));
+}
+
+// NATIVE_CONTRACT 39.1 S7: the default selection never lands on a row that already failed.
 function withDefault(s: SheetState): SheetState {
   if (s.picked) return s;
-  const rows = rowsOf(s);
+  const rows = untriedRows(s);
   const at = defaultSelection(rows);
   return { ...s, selectedKey: at === null ? null : rowKey(rows[at]) };
 }
 
+/** Errors that come from the save, not from the chosen row: the same row may still be fine. */
+const SAVE_STAGE_ERRORS = new Set(['CANT_WRITE', 'NO_SPACE', 'VERIFY_FAILED', 'REPLACE_DENIED', 'missing']);
+
 function startSearch(s: SheetState): SheetState {
-  return { ...s, phase: 'searching', ranked: [], sources: [], searchDone: false, selectedKey: null, picked: false, error: null };
+  return { ...s, phase: 'searching', ranked: [], sources: [], searchDone: false, selectedKey: null, picked: false, error: null, failedKeys: [], noneLeft: false, copiesFull: false };
 }
 
 export function sheetReducer(s: SheetState, e: SheetEvent): SheetState {
@@ -147,21 +167,41 @@ export function sheetReducer(s: SheetState, e: SheetEvent): SheetState {
       return s.phase === 'searching' || s.phase === 'results' ? { ...s, phase: 'failed', error: e.error, searchDone: true } : s;
     case 'PICK_TAB':
     case 'PICK_OTHER': {
-      const next: SheetState = { ...s, language: e.language, extra: e.type === 'PICK_OTHER' ? e.language : s.extra, picked: false, selectedKey: null, error: null };
+      const next: SheetState = { ...s, language: e.language, extra: e.type === 'PICK_OTHER' ? e.language : s.extra, picked: false, selectedKey: null, error: null, noneLeft: false };
       return withDefault(next);
     }
     case 'SELECT':
-      return { ...s, selectedKey: e.key, picked: true, error: null };
+      return { ...s, selectedKey: e.key, picked: true, error: null, noneLeft: false };
+    case 'PICK_ANOTHER': {
+      // NATIVE_CONTRACT 39.1 S7: the next row that has not failed; none left says so.
+      if (s.phase !== 'results' && s.phase !== 'searching') return s;
+      const open = untriedRows(s);
+      return open.length > 0
+        ? { ...s, selectedKey: rowKey(open[0]), picked: true, error: null, noneLeft: false }
+        : { ...s, selectedKey: null, picked: true, error: null, noneLeft: true };
+    }
     case 'DOWNLOAD':
-      return canDownload(s) ? { ...s, phase: 'downloading', error: null, pendingChoice: null } : s;
-    case 'DOWNLOAD_FAILED':
-      return s.phase === 'downloading' ? { ...s, phase: 'results', error: e.error, keepBothNote: false } : s;
+      return canDownload(s) ? { ...s, phase: 'downloading', error: null, pendingChoice: null, noneLeft: false } : s;
+    case 'DOWNLOAD_FAILED': {
+      if (s.phase !== 'downloading') return s;
+      const failedKeys = s.selectedKey && !SAVE_STAGE_ERRORS.has(e.error.code) && !s.failedKeys.includes(s.selectedKey) ? [...s.failedKeys, s.selectedKey] : s.failedKeys;
+      return { ...s, phase: 'results', error: e.error, keepBothNote: false, failedKeys };
+    }
     case 'NAME_TAKEN':
-      return s.phase === 'downloading' ? { ...s, phase: 'name-taken', takenName: e.fileName } : s;
+      return s.phase === 'downloading' ? { ...s, phase: 'name-taken', takenName: e.fileName, copiesFull: false } : s;
+    case 'COPIES_FULL':
+      // NATIVE_CONTRACT 39.1 S8
+      return s.phase === 'downloading' ? { ...s, phase: 'name-taken', takenName: e.fileName, copiesFull: true, keepBothNote: false } : s;
     case 'CHOOSE':
+      // NATIVE_CONTRACT 39.1 S5: after "belongs to another app", Keep both saves the second copy from the results.
+      if (s.phase === 'results' && s.error?.code === 'REPLACE_DENIED' && e.choice === 'keep-both') {
+        return { ...s, phase: 'downloading', pendingChoice: 'keep-both', keepBothNote: true, takenName: null, error: null };
+      }
       if (s.phase !== 'name-taken') return s;
-      if (e.choice === 'cancel') return { ...s, phase: 'results', takenName: null, error: null };
-      return { ...s, phase: 'downloading', pendingChoice: e.choice, keepBothNote: e.choice === 'keep-both', takenName: null, error: null };
+      if (e.choice === 'cancel') return { ...s, phase: 'results', takenName: null, error: null, copiesFull: false };
+      // Nothing left to keep beside (S8): Keep both is not an answer then.
+      if (e.choice === 'keep-both' && s.copiesFull) return s;
+      return { ...s, phase: 'downloading', pendingChoice: e.choice, keepBothNote: e.choice === 'keep-both', takenName: null, error: null, copiesFull: false };
     case 'SAVED':
       return s.phase === 'downloading' ? { ...s, phase: 'saved', savedName: e.fileName, savedLang: e.language, takenName: null } : s;
     default:

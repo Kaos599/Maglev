@@ -31,8 +31,20 @@ export const NAME_TAKEN_TITLE = 'A subtitle with this name already exists.';
 export const NAME_TAKEN_ACTIONS = { replace: 'Replace', keepBoth: 'Keep both', cancel: 'Cancel' } as const;
 export const KEEP_BOTH_NOTE = "Players may not load the second one automatically.";
 
+/** 39.1 S8: copies .2 to .9 all exist. */
+export const COPIES_FULL_TITLE = 'There are already 9 copies. Replace one or cancel.';
+/** 39.1 S7: every row of this language already failed. */
+export const NO_OTHER_ROWS = 'No other subtitles to try for this language.';
+/** 39.1 S6: SAF (file picker) folders. Shown on the menu row and in Settings > Subtitles. */
+export const SAF_UNAVAILABLE = 'Not available yet for folders picked with the file picker';
+
 export const NOTICE_CONTINUE = 'Continue';
 export const NOTICE_NOT_NOW = 'Not now';
+
+/** Shown instead of "No English subtitles found." when a subtitle in that language already sits next to the video. */
+export function alreadyHasCopy(language: string): string {
+  return `This video already has ${languageName(language)} subtitles.`;
+}
 
 /** One-time notice before the first lookup. `names` are the sources that are on. */
 export function privacyNotice(names: readonly string[]): string {
@@ -80,6 +92,9 @@ export function errorCopy(code: SubtitleErrorCode, a: CopyArgs = {}): ErrorCopy 
       return { message: UNREADABLE_TEXT, action: 'Pick another' };
     case 'ambiguous_pack':
       return { message: AMBIGUOUS_PACK, action: 'Pick another' };
+    case 'REPLACE_DENIED':
+      // NATIVE_CONTRACT 39.1 S5
+      return { message: 'That file belongs to another app. Save a second copy instead?', action: NAME_TAKEN_ACTIONS.keepBoth };
     case 'NAME_TAKEN':
       return { message: NAME_TAKEN_TITLE, action: NAME_TAKEN_ACTIONS.replace };
     case 'unsupported_archive':

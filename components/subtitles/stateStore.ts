@@ -4,7 +4,14 @@
  */
 import { kvGet, kvSet } from '../../utils/prefs/kv.ts';
 import type { SubtitleTarget } from './flow.ts';
-import { clearSubtitleState, getSubtitleState, setSubtitleState, type SubtitleState } from '../../utils/subtitles/prefs.ts';
+import { clearStaleStates, clearSubtitleState, getSubtitleState, setSubtitleState, type SubtitleState } from '../../utils/subtitles/prefs.ts';
+
+// Loading this module is app start: a "getting" state left by a killed process is cleared (NATIVE_CONTRACT 39.1 S3).
+try {
+  clearStaleStates(Date.now());
+} catch {
+  // nothing stored yet
+}
 
 let version = 0;
 const listeners = new Set<() => void>();

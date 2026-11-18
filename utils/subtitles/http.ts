@@ -5,7 +5,7 @@
  */
 import { ProviderError, USER_AGENT, httpText } from '../search/http.ts';
 import { isCloudflareChallenge } from '../search/challenge.ts';
-import { archiveKind, decodeSubtitleText, decodeUtf8Strict, detectFormat } from './payload.ts';
+import { archiveKind, decodeSubtitleText, decodeUtf8Strict, detectFormat, hasSubtitleCues } from './payload.ts';
 import type { SubFormat, SubtitlePayload } from './types.ts';
 
 export const UNSUPPORTED_TYPE = "This subtitle's file type isn't supported";
@@ -140,7 +140,7 @@ export interface PayloadOptions {
   language?: string;
   /** A file name that may state the format (".srt"); wins over the content. */
   nameHint?: string;
-  /** Refuse a text body that has no subtitle cues (a source that answers with a short message). */
+  /** Refuse a text body that has no subtitle cues (a source that answers with a short message). On unless set to false. */
   requireCues?: boolean;
 }
 
@@ -170,9 +170,9 @@ export function toPayload(bytes: Uint8Array, options: PayloadOptions | string = 
   const r = decodeSubtitleText(bytes, opts.language);
   const text = r.ok ? r.text : latin1(bytes);
   if (/^\s*<(!doctype|html|\?xml|head|body)/i.test(text)) throw new ProviderError('parse', 'The source sent a web page instead of a subtitle');
-  if (opts.requireCues) {
-    const cues = /\d{1,2}:\d{2}:\d{2}[,.]\d{1,3}\s*-->/.test(text) || /^\s*WEBVTT/.test(text) || /\[Script Info\]/i.test(text) || /^\s*Dialogue:/m.test(text);
-    if (!cues) throw new ProviderError('parse', 'The source has no file for this subtitle right now');
+  // NATIVE_CONTRACT 39.1 S1: every provider's body must hold a cue, whatever the provider passed.
+  if (opts.requireCues !== false && !hasSubtitleCues(text)) {
+    throw new ProviderError('parse', 'The source has no file for this subtitle right now');
   }
   const format = (opts.nameHint ? formatFromName(opts.nameHint) : undefined) ?? (r.ok ? detectFormat(r.text) : detectFormat(latin1(bytes, 2048)));
   return { kind: 'text', bytes, format };

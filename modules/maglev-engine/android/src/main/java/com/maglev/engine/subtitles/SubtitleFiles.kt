@@ -50,10 +50,25 @@ object SubtitleFiles {
 
     // region save
 
-    /** A bare file name: no slash, no "..", not empty, at most 255 bytes in UTF-8. */
+    /**
+     * A bare file name: not empty, not "." or "..", no slash, backslash or NUL, at most 255 bytes in UTF-8.
+     * Names with ".." inside ("...And Justice for All.en.srt") are valid.
+     */
+    // NATIVE_CONTRACT 39.1 S4
     fun validName(name: String): Boolean =
-        name.isNotEmpty() && name != "." && !name.contains('/') && !name.contains('\\') && !name.contains("..") &&
+        name.isNotEmpty() && name != "." && name != ".." && !name.contains('/') && !name.contains('\\') &&
             !name.contains('\u0000') && name.toByteArray(Charsets.UTF_8).size <= 255
+
+    /** The temporary file name next to [fileName]; a short one when the long one would pass 255 bytes (S4). */
+    // NATIVE_CONTRACT 39.1 S4
+    private fun tempName(fileName: String): String {
+        val long = ".$fileName.maglev-tmp"
+        return if (long.toByteArray(Charsets.UTF_8).size <= 255) long else ".maglev-${System.nanoTime()}.tmp"
+    }
+
+    /** An unknown size (-1) counts as checked; a known size must match. */
+    // NATIVE_CONTRACT 39.1 S2
+    private fun sizeOk(size: Long, expected: Int): Boolean = size < 0 || size == expected.toLong()
 
     /** Writes [data] as [fileName] next to the video. Returns the path or document URI of the written file. */
     fun save(context: Context, videoPathOrUri: String, fileName: String, data: ByteArray, replace: Boolean): String {
@@ -75,18 +90,24 @@ object SubtitleFiles {
         val dir = posixFile(videoPath).parentFile
         if (dir == null || !dir.isDirectory) throw SubtitleException("CANT_WRITE", "The video's folder was not found")
         val target = File(dir, fileName)
-        if (target.exists() && !replace) throw SubtitleException("NAME_TAKEN", "A file with this name already exists")
-        val tmp = File(dir, ".$fileName.maglev-tmp")
+        val existed = target.exists()
+        if (existed && !replace) throw SubtitleException("NAME_TAKEN", "A file with this name already exists")
+        val tmp = File(dir, tempName(fileName))
         try {
             writeSynced(tmp, data)
-            // rename(2) replaces an existing file atomically.
-            if (!tmp.renameTo(target)) throw IOException("Could not move the subtitle into place")
+            // rename(2) replaces an existing file atomically, so the old file is never half-written (S2).
+            if (!tmp.renameTo(target)) {
+                // NATIVE_CONTRACT 39.1 S5: the old file can't be replaced (another app or an earlier install owns it).
+                if (existed) throw SubtitleException("REPLACE_DENIED", "That file belongs to another app")
+                throw IOException("Could not move the subtitle into place")
+            }
         } catch (e: Exception) {
             try { tmp.delete() } catch (_: Exception) {}
             throw e
         }
         if (target.name != fileName || target.length() != data.size.toLong()) {
-            try { target.delete() } catch (_: Exception) {}
+            // Only a file we created is removed; a replaced original is already gone by the atomic rename.
+            if (!existed) try { target.delete() } catch (_: Exception) {}
             throw SubtitleException("VERIFY_FAILED", "The saved subtitle did not check out")
         }
         return target.absolutePath
@@ -107,33 +128,127 @@ object SubtitleFiles {
         val parentUri = DocumentsContract.buildDocumentUriUsingTree(videoUri, parentId)
         val existing = findChild(context, videoUri, parentId, fileName)
         if (existing != null && !replace) throw SubtitleException("NAME_TAKEN", "A file with this name already exists")
+        return if (existing == null) createSaf(context, parentUri, fileName, data) else replaceSaf(context, parentUri, existing, fileName, data)
+    }
 
-        val created = existing == null
-        val target: Uri = existing
-            ?: DocumentsContract.createDocument(resolver, parentUri, "application/octet-stream", fileName)
-            ?: throw SubtitleException("CANT_WRITE", "Maglev can't create the subtitle file")
-        // From here on the document is ours: any failure removes it. A replaced original is overwritten anyway.
-        fun fail(code: String, message: String): Nothing {
-            try { DocumentsContract.deleteDocument(resolver, target) } catch (_: Exception) {}
-            throw SubtitleException(code, message)
-        }
-        if (created) {
-            // The provider may have renamed it (a clash it did not tell us about, or an added extension).
-            val (name, _) = queryNameSize(context, target)
-            if (name != fileName) fail("VERIFY_FAILED", "The saved subtitle did not check out")
-        }
+    private fun writeDocument(context: Context, uri: Uri, data: ByteArray) {
         try {
-            val out = resolver.openOutputStream(target, "wt") ?: fail("CANT_WRITE", "Maglev can't write the subtitle file")
+            val out = context.contentResolver.openOutputStream(uri, "wt") ?: throw SubtitleException("CANT_WRITE", "Maglev can't write the subtitle file")
             out.use { it.write(data) }
         } catch (e: SubtitleException) {
             throw e
         } catch (e: Exception) {
-            val mapped = mapWriteError(e)
-            fail(mapped.code, mapped.message ?: "Maglev can't write the subtitle file")
+            throw mapWriteError(e)
+        }
+    }
+
+    private fun deleteQuietly(context: Context, uri: Uri) {
+        try { DocumentsContract.deleteDocument(context.contentResolver, uri) } catch (_: Exception) {}
+    }
+
+    /** A new document: the name was free. Any failure removes the document we made (and only that one). */
+    private fun createSaf(context: Context, parentUri: Uri, fileName: String, data: ByteArray): String {
+        val target: Uri = DocumentsContract.createDocument(context.contentResolver, parentUri, "application/octet-stream", fileName)
+            ?: throw SubtitleException("CANT_WRITE", "Maglev can't create the subtitle file")
+        fun fail(e: SubtitleException): Nothing {
+            deleteQuietly(context, target)
+            throw e
+        }
+        // The provider may have renamed it (a clash it did not tell us about, or an added extension).
+        if (queryNameSize(context, target).first != fileName) fail(SubtitleException("VERIFY_FAILED", "The saved subtitle did not check out"))
+        try {
+            writeDocument(context, target, data)
+        } catch (e: SubtitleException) {
+            fail(e)
         }
         val (name, size) = queryNameSize(context, target)
-        if (name != fileName || size != data.size.toLong()) fail("VERIFY_FAILED", "The saved subtitle did not check out")
+        if (name != fileName || !sizeOk(size, data.size)) fail(SubtitleException("VERIFY_FAILED", "The saved subtitle did not check out"))
         return target.toString()
+    }
+
+    /**
+     * Replace on a folder picked with the file picker (NATIVE_CONTRACT 39.1 S2, S5). The existing document is never
+     * deleted or truncated before the new content has been written in full to a temporary document and checked.
+     * The old file is then renamed aside, the new one renamed into place, and the old one deleted last; if a step
+     * fails the old file is renamed back.
+     */
+    // NATIVE_CONTRACT 39.1 S2
+    private fun replaceSaf(context: Context, parentUri: Uri, existing: Uri, fileName: String, data: ByteArray): String {
+        val resolver = context.contentResolver
+        val tmp: Uri = DocumentsContract.createDocument(resolver, parentUri, "application/octet-stream", tempName(fileName))
+            ?: throw SubtitleException("CANT_WRITE", "Maglev can't create the subtitle file")
+        try {
+            writeDocument(context, tmp, data)
+            if (!sizeOk(queryNameSize(context, tmp).second, data.size)) throw SubtitleException("VERIFY_FAILED", "The saved subtitle did not check out")
+        } catch (e: SubtitleException) {
+            deleteQuietly(context, tmp)
+            throw e
+        }
+
+        if (!supportsRename(context, tmp) || !supportsRename(context, existing)) {
+            // No rename here. The temporary copy proved the provider can take the data, so write over the original.
+            // NATIVE_CONTRACT 39.1 S2: keep the original's bytes first (subtitles are small) and put them back if the
+            // overwrite fails partway, so a failed Replace never leaves the old subtitle cut off or empty.
+            val original: ByteArray = try {
+                resolver.openInputStream(existing)?.use { it.readBytes() }
+            } catch (_: Exception) {
+                null
+            } ?: run {
+                deleteQuietly(context, tmp)
+                throw SubtitleException("REPLACE_DENIED", "That file belongs to another app")
+            }
+            try {
+                writeDocument(context, existing, data)
+            } catch (e: SubtitleException) {
+                try { writeDocument(context, existing, original) } catch (_: Exception) {}
+                deleteQuietly(context, tmp)
+                throw e
+            }
+            deleteQuietly(context, tmp)
+            val (name, size) = queryNameSize(context, existing)
+            if (name != fileName || !sizeOk(size, data.size)) {
+                try { writeDocument(context, existing, original) } catch (_: Exception) {}
+                throw SubtitleException("VERIFY_FAILED", "The saved subtitle did not check out")
+            }
+            return existing.toString()
+        }
+
+        // Step 1: move the old file aside. If this is refused, the old file is untouched. NATIVE_CONTRACT 39.1 S5.
+        val backup: Uri? = try {
+            DocumentsContract.renameDocument(resolver, existing, ".$fileName.maglev-old".let { if (it.toByteArray(Charsets.UTF_8).size <= 255) it else ".maglev-old-${System.nanoTime()}" })
+        } catch (_: Exception) {
+            null
+        }
+        if (backup == null) {
+            deleteQuietly(context, tmp)
+            throw SubtitleException("REPLACE_DENIED", "That file belongs to another app")
+        }
+        fun restore(): Unit {
+            try { DocumentsContract.renameDocument(resolver, backup, fileName) } catch (_: Exception) {}
+        }
+        // Step 2: move the new file into place.
+        val placed: Uri? = try { DocumentsContract.renameDocument(resolver, tmp, fileName) } catch (_: Exception) { null }
+        if (placed == null) {
+            deleteQuietly(context, tmp)
+            restore()
+            throw SubtitleException("CANT_WRITE", "Maglev can't write the subtitle file")
+        }
+        val (name, size) = queryNameSize(context, placed)
+        if (name != fileName || !sizeOk(size, data.size)) {
+            deleteQuietly(context, placed)
+            restore()
+            throw SubtitleException("VERIFY_FAILED", "The saved subtitle did not check out")
+        }
+        // Step 3: only now is the old file removed.
+        deleteQuietly(context, backup)
+        return placed.toString()
+    }
+
+    private fun supportsRename(context: Context, uri: Uri): Boolean {
+        context.contentResolver.query(uri, arrayOf(DocumentsContract.Document.COLUMN_FLAGS), null, null, null)?.use { c ->
+            if (c.moveToFirst() && !c.isNull(0)) return (c.getInt(0) and DocumentsContract.Document.FLAG_SUPPORTS_RENAME) != 0
+        }
+        return false
     }
 
     /** The document id of the folder holding [docUri], or null when it can't be told. */

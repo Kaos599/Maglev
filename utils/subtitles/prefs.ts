@@ -60,20 +60,30 @@ export interface SubtitleState {
 
 /** A saved state hides 24 h after the save. */
 export const SAVED_VISIBLE_MS = 24 * 60 * 60 * 1000;
+/** A "needs a look" state hides after 24 h too. */
+export const NEEDS_LOOK_VISIBLE_MS = 24 * 60 * 60 * 1000;
+/** A "getting" state hides after 2 minutes: a download that long is gone (the app was killed). */
+export const GETTING_VISIBLE_MS = 2 * 60 * 1000;
 const STATE_KEY = 'subtitles.state';
 const MAX_STATES = 300;
 
-/** Whether the card icon still shows for this state. Only 'saved' ever hides. */
+/**
+ * Whether the card icon still shows for this state: 'getting' for 2 minutes, 'saved' and 'needs-look' for 24 h.
+ * An entry with no usable timestamp counts as expired.
+ */
+// NATIVE_CONTRACT 39.1 S3
 export function stateVisible(entry: SubtitleState | null | undefined, now: number): boolean {
   if (!entry) return false;
-  if (entry.state !== 'saved') return true;
-  return now - entry.savedAt < SAVED_VISIBLE_MS;
+  if (typeof entry.savedAt !== 'number' || !Number.isFinite(entry.savedAt)) return false;
+  const limit = entry.state === 'getting' ? GETTING_VISIBLE_MS : entry.state === 'saved' ? SAVED_VISIBLE_MS : NEEDS_LOOK_VISIBLE_MS;
+  return now - entry.savedAt < limit;
 }
 
 function clean(raw: unknown): SubtitleState | null {
   if (!raw || typeof raw !== 'object') return null;
   const o = raw as Record<string, unknown>;
   if (o.state !== 'getting' && o.state !== 'saved' && o.state !== 'needs-look') return null;
+  // A state written without a timestamp is dropped: it counts as expired (S3).
   if (typeof o.lang !== 'string' || typeof o.savedAt !== 'number' || !Number.isFinite(o.savedAt)) return null;
   return { lang: o.lang, file: typeof o.file === 'string' ? o.file : '', savedAt: o.savedAt, state: o.state };
 }
@@ -124,4 +134,22 @@ export function clearSubtitleState(videoKey: string): void {
   if (!(videoKey in all)) return;
   delete all[videoKey];
   writeAll(all);
+}
+
+/**
+ * At app start no download can still be running, so every stored 'getting' entry is stale: remove them. Entries
+ * that already expired are dropped too. Returns how many were removed.
+ */
+// NATIVE_CONTRACT 39.1 S3
+export function clearStaleStates(now: number): number {
+  const all = readAll();
+  let removed = 0;
+  for (const k of Object.keys(all)) {
+    if (all[k].state === 'getting' || !stateVisible(all[k], now)) {
+      delete all[k];
+      removed++;
+    }
+  }
+  if (removed > 0) writeAll(all);
+  return removed;
 }

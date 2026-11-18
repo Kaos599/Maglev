@@ -1,7 +1,7 @@
 import React from 'react';
 import type { PausedBy, TorrentState } from 'maglev-engine';
 import { ListRow, Sheet } from '../ui';
-import { DISABLED_ENTRY_SUBTITLE, type EntryMode } from '../subtitles/flow';
+import { entrySubtitle, type EntryMode } from '../subtitles/flow';
 import { FIND_SUBTITLES } from '../../utils/subtitles/copy';
 
 interface Props {
@@ -107,9 +107,9 @@ export function TorrentMoreSheet({
       {subtitles !== 'hidden' ? (
         <ListRow
           title={FIND_SUBTITLES}
-          subtitle={subtitles === 'disabled' ? DISABLED_ENTRY_SUBTITLE : undefined}
+          subtitle={entrySubtitle(subtitles)}
           icon="file-doc"
-          disabled={subtitles === 'disabled'}
+          disabled={subtitles !== 'enabled'}
           onPress={onFindSubtitles}
         />
       ) : null}

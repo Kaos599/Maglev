@@ -91,7 +91,7 @@ async function main() {
     const page = await throws(() => common.toPayload(new TextEncoder().encode('<!DOCTYPE html><html><body>nope</body></html>')));
     check('a page is refused', page?.kind === 'parse');
     check('an empty body is refused', (await throws(() => common.toPayload(new Uint8Array(0))))?.kind === 'parse');
-    const ass = common.toPayload(new TextEncoder().encode('[Script Info]\nTitle: x\n[V4+ Styles]\n'));
+    const ass = common.toPayload(new TextEncoder().encode('[Script Info]\nTitle: x\n[V4+ Styles]\n[Events]\nDialogue: 0,0:00:01.00,0:00:02.00,Default,,0,0,0,,Hi\n'));
     check('ASS is recognised', ass.kind === 'text' && ass.format === 'ass');
     globalThis.fetch = fakeFetch({ 'https://a.test/limit': { status: 429, body: 'slow down' }, 'https://a.test/bot': { status: 403, body: '<html>Just a moment... cloudflare</html>' }, 'https://a.test/down': { status: 503, body: 'x', type: 'text/plain' } });
     const lim = await throws(() => common.httpBytes('https://a.test/limit', { signal: new AbortController().signal }));
