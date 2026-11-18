@@ -48,7 +48,7 @@ if (exists('components/search/ResultPreviewSheet.tsx')) {
   check('preview has Add and Open in browser', /Add/.test(p) && /Open in browser/.test(p));
 }
 check('search wires the preview', /ResultPreviewSheet/.test(search));
-check('added feedback names Transfers with a View action', /Added to Transfers/.test(search) && /actionLabel: 'View'/.test(search));
+check('added feedback names Transfers with a View action', /Added to Transfers/.test(read('utils/addedTray.ts')) && /useAddedTray\(/.test(search) && />View</.test(read('components/search/AddedTray.tsx')));
 const sortSheet = read('components/search/SortFilterSheet.tsx');
 check('sort labels have no "seeders"', !/Most seeders|Seeders'/.test(search + sortSheet) && /Most shared/.test(sortSheet));
 check('header filter is labelled Sources', /accessibilityLabel=\{`Sources,/.test(search));

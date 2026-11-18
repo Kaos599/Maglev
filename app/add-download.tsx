@@ -20,6 +20,11 @@ import { banners, empty, mobileDataLine, notices } from '../constants/copy';
 import { useSettings } from '../context/SettingsContext';
 import { START_ENGINE_LABEL, engineStoppedBody, isEngineStopped } from '../utils/addErrorNotice';
 import { openBrowser } from '../utils/browser/openBrowser';
+import { fileKind } from '../utils/fileKind';
+import { SubtitlesAutoRow, useSubtitlesAuto } from '../components/search/SubtitlesAutoRow';
+import { askSubtitles } from '../utils/subtitles/requests';
+import { buildAsk } from '../utils/addedTray';
+import { joinTrayIfShowing } from '../components/search/AddedTray';
 
 /** Add a download from a web link: probe the link, show what it is, then start. */
 type Phase = 'input' | 'probing' | 'ready' | 'adding' | 'error';
@@ -60,6 +65,9 @@ export default function AddDownloadScreen() {
   const parts: DownloadParts = partsOverride ?? linkPrefs.downloadParts;
   const token = useRef(0);
   const urlRef = useRef('');
+  // NATIVE_CONTRACT 44.5 and 44.12: a video link gets the Subtitles row.
+  const fullName = probe ? baseName.trim() + splitName(probe.name).ext : '';
+  const subs = useSubtitlesAuto(!!probe && fileKind(fullName || probe.name) === 'video');
   const allowLanRef = useRef(false);
 
   const close = useCallback(() => {
@@ -209,6 +217,12 @@ export default function AddDownloadScreen() {
     });
     if (res.ok) {
       haptic('commit');
+      if (probe && subs.show) {
+        const ask = buildAsk({ infoHash: '', key: `d:${res.id}`, name: renamed ?? probe.name, sizeBytes: probe.size ?? undefined });
+        // A link added while the Added message is on screen joins it (44.12); otherwise Auto asks on its own.
+        const joined = joinTrayIfShowing({ hash: ask.key, name: renamed ?? probe.name, ask, auto: subs.on });
+        if (!joined && subs.on) askSubtitles([ask], { auto: true });
+      }
       router.replace('/');
       return;
     }
@@ -333,6 +347,7 @@ export default function AddDownloadScreen() {
           </View>
           <Button label="Change" variant="secondary" disabled={adding} onPress={() => void handleChangeFolder()} />
         </View>
+        {subs.show ? <SubtitlesAutoRow on={subs.on} onChange={subs.setOn} disabled={adding} /> : null}
         <ChipGroup label="Parts" options={PART_OPTIONS} value={parts} onChange={(v) => setPartsOverride(v)} />
         {mobileNote ?<Banner tone="info" title={mobileNote} /> : null}
         {doesntFit ? <Banner tone="danger" title={banners.addDownload.notEnoughSpace.title} body={banners.addDownload.notEnoughSpace.body} /> : null}

@@ -1,0 +1,243 @@
+/**
+ * The "Added" message after an add from Search (docs/NATIVE_CONTRACT.md section 44.3). Pure: no React, no IO.
+ * Merging adds, counts, the words, the timer deadline and which action shows all live here so they can be tested.
+ * The component and the hook that use it are components/search/AddedTray.tsx.
+ */
+import { formatBytes } from '../constants/format.ts';
+import { parseName, parseRelease, stripName } from './subtitles/parseName.ts';
+import type { SubtitleAsk } from './subtitles/requests.ts';
+
+/** The message stays this long after the latest add. */
+export const TRAY_MS = 6000;
+
+/** What happened to a video's subtitles in this message. */
+export type TraySub = 'none' | 'asked' | 'skipped';
+
+export interface TrayItem {
+  /** Lowercase info hash. */
+  hash: string;
+  /** The parsed name: "Casino Royale (2006)". */
+  display: string;
+  /** Just the title: "Casino Royale". */
+  short: string;
+  /** The add has a subtitle ask: a video, with subtitles available. Never true for music, apps and the like. */
+  ask: SubtitleAsk | null;
+  sub: TraySub;
+  /** A short note on the add itself ("Leaves 2 GB free"). Shown only when the message has this one add. */
+  note?: string;
+}
+
+export interface TrayState {
+  /** Adds that count, in order. */
+  items: TrayItem[];
+  /** Adds whose torrent was already in Transfers. They are not counted. */
+  already: { hash: string; display: string; short: string }[];
+  /** The latest add was made with automatic subtitles on. */
+  auto: boolean;
+  /** Epoch ms when the message goes away. */
+  deadline: number;
+}
+
+export interface TrayAdd {
+  hash: string;
+  name: string;
+  /** Has a subtitle ask (a video, subtitles on, at least one source on). */
+  ask: SubtitleAsk | null;
+  /** True when the add found the torrent already in Transfers. */
+  alreadyThere?: boolean;
+  auto: boolean;
+  note?: string;
+}
+
+// ---------------------------------------------------------------- names
+
+const SEASON_TAIL = /[\s._-]+(?:s(\d{1,2})|season[\s._-]*(\d{1,2}))(?:[\s._-]+(?:complete|pack|full))?$/i;
+const pad2 = (n: number) => String(n).padStart(2, '0');
+
+/** What the user sees for a result name. `short` is the title alone. */
+export function readName(name: string): { display: string; short: string } {
+  const p = parseName(name);
+  let title = p.title;
+  let season = p.season;
+  const tail = SEASON_TAIL.exec(title);
+  if (tail && p.episode === undefined) {
+    season = Number(tail[1] ?? tail[2]);
+    title = title.slice(0, tail.index).trim();
+  }
+  if (!title) {
+    const raw = stripName(name).replace(/[._]+/g, ' ').replace(/\s+/g, ' ').trim();
+    return { display: raw || name, short: raw || name };
+  }
+  const parts = [title];
+  if (p.year !== undefined) parts.push(`(${p.year})`);
+  if (season !== undefined) parts.push(`S${pad2(season)}${p.episode !== undefined ? `E${pad2(p.episode)}` : ''}`);
+  else if (p.absoluteEpisode !== undefined) parts.push(`- ${p.absoluteEpisode}`);
+  return { display: parts.join(' '), short: title };
+}
+
+/** True when the name is a season with no episode (a pack). */
+export function isSeasonPack(name: string): boolean {
+  const p = parseName(name);
+  if (p.episode !== undefined || p.season !== undefined) return false;
+  return SEASON_TAIL.test(p.title);
+}
+
+/**
+ * The ask handed to `askSubtitles` (section 44.1). `title` is the parsed name; a season pack adds its video count
+ * when known ("Severance S01 · 10 episodes"). `detail` is "1080p · YTS · 2.1 GB" with unknown parts left out.
+ */
+export function buildAsk(i: { infoHash: string; name: string; sizeBytes?: number; sourceName?: string; videoCount?: number; key?: string }): SubtitleAsk {
+  const { display } = readName(i.name);
+  const pack = isSeasonPack(i.name);
+  const title = pack && i.videoCount && i.videoCount > 1 ? `${display} · ${i.videoCount} episodes` : display;
+  const resolution = parseRelease(i.name).resolution;
+  const detail = [resolution, i.sourceName, i.sizeBytes && i.sizeBytes > 0 ? formatBytes(i.sizeBytes) : null].filter(Boolean).join(' · ');
+  return { key: i.key ?? `t:${i.infoHash.toLowerCase()}`, title, detail };
+}
+
+// ---------------------------------------------------------------- merging
+
+export function mergeAdd(prev: TrayState | null, add: TrayAdd, now: number): TrayState {
+  const hash = add.hash.toLowerCase();
+  const { display, short } = readName(add.name);
+  const base: TrayState = prev ?? { items: [], already: [], auto: add.auto, deadline: now + TRAY_MS };
+  const known = add.alreadyThere || base.items.some((x) => x.hash === hash);
+  const next: TrayState = { ...base, auto: add.auto, deadline: now + TRAY_MS };
+  if (known) {
+    if (!next.already.some((x) => x.hash === hash)) next.already = [...next.already, { hash, display, short }];
+    return next;
+  }
+  const item: TrayItem = {
+    hash,
+    display,
+    short,
+    ask: add.ask,
+    sub: add.ask && add.auto ? 'asked' : 'none',
+    ...(add.note ? { note: add.note } : {}),
+  };
+  next.items = [...next.items, item];
+  return next;
+}
+
+/** After the user asked for subtitles on these keys. */
+export function markAsked(s: TrayState, keys: readonly string[]): TrayState {
+  const set = new Set(keys);
+  return { ...s, items: s.items.map((x) => (x.ask && set.has(x.ask.key) && x.sub === 'none' ? { ...x, sub: 'asked' as const } : x)) };
+}
+
+/** Skip: every video that was asked becomes skipped. Returns the keys to hand to `skipSubtitles`. */
+export function skipAsked(s: TrayState): { state: TrayState; keys: string[] } {
+  const keys = s.items.filter((x) => x.ask && x.sub === 'asked').map((x) => x.ask!.key);
+  return { state: { ...s, items: s.items.map((x) => (x.sub === 'asked' ? { ...x, sub: 'skipped' as const } : x)) }, keys };
+}
+
+// ---------------------------------------------------------------- counts
+
+export interface TrayCounts {
+  /** Adds counted in the title. */
+  n: number;
+  /** Videos whose subtitles have not been asked for. */
+  v: number;
+  /** Videos whose subtitles were asked for (and not skipped). */
+  asked: number;
+  alreadyCount: number;
+}
+
+export function trayCounts(s: TrayState): TrayCounts {
+  return {
+    n: s.items.length,
+    v: s.items.filter((x) => x.ask && x.sub === 'none').length,
+    asked: s.items.filter((x) => x.ask && x.sub === 'asked').length,
+    alreadyCount: s.already.length,
+  };
+}
+
+/** Asks not made yet (for the choose sheet), and asks made (for the status sheet). */
+export const pendingAsks = (s: TrayState): SubtitleAsk[] => s.items.filter((x) => x.ask && x.sub === 'none').map((x) => x.ask!);
+export const askedAsks = (s: TrayState): SubtitleAsk[] => s.items.filter((x) => x.ask && x.sub === 'asked').map((x) => x.ask!);
+
+// ---------------------------------------------------------------- words
+
+/** "{A}", "{A}, {B}", "{A}, {B} and {k} more". */
+export function nameList(names: readonly string[]): string {
+  if (names.length <= 2) return names.join(', ');
+  return `${names[0]}, ${names[1]} and ${names.length - 2} more`;
+}
+
+/** True when the message is only about adds that were already in Transfers. */
+export const isAlreadyOnly = (s: TrayState): boolean => s.items.length === 0 && s.already.length > 0;
+
+/** Automatic mode shows its own title while any video in the message is getting subtitles. */
+function autoTitle(s: TrayState, c: TrayCounts): boolean {
+  return s.auto && c.asked > 0;
+}
+
+export function trayTitle(s: TrayState): string {
+  const c = trayCounts(s);
+  if (isAlreadyOnly(s)) return 'Already in Transfers';
+  if (autoTitle(s, c)) return c.n === 1 ? 'Added · Getting subtitles' : `Added ${c.n} · Getting subtitles for ${c.asked}`;
+  return c.n === 1 ? 'Added to Transfers' : `Added ${c.n} to Transfers`;
+}
+
+export function trayLine(s: TrayState): string {
+  if (isAlreadyOnly(s)) return nameList(s.already.map((x) => x.display));
+  let line = nameList(s.items.map((x) => x.display));
+  if (s.items.length === 1 && s.items[0].note) line = `${line} · ${s.items[0].note}`;
+  if (s.already.length === 1) line = `${line} · ${s.already[0].short} was already there`;
+  else if (s.already.length > 1) line = `${line} · ${s.already.length} were already there`;
+  return line;
+}
+
+/** The message read out in one go, for screen readers. */
+export const trayAnnouncement = (s: TrayState): string => `${trayTitle(s)}. ${trayLine(s)}`;
+
+// ---------------------------------------------------------------- actions
+
+export type TrayMain =
+  /** v = 1: asks straight away. v >= 2: opens the choose sheet. */
+  | { kind: 'ask'; label: string; count: number }
+  /** After asking: the state row, with "{k} more" when videos joined later. */
+  | { kind: 'getting'; label: string; more: { label: string; a11y: string; count: number } | null; opensStatus: boolean };
+
+export interface TrayAction {
+  main: TrayMain | null;
+  /** Automatic mode: "See which" (two or more videos) and "Skip". */
+  see: boolean;
+  skip: boolean;
+}
+
+const gettingLabel = (asked: number) => (asked === 1 ? 'Getting subtitles' : `Getting subtitles for ${asked}`);
+
+export function trayAction(s: TrayState): TrayAction {
+  const c = trayCounts(s);
+  if (isAlreadyOnly(s)) return { main: null, see: false, skip: false };
+  if (autoTitle(s, c) && c.v === 0) return { main: null, see: c.asked >= 2, skip: true };
+  if (c.asked === 0) {
+    if (c.v === 0) return { main: null, see: false, skip: false };
+    return { main: { kind: 'ask', label: c.v === 1 ? 'Get subtitles' : `Get subtitles for ${c.v}`, count: c.v }, see: false, skip: false };
+  }
+  return {
+    main: {
+      kind: 'getting',
+      label: gettingLabel(c.asked),
+      more: c.v > 0 ? { label: `${c.v} more`, a11y: `Get subtitles for ${c.v} more`, count: c.v } : null,
+      opensStatus: c.asked >= 2,
+    },
+    see: false,
+    skip: false,
+  };
+}
+
+/** Whether the tile is the lime check (added) or the muted one (already there). */
+export const trayTileMuted = (s: TrayState): boolean => isAlreadyOnly(s);
+
+// ---------------------------------------------------------------- timer
+
+/** Milliseconds left on the timer (never below 0). */
+export const remainingMs = (deadline: number, now: number): number => Math.max(0, deadline - now);
+
+/** A hold (a finger on the message, or the sheet open) of `heldMs` moves the deadline out by that long. */
+export const shiftDeadline = (deadline: number, heldMs: number): number => deadline + Math.max(0, heldMs);
+
+/** The timer runs only while nothing holds it and no screen reader is on (TalkBack: stays until dismissed). */
+export const timerRuns = (o: { screenReader: boolean; held: boolean }): boolean => !o.screenReader && !o.held;
