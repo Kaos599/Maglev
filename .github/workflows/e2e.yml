@@ -1,7 +1,9 @@
 name: E2E (Maestro, report-only)
 
 # Runs the Maestro flows in .maestro/ on an API 34 x86_64 emulator against the APK that CI built.
-# Report-only: nothing waits on this workflow, and release-apk.yml does not depend on it.
+# Report-only: nothing waits on this workflow, and release-apk.yml does not depend on it. Failing flows never fail the
+# job (owner decision 2026-11-19), so a commit is not marked red for them. They are reported as a warning and in the
+# job summary instead. Check this run after every push to main or a tag.
 # CI builds x86_64 only on main (ci.yml MAGLEV_ABIS). On other refs the artifact has no x86_64 APK and this job exits green with a notice.
 on:
   workflow_dispatch:
@@ -67,7 +69,9 @@ jobs:
           echo "$HOME/.maestro/bin" >> "$GITHUB_PATH"
 
       - name: Run flows on the emulator
+        id: flows
         if: steps.apk.outputs.apk != ''
+        continue-on-error: true
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 34
@@ -85,6 +89,24 @@ jobs:
             adb shell input keyevent KEYCODE_HOME
             adb install -r "${{ steps.apk.outputs.apk }}"
             maestro test .maestro/ --format junit --output maestro-report.xml --debug-output maestro-debug --flatten-debug-output || (adb logcat -d > maestro-logcat.txt; exit 1)
+
+      - name: Report the result
+        if: always() && steps.apk.outputs.apk != ''
+        env:
+          OUTCOME: ${{ steps.flows.outcome }}
+        run: |
+          {
+            echo "## Maestro flows"
+            if [ "$OUTCOME" = "success" ]; then echo "All flows passed."; else echo "**Some flows failed.** See the maestro-output artifact (report, screenshots, logcat)."; fi
+            if [ -f maestro-report.xml ]; then
+              echo ""
+              grep -o '<testcase [^>]*name="[^"]*"' maestro-report.xml | sed 's/.*name="\([^"]*\)"/- \1/' || true
+              FAILED=$(grep -c '<failure' maestro-report.xml || true)
+              echo ""
+              echo "Failed flows: ${FAILED:-0}"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [ "$OUTCOME" != "success" ]; then echo "::warning title=Maestro flows failed::Report-only. Open this run's summary and the maestro-output artifact."; fi
 
       - name: Upload Maestro output
         if: always() && steps.apk.outputs.apk != ''
