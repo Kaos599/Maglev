@@ -6,9 +6,12 @@ import { ThemeColors, radius, spacing, type } from '../../constants/theme';
 import { Button, IconButton, PressableScale, Sheet } from '../ui';
 import { PixelIcon } from '../PixelIcon';
 import { parseTyped } from '../../utils/subtitles/parseName';
+import { looksLikeAnime } from '../../utils/subtitles/offSources';
+import { useSubtitleOffSources } from './useSubtitleEntry';
 import {
   CHANGE_LANGUAGES,
   CHANGE_NAME_LABEL,
+  MORE_SOURCES,
   PHASE_WORDS,
   ROW_BUTTONS,
   SKIP_LABEL,
@@ -17,6 +20,7 @@ import {
   foundInOtherOnly,
   multiButton,
   multiTitle,
+  offSourcesTail,
   nonVideoMany,
   nonVideoOne,
   statusSummary,
@@ -46,6 +50,7 @@ export function MultiSubtitleSheet({ visible, asks, mode, onConfirm, onClose, no
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const router = useRouter();
   const phases = useRequestPhases(asks.map((a) => a.key));
+  const offSources = useSubtitleOffSources(asks.some((a) => looksLikeAnime(a.searchName ?? a.title)));
   const [off, setOff] = useState<Set<string>>(new Set());
   const [editing, setEditing] = useState<string | null>(null);
   const [draft, setDraft] = useState('');
@@ -83,11 +88,13 @@ export function MultiSubtitleSheet({ visible, asks, mode, onConfirm, onClose, no
   };
 
   const counts = { saved: 0, needsYou: 0, waiting: 0 };
+  let nothingFound = false;
   for (const a of asks) {
     const p = phases[a.key];
     if (p === 'saved') counts.saved++;
     else if (p === 'needs-pick') counts.needsYou++;
     else if (p === 'searching' || p === 'queued') counts.waiting++;
+    else if (p === 'none') nothingFound = true;
   }
   const summary = mode === 'status' ? statusSummary(counts) : '';
   const foot = nonVideo && nonVideo.length > 0 ? (nonVideo.length === 1 ? nonVideoOne(nonVideo[0]) : nonVideoMany(nonVideo.length)) : '';
@@ -109,7 +116,23 @@ export function MultiSubtitleSheet({ visible, asks, mode, onConfirm, onClose, no
             <Text style={styles.changeText}>{CHANGE_LANGUAGES}</Text>
           </PressableScale>
         </View>
+        <View style={styles.summaryRow}>
         {summary ? <Text style={styles.summary}>{summary}</Text> : null}
+        {/* 45.5: a row found nothing and some sources are off. */}
+        {mode === 'status' && nothingFound && offSources.count > 0 ? (
+          <PressableScale
+            onPress={() => {
+              onClose();
+              router.push('/settings/subtitle-sources' as never);
+            }}
+            accessibilityRole="button"
+            accessibilityLabel={`${offSourcesTail(offSources.count)}. ${MORE_SOURCES}`}
+            style={styles.offLine}
+          >
+            <Text style={styles.changeText}>{`${summary ? '\u00B7 ' : ''}${offSourcesTail(offSources.count)}`}</Text>
+          </PressableScale>
+        ) : null}
+        </View>
 
         <ScrollView style={styles.list} keyboardShouldPersistTaps="handled">
           {asks.map((a, i) => {
@@ -198,6 +221,8 @@ const makeStyles = (c: ThemeColors) =>
     stack: { gap: spacing.sm },
     langLine: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
     hint: { ...type.body, fontSize: 13, lineHeight: 20, color: c.textMuted, flexShrink: 1 },
+    summaryRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', columnGap: spacing.sm },
+    offLine: { minHeight: 44, justifyContent: 'center', alignSelf: 'flex-start' },
     summary: { ...type.bodyStrong, fontSize: type.size.md, color: c.text },
     change: { minHeight: 44, minWidth: 44, justifyContent: 'center', alignItems: 'center', paddingHorizontal: spacing.sm },
     changeText: { ...type.bodyStrong, fontSize: type.size.md, color: c.accentText },

@@ -222,3 +222,21 @@ export function rowPackLine(c: { saved: number; total: number; needYou: number }
 }
 /** What TalkBack reads: "Subtitles, {line}, button {label}". */
 export const rowLabel = (line: string, button: string | null): string => (button ? `${ROW_LABEL}, ${line}, button ${button}` : `${ROW_LABEL}, ${line}`);
+
+// ---------------------------------------------------------------- NATIVE_CONTRACT 45.5: sources that are off
+
+export const TURN_ON_MORE_SOURCES = 'Turn on more sources';
+export const MORE_SOURCES = 'More sources';
+
+/** The sheet's line. When the video is anime and an anime source is off, it names that source. */
+export function offSourcesLine(k: number, animeName: string | null = null): string {
+  const line = k === 1 ? '1 more subtitle source is off' : `${k} more subtitle sources are off`;
+  if (!animeName) return line;
+  return k === 1 ? `${line} (${animeName})` : `${line}, including ${animeName}`;
+}
+
+/** The multi-video sheet's summary tail, joined to the status summary. */
+export const offSourcesTail = (k: number): string => (k === 1 ? '1 source off' : `${k} sources off`);
+
+/** The page row's line: "No match yet · 2 sources off". */
+export const rowNoneOff = (k: number): string => `${ROW_NONE} \u00B7 ${offSourcesTail(k)}`;

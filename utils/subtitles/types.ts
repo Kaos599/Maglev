@@ -39,6 +39,8 @@ export interface SubtitleProvider {
   kinds: ('movie' | 'episode')[];
   matches: ('hash' | 'name' | 'imdb')[];
   group: 'A' | 'B';
+  /** A source with one subject (36 / 45.5): the off-sources count puts these first for anime. */
+  focus?: 'anime';
   enabledByDefault: boolean; // A: true when coverage is broad; regional and B: false
   search(q: SubtitleQuery, ctx: SubtitleContext): Promise<SubtitleCandidate[]>;
   download(c: SubtitleCandidate, ctx: SubtitleContext): Promise<SubtitlePayload>;
