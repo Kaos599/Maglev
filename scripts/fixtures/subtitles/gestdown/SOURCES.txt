@@ -1,0 +1,4 @@
+Recorded 2026-11-18.
+shows_search_breaking_bad.json  GET https://api.gestdown.info/shows/search/Breaking%20Bad, unedited.
+subtitles_bb_s01e01_english.json  GET https://api.gestdown.info/subtitles/get/1WLU6zJky4nlJQa5oojv5R/1/1/English, first 4 items.
+download_head.srt  first 1200 bytes of GET https://api.gestdown.info/subtitles/download/3Df15bUM1njyzL2GHv0PaX.

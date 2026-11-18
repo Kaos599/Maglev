@@ -1,0 +1,4 @@
+Recorded 2026-11-18, unedited.
+search_inception.json  GET https://vladoon.com/subs/search-subtitles?q=Inception
+search_breaking_bad_s01e01.json  GET https://vladoon.com/subs/search-subtitles?q=Breaking+Bad+S01E01 (a season pack)
+download.zip  GET https://vladoon.com/subs/download/6705
