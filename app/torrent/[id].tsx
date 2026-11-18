@@ -35,6 +35,9 @@ import {
 import { FileListRow } from '../../components/detail/FileListRow';
 import { PrioritySheet } from '../../components/detail/PrioritySheet';
 import { canResumeAnyway, resumeAnywayLabel } from '../../components/transfers/model';
+import { reasonsForItem } from '../../utils/blocks/reasons';
+import { WhyHeld } from '../../components/transfers/WhyHeld';
+import { useLiveBlockContext } from '../../utils/blocks/useActiveBlocks';
 import { WIFI_ANYWAY_NOTE } from '../../utils/downloadCopy';
 import { TorrentMoreSheet } from '../../components/detail/TorrentMoreSheet';
 import { SpeedLimitSheet } from '../../components/detail/SpeedLimitSheet';
@@ -285,6 +288,7 @@ export default function TorrentDetailScreen() {
   }, [detail]);
 
   const snap = detail?.snapshot ?? null;
+  const blockCtx = useLiveBlockContext();
 
   // Forget a hidden tracker once the engine no longer lists it.
   useEffect(() => {
@@ -633,7 +637,16 @@ export default function TorrentDetailScreen() {
     [handleFreeSpace, handlePlayPause, handleRecheck, handleScanFiles, router],
   );
 
-  const ruleResume = snap?.state === 'PAUSED' && canResumeAnyway(snap.pausedBy);
+  const heldItem = snap
+    ? {
+        finished: !!snap.finished || snap.state === 'COMPLETED' || snap.state === 'SEEDING',
+        paused: snap.state === 'PAUSED',
+        queued: snap.state === 'QUEUED',
+        downloading: snap.state === 'DOWNLOADING',
+        pausedBy: snap.pausedBy,
+      }
+    : null;
+  const ruleResume = snap?.state === 'PAUSED' && canResumeAnyway(snap.pausedBy, blockCtx);
   const headerActions = snap ? (
     <>
       {snap.state === 'CHECKING' || snap.state === 'INITIALIZING' || snap.state === 'MOVING' ? null : (
@@ -785,7 +798,7 @@ export default function TorrentDetailScreen() {
 
       <View style={styles.summary}>
         <View style={styles.summaryTop}>
-          <StateBadge state={snap.state} pausedBy={snap.pausedBy} moveProgress={snap.moveProgress} resumesAt={resumesAt} resolving={resolving} />
+          <StateBadge state={snap.state} pausedBy={snap.pausedBy} moveProgress={snap.moveProgress} resumesAt={resumesAt} resolving={resolving} blocks={blockCtx} />
           <Text style={styles.percent} accessibilityLabel={`${(frac * 100).toFixed(1)} percent`}>
             {(frac * 100).toFixed(1)}%
           </Text>
@@ -803,6 +816,12 @@ export default function TorrentDetailScreen() {
         <View style={[styles.block, { gap: spacing.sm }]}>
           <Button label={resumeAnywayLabel(snap.pausedBy)} icon="play" size="lg" fullWidth onPress={() => void handleResumeAnyway()} />
           {snap.pausedBy === 'wifi_only' ? <Text style={styles.muted}>{WIFI_ANYWAY_NOTE}</Text> : null}
+        </View>
+      ) : null}
+
+      {!allDone && heldItem && reasonsForItem(heldItem, blockCtx.blocks ?? [], blockCtx.queueLimit).length > 0 ? (
+        <View style={styles.block}>
+          <WhyHeld item={heldItem} blocks={blockCtx.blocks ?? []} queueLimit={blockCtx.queueLimit} />
         </View>
       ) : null}
 

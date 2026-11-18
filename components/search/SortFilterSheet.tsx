@@ -2,7 +2,8 @@ import React, { useMemo } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useTheme } from '../../context/ThemeContext';
 import { ThemeColors, spacing, type } from '../../constants/theme';
-import { Button, Chip, ListRow, SectionHeader, Sheet, Toggle } from '../ui';
+import { Button, Chip, ListRow, RangeSlider, SectionHeader, Sheet, Toggle } from '../ui';
+import { SIZE_STOPS, rangeLabel, stopLabel } from './sizeRange';
 
 export type SortKey = 'seeders' | 'newest' | 'size' | 'name';
 
@@ -14,11 +15,7 @@ const SORT_CAPTION: Record<SortKey, string> = {
   size: 'Biggest files first.',
   name: 'A to Z.',
 };
-export const MIN_SIZES: { label: string; bytes: number }[] = [
-  { label: 'Any size', bytes: 0 },
-  { label: 'Over 100 MB', bytes: 100e6 },
-  { label: 'Over 1 GB', bytes: 1e9 },
-];
+const LAST_STOP = SIZE_STOPS.length - 1;
 
 export interface SortFilterSheetProps {
   visible: boolean;
@@ -30,8 +27,9 @@ export interface SortFilterSheetProps {
   sources: { id: string; name: string; count: number }[];
   sourceFilter: string | null;
   onSourceChange: (id: string | null) => void;
-  minBytes: number;
-  onMinBytesChange: (bytes: number) => void;
+  /** Stop indices into SIZE_STOPS. Full range (0 to the last index) means any size. */
+  sizeRange: { low: number; high: number };
+  onSizeRangeChange: (low: number, high: number) => void;
   hideNoShare: boolean;
   onHideNoShareChange: (next: boolean) => void;
   /** Results left after the filters, and results before them. */
@@ -51,8 +49,8 @@ export function SortFilterSheet({
   sources,
   sourceFilter,
   onSourceChange,
-  minBytes,
-  onMinBytesChange,
+  sizeRange,
+  onSizeRangeChange,
   hideNoShare,
   onHideNoShareChange,
   shownCount,
@@ -61,7 +59,7 @@ export function SortFilterSheet({
 }: SortFilterSheetProps) {
   const { colors } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
-  const dirty = sourceFilter !== null || minBytes !== 0 || hideNoShare;
+  const dirty = sourceFilter !== null || sizeRange.low !== 0 || sizeRange.high !== LAST_STOP || hideNoShare;
 
   return (
     <Sheet visible={visible} onClose={onClose} title="Sort and filter" returnFocusRef={returnFocusRef}>
@@ -94,12 +92,19 @@ export function SortFilterSheet({
 
         <View style={styles.section}>
           <SectionHeader title="Size" />
-          <Text style={styles.caption}>Hide files smaller than this.</Text>
-          <View style={styles.chips} accessibilityRole="radiogroup" accessibilityLabel="Size">
-            {MIN_SIZES.map((m) => (
-              <Chip key={m.bytes} role="radio" label={m.label} selected={minBytes === m.bytes} onPress={() => onMinBytesChange(m.bytes)} />
-            ))}
+          <Text style={styles.readout} accessibilityLiveRegion="polite">{rangeLabel(sizeRange.low, sizeRange.high)}</Text>
+          <View style={styles.slider}>
+            <RangeSlider
+              steps={SIZE_STOPS.length}
+              low={sizeRange.low}
+              high={sizeRange.high}
+              onChange={onSizeRangeChange}
+              labelLow="Smallest size"
+              labelHigh="Largest size"
+              valueText={stopLabel}
+            />
           </View>
+          <Text style={styles.caption}>Files of unknown size always show.</Text>
         </View>
 
         <View style={styles.section}>
@@ -127,6 +132,8 @@ const makeStyles = (c: ThemeColors) =>
     scroll: { flexGrow: 0, flexShrink: 1 },
     section: { marginTop: spacing.md },
     caption: { ...type.body, fontSize: 12, lineHeight: 17, color: c.textMuted, paddingHorizontal: spacing.lg, marginBottom: spacing.sm },
+    readout: { ...type.mono, fontSize: 14, color: c.text, paddingHorizontal: spacing.lg, marginBottom: spacing.xs },
+    slider: { paddingHorizontal: spacing.md },
     chips: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, paddingHorizontal: spacing.lg },
     footer: { marginTop: spacing.md, gap: spacing.sm },
     count: { ...type.body, fontSize: 12, color: c.textMuted, paddingHorizontal: spacing.lg },

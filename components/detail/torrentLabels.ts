@@ -3,7 +3,8 @@ import type { ThemeColors } from '../../constants/theme';
 import { formatSpeed } from '../../constants/format';
 import { fileKind } from '../../utils/fileKind';
 import { buildMagnet } from './magnet';
-import { healthLabel, resolvingLine } from './fileHealthMachine';
+import { resolvingLine } from './fileHealthMachine';
+import { reasonFor, type BlockContext } from '../../utils/blocks/reasons';
 
 export { buildMagnet };
 
@@ -11,7 +12,7 @@ export { buildMagnet };
 export function stateLabel(
   state: TorrentState,
   pausedBy: PausedBy | null | undefined,
-  extra?: { moveProgress?: number | null; resumesAt?: string | null; resolving?: { peersSeen: number; secs: number } | null },
+  extra?: { moveProgress?: number | null; resumesAt?: string | null; resolving?: { peersSeen: number; secs: number } | null; blocks?: BlockContext },
 ): string {
   switch (state) {
     case 'MOVING':
@@ -19,9 +20,10 @@ export function stateLabel(
     case 'INITIALIZING':
       return extra?.resolving ? resolvingLine(extra.resolving.peersSeen, extra.resolving.secs) : 'Getting info';
     case 'QUEUED':
-      return 'Queued';
+      return reasonFor('queued', extra?.blocks)!.short;
     case 'DOWNLOADING':
-      return 'Downloading';
+      // Torrents never carry `offline`; the engine's block list says why one is stalled (NATIVE_CONTRACT 35.4).
+      return extra?.blocks?.blocks?.some((b) => b.tag === 'offline') ? reasonFor('offline')!.short : 'Downloading';
     case 'SEEDING':
       return 'Done · Seeding';
     case 'CHECKING':
@@ -30,22 +32,12 @@ export function stateLabel(
       return 'Error';
     case 'COMPLETED':
       return 'Done';
-    case 'PAUSED':
-      switch (pausedBy) {
-        case 'wifi_only':
-          return 'Waiting for Wi-Fi';
-        case 'battery':
-        case 'charging_only':
-          return 'Paused to save battery';
-        case 'seed_limit':
-          return 'Done';
-        case 'seed_metered':
-          return 'Done · Seeding waits for Wi-Fi';
-        case 'schedule':
-          return extra?.resumesAt ? `Scheduled pause · resumes ${extra.resumesAt}` : 'Scheduled pause';
-        default:
-          return healthLabel(pausedBy) ?? 'Paused';
-      }
+    case 'PAUSED': {
+      const short = reasonFor(pausedBy, extra?.blocks)?.short ?? 'Paused';
+      if (pausedBy === 'seed_metered') return `Done · ${short}`;
+      if (pausedBy === 'schedule' && extra?.resumesAt) return `${short} · resumes ${extra.resumesAt}`;
+      return short;
+    }
   }
 }
 

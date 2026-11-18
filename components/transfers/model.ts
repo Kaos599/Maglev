@@ -1,7 +1,8 @@
 import type { DownloadSnapshot, TorrentTelemetry } from 'maglev-engine';
 import type { SortKey, TransferSort } from '../../utils/prefs/transfers';
 import { formatBytes, formatSpeed } from '../../constants/format.ts';
-import { healthLabel, resolvingLine } from '../detail/fileHealthMachine.ts';
+import { resolvingLine } from '../detail/fileHealthMachine.ts';
+import { reasonFor, wifiOverrideAllowed, type BlockContext } from '../../utils/blocks/reasons.ts';
 import { downloadProgress } from '../../utils/downloadCopy.ts';
 import { doneLead } from '../../utils/stats/format.ts';
 
@@ -125,7 +126,7 @@ export type StatusSlot = 'speed' | 'upload' | 'size';
 export interface TorrentStatus {
   /** Whole status for screen readers. */
   text: string;
-  /** Left part of line one: what is happening ("1 min left", "Seeding", "Paused: waiting for Wi-Fi"). */
+  /** Left part of line one: what is happening ("1 min left", "Seeding", "Waiting for Wi-Fi"). */
   lead: string;
   /** Right part of line one, a number in a fixed-width slot (speed or size). */
   value?: string;
@@ -162,21 +163,9 @@ export function torrentProgressText(t: Pick<TorrentTelemetry, 'includedBytes' | 
   return `${formatBytes(t.downloadedBytes)} of ${formatBytes(target)} · ${pct}%`;
 }
 
-function pausedReason(pausedBy: string | null | undefined): string {
-  switch (pausedBy) {
-    case 'wifi_only':
-      return 'Paused: waiting for Wi-Fi';
-    case 'battery':
-      return 'Paused: battery is low';
-    case 'charging_only':
-      return 'Paused: waiting for charger';
-    case 'fgs_timeout':
-      return 'Paused: stopped in background';
-    case 'schedule':
-      return 'Paused: by schedule';
-    default:
-      return healthLabel(pausedBy) ?? 'Paused';
-  }
+/** The card line for a hold: the table's short line, or plain "Paused". */
+function pausedReason(pausedBy: string | null | undefined, ctx: BlockContext): string {
+  return reasonFor(pausedBy, ctx)?.short ?? 'Paused';
 }
 
 function line(lead: string, tone: StatusTone, value?: string, slot?: StatusSlot, sub?: string | null): TorrentStatus {
@@ -185,12 +174,14 @@ function line(lead: string, tone: StatusTone, value?: string, slot?: StatusSlot,
 }
 
 /** The status under the bar. `etaLabel` is the hysteresis-stable time left. */
-export function torrentStatus(t: StatusRow, etaLabel: string): TorrentStatus {
+export function torrentStatus(t: StatusRow, etaLabel: string, ctx: BlockContext = {}): TorrentStatus {
   const total = t.totalSizeBytes > 0 ? formatBytes(t.totalSizeBytes) : '—';
   const progress = torrentProgressText(t);
   const started = t.downloadedBytes > 0 ? progress : null;
   switch (t.state) {
     case 'DOWNLOADING': {
+      // Torrents never carry `offline`: the engine's block list is how a stalled torrent says why (NATIVE_CONTRACT 35.4).
+      if (!t.lastKnown && ctx.blocks?.some((b) => b.tag === 'offline')) return line(reasonFor('offline')!.short, 'muted', undefined, undefined, progress);
       const speed = t.lastKnown || t.downloadSpeedBytes <= 0 ? '—' : formatSpeed(t.downloadSpeedBytes);
       if (!t.lastKnown && t.etaSeconds >= 0 && etaLabel !== '—') return line(`${etaLabel} left`, 'muted', speed, 'speed', progress);
       return line('Downloading', 'muted', speed, 'speed', progress);
@@ -198,11 +189,11 @@ export function torrentStatus(t: StatusRow, etaLabel: string): TorrentStatus {
     case 'SEEDING':
       return line('Done · Seeding', 'accent', `↑ ${t.lastKnown ? '—' : formatSpeed(t.uploadSpeedBytes)}`, 'upload');
     case 'PAUSED':
-      if (t.pausedBy === 'seed_metered') return line('Done · Seeding waits for Wi-Fi', 'accent', total, 'size');
+      if (t.pausedBy === 'seed_metered') return line(`Done · ${pausedReason(t.pausedBy, ctx)}`, 'accent', total, 'size');
       if (t.pausedBy === 'seed_limit') return line(doneLead(t.activeSecs, t.finishedAt), 'accent', total, 'size');
       // Storage full: the sub-line is the way out (docs/contracts-0.19/play-and-storage.md section 2).
-      if (t.pausedBy === 'storage_full') return line(pausedReason(t.pausedBy), 'muted', undefined, undefined, 'Free up space');
-      return line(pausedReason(t.pausedBy), 'muted', undefined, undefined, started);
+      if (t.pausedBy === 'storage_full') return line(pausedReason(t.pausedBy, ctx), 'muted', undefined, undefined, 'Free up space');
+      return line(pausedReason(t.pausedBy, ctx), 'muted', undefined, undefined, started);
     case 'COMPLETED':
       return line(doneLead(t.activeSecs, t.finishedAt), 'accent', total, 'size');
     case 'MOVING':
@@ -210,7 +201,7 @@ export function torrentStatus(t: StatusRow, etaLabel: string): TorrentStatus {
     case 'ERROR':
       return line(t.error?.message ? t.error.message : 'Something went wrong', 'danger', undefined, undefined, started);
     case 'QUEUED':
-      return line('Queued', 'muted', undefined, undefined, started);
+      return line(reasonFor('queued', ctx)!.short, 'muted', undefined, undefined, started);
     case 'CHECKING':
       return line('Checking files…', 'muted');
     case 'INITIALIZING':
@@ -243,11 +234,10 @@ export function clearFinishedCopy(count: number): { title: string; body: string;
 
 // ---- Resume anyway ----
 
-/** Pauses a rule caused. One tap can override them for this torrent only. */
-const RULE_PAUSES: readonly string[] = ['wifi_only', 'battery', 'charging_only', 'schedule'];
-
-export function canResumeAnyway(pausedBy: string | null | undefined): boolean {
-  return !!pausedBy && RULE_PAUSES.includes(pausedBy);
+/** Whether one tap may override the rule for this torrent only. The table decides (NATIVE_CONTRACT 35.2). */
+export function canResumeAnyway(pausedBy: string | null | undefined, ctx: BlockContext = {}): boolean {
+  if (pausedBy === 'wifi_only' && !wifiOverrideAllowed(ctx.blocks)) return false;
+  return !!reasonFor(pausedBy, ctx)?.override;
 }
 
 /** Wi-Fi only is the one with a different name: it means "use mobile data now". */
@@ -257,15 +247,20 @@ export function resumeAnywayLabel(pausedBy: string | null | undefined): string {
 
 // ---- Torrent card button ----
 
-export type TorrentCardActionKind = 'pause' | 'resume' | 'keepTrying' | 'open' | 'resumeAnyway' | 'freeSpace';
+/** Holds with no Resume: the rule would pause the torrent again at once. */
+const GOVERNANCE_HOLDS: ReadonlySet<string> = new Set(['wifi_only', 'vpn_required', 'network_unvalidated', 'seed_metered']);
+
+export type TorrentCardActionKind = 'pause' | 'resume' | 'keepTrying' | 'open' | 'resumeAnyway' | 'freeSpace' | 'setting';
 export interface TorrentCardAction {
-  icon: 'pause' | 'play' | 'retry' | 'external' | 'speed-limit' | 'trash';
+  icon: 'pause' | 'play' | 'retry' | 'external' | 'speed-limit' | 'trash' | 'settings';
   label: string;
   kind: TorrentCardActionKind;
+  /** The settings screen a `setting` action opens. */
+  route?: string;
 }
 
 /** The card's one button, or null when nothing can be done from the list. */
-export function torrentCardAction(t: Pick<TorrentTelemetry, 'state' | 'pausedBy'>): TorrentCardAction | null {
+export function torrentCardAction(t: Pick<TorrentTelemetry, 'state' | 'pausedBy'>, ctx: BlockContext = {}): TorrentCardAction | null {
   switch (t.state) {
     case 'DOWNLOADING':
     case 'SEEDING':
@@ -278,9 +273,14 @@ export function torrentCardAction(t: Pick<TorrentTelemetry, 'state' | 'pausedBy'
       // Storage full: the card's button opens the list of finished downloads to remove (play-and-storage section 3).
       if (by === 'storage_full') return { icon: 'trash', label: 'Free up space', kind: 'freeSpace' };
       if (by === 'files_missing' || by === 'files_changed' || by === 'storage_unavailable') return null;
-      if (canResumeAnyway(by)) return { icon: 'play', label: resumeAnywayLabel(by), kind: 'resumeAnyway' };
-      // Waiting on something that clears by itself (or seeding that waits for Wi-Fi).
-      if (by === 'fgs_timeout' || by === 'seed_metered') return null;
+      if (canResumeAnyway(by, ctx)) return { icon: 'play', label: resumeAnywayLabel(by), kind: 'resumeAnyway' };
+      // Android stopped the app in the background: a plain Resume starts it again.
+      if (by === 'fgs_timeout') return { icon: 'play', label: 'Resume', kind: 'resume' };
+      // A rule that Resume would only trip again: the card points at the setting that holds it, or waits for it to clear.
+      if (by && GOVERNANCE_HOLDS.has(by)) {
+        const setting = reasonFor(by, ctx)?.setting;
+        return setting ? { icon: 'settings', label: 'Change in Settings', kind: 'setting', route: setting.route } : null;
+      }
       return { icon: 'play', label: 'Resume', kind: 'resume' };
     }
     case 'ERROR':

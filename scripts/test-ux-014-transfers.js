@@ -27,7 +27,7 @@ async function main() {
   check('seeding reads "Done · Seeding"', seeding.lead === 'Done · Seeding', seeding.lead);
   check('seeding keeps the upload speed slot', seeding.slot === 'upload' && /↑/.test(seeding.value || ''), String(seeding.value));
   const metered = m.torrentStatus(t('a', 'PAUSED', 'seed_metered'), '—');
-  check('seed_metered reads "Done · Seeding waits for Wi-Fi"', metered.lead === 'Done · Seeding waits for Wi-Fi', metered.lead);
+  check('seed_metered reads "Done · Sharing waits for Wi-Fi"', metered.lead === 'Done · Sharing waits for Wi-Fi', metered.lead);
   check('seeding counts in Done', m.matchesFilter(t('a', 'SEEDING'), 'done'));
   check('seeding still counts in Seeding', m.matchesFilter(t('a', 'SEEDING'), 'seeding'));
   check('seed_metered counts in Done, not Paused', m.matchesFilter(t('a', 'PAUSED', 'seed_metered'), 'done') && !m.matchesFilter(t('a', 'PAUSED', 'seed_metered'), 'paused'));
