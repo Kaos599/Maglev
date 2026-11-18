@@ -13,6 +13,8 @@ import { useTheme } from '../context/ThemeContext';
 import { ThemeColors, radius, spacing, type } from '../constants/theme';
 import { notices, onboarding as copy } from '../constants/copy';
 import { haptic } from '../constants/haptics';
+import Constants from 'expo-constants';
+import { setLastSeenVersion } from '../utils/prefs/highlights';
 
 type StepId = 'welcome' | 'notifications' | 'folder' | 'background' | 'mobileData';
 
@@ -49,14 +51,22 @@ export default function OnboardingScreen() {
   const [wifiOnly, setWifiOnly] = useState(true);
   const step = STEPS[index];
 
+  // A first install never sees the new-feature sheet (docs/NATIVE_CONTRACT.md 37.2): remember the installed version.
+  const markHighlightsSeen = useCallback(() => {
+    const v = Constants.expoConfig?.version;
+    if (v) setLastSeenVersion(v);
+  }, []);
+
   const finish = useCallback(() => {
+    markHighlightsSeen();
     updateSettings({ onboarded: true });
-  }, [updateSettings]);
+  }, [updateSettings, markHighlightsSeen]);
 
   const saveNetwork = useCallback(() => {
     haptic('commit');
+    markHighlightsSeen();
     updateSettings((prev) => ({ network: { ...prev.network, wifiOnly }, onboarded: true }));
-  }, [updateSettings, wifiOnly]);
+  }, [updateSettings, wifiOnly, markHighlightsSeen]);
 
   const next = useCallback(() => {
     setFolderNote(null);

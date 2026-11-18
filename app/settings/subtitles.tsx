@@ -1,0 +1,82 @@
+import React from 'react';
+import { StyleSheet, View } from 'react-native';
+import { Stack, useRouter } from 'expo-router';
+import { spacing } from '../../constants/theme';
+import { ListRow, SectionHeader, Toggle } from '../../components/ui';
+import { Caption, Card, ChipGroup, SettingsPage } from '../../components/settings/SettingsParts';
+import { useSubtitleSettings } from '../../components/subtitles-settings/useSubtitleSettings';
+import { useListsVersion } from '../../utils/lists/hooks';
+import { listSubtitleEntries } from '../../utils/lists/store';
+import { SUBTITLE_PROVIDERS } from '../../utils/subtitles/providers';
+import { HEARING_OPTIONS, PRIVACY_LINE, SETTINGS_SWITCH_SUBTITLE, SETTINGS_TITLE } from '../../utils/subtitles/copy';
+import { hasOpenSubtitlesKey, languagesValue, sourceRows, sourcesValue } from '../../utils/subtitleSettings';
+import { subtitleSettingsCopy as copy } from '../../constants/copy';
+
+const HEARING = (Object.keys(HEARING_OPTIONS) as (keyof typeof HEARING_OPTIONS)[]).map((value) => ({ value, label: HEARING_OPTIONS[value] }));
+
+export default function SubtitlesSettings() {
+  const router = useRouter();
+  const [sub, patch] = useSubtitleSettings();
+  const listsVersion = useListsVersion();
+  const sources = React.useMemo(() => sourcesValue(sourceRows(SUBTITLE_PROVIDERS, sub, listSubtitleEntries())), [sub, listsVersion]);
+  const off = !sub.enabled;
+
+  return (
+    <SettingsPage title={SETTINGS_TITLE}>
+      <Stack.Screen options={{ headerShown: false }} />
+      <Card>
+        <ListRow
+          title={SETTINGS_TITLE}
+          subtitle={SETTINGS_SWITCH_SUBTITLE}
+          accessory={<Toggle value={sub.enabled} onValueChange={(enabled) => patch({ enabled })} accessibilityLabel={SETTINGS_TITLE} />}
+        />
+      </Card>
+
+      <View style={off && styles.dim} pointerEvents={off ? 'none' : 'auto'} accessibilityState={{ disabled: off }}>
+        <View style={styles.group}>
+          <SectionHeader title="Looking for" />
+          <Card>
+            <ListRow
+              icon="peers"
+              title={copy.languages.title}
+              value={languagesValue(sub.languages)}
+              disabled={off}
+              onPress={() => router.push('/settings/subtitle-languages' as never)}
+            />
+            <ChipGroup
+              label={copy.hearing.title}
+              options={HEARING}
+              value={sub.hearingImpaired}
+              onChange={(hearingImpaired) => patch({ hearingImpaired })}
+            />
+          </Card>
+          <Caption>{copy.hearing.caption}</Caption>
+        </View>
+
+        <View style={[styles.group, styles.gap]}>
+          <SectionHeader title="Where from" />
+          <Card>
+            <ListRow icon="network" title={copy.sources.title} value={sources} disabled={off} onPress={() => router.push('/settings/subtitle-sources' as never)} />
+            {hasOpenSubtitlesKey() ? (
+              <ListRow
+                icon="lock"
+                title={copy.account.title}
+                subtitle={copy.account.subtitle}
+                disabled={off}
+                onPress={() => router.push('/settings/opensubtitles' as never)}
+              />
+            ) : null}
+          </Card>
+        </View>
+      </View>
+
+      <Caption>{PRIVACY_LINE}</Caption>
+    </SettingsPage>
+  );
+}
+
+const styles = StyleSheet.create({
+  dim: { opacity: 0.45 },
+  group: { gap: spacing.sm },
+  gap: { marginTop: spacing.lg },
+});

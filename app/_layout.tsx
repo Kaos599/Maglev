@@ -12,6 +12,7 @@ import { FONT_NAMES } from '../constants/fontStyles';
 import NavigationBarSync from '../components/NavigationBarSync';
 import { NoticeHost } from '../components/ui/NoticeHost';
 import { StarPrompt } from '../components/StarPrompt';
+import { HighlightSheet } from '../components/HighlightSheet';
 import { syncScheduleToNative } from '../utils/prefs/schedule';
 import { syncFeedAutomationToNative } from '../utils/prefs/feedAutomation';
 import { initHistory } from '../utils/history';
@@ -154,6 +155,9 @@ function AppNavigation() {
           <Stack.Screen name="settings/search-providers" />
           <Stack.Screen name="settings/speed" />
           <Stack.Screen name="settings/storage" />
+          <Stack.Screen name="settings/subtitle-languages" />
+          <Stack.Screen name="settings/subtitle-sources" />
+          <Stack.Screen name="settings/subtitles" />
           <Stack.Screen name="settings/updates" />
           <Stack.Screen name="settings/whats-new" />
           <Stack.Screen name="settings/watch" />
@@ -162,6 +166,7 @@ function AppNavigation() {
       </Stack>
       {main ? <NoticeHost /> : null}
       {main ? <StarPrompt /> : null}
+      {main ? <HighlightSheet /> : null}
     </>
   );
 }
