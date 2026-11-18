@@ -10,6 +10,9 @@ import { formatBytes, formatEta, formatSpeed } from '../../constants/format';
 import { haptic } from '../../constants/haptics';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { PixelIcon } from '../../components/PixelIcon';
+import { SubtitleSheet } from '../../components/subtitles/SubtitleSheet';
+import { useSubtitleAvailability } from '../../components/subtitles/useSubtitleEntry';
+import { fileEntryMode, torrentEntryMode, torrentTarget, type SubtitleTarget } from '../../components/subtitles/flow';
 import { OPEN_FOLDER_FAILED_TEXT } from '../../utils/downloadCopy';
 import { friendlyPath } from '../../components/settings/SettingsParts';
 import { Banner, Button, EmptyBlock, IconButton, ListRow, PressableScale, ProgressBar, Screen, SegmentedControl } from '../../components/ui';
@@ -107,6 +110,8 @@ export default function TorrentDetailScreen() {
   const [deleteBusy, setDeleteBusy] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [fileSheet, setFileSheet] = useState<DetailFile | null>(null);
+  const subtitleAvail = useSubtitleAvailability();
+  const [subtitleTarget, setSubtitleTarget] = useState<SubtitleTarget | null>(null);
   const [notice, setNotice] = useState<Notice | null>(null);
   const [pending, setPending] = useState<Record<number, FilePriority>>({});
   const [prioTarget, setPrioTarget] = useState<number[] | null>(null);
@@ -707,6 +712,11 @@ export default function TorrentDetailScreen() {
   }
 
   if (!snap || !detail) return null;
+  const torrentSubtitles = torrentEntryMode(
+    { finished: !!snap.finished || snap.state === 'COMPLETED' || snap.state === 'SEEDING', folder: snap.outputFolder },
+    files,
+    subtitleAvail,
+  );
 
   const errorMap = snap.error ? actionsFor(snap.error.code, { pausedBy: snap.pausedBy }) : null;
   const errorButtons: { action: ErrorAction; label: string; variant: 'primary' | 'secondary' }[] = [];
@@ -1064,6 +1074,11 @@ export default function TorrentDetailScreen() {
         onCopyMagnet={handleCopyMagnet}
         onShareMagnet={handleShareMagnet}
         onSaveTorrent={handleSaveTorrent}
+        subtitles={torrentSubtitles.mode}
+        onFindSubtitles={() => {
+          setMoreOpen(false);
+          if (torrentSubtitles.file) setSubtitleTarget(torrentTarget(id, snap.outputFolder, torrentSubtitles.file));
+        }}
         storageGone={storageGone}
         limitSummary={limitSummary}
         onSpeedLimit={() => {
@@ -1130,7 +1145,13 @@ export default function TorrentDetailScreen() {
         onResume={() => resumeTorrent(id)}
         onNotice={(text) => showNotice({ tone: 'info', text })}
         onClose={() => setFileSheet(null)}
+        subtitles={fileSheet ? fileEntryMode(fileSheet, { ...subtitleAvail, folder: snap.outputFolder }) : 'hidden'}
+        onFindSubtitles={(f) => {
+          setFileSheet(null);
+          setSubtitleTarget(torrentTarget(id, snap.outputFolder, f));
+        }}
       />
+      <SubtitleSheet target={subtitleTarget} onClose={() => setSubtitleTarget(null)} />
     </Screen>
   );
 }
