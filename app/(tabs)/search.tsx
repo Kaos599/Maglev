@@ -275,6 +275,25 @@ export default function SearchScreen() {
   // Keyed by the ids, not the array: telemetry ticks every second, and a new Set would re-render every row.
   const inListKey = useMemo(() => telemetry.torrents.map((t) => t.id.toLowerCase()).join(','), [telemetry.torrents]);
   const inList = useMemo(() => new Set(inListKey ? inListKey.split(',') : []), [inListKey]);
+  // `sessionAdded` only bridges the moment between an add and the torrent showing up in Transfers. Once it shows up,
+  // Transfers is the truth, so it leaves this set: removing it from Transfers then makes the result addable again.
+  useEffect(() => {
+    setSessionAdded((prev) => {
+      if (prev.size === 0) return prev;
+      let changed = false;
+      const next = new Set<string>();
+      prev.forEach((h) => {
+        if (inList.has(h)) changed = true;
+        else next.add(h);
+      });
+      return changed ? next : prev;
+    });
+    // Also on a sessionAdded change: the torrent can reach Transfers before the add's own update lands.
+  }, [inList, sessionAdded]);
+  const isAdded = useCallback((infoHash: string) => {
+    const h = infoHash.toLowerCase();
+    return sessionAdded.has(h) || inList.has(h);
+  }, [sessionAdded, inList]);
 
   const handleAdd = useCallback(
     async (r: MergedResult, skipMobileAsk = false) => {
@@ -334,7 +353,7 @@ export default function SearchScreen() {
         const readHash = magnetHash(ready.magnet);
         if (readHash) metadataPrefetch.cancelIf(readHash);
         await startTorrent(ready.magnet);
-        setSessionAdded((prev) => new Set(prev).add(r.infoHash));
+        setSessionAdded((prev) => new Set(prev).add(r.infoHash.toLowerCase()));
         announce(`Added ${r.name}`);
         show({
           tone: 'success',
@@ -349,7 +368,7 @@ export default function SearchScreen() {
             if (ok) void handleAdd(r);
           });
         });
-        if (duplicate) setSessionAdded((prev) => new Set(prev).add(r.infoHash));
+        if (duplicate) setSessionAdded((prev) => new Set(prev).add(r.infoHash.toLowerCase()));
         show(n);
       } finally {
         clearTimeout(timer);
@@ -450,7 +469,7 @@ export default function SearchScreen() {
     [settings.network.wifiOnly, telemetry.torrents, downloads],
   );
   const top = shown[0];
-  const topMagnet = top && top.magnet && !sessionAdded.has(top.infoHash) && !inList.has(top.infoHash.toLowerCase()) ? top.magnet : null;
+  const topMagnet = top && top.magnet && !isAdded(top.infoHash) ? top.magnet : null;
   const topKey = topMagnet ? magnetHash(topMagnet) : null;
   useEffect(() => {
     if (!topKey || !topMagnet || !netOk) return;
@@ -539,14 +558,14 @@ export default function SearchScreen() {
         age={formatAgeLong(item.publishedAt)}
         via={item.sources.map(nameOf).join(' · ')}
         risky={riskySources(item, providers, prefs.warnUnsafe)}
-        added={sessionAdded.has(item.infoHash) || inList.has(item.infoHash)}
+        added={isAdded(item.infoHash)}
         busy={busyHash === item.infoHash}
         onAdd={() => requestAdd(item)}
         onOpen={() => setPreview(item)}
         onFollow={followTargetOf(item) ? () => setFollowing(followTargetOf(item)) : undefined}
       />
       ),
-    [fixBanner, followTargetOf, busyHash, requestAdd, setPreview, inList, nameOf, sessionAdded, providers, prefs.warnUnsafe],
+    [fixBanner, followTargetOf, busyHash, requestAdd, setPreview, isAdded, nameOf, providers, prefs.warnUnsafe],
   );
 
   const watchThisSearch = useCallback(() => {
@@ -880,7 +899,7 @@ export default function SearchScreen() {
                 age: formatAge(preview.publishedAt),
                 via: preview.sources.map(nameOf).join(' · '),
                 detailUrl: preview.detailUrl,
-                added: sessionAdded.has(preview.infoHash) || inList.has(preview.infoHash.toLowerCase()),
+                added: isAdded(preview.infoHash),
               }
             : null
         }
