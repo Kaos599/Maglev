@@ -64,7 +64,7 @@ use crate::trackers::{
     TrackerStore, validate_tracker_url,
 };
 use crate::types::{
-    subfolder_for, AddOptions, Detail, ErrorInfo, FileDetail, FileEntry, Metadata, PeerDetail,
+    can_open_for_write, pick_writable_folder, subfolder_for, AddOptions, Detail, ErrorInfo, FileDetail, FileEntry, Metadata, PeerDetail,
     Snapshot, TrackerDetail,
 };
 
@@ -1358,9 +1358,17 @@ impl MaglevEngine {
         let output_folder = match opts.output_folder.as_deref().map(str::trim) {
             Some(f) if !f.is_empty() => {
                 let base = PathBuf::from(f);
-                let dir = match subfolder_for(&r.name, r.file_count) {
-                    Some(s) => base.join(s),
-                    None => base,
+                let (dir, name) = match subfolder_for(&r.name, r.file_count) {
+                    Some(s) => (base.join(&s), s),
+                    None => (base.clone(), r.name.trim().to_string()),
+                };
+                // Files left by an earlier install belong to another UID (Android 11+) and cannot be
+                // opened for writing. Download into a free "<name> (n)" folder instead of failing.
+                let rel: Vec<String> = r.files.iter().map(|f| f.path.clone()).collect();
+                let dir = if name.is_empty() || name == "." || name == ".." || name.contains(['/', '\\']) {
+                    dir
+                } else {
+                    pick_writable_folder(&dir, &base, &name, &rel, &can_open_for_write)
                 };
                 Some(dir.to_string_lossy().into_owned())
             }

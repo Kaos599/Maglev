@@ -156,6 +156,45 @@ pub fn subfolder_for(name: &str, file_count: usize) -> Option<String> {
     Some(n.to_string())
 }
 
+/// True when a file of the torrent already sits under `dir` and this app cannot open it for writing.
+/// On Android 11+ a file left by an earlier install (or after "Clear data") belongs to another UID, so
+/// the open fails with EACCES even though the folder is visible and writable for new files.
+fn has_unwritable_file(dir: &std::path::Path, rel_files: &[String], can_write: &dyn Fn(&std::path::Path) -> bool) -> bool {
+    rel_files.iter().any(|rel| {
+        let p = dir.join(rel);
+        p.symlink_metadata().is_ok() && !can_write(&p)
+    })
+}
+
+/// Picks the folder a torrent downloads into. Returns `dir` unless one of its files already exists and
+/// cannot be opened for writing; then it returns the first free `parent/<name> (1)`, `parent/<name> (2)`, ...
+/// whose files are all absent or writable. For a multi-file torrent `dir` is `parent/<name>`; for a single
+/// file `dir` is `parent` itself and the numbered folder is a new subfolder of it. A file we own is kept, so a partial download still resumes.
+/// Gives up after 99 tries and returns `dir`, which then fails with the usual PERMISSION error.
+pub fn pick_writable_folder(
+    dir: &std::path::Path,
+    parent: &std::path::Path,
+    name: &str,
+    rel_files: &[String],
+    can_write: &dyn Fn(&std::path::Path) -> bool,
+) -> std::path::PathBuf {
+    if !has_unwritable_file(dir, rel_files, can_write) {
+        return dir.to_path_buf();
+    }
+    for n in 1..=99 {
+        let cand = parent.join(format!("{name} ({n})"));
+        if !has_unwritable_file(&cand, rel_files, can_write) {
+            return cand;
+        }
+    }
+    dir.to_path_buf()
+}
+
+/// Real write probe: opens the file for writing without creating or truncating it.
+pub fn can_open_for_write(p: &std::path::Path) -> bool {
+    std::fs::OpenOptions::new().write(true).open(p).is_ok()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -192,5 +231,39 @@ mod tests {
         assert_eq!(subfolder_for("../evil", 2), None);
         assert_eq!(subfolder_for("a/b", 2), None);
         assert_eq!(subfolder_for("", 2), None);
+    }
+    #[test]
+    fn foreign_owned_file_moves_to_numbered_folder() {
+        use std::path::{Path, PathBuf};
+        let root = std::env::temp_dir().join(format!("maglev-pick-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let dir = root.join("Sintel");
+        std::fs::create_dir_all(dir.join("sub")).unwrap();
+        std::fs::write(dir.join("sub/a.srt"), b"x").unwrap();
+        std::fs::create_dir_all(root.join("Sintel (1)/sub")).unwrap();
+        std::fs::write(root.join("Sintel (1)/sub/a.srt"), b"x").unwrap();
+        let files = vec!["sub/a.srt".to_string(), "b.mp4".to_string()];
+        // Everything writable: keep the folder (resume).
+        assert_eq!(pick_writable_folder(&dir, &root, "Sintel", &files, &|_| true), dir);
+        // Both Sintel and Sintel (1) hold a foreign file, so the answer is "Sintel (2)".
+        let deny_two = |p: &Path| {
+            let s = p.to_string_lossy();
+            !(s.contains("/Sintel/") || s.contains("/Sintel (1)/"))
+        };
+        assert_eq!(pick_writable_folder(&dir, &root, "Sintel", &files, &deny_two), root.join("Sintel (2)"));
+        // Only the original is foreign: "Sintel (1)" has an owned file, which is fine.
+        let deny_one = |p: &Path| !p.to_string_lossy().contains("/Sintel/");
+        assert_eq!(pick_writable_folder(&dir, &root, "Sintel", &files, &deny_one), root.join("Sintel (1)"));
+        // Single file: dir is the parent itself; a clash makes "parent/<name> (1)".
+        let one = vec!["movie.mkv".to_string()];
+        std::fs::write(root.join("movie.mkv"), b"x").unwrap();
+        assert_eq!(pick_writable_folder(&root, &root, "movie.mkv", &one, &|_| false), root.join("movie.mkv (1)"));
+        // A file that does not exist is never a conflict.
+        let none: Vec<String> = vec!["missing.bin".into()];
+        assert_eq!(pick_writable_folder(&dir, &root, "Sintel", &none, &|_| false), dir);
+        // Real probe: an existing file we own is writable; a missing one is not.
+        assert!(can_open_for_write(&dir.join("sub/a.srt")));
+        assert!(!can_open_for_write(&PathBuf::from(dir.join("nope"))));
+        let _ = std::fs::remove_dir_all(&root);
     }
 }
