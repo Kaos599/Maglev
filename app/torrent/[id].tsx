@@ -335,6 +335,8 @@ export default function TorrentDetailScreen() {
       alive = false;
     };
   }, [scheduled]);
+  // Subtitle files that are already on disk, for "This video already has English subtitles".
+  const downloadedFiles = useMemo(() => (detail ? detail.files.filter((f) => f.length > 0 && f.progressBytes >= f.length) : []), [detail]);
   const files = useMemo(
     () => (detail ? detail.files.map((f) => (f.index in pending ? { ...f, priority: pending[f.index], included: pending[f.index] !== 'skip' } : f)) : []),
     [detail, pending],
@@ -1077,7 +1079,7 @@ export default function TorrentDetailScreen() {
         subtitles={torrentSubtitles.mode}
         onFindSubtitles={() => {
           setMoreOpen(false);
-          if (torrentSubtitles.file) setSubtitleTarget(torrentTarget(id, snap.outputFolder, torrentSubtitles.file));
+          if (torrentSubtitles.file) setSubtitleTarget(torrentTarget(id, snap.outputFolder, torrentSubtitles.file, downloadedFiles));
         }}
         storageGone={storageGone}
         limitSummary={limitSummary}
@@ -1148,7 +1150,7 @@ export default function TorrentDetailScreen() {
         subtitles={fileSheet ? fileEntryMode(fileSheet, { ...subtitleAvail, folder: snap.outputFolder }) : 'hidden'}
         onFindSubtitles={(f) => {
           setFileSheet(null);
-          setSubtitleTarget(torrentTarget(id, snap.outputFolder, f));
+          setSubtitleTarget(torrentTarget(id, snap.outputFolder, f, downloadedFiles));
         }}
       />
       <SubtitleSheet target={subtitleTarget} onClose={() => setSubtitleTarget(null)} />

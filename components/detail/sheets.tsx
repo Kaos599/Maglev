@@ -7,7 +7,7 @@ import { formatBytes } from '../../constants/format';
 import { Banner, Button, ListRow, Sheet } from '../ui';
 import { fileName, isStreamable, streamReadiness } from './torrentLabels';
 import { banners, notices } from '../../constants/copy';
-import { DISABLED_ENTRY_SUBTITLE, type EntryMode } from '../subtitles/flow';
+import { entrySubtitle, type EntryMode } from '../subtitles/flow';
 import { FIND_SUBTITLES } from '../../utils/subtitles/copy';
 
 interface DeleteSheetProps {
@@ -201,9 +201,9 @@ export function FileActionsSheet({ id, file, torrentState, pausedBy, onResume, o
       {file && subtitles !== 'hidden' ? (
         <ListRow
           title={FIND_SUBTITLES}
-          subtitle={subtitles === 'disabled' ? DISABLED_ENTRY_SUBTITLE : undefined}
+          subtitle={entrySubtitle(subtitles)}
           icon="file-doc"
-          disabled={subtitles === 'disabled'}
+          disabled={subtitles !== 'enabled'}
           onPress={() => onFindSubtitles?.(file)}
         />
       ) : null}

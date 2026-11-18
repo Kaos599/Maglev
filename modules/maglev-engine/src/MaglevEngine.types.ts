@@ -148,6 +148,7 @@ export type SubtitleErrorCode =
   | 'NOT_FOUND'
   | 'IO'
   | 'NAME_TAKEN'
+  | 'REPLACE_DENIED'
   | 'VERIFY_FAILED'
   | 'CANT_WRITE'
   | 'NO_SPACE'

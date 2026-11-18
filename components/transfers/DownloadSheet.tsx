@@ -13,7 +13,7 @@ import { SpeedLimitSheet } from '../detail/SpeedLimitSheet';
 import { TimingDetails, TimingRow } from '../detail/TimingRow';
 import { Banner, Button, ListRow, Sheet } from '../ui';
 import { WhyHeld } from './WhyHeld';
-import { DISABLED_ENTRY_SUBTITLE, type EntryMode } from '../subtitles/flow';
+import { entrySubtitle, type EntryMode } from '../subtitles/flow';
 import { FIND_SUBTITLES } from '../../utils/subtitles/copy';
 import { useBlockContext } from '../../utils/blocks/useActiveBlocks';
 import { reasonsForItem } from '../../utils/blocks/reasons';
@@ -232,9 +232,9 @@ export function DownloadSheet({ download: d, onClose, onRetry, onPause, onResume
         {subtitles !== 'hidden' ? (
           <ListRow
             title={FIND_SUBTITLES}
-            subtitle={subtitles === 'disabled' ? DISABLED_ENTRY_SUBTITLE : undefined}
+            subtitle={entrySubtitle(subtitles)}
             icon="file-doc"
-            disabled={subtitles === 'disabled'}
+            disabled={subtitles !== 'enabled'}
             onPress={() => { onFindSubtitles?.(d.id); onClose(); }}
           />
         ) : null}

@@ -108,11 +108,11 @@ const strip = (s) => s.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm,
 const view = strip(read('modules/maglev-engine/android/src/main/java/com/maglev/engine/browser/MaglevBrowserView.kt'));
 const store = strip(read('modules/maglev-engine/android/src/main/java/com/maglev/engine/browser/BlocklistStore.kt'));
 const screen = read('app/browser.tsx');
-check('kotlin: download event carries tapped, from the rule', /"tapped" to tapped/.test(view) && /DownloadRules\.tapped\(tapAge\(\), dlTapUses, pendingUserNav\)/.test(view));
+check('kotlin: download event carries tapped, from the rule', /"tapped" to tapped/.test(view) && /DownloadRules\.tapped\(tapAge\(\), dlTapUses, pendingUserNav, /.test(view));
 check('kotlin: Back uses BackRules over a history list and goBackOrForward', /BackRules\.steps\(history\.flags\(\), webView\.copyBackForwardList\(\)\.currentIndex\)/.test(view) && /goBackOrForward\(-steps\)/.test(view));
 check('kotlin: history is recorded from doUpdateVisitedHistory, not for reloads', /if \(url != null && !isReload\) recordHistory\(url\)/.test(view));
 check('kotlin: canGoBack still comes from the WebView', /"canGoBack" to \(customView != null \|\| w\.canGoBack\(\)\)/.test(view));
-check('kotlin: https-first on typed loads and link or redirect navigations', /HttpsFirst\.upgrade\(url, httpsFallbackHosts\)/.test(view) && /HttpsFirst\.upgrade\(uri\.toString\(\), httpsFallbackHosts\)/.test(view));
+check('kotlin: https-first on typed loads and link or redirect navigations', /HttpsFirst\.upgrade\(url, httpsFallbackHosts\)/.test(view) && /HttpsFirst\.upgrade\(uri\.toString\(\), httpsFallbackHosts, /.test(view));
 check('kotlin: the fallback runs before the SSL refusal and only for the upgrade', (() => {
   const i = view.indexOf('override fun onReceivedSslError');
   const body = view.slice(i, i + 700);
@@ -121,7 +121,7 @@ check('kotlin: the fallback runs before the SSL refusal and only for the upgrade
 check('kotlin: main-frame errors fall back only for the pending upgrade', /override fun onReceivedError\(view: WebView, request: WebResourceRequest, error: WebResourceError\)/.test(view) && /request\.isForMainFrame && HttpsFirst\.isUpgradeFailure/.test(view));
 check('kotlin: fallback hosts live for the app session (companion set)', /private val httpsFallbackHosts[\s\S]{0,120}newSetFromMap/.test(view));
 check('kotlin: the crash rebuild resets history and the upgrade', /history\.clear\(\)[\s\S]{0,80}upgrade = null/.test(view));
-check('screen: an untapped download does not open the save sheet', /if \(!opensSaveSheet\(e\.tapped\)\) return;/.test(screen));
+check('screen: an untapped download does not open the save sheet', /if \(!opensSaveSheet\(e\.tapped\)\) \{[\s\S]{0,400}DOWNLOAD_HELD_NOTICE[\s\S]{0,200}return;/.test(screen));
 check('screen: the hint shows once per page and ends with the tray or a timer', /foundHintDue\(found\.length, data\.hint, trayOpen\)/.test(screen) && /FOUND_HINT_MS/.test(screen) && /d\.hint = 'idle'/.test(screen));
 check('event type has tapped', /tapped: boolean;/.test(read('modules/maglev-engine/src/MaglevBrowser.tsx')));
 check('no mock browser engine emits download requests', !/onDownloadRequest|BrowserDownloadRequest/.test(read('modules/maglev-engine/src/MaglevMockEngine.ts')));

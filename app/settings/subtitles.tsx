@@ -9,7 +9,7 @@ import { useSubtitleSettings } from '../../components/subtitles-settings/useSubt
 import { useListsVersion } from '../../utils/lists/hooks';
 import { listSubtitleEntries } from '../../utils/lists/store';
 import { SUBTITLE_PROVIDERS } from '../../utils/subtitles/providers';
-import { HEARING_OPTIONS, PRIVACY_LINE, SETTINGS_SWITCH_SUBTITLE, SETTINGS_TITLE } from '../../utils/subtitles/copy';
+import { HEARING_OPTIONS, PRIVACY_LINE, SAF_UNAVAILABLE, SETTINGS_SWITCH_SUBTITLE, SETTINGS_TITLE } from '../../utils/subtitles/copy';
 import { hasOpenSubtitlesKey, languagesValue, sourceRows, sourcesValue } from '../../utils/subtitleSettings';
 import { subtitleSettingsCopy as copy } from '../../constants/copy';
 
@@ -70,6 +70,9 @@ export default function SubtitlesSettings() {
           </Card>
         </View>
       </View>
+
+      {/* NATIVE_CONTRACT 39.1 S6: the same line the menu rows show for a folder picked with the file picker. */}
+      <Caption>{SAF_UNAVAILABLE}.</Caption>
 
       {/* The privacy line is searchable as "Subtitle privacy". */}
       <FocusAnchor anchorKey={rowKey('Subtitle privacy')}>

@@ -104,6 +104,43 @@ function cleanBlocks(raw: unknown): ActiveBlock[] {
   return out;
 }
 
+/**
+ * NATIVE_CONTRACT 39.3 E1. Every bridge method that reaches the native module is in exactly one group.
+ *
+ * USER_ACTION_METHODS change engine state because the user asked. Only these restart a stopped engine: when one
+ * answers NOT_INITIALIZED the bridge starts the engine once with the last config and retries once. This is what
+ * lets an add work after the notification "Shut down".
+ *
+ * READ_METHODS (reads, polling, config pushes, pickers, opening or sharing files) return their NOT_INITIALIZED
+ * failure untouched, so a poll between "Shut down" and the activity closing cannot undo the shutdown. The UI's
+ * "engine stopped" notice with Start engine (restart()) handles that failure.
+ *
+ * A new bridge method must be added to one of the two lists (grep `this.route(`).
+ */
+export const USER_ACTION_METHODS: readonly string[] = [
+  // Add flow (a paste, share, search or feed add, including the preflight lookups)
+  'addTorrent', 'addDownload', 'resolveMetadata', 'probeUrl', 'probeStream',
+  // Torrents
+  'pause', 'resume', 'resumeAnyway', 'recheck', 'pauseAll', 'resumeAll', 'delete',
+  'setIncludedFiles', 'setFilePriorities', 'removeFiles', 'resolveFiles', 'setHealth', 'scanFileHealth',
+  'reannounce', 'addTrackers', 'removeTracker', 'moveStorage',
+  // Limits
+  'setGlobalLimits', 'setTorrentLimits', 'setDownloadLimits',
+  // Link downloads
+  'pauseDownload', 'resumeDownload', 'resumeDownloadAnyway', 'retryDownload', 'removeDownload',
+  'allowLanHost', 'refreshDownloadUrl',
+  // Feeds: "Check now" adds torrents
+  'runFeedCheckNow',
+];
+export const READ_METHODS: readonly string[] = [
+  'shutdown', 'cancelResolve', 'getResolveActivity', 'listTorrents', 'getDetail', 'fileHealth', 'exportTorrent',
+  'shareExportedTorrent', 'getFreeSpace', 'applyConfig', 'getEffectiveConfig', 'getPieceBitfield', 'streamUrl',
+  'version', 'pickDownloadFolder', 'pickFolder', 'getPlaybackSupport', 'getStorageStatus', 'openFile', 'shareFile',
+  'openFolder', 'openDownloadFolder', 'openDownload', 'shareDownload', 'getActiveBlocks', 'getNetworkState',
+  'openStream', 'setSchedule', 'getScheduleStatus', 'setFeedAutomation', 'getFeedAutomationStatus', 'setGovernance',
+];
+const RESTART_ON_NOT_INITIALIZED: ReadonlySet<string> = new Set(USER_ACTION_METHODS);
+
 export class MaglevEngineBridge implements MaglevEngineApi {
   private impl: MaglevEngineApi | null = null;
   private usingNative = false;
@@ -359,13 +396,18 @@ export class MaglevEngineBridge implements MaglevEngineApi {
     return this.restartPromise;
   }
 
-  /** A native call that restarts the engine once, and retries once, when it answers NOT_INITIALIZED. */
+  /**
+   * NATIVE_CONTRACT 39.3 E1: A native call. Only methods in RESTART_ON_NOT_INITIALIZED (user-initiated changes) restart the engine once, and
+   * retry once, when it answers NOT_INITIALIZED. Reads and polling return the failure as it is.
+   */
   private async callNativeRecovering<T>(method: string, ...args: unknown[]): Promise<T> {
     const first = await this.callNative<T>(method, ...args);
     const r = first as unknown as { ok?: boolean; code?: string };
-    if (r?.ok !== false || r.code !== 'NOT_INITIALIZED' || method === 'init' || method === 'shutdown' || !this.lastConfig) {
+    // NATIVE_CONTRACT 39.3 E1: reads and polling (anything not in USER_ACTION_METHODS) return the failure as it is.
+    if (r?.ok !== false || r.code !== 'NOT_INITIALIZED' || !RESTART_ON_NOT_INITIALIZED.has(method) || !this.lastConfig) {
       return first;
     }
+    // NATIVE_CONTRACT 39.3 E1: one shared restart (single flight), then one retry below.
     const restarted = await this.restartNative(this.lastConfig);
     // `engineStopped` tells the UI to offer "Start engine" with the real reason in `message`.
     if (!restarted.ok) return { ...restarted, engineStopped: true } as unknown as T;

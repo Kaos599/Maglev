@@ -1,6 +1,6 @@
 import React, { useCallback, useMemo, useRef, useState } from 'react';
-import { Linking, NativeScrollEvent, NativeSyntheticEvent, ScrollView, ScrollViewInstance, StyleSheet, View } from 'react-native';
-import { useRouter } from 'expo-router';
+import { Keyboard, Linking, NativeScrollEvent, NativeSyntheticEvent, ScrollView, ScrollViewInstance, StyleSheet, View } from 'react-native';
+import { useFocusEffect, useRouter } from 'expo-router';
 import Constants from 'expo-constants';
 import { maglevEngine } from 'maglev-engine';
 import { useSettings } from '../../context/SettingsContext';
@@ -160,6 +160,13 @@ export default function SettingsIndex() {
   const [linkPrefs] = useLinkDownloadPrefs();
   const [subtitles] = useSubtitleSettings();
   const [query, setQuery] = useState('');
+  // Coming back from a result: empty field, no keyboard, so one Back press leaves as expected.
+  useFocusEffect(
+    useCallback(() => {
+      setQuery('');
+      Keyboard.dismiss();
+    }, []),
+  );
   const searching = query.trim().length > 0;
   const { bandwidth: b, network: n, power: p, appearance: a } = settings;
 

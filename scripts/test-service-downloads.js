@@ -38,7 +38,7 @@ function body(src, re) {
   return '';
 }
 
-const headless = body(host, /fun headlessStart\([^)]*\)\s*\{/);
+const headless = body(host, /fun headlessStartLocked\([^)]*\)\s*\{/);
 const poll = body(host, /private fun pollLocked\(\)\s*\{/);
 const summarize = body(host, /private fun summarize\([^)]*\)[^{]*\{/);
 

@@ -21,6 +21,7 @@ export type SubtitleErrorCode =
   | 'NO_SPACE'
   | 'VERIFY_FAILED'
   | 'NAME_TAKEN'
+  | 'REPLACE_DENIED'
   | 'unsupported_archive'
   | 'unreadable_text'
   | 'ambiguous_pack';
@@ -336,6 +337,17 @@ export function decodeSubtitleText(bytes: Uint8Array, language?: string): Decode
 }
 
 // ---------------------------------------------------------------- format
+
+/**
+ * Whether decoded text holds at least one subtitle cue: SRT/VTT a `-->` line between two timestamps, VTT's `WEBVTT`
+ * header, ASS/SSA a `Dialogue:` line. A short message, JSON or a "limit reached" page has none. The formats the app
+ * supports are srt, vtt, ass and ssa (no MicroDVD).
+ */
+// NATIVE_CONTRACT 39.1 S1
+export function hasSubtitleCues(text: string): boolean {
+  const t = text.replace(/^\uFEFF/, '');
+  return /\d{1,2}:\d{2}(?::\d{2})?[,.:]\d{1,3}\s*-->\s*\d{1,2}:\d{2}/.test(t) || /^\s*WEBVTT/.test(t) || /^\s*Dialogue:/m.test(t);
+}
 
 /** From the content: `WEBVTT`; `[Script Info]` for ASS/SSA (`[V4 Styles]` without the plus is SSA); otherwise SRT. */
 export function detectFormat(text: string): SubFormat {

@@ -24,7 +24,7 @@ const SPEED_ORIGIN = '25.2% 50%';
 
 /**
  * The top of the highlight card: the track, the train pulling in and braking, a burst of square pixels, and the
- * "NEW | 0.28" badge that slams onto the card's top edge with a flash and dust. Everything reads `clock` (ms) through
+ * "NEW | 0.30" badge that slams onto the card's top edge with a flash and dust. Everything reads `clock` (ms) through
  * the pure functions in `timeline.ts`; nothing here loops and nothing takes a touch. `cq` is 1% of the design's phone
  * width in points (the card is 86 cq wide), so the whole station scales with the card.
  */

@@ -90,7 +90,8 @@ object Notifications {
         } else if (torrentId != null) {
             Intent(Intent.ACTION_VIEW, Uri.parse("maglev://torrent/" + Uri.encode(torrentId))).setPackage(context.packageName)
         } else {
-            context.packageManager.getLaunchIntentForPackage(context.packageName) ?: return null
+            // A plain tap is not a plain launch: maglev://from/notification keeps the new-feature dialog waiting.
+            Intent(Intent.ACTION_VIEW, Uri.parse("maglev://from/notification")).setPackage(context.packageName)
         }
         intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
         // Different data makes a distinct PendingIntent, so one request code is enough.
@@ -145,6 +146,10 @@ object Notifications {
             else -> "Maglev"
         }
     }
+
+    fun showPauseAll(s: TransferSummary): Boolean = s.busy > 0
+
+    fun showResumeAll(s: TransferSummary): Boolean = s.pausedByUser > 0
 
     /** Empty string means no content text. */
     fun text(s: TransferSummary): String = when {
@@ -220,9 +225,12 @@ object Notifications {
         } else if (s.progressPct >= 0) {
             b.setProgress(100, s.progressPct, false)
         }
-        if (s.busy > 0) {
+        // Contract 8.2: Pause all only when something runs, Resume all only when the user paused something,
+        // and Shut down always, because this notification is the foreground service's.
+        if (showPauseAll(s)) {
             b.addAction(0, "Pause all", serviceAction(context, MaglevTorrentService.ACTION_PAUSE_ALL, 1))
-        } else if (s.pausedByUser > 0) {
+        }
+        if (showResumeAll(s)) {
             b.addAction(0, "Resume all", serviceAction(context, MaglevTorrentService.ACTION_RESUME_ALL, 2))
         }
         b.addAction(0, "Shut down", serviceAction(context, MaglevTorrentService.ACTION_SHUTDOWN, 3))

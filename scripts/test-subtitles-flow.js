@@ -49,7 +49,7 @@ const nativeErr = (code) => Object.assign(new Error(code), { code });
   check('non-video row: hidden', F.fileEntryMode(vid({ path: 'a/readme.txt' }), { ...on, folder }) === 'hidden');
   check('master off: hidden', F.fileEntryMode(vid(), { master: false, sourcesOn: 3, folder }) === 'hidden');
   check('no source on: hidden', F.fileEntryMode(vid(), { master: true, sourcesOn: 0, folder }) === 'hidden');
-  check('folder we cannot turn into a path: hidden', F.fileEntryMode(vid(), { ...on, folder: 'content://x' }) === 'hidden');
+  check('a file-picker folder shows the row disabled with the reason (39.1 S6)', F.fileEntryMode(vid(), { ...on, folder: 'content://x' }) === 'unavailable' && F.entrySubtitle('unavailable') === 'Not available yet for folders picked with the file picker' && F.fileEntryMode(vid(), { ...on, folder: 'Download' }) === 'hidden');
 
   console.log('[entry points: torrent card menu]');
   const done = { finished: true, folder };
@@ -216,7 +216,7 @@ const nativeErr = (code) => Object.assign(new Error(code), { code });
   const entry = (state, savedAt = now) => ({ lang: 'en', file: '', savedAt, state });
   check('no state: no icon', F.cardIconModel(null, now) === null);
   check('getting shows', F.cardIconModel(entry('getting'), now).state === 'getting');
-  check('needs-look shows, even when old', F.cardIconModel(entry('needs-look', now - 5 * 86400000), now).state === 'needs-look');
+  check('needs-look shows within 24 h and hides after (39.1 S3)', F.cardIconModel(entry('needs-look', now - 5 * 3600000), now).state === 'needs-look' && F.cardIconModel(entry('needs-look', now - 5 * 86400000), now) === null);
   check('saved shows within 24 h', F.cardIconModel(entry('saved', now - 3600000), now).state === 'saved');
   check('saved hides 24 h after the save', F.cardIconModel(entry('saved', now - 24 * 3600000 - 1), now) === null);
   check('TalkBack label: saved + language', F.cardIconLabel({ state: 'saved', lang: 'en' }).startsWith('English subtitles saved'));

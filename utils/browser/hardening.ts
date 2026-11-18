@@ -7,8 +7,30 @@ import { TAP_MS } from './popups.ts';
 // ---- downloads ----
 
 /** A download counts as asked for when the user typed or tapped to get it (a tap vouches for one download). */
-export function downloadTapped(tapAgeMs: number | null, usesSoFar: number, userLoad: boolean): boolean {
-  return userLoad || (tapAgeMs != null && tapAgeMs >= 0 && tapAgeMs <= TAP_MS && usesSoFar === 0);
+export function downloadTapped(tapAgeMs: number | null, usesSoFar: number, userLoad: boolean, samePage = false, loading = false): boolean {
+  return (
+    userLoad ||
+    (tapAgeMs != null && tapAgeMs >= 0 && usesSoFar === 0 && (tapAgeMs <= TAP_MS || (samePage && (tapAgeMs <= DOWNLOAD_VOUCH_MS || loading))))
+  );
+}
+
+/** NATIVE_CONTRACT 39.2 B1: a tap vouches for downloads from the same document this long. Mirrors DownloadRules.VOUCH_MS. */
+export const DOWNLOAD_VOUCH_MS = 30_000;
+
+/** NATIVE_CONTRACT 39.2 B1: shown when a download is held (the view still lists it in Files). */
+export const DOWNLOAD_HELD_NOTICE = 'A download was held. Open Files to save it.';
+export const DOWNLOAD_HELD_ACTION = 'Open';
+
+/** NATIVE_CONTRACT 39.2 B2: gesture, first of its kind, within 1 s of a touch or key press. Mirrors NavRules.trustedJump. */
+export const JUMP_MS = 1000;
+export const trustedJump = (gesture: boolean, nthInGesture: number, inputAgeMs: number | null): boolean =>
+  gesture && nthInGesture === 0 && inputAgeMs != null && inputAgeMs >= 0 && inputAgeMs <= JUMP_MS;
+
+/** NATIVE_CONTRACT 39.2 B3: the https try falls back after this long. Mirrors HttpsFirst.TRY_MS / shouldFallBack. */
+export const HTTPS_TRY_MS = 8000;
+export function httpsShouldFallBack(errorCode: number, online: boolean): boolean {
+  if (errorCode === -11 || errorCode === -6 || errorCode === -7) return true;
+  return (errorCode === -8 || errorCode === -1) && online;
 }
 
 /** The save sheet opens only for a download the user asked for. An event with no `tapped` (an old build) counts as asked for. */
@@ -95,7 +117,8 @@ function isLocalName(h: string): boolean {
  * The https twin of a main-frame http address, or null when it stays http: not http, an IP address, a local name, a port
  * other than 80, a user name in the address, or a host the user already fell back on.
  */
-export function upgradeToHttps(url: string, fallbackHosts: ReadonlySet<string>): string | null {
+export function upgradeToHttps(url: string, fallbackHosts: ReadonlySet<string>, method = 'GET'): string | null {
+  if (method.toUpperCase() !== 'GET') return null;
   const m = /^http:\/\/([^/?#]*)([\s\S]*)$/i.exec(url.trim());
   if (!m) return null;
   const authority = m[1];

@@ -1,10 +1,12 @@
 import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { StyleSheet, Text, View, useWindowDimensions } from "react-native";
+import { StyleSheet, Text, View } from "react-native";
 import Animated, { useAnimatedStyle, useSharedValue, withDelay, withSequence, withTiming } from "react-native-reanimated";
 import { scheduleOnRN } from "react-native-worklets";
 import { useTheme } from "../context/ThemeContext";
 import type { TransferTelemetry } from "../context/EngineContext";
-import { ThemeColors, alpha, isFinishTransition, monoSlotWidth, motion, radius, spacing, type } from "../constants/theme";
+import { ThemeColors, alpha, isFinishTransition, motion, radius, spacing, type } from "../constants/theme";
+import { StatusLine } from "./transfers/StatusLine";
+import { useStatusOpts } from "./transfers/useStatusOpts";
 import { formatEta } from "../utils/rates";
 import { PixelIcon } from "./PixelIcon";
 import { IconButton, PressableScale, ProgressBar, ProgressTone } from "./ui";
@@ -54,16 +56,6 @@ export interface TransferCardProps {
   /** The "Show file type icons in Transfers" setting. The icon shares the slot of the selection checkbox. */
   showFileIcon?: boolean;
 }
-
-/** Status line font size; the value slot is sized in Space Mono glyphs at this size. */
-const STATUS_SIZE = 12;
-const STATUS_LINE = 18;
-
-/**
- * Widest strings each value slot holds, in glyphs: "1023.9 KB/s", "↑ 1023.9 KB/s", "1023.9 GB".
- * A fixed minimum width means a speed that gains a digit never shifts the text beside it.
- */
-const SLOT_CHARS = { speed: 11, upload: 13, size: 9 } as const;
 
 /**
  * The finish moment: a lime check fades in over the value slot (150 ms) once the bar has filled,
@@ -138,7 +130,6 @@ function TransferCardImpl({
   const router = useRouter();
   const { colors } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
-  const { fontScale } = useWindowDimensions();
   const m = useMotion();
   // The time left only changes label when it moves more than 10% or crosses a step.
   // Keyed by id: FlashList recycles cards, and the hysteresis must not carry one torrent's label to another.
@@ -147,20 +138,21 @@ function TransferCardImpl({
   const etaLabel = formatEta(t.state === "DOWNLOADING" ? t.etaSeconds : -1, prevEta);
   etaRef.current = etaLabel === "—" ? null : { id: t.id, label: etaLabel };
   const blockCtx = useBlockContext();
-  const status = torrentStatus(t, etaLabel, blockCtx);
   const action = torrentCardAction(t, blockCtx);
+  // Play sits left of the state button; the card has no file list, so it needs a media file name (cardCanPlay).
+  const showPlay = !!onPlay && !selectionMode && cardCanPlay(t);
+  const statusOpts = useStatusOpts(t.id, t.state === "DOWNLOADING" && !t.lastKnown ? t.downloadSpeedBytes : 0, {
+    hasRail: selectionMode || showFileIcon,
+    hasPlay: showPlay,
+    hasAction: !!action && !selectionMode,
+  });
+  const status = torrentStatus(t, etaLabel, blockCtx, statusOpts);
   const indeterminate = t.state === "INITIALIZING" || t.state === "CHECKING";
   const moving = t.state === "MOVING";
   const pct = Math.min(
     100,
     Math.max(0, moving ? (t.moveProgress ?? 0) * 100 : torrentProgressPercent(t)),
   );
-  const statusColor =
-    status.tone === "danger"
-      ? colors.danger
-      : status.tone === "accent"
-        ? colors.accentText
-        : colors.textMuted;
   // Finish moment: only for this torrent going from downloading to done while its row is shown.
   // A recycled row (another id) resets instead of playing.
   const seen = useRef<{ id: string; state: string; pausedBy?: string | null } | null>(null);
@@ -181,8 +173,6 @@ function TransferCardImpl({
   // and stops taking presses. No spinner, no fake progress; the next engine update settles it.
   const actionBusy = !!t.pending || !!t.lastKnown;
   const canAct = !!action && !selectionMode && !actionBusy;
-  // Play sits left of the state button; the card has no file list, so it needs a media file name (cardCanPlay).
-  const showPlay = !!onPlay && !selectionMode && cardCanPlay(t);
   const playRight = spacing.sm + (action ? 44 : 0);
   const a11yActions = [
     { name: "activate", label: selectionMode ? (selected ? "Deselect" : "Select") : "Open" },
@@ -261,26 +251,10 @@ function TransferCardImpl({
           accessibilityLabel={`${t.name} progress`}
           resetKey={t.id}
         />
-        <View style={styles.statusBlock}>
-        <View style={styles.statusRow}>
-          <Text style={[styles.status, styles.lead, { color: statusColor }]} numberOfLines={1}>
-            {status.lead}
-          </Text>
-          {status.value ? (
-            <View style={[styles.slot, { minWidth: monoSlotWidth(SLOT_CHARS[status.slot ?? "speed"], STATUS_SIZE, fontScale, type.slotAdvance) }]}>
-              <Text style={[styles.status, styles.value, { color: statusColor }]} numberOfLines={1}>
-                {status.value}
-              </Text>
-              {finishing ? <FinishMark key={t.id} color={colors.accentText} cover={colors.surface} onDone={endFinish} /> : null}
-            </View>
-          ) : null}
-        </View>
-        {status.sub ? (
-          <Text style={[styles.status, { color: colors.textMuted }]} numberOfLines={1}>
-            {status.sub}
-          </Text>
-        ) : null}
-        </View>
+        <StatusLine
+          status={status}
+          overlay={finishing ? <FinishMark key={t.id} color={colors.accentText} cover={colors.surface} onDone={endFinish} /> : null}
+        />
         </View>
       </PressableScale>
       {subtitle && onSubtitles && !selectionMode ? (
@@ -417,11 +391,4 @@ const makeStyles = (c: ThemeColors) =>
       minHeight: 36,
     },
     name: { ...type.mono, fontSize: 13, lineHeight: 18, color: c.text, flex: 1 },
-    // One line, always present, at a fixed minimum height: rows never grow or shrink as the text changes.
-    statusBlock: { gap: 0 },
-    statusRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm, minHeight: STATUS_LINE },
-    status: { ...type.mono, fontSize: STATUS_SIZE, lineHeight: STATUS_LINE },
-    lead: { flex: 1, flexShrink: 1 },
-    slot: { flexShrink: 0, alignItems: "flex-end", justifyContent: "center" },
-    value: { textAlign: "right" },
   });

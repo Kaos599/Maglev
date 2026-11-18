@@ -5,7 +5,7 @@
 import { fileKind } from '../../utils/fileKind.ts';
 import { pickMainFile, type MainFileCandidate } from '../../utils/mainFile.ts';
 import { languageName } from '../../utils/subtitles/languages.ts';
-import { errorCopy, FILE_NOT_FINISHED, type ErrorCopy } from '../../utils/subtitles/copy.ts';
+import { errorCopy, FILE_NOT_FINISHED, SAF_UNAVAILABLE, type ErrorCopy } from '../../utils/subtitles/copy.ts';
 import { SubtitleError, type SubtitleErrorCode } from '../../utils/subtitles/payload.ts';
 import { downloadAndPrepare, failureCode, type PreparedSubtitle, type SubtitleSourceStatus } from '../../utils/subtitles/search.ts';
 import { saveWithChoice, type SaveChoice } from '../../utils/subtitles/naming.ts';
@@ -36,7 +36,25 @@ export function baseName(path: string): string {
 
 // ---------------------------------------------------------------- entry points (36.10)
 
-export type EntryMode = 'hidden' | 'disabled' | 'enabled';
+/** 'unavailable': a folder picked with the file picker (content://), where Find subtitles doesn't work yet (39.1 S6). */
+export type EntryMode = 'hidden' | 'disabled' | 'enabled' | 'unavailable';
+
+/** The line under a row that isn't enabled; undefined when there is nothing to say. */
+export function entrySubtitle(mode: EntryMode | undefined): string | undefined {
+  return mode === 'disabled' ? DISABLED_ENTRY_SUBTITLE : mode === 'unavailable' ? SAF_UNAVAILABLE : undefined;
+}
+
+const isSafFolder = (folder: string | null | undefined): boolean => /^content:\/\//i.test((folder ?? '').trim());
+
+/**
+ * A row that would show stays visible when its folder was picked with the file picker, but disabled with the
+ * reason, never silently missing. Hidden stays hidden. Any other folder we can't turn into a path stays hidden.
+ */
+// NATIVE_CONTRACT 39.1 S6
+function withLocation(mode: EntryMode, folder: string | null | undefined, relativePath: string): EntryMode {
+  if (mode === 'hidden' || videoLocation(folder, relativePath) !== null) return mode;
+  return isSafFolder(folder) ? 'unavailable' : 'hidden';
+}
 
 export interface EntryInput {
   /** `subtitles.enabled`. */
@@ -68,8 +86,7 @@ export const fileComplete = (f: { length: number; progressBytes: number }): bool
 
 /** One row of Detail → Files. */
 export function fileEntryMode(f: FileLike, g: { master: boolean; sourcesOn: number; folder: string | null | undefined }): EntryMode {
-  if (videoLocation(g.folder, f.path) === null) return 'hidden';
-  return entryMode({ master: g.master, sourcesOn: g.sourcesOn, isVideo: fileKind(f.path) === 'video', complete: fileComplete(f) });
+  return withLocation(entryMode({ master: g.master, sourcesOn: g.sourcesOn, isVideo: fileKind(f.path) === 'video', complete: fileComplete(f) }), g.folder, f.path);
 }
 
 /** Torrent-level entry (Torrent options): finished, and exactly one included video. */
@@ -81,9 +98,9 @@ export function torrentEntryMode(
   const videos = pickMainFile(files).videos as FileLike[];
   if (videos.length !== 1) return { mode: 'hidden', file: null };
   const file = videos[0];
-  if (videoLocation(t.folder, file.path) === null) return { mode: 'hidden', file: null };
   const complete = t.finished && fileComplete(file);
-  return { mode: entryMode({ master: g.master, sourcesOn: g.sourcesOn, isVideo: true, complete }), file };
+  const mode = withLocation(entryMode({ master: g.master, sourcesOn: g.sourcesOn, isVideo: true, complete }), t.folder, file.path);
+  return mode === 'hidden' ? { mode, file: null } : { mode, file };
 }
 
 /** A link-download card: finished, a video by its name, not a stream still being joined. */
@@ -91,14 +108,17 @@ export function downloadEntryMode(
   d: { state: string; name: string; folder: string; muxNeeded?: boolean },
   g: { master: boolean; sourcesOn: number },
 ): EntryMode {
-  if (videoLocation(d.folder, d.name) === null) return 'hidden';
-  return entryMode({
-    master: g.master,
-    sourcesOn: g.sourcesOn,
-    isVideo: fileKind(d.name) === 'video',
-    complete: d.state === 'finished',
-    joining: d.state === 'verifying' || !!d.muxNeeded,
-  });
+  return withLocation(
+    entryMode({
+      master: g.master,
+      sourcesOn: g.sourcesOn,
+      isVideo: fileKind(d.name) === 'video',
+      complete: d.state === 'finished',
+      joining: d.state === 'verifying' || !!d.muxNeeded,
+    }),
+    d.folder,
+    d.name,
+  );
 }
 
 // ---------------------------------------------------------------- the target the sheet works on
@@ -113,12 +133,16 @@ export interface SubtitleTarget {
   complete: boolean;
   /** Card key: `t:<id>` or `d:<id>`. The state is kept under it too, so a card finds it without the file list. */
   ownerKey: string;
+  /** For "This video already has English subtitles": the video's path and every file path of its torrent. Not set for link downloads (no listing). */
+  existing?: { videoPath: string; files: readonly string[] };
 }
 
-export function torrentTarget(id: string, folder: string | null | undefined, file: FileLike): SubtitleTarget | null {
+export function torrentTarget(id: string, folder: string | null | undefined, file: FileLike, allFiles?: readonly { path: string }[]): SubtitleTarget | null {
   const videoPath = videoLocation(folder, file.path);
   if (!videoPath) return null;
-  return { videoPath, fileName: baseName(file.path), videoBytes: file.length, complete: fileComplete(file), ownerKey: `t:${id}` };
+  const t: SubtitleTarget = { videoPath, fileName: baseName(file.path), videoBytes: file.length, complete: fileComplete(file), ownerKey: `t:${id}` };
+  if (allFiles) t.existing = { videoPath: file.path, files: allFiles.map((f) => f.path) };
+  return t;
 }
 
 export function downloadTarget(d: { id: string; name: string; folder: string; size: number | null; downloaded: number; state: string }): SubtitleTarget | null {
@@ -153,13 +177,13 @@ export async function hashIfComplete(
 export function errorCodeOf(e: unknown): string {
   const o = e as { code?: unknown; message?: unknown } | null;
   if (o && typeof o.code === 'string') return o.code;
-  const m = typeof o?.message === 'string' ? /\b(NAME_TAKEN|CANT_WRITE|NO_SPACE|VERIFY_FAILED|NOT_FOUND|FILE_TOO_SMALL|ARCHIVE_UNSAFE|IO)\b/.exec(o.message) : null;
+  const m = typeof o?.message === 'string' ? /\b(NAME_TAKEN|REPLACE_DENIED|CANT_WRITE|NO_SPACE|VERIFY_FAILED|NOT_FOUND|FILE_TOO_SMALL|ARCHIVE_UNSAFE|IO)\b/.exec(o.message) : null;
   return m ? m[1] : '';
 }
 
 // ---------------------------------------------------------------- errors (36.10)
 
-export type ErrorActionKind = 'retry' | 'other-language' | 'close' | 'open-folder' | 'pick-another' | 'other-source';
+export type ErrorActionKind = 'keep-both' | 'retry' | 'other-language' | 'close' | 'open-folder' | 'pick-another' | 'other-source';
 
 export interface FlowError {
   code: SubtitleErrorCode;
@@ -179,6 +203,7 @@ const ACTION_KIND: Partial<Record<SubtitleErrorCode, ErrorActionKind>> = {
   CANT_WRITE: 'open-folder',
   NO_SPACE: 'close',
   VERIFY_FAILED: 'retry',
+  REPLACE_DENIED: 'keep-both',
   unreadable_text: 'pick-another',
   ambiguous_pack: 'pick-another',
   unsupported_archive: 'pick-another',
@@ -193,7 +218,7 @@ export function toFlowError(code: SubtitleErrorCode, a: { source?: string; langu
 export function errorFromThrown(e: unknown, a: { source?: string; language?: string } = {}): FlowError {
   const native = errorCodeOf(e);
   if (native === 'NOT_FOUND') return toFlowError('missing', a);
-  if (native === 'CANT_WRITE' || native === 'NO_SPACE' || native === 'VERIFY_FAILED') return toFlowError(native, a);
+  if (native === 'CANT_WRITE' || native === 'NO_SPACE' || native === 'VERIFY_FAILED' || native === 'REPLACE_DENIED') return toFlowError(native, a);
   if (native === 'ARCHIVE_UNSAFE') return toFlowError('unsupported_archive', a);
   return toFlowError(failureCode(e), a);
 }
@@ -273,6 +298,7 @@ export interface SaveRunDeps {
 export type SaveRunResult =
   | { status: 'saved'; fileName: string; path: string; language: string; prepared: PreparedSubtitle }
   | { status: 'name-taken'; fileName: string; prepared: PreparedSubtitle }
+  | { status: 'copies-full'; fileName: string; prepared: PreparedSubtitle }
   | { status: 'failed'; error: FlowError };
 
 /**
@@ -312,9 +338,8 @@ export async function downloadAndSave(
         choice: a.choice,
       },
     );
-    return out.status === 'saved'
-      ? { status: 'saved', fileName: out.fileName, path: out.path, language: a.candidate.language, prepared }
-      : { status: 'name-taken', fileName: out.fileName, prepared };
+    if (out.status === 'saved') return { status: 'saved', fileName: out.fileName, path: out.path, language: a.candidate.language, prepared };
+    return { status: out.status, fileName: out.fileName, prepared };
   } catch (e) {
     return { status: 'failed', error: errorFromThrown(e, copyArgs) };
   }

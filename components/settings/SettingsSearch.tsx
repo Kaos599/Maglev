@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { StyleSheet, Text, TextInput, View } from 'react-native';
+import { Keyboard, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useTheme } from '../../context/ThemeContext';
 import { ThemeColors, radius, spacing, type } from '../../constants/theme';
@@ -51,11 +51,13 @@ export function SettingsSearchResults({ query }: { query: string }) {
 function ResultRow({ entry }: { entry: SettingEntry }) {
   const router = useRouter();
   const subtitle = entry.section ? `${entry.pageTitle} · ${entry.section}` : entry.pageTitle;
-  const onPress = () =>
+  const onPress = () => {
+    Keyboard.dismiss();
     router.push({
       pathname: `/settings/${entry.page}` as never,
       params: { focus: entry.id },
     });
+  };
   return <ListRow title={entry.title} subtitle={subtitle} onPress={onPress} />;
 }
 

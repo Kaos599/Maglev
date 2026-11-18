@@ -17,7 +17,9 @@ import { LANGUAGES, languageName } from '../../utils/subtitles/languages';
 import {
   DOWNLOAD_BUTTON,
   HEARING_IMPAIRED_TAG,
+  COPIES_FULL_TITLE,
   KEEP_BOTH_NOTE,
+  NO_OTHER_ROWS,
   NAME_TAKEN_ACTIONS,
   NAME_TAKEN_TITLE,
   NOTHING_FITS_BODY,
@@ -26,6 +28,7 @@ import {
   NOTICE_NOT_NOW,
   OTHER_LANGUAGE_TAB,
   SHEET_TITLE,
+  alreadyHasCopy,
   errorCopy,
   privacyNotice,
 } from '../../utils/subtitles/copy';
@@ -43,6 +46,7 @@ import {
 } from './flow';
 import { CLOSED, canDownload, cardStateFor, nothingFits, rowKey, rowsOf, selectedRow, sheetReducer, tabStatus, tabsOf } from './sheetMachine';
 import { forgetState, recordState } from './stateStore';
+import { hasExistingSubtitle } from '../../utils/subtitles/existing';
 
 interface Props {
   /** The video to find subtitles for, or null when the sheet is closed. */
@@ -178,9 +182,19 @@ export function SubtitleSheet({ target, onClose }: Props) {
         },
         { unzip: (b64) => maglevEngine.unzipSubtitles(b64), save: (v, n, b64, r) => maglevEngine.saveSubtitle(v, n, b64, r) },
       );
-      if (ctl.signal.aborted) return;
+      if (ctl.signal.aborted) {
+        // NATIVE_CONTRACT 39.1 S9: the sheet was closed while the native save was running. The file is on disk, so the
+        // card still gets its saved state (and the toast) even though the sheet no longer listens.
+        if (out.status === 'saved') {
+          recordState(t, { state: 'saved', lang: out.language, file: out.fileName, savedAt: Date.now() });
+          showNotice({ message: savedToast(out.language) }, 4000);
+        }
+        return;
+      }
       if (out.status === 'saved') {
         dispatch({ type: 'SAVED', fileName: out.fileName, language: out.language });
+      } else if (out.status === 'copies-full') {
+        dispatch({ type: 'COPIES_FULL', fileName: out.fileName });
       } else if (out.status === 'name-taken') {
         prepared.current = { key, value: out.prepared };
         dispatch({ type: 'NAME_TAKEN', fileName: out.fileName });
@@ -221,7 +235,8 @@ export function SubtitleSheet({ target, onClose }: Props) {
     const t = targetRef.current;
     if (t && (stateRef.current.phase === 'downloading' || stateRef.current.phase === 'name-taken')) forgetState(t);
     dispatch({ type: 'CLOSE' });
-    // New keys end the running search or download, so nothing is saved after the sheet is gone.
+    // New keys end the running search and stop the download's wait. A save already handed to the native side still
+    // finishes; the download effect records it for the card (NATIVE_CONTRACT 39.1 S9).
     setRunKey((k) => k + 1);
     setDlKey((k) => k + 1);
     onClose();
@@ -258,7 +273,12 @@ export function SubtitleSheet({ target, onClose }: Props) {
         openFolder();
         break;
       case 'pick-another':
-        send({ type: 'PICK_TAB', language: state.language });
+        // NATIVE_CONTRACT 39.1 S7
+        send({ type: 'PICK_ANOTHER' });
+        break;
+      case 'keep-both':
+        // NATIVE_CONTRACT 39.1 S5
+        send({ type: 'CHOOSE', choice: 'keep-both' });
         break;
       default:
         close();
@@ -287,13 +307,17 @@ export function SubtitleSheet({ target, onClose }: Props) {
     if (state.phase === 'name-taken') {
       return (
         <View style={styles.stack}>
-          <Text style={styles.heading}>{NAME_TAKEN_TITLE}</Text>
+          <Text style={styles.heading}>{state.copiesFull ? COPIES_FULL_TITLE : NAME_TAKEN_TITLE}</Text>
           <Text style={styles.mono} numberOfLines={2} ellipsizeMode="middle">
             {state.takenName}
           </Text>
           <Button label={NAME_TAKEN_ACTIONS.replace} fullWidth onPress={() => send({ type: 'CHOOSE', choice: 'replace' })} />
-          <Button label={NAME_TAKEN_ACTIONS.keepBoth} variant="secondary" fullWidth onPress={() => send({ type: 'CHOOSE', choice: 'keep-both' })} />
-          <Text style={styles.hint}>{`Keep both saves a second file. ${KEEP_BOTH_NOTE}`}</Text>
+          {state.copiesFull ? null : (
+            <>
+              <Button label={NAME_TAKEN_ACTIONS.keepBoth} variant="secondary" fullWidth onPress={() => send({ type: 'CHOOSE', choice: 'keep-both' })} />
+              <Text style={styles.hint}>{`Keep both saves a second file. ${KEEP_BOTH_NOTE}`}</Text>
+            </>
+          )}
           <Button label={NAME_TAKEN_ACTIONS.cancel} variant="ghost" fullWidth onPress={() => send({ type: 'CHOOSE', choice: 'cancel' })} />
         </View>
       );
@@ -347,7 +371,7 @@ export function SubtitleSheet({ target, onClose }: Props) {
 
         {status === 'nothing' ? (
           <View style={styles.stack}>
-            <Text style={styles.heading}>{errorCopy('nothing', { language: state.language }).message}</Text>
+            <Text style={styles.heading}>{target?.existing && hasExistingSubtitle(target.existing.videoPath, state.language, target.existing.files) ? alreadyHasCopy(state.language) : errorCopy('nothing', { language: state.language }).message}</Text>
             <Button label={errorCopy('nothing').action} variant="secondary" fullWidth onPress={() => setPicker(true)} />
           </View>
         ) : null}
@@ -412,6 +436,7 @@ export function SubtitleSheet({ target, onClose }: Props) {
         {state.error && state.phase === 'results' ? (
           <Banner tone="danger" title={state.error.message} actionLabel={state.error.action} onAction={() => runAction(state.error!.actionKind)} />
         ) : null}
+        {state.noneLeft && state.phase === 'results' ? <Text style={styles.hint}>{NO_OTHER_ROWS}</Text> : null}
         {state.keepBothNote && busy ? <Text style={styles.hint}>{KEEP_BOTH_NOTE}</Text> : null}
 
         <Button label={DOWNLOAD_BUTTON} fullWidth loading={busy} disabled={!canDownload(state) && !busy} onPress={() => send({ type: 'DOWNLOAD' })} />

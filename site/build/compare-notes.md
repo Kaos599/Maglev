@@ -86,11 +86,11 @@ Pages: `1dm-alternative`, `adm-alternative`, `libretorrent-alternative`, `flud-a
 
 Not built: BiglyBT and FDM pages (no separate search demand was checked, and the hub table already covers them). Stremio and Nuvio left out on purpose. YouTube downloaders are covered by one paragraph on the compare page, not by their own pages.
 
-## Subtitles row (added 2026-11-18, for 0.28)
+## Subtitles row (added 2026-11-18, for 0.30)
 
 Row `subtitles`, "Finds subtitles for saved videos": the app looks up subtitle files for a video you already have and saves one next to it. Embedding the subtitles a video's own site offers while downloading is a different job, so it does not count.
 
-Maglev evidence: `utils/subtitles/providers/` (21 sources), `utils/subtitles/naming.ts`, `release-notes/0.28.md`. Competitor cells follow the table's rule: a feature the app's own pages do not list is No. Pages read on 2026-11-18, searched for "subtitle" and "caption":
+Maglev evidence: `utils/subtitles/providers/` (21 sources), `utils/subtitles/naming.ts`, `release-notes/0.30.md`. Competitor cells follow the table's rule: a feature the app's own pages do not list is No. Pages read on 2026-11-18, searched for "subtitle" and "caption":
 
 - **LibreTorrent**, No: README https://raw.githubusercontent.com/proninyaroslav/libretorrent/master/README.md and F-Droid https://f-droid.org/packages/org.proninyaroslav.libretorrent/ list none. Its source (https://github.com/proninyaroslav/libretorrent) was not searched.
 - **BiglyBT**, No: Play description (full text, https://play.google.com/store/apps/details?id=com.biglybt.android.client&hl=en&gl=US) and F-Droid https://f-droid.org/en/packages/com.biglybt.android.client/ list none.
@@ -104,11 +104,11 @@ Maglev evidence: `utils/subtitles/providers/` (21 sources), `utils/subtitles/nam
 
 `checkedOn` at the top of compare.json is unchanged; only this row was checked on 2026-11-18.
 
-## Backup, size filter and mining/HTTPS rows (added 2026-11-18, for 0.28)
+## Backup, size filter and mining/HTTPS rows (added 2026-11-18, for 0.30)
 
 Rows `backup` (Control), `search-size-filter` (Torrents) and `mining-https` (Browser and streams, after pop-up control). Same rule as the subtitles row: a feature the app's own pages do not list is No. Partial means the page lists a narrower version. Pages read on 2026-11-18. The Play pages were read in full ("About this app" text), not as excerpts.
 
-Maglev evidence: `utils/backup/format.ts` and `export.ts` (parts: settings, search sources, feeds, schedule, assistant, torrents, downloads; the assistant key reference is stripped; stats are an optional tick in `app/settings/backup.tsx`), `components/search/sizeRange.ts` (slider stops 50 MB to 64 GB, no minimum, no maximum), `utils/browser/hardening.ts` (`upgradeToHttps` with fall back) and `modules/maglev-engine/android/.../BlocklistStore.kt` (`miners.txt` merged into every active list), `release-notes/0.28.md`.
+Maglev evidence: `utils/backup/format.ts` and `export.ts` (parts: settings, search sources, feeds, schedule, assistant, torrents, downloads; the assistant key reference is stripped; stats are an optional tick in `app/settings/backup.tsx`), `components/search/sizeRange.ts` (slider stops 50 MB to 64 GB, no minimum, no maximum), `utils/browser/hardening.ts` (`upgradeToHttps` with fall back) and `modules/maglev-engine/android/.../BlocklistStore.kt` (`miners.txt` merged into every active list), `release-notes/0.30.md`.
 
 Backup and restore:
 - **LibreTorrent**, Partial: strings.xml https://raw.githubusercontent.com/proninyaroslav/libretorrent/master/app/src/main/res/values/strings.xml has "Save backup", "Restore backup", "Channels saved" (RSS channels only). README https://raw.githubusercontent.com/proninyaroslav/libretorrent/master/README.md and F-Droid https://f-droid.org/packages/org.proninyaroslav.libretorrent/ list no backup.

@@ -49,6 +49,7 @@ import java.io.File
 import java.nio.ByteBuffer
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
+import java.util.concurrent.atomic.AtomicLong
 
 /** User-visible governance rules (contract section 6). */
 data class Governance(
@@ -124,11 +125,13 @@ object EngineHost {
     private val pollLock = Any()
 
     /**
-     * Serializes init, ensureStarted and shutdownEngine. Without it an init that runs while a shutdown is in flight
+     * Serializes init, ensureStarted, headlessStart and shutdownEngine. Without it an init that runs while a shutdown is in flight
      * starts a fresh Rust engine that the shutdown then takes, leaving `initialized == true` and no engine.
-     * Order: lifecycleLock, then pollLock. Nothing holding pollLock may call these three.
+     * Order: lifecycleLock, then pollLock. Nothing holding pollLock may call these four. It is a JVM monitor, so it is reentrant on one thread.
      */
     private val lifecycleLock = Any()
+    /** Raised by every shutdown. A headless start queued before a shutdown must not bring the engine back (contract 8.1). */
+    private val shutdownEpoch = AtomicLong(0)
     private var initOnlySince = 0L
     private val cancelledCopies = ConcurrentHashMap.newKeySet<String>()
     /** Copy keys whose removal asked for Delete file: their target in the chosen folder goes even when complete. */
@@ -311,47 +314,60 @@ object EngineHost {
      * 4. Poll once. If nothing is active or rule-paused, stop the service. Otherwise the poller keeps running.
      */
     fun headlessStart(countKill: Boolean = true) {
+        // Taken at call time: a shutdown that lands before this coroutine gets the lock makes the epoch differ.
+        val epochAtCall = shutdownEpoch.get()
         scope.launch {
-            val c = ctx ?: return@launch
-            val p = prefs(c)
-            if (countKill && p.getLong(KEY_ALIVE_AT, 0L) > 0L) {
-                p.edit().putInt(KEY_KILLS, p.getInt(KEY_KILLS, 0) + 1).apply()
-            }
-            // "Not wanted" used to stop the restart outright. It still does: a count of 0 vetoes the restart.
-            val wanted = p.getBoolean(KEY_WANTED, false)
-            val intent = RestartInput(
-                userShutdown = p.getBoolean(KEY_USER_SHUTDOWN, false),
-                userPausedAll = p.getBoolean(KEY_USER_PAUSED_ALL, false),
-                scheduleHeld = ScheduleManager.isHeld(c),
-                activeTorrents = if (wanted) RestartPolicy.UNKNOWN_COUNT else 0,
-            )
-            if (RestartPolicy.decide(intent) == RestartDecision.StayStopped) {
+            synchronized(lifecycleLock) { headlessStartLocked(countKill, epochAtCall) }
+        }
+    }
+
+    /** Body of [headlessStart]. Runs under [lifecycleLock]; it calls [startEngine], never init or ensureStarted. */
+    private fun headlessStartLocked(countKill: Boolean, epochAtCall: Long) {
+        val c = ctx ?: return
+        val p = prefs(c)
+        if (shutdownEpoch.get() != epochAtCall) {
+            // Shut down was requested after this start was queued. Only an explicit user action restarts now.
+            // If one already did (the app opened after the shutdown), the engine is running and the service stays.
+            if (!initialized) stopService()
+            return
+        }
+        if (countKill && p.getLong(KEY_ALIVE_AT, 0L) > 0L) {
+            p.edit().putInt(KEY_KILLS, p.getInt(KEY_KILLS, 0) + 1).apply()
+        }
+        // "Not wanted" used to stop the restart outright. It still does: a count of 0 vetoes the restart.
+        val wanted = p.getBoolean(KEY_WANTED, false)
+        val intent = RestartInput(
+            userShutdown = p.getBoolean(KEY_USER_SHUTDOWN, false),
+            userPausedAll = p.getBoolean(KEY_USER_PAUSED_ALL, false),
+            scheduleHeld = ScheduleManager.isHeld(c),
+            activeTorrents = if (wanted) RestartPolicy.UNKNOWN_COUNT else 0,
+        )
+        if (RestartPolicy.decide(intent) == RestartDecision.StayStopped) {
+            stopService()
+            return
+        }
+        if (!initialized) {
+            val res = startEngine("")
+            if (!isOk(res)) {
+                Log.w(TAG, "headless init failed: ${res["code"]}")
                 stopService()
-                return@launch
+                return
             }
-            if (!initialized) {
-                val res = startEngine("")
-                if (!isOk(res)) {
-                    Log.w(TAG, "headless init failed: ${res["code"]}")
-                    stopService()
-                    return@launch
-                }
-            } else {
-                evaluateGovernance(force = false)
-            }
-            val list = call { NativeCore.nativeListTorrents() }
-            val torrents = Json.list(list["torrents"])
-            val downloads = Json.list(list["downloads"])
-            // Link downloads count like torrents, or a restart with only a download running stops the service.
-            val summary = summarize(allTransfers(torrents, downloads), list["streaming"] == true)
-            notifyNeedsLink(downloads)
-            val counted = summary.busy + summary.pausedByRules + summary.pausedBySchedule
-            if (RestartPolicy.decide(intent.copy(activeTorrents = counted)) == RestartDecision.StayStopped) {
-                setWanted(c, false)
-                stopService()
-            } else {
-                pollNow()
-            }
+        } else {
+            evaluateGovernance(force = false)
+        }
+        val list = call { NativeCore.nativeListTorrents() }
+        val torrents = Json.list(list["torrents"])
+        val downloads = Json.list(list["downloads"])
+        // Link downloads count like torrents, or a restart with only a download running stops the service.
+        val summary = summarize(allTransfers(torrents, downloads), list["streaming"] == true)
+        notifyNeedsLink(downloads)
+        val counted = summary.busy + summary.pausedByRules + summary.pausedBySchedule
+        if (RestartPolicy.decide(intent.copy(activeTorrents = counted)) == RestartDecision.StayStopped) {
+            setWanted(c, false)
+            stopService()
+        } else {
+            pollNow()
         }
     }
 
@@ -392,6 +408,7 @@ object EngineHost {
     fun shutdownEngine(): Map<String, Any?> = synchronized(lifecycleLock) { shutdownEngineLocked() }
 
     private fun shutdownEngineLocked(): Map<String, Any?> {
+        shutdownEpoch.incrementAndGet()
         initialized = false
         clearBlocks()
         startWarning = null
