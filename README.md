@@ -33,7 +33,7 @@
 
 ## Intro
 
-Maglev is a free, open-source download manager for Android. It saves videos from websites (including HLS and m3u8 streams), downloads ordinary links with pause and resume, and works as a torrent client for magnet links and `.torrent` files.
+Maglev is a free, open-source download manager for Android. It saves videos from websites (including HLS and m3u8 streams), downloads ordinary links with pause and resume, and works as a torrent client for magnet links and `.torrent` files. It also finds subtitles for the videos you've downloaded.
 
 It replaces a torrent client, a download manager and a video downloader with one small app that has no ads, no tracking and no account. It runs on Android 7 and later, and its source is under the GPL-3.0 licence.
 
@@ -104,12 +104,23 @@ It prints `OK` for each file that matches. On Windows, `Get-FileHash <file> -Alg
 - Blocks ads and trackers before they load.
 - Play a video and Maglev lists it, along with the page's other files.
 - Saves streaming video (HLS and DASH) as one file, at the quality you pick.
-- Tabs, history and pop-up blocking.
+- Tabs (swipe the address bar to switch), history and pop-up blocking.
+- Downloads that start without a tap go to the tray, pages can't fill your Back history, known crypto-mining scripts are blocked, and pages open over HTTPS when the site supports it.
 - Doesn't get around DRM. Netflix-style video, live streams and YouTube-style players can't be saved, and Maglev says so.
+
+### Subtitles for your videos
+- Find subtitles for a video you've downloaded, from 21 free sources, with no account.
+- Open a finished link download's menu in Transfers, a torrent's options, or the ⋯ next to a video in its Files tab, then tap **Find subtitles**.
+- Results are grouped as "Fits this file", "Probably fits" and "May be out of sync".
+- The subtitle is saved next to the video as `<video name>.<lang>.srt` (or `.ass` or `.vtt`), so players pick it up. If one is already there, you choose Replace or Keep both.
+- In Settings > Finding things > Subtitles you pick and order languages, set a hearing-impaired preference and turn each source on or off. The source list updates itself from Maglev's signed list.
+- Two sources match by file fingerprint: Subtis for Spanish and Napisy24 for Polish. The rest match by name.
+- Maglev sends the video's name to the sources you turn on, and for those two a fingerprint of the file (its size and a hash of its first and last 64 KB). Nothing else, and nothing until you tap Find subtitles.
 
 ### Torrent search
 - One search box across 40+ public sources, with duplicate results merged.
 - A warning on sources known for fake uploads.
+- A size range slider hides results that are too small or too big.
 - Add your own Jackett or Prowlarr indexer.
 
 ### RSS feeds with auto-download
@@ -122,8 +133,11 @@ It prints `OK` for each file that matches. On Windows, `Get-FileHash <file> -Alg
 
 ### You stay in control
 - Wi-Fi only, VPN only or charging only, and a pause when the battery runs low.
+- Transfers says why a download is held, with a button to change that setting.
 - Speed limits and a schedule for when downloads run.
 - Files go to `Download/Maglev`, or any folder you choose.
+- Swipe a row in Transfers to pause, resume or remove it, and see a file type icon on each card.
+- Backups can include your stats.
 - OLED, Dim and Light themes.
 
 Everything else is on the [Maglev website](https://harshdayal.dev/maglev#features).
@@ -148,6 +162,7 @@ What differs:
 - Maglev is open source (GPL-3.0). Its browser blocks ads and trackers, and the app has no ads and no analytics.
 - It saves streaming video (HLS and DASH) as one file at the quality you pick.
 - It searches torrent sites from one box.
+- It finds subtitles for videos you've downloaded, from 21 free sources.
 
 Side-by-side guides, with what is the same, what is different and when the other app is the better pick:
 
@@ -168,6 +183,7 @@ What differs:
 
 - Maglev also downloads ordinary links and saves videos from web pages, so you don't need a second app.
 - Search runs across 40+ public sources with duplicates merged. You can add your own Jackett or Prowlarr indexer.
+- It finds subtitles for the videos you download, from 21 free sources.
 - It has no ads and no tracking. Maglev is open source, as LibreTorrent is. Flud's source isn't published.
 
 Side-by-side guides:
@@ -177,7 +193,7 @@ Side-by-side guides:
 
 ## What's next
 
-- **Browser basics (0.25).** Bookmarks and a new-tab page, file upload on web forms, sign-in prompts for routers and NAS pages, site dialogs (confirm and alert), and HTTPS first for typed addresses.
+- **Browser basics (0.25).** Bookmarks and a new-tab page, file upload on web forms, sign-in prompts for routers and NAS pages, and site dialogs (confirm and alert).
 - Search inside the browser's found files, and keeping a page's file list after you leave it.
 - Choosing which ad-block lists to combine, and per-site rules beyond "allow ads here".
 - A Google Play build.
@@ -211,7 +227,7 @@ node scripts/test-plugins.js
 
 CI also runs the Rust unit tests and checks every engine build for librqbit symbols and 16 KB page alignment.
 
-Icons are [Pixelarticons](https://github.com/halfmage/pixelarticons) by Gerrit Halfmann (MIT). The browser's built-in block list comes from the [StevenBlack/hosts](https://github.com/StevenBlack/hosts) base list (MIT); rebuild it with `node scripts/build-blocklist.js`.
+Subtitle sources are ported from the [Bazarr+](https://github.com/LavX/bazarr-provider-catalog) provider catalog (MIT). Icons are [Pixelarticons](https://github.com/halfmage/pixelarticons) by Gerrit Halfmann (MIT). The browser's built-in block list comes from the [StevenBlack/hosts](https://github.com/StevenBlack/hosts) base list (MIT); rebuild it with `node scripts/build-blocklist.js`.
 
 ## Contributing
 
@@ -238,6 +254,10 @@ Maglev is one. It is free software under the GPL-3.0, and the code is in this re
 ### Can Maglev download m3u8 or HLS videos?
 
 Yes, on-demand HLS (`.m3u8`) and DASH streams, including HLS with standard AES-128 encryption. Maglev lists the pieces, lets you pick quality and audio, and joins them into one video file. It refuses DRM-protected video and live streams, and says why.
+
+### Can Maglev download subtitles?
+
+Yes, for videos you have already downloaded. Tap **Find subtitles** on a finished download, or on a video in a torrent's Files tab. Maglev searches 21 free sources, with no account, and groups the results by how well they fit the file. The subtitle is saved next to the video, so players pick it up. Two sources match by file fingerprint (Subtis for Spanish, Napisy24 for Polish). The rest match by name, so check the fit. It doesn't fetch subtitles by itself when a download finishes.
 
 ### Can Maglev download torrents and magnet links?
 

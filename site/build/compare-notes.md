@@ -85,3 +85,21 @@ Competitor sources: Play pages for Flud, 1DM+, ADM, FDM and BiglyBT (read throug
 Pages: `1dm-alternative`, `adm-alternative`, `libretorrent-alternative`, `flud-alternative`. Their claims about other apps reuse the sources and dates above (checked 2026-11-12 and 2026-11-13); no new fetches were made for them. Each page's "When X is the better choice" section names only what the sources list: Google Play installs and updates for 1DM+, ADM and Flud, F-Droid for LibreTorrent, ADM's home-screen widget, LibreTorrent's own F-Droid description, and Flud's speed-limit wording. Points that depend on a page not listing a feature are phrased as "does not list" and match the "Not listed counts as No" rule.
 
 Not built: BiglyBT and FDM pages (no separate search demand was checked, and the hub table already covers them). Stremio and Nuvio left out on purpose. YouTube downloaders are covered by one paragraph on the compare page, not by their own pages.
+
+## Subtitles row (added 2026-11-18, for 0.28)
+
+Row `subtitles`, "Finds subtitles for saved videos": the app looks up subtitle files for a video you already have and saves one next to it. Embedding the subtitles a video's own site offers while downloading is a different job, so it does not count.
+
+Maglev evidence: `utils/subtitles/providers/` (21 sources), `utils/subtitles/naming.ts`, `release-notes/0.28.md`. Competitor cells follow the table's rule: a feature the app's own pages do not list is No. Pages read on 2026-11-18, searched for "subtitle" and "caption":
+
+- **LibreTorrent**, No: README https://raw.githubusercontent.com/proninyaroslav/libretorrent/master/README.md and F-Droid https://f-droid.org/packages/org.proninyaroslav.libretorrent/ list none. Its source (https://github.com/proninyaroslav/libretorrent) was not searched.
+- **BiglyBT**, No: Play description (full text, https://play.google.com/store/apps/details?id=com.biglybt.android.client&hl=en&gl=US) and F-Droid https://f-droid.org/en/packages/com.biglybt.android.client/ list none.
+- **Seal**, No: README https://raw.githubusercontent.com/JunkFood02/Seal/main/README.md lists "Embed subtitles into the downloaded videos" (the video site's own subtitles), not a search of subtitle sites.
+- **YTDLnis**, No: README https://raw.githubusercontent.com/deniscerri/ytdlnis/main/README.md lists embedding and burning in subtitles, same reading as Seal.
+- **NewPipe**, No: the F-Droid page https://f-droid.org/packages/org.schabi.newpipe/ lists none; the README fetch returned no body text.
+- **Flud**, No: Play description (full text, https://play.google.com/store/apps/details?id=com.delphicoder.flud&hl=en&gl=US) lists none.
+- **1DM+**, Not listed (shown as No): the Play page (https://play.google.com/store/apps/details?id=idm.internet.download.manager.plus&hl=en) returned only excerpts, ranked by "subtitles", and none mentioned them. The full description did not load, so this is unconfirmed.
+- **ADM**, No: Play description (full text, https://play.google.com/store/apps/details?id=com.dv.adm&hl=en&gl=US) lists none.
+- **FDM**, No: Play description excerpts (https://play.google.com/store/apps/details?id=org.freedownloadmanager.fdm&hl=en_US) list none. Excerpts only.
+
+`checkedOn` at the top of compare.json is unchanged; only this row was checked on 2026-11-18.

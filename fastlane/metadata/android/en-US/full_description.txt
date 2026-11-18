@@ -18,29 +18,38 @@ Maglev downloads torrents, ordinary links and the videos and files on a web page
 <ul>
 <li>Open a page inside Maglev. Ads and trackers are blocked with a built-in list of domains that you can update or replace in Settings.</li>
 <li>Videos, audio, images and documents on the page show up in a tray. Tap one to download it.</li>
+<li>Downloads that start without a tap go to the tray, pages can't fill your Back history, crypto-mining scripts are blocked, and pages open over HTTPS when the site supports it.</li>
 <li>Streaming videos (HLS and DASH) are saved as one file. Pick the quality and audio language first.</li>
 <li>Maglev does not get around DRM. Protected video, live streams and players that hide their video can't be saved, and Maglev says so.</li>
 </ul>
 
+<b>Subtitles</b>
+<ul>
+<li>Find subtitles for a video you've downloaded, from 21 free sources with no account. Open a finished download or a video in a torrent's Files tab and tap Find subtitles.</li>
+<li>Results are grouped by how well they fit the file. The subtitle is saved next to the video, so players pick it up.</li>
+<li>Choose your languages and turn sources on or off in Settings. Two sources match by file fingerprint; the rest match by name.</li>
+</ul>
+
 <b>Search and feeds</b>
 <ul>
-<li>One search box asks many public torrent sources at once and merges matching results. You can add your own Jackett or Prowlarr indexer.</li>
+<li>One search box asks many public torrent sources at once and merges matching results. A size range slider hides results that are too small or too big. You can add your own Jackett or Prowlarr indexer.</li>
 <li>Follow a show or add an RSS feed, and Maglev adds new episodes that match your rules.</li>
 </ul>
 
 <b>You stay in control</b>
 <ul>
 <li>Wi-Fi only, VPN required, pause on low battery, and download only while charging.</li>
+<li>Transfers says why a download is held, with a button to change that setting. Swipe a row to pause, resume or remove it.</li>
 <li>Speed limits, a schedule, and Pause all, Resume all and Shut down from the notification.</li>
 <li>Files go to Download/Maglev or any folder you choose.</li>
-<li>Backup and restore your settings, torrents and downloads in one file. API keys are not included.</li>
+<li>Backup and restore your settings, torrents, downloads and, if you choose, stats in one file. API keys are not included.</li>
 </ul>
 
 <b>Optional assistant</b>
 An assistant tab can search and explain problems in plain words. It always asks before it adds or changes anything. It is off until you add your own API key for an outside AI service (OpenRouter by default), and your messages go to that service only when you use it. Turn it off and the tab disappears.
 
 <b>Network use</b>
-Maglev talks only to the sources you search, the sites you open and the block-list addresses in Settings. It has no analytics, no ads and no account.
+Maglev talks only to the sources you search, the subtitle sources you turn on, the sites you open and the block-list addresses in Settings. It has no analytics, no ads and no account.
 
 Maglev doesn't host or index any content. What you download, and following the law where you live, is up to you.
 
