@@ -29,7 +29,7 @@ name: browser-detect
 # NEW: depends on found-files size/clear change (today the meta line omits the size when it is unknown).
 - assertVisible: ".*(KB|MB|GB|—).*"
 # Row label is "<name>, <size> · <host>" (FoundTray.tsx:42).
-- tapOn: ".*Big_Buck_Bunny_1080_10s_1MB\\.mp4.*" # FoundTray.tsx:118 tap starts FoundDownloadSheet
+- tapOn: ".*Big_Buck_Bunny_360_10s_1MB\\.mp4.*" # FoundTray.tsx:118 tap starts FoundDownloadSheet
 # Name, size and folder sheet (FoundDownload.tsx:114 title "Download"). Start enables after the probe.
 - extendedWaitUntil:
     visible: "Start" # components/browser/FoundDownload.tsx:141 Button label "Start"
@@ -50,6 +50,6 @@ name: browser-detect
 - extendedWaitUntil:
     visible:
       id: "transfer-card" # components/TransferCard.tsx:179 testID="transfer-card"
-      text: ".*Big_Buck_Bunny_1080_10s_1MB.*"
+      text: ".*Big_Buck_Bunny_360_10s_1MB.*"
     timeout: 120000
 - runFlow: subflows/remove-all-with-files.yaml

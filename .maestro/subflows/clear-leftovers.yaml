@@ -1,0 +1,16 @@
+# Removes every transfer (and its files) left on the Transfers list by an earlier flow that failed before its own cleanup.
+# Flows run in one emulator session, and a leftover Sintel makes the next magnet say "Already in Maglev" (no Download button).
+appId: com.maglev
+---
+- tapOn: "Transfers"
+- repeat:
+    while:
+      visible:
+        id: "transfer-card"
+    commands:
+      - longPressOn:
+          id: "transfer-card"
+      - tapOn: "Delete selected"
+      - tapOn: "Remove and delete files"
+      - tapOn: "Delete files|Delete [0-9.]+ (B|KB|MB|GB|TB)"
+      - waitForAnimationToEnd

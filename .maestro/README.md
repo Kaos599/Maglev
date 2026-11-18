@@ -26,6 +26,9 @@ End-to-end flows for the Android app (package `com.maglev`). Docs: https://docs.
 Conventions since 0.28:
 - Opening a magnet or link shows the native quick share card (not an in-app screen). `subflows/add-from-card.yaml` (env `LINK`) taps "Download", waits for the card to close, brings Maglev forward (`launchApp` with `stopApp: false`) and waits for a `transfer-card`.
 - `subflows/open-settings-row.yaml` (env `ROW`) scrolls the long, grouped Settings list (either direction) and taps a row. Pages are left with the in-app "Go back" button; do not press hardware Back right after changing the font style.
+- `subflows/clear-leftovers.yaml` runs after onboarding in every flow that uses Transfers: flows share one emulator session, and a transfer left by a failed flow makes the next magnet say "Already in Maglev" (no Download button).
+- `subflows/wait-for-app.yaml` relaunches the app (no state clearing) when the launcher is showing, because CI once saw a native Hermes crash at cold start.
+- Wi-Fi only is ON after onboarding (pre-selected), unlike the store default.
 - `maglev://browser?url=` only prefills the Browser address bar: flows tap "Address" and press Enter to load it.
 - Native Android dialogs (the watch delete alert) are matched by their ids (`android:id/button1`); a sheet or dialog hides the screen behind it, so its button is index 0.
 

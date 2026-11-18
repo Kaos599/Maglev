@@ -3,6 +3,7 @@ appId: com.maglev
 name: search-add
 ---
 - runFlow: subflows/onboard-if-needed.yaml
+- runFlow: subflows/clear-leftovers.yaml
 - tapOn: "Search"
 - tapOn:
     text: "Search torrents"
