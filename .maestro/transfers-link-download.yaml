@@ -25,10 +25,7 @@ name: transfers-link-download
     timeout: 60000
 # from app/add-download.tsx:316 (ready phase, after the probe)
 - tapOn: "Start"
-- extendedWaitUntil:
-    visible:
-      id: "transfer-card"
-    timeout: 60000
+# Link downloads render as DownloadCard, which has no "transfer-card" testID (only torrents' TransferCard does): match by name.
 # The 4.2 MB file can finish within a second on CI ("Done in 1 s"), so progress above 0 is not asserted:
 # the card must exist with the file name and be downloading OR done. Card label: "<name>, <status>, ..." (DownloadCard.tsx:67).
 - extendedWaitUntil:
@@ -47,6 +44,13 @@ name: transfers-link-download
       - extendedWaitUntil:
           visible: "Pause sintel_trailer-480p\\.mp4|Open sintel_trailer-480p\\.mp4"
           timeout: 60000
-- runFlow: subflows/remove-all-with-files.yaml
+# remove-all-with-files.yaml waits for id "transfer-card", which this card does not have, so the steps are spelled out.
+- longPressOn: "sintel_trailer-480p\\.mp4, .*"
+- tapOn: "Delete selected"
+- tapOn: "Remove and delete files"
+- tapOn: "Delete files|Delete [0-9.]+ (B|KB|MB|GB|TB)"
+- extendedWaitUntil:
+    notVisible: "sintel_trailer-480p\\.mp4, .*"
+    timeout: 30000
 - assertVisible: "Nothing downloading"
 # empty.transfers.none.title, constants/copy.ts:(empty.transfers.none), components/transfers/TeachingEmptyState.tsx:49

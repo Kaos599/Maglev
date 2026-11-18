@@ -9,6 +9,7 @@ name: settings-roundtrip
 ---
 - runFlow: subflows/onboard-if-needed.yaml
 - tapOn: "Settings"
+# Maestro applies "checked" BEFORE "index": only the switch is ever checked, so assert on it without an index (index 1 only works for taps and unfiltered matches).
 # Wi-Fi only is ON after onboarding (app/onboarding.tsx pre-selects it), so the round trip turns it OFF, checks it survives, then turns it back ON.
 # 1. Network > Wi-Fi only: a Toggle labelled "Wi-Fi only" (app/settings/network.tsx). The row title is also "Wi-Fi only", so index 1 is the switch.
 - runFlow:
@@ -21,10 +22,9 @@ name: settings-roundtrip
 - tapOn:
     text: "Wi-Fi only"
     index: 1
-- assertVisible:
+- assertNotVisible:
     text: "Wi-Fi only"
-    index: 1
-    checked: false
+    checked: true
 - tapOn: "Go back"
 # 2. Speed and sharing > Download limit: ChipGroup chip "2 MB/s" (components/settings/SpeedSection.tsx). The same chip is in the Upload limit group, so index 0 is the download group.
 - runFlow:
@@ -69,17 +69,15 @@ name: settings-roundtrip
 - extendedWaitUntil:
     visible: "Wi-Fi only"
     timeout: 20000
-- assertVisible:
+- assertNotVisible:
     text: "Wi-Fi only"
-    index: 1
-    checked: false
+    checked: true
 # Restore the default (ON) now (no font change has been made yet in this phase)
 - tapOn:
     text: "Wi-Fi only"
     index: 1
 - assertVisible:
     text: "Wi-Fi only"
-    index: 1
     checked: true
 - tapOn: "Go back"
 - runFlow:
