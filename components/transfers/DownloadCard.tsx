@@ -7,6 +7,8 @@ import { ThemeColors, alpha, radius, spacing, type } from '../../constants/theme
 import { formatEta } from '../../utils/rates';
 import { actionRoute, downloadAction, downloadProgress, downloadProgressLabel, downloadStatus, isIndeterminate, type DownloadAction } from '../../utils/downloadCopy';
 import { PixelIcon } from '../PixelIcon';
+import { StatusLine } from './StatusLine';
+import { useStatusOpts } from './useStatusOpts';
 import { IconButton, PressableScale, ProgressBar, ProgressTone } from '../ui';
 import { CARD_HEIGHT } from '../TransferCard';
 import { useBlockContext } from '../../utils/blocks/useActiveBlocks';
@@ -68,11 +70,11 @@ function DownloadCardImpl({ download: d, onPress, onAction: onActionProp, select
   const etaLabel = formatEta(d.state === 'downloading' ? d.eta : -1, etaRef.current);
   etaRef.current = etaLabel === '—' ? null : etaLabel;
   const blockCtx = useBlockContext();
-  const status = downloadStatus(d, etaLabel, blockCtx);
   const action = downloadAction(d, blockCtx);
+  const statusOpts = useStatusOpts(d.id, d.state === 'downloading' ? d.downBps : 0, { hasRail: selectionMode || showFileIcon, hasPlay: false, hasAction: !!action && !selectionMode });
+  const status = downloadStatus(d, etaLabel, blockCtx, statusOpts);
   const pct = Math.round(downloadProgress(d) * 100);
   const indeterminate = isIndeterminate(d);
-  const statusColor = status.tone === 'danger' ? colors.danger : status.tone === 'accent' ? colors.accentText : colors.textMuted;
 
   const swipe = swipePlan({ action, busy: false, selectionMode, enabled: swipeEnabled });
   const onSwipeRight = () => {
@@ -85,7 +87,7 @@ function DownloadCardImpl({ download: d, onPress, onAction: onActionProp, select
         onLongPress={onLongPress ? () => onLongPress(d.id) : undefined}
         scaleTo={0.99}
         accessibilityRole="button"
-        accessibilityLabel={`${d.name}, ${status.text}${status.sub ? `, ${status.sub}` : ''}, ${downloadProgressLabel(d)}${selectionMode && selected ? ', selected' : ''}`}
+        accessibilityLabel={`${d.name}, ${status.text}, ${downloadProgressLabel(d)}${selectionMode && selected ? ', selected' : ''}`}
         accessibilityActions={[
           { name: 'activate', label: selectionMode ? (selected ? 'Deselect' : 'Select') : 'Open' },
           ...(action && !selectionMode ? [{ name: action.kind, label: action.label }] : []),
@@ -113,16 +115,7 @@ function DownloadCardImpl({ download: d, onPress, onAction: onActionProp, select
           {d.name}
         </Text>
         <ProgressBar progress={pct / 100} tone={toneFor(d)} indeterminate={indeterminate} accessibilityLabel={`${d.name} progress`} />
-        <View>
-          <Text style={[styles.status, { color: statusColor }]} numberOfLines={1}>
-            {status.text}
-          </Text>
-          {status.sub ? (
-            <Text style={[styles.status, { color: colors.textMuted }]} numberOfLines={1}>
-              {status.sub}
-            </Text>
-          ) : null}
-        </View>
+        <StatusLine status={status} />
         </View>
       </PressableScale>
       {subtitle && onSubtitles && !selectionMode ? (
@@ -204,5 +197,4 @@ const makeStyles = (c: ThemeColors) =>
     subtitleAnchor: { position: 'absolute', right: spacing.sm + 8, top: 4, width: 28, height: 28 },
     cardSelected: { borderColor: c.accent, backgroundColor: alpha(c.accent, 0.08) },
     name: { ...type.mono, fontSize: 13, lineHeight: 18, color: c.text, flex: 1 },
-    status: { ...type.mono, fontSize: 12, lineHeight: 18 },
   });

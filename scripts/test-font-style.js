@@ -119,7 +119,7 @@ async function main() {
   check('clean slot advance is not wider than Space Mono', FS.slotAdvance.clean <= FS.slotAdvance.retro);
   check('retro and mono use the Space Mono advance', FS.slotAdvance.retro === T.MONO_ADVANCE && FS.slotAdvance.mono === T.MONO_ADVANCE);
   check('monoSlotWidth takes the advance', T.monoSlotWidth(11, 12, 1, FS.slotAdvance.clean) === Math.ceil(11 * 12 * FS.slotAdvance.clean));
-  check('TransferCard passes the active advance', /monoSlotWidth\([^)]*slotAdvance/.test(read('components/TransferCard.tsx')) || /monoSlotWidth\([^)]*type\.slotAdvance/.test(read('components/TransferCard.tsx')));
+  check('The status line passes the active advance', /monoSlotWidth\([^)]*slotAdvance/.test(read('components/transfers/StatusLine.tsx')) || /monoSlotWidth\([^)]*type\.slotAdvance/.test(read('components/transfers/StatusLine.tsx')));
 
   // ---- the settings row
   const ui = read('app/settings/interface.tsx');

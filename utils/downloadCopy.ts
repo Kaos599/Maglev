@@ -8,7 +8,7 @@ import { formatEta, smoothRate } from './rates.ts';
 import { doneLead } from './stats/format.ts';
 import { reasonFor, wifiOverrideAllowed, type BlockContext } from './blocks/reasons.ts';
 
-export type DownloadTone = 'muted' | 'accent' | 'danger';
+export type DownloadTone = 'muted' | 'accent' | 'danger' | 'download';
 export type DownloadActionKind =
   | 'pause'
   | 'resume'
@@ -32,6 +32,8 @@ export interface DownloadAction {
   route?: string;
 }
 
+/** The card line: short, so the percent and amount stay readable. */
+export const FOLDER_GONE_CARD = 'Folder not available';
 export const FOLDER_GONE_TEXT = "The folder isn't available. Is the SD card in?";
 export const TOO_BIG_TEXT = "This file is bigger than the card's format allows (4 GB). Use phone storage.";
 export const LOCAL_BLOCKED_TEXT = 'A redirect tried to send Maglev to a device on your network, so it stopped.';
@@ -140,51 +142,99 @@ export function downloadProgressText(d: DownloadSnapshot): string | null {
   return d.downloaded > 0 ? `${formatBytes(d.downloaded)} so far` : null;
 }
 
+export type DownloadSlot = 'speed' | 'size' | 'amount';
+
+/** One status line, same rule as a torrent card: left is one phrase then the percent, right is one value. */
 export interface DownloadStatus {
-  /** The state line: time left and speed, a pause reason, an error. */
+  /** Whole status for screen readers, with the amount the card may not show. */
   text: string;
+  /** Left phrase: time left, "Downloading", a pause reason, an error. Ellipsizes. */
+  lead: string;
+  /** Percent after the phrase ("34%"), shown as its own non-shrinking text. Absent when done or unknown. */
+  pct?: string;
+  /** Right side: speed while data flows, else the amount, else the size, else "—". */
+  value?: string;
+  slot?: DownloadSlot;
   tone: DownloadTone;
-  /** How far it got, under the state line. Absent when there is nothing to say yet. */
-  sub?: string;
+}
+
+function mk(lead: string, tone: DownloadTone, pct: number | null, value?: string, slot?: DownloadSlot, extra?: string | null): DownloadStatus {
+  const left = pct == null ? lead : `${lead} · ${pct}%`;
+  const head = value ? `${left} · ${value}` : left;
+  return { text: extra ? `${head}. ${extra}` : head, lead, pct: pct == null ? undefined : `${pct}%`, value, slot, tone };
+}
+
+/** Whole percent, or null when the size is unknown. */
+function wholePercent(d: DownloadSnapshot): number | null {
+  if (!(d.size && d.size > 0)) return null;
+  // Only done items say 100%, and they show no percent at all.
+  return Math.min(99, Math.round(downloadProgress(d) * 100));
+}
+
+/** Percent once something has arrived and the size is known. */
+function startedPct(d: DownloadSnapshot): number | null {
+  return d.downloaded > 0 ? wholePercent(d) : null;
+}
+
+/** "412 MB of 1.2 GB" once something has arrived (just "412 MB" with no known size), else the size, else "—". */
+function amountOrSize(d: DownloadSnapshot, shortOpt: boolean | ((fullChars: number) => boolean) = false): { value: string; slot: DownloadSlot; full?: string } {
+  if (d.size && d.size > 0) {
+    const size = `${d.stream ? '~' : ''}${formatBytes(d.size)}`;
+    if (d.downloaded <= 0) return { value: size, slot: 'size' };
+    const full = `${formatBytes(d.downloaded)} of ${size}`;
+    const short = typeof shortOpt === 'function' ? shortOpt(full.length) : shortOpt;
+    return short ? { value: formatBytes(d.downloaded), slot: 'amount', full } : { value: full, slot: 'amount' };
+  }
+  // Unknown total: only what has arrived.
+  return d.downloaded > 0 ? { value: formatBytes(d.downloaded), slot: 'amount' } : { value: '—', slot: 'size' };
 }
 
 /** The status under the bar. `etaLabel` is the stable label from `formatEta`. */
-export function downloadStatus(d: DownloadSnapshot, etaLabel?: string, ctx: BlockContext = {}): DownloadStatus {
+export function downloadStatus(
+  d: DownloadSnapshot,
+  etaLabel?: string,
+  ctx: BlockContext = {},
+  opts: { speedHold?: boolean; shortAmount?: boolean | ((fullChars: number) => boolean) } = {},
+): DownloadStatus {
+  const right = amountOrSize(d, opts.shortAmount);
+  const held = (lead: string, tone: DownloadTone, note?: string) => mk(lead, tone, startedPct(d), right.value, right.slot, [right.full, note].filter(Boolean).join('. ') || null);
   switch (d.state) {
     case 'resolving':
-      return { text: 'Getting info…', tone: 'muted' };
+      return mk('Getting info', 'muted', null, '—', 'size');
     case 'queued':
-      return { text: reasonFor('queued', ctx)!.short, tone: 'muted' };
+      return held(reasonFor('queued', ctx)!.short, 'muted');
     case 'downloading': {
-      if (d.stalled) return { text: STALLED_TEXT, tone: 'muted', sub: downloadProgressText(d) ?? undefined };
-      const speed = d.downBps > 0 ? formatSpeed(d.downBps) : '—';
-      // Unknown size: the line already says how much has arrived.
-      if (isSizeUnknown(d)) return { text: `${formatBytes(d.downloaded)} so far · ${speed}`, tone: 'muted' };
-      const sub = downloadProgressText(d) ?? undefined;
+      if (d.stalled) return held(STALLED_TEXT, 'muted');
+      const flowing = d.downBps > 0 || !!opts.speedHold;
       const eta = etaLabel ?? formatEta(d.eta, null);
-      if (d.eta >= 0 && eta !== '—') return { text: `${eta} left · ${speed}`, tone: 'muted', sub };
-      return { text: `Downloading · ${speed}`, tone: 'muted', sub };
+      const hasEta = !isSizeUnknown(d) && d.eta >= 0 && eta !== '—';
+      const lead = hasEta ? `${eta} left` : 'Downloading';
+      const pct = hasEta || flowing ? wholePercent(d) : startedPct(d);
+      // The amount is not on the card while data flows, so the screen-reader text keeps it.
+      if (flowing) {
+        const full = amountOrSize(d);
+        return mk(lead, 'download', pct, d.downBps > 0 ? formatSpeed(d.downBps) : '—', 'speed', full.slot === 'amount' ? full.value : null);
+      }
+      return mk(lead, 'download', pct, right.value, right.slot, right.full);
     }
     case 'paused': {
-      const sub = downloadProgressText(d) ?? undefined;
-      // Same as a torrent: muted, with the way out as the sub-line (docs/contracts-0.19/play-and-storage.md section 2).
-      if (d.pausedBy === 'storage_full') return { text: reasonFor('storage_full')!.short, tone: 'muted', sub: 'Free up space' };
-      if (d.pausedBy === 'storage_unavailable') return { text: FOLDER_GONE_TEXT, tone: 'danger', sub };
-      return { text: reasonFor(d.pausedBy, ctx)?.short ?? 'Paused', tone: 'muted', sub };
+      // Same as a torrent: danger, with the card's button ("Free up space") as the way out (docs/contracts-0.19/play-and-storage.md section 2).
+      if (d.pausedBy === 'storage_full') return held(reasonFor('storage_full')!.short, 'danger');
+      if (d.pausedBy === 'storage_unavailable') return held(FOLDER_GONE_CARD, 'danger', FOLDER_GONE_TEXT);
+      return held(reasonFor(d.pausedBy, ctx)?.short ?? 'Paused', 'muted');
     }
     case 'verifying':
-      return { text: 'Finishing…', tone: 'muted' };
+      return mk('Finishing', 'muted', null, d.size && d.size > 0 ? formatBytes(d.size) : '—', 'size');
     case 'finished':
-      return { text: d.size ? `${doneLead(d.activeSecs, d.finishedAt)} · ${formatBytes(d.size)}` : doneLead(d.activeSecs, d.finishedAt), tone: 'accent' };
+      return d.size ? mk(doneLead(d.activeSecs, d.finishedAt), 'accent', null, formatBytes(d.size), 'size') : mk(doneLead(d.activeSecs, d.finishedAt), 'accent', null);
     case 'needs_link':
-      return {
-        text: d.error?.code === 'AUTH_REQUIRED' ? 'Needs sign-in · Paste new link' : 'Link expired · Paste new link',
-        tone: 'danger',
-      };
+      return held(d.error?.code === 'AUTH_REQUIRED' ? 'Needs sign-in · Paste new link' : 'Link expired · Paste new link', 'danger');
     case 'error':
-      return { text: errorLine(d), tone: 'danger' };
+      // The folder message is long; the card says it short and the full text stays for screen readers and the sheet.
+      if (errorKind(d.error?.code, d.error?.httpStatus) === 'folderGone') return held(FOLDER_GONE_CARD, 'danger', FOLDER_GONE_TEXT);
+      return held(errorLine(d), 'danger');
     default:
-      return { text: 'Getting info…', tone: 'muted' };
+      return mk('Getting info', 'muted', null, '—', 'size');
   }
 }
 
