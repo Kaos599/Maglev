@@ -1,12 +1,12 @@
 import React, { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
-import { ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import { ScrollView, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
 import { useRouter } from 'expo-router';
 import { maglevEngine } from 'maglev-engine';
 import { useTheme } from '../../context/ThemeContext';
 import { useSettings } from '../../context/SettingsContext';
 import { useMaglevEngine } from '../../context/EngineContext';
 import { ThemeColors, alpha, radius, spacing, type } from '../../constants/theme';
-import { Banner, Button, Chip, ListRow, PressableScale, Sheet } from '../ui';
+import { Banner, Button, Chip, IconButton, ListRow, PressableScale, Sheet } from '../ui';
 import { useListsVersion } from '../../utils/lists/hooks';
 import { listSubtitleEntries } from '../../utils/lists';
 import { enabledProviders } from '../../utils/subtitles/providers';
@@ -26,6 +26,11 @@ import {
   NOTHING_FITS_TITLE,
   NOTICE_CONTINUE,
   NOTICE_NOT_NOW,
+  CHANGE_NAME_LABEL,
+  SEARCHING_FOR_LABEL,
+  SEARCH_BUTTON,
+  TYPE_A_TITLE,
+  USE_FILE_NAME,
   OTHER_LANGUAGE_TAB,
   SHEET_TITLE,
   alreadyHasCopy,
@@ -44,9 +49,10 @@ import {
   toFlowError,
   type SubtitleTarget,
 } from './flow';
-import { CLOSED, canDownload, cardStateFor, nothingFits, rowKey, rowsOf, selectedRow, sheetReducer, tabStatus, tabsOf } from './sheetMachine';
+import { CLOSED, canDownload, cardStateFor, draftTitleOk, nothingFits, rowKey, rowsOf, searchNote, searchText, selectedRow, sheetReducer, tabStatus, tabsOf } from './sheetMachine';
 import { forgetState, recordState } from './stateStore';
 import { hasExistingSubtitle } from '../../utils/subtitles/existing';
+import { parsedText, parseTyped } from '../../utils/subtitles/parseName';
 
 interface Props {
   /** The video to find subtitles for, or null when the sheet is closed. */
@@ -120,13 +126,15 @@ export function SubtitleSheet({ target, onClose }: Props) {
     if (!t || stateRef.current.phase !== 'searching') return;
     const ctl = new AbortController();
     void (async () => {
-      const h = await hashIfComplete(t, maglevEngine);
+      // NATIVE_CONTRACT 42.2 / 42.4: only a finished file is read for its fingerprint, and a typed name never sends one.
+      const typed = stateRef.current.searchName;
+      const h = typed ? { videoBytes: t.videoBytes, missing: false, hash: undefined } : await hashIfComplete(t, maglevEngine);
       if (ctl.signal.aborted) return;
       if (h.missing) {
         dispatch({ type: 'SEARCH_FAILED', error: toFlowError('missing') });
         return;
       }
-      const file = { fileName: t.fileName, videoBytes: h.videoBytes, hash: h.hash };
+      const file = { fileName: t.fileName, videoBytes: h.videoBytes, hash: h.hash, searchName: typed ?? undefined };
       queryRef.current = buildQuery(file, stateRef.current.languages);
       try {
         const res = await searchSubtitles(file, {
@@ -226,7 +234,7 @@ export function SubtitleSheet({ target, onClose }: Props) {
 
   const send = useCallback((e: Parameters<typeof dispatch>[0]) => {
     dispatch(e);
-    if (e.type === 'NOTICE_CONTINUE' || e.type === 'RETRY_SEARCH') setRunKey((k) => k + 1);
+    if (e.type === 'NOTICE_CONTINUE' || e.type === 'RETRY_SEARCH' || e.type === 'SEARCH_NAME' || e.type === 'USE_FILE_NAME') setRunKey((k) => k + 1);
     if (e.type === 'DOWNLOAD' || e.type === 'CHOOSE') setDlKey((k) => k + 1);
   }, []);
 
@@ -294,6 +302,17 @@ export function SubtitleSheet({ target, onClose }: Props) {
   const maxList = Math.round(height * 0.42);
   const busy = state.phase === 'downloading';
 
+  // NATIVE_CONTRACT 42.3: the "Searching for" row.
+  const detectedTyping = target ? searchText(target.fileName, null, true) : '';
+  const shownText = target ? searchText(target.fileName, state.searchName) : '';
+  const draftOk = draftTitleOk(state.draft);
+  const draftDiffers = parseTyped(state.draft).title === '' || parsedText(parseTyped(state.draft), true) !== detectedTyping;
+  const startEdit = () => send({ type: 'EDIT_NAME', draft: target ? searchText(target.fileName, state.searchName, true) : '' });
+  const submitName = () => {
+    if (draftOk) send({ type: 'SEARCH_NAME', detected: detectedTyping });
+  };
+  const note = target && state.searchDone ? searchNote(state, target.complete) : null;
+
   const body = () => {
     if (state.phase === 'notice') {
       return (
@@ -353,6 +372,44 @@ export function SubtitleSheet({ target, onClose }: Props) {
     }
     return (
       <View style={styles.stack}>
+        {/* NATIVE_CONTRACT 42.3 */}
+        {state.editing ? (
+          <View style={styles.stack}>
+            <Text style={styles.hint}>{SEARCHING_FOR_LABEL}</Text>
+            <TextInput
+              style={[styles.input, state.draft.trim() !== '' && !draftOk && styles.inputError]}
+              value={state.draft}
+              onChangeText={(t) => send({ type: 'DRAFT_CHANGE', draft: t })}
+              placeholder={TYPE_A_TITLE}
+              placeholderTextColor={colors.textFaint}
+              returnKeyType="search"
+              onSubmitEditing={submitName}
+              autoCorrect={false}
+              autoFocus
+              accessibilityLabel={SEARCHING_FOR_LABEL}
+            />
+            {state.draft.trim() !== '' && !draftOk ? (
+              <Text style={styles.problem} accessibilityRole="alert">
+                {TYPE_A_TITLE}
+              </Text>
+            ) : null}
+            <View style={styles.nameActions}>
+              <Button label={SEARCH_BUTTON} variant="secondary" disabled={!draftOk} onPress={submitName} />
+              {draftDiffers ? <Button label={USE_FILE_NAME} variant="ghost" icon="undo" onPress={() => send({ type: 'USE_FILE_NAME' })} /> : null}
+            </View>
+          </View>
+        ) : (
+          <View style={styles.nameRow}>
+            <View style={styles.nameText}>
+              <Text style={styles.hint}>{SEARCHING_FOR_LABEL}</Text>
+              <Text style={styles.searchText} numberOfLines={1} ellipsizeMode="tail">
+                {shownText}
+              </Text>
+            </View>
+            <IconButton icon="pencil" accessibilityLabel={CHANGE_NAME_LABEL} disabled={busy} onPress={startEdit} />
+          </View>
+        )}
+
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.tabs} accessibilityRole="tablist">
           {tabs.map((code) => (
             <Chip key={code} label={languageName(code)} role="radio" selected={code === state.language} disabled={busy} onPress={() => send({ type: 'PICK_TAB', language: code })} />
@@ -438,6 +495,8 @@ export function SubtitleSheet({ target, onClose }: Props) {
         ) : null}
         {state.noneLeft && state.phase === 'results' ? <Text style={styles.hint}>{NO_OTHER_ROWS}</Text> : null}
         {state.keepBothNote && busy ? <Text style={styles.hint}>{KEEP_BOTH_NOTE}</Text> : null}
+        {/* NATIVE_CONTRACT 42.5 */}
+        {note && state.phase === 'results' ? <Text style={styles.hint}>{note}</Text> : null}
 
         <Button label={DOWNLOAD_BUTTON} fullWidth loading={busy} disabled={!canDownload(state) && !busy} onPress={() => send({ type: 'DOWNLOAD' })} />
       </View>
@@ -468,5 +527,12 @@ const makeStyles = (c: ThemeColors) =>
     rowOn: { borderColor: c.accent, backgroundColor: alpha(c.accent, 0.08) },
     release: { ...type.mono, fontSize: type.size.md, color: c.text },
     meta: { ...type.body, fontSize: type.size.sm, color: c.textMuted, marginTop: 2 },
+    nameRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+    nameText: { flex: 1, minHeight: 44, justifyContent: 'center' },
+    searchText: { ...type.mono, fontSize: type.size.md, color: c.text },
+    nameActions: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: spacing.sm },
+    input: { ...type.mono, fontSize: type.size.md, minHeight: 48, paddingHorizontal: spacing.lg, borderRadius: radius.md, borderWidth: 1, borderColor: c.borderStrong, backgroundColor: c.bg, color: c.text },
+    inputError: { borderColor: c.danger },
+    problem: { ...type.body, fontSize: 13, color: c.danger },
     problemsBtn: { minHeight: 44, justifyContent: 'center' },
   });

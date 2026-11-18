@@ -101,6 +101,9 @@ const MAP = {
   forward: 'arrow-right',
   // subtitles
   subtitles: 'badge-captions',
+  // edit the name a subtitle search uses (NATIVE_CONTRACT 42.3)
+  pencil: 'pencil',
+  undo: 'undo',
   // download page density (NATIVE_CONTRACT 41.4)
   'card-text': 'card-text',
   'grid-3x2': 'grid-3x2',

@@ -11,6 +11,8 @@
 import { defaultSelection, forLanguage, type RankedSubtitle } from '../../utils/subtitles/rank.ts';
 import type { SubtitleSourceStatus } from '../../utils/subtitles/search.ts';
 import type { SaveChoice } from '../../utils/subtitles/naming.ts';
+import { parseName, parsedText, parseTyped } from '../../utils/subtitles/parseName.ts';
+import { NOTE_MATCHED_BY_NAME, NOTE_MATCHED_BY_TYPED } from '../../utils/subtitles/copy.ts';
 import { toFlowError, type FlowError } from './flow.ts';
 
 export type SheetPhase = 'closed' | 'notice' | 'searching' | 'results' | 'downloading' | 'name-taken' | 'saved' | 'failed';
@@ -47,6 +49,12 @@ export interface SheetState {
   noneLeft: boolean;
   /** Copies .2 to .9 all exist: only Replace or Cancel are offered (39.1 S8). */
   copiesFull: boolean;
+  /** NATIVE_CONTRACT 42.3: the typed text the search uses instead of the file name, or null for the file name. Lives only while the sheet is open. */
+  searchName: string | null;
+  /** The "Searching for" row is a text field. */
+  editing: boolean;
+  /** What is in that field. */
+  draft: string;
 }
 
 export type SheetEvent =
@@ -66,6 +74,10 @@ export type SheetEvent =
   | { type: 'PICK_ANOTHER' }
   | { type: 'CHOOSE'; choice: 'replace' | 'keep-both' | 'cancel' }
   | { type: 'SAVED'; fileName: string; language: string }
+  | { type: 'EDIT_NAME'; draft: string }
+  | { type: 'DRAFT_CHANGE'; draft: string }
+  | { type: 'SEARCH_NAME'; detected: string }
+  | { type: 'USE_FILE_NAME' }
   | { type: 'CLOSE' };
 
 export const rowKey = (r: RankedSubtitle): string => `${r.candidate.providerId}:${r.candidate.id}`;
@@ -89,6 +101,9 @@ export const CLOSED: SheetState = {
   failedKeys: [],
   noneLeft: false,
   copiesFull: false,
+  searchName: null,
+  editing: false,
+  draft: '',
 };
 
 /** Tabs: the chosen languages, then the one picked from "Other…" when it isn't among them. */
@@ -144,6 +159,25 @@ function startSearch(s: SheetState): SheetState {
   return { ...s, phase: 'searching', ranked: [], sources: [], searchDone: false, selectedKey: null, picked: false, error: null, failedKeys: [], noneLeft: false, copiesFull: false };
 }
 
+/**
+ * NATIVE_CONTRACT 42.3: Search is allowed only when the typed text has a title. `detected` is the file name's own
+ * words in typing form; typing that back is the same as "Use file name" (no typed name, so the fingerprint is used).
+ */
+export function draftTitleOk(draft: string): boolean {
+  return parseTyped(draft).title !== '';
+}
+
+/** The words of the name a search runs on, plain form (collapsed row) or typing form (field). */
+export function searchText(fileName: string, searchName: string | null, typing = false): string {
+  return parsedText(searchName ? parseTyped(searchName) : parseName(fileName), typing);
+}
+
+/** NATIVE_CONTRACT 42.5: the one muted line under the results, or null. */
+export function searchNote(s: Pick<SheetState, 'searchName'>, fileComplete: boolean): string | null {
+  if (!fileComplete) return NOTE_MATCHED_BY_NAME;
+  return s.searchName ? NOTE_MATCHED_BY_TYPED : null;
+}
+
 export function sheetReducer(s: SheetState, e: SheetEvent): SheetState {
   switch (e.type) {
     case 'OPEN': {
@@ -156,6 +190,19 @@ export function sheetReducer(s: SheetState, e: SheetEvent): SheetState {
     case 'NOTICE_NOT_NOW':
     case 'CLOSE':
       return CLOSED;
+    // NATIVE_CONTRACT 42.3: the "Searching for" row. Only while there is a search step to edit.
+    case 'EDIT_NAME':
+      return s.phase === 'results' || s.phase === 'searching' ? { ...s, editing: true, draft: e.draft } : s;
+    case 'DRAFT_CHANGE':
+      return s.editing ? { ...s, draft: e.draft } : s;
+    case 'SEARCH_NAME': {
+      if ((s.phase !== 'results' && s.phase !== 'searching') || !draftTitleOk(s.draft)) return s;
+      const typed = parseTyped(s.draft);
+      const same = parsedText(typed, true) === e.detected;
+      return startSearch({ ...s, searchName: same ? null : s.draft.trim(), editing: false, draft: '' });
+    }
+    case 'USE_FILE_NAME':
+      return s.phase === 'results' || s.phase === 'searching' ? startSearch({ ...s, searchName: null, editing: false, draft: '' }) : s;
     case 'RETRY_SEARCH':
       return startSearch(s);
     case 'SEARCH_UPDATE': {

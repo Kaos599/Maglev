@@ -18,9 +18,19 @@ export const PRIVACY_LINE =
 export const TURNED_OFF_BY_MAGLEV = 'Turned off by Maglev';
 
 export const FIND_SUBTITLES = 'Find subtitles…';
-export const FILE_NOT_FINISHED = 'When this file finishes';
+// NATIVE_CONTRACT 42.1
+export const FILE_NOT_STARTED = 'When this file starts';
 export const SHEET_TITLE = 'Subtitles';
 export const DOWNLOAD_BUTTON = 'Download subtitle';
+// NATIVE_CONTRACT 42.3
+export const SEARCHING_FOR_LABEL = 'Searching for';
+export const CHANGE_NAME_LABEL = 'Change the name to search for';
+export const USE_FILE_NAME = 'Use file name';
+export const TYPE_A_TITLE = 'Type a title';
+export const SEARCH_BUTTON = 'Search';
+// NATIVE_CONTRACT 42.5
+export const NOTE_MATCHED_BY_NAME = 'Matched by name. Exact matching works once the file finishes.';
+export const NOTE_MATCHED_BY_TYPED = 'Matched by the name you typed.';
 export const OTHER_LANGUAGE_TAB = 'Other…';
 export const HEARING_IMPAIRED_TAG = 'Hearing impaired';
 
