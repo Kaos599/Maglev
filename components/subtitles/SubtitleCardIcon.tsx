@@ -31,7 +31,7 @@ function SubtitleCardIconImpl({ model, onPress }: Props) {
       style={styles.box}
     >
       {model.state === 'getting' ? <View style={[styles.ring, { borderColor: tint }]} /> : null}
-      <PixelIcon name="file-doc" size={20} color={tint} />
+      <PixelIcon name="subtitles" size={20} color={tint} />
       {model.state !== 'getting' ? <View style={[styles.dot, { backgroundColor: tint }]} /> : null}
     </PressableScale>
   );
