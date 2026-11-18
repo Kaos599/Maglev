@@ -1,6 +1,6 @@
-- Subtitles for videos you've downloaded, from 21 free sources, no account. Open a finished download, or a video in a torrent's Files tab.
-- Link downloads get their own page. Choose Compact or Detailed in Appearance.
-- Transfers says why a download is held, with a button to fix it.
-- Search has a size range slider. Swipe a Transfers row to pause or remove it.
-- Swipe the browser address bar to switch tabs. Stricter browser blocking.
-- Backups can include stats.
+- Subtitles while a video downloads, from 21 free sources, no account. Edit the name it searches for.
+- Get subtitles right after adding from Search, or turn on Get subtitles for new videos.
+- Cards say Connecting or Waiting for peers, show the amount next to the speed, and the page explains why.
+- Link downloads get their own page. Compact or Detailed in Appearance.
+- Transfers says why a download is held. Swipe rows to pause or remove.
+- Size slider in Search. Stricter browser blocking.

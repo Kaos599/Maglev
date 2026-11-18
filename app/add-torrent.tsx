@@ -21,6 +21,10 @@ import { admissionCaption } from '../utils/admissionCopy';
 import { takePrefetchedMetadata } from '../components/search/metadataCache';
 import { banners, empty, mobileDataLine, notices } from '../constants/copy';
 import { useSettings } from '../context/SettingsContext';
+import { fileKind } from '../utils/fileKind';
+import { SubtitlesAutoRow, useSubtitlesAuto } from '../components/search/SubtitlesAutoRow';
+import { askSubtitles, markNotThisOne } from '../utils/subtitles/requests';
+import { buildAsk } from '../utils/addedTray';
 import { START_ENGINE_LABEL, engineStoppedBody, isEngineStopped } from '../utils/addErrorNotice';
 
 /** SM-9 add flow states. */
@@ -69,6 +73,9 @@ export default function AddTorrentScreen() {
   const [firsts, setFirsts] = useState<Set<number>>(new Set());
   const [prioIndex, setPrioIndex] = useState<number | null>(null);
   const [starting, setStarting] = useState(false);
+  // NATIVE_CONTRACT 44.5: the Subtitles row, for a torrent with a video among the chosen files.
+  const videoFiles = meta ? meta.files.filter((f) => selected.has(f.index) && fileKind(f.path) === 'video') : [];
+  const subs = useSubtitlesAuto(videoFiles.length > 0);
 
   /** The string handed to the engine: a magnet, a URL, or a cached .torrent path. */
   const sourceRef = useRef<string>('');
@@ -326,6 +333,12 @@ export default function AddTorrentScreen() {
       return;
     }
     if (res.ok) {
+      if (meta && subs.show && videoFiles.length > 0) {
+        const ask = buildAsk({ infoHash: meta.infoHash, name: meta.name, sizeBytes: meta.totalBytes, videoCount: videoFiles.length });
+        // 44.15 D4: Settings auto is on and this screen's switch is off: "not this one", so automatic mode leaves it alone.
+        if (subs.on) askSubtitles([ask], { auto: true });
+        else if (subs.settingsOn) markNotThisOne([ask]);
+      }
       finishAdded(res.id);
       return;
     }
@@ -483,6 +496,8 @@ export default function AddTorrentScreen() {
           </View>
           <Button label="Change" variant="secondary" disabled={adding} onPress={handleChangeFolder} />
         </View>
+        {subs.show ? <SubtitlesAutoRow on={subs.on} onChange={subs.setOn} disabled={adding} /> : null}
+        {subs.node}
         {mobileNote ? <Banner tone="info" title={mobileNote} /> : null}
         {addError ? (
           addStopped ? (

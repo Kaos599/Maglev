@@ -11,6 +11,12 @@ import { haptic } from '../../constants/haptics';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { PixelIcon } from '../../components/PixelIcon';
 import { SubtitleSheet } from '../../components/subtitles/SubtitleSheet';
+import { MultiSubtitleSheet } from '../../components/subtitles/MultiSubtitleSheet';
+import { SubtitlesRow } from '../../components/subtitles/SubtitlesRow';
+import { torrentRowFacts, type SheetStart } from '../../components/subtitles/rowModel';
+import { askSubtitles, getRequests } from '../../utils/subtitles/requests';
+import { buildAsk } from '../../utils/addedTray';
+import { pickMainFile } from '../../utils/mainFile';
 import { useSubtitleAvailability } from '../../components/subtitles/useSubtitleEntry';
 import { fileEntryMode, torrentEntryMode, torrentTarget, type SubtitleTarget } from '../../components/subtitles/flow';
 import { OPEN_FOLDER_FAILED_TEXT } from '../../utils/downloadCopy';
@@ -39,11 +45,13 @@ import {
 } from '../../components/detail/fileHealthMachine';
 import { FileListRow } from '../../components/detail/FileListRow';
 import { PrioritySheet } from '../../components/detail/PrioritySheet';
-import { canResumeAnyway, resumeAnywayLabel } from '../../components/transfers/model';
+import { canResumeAnyway, resumeAnywayLabel, torrentSituation } from '../../components/transfers/model';
+import { useFlowClock } from '../../components/transfers/useStatusOpts';
+import { WhyStuck } from '../../components/detail/WhyStuck';
 import { reasonsForItem } from '../../utils/blocks/reasons';
 import { WhyHeld } from '../../components/transfers/WhyHeld';
 import { useLiveBlockContext } from '../../utils/blocks/useActiveBlocks';
-import { WIFI_ANYWAY_NOTE } from '../../utils/downloadCopy';
+import { WIFI_ANYWAY_NOTE, torrentWhy } from '../../utils/downloadCopy';
 import { TorrentMoreSheet } from '../../components/detail/TorrentMoreSheet';
 import { SpeedLimitSheet } from '../../components/detail/SpeedLimitSheet';
 import { MoveSheet } from '../../components/detail/MoveSheet';
@@ -116,6 +124,8 @@ export default function TorrentDetailScreen() {
   const [fileSheet, setFileSheet] = useState<DetailFile | null>(null);
   const subtitleAvail = useSubtitleAvailability();
   const [subtitleTarget, setSubtitleTarget] = useState<SubtitleTarget | null>(null);
+  const [subtitleStart, setSubtitleStart] = useState<SheetStart>('results');
+  const [subtitlesAll, setSubtitlesAll] = useState(false);
   const [notice, setNotice] = useState<Notice | null>(null);
   const [pending, setPending] = useState<Record<number, FilePriority>>({});
   const [prioTarget, setPrioTarget] = useState<number[] | null>(null);
@@ -275,13 +285,13 @@ export default function TorrentDetailScreen() {
   }, [id, healthTag, tick, sendFh]);
   const missingSet = useMemo(() => new Set(missingIdx), [missingIdx]);
 
-  // Tick once a second while the "Find more peers" cool-down is showing.
+  // Tick once a second while the "Find more peers" cool-down is showing (in the menu, or on "Ask trackers again").
   useEffect(() => {
-    if (!moreOpen || retryUntil <= Date.now()) return;
+    if (retryUntil <= Date.now()) return;
     setNow(Date.now());
     const t = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(t);
-  }, [moreOpen, retryUntil]);
+  }, [retryUntil]);
   const retryInSecs = Math.max(0, Math.ceil((retryUntil - now) / 1000));
 
   // Drop optimistic priorities once the engine reports the same value.
@@ -298,7 +308,6 @@ export default function TorrentDetailScreen() {
 
   const snap = detail?.snapshot ?? null;
   const blockCtx = useLiveBlockContext();
-
   // Forget a hidden tracker once the engine no longer lists it.
   useEffect(() => {
     if (!detail) return;
@@ -311,6 +320,26 @@ export default function TorrentDetailScreen() {
     () => (detail ? detail.trackers.filter((t) => !hiddenTrackers.includes(t.url)) : []),
     [detail, hiddenTrackers],
   );
+
+  // NATIVE_CONTRACT 43: the shared flow clock says how long no data has arrived, the same record the card reads.
+  const flow = useFlowClock(id ?? '', snap?.state === 'DOWNLOADING', snap?.downBps ?? 0);
+  const peerTimeoutMins = useSettings().settings.bandwidth.peerTimeoutMins;
+  const situation = snap
+    ? torrentSituation({ state: snap.state, downloadSpeedBytes: snap.downBps, downloadedBytes: snap.progressBytes }, flow, blockCtx)
+    : null;
+  const whyModel =
+    detail && (situation === 'connecting' || situation === 'waiting')
+      ? torrentWhy({
+          situation,
+          peersTotal: detail.snapshot.peersSeen,
+          peersConnected: detail.snapshot.peersLive,
+          trackers,
+          peers: detail.peers,
+          quietMs: flow.quietMs,
+          lastDataAgoMs: flow.lastDataAgoMs,
+          peerTimeoutMins,
+        })
+      : null;
 
   // Drop the optimistic limit once the engine reports the same values.
   useEffect(() => {
@@ -724,6 +753,14 @@ export default function TorrentDetailScreen() {
     subtitleAvail,
   );
 
+  // NATIVE_CONTRACT 44.14: the Subtitles row, under the progress card and the why block.
+  const subtitleRow = torrentRowFacts(
+    { finished: !!snap.finished || snap.state === 'COMPLETED' || snap.state === 'SEEDING', folder: snap.outputFolder },
+    files,
+    subtitleAvail,
+    !!getRequests()[`t:${id.toLowerCase()}`]?.files,
+  );
+
   const errorMap = snap.error ? actionsFor(snap.error.code, { pausedBy: snap.pausedBy }) : null;
   const errorButtons: { action: ErrorAction; label: string; variant: 'primary' | 'secondary' }[] = [];
   if (errorMap) {
@@ -830,6 +867,29 @@ export default function TorrentDetailScreen() {
           </View>
         ) : null}
       </ProgressCard>
+
+      {/* NATIVE_CONTRACT 43.4: only while connecting or waiting, in Compact and Detailed; gone once data flows. */}
+      {whyModel ? <WhyStuck model={whyModel} onAskTrackers={() => void handleReannounce()} retryInSecs={retryInSecs} /> : null}
+
+      {subtitleRow.show ? (
+        <SubtitlesRow
+          requestKey={`t:${id.toLowerCase()}`}
+          stateKey={`t:${id}`}
+          started={subtitleRow.started}
+          canOpenSheet={subtitleRow.canOpenSheet}
+          onOpenSheet={(start) => {
+            if (!subtitleRow.file) return;
+            setSubtitleStart(start);
+            setSubtitleTarget(torrentTarget(id, snap.outputFolder, subtitleRow.file, downloadedFiles));
+          }}
+          onSeeAll={() => setSubtitlesAll(true)}
+          onAskPack={() => {
+            // 44.15 D7: a pack page row with no request asks for the whole pack.
+            const videos = pickMainFile(files).videos.length;
+            askSubtitles([buildAsk({ infoHash: id, name: snap.name, sizeBytes: snap.totalBytes, videoCount: videos })], { auto: false });
+          }}
+        />
+      ) : null}
 
       {ruleResume ? (
         <View style={[styles.block, { gap: spacing.sm }]}>
@@ -1160,7 +1220,21 @@ export default function TorrentDetailScreen() {
           setSubtitleTarget(torrentTarget(id, snap.outputFolder, f, downloadedFiles));
         }}
       />
-      <SubtitleSheet target={subtitleTarget} onClose={() => setSubtitleTarget(null)} />
+      <SubtitleSheet
+        target={subtitleTarget}
+        initial={subtitleStart}
+        onClose={() => {
+          setSubtitleTarget(null);
+          setSubtitleStart('results');
+        }}
+      />
+      <MultiSubtitleSheet
+        visible={subtitlesAll}
+        mode="status"
+        asks={getRequests()[`t:${id.toLowerCase()}`] ? [getRequests()[`t:${id.toLowerCase()}`].ask] : []}
+        onConfirm={() => setSubtitlesAll(false)}
+        onClose={() => setSubtitlesAll(false)}
+      />
     </Screen>
   );
 }

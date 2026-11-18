@@ -16,6 +16,7 @@ export const DEFAULT_SUBTITLE_SETTINGS: SubtitleSettings = {
   hearingImpaired: 'both',
   sourceEnabled: {},
   privacyAck: false,
+  autoNewVideos: false,
 };
 
 /** The language order in force: the user's pick, or the phone's language then English (36.2). */
@@ -33,6 +34,14 @@ export function privacyAckPatch(): Pick<SubtitleSettings, 'privacyAck'> {
   return { privacyAck: true };
 }
 
+/**
+ * 44.15 D10: the functional settings update for accepting the notice (and optionally more fields in the same write).
+ * It reads the settings as they are now, never a snapshot from an earlier render.
+ */
+export function acceptPrivacy(more?: Partial<SubtitleSettings>): (prev: { subtitles: SubtitleSettings }) => { subtitles: SubtitleSettings } {
+  return (prev) => ({ subtitles: { ...prev.subtitles, ...more, ...privacyAckPatch() } });
+}
+
 /** A new `sourceEnabled` map with one switch set. */
 export function withSourceEnabled(s: Pick<SubtitleSettings, 'sourceEnabled'>, providerId: string, on: boolean): Record<string, boolean> {
   return { ...s.sourceEnabled, [providerId]: on };
@@ -47,7 +56,8 @@ export function withLanguageAt(list: readonly string[], code: string, index: num
 
 // ---------------------------------------------------------------- per-video state (36.10)
 
-export type SubtitleCardState = 'getting' | 'saved' | 'needs-look';
+/** 'none' (NATIVE_CONTRACT 44.8): nothing found, offline or limited; the icon shows a muted glyph with no badge. */
+export type SubtitleCardState = 'getting' | 'saved' | 'needs-look' | 'none';
 
 export interface SubtitleState {
   lang: string;
@@ -82,7 +92,7 @@ export function stateVisible(entry: SubtitleState | null | undefined, now: numbe
 function clean(raw: unknown): SubtitleState | null {
   if (!raw || typeof raw !== 'object') return null;
   const o = raw as Record<string, unknown>;
-  if (o.state !== 'getting' && o.state !== 'saved' && o.state !== 'needs-look') return null;
+  if (o.state !== 'getting' && o.state !== 'saved' && o.state !== 'needs-look' && o.state !== 'none') return null;
   // A state written without a timestamp is dropped: it counts as expired (S3).
   if (typeof o.lang !== 'string' || typeof o.savedAt !== 'number' || !Number.isFinite(o.savedAt)) return null;
   return { lang: o.lang, file: typeof o.file === 'string' ? o.file : '', savedAt: o.savedAt, state: o.state };

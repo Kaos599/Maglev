@@ -19,6 +19,8 @@ import {
   downloadProgressLabel,
   downloadStatus,
   isSizeUnknown,
+  linkSituation,
+  linkWhy,
   linkProblem,
   needsNewLink,
   removeCopy,
@@ -30,11 +32,15 @@ import { Banner, Button, EmptyBlock, IconButton, ListRow, Screen, Sheet, type Pr
 import { toneColor } from '../../components/transfers/StatusLine';
 import { ProgressBadge, ProgressCard } from '../../components/detail/ProgressCard';
 import { CompactLine } from '../../components/detail/CompactLine';
+import { WhyStuck } from '../../components/detail/WhyStuck';
+import { useFlowClock } from '../../components/transfers/useStatusOpts';
 import { useSettings } from '../../context/SettingsContext';
 import { WhyHeld } from '../../components/transfers/WhyHeld';
 import { DownloadStats } from '../../components/transfers/DownloadStats';
 import { useDownloadActions } from '../../components/transfers/useDownloadActions';
 import { SubtitleSheet } from '../../components/subtitles/SubtitleSheet';
+import { SubtitlesRow } from '../../components/subtitles/SubtitlesRow';
+import { downloadRowFacts, type SheetStart } from '../../components/subtitles/rowModel';
 import { useSubtitleAvailability } from '../../components/subtitles/useSubtitleEntry';
 import { downloadEntryMode, entrySubtitle, type SubtitleTarget } from '../../components/subtitles/flow';
 import { FIND_SUBTITLES } from '../../utils/subtitles/copy';
@@ -78,6 +84,7 @@ export default function DownloadScreen() {
   const [removeStep, setRemoveStep] = useState<RemoveStep>('closed');
   const [limitOpen, setLimitOpen] = useState(false);
   const [subtitleTarget, setSubtitleTarget] = useState<SubtitleTarget | null>(null);
+  const [subtitleStart, setSubtitleStart] = useState<SheetStart>('results');
   const [link, setLink] = useState('');
   const [linkError, setLinkError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -142,6 +149,9 @@ export default function DownloadScreen() {
     }
   }, [d, showNotice]);
 
+  // NATIVE_CONTRACT 43: the shared flow clock, the same record the card reads.
+  const flow = useFlowClock(id ?? '', d?.state === 'downloading', d?.downBps ?? 0);
+
   if (!id || !d) {
     // NATIVE_CONTRACT 40.3
     return (
@@ -164,7 +174,12 @@ export default function DownloadScreen() {
   const mainActions = all.filter((a) => a.kind !== 'remove' && a.kind !== 'newLink' && !(showWhy && a.kind === 'openNetworkSettings' && a.route));
   const headerAction = all.find((a) => a.kind === 'pause' || a.kind === 'resume') ?? null;
   const caption = downloadCaption(d);
-  const status = downloadStatus(d, undefined, blockCtx);
+  const status = downloadStatus(d, undefined, blockCtx, flow);
+  const situation = linkSituation(d, flow);
+  const whyModel =
+    situation === 'connecting' || situation === 'waiting'
+      ? linkWhy({ situation, host: sourceHost(d.urlDisplay), resumable: d.resumable, quietMs: flow.quietMs, lastDataAgoMs: flow.lastDataAgoMs })
+      : null;
   const unknownSize = isSizeUnknown(d);
   const frac = unknownSize ? 0 : downloadProgress(d);
   // Same rule as the card: an unfinished download never reads 100%.
@@ -174,6 +189,7 @@ export default function DownloadScreen() {
   const limit = d.downLimitBps;
   const limitText = limit > 0 ? formatLimit(limit) : 'No limit';
   const subtitles = downloadEntryMode(d, subtitleAvail);
+  const subtitleRow = downloadRowFacts(d, subtitleAvail);
   const copy = removeCopy(d);
   const finished = d.state === 'finished';
   const problem = needsNewLink(d) ? linkProblem(d) : null;
@@ -224,7 +240,25 @@ export default function DownloadScreen() {
       </ProgressCard>
 
       {/* NATIVE_CONTRACT 40.2: the one-line hint while a download that can't resume is running. */}
-      {d.state === 'downloading' && !d.resumable ? <Text style={[styles.hint, styles.hintTight]}>{CANT_RESUME_HINT}</Text> : null}
+      {/* NATIVE_CONTRACT 43.5: only while connecting or waiting; it carries that hint itself when the link can't resume. */}
+      {whyModel ? <WhyStuck model={whyModel} /> : null}
+
+      {/* NATIVE_CONTRACT 44.14: the Subtitles row, right under the why block. */}
+      {subtitleRow.show ? (
+        <SubtitlesRow
+          requestKey={`d:${d.id}`}
+          started={subtitleRow.started}
+          canOpenSheet={subtitleRow.canOpenSheet}
+          onOpenSheet={(start) => {
+            const t = actions.findSubtitles(d);
+            if (!t) return;
+            setSubtitleStart(start);
+            setSubtitleTarget(t);
+          }}
+          onSeeAll={() => undefined}
+        />
+      ) : null}
+      {d.state === 'downloading' && !d.resumable && !whyModel?.note ? <Text style={[styles.hint, styles.hintTight]}>{CANT_RESUME_HINT}</Text> : null}
 
       {d.notice ? (
         <View style={styles.block}>
@@ -404,7 +438,14 @@ export default function DownloadScreen() {
         </View>
       </Sheet>
       <SpeedLimitSheet visible={limitOpen} mode="download" onClose={() => setLimitOpen(false)} limits={{ downBps: limit, upBps: 0 }} onChange={(l) => actions.setLimit(d.id, l.downBps)} />
-      <SubtitleSheet target={subtitleTarget} onClose={() => setSubtitleTarget(null)} />
+      <SubtitleSheet
+        target={subtitleTarget}
+        initial={subtitleStart}
+        onClose={() => {
+          setSubtitleTarget(null);
+          setSubtitleStart('results');
+        }}
+      />
     </Screen>
   );
 }

@@ -5,6 +5,7 @@ import { resolvingLine } from '../detail/fileHealthMachine.ts';
 import { reasonFor, wifiOverrideAllowed, type BlockContext } from '../../utils/blocks/reasons.ts';
 import { downloadProgress } from '../../utils/downloadCopy.ts';
 import { doneLead } from '../../utils/stats/format.ts';
+import { QUIET_MS } from './flowClock.ts';
 
 export type TransferFilter = 'all' | 'downloading' | 'seeding' | 'paused' | 'done' | 'errors';
 
@@ -137,6 +138,8 @@ export interface TorrentStatus {
   pct?: string;
   /** Right side, a number in a fixed-width slot (speed, amount or size). */
   value?: string;
+  /** While data flows: the amount ("320 MB of 2.1 GB"), drawn in the normal telemetry colour before the speed in `value`. */
+  amount?: string;
   slot?: StatusSlot;
   tone: StatusTone;
 }
@@ -189,27 +192,53 @@ export interface StatusOpts {
   speedHold?: boolean;
   /** The amount shortens to what is downloaded. A function gets the full amount's length, for a narrow card. */
   shortAmount?: boolean | ((fullChars: number) => boolean);
+  /** NATIVE_CONTRACT 43.1: how long the current run of 0 speed has lasted (ms), from the flow clock. */
+  quietMs?: number;
 }
 
 /**
  * Right side when no data flows: the amount once something has downloaded, else the size, else "—".
  * An unknown total shows only what is downloaded. `full` is the longer amount when `short` cut it.
  */
-function amountOrSize(t: StatusRow, shortOpt: StatusOpts['shortAmount'] = false): { value: string; slot: StatusSlot; full?: string } {
+function amountOrSize(t: StatusRow, shortOpt: StatusOpts['shortAmount'] = false, extraChars = 0): { value: string; slot: StatusSlot; full?: string } {
   const target = targetBytes(t);
   if (t.downloadedBytes > 0 && target > 0) {
     const full = `${formatBytes(t.downloadedBytes)} of ${formatBytes(target)}`;
-    const short = typeof shortOpt === 'function' ? shortOpt(full.length) : shortOpt;
+    // `extraChars` is what sits beside the amount on the right (" · 2.1 MB/s"), so the narrow-card test sees the whole text.
+    const short = typeof shortOpt === 'function' ? shortOpt(full.length + extraChars) : shortOpt;
     return short ? { value: formatBytes(t.downloadedBytes), slot: 'amount', full } : { value: full, slot: 'amount' };
   }
   if (t.downloadedBytes > 0) return { value: formatBytes(t.downloadedBytes), slot: 'amount' };
   return { value: t.totalSizeBytes > 0 ? formatBytes(t.totalSizeBytes) : '—', slot: 'size' };
 }
 
-function line(lead: string, tone: StatusTone, pct: number | null, value?: string, slot?: StatusSlot, extra?: string | null): TorrentStatus {
+function line(lead: string, tone: StatusTone, pct: number | null, value?: string, slot?: StatusSlot, extra?: string | null, amount?: string, spokenAmount?: string): TorrentStatus {
   const left = pct == null ? lead : `${lead} · ${pct}%`;
-  const head = value ? `${left} · ${value}` : left;
-  return { text: extra ? `${head}. ${extra}` : head, lead, pct: pct == null ? undefined : `${pct}%`, value, slot, tone };
+  const head = [left, amount ? spokenAmount ?? amount : null, value].filter(Boolean).join(' · ');
+  return { text: extra ? `${head}. ${extra}` : head, lead, pct: pct == null ? undefined : `${pct}%`, value, amount, slot, tone };
+}
+
+export const CONNECTING_TEXT = 'Connecting to peers';
+export const WAITING_TEXT = 'Waiting for peers';
+
+/** What a downloading torrent is doing, for the card and the page: data flowing, connecting, waiting, or neither yet. */
+export type TorrentSituation = 'flowing' | 'connecting' | 'waiting' | 'quiet';
+
+/**
+ * NATIVE_CONTRACT 43.2. Flowing: speed above 0 or inside the 5 s hold. Connecting: nothing downloaded and not flowing.
+ * Waiting: some downloaded and no data for QUIET_MS. Quiet: some downloaded, no data for less than QUIET_MS.
+ * Null when the torrent is not downloading, the numbers are the saved ones, or the offline block already says why.
+ */
+export function torrentSituation(
+  t: Pick<TorrentTelemetry, 'state' | 'downloadSpeedBytes' | 'downloadedBytes'> & { lastKnown?: boolean },
+  opts: Pick<StatusOpts, 'speedHold' | 'quietMs'> = {},
+  ctx: BlockContext = {},
+): TorrentSituation | null {
+  if (t.state !== 'DOWNLOADING' || t.lastKnown) return null;
+  if (ctx.blocks?.some((b) => b.tag === 'offline')) return null;
+  if (t.downloadSpeedBytes > 0 || opts.speedHold) return 'flowing';
+  if (!(t.downloadedBytes > 0)) return 'connecting';
+  return (opts.quietMs ?? 0) >= QUIET_MS ? 'waiting' : 'quiet';
 }
 
 /** The status under the bar. `etaLabel` is the hysteresis-stable time left. */
@@ -221,14 +250,24 @@ export function torrentStatus(t: StatusRow, etaLabel: string, ctx: BlockContext 
     case 'DOWNLOADING': {
       // Torrents never carry `offline`: the engine's block list is how a stalled torrent says why (NATIVE_CONTRACT 35.4).
       if (!t.lastKnown && ctx.blocks?.some((b) => b.tag === 'offline')) return held(reasonFor('offline')!.short, 'muted');
-      const flowing = !t.lastKnown && (t.downloadSpeedBytes > 0 || !!opts.speedHold);
+      const situation = torrentSituation(t, opts, ctx);
+      const flowing = situation === 'flowing';
+      if (situation === 'connecting') {
+        const lead = t.peersTotal > 0 ? `${CONNECTING_TEXT} · ${t.peersTotal} found` : CONNECTING_TEXT;
+        return line(lead, 'muted', null, right.value, right.slot, right.full);
+      }
+      if (situation === 'waiting') return line(WAITING_TEXT, 'muted', startedPct(t), right.value, right.slot, right.full);
       const hasEta = !t.lastKnown && t.etaSeconds >= 0 && etaLabel !== '—';
       const pct = hasEta || flowing ? wholePercent(t) : startedPct(t);
-      const full = amountOrSize(t);
-      // The amount is not on the card while data flows, so the screen-reader text keeps it.
-      const extra = full.slot === 'amount' ? full.value : null;
       const lead = hasEta ? `${etaLabel} left` : 'Downloading';
-      if (flowing) return line(lead, 'download', pct, t.downloadSpeedBytes > 0 ? formatSpeed(t.downloadSpeedBytes) : '—', 'speed', extra);
+      if (flowing) {
+        // Right side: the amount in the telemetry colour, then the speed (NATIVE_CONTRACT 43.2).
+        const speed = t.downloadSpeedBytes > 0 ? formatSpeed(t.downloadSpeedBytes) : '—';
+        const amt = amountOrSize(t, opts.shortAmount, speed.length + 3);
+        const full = amountOrSize(t);
+        const hasAmount = amt.slot === 'amount';
+        return line(lead, 'download', pct, speed, 'speed', null, hasAmount ? amt.value : undefined, hasAmount ? full.value : undefined);
+      }
       return line(lead, 'download', pct, right.value, right.slot, right.full);
     }
     case 'SEEDING':

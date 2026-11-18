@@ -5,7 +5,7 @@
 import { fileKind } from '../../utils/fileKind.ts';
 import { pickMainFile, type MainFileCandidate } from '../../utils/mainFile.ts';
 import { languageName } from '../../utils/subtitles/languages.ts';
-import { errorCopy, FILE_NOT_FINISHED, SAF_UNAVAILABLE, type ErrorCopy } from '../../utils/subtitles/copy.ts';
+import { CARD_ICON_WORDS, errorCopy, FILE_NOT_STARTED, SAF_UNAVAILABLE, type ErrorCopy } from '../../utils/subtitles/copy.ts';
 import { SubtitleError, type SubtitleErrorCode } from '../../utils/subtitles/payload.ts';
 import { downloadAndPrepare, failureCode, type PreparedSubtitle, type SubtitleSourceStatus } from '../../utils/subtitles/search.ts';
 import { saveWithChoice, type SaveChoice } from '../../utils/subtitles/naming.ts';
@@ -63,20 +63,21 @@ export interface EntryInput {
   sourcesOn: number;
   /** The file is a video. */
   isVideo: boolean;
-  /** The file is complete. */
-  complete: boolean;
+  /** Some of the file is on disk (NATIVE_CONTRACT 42.1). */
+  started: boolean;
   /** A stream (HLS/DASH) that is still joining its parts. */
   joining?: boolean;
 }
 
-/** Hidden when off, no source is on, not a video, or still joining. An unfinished file shows disabled. */
+/** Hidden when off, no source is on, not a video, or still joining. Nothing on disk yet shows disabled. */
+// NATIVE_CONTRACT 42.1
 export function entryMode(i: EntryInput): EntryMode {
   if (!i.master || i.sourcesOn < 1 || !i.isVideo || i.joining) return 'hidden';
-  return i.complete ? 'enabled' : 'disabled';
+  return i.started ? 'enabled' : 'disabled';
 }
 
 /** The subtitle under a disabled entry row. */
-export const DISABLED_ENTRY_SUBTITLE = FILE_NOT_FINISHED;
+export const DISABLED_ENTRY_SUBTITLE = FILE_NOT_STARTED;
 
 export interface FileLike extends MainFileCandidate {
   progressBytes: number;
@@ -84,28 +85,31 @@ export interface FileLike extends MainFileCandidate {
 
 export const fileComplete = (f: { length: number; progressBytes: number }): boolean => f.length > 0 && f.progressBytes >= f.length;
 
+/** Any of the file is on disk (NATIVE_CONTRACT 42.1). */
+export const fileStarted = (f: { progressBytes: number }): boolean => f.progressBytes > 0;
+
 /** One row of Detail → Files. */
 export function fileEntryMode(f: FileLike, g: { master: boolean; sourcesOn: number; folder: string | null | undefined }): EntryMode {
-  return withLocation(entryMode({ master: g.master, sourcesOn: g.sourcesOn, isVideo: fileKind(f.path) === 'video', complete: fileComplete(f) }), g.folder, f.path);
+  return withLocation(entryMode({ master: g.master, sourcesOn: g.sourcesOn, isVideo: fileKind(f.path) === 'video', started: fileStarted(f) }), g.folder, f.path);
 }
 
-/** Torrent-level entry (Torrent options): finished, and exactly one included video. */
+/** Torrent-level entry (Torrent options): exactly one included video, with some of it on disk (42.1). */
 export function torrentEntryMode(
-  t: { finished: boolean; folder: string | null | undefined },
+  t: { finished?: boolean; folder: string | null | undefined },
   files: readonly FileLike[],
   g: { master: boolean; sourcesOn: number },
 ): { mode: EntryMode; file: FileLike | null } {
   const videos = pickMainFile(files).videos as FileLike[];
   if (videos.length !== 1) return { mode: 'hidden', file: null };
   const file = videos[0];
-  const complete = t.finished && fileComplete(file);
-  const mode = withLocation(entryMode({ master: g.master, sourcesOn: g.sourcesOn, isVideo: true, complete }), t.folder, file.path);
+  // NATIVE_CONTRACT 42.1: the single included video has bytes on disk (a finished torrent has them too).
+  const mode = withLocation(entryMode({ master: g.master, sourcesOn: g.sourcesOn, isVideo: true, started: fileStarted(file) }), t.folder, file.path);
   return mode === 'hidden' ? { mode, file: null } : { mode, file };
 }
 
-/** A link-download card: finished, a video by its name, not a stream still being joined. */
+/** A link-download card: a video by its name with some of it on disk, not a stream still being joined (42.1). */
 export function downloadEntryMode(
-  d: { state: string; name: string; folder: string; muxNeeded?: boolean },
+  d: { state: string; name: string; folder: string; downloaded?: number; muxNeeded?: boolean },
   g: { master: boolean; sourcesOn: number },
 ): EntryMode {
   return withLocation(
@@ -113,7 +117,8 @@ export function downloadEntryMode(
       master: g.master,
       sourcesOn: g.sourcesOn,
       isVideo: fileKind(d.name) === 'video',
-      complete: d.state === 'finished',
+      // NATIVE_CONTRACT 42.1
+      started: d.state === 'finished' || (d.downloaded ?? 0) > 0,
       joining: d.state === 'verifying' || !!d.muxNeeded,
     }),
     d.folder,
@@ -140,7 +145,7 @@ export interface SubtitleTarget {
 export function torrentTarget(id: string, folder: string | null | undefined, file: FileLike, allFiles?: readonly { path: string }[]): SubtitleTarget | null {
   const videoPath = videoLocation(folder, file.path);
   if (!videoPath) return null;
-  const t: SubtitleTarget = { videoPath, fileName: baseName(file.path), videoBytes: file.length, complete: fileComplete(file), ownerKey: `t:${id}` };
+  const t: SubtitleTarget = { videoPath, fileName: baseName(file.path), videoBytes: file.length, complete: fileComplete(file), ownerKey: `t:${id.toLowerCase()}` };
   if (allFiles) t.existing = { videoPath: file.path, files: allFiles.map((f) => f.path) };
   return t;
 }
@@ -272,17 +277,9 @@ export function sameCardIcon(a: CardIconModel | null | undefined, b: CardIconMod
   return a.state === b.state && a.lang === b.lang;
 }
 
-/** What TalkBack says: the state and the language. */
+/** What TalkBack says: the state in words (NATIVE_CONTRACT 44.8). */
 export function cardIconLabel(m: CardIconModel): string {
-  const lang = languageName(m.lang);
-  switch (m.state) {
-    case 'getting':
-      return `Getting ${lang} subtitles. Opens subtitles.`;
-    case 'saved':
-      return `${lang} subtitles saved. Opens subtitles.`;
-    default:
-      return `${lang} subtitles need a look. Opens subtitles.`;
-  }
+  return `${CARD_ICON_WORDS[m.state] ?? CARD_ICON_WORDS['needs-look']}. Opens subtitles.`;
 }
 
 /** The saved toast, e.g. "English subtitles saved". */

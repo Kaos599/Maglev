@@ -9,7 +9,8 @@ import { useSubtitleSettings } from '../../components/subtitles-settings/useSubt
 import { useListsVersion } from '../../utils/lists/hooks';
 import { listSubtitleEntries } from '../../utils/lists/store';
 import { SUBTITLE_PROVIDERS } from '../../utils/subtitles/providers';
-import { HEARING_OPTIONS, PRIVACY_LINE, SAF_UNAVAILABLE, SETTINGS_SWITCH_SUBTITLE, SETTINGS_TITLE } from '../../utils/subtitles/copy';
+import { AUTO_NEW_VIDEOS_SUBTITLE, HEARING_OPTIONS, PRIVACY_LINE, SAF_UNAVAILABLE, SETTINGS_SWITCH_SUBTITLE, SETTINGS_TITLE } from '../../utils/subtitles/copy';
+import { useSubtitleConsent } from '../../components/subtitles/useSubtitleConsent';
 import { hasOpenSubtitlesKey, languagesValue, sourceRows, sourcesValue } from '../../utils/subtitleSettings';
 import { subtitleSettingsCopy as copy } from '../../constants/copy';
 
@@ -18,6 +19,7 @@ const HEARING = (Object.keys(HEARING_OPTIONS) as (keyof typeof HEARING_OPTIONS)[
 export default function SubtitlesSettings() {
   const router = useRouter();
   const [sub, patch] = useSubtitleSettings();
+  const consent = useSubtitleConsent();
   const listsVersion = useListsVersion();
   const sources = React.useMemo(() => sourcesValue(sourceRows(SUBTITLE_PROVIDERS, sub, listSubtitleEntries())), [sub, listsVersion]);
   const off = !sub.enabled;
@@ -34,6 +36,21 @@ export default function SubtitlesSettings() {
       </Card>
 
       <View style={off && styles.dim} pointerEvents={off ? 'none' : 'auto'} accessibilityState={{ disabled: off }}>
+        {/* NATIVE_CONTRACT 44.6 */}
+        <View style={[styles.group, styles.below]}>
+          <Card>
+            <ListRow
+              title="Get subtitles for new videos"
+              subtitle={AUTO_NEW_VIDEOS_SUBTITLE}
+              accessory={<Toggle value={sub.autoNewVideos} onValueChange={(autoNewVideos) => {
+                  // NATIVE_CONTRACT 44.15 D10: the switch stays off until Continue on the one-time notice.
+                  if (autoNewVideos) consent.require(() => patch({ autoNewVideos: true }), { autoNewVideos: true });
+                  else patch({ autoNewVideos: false });
+                }} accessibilityLabel="Get subtitles for new videos" />}
+            />
+          </Card>
+        </View>
+
         <View style={styles.group}>
           <SectionHeader title="Looking for" />
           <Card>
@@ -71,6 +88,8 @@ export default function SubtitlesSettings() {
         </View>
       </View>
 
+      {consent.node}
+
       {/* NATIVE_CONTRACT 39.1 S6: the same line the menu rows show for a folder picked with the file picker. */}
       <Caption>{SAF_UNAVAILABLE}.</Caption>
 
@@ -86,4 +105,5 @@ const styles = StyleSheet.create({
   dim: { opacity: 0.45 },
   group: { gap: spacing.sm },
   gap: { marginTop: spacing.lg },
+  below: { marginBottom: spacing.lg },
 });

@@ -17,6 +17,7 @@ import { syncScheduleToNative } from '../utils/prefs/schedule';
 import { syncFeedAutomationToNative } from '../utils/prefs/feedAutomation';
 import { initHistory } from '../utils/history';
 import { startUpdates } from '../utils/update';
+import { useSubtitleRequests } from '../components/subtitles/useSubtitleRequests';
 import { installGlobalHandler, setCurrentRoute } from '../utils/crashLog';
 
 // Record uncaught JS errors on this phone, then let React Native handle them as before.
@@ -38,6 +39,12 @@ const ENGINE_RESOLVE_TIMEOUT_MS = 15000;
  * queue calls made before start).
  */
 const ENGINE_FIRST_ROUTE = /^\/(add-torrent|add-download|torrent\/|download\/)/;
+
+/** NATIVE_CONTRACT 44.7: runs the subtitle requests. Renders nothing; does no work while there are none. */
+function SubtitleRequestRunner() {
+  useSubtitleRequests();
+  return null;
+}
 
 function AppNavigation() {
   const { colors, dark } = useTheme();
@@ -173,6 +180,7 @@ function AppNavigation() {
           <Stack.Screen name="stats" />
         </Stack.Protected>
       </Stack>
+      {main ? <SubtitleRequestRunner /> : null}
       {main ? <NoticeHost /> : null}
       {main ? <StarPrompt /> : null}
       {main ? <HighlightSheet /> : null}

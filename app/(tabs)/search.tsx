@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AccessibilityInfo, AppState, Dimensions, ScrollView, StyleSheet, Text, TextInput, View, findNodeHandle, type LayoutChangeEvent, type NativeScrollEvent, type NativeSyntheticEvent } from 'react-native';
 import { FlashList } from '@shopify/flash-list';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useIsFocused, useLocalSearchParams, useRouter } from 'expo-router';
 import { useMaglevEngine } from '../../context/EngineContext';
 import { useSettings } from '../../context/SettingsContext';
 import { useTheme } from '../../context/ThemeContext';
@@ -17,7 +17,7 @@ import { useTabPrefs } from '../../components/tabs/tabPrefsStore';
 import { SORT_LABEL, SortFilterSheet, type SortKey } from '../../components/search/SortFilterSheet';
 import { FollowSheet } from '../../components/search/FollowSheet';
 import { followRuleFromResult, type FollowTarget } from '../../utils/follow';
-import { NoticeBanner, addErrorNotice, useNotice } from '../../components/search/Notice';
+import { NoticeBanner, addErrorNotice, useNotice, type NoticeState } from '../../components/search/Notice';
 import { buildExtraProviders, loadExtraProviders } from '../../components/search/extra';
 import { CATEGORY_LABEL, formatAge, providerMap } from '../../components/search/meta';
 import { admit, oneTapDecision, pendingNeedOf } from '../../utils/admission';
@@ -40,6 +40,10 @@ import { addWatchToStore } from '../../utils/watch/store';
 import { Reveal } from '../../components/motion';
 import { openBrowser } from '../../utils/browser/openBrowser';
 import { noteOrigin } from '../../utils/stats/sourceStore';
+import { useAddedTray } from '../../components/search/AddedTray';
+import { useSubtitleAvailability } from '../../components/subtitles/useSubtitleEntry';
+import { bannerPlan, buildAsk } from '../../utils/addedTray';
+import { isVideoResult } from '../../utils/mediaKind';
 
 const DEBOUNCE_MS = 400;
 const MIN_QUERY = 2;
@@ -117,7 +121,17 @@ export default function SearchScreen() {
   const [mobileAsk, setMobileAsk] = useState<{ result: MergedResult; note: string } | null>(null);
   const [recents, setRecents] = useState<string[]>(() => prefs.recents);
   const [sessionAdded, setSessionAdded] = useState<Set<string>>(() => new Set());
-  const [busyHash, setBusyHash] = useState<string | null>(null);
+  // Adds in flight (NATIVE_CONTRACT 44.4): each row with its add under way shows a spinner, however many are running.
+  const [busyHashes, setBusyHashes] = useState<Set<string>>(() => new Set());
+  const setBusy = useCallback((hash: string, on: boolean) => {
+    setBusyHashes((prev) => {
+      if (prev.has(hash) === on) return prev;
+      const next = new Set(prev);
+      if (on) next.add(hash);
+      else next.delete(hash);
+      return next;
+    });
+  }, []);
   const [retryTick, setRetryTick] = useState(0);
   const [confirm, setConfirm] = useState<{ result: MergedResult; reason: string } | null>(null);
   const [solving, setSolving] = useState<string | null>(null);
@@ -136,7 +150,37 @@ export default function SearchScreen() {
   const browserTabShown = !tabs.hidden.includes('browse');
   const [following, setFollowing] = useState<FollowTarget | null>(null);
   const followCache = useRef(new Map<string, FollowTarget | null>());
-  const { notice, show, dismiss } = useNotice();
+  const { notice, show: showBanner, dismiss } = useNotice();
+  // One slot for the Added message and the banner (NATIVE_CONTRACT 44.3): whichever comes last is the one on screen.
+  const tabFocused = useIsFocused();
+  const tray = useAddedTray({ onView: () => router.push('/' as never), onAnnounce: announce, focused: tabFocused });
+  const trayHide = tray.hideMessage;
+  const trayAdd = tray.add;
+  // NATIVE_CONTRACT 44.15 F7: a banner hides the message but never closes a sheet that is open; it waits for the sheet.
+  const sheetOpenRef = useRef(false);
+  sheetOpenRef.current = tray.sheetOpen;
+  const waitingBanner = useRef<NoticeState | null>(null);
+  const show = useCallback(
+    (next: NoticeState) => {
+      if (bannerPlan({ sheetOpen: sheetOpenRef.current }) === 'wait') {
+        waitingBanner.current = next;
+        return;
+      }
+      trayHide();
+      showBanner(next);
+    },
+    [trayHide, showBanner],
+  );
+  useEffect(() => {
+    if (tray.sheetOpen || !waitingBanner.current) return;
+    const next = waitingBanner.current;
+    waitingBanner.current = null;
+    trayHide();
+    showBanner(next);
+  }, [tray.sheetOpen, trayHide, showBanner]);
+  const subs = useSubtitleAvailability();
+  const subsAvailable = subs.master && subs.sourcesOn > 0;
+  const autoSubtitles = settings.subtitles.autoNewVideos;
   const reqId = useRef(0);
   const controller = useRef<AbortController | null>(null);
   // Stable order while sources answer (components/search/stableOrder.ts): the keys last shown, and
@@ -275,6 +319,25 @@ export default function SearchScreen() {
   // Keyed by the ids, not the array: telemetry ticks every second, and a new Set would re-render every row.
   const inListKey = useMemo(() => telemetry.torrents.map((t) => t.id.toLowerCase()).join(','), [telemetry.torrents]);
   const inList = useMemo(() => new Set(inListKey ? inListKey.split(',') : []), [inListKey]);
+  // `sessionAdded` only bridges the moment between an add and the torrent showing up in Transfers. Once it shows up,
+  // Transfers is the truth, so it leaves this set: removing it from Transfers then makes the result addable again.
+  useEffect(() => {
+    setSessionAdded((prev) => {
+      if (prev.size === 0) return prev;
+      let changed = false;
+      const next = new Set<string>();
+      prev.forEach((h) => {
+        if (inList.has(h)) changed = true;
+        else next.add(h);
+      });
+      return changed ? next : prev;
+    });
+    // Also on a sessionAdded change: the torrent can reach Transfers before the add's own update lands.
+  }, [inList, sessionAdded]);
+  const isAdded = useCallback((infoHash: string) => {
+    const h = infoHash.toLowerCase();
+    return sessionAdded.has(h) || inList.has(h);
+  }, [sessionAdded, inList]);
 
   const handleAdd = useCallback(
     async (r: MergedResult, skipMobileAsk = false) => {
@@ -290,7 +353,8 @@ export default function SearchScreen() {
         show({ tone: 'danger', title: "This link isn't secure, so Maglev won't download it" });
         return;
       }
-      setBusyHash(r.infoHash);
+      const busyKey = r.infoHash;
+      setBusy(busyKey, true);
       remember(trimmed);
       const wait = new AbortController();
       const timer = setTimeout(() => wait.abort(), 15000);
@@ -334,14 +398,17 @@ export default function SearchScreen() {
         const readHash = magnetHash(ready.magnet);
         if (readHash) metadataPrefetch.cancelIf(readHash);
         await startTorrent(ready.magnet);
-        setSessionAdded((prev) => new Set(prev).add(r.infoHash));
-        announce(`Added ${r.name}`);
-        show({
-          tone: 'success',
-          title: 'Added to Transfers',
-          body: tightNotice ?? mobileNote ?? undefined,
-          actionLabel: 'View',
-          onAction: () => router.push('/' as never),
+        setSessionAdded((prev) => new Set(prev).add(r.infoHash.toLowerCase()));
+        // NATIVE_CONTRACT 44.3: the Added message takes the banner's slot (and the banner steps aside).
+        dismiss();
+        trayAdd({
+          hash: (readHash ?? r.infoHash).toLowerCase(),
+          name: r.name,
+          ask: isVideoResult({ category: r.category ?? (category === 'all' ? undefined : category), name: r.name }) && subsAvailable
+            ? buildAsk({ infoHash: readHash ?? r.infoHash, name: r.name, sizeBytes: size, sourceName: providers.get(r.sources?.[0] ?? r.providerId)?.name })
+            : null,
+          auto: autoSubtitles,
+          note: tightNotice ?? mobileNote ?? undefined,
         });
       } catch (e) {
         const { duplicate, notice: n } = addErrorNotice(e, () => {
@@ -349,14 +416,17 @@ export default function SearchScreen() {
             if (ok) void handleAdd(r);
           });
         });
-        if (duplicate) setSessionAdded((prev) => new Set(prev).add(r.infoHash));
-        show(n);
+        if (duplicate) {
+          setSessionAdded((prev) => new Set(prev).add(r.infoHash.toLowerCase()));
+          dismiss();
+          trayAdd({ hash: r.infoHash, name: r.name, ask: null, alreadyThere: true, auto: false });
+        } else show(n);
       } finally {
         clearTimeout(timer);
-        setBusyHash(null);
+        setBusy(busyKey, false);
       }
     },
-    [remember, show, startTorrent, restartEngine, trimmed, getFreeSpace, telemetry.torrents, router, onMeteredNetwork, settings.network.wifiOnly],
+    [remember, show, dismiss, trayAdd, subsAvailable, autoSubtitles, providers, category, setBusy, startTorrent, restartEngine, trimmed, getFreeSpace, telemetry.torrents, router, onMeteredNetwork, settings.network.wifiOnly],
   );
 
   // Tapping Add on a warned row asks first; with the warning off it is one tap.
@@ -450,7 +520,7 @@ export default function SearchScreen() {
     [settings.network.wifiOnly, telemetry.torrents, downloads],
   );
   const top = shown[0];
-  const topMagnet = top && top.magnet && !sessionAdded.has(top.infoHash) && !inList.has(top.infoHash.toLowerCase()) ? top.magnet : null;
+  const topMagnet = top && top.magnet && !isAdded(top.infoHash) ? top.magnet : null;
   const topKey = topMagnet ? magnetHash(topMagnet) : null;
   useEffect(() => {
     if (!topKey || !topMagnet || !netOk) return;
@@ -539,14 +609,14 @@ export default function SearchScreen() {
         age={formatAgeLong(item.publishedAt)}
         via={item.sources.map(nameOf).join(' · ')}
         risky={riskySources(item, providers, prefs.warnUnsafe)}
-        added={sessionAdded.has(item.infoHash) || inList.has(item.infoHash)}
-        busy={busyHash === item.infoHash}
+        added={isAdded(item.infoHash)}
+        busy={busyHashes.has(item.infoHash)}
         onAdd={() => requestAdd(item)}
         onOpen={() => setPreview(item)}
         onFollow={followTargetOf(item) ? () => setFollowing(followTargetOf(item)) : undefined}
       />
       ),
-    [fixBanner, followTargetOf, busyHash, requestAdd, setPreview, inList, nameOf, sessionAdded, providers, prefs.warnUnsafe],
+    [fixBanner, followTargetOf, busyHashes, requestAdd, setPreview, isAdded, nameOf, providers, prefs.warnUnsafe],
   );
 
   const watchThisSearch = useCallback(() => {
@@ -653,7 +723,7 @@ export default function SearchScreen() {
           keyExtractor={(item: ListItem) => ('fixHint' in item ? 'fix-hint' : keyOfResult(item))}
           getItemType={(item: ListItem) => ('fixHint' in item ? 'fix' : 'result')}
           renderItem={renderItem}
-          contentContainerStyle={styles.list}
+          contentContainerStyle={tray.inset ? { ...styles.list, paddingBottom: spacing.xxxl + tray.inset } : styles.list}
           keyboardShouldPersistTaps="handled"
           onScroll={onListScroll}
           ListFooterComponent={searching && shown.length > 0 ? <SkeletonRows count={SKELETON_MORE_COUNT} /> : null}
@@ -880,7 +950,7 @@ export default function SearchScreen() {
                 age: formatAge(preview.publishedAt),
                 via: preview.sources.map(nameOf).join(' · '),
                 detailUrl: preview.detailUrl,
-                added: sessionAdded.has(preview.infoHash) || inList.has(preview.infoHash.toLowerCase()),
+                added: isAdded(preview.infoHash),
               }
             : null
         }
@@ -905,6 +975,7 @@ export default function SearchScreen() {
           if (r) void handleAdd(r, true);
         }}
       />
+      {tray.node}
       <Sheet visible={!!confirm} onClose={() => setConfirm(null)} title="Add from a risky source?" subtitle={confirm?.reason}>
         <View style={styles.confirmActions}>
           <Button

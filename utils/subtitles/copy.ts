@@ -18,9 +18,19 @@ export const PRIVACY_LINE =
 export const TURNED_OFF_BY_MAGLEV = 'Turned off by Maglev';
 
 export const FIND_SUBTITLES = 'Find subtitles…';
-export const FILE_NOT_FINISHED = 'When this file finishes';
+// NATIVE_CONTRACT 42.1
+export const FILE_NOT_STARTED = 'When this file starts';
 export const SHEET_TITLE = 'Subtitles';
 export const DOWNLOAD_BUTTON = 'Download subtitle';
+// NATIVE_CONTRACT 42.3
+export const SEARCHING_FOR_LABEL = 'Searching for';
+export const CHANGE_NAME_LABEL = 'Change the name to search for';
+export const USE_FILE_NAME = 'Use file name';
+export const TYPE_A_TITLE = 'Type a title';
+export const SEARCH_BUTTON = 'Search';
+// NATIVE_CONTRACT 42.5
+export const NOTE_MATCHED_BY_NAME = 'Matched by name. Exact matching works once the file finishes.';
+export const NOTE_MATCHED_BY_TYPED = 'Matched by the name you typed.';
 export const OTHER_LANGUAGE_TAB = 'Other…';
 export const HEARING_IMPAIRED_TAG = 'Hearing impaired';
 
@@ -102,3 +112,101 @@ export function errorCopy(code: SubtitleErrorCode, a: CopyArgs = {}): ErrorCopy 
       return { message: UNSUPPORTED_FILE, action: 'Pick another' };
   }
 }
+
+// ---------------------------------------------------------------- NATIVE_CONTRACT 44: the "Added" message and requests
+
+/** 44.6. The switch's line in Settings > Subtitles. */
+export const AUTO_NEW_VIDEOS_SUBTITLE = 'In your languages, while Maglev is open';
+
+/** 44.7: results only in languages the user didn't pick. */
+export const foundInOtherOnly = (language: string): string => `Found in ${languageName(language)} only`;
+
+/** 44.8: what TalkBack says for the card icon, by state. */
+export const CARD_ICON_WORDS = {
+  getting: 'Getting subtitles',
+  saved: 'Subtitles saved',
+  'needs-look': 'Subtitles: pick one',
+  none: 'No subtitles found',
+} as const;
+
+/** 44.7: requests wait for the one-time notice (36.10) because nothing may be sent before it. */
+export const CONSENT_NOTICE_ACTION = NOTICE_CONTINUE;
+
+// 44.9 The multi-video sheet.
+export const multiTitle = (n: number): string => `Subtitles for ${n} videos`;
+export const USES_YOUR_LANGUAGES = 'Uses your subtitle languages';
+export const CHANGE_LANGUAGES = 'Change';
+export const MULTI_BUTTON_NONE = 'Get subtitles';
+export const multiButton = (k: number): string => (k <= 0 ? MULTI_BUTTON_NONE : `Get subtitles for ${k}`);
+export const SKIP_LABEL = 'Skip';
+/** 44.15 D6: appended to a row whose title and detail match an earlier row's: " · 2nd", " · 3rd", " · 4th", " · 11th", " · 21st". */
+export function ordinalSuffix(n: number): string {
+  const tens = n % 100;
+  const word = tens >= 11 && tens <= 13 ? 'th' : ({ 1: 'st', 2: 'nd', 3: 'rd' } as Record<number, string>)[n % 10] ?? 'th';
+  return ` \u00B7 ${n}${word}`;
+}
+export const nonVideoOne = (name: string): string => `${name} is music, so it gets no subtitles.`;
+export const nonVideoMany = (k: number): string => `${k} other adds are not videos, so they get no subtitles.`;
+
+/** 44.9 status mode: a phase in words. */
+export const PHASE_WORDS = {
+  queued: 'Waiting for the file',
+  searching: 'Getting\u2026',
+  saved: 'Saved',
+  'needs-pick': 'Close match \u00B7 pick',
+  none: 'None found \u00B7 edit name',
+  'has-already': 'Already has subtitles',
+  offline: "You're offline",
+  limited: 'Source limit reached',
+  skipped: 'Skipped',
+  failed: "Sources didn't answer",
+  unavailable: "Can't save here",
+} as const;
+
+/** Summary line of status mode, e.g. "2 saved \u00B7 1 needs you". Empty when nothing to say. */
+export function statusSummary(c: { saved: number; needsYou: number; waiting: number }): string {
+  const parts: string[] = [];
+  if (c.saved > 0) parts.push(`${c.saved} saved`);
+  if (c.needsYou > 0) parts.push(`${c.needsYou} ${c.needsYou === 1 ? 'needs' : 'need'} you`);
+  if (c.waiting > 0) parts.push(`${c.waiting} getting`);
+  return parts.join(' \u00B7 ');
+}
+
+// 44.14 The Subtitles row on the download page.
+export const ROW_LABEL = 'Subtitles';
+export const ROW_NOT_STARTED = FILE_NOT_STARTED;
+export const ROW_NOT_ASKED = 'Not asked yet';
+export const ROW_QUEUED_NO_LIST = 'Starts when the file list arrives';
+export const ROW_QUEUED = 'Waiting for the file';
+export const ROW_SEARCHING = 'Getting subtitles…';
+export const ROW_CLOSE_MATCH = 'Close match found';
+export const ROW_NONE = 'No match yet';
+export const ROW_OFFLINE = 'Waiting for internet';
+export const ROW_LIMITED = 'A source is busy · retrying soon';
+export const ROW_SKIPPED = 'Skipped';
+// 44.15 D8, D9, D10
+export const ROW_FAILED = "Sources didn't answer";
+export const ROW_UNAVAILABLE = "Can't save subtitles in this folder";
+export const ROW_NEEDS_OK = 'Needs your OK';
+export const ROW_BUTTONS = {
+  find: 'Find',
+  cancel: 'Cancel',
+  change: 'Change',
+  pick: 'Pick one',
+  editName: 'Edit name',
+  findMore: 'Find more',
+  seeAll: 'See all',
+  tryAgain: 'Try again',
+  review: 'Review',
+  getSubtitles: 'Get subtitles',
+} as const;
+export const rowSaved = (language: string): string => `${languageName(language)} · fits this release`;
+export const rowSavedNoLanguage = 'Saved';
+export const rowHasAlready = (language: string | null): string => (language ? `Already has ${languageName(language)} subtitles` : 'Already has subtitles');
+/** Season pack: "8 of 10 saved · 2 need you". */
+export function rowPackLine(c: { saved: number; total: number; needYou: number }): string {
+  const base = `${c.saved} of ${c.total} saved`;
+  return c.needYou > 0 ? `${base} · ${c.needYou} ${c.needYou === 1 ? 'needs' : 'need'} you` : base;
+}
+/** What TalkBack reads: "Subtitles, {line}, button {label}". */
+export const rowLabel = (line: string, button: string | null): string => (button ? `${ROW_LABEL}, ${line}, button ${button}` : `${ROW_LABEL}, ${line}`);

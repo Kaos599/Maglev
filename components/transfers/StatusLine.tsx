@@ -20,6 +20,8 @@ export interface StatusLineModel {
   lead: string;
   pct?: string;
   value?: string;
+  /** While data flows: the amount, in the normal telemetry colour, before the speed (NATIVE_CONTRACT 43.2). */
+  amount?: string;
   slot?: keyof typeof SLOT_CHARS;
   tone: LineTone;
 }
@@ -37,6 +39,7 @@ export function StatusLine({ status, overlay }: { status: StatusLineModel; overl
   const { fontScale } = useWindowDimensions();
   const color = toneColor(status.tone, colors);
   const chars = SLOT_CHARS[status.slot ?? 'speed'];
+  const slotWidth = chars > 0 ? monoSlotWidth(chars, STATUS_SIZE, fontScale, type.slotAdvance) : 0;
   return (
     <View style={styles.row}>
       <View style={styles.left}>
@@ -46,10 +49,18 @@ export function StatusLine({ status, overlay }: { status: StatusLineModel; overl
         {status.pct ? <Text style={[styles.text, styles.pct, { color }]} numberOfLines={1}>{` · ${status.pct}`}</Text> : null}
       </View>
       {status.value ? (
-        <View style={[styles.slot, chars > 0 ? { minWidth: monoSlotWidth(chars, STATUS_SIZE, fontScale, type.slotAdvance) } : null]}>
-          <Text style={[styles.text, styles.value, { color }]} numberOfLines={1}>
-            {status.value}
-          </Text>
+        <View style={[styles.slot, chars > 0 && !status.amount ? { minWidth: slotWidth } : null]}>
+          {status.amount ? (
+            <Text style={[styles.text, styles.value, { color: colors.textMuted }]} numberOfLines={1}>
+              {`${status.amount} · `}
+            </Text>
+          ) : null}
+          {/* With an amount beside it, the speed keeps its own fixed width so a new digit never shifts the amount. */}
+          <View style={status.amount && chars > 0 ? { minWidth: slotWidth, alignItems: 'flex-end' } : null}>
+            <Text style={[styles.text, styles.value, { color }]} numberOfLines={1}>
+              {status.value}
+            </Text>
+          </View>
           {overlay}
         </View>
       ) : null}
@@ -64,6 +75,6 @@ const styles = StyleSheet.create({
   text: { ...type.mono, fontSize: STATUS_SIZE, lineHeight: STATUS_LINE },
   lead: { flexShrink: 1 },
   pct: { flexShrink: 0 },
-  slot: { flexShrink: 0, alignItems: 'flex-end', justifyContent: 'center' },
+  slot: { flexShrink: 0, flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end' },
   value: { textAlign: 'right' },
 });

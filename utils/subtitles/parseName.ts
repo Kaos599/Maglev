@@ -109,6 +109,41 @@ export function parseName(fileName: string): ParsedName {
   return out;
 }
 
+// ---------------------------------------------------------------- typed names (NATIVE_CONTRACT 42.3)
+
+const SEASON_ONLY = /^(.*\S)[\s._-]+s(\d{1,2})$/i;
+
+/**
+ * Free text the user typed ("casino royale 2006", "severance s02e03", "Severance S02"). Reads it with `parseName`, and
+ * adds the one shape a file name never has: a season with no episode. Only typed text goes through here, so what
+ * `parseName` makes of real file names does not change.
+ */
+// NATIVE_CONTRACT 42.3
+export function parseTyped(text: string): ParsedName {
+  const t = text.trim();
+  const p = parseName(t);
+  if (p.season !== undefined || p.episode !== undefined || p.extra) return p;
+  const m = SEASON_ONLY.exec(t);
+  if (!m) return p;
+  const base = parseName(m[1]);
+  return base.title ? { ...base, season: Number(m[2]) } : p;
+}
+
+const pad2 = (n: number): string => String(n).padStart(2, '0');
+
+/**
+ * A parsed name written as words. `typing` false is the plain read-out ("Casino Royale (2006)", "Severance S02E03");
+ * true is the form to put in the field ("Casino Royale 2006"), which `parseTyped` reads back to the same result.
+ */
+// NATIVE_CONTRACT 42.3
+export function parsedText(p: ParsedName, typing = false): string {
+  const parts = [p.title];
+  if (p.year !== undefined) parts.push(typing ? String(p.year) : `(${p.year})`);
+  if (p.season !== undefined) parts.push(`S${pad2(p.season)}${p.episode !== undefined ? `E${pad2(p.episode)}` : ''}`);
+  else if (p.absoluteEpisode !== undefined) parts.push(`- ${p.absoluteEpisode}`);
+  return parts.filter(Boolean).join(' ');
+}
+
 // ---------------------------------------------------------------- release info (for rank.ts and zip choice)
 
 const SOURCE_PATTERNS: [string, RegExp][] = [

@@ -116,7 +116,7 @@ interface FileSheetProps {
   onResume: () => Promise<boolean>;
   onNotice: (text: string) => void;
   onClose: () => void;
-  /** Find subtitles… (36.10): hidden, disabled with "When this file finishes", or enabled. Default hidden. */
+  /** Find subtitles… (36.10): hidden, disabled with "When this file starts" (nothing on disk yet), or enabled (42.1). Default hidden. */
   subtitles?: EntryMode;
   onFindSubtitles?: (file: DetailFile) => void;
 }

@@ -3,7 +3,7 @@
  * providers, the unzip and the clock come in as arguments, so Node tests run it with fakes.
  */
 import { ProviderError } from '../search/http.ts';
-import { parseName } from './parseName.ts';
+import { parseName, parseTyped } from './parseName.ts';
 import { rankCandidates, type RankedSubtitle } from './rank.ts';
 import { archiveKind, base64ToBytes, bytesToBase64, decodeSubtitleText, hasSubtitleCues, pickZipMember, prepareText, SubtitleError, type SubtitleErrorCode, type ZipMember } from './payload.ts';
 import { subtitleFileName } from './naming.ts';
@@ -30,11 +30,14 @@ export interface SubtitleFile {
   videoBytes: number;
   /** 16 lowercase hex, from native `subtitleHash`, only for a finished local file. */
   hash?: string;
+  /** NATIVE_CONTRACT 42.4: text the user typed to search for. `fileName` and `videoBytes` stay the real file's. */
+  searchName?: string;
 }
 
 /** The query for a file (36.3, 36.4). */
 export function buildQuery(file: SubtitleFile, languages: string[]): SubtitleQuery {
-  const p = parseName(file.fileName);
+  // NATIVE_CONTRACT 42.4: the typed name (if any) is what gets parsed; the real file name stays for ranking and saving.
+  const p = file.searchName ? parseTyped(file.searchName) : parseName(file.fileName);
   const q: SubtitleQuery = {
     fileName: file.fileName,
     videoBytes: file.videoBytes,
@@ -42,7 +45,8 @@ export function buildQuery(file: SubtitleFile, languages: string[]): SubtitleQue
     episodeConfidence: p.episodeConfidence,
     languages: languages.slice(),
   };
-  if (file.hash) q.hash = file.hash;
+  // NATIVE_CONTRACT 42.4: the fingerprint belongs to the file, not to a typed name.
+  if (file.hash && !file.searchName) q.hash = file.hash;
   if (p.year !== undefined) q.year = p.year;
   if (p.season !== undefined) q.season = p.season;
   if (p.episode !== undefined) q.episode = p.episode;

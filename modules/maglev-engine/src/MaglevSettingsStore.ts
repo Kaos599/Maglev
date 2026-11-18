@@ -93,6 +93,7 @@ function sanitizeSubtitles(v: unknown): MaglevSettings['subtitles'] {
     hearingImpaired: o.hearingImpaired === 'prefer' || o.hearingImpaired === 'avoid' ? o.hearingImpaired : d.hearingImpaired,
     sourceEnabled,
     privacyAck: o.privacyAck === true,
+    autoNewVideos: o.autoNewVideos === true,
   };
 }
 

@@ -71,7 +71,7 @@ function DownloadCardImpl({ download: d, onPress, onAction: onActionProp, select
   etaRef.current = etaLabel === '—' ? null : etaLabel;
   const blockCtx = useBlockContext();
   const action = downloadAction(d, blockCtx);
-  const statusOpts = useStatusOpts(d.id, d.state === 'downloading' ? d.downBps : 0, { hasRail: selectionMode || showFileIcon, hasPlay: false, hasAction: !!action && !selectionMode });
+  const statusOpts = useStatusOpts(d.id, d.state === 'downloading' ? d.downBps : 0, { hasRail: selectionMode || showFileIcon, hasPlay: false, hasAction: !!action && !selectionMode }, d.state === 'downloading');
   const status = downloadStatus(d, etaLabel, blockCtx, statusOpts);
   const pct = Math.round(downloadProgress(d) * 100);
   const indeterminate = isIndeterminate(d);
