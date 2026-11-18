@@ -116,7 +116,7 @@ async function main() {
   const t = (state, pausedBy = null) => ({ id: 'a', name: 'a', state, pausedBy, downloadSpeedBytes: 0, uploadSpeedBytes: 0, downloadedBytes: 0, totalSizeBytes: 1000, includedBytes: 0, progressPercent: 0, etaSeconds: -1, error: null });
   const off = model.torrentStatus(t('DOWNLOADING'), '—', { blocks: [B('offline')] });
   check('downloading with offline shows "No internet connection"', off.lead === 'No internet connection' && off.value === '1000 B' && off.slot === 'size', JSON.stringify(off));
-  check('downloading without offline is unchanged', model.torrentStatus(t('DOWNLOADING'), '—', { blocks: [B('wifi_only')] }).lead === 'Downloading');
+  check('downloading without offline is unchanged (a Wi-Fi block does not hide Connecting)', model.torrentStatus(t('DOWNLOADING'), '—', { blocks: [B('wifi_only')] }).lead === 'Connecting to peers');
   check('queued torrent says how many run at a time', model.torrentStatus(t('QUEUED'), '—', { queueLimit: 3 }).lead === 'Queued · 3 at a time', model.torrentStatus(t('QUEUED'), '—', { queueLimit: 3 }).lead);
   check('queued without a limit says Queued', model.torrentStatus(t('QUEUED'), '—').lead === 'Queued');
 

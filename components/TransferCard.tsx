@@ -145,7 +145,7 @@ function TransferCardImpl({
     hasRail: selectionMode || showFileIcon,
     hasPlay: showPlay,
     hasAction: !!action && !selectionMode,
-  });
+  }, t.state === "DOWNLOADING" && !t.lastKnown);
   const status = torrentStatus(t, etaLabel, blockCtx, statusOpts);
   const indeterminate = t.state === "INITIALIZING" || t.state === "CHECKING";
   const moving = t.state === "MOVING";

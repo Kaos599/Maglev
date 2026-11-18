@@ -39,11 +39,13 @@ import {
 } from '../../components/detail/fileHealthMachine';
 import { FileListRow } from '../../components/detail/FileListRow';
 import { PrioritySheet } from '../../components/detail/PrioritySheet';
-import { canResumeAnyway, resumeAnywayLabel } from '../../components/transfers/model';
+import { canResumeAnyway, resumeAnywayLabel, torrentSituation } from '../../components/transfers/model';
+import { useFlowClock } from '../../components/transfers/useStatusOpts';
+import { WhyStuck } from '../../components/detail/WhyStuck';
 import { reasonsForItem } from '../../utils/blocks/reasons';
 import { WhyHeld } from '../../components/transfers/WhyHeld';
 import { useLiveBlockContext } from '../../utils/blocks/useActiveBlocks';
-import { WIFI_ANYWAY_NOTE } from '../../utils/downloadCopy';
+import { WIFI_ANYWAY_NOTE, torrentWhy } from '../../utils/downloadCopy';
 import { TorrentMoreSheet } from '../../components/detail/TorrentMoreSheet';
 import { SpeedLimitSheet } from '../../components/detail/SpeedLimitSheet';
 import { MoveSheet } from '../../components/detail/MoveSheet';
@@ -275,13 +277,13 @@ export default function TorrentDetailScreen() {
   }, [id, healthTag, tick, sendFh]);
   const missingSet = useMemo(() => new Set(missingIdx), [missingIdx]);
 
-  // Tick once a second while the "Find more peers" cool-down is showing.
+  // Tick once a second while the "Find more peers" cool-down is showing (in the menu, or on "Ask trackers again").
   useEffect(() => {
-    if (!moreOpen || retryUntil <= Date.now()) return;
+    if (retryUntil <= Date.now()) return;
     setNow(Date.now());
     const t = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(t);
-  }, [moreOpen, retryUntil]);
+  }, [retryUntil]);
   const retryInSecs = Math.max(0, Math.ceil((retryUntil - now) / 1000));
 
   // Drop optimistic priorities once the engine reports the same value.
@@ -298,7 +300,6 @@ export default function TorrentDetailScreen() {
 
   const snap = detail?.snapshot ?? null;
   const blockCtx = useLiveBlockContext();
-
   // Forget a hidden tracker once the engine no longer lists it.
   useEffect(() => {
     if (!detail) return;
@@ -311,6 +312,26 @@ export default function TorrentDetailScreen() {
     () => (detail ? detail.trackers.filter((t) => !hiddenTrackers.includes(t.url)) : []),
     [detail, hiddenTrackers],
   );
+
+  // NATIVE_CONTRACT 43: the shared flow clock says how long no data has arrived, the same record the card reads.
+  const flow = useFlowClock(id ?? '', snap?.state === 'DOWNLOADING', snap?.downBps ?? 0);
+  const peerTimeoutMins = useSettings().settings.bandwidth.peerTimeoutMins;
+  const situation = snap
+    ? torrentSituation({ state: snap.state, downloadSpeedBytes: snap.downBps, downloadedBytes: snap.progressBytes }, flow, blockCtx)
+    : null;
+  const whyModel =
+    detail && (situation === 'connecting' || situation === 'waiting')
+      ? torrentWhy({
+          situation,
+          peersTotal: detail.snapshot.peersSeen,
+          peersConnected: detail.snapshot.peersLive,
+          trackers,
+          peers: detail.peers,
+          quietMs: flow.quietMs,
+          lastDataAgoMs: flow.lastDataAgoMs,
+          peerTimeoutMins,
+        })
+      : null;
 
   // Drop the optimistic limit once the engine reports the same values.
   useEffect(() => {
@@ -830,6 +851,9 @@ export default function TorrentDetailScreen() {
           </View>
         ) : null}
       </ProgressCard>
+
+      {/* NATIVE_CONTRACT 43.4: only while connecting or waiting, in Compact and Detailed; gone once data flows. */}
+      {whyModel ? <WhyStuck model={whyModel} onAskTrackers={() => void handleReannounce()} retryInSecs={retryInSecs} /> : null}
 
       {ruleResume ? (
         <View style={[styles.block, { gap: spacing.sm }]}>

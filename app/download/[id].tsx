@@ -19,6 +19,8 @@ import {
   downloadProgressLabel,
   downloadStatus,
   isSizeUnknown,
+  linkSituation,
+  linkWhy,
   linkProblem,
   needsNewLink,
   removeCopy,
@@ -30,6 +32,8 @@ import { Banner, Button, EmptyBlock, IconButton, ListRow, Screen, Sheet, type Pr
 import { toneColor } from '../../components/transfers/StatusLine';
 import { ProgressBadge, ProgressCard } from '../../components/detail/ProgressCard';
 import { CompactLine } from '../../components/detail/CompactLine';
+import { WhyStuck } from '../../components/detail/WhyStuck';
+import { useFlowClock } from '../../components/transfers/useStatusOpts';
 import { useSettings } from '../../context/SettingsContext';
 import { WhyHeld } from '../../components/transfers/WhyHeld';
 import { DownloadStats } from '../../components/transfers/DownloadStats';
@@ -142,6 +146,9 @@ export default function DownloadScreen() {
     }
   }, [d, showNotice]);
 
+  // NATIVE_CONTRACT 43: the shared flow clock, the same record the card reads.
+  const flow = useFlowClock(id ?? '', d?.state === 'downloading', d?.downBps ?? 0);
+
   if (!id || !d) {
     // NATIVE_CONTRACT 40.3
     return (
@@ -164,7 +171,12 @@ export default function DownloadScreen() {
   const mainActions = all.filter((a) => a.kind !== 'remove' && a.kind !== 'newLink' && !(showWhy && a.kind === 'openNetworkSettings' && a.route));
   const headerAction = all.find((a) => a.kind === 'pause' || a.kind === 'resume') ?? null;
   const caption = downloadCaption(d);
-  const status = downloadStatus(d, undefined, blockCtx);
+  const status = downloadStatus(d, undefined, blockCtx, flow);
+  const situation = linkSituation(d, flow);
+  const whyModel =
+    situation === 'connecting' || situation === 'waiting'
+      ? linkWhy({ situation, host: sourceHost(d.urlDisplay), resumable: d.resumable, quietMs: flow.quietMs, lastDataAgoMs: flow.lastDataAgoMs })
+      : null;
   const unknownSize = isSizeUnknown(d);
   const frac = unknownSize ? 0 : downloadProgress(d);
   // Same rule as the card: an unfinished download never reads 100%.
@@ -224,7 +236,9 @@ export default function DownloadScreen() {
       </ProgressCard>
 
       {/* NATIVE_CONTRACT 40.2: the one-line hint while a download that can't resume is running. */}
-      {d.state === 'downloading' && !d.resumable ? <Text style={[styles.hint, styles.hintTight]}>{CANT_RESUME_HINT}</Text> : null}
+      {/* NATIVE_CONTRACT 43.5: only while connecting or waiting; it carries that hint itself when the link can't resume. */}
+      {whyModel ? <WhyStuck model={whyModel} /> : null}
+      {d.state === 'downloading' && !d.resumable && !whyModel?.note ? <Text style={[styles.hint, styles.hintTight]}>{CANT_RESUME_HINT}</Text> : null}
 
       {d.notice ? (
         <View style={styles.block}>
