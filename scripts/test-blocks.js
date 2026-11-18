@@ -167,7 +167,7 @@ async function main() {
   const why = read('components/transfers/WhyHeld.tsx');
   check('"Why it\'s paused" lists reasons, each with its setting button', /Why it's paused/.test(why) && /reasonsForItem/.test(why) && /router\.push/.test(why));
   check('torrent detail shows "Why it\'s paused"', /<WhyHeld/.test(read('app/torrent/[id].tsx')));
-  const sheet = read('components/transfers/DownloadSheet.tsx');
+  const sheet = read('app/download/[id].tsx');
   check('link detail shows "Why it\'s paused"', /<WhyHeld/.test(sheet));
 
   // 11. Native and mock sources.

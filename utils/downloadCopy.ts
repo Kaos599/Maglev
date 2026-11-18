@@ -449,3 +449,24 @@ export const OPEN_FOLDER_FAILED_TEXT = "Couldn't open the folder.";
 
 /** What to tell the user when the share sheet can't open for a finished download. */
 export const SHARE_FAILED_TEXT = "Couldn't share this file.";
+
+/** NATIVE_CONTRACT 40.2: what the page says when a tap copies the link. */
+export const LINK_COPIED_TEXT = 'Link copied';
+/** NATIVE_CONTRACT 40.2: the one-line hint under the progress card while a download that can't resume is running. */
+export const CANT_RESUME_HINT = "This server can't resume. Pausing starts over.";
+
+/**
+ * NATIVE_CONTRACT 40.2: the "Why it stopped" block of a download that needs a new link. The title is short; the text is the
+ * existing sign-in copy, or the engine's own message when it gave one.
+ */
+export function linkProblem(d: DownloadSnapshot): { title: string; body: string } {
+  if (d.error?.code === 'AUTH_REQUIRED') return { title: 'Needs sign-in', body: AUTH_BODY };
+  return { title: 'Link expired', body: d.error?.message || 'The server no longer accepts this link.' };
+}
+
+/** The host of a download's address and nothing after it: never the path, a query or anything more (40.2 Source). */
+export function sourceHost(urlDisplay: string): string {
+  const m = /^[a-z][a-z0-9+.-]*:\/\/([^/?#\s]+)/i.exec(urlDisplay.trim());
+  const host = m ? m[1] : urlDisplay.trim().split(/[/?#]/)[0];
+  return host.replace(/^[^@]*@/, '');
+}

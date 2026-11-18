@@ -7,6 +7,8 @@ import { IconButton } from './IconButton';
 
 export interface ScreenProps {
   title?: string;
+  /** What a screen reader says for the title, when it should say more than the title shows (a name and a state). */
+  titleAccessibilityLabel?: string;
   onBack?: () => void;
   /** Right-side header actions (IconButtons). */
   actions?: React.ReactNode;
@@ -20,6 +22,7 @@ export interface ScreenProps {
 
 export function Screen({
   title,
+  titleAccessibilityLabel,
   onBack,
   actions,
   scroll = false,
@@ -36,7 +39,7 @@ export function Screen({
       {hasHeader ? (
         <View style={styles.header}>
           {onBack ? <IconButton icon="back" onPress={onBack} accessibilityLabel="Go back" /> : null}
-          <Text style={[styles.title, !onBack && styles.titleNoBack]} numberOfLines={1} accessibilityRole="header">
+          <Text style={[styles.title, !onBack && styles.titleNoBack]} numberOfLines={1} accessibilityRole="header" accessibilityLabel={titleAccessibilityLabel}>
             {title}
           </Text>
           <View style={styles.actions}>{actions}</View>

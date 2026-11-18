@@ -35,8 +35,9 @@ async function main() {
   check('TS type has shareDownload', /shareDownload\(id: string\): Promise<EngineResult>/.test(types));
   check('bridge routes shareDownload', /shareDownload\(id: string\)[\s\S]{0,80}route\('shareDownload'/.test(bridge));
   check('mock has shareDownload', /async shareDownload\(/.test(mock));
-  check('index wires onShare to shareDownload', /onShare=\{/.test(index) && /maglevEngine\.shareDownload\(/.test(index));
-  check('share failure text lives in downloadCopy', /export const SHARE_FAILED_TEXT/.test(dlCopy) && /SHARE_FAILED_TEXT/.test(index));
+  const dlHook = read('components/transfers/useDownloadActions.ts');
+  check('the page wires Share to the shared handler, which calls shareDownload', /actions\.share\(/.test(read('app/download/[id].tsx')) && /maglevEngine\.shareDownload\(/.test(dlHook));
+  check('share failure text lives in downloadCopy', /export const SHARE_FAILED_TEXT/.test(dlCopy) && /SHARE_FAILED_TEXT/.test(dlHook));
 
   console.log('mobile data awareness');
   check('module exposes getNetworkState', /AsyncFunction\("getNetworkState"\)/.test(module_));

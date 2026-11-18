@@ -293,8 +293,8 @@ async function main() {
   check('the busiest or current building is filled like the rest', !/if \(!b\.current\)/.test(city));
   const kit = read('components/stats/StatsKit.tsx');
   check('Finished keeps a sub-line when nothing failed', /none failed/.test(kit));
-  const dsheet = read('components/transfers/DownloadSheet.tsx');
-  check('link download sheet shows the timing row', /TimingRow/.test(dsheet));
+  const dsheet = read('components/transfers/DownloadStats.tsx');
+  check('link download page shows the timing row', /TimingRow/.test(dsheet));
   check('no pink in categories', !/accents\.pink|\bpink\b/.test(all));
   // The global `router` from expo-router throws "unavailable before the first render has finished" while its
   // bridge is unbound (seen on a cold start: Settings > Stats crashed). Screens use the useRouter() hook instead.
