@@ -14,6 +14,7 @@ import { SwipeRow } from './SwipeRow';
 import { swipePlan } from './swipe';
 import { SubtitleCardIcon } from '../subtitles/SubtitleCardIcon';
 import { sameCardIcon, type CardIconModel } from '../subtitles/flow';
+import { downloadCardGlyph } from '../../utils/cardIcon';
 
 export interface DownloadCardProps {
   download: DownloadSnapshot;
@@ -32,6 +33,8 @@ export interface DownloadCardProps {
   subtitle?: CardIconModel | null;
   /** Taps the subtitle icon: opens the subtitle sheet. */
   onSubtitles?: (id: string) => void;
+  /** The "Show file type icons in Transfers" setting. The icon shares the slot of the selection checkbox. */
+  showFileIcon?: boolean;
 }
 
 function toneFor(d: DownloadSnapshot): ProgressTone {
@@ -49,7 +52,7 @@ function toneFor(d: DownloadSnapshot): ProgressTone {
 }
 
 /** Same card as a torrent: name, one bar, one status line, one button. The sheet behind a tap has the rest. */
-function DownloadCardImpl({ download: d, onPress, onAction: onActionProp, selectionMode = false, selected = false, onLongPress, onRemove, swipeEnabled = false, subtitle = null, onSubtitles }: DownloadCardProps) {
+function DownloadCardImpl({ download: d, onPress, onAction: onActionProp, selectionMode = false, selected = false, onLongPress, onRemove, swipeEnabled = false, subtitle = null, onSubtitles, showFileIcon = true }: DownloadCardProps) {
   const { colors } = useTheme();
   const router = useRouter();
   // Settings actions go to their screen and Remove opens the sheet (which has the keep/delete choice) here,
@@ -99,6 +102,10 @@ function DownloadCardImpl({ download: d, onPress, onAction: onActionProp, select
         <View style={styles.nameRow}>
           {selectionMode ? (
             <PixelIcon name={selected ? 'select' : 'checkbox-empty'} size={20} color={selected ? colors.accentText : colors.textMuted} />
+          ) : showFileIcon ? (
+            <View style={styles.kindIcon} importantForAccessibility="no-hide-descendants" accessibilityElementsHidden>
+              <PixelIcon name={downloadCardGlyph(d.name, !!d.stream)} size={20} color={colors.textMuted} />
+            </View>
           ) : null}
           <Text style={styles.name} numberOfLines={2} ellipsizeMode="tail">
             {d.name}
@@ -150,6 +157,7 @@ function same(a: DownloadCardProps, b: DownloadCardProps): boolean {
     a.swipeEnabled === b.swipeEnabled &&
     a.onSubtitles === b.onSubtitles &&
     sameCardIcon(a.subtitle, b.subtitle) &&
+    a.showFileIcon === b.showFileIcon &&
     x.id === y.id &&
     x.name === y.name &&
     x.state === y.state &&
@@ -191,6 +199,7 @@ const makeStyles = (c: ThemeColors) =>
     subtitleAnchor: { position: 'absolute', right: spacing.sm + 8, top: 4, width: 28, height: 28 },
     cardSelected: { borderColor: c.accent, backgroundColor: alpha(c.accent, 0.08) },
     nameRow: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.sm },
+    kindIcon: { width: 20, height: 18, alignItems: 'center', justifyContent: 'center' },
     name: { ...type.mono, fontSize: 13, lineHeight: 18, color: c.text, flex: 1 },
     status: { ...type.mono, fontSize: 12, lineHeight: 18 },
   });

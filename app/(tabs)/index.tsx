@@ -435,6 +435,7 @@ export default function TransfersScreen() {
   const onSwipeRemove = useCallback((id: string) => removeTransfers([id], []), [removeTransfers]);
   const onSwipeRemoveDownload = useCallback((id: string) => removeTransfers([], [id]), [removeTransfers]);
   const swipeEnabled = settings.appearance.swipeActions;
+  const showFileIcons = settings.appearance.showFileIcons;
   // SM-37: clear the no_peers tag so the torrent looks for peers again.
   const onKeepTrying = useCallback(
     (id: string) => {
@@ -551,9 +552,10 @@ export default function TransfersScreen() {
         swipeEnabled={swipeEnabled}
         subtitle={subtitleIcon(`t:${item.torrent.id}`)}
         onSubtitles={onTorrentSubtitles}
+        showFileIcon={showFileIcons}
       />
     ),
-    [selectionMode, selectedIds, onCardPress, startSelection, onPause, onResume, onKeepTrying, onOpenTorrent, onResumeAnyway, onPlay, onSwipeRemove, swipeEnabled, subtitleIcon, onTorrentSubtitles],
+    [selectionMode, selectedIds, onCardPress, startSelection, onPause, onResume, onKeepTrying, onOpenTorrent, onResumeAnyway, onPlay, onSwipeRemove, swipeEnabled, subtitleIcon, onTorrentSubtitles, showFileIcons],
   );
   // One list: torrents and link downloads, ordered by the current sort.
   const items = useMemo(() => mergeTransfers(visible, shownDownloads, sort), [visible, shownDownloads, sort]);
@@ -573,9 +575,10 @@ export default function TransfersScreen() {
           swipeEnabled={swipeEnabled}
           subtitle={subtitleIcon(`d:${item.download.id}`)}
           onSubtitles={onDownloadSubtitles}
+          showFileIcon={showFileIcons}
         />
       ),
-    [renderTorrent, onDownloadPress, onDownloadAction, selectionMode, selectedIds, startDownloadSelection, onSwipeRemoveDownload, swipeEnabled, subtitleIcon, onDownloadSubtitles],
+    [renderTorrent, onDownloadPress, onDownloadAction, selectionMode, selectedIds, startDownloadSelection, onSwipeRemoveDownload, swipeEnabled, subtitleIcon, onDownloadSubtitles, showFileIcons],
   );
   const progressMotion = useMemo<ProgressMotion>(() => ({ active: focused, sweeps: LIST_SWEEPS }), [focused]);
 

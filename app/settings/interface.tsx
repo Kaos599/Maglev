@@ -143,6 +143,17 @@ export default function InterfaceSettings() {
             />
           }
         />
+        <ListRow
+          title="Show file type icons in Transfers"
+          subtitle="Show an icon for the kind of file on each download."
+          accessory={
+            <Toggle
+              value={a.showFileIcons}
+              onValueChange={(showFileIcons) => set({ showFileIcons })}
+              accessibilityLabel="Show file type icons in Transfers"
+            />
+          }
+        />
       </Card>
       <Card>
         <View style={s.block}>

@@ -111,6 +111,8 @@ export interface AppearanceSettings {
   showSpeedTotals: boolean;
   /** Transfers screen: swipe a row right to Pause or Resume, left to Remove from the list. UI only. On by default. */
   swipeActions: boolean;
+  /** Transfers screen: a file-type icon on the left of each card. UI only. On by default. */
+  showFileIcons: boolean;
 }
 
 export type SubtitleHearingPref = 'both' | 'prefer' | 'avoid';
@@ -173,6 +175,7 @@ export const DEFAULT_SETTINGS: MaglevSettings = {
     fontStyle: 'clean',
     showSpeedTotals: false,
     swipeActions: true,
+    showFileIcons: true,
   },
   storage: {
     storageMode: 'POSIX',

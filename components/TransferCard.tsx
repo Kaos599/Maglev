@@ -18,6 +18,7 @@ import { SwipeRow } from "./transfers/SwipeRow";
 import { swipePlan } from "./transfers/swipe";
 import { SubtitleCardIcon } from "./subtitles/SubtitleCardIcon";
 import { sameCardIcon, type CardIconModel } from "./subtitles/flow";
+import { torrentCardGlyph } from "../utils/cardIcon";
 
 /**
  * Name (two lines), one bar, one status line. At the default font size the height never changes
@@ -50,6 +51,8 @@ export interface TransferCardProps {
   subtitle?: CardIconModel | null;
   /** Taps the subtitle icon: opens the subtitle sheet. */
   onSubtitles?: (id: string) => void;
+  /** The "Show file type icons in Transfers" setting. The icon shares the slot of the selection checkbox. */
+  showFileIcon?: boolean;
 }
 
 /** Status line font size; the value slot is sized in Space Mono glyphs at this size. */
@@ -130,6 +133,7 @@ function TransferCardImpl({
   swipeEnabled = false,
   subtitle = null,
   onSubtitles,
+  showFileIcon = true,
 }: TransferCardProps) {
   const router = useRouter();
   const { colors } = useTheme();
@@ -242,6 +246,10 @@ function TransferCardImpl({
               size={20}
               color={selected ? colors.accentText : colors.textMuted}
             />
+          ) : showFileIcon ? (
+            <View style={styles.kindIcon} importantForAccessibility="no-hide-descendants" accessibilityElementsHidden>
+              <PixelIcon name={torrentCardGlyph(t.name)} size={20} color={colors.textMuted} />
+            </View>
           ) : null}
           <Text style={styles.name} numberOfLines={2} ellipsizeMode="tail">
             {t.name}
@@ -341,6 +349,7 @@ function sameCard(a: TransferCardProps, b: TransferCardProps): boolean {
     a.swipeEnabled === b.swipeEnabled &&
     a.onSubtitles === b.onSubtitles &&
     sameCardIcon(a.subtitle, b.subtitle) &&
+    a.showFileIcon === b.showFileIcon &&
     x.id === y.id &&
     x.name === y.name &&
     x.state === y.state &&
@@ -403,6 +412,8 @@ const makeStyles = (c: ThemeColors) =>
       gap: spacing.sm,
       minHeight: 36,
     },
+    // Same 20px glyph slot as the selection checkbox, centred on the first title line.
+    kindIcon: { width: 20, height: 18, alignItems: "center", justifyContent: "center" },
     name: { ...type.mono, fontSize: 13, lineHeight: 18, color: c.text, flex: 1 },
     // One line, always present, at a fixed minimum height: rows never grow or shrink as the text changes.
     statusBlock: { gap: 0 },
