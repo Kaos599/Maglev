@@ -187,7 +187,7 @@ export const SETTINGS_INDEX: SettingEntry[] = [
   ),
   e(
     "subtitles-sources",
-    "Sources",
+    "Subtitle sources",
     "subtitles",
     "Subtitles",
     ["subtitles", "sources", "providers", "opensubtitles", "websites", "where from", "turn on", "turn off"],
