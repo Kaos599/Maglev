@@ -9,7 +9,8 @@ import { useSubtitleSettings } from '../../components/subtitles-settings/useSubt
 import { useListsVersion } from '../../utils/lists/hooks';
 import { listSubtitleEntries } from '../../utils/lists/store';
 import { SUBTITLE_PROVIDERS } from '../../utils/subtitles/providers';
-import { HEARING_OPTIONS, PRIVACY_LINE, SAF_UNAVAILABLE, SETTINGS_SWITCH_SUBTITLE, SETTINGS_TITLE } from '../../utils/subtitles/copy';
+import { AUTO_NEW_VIDEOS_SUBTITLE, HEARING_OPTIONS, PRIVACY_LINE, SAF_UNAVAILABLE, SETTINGS_SWITCH_SUBTITLE, SETTINGS_TITLE } from '../../utils/subtitles/copy';
+import { syncAutoSince } from '../../utils/subtitles/requests';
 import { hasOpenSubtitlesKey, languagesValue, sourceRows, sourcesValue } from '../../utils/subtitleSettings';
 import { subtitleSettingsCopy as copy } from '../../constants/copy';
 
@@ -34,6 +35,20 @@ export default function SubtitlesSettings() {
       </Card>
 
       <View style={off && styles.dim} pointerEvents={off ? 'none' : 'auto'} accessibilityState={{ disabled: off }}>
+        {/* NATIVE_CONTRACT 44.6 */}
+        <View style={[styles.group, styles.below]}>
+          <Card>
+            <ListRow
+              title="Get subtitles for new videos"
+              subtitle={AUTO_NEW_VIDEOS_SUBTITLE}
+              accessory={<Toggle value={sub.autoNewVideos} onValueChange={(autoNewVideos) => {
+                  syncAutoSince(autoNewVideos);
+                  patch({ autoNewVideos });
+                }} accessibilityLabel="Get subtitles for new videos" />}
+            />
+          </Card>
+        </View>
+
         <View style={styles.group}>
           <SectionHeader title="Looking for" />
           <Card>
@@ -86,4 +101,5 @@ const styles = StyleSheet.create({
   dim: { opacity: 0.45 },
   group: { gap: spacing.sm },
   gap: { marginTop: spacing.lg },
+  below: { marginBottom: spacing.lg },
 });

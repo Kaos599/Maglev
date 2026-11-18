@@ -128,6 +128,8 @@ export interface SubtitleSettings {
   sourceEnabled: Record<string, boolean>;
   /** True after the user accepted the one-time notice before the first lookup. */
   privacyAck: boolean;
+  /** NATIVE_CONTRACT 44.6. Get subtitles for new videos once they start. Default off. */
+  autoNewVideos: boolean;
 }
 
 export type DownloadFolderMode = 'direct' | 'staging';
@@ -244,6 +246,7 @@ export const DEFAULT_SETTINGS: MaglevSettings = {
     hearingImpaired: 'both',
     sourceEnabled: {},
     privacyAck: false,
+    autoNewVideos: false,
   },
 };
 

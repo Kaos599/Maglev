@@ -223,9 +223,9 @@ const nativeErr = (code) => Object.assign(new Error(code), { code });
   check('needs-look shows within 24 h and hides after (39.1 S3)', F.cardIconModel(entry('needs-look', now - 5 * 3600000), now).state === 'needs-look' && F.cardIconModel(entry('needs-look', now - 5 * 86400000), now) === null);
   check('saved shows within 24 h', F.cardIconModel(entry('saved', now - 3600000), now).state === 'saved');
   check('saved hides 24 h after the save', F.cardIconModel(entry('saved', now - 24 * 3600000 - 1), now) === null);
-  check('TalkBack label: saved + language', F.cardIconLabel({ state: 'saved', lang: 'en' }).startsWith('English subtitles saved'));
-  check('TalkBack label: getting + language', F.cardIconLabel({ state: 'getting', lang: 'pt-BR' }).startsWith('Getting ') && /Portuguese/.test(F.cardIconLabel({ state: 'getting', lang: 'pt-BR' })));
-  check('TalkBack label: needs a look', /need a look/.test(F.cardIconLabel({ state: 'needs-look', lang: 'fr' })) && /French/.test(F.cardIconLabel({ state: 'needs-look', lang: 'fr' })));
+  check('TalkBack label: saved + language', F.cardIconLabel({ state: 'saved', lang: 'en' }).startsWith('Subtitles saved'));
+  check('TalkBack label: getting + language', F.cardIconLabel({ state: 'getting', lang: 'pt-BR' }).startsWith('Getting subtitles'));
+  check('TalkBack label: needs a look', /pick one/.test(F.cardIconLabel({ state: 'needs-look', lang: 'fr' })) && /No subtitles found/.test(F.cardIconLabel({ state: 'none', lang: 'fr' })));
   check('sameCardIcon: equal, different state, different language, null', F.sameCardIcon({ state: 'saved', lang: 'en' }, { state: 'saved', lang: 'en' }) && !F.sameCardIcon({ state: 'saved', lang: 'en' }, { state: 'getting', lang: 'en' }) && !F.sameCardIcon({ state: 'saved', lang: 'en' }, { state: 'saved', lang: 'fr' }) && F.sameCardIcon(null, undefined) && !F.sameCardIcon(null, { state: 'saved', lang: 'en' }));
 
   console.log('[state store]');

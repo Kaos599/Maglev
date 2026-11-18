@@ -170,6 +170,13 @@ export const SETTINGS_INDEX: SettingEntry[] = [
     ["subtitles", "captions", "srt", "cc", "closed captions", "find subtitles", "switch", "on", "off", "video"],
   ),
   e(
+    "subtitles-auto-new-videos",
+    "Get subtitles for new videos",
+    "subtitles",
+    "Subtitles",
+    ["subtitles", "captions", "automatic", "auto", "new videos", "once a video starts", "download", "add", "switch", "on", "off"],
+  ),
+  e(
     "subtitles-languages",
     "Languages",
     "subtitles",

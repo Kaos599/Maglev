@@ -5,7 +5,7 @@
 import { fileKind } from '../../utils/fileKind.ts';
 import { pickMainFile, type MainFileCandidate } from '../../utils/mainFile.ts';
 import { languageName } from '../../utils/subtitles/languages.ts';
-import { errorCopy, FILE_NOT_STARTED, SAF_UNAVAILABLE, type ErrorCopy } from '../../utils/subtitles/copy.ts';
+import { CARD_ICON_WORDS, errorCopy, FILE_NOT_STARTED, SAF_UNAVAILABLE, type ErrorCopy } from '../../utils/subtitles/copy.ts';
 import { SubtitleError, type SubtitleErrorCode } from '../../utils/subtitles/payload.ts';
 import { downloadAndPrepare, failureCode, type PreparedSubtitle, type SubtitleSourceStatus } from '../../utils/subtitles/search.ts';
 import { saveWithChoice, type SaveChoice } from '../../utils/subtitles/naming.ts';
@@ -277,17 +277,9 @@ export function sameCardIcon(a: CardIconModel | null | undefined, b: CardIconMod
   return a.state === b.state && a.lang === b.lang;
 }
 
-/** What TalkBack says: the state and the language. */
+/** What TalkBack says: the state in words (NATIVE_CONTRACT 44.8). */
 export function cardIconLabel(m: CardIconModel): string {
-  const lang = languageName(m.lang);
-  switch (m.state) {
-    case 'getting':
-      return `Getting ${lang} subtitles. Opens subtitles.`;
-    case 'saved':
-      return `${lang} subtitles saved. Opens subtitles.`;
-    default:
-      return `${lang} subtitles need a look. Opens subtitles.`;
-  }
+  return `${CARD_ICON_WORDS[m.state] ?? CARD_ICON_WORDS['needs-look']}. Opens subtitles.`;
 }
 
 /** The saved toast, e.g. "English subtitles saved". */

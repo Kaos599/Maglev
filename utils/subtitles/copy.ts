@@ -112,3 +112,56 @@ export function errorCopy(code: SubtitleErrorCode, a: CopyArgs = {}): ErrorCopy 
       return { message: UNSUPPORTED_FILE, action: 'Pick another' };
   }
 }
+
+// ---------------------------------------------------------------- NATIVE_CONTRACT 44: the "Added" message and requests
+
+/** 44.6. The switch's line in Settings > Subtitles. */
+export const AUTO_NEW_VIDEOS_SUBTITLE = 'In your languages, while Maglev is open';
+
+/** 44.7: results only in languages the user didn't pick. */
+export const foundInOtherOnly = (language: string): string => `Found in ${languageName(language)} only`;
+
+/** 44.8: what TalkBack says for the card icon, by state. */
+export const CARD_ICON_WORDS = {
+  getting: 'Getting subtitles',
+  saved: 'Subtitles saved',
+  'needs-look': 'Subtitles: pick one',
+  none: 'No subtitles found',
+} as const;
+
+/** 44.7: requests wait for the one-time notice (36.10) because nothing may be sent before it. */
+export const CONSENT_NOTICE_ACTION = NOTICE_CONTINUE;
+
+// 44.9 The multi-video sheet.
+export const multiTitle = (n: number): string => `Subtitles for ${n} videos`;
+export const USES_YOUR_LANGUAGES = 'Uses your subtitle languages';
+export const CHANGE_LANGUAGES = 'Change';
+export const MULTI_BUTTON_NONE = 'Get subtitles';
+export const multiButton = (k: number): string => (k <= 0 ? MULTI_BUTTON_NONE : `Get subtitles for ${k}`);
+export const SKIP_LABEL = 'Skip';
+/** Appended to a row whose title and detail match another row's. `time` is h:mm. */
+export const addedAtSuffix = (time: string): string => ` \u00B7 added ${time}`;
+export const nonVideoOne = (name: string): string => `${name} is music, so it gets no subtitles.`;
+export const nonVideoMany = (k: number): string => `${k} other adds are not videos, so they get no subtitles.`;
+
+/** 44.9 status mode: a phase in words. */
+export const PHASE_WORDS = {
+  queued: 'Waiting for the file',
+  searching: 'Getting\u2026',
+  saved: 'Saved',
+  'needs-pick': 'Close match \u00B7 pick',
+  none: 'None found \u00B7 edit name',
+  'has-already': 'Already has subtitles',
+  offline: "You're offline",
+  limited: 'Source limit reached',
+  skipped: 'Skipped',
+} as const;
+
+/** Summary line of status mode, e.g. "2 saved \u00B7 1 needs you". Empty when nothing to say. */
+export function statusSummary(c: { saved: number; needsYou: number; waiting: number }): string {
+  const parts: string[] = [];
+  if (c.saved > 0) parts.push(`${c.saved} saved`);
+  if (c.needsYou > 0) parts.push(`${c.needsYou} ${c.needsYou === 1 ? 'needs' : 'need'} you`);
+  if (c.waiting > 0) parts.push(`${c.waiting} getting`);
+  return parts.join(' \u00B7 ');
+}
