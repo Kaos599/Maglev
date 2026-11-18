@@ -52,6 +52,28 @@ export function hostAllowed(host: string, allowHosts: readonly string[]): boolea
   });
 }
 
+/** How long a tap vouches for a link, in ms. Mirrors PopupRules.TAP_MS in Kotlin. */
+export const TAP_MS = 3000;
+
+/**
+ * True when the link the user tapped leads to `targetHost`'s site. `tapLinkHost` is the tapped link's host, `'*'` for a
+ * tapped image link (its address is unknown), or null when the tap wasn't on a link or is older than TAP_MS.
+ */
+export function tapMatchesLink(tapLinkHost: string | null, targetHost: string): boolean {
+  if (tapLinkHost == null) return false;
+  return tapLinkHost === '*' || sameSite(tapLinkHost, targetHost);
+}
+
+/**
+ * A tap counts as the user's own only when Android says there was a gesture AND it is the first window or navigation of that
+ * tap AND it is either to the same site as the page or the tap was on a link to that site. A tap on a blank area or a
+ * button that sends the tab to another site (a click-jack overlay), and every extra window one tap opens, do not count.
+ * Mirrors PopupRules.trusted in Kotlin.
+ */
+export function trustedTap(args: { gesture: boolean; sameSite: boolean; onMatchingLink: boolean; nthInGesture: number }): boolean {
+  return args.gesture && args.nthInGesture === 0 && (args.sameSite || args.onMatchingLink);
+}
+
 export type NewWindowDecision = 'newTab' | 'blocked' | 'ask' | 'openApp';
 
 /**
