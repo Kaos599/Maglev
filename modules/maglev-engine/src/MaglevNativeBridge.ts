@@ -20,6 +20,9 @@ import type {
   TorrentExport,
   TrackersAdded,
   GovernanceConfig,
+  SubtitleHashResult,
+  SubtitleSaveResult,
+  SubtitleZipEntry,
   MaglevEngineApi,
   Metadata,
   MoveTarget,
@@ -43,6 +46,7 @@ import type {
   UpdateNetwork,
   UpdateResultEvent,
 } from './MaglevEngine.types.ts';
+import { subtitleError } from './MaglevEngine.types.ts';
 import type { MaglevSettings } from './MaglevSettings.types.ts';
 import { mockEngine } from './MaglevMockEngine.ts';
 import { ipFilter } from './MaglevIpFilter.ts';
@@ -627,6 +631,34 @@ export class MaglevEngineBridge implements MaglevEngineApi {
     if (!sim) return Promise.resolve(unavailable('The native engine module is not installed in this build.') as T);
     return (sim as unknown as Record<string, (...a: unknown[]) => Promise<T>>)[method](...args);
   }
+  // ---- subtitles (NATIVE_CONTRACT 36.6) -------------------------------------------
+  // Unlike the calls above these reject with an Error whose `code` is a SubtitleErrorCode.
+
+  private async subtitleCall<T>(method: 'subtitleHash' | 'saveSubtitle' | 'unzipSubtitles', ...args: unknown[]): Promise<T> {
+    if (NativeModule) {
+      const fn = NativeModule[method];
+      if (typeof fn !== 'function') throw subtitleError('UNSUPPORTED', `Native method "${method}" is missing.`);
+      try {
+        return (await fn.apply(NativeModule, args)) as T;
+      } catch (e: any) {
+        const known = typeof e?.code === 'string' && /^[A-Z][A-Z_]+$/.test(e.code);
+        throw subtitleError(known ? e.code : 'IO', String(e?.message ?? e));
+      }
+    }
+    const sim = simulatorIfAllowed();
+    if (!sim) throw subtitleError('UNSUPPORTED', 'The native engine module is not installed in this build.');
+    return (sim[method] as (...a: unknown[]) => Promise<T>).apply(sim, args);
+  }
+  public subtitleHash(pathOrUri: string): Promise<SubtitleHashResult> {
+    return this.subtitleCall('subtitleHash', pathOrUri);
+  }
+  public saveSubtitle(videoPathOrUri: string, fileName: string, base64: string, replace: boolean): Promise<SubtitleSaveResult> {
+    return this.subtitleCall('saveSubtitle', videoPathOrUri, fileName, base64, replace);
+  }
+  public unzipSubtitles(base64: string): Promise<SubtitleZipEntry[]> {
+    return this.subtitleCall('unzipSubtitles', base64);
+  }
+
   public async getInstallSource(): Promise<InstallSource> {
     const res = await this.updateCall<Partial<InstallSource> & { ok?: boolean }>('getInstallSource');
     if (res && res.ok !== false) {
