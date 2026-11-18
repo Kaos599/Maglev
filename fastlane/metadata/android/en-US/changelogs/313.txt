@@ -1,0 +1,5 @@
+- Back no longer closes the app on Android 13 to 15.
+- Season subtitles: one row per episode, and Use the best match saves them all in one tap.
+- Files changed no longer comes back after a passing Recheck. Finished torrents say Done, not 99%.
+- No results? Search and subtitles show the sources you haven't turned on.
+- Stats keeps the day you picked and highlights its building.
