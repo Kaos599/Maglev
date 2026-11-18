@@ -41,6 +41,9 @@ export function redirectSystemPath({ path }: { path: string; initial: boolean })
     // Only this branch adds `from=share`, which lets the screen check the link at once. A maglev:// link
     // (any app or web page can send one) reaches the last line, where every `from` parameter is stripped.
     if (/^https?:\/\//i.test(raw)) return sharedDownloadRoute(raw);
+    // The Quick Settings tile and a notification tap that has no page of its own open maglev://from/tile and
+    // maglev://from/notification: the app shows Transfers, and the launch isn't a plain one (the new-feature dialog waits).
+    if (/^\/?from\/(tile|notification)\/?$/i.test(appPath(raw).split(/[?#]/)[0])) return '/';
     // A completed download's notification opens maglev://torrent/dl_<id>; Transfers shows downloads.
     // It lands on Transfers (the `/` tab) with `download=<id>` so that screen can open the download's sheet.
     const dl = /^\/?torrent\/(dl_[0-9a-f]+)$/i.exec(appPath(raw).split(/[?#]/)[0]);

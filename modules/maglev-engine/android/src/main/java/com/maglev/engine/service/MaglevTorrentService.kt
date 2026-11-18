@@ -133,7 +133,7 @@ class MaglevTorrentService : Service() {
             updateLocks(s.busy > 0)
             val key = listOf(
                 Notifications.title(s), Notifications.text(s), s.downloadingPct, s.progressPct,
-                s.downloading > 0, s.busy > 0, s.singleTorrentId,
+                s.downloading > 0, s.busy > 0, s.pausedByUser > 0, s.singleTorrentId,
             ).joinToString("|")
             val now = SystemClock.elapsedRealtime()
             // At most one update every 2 s, and only when the content changed. A skipped change is

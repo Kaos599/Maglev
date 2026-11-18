@@ -44,13 +44,13 @@ async function main() {
   // 2. The contract's wording.
   const ctx = (b, q) => ({ blocks: b, queueLimit: q });
   const wm = R.reasonFor('wifi_only', ctx([{ tag: 'wifi_only', cause: 'metered', sinceMs: 1 }]));
-  check('wifi metered copy', wm.title === 'Waiting for Wi-Fi' && wm.body === "Wi-Fi only is on, and you're on mobile data.");
+  check('wifi metered copy', wm.title === 'Waiting for Wi-Fi' && wm.body === 'Wi-Fi only is on, and this connection is metered.');
   const ws = R.reasonFor('wifi_only', ctx([{ tag: 'wifi_only', cause: 'ssid', sinceMs: 1 }]));
   check('wifi ssid copy', ws.title === 'Waiting for an allowed Wi-Fi' && ws.body === "This Wi-Fi isn't in your allowed networks." && ws.override === false);
   const bat = R.reasonFor('battery', ctx([{ tag: 'battery', thresholdPct: 20, levelPct: 17, sinceMs: 1 }]));
   check('battery copy fills the numbers', bat.title === 'Battery below 20%' && bat.body === "Transfers pause when the battery is under 20% and not charging. It's at 17%.");
   check('charging copy', R.reasonFor('charging_only').title === 'Waiting for the charger' && R.reasonFor('charging_only').body === 'Charging only is on.');
-  check('unvalidated copy', R.reasonFor('network_unvalidated').title === 'Waiting for internet' && R.reasonFor('network_unvalidated').body === 'This network needs you to sign in first.');
+  check('unvalidated copy', R.reasonFor('network_unvalidated').title === 'Waiting for internet' && R.reasonFor('network_unvalidated').body === "This network can't reach the internet. If it has a sign-in page, open it.");
   check('vpn copy', R.reasonFor('vpn_required').title === 'Waiting for VPN' && R.reasonFor('vpn_required').body === 'VPN only is on, and no VPN is connected.');
   check('offline copy', R.reasonFor('offline').title === 'No internet connection' && R.reasonFor('offline').body === "Transfers continue when you're back online.");
   const at = new Date(2026, 0, 1, 7, 5).getTime();
@@ -115,22 +115,22 @@ async function main() {
 
   const t = (state, pausedBy = null) => ({ id: 'a', name: 'a', state, pausedBy, downloadSpeedBytes: 0, uploadSpeedBytes: 0, downloadedBytes: 0, totalSizeBytes: 1000, includedBytes: 0, progressPercent: 0, etaSeconds: -1, error: null });
   const off = model.torrentStatus(t('DOWNLOADING'), '—', { blocks: [B('offline')] });
-  check('downloading with offline shows "No internet connection"', off.lead === 'No internet connection' && !off.value, JSON.stringify(off));
+  check('downloading with offline shows "No internet connection"', off.lead === 'No internet connection' && off.value === '1000 B' && off.slot === 'size', JSON.stringify(off));
   check('downloading without offline is unchanged', model.torrentStatus(t('DOWNLOADING'), '—', { blocks: [B('wifi_only')] }).lead === 'Downloading');
-  check('queued torrent says how many run at a time', model.torrentStatus(t('QUEUED'), '—', { queueLimit: 3 }).text === 'Queued · 3 at a time', model.torrentStatus(t('QUEUED'), '—', { queueLimit: 3 }).text);
-  check('queued without a limit says Queued', model.torrentStatus(t('QUEUED'), '—').text === 'Queued');
+  check('queued torrent says how many run at a time', model.torrentStatus(t('QUEUED'), '—', { queueLimit: 3 }).lead === 'Queued · 3 at a time', model.torrentStatus(t('QUEUED'), '—', { queueLimit: 3 }).lead);
+  check('queued without a limit says Queued', model.torrentStatus(t('QUEUED'), '—').lead === 'Queued');
 
   // 7. One copy: card, detail and link cards agree.
   for (const k of ['wifi_only', 'battery', 'charging_only', 'schedule', 'network_unvalidated', 'vpn_required', 'fgs_timeout']) {
     const short = R.reasonFor(k).short;
     check(`card line for ${k} is the table's short`, model.torrentStatus(t('PAUSED', k), '—').lead === short, model.torrentStatus(t('PAUSED', k), '—').lead);
     const link = copy.downloadStatus({ id: 'd', name: 'd', state: 'paused', pausedBy: k, size: 1000, downloaded: 0, downBps: 0, eta: -1 });
-    check(`link line for ${k} is the table's short`, link.text === short, link.text);
+    check(`link line for ${k} is the table's short`, link.lead === short, link.lead);
   }
   check('charging never reads "Paused to save battery"', !/save battery/i.test(read('components/detail/torrentLabels.ts')) && R.reasonFor('charging_only').short === 'Waiting for the charger');
   check('detail label reads the table', /reasonFor/.test(read('components/detail/torrentLabels.ts')) && /utils\/blocks\/reasons/.test(read('components/detail/torrentLabels.ts')));
-  check('offline link says No internet connection', copy.downloadStatus({ id: 'd', name: 'd', state: 'paused', pausedBy: 'offline', size: 1, downloaded: 0, downBps: 0, eta: -1 }).text === 'No internet connection');
-  check('queued link says how many run at a time', copy.downloadStatus({ id: 'd', name: 'd', state: 'queued', size: 1, downloaded: 0, downBps: 0, eta: -1 }, undefined, { queueLimit: 3 }).text === 'Queued · 3 at a time');
+  check('offline link says No internet connection', copy.downloadStatus({ id: 'd', name: 'd', state: 'paused', pausedBy: 'offline', size: 1, downloaded: 0, downBps: 0, eta: -1 }).lead === 'No internet connection');
+  check('queued link says how many run at a time', copy.downloadStatus({ id: 'd', name: 'd', state: 'queued', size: 1, downloaded: 0, downBps: 0, eta: -1 }, undefined, { queueLimit: 3 }).lead === 'Queued · 3 at a time');
 
   // 8. Actions follow the override table.
   const kinds = (by, c) => model.torrentCardAction(t('PAUSED', by), c)?.kind ?? null;

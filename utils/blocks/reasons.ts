@@ -67,7 +67,8 @@ export function reasonFor(key: string | null | undefined, ctx: BlockContext = {}
       if (block?.cause === 'ssid') {
         return fixed(key, 'Waiting for an allowed Wi-Fi', 'Waiting for an allowed Wi-Fi', "This Wi-Fi isn't in your allowed networks.", { label: 'Allowed Wi-Fi networks', route: '/settings/network' }, false);
       }
-      return fixed(key, 'Waiting for Wi-Fi', 'Waiting for Wi-Fi', "Wi-Fi only is on, and you're on mobile data.", { label: 'Wi-Fi only', route: '/settings/network' }, true);
+      // NATIVE_CONTRACT 39.3 E2: metered is not always mobile data (hotspot, metered Wi-Fi). The short form stays short.
+      return fixed(key, 'Waiting for Wi-Fi', 'Waiting for Wi-Fi', 'Wi-Fi only is on, and this connection is metered.', { label: 'Wi-Fi only', route: '/settings/network' }, true);
     }
     case 'battery': {
       const th = block?.thresholdPct;
@@ -82,7 +83,8 @@ export function reasonFor(key: string | null | undefined, ctx: BlockContext = {}
     case 'charging_only':
       return fixed(key, 'Waiting for the charger', 'Waiting for the charger', 'Charging only is on.', { label: 'Charging only', route: '/settings/power' }, true);
     case 'network_unvalidated':
-      return fixed(key, 'Waiting for internet', 'Waiting for internet', 'This network needs you to sign in first.', null, false);
+      // NATIVE_CONTRACT 39.3 E2: also fires when the router has no internet; a sign-in page is only a possibility.
+      return fixed(key, 'Waiting for internet', 'Waiting for internet', "This network can't reach the internet. If it has a sign-in page, open it.", null, false);
     case 'vpn_required':
       return fixed(key, 'Waiting for VPN', 'Waiting for VPN', 'VPN only is on, and no VPN is connected.', { label: 'VPN only', route: '/settings/network' }, false);
     case 'offline':
