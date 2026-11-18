@@ -224,6 +224,7 @@ export const kitsunekko: SubtitleProvider = {
   kinds: ['movie', 'episode'],
   matches: ['name'],
   group: 'B',
+  focus: 'anime',
   enabledByDefault: false,
   async search(q, ctx) {
     const wanted = Array.from(new Set(q.languages.map((l) => l.split('-')[0]))).filter((l) => ROOTS[l]);

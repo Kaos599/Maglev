@@ -10,6 +10,7 @@ import { ordinalSuffix } from './copy.ts';
 import { fileKind } from '../fileKind.ts';
 import type { RankedSubtitle } from './rank.ts';
 import type { SubtitleSourceStatus } from './search.ts';
+import { cleanStored, type StoredCandidate } from './season.ts';
 
 // ---------------------------------------------------------------- the interface Search calls (44.1)
 
@@ -54,6 +55,10 @@ export interface FileRun {
   saved?: boolean;
   /** The video's path, so deleting the request can clear its stored state (44.15 F6). */
   vp?: string;
+  /** 46.4: the video's size, for the episode row's second line. */
+  bytes?: number;
+  /** 46.4: a pack's run that ended in needs-pick keeps its top candidate per language (at most 2). Dropped with the phase. */
+  cands?: StoredCandidate[];
 }
 
 export interface RequestEntry {
@@ -403,7 +408,7 @@ export function statePathsToClear(e: Pick<RequestEntry, 'files' | 'vp'> | undefi
   return [...out];
 }
 
-const requeue = (r: Pick<FileRun, 'saved' | 'vp'>): FileRun => ({ phase: 'queued', tries: 0, saved: r.saved, vp: r.vp });
+const requeue = (r: Pick<FileRun, 'saved' | 'vp' | 'bytes'>): FileRun => ({ phase: 'queued', tries: 0, saved: r.saved, vp: r.vp, ...(r.bytes ? { bytes: r.bytes } : {}) });
 
 /** F10: a removed hash re-added within the grace starts again: runs go back to `queued`; `skipped` and what Maglev saved are kept. */
 export function resetEntryForReturn(e: RequestEntry): RequestEntry {
@@ -430,8 +435,11 @@ const typedNames = new Map<string, string>();
 const PHASES: readonly string[] = ['queued', 'searching', 'saved', 'needs-pick', 'none', 'has-already', 'offline', 'limited', 'skipped', 'failed', 'unavailable'];
 
 /** Optional run fields, read from stored JSON. */
-function extras(r: Record<string, unknown>): Pick<FileRun, 'at' | 'fails' | 'retryAt' | 'saved' | 'vp'> {
-  const out: Pick<FileRun, 'at' | 'fails' | 'retryAt' | 'saved' | 'vp'> = {};
+function extras(r: Record<string, unknown>): Pick<FileRun, 'at' | 'fails' | 'retryAt' | 'saved' | 'vp' | 'bytes' | 'cands'> {
+  const out: Pick<FileRun, 'at' | 'fails' | 'retryAt' | 'saved' | 'vp' | 'bytes' | 'cands'> = {};
+  if (typeof r.bytes === 'number' && Number.isFinite(r.bytes) && r.bytes > 0) out.bytes = r.bytes;
+  const cands = cleanStored(r.cands);
+  if (cands) out.cands = cands;
   if (typeof r.at === 'number' && Number.isFinite(r.at)) out.at = r.at;
   if (typeof r.fails === 'number' && Number.isFinite(r.fails)) out.fails = r.fails;
   if (typeof r.retryAt === 'number' && Number.isFinite(r.retryAt)) out.retryAt = r.retryAt;
@@ -677,7 +685,9 @@ export function markSaved(key: string, fileKey?: string | null): void {
     const fk = fileKey && prev.files[fileKey] ? fileKey : paths.length === 1 ? paths[0] : null;
     const f = fk ? prev.files[fk] : undefined;
     if (!fk || !f) return;
-    const files = { ...prev.files, [fk]: { ...f, phase: 'saved' as RequestPhase, saved: true, at: Date.now() } };
+    const { cands: _c, ...rest } = f;
+    void _c;
+    const files = { ...prev.files, [fk]: { ...rest, phase: 'saved' as RequestPhase, saved: true, at: Date.now() } };
     entry = { ...prev, files, phase: rollUp(Object.values(files).map((x) => x.phase)) };
   } else {
     entry = { ...prev, phase: 'saved', saved: true, tries: Math.max(prev.tries, 1) };
@@ -687,7 +697,7 @@ export function markSaved(key: string, fileKey?: string | null): void {
   commit({ ...cur, [key]: entry });
 }
 
-const sameRun = (a: FileRun, b: FileRun): boolean => a.phase === b.phase && a.tries === b.tries && a.fails === b.fails && a.retryAt === b.retryAt && a.saved === b.saved && a.vp === b.vp;
+const sameRun = (a: FileRun, b: FileRun): boolean => a.phase === b.phase && a.tries === b.tries && a.fails === b.fails && a.retryAt === b.retryAt && a.saved === b.saved && a.vp === b.vp && JSON.stringify(a.cands) === JSON.stringify(b.cands);
 
 /**
  * The runner's write. `fileKey` null writes the request's own run (links); a path writes that file's run and rolls the
@@ -719,7 +729,9 @@ export function setRun(key: string, fileKey: string | null, run: FileRun, extra?
     if (run.vp) entry.vp = run.vp;
   } else {
     before = prev.files?.[fileKey] ?? { phase: 'queued', tries: -1 };
-    const files = { ...(prev.files ?? {}), [fileKey]: { ...run, at: now } };
+    // 46.4: the size is kept across the runner's writes; the candidates belong to this run only.
+    const bytes = run.bytes ?? prev.files?.[fileKey]?.bytes;
+    const files = { ...(prev.files ?? {}), [fileKey]: { ...run, ...(bytes ? { bytes } : {}), at: now } };
     entry = { ...prev, files, phase: rollUp(Object.values(files).map((f) => f.phase)), tries: Math.max(...Object.values(files).map((f) => f.tries)) };
   }
   if (extra && 'otherLang' in extra) {
@@ -732,15 +744,24 @@ export function setRun(key: string, fileKey: string | null, run: FileRun, extra?
 }
 
 /** The runner learned a torrent's video files: one queued run per path (kept when already known), others dropped. */
-export function setFileList(key: string, paths: readonly string[]): void {
+export function setFileList(key: string, paths: readonly string[], sizes?: Readonly<Record<string, number>>): void {
   const cur = load();
   const prev = cur[key];
   if (!prev) return;
   const old = prev.files ?? {};
   const files: Record<string, FileRun> = {};
-  for (const p of paths) files[p] = old[p] ?? { phase: prev.phase === 'skipped' ? 'skipped' : 'queued', tries: 0 };
+  let sizesChanged = false;
+  for (const p of paths) {
+    const run = old[p] ?? { phase: prev.phase === 'skipped' ? 'skipped' : 'queued', tries: 0 };
+    const n = sizes?.[p];
+    // 46.1: the size shows on the episode row's second line.
+    if (n && n > 0 && run.bytes !== n) {
+      files[p] = { ...run, bytes: n };
+      sizesChanged = true;
+    } else files[p] = run;
+  }
   const sameKeys = Object.keys(old).length === paths.length && paths.every((p) => p in old);
-  if (sameKeys) return;
+  if (sameKeys && !sizesChanged) return;
   commit({ ...cur, [key]: { ...prev, files, phase: rollUp(Object.values(files).map((f) => f.phase)) } });
 }
 

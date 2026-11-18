@@ -35,7 +35,8 @@ import { MobileDataSheet } from '../../components/search/MobileDataSheet';
 import { passesResultFilter } from '../../components/search/sharing';
 import { SIZE_STOPS, toFilter } from '../../components/search/sizeRange';
 import { oneTapAddNote } from '../../utils/addChecks';
-import { empty, watchCopy } from '../../constants/copy';
+import { SEARCH_TURN_ON_MORE, empty, watchCopy } from '../../constants/copy';
+import { countOffSources } from '../../utils/search/offSources';
 import { addWatchToStore } from '../../utils/watch/store';
 import { Reveal } from '../../components/motion';
 import { openBrowser } from '../../utils/browser/openBrowser';
@@ -409,6 +410,7 @@ export default function SearchScreen() {
             : null,
           auto: autoSubtitles,
           note: tightNotice ?? mobileNote ?? undefined,
+          sizeBytes: size,
         });
       } catch (e) {
         const { duplicate, notice: n } = addErrorNotice(e, () => {
@@ -660,6 +662,7 @@ export default function SearchScreen() {
   const hasResults = (update?.results.length ?? 0) > 0;
 
   const enabledCount = prefs.enabled.length;
+  const offCount = useMemo(() => countOffSources([...providers.values()], prefs.enabled, prefs.adult), [providers, prefs.enabled, prefs.adult]);
   let body: React.ReactNode;
   if (idle) {
     body =
@@ -713,7 +716,13 @@ export default function SearchScreen() {
           primary={{ label: 'Retry', icon: 'retry', onPress: () => setRetryTick((n) => n + 1) }}
         />
       ) : (
-        <EmptyBlock icon="search" title={empty.search.noResults(trimmed).title} body={empty.search.noResults(trimmed).body} />
+        // 45.5: sources that are off could have answered. Changing them restarts the search through `searchKey`.
+        <EmptyBlock
+          icon="search"
+          title={empty.search.noResults(trimmed, offCount).title}
+          body={empty.search.noResults(trimmed, offCount).body}
+          primary={offCount > 0 ? { label: SEARCH_TURN_ON_MORE, onPress: openProviders } : undefined}
+        />
       );
     const list = (
       <View style={styles.listWrap} onLayout={onListLayout}>

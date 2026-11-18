@@ -3,7 +3,7 @@
  * Pure: no React, so `scripts/test-url-download.js` runs it directly.
  */
 import type { DownloadSnapshot } from 'maglev-engine';
-import { formatBytes, formatSpeed } from '../constants/format.ts';
+import { formatBytes, formatCompactAmount, formatSpeed } from '../constants/format.ts';
 import { formatEta, smoothRate } from './rates.ts';
 import { doneLead } from './stats/format.ts';
 import { reasonFor, wifiOverrideAllowed, type BlockContext } from './blocks/reasons.ts';
@@ -199,14 +199,20 @@ function startedPct(d: DownloadSnapshot): number | null {
 }
 
 /** "412 MB of 1.2 GB" once something has arrived (just "412 MB" with no known size), else the size, else "—". */
-function amountOrSize(d: DownloadSnapshot, shortOpt: boolean | ((fullChars: number) => boolean) = false, extraChars = 0): { value: string; slot: DownloadSlot; full?: string } {
+function amountOrSize(d: DownloadSnapshot, shortOpt: boolean | ((fullChars: number) => boolean) = false, extraChars = 0, compact = false): { value: string; slot: DownloadSlot; full?: string } {
   if (d.size && d.size > 0) {
     const size = `${d.stream ? '~' : ''}${formatBytes(d.size)}`;
     if (d.downloaded <= 0) return { value: size, slot: 'size' };
     const full = `${formatBytes(d.downloaded)} of ${size}`;
     // `extraChars` is what sits beside the amount on the right (" · 8.4 MB/s"), so the narrow-card test sees the whole text.
     const short = typeof shortOpt === 'function' ? shortOpt(full.length + extraChars) : shortOpt;
-    return short ? { value: formatBytes(d.downloaded), slot: 'amount', full } : { value: full, slot: 'amount' };
+    if (!short) return { value: full, slot: 'amount' };
+    // NATIVE_CONTRACT 45.2 (and 43.3): while data flows, "134/587 MB" first; the amount alone only when that does not fit either.
+    if (compact) {
+      const text = formatCompactAmount(d.downloaded, d.size, d.stream ? '~' : '');
+      if (typeof shortOpt === 'function' && !shortOpt(text.length + extraChars)) return { value: text, slot: 'amount', full };
+    }
+    return { value: formatBytes(d.downloaded), slot: 'amount', full };
   }
   // Unknown total: only what has arrived.
   return d.downloaded > 0 ? { value: formatBytes(d.downloaded), slot: 'amount' } : { value: '—', slot: 'size' };
@@ -238,7 +244,7 @@ export function downloadStatus(
       if (flowing) {
         // Right side: the amount in the telemetry colour, then the speed (NATIVE_CONTRACT 43.3).
         const speed = d.downBps > 0 ? formatSpeed(d.downBps) : '—';
-        const amt = amountOrSize(d, opts.shortAmount, speed.length + 3);
+        const amt = amountOrSize(d, opts.shortAmount, speed.length + 3, true);
         const full = amountOrSize(d);
         const hasAmount = amt.slot === 'amount';
         return mk(lead, 'download', pct, speed, 'speed', null, hasAmount ? amt.value : undefined, hasAmount ? full.value : undefined);
@@ -508,6 +514,10 @@ export const whyCopy = {
   torrentNoPeers: 'No one sharing this has been found yet. Maglev keeps asking trackers and other peers.',
   torrentWaiting: (quiet: string) => `No data for ${quiet}. The peers it had stopped sending. Maglev keeps looking.`,
   stopsWaiting: (limit: string) => ` After ${limit} with no one sharing, it stops waiting.`,
+  /** 45.1: a torrent that has no file list yet. */
+  resolvingSentence: "Maglev needs this torrent's file list from someone who has it.",
+  resolvingNoPeers: ' No one sharing it has been found yet.',
+  resolvingAsking: (n: number) => ` Asking the ${n} it found.`,
   askTrackers: 'Ask trackers again',
   askedWait: (secs: number) => `Asked · try again in ${secs} s`,
   linkConnecting: (host: string) => `Waiting for ${host} to send the file.`,
@@ -518,7 +528,7 @@ export const whyCopy = {
 
 /** The block's content. The screen draws it; `askTrackers` says whether the "Ask trackers again" button belongs. */
 export interface WhyModel {
-  kind: 'connecting' | 'waiting';
+  kind: 'connecting' | 'waiting' | 'resolving';
   title: string;
   sentence: string;
   /** A second, muted line (the link page's "can't resume" hint). */
@@ -594,6 +604,31 @@ export function torrentWhy(i: TorrentWhyInput): WhyModel {
       { label: L.lastData, value: i.lastDataAgoMs == null ? '—' : `${formatSpan(i.lastDataAgoMs)} ago` },
     ],
     askTrackers: true,
+  };
+}
+
+export interface TorrentResolvingWhyInput {
+  peersTotal: number;
+  trackers: readonly { status: string }[];
+  /** Whole seconds the engine has been looking for the file list. */
+  resolvingSecs: number;
+}
+
+/**
+ * 45.1: the block for a torrent in INITIALIZING (no file list yet). No button: the engine refuses `reannounce`
+ * until the torrent is downloading or seeding (engine.rs `reannounce`, UNSUPPORTED), so offering it would only fail.
+ */
+export function torrentResolvingWhy(i: TorrentResolvingWhyInput): WhyModel {
+  const L = whyCopy.labels;
+  const stats: { label: string; value: string }[] = [{ label: L.found, value: String(i.peersTotal) }];
+  if (i.trackers.length > 0) stats.push({ label: L.trackers, value: `${i.trackers.filter((t) => t.status === 'working').length} of ${i.trackers.length}` });
+  stats.push({ label: L.trying, value: formatClock(i.resolvingSecs * 1000) });
+  return {
+    kind: 'resolving',
+    title: whyCopy.connectingTitle,
+    sentence: whyCopy.resolvingSentence + (i.peersTotal > 0 ? whyCopy.resolvingAsking(i.peersTotal) : whyCopy.resolvingNoPeers),
+    stats,
+    askTrackers: false,
   };
 }
 

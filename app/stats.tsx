@@ -143,14 +143,24 @@ export default function StatsScreen() {
   const inert = off || loaded == null || dayOne || stats.empty;
 
   const [sel, setSel] = useState(-1);
+  // The day picked when the range was last opened. Live counts refresh `buckets` about twice a second while something
+  // downloads, so the pick is only redone when the range itself changes (or the screen becomes inert/live). Before,
+  // every refresh put the train back on today a second after the user moved it.
+  const pickedFor = useRef<string | null>(null);
   useEffect(() => {
+    const key = `${shown.kind}:${shown.start}:${shown.end}:${inert ? 1 : 0}`;
     const d = pendingDay.current;
+    if (pickedFor.current === key && d == null) {
+      setSel((cur) => (cur >= buckets.length ? buckets.length - 1 : cur));
+      return;
+    }
+    pickedFor.current = key;
     pendingDay.current = null;
     const at = d != null ? buckets.findIndex((b) => d >= b.start && d <= b.end) : -1;
     // The train rests on today in the current range; a past range opens on its busiest building.
     const cur = buckets.findIndex((b) => b.current);
     setSel(inert ? -1 : at >= 0 ? at : cur >= 0 ? cur : busiest);
-  }, [buckets, busiest, inert]);
+  }, [buckets, busiest, inert, shown]);
 
   const [info, setInfo] = useState(false);
   const [sheet, setSheet] = useState<SheetSpec | null>(null);

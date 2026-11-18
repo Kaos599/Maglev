@@ -1,9 +1,12 @@
 import React, { memo, useMemo } from 'react';
+import { useRouter } from 'expo-router';
 import { StyleSheet, Text, View } from 'react-native';
 import { useTheme } from '../../context/ThemeContext';
 import { ThemeColors, radius, spacing, type } from '../../constants/theme';
 import { PixelIcon } from '../PixelIcon';
 import { PressableScale } from '../ui';
+import { useMaglevEngine } from '../../context/EngineContext';
+import { useSeasonBulk } from './bulkSave';
 import { ROW_LABEL } from '../../utils/subtitles/copy';
 import { getRequests, retryRequest, skipSubtitles, useRequestPhases } from '../../utils/subtitles/requests';
 import { useSubtitleConsent } from './useSubtitleConsent';
@@ -11,6 +14,7 @@ import { cardIconModel } from './flow';
 import { SubtitleBadge } from './SubtitleCardIcon';
 import { packCounts, rowModel, type SheetStart } from './rowModel';
 import { stateFor } from './stateStore';
+import { useSubtitleOffSources } from './useSubtitleEntry';
 import { useSubtitleStateVersion } from './useSubtitleStates';
 
 interface Props {
@@ -40,6 +44,10 @@ function SubtitlesRowImpl({ requestKey, stateKey = requestKey, started, canOpenS
   const phases = useRequestPhases([requestKey]);
   const stateVersion = useSubtitleStateVersion();
   const consent = useSubtitleConsent();
+  const router = useRouter();
+  const off = useSubtitleOffSources(false);
+  const bulk = useSeasonBulk();
+  const { showNotice } = useMaglevEngine();
   const entry = getRequests()[requestKey];
   const stored = useMemo(() => cardIconModel(stateFor(stateKey), Date.now()), [stateKey, stateVersion, phases[requestKey]]); // eslint-disable-line react-hooks/exhaustive-deps
   const m = rowModel({
@@ -53,12 +61,21 @@ function SubtitlesRowImpl({ requestKey, stateKey = requestKey, started, canOpenS
     canOpenSheet,
     canAskPack: !!onAskPack && !canOpenSheet && !entry,
     needsOk: consent.needsOk && !!entry,
+    offSources: off.count,
+    bestK: bulk.best([requestKey]),
+    bulk: bulk.progress([requestKey]),
   });
+  const extraAct = () => {
+    if (m.extra?.action === 'see-all') onSeeAll();
+    else router.push('/settings/subtitle-sources' as never);
+  };
 
   const act = () => {
     if (!m.button) return;
     if (m.button.action === 'cancel') skipSubtitles(requestKey);
     else if (m.button.action === 'see-all') onSeeAll();
+    else if (m.button.action === 'busy') return;
+    else if (m.button.action === 'use-best') void bulk.start([requestKey]).then((text) => text && showNotice({ message: text }, 6000));
     else if (m.button.action === 'try-again') retryRequest(requestKey);
     else if (m.button.action === 'review') consent.require(() => {});
     else if (m.button.action === 'ask-pack') consent.require(() => onAskPack?.());
@@ -88,6 +105,28 @@ function SubtitlesRowImpl({ requestKey, stateKey = requestKey, started, canOpenS
     </>
   );
 
+  // 45.5: "More sources" is a second button, so the card is a plain view with the row's own button inside.
+  if (m.extra) {
+    return (
+      <>
+        <View style={styles.cardColumn} testID="subtitles-row">
+          {m.button ? (
+            <PressableScale onPress={act} scaleTo={0.99} accessibilityRole="button" accessibilityLabel={m.a11y} style={styles.cardRow}>
+              {body}
+            </PressableScale>
+          ) : (
+            <View style={styles.cardRow} accessible accessibilityLabel={m.a11y}>
+              {body}
+            </View>
+          )}
+          <PressableScale onPress={extraAct} accessibilityRole="button" accessibilityLabel={m.extra.label} style={styles.moreButton} testID={m.extra.action === 'see-all' ? 'subtitles-row-see-all' : 'subtitles-row-more-sources'}>
+            <Text style={styles.buttonText}>{m.extra.label}</Text>
+          </PressableScale>
+        </View>
+        {consent.node}
+      </>
+    );
+  }
   if (!m.button) {
     return (
       <View style={styles.card} accessible accessibilityLabel={m.a11y} testID="subtitles-row">
@@ -123,6 +162,15 @@ const makeStyles = (c: ThemeColors) =>
       minHeight: 56,
       marginBottom: spacing.md,
     },
+    cardColumn: {
+      backgroundColor: c.surface,
+      borderWidth: 1,
+      borderColor: c.border,
+      borderRadius: radius.lg,
+      marginBottom: spacing.md,
+    },
+    cardRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, paddingVertical: spacing.sm, paddingLeft: spacing.lg, paddingRight: spacing.sm, minHeight: 56 },
+    moreButton: { minHeight: 44, paddingLeft: spacing.lg + 28 + spacing.md, paddingRight: spacing.md, justifyContent: 'center', alignSelf: 'flex-start' },
     icon: { width: 28, height: 28, alignItems: 'center', justifyContent: 'center' },
     ring: { position: 'absolute', width: 28, height: 28, borderRadius: 14, borderWidth: 1, borderStyle: 'dotted' },
     text: { flex: 1, gap: 2 },

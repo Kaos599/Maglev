@@ -24,7 +24,7 @@ import { DeleteSheet } from '../../components/transfers/DeleteSheet';
 import { playTorrentById } from '../../components/detail/playActions';
 import { SortSheet } from '../../components/transfers/SortSheet';
 import { TeachingEmptyState } from '../../components/transfers/TeachingEmptyState';
-import { FILTERS, TransferFilter, countByFilter, downloadMatchesFilter, finishedTransfers, magnetHash, matchesFilter, mergeTransfers, sortTorrents, type TransferItem } from '../../components/transfers/model';
+import { FILTERS, TransferFilter, countByFilter, downloadMatchesFilter, finishedTransfers, isHeldByFiles, magnetHash, matchesFilter, mergeTransfers, sortTorrents, type TransferItem } from '../../components/transfers/model';
 import { PixelIcon } from '../../components/PixelIcon';
 import { Banner, Button, EmptyBlock, IconButton } from '../../components/ui/index';
 import { ProgressMotionContext, type ProgressMotion } from '../../components/ui/ProgressBar';
@@ -369,8 +369,14 @@ export default function TransfersScreen() {
   }, []);
 
   const bulk = useCallback(
-    async (verb: BulkVerb, torrentFn: (id: string) => Promise<boolean>, downloadFn: (id: string) => Promise<boolean>) => {
-      const { torrents: tIds, downloads: dIds } = splitSelection(selectedIds);
+    async (
+      verb: BulkVerb,
+      torrentFn: (id: string) => Promise<boolean>,
+      downloadFn: (id: string) => Promise<boolean>,
+      skipTorrent?: (id: string) => boolean,
+    ) => {
+      const { torrents: allTIds, downloads: dIds } = splitSelection(selectedIds);
+      const tIds = skipTorrent ? allTIds.filter((id) => !skipTorrent(id)) : allTIds;
       // Leave selection after the press has fully finished, never inside the onPress frame.
       setTimeout(exitSelection, 0);
       const results = await Promise.all([
@@ -633,7 +639,13 @@ export default function TransfersScreen() {
         <BulkBar
           disabled={false}
           onPause={() => void bulk('Paused', pauseTorrent, pauseDownload)}
-          onResume={() => void bulk('Resumed', resumeTorrent, resumeDownload)}
+          onResume={() =>
+            // NATIVE_CONTRACT 47.4: a torrent held by a file health tag needs Recheck, so Resume skips it.
+            void bulk('Resumed', resumeTorrent, resumeDownload, (id) => {
+              const t = all.find((x) => x.id === id);
+              return !!t && isHeldByFiles(t);
+            })
+          }
           onDelete={() => setDeleteOpen(true)}
         />
       ) : (

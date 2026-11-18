@@ -5,7 +5,7 @@
     },
     "name": "Maglev",
     "slug": "maglev",
-    "version": "0.30",
+    "version": "0.31",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "scheme": "maglev",
@@ -27,7 +27,7 @@
         "monochromeImage": "./assets/adaptive-icon-monochrome.png",
         "backgroundColor": "#0B2A30"
       },
-      "predictiveBackGestureEnabled": true,
+      "predictiveBackGestureEnabled": false,
       "package": "com.maglev",
       "permissions": [
         "INTERNET",
@@ -113,7 +113,7 @@
           ]
         }
       ],
-      "versionCode": 30
+      "versionCode": 31
     },
     "web": {
       "favicon": "./assets/favicon.png",

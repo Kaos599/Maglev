@@ -4,7 +4,7 @@
  * The component and the hook that use it are components/search/AddedTray.tsx.
  */
 import { formatBytes } from '../constants/format.ts';
-import { parseName, parseRelease, stripName } from './subtitles/parseName.ts';
+import { SOURCE_PATTERNS, parseName, parseRelease, stripName } from './subtitles/parseName.ts';
 import type { RequestPhase, SubtitleAsk } from './subtitles/requests.ts';
 
 /** The message stays this long after the latest add. */
@@ -27,6 +27,8 @@ export interface TrayItem {
   via?: 'auto' | 'manual';
   /** A short note on the add itself ("Leaves 2 GB free"). Shown only when the message has this one add. */
   note?: string;
+  /** 45.3: what tells this add apart from another with the same name: "2160p", "BDRip", a release group or a size. */
+  tell?: string;
 }
 
 export interface TrayState {
@@ -51,6 +53,8 @@ export interface TrayAdd {
   alreadyThere?: boolean;
   auto: boolean;
   note?: string;
+  /** Size in bytes, when known. The last thing 45.3 uses to tell two adds with the same name apart. */
+  sizeBytes?: number;
   /** 44.15 F9: the phase of a request already held for this key, if any. A skipped or saved one never says "Getting". */
   phase?: RequestPhase;
 }
@@ -101,6 +105,29 @@ export function buildAsk(i: { infoHash: string; name: string; sizeBytes?: number
   return { key: i.key ?? `t:${i.infoHash.toLowerCase()}`, title, detail };
 }
 
+/** 45.3: the source as written in the name ("BDRip", "WEB-DL"), or null. */
+function sourceToken(name: string): string | null {
+  const n = stripName(name);
+  for (const [, re] of SOURCE_PATTERNS) {
+    const m = re.exec(n);
+    if (m) return m[0].replace(/^[^a-z0-9]/i, '');
+  }
+  return null;
+}
+
+/**
+ * 45.3: the part that tells an add apart from another with the same name. The resolution if there is one, otherwise
+ * the source or release group, otherwise the size. Empty when the name and size say nothing.
+ */
+export function tellApart(name: string, sizeBytes?: number): string {
+  const info = parseRelease(name);
+  if (info.resolution) return info.resolution;
+  const source = sourceToken(name);
+  if (source) return source;
+  if (info.group) return info.group;
+  return sizeBytes && sizeBytes > 0 ? formatBytes(sizeBytes) : '';
+}
+
 // ---------------------------------------------------------------- merging
 
 export function mergeAdd(prev: TrayState | null, add: TrayAdd, now: number): TrayState {
@@ -123,6 +150,7 @@ export function mergeAdd(prev: TrayState | null, add: TrayAdd, now: number): Tra
     sub: settled ? 'skipped' : add.ask && add.auto ? 'asked' : 'none',
     ...(!settled && add.ask && add.auto ? { via: 'auto' as const } : {}),
     ...(add.note ? { note: add.note } : {}),
+    ...(tellApart(add.name, add.sizeBytes) ? { tell: tellApart(add.name, add.sizeBytes) } : {}),
   };
   next.items = [...next.items, item];
   return next;
@@ -190,6 +218,16 @@ export function nameList(names: readonly string[]): string {
   return `${names[0]}, ${names[1]} and ${names.length - 2} more`;
 }
 
+/**
+ * 45.3: the names the message shows. Two adds that would read the same each get their distinguishing part in
+ * parentheses: "Big Buck Bunny (2160p), Big Buck Bunny (BDRip)". Names that already differ are left alone.
+ */
+export function itemNames(items: readonly TrayItem[]): string[] {
+  const count = new Map<string, number>();
+  for (const x of items) count.set(x.display, (count.get(x.display) ?? 0) + 1);
+  return items.map((x) => ((count.get(x.display) ?? 0) > 1 && x.tell ? `${x.display} (${x.tell})` : x.display));
+}
+
 /** True when the message is only about adds that were already in Transfers. */
 export const isAlreadyOnly = (s: TrayState): boolean => s.items.length === 0 && s.already.length > 0;
 
@@ -207,7 +245,7 @@ export function trayTitle(s: TrayState): string {
 
 export function trayLine(s: TrayState): string {
   if (isAlreadyOnly(s)) return nameList(s.already.map((x) => x.display));
-  let line = nameList(s.items.map((x) => x.display));
+  let line = nameList(itemNames(s.items));
   if (s.items.length === 1 && s.items[0].note) line = `${line} · ${s.items[0].note}`;
   if (s.already.length === 1) line = `${line} · ${s.already[0].short} was already there`;
   else if (s.already.length > 1) line = `${line} · ${s.already.length} were already there`;

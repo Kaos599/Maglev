@@ -45,13 +45,13 @@ import {
 } from '../../components/detail/fileHealthMachine';
 import { FileListRow } from '../../components/detail/FileListRow';
 import { PrioritySheet } from '../../components/detail/PrioritySheet';
-import { canResumeAnyway, resumeAnywayLabel, torrentSituation } from '../../components/transfers/model';
+import { canResumeAnyway, isHeldByFiles, resumeAnywayLabel, torrentSituation } from '../../components/transfers/model';
 import { useFlowClock } from '../../components/transfers/useStatusOpts';
 import { WhyStuck } from '../../components/detail/WhyStuck';
 import { reasonsForItem } from '../../utils/blocks/reasons';
 import { WhyHeld } from '../../components/transfers/WhyHeld';
 import { useLiveBlockContext } from '../../utils/blocks/useActiveBlocks';
-import { WIFI_ANYWAY_NOTE, torrentWhy } from '../../utils/downloadCopy';
+import { WIFI_ANYWAY_NOTE, torrentResolvingWhy, torrentWhy } from '../../utils/downloadCopy';
 import { TorrentMoreSheet } from '../../components/detail/TorrentMoreSheet';
 import { SpeedLimitSheet } from '../../components/detail/SpeedLimitSheet';
 import { MoveSheet } from '../../components/detail/MoveSheet';
@@ -126,6 +126,8 @@ export default function TorrentDetailScreen() {
   const [subtitleTarget, setSubtitleTarget] = useState<SubtitleTarget | null>(null);
   const [subtitleStart, setSubtitleStart] = useState<SheetStart>('results');
   const [subtitlesAll, setSubtitlesAll] = useState(false);
+  // 46.2: the single sheet was opened from an episode row, so closing it brings the list back.
+  const [backToAll, setBackToAll] = useState(false);
   const [notice, setNotice] = useState<Notice | null>(null);
   const [pending, setPending] = useState<Record<number, FilePriority>>({});
   const [prioTarget, setPrioTarget] = useState<number[] | null>(null);
@@ -339,7 +341,10 @@ export default function TorrentDetailScreen() {
           lastDataAgoMs: flow.lastDataAgoMs,
           peerTimeoutMins,
         })
-      : null;
+      : // NATIVE_CONTRACT 45.1: no file list yet. The page only; the card keeps its "Looking for peers" line.
+        detail && snap?.state === 'INITIALIZING' && snap.resolvingSecs != null
+        ? torrentResolvingWhy({ peersTotal: snap.peersSeen, trackers, resolvingSecs: snap.resolvingSecs })
+        : null;
 
   // Drop the optimistic limit once the engine reports the same values.
   useEffect(() => {
@@ -687,9 +692,11 @@ export default function TorrentDetailScreen() {
       }
     : null;
   const ruleResume = snap?.state === 'PAUSED' && canResumeAnyway(snap.pausedBy, blockCtx);
+  // NATIVE_CONTRACT 47.4: a file health tag holds the torrent; the Recheck banner is the way out, not Resume.
+  const heldByFiles = snap?.state === 'PAUSED' && isHeldByFiles(snap);
   const headerActions = snap ? (
     <>
-      {snap.state === 'CHECKING' || snap.state === 'INITIALIZING' || snap.state === 'MOVING' ? null : (
+      {snap.state === 'CHECKING' || snap.state === 'INITIALIZING' || snap.state === 'MOVING' || heldByFiles ? null : (
         <IconButton
           icon={
             snap.state === 'ERROR' ? 'retry' : snap.state === 'DOWNLOADING' || snap.state === 'SEEDING' || snap.state === 'QUEUED' ? 'pause' : 'play'
@@ -1133,6 +1140,7 @@ export default function TorrentDetailScreen() {
         onClose={() => setMoreOpen(false)}
         state={snap.state}
         pausedBy={snap.pausedBy}
+        heldByFiles={heldByFiles}
         retryInSecs={retryInSecs}
         onTogglePause={() => {
           setMoreOpen(false);
@@ -1226,6 +1234,10 @@ export default function TorrentDetailScreen() {
         onClose={() => {
           setSubtitleTarget(null);
           setSubtitleStart('results');
+          if (backToAll) {
+            setBackToAll(false);
+            setSubtitlesAll(true);
+          }
         }}
       />
       <MultiSubtitleSheet
@@ -1234,6 +1246,16 @@ export default function TorrentDetailScreen() {
         asks={getRequests()[`t:${id.toLowerCase()}`] ? [getRequests()[`t:${id.toLowerCase()}`].ask] : []}
         onConfirm={() => setSubtitlesAll(false)}
         onClose={() => setSubtitlesAll(false)}
+        onOpenEpisode={(_askKey, fileKey, start) => {
+          // 46.2: the same path the Files tab's Find subtitles takes: this page's SubtitleSheet for that file.
+          const f = files.find((x) => x.path === fileKey);
+          const target = f ? torrentTarget(id, snap.outputFolder, f, downloadedFiles) : null;
+          if (!target) return;
+          setSubtitlesAll(false);
+          setBackToAll(true);
+          setSubtitleStart(start);
+          setSubtitleTarget(target);
+        }}
       />
     </Screen>
   );
