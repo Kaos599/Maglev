@@ -41,7 +41,7 @@ async function main() {
     check(`${g} rows are ${expected.join(', ')}`, JSON.stringify(rows) === JSON.stringify(expected), rows.join(', '));
   };
   orderOf('General', 'generalRows', ['Appearance', 'Assistant', 'Notifications', 'Backup and restore']);
-  orderOf('Finding things', 'findRows', ['Search sources', 'Auto-download']);
+  orderOf('Finding things', 'findRows', ['Search sources', 'Auto-download', 'Subtitles']);
   orderOf('Network and power', 'networkRows', ['Network', 'Power', 'Browser']);
   orderOf('App', 'appRows', ['About', 'Updates']);
   {

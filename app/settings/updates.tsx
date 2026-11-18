@@ -7,7 +7,7 @@ import { ThemeColors, radius, spacing, type } from '../../constants/theme';
 import { useTheme } from '../../context/ThemeContext';
 import { Button, ListRow, RadioCard, SectionHeader, Sheet, Toggle } from '../../components/ui';
 import { Caption, Card, SettingsPage } from '../../components/settings/SettingsParts';
-import { listsCopy, updateCopy } from '../../constants/copy';
+import { highlightCopy, listsCopy, updateCopy } from '../../constants/copy';
 import { updateInfoOf, useHasUpdate } from '../../components/settings/updates/useHasUpdate';
 import { plainNotes } from '../../utils/update/check';
 import type { UpdateState } from '../../utils/update/machine';
@@ -198,6 +198,17 @@ export default function UpdatesSettings() {
             />
           </>
         )}
+        <ListRow
+          title={highlightCopy.settingTitle}
+          subtitle={highlightCopy.settingSubtitle}
+          accessory={
+            <Toggle
+              value={prefs.showHighlights}
+              onValueChange={(showHighlights) => setPrefs({ showHighlights })}
+              accessibilityLabel={highlightCopy.settingTitle}
+            />
+          }
+        />
       </Card>
       <SectionHeader title="Lists" />
       <Caption>{LISTS_CAPTION}</Caption>

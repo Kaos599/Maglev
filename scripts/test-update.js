@@ -209,6 +209,7 @@ const release = (tag, over = {}) => ({
   check('defaults: download mode, auto check on', d.updateMode === 'download' && d.updateAutoCheck === true && d.lastCheckAt === null && d.skippedVersion === null && d.pending === null);
   check('junk falls back to defaults', JSON.stringify(prefs.normalizeUpdatePrefs({ updateMode: 'x', updateAutoCheck: 'no', lastCheckAt: 'now', skippedVersion: 3, pending: 7 })) === JSON.stringify({ ...d, updateAutoCheck: true }));
   check('modes and the toggle are kept', prefs.normalizeUpdatePrefs({ updateMode: 'auto', updateAutoCheck: false }).updateMode === 'auto' && prefs.normalizeUpdatePrefs({ updateAutoCheck: false }).updateAutoCheck === false);
+  check('showHighlights defaults on, only false turns it off, and toNativeConfig never reads it', d.showHighlights === true && prefs.normalizeUpdatePrefs({ showHighlights: 'no' }).showHighlights === true && prefs.normalizeUpdatePrefs({ showHighlights: false }).showHighlights === false && !/showHighlights/.test(fs.readFileSync(require('path').join(__dirname, '../modules/maglev-engine/src/toNativeConfig.ts'), 'utf8')));
   const pend = prefs.normalizeUpdatePrefs({ pending: { info, path: '/x.apk' } }).pending;
   check('a pending update survives normalizing', pend && pend.path === '/x.apk' && pend.info.sha256 === SHA && pend.info.version === '0.22');
   check('a pending update without a good hash is dropped', prefs.normalizeUpdatePrefs({ pending: { info: { ...info, sha256: 'zz' }, path: '/x.apk' } }).pending === null);
