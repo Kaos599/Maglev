@@ -19,10 +19,11 @@ name: transfers-detail
 - assertVisible: "Peers"
 - assertVisible: "Trackers"
 - assertVisible: "Pieces"
-# Tab labels: app/torrent/[id].tsx:78-83, rendered by components/ui SegmentedControl (accessibilityLabel = label)
-- assertVisible: "Download"
-- assertVisible: "Size"
-# Stat grid labels: app/torrent/[id].tsx:820-830 (components/detail/StatGrid.tsx)
+# Since 0.30 the default Compact download page (Settings > Appearance > Download page) has no six-box grid: the "Download" and "Size"
+# boxes (components/detail/TorrentStats.tsx) only show in Detailed. Compact shows the progress card, a
+# Speed row and the Saved to row, so check those instead.
+- assertVisible: "Speed"
+- assertVisible: "Saved to"
 - tapOn: "Files"
 # File row label: `${file.path}, ${size}, ${pct} percent, ${priority}` (components/detail/FileListRow.tsx:48). Rows are sorted by name and the
 # list is long (Sintel has subtitle files before the .mp4, and the torrent can finish in seconds on CI), so match any row, not an .mp4.

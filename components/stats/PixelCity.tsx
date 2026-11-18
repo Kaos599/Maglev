@@ -163,11 +163,12 @@ export function PixelCity({ kind, buckets, busiest, selected, minIndex, peakHour
       const full = heights[i];
       const h = t == null ? full : Math.round(full * easeOutCubic((t - riseStart(i, Math.max(0, hi), RUN_MS)) / 220));
       const top = BASE - h;
-      if (b.current) {
+      // The outline follows the train: the selected building (today until the user picks another day).
+      if (i === (selected >= 0 ? selected : buckets.findIndex((x) => x.current))) {
         const nh = Math.max(3, h);
         now += frameD(px, BASE - nh, L.bw, nh);
-        if (live && h > 0) roof += rectD(px, BASE - h, L.bw, 1);
       }
+      if (b.current && live && h > 0) roof += rectD(px, BASE - h, L.bw, 1);
       if (h > 0) {
         // Every building is filled, today's and the busiest too; their outlines are drawn on top.
         if (i % 2) bB += rectD(px, top, L.bw, h);
@@ -184,7 +185,7 @@ export function PixelCity({ kind, buckets, busiest, selected, minIndex, peakHour
       if (i === busiest && (h > 0 || t == null)) busy += frameD(px - 1, BASE - Math.max(3, h) - 1, L.bw + 2, Math.max(3, h) + 1);
     });
     return { gA, gB, fence, bA, bB, wOff, wOn, now, roof, busy };
-  }, [buckets, heights, t, ux, L, kind, busiest, hi, live]);
+  }, [buckets, heights, t, ux, L, kind, busiest, hi, live, selected]);
 
   const sky = useMemo(() => {
     if (peakHour == null) return null;

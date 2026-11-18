@@ -37,7 +37,9 @@ import {
   type PendingMap,
 } from '../utils/optimistic';
 import { shareRows } from '../components/transfers/snapshots';
+import { router } from 'expo-router';
 import { notices } from '../constants/copy';
+import { OPEN_TORRENT_LABEL, resumableIds, resumeFailureNotice } from '../components/transfers/resumeRules';
 import { isAddableLink } from '../utils/addableLink';
 import { noteRemoved, recordSnapshot } from '../utils/stats';
 import { getCatchCopiedLinks } from '../utils/prefs/clipboard';
@@ -671,11 +673,21 @@ export const EngineProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       if (pendingRef.current[id]) return false;
       const label = nameOf(id);
       const group = beginTap([id], 'resume');
-      const ok = (await maglevEngine.resume(id)).ok;
-      endTap(group, ok, notices.engine.resumeFailed(label));
-      return ok;
+      const res = await maglevEngine.resume(id);
+      endTap(group, res.ok);
+      if (!res.ok) {
+        // NATIVE_CONTRACT 47.4: a file-health hold says why, and Open goes to the Recheck banner.
+        const held = liveRef.current.torrents.find((t) => t.id === id);
+        const failure = resumeFailureNotice(res, held, label);
+        showNotice(
+          failure.openTorrent
+            ? { message: failure.message, actionLabel: OPEN_TORRENT_LABEL, onAction: () => router.push({ pathname: '/torrent/[id]', params: { id } }) }
+            : { message: failure.message },
+        );
+      }
+      return res.ok;
     },
-    [nameOf, beginTap, endTap]
+    [nameOf, beginTap, endTap, showNotice]
   );
   const pauseAll = useCallback(async () => {
     const ids = liveRef.current.torrents
@@ -686,9 +698,8 @@ export const EngineProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     endTap(group, res.ok, notices.engine.pauseAllFailed);
   }, [beginTap, endTap]);
   const resumeAll = useCallback(async () => {
-    const ids = liveRef.current.torrents
-      .filter((t) => t.state === 'PAUSED' && (!t.pausedBy || t.pausedBy === 'user') && !pendingRef.current[t.id])
-      .map((t) => t.id);
+    // NATIVE_CONTRACT 47.4: torrents held by a file health tag are skipped (the engine skips them too).
+    const ids = resumableIds(liveRef.current.torrents, (id) => !!pendingRef.current[id]);
     const group = beginTap(ids, 'resume');
     const res = await maglevEngine.resumeAll();
     endTap(group, res.ok, notices.engine.resumeAllFailed);

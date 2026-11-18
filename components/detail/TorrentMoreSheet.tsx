@@ -24,6 +24,8 @@ interface Props {
   limitSummary?: string;
   onOpenFolder: () => void;
   onDelete: () => void;
+  /** NATIVE_CONTRACT 47.4: a file health tag holds the torrent. It needs Recheck, so there is no Resume. */
+  heldByFiles?: boolean;
   /** SM-33: the SD card is gone, so Recheck is off. */
   storageGone?: boolean;
   /** Find subtitles… (36.10): finished with exactly one video. Default hidden. */
@@ -52,6 +54,7 @@ export function TorrentMoreSheet({
   onOpenFolder,
   onDelete,
   storageGone = false,
+  heldByFiles = false,
   subtitles = 'hidden',
   onFindSubtitles,
 }: Props) {
@@ -67,12 +70,14 @@ export function TorrentMoreSheet({
       : 'Available while downloading or seeding';
   return (
     <Sheet visible={visible} onClose={onClose} title="Torrent options">
-      <ListRow
-        title={running ? 'Pause' : state === 'PAUSED' && pausedBy === 'seed_limit' ? 'Seed again' : 'Resume'}
-        icon={running ? 'pause' : 'play'}
-        disabled={!canTogglePause}
-        onPress={onTogglePause}
-      />
+      {heldByFiles && !running ? null : (
+        <ListRow
+          title={running ? 'Pause' : state === 'PAUSED' && pausedBy === 'seed_limit' ? 'Seed again' : 'Resume'}
+          icon={running ? 'pause' : 'play'}
+          disabled={!canTogglePause}
+          onPress={onTogglePause}
+        />
+      )}
       <ListRow
         title="Recheck files"
         subtitle={storageGone ? "The SD card isn't there." : 'Verify everything on disk'}
