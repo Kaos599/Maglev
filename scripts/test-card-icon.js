@@ -44,7 +44,7 @@ function check(name, cond) {
   check('non-boolean becomes on', mig({ showFileIcons: 'no' }) === true);
   check('UI only: toNativeConfig never reads it', !/showFileIcons/.test(read('modules/maglev-engine/src/toNativeConfig.ts')));
   const ui = read('app/settings/interface.tsx');
-  check('Interface has the switch with the agreed copy', /Show file type icons/.test(ui) && /Show an icon for the kind of file on each download\./.test(ui) && /showFileIcons/.test(ui));
+  check('Interface has the switch with the agreed copy', /Show file type icons in Transfers/.test(ui) && /Show an icon for the kind of file on each download\./.test(ui) && /showFileIcons/.test(ui));
 
   console.log('[wiring]');
   const card = read('components/TransferCard.tsx');

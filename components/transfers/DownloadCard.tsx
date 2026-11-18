@@ -27,7 +27,7 @@ export interface DownloadCardProps {
   onRemove?: (id: string) => void;
   /** The "Swipe to pause or remove" setting. Off: the card has no swipe wrapper at all. */
   swipeEnabled?: boolean;
-  /** The "Show file type icons" setting. The icon shares the slot of the selection checkbox. */
+  /** The "Show file type icons in Transfers" setting. The icon shares the slot of the selection checkbox. */
   showFileIcon?: boolean;
 }
 
