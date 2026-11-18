@@ -51,7 +51,7 @@ import { WhyStuck } from '../../components/detail/WhyStuck';
 import { reasonsForItem } from '../../utils/blocks/reasons';
 import { WhyHeld } from '../../components/transfers/WhyHeld';
 import { useLiveBlockContext } from '../../utils/blocks/useActiveBlocks';
-import { WIFI_ANYWAY_NOTE, torrentWhy } from '../../utils/downloadCopy';
+import { WIFI_ANYWAY_NOTE, torrentResolvingWhy, torrentWhy } from '../../utils/downloadCopy';
 import { TorrentMoreSheet } from '../../components/detail/TorrentMoreSheet';
 import { SpeedLimitSheet } from '../../components/detail/SpeedLimitSheet';
 import { MoveSheet } from '../../components/detail/MoveSheet';
@@ -339,7 +339,10 @@ export default function TorrentDetailScreen() {
           lastDataAgoMs: flow.lastDataAgoMs,
           peerTimeoutMins,
         })
-      : null;
+      : // NATIVE_CONTRACT 45.1: no file list yet. The page only; the card keeps its "Looking for peers" line.
+        detail && snap?.state === 'INITIALIZING' && snap.resolvingSecs != null
+        ? torrentResolvingWhy({ peersTotal: snap.peersSeen, trackers, resolvingSecs: snap.resolvingSecs })
+        : null;
 
   // Drop the optimistic limit once the engine reports the same values.
   useEffect(() => {

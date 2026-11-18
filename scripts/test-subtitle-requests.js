@@ -273,6 +273,14 @@ function check(name, cond) {
     check('D10: the notice is shown at opt-in: Settings switch, Add switch, tray and row', /consent\.require/.test(read('app/settings/subtitles.tsx')) && /consent\.require/.test(read('components/search/SubtitlesAutoRow.tsx')) && /consent\.require/.test(read('components/search/AddedTray.tsx')) && /consent\.require/.test(read('components/subtitles/SubtitlesRow.tsx')));
     check('D10: it reuses the existing notice text and the single sheet accepts the same way', /privacyNotice\(names\)/.test(read('components/subtitles/useSubtitleConsent.tsx')) && /acceptPrivacy\(\)/.test(read('components/subtitles/SubtitleSheet.tsx')));
 
+    console.log('[45.4 confirm before automatic mode turns on]');
+    check('45.4 copy: title, body and buttons', copy.AUTO_CONFIRM_TITLE === 'Get subtitles for new videos?' && copy.AUTO_CONFIRM_BODY === 'While Maglev is open, it sends the names of new videos you add to your subtitle sources, and saves a subtitle when one fits. Close matches wait for you.' && copy.AUTO_CONFIRM_TURN_ON === 'Turn on' && copy.AUTO_CONFIRM_NOT_NOW === 'Not now');
+    check('45.4 notice already accepted: the sheet says only the confirm text', copy.autoConfirmBody(false, ['A']) === copy.AUTO_CONFIRM_BODY);
+    check('45.4 notice never accepted: the privacy text comes first in the same sheet', copy.autoConfirmBody(true, ['A', 'B']) === `${copy.privacyNotice(['A', 'B'])}\n\n${copy.AUTO_CONFIRM_BODY}`);
+    const hook = read('components/subtitles/useSubtitleConsent.tsx');
+    check('45.4 confirm shows even when no notice is due, and Turn on accepts the notice only when it was due', /!needsOk && !opts\?\.confirm/.test(hook) && /if \(needsOk\) updateSettings\(acceptPrivacy\(p\?\.more\)\)/.test(hook) && /AUTO_CONFIRM_TURN_ON/.test(hook) && /autoConfirmBody\(needsOk, names\)/.test(hook));
+    check('45.4 the Settings switch always confirms; the Add-screen Auto switch does not', /\{ confirm: true \}/.test(read('app/settings/subtitles.tsx')) && !/confirm/.test(read('components/search/SubtitlesAutoRow.tsx')));
+
     console.log('[44.15 D11 a manual save updates the request]');
     R.resetRequestsForTests();
     R.askSubtitles([askOf('d:m1'), askOf('t:pk')], { auto: false });

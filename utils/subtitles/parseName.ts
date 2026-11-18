@@ -146,7 +146,7 @@ export function parsedText(p: ParsedName, typing = false): string {
 
 // ---------------------------------------------------------------- release info (for rank.ts and zip choice)
 
-const SOURCE_PATTERNS: [string, RegExp][] = [
+export const SOURCE_PATTERNS: [string, RegExp][] = [
   ['webdl', /(?:^|[^a-z0-9])web[ ._-]?dl(?![a-z0-9])/i],
   ['webrip', /(?:^|[^a-z0-9])web[ ._-]?rip(?![a-z0-9])/i],
   ['bluray', /(?:^|[^a-z0-9])(?:blu[ ._-]?ray|bdrip|brrip|bdremux|bd)(?![a-z0-9])/i],

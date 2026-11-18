@@ -1,6 +1,6 @@
 import type { DownloadSnapshot, TorrentTelemetry } from 'maglev-engine';
 import type { SortKey, TransferSort } from '../../utils/prefs/transfers';
-import { formatBytes, formatSpeed } from '../../constants/format.ts';
+import { formatBytes, formatCompactAmount, formatSpeed } from '../../constants/format.ts';
 import { resolvingLine } from '../detail/fileHealthMachine.ts';
 import { reasonFor, wifiOverrideAllowed, type BlockContext } from '../../utils/blocks/reasons.ts';
 import { downloadProgress } from '../../utils/downloadCopy.ts';
@@ -200,13 +200,19 @@ export interface StatusOpts {
  * Right side when no data flows: the amount once something has downloaded, else the size, else "—".
  * An unknown total shows only what is downloaded. `full` is the longer amount when `short` cut it.
  */
-function amountOrSize(t: StatusRow, shortOpt: StatusOpts['shortAmount'] = false, extraChars = 0): { value: string; slot: StatusSlot; full?: string } {
+function amountOrSize(t: StatusRow, shortOpt: StatusOpts['shortAmount'] = false, extraChars = 0, compact = false): { value: string; slot: StatusSlot; full?: string } {
   const target = targetBytes(t);
   if (t.downloadedBytes > 0 && target > 0) {
     const full = `${formatBytes(t.downloadedBytes)} of ${formatBytes(target)}`;
     // `extraChars` is what sits beside the amount on the right (" · 2.1 MB/s"), so the narrow-card test sees the whole text.
     const short = typeof shortOpt === 'function' ? shortOpt(full.length + extraChars) : shortOpt;
-    return short ? { value: formatBytes(t.downloadedBytes), slot: 'amount', full } : { value: full, slot: 'amount' };
+    if (!short) return { value: full, slot: 'amount' };
+    // NATIVE_CONTRACT 45.2: while data flows, "134/587 MB" first; the amount alone only when that does not fit either.
+    if (compact) {
+      const text = formatCompactAmount(t.downloadedBytes, target);
+      if (typeof shortOpt === 'function' && !shortOpt(text.length + extraChars)) return { value: text, slot: 'amount', full };
+    }
+    return { value: formatBytes(t.downloadedBytes), slot: 'amount', full };
   }
   if (t.downloadedBytes > 0) return { value: formatBytes(t.downloadedBytes), slot: 'amount' };
   return { value: t.totalSizeBytes > 0 ? formatBytes(t.totalSizeBytes) : '—', slot: 'size' };
@@ -263,7 +269,7 @@ export function torrentStatus(t: StatusRow, etaLabel: string, ctx: BlockContext 
       if (flowing) {
         // Right side: the amount in the telemetry colour, then the speed (NATIVE_CONTRACT 43.2).
         const speed = t.downloadSpeedBytes > 0 ? formatSpeed(t.downloadSpeedBytes) : '—';
-        const amt = amountOrSize(t, opts.shortAmount, speed.length + 3);
+        const amt = amountOrSize(t, opts.shortAmount, speed.length + 3, true);
         const full = amountOrSize(t);
         const hasAmount = amt.slot === 'amount';
         return line(lead, 'download', pct, speed, 'speed', null, hasAmount ? amt.value : undefined, hasAmount ? full.value : undefined);

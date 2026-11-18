@@ -118,6 +118,18 @@ export function errorCopy(code: SubtitleErrorCode, a: CopyArgs = {}): ErrorCopy 
 /** 44.6. The switch's line in Settings > Subtitles. */
 export const AUTO_NEW_VIDEOS_SUBTITLE = 'In your languages, while Maglev is open';
 
+/** 45.4: the confirm sheet for the Settings switch. It always shows, because names go out in the background. */
+export const AUTO_CONFIRM_TITLE = 'Get subtitles for new videos?';
+export const AUTO_CONFIRM_BODY =
+  'While Maglev is open, it sends the names of new videos you add to your subtitle sources, and saves a subtitle when one fits. Close matches wait for you.';
+export const AUTO_CONFIRM_TURN_ON = 'Turn on';
+export const AUTO_CONFIRM_NOT_NOW = NOTICE_NOT_NOW;
+
+/** 45.4: the sheet's text. When the one-time notice was never accepted, it comes first and Turn on accepts both. */
+export function autoConfirmBody(needsNotice: boolean, names: readonly string[]): string {
+  return needsNotice ? `${privacyNotice(names)}\n\n${AUTO_CONFIRM_BODY}` : AUTO_CONFIRM_BODY;
+}
+
 /** 44.7: results only in languages the user didn't pick. */
 export const foundInOtherOnly = (language: string): string => `Found in ${languageName(language)} only`;
 

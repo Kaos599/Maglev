@@ -43,8 +43,8 @@ export default function SubtitlesSettings() {
               title="Get subtitles for new videos"
               subtitle={AUTO_NEW_VIDEOS_SUBTITLE}
               accessory={<Toggle value={sub.autoNewVideos} onValueChange={(autoNewVideos) => {
-                  // NATIVE_CONTRACT 44.15 D10: the switch stays off until Continue on the one-time notice.
-                  if (autoNewVideos) consent.require(() => patch({ autoNewVideos: true }), { autoNewVideos: true });
+                  // NATIVE_CONTRACT 44.15 D10 and 45.4: the switch stays off until Turn on; the sheet always shows.
+                  if (autoNewVideos) consent.require(() => patch({ autoNewVideos: true }), { autoNewVideos: true }, { confirm: true });
                   else patch({ autoNewVideos: false });
                 }} accessibilityLabel="Get subtitles for new videos" />}
             />

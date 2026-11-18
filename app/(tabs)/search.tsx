@@ -409,6 +409,7 @@ export default function SearchScreen() {
             : null,
           auto: autoSubtitles,
           note: tightNotice ?? mobileNote ?? undefined,
+          sizeBytes: size,
         });
       } catch (e) {
         const { duplicate, notice: n } = addErrorNotice(e, () => {
