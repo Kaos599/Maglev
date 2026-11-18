@@ -68,7 +68,8 @@ These rules exist because Phase 1 was once marked "complete" while the engine wa
 4. **CI is the compiler.** Rust and Gradle are never installed locally. CI rejects a `.so` under 3 MB, a `.so` without librqbit symbols, or a `.so` without 16 KB page alignment.
 5. **Native binaries are never committed.** `jniLibs/` is gitignored. CI builds the binaries on every push.
 6. **Settings must round-trip.** Every user-facing setting is persisted (expo-sqlite kv-store) and reaches Rust through `toNativeConfig`. `nativeGetEffectiveConfig` proves it. A toggle that does nothing must not ship.
-7. **Errors are plain English and recoverable.** Each error code in `NATIVE_CONTRACT.md` maps to a message and an action (Retry, Recheck, Pick folder again, Open settings).
+7. **Settings must be searchable.** Every user-facing setting row gets an entry in `utils/settingsIndex.ts` (title = the visible label, with keywords people would type). `ListRow` and `ChipGroup` already wrap themselves in `FocusAnchor` by title, so a search result scrolls to and highlights the row. `scripts/test-settings-coverage.js` fails on a row with no entry and on an entry with no row.
+8. **Errors are plain English and recoverable.** Each error code in `NATIVE_CONTRACT.md` maps to a message and an action (Retry, Recheck, Pick folder again, Open settings).
 
 ---
 

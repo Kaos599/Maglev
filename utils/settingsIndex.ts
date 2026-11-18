@@ -1694,6 +1694,75 @@ export const SETTINGS_INDEX: SettingEntry[] = [
     "update",
   ],
   ),
+
+  // Swipe, file icons, tab swipe, stats backup, crash report, rule editor
+  e(
+    "appearance-swipe-actions",
+    "Swipe to pause or remove",
+    "interface",
+    "Appearance",
+    ["swipe", "gesture", "slide", "pause", "resume", "remove", "delete", "transfers", "downloads", "list"],
+  ),
+  e(
+    "appearance-file-icons",
+    "Show file type icons in Transfers",
+    "interface",
+    "Appearance",
+    ["file icon", "file type", "icon", "icons", "media", "video", "audio", "kind of file", "transfers", "downloads"],
+  ),
+  e(
+    "browser-swipe-tabs",
+    "Swipe the address bar to switch tabs",
+    "browser",
+    "Browser",
+    ["swipe", "gesture", "slide", "address bar", "url bar", "tabs", "switch tab", "next tab", "all tabs"],
+  ),
+  e(
+    "backup-include-stats",
+    "Include stats",
+    "backup",
+    "Backup and restore",
+    ["backup", "export", "stats", "statistics", "history", "downloaded", "names", "save"],
+  ),
+  e(
+    "backup-part-stats",
+    "Stats",
+    "backup",
+    "Backup and restore",
+    ["restore", "stats", "statistics", "history", "backup"],
+    "What to restore",
+  ),
+  e(
+    "about-copy-crash-report",
+    "Copy crash report",
+    "about",
+    "About",
+    ["crash", "error", "log", "report", "bug", "copy", "problem"],
+  ),
+  e(
+    "feeds-rule-skip-episodes",
+    "Skip episodes I already have",
+    "feeds",
+    "Auto-download",
+    ["episodes", "new only", "duplicates", "already have", "rule", "tv", "series"],
+    "Rules",
+  ),
+  e(
+    "feeds-rule-start-paused",
+    "Start paused",
+    "feeds",
+    "Auto-download",
+    ["paused", "wait", "resume", "rule", "added torrents", "manual"],
+    "Rules",
+  ),
+  e(
+    "feeds-rule-enabled",
+    "Rule is on",
+    "feeds",
+    "Auto-download",
+    ["rule", "enable", "disable", "on", "off", "turn off rule"],
+    "Rules",
+  ),
 ];
 
 const MAX_RESULTS = 30;
