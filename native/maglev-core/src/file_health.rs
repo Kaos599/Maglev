@@ -351,7 +351,7 @@ mod tests {
     #[test]
     fn changed_needs_a_finished_torrent_and_a_snapshot() {
         let p = probe(0, OnDisk::Present(stamp(10, 200)));
-        let snap = stamp(10, 100);
+        let snap = stamp(9, 100);
         assert_eq!(classify_file(&p, true, Some(&snap)), FileState::Changed);
         // Same size and time: fine. Size differs: changed. Time differs alone: fine (section 47.1).
         assert_eq!(classify_file(&p, true, Some(&stamp(10, 200))), FileState::Ok);
