@@ -113,6 +113,21 @@ export interface AppearanceSettings {
   swipeActions: boolean;
 }
 
+export type SubtitleHearingPref = 'both' | 'prefer' | 'avoid';
+
+/** Subtitles (docs/NATIVE_CONTRACT.md section 36.2). UI only: never reaches toNativeConfig or Kotlin. */
+export interface SubtitleSettings {
+  /** Master switch. Off hides every entry point and makes no request. */
+  enabled: boolean;
+  /** ISO 639-1 codes plus pt-BR, zh-CN, zh-TW, es-419, in order of preference. Empty means "follow the phone's language". */
+  languages: string[];
+  hearingImpaired: SubtitleHearingPref;
+  /** User overrides by provider id; a missing id falls back to the provider's `enabledByDefault`. */
+  sourceEnabled: Record<string, boolean>;
+  /** True after the user accepted the one-time notice before the first lookup. */
+  privacyAck: boolean;
+}
+
 export type DownloadFolderMode = 'direct' | 'staging';
 
 export interface DownloadFolder {
@@ -134,6 +149,8 @@ export interface MaglevSettings {
   bandwidth: BandwidthSettings;
   network: NetworkSettings;
   power: PowerSettings;
+  /** UI only (section 36.2). */
+  subtitles: SubtitleSettings;
 }
 
 export const SPEED_PRESET_MAP: Record<SpeedPreset, number> = {
@@ -217,6 +234,13 @@ export const DEFAULT_SETTINGS: MaglevSettings = {
     resumeAfterRestart: true,
     isCharging: true,
     batteryPercentage: 85,
+  },
+  subtitles: {
+    enabled: true,
+    languages: [],
+    hearingImpaired: 'both',
+    sourceEnabled: {},
+    privacyAck: false,
   },
 };
 
