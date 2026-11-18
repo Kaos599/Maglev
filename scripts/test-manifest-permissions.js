@@ -56,4 +56,9 @@ assert.strictEqual(names.length, SELF_UPDATE.length, 'withSelfUpdate adds exactl
 assert.strictEqual(selfUpdate.addSelfUpdatePermissions(manifest)['uses-permission'].length, SELF_UPDATE.length, 'plugin is idempotent');
 assert((require(path.join('..', 'app.json')).expo.plugins || []).includes('./plugins/withSelfUpdate.js'), 'app.json must register ./plugins/withSelfUpdate.js');
 
+// React Native 0.88 only listens for Back through OnBackInvokedDispatcher on Android 16 (ReactActivity checks
+// isAtLeastTargetSdk36), so with predictive back on, Back closes the app on Android 13-15 (facebook/react-native #58407).
+// Turn it on again only once ReactActivity registers its callback on API 33+.
+assert.strictEqual(require(path.join('..', 'app.json')).expo.android.predictiveBackGestureEnabled, false, 'predictive back stays off until React Native handles Back on Android 13-15');
+
 console.log(`manifest permissions OK: ${declared.length} declared, ${blocked.length} blocked`);
