@@ -84,6 +84,7 @@ export function migrateSettings(raw: unknown): MaglevSettings {
   if (!ACCENT_NAMES.includes(merged.appearance.accent)) merged.appearance.accent = 'lime';
   if (!['clean', 'retro', 'mono'].includes(merged.appearance.fontStyle)) merged.appearance.fontStyle = 'clean';
   if (merged.appearance.showSpeedTotals !== true) merged.appearance.showSpeedTotals = false;
+  if (merged.appearance.swipeActions !== false) merged.appearance.swipeActions = true;
   if (merged.bandwidth.autoRetry !== 'off' && merged.bandwidth.autoRetry !== 'after') merged.bandwidth.autoRetry = 'after';
   if (!AUTO_RETRY_DELAYS.includes(merged.bandwidth.autoRetryDelayMin)) merged.bandwidth.autoRetryDelayMin = 5;
   if (!PEER_TIMEOUT_OPTIONS.includes(merged.bandwidth.peerTimeoutMins)) merged.bandwidth.peerTimeoutMins = DEFAULT_PEER_TIMEOUT_MINS;

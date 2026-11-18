@@ -108,6 +108,10 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
     private var redirectInFlight = false
     // One-shot allowance for the exact URL followRedirect loads, so the redirect rule does not hold it again.
     private var followAllowUrl: String? = null
+    // When the last tap ended (uptimeMillis), 0 while a touch is still down. Main thread.
+    private var tapAt = 0L
+    // Windows and cross-site navigations already let through for the current tap. A second one in one tap is not the user's.
+    private var tapUses = 0
 
     // Per page load.
     @Volatile private var pageHost: String? = null
@@ -474,8 +478,9 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
         // 24.10: long press on a link or image opens the screen's menu instead of the system one.
         w.setOnLongClickListener { v -> onLongPressed(v as WebView) }
         // Let the page scroll inside React Native parents.
-        w.setOnTouchListener { _, _ ->
+        w.setOnTouchListener { _, ev ->
             requestDisallowInterceptTouchEvent(true)
+            noteTouch(ev.actionMasked)
             false
         }
         return w
@@ -676,6 +681,35 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
         return null
     }
 
+    /** Remembers when the user last tapped, so a pop-up or a jump to another site can be told from a tap on a real link. */
+    private fun noteTouch(action: Int) {
+        if (action == android.view.MotionEvent.ACTION_DOWN) {
+            tapUses = 0
+            tapAt = 0L
+        } else if (action == android.view.MotionEvent.ACTION_UP) {
+            tapAt = SystemClock.uptimeMillis()
+        }
+    }
+
+    /** True when the last tap ended recently on a link that leads to [host]'s site ("*": an image link, address unknown). */
+    private fun tappedLinkTo(host: String?): Boolean {
+        if (tapAt == 0L || SystemClock.uptimeMillis() - tapAt > PopupRules.TAP_MS) return false
+        val hit = webView.hitTestResult
+        val linkHost = when (hit.type) {
+            WebView.HitTestResult.SRC_ANCHOR_TYPE -> hit.extra?.let { Uri.parse(it).host?.lowercase() }
+            WebView.HitTestResult.SRC_IMAGE_ANCHOR_TYPE -> "*"
+            else -> null
+        }
+        return PopupRules.tapMatchesLink(linkHost, host)
+    }
+
+    /** Tap trust for a window or a jump to [host]; counts it so a second one from the same tap is not trusted. */
+    private fun trustTap(gesture: Boolean, host: String?): Boolean {
+        val ok = PopupRules.trusted(gesture, RegistrableHost.same(host, currentHost()), tappedLinkTo(host), tapUses)
+        if (gesture) tapUses++
+        return ok
+    }
+
     private fun currentHost(): String? = webView.url?.let { Uri.parse(it).host } ?: pageHost
 
     private fun hostAllowsPopups(host: String?): Boolean {
@@ -728,7 +762,9 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
             refuse(url, reason)
             return
         }
-        if (gesture) {
+        // A tap only opens a window freely when it was on a link to that site (or the site is the page's own), and only
+        // the first window of a tap. Overlay taps and a burst of windows from one tap follow the pop-up setting instead.
+        if (trustTap(gesture, Uri.parse(url).host)) {
             onNewWindow(mapOf("url" to url, "gesture" to true))
             return
         }
@@ -851,8 +887,9 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
             // 24.10 held redirect: untapped, not a server redirect, after the document finished once, to another site.
             val allowedOnce = followAllowUrl != null && followAllowUrl == uri.toString()
             if (allowedOnce) followAllowUrl = null
-            val held = !allowedOnce && scheme != "about" && !request.hasGesture() && !request.isRedirect && loadedOnce &&
-                !RegistrableHost.same(uri.host, currentHost())
+            // Also held: a tap that is not on a link to that site (an invisible overlay, an onclick on a blank area).
+            val held = !allowedOnce && scheme != "about" && !request.isRedirect && loadedOnce &&
+                !RegistrableHost.same(uri.host, currentHost()) && !trustTap(request.hasGesture(), uri.host)
             if (held) {
                 when (decide(false, "redirect")) {
                     PopupRules.OPEN -> return false
