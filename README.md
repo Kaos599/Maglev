@@ -53,10 +53,11 @@ It replaces a torrent client, a download manager and a video downloader with one
 ## Download
 
 > [!NOTE]
-> Maglev needs Android 7.0 or later. It isn't on Google Play yet, so you install it from GitHub, or with Obtainium to get updates automatically. It isn't on F-Droid yet either.
+> Maglev needs Android 7.0 or later. It isn't on Google Play yet, so you install it from GitHub, from Orion Store, or with Obtainium to get updates automatically. It isn't on F-Droid yet either.
 
 [<img src="https://raw.githubusercontent.com/machiav3lli/oandbackupx/034b226cea5c1b30eb4f6a6f313e4dadcbb0ece4/badge_github.png" alt="Download the Maglev APK from GitHub" height="80">](https://github.com/Kaos599/Maglev/releases/latest)
 [<img src="https://raw.githubusercontent.com/ImranR98/Obtainium/main/assets/graphics/badge_obtainium.png" alt="Add Maglev to Obtainium for automatic updates" height="80">](https://apps.obtainium.imranr.dev/redirect?r=obtainium://add/https://github.com/Kaos599/Maglev)
+[<img src="https://raw.githubusercontent.com/RookieEnough/Orion-Store/refs/heads/main/assets/orion-badge.png" alt="Get Maglev on Orion Store" height="54">](https://rookieenough.github.io/Orion-Data/redirect.html?id=maglev)
 
 Each release has four APKs. Pick the one for your phone:
 
