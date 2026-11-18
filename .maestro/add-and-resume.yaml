@@ -3,6 +3,7 @@ appId: com.maglev
 name: add-and-resume
 ---
 - runFlow: subflows/onboard-if-needed.yaml
+- runFlow: subflows/clear-leftovers.yaml
 - runFlow:
     file: subflows/add-from-card.yaml
     env:

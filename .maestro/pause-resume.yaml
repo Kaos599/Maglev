@@ -3,6 +3,7 @@ appId: com.maglev
 name: pause-resume
 ---
 - runFlow: subflows/onboard-if-needed.yaml
+- runFlow: subflows/clear-leftovers.yaml
 - runFlow:
     file: subflows/add-from-card.yaml
     env:

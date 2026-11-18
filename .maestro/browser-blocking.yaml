@@ -42,7 +42,7 @@ name: browser-blocking
 - tapOn:
     text: "Ad blocking"
     index: 1
-- pressKey: Back
+- tapOn: "Go back" # in-app back; hardware Back after toggling a setting left the app in the 0.28 CI run
 - tapOn: "More"
 # With ad blocking off the per-site row is hidden (app/browser.tsx:383).
 - assertNotVisible: "Allow ads on this site|Block ads on this site"
@@ -54,7 +54,7 @@ name: browser-blocking
 - tapOn:
     text: "Ad blocking"
     index: 1
-- pressKey: Back
+- tapOn: "Go back" # in-app back; hardware Back after toggling a setting left the app in the 0.28 CI run
 - tapOn: "More"
 - assertVisible: "Allow ads on this site"
 - pressKey: Back

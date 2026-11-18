@@ -9,6 +9,7 @@ appId: com.maglev
 name: transfers-link-download
 ---
 - runFlow: subflows/onboard-if-needed.yaml
+- runFlow: subflows/clear-leftovers.yaml
 - tapOn:
     text: "Add a link or torrent"
     # from components/FloatingActionButton.tsx:14

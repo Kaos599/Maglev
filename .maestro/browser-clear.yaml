@@ -17,7 +17,7 @@ name: browser-clear
     timeout: 90000
 - tapOn: "Files . [1-9][0-9]*" # app/browser.tsx:800 opens FoundTray
 - extendedWaitUntil:
-    visible: ".*Big_Buck_Bunny_1080_10s_1MB\\.mp4, .*" # FoundTray.tsx row label "<name>, <meta>"
+    visible: ".*Big_Buck_Bunny_360_10s_1MB\\.mp4, .*" # FoundTray.tsx row label "<name>, <meta>"
     timeout: 30000
 # A small media file (under 1 MiB) can be hidden by "Hide small files" (foundFilter.ts SMALL_MEDIA_BYTES): show them when the tray says so.
 - runFlow:
@@ -26,10 +26,10 @@ name: browser-clear
     commands:
       - tapOn: "Show [0-9]+ hidden small files"
 # Remove one item: each row has a Remove button labelled "Remove <name> from the list" (foundTray.remove, constants/copy.ts).
-- tapOn: "Remove Big_Buck_Bunny_1080_10s_1MB\\.mp4 from the list"
+- tapOn: "Remove Big_Buck_Bunny_360_10s_1MB\\.mp4 from the list"
 # The row label has ", " after the name; the Undo line "Removed <name>." does not, so it does not count as the row.
-- assertNotVisible: ".*Big_Buck_Bunny_1080_10s_1MB\\.mp4, .*"
-- assertVisible: ".*Big_Buck_Bunny_1080_10s_2MB\\.mp4, .*" # another file is still listed
+- assertNotVisible: ".*Big_Buck_Bunny_360_10s_1MB\\.mp4, .*"
+- assertVisible: ".*Big_Buck_Bunny_360_10s_2MB\\.mp4, .*" # another file is still listed
 # Clear all: button "Clear" with accessibilityLabel "Clear the list of found files" (foundTray.clearLabel). No confirmation, an Undo line appears.
 - tapOn: "Clear the list of found files"
 - assertVisible: "No files found yet" # constants/copy.ts empty.browser.noFiles.title (FoundTray.tsx)

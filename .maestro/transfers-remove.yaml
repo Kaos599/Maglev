@@ -4,6 +4,7 @@ appId: com.maglev
 name: transfers-remove
 ---
 - runFlow: subflows/onboard-if-needed.yaml
+- runFlow: subflows/clear-leftovers.yaml
 - runFlow:
     file: subflows/add-from-card.yaml
     env:

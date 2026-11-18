@@ -28,6 +28,12 @@ name: feeds-rule
 - inputText: "Maestro rule"
 - tapOn: "Words the title must include"              # from components/feeds/RuleEditorSheet.tsx:85 (accessibilityLabel)
 - inputText: "debian"
+# The keyboard covers the Save button (it sits at the bottom of a scrolling sheet): close it, then scroll the sheet to the button.
+- hideKeyboard
+- scrollUntilVisible:
+    element: "Save"
+    direction: DOWN
+    timeout: 20000
 - tapOn: "Save"                                     # from components/feeds/RuleEditorSheet.tsx:155 (button label)
 - extendedWaitUntil:
     visible: "Maestro rule"                         # from app/settings/feeds.tsx:137 (rule row title)
@@ -37,6 +43,10 @@ name: feeds-rule
 - extendedWaitUntil:
     visible: "Edit rule"                            # from components/feeds/RuleEditorSheet.tsx:54
     timeout: 10000
+- scrollUntilVisible:
+    element: "Delete"
+    direction: DOWN
+    timeout: 20000
 - tapOn: "Delete"                                   # from components/feeds/RuleEditorSheet.tsx:151 (button label)
 - extendedWaitUntil:
     notVisible: "Maestro rule"                      # from app/settings/feeds.tsx:137: rule gone
