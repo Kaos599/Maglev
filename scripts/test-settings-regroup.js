@@ -23,7 +23,7 @@ async function main() {
   const at = (s) => list.indexOf(s);
 
   // Main list: groups, order, rows.
-  const groups = ['App', 'General', 'Finding things', 'Downloads', 'Network and power'];
+  const groups = ['App', 'General', 'Finding things', 'Transfers', 'Network and power'];
   const gpos = groups.map((g) => at(`<SectionHeader title="${g}"`));
   check('all five group titles exist', gpos.every((p) => p > 0));
   check('groups run App, General, Finding things, Downloads, Network and power', gpos.every((p, i) => i === 0 || p > gpos[i - 1]));
@@ -45,12 +45,12 @@ async function main() {
   orderOf('Network and power', 'networkRows', ['Network', 'Power', 'Browser']);
   orderOf('App', 'appRows', ['About', 'Updates']);
   {
-    const d = jsx[groups.indexOf('Downloads')];
+    const d = jsx[groups.indexOf('Transfers')];
     const p = ['{...downloadsRow}', '{...speedRow}', '<StorageRow', '{...scheduleRow}', '{...watchRow}'].map((x) => d.indexOf(x));
     check('Downloads renders Downloads, Speed and sharing, Storage, Scheduling, Watches in order', p.every((x, i) => x >= 0 && (i === 0 || x > p[i - 1])));
   }
-  check('Downloads row opens settings/downloads', /title: 'Downloads'[^}]*route: 'downloads'/.test(listOf('downloadsRow')));
-  const icons = [...list.matchAll(/icon: '([a-z-]+)', title: 'Downloads'/g)].map((m) => m[1]);
+  check('Adding and finishing row opens settings/downloads', /title: 'Adding and finishing'[^}]*route: 'downloads'/.test(listOf('downloadsRow')));
+  const icons = [...list.matchAll(/icon: '([a-z-]+)', title: 'Adding and finishing'/g)].map((m) => m[1]);
   const gen = read('components/icons.generated.ts');
   check('Downloads row icon exists in the icon set', icons.length === 1 && gen.includes(`"${icons[0]}":`), icons.join());
   check('Speed row is titled Speed and sharing', /title: 'Speed and sharing'.*route: 'speed'/.test(listOf('speedRow')));
@@ -61,7 +61,7 @@ async function main() {
   const dl = exists('app/settings/downloads.tsx') ? read('app/settings/downloads.tsx') : '';
   const dpos = ['Adding downloads', 'Link downloads', 'When downloads finish'].map((t) => dl.indexOf(`<SectionHeader title="${t}"`));
   check('downloads.tsx has the three sections in order', dpos.every((p, i) => p > 0 && (i === 0 || p > dpos[i - 1])));
-  check('downloads.tsx title is Downloads', /<SettingsPage title="Downloads"/.test(dl));
+  check('downloads.tsx title is Adding and finishing', /<SettingsPage title="Adding and finishing"/.test(dl));
   check('downloads.tsx has Add without asking and clipboard row', /quickShareCopy\.setting\.title/.test(dl) && /<ClipboardSetting/.test(dl));
   check('downloads.tsx renders Parts then Retry', dl.indexOf('<PartsSection') > 0 && dl.indexOf('<RetrySection') > dl.indexOf('<PartsSection'));
   check('downloads.tsx has Close when done and Resume after restart', /Close when done/.test(dl) && /Resume after restart/.test(dl) && /autoExitOnComplete/.test(dl) && /resumeAfterRestart/.test(dl));
@@ -86,7 +86,7 @@ async function main() {
   }
 
   // Assistant knows the page.
-  check('assistant can open the Downloads page', /downloads/.test(read('utils/assistant/tools.ts')) && /downloads: '\/settings\/downloads'/.test(read('utils/assistant/chatView.ts')) && /downloads: 'Downloads'/.test(read('utils/assistant/toolRunner.ts')));
+  check('assistant can open the Downloads page', /downloads/.test(read('utils/assistant/tools.ts')) && /downloads: '\/settings\/downloads'/.test(read('utils/assistant/chatView.ts')) && /downloads: 'Adding and finishing'/.test(read('utils/assistant/toolRunner.ts')));
   check('assistant names Speed and sharing', /speed: 'Speed and sharing'/.test(read('utils/assistant/toolRunner.ts')));
 
   // Search index.
@@ -109,7 +109,7 @@ async function main() {
   };
   for (const [id, section] of Object.entries(moved)) {
     const e = byId.get(id);
-    check(`${id} points to downloads / ${section}`, !!e && e.page === 'downloads' && e.pageTitle === 'Downloads' && e.section === section);
+    check(`${id} points to downloads / ${section}`, !!e && e.page === 'downloads' && e.pageTitle === 'Adding and finishing' && e.section === section);
   }
   check('storage-hide-gallery is not under Adding downloads', byId.get('storage-hide-gallery')?.section !== 'Adding downloads');
   check('no entry still says Speed & queue', !SETTINGS_INDEX.some((e) => e.pageTitle === 'Speed & queue'));

@@ -172,3 +172,18 @@ globalThis.__fake = { Platform: { OS: 'android' }, native };
   console.log(failed ? `\n${failed} FAILED` : '\nall passed');
   process.exit(failed ? 1 : 0);
 })();
+
+// Notification and tile actions start the engine first when Android killed it (Pause all / Resume all).
+{
+  const host = require('fs').readFileSync(require('path').join(__dirname, '../modules/maglev-engine/android/src/main/java/com/maglev/engine/EngineHost.kt'), 'utf8');
+  const body = (name) => { const i = host.indexOf(`fun ${name}()`); return i < 0 ? '' : host.slice(i, host.indexOf('\n    }\n', i)); };
+  for (const fn of ['pauseAllFromNotification', 'resumeAllFromNotification']) {
+    const b = body(fn);
+    const guard = b.indexOf('engineReadyForAction(');
+    const work = b.search(/pauseAll\(\)|resumeAll\(\)/);
+    if (!(guard >= 0 && work > guard)) { console.error(`  FAIL ${fn} starts the engine before acting`); process.exitCode = 1; }
+    else console.log(`  ok   ${fn} starts the engine before acting`);
+  }
+  if (!/private fun engineReadyForAction[\s\S]*?ensureStarted\(\)/.test(host)) { console.error('  FAIL engineReadyForAction uses ensureStarted (lifecycle lock)'); process.exitCode = 1; }
+  else console.log('  ok   engineReadyForAction uses ensureStarted (lifecycle lock)');
+}

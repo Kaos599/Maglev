@@ -13,7 +13,7 @@ export default function DownloadsSettings() {
   const p = settings.power;
   const set = (patch: Partial<typeof p>) => updateSettings((prev) => ({ power: { ...prev.power, ...patch } }));
   return (
-    <SettingsPage title="Downloads">
+    <SettingsPage title="Adding and finishing">
       <Stack.Screen options={{ headerShown: false }} />
       <SectionHeader title="Adding downloads" />
       <Card>

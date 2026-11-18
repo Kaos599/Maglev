@@ -853,8 +853,20 @@ object EngineHost {
         scope.launch { call { NativeCore.nativeSetTransfersAllowed(false, REASON_FGS_TIMEOUT) } }
     }
 
+    /**
+     * Pause all / Resume all can be tapped from a notification or the tile after Android killed the process, before
+     * anything restarted the engine. Start it first, as scheduleResume does, so the tap isn't silently lost.
+     */
+    private fun engineReadyForAction(action: String): Boolean {
+        if (initialized) return true
+        val res = ensureStarted()
+        if (!isOk(res)) Log.w(TAG, "$action: engine could not start: ${res["code"]}")
+        return isOk(res)
+    }
+
     fun pauseAllFromNotification() {
         scope.launch {
+            if (!engineReadyForAction("pause_all")) return@launch
             pauseAll()
             holdForPaused = true
             emit("onNotificationAction", mapOf("action" to "pause_all"))
@@ -864,6 +876,7 @@ object EngineHost {
 
     fun resumeAllFromNotification() {
         scope.launch {
+            if (!engineReadyForAction("resume_all")) return@launch
             resumeAll()
             holdForPaused = false
             emit("onNotificationAction", mapOf("action" to "resume_all"))

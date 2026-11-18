@@ -18,10 +18,10 @@ const index = read('app/(tabs)/settings.tsx');
 const at = (s) => index.indexOf(s);
 
 // Group titles, in order (0.25: App, General, Finding things, Downloads, Network and power).
-const titles = ['App', 'General', 'Finding things', 'Downloads', 'Network and power'];
+const titles = ['App', 'General', 'Finding things', 'Transfers', 'Network and power'];
 const tpos = titles.map((t) => at(`<SectionHeader title="${t}"`));
 check('all five group titles exist', tpos.every((p) => p > 0));
-check('groups run App, General, Finding things, Downloads, Network and power', tpos.every((p, i) => i === 0 || p > tpos[i - 1]));
+check('groups run App, General, Finding things, Transfers, Network and power', tpos.every((p, i) => i === 0 || p > tpos[i - 1]));
 
 const endPos = at('</ScrollView>');
 const jsx = Object.fromEntries(titles.map((t, i) => [t, index.slice(tpos[i], i + 1 < titles.length ? tpos[i + 1] : endPos)]));
@@ -32,7 +32,7 @@ const listOf = (name) => {
 const expected = {
   General: ['generalRows', ['Appearance', 'Assistant', 'Notifications', 'Backup and restore']],
   'Finding things': ['findRows', ['Search sources', 'Auto-download']],
-  Downloads: [null, ['Downloads', 'Speed and sharing', 'Storage', 'Scheduling']],
+  Transfers: [null, ['Adding and finishing', 'Speed and sharing', 'Storage', 'Scheduling']],
   'Network and power': ['networkRows', ['Network', 'Power', 'Browser']],
   App: ['appRows', ['About', 'Updates']],
 };
@@ -44,8 +44,8 @@ for (const [g, [list, rows]] of Object.entries(expected)) {
     check(`${r} is in ${g}`, ok);
   }
 }
-check('Downloads renders Downloads, Speed and sharing, Storage, Scheduling, Watches in order', (() => {
-  const d = jsx.Downloads;
+check('Transfers renders Adding and finishing, Speed and sharing, Storage, Scheduling, Watches in order', (() => {
+  const d = jsx.Transfers;
   const p = ['{...downloadsRow}', '{...speedRow}', '<StorageRow', '{...scheduleRow}', '{...watchRow}'].map((x) => d.indexOf(x));
   return p.every((x, i) => x >= 0 && (i === 0 || x > p[i - 1]));
 })());
