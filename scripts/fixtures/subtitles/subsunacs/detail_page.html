@@ -1,0 +1,195 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN" "http://www.w3.org/TR/html4/loose.dtd">
+<html lang="bg"><head><title>Субтитри за Fight Club</title>
+<meta http-equiv="Content-Type" content="text/html; charset=windows-1251">
+<meta http-equiv="Content-Style-Type" content="text/css">
+<meta name="robots" content="index, follow">
+<meta name="title" content="Субтитри за Fight Club, коментари, рейтинг" />
+<meta name="description" content="Информация и коментари към субтитрите на Fight Club" />
+<meta name="keywords" content="български, субтитри, Fight Club, коментари, рейтинг, информация" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="preload" fetchpriority="high" as="image" href="/images/header.png" type="image/png">
+<link rel="preload" fetchpriority="high" as="image" href="/images/header_text.png" type="image/png">
+<link rel="stylesheet" type="text/css" href="/css/main.css" media="screen" />
+<link rel="stylesheet" type="text/css" href="/css/imdb.debug.css" media="screen" />
+<link rel="stylesheet" type="text/css" href="/css/lavalamp.css" media="screen" />
+<link rel="stylesheet" type="text/css" href="/comments/comments.css" media="screen" />
+<link rel="stylesheet" type="text/css" href="/rating/rating.css" media="screen" />
+<link rel="icon" href="/favicon.ico" type="image/x-icon" sizes="16x16">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml" sizes="any">
+<script src="//ajax.googleapis.com/ajax/libs/jquery/1.11.2/jquery.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jquery-easing/1.3/jquery.easing.min.js" defer></script>
+<script src="/js/jquery.lavalamp-1.3.5.min.js" defer></script>
+<script src="/rating/rating.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/particles.js@2.0.0/particles.min.js" defer></script>
+<script type="text/javascript">
+    $(document).ready(function()
+    {
+		particlesJS.load('particles-js', '/js/particles.json');
+
+        var el = $('li.pm a.ylink');
+		var working = false;
+
+        setInterval(function() {
+    	el.css('filter', 'alpha(opacity=50)');
+    	el.fadeTo('fast', 0.5).fadeTo('fast', 1.0);
+         },300);
+
+		$(".comment_ex .remove a").click(function(e) {
+			e.preventDefault();
+
+			if(working) return false;
+
+			working = true;
+			$('span.error').remove();
+
+			if (confirm('Сигурни ли сте, че искате да изтриете избрания коментар?')) {
+				var href = $(this).prop('href').split("#").pop();
+
+				var $t = $(this).parent().parent();
+
+				$.get("/comments/removecomment.php", {uid: href}, function(msg){
+					working = false;
+
+					if(msg.status)
+					{
+						$t.slideUp("normal", function() { $t.remove(); } )
+					}
+					else
+					{
+						$s = '';
+						$.each(msg.errors,function(k,v){
+							$s += '\r' + v;
+						});
+
+						alert('Възникна грешка при изтриването на коментара!' + $s);
+					}
+	  		    }, 'json');
+			}
+		});
+
+		$('#addCommentForm').submit(function(e){
+			e.preventDefault();
+			if(working) return false;
+
+			working = true;
+			$('#submit').val('...');
+			$('span.error').remove();
+
+			var jqxhr = $.post('/comments/addcomment.php',$(this).serialize(),function(msg){
+				working = false;
+				$('#submit').val(' Изпрати ');
+
+				if(msg.status)
+				{
+					$('#addCommentForm').remove().slideUp();
+					$('#addCommentContainer').text('Коментарът е добавен успешно.');
+					$(msg.html).hide().insertBefore('#addCommentContainer').slideDown("slow",
+						function() {
+								window.scrollTo(0, $("#after_comments").offset().top);
+						  });
+				}
+				else
+				{
+					$.each(msg.errors,function(k,v){
+						$('label[for='+k+']').append('<span class="error">'+v+'</span>');
+					});
+				}
+			},'json');
+        });
+
+        $(".rating").jRating({
+    	  type:'big', // type of the rate.. can be set to 'small' or 'big'
+    	  length : 5, // nb of stars
+    	  decimalLength : 0, // number of decimal in the rate
+    	  step:true, // if true,  mouseover binded star by star,
+		  rateMax : 5, // maximal rate - integer from 0 to 9999 (or more)
+          showRateInfo: false,
+
+  		  isDisabled:true,
+          onSuccess : function(element, rate)
+          {
+              $('.rating').attr('data-average', rate);
+              $('.ratingResponse').text('Гласуването беше успешно.');
+              $('.ratingResponse').slideDown();
+   			  $('#rated').append('<p> : ' + eval(rate) + '</p>').slideDown();
+          },
+          onError : function(element, rate, data)
+          {
+              $('.ratingResponse').text(data.message);
+              $('.ratingResponse').slideDown();
+          }
+      	});
+
+
+    });
+
+    $(function() {
+    	$('#lavaLampNoImage').lavaLamp({
+    	fx: 'easeOutBack', speed: 700, homeLeft: 475,
+    	homeTop: -25, homeWidth:50, homeHeight:20 });
+    });
+
+    function addsmiley(code)
+    {
+        var pretext = document.addCommentForm.comment.value;
+        this.code = code;
+        document.addCommentForm.comment.value = pretext + ' ' + code;
+    }
+</script>
+</head>
+<body>
+<div id="wrapper"><div id="header"><a href="/index.php" target="_self">
+<img src="/images/header_text.png" width="491" height="98" alt=""><div id="particles-js"></div></a></div>
+<ul class="lamp" id="lavaLampNoImage"><li><a href="/index.php">новини</a></li><li><a href="/list.php?l=other">субтитри</a></li><li><a href="/new/">нови</a></li><li><a href="/search.php">търси</a></li><li><a href="/uplsub.php">добави</a></li><li><a href="/top.php">топ 20</a></li><li><a href="/soft.php">софтуер</a></li><li><a href="/articles.php">статии</a></li><li><a href="/links.php">връзки</a></li><li><a href="/ib/index.php" target="_blank">форум</a></li></ul><ul class="loginHeader">
+<li class="loginName"><a href="/login.php">Вход</a></li>
+<li class="movieInfo">Информация за субтитрите</li>
+<li class="pm"></li>
+</ul>
+	<div id="mainContent">
+		<div class="mainBlock">
+<h1>Fight Club&nbsp;(1999)</h1><br>			<div id="imdbContent">
+				<div id="topCont">
+                    <div id="imgCont">
+    					<div id="divImg">
+<img src="/ii/big200/00137523.jpg" />    					<span></span>
+    					</div><br>
+<br/><br/>
+	<div id="buttonBox"><a href="/subtitles/Fight_Club-55064/" class="sbutton" title="Субтитри за Fight Club">Субтитри</a>
+<br/><br/>
+</div>
+<div>Изтеглени: 5827 пъти</div><div class="ratingContainer"><div class="rating" data-average="5.00" data-id="55064"></div></div>
+                    	<div class="ratingResponse"></div>
+
+                    	
+                        <div id="rated">
+<p>tylere : 5</p>                        </div>
+
+                    </div>
+                    <div id="subsInfoContainer">
+					<ul class="subsInfo">
+						<li>
+Език: Български&nbsp;<img class="flag" src="/images/bg.png" width="24" height="24"> / Формат на субтитрите: SRT 						</li>
+						<li>Добавени на:
+	26.11.2009г. 19:42&nbsp;&nbsp;(<a href="/search.php?t=1&memid=10778">sanchiro</a>)						</li>
+
+    						<li class="info">
+	Fight.Club.1999.720p.BluRay.DTS.x264-HiDt						</li>
+	<li>Държава: <a href="/search.php?t=1&c=US" target="_blank">САЩ</a></li><li>Жанр: <a href="/search.php?t=1&g=Drama" target="_blank">Драма</a>, <a href="/search.php?t=1&g=Thriller" target="_blank">Трилър</a></li><li>Режисьори: <a href="/search.php?t=1&d=David+Fincher" target="_blank">David Fincher</a></li><li>Актьори: <a href="/search.php?t=1&a=Edward+Norton" target="_blank">Edward Norton</a>, <a href="/search.php?t=1&a=Brad+Pitt" target="_blank">Brad Pitt</a>, <a href="/search.php?t=1&a=Helena+Bonham+Carter" target="_blank">Helena Bonham Carter</a>, <a href="/search.php?t=1&a=Meat+Loaf" target="_blank">Meat Loaf</a>, <a href="/search.php?t=1&a=Jared+Leto" target="_blank">Jared Leto</a>, <a href="/search.php?t=1&a=Zach+Grenier" target="_blank">Zach Grenier</a>, <a href="/search.php?t=1&a=Holt+McCallany" target="_blank">Holt McCallany</a>, <a href="/search.php?t=1&a=Eion+Bailey" target="_blank">Eion Bailey</a>, <a href="/search.php?t=1&a=Richmond+Arquette" target="_blank">Richmond Arquette</a>, <a href="/search.php?t=1&a=David+Andrews" target="_blank">David Andrews</a>, <a href="/search.php?t=1&a=George+Maguire" target="_blank">George Maguire</a>, <a href="/search.php?t=1&a=Eugenie+Bondurant" target="_blank">Eugenie Bondurant</a>, <a href="/search.php?t=1&a=Christina+Cabot" target="_blank">Christina Cabot</a>, <a href="/search.php?t=1&a=Sydney+%27Big+Dawg%27+Colston" target="_blank">Sydney &#039;Big Dawg&#039; Colston</a>, <a href="/search.php?t=1&a=Rachel+Singer" target="_blank">Rachel Singer</a>, <a href="/search.php?t=1&a=Christie+Cronenweth" target="_blank">Christie Cronenweth</a>, <a href="/search.php?t=1&a=Tim+DeZarn" target="_blank">Tim DeZarn</a>, <a href="/search.php?t=1&a=Ezra+Buzzington" target="_blank">Ezra Buzzington</a>, <a href="/search.php?t=1&a=Dierdre+Downing-Jackson" target="_blank">Dierdre Downing-Jackson</a>, <a href="/search.php?t=1&a=Bob+Stephenson" target="_blank">Bob Stephenson</a></li><li style="display:inline;line-height:40px">Връзки: <span class="imdbRatingPlugin" data-user="ur66147546" data-title="tt0137523" data-style="p2"><a href="https://imdb.com/title/tt0137523/" target="_blank"><img style="border:0;vertical-align:middle;margin-top:-2px;" src="/images/imdb_38x18.png" width="38" height="18" alt="IMDb рейтинг"/>&nbsp;&nbsp;
+</a></span><script defer>(function(d,s,id){var js,stags=d.getElementsByTagName(s)[0];if(d.getElementById(id)){return;}js=d.createElement(s);js.id=id;js.src="/js/rating.min.js";stags.parentNode.insertBefore(js,stags);})(document,'script','imdb-rating-api');</script>
+</li>					</ul>
+						<div class="rarview">
+		                <h3>Съдържание на архива със субтитри</h3>
+<label><a href="/getentry.php?id=55064&ei=0">Fight.Club.1999.720p.BluRay.DTS.x264-HiDt.srt</a></label><label><a href="/getentry.php?id=55064&ei=1">subsunacs.net_55064.txt</a></label>						</div>
+					<div id="comments">
+                    <h3>Коментари</h3>
+                    </div><!-- commentsWrapper //-->
+                    </div><!-- subsInfoContainer //-->
+				<div class="clear"></div>
+				</div>
+			</div>
+		</div>
+
+	</div><!-- mainBlock //-->
+</div> <!-- mainContent //-->
+<script type="text/javascript" src="/js/jquery.limit.js" defer></script>
+</body></html>
