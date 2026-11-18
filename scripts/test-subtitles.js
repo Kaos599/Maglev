@@ -188,6 +188,11 @@ const utf8 = (s) => Uint8Array.from(Buffer.from(s, 'utf8'));
   check('the same languages in UTF-8 are fine', dec(utf8('你好'), 'zh-CN').text === '你好' && dec(utf8('こんにちは'), 'ja').ok);
   check('prepareText throws a SubtitleError the copy knows', (() => { try { pay.prepareText(bytes(0xc4, 0xe3), 'zh'); return false; } catch (e) { return e instanceof pay.SubtitleError && e.code === 'unreadable_text'; } })());
   // The tables agree with a full Unicode library for every byte.
+  const WHATWG_1252_80_9F = String.fromCharCode(
+    0x20ac, 0x81, 0x201a, 0x192, 0x201e, 0x2026, 0x2020, 0x2021, 0x2c6, 0x2030, 0x160, 0x2039, 0x152, 0x8d, 0x17d, 0x8f,
+    0x90, 0x2018, 0x2019, 0x201c, 0x201d, 0x2022, 0x2013, 0x2014, 0x2dc, 0x2122, 0x161, 0x203a, 0x153, 0x9d, 0x17e, 0x178,
+  );
+  const latin1A0toFF = String.fromCharCode(...Array.from({ length: 96 }, (_, i) => 0xa0 + i));
   const tables = { cp1250: 'windows-1250', cp1252: 'windows-1252', cp1253: 'windows-1253', cp1254: 'windows-1254', cp1256: 'windows-1256', cp1251: 'windows-1251' };
   const probe = { cp1250: 'pl', cp1252: 'de', cp1253: 'el', cp1254: 'tr', cp1256: 'ar', cp1251: 'ru' };
   for (const [page, label] of Object.entries(tables)) {
@@ -199,8 +204,12 @@ const utf8 = (s) => Uint8Array.from(Buffer.from(s, 'utf8'));
     const fold = (s) => Array.from(s, (ch, i) => (ch === '�' ? String.fromCharCode(128 + i) : ch)).join('');
     const theirs = fold(new TextDecoder(label).decode(all));
     if (mine.ok) mine.text = fold(mine.text);
+    // windows-1252 is checked against the WHATWG index itself (https://encoding.spec.whatwg.org/index-windows-1252.txt):
+    // CI's Node 22.18 decoder disagrees with it while Node 22.22 agrees, so the platform is not a reliable oracle there.
+    const want = page === 'cp1252' ? fold(WHATWG_1252_80_9F + latin1A0toFF) : theirs;
+    const diff = mine.ok ? Array.from(want).map((ch, i) => (mine.text[i] === ch ? '' : `${(128 + i).toString(16)}: ${mine.text.charCodeAt(i).toString(16)} vs ${ch.charCodeAt(0).toString(16)}`)).filter(Boolean) : [];
     // cp1251 comes from utils/search/charset.ts, which maps the undefined byte 0x98 to U+0098 where WHATWG has U+0098 too.
-    check(`${page} table matches the platform decoder for bytes 0x80-0xFF`, mine.ok && mine.encoding === page && mine.text === theirs);
+    check(`${page} table matches ${page === 'cp1252' ? 'the WHATWG index' : 'the platform decoder'} for bytes 0x80-0xFF`, mine.ok && mine.encoding === page && diff.length === 0, mine.ok ? `encoding ${mine.encoding}; ${diff.slice(0, 8).join(', ')}` : mine.code);
   }
   check('big files decode (chunked)', dec(ascii('é'.repeat(200000)), 'fr').text.length === 200000);
   check('format: WEBVTT', pay.detectFormat('WEBVTT\n\n00:01.000 --> 00:02.000\nHi') === 'vtt' && pay.detectFormat('﻿WEBVTT - x') === 'vtt');
