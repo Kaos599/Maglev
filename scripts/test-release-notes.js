@@ -2,7 +2,7 @@
 /** Release notes: sections are optional and ordered, the current version has notes, and the release uses them. */
 const fs = require('fs');
 const path = require('path');
-const { parse, build, SECTIONS } = require('./release-notes.js');
+const { parse, build, thanks, SECTIONS } = require('./release-notes.js');
 
 const root = path.resolve(__dirname, '..');
 let pass = 0, fail = 0;
@@ -35,6 +35,12 @@ t('only sections the file has', (() => {
   const notes = parse(fs.readFileSync(path.join(root, 'release-notes', `${version}.md`), 'utf8')).sections.map((s) => s.title);
   return SECTIONS.every((s) => body.includes(`## ${s}`) === notes.includes(s));
 })());
+
+// GitHub-only Thanks: from <version>.thanks.md, in the release text, never in the app's bundled notes.
+const people = thanks(version);
+t('thanks lines appear on the release page when the file exists', people.length === 0 ? !body.includes('## Thanks') : body.includes('## Thanks') && people.every((p) => body.includes(`- ${p}`)));
+t('a version with no thanks file has no Thanks section', thanks('0.0').length === 0);
+t('thanks files are not bundled as app notes', !fs.readdirSync(path.join(root, 'release-notes')).filter((f) => /^\d+\.\d+\.md$/.test(f)).some((f) => f.includes('thanks')));
 
 const wf = fs.readFileSync(path.join(root, '.github/workflows/release-apk.yml'), 'utf8');
 t('release workflow checks notes before building', /release-notes\.js build "\$\{\{ github\.ref_name \}\}" > \/dev\/null/.test(wf));
