@@ -109,6 +109,8 @@ export interface AppearanceSettings {
   fontStyle: FontStyle;
   /** Transfers screen: show the total speeds strip with Pause all / Resume all. Off by default. */
   showSpeedTotals: boolean;
+  /** Transfers screen: swipe a row right to Pause or Resume, left to Remove from the list. UI only. On by default. */
+  swipeActions: boolean;
 }
 
 export type DownloadFolderMode = 'direct' | 'staging';
@@ -153,6 +155,7 @@ export const DEFAULT_SETTINGS: MaglevSettings = {
     telemetryDensity: 'COMPACT',
     fontStyle: 'clean',
     showSpeedTotals: false,
+    swipeActions: true,
   },
   storage: {
     storageMode: 'POSIX',
