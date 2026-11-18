@@ -10,6 +10,7 @@ import {
   CHANGE_LANGUAGES,
   CHANGE_NAME_LABEL,
   PHASE_WORDS,
+  ROW_BUTTONS,
   SKIP_LABEL,
   TYPE_A_TITLE,
   USES_YOUR_LANGUAGES,
@@ -20,7 +21,7 @@ import {
   nonVideoOne,
   statusSummary,
 } from '../../utils/subtitles/copy';
-import { getRequests, renameRequest, rowTitles, setAskSearchName, skipSubtitles, useRequestPhases, type SubtitleAsk } from '../../utils/subtitles/requests';
+import { clearAskSearchNames, getRequests, isPackAsk, renameRequest, retryRequest, rowTitles, setAskSearchName, skipSubtitles, useRequestPhases, type SubtitleAsk } from '../../utils/subtitles/requests';
 
 interface Props {
   visible: boolean;
@@ -55,10 +56,16 @@ export function MultiSubtitleSheet({ visible, asks, mode, onConfirm, onClose, no
       setOff(new Set());
       setEditing(null);
       setNames({});
+      return;
     }
+    // 44.15 N26: a name typed in choose mode that was never asked for is forgotten.
+    if (mode === 'choose') clearAskSearchNames(asks.map((a) => a.key));
+    // Only the sheet closing matters here.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible]);
 
-  const titles = useMemo(() => rowTitles(asks.map((a) => (a.addedAt ? a : { ...a, addedAt: getRequests()[a.key]?.updatedAt }))), [asks]);
+  // 44.15 D6: identical rows get " · 2nd", " · 3rd" in add order.
+  const titles = useMemo(() => rowTitles(asks), [asks]);
   const ticked = asks.filter((a) => !off.has(a.key));
   const draftOk = parseTyped(draft).title !== '';
 
@@ -109,7 +116,10 @@ export function MultiSubtitleSheet({ visible, asks, mode, onConfirm, onClose, no
             const phase = phases[a.key];
             const on = !off.has(a.key);
             const editingRow = editing === a.key;
-            const typed = names[a.key] ?? a.searchName;
+            const pack = isPackAsk(a, getRequests()[a.key]?.files);
+            // 44.15 D7 / D12: a pack has no pencil, and a saved row is changed through the single sheet.
+            const canEdit = !pack && phase !== 'saved';
+            const typed = pack ? undefined : names[a.key] ?? a.searchName;
             const word = phase ? (phase === 'needs-pick' && getRequests()[a.key]?.otherLang ? foundInOtherOnly(getRequests()[a.key].otherLang!) : PHASE_WORDS[phase]) : '';
             return (
               <View key={a.key} style={styles.row}>
@@ -161,11 +171,16 @@ export function MultiSubtitleSheet({ visible, asks, mode, onConfirm, onClose, no
                     <Text style={styles.changeText}>{SKIP_LABEL}</Text>
                   </PressableScale>
                 ) : null}
+                {mode === 'status' && phase === 'failed' && !editingRow ? (
+                  <PressableScale onPress={() => retryRequest(a.key)} accessibilityRole="button" accessibilityLabel={`${ROW_BUTTONS.tryAgain} ${a.title}`} style={styles.change}>
+                    <Text style={styles.changeText}>{ROW_BUTTONS.tryAgain}</Text>
+                  </PressableScale>
+                ) : null}
                 {editingRow ? (
                   <Button label="Search" size="md" disabled={!draftOk} onPress={() => submit(a)} />
-                ) : (
+                ) : canEdit ? (
                   <IconButton icon="pencil" accessibilityLabel={CHANGE_NAME_LABEL} onPress={() => startEdit(a)} />
-                )}
+                ) : null}
               </View>
             );
           })}

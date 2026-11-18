@@ -5,7 +5,7 @@
  */
 import { formatBytes } from '../constants/format.ts';
 import { parseName, parseRelease, stripName } from './subtitles/parseName.ts';
-import type { SubtitleAsk } from './subtitles/requests.ts';
+import type { RequestPhase, SubtitleAsk } from './subtitles/requests.ts';
 
 /** The message stays this long after the latest add. */
 export const TRAY_MS = 6000;
@@ -23,6 +23,8 @@ export interface TrayItem {
   /** The add has a subtitle ask: a video, with subtitles available. Never true for music, apps and the like. */
   ask: SubtitleAsk | null;
   sub: TraySub;
+  /** 44.15 D1: who asked. Only items the tray asked for in automatic mode are skipped by the tray's Skip. */
+  via?: 'auto' | 'manual';
   /** A short note on the add itself ("Leaves 2 GB free"). Shown only when the message has this one add. */
   note?: string;
 }
@@ -36,6 +38,8 @@ export interface TrayState {
   auto: boolean;
   /** Epoch ms when the message goes away. */
   deadline: number;
+  /** Epoch ms of the first add in this message (44.15 F9: under TalkBack it stops merging after 60 s). */
+  startedAt?: number;
 }
 
 export interface TrayAdd {
@@ -47,6 +51,8 @@ export interface TrayAdd {
   alreadyThere?: boolean;
   auto: boolean;
   note?: string;
+  /** 44.15 F9: the phase of a request already held for this key, if any. A skipped or saved one never says "Getting". */
+  phase?: RequestPhase;
 }
 
 // ---------------------------------------------------------------- names
@@ -100,19 +106,22 @@ export function buildAsk(i: { infoHash: string; name: string; sizeBytes?: number
 export function mergeAdd(prev: TrayState | null, add: TrayAdd, now: number): TrayState {
   const hash = add.hash.toLowerCase();
   const { display, short } = readName(add.name);
-  const base: TrayState = prev ?? { items: [], already: [], auto: add.auto, deadline: now + TRAY_MS };
+  const base: TrayState = prev ?? { items: [], already: [], auto: add.auto, deadline: now + TRAY_MS, startedAt: now };
   const known = add.alreadyThere || base.items.some((x) => x.hash === hash);
   const next: TrayState = { ...base, auto: add.auto, deadline: now + TRAY_MS };
   if (known) {
     if (!next.already.some((x) => x.hash === hash)) next.already = [...next.already, { hash, display, short }];
     return next;
   }
+  // 44.15 F9: a key that is already skipped, saved or has its subtitles is not "Getting" and offers no ask.
+  const settled = add.phase === 'skipped' || add.phase === 'saved' || add.phase === 'has-already';
   const item: TrayItem = {
     hash,
     display,
     short,
     ask: add.ask,
-    sub: add.ask && add.auto ? 'asked' : 'none',
+    sub: settled ? 'skipped' : add.ask && add.auto ? 'asked' : 'none',
+    ...(!settled && add.ask && add.auto ? { via: 'auto' as const } : {}),
     ...(add.note ? { note: add.note } : {}),
   };
   next.items = [...next.items, item];
@@ -122,14 +131,31 @@ export function mergeAdd(prev: TrayState | null, add: TrayAdd, now: number): Tra
 /** After the user asked for subtitles on these keys. */
 export function markAsked(s: TrayState, keys: readonly string[]): TrayState {
   const set = new Set(keys);
-  return { ...s, items: s.items.map((x) => (x.ask && set.has(x.ask.key) && x.sub === 'none' ? { ...x, sub: 'asked' as const } : x)) };
+  return { ...s, items: s.items.map((x) => (x.ask && set.has(x.ask.key) && x.sub === 'none' ? { ...x, sub: 'asked' as const, via: 'manual' as const } : x)) };
 }
 
-/** Skip: every video that was asked becomes skipped. Returns the keys to hand to `skipSubtitles`. */
+/**
+ * Skip (44.15 D1): only the videos the tray asked for in automatic mode become skipped. A video asked for with
+ * "Get subtitles" is never touched. Returns the keys to hand to `skipSubtitles`.
+ */
 export function skipAsked(s: TrayState): { state: TrayState; keys: string[] } {
-  const keys = s.items.filter((x) => x.ask && x.sub === 'asked').map((x) => x.ask!.key);
-  return { state: { ...s, items: s.items.map((x) => (x.sub === 'asked' ? { ...x, sub: 'skipped' as const } : x)) }, keys };
+  const mine = (x: TrayItem) => !!x.ask && x.sub === 'asked' && x.via === 'auto';
+  const keys = s.items.filter(mine).map((x) => x.ask!.key);
+  return { state: { ...s, items: s.items.map((x) => (mine(x) ? { ...x, sub: 'skipped' as const } : x)) }, keys };
 }
+
+/** 44.15 F9: under TalkBack the message stops merging new adds after this long, so it never grows for hours. */
+export const SCREEN_READER_MERGE_MS = 60_000;
+
+/** Whether a new add may join the message on screen. */
+export function trayMayMerge(s: TrayState | null, o: { now: number; screenReader: boolean; focused: boolean }): boolean {
+  if (!s || !o.focused) return false;
+  if (o.screenReader && s.startedAt !== undefined && o.now - s.startedAt > SCREEN_READER_MERGE_MS) return false;
+  return true;
+}
+
+/** 44.15 F7: a banner waits for an open sheet; it never closes it. */
+export const bannerPlan = (o: { sheetOpen: boolean }): 'now' | 'wait' => (o.sheetOpen ? 'wait' : 'now');
 
 // ---------------------------------------------------------------- counts
 
@@ -208,18 +234,38 @@ export interface TrayAction {
 
 const gettingLabel = (asked: number) => (asked === 1 ? 'Getting subtitles' : `Getting subtitles for ${asked}`);
 
-export function trayAction(s: TrayState): TrayAction {
+/** 44.15 F9: the action row's words for the videos asked for, from their live phases. */
+export function liveLabel(askedKeys: readonly string[], phases: Record<string, RequestPhase | undefined>): string {
+  const ps = askedKeys.map((k) => phases[k]);
+  const n = ps.length;
+  const count = (f: (p: RequestPhase | undefined) => boolean) => ps.filter(f).length;
+  const waiting = count((p) => p === undefined || p === 'queued' || p === 'searching' || p === 'offline' || p === 'limited');
+  if (waiting > 0) return gettingLabel(n);
+  const needYou = count((p) => p === 'needs-pick');
+  if (needYou > 0) return `${needYou} ${needYou === 1 ? 'needs' : 'need'} you`;
+  const saved = count((p) => p === 'saved');
+  if (saved === n) return 'Subtitles saved';
+  if (saved > 0) return `${saved} saved`;
+  if (count((p) => p === 'failed') > 0) return "Sources didn't answer";
+  if (count((p) => p === 'unavailable') > 0) return "Can't save here";
+  if (count((p) => p === 'has-already') === n) return 'Already has subtitles';
+  if (count((p) => p === 'skipped') === n) return 'Skipped';
+  return 'No subtitles found';
+}
+
+export function trayAction(s: TrayState, phases?: Record<string, RequestPhase | undefined>): TrayAction {
   const c = trayCounts(s);
   if (isAlreadyOnly(s)) return { main: null, see: false, skip: false };
-  if (autoTitle(s, c) && c.v === 0) return { main: null, see: c.asked >= 2, skip: true };
+  if (autoTitle(s, c) && c.v === 0) return { main: null, see: c.asked >= 2, skip: s.items.some((x) => x.sub === 'asked' && x.via === 'auto') };
   if (c.asked === 0) {
     if (c.v === 0) return { main: null, see: false, skip: false };
     return { main: { kind: 'ask', label: c.v === 1 ? 'Get subtitles' : `Get subtitles for ${c.v}`, count: c.v }, see: false, skip: false };
   }
+  const askedKeys = s.items.filter((x) => x.ask && x.sub === 'asked').map((x) => x.ask!.key);
   return {
     main: {
       kind: 'getting',
-      label: gettingLabel(c.asked),
+      label: phases ? liveLabel(askedKeys, phases) : gettingLabel(c.asked),
       more: c.v > 0 ? { label: `${c.v} more`, a11y: `Get subtitles for ${c.v} more`, count: c.v } : null,
       opensStatus: c.asked >= 2,
     },

@@ -22,7 +22,7 @@ import { START_ENGINE_LABEL, engineStoppedBody, isEngineStopped } from '../utils
 import { openBrowser } from '../utils/browser/openBrowser';
 import { fileKind } from '../utils/fileKind';
 import { SubtitlesAutoRow, useSubtitlesAuto } from '../components/search/SubtitlesAutoRow';
-import { askSubtitles } from '../utils/subtitles/requests';
+import { askSubtitles, markNotThisOne } from '../utils/subtitles/requests';
 import { buildAsk } from '../utils/addedTray';
 import { joinTrayIfShowing } from '../components/search/AddedTray';
 
@@ -222,6 +222,8 @@ export default function AddDownloadScreen() {
         // A link added while the Added message is on screen joins it (44.12); otherwise Auto asks on its own.
         const joined = joinTrayIfShowing({ hash: ask.key, name: renamed ?? probe.name, ask, auto: subs.on });
         if (!joined && subs.on) askSubtitles([ask], { auto: true });
+        // 44.15 D4: Settings auto is on and this screen's switch is off: "not this one".
+        else if (!joined && !subs.on && subs.settingsOn) markNotThisOne([ask]);
       }
       router.replace('/');
       return;
@@ -348,6 +350,7 @@ export default function AddDownloadScreen() {
           <Button label="Change" variant="secondary" disabled={adding} onPress={() => void handleChangeFolder()} />
         </View>
         {subs.show ? <SubtitlesAutoRow on={subs.on} onChange={subs.setOn} disabled={adding} /> : null}
+        {subs.node}
         <ChipGroup label="Parts" options={PART_OPTIONS} value={parts} onChange={(v) => setPartsOverride(v)} />
         {mobileNote ?<Banner tone="info" title={mobileNote} /> : null}
         {doesntFit ? <Banner tone="danger" title={banners.addDownload.notEnoughSpace.title} body={banners.addDownload.notEnoughSpace.body} /> : null}

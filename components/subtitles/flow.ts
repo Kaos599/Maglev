@@ -145,7 +145,7 @@ export interface SubtitleTarget {
 export function torrentTarget(id: string, folder: string | null | undefined, file: FileLike, allFiles?: readonly { path: string }[]): SubtitleTarget | null {
   const videoPath = videoLocation(folder, file.path);
   if (!videoPath) return null;
-  const t: SubtitleTarget = { videoPath, fileName: baseName(file.path), videoBytes: file.length, complete: fileComplete(file), ownerKey: `t:${id}` };
+  const t: SubtitleTarget = { videoPath, fileName: baseName(file.path), videoBytes: file.length, complete: fileComplete(file), ownerKey: `t:${id.toLowerCase()}` };
   if (allFiles) t.existing = { videoPath: file.path, files: allFiles.map((f) => f.path) };
   return t;
 }

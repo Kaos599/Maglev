@@ -23,7 +23,7 @@ import { banners, empty, mobileDataLine, notices } from '../constants/copy';
 import { useSettings } from '../context/SettingsContext';
 import { fileKind } from '../utils/fileKind';
 import { SubtitlesAutoRow, useSubtitlesAuto } from '../components/search/SubtitlesAutoRow';
-import { askSubtitles } from '../utils/subtitles/requests';
+import { askSubtitles, markNotThisOne } from '../utils/subtitles/requests';
 import { buildAsk } from '../utils/addedTray';
 import { START_ENGINE_LABEL, engineStoppedBody, isEngineStopped } from '../utils/addErrorNotice';
 
@@ -333,8 +333,11 @@ export default function AddTorrentScreen() {
       return;
     }
     if (res.ok) {
-      if (meta && subs.show && subs.on && videoFiles.length > 0) {
-        askSubtitles([buildAsk({ infoHash: meta.infoHash, name: meta.name, sizeBytes: meta.totalBytes, videoCount: videoFiles.length })], { auto: true });
+      if (meta && subs.show && videoFiles.length > 0) {
+        const ask = buildAsk({ infoHash: meta.infoHash, name: meta.name, sizeBytes: meta.totalBytes, videoCount: videoFiles.length });
+        // 44.15 D4: Settings auto is on and this screen's switch is off: "not this one", so automatic mode leaves it alone.
+        if (subs.on) askSubtitles([ask], { auto: true });
+        else if (subs.settingsOn) markNotThisOne([ask]);
       }
       finishAdded(res.id);
       return;
@@ -494,6 +497,7 @@ export default function AddTorrentScreen() {
           <Button label="Change" variant="secondary" disabled={adding} onPress={handleChangeFolder} />
         </View>
         {subs.show ? <SubtitlesAutoRow on={subs.on} onChange={subs.setOn} disabled={adding} /> : null}
+        {subs.node}
         {mobileNote ? <Banner tone="info" title={mobileNote} /> : null}
         {addError ? (
           addStopped ? (

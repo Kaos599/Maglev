@@ -5,7 +5,8 @@ import { ThemeColors, radius, spacing, type } from '../../constants/theme';
 import { PixelIcon } from '../PixelIcon';
 import { PressableScale } from '../ui';
 import { ROW_LABEL } from '../../utils/subtitles/copy';
-import { getRequests, skipSubtitles, useRequestPhases } from '../../utils/subtitles/requests';
+import { getRequests, retryRequest, skipSubtitles, useRequestPhases } from '../../utils/subtitles/requests';
+import { useSubtitleConsent } from './useSubtitleConsent';
 import { cardIconModel } from './flow';
 import { SubtitleBadge } from './SubtitleCardIcon';
 import { packCounts, rowModel, type SheetStart } from './rowModel';
@@ -25,17 +26,20 @@ interface Props {
   onOpenSheet: (start: SheetStart) => void;
   /** Season pack: opens MultiSubtitleSheet in status mode. */
   onSeeAll: () => void;
+  /** 44.15 D7: a pack with no request: asks for the whole pack. The row asks for the one-time OK first (D10). */
+  onAskPack?: () => void;
 }
 
 /**
  * NATIVE_CONTRACT 44.14: one card under the progress card and the "why" block. The icon, the label with the state
  * line, and one text button. Tapping anywhere does what the button does. The page decides whether it shows.
  */
-function SubtitlesRowImpl({ requestKey, stateKey = requestKey, started, canOpenSheet, onOpenSheet, onSeeAll }: Props) {
+function SubtitlesRowImpl({ requestKey, stateKey = requestKey, started, canOpenSheet, onOpenSheet, onSeeAll, onAskPack }: Props) {
   const { colors } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const phases = useRequestPhases([requestKey]);
   const stateVersion = useSubtitleStateVersion();
+  const consent = useSubtitleConsent();
   const entry = getRequests()[requestKey];
   const stored = useMemo(() => cardIconModel(stateFor(stateKey), Date.now()), [stateKey, stateVersion, phases[requestKey]]); // eslint-disable-line react-hooks/exhaustive-deps
   const m = rowModel({
@@ -47,12 +51,17 @@ function SubtitlesRowImpl({ requestKey, stateKey = requestKey, started, canOpenS
     language: stored?.lang,
     started,
     canOpenSheet,
+    canAskPack: !!onAskPack && !canOpenSheet && !entry,
+    needsOk: consent.needsOk && !!entry,
   });
 
   const act = () => {
     if (!m.button) return;
     if (m.button.action === 'cancel') skipSubtitles(requestKey);
     else if (m.button.action === 'see-all') onSeeAll();
+    else if (m.button.action === 'try-again') retryRequest(requestKey);
+    else if (m.button.action === 'review') consent.require(() => {});
+    else if (m.button.action === 'ask-pack') consent.require(() => onAskPack?.());
     else onOpenSheet(m.start);
   };
 
@@ -87,9 +96,12 @@ function SubtitlesRowImpl({ requestKey, stateKey = requestKey, started, canOpenS
     );
   }
   return (
-    <PressableScale onPress={act} scaleTo={0.99} accessibilityRole="button" accessibilityLabel={m.a11y} style={styles.card} testID="subtitles-row">
-      {body}
-    </PressableScale>
+    <>
+      <PressableScale onPress={act} scaleTo={0.99} accessibilityRole="button" accessibilityLabel={m.a11y} style={styles.card} testID="subtitles-row">
+        {body}
+      </PressableScale>
+      {consent.node}
+    </>
   );
 }
 

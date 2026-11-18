@@ -34,6 +34,14 @@ export function privacyAckPatch(): Pick<SubtitleSettings, 'privacyAck'> {
   return { privacyAck: true };
 }
 
+/**
+ * 44.15 D10: the functional settings update for accepting the notice (and optionally more fields in the same write).
+ * It reads the settings as they are now, never a snapshot from an earlier render.
+ */
+export function acceptPrivacy(more?: Partial<SubtitleSettings>): (prev: { subtitles: SubtitleSettings }) => { subtitles: SubtitleSettings } {
+  return (prev) => ({ subtitles: { ...prev.subtitles, ...more, ...privacyAckPatch() } });
+}
+
 /** A new `sourceEnabled` map with one switch set. */
 export function withSourceEnabled(s: Pick<SubtitleSettings, 'sourceEnabled'>, providerId: string, on: boolean): Record<string, boolean> {
   return { ...s.sourceEnabled, [providerId]: on };

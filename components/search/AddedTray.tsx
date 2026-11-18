@@ -6,7 +6,8 @@ import { PixelIcon } from '../PixelIcon';
 import { PressableScale } from '../ui';
 import { easeOut, useReduceMotion } from '../motion';
 import { MultiSubtitleSheet } from '../subtitles/MultiSubtitleSheet';
-import { askSubtitles, skipSubtitles, type SubtitleAsk } from '../../utils/subtitles/requests';
+import { useSubtitleConsent } from '../subtitles/useSubtitleConsent';
+import { askSubtitles, getRequests, skipSubtitles, useRequestPhases, type RequestPhase, type SubtitleAsk } from '../../utils/subtitles/requests';
 import {
   askedAsks,
   markAsked,
@@ -17,6 +18,7 @@ import {
   skipAsked,
   timerRuns,
   trayAction,
+  trayMayMerge,
   trayAnnouncement,
   trayLine,
   trayTileMuted,
@@ -45,8 +47,8 @@ export interface TrayView {
   action: TrayAction;
 }
 
-export function trayView(s: TrayState): TrayView {
-  return { title: trayTitle(s), line: trayLine(s), muted: trayTileMuted(s), action: trayAction(s) };
+export function trayView(s: TrayState, phases?: Record<string, RequestPhase | undefined>): TrayView {
+  return { title: trayTitle(s), line: trayLine(s), muted: trayTileMuted(s), action: trayAction(s, phases) };
 }
 
 interface TrayProps {
@@ -256,16 +258,17 @@ export interface AddedTrayInput extends Omit<TrayAdd, 'auto'> {
  * padding the result list needs while the message shows.
  */
 // The one mounted message, so a link added from the Add screen can join it (44.12).
-let live: { add: (i: AddedTrayInput) => void; visible: () => boolean } | null = null;
+let live: { add: (i: AddedTrayInput) => void; visible: () => boolean; focused: () => boolean } | null = null;
 
-/** Joins the message when it is on screen. Returns false (and does nothing) when it is not. */
+/** Joins the message when it is on screen and the Search tab is the one in front (44.15 F9). Returns false (and does nothing) when it is not. */
 export function joinTrayIfShowing(input: AddedTrayInput): boolean {
-  if (!live || !live.visible()) return false;
+  if (!live || !live.visible() || !live.focused()) return false;
   live.add(input);
   return true;
 }
 
-export function useAddedTray({ onView, onAnnounce }: { onView: () => void; onAnnounce?: (text: string) => void }) {
+export function useAddedTray({ onView, onAnnounce, focused = true }: { onView: () => void; onAnnounce?: (text: string) => void; /** The Search tab is in front (44.15 F9). */ focused?: boolean }) {
+  const consent = useSubtitleConsent();
   const [state, setState] = useState<TrayState | null>(null);
   const stateRef = useRef<TrayState | null>(null);
   const [sheet, setSheet] = useState<'choose' | 'status' | null>(null);
@@ -273,6 +276,10 @@ export function useAddedTray({ onView, onAnnounce }: { onView: () => void; onAnn
   const [screenReader, setScreenReader] = useState(false);
   const [height, setHeight] = useState(0);
   const heldSince = useRef<number | null>(null);
+  const screenReaderRef = useRef(false);
+  screenReaderRef.current = screenReader;
+  const focusedRef = useRef(focused);
+  focusedRef.current = focused;
 
   const put = useCallback((next: TrayState | null) => {
     stateRef.current = next;
@@ -312,20 +319,35 @@ export function useAddedTray({ onView, onAnnounce }: { onView: () => void; onAnn
 
   const add = useCallback(
     (input: AddedTrayInput) => {
-      const prev = stateRef.current;
-      const next = mergeAdd(prev, input, Date.now());
+      const now = Date.now();
+      // 44.15 F9: under TalkBack a message older than 60 s stops merging; the add starts a new one.
+      const prev = trayMayMerge(stateRef.current, { now, screenReader: screenReaderRef.current, focused: true }) ? stateRef.current : null;
+      const key = input.ask?.key;
+      // 44.15 D10: nothing is asked on its own before the one-time OK.
+      const auto = input.auto && !consent.needsOk;
+      const next = mergeAdd(prev, { ...input, auto, phase: key ? getRequests()[key]?.phase : undefined }, now);
       // An add while a hold is on starts its 6 seconds when the hold ends.
       if (heldSince.current !== null) heldSince.current = Date.now();
       put(next);
       const isNew = !input.alreadyThere && !(prev?.items.some((x) => x.hash === input.hash.toLowerCase()) ?? false);
-      if (isNew && input.auto && input.ask) askSubtitles([input.ask], { auto: true });
+      const held = key ? getRequests()[key]?.phase : undefined;
+      if (isNew && auto && input.ask && held !== 'skipped') askSubtitles([input.ask], { auto: true });
       onAnnounce?.(trayAnnouncement(next));
     },
-    [put, onAnnounce],
+    [put, onAnnounce, consent.needsOk],
   );
 
   const hide = useCallback(() => {
     setSheet(null);
+    setFinger(false);
+    put(null);
+  }, [put]);
+
+  /** 44.15 F7: a banner takes the message's slot but never closes a sheet that is open (the caller waits). */
+  const sheetOpenRef = useRef(false);
+  sheetOpenRef.current = sheet !== null;
+  const hideMessage = useCallback(() => {
+    if (sheetOpenRef.current) return;
     setFinger(false);
     put(null);
   }, [put]);
@@ -339,22 +361,31 @@ export function useAddedTray({ onView, onAnnounce }: { onView: () => void; onAnn
         setSheet('choose');
         return;
       }
-      askSubtitles(pending, { auto: false });
-      put(markAsked(cur, pending.map((x) => x.key)));
+      // 44.15 D10: the first tap on Get subtitles shows the one-time notice; nothing is asked before Continue.
+      consent.require(() => {
+        const now = stateRef.current;
+        if (!now) return;
+        const still = pendingAsks(now);
+        askSubtitles(still, { auto: false });
+        put(markAsked(now, still.map((x) => x.key)));
+      });
     },
-    [put],
+    [put, consent],
   );
 
   const confirm = useCallback(
     (keys: string[]) => {
-      const cur = stateRef.current;
       setSheet(null);
-      if (!cur) return;
-      const picked = pendingAsks(cur).filter((x) => keys.includes(x.key));
-      if (picked.length > 0) askSubtitles(picked, { auto: false });
-      put(markAsked(cur, picked.map((x) => x.key)));
+      if (!stateRef.current) return;
+      consent.require(() => {
+        const cur = stateRef.current;
+        if (!cur) return;
+        const picked = pendingAsks(cur).filter((x) => keys.includes(x.key));
+        if (picked.length > 0) askSubtitles(picked, { auto: false });
+        put(markAsked(cur, picked.map((x) => x.key)));
+      });
     },
-    [put],
+    [put, consent],
   );
 
   const skip = useCallback(() => {
@@ -366,7 +397,9 @@ export function useAddedTray({ onView, onAnnounce }: { onView: () => void; onAnn
   }, [put]);
 
   const sheetAsks: SubtitleAsk[] = state ? (sheet === 'status' ? askedAsks(state) : pendingAsks(state)) : [];
-  const view = state && sheet === null ? trayView(state) : null;
+  // 44.15 F9: the action row follows what the asked videos are doing now.
+  const phases = useRequestPhases(state ? askedAsks(state).map((a) => a.key) : []);
+  const view = state && sheet === null ? trayView(state, phases) : null;
   const node = (
     <>
       <AddedTray
@@ -383,18 +416,19 @@ export function useAddedTray({ onView, onAnnounce }: { onView: () => void; onAnn
         onHeight={setHeight}
       />
       <MultiSubtitleSheet visible={sheet !== null} asks={sheetAsks} mode={sheet ?? 'choose'} onConfirm={confirm} onClose={() => setSheet(null)} />
+      {consent.node}
     </>
   );
   const visibleRef = useRef(false);
   visibleRef.current = !!state;
   useEffect(() => {
-    live = { add, visible: () => visibleRef.current };
+    live = { add, visible: () => visibleRef.current, focused: () => focusedRef.current };
     return () => {
       live = null;
     };
   }, [add]);
   const inset = view ? (height || GUESS_HEIGHT) + BOTTOM_GAP + spacing.sm : 0;
-  return { add, hide, node, inset, visible: !!view };
+  return { add, hide, hideMessage, sheetOpen: sheet !== null, node, inset, visible: !!view };
 }
 
 const makeStyles = (c: ThemeColors) =>

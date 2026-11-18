@@ -14,7 +14,9 @@ import { SubtitleSheet } from '../../components/subtitles/SubtitleSheet';
 import { MultiSubtitleSheet } from '../../components/subtitles/MultiSubtitleSheet';
 import { SubtitlesRow } from '../../components/subtitles/SubtitlesRow';
 import { torrentRowFacts, type SheetStart } from '../../components/subtitles/rowModel';
-import { getRequests } from '../../utils/subtitles/requests';
+import { askSubtitles, getRequests } from '../../utils/subtitles/requests';
+import { buildAsk } from '../../utils/addedTray';
+import { pickMainFile } from '../../utils/mainFile';
 import { useSubtitleAvailability } from '../../components/subtitles/useSubtitleEntry';
 import { fileEntryMode, torrentEntryMode, torrentTarget, type SubtitleTarget } from '../../components/subtitles/flow';
 import { OPEN_FOLDER_FAILED_TEXT } from '../../utils/downloadCopy';
@@ -881,6 +883,11 @@ export default function TorrentDetailScreen() {
             setSubtitleTarget(torrentTarget(id, snap.outputFolder, subtitleRow.file, downloadedFiles));
           }}
           onSeeAll={() => setSubtitlesAll(true)}
+          onAskPack={() => {
+            // 44.15 D7: a pack page row with no request asks for the whole pack.
+            const videos = pickMainFile(files).videos.length;
+            askSubtitles([buildAsk({ infoHash: id, name: snap.name, sizeBytes: snap.totalBytes, videoCount: videos })], { auto: false });
+          }}
         />
       ) : null}
 

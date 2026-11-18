@@ -254,7 +254,7 @@ const nativeErr = (code) => Object.assign(new Error(code), { code });
   check('Transfers, Detail and the link page host the sheet', /<SubtitleSheet/.test(read('app/(tabs)/index.tsx')) && /<SubtitleSheet/.test(read('app/torrent/[id].tsx')) && /<SubtitleSheet/.test(read('app/download/[id].tsx')));
   const sheet = read('components/subtitles/SubtitleSheet.tsx');
   check('sheet: hashes through the bridge, saves through the bridge, unzips through the bridge', /hashIfComplete\(t, maglevEngine\)/.test(sheet) && /maglevEngine\.saveSubtitle/.test(sheet) && /maglevEngine\.unzipSubtitles/.test(sheet));
-  check('sheet: uses the shared copy (button, groups, notice)', /DOWNLOAD_BUTTON/.test(sheet) && /GROUP_LABEL/.test(sheet) && /privacyNotice\(/.test(sheet) && /privacyAckPatch\(\)/.test(sheet));
+  check('sheet: uses the shared copy (button, groups, notice)', /DOWNLOAD_BUTTON/.test(sheet) && /GROUP_LABEL/.test(sheet) && /privacyNotice\(/.test(sheet) && /acceptPrivacy\(\)/.test(sheet));
   check('sheet never opens with the switch off or no source', /!sub\.enabled \|\| providersRef\.current\.length === 0/.test(sheet));
   check('sheet confirms a save with a toast through the app notice host', /showNotice\(\{ message: savedToast/.test(sheet));
   const files = fs.readdirSync(path.join(root, 'components/subtitles')).map((f) => read(`components/subtitles/${f}`)).join('\n');

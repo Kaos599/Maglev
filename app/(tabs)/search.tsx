@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AccessibilityInfo, AppState, Dimensions, ScrollView, StyleSheet, Text, TextInput, View, findNodeHandle, type LayoutChangeEvent, type NativeScrollEvent, type NativeSyntheticEvent } from 'react-native';
 import { FlashList } from '@shopify/flash-list';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useIsFocused, useLocalSearchParams, useRouter } from 'expo-router';
 import { useMaglevEngine } from '../../context/EngineContext';
 import { useSettings } from '../../context/SettingsContext';
 import { useTheme } from '../../context/ThemeContext';
@@ -42,7 +42,7 @@ import { openBrowser } from '../../utils/browser/openBrowser';
 import { noteOrigin } from '../../utils/stats/sourceStore';
 import { useAddedTray } from '../../components/search/AddedTray';
 import { useSubtitleAvailability } from '../../components/subtitles/useSubtitleEntry';
-import { buildAsk } from '../../utils/addedTray';
+import { bannerPlan, buildAsk } from '../../utils/addedTray';
 import { isVideoResult } from '../../utils/mediaKind';
 
 const DEBOUNCE_MS = 400;
@@ -152,16 +152,32 @@ export default function SearchScreen() {
   const followCache = useRef(new Map<string, FollowTarget | null>());
   const { notice, show: showBanner, dismiss } = useNotice();
   // One slot for the Added message and the banner (NATIVE_CONTRACT 44.3): whichever comes last is the one on screen.
-  const tray = useAddedTray({ onView: () => router.push('/' as never), onAnnounce: announce });
-  const trayHide = tray.hide;
+  const tabFocused = useIsFocused();
+  const tray = useAddedTray({ onView: () => router.push('/' as never), onAnnounce: announce, focused: tabFocused });
+  const trayHide = tray.hideMessage;
   const trayAdd = tray.add;
+  // NATIVE_CONTRACT 44.15 F7: a banner hides the message but never closes a sheet that is open; it waits for the sheet.
+  const sheetOpenRef = useRef(false);
+  sheetOpenRef.current = tray.sheetOpen;
+  const waitingBanner = useRef<NoticeState | null>(null);
   const show = useCallback(
     (next: NoticeState) => {
+      if (bannerPlan({ sheetOpen: sheetOpenRef.current }) === 'wait') {
+        waitingBanner.current = next;
+        return;
+      }
       trayHide();
       showBanner(next);
     },
     [trayHide, showBanner],
   );
+  useEffect(() => {
+    if (tray.sheetOpen || !waitingBanner.current) return;
+    const next = waitingBanner.current;
+    waitingBanner.current = null;
+    trayHide();
+    showBanner(next);
+  }, [tray.sheetOpen, trayHide, showBanner]);
   const subs = useSubtitleAvailability();
   const subsAvailable = subs.master && subs.sourcesOn > 0;
   const autoSubtitles = settings.subtitles.autoNewVideos;

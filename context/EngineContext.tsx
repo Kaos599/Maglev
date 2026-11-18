@@ -121,6 +121,10 @@ interface EngineContextType {
   getFreeSpace: () => Promise<EngineResult<FreeSpace>>;
   /** True while the phone is on mobile data (any link that is not unmetered Wi-Fi or Ethernet). Refreshed when the app comes back. */
   onMeteredNetwork: boolean;
+  /** False only when the phone itself reports no connection (NATIVE_CONTRACT 44.15 D8). Unknown counts as online. */
+  networkOnline: boolean;
+  /** True once the torrent and link lists came from the engine this session, not from the saved cache (44.15 F2). */
+  listsLive: boolean;
   openLiveUpdateSettings: () => Promise<void>;
   /** 256 cells, contract values: 0 missing, 1 have, 2 partial. */
   getPieceBitfield: (id: string) => Promise<Uint8Array>;
@@ -282,6 +286,7 @@ export const EngineProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const inFlight = useRef<Set<string>>(new Set());
   const smoothing = useRef<Map<string, Smoothed>>(new Map());
   const gotLive = useRef(false);
+  const [listsLive, setListsLive] = useState(false);
   const bootLogged = useRef(false);
   const noticeSeq = useRef(0);
   const noticeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -360,6 +365,7 @@ export const EngineProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const ingest = useCallback(
     (snapshots: Parameters<typeof aggregateSnapshots>[0]) => {
       gotLive.current = true;
+      setListsLive(true);
       const prev = liveRef.current;
       const now = Date.now();
       const smoothed = smoothAggregate(aggregateSnapshots(snapshots), smoothing.current, now);
@@ -864,13 +870,17 @@ export const EngineProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
   // Mobile data: asked once at start and again each time the app becomes active. Unknown counts as not metered.
   const [onMeteredNetwork, setOnMeteredNetwork] = useState(false);
+  const [networkOnline, setNetworkOnline] = useState(true);
   useEffect(() => {
     let alive = true;
     const refresh = () => {
       void maglevEngine
         .getNetworkState()
         .then((res) => {
-          if (alive && res.ok) setOnMeteredNetwork(res.metered && res.connected);
+          if (alive && res.ok) {
+            setOnMeteredNetwork(res.metered && res.connected);
+            setNetworkOnline(res.connected !== false);
+          }
         })
         .catch(() => {});
     };
@@ -878,11 +888,14 @@ export const EngineProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     const sub = AppState.addEventListener('change', (next) => {
       if (next === 'active') refresh();
     });
+    // Offline only: look again every 10 s so waiting work (subtitles) notices the way back.
+    const poll = networkOnline ? null : setInterval(refresh, 10_000);
     return () => {
       alive = false;
       sub.remove();
+      if (poll) clearInterval(poll);
     };
-  }, []);
+  }, [networkOnline]);
   const openLiveUpdateSettings = useCallback(() => maglevEngine.openLiveUpdateSettings(), []);
 
   const getPieceBitfield = useCallback(async (id: string) => {
@@ -994,6 +1007,8 @@ export const EngineProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         reannounce,
         getFreeSpace,
         onMeteredNetwork,
+        networkOnline,
+        listsLive,
         openLiveUpdateSettings,
         getPieceBitfield,
         getTorrentDetail,

@@ -6,7 +6,9 @@ import { pickMainFile } from '../../utils/mainFile.ts';
 import {
   ROW_BUTTONS,
   ROW_CLOSE_MATCH,
+  ROW_FAILED,
   ROW_LIMITED,
+  ROW_NEEDS_OK,
   ROW_NONE,
   ROW_NOT_ASKED,
   ROW_NOT_STARTED,
@@ -15,6 +17,7 @@ import {
   ROW_QUEUED_NO_LIST,
   ROW_SEARCHING,
   ROW_SKIPPED,
+  ROW_UNAVAILABLE,
   foundInOtherOnly,
   rowHasAlready,
   rowLabel,
@@ -26,7 +29,7 @@ import type { FileRun, RequestPhase } from '../../utils/subtitles/requests.ts';
 import { downloadEntryMode, fileStarted, torrentEntryMode, type CardIconModel, type FileLike, type SubtitleTarget } from './flow.ts';
 
 /** What the button does. 'find', 'change', 'pick', 'edit-name' and 'find-more' open the one-video sheet; the sheet's start differs. */
-export type RowAction = 'find' | 'cancel' | 'pick' | 'edit-name' | 'see-all';
+export type RowAction = 'find' | 'cancel' | 'pick' | 'edit-name' | 'see-all' | 'try-again' | 'review' | 'ask-pack';
 
 /** How the sheet opens: on its results (the default) or with the 42 name field already open. */
 export type SheetStart = 'results' | 'edit-name';
@@ -48,6 +51,10 @@ export interface RowInput {
   started: boolean;
   /** One video's sheet can open (a target exists). */
   canOpenSheet: boolean;
+  /** 44.15 D7: a pack with no request can be asked for as a whole ("Get subtitles"). */
+  canAskPack?: boolean;
+  /** 44.15 D10: the privacy notice has not been accepted, so a request waits. */
+  needsOk?: boolean;
 }
 
 export type RowGlyph = 'getting' | 'saved' | 'needs-look' | 'none';
@@ -80,6 +87,8 @@ const GLYPH: Record<RequestPhase, RowGlyph> = {
   offline: 'none',
   limited: 'none',
   skipped: 'none',
+  failed: 'none',
+  unavailable: 'none',
 };
 
 /** A stored state stands in for a phase when there is no request. */
@@ -108,7 +117,14 @@ export function rowModel(i: RowInput): RowModel {
 
   if (!phase) {
     if (!i.started) return make(ROW_NOT_STARTED, true, null, 'none');
+    // 44.15 D7: a pack has no single video to open, so its button asks for the whole pack.
+    if (i.canAskPack) return make(ROW_NOT_ASKED, false, { label: ROW_BUTTONS.getSubtitles, action: 'ask-pack' }, 'none');
     return make(ROW_NOT_ASKED, false, sheet(ROW_BUTTONS.find, 'find'), 'none');
+  }
+
+  // 44.15 D10: a request found without the one-time OK is held until the user reviews the notice.
+  if (fromRequest && i.needsOk && phase !== 'skipped' && phase !== 'saved' && phase !== 'has-already') {
+    return make(ROW_NEEDS_OK, false, { label: ROW_BUTTONS.review, action: 'review' }, 'none');
   }
 
   // Season pack: a count, and "See all" opens the status sheet.
@@ -137,6 +153,10 @@ export function rowModel(i: RowInput): RowModel {
       return make(ROW_LIMITED, true, null, 'none');
     case 'skipped':
       return make(ROW_SKIPPED, true, sheet(ROW_BUTTONS.find, 'find'), 'none');
+    case 'failed':
+      return make(ROW_FAILED, false, { label: ROW_BUTTONS.tryAgain, action: 'try-again' }, 'none');
+    case 'unavailable':
+      return make(ROW_UNAVAILABLE, true, null, 'none');
   }
 }
 
@@ -145,6 +165,8 @@ export function rowModel(i: RowInput): RowModel {
 export interface RowFacts {
   /** Null: no row (44.14 "Where it shows"). */
   show: boolean;
+  /** 44.15 D7: a pack (two or more videos): no single target, but the whole pack can be asked for. */
+  canAskPack?: boolean;
   started: boolean;
   canOpenSheet: boolean;
   /** A torrent's single video file, for the sheet's target. */
@@ -167,7 +189,7 @@ export function torrentRowFacts(
   const videos = pickMainFile(files).videos as FileLike[];
   if (!avail.master || avail.sourcesOn < 1 || videos.length === 0) return { show: false, started: false, canOpenSheet: false, file: null, fileListKnown: hasFileList };
   const started = videos.some(fileStarted);
-  if (videos.length > 1) return { show: true, started, canOpenSheet: false, file: null, fileListKnown: hasFileList };
+  if (videos.length > 1) return { show: true, started, canOpenSheet: false, canAskPack: true, file: null, fileListKnown: hasFileList };
   const one = torrentEntryMode(t, files, g(avail));
   return { show: true, started, canOpenSheet: one.mode === 'enabled' && one.file !== null, file: one.file, fileListKnown: hasFileList };
 }

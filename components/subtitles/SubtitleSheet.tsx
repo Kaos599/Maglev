@@ -11,7 +11,7 @@ import { useListsVersion } from '../../utils/lists/hooks';
 import { listSubtitleEntries } from '../../utils/lists';
 import { enabledProviders } from '../../utils/subtitles/providers';
 import { buildQuery, searchSubtitles, type PreparedSubtitle } from '../../utils/subtitles/search';
-import { effectiveLanguages, needsPrivacyNotice, privacyAckPatch } from '../../utils/subtitles/prefs';
+import { acceptPrivacy, effectiveLanguages, needsPrivacyNotice } from '../../utils/subtitles/prefs';
 import { GROUP_LABEL, type SubtitleGroup } from '../../utils/subtitles/rank';
 import { LANGUAGES, languageName } from '../../utils/subtitles/languages';
 import {
@@ -51,6 +51,7 @@ import {
 } from './flow';
 import { CLOSED, canDownload, cardStateFor, draftTitleOk, nothingFits, rowKey, rowsOf, searchNote, searchText, selectedRow, sheetReducer, tabStatus, tabsOf } from './sheetMachine';
 import { forgetState, recordState } from './stateStore';
+import { markSaved } from '../../utils/subtitles/requests';
 import { hasExistingSubtitle } from '../../utils/subtitles/existing';
 import { parsedText, parseTyped } from '../../utils/subtitles/parseName';
 
@@ -197,6 +198,7 @@ export function SubtitleSheet({ target, onClose, initial = 'results' }: Props) {
         // card still gets its saved state (and the toast) even though the sheet no longer listens.
         if (out.status === 'saved') {
           recordState(t, { state: 'saved', lang: out.language, file: out.fileName, savedAt: Date.now() });
+          markSaved(t.ownerKey, t.existing?.videoPath ?? null);
           showNotice({ message: savedToast(out.language) }, 4000);
         }
         return;
@@ -225,7 +227,11 @@ export function SubtitleSheet({ target, onClose, initial = 'results' }: Props) {
     if (!t) return;
     const w = cardStateFor(prev, state, Date.now());
     if (w === 'clear') forgetState(t);
-    else if (w) recordState(t, w);
+    else if (w) {
+      recordState(t, w);
+      // 44.15 D11: the request for this video follows, so a later "name taken" never wipes the saved mark.
+      if (w.state === 'saved') markSaved(t.ownerKey, t.existing?.videoPath ?? null);
+    }
     if (state.phase === 'saved') {
       showNotice({ message: savedToast(state.savedLang ?? state.language) }, 4000);
       onClose();
@@ -253,7 +259,7 @@ export function SubtitleSheet({ target, onClose, initial = 'results' }: Props) {
   }, [onClose]);
 
   const continueNotice = () => {
-    updateSettings({ subtitles: { ...sub, ...privacyAckPatch() } });
+    updateSettings(acceptPrivacy());
     send({ type: 'NOTICE_CONTINUE' });
   };
 
