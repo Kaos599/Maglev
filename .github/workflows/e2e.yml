@@ -75,7 +75,14 @@ jobs:
           target: google_apis
           profile: pixel_6
           disable-animations: true
+          # More memory and no window: the runner's default emulator is short on RAM, which freezes the Pixel Launcher
+          # and puts an "isn't responding" dialog over the app (every flow failed on 2026-11-18 because of it).
+          ram-size: 4096M
+          cores: 4
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -no-snapshot
           script: |
+            adb shell settings put global hide_error_dialogs 1
+            adb shell input keyevent KEYCODE_HOME
             adb install -r "${{ steps.apk.outputs.apk }}"
             maestro test .maestro/ --format junit --output maestro-report.xml --debug-output maestro-debug --flatten-debug-output || (adb logcat -d > maestro-logcat.txt; exit 1)
 

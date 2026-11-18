@@ -58,9 +58,10 @@ name: settings-roundtrip
 # Kill the process and relaunch. Persistence goes through the settings store, not the screen.
 - stopApp
 - launchApp
-- extendedWaitUntil:
-    visible: "Get started|Transfers"
-    timeout: 45000
+- runFlow:
+    file: subflows/wait-for-app.yaml
+    env:
+      TEXT: "Get started|Transfers"
 - tapOn: "Settings"
 - tapOn: "Appearance"
 - extendedWaitUntil:
