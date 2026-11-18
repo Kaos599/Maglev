@@ -1,0 +1,5 @@
+Fetched live with curl (generic Maglev User-Agent, no cookies) on 2026-11-18.
+search_inception.html https://subtitlestar.com/?s=Inception&post_type=post, first four result articles kept
+detail_inception.html the Inception 2010 page; title, year, IMDb link and the download links kept
+detail_series.html    https://subtitlestar.com/persian-subtitles-cruel-intentions/ ; same parts kept
+download.zip          https://dl.subtitlestar.com/dlsub/inception-2010-All.zip, only the first 2048 bytes (the full file is 1.7 MB); the zip header is real

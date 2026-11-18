@@ -1,0 +1,4 @@
+Fetched live with curl (generic Maglev User-Agent, no cookies) on 2026-11-18. All unedited.
+search_the_strain.json     https://www.subtitulamos.tv/search/query?q=The%20Strain
+show_the_strain.html       https://www.subtitulamos.tv/shows/11 (redirects to an episode page)
+episode_the_strain_4x01.html https://www.subtitulamos.tv/episodes/61/the-strain-4x01-the-worm-turns

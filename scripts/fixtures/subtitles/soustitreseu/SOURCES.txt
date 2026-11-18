@@ -1,0 +1,6 @@
+Fetched live with curl (generic Maglev User-Agent, no cookies) on 2026-11-18.
+search_inception.html   trimmed to the first six result blocks of https://www.sous-titres.eu/search.html?q=Inception
+search_breaking_bad.html trimmed to the series block of https://www.sous-titres.eu/search.html?q=Breaking+Bad
+film_inception.html     https://www.sous-titres.eu/films/inception.html (unedited)
+series_breaking_bad.html https://www.sous-titres.eu/series/breaking_bad.html (unedited)
+download.zip            https://www.sous-titres.eu/films/download/hkysl6er07d42d8/Inception.%282010%29.Z1.REFiNED.zip (unedited)

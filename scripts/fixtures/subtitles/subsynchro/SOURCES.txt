@@ -1,0 +1,5 @@
+Fetched live with curl (generic Maglev User-Agent, no cookies) on 2026-11-18.
+film_inception.html  POST q=Inception to https://www.subsynchro.com/tous-les-films.html (redirects to the film); heading and first six release rows kept
+list_matrix.html     POST q=Matrix to the same URL (a list of films); the first 24 film links kept
+release_inception_arrow.html https://www.subsynchro.com/2010/inception/inception-rerip-dvdrip-xvid-arrow.html; the file article kept
+download.zip         https://www.subsynchro.com/telecharger-le-fichier-5661-inception-rerip-dvdrip-xvid-arrow-zip.html (a 302 to include/dl/...zip; unedited)
