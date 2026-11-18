@@ -95,7 +95,7 @@ function Body({ highlight, version, open, onExited, onTry, onNotNow, onNotes }: 
   const { width } = useWindowDimensions();
   // 1% of the design's phone width in points: the card is 86 of those, so the station and the motion scale with it.
   const cq = cardUnit(width, DIALOG_MAX_WIDTH, DIALOG_GUTTER);
-  const { clock } = useEntrance();
+  const { clock } = useEntrance(open);
   const intro = useMemo(() => ({ clock, unit: cq, card: cardAt, scrim: scrimAt }), [clock, cq]);
   // The entrance only fades and moves things; every button is tappable from the first frame.
   const iconIn = useStagger(clock, 0, cq);
@@ -139,7 +139,7 @@ function Body({ highlight, version, open, onExited, onTry, onNotNow, onNotes }: 
 }
 
 /** The highlight as it looks after an update, with no launch or version checks, for review on web or in a dev build. Closing it offers to show it again. */
-export function HighlightPreview({ version = '0.28' }: { version?: string }) {
+export function HighlightPreview({ version = '0.30' }: { version?: string }) {
   const [open, setOpen] = useState(true);
   const [gone, setGone] = useState(false);
   const [run, setRun] = useState(0);

@@ -1,4 +1,4 @@
-import { useCallback, useEffect } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import { Easing, SharedValue, cancelAnimation, useAnimatedStyle, useSharedValue, withDelay, withTiming } from 'react-native-reanimated';
 import { scheduleOnRN } from 'react-native-worklets';
 import { haptic } from '../../constants/haptics';
@@ -14,13 +14,30 @@ export interface Entrance {
 /**
  * Plays the entrance once, on mount. With reduce motion it jumps to the last frame: card in, train parked, badge
  * placed, no burst, no haptic. The haptic fires when the badge lands on the card's edge, from a callback scheduled
- * on that moment (`IMPACT_MS`), not from the effect.
+ * on that moment (`IMPACT_MS`), not from the effect. Once the dialog is closing (`open` false) or gone, the scheduled
+ * haptic is cancelled and the callback is guarded, so Back or a button tapped mid-entrance never buzzes afterwards.
  */
-export function useEntrance(): Entrance {
+export function useEntrance(open: boolean = true): Entrance {
   const m = useMotion();
   const clock = useSharedValue(0);
   const gate = useSharedValue(0);
-  const onImpact = useCallback(() => haptic('done'), []);
+  const live = useRef(open);
+  live.current = open;
+  const onImpact = useCallback(() => {
+    if (live.current) haptic('done');
+  }, []);
+
+  // Closing (or unmounting) before the badge lands drops the pending haptic.
+  useEffect(() => {
+    if (!open) cancelAnimation(gate);
+  }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(
+    () => () => {
+      live.current = false;
+      cancelAnimation(gate);
+    },
+    [], // eslint-disable-line react-hooks/exhaustive-deps
+  );
 
   useEffect(() => {
     cancelAnimation(clock);

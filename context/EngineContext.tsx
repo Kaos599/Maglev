@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useEffect, useState, useCallback, useRef, useMemo } from 'react';
-import { AppState, BackHandler } from 'react-native';
+import { AccessibilityInfo, AppState, BackHandler, Platform } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
 import {
   aggregateSnapshots,
@@ -42,6 +42,7 @@ import { isAddableLink } from '../utils/addableLink';
 import { noteRemoved, recordSnapshot } from '../utils/stats';
 import { getCatchCopiedLinks } from '../utils/prefs/clipboard';
 import { smoothDownloadsSpeed } from '../utils/downloadCopy';
+import { UNDO_BASE_MS, undoWindowMs } from '../utils/undoWindow';
 
 /** Bundle-load time, the zero point for the cold-start log (UI spec S10.3). */
 const JS_LOADED_AT = Date.now();
@@ -72,7 +73,7 @@ export interface EngineNotice {
 /** How long an optimistic pause, resume or remove holds the row before telemetry is trusted again. */
 export const OVERRIDE_TIMEOUT_MS = 5000;
 /** How long "Removed X · Undo" stays before the engine delete runs. */
-export const UNDO_WINDOW_MS = 5000;
+export const UNDO_WINDOW_MS = UNDO_BASE_MS;
 const CACHE_SAVE_EVERY_MS = 5000;
 const ERROR_NOTICE_MS = 4000;
 
@@ -295,6 +296,18 @@ export const EngineProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const linkDownRef = useRef(0);
   const [linkDown, setLinkDown] = useState(0);
   const pendingRemoval = useRef<{ ids: string[]; downloadIds: string[]; names: string[]; timer: ReturnType<typeof setTimeout>; noticeId: number } | null>(null);
+  // Android's accessibility timeout for the Undo window, read ahead (it is async) and refreshed when the app returns.
+  const undoMs = useRef(UNDO_WINDOW_MS);
+  useEffect(() => {
+    if (Platform.OS !== 'android') return;
+    const read = () =>
+      void AccessibilityInfo.getRecommendedTimeoutMillis(UNDO_WINDOW_MS)
+        .then((ms) => { undoMs.current = undoWindowMs(ms, UNDO_WINDOW_MS); })
+        .catch(() => { undoMs.current = UNDO_WINDOW_MS; });
+    read();
+    const sub = AppState.addEventListener('change', (next) => { if (next === 'active') read(); });
+    return () => sub.remove();
+  }, []);
   const lastSave = useRef(0);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -766,7 +779,7 @@ export const EngineProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       const names = [...ids.map(nameOf), ...downloadIds.map((id) => downloadsRef.current.find((d) => d.id === id)?.name ?? 'download')];
       if (ids.length > 0) setRemoving((prev) => [...prev, ...ids]);
       if (downloadIds.length > 0) setRemovingDl((prev) => [...prev, ...downloadIds]);
-      const timer = setTimeout(flushRemoval, UNDO_WINDOW_MS);
+      const timer = setTimeout(flushRemoval, undoMs.current);
       const noticeId = noticeSeq.current + 1;
       pendingRemoval.current = { ids, downloadIds, names, timer, noticeId };
       showNotice(

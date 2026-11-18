@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { AccessibilityInfo, Modal, Pressable, StyleProp, StyleSheet, View, findNodeHandle } from 'react-native';
+import { AccessibilityInfo, Modal, Pressable, ScrollView, StyleProp, StyleSheet, View, findNodeHandle, useWindowDimensions } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, { SharedValue, cancelAnimation, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { scheduleOnRN } from 'react-native-worklets';
 import { useTheme } from '../../context/ThemeContext';
@@ -7,6 +8,7 @@ import { ThemeColors, radius, spacing, type } from '../../constants/theme';
 import { PixelIcon, PixelIconName } from '../PixelIcon';
 import { useMotion } from './useMotion';
 import { useOverlayTracking } from '../../utils/overlayTracker';
+import { dialogMaxHeight } from '../../utils/dialogLayout';
 
 export interface DialogProps {
   visible: boolean;
@@ -59,6 +61,10 @@ export function Dialog({ visible, onClose, title, icon, children, actions, testI
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const m = useMotion();
   useOverlayTracking(visible);
+  // A tall dialog (large font on a small phone) scrolls inside itself; the hero stays on top.
+  const { height: windowHeight } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
+  const maxHeight = dialogMaxHeight(windowHeight, insets.top, insets.bottom, spacing.lg);
 
   // The Modal stays mounted while the dialog fades out.
   const [mounted, setMounted] = useState(visible);
@@ -95,6 +101,7 @@ export function Dialog({ visible, onClose, title, icon, children, actions, testI
       focusTitle(m.disabled ? 100 : DURATION + 100);
       return;
     }
+    if (focusTimer.current) clearTimeout(focusTimer.current); // closing: no accessibility focus after it
     if (!mounted) return;
     if (m.disabled) {
       progress.value = 0;
@@ -127,18 +134,20 @@ export function Dialog({ visible, onClose, title, icon, children, actions, testI
         <Animated.View style={[styles.backdrop, backdropStyle]}>
           <Pressable style={StyleSheet.absoluteFill} onPress={onClose} accessibilityRole="button" accessibilityLabel="Close" />
         </Animated.View>
-        <Animated.View testID={testID} accessibilityViewIsModal style={[styles.card, cardStyle]}>
+        <Animated.View testID={testID} accessibilityViewIsModal style={[styles.card, { maxHeight }, cardStyle]}>
           {hero}
-          {icon ? (
-            <View style={styles.tile}>
-              <PixelIcon name={icon} size={24} color={colors.accentText} />
-            </View>
-          ) : null}
-          <Animated.Text ref={titleRef} style={[styles.title, titleStyle]} accessibilityRole="header">
-            {title}
-          </Animated.Text>
-          {children ? <View style={styles.content}>{children}</View> : null}
-          {actions ? <View style={styles.actions}>{actions}</View> : null}
+          <ScrollView style={styles.scroll} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" bounces={false}>
+            {icon ? (
+              <View style={styles.tile}>
+                <PixelIcon name={icon} size={24} color={colors.accentText} />
+              </View>
+            ) : null}
+            <Animated.Text ref={titleRef} style={[styles.title, titleStyle]} accessibilityRole="header">
+              {title}
+            </Animated.Text>
+            {children ? <View style={styles.content}>{children}</View> : null}
+            {actions ? <View style={styles.actions}>{actions}</View> : null}
+          </ScrollView>
         </Animated.View>
       </View>
     </Modal>
@@ -158,6 +167,7 @@ const makeStyles = (c: ThemeColors) =>
       borderRadius: radius.xl,
       padding: spacing.xl,
     },
+    scroll: { flexShrink: 1, flexGrow: 0 },
     tile: {
       width: 48,
       height: 48,
