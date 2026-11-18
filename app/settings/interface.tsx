@@ -132,6 +132,28 @@ export default function InterfaceSettings() {
             />
           }
         />
+        <ListRow
+          title="Swipe to pause or remove"
+          subtitle="Swipe a download right to pause or resume it, or left to remove it from the list. Files are kept."
+          accessory={
+            <Toggle
+              value={a.swipeActions}
+              onValueChange={(swipeActions) => set({ swipeActions })}
+              accessibilityLabel="Swipe to pause or remove"
+            />
+          }
+        />
+        <ListRow
+          title="Show file type icons in Transfers"
+          subtitle="Show an icon for the kind of file on each download."
+          accessory={
+            <Toggle
+              value={a.showFileIcons}
+              onValueChange={(showFileIcons) => set({ showFileIcons })}
+              accessibilityLabel="Show file type icons in Transfers"
+            />
+          }
+        />
       </Card>
       <Card>
         <View style={s.block}>

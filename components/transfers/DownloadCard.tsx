@@ -10,6 +10,9 @@ import { PixelIcon } from '../PixelIcon';
 import { IconButton, PressableScale, ProgressBar, ProgressTone } from '../ui';
 import { CARD_HEIGHT } from '../TransferCard';
 import { useBlockContext } from '../../utils/blocks/useActiveBlocks';
+import { SwipeRow } from './SwipeRow';
+import { swipePlan } from './swipe';
+import { downloadCardGlyph } from '../../utils/cardIcon';
 
 export interface DownloadCardProps {
   download: DownloadSnapshot;
@@ -20,6 +23,12 @@ export interface DownloadCardProps {
   selectionMode?: boolean;
   selected?: boolean;
   onLongPress?: (id: string) => void;
+  /** Swipe left: remove from the list, files kept, with Undo. Also the Remove accessibility action. */
+  onRemove?: (id: string) => void;
+  /** The "Swipe to pause or remove" setting. Off: the card has no swipe wrapper at all. */
+  swipeEnabled?: boolean;
+  /** The "Show file type icons in Transfers" setting. The icon shares the slot of the selection checkbox. */
+  showFileIcon?: boolean;
 }
 
 function toneFor(d: DownloadSnapshot): ProgressTone {
@@ -37,7 +46,7 @@ function toneFor(d: DownloadSnapshot): ProgressTone {
 }
 
 /** Same card as a torrent: name, one bar, one status line, one button. The sheet behind a tap has the rest. */
-function DownloadCardImpl({ download: d, onPress, onAction: onActionProp, selectionMode = false, selected = false, onLongPress }: DownloadCardProps) {
+function DownloadCardImpl({ download: d, onPress, onAction: onActionProp, selectionMode = false, selected = false, onLongPress, onRemove, swipeEnabled = false, showFileIcon = true }: DownloadCardProps) {
   const { colors } = useTheme();
   const router = useRouter();
   // Settings actions go to their screen and Remove opens the sheet (which has the keep/delete choice) here,
@@ -59,7 +68,11 @@ function DownloadCardImpl({ download: d, onPress, onAction: onActionProp, select
   const indeterminate = isIndeterminate(d);
   const statusColor = status.tone === 'danger' ? colors.danger : status.tone === 'accent' ? colors.accentText : colors.textMuted;
 
-  return (
+  const swipe = swipePlan({ action, busy: false, selectionMode, enabled: swipeEnabled });
+  const onSwipeRight = () => {
+    if (action) onAction(d, action);
+  };
+  const card = (
     <View style={[styles.card, selected && styles.cardSelected]}>
       <PressableScale
         onPress={() => onPress(d.id)}
@@ -70,10 +83,12 @@ function DownloadCardImpl({ download: d, onPress, onAction: onActionProp, select
         accessibilityActions={[
           { name: 'activate', label: selectionMode ? (selected ? 'Deselect' : 'Select') : 'Open' },
           ...(action && !selectionMode ? [{ name: action.kind, label: action.label }] : []),
+          ...(onRemove && !selectionMode ? [{ name: 'remove', label: 'Remove' }] : []),
         ]}
         accessibilityState={{ selected: selectionMode ? selected : undefined }}
         onAccessibilityAction={(e) => {
           if (e.nativeEvent.actionName === 'activate') onPress(d.id);
+          else if (e.nativeEvent.actionName === 'remove') onRemove?.(d.id);
           else if (action && e.nativeEvent.actionName === action.kind) onAction(d, action);
         }}
         style={styles.press}
@@ -81,6 +96,10 @@ function DownloadCardImpl({ download: d, onPress, onAction: onActionProp, select
         <View style={styles.nameRow}>
           {selectionMode ? (
             <PixelIcon name={selected ? 'select' : 'checkbox-empty'} size={20} color={selected ? colors.accentText : colors.textMuted} />
+          ) : showFileIcon ? (
+            <View style={styles.kindIcon} importantForAccessibility="no-hide-descendants" accessibilityElementsHidden>
+              <PixelIcon name={downloadCardGlyph(d.name, !!d.stream)} size={20} color={colors.textMuted} />
+            </View>
           ) : null}
           <Text style={styles.name} numberOfLines={2} ellipsizeMode="tail">
             {d.name}
@@ -105,6 +124,13 @@ function DownloadCardImpl({ download: d, onPress, onAction: onActionProp, select
       ) : null}
     </View>
   );
+  return swipeEnabled ? (
+    <SwipeRow id={d.id} right={swipe.right} left={swipe.left && !!onRemove} enabled={!selectionMode} onRight={onSwipeRight} onLeft={() => onRemove?.(d.id)}>
+      {card}
+    </SwipeRow>
+  ) : (
+    card
+  );
 }
 
 function same(a: DownloadCardProps, b: DownloadCardProps): boolean {
@@ -116,6 +142,9 @@ function same(a: DownloadCardProps, b: DownloadCardProps): boolean {
     a.selectionMode === b.selectionMode &&
     a.selected === b.selected &&
     a.onLongPress === b.onLongPress &&
+    a.onRemove === b.onRemove &&
+    a.swipeEnabled === b.swipeEnabled &&
+    a.showFileIcon === b.showFileIcon &&
     x.id === y.id &&
     x.name === y.name &&
     x.state === y.state &&
@@ -156,6 +185,7 @@ const makeStyles = (c: ThemeColors) =>
     actionAnchor: { position: 'absolute', right: spacing.sm, top: '50%', marginTop: -22, width: 44, height: 44 },
     cardSelected: { borderColor: c.accent, backgroundColor: alpha(c.accent, 0.08) },
     nameRow: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.sm },
+    kindIcon: { width: 20, height: 18, alignItems: 'center', justifyContent: 'center' },
     name: { ...type.mono, fontSize: 13, lineHeight: 18, color: c.text, flex: 1 },
     status: { ...type.mono, fontSize: 12, lineHeight: 18 },
   });

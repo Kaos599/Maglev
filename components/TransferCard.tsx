@@ -14,6 +14,9 @@ import { useBlockContext } from "../utils/blocks/useActiveBlocks";
 import { cardCanPlay } from "./detail/play";
 import { playCopy } from "../constants/copy";
 import { useRouter } from "expo-router";
+import { SwipeRow } from "./transfers/SwipeRow";
+import { swipePlan } from "./transfers/swipe";
+import { torrentCardGlyph } from "../utils/cardIcon";
 
 /**
  * Name (two lines), one bar, one status line. At the default font size the height never changes
@@ -38,6 +41,12 @@ export interface TransferCardProps {
   onResumeAnyway?: (id: string) => void;
   /** Play button (0.19): streams or opens the torrent's video or audio file. Shown only when the card can tell it is playable. */
   onPlay?: (id: string) => void;
+  /** Swipe left: remove from the list, files kept, with Undo. Also the Remove accessibility action. */
+  onRemove?: (id: string) => void;
+  /** The "Swipe to pause or remove" setting. Off: the card has no swipe wrapper at all. */
+  swipeEnabled?: boolean;
+  /** The "Show file type icons in Transfers" setting. The icon shares the slot of the selection checkbox. */
+  showFileIcon?: boolean;
 }
 
 /** Status line font size; the value slot is sized in Space Mono glyphs at this size. */
@@ -114,6 +123,9 @@ function TransferCardImpl({
   onOpen,
   onResumeAnyway,
   onPlay,
+  onRemove,
+  swipeEnabled = false,
+  showFileIcon = true,
 }: TransferCardProps) {
   const router = useRouter();
   const { colors } = useTheme();
@@ -167,10 +179,15 @@ function TransferCardImpl({
   const a11yActions = [
     { name: "activate", label: selectionMode ? (selected ? "Deselect" : "Select") : "Open" },
     ...(canAct && action ? [{ name: action.kind, label: action.label }] : []),
+    // Remove from the list (files kept, Undo) is always offered to screen readers, whatever the swipe setting says.
+    ...(onRemove && !selectionMode && !actionBusy && !moving ? [{ name: "remove", label: "Remove" }] : []),
   ];
+  const swipe = swipePlan({ action, busy: actionBusy, moving, selectionMode, enabled: swipeEnabled });
+  const onSwipeRight = useCallback((kind: "pause" | "resume") => (kind === "pause" ? onPause(t.id) : onResume(t.id)), [onPause, onResume, t.id]);
+  const onSwipeLeft = useCallback(() => onRemove?.(t.id), [onRemove, t.id]);
   const a11yLabel = `${t.name}, ${status.text}, ${pct.toFixed(0)} percent${selectionMode && selected ? ", selected" : ""}`;
 
-  return (
+  const card = (
     <View style={[styles.card, selected && styles.cardSelected]}>
       <PressableScale
         onPress={() => onPress(t.id)}
@@ -200,6 +217,9 @@ function TransferCardImpl({
             case "resumeAnyway":
               onResumeAnyway?.(t.id);
               break;
+            case "remove":
+              onRemove?.(t.id);
+              break;
             case "freeSpace":
               router.push("/free-space");
               break;
@@ -218,6 +238,10 @@ function TransferCardImpl({
               size={20}
               color={selected ? colors.accentText : colors.textMuted}
             />
+          ) : showFileIcon ? (
+            <View style={styles.kindIcon} importantForAccessibility="no-hide-descendants" accessibilityElementsHidden>
+              <PixelIcon name={torrentCardGlyph(t.name)} size={20} color={colors.textMuted} />
+            </View>
           ) : null}
           <Text style={styles.name} numberOfLines={2} ellipsizeMode="tail">
             {t.name}
@@ -285,6 +309,13 @@ function TransferCardImpl({
       ) : null}
     </View>
   );
+  return swipeEnabled ? (
+    <SwipeRow id={t.id} right={swipe.right} left={swipe.left && !!onRemove} enabled={!selectionMode} onRight={onSwipeRight} onLeft={onSwipeLeft}>
+      {card}
+    </SwipeRow>
+  ) : (
+    card
+  );
 }
 
 function sameCard(a: TransferCardProps, b: TransferCardProps): boolean {
@@ -301,6 +332,9 @@ function sameCard(a: TransferCardProps, b: TransferCardProps): boolean {
     a.onOpen === b.onOpen &&
     a.onResumeAnyway === b.onResumeAnyway &&
     a.onPlay === b.onPlay &&
+    a.onRemove === b.onRemove &&
+    a.swipeEnabled === b.swipeEnabled &&
+    a.showFileIcon === b.showFileIcon &&
     x.id === y.id &&
     x.name === y.name &&
     x.state === y.state &&
@@ -361,6 +395,8 @@ const makeStyles = (c: ThemeColors) =>
       gap: spacing.sm,
       minHeight: 36,
     },
+    // Same 20px glyph slot as the selection checkbox, centred on the first title line.
+    kindIcon: { width: 20, height: 18, alignItems: "center", justifyContent: "center" },
     name: { ...type.mono, fontSize: 13, lineHeight: 18, color: c.text, flex: 1 },
     // One line, always present, at a fixed minimum height: rows never grow or shrink as the text changes.
     statusBlock: { gap: 0 },
