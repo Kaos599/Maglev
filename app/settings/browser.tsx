@@ -241,6 +241,14 @@ export default function BrowserSettings() {
 
       <Card>
         <ListRow
+          title={browserTabs.settings.swipeTabs}
+          subtitle={browserTabs.settings.swipeTabsSubtitle}
+          accessory={<Toggle value={prefs.swipeTabs} onValueChange={(swipeTabs) => setPrefs({ swipeTabs })} accessibilityLabel={browserTabs.settings.swipeTabs} />}
+        />
+      </Card>
+
+      <Card>
+        <ListRow
           title="Desktop site"
           subtitle="Ask sites for their desktop version by default."
           accessory={<Toggle value={prefs.desktopMode} onValueChange={(desktopMode) => setPrefs({ desktopMode })} accessibilityLabel="Desktop site" />}
