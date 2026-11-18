@@ -2,6 +2,7 @@ package com.maglev.engine.service
 
 import android.app.PendingIntent
 import android.content.Intent
+import android.net.Uri
 import android.os.Build
 import android.service.quicksettings.Tile
 import android.service.quicksettings.TileService
@@ -49,7 +50,10 @@ class MaglevTileService : TileService() {
     }
 
     private fun openApp() {
-        val launch = packageManager.getLaunchIntentForPackage(packageName)?.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) ?: return
+        // maglev://from/tile opens Transfers and counts as a non-plain launch (no new-feature dialog).
+        val launch = Intent(Intent.ACTION_VIEW, Uri.parse("maglev://from/tile"))
+            .setPackage(packageName)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         if (Build.VERSION.SDK_INT >= 34) {
             startActivityAndCollapse(PendingIntent.getActivity(this, 0, launch, PendingIntent.FLAG_IMMUTABLE))
         } else {

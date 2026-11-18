@@ -1,0 +1,6 @@
+- Subtitles while a video downloads, from 21 free sources, no account. Edit the name it searches for.
+- Get subtitles right after adding from Search, or turn on Get subtitles for new videos.
+- Cards say Connecting or Waiting for peers, show the amount next to the speed, and the page explains why.
+- Link downloads get their own page. Compact or Detailed in Appearance.
+- Transfers says why a download is held. Swipe rows to pause or remove.
+- Size slider in Search. Stricter browser blocking.

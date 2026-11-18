@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { Platform, StyleSheet, Text, View } from 'react-native';
 import { Stack } from 'expo-router';
 import { AccentName, AppearanceMode } from 'maglev-engine';
@@ -11,6 +11,8 @@ import { Card, Caption, SettingsPage } from '../../components/settings/SettingsP
 import { FontStyle, TelemetryDensity } from 'maglev-engine';
 import { fontFamilies, resolveFontStyle } from '../../constants/fontStyles';
 import { fontStyleCopy, tabsCopy } from '../../constants/copy';
+import { DensityThumb } from '../../components/settings/DensityThumb';
+import { DensitySheet } from '../../components/settings/DensitySheet';
 import { TabsSection } from '../../components/tabs/TabsSection';
 import { AppIconSection } from '../../components/settings/AppIconSection';
 import type { PixelIconName } from '../../components/PixelIcon';
@@ -21,10 +23,11 @@ const MODES = [
   { value: 'light', label: 'Light' },
   { value: 'system', label: 'System' },
 ] as const;
-const DENSITY = [
-  { value: 'COMPACT', label: 'Compact' },
-  { value: 'VERBOSE', label: 'Detailed' },
-] as const;
+// NATIVE_CONTRACT 41.3: the row's second line and its spoken label, one pair per layout.
+const DENSITY_ROW: Record<TelemetryDensity, { line: string; spoken: string }> = {
+  COMPACT: { line: 'Compact: speed and time left', spoken: 'Download page, Compact, speed and time left' },
+  VERBOSE: { line: 'Detailed: adds amounts, connections and timing', spoken: 'Download page, Detailed, adds amounts, connections and timing' },
+};
 const ACCENTS: { name: AccentName; label: string }[] = [
   { name: 'lime', label: 'Lime' },
   { name: 'cyan', label: 'Cyan' },
@@ -44,6 +47,7 @@ export default function InterfaceSettings() {
   const s = useMemo(() => makeStyles(colors), [colors]);
   const a = settings.appearance;
   const fontStyle = resolveFontStyle(a.fontStyle);
+  const [densityOpen, setDensityOpen] = useState(false);
   const set = (patch: Partial<typeof a>) => updateSettings((prev) => ({ appearance: { ...prev.appearance, ...patch } }));
 
   return (
@@ -112,15 +116,24 @@ export default function InterfaceSettings() {
           })}
           <Caption>{fontStyleCopy.hint}</Caption>
         </View>
-        <View style={s.block}>
-          <Text style={s.label}>Transfer details</Text>
-          <SegmentedControl<TelemetryDensity>
-            options={DENSITY}
-            value={a.telemetryDensity}
-            onChange={(telemetryDensity) => set({ telemetryDensity })}
-            accessibilityLabel="Transfer details"
-          />
-        </View>
+        {/* NATIVE_CONTRACT 41.3: the "Transfers" heading, then the Download page row (the old Transfer details control is gone). */}
+        <Text style={s.sectionLabel} accessibilityRole="header">
+          Transfers
+        </Text>
+        <ListRow
+          title="Download page"
+          subtitle={DENSITY_ROW[a.telemetryDensity].line}
+          accessory={
+            <View style={s.thumbWrap}>
+              <DensityThumb density={a.telemetryDensity} />
+              <PixelIcon name="chevron-right" size={16} color={colors.textFaint} />
+            </View>
+          }
+          onPress={() => setDensityOpen(true)}
+          accessibilityLabel={DENSITY_ROW[a.telemetryDensity].spoken}
+          accessibilityHint="Opens the choice with previews"
+          testID="download-page-row"
+        />
         <ListRow
           title="Speed totals"
           subtitle="Shows total download and upload speed above your transfers, with Pause all."
@@ -132,7 +145,36 @@ export default function InterfaceSettings() {
             />
           }
         />
+        <ListRow
+          title="Swipe to pause or remove"
+          subtitle="Swipe a download right to pause or resume it, or left to remove it from the list. Files are kept."
+          accessory={
+            <Toggle
+              value={a.swipeActions}
+              onValueChange={(swipeActions) => set({ swipeActions })}
+              accessibilityLabel="Swipe to pause or remove"
+            />
+          }
+        />
+        <ListRow
+          title="Show file type icons in Transfers"
+          subtitle="Show an icon for the kind of file on each download."
+          accessory={
+            <Toggle
+              value={a.showFileIcons}
+              onValueChange={(showFileIcons) => set({ showFileIcons })}
+              accessibilityLabel="Show file type icons in Transfers"
+            />
+          }
+        />
       </Card>
+      {/* NATIVE_CONTRACT 41.4: tapping a card saves at once and the sheet stays open. */}
+      <DensitySheet
+        visible={densityOpen}
+        onClose={() => setDensityOpen(false)}
+        value={a.telemetryDensity}
+        onChange={(telemetryDensity) => set({ telemetryDensity })}
+      />
       <Card>
         <View style={s.block}>
           <Text style={s.label}>{tabsCopy.label}</Text>
@@ -151,8 +193,10 @@ export default function InterfaceSettings() {
 const makeStyles = (c: ThemeColors) =>
   StyleSheet.create({
     block: { padding: spacing.lg, gap: spacing.sm },
+    sectionLabel: { ...type.bodyStrong, fontSize: 14, color: c.textMuted, paddingHorizontal: spacing.lg, paddingTop: spacing.lg, paddingBottom: spacing.xs },
     label: { ...type.bodyStrong, fontSize: 14, color: c.text },
     // Two rows of four: each item is a quarter of the row, so 8 swatches fit a 360dp screen.
+    thumbWrap: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
     swatches: { flexDirection: 'row', flexWrap: 'wrap', rowGap: spacing.md },
     swatchItem: { width: '25%', alignItems: 'center', gap: 4 },
     swatchLabel: { ...type.body, fontSize: 12, color: c.textMuted },

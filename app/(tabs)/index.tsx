@@ -7,10 +7,16 @@ import { HeaderBar } from '../../components/HeaderBar';
 import { FilterPills } from '../../components/FilterPills';
 import { CARD_GAP, TransferCard } from '../../components/TransferCard';
 import { DownloadCard } from '../../components/transfers/DownloadCard';
-import { DownloadSheet } from '../../components/transfers/DownloadSheet';
+import { closeOpenSwipe } from '../../components/transfers/SwipeRow';
+import { useDownloadActions } from '../../components/transfers/useDownloadActions';
 import { FloatingActionButton } from '../../components/FloatingActionButton';
 import { SpeedTelemetryHeader } from '../../components/SpeedTelemetryHeader';
 import { BulkBar } from '../../components/transfers/BulkBar';
+import { SubtitleSheet } from '../../components/subtitles/SubtitleSheet';
+import { useSubtitleAvailability } from '../../components/subtitles/useSubtitleEntry';
+import { useSubtitleStateVersion } from '../../components/subtitles/useSubtitleStates';
+import { cardIconModel, type SubtitleTarget } from '../../components/subtitles/flow';
+import { recallTarget, stateFor } from '../../components/subtitles/stateStore';
 import { ClipboardChip } from '../../components/transfers/ClipboardChip';
 import { AddMenuSheet } from '../../components/add/AddMenuSheet';
 import { ClearFinishedSheet } from '../../components/transfers/ClearFinishedSheet';
@@ -24,6 +30,8 @@ import { Banner, Button, EmptyBlock, IconButton } from '../../components/ui/inde
 import { ProgressMotionContext, type ProgressMotion } from '../../components/ui/ProgressBar';
 import { steadyResolvingSecs } from '../../components/transfers/snapshots';
 import { lowSpaceWarning, usableFreeOf, type LowSpaceWarning } from '../../components/transfers/lowSpace';
+import { BlockBanner } from '../../components/transfers/BlockBanner';
+import { BlockContextProvider, queueLimitOf, useActiveBlocks } from '../../utils/blocks/useActiveBlocks';
 import * as DocumentPicker from 'expo-document-picker';
 import { maglevEngine, type DownloadSnapshot } from 'maglev-engine';
 import { haptic } from '../../constants/haptics';
@@ -33,7 +41,7 @@ import { useTheme } from '../../context/ThemeContext';
 import { ThemeColors, radius, spacing, type } from '../../constants/theme';
 import { pickMainFile } from '../../utils/mainFile';
 import { takeNextShared } from '../../utils/shareQueue';
-import { OPEN_FOLDER_FAILED_TEXT, SHARE_FAILED_TEXT, allowDeviceFailureText, openFailureText, type DownloadAction } from '../../utils/downloadCopy';
+import type { DownloadAction } from '../../utils/downloadCopy';
 import { BulkVerb, bulkSummary, selectionKey, splitSelection } from '../../utils/bulkSummary';
 import { useSearchPrefs } from '../../utils/prefs/search';
 import { TransferSort, loadTransferSort, saveTransferSort } from '../../utils/prefs/transfers';
@@ -103,13 +111,27 @@ export default function TransfersScreen() {
     downloads: liveDownloads,
     pauseDownload,
     resumeDownload,
-    retryDownload,
-    setDownloadLimits,
     removeDownload,
-    refreshDownloadUrl,
     getFreeSpace,
   } = useMaglevEngine();
   const focused = useIsFocused();
+  const downloadActions = useDownloadActions();
+  const subtitleAvail = useSubtitleAvailability();
+  const subtitleVersion = useSubtitleStateVersion();
+  const [subtitleTarget, setSubtitleTarget] = useState<SubtitleTarget | null>(null);
+  const onCardSubtitles = useCallback((ownerKey: string) => {
+    const t = recallTarget(ownerKey);
+    if (t) setSubtitleTarget(t);
+  }, []);
+  const onTorrentSubtitles = useCallback((id: string) => onCardSubtitles(`t:${id}`), [onCardSubtitles]);
+  const onDownloadSubtitles = useCallback((id: string) => onCardSubtitles(`d:${id}`), [onCardSubtitles]);
+  // The card icon needs the switch on and a source on, like every other entry point; the stored state does the rest.
+  const subtitleIcon = useCallback(
+    (ownerKey: string) => (subtitleAvail.master && subtitleAvail.sourcesOn > 0 ? cardIconModel(stateFor(ownerKey), Date.now()) : null),
+    // The version changes when any subtitle state is written.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [subtitleAvail, subtitleVersion],
+  );
   const telemetry = useHeldWhileBlurred(liveTelemetry, focused);
   const downloads = useHeldWhileBlurred(liveDownloads, focused);
 
@@ -129,17 +151,7 @@ export default function TransfersScreen() {
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [selectedIds, setSelectedIds] = useState<ReadonlySet<string>>(() => new Set());
   const [fileError, setFileError] = useState<string | null>(null);
-  const [sheetDownloadId, setSheetDownloadId] = useState<string | null>(null);
   const [clearOpen, setClearOpen] = useState(false);
-  // A link-download notification opens with `download=<id>`: show that download's sheet once, then clear the param.
-  const { download: downloadParam } = useLocalSearchParams<{
-    download?: string;
-  }>();
-  useEffect(() => {
-    if (typeof downloadParam !== 'string' || !downloadParam) return;
-    setSheetDownloadId(downloadParam);
-    router.setParams({ download: undefined });
-  }, [downloadParam, router]);
 
   const all = telemetry.torrents;
   const cruising = focused && (all.some((t) => t.state === 'DOWNLOADING') || downloads.some((d) => d.state === 'downloading'));
@@ -148,80 +160,8 @@ export default function TransfersScreen() {
     const q = query.trim().toLowerCase();
     return downloads.filter((d) => downloadMatchesFilter(d, filter) && (!q || d.name.toLowerCase().includes(q)));
   }, [downloads, filter, query]);
-  const sheetDownload = useMemo(() => downloads.find((d) => d.id === sheetDownloadId) ?? null, [downloads, sheetDownloadId]);
-  const openDownload = useCallback(
-    (id: string) => {
-      void maglevEngine.openDownload(id).then((res) => {
-        if (!res.ok) showNotice({ message: openFailureText(res.code, res.message) });
-      });
-    },
-    [showNotice],
-  );
-  const openDownloadFolder = useCallback(
-    (id: string) => {
-      void maglevEngine.openDownloadFolder(id).then((res) => {
-        if (!res.ok) showNotice({ message: res.message || OPEN_FOLDER_FAILED_TEXT });
-      });
-    },
-    [showNotice],
-  );
-  const shareDownload = useCallback(
-    (id: string) => {
-      void maglevEngine.shareDownload(id).then((res) => {
-        if (!res.ok) showNotice({ message: res.message || SHARE_FAILED_TEXT });
-      });
-    },
-    [showNotice],
-  );
-  const allowDevice = useCallback(
-    (id: string) => {
-      void maglevEngine.allowLanHost(id).then((res) => {
-        if (!res.ok)
-          showNotice({
-            message: allowDeviceFailureText(res.code, res.message),
-          });
-        else void retryDownload(id);
-      });
-    },
-    [showNotice, retryDownload],
-  );
-  const resumeDownloadAnyway = useCallback(
-    (id: string) => {
-      void maglevEngine.resumeDownloadAnyway(id).then((res) => {
-        if (!res.ok) showNotice({ message: res.message || notices.common.retryFailed });
-      });
-    },
-    [showNotice],
-  );
-  const onDownloadAction = useCallback(
-    (d: DownloadSnapshot, action: DownloadAction) => {
-      switch (action.kind) {
-        case 'pause':
-          void pauseDownload(d.id);
-          break;
-        case 'resume':
-          void resumeDownload(d.id);
-          break;
-        case 'retry':
-        case 'restart':
-          void retryDownload(d.id);
-          break;
-        case 'newLink':
-          setSheetDownloadId(d.id);
-          break;
-        case 'open':
-          openDownload(d.id);
-          break;
-        case 'allowDevice':
-          allowDevice(d.id);
-          break;
-        case 'resumeAnyway':
-          resumeDownloadAnyway(d.id);
-          break;
-      }
-    },
-    [pauseDownload, resumeDownload, retryDownload, openDownload, allowDevice, resumeDownloadAnyway],
-  );
+  // NATIVE_CONTRACT 40.4: the card buttons run the same handlers as the download page. "Paste new link" opens the page (40.1).
+  const onDownloadAction = useCallback((d: DownloadSnapshot, action: DownloadAction) => downloadActions.run(d, action), [downloadActions]);
   const selectionMode = selectedIds.size > 0;
   const finished = useMemo(() => finishedTransfers(all, downloads), [all, downloads]);
   const finishedCount = finished.torrents.length + finished.downloads.length;
@@ -244,6 +184,13 @@ export default function TransfersScreen() {
     [all, downloads],
   );
   const nothingHere = all.length === 0 && downloads.length === 0;
+
+  // Why transfers are held (NATIVE_CONTRACT 35): one list for the banner and every card's line.
+  const activeBlocks = useActiveBlocks();
+  const queueLimit = queueLimitOf(settings.bandwidth.maxActiveDownloads);
+  const blockCtx = useMemo(() => ({ blocks: activeBlocks, queueLimit }), [activeBlocks, queueLimit]);
+  const hasUnfinished = useMemo(() => all.some((t) => !t.finished) || downloads.some((d) => d.state !== 'finished'), [all, downloads]);
+  const hasSeedEligible = useMemo(() => all.some((t) => t.finished || t.state === 'SEEDING' || t.state === 'COMPLETED'), [all]);
 
   // Low-space banner. Free space and what unfinished downloads still need are read at the same
   // moment, so the numbers agree with each other (and the text changes every 30 s, not every tick).
@@ -355,9 +302,10 @@ export default function TransfersScreen() {
   const onDownloadPress = useCallback(
     (id: string) => {
       if (selectionMode) toggleSelected(selectionKey('d', id));
-      else setSheetDownloadId(id);
+      // NATIVE_CONTRACT 40.1: a tap on a link-download card opens its page.
+      else router.push({ pathname: '/download/[id]', params: { id } });
     },
-    [selectionMode, toggleSelected],
+    [selectionMode, toggleSelected, router],
   );
   const onResumeAnyway = useCallback(
     (id: string) => {
@@ -400,6 +348,11 @@ export default function TransfersScreen() {
   );
   const onPause = useCallback((id: string) => void pauseTorrent(id), [pauseTorrent]);
   const onResume = useCallback((id: string) => void resumeTorrent(id), [resumeTorrent]);
+  // Swipe left and the Remove accessibility action: out of the list now, files kept, "Removed . Undo" for 5 seconds.
+  const onSwipeRemove = useCallback((id: string) => removeTransfers([id], []), [removeTransfers]);
+  const onSwipeRemoveDownload = useCallback((id: string) => removeTransfers([], [id]), [removeTransfers]);
+  const swipeEnabled = settings.appearance.swipeActions;
+  const showFileIcons = settings.appearance.showFileIcons;
   // SM-37: clear the no_peers tag so the torrent looks for peers again.
   const onKeepTrying = useCallback(
     (id: string) => {
@@ -512,9 +465,14 @@ export default function TransfersScreen() {
         onOpen={onOpenTorrent}
         onResumeAnyway={onResumeAnyway}
         onPlay={onPlay}
+        onRemove={onSwipeRemove}
+        swipeEnabled={swipeEnabled}
+        subtitle={subtitleIcon(`t:${item.torrent.id}`)}
+        onSubtitles={onTorrentSubtitles}
+        showFileIcon={showFileIcons}
       />
     ),
-    [selectionMode, selectedIds, onCardPress, startSelection, onPause, onResume, onKeepTrying, onOpenTorrent, onResumeAnyway, onPlay],
+    [selectionMode, selectedIds, onCardPress, startSelection, onPause, onResume, onKeepTrying, onOpenTorrent, onResumeAnyway, onPlay, onSwipeRemove, swipeEnabled, subtitleIcon, onTorrentSubtitles, showFileIcons],
   );
   // One list: torrents and link downloads, ordered by the current sort.
   const items = useMemo(() => mergeTransfers(visible, shownDownloads, sort), [visible, shownDownloads, sort]);
@@ -530,9 +488,14 @@ export default function TransfersScreen() {
           selectionMode={selectionMode}
           selected={selectedIds.has(selectionKey('d', item.download.id))}
           onLongPress={startDownloadSelection}
+          onRemove={onSwipeRemoveDownload}
+          swipeEnabled={swipeEnabled}
+          subtitle={subtitleIcon(`d:${item.download.id}`)}
+          onSubtitles={onDownloadSubtitles}
+          showFileIcon={showFileIcons}
         />
       ),
-    [renderTorrent, onDownloadPress, onDownloadAction, selectionMode, selectedIds, startDownloadSelection],
+    [renderTorrent, onDownloadPress, onDownloadAction, selectionMode, selectedIds, startDownloadSelection, onSwipeRemoveDownload, swipeEnabled, subtitleIcon, onDownloadSubtitles, showFileIcons],
   );
   const progressMotion = useMemo<ProgressMotion>(() => ({ active: focused, sweeps: LIST_SWEEPS }), [focused]);
 
@@ -541,6 +504,7 @@ export default function TransfersScreen() {
   const emptyFilter = query.trim() ? empty.transfers.noMatch : empty.transfers.noneInFilter(filterLabel);
 
   return (
+    <BlockContextProvider value={blockCtx}>
     <View style={[styles.root, { paddingTop: insets.top }]}>
       <HeaderBar
         cruising={cruising}
@@ -587,16 +551,14 @@ export default function TransfersScreen() {
         </View>
       ) : null}
 
-      {lowSpace && !nothingHere ? (
-        <View style={styles.lowSpace}>
-          <Banner
-            tone="warning"
-            title={lowSpace.title}
-            body={lowSpace.body}
-            actionLabel="Free up space"
-            onAction={() => void openStorageSettings()}
-          />
-        </View>
+      {!nothingHere ? (
+        <BlockBanner
+          blocks={activeBlocks}
+          hasUnfinished={hasUnfinished}
+          hasSeedEligible={hasSeedEligible}
+          lowSpace={lowSpace}
+          onFreeSpace={() => void openStorageSettings()}
+        />
       ) : null}
 
       {/* Off by default (Settings → Appearance → Speed totals); Pause all / Resume all also live in the notification. */}
@@ -657,6 +619,7 @@ export default function TransfersScreen() {
               getItemType={typeOfItem}
               renderItem={renderItem}
               extraData={selectedIds}
+              onScrollBeginDrag={closeOpenSwipe}
               ItemSeparatorComponent={Separator}
               contentContainerStyle={styles.listContent}
               maintainVisibleContentPosition={NO_ANCHOR}
@@ -690,21 +653,7 @@ export default function TransfersScreen() {
         </>
       )}
 
-      <DownloadSheet
-        download={sheetDownload}
-        onClose={() => setSheetDownloadId(null)}
-        onRetry={(id) => void retryDownload(id)}
-        onPause={(id) => void pauseDownload(id)}
-        onResume={(id) => void resumeDownload(id)}
-        onResumeAnyway={resumeDownloadAnyway}
-        onOpen={openDownload}
-        onOpenFolder={openDownloadFolder}
-        onShare={shareDownload}
-        onAllowDevice={allowDevice}
-        onRemove={(id, deleteFiles) => void removeDownload(id, deleteFiles)}
-        onSetLimit={(id, bps) => void setDownloadLimits(id, bps)}
-        onNewLink={refreshDownloadUrl}
-      />
+      <SubtitleSheet target={subtitleTarget} onClose={() => setSubtitleTarget(null)} />
       <ClearFinishedSheet
         visible={clearOpen}
         count={finished.torrents.length + finished.downloads.length}
@@ -727,6 +676,7 @@ export default function TransfersScreen() {
       />
       <DeleteSheet visible={deleteOpen} count={selectedIds.size} bytes={selectedBytes} onClose={() => setDeleteOpen(false)} onConfirm={confirmDelete} />
     </View>
+    </BlockContextProvider>
   );
 }
 
@@ -754,7 +704,6 @@ const makeStyles = (c: ThemeColors) =>
       paddingVertical: 0,
     },
     fileError: { paddingHorizontal: spacing.lg, paddingBottom: spacing.sm },
-    lowSpace: { paddingHorizontal: spacing.lg, paddingTop: spacing.sm },
     noMatch: { flex: 1, justifyContent: 'center' },
     listContent: { paddingTop: spacing.xs, paddingBottom: 96 },
   });

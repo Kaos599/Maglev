@@ -44,4 +44,15 @@ object PopupRules {
         if (allowed || policy == "allow") return OPEN
         return if (policy == "block") BLOCK else ASK
     }
+
+    /** How long a tap vouches for a link, in ms. Mirrors TAP_MS in utils/browser/popups.ts. */
+    const val TAP_MS = 3000L
+
+    /** The tapped link (host, or "*" for an image link, null for no link) leads to [targetHost]'s site. Mirrors tapMatchesLink. */
+    fun tapMatchesLink(tapLinkHost: String?, targetHost: String?): Boolean =
+        tapLinkHost != null && (tapLinkHost == "*" || RegistrableHost.same(tapLinkHost, targetHost))
+
+    /** A tap is the user's own only when it is the first of its kind and to this site or on a link there. Mirrors trustedTap. */
+    fun trusted(gesture: Boolean, sameSite: Boolean, onMatchingLink: Boolean, nthInGesture: Int): Boolean =
+        gesture && nthInGesture == 0 && (sameSite || onMatchingLink)
 }

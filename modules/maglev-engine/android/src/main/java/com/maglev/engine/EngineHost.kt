@@ -49,6 +49,7 @@ import java.io.File
 import java.nio.ByteBuffer
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
+import java.util.concurrent.atomic.AtomicLong
 
 /** User-visible governance rules (contract section 6). */
 data class Governance(
@@ -122,6 +123,15 @@ object EngineHost {
     /** Info-hashes already handed to the media scanner for their current completion (contract 12.2). */
     private val mediaScanned = ConcurrentHashMap.newKeySet<String>()
     private val pollLock = Any()
+
+    /**
+     * Serializes init, ensureStarted, headlessStart and shutdownEngine. Without it an init that runs while a shutdown is in flight
+     * starts a fresh Rust engine that the shutdown then takes, leaving `initialized == true` and no engine.
+     * Order: lifecycleLock, then pollLock. Nothing holding pollLock may call these four. It is a JVM monitor, so it is reentrant on one thread.
+     */
+    private val lifecycleLock = Any()
+    /** Raised by every shutdown. A headless start queued before a shutdown must not bring the engine back (contract 8.1). */
+    private val shutdownEpoch = AtomicLong(0)
     private var initOnlySince = 0L
     private val cancelledCopies = ConcurrentHashMap.newKeySet<String>()
     /** Copy keys whose removal asked for Delete file: their target in the chosen folder goes even when complete. */
@@ -230,7 +240,9 @@ object EngineHost {
      * JS entry point. Idempotent: if the engine was already started headlessly after a process restart,
      * the JS config is applied to the running engine instead of starting a second one.
      */
-    fun init(config: Map<String, Any?>): Map<String, Any?> {
+    fun init(config: Map<String, Any?>): Map<String, Any?> = synchronized(lifecycleLock) { initLocked(config) }
+
+    private fun initLocked(config: Map<String, Any?>): Map<String, Any?> {
         val snake = Json.snakeify(config) as Map<*, *>
         val configJson = Json.toJson(snake)
         captureGlobalLimits(snake)
@@ -302,47 +314,60 @@ object EngineHost {
      * 4. Poll once. If nothing is active or rule-paused, stop the service. Otherwise the poller keeps running.
      */
     fun headlessStart(countKill: Boolean = true) {
+        // Taken at call time: a shutdown that lands before this coroutine gets the lock makes the epoch differ.
+        val epochAtCall = shutdownEpoch.get()
         scope.launch {
-            val c = ctx ?: return@launch
-            val p = prefs(c)
-            if (countKill && p.getLong(KEY_ALIVE_AT, 0L) > 0L) {
-                p.edit().putInt(KEY_KILLS, p.getInt(KEY_KILLS, 0) + 1).apply()
-            }
-            // "Not wanted" used to stop the restart outright. It still does: a count of 0 vetoes the restart.
-            val wanted = p.getBoolean(KEY_WANTED, false)
-            val intent = RestartInput(
-                userShutdown = p.getBoolean(KEY_USER_SHUTDOWN, false),
-                userPausedAll = p.getBoolean(KEY_USER_PAUSED_ALL, false),
-                scheduleHeld = ScheduleManager.isHeld(c),
-                activeTorrents = if (wanted) RestartPolicy.UNKNOWN_COUNT else 0,
-            )
-            if (RestartPolicy.decide(intent) == RestartDecision.StayStopped) {
+            synchronized(lifecycleLock) { headlessStartLocked(countKill, epochAtCall) }
+        }
+    }
+
+    /** Body of [headlessStart]. Runs under [lifecycleLock]; it calls [startEngine], never init or ensureStarted. */
+    private fun headlessStartLocked(countKill: Boolean, epochAtCall: Long) {
+        val c = ctx ?: return
+        val p = prefs(c)
+        if (shutdownEpoch.get() != epochAtCall) {
+            // Shut down was requested after this start was queued. Only an explicit user action restarts now.
+            // If one already did (the app opened after the shutdown), the engine is running and the service stays.
+            if (!initialized) stopService()
+            return
+        }
+        if (countKill && p.getLong(KEY_ALIVE_AT, 0L) > 0L) {
+            p.edit().putInt(KEY_KILLS, p.getInt(KEY_KILLS, 0) + 1).apply()
+        }
+        // "Not wanted" used to stop the restart outright. It still does: a count of 0 vetoes the restart.
+        val wanted = p.getBoolean(KEY_WANTED, false)
+        val intent = RestartInput(
+            userShutdown = p.getBoolean(KEY_USER_SHUTDOWN, false),
+            userPausedAll = p.getBoolean(KEY_USER_PAUSED_ALL, false),
+            scheduleHeld = ScheduleManager.isHeld(c),
+            activeTorrents = if (wanted) RestartPolicy.UNKNOWN_COUNT else 0,
+        )
+        if (RestartPolicy.decide(intent) == RestartDecision.StayStopped) {
+            stopService()
+            return
+        }
+        if (!initialized) {
+            val res = startEngine("")
+            if (!isOk(res)) {
+                Log.w(TAG, "headless init failed: ${res["code"]}")
                 stopService()
-                return@launch
+                return
             }
-            if (!initialized) {
-                val res = startEngine("")
-                if (!isOk(res)) {
-                    Log.w(TAG, "headless init failed: ${res["code"]}")
-                    stopService()
-                    return@launch
-                }
-            } else {
-                evaluateGovernance(force = false)
-            }
-            val list = call { NativeCore.nativeListTorrents() }
-            val torrents = Json.list(list["torrents"])
-            val downloads = Json.list(list["downloads"])
-            // Link downloads count like torrents, or a restart with only a download running stops the service.
-            val summary = summarize(allTransfers(torrents, downloads), list["streaming"] == true)
-            notifyNeedsLink(downloads)
-            val counted = summary.busy + summary.pausedByRules + summary.pausedBySchedule
-            if (RestartPolicy.decide(intent.copy(activeTorrents = counted)) == RestartDecision.StayStopped) {
-                setWanted(c, false)
-                stopService()
-            } else {
-                pollNow()
-            }
+        } else {
+            evaluateGovernance(force = false)
+        }
+        val list = call { NativeCore.nativeListTorrents() }
+        val torrents = Json.list(list["torrents"])
+        val downloads = Json.list(list["downloads"])
+        // Link downloads count like torrents, or a restart with only a download running stops the service.
+        val summary = summarize(allTransfers(torrents, downloads), list["streaming"] == true)
+        notifyNeedsLink(downloads)
+        val counted = summary.busy + summary.pausedByRules + summary.pausedBySchedule
+        if (RestartPolicy.decide(intent.copy(activeTorrents = counted)) == RestartDecision.StayStopped) {
+            setWanted(c, false)
+            stopService()
+        } else {
+            pollNow()
         }
     }
 
@@ -351,7 +376,9 @@ object EngineHost {
      * JS and no service did. Blocking, so call it off the main thread. Safe when already running (returns ok), because
      * `nativeInit` is idempotent.
      */
-    @Synchronized fun ensureStarted(): Map<String, Any?> = if (initialized) mapOf("ok" to true) else startEngine("")
+    fun ensureStarted(): Map<String, Any?> = synchronized(lifecycleLock) {
+        if (initialized) mapOf("ok" to true) else startEngine("")
+    }
 
     private fun prefs(c: Context) = c.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
 
@@ -378,8 +405,12 @@ object EngineHost {
     }
 
     /** Stops the engine, the poller, the governance watchers and the service. */
-    fun shutdownEngine(): Map<String, Any?> {
+    fun shutdownEngine(): Map<String, Any?> = synchronized(lifecycleLock) { shutdownEngineLocked() }
+
+    private fun shutdownEngineLocked(): Map<String, Any?> {
+        shutdownEpoch.incrementAndGet()
         initialized = false
+        clearBlocks()
         startWarning = null
         pollJob?.cancel()
         pollJob = null
@@ -839,8 +870,20 @@ object EngineHost {
         scope.launch { call { NativeCore.nativeSetTransfersAllowed(false, REASON_FGS_TIMEOUT) } }
     }
 
+    /**
+     * Pause all / Resume all can be tapped from a notification or the tile after Android killed the process, before
+     * anything restarted the engine. Start it first, as scheduleResume does, so the tap isn't silently lost.
+     */
+    private fun engineReadyForAction(action: String): Boolean {
+        if (initialized) return true
+        val res = ensureStarted()
+        if (!isOk(res)) Log.w(TAG, "$action: engine could not start: ${res["code"]}")
+        return isOk(res)
+    }
+
     fun pauseAllFromNotification() {
         scope.launch {
+            if (!engineReadyForAction("pause_all")) return@launch
             pauseAll()
             holdForPaused = true
             emit("onNotificationAction", mapOf("action" to "pause_all"))
@@ -850,6 +893,7 @@ object EngineHost {
 
     fun resumeAllFromNotification() {
         scope.launch {
+            if (!engineReadyForAction("resume_all")) return@launch
             resumeAll()
             holdForPaused = false
             emit("onNotificationAction", mapOf("action" to "resume_all"))
@@ -1118,6 +1162,7 @@ object EngineHost {
         storageReserveBlocked = blocked
         if (!initialized) return
         send("storage_full", !blocked, false)
+        if (setBlock("storage_full", blocked, null)) emitBlocks()
     }
 
     /** Kept so an engine restart or a forced governance pass sends the current state again. */
@@ -1171,12 +1216,18 @@ object EngineHost {
         val p = power
 
         var wifiBlocked = false
+        // Contract section 35.1: why wifi_only is on. "metered" is mobile data, "ssid" is a Wi-Fi not in the list.
+        var wifiCause: String? = null
         if (g.wifiOnly && n != null && n.monitoring) {
             wifiBlocked = !n.unmeteredLink
+            if (wifiBlocked) wifiCause = "metered"
             if (!wifiBlocked && g.ssidWhitelist.isNotEmpty()) {
                 val ssid = n.currentSsid()
                 // Unreadable SSID means the whitelist cannot be enforced. Do not block.
-                if (ssid != null && g.ssidWhitelist.none { it.trim() == ssid }) wifiBlocked = true
+                if (ssid != null && g.ssidWhitelist.none { it.trim() == ssid }) {
+                    wifiBlocked = true
+                    wifiCause = "ssid"
+                }
             }
         }
         // Contract section 21. Only judged while the callback is registered and a network exists: no network at
@@ -1211,13 +1262,76 @@ object EngineHost {
         val offline = n != null && n.monitoring && (!n.connected || !n.validated)
         send(TAG_OFFLINE, !offline, force)
 
-        val c = ctx ?: return
+        // Contract section 35.1: the blocks that are ON, with detail. Compared by value; emitted only on a change.
+        var blocksChanged = false
+        blocksChanged = setBlock("storage_full", storageReserveBlocked, null) or blocksChanged
+        blocksChanged = setBlock("offline", offline, null) or blocksChanged
+        blocksChanged = setBlock("network_unvalidated", unvalidatedBlocked, null) or blocksChanged
+        blocksChanged = setBlock("vpn_required", vpnBlocked, null) or blocksChanged
+        blocksChanged = setBlock("wifi_only", wifiBlocked, mapOf("cause" to wifiCause)) or blocksChanged
+        blocksChanged = setBlock("charging_only", chargingBlocked, null) or blocksChanged
+        blocksChanged = setBlock(
+            "battery", batteryBlocked,
+            mapOf("thresholdPct" to g.batteryCutoffPct.toDouble(), "levelPct" to level.toDouble()),
+        ) or blocksChanged
+        blocksChanged = setBlock("seed_metered", seedMeteredBlocked, null) or blocksChanged
+
+        val c = ctx
+        if (c == null) {
+            if (blocksChanged) emitBlocks()
+            return
+        }
         val st = ScheduleManager.state(c)
         val held = ScheduleManager.isHeld(c)
         // Schedule allows transfers again but the service is down: start it. The service clears the hold.
         if (held && !st.paused) ScheduleManager.requestResumeIfAllowed(c)
         send("schedule", !st.paused && !held, force)
+        // The next boundary is when the current pause rule ends. Unknown (null) when only the hold is left.
+        val resumesAt = if (st.paused) ScheduleManager.nextBoundaryEpoch(c) else null
+        blocksChanged = setBlock("schedule", st.paused || held, mapOf("resumesAtMs" to resumesAt?.toDouble())) or blocksChanged
+        if (blocksChanged) emitBlocks()
         applyLimits(st, force)
+    }
+
+    /** Fixed order, so the list never reshuffles when a block turns off and on. */
+    private val blockOrder = listOf(
+        "storage_full", "offline", "network_unvalidated", "vpn_required", "wifi_only",
+        "charging_only", "battery", "schedule", "seed_metered",
+    )
+    private val activeBlocks = HashMap<String, Map<String, Any?>>()
+    private val blocksLock = Any()
+
+    /**
+     * Turns [tag] on or off with [detail]. Returns true when the set or a detail field changed. A battery
+     * `levelPct` change counts too, so the banner never shows a stale percentage; the battery level changes rarely.
+     */
+    private fun setBlock(tag: String, on: Boolean, detail: Map<String, Any?>?): Boolean = synchronized(blocksLock) {
+        val old = activeBlocks[tag]
+        if (!on) return@synchronized activeBlocks.remove(tag) != null
+        val fields = LinkedHashMap<String, Any?>()
+        fields["tag"] = tag
+        detail?.forEach { (k, v) -> if (v != null) fields[k] = v }
+        if (tag == "schedule") fields["resumesAtMs"] = detail?.get("resumesAtMs")
+        fields["sinceMs"] = old?.get("sinceMs") ?: System.currentTimeMillis().toDouble()
+        activeBlocks[tag] = fields
+        if (old == null) return@synchronized true
+        val keys = old.keys + fields.keys
+        keys.any { old[it] != fields[it] }
+    }
+
+    /** Current blocks, in [blockOrder]. Each map is a copy, safe to hand to JS. */
+    fun activeBlocksList(): List<Map<String, Any?>> = synchronized(blocksLock) {
+        if (!initialized) return@synchronized emptyList()
+        blockOrder.mapNotNull { activeBlocks[it]?.let { m -> LinkedHashMap(m) } }
+    }
+
+    private fun emitBlocks() {
+        emit("onBlocksChanged", mapOf("blocks" to activeBlocksList()))
+    }
+
+    private fun clearBlocks() {
+        val had = synchronized(blocksLock) { val h = activeBlocks.isNotEmpty(); activeBlocks.clear(); h }
+        if (had) emit("onBlocksChanged", mapOf("blocks" to emptyList<Map<String, Any?>>()))
     }
 
     private fun pushLimits(down: Long, up: Long) {

@@ -36,7 +36,7 @@ check('Sort sheet returns focus to its button', /returnFocusRef=\{sortBtnRef\}/.
 console.log('Search announcements');
 check('announces Removed', /`Removed \$\{text\}`/.test(search));
 check('announces Recent searches cleared', /Recent searches cleared/.test(search));
-check('announces Added', /`Added \$\{r\.name\}`/.test(search));
+check('announces Added', /onAnnounce: announce/.test(search));
 check('announces Searching N sources', /Searching \$\{plural\(eligible\.length/.test(search));
 check('announces results and No results', /'No results'/.test(search) && /plural\(shown\.length, 'result', 'results'\)/.test(search));
 check('announces Hidden for a day', /Hidden for a day/.test(search));

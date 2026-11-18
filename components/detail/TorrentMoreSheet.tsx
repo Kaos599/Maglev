@@ -1,6 +1,8 @@
 import React from 'react';
 import type { PausedBy, TorrentState } from 'maglev-engine';
 import { ListRow, Sheet } from '../ui';
+import { entrySubtitle, type EntryMode } from '../subtitles/flow';
+import { FIND_SUBTITLES } from '../../utils/subtitles/copy';
 
 interface Props {
   visible: boolean;
@@ -24,6 +26,9 @@ interface Props {
   onDelete: () => void;
   /** SM-33: the SD card is gone, so Recheck is off. */
   storageGone?: boolean;
+  /** Find subtitles… (36.10): finished with exactly one video. Default hidden. */
+  subtitles?: EntryMode;
+  onFindSubtitles?: () => void;
 }
 
 const RUNNING: readonly TorrentState[] = ['DOWNLOADING', 'SEEDING', 'QUEUED'];
@@ -47,6 +52,8 @@ export function TorrentMoreSheet({
   onOpenFolder,
   onDelete,
   storageGone = false,
+  subtitles = 'hidden',
+  onFindSubtitles,
 }: Props) {
   const running = RUNNING.includes(state);
   const busy = state === 'CHECKING' || state === 'INITIALIZING' || state === 'MOVING';
@@ -97,6 +104,15 @@ export function TorrentMoreSheet({
         disabled={busy}
         onPress={onMove}
       />
+      {subtitles !== 'hidden' ? (
+        <ListRow
+          title={FIND_SUBTITLES}
+          subtitle={entrySubtitle(subtitles)}
+          icon="file-doc"
+          disabled={subtitles !== 'enabled'}
+          onPress={onFindSubtitles}
+        />
+      ) : null}
       <ListRow title="Open folder" icon="folder" onPress={onOpenFolder} />
       <ListRow title="Delete…" icon="trash" destructive onPress={onDelete} />
     </Sheet>

@@ -1,0 +1,6 @@
+Recorded 2026-11-18 from POST https://napisy24.pl/run/CheckSubAgent.php (anonymous "subliminal" login).
+ok0_unknown_file.bin  real answer, an unknown file hash (OK-0).
+ok1_known_film_no_subtitle.bin  real answer, a known film with no subtitle (OK-1; hash 8e245d9679d31e12, breakdance.avi).
+ok2_head_SYNTHETIC.txt  NOT a recording. No hash we could find returned OK-2, so this is the documented shape
+  (OK-2|napisId:..|key:value||<zip bytes>) from the Bazarr+ reference provider. The test appends the real zip
+  scripts/fixtures/subtitles/regielive/download.zip as the archive.

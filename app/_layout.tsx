@@ -12,10 +12,12 @@ import { FONT_NAMES } from '../constants/fontStyles';
 import NavigationBarSync from '../components/NavigationBarSync';
 import { NoticeHost } from '../components/ui/NoticeHost';
 import { StarPrompt } from '../components/StarPrompt';
+import { HighlightSheet } from '../components/HighlightSheet';
 import { syncScheduleToNative } from '../utils/prefs/schedule';
 import { syncFeedAutomationToNative } from '../utils/prefs/feedAutomation';
 import { initHistory } from '../utils/history';
 import { startUpdates } from '../utils/update';
+import { useSubtitleRequests } from '../components/subtitles/useSubtitleRequests';
 import { installGlobalHandler, setCurrentRoute } from '../utils/crashLog';
 
 // Record uncaught JS errors on this phone, then let React Native handle them as before.
@@ -36,7 +38,13 @@ const ENGINE_RESOLVE_TIMEOUT_MS = 15000;
  * once the engine can answer rather than failing with "Engine not started" (the bridge does not
  * queue calls made before start).
  */
-const ENGINE_FIRST_ROUTE = /^\/(add-torrent|add-download|torrent\/)/;
+const ENGINE_FIRST_ROUTE = /^\/(add-torrent|add-download|torrent\/|download\/)/;
+
+/** NATIVE_CONTRACT 44.7: runs the subtitle requests. Renders nothing; does no work while there are none. */
+function SubtitleRequestRunner() {
+  useSubtitleRequests();
+  return null;
+}
 
 function AppNavigation() {
   const { colors, dark } = useTheme();
@@ -129,6 +137,15 @@ function AppNavigation() {
               headerShown: false,
             }}
           />
+          {/* NATIVE_CONTRACT 40.1: the page of a link download, registered like the torrent page. */}
+          <Stack.Screen
+            name="download/[id]"
+            options={{
+              animation: 'ios_from_right',
+              gestureEnabled: true,
+              headerShown: false,
+            }}
+          />
           {/*
             Every other route is declared here too, with the Stack defaults. A route left out of every
             guard is never guarded, and expo-router sends a blocked launch to the first unguarded route
@@ -154,14 +171,19 @@ function AppNavigation() {
           <Stack.Screen name="settings/search-providers" />
           <Stack.Screen name="settings/speed" />
           <Stack.Screen name="settings/storage" />
+          <Stack.Screen name="settings/subtitle-languages" />
+          <Stack.Screen name="settings/subtitle-sources" />
+          <Stack.Screen name="settings/subtitles" />
           <Stack.Screen name="settings/updates" />
           <Stack.Screen name="settings/whats-new" />
           <Stack.Screen name="settings/watch" />
           <Stack.Screen name="stats" />
         </Stack.Protected>
       </Stack>
+      {main ? <SubtitleRequestRunner /> : null}
       {main ? <NoticeHost /> : null}
       {main ? <StarPrompt /> : null}
+      {main ? <HighlightSheet /> : null}
     </>
   );
 }

@@ -18,6 +18,11 @@ export function formatSpeed(bytesPerSec: number): string {
   return `${formatBytes(bytesPerSec)}/s`;
 }
 
+/** The torrent page's progress text: one decimal, "42.0%". Takes a fraction from 0 to 1. */
+export function formatProgressPercent(fraction: number): string {
+  return `${(fraction * 100).toFixed(1)}%`;
+}
+
 export function formatEta(seconds: number): string {
   if (seconds <= 0 || !isFinite(seconds)) return '—';
   if (seconds < 60) return `${seconds}s`;

@@ -27,10 +27,8 @@ name: feeds-add-remove
 - extendedWaitUntil:
     visible: "Remove .*\\?"                         # from app/(tabs)/feeds.tsx:279 (sheet title "Remove <name>?")
     timeout: 10000
-# The sheet's confirm is the second "Remove feed" on screen (the feed bar button is behind the sheet). UNVERIFIED on device.
-- tapOn:
-    text: "Remove feed"                             # from app/(tabs)/feeds.tsx:281 (sheet button)
-    index: 1
+# The sheet hides the feed bar behind it, so "Remove feed" matches only the sheet's confirm button (verified in the CI hierarchy).
+- tapOn: "Remove feed"                              # from app/(tabs)/feeds.tsx:281 (sheet button)
 - extendedWaitUntil:
     visible: "No feeds yet"                         # from constants/copy.ts:227 (empty.feeds.none.title)
     timeout: 10000

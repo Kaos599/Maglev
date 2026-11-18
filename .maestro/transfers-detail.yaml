@@ -4,17 +4,11 @@ appId: com.maglev
 name: transfers-detail
 ---
 - runFlow: subflows/onboard-if-needed.yaml
-- openLink: "magnet:?xt=urn:btih:08ada5a7a6183aae1e09d831df6748d566095a10&dn=Sintel&tr=udp%3A%2F%2Ftracker.opentrackr.org%3A1337%2Fannounce&tr=udp%3A%2F%2Fopen.tracker.cl%3A1337%2Fannounce&tr=udp%3A%2F%2Ftracker.openbittorrent.com%3A6969%2Fannounce&tr=udp%3A%2F%2Fexplodie.org%3A6969%2Fannounce"
-- extendedWaitUntil:
-    visible: "Start download.*"
-    timeout: 120000
-- tapOn: "Start download.*"
-# from app/add-torrent.tsx:499
-- extendedWaitUntil:
-    visible:
-      id: "transfer-card"
-    timeout: 60000
-# testID "transfer-card": components/TransferCard.tsx:179
+- runFlow: subflows/clear-leftovers.yaml
+- runFlow:
+    file: subflows/add-from-card.yaml
+    env:
+      LINK: "magnet:?xt=urn:btih:08ada5a7a6183aae1e09d831df6748d566095a10&dn=Sintel&tr=udp%3A%2F%2Ftracker.opentrackr.org%3A1337%2Fannounce&tr=udp%3A%2F%2Fopen.tracker.cl%3A1337%2Fannounce&tr=udp%3A%2F%2Ftracker.openbittorrent.com%3A6969%2Fannounce&tr=udp%3A%2F%2Fexplodie.org%3A6969%2Fannounce"
 - tapOn:
     id: "transfer-card"
 - extendedWaitUntil:
@@ -30,12 +24,14 @@ name: transfers-detail
 - assertVisible: "Size"
 # Stat grid labels: app/torrent/[id].tsx:820-830 (components/detail/StatGrid.tsx)
 - tapOn: "Files"
+# File row label: `${file.path}, ${size}, ${pct} percent, ${priority}` (components/detail/FileListRow.tsx:48). Rows are sorted by name and the
+# list is long (Sintel has subtitle files before the .mp4, and the torrent can finish in seconds on CI), so match any row, not an .mp4.
 - extendedWaitUntil:
-    visible: ".*\\.mp4, .*"
+    visible: ".*, [0-9.]+ [KMGT]?B, [0-9]+ percent, .*"
     timeout: 90000
-# File row label: `${file.path}, ${size}, ${pct} percent, ${priority}` (components/detail/FileListRow.tsx:48).
-# The file name Sintel.mp4 is taken from the torrent's file list; not verified on a device.
-- tapOn: ".*\\.mp4, .*"
+- tapOn:
+    text: ".*, [0-9.]+ [KMGT]?B, [0-9]+ percent, .*"
+    index: 0
 - assertVisible: "File priority"
 # Priority sheet title for one file: app/torrent/[id].tsx:974
 - tapOn: "Close"

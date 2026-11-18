@@ -1,0 +1,9 @@
+# On CI the emulator's own launcher sometimes freezes and Android shows "Pixel Launcher isn't responding" over Maglev.
+# Tap Wait so the app underneath is visible again. Does nothing when no such dialog is showing.
+appId: com.maglev
+---
+- runFlow:
+    when:
+      visible: ".*isn't responding.*"
+    commands:
+      - tapOn: "Wait"

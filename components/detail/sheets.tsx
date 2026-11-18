@@ -7,6 +7,8 @@ import { formatBytes } from '../../constants/format';
 import { Banner, Button, ListRow, Sheet } from '../ui';
 import { fileName, isStreamable, streamReadiness } from './torrentLabels';
 import { banners, notices } from '../../constants/copy';
+import { entrySubtitle, type EntryMode } from '../subtitles/flow';
+import { FIND_SUBTITLES } from '../../utils/subtitles/copy';
 
 interface DeleteSheetProps {
   visible: boolean;
@@ -114,10 +116,13 @@ interface FileSheetProps {
   onResume: () => Promise<boolean>;
   onNotice: (text: string) => void;
   onClose: () => void;
+  /** Find subtitles… (36.10): hidden, disabled with "When this file starts" (nothing on disk yet), or enabled (42.1). Default hidden. */
+  subtitles?: EntryMode;
+  onFindSubtitles?: (file: DetailFile) => void;
 }
 
 /** Open and Share for finished files; Stream for video and audio, finished or not (NATIVE_CONTRACT 11.4). */
-export function FileActionsSheet({ id, file, torrentState, pausedBy, onResume, onNotice, onClose }: FileSheetProps) {
+export function FileActionsSheet({ id, file, torrentState, pausedBy, onResume, onNotice, onClose, subtitles = 'hidden', onFindSubtitles }: FileSheetProps) {
   const { colors } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const [error, setError] = useState<string | null>(null);
@@ -192,6 +197,15 @@ export function FileActionsSheet({ id, file, torrentState, pausedBy, onResume, o
       ) : null}
       {file && streamable ? (
         <ListRow title="Stream" subtitle={streamSubtitle} icon="stream" disabled={skipped || moving || busy} onPress={stream} />
+      ) : null}
+      {file && subtitles !== 'hidden' ? (
+        <ListRow
+          title={FIND_SUBTITLES}
+          subtitle={entrySubtitle(subtitles)}
+          icon="file-doc"
+          disabled={subtitles !== 'enabled'}
+          onPress={() => onFindSubtitles?.(file)}
+        />
       ) : null}
       {file && !done && !streamable ? <Text style={styles.hint}>Available once the file finishes downloading.</Text> : null}
     </Sheet>

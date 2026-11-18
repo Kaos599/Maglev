@@ -1,9 +1,11 @@
 import type { DownloadSnapshot, TorrentTelemetry } from 'maglev-engine';
 import type { SortKey, TransferSort } from '../../utils/prefs/transfers';
 import { formatBytes, formatSpeed } from '../../constants/format.ts';
-import { healthLabel, resolvingLine } from '../detail/fileHealthMachine.ts';
+import { resolvingLine } from '../detail/fileHealthMachine.ts';
+import { reasonFor, wifiOverrideAllowed, type BlockContext } from '../../utils/blocks/reasons.ts';
 import { downloadProgress } from '../../utils/downloadCopy.ts';
 import { doneLead } from '../../utils/stats/format.ts';
+import { QUIET_MS } from './flowClock.ts';
 
 export type TransferFilter = 'all' | 'downloading' | 'seeding' | 'paused' | 'done' | 'errors';
 
@@ -119,19 +121,26 @@ export function magnetHash(magnet: string): string | null {
 
 // ---- Card status line (TransferCard) ----
 
-export type StatusTone = 'muted' | 'accent' | 'danger';
-export type StatusSlot = 'speed' | 'upload' | 'size';
+export type StatusTone = 'muted' | 'accent' | 'danger' | 'download';
+export type StatusSlot = 'speed' | 'upload' | 'size' | 'amount';
 
+/**
+ * One status line (owner rule 2026-11-18). Left: one phrase for what is happening ("12 min left", "Downloading",
+ * "Paused", "Checking files") and, last, the percent while the file is not done. Never an amount, never a trailing "…".
+ * Right: exactly one value, in order: speed while data flows, else the amount ("320 MB of 2.1 GB"), else the size, else "—".
+ */
 export interface TorrentStatus {
-  /** Whole status for screen readers. */
+  /** Whole status for screen readers, with the amount the card may not show. */
   text: string;
-  /** Left part of line one: what is happening ("1 min left", "Seeding", "Paused: waiting for Wi-Fi"). */
+  /** Left phrase. Ellipsizes when long. */
   lead: string;
-  /** Right part of line one, a number in a fixed-width slot (speed or size). */
+  /** Percent shown after the phrase ("15%"). Its own non-shrinking text, so it stays visible. Absent when done or unknown. */
+  pct?: string;
+  /** Right side, a number in a fixed-width slot (speed, amount or size). */
   value?: string;
+  /** While data flows: the amount ("320 MB of 2.1 GB"), drawn in the normal telemetry colour before the speed in `value`. */
+  amount?: string;
   slot?: StatusSlot;
-  /** Line two: how far it got ("412 MB of 1.2 GB · 34%"). Absent when there is nothing to say yet. */
-  sub?: string;
   tone: StatusTone;
 }
 
@@ -153,71 +162,137 @@ export function torrentProgressPercent(t: Pick<TorrentTelemetry, 'includedBytes'
   return Math.min(100, Math.max(0, t.progressPercent || 0));
 }
 
-/** "412 MB of 1.2 GB · 34%", or null when the size is unknown. A percent never rounds up to 100 before it is done. */
+/** Whole percent, or null when the size is unknown. A percent never rounds up to 100 before it is done. */
+function wholePercent(t: Pick<TorrentTelemetry, 'includedBytes' | 'totalSizeBytes' | 'downloadedBytes' | 'progressPercent'>): number | null {
+  if (!(targetBytes(t) > 0)) return null;
+  // Only done items say 100%, and they show no percent at all.
+  return Math.min(99, Math.round(torrentProgressPercent(t)));
+}
+
+/** "412 MB of 1.2 GB · 34%", or null when the size is unknown. */
 export function torrentProgressText(t: Pick<TorrentTelemetry, 'includedBytes' | 'totalSizeBytes' | 'downloadedBytes' | 'progressPercent'>): string | null {
+  const pct = wholePercent(t);
+  if (pct == null) return null;
+  return `${formatBytes(t.downloadedBytes)} of ${formatBytes(targetBytes(t))} · ${pct}%`;
+}
+
+/** The card line for a hold: the table's short line, or plain "Paused". */
+function pausedReason(pausedBy: string | null | undefined, ctx: BlockContext): string {
+  return reasonFor(pausedBy, ctx)?.short ?? 'Paused';
+}
+
+/** Percent once something has downloaded and the size is known. */
+function startedPct(t: StatusRow): number | null {
+  return t.downloadedBytes > 0 ? wholePercent(t) : null;
+}
+
+/** Presentation choices the card makes: the speed hold (see speedHold.ts) and a large font. */
+export interface StatusOpts {
+  /** Data flowed within the last few seconds: keep the speed slot even at 0. */
+  speedHold?: boolean;
+  /** The amount shortens to what is downloaded. A function gets the full amount's length, for a narrow card. */
+  shortAmount?: boolean | ((fullChars: number) => boolean);
+  /** NATIVE_CONTRACT 43.1: how long the current run of 0 speed has lasted (ms), from the flow clock. */
+  quietMs?: number;
+}
+
+/**
+ * Right side when no data flows: the amount once something has downloaded, else the size, else "—".
+ * An unknown total shows only what is downloaded. `full` is the longer amount when `short` cut it.
+ */
+function amountOrSize(t: StatusRow, shortOpt: StatusOpts['shortAmount'] = false, extraChars = 0): { value: string; slot: StatusSlot; full?: string } {
   const target = targetBytes(t);
-  if (!(target > 0)) return null;
-  const raw = torrentProgressPercent(t);
-  const pct = raw >= 100 ? 100 : Math.min(99, Math.round(raw));
-  return `${formatBytes(t.downloadedBytes)} of ${formatBytes(target)} · ${pct}%`;
-}
-
-function pausedReason(pausedBy: string | null | undefined): string {
-  switch (pausedBy) {
-    case 'wifi_only':
-      return 'Paused: waiting for Wi-Fi';
-    case 'battery':
-      return 'Paused: battery is low';
-    case 'charging_only':
-      return 'Paused: waiting for charger';
-    case 'fgs_timeout':
-      return 'Paused: stopped in background';
-    case 'schedule':
-      return 'Paused: by schedule';
-    default:
-      return healthLabel(pausedBy) ?? 'Paused';
+  if (t.downloadedBytes > 0 && target > 0) {
+    const full = `${formatBytes(t.downloadedBytes)} of ${formatBytes(target)}`;
+    // `extraChars` is what sits beside the amount on the right (" · 2.1 MB/s"), so the narrow-card test sees the whole text.
+    const short = typeof shortOpt === 'function' ? shortOpt(full.length + extraChars) : shortOpt;
+    return short ? { value: formatBytes(t.downloadedBytes), slot: 'amount', full } : { value: full, slot: 'amount' };
   }
+  if (t.downloadedBytes > 0) return { value: formatBytes(t.downloadedBytes), slot: 'amount' };
+  return { value: t.totalSizeBytes > 0 ? formatBytes(t.totalSizeBytes) : '—', slot: 'size' };
 }
 
-function line(lead: string, tone: StatusTone, value?: string, slot?: StatusSlot, sub?: string | null): TorrentStatus {
-  const head = value ? `${lead} · ${value}` : lead;
-  return { text: sub ? `${head}. ${sub}` : head, lead, value, slot, sub: sub ?? undefined, tone };
+function line(lead: string, tone: StatusTone, pct: number | null, value?: string, slot?: StatusSlot, extra?: string | null, amount?: string, spokenAmount?: string): TorrentStatus {
+  const left = pct == null ? lead : `${lead} · ${pct}%`;
+  const head = [left, amount ? spokenAmount ?? amount : null, value].filter(Boolean).join(' · ');
+  return { text: extra ? `${head}. ${extra}` : head, lead, pct: pct == null ? undefined : `${pct}%`, value, amount, slot, tone };
+}
+
+export const CONNECTING_TEXT = 'Connecting to peers';
+export const WAITING_TEXT = 'Waiting for peers';
+
+/** What a downloading torrent is doing, for the card and the page: data flowing, connecting, waiting, or neither yet. */
+export type TorrentSituation = 'flowing' | 'connecting' | 'waiting' | 'quiet';
+
+/**
+ * NATIVE_CONTRACT 43.2. Flowing: speed above 0 or inside the 5 s hold. Connecting: nothing downloaded and not flowing.
+ * Waiting: some downloaded and no data for QUIET_MS. Quiet: some downloaded, no data for less than QUIET_MS.
+ * Null when the torrent is not downloading, the numbers are the saved ones, or the offline block already says why.
+ */
+export function torrentSituation(
+  t: Pick<TorrentTelemetry, 'state' | 'downloadSpeedBytes' | 'downloadedBytes'> & { lastKnown?: boolean },
+  opts: Pick<StatusOpts, 'speedHold' | 'quietMs'> = {},
+  ctx: BlockContext = {},
+): TorrentSituation | null {
+  if (t.state !== 'DOWNLOADING' || t.lastKnown) return null;
+  if (ctx.blocks?.some((b) => b.tag === 'offline')) return null;
+  if (t.downloadSpeedBytes > 0 || opts.speedHold) return 'flowing';
+  if (!(t.downloadedBytes > 0)) return 'connecting';
+  return (opts.quietMs ?? 0) >= QUIET_MS ? 'waiting' : 'quiet';
 }
 
 /** The status under the bar. `etaLabel` is the hysteresis-stable time left. */
-export function torrentStatus(t: StatusRow, etaLabel: string): TorrentStatus {
+export function torrentStatus(t: StatusRow, etaLabel: string, ctx: BlockContext = {}, opts: StatusOpts = {}): TorrentStatus {
   const total = t.totalSizeBytes > 0 ? formatBytes(t.totalSizeBytes) : '—';
-  const progress = torrentProgressText(t);
-  const started = t.downloadedBytes > 0 ? progress : null;
+  const right = amountOrSize(t, opts.shortAmount);
+  const held = (lead: string, tone: StatusTone) => line(lead, tone, startedPct(t), right.value, right.slot, right.full);
   switch (t.state) {
     case 'DOWNLOADING': {
-      const speed = t.lastKnown || t.downloadSpeedBytes <= 0 ? '—' : formatSpeed(t.downloadSpeedBytes);
-      if (!t.lastKnown && t.etaSeconds >= 0 && etaLabel !== '—') return line(`${etaLabel} left`, 'muted', speed, 'speed', progress);
-      return line('Downloading', 'muted', speed, 'speed', progress);
+      // Torrents never carry `offline`: the engine's block list is how a stalled torrent says why (NATIVE_CONTRACT 35.4).
+      if (!t.lastKnown && ctx.blocks?.some((b) => b.tag === 'offline')) return held(reasonFor('offline')!.short, 'muted');
+      const situation = torrentSituation(t, opts, ctx);
+      const flowing = situation === 'flowing';
+      if (situation === 'connecting') {
+        const lead = t.peersTotal > 0 ? `${CONNECTING_TEXT} · ${t.peersTotal} found` : CONNECTING_TEXT;
+        return line(lead, 'muted', null, right.value, right.slot, right.full);
+      }
+      if (situation === 'waiting') return line(WAITING_TEXT, 'muted', startedPct(t), right.value, right.slot, right.full);
+      const hasEta = !t.lastKnown && t.etaSeconds >= 0 && etaLabel !== '—';
+      const pct = hasEta || flowing ? wholePercent(t) : startedPct(t);
+      const lead = hasEta ? `${etaLabel} left` : 'Downloading';
+      if (flowing) {
+        // Right side: the amount in the telemetry colour, then the speed (NATIVE_CONTRACT 43.2).
+        const speed = t.downloadSpeedBytes > 0 ? formatSpeed(t.downloadSpeedBytes) : '—';
+        const amt = amountOrSize(t, opts.shortAmount, speed.length + 3);
+        const full = amountOrSize(t);
+        const hasAmount = amt.slot === 'amount';
+        return line(lead, 'download', pct, speed, 'speed', null, hasAmount ? amt.value : undefined, hasAmount ? full.value : undefined);
+      }
+      return line(lead, 'download', pct, right.value, right.slot, right.full);
     }
     case 'SEEDING':
-      return line('Done · Seeding', 'accent', `↑ ${t.lastKnown ? '—' : formatSpeed(t.uploadSpeedBytes)}`, 'upload');
+      return line('Done · Seeding', 'accent', null, `↑ ${t.lastKnown ? '—' : formatSpeed(t.uploadSpeedBytes)}`, 'upload');
     case 'PAUSED':
-      if (t.pausedBy === 'seed_metered') return line('Done · Seeding waits for Wi-Fi', 'accent', total, 'size');
-      if (t.pausedBy === 'seed_limit') return line(doneLead(t.activeSecs, t.finishedAt), 'accent', total, 'size');
-      // Storage full: the sub-line is the way out (docs/contracts-0.19/play-and-storage.md section 2).
-      if (t.pausedBy === 'storage_full') return line(pausedReason(t.pausedBy), 'muted', undefined, undefined, 'Free up space');
-      return line(pausedReason(t.pausedBy), 'muted', undefined, undefined, started);
+      if (t.pausedBy === 'seed_metered') return line(`Done · ${pausedReason(t.pausedBy, ctx)}`, 'accent', null, total, 'size');
+      if (t.pausedBy === 'seed_limit') return line(doneLead(t.activeSecs, t.finishedAt), 'accent', null, total, 'size');
+      // Storage full: the card's button ("Free up space") is the way out (docs/contracts-0.19/play-and-storage.md section 2).
+      if (t.pausedBy === 'storage_full') return held(pausedReason(t.pausedBy, ctx), 'danger');
+      return held(pausedReason(t.pausedBy, ctx), 'muted');
     case 'COMPLETED':
-      return line(doneLead(t.activeSecs, t.finishedAt), 'accent', total, 'size');
+      return line(doneLead(t.activeSecs, t.finishedAt), 'accent', null, total, 'size');
     case 'MOVING':
-      return line(t.moveProgress != null ? `Moving files… ${Math.round(t.moveProgress * 100)}%` : 'Moving files…', 'accent');
+      return line('Moving files', 'accent', t.moveProgress != null ? Math.round(t.moveProgress * 100) : null, total, 'size');
     case 'ERROR':
-      return line(t.error?.message ? t.error.message : 'Something went wrong', 'danger', undefined, undefined, started);
+      return held(t.error?.message ? t.error.message : 'Something went wrong', 'danger');
     case 'QUEUED':
-      return line('Queued', 'muted', undefined, undefined, started);
+      return held(reasonFor('queued', ctx)!.short, 'muted');
     case 'CHECKING':
-      return line('Checking files…', 'muted');
+      return line('Checking files', 'muted', t.progressPercent > 0 ? Math.min(99, Math.round(t.progressPercent)) : null, total, 'size');
     case 'INITIALIZING':
-      if (t.resolvingSecs != null) return line(resolvingLine(t.peersTotal, t.resolvingSecs), 'muted');
-      return line('Getting info…', 'muted');
+      if (t.resolvingSecs != null) return line(resolvingLine(t.peersTotal, t.resolvingSecs).replace(/…$/, ''), 'muted', null, '—', 'size');
+      return line('Getting info', 'muted', null, '—', 'size');
     default:
-      return line('Getting info…', 'muted');
+      return line('Getting info', 'muted', null, '—', 'size');
   }
 }
 
@@ -243,11 +318,10 @@ export function clearFinishedCopy(count: number): { title: string; body: string;
 
 // ---- Resume anyway ----
 
-/** Pauses a rule caused. One tap can override them for this torrent only. */
-const RULE_PAUSES: readonly string[] = ['wifi_only', 'battery', 'charging_only', 'schedule'];
-
-export function canResumeAnyway(pausedBy: string | null | undefined): boolean {
-  return !!pausedBy && RULE_PAUSES.includes(pausedBy);
+/** Whether one tap may override the rule for this torrent only. The table decides (NATIVE_CONTRACT 35.2). */
+export function canResumeAnyway(pausedBy: string | null | undefined, ctx: BlockContext = {}): boolean {
+  if (pausedBy === 'wifi_only' && !wifiOverrideAllowed(ctx.blocks)) return false;
+  return !!reasonFor(pausedBy, ctx)?.override;
 }
 
 /** Wi-Fi only is the one with a different name: it means "use mobile data now". */
@@ -257,15 +331,20 @@ export function resumeAnywayLabel(pausedBy: string | null | undefined): string {
 
 // ---- Torrent card button ----
 
-export type TorrentCardActionKind = 'pause' | 'resume' | 'keepTrying' | 'open' | 'resumeAnyway' | 'freeSpace';
+/** Holds with no Resume: the rule would pause the torrent again at once. */
+const GOVERNANCE_HOLDS: ReadonlySet<string> = new Set(['wifi_only', 'vpn_required', 'network_unvalidated', 'seed_metered']);
+
+export type TorrentCardActionKind = 'pause' | 'resume' | 'keepTrying' | 'open' | 'resumeAnyway' | 'freeSpace' | 'setting';
 export interface TorrentCardAction {
-  icon: 'pause' | 'play' | 'retry' | 'external' | 'speed-limit' | 'trash';
+  icon: 'pause' | 'play' | 'retry' | 'external' | 'speed-limit' | 'trash' | 'settings';
   label: string;
   kind: TorrentCardActionKind;
+  /** The settings screen a `setting` action opens. */
+  route?: string;
 }
 
 /** The card's one button, or null when nothing can be done from the list. */
-export function torrentCardAction(t: Pick<TorrentTelemetry, 'state' | 'pausedBy'>): TorrentCardAction | null {
+export function torrentCardAction(t: Pick<TorrentTelemetry, 'state' | 'pausedBy'>, ctx: BlockContext = {}): TorrentCardAction | null {
   switch (t.state) {
     case 'DOWNLOADING':
     case 'SEEDING':
@@ -278,9 +357,14 @@ export function torrentCardAction(t: Pick<TorrentTelemetry, 'state' | 'pausedBy'
       // Storage full: the card's button opens the list of finished downloads to remove (play-and-storage section 3).
       if (by === 'storage_full') return { icon: 'trash', label: 'Free up space', kind: 'freeSpace' };
       if (by === 'files_missing' || by === 'files_changed' || by === 'storage_unavailable') return null;
-      if (canResumeAnyway(by)) return { icon: 'play', label: resumeAnywayLabel(by), kind: 'resumeAnyway' };
-      // Waiting on something that clears by itself (or seeding that waits for Wi-Fi).
-      if (by === 'fgs_timeout' || by === 'seed_metered') return null;
+      if (canResumeAnyway(by, ctx)) return { icon: 'play', label: resumeAnywayLabel(by), kind: 'resumeAnyway' };
+      // Android stopped the app in the background: a plain Resume starts it again.
+      if (by === 'fgs_timeout') return { icon: 'play', label: 'Resume', kind: 'resume' };
+      // A rule that Resume would only trip again: the card points at the setting that holds it, or waits for it to clear.
+      if (by && GOVERNANCE_HOLDS.has(by)) {
+        const setting = reasonFor(by, ctx)?.setting;
+        return setting ? { icon: 'settings', label: 'Change in Settings', kind: 'setting', route: setting.route } : null;
+      }
       return { icon: 'play', label: 'Resume', kind: 'resume' };
     }
     case 'ERROR':

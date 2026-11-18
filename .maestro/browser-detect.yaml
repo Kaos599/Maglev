@@ -10,17 +10,26 @@ name: browser-detect
 - extendedWaitUntil:
     visible: "Address" # app/browser.tsx:268 TextInput accessibilityLabel="Address"
     timeout: 30000
+# maglev://browser?url= only PREFILLS the address bar since 0.19 (app/browser.tsx: an external link never loads by itself), so submit it.
+- tapOn: "Address"
+- pressKey: Enter
 # Found-files indicator: "Files · N" (app/browser.tsx:344), accessibilityLabel "Files, N found" (:347).
 - extendedWaitUntil:
     visible: "Files . [1-9][0-9]*" # app/browser.tsx:344
     timeout: 90000
 - tapOn: "Files . [1-9][0-9]*" # app/browser.tsx:348-352 opens FoundTray
 - assertVisible: "Files" # components/browser/FoundTray.tsx:103 Sheet title "Files"
+# A small media file (under 1 MiB) can be hidden by "Hide small files" (foundFilter.ts SMALL_MEDIA_BYTES): show them when the tray says so.
+- runFlow:
+    when:
+      visible: "Show [0-9]+ hidden small files"
+    commands:
+      - tapOn: "Show [0-9]+ hidden small files"
 # Each row shows a size or "—" in its meta line (FoundTray.tsx:36, constants/format.ts formatBytes).
 # NEW: depends on found-files size/clear change (today the meta line omits the size when it is unknown).
 - assertVisible: ".*(KB|MB|GB|—).*"
 # Row label is "<name>, <size> · <host>" (FoundTray.tsx:42).
-- tapOn: ".*Big_Buck_Bunny_1080_10s_1MB\\.mp4.*" # FoundTray.tsx:118 tap starts FoundDownloadSheet
+- tapOn: ".*Big_Buck_Bunny_360_10s_1MB\\.mp4, .*" # FoundTray.tsx:118 tap starts FoundDownloadSheet
 # Name, size and folder sheet (FoundDownload.tsx:114 title "Download"). Start enables after the probe.
 - extendedWaitUntil:
     visible: "Start" # components/browser/FoundDownload.tsx:141 Button label "Start"
@@ -36,11 +45,17 @@ name: browser-detect
     commands:
       - tapOn: "Go back"
 - tapOn: "Transfers"
-# Progress is not checked by label text here: cards are matched by testID, and the card label
-# carries the status and progress. NEW: a progress testID or a percent-free status would let this check progress > 0.
+# A browser download is a link download, so it renders as DownloadCard, which has no "transfer-card"
+# testID (only torrents' TransferCard does): match by name, as transfers-link-download.yaml does.
+# Card label: "<name>, <status>, ..." (components/transfers/DownloadCard.tsx accessibilityLabel).
 - extendedWaitUntil:
-    visible:
-      id: "transfer-card" # components/TransferCard.tsx:179 testID="transfer-card"
-      text: ".*Big_Buck_Bunny_1080_10s_1MB.*"
+    visible: ".*Big_Buck_Bunny_360_10s_1MB\\.mp4, .*"
     timeout: 120000
-- runFlow: subflows/remove-all-with-files.yaml
+# remove-all-with-files.yaml waits for id "transfer-card", which this card does not have, so the steps are spelled out.
+- longPressOn: ".*Big_Buck_Bunny_360_10s_1MB\\.mp4, .*"
+- tapOn: "Delete selected"
+- tapOn: "Remove and delete files"
+- tapOn: "Delete files|Delete [0-9.]+ (B|KB|MB|GB|TB)"
+- extendedWaitUntil:
+    notVisible: ".*Big_Buck_Bunny_360_10s_1MB\\.mp4, .*"
+    timeout: 30000

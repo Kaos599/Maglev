@@ -257,6 +257,8 @@ export const empty = {
   },
   detail: {
     notFound: { title: 'Torrent not found', body: 'It may have been removed.' },
+    /** The page of a link download whose id is not in the list (removed, or a stale link). */
+    downloadNotFound: { title: 'Download not found', body: 'It may have been removed.' },
     loadFailed: { title: "Couldn't load this torrent" },
     noFiles: { title: 'No files yet', body: 'File info appears once the torrent has its metadata.' },
     peersUnavailable: (connected: string | number) => ({
@@ -278,6 +280,11 @@ export const empty = {
   },
   engineError: {
     title: 'Engine failed to start',
+  },
+  /** utils/addErrorNotice.ts, app/add-torrent.tsx, app/engine-error.tsx */
+  engineStopped: {
+    title: 'The download engine stopped',
+    noReason: "It couldn't be started again.",
   },
 } as const;
 
@@ -381,6 +388,8 @@ export const browserTabs = {
     allow: 'Allow',
     allowedSites: 'Sites allowed to open pop-ups',
     remove: 'Remove',
+    swipeTabs: 'Swipe the address bar to switch tabs',
+    swipeTabsSubtitle: 'Swipe left or right on the address bar to move between tabs, or down to see all tabs.',
   },
 } as const;
 
@@ -584,6 +593,7 @@ export const backupCopy = {
   title: 'Backup and restore',
   export: { title: 'Export backup', subtitle: 'Save your settings and lists to one file.' },
   restore: { title: 'Restore from backup', subtitle: 'Pick a backup file from this phone.' },
+  includeStats: { title: 'Include stats', restore: 'Stats', note: 'Stats include the names of what you downloaded.' },
   last: (when: string) => `Last backup ${when}`,
   never: 'No backup yet',
   secrets: 'Passwords, API keys and tokens are never saved in a backup.',
@@ -802,3 +812,54 @@ export const starCopy = {
   never: "Don't ask again",
 } as const;
 // endregion star prompt
+
+// region subtitle settings (docs/NATIVE_CONTRACT.md section 36.10). Strings shared with the sheet live in utils/subtitles/copy.ts.
+export const subtitleSettingsCopy = {
+  languages: {
+    title: 'Languages',
+    caption: 'Maglev looks for the first language on the list, then the next. Leave it empty to follow your phone.',
+    yours: 'Your languages',
+    all: 'All languages',
+    search: 'Search languages',
+    followsPhone: 'Follows your phone until you pick a language.',
+    noMatch: (query: string) => `No language matches "${query}".`,
+    moveUp: (name: string) => `Move ${name} up`,
+    moveDown: (name: string) => `Move ${name} down`,
+    remove: (name: string) => `Remove ${name}`,
+  },
+  hearing: {
+    title: 'Hearing impaired',
+    caption: 'Subtitles that also describe sounds. Show both lists them next to the others.',
+  },
+  sources: {
+    title: 'Subtitle sources',
+    pageTitle: 'Subtitle sources',
+    caption: 'Maglev asks the sources you turn on when you tap Find subtitles.',
+    empty: 'No sources yet',
+    emptyBody: 'Sources arrive with app and list updates.',
+    on: (n: number) => `On · ${n}`,
+    off: 'Off',
+    nothingOn: 'Nothing is on. Turn on a source below.',
+    footer: "Maglev doesn't host any subtitles. Sources are third-party websites.",
+    listLine: (when: string) => `Source list: ${when}`,
+    toggle: (name: string) => `Use ${name} for subtitles`,
+    matchesBy: 'Finds subtitles',
+    spokenLanguages: 'Languages',
+    website: 'Website',
+  },
+  account: {
+    title: 'OpenSubtitles account',
+    subtitle: 'Sign in to raise your daily limit',
+  },
+} as const;
+// endregion subtitle settings
+
+// region new-feature highlight (docs/NATIVE_CONTRACT.md section 37)
+export const highlightCopy = {
+  notNow: 'Not now',
+  allNotes: 'All release notes',
+  footer: 'You can turn these off in Settings → Updates',
+  settingTitle: 'Show new features after updates',
+  settingSubtitle: 'A short card after an update, when it has a headline feature.',
+} as const;
+// endregion new-feature highlight

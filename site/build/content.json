@@ -52,6 +52,9 @@
       "specs": [
         "One + button for a link you paste or type, a .torrent file, Search or the browser",
         "Share a magnet, a .torrent file or a file link to Maglev from any app, or open .torrent files from your file manager",
+        "Transfers says why a download is held (Wi-Fi only, battery, schedule, storage full and more), with a button to change that setting",
+        "Swipe a row right to pause or resume it, or left to remove it from the list (files are kept). You can turn this off",
+        "A file type icon on each card (a torrent's comes from its biggest file), which you can turn off",
         "Play a video while it downloads, from its card or its screen",
         "Open any download's folder in one tap, and share a finished file",
         "On mobile data, the add screen shows the size before you start",
@@ -71,7 +74,9 @@
         "Pop-ups and redirects you didn't tap for wait until you choose Open, Block or Always allow on this site",
         "Find in page and text size",
         "A history you can search, with suggestions as you type and recent pages on every new tab. It can clear itself when you close Maglev",
-        "App installers come with a warning"
+        "App installers come with a warning",
+        "Swipe the address bar left or right to switch tabs, or down to see all tabs",
+        "Downloads that start without a tap go to the found-files tray instead, pages can't fill your Back history to keep you on them, known crypto-mining scripts are blocked, and pages open over HTTPS when the site supports it"
       ],
       "screen": "browser"
     },
@@ -87,11 +92,25 @@
       "screen": "stream-sheet"
     },
     {
+      "id": "subtitles",
+      "title": "Subtitles for the videos you download",
+      "text": "Open a finished download, or a video inside a torrent, and tap Find subtitles. Maglev asks 21 free sources, with no account, and groups what it finds as Fits this file, Probably fits and May be out of sync. The subtitle is saved next to the video, so your player picks it up.",
+      "specs": [
+        "Open a finished link download's menu in Transfers, a torrent's options, or the ⋯ next to a video in its Files tab",
+        "Saved as <video name>.<lang>.srt (or .ass or .vtt). If that name exists, you choose Replace or Keep both",
+        "Pick and order languages, set a hearing-impaired preference and turn each source on or off in Settings > Finding things > Subtitle sources",
+        "Two sources match by file fingerprint: Subtis for Spanish and Napisy24 for Polish. The rest match by name, so check the fit",
+        "The source list updates itself from Maglev's signed list",
+        "Nothing is looked up until you tap Find subtitles"
+      ]
+    },
+    {
       "id": "search",
       "title": "One search, many sources, one list",
       "text": "Type once and Maglev asks up to 40 built-in public torrent indexes at the same time, including ones you can switch off by category. Results that point to the same torrent are merged, so you see one row with every source that has it.",
       "specs": [
         "Filter results by category, and sort by seeders, size or date",
+        "A size range slider hides results that are too small or too big",
         "40 built-in sources; choose which answer each category",
         "Source addresses update once a day from a signed list, so a source that moves keeps working without an app update",
         "Add your own Jackett or Prowlarr indexer",
@@ -139,7 +158,8 @@
         "Files land in Download/Maglev, where any file manager finds them, or in any folder you choose",
         "Move a torrent's files mid-download, and stream video before it finishes",
         "Pauses before the phone runs out of space, keeping 500 MB to 1 GB free, and resumes when space comes back",
-        "Backup and restore in Settings: your settings, search sources, torrents and downloads in one file. API keys are never included",
+        "Backup and restore in Settings: your settings, search sources, torrents and downloads in one file, and your stats if you tick Include stats. API keys are never included",
+        "Search your settings from the top of Settings. After an update, a short sheet shows the main new feature, and you can turn it off in Settings > Updates",
         "No analytics or ads SDKs"
       ]
     }
@@ -163,7 +183,7 @@
     ],
     [
       "Does Maglev collect my data or use analytics?",
-      "No. Maglev has no analytics or ads SDKs. It contacts only what you use: the sites you open, the block-list addresses in Settings, the public sources you search, and OpenRouter when you use the assistant. Torrents also connect to trackers and other peers, as every torrent client does."
+      "No. Maglev has no analytics or ads SDKs. It contacts only what you use: the sites you open, the block-list addresses in Settings, the public sources you search, the subtitle sources you turn on, and OpenRouter when you use the assistant. Torrents also connect to trackers and other peers, as every torrent client does."
     ],
     [
       "Why isn't Maglev on the Google Play Store?",
@@ -196,6 +216,10 @@
     [
       "Can Maglev download YouTube videos?",
       "No. YouTube-style players hide their video inside the page in a way Maglev can't save, and Maglev says so when you try. The same goes for Netflix-style protected video and live streams."
+    ],
+    [
+      "Can Maglev download subtitles?",
+      "Yes, for videos you have already downloaded. Tap Find subtitles on a finished download, or on a video in a torrent's Files tab. Maglev searches 21 free sources with no account and groups the results by how well they fit the file. The subtitle is saved next to the video, so players pick it up. Two sources match by file fingerprint (Subtis for Spanish, Napisy24 for Polish); the rest match by name. Maglev doesn't fetch subtitles by itself when a download finishes."
     ],
     [
       "Can Maglev save Instagram, TikTok or X videos?",
@@ -232,6 +256,10 @@
     [
       "Do I need root or a VPN to use Maglev?",
       "No. Maglev needs no root and no VPN. If you use a VPN, you can tell Maglev to download only while the VPN is connected, and it pauses whenever the VPN drops."
+    ],
+    [
+      "Can I back up Maglev and restore it on a new phone?",
+      "Yes. In Settings > Backup, export one file with your settings, search sources, torrents and downloads, and your stats if you tick Include stats. API keys are never included. On the new phone, open the file in Settings > Backup and choose what to restore."
     ],
     [
       "Where does Maglev save downloaded files?",
@@ -271,7 +299,7 @@
     ],
     [
       "Is Maglev open source?",
-      "Yes. Maglev is free software under the GNU General Public License v3.0: you can use, study, change and share it. The source code is on [GitHub](https://github.com/Kaos599/Maglev). The torrent engine is a modified copy of [librqbit](https://github.com/ikatson/rqbit) by Igor Katson, under the Apache License 2.0."
+      "Yes. Maglev is free software under the GNU General Public License v3.0: you can use, study, change and share it. The source code is on [GitHub](https://github.com/Kaos599/Maglev). The torrent engine is a modified copy of [librqbit](https://github.com/ikatson/rqbit) by Igor Katson, under the Apache License 2.0. Its subtitle sources are ported from the [Bazarr+](https://github.com/LavX/bazarr-provider-catalog) provider catalog (MIT)."
     ],
     [
       "Is Maglev finished?",
@@ -303,7 +331,7 @@
   "privacy": {
     "title": "Privacy policy",
     "description": "Maglev has no account, no ads and no analytics. This page lists every time the app talks to the internet and what it sends.",
-    "updated": "2026-11-14",
+    "updated": "2026-11-18",
     "contact": "yojzt6j3@anonaddy.me",
     "intro": "Maglev has no account, no ads, no analytics and no server of its own. This page lists every time the app talks to the internet, and what it sends.",
     "sections": [
@@ -331,13 +359,14 @@
         "heading": "Search, feeds, links and the browser",
         "body": [
           "A search sends your search words to the sources you have turned on in Settings → Search sources. Feeds fetch the addresses you added. A link downloads from its own server, and the browser loads pages like any other browser. Each of those sites sees your IP address and follows its own privacy policy.",
+          "Find subtitles sends the video's file name to the subtitle sources you have turned on in Settings → Finding things → Subtitle sources. Two of them, Subtis and Napisy24, also get a fingerprint of the file: its size and a hash of its first and last 64 KB. Nothing is sent until you tap Find subtitles. Each source sees your IP address and follows its own privacy policy.",
           "Ad blocking downloads a public blocklist from GitHub (raw.githubusercontent.com). GitHub sees an ordinary download request."
         ]
       },
       {
         "heading": "Lists that update themselves",
         "body": [
-          "Once a day, and when you tap Check now in Settings → About, Maglev fetches harshdayal.dev/maglev/lists/sources.json and the ad block list addresses (raw.githubusercontent.com by default). The first holds search source addresses, any source Maglev turned off, and the default trackers. Maglev checks its signature before it uses it.",
+          "Once a day, and when you tap Check now in Settings → About, Maglev fetches harshdayal.dev/maglev/lists/sources.json and the ad block list addresses (raw.githubusercontent.com by default). The first holds search and subtitle source addresses, any source Maglev turned off, and the default trackers. Maglev checks its signature before it uses it.",
           "These requests carry no cookies and no identifiers. The sites see your IP address, like any download. Turning off Update lists automatically in Settings → About stops the daily requests."
         ]
       },

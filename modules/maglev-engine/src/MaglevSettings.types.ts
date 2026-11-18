@@ -109,6 +109,27 @@ export interface AppearanceSettings {
   fontStyle: FontStyle;
   /** Transfers screen: show the total speeds strip with Pause all / Resume all. Off by default. */
   showSpeedTotals: boolean;
+  /** Transfers screen: swipe a row right to Pause or Resume, left to Remove from the list. UI only. On by default. */
+  swipeActions: boolean;
+  /** Transfers screen: a file-type icon on the left of each card. UI only. On by default. */
+  showFileIcons: boolean;
+}
+
+export type SubtitleHearingPref = 'both' | 'prefer' | 'avoid';
+
+/** Subtitles (docs/NATIVE_CONTRACT.md section 36.2). UI only: never reaches toNativeConfig or Kotlin. */
+export interface SubtitleSettings {
+  /** Master switch. Off hides every entry point and makes no request. */
+  enabled: boolean;
+  /** ISO 639-1 codes plus pt-BR, zh-CN, zh-TW, es-419, in order of preference. Empty means "follow the phone's language". */
+  languages: string[];
+  hearingImpaired: SubtitleHearingPref;
+  /** User overrides by provider id; a missing id falls back to the provider's `enabledByDefault`. */
+  sourceEnabled: Record<string, boolean>;
+  /** True after the user accepted the one-time notice before the first lookup. */
+  privacyAck: boolean;
+  /** NATIVE_CONTRACT 44.6. Get subtitles for new videos once they start. Default off. */
+  autoNewVideos: boolean;
 }
 
 export type DownloadFolderMode = 'direct' | 'staging';
@@ -132,6 +153,8 @@ export interface MaglevSettings {
   bandwidth: BandwidthSettings;
   network: NetworkSettings;
   power: PowerSettings;
+  /** UI only (section 36.2). */
+  subtitles: SubtitleSettings;
 }
 
 export const SPEED_PRESET_MAP: Record<SpeedPreset, number> = {
@@ -153,6 +176,8 @@ export const DEFAULT_SETTINGS: MaglevSettings = {
     telemetryDensity: 'COMPACT',
     fontStyle: 'clean',
     showSpeedTotals: false,
+    swipeActions: true,
+    showFileIcons: true,
   },
   storage: {
     storageMode: 'POSIX',
@@ -214,6 +239,14 @@ export const DEFAULT_SETTINGS: MaglevSettings = {
     resumeAfterRestart: true,
     isCharging: true,
     batteryPercentage: 85,
+  },
+  subtitles: {
+    enabled: true,
+    languages: [],
+    hearingImpaired: 'both',
+    sourceEnabled: {},
+    privacyAck: false,
+    autoNewVideos: false,
   },
 };
 

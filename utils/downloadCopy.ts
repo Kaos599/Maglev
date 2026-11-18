@@ -6,8 +6,10 @@ import type { DownloadSnapshot } from 'maglev-engine';
 import { formatBytes, formatSpeed } from '../constants/format.ts';
 import { formatEta, smoothRate } from './rates.ts';
 import { doneLead } from './stats/format.ts';
+import { reasonFor, wifiOverrideAllowed, type BlockContext } from './blocks/reasons.ts';
+import { QUIET_MS } from '../components/transfers/flowClock.ts';
 
-export type DownloadTone = 'muted' | 'accent' | 'danger';
+export type DownloadTone = 'muted' | 'accent' | 'danger' | 'download';
 export type DownloadActionKind =
   | 'pause'
   | 'resume'
@@ -27,18 +29,12 @@ export interface DownloadAction {
   /** Icon name from the generated Pixelarticons set. */
   icon: 'pause' | 'play' | 'retry' | 'link' | 'trash' | 'folder' | 'settings' | 'external';
   label: string;
+  /** The settings screen a settings action opens, when it is not the default for its kind. */
+  route?: string;
 }
 
-const GOVERNANCE_TEXT: Record<string, string> = {
-  wifi_only: 'Paused: waiting for Wi-Fi',
-  vpn_required: 'Paused: waiting for VPN',
-  battery: 'Paused: battery is low',
-  charging_only: 'Paused: waiting for charger',
-  fgs_timeout: 'Paused: stopped in background',
-  schedule: 'Paused: by schedule',
-};
-
-export const OFFLINE_TEXT = 'Waiting for a connection';
+/** The card line: short, so the percent and amount stay readable. */
+export const FOLDER_GONE_CARD = 'Folder not available';
 export const FOLDER_GONE_TEXT = "The folder isn't available. Is the SD card in?";
 export const TOO_BIG_TEXT = "This file is bigger than the card's format allows (4 GB). Use phone storage.";
 export const LOCAL_BLOCKED_TEXT = 'A redirect tried to send Maglev to a device on your network, so it stopped.';
@@ -47,10 +43,10 @@ export const LAN_ADDRESS_BODY = "If it's your own server, allow this device. Onl
 export const POLICY_BLOCKED_TEXT = 'Blocked by your Wi-Fi-only or VPN setting.';
 export const PERMISSION_TEXT = "Maglev can't write to that folder.";
 export const WIFI_ANYWAY_NOTE = 'Just this one. Wi-Fi only stays on.';
-export const WIFI_CAPTION = 'Wi-Fi only is on in Settings → Network.';
 export const NOT_A_FILE_BODY =
   'This is a web page, not a file. On the page, long-press the download button, tap Copy link address, then paste it here.';
 export const STALLED_TEXT = 'Waiting for the server';
+export const CONNECTING_SERVER_TEXT = 'Connecting to the server';
 export const STALLED_ERROR_TEXT = 'The server stopped sending data.';
 export const AUTH_REQUIRED_TEXT = 'This link needs you to sign in again. Paste the link again.';
 export const NO_APP_TEXT = 'No app on this phone can open this file.';
@@ -148,53 +144,125 @@ export function downloadProgressText(d: DownloadSnapshot): string | null {
   return d.downloaded > 0 ? `${formatBytes(d.downloaded)} so far` : null;
 }
 
+export type DownloadSlot = 'speed' | 'size' | 'amount';
+
+/** One status line, same rule as a torrent card: left is one phrase then the percent, right is one value. */
 export interface DownloadStatus {
-  /** The state line: time left and speed, a pause reason, an error. */
+  /** Whole status for screen readers, with the amount the card may not show. */
   text: string;
+  /** Left phrase: time left, "Downloading", a pause reason, an error. Ellipsizes. */
+  lead: string;
+  /** Percent after the phrase ("34%"), shown as its own non-shrinking text. Absent when done or unknown. */
+  pct?: string;
+  /** Right side: speed while data flows, else the amount, else the size, else "—". */
+  value?: string;
+  /** While data flows: the amount, drawn in the normal telemetry colour before the speed in `value` (NATIVE_CONTRACT 43.3). */
+  amount?: string;
+  slot?: DownloadSlot;
   tone: DownloadTone;
-  /** How far it got, under the state line. Absent when there is nothing to say yet. */
-  sub?: string;
+}
+
+function mk(lead: string, tone: DownloadTone, pct: number | null, value?: string, slot?: DownloadSlot, extra?: string | null, amount?: string, spokenAmount?: string): DownloadStatus {
+  const left = pct == null ? lead : `${lead} · ${pct}%`;
+  const head = [left, amount ? spokenAmount ?? amount : null, value].filter(Boolean).join(' · ');
+  return { text: extra ? `${head}. ${extra}` : head, lead, pct: pct == null ? undefined : `${pct}%`, value, amount, slot, tone };
+}
+
+/** What a downloading link is doing, for the card and the page. Same words as `torrentSituation`. */
+export type LinkSituation = 'flowing' | 'connecting' | 'waiting' | 'quiet';
+
+/**
+ * NATIVE_CONTRACT 43.3. Waiting: the engine's `stalled` flag, or some downloaded and no data for QUIET_MS.
+ * Connecting: nothing downloaded and not flowing. Null when the download is not downloading.
+ */
+export function linkSituation(
+  d: Pick<DownloadSnapshot, 'state' | 'downBps' | 'downloaded' | 'stalled'>,
+  opts: { speedHold?: boolean; quietMs?: number } = {},
+): LinkSituation | null {
+  if (d.state !== 'downloading') return null;
+  if (d.stalled) return 'waiting';
+  if (d.downBps > 0 || opts.speedHold) return 'flowing';
+  if (!(d.downloaded > 0)) return 'connecting';
+  return (opts.quietMs ?? 0) >= QUIET_MS ? 'waiting' : 'quiet';
+}
+
+/** Whole percent, or null when the size is unknown. */
+function wholePercent(d: DownloadSnapshot): number | null {
+  if (!(d.size && d.size > 0)) return null;
+  // Only done items say 100%, and they show no percent at all.
+  return Math.min(99, Math.round(downloadProgress(d) * 100));
+}
+
+/** Percent once something has arrived and the size is known. */
+function startedPct(d: DownloadSnapshot): number | null {
+  return d.downloaded > 0 ? wholePercent(d) : null;
+}
+
+/** "412 MB of 1.2 GB" once something has arrived (just "412 MB" with no known size), else the size, else "—". */
+function amountOrSize(d: DownloadSnapshot, shortOpt: boolean | ((fullChars: number) => boolean) = false, extraChars = 0): { value: string; slot: DownloadSlot; full?: string } {
+  if (d.size && d.size > 0) {
+    const size = `${d.stream ? '~' : ''}${formatBytes(d.size)}`;
+    if (d.downloaded <= 0) return { value: size, slot: 'size' };
+    const full = `${formatBytes(d.downloaded)} of ${size}`;
+    // `extraChars` is what sits beside the amount on the right (" · 8.4 MB/s"), so the narrow-card test sees the whole text.
+    const short = typeof shortOpt === 'function' ? shortOpt(full.length + extraChars) : shortOpt;
+    return short ? { value: formatBytes(d.downloaded), slot: 'amount', full } : { value: full, slot: 'amount' };
+  }
+  // Unknown total: only what has arrived.
+  return d.downloaded > 0 ? { value: formatBytes(d.downloaded), slot: 'amount' } : { value: '—', slot: 'size' };
 }
 
 /** The status under the bar. `etaLabel` is the stable label from `formatEta`. */
-export function downloadStatus(d: DownloadSnapshot, etaLabel?: string): DownloadStatus {
+export function downloadStatus(
+  d: DownloadSnapshot,
+  etaLabel?: string,
+  ctx: BlockContext = {},
+  opts: { speedHold?: boolean; shortAmount?: boolean | ((fullChars: number) => boolean); quietMs?: number } = {},
+): DownloadStatus {
+  const right = amountOrSize(d, opts.shortAmount);
+  const held = (lead: string, tone: DownloadTone, note?: string) => mk(lead, tone, startedPct(d), right.value, right.slot, [right.full, note].filter(Boolean).join('. ') || null);
   switch (d.state) {
     case 'resolving':
-      return { text: 'Getting info…', tone: 'muted' };
+      return mk('Getting info', 'muted', null, '—', 'size');
     case 'queued':
-      return { text: 'Queued', tone: 'muted' };
+      return held(reasonFor('queued', ctx)!.short, 'muted');
     case 'downloading': {
-      if (d.stalled) return { text: STALLED_TEXT, tone: 'muted', sub: downloadProgressText(d) ?? undefined };
-      const speed = d.downBps > 0 ? formatSpeed(d.downBps) : '—';
-      // Unknown size: the line already says how much has arrived.
-      if (isSizeUnknown(d)) return { text: `${formatBytes(d.downloaded)} so far · ${speed}`, tone: 'muted' };
-      const sub = downloadProgressText(d) ?? undefined;
+      const situation = linkSituation(d, opts);
+      if (situation === 'waiting') return held(STALLED_TEXT, 'muted');
+      if (situation === 'connecting') return mk(CONNECTING_SERVER_TEXT, 'muted', null, right.value, right.slot, right.full);
+      const flowing = situation === 'flowing';
       const eta = etaLabel ?? formatEta(d.eta, null);
-      if (d.eta >= 0 && eta !== '—') return { text: `${eta} left · ${speed}`, tone: 'muted', sub };
-      return { text: `Downloading · ${speed}`, tone: 'muted', sub };
+      const hasEta = !isSizeUnknown(d) && d.eta >= 0 && eta !== '—';
+      const lead = hasEta ? `${eta} left` : 'Downloading';
+      const pct = hasEta || flowing ? wholePercent(d) : startedPct(d);
+      if (flowing) {
+        // Right side: the amount in the telemetry colour, then the speed (NATIVE_CONTRACT 43.3).
+        const speed = d.downBps > 0 ? formatSpeed(d.downBps) : '—';
+        const amt = amountOrSize(d, opts.shortAmount, speed.length + 3);
+        const full = amountOrSize(d);
+        const hasAmount = amt.slot === 'amount';
+        return mk(lead, 'download', pct, speed, 'speed', null, hasAmount ? amt.value : undefined, hasAmount ? full.value : undefined);
+      }
+      return mk(lead, 'download', pct, right.value, right.slot, right.full);
     }
     case 'paused': {
-      const sub = downloadProgressText(d) ?? undefined;
-      // Same as a torrent: muted, with the way out as the sub-line (docs/contracts-0.19/play-and-storage.md section 2).
-      if (d.pausedBy === 'storage_full') return { text: 'Storage full', tone: 'muted', sub: 'Free up space' };
-      if (d.pausedBy === 'storage_unavailable') return { text: FOLDER_GONE_TEXT, tone: 'danger', sub };
-      if (d.pausedBy === 'offline') return { text: OFFLINE_TEXT, tone: 'muted', sub };
-      if (d.pausedBy && GOVERNANCE_TEXT[d.pausedBy]) return { text: GOVERNANCE_TEXT[d.pausedBy], tone: 'muted', sub };
-      return { text: 'Paused', tone: 'muted', sub };
+      // Same as a torrent: danger, with the card's button ("Free up space") as the way out (docs/contracts-0.19/play-and-storage.md section 2).
+      if (d.pausedBy === 'storage_full') return held(reasonFor('storage_full')!.short, 'danger');
+      if (d.pausedBy === 'storage_unavailable') return held(FOLDER_GONE_CARD, 'danger', FOLDER_GONE_TEXT);
+      return held(reasonFor(d.pausedBy, ctx)?.short ?? 'Paused', 'muted');
     }
     case 'verifying':
-      return { text: 'Finishing…', tone: 'muted' };
+      return mk('Finishing', 'muted', null, d.size && d.size > 0 ? formatBytes(d.size) : '—', 'size');
     case 'finished':
-      return { text: d.size ? `${doneLead(d.activeSecs, d.finishedAt)} · ${formatBytes(d.size)}` : doneLead(d.activeSecs, d.finishedAt), tone: 'accent' };
+      return d.size ? mk(doneLead(d.activeSecs, d.finishedAt), 'accent', null, formatBytes(d.size), 'size') : mk(doneLead(d.activeSecs, d.finishedAt), 'accent', null);
     case 'needs_link':
-      return {
-        text: d.error?.code === 'AUTH_REQUIRED' ? 'Needs sign-in · Paste new link' : 'Link expired · Paste new link',
-        tone: 'danger',
-      };
+      return held(d.error?.code === 'AUTH_REQUIRED' ? 'Needs sign-in · Paste new link' : 'Link expired · Paste new link', 'danger');
     case 'error':
-      return { text: errorLine(d), tone: 'danger' };
+      // The folder message is long; the card says it short and the full text stays for screen readers and the sheet.
+      if (errorKind(d.error?.code, d.error?.httpStatus) === 'folderGone') return held(FOLDER_GONE_CARD, 'danger', FOLDER_GONE_TEXT);
+      return held(errorLine(d), 'danger');
     default:
-      return { text: 'Getting info…', tone: 'muted' };
+      return mk('Getting info', 'muted', null, '—', 'size');
   }
 }
 
@@ -253,7 +321,6 @@ function errorLine(d: DownloadSnapshot): string {
 /** A longer line the sheet shows (the card line is one row and may be cut). Null when there is none. */
 export function downloadCaption(d: DownloadSnapshot): string | null {
   if (d.state === 'downloading' && d.stalled) return STALLED_TEXT;
-  if (d.state === 'paused' && d.pausedBy === 'wifi_only') return WIFI_CAPTION;
   if (d.state === 'paused' && d.pausedBy === 'storage_unavailable') return FOLDER_GONE_TEXT;
   if (d.state === 'needs_link' && d.error?.code === 'AUTH_REQUIRED') return AUTH_BODY;
   if (d.state === 'error') {
@@ -282,19 +349,25 @@ const A = {
 } as const satisfies Record<string, DownloadAction>;
 
 /** Every action that makes sense now, the most useful first. The card shows the first; the sheet shows all. */
-export function downloadActions(d: DownloadSnapshot): DownloadAction[] {
+export function downloadActions(d: DownloadSnapshot, ctx: BlockContext = {}): DownloadAction[] {
   switch (d.state) {
     case 'downloading':
     case 'queued':
       return [A.pause];
-    case 'paused':
+    case 'paused': {
       if (d.pausedBy === 'storage_unavailable') return [A.pickFolder];
       if (d.pausedBy === 'storage_full') return [A.freeSpace];
-      if (d.pausedBy === 'wifi_only') return [A.resumeMobile, A.openSettings];
-      if (d.pausedBy === 'vpn_required') return [A.openSettings];
-      if (d.pausedBy === 'battery' || d.pausedBy === 'charging_only' || d.pausedBy === 'schedule') return [A.resumeAnyway];
-      if (isGovernancePause(d.pausedBy)) return [];
+      if (d.pausedBy === 'fgs_timeout') return [A.resume];
+      if (isGovernancePause(d.pausedBy)) {
+        // The table decides: a rule that allows an override offers it, then the setting that holds it (NATIVE_CONTRACT 35.2).
+        const reason = reasonFor(d.pausedBy, ctx);
+        const out: DownloadAction[] = [];
+        if (reason?.override && (d.pausedBy !== 'wifi_only' || wifiOverrideAllowed(ctx?.blocks))) out.push(d.pausedBy === 'wifi_only' ? A.resumeMobile : A.resumeAnyway);
+        if (reason?.setting) out.push({ kind: 'openNetworkSettings', icon: 'settings', label: 'Change in Settings', route: reason.setting.route });
+        return out;
+      }
       return [A.resume];
+    }
     case 'needs_link':
       return [A.newLink];
     case 'finished':
@@ -348,14 +421,14 @@ export function openFailureText(code: string | undefined, message?: string): str
 }
 
 /** The card's one button, or null when nothing can be done now. */
-export function downloadAction(d: DownloadSnapshot): DownloadAction | null {
-  return downloadActions(d)[0] ?? null;
+export function downloadAction(d: DownloadSnapshot, ctx: BlockContext = {}): DownloadAction | null {
+  return downloadActions(d, ctx)[0] ?? null;
 }
 
 /** Where the settings-style actions go. Null for the ones the engine or the sheet handles. */
-export function actionRoute(kind: DownloadActionKind): '/settings/storage' | '/settings/network' | '/free-space' | null {
+export function actionRoute(kind: DownloadActionKind, route?: string | null): string | null {
   if (kind === 'pickFolder') return '/settings/storage';
-  if (kind === 'openNetworkSettings') return '/settings/network';
+  if (kind === 'openNetworkSettings') return route || '/settings/network';
   if (kind === 'freeSpace') return '/free-space';
   return null;
 }
@@ -404,3 +477,152 @@ export const OPEN_FOLDER_FAILED_TEXT = "Couldn't open the folder.";
 
 /** What to tell the user when the share sheet can't open for a finished download. */
 export const SHARE_FAILED_TEXT = "Couldn't share this file.";
+
+/** NATIVE_CONTRACT 40.2: what the page says when a tap copies the link. */
+export const LINK_COPIED_TEXT = 'Link copied';
+/** NATIVE_CONTRACT 40.2: the one-line hint under the progress card while a download that can't resume is running. */
+export const CANT_RESUME_HINT = "This server can't resume. Pausing starts over.";
+
+/**
+ * NATIVE_CONTRACT 40.2: the "Why it stopped" block of a download that needs a new link. The title is short; the text is the
+ * existing sign-in copy, or the engine's own message when it gave one.
+ */
+export function linkProblem(d: DownloadSnapshot): { title: string; body: string } {
+  if (d.error?.code === 'AUTH_REQUIRED') return { title: 'Needs sign-in', body: AUTH_BODY };
+  return { title: 'Link expired', body: d.error?.message || 'The server no longer accepts this link.' };
+}
+
+/** The host of a download's address and nothing after it: never the path, a query or anything more (40.2 Source). */
+export function sourceHost(urlDisplay: string): string {
+  const m = /^[a-z][a-z0-9+.-]*:\/\/([^/?#\s]+)/i.exec(urlDisplay.trim());
+  const host = m ? m[1] : urlDisplay.trim().split(/[/?#]/)[0];
+  return host.replace(/^[^@]*@/, '');
+}
+
+// ---- NATIVE_CONTRACT 43.4 / 43.5: "Why it hasn't started" and "Why it stopped" ----
+
+export const whyCopy = {
+  connectingTitle: "Why it hasn't started",
+  waitingTitle: 'Why it stopped',
+  torrentConnecting: 'Maglev knows who has this and is connecting to them. Popular torrents usually start within a minute.',
+  torrentNoPeers: 'No one sharing this has been found yet. Maglev keeps asking trackers and other peers.',
+  torrentWaiting: (quiet: string) => `No data for ${quiet}. The peers it had stopped sending. Maglev keeps looking.`,
+  stopsWaiting: (limit: string) => ` After ${limit} with no one sharing, it stops waiting.`,
+  askTrackers: 'Ask trackers again',
+  askedWait: (secs: number) => `Asked · try again in ${secs} s`,
+  linkConnecting: (host: string) => `Waiting for ${host} to send the file.`,
+  linkWaiting: (host: string) => `${host} stopped sending. Maglev retries by itself.`,
+  none: ', none sending',
+  labels: { found: 'Peers found', connected: 'Connected', trackers: 'Trackers replied', trying: 'Trying for', lastData: 'Last data', server: 'Server' },
+} as const;
+
+/** The block's content. The screen draws it; `askTrackers` says whether the "Ask trackers again" button belongs. */
+export interface WhyModel {
+  kind: 'connecting' | 'waiting';
+  title: string;
+  sentence: string;
+  /** A second, muted line (the link page's "can't resume" hint). */
+  note?: string;
+  stats: { label: string; value: string }[];
+  askTrackers: boolean;
+}
+
+/** "12 s", "4 min", "1 h 5 min": a span in plain words. */
+export function formatSpan(ms: number): string {
+  const s = Math.max(0, Math.floor(ms / 1000));
+  if (s < 60) return `${s} s`;
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m} min`;
+  const rest = m % 60;
+  return rest ? `${Math.floor(m / 60)} h ${rest} min` : `${Math.floor(m / 60)} h`;
+}
+
+/** "m:ss". */
+export function formatClock(ms: number): string {
+  const s = Math.max(0, Math.floor(ms / 1000));
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+}
+
+/** The "Stop waiting for peers after" setting as words ("10 min", "1 hour"), or null when it is Never. */
+export function peerLimitText(mins: number): string | null {
+  if (!(mins > 0)) return null;
+  if (mins < 60) return `${mins} min`;
+  const h = mins / 60;
+  return `${h} ${h === 1 ? 'hour' : 'hours'}`;
+}
+
+export interface TorrentWhyInput {
+  situation: 'connecting' | 'waiting';
+  peersTotal: number;
+  peersConnected: number;
+  trackers: readonly { status: string }[];
+  peers: readonly { downBps: number }[];
+  quietMs: number;
+  /** Ms since data last arrived, or null when not seen this session. */
+  lastDataAgoMs: number | null;
+  /** "Stop waiting for peers after", minutes. 0 = never. */
+  peerTimeoutMins: number;
+}
+
+/** 43.4: the torrent page's block. */
+export function torrentWhy(i: TorrentWhyInput): WhyModel {
+  const L = whyCopy.labels;
+  if (i.situation === 'connecting') {
+    const stats: { label: string; value: string }[] = [
+      { label: L.found, value: String(i.peersTotal) },
+      { label: L.connected, value: String(i.peersConnected) },
+    ];
+    if (i.trackers.length > 0) stats.push({ label: L.trackers, value: `${i.trackers.filter((t) => t.status === 'working').length} of ${i.trackers.length}` });
+    stats.push({ label: L.trying, value: formatClock(i.quietMs) });
+    return {
+      kind: 'connecting',
+      title: whyCopy.connectingTitle,
+      sentence: i.peersTotal === 0 ? whyCopy.torrentNoPeers : whyCopy.torrentConnecting,
+      stats,
+      askTrackers: true,
+    };
+  }
+  const limit = peerLimitText(i.peerTimeoutMins);
+  const sending = i.peers.some((p) => p.downBps > 0);
+  return {
+    kind: 'waiting',
+    title: whyCopy.waitingTitle,
+    sentence: whyCopy.torrentWaiting(formatSpan(i.quietMs)) + (limit ? whyCopy.stopsWaiting(limit) : ''),
+    stats: [
+      { label: L.found, value: String(i.peersTotal) },
+      { label: L.connected, value: `${i.peersConnected}${sending ? '' : whyCopy.none}` },
+      { label: L.lastData, value: i.lastDataAgoMs == null ? '—' : `${formatSpan(i.lastDataAgoMs)} ago` },
+    ],
+    askTrackers: true,
+  };
+}
+
+export interface LinkWhyInput {
+  situation: 'connecting' | 'waiting';
+  host: string;
+  resumable: boolean;
+  quietMs: number;
+  lastDataAgoMs: number | null;
+}
+
+/** 43.5: the link page's block. No button. */
+export function linkWhy(i: LinkWhyInput): WhyModel {
+  const L = whyCopy.labels;
+  if (i.situation === 'connecting') {
+    return {
+      kind: 'connecting',
+      title: whyCopy.connectingTitle,
+      sentence: whyCopy.linkConnecting(i.host),
+      stats: [{ label: L.server, value: i.host }, { label: L.trying, value: formatClock(i.quietMs) }],
+      askTrackers: false,
+    };
+  }
+  return {
+    kind: 'waiting',
+    title: whyCopy.waitingTitle,
+    sentence: whyCopy.linkWaiting(i.host),
+    note: i.resumable ? undefined : CANT_RESUME_HINT,
+    stats: [{ label: L.server, value: i.host }, { label: L.lastData, value: i.lastDataAgoMs == null ? '—' : `${formatSpan(i.lastDataAgoMs)} ago` }],
+    askTrackers: false,
+  };
+}

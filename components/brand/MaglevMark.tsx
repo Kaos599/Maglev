@@ -61,7 +61,7 @@ const trailReach = (fx: MarkFx, scale: number) =>
  * Brand colours per theme. Dark themes keep the lime body and cyan speed lines; light mode is mono:
  * near-black body, a softer ink for the speed lines and rails so the train still reads as moving.
  */
-function useMarkInk() {
+export function useMarkInk() {
   const { colors, dark } = useTheme();
   return dark
     ? { body: MARK_LIME, lines: MARK_CYAN }

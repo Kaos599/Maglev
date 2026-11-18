@@ -1,6 +1,6 @@
 import React, { useCallback, useMemo, useRef, useState } from 'react';
-import { Linking, NativeScrollEvent, NativeSyntheticEvent, ScrollView, ScrollViewInstance, StyleSheet, View } from 'react-native';
-import { useRouter } from 'expo-router';
+import { Keyboard, Linking, NativeScrollEvent, NativeSyntheticEvent, ScrollView, ScrollViewInstance, StyleSheet, View } from 'react-native';
+import { useFocusEffect, useRouter } from 'expo-router';
 import Constants from 'expo-constants';
 import { maglevEngine } from 'maglev-engine';
 import { useSettings } from '../../context/SettingsContext';
@@ -21,6 +21,7 @@ import { useWatches } from '../../utils/watch/store';
 import { useUpdatePrefs } from '../../utils/prefs/update';
 import { useStatsPrefs } from '../../utils/stats/prefs';
 import { useLinkDownloadPrefs } from '../../utils/prefs/linkDownloads';
+import { useSubtitleSettings } from '../../components/subtitles-settings/useSubtitleSettings';
 import { SettingsSearchField, SettingsSearchResults } from '../../components/settings/SettingsSearch';
 
 const ACCENT_LABEL = {
@@ -157,7 +158,15 @@ export default function SettingsIndex() {
   const [browserPrefs] = useBrowserPrefs();
   const [updatePrefs] = useUpdatePrefs();
   const [linkPrefs] = useLinkDownloadPrefs();
+  const [subtitles] = useSubtitleSettings();
   const [query, setQuery] = useState('');
+  // Coming back from a result: empty field, no keyboard, so one Back press leaves as expected.
+  useFocusEffect(
+    useCallback(() => {
+      setQuery('');
+      Keyboard.dismiss();
+    }, []),
+  );
   const searching = query.trim().length > 0;
   const { bandwidth: b, network: n, power: p, appearance: a } = settings;
 
@@ -191,8 +200,9 @@ export default function SettingsIndex() {
   const findRows: RowSpec[] = [
     { icon: 'search', title: 'Search sources', value: providers, route: 'search-providers' },
     { icon: 'feeds', title: 'Auto-download', value: auto, route: 'feeds' },
+    { icon: 'subtitles', title: 'Subtitles', value: subtitles.enabled ? 'On' : 'Off', route: 'subtitles' },
   ];
-  const downloadsRow: RowSpec = { icon: 'arrow-down', title: 'Downloads', value: downloadsValue, route: 'downloads' };
+  const downloadsRow: RowSpec = { icon: 'arrow-down', title: 'Adding and finishing', value: downloadsValue, route: 'downloads' };
   const speedRow: RowSpec = { icon: 'bandwidth', title: 'Speed and sharing', value: `${limits} · ${queue}`, route: 'speed' };
   const scheduleRow: RowSpec = { icon: 'schedule', title: 'Scheduling', value: scheduling, route: 'scheduling' };
   const watchRow: RowSpec = { icon: 'alarm', title: watchCopy.rowTitle, value: watchCopy.rowValue(watches.length), route: 'watch' };
@@ -286,7 +296,7 @@ export default function SettingsIndex() {
               </Card>
             </View>
             <View style={styles.section}>
-              <SectionHeader title="Downloads" />
+              <SectionHeader title="Transfers" />
               <Card>
                 <SettingsRow {...downloadsRow} />
                 <SettingsRow {...speedRow} />

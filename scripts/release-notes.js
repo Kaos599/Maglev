@@ -7,6 +7,8 @@
  *   node scripts/release-notes.js draft              list commits since the last tag, sorted into the sections
  *
  * A release shows only the sections its file has: What's new, What's changed, What's fixed.
+ * An optional release-notes/<version>.thanks.md (one "- " line per person) adds a Thanks section to the GitHub
+ * release only. The app's own notes leave it out, because an @handle means nothing there.
  */
 const fs = require('fs');
 const path = require('path');
@@ -50,6 +52,13 @@ function parse(text) {
   return { sections, errors };
 }
 
+/** The GitHub-only Thanks lines for a version, or []. */
+function thanks(version) {
+  const p = path.join(NOTES_DIR, `${version}.thanks.md`);
+  if (!fs.existsSync(p)) return [];
+  return fs.readFileSync(p, 'utf8').split('\n').map((l) => l.trim()).filter((l) => l.startsWith('- ')).map((l) => l.slice(2).trim()).filter(Boolean);
+}
+
 function load(version) {
   const p = notesPath(version);
   if (!fs.existsSync(p)) return { sections: [], errors: [`missing ${path.relative(root, p)}`] };
@@ -62,7 +71,9 @@ function build(tag) {
   const { sections, errors } = load(version);
   if (errors.length) throw new Error(`release-notes/${version}.md: ${errors.join('; ')}`);
   const beta = /-beta$/.test(tag) ? ' Beta build.' : '';
-  const body = sections.map((s) => `## ${s.title}\n${s.items.map((x) => `- ${x}`).join('\n')}`).join('\n\n');
+  const people = thanks(version);
+  const body = sections.map((s) => `## ${s.title}\n${s.items.map((x) => `- ${x}`).join('\n')}`).join('\n\n')
+    + (people.length ? `\n\n## Thanks\n${people.map((x) => `- ${x}`).join('\n')}` : '');
   return [
     `# Maglev ${tag}`,
     '',
@@ -124,4 +135,4 @@ if (require.main === module) {
   }
 }
 
-module.exports = { parse, build, SECTIONS };
+module.exports = { parse, build, thanks, SECTIONS };

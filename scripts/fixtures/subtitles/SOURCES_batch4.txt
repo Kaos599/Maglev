@@ -1,0 +1,23 @@
+Recorded 2026-11-18 from the live sites with the app's own User-Agent (Maglev/0.1.0 (Android)). Search pages are trimmed
+to the first rows and the page header is cut; the rows are untouched. Binary downloads are cut to their first 2-3 KB
+(the file magic and the start of the text are real). subsunacs pages are the raw windows-1251 bytes.
+
+supersubtitles/movie_search.html     https://feliratok.eu/index.php?search=fight+club&soriSorszam=&nyelv=&tab=film
+supersubtitles/series_search.html    https://feliratok.eu/index.php?search=breaking+bad&nyelv=&tab=sorozat
+supersubtitles/download_movie.srt    https://feliratok.eu/index.php?action=letolt&felirat=1695467791  (UTF-8 with BOM, CRLF)
+supersubtitles/download_pack_head.zip https://feliratok.eu/index.php?action=letolt&felirat=1574804843 (season pack)
+titrari/movie_search_ro.html         https://www.titrari.ro/index.php?page=cautare&z1=0&z2=fight+club&z3=1&z4=1
+titrari/series_search_en.html        ...&z2=breaking+bad&z3=2&z4=1
+titrari/series_search_ro.html        ...&z2=jurassic+fight+club&z3=1&z4=1
+titrari/download_rar_head.rar        https://www.titrari.ro/get.php?id=138291  (Referer: https://www.titrari.ro/)
+titrari/download_zip_head.zip        https://www.titrari.ro/get.php?id=76294
+titrari/download_text_cp1252.srt     https://www.titrari.ro/get.php?id=63847  (Romanian text, single byte code page)
+subtitrarinoi/movie_search.html      POST https://www.subtitrari-noi.ro/paginare_filme.php (X-Requested-With: XMLHttpRequest) cautare=fight club
+subtitrarinoi/series_search.html     same, cautare=breaking bad
+subtitrarinoi/download_zip_head.zip  https://www.subtitrari-noi.ro/16083-https://subtitrari-noi.ro/Arhive/new_archieve_1791729125_Fight_club_(1999).zip
+subtitrarinoi/download_unavailable.txt  the plain-text answer for a file the site no longer has
+subsunacs/movie_search_bg.html       POST https://subsunacs.net/search.php m=fight club, l=0, y=1999
+subsunacs/movie_search_en.html       POST ... m=fight club, l=1
+subsunacs/series_search_bg.html      POST ... m=breaking bad 05 01, l=0
+subsunacs/detail_page.html           https://subsunacs.net/subtitles/Fight_Club-55064/!
+subsunacs/download_entry.srt         https://subsunacs.net/getentry.php?id=104123&ei=0

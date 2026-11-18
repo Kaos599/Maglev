@@ -9,14 +9,14 @@ export interface Stat {
   tint?: string;
 }
 
-/** 2 rows x 3 columns of label/value cells. Unknown values arrive as "—". */
-export function StatGrid({ stats }: { stats: Stat[] }) {
+/** Label/value cells, 3 to a row (2 rows of 3 on the torrent page) or 2 to a row (`columns={2}`). Unknown values arrive as "—". */
+export function StatGrid({ stats, columns = 3 }: { stats: Stat[]; columns?: 2 | 3 }) {
   const { colors } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   return (
     <View style={styles.grid}>
       {stats.map((s) => (
-        <View key={s.label} style={styles.cell} accessible accessibilityLabel={`${s.label} ${s.value}`}>
+        <View key={s.label} style={[styles.cell, columns === 2 && styles.cellHalf]} accessible accessibilityLabel={`${s.label} ${s.value}`}>
           <Text style={styles.label}>{s.label}</Text>
           <Text style={[styles.value, s.tint ? { color: s.tint } : null]} numberOfLines={1}>
             {s.value}
@@ -40,6 +40,7 @@ const makeStyles = (c: ThemeColors) =>
       paddingVertical: spacing.md,
       paddingHorizontal: spacing.md,
     },
+    cellHalf: { flexBasis: '47%' },
     label: { ...type.body, fontSize: type.size.xs, color: c.textMuted, marginBottom: 2 },
     value: { ...type.monoBold, fontSize: type.size.md, color: c.text },
   });

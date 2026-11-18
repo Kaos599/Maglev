@@ -18,10 +18,10 @@ const mock = read('modules/maglev-engine/src/MaglevMockDownloads.ts');
 const mockSnap = (mock.match(/snapshots\(\): DownloadSnapshot\[\] \{[\s\S]*?\n  \}/) || [''])[0];
 check('mock snapshot fills downLimitBps from its own limit', /downLimitBps: i\.limit/.test(mockSnap));
 
-const sheet = read('components/transfers/DownloadSheet.tsx');
-check('DownloadSheet reads the typed field', /d\.downLimitBps/.test(sheet));
-check('DownloadSheet no longer casts to read the limit', !/as \{ downLimitBps\?: number \}/.test(sheet));
-check('DownloadSheet does not fall back to a session-only value', !/downLimitBps \?\? chosen/.test(sheet));
+const sheet = read('app/download/[id].tsx');
+check('download page reads the typed field', /d\.downLimitBps/.test(sheet));
+check('download page no longer casts to read the limit', !/as \{ downLimitBps\?: number \}/.test(sheet));
+check('download page does not fall back to a session-only value', !/downLimitBps \?\? chosen/.test(sheet));
 
 const rs = read('native/maglev-core/src/http_dl/driver.rs');
 const fn = (rs.match(/pub fn snapshots\(&self\)[\s\S]*?\n    \}\n/) || [''])[0];

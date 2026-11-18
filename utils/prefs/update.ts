@@ -20,13 +20,15 @@ export interface UpdatePrefs {
   available: UpdateInfo | null;
   /** `<kind>:<version>` of the last notice posted, so a restored update doesn't post again. */
   notifiedVersion: string | null;
+  /** "Show new features after updates" (section 37), on by default. UI only. */
+  showHighlights: boolean;
 }
 
 export const UPDATE_MODES: readonly UpdateMode[] = ['ask', 'download', 'auto'];
 const KEY = 'maglev.update.prefs.v1';
 
 export function defaultUpdatePrefs(): UpdatePrefs {
-  return { updateMode: 'download', updateAutoCheck: true, lastCheckAt: null, skippedVersion: null, pending: null, available: null, notifiedVersion: null };
+  return { updateMode: 'download', updateAutoCheck: true, lastCheckAt: null, skippedVersion: null, pending: null, available: null, notifiedVersion: null, showHighlights: true };
 }
 
 function normalizeInfo(raw: unknown): UpdateInfo | null {
@@ -64,6 +66,7 @@ export function normalizeUpdatePrefs(raw: unknown): UpdatePrefs {
     pending: info && p && typeof p.path === 'string' && p.path !== '' ? { info, path: p.path } : null,
     available: normalizeInfo(o.available),
     notifiedVersion: typeof o.notifiedVersion === 'string' && o.notifiedVersion !== '' ? o.notifiedVersion : null,
+    showHighlights: o.showHighlights !== false,
   };
 }
 

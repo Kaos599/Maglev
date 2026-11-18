@@ -1,5 +1,6 @@
 import { Platform, requireOptionalNativeModule } from 'expo-modules-core';
 import type {
+  ActiveBlock,
   AddTorrentOptions,
   Detail,
   DownloadOptions,
@@ -19,6 +20,9 @@ import type {
   TorrentExport,
   TrackersAdded,
   GovernanceConfig,
+  SubtitleHashResult,
+  SubtitleSaveResult,
+  SubtitleZipEntry,
   MaglevEngineApi,
   Metadata,
   MoveTarget,
@@ -42,6 +46,7 @@ import type {
   UpdateNetwork,
   UpdateResultEvent,
 } from './MaglevEngine.types.ts';
+import { subtitleError } from './MaglevEngine.types.ts';
 import type { MaglevSettings } from './MaglevSettings.types.ts';
 import { mockEngine } from './MaglevMockEngine.ts';
 import { ipFilter } from './MaglevIpFilter.ts';
@@ -83,6 +88,59 @@ const unavailable = (message: string, code: EngineErrorCode = 'ENGINE_UNAVAILABL
 
 type StateListener = () => void;
 
+const BLOCK_TAGS: ReadonlySet<string> = new Set([
+  'wifi_only', 'battery', 'charging_only', 'network_unvalidated', 'vpn_required', 'offline', 'schedule', 'storage_full', 'seed_metered',
+]);
+
+/** Keeps only entries with a known tag and a numeric `sinceMs`. Input is already camelized or still raw. */
+function cleanBlocks(raw: unknown): ActiveBlock[] {
+  if (!Array.isArray(raw)) return [];
+  const out: ActiveBlock[] = [];
+  for (const item of camelizeKeys<unknown[]>(raw)) {
+    const b = item as Partial<ActiveBlock> | null;
+    if (!b || typeof b.tag !== 'string' || !BLOCK_TAGS.has(b.tag)) continue;
+    out.push({ ...b, tag: b.tag, sinceMs: typeof b.sinceMs === 'number' ? b.sinceMs : 0 } as ActiveBlock);
+  }
+  return out;
+}
+
+/**
+ * NATIVE_CONTRACT 39.3 E1. Every bridge method that reaches the native module is in exactly one group.
+ *
+ * USER_ACTION_METHODS change engine state because the user asked. Only these restart a stopped engine: when one
+ * answers NOT_INITIALIZED the bridge starts the engine once with the last config and retries once. This is what
+ * lets an add work after the notification "Shut down".
+ *
+ * READ_METHODS (reads, polling, config pushes, pickers, opening or sharing files) return their NOT_INITIALIZED
+ * failure untouched, so a poll between "Shut down" and the activity closing cannot undo the shutdown. The UI's
+ * "engine stopped" notice with Start engine (restart()) handles that failure.
+ *
+ * A new bridge method must be added to one of the two lists (grep `this.route(`).
+ */
+export const USER_ACTION_METHODS: readonly string[] = [
+  // Add flow (a paste, share, search or feed add, including the preflight lookups)
+  'addTorrent', 'addDownload', 'resolveMetadata', 'probeUrl', 'probeStream',
+  // Torrents
+  'pause', 'resume', 'resumeAnyway', 'recheck', 'pauseAll', 'resumeAll', 'delete',
+  'setIncludedFiles', 'setFilePriorities', 'removeFiles', 'resolveFiles', 'setHealth', 'scanFileHealth',
+  'reannounce', 'addTrackers', 'removeTracker', 'moveStorage',
+  // Limits
+  'setGlobalLimits', 'setTorrentLimits', 'setDownloadLimits',
+  // Link downloads
+  'pauseDownload', 'resumeDownload', 'resumeDownloadAnyway', 'retryDownload', 'removeDownload',
+  'allowLanHost', 'refreshDownloadUrl',
+  // Feeds: "Check now" adds torrents
+  'runFeedCheckNow',
+];
+export const READ_METHODS: readonly string[] = [
+  'shutdown', 'cancelResolve', 'getResolveActivity', 'listTorrents', 'getDetail', 'fileHealth', 'exportTorrent',
+  'shareExportedTorrent', 'getFreeSpace', 'applyConfig', 'getEffectiveConfig', 'getPieceBitfield', 'streamUrl',
+  'version', 'pickDownloadFolder', 'pickFolder', 'getPlaybackSupport', 'getStorageStatus', 'openFile', 'shareFile',
+  'openFolder', 'openDownloadFolder', 'openDownload', 'shareDownload', 'getActiveBlocks', 'getNetworkState',
+  'openStream', 'setSchedule', 'getScheduleStatus', 'setFeedAutomation', 'getFeedAutomationStatus', 'setGovernance',
+];
+const RESTART_ON_NOT_INITIALIZED: ReadonlySet<string> = new Set(USER_ACTION_METHODS);
+
 export class MaglevEngineBridge implements MaglevEngineApi {
   private impl: MaglevEngineApi | null = null;
   private usingNative = false;
@@ -103,6 +161,7 @@ export class MaglevEngineBridge implements MaglevEngineApi {
   private completedListeners = new Set<(e: TorrentCompletedEvent) => void>();
   private actionListeners = new Set<(e: NotificationActionEvent) => void>();
   private storageListeners = new Set<(e: StorageStatus) => void>();
+  private blocksListeners = new Set<(blocks: ActiveBlock[]) => void>();
   private detach: Unsubscribe[] = [];
 
   // ---- state surface for the UI ------------------------------------------------
@@ -235,7 +294,7 @@ export class MaglevEngineBridge implements MaglevEngineApi {
         return this.markReady('Native engine running.', false);
       }
       if (res.code !== 'ENGINE_UNAVAILABLE') {
-        this.setState({ status: { kind: 'unavailable', message: res.message } });
+        this.setState({ status: { kind: 'unavailable', message: res.message, code: res.code } });
         return res;
       }
       return this.fallbackOrFail(res.message, config);
@@ -281,6 +340,10 @@ export class MaglevEngineBridge implements MaglevEngineApi {
       sub('onTorrentCompleted', (p) => this.completedListeners.forEach((l) => l(p)));
       sub('onNotificationAction', (p) => this.actionListeners.forEach((l) => l(p)));
       sub('onStorageStatus', (p) => this.storageListeners.forEach((l) => l(p)));
+      sub('onBlocksChanged', (p) => {
+        const blocks = cleanBlocks(p?.blocks);
+        this.blocksListeners.forEach((l) => l(blocks));
+      });
     } else {
       if (!sim) return;
       this.impl = sim;
@@ -288,7 +351,8 @@ export class MaglevEngineBridge implements MaglevEngineApi {
         sim.onTelemetry((e) => this.telemetryListeners.forEach((l) => l(e))),
         sim.onTorrentCompleted((e) => this.completedListeners.forEach((l) => l(e))),
         sim.onNotificationAction((e) => this.actionListeners.forEach((l) => l(e))),
-        sim.onStorageStatus((e) => this.storageListeners.forEach((l) => l(e)))
+        sim.onStorageStatus((e) => this.storageListeners.forEach((l) => l(e))),
+        sim.addBlocksListener((b) => this.blocksListeners.forEach((l) => l(b)))
       );
     }
   }
@@ -310,10 +374,60 @@ export class MaglevEngineBridge implements MaglevEngineApi {
     }
   }
 
+  /** One shared restart of the native engine after it was stopped behind the bridge's back. */
+  private restartPromise: Promise<EngineResult> | null = null;
+
+  /**
+   * The engine can be stopped natively (notification "Shut down", auto-exit) while this JS runtime survives.
+   * Starts it again with the last config. Kotlin init is idempotent. Parallel callers share one attempt.
+   */
+  private restartNative(config: NativeConfig): Promise<EngineResult> {
+    if (!this.restartPromise) {
+      this.restartPromise = (async () => {
+        const res = await this.callNative<EngineResult>('init', config);
+        if (!res.ok) return res; // The caller shows the reason with a "Start engine" action; screens stay where they are.
+        this.setState({ status: { kind: 'ready', message: 'Native engine running.', simulated: false } });
+        if (this.lastSettings) await this.pushGovernanceAndLimits(this.lastSettings, config);
+        return res;
+      })().finally(() => {
+        this.restartPromise = null;
+      });
+    }
+    return this.restartPromise;
+  }
+
+  /**
+   * NATIVE_CONTRACT 39.3 E1: A native call. Only methods in RESTART_ON_NOT_INITIALIZED (user-initiated changes) restart the engine once, and
+   * retry once, when it answers NOT_INITIALIZED. Reads and polling return the failure as it is.
+   */
+  private async callNativeRecovering<T>(method: string, ...args: unknown[]): Promise<T> {
+    const first = await this.callNative<T>(method, ...args);
+    const r = first as unknown as { ok?: boolean; code?: string };
+    // NATIVE_CONTRACT 39.3 E1: reads and polling (anything not in USER_ACTION_METHODS) return the failure as it is.
+    if (r?.ok !== false || r.code !== 'NOT_INITIALIZED' || !RESTART_ON_NOT_INITIALIZED.has(method) || !this.lastConfig) {
+      return first;
+    }
+    // NATIVE_CONTRACT 39.3 E1: one shared restart (single flight), then one retry below.
+    const restarted = await this.restartNative(this.lastConfig);
+    // `engineStopped` tells the UI to offer "Start engine" with the real reason in `message`.
+    if (!restarted.ok) return { ...restarted, engineStopped: true } as unknown as T;
+    return this.callNative<T>(method, ...args);
+  }
+
+  /**
+   * The "Start engine" button. Restarts the native engine with the last config (or starts it, when it never
+   * came up). Resolves ok when the engine runs; otherwise the failure carries the real reason.
+   */
+  public async restart(settings?: MaglevSettings): Promise<EngineResult> {
+    if (this.usingNative && this.lastConfig) return this.restartNative(this.lastConfig);
+    const st = await this.retry(settings);
+    return st.kind === 'ready' ? { ok: true } : unavailable(st.message);
+  }
+
   /** Routes to native or simulator. Before a successful start, returns a typed failure. */
   private async route<T>(method: keyof MaglevEngineApi, ...args: unknown[]): Promise<T> {
     if (!this.usingNative && !this.impl) await this.awaitStart();
-    if (this.usingNative) return this.callNative<T>(method, ...args);
+    if (this.usingNative) return this.callNativeRecovering<T>(method, ...args);
     if (this.impl) {
       try {
         return await (this.impl[method] as (...a: unknown[]) => Promise<T>)(...args);
@@ -512,6 +626,21 @@ export class MaglevEngineBridge implements MaglevEngineApi {
   public shareDownload(id: string): Promise<EngineResult> {
     return this.route('shareDownload', id);
   }
+  /** NATIVE_CONTRACT 35. Never throws: any failure is an empty list. Unknown tags are dropped. */
+  public async getActiveBlocks(): Promise<ActiveBlock[]> {
+    try {
+      const raw = await this.route<unknown>('getActiveBlocks');
+      return cleanBlocks(raw);
+    } catch {
+      return [];
+    }
+  }
+  public addBlocksListener(listener: (blocks: ActiveBlock[]) => void): () => void {
+    this.blocksListeners.add(listener);
+    return () => {
+      this.blocksListeners.delete(listener);
+    };
+  }
   public getNetworkState(): Promise<EngineResult<NetworkState>> {
     return this.route('getNetworkState');
   }
@@ -589,6 +718,34 @@ export class MaglevEngineBridge implements MaglevEngineApi {
     if (!sim) return Promise.resolve(unavailable('The native engine module is not installed in this build.') as T);
     return (sim as unknown as Record<string, (...a: unknown[]) => Promise<T>>)[method](...args);
   }
+  // ---- subtitles (NATIVE_CONTRACT 36.6) -------------------------------------------
+  // Unlike the calls above these reject with an Error whose `code` is a SubtitleErrorCode.
+
+  private async subtitleCall<T>(method: 'subtitleHash' | 'saveSubtitle' | 'unzipSubtitles', ...args: unknown[]): Promise<T> {
+    if (NativeModule) {
+      const fn = NativeModule[method];
+      if (typeof fn !== 'function') throw subtitleError('UNSUPPORTED', `Native method "${method}" is missing.`);
+      try {
+        return (await fn.apply(NativeModule, args)) as T;
+      } catch (e: any) {
+        const known = typeof e?.code === 'string' && /^[A-Z][A-Z_]+$/.test(e.code);
+        throw subtitleError(known ? e.code : 'IO', String(e?.message ?? e));
+      }
+    }
+    const sim = simulatorIfAllowed();
+    if (!sim) throw subtitleError('UNSUPPORTED', 'The native engine module is not installed in this build.');
+    return (sim[method] as (...a: unknown[]) => Promise<T>).apply(sim, args);
+  }
+  public subtitleHash(pathOrUri: string): Promise<SubtitleHashResult> {
+    return this.subtitleCall('subtitleHash', pathOrUri);
+  }
+  public saveSubtitle(videoPathOrUri: string, fileName: string, base64: string, replace: boolean): Promise<SubtitleSaveResult> {
+    return this.subtitleCall('saveSubtitle', videoPathOrUri, fileName, base64, replace);
+  }
+  public unzipSubtitles(base64: string): Promise<SubtitleZipEntry[]> {
+    return this.subtitleCall('unzipSubtitles', base64);
+  }
+
   public async getInstallSource(): Promise<InstallSource> {
     const res = await this.updateCall<Partial<InstallSource> & { ok?: boolean }>('getInstallSource');
     if (res && res.ok !== false) {

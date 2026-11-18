@@ -4,9 +4,10 @@ name: onboarding
 ---
 - launchApp:
     clearState: true
-- extendedWaitUntil:
-    visible: "Get started"
-    timeout: 45000
+- runFlow:
+    file: subflows/wait-for-app.yaml
+    env:
+      TEXT: "Get started"
 - assertVisible: "Torrents, web links and videos in one place."
 - runFlow: subflows/onboarding-steps.yaml
 - extendedWaitUntil:

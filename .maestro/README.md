@@ -5,10 +5,10 @@ End-to-end flows for the Android app (package `com.maglev`). Docs: https://docs.
 | Flow | What it checks |
 |---|---|
 | `onboarding.yaml` | First launch (state cleared), every onboarding step, empty Transfers |
-| `add-and-resume.yaml` | Open a magnet, start it, wait for progress, Home, kill, relaunch, still listed and downloading |
+| `add-and-resume.yaml` | Open a magnet (quick share card, Download), wait for progress, Home, kill, relaunch, still listed and downloading |
 | `pause-resume.yaml` | Pause and resume from the card |
 | `search-add.yaml` | Search "Sintel", one-tap add, shows in Transfers |
-| `transfers-link-download.yaml` | Add a direct https link (Blender's Sintel trailer, CC BY), progress above 0, pause, resume, remove and delete files |
+| `transfers-link-download.yaml` | Add a direct https link (Blender's Sintel trailer, CC BY), card exists, pause and resume if still running (it can finish in 1 s), remove and delete files |
 | `transfers-detail.yaml` | Open a torrent's detail screen: Files, Peers, Trackers, Pieces; open a file's sheet; back |
 | `transfers-remove.yaml` | Remove a transfer and keep its files, add it again, remove it with its files; "Nothing downloading" |
 | `transfers-filters.yaml` | Filter pills (Downloading, Done, All), the name filter and the sort sheet change the list, then reset |
@@ -22,6 +22,15 @@ End-to-end flows for the Android app (package `com.maglev`). Docs: https://docs.
 | `browser-detect.yaml` | Browser on a public test page: Files list with sizes, download one, shows in Transfers, removed with files |
 | `browser-clear.yaml` | Browser: remove one found file, Clear all, list empty; next page starts without the old files |
 | `browser-blocking.yaml` | Browser: per-site ad switch in "This page" and the global "Ad blocking" setting toggle |
+
+Conventions since 0.28:
+- Opening a magnet or link shows the native quick share card (not an in-app screen). `subflows/add-from-card.yaml` (env `LINK`) taps "Download", waits for the card to close, brings Maglev forward (`launchApp` with `stopApp: false`) and waits for a `transfer-card`.
+- `subflows/open-settings-row.yaml` (env `ROW`) scrolls the long, grouped Settings list (either direction) and taps a row. Pages are left with the in-app "Go back" button; do not press hardware Back right after changing the font style.
+- `subflows/clear-leftovers.yaml` runs after onboarding in every flow that uses Transfers: flows share one emulator session, and a transfer left by a failed flow makes the next magnet say "Already in Maglev" (no Download button).
+- `subflows/wait-for-app.yaml` relaunches the app (no state clearing) when the launcher is showing, because CI once saw a native Hermes crash at cold start.
+- Wi-Fi only is ON after onboarding (pre-selected), unlike the store default.
+- `maglev://browser?url=` only prefills the Browser address bar: flows tap "Address" and press Enter to load it.
+- Native Android dialogs (the watch delete alert) are matched by their ids (`android:id/button1`); a sheet or dialog hides the screen behind it, so its button is index 0.
 
 Each flow removes its transfer with "Remove and delete files". Transfer cards are matched by `id: "transfer-card"` (never by a "percent" regex: the status bar battery also says percent). `subflows/` holds shared steps and is not run by `maestro test .maestro/`.
 The content is the public Sintel torrent (Blender Foundation, CC BY). Flows wait for progress above 0, never for completion.

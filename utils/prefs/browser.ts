@@ -34,6 +34,8 @@ export interface BrowserPrefs {
   popupAllowHosts: string[];
   /** Page text size in percent (section 28). Always one of the values `normalizeTextZoom` returns. */
   browserTextZoom: number;
+  /** Swipe the address bar to change tabs, or down to open the tab list. */
+  swipeTabs: boolean;
 }
 
 export const TEXT_ZOOM_MIN = 50;
@@ -71,6 +73,7 @@ export function defaultBrowserPrefs(): BrowserPrefs {
     popupPolicy: 'ask',
     popupAllowHosts: [],
     browserTextZoom: TEXT_ZOOM_DEFAULT,
+    swipeTabs: true,
   };
 }
 
@@ -96,6 +99,7 @@ export function normalizeBrowserPrefs(raw: unknown): BrowserPrefs {
     popupPolicy: POPUP_POLICIES.includes(o.popupPolicy as PopupPolicy) ? (o.popupPolicy as PopupPolicy) : 'ask',
     popupAllowHosts: [...new Set(strings(o.popupAllowHosts).map((h) => h.toLowerCase()))],
     browserTextZoom: normalizeTextZoom(o.browserTextZoom),
+    swipeTabs: o.swipeTabs !== false,
   };
 }
 

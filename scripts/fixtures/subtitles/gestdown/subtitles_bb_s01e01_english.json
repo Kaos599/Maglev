@@ -1,0 +1,77 @@
+{
+ "matchingSubtitles": [
+  {
+   "subtitleId": "3Df15bUM1njyzL2GHv0PaX",
+   "version": "0tv",
+   "completed": true,
+   "hearingImpaired": false,
+   "corrected": true,
+   "hd": false,
+   "downloadUri": "/subtitles/download/3Df15bUM1njyzL2GHv0PaX",
+   "language": "English",
+   "discovered": "2022-05-17T02:28:20.084012Z",
+   "downloadCount": 436,
+   "source": "Addic7ed",
+   "qualities": [],
+   "release": null
+  },
+  {
+   "subtitleId": "5pkWMgtuHKfnWq8LTFbTpI",
+   "version": "DVDRip ORPHEUS",
+   "completed": true,
+   "hearingImpaired": false,
+   "corrected": true,
+   "hd": false,
+   "downloadUri": "/subtitles/download/5pkWMgtuHKfnWq8LTFbTpI",
+   "language": "English",
+   "discovered": "2022-05-17T02:28:20.084022Z",
+   "downloadCount": 113,
+   "source": "Addic7ed",
+   "qualities": [],
+   "release": null
+  },
+  {
+   "subtitleId": "72Dx379lNuYnCBzdNgKWVg",
+   "version": "BluRayREWARD",
+   "completed": true,
+   "hearingImpaired": false,
+   "corrected": true,
+   "hd": true,
+   "downloadUri": "/subtitles/download/72Dx379lNuYnCBzdNgKWVg",
+   "language": "English",
+   "discovered": "2022-05-17T02:28:20.084031Z",
+   "downloadCount": 84,
+   "source": "Addic7ed",
+   "qualities": [
+    "720p",
+    "1080p"
+   ],
+   "release": null
+  },
+  {
+   "subtitleId": "5p45mvzz1jBNntcbV3ghQX",
+   "version": "Bluray-CtrlHD",
+   "completed": true,
+   "hearingImpaired": false,
+   "corrected": true,
+   "hd": true,
+   "downloadUri": "/subtitles/download/5p45mvzz1jBNntcbV3ghQX",
+   "language": "English",
+   "discovered": "2022-05-17T02:28:20.084036Z",
+   "downloadCount": 503,
+   "source": "Addic7ed",
+   "qualities": [
+    "720p",
+    "1080p"
+   ],
+   "release": null
+  }
+ ],
+ "episode": {
+  "season": 1,
+  "number": 1,
+  "title": "Pilot",
+  "show": "Breaking Bad",
+  "discovered": "2022-05-17T02:28:20.083997Z"
+ }
+}

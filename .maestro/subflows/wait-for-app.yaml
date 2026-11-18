@@ -1,0 +1,18 @@
+# Waits up to about 60 s for ${TEXT} after a launch, dismissing a system "isn't responding" dialog between tries.
+# If the app is not showing (the launcher is on top because the process died, e.g. the one native Hermes crash seen on CI at cold start),
+# each try starts it again without clearing state.
+appId: com.maglev
+---
+- retry:
+    maxRetries: 3
+    commands:
+      - runFlow: dismiss-anr.yaml
+      - runFlow:
+          when:
+            notVisible: ${TEXT}
+          commands:
+            - launchApp:
+                stopApp: false
+      - extendedWaitUntil:
+          visible: ${TEXT}
+          timeout: 20000

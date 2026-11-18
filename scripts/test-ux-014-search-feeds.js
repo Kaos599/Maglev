@@ -35,6 +35,7 @@ if (exists('components/search/sharing.ts')) {
   check('hide-no-one filter drops 0 only', s.passesResultFilter({ seeders: 0 }, { hideDead: true, minBytes: 0 }) === false && s.passesResultFilter({ seeders: 5 }, { hideDead: true, minBytes: 0 }) === true);
   check('hide-no-one keeps unknown counts', s.passesResultFilter({ seeders: undefined }, { hideDead: true, minBytes: 0 }) === true);
   check('min size filter', s.passesResultFilter({ seeders: 5, sizeBytes: 10 }, { hideDead: false, minBytes: 100 }) === false);
+  check('max size filter drops big files, keeps unknown sizes', s.passesResultFilter({ seeders: 5, sizeBytes: 200 }, { hideDead: false, minBytes: 0, maxBytes: 100 }) === false && s.passesResultFilter({ seeders: 5 }, { hideDead: false, minBytes: 0, maxBytes: 100 }) === true);
 }
 check('row shows the zero-seeder badge', /sharingBadge/.test(row));
 check('row is dimmed for low sharing', /isLowShare/.test(row) && /opacity/.test(row));
@@ -47,7 +48,7 @@ if (exists('components/search/ResultPreviewSheet.tsx')) {
   check('preview has Add and Open in browser', /Add/.test(p) && /Open in browser/.test(p));
 }
 check('search wires the preview', /ResultPreviewSheet/.test(search));
-check('added feedback names Transfers with a View action', /Added to Transfers/.test(search) && /actionLabel: 'View'/.test(search));
+check('added feedback names Transfers with a View action', /Added to Transfers/.test(read('utils/addedTray.ts')) && /useAddedTray\(/.test(search) && />View</.test(read('components/search/AddedTray.tsx')));
 const sortSheet = read('components/search/SortFilterSheet.tsx');
 check('sort labels have no "seeders"', !/Most seeders|Seeders'/.test(search + sortSheet) && /Most shared/.test(sortSheet));
 check('header filter is labelled Sources', /accessibilityLabel=\{`Sources,/.test(search));

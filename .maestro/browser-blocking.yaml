@@ -9,9 +9,12 @@ name: browser-blocking
 - extendedWaitUntil:
     visible: "Address" # app/browser.tsx:268
     timeout: 30000
+# maglev://browser?url= only PREFILLS the address bar since 0.19 (app/browser.tsx: an external link never loads by itself), so submit it.
+- tapOn: "Address"
+- pressKey: Enter
 # "More" opens the "This page" sheet (app/browser.tsx:283, :368). The per-site row needs a loaded page host (:383).
 - extendedWaitUntil:
-    visible: "test-videos.co.uk" # app/browser.tsx:203 idle address text is the host
+    visible: ".*test-videos\\.co\\.uk.*" # the bar shows the host once idle, or the full address while it has focus
     timeout: 60000
 - tapOn: "More"
 - extendedWaitUntil:
@@ -39,7 +42,7 @@ name: browser-blocking
 - tapOn:
     text: "Ad blocking"
     index: 1
-- pressKey: Back
+- tapOn: "Go back" # in-app back; hardware Back after toggling a setting left the app in the 0.28 CI run
 - tapOn: "More"
 # With ad blocking off the per-site row is hidden (app/browser.tsx:383).
 - assertNotVisible: "Allow ads on this site|Block ads on this site"
@@ -51,7 +54,7 @@ name: browser-blocking
 - tapOn:
     text: "Ad blocking"
     index: 1
-- pressKey: Back
+- tapOn: "Go back" # in-app back; hardware Back after toggling a setting left the app in the 0.28 CI run
 - tapOn: "More"
 - assertVisible: "Allow ads on this site"
 - pressKey: Back

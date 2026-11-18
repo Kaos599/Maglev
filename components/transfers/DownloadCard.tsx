@@ -7,8 +7,16 @@ import { ThemeColors, alpha, radius, spacing, type } from '../../constants/theme
 import { formatEta } from '../../utils/rates';
 import { actionRoute, downloadAction, downloadProgress, downloadProgressLabel, downloadStatus, isIndeterminate, type DownloadAction } from '../../utils/downloadCopy';
 import { PixelIcon } from '../PixelIcon';
+import { StatusLine } from './StatusLine';
+import { useStatusOpts } from './useStatusOpts';
 import { IconButton, PressableScale, ProgressBar, ProgressTone } from '../ui';
 import { CARD_HEIGHT } from '../TransferCard';
+import { useBlockContext } from '../../utils/blocks/useActiveBlocks';
+import { SwipeRow } from './SwipeRow';
+import { swipePlan } from './swipe';
+import { SubtitleCardIcon } from '../subtitles/SubtitleCardIcon';
+import { sameCardIcon, type CardIconModel } from '../subtitles/flow';
+import { downloadCardGlyph } from '../../utils/cardIcon';
 
 export interface DownloadCardProps {
   download: DownloadSnapshot;
@@ -19,6 +27,16 @@ export interface DownloadCardProps {
   selectionMode?: boolean;
   selected?: boolean;
   onLongPress?: (id: string) => void;
+  /** Swipe left: remove from the list, files kept, with Undo. Also the Remove accessibility action. */
+  onRemove?: (id: string) => void;
+  /** The "Swipe to pause or remove" setting. Off: the card has no swipe wrapper at all. */
+  swipeEnabled?: boolean;
+  /** Subtitle icon (36.10), top right: only after the user asked for subtitles on this item. */
+  subtitle?: CardIconModel | null;
+  /** Taps the subtitle icon: opens the subtitle sheet. */
+  onSubtitles?: (id: string) => void;
+  /** The "Show file type icons in Transfers" setting. The icon shares the slot of the selection checkbox. */
+  showFileIcon?: boolean;
 }
 
 function toneFor(d: DownloadSnapshot): ProgressTone {
@@ -36,14 +54,14 @@ function toneFor(d: DownloadSnapshot): ProgressTone {
 }
 
 /** Same card as a torrent: name, one bar, one status line, one button. The sheet behind a tap has the rest. */
-function DownloadCardImpl({ download: d, onPress, onAction: onActionProp, selectionMode = false, selected = false, onLongPress }: DownloadCardProps) {
+function DownloadCardImpl({ download: d, onPress, onAction: onActionProp, selectionMode = false, selected = false, onLongPress, onRemove, swipeEnabled = false, subtitle = null, onSubtitles, showFileIcon = true }: DownloadCardProps) {
   const { colors } = useTheme();
   const router = useRouter();
   // Settings actions go to their screen and Remove opens the sheet (which has the keep/delete choice) here,
   // so the card works without the list screen knowing about them. The rest go to the list screen.
   const onAction = (dl: DownloadSnapshot, a: DownloadAction) => {
-    const route = actionRoute(a.kind);
-    if (route) router.push(route);
+    const route = actionRoute(a.kind, a.route);
+    if (route) router.push(route as never);
     else if (a.kind === 'remove') onPress(dl.id);
     else onActionProp(dl, a);
   };
@@ -51,57 +69,73 @@ function DownloadCardImpl({ download: d, onPress, onAction: onActionProp, select
   const etaRef = useRef<string | null>(null);
   const etaLabel = formatEta(d.state === 'downloading' ? d.eta : -1, etaRef.current);
   etaRef.current = etaLabel === '—' ? null : etaLabel;
-  const status = downloadStatus(d, etaLabel);
-  const action = downloadAction(d);
+  const blockCtx = useBlockContext();
+  const action = downloadAction(d, blockCtx);
+  const statusOpts = useStatusOpts(d.id, d.state === 'downloading' ? d.downBps : 0, { hasRail: selectionMode || showFileIcon, hasPlay: false, hasAction: !!action && !selectionMode }, d.state === 'downloading');
+  const status = downloadStatus(d, etaLabel, blockCtx, statusOpts);
   const pct = Math.round(downloadProgress(d) * 100);
   const indeterminate = isIndeterminate(d);
-  const statusColor = status.tone === 'danger' ? colors.danger : status.tone === 'accent' ? colors.accentText : colors.textMuted;
 
-  return (
+  const swipe = swipePlan({ action, busy: false, selectionMode, enabled: swipeEnabled });
+  const onSwipeRight = () => {
+    if (action) onAction(d, action);
+  };
+  const card = (
     <View style={[styles.card, selected && styles.cardSelected]}>
       <PressableScale
         onPress={() => onPress(d.id)}
         onLongPress={onLongPress ? () => onLongPress(d.id) : undefined}
         scaleTo={0.99}
         accessibilityRole="button"
-        accessibilityLabel={`${d.name}, ${status.text}${status.sub ? `, ${status.sub}` : ''}, ${downloadProgressLabel(d)}${selectionMode && selected ? ', selected' : ''}`}
+        accessibilityLabel={`${d.name}, ${status.text}, ${downloadProgressLabel(d)}${selectionMode && selected ? ', selected' : ''}`}
         accessibilityActions={[
           { name: 'activate', label: selectionMode ? (selected ? 'Deselect' : 'Select') : 'Open' },
           ...(action && !selectionMode ? [{ name: action.kind, label: action.label }] : []),
+          ...(onRemove && !selectionMode ? [{ name: 'remove', label: 'Remove' }] : []),
         ]}
         accessibilityState={{ selected: selectionMode ? selected : undefined }}
         onAccessibilityAction={(e) => {
           if (e.nativeEvent.actionName === 'activate') onPress(d.id);
+          else if (e.nativeEvent.actionName === 'remove') onRemove?.(d.id);
           else if (action && e.nativeEvent.actionName === action.kind) onAction(d, action);
         }}
         style={styles.press}
       >
-        <View style={styles.nameRow}>
-          {selectionMode ? (
-            <PixelIcon name={selected ? 'select' : 'checkbox-empty'} size={20} color={selected ? colors.accentText : colors.textMuted} />
-          ) : null}
-          <Text style={styles.name} numberOfLines={2} ellipsizeMode="tail">
-            {d.name}
-          </Text>
-        </View>
+        {selectionMode ? (
+          <View style={styles.rail}>
+            <PixelIcon name={selected ? 'select' : 'checkbox-empty'} size={24} color={selected ? colors.accentText : colors.textMuted} />
+          </View>
+        ) : showFileIcon ? (
+          <View style={styles.rail} importantForAccessibility="no-hide-descendants" accessibilityElementsHidden>
+            <PixelIcon name={downloadCardGlyph(d.name, !!d.stream)} size={24} color={colors.textMuted} />
+          </View>
+        ) : null}
+        <View style={styles.body}>
+        <Text style={styles.name} numberOfLines={2} ellipsizeMode="tail">
+          {d.name}
+        </Text>
         <ProgressBar progress={pct / 100} tone={toneFor(d)} indeterminate={indeterminate} accessibilityLabel={`${d.name} progress`} />
-        <View>
-          <Text style={[styles.status, { color: statusColor }]} numberOfLines={1}>
-            {status.text}
-          </Text>
-          {status.sub ? (
-            <Text style={[styles.status, { color: colors.textMuted }]} numberOfLines={1}>
-              {status.sub}
-            </Text>
-          ) : null}
+        <StatusLine status={status} />
         </View>
       </PressableScale>
+      {subtitle && onSubtitles && !selectionMode ? (
+        <View style={styles.subtitleAnchor}>
+          <SubtitleCardIcon model={subtitle} onPress={() => onSubtitles(d.id)} />
+        </View>
+      ) : null}
       {action && !selectionMode ? (
         <View style={styles.actionAnchor}>
           <IconButton icon={action.icon} accessibilityLabel={`${action.label} ${d.name}`} onPress={() => onAction(d, action)} />
         </View>
       ) : null}
     </View>
+  );
+  return swipeEnabled ? (
+    <SwipeRow id={d.id} right={swipe.right} left={swipe.left && !!onRemove} enabled={!selectionMode} onRight={onSwipeRight} onLeft={() => onRemove?.(d.id)}>
+      {card}
+    </SwipeRow>
+  ) : (
+    card
   );
 }
 
@@ -114,6 +148,11 @@ function same(a: DownloadCardProps, b: DownloadCardProps): boolean {
     a.selectionMode === b.selectionMode &&
     a.selected === b.selected &&
     a.onLongPress === b.onLongPress &&
+    a.onRemove === b.onRemove &&
+    a.swipeEnabled === b.swipeEnabled &&
+    a.onSubtitles === b.onSubtitles &&
+    sameCardIcon(a.subtitle, b.subtitle) &&
+    a.showFileIcon === b.showFileIcon &&
     x.id === y.id &&
     x.name === y.name &&
     x.state === y.state &&
@@ -143,17 +182,19 @@ const makeStyles = (c: ThemeColors) =>
       borderRadius: radius.lg,
       overflow: 'hidden',
     },
+    // A row: the left rail (file icon or selection box, full card height) and the text column.
     press: {
       flexGrow: 1,
-      gap: spacing.sm,
+      flexDirection: 'row',
+      gap: spacing.md,
       paddingLeft: spacing.lg,
       paddingRight: 44 + spacing.sm,
       paddingVertical: spacing.md,
-      justifyContent: 'space-between',
     },
+    rail: { width: 24, alignSelf: 'stretch', alignItems: 'center', justifyContent: 'center' },
+    body: { flex: 1, gap: spacing.sm, justifyContent: 'space-between' },
     actionAnchor: { position: 'absolute', right: spacing.sm, top: '50%', marginTop: -22, width: 44, height: 44 },
+    subtitleAnchor: { position: 'absolute', right: spacing.sm + 8, top: 4, width: 28, height: 28 },
     cardSelected: { borderColor: c.accent, backgroundColor: alpha(c.accent, 0.08) },
-    nameRow: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.sm },
     name: { ...type.mono, fontSize: 13, lineHeight: 18, color: c.text, flex: 1 },
-    status: { ...type.mono, fontSize: 12, lineHeight: 18 },
   });

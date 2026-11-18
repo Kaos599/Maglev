@@ -72,8 +72,8 @@ async function main() {
   const ts = model.torrentStatus(tor, '—');
   const dl = { id: 'dl:1', name: 'f.pdf', urlDisplay: 'https://a.example/f.pdf', state: 'paused', pausedBy: 'storage_full', size: 13000, downloaded: 5000, downBps: 0, eta: -1, error: null };
   const ds = dcopy.downloadStatus(dl);
-  check('torrent Storage full: muted, sub-line Free up space', ts.lead === 'Storage full' && ts.tone === 'muted' && ts.sub === 'Free up space', JSON.stringify(ts));
-  check('download Storage full: muted, sub-line Free up space', ds.text === 'Storage full' && ds.tone === 'muted' && ds.sub === 'Free up space', JSON.stringify(ds));
+  check('torrent Storage full: red, phrase and percent, amount on the right, no sub-line', ts.lead === 'Storage full' && ts.pct === '40%' && ts.tone === 'danger' && ts.value === '40 B of 100 B' && !('sub' in ts), JSON.stringify(ts));
+  check('download Storage full: same as the torrent', ds.lead === 'Storage full' && ds.pct === '38%' && ds.tone === 'danger' && /^\d.* of ~?\d/.test(ds.value) && !('sub' in ds), JSON.stringify(ds));
   const da = dcopy.downloadActions(dl)[0];
   const ta = model.torrentCardAction(tor);
   check('download Storage full action is Free up space, like the torrent', da && da.kind === 'freeSpace' && da.label === 'Free up space' && ta.kind === 'freeSpace' && da.icon === ta.icon, JSON.stringify(da));

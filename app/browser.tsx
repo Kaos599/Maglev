@@ -22,6 +22,7 @@ import { Banner, Button, EmptyBlock, IconButton, ListRow, PressableScale, Progre
 import { FoundTray } from '../components/browser/FoundTray';
 import { TabWebView, type TabHandlers } from '../components/browser/TabWebView';
 import { TabSwitcher } from '../components/browser/TabSwitcher';
+import { AddressSwipe } from '../components/browser/AddressSwipe';
 import { FindBar, type FindResult } from '../components/browser/FindBar';
 import { TextSizeSheet } from '../components/browser/TextSizeSheet';
 import { LinkMenu } from '../components/browser/LinkMenu';
@@ -56,6 +57,7 @@ import {
   tabDataVersion,
   type TabData,
 } from '../utils/browser/tabData';
+import { DOWNLOAD_HELD_ACTION, DOWNLOAD_HELD_NOTICE, FOUND_HINT_MS, foundHintDue, foundHintText, opensSaveSheet } from '../utils/browser/hardening';
 import { hostAllowed, type PopupRequest, type PopupsState } from '../utils/browser/popups';
 import { hostOf, isAllowedHost, noticeAllowed, siteKey, toBrowserUrl, toggleAllowedHost } from '../utils/browserUrl';
 
@@ -141,6 +143,22 @@ export default function BrowserScreen({ inTab = false }: { inTab?: boolean }) {
   const [target, setTarget] = useState<DownloadTarget | null>(null);
   const [batchItems, setBatchItems] = useState<FoundItem[] | null>(null);
   const [streamItem, setStreamItem] = useState<FoundItem | null>(null);
+  // 24.11: a one-line "Maglev found N files" note, once per page, until the tray opens or a few seconds pass.
+  const [hintTab, setHintTab] = useState<string | null>(null);
+  const hintShown = hintTab === activeId && data.hint === 'shown' && found.length > 0 && !trayOpen;
+  useEffect(() => {
+    if (!hasPage || !foundHintDue(found.length, data.hint, trayOpen)) return;
+    patch(activeId, (d) => void (d.hint = 'shown'));
+    setHintTab(activeId);
+  }, [hasPage, found.length, data.hint, trayOpen, activeId, patch]);
+  useEffect(() => {
+    if (trayOpen && data.hint !== 'done') patch(activeId, (d) => void (d.hint = 'done'));
+  }, [trayOpen, data.hint, activeId, patch]);
+  useEffect(() => {
+    if (!hintShown) return;
+    const t = setTimeout(() => patch(activeId, (d) => void (d.hint = 'done')), FOUND_HINT_MS);
+    return () => clearTimeout(t);
+  }, [hintShown, activeId, patch]);
   const popups = getPopups();
   const setPopups = useCallback((fn: (p: PopupsState) => PopupsState) => setPopupsState(fn(getPopups())), []);
   const lastNoticeAt = useRef(0);
@@ -222,7 +240,8 @@ export default function BrowserScreen({ inTab = false }: { inTab?: boolean }) {
   const openTransfer = useCallback(
     (id: string) => {
       setTrayOpen(false);
-      router.push({ pathname: '/', params: { download: id } });
+      // NATIVE_CONTRACT 40.1: "go to the download" opens its page.
+      router.push({ pathname: '/download/[id]', params: { id } });
     },
     [router],
   );
@@ -443,6 +462,7 @@ export default function BrowserScreen({ inTab = false }: { inTab?: boolean }) {
           newDocument = true;
           d.lastUrl = e.url;
           d.notes.clear();
+          d.hint = 'idle';
           // A new document starts a new list. Files already tagged with it (found before this event) stay.
           d.found = pruneToPage(d.found, e.url);
           d.dismissed = new Set();
@@ -469,6 +489,14 @@ export default function BrowserScreen({ inTab = false }: { inTab?: boolean }) {
       const d = getData(id);
       // The navigation became a download: the page is not loading any more.
       patch(id, (x) => void (x.page = x.page && x.page.loading ? { ...x.page, loading: false } : x.page));
+      // 24.11: a download the page started without a tap only joins the Files list (the view already added it).
+      if (!opensSaveSheet(e.tapped)) {
+        // NATIVE_CONTRACT 39.2 B1: a held download is never silent; the notice opens the Files tray where it was listed.
+        if (id === activeIdRef.current) {
+          showNotice({ message: DOWNLOAD_HELD_NOTICE, actionLabel: DOWNLOAD_HELD_ACTION, onAction: () => setTrayOpen(true) }, 6000);
+        }
+        return;
+      }
       setTarget({
         url: e.url,
         name: e.name || nameFromUrl(e.url),
@@ -628,6 +656,13 @@ export default function BrowserScreen({ inTab = false }: { inTab?: boolean }) {
             if (!handleBack()) leave();
           }}
         />
+        <AddressSwipe
+          strip={tabsState ? switcherOrder(tabsState) : []}
+          activeId={activeId}
+          enabled={prefs.swipeTabs && !editing && ready}
+          onSelect={selectTab}
+          onOpenSwitcher={() => setSwitcherOpen(true)}
+        >
         <View style={[styles.address, editing && styles.addressEditing]}>
           {!editing && page?.url ? (
             <PixelIcon
@@ -672,6 +707,7 @@ export default function BrowserScreen({ inTab = false }: { inTab?: boolean }) {
             accessibilityLabel="Address"
           />
         </View>
+        </AddressSwipe>
         <IconButton
           icon={loading ? 'stop' : 'retry'}
           accessibilityLabel={loading ? 'Stop loading' : 'Reload'}
@@ -806,6 +842,11 @@ export default function BrowserScreen({ inTab = false }: { inTab?: boolean }) {
                 setTrayOpen(true);
               }}
             />
+          </View>
+        ) : null}
+        {hintShown ? (
+          <View style={styles.hint} pointerEvents="none" accessibilityLiveRegion="polite">
+            <Text style={styles.hintText}>{foundHintText(found.length)}</Text>
           </View>
         ) : null}
       </View>
@@ -981,4 +1022,18 @@ const makeStyles = (c: ThemeColors) =>
       flexShrink: 1,
     },
     activeText: { ...type.mono, fontSize: type.size.sm, color: c.download },
+    // A one-line note above the Files button, bottom-right: 12 px edge + 44 px button + 8 px gap.
+    hint: {
+      position: 'absolute',
+      right: spacing.md,
+      bottom: spacing.md + 44 + spacing.sm,
+      maxWidth: '80%',
+      paddingHorizontal: spacing.md,
+      paddingVertical: spacing.sm,
+      borderRadius: radius.md,
+      borderWidth: 1,
+      borderColor: c.border,
+      backgroundColor: c.surface,
+    },
+    hintText: { ...type.body, fontSize: type.size.sm, color: c.textMuted },
   });

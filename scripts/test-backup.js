@@ -176,6 +176,24 @@ async function main() {
   check('a failing add is counted, not thrown', r5.torrentsFailed === 2);
   check('urlKey ignores case and trailing slash', I.urlKey('https://A.example/x/') === I.urlKey('https://a.example/x'));
 
+  // ---- Include stats ------------------------------------------------------------------------
+  const SO = await import('../utils/backup/statsOption.ts');
+  const section = { v: 1, records: [], daily: [], monthly: [] };
+  const withStats = await E.buildBackup({ ...deps, stats: section });
+  const noStats = await E.buildBackup({ ...deps, stats: null });
+  check('stats: export without the tick omits stats', !('stats' in noStats) && !('stats' in b));
+  check('stats: export with the tick includes stats', 'stats' in withStats && withStats.stats === section);
+  check('stats: the tick is passed to the export', SO.exportOptions(false).includeStats === false && SO.exportOptions(true).includeStats === true);
+  check('stats: the pref defaults to off', SO.getIncludeStats() === false);
+  SO.setIncludeStats(true);
+  check('stats: the pref is remembered', SO.getIncludeStats() === true);
+  SO.setIncludeStats(false);
+  check('stats: the pref can go back off', SO.getIncludeStats() === false);
+  check('stats: restore asks for stats when the file has them and they are ticked', SO.restoreParts(withStats, ['torrents'], true).includes('stats'));
+  check('stats: restore skips stats when unticked', !SO.restoreParts(withStats, ['torrents'], false).includes('stats'));
+  check('stats: restore skips stats when the file has none', !SO.restoreParts(noStats, ['torrents'], true).includes('stats') && !SO.hasStats(noStats));
+  check('stats: the screen passes the tick and offers the restore row', /exportBackup\(exportOptions\(includeStats\)\)/.test(read('app/settings/backup.tsx')) && /hasStats\(step\.backup\)/.test(read('app/settings/backup.tsx')));
+
   // ---- Wiring -------------------------------------------------------------------------------
   const screen = read('app/settings/backup.tsx');
   check('screen reads copy from constants/copy.ts', /backupCopy/.test(screen));

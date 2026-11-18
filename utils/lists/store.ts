@@ -47,6 +47,27 @@ export function listDisabled(id: string): { note: string | null } | null {
   return e && e.enabled === false ? { note: e.note ?? null } : null;
 }
 
+/** The file's entry for a subtitle provider (section 36.9), or undefined. */
+export function subtitleEntry(id: string): SourceEntry | undefined {
+  return current?.subtitles?.[id];
+}
+
+/** Subtitle mirrors from the file for this provider, or null. */
+export function listSubtitleMirrors(id: string): string[] | null {
+  return subtitleEntry(id)?.mirrors ?? null;
+}
+
+/** Set when the file turned this subtitle source off; the user can't turn it on. `note` is what Settings shows. */
+export function listSubtitleDisabled(id: string): { note: string | null } | null {
+  const e = subtitleEntry(id);
+  return e && e.enabled === false ? { note: e.note ?? null } : null;
+}
+
+/** All subtitle entries of the applied file (empty when there is none). */
+export function listSubtitleEntries(): Record<string, SourceEntry> {
+  return current?.subtitles ?? {};
+}
+
 /** Trackers from the file, or null for the built-in list. */
 export function listTrackers(): string[] | null {
   return current?.trackers ?? null;

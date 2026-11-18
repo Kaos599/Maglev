@@ -77,6 +77,8 @@ export interface TorrentTelemetry {
   health?: HealthTag | null;
   /** NATIVE_CONTRACT 18.4. Sum of the included, non-padding file lengths. */
   includedBytes?: number;
+  /** NATIVE_CONTRACT 38. Name of the largest included file, null until the metadata is known. Picks the card's file icon. */
+  mainFile?: string | null;
   /** NATIVE_CONTRACT 18.4. Downloaded bytes of every file, skipped ones too. Absent from an older engine. */
   heldBytes?: number;
   /** NATIVE_CONTRACT 16. Web seeds configured for the torrent. */
@@ -139,6 +141,45 @@ export type PieceMatrix = Uint8Array; // 256 bytes (16x16)
 // Native contract types (docs/NATIVE_CONTRACT.md section 3 and 6), camelCase on the JS side.
 // NativeConfig is the exception: it is passed to Rust as-is, so it keeps snake_case keys.
 // ---------------------------------------------------------------------------
+
+/** NATIVE_CONTRACT 36.6. `UNSUPPORTED` is added by the bridge when no engine can answer. */
+export type SubtitleErrorCode =
+  | 'FILE_TOO_SMALL'
+  | 'NOT_FOUND'
+  | 'IO'
+  | 'NAME_TAKEN'
+  | 'REPLACE_DENIED'
+  | 'VERIFY_FAILED'
+  | 'CANT_WRITE'
+  | 'NO_SPACE'
+  | 'ARCHIVE_UNSAFE'
+  | 'UNSUPPORTED';
+
+export interface SubtitleError extends Error {
+  code: SubtitleErrorCode;
+}
+
+/** An Error carrying a subtitle error code, the way a native rejection does. */
+export function subtitleError(code: SubtitleErrorCode, message: string): SubtitleError {
+  return Object.assign(new Error(message), { code }) as SubtitleError;
+}
+
+export interface SubtitleHashResult {
+  /** 16 lowercase hex digits. */
+  hash: string;
+  /** File size in bytes. */
+  bytes: number;
+}
+
+export interface SubtitleSaveResult {
+  /** Path or document URI of the file that was written. */
+  path: string;
+}
+
+export interface SubtitleZipEntry {
+  name: string;
+  base64: string;
+}
 
 export type EngineErrorCode =
   | 'INVALID_SOURCE'
@@ -266,6 +307,8 @@ export interface Snapshot {
   health: HealthTag | null;
   /** NATIVE_CONTRACT 18.4. SM-35: `pendingNeed = sum(max(0, includedBytes - progressBytes))` over unfinished torrents. */
   includedBytes: number;
+  /** NATIVE_CONTRACT 38. Name of the largest included file, null until the metadata is known. Absent from an older engine. */
+  mainFile?: string | null;
   /** NATIVE_CONTRACT 18.4. What deleting the files frees: downloaded bytes of every file, skipped ones too. */
   heldBytes?: number;
   /** NATIVE_CONTRACT 20. Seconds a magnet has been looking for its metadata; null once it has it. */
@@ -645,7 +688,7 @@ export interface FeedAutomationStatus {
 export type EngineStatus =
   | { kind: 'starting'; message: string }
   | { kind: 'ready'; message: string; simulated: boolean }
-  | { kind: 'unavailable'; message: string };
+  | { kind: 'unavailable'; message: string; /** Engine error code of the failed start, when known. */ code?: string };
 
 export type Unsubscribe = () => void;
 
@@ -751,6 +794,16 @@ export interface MaglevEngineApi {
   /** Choose a launcher icon. Native applies it when the app leaves the foreground. Unknown id: INVALID_ARGUMENT. */
   setAppIcon(id: string): Promise<EngineResult>;
   requestLegacyStorage(): Promise<EngineResult>;
+  // Subtitles (NATIVE_CONTRACT 36.6). These reject with an Error whose `code` is a SubtitleErrorCode.
+  /** OpenSubtitles 64-bit hash of a finished video (POSIX path or SAF document URI). Errors: FILE_TOO_SMALL, NOT_FOUND, IO. */
+  subtitleHash(pathOrUri: string): Promise<SubtitleHashResult>;
+  /**
+   * Writes a subtitle next to the video. `videoPathOrUri` is an absolute POSIX path, `file://` path or a SAF document
+   * URI inside a granted tree. Errors: NAME_TAKEN (name exists and `replace` is false), VERIFY_FAILED, CANT_WRITE, NO_SPACE.
+   */
+  saveSubtitle(videoPathOrUri: string, fileName: string, base64: string, replace: boolean): Promise<SubtitleSaveResult>;
+  /** Subtitle members (.srt/.ass/.ssa/.vtt, base name) of a zip, in memory. Error: ARCHIVE_UNSAFE. */
+  unzipSubtitles(base64: string): Promise<SubtitleZipEntry[]>;
   // In-app updates (NATIVE_CONTRACT 27)
   /** Who installed Maglev. `managedBy` is non-null when F-Droid, Obtainium, Google Play, Accrescent or another app store owns updates. */
   getInstallSource(): Promise<InstallSource>;
@@ -774,6 +827,10 @@ export interface MaglevEngineApi {
   verifyListSignature(body: string, sigB64: string): Promise<boolean>;
   // Governance
   setGovernance(config: GovernanceConfig): Promise<EngineResult>;
+  /** NATIVE_CONTRACT 35: every rule holding transfers right now. Empty when nothing blocks. Never throws. */
+  getActiveBlocks(): Promise<ActiveBlock[]>;
+  /** NATIVE_CONTRACT 35: fires with the full list whenever it changes. Returns an unsubscribe function. */
+  addBlocksListener(listener: (blocks: ActiveBlock[]) => void): () => void;
   // URL downloads (NATIVE_CONTRACT 17)
   probeUrl(url: string, options: DownloadOptions, timeoutMs: number): Promise<EngineResult<UrlProbe>>;
   /** NATIVE_CONTRACT 24.8. Errors: STREAM_PROTECTED, STREAM_LIVE, STREAM_UNSUPPORTED, plus the probeUrl ones. */
@@ -846,4 +903,32 @@ export interface PlaybackSupport {
   hlg: boolean | null;
   /** True only for the dev mock. Never set by the native probe. */
   mock?: boolean;
+}
+
+/**
+ * NATIVE_CONTRACT 35. One rule that is holding transfers right now, as Kotlin governance last judged it.
+ * `tag` is the same string that lands in `pausedBy` (except `offline`, which torrents never carry).
+ */
+export type ActiveBlockTag =
+  | 'wifi_only'
+  | 'battery'
+  | 'charging_only'
+  | 'network_unvalidated'
+  | 'vpn_required'
+  | 'offline'
+  | 'schedule'
+  | 'storage_full'
+  | 'seed_metered';
+
+export interface ActiveBlock {
+  tag: ActiveBlockTag;
+  /** wifi_only: `metered` (on mobile data) or `ssid` (on a Wi-Fi network that is not in the allowed list). */
+  cause?: 'metered' | 'ssid';
+  /** battery: the cut-off from settings and the current level, both 0-100. */
+  thresholdPct?: number;
+  levelPct?: number;
+  /** schedule: epoch ms when the schedule next allows transfers, or null when unknown. */
+  resumesAtMs?: number | null;
+  /** Epoch ms when this block started (Kotlin's clock). */
+  sinceMs: number;
 }

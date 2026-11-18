@@ -31,6 +31,8 @@ export interface SourcesFile {
   serial: number;
   generatedAt: string;
   sources: Record<string, SourceEntry>;
+  /** Subtitle providers (docs/NATIVE_CONTRACT.md section 36.9): same entry shape, caps and precedence as `sources`. */
+  subtitles?: Record<string, SourceEntry>;
   trackers?: string[];
   blocklistUrls?: string[];
 }
@@ -101,9 +103,21 @@ function entryOf(raw: unknown): SourceEntry | null {
 
 /**
  * Validates a parsed file. `known` limits `sources` to real provider ids (unknown ids are ignored); omit it to keep
- * every id (used when reading back a file this code already filtered).
+ * every id (used when reading back a file this code already filtered). `knownSubtitles` does the same for `subtitles`.
  */
-export function validateFile(raw: unknown, known?: ReadonlySet<string>): ParseResult {
+function entryMap(src: unknown, known?: ReadonlySet<string>): Record<string, SourceEntry> {
+  const out: Record<string, SourceEntry> = {};
+  if (src && typeof src === 'object' && !Array.isArray(src)) {
+    for (const [id, v] of Object.entries(src as Record<string, unknown>)) {
+      if (known && !known.has(id)) continue;
+      const e = entryOf(v);
+      if (e) out[id] = e;
+    }
+  }
+  return out;
+}
+
+export function validateFile(raw: unknown, known?: ReadonlySet<string>, knownSubtitles?: ReadonlySet<string>): ParseResult {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return { ok: false, reason: 'schema' };
   const o = raw as Record<string, unknown>;
   if (o.schema !== SCHEMA_VERSION) return { ok: false, reason: 'schema' };
@@ -115,14 +129,9 @@ export function validateFile(raw: unknown, known?: ReadonlySet<string>): ParseRe
     generatedAt: typeof o.generatedAt === 'string' && !Number.isNaN(Date.parse(o.generatedAt)) ? o.generatedAt : '',
     sources: {},
   };
-  const src = o.sources;
-  if (src && typeof src === 'object' && !Array.isArray(src)) {
-    for (const [id, v] of Object.entries(src as Record<string, unknown>)) {
-      if (known && !known.has(id)) continue;
-      const e = entryOf(v);
-      if (e) file.sources[id] = e;
-    }
-  }
+  file.sources = entryMap(o.sources, known);
+  // `subtitles` is optional: older files and older apps simply don't have it. A wrong type drops only this field.
+  if (o.subtitles && typeof o.subtitles === 'object' && !Array.isArray(o.subtitles)) file.subtitles = entryMap(o.subtitles, knownSubtitles);
   const trackers = urlList(o.trackers, isAnnounceUrl, TRACKERS_MIN, TRACKERS_MAX);
   if (trackers) file.trackers = trackers;
   const blocklistUrls = urlList(o.blocklistUrls, isHttpsUrl, BLOCKLIST_URLS_MIN, BLOCKLIST_URLS_MAX);
@@ -131,7 +140,7 @@ export function validateFile(raw: unknown, known?: ReadonlySet<string>): ParseRe
 }
 
 /** Text of the file to a validated file, or why it was rejected. */
-export function parseSourcesFile(body: string, known?: ReadonlySet<string>): ParseResult {
+export function parseSourcesFile(body: string, known?: ReadonlySet<string>, knownSubtitles?: ReadonlySet<string>): ParseResult {
   if (utf8Length(body) > MAX_FILE_BYTES) return { ok: false, reason: 'size' };
   let json: unknown;
   try {
@@ -139,5 +148,5 @@ export function parseSourcesFile(body: string, known?: ReadonlySet<string>): Par
   } catch {
     return { ok: false, reason: 'schema' };
   }
-  return validateFile(json, known);
+  return validateFile(json, known, knownSubtitles);
 }

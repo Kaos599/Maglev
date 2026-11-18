@@ -5,24 +5,20 @@ appId: com.maglev
 name: transfers-filters
 ---
 - runFlow: subflows/onboard-if-needed.yaml
-- openLink: "magnet:?xt=urn:btih:08ada5a7a6183aae1e09d831df6748d566095a10&dn=Sintel&tr=udp%3A%2F%2Ftracker.opentrackr.org%3A1337%2Fannounce&tr=udp%3A%2F%2Fopen.tracker.cl%3A1337%2Fannounce&tr=udp%3A%2F%2Ftracker.openbittorrent.com%3A6969%2Fannounce&tr=udp%3A%2F%2Fexplodie.org%3A6969%2Fannounce"
-- extendedWaitUntil:
-    visible: "Start download.*"
-    timeout: 120000
-- tapOn: "Start download.*"
-# from app/add-torrent.tsx:499
-- extendedWaitUntil:
-    visible:
-      id: "transfer-card"
-    timeout: 60000
-# testID "transfer-card": components/TransferCard.tsx:179
-- tapOn: "Downloading, [0-9]+"
+- runFlow: subflows/clear-leftovers.yaml
+- runFlow:
+    file: subflows/add-from-card.yaml
+    env:
+      LINK: "magnet:?xt=urn:btih:08ada5a7a6183aae1e09d831df6748d566095a10&dn=Sintel&tr=udp%3A%2F%2Ftracker.opentrackr.org%3A1337%2Fannounce&tr=udp%3A%2F%2Fopen.tracker.cl%3A1337%2Fannounce&tr=udp%3A%2F%2Ftracker.openbittorrent.com%3A6969%2Fannounce&tr=udp%3A%2F%2Fexplodie.org%3A6969%2Fannounce"
+# On CI the torrent can finish within seconds, so the card is Downloading, Seeding or Done by now and a "Done" pill may not exist:
+# the pill holding it is whichever of Downloading/Seeding/Done has a count of 1 or more.
+- tapOn: "(Downloading|Seeding|Done), [1-9][0-9]*"
 # Filter pill with count: components/ui/Chip.tsx:29
 - assertVisible:
     id: "transfer-card"
-- tapOn: "Done, [0-9]+"
-- assertVisible: "No done transfers"
-# Empty filter title: constants/copy.ts empty.transfers.noneInFilter; shown by app/(tabs)/index.tsx:626-643
+# Paused always exists and is empty here: empty copy "No paused transfers" (constants/copy.ts empty.transfers.noneInFilter)
+- tapOn: "Paused, [0-9]+"
+- assertVisible: "No paused transfers"
 - assertNotVisible:
     id: "transfer-card"
 - tapOn: "All, [0-9]+"

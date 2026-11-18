@@ -47,16 +47,16 @@ async function main() {
     downloaded: 250, downBps: 100, eta: 8, segmentsActive: 1, resumable: true, folder: '/d', addedAt: 1, error: null,
   };
   const d = (patch) => ({ ...base, ...patch });
-  check('storage full copy', copy.downloadStatus(d({ state: 'paused', pausedBy: 'storage_full' })).text === 'Storage full');
-  check('link expired copy', copy.downloadStatus(d({ state: 'needs_link' })).text === 'Link expired · Paste new link');
-  check('file changed copy', copy.downloadStatus(d({ state: 'error', error: { code: 'FILE_CHANGED', message: 'x' } })).text === 'The file changed on the server · Restart');
-  check('not a file copy', copy.downloadStatus(d({ state: 'error', error: { code: 'NOT_A_FILE', message: 'x' } })).text === 'This link opens a web page, not a file');
-  check('checksum copy', copy.downloadStatus(d({ state: 'error', error: { code: 'CHECKSUM_MISMATCH', message: 'x' } })).text === "File doesn't match the checksum");
-  check('http status shows the engine message', copy.downloadStatus(d({ state: 'error', error: { code: 'HTTP_STATUS', message: 'The server returned an error (500).' } })).text === 'The server returned an error (500).');
-  check('wifi pause copy', copy.downloadStatus(d({ state: 'paused', pausedBy: 'wifi_only' })).text === 'Paused: waiting for Wi-Fi');
-  check('done copy has the size', copy.downloadStatus(d({ state: 'finished', downloaded: 1000 })).text === 'Done · 1000.0 B' || /^Done · /.test(copy.downloadStatus(d({ state: 'finished' })).text));
-  check('downloading shows speed', /\/s$/.test(copy.downloadStatus(d({}), '8s').text));
-  check('unknown speed is a dash', copy.downloadStatus(d({ downBps: 0, eta: -1 })).text === 'Downloading · —');
+  check('storage full copy', copy.downloadStatus(d({ state: 'paused', pausedBy: 'storage_full' })).lead === 'Storage full');
+  check('link expired copy', copy.downloadStatus(d({ state: 'needs_link' })).lead === 'Link expired · Paste new link');
+  check('file changed copy', copy.downloadStatus(d({ state: 'error', error: { code: 'FILE_CHANGED', message: 'x' } })).lead === 'The file changed on the server · Restart');
+  check('not a file copy', copy.downloadStatus(d({ state: 'error', error: { code: 'NOT_A_FILE', message: 'x' } })).lead === 'This link opens a web page, not a file');
+  check('checksum copy', copy.downloadStatus(d({ state: 'error', error: { code: 'CHECKSUM_MISMATCH', message: 'x' } })).lead === "File doesn't match the checksum");
+  check('http status shows the engine message', copy.downloadStatus(d({ state: 'error', error: { code: 'HTTP_STATUS', message: 'The server returned an error (500).' } })).lead === 'The server returned an error (500).');
+  check('wifi pause copy', copy.downloadStatus(d({ state: 'paused', pausedBy: 'wifi_only' })).lead === 'Waiting for Wi-Fi');
+  check('done copy has the size', /^Done · /.test(copy.downloadStatus(d({ state: 'finished', downloaded: 1000 })).text) && copy.downloadStatus(d({ state: 'finished', downloaded: 1000 })).slot === 'size');
+  check('downloading shows speed on the right, time left and percent on the left', /\/s$/.test(copy.downloadStatus(d({}), '8s').value) && copy.downloadStatus(d({}), '8s').lead === '8s left' && copy.downloadStatus(d({}), '8s').pct === '25%');
+  check('no time left and no speed: Downloading, percent, amount on the right', (() => { const s = copy.downloadStatus(d({ downBps: 0, eta: -1 })); return s.lead === 'Downloading' && s.pct === '25%' && /^250(\.0)? B of 1000(\.0)? B$/.test(s.value) && s.slot === 'amount' && !/ of /.test(s.lead); })());
   check('progress is a fraction', copy.downloadProgress(d({})) === 0.25 && copy.downloadProgress(d({ size: null })) === 0 && copy.downloadProgress(d({ state: 'finished' })) === 1);
 
   console.log('actions');
@@ -65,7 +65,8 @@ async function main() {
   check('user pause resumes', copy.downloadAction(d({ state: 'paused', pausedBy: 'user' }))?.kind === 'resume');
   check('storage full pause offers Free up space (resuming cannot work until space is freed)', copy.downloadAction(d({ state: 'paused', pausedBy: 'storage_full' }))?.kind === 'freeSpace');
   check('rule pause offers Resume anyway (0.14)', copy.downloadAction(d({ state: 'paused', pausedBy: 'schedule' }))?.kind === 'resumeAnyway');
-  check('governance pause with nothing to override has no button', copy.downloadAction(d({ state: 'paused', pausedBy: 'fgs_timeout' })) === null);
+  check('governance pause with nothing to override or change has no button', copy.downloadAction(d({ state: 'paused', pausedBy: 'network_unvalidated' })) === null && copy.downloadAction(d({ state: 'paused', pausedBy: 'offline' })) === null);
+  check('a background stop offers a plain Resume (NATIVE_CONTRACT 35.2)', copy.downloadAction(d({ state: 'paused', pausedBy: 'fgs_timeout' }))?.kind === 'resume');
   check('needs link offers a new link', copy.downloadAction(d({ state: 'needs_link' }))?.kind === 'newLink');
   check('file changed offers restart', copy.downloadAction(d({ state: 'error', error: { code: 'FILE_CHANGED', message: '' } }))?.kind === 'restart');
   check('other errors offer retry', copy.downloadAction(d({ state: 'error', error: { code: 'NETWORK', message: '' } }))?.kind === 'retry');
@@ -76,21 +77,21 @@ async function main() {
   console.log('recovery');
   const err = (code, extra) => d({ state: 'error', error: { code, message: 'x', ...extra } });
   const kinds = (x) => copy.downloadActions(x).map((a) => a.kind).join(',');
-  check('auth needs sign-in label', copy.downloadStatus(d({ state: 'needs_link', error: { code: 'AUTH_REQUIRED', message: '' } })).text === 'Needs sign-in · Paste new link');
+  check('auth needs sign-in label', copy.downloadStatus(d({ state: 'needs_link', error: { code: 'AUTH_REQUIRED', message: '' } })).lead === 'Needs sign-in · Paste new link');
   check('not a file offers Remove, not Retry', kinds(err('NOT_A_FILE')) === 'remove');
   check('checksum offers Remove, not Retry', kinds(err('CHECKSUM_MISMATCH')) === 'remove');
-  check('permission offers Pick folder again then Retry', kinds(err('PERMISSION')) === 'pickFolder,retry' && copy.downloadStatus(err('PERMISSION')).text === "Maglev can't write to that folder.");
+  check('permission offers Pick folder again then Retry', kinds(err('PERMISSION')) === 'pickFolder,retry' && copy.downloadStatus(err('PERMISSION')).lead === "Maglev can't write to that folder.");
   check('EACCES is permission', kinds(err('EACCES')) === 'pickFolder,retry');
   check('network offers Retry', kinds(err('NETWORK')) === 'retry');
   check('5xx offers Retry, 404 offers Remove', kinds(err('HTTP_STATUS', { httpStatus: 503 })) === 'retry' && kinds(err('HTTP_STATUS', { httpStatus: 404 })) === 'remove' && kinds(err('HTTP_STATUS', { httpStatus: 429 })) === 'retry');
-  check('unknown code is a generic retry', kinds(err('WHATEVER')) === 'retry' && copy.downloadStatus(d({ state: 'error', error: null })).text === 'Something went wrong');
-  check('offline pause', copy.downloadStatus(d({ state: 'paused', pausedBy: 'offline' })).text === 'Waiting for a connection' && copy.downloadAction(d({ state: 'paused', pausedBy: 'offline' })) === null);
-  check('folder gone pause offers Pick folder again', copy.downloadStatus(d({ state: 'paused', pausedBy: 'storage_unavailable' })).text === "The folder isn't available. Is the SD card in?" && kinds(d({ state: 'paused', pausedBy: 'storage_unavailable' })) === 'pickFolder');
-  check('folder gone error', copy.downloadStatus(err('STORAGE_UNAVAILABLE')).text === "The folder isn't available. Is the SD card in?" && kinds(err('STORAGE_UNAVAILABLE')) === 'pickFolder');
-  check('too big for the card', copy.downloadStatus(err('FILE_TOO_LARGE')).text === "This file is bigger than the card's format allows (4 GB). Use phone storage." && kinds(err('FILE_TOO_LARGE')) === 'pickFolder');
-  check('local redirect is blocked, Remove only', copy.downloadStatus(err('LOCAL_REDIRECT')).text === 'A redirect tried to send Maglev to a device on your network, so it stopped.' && kinds(err('LOCAL_REDIRECT')) === 'remove');
-  check('policy block opens settings', copy.downloadStatus(err('BLOCKED')).text === 'Blocked by your Wi-Fi-only or VPN setting.' && kinds(err('BLOCKED')) === 'openNetworkSettings,retry');
-  check('wifi pause offers mobile data, settings and a caption', kinds(d({ state: 'paused', pausedBy: 'wifi_only' })) === 'resumeAnyway,openNetworkSettings' && copy.downloadCaption(d({ state: 'paused', pausedBy: 'wifi_only' })) === 'Wi-Fi only is on in Settings → Network.');
+  check('unknown code is a generic retry', kinds(err('WHATEVER')) === 'retry' && copy.downloadStatus(d({ state: 'error', error: null })).lead === 'Something went wrong');
+  check('offline pause', copy.downloadStatus(d({ state: 'paused', pausedBy: 'offline' })).lead === 'No internet connection' && copy.downloadAction(d({ state: 'paused', pausedBy: 'offline' })) === null);
+  check('folder gone pause offers Pick folder again', copy.downloadStatus(d({ state: 'paused', pausedBy: 'storage_unavailable' })).lead === 'Folder not available' && copy.downloadStatus(d({ state: 'paused', pausedBy: 'storage_unavailable' })).tone === 'danger' && /SD card/.test(copy.downloadStatus(d({ state: 'paused', pausedBy: 'storage_unavailable' })).text) && kinds(d({ state: 'paused', pausedBy: 'storage_unavailable' })) === 'pickFolder');
+  check('folder gone error', copy.downloadStatus(err('STORAGE_UNAVAILABLE')).lead === 'Folder not available' && /SD card/.test(copy.downloadStatus(err('STORAGE_UNAVAILABLE')).text) && kinds(err('STORAGE_UNAVAILABLE')) === 'pickFolder');
+  check('too big for the card', copy.downloadStatus(err('FILE_TOO_LARGE')).lead === "This file is bigger than the card's format allows (4 GB). Use phone storage." && kinds(err('FILE_TOO_LARGE')) === 'pickFolder');
+  check('local redirect is blocked, Remove only', copy.downloadStatus(err('LOCAL_REDIRECT')).lead === 'A redirect tried to send Maglev to a device on your network, so it stopped.' && kinds(err('LOCAL_REDIRECT')) === 'remove');
+  check('policy block opens settings', copy.downloadStatus(err('BLOCKED')).lead === 'Blocked by your Wi-Fi-only or VPN setting.' && kinds(err('BLOCKED')) === 'openNetworkSettings,retry');
+  check('wifi pause offers mobile data and the setting', kinds(d({ state: 'paused', pausedBy: 'wifi_only' })) === 'resumeAnyway,openNetworkSettings' && copy.downloadActions(d({ state: 'paused', pausedBy: 'wifi_only' }))[1].route === '/settings/network');
   check('battery pause offers Resume anyway', copy.downloadAction(d({ state: 'paused', pausedBy: 'battery' }))?.label === 'Resume anyway');
   check('settings actions have routes', copy.actionRoute('pickFolder') === '/settings/storage' && copy.actionRoute('openNetworkSettings') === '/settings/network' && copy.actionRoute('retry') === null);
   const pv = (code, status) => copy.probeErrorView(code, 'm', status);
@@ -101,9 +102,9 @@ async function main() {
 
   check('probe: blocked offers settings and Add anyway, not Try again', pv('BLOCKED').primary === 'blocked' && /Open settings/.test(pv('BLOCKED').body) && /add it anyway and it starts when downloads are allowed/.test(pv('BLOCKED').body) && pv('blocked').primary === 'blocked');
   check('probe: other codes are not blocked', pv('BLOCKED_X').primary === 'retry');
-  check('paused tags: storage_unavailable is a folder problem, storage_full is a full disk', copy.downloadStatus(d({ state: 'paused', pausedBy: 'storage_unavailable' })).text !== copy.downloadStatus(d({ state: 'paused', pausedBy: 'storage_full' })).text && kinds(d({ state: 'paused', pausedBy: 'storage_unavailable' })) === 'pickFolder' && kinds(d({ state: 'paused', pausedBy: 'storage_full' })) === 'freeSpace' && !copy.isGovernancePause('storage_unavailable') && !copy.isGovernancePause('storage_full'));
+  check('paused tags: storage_unavailable is a folder problem, storage_full is a full disk', copy.downloadStatus(d({ state: 'paused', pausedBy: 'storage_unavailable' })).lead !== copy.downloadStatus(d({ state: 'paused', pausedBy: 'storage_full' })).lead && kinds(d({ state: 'paused', pausedBy: 'storage_unavailable' })) === 'pickFolder' && kinds(d({ state: 'paused', pausedBy: 'storage_full' })) === 'freeSpace' && !copy.isGovernancePause('storage_unavailable') && !copy.isGovernancePause('storage_full'));
 
-  check('LAN_ADDRESS copy and actions', copy.downloadStatus(err('LAN_ADDRESS')).text === 'This address points to a device on your network.' && kinds(err('LAN_ADDRESS')) === 'allowDevice,remove' && copy.downloadAction(err('LAN_ADDRESS')).label === 'Allow this device' && /Only do this for devices you trust/.test(copy.downloadCaption(err('LAN_ADDRESS'))));
+  check('LAN_ADDRESS copy and actions', copy.downloadStatus(err('LAN_ADDRESS')).lead === 'This address points to a device on your network.' && kinds(err('LAN_ADDRESS')) === 'allowDevice,remove' && copy.downloadAction(err('LAN_ADDRESS')).label === 'Allow this device' && /Only do this for devices you trust/.test(copy.downloadCaption(err('LAN_ADDRESS'))));
   check('LAN_ADDRESS matches exactly', kinds(err('LAN_ADDRESS_X')) === 'retry' && kinds(err('LOCAL_REDIRECT')) === 'remove');
   check('probe: LAN_ADDRESS offers Allow this device', pv('LAN_ADDRESS').primary === 'allowDevice' && /allow this device/.test(pv('LAN_ADDRESS').body));
   check('allow device failures are plain', /find that device/.test(copy.allowDeviceFailureText('NETWORK')) && /anymore/.test(copy.allowDeviceFailureText('INVALID_STATE')) && copy.allowDeviceFailureText('NOT_FOUND', 'Gone') === 'Gone');
@@ -238,18 +239,19 @@ async function main() {
   // ---- unknown size, stall, open, sign-in ----
   console.log('unknown size, stall, open');
   const unk = d({ size: null, downloaded: 120 * 1024 * 1024, downBps: 1000, eta: -1 });
-  check('unknown size is indeterminate with bytes so far', copy.isIndeterminate(unk) && /^120(\.0)? MB so far/.test(copy.downloadStatus(unk).text), copy.downloadStatus(unk).text);
+  check('unknown size is indeterminate with bytes so far', copy.isIndeterminate(unk) && copy.downloadStatus(unk).lead === 'Downloading' && !copy.downloadStatus(unk).pct && /\/s$/.test(copy.downloadStatus(unk).value), JSON.stringify(copy.downloadStatus(unk)));
+  check('unknown size without speed shows the downloaded bytes on the right', (() => { const s = copy.downloadStatus({ ...unk, downBps: 0 }); return /^120(\.0)? MB$/.test(s.value) && s.slot === 'amount'; })());
   check('known size is not indeterminate', !copy.isIndeterminate(d({})));
   check('unknown size label has bytes, not a percent', /so far$/.test(copy.downloadProgressLabel(unk)) && copy.downloadProgressLabel(d({})) === '25 percent');
   check('finished with no size is not unknown', !copy.isSizeUnknown(d({ state: 'finished', size: null })));
-  check('stalled shows Waiting for the server', copy.downloadStatus(d({ stalled: true })).text === 'Waiting for the server' && copy.downloadCaption(d({ stalled: true })) === 'Waiting for the server');
+  check('stalled shows Waiting for the server', copy.downloadStatus(d({ stalled: true })).lead === 'Waiting for the server' && copy.downloadCaption(d({ stalled: true })) === 'Waiting for the server');
   check('not stalled has no caption', copy.downloadCaption(d({ stalled: false })) === null && copy.downloadCaption(d({})) === null);
-  check('stalled error reads plainly and retries', copy.downloadStatus(err('STALLED')).text === 'The server stopped sending data.' && kinds(err('STALLED')) === 'retry');
+  check('stalled error reads plainly and retries', copy.downloadStatus(err('STALLED')).lead === 'The server stopped sending data.' && kinds(err('STALLED')) === 'retry');
   check('finished offers Open', kinds(d({ state: 'finished' })) === 'open' && copy.downloadAction(d({ state: 'finished' })).label === 'Open');
   check('NO_APP text', copy.openFailureText('NO_APP', 'x') === 'No app on this phone can open this file.');
   check('other open errors keep their message', copy.openFailureText('INTERNAL', 'Boom') === 'Boom' && copy.openFailureText(undefined) === "Couldn't open that file.");
-  check('AUTH_REQUIRED error asks for the link again', copy.downloadStatus(err('AUTH_REQUIRED')).text === 'This link needs you to sign in again. Paste the link again.' && kinds(err('AUTH_REQUIRED')) === 'newLink' && copy.needsNewLink(err('AUTH_REQUIRED')));
-  check('codes match exactly', kinds(err('STALLED_X')) === 'retry' && copy.downloadStatus(err('STALLED_X')).text === 'x');
+  check('AUTH_REQUIRED error asks for the link again', copy.downloadStatus(err('AUTH_REQUIRED')).lead === 'This link needs you to sign in again. Paste the link again.' && kinds(err('AUTH_REQUIRED')) === 'newLink' && copy.needsNewLink(err('AUTH_REQUIRED')));
+  check('codes match exactly', kinds(err('STALLED_X')) === 'retry' && copy.downloadStatus(err('STALLED_X')).lead === 'x');
 
   if (failed) {
     console.error(`\n${failed} failed`);

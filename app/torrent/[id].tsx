@@ -6,18 +6,29 @@ import { maglevEngine, type DetailFile, type FilePriority, type TorrentLimits } 
 import { useTheme } from '../../context/ThemeContext';
 import { useMaglevEngine } from '../../context/EngineContext';
 import { ThemeColors, radius, spacing, type } from '../../constants/theme';
-import { formatBytes, formatEta, formatSpeed } from '../../constants/format';
+import { formatProgressPercent, formatSpeed } from '../../constants/format';
 import { haptic } from '../../constants/haptics';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { PixelIcon } from '../../components/PixelIcon';
+import { SubtitleSheet } from '../../components/subtitles/SubtitleSheet';
+import { MultiSubtitleSheet } from '../../components/subtitles/MultiSubtitleSheet';
+import { SubtitlesRow } from '../../components/subtitles/SubtitlesRow';
+import { torrentRowFacts, type SheetStart } from '../../components/subtitles/rowModel';
+import { askSubtitles, getRequests } from '../../utils/subtitles/requests';
+import { buildAsk } from '../../utils/addedTray';
+import { pickMainFile } from '../../utils/mainFile';
+import { useSubtitleAvailability } from '../../components/subtitles/useSubtitleEntry';
+import { fileEntryMode, torrentEntryMode, torrentTarget, type SubtitleTarget } from '../../components/subtitles/flow';
 import { OPEN_FOLDER_FAILED_TEXT } from '../../utils/downloadCopy';
 import { friendlyPath } from '../../components/settings/SettingsParts';
 import { Banner, Button, EmptyBlock, IconButton, ListRow, PressableScale, ProgressBar, Screen, SegmentedControl } from '../../components/ui';
 import { SpeedChart } from '../../components/SpeedChart';
 import { PiecesMatrix } from '../../components/PiecesMatrix';
 import { StateBadge } from '../../components/detail/StateBadge';
-import { StatGrid } from '../../components/detail/StatGrid';
-import { TimingRow } from '../../components/detail/TimingRow';
+import { TorrentStats } from '../../components/detail/TorrentStats';
+import { CompactLine } from '../../components/detail/CompactLine';
+import { ProgressCard } from '../../components/detail/ProgressCard';
+import { useSettings } from '../../context/SettingsContext';
 import { PeerRow, TrackerRow } from '../../components/detail/rows';
 import { DoneActions, OpenFolderButton } from '../../components/detail/DoneActions';
 import { DeleteSheet, FileActionsSheet, RemoveFilesSheet, SavedTorrentSheet } from '../../components/detail/sheets';
@@ -34,8 +45,13 @@ import {
 } from '../../components/detail/fileHealthMachine';
 import { FileListRow } from '../../components/detail/FileListRow';
 import { PrioritySheet } from '../../components/detail/PrioritySheet';
-import { canResumeAnyway, resumeAnywayLabel } from '../../components/transfers/model';
-import { WIFI_ANYWAY_NOTE } from '../../utils/downloadCopy';
+import { canResumeAnyway, resumeAnywayLabel, torrentSituation } from '../../components/transfers/model';
+import { useFlowClock } from '../../components/transfers/useStatusOpts';
+import { WhyStuck } from '../../components/detail/WhyStuck';
+import { reasonsForItem } from '../../utils/blocks/reasons';
+import { WhyHeld } from '../../components/transfers/WhyHeld';
+import { useLiveBlockContext } from '../../utils/blocks/useActiveBlocks';
+import { WIFI_ANYWAY_NOTE, torrentWhy } from '../../utils/downloadCopy';
 import { TorrentMoreSheet } from '../../components/detail/TorrentMoreSheet';
 import { SpeedLimitSheet } from '../../components/detail/SpeedLimitSheet';
 import { MoveSheet } from '../../components/detail/MoveSheet';
@@ -90,6 +106,8 @@ interface Notice {
 
 export default function TorrentDetailScreen() {
   const { colors } = useTheme();
+  // NATIVE_CONTRACT 41: Compact or Detailed, from Settings > Appearance > Download page.
+  const compact = useSettings().settings.appearance.telemetryDensity === 'COMPACT';
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -104,6 +122,10 @@ export default function TorrentDetailScreen() {
   const [deleteBusy, setDeleteBusy] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [fileSheet, setFileSheet] = useState<DetailFile | null>(null);
+  const subtitleAvail = useSubtitleAvailability();
+  const [subtitleTarget, setSubtitleTarget] = useState<SubtitleTarget | null>(null);
+  const [subtitleStart, setSubtitleStart] = useState<SheetStart>('results');
+  const [subtitlesAll, setSubtitlesAll] = useState(false);
   const [notice, setNotice] = useState<Notice | null>(null);
   const [pending, setPending] = useState<Record<number, FilePriority>>({});
   const [prioTarget, setPrioTarget] = useState<number[] | null>(null);
@@ -263,13 +285,13 @@ export default function TorrentDetailScreen() {
   }, [id, healthTag, tick, sendFh]);
   const missingSet = useMemo(() => new Set(missingIdx), [missingIdx]);
 
-  // Tick once a second while the "Find more peers" cool-down is showing.
+  // Tick once a second while the "Find more peers" cool-down is showing (in the menu, or on "Ask trackers again").
   useEffect(() => {
-    if (!moreOpen || retryUntil <= Date.now()) return;
+    if (retryUntil <= Date.now()) return;
     setNow(Date.now());
     const t = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(t);
-  }, [moreOpen, retryUntil]);
+  }, [retryUntil]);
   const retryInSecs = Math.max(0, Math.ceil((retryUntil - now) / 1000));
 
   // Drop optimistic priorities once the engine reports the same value.
@@ -285,7 +307,7 @@ export default function TorrentDetailScreen() {
   }, [detail]);
 
   const snap = detail?.snapshot ?? null;
-
+  const blockCtx = useLiveBlockContext();
   // Forget a hidden tracker once the engine no longer lists it.
   useEffect(() => {
     if (!detail) return;
@@ -298,6 +320,26 @@ export default function TorrentDetailScreen() {
     () => (detail ? detail.trackers.filter((t) => !hiddenTrackers.includes(t.url)) : []),
     [detail, hiddenTrackers],
   );
+
+  // NATIVE_CONTRACT 43: the shared flow clock says how long no data has arrived, the same record the card reads.
+  const flow = useFlowClock(id ?? '', snap?.state === 'DOWNLOADING', snap?.downBps ?? 0);
+  const peerTimeoutMins = useSettings().settings.bandwidth.peerTimeoutMins;
+  const situation = snap
+    ? torrentSituation({ state: snap.state, downloadSpeedBytes: snap.downBps, downloadedBytes: snap.progressBytes }, flow, blockCtx)
+    : null;
+  const whyModel =
+    detail && (situation === 'connecting' || situation === 'waiting')
+      ? torrentWhy({
+          situation,
+          peersTotal: detail.snapshot.peersSeen,
+          peersConnected: detail.snapshot.peersLive,
+          trackers,
+          peers: detail.peers,
+          quietMs: flow.quietMs,
+          lastDataAgoMs: flow.lastDataAgoMs,
+          peerTimeoutMins,
+        })
+      : null;
 
   // Drop the optimistic limit once the engine reports the same values.
   useEffect(() => {
@@ -326,6 +368,8 @@ export default function TorrentDetailScreen() {
       alive = false;
     };
   }, [scheduled]);
+  // Subtitle files that are already on disk, for "This video already has English subtitles".
+  const downloadedFiles = useMemo(() => (detail ? detail.files.filter((f) => f.length > 0 && f.progressBytes >= f.length) : []), [detail]);
   const files = useMemo(
     () => (detail ? detail.files.map((f) => (f.index in pending ? { ...f, priority: pending[f.index], included: pending[f.index] !== 'skip' } : f)) : []),
     [detail, pending],
@@ -633,7 +677,16 @@ export default function TorrentDetailScreen() {
     [handleFreeSpace, handlePlayPause, handleRecheck, handleScanFiles, router],
   );
 
-  const ruleResume = snap?.state === 'PAUSED' && canResumeAnyway(snap.pausedBy);
+  const heldItem = snap
+    ? {
+        finished: !!snap.finished || snap.state === 'COMPLETED' || snap.state === 'SEEDING',
+        paused: snap.state === 'PAUSED',
+        queued: snap.state === 'QUEUED',
+        downloading: snap.state === 'DOWNLOADING',
+        pausedBy: snap.pausedBy,
+      }
+    : null;
+  const ruleResume = snap?.state === 'PAUSED' && canResumeAnyway(snap.pausedBy, blockCtx);
   const headerActions = snap ? (
     <>
       {snap.state === 'CHECKING' || snap.state === 'INITIALIZING' || snap.state === 'MOVING' ? null : (
@@ -694,6 +747,19 @@ export default function TorrentDetailScreen() {
   }
 
   if (!snap || !detail) return null;
+  const torrentSubtitles = torrentEntryMode(
+    { finished: !!snap.finished || snap.state === 'COMPLETED' || snap.state === 'SEEDING', folder: snap.outputFolder },
+    files,
+    subtitleAvail,
+  );
+
+  // NATIVE_CONTRACT 44.14: the Subtitles row, under the progress card and the why block.
+  const subtitleRow = torrentRowFacts(
+    { finished: !!snap.finished || snap.state === 'COMPLETED' || snap.state === 'SEEDING', folder: snap.outputFolder },
+    files,
+    subtitleAvail,
+    !!getRequests()[`t:${id.toLowerCase()}`]?.files,
+  );
 
   const errorMap = snap.error ? actionsFor(snap.error.code, { pausedBy: snap.pausedBy }) : null;
   const errorButtons: { action: ErrorAction; label: string; variant: 'primary' | 'secondary' }[] = [];
@@ -783,26 +849,58 @@ export default function TorrentDetailScreen() {
         </View>
       ) : null}
 
-      <View style={styles.summary}>
-        <View style={styles.summaryTop}>
-          <StateBadge state={snap.state} pausedBy={snap.pausedBy} moveProgress={snap.moveProgress} resumesAt={resumesAt} resolving={resolving} />
-          <Text style={styles.percent} accessibilityLabel={`${(frac * 100).toFixed(1)} percent`}>
-            {(frac * 100).toFixed(1)}%
-          </Text>
-        </View>
-        <ProgressBar progress={frac} tone={tone} accessibilityLabel={moving ? 'Move progress' : 'Download progress'} />
+      {/* NATIVE_CONTRACT 41.1: in Compact the one speed and time line sits inside the card under the bar. */}
+      <ProgressCard
+        badge={<StateBadge state={snap.state} pausedBy={snap.pausedBy} moveProgress={snap.moveProgress} resumesAt={resumesAt} resolving={resolving} blocks={blockCtx} />}
+        percent={formatProgressPercent(frac)}
+        percentLabel={`${(frac * 100).toFixed(1)} percent`}
+        progress={frac}
+        tone={tone}
+        barLabel={moving ? 'Move progress' : 'Download progress'}
+      >
+        {compact && snap.state === 'DOWNLOADING' ? <CompactLine down={snap.downBps} up={snap.upBps} etaSecs={snap.etaSecs > 0 ? snap.etaSecs : undefined} /> : null}
+        {compact && snap.state === 'SEEDING' ? <CompactLine up={snap.upBps} /> : null}
         {limitSummary ? (
           <View style={styles.limitRow} accessibilityLabel={`Speed limit: ${limitSummary}`}>
             <PixelIcon name="speed-limit" size={16} color={colors.textMuted} />
             <Text style={styles.limitText}>{limitSummary}</Text>
           </View>
         ) : null}
-      </View>
+      </ProgressCard>
+
+      {/* NATIVE_CONTRACT 43.4: only while connecting or waiting, in Compact and Detailed; gone once data flows. */}
+      {whyModel ? <WhyStuck model={whyModel} onAskTrackers={() => void handleReannounce()} retryInSecs={retryInSecs} /> : null}
+
+      {subtitleRow.show ? (
+        <SubtitlesRow
+          requestKey={`t:${id.toLowerCase()}`}
+          stateKey={`t:${id}`}
+          started={subtitleRow.started}
+          canOpenSheet={subtitleRow.canOpenSheet}
+          onOpenSheet={(start) => {
+            if (!subtitleRow.file) return;
+            setSubtitleStart(start);
+            setSubtitleTarget(torrentTarget(id, snap.outputFolder, subtitleRow.file, downloadedFiles));
+          }}
+          onSeeAll={() => setSubtitlesAll(true)}
+          onAskPack={() => {
+            // 44.15 D7: a pack page row with no request asks for the whole pack.
+            const videos = pickMainFile(files).videos.length;
+            askSubtitles([buildAsk({ infoHash: id, name: snap.name, sizeBytes: snap.totalBytes, videoCount: videos })], { auto: false });
+          }}
+        />
+      ) : null}
 
       {ruleResume ? (
         <View style={[styles.block, { gap: spacing.sm }]}>
           <Button label={resumeAnywayLabel(snap.pausedBy)} icon="play" size="lg" fullWidth onPress={() => void handleResumeAnyway()} />
           {snap.pausedBy === 'wifi_only' ? <Text style={styles.muted}>{WIFI_ANYWAY_NOTE}</Text> : null}
+        </View>
+      ) : null}
+
+      {!allDone && heldItem && reasonsForItem(heldItem, blockCtx.blocks ?? [], blockCtx.queueLimit).length > 0 ? (
+        <View style={styles.block}>
+          <WhyHeld item={heldItem} blocks={blockCtx.blocks ?? []} queueLimit={blockCtx.queueLimit} />
         </View>
       ) : null}
 
@@ -820,30 +918,30 @@ export default function TorrentDetailScreen() {
         </View>
       )}
 
-      <View style={styles.block}>
-        <StatGrid
-          stats={[
-            { label: 'Download', value: formatSpeed(snap.downBps), tint: colors.download },
-            { label: 'Upload', value: formatSpeed(snap.upBps), tint: colors.upload },
-            { label: 'ETA', value: snap.etaSecs > 0 ? formatEta(snap.etaSecs) : '—' },
-            { label: 'Ratio', value: snap.ratio >= 0 ? snap.ratio.toFixed(2) : '—' },
-            { label: 'Peers', value: `${snap.peersLive}/${snap.peersSeen}` },
-            { label: 'Size', value: snap.totalBytes > 0 ? formatBytes(snap.totalBytes) : '—' },
-          ]}
-        />
-        <TimingRow
-          timing={{
-            activeSecs: snap.activeSecs,
-            finishedAt: snap.finishedAt,
-            addedAt: snap.addedAt,
-            sessionBytes: snap.sessionBytes,
-            bytesWifi: snap.bytesWifi,
-            bytesMobile: snap.bytesMobile,
-            seedingSecs: snap.seedingSecs,
-            uploaded: snap.uploadedBytes,
-          }}
-        />
-      </View>
+      {/* NATIVE_CONTRACT 41.2: Detailed is today's page, the six boxes and the Timing row. 41.1: Compact shows neither. */}
+      {!compact ? (
+        <View style={styles.block}>
+          <TorrentStats
+            downBps={snap.downBps}
+            upBps={snap.upBps}
+            etaSecs={snap.etaSecs}
+            ratio={snap.ratio}
+            peersLive={snap.peersLive}
+            peersSeen={snap.peersSeen}
+            totalBytes={snap.totalBytes}
+            timing={{
+              activeSecs: snap.activeSecs,
+              finishedAt: snap.finishedAt,
+              addedAt: snap.addedAt,
+              sessionBytes: snap.sessionBytes,
+              bytesWifi: snap.bytesWifi,
+              bytesMobile: snap.bytesMobile,
+              seedingSecs: snap.seedingSecs,
+              uploaded: snap.uploadedBytes,
+            }}
+          />
+        </View>
+      ) : null}
 
       {snap.outputFolder ? (
         <View style={styles.block}>
@@ -1045,6 +1143,11 @@ export default function TorrentDetailScreen() {
         onCopyMagnet={handleCopyMagnet}
         onShareMagnet={handleShareMagnet}
         onSaveTorrent={handleSaveTorrent}
+        subtitles={torrentSubtitles.mode}
+        onFindSubtitles={() => {
+          setMoreOpen(false);
+          if (torrentSubtitles.file) setSubtitleTarget(torrentTarget(id, snap.outputFolder, torrentSubtitles.file, downloadedFiles));
+        }}
         storageGone={storageGone}
         limitSummary={limitSummary}
         onSpeedLimit={() => {
@@ -1111,6 +1214,26 @@ export default function TorrentDetailScreen() {
         onResume={() => resumeTorrent(id)}
         onNotice={(text) => showNotice({ tone: 'info', text })}
         onClose={() => setFileSheet(null)}
+        subtitles={fileSheet ? fileEntryMode(fileSheet, { ...subtitleAvail, folder: snap.outputFolder }) : 'hidden'}
+        onFindSubtitles={(f) => {
+          setFileSheet(null);
+          setSubtitleTarget(torrentTarget(id, snap.outputFolder, f, downloadedFiles));
+        }}
+      />
+      <SubtitleSheet
+        target={subtitleTarget}
+        initial={subtitleStart}
+        onClose={() => {
+          setSubtitleTarget(null);
+          setSubtitleStart('results');
+        }}
+      />
+      <MultiSubtitleSheet
+        visible={subtitlesAll}
+        mode="status"
+        asks={getRequests()[`t:${id.toLowerCase()}`] ? [getRequests()[`t:${id.toLowerCase()}`].ask] : []}
+        onConfirm={() => setSubtitlesAll(false)}
+        onClose={() => setSubtitlesAll(false)}
       />
     </Screen>
   );
@@ -1138,17 +1261,6 @@ const makeStyles = (c: ThemeColors) =>
     speedChart: { marginTop: spacing.sm },
     hidden: { display: 'none' },
     errorActions: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginTop: spacing.sm },
-    summary: {
-      backgroundColor: c.surface,
-      borderWidth: 1,
-      borderColor: c.border,
-      borderRadius: radius.lg,
-      padding: spacing.lg,
-      marginBottom: spacing.md,
-      gap: spacing.md,
-    },
-    summaryTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-    percent: { ...type.monoBold, fontSize: type.size.xxl, color: c.text },
     limitRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
     limitText: { ...type.mono, fontSize: type.size.xs, color: c.textMuted },
     tabs: { marginBottom: spacing.md },

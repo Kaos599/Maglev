@@ -1,5 +1,5 @@
 import React, { memo, useMemo } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useTheme } from '../../context/ThemeContext';
 import { ThemeColors, radius, spacing, type } from '../../constants/theme';
 import { formatBytes } from '../../constants/format';
@@ -104,9 +104,14 @@ function ResultRowImpl({ name, category, sizeBytes, seeders, leechers, age, via,
       </Pressable>
       {onFollow ? <IconButton icon="bell" color={colors.textMuted} accessibilityLabel={`Follow ${name}`} onPress={onFollow} /> : null}
       {added ? (
-        <IconButton icon="check" color={colors.success} accessibilityLabel={`${name}, added`} disabled />
+        <IconButton icon="check" color={colors.accentText} accessibilityLabel={`${name}, added`} disabled />
+      ) : busy ? (
+        // NATIVE_CONTRACT 44.4: the add is in flight. Same 44 dp slot as the button, so the row does not shift.
+        <View style={styles.adding} accessible accessibilityRole="progressbar" accessibilityLabel={`Adding ${name}`} accessibilityState={{ busy: true }}>
+          <ActivityIndicator size="small" color={colors.download} />
+        </View>
       ) : (
-        <IconButton icon="download" color={colors.accentText} accessibilityLabel={`Add ${name}`} onPress={onAdd} disabled={busy} />
+        <IconButton icon="download" color={colors.accentText} accessibilityLabel={`Add ${name}`} onPress={onAdd} />
       )}
     </View>
   );
@@ -130,6 +135,7 @@ const makeStyles = (c: ThemeColors) =>
       borderColor: c.border,
     },
     dim: { opacity: 0.6 },
+    adding: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
     badge: { alignSelf: 'flex-start', paddingHorizontal: spacing.sm, paddingVertical: 2, borderRadius: radius.sm, borderWidth: 1, borderColor: c.border },
     badgeText: { ...type.body, fontSize: 11, color: c.textMuted },
     main: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: spacing.md, minHeight: 44 },

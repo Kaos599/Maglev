@@ -1,0 +1,20 @@
+# Opens a row of the Settings tab list by its title (${ROW}, a regex). The list keeps its scroll position
+# between visits and is long (App, General, Finding things, Downloads, Network and power), so the row may be above or below.
+# A row can be only partly on screen (under the bottom fade and tab bar): "visible" is true for it but a tap misses.
+# So the scrolls always run and ask for the whole row (visibilityPercentage 100), centred.
+appId: com.maglev
+---
+- scrollUntilVisible:
+    element: ${ROW}
+    direction: DOWN
+    timeout: 8000
+    visibilityPercentage: 100
+    centerElement: true
+    optional: true
+- scrollUntilVisible:
+    element: ${ROW}
+    direction: UP
+    timeout: 30000
+    visibilityPercentage: 100
+    centerElement: true
+- tapOn: ${ROW}

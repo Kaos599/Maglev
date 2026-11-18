@@ -18,7 +18,13 @@ import { useDownloadAdmission } from '../utils/useDownloadAdmission';
 import { actionRoute, probeErrorView } from '../utils/downloadCopy';
 import { banners, empty, mobileDataLine, notices } from '../constants/copy';
 import { useSettings } from '../context/SettingsContext';
+import { START_ENGINE_LABEL, engineStoppedBody, isEngineStopped } from '../utils/addErrorNotice';
 import { openBrowser } from '../utils/browser/openBrowser';
+import { fileKind } from '../utils/fileKind';
+import { SubtitlesAutoRow, useSubtitlesAuto } from '../components/search/SubtitlesAutoRow';
+import { askSubtitles, markNotThisOne } from '../utils/subtitles/requests';
+import { buildAsk } from '../utils/addedTray';
+import { joinTrayIfShowing } from '../components/search/AddedTray';
 
 /** Add a download from a web link: probe the link, show what it is, then start. */
 type Phase = 'input' | 'probing' | 'ready' | 'adding' | 'error';
@@ -39,7 +45,7 @@ export default function AddDownloadScreen() {
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const router = useRouter();
   const params = useLocalSearchParams<{ url?: string; source?: string; from?: string }>();
-  const { defaultStoragePath, probeUrl, probeStream, startDownload, showNotice, onMeteredNetwork } = useMaglevEngine();
+  const { defaultStoragePath, probeUrl, probeStream, startDownload, showNotice, onMeteredNetwork, restartEngine } = useMaglevEngine();
   const { settings } = useSettings();
 
   const [text, setText] = useState('');
@@ -49,6 +55,7 @@ export default function AddDownloadScreen() {
   const [probe, setProbe] = useState<UrlProbe | null>(null);
   const [notAFile, setNotAFile] = useState(false);
   const [addError, setAddError] = useState<string | null>(null);
+  const [addStopped, setAddStopped] = useState(false);
   const [folderLabel, setFolderLabel] = useState<string | null>(null);
   const [streamItem, setStreamItem] = useState<FoundItem | null>(null);
   const [baseName, setBaseName] = useState('');
@@ -58,6 +65,9 @@ export default function AddDownloadScreen() {
   const parts: DownloadParts = partsOverride ?? linkPrefs.downloadParts;
   const token = useRef(0);
   const urlRef = useRef('');
+  // NATIVE_CONTRACT 44.5 and 44.12: a video link gets the Subtitles row.
+  const fullName = probe ? baseName.trim() + splitName(probe.name).ext : '';
+  const subs = useSubtitlesAuto(!!probe && fileKind(fullName || probe.name) === 'video');
   const allowLanRef = useRef(false);
 
   const close = useCallback(() => {
@@ -196,6 +206,7 @@ export default function AddDownloadScreen() {
   const start = async (fromError = false) => {
     setPhase('adding');
     setAddError(null);
+    setAddStopped(false);
     const renamed = !fromError && probe && !nameInvalid && baseName.trim() + splitName(probe.name).ext !== probe.name
       ? baseName.trim() + splitName(probe.name).ext
       : null;
@@ -206,6 +217,14 @@ export default function AddDownloadScreen() {
     });
     if (res.ok) {
       haptic('commit');
+      if (probe && subs.show) {
+        const ask = buildAsk({ infoHash: '', key: `d:${res.id}`, name: renamed ?? probe.name, sizeBytes: probe.size ?? undefined });
+        // A link added while the Added message is on screen joins it (44.12); otherwise Auto asks on its own.
+        const joined = joinTrayIfShowing({ hash: ask.key, name: renamed ?? probe.name, ask, auto: subs.on });
+        if (!joined && subs.on) askSubtitles([ask], { auto: true });
+        // 44.15 D4: Settings auto is on and this screen's switch is off: "not this one".
+        else if (!joined && !subs.on && subs.settingsOn) markNotThisOne([ask]);
+      }
       router.replace('/');
       return;
     }
@@ -215,12 +234,15 @@ export default function AddDownloadScreen() {
       return;
     }
     haptic('fail');
+    const stopped = isEngineStopped(res);
+    const reason = stopped ? engineStoppedBody(res) : res.message;
     if (fromError) {
-      setErrorView({ body: res.message || "Couldn't start this download.", primary: 'retry' });
+      setErrorView({ body: reason || "Couldn't start this download.", primary: 'retry' });
       setPhase('error');
       return;
     }
-    setAddError(res.message || notices.inline.startDownloadFailed);
+    setAddStopped(stopped);
+    setAddError(reason || notices.inline.startDownloadFailed);
     setPhase('ready');
   };
 
@@ -327,10 +349,24 @@ export default function AddDownloadScreen() {
           </View>
           <Button label="Change" variant="secondary" disabled={adding} onPress={() => void handleChangeFolder()} />
         </View>
+        {subs.show ? <SubtitlesAutoRow on={subs.on} onChange={subs.setOn} disabled={adding} /> : null}
+        {subs.node}
         <ChipGroup label="Parts" options={PART_OPTIONS} value={parts} onChange={(v) => setPartsOverride(v)} />
         {mobileNote ?<Banner tone="info" title={mobileNote} /> : null}
         {doesntFit ? <Banner tone="danger" title={banners.addDownload.notEnoughSpace.title} body={banners.addDownload.notEnoughSpace.body} /> : null}
-        {addError ? <Banner tone="danger" title={addError} /> : null}
+        {addError ? (
+          addStopped ? (
+            <Banner
+              tone="danger"
+              title={empty.engineStopped.title}
+              body={addError}
+              actionLabel={START_ENGINE_LABEL}
+              onAction={() => void restartEngine().then((ok) => { if (ok) void start(); })}
+            />
+          ) : (
+            <Banner tone="danger" title={addError} />
+          )
+        ) : null}
         <View style={styles.gap}>
           <Button label="Start" size="lg" fullWidth loading={adding} disabled={adding || doesntFit || nameInvalid} onPress={() => void start()} />
           <Button label="Cancel" variant="ghost" size="lg" fullWidth disabled={adding} onPress={close} />
