@@ -9,30 +9,41 @@ name: browser-clear
 - extendedWaitUntil:
     visible: "Address" # app/browser.tsx:268
     timeout: 30000
+# maglev://browser?url= only PREFILLS the address bar since 0.19 (app/browser.tsx: an external link never loads by itself), so submit it.
+- tapOn: "Address"
+- pressKey: Enter
 - extendedWaitUntil:
     visible: "Files . [1-9][0-9]*" # app/browser.tsx:344 "Files · N"
     timeout: 90000
-- tapOn: "Files . [1-9][0-9]*" # app/browser.tsx:348 opens FoundTray
+- tapOn: "Files . [1-9][0-9]*" # app/browser.tsx:800 opens FoundTray
 - extendedWaitUntil:
-    visible: ".*Big_Buck_Bunny_1080_10s_1MB\\.mp4.*" # FoundTray.tsx:42 row label "<name>, <meta>"
+    visible: ".*Big_Buck_Bunny_1080_10s_1MB\\.mp4, .*" # FoundTray.tsx row label "<name>, <meta>"
     timeout: 30000
-# Remove one item. NEW: depends on found-files size/clear change. Per-item "Remove" does not exist yet.
-# Assumes a long-press on the row opens a menu with "Remove". Today a long-press copies the link (FoundTray.tsx:118).
-- longPressOn: ".*Big_Buck_Bunny_1080_10s_1MB\\.mp4.*"
-- tapOn: "Remove" # NEW: label not in source yet, use "Remove" until it lands
-- assertNotVisible: ".*Big_Buck_Bunny_1080_10s_1MB\\.mp4.*"
-- assertVisible: ".*Big_Buck_Bunny_1080_10s_2MB\\.mp4.*" # another file is still listed
-# Clear all. NEW: depends on found-files size/clear change. Label "Clear" is not in source yet.
-# Assumes no confirmation sheet. If one appears, add a second tapOn for its confirm button.
-- tapOn: "Clear" # NEW: label not in source yet, use "Clear" until it lands
-- assertVisible: "No files found yet" # constants/copy.ts:257 empty.browser.noFiles.title (FoundTray.tsx:105)
+# A small media file (under 1 MiB) can be hidden by "Hide small files" (foundFilter.ts SMALL_MEDIA_BYTES): show them when the tray says so.
+- runFlow:
+    when:
+      visible: "Show [0-9]+ hidden small files"
+    commands:
+      - tapOn: "Show [0-9]+ hidden small files"
+# Remove one item: each row has a Remove button labelled "Remove <name> from the list" (foundTray.remove, constants/copy.ts).
+- tapOn: "Remove Big_Buck_Bunny_1080_10s_1MB\\.mp4 from the list"
+# The row label has ", " after the name; the Undo line "Removed <name>." does not, so it does not count as the row.
+- assertNotVisible: ".*Big_Buck_Bunny_1080_10s_1MB\\.mp4, .*"
+- assertVisible: ".*Big_Buck_Bunny_1080_10s_2MB\\.mp4, .*" # another file is still listed
+# Clear all: button "Clear" with accessibilityLabel "Clear the list of found files" (foundTray.clearLabel). No confirmation, an Undo line appears.
+- tapOn: "Clear the list of found files"
+- assertVisible: "No files found yet" # constants/copy.ts empty.browser.noFiles.title (FoundTray.tsx)
 # Close the tray and open the next page in the address bar. Address field is app/browser.tsx:268.
 # Assumption: Back closes the open Sheet (components/ui/Sheet.tsx) before the browser's own back handler runs. Verify on device.
 - pressKey: Back
 - tapOn: "Address"
+- eraseText: 200
 - inputText: "https://test-videos.co.uk/jellyfish/mp4-h264"
 - pressKey: Enter
-- tapOn: "Files . [0-9]+" # app/browser.tsx:344, reopen the tray after loading the new page
+- extendedWaitUntil:
+    visible: "Files . [1-9][0-9]*"
+    timeout: 90000
+- tapOn: "Files . [1-9][0-9]*" # app/browser.tsx:800, reopen the tray after loading the new page
 # NEW: depends on found-files size/clear change. Navigating does not reset the list yet (mergeFound keeps old items).
 - assertNotVisible: ".*Big_Buck_Bunny.*"
 - extendedWaitUntil:

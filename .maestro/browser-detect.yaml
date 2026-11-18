@@ -10,12 +10,21 @@ name: browser-detect
 - extendedWaitUntil:
     visible: "Address" # app/browser.tsx:268 TextInput accessibilityLabel="Address"
     timeout: 30000
+# maglev://browser?url= only PREFILLS the address bar since 0.19 (app/browser.tsx: an external link never loads by itself), so submit it.
+- tapOn: "Address"
+- pressKey: Enter
 # Found-files indicator: "Files · N" (app/browser.tsx:344), accessibilityLabel "Files, N found" (:347).
 - extendedWaitUntil:
     visible: "Files . [1-9][0-9]*" # app/browser.tsx:344
     timeout: 90000
 - tapOn: "Files . [1-9][0-9]*" # app/browser.tsx:348-352 opens FoundTray
 - assertVisible: "Files" # components/browser/FoundTray.tsx:103 Sheet title "Files"
+# A small media file (under 1 MiB) can be hidden by "Hide small files" (foundFilter.ts SMALL_MEDIA_BYTES): show them when the tray says so.
+- runFlow:
+    when:
+      visible: "Show [0-9]+ hidden small files"
+    commands:
+      - tapOn: "Show [0-9]+ hidden small files"
 # Each row shows a size or "—" in its meta line (FoundTray.tsx:36, constants/format.ts formatBytes).
 # NEW: depends on found-files size/clear change (today the meta line omits the size when it is unknown).
 - assertVisible: ".*(KB|MB|GB|—).*"

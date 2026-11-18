@@ -1,0 +1,22 @@
+# Opens a row of the Settings tab list by its title (${ROW}, a regex). The list keeps its scroll position
+# between visits and is long (App, General, Finding things, Downloads, Network and power), so the row may be above or below.
+appId: com.maglev
+---
+- runFlow:
+    when:
+      notVisible: ${ROW}
+    commands:
+      - scrollUntilVisible:
+          element: ${ROW}
+          direction: DOWN
+          timeout: 10000
+          optional: true
+- runFlow:
+    when:
+      notVisible: ${ROW}
+    commands:
+      - scrollUntilVisible:
+          element: ${ROW}
+          direction: UP
+          timeout: 30000
+- tapOn: ${ROW}

@@ -1,31 +1,19 @@
 # Change three settings in three groups, kill the app, relaunch, and check they persisted. Then restore the defaults.
 # Defaults: fontStyle "clean" (constants/copy.ts fontStyleCopy), network.wifiOnly false (modules/maglev-engine/src/MaglevSettings.types.ts:159),
 # bandwidth.downloadPreset "UNLIMITED" (context/SettingsContext.tsx).
+# Settings rows are reached with subflows/open-settings-row.yaml (the list is long and keeps its scroll). Pages are left with the in-app "Go back".
+# The font change is made LAST in each phase: in the 0.28 CI run a hardware Back right after changing the font style left the app
+# (the live font change rebuilds the theme and the navigation stack), so nothing navigates after it until the relaunch.
 appId: com.maglev
 name: settings-roundtrip
 ---
 - runFlow: subflows/onboard-if-needed.yaml
 - tapOn: "Settings"
-# Settings tab label: constants/copy.ts tabsCopy.names.settings
-# 1. Appearance > Font: a RadioCard whose label is "<title>. <description>" (app/settings/interface.tsx:96)
-- tapOn: "Appearance"
-- extendedWaitUntil:
-    visible: "Font"
-    timeout: 20000
-# Group label: app/settings/interface.tsx:85
-- tapOn: "Retro\\..*"
-- assertVisible:
-    text: "Retro\\..*"
-    checked: true
-- back
-# Android back returns to Settings
-# 2. Connection > Network > Wi-Fi only: a Toggle labelled "Wi-Fi only" (app/settings/network.tsx:48).
-#    The row title is also "Wi-Fi only", so index 1 is the switch.
-- scrollUntilVisible:
-    element: "Network"
-    direction: DOWN
-    timeout: 30000
-- tapOn: "Network"
+# 1. Network > Wi-Fi only: a Toggle labelled "Wi-Fi only" (app/settings/network.tsx). The row title is also "Wi-Fi only", so index 1 is the switch.
+- runFlow:
+    file: subflows/open-settings-row.yaml
+    env:
+      ROW: "Network"
 - extendedWaitUntil:
     visible: "Wi-Fi only"
     timeout: 20000
@@ -36,14 +24,12 @@ name: settings-roundtrip
     text: "Wi-Fi only"
     index: 1
     checked: true
-- back
-# 3. Downloads > Speed and sharing > Download limit: ChipGroup chip "2 MB/s" (components/settings/SpeedSection.tsx:24-50).
-#    The same chip text is in the Upload limit group, so index 0 is the download group.
-- scrollUntilVisible:
-    element: "Speed and sharing"
-    direction: DOWN
-    timeout: 30000
-- tapOn: "Speed and sharing"
+- tapOn: "Go back"
+# 2. Speed and sharing > Download limit: ChipGroup chip "2 MB/s" (components/settings/SpeedSection.tsx). The same chip is in the Upload limit group, so index 0 is the download group.
+- runFlow:
+    file: subflows/open-settings-row.yaml
+    env:
+      ROW: "Speed and sharing"
 - extendedWaitUntil:
     visible: "Download limit"
     timeout: 20000
@@ -54,7 +40,19 @@ name: settings-roundtrip
     text: "2 MB/s"
     index: 0
     selected: true
-- back
+- tapOn: "Go back"
+# 3. Appearance > Font: a RadioCard labelled "<title>. <description>" (app/settings/interface.tsx)
+- runFlow:
+    file: subflows/open-settings-row.yaml
+    env:
+      ROW: "Appearance"
+- extendedWaitUntil:
+    visible: "Font"
+    timeout: 20000
+- tapOn: "Retro\\..*"
+- assertVisible:
+    text: "Retro\\..*"
+    checked: true
 # Kill the process and relaunch. Persistence goes through the settings store, not the screen.
 - stopApp
 - launchApp
@@ -63,19 +61,10 @@ name: settings-roundtrip
     env:
       TEXT: "Get started|Transfers"
 - tapOn: "Settings"
-- tapOn: "Appearance"
-- extendedWaitUntil:
-    visible: "Font"
-    timeout: 20000
-- assertVisible:
-    text: "Retro\\..*"
-    checked: true
-- back
-- scrollUntilVisible:
-    element: "Network"
-    direction: DOWN
-    timeout: 30000
-- tapOn: "Network"
+- runFlow:
+    file: subflows/open-settings-row.yaml
+    env:
+      ROW: "Network"
 - extendedWaitUntil:
     visible: "Wi-Fi only"
     timeout: 20000
@@ -83,32 +72,7 @@ name: settings-roundtrip
     text: "Wi-Fi only"
     index: 1
     checked: true
-- back
-- scrollUntilVisible:
-    element: "Speed and sharing"
-    direction: DOWN
-    timeout: 30000
-- tapOn: "Speed and sharing"
-- extendedWaitUntil:
-    visible: "Download limit"
-    timeout: 20000
-- assertVisible:
-    text: "2 MB/s"
-    index: 0
-    selected: true
-# Restore the defaults
-- tapOn:
-    text: "Unlimited"
-    index: 0
-- back
-- scrollUntilVisible:
-    element: "Network"
-    direction: DOWN
-    timeout: 30000
-- tapOn: "Network"
-- extendedWaitUntil:
-    visible: "Wi-Fi only"
-    timeout: 20000
+# Restore Wi-Fi only now (no font change has been made yet in this phase)
 - tapOn:
     text: "Wi-Fi only"
     index: 1
@@ -116,12 +80,32 @@ name: settings-roundtrip
     text: "Wi-Fi only"
     index: 1
     checked: false
-- back
-- back
-- tapOn: "Appearance"
+- tapOn: "Go back"
+- runFlow:
+    file: subflows/open-settings-row.yaml
+    env:
+      ROW: "Speed and sharing"
+- extendedWaitUntil:
+    visible: "Download limit"
+    timeout: 20000
+- assertVisible:
+    text: "2 MB/s"
+    index: 0
+    selected: true
+- tapOn:
+    text: "Unlimited"
+    index: 0
+- tapOn: "Go back"
+- runFlow:
+    file: subflows/open-settings-row.yaml
+    env:
+      ROW: "Appearance"
 - extendedWaitUntil:
     visible: "Font"
     timeout: 20000
+- assertVisible:
+    text: "Retro\\..*"
+    checked: true
 - tapOn: "Clean\\..*"
 - assertVisible:
     text: "Clean\\..*"

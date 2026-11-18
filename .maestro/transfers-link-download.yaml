@@ -1,4 +1,4 @@
-# Add a direct https link, wait for progress above 0, pause, resume, then clean up.
+# Add a direct https link, check its card, pause and resume it if it is still running, then clean up.
 # The file is Blender Foundation's Sintel trailer (CC BY 3.0), about 4 MB.
 # Selectors: "Add a link or torrent" = components/FloatingActionButton.tsx:14 (default accessibilityLabel).
 #   "Type a link" = components/add/AddMenuSheet.tsx:46 (copy: constants/copy.ts addMenu.typeHint row title).
@@ -25,31 +25,27 @@ name: transfers-link-download
 # from app/add-download.tsx:316 (ready phase, after the probe)
 - tapOn: "Start"
 - extendedWaitUntil:
-    visible: "sintel_trailer-480p\\.mp4, .*"
-    timeout: 30000
-# Card label: "<name>, <status>, ..." (components/transfers/DownloadCard.tsx:67)
-- extendedWaitUntil:
-    visible: "sintel_trailer-480p\\.mp4, [1-9][0-9]* percent.*"
-    timeout: 120000
-# Progress above 0 only, never completion. The name anchor keeps other rows (battery, status bar) out.
-- tapOn: "Pause sintel_trailer-480p\\.mp4"
-# from components/transfers/DownloadCard.tsx:101
-- extendedWaitUntil:
-    visible: "Resume sintel_trailer-480p\\.mp4"
-    timeout: 30000
-- tapOn: "Resume sintel_trailer-480p\\.mp4"
-- extendedWaitUntil:
-    visible: "Pause sintel_trailer-480p\\.mp4"
+    visible:
+      id: "transfer-card"
     timeout: 60000
-- longPressOn: "sintel_trailer-480p\\.mp4, .*"
-- tapOn: "Delete selected"
-# from components/transfers/BulkBar.tsx:23 (`${label} selected`)
-- tapOn: "Remove and delete files"
-# from components/transfers/DeleteSheet.tsx:47
-- tapOn: "Delete files|Delete [0-9.]+ (B|KB|MB|GB|TB)"
-# from components/transfers/DeleteSheet.tsx:36, size from utils/format
+# The 4.2 MB file can finish within a second on CI ("Done in 1 s"), so progress above 0 is not asserted:
+# the card must exist with the file name and be downloading OR done. Card label: "<name>, <status>, ..." (DownloadCard.tsx:67).
 - extendedWaitUntil:
-    notVisible: "sintel_trailer-480p\\.mp4, .*"
-    timeout: 30000
+    visible: "sintel_trailer-480p\\.mp4, .*"
+    timeout: 60000
+# Pause and resume only while it is still running (the Pause button exists only then).
+- runFlow:
+    when:
+      visible: "Pause sintel_trailer-480p\\.mp4"
+    commands:
+      - tapOn: "Pause sintel_trailer-480p\\.mp4"  # components/transfers/DownloadCard.tsx:101
+      - extendedWaitUntil:
+          visible: "Resume sintel_trailer-480p\\.mp4"
+          timeout: 30000
+      - tapOn: "Resume sintel_trailer-480p\\.mp4"
+      - extendedWaitUntil:
+          visible: "Pause sintel_trailer-480p\\.mp4|Open sintel_trailer-480p\\.mp4"
+          timeout: 60000
+- runFlow: subflows/remove-all-with-files.yaml
 - assertVisible: "Nothing downloading"
 # empty.transfers.none.title, constants/copy.ts:(empty.transfers.none), components/transfers/TeachingEmptyState.tsx:49
