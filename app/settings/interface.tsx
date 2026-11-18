@@ -132,6 +132,17 @@ export default function InterfaceSettings() {
             />
           }
         />
+        <ListRow
+          title="Swipe to pause or remove"
+          subtitle="Swipe a download right to pause or resume it, or left to remove it from the list. Files are kept."
+          accessory={
+            <Toggle
+              value={a.swipeActions}
+              onValueChange={(swipeActions) => set({ swipeActions })}
+              accessibilityLabel="Swipe to pause or remove"
+            />
+          }
+        />
       </Card>
       <Card>
         <View style={s.block}>
