@@ -1,0 +1,10 @@
+# Waits up to about 60 s for ${TEXT} after a launch, dismissing a system "isn't responding" dialog between tries.
+appId: com.maglev
+---
+- retry:
+    maxRetries: 3
+    commands:
+      - runFlow: dismiss-anr.yaml
+      - extendedWaitUntil:
+          visible: ${TEXT}
+          timeout: 20000
