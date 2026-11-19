@@ -34,6 +34,19 @@ export interface SwipePlan {
 
 const NONE: SwipePlan = { right: null, left: false };
 
+/**
+ * How visible a swipe panel is, from how far its own side is revealed (drag distance in px, positive toward
+ * that panel). The panels sit under the card with the same rounded corners, so a panel drawn at rest shows a
+ * 1-2 px red or lime line through the card's anti-aliased corners. Hidden at rest and while the other side is
+ * revealed; dimmed while dragging; full past the trigger. Half a pixel of slack covers a spring that settles
+ * a hair off zero.
+ */
+export function panelOpacity(reveal: number, trigger: number): number {
+  'worklet';
+  if (reveal <= 0.5) return 0;
+  return reveal >= trigger ? 1 : 0.85;
+}
+
 export function swipePlan({ action, busy, moving = false, selectionMode, enabled }: SwipeInput): SwipePlan {
   if (!enabled || selectionMode || busy) return NONE;
   const right: SwipeRight | null =

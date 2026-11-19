@@ -42,6 +42,16 @@ function check(name, cond, extra) {
   check('selection mode: nothing', (() => { const p = swipePlan({ ...base, action: pause, selectionMode: true }); return p.right === null && !p.left; })());
   check('setting off: nothing', (() => { const p = swipePlan({ ...base, action: pause, enabled: false }); return p.right === null && !p.left; })());
 
+  console.log('[panel visibility]');
+  // The panels sit under the card with the same rounded corners; drawn at rest, they bleed a 1-2 px red or
+  // lime line through the card's anti-aliased corners. A panel is drawn only while its own side is revealed.
+  const { panelOpacity } = await import('../components/transfers/swipe.ts');
+  check('at rest: hidden', panelOpacity(0, 72) === 0);
+  check('a sub-pixel leftover after the spring back: hidden', panelOpacity(0.4, 72) === 0);
+  check('the other side is being revealed (negative): hidden', panelOpacity(-30, 72) === 0);
+  check('dragging, before the trigger: shown dimmed', panelOpacity(10, 72) === 0.85 && panelOpacity(71, 72) === 0.85);
+  check('past the trigger: full', panelOpacity(72, 72) === 1 && panelOpacity(140, 72) === 1);
+
   console.log('[states: torrents]');
   const t = (state, pausedBy) => swipePlan({ ...base, action: M.torrentCardAction({ state, pausedBy }) }).right?.kind ?? null;
   check('DOWNLOADING -> pause', t('DOWNLOADING') === 'pause');
@@ -82,6 +92,8 @@ function check(name, cond, extra) {
   const layout = read('app/_layout.tsx');
   check('root has GestureHandlerRootView', /<GestureHandlerRootView/.test(layout));
   check('SwipeRow uses ReanimatedSwipeable and a haptic', /react-native-gesture-handler\/ReanimatedSwipeable/.test(row) && /scheduleOnRN\(haptic, 'select'\)/.test(row));
+  check('SwipeRow panels take their opacity from panelOpacity', /useAnimatedStyle\(\(\) => \(\{ opacity: panelOpacity\(sign \* translation\.value, TRIGGER\) \}\)\)/.test(row));
+  check('panelOpacity is a worklet (it runs on the UI thread)', /export function panelOpacity[^{]*\{\s*'worklet';/.test(read('components/transfers/swipe.ts')));
   check('SwipeRow has a horizontal activation offset', /dragOffsetFromLeft/.test(row) && /dragOffsetFromRight/.test(row));
   check('SwipeRow colours come from the theme', !/#[0-9A-Fa-f]{3,8}\b/.test(row) && /colors\.download/.test(row) && /colors\.danger/.test(row) && /colors\.accent\b/.test(row));
   check('both cards wrap in SwipeRow and use swipePlan', /<SwipeRow/.test(card) && /<SwipeRow/.test(dl) && /swipePlan\(/.test(card) && /swipePlan\(/.test(dl));

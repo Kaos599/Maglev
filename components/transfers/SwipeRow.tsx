@@ -7,7 +7,7 @@ import { useTheme } from '../../context/ThemeContext';
 import { ThemeColors, radius, spacing, type, touch } from '../../constants/theme';
 import { haptic } from '../../constants/haptics';
 import { PixelIcon, type PixelIconName } from '../PixelIcon';
-import type { SwipeRight } from './swipe';
+import { panelOpacity, type SwipeRight } from './swipe';
 
 /** Width of the revealed panel, margin included (rows sit inside a spacing.lg margin). */
 const PANEL = spacing.lg + 96;
@@ -51,7 +51,7 @@ function Panel({
       if (was !== null && past !== was) scheduleOnRN(haptic, 'select');
     },
   );
-  const lit = useAnimatedStyle(() => ({ opacity: sign * translation.value >= TRIGGER ? 1 : 0.85 }));
+  const lit = useAnimatedStyle(() => ({ opacity: panelOpacity(sign * translation.value, TRIGGER) }));
   return (
     <View style={[s.panel, sign === 1 ? s.panelLeft : s.panelRight]}>
       <Animated.View style={[s.fill, { backgroundColor: fill, alignItems: align }, lit]}>
