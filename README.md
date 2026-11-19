@@ -12,7 +12,7 @@
 </p>
 
 <p align="center">
-  <a href="https://www.saashub.com/maglev-downloader"><img src="https://cdn-b.saashub.com/img/badges/approved-color.png" alt="Maglev on SaaSHub" width="150"></a>
+  <a href="https://www.saashub.com/maglev-downloader"><img src="https://cdn-b.saashub.com/img/badges/approved-dark.png" alt="Maglev on SaaSHub" width="150"></a>
 </p>
 
 <h3 align="center">Maglev: open-source download manager, video downloader and torrent client for Android</h3>
