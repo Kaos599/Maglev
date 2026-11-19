@@ -12,16 +12,23 @@
 //!   session limiter, which every chunk passes through, so it is shared by nature.
 //! - One coordinator loop (the transfer task itself) reports the sum of the segments, runs the stall rule on the sum,
 //!   flushes the sidecar and decides what a segment's end means.
-//! - Anything unexpected on a segment (200, 429, 503, 401/403, 416, a Content-Range that does not match, a changed
+//! - A 429 or 503 on a segment is a refusal (contract 17.v): servers such as proof.ovh.net allow a few connections
+//!   per address and refuse the rest, then hold new connections for minutes. The refused segment waits, the parts
+//!   that were accepted keep going, the connection cap drops to what the server accepted, and each finished part
+//!   hands its connection slot to the next waiting segment. If every part was refused, the download waits the
+//!   server's `Retry-After` and goes on one segment at a time. Nothing already written is thrown away.
+//! - Anything else unexpected on a segment (200, 401/403, 416, a Content-Range that does not match, a changed
 //!   validator) sets `split_off` for good and the download goes on over ONE connection from the contiguous prefix.
 //!   The single connection then does the judging it always did (200 on resume starts over, a changed file is
-//!   `FILE_CHANGED`, 429/503 are retried with `Retry-After`). Only 408/500/502/504 and broken connections are
-//!   retried on the segment itself.
+//!   `FILE_CHANGED`, 429/503 are retried with `Retry-After`). 408/500/502/504 and broken connections are retried on
+//!   the segment itself.
+
+use std::collections::VecDeque;
 
 use tokio::task::JoinSet;
 
 use super::*;
-use crate::http_dl::rules::{parse_content_range, parse_retry_after, pick_validator};
+use crate::http_dl::rules::{parse_content_range, parse_retry_after, pick_validator, shown_speed, SPEED_QUIET};
 use crate::http_dl::sidecar::{contiguous_prefix, held_of, Segment};
 
 /// Below this size a download is never split.
@@ -113,6 +120,8 @@ pub(super) enum PartReply {
     Body,
     /// Retry this segment (408, 500, 502, 504).
     Retry { retry_after: Option<Duration> },
+    /// The server will not take this connection now (429, 503): the segment waits for a free slot (contract 17.v).
+    Refused { retry_after: Option<Duration> },
     /// Anything else: stop splitting for good.
     Fallback,
 }
@@ -137,6 +146,7 @@ pub(super) fn judge_part(status: u16, h: &Headers, start: u64, end: u64, total: 
             PartReply::Body
         }
         408 | 500 | 502 | 504 => PartReply::Retry { retry_after: parse_retry_after(h.retry_after.as_deref()) },
+        429 | 503 => PartReply::Refused { retry_after: parse_retry_after(h.retry_after.as_deref()) },
         _ => PartReply::Fallback,
     }
 }
@@ -228,6 +238,8 @@ impl Drop for PartsGuard {
 /// What a segment task reports.
 enum SegEnd {
     Done,
+    /// Refused before it got a byte; waits for a slot (only a segment that is not yet `patient`).
+    Refused { retry_after: Option<Duration> },
     Fallback,
     /// An error the machine must hear about (storage, the local-network refusal).
     Fatal(Event),
@@ -369,27 +381,55 @@ impl Downloads {
         let mut last_held = held_of(&shared.snapshot());
         let mut bps_smooth: f64 = 0.0;
         let mut limit = limit;
+        // Contract 17.v. How many connections the server takes: the plan, until a refusal lowers it for the rest of
+        // the run. After a refusal every segment started is patient (it retries a 429 instead of giving up its turn).
+        let mut max_live = n.max(1);
+        let mut refused_once = false;
 
         loop {
-            let mut set: JoinSet<SegEnd> = JoinSet::new();
-            for idx in 0..n {
-                let s = shared.segs.lock()[idx].clone();
-                if s.pos > s.end {
-                    continue;
-                }
-                let (me, id2, client2, sh, host) =
-                    (self.clone(), id.to_string(), client.clone(), shared.clone(), typed_host.to_string());
-                set.spawn(async move { me.segment_loop(&id2, &client2, &sh, idx, &host).await });
-            }
+            let mut set: JoinSet<(usize, SegEnd)> = JoinSet::new();
+            let mut waiting: VecDeque<usize> = (0..n).collect();
+            // Set when every running segment was refused: nothing starts before the server's Retry-After.
+            let mut resume_at: Option<Instant> = None;
             let outcome = loop {
+                let ready = match resume_at {
+                    Some(t) => Instant::now() >= t,
+                    None => true,
+                };
+                if ready {
+                    resume_at = None;
+                    // One in, one out: a free slot goes to the next waiting segment, lowest index first.
+                    while set.len() < max_live {
+                        let Some(idx) = waiting.pop_front() else { break };
+                        let s = shared.segs.lock()[idx].clone();
+                        if s.pos > s.end {
+                            continue;
+                        }
+                        let (me, id2, client2, sh, host) =
+                            (self.clone(), id.to_string(), client.clone(), shared.clone(), typed_host.to_string());
+                        let patient = refused_once;
+                        set.spawn(async move { (idx, me.segment_loop(&id2, &client2, &sh, idx, &host, patient).await) });
+                    }
+                }
+                if set.is_empty() && waiting.is_empty() {
+                    break Outcome::AllDone;
+                }
                 tokio::select! {
-                    joined = set.join_next() => match joined {
-                        None => break Outcome::AllDone,
-                        Some(Ok(SegEnd::Done)) => {}
-                        Some(Ok(SegEnd::Fallback)) | Some(Err(_)) => break Outcome::Fallback,
-                        Some(Ok(SegEnd::Fatal(ev))) => break Outcome::Event(ev),
-                        Some(Ok(SegEnd::Exhausted)) => break Outcome::Event(Event::Transient { attempts: MAX_ATTEMPTS }),
-                        Some(Ok(SegEnd::Stopped)) => break Outcome::Stopped,
+                    joined = set.join_next(), if !set.is_empty() => match joined {
+                        None | Some(Ok((_, SegEnd::Done))) => {}
+                        Some(Ok((idx, SegEnd::Refused { retry_after }))) => {
+                            // The server took the others (or none): it stays at that many connections from now on.
+                            refused_once = true;
+                            waiting.push_back(idx);
+                            max_live = max_live.min(set.len().max(1));
+                            if set.is_empty() && resume_at.is_none() {
+                                resume_at = Some(Instant::now() + backoff_delay(0, retry_after, jitter()));
+                            }
+                        }
+                        Some(Ok((_, SegEnd::Fallback))) | Some(Err(_)) => break Outcome::Fallback,
+                        Some(Ok((_, SegEnd::Fatal(ev)))) => break Outcome::Event(ev),
+                        Some(Ok((_, SegEnd::Exhausted))) => break Outcome::Event(Event::Transient { attempts: MAX_ATTEMPTS }),
+                        Some(Ok((_, SegEnd::Stopped))) => break Outcome::Stopped,
                     },
                     _ = tick.tick() => {
                         let now = Instant::now();
@@ -399,6 +439,10 @@ impl Downloads {
                         last_bytes = bytes;
                         if delta > 0 {
                             clock.on_bytes(now, delta);
+                        }
+                        // Waiting out the server's Retry-After, tick by tick, is not a stall either.
+                        if resume_at.is_some() {
+                            clock.excuse(last_report.elapsed(), now);
                         }
                         // Time the segments spent in our own limiters is nobody's stall.
                         let waited = shared.wait_ms.swap(0, Ordering::Relaxed);
@@ -414,9 +458,19 @@ impl Downloads {
                         let inst = held.saturating_sub(last_held) as f64 / dt;
                         last_held = held;
                         bps_smooth = if bps_smooth == 0.0 { inst } else { bps_smooth * 0.6 + inst * 0.4 };
+                        // Quiet parts show no speed, and the average starts over when bytes come back (17.v).
+                        let quiet = clock.quiet(now);
+                        if quiet >= SPEED_QUIET {
+                            bps_smooth = 0.0;
+                        }
+                        let held_back = resume_at.is_some();
                         let alive = self.update(id, |rec, live| {
                             rec.held = held;
-                            live.bps = bps_smooth as u64;
+                            live.bps = shown_speed(bps_smooth, quiet);
+                            if held_back {
+                                // Every part waits for the server's Retry-After.
+                                live.stalled = true;
+                            }
                             if delta > 0 {
                                 live.stalled = false;
                                 live.attempts = 0;
@@ -479,9 +533,10 @@ impl Downloads {
     /// single connection resumes from under the usual rules.
     fn fall_back(self: &Arc<Self>, id: &str, shared: &PartsShared, side: &mut Sidecar, side_path: &Path) -> PartsEnd {
         let prefix = contiguous_prefix(&shared.snapshot());
-        let alive = self.update(id, |rec, _| {
+        let alive = self.update(id, |rec, live| {
             rec.split_off = true;
             rec.held = prefix;
+            live.bps = 0;
         });
         if alive.is_none() {
             return PartsEnd::Stop;
@@ -598,6 +653,7 @@ impl Downloads {
         shared: &Arc<PartsShared>,
         idx: usize,
         typed_host: &str,
+        patient: bool,
     ) -> SegEnd {
         let _live = ActiveTick::new(shared);
         let mut attempts = 0u32;
@@ -633,6 +689,17 @@ impl Downloads {
                 PartReply::Body => {}
                 PartReply::Fallback => return SegEnd::Fallback,
                 PartReply::Retry { retry_after } => {
+                    if !self.part_retry(&mut attempts, retry_after).await {
+                        return SegEnd::Exhausted;
+                    }
+                    continue;
+                }
+                // Refused: give the turn back to the coordinator, unless this segment already got its turn after a
+                // refusal, in which case the server is told to wait its Retry-After like any retry.
+                PartReply::Refused { retry_after } => {
+                    if !patient {
+                        return SegEnd::Refused { retry_after };
+                    }
                     if !self.part_retry(&mut attempts, retry_after).await {
                         return SegEnd::Exhausted;
                     }
@@ -854,14 +921,27 @@ mod tests {
     }
 
     #[test]
-    fn a_200_a_429_or_a_503_on_a_segment_ends_the_split() {
+    fn a_200_or_another_status_on_a_segment_ends_the_split() {
         let h = Headers::default();
-        for s in [200u16, 429, 503, 401, 403, 416, 404, 301] {
+        for s in [200u16, 401, 403, 416, 404, 301] {
             assert_eq!(judge_part(s, &h, 0, 9, 10, "v"), PartReply::Fallback, "{s}");
         }
         for s in [408u16, 500, 502, 504] {
             assert!(matches!(judge_part(s, &h, 0, 9, 10, "v"), PartReply::Retry { .. }), "{s}");
         }
+    }
+
+    #[test]
+    fn a_429_or_a_503_on_a_segment_is_a_refusal_that_keeps_the_split() {
+        let h = Headers { retry_after: Some("10".into()), ..Headers::default() };
+        for s in [429u16, 503] {
+            assert_eq!(
+                judge_part(s, &h, 0, 9, 10, "v"),
+                PartReply::Refused { retry_after: Some(Duration::from_secs(10)) },
+                "{s}"
+            );
+        }
+        assert_eq!(judge_part(429, &Headers::default(), 0, 9, 10, "v"), PartReply::Refused { retry_after: None });
     }
 
     // ---- a small HTTP server on localhost ----
@@ -873,6 +953,13 @@ mod tests {
         Segment200,
         /// 50 ms between 64 KiB pieces, so a download can be paused while it runs.
         Slow,
+        /// Like Slow, but at most this many bodies of closed ranges at once; the rest get 429 + `Retry-After: 1`
+        /// (proof.ovh.net allows 4 per address).
+        Limit(usize),
+        /// Like Slow, but the first this-many closed-range requests get 429 + `Retry-After: 1`, whatever is running.
+        RefuseFirst(usize),
+        /// Every body (ranged or not) sends 256 KiB, goes silent for 5 s, then sends the rest.
+        Gap,
     }
 
     #[derive(Default)]
@@ -881,6 +968,19 @@ mod tests {
         ranges: Mutex<Vec<String>>,
         /// Bodies being sent right now.
         inflight: AtomicUsize,
+        /// The most bodies sent at once.
+        peak: AtomicUsize,
+        /// Closed-range bodies admitted under `Limit` and not finished.
+        admitted: AtomicUsize,
+        /// 429s sent.
+        refused: AtomicUsize,
+    }
+
+    struct Admitted(Arc<Stats>);
+    impl Drop for Admitted {
+        fn drop(&mut self) {
+            self.0.admitted.fetch_sub(1, Ordering::SeqCst);
+        }
     }
 
     struct Inflight(Arc<Stats>);
@@ -943,6 +1043,27 @@ mod tests {
             Some((a, b, !r.ends_with('-')))
         });
         let refuse = mode == Mode::Segment200 && matches!(parsed, Some((a, _, true)) if a > 0);
+        // A closed range other than the 0-0 probe: what a part asks for.
+        let part = matches!(parsed, Some((a, b, true)) if !(a == 0 && b == 0));
+        let mut _admitted = None;
+        let too_many = match mode {
+            Mode::Limit(n) if part => {
+                if st.admitted.fetch_add(1, Ordering::SeqCst) >= n {
+                    st.admitted.fetch_sub(1, Ordering::SeqCst);
+                    true
+                } else {
+                    _admitted = Some(Admitted(st.clone()));
+                    false
+                }
+            }
+            Mode::RefuseFirst(n) if part => st.refused.load(Ordering::SeqCst) < n,
+            _ => false,
+        };
+        if too_many {
+            st.refused.fetch_add(1, Ordering::SeqCst);
+            sock.write_all(b"HTTP/1.1 429 Too Many Requests\r\nRetry-After: 1\r\nContent-Length: 0\r\nConnection: close\r\n\r\n").await?;
+            return sock.shutdown().await;
+        }
         let (status, (from, to), content_range) = match parsed {
             Some((a, b, _)) if !refuse => ("206 Partial Content", (a, b), Some(format!("bytes {a}-{b}/{total}"))),
             _ => ("200 OK", (0, total - 1), None),
@@ -956,17 +1077,26 @@ mod tests {
         }
         head.push_str("\r\n");
         sock.write_all(head.as_bytes()).await?;
-        st.inflight.fetch_add(1, Ordering::SeqCst);
+        let now = st.inflight.fetch_add(1, Ordering::SeqCst) + 1;
+        st.peak.fetch_max(now, Ordering::SeqCst);
         let _gone = Inflight(st.clone());
-        let (mut at, end) = (from as usize, to as usize + 1);
+        let (start, mut at, end) = (from as usize, from as usize, to as usize + 1);
+        let slow = matches!(mode, Mode::Slow | Mode::Limit(_) | Mode::RefuseFirst(_));
+        let mut gapped = false;
         while at < end {
             let next = (at + 64 * 1024).min(end);
             sock.write_all(&data[at..next]).await?;
             at = next;
-            if mode == Mode::Slow {
+            if slow {
                 tokio::time::sleep(Duration::from_millis(50)).await;
             }
+            if mode == Mode::Gap && !gapped && at - start >= 256 * 1024 {
+                gapped = true;
+                tokio::time::sleep(Duration::from_secs(5)).await;
+            }
         }
+        // A finished part frees its slot before the client can ask again.
+        drop(_admitted);
         sock.shutdown().await
     }
 
@@ -1180,5 +1310,91 @@ mod tests {
             assert!(asked.contains(&(s.pos, s.end)), "{s:?} not in {asked:?}");
         }
         let _ = std::fs::remove_dir_all(&dir);
+    }
+    // ---- contract 17.v: refused parts, and no speed while nothing moves ----
+
+    /// proof.ovh.net took 4 of 8 parts and refused the rest with 429. The accepted parts keep going, each refused
+    /// part waits for a slot, nothing falls back to one connection, and no range is fetched twice.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn refused_parts_wait_for_a_slot_and_the_accepted_parts_keep_their_bytes() {
+        let dir = tmpdir("refused");
+        let data = Arc::new(sample(BIG));
+        let (port, stats) = serve(data.clone(), Mode::Limit(2)).await;
+        let d = manager(&dir);
+        d.add(&format!("http://127.0.0.1:{port}/big.bin"), r#"{"segments":4}"#).unwrap();
+        let snap = wait_for(&d, "finished").await;
+        assert_eq!(snap["downloaded"].as_u64(), Some(BIG as u64));
+        assert_eq!(std::fs::read(dir.join("big.bin")).unwrap(), *data);
+        let refused = stats.refused.load(Ordering::SeqCst);
+        assert!(refused >= 2, "the server refused {refused}");
+        assert!(!stats.ranges.lock().iter().any(|r| r.ends_with('-')), "fell back to one connection: {:?}", stats.ranges.lock());
+        assert!(d.inner.lock().records.values().all(|r| !r.split_off));
+        // Every request was one of the planned parts; each accepted part was asked once, each refusal once more.
+        let plan: Vec<(u64, u64)> = plan_split(BIG as u64, 4).iter().map(|s| (s.start, s.end)).collect();
+        let asked = closed_ranges(&stats);
+        assert!(asked.iter().all(|r| plan.contains(r)), "{asked:?}");
+        assert!(plan.iter().all(|r| asked.contains(r)), "{asked:?}");
+        assert_eq!(asked.len(), plan.len() + refused, "{asked:?}");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Every part refused: the download waits the server's Retry-After and goes on one part at a time, keeping the
+    /// layout, instead of opening a new connection for the whole rest of the file.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn when_every_part_is_refused_the_download_waits_then_goes_on_one_part_at_a_time() {
+        let dir = tmpdir("allrefused");
+        let data = Arc::new(sample(BIG));
+        let (port, stats) = serve(data.clone(), Mode::RefuseFirst(4)).await;
+        let d = manager(&dir);
+        let t0 = Instant::now();
+        d.add(&format!("http://127.0.0.1:{port}/big.bin"), r#"{"segments":4}"#).unwrap();
+        let snap = wait_for(&d, "finished").await;
+        assert_eq!(snap["downloaded"].as_u64(), Some(BIG as u64));
+        assert_eq!(std::fs::read(dir.join("big.bin")).unwrap(), *data);
+        assert_eq!(stats.refused.load(Ordering::SeqCst), 4);
+        assert!(t0.elapsed() >= Duration::from_millis(950), "did not wait Retry-After: {:?}", t0.elapsed());
+        assert_eq!(stats.peak.load(Ordering::SeqCst), 1, "more than one part at a time after a full refusal");
+        assert!(!stats.ranges.lock().iter().any(|r| r.ends_with('-')), "fell back: {:?}", stats.ranges.lock());
+        assert!(d.inner.lock().records.values().all(|r| !r.split_off));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// AGENTS reality rule 2: a download whose server goes quiet shows no speed within a few seconds, over one
+    /// connection and over parts. (On the phone a fading average read "15.2 KB/s, 50 min left" while nothing moved.)
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn a_download_that_goes_quiet_shows_no_speed() {
+        for parts in [1u32, 4] {
+            let dir = tmpdir(&format!("quiet{parts}"));
+            let data = Arc::new(sample(BIG));
+            let (port, _stats) = serve(data.clone(), Mode::Gap).await;
+            let d = manager(&dir);
+            d.add(&format!("http://127.0.0.1:{port}/big.bin"), &format!(r#"{{"segments":{parts}}}"#)).unwrap();
+            let t0 = Instant::now();
+            let (mut last_bytes, mut last_change) = (0u64, Instant::now());
+            let mut seen_quiet = false;
+            loop {
+                let snap = d.snapshots();
+                let cur = snap.first().cloned().unwrap_or(Value::Null);
+                if cur["state"] == "finished" {
+                    break;
+                }
+                assert!(cur["state"] != "error", "download failed: {cur}");
+                assert!(t0.elapsed() < Duration::from_secs(60), "timed out: {cur}");
+                let got = cur["downloaded"].as_u64().unwrap_or(0);
+                if got != last_bytes {
+                    last_bytes = got;
+                    last_change = Instant::now();
+                }
+                // SPEED_QUIET is 2 s; a second more covers the report tick and the read timeout.
+                if got > 0 && last_change.elapsed() >= SPEED_QUIET + Duration::from_secs(1) {
+                    assert_eq!(cur["down_bps"].as_u64(), Some(0), "{parts} part(s), quiet {:?}: {cur}", last_change.elapsed());
+                    seen_quiet = true;
+                }
+                tokio::time::sleep(Duration::from_millis(50)).await;
+            }
+            assert!(seen_quiet, "{parts} part(s): the server's 5 s silence was never seen");
+            assert_eq!(std::fs::read(dir.join("big.bin")).unwrap(), *data);
+            let _ = std::fs::remove_dir_all(&dir);
+        }
     }
 }

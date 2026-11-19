@@ -39,7 +39,7 @@ use super::machine::{step, DlError, Effect, Event, Notice, PauseReason, State, M
 use super::rules::{
     backoff_delay, backups_to_delete, classify_probe, fits, has_secret_query, judge_get, overruns, pace_delay,
     is_lan_host, slot_free, stall_floor, waiting_for_server, Headers, LanScope, ProbeInfo, ProbeVerdict, Reply, StallCheck,
-    StallClock,
+    StallClock, SPEED_QUIET,
 };
 use super::sidecar::{final_path, part_path, safe_url, sidecar_path, Sidecar};
 use super::stream::{StreamError, StreamRec, StreamSpec};
@@ -2077,6 +2077,8 @@ impl Downloads {
 
     /// One failed attempt: ask the machine, wait the backoff, and say whether to go on.
     async fn transient(self: &Arc<Self>, id: &str, retry_after: Option<Duration>) -> bool {
+        // Nothing moves until the next request answers: no speed on the card (contract 17.v).
+        self.update(id, |_, l| l.bps = 0);
         // While the phone is offline a failed request is expected: wait, and do not use up the retries.
         // The governance pass pauses the download with the reason `offline` and stops this task.
         if self.is_offline() {
@@ -2095,6 +2097,8 @@ impl Downloads {
             return false;
         }
         if effects.contains(&Effect::Backoff) {
+            // "Waiting for the server" until the next byte clears it.
+            self.update(id, |_, l| l.stalled = true);
             tokio::time::sleep(backoff_delay(n, retry_after, jitter())).await;
         }
         self.state_of(id) == Some(State::Downloading)
@@ -2227,7 +2231,8 @@ impl Downloads {
         // The stall rule (contract 17.y, 17.w): the client's read timeout alone lets a server that sends one byte
         // every 40 s hold a slot forever, so the clock is read here too. `clock` lives across reconnects.
         loop {
-            let chunk = match tokio::time::timeout(STALL_TICK, resp.chunk()).await {
+            // SPEED_QUIET, not STALL_TICK: a body that goes quiet must stop showing its last speed (contract 17.v).
+            let chunk = match tokio::time::timeout(SPEED_QUIET, resp.chunk()).await {
                 Ok(Ok(Some(c))) => {
                     clock.on_bytes(Instant::now(), c.len() as u64);
                     c
@@ -2238,7 +2243,9 @@ impl Downloads {
                     return Streamed::Broken(pos);
                 }
                 Err(_) => {
-                    // Nothing arrived for a few seconds.
+                    // Nothing arrived for a few seconds: no speed to show, and the average starts over.
+                    bps_smooth = 0.0;
+                    self.update(id, |_, l| l.bps = 0);
                     if self.stall_step(id, limit, clock) {
                         self.flush_side(id, &mut side, &side_path, file, pos, resumable);
                         self.update(id, |rec, _| rec.held = pos);
@@ -2388,6 +2395,7 @@ impl Downloads {
         if let Some(c) = restart {
             c.restart(Instant::now());
         }
+        self.update(id, |_, l| l.bps = 0);
         // Offline is not the server's fault: wait without using the budget.
         if self.is_offline() {
             return self.transient(id, None).await;
@@ -2404,6 +2412,7 @@ impl Downloads {
             return false;
         }
         if effects.contains(&Effect::Backoff) {
+            self.update(id, |_, l| l.stalled = true);
             tokio::time::sleep(backoff_delay(n, None, jitter())).await;
         }
         self.state_of(id) == Some(State::Downloading)
