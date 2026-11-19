@@ -8,11 +8,13 @@ export const STATUS_SIZE = 12;
 export const STATUS_LINE = 18;
 
 /**
- * Widest strings each value slot holds, in glyphs: "1023.9 KB/s", "↑ 1023.9 KB/s", "1023.9 GB".
+ * Widest strings each value slot holds, in glyphs: "0.98 MB/s", "↑ 0.98 MB/s", "1023.9 GB". A speed is 3 significant
+ * digits and changes unit at 1000 (`formatSpeed`), so it is never wider than 9; a wider slot left a gap between the
+ * amount's dot and the speed (owner report 2026-11-20).
  * A fixed minimum width means a speed that gains a digit never shifts the text beside it.
  * An amount ("320 MB of 2.1 GB") has no fixed width: it takes what it needs and the left side gives way.
  */
-const SLOT_CHARS = { speed: 11, upload: 13, size: 9, amount: 0 } as const;
+const SLOT_CHARS = { speed: 9, upload: 11, size: 9, amount: 0 } as const;
 
 export type LineTone = 'muted' | 'accent' | 'danger' | 'download';
 

@@ -43,7 +43,7 @@ async function main() {
   // ---- monoSlotWidth
   check('monoSlotWidth: Space Mono advance is 0.612 em', T.MONO_ADVANCE === 0.612);
   check('monoSlotWidth: 11 glyphs at 12 px', T.monoSlotWidth(11, 12) === Math.ceil(11 * 12 * 0.612), String(T.monoSlotWidth(11, 12)));
-  check('monoSlotWidth: the widest speed fits its slot', T.monoSlotWidth('1023.9 KB/s'.length, 12) >= '1023.9 KB/s'.length * 12 * 0.612);
+  check('monoSlotWidth: the widest speed fits its slot', T.monoSlotWidth('0.98 MB/s'.length, 12) >= '0.98 MB/s'.length * 12 * 0.612);
   check('monoSlotWidth: grows with the system font size', T.monoSlotWidth(11, 12, 1.5) > T.monoSlotWidth(11, 12, 1));
   check('monoSlotWidth: a bad font scale falls back to 1', T.monoSlotWidth(11, 12, NaN) === T.monoSlotWidth(11, 12) && T.monoSlotWidth(11, 12, 0) === T.monoSlotWidth(11, 12));
   check('monoSlotWidth: whole dp', Number.isInteger(T.monoSlotWidth(13, 12, 1.15)));

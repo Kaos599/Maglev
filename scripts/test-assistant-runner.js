@@ -835,7 +835,7 @@ async function main() {
     const errors = parse(await call(runner, 'list_transfers', { filter: 'error' }));
     check('filter error includes link downloads', errors.data.count === 2);
     const active = parse(await call(runner, 'list_transfers', { filter: 'active' }));
-    check('filter active', active.data.count === 1 && active.data.transfers[0].speed_text === '2.0 MB/s', active.data);
+    check('filter active', active.data.count === 1 && active.data.transfers[0].speed_text === '2.00 MB/s', active.data);
 
     const t1 = resolveArgs(runner, 'get_transfer_details', { transfer_id: 't1', include_files: true });
     const d = parse(await call(runner, 'get_transfer_details', t1));
