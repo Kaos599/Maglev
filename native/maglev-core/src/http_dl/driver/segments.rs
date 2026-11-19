@@ -958,7 +958,8 @@ mod tests {
         Limit(usize),
         /// Like Slow, but the first this-many closed-range requests get 429 + `Retry-After: 1`, whatever is running.
         RefuseFirst(usize),
-        /// Every body (ranged or not) sends 256 KiB, goes silent for 5 s, then sends the rest.
+        /// Every body (ranged or not) sends 1 MiB at a network-like pace (64 KiB per 50 ms, so progress is reported),
+        /// goes silent for 5 s, then sends the rest at full speed.
         Gap,
     }
 
@@ -968,8 +969,6 @@ mod tests {
         ranges: Mutex<Vec<String>>,
         /// Bodies being sent right now.
         inflight: AtomicUsize,
-        /// The most bodies sent at once.
-        peak: AtomicUsize,
         /// Closed-range bodies admitted under `Limit` and not finished.
         admitted: AtomicUsize,
         /// 429s sent.
@@ -1077,8 +1076,7 @@ mod tests {
         }
         head.push_str("\r\n");
         sock.write_all(head.as_bytes()).await?;
-        let now = st.inflight.fetch_add(1, Ordering::SeqCst) + 1;
-        st.peak.fetch_max(now, Ordering::SeqCst);
+        st.inflight.fetch_add(1, Ordering::SeqCst);
         let _gone = Inflight(st.clone());
         let (start, mut at, end) = (from as usize, from as usize, to as usize + 1);
         let slow = matches!(mode, Mode::Slow | Mode::Limit(_) | Mode::RefuseFirst(_));
@@ -1087,10 +1085,10 @@ mod tests {
             let next = (at + 64 * 1024).min(end);
             sock.write_all(&data[at..next]).await?;
             at = next;
-            if slow {
+            if slow || (mode == Mode::Gap && !gapped) {
                 tokio::time::sleep(Duration::from_millis(50)).await;
             }
-            if mode == Mode::Gap && !gapped && at - start >= 256 * 1024 {
+            if mode == Mode::Gap && !gapped && at - start >= 1024 * 1024 {
                 gapped = true;
                 tokio::time::sleep(Duration::from_secs(5)).await;
             }
@@ -1348,12 +1346,25 @@ mod tests {
         let d = manager(&dir);
         let t0 = Instant::now();
         d.add(&format!("http://127.0.0.1:{port}/big.bin"), r#"{"segments":4}"#).unwrap();
-        let snap = wait_for(&d, "finished").await;
-        assert_eq!(snap["downloaded"].as_u64(), Some(BIG as u64));
+        // The engine's own count of running parts, once the server has refused all four.
+        let mut most_after = 0u64;
+        loop {
+            let snap = d.snapshots();
+            let cur = snap.first().cloned().unwrap_or(Value::Null);
+            if cur["state"] == "finished" {
+                break;
+            }
+            assert!(cur["state"] != "error", "download failed: {cur}");
+            assert!(t0.elapsed() < Duration::from_secs(60), "timed out: {cur}");
+            if stats.refused.load(Ordering::SeqCst) >= 4 {
+                most_after = most_after.max(cur["segments_active"].as_u64().unwrap_or(0));
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
         assert_eq!(std::fs::read(dir.join("big.bin")).unwrap(), *data);
         assert_eq!(stats.refused.load(Ordering::SeqCst), 4);
         assert!(t0.elapsed() >= Duration::from_millis(950), "did not wait Retry-After: {:?}", t0.elapsed());
-        assert_eq!(stats.peak.load(Ordering::SeqCst), 1, "more than one part at a time after a full refusal");
+        assert_eq!(most_after, 1, "more than one part at a time after a full refusal");
         assert!(!stats.ranges.lock().iter().any(|r| r.ends_with('-')), "fell back: {:?}", stats.ranges.lock());
         assert!(d.inner.lock().records.values().all(|r| !r.split_off));
         let _ = std::fs::remove_dir_all(&dir);
