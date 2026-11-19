@@ -26,7 +26,7 @@ import { riskySources } from '../../utils/search/safety';
 import { addRecentSearch, clearRecentSearches, getSearchPrefs, removeRecentSearch, useSearchPrefs } from '../../utils/prefs/search';
 import { availableCategories, directAddRoute, eligibleProviders, mergeInto, rerunProvider, resolveResult, searchAll } from '../../utils/search/aggregate';
 import { CloudflareSolverSheet } from '../../components/search/CloudflareSolverSheet';
-import { allFailed, nextNeedsCheck, resultsSummary, shouldShowFixHint, tallySources, unansweredNote, unansweredSources } from '../../utils/search/answered';
+import { nextNeedsCheck, resultsSummary, shouldShowFixHint, sourcesLine, tallySources, unansweredSources } from '../../utils/search/answered';
 import { formatAgeLong } from '../../utils/search/age';
 import { CATEGORY_ORDER, type Category, type MergedResult, type SearchUpdate } from '../../utils/search/types';
 import { ResultPreviewSheet } from '../../components/search/ResultPreviewSheet';
@@ -478,6 +478,7 @@ export default function SearchScreen() {
   const sources = useMemo(() => (update?.sources ?? []).filter((s) => !(stopped && s.state === 'searching')), [update, stopped]);
   // A source behind a Cloudflare check, or one that failed, has not answered.
   const tally = useMemo(() => tallySources(sources), [sources]);
+  const srcLine = sourcesLine(tally);
   const answered = tally.answered;
   const [unansweredOpen, setUnansweredOpen] = useState(false);
   const noteBtnRef = useRef<any>(null);
@@ -769,16 +770,20 @@ export default function SearchScreen() {
           ) : (
             <View style={styles.summaryRow}>
               <View style={styles.summaryText}>
-                <Text style={[styles.summary, styles.summaryFit]}>{`${stopped ? 'Stopped · ' : ''}${shown.length} ${shown.length === 1 ? 'result' : 'results'}`}</Text>
-                {unansweredNote(tally) ? (
+                <Text style={styles.count} numberOfLines={1}>{`${stopped ? 'Stopped · ' : ''}${shown.length} ${shown.length === 1 ? 'result' : 'results'}`}</Text>
+                {srcLine ? (
                   <PressableScale
                     pressableRef={noteBtnRef}
                     onPress={() => setUnansweredOpen(true)}
                     style={styles.noteBtn}
+                    hitSlop={{ top: 12, bottom: 12, left: 8, right: 8 }}
                     accessibilityRole="button"
                     accessibilityLabel={`${resultsSummary(shown.length, tally, stopped)}. Show which sources did not respond`}
                   >
-                    <Text style={[styles.note, allFailed(tally) && styles.noteBad]}>{`· ${unansweredNote(tally)}`}</Text>
+                    <Text style={[styles.note, srcLine.bad && styles.noteBad]} numberOfLines={1}>
+                      {srcLine.text}
+                    </Text>
+                    <PixelIcon name="chevron-right" size={16} color={srcLine.bad ? colors.danger : colors.textMuted} />
                   </PressableScale>
                 ) : null}
               </View>
@@ -1048,9 +1053,9 @@ const makeStyles = (c: ThemeColors) =>
     fixBody: { ...type.body, fontSize: 12, color: c.textMuted },
     sources: { paddingHorizontal: spacing.lg, paddingBottom: spacing.sm, gap: spacing.sm },
     summaryRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.sm },
-    summaryText: { flex: 1, flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap' },
-    summaryFit: { flex: 0, flexShrink: 1 },
-    noteBtn: { minHeight: 44, justifyContent: 'center', paddingHorizontal: spacing.xs },
+    summaryText: { flex: 1, minWidth: 0, justifyContent: 'center', minHeight: 44 },
+    count: { ...type.bodyStrong, fontVariant: ['tabular-nums'], fontSize: 13, lineHeight: 18, color: c.text },
+    noteBtn: { flexDirection: 'row', alignItems: 'center', gap: 2, alignSelf: 'flex-start' },
     note: { ...type.body, fontSize: 12, lineHeight: 17, color: c.textMuted },
     noteBad: { color: c.danger },
     summary: { ...type.body, fontVariant: ['tabular-nums'], flex: 1, fontSize: 12, lineHeight: 17, color: c.textMuted },
