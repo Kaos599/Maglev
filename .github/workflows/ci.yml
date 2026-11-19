@@ -1,6 +1,7 @@
 name: CI
 
-# Docs-only changes skip CI entirely (the README badge keeps the last real result).
+# Docs-only pushes skip CI (the README badge keeps the last real result). Pull requests always run it, because
+# main requires these checks on the pull request itself; a run started by hand on the same commit does not count.
 on:
   # Flow: feature branches → PR into dev → dev (the main CI run, where features converge) → PR dev → main
   # (the release build: all three ABIs, strict signing, APK set) → main reuses that PR's APKs (job `reuse`),
@@ -9,7 +10,6 @@ on:
     branches: [main, dev]
     paths-ignore: ['**/*.md', 'docs/**', 'screens/**', 'LICENSE']
   pull_request:
-    paths-ignore: ['**/*.md', 'docs/**', 'screens/**', 'LICENSE']
   workflow_dispatch:
 
 permissions:
