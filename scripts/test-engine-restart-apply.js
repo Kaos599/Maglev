@@ -86,7 +86,10 @@ check('unknown network blocks the VPN rule (no watcher, no callback, no network)
 const gov = body(host, /private fun evaluateGovernance\(force: Boolean\)/);
 check('evaluateGovernance uses vpnBlockedNow, not the "link known" shortcut', /val vpnBlocked = vpnBlockedNow\(\)/.test(gov) && !/linkKnown && n\?\.vpn == false/.test(gov));
 check('Wi-Fi only and the other rules still treat an unknown network as not blocked', /val unvalidatedBlocked = linkKnown && n\?\.captivePortal == true/.test(gov));
-check('the VPN verdict drives the network-off session', /reconcileNetworkOff\(vpnBlocked\)/.test(gov));
+check('the VPN verdict drives the network-off session', /reconcileNetworkOff\(networkOffWanted\(\)\)/.test(gov));
+const wanted = body(host, /private fun networkOffWanted\(\)/);
+check('no network at all keeps the current session (a Wi-Fi handoff does not cycle it)', /!n\.connected\) return networkOffApplied/.test(wanted));
+check('a failed cycle retries with back-off', /scheduleEngineRetryLocked\(\)/.test(body(host, /private fun cycleSessionLocked\(\)/)) && /ENGINE_RETRY_BACKOFF_MS/.test(host));
 const recon = body(host, /private fun reconcileNetworkOff\(/);
 check('network-off cycle is debounced and reuses the restart path', /delay\(NETWORK_OFF_DEBOUNCE_MS\)/.test(recon) && /cycleSessionLocked\(\)/.test(recon));
 check('Rust builds the session without DHT, listener, LSD and trackers when network-off',

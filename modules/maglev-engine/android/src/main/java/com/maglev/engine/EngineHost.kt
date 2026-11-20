@@ -94,6 +94,8 @@ object EngineHost {
     private const val REASON_STARTUP = "startup"
     /** The VPN rule must hold this long before the session is rebuilt network-off (or back), so a flapping link does not cycle it. */
     private const val NETWORK_OFF_DEBOUNCE_MS = 3_000L
+    /** Waits between attempts to bring the session back after a failed cycle; the last value repeats while the service lives. */
+    private val ENGINE_RETRY_BACKOFF_MS = longArrayOf(2_000L, 5_000L, 15_000L, 30_000L, 60_000L)
     private const val SERVICE_RETRY_MS = 10_000L
     private const val TILE_REFRESH_MS = 2_000L
     private const val COPY_RETRY_MS = 60_000L
@@ -180,6 +182,8 @@ object EngineHost {
     /** Whether the running session was built network-off (no DHT, no listener) because the VPN rule blocked at the time. */
     @Volatile private var networkOffApplied = false
     private var networkOffJob: Job? = null
+    /** Re-tries a session start that failed after a cycle. Touched only under [lifecycleLock] (and cancelled by shutdown). */
+    private var engineRetryJob: Job? = null
     private var power: PowerGovernanceManager? = null
 
     @Volatile private var holdForPaused = false
@@ -473,8 +477,44 @@ object EngineHost {
         if (isOk(res)) {
             forceEmit = true
             pollNow()
+        } else {
+            // initialized is false now, so governance and the network-off check return early until a session
+            // exists. Without a retry the foreground service would stay up with no engine. The failure itself
+            // reaches JS the usual way: a restart returns it, and JS's own init gets it from startEngine.
+            Log.w(TAG, "cycle: session did not restart (${res["code"]}); retrying with back-off")
+            scheduleEngineRetryLocked()
         }
         return res
+    }
+
+    /** Runs under [lifecycleLock]. One retry loop at a time; it ends on success, on a shutdown, or when someone else started the engine. */
+    private fun scheduleEngineRetryLocked() {
+        if (engineRetryJob?.isActive == true) return
+        val epoch = shutdownEpoch.get()
+        engineRetryJob = scope.launch {
+            var attempt = 0
+            while (isActive) {
+                delay(ENGINE_RETRY_BACKOFF_MS[minOf(attempt, ENGINE_RETRY_BACKOFF_MS.size - 1)])
+                attempt++
+                val done = synchronized(lifecycleLock) {
+                    when {
+                        initialized || shutdownEpoch.get() != epoch -> true
+                        else -> {
+                            val r = startEngine("")
+                            if (isOk(r)) {
+                                forceEmit = true
+                                pollNow()
+                                true
+                            } else {
+                                Log.w(TAG, "engine retry $attempt failed: ${r["code"]}")
+                                false
+                            }
+                        }
+                    }
+                }
+                if (done) break
+            }
+        }
     }
 
     /**
@@ -488,8 +528,26 @@ object EngineHost {
     }
 
     /**
+     * Whether the session should run network-off. Differs from [vpnBlockedNow] in one case: a network that is known
+     * to be absent. With no network nothing can leak, so a Wi-Fi handoff (a brief no-network gap) must not rebuild
+     * the session twice; the current state stays. Unknown (no reading yet) still counts as blocked.
+     */
+    private fun networkOffWanted(): Boolean {
+        if (!governance.vpnOnly) return false
+        val n = net
+        if (n == null || !n.monitoring) return true
+        if (!n.connected) return networkOffApplied
+        return !n.vpn
+    }
+
+    /**
      * librqbit cannot stop DHT or the listening socket on a live session. So while the VPN rule blocks, the session is
-     * rebuilt without them (network-off), and rebuilt again when the rule allows. [want] is the rule's current verdict.
+     * rebuilt without them (network-off), and rebuilt again when the rule allows. [want] is [networkOffWanted].
+     *
+     * Known gap: when the VPN drops onto a bare network, DHT and the listening socket stay up for
+     * [NETWORK_OFF_DEBOUNCE_MS] plus the rebuild time. There is no cheap native call to close them on a live session
+     * (librqbit has none), and the debounce avoids rebuilding on every VPN flap. Transfers themselves pause at once
+     * through the `vpn_required` block, which does not wait for the debounce.
      */
     private fun reconcileNetworkOff(want: Boolean) {
         if (want == networkOffApplied) {
@@ -501,9 +559,9 @@ object EngineHost {
         networkOffJob = scope.launch {
             delay(NETWORK_OFF_DEBOUNCE_MS)
             // The rule may have changed back during the wait; then there is nothing to do.
-            if (vpnBlockedNow() == networkOffApplied) return@launch
+            if (networkOffWanted() == networkOffApplied) return@launch
             synchronized(lifecycleLock) {
-                if (initialized && vpnBlockedNow() != networkOffApplied) {
+                if (initialized && networkOffWanted() != networkOffApplied) {
                     val res = cycleSessionLocked()
                     if (!isOk(res)) Log.w(TAG, "network-off cycle failed: ${res["code"]}")
                 }
@@ -523,6 +581,8 @@ object EngineHost {
         pollJob = null
         networkOffJob?.cancel()
         networkOffJob = null
+        engineRetryJob?.cancel()
+        engineRetryJob = null
         net?.stop(); net = null
         power?.stop(); power = null
         holdForPaused = false
@@ -1392,7 +1452,7 @@ object EngineHost {
         send("charging_only", !chargingBlocked, force)
         send("network_unvalidated", !unvalidatedBlocked, force)
         send("vpn_required", !vpnBlocked, force)
-        reconcileNetworkOff(vpnBlocked)
+        reconcileNetworkOff(networkOffWanted())
         // Link downloads only (contract section 17): no network, or none Android validated, means "offline".
         // Unknown (callback not registered) is never offline. onChanged re-runs this on every network change.
         val offline = n != null && n.monitoring && (!n.connected || !n.validated)

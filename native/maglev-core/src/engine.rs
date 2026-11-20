@@ -429,6 +429,9 @@ pub struct InitResult {
     pub config_warning: Option<String>,
 }
 
+/// (path, file size, mtime, counted rules). See `MaglevEngine::blocklist_count_cache`.
+type BlocklistCountEntry = (String, u64, Option<SystemTime>, Option<usize>);
+
 pub struct MaglevEngine {
     runtime: Mutex<Option<Runtime>>,
     handle: Handle,
@@ -439,6 +442,9 @@ pub struct MaglevEngine {
     /// The config this session was built with. `restart_pending` compares it with `config`.
     session_config: NativeConfig,
     blocked: Mutex<Vec<String>>,
+    /// Rule count of a blocklist file the session did not load, keyed by (path, size, mtime) so a settings screen
+    /// that polls `effective_config` does not decode a tens-of-MB list each time. Leaf lock: never held across I/O.
+    blocklist_count_cache: Mutex<Option<BlocklistCountEntry>>,
     tick_lock: tokio::sync::Mutex<()>,
     last_save: Mutex<Instant>,
     stream: StreamServer,
@@ -729,6 +735,7 @@ impl MaglevEngine {
             session_config: cfg.clone(),
             config: Mutex::new(cfg),
             blocked: Mutex::new(blocked),
+            blocklist_count_cache: Mutex::new(None),
             tick_lock: tokio::sync::Mutex::new(()),
             last_save: Mutex::new(Instant::now()),
             stream,
@@ -2921,16 +2928,37 @@ impl MaglevEngine {
             Some(p) => p,
             None => return blocklist_status(false, false, None),
         };
-        let usable = std::fs::metadata(path).map(|m| m.is_file() && m.len() >= 2).unwrap_or(false);
-        let rules = if !usable {
-            None
-        } else if self.session_config.ip_filter_path.as_deref() == Some(path) && self.session.blocklist.len() > 0 {
-            Some(self.session.blocklist.len())
-        } else {
-            // Not loaded by this session (chosen later, or the file was fixed since): count its text.
-            match std::fs::read(path) {
-                Ok(bytes) => count_plain_rules(&bytes),
-                Err(_) => Some(0),
+        let meta = std::fs::metadata(path).ok().filter(|m| m.is_file() && m.len() >= 2);
+        let usable = meta.is_some();
+        let rules = match meta {
+            None => None,
+            Some(m) => {
+                let loaded_here = self.session_config.ip_filter_path.as_deref() == Some(path);
+                // The session tried this path at start: its count is the truth, and 0 means it parsed nothing
+                // (a corrupt gzip included), so the file is unreadable. Never re-read and guess "on".
+                if loaded_here {
+                    Some(self.session.blocklist.len())
+                } else {
+                    let key = (path.to_string(), m.len(), m.modified().ok());
+                    let hit = self
+                        .blocklist_count_cache
+                        .lock()
+                        .as_ref()
+                        .filter(|e| e.0 == key.0 && e.1 == key.1 && e.2 == key.2)
+                        .map(|e| e.3);
+                    match hit {
+                        Some(n) => n,
+                        None => {
+                            // Chosen after the session started: count its text once per file version.
+                            let n = match std::fs::read(path) {
+                                Ok(bytes) => count_plain_rules(&bytes),
+                                Err(_) => Some(0),
+                            };
+                            *self.blocklist_count_cache.lock() = Some((key.0, key.1, key.2, n));
+                            n
+                        }
+                    }
+                }
             }
         };
         blocklist_status(true, usable, rules)

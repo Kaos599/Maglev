@@ -185,7 +185,9 @@ pub struct BlocklistStatus {
 
 /// `file_usable` is false when the file is missing, not a file, or shorter than 2 bytes. `rules` is the number of
 /// rules read from it (`None` when it cannot be counted yet, for example a gzip file that no session has loaded).
-/// A readable file with zero rules is `Unreadable`: it is what a parse failure looks like. Never falls back to `On`.
+/// A readable file with zero rules is `Unreadable`: it is what a parse failure looks like. `None` is only passed for
+/// a file no session loaded and this crate cannot decode (gzip chosen after start, restart pending): `On` with 0 rules,
+/// shown as "will apply on restart". A path the running session loaded always passes `Some(its count)`, never `None`.
 pub fn blocklist_status(has_path: bool, file_usable: bool, rules: Option<usize>) -> BlocklistStatus {
     if !has_path {
         return BlocklistStatus { state: BlocklistState::Off, rules: 0 };
@@ -364,7 +366,9 @@ mod tests {
         assert_eq!(blocklist_status(true, false, None).state, BlocklistState::Unreadable);
         // Readable file, nothing parses: unreadable, never "on".
         assert_eq!(blocklist_status(true, true, Some(0)).state, BlocklistState::Unreadable);
-        // Not counted yet (gzip before a session loaded it): on with an unknown (0) count.
+        // Not counted yet (gzip chosen after start, restart pending): on with an unknown (0) count.
+        // A session-loaded path never reaches here with None: a corrupt gzip it parsed to 0 rules is Some(0).
+        assert_eq!(blocklist_status(true, true, Some(0)), BlocklistStatus { state: BlocklistState::Unreadable, rules: 0 });
         assert_eq!(blocklist_status(true, true, None), BlocklistStatus { state: BlocklistState::On, rules: 0 });
         let json = serde_json::to_value(blocklist_status(true, true, Some(3))).unwrap();
         assert_eq!(json["state"], "on");
