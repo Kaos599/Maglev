@@ -234,7 +234,11 @@ export const fontFamily = {
 
 export const type = {
   family: fontFamily,
-  size: { xs: 11, sm: 12, md: 13, lg: 15, xl: 17, xxl: 22 },
+  /**
+   * The only font sizes. `base` (14) is body copy in sheets and dialogs; `display` (32) is a hero number (Stats).
+   * A size off this scale needs a `// design-exception: <reason>` comment on its line (scripts/test-design-system.js).
+   */
+  size: { xs: 11, sm: 12, md: 13, base: 14, lg: 15, xl: 17, xxl: 22, display: 32 },
   /** The MAGLEV wordmark only. Silkscreen in every style. */
   get brand() { return { fontFamily: fontFamily.brand }; },
   /** Screen and sheet titles: Inter Bold (Clean), Silkscreen (Retro), Space Mono Bold (Mono). */

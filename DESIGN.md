@@ -114,7 +114,7 @@ Screens never name a font file. They spread a slot from `type` in `constants/the
 | `type.mono` | File names, sizes, speeds, counts: anything that is telemetry. Includes `tabular-nums`. |
 | `type.brand` | The MAGLEV wordmark only. Silkscreen in every style. |
 
-`type.monoBold` also exists, for emphasised telemetry. Sizes are `type.size`: xs 11, sm 12, md 13, lg 15, xl 17, xxl 22.
+`type.monoBold` also exists, for emphasised telemetry. Sizes are `type.size`: xs 11, sm 12, md 13, base 14, lg 15, xl 17, xxl 22, display 32. `base` is body copy in sheets and dialogs, `display` a hero number. Any other size needs a `// design-exception: <reason>` comment on its line.
 
 The person picks one of three font styles in Settings, Interface (`constants/fontStyles.ts`). It applies live, to the UI only.
 
