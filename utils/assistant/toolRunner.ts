@@ -415,6 +415,7 @@ export function createToolRunner(deps: ToolRunnerDeps): ToolRunner {
     const downloads = listRes.ok ? (listRes.downloads ?? []) : [];
     const pendingNeed = pendingNeedOf(
       torrents.map((t) => ({ finished: t.finished, includedBytes: t.includedBytes, downloadedBytes: t.progressBytes })),
+      downloads,
     );
     const unfinished = torrents.filter((t) => !t.finished).length;
     if (!fsRes.ok || !listRes.ok) {

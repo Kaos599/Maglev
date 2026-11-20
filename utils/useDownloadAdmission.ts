@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { maglevEngine, type FreeSpace } from 'maglev-engine';
-import { useMaglevEngine } from '../context/EngineContext';
+import { useEngineTelemetry } from '../context/EngineContext';
 import { admit, pendingNeedOf, type AdmissionOutcome } from './admission';
 import { noSpaceBody } from './admissionCopy';
 
@@ -16,7 +16,7 @@ export function useDownloadAdmission(size: number | null | undefined, active: bo
   /** Body for the "Not enough space" banner: the figures and the reason. Undefined unless `doesntFit`. */
   noSpace: string | undefined;
 } {
-  const { telemetry } = useMaglevEngine();
+  const { telemetry, downloads } = useEngineTelemetry();
   const [free, setFree] = useState<FreeSpace | null>(null);
   useEffect(() => {
     if (!active) return;
@@ -34,7 +34,7 @@ export function useDownloadAdmission(size: number | null | undefined, active: bo
     };
   }, [active]);
   const freeBytes = free ? Math.min(free.freeBytes, free.targetFreeBytes ?? free.freeBytes) : null;
-  const pendingNeed = pendingNeedOf(telemetry.torrents);
+  const pendingNeed = pendingNeedOf(telemetry.torrents, downloads);
   const outcome =
     freeBytes !== null && size
       ? admit({

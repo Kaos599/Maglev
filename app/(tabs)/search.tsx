@@ -373,7 +373,7 @@ export default function SearchScreen() {
             if (fs.ok) {
               const out = admit({
                 freeBytes: Math.min(fs.freeBytes, fs.targetFreeBytes ?? fs.freeBytes),
-                pendingNeed: pendingNeedOf(telemetry.torrents),
+                pendingNeed: pendingNeedOf(telemetry.torrents, downloads),
                 stagingFactor: fs.mode === 'staging' ? 2 : 1,
                 selectionBytes: size,
               });
@@ -428,7 +428,7 @@ export default function SearchScreen() {
         setBusy(busyKey, false);
       }
     },
-    [remember, show, dismiss, trayAdd, subsAvailable, autoSubtitles, providers, category, setBusy, startTorrent, restartEngine, trimmed, getFreeSpace, telemetry.torrents, router, onMeteredNetwork, settings.network.wifiOnly],
+    [remember, show, dismiss, trayAdd, subsAvailable, autoSubtitles, providers, category, setBusy, startTorrent, restartEngine, trimmed, getFreeSpace, telemetry.torrents, downloads, router, onMeteredNetwork, settings.network.wifiOnly],
   );
 
   // Tapping Add on a warned row asks first; with the warning off it is one tap.

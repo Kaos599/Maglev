@@ -54,7 +54,7 @@ export default function AddTorrentScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const params = useLocalSearchParams<{ source?: string; uri?: string; magnet?: string }>();
-  const { telemetry, defaultStoragePath, showNotice, onMeteredNetwork, restartEngine } = useMaglevEngine();
+  const { telemetry, downloads, defaultStoragePath, showNotice, onMeteredNetwork, restartEngine } = useMaglevEngine();
   const { settings } = useSettings();
 
   const [text, setText] = useState('');
@@ -434,7 +434,7 @@ export default function AddTorrentScreen() {
     const freeBytes = freeSpace
       ? Math.min(freeSpace.freeBytes, freeSpace.targetFreeBytes ?? freeSpace.freeBytes)
       : null;
-    const pendingNeed = pendingNeedOf(telemetry.torrents);
+    const pendingNeed = pendingNeedOf(telemetry.torrents, downloads);
     const admission: AdmissionOutcome | null =
       freeBytes !== null && selectedBytes > 0
         ? admit({

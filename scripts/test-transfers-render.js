@@ -110,19 +110,24 @@ async function main() {
 
   // ---- low-space banner
   const t = (included, downloaded, finished = false) => ({ includedBytes: included, downloadedBytes: downloaded, finished });
-  const short = lowSpaceWarning(1.1 * GB, [t(3.1 * GB, 0)]);
+  const short = lowSpaceWarning(1.1 * GB, [t(3.1 * GB, 0)], []);
   check('lowSpace: need over free shows the banner', !!short);
   check('lowSpace: title', short && short.title === 'Not enough space for your downloads');
   check('lowSpace: body names how much more and how much is free', short && short.body === 'Unfinished downloads need 2.0 GB more than the 1.1 GB free.', short && short.body);
-  check('lowSpace: exactly the reserve left is fine', lowSpaceWarning(1 * GB + ADMISSION_RESERVE_BYTES, [t(1 * GB, 0)]) === null);
-  const under = lowSpaceWarning(1 * GB + ADMISSION_RESERVE_BYTES - 1, [t(1 * GB, 0)]);
+  check('lowSpace: exactly the reserve left is fine', lowSpaceWarning(1 * GB + ADMISSION_RESERVE_BYTES, [t(1 * GB, 0)], []) === null);
+  const under = lowSpaceWarning(1 * GB + ADMISSION_RESERVE_BYTES - 1, [t(1 * GB, 0)], []);
   check('lowSpace: one byte under the reserve shows the banner', !!under);
   check('lowSpace: under the reserve but not over free says so', under && /need 1\.0 GB of the 1\.2 GB free\. That leaves less than 200 MB for your phone\./.test(under.body), under && under.body);
-  check('lowSpace: unknown free space shows nothing', lowSpaceWarning(null, [t(5 * GB, 0)]) === null && lowSpaceWarning(undefined, [t(5 * GB, 0)]) === null && lowSpaceWarning(NaN, [t(5 * GB, 0)]) === null);
-  check('lowSpace: no unfinished downloads shows nothing', lowSpaceWarning(10 * MB, []) === null && lowSpaceWarning(10 * MB, [t(5 * GB, 0, true)]) === null);
-  check('lowSpace: fully downloaded rows need nothing', lowSpaceWarning(10 * MB, [t(5 * GB, 5 * GB)]) === null);
-  check('lowSpace: pending need uses what is left, not the size', lowSpaceWarning(2 * GB, [t(5 * GB, 4 * GB)]) === null);
-  check('lowSpace: plenty of space shows nothing', lowSpaceWarning(50 * GB, [t(5 * GB, 0)]) === null);
+  check('lowSpace: unknown free space shows nothing', lowSpaceWarning(null, [t(5 * GB, 0)], []) === null && lowSpaceWarning(undefined, [t(5 * GB, 0)], []) === null && lowSpaceWarning(NaN, [t(5 * GB, 0)], []) === null);
+  check('lowSpace: no unfinished downloads shows nothing', lowSpaceWarning(10 * MB, [], []) === null && lowSpaceWarning(10 * MB, [t(5 * GB, 0, true)], []) === null);
+  check('lowSpace: fully downloaded rows need nothing', lowSpaceWarning(10 * MB, [t(5 * GB, 5 * GB)], []) === null);
+  check('lowSpace: pending need uses what is left, not the size', lowSpaceWarning(2 * GB, [t(5 * GB, 4 * GB)], []) === null);
+  check('lowSpace: plenty of space shows nothing', lowSpaceWarning(50 * GB, [t(5 * GB, 0)], []) === null);
+  // SM-35: link downloads count too.
+  const link = (state, size, downloaded) => ({ state, size, downloaded, error: null });
+  check('lowSpace: a link download needing more than is free shows the banner', !!lowSpaceWarning(1 * GB, [], [link('downloading', 3 * GB, 0)]));
+  check('lowSpace: a finished or size-less link needs nothing', lowSpaceWarning(10 * MB, [], [link('finished', 5 * GB, 5 * GB), link('downloading', null, 0)]) === null);
+  check('lowSpace: torrent and link needs add up', !!lowSpaceWarning(5 * GB, [t(3 * GB, 0)], [link('paused', 3 * GB, 0)]) && lowSpaceWarning(5 * GB, [t(3 * GB, 0)], []) === null);
   check('usableFree: smaller of folder and target', usableFreeOf({ freeBytes: 5 * GB, targetFreeBytes: 2 * GB }) === 2 * GB);
   check('usableFree: no target uses the folder', usableFreeOf({ freeBytes: 5 * GB, targetFreeBytes: null }) === 5 * GB && usableFreeOf({ freeBytes: 5 * GB }) === 5 * GB);
   check('usableFree: missing or bad is unknown', usableFreeOf(null) === null && usableFreeOf({ freeBytes: NaN }) === null && usableFreeOf({ freeBytes: -1 }) === null);
