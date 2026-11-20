@@ -88,7 +88,7 @@ const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
   check('recordVisit skips while private', /if \(!prefs\(\)\.saveHistory \|\| prefs\(\)\.privateBrowsing\) return 'skipped'/.test(hs));
   check('suggestions are empty while private', /if \(!prefs\(\)\.suggestFromHistory \|\| prefs\(\)\.privateBrowsing\) return \[\]/.test(hs));
   check('saved tabs are not written while private', /if \(!prefs\(\)\.saveHistory \|\| prefs\(\)\.privateBrowsing\) return false/.test(hs));
-  check('recent pages are hidden while private', /prefs\.saveHistory && !prefs\.privateBrowsing/.test(read('components/browser/RecentHistory.tsx')));
+  check('recent pages are hidden while private', /prefs\.saveHistory && !privateMode/.test(read('components/browser/StartPage.tsx')) && /privateMode=\{prefs\.privateBrowsing\}/.test(read('app/browser.tsx')));
   check('address suggestions are hidden while private', /prefs\.suggestFromHistory && !prefs\.privateBrowsing/.test(read('components/browser/HistorySuggestions.tsx')));
 
   // ---- tabs gated (store behaviour) ----

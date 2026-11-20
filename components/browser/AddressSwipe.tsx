@@ -3,7 +3,8 @@ import { StyleSheet, Text, View, useWindowDimensions, type LayoutChangeEvent } f
 import { GestureDetector, useExclusiveGestures, usePanGesture } from 'react-native-gesture-handler';
 import Animated, { cancelAnimation, useAnimatedStyle, useSharedValue, withSpring, withTiming } from 'react-native-reanimated';
 import { useTheme } from '../../context/ThemeContext';
-import { ThemeColors, radius, spacing, type, touch } from '../../constants/theme';
+import { ThemeColors, motion, radius, spacing, type, touch } from '../../constants/theme';
+import { useReduceMotion } from '../motion/useReduceMotion';
 import { haptic } from '../../constants/haptics';
 import { hostOf } from '../../utils/browserUrl';
 import { isBlank, type Tab } from '../../utils/browser/tabs';
@@ -21,7 +22,6 @@ export interface AddressSwipeProps {
   children: React.ReactNode;
 }
 
-const SLIDE_MS = 130;
 const SPRING = { damping: 22, stiffness: 320, mass: 0.6 } as const;
 
 /**
@@ -30,6 +30,9 @@ const SPRING = { damping: 22, stiffness: 320, mass: 0.6 } as const;
  * Gesture API: react-native-gesture-handler 3.x usePanGesture (activeOffsetX, failOffsetY, onBegin, onUpdate, onDeactivate).
  */
 export function AddressSwipe({ strip, activeId, enabled, onSelect, onOpenSwitcher, children }: AddressSwipeProps) {
+  // The tab slide uses the base motion token and is instant when the system asks for less motion.
+  const reduceMotion = useReduceMotion();
+  const slideMs = reduceMotion ? 0 : motion.duration.base;
   const { colors } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const { width: screenW } = useWindowDimensions();
@@ -69,7 +72,7 @@ export function AddressSwipe({ strip, activeId, enabled, onSelect, onOpenSwitche
   const settle = () => {
     tx.value = withSpring(0, SPRING);
     live.current.hintId = '';
-    setTimeout(() => setHint(null), 160);
+    setTimeout(() => setHint(null), motion.duration.release);
   };
 
   const finishHorizontal = (dx: number, vx: number) => {
@@ -80,13 +83,13 @@ export function AddressSwipe({ strip, activeId, enabled, onSelect, onOpenSwitche
     if (d === 'none') return settle();
     const target = l.strip[d === 'next' ? i + 1 : i - 1];
     haptic('select');
-    tx.value = withTiming((d === 'next' ? -1 : 1) * width.value, { duration: SLIDE_MS });
+    tx.value = withTiming((d === 'next' ? -1 : 1) * width.value, { duration: slideMs });
     setTimeout(() => {
       l.onSelect(target.id);
       tx.value = 0;
       l.hintId = '';
       setHint(null);
-    }, SLIDE_MS);
+    }, slideMs);
   };
 
   const horizontal = usePanGesture({

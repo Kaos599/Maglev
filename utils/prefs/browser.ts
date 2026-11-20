@@ -41,6 +41,8 @@ export interface BrowserPrefs {
    * wiped when the browser is left (utils/browser/privateSession.ts). UI only; never reaches the engine.
    */
   privateBrowsing: boolean;
+  /** Darken pages that only have a light look while Maglev is dark (section 24.10a). UI only; the view gets it as a prop. */
+  darkPages: boolean;
 }
 
 export const TEXT_ZOOM_MIN = 50;
@@ -80,6 +82,7 @@ export function defaultBrowserPrefs(): BrowserPrefs {
     browserTextZoom: TEXT_ZOOM_DEFAULT,
     swipeTabs: true,
     privateBrowsing: false,
+    darkPages: true,
   };
 }
 
@@ -107,6 +110,7 @@ export function normalizeBrowserPrefs(raw: unknown): BrowserPrefs {
     browserTextZoom: normalizeTextZoom(o.browserTextZoom),
     swipeTabs: o.swipeTabs !== false,
     privateBrowsing: o.privateBrowsing === true,
+    darkPages: o.darkPages !== false,
   };
 }
 

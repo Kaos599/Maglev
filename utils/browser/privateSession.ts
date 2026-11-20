@@ -8,7 +8,8 @@ import { getSearchPrefs } from '../prefs/search';
 import { PROVIDERS } from '../search/aggregate';
 import { createPrivateSession, searchKeepHosts } from './privateHosts';
 
-function keepHosts(): string[] {
+/** Hosts to leave alone when expiring cookies: Search's sources and site checks. */
+export function keepHosts(): string[] {
   const p = getSearchPrefs();
   const enabled = new Set(p.enabled);
   return searchKeepHosts({

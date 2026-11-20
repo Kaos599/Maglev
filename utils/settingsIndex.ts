@@ -1826,6 +1826,13 @@ export const SETTINGS_INDEX: SettingEntry[] = [
     ["swipe", "gesture", "slide", "address bar", "url bar", "tabs", "switch tab", "next tab", "all tabs"],
   ),
   e(
+    "browser-dark-pages",
+    "Dark pages",
+    "browser",
+    "Browser",
+    ["dark", "night", "pages", "websites", "theme", "dark mode", "darken", "browser"],
+  ),
+  e(
     "backup-include-stats",
     "Include stats",
     "backup",

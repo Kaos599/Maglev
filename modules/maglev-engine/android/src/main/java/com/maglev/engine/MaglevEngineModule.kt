@@ -566,7 +566,7 @@ class MaglevEngineModule : Module() {
 
         View(MaglevBrowserView::class) {
             Events("onPage", "onFound", "onBlockedCount", "onDownloadRequest", "onMagnet", "onRefused", "onCrashed", "onPageNote",
-                "onNewWindow", "onPopupRequest", "onPopupBlocked", "onLongPress", "onFindResult")
+                "onNewWindow", "onPopupRequest", "onPopupBlocked", "onLongPress", "onFindResult", "onMediaHit")
 
             Prop("url") { view: MaglevBrowserView, url: String -> view.setUrl(url) }
             Prop("adBlock") { view: MaglevBrowserView, enabled: Boolean -> view.setAdBlock(enabled) }
@@ -577,6 +577,11 @@ class MaglevEngineModule : Module() {
             Prop("popupAllowHosts") { view: MaglevBrowserView, hosts: List<String> -> view.setPopupAllowHosts(hosts) }
             Prop("textZoom") { view: MaglevBrowserView, value: Int -> view.setTextZoom(value) }
             Prop("privateMode") { view: MaglevBrowserView, value: Boolean -> view.setPrivateMode(value) }
+            Prop("pullToRefresh") { view: MaglevBrowserView, value: Boolean -> view.setPullToRefresh(value) }
+            Prop("refreshColor") { view: MaglevBrowserView, value: String -> view.setRefreshColor(value) }
+            Prop("refreshBackground") { view: MaglevBrowserView, value: String -> view.setRefreshBackground(value) }
+            Prop("darkPages") { view: MaglevBrowserView, value: Boolean -> view.setDarkPages(value) }
+            Prop("mediaHitScript") { view: MaglevBrowserView, value: String -> view.setMediaHitScript(value) }
 
             AsyncFunction("goBack") { view: MaglevBrowserView -> view.goBack() }
             AsyncFunction("goForward") { view: MaglevBrowserView -> view.goForward() }
@@ -591,6 +596,7 @@ class MaglevEngineModule : Module() {
             AsyncFunction("followRedirect") { view: MaglevBrowserView, url: String, promise: Promise -> view.followRedirect(url, promise) }
             AsyncFunction("openApp") { view: MaglevBrowserView, url: String, promise: Promise -> view.openApp(url, promise) }
             AsyncFunction("clearHistoryList") { view: MaglevBrowserView -> view.clearHistoryList() }
+            AsyncFunction("clearSiteStorage") { view: MaglevBrowserView -> view.clearSiteStorage() }
             AsyncFunction("findInPage") { view: MaglevBrowserView, query: String, promise: Promise -> view.findInPage(query, promise) }
             AsyncFunction("findNext") { view: MaglevBrowserView, forward: Boolean, promise: Promise -> view.findNext(forward, promise) }
             AsyncFunction("clearFind") { view: MaglevBrowserView, promise: Promise -> view.clearFind(promise) }

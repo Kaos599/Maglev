@@ -290,9 +290,8 @@ function moduleLevelTypeUse(src) {
 // A bare number is allowed only with `// design-exception: <why>` (or the block form) on the same line. Timers that are
 // not animation (setTimeout, setInterval, debounce) are not checked.
 const DESIGN_EXCEPTION = /design-exception:/;
-// TEMPORARY allowlist: files another worker owns while the browser is reworked. The integrator moves each one onto
-// the tokens (or annotates it) and deletes the entry. Nothing else belongs here.
-const DURATION_ALLOW = new Set(['components/browser/AddressSwipe.tsx']); // SLIDE_MS is a local number constant
+// Files allowed a bare duration. Empty: every animation reads `motion`. Add an entry only with a reason.
+const DURATION_ALLOW = new Set([]);
 const numericConsts = (text) => {
   const names = new Set();
   for (const m of text.matchAll(/^\s*(?:export\s+)?const\s+([A-Za-z_][A-Za-z0-9_]*)\s*=\s*[\d_.]+\s*;(.*)$/gm)) {
@@ -329,8 +328,6 @@ const numericConsts = (text) => {
 // or takes a `reduce` / `reduceMotion` value from its caller.
 const REDUCE_ALLOW = {
   // Add `'path': 'why'` here only when a file legitimately cannot read reduce motion.
-  // TEMPORARY: owned by another worker while the browser files are being reworked; the integrator fixes the file and removes the entry.
-  'components/browser/AddressSwipe.tsx': 'browser rework in progress; it does not read reduce motion yet',
 };
 {
   const problems = [];

@@ -249,6 +249,11 @@ export default function BrowserSettings() {
 
       <Card>
         <ListRow
+          title={browserTabs.settings.darkPages}
+          subtitle={browserTabs.settings.darkPagesSubtitle}
+          accessory={<Toggle value={prefs.darkPages} onValueChange={(darkPages) => setPrefs({ darkPages })} accessibilityLabel={browserTabs.settings.darkPages} />}
+        />
+        <ListRow
           title="Desktop site"
           subtitle="Ask sites for their desktop version by default."
           accessory={<Toggle value={prefs.desktopMode} onValueChange={(desktopMode) => setPrefs({ desktopMode })} accessibilityLabel="Desktop site" />}

@@ -7,6 +7,7 @@ import {
   type BrowserFindResultEvent,
   type BrowserFoundEvent,
   type BrowserLongPressEvent,
+  type BrowserMediaHitEvent,
   type BrowserMagnetEvent,
   type BrowserNewWindowEvent,
   type BrowserNoteEvent,
@@ -17,6 +18,13 @@ import {
   type MaglevBrowserRef,
 } from 'maglev-engine';
 import type { PopupPolicy } from '../../utils/prefs/browser';
+import { mediaHitScript } from '../../utils/browser/mediaHitScript';
+
+/**
+ * The page script needs no nonce: it reports through the native call `__maglevMediaHit()` after a long press, so the
+ * per-page nonce of PageScan (which the view owns) is never used and '' is passed.
+ */
+const MEDIA_HIT_SCRIPT = mediaHitScript('');
 
 /** Every handler gets the id of the tab whose view raised the event. */
 export type TabHandlers = {
@@ -33,6 +41,7 @@ export type TabHandlers = {
   onPopupBlocked(id: string, e: BrowserPopupBlockedEvent): void;
   onLongPress(id: string, e: BrowserLongPressEvent): void;
   onFindResult(id: string, e: BrowserFindResultEvent): void;
+  onMediaHit(id: string, e: BrowserMediaHitEvent): void;
 };
 
 export interface TabWebViewProps {
@@ -49,6 +58,13 @@ export interface TabWebViewProps {
   privateMode: boolean;
   popupPolicy: PopupPolicy;
   popupAllowHosts: string[];
+  /** Pull down at the top of the page to reload it. */
+  pullToRefresh: boolean;
+  /** Spinner colours (theme accent and surface). */
+  refreshColor: string;
+  refreshBackground: string;
+  /** Algorithmic darkening is allowed (the app is dark and "Dark pages" is on). */
+  darkPages: boolean;
   handlers: TabHandlers;
   /** Hands the screen this tab's view ref (and null again on unmount). */
   register: (id: string, ref: React.RefObject<MaglevBrowserRef | null> | null) => void;
@@ -58,7 +74,7 @@ export interface TabWebViewProps {
  * One native browser view for one tab. Stacked with the others by absolute fill; an inactive one is invisible and
  * ignores touches but stays mounted, so switching back is instant.
  */
-export function TabWebView({ id, url, active, adBlock, allowAdsHosts, desktopMode, textZoom, privateMode, popupPolicy, popupAllowHosts, handlers: h, register }: TabWebViewProps) {
+export function TabWebView({ id, url, active, adBlock, allowAdsHosts, desktopMode, textZoom, privateMode, popupPolicy, popupAllowHosts, pullToRefresh, refreshColor, refreshBackground, darkPages, handlers: h, register }: TabWebViewProps) {
   const ref = useRef<MaglevBrowserRef>(null);
   useEffect(() => {
     register(id, ref);
@@ -77,6 +93,11 @@ export function TabWebView({ id, url, active, adBlock, allowAdsHosts, desktopMod
       privateMode={privateMode}
       popupPolicy={popupPolicy}
       popupAllowHosts={popupAllowHosts}
+      pullToRefresh={pullToRefresh}
+      refreshColor={refreshColor}
+      refreshBackground={refreshBackground}
+      darkPages={darkPages}
+      mediaHitScript={MEDIA_HIT_SCRIPT}
       style={styles.fill}
       onPage={(e) => h.onPage(id, e)}
       onFound={(e) => h.onFound(id, e)}
@@ -91,6 +112,7 @@ export function TabWebView({ id, url, active, adBlock, allowAdsHosts, desktopMod
       onPopupBlocked={(e) => h.onPopupBlocked(id, e)}
       onLongPress={(e) => h.onLongPress(id, e)}
       onFindResult={(e) => h.onFindResult(id, e)}
+      onMediaHit={(e) => h.onMediaHit(id, e)}
     />
     </View>
   );

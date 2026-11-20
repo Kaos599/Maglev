@@ -53,7 +53,8 @@ function Panel({
   );
   const lit = useAnimatedStyle(() => ({ opacity: panelOpacity(sign * translation.value, TRIGGER) }));
   return (
-    <View style={[s.panel, sign === 1 ? s.panelLeft : s.panelRight]}>
+    // Always hidden from screen readers: the card itself exposes Pause, Resume and Remove as accessibility actions.
+    <View style={[s.panel, sign === 1 ? s.panelLeft : s.panelRight]} importantForAccessibility="no-hide-descendants" accessibilityElementsHidden>
       <Animated.View style={[s.fill, { backgroundColor: fill, alignItems: align }, lit]}>
         <View style={s.content}>
           <PixelIcon name={icon} size={24} color={ink} />

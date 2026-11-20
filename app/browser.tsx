@@ -1,9 +1,10 @@
 import React, { useCallback, useEffect, useId, useMemo, useRef, useState, useSyncExternalStore } from 'react';
-import { AppState, BackHandler, Keyboard, StyleSheet, Text, View } from 'react-native';
+import { AppState, BackHandler, Keyboard, Share, StyleSheet, Text, View } from 'react-native';
 import { useFocusEffect, useIsFocused, useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as Clipboard from 'expo-clipboard';
 import {
+  clearCookies,
   nameFromUrl,
   type BrowserDownloadRequestEvent,
   type BrowserLongPressEvent,
@@ -18,7 +19,7 @@ import { ThemeColors, radius, spacing, touch, type } from '../constants/theme';
 import { haptic } from '../constants/haptics';
 import { banners, browserTabs, empty, findCopy, foundTray, historyCopy, notices, textSizeCopy } from '../constants/copy';
 import { PixelIcon } from '../components/PixelIcon';
-import { Banner, Button, EmptyBlock, IconButton, ListRow, PressableScale, ProgressBar, Sheet, TextField, type TextFieldRef, Toggle } from '../components/ui';
+import { Banner, Button, Dialog, EmptyBlock, IconButton, ListRow, PressableScale, ProgressBar, Sheet, TextField, type TextFieldRef, Toggle } from '../components/ui';
 import { FoundTray } from '../components/browser/FoundTray';
 import { TabWebView, type TabHandlers } from '../components/browser/TabWebView';
 import { TabSwitcher } from '../components/browser/TabSwitcher';
@@ -30,7 +31,9 @@ import { PopupCard } from '../components/browser/PopupCard';
 import { useTabs } from '../components/browser/useTabs';
 import { afterSheetCloses } from '../components/browser/FloatingSheet';
 import { HistorySuggestions } from '../components/browser/HistorySuggestions';
-import { RecentHistory } from '../components/browser/RecentHistory';
+import { StartPage } from '../components/browser/StartPage';
+import { MediaMenu } from '../components/browser/MediaMenu';
+import { BookmarkToggle } from '../components/browser/BookmarkToggle';
 import { StreamSheet } from '../components/browser/StreamSheet';
 import { FoundDownloadSheet, downloadHeaders, type DownloadTarget } from '../components/browser/FoundDownload';
 import { BatchSheet } from '../components/browser/BatchSheet';
@@ -40,7 +43,9 @@ import { isInstaller, mergeFound, pruneToPage } from '../components/browser/foun
 import { activeLabel, activeSummary, matchTransfers } from '../components/browser/foundTransfers';
 import { dismissAllVisible, dismissIds, restoreIds, visibleFound } from '../components/browser/foundDismiss';
 import { getBrowserPrefs, updateBrowserPrefs, useBrowserPrefs } from '../utils/prefs/browser';
-import { privateSession } from '../utils/browser/privateSession';
+import { keepHosts, privateSession } from '../utils/browser/privateSession';
+import { hostsToWipe } from '../utils/browser/privateHosts';
+import { buildMediaMenu, hasMenu, parseMediaHit, type MediaHit } from '../utils/browser/mediaHit';
 import { flushTabs, recordVisit } from '../utils/history';
 import { activeTab, backTarget, getTab, isBlank, liveTabs, switcherOrder } from '../utils/browser/tabs';
 import * as popupsApi from '../utils/browser/popups';
@@ -74,7 +79,7 @@ const UNDO_MS = 5000;
 
 /** inTab: shown inside the tab bar, which already pads for the system navigation area, so the bottom inset is skipped. */
 export default function BrowserScreen({ inTab = false }: { inTab?: boolean }) {
-  const { colors } = useTheme();
+  const { colors, dark } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const router = useRouter();
   const params = useLocalSearchParams<{ url?: string; prefill?: string }>();
@@ -141,6 +146,8 @@ export default function BrowserScreen({ inTab = false }: { inTab?: boolean }) {
   const findTab = useRef<string | null>(null);
   const [textSizeOpen, setTextSizeOpen] = useState(false);
   const [linkTarget, setLinkTarget] = useState<BrowserLongPressEvent | null>(null);
+  const [mediaHit, setMediaHit] = useState<MediaHit | null>(null);
+  const [clearSiteOpen, setClearSiteOpen] = useState(false);
   const [target, setTarget] = useState<DownloadTarget | null>(null);
   const [batchItems, setBatchItems] = useState<FoundItem[] | null>(null);
   const [streamItem, setStreamItem] = useState<FoundItem | null>(null);
@@ -182,6 +189,8 @@ export default function BrowserScreen({ inTab = false }: { inTab?: boolean }) {
 
   // Switching tabs dismisses the long-press menu and the found list's Undo (they belong to the tab you left).
   useEffect(() => {
+    setMediaHit(null);
+    setClearSiteOpen(false);
     setLinkTarget(null);
     setUndo(null);
   }, [activeId]);
@@ -369,6 +378,10 @@ export default function BrowserScreen({ inTab = false }: { inTab?: boolean }) {
       setLinkTarget(null);
       return true;
     }
+    if (mediaHit) {
+      setMediaHit(null);
+      return true;
+    }
     if (prompt) {
       popupBlock();
       return true;
@@ -383,7 +396,7 @@ export default function BrowserScreen({ inTab = false }: { inTab?: boolean }) {
     if (next === 'leave') return false;
     tabs.close(activeId);
     return true;
-  }, [editing, findOpen, closeFind, switcherOpen, linkTarget, prompt, popupBlock, tabs, activeId, page?.canGoBack, view]);
+  }, [editing, findOpen, closeFind, switcherOpen, linkTarget, mediaHit, prompt, popupBlock, tabs, activeId, page?.canGoBack, view]);
   useFocusEffect(
     useCallback(() => {
       setViewOwner(instanceId);
@@ -556,6 +569,12 @@ export default function BrowserScreen({ inTab = false }: { inTab?: boolean }) {
     onFindResult: (id, e) => {
       if (id === findTab.current) setFindResult(e);
     },
+    // 24.10a: a long press over a video. The payload is checked in parseMediaHit; images stay on the link menu.
+    onMediaHit: (id, e) => {
+      if (id !== activeIdRef.current) return;
+      const hit = parseMediaHit(e.json);
+      if (hit && hit.kind === 'video' && hasMenu(buildMediaMenu(hit))) setMediaHit(hit);
+    },
   };
   const implRef = useRef(impl);
   implRef.current = impl;
@@ -586,6 +605,48 @@ export default function BrowserScreen({ inTab = false }: { inTab?: boolean }) {
     [],
   );
   const notify = useCallback((message: string) => showNotice({ message }, 2500), [showNotice]);
+  // A video manifest from the media menu goes through the same stream sheet as a found one.
+  const streamFromHit = useCallback((hit: MediaHit, url: string, kind: 'hls' | 'dash') => {
+    const d = getData(activeIdRef.current);
+    setStreamItem({
+      id: `media:${url}`,
+      url,
+      kind: 'video',
+      mime: null,
+      ext: null,
+      name: nameFromUrl(url),
+      size: null,
+      width: null,
+      height: null,
+      source: 'page',
+      stream: kind,
+      pageUrl: hit.pageUrl || d.page?.url || '',
+      pageTitle: d.page?.title ?? '',
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // 24.10a: "Clear this site's data". Cookies of the host and its parent domains (Search's hosts are left alone), then
+  // local and session storage in the page, then a reload.
+  const clearSiteData = useCallback(async () => {
+    setClearSiteOpen(false);
+    const id = activeIdRef.current;
+    const url = getData(id).page?.url ?? '';
+    const targets = hostsToWipe([url], keepHosts()).map((h) => `https://${h}/`);
+    try {
+      if (targets.length > 0) await clearCookies(targets);
+    } catch {
+      // Best effort: storage and reload still run.
+    }
+    try {
+      await view(id)?.clearSiteStorage();
+    } catch {
+      // VIEW_GONE: the page is already closed.
+    }
+    view(id)?.reload();
+    haptic('done');
+    showNotice({ message: browserTabs.thisPage.clearSiteDone }, 3000);
+  }, [view, showNotice]);
 
   // Each file goes through the single-download path. One failure never stops the rest; Retry runs the failed ones.
   const runBatchFor = useCallback(
@@ -787,6 +848,10 @@ export default function BrowserScreen({ inTab = false }: { inTab?: boolean }) {
                     privateMode={prefs.privateBrowsing}
                     popupPolicy={prefs.popupPolicy}
                     popupAllowHosts={prefs.popupAllowHosts}
+                    pullToRefresh
+                    refreshColor={colors.accent}
+                    refreshBackground={colors.surface}
+                    darkPages={prefs.darkPages && dark}
                     handlers={handlers}
                     register={registerView}
                   />
@@ -794,12 +859,13 @@ export default function BrowserScreen({ inTab = false }: { inTab?: boolean }) {
               })
           : null}
         {!hasPage ? (
-          <RecentHistory
-            onPick={(u) => {
+          <StartPage
+            privateMode={prefs.privateBrowsing}
+            onOpen={(url, o) => {
               haptic('tap');
-              go(u);
+              if (o?.newTab) openTabChecked({ url });
+              else go(url);
             }}
-            fallback={<EmptyBlock icon="network" title={empty.browser.start.title} body={empty.browser.start.body} />}
           />
         ) : null}
         {editing ? (
@@ -892,6 +958,19 @@ export default function BrowserScreen({ inTab = false }: { inTab?: boolean }) {
       />
 
       <LinkMenu target={linkTarget} onClose={() => setLinkTarget(null)} openInTab={openLinkInTab} download={downloadLink} addTorrent={toAddTorrent} notify={notify} />
+      <MediaMenu
+        hit={mediaHit}
+        onClose={() => setMediaHit(null)}
+        onSave={(_h, u) => downloadLink(u)}
+        onStream={streamFromHit}
+        onOpenNewTab={(u) => openLinkInTab(u, false)}
+        onCopy={(u) => void copy(u)}
+        onShare={(u) => {
+          Share.share({ message: u }).catch(() => {});
+        }}
+        onShowFound={() => setTrayOpen(true)}
+        onLinkOptions={(href) => setLinkTarget({ kind: 'link', url: href, imageUrl: null, text: null })}
+      />
       <PopupCard prompt={prompt} onOpen={popupOpen} onBlock={popupBlock} onAlwaysAllow={popupAlways} />
 
       <Sheet visible={menuOpen} onClose={() => setMenuOpen(false)} title={hasPage ? historyCopy.menuTitlePage : historyCopy.menuTitleBlank} subtitle={(hasPage && pageHost) || undefined}>
@@ -947,6 +1026,17 @@ export default function BrowserScreen({ inTab = false }: { inTab?: boolean }) {
             if (page?.url) void copy(page.url);
           }}
         />
+        <BookmarkToggle url={page?.url ?? tab?.url ?? ''} title={page?.title ?? tab?.title ?? ''} onDone={() => setMenuOpen(false)} />
+        {/^https?:\/\//i.test(page?.url ?? '') ? (
+          <ListRow
+            icon="trash"
+            title={browserTabs.thisPage.clearSiteRow}
+            onPress={() => {
+              setMenuOpen(false);
+              afterSheetCloses(() => setClearSiteOpen(true));
+            }}
+          />
+        ) : null}
           </>
         ) : null}
         <ListRow
@@ -966,6 +1056,20 @@ export default function BrowserScreen({ inTab = false }: { inTab?: boolean }) {
           }}
         />
       </Sheet>
+
+      <Dialog
+        visible={clearSiteOpen}
+        onClose={() => setClearSiteOpen(false)}
+        title={browserTabs.thisPage.clearSiteTitle}
+        actions={
+          <>
+            <Button label={browserTabs.thisPage.clearSiteAction} variant="danger" fullWidth onPress={() => void clearSiteData()} />
+            <Button label="Cancel" variant="secondary" fullWidth onPress={() => setClearSiteOpen(false)} />
+          </>
+        }
+      >
+        <Text style={styles.dialogBody}>{browserTabs.thisPage.clearSiteBody(pageHost)}</Text>
+      </Dialog>
 
       <TextSizeSheet
         visible={textSizeOpen}
@@ -1023,6 +1127,7 @@ const makeStyles = (c: ThemeColors) =>
     },
     tabCount: { ...type.monoBold, fontSize: type.size.xs, lineHeight: 16, color: c.text },
     progress: { height: 3, overflow: 'hidden' },
+    dialogBody: { ...type.body, color: c.textMuted },
     body: { flex: 1 },
     web: { flex: 1 },
     floating: { position: 'absolute', left: spacing.md, right: spacing.md, top: spacing.md },

@@ -388,6 +388,11 @@ export const browserTabs = {
   thisPage: {
     popupsRow: 'Pop-ups',
     blockedOnPage: (n: number | string) => `${n} blocked on this page`,
+    clearSiteRow: "Clear this site's data",
+    clearSiteTitle: "Clear this site's data?",
+    clearSiteBody: (host: string) => `You'll be signed out of ${host}.`,
+    clearSiteAction: 'Clear',
+    clearSiteDone: "Cleared this site's data",
   },
   settings: {
     section: 'Pop-ups and redirects',
@@ -398,6 +403,8 @@ export const browserTabs = {
     remove: 'Remove',
     swipeTabs: 'Swipe the address bar to switch tabs',
     swipeTabsSubtitle: 'Swipe left or right on the address bar to move between tabs, or down to see all tabs.',
+    darkPages: 'Dark pages',
+    darkPagesSubtitle: 'Darken pages that only have a light look, when Maglev is dark.',
   },
 } as const;
 
