@@ -20,11 +20,11 @@ Maglev's issues, pull requests and discussions are for building a download app t
 
 ## Reporting
 
-Use GitHub's **Report content** menu (⋯ on any comment, then *Report to repository admins*). Only the maintainer sees these reports. If the problem is a whole thread or a person rather than one comment, report one of their comments and say so in the report.
+[Open a conduct report](https://github.com/Kaos599/Maglev/issues/new?template=conduct.yml) that links to the comment, thread or pull request. Describe what happened, but don't repeat the abuse itself.
 
 ## What happens
 
-The maintainer reads every report and may, depending on what happened: ask for an edit, hide or delete a comment, lock a thread, or block someone from the repository, temporarily or for good. The person who reported is not named to the person reported.
+Depending on what happened, the maintainer may ask for an edit, hide or delete a comment, lock a thread, or block someone from the repository, temporarily or for good.
 
 These rules apply in this repository and anywhere someone speaks for the project.
 
