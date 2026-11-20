@@ -24,7 +24,7 @@ object DebugLogRedactor {
     private val jsonHeaderValue =
         Regex("""\b($HEADER_NAMES)("\s*[:=]\s*)"(?:[^"\\]|\\.)*\x22""", RegexOption.IGNORE_CASE)
     private val headerValue =
-        Regex("""\b($HEADER_NAMES)("?\s*[:=]\s*)(?!\[removed\])[^\r\n]*""", RegexOption.IGNORE_CASE)
+        Regex("""\b($HEADER_NAMES)("?\s*[:=]\s*)(?!\s*\[removed\])[^\r\n]*""", RegexOption.IGNORE_CASE)
     private val bearer = Regex("""\bBearer\s+[A-Za-z0-9._~+/=\-]+""", RegexOption.IGNORE_CASE)
     private val apiKey = Regex("""\bsk-[A-Za-z0-9_\-]{16,}""")
     private val secretKeyName = Regex("password|passwd|cookie|api_?key|token|secret|authorization", RegexOption.IGNORE_CASE)
