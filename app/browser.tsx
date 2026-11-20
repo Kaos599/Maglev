@@ -17,6 +17,7 @@ import { useTheme } from '../context/ThemeContext';
 import { useMaglevEngine } from '../context/EngineContext';
 import { ThemeColors, radius, spacing, touch, type } from '../constants/theme';
 import { haptic } from '../constants/haptics';
+import { bookmarkCopy } from '../constants/bookmarkCopy';
 import { banners, browserTabs, empty, findCopy, foundTray, historyCopy, notices, textSizeCopy } from '../constants/copy';
 import { PixelIcon } from '../components/PixelIcon';
 import { Banner, Button, Dialog, EmptyBlock, IconButton, ListRow, PressableScale, ProgressBar, Sheet, TextField, type TextFieldRef, Toggle } from '../components/ui';
@@ -1040,6 +1041,14 @@ export default function BrowserScreen({ inTab = false }: { inTab?: boolean }) {
         ) : null}
           </>
         ) : null}
+        <ListRow
+          icon="bookmark"
+          title={bookmarkCopy.menuRow}
+          onPress={() => {
+            setMenuOpen(false);
+            router.push('/browser-bookmarks');
+          }}
+        />
         <ListRow
           icon="clock"
           title={historyCopy.menuRow}

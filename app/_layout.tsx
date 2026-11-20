@@ -165,6 +165,7 @@ function AppNavigation() {
           <Stack.Screen name="add-download" />
           <Stack.Screen name="browser" />
           <Stack.Screen name="browser-history" />
+          <Stack.Screen name="browser-bookmarks" />
           <Stack.Screen name="free-space" />
           <Stack.Screen name="settings/about" />
           <Stack.Screen name="settings/assistant" />

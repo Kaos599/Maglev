@@ -109,6 +109,13 @@ export function restoreIn(list: readonly Bookmark[], b: Bookmark, index: number)
   return next;
 }
 
+/** Bookmarks whose title, host or address contains the query (case-insensitive, trimmed), in stored order. */
+export function filterBookmarks(list: readonly Bookmark[], query: string): Bookmark[] {
+  const q = (query ?? '').trim().toLowerCase();
+  if (!q) return [...list];
+  return list.filter((b) => b.title.toLowerCase().includes(q) || b.host.includes(q) || b.url.toLowerCase().includes(q));
+}
+
 export const isBookmarkedIn = (list: readonly Bookmark[], url: string): boolean => {
   const key = normalizeUrl(url);
   return key !== '' && list.some((b) => normalizeUrl(b.url) === key);

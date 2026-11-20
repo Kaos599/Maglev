@@ -18,6 +18,8 @@ import { removeWithUndo } from './bookmarkActions';
 /** How many recent pages and frequent sites the page lists. */
 export const START_RECENT_LIMIT = 6;
 export const START_FREQUENT_LIMIT = 8;
+/** Bookmark tiles on the page; the rest are on the Bookmarks screen. */
+export const START_BOOKMARK_LIMIT = 8;
 /** History rows read to work out frequent sites. */
 const HISTORY_SAMPLE = 300;
 
@@ -102,12 +104,25 @@ export function StartPage({ onOpen, privateMode = false, frequent }: StartPagePr
 
   return (
     <ScrollView style={styles.root} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-      <Text style={styles.heading} accessibilityRole="header">
-        {bookmarkCopy.section}
-      </Text>
+      <View style={styles.headerRow}>
+        <Text style={styles.heading} accessibilityRole="header">
+          {bookmarkCopy.section}
+        </Text>
+        {bookmarks.length > START_BOOKMARK_LIMIT ? (
+          <PressableScale
+            onPress={() => router.push('/browser-bookmarks')}
+            accessibilityRole="button"
+            accessibilityLabel={bookmarkCopy.seeAllBookmarksLabel}
+            hitSlop={8}
+            style={styles.seeAll}
+          >
+            <Text style={styles.seeAllText}>{bookmarkCopy.seeAll}</Text>
+          </PressableScale>
+        ) : null}
+      </View>
       {bookmarks.length === 0 ? <Text style={styles.hint}>{bookmarkCopy.empty.body}</Text> : null}
       <View style={styles.grid} accessibilityLabel={bookmarkCopy.sectionLabel}>
-        {bookmarks.map((b) => (
+        {bookmarks.slice(0, START_BOOKMARK_LIMIT).map((b) => (
           <Tile key={b.id} title={b.title} sub={b.host} glyph={siteInitial(b.host)} styles={styles} onPress={() => open(b.url)} onLongPress={() => openMenu(b)} hint={bookmarkCopy.tileHint} />
         ))}
       </View>
