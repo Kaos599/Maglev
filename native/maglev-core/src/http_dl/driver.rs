@@ -2570,7 +2570,7 @@ impl Downloads {
     /// error goes to the machine: a transient one retries from there, anything else stops the download.
     #[allow(clippy::too_many_arguments)]
     fn write_failed(
-        &self,
+        self: &Arc<Self>,
         id: &str,
         e: &io::Error,
         side: &mut Sidecar,
