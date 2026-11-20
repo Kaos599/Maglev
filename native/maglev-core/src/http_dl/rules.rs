@@ -34,7 +34,10 @@ pub struct ProbeInfo {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ProbeVerdict {
     Ok(ProbeInfo),
+    /// 401: the link needs a sign in.
     Auth,
+    /// 403: the site refused the link. Whether that is a sign in depends on the link (user name and password).
+    Refused,
     /// Any other failing status.
     Status(u16),
     Html,
@@ -138,7 +141,8 @@ pub fn classify_probe(status: u16, h: &Headers, url: &str) -> ProbeVerdict {
             }),
             _ => ProbeVerdict::Status(416),
         },
-        401 | 403 => ProbeVerdict::Auth,
+        401 => ProbeVerdict::Auth,
+        403 => ProbeVerdict::Refused,
         other => ProbeVerdict::Status(other),
     }
 }
@@ -812,7 +816,7 @@ mod tests {
     #[test]
     fn probe_auth_and_status() {
         assert_eq!(classify_probe(401, &h(), "https://x.test/a.bin"), ProbeVerdict::Auth);
-        assert_eq!(classify_probe(403, &h(), "https://x.test/a.bin"), ProbeVerdict::Auth);
+        assert_eq!(classify_probe(403, &h(), "https://x.test/a.bin"), ProbeVerdict::Refused);
         assert_eq!(classify_probe(404, &h(), "https://x.test/a.bin"), ProbeVerdict::Status(404));
         assert_eq!(classify_probe(500, &h(), "https://x.test/a.bin"), ProbeVerdict::Status(500));
     }

@@ -577,16 +577,8 @@ impl Downloads {
         validator: &str,
     ) -> Option<reqwest::RequestBuilder> {
         self.update(id, |rec, live| {
-            let mut b = client.get(rec.url.as_str()).header(ACCEPT_ENCODING, "identity");
-            if let Some(ua) = live.user_agent.as_deref().and_then(|v| HeaderValue::from_str(v).ok()) {
-                b = b.header(USER_AGENT, ua);
-            }
-            if let Some(c) = live.cookie.as_deref().and_then(|v| HeaderValue::from_str(v).ok()) {
-                b = b.header(COOKIE, c);
-            }
-            if let Some(r) = live.referer.as_deref().and_then(|v| HeaderValue::from_str(v).ok()) {
-                b = b.header(REFERER, r);
-            }
+            let mut b = super::LinkHeaders::from_live(live)
+                .apply(client.get(rec.url.as_str()).header(ACCEPT_ENCODING, "identity"), rec.url.as_str());
             if let Some((u, p)) = &live.auth {
                 b = b.basic_auth(u, Some(p));
             }

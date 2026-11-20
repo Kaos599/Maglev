@@ -123,6 +123,7 @@ function plainEngineError(code: string): string {
     case 'INVALID_STATE': return "Can't do that while it is moving or checking. Try again when it finishes.";
     case 'LINK_EXPIRED': return 'The link has expired. Paste a fresh link.';
     case 'AUTH_REQUIRED': return 'The site wants you to sign in first.';
+    case 'LINK_REFUSED': return 'The site refused this link. Open its page again, then retry.';
     case 'FILE_CHANGED': return 'The file on the server changed, so it has to start over.';
     case 'HTTP_STATUS': return 'The server refused the download.';
     case 'NOT_A_FILE': return 'That link is a web page, not a file.';
@@ -1488,7 +1489,8 @@ export function createToolRunner(deps: ToolRunnerDeps): ToolRunner {
       if (!d) return fail('gone', GONE);
       if (d.error) {
         const fixes = d.error.code === 'LINK_EXPIRED' ? ['Paste a fresh link']
-          : d.error.code === 'AUTH_REQUIRED' ? ['Sign in on the site, then retry'] : ['Retry'];
+          : d.error.code === 'AUTH_REQUIRED' ? ['Sign in on the site, then retry']
+          : d.error.code === 'LINK_REFUSED' ? ['Open the page again, then paste a fresh link'] : ['Retry'];
         return succeed({ id: handle, cause: d.error.code, plain: plainEngineError(d.error.code), fixes, facts: { state: d.state } });
       }
       if (d.state === 'needs_link') return succeed({ id: handle, cause: 'needs_link', plain: 'The link stopped working.', fixes: ['Paste a fresh link'], facts: { state: d.state } });

@@ -54,6 +54,10 @@ const PROBE_BLOCKED_BODY =
   'Your network settings block downloads right now. Open settings to change that, or add it anyway and it starts when downloads are allowed.';
 const AUTH_BODY =
   'This site wants you to sign in. Sign in on the site in your browser, copy the download link again, and paste it here.';
+/** A 403 with no sign-in details (NATIVE_CONTRACT 17, LINK_REFUSED): the site refused the link itself. */
+const LINK_REFUSED_TEXT = 'The site refused this link. Open its page again, then retry.';
+const LINK_REFUSED_PROBE_BODY =
+  "The site refused this link. Open the page in Maglev's browser and start the download from there, or paste a fresh link.";
 
 /** The phone has no usable network (Kotlin's `offline` block, NATIVE_CONTRACT 35.4). */
 function isOffline(ctx: BlockContext): boolean {
@@ -77,6 +81,7 @@ type ErrorKind =
   | 'policyBlocked'
   | 'httpGone'
   | 'authRequired'
+  | 'linkRefused'
   | 'stalled'
   | 'network'
   | 'other';
@@ -103,6 +108,7 @@ function errorKind(code: string | undefined, httpStatus?: number | null): ErrorK
   if (c === 'LAN_ADDRESS') return 'lanAddress';
   if (c === 'BLOCKED') return 'policyBlocked';
   if (c === 'AUTH_REQUIRED') return 'authRequired';
+  if (c === 'LINK_REFUSED') return 'linkRefused';
   if (c === 'STALLED') return 'stalled';
   return 'other';
 }
@@ -255,7 +261,14 @@ export function downloadStatus(
     case 'finished':
       return d.size ? mk(doneLead(d.activeSecs, d.finishedAt), 'accent', null, formatBytes(d.size), 'size') : mk(doneLead(d.activeSecs, d.finishedAt), 'accent', null);
     case 'needs_link':
-      return held(d.error?.code === 'AUTH_REQUIRED' ? 'Needs sign-in · Paste new link' : 'Link expired · Paste new link', 'danger');
+      return held(
+        d.error?.code === 'AUTH_REQUIRED'
+          ? 'Needs sign-in · Paste new link'
+          : d.error?.code === 'LINK_REFUSED'
+            ? 'Site refused · Paste new link'
+            : 'Link expired · Paste new link',
+        'danger',
+      );
     case 'error':
       // The folder message is long; the card says it short and the full text stays for screen readers and the sheet.
       if (errorKind(d.error?.code, d.error?.httpStatus) === 'folderGone') return held(FOLDER_GONE_CARD, 'danger', FOLDER_GONE_TEXT);
@@ -310,6 +323,8 @@ function errorLine(d: DownloadSnapshot): string {
       return POLICY_BLOCKED_TEXT;
     case 'authRequired':
       return AUTH_REQUIRED_TEXT;
+    case 'linkRefused':
+      return LINK_REFUSED_TEXT;
     case 'stalled':
       return STALLED_ERROR_TEXT;
     default:
@@ -326,11 +341,12 @@ export function downloadCaption(d: DownloadSnapshot, ctx: BlockContext = {}): st
   }
   if (d.state === 'paused' && d.pausedBy === 'storage_unavailable') return FOLDER_GONE_TEXT;
   if (d.state === 'needs_link' && d.error?.code === 'AUTH_REQUIRED') return AUTH_BODY;
+  if (d.state === 'needs_link' && d.error?.code === 'LINK_REFUSED') return LINK_REFUSED_TEXT;
   if (d.state === 'error') {
     const k = errorKind(d.error?.code, d.error?.httpStatus);
     if (k === 'lanAddress') return `${LAN_ADDRESS_TEXT} ${LAN_ADDRESS_BODY}`;
     if (k === 'notAFile') return NOT_A_FILE_BODY;
-    if (k === 'permission' || k === 'folderGone' || k === 'tooBig' || k === 'localBlocked' || k === 'policyBlocked' || k === 'authRequired' || k === 'stalled') return errorLine(d);
+    if (k === 'permission' || k === 'folderGone' || k === 'tooBig' || k === 'localBlocked' || k === 'policyBlocked' || k === 'authRequired' || k === 'linkRefused' || k === 'stalled') return errorLine(d);
   }
   return null;
 }
@@ -386,6 +402,7 @@ export function downloadActions(d: DownloadSnapshot, ctx: BlockContext = {}): Do
         case 'httpGone':
           return [A.remove];
         case 'authRequired':
+        case 'linkRefused':
           return [A.newLink];
         case 'lanAddress':
           return [A.allowDevice, A.remove];
@@ -406,7 +423,7 @@ export function downloadActions(d: DownloadSnapshot, ctx: BlockContext = {}): Do
 
 /** True when the sheet should ask for a new link (the link expired, or the site wants a sign-in again). */
 export function needsNewLink(d: DownloadSnapshot): boolean {
-  return d.state === 'needs_link' || (d.state === 'error' && errorKind(d.error?.code, d.error?.httpStatus) === 'authRequired');
+  return d.state === 'needs_link' || (d.state === 'error' && ['authRequired', 'linkRefused'].includes(errorKind(d.error?.code, d.error?.httpStatus)));
 }
 
 /** What to tell the user when "Allow this device" fails. */
@@ -448,6 +465,7 @@ export function probeErrorView(
   if (k === 'BLOCKED') return { body: PROBE_BLOCKED_BODY, primary: 'blocked' };
   if (k === 'NOT_A_FILE') return { body: NOT_A_FILE_BODY, primary: 'pasteAnother' };
   if (k === 'AUTH_REQUIRED') return { body: AUTH_BODY, primary: 'pasteAnother' };
+  if (k === 'LINK_REFUSED') return { body: LINK_REFUSED_PROBE_BODY, primary: 'pasteAnother' };
   const body = message || 'Something went wrong.';
   // A missing file will not appear on a second try; a network drop or a busy server might.
   if (k === 'HTTP_STATUS' && isFinal4xx(httpStatus)) return { body, primary: 'pasteAnother' };
@@ -487,6 +505,7 @@ export const CANT_RESUME_HINT = "This server can't resume. Pausing starts over."
  */
 export function linkProblem(d: DownloadSnapshot): { title: string; body: string } {
   if (d.error?.code === 'AUTH_REQUIRED') return { title: 'Needs sign-in', body: AUTH_BODY };
+  if (d.error?.code === 'LINK_REFUSED') return { title: 'Site refused', body: LINK_REFUSED_TEXT };
   return { title: 'Link expired', body: d.error?.message || 'The server no longer accepts this link.' };
 }
 

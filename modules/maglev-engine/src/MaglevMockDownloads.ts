@@ -13,7 +13,7 @@ import { displayUrl, nameFromUrl, parseDownloadUrl, sanitizeFileName } from './d
  * codes as the Rust engine; only the bytes are invented. Never used in a release build (see MaglevNativeBridge).
  *
  * Words in a link steer the simulation, so every SM-30 row can be reached by hand:
- * `404` HTTP_STATUS, `auth` AUTH_REQUIRED, `.html` NOT_A_FILE, `offline` NETWORK, `expire` link expires half way
+ * `404` HTTP_STATUS, `auth` AUTH_REQUIRED (401), `refused` LINK_REFUSED (403), `.html` NOT_A_FILE, `offline` NETWORK, `expire` link expires half way
  * (needs_link), `changed` FILE_CHANGED half way, `noresume` a server without resume.
  */
 
@@ -63,7 +63,8 @@ export function mockSizeFor(url: string): number {
 function probeFailure(url: string): Item['probeFail'] {
   const u = url.toLowerCase();
   if (u.includes('offline')) return { code: 'NETWORK', message: "Couldn't reach that link. Check your connection and the address." };
-  if (u.includes('auth')) return { code: 'AUTH_REQUIRED', message: 'This site wants you to sign in.', httpStatus: 403 };
+  if (u.includes('auth')) return { code: 'AUTH_REQUIRED', message: 'This site wants you to sign in.', httpStatus: 401 };
+  if (u.includes('refused')) return { code: 'LINK_REFUSED', message: 'The site refused this link. Open its page again, then retry.', httpStatus: 403 };
   if (u.includes('404')) return { code: 'HTTP_STATUS', message: "The file isn't there (404).", httpStatus: 404 };
   if (/\.html?(?:[?#]|$)/.test(u)) return { code: 'NOT_A_FILE', message: 'This link opens a web page, not a file.' };
   return null;
@@ -83,6 +84,8 @@ function errorFor(code: DownloadError['code'], httpStatus?: number): DownloadErr
       return { code, message: "Maglev can't write to that folder." };
     case 'AUTH_REQUIRED':
       return { code, message: 'This site wants you to sign in.', httpStatus: httpStatus ?? null };
+    case 'LINK_REFUSED':
+      return { code, message: 'The site refused this link. Open its page again, then retry.', httpStatus: httpStatus ?? null };
     case 'LINK_EXPIRED':
       return { code, message: 'Link expired', httpStatus: httpStatus ?? null };
     default:
@@ -318,9 +321,9 @@ export class MockDownloads {
           changed = true;
           if (i.probeFail) {
             const f = i.probeFail;
-            if (f.code === 'AUTH_REQUIRED') {
+            if (f.code === 'AUTH_REQUIRED' || f.code === 'LINK_REFUSED') {
               i.state = 'needs_link';
-              i.error = errorFor('AUTH_REQUIRED', f.httpStatus);
+              i.error = errorFor(f.code, f.httpStatus);
             } else {
               i.state = 'error';
               i.error = errorFor(f.code as DownloadError['code'], f.httpStatus);

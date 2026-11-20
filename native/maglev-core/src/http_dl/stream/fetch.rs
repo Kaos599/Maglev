@@ -56,7 +56,7 @@ pub enum FetchFail {
     Sink(std::io::Error),
 }
 
-fn host_lower(url: &str) -> String {
+pub(crate) fn host_lower(url: &str) -> String {
     reqwest::Url::parse(url)
         .ok()
         .and_then(|u| u.host_str().map(|h| h.to_ascii_lowercase()))
@@ -64,32 +64,44 @@ fn host_lower(url: &str) -> String {
 }
 
 /// True when `host` is `domain` or a subdomain of it.
-fn host_in_domain(host: &str, domain: &str) -> bool {
+pub(crate) fn host_in_domain(host: &str, domain: &str) -> bool {
     !domain.is_empty() && (host == domain || host.ends_with(&format!(".{domain}")))
+}
+
+/// The cookie for a request to `host`: the entry of the longest matching domain in `host_cookies`, else the link's own
+/// cookie when `host` is `link_host`. Never a cookie that belongs to another host, so a redirect to a new host asks
+/// again with the new host and the old host's cookie does not follow it. Shared by streams and direct files.
+pub(crate) fn pick_cookie<'a>(
+    host_cookies: &'a [(String, String)],
+    link_cookie: Option<&'a str>,
+    link_host: &str,
+    host: &str,
+) -> Option<&'a str> {
+    let host = host.to_ascii_lowercase();
+    let mut best: Option<(&str, usize)> = None;
+    for (h, c) in host_cookies {
+        let h = h.trim_start_matches('.').to_ascii_lowercase();
+        if c.is_empty() || !host_in_domain(&host, &h) {
+            continue;
+        }
+        if best.map(|(_, n)| h.len() > n).unwrap_or(true) {
+            best = Some((c.as_str(), h.len()));
+        }
+    }
+    if let Some((c, _)) = best {
+        return Some(c);
+    }
+    if host == link_host.to_ascii_lowercase() {
+        return link_cookie;
+    }
+    None
 }
 
 impl ReqCtx {
     /// The cookie for a request to `host`: the entry of the nearest matching domain, else the playlist link's
     /// cookie when `host` is the playlist host. Never a cookie that belongs to an unrelated host.
     pub fn cookie_for(&self, host: &str) -> Option<&str> {
-        let host = host.to_ascii_lowercase();
-        let mut best: Option<(&str, usize)> = None;
-        for (h, c) in &self.host_cookies {
-            let h = h.trim_start_matches('.').to_ascii_lowercase();
-            if c.is_empty() || !host_in_domain(&host, &h) {
-                continue;
-            }
-            if best.map(|(_, n)| h.len() > n).unwrap_or(true) {
-                best = Some((c.as_str(), h.len()));
-            }
-        }
-        if let Some((c, _)) = best {
-            return Some(c);
-        }
-        if host == self.origin_host.to_ascii_lowercase() {
-            return self.cookie.as_deref();
-        }
-        None
+        pick_cookie(&self.host_cookies, self.cookie.as_deref(), &self.origin_host, host)
     }
 
     /// A GET for `url`, with `Range` when `range` is `(offset, length)`.

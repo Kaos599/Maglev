@@ -35,7 +35,8 @@ fn probe_fail_of(r: ResolveFail, typed_host: &str) -> ProbeFail {
     match r {
         ResolveFail::Stream(e) => ProbeFail::Stream(e),
         ResolveFail::Fetch(f) => match f {
-            FetchFail::Status(s, _) if s == 401 || s == 403 => ProbeFail::Auth(s),
+            FetchFail::Status(401, _) => ProbeFail::Auth(401),
+            FetchFail::Status(403, _) => ProbeFail::Refused(403),
             FetchFail::Status(s, _) => ProbeFail::Status(s),
             FetchFail::Send(e) => match refusal(&e, typed_host) {
                 Some(Refusal::LanAddress) => ProbeFail::LanAddress,
@@ -238,7 +239,7 @@ impl Downloads {
         };
         let resolved = stream::resolve(&ctx, clean.as_str(), &spec)
             .await
-            .map_err(|e| probe_error(probe_fail_of(e, &host)))?;
+            .map_err(|e| probe_error(with_link_login(probe_fail_of(e, &host), auth.is_some())))?;
         let same = known_total == 0 || resolved.total_items() == known_total;
         let needs_login = auth.is_some() || h.cookie.is_some() || !host_cookies.is_empty() || has_secret_query(clean.as_str());
         self.update(id, |rec, live| {
@@ -253,6 +254,7 @@ impl Downloads {
             rec.final_url = Some(display_url(clean.as_str()));
             rec.status = None;
             rec.needs_login = needs_login;
+            rec.link_login = auth.is_some();
             rec.allow_lan = opts.allow_lan;
             rec.lan_pinned = pinned;
             live.auth = auth;
@@ -334,7 +336,7 @@ impl Downloads {
                             return;
                         }
                     }
-                    Err(ProbeFail::Auth(s)) | Err(ProbeFail::Status(s)) => {
+                    Err(ProbeFail::Auth(s)) | Err(ProbeFail::Refused(s)) | Err(ProbeFail::Status(s)) => {
                         if !self.handle_status(&id, s, None).await {
                             return;
                         }
@@ -386,7 +388,7 @@ impl Downloads {
                             return;
                         }
                     }
-                    ProbeFail::Auth(s) | ProbeFail::Status(s) => {
+                    ProbeFail::Auth(s) | ProbeFail::Refused(s) | ProbeFail::Status(s) => {
                         if !self.handle_status(&id, s, None).await {
                             return;
                         }
@@ -750,7 +752,8 @@ mod tests {
     #[test]
     fn failed_requests_map_to_probe_failures() {
         let st = |s| ResolveFail::Fetch(FetchFail::Status(s, None));
-        assert!(matches!(probe_fail_of(st(403), "h"), ProbeFail::Auth(403)));
+        assert!(matches!(probe_fail_of(st(401), "h"), ProbeFail::Auth(401)));
+        assert!(matches!(probe_fail_of(st(403), "h"), ProbeFail::Refused(403)));
         assert!(matches!(probe_fail_of(st(404), "h"), ProbeFail::Status(404)));
         assert!(matches!(probe_fail_of(ResolveFail::Fetch(FetchFail::TooBig), "h"), ProbeFail::Stream(StreamError::Unsupported)));
         assert!(matches!(probe_fail_of(ResolveFail::Fetch(FetchFail::Short), "h"), ProbeFail::Net));

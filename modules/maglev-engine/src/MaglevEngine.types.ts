@@ -201,6 +201,8 @@ export type EngineErrorCode =
   /** NATIVE_CONTRACT 17 (URL downloads). */
   | 'HTTP_STATUS'
   | 'AUTH_REQUIRED'
+  /** A 403 with no sign-in details: the site refused the link. Never retried by itself. */
+  | 'LINK_REFUSED'
   | 'LINK_EXPIRED'
   | 'FILE_CHANGED'
   | 'NOT_A_FILE'
@@ -232,7 +234,7 @@ export type EngineResult<T = object> =
       id?: string;
       retryAfterSecs?: number;
       mergedTrackers?: number;
-      /** Set with `HTTP_STATUS` (and `AUTH_REQUIRED`): the status the server answered. */
+      /** Set with `HTTP_STATUS` (and `AUTH_REQUIRED`, `LINK_REFUSED`): the status the server answered. */
       httpStatus?: number;
     };
 
@@ -473,7 +475,7 @@ export type DownloadState =
 export interface DownloadError {
   code: Extract<
     EngineErrorCode,
-    'HTTP_STATUS' | 'AUTH_REQUIRED' | 'LINK_EXPIRED' | 'FILE_CHANGED' | 'NOT_A_FILE' | 'CHECKSUM_MISMATCH' | 'NETWORK' | 'PERMISSION' | 'STALLED' | 'LAN_ADDRESS' | 'LOCAL_REDIRECT' | 'BLOCKED' | 'STREAM_PROTECTED' | 'STREAM_LIVE' | 'STREAM_UNSUPPORTED' | 'MUX_FAILED'
+    'HTTP_STATUS' | 'AUTH_REQUIRED' | 'LINK_REFUSED' | 'LINK_EXPIRED' | 'FILE_CHANGED' | 'NOT_A_FILE' | 'CHECKSUM_MISMATCH' | 'NETWORK' | 'PERMISSION' | 'STALLED' | 'LAN_ADDRESS' | 'LOCAL_REDIRECT' | 'BLOCKED' | 'STREAM_PROTECTED' | 'STREAM_LIVE' | 'STREAM_UNSUPPORTED' | 'MUX_FAILED'
   >;
   message: string;
   httpStatus?: number | null;

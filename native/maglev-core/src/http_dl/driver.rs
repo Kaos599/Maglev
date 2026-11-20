@@ -25,7 +25,7 @@ use librqbit::Session;
 use parking_lot::Mutex;
 use reqwest::header::{
     HeaderMap, HeaderValue, ACCEPT_ENCODING, ACCEPT_RANGES, CONTENT_DISPOSITION, CONTENT_LENGTH, CONTENT_RANGE,
-    CONTENT_TYPE, COOKIE, ETAG, IF_RANGE, LAST_MODIFIED, RANGE, REFERER, RETRY_AFTER, USER_AGENT,
+    CONTENT_TYPE, COOKIE, ETAG, IF_RANGE, LAST_MODIFIED, ORIGIN, RANGE, REFERER, RETRY_AFTER, USER_AGENT,
 };
 use reqwest::{redirect, Client};
 use serde::{Deserialize, Serialize};
@@ -42,6 +42,7 @@ use super::rules::{
     StallClock, SPEED_QUIET,
 };
 use super::sidecar::{final_path, part_path, safe_url, sidecar_path, Sidecar};
+use super::stream::fetch::{host_lower, pick_cookie};
 use super::stream::{StreamError, StreamRec, StreamSpec};
 use crate::error::{EngineError, ErrorCode};
 use crate::meta::write_atomic;
@@ -64,6 +65,9 @@ const OFFLINE_TAG: &str = "offline";
 const LOCAL_REDIRECT_MSG: &str = "redirect to a device on the local network";
 const BLOCKED_MSG: &str = "Blocked by your Wi-Fi-only or VPN setting.";
 const AUTH_AGAIN_COPY: &str = "Sign in again: paste the link again.";
+const REFUSED_COPY: &str = "The site refused this link. Open its page again, then retry.";
+const REFUSED_PROBE_COPY: &str =
+    "The site refused this link. Open the page in Maglev's browser and start the download from there, or paste a fresh link.";
 const EXPIRED_COPY: &str = "This link has expired. Paste a new one.";
 const STALLED_COPY: &str = "The server stopped sending data. Try again later.";
 const LOCAL_REDIRECT_COPY: &str = "A redirect tried to send Maglev to a device on your network, so it stopped.";
@@ -198,6 +202,9 @@ pub struct DlRecord {
     /// The link needs something that is never saved: a user name and password, a cookie, or a signed query.
     /// The flag is saved, the secret is not. After a restart the download waits for a new link (`AUTH_REQUIRED`).
     pub needs_login: bool,
+    /// The link itself carried a user name and password. Only then is a 403 a sign-in problem (`AUTH_REQUIRED`);
+    /// cookies from the in-app browser never set this. Not a secret.
+    pub link_login: bool,
     /// The user allowed the typed host to be on the local network (contract 17.w). Not a secret.
     pub allow_lan: bool,
     /// The addresses of that host when it was allowed; its lookups may only return these.
@@ -238,6 +245,7 @@ impl Default for DlRecord {
             error: None,
             notice: None,
             needs_login: false,
+            link_login: false,
             allow_lan: false,
             lan_pinned: Vec::new(),
             stream: None,
@@ -524,15 +532,21 @@ fn error_message(e: DlError, status: Option<u16>) -> String {
     }
 }
 
-/// The error of a download in `NeedsLink`. A 401 or 403, or a restart that lost the secrets (no status), is a
-/// sign in; anything else (410, an expired signed link) is an expired link.
-fn needs_link_info(status: Option<u16>, needs_login: bool) -> DlErrInfo {
-    let auth = matches!(status, Some(401) | Some(403)) || (status.is_none() && needs_login);
-    DlErrInfo {
-        code: if auth { "AUTH_REQUIRED" } else { "LINK_EXPIRED" }.to_string(),
-        message: if auth { AUTH_AGAIN_COPY } else { EXPIRED_COPY }.to_string(),
-        http_status: status,
-    }
+/// The error of a download in `NeedsLink`. A 401, a 403 on a link that carried a user name and password
+/// (`link_login`), or a restart that lost the secrets (no status), is a sign in. Any other 403 is a refused link
+/// (`LINK_REFUSED`): sites refuse requests that lack the page's headers or carry a token that expired. Browser
+/// cookies never make a 403 a sign in. Anything else (410, 404, an expired signed link) is an expired link.
+fn needs_link_info(status: Option<u16>, needs_login: bool, link_login: bool) -> DlErrInfo {
+    let refused = status == Some(403) && !link_login;
+    let auth = status == Some(401) || (status == Some(403) && link_login) || (status.is_none() && needs_login);
+    let (code, message) = if refused {
+        ("LINK_REFUSED", REFUSED_COPY)
+    } else if auth {
+        ("AUTH_REQUIRED", AUTH_AGAIN_COPY)
+    } else {
+        ("LINK_EXPIRED", EXPIRED_COPY)
+    };
+    DlErrInfo { code: code.to_string(), message: message.to_string(), http_status: status }
 }
 
 /// Is `url` the link of this download? After a restart a link with a secret query is saved without it, so a
@@ -1046,7 +1060,10 @@ enum ProbeFail {
     Net,
     /// The typed host resolved onto the local network and wasn't allowed.
     LanAddress,
+    /// 401 (or 403 on a link with a user name and password): a sign in.
     Auth(u16),
+    /// 403 with no sign-in details: the site refused the link.
+    Refused(u16),
     Status(u16),
     Html,
     LocalRedirect,
@@ -1204,7 +1221,7 @@ impl Downloads {
                     rec.state = st;
                     rec.paused_tag = None;
                     rec.status = None;
-                    rec.error = Some(needs_link_info(None, true));
+                    rec.error = Some(needs_link_info(None, true, false));
                 }
             }
             inner.live.insert(rec.id.clone(), Live::default());
@@ -1410,7 +1427,7 @@ impl Downloads {
                 });
             }
             State::NeedsLink => {
-                rec.error = Some(needs_link_info(rec.status, rec.needs_login));
+                rec.error = Some(needs_link_info(rec.status, rec.needs_login, rec.link_login));
             }
             State::Downloading | State::Queued | State::Resolving | State::Verifying | State::Finished => {
                 rec.error = None;
@@ -1571,6 +1588,7 @@ impl Downloads {
             let host_cookies = h.host_cookies();
             // Sign-in details stay in memory. Only the fact that they are needed is saved.
             rec.needs_login = auth.is_some() || h.cookie.is_some() || !host_cookies.is_empty() || has_secret_query(&rec.url);
+            rec.link_login = auth.is_some();
             inner.live.insert(
                 id.clone(),
                 Live {
@@ -1709,7 +1727,8 @@ impl Downloads {
         }
         let (client, _) = self.scoped_client(clean.as_str(), opts.allow_lan).await?;
         let h = opts.headers.unwrap_or_default();
-        match probe_request(&client, clean.as_str(), auth.as_ref(), &h.cookie, &h.referer, &h.user_agent).await {
+        let hdrs = LinkHeaders::from_options(&h);
+        match probe_request(&client, clean.as_str(), auth.as_ref(), &hdrs).await {
             Ok(r) => Ok(ProbeResult {
                 name: opts.name.as_deref().map(sanitize_filename).unwrap_or(r.name),
                 size: r.info.size,
@@ -1738,22 +1757,25 @@ impl Downloads {
         }
         let (client, pinned) = self.scoped_client(clean.as_str(), opts.allow_lan).await?;
         let h = opts.headers.unwrap_or_default();
-        let reply = probe_request(&client, clean.as_str(), auth.as_ref(), &h.cookie, &h.referer, &h.user_agent)
-            .await
-            .map_err(probe_error)?;
+        let host_cookies = h.host_cookies();
+        let hdrs = LinkHeaders::from_options(&h);
+        let reply = probe_request(&client, clean.as_str(), auth.as_ref(), &hdrs).await.map_err(probe_error)?;
         let matches = link_matches(size, validator.as_deref(), &reply.info);
         if matches {
             self.update(id, |rec, live| {
                 rec.url = clean.to_string();
                 rec.final_url = Some(reply.final_url.clone());
                 rec.status = None;
-                rec.needs_login = auth.is_some() || h.cookie.is_some() || has_secret_query(&rec.url);
+                rec.needs_login = auth.is_some() || h.cookie.is_some() || !host_cookies.is_empty() || has_secret_query(&rec.url);
+                rec.link_login = auth.is_some();
                 rec.allow_lan = opts.allow_lan;
                 rec.lan_pinned = pinned;
                 live.auth = auth;
                 live.cookie = h.cookie;
                 live.referer = h.referer;
                 live.user_agent = h.user_agent;
+                live.origin = h.origin;
+                live.host_cookies = host_cookies;
                 live.attempts = 0;
                 live.denied = 0;
             });
@@ -2044,7 +2066,7 @@ impl Downloads {
                     self.dispatch(&id, Event::UserPause);
                 }
             }
-            Err(ProbeFail::Auth(s)) => {
+            Err(ProbeFail::Auth(s)) | Err(ProbeFail::Refused(s)) => {
                 self.update(&id, |r, _| r.status = Some(s));
                 self.dispatch(&id, Event::ProbeAuth);
             }
@@ -2080,15 +2102,15 @@ impl Downloads {
         if self.update(id, |r, _| r.stream.is_some()).unwrap_or(false) {
             return self.do_probe_stream(id).await;
         }
-        let (url, auth, cookie, referer, ua) = self
-            .update(id, |r, l| (r.url.clone(), l.auth.clone(), l.cookie.clone(), l.referer.clone(), l.user_agent.clone()))
+        let (url, auth, hdrs) = self
+            .update(id, |r, l| (r.url.clone(), l.auth.clone(), LinkHeaders::from_live(l)))
             .ok_or(ProbeFail::Net)?;
         // An allowed host is pinned once, before its first request.
         if self.pin_lan_host(id).await.is_err() {
             return Err(ProbeFail::Net);
         }
         let client = self.client_for_id(id).map_err(|_| ProbeFail::Net)?;
-        let reply = probe_request(&client, &url, auth.as_ref(), &cookie, &referer, &ua).await?;
+        let reply = probe_request(&client, &url, auth.as_ref(), &hdrs).await?;
         // Pick a free name once, on the first probe. A resumed download keeps the name its part file has. The names
         // of the other downloads are read under the same lock that stores this one, so two downloads of the same
         // name can't both take it.
@@ -2130,7 +2152,7 @@ impl Downloads {
         if !probed {
             match self.do_probe(&id).await {
                 Ok(()) => {}
-                Err(ProbeFail::Auth(s)) => {
+                Err(ProbeFail::Auth(s)) | Err(ProbeFail::Refused(s)) => {
                     self.update(&id, |r, _| r.status = Some(s));
                     self.dispatch(&id, Event::Auth);
                     return;
@@ -2433,16 +2455,8 @@ impl Downloads {
         held: u64,
     ) -> Option<(reqwest::RequestBuilder, bool, Option<u64>, Option<String>)> {
         self.update(id, |rec, live| {
-            let mut b = client.get(rec.url.as_str()).header(ACCEPT_ENCODING, "identity");
-            if let Some(ua) = live.user_agent.as_deref().and_then(|v| HeaderValue::from_str(v).ok()) {
-                b = b.header(USER_AGENT, ua);
-            }
-            if let Some(c) = live.cookie.as_deref().and_then(|v| HeaderValue::from_str(v).ok()) {
-                b = b.header(COOKIE, c);
-            }
-            if let Some(r) = live.referer.as_deref().and_then(|v| HeaderValue::from_str(v).ok()) {
-                b = b.header(REFERER, r);
-            }
+            let mut b = LinkHeaders::from_live(live)
+                .apply(client.get(rec.url.as_str()).header(ACCEPT_ENCODING, "identity"), rec.url.as_str());
             if let Some((u, p)) = &live.auth {
                 b = b.basic_auth(u, Some(p));
             }
@@ -2757,20 +2771,9 @@ async fn probe_request(
     client: &Client,
     url: &str,
     auth: Option<&(String, String)>,
-    cookie: &Option<String>,
-    referer: &Option<String>,
-    user_agent: &Option<String>,
+    hdrs: &LinkHeaders,
 ) -> Result<ProbeReply, ProbeFail> {
-    let mut b = client.get(url).header(ACCEPT_ENCODING, "identity").header(RANGE, "bytes=0-0");
-    if let Some(ua) = user_agent.as_deref().and_then(|v| HeaderValue::from_str(v).ok()) {
-        b = b.header(USER_AGENT, ua);
-    }
-    if let Some(c) = cookie.as_deref().and_then(|v| HeaderValue::from_str(v).ok()) {
-        b = b.header(COOKIE, c);
-    }
-    if let Some(r) = referer.as_deref().and_then(|v| HeaderValue::from_str(v).ok()) {
-        b = b.header(REFERER, r);
-    }
+    let mut b = hdrs.apply(client.get(url).header(ACCEPT_ENCODING, "identity").header(RANGE, "bytes=0-0"), url);
     if let Some((u, p)) = auth {
         b = b.basic_auth(u, Some(p));
     }
@@ -2790,8 +2793,75 @@ async fn probe_request(
             Ok(ProbeReply { info, ranges_ok, name, final_url: display_url(&final_url) })
         }
         ProbeVerdict::Auth => Err(ProbeFail::Auth(status)),
+        ProbeVerdict::Refused => Err(with_link_login(ProbeFail::Refused(status), auth.is_some())),
         ProbeVerdict::Status(s) => Err(ProbeFail::Status(s)),
         ProbeVerdict::Html => Err(ProbeFail::Html),
+    }
+}
+
+/// A refused link (403) is a sign-in problem only when the link itself carried a user name and password.
+fn with_link_login(f: ProbeFail, link_login: bool) -> ProbeFail {
+    match f {
+        ProbeFail::Refused(s) if link_login => ProbeFail::Auth(s),
+        other => other,
+    }
+}
+
+/// The headers every request for a direct file carries (the probe and every GET, resumes included), like streams:
+/// user agent, referer and origin when given, and the cookie chosen by the request's own host.
+#[derive(Debug, Clone, Default)]
+struct LinkHeaders {
+    user_agent: Option<String>,
+    referer: Option<String>,
+    origin: Option<String>,
+    /// The `Cookie` option: goes to the link's host only.
+    cookie: Option<String>,
+    /// The in-app browser jar: one cookie per host, the longest domain match wins.
+    host_cookies: Vec<(String, String)>,
+}
+
+impl LinkHeaders {
+    fn from_options(h: &HeaderOptions) -> Self {
+        Self {
+            user_agent: h.user_agent.clone(),
+            referer: h.referer.clone(),
+            origin: h.origin.clone(),
+            cookie: h.cookie.clone(),
+            host_cookies: h.host_cookies(),
+        }
+    }
+
+    fn from_live(l: &Live) -> Self {
+        Self {
+            user_agent: l.user_agent.clone(),
+            referer: l.referer.clone(),
+            origin: l.origin.clone(),
+            cookie: l.cookie.clone(),
+            host_cookies: l.host_cookies.clone(),
+        }
+    }
+
+    /// The cookie for a request to `url` (the link itself). A redirect to another host never carries it: reqwest
+    /// drops `Cookie` on a cross-host hop, and nothing here sends a cookie to a host it was not meant for.
+    fn cookie_for_url(&self, url: &str) -> Option<&str> {
+        let host = host_lower(url);
+        pick_cookie(&self.host_cookies, self.cookie.as_deref(), &host, &host)
+    }
+
+    fn apply(&self, mut b: reqwest::RequestBuilder, url: &str) -> reqwest::RequestBuilder {
+        if let Some(ua) = self.user_agent.as_deref().and_then(|v| HeaderValue::from_str(v).ok()) {
+            b = b.header(USER_AGENT, ua);
+        }
+        if let Some(r) = self.referer.as_deref().and_then(|v| HeaderValue::from_str(v).ok()) {
+            b = b.header(REFERER, r);
+        }
+        if let Some(o) = self.origin.as_deref().and_then(|v| HeaderValue::from_str(v).ok()) {
+            b = b.header(ORIGIN, o);
+        }
+        if let Some(c) = self.cookie_for_url(url).and_then(|v| HeaderValue::from_str(v).ok()) {
+            b = b.header(COOKIE, c);
+        }
+        b
     }
 }
 
@@ -2803,6 +2873,11 @@ fn probe_error(f: ProbeFail) -> EngineError {
         ),
         ProbeFail::Auth(s) => {
             let mut e = EngineError::new(ErrorCode::AuthRequired, "This link needs a sign in, or it has expired.");
+            e.http_status = Some(s);
+            e
+        }
+        ProbeFail::Refused(s) => {
+            let mut e = EngineError::new(ErrorCode::LinkRefused, REFUSED_PROBE_COPY);
             e.http_status = Some(s);
             e
         }
@@ -3238,15 +3313,28 @@ mod tests {
 
     #[test]
     fn a_lost_login_asks_to_sign_in_again() {
-        let e = needs_link_info(None, true);
+        let e = needs_link_info(None, true, false);
         assert_eq!(e.code, "AUTH_REQUIRED");
         assert_eq!(e.message, "Sign in again: paste the link again.");
-        assert_eq!(needs_link_info(Some(401), false).code, "AUTH_REQUIRED");
-        assert_eq!(needs_link_info(Some(403), false).code, "AUTH_REQUIRED");
-        let gone = needs_link_info(Some(410), true);
+        assert_eq!(needs_link_info(Some(401), false, false).code, "AUTH_REQUIRED");
+        let gone = needs_link_info(Some(410), true, false);
         assert_eq!(gone.code, "LINK_EXPIRED");
         assert_eq!(gone.http_status, Some(410));
-        assert_eq!(needs_link_info(None, false).code, "LINK_EXPIRED");
+        assert_eq!(needs_link_info(None, false, false).code, "LINK_EXPIRED");
+    }
+
+    #[test]
+    fn a_403_is_a_refused_link_unless_the_link_carried_a_login() {
+        // No sign-in details: the site refused the link.
+        let e = needs_link_info(Some(403), false, false);
+        assert_eq!(e.code, "LINK_REFUSED");
+        assert_eq!(e.message, "The site refused this link. Open its page again, then retry.");
+        assert_eq!(e.http_status, Some(403));
+        // Browser cookies set `needs_login` but never `link_login`: still a refused link.
+        assert_eq!(needs_link_info(Some(403), true, false).code, "LINK_REFUSED");
+        // A user name and password in the link: a sign in.
+        assert_eq!(needs_link_info(Some(403), true, true).code, "AUTH_REQUIRED");
+        assert_eq!(needs_link_info(Some(401), false, false).code, "AUTH_REQUIRED");
     }
 
     #[test]
@@ -3887,6 +3975,213 @@ mod timing_tests {
         assert_eq!((s["active_secs"].as_i64(), s["finished_at"].as_i64(), s["session_bytes"].as_u64(), s["bytes_wifi"].as_u64()), (Some(0), Some(0), Some(0), Some(0)));
         let s = snap(&d, "dl_net");
         assert_eq!((s["active_secs"].as_i64(), s["finished_at"].as_i64(), s["session_bytes"].as_u64()), (Some(9), Some(5), Some(100)));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+}
+
+#[cfg(test)]
+mod link_refused_tests {
+    use super::*;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    use tokio::net::{TcpListener, TcpStream};
+
+    fn pairs(v: &[(&str, &str)]) -> Vec<(String, String)> {
+        v.iter().map(|(h, c)| (h.to_string(), c.to_string())).collect()
+    }
+
+    fn hdrs() -> LinkHeaders {
+        LinkHeaders {
+            user_agent: Some("PageUA/1".into()),
+            referer: Some("https://page.test/v".into()),
+            origin: Some("https://page.test".into()),
+            cookie: None,
+            host_cookies: pairs(&[("page.test", "p=1"), ("cdn.test", "c=1")]),
+        }
+    }
+
+    fn sent(h: &LinkHeaders, url: &str) -> reqwest::header::HeaderMap {
+        h.apply(reqwest::Client::new().get(url), url).build().unwrap().headers().clone()
+    }
+
+    fn val<'a>(m: &'a reqwest::header::HeaderMap, name: &str) -> Option<&'a str> {
+        m.get(name).and_then(|v| v.to_str().ok())
+    }
+
+    #[test]
+    fn a_direct_file_request_carries_user_agent_referer_and_origin() {
+        let m = sent(&hdrs(), "https://page.test/a.bin");
+        assert_eq!(val(&m, "user-agent"), Some("PageUA/1"));
+        assert_eq!(val(&m, "referer"), Some("https://page.test/v"));
+        assert_eq!(val(&m, "origin"), Some("https://page.test"));
+    }
+
+    #[test]
+    fn the_cookie_is_chosen_by_the_requests_own_host() {
+        let h = hdrs();
+        assert_eq!(val(&sent(&h, "https://page.test/a.bin"), "cookie"), Some("p=1"));
+        assert_eq!(val(&sent(&h, "https://cdn.test/a.bin"), "cookie"), Some("c=1"));
+        assert_eq!(val(&sent(&h, "https://a.cdn.test/a.bin"), "cookie"), Some("c=1"));
+        assert_eq!(val(&sent(&h, "https://other.test/a.bin"), "cookie"), None);
+        // A host that only ends in the same letters is not a subdomain.
+        assert_eq!(val(&sent(&h, "https://evilcdn.test/a.bin"), "cookie"), None);
+    }
+
+    #[test]
+    fn the_longest_domain_wins() {
+        let mut h = hdrs();
+        h.host_cookies = pairs(&[("cdn.test", "wide=1"), ("files.cdn.test", "narrow=1")]);
+        assert_eq!(val(&sent(&h, "https://files.cdn.test/a.bin"), "cookie"), Some("narrow=1"));
+        assert_eq!(val(&sent(&h, "https://x.cdn.test/a.bin"), "cookie"), Some("wide=1"));
+    }
+
+    #[test]
+    fn the_cookie_option_goes_to_the_link_host_only() {
+        let hc = pairs(&[("cdn.test", "c=1")]);
+        // The link's own host gets the `Cookie` option.
+        assert_eq!(pick_cookie(&hc, Some("sid=1"), "page.test", "page.test"), Some("sid=1"));
+        // After a redirect to another host the old host's cookie is not sent; the new host's own entry is.
+        assert_eq!(pick_cookie(&hc, Some("sid=1"), "page.test", "cdn.test"), Some("c=1"));
+        assert_eq!(pick_cookie(&hc, Some("sid=1"), "page.test", "other.test"), None);
+        assert_eq!(pick_cookie(&hc, Some("sid=1"), "page.test", "evilcdn.test"), None);
+        assert_eq!(pick_cookie(&[], Some("sid=1"), "page.test", "cdn.test"), None);
+    }
+
+    #[test]
+    fn a_probe_403_is_a_refused_link_unless_the_link_has_a_login() {
+        let refused = with_link_login(ProbeFail::Refused(403), false);
+        assert!(matches!(refused, ProbeFail::Refused(403)));
+        let e = probe_error(refused);
+        assert_eq!(e.code, ErrorCode::LinkRefused);
+        assert_eq!(e.code.as_str(), "LINK_REFUSED");
+        assert_eq!(e.http_status, Some(403));
+        assert_eq!(
+            e.message,
+            "The site refused this link. Open the page in Maglev's browser and start the download from there, or paste a fresh link."
+        );
+        let with_login = with_link_login(ProbeFail::Refused(403), true);
+        assert!(matches!(with_login, ProbeFail::Auth(403)));
+        assert_eq!(probe_error(with_login).code, ErrorCode::AuthRequired);
+        assert_eq!(probe_error(ProbeFail::Auth(401)).code, ErrorCode::AuthRequired);
+    }
+
+    // ---- a local server that wants the page's headers ----
+
+    const FILE_LEN: usize = 3000;
+
+    async fn answer(mut sock: TcpStream) -> std::io::Result<()> {
+        let mut buf = Vec::new();
+        let mut tmp = [0u8; 2048];
+        loop {
+            let n = sock.read(&mut tmp).await?;
+            if n == 0 {
+                return Ok(());
+            }
+            buf.extend_from_slice(&tmp[..n]);
+            if buf.windows(4).any(|w| w == b"\r\n\r\n") {
+                break;
+            }
+        }
+        let text = String::from_utf8_lossy(&buf).into_owned();
+        let header = |name: &str| {
+            text.lines().find_map(|l| {
+                let (k, v) = l.split_once(':')?;
+                k.trim().eq_ignore_ascii_case(name).then(|| v.trim().to_string())
+            })
+        };
+        let ok = header("referer").as_deref() == Some("https://page.test/v")
+            && header("origin").as_deref() == Some("https://page.test")
+            && header("cookie").as_deref() == Some("sid=abc")
+            && header("user-agent").as_deref() == Some("PageUA/1");
+        if !ok {
+            sock.write_all(b"HTTP/1.1 403 Forbidden\r\nContent-Length: 0\r\nConnection: close\r\n\r\n").await?;
+            return sock.shutdown().await;
+        }
+        let body: Vec<u8> = (0..FILE_LEN).map(|i| (i % 251) as u8).collect();
+        let head = if header("range").as_deref() == Some("bytes=0-0") {
+            format!(
+                "HTTP/1.1 206 Partial Content\r\nContent-Length: 1\r\nContent-Range: bytes 0-0/{FILE_LEN}\r\nContent-Type: application/octet-stream\r\nAccept-Ranges: bytes\r\nETag: \"v1\"\r\nConnection: close\r\n\r\n"
+            )
+        } else {
+            format!(
+                "HTTP/1.1 200 OK\r\nContent-Length: {FILE_LEN}\r\nContent-Type: application/octet-stream\r\nAccept-Ranges: bytes\r\nETag: \"v1\"\r\nConnection: close\r\n\r\n"
+            )
+        };
+        sock.write_all(head.as_bytes()).await?;
+        if head.contains("206") {
+            sock.write_all(&body[..1]).await?;
+        } else {
+            sock.write_all(&body).await?;
+        }
+        sock.shutdown().await
+    }
+
+    async fn serve() -> u16 {
+        let listener = TcpListener::bind(("127.0.0.1", 0)).await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        tokio::spawn(async move {
+            loop {
+                let Ok((sock, _)) = listener.accept().await else { return };
+                tokio::spawn(async move {
+                    let _ = answer(sock).await;
+                });
+            }
+        });
+        port
+    }
+
+    fn tmpdir(tag: &str) -> PathBuf {
+        let d = std::env::temp_dir().join(format!("maglev-dl-refused-{}-{tag}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(&d).unwrap();
+        d
+    }
+
+    async fn wait_state(d: &Arc<Downloads>, state: &str) -> Value {
+        let t0 = Instant::now();
+        loop {
+            let cur = d.snapshots().first().cloned().unwrap_or(Value::Null);
+            if cur["state"] == state {
+                return cur;
+            }
+            assert!(t0.elapsed() < Duration::from_secs(30), "timed out in {}: {cur}", cur["state"]);
+            tokio::time::sleep(Duration::from_millis(25)).await;
+        }
+    }
+
+    const WITH_HEADERS: &str = r#"{"segments":1,"headers":{"User-Agent":"PageUA/1","Referer":"https://page.test/v","Origin":"https://page.test","Cookies":[{"host":"127.0.0.1","cookie":"sid=abc"}]}}"#;
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn a_download_with_the_page_headers_finishes() {
+        let dir = tmpdir("ok");
+        let port = serve().await;
+        let d = Downloads::build(tokio::runtime::Handle::current(), None, &dir, &dir, None, Vec::new());
+        d.add(&format!("http://127.0.0.1:{port}/a.bin"), WITH_HEADERS).unwrap();
+        wait_state(&d, "finished").await;
+        assert_eq!(std::fs::metadata(dir.join("a.bin")).unwrap().len(), FILE_LEN as u64);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn the_same_link_without_the_headers_ends_refused() {
+        let dir = tmpdir("refused");
+        let port = serve().await;
+        let d = Downloads::build(tokio::runtime::Handle::current(), None, &dir, &dir, None, Vec::new());
+        d.add(&format!("http://127.0.0.1:{port}/a.bin"), r#"{"segments":1}"#).unwrap();
+        let snap = wait_state(&d, "needs_link").await;
+        assert_eq!(snap["error"]["code"], "LINK_REFUSED");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn browser_cookies_alone_do_not_make_a_403_a_sign_in() {
+        let dir = tmpdir("cookies");
+        let port = serve().await;
+        let d = Downloads::build(tokio::runtime::Handle::current(), None, &dir, &dir, None, Vec::new());
+        // The cookie is wrong and the page headers are missing: refused, and not AUTH_REQUIRED.
+        let opts = r#"{"segments":1,"headers":{"Cookies":[{"host":"127.0.0.1","cookie":"sid=wrong"}]}}"#;
+        d.add(&format!("http://127.0.0.1:{port}/a.bin"), opts).unwrap();
+        let snap = wait_state(&d, "needs_link").await;
+        assert_eq!(snap["error"]["code"], "LINK_REFUSED");
         let _ = std::fs::remove_dir_all(&dir);
     }
 }
