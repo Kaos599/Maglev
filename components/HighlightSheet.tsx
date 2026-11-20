@@ -4,7 +4,7 @@ import { useRouter } from 'expo-router';
 import Constants from 'expo-constants';
 import { useTheme } from '../context/ThemeContext';
 import { useSettings } from '../context/SettingsContext';
-import { ThemeColors, radius, spacing, type } from '../constants/theme';
+import { ThemeColors, motion, radius, spacing, type } from '../constants/theme';
 import { highlightCopy } from '../constants/copy';
 import { HIGHLIGHTS, type Highlight } from '../constants/highlights';
 import Animated from 'react-native-reanimated';
@@ -20,7 +20,7 @@ import { getLastSeenVersion, setLastSeenVersion } from '../utils/prefs/highlight
 import { useUpdatePrefs } from '../utils/prefs/update';
 
 /** Closing fades and shrinks the card a little over this long. */
-const EXIT_MS = 150;
+const EXIT_MS = motion.duration.exit;
 
 const INSTALLED = Constants.expoConfig?.version ?? '';
 

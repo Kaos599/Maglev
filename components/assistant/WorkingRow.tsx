@@ -1,10 +1,9 @@
 import React, { memo, useEffect, useMemo, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { useTheme } from '../../context/ThemeContext';
-import { ThemeColors, spacing, type, touch } from '../../constants/theme';
+import { ThemeColors, motion, spacing, type, touch } from '../../constants/theme';
 import { useReduceMotion } from '../motion';
 
-const STEP_MS = 320;
 const SQUARES = 3;
 
 /**
@@ -18,7 +17,7 @@ export const WorkingRow = memo(function WorkingRow({ label }: { label: string })
   const [lit, setLit] = useState(0);
   useEffect(() => {
     if (reduce) return;
-    const id = setInterval(() => setLit((n) => (n + 1) % SQUARES), STEP_MS);
+    const id = setInterval(() => setLit((n) => (n + 1) % SQUARES), motion.loop.step);
     return () => clearInterval(id);
   }, [reduce]);
   return (

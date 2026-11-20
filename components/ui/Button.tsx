@@ -38,10 +38,10 @@ export function LoadingDots({ color }: { color: string }) {
     const loops = vals.map((v, i) =>
       Animated.loop(
         Animated.sequence([
-          Animated.delay(i * 160),
+          Animated.delay(i * motion.loop.dotStep),
           Animated.timing(v, { toValue: 1, duration: motion.duration.base, useNativeDriver: true }),
           Animated.timing(v, { toValue: 0.3, duration: motion.duration.base, useNativeDriver: true }),
-          Animated.delay((2 - i) * 160),
+          Animated.delay((2 - i) * motion.loop.dotStep),
         ]),
       ),
     );

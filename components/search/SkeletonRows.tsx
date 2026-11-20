@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef } from 'react';
 import { Animated, StyleSheet, View } from 'react-native';
 import { useTheme } from '../../context/ThemeContext';
-import { ThemeColors, radius, spacing, touch } from '../../constants/theme';
+import { ThemeColors, motion, radius, spacing, touch } from '../../constants/theme';
 import { useReduceMotion } from '../motion/useReduceMotion';
 
 /** Rows shown before the first result arrives. ResultRow's minimum height, so nothing shifts when results replace them. */
@@ -25,7 +25,7 @@ export function SkeletonRows({ count = SKELETON_FIRST_COUNT }: { count?: number 
       opacity.setValue(1);
       return;
     }
-    const fade = Animated.timing(opacity, { toValue: 1, duration: 180, useNativeDriver: true });
+    const fade = Animated.timing(opacity, { toValue: 1, duration: motion.duration.focus, useNativeDriver: true });
     fade.start();
     return () => fade.stop();
   }, [opacity, reduceMotion]);

@@ -18,7 +18,7 @@ check('Back closes it (onRequestClose)', /onRequestClose=\{onClose\}/.test(d));
 check('a backdrop tap closes it', /<Pressable[^>]*onPress=\{onClose\}/.test(d));
 check('the backdrop uses the theme overlay token', /c\.overlay/.test(d));
 check('respects reduce motion through useMotion (no scale)', /useMotion\(\)/.test(d) && /m\.disabled/.test(d) && /reduce \? \[\]/.test(d));
-check('fades and scales from 0.94 over about 180 ms', /START_SCALE = 0\.94/.test(d) && /DURATION = 180/.test(d));
+check('fades and scales from 0.94 over motion.duration.focus (180 ms)', /START_SCALE = 0\.94/.test(d) && /duration: motion\.duration\.focus/.test(d));
 check('is modal to screen readers; the title is a header that takes focus', /accessibilityViewIsModal/.test(d) && /accessibilityRole="header"/.test(d) && /setAccessibilityFocus/.test(d));
 check('takes visible, onClose, title, icon, children, actions, testID', ['visible', 'onClose', 'title', 'icon?', 'children?', 'actions?', 'testID?'].every((p) => d.includes(p)));
 check('no hex colours and no system monospace', !/#[0-9a-fA-F]{3,8}\b/.test(d) && !/fontFamily:\s*'monospace'/.test(d));

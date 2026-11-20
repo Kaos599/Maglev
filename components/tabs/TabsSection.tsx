@@ -3,7 +3,7 @@ import { AccessibilityInfo, StyleSheet, Text, View } from 'react-native';
 import Animated, { SharedValue, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { GestureDetector, usePanGesture } from 'react-native-gesture-handler';
 import { useTheme } from '../../context/ThemeContext';
-import { ThemeColors, radius, spacing, touch, type } from '../../constants/theme';
+import { ThemeColors, motion, radius, spacing, touch, type } from '../../constants/theme';
 import { tabsCopy } from '../../constants/copy';
 import { haptic } from '../../constants/haptics';
 import { useAssistantPrefs } from '../../utils/prefs/assistantApp';
@@ -111,7 +111,7 @@ function DraggableRow({ id, index, count, name, locked, shown, drag, onReorder, 
     const t = drag.target.value;
     if (a === index) {
       return {
-        transform: [{ translateY: drag.dragY.value }, { scale: reduceMotion ? 1 : withTiming(LIFT_SCALE, { duration: 120 }) }],
+        transform: [{ translateY: drag.dragY.value }, { scale: reduceMotion ? 1 : withTiming(LIFT_SCALE, { duration: motion.duration.press }) }],
         zIndex: 10,
         backgroundColor: colors.surfaceRaised,
         borderColor: colors.accent,
@@ -123,7 +123,7 @@ function DraggableRow({ id, index, count, name, locked, shown, drag, onReorder, 
       else if (a > t && index >= t && index < a) shift = ROW_HEIGHT;
     }
     return {
-      transform: [{ translateY: reduceMotion ? shift : withTiming(shift, { duration: 150 }) }, { scale: 1 }],
+      transform: [{ translateY: reduceMotion ? shift : withTiming(shift, { duration: motion.duration.fast }) }, { scale: 1 }],
       zIndex: 0,
       backgroundColor: 'transparent',
       borderColor: 'transparent',

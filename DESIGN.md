@@ -164,12 +164,21 @@ Motion tokens live in one place: `motion` in `constants/theme.ts`. `components/m
 | `motion.duration.release` | 160 | Finger up on an icon button. |
 | `motion.duration.focus` | 180 | Tab icon, pill or selection change. |
 | `motion.duration.base` | 220 | Bar fill, sheet in and out, spring back, one-shot entrance (empty states), loading dots. |
+| `motion.duration.exit` | 120 | Anything leaving (dialog close, dismissed tray, fade-out). Exits are quicker than entrances. |
 | `motion.duration.max` | 250 | Ceiling for any single animation. |
-| `motion.sweep` | 1400 | One pass of an indeterminate bar. A loop, so it sits outside the ceiling. |
+| `motion.loop.sweep` | 1400 | One pass of an indeterminate bar. |
+| `motion.loop.shimmer` | 900 | One fade of a shimmer. |
+| `motion.loop.bob` | 450 | One leg of the "more below" hint. |
+| `motion.loop.dotStep` | 160 | Stagger between loading dots. |
+| `motion.loop.step` | 320 | One step of the Assistant's working squares. |
 
-Rules: ease-out only (`easeOut`, a cubic), nothing longer than `motion.duration.max` (bar and dot loops aside), no springs or bounce, no loops. Pressed scale is `motion.pressScale` (0.97). Bare pixel icons sink by `PRESS_SINK` (2 whole pixels) instead of scaling, because scaled pixels blur. Use `animateTo(value, to, ms, reduce)` from `components/motion/tokens.ts` so reduce motion is handled for you.
+The `loop` tokens are repeating animations, so they sit outside the ceiling. Holds and timeouts (`motion.finishHold`, the settings-search highlight, undo windows, debounces) are not motion and are not tokens. A one-off that must break a rule (a celebration longer than 250 ms, a linear clock) says why with `// design-exception:` on the line.
 
-With the system's reduce-motion setting on, nothing animates: values jump to their target. Read it with `useReduceMotion()` from `components/motion/useReduceMotion.ts`, or use `useMotion()` in `components/ui/useMotion.ts`, which builds the easings for you. Gate any animation of your own on it. Never write a bare number as an animation `duration`; `scripts/test-design-system.js` rejects it in `components/ui` and `components/motion`.
+Rules: ease-out only (`easeOut`, a cubic), nothing longer than `motion.duration.max` (bar and dot loops aside), no springs or bounce, and loops only through `motion.loop`. Pressed scale is `motion.pressScale` (0.97). Bare pixel icons sink by `PRESS_SINK` (2 whole pixels) instead of scaling, because scaled pixels blur. Use `animateTo(value, to, ms, reduce)` from `components/motion/tokens.ts` so reduce motion is handled for you.
+
+With the system's reduce-motion setting on, nothing animates: values jump to their target. Read it with `useReduceMotion()` from `components/motion/useReduceMotion.ts`, or use `useMotion()` in `components/ui/useMotion.ts`, which builds the easings for you. Gate any animation of your own on it, and never use Reanimated's `useReducedMotion`, which does not update while the app runs. Never write a bare number as an animation `duration`; `scripts/test-design-system.js` rejects it in `app/` and `components/`, and rejects a file that animates without reading reduce motion.
+
+Which library: Reanimated for anything that follows a finger or must run on the UI thread (sheet drag, tab drag, swipe rows). React Native `Animated` with `useNativeDriver` for fire-and-forget fades and slides. Both read their durations from `motion`.
 
 ### Haptics
 
@@ -349,7 +358,7 @@ Words to avoid on screen: pipeline jargon, "Save configuration" buttons (setting
 
 - a hex or `rgb()`/`rgba()` literal appears in `app/`, `components/`, `context/` or `utils/` (outside `constants/` and `components/brand/`),
 - `fontFamily: 'monospace'` appears anywhere, or `fontWeight` or a `shadow*` or `elevation` key appears in `app/` or `components/`,
-- a `duration:` with a bare number appears in `components/ui` or `components/motion`,
+- an animation `duration:` is a bare number in `app/` or `components/` (no `// design-exception:`), or a file animates without reading reduce motion,
 - a module-level `StyleSheet.create` or object in `app/` or `components/` reads `type.*` (it would freeze the font style from app start),
 - a raw `<TextInput` appears in `app/` or `components/` outside `components/ui/` (use `TextField`),
 - a numeric `fontSize: <number>` appears in `app/` or `components/` without a `// design-exception:` comment on the same line (use `type.size.*`),

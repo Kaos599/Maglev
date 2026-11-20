@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef } from 'react';
 import { Animated, StyleSheet, Text, View } from 'react-native';
 import { useTheme } from '../../context/ThemeContext';
-import { ThemeColors, radius, spacing, touch, type } from '../../constants/theme';
+import { ThemeColors, motion, radius, spacing, touch, type } from '../../constants/theme';
 import { PixelIcon } from '../PixelIcon';
 import { PressableScale } from '../ui';
 import { useReduceMotion } from '../motion';
@@ -16,7 +16,7 @@ export function BottomFade({ hidden }: { hidden: boolean }) {
   const { colors } = useTheme();
   const opacity = useRef(new Animated.Value(hidden ? 0 : 1)).current;
   useEffect(() => {
-    Animated.timing(opacity, { toValue: hidden ? 0 : 1, duration: 150, useNativeDriver: true }).start();
+    Animated.timing(opacity, { toValue: hidden ? 0 : 1, duration: motion.duration.fast, useNativeDriver: true }).start();
   }, [hidden, opacity]);
   return (
     <Animated.View pointerEvents="none" style={[fadeStyle.root, { opacity }]}>
@@ -37,8 +37,8 @@ export function MoreBelowPill({ onPress }: { onPress: () => void }) {
     if (reduceMotion) return;
     const run = Animated.loop(
       Animated.sequence([
-        Animated.timing(bob, { toValue: 4, duration: 450, useNativeDriver: true }),
-        Animated.timing(bob, { toValue: 0, duration: 450, useNativeDriver: true }),
+        Animated.timing(bob, { toValue: 4, duration: motion.loop.bob, useNativeDriver: true }),
+        Animated.timing(bob, { toValue: 0, duration: motion.loop.bob, useNativeDriver: true }),
       ]),
       { iterations: BOB_CYCLES },
     );

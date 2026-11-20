@@ -286,13 +286,69 @@ function moduleLevelTypeUse(src) {
   check('no module-level StyleSheet.create or object spreads type.* in app/ or components/ (use makeStyles(colors) in useMemo)', problems);
 }
 
-// Every animation length is a token from constants/theme.ts (`motion.duration`), never a bare number.
-check(
-  'no numeric duration: in components/ui or components/motion (use motion.duration.*)',
-  scan(['components/ui', 'components/motion'], {
-    test: (line) => (/\bduration:\s*\d/.test(line) ? 'numeric duration literal' : null),
-  }),
-);
+// Every animation length is a token from constants/theme.ts (`motion.duration`, `motion.loop`), never a bare number.
+// A bare number is allowed only with `// design-exception: <why>` (or the block form) on the same line. Timers that are
+// not animation (setTimeout, setInterval, debounce) are not checked.
+const DESIGN_EXCEPTION = /design-exception:/;
+// TEMPORARY allowlist: files another worker owns while the browser is reworked. The integrator moves each one onto
+// the tokens (or annotates it) and deletes the entry. Nothing else belongs here.
+const DURATION_ALLOW = new Set(['components/browser/AddressSwipe.tsx']); // SLIDE_MS is a local number constant
+const numericConsts = (text) => {
+  const names = new Set();
+  for (const m of text.matchAll(/^\s*(?:export\s+)?const\s+([A-Za-z_][A-Za-z0-9_]*)\s*=\s*[\d_.]+\s*;(.*)$/gm)) {
+    if (!DESIGN_EXCEPTION.test(m[2])) names.add(m[1]);
+  }
+  return names;
+};
+{
+  const problems = [];
+  for (const d of ['app', 'components']) {
+    for (const f of walk(path.join(root, d))) {
+      const r = rel(f);
+      if (isGenerated(r) || DURATION_ALLOW.has(r)) continue;
+      const text = read(f);
+      const consts = numericConsts(text);
+      text.split('\n').forEach((line, i) => {
+        if (isCommentLine(line) || DESIGN_EXCEPTION.test(line)) return;
+        let msg = null;
+        if (/\bduration:\s*[^,}\n]*\b\d/.test(line)) msg = 'numeric duration literal';
+        else if (/\bAnimated\.delay\(\s*\d|\bwithDelay\(\s*\d/.test(line)) msg = 'numeric delay literal';
+        else if (/\bwithTiming\([^,]+,\s*\d/.test(line)) msg = 'numeric withTiming duration';
+        else {
+          const m = line.match(/\bduration:\s*([A-Za-z_][A-Za-z0-9_]*)\b/);
+          if (m && consts.has(m[1])) msg = `duration comes from a local number constant ${m[1]}`;
+        }
+        if (msg) problems.push(`${r}:${i + 1}  ${msg}  ${line.trim().slice(0, 80)}`);
+      });
+    }
+  }
+  check('no bare animation duration in app/ or components/ (use motion.duration.* or motion.loop.*, or // design-exception:)', problems);
+}
+
+// Every file that runs an animation also honours reduce motion: it reads useReduceMotion / useMotion, goes through animateTo,
+// or takes a `reduce` / `reduceMotion` value from its caller.
+const REDUCE_ALLOW = {
+  // Add `'path': 'why'` here only when a file legitimately cannot read reduce motion.
+  // TEMPORARY: owned by another worker while the browser files are being reworked; the integrator fixes the file and removes the entry.
+  'components/browser/AddressSwipe.tsx': 'browser rework in progress; it does not read reduce motion yet',
+};
+{
+  const problems = [];
+  for (const d of ['app', 'components']) {
+    for (const f of walk(path.join(root, d))) {
+      const r = rel(f);
+      if (isGenerated(r) || REDUCE_ALLOW[r]) continue;
+      const code = read(f)
+        .split('\n')
+        .filter((l) => !isCommentLine(l))
+        .join('\n');
+      if (!/\b(Animated\.timing|Animated\.loop|withTiming|withRepeat)\b/.test(code)) continue;
+      if (/\b(useReduceMotion|useMotion|animateTo)\b|\breduce(Motion)?\b/.test(code)) continue;
+      problems.push(`${r}  runs an animation but never reads reduce motion`);
+    }
+  }
+  check('every file that animates reads reduce motion (useReduceMotion, useMotion, animateTo or a reduce param)', problems);
+}
 
 console.log('One text input, token font sizes');
 check(

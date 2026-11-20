@@ -4,7 +4,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, { SharedValue, cancelAnimation, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { scheduleOnRN } from 'react-native-worklets';
 import { useTheme } from '../../context/ThemeContext';
-import { ThemeColors, radius, spacing, type } from '../../constants/theme';
+import { ThemeColors, motion, radius, spacing, type } from '../../constants/theme';
 import { PixelIcon, PixelIconName } from '../PixelIcon';
 import { useMotion } from './useMotion';
 import { useOverlayTracking } from '../../utils/overlayTracker';
@@ -47,7 +47,6 @@ export interface DialogIntro {
 export const DIALOG_MAX_WIDTH = 360;
 export const DIALOG_GUTTER = spacing.lg;
 
-const DURATION = 180;
 const START_SCALE = 0.94;
 const MAX_WIDTH = DIALOG_MAX_WIDTH;
 
@@ -56,7 +55,7 @@ const MAX_WIDTH = DIALOG_MAX_WIDTH;
  * scales from 0.94 to 1 (180 ms ease-out) while the backdrop fades; closing plays it in reverse. Back
  * and a tap on the backdrop close it. With reduce motion it appears and disappears at once, no scale.
  */
-export function Dialog({ visible, onClose, title, icon, children, actions, testID, hero, titleStyle, intro, exitMs = DURATION, onExited }: DialogProps) {
+export function Dialog({ visible, onClose, title, icon, children, actions, testID, hero, titleStyle, intro, exitMs = motion.duration.exit, onExited }: DialogProps) {
   const { colors } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const m = useMotion();
@@ -97,8 +96,8 @@ export function Dialog({ visible, onClose, title, icon, children, actions, testI
         return;
       }
       if (m.disabled || intro) progress.value = 1;
-      else progress.value = withTiming(1, { duration: DURATION, easing: m.easing });
-      focusTitle(m.disabled ? 100 : DURATION + 100);
+      else progress.value = withTiming(1, { duration: motion.duration.focus, easing: m.easing });
+      focusTitle(m.disabled ? 100 : motion.duration.focus + 100);
       return;
     }
     if (focusTimer.current) clearTimeout(focusTimer.current); // closing: no accessibility focus after it

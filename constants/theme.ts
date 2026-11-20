@@ -277,8 +277,23 @@ export const motion = {
     focus: 180,
     /** Bar fill, sheet in/out, spring back, one-shot entrance (empty states), loading dots. */
     base: 220,
+    /** Anything leaving (a closing dialog, a dismissed tray, a fade-out): quicker than its entrance. */
+    exit: 120,
     /** Hard ceiling for any single animation. */
     max: 250,
+  },
+  /** Repeating animations: one pass or one step. Loops, so they sit outside the `duration.max` ceiling. */
+  loop: {
+    /** One pass of an indeterminate bar's sweep. */
+    sweep: 1400,
+    /** One fade of a skeleton or assistant shimmer (it runs there and back). */
+    shimmer: 900,
+    /** One leg of the "more below" hint bob. */
+    bob: 450,
+    /** The stagger between loading dots. */
+    dotStep: 160,
+    /** One step of the Assistant's "working" squares. */
+    step: 320,
   },
   /** Ease-out cubic as a CSS-style bezier; the same curve as Easing.out(Easing.cubic). */
   easeOutBezier: [0.33, 1, 0.68, 1] as const,
@@ -286,8 +301,6 @@ export const motion = {
   pressScale: 0.97,
   /** How long the lime check stays after a download finishes, before it fades (a hold, not motion). */
   finishHold: 900,
-  /** One pass of an indeterminate bar's sweep. A loop, so it sits outside the `duration.max` ceiling. */
-  sweep: 1400,
   sheet: {
     /** A release faster than this (points/s, downward) dismisses. */
     flingVelocity: 900,

@@ -185,7 +185,7 @@ function check(name, cond) {
   check('add link screen has the row too', /SubtitlesAutoRow/.test(read('app/add-download.tsx')) && /d:\$\{res\.id\}/.test(read('app/add-download.tsx')) && /fileKind/.test(read('app/add-download.tsx')));
   check('add screen has a Subtitles row with a switch', /SubtitlesAutoRow/.test(addTorrent) && /autoNewVideos/.test(read('components/search/SubtitlesAutoRow.tsx')) && /askSubtitles\(/.test(addTorrent));
   check('tray calls the interface from 44.1', /askSubtitles\(/.test(tray) && /skipSubtitles/.test(tray) && /MultiSubtitleSheet/.test(tray));
-  check('tray slides in 180 ms and honours reduce motion', /180/.test(tray) && /useReduceMotion/.test(tray));
+  check('tray slides in on motion.duration.focus and honours reduce motion', /motion\.duration\.focus/.test(tray) && /useReduceMotion/.test(tray));
   check('tray has no hex colours', !/#[0-9A-Fa-f]{3,8}\b/.test(tray));
 
   if (failed) {

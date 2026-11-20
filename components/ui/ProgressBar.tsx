@@ -57,7 +57,7 @@ export function ProgressBar({ progress = 0, tone = 'download', indeterminate = f
     if (!sweeping || w === 0) return;
     x.setValue(-seg);
     const loop = Animated.loop(
-      Animated.timing(x, { toValue: w, duration: motionTokens.sweep, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
+      Animated.timing(x, { toValue: w, duration: motionTokens.loop.sweep, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
       { iterations: sweeps ?? -1 },
     );
     loop.start(({ finished }) => {

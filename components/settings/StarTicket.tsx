@@ -21,7 +21,7 @@ const starTicketCopy = {
 const NOTCH = 18;
 const DASHES = 9;
 const BURST_STEPS = 4;
-const BURST_MS = 480;
+const BURST_MS = 480; // design-exception: a one-off celebration burst, longer than the 250 ms ceiling on purpose; linear because the sprite steps carry the pace
 const BURST_REACH = 34;
 /** Eight directions, in whole-pixel steps. */
 const DIRS: readonly [number, number][] = [[0, -1], [1, -1], [1, 0], [1, 1], [0, 1], [-1, 1], [-1, 0], [-1, -1]];

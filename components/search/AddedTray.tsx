@@ -1,7 +1,7 @@
 import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AccessibilityInfo, Animated, PanResponder, StyleSheet, Text, View, type LayoutChangeEvent } from 'react-native';
 import { useTheme } from '../../context/ThemeContext';
-import { ThemeColors, radius, spacing, type, touch } from '../../constants/theme';
+import { ThemeColors, motion, radius, spacing, type, touch } from '../../constants/theme';
 import { PixelIcon } from '../PixelIcon';
 import { PressableScale } from '../ui';
 import { easeOut, useReduceMotion } from '../motion';
@@ -32,8 +32,6 @@ import {
  * The "Added" message (docs/NATIVE_CONTRACT.md section 44.3). Layout from the approved page: padding 12 all round, radius 16,
  * a 40 dp tile centred on two 20-line text rows, and an action row 12 below it whose button starts at the tile's left edge.
  */
-const SLIDE_IN_MS = 180;
-const SLIDE_OUT_MS = 140;
 const SIDE_MARGIN = 12;
 const BOTTOM_GAP = 8;
 const DISMISS_DRAG = 40;
@@ -85,7 +83,7 @@ function AddedTrayImpl({ view, onAsk, onStatus, onSkip, onView, onDismiss, onHol
         slide.setValue(1);
         return;
       }
-      Animated.timing(slide, { toValue: 1, duration: SLIDE_IN_MS, easing: easeOut, useNativeDriver: true }).start();
+      Animated.timing(slide, { toValue: 1, duration: motion.duration.focus, easing: easeOut, useNativeDriver: true }).start();
       return;
     }
     if (reduce) {
@@ -93,7 +91,7 @@ function AddedTrayImpl({ view, onAsk, onStatus, onSkip, onView, onDismiss, onHol
       setShown(null);
       return;
     }
-    Animated.timing(slide, { toValue: 0, duration: SLIDE_OUT_MS, easing: easeOut, useNativeDriver: true }).start(({ finished }) => {
+    Animated.timing(slide, { toValue: 0, duration: motion.duration.exit, easing: easeOut, useNativeDriver: true }).start(({ finished }) => {
       if (finished) setShown(null);
     });
     // Only whether there is a message decides the motion; its words change in place.
@@ -112,11 +110,11 @@ function AddedTrayImpl({ view, onAsk, onStatus, onSkip, onView, onDismiss, onHol
         onPanResponderRelease: (_e, g) => {
           holdRef.current(false);
           if (g.dy > DISMISS_DRAG || g.vy > 0.6) dismissRef.current();
-          else Animated.timing(drag, { toValue: 0, duration: 120, easing: easeOut, useNativeDriver: true }).start();
+          else Animated.timing(drag, { toValue: 0, duration: motion.duration.release, easing: easeOut, useNativeDriver: true }).start();
         },
         onPanResponderTerminate: () => {
           holdRef.current(false);
-          Animated.timing(drag, { toValue: 0, duration: 120, easing: easeOut, useNativeDriver: true }).start();
+          Animated.timing(drag, { toValue: 0, duration: motion.duration.release, easing: easeOut, useNativeDriver: true }).start();
         },
       }),
     [drag],

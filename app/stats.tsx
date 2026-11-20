@@ -8,7 +8,7 @@ import { Stack, useRouter } from 'expo-router';
 import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { scheduleOnRN } from 'react-native-worklets';
 import { useTheme } from '../context/ThemeContext';
-import { ThemeColors, radius, spacing, type } from '../constants/theme';
+import { ThemeColors, motion, radius, spacing, type } from '../constants/theme';
 import { Button, IconButton, Screen, SegmentedControl, Sheet } from '../components/ui';
 import { useMotion } from '../components/ui/useMotion';
 import { PixelCity } from '../components/stats/PixelCity';
@@ -111,7 +111,7 @@ export default function StatsScreen() {
   const fadeStyle = useAnimatedStyle(() => ({ opacity: fade.value }));
   const commit = useCallback(() => setShown(pendingRange.current), []);
   useEffect(() => {
-    if (!m.disabled) fade.value = withTiming(1, { duration: 140, easing: m.easing });
+    if (!m.disabled) fade.value = withTiming(1, { duration: motion.duration.fast, easing: m.easing });
     // Fade back in once the new range is drawn.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [shown]);
@@ -124,7 +124,7 @@ export default function StatsScreen() {
         setShown(next);
         return;
       }
-      fade.value = withTiming(0, { duration: 90, easing: m.easing }, (done) => {
+      fade.value = withTiming(0, { duration: motion.duration.exit, easing: m.easing }, (done) => {
         if (done) scheduleOnRN(commit);
       });
     },

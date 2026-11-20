@@ -156,7 +156,7 @@ function check(name, cond, extra) {
   check('the train is drawn from the brand paths (MARK_BODY evenodd, MARK_LINES), the badge from stacked Views, no clip path', /MARK_BODY/.test(station) && /fillRule="evenodd"/.test(station) && /MARK_LINES/.test(station) && !/clipPath|clip-path/.test(station) && /type\.brand/.test(station));
   check('no hex colours, no system monospace in the new files', ['Station.tsx', 'timing.ts', 'timeline.ts', 'burst.ts', 'useEntrance.ts'].every((f) => !/#[0-9a-fA-F]{3,8}\b/.test(read('components/highlight/' + f)) && !/fontFamily:\s*'monospace'/.test(read('components/highlight/' + f))));
   check('the card and scrim run on the same clock as the train, through the Dialog intro', /intro=\{intro\}/.test(sheet) && /card: cardAt, scrim: scrimAt/.test(sheet));
-  check('closing plays an exit (about 150 ms) and the dialog is dropped only once it has gone', /EXIT_MS = 150/.test(sheet) && /exitMs=\{EXIT_MS\}/.test(sheet) && /onExited=\{onExited\}/.test(sheet) && /const gone = useCallback\(\(\) => setShown\(null\)/.test(sheet) && /visible=\{open\}/.test(sheet));
+  check('closing plays an exit (motion.duration.exit) and the dialog is dropped only once it has gone', /EXIT_MS = motion\.duration\.exit/.test(sheet) && /exitMs=\{EXIT_MS\}/.test(sheet) && /onExited=\{onExited\}/.test(sheet) && /const gone = useCallback\(\(\) => setShown\(null\)/.test(sheet) && /visible=\{open\}/.test(sheet));
   check('a second tap during the exit does nothing', /if \(!shown\?\.open\) return/.test(sheet));
   check('HighlightPreview is exported for review', /export function HighlightPreview/.test(sheet));
 

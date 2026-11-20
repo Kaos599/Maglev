@@ -14,7 +14,7 @@ import { Animated, Easing, LayoutChangeEvent, StyleSheet, Text, View, type Acces
 import { GestureDetector, useExclusiveGestures, usePanGesture, useTapGesture } from 'react-native-gesture-handler';
 import Svg, { Path, Text as SvgText } from 'react-native-svg';
 import { useTheme } from '../../context/ThemeContext';
-import { easeOutCubic, type ThemeColors, type as typeTokens, type } from '../../constants/theme';
+import { easeOutCubic, motion, type ThemeColors, type as typeTokens, type } from '../../constants/theme';
 import { haptic } from '../../constants/haptics';
 import { MaglevMark } from '../brand/MaglevMark';
 import { MARK_FX_COMPACT, MARK_RATIO } from '../brand/markPaths';
@@ -34,7 +34,7 @@ const TRAIN_H = 8;
 const VS = 44 / TRAIN_H;
 const BODYC = (71.5 - 10) / VS;
 const TRAIN_TOP = RAIL_Y - (83.25 - 42) / VS;
-const RUN_MS = 1200;
+const RUN_MS = 1200; // design-exception: the opening train run is a one-off showpiece, linear on purpose (the train moves at a steady speed)
 const DESIGN_W = 163;
 const MONTHS = ['J', 'F', 'M', 'A', 'M', 'J', 'J', 'A', 'S', 'O', 'N', 'D'];
 const DOW = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -107,7 +107,7 @@ export function PixelCity({ kind, buckets, busiest, selected, minIndex, peakHour
   useEffect(() => {
     if (t === null || width === 0 || buckets.length === 0) return;
     roseThisRun = true;
-    const total = RUN_MS + 220;
+    const total = RUN_MS + motion.duration.base;
     let raf = 0;
     const t0 = Date.now();
     cx.setValue(centreOf(L, Math.max(0, minIndex)));
@@ -161,7 +161,7 @@ export function PixelCity({ kind, buckets, busiest, selected, minIndex, peakHour
       else gA += g;
       if (b.future) for (let k = 0; k < L.bw; k += 2) fence += rectD(px + k, BASE - 1, 1, 1);
       const full = heights[i];
-      const h = t == null ? full : Math.round(full * easeOutCubic((t - riseStart(i, Math.max(0, hi), RUN_MS)) / 220));
+      const h = t == null ? full : Math.round(full * easeOutCubic((t - riseStart(i, Math.max(0, hi), RUN_MS)) / motion.duration.base));
       const top = BASE - h;
       // The outline follows the train: the selected building (today until the user picks another day).
       if (i === (selected >= 0 ? selected : buckets.findIndex((x) => x.current))) {
@@ -246,7 +246,7 @@ export function PixelCity({ kind, buckets, busiest, selected, minIndex, peakHour
     const at = selected >= 0 && buckets[selected] ? selected : Math.max(0, hi);
     const to = centreOf(L, at);
     if (reduce) cx.setValue(to);
-    else Animated.timing(cx, { toValue: to, duration: 140, easing: Easing.out(Easing.cubic), useNativeDriver: true }).start();
+    else Animated.timing(cx, { toValue: to, duration: motion.duration.fast, easing: Easing.out(Easing.cubic), useNativeDriver: true }).start();
     // The train follows the selection and the layout, nothing else.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selected, hi, L, width, t, reduce, buckets.length]);
@@ -271,7 +271,7 @@ export function PixelCity({ kind, buckets, busiest, selected, minIndex, peakHour
       dragging.current = false;
       const to = centreOf(l.L, idx);
       if (l.reduce) cx.setValue(to);
-      else Animated.timing(cx, { toValue: to, duration: 120, easing: Easing.out(Easing.cubic), useNativeDriver: true }).start();
+      else Animated.timing(cx, { toValue: to, duration: motion.duration.release, easing: Easing.out(Easing.cubic), useNativeDriver: true }).start();
     }
   };
   // A horizontal drag scrubs from the first 8 dp; a vertical move of 12 dp fails it so the page scrolls instead.

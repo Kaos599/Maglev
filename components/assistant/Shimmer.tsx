@@ -1,5 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 import { Animated, StyleProp, TextStyle } from 'react-native';
+import { motion } from '../../constants/theme';
 import { useReduceMotion } from '../motion';
 
 export interface ShimmerProps {
@@ -20,8 +21,8 @@ export function Shimmer({ text, style, active = true }: ShimmerProps) {
     }
     const loop = Animated.loop(
       Animated.sequence([
-        Animated.timing(v, { toValue: 0.35, duration: 900, useNativeDriver: true }),
-        Animated.timing(v, { toValue: 1, duration: 900, useNativeDriver: true }),
+        Animated.timing(v, { toValue: 0.35, duration: motion.loop.shimmer, useNativeDriver: true }),
+        Animated.timing(v, { toValue: 1, duration: motion.loop.shimmer, useNativeDriver: true }),
       ]),
     );
     loop.start();
