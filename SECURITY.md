@@ -6,7 +6,7 @@ Report security problems privately through [GitHub's private vulnerability repor
 
 Useful things to include:
 
-- The Maglev version (Settings → About), your Android version, and where you installed it from (GitHub release, Obtainium, the Maglev F-Droid repo, or built from source).
+- The Maglev version (Settings → About), your Android version, and where you installed it from (GitHub release, Obtainium, Orion Store, the Maglev F-Droid repo, or built from source).
 - What an attacker can do, and what they need first (a malicious web page, a crafted torrent or magnet link, a shared link, another app on the phone, the same Wi-Fi network).
 - Steps to reproduce, or a proof of concept.
 

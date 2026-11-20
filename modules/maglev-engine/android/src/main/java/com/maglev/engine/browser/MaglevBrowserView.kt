@@ -184,14 +184,17 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
     // 24.10a: the injected script that finds media under a long press (prop mediaHitScript), and the dark pages switch.
     private var mediaHitJs = ""
     private var darkPages = false
+    private val pullSafety = Runnable { if (!destroyed) refresh.isRefreshing = false }
 
     init {
         BlocklistStore.warm(context)
         refresh.setOnRefreshListener {
             pullLoading = false
             reload()
-            // Safety: never leave the spinner up if nothing started loading.
-            mainHandler.postDelayed({ if (!destroyed) refresh.isRefreshing = false }, PULL_SAFETY_MS)
+            // Safety: never leave the spinner up if nothing started loading. One timer per pull, so a second
+            // pull isn't cut short by the first pull's timer.
+            mainHandler.removeCallbacks(pullSafety)
+            mainHandler.postDelayed(pullSafety, PULL_SAFETY_MS)
         }
         refresh.setOnChildScrollUpCallback { _, _ -> selectionHold || findActive || webView.canScrollVertically(-1) }
         addView(refresh, ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
