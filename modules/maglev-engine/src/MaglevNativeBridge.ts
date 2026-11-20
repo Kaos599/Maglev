@@ -48,7 +48,6 @@ import type {
 } from './MaglevEngine.types.ts';
 import { subtitleError } from './MaglevEngine.types.ts';
 import type { MaglevSettings } from './MaglevSettings.types.ts';
-import { mockEngine } from './MaglevMockEngine.ts';
 import { ipFilter } from './MaglevIpFilter.ts';
 import { settingsStore } from './MaglevSettingsStore.ts';
 import { camelizeKeys, snakeizeKeys } from './snapshotMapping.ts';
@@ -67,7 +66,10 @@ const SIMULATOR_ALLOWED = __DEV__ || Platform.OS === 'web';
 
 /** Returns the simulator only where allowed. Never reachable in a release build on a device. */
 function simulatorIfAllowed(): MaglevEngineApi | null {
-  if (__DEV__ || Platform.OS === 'web') {
+  // A literal require inside a branch Metro folds to `false` in release (__DEV__ and process.env.EXPO_OS are both
+  // inlined per platform), so the mock engine never reaches the release bundle. Do not hoist it to an import.
+  if (__DEV__ || process.env.EXPO_OS === 'web') {
+    const { mockEngine } = require('./MaglevMockEngine.ts') as typeof import('./MaglevMockEngine.ts');
     return mockEngine;
   }
   return null;
@@ -328,15 +330,16 @@ export class MaglevEngineBridge implements MaglevEngineApi {
     this.usingNative = native;
     if (native) {
       this.impl = null; // native calls go through callNative
-      const sub = (name: string, fan: (payload: any) => void) => {
-        const s = NativeModule.addListener(name, (payload: unknown) => fan(camelizeKeys(payload)));
+      // `camelize` is false only for events Kotlin already ran through Json.camelize (EngineHost.kt: onTelemetry).
+      const sub = (name: string, fan: (payload: any) => void, camelize = true) => {
+        const s = NativeModule.addListener(name, (payload: unknown) => fan(camelize ? camelizeKeys(payload) : payload));
         this.detach.push(() => s.remove());
       };
       sub('onTelemetry', (p) => {
         const torrents: Snapshot[] = Array.isArray(p) ? p : (p?.torrents ?? []);
         const downloads: DownloadSnapshot[] = Array.isArray(p?.downloads) ? p.downloads : [];
         this.telemetryListeners.forEach((l) => l({ torrents, downloads }));
-      });
+      }, false);
       sub('onTorrentCompleted', (p) => this.completedListeners.forEach((l) => l(p)));
       sub('onNotificationAction', (p) => this.actionListeners.forEach((l) => l(p)));
       sub('onStorageStatus', (p) => this.storageListeners.forEach((l) => l(p)));
