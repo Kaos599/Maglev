@@ -38,6 +38,16 @@ export function unansweredNote(t: SourceTally): string {
   return parts.join(' · ');
 }
 
+/**
+ * The short line under the result count: "12 of 14 sources" when some did not answer, "No source answered" (bad)
+ * when none did, null when all did. A source behind a quick check counts as not answered; the fix hint offers it.
+ */
+export function sourcesLine(t: SourceTally): { text: string; bad: boolean } | null {
+  if (t.total === 0 || t.answered >= t.total) return null;
+  if (t.answered === 0) return { text: 'No source answered', bad: true };
+  return { text: `${t.answered} of ${t.total} sources`, bad: false };
+}
+
 /** True when no source answered at all (and there was at least one). */
 export function allFailed(t: SourceTally): boolean {
   return t.total > 0 && t.answered === 0 && t.needsCheck + t.failed === t.total;
