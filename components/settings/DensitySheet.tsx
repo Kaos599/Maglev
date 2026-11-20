@@ -2,7 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import type { TelemetryDensity } from 'maglev-engine';
 import { useTheme } from '../../context/ThemeContext';
-import { ThemeColors, spacing, type } from '../../constants/theme';
+import { ThemeColors, spacing, type, radius } from '../../constants/theme';
 import { PixelIcon, type PixelIconName } from '../PixelIcon';
 import { PressableScale, SegmentedControl, Sheet } from '../ui';
 import { DensityPreview, type PreviewKind } from './DensityPreview';
@@ -95,14 +95,14 @@ const makeStyles = (c: ThemeColors) =>
   StyleSheet.create({
     content: { gap: spacing.md, paddingBottom: spacing.sm },
     previewRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-    previewLabel: { ...type.body, fontSize: 14, color: c.textMuted },
+    previewLabel: { ...type.body, fontSize: type.size.base, color: c.textMuted },
     kindSwitch: { width: 188 },
     cards: { flexDirection: 'row', gap: spacing.sm + 2, alignItems: 'stretch' },
     cardOuter: { flex: 1, minWidth: 0 },
-    card: { borderRadius: 14, padding: 8, borderWidth: 1, backgroundColor: c.surface, gap: spacing.sm },
+    card: { borderRadius: radius.lg, padding: spacing.sm, borderWidth: 1, backgroundColor: c.surface, gap: spacing.sm },
     titleRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, minHeight: 24 },
-    name: { ...type.bodyStrong, flex: 1, fontSize: 16, color: c.text },
-    desc: { ...type.body, fontSize: 13, lineHeight: 18, color: c.textMuted },
-    note: { ...type.body, fontSize: 13, color: c.textMuted },
+    name: { ...type.bodyStrong, flex: 1, fontSize: type.size.xl, color: c.text },
+    desc: { ...type.body, fontSize: type.size.md, lineHeight: 18, color: c.textMuted },
+    note: { ...type.body, fontSize: type.size.md, color: c.textMuted },
     noteHidden: { opacity: 0 },
   });

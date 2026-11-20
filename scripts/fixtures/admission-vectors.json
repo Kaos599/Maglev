@@ -102,5 +102,379 @@
     "stagingFactor": 1,
     "selectionBytes": 0,
     "expect": "DoesntFit"
+  },
+  {
+    "name": "link downloading holds its remaining bytes",
+    "freeBytes": 10737418240,
+    "torrents": [],
+    "downloads": [
+      {
+        "state": "downloading",
+        "size": 6442450944,
+        "downloaded": 1073741824,
+        "errorCode": null,
+        "httpStatus": null
+      }
+    ],
+    "stagingFactor": 1,
+    "selectionBytes": 5368709120,
+    "expectPendingNeed": 5368709120,
+    "expect": "DoesntFit"
+  },
+  {
+    "name": "link queued holds its whole size",
+    "freeBytes": 10737418240,
+    "torrents": [],
+    "downloads": [
+      {
+        "state": "queued",
+        "size": 6442450944,
+        "downloaded": 0,
+        "errorCode": null,
+        "httpStatus": null
+      }
+    ],
+    "stagingFactor": 1,
+    "selectionBytes": 5368709120,
+    "expectPendingNeed": 6442450944,
+    "expect": "DoesntFit"
+  },
+  {
+    "name": "link resolving with a known size holds it",
+    "freeBytes": 10737418240,
+    "torrents": [],
+    "downloads": [
+      {
+        "state": "resolving",
+        "size": 6442450944,
+        "downloaded": 0,
+        "errorCode": null,
+        "httpStatus": null
+      }
+    ],
+    "stagingFactor": 1,
+    "selectionBytes": 5368709120,
+    "expectPendingNeed": 6442450944,
+    "expect": "DoesntFit"
+  },
+  {
+    "name": "link paused by the user still holds its remaining bytes",
+    "freeBytes": 10737418240,
+    "torrents": [],
+    "downloads": [
+      {
+        "state": "paused",
+        "size": 6442450944,
+        "downloaded": 2147483648,
+        "errorCode": null,
+        "httpStatus": null
+      }
+    ],
+    "stagingFactor": 1,
+    "selectionBytes": 6442450944,
+    "expectPendingNeed": 4294967296,
+    "expect": "DoesntFit"
+  },
+  {
+    "name": "link paused because storage was full still holds its bytes",
+    "freeBytes": 10737418240,
+    "torrents": [],
+    "downloads": [
+      {
+        "state": "paused",
+        "size": 6442450944,
+        "downloaded": 0,
+        "errorCode": null,
+        "httpStatus": null
+      }
+    ],
+    "stagingFactor": 1,
+    "selectionBytes": 5368709120,
+    "expectPendingNeed": 6442450944,
+    "expect": "DoesntFit"
+  },
+  {
+    "name": "finished link holds nothing",
+    "freeBytes": 10737418240,
+    "torrents": [],
+    "downloads": [
+      {
+        "state": "finished",
+        "size": 6442450944,
+        "downloaded": 6442450944,
+        "errorCode": null,
+        "httpStatus": null
+      }
+    ],
+    "stagingFactor": 1,
+    "selectionBytes": 5368709120,
+    "expectPendingNeed": 0,
+    "expect": "Fits"
+  },
+  {
+    "name": "verifying link holds nothing (all bytes written)",
+    "freeBytes": 10737418240,
+    "torrents": [],
+    "downloads": [
+      {
+        "state": "verifying",
+        "size": 6442450944,
+        "downloaded": 6442450944,
+        "errorCode": null,
+        "httpStatus": null
+      }
+    ],
+    "stagingFactor": 1,
+    "selectionBytes": 5368709120,
+    "expectPendingNeed": 0,
+    "expect": "Fits"
+  },
+  {
+    "name": "needs_link holds nothing",
+    "freeBytes": 10737418240,
+    "torrents": [],
+    "downloads": [
+      {
+        "state": "needs_link",
+        "size": 6442450944,
+        "downloaded": 1073741824,
+        "errorCode": null,
+        "httpStatus": null
+      }
+    ],
+    "stagingFactor": 1,
+    "selectionBytes": 5368709120,
+    "expectPendingNeed": 0,
+    "expect": "Fits"
+  },
+  {
+    "name": "link with unknown size holds nothing",
+    "freeBytes": 10737418240,
+    "torrents": [],
+    "downloads": [
+      {
+        "state": "downloading",
+        "size": null,
+        "downloaded": 3221225472,
+        "errorCode": null,
+        "httpStatus": null
+      }
+    ],
+    "stagingFactor": 1,
+    "selectionBytes": 5368709120,
+    "expectPendingNeed": 0,
+    "expect": "Fits"
+  },
+  {
+    "name": "link with size 0 holds nothing",
+    "freeBytes": 10737418240,
+    "torrents": [],
+    "downloads": [
+      {
+        "state": "downloading",
+        "size": 0,
+        "downloaded": 0,
+        "errorCode": null,
+        "httpStatus": null
+      }
+    ],
+    "stagingFactor": 1,
+    "selectionBytes": 5368709120,
+    "expectPendingNeed": 0,
+    "expect": "Fits"
+  },
+  {
+    "name": "link downloaded past its size holds nothing",
+    "freeBytes": 10737418240,
+    "torrents": [],
+    "downloads": [
+      {
+        "state": "downloading",
+        "size": 1073741824,
+        "downloaded": 2147483648,
+        "errorCode": null,
+        "httpStatus": null
+      }
+    ],
+    "stagingFactor": 1,
+    "selectionBytes": 5368709120,
+    "expectPendingNeed": 0,
+    "expect": "Fits"
+  },
+  {
+    "name": "stream estimate counts like a size",
+    "freeBytes": 10737418240,
+    "torrents": [],
+    "downloads": [
+      {
+        "state": "downloading",
+        "size": 6442450944,
+        "downloaded": 0,
+        "errorCode": null,
+        "httpStatus": null,
+        "stream": true
+      }
+    ],
+    "stagingFactor": 1,
+    "selectionBytes": 5368709120,
+    "expectPendingNeed": 6442450944,
+    "expect": "DoesntFit"
+  },
+  {
+    "name": "link in a retryable NETWORK error holds its bytes",
+    "freeBytes": 10737418240,
+    "torrents": [],
+    "downloads": [
+      {
+        "state": "error",
+        "size": 6442450944,
+        "downloaded": 1073741824,
+        "errorCode": "NETWORK",
+        "httpStatus": null
+      }
+    ],
+    "stagingFactor": 1,
+    "selectionBytes": 5368709120,
+    "expectPendingNeed": 5368709120,
+    "expect": "DoesntFit"
+  },
+  {
+    "name": "link in an HTTP 503 error holds its bytes",
+    "freeBytes": 10737418240,
+    "torrents": [],
+    "downloads": [
+      {
+        "state": "error",
+        "size": 6442450944,
+        "downloaded": 0,
+        "errorCode": "HTTP_STATUS",
+        "httpStatus": 503
+      }
+    ],
+    "stagingFactor": 1,
+    "selectionBytes": 5368709120,
+    "expectPendingNeed": 6442450944,
+    "expect": "DoesntFit"
+  },
+  {
+    "name": "link in an HTTP 404 error holds nothing",
+    "freeBytes": 10737418240,
+    "torrents": [],
+    "downloads": [
+      {
+        "state": "error",
+        "size": 6442450944,
+        "downloaded": 0,
+        "errorCode": "HTTP_STATUS",
+        "httpStatus": 404
+      }
+    ],
+    "stagingFactor": 1,
+    "selectionBytes": 5368709120,
+    "expectPendingNeed": 0,
+    "expect": "Fits"
+  },
+  {
+    "name": "link in FILE_CHANGED error holds nothing",
+    "freeBytes": 10737418240,
+    "torrents": [],
+    "downloads": [
+      {
+        "state": "error",
+        "size": 6442450944,
+        "downloaded": 0,
+        "errorCode": "FILE_CHANGED",
+        "httpStatus": null
+      }
+    ],
+    "stagingFactor": 1,
+    "selectionBytes": 5368709120,
+    "expectPendingNeed": 0,
+    "expect": "Fits"
+  },
+  {
+    "name": "two links and a torrent add up",
+    "freeBytes": 21474836480,
+    "torrents": [
+      {
+        "finished": false,
+        "includedBytes": 4294967296,
+        "downloadedBytes": 1073741824
+      },
+      {
+        "finished": true,
+        "includedBytes": 9663676416,
+        "downloadedBytes": 9663676416
+      }
+    ],
+    "downloads": [
+      {
+        "state": "downloading",
+        "size": 5368709120,
+        "downloaded": 1073741824,
+        "errorCode": null,
+        "httpStatus": null
+      },
+      {
+        "state": "paused",
+        "size": 3221225472,
+        "downloaded": 0,
+        "errorCode": null,
+        "httpStatus": null
+      }
+    ],
+    "stagingFactor": 1,
+    "selectionBytes": 10737418240,
+    "expectPendingNeed": 10737418240,
+    "expect": "DoesntFit"
+  },
+  {
+    "name": "two links and a torrent still leave room",
+    "freeBytes": 32212254720,
+    "torrents": [
+      {
+        "finished": false,
+        "includedBytes": 4294967296,
+        "downloadedBytes": 1073741824
+      }
+    ],
+    "downloads": [
+      {
+        "state": "downloading",
+        "size": 5368709120,
+        "downloaded": 1073741824,
+        "errorCode": null,
+        "httpStatus": null
+      },
+      {
+        "state": "paused",
+        "size": 3221225472,
+        "downloaded": 0,
+        "errorCode": null,
+        "httpStatus": null
+      }
+    ],
+    "stagingFactor": 1,
+    "selectionBytes": 10737418240,
+    "expectPendingNeed": 10737418240,
+    "expect": "Fits"
+  },
+  {
+    "name": "staged: pending is not doubled, the selection is",
+    "freeBytes": 17179869184,
+    "torrents": [],
+    "downloads": [
+      {
+        "state": "downloading",
+        "size": 4294967296,
+        "downloaded": 0,
+        "errorCode": null,
+        "httpStatus": null
+      }
+    ],
+    "stagingFactor": 2,
+    "selectionBytes": 5905580032,
+    "expectPendingNeed": 4294967296,
+    "expect": "Tight"
   }
 ]

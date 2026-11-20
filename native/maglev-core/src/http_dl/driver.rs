@@ -8,7 +8,7 @@
 //!
 //! API verified against reqwest 0.13 (docs.rs/reqwest/0.13): `Client::builder`, `ClientBuilder::{redirect,
 //! connect_timeout, read_timeout, user_agent, proxy}`, `redirect::Policy::custom`, `redirect::Attempt::{url,
-//! previous, follow, error}`, `RequestBuilder::{header, basic_auth, send}`, `Response::{status, headers, url,
+//! stop, error}`, `RequestBuilder::{header, basic_auth, send}`, `Response::{status, headers, url,
 //! chunk}`. `chunk()` needs no cargo feature, so only the `rustls` feature that librqbit already turns on is used.
 
 use std::collections::{BTreeMap, HashMap};
@@ -25,7 +25,7 @@ use librqbit::Session;
 use parking_lot::Mutex;
 use reqwest::header::{
     HeaderMap, HeaderValue, ACCEPT_ENCODING, ACCEPT_RANGES, CONTENT_DISPOSITION, CONTENT_LENGTH, CONTENT_RANGE,
-    CONTENT_TYPE, COOKIE, ETAG, IF_RANGE, LAST_MODIFIED, RANGE, REFERER, RETRY_AFTER, USER_AGENT,
+    CONTENT_TYPE, COOKIE, ETAG, IF_RANGE, LAST_MODIFIED, ORIGIN, RANGE, REFERER, RETRY_AFTER, USER_AGENT,
 };
 use reqwest::{redirect, Client};
 use serde::{Deserialize, Serialize};
@@ -42,6 +42,8 @@ use super::rules::{
     StallClock, SPEED_QUIET,
 };
 use super::sidecar::{final_path, part_path, safe_url, sidecar_path, Sidecar};
+use super::redirect::{send_following, CookiePicker};
+use super::stream::fetch::{host_lower, pick_cookie};
 use super::stream::{StreamError, StreamRec, StreamSpec};
 use crate::error::{EngineError, ErrorCode};
 use crate::meta::write_atomic;
@@ -64,6 +66,9 @@ const OFFLINE_TAG: &str = "offline";
 const LOCAL_REDIRECT_MSG: &str = "redirect to a device on the local network";
 const BLOCKED_MSG: &str = "Blocked by your Wi-Fi-only or VPN setting.";
 const AUTH_AGAIN_COPY: &str = "Sign in again: paste the link again.";
+const REFUSED_COPY: &str = "The site refused this link. Open its page again, then retry.";
+const REFUSED_PROBE_COPY: &str =
+    "The site refused this link. Open the page in Maglev's browser and start the download from there, or paste a fresh link.";
 const EXPIRED_COPY: &str = "This link has expired. Paste a new one.";
 const STALLED_COPY: &str = "The server stopped sending data. Try again later.";
 const LOCAL_REDIRECT_COPY: &str = "A redirect tried to send Maglev to a device on your network, so it stopped.";
@@ -87,6 +92,30 @@ pub struct HeaderOptions {
     pub referer: Option<String>,
     #[serde(rename = "User-Agent", alias = "user-agent", alias = "user_agent", alias = "userAgent")]
     pub user_agent: Option<String>,
+    /// The page's `Origin` (scheme and host). Streams send it on every request.
+    #[serde(rename = "Origin", alias = "origin")]
+    pub origin: Option<String>,
+    /// Cookies the app read from the WebView jar, per host. Streams send each host its own.
+    #[serde(rename = "Cookies", alias = "cookies")]
+    pub cookies: Vec<HostCookie>,
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(default)]
+pub struct HostCookie {
+    pub host: String,
+    pub cookie: String,
+}
+
+impl HeaderOptions {
+    /// The per-host cookies as `(host, cookie)` pairs for a stream request context.
+    pub fn host_cookies(&self) -> Vec<(String, String)> {
+        self.cookies
+            .iter()
+            .filter(|c| !c.host.is_empty() && !c.cookie.is_empty())
+            .map(|c| (c.host.clone(), c.cookie.clone()))
+            .collect()
+    }
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -108,6 +137,8 @@ pub struct DownloadOptions {
     pub down_limit_bps: Option<u64>,
     /// Allow the typed host to resolve onto the local network (after `LAN_ADDRESS`).
     pub allow_lan: bool,
+    /// The page the link was found on (in-app browser). Kept as `page_url` on the record (contract "Auto-refresh").
+    pub page_url: Option<String>,
     /// Save an HLS or DASH stream (contract 24.8): which variant and audio track.
     pub stream: Option<StreamSpec>,
 }
@@ -174,10 +205,17 @@ pub struct DlRecord {
     /// The link needs something that is never saved: a user name and password, a cookie, or a signed query.
     /// The flag is saved, the secret is not. After a restart the download waits for a new link (`AUTH_REQUIRED`).
     pub needs_login: bool,
+    /// The link itself carried a user name and password. Only then is a 403 a sign-in problem (`AUTH_REQUIRED`);
+    /// cookies from the in-app browser never set this. Not a secret.
+    pub link_login: bool,
     /// The user allowed the typed host to be on the local network (contract 17.w). Not a secret.
     pub allow_lan: bool,
     /// The addresses of that host when it was allowed; its lookups may only return these.
     pub lan_pinned: Vec<String>,
+    /// The page a browser download was found on, so the app can load it again when the link expires. In memory it is
+    /// whole; on disk a secret-looking query is cut off (`persisted`). Records from before this field load as None.
+    #[serde(default)]
+    pub page_url: Option<String>,
     /// Set for an HLS or DASH download (contract 24.8): ids and counts, nothing secret.
     pub stream: Option<StreamRec>,
     /// All bytes of a stream with separate video and audio parts are in, and the join has not finished yet.
@@ -214,8 +252,10 @@ impl Default for DlRecord {
             error: None,
             notice: None,
             needs_login: false,
+            link_login: false,
             allow_lan: false,
             lan_pinned: Vec::new(),
+            page_url: None,
             stream: None,
             mux_needed: false,
             allowed_anyway: false,
@@ -232,6 +272,9 @@ struct Live {
     cookie: Option<String>,
     referer: Option<String>,
     user_agent: Option<String>,
+    /// Stream downloads only: the page's `Origin` and the per-host cookies (memory only, like `cookie`).
+    origin: Option<String>,
+    host_cookies: Vec<(String, String)>,
     task: Option<JoinHandle<()>>,
     attempts: u32,
     denied: u32,
@@ -497,15 +540,21 @@ fn error_message(e: DlError, status: Option<u16>) -> String {
     }
 }
 
-/// The error of a download in `NeedsLink`. A 401 or 403, or a restart that lost the secrets (no status), is a
-/// sign in; anything else (410, an expired signed link) is an expired link.
-fn needs_link_info(status: Option<u16>, needs_login: bool) -> DlErrInfo {
-    let auth = matches!(status, Some(401) | Some(403)) || (status.is_none() && needs_login);
-    DlErrInfo {
-        code: if auth { "AUTH_REQUIRED" } else { "LINK_EXPIRED" }.to_string(),
-        message: if auth { AUTH_AGAIN_COPY } else { EXPIRED_COPY }.to_string(),
-        http_status: status,
-    }
+/// The error of a download in `NeedsLink`. A 401, a 403 on a link that carried a user name and password
+/// (`link_login`), or a restart that lost the secrets (no status), is a sign in. Any other 403 is a refused link
+/// (`LINK_REFUSED`): sites refuse requests that lack the page's headers or carry a token that expired. Browser
+/// cookies never make a 403 a sign in. Anything else (410, 404, an expired signed link) is an expired link.
+fn needs_link_info(status: Option<u16>, needs_login: bool, link_login: bool) -> DlErrInfo {
+    let refused = status == Some(403) && !link_login;
+    let auth = status == Some(401) || (status == Some(403) && link_login) || (status.is_none() && needs_login);
+    let (code, message) = if refused {
+        ("LINK_REFUSED", REFUSED_COPY)
+    } else if auth {
+        ("AUTH_REQUIRED", AUTH_AGAIN_COPY)
+    } else {
+        ("LINK_EXPIRED", EXPIRED_COPY)
+    };
+    DlErrInfo { code: code.to_string(), message: message.to_string(), http_status: status }
 }
 
 /// Is `url` the link of this download? After a restart a link with a secret query is saved without it, so a
@@ -526,7 +575,25 @@ fn persisted(rec: &DlRecord) -> DlRecord {
         r.url = safe_url(&r.url);
         r.needs_login = true;
     }
+    r.page_url = r.page_url.as_deref().and_then(persisted_page_url);
     r
+}
+
+/// The page URL a download is added with: http(s) only, no blanks. `None` when there is nothing usable.
+fn clean_page_url(raw: Option<&str>) -> Option<String> {
+    let t = raw?.trim();
+    let u = reqwest::Url::parse(t).ok()?;
+    (matches!(u.scheme(), "http" | "https") && u.host_str().is_some()).then(|| t.to_string())
+}
+
+/// What is written to disk of a page URL (contract item 6, the same rule as the link): a query with a secret-looking
+/// key is cut off, so are a user name and password, and a URL that is then empty is not saved.
+fn persisted_page_url(url: &str) -> Option<String> {
+    let login = reqwest::Url::parse(url)
+        .map(|u| !u.username().is_empty() || u.password().is_some())
+        .unwrap_or(false);
+    let kept = if has_secret_query(url) || login { safe_url(url) } else { url.to_string() };
+    (!kept.trim().is_empty()).then_some(kept)
 }
 
 /// Writes the resume record of a download that stops now: one offset, or the offsets of every segment when it runs
@@ -753,6 +820,203 @@ fn write_all_at(f: &File, mut buf: &[u8], mut off: u64) -> io::Result<()> {
     Ok(())
 }
 
+/// How much one connection collects before it writes. One `pwrite` per network chunk (a few KiB) is thousands of
+/// calls a second, and on Android shared storage every one goes through FUSE. Memory is bounded by this times the
+/// connection count: at most `MAX_PARTS` (8) buffers, 8 MiB in the worst case, 1 MiB for a single connection.
+pub(super) const WRITE_BUF_BYTES: usize = 1024 * 1024;
+/// A part-filled buffer is written once it has waited this long, so a slow link still shows true progress and
+/// loses at most this much on an abort.
+pub(super) const WRITE_BUF_MAX_AGE: Duration = Duration::from_millis(250);
+
+/// Collects the body of one connection and writes it in large blocks at the right offsets.
+///
+/// Two positions: `written()` is what is on disk and is the only one that may be persisted for resume (sidecar,
+/// `held`, segment `pos`). `received()` counts the bytes taken off the wire and may drive speed and overrun checks.
+/// `written()` moves only after a write returned `Ok`, so it can never be ahead of the file.
+pub(super) struct WriteBuf {
+    buf: Vec<u8>,
+    /// File offset of `buf[0]`; equals the number of bytes safely written (counted from offset 0).
+    start: u64,
+    /// When the oldest unwritten byte arrived.
+    since: Option<Instant>,
+}
+
+impl WriteBuf {
+    pub(super) fn new(offset: u64) -> Self {
+        WriteBuf { buf: Vec::with_capacity(WRITE_BUF_BYTES), start: offset, since: None }
+    }
+
+    /// Bytes on disk up to here (a file offset). Safe to persist.
+    pub(super) fn written(&self) -> u64 {
+        self.start
+    }
+
+    /// Bytes taken off the wire up to here, written or not.
+    pub(super) fn received(&self) -> u64 {
+        self.start + self.buf.len() as u64
+    }
+
+    #[cfg(test)]
+    pub(super) fn pending(&self) -> usize {
+        self.buf.len()
+    }
+
+    /// Adds `data`; writes a full buffer. A write error leaves `written()` where it was.
+    pub(super) fn push<W>(&mut self, mut data: &[u8], now: Instant, write: &mut W) -> io::Result<()>
+    where
+        W: FnMut(&[u8], u64) -> io::Result<()>,
+    {
+        while !data.is_empty() {
+            if self.buf.is_empty() {
+                self.since = Some(now);
+            }
+            let take = (WRITE_BUF_BYTES - self.buf.len()).min(data.len());
+            self.buf.extend_from_slice(&data[..take]);
+            data = &data[take..];
+            if self.buf.len() >= WRITE_BUF_BYTES {
+                self.flush(write)?;
+            }
+        }
+        Ok(())
+    }
+
+    /// Writes whatever is held with one call at its start offset. On error nothing moves and the bytes stay held.
+    pub(super) fn flush<W>(&mut self, write: &mut W) -> io::Result<()>
+    where
+        W: FnMut(&[u8], u64) -> io::Result<()>,
+    {
+        if self.buf.is_empty() {
+            return Ok(());
+        }
+        write(&self.buf, self.start)?;
+        self.start += self.buf.len() as u64;
+        self.buf.clear();
+        self.since = None;
+        Ok(())
+    }
+
+    /// True when something is held and has waited `WRITE_BUF_MAX_AGE`.
+    pub(super) fn due(&self, now: Instant) -> bool {
+        self.since.map(|t| now.saturating_duration_since(t) >= WRITE_BUF_MAX_AGE).unwrap_or(false)
+    }
+}
+
+#[cfg(test)]
+mod write_buf_tests {
+    use super::*;
+
+    type Calls = Vec<(u64, usize)>;
+
+    fn sink<'a>(calls: &'a mut Calls, disk: &'a mut Vec<u8>) -> impl FnMut(&[u8], u64) -> io::Result<()> + 'a {
+        move |b, off| {
+            calls.push((off, b.len()));
+            let end = off as usize + b.len();
+            if disk.len() < end {
+                disk.resize(end, 0);
+            }
+            disk[off as usize..end].copy_from_slice(b);
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn a_full_buffer_is_written_in_one_call_at_its_start() {
+        let (mut calls, mut disk) = (Vec::new(), Vec::new());
+        let mut w = sink(&mut calls, &mut disk);
+        let mut b = WriteBuf::new(0);
+        let now = Instant::now();
+        let chunk = vec![7u8; 16 * 1024];
+        for _ in 0..(WRITE_BUF_BYTES / chunk.len() - 1) {
+            b.push(&chunk, now, &mut w).unwrap();
+        }
+        assert_eq!(b.written(), 0, "nothing written before the buffer is full");
+        b.push(&chunk, now, &mut w).unwrap();
+        assert_eq!(b.written(), WRITE_BUF_BYTES as u64);
+        assert_eq!(b.pending(), 0);
+        drop(w);
+        assert_eq!(calls, vec![(0, WRITE_BUF_BYTES)]);
+    }
+
+    #[test]
+    fn an_explicit_flush_writes_the_partial_buffer_and_an_empty_flush_writes_nothing() {
+        let (mut calls, mut disk) = (Vec::new(), Vec::new());
+        let mut w = sink(&mut calls, &mut disk);
+        let mut b = WriteBuf::new(0);
+        b.flush(&mut w).unwrap();
+        b.push(&[1, 2, 3], Instant::now(), &mut w).unwrap();
+        assert_eq!((b.written(), b.received()), (0, 3));
+        b.flush(&mut w).unwrap();
+        assert_eq!((b.written(), b.received()), (3, 3));
+        b.flush(&mut w).unwrap();
+        drop(w);
+        assert_eq!(calls, vec![(0, 3)]);
+        assert_eq!(disk, vec![1, 2, 3]);
+    }
+
+    #[test]
+    fn offsets_stay_right_across_partial_fills_and_a_resume_offset() {
+        let (mut calls, mut disk) = (Vec::new(), Vec::new());
+        let mut w = sink(&mut calls, &mut disk);
+        let mut b = WriteBuf::new(1000);
+        let now = Instant::now();
+        let data: Vec<u8> = (0..(WRITE_BUF_BYTES * 2 + 123)).map(|i| (i % 251) as u8).collect();
+        // Odd-sized pieces that straddle the buffer edge.
+        for piece in data.chunks(70_001) {
+            b.push(piece, now, &mut w).unwrap();
+        }
+        b.flush(&mut w).unwrap();
+        assert_eq!(b.written(), 1000 + data.len() as u64);
+        drop(w);
+        assert_eq!(calls, vec![(1000, WRITE_BUF_BYTES), (1000 + WRITE_BUF_BYTES as u64, WRITE_BUF_BYTES), (1000 + 2 * WRITE_BUF_BYTES as u64, 123)]);
+        assert_eq!(&disk[1000..], &data[..]);
+    }
+
+    #[test]
+    fn written_never_exceeds_what_reached_the_disk() {
+        use std::cell::Cell;
+        let disk_len = Cell::new(0u64);
+        let fail = Cell::new(false);
+        let mut w = |b: &[u8], off: u64| -> io::Result<()> {
+            if fail.get() {
+                return Err(io::Error::new(io::ErrorKind::Other, "disk"));
+            }
+            disk_len.set(disk_len.get().max(off + b.len() as u64));
+            Ok(())
+        };
+        let mut b = WriteBuf::new(0);
+        let now = Instant::now();
+        b.push(&vec![0u8; 500_000], now, &mut w).unwrap();
+        assert!(b.written() <= disk_len.get() && b.written() == 0);
+        b.push(&vec![0u8; 500_000], now, &mut w).unwrap();
+        assert_eq!(b.written(), 0, "1_000_000 bytes is still below 1 MiB, so still buffered");
+        // Fill past the edge while the disk fails: the persisted position must not move.
+        fail.set(true);
+        let before = b.written();
+        assert!(b.push(&vec![0u8; WRITE_BUF_BYTES], now, &mut w).is_err());
+        assert_eq!(b.written(), before);
+        assert!(b.flush(&mut w).is_err());
+        assert_eq!(b.written(), before);
+        fail.set(false);
+        b.flush(&mut w).unwrap();
+        assert_eq!(b.written(), b.received());
+        assert!(b.written() <= disk_len.get());
+    }
+
+    #[test]
+    fn a_waiting_buffer_becomes_due_after_the_max_age() {
+        let (mut calls, mut disk) = (Vec::new(), Vec::new());
+        let mut w = sink(&mut calls, &mut disk);
+        let mut b = WriteBuf::new(0);
+        let t0 = Instant::now();
+        assert!(!b.due(t0 + Duration::from_secs(10)), "empty is never due");
+        b.push(&[9], t0, &mut w).unwrap();
+        assert!(!b.due(t0 + WRITE_BUF_MAX_AGE - Duration::from_millis(1)));
+        assert!(b.due(t0 + WRITE_BUF_MAX_AGE));
+        b.flush(&mut w).unwrap();
+        assert!(!b.due(t0 + Duration::from_secs(10)));
+    }
+}
+
 fn read_headers(h: &HeaderMap) -> Headers {
     let text = |name: reqwest::header::HeaderName| {
         h.get(name)
@@ -770,24 +1034,17 @@ fn read_headers(h: &HeaderMap) -> Headers {
     }
 }
 
-fn build_client(proxy: Option<&str>, scope: LanScope) -> Result<Client, String> {
-    // Contract section 17: at most 10 redirects, and https to http is an error. Credentials headers that reqwest
-    // marks sensitive (Cookie, Authorization) are dropped by reqwest itself on a cross-origin redirect.
+pub(super) fn build_client(proxy: Option<&str>, scope: LanScope) -> Result<Client, String> {
+    // Contract section 17: redirects are followed by `redirect::send_following` (a cookie per hop's own host, at most
+    // 10 hops, https to http refused). This policy never follows: it refuses a hop onto the local network (unless the
+    // link the user typed was already there; the scope was chosen from the typed host and also knows an allowed
+    // host) and otherwise returns the 3xx answer as it is.
     let policy_scope = scope.clone();
     let policy = redirect::Policy::custom(move |attempt| {
-        if attempt.previous().len() >= 10 {
-            return attempt.error("too many redirects");
-        }
-        let was_https = attempt.previous().last().map(|u| u.scheme() == "https").unwrap_or(false);
-        if was_https && attempt.url().scheme() == "http" {
-            return attempt.error("redirect from https to http");
-        }
-        // A redirect may not lead onto the local network, unless the link the user typed was already there (the
-        // scope was chosen from the typed host; it also knows an allowed host).
         if !policy_scope.redirect_allowed(attempt.url().host_str().unwrap_or("")) {
             return attempt.error(LOCAL_REDIRECT_MSG);
         }
-        attempt.follow()
+        attempt.stop()
     });
     let mut b = Client::builder()
         .redirect(policy)
@@ -822,7 +1079,10 @@ enum ProbeFail {
     Net,
     /// The typed host resolved onto the local network and wasn't allowed.
     LanAddress,
+    /// 401 (or 403 on a link with a user name and password): a sign in.
     Auth(u16),
+    /// 403 with no sign-in details: the site refused the link.
+    Refused(u16),
     Status(u16),
     Html,
     LocalRedirect,
@@ -980,7 +1240,7 @@ impl Downloads {
                     rec.state = st;
                     rec.paused_tag = None;
                     rec.status = None;
-                    rec.error = Some(needs_link_info(None, true));
+                    rec.error = Some(needs_link_info(None, true, false));
                 }
             }
             inner.live.insert(rec.id.clone(), Live::default());
@@ -1186,7 +1446,7 @@ impl Downloads {
                 });
             }
             State::NeedsLink => {
-                rec.error = Some(needs_link_info(rec.status, rec.needs_login));
+                rec.error = Some(needs_link_info(rec.status, rec.needs_login, rec.link_login));
             }
             State::Downloading | State::Queued | State::Resolving | State::Verifying | State::Finished => {
                 rec.error = None;
@@ -1332,6 +1592,7 @@ impl Downloads {
                 segments: opts.segments.unwrap_or(1),
                 start_paused: opts.paused && block.is_none(),
                 allow_lan: opts.allow_lan,
+                page_url: clean_page_url(opts.page_url.as_deref()),
                 timing: Timing::new(),
                 stream: opts.stream.as_ref().map(|s| StreamRec {
                     kind: s.kind,
@@ -1344,8 +1605,10 @@ impl Downloads {
             };
             let h = opts.headers.clone().unwrap_or_default();
             let mut rec = rec;
+            let host_cookies = h.host_cookies();
             // Sign-in details stay in memory. Only the fact that they are needed is saved.
-            rec.needs_login = auth.is_some() || h.cookie.is_some() || has_secret_query(&rec.url);
+            rec.needs_login = auth.is_some() || h.cookie.is_some() || !host_cookies.is_empty() || has_secret_query(&rec.url);
+            rec.link_login = auth.is_some();
             inner.live.insert(
                 id.clone(),
                 Live {
@@ -1353,6 +1616,8 @@ impl Downloads {
                     cookie: h.cookie,
                     referer: h.referer,
                     user_agent: h.user_agent,
+                    origin: h.origin,
+                    host_cookies,
                     ..Live::default()
                 },
             );
@@ -1482,7 +1747,8 @@ impl Downloads {
         }
         let (client, _) = self.scoped_client(clean.as_str(), opts.allow_lan).await?;
         let h = opts.headers.unwrap_or_default();
-        match probe_request(&client, clean.as_str(), auth.as_ref(), &h.cookie, &h.referer, &h.user_agent).await {
+        let hdrs = LinkHeaders::from_options(&h);
+        match probe_request(&client, clean.as_str(), auth.as_ref(), &hdrs).await {
             Ok(r) => Ok(ProbeResult {
                 name: opts.name.as_deref().map(sanitize_filename).unwrap_or(r.name),
                 size: r.info.size,
@@ -1511,22 +1777,28 @@ impl Downloads {
         }
         let (client, pinned) = self.scoped_client(clean.as_str(), opts.allow_lan).await?;
         let h = opts.headers.unwrap_or_default();
-        let reply = probe_request(&client, clean.as_str(), auth.as_ref(), &h.cookie, &h.referer, &h.user_agent)
-            .await
-            .map_err(probe_error)?;
+        let host_cookies = h.host_cookies();
+        let hdrs = LinkHeaders::from_options(&h);
+        let reply = probe_request(&client, clean.as_str(), auth.as_ref(), &hdrs).await.map_err(probe_error)?;
         let matches = link_matches(size, validator.as_deref(), &reply.info);
         if matches {
             self.update(id, |rec, live| {
                 rec.url = clean.to_string();
                 rec.final_url = Some(reply.final_url.clone());
                 rec.status = None;
-                rec.needs_login = auth.is_some() || h.cookie.is_some() || has_secret_query(&rec.url);
+                rec.needs_login = auth.is_some() || h.cookie.is_some() || !host_cookies.is_empty() || has_secret_query(&rec.url);
+                rec.link_login = auth.is_some();
                 rec.allow_lan = opts.allow_lan;
                 rec.lan_pinned = pinned;
+                if let Some(p) = clean_page_url(opts.page_url.as_deref()) {
+                    rec.page_url = Some(p);
+                }
                 live.auth = auth;
                 live.cookie = h.cookie;
                 live.referer = h.referer;
                 live.user_agent = h.user_agent;
+                live.origin = h.origin;
+                live.host_cookies = host_cookies;
                 live.attempts = 0;
                 live.denied = 0;
             });
@@ -1543,6 +1815,35 @@ impl Downloads {
     /// The engine's network word (section 34.1): metered or not. Only splits bytes; never pauses anything.
     pub fn set_metered(&self, metered: bool) {
         self.metered.store(metered, Ordering::Relaxed);
+    }
+
+    /// The default network changed from one live network to another (contract section 17.x). A socket opened on the
+    /// old network is dead, but nothing tells the transfer until a read timeout. Every working or probing download
+    /// (streams included) gets its task aborted and started again at once: the transfer resumes from the written
+    /// position (sidecar, Range) on the new network. No state change, no `paused_by`, no attempt counted.
+    pub fn network_changed(self: &Arc<Self>) {
+        let mut guard = self.inner.lock();
+        let inner = &mut *guard;
+        for (id, rec) in inner.records.iter() {
+            let resolving = match rec.state {
+                State::Downloading => false,
+                State::Resolving => true,
+                _ => continue,
+            };
+            // Cancel the old task first, so two tasks never write the same part file at once.
+            let live = inner.live.entry(id.clone()).or_default();
+            if let Some(old) = live.task.take() {
+                old.abort();
+            }
+            let me = self.clone();
+            let id2 = id.clone();
+            let jh = if resolving {
+                self.handle.spawn(async move { me.run_probe(id2).await })
+            } else {
+                self.handle.spawn(async move { me.transfer(id2).await })
+            };
+            live.task = Some(jh);
+        }
     }
 
     /// The one-second timing pass, called from the engine's governance tick (section 34.1). `elapsed` is the wall time
@@ -1591,6 +1892,7 @@ impl Downloads {
                     "state": state_name(r.state),
                     "paused_by": if matches!(r.state, State::Paused(_)) { r.paused_tag.clone() } else { None },
                     "allowed_anyway": r.allowed_anyway,
+                    "page_url": r.page_url,
                     "size": r.size,
                     "downloaded": r.held,
                     "down_bps": bps,
@@ -1788,7 +2090,7 @@ impl Downloads {
                     self.dispatch(&id, Event::UserPause);
                 }
             }
-            Err(ProbeFail::Auth(s)) => {
+            Err(ProbeFail::Auth(s)) | Err(ProbeFail::Refused(s)) => {
                 self.update(&id, |r, _| r.status = Some(s));
                 self.dispatch(&id, Event::ProbeAuth);
             }
@@ -1824,15 +2126,15 @@ impl Downloads {
         if self.update(id, |r, _| r.stream.is_some()).unwrap_or(false) {
             return self.do_probe_stream(id).await;
         }
-        let (url, auth, cookie, referer, ua) = self
-            .update(id, |r, l| (r.url.clone(), l.auth.clone(), l.cookie.clone(), l.referer.clone(), l.user_agent.clone()))
+        let (url, auth, hdrs) = self
+            .update(id, |r, l| (r.url.clone(), l.auth.clone(), LinkHeaders::from_live(l)))
             .ok_or(ProbeFail::Net)?;
         // An allowed host is pinned once, before its first request.
         if self.pin_lan_host(id).await.is_err() {
             return Err(ProbeFail::Net);
         }
         let client = self.client_for_id(id).map_err(|_| ProbeFail::Net)?;
-        let reply = probe_request(&client, &url, auth.as_ref(), &cookie, &referer, &ua).await?;
+        let reply = probe_request(&client, &url, auth.as_ref(), &hdrs).await?;
         // Pick a free name once, on the first probe. A resumed download keeps the name its part file has. The names
         // of the other downloads are read under the same lock that stores this one, so two downloads of the same
         // name can't both take it.
@@ -1874,7 +2176,7 @@ impl Downloads {
         if !probed {
             match self.do_probe(&id).await {
                 Ok(()) => {}
-                Err(ProbeFail::Auth(s)) => {
+                Err(ProbeFail::Auth(s)) | Err(ProbeFail::Refused(s)) => {
                     self.update(&id, |r, _| r.status = Some(s));
                     self.dispatch(&id, Event::Auth);
                     return;
@@ -1941,10 +2243,10 @@ impl Downloads {
             if self.state_of(&id) != Some(State::Downloading) {
                 return;
             }
-            let Some((builder, ranged, total, validator)) = self.build_get(&id, &client, held) else {
+            let Some((builder, picker, ranged, total, validator)) = self.build_get(&id, &client, held) else {
                 return;
             };
-            let resp = match builder.send().await {
+            let resp = match send_following(&client, builder, &picker).await {
                 Ok(r) => r,
                 Err(e) => {
                     if let Some(r) = refusal(&e, &typed_host) {
@@ -2175,18 +2477,10 @@ impl Downloads {
         id: &str,
         client: &Client,
         held: u64,
-    ) -> Option<(reqwest::RequestBuilder, bool, Option<u64>, Option<String>)> {
+    ) -> Option<(reqwest::RequestBuilder, CookiePicker, bool, Option<u64>, Option<String>)> {
         self.update(id, |rec, live| {
-            let mut b = client.get(rec.url.as_str()).header(ACCEPT_ENCODING, "identity");
-            if let Some(ua) = live.user_agent.as_deref().and_then(|v| HeaderValue::from_str(v).ok()) {
-                b = b.header(USER_AGENT, ua);
-            }
-            if let Some(c) = live.cookie.as_deref().and_then(|v| HeaderValue::from_str(v).ok()) {
-                b = b.header(COOKIE, c);
-            }
-            if let Some(r) = live.referer.as_deref().and_then(|v| HeaderValue::from_str(v).ok()) {
-                b = b.header(REFERER, r);
-            }
+            let hdrs = LinkHeaders::from_live(live);
+            let mut b = hdrs.apply(client.get(rec.url.as_str()).header(ACCEPT_ENCODING, "identity"), rec.url.as_str());
             if let Some((u, p)) = &live.auth {
                 b = b.basic_auth(u, Some(p));
             }
@@ -2197,7 +2491,7 @@ impl Downloads {
                     ranged = true;
                 }
             }
-            (b, ranged, rec.size, rec.validator.clone())
+            (b, hdrs.picker(rec.url.as_str()), ranged, rec.size, rec.validator.clone())
         })
     }
 
@@ -2212,11 +2506,15 @@ impl Downloads {
         total: Option<u64>,
         clock: &mut StallClock,
     ) -> Streamed {
-        let mut pos = offset;
+        // `wb.received()` is what came off the wire (speed, limits, overrun). `wb.written()` is what is on disk, and
+        // it is the only position that is ever persisted or returned: the sidecar, `rec.held` and every `Streamed`
+        // value use it, so a resume point can never be ahead of the part file.
+        let mut wb = WriteBuf::new(offset);
+        let mut write = |b: &[u8], off: u64| tokio::task::block_in_place(|| write_all_at(file, b, off));
         let started = Instant::now();
         let mut last_report = Instant::now();
         let mut last_flush = Instant::now();
-        let mut report_pos = pos;
+        let mut report_pos = wb.received();
         let mut bps_smooth: f64 = 0.0;
         let mut limit = self.update(id, |r, _| r.down_limit_bps).unwrap_or(0);
         let (name, folder, url, validator, resumable) = match self.update(id, |r, _| {
@@ -2237,13 +2535,27 @@ impl Downloads {
                     clock.on_bytes(Instant::now(), c.len() as u64);
                     c
                 }
-                Ok(Ok(None)) => return Streamed::Done(pos),
+                Ok(Ok(None)) => {
+                    // The end of the body: everything held is written before the caller verifies or renames.
+                    return match wb.flush(&mut write) {
+                        Ok(()) => Streamed::Done(wb.written()),
+                        Err(e) => self.write_failed(id, &e, &mut side, &side_path, file, wb.written(), resumable),
+                    };
+                }
                 Ok(Err(_)) => {
+                    // Broken: keep what already arrived if the disk takes it; a failure here only costs a re-download.
+                    let _ = wb.flush(&mut write);
+                    let pos = wb.written();
                     self.flush_side(id, &mut side, &side_path, file, pos, resumable);
                     return Streamed::Broken(pos);
                 }
                 Err(_) => {
-                    // Nothing arrived for a few seconds: no speed to show, and the average starts over.
+                    // Nothing arrived for a few seconds: no speed to show, and the average starts over. Held bytes
+                    // are written now so a quiet link does not sit on them (and pause/cancel see them on disk).
+                    if let Err(e) = wb.flush(&mut write) {
+                        return self.write_failed(id, &e, &mut side, &side_path, file, wb.written(), resumable);
+                    }
+                    let pos = wb.written();
                     bps_smooth = 0.0;
                     self.update(id, |_, l| l.bps = 0);
                     if self.stall_step(id, limit, clock) {
@@ -2274,25 +2586,20 @@ impl Downloads {
                 clock.excuse(waiting_since.elapsed(), Instant::now());
             }
             // More bytes than the probe promised: the file changed. Nothing is finished from this.
-            if overruns(pos, chunk.len() as u64, total) {
-                self.flush_side(id, &mut side, &side_path, file, pos, resumable);
+            if overruns(wb.received(), chunk.len() as u64, total) {
+                // The held bytes are from the file that changed: they are dropped, not written.
+                self.flush_side(id, &mut side, &side_path, file, wb.written(), resumable);
                 self.dispatch(id, Event::ValidatorChanged);
                 return Streamed::Stopped;
             }
-            let write = tokio::task::block_in_place(|| write_all_at(file, &chunk, pos));
-            if let Err(e) = write {
-                let n = self.update(id, |_, l| l.attempts).unwrap_or(0);
-                self.flush_side(id, &mut side, &side_path, file, pos, resumable);
-                let ev = io_event(&e, n);
-                let (state, _) = self.dispatch(id, ev);
-                return if matches!(ev, Event::Transient { .. }) && state == State::Downloading {
-                    Streamed::Broken(pos)
-                } else {
-                    Streamed::Stopped
-                };
+            if let Err(e) = wb.push(&chunk, Instant::now(), &mut write) {
+                return self.write_failed(id, &e, &mut side, &side_path, file, wb.written(), resumable);
             }
-            pos += chunk.len() as u64;
             if self.stall_step(id, limit, clock) {
+                if let Err(e) = wb.flush(&mut write) {
+                    return self.write_failed(id, &e, &mut side, &side_path, file, wb.written(), resumable);
+                }
+                let pos = wb.written();
                 self.flush_side(id, &mut side, &side_path, file, pos, resumable);
                 self.update(id, |rec, _| rec.held = pos);
                 return Streamed::Stalled(pos);
@@ -2303,6 +2610,9 @@ impl Downloads {
                 last_space = Instant::now();
                 let free = tokio::task::block_in_place(|| free_space(&folder));
                 if !fits(None, 0, free) {
+                    // Storage is full: try to keep the held bytes, but a failed write only loses them.
+                    let _ = wb.flush(&mut write);
+                    let pos = wb.written();
                     self.flush_side(id, &mut side, &side_path, file, pos, resumable);
                     self.update(id, |rec, _| rec.held = pos);
                     self.dispatch(id, Event::Enospc);
@@ -2311,6 +2621,12 @@ impl Downloads {
             }
 
             if last_report.elapsed() >= REPORT_EVERY {
+                // Written before the count is published, so `rec.held` (which the store may save) is never ahead
+                // of the file. A report tick is 250 ms, so this is also the age bound for a slow link's buffer.
+                if let Err(e) = wb.flush(&mut write) {
+                    return self.write_failed(id, &e, &mut side, &side_path, file, wb.written(), resumable);
+                }
+                let pos = wb.written();
                 let dt = last_report.elapsed().as_secs_f64().max(0.001);
                 let inst = (pos - report_pos) as f64 / dt;
                 bps_smooth = if bps_smooth == 0.0 { inst } else { bps_smooth * 0.6 + inst * 0.4 };
@@ -2331,16 +2647,43 @@ impl Downloads {
             }
             if last_flush.elapsed() >= SIDECAR_FLUSH {
                 last_flush = Instant::now();
-                self.flush_side(id, &mut side, &side_path, file, pos, resumable);
+                if let Err(e) = wb.flush(&mut write) {
+                    return self.write_failed(id, &e, &mut side, &side_path, file, wb.written(), resumable);
+                }
+                self.flush_side(id, &mut side, &side_path, file, wb.written(), resumable);
             }
             if limit > 0 {
-                let wait = pace_delay(pos - offset, started.elapsed(), limit);
+                let wait = pace_delay(wb.received() - offset, started.elapsed(), limit);
                 if !wait.is_zero() {
                     let slept = wait.min(Duration::from_secs(2));
                     tokio::time::sleep(slept).await;
                     clock.excuse(slept, Instant::now());
                 }
             }
+        }
+    }
+
+    /// A write to the part file failed. The sidecar is saved at `written` (never past what is on disk), then the
+    /// error goes to the machine: a transient one retries from there, anything else stops the download.
+    #[allow(clippy::too_many_arguments)]
+    fn write_failed(
+        self: &Arc<Self>,
+        id: &str,
+        e: &io::Error,
+        side: &mut Sidecar,
+        side_path: &Path,
+        file: &File,
+        written: u64,
+        resumable: bool,
+    ) -> Streamed {
+        let n = self.update(id, |_, l| l.attempts).unwrap_or(0);
+        self.flush_side(id, side, side_path, file, written, resumable);
+        let ev = io_event(e, n);
+        let (state, _) = self.dispatch(id, ev);
+        if matches!(ev, Event::Transient { .. }) && state == State::Downloading {
+            Streamed::Broken(written)
+        } else {
+            Streamed::Stopped
         }
     }
 
@@ -2452,24 +2795,13 @@ async fn probe_request(
     client: &Client,
     url: &str,
     auth: Option<&(String, String)>,
-    cookie: &Option<String>,
-    referer: &Option<String>,
-    user_agent: &Option<String>,
+    hdrs: &LinkHeaders,
 ) -> Result<ProbeReply, ProbeFail> {
-    let mut b = client.get(url).header(ACCEPT_ENCODING, "identity").header(RANGE, "bytes=0-0");
-    if let Some(ua) = user_agent.as_deref().and_then(|v| HeaderValue::from_str(v).ok()) {
-        b = b.header(USER_AGENT, ua);
-    }
-    if let Some(c) = cookie.as_deref().and_then(|v| HeaderValue::from_str(v).ok()) {
-        b = b.header(COOKIE, c);
-    }
-    if let Some(r) = referer.as_deref().and_then(|v| HeaderValue::from_str(v).ok()) {
-        b = b.header(REFERER, r);
-    }
+    let mut b = hdrs.apply(client.get(url).header(ACCEPT_ENCODING, "identity").header(RANGE, "bytes=0-0"), url);
     if let Some((u, p)) = auth {
         b = b.basic_auth(u, Some(p));
     }
-    let resp = b.send().await.map_err(|e| match refusal(&e, &host_of(url)) {
+    let resp = send_following(client, b, &hdrs.picker(url)).await.map_err(|e| match refusal(&e, &host_of(url)) {
         Some(Refusal::LanAddress) => ProbeFail::LanAddress,
         Some(Refusal::Redirect) => ProbeFail::LocalRedirect,
         None => ProbeFail::Net,
@@ -2485,8 +2817,80 @@ async fn probe_request(
             Ok(ProbeReply { info, ranges_ok, name, final_url: display_url(&final_url) })
         }
         ProbeVerdict::Auth => Err(ProbeFail::Auth(status)),
+        ProbeVerdict::Refused => Err(with_link_login(ProbeFail::Refused(status), auth.is_some())),
         ProbeVerdict::Status(s) => Err(ProbeFail::Status(s)),
         ProbeVerdict::Html => Err(ProbeFail::Html),
+    }
+}
+
+/// A refused link (403) is a sign-in problem only when the link itself carried a user name and password.
+fn with_link_login(f: ProbeFail, link_login: bool) -> ProbeFail {
+    match f {
+        ProbeFail::Refused(s) if link_login => ProbeFail::Auth(s),
+        other => other,
+    }
+}
+
+/// The headers every request for a direct file carries (the probe and every GET, resumes included), like streams:
+/// user agent, referer and origin when given, and the cookie chosen by the request's own host.
+#[derive(Debug, Clone, Default)]
+struct LinkHeaders {
+    user_agent: Option<String>,
+    referer: Option<String>,
+    origin: Option<String>,
+    /// The `Cookie` option: goes to the link's host only.
+    cookie: Option<String>,
+    /// The in-app browser jar: one cookie per host, the longest domain match wins.
+    host_cookies: Vec<(String, String)>,
+}
+
+impl LinkHeaders {
+    fn from_options(h: &HeaderOptions) -> Self {
+        Self {
+            user_agent: h.user_agent.clone(),
+            referer: h.referer.clone(),
+            origin: h.origin.clone(),
+            cookie: h.cookie.clone(),
+            host_cookies: h.host_cookies(),
+        }
+    }
+
+    fn from_live(l: &Live) -> Self {
+        Self {
+            user_agent: l.user_agent.clone(),
+            referer: l.referer.clone(),
+            origin: l.origin.clone(),
+            cookie: l.cookie.clone(),
+            host_cookies: l.host_cookies.clone(),
+        }
+    }
+
+    /// The cookie for each host a request for `link_url` may be redirected to: the old host's cookie never goes
+    /// along, each hop gets the one picked for its own host (`redirect::send_following`).
+    fn picker(&self, link_url: &str) -> CookiePicker {
+        CookiePicker::for_link(link_url, self.cookie.as_deref(), &self.host_cookies)
+    }
+
+    /// The cookie for a request to `url` (the link itself).
+    fn cookie_for_url(&self, url: &str) -> Option<&str> {
+        let host = host_lower(url);
+        pick_cookie(&self.host_cookies, self.cookie.as_deref(), &host, &host)
+    }
+
+    fn apply(&self, mut b: reqwest::RequestBuilder, url: &str) -> reqwest::RequestBuilder {
+        if let Some(ua) = self.user_agent.as_deref().and_then(|v| HeaderValue::from_str(v).ok()) {
+            b = b.header(USER_AGENT, ua);
+        }
+        if let Some(r) = self.referer.as_deref().and_then(|v| HeaderValue::from_str(v).ok()) {
+            b = b.header(REFERER, r);
+        }
+        if let Some(o) = self.origin.as_deref().and_then(|v| HeaderValue::from_str(v).ok()) {
+            b = b.header(ORIGIN, o);
+        }
+        if let Some(c) = self.cookie_for_url(url).and_then(|v| HeaderValue::from_str(v).ok()) {
+            b = b.header(COOKIE, c);
+        }
+        b
     }
 }
 
@@ -2498,6 +2902,11 @@ fn probe_error(f: ProbeFail) -> EngineError {
         ),
         ProbeFail::Auth(s) => {
             let mut e = EngineError::new(ErrorCode::AuthRequired, "This link needs a sign in, or it has expired.");
+            e.http_status = Some(s);
+            e
+        }
+        ProbeFail::Refused(s) => {
+            let mut e = EngineError::new(ErrorCode::LinkRefused, REFUSED_PROBE_COPY);
             e.http_status = Some(s);
             e
         }
@@ -2932,16 +3341,99 @@ mod tests {
     }
 
     #[test]
+    fn a_clean_page_url_is_saved_as_it_is() {
+        let rec = DlRecord {
+            id: "dl_a".into(),
+            page_url: Some("https://site.test/watch?v=42&t=10#c".into()),
+            ..DlRecord::default()
+        };
+        assert_eq!(persisted(&rec).page_url.as_deref(), Some("https://site.test/watch?v=42&t=10#c"));
+        assert_eq!(persisted(&DlRecord::default()).page_url, None);
+    }
+
+    #[test]
+    fn a_secret_looking_page_query_is_cut_off_before_saving() {
+        for u in [
+            "https://site.test/watch?v=42&token=abc",
+            "https://site.test/watch?X-Amz-Signature=abc",
+            "https://site.test/watch?session=abc#x",
+            "https://user:pw@site.test/watch?v=42",
+        ] {
+            let rec = DlRecord { id: "dl_a".into(), page_url: Some(u.into()), ..DlRecord::default() };
+            let p = persisted(&rec);
+            let text = serde_json::to_string(&p).unwrap();
+            assert_eq!(p.page_url.as_deref().map(|s| s.starts_with("https://site.test/watch")), Some(true), "{u}");
+            assert!(!text.contains("abc") && !text.contains("pw@") && !text.contains("v=42"), "{u}: {text}");
+            // The copy in memory keeps the whole page address.
+            assert_eq!(rec.page_url.as_deref(), Some(u));
+        }
+        assert_eq!(persisted_page_url(""), None);
+        assert_eq!(persisted_page_url("   "), None);
+    }
+
+    #[test]
+    fn the_page_url_option_is_taken_when_it_is_a_web_page_and_ignored_otherwise() {
+        let o = parse_options(r#"{"page_url":"https://site.test/p?x=1"}"#).unwrap();
+        assert_eq!(clean_page_url(o.page_url.as_deref()).as_deref(), Some("https://site.test/p?x=1"));
+        assert_eq!(clean_page_url(Some("  https://site.test/p  ")).as_deref(), Some("https://site.test/p"));
+        assert_eq!(clean_page_url(Some("")), None);
+        assert_eq!(clean_page_url(Some("file:///etc/passwd")), None);
+        assert_eq!(clean_page_url(Some("javascript:alert(1)")), None);
+        assert_eq!(clean_page_url(None), None);
+        assert_eq!(parse_options("{}").unwrap().page_url, None);
+    }
+
+    #[test]
+    fn the_page_url_survives_the_store_and_shows_in_the_download_json() {
+        let rec = DlRecord { id: "dl_a".into(), page_url: Some("https://site.test/p".into()), ..DlRecord::default() };
+        let file = json!({ "version": 1, "downloads": [serde_json::to_value(persisted(&rec)).unwrap()] });
+        let back = parse_store(file.to_string().as_bytes());
+        assert_eq!(back.records[0].page_url.as_deref(), Some("https://site.test/p"));
+        // A record saved before the field existed loads with none.
+        let old = parse_store(json!({ "downloads": [ { "id": "dl_old" } ] }).to_string().as_bytes());
+        assert_eq!(old.records[0].page_url, None);
+    }
+
+    #[tokio::test]
+    async fn the_download_json_carries_the_page_url() {
+        let dir = std::env::temp_dir().join(format!("maglev-dl-pageurl-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let d = Downloads::build(tokio::runtime::Handle::current(), None, &dir, &dir, None, Vec::new());
+        // Paused, so nothing reaches the network.
+        d.add("http://127.0.0.1:9/a.bin", r#"{"paused":true,"page_url":"https://site.test/p?token=zz"}"#).unwrap();
+        let snap = d.snapshots();
+        assert_eq!(snap[0]["page_url"], "https://site.test/p?token=zz");
+        // The saved list never holds the secret query.
+        let saved = std::fs::read_to_string(dir.join(STORE_FILE)).unwrap_or_default();
+        assert!(!saved.contains("token=zz"), "{saved}");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
     fn a_lost_login_asks_to_sign_in_again() {
-        let e = needs_link_info(None, true);
+        let e = needs_link_info(None, true, false);
         assert_eq!(e.code, "AUTH_REQUIRED");
         assert_eq!(e.message, "Sign in again: paste the link again.");
-        assert_eq!(needs_link_info(Some(401), false).code, "AUTH_REQUIRED");
-        assert_eq!(needs_link_info(Some(403), false).code, "AUTH_REQUIRED");
-        let gone = needs_link_info(Some(410), true);
+        assert_eq!(needs_link_info(Some(401), false, false).code, "AUTH_REQUIRED");
+        let gone = needs_link_info(Some(410), true, false);
         assert_eq!(gone.code, "LINK_EXPIRED");
         assert_eq!(gone.http_status, Some(410));
-        assert_eq!(needs_link_info(None, false).code, "LINK_EXPIRED");
+        assert_eq!(needs_link_info(None, false, false).code, "LINK_EXPIRED");
+    }
+
+    #[test]
+    fn a_403_is_a_refused_link_unless_the_link_carried_a_login() {
+        // No sign-in details: the site refused the link.
+        let e = needs_link_info(Some(403), false, false);
+        assert_eq!(e.code, "LINK_REFUSED");
+        assert_eq!(e.message, "The site refused this link. Open its page again, then retry.");
+        assert_eq!(e.http_status, Some(403));
+        // Browser cookies set `needs_login` but never `link_login`: still a refused link.
+        assert_eq!(needs_link_info(Some(403), true, false).code, "LINK_REFUSED");
+        // A user name and password in the link: a sign in.
+        assert_eq!(needs_link_info(Some(403), true, true).code, "AUTH_REQUIRED");
+        assert_eq!(needs_link_info(Some(401), false, false).code, "AUTH_REQUIRED");
     }
 
     #[test]
@@ -3078,6 +3570,31 @@ mod tests {
         // Both at once: the Wi-Fi reason is the one the user can act on.
         d.set_blocked(&tags(&["offline", "wifi_only"]));
         assert_eq!(tag_of(&d, "dl_a").as_deref(), Some("wifi_only"));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn network_changed_restarts_working_downloads_without_a_pause_or_an_attempt() {
+        let (rt, dir) = (rt(), tmp("netchange"));
+        let d = manager(&rt, &dir, &[]);
+        put(&d, "dl_a", State::Downloading, |_| {});
+        put(&d, "dl_p", State::Resolving, |_| {});
+        put(&d, "dl_u", State::Paused(PauseReason::User), |r| r.paused_tag = Some("user".into()));
+        d.inner.lock().live.get_mut("dl_a").unwrap().attempts = 2;
+        // Keep the one worker busy so the restarted tasks cannot run (and fail) before the checks.
+        rt.spawn(async { std::thread::sleep(Duration::from_millis(400)) });
+        std::thread::sleep(Duration::from_millis(100));
+        d.network_changed();
+        assert_eq!(d.state_of("dl_a"), Some(State::Downloading));
+        assert_eq!(d.state_of("dl_p"), Some(State::Resolving));
+        assert_eq!(d.state_of("dl_u"), Some(State::Paused(PauseReason::User)));
+        assert_eq!(tag_of(&d, "dl_a"), None);
+        let inner = d.inner.lock();
+        assert_eq!(inner.live["dl_a"].attempts, 2);
+        assert!(inner.live["dl_a"].task.is_some());
+        assert!(inner.live["dl_p"].task.is_some());
+        assert!(inner.live["dl_u"].task.is_none());
+        drop(inner);
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -3557,6 +4074,213 @@ mod timing_tests {
         assert_eq!((s["active_secs"].as_i64(), s["finished_at"].as_i64(), s["session_bytes"].as_u64(), s["bytes_wifi"].as_u64()), (Some(0), Some(0), Some(0), Some(0)));
         let s = snap(&d, "dl_net");
         assert_eq!((s["active_secs"].as_i64(), s["finished_at"].as_i64(), s["session_bytes"].as_u64()), (Some(9), Some(5), Some(100)));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+}
+
+#[cfg(test)]
+mod link_refused_tests {
+    use super::*;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    use tokio::net::{TcpListener, TcpStream};
+
+    fn pairs(v: &[(&str, &str)]) -> Vec<(String, String)> {
+        v.iter().map(|(h, c)| (h.to_string(), c.to_string())).collect()
+    }
+
+    fn hdrs() -> LinkHeaders {
+        LinkHeaders {
+            user_agent: Some("PageUA/1".into()),
+            referer: Some("https://page.test/v".into()),
+            origin: Some("https://page.test".into()),
+            cookie: None,
+            host_cookies: pairs(&[("page.test", "p=1"), ("cdn.test", "c=1")]),
+        }
+    }
+
+    fn sent(h: &LinkHeaders, url: &str) -> reqwest::header::HeaderMap {
+        h.apply(reqwest::Client::new().get(url), url).build().unwrap().headers().clone()
+    }
+
+    fn val<'a>(m: &'a reqwest::header::HeaderMap, name: &str) -> Option<&'a str> {
+        m.get(name).and_then(|v| v.to_str().ok())
+    }
+
+    #[test]
+    fn a_direct_file_request_carries_user_agent_referer_and_origin() {
+        let m = sent(&hdrs(), "https://page.test/a.bin");
+        assert_eq!(val(&m, "user-agent"), Some("PageUA/1"));
+        assert_eq!(val(&m, "referer"), Some("https://page.test/v"));
+        assert_eq!(val(&m, "origin"), Some("https://page.test"));
+    }
+
+    #[test]
+    fn the_cookie_is_chosen_by_the_requests_own_host() {
+        let h = hdrs();
+        assert_eq!(val(&sent(&h, "https://page.test/a.bin"), "cookie"), Some("p=1"));
+        assert_eq!(val(&sent(&h, "https://cdn.test/a.bin"), "cookie"), Some("c=1"));
+        assert_eq!(val(&sent(&h, "https://a.cdn.test/a.bin"), "cookie"), Some("c=1"));
+        assert_eq!(val(&sent(&h, "https://other.test/a.bin"), "cookie"), None);
+        // A host that only ends in the same letters is not a subdomain.
+        assert_eq!(val(&sent(&h, "https://evilcdn.test/a.bin"), "cookie"), None);
+    }
+
+    #[test]
+    fn the_longest_domain_wins() {
+        let mut h = hdrs();
+        h.host_cookies = pairs(&[("cdn.test", "wide=1"), ("files.cdn.test", "narrow=1")]);
+        assert_eq!(val(&sent(&h, "https://files.cdn.test/a.bin"), "cookie"), Some("narrow=1"));
+        assert_eq!(val(&sent(&h, "https://x.cdn.test/a.bin"), "cookie"), Some("wide=1"));
+    }
+
+    #[test]
+    fn the_cookie_option_goes_to_the_link_host_only() {
+        let hc = pairs(&[("cdn.test", "c=1")]);
+        // The link's own host gets the `Cookie` option.
+        assert_eq!(pick_cookie(&hc, Some("sid=1"), "page.test", "page.test"), Some("sid=1"));
+        // After a redirect to another host the old host's cookie is not sent; the new host's own entry is.
+        assert_eq!(pick_cookie(&hc, Some("sid=1"), "page.test", "cdn.test"), Some("c=1"));
+        assert_eq!(pick_cookie(&hc, Some("sid=1"), "page.test", "other.test"), None);
+        assert_eq!(pick_cookie(&hc, Some("sid=1"), "page.test", "evilcdn.test"), None);
+        assert_eq!(pick_cookie(&[], Some("sid=1"), "page.test", "cdn.test"), None);
+    }
+
+    #[test]
+    fn a_probe_403_is_a_refused_link_unless_the_link_has_a_login() {
+        let refused = with_link_login(ProbeFail::Refused(403), false);
+        assert!(matches!(refused, ProbeFail::Refused(403)));
+        let e = probe_error(refused);
+        assert_eq!(e.code, ErrorCode::LinkRefused);
+        assert_eq!(e.code.as_str(), "LINK_REFUSED");
+        assert_eq!(e.http_status, Some(403));
+        assert_eq!(
+            e.message,
+            "The site refused this link. Open the page in Maglev's browser and start the download from there, or paste a fresh link."
+        );
+        let with_login = with_link_login(ProbeFail::Refused(403), true);
+        assert!(matches!(with_login, ProbeFail::Auth(403)));
+        assert_eq!(probe_error(with_login).code, ErrorCode::AuthRequired);
+        assert_eq!(probe_error(ProbeFail::Auth(401)).code, ErrorCode::AuthRequired);
+    }
+
+    // ---- a local server that wants the page's headers ----
+
+    const FILE_LEN: usize = 3000;
+
+    async fn answer(mut sock: TcpStream) -> std::io::Result<()> {
+        let mut buf = Vec::new();
+        let mut tmp = [0u8; 2048];
+        loop {
+            let n = sock.read(&mut tmp).await?;
+            if n == 0 {
+                return Ok(());
+            }
+            buf.extend_from_slice(&tmp[..n]);
+            if buf.windows(4).any(|w| w == b"\r\n\r\n") {
+                break;
+            }
+        }
+        let text = String::from_utf8_lossy(&buf).into_owned();
+        let header = |name: &str| {
+            text.lines().find_map(|l| {
+                let (k, v) = l.split_once(':')?;
+                k.trim().eq_ignore_ascii_case(name).then(|| v.trim().to_string())
+            })
+        };
+        let ok = header("referer").as_deref() == Some("https://page.test/v")
+            && header("origin").as_deref() == Some("https://page.test")
+            && header("cookie").as_deref() == Some("sid=abc")
+            && header("user-agent").as_deref() == Some("PageUA/1");
+        if !ok {
+            sock.write_all(b"HTTP/1.1 403 Forbidden\r\nContent-Length: 0\r\nConnection: close\r\n\r\n").await?;
+            return sock.shutdown().await;
+        }
+        let body: Vec<u8> = (0..FILE_LEN).map(|i| (i % 251) as u8).collect();
+        let head = if header("range").as_deref() == Some("bytes=0-0") {
+            format!(
+                "HTTP/1.1 206 Partial Content\r\nContent-Length: 1\r\nContent-Range: bytes 0-0/{FILE_LEN}\r\nContent-Type: application/octet-stream\r\nAccept-Ranges: bytes\r\nETag: \"v1\"\r\nConnection: close\r\n\r\n"
+            )
+        } else {
+            format!(
+                "HTTP/1.1 200 OK\r\nContent-Length: {FILE_LEN}\r\nContent-Type: application/octet-stream\r\nAccept-Ranges: bytes\r\nETag: \"v1\"\r\nConnection: close\r\n\r\n"
+            )
+        };
+        sock.write_all(head.as_bytes()).await?;
+        if head.contains("206") {
+            sock.write_all(&body[..1]).await?;
+        } else {
+            sock.write_all(&body).await?;
+        }
+        sock.shutdown().await
+    }
+
+    async fn serve() -> u16 {
+        let listener = TcpListener::bind(("127.0.0.1", 0)).await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        tokio::spawn(async move {
+            loop {
+                let Ok((sock, _)) = listener.accept().await else { return };
+                tokio::spawn(async move {
+                    let _ = answer(sock).await;
+                });
+            }
+        });
+        port
+    }
+
+    fn tmpdir(tag: &str) -> PathBuf {
+        let d = std::env::temp_dir().join(format!("maglev-dl-refused-{}-{tag}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(&d).unwrap();
+        d
+    }
+
+    async fn wait_state(d: &Arc<Downloads>, state: &str) -> Value {
+        let t0 = Instant::now();
+        loop {
+            let cur = d.snapshots().first().cloned().unwrap_or(Value::Null);
+            if cur["state"] == state {
+                return cur;
+            }
+            assert!(t0.elapsed() < Duration::from_secs(30), "timed out in {}: {cur}", cur["state"]);
+            tokio::time::sleep(Duration::from_millis(25)).await;
+        }
+    }
+
+    const WITH_HEADERS: &str = r#"{"segments":1,"headers":{"User-Agent":"PageUA/1","Referer":"https://page.test/v","Origin":"https://page.test","Cookies":[{"host":"127.0.0.1","cookie":"sid=abc"}]}}"#;
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn a_download_with_the_page_headers_finishes() {
+        let dir = tmpdir("ok");
+        let port = serve().await;
+        let d = Downloads::build(tokio::runtime::Handle::current(), None, &dir, &dir, None, Vec::new());
+        d.add(&format!("http://127.0.0.1:{port}/a.bin"), WITH_HEADERS).unwrap();
+        wait_state(&d, "finished").await;
+        assert_eq!(std::fs::metadata(dir.join("a.bin")).unwrap().len(), FILE_LEN as u64);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn the_same_link_without_the_headers_ends_refused() {
+        let dir = tmpdir("refused");
+        let port = serve().await;
+        let d = Downloads::build(tokio::runtime::Handle::current(), None, &dir, &dir, None, Vec::new());
+        d.add(&format!("http://127.0.0.1:{port}/a.bin"), r#"{"segments":1}"#).unwrap();
+        let snap = wait_state(&d, "needs_link").await;
+        assert_eq!(snap["error"]["code"], "LINK_REFUSED");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn browser_cookies_alone_do_not_make_a_403_a_sign_in() {
+        let dir = tmpdir("cookies");
+        let port = serve().await;
+        let d = Downloads::build(tokio::runtime::Handle::current(), None, &dir, &dir, None, Vec::new());
+        // The cookie is wrong and the page headers are missing: refused, and not AUTH_REQUIRED.
+        let opts = r#"{"segments":1,"headers":{"Cookies":[{"host":"127.0.0.1","cookie":"sid=wrong"}]}}"#;
+        d.add(&format!("http://127.0.0.1:{port}/a.bin"), opts).unwrap();
+        let snap = wait_state(&d, "needs_link").await;
+        assert_eq!(snap["error"]["code"], "LINK_REFUSED");
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

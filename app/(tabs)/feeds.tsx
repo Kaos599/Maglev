@@ -390,12 +390,12 @@ export default function FeedsScreen() {
 const makeStyles = (c: ThemeColors) =>
   StyleSheet.create({
     sub: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: spacing.lg, paddingBottom: spacing.sm },
-    subText: { ...type.mono, fontSize: 13, color: c.textMuted },
+    subText: { ...type.mono, fontSize: type.size.md, color: c.textMuted },
     autoRow: { paddingHorizontal: spacing.lg, alignItems: 'flex-start', paddingBottom: spacing.xs },
     chipScroll: { flexGrow: 0, marginBottom: spacing.sm },
     chips: { paddingHorizontal: spacing.lg, gap: spacing.sm },
     feedBar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: spacing.lg, marginBottom: spacing.sm },
-    feedHost: { ...type.mono, flex: 1, fontSize: 12, color: c.textMuted, marginRight: spacing.md },
+    feedHost: { ...type.mono, flex: 1, fontSize: type.size.sm, color: c.textMuted, marginRight: spacing.md },
     stack: { gap: spacing.sm },
     errorWrap: { marginBottom: spacing.sm },
     list: { paddingHorizontal: spacing.lg, paddingBottom: spacing.xxxl, flexGrow: 1 },

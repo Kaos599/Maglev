@@ -1,20 +1,21 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { StyleSheet, Text, TextInput, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 import { getCookies, sanitizeFileName, type DownloadOptions, type UrlProbe } from 'maglev-engine';
 import { useTheme } from '../../context/ThemeContext';
 import { useMaglevEngine } from '../../context/EngineContext';
-import { ThemeColors, radius, spacing, type } from '../../constants/theme';
+import { ThemeColors, spacing, type } from '../../constants/theme';
 import { formatBytes } from '../../constants/format';
 import { haptic } from '../../constants/haptics';
 import { banners, foundTray, mobileDataLine, notices } from '../../constants/copy';
 import { probeErrorView } from '../../utils/downloadCopy';
 import { useDownloadAdmission } from '../../utils/useDownloadAdmission';
 import { hostOf } from '../../utils/browserUrl';
-import { Banner, Button } from '../ui';
+import { Banner, Button, TextField } from '../ui';
 import { FloatingSheet, afterSheetCloses, NoteRow } from './FloatingSheet';
 import { useSettings } from '../../context/SettingsContext';
 import { SaveToChoice } from './SaveToChoice';
 import { saveFolder } from './saveTo';
+import { pageUrlOption } from './pageUrlOption';
 
 /** A file the browser found, or one a page offered as a download. */
 export interface DownloadTarget {
@@ -30,12 +31,37 @@ export interface DownloadTarget {
 
 type Phase = 'probing' | 'ready' | 'error' | 'adding';
 
-/** Headers that make the download look like the page asked for it (cookies, referer, user agent). */
+/** "https://host" for a page link, or '' when it has none. Sent as the Origin. */
+function originOf(url: string): string {
+  const m = /^(https?:\/\/(?:[^/?#@]*@)?(?:\[[^\]]+\]|[^/?#]+))/i.exec((url ?? '').trim());
+  return m ? m[1].replace(/\/\/[^/@]*@/, '//') : '';
+}
+
+/**
+ * Headers that make the download look like the page asked for it: the cookies, the referer, the origin and the
+ * user agent. `Cookie` is the playlist link's own cookie; `Cookies` holds the WebView jar's cookies per host (the
+ * playlist host and the page host), and the engine sends each host its own on every playlist, key and segment
+ * request (NATIVE_CONTRACT 24.8, "Request headers").
+ */
 export async function downloadHeaders(t: Pick<DownloadTarget, 'url' | 'pageUrl' | 'userAgent'>): Promise<NonNullable<DownloadOptions['headers']>> {
   const headers: NonNullable<DownloadOptions['headers']> = {};
   const cookie = await getCookies(t.url);
   if (cookie) headers.Cookie = cookie;
-  if (t.pageUrl) headers.Referer = t.pageUrl;
+  const cookies: { host: string; cookie: string }[] = [];
+  const seen = new Set<string>();
+  for (const u of [t.url, t.pageUrl]) {
+    const host = hostOf(u);
+    if (!host || seen.has(host)) continue;
+    seen.add(host);
+    const c = u === t.url ? cookie : await getCookies(u);
+    if (c) cookies.push({ host, cookie: c });
+  }
+  if (cookies.length) headers.Cookies = cookies;
+  if (t.pageUrl) {
+    headers.Referer = t.pageUrl;
+    const origin = originOf(t.pageUrl);
+    if (origin) headers.Origin = origin;
+  }
   if (t.userAgent) headers['User-Agent'] = t.userAgent;
   return headers;
 }
@@ -86,7 +112,7 @@ export function FoundDownloadSheet({ target, onClose, onView }: { target: Downlo
   }, [url, tries, probeUrl]);
 
   const size = probe?.size ?? t?.size ?? null;
-  const { doesntFit } = useDownloadAdmission(size, phase === 'ready');
+  const { doesntFit, noSpace } = useDownloadAdmission(size, phase === 'ready');
 
   if (!t) return null;
   const mobileNote = phase === 'ready' ? mobileDataLine(onMeteredNetwork, settings.network.wifiOnly, size) : null;
@@ -101,7 +127,7 @@ export function FoundDownloadSheet({ target, onClose, onView }: { target: Downlo
     const clean = sanitizeFileName(name.trim());
     const edited = name.trim() !== '' && clean !== (probe?.name ?? t.name);
     const headers = await downloadHeaders(t);
-    const res = await startDownload(t.url, { headers, ...(edited ? { name: clean } : {}), ...(folder ? { folder } : {}) });
+    const res = await startDownload(t.url, { headers, ...pageUrlOption(t.pageUrl), ...(edited ? { name: clean } : {}), ...(folder ? { folder } : {}) });
     if (res.ok) {
       haptic('commit');
       // Close first: the sheet is a Modal (its own window), so a notice raised while it is still up is hidden under it.
@@ -122,17 +148,15 @@ export function FoundDownloadSheet({ target, onClose, onView }: { target: Downlo
   return (
     <FloatingSheet visible={target != null} onClose={onClose} title="Download" subtitle={hostOf(t.url)}>
       <View style={styles.body}>
-        <Text style={styles.label}>Name</Text>
-        <TextInput
+        <TextField
+          onSurface
+          label="Name"
           value={name}
           onChangeText={setName}
-          style={styles.field}
-          autoCapitalize="none"
-          autoCorrect={false}
-          spellCheck={false}
+          mono
           multiline
-          selectionColor={colors.accent}
-          placeholderTextColor={colors.textFaint}
+          minLines={1}
+          size="lg"
           editable={phase === 'ready'}
           accessibilityLabel="File name"
         />
@@ -140,7 +164,7 @@ export function FoundDownloadSheet({ target, onClose, onView }: { target: Downlo
         <SaveToChoice value={sub} onChange={setSub} root={root} disabled={adding} />
         {mobileNote ? <NoteRow text={mobileNote} /> : null}
         {t.installer ? <Banner tone="warning" title={banners.browser.installer.title} body={banners.browser.installer.body} /> : null}
-        {doesntFit ? <Banner tone="danger" title={banners.addDownload.notEnoughSpace.title} body={banners.addDownload.notEnoughSpace.body} /> : null}
+        {doesntFit ? <Banner tone="danger" title={banners.addDownload.notEnoughSpace.title} body={noSpace} /> : null}
         {message ? <Banner tone="danger" title={message} /> : null}
         <View style={styles.actions}>
           <Button label="Cancel" variant="ghost" onPress={onClose} disabled={adding} />
@@ -158,19 +182,6 @@ export function FoundDownloadSheet({ target, onClose, onView }: { target: Downlo
 const makeStyles = (c: ThemeColors) =>
   StyleSheet.create({
     body: { gap: spacing.sm },
-    label: { ...type.bodyStrong, fontSize: type.size.md, color: c.textMuted },
-    field: {
-      ...type.mono,
-      fontSize: type.size.md,
-      color: c.text,
-      minHeight: 48,
-      textAlignVertical: 'top',
-      backgroundColor: c.bg,
-      borderWidth: 1,
-      borderColor: c.borderStrong,
-      borderRadius: radius.md,
-      padding: spacing.md,
-    },
     meta: { ...type.mono, fontSize: type.size.sm, color: c.textMuted },
     actions: { flexDirection: 'row', justifyContent: 'flex-end', gap: spacing.sm, marginTop: spacing.md },
   });

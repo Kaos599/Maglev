@@ -13,7 +13,7 @@ const bez = (a: number, b: number, c: number, d: number): Curve => [a, b, c, d];
 /** One train pixel in cq: the mark is 107 units wide and 46 cq wide. */
 export const CQ_PER_U = 46 / 107;
 /** The design's card is 86% of its phone's width. */
-export const CARD_CQ = 86;
+const CARD_CQ = 86;
 
 export const HIGHLIGHT_MOTION = {
   scrimMs: 200,

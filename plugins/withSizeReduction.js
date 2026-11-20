@@ -23,6 +23,29 @@ ${MARKER}
 }
 `;
 
+// commons-codec arrives with expo-file-system (legacy module: DigestUtils, Hex). Its 128 files under
+// language/bm/ are Beider-Morse phonetic rule tables, read only by org.apache.commons.codec.language.bm.*,
+// which nothing here or in expo-file-system touches. libzstd-kmp.so is NOT excluded: expo/fetch sends
+// "Accept-Encoding: zstd, br, gzip" and needs it to decode zstd replies (assistant chat).
+const PACKAGING_MARKER = '// maglev-packaging-excludes';
+const PACKAGING_BLOCK = `
+    ${PACKAGING_MARKER}
+    packaging {
+        resources {
+            excludes += ["org/apache/commons/codec/language/bm/**"]
+        }
+    }
+`;
+
+/** Pure transform for app/build.gradle text: drop the unused Beider-Morse tables. Idempotent. */
+function applyPackagingExcludes(src) {
+  if (src.includes(PACKAGING_MARKER)) return src;
+  const m = /^android\s*\{[^\n]*\n/m.exec(src);
+  if (!m) throw new Error('withSizeReduction: could not find `android {` block in app/build.gradle');
+  const at = m.index + m[0].length;
+  return src.slice(0, at) + PACKAGING_BLOCK + src.slice(at);
+}
+
 /** Pure transform for gradle.properties entries (array of {type,key,value}). Idempotent. */
 function applySizeProperties(props) {
   const out = props.filter((p) => !(p.type === 'property' && p.key in PROPS));
@@ -38,11 +61,15 @@ function applyKeepRules(src) {
 }
 
 function withSizeReduction(config) {
-  const { withGradleProperties, withDangerousMod } = require('expo/config-plugins');
+  const { withGradleProperties, withDangerousMod, withAppBuildGradle } = require('expo/config-plugins');
   const fs = require('fs');
   const path = require('path');
   config = withGradleProperties(config, (c) => {
     c.modResults = applySizeProperties(c.modResults);
+    return c;
+  });
+  config = withAppBuildGradle(config, (c) => {
+    c.modResults.contents = applyPackagingExcludes(c.modResults.contents);
     return c;
   });
   config = withDangerousMod(config, [
@@ -60,3 +87,4 @@ function withSizeReduction(config) {
 module.exports = withSizeReduction;
 module.exports.applySizeProperties = applySizeProperties;
 module.exports.applyKeepRules = applyKeepRules;
+module.exports.applyPackagingExcludes = applyPackagingExcludes;

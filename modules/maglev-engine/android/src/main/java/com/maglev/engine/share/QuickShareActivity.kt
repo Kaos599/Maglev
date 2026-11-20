@@ -81,6 +81,8 @@ class QuickShareActivity : Activity() {
         return when (i.action) {
             Intent.ACTION_SEND -> (stream?.toString() ?: i.getStringExtra(Intent.EXTRA_TEXT)) to i.type
             Intent.ACTION_VIEW -> i.dataString to i.type
+            // Text-selection menu: the selected text, read only. We never return replacement text, so the selection stays as it was.
+            Intent.ACTION_PROCESS_TEXT -> i.getCharSequenceExtra(Intent.EXTRA_PROCESS_TEXT)?.toString() to null
             else -> null to null
         }
     }
@@ -96,7 +98,13 @@ class QuickShareActivity : Activity() {
     private fun openMaglev(uri: Uri?) {
         val main = packageManager.getLaunchIntentForPackage(packageName)?.component
         if (main == null) { finish(); return }
-        val i = if (uri != null) Intent(Intent.ACTION_VIEW, uri) else Intent(original)
+        val link = cls.source
+        val i = when {
+            uri != null -> Intent(Intent.ACTION_VIEW, uri)
+            // MainActivity does not read PROCESS_TEXT: hand it the link that was found in the selection.
+            original.action == Intent.ACTION_PROCESS_TEXT && link != null -> Intent(Intent.ACTION_VIEW, Uri.parse(link))
+            else -> Intent(original)
+        }
         i.component = main
         i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_GRANT_READ_URI_PERMISSION)
         try {

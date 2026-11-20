@@ -120,7 +120,7 @@ class FeedWorker(context: Context, params: WorkerParameters) : CoroutineWorker(c
             for (rule in rules) {
                 val eps = episodes.getOrPut(rule.id) { FeedStore.seenEpisodes(c, rule.id).apply { addAll(FeedEpisodes.inFlight(queuedBefore, rule.id)) } }
                 if (!FeedRuleMatcher.matches(rule, item.title, eps)) continue
-                FeedRuleMatcher.episodeKey(item.title)?.let { eps.add(it) }
+                FeedRuleMatcher.episodeIdentity(item.title)?.let { eps.add(it) }
                 out.add(PendingAdd(feed.id, rule.id, rule.name, item.title, source, rule.startPaused))
                 break
             }

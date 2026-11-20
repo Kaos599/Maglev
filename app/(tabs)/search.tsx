@@ -1,13 +1,13 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { AccessibilityInfo, AppState, Dimensions, ScrollView, StyleSheet, Text, TextInput, View, findNodeHandle, type LayoutChangeEvent, type NativeScrollEvent, type NativeSyntheticEvent } from 'react-native';
+import { AccessibilityInfo, AppState, Dimensions, ScrollView, StyleSheet, Text, View, findNodeHandle, type LayoutChangeEvent, type NativeScrollEvent, type NativeSyntheticEvent } from 'react-native';
 import { FlashList } from '@shopify/flash-list';
 import { useIsFocused, useLocalSearchParams, useRouter } from 'expo-router';
 import { useMaglevEngine } from '../../context/EngineContext';
 import { useSettings } from '../../context/SettingsContext';
 import { useTheme } from '../../context/ThemeContext';
-import { ThemeColors, radius, spacing, type } from '../../constants/theme';
+import { ThemeColors, radius, spacing, touch, type } from '../../constants/theme';
 import { PixelIcon } from '../../components/PixelIcon';
-import { Button, Chip, EmptyBlock, IconButton, PressableScale, Screen, Sheet } from '../../components/ui';
+import { Button, Chip, EmptyBlock, IconButton, PressableScale, Screen, Sheet, TextField, type TextFieldRef } from '../../components/ui';
 import { ResultRow } from '../../components/search/ResultRow';
 import { SKELETON_FIRST_COUNT, SKELETON_MORE_COUNT, SkeletonRows } from '../../components/search/SkeletonRows';
 import { seenRowCount, stableOrder } from '../../components/search/stableOrder';
@@ -139,7 +139,7 @@ export default function SearchScreen() {
   // True while the user is working through the "needs a quick check" line: after one solve, the next opens.
   const fixing = useRef(false);
   const [focused, setFocused] = useState(false);
-  const inputRef = useRef<React.ComponentRef<typeof TextInput>>(null);
+  const inputRef = useRef<TextFieldRef>(null);
   const sortBtnRef = useRef<any>(null);
   const fixBtnRef = useRef<any>(null);
   const recentRows = useRef(new Map<string, any>());
@@ -373,7 +373,7 @@ export default function SearchScreen() {
             if (fs.ok) {
               const out = admit({
                 freeBytes: Math.min(fs.freeBytes, fs.targetFreeBytes ?? fs.freeBytes),
-                pendingNeed: pendingNeedOf(telemetry.torrents),
+                pendingNeed: pendingNeedOf(telemetry.torrents, downloads),
                 stagingFactor: fs.mode === 'staging' ? 2 : 1,
                 selectionBytes: size,
               });
@@ -428,7 +428,7 @@ export default function SearchScreen() {
         setBusy(busyKey, false);
       }
     },
-    [remember, show, dismiss, trayAdd, subsAvailable, autoSubtitles, providers, category, setBusy, startTorrent, restartEngine, trimmed, getFreeSpace, telemetry.torrents, router, onMeteredNetwork, settings.network.wifiOnly],
+    [remember, show, dismiss, trayAdd, subsAvailable, autoSubtitles, providers, category, setBusy, startTorrent, restartEngine, trimmed, getFreeSpace, telemetry.torrents, downloads, router, onMeteredNetwork, settings.network.wifiOnly],
   );
 
   // Tapping Add on a warned row asks first; with the warning off it is one tap.
@@ -841,28 +841,26 @@ export default function SearchScreen() {
       }
     >
       <View style={styles.pad}>
-        <View style={styles.field}>
-          <PixelIcon name="search" size={20} color={colors.textMuted} />
-          <TextInput
-            style={styles.input}
-            value={query}
-            onChangeText={setQuery}
-            onSubmitEditing={() => {
-              remember(query);
-              setRetryTick((n) => n + 1);
-            }}
-            placeholder="Name, show, file…"
-            placeholderTextColor={colors.textFaint}
-            autoCapitalize="none"
-            autoCorrect={false}
-            returnKeyType="search"
-            accessibilityLabel="Search torrents"
-            ref={inputRef}
-            onFocus={() => setFocused(true)}
-            onBlur={() => setFocused(false)}
-          />
-          {query.length > 0 ? <IconButton icon="close" size={16} onPress={() => setQuery('')} accessibilityLabel="Clear search" /> : null}
-        </View>
+        <TextField
+          leadingIcon="search"
+          clearable
+          clearLabel="Clear search"
+          size="lg"
+          value={query}
+          onChangeText={setQuery}
+          onSubmitEditing={() => {
+            remember(query);
+            setRetryTick((n) => n + 1);
+          }}
+          placeholder="Name, show, file…"
+          autoCapitalize="none"
+          autoCorrect={false}
+          returnKeyType="search"
+          accessibilityLabel="Search torrents"
+          ref={inputRef}
+          onFocus={() => setFocused(true)}
+          onBlur={() => setFocused(false)}
+        />
         <Reveal visible={showRecents}>
           {/* A scroll view with handled taps: a tap on a row registers before the field loses focus. */}
           <ScrollView keyboardShouldPersistTaps="handled" scrollEnabled={false} style={styles.recentsWrap}>
@@ -1013,19 +1011,6 @@ const makeStyles = (c: ThemeColors) =>
     pad: { paddingHorizontal: spacing.lg },
     confirmActions: { gap: spacing.sm },
     filterRow: { marginTop: spacing.md },
-    field: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      minHeight: 48,
-      paddingLeft: spacing.lg,
-      paddingRight: spacing.xs,
-      gap: spacing.sm,
-      borderRadius: radius.md,
-      borderWidth: 1,
-      borderColor: c.borderStrong,
-      backgroundColor: c.surface,
-    },
-    input: { ...type.body, flex: 1, minHeight: 48, fontSize: 15, color: c.text },
     catScroll: { flexGrow: 0, marginTop: spacing.md, marginBottom: spacing.sm },
     chips: { paddingHorizontal: spacing.lg, gap: spacing.sm },
     idle: { paddingHorizontal: spacing.lg, paddingTop: spacing.md, paddingBottom: spacing.xxxl, gap: spacing.xxl },
@@ -1033,32 +1018,32 @@ const makeStyles = (c: ThemeColors) =>
     recentsCard: { borderRadius: radius.lg, borderWidth: 1, borderColor: c.border, backgroundColor: c.surface, paddingBottom: spacing.xs },
     recentsHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingLeft: spacing.lg, paddingRight: spacing.xs },
     recentRow: { flexDirection: 'row', alignItems: 'center', paddingLeft: spacing.lg, paddingRight: spacing.xs },
-    recentMain: { flex: 1, minHeight: 44 },
-    recentMainInner: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, minHeight: 44 },
-    recentText: { ...type.body, flex: 1, fontSize: 14, color: c.text },
+    recentMain: { flex: 1, minHeight: touch.min },
+    recentMainInner: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, minHeight: touch.min },
+    recentText: { ...type.body, flex: 1, fontSize: type.size.base, color: c.text },
     sourceChips: { marginTop: spacing.sm },
-    sectionLabel: { ...type.bodyStrong, fontSize: 12, color: c.textMuted },
+    sectionLabel: { ...type.bodyStrong, fontSize: type.size.sm, color: c.textMuted },
     wrapRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
     disclaimerRow: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.sm, paddingTop: spacing.lg, borderTopWidth: 1, borderTopColor: c.border },
-    disclaimer: { ...type.body, flex: 1, fontSize: 11, lineHeight: 16, color: c.textMuted, textAlign: 'left' },
-    browserBtn: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs + 2, height: 44, paddingHorizontal: spacing.md, borderRadius: radius.md, borderWidth: 1, borderColor: c.borderStrong, backgroundColor: c.surface },
-    browserText: { ...type.bodyStrong, fontSize: 13, color: c.text },
+    disclaimer: { ...type.body, flex: 1, fontSize: type.size.xs, lineHeight: 16, color: c.textMuted, textAlign: 'left' },
+    browserBtn: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, height: touch.min, paddingHorizontal: spacing.md, borderRadius: radius.md, borderWidth: 1, borderColor: c.borderStrong, backgroundColor: c.surface },
+    browserText: { ...type.bodyStrong, fontSize: type.size.md, color: c.text },
     track: { height: 2, backgroundColor: c.border },
     trackFill: { height: 2, backgroundColor: c.accent },
     fix: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, minHeight: 64, paddingVertical: spacing.sm, paddingLeft: spacing.md, paddingRight: spacing.xs, marginBottom: spacing.sm, borderRadius: radius.md, borderWidth: 1, borderColor: c.border, backgroundColor: c.surface },
     fixMark: { width: 36, height: 36, alignItems: 'center', justifyContent: 'center', borderRadius: radius.sm, borderWidth: 1, borderColor: c.accent },
-    fixMarkText: { ...type.monoBold, fontSize: 14, color: c.accentText },
+    fixMarkText: { ...type.monoBold, fontSize: type.size.base, color: c.accentText },
     fixText: { flex: 1, gap: 2 },
-    fixTitle: { ...type.bodyStrong, fontVariant: ['tabular-nums'], fontSize: 13, color: c.text },
-    fixBody: { ...type.body, fontSize: 12, color: c.textMuted },
+    fixTitle: { ...type.bodyStrong, fontVariant: ['tabular-nums'], fontSize: type.size.md, color: c.text },
+    fixBody: { ...type.body, fontSize: type.size.sm, color: c.textMuted },
     sources: { paddingHorizontal: spacing.lg, paddingBottom: spacing.sm, gap: spacing.sm },
     summaryRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.sm },
-    summaryText: { flex: 1, minWidth: 0, justifyContent: 'center', minHeight: 44 },
-    count: { ...type.bodyStrong, fontVariant: ['tabular-nums'], fontSize: 13, lineHeight: 18, color: c.text },
+    summaryText: { flex: 1, minWidth: 0, justifyContent: 'center', minHeight: touch.min },
+    count: { ...type.bodyStrong, fontVariant: ['tabular-nums'], fontSize: type.size.md, lineHeight: 18, color: c.text },
     noteBtn: { flexDirection: 'row', alignItems: 'center', gap: 2, alignSelf: 'flex-start' },
-    note: { ...type.body, fontSize: 12, lineHeight: 17, color: c.textMuted },
+    note: { ...type.body, fontSize: type.size.sm, lineHeight: 17, color: c.textMuted },
     noteBad: { color: c.danger },
-    summary: { ...type.body, fontVariant: ['tabular-nums'], flex: 1, fontSize: 12, lineHeight: 17, color: c.textMuted },
+    summary: { ...type.body, fontVariant: ['tabular-nums'], flex: 1, fontSize: type.size.sm, lineHeight: 17, color: c.textMuted },
     body: { flex: 1, marginTop: spacing.sm },
     listWrap: { flex: 1 },
     list: { paddingHorizontal: spacing.lg, paddingBottom: spacing.xxxl },

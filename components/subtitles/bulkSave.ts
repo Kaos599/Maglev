@@ -70,7 +70,7 @@ export function clearBulkResult(): void {
 const NO_RETRY = new Set(['CANT_WRITE', 'NO_SPACE', 'REPLACE_DENIED', 'VERIFY_FAILED', 'missing']);
 
 /** Saves the best stored candidate of every qualifying run of these requests. Returns the result line, or null when nothing ran. */
-export async function startBulk(keys: readonly string[], env: BulkEnv): Promise<string | null> {
+async function startBulk(keys: readonly string[], env: BulkEnv): Promise<string | null> {
   if (active) return null;
   try {
     return await bulkOnce(keys, env);

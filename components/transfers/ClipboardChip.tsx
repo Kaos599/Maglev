@@ -48,7 +48,7 @@ const makeStyles = (c: ThemeColors) =>
       gap: spacing.xs,
     },
     title: { ...type.heading, fontSize: type.size.md, color: c.text },
-    name: { ...type.mono, fontSize: 13, color: c.textMuted },
+    name: { ...type.mono, fontSize: type.size.md, color: c.textMuted },
     actions: { flexDirection: 'row', gap: spacing.sm, marginTop: spacing.sm },
     action: { flex: 1 },
   });

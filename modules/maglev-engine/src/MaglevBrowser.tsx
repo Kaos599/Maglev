@@ -80,6 +80,8 @@ export type BrowserLongPressEvent = {
   imageUrl: string | null;
   text: string | null;
 };
+/** A long press over a video the page script found (contract 24.10a). `json` is the payload; parse it with `parseMediaHit` (utils/browser/mediaHit.ts). */
+export type BrowserMediaHitEvent = { json: string };
 /** `active` is 0-based. `total` is 0 when nothing matches. `done` is false while the page is still being counted. */
 export type BrowserFindResultEvent = { active: number; total: number; done: boolean };
 export type OpenAppResult = { opened: boolean; fallbackUrl: string | null };
@@ -96,6 +98,17 @@ export type MaglevBrowserProps = {
   desktopMode?: boolean;
   /** Page text size in percent, 50 to 200. Default 100. Pinch zoom is separate. */
   textZoom?: number;
+  /** Private browsing: the page cache is bypassed while true. */
+  privateMode?: boolean;
+  /** Pull down at the top of a page to reload it (24.10a). Default true. */
+  pullToRefresh?: boolean;
+  /** Spinner colours for pull to reload (hex). */
+  refreshColor?: string;
+  refreshBackground?: string;
+  /** Allow algorithmic darkening of light-only pages (24.10a). The app passes true when Maglev is dark and "Dark pages" is on. */
+  darkPages?: boolean;
+  /** The script that finds media under a long press (`mediaHitScript()` in utils/browser/mediaHitScript.ts). */
+  mediaHitScript?: string;
   style?: StyleProp<ViewStyle>;
   onPage?: (e: BrowserPageEvent) => void;
   onFound?: (e: BrowserFoundEvent) => void;
@@ -110,6 +123,7 @@ export type MaglevBrowserProps = {
   onPopupBlocked?: (e: BrowserPopupBlockedEvent) => void;
   onLongPress?: (e: BrowserLongPressEvent) => void;
   onFindResult?: (e: BrowserFindResultEvent) => void;
+  onMediaHit?: (e: BrowserMediaHitEvent) => void;
 };
 
 export type MaglevBrowserRef = {
@@ -136,6 +150,8 @@ export type MaglevBrowserRef = {
   findNext(forward: boolean): Promise<void>;
   /** Removes the highlights. Rejects with VIEW_GONE once the view is destroyed. */
   clearFind(): Promise<void>;
+  /** Clears this page's localStorage and sessionStorage (main frame; 24.10a). Reload afterwards. Rejects with VIEW_GONE once the view is destroyed. */
+  clearSiteStorage(): Promise<void>;
 };
 
 type NativeEvent<T> = { nativeEvent: T };
@@ -148,6 +164,12 @@ type NativeProps = {
   allowAdsHosts?: string[];
   desktopMode?: boolean;
   textZoom?: number;
+  privateMode?: boolean;
+  pullToRefresh?: boolean;
+  refreshColor?: string;
+  refreshBackground?: string;
+  darkPages?: boolean;
+  mediaHitScript?: string;
   style?: StyleProp<ViewStyle>;
   onPage?: (e: NativeEvent<BrowserPageEvent>) => void;
   onFound?: (e: NativeEvent<BrowserFoundEvent>) => void;
@@ -162,6 +184,7 @@ type NativeProps = {
   onPopupBlocked?: (e: NativeEvent<BrowserPopupBlockedEvent>) => void;
   onLongPress?: (e: NativeEvent<BrowserLongPressEvent>) => void;
   onFindResult?: (e: NativeEvent<BrowserFindResultEvent>) => void;
+  onMediaHit?: (e: NativeEvent<BrowserMediaHitEvent>) => void;
 };
 
 let Native: any = null;
@@ -172,7 +195,7 @@ try {
 }
 
 /** True when the native browser view can render (Android with the engine module). */
-export const browserAvailable: boolean = Native != null;
+const browserAvailable: boolean = Native != null;
 
 const NativeBrowser: React.ComponentType<NativeProps & React.RefAttributes<MaglevBrowserRef>> | null =
   browserAvailable ? requireNativeViewManager<NativeProps>('MaglevEngine', 'MaglevBrowserView') : null;
@@ -180,7 +203,7 @@ const NativeBrowser: React.ComponentType<NativeProps & React.RefAttributes<Magle
 const NOT_AVAILABLE = "The browser isn't available in this build.";
 
 export const MaglevBrowser = React.forwardRef<MaglevBrowserRef, MaglevBrowserProps>(function MaglevBrowser(
-  { onPage, onFound, onBlockedCount, onDownloadRequest, onMagnet, onRefused, onCrashed, onPageNote, onNewWindow, onPopupRequest, onPopupBlocked, onLongPress, onFindResult, ...rest },
+  { onPage, onFound, onBlockedCount, onDownloadRequest, onMagnet, onRefused, onCrashed, onPageNote, onNewWindow, onPopupRequest, onPopupBlocked, onLongPress, onFindResult, onMediaHit, ...rest },
   ref,
 ) {
   const nativeRef = React.useRef<MaglevBrowserRef | null>(null);
@@ -200,6 +223,7 @@ export const MaglevBrowser = React.forwardRef<MaglevBrowserRef, MaglevBrowserPro
       findInPage: (query: string) => nativeRef.current?.findInPage(query) ?? Promise.resolve(),
       findNext: (forward: boolean) => nativeRef.current?.findNext(forward) ?? Promise.resolve(),
       clearFind: () => nativeRef.current?.clearFind() ?? Promise.resolve(),
+      clearSiteStorage: () => nativeRef.current?.clearSiteStorage() ?? Promise.resolve(),
       openApp: async (url: string): Promise<OpenAppResult> => {
         try {
           return (await nativeRef.current?.openApp(url)) ?? { opened: false, fallbackUrl: null };
@@ -235,6 +259,7 @@ export const MaglevBrowser = React.forwardRef<MaglevBrowserRef, MaglevBrowserPro
       onPopupBlocked={onPopupBlocked ? (e) => onPopupBlocked(e.nativeEvent) : undefined}
       onLongPress={onLongPress ? (e) => onLongPress(e.nativeEvent) : undefined}
       onFindResult={onFindResult ? (e) => onFindResult(e.nativeEvent) : undefined}
+      onMediaHit={onMediaHit ? (e) => onMediaHit(e.nativeEvent) : undefined}
     />
   );
 });

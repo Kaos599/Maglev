@@ -8,7 +8,7 @@ const KEY = 'maglev.schedule.v1';
 const MB = 1_048_576;
 
 export const DAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'] as const;
-export const ALL_DAYS = [0, 1, 2, 3, 4, 5, 6];
+const ALL_DAYS = [0, 1, 2, 3, 4, 5, 6];
 
 /** Speed presets in bytes per second. 0 means no limit in that direction. */
 export const LIMIT_PRESETS: readonly { bps: number; label: string }[] = [
@@ -53,7 +53,7 @@ function normalize(raw: unknown): ScheduleConfig {
 let cache: ScheduleConfig | null = null;
 const listeners = new Set<() => void>();
 
-export function getSchedule(): ScheduleConfig {
+function getSchedule(): ScheduleConfig {
   if (cache) return cache;
   let parsed: unknown = null;
   try {
@@ -103,7 +103,7 @@ export function useSchedule(): [ScheduleConfig, typeof updateSchedule] {
   return [s, updateSchedule];
 }
 
-export function newRuleId(): string {
+function newRuleId(): string {
   return `rule_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
 }
 
@@ -120,7 +120,7 @@ export function isAllDay(r: Pick<ScheduleRule, 'start' | 'end'>): boolean {
   return r.start === r.end;
 }
 
-export function speedLabel(bps: number | undefined): string {
+function speedLabel(bps: number | undefined): string {
   if (!bps || bps <= 0) return 'No limit';
   const preset = LIMIT_PRESETS.find((p) => p.bps === bps);
   if (preset) return preset.label;

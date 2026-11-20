@@ -6,7 +6,7 @@ import { dayKey, dayNumber, dayOfDate, localParts, mondayOf, monthOfDay, partsOf
 import type { DailyRow, MonthlyRow, StatsKind, StatsRecord } from './types.ts';
 
 /** Items shorter than this are left out of speeds: a 1 second burst says nothing about speed. */
-export const MIN_SPEED_SECS = 3;
+const MIN_SPEED_SECS = 3;
 export const MB = 1024 * 1024;
 export const TB = 1e12;
 
@@ -452,7 +452,7 @@ const recordsIn = (records: readonly StatsRecord[], r: StatsRange, tz?: number) 
  * each day counts the larger of that and the time of the items that finished that day (covers time in the background and days
  * before 0.27). No backfill beyond that.
  */
-export function activeSecsIn(daily: readonly DailyRow[], records: readonly StatsRecord[], r: StatsRange, tz?: number): number {
+function activeSecsIn(daily: readonly DailyRow[], records: readonly StatsRecord[], r: StatsRange, tz?: number): number {
   const stored = new Map<number, number>();
   for (const d of daily) {
     const n = dayNumber(d.day);
@@ -507,7 +507,7 @@ export interface CategorySlice {
 export const CATEGORY_LABELS: Record<string, string> = {
   movies: 'Movies', tv: 'TV', anime: 'Anime', music: 'Music', apps: 'Apps', games: 'Games', books: 'Books', adult: 'Adult',
 };
-export const UNSORTED = 'unsorted';
+const UNSORTED = 'unsorted';
 
 /**
  * What you download, by bytes: the top three named categories, then Other (every other category plus Unsorted).
@@ -579,7 +579,7 @@ export interface RangeStats {
 }
 
 /** Groups a search provider id under 'search'; keeps 'link', 'share', 'feed' and 'watch'. */
-export const sourceGroup = (s: string | null): string | null => (s == null ? null : ['link', 'share', 'feed', 'watch'].includes(s) ? s : 'search');
+const sourceGroup = (s: string | null): string | null => (s == null ? null : ['link', 'share', 'feed', 'watch'].includes(s) ? s : 'search');
 
 /** Everything the kit shows for one range. Pure; every figure comes from rows. */
 export function rangeStats(input: Pick<InsightsInput, 'records' | 'daily' | 'now' | 'tz'>, r: StatsRange): RangeStats {

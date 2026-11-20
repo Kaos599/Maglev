@@ -47,7 +47,7 @@ export function stepsAt(p: number, n: number, atStart: boolean): number {
 }
 
 /** Eased progress for any `Ease`. */
-export function easeAt(e: Ease, p: number): number {
+function easeAt(e: Ease, p: number): number {
   'worklet';
   if (e.length === 4) return bezierAt(e, p);
   if (e.length === 2) return stepsAt(p, e[0], e[1] === 1);
@@ -157,7 +157,7 @@ export const TRACK: readonly RailPiece[] = [
 ];
 
 /** Time (as a share of the approach) at which the approach curve first reaches `progress` of its distance. */
-export function timeAtProgress(curve: Ease, progress: number): number {
+function timeAtProgress(curve: Ease, progress: number): number {
   'worklet';
   let lo = 0;
   let hi = 1;
@@ -252,7 +252,7 @@ const E_SQUASH = [0.3, 0.6, 0.4, 1] as const;
 const E_REBOUND = [0.42, 0, 0.58, 1] as const;
 
 /** Keyframes of the badge: [at, ease after, opacity, rise (cq), scale x, scale y, tilt (deg)]. */
-export const STAMP_ROWS = [
+const STAMP_ROWS = [
   [0, E_DROP, 0, -4, 1.38, 1.38, -9],
   [0.18, E_WIND, 1, -5.5, 1.42, 1.42, -11],
   [0.45, E_DROP, 1, 0, 1, 1, -3],

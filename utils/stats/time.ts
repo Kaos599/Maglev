@@ -1,6 +1,6 @@
 /** Local-day bucketing for stats. `tz` is minutes east of UTC; omitted means the phone's own zone at that moment. */
 
-export const tzOf = (ms: number, tz?: number): number => (typeof tz === 'number' ? tz : -new Date(ms).getTimezoneOffset());
+const tzOf = (ms: number, tz?: number): number => (typeof tz === 'number' ? tz : -new Date(ms).getTimezoneOffset());
 
 const p2 = (n: number) => String(n).padStart(2, '0');
 

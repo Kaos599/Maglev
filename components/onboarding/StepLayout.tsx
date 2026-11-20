@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef } from 'react';
 import { Animated, Easing, StyleProp, StyleSheet, Text, View, ViewStyle } from 'react-native';
 import { useTheme } from '../../context/ThemeContext';
 import { useReduceMotion } from '../motion/useReduceMotion';
-import { ThemeColors, spacing, type } from '../../constants/theme';
+import { ThemeColors, motion, spacing, type } from '../../constants/theme';
 
 export interface StepLayoutProps {
   /** Illustration slot (brand mark or icon tile). */
@@ -25,9 +25,9 @@ function Chunk({ delay, style, children }: { delay: number; style?: StyleProp<Vi
     // Reduce motion: a quick fade, no rise, no stagger.
     const anim = Animated.timing(v, {
       toValue: 1,
-      duration: reduce ? 120 : 240,
+      duration: reduce ? motion.duration.exit : motion.duration.base,
       delay: reduce ? 0 : delay,
-      easing: Easing.bezier(0.2, 0, 0, 1),
+      easing: Easing.bezier(0.2, 0, 0, 1), // a steeper ease-out than the cubic: the rise lands softly and stops dead
       useNativeDriver: true,
     });
     anim.start();
@@ -79,10 +79,10 @@ const makeStyles = (c: ThemeColors) =>
     main: { flex: 1, justifyContent: 'center', alignItems: 'center' },
     hero: { alignItems: 'center', justifyContent: 'center', marginBottom: spacing.xxl },
     extra: { alignSelf: 'stretch' },
-    title: { ...type.bodyStrong, fontSize: 22, lineHeight: 28, color: c.text, textAlign: 'center' },
+    title: { ...type.bodyStrong, fontSize: type.size.xxl, lineHeight: 28, color: c.text, textAlign: 'center' },
     body: {
       ...type.body,
-      fontSize: 15,
+      fontSize: type.size.lg,
       lineHeight: 22,
       color: c.textMuted,
       textAlign: 'center',
@@ -92,7 +92,7 @@ const makeStyles = (c: ThemeColors) =>
     },
     detail: {
       ...type.body,
-      fontSize: 14,
+      fontSize: type.size.base,
       lineHeight: 20,
       color: c.textMuted,
       textAlign: 'center',

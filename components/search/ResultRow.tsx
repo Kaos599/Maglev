@@ -1,11 +1,11 @@
 import React, { memo, useMemo } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useTheme } from '../../context/ThemeContext';
-import { ThemeColors, radius, spacing, type } from '../../constants/theme';
+import { ThemeColors, radius, spacing, type, touch } from '../../constants/theme';
 import { formatBytes } from '../../constants/format';
 import { PixelIcon, type PixelIconName } from '../PixelIcon';
 import { MEDIA_WORD, mediaKind, type MediaKind } from '../../utils/search/mediaType';
-import { IconButton } from '../ui';
+import { IconButton, LoadingDots } from '../ui';
 import { useSearchPrefs } from '../../utils/prefs/search';
 import { isLowShare, sharingBadge } from './sharing';
 
@@ -108,7 +108,7 @@ function ResultRowImpl({ name, category, sizeBytes, seeders, leechers, age, via,
       ) : busy ? (
         // NATIVE_CONTRACT 44.4: the add is in flight. Same 44 dp slot as the button, so the row does not shift.
         <View style={styles.adding} accessible accessibilityRole="progressbar" accessibilityLabel={`Adding ${name}`} accessibilityState={{ busy: true }}>
-          <ActivityIndicator size="small" color={colors.download} />
+          <LoadingDots color={colors.download} />
         </View>
       ) : (
         <IconButton icon="download" color={colors.accentText} accessibilityLabel={`Add ${name}`} onPress={onAdd} />
@@ -135,10 +135,10 @@ const makeStyles = (c: ThemeColors) =>
       borderColor: c.border,
     },
     dim: { opacity: 0.6 },
-    adding: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
+    adding: { width: touch.min, height: touch.min, alignItems: 'center', justifyContent: 'center' },
     badge: { alignSelf: 'flex-start', paddingHorizontal: spacing.sm, paddingVertical: 2, borderRadius: radius.sm, borderWidth: 1, borderColor: c.border },
-    badgeText: { ...type.body, fontSize: 11, color: c.textMuted },
-    main: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: spacing.md, minHeight: 44 },
+    badgeText: { ...type.body, fontSize: type.size.xs, color: c.textMuted },
+    main: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: spacing.md, minHeight: touch.min },
     tile: {
       width: 36,
       height: 36,
@@ -150,12 +150,12 @@ const makeStyles = (c: ThemeColors) =>
       backgroundColor: c.surfaceRaised,
     },
     text: { flex: 1, gap: spacing.xs, justifyContent: 'center' },
-    name: { ...type.mono, fontSize: 13, lineHeight: 18, color: c.text },
+    name: { ...type.mono, fontSize: type.size.md, lineHeight: 18, color: c.text },
     meta: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
-    stat: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-    metaText: { ...type.mono, fontSize: 12, color: c.textMuted },
-    age: { ...type.body, fontVariant: ['tabular-nums'], fontSize: 11, color: c.textMuted },
+    stat: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
+    metaText: { ...type.mono, fontSize: type.size.sm, color: c.textMuted },
+    age: { ...type.body, fontVariant: ['tabular-nums'], fontSize: type.size.xs, color: c.textMuted },
     via: { flexShrink: 1 },
-    risk: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-    riskText: { ...type.body, fontSize: 12, color: c.warning, flexShrink: 1 },
+    risk: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
+    riskText: { ...type.body, fontSize: type.size.sm, color: c.warning, flexShrink: 1 },
   });

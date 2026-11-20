@@ -18,7 +18,7 @@ export interface BrowserRouter {
 }
 
 /** True when Browse is in the tab bar right now. */
-export const browseTabShown = (): boolean => visibleTabs(getTabPrefs(), { assistantEnabled: false }).includes('browse');
+const browseTabShown = (): boolean => visibleTabs(getTabPrefs(), { assistantEnabled: false }).includes('browse');
 
 export function openBrowser(router: BrowserRouter, params?: OpenBrowserParams, mode: OpenBrowserMode = 'push'): void {
   const clean: Record<string, string> = {};

@@ -32,7 +32,7 @@ use tokio::time::MissedTickBehavior;
 use tracing::warn;
 
 use crate::activity::{ActivitySnapshot, ResolveRegistry};
-use crate::config::NativeConfig;
+use crate::config::{blocklist_status, count_plain_rules, BlocklistStatus, NativeConfig};
 use crate::error::{classify_add_error, classify_runtime_error, EngineError, ErrorCode};
 use crate::http_dl::{AddedDownload, Downloads, ProbeResult};
 use crate::file_health::{
@@ -88,6 +88,20 @@ impl Drop for ScanReset<'_> {
     fn drop(&mut self) {
         self.0.store(false, Ordering::SeqCst);
     }
+}
+
+/// Contract section 41 (B5): held until Kotlin has run its first governance pass after `nativeInit`, so no restored
+/// torrent or link download runs before the rules (VPN, Wi-Fi only, battery, schedule) have been judged. Kotlin
+/// releases it with `nativeSetTransfersAllowed(true, "startup")`. It is in memory only: every new engine adds it.
+pub const STARTUP_HOLD: &str = "startup";
+
+/// Contract section 41 (B5): the next session is built without DHT, the listening socket, local discovery and
+/// trackers. librqbit cannot stop those on a live session, so Kotlin sets this and cycles the session (shutdown, then
+/// `nativeInit`) when the VPN rule starts or stops blocking. Process-wide because `nativeInit` has no spare argument.
+static NETWORK_OFF: AtomicBool = AtomicBool::new(false);
+
+pub fn set_network_off(off: bool) {
+    NETWORK_OFF.store(off, Ordering::SeqCst);
 }
 
 /// The governance reasons that pause torrents. The `offline` tag is for URL downloads only.
@@ -399,12 +413,24 @@ pub struct ApplyConfigResult {
 }
 
 #[derive(Serialize)]
+pub struct EffectiveConfig {
+    #[serde(flatten)]
+    pub config: NativeConfig,
+    /// The saved config differs from the running session in a restart-required field (contract section 41, B4).
+    pub restart_pending: bool,
+    pub blocklist: BlocklistStatus,
+}
+
+#[derive(Serialize)]
 pub struct InitResult {
     pub stream_port: u16,
     pub torrents: usize,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub config_warning: Option<String>,
 }
+
+/// (path, file size, mtime, counted rules). See `MaglevEngine::blocklist_count_cache`.
+type BlocklistCountEntry = (String, u64, Option<SystemTime>, Option<usize>);
 
 pub struct MaglevEngine {
     runtime: Mutex<Option<Runtime>>,
@@ -413,7 +439,12 @@ pub struct MaglevEngine {
     api: Api,
     meta: Mutex<MetaStore>,
     config: Mutex<NativeConfig>,
+    /// The config this session was built with. `restart_pending` compares it with `config`.
+    session_config: NativeConfig,
     blocked: Mutex<Vec<String>>,
+    /// Rule count of a blocklist file the session did not load, keyed by (path, size, mtime) so a settings screen
+    /// that polls `effective_config` does not decode a tens-of-MB list each time. Leaf lock: never held across I/O.
+    blocklist_count_cache: Mutex<Option<BlocklistCountEntry>>,
     tick_lock: tokio::sync::Mutex<()>,
     last_save: Mutex<Instant>,
     stream: StreamServer,
@@ -508,8 +539,10 @@ fn join_warnings(existing: Option<String>, new: String) -> String {
     }
 }
 
-fn build_options(cfg: &NativeConfig, session_dir: &Path) -> SessionOptions {
-    let dht = if cfg.enable_dht {
+fn build_options(cfg: &NativeConfig, session_dir: &Path, network_off: bool) -> SessionOptions {
+    // Network off (section 41, B5): no DHT, no listening socket, no UPnP, no local discovery, no trackers. The
+    // torrents are all held by the VPN rule; the session only exists so the list, settings and files keep working.
+    let dht = if cfg.enable_dht && !network_off {
         Some(DhtSessionConfig {
             bootstrap_addrs: None,
             port: None,
@@ -540,13 +573,18 @@ fn build_options(cfg: &NativeConfig, session_dir: &Path) -> SessionOptions {
         persistence: Some(SessionPersistenceConfig::Json {
             folder: Some(session_dir.to_path_buf()),
         }),
-        listen: Some(ListenerOptions {
-            mode: ListenerMode::TcpOnly,
-            listen_addr: (Ipv4Addr::UNSPECIFIED, cfg.listen_port).into(),
-            enable_upnp_port_forwarding: cfg.enable_upnp,
-            ipv4_only: true,
-            ..Default::default()
-        }),
+        listen: if network_off {
+            None
+        } else {
+            Some(ListenerOptions {
+                mode: ListenerMode::TcpOnly,
+                listen_addr: (Ipv4Addr::UNSPECIFIED, cfg.listen_port).into(),
+                enable_upnp_port_forwarding: cfg.enable_upnp,
+                ipv4_only: true,
+                ..Default::default()
+            })
+        },
+        disable_trackers: network_off,
         connect: Some(ConnectionOptions {
             proxy_url: cfg.proxy_url.clone(),
             enable_tcp: true,
@@ -561,7 +599,7 @@ fn build_options(cfg: &NativeConfig, session_dir: &Path) -> SessionOptions {
         } else {
             None
         },
-        disable_local_service_discovery: !cfg.enable_lsd,
+        disable_local_service_discovery: !cfg.enable_lsd || network_off,
         ipv4_only: true,
         blocklist_url,
         ..Default::default()
@@ -608,7 +646,13 @@ impl MaglevEngine {
             }
         };
         meta.data.config = Some(cfg.clone());
-        let blocked = meta.data.blocked.clone();
+        // Section 41 (B5): nothing runs until Kotlin's first governance pass has released this hold.
+        let mut blocked = meta.data.blocked.clone();
+        if !blocked.iter().any(|r| r == STARTUP_HOLD) {
+            blocked.push(STARTUP_HOLD.to_string());
+            blocked.sort();
+        }
+        let network_off = NETWORK_OFF.load(Ordering::SeqCst);
 
         let runtime = tokio::runtime::Builder::new_multi_thread()
             .worker_threads(2)
@@ -627,7 +671,7 @@ impl MaglevEngine {
 
         let first = runtime.block_on(Session::new_with_opts(
             default_dir.clone(),
-            build_options(&cfg, &session_dir),
+            build_options(&cfg, &session_dir, network_off),
         ));
         let session = match first {
             Ok(s) => s,
@@ -640,7 +684,7 @@ impl MaglevEngine {
                     let retry_cfg = free_port_config(&cfg);
                     match runtime.block_on(Session::new_with_opts(
                         default_dir.clone(),
-                        build_options(&retry_cfg, &session_dir),
+                        build_options(&retry_cfg, &session_dir, network_off),
                     )) {
                         Ok(s) => {
                             warn!(
@@ -688,8 +732,10 @@ impl MaglevEngine {
             api: Api::new(session.clone(), None),
             session,
             meta: Mutex::new(meta),
+            session_config: cfg.clone(),
             config: Mutex::new(cfg),
             blocked: Mutex::new(blocked),
+            blocklist_count_cache: Mutex::new(None),
             tick_lock: tokio::sync::Mutex::new(()),
             last_save: Mutex::new(Instant::now()),
             stream,
@@ -2868,8 +2914,54 @@ impl MaglevEngine {
         Ok(ApplyConfigResult { restart_required })
     }
 
-    pub fn effective_config(&self) -> NativeConfig {
-        self.config.lock().clone()
+    pub fn effective_config(&self) -> EffectiveConfig {
+        let config = self.config.lock().clone();
+        let restart_pending = self.session_config.restart_required(&config);
+        let blocklist = self.blocklist_status_for(&config);
+        EffectiveConfig { config, restart_pending, blocklist }
+    }
+
+    /// Section 41 (B3). The running session knows how many rules it loaded; a file chosen after the session
+    /// started (a restart is pending) is counted from its text.
+    fn blocklist_status_for(&self, cfg: &NativeConfig) -> BlocklistStatus {
+        let path = match cfg.ip_filter_path.as_deref() {
+            Some(p) => p,
+            None => return blocklist_status(false, false, None),
+        };
+        let meta = std::fs::metadata(path).ok().filter(|m| m.is_file() && m.len() >= 2);
+        let usable = meta.is_some();
+        let rules = match meta {
+            None => None,
+            Some(m) => {
+                let loaded_here = self.session_config.ip_filter_path.as_deref() == Some(path);
+                // The session tried this path at start: its count is the truth, and 0 means it parsed nothing
+                // (a corrupt gzip included), so the file is unreadable. Never re-read and guess "on".
+                if loaded_here {
+                    Some(self.session.blocklist.len())
+                } else {
+                    let key = (path.to_string(), m.len(), m.modified().ok());
+                    let hit = self
+                        .blocklist_count_cache
+                        .lock()
+                        .as_ref()
+                        .filter(|e| e.0 == key.0 && e.1 == key.1 && e.2 == key.2)
+                        .map(|e| e.3);
+                    match hit {
+                        Some(n) => n,
+                        None => {
+                            // Chosen after the session started: count its text once per file version.
+                            let n = match std::fs::read(path) {
+                                Ok(bytes) => count_plain_rules(&bytes),
+                                Err(_) => Some(0),
+                            };
+                            *self.blocklist_count_cache.lock() = Some((key.0, key.1, key.2, n));
+                            n
+                        }
+                    }
+                }
+            }
+        };
+        blocklist_status(true, usable, rules)
     }
 
     pub fn set_transfers_allowed(&self, allowed: bool, reason: &str) -> Result<(), EngineError> {
@@ -2896,6 +2988,12 @@ impl MaglevEngine {
     pub fn set_network_metered(&self, metered: bool) {
         self.network_metered.store(metered, Ordering::Relaxed);
         self.downloads.set_metered(metered);
+    }
+
+    /// Kotlin's word that the default network changed to another live one (contract section 17.x): link downloads
+    /// reconnect on it. Torrents are untouched (the BitTorrent session finds the new route itself).
+    pub fn network_changed(&self) {
+        self.downloads.network_changed();
     }
 
     // ---- governance tick ------------------------------------------------------------------------

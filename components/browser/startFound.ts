@@ -4,6 +4,7 @@
  * The engine and the header builder are passed in so the function runs without React or native modules.
  */
 import type { DownloadOptions, EngineResult, UrlProbe } from '../../modules/maglev-engine/src/MaglevEngine.types';
+import { pageUrlOption } from './pageUrlOption';
 
 export interface StartDeps {
   headersFor: (t: { url: string; pageUrl: string; userAgent: string }) => Promise<NonNullable<DownloadOptions['headers']>>;
@@ -19,6 +20,6 @@ export async function startFound(
   const headers = await deps.headersFor(t);
   const probe = await deps.probeUrl(t.url, { headers });
   if (!probe.ok) return { ok: false, code: probe.code, message: probe.message };
-  const res = await deps.startDownload(t.url, { headers, ...extra });
+  const res = await deps.startDownload(t.url, { headers, ...pageUrlOption(t.pageUrl), ...extra });
   return res.ok ? { ok: true, id: res.id } : { ok: false, code: res.code, message: res.message };
 }

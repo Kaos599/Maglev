@@ -6,4 +6,6 @@
     <external-files-path name="external_files" path="." />
     <!-- Internal staging if no external storage exists -->
     <files-path name="internal_files" path="." />
+    <!-- Debug log export (cache/debug), shared through the share sheet -->
+    <cache-path name="debug_log" path="debug/" />
 </paths>

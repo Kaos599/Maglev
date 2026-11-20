@@ -8,7 +8,7 @@ import { Button } from '../../ui';
 import { Field } from './Field';
 
 /** OpenRouter's own page talks about a terminal; this is not one. */
-export const TERMINAL_NOTE = "OpenRouter's page may say to paste the code into a terminal. Paste it here in Maglev instead.";
+const TERMINAL_NOTE = "OpenRouter's page may say to paste the code into a terminal. Paste it here in Maglev instead.";
 
 /** Sign in with OpenRouter: the primary way to get a key (noKey, editing, invalid). */
 export function OpenRouterSignInButton({ onPress, primary = true }: { onPress: () => void; primary?: boolean }) {
@@ -95,8 +95,8 @@ export function OpenRouterCodeEntry({
 const makeStyles = (c: ThemeColors) =>
   StyleSheet.create({
     wrap: { gap: spacing.sm },
-    title: { ...type.bodyStrong, fontSize: 15, color: c.text },
-    caption: { ...type.body, fontSize: 12, lineHeight: 17, color: c.textMuted },
-    error: { ...type.body, fontSize: 12, color: c.danger },
+    title: { ...type.bodyStrong, fontSize: type.size.lg, color: c.text },
+    caption: { ...type.body, fontSize: type.size.sm, lineHeight: 17, color: c.textMuted },
+    error: { ...type.body, fontSize: type.size.sm, color: c.danger },
     actions: { flexDirection: 'row', gap: spacing.sm, justifyContent: 'flex-end' },
   });

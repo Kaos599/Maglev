@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { AppState, BackHandler, Linking, StyleSheet, TextInput, View } from 'react-native';
+import { AppState, BackHandler, Linking, StyleSheet, View } from 'react-native';
 import { FlashList } from '@shopify/flash-list';
 import { useFocusEffect, useIsFocused, useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -25,20 +25,19 @@ import { playTorrentById } from '../../components/detail/playActions';
 import { SortSheet } from '../../components/transfers/SortSheet';
 import { TeachingEmptyState } from '../../components/transfers/TeachingEmptyState';
 import { FILTERS, TransferFilter, countByFilter, downloadMatchesFilter, finishedTransfers, isHeldByFiles, magnetHash, matchesFilter, mergeTransfers, sortTorrents, type TransferItem } from '../../components/transfers/model';
-import { PixelIcon } from '../../components/PixelIcon';
-import { Banner, Button, EmptyBlock, IconButton } from '../../components/ui/index';
+import { Banner, Button, EmptyBlock, IconButton, TextField } from '../../components/ui/index';
 import { ProgressMotionContext, type ProgressMotion } from '../../components/ui/ProgressBar';
 import { steadyResolvingSecs } from '../../components/transfers/snapshots';
 import { lowSpaceWarning, usableFreeOf, type LowSpaceWarning } from '../../components/transfers/lowSpace';
 import { BlockBanner } from '../../components/transfers/BlockBanner';
 import { BlockContextProvider, queueLimitOf, useActiveBlocks } from '../../utils/blocks/useActiveBlocks';
 import * as DocumentPicker from 'expo-document-picker';
-import { maglevEngine, type DownloadSnapshot } from 'maglev-engine';
+import { maglevEngine, openQuickShare, type DownloadSnapshot } from 'maglev-engine';
 import { haptic } from '../../constants/haptics';
-import { useMaglevEngine, type TransferTelemetry } from '../../context/EngineContext';
+import { useEngineActions, useEngineState, useEngineTelemetry, type TransferTelemetry } from '../../context/EngineContext';
 import { useSettings } from '../../context/SettingsContext';
 import { useTheme } from '../../context/ThemeContext';
-import { ThemeColors, radius, spacing, type } from '../../constants/theme';
+import { ThemeColors, spacing } from '../../constants/theme';
 import { pickMainFile } from '../../utils/mainFile';
 import { takeNextShared } from '../../utils/shareQueue';
 import type { DownloadAction } from '../../utils/downloadCopy';
@@ -46,7 +45,7 @@ import { BulkVerb, bulkSummary, selectionKey, splitSelection } from '../../utils
 import { useSearchPrefs } from '../../utils/prefs/search';
 import { TransferSort, loadTransferSort, saveTransferSort } from '../../utils/prefs/transfers';
 import { empty, notices, playCopy } from '../../constants/copy';
-import { clipboardRoute } from '../../constants/clipboardCopy';
+import { clipboardRoute, clipboardUsesCard } from '../../constants/clipboardCopy';
 import { dismissClip, isDismissedClip } from '../../utils/prefs/clipboard';
 import { openBrowser } from '../../utils/browser/openBrowser';
 
@@ -96,8 +95,9 @@ export default function TransfersScreen() {
   const router = useRouter();
   const { settings } = useSettings();
   const [searchPrefs] = useSearchPrefs();
+  const { telemetry: liveTelemetry, downloads: liveDownloads } = useEngineTelemetry();
+  const { clipboardMagnet } = useEngineState();
   const {
-    telemetry: liveTelemetry,
     pauseTorrent,
     resumeTorrent,
     pauseAll,
@@ -106,14 +106,12 @@ export default function TransfersScreen() {
     removeTransfers,
     // The notice banner is drawn by the global toast host in the root layout; here we only raise notices.
     showNotice,
-    clipboardMagnet,
     clearClipboardMagnet,
-    downloads: liveDownloads,
     pauseDownload,
     resumeDownload,
     removeDownload,
     getFreeSpace,
-  } = useMaglevEngine();
+  } = useEngineActions();
   const focused = useIsFocused();
   const downloadActions = useDownloadActions();
   const subtitleAvail = useSubtitleAvailability();
@@ -196,20 +194,11 @@ export default function TransfersScreen() {
   // moment, so the numbers agree with each other (and the text changes every 30 s, not every tick).
   // Read again when the unfinished set changes. Unknown free space shows nothing.
   const [lowSpace, setLowSpace] = useState<LowSpaceWarning | null>(null);
-  // Link downloads count too: a known size is what they still need, an unknown one needs nothing yet.
-  const needRows = useMemo(
-    () => [
-      ...all,
-      ...downloads.map((d) => ({
-        finished: d.state === 'finished',
-        includedBytes: d.size ?? 0,
-        downloadedBytes: d.downloaded,
-      })),
-    ],
-    [all, downloads],
-  );
-  const allRef = useRef(needRows);
-  allRef.current = needRows;
+  // Link downloads count too (SM-35): see pendingNeedOf for which states and sizes.
+  const allRef = useRef(all);
+  allRef.current = all;
+  const downloadsRef = useRef(downloads);
+  downloadsRef.current = downloads;
   const unfinishedKey = useMemo(
     () =>
       [...all.filter((t) => !t.finished).map((t) => t.id), ...downloads.filter((d) => d.state !== 'finished').map((d) => `d:${d.id}`)].join(','),
@@ -222,7 +211,7 @@ export default function TransfersScreen() {
       if (AppState.currentState === 'background') return;
       void getFreeSpace()
         .then((res) => {
-          if (alive) setLowSpace(lowSpaceWarning(res.ok ? usableFreeOf(res) : null, allRef.current));
+          if (alive) setLowSpace(lowSpaceWarning(res.ok ? usableFreeOf(res) : null, allRef.current, downloadsRef.current));
         })
         .catch(() => {
           if (alive) setLowSpace(null);
@@ -424,8 +413,14 @@ export default function TransfersScreen() {
   const goAdd = useCallback(() => router.push('/add-torrent'), [router]);
   const addClipboard = useCallback(() => {
     if (!clipboardMagnet) return;
+    // A plain file link opens the same quick share card as a share from another app: one tap to Download.
+    if (clipboardUsesCard(clipboardMagnet) && openQuickShare(clipboardMagnet)) {
+      dismissClip(clipboardMagnet);
+      clearClipboardMagnet();
+      return;
+    }
     router.push(clipboardRoute(clipboardMagnet));
-  }, [clipboardMagnet, router]);
+  }, [clipboardMagnet, clearClipboardMagnet, router]);
   const dismissClipboard = useCallback(() => {
     if (clipboardMagnet) dismissClip(clipboardMagnet);
     clearClipboardMagnet();
@@ -540,20 +535,19 @@ export default function TransfersScreen() {
 
       {searchOpen && !selectionMode ? (
         <View style={styles.searchWrap}>
-          <View style={styles.searchField}>
-            <PixelIcon name="search" size={16} color={colors.textMuted} />
-            <TextInput
-              style={styles.searchInput}
-              placeholder="Filter by name"
-              placeholderTextColor={colors.textFaint}
-              value={query}
-              onChangeText={setQuery}
-              autoFocus
-              returnKeyType="search"
-              accessibilityLabel="Filter transfers by name"
-            />
-            {query.length > 0 ? <IconButton icon="close" size={16} accessibilityLabel="Clear filter text" onPress={() => setQuery('')} /> : null}
-          </View>
+          <TextField
+            leadingIcon="search"
+            clearable
+            clearLabel="Clear filter text"
+            size="lg"
+            mono
+            placeholder="Filter by name"
+            value={query}
+            onChangeText={setQuery}
+            autoFocus
+            returnKeyType="search"
+            accessibilityLabel="Filter transfers by name"
+          />
         </View>
       ) : null}
 
@@ -697,27 +691,9 @@ const makeStyles = (c: ThemeColors) =>
     root: { flex: 1, backgroundColor: c.bg },
     clearRow: { paddingHorizontal: spacing.lg, paddingBottom: spacing.sm },
     searchWrap: { paddingHorizontal: spacing.lg, paddingTop: spacing.sm },
-    searchField: {
-      minHeight: 44,
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: spacing.sm,
-      paddingLeft: spacing.md,
-      backgroundColor: c.surface,
-      borderWidth: 1,
-      borderColor: c.border,
-      borderRadius: radius.md,
-    },
-    searchInput: {
-      ...type.mono,
-      flex: 1,
-      fontSize: 13,
-      color: c.text,
-      paddingVertical: 0,
-    },
     fileError: { paddingHorizontal: spacing.lg, paddingBottom: spacing.sm },
     noMatch: { flex: 1, justifyContent: 'center' },
-    listContent: { paddingTop: spacing.xs, paddingBottom: 96 },
+    listContent: { paddingTop: spacing.xs, paddingBottom: 96 }, // design-exception: bottom inset clears the floating add button
   });
 
 export { ErrorBoundary } from '../../components/ErrorScreen';

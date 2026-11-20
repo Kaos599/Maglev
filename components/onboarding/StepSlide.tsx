@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef } from 'react';
 import { Animated, Easing, StyleSheet } from 'react-native';
 import { steppedRanges } from '../brand/markMotion';
+import { motion } from '../../constants/theme';
 import { useReduceMotion } from '../motion/useReduceMotion';
 
 /** How far the next step travels in from the side, in dp, one pixel-step at a time. */
@@ -23,7 +24,7 @@ export function StepSlide({ direction, children }: StepSlideProps) {
   useEffect(() => {
     const anim = Animated.timing(clock, {
       toValue: 1,
-      duration: reduce ? 120 : 200,
+      duration: reduce ? motion.duration.exit : motion.duration.base,
       easing: Easing.linear,
       useNativeDriver: true,
     });

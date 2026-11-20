@@ -32,13 +32,8 @@ export function subscribeLists(l: () => void): () => void {
   };
 }
 
-export function sourceEntry(id: string): SourceEntry | undefined {
+function sourceEntry(id: string): SourceEntry | undefined {
   return current?.sources[id];
-}
-
-/** Mirrors from the file for this provider, or null. */
-export function listMirrors(id: string): string[] | null {
-  return sourceEntry(id)?.mirrors ?? null;
 }
 
 /** Set when the file turned this source off (`enabled: false`); `note` is what Search providers shows. */
@@ -48,7 +43,7 @@ export function listDisabled(id: string): { note: string | null } | null {
 }
 
 /** The file's entry for a subtitle provider (section 36.9), or undefined. */
-export function subtitleEntry(id: string): SourceEntry | undefined {
+function subtitleEntry(id: string): SourceEntry | undefined {
   return current?.subtitles?.[id];
 }
 

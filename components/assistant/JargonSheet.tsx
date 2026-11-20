@@ -71,10 +71,10 @@ const makeStyles = (c: ThemeColors) =>
       paddingTop: spacing.sm,
     },
     grabber: { alignSelf: 'center', width: 36, height: 4, borderRadius: 2, backgroundColor: c.borderStrong, marginBottom: spacing.lg },
-    term: { ...type.monoBold, fontSize: 20, color: c.text },
+    term: { ...type.monoBold, fontSize: type.size.xxl, color: c.text },
     aka: { ...type.mono, fontSize: type.size.sm, color: c.textMuted, marginTop: spacing.xs },
     scroll: { flexGrow: 0, marginTop: spacing.lg },
     body: { gap: spacing.md, paddingBottom: spacing.lg },
-    copy: { ...type.body, fontSize: 14, lineHeight: 20, color: c.text },
+    copy: { ...type.body, fontSize: type.size.base, lineHeight: 20, color: c.text },
     phoneLabel: { ...type.bodyStrong, color: c.accentText },
   });

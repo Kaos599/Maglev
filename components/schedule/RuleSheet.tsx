@@ -132,7 +132,7 @@ export function RuleSheet({ visible, rule, isNew, onClose, onSave, onDelete }: R
 
 const makeStyles = (c: ThemeColors) =>
   StyleSheet.create({
-    label: { ...type.body, fontSize: 13, color: c.textMuted, marginTop: spacing.md, marginBottom: spacing.sm },
+    label: { ...type.body, fontSize: type.size.md, color: c.textMuted, marginTop: spacing.md, marginBottom: spacing.sm },
     wrap: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
     timeRow: { flexDirection: 'row', gap: spacing.md },
     time: {
@@ -146,10 +146,10 @@ const makeStyles = (c: ThemeColors) =>
       backgroundColor: c.bg,
       justifyContent: 'center',
     },
-    timeLabel: { ...type.body, fontSize: 12, color: c.textMuted },
-    timeValue: { ...type.mono, fontSize: 18, color: c.text },
-    note: { ...type.body, fontSize: 12, color: c.textMuted, marginTop: spacing.sm },
-    error: { ...type.body, fontSize: 13, color: c.danger, marginTop: spacing.sm },
+    timeLabel: { ...type.body, fontSize: type.size.sm, color: c.textMuted },
+    timeValue: { ...type.mono, fontSize: type.size.xl, color: c.text },
+    note: { ...type.body, fontSize: type.size.sm, color: c.textMuted, marginTop: spacing.sm },
+    error: { ...type.body, fontSize: type.size.md, color: c.danger, marginTop: spacing.sm },
     actions: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginTop: spacing.xl },
     spacer: { flex: 1 },
   });

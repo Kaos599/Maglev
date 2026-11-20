@@ -1,7 +1,8 @@
 import React, { useEffect, useMemo, useRef } from 'react';
 import { Animated, Pressable, StyleSheet } from 'react-native';
 import { useTheme } from '../../context/ThemeContext';
-import { ThemeColors } from '../../constants/theme';
+import { ThemeColors, motion } from '../../constants/theme';
+import { animateTo, useReduceMotion } from '../motion';
 import { haptic } from '../../constants/haptics';
 
 export interface ToggleProps {
@@ -20,11 +21,12 @@ const PAD = 4;
 export function Toggle({ value, onValueChange, accessibilityLabel, disabled = false, testID }: ToggleProps) {
   const { colors } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
+  const reduce = useReduceMotion();
   const x = useRef(new Animated.Value(value ? 1 : 0)).current;
 
   useEffect(() => {
-    Animated.timing(x, { toValue: value ? 1 : 0, duration: 140, useNativeDriver: true }).start();
-  }, [value, x]);
+    animateTo(x, value ? 1 : 0, motion.duration.fast, reduce);
+  }, [value, x, reduce]);
 
   return (
     <Pressable

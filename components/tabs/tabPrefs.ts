@@ -8,7 +8,7 @@
 export type TabId = 'index' | 'search' | 'feeds' | 'settings' | 'assistant' | 'browse';
 
 /** Today's bar, then the optional Browser. */
-export const TAB_IDS: readonly TabId[] = ['index', 'search', 'feeds', 'settings', 'assistant', 'browse'];
+const TAB_IDS: readonly TabId[] = ['index', 'search', 'feeds', 'settings', 'assistant', 'browse'];
 
 /** Tabs that cannot be hidden. */
 export const LOCKED_TABS: readonly TabId[] = ['index', 'settings'];

@@ -164,7 +164,7 @@ const makeStyles = (c: ThemeColors) =>
     row: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, minHeight: 56, backgroundColor: c.surface, borderWidth: 1, borderColor: c.border, borderRadius: radius.lg, paddingRight: spacing.sm },
     rowOn: { borderColor: c.accent },
     rowText: { flex: 1, gap: 2 },
-    name: { ...type.mono, fontSize: 13, color: c.text },
-    size: { ...type.mono, fontSize: 12, color: c.textMuted },
+    name: { ...type.mono, fontSize: type.size.md, color: c.text },
+    size: { ...type.mono, fontSize: type.size.sm, color: c.textMuted },
     bar: { padding: spacing.lg, borderTopWidth: 1, borderTopColor: c.border, backgroundColor: c.bg },
   });

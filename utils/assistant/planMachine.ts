@@ -64,7 +64,7 @@ export function planInitial(total: number): PlanState {
 }
 
 /** Indices that have not run yet after a halt at `step` (SM-39 "Not run"). */
-export function planNotRun(total: number, step: number): number[] {
+function planNotRun(total: number, step: number): number[] {
   const out: number[] = [];
   for (let i = step + 1; i < total; i++) out.push(i);
   return out;

@@ -1,9 +1,9 @@
 import React, { useMemo, useRef } from 'react';
 import { Animated, StyleSheet, Text, View } from 'react-native';
 import { useTheme } from '../../context/ThemeContext';
-import { ThemeColors, radius, type } from '../../constants/theme';
+import { ThemeColors, motion, radius, spacing, touch, type } from '../../constants/theme';
 import { PixelIcon, PixelIconName, PixelIconSize } from '../PixelIcon';
-import { animateTo, duration, useReduceMotion, useSnapOnActivate } from '../motion';
+import { animateTo, useReduceMotion, useSnapOnActivate } from '../motion';
 import { PressableScale } from './PressableScale';
 
 export interface IconButtonProps {
@@ -58,7 +58,7 @@ export function IconButton({
     <PressableScale
       onPress={() => {
         // Same guard as PressableScale: a press that navigates away can lose its onPressOut.
-        animateTo(press, 0, duration.release, reduce);
+        animateTo(press, 0, motion.duration.release, reduce);
         onPress?.();
       }}
       disabled={disabled}
@@ -67,8 +67,8 @@ export function IconButton({
       accessibilityLabel={accessibilityLabel}
       accessibilityState={{ disabled, selected }}
       feedback="sink"
-      onPressIn={() => animateTo(press, 1, duration.press, reduce)}
-      onPressOut={() => animateTo(press, 0, duration.release, reduce)}
+      onPressIn={() => animateTo(press, 1, motion.duration.press, reduce)}
+      onPressOut={() => animateTo(press, 0, motion.duration.release, reduce)}
       style={[styles.box, disabled && styles.disabled]}
     >
       <Animated.View style={{ transform: [{ scale: snap }] }}>
@@ -98,7 +98,7 @@ export function IconButton({
 
 const makeStyles = (c: ThemeColors) =>
   StyleSheet.create({
-    box: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center', borderRadius: radius.md },
+    box: { width: touch.min, height: touch.min, alignItems: 'center', justifyContent: 'center', borderRadius: radius.md },
     disabled: { opacity: 0.4 },
     badge: {
       position: 'absolute',
@@ -106,12 +106,12 @@ const makeStyles = (c: ThemeColors) =>
       right: 2,
       minWidth: 16,
       height: 16,
-      paddingHorizontal: 4,
-      borderRadius: 4,
+      paddingHorizontal: spacing.xs,
+      borderRadius: 4, // design-exception: badge corner radius 4 sits under half its fixed height
       backgroundColor: c.accent,
       alignItems: 'center',
       justifyContent: 'center',
     },
-    dot: { position: 'absolute', top: 8, right: 8, width: 8, height: 8, borderRadius: 4, backgroundColor: c.accent },
-    badgeText: { ...type.monoBold, fontSize: 10, color: c.onAccent },
+    dot: { position: 'absolute', top: 8, right: 8, width: 8, height: 8, borderRadius: 4, backgroundColor: c.accent }, // design-exception: dot is an 8 px circle, radius is half the size
+    badgeText: { ...type.monoBold, fontSize: 10, color: c.onAccent }, // design-exception: badge digit in a fixed-size badge, 11 would overflow
   });

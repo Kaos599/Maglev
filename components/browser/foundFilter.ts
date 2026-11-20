@@ -8,7 +8,7 @@ import { hostOf } from '../../utils/browserUrl.ts';
 
 export type FoundFilter = 'all' | FoundKind;
 
-export const FILTER_ORDER: readonly FoundFilter[] = ['all', 'video', 'audio', 'image', 'document', 'other'];
+const FILTER_ORDER: readonly FoundFilter[] = ['all', 'video', 'audio', 'image', 'document', 'other'];
 export const FILTER_LABEL: Record<FoundFilter, string> = {
   all: 'All',
   video: 'Video',
@@ -18,7 +18,7 @@ export const FILTER_LABEL: Record<FoundFilter, string> = {
   other: 'Other',
 };
 
-export const MAX_FOUND = 500;
+const MAX_FOUND = 500;
 const INSTALLER_EXT = new Set(['apk', 'exe', 'msi', 'dmg', 'bat', 'cmd', 'scr']);
 
 /** Adds new items to the list (newest last), skipping ids already there, keeping the newest MAX_FOUND. */
@@ -67,7 +67,7 @@ export function chosenFilter(choice: { key: string; filter: FoundFilter } | null
 const SECOND_LEVEL = new Set(['co', 'com', 'org', 'net', 'ac', 'gov', 'edu']);
 
 /** The site's own host without subdomains ("video.example.co.uk" gives "example.co.uk"). A short heuristic, not a suffix list. */
-export function registrableHost(url: string): string {
+function registrableHost(url: string): string {
   const host = hostOf(url);
   if (!host || /^[\d.]+$/.test(host) || host.startsWith('[')) return host;
   const labels = host.split('.');
@@ -82,8 +82,8 @@ export function sourceLabel(item: Pick<FoundItem, 'pageTitle' | 'pageUrl'>): str
   return item.pageTitle?.trim() || registrableHost(item.pageUrl);
 }
 
-export const SMALL_MEDIA_BYTES = 1024 * 1024;
-export const SMALL_IMAGE_BYTES = 50 * 1024;
+const SMALL_MEDIA_BYTES = 1024 * 1024;
+const SMALL_IMAGE_BYTES = 50 * 1024;
 
 /**
  * Splits out files too small to be what the user wants: video and audio under 1 MB, images under 50 KB.

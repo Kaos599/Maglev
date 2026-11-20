@@ -1,7 +1,7 @@
 import React, { useMemo } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { useTheme } from '../../context/ThemeContext';
-import { ThemeColors, alpha, radius, spacing, type } from '../../constants/theme';
+import { ThemeColors, alpha, radius, spacing, type, touch } from '../../constants/theme';
 import { PressableScale, Toggle } from '../ui';
 import type { ProviderInfo } from '../search/meta';
 
@@ -92,13 +92,13 @@ const makeStyles = (c: ThemeColors) =>
   StyleSheet.create({
     row: { flexDirection: 'row', alignItems: 'center', minHeight: 64, paddingHorizontal: spacing.md, gap: spacing.sm },
     divider: { borderTopWidth: 1, borderTopColor: c.border },
-    position: { ...type.mono, width: 18, fontSize: 12, color: c.textMuted, textAlign: 'center' },
+    position: { ...type.mono, width: 18, fontSize: type.size.sm, color: c.textMuted, textAlign: 'center' },
     main: { flex: 1, minHeight: 56 },
     mainInner: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, minHeight: 56 },
-    texts: { flex: 1, gap: 3 },
+    texts: { flex: 1, gap: spacing.xs },
     nameLine: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
-    name: { ...type.bodyStrong, fontSize: 15, color: c.text, flexShrink: 1 },
-    note: { ...type.body, fontSize: 12, lineHeight: 16 },
+    name: { ...type.bodyStrong, fontSize: type.size.lg, color: c.text, flexShrink: 1 },
+    note: { ...type.body, fontSize: type.size.sm, lineHeight: 16 },
     badge: {
       paddingHorizontal: spacing.sm - 2,
       paddingVertical: 1,
@@ -107,9 +107,9 @@ const makeStyles = (c: ThemeColors) =>
       borderColor: c.warning,
       backgroundColor: alpha(c.warning, 0.12),
     },
-    badgeText: { ...type.bodyStrong, fontSize: 11, color: c.warning },
-    check: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center', borderRadius: radius.md, borderWidth: 1, borderColor: c.accent },
-    checkText: { ...type.monoBold, fontSize: 16, color: c.accentText },
+    badgeText: { ...type.bodyStrong, fontSize: type.size.xs, color: c.warning },
+    check: { width: touch.min, height: touch.min, alignItems: 'center', justifyContent: 'center', borderRadius: radius.md, borderWidth: 1, borderColor: c.accent },
+    checkText: { ...type.monoBold, fontSize: type.size.xl, color: c.accentText },
     mono: {
       width: 36,
       height: 36,
@@ -121,5 +121,5 @@ const makeStyles = (c: ThemeColors) =>
       backgroundColor: c.surfaceRaised,
     },
     monoOff: { backgroundColor: 'transparent', borderColor: c.borderStrong, borderStyle: 'dashed' },
-    monoText: { ...type.monoBold, fontSize: 12 },
+    monoText: { ...type.monoBold, fontSize: type.size.sm },
   });

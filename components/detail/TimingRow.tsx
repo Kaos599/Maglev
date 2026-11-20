@@ -72,7 +72,7 @@ export function TimingRow({ timing, onOpen }: { timing: TimingInput; onOpen?: ()
 }
 
 /** The Timing sheet's rows. Rows with nothing to say are left out. */
-export function TimingDetails({ timing }: { timing: TimingInput }) {
+function TimingDetails({ timing }: { timing: TimingInput }) {
   const { colors } = useTheme();
   const s = useMemo(() => makeStyles(colors), [colors]);
   const v = timingView(timing, Date.now());
@@ -150,18 +150,18 @@ const makeStyles = (c: ThemeColors) =>
     chev: { width: 20 },
     k: { ...type.body, fontSize: type.size.xs, color: c.textMuted, marginBottom: 2 },
     v: { ...type.monoBold, fontSize: type.size.md, color: c.text },
-    trow: { minHeight: 48, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.md, paddingVertical: 10, borderTopWidth: 1, borderTopColor: c.border },
+    trow: { minHeight: 48, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.md, paddingVertical: spacing.md, borderTopWidth: 1, borderTopColor: c.border },
     first: { borderTopWidth: 0 },
-    tl: { ...type.body, fontSize: 13, color: c.textMuted },
-    tv: { ...type.mono, fontSize: 14, color: c.text, flexShrink: 1, textAlign: 'right' },
-    strip: { paddingVertical: spacing.md, gap: 10, borderTopWidth: 1, borderTopColor: c.border },
+    tl: { ...type.body, fontSize: type.size.md, color: c.textMuted },
+    tv: { ...type.mono, fontSize: type.size.base, color: c.text, flexShrink: 1, textAlign: 'right' },
+    strip: { paddingVertical: spacing.md, gap: spacing.md, borderTopWidth: 1, borderTopColor: c.border },
     hd: { flexDirection: 'row', justifyContent: 'space-between' },
-    hv: { ...type.mono, fontSize: 13, color: c.text },
+    hv: { ...type.mono, fontSize: type.size.md, color: c.text },
     lane: { height: 10, flexDirection: 'row', gap: 2 },
     seg: { height: 10, borderRadius: 2 },
-    keys: { flexDirection: 'row', flexWrap: 'wrap', columnGap: spacing.lg, rowGap: 6 },
-    key: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+    keys: { flexDirection: 'row', flexWrap: 'wrap', columnGap: spacing.lg, rowGap: spacing.sm },
+    key: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
     sw: { width: 8, height: 8, borderRadius: 2 },
-    kt: { ...type.body, fontSize: 12, color: c.textMuted },
-    kv: { ...type.mono, fontSize: 12, color: c.text },
+    kt: { ...type.body, fontSize: type.size.sm, color: c.textMuted },
+    kv: { ...type.mono, fontSize: type.size.sm, color: c.text },
   });

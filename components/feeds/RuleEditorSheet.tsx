@@ -1,9 +1,9 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import type { FeedRule } from 'maglev-engine';
 import { useTheme } from '../../context/ThemeContext';
 import { ThemeColors, radius, spacing, type } from '../../constants/theme';
-import { Button, Chip, ListRow, Sheet, Toggle } from '../ui';
+import { Button, Chip, ListRow, Sheet, TextField, Toggle } from '../ui';
 import type { Feed, FeedItem } from '../../utils/feeds';
 import { isInvalidPattern, matchItem } from '../../utils/feedRules';
 
@@ -53,16 +53,17 @@ export function RuleEditorSheet({ visible, rule, isNew, feeds, itemsByFeed, onCl
   return (
     <Sheet visible={visible} onClose={onClose} title={isNew ? 'New rule' : 'Edit rule'}>
       <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
-        <Text style={styles.label}>Name</Text>
-        <TextInput
-          style={styles.input}
-          value={draft.name}
-          onChangeText={(name) => set({ name })}
-          placeholder="For example, My show in 1080p"
-          placeholderTextColor={colors.textFaint}
-          selectionColor={colors.accent}
-          accessibilityLabel="Rule name"
-        />
+        <View style={styles.field}>
+          <TextField
+            onSurface
+            label="Name"
+            value={draft.name}
+            onChangeText={(name) => set({ name })}
+            placeholder="For example, My show in 1080p"
+            size="lg"
+            accessibilityLabel="Rule name"
+          />
+        </View>
 
         <Text style={styles.label}>Feeds to watch</Text>
         <View style={styles.wrap}>
@@ -72,35 +73,35 @@ export function RuleEditorSheet({ visible, rule, isNew, feeds, itemsByFeed, onCl
           ))}
         </View>
 
-        <Text style={styles.label}>Title must include</Text>
-        <TextInput
-          style={[styles.input, (badInclude || (noInclude && draft.include !== '')) && styles.inputError]}
-          value={draft.include}
-          onChangeText={(include) => set({ include })}
-          placeholder="show name 1080p"
-          placeholderTextColor={colors.textFaint}
-          autoCapitalize="none"
-          autoCorrect={false}
-          selectionColor={colors.accent}
-          accessibilityLabel="Words the title must include"
-        />
-        <Text style={styles.hint}>Every word must appear. Advanced: use /pattern/ for a pattern.</Text>
-        {badInclude ? <Text style={styles.error}>That pattern is not valid, so it matches nothing.</Text> : null}
+        <View style={styles.field}>
+          <TextField
+            onSurface
+            label="Title must include"
+            value={draft.include}
+            onChangeText={(include) => set({ include })}
+            placeholder="show name 1080p"
+            mono
+            size="lg"
+            help="Every word must appear. Advanced: use /pattern/ for a pattern."
+            error={badInclude ? 'That pattern is not valid, so it matches nothing.' : noInclude && draft.include !== '' ? 'Enter at least one word.' : undefined}
+            accessibilityLabel="Words the title must include"
+          />
+        </View>
 
-        <Text style={styles.label}>Skip titles with</Text>
-        <TextInput
-          style={[styles.input, badExclude && styles.inputError]}
-          value={draft.exclude}
-          onChangeText={(exclude) => set({ exclude })}
-          placeholder="cam hdts"
-          placeholderTextColor={colors.textFaint}
-          autoCapitalize="none"
-          autoCorrect={false}
-          selectionColor={colors.accent}
-          accessibilityLabel="Words that skip a title"
-        />
-        <Text style={styles.hint}>Any one word is enough to skip.</Text>
-        {badExclude ? <Text style={styles.error}>That pattern is not valid, so it skips nothing.</Text> : null}
+        <View style={styles.field}>
+          <TextField
+            onSurface
+            label="Skip titles with"
+            value={draft.exclude}
+            onChangeText={(exclude) => set({ exclude })}
+            placeholder="cam hdts"
+            mono
+            size="lg"
+            help="Any one word is enough to skip."
+            error={badExclude ? 'That pattern is not valid, so it skips nothing.' : undefined}
+            accessibilityLabel="Words that skip a title"
+          />
+        </View>
 
         <View style={styles.toggles}>
           <ListRow
@@ -164,26 +165,14 @@ export function RuleEditorSheet({ visible, rule, isNew, feeds, itemsByFeed, onCl
 
 const makeStyles = (c: ThemeColors) =>
   StyleSheet.create({
-    label: { ...type.body, fontSize: 13, color: c.textMuted, marginTop: spacing.md, marginBottom: spacing.sm },
+    label: { ...type.body, fontSize: type.size.md, color: c.textMuted, marginTop: spacing.md, marginBottom: spacing.sm },
     wrap: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
-    input: {
-      ...type.mono,
-      fontSize: 14,
-      minHeight: 48,
-      paddingHorizontal: spacing.lg,
-      borderRadius: radius.md,
-      borderWidth: 1,
-      borderColor: c.borderStrong,
-      backgroundColor: c.bg,
-      color: c.text,
-    },
-    inputError: { borderColor: c.danger },
-    hint: { ...type.body, fontSize: 12, color: c.textMuted, marginTop: spacing.xs },
-    error: { ...type.body, fontSize: 13, color: c.danger, marginTop: spacing.xs },
+    field: { marginTop: spacing.md },
+    hint: { ...type.body, fontSize: type.size.sm, color: c.textMuted, marginTop: spacing.xs },
     toggles: { marginTop: spacing.md },
     preview: { gap: spacing.xs, padding: spacing.md, borderRadius: radius.md, borderWidth: 1, borderColor: c.border, backgroundColor: c.bg },
-    previewCount: { ...type.bodyStrong, fontSize: 13, color: c.accentText },
-    previewItem: { ...type.mono, fontSize: 12, color: c.text },
+    previewCount: { ...type.bodyStrong, fontSize: type.size.md, color: c.accentText },
+    previewItem: { ...type.mono, fontSize: type.size.sm, color: c.text },
     actions: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginTop: spacing.xl },
     spacer: { flex: 1 },
   });

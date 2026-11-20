@@ -143,12 +143,12 @@ const makeStyles = (c: ThemeColors) =>
       overflow: 'hidden',
     },
     header: { paddingHorizontal: spacing.lg, paddingBottom: spacing.md },
-    title: { ...type.bodyStrong, fontSize: 17, color: c.text },
-    subtitle: { ...type.body, fontSize: 13, color: c.textMuted, marginTop: 4 },
+    title: { ...type.bodyStrong, fontSize: type.size.xl, color: c.text },
+    subtitle: { ...type.body, fontSize: type.size.md, color: c.textMuted, marginTop: spacing.xs },
     scroll: { flexGrow: 0, flexShrink: 1 },
     content: { paddingHorizontal: spacing.lg, paddingBottom: spacing.lg },
     note: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.sm, paddingVertical: spacing.xs },
-    noteText: { ...type.body, fontSize: 13, lineHeight: 18, color: c.textMuted, flex: 1 },
+    noteText: { ...type.body, fontSize: type.size.md, lineHeight: 18, color: c.textMuted, flex: 1 },
   });
 
 /** A little longer than the fade out (motion `base`), so the Modal's window is gone before `fn` runs. */

@@ -13,7 +13,7 @@ import { displayUrl, nameFromUrl, parseDownloadUrl, sanitizeFileName } from './d
  * codes as the Rust engine; only the bytes are invented. Never used in a release build (see MaglevNativeBridge).
  *
  * Words in a link steer the simulation, so every SM-30 row can be reached by hand:
- * `404` HTTP_STATUS, `auth` AUTH_REQUIRED, `.html` NOT_A_FILE, `offline` NETWORK, `expire` link expires half way
+ * `404` HTTP_STATUS, `auth` AUTH_REQUIRED (401), `refused` LINK_REFUSED (403), `.html` NOT_A_FILE, `offline` NETWORK, `expire` link expires half way
  * (needs_link), `changed` FILE_CHANGED half way, `noresume` a server without resume.
  */
 
@@ -36,6 +36,7 @@ export interface MockDownloadHooks {
 interface Item extends Omit<DownloadSnapshot, 'downLimitBps'> {
   url: string;
   limit: number;
+  pageUrl?: string | null;
   /** Ticks left in `resolving` before the probe answers. */
   resolveTicks: number;
   probeFail: { code: EngineErrorCode; message: string; httpStatus?: number } | null;
@@ -44,6 +45,18 @@ interface Item extends Omit<DownloadSnapshot, 'downLimitBps'> {
   needsRestart: boolean;
   /** NATIVE_CONTRACT 34.1: milliseconds spent in `downloading`. The seconds, finish time and byte counts live on the snapshot fields. */
   activeMs: number;
+}
+
+/** What the engine saves of a page URL: no query when a key looks like a secret, and nothing when it ends up empty. */
+export function cleanPageUrl(raw: string | undefined | null): string | null {
+  const t = (raw ?? '').trim();
+  if (!t) return null;
+  const q = t.indexOf('?');
+  if (q < 0) return t;
+  const secret = /(^|[^a-z0-9])(token|secret|password|passwd|pwd|signature|sig|session|sessionid|apikey|key|auth|jwt|sign)([^a-z0-9]|$)/i;
+  const query = t.slice(q + 1).split('#')[0];
+  const hit = query.split('&').some((kv) => secret.test(kv.split('=')[0] ?? ''));
+  return hit ? t.slice(0, q) || null : t;
 }
 
 function hash(s: string): number {
@@ -63,7 +76,8 @@ export function mockSizeFor(url: string): number {
 function probeFailure(url: string): Item['probeFail'] {
   const u = url.toLowerCase();
   if (u.includes('offline')) return { code: 'NETWORK', message: "Couldn't reach that link. Check your connection and the address." };
-  if (u.includes('auth')) return { code: 'AUTH_REQUIRED', message: 'This site wants you to sign in.', httpStatus: 403 };
+  if (u.includes('auth')) return { code: 'AUTH_REQUIRED', message: 'This site wants you to sign in.', httpStatus: 401 };
+  if (u.includes('refused')) return { code: 'LINK_REFUSED', message: 'The site refused this link. Open its page again, then retry.', httpStatus: 403 };
   if (u.includes('404')) return { code: 'HTTP_STATUS', message: "The file isn't there (404).", httpStatus: 404 };
   if (/\.html?(?:[?#]|$)/.test(u)) return { code: 'NOT_A_FILE', message: 'This link opens a web page, not a file.' };
   return null;
@@ -83,6 +97,8 @@ function errorFor(code: DownloadError['code'], httpStatus?: number): DownloadErr
       return { code, message: "Maglev can't write to that folder." };
     case 'AUTH_REQUIRED':
       return { code, message: 'This site wants you to sign in.', httpStatus: httpStatus ?? null };
+    case 'LINK_REFUSED':
+      return { code, message: 'The site refused this link. Open its page again, then retry.', httpStatus: httpStatus ?? null };
     case 'LINK_EXPIRED':
       return { code, message: 'Link expired', httpStatus: httpStatus ?? null };
     default:
@@ -116,6 +132,7 @@ export class MockDownloads {
         state: i.state,
         pausedBy: i.state === 'paused' ? i.pausedBy : null,
         allowedAnyway: i.allowedAnyway === true,
+        pageUrl: i.pageUrl ?? null,
         size: i.size,
         downloaded: i.downloaded,
         downBps: i.state === 'downloading' ? i.downBps : 0,
@@ -191,6 +208,7 @@ export class MockDownloads {
       error: null,
       notice: null,
       limit: options?.downLimitBps ?? 0,
+      pageUrl: cleanPageUrl(options?.pageUrl),
       resolveTicks: 1,
       probeFail: probeFailure(check.url),
       sawExpire: false,
@@ -290,6 +308,7 @@ export class MockDownloads {
     }
     i.url = check.url;
     i.urlDisplay = displayUrl(check.url);
+    if (options?.pageUrl !== undefined) i.pageUrl = cleanPageUrl(options.pageUrl);
     i.sawExpire = true; // do not expire again
     i.state = 'queued';
     i.error = null;
@@ -318,9 +337,9 @@ export class MockDownloads {
           changed = true;
           if (i.probeFail) {
             const f = i.probeFail;
-            if (f.code === 'AUTH_REQUIRED') {
+            if (f.code === 'AUTH_REQUIRED' || f.code === 'LINK_REFUSED') {
               i.state = 'needs_link';
-              i.error = errorFor('AUTH_REQUIRED', f.httpStatus);
+              i.error = errorFor(f.code, f.httpStatus);
             } else {
               i.state = 'error';
               i.error = errorFor(f.code as DownloadError['code'], f.httpStatus);

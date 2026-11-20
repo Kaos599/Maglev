@@ -21,7 +21,7 @@ type TimingFields = { activeSecs?: number; finishedAt?: number; sessionBytes?: n
 
 export const FLUSH_MS = 60_000;
 /** The engine's snapshot cadence (telemetry is about once a second). A gap longer than twice this counts as 2 ticks, never more. */
-export const TICK_MS = 1000;
+const TICK_MS = 1000;
 
 /**
  * Seconds to add for one snapshot tick (NATIVE_CONTRACT 34.3, 0.27): the wall-clock time since the previous tick while any

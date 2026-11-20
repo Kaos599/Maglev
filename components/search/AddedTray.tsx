@@ -1,7 +1,7 @@
 import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AccessibilityInfo, Animated, PanResponder, StyleSheet, Text, View, type LayoutChangeEvent } from 'react-native';
 import { useTheme } from '../../context/ThemeContext';
-import { ThemeColors, spacing, type } from '../../constants/theme';
+import { ThemeColors, motion, radius, spacing, type, touch } from '../../constants/theme';
 import { PixelIcon } from '../PixelIcon';
 import { PressableScale } from '../ui';
 import { easeOut, useReduceMotion } from '../motion';
@@ -32,8 +32,6 @@ import {
  * The "Added" message (docs/NATIVE_CONTRACT.md section 44.3). Layout from the approved page: padding 12 all round, radius 16,
  * a 40 dp tile centred on two 20-line text rows, and an action row 12 below it whose button starts at the tile's left edge.
  */
-const SLIDE_IN_MS = 180;
-const SLIDE_OUT_MS = 140;
 const SIDE_MARGIN = 12;
 const BOTTOM_GAP = 8;
 const DISMISS_DRAG = 40;
@@ -47,7 +45,7 @@ export interface TrayView {
   action: TrayAction;
 }
 
-export function trayView(s: TrayState, phases?: Record<string, RequestPhase | undefined>): TrayView {
+function trayView(s: TrayState, phases?: Record<string, RequestPhase | undefined>): TrayView {
   return { title: trayTitle(s), line: trayLine(s), muted: trayTileMuted(s), action: trayAction(s, phases) };
 }
 
@@ -85,7 +83,7 @@ function AddedTrayImpl({ view, onAsk, onStatus, onSkip, onView, onDismiss, onHol
         slide.setValue(1);
         return;
       }
-      Animated.timing(slide, { toValue: 1, duration: SLIDE_IN_MS, easing: easeOut, useNativeDriver: true }).start();
+      Animated.timing(slide, { toValue: 1, duration: motion.duration.focus, easing: easeOut, useNativeDriver: true }).start();
       return;
     }
     if (reduce) {
@@ -93,7 +91,7 @@ function AddedTrayImpl({ view, onAsk, onStatus, onSkip, onView, onDismiss, onHol
       setShown(null);
       return;
     }
-    Animated.timing(slide, { toValue: 0, duration: SLIDE_OUT_MS, easing: easeOut, useNativeDriver: true }).start(({ finished }) => {
+    Animated.timing(slide, { toValue: 0, duration: motion.duration.exit, easing: easeOut, useNativeDriver: true }).start(({ finished }) => {
       if (finished) setShown(null);
     });
     // Only whether there is a message decides the motion; its words change in place.
@@ -112,11 +110,11 @@ function AddedTrayImpl({ view, onAsk, onStatus, onSkip, onView, onDismiss, onHol
         onPanResponderRelease: (_e, g) => {
           holdRef.current(false);
           if (g.dy > DISMISS_DRAG || g.vy > 0.6) dismissRef.current();
-          else Animated.timing(drag, { toValue: 0, duration: 120, easing: easeOut, useNativeDriver: true }).start();
+          else Animated.timing(drag, { toValue: 0, duration: motion.duration.release, easing: easeOut, useNativeDriver: true }).start();
         },
         onPanResponderTerminate: () => {
           holdRef.current(false);
-          Animated.timing(drag, { toValue: 0, duration: 120, easing: easeOut, useNativeDriver: true }).start();
+          Animated.timing(drag, { toValue: 0, duration: motion.duration.release, easing: easeOut, useNativeDriver: true }).start();
         },
       }),
     [drag],
@@ -434,24 +432,24 @@ export function useAddedTray({ onView, onAnnounce, focused = true }: { onView: (
 const makeStyles = (c: ThemeColors) =>
   StyleSheet.create({
     wrap: { position: 'absolute', left: SIDE_MARGIN, right: SIDE_MARGIN, bottom: BOTTOM_GAP },
-    tray: { backgroundColor: c.surfaceRaised, borderWidth: 1, borderColor: c.border, borderRadius: 16, padding: 12 },
-    top: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-    tile: { width: 40, height: 40, borderRadius: 8, alignItems: 'center', justifyContent: 'center', backgroundColor: c.accent },
+    tray: { backgroundColor: c.surfaceRaised, borderWidth: 1, borderColor: c.border, borderRadius: radius.lg, padding: spacing.md },
+    top: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
+    tile: { width: 40, height: 40, borderRadius: radius.sm, alignItems: 'center', justifyContent: 'center', backgroundColor: c.accent },
     tileMuted: { backgroundColor: c.border },
     text: { flex: 1, minWidth: 0 },
-    title: { ...type.bodyStrong, fontSize: 15, lineHeight: 20, color: c.text },
-    line: { ...type.body, fontSize: 13, lineHeight: 20, color: c.textMuted },
+    title: { ...type.bodyStrong, fontSize: type.size.lg, lineHeight: 20, color: c.text },
+    line: { ...type.body, fontSize: type.size.md, lineHeight: 20, color: c.textMuted },
     viewTop: { marginRight: -12 },
-    actions: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 12 },
-    mainAct: { flex: 1, height: 40, paddingHorizontal: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, borderWidth: 1, borderColor: c.borderStrong, borderRadius: 8 },
-    moreAct: { height: 40, paddingHorizontal: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, borderWidth: 1, borderColor: c.borderStrong, borderRadius: 8 },
-    mainText: { ...type.bodyStrong, fontSize: 14, color: c.text },
+    actions: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginTop: spacing.md },
+    mainAct: { flex: 1, height: 40, paddingHorizontal: spacing.md, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.sm, borderWidth: 1, borderColor: c.borderStrong, borderRadius: radius.sm },
+    moreAct: { height: 40, paddingHorizontal: spacing.md, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.sm, borderWidth: 1, borderColor: c.borderStrong, borderRadius: radius.sm },
+    mainText: { ...type.bodyStrong, fontSize: type.size.base, color: c.text },
     stateOuter: { flex: 1, minWidth: 0 },
-    state: { minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 8 },
-    stateText: { ...type.body, fontSize: 13, color: c.text, flexShrink: 1 },
+    state: { minHeight: touch.min, flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+    stateText: { ...type.body, fontSize: type.size.md, color: c.text, flexShrink: 1 },
     spacer: { flex: 1 },
-    skipAct: { height: 40, minWidth: 44, paddingHorizontal: 12, alignItems: 'center', justifyContent: 'center', borderRadius: 8 },
-    skipText: { ...type.bodyStrong, fontSize: 14, color: c.textMuted },
-    viewAct: { height: 40, minWidth: 44, paddingHorizontal: 12, alignItems: 'center', justifyContent: 'center', borderRadius: 8 },
-    viewText: { ...type.bodyStrong, fontSize: 14, color: c.accentText },
+    skipAct: { height: 40, minWidth: touch.min, paddingHorizontal: spacing.md, alignItems: 'center', justifyContent: 'center', borderRadius: radius.sm },
+    skipText: { ...type.bodyStrong, fontSize: type.size.base, color: c.textMuted },
+    viewAct: { height: 40, minWidth: touch.min, paddingHorizontal: spacing.md, alignItems: 'center', justifyContent: 'center', borderRadius: radius.sm },
+    viewText: { ...type.bodyStrong, fontSize: type.size.base, color: c.accentText },
   });

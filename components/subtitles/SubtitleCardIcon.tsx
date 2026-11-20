@@ -5,6 +5,7 @@ import type { ThemeColors } from '../../constants/theme';
 import { PixelIcon } from '../PixelIcon';
 import { PressableScale } from '../ui';
 import { cardIconLabel, type CardIconModel } from './flow';
+import { radius } from '../../constants/theme';
 
 interface Props {
   model: CardIconModel;
@@ -13,7 +14,7 @@ interface Props {
 
 /** One badge cell is 2 dp (NATIVE_CONTRACT 44.8). Rows run top to bottom, `#` is a filled cell. */
 const CELL = 2;
-export const BADGE_BITMAPS = {
+const BADGE_BITMAPS = {
   /** A check mark, 5 x 4 cells. */
   saved: ['....#', '...#.', '#.#..', '.#...'],
   /** A question mark, 3 x 5 cells. */
@@ -76,7 +77,7 @@ export const SubtitleCardIcon = memo(SubtitleCardIconImpl, (a, b) => a.onPress =
 const makeStyles = (c: ThemeColors) =>
   StyleSheet.create({
     box: { width: 28, height: 28, alignItems: 'center', justifyContent: 'center' },
-    ring: { position: 'absolute', width: 28, height: 28, borderRadius: 14, borderWidth: 1, borderStyle: 'dotted' },
+    ring: { position: 'absolute', width: 28, height: 28, borderRadius: radius.lg, borderWidth: 1, borderStyle: 'dotted' },
     // A card-coloured patch under the badge keeps it readable over the glyph.
     badge: { position: 'absolute', top: -2, right: -2, padding: 1, backgroundColor: c.surface },
     row: { flexDirection: 'row' },

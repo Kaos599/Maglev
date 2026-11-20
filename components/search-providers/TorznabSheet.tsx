@@ -1,8 +1,8 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { StyleSheet, Text, TextInput, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 import { useTheme } from '../../context/ThemeContext';
-import { ThemeColors, radius, spacing, touch, type } from '../../constants/theme';
-import { Button, Sheet } from '../ui';
+import { ThemeColors, spacing, type } from '../../constants/theme';
+import { Button, Sheet, TextField } from '../ui';
 import { notices } from '../../constants/copy';
 
 export interface TorznabDraft {
@@ -60,16 +60,13 @@ export function TorznabSheet({
 
   const field = (label: string, value: string, set: (v: string) => void, extra: object, placeholder: string) => (
     <View style={styles.group}>
-      <Text style={styles.label}>{label}</Text>
-      <TextInput
+      <TextField
+        onSurface
+        label={label}
         value={value}
         onChangeText={set}
-        style={styles.input}
         placeholder={placeholder}
-        placeholderTextColor={colors.textFaint}
-        selectionColor={colors.accent}
-        autoCapitalize="none"
-        autoCorrect={false}
+        mono
         accessibilityLabel={label}
         {...extra}
       />
@@ -79,9 +76,8 @@ export function TorznabSheet({
   return (
     <Sheet visible={visible} onClose={onClose} title="Connect an indexer" subtitle="Jackett or Prowlarr, on your network or hosted.">
       {field('Name', name, setName, { returnKeyType: 'next' }, 'My Jackett')}
-      {field('Address', url, setUrl, { keyboardType: 'url', returnKeyType: 'next' }, 'http://192.168.1.20:9117/api/v2.0/indexers/all/results/torznab')}
+      {field('Address', url, setUrl, { keyboardType: 'url', returnKeyType: 'next', error: url.length > 0 && !validUrl(cleanUrl) ? 'The address must start with http:// or https://' : undefined }, 'http://192.168.1.20:9117/api/v2.0/indexers/all/results/torznab')}
       {field('API key', apiKey, setApiKey, { secureTextEntry: true, returnKeyType: 'done', onSubmitEditing: submit }, 'Paste from your server')}
-      {url.length > 0 && !validUrl(cleanUrl) ? <Text style={styles.error}>The address must start with http:// or https://</Text> : null}
       {error ? (
         <Text style={styles.error} accessibilityLiveRegion="polite">
           {error}
@@ -98,18 +94,6 @@ export function TorznabSheet({
 const makeStyles = (c: ThemeColors) =>
   StyleSheet.create({
     group: { gap: spacing.xs, marginBottom: spacing.md },
-    label: { ...type.bodyStrong, fontSize: 12, color: c.textMuted },
-    input: {
-      ...type.mono,
-      minHeight: touch.min,
-      paddingHorizontal: spacing.md,
-      fontSize: 14,
-      color: c.text,
-      backgroundColor: c.bg,
-      borderWidth: 1,
-      borderColor: c.borderStrong,
-      borderRadius: radius.md,
-    },
-    error: { ...type.body, fontSize: 12, color: c.danger, marginBottom: spacing.sm },
+    error: { ...type.body, fontSize: type.size.sm, color: c.danger, marginBottom: spacing.sm },
     actions: { flexDirection: 'row', justifyContent: 'flex-end', gap: spacing.sm },
   });

@@ -145,9 +145,9 @@ async function main() {
       { finished: false, includedBytes: 2 * GB, downloadedBytes: 2 * GB },
       { finished: true, includedBytes: 50 * GB, downloadedBytes: 50 * GB },
       { finished: false, includedBytes: 1 * GB, downloadedBytes: 3 * GB },
-    ]) === 6 * GB,
+    ], []) === 6 * GB,
   );
-  check('pendingNeed counts a torrent with unknown included bytes as 0', adm.pendingNeedOf([{ finished: false, downloadedBytes: 5 }]) === 0);
+  check('pendingNeed counts a torrent with unknown included bytes as 0', adm.pendingNeedOf([{ finished: false, downloadedBytes: 5 }], []) === 0);
   check('one-tap Fits adds', adm.oneTapDecision('Fits') === 'add');
   check('one-tap Tight adds with a notice', adm.oneTapDecision('Tight') === 'addWithNotice');
   check('one-tap DoesntFit opens the file sheet', adm.oneTapDecision('DoesntFit') === 'openSheet');

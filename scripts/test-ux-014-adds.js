@@ -15,7 +15,7 @@ const check = (ok, msg) => {
 const layout = read('app/_layout.tsx');
 const host = fs.existsSync(path.join(root, 'components/ui/NoticeHost.tsx')) ? read('components/ui/NoticeHost.tsx') : '';
 check(/NoticeHost/.test(layout) && /<NoticeHost/.test(layout), '_layout renders <NoticeHost />');
-check(/useMaglevEngine/.test(host) && /<Banner/.test(host) && /dismissNotice/.test(host) && /actionLabel/.test(host) && /onAction/.test(host),
+check(/useEngineNotice/.test(host) && /<Banner/.test(host) && /dismissNotice/.test(host) && /actionLabel/.test(host) && /onAction/.test(host),
   'NoticeHost reads the engine notice and renders a Banner with action and dismiss');
 check(/useSafeAreaInsets/.test(host), 'NoticeHost is safe-area aware');
 

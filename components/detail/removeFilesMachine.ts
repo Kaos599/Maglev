@@ -177,8 +177,3 @@ export function removeFilesStep(state: RemoveFilesState, event: RemoveFilesEvent
     }
   }
 }
-
-/** Reducer form for React's useReducer: the state half of `removeFilesStep`. */
-export function removeFilesReducer(state: RemoveFilesState, event: RemoveFilesEvent): RemoveFilesState {
-  return removeFilesStep(state, event).state;
-}

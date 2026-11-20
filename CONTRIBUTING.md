@@ -18,7 +18,9 @@ Bug fixes don't need approval first, but please link the bug report if there is 
 
 Use **About → Report a bug** in the app. It opens a GitHub issue with your Maglev version, Android version and phone filled in. You can also open one directly with the [bug report form](https://github.com/Kaos599/Maglev/issues/new?template=bug.yml).
 
-Security problems go through [private reporting](https://github.com/Kaos599/Maglev/security/advisories/new), not public issues.
+Security problems go through [private reporting](https://github.com/Kaos599/Maglev/security/advisories/new), not public issues. [SECURITY.md](SECURITY.md) says what to include.
+
+Everyone in issues and pull requests follows the [code of conduct](CODE_OF_CONDUCT.md).
 
 ## Setting up
 
@@ -54,6 +56,7 @@ Some checks read design documents that aren't in this repository. Those checks s
 
 - **No fake data in release builds.** If the engine doesn't know a value, show it as unknown ("—"), never a guess.
 - **Plain English in the app.** "Waiting for Wi-Fi", not "Network policy gate". No raw hashes on normal screens.
+- **Follow [DESIGN.md](DESIGN.md)** for new screens: tokens, components, patterns and a checklist.
 - **Colours and fonts come from the theme** (`useTheme()`, `type.heading`, `type.body`, `type.mono`). No hex values outside `constants/`.
 - **One icon set:** Pixelarticons, through `components/PixelIcon.tsx`.
 - **Touch targets of at least 44 × 44.**

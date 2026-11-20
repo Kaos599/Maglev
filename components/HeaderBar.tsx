@@ -112,7 +112,7 @@ const makeStyles = (c: ThemeColors) =>
     },
     // zIndex: the mark flies over the action buttons when tapped.
     brand: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: spacing.md, paddingLeft: spacing.sm, zIndex: 1 },
-    brandTitle: { ...type.brand, fontSize: 14, color: c.text },
+    brandTitle: { ...type.brand, fontSize: type.size.base, color: c.text },
     actions: { flexDirection: 'row', alignItems: 'center' },
-    selectedText: { ...type.bodyStrong, fontSize: 17, color: c.text, flex: 1, marginLeft: spacing.xs },
+    selectedText: { ...type.bodyStrong, fontSize: type.size.xl, color: c.text, flex: 1, marginLeft: spacing.xs },
   });

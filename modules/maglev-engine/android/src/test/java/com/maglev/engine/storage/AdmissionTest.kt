@@ -27,11 +27,58 @@ class AdmissionTest {
         assertTrue("fixture is empty", arr.length() >= 10)
         for (i in 0 until arr.length()) {
             val v = arr.getJSONObject(i)
+            // A vector gives either a ready pendingNeed or the torrents and link downloads it is computed from.
+            val pending = if (v.has("pendingNeed")) v.getLong("pendingNeed") else {
+                var need = 0L
+                val ts = v.getJSONArray("torrents")
+                for (j in 0 until ts.length()) {
+                    val t = ts.getJSONObject(j)
+                    need += Admission.torrentNeed(t.getBoolean("finished"), t.getLong("includedBytes"), t.getLong("downloadedBytes"))
+                }
+                val ds = v.getJSONArray("downloads")
+                for (j in 0 until ds.length()) {
+                    val d = ds.getJSONObject(j)
+                    need += Admission.downloadNeed(
+                        d.getString("state"),
+                        if (d.isNull("size")) null else d.getLong("size"),
+                        d.getLong("downloaded"),
+                        if (d.isNull("errorCode")) null else d.getString("errorCode"),
+                        if (d.isNull("httpStatus")) null else d.getInt("httpStatus"),
+                    )
+                }
+                assertEquals("vector $i (${v.getString("name")}) pending need", v.getLong("expectPendingNeed"), need)
+                need
+            }
             val out = Admission.admit(
-                v.getLong("freeBytes"), v.getLong("pendingNeed"), v.getInt("stagingFactor"), v.getLong("selectionBytes"),
+                v.getLong("freeBytes"), pending, v.getInt("stagingFactor"), v.getLong("selectionBytes"),
             )
             assertEquals("vector $i (${v.getString("name")})", v.getString("expect"), out.result.name)
         }
+    }
+
+    @Test fun pendingNeedFromNativeList() {
+        val gb = 1024L * 1024 * 1024
+        val list = mapOf<String, Any?>(
+            "ok" to true,
+            "torrents" to listOf(
+                mapOf("finished" to false, "total_bytes" to 4 * gb, "progress_bytes" to 1 * gb),
+                mapOf("finished" to true, "total_bytes" to 9 * gb, "progress_bytes" to 9 * gb),
+                // No `finished` flag: judged by progress.
+                mapOf("total_bytes" to 2 * gb, "progress_bytes" to 2 * gb),
+            ),
+            "downloads" to listOf(
+                mapOf("state" to "downloading", "size" to 5 * gb, "downloaded" to 1 * gb),
+                mapOf("state" to "paused", "size" to 3 * gb, "downloaded" to 0L),
+                mapOf("state" to "finished", "size" to 7 * gb, "downloaded" to 7 * gb),
+                mapOf("state" to "needs_link", "size" to 7 * gb, "downloaded" to 1 * gb),
+                mapOf("state" to "downloading", "size" to null, "downloaded" to 1 * gb),
+                mapOf("state" to "error", "size" to 6 * gb, "downloaded" to 0L, "error" to mapOf("code" to "HTTP_STATUS", "http_status" to 404)),
+                mapOf("state" to "error", "size" to 1 * gb, "downloaded" to 0L, "error" to mapOf("code" to "HTTP_STATUS", "http_status" to 503)),
+            ),
+        )
+        // 3 (torrent) + 4 + 3 (links) + 1 (503 retry)
+        assertEquals(11 * gb, Admission.pendingNeedFromList(list))
+        assertEquals(0L, Admission.pendingNeedFromList(mapOf("ok" to true)))
     }
 
     @Test fun budgetAndLeftAfter() {

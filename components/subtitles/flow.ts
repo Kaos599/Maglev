@@ -71,7 +71,7 @@ export interface EntryInput {
 
 /** Hidden when off, no source is on, not a video, or still joining. Nothing on disk yet shows disabled. */
 // NATIVE_CONTRACT 42.1
-export function entryMode(i: EntryInput): EntryMode {
+function entryMode(i: EntryInput): EntryMode {
   if (!i.master || i.sourcesOn < 1 || !i.isVideo || i.joining) return 'hidden';
   return i.started ? 'enabled' : 'disabled';
 }
@@ -179,7 +179,7 @@ export async function hashIfComplete(
   }
 }
 
-export function errorCodeOf(e: unknown): string {
+function errorCodeOf(e: unknown): string {
   const o = e as { code?: unknown; message?: unknown } | null;
   if (o && typeof o.code === 'string') return o.code;
   const m = typeof o?.message === 'string' ? /\b(NAME_TAKEN|REPLACE_DENIED|CANT_WRITE|NO_SPACE|VERIFY_FAILED|NOT_FOUND|FILE_TOO_SMALL|ARCHIVE_UNSAFE|IO)\b/.exec(o.message) : null;
@@ -231,7 +231,7 @@ export function errorFromThrown(e: unknown, a: { source?: string; language?: str
 const NETWORK_TEXT = /network request failed|network error|failed to fetch|no internet|offline/i;
 
 /** The source that did not answer, by name, for the "{Source} isn't responding" sentence. */
-export function failedSources(sources: readonly SubtitleSourceStatus[]): SubtitleSourceStatus[] {
+function failedSources(sources: readonly SubtitleSourceStatus[]): SubtitleSourceStatus[] {
   return sources.filter((s) => s.state === 'timeout' || s.state === 'error' || s.state === 'challenge' || s.state === 'limit');
 }
 

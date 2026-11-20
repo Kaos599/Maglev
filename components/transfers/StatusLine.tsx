@@ -1,11 +1,11 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { useTheme } from '../../context/ThemeContext';
 import { ThemeColors, monoSlotWidth, spacing, type } from '../../constants/theme';
 
 /** Status line font size; the value slot is sized in Space Mono glyphs at this size. */
-export const STATUS_SIZE = 12;
-export const STATUS_LINE = 18;
+const STATUS_SIZE = 12;
+const STATUS_LINE = 18;
 
 /**
  * Widest strings each value slot holds, in glyphs: "0.98 MB/s", "↑ 0.98 MB/s", "1023.9 GB". A speed is 3 significant
@@ -38,6 +38,8 @@ export function toneColor(tone: LineTone, c: ThemeColors): string {
  */
 export function StatusLine({ status, overlay }: { status: StatusLineModel; overlay?: React.ReactNode }) {
   const { colors } = useTheme();
+  // `colors` is a new object on every theme or font-style change (ThemeContext), so this also follows a live font switch.
+  const styles = useMemo(() => makeStyles(), [colors]);
   const { fontScale } = useWindowDimensions();
   const color = toneColor(status.tone, colors);
   const chars = SLOT_CHARS[status.slot ?? 'speed'];
@@ -70,13 +72,14 @@ export function StatusLine({ status, overlay }: { status: StatusLineModel; overl
   );
 }
 
-const styles = StyleSheet.create({
-  // One line, always present, at a fixed minimum height: rows never grow or shrink as the text changes.
-  row: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, minHeight: STATUS_LINE },
-  left: { flex: 1, flexShrink: 1, flexDirection: 'row', alignItems: 'center' },
-  text: { ...type.mono, fontSize: STATUS_SIZE, lineHeight: STATUS_LINE },
-  lead: { flexShrink: 1 },
-  pct: { flexShrink: 0 },
-  slot: { flexShrink: 0, flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end' },
-  value: { textAlign: 'right' },
-});
+const makeStyles = () =>
+  StyleSheet.create({
+    // One line, always present, at a fixed minimum height: rows never grow or shrink as the text changes.
+    row: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, minHeight: STATUS_LINE },
+    left: { flex: 1, flexShrink: 1, flexDirection: 'row', alignItems: 'center' },
+    text: { ...type.mono, fontSize: STATUS_SIZE, lineHeight: STATUS_LINE },
+    lead: { flexShrink: 1 },
+    pct: { flexShrink: 0 },
+    slot: { flexShrink: 0, flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end' },
+    value: { textAlign: 'right' },
+  });

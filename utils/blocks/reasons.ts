@@ -142,7 +142,7 @@ function rank(tag: string): number {
 }
 
 /** Blocks sorted by banner order. */
-export function sortBlocks(blocks: readonly ActiveBlock[]): ActiveBlock[] {
+function sortBlocks(blocks: readonly ActiveBlock[]): ActiveBlock[] {
   return [...blocks].sort((a, b) => rank(a.tag) - rank(b.tag));
 }
 

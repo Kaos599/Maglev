@@ -136,5 +136,5 @@ const makeStyles = (c: ThemeColors) =>
   StyleSheet.create({
     wrap: { gap: spacing.sm },
     sheetBody: { gap: spacing.md },
-    empty: { ...type.body, fontSize: 13, color: c.textMuted, paddingVertical: spacing.lg },
+    empty: { ...type.body, fontSize: type.size.md, color: c.textMuted, paddingVertical: spacing.lg },
   });

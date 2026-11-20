@@ -9,7 +9,7 @@ export const ID = 'showrss';
 export const CACHE_MS = 10 * 60 * 1000;
 
 /** Lowercase, accents and punctuation removed: "90 Day Fiancé: The Other Way" -> "90 day fiance the other way". */
-export function normalizeText(s: string): string {
+function normalizeText(s: string): string {
   return s
     .normalize('NFKD')
     .replace(/[̀-ͯ]/g, '')

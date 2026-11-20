@@ -18,7 +18,7 @@ function speedLimitBps(preset: MaglevSettings['bandwidth']['downloadPreset'], cu
 }
 
 /** True when a proxy is enabled but its type is not SOCKS5 (the engine accepts socks5/socks5h only). */
-export function proxyUnsupported(proxy: MaglevSettings['network']['proxy']): boolean {
+function proxyUnsupported(proxy: MaglevSettings['network']['proxy']): boolean {
   return proxy.enabled && proxy.type !== 'SOCKS5';
 }
 
@@ -26,7 +26,7 @@ export function proxyUnsupported(proxy: MaglevSettings['network']['proxy']): boo
  * Builds `socks5h://user:pass@host:port` (remote DNS) with URL-encoded credentials.
  * Null when the proxy is off or its type is unsupported; check `proxyUnsupported` to tell the user why.
  */
-export function buildProxyUrl(proxy: MaglevSettings['network']['proxy']): string | null {
+function buildProxyUrl(proxy: MaglevSettings['network']['proxy']): string | null {
   if (!proxy.enabled || proxyUnsupported(proxy) || !proxy.host.trim() || !(proxy.port > 0)) return null;
   const scheme = 'socks5h';
   const user = proxy.username ? encodeURIComponent(proxy.username) : '';
@@ -99,5 +99,7 @@ export function restartReasons(prev: NativeConfig, next: NativeConfig): string[]
   if (prev.enable_dht !== next.enable_dht) reasons.push('dht');
   if (prev.enable_upnp !== next.enable_upnp) reasons.push('upnp');
   if (prev.proxy_url !== next.proxy_url) reasons.push('proxy');
+  if (prev.enable_lsd !== next.enable_lsd) reasons.push('local peer discovery');
+  if (prev.ip_filter_path !== next.ip_filter_path) reasons.push('blocklist');
   return reasons;
 }

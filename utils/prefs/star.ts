@@ -37,7 +37,7 @@ export function getStarState(): StarState {
   return cache;
 }
 
-export function setStarState(next: StarState): StarState {
+function setStarState(next: StarState): StarState {
   cache = normalizeStarState(next);
   try {
     kvSet(KEY, JSON.stringify(cache));

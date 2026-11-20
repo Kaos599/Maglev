@@ -24,7 +24,7 @@ export function HistorySuggestions({ text, skip, onPick }: { text: string; skip?
   const [prefs] = useBrowserPrefs();
   const [rows, setRows] = useState<HistoryEntry[]>([]);
   const seq = useRef(0);
-  const enabled = prefs.suggestFromHistory;
+  const enabled = prefs.suggestFromHistory && !prefs.privateBrowsing; // suggestions are hidden while private
   const query = text.trim();
   const active = enabled && query !== '' && query !== (skip ?? '').trim();
 

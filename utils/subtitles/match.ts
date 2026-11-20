@@ -209,11 +209,6 @@ export function joinBase(base: string, path: string): string {
   return base.replace(/\/+$/, '') + (path.startsWith('/') ? path : `/${path}`);
 }
 
-/** The ProviderError a source's "limit reached" page becomes (429 so the app shows the limit message). */
-export function limitError(message = 'Daily limit reached'): ProviderError {
-  return new ProviderError('http', message, 429);
-}
-
 /** A JSON array body as a list of loose objects; anything else (a page, an object) is an empty list. */
 export function parseJsonList(body: string): any[] {
   try {

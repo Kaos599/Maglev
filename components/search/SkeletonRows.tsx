@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef } from 'react';
 import { Animated, StyleSheet, View } from 'react-native';
 import { useTheme } from '../../context/ThemeContext';
-import { ThemeColors, radius, spacing } from '../../constants/theme';
+import { ThemeColors, motion, radius, spacing, touch } from '../../constants/theme';
 import { useReduceMotion } from '../motion/useReduceMotion';
 
 /** Rows shown before the first result arrives. ResultRow's minimum height, so nothing shifts when results replace them. */
@@ -25,7 +25,7 @@ export function SkeletonRows({ count = SKELETON_FIRST_COUNT }: { count?: number 
       opacity.setValue(1);
       return;
     }
-    const fade = Animated.timing(opacity, { toValue: 1, duration: 180, useNativeDriver: true });
+    const fade = Animated.timing(opacity, { toValue: 1, duration: motion.duration.focus, useNativeDriver: true });
     fade.start();
     return () => fade.stop();
   }, [opacity, reduceMotion]);
@@ -67,9 +67,9 @@ const makeStyles = (c: ThemeColors) =>
       borderColor: c.border,
     },
     lines: { flex: 1, gap: spacing.sm },
-    name: { height: 12, borderRadius: 3, backgroundColor: c.surfaceRaised },
+    name: { height: 12, borderRadius: 3, backgroundColor: c.surfaceRaised }, // design-exception: skeleton bar 12 px tall, radius must stay under half the height
     meta: { flexDirection: 'row', gap: spacing.md },
-    stat: { width: 44, height: 10, borderRadius: 3, backgroundColor: c.surfaceRaised },
-    via: { width: '36%', height: 8, borderRadius: 3, backgroundColor: c.surfaceRaised },
-    action: { width: 44, height: 44, marginLeft: spacing.sm, borderRadius: radius.md, backgroundColor: c.surfaceRaised },
+    stat: { width: 44, height: 10, borderRadius: 3, backgroundColor: c.surfaceRaised }, // design-exception: skeleton bar 10 px tall, radius must stay under half the height
+    via: { width: '36%', height: 8, borderRadius: 3, backgroundColor: c.surfaceRaised }, // design-exception: skeleton bar 8 px tall, radius must stay under half the height
+    action: { width: touch.min, height: touch.min, marginLeft: spacing.sm, borderRadius: radius.md, backgroundColor: c.surfaceRaised },
   });

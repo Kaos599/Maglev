@@ -1,7 +1,7 @@
 import React from 'react';
 import { StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useMaglevEngine } from '../../context/EngineContext';
+import { useEngineActions, useEngineNotice } from '../../context/EngineContext';
 import { spacing } from '../../constants/theme';
 import { Banner } from './Banner';
 
@@ -14,7 +14,8 @@ const TAB_BAR_CLEARANCE = 56 + spacing.sm;
  * its button and stays until the engine times it out; a plain one has a dismiss button.
  */
 export function NoticeHost() {
-  const { notice, dismissNotice } = useMaglevEngine();
+  const { notice } = useEngineNotice();
+  const { dismissNotice } = useEngineActions();
   const insets = useSafeAreaInsets();
   if (!notice) return null;
   return (

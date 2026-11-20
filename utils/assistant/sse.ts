@@ -17,19 +17,19 @@ export type StreamState = 'idle' | 'text' | 'toolCall' | 'done' | 'error';
 export type StreamErrorCode = 'provider' | 'bad_response' | 'bad_args' | 'incomplete' | 'truncated' | 'too_long';
 
 /** Accumulated assistant text cap, in UTF-16 units (about 32 KB of text). */
-export const MAX_TEXT_CHARS = 32 * 1024;
+const MAX_TEXT_CHARS = 32 * 1024;
 /** Cap for the argument JSON of one tool call. */
-export const MAX_ARGS_CHARS = 16 * 1024;
+const MAX_ARGS_CHARS = 16 * 1024;
 /** Cap for the unparsed SSE line buffer (one line with no newline, or the lines of one open event). */
-export const MAX_LINE_BUFFER_CHARS = 256 * 1024;
+const MAX_LINE_BUFFER_CHARS = 256 * 1024;
 /** Cap for tool-call slots in one response. A real model sends 1 to 3. */
-export const MAX_CALL_SLOTS = 16;
+const MAX_CALL_SLOTS = 16;
 /**
  * Cap for the opaque per-call extras (serialised JSON). Gemini 3's compat layer puts a thought signature in
  * `tool_calls[].extra_content.google.thought_signature` and rejects the next request without it. Over the cap, the
  * extras are dropped and the call still runs.
  */
-export const MAX_CALL_EXTRA_CHARS = 16 * 1024;
+const MAX_CALL_EXTRA_CHARS = 16 * 1024;
 /** Longest error snippet kept from a provider error (never logged, never shown raw). */
 export const MAX_DETAIL_CHARS = 500;
 

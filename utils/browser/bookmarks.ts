@@ -1,0 +1,203 @@
+/**
+ * Browser bookmarks, persisted in the kv store (UI only: never sent to the engine, not part of a backup because
+ * browser history isn't either) and read through a hook. The pure functions work on arrays so tests run them
+ * directly; the store functions below wrap them.
+ */
+import { useSyncExternalStore } from 'react';
+import { kvGet, kvSet } from '../prefs/kv.ts';
+
+export interface Bookmark {
+  id: string;
+  url: string;
+  title: string;
+  host: string;
+  addedAt: number;
+}
+
+export const BOOKMARKS_KEY = 'maglev.browser.bookmarks.v1';
+export const BOOKMARK_CAP = 500;
+const TITLE_MAX = 200;
+
+/** The host of an http(s) link without credentials or port, lower case, or ''. */
+function hostFrom(url: string): string {
+  const m = /^https?:\/\/(?:[^/?#@]*@)?(\[[^\]]+\]|[^/?#:]+)/i.exec((url ?? '').trim());
+  return m ? m[1].toLowerCase() : '';
+}
+
+/**
+ * One key per page: scheme and host lower case, fragment dropped, a bare trailing slash dropped. Query strings
+ * stay, because they often pick the page. Anything that isn't http(s) gives ''.
+ */
+export function normalizeUrl(url: string): string {
+  const t = (url ?? '').trim();
+  const m = /^(https?):\/\/([^/?#]+)([^?#]*)(\?[^#]*)?/i.exec(t);
+  if (!m || !hostFrom(t)) return '';
+  const path = m[3] === '/' ? '' : m[3];
+  return `${m[1].toLowerCase()}://${m[2].toLowerCase()}${path}${m[4] ?? ''}`;
+}
+
+const cleanTitle = (title: string, fallback: string) => ((title ?? '').replace(/\s+/g, ' ').trim().slice(0, TITLE_MAX) || fallback);
+
+/** Reads whatever was stored and keeps only well-formed rows, in stored order. Corrupt JSON gives []. */
+export function parseBookmarks(raw: string | null | undefined): Bookmark[] {
+  if (!raw) return [];
+  let data: unknown;
+  try {
+    data = JSON.parse(raw);
+  } catch {
+    return [];
+  }
+  if (!Array.isArray(data)) return [];
+  const seen = new Set<string>();
+  const out: Bookmark[] = [];
+  for (const r of data) {
+    if (!r || typeof r !== 'object') continue;
+    const o = r as Record<string, unknown>;
+    if (typeof o.id !== 'string' || !o.id || typeof o.url !== 'string') continue;
+    const key = normalizeUrl(o.url);
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    const host = hostFrom(o.url);
+    out.push({
+      id: o.id,
+      url: o.url,
+      title: cleanTitle(typeof o.title === 'string' ? o.title : '', host),
+      host,
+      addedAt: typeof o.addedAt === 'number' && Number.isFinite(o.addedAt) ? o.addedAt : 0,
+    });
+    if (out.length >= BOOKMARK_CAP) break;
+  }
+  return out;
+}
+
+export type AddResult = { list: Bookmark[]; added: Bookmark | null; reason: 'added' | 'exists' | 'invalid' | 'full' };
+
+/** Adds a page at the end of the list. A page already saved (same normalised address) or a non-web address is refused. */
+export function addTo(list: readonly Bookmark[], url: string, title: string, now: number, id: string): AddResult {
+  const key = normalizeUrl(url);
+  if (!key) return { list: [...list], added: null, reason: 'invalid' };
+  if (list.some((b) => normalizeUrl(b.url) === key)) return { list: [...list], added: null, reason: 'exists' };
+  if (list.length >= BOOKMARK_CAP) return { list: [...list], added: null, reason: 'full' };
+  const host = hostFrom(url);
+  const added: Bookmark = { id, url: url.trim(), title: cleanTitle(title, host), host, addedAt: now };
+  return { list: [...list, added], added, reason: 'added' };
+}
+
+export const removeFrom = (list: readonly Bookmark[], id: string): Bookmark[] => list.filter((b) => b.id !== id);
+
+/** A blank title falls back to the host, so a row is never empty. */
+export function renameIn(list: readonly Bookmark[], id: string, title: string): Bookmark[] {
+  return list.map((b) => (b.id === id ? { ...b, title: cleanTitle(title, b.host) } : b));
+}
+
+/** Moves one bookmark to `toIndex` (clamped). An unknown id changes nothing. */
+export function moveIn(list: readonly Bookmark[], id: string, toIndex: number): Bookmark[] {
+  const from = list.findIndex((b) => b.id === id);
+  if (from < 0) return [...list];
+  const next = [...list];
+  const [item] = next.splice(from, 1);
+  next.splice(Math.max(0, Math.min(next.length, toIndex)), 0, item);
+  return next;
+}
+
+/** Puts a removed bookmark back where it was (Undo). Skipped when that page was saved again meanwhile. */
+export function restoreIn(list: readonly Bookmark[], b: Bookmark, index: number): Bookmark[] {
+  const key = normalizeUrl(b.url);
+  if (list.some((x) => x.id === b.id || normalizeUrl(x.url) === key) || list.length >= BOOKMARK_CAP) return [...list];
+  const next = [...list];
+  next.splice(Math.max(0, Math.min(next.length, index)), 0, b);
+  return next;
+}
+
+export const isBookmarkedIn = (list: readonly Bookmark[], url: string): boolean => {
+  const key = normalizeUrl(url);
+  return key !== '' && list.some((b) => normalizeUrl(b.url) === key);
+};
+
+export const findBookmark = (list: readonly Bookmark[], url: string): Bookmark | null => {
+  const key = normalizeUrl(url);
+  return (key && list.find((b) => normalizeUrl(b.url) === key)) || null;
+};
+
+// ---- store ----
+
+let cache: Bookmark[] | null = null;
+let counter = 0;
+const listeners = new Set<() => void>();
+
+export function listBookmarks(): Bookmark[] {
+  if (cache) return cache;
+  let raw: string | null = null;
+  try {
+    raw = kvGet(BOOKMARKS_KEY);
+  } catch {
+    // Unreadable: start empty for this session.
+  }
+  cache = parseBookmarks(raw);
+  return cache;
+}
+
+function commit(next: Bookmark[]): void {
+  cache = next;
+  try {
+    kvSet(BOOKMARKS_KEY, JSON.stringify(next));
+  } catch {
+    // Kept in memory only.
+  }
+  listeners.forEach((l) => l());
+}
+
+const newId = (now: number) => `bm-${now.toString(36)}-${(counter++).toString(36)}`;
+
+export function addBookmark(url: string, title: string, now: number = Date.now()): AddResult {
+  const r = addTo(listBookmarks(), url, title, now, newId(now));
+  if (r.added) commit(r.list);
+  return r;
+}
+
+/** Removes one and returns it with its position, for Undo. Null when the id is unknown. */
+export function removeBookmark(id: string): { bookmark: Bookmark; index: number } | null {
+  const list = listBookmarks();
+  const index = list.findIndex((b) => b.id === id);
+  if (index < 0) return null;
+  commit(removeFrom(list, id));
+  return { bookmark: list[index], index };
+}
+
+export function restoreBookmark(b: Bookmark, index: number): void {
+  const before = listBookmarks();
+  const next = restoreIn(before, b, index);
+  if (next.length !== before.length) commit(next);
+}
+
+export function renameBookmark(id: string, title: string): void {
+  commit(renameIn(listBookmarks(), id, title));
+}
+
+export function moveBookmark(id: string, toIndex: number): void {
+  commit(moveIn(listBookmarks(), id, toIndex));
+}
+
+export const isBookmarked = (url: string): boolean => isBookmarkedIn(listBookmarks(), url);
+
+/** Removes a page by address (the page menu's "Remove bookmark"). Returns the removal for Undo. */
+export function removeBookmarkByUrl(url: string): { bookmark: Bookmark; index: number } | null {
+  const b = findBookmark(listBookmarks(), url);
+  return b ? removeBookmark(b.id) : null;
+}
+
+function subscribe(l: () => void): () => void {
+  listeners.add(l);
+  return () => {
+    listeners.delete(l);
+  };
+}
+
+export function useBookmarks(): Bookmark[] {
+  return useSyncExternalStore(subscribe, listBookmarks, listBookmarks);
+}
+
+/** Test hook: forget the in-memory copy so the next read goes to the kv store. */
+export function resetBookmarksCache(): void {
+  cache = null;
+}

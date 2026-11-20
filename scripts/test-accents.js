@@ -103,7 +103,7 @@ const hueGap = (a, b) => {
   }
   check('swatch row is a radiogroup with radio items', /accessibilityRole="radiogroup"/.test(iface) && /accessibilityRole="radio"/.test(iface));
   check('swatches wrap in rows of 4 (25% items)', /flexWrap:\s*'wrap'/.test(iface) && /width:\s*'25%'/.test(iface));
-  check('swatch target is 44px', /width:\s*44,\s*\n\s*height:\s*44/.test(iface));
+  check('swatch target is 44px', /width:\s*(44|touch\.min),\s*\n\s*height:\s*(44|touch\.min)/.test(iface));
 
   console.log('saved values');
   const { migrateSettings } = await import('../modules/maglev-engine/src/MaglevSettingsStore.ts');

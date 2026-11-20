@@ -67,6 +67,7 @@ export const notices = {
     clipboardEmpty: 'Your clipboard is empty.',
     startDownloadFailed: "Couldn't start this download.",
     folderPickerFailed: "Couldn't open the folder picker. Try again.",
+    folderNotDirect: "Maglev can't save straight into that folder. Pick another one.",
     storageRefused: 'Storage access was refused. Files are saved in app storage instead.',
     readFileFailed: "Couldn't read that file. Pick another one.",
     removeTorrentFailed: "Couldn't remove this torrent. Try again.",
@@ -223,6 +224,8 @@ export const offSourcesSentence = (k: number): string => (k === 1 ? '1 more sour
 export const empty = {
   transfers: {
     none: { title: 'Nothing downloading', body: 'Add a link or a .torrent file, or find something.' },
+    /** Under the finder tiles: the Share route, which the screen's buttons don't cover. */
+    shareHint: 'In another app, tap "Share", then Maglev.',
     noMatch: { title: 'No matching transfers', body: 'Try a different search.' },
     noneInFilter: (filter: string | number) => ({
       title: `No ${toName(filter).toLowerCase()} transfers`,
@@ -284,11 +287,11 @@ export const empty = {
     historyFailed: { title: "History isn't available", body: "Maglev couldn't open it. Try again." },
   },
   engineError: {
-    title: 'Engine failed to start',
+    title: "The downloader didn't start",
   },
   /** utils/addErrorNotice.ts, app/add-torrent.tsx, app/engine-error.tsx */
   engineStopped: {
-    title: 'The download engine stopped',
+    title: 'The downloader stopped',
     noReason: "It couldn't be started again.",
   },
 } as const;
@@ -316,6 +319,9 @@ export const historyCopy = {
   recent: { title: 'Recent', label: 'Recent pages', seeAll: 'See all', seeAllLabel: 'See all history' },
   settings: {
     section: 'History',
+    private: 'Private browsing',
+    privateSubtitle: "Don't keep history or open tabs, and clear cookies and cached pages from sites you visit when you leave the browser. Site storage and third-party cookies can stay.",
+    privateIndicator: 'Private browsing is on',
     save: 'Save history',
     saveSubtitle: 'Keeps the pages you open on this phone.',
     suggest: 'Suggest from history',
@@ -385,6 +391,11 @@ export const browserTabs = {
   thisPage: {
     popupsRow: 'Pop-ups',
     blockedOnPage: (n: number | string) => `${n} blocked on this page`,
+    clearSiteRow: "Clear this site's data",
+    clearSiteTitle: "Clear this site's data?",
+    clearSiteBody: (host: string) => `You'll be signed out of ${host}.`,
+    clearSiteAction: 'Clear',
+    clearSiteDone: "Cleared this site's data",
   },
   settings: {
     section: 'Pop-ups and redirects',
@@ -395,6 +406,8 @@ export const browserTabs = {
     remove: 'Remove',
     swipeTabs: 'Swipe the address bar to switch tabs',
     swipeTabsSubtitle: 'Swipe left or right on the address bar to move between tabs, or down to see all tabs.',
+    darkPages: 'Dark pages',
+    darkPagesSubtitle: 'Darken pages that only have a light look, when Maglev is dark.',
   },
 } as const;
 
@@ -868,3 +881,20 @@ export const highlightCopy = {
   settingSubtitle: 'A short card after an update, when it has a headline feature.',
 } as const;
 // endregion new-feature highlight
+
+// region network advanced
+/** app/settings/network.tsx, app/settings/network-advanced.tsx, components/settings/NetworkRestartBanner.tsx, utils/networkStatus.ts */
+export const networkAdvancedCopy = {
+  rowTitle: 'Advanced',
+  rowSubtitle: 'Port, peer finding, proxy and block list.',
+  pageTitle: 'Advanced network',
+  restartTitle: 'Restart the downloader to apply these changes',
+  restartAction: 'Restart',
+  restarting: 'Restarting\u2026',
+  restarted: 'The downloader restarted.',
+  restartFailed: "Couldn't restart the downloader. Try again.",
+  noFile: 'No file chosen',
+  unreadable: "Couldn't read the block list",
+  rules: (count: number) => (count === 1 ? '1 rule' : `${toName(count)} rules`),
+} as const;
+// endregion network advanced

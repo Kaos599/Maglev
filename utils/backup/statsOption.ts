@@ -5,7 +5,7 @@
 import { kvGet, kvSet } from '../prefs/kv.ts';
 import type { Backup, BackupPart, RestorePart } from './format.ts';
 
-export const INCLUDE_STATS_KEY = 'maglev.backup.includeStats.v1';
+const INCLUDE_STATS_KEY = 'maglev.backup.includeStats.v1';
 
 /** Off unless the user switched it on. */
 export function getIncludeStats(): boolean {

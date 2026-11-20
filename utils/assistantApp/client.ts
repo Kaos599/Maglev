@@ -34,9 +34,9 @@ export interface StreamParams {
 export type StreamFn = (params: StreamParams, onEvent: (event: TurnEvent) => void, signal: AbortSignal) => Promise<void>;
 
 /** SM-31 / §8.6: abort when nothing arrives for this long. */
-export const FIRST_BYTE_TIMEOUT_MS = 20_000;
+const FIRST_BYTE_TIMEOUT_MS = 20_000;
 /** Abort a stream that goes quiet for this long after the first byte (SSE comments count as bytes). */
-export const IDLE_TIMEOUT_MS = 45_000;
+const IDLE_TIMEOUT_MS = 45_000;
 /** An error body is read only up to this many bytes. It is matched against, never shown. */
 const ERROR_BODY_MAX_BYTES = 8 * 1024;
 

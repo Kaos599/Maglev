@@ -108,7 +108,7 @@ function check(name, cond) {
   console.log('[wiring]');
   const row_ = read('components/subtitles/SubtitlesRow.tsx');
   check('row reads useRequestPhases, skipSubtitles for Cancel, and the stored state', /useRequestPhases\(/.test(row_) && /skipSubtitles\(requestKey\)/.test(row_) && /stateFor\(/.test(row_));
-  check('row: 1 px border, 44 dp button, whole row pressable, shared 44.8 badge', /borderWidth: 1/.test(row_) && /minWidth: 44, minHeight: 44/.test(row_) && /<PressableScale onPress=\{act\}/.test(row_) && /SubtitleBadge/.test(row_));
+  check('row: 1 px border, 44 dp button, whole row pressable, shared 44.8 badge', /borderWidth: 1/.test(row_) && /minWidth: (?:44|touch\.min), minHeight: (?:44|touch\.min)/.test(row_) && /<PressableScale onPress=\{act\}/.test(row_) && /SubtitleBadge/.test(row_));
   check('row: theme roles only, no hex, no warning colour', !/#[0-9A-Fa-f]{3,6}\b/.test(row_) && !/colors\.warning/.test(row_));
   check('card icon exports the badge the row reuses', /export function SubtitleBadge/.test(read('components/subtitles/SubtitleCardIcon.tsx')));
   const tp = read('app/torrent/[id].tsx');

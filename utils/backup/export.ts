@@ -41,20 +41,20 @@ export interface ExportDeps {
 }
 
 /** The assistant prefs without anything that points at a key. The key itself lives in secure store and is never read. */
-export function assistantForExport(raw: unknown): unknown {
+function assistantForExport(raw: unknown): unknown {
   if (!isPlainObject(raw)) return raw;
   const { keyRef: _keyRef, tokensUsed: _tokensUsed, ...rest } = raw as Record<string, unknown>;
   return rest;
 }
 
 /** Search prefs without per-site check state, recents and cookies' bookkeeping. */
-export function searchForExport(raw: unknown): unknown {
+function searchForExport(raw: unknown): unknown {
   if (!isPlainObject(raw)) return raw;
   const { clearances: _c, needsCheck: _n, recents: _r, fixHintDismissedAt: _f, ...rest } = raw as Record<string, unknown>;
   return rest;
 }
 
-export function torrentToBackup(s: Snapshot, data: TorrentRestoreData | null): BackupTorrent {
+function torrentToBackup(s: Snapshot, data: TorrentRestoreData | null): BackupTorrent {
   const files = data?.files ?? [];
   const included = files.filter((f) => f.included).map((f) => f.index);
   const onlyFiles = files.length > 0 && included.length < files.length ? included.sort((a, b) => a - b) : null;

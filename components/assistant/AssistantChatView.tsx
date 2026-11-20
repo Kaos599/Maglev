@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { FlatList, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useTheme } from '../../context/ThemeContext';
-import { ThemeColors, spacing, type } from '../../constants/theme';
+import { ThemeColors, spacing, type, touch } from '../../constants/theme';
 import type { TokenKey } from '../../utils/assistant/glossary';
 import type { AssistantChat, ChatGate, ChatItem, ScreenTarget } from '../../utils/assistant/runtime';
 import { modelChipText, shouldAutoOpenCapabilities, tokensLine, workingLabel } from '../../utils/assistant/chatView';
@@ -247,9 +247,9 @@ const makeStyles = (c: ThemeColors) =>
     sheetActions: { gap: spacing.sm },
     privacy: { ...type.body, fontSize: type.size.md, lineHeight: 18, color: c.textMuted },
     actions: { flexDirection: 'row', alignItems: 'center' },
-    iconBtn: { minWidth: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center' },
-    clear: { minWidth: 56, minHeight: 44, alignItems: 'center', justifyContent: 'center', paddingHorizontal: spacing.sm },
-    clearText: { ...type.bodyStrong, fontSize: 14, color: c.textMuted },
+    iconBtn: { minWidth: touch.min, minHeight: touch.min, alignItems: 'center', justifyContent: 'center' },
+    clear: { minWidth: 56, minHeight: touch.min, alignItems: 'center', justifyContent: 'center', paddingHorizontal: spacing.sm },
+    clearText: { ...type.bodyStrong, fontSize: type.size.base, color: c.textMuted },
     gate: { gap: spacing.md, padding: spacing.lg, borderTopWidth: 1, borderTopColor: c.border, alignItems: 'flex-start' },
-    gateText: { ...type.body, fontSize: 14, lineHeight: 20, color: c.text },
+    gateText: { ...type.body, fontSize: type.size.base, lineHeight: 20, color: c.text },
   });

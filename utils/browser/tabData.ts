@@ -22,7 +22,7 @@ export type TabData = {
   hint: FoundHintState;
 };
 
-export const newTabData = (): TabData => ({ page: null, found: [], dismissed: new Set(), blocked: 0, crashed: false, refused: null, lastUrl: '', notes: new Set(), hint: 'idle' });
+const newTabData = (): TabData => ({ page: null, found: [], dismissed: new Set(), blocked: 0, crashed: false, refused: null, lastUrl: '', notes: new Set(), hint: 'idle' });
 
 export const tabData = new Map<string, TabData>();
 /** The address each view loaded when it mounted. It never follows the page. */

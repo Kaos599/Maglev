@@ -1,14 +1,12 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { View } from 'react-native';
 import { Stack, SplashScreen, usePathname } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
-import { useFonts } from 'expo-font';
 import { SettingsProvider, useSettings } from '../context/SettingsContext';
 import { ThemeProvider, useTheme } from '../context/ThemeContext';
-import { EngineProvider, useMaglevEngine } from '../context/EngineContext';
-import { FONT_NAMES } from '../constants/fontStyles';
+import { EngineProvider, useEngineStatus } from '../context/EngineContext';
 import NavigationBarSync from '../components/NavigationBarSync';
 import { NoticeHost } from '../components/ui/NoticeHost';
 import { StarPrompt } from '../components/StarPrompt';
@@ -16,6 +14,7 @@ import { HighlightSheet } from '../components/HighlightSheet';
 import { syncScheduleToNative } from '../utils/prefs/schedule';
 import { syncFeedAutomationToNative } from '../utils/prefs/feedAutomation';
 import { initHistory } from '../utils/history';
+import { privateSession } from '../utils/browser/privateSession';
 import { startUpdates } from '../utils/update';
 import { useSubtitleRequests } from '../components/subtitles/useSubtitleRequests';
 import { installGlobalHandler, setCurrentRoute } from '../utils/crashLog';
@@ -25,6 +24,13 @@ installGlobalHandler();
 
 /** A route crash anywhere keeps the tab bar only if the tab has its own boundary; this one is the last resort. */
 export { ErrorBoundary } from '../components/ErrorScreen';
+
+/**
+ * A cold deep link (share, notification, maglev://) starts the stack at the link's screen. `anchor` puts the
+ * tab shell underneath it, so Back lands on Transfers with the tab bar instead of leaving the app.
+ * (expo-router build/layoutAnchor.js: `unstable_settings.anchor`; `initialRouteName` is the deprecated name.)
+ */
+export const unstable_settings = { anchor: '(tabs)' };
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
 
@@ -48,8 +54,19 @@ function SubtitleRequestRunner() {
 
 function AppNavigation() {
   const { colors, dark } = useTheme();
+  const screenOptions = useMemo(
+    () => ({
+      headerShown: false,
+      contentStyle: { backgroundColor: colors.bg },
+      // Android duration is fixed by the animation XML (animationDuration is iOS-only in react-native-screens 4.30).
+      // 'ios_from_right' is directional and uses config_shortAnimTime (~200 ms); 'slide_from_right' uses config_mediumAnimTime (~400 ms).
+      animation: 'ios_from_right' as const,
+      gestureEnabled: true,
+    }),
+    [colors.bg],
+  );
   const { settings } = useSettings();
-  const { engineStatus, hasCachedList } = useMaglevEngine();
+  const { engineStatus, hasCachedList } = useEngineStatus();
   const [timedOut, setTimedOut] = useState(false);
   // Decided once, from the route the app was launched into: a later link must never unmount the shell.
   const pathname = usePathname();
@@ -76,6 +93,8 @@ function AppNavigation() {
   // H4 cold start: open history, then wipe or prune. Never blocks render; the History screen waits on it itself.
   useEffect(() => {
     initHistory().catch(() => {});
+    // A private session that was killed leaves its host list behind: wipe those cookies now.
+    void privateSession.wipe();
   }, []);
 
   // Push the saved schedule and feed rules to Kotlin once the engine is up.
@@ -103,16 +122,7 @@ function AppNavigation() {
     <>
       <StatusBar style={dark ? 'light' : 'dark'} />
       <NavigationBarSync />
-      <Stack
-        screenOptions={{
-          headerShown: false,
-          contentStyle: { backgroundColor: colors.bg },
-          // Android duration is fixed by the animation XML (animationDuration is iOS-only in react-native-screens 4.30).
-          // 'ios_from_right' is directional and uses config_shortAnimTime (~200 ms); 'slide_from_right' uses config_mediumAnimTime (~400 ms).
-          animation: 'ios_from_right',
-          gestureEnabled: true,
-        }}
-      >
+      <Stack screenOptions={screenOptions}>
         <Stack.Protected guard={unavailable}>
           <Stack.Screen name="engine-error" options={{ gestureEnabled: false, animation: 'none' }} />
         </Stack.Protected>
@@ -165,6 +175,7 @@ function AppNavigation() {
           <Stack.Screen name="settings/interface" />
           <Stack.Screen name="settings/licenses" />
           <Stack.Screen name="settings/network" />
+          <Stack.Screen name="settings/network-advanced" />
           <Stack.Screen name="settings/notifications" />
           <Stack.Screen name="settings/power" />
           <Stack.Screen name="settings/scheduling" />
@@ -189,20 +200,8 @@ function AppNavigation() {
 }
 
 export default function RootLayout() {
-  const [fontsLoaded, fontError] = useFonts({
-    [FONT_NAMES.silkscreen]: require('@expo-google-fonts/silkscreen/400Regular/Silkscreen_400Regular.ttf'),
-    [FONT_NAMES.spaceMono]: require('@expo-google-fonts/space-mono/400Regular/SpaceMono_400Regular.ttf'),
-    [FONT_NAMES.spaceMonoBold]: require('@expo-google-fonts/space-mono/700Bold/SpaceMono_700Bold.ttf'),
-    [FONT_NAMES.inter]: require('@expo-google-fonts/inter/400Regular/Inter_400Regular.ttf'),
-    [FONT_NAMES.interMedium]: require('@expo-google-fonts/inter/500Medium/Inter_500Medium.ttf'),
-    [FONT_NAMES.interSemiBold]: require('@expo-google-fonts/inter/600SemiBold/Inter_600SemiBold.ttf'),
-    [FONT_NAMES.interBold]: require('@expo-google-fonts/inter/700Bold/Inter_700Bold.ttf'),
-  });
-
-  // Native splash stays visible until fonts load; AppNavigation hides it once the engine resolves.
-  // A font that fails to load must not keep the splash up forever: carry on with the system font.
-  if (!fontsLoaded && !fontError) return null;
-
+  // Fonts are embedded at build time (expo-font config plugin in app.json), so there is nothing to wait for here.
+  // AppNavigation hides the native splash once the engine resolves.
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>

@@ -42,7 +42,13 @@ check('native driver only', /useNativeDriver:\s*true/.test(code) && !/useNativeD
 check('slide uses pixel-stepped easing (steppedRanges)', /steppedRanges/.test(of('components/onboarding/StepSlide.tsx')));
 check('the train arrives on step 1 (arrive)', /\barrive\b/.test(of('components/onboarding/BrandMark.tsx')));
 
-const durations = [...code.matchAll(/duration:\s*([^,\n]+)/g)].flatMap((m) => m[1].match(/\d+/g) || []).map(Number);
+// Durations are tokens now: resolve `motion.duration.<name>` against constants/theme.ts, and still read any bare number.
+const tokenBlock = (read('constants/theme.ts').match(/duration:\s*\{([\s\S]*?)\n  \},/) || [])[1] || '';
+const tokenMs = Object.fromEntries([...tokenBlock.matchAll(/^\s*(\w+):\s*(\d+)/gm)].map((m) => [m[1], Number(m[2])]));
+const durations = [...code.matchAll(/duration:\s*([^,\n]+)/g)].flatMap((m) => [
+  ...(m[1].match(/\d+/g) || []).map(Number),
+  ...[...m[1].matchAll(/motion\.duration\.(\w+)/g)].map((t) => tokenMs[t[1]]).filter((v) => v != null),
+]);
 check('durations are declared', durations.length >= 3, String(durations));
 check('every duration is within 100-320 ms', durations.every((d) => d >= 100 && d <= 320), durations.join(','));
 

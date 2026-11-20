@@ -1,11 +1,11 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { StyleSheet, Text, TextInput, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 import { useTheme } from '../../context/ThemeContext';
-import { ThemeColors, radius, spacing, type } from '../../constants/theme';
+import { ThemeColors, radius, spacing, type, touch } from '../../constants/theme';
 import { haptic } from '../../constants/haptics';
 import { findCopy } from '../../constants/copy';
 import { PixelIcon } from '../PixelIcon';
-import { IconButton, PressableScale } from '../ui';
+import { IconButton, PressableScale, TextField } from '../ui';
 
 /** Typing runs the search this long after the last key (contract section 28). */
 export const FIND_DEBOUNCE_MS = 150;
@@ -59,7 +59,9 @@ export function FindBar({ result, onSearch, onStep, onClose }: FindBarProps) {
     <View style={styles.bar}>
       <View style={styles.field}>
         <PixelIcon name="search" size={16} color={colors.textMuted} />
-        <TextInput
+        <TextField
+          bare
+          mono
           value={query}
           onChangeText={setQuery}
           onSubmitEditing={() => {
@@ -75,8 +77,6 @@ export function FindBar({ result, onSearch, onStep, onClose }: FindBarProps) {
           autoCorrect={false}
           spellCheck={false}
           placeholder={findCopy.placeholder}
-          placeholderTextColor={colors.textFaint}
-          selectionColor={colors.accent}
           style={styles.input}
           numberOfLines={1}
           accessibilityLabel={findCopy.placeholder}
@@ -122,8 +122,8 @@ const makeStyles = (c: ThemeColors) =>
     bar: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: spacing.xs, minHeight: 56 },
     field: {
       flex: 1,
-      minWidth: 44,
-      height: 44,
+      minWidth: touch.min,
+      height: touch.min,
       flexDirection: 'row',
       alignItems: 'center',
       gap: spacing.sm,
@@ -133,8 +133,8 @@ const makeStyles = (c: ThemeColors) =>
       borderColor: c.borderStrong,
       borderRadius: radius.md,
     },
-    input: { ...type.mono, flex: 1, minWidth: 0, fontSize: type.size.md, color: c.text, paddingVertical: 0 },
+    input: { fontSize: type.size.md, paddingVertical: 0 },
     count: { ...type.mono, fontSize: type.size.sm, color: c.textMuted },
-    step: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
+    step: { width: touch.min, height: touch.min, alignItems: 'center', justifyContent: 'center' },
     dim: { opacity: 0.4 },
   });

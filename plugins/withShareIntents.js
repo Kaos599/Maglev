@@ -77,6 +77,8 @@ function applyMainActivity(src) {
 const QUICK_ACTIVITY = 'com.maglev.engine.share.QuickShareActivity';
 const A = 'android.intent.action.';
 const C = 'android.intent.category.';
+/** Shown in the text-selection menu (per-filter label: https://developer.android.com/guide/topics/manifest/intent-filter-element#label). */
+const PROCESS_TEXT_LABEL = 'Download with Maglev';
 const TORRENT_TYPES = ['application/x-bittorrent', 'application/x-torrent'];
 /**
  * Types a browser can attach to an http(s) VIEW. A filter with a mime type matches only an intent that carries a
@@ -115,7 +117,8 @@ function pickerData() {
   return data;
 }
 
-const filter = (actions, categories, data) => ({
+const filter = (actions, categories, data, label) => ({
+  ...(label ? { $: { 'android:label': label } } : {}),
   action: actions.map((a) => ({ $: { 'android:name': A + a } })),
   category: categories.map((c) => ({ $: { 'android:name': C + c } })),
   data: data.map((d) => ({ $: Object.fromEntries(Object.entries(d).map(([k, v]) => [`android:${k}`, v])) })),
@@ -132,6 +135,9 @@ function quickShareFilters() {
     ]),
     filter(['SEND'], ['DEFAULT'], [{ mimeType: 'text/plain' }, ...TORRENT_TYPES.map((mimeType) => ({ mimeType }))]),
     filter(['SEND_MULTIPLE'], ['DEFAULT'], TORRENT_TYPES.map((mimeType) => ({ mimeType }))),
+    // Text-selection menu in other apps. The card only reads the selection and never returns replacement text.
+    // https://developer.android.com/reference/android/content/Intent#ACTION_PROCESS_TEXT
+    filter(['PROCESS_TEXT'], ['DEFAULT'], [{ mimeType: 'text/plain' }], PROCESS_TEXT_LABEL),
     // Other browsers: DEFAULT only (not BROWSABLE), so a web page cannot start it.
     filter(['VIEW'], ['DEFAULT'], [
       { scheme: 'http' }, { scheme: 'https' },
@@ -207,3 +213,4 @@ module.exports = withShareIntents;
 module.exports.applyMainActivity = applyMainActivity;
 module.exports.KOTLIN = KOTLIN;
 module.exports.applyQuickShareManifest = applyQuickShareManifest;
+module.exports.PROCESS_TEXT_LABEL = PROCESS_TEXT_LABEL;

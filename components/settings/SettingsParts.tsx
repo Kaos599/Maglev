@@ -1,11 +1,11 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ScrollView, StyleSheet, Text, TextInput, View, StyleProp, ViewStyle } from 'react-native';
+import { ScrollView, StyleSheet, Text, View, StyleProp, ViewStyle } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { SETTINGS_INDEX } from '../../utils/settingsIndex';
 import { FocusAnchor, SettingsFocusProvider, rowKey } from './settingsFocus';
 import { useTheme } from '../../context/ThemeContext';
-import { ThemeColors, radius, spacing, touch, type } from '../../constants/theme';
-import { Button, Chip, Screen, Sheet } from '../ui';
+import { ThemeColors, radius, spacing, type } from '../../constants/theme';
+import { Button, Chip, Screen, Sheet, TextField } from '../ui';
 
 /** Sub-screen shell: header with back, scrolling body, instant-apply content. */
 export function SettingsPage({ title, children }: { title: string; children: React.ReactNode }) {
@@ -137,33 +137,26 @@ export function InputSheet({
   };
   return (
     <Sheet visible={visible} onClose={onClose} title={title} subtitle={subtitle}>
-      <View style={s.inputRow}>
-        <TextInput
-          value={text}
-          onChangeText={(t) => {
-            setText(t);
-            setTouched(true);
-          }}
-          style={[s.input, touched && error ? { borderColor: colors.danger } : null]}
-          keyboardType={numeric ? (decimal ? 'decimal-pad' : 'number-pad') : 'default'}
-          secureTextEntry={secure}
-          autoCapitalize="none"
-          autoCorrect={false}
-          autoFocus
-          placeholder={placeholder}
-          placeholderTextColor={colors.textFaint}
-          selectionColor={colors.accent}
-          onSubmitEditing={submit}
-          returnKeyType="done"
-          accessibilityLabel={title}
-        />
-        {unit ? <Text style={s.unit}>{unit}</Text> : null}
-      </View>
-      {touched && error ? (
-        <Text style={s.error} accessibilityLiveRegion="polite">
-          {error}
-        </Text>
-      ) : null}
+      <TextField
+        onSurface
+        value={text}
+        onChangeText={(t) => {
+          setText(t);
+          setTouched(true);
+        }}
+        mono={numeric}
+        keyboardType={numeric ? (decimal ? 'decimal-pad' : 'number-pad') : 'default'}
+        secureTextEntry={secure}
+        autoCapitalize="none"
+        autoCorrect={false}
+        autoFocus
+        placeholder={placeholder}
+        trailing={unit ? <Text style={s.unit}>{unit}</Text> : undefined}
+        error={touched && error ? error : undefined}
+        onSubmitEditing={submit}
+        returnKeyType="done"
+        accessibilityLabel={title}
+      />
       <View style={s.sheetActions}>
         <Button label="Cancel" variant="ghost" onPress={onClose} />
         <Button label={submitLabel} onPress={submit} disabled={!!error} />
@@ -202,30 +195,11 @@ const makeStyles = (c: ThemeColors) =>
       paddingVertical: spacing.xs,
       overflow: 'hidden',
     },
-    caption: { ...type.body, fontSize: 12, lineHeight: 17, color: c.textMuted },
+    caption: { ...type.body, fontSize: type.size.sm, lineHeight: 17, color: c.textMuted },
     group: { padding: spacing.lg, gap: spacing.sm },
-    groupLabel: { ...type.bodyStrong, fontSize: 14, color: c.text },
+    groupLabel: { ...type.bodyStrong, fontSize: type.size.base, color: c.text },
     chips: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
-    inputRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
-    input: {
-      ...type.mono,
-      flex: 1,
-      minHeight: touch.min,
-      paddingHorizontal: spacing.md,
-      fontSize: 15,
-      color: c.text,
-      backgroundColor: c.bg,
-      borderWidth: 1,
-      borderColor: c.borderStrong,
-      borderRadius: radius.md,
-    },
-    unit: { ...type.mono, fontSize: 13, color: c.textMuted },
-    error: {
-      ...type.body,
-      fontSize: 12,
-      color: c.danger,
-      marginTop: spacing.sm,
-    },
+    unit: { ...type.mono, fontSize: type.size.md, color: c.textMuted },
     sheetActions: {
       flexDirection: 'row',
       justifyContent: 'flex-end',

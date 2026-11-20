@@ -20,9 +20,9 @@ export type FireStage = 0 | 1 | 2;
 export const fireStage = (streakDays: number): FireStage => (streakDays >= 7 ? 2 : streakDays >= 1 ? 1 : 0);
 
 /** Stats younger than this many days (counting both ends) are "thin": Habits and Records fold into one quiet line. */
-export const THIN_DAYS = 7;
+const THIN_DAYS = 7;
 /** "Downloads usually finish" is shown only once this many finishes back it. */
-export const MIN_FINISHED_FOR_HOUR = 5;
+const MIN_FINISHED_FOR_HOUR = 5;
 
 /** True while stats exist but are under a week old. With no stats at all the empty state covers it. */
 export function isThinData(firstDay: number | null, today: number): boolean {

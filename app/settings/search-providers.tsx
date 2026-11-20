@@ -380,5 +380,5 @@ const makeStyles = (c: ThemeColors) =>
   StyleSheet.create({
     filterRow: { gap: spacing.sm, paddingVertical: spacing.xs },
     section: { gap: spacing.sm },
-    empty: { ...type.body, fontSize: 13, color: c.textMuted, padding: spacing.lg },
+    empty: { ...type.body, fontSize: type.size.md, color: c.textMuted, padding: spacing.lg },
   });

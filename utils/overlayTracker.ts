@@ -6,10 +6,6 @@ import { useEffect } from 'react';
 
 let open = 0;
 
-export function overlayOpenCount(): number {
-  return open;
-}
-
 export function anyOverlayOpen(): boolean {
   return open > 0;
 }

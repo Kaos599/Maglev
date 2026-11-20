@@ -7,6 +7,9 @@
 
 import { parsePackedShare, setShareQueue } from '../utils/shareQueue';
 import { appPath, browserIntentRoute } from '../utils/browserUrl';
+import { visibleTabs } from '../components/tabs/tabPrefs';
+import { getTabPrefs } from '../components/tabs/tabPrefsStore';
+import { shareBrowserRoute } from '../utils/browser/shareRoute';
 import { sharedDownloadRoute, stripShareMarker } from '../modules/maglev-engine/src/downloadLink';
 
 const ADD_ROUTE = '/add-torrent';
@@ -25,7 +28,8 @@ export function redirectSystemPath({ path }: { path: string; initial: boolean })
     const raw = (path ?? '').trim();
     // maglev://browser?url= fills the address bar and never loads (NATIVE_CONTRACT 24.7).
     const browser = browserIntentRoute(raw);
-    if (browser) return browser;
+    // With the Browser tab on, it opens in that tab (tab bar stays); otherwise the /browser stack screen.
+    if (browser) return shareBrowserRoute(browser, visibleTabs(getTabPrefs(), { assistantEnabled: false }).includes('browse'));
     // Several files shared at once: open the first now, queue the rest for the Transfers screen.
     const packed = parsePackedShare(raw);
     if (packed) {

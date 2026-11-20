@@ -55,6 +55,8 @@ pub extern "system" fn Java_com_maglev_engine_NativeCore_nativeInit(
     session_dir: JString,
     default_download_dir: JString,
 ) -> jstring {
+    // Core logs (info and above) go to logcat under the tag `MaglevCore`; once per process.
+    crate::android_log::init();
     let args = (
         read_str(&mut env, &config_json),
         read_str(&mut env, &session_dir),
@@ -509,6 +511,33 @@ pub extern "system" fn Java_com_maglev_engine_NativeCore_nativeSetNetworkMetered
     let out = guarded(|| {
         with_engine(|e| {
             e.set_network_metered(metered != 0);
+            result_envelope(Ok(()))
+        })
+    });
+    reply(&mut env, &out)
+}
+
+/// Contract section 41 (B5): the next `nativeInit` builds the session without DHT, the listening socket, local
+/// discovery and trackers (the VPN rule blocks transfers). Needs no engine: Kotlin sets it before it starts one.
+#[no_mangle]
+pub extern "system" fn Java_com_maglev_engine_NativeCore_nativeSetNetworkOff(
+    mut env: JNIEnv,
+    _class: JClass,
+    off: jboolean,
+) -> jstring {
+    let out = guarded(|| {
+        crate::engine::set_network_off(off != 0);
+        ok_empty()
+    });
+    reply(&mut env, &out)
+}
+
+/// Contract section 17.x: the default network changed to another live network. Link downloads reconnect.
+#[no_mangle]
+pub extern "system" fn Java_com_maglev_engine_NativeCore_nativeNetworkChanged(mut env: JNIEnv, _class: JClass) -> jstring {
+    let out = guarded(|| {
+        with_engine(|e| {
+            e.network_changed();
             result_envelope(Ok(()))
         })
     });

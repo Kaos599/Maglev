@@ -4,15 +4,15 @@
  */
 
 /** A touch that starts this close to a screen edge belongs to the system back gesture. */
-export const SWIPE_EDGE_DP = 24;
+const SWIPE_EDGE_DP = 24;
 /** Horizontal distance that switches tabs on release. */
-export const SWIPE_DISTANCE_DP = 56;
+const SWIPE_DISTANCE_DP = 56;
 /** A quick flick switches tabs from this speed, once the finger has moved at least SWIPE_MIN_FLICK_DP. */
-export const SWIPE_VELOCITY = 600;
-export const SWIPE_MIN_FLICK_DP = 16;
+const SWIPE_VELOCITY = 600;
+const SWIPE_MIN_FLICK_DP = 16;
 /** Downward distance and speed that open the tab switcher. */
-export const SWIPE_DOWN_DISTANCE_DP = 40;
-export const SWIPE_DOWN_VELOCITY = 500;
+const SWIPE_DOWN_DISTANCE_DP = 40;
+const SWIPE_DOWN_VELOCITY = 500;
 /** How far the bar may follow the finger at most. */
 export const SWIPE_MAX_DRAG_DP = 72;
 

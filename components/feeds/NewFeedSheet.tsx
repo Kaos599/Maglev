@@ -1,8 +1,8 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { StyleSheet, Text, TextInput, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 import { useTheme } from '../../context/ThemeContext';
-import { ThemeColors, radius, spacing, type } from '../../constants/theme';
-import { Button, Sheet } from '../ui';
+import { ThemeColors, spacing } from '../../constants/theme';
+import { Button, Sheet, TextField } from '../ui';
 
 export interface NewFeedSheetProps {
   visible: boolean;
@@ -37,29 +37,24 @@ export function NewFeedSheet({ visible, onClose, onSubmit }: NewFeedSheetProps) 
 
   return (
     <Sheet visible={visible} onClose={onClose} title="New feed" subtitle="Paste the address of an RSS or Atom feed." testID="new-feed-sheet">
-      <TextInput
-        style={[styles.input, error ? styles.inputError : null]}
+      <TextField
+        onSurface
         value={url}
         onChangeText={(t) => {
           setUrl(t);
           if (error) setError(null);
         }}
         placeholder="https://example.com/feed.xml"
-        placeholderTextColor={colors.textFaint}
-        autoCapitalize="none"
-        autoCorrect={false}
+        mono
+        size="lg"
         keyboardType="url"
         returnKeyType="go"
         onSubmitEditing={submit}
         editable={!busy}
+        error={error ?? undefined}
         accessibilityLabel="Feed address"
         autoFocus
       />
-      {error ? (
-        <Text style={styles.error} accessibilityRole="alert">
-          {error}
-        </Text>
-      ) : null}
       <View style={styles.actions}>
         <Button label="Cancel" variant="ghost" onPress={onClose} />
         <Button label={busy ? 'Checking' : 'Add feed'} onPress={submit} loading={busy} disabled={url.trim().length === 0} />
@@ -70,18 +65,5 @@ export function NewFeedSheet({ visible, onClose, onSubmit }: NewFeedSheetProps) 
 
 const makeStyles = (c: ThemeColors) =>
   StyleSheet.create({
-    input: {
-      ...type.mono,
-      fontSize: 14,
-      minHeight: 48,
-      paddingHorizontal: spacing.lg,
-      borderRadius: radius.md,
-      borderWidth: 1,
-      borderColor: c.borderStrong,
-      backgroundColor: c.bg,
-      color: c.text,
-    },
-    inputError: { borderColor: c.danger },
-    error: { ...type.body, fontSize: 13, color: c.danger, marginTop: spacing.sm },
     actions: { flexDirection: 'row', justifyContent: 'flex-end', gap: spacing.sm, marginTop: spacing.lg },
   });

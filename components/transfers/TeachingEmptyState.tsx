@@ -40,6 +40,7 @@ function FinderTile({ icon, title, subtitle, onPress }: { icon: PixelIconName; t
 export function TeachingEmptyState({ onAdd, onOpenFile, onSearch, onBrowse, searchSources }: TeachingEmptyStateProps) {
   const { colors } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
+  const hint = empty.transfers.shareHint;
   return (
     <View style={styles.root} testID="transfers-empty">
       <View style={styles.tile}>
@@ -62,6 +63,15 @@ export function TeachingEmptyState({ onAdd, onOpenFile, onSearch, onBrowse, sear
         <FinderTile icon="search" title="Search" subtitle={`${searchSources} ${searchSources === 1 ? 'source' : 'sources'} at once`} onPress={onSearch} />
         <FinderTile icon="network" title="Browser" subtitle="Save videos from pages" onPress={onBrowse} />
       </View>
+      <View style={styles.hint} accessible accessibilityLabel={hint}>
+        <PixelIcon name="share" size={16} color={colors.textMuted} />
+        <Text style={styles.hintText}>
+          {/* The two words to look for in the other app's menus stand out. */}
+          {hint.split(/("Share"|Maglev)/).map((part, i) =>
+            i % 2 === 1 ? <Text key={i} style={styles.hintStrong}>{part}</Text> : part,
+          )}
+        </Text>
+      </View>
     </View>
   );
 }
@@ -79,12 +89,12 @@ const makeStyles = (c: ThemeColors) =>
       alignItems: 'center',
       justifyContent: 'center',
     },
-    title: { ...type.bodyStrong, fontSize: 17, color: c.text, marginTop: spacing.lg, textAlign: 'center' },
-    body: { ...type.body, fontSize: 13, lineHeight: 19, color: c.textMuted, marginTop: spacing.sm, textAlign: 'center', maxWidth: 300 },
+    title: { ...type.bodyStrong, fontSize: type.size.xl, color: c.text, marginTop: spacing.lg, textAlign: 'center' },
+    body: { ...type.body, fontSize: type.size.md, lineHeight: 19, color: c.textMuted, marginTop: spacing.sm, textAlign: 'center', maxWidth: 300 },
     actions: { marginTop: spacing.xl, alignSelf: 'stretch', gap: spacing.sm },
     divider: { marginTop: spacing.xl, alignSelf: 'stretch', flexDirection: 'row', alignItems: 'center', gap: spacing.md },
     rule: { flex: 1, height: StyleSheet.hairlineWidth, backgroundColor: c.border },
-    dividerLabel: { ...type.body, fontSize: 12, color: c.textMuted },
+    dividerLabel: { ...type.body, fontSize: type.size.sm, color: c.textMuted },
     finders: { marginTop: spacing.lg, alignSelf: 'stretch', flexDirection: 'row', gap: spacing.md },
     tileOuter: { flex: 1 },
     finder: {
@@ -99,6 +109,9 @@ const makeStyles = (c: ThemeColors) =>
       borderWidth: 1,
       borderColor: c.border,
     },
-    finderTitle: { ...type.bodyStrong, fontSize: 14, color: c.text, textAlign: 'center' },
-    finderSub: { ...type.body, fontSize: 12, lineHeight: 16, color: c.textMuted, textAlign: 'center' },
+    finderTitle: { ...type.bodyStrong, fontSize: type.size.base, color: c.text, textAlign: 'center' },
+    hint: { marginTop: spacing.xxl, minHeight: touch.min, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.sm },
+    hintText: { ...type.body, fontSize: type.size.sm, lineHeight: 16, color: c.textMuted, textAlign: 'center' },
+    hintStrong: { ...type.bodyStrong, color: c.text },
+    finderSub: { ...type.body, fontSize: type.size.sm, lineHeight: 16, color: c.textMuted, textAlign: 'center' },
   });

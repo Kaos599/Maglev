@@ -18,17 +18,13 @@ export interface LinkDownloadPrefs {
 
 const KEY = 'maglev.linkDownloads.prefs.v1';
 
-export function defaultLinkDownloadPrefs(): LinkDownloadPrefs {
-  return { downloadParts: DEFAULT_DOWNLOAD_PARTS };
-}
-
 /** Anything that is not one of the allowed counts becomes the default. */
 export function normalizeDownloadParts(raw: unknown): DownloadParts {
   return (PART_CHOICES as readonly unknown[]).includes(raw) ? (raw as DownloadParts) : DEFAULT_DOWNLOAD_PARTS;
 }
 
 /** Tolerant parse: unknown or missing fields fall back to defaults. */
-export function normalizeLinkDownloadPrefs(raw: unknown): LinkDownloadPrefs {
+function normalizeLinkDownloadPrefs(raw: unknown): LinkDownloadPrefs {
   const o = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
   return { downloadParts: normalizeDownloadParts(o.downloadParts) };
 }

@@ -15,12 +15,12 @@ export interface OffSources {
   animeName: string | null;
 }
 
-export const NO_OFF_SOURCES: OffSources = { count: 0, names: [], animeName: null };
+const NO_OFF_SOURCES: OffSources = { count: 0, names: [], animeName: null };
 
 const base = (code: string): string => code.toLowerCase().split('-')[0];
 
 /** A provider with no language data counts as covering every language. */
-export function coversLanguages(p: Pick<SubtitleProvider, 'languages'>, languages: readonly string[]): boolean {
+function coversLanguages(p: Pick<SubtitleProvider, 'languages'>, languages: readonly string[]): boolean {
   if (p.languages === 'many' || !Array.isArray(p.languages) || p.languages.length === 0) return true;
   const have = new Set(p.languages.map(base));
   return languages.some((l) => have.has(base(l)));

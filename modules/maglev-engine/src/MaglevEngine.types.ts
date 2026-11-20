@@ -201,6 +201,8 @@ export type EngineErrorCode =
   /** NATIVE_CONTRACT 17 (URL downloads). */
   | 'HTTP_STATUS'
   | 'AUTH_REQUIRED'
+  /** A 403 with no sign-in details: the site refused the link. Never retried by itself. */
+  | 'LINK_REFUSED'
   | 'LINK_EXPIRED'
   | 'FILE_CHANGED'
   | 'NOT_A_FILE'
@@ -232,7 +234,7 @@ export type EngineResult<T = object> =
       id?: string;
       retryAfterSecs?: number;
       mergedTrackers?: number;
-      /** Set with `HTTP_STATUS` (and `AUTH_REQUIRED`): the status the server answered. */
+      /** Set with `HTTP_STATUS` (and `AUTH_REQUIRED`, `LINK_REFUSED`): the status the server answered. */
       httpStatus?: number;
     };
 
@@ -256,6 +258,25 @@ export interface NativeConfig {
   peer_timeout_secs: number;
   proxy_url: string | null;
   ip_filter_path: string | null;
+}
+
+/** NATIVE_CONTRACT 41 (B3). `unreadable`: the setting is on but the file is missing, empty or has no rule we can read. */
+export type BlocklistState = 'off' | 'on' | 'unreadable';
+
+export interface BlocklistStatus {
+  state: BlocklistState;
+  /** Rules loaded. 0 unless `state` is `on` (and 0 on `on` for a gzip list not read yet). */
+  rules: number;
+}
+
+/**
+ * NATIVE_CONTRACT 41. What `getEffectiveConfig` answers: the saved config (snake_case, as `NativeConfig`) plus two
+ * camelCase fields. `restartPending` is true while the running session differs from the saved config in a
+ * restart-required field (proxy, listening port, UPnP, DHT, local peer discovery, blocklist, connections per torrent).
+ */
+export interface EffectiveConfig extends NativeConfig {
+  restartPending: boolean;
+  blocklist: BlocklistStatus;
 }
 
 export interface MetadataFile {
@@ -473,7 +494,7 @@ export type DownloadState =
 export interface DownloadError {
   code: Extract<
     EngineErrorCode,
-    'HTTP_STATUS' | 'AUTH_REQUIRED' | 'LINK_EXPIRED' | 'FILE_CHANGED' | 'NOT_A_FILE' | 'CHECKSUM_MISMATCH' | 'NETWORK' | 'PERMISSION' | 'STALLED' | 'LAN_ADDRESS' | 'LOCAL_REDIRECT' | 'BLOCKED' | 'STREAM_PROTECTED' | 'STREAM_LIVE' | 'STREAM_UNSUPPORTED' | 'MUX_FAILED'
+    'HTTP_STATUS' | 'AUTH_REQUIRED' | 'LINK_REFUSED' | 'LINK_EXPIRED' | 'FILE_CHANGED' | 'NOT_A_FILE' | 'CHECKSUM_MISMATCH' | 'NETWORK' | 'PERMISSION' | 'STALLED' | 'LAN_ADDRESS' | 'LOCAL_REDIRECT' | 'BLOCKED' | 'STREAM_PROTECTED' | 'STREAM_LIVE' | 'STREAM_UNSUPPORTED' | 'MUX_FAILED'
   >;
   message: string;
   httpStatus?: number | null;
@@ -489,6 +510,8 @@ export interface DownloadSnapshot {
   pausedBy: string | null;
   /** NATIVE_CONTRACT 25.1. "Resume anyway" is active for this download. Absent means false. */
   allowedAnyway?: boolean;
+  /** The page a browser download was found on, or null. Without its query when that looked like a secret. */
+  pageUrl?: string | null;
   /** Bytes, or null while the server has not said. */
   size: number | null;
   downloaded: number;
@@ -572,12 +595,26 @@ export interface DownloadOptions {
   paused?: boolean;
   /** 1 to 8. The engine downloads on one connection today. */
   segments?: number;
-  headers?: { Cookie?: string; Referer?: string; 'User-Agent'?: string };
+  headers?: {
+    Cookie?: string;
+    Referer?: string;
+    'User-Agent'?: string;
+    /** The page's origin ("https://host"). Streams send it on every request. */
+    Origin?: string;
+    /** WebView jar cookies per host. Streams send each host its own (NATIVE_CONTRACT 24.8). */
+    Cookies?: { host: string; cookie: string }[];
+  };
   /** Refused with UNSUPPORTED until the engine can check it. */
   expectedHash?: { alg: 'sha256'; hex: string };
   downLimitBps?: number;
   /** The user allowed the typed host even though it is on their own network. The module sends it as `allow_lan`. */
   allowLan?: boolean;
+  /**
+   * The page the link was found on (in-app browser). NATIVE_CONTRACT "Auto-refresh (2026-11-20)": the engine keeps it as
+   * `pageUrl` on the download so the app can load the page again when the link expires or is refused. Saved without
+   * its query when the query looks like a secret. Also accepted by `refreshDownloadUrl`, to update it.
+   */
+  pageUrl?: string;
   /** Save an HLS or DASH stream (NATIVE_CONTRACT 24.8). The link is the playlist. */
   stream?: StreamSelection;
 }
@@ -601,7 +638,8 @@ export interface StorageStatus {
   safLost: boolean;
 }
 
-export type PickFolderResult = ({ ok?: true } & DownloadFolder) | { cancelled: true };
+/** `path` is the plain folder path when Maglev can write there directly, null when the folder is staged. */
+export type PickFolderResult = ({ ok?: true; path?: string | null } & DownloadFolder) | { cancelled: true };
 
 export type NotificationPermission = 'granted' | 'denied' | 'undetermined';
 export interface NativePermissionStatus {
@@ -757,7 +795,21 @@ export interface MaglevEngineApi {
   openNotificationSettings(channel?: 'completed'): Promise<void>;
   setGlobalLimits(down: number, up: number): Promise<EngineResult>;
   applyConfig(config: NativeConfig): Promise<EngineResult<{ restartRequired: boolean }>>;
-  getEffectiveConfig(): Promise<EngineResult<NativeConfig>>;
+  getEffectiveConfig(): Promise<EngineResult<EffectiveConfig>>;
+  /**
+   * NATIVE_CONTRACT 41 (Debug log). Writes a text file to the app cache (version, phone, settings without secrets,
+   * the last 2,000 log lines, URL queries removed) and resolves with its content:// uri. Share it with `shareDebugLog`.
+   */
+  exportDebugLog(): Promise<EngineResult<{ uri: string }>>;
+  /** Opens the system share sheet for a uri `exportDebugLog` returned. */
+  shareDebugLog(uri: string): Promise<EngineResult>;
+  /**
+   * NATIVE_CONTRACT 41 (B4). Applies the restart-required settings now: stops the session (resume data saved, link
+   * downloads checkpointed), starts it again from the saved config, and puts transfers back as they were (a paused one
+   * stays paused). Resolves when the session is up again. INVALID_STATE while another restart runs; ENGINE_UNAVAILABLE
+   * when the session can't start (call it again to retry). Telemetry refreshes the UI; `restartPending` is false after.
+   */
+  restartEngine(): Promise<EngineResult>;
   getPieceBitfield(id: string): Promise<number[]>;
   /** What this phone can decode and display (CodecProbe.kt). Cached natively for the process. */
   getPlaybackSupport(): Promise<PlaybackSupport>;

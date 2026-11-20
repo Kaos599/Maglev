@@ -3,7 +3,7 @@ import { AppState, Linking, StyleSheet, View } from 'react-native';
 import { FloatingSheet } from './browser/FloatingSheet';
 import { Button } from './ui';
 import { REPO_URL } from './settings/StarTicket';
-import { useMaglevEngine } from '../context/EngineContext';
+import { useEngineLastCompleted } from '../context/EngineContext';
 import { useSettings } from '../context/SettingsContext';
 import { starCopy } from '../constants/copy';
 import { spacing } from '../constants/theme';
@@ -17,7 +17,7 @@ import { STAR_DELAY_MS, afterCompleted, afterNever, afterNotNow, afterStarred, s
  * at most once per app session.
  */
 export function StarPrompt() {
-  const { lastCompleted } = useMaglevEngine();
+  const { lastCompleted } = useEngineLastCompleted();
   const { settings } = useSettings();
   const [visible, setVisible] = useState(false);
   const shown = useRef(false);

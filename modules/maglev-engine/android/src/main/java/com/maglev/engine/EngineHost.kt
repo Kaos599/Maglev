@@ -41,7 +41,9 @@ import kotlinx.coroutines.ExecutorCoroutineDispatcher
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.asCoroutineDispatcher
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.Dispatchers
@@ -49,6 +51,7 @@ import java.io.File
 import java.nio.ByteBuffer
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
 
 /** User-visible governance rules (contract section 6). */
@@ -87,6 +90,12 @@ object EngineHost {
     const val TAG_OFFLINE = "offline"
     const val ENGINE_PREFS = PREFS
     private const val REASON_FGS_TIMEOUT = "fgs_timeout"
+    /** Rust holds every transfer with this reason from `nativeInit` until the first governance pass (contract 41, B5). */
+    private const val REASON_STARTUP = "startup"
+    /** The VPN rule must hold this long before the session is rebuilt network-off (or back), so a flapping link does not cycle it. */
+    private const val NETWORK_OFF_DEBOUNCE_MS = 3_000L
+    /** Waits between attempts to bring the session back after a failed cycle; the last value repeats while the service lives. */
+    private val ENGINE_RETRY_BACKOFF_MS = longArrayOf(2_000L, 5_000L, 15_000L, 30_000L, 60_000L)
     private const val SERVICE_RETRY_MS = 10_000L
     private const val TILE_REFRESH_MS = 2_000L
     private const val COPY_RETRY_MS = 60_000L
@@ -94,6 +103,12 @@ object EngineHost {
     private const val DL_PREFIX = "dl:"
     private const val FEED_RESOLVE_MS = 20_000L
     private const val INIT_GIVE_UP_MS = 10 * 60_000L
+    /** Poll period while something is busy, and the floor for any poll. */
+    private const val BUSY_POLL_MS = 1000L
+    /** Poll period while nothing downloads, resolves, checks, streams or seeds. pollNow() wakes the loop at once. */
+    private const val IDLE_POLL_MS = 5000L
+    /** With the app out of sight, telemetry goes to JS at most this often. Coming back emits at once. */
+    private const val BACKGROUND_EMIT_MS = 5000L
 
     @Volatile private var ctx: Context? = null
 
@@ -118,6 +133,13 @@ object EngineHost {
      */
     @Volatile private var startWarning: String? = null
     private var pollJob: Job? = null
+    /** Wakes the poll loop out of its idle sleep so it re-reads the summary (something was added or resumed). */
+    private val pollWake = Channel<Unit>(Channel.CONFLATED)
+    @Volatile private var appInForeground = true
+    /** Set when the app comes to the front: the next poll emits telemetry whatever the background throttle says. */
+    @Volatile private var forceEmit = false
+    @Volatile private var lastEmitAt = 0L
+    @Volatile private var lastPollAt = 0L
     private val prevFinished = HashMap<String, Boolean>()
     private val prevState = HashMap<String, String?>()
     /** Info-hashes already handed to the media scanner for their current completion (contract 12.2). */
@@ -155,6 +177,13 @@ object EngineHost {
     /** Last metered flag pushed to the engine (contract section 34.1); null forces the next push. */
     private var lastMetered: Boolean? = null
     private var net: NetworkGovernanceManager? = null
+    /** True while a [restartEngine] runs. A second call fails with INVALID_STATE (contract 41, B4). */
+    private val restarting = AtomicBoolean(false)
+    /** Whether the running session was built network-off (no DHT, no listener) because the VPN rule blocked at the time. */
+    @Volatile private var networkOffApplied = false
+    private var networkOffJob: Job? = null
+    /** Re-tries a session start that failed after a cycle. Touched only under [lifecycleLock] (and cancelled by shutdown). */
+    private var engineRetryJob: Job? = null
     private var power: PowerGovernanceManager? = null
 
     @Volatile private var holdForPaused = false
@@ -272,8 +301,14 @@ object EngineHost {
         }
         val target = StorageManager.activeTarget(c)
         val session = StorageManager.sessionDir(c).absolutePath
+        // Contract 41 (B5): the network watcher runs before the session exists, so the VPN rule is judged on a real
+        // reading. An unknown network blocks it. Blocked at start means the session is built network-off.
+        startGovernanceWatchers(c)
+        val networkOff = vpnBlockedNow()
+        call { NativeCore.nativeSetNetworkOff(networkOff) }
         val res = call { NativeCore.nativeInit(configJson, session, target.path) }
         if (!isOk(res)) return res
+        networkOffApplied = networkOff
 
         startWarning = (res["config_warning"] as? String)?.takeIf { it.isNotEmpty() }
         initialized = true
@@ -289,9 +324,11 @@ object EngineHost {
         lastPushedLimits = null
         scheduleLimitApplied = false
         scheduleIdleSince = 0L
-        startGovernanceWatchers(c)
+        // Rust holds every restored transfer ("startup") until this pass has judged the rules; only then do they run.
         evaluateGovernance(force = true)
+        call { NativeCore.nativeSetTransfersAllowed(true, REASON_STARTUP) }
         startPolling()
+        pollNow()
         emitStorageStatus()
         return LinkedHashMap(res).apply { put("storage", storageStatus()) }
     }
@@ -404,6 +441,134 @@ object EngineHost {
         }
     }
 
+    /**
+     * Contract 41 (B4): applies the restart-required settings now. Stops the Rust session the way a shutdown does (Rust
+     * saves resume data and checkpoints link downloads), then starts it again from the saved config. Transfers come
+     * back as they were: Rust's meta keeps who is paused by the user, so a paused download stays paused. The service,
+     * the governance watchers and the notification stay up. Fails with INVALID_STATE while another restart runs.
+     */
+    fun restartEngine(): Map<String, Any?> {
+        if (!restarting.compareAndSet(false, true)) {
+            return Json.failure("INVALID_STATE", "The downloader is already restarting")
+        }
+        try {
+            return synchronized(lifecycleLock) { cycleSessionLocked() }
+        } finally {
+            restarting.set(false)
+        }
+    }
+
+    /** Body of [restartEngine], and the network-off cycle. Runs under [lifecycleLock]. */
+    private fun cycleSessionLocked(): Map<String, Any?> {
+        if (!initialized) {
+            // Nothing running (an earlier restart failed, or the engine was never up): start from the saved config.
+            return startEngine("")
+        }
+        pollJob?.cancel()
+        pollJob = null
+        networkOffJob?.cancel()
+        networkOffJob = null
+        initialized = false
+        // Taking the poll lock waits for an in-flight poll. Later polls see initialized == false and return.
+        val stopped = synchronized(pollLock) { call { NativeCore.nativeShutdown() } }
+        if (!isOk(stopped)) Log.w(TAG, "restart: shutdown reported ${stopped["code"]}")
+        // "" makes Rust load the config it saved with the last applyConfig.
+        val res = startEngine("")
+        if (isOk(res)) {
+            forceEmit = true
+            pollNow()
+        } else {
+            // initialized is false now, so governance and the network-off check return early until a session
+            // exists. Without a retry the foreground service would stay up with no engine. The failure itself
+            // reaches JS the usual way: a restart returns it, and JS's own init gets it from startEngine.
+            Log.w(TAG, "cycle: session did not restart (${res["code"]}); retrying with back-off")
+            scheduleEngineRetryLocked()
+        }
+        return res
+    }
+
+    /** Runs under [lifecycleLock]. One retry loop at a time; it ends on success, on a shutdown, or when someone else started the engine. */
+    private fun scheduleEngineRetryLocked() {
+        if (engineRetryJob?.isActive == true) return
+        val epoch = shutdownEpoch.get()
+        engineRetryJob = scope.launch {
+            var attempt = 0
+            while (isActive) {
+                delay(ENGINE_RETRY_BACKOFF_MS[minOf(attempt, ENGINE_RETRY_BACKOFF_MS.size - 1)])
+                attempt++
+                val done = synchronized(lifecycleLock) {
+                    when {
+                        initialized || shutdownEpoch.get() != epoch -> true
+                        else -> {
+                            val r = startEngine("")
+                            if (isOk(r)) {
+                                forceEmit = true
+                                pollNow()
+                                true
+                            } else {
+                                Log.w(TAG, "engine retry $attempt failed: ${r["code"]}")
+                                false
+                            }
+                        }
+                    }
+                }
+                if (done) break
+            }
+        }
+    }
+
+    /**
+     * Contract 41 (B5): the VPN rule blocks unless the default network is known to be a VPN. No reading yet, no
+     * callback and no network at all count as blocked. Without "Only download over a VPN" it never blocks.
+     */
+    private fun vpnBlockedNow(): Boolean {
+        if (!governance.vpnOnly) return false
+        val n = net
+        return !(n != null && n.monitoring && n.connected && n.vpn)
+    }
+
+    /**
+     * Whether the session should run network-off. Differs from [vpnBlockedNow] in one case: a network that is known
+     * to be absent. With no network nothing can leak, so a Wi-Fi handoff (a brief no-network gap) must not rebuild
+     * the session twice; the current state stays. Unknown (no reading yet) still counts as blocked.
+     */
+    private fun networkOffWanted(): Boolean {
+        if (!governance.vpnOnly) return false
+        val n = net
+        if (n == null || !n.monitoring) return true
+        if (!n.connected) return networkOffApplied
+        return !n.vpn
+    }
+
+    /**
+     * librqbit cannot stop DHT or the listening socket on a live session. So while the VPN rule blocks, the session is
+     * rebuilt without them (network-off), and rebuilt again when the rule allows. [want] is [networkOffWanted].
+     *
+     * Known gap: when the VPN drops onto a bare network, DHT and the listening socket stay up for
+     * [NETWORK_OFF_DEBOUNCE_MS] plus the rebuild time. There is no cheap native call to close them on a live session
+     * (librqbit has none), and the debounce avoids rebuilding on every VPN flap. Transfers themselves pause at once
+     * through the `vpn_required` block, which does not wait for the debounce.
+     */
+    private fun reconcileNetworkOff(want: Boolean) {
+        if (want == networkOffApplied) {
+            networkOffJob?.cancel()
+            networkOffJob = null
+            return
+        }
+        if (networkOffJob?.isActive == true) return
+        networkOffJob = scope.launch {
+            delay(NETWORK_OFF_DEBOUNCE_MS)
+            // The rule may have changed back during the wait; then there is nothing to do.
+            if (networkOffWanted() == networkOffApplied) return@launch
+            synchronized(lifecycleLock) {
+                if (initialized && networkOffWanted() != networkOffApplied) {
+                    val res = cycleSessionLocked()
+                    if (!isOk(res)) Log.w(TAG, "network-off cycle failed: ${res["code"]}")
+                }
+            }
+        }
+    }
+
     /** Stops the engine, the poller, the governance watchers and the service. */
     fun shutdownEngine(): Map<String, Any?> = synchronized(lifecycleLock) { shutdownEngineLocked() }
 
@@ -414,6 +579,10 @@ object EngineHost {
         startWarning = null
         pollJob?.cancel()
         pollJob = null
+        networkOffJob?.cancel()
+        networkOffJob = null
+        engineRetryJob?.cancel()
+        engineRetryJob = null
         net?.stop(); net = null
         power?.stop(); power = null
         holdForPaused = false
@@ -447,7 +616,15 @@ object EngineHost {
         }
     }
 
+    /** The activity left the screen: telemetry to JS slows to [BACKGROUND_EMIT_MS]. The service and governance are unaffected. */
+    fun onBackground() {
+        appInForeground = false
+    }
+
     fun onForeground() {
+        appInForeground = true
+        forceEmit = true
+        if (initialized) pollNow()
         holdForPaused = false
         val c = ctx ?: return
         onForegroundHealth()
@@ -479,7 +656,8 @@ object EngineHost {
         pollJob = pollScope.launch {
             while (isActive && initialized) {
                 val started = SystemClock.elapsedRealtime()
-                if (hasObserver()) {
+                // A wake-up right after pollNow() finds a fresh poll and only re-times the sleep.
+                if (hasObserver() && started - lastPollAt >= BUSY_POLL_MS - 100) {
                     try {
                         pollOnce()
                     } catch (t: Throwable) {
@@ -487,7 +665,9 @@ object EngineHost {
                     }
                 }
                 scheduleTick()
-                delay((1000 - (SystemClock.elapsedRealtime() - started)).coerceAtLeast(100))
+                val period = if (lastSummary?.let { it.busy == 0 } == true) IDLE_POLL_MS else BUSY_POLL_MS
+                val wait = (period - (SystemClock.elapsedRealtime() - started)).coerceAtLeast(100)
+                withTimeoutOrNull(wait) { pollWake.receive() }
             }
         }
     }
@@ -512,6 +692,8 @@ object EngineHost {
             } catch (t: Throwable) {
                 Log.w(TAG, "poll failed", t)
             }
+            // The loop may be in a 5 s idle sleep. Adds and resumes land here, so it drops back to 1 s at once.
+            pollWake.trySend(Unit)
         }
     }
 
@@ -526,6 +708,7 @@ object EngineHost {
             if (res["code"] == "NOT_INITIALIZED") initialized = false
             return
         }
+        lastPollAt = SystemClock.elapsedRealtime()
         ctx?.let { heartbeat(it) }
         val torrents = Json.list(res["torrents"])
         val downloads = Json.list(res["downloads"])
@@ -538,10 +721,15 @@ object EngineHost {
         val summary = summarize(transfers, res["streaming"] == true)
         lastSummary = summary
         refreshTile(summary)
-        @Suppress("UNCHECKED_CAST")
-        val body = LinkedHashMap(Json.camelize(res) as Map<String, Any?>)
-        body["serviceBlocked"] = serviceBlocked
-        emit("onTelemetry", body)
+        val nowMs = SystemClock.elapsedRealtime()
+        if (emitter != null && (appInForeground || forceEmit || nowMs - lastEmitAt >= BACKGROUND_EMIT_MS)) {
+            forceEmit = false
+            lastEmitAt = nowMs
+            @Suppress("UNCHECKED_CAST")
+            val body = LinkedHashMap(Json.camelize(res) as Map<String, Any?>)
+            body["serviceBlocked"] = serviceBlocked
+            emit("onTelemetry", body)
+        }
         driveService(summary)
         healthTick(torrents, summary)
         copyStagedTorrents(torrents)
@@ -598,6 +786,8 @@ object EngineHost {
                     // Link downloads paused for a network blip (TAG_OFFLINE) stay wanted, so the service survives it.
                     TAG_OFFLINE -> { byRules++; unvalidatedPaused = true }
                     "vpn_required" -> { byRules++; vpnPaused = true }
+                    // The start-up hold lasts until the first governance pass; it still counts as a rule pause.
+                    REASON_STARTUP -> byRules++
                     "storage_full" -> { byRules++; spacePaused = true }
                     "storage_unavailable" -> { byRules++; volumePaused = true }
                     "schedule" -> bySchedule++
@@ -1206,6 +1396,7 @@ object EngineHost {
                 c,
                 onChanged = { scope.launch { evaluateGovernance(false) } },
                 onGained = { scope.launch { reannounceLiveTorrents() } },
+                onSwitched = { scope.launch { call { NativeCore.nativeNetworkChanged() } } },
             ).also { it.start() }
         }
         if (power == null) power = PowerGovernanceManager(c) { scope.launch { evaluateGovernance(false) } }.also { it.start() }
@@ -1238,7 +1429,8 @@ object EngineHost {
         val linkKnown = n != null && n.monitoring && n.connected
         // A sign-in page, not merely an unvalidated network (§21).
         val unvalidatedBlocked = linkKnown && n?.captivePortal == true
-        val vpnBlocked = g.vpnOnly && linkKnown && n?.vpn == false
+        // Contract 41 (B5): unlike the rules above, an unknown network counts as blocked for the VPN rule.
+        val vpnBlocked = vpnBlockedNow()
         val charging = p?.charging ?: true
         val level = p?.levelPct ?: 100
         val batteryBlocked = g.batteryCutoffPct > 0 && !charging && level < g.batteryCutoffPct
@@ -1260,6 +1452,7 @@ object EngineHost {
         send("charging_only", !chargingBlocked, force)
         send("network_unvalidated", !unvalidatedBlocked, force)
         send("vpn_required", !vpnBlocked, force)
+        reconcileNetworkOff(networkOffWanted())
         // Link downloads only (contract section 17): no network, or none Android validated, means "offline".
         // Unknown (callback not registered) is never offline. onChanged re-runs this on every network change.
         val offline = n != null && n.monitoring && (!n.connected || !n.validated)
@@ -1559,6 +1752,30 @@ object EngineHost {
         return if (err == null) linkedMapOf("ok" to true) else Json.failure("UNSUPPORTED", err)
     }
 
+    /** JS exportDebugLog (contract 41): the text file lives in cache/debug and is shared by [shareDebugLog]. */
+    fun exportDebugLog(): Map<String, Any?> {
+        val c = requireCtx() ?: return Json.failure("ENGINE_UNAVAILABLE", "Module is not attached")
+        return try {
+            // The engine may not be up; the file is still useful without the settings part.
+            val cfg = try { NativeCore.nativeGetEffectiveConfig() } catch (_: Throwable) { "" }
+            DebugLog.export(c, cfg)
+        } catch (e: Exception) {
+            Log.w(TAG, "debug log failed: ${e.javaClass.simpleName}")
+            Json.failure("INTERNAL", "Couldn't make the debug log.")
+        }
+    }
+
+    /** JS shareDebugLog: only a uri from [exportDebugLog] (our FileProvider, cache/debug) is accepted. */
+    fun shareDebugLog(uri: String): Map<String, Any?> {
+        val c = requireCtx() ?: return Json.failure("ENGINE_UNAVAILABLE", "Module is not attached")
+        val parsed = Uri.parse(uri)
+        val ours = parsed.scheme == "content" && parsed.authority == FileActions.authority(c) &&
+            parsed.pathSegments.firstOrNull() == "debug_log"
+        if (!ours) return Json.failure("NOT_FOUND", "The saved file isn't there any more.")
+        val err = FileActions.shareUri(c, parsed, "maglev-log.txt")
+        return if (err == null) linkedMapOf("ok" to true) else Json.failure("UNSUPPORTED", err)
+    }
+
     // endregion
 
     // region Health (§18)
@@ -1660,13 +1877,8 @@ object EngineHost {
         val ownFree = Json.long(space["freeBytes"])
         val free = if (staged) (space["targetFreeBytes"] as? Number)?.toLong()?.coerceAtMost(ownFree) ?: ownFree else ownFree
         val list = call { NativeCore.nativeListTorrents() }
-        var pending = 0L
-        if (isOk(list)) {
-            for (t in Json.list(list["torrents"])) {
-                if (isFinished(t)) continue
-                pending += (Json.long(t["total_bytes"]) - Json.long(t["progress_bytes"])).coerceAtLeast(0L)
-            }
-        }
+        // Torrents and link downloads both still need space (SM-35, NATIVE_CONTRACT 10.3).
+        val pending = if (isOk(list)) Admission.pendingNeedFromList(list) else 0L
         val out = Admission.admit(free, pending, if (staged) 2 else 1, selection)
         if (out.result == Admission.Result.DoesntFit) Log.i(TAG, "feed match does not fit: need ${out.need}, budget ${out.budget}")
         return out.result != Admission.Result.DoesntFit

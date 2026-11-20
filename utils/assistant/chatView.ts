@@ -45,7 +45,7 @@ const META: Record<string, ToolMeta> = {
 
 const FALLBACK: ToolMeta = { icon: 'check', running: 'Working', done: 'Done', failed: "Couldn't finish" };
 
-export function toolMeta(tool: string | undefined): ToolMeta {
+function toolMeta(tool: string | undefined): ToolMeta {
   return (tool && META[tool]) || FALLBACK;
 }
 

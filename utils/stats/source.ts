@@ -11,8 +11,8 @@ export interface Origin {
   category: string | null;
 }
 
-export const ORIGIN_KEY = 'maglev.stats.origins.v1';
-export const MAX_ORIGINS = 500;
+const ORIGIN_KEY = 'maglev.stats.origins.v1';
+const MAX_ORIGINS = 500;
 
 const NONE: Origin = { source: null, category: null };
 

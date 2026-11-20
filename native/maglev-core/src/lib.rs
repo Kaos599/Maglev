@@ -7,6 +7,7 @@
 //! `activity`, `config`, `error`, `file_health`, `http_dl` (all but its driver), `source`, `scheduler`, `meta`, `priority`, `readiness`, `relocate`, `storage_guard`, `torrent_limits`, `trackers`, `simd`, and the parsing half of `streaming`.
 
 pub mod activity;
+pub mod android_log;
 pub mod config;
 pub mod engine;
 pub mod error;

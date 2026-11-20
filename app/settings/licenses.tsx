@@ -46,5 +46,5 @@ export default function LicencesSettings() {
 const makeStyles = (c: ThemeColors) =>
   StyleSheet.create({
     intro: { padding: spacing.lg },
-    introText: { ...type.body, fontSize: 15, color: c.text },
+    introText: { ...type.body, fontSize: type.size.lg, color: c.text },
   });

@@ -5,7 +5,6 @@
 import { LANGUAGES, defaultLanguages, languageName, phoneLocale, type LanguageInfo } from './subtitles/languages.ts';
 import { effectiveLanguages, withLanguageAt } from './subtitles/prefs.ts';
 import { listTurnedOff, providerEnabled, type ListOverrides } from './subtitles/providers/index.ts';
-import { HEARING_OPTIONS } from './subtitles/copy.ts';
 import type { SubtitleProvider } from './subtitles/types.ts';
 import type { SubtitleSettings } from '../modules/maglev-engine/src/MaglevSettings.types.ts';
 
@@ -58,16 +57,12 @@ export function languageOrder(s: Pick<SubtitleSettings, 'languages'>, locale?: s
   return effectiveLanguages(s, locale);
 }
 
-export function hearingLabel(h: SubtitleSettings['hearingImpaired']): string {
-  return HEARING_OPTIONS[h];
-}
-
 // ---------------------------------------------------------------- sources
 
 const MATCH_LABEL = { hash: 'fingerprint', name: 'name', imdb: 'IMDb' } as const;
 
 /** "By fingerprint and name". */
-export function matchesLine(matches: SubtitleProvider['matches']): string {
+function matchesLine(matches: SubtitleProvider['matches']): string {
   const parts = matches.map((m) => MATCH_LABEL[m]);
   if (parts.length === 0) return 'By name';
   if (parts.length === 1) return `By ${parts[0]}`;
@@ -75,7 +70,7 @@ export function matchesLine(matches: SubtitleProvider['matches']): string {
 }
 
 /** "Many languages", or up to three names and a count. */
-export function languagesLine(languages: SubtitleProvider['languages']): string {
+function languagesLine(languages: SubtitleProvider['languages']): string {
   if (languages === 'many') return 'Many languages';
   if (languages.length === 0) return 'Few languages';
   const names = languages.map(languageName);
@@ -95,7 +90,7 @@ export interface SourceRow {
   homepage: string;
 }
 
-export function abbrOf(name: string): string {
+function abbrOf(name: string): string {
   return name.replace(/[^A-Za-z0-9]/g, '').slice(0, 2).toUpperCase() || 'SU';
 }
 

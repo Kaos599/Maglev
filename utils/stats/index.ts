@@ -38,11 +38,6 @@ export function subscribeLive(l: () => void): () => void {
   };
 }
 
-/** Writes anything waiting (app going to the background). */
-export function flushStats(): Promise<void> {
-  return recorder ? recorder.flush() : Promise.resolve();
-}
-
 /** The store, opened (and migrated) on first use. A failed open is retried on the next call. */
 export function getStatsStore(): Promise<StatsStore> {
   if (!storePromise) {

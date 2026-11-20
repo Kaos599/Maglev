@@ -61,13 +61,18 @@ async function main() {
   if (contractDoc !== null) check('the style is UI only: Rust and Kotlin never see it', !/fontStyle/.test(contractDoc));
 
   // ---- every style maps every slot to a loaded font
-  const layout = read('app/_layout.tsx');
+  // Fonts are built into the APK by the expo-font config plugin (app.json), under the FONT_NAMES family names.
+  const appJson = JSON.parse(read('app.json'));
+  const fontPlugin = (appJson.expo.plugins || []).find((p) => Array.isArray(p) && p[0] === 'expo-font');
+  const families = (fontPlugin && fontPlugin[1] && fontPlugin[1].android && fontPlugin[1].android.fonts) || [];
   const loaded = new Set();
-  for (const m of layout.matchAll(/\[FONT_NAMES\.(\w+)\]:\s*require\('([^']+)'\)/g)) {
-    loaded.add(FS.FONT_NAMES[m[1]]);
-    check(`font file exists for ${m[1]}`, fs.existsSync(path.join(root, 'node_modules', m[2])), m[2]);
+  for (const f of families) {
+    loaded.add(f.fontFamily);
+    for (const d of f.fontDefinitions || []) check(`font file exists for ${f.fontFamily}`, fs.existsSync(path.join(root, d.path)), d.path);
   }
-  check('_layout loads fonts through FONT_NAMES', loaded.size === Object.keys(FS.FONT_NAMES).length, `${loaded.size} of ${Object.keys(FS.FONT_NAMES).length}`);
+  const names = Object.values(FS.FONT_NAMES);
+  check('app.json embeds every FONT_NAMES family', names.every((n) => loaded.has(n)), `${names.filter((n) => loaded.has(n)).length} of ${names.length}`);
+  check('_layout no longer waits on useFonts', !/useFonts\(/.test(read('app/_layout.tsx')));
   for (const style of FS.FONT_STYLES) {
     const map = FS.fontFamilies[style];
     check(`${style}: has every slot`, FS.FONT_SLOTS.every((s) => typeof map[s] === 'string'), Object.keys(map).join(','));

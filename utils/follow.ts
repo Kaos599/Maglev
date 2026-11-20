@@ -27,7 +27,7 @@ export interface FollowFeed {
 const NOT_SERIES = new Set(['movies', 'music', 'apps', 'games', 'books', 'adult']);
 
 /** Lowercase alphanumeric words without accents; one-letter words are dropped (they match everything). */
-export function titleWords(text: string): string[] {
+function titleWords(text: string): string[] {
   return text
     .normalize('NFD')
     .replace(/[̀-ͯ]/g, '')

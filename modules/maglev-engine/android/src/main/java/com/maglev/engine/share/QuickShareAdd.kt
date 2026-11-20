@@ -125,14 +125,9 @@ object QuickShareAdd {
         val staged = space["mode"] == "staging"
         val ownFree = Json.long(space["freeBytes"])
         val free = if (staged) (space["targetFreeBytes"] as? Number)?.toLong()?.coerceAtMost(ownFree) ?: ownFree else ownFree
-        var pending = 0L
         val list = EngineHost.call { NativeCore.nativeListTorrents() }
-        if (list["ok"] == true) {
-            for (t in Json.list(list["torrents"])) {
-                if (t["finished"] == true) continue
-                pending += (Json.long(t["total_bytes"]) - Json.long(t["progress_bytes"])).coerceAtLeast(0L)
-            }
-        }
+        // Torrents and link downloads both still need space (SM-35, NATIVE_CONTRACT 10.3).
+        val pending = if (list["ok"] == true) Admission.pendingNeedFromList(list) else 0L
         // Judge against what the storage rule keeps free (StorageGuard), or the card offers Download for a
         // transfer that is paused as Storage full the moment it starts. The text shows the space Maglev can use.
         val usable = StorageGuard.shareCardFree(free, Json.long(space["totalBytes"]))

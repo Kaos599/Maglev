@@ -71,7 +71,7 @@ const makeStyles = (c: ThemeColors) =>
     },
     icon: { paddingTop: 1 },
     text: { flex: 1 },
-    title: { ...type.bodyStrong, fontSize: 14, color: c.text },
-    body: { ...type.body, fontSize: 13, color: c.textMuted, marginTop: 2, lineHeight: 18 },
+    title: { ...type.bodyStrong, fontSize: type.size.base, color: c.text },
+    body: { ...type.body, fontSize: type.size.md, color: c.textMuted, marginTop: 2, lineHeight: 18 },
     action: { marginTop: spacing.md, flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: spacing.sm },
   });

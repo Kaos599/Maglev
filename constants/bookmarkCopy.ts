@@ -1,0 +1,31 @@
+/** Copy for bookmarks and the browser start page. Kept apart from copy.ts so it lands without touching shared files. */
+export const bookmarkCopy = {
+  section: 'Bookmarks',
+  sectionLabel: 'Bookmarks',
+  frequent: 'Frequent sites',
+  frequentLabel: 'Frequent sites',
+  recent: 'Recent',
+  recentLabel: 'Recent pages',
+  seeAll: 'See all',
+  seeAllLabel: 'See all history',
+  empty: { title: 'No bookmarks yet', body: 'Open a page, then choose Add bookmark from the page menu.' },
+  tileHint: 'Opens the page. Long press for more.',
+  menu: { openNewTab: 'Open in new tab', rename: 'Rename', remove: 'Remove bookmark' },
+  sheet: {
+    addTitle: 'Add bookmark',
+    editTitle: 'Edit bookmark',
+    nameLabel: 'Name',
+    addressLabel: 'Address',
+    save: 'Save',
+    cancel: 'Cancel',
+  },
+  toggle: { add: 'Add bookmark', remove: 'Remove bookmark', addSubtitle: 'Keeps this page on the start page.', removeSubtitle: 'Saved on the start page.' },
+  notices: {
+    added: 'Bookmark added.',
+    exists: 'Already in your bookmarks.',
+    full: 'Bookmarks are full. Remove one first.',
+    invalid: "Only web pages can be bookmarked.",
+    removed: (title: string) => `Removed ${title}.`,
+    undo: 'Undo',
+  },
+} as const;

@@ -248,11 +248,6 @@ export function useSearchPrefs(): [SearchPrefs, typeof updateSearchPrefs] {
 
 // ---- Recents (existing behaviour, now inside the prefs record) ----
 
-/** Last searches, newest first (max 8). */
-export function getRecentSearches(): string[] {
-  return load().recents;
-}
-
 /** Adds a query to the front, de-duplicating case-insensitively. Returns the new list. */
 export function addRecentSearch(query: string): string[] {
   const q = query.trim();
@@ -275,7 +270,7 @@ export function clearRecentSearches(): string[] {
 // ---- Torznab API keys (expo-secure-store) ----
 
 /** SecureStore keys allow only [A-Za-z0-9._-], so the contract's `torznab:<id>` is stored as `torznab.<id>`. */
-export function torznabKeyName(id: string): string {
+function torznabKeyName(id: string): string {
   return `torznab.${id.replace(/[^A-Za-z0-9._-]/g, '_')}`;
 }
 

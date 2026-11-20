@@ -1,0 +1,21 @@
+name: Conduct problem
+description: Someone broke the code of conduct in an issue, pull request or discussion.
+labels: [conduct]
+body:
+  - type: markdown
+    attributes:
+      value: See the [code of conduct](https://github.com/Kaos599/Maglev/blob/main/CODE_OF_CONDUCT.md). Describe what happened, but don't repeat the abuse itself.
+  - type: input
+    id: link
+    attributes:
+      label: Link
+      description: The comment, issue or pull request.
+      placeholder: https://github.com/Kaos599/Maglev/issues/123#issuecomment-…
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+    validations:
+      required: true

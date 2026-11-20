@@ -17,6 +17,9 @@ import android.os.SystemClock
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import android.view.KeyEvent
+import android.view.MotionEvent
+import org.json.JSONObject
+import org.json.JSONTokener
 import android.view.View
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputConnection
@@ -42,6 +45,9 @@ import android.widget.FrameLayout
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
+import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
+import androidx.webkit.WebSettingsCompat
+import androidx.webkit.WebViewFeature
 import expo.modules.kotlin.AppContext
 import expo.modules.kotlin.Promise
 import expo.modules.kotlin.viewevent.EventDispatcher
@@ -72,6 +78,7 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
     private val onPopupRequest by EventDispatcher<Map<String, Any?>>()
     private val onPopupBlocked by EventDispatcher<Map<String, Any?>>()
     private val onLongPress by EventDispatcher<Map<String, Any?>>()
+    private val onMediaHit by EventDispatcher<Map<String, Any?>>()
     private val onFindResult by EventDispatcher<Map<String, Any?>>()
 
     override val shouldUseAndroidLayout: Boolean = true
@@ -97,6 +104,8 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
     private var desktopMode = false
     // 28: text size in percent, 50..200. Applied again to every WebView this view creates.
     private var textZoom = 100
+    // Private browsing: the page cache is bypassed (LOAD_NO_CACHE). Cookies are wiped from JS when the browser is left.
+    private var privateMode = false
     private var pendingUrl: String? = null
     private var requestedUrl: String? = null
 
@@ -165,10 +174,32 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
 
     private val bridge = PageScanBridge { json -> onScanReport(json) }
 
+    // 24.10a: pull to reload. The WebView sits inside this layout (https://developer.android.com/reference/androidx/swiperefreshlayout/widget/SwipeRefreshLayout).
+    private val refresh = SwipeRefreshLayout(context)
+    // 24.10a: a text selection or the find bar is active, so a downward drag must not reload. Main thread.
+    private var selectionHold = false
+    private var findActive = false
+    // The spinner stops once the reload it started has been seen loading and has finished. Main thread.
+    private var pullLoading = false
+    // 24.10a: the injected script that finds media under a long press (prop mediaHitScript), and the dark pages switch.
+    private var mediaHitJs = ""
+    private var darkPages = false
+    private val pullSafety = Runnable { if (!destroyed) refresh.isRefreshing = false }
+
     init {
         BlocklistStore.warm(context)
+        refresh.setOnRefreshListener {
+            pullLoading = false
+            reload()
+            // Safety: never leave the spinner up if nothing started loading. One timer per pull, so a second
+            // pull isn't cut short by the first pull's timer.
+            mainHandler.removeCallbacks(pullSafety)
+            mainHandler.postDelayed(pullSafety, PULL_SAFETY_MS)
+        }
+        refresh.setOnChildScrollUpCallback { _, _ -> selectionHold || findActive || webView.canScrollVertically(-1) }
+        addView(refresh, ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
         webView = createWebView()
-        addView(webView, ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+        refresh.addView(webView, ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
     }
 
     // region Props and commands (called on the main thread)
@@ -202,12 +233,70 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
         if (!destroyed) webView.settings.textZoom = v
     }
 
+    /** Private browsing: stop reading the page cache while on. */
+    fun setPrivateMode(value: Boolean) {
+        if (value == privateMode) return
+        privateMode = value
+        if (!destroyed) webView.settings.cacheMode = if (value) WebSettings.LOAD_NO_CACHE else WebSettings.LOAD_DEFAULT
+    }
+
+    /** 24.10a: pull to reload on or off. */
+    fun setPullToRefresh(value: Boolean) {
+        refresh.isEnabled = value
+        if (!value) refresh.isRefreshing = false
+    }
+
+    /** 24.10a: spinner colour (hex string). A bad value is ignored. */
+    fun setRefreshColor(value: String) {
+        try {
+            refresh.setColorSchemeColors(Color.parseColor(value))
+        } catch (_: IllegalArgumentException) {
+        }
+    }
+
+    /** 24.10a: spinner circle colour (hex string). A bad value is ignored. */
+    fun setRefreshBackground(value: String) {
+        try {
+            refresh.setProgressBackgroundColorSchemeColor(Color.parseColor(value))
+        } catch (_: IllegalArgumentException) {
+        }
+    }
+
+    /** 24.10a: the script from utils/browser/mediaHitScript.ts, injected next to the page scan. */
+    fun setMediaHitScript(value: String) {
+        mediaHitJs = value
+    }
+
+    /** 24.10a: allow algorithmic darkening of pages that have no dark look. Takes effect on the next page load. */
+    fun setDarkPages(value: Boolean) {
+        darkPages = value
+        if (!destroyed) applyDarkPages(webView)
+    }
+
+    // https://developer.android.com/reference/androidx/webkit/WebSettingsCompat#setAlgorithmicDarkeningAllowed(android.webkit.WebSettings,boolean)
+    private fun applyDarkPages(w: WebView) {
+        try {
+            if (WebViewFeature.isFeatureSupported(WebViewFeature.ALGORITHMIC_DARKENING)) {
+                WebSettingsCompat.setAlgorithmicDarkeningAllowed(w.settings, darkPages)
+            }
+        } catch (_: Throwable) {
+            // An old WebView: pages stay as they are.
+        }
+    }
+
+    /** 24.10a: forget this site's localStorage and sessionStorage (main frame only). The screen reloads afterwards. */
+    fun clearSiteStorage() {
+        if (destroyed || webView.url == null) return
+        webView.evaluateJavascript("try{localStorage.clear();sessionStorage.clear()}catch(e){}", null)
+    }
+
     /** 28: highlight matches of [query] in the page. An empty query clears them. Results come as onFindResult. */
     fun findInPage(query: String, promise: Promise) {
         if (destroyed) {
             promise.reject("VIEW_GONE", "The browser was closed.", null)
             return
         }
+        findActive = query.isNotEmpty()
         if (query.isEmpty()) webView.clearMatches() else webView.findAllAsync(query)
         promise.resolve(null)
     }
@@ -226,6 +315,7 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
             promise.reject("VIEW_GONE", "The browser was closed.", null)
             return
         }
+        findActive = false
         webView.clearMatches()
         promise.resolve(null)
     }
@@ -410,6 +500,7 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
     fun scan() {
         if (destroyed || webView.url == null) return
         webView.evaluateJavascript(PageScan.scanScript(nonce.ifEmpty { newNonce() }), null)
+        if (mediaHitJs.isNotEmpty()) webView.evaluateJavascript(mediaHitJs, null)
         webView.evaluateJavascript(PageScan.RESCAN_JS, null)
     }
 
@@ -513,6 +604,8 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
         s.builtInZoomControls = true
         s.displayZoomControls = false
         s.textZoom = textZoom
+        s.cacheMode = if (privateMode) WebSettings.LOAD_NO_CACHE else WebSettings.LOAD_DEFAULT
+        applyDarkPages(w)
         w.setFindListener { ordinal, total, done ->
             if (!destroyed) onFindResult(mapOf("active" to ordinal, "total" to total, "done" to done))
         }
@@ -537,6 +630,8 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
         // Let the page scroll inside React Native parents.
         w.setOnTouchListener { _, ev ->
             requestDisallowInterceptTouchEvent(true)
+            // 24.10a: a new touch ends the hold a long press put on pull to reload (the selection is gone or being edited with handles).
+            if (ev.actionMasked == MotionEvent.ACTION_DOWN) selectionHold = false
             noteTouch(ev.actionMasked)
             false
         }
@@ -571,7 +666,8 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
         tearDown(dead)
         resetPageState()
         webView = createWebView()
-        addView(webView, ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+        refresh.addView(webView, ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+        refresh.isRefreshing = false
         loadedOnce = false
         redirectInFlight = false
         history.clear()
@@ -595,6 +691,14 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
         val url = w.url ?: ""
         curUrl = url
         curTitle = w.title ?: ""
+        if (refresh.isRefreshing) {
+            if (loading) {
+                pullLoading = true
+            } else if (pullLoading) {
+                pullLoading = false
+                refresh.isRefreshing = false
+            }
+        }
         onPage(
             mapOf(
                 "url" to url,
@@ -667,6 +771,7 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
         // Main frame only: evaluateJavascript does not reach sub-frames.
         val n = nonce.ifEmpty { newNonce() }
         view.evaluateJavascript(PageScan.scanScript(n), null)
+        if (mediaHitJs.isNotEmpty()) view.evaluateJavascript(mediaHitJs, null)
         if (adBlock && !hostAllowsAds(pageHost)) view.evaluateJavascript(PageScan.cosmeticScript, null)
     }
 
@@ -943,7 +1048,31 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
                 requestLinkDetails(w, "imageLink", null, extra)
                 return true
             }
-            else -> return false
+            else -> {
+                // 24.10a: usually UNKNOWN_TYPE over a <video>. The listener must answer now, so it answers false (a text
+                // selection starts as usual) and asks the page script, which cached the hit on touch start. The page
+                // script also cancels its own contextmenu event on a hit, so no system menu opens over the video.
+                selectionHold = true
+                askMediaHit(w)
+                return false
+            }
+        }
+    }
+
+    /** Calls window.__maglevMediaHit() and emits onMediaHit when it returns a maglev-media-hit payload. */
+    private fun askMediaHit(w: WebView) {
+        w.evaluateJavascript("window.__maglevMediaHit && window.__maglevMediaHit()") { value ->
+            if (destroyed || w !== webView || value.isNullOrEmpty() || value == "null") return@evaluateJavascript
+            try {
+                // The callback value is a JSON string literal: decode it once to get the payload text.
+                val payload = JSONTokener(value).nextValue() as? String ?: return@evaluateJavascript
+                if (payload.isEmpty() || payload.length > MAX_MEDIA_HIT_CHARS) return@evaluateJavascript
+                if (JSONObject(payload).optString("type") != "maglev-media-hit") return@evaluateJavascript
+                selectionHold = false
+                onMediaHit(mapOf("json" to payload))
+            } catch (_: Throwable) {
+                // Not a payload: nothing to show.
+            }
         }
     }
 
@@ -1380,6 +1509,9 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
         /** Hosts whose https try failed this app session (24.11). They are not upgraded again. */
         private val httpsFallbackHosts: MutableSet<String> =
             java.util.Collections.newSetFromMap(java.util.concurrent.ConcurrentHashMap<String, Boolean>())
+
+        private const val PULL_SAFETY_MS = 15_000L
+        private const val MAX_MEDIA_HIT_CHARS = 20_000
 
         private const val MAX_CAPTURES = 3
         private const val CAPTURE_TIMEOUT_MS = 3000L

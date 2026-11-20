@@ -25,5 +25,5 @@ const makeStyles = (c: ThemeColors) =>
       borderColor: c.border,
       backgroundColor: c.surface,
     },
-    text: { ...type.bodyStrong, fontSize: 11, color: c.textMuted },
+    text: { ...type.bodyStrong, fontSize: type.size.xs, color: c.textMuted },
   });

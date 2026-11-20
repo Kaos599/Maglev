@@ -1,11 +1,11 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { StyleSheet, Text, TextInput, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import * as Clipboard from 'expo-clipboard';
 import { isDownloadLink, normalizeIncoming, type DownloadSnapshot } from 'maglev-engine';
 import { useTheme } from '../../context/ThemeContext';
-import { useMaglevEngine } from '../../context/EngineContext';
-import { ThemeColors, radius, spacing, type } from '../../constants/theme';
+import { useEngineActions, useEngineTelemetry } from '../../context/EngineContext';
+import { ThemeColors, spacing, type } from '../../constants/theme';
 import { formatBytes } from '../../constants/format';
 import { haptic } from '../../constants/haptics';
 import { empty, notices } from '../../constants/copy';
@@ -28,7 +28,7 @@ import {
 } from '../../utils/downloadCopy';
 import { friendlyPath, formatLimit } from '../../components/settings/SettingsParts';
 import { SpeedLimitSheet } from '../../components/detail/SpeedLimitSheet';
-import { Banner, Button, EmptyBlock, IconButton, ListRow, Screen, Sheet, type ProgressTone } from '../../components/ui';
+import { Banner, Button, EmptyBlock, IconButton, ListRow, Screen, Sheet, TextField, type ProgressTone } from '../../components/ui';
 import { toneColor } from '../../components/transfers/StatusLine';
 import { ProgressBadge, ProgressCard } from '../../components/detail/ProgressCard';
 import { CompactLine } from '../../components/detail/CompactLine';
@@ -75,7 +75,8 @@ export default function DownloadScreen() {
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
-  const { downloads, showNotice } = useMaglevEngine();
+  const { downloads } = useEngineTelemetry();
+  const { showNotice } = useEngineActions();
   const actions = useDownloadActions();
   const blockCtx = useLiveBlockContext();
   const subtitleAvail = useSubtitleAvailability();
@@ -173,7 +174,7 @@ export default function DownloadScreen() {
   // "Why it's paused" carries each rule's own settings button, so the generic one is not repeated.
   const mainActions = all.filter((a) => a.kind !== 'remove' && a.kind !== 'newLink' && !(showWhy && a.kind === 'openNetworkSettings' && a.route));
   const headerAction = all.find((a) => a.kind === 'pause' || a.kind === 'resume') ?? null;
-  const caption = downloadCaption(d);
+  const caption = downloadCaption(d, blockCtx);
   const status = downloadStatus(d, undefined, blockCtx, flow);
   const situation = linkSituation(d, flow);
   const whyModel =
@@ -286,24 +287,20 @@ export default function DownloadScreen() {
             </View>
           </View>
           <View style={styles.linkBox}>
-            <Text style={styles.label}>Paste a new link to the same file</Text>
-            <TextInput
+            <TextField
+              label="Paste a new link to the same file"
               value={link}
               onChangeText={(t) => {
                 setLink(t);
                 setLinkError(null);
               }}
               placeholder="https://…"
-              placeholderTextColor={colors.textFaint}
-              autoCapitalize="none"
-              autoCorrect={false}
-              spellCheck={false}
+              mono
               returnKeyType="go"
               onSubmitEditing={() => void applyLink(link)}
-              style={[styles.field, linkError ? styles.fieldInvalid : null]}
+              error={linkError ?? undefined}
               accessibilityLabel="New link"
             />
-            {linkError ? <Text style={styles.error}>{linkError}</Text> : null}
             <View style={styles.row}>
               <View style={styles.half}>
                 <Button label="Paste" icon="clipboard" variant="secondary" fullWidth loading={busy} onPress={() => void pasteLink()} />
@@ -457,27 +454,13 @@ const makeStyles = (c: ThemeColors) =>
     stack: { gap: spacing.sm },
     row: { flexDirection: 'row', gap: spacing.sm },
     half: { flex: 1 },
-    hint: { ...type.body, fontSize: 13, color: c.textMuted },
+    hint: { ...type.body, fontSize: type.size.md, color: c.textMuted },
     hintTight: { marginTop: -spacing.xs, marginBottom: spacing.md },
     // Same look as WhyHeld: a heading, then each reason's title and text. No side stripe.
     why: { gap: spacing.md },
-    whyHeading: { ...type.heading, fontSize: 16, color: c.text },
+    whyHeading: { ...type.heading, fontSize: type.size.xl, color: c.text },
     whyItem: { gap: 2 },
-    whyTitle: { ...type.bodyStrong, fontSize: 14, color: c.text },
-    whyBody: { ...type.body, fontSize: 13, color: c.textMuted, lineHeight: 18 },
+    whyTitle: { ...type.bodyStrong, fontSize: type.size.base, color: c.text },
+    whyBody: { ...type.body, fontSize: type.size.md, color: c.textMuted, lineHeight: 18 },
     linkBox: { gap: spacing.sm, marginTop: spacing.md },
-    label: { ...type.bodyStrong, fontSize: type.size.md, color: c.textMuted },
-    field: {
-      ...type.mono,
-      fontSize: type.size.md,
-      color: c.text,
-      minHeight: 44,
-      backgroundColor: c.surface,
-      borderWidth: 1,
-      borderColor: c.borderStrong,
-      borderRadius: radius.md,
-      paddingHorizontal: spacing.md,
-    },
-    fieldInvalid: { borderColor: c.danger },
-    error: { ...type.body, fontSize: 13, color: c.danger },
   });

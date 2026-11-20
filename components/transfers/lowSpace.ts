@@ -3,7 +3,7 @@
  * the budget is free space minus what unfinished downloads still need minus the 200 MB reserve.
  * Pure: no React, no react-native.
  */
-import { ADMISSION_RESERVE_BYTES, pendingNeedOf } from '../../utils/admission.ts';
+import { ADMISSION_RESERVE_BYTES, pendingNeedOf, type PendingDownload, type PendingTorrent } from '../../utils/admission.ts';
 import { formatBytes } from '../../constants/format.ts';
 
 export interface FreeSpaceLike {
@@ -32,10 +32,11 @@ export function usableFreeOf(fs: FreeSpaceLike | null | undefined): number | nul
  */
 export function lowSpaceWarning(
   freeBytes: number | null | undefined,
-  torrents: readonly { finished?: boolean; includedBytes?: number; downloadedBytes: number }[],
+  torrents: readonly PendingTorrent[],
+  downloads: readonly PendingDownload[],
 ): LowSpaceWarning | null {
   if (freeBytes == null || !Number.isFinite(freeBytes) || freeBytes < 0) return null;
-  const pendingNeed = pendingNeedOf(torrents);
+  const pendingNeed = pendingNeedOf(torrents, downloads);
   if (pendingNeed <= 0) return null;
   if (freeBytes - pendingNeed >= ADMISSION_RESERVE_BYTES) return null;
   const body =

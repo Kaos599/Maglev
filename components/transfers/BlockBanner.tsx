@@ -119,7 +119,7 @@ const makeStyles = (c: ThemeColors) =>
   StyleSheet.create({
     wrap: { paddingHorizontal: spacing.lg, paddingTop: spacing.sm },
     item: { paddingVertical: spacing.md, borderTopWidth: 1, borderColor: c.border },
-    itemTitle: { ...type.bodyStrong, fontSize: 14, color: c.text },
-    itemBody: { ...type.body, fontSize: 13, color: c.textMuted, marginTop: 2, lineHeight: 18, borderRadius: radius.sm },
+    itemTitle: { ...type.bodyStrong, fontSize: type.size.base, color: c.text },
+    itemBody: { ...type.body, fontSize: type.size.md, color: c.textMuted, marginTop: 2, lineHeight: 18, borderRadius: radius.sm },
     itemAction: { marginTop: spacing.md, alignSelf: 'flex-start' },
   });

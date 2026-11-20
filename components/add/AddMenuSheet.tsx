@@ -19,7 +19,7 @@ export interface AddMenuSheetProps {
 }
 
 /** "example.com" for a web link, "Magnet link" for a magnet, null when the text is neither. */
-export function clipboardHint(clip?: string): string | null {
+function clipboardHint(clip?: string): string | null {
   const t = (clip ?? '').trim();
   if (!t) return null;
   if (/^magnet:/i.test(t)) return addMenu.magnet;

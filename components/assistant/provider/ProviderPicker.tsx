@@ -34,7 +34,7 @@ export function ProviderPicker({
 const makeStyles = (c: ThemeColors) =>
   StyleSheet.create({
     wrap: { gap: spacing.sm },
-    label: { ...type.bodyStrong, fontSize: 14, color: c.text },
+    label: { ...type.bodyStrong, fontSize: type.size.base, color: c.text },
     chips: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
-    caption: { ...type.body, fontSize: 12, lineHeight: 17, color: c.textMuted },
+    caption: { ...type.body, fontSize: type.size.sm, lineHeight: 17, color: c.textMuted },
   });

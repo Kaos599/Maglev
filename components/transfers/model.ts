@@ -179,13 +179,6 @@ function wholePercent(t: Pick<TorrentTelemetry, 'includedBytes' | 'totalSizeByte
   return Math.min(99, Math.round(torrentProgressPercent(t)));
 }
 
-/** "412 MB of 1.2 GB · 34%", or null when the size is unknown. */
-export function torrentProgressText(t: Pick<TorrentTelemetry, 'includedBytes' | 'totalSizeBytes' | 'downloadedBytes' | 'progressPercent'> & { finished?: boolean }): string | null {
-  const pct = wholePercent(t);
-  if (pct == null) return null;
-  return `${formatBytes(t.downloadedBytes)} of ${formatBytes(targetBytes(t))} · ${pct}%`;
-}
-
 /** The card line for a hold: the table's short line, or plain "Paused". */
 function pausedReason(pausedBy: string | null | undefined, ctx: BlockContext): string {
   return reasonFor(pausedBy, ctx)?.short ?? 'Paused';
@@ -234,8 +227,8 @@ function line(lead: string, tone: StatusTone, pct: number | null, value?: string
   return { text: extra ? `${head}. ${extra}` : head, lead, pct: pct == null ? undefined : `${pct}%`, value, amount, slot, tone };
 }
 
-export const CONNECTING_TEXT = 'Connecting to peers';
-export const WAITING_TEXT = 'Waiting for peers';
+const CONNECTING_TEXT = 'Connecting to peers';
+const WAITING_TEXT = 'Waiting for peers';
 
 /** What a downloading torrent is doing, for the card and the page: data flowing, connecting, waiting, or neither yet. */
 export type TorrentSituation = 'flowing' | 'connecting' | 'waiting' | 'quiet';
