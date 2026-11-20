@@ -575,18 +575,19 @@ impl Downloads {
         start: u64,
         end: u64,
         validator: &str,
-    ) -> Option<reqwest::RequestBuilder> {
+    ) -> Option<(reqwest::RequestBuilder, CookiePicker)> {
         self.update(id, |rec, live| {
-            let mut b = super::LinkHeaders::from_live(live)
-                .apply(client.get(rec.url.as_str()).header(ACCEPT_ENCODING, "identity"), rec.url.as_str());
+            let hdrs = super::LinkHeaders::from_live(live);
+            let mut b = hdrs.apply(client.get(rec.url.as_str()).header(ACCEPT_ENCODING, "identity"), rec.url.as_str());
             if let Some((u, p)) = &live.auth {
                 b = b.basic_auth(u, Some(p));
             }
-            match HeaderValue::from_str(validator) {
+            let b = match HeaderValue::from_str(validator) {
                 Ok(v) => b.header(RANGE, format!("bytes={start}-{end}")).header(IF_RANGE, v),
                 // Cannot happen (it came from a header), and without a range the answer is a 200: a fallback.
                 Err(_) => b,
-            }
+            };
+            (b, hdrs.picker(rec.url.as_str()))
         })
     }
 
@@ -660,10 +661,10 @@ impl Downloads {
             if self.state_of(id) != Some(State::Downloading) {
                 return SegEnd::Stopped;
             }
-            let Some(builder) = self.build_part_get(id, client, pos, end, &shared.validator) else {
+            let Some((builder, picker)) = self.build_part_get(id, client, pos, end, &shared.validator) else {
                 return SegEnd::Stopped;
             };
-            let mut resp = match builder.send().await {
+            let mut resp = match send_following(client, builder, &picker).await {
                 Ok(r) => r,
                 Err(e) => {
                     if let Some(r) = refusal(&e, typed_host) {
@@ -1431,5 +1432,112 @@ mod tests {
             assert_eq!(std::fs::read(dir.join("big.bin")).unwrap(), *data);
             let _ = std::fs::remove_dir_all(&dir);
         }
+    }
+
+    /// Redirect cookies: the link is on 127.0.0.1 and redirects to `localhost` (another host name). Only that second
+    /// host answers, and only with its own cookie; the first host's cookie must not follow the redirect.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn a_redirect_to_another_host_carries_that_hosts_cookie_and_not_the_first() {
+        let data = Arc::new(sample(3000));
+        let cookies: Arc<Mutex<Vec<Option<String>>>> = Arc::new(Mutex::new(Vec::new()));
+
+        // The second "host": needs `Cookie: c=1`, honours Range.
+        let second = TcpListener::bind(("127.0.0.1", 0)).await.unwrap();
+        let pb = second.local_addr().unwrap().port();
+        let (d2, seen) = (data.clone(), cookies.clone());
+        tokio::spawn(async move {
+            loop {
+                let Ok((mut sock, _)) = second.accept().await else { return };
+                let (data, seen) = (d2.clone(), seen.clone());
+                tokio::spawn(async move {
+                    let mut buf = Vec::new();
+                    let mut tmp = [0u8; 2048];
+                    while !buf.windows(4).any(|w| w == b"\r\n\r\n") {
+                        match sock.read(&mut tmp).await {
+                            Ok(0) | Err(_) => return,
+                            Ok(n) => buf.extend_from_slice(&tmp[..n]),
+                        }
+                    }
+                    let text = String::from_utf8_lossy(&buf).into_owned();
+                    let header = |name: &str| {
+                        text.lines().find_map(|l| {
+                            let (k, v) = l.split_once(':')?;
+                            k.trim().eq_ignore_ascii_case(name).then(|| v.trim().to_string())
+                        })
+                    };
+                    let cookie = header("cookie");
+                    seen.lock().push(cookie.clone());
+                    if cookie.as_deref() != Some("c=1") {
+                        let _ = sock
+                            .write_all(b"HTTP/1.1 403 Forbidden\r\nContent-Length: 0\r\nConnection: close\r\n\r\n")
+                            .await;
+                        return;
+                    }
+                    let total = data.len() as u64;
+                    let range = header("range").and_then(|r| {
+                        let (a, b) = r.strip_prefix("bytes=")?.split_once('-')?;
+                        let a: u64 = a.parse().ok()?;
+                        let b = if b.is_empty() { total - 1 } else { b.parse::<u64>().ok()?.min(total - 1) };
+                        Some((a, b))
+                    });
+                    let (status, (from, to), cr) = match range {
+                        Some((a, b)) => ("206 Partial Content", (a, b), format!("Content-Range: bytes {a}-{b}/{total}\r\n")),
+                        None => ("200 OK", (0, total - 1), String::new()),
+                    };
+                    let head = format!(
+                        "HTTP/1.1 {status}\r\nContent-Length: {}\r\nContent-Type: application/octet-stream\r\nAccept-Ranges: bytes\r\nETag: {ETAG}\r\n{cr}Connection: close\r\n\r\n",
+                        to - from + 1
+                    );
+                    let _ = sock.write_all(head.as_bytes()).await;
+                    let _ = sock.write_all(&data[from as usize..=to as usize]).await;
+                    let _ = sock.shutdown().await;
+                });
+            }
+        });
+
+        // The first "host": redirects every request to the second one.
+        let first = TcpListener::bind(("127.0.0.1", 0)).await.unwrap();
+        let pa = first.local_addr().unwrap().port();
+        let first_saw: Arc<Mutex<Vec<Option<String>>>> = Arc::new(Mutex::new(Vec::new()));
+        let fs = first_saw.clone();
+        tokio::spawn(async move {
+            loop {
+                let Ok((mut sock, _)) = first.accept().await else { return };
+                let fs = fs.clone();
+                tokio::spawn(async move {
+                    let mut buf = Vec::new();
+                    let mut tmp = [0u8; 2048];
+                    while !buf.windows(4).any(|w| w == b"\r\n\r\n") {
+                        match sock.read(&mut tmp).await {
+                            Ok(0) | Err(_) => return,
+                            Ok(n) => buf.extend_from_slice(&tmp[..n]),
+                        }
+                    }
+                    let text = String::from_utf8_lossy(&buf).into_owned();
+                    fs.lock().push(text.lines().find_map(|l| {
+                        let (k, v) = l.split_once(':')?;
+                        k.trim().eq_ignore_ascii_case("cookie").then(|| v.trim().to_string())
+                    }));
+                    let reply = format!(
+                        "HTTP/1.1 302 Found\r\nLocation: http://localhost:{pb}/file.bin\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+                    );
+                    let _ = sock.write_all(reply.as_bytes()).await;
+                    let _ = sock.shutdown().await;
+                });
+            }
+        });
+
+        let dir = tmpdir("redir-cookie");
+        let d = manager(&dir);
+        let opts = r#"{"headers":{"Cookie":"sid=1","Cookies":[{"host":"localhost","cookie":"c=1"}]}}"#;
+        d.add(&format!("http://127.0.0.1:{pa}/dl"), opts).unwrap();
+        wait_for(&d, "finished").await;
+        assert_eq!(std::fs::read(dir.join("file.bin")).unwrap(), *data);
+        // The first host got its own cookie; the second only ever saw its own.
+        assert!(first_saw.lock().iter().all(|c| c.as_deref() == Some("sid=1")));
+        let seen = cookies.lock();
+        assert!(!seen.is_empty());
+        assert!(seen.iter().all(|c| c.as_deref() == Some("c=1")), "{seen:?}");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

@@ -36,6 +36,7 @@ export interface MockDownloadHooks {
 interface Item extends Omit<DownloadSnapshot, 'downLimitBps'> {
   url: string;
   limit: number;
+  pageUrl?: string | null;
   /** Ticks left in `resolving` before the probe answers. */
   resolveTicks: number;
   probeFail: { code: EngineErrorCode; message: string; httpStatus?: number } | null;
@@ -44,6 +45,18 @@ interface Item extends Omit<DownloadSnapshot, 'downLimitBps'> {
   needsRestart: boolean;
   /** NATIVE_CONTRACT 34.1: milliseconds spent in `downloading`. The seconds, finish time and byte counts live on the snapshot fields. */
   activeMs: number;
+}
+
+/** What the engine saves of a page URL: no query when a key looks like a secret, and nothing when it ends up empty. */
+export function cleanPageUrl(raw: string | undefined | null): string | null {
+  const t = (raw ?? '').trim();
+  if (!t) return null;
+  const q = t.indexOf('?');
+  if (q < 0) return t;
+  const secret = /(^|[^a-z0-9])(token|secret|password|passwd|pwd|signature|sig|session|sessionid|apikey|key|auth|jwt|sign)([^a-z0-9]|$)/i;
+  const query = t.slice(q + 1).split('#')[0];
+  const hit = query.split('&').some((kv) => secret.test(kv.split('=')[0] ?? ''));
+  return hit ? t.slice(0, q) || null : t;
 }
 
 function hash(s: string): number {
@@ -119,6 +132,7 @@ export class MockDownloads {
         state: i.state,
         pausedBy: i.state === 'paused' ? i.pausedBy : null,
         allowedAnyway: i.allowedAnyway === true,
+        pageUrl: i.pageUrl ?? null,
         size: i.size,
         downloaded: i.downloaded,
         downBps: i.state === 'downloading' ? i.downBps : 0,
@@ -194,6 +208,7 @@ export class MockDownloads {
       error: null,
       notice: null,
       limit: options?.downLimitBps ?? 0,
+      pageUrl: cleanPageUrl(options?.pageUrl),
       resolveTicks: 1,
       probeFail: probeFailure(check.url),
       sawExpire: false,
@@ -293,6 +308,7 @@ export class MockDownloads {
     }
     i.url = check.url;
     i.urlDisplay = displayUrl(check.url);
+    if (options?.pageUrl !== undefined) i.pageUrl = cleanPageUrl(options.pageUrl);
     i.sawExpire = true; // do not expire again
     i.state = 'queued';
     i.error = null;

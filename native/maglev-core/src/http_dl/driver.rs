@@ -8,7 +8,7 @@
 //!
 //! API verified against reqwest 0.13 (docs.rs/reqwest/0.13): `Client::builder`, `ClientBuilder::{redirect,
 //! connect_timeout, read_timeout, user_agent, proxy}`, `redirect::Policy::custom`, `redirect::Attempt::{url,
-//! previous, follow, error}`, `RequestBuilder::{header, basic_auth, send}`, `Response::{status, headers, url,
+//! stop, error}`, `RequestBuilder::{header, basic_auth, send}`, `Response::{status, headers, url,
 //! chunk}`. `chunk()` needs no cargo feature, so only the `rustls` feature that librqbit already turns on is used.
 
 use std::collections::{BTreeMap, HashMap};
@@ -42,6 +42,7 @@ use super::rules::{
     StallClock, SPEED_QUIET,
 };
 use super::sidecar::{final_path, part_path, safe_url, sidecar_path, Sidecar};
+use super::redirect::{send_following, CookiePicker};
 use super::stream::fetch::{host_lower, pick_cookie};
 use super::stream::{StreamError, StreamRec, StreamSpec};
 use crate::error::{EngineError, ErrorCode};
@@ -136,6 +137,8 @@ pub struct DownloadOptions {
     pub down_limit_bps: Option<u64>,
     /// Allow the typed host to resolve onto the local network (after `LAN_ADDRESS`).
     pub allow_lan: bool,
+    /// The page the link was found on (in-app browser). Kept as `page_url` on the record (contract "Auto-refresh").
+    pub page_url: Option<String>,
     /// Save an HLS or DASH stream (contract 24.8): which variant and audio track.
     pub stream: Option<StreamSpec>,
 }
@@ -209,6 +212,10 @@ pub struct DlRecord {
     pub allow_lan: bool,
     /// The addresses of that host when it was allowed; its lookups may only return these.
     pub lan_pinned: Vec<String>,
+    /// The page a browser download was found on, so the app can load it again when the link expires. In memory it is
+    /// whole; on disk a secret-looking query is cut off (`persisted`). Records from before this field load as None.
+    #[serde(default)]
+    pub page_url: Option<String>,
     /// Set for an HLS or DASH download (contract 24.8): ids and counts, nothing secret.
     pub stream: Option<StreamRec>,
     /// All bytes of a stream with separate video and audio parts are in, and the join has not finished yet.
@@ -248,6 +255,7 @@ impl Default for DlRecord {
             link_login: false,
             allow_lan: false,
             lan_pinned: Vec::new(),
+            page_url: None,
             stream: None,
             mux_needed: false,
             allowed_anyway: false,
@@ -567,7 +575,25 @@ fn persisted(rec: &DlRecord) -> DlRecord {
         r.url = safe_url(&r.url);
         r.needs_login = true;
     }
+    r.page_url = r.page_url.as_deref().and_then(persisted_page_url);
     r
+}
+
+/// The page URL a download is added with: http(s) only, no blanks. `None` when there is nothing usable.
+fn clean_page_url(raw: Option<&str>) -> Option<String> {
+    let t = raw?.trim();
+    let u = reqwest::Url::parse(t).ok()?;
+    (matches!(u.scheme(), "http" | "https") && u.host_str().is_some()).then(|| t.to_string())
+}
+
+/// What is written to disk of a page URL (contract item 6, the same rule as the link): a query with a secret-looking
+/// key is cut off, so are a user name and password, and a URL that is then empty is not saved.
+fn persisted_page_url(url: &str) -> Option<String> {
+    let login = reqwest::Url::parse(url)
+        .map(|u| !u.username().is_empty() || u.password().is_some())
+        .unwrap_or(false);
+    let kept = if has_secret_query(url) || login { safe_url(url) } else { url.to_string() };
+    (!kept.trim().is_empty()).then_some(kept)
 }
 
 /// Writes the resume record of a download that stops now: one offset, or the offsets of every segment when it runs
@@ -1008,24 +1034,17 @@ fn read_headers(h: &HeaderMap) -> Headers {
     }
 }
 
-fn build_client(proxy: Option<&str>, scope: LanScope) -> Result<Client, String> {
-    // Contract section 17: at most 10 redirects, and https to http is an error. Credentials headers that reqwest
-    // marks sensitive (Cookie, Authorization) are dropped by reqwest itself on a cross-origin redirect.
+pub(super) fn build_client(proxy: Option<&str>, scope: LanScope) -> Result<Client, String> {
+    // Contract section 17: redirects are followed by `redirect::send_following` (a cookie per hop's own host, at most
+    // 10 hops, https to http refused). This policy never follows: it refuses a hop onto the local network (unless the
+    // link the user typed was already there; the scope was chosen from the typed host and also knows an allowed
+    // host) and otherwise returns the 3xx answer as it is.
     let policy_scope = scope.clone();
     let policy = redirect::Policy::custom(move |attempt| {
-        if attempt.previous().len() >= 10 {
-            return attempt.error("too many redirects");
-        }
-        let was_https = attempt.previous().last().map(|u| u.scheme() == "https").unwrap_or(false);
-        if was_https && attempt.url().scheme() == "http" {
-            return attempt.error("redirect from https to http");
-        }
-        // A redirect may not lead onto the local network, unless the link the user typed was already there (the
-        // scope was chosen from the typed host; it also knows an allowed host).
         if !policy_scope.redirect_allowed(attempt.url().host_str().unwrap_or("")) {
             return attempt.error(LOCAL_REDIRECT_MSG);
         }
-        attempt.follow()
+        attempt.stop()
     });
     let mut b = Client::builder()
         .redirect(policy)
@@ -1573,6 +1592,7 @@ impl Downloads {
                 segments: opts.segments.unwrap_or(1),
                 start_paused: opts.paused && block.is_none(),
                 allow_lan: opts.allow_lan,
+                page_url: clean_page_url(opts.page_url.as_deref()),
                 timing: Timing::new(),
                 stream: opts.stream.as_ref().map(|s| StreamRec {
                     kind: s.kind,
@@ -1770,6 +1790,9 @@ impl Downloads {
                 rec.link_login = auth.is_some();
                 rec.allow_lan = opts.allow_lan;
                 rec.lan_pinned = pinned;
+                if let Some(p) = clean_page_url(opts.page_url.as_deref()) {
+                    rec.page_url = Some(p);
+                }
                 live.auth = auth;
                 live.cookie = h.cookie;
                 live.referer = h.referer;
@@ -1869,6 +1892,7 @@ impl Downloads {
                     "state": state_name(r.state),
                     "paused_by": if matches!(r.state, State::Paused(_)) { r.paused_tag.clone() } else { None },
                     "allowed_anyway": r.allowed_anyway,
+                    "page_url": r.page_url,
                     "size": r.size,
                     "downloaded": r.held,
                     "down_bps": bps,
@@ -2219,10 +2243,10 @@ impl Downloads {
             if self.state_of(&id) != Some(State::Downloading) {
                 return;
             }
-            let Some((builder, ranged, total, validator)) = self.build_get(&id, &client, held) else {
+            let Some((builder, picker, ranged, total, validator)) = self.build_get(&id, &client, held) else {
                 return;
             };
-            let resp = match builder.send().await {
+            let resp = match send_following(&client, builder, &picker).await {
                 Ok(r) => r,
                 Err(e) => {
                     if let Some(r) = refusal(&e, &typed_host) {
@@ -2453,10 +2477,10 @@ impl Downloads {
         id: &str,
         client: &Client,
         held: u64,
-    ) -> Option<(reqwest::RequestBuilder, bool, Option<u64>, Option<String>)> {
+    ) -> Option<(reqwest::RequestBuilder, CookiePicker, bool, Option<u64>, Option<String>)> {
         self.update(id, |rec, live| {
-            let mut b = LinkHeaders::from_live(live)
-                .apply(client.get(rec.url.as_str()).header(ACCEPT_ENCODING, "identity"), rec.url.as_str());
+            let hdrs = LinkHeaders::from_live(live);
+            let mut b = hdrs.apply(client.get(rec.url.as_str()).header(ACCEPT_ENCODING, "identity"), rec.url.as_str());
             if let Some((u, p)) = &live.auth {
                 b = b.basic_auth(u, Some(p));
             }
@@ -2467,7 +2491,7 @@ impl Downloads {
                     ranged = true;
                 }
             }
-            (b, ranged, rec.size, rec.validator.clone())
+            (b, hdrs.picker(rec.url.as_str()), ranged, rec.size, rec.validator.clone())
         })
     }
 
@@ -2777,7 +2801,7 @@ async fn probe_request(
     if let Some((u, p)) = auth {
         b = b.basic_auth(u, Some(p));
     }
-    let resp = b.send().await.map_err(|e| match refusal(&e, &host_of(url)) {
+    let resp = send_following(client, b, &hdrs.picker(url)).await.map_err(|e| match refusal(&e, &host_of(url)) {
         Some(Refusal::LanAddress) => ProbeFail::LanAddress,
         Some(Refusal::Redirect) => ProbeFail::LocalRedirect,
         None => ProbeFail::Net,
@@ -2841,8 +2865,13 @@ impl LinkHeaders {
         }
     }
 
-    /// The cookie for a request to `url` (the link itself). A redirect to another host never carries it: reqwest
-    /// drops `Cookie` on a cross-host hop, and nothing here sends a cookie to a host it was not meant for.
+    /// The cookie for each host a request for `link_url` may be redirected to: the old host's cookie never goes
+    /// along, each hop gets the one picked for its own host (`redirect::send_following`).
+    fn picker(&self, link_url: &str) -> CookiePicker {
+        CookiePicker::for_link(link_url, self.cookie.as_deref(), &self.host_cookies)
+    }
+
+    /// The cookie for a request to `url` (the link itself).
     fn cookie_for_url(&self, url: &str) -> Option<&str> {
         let host = host_lower(url);
         pick_cookie(&self.host_cookies, self.cookie.as_deref(), &host, &host)
@@ -3309,6 +3338,76 @@ mod tests {
         assert_eq!(p.url, "https://x.test/get?file=a.zip");
         assert!(!p.needs_login);
         assert_eq!(p.final_url.as_deref(), Some("https://x.test/get"));
+    }
+
+    #[test]
+    fn a_clean_page_url_is_saved_as_it_is() {
+        let rec = DlRecord {
+            id: "dl_a".into(),
+            page_url: Some("https://site.test/watch?v=42&t=10#c".into()),
+            ..DlRecord::default()
+        };
+        assert_eq!(persisted(&rec).page_url.as_deref(), Some("https://site.test/watch?v=42&t=10#c"));
+        assert_eq!(persisted(&DlRecord::default()).page_url, None);
+    }
+
+    #[test]
+    fn a_secret_looking_page_query_is_cut_off_before_saving() {
+        for u in [
+            "https://site.test/watch?v=42&token=abc",
+            "https://site.test/watch?X-Amz-Signature=abc",
+            "https://site.test/watch?session=abc#x",
+            "https://user:pw@site.test/watch?v=42",
+        ] {
+            let rec = DlRecord { id: "dl_a".into(), page_url: Some(u.into()), ..DlRecord::default() };
+            let p = persisted(&rec);
+            let text = serde_json::to_string(&p).unwrap();
+            assert_eq!(p.page_url.as_deref().map(|s| s.starts_with("https://site.test/watch")), Some(true), "{u}");
+            assert!(!text.contains("abc") && !text.contains("pw@") && !text.contains("v=42"), "{u}: {text}");
+            // The copy in memory keeps the whole page address.
+            assert_eq!(rec.page_url.as_deref(), Some(u));
+        }
+        assert_eq!(persisted_page_url(""), None);
+        assert_eq!(persisted_page_url("   "), None);
+    }
+
+    #[test]
+    fn the_page_url_option_is_taken_when_it_is_a_web_page_and_ignored_otherwise() {
+        let o = parse_options(r#"{"page_url":"https://site.test/p?x=1"}"#).unwrap();
+        assert_eq!(clean_page_url(o.page_url.as_deref()).as_deref(), Some("https://site.test/p?x=1"));
+        assert_eq!(clean_page_url(Some("  https://site.test/p  ")).as_deref(), Some("https://site.test/p"));
+        assert_eq!(clean_page_url(Some("")), None);
+        assert_eq!(clean_page_url(Some("file:///etc/passwd")), None);
+        assert_eq!(clean_page_url(Some("javascript:alert(1)")), None);
+        assert_eq!(clean_page_url(None), None);
+        assert_eq!(parse_options("{}").unwrap().page_url, None);
+    }
+
+    #[test]
+    fn the_page_url_survives_the_store_and_shows_in_the_download_json() {
+        let rec = DlRecord { id: "dl_a".into(), page_url: Some("https://site.test/p".into()), ..DlRecord::default() };
+        let file = json!({ "version": 1, "downloads": [serde_json::to_value(persisted(&rec)).unwrap()] });
+        let back = parse_store(file.to_string().as_bytes());
+        assert_eq!(back.records[0].page_url.as_deref(), Some("https://site.test/p"));
+        // A record saved before the field existed loads with none.
+        let old = parse_store(json!({ "downloads": [ { "id": "dl_old" } ] }).to_string().as_bytes());
+        assert_eq!(old.records[0].page_url, None);
+    }
+
+    #[tokio::test]
+    async fn the_download_json_carries_the_page_url() {
+        let dir = std::env::temp_dir().join(format!("maglev-dl-pageurl-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let d = Downloads::build(tokio::runtime::Handle::current(), None, &dir, &dir, None, Vec::new());
+        // Paused, so nothing reaches the network.
+        d.add("http://127.0.0.1:9/a.bin", r#"{"paused":true,"page_url":"https://site.test/p?token=zz"}"#).unwrap();
+        let snap = d.snapshots();
+        assert_eq!(snap[0]["page_url"], "https://site.test/p?token=zz");
+        // The saved list never holds the secret query.
+        let saved = std::fs::read_to_string(dir.join(STORE_FILE)).unwrap_or_default();
+        assert!(!saved.contains("token=zz"), "{saved}");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

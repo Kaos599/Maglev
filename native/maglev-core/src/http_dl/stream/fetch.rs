@@ -18,6 +18,7 @@ use reqwest::header::{ACCEPT_ENCODING, COOKIE, ORIGIN, RANGE, REFERER, RETRY_AFT
 use reqwest::Client;
 
 use super::{StreamError, MAX_PLAYLIST_BYTES};
+use crate::http_dl::redirect::{send_following, CookiePicker, SendError};
 
 type Aes128CbcDec = cbc::Decryptor<aes::Aes128>;
 
@@ -43,7 +44,7 @@ pub enum FetchFail {
     /// The server answered with this status (and maybe a `Retry-After`).
     Status(u16, Option<Duration>),
     /// The request could not be sent (DNS, connect, TLS, redirect policy). The caller reads the cause.
-    Send(reqwest::Error),
+    Send(SendError),
     /// The body broke off.
     Body(reqwest::Error),
     /// The body ended before the promised length.
@@ -104,6 +105,16 @@ impl ReqCtx {
         pick_cookie(&self.host_cookies, self.cookie.as_deref(), &self.origin_host, host)
     }
 
+    /// `request`, sent; its redirects are followed here so each hop gets the cookie of its own host.
+    pub async fn send(&self, url: &str, range: Option<(u64, u64)>) -> Result<reqwest::Response, SendError> {
+        let picker = CookiePicker {
+            host_cookies: self.host_cookies.clone(),
+            link_cookie: self.cookie.clone(),
+            link_host: self.origin_host.clone(),
+        };
+        send_following(&self.client, self.request(url, range), &picker).await
+    }
+
     /// A GET for `url`, with `Range` when `range` is `(offset, length)`.
     pub fn request(&self, url: &str, range: Option<(u64, u64)>) -> reqwest::RequestBuilder {
         let mut b = self.client.get(url).header(ACCEPT_ENCODING, "identity");
@@ -139,7 +150,7 @@ fn retry_after(resp: &reqwest::Response) -> Option<Duration> {
 
 /// Sends the request and checks the status. `Ok` means 200, or 206 when a range was asked.
 async fn open(ctx: &ReqCtx, url: &str, range: Option<(u64, u64)>) -> Result<reqwest::Response, FetchFail> {
-    let resp = ctx.request(url, range).send().await.map_err(FetchFail::Send)?;
+    let resp = ctx.send(url, range).await.map_err(FetchFail::Send)?;
     let status = resp.status().as_u16();
     match (status, range.is_some()) {
         (206, true) | (200, false) => Ok(resp),

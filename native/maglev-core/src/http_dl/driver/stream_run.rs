@@ -16,6 +16,7 @@
 use std::collections::VecDeque;
 
 use super::*;
+use crate::http_dl::redirect::SendError;
 use crate::http_dl::sidecar::{StreamSide, TrackSide};
 use crate::http_dl::stream::fetch::{self, FetchFail, ReqCtx};
 use crate::http_dl::stream::{
@@ -65,7 +66,7 @@ enum TrackEnd {
     Broken,
     Stalled,
     Status(u16, Option<Duration>),
-    Send(reqwest::Error),
+    Send(SendError),
     /// The machine event to feed; the transfer ends.
     Fatal(Event),
 }
@@ -257,6 +258,9 @@ impl Downloads {
             rec.link_login = auth.is_some();
             rec.allow_lan = opts.allow_lan;
             rec.lan_pinned = pinned;
+            if let Some(p) = clean_page_url(opts.page_url.as_deref()) {
+                rec.page_url = Some(p);
+            }
             live.auth = auth;
             live.cookie = h.cookie;
             live.referer = h.referer;
@@ -554,7 +558,7 @@ impl Downloads {
 
         // One whole file (DASH `SegmentBase`): streamed to disk, not held in memory.
         if total == 1 && items[0].whole_file {
-            let resp = match c.ctx.request(&items[0].url, None).send().await {
+            let resp = match c.ctx.send(&items[0].url, None).await {
                 Ok(r) => r,
                 Err(e) => return TrackEnd::Send(e),
             };

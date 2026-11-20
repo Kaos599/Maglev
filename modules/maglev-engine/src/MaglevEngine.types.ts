@@ -491,6 +491,8 @@ export interface DownloadSnapshot {
   pausedBy: string | null;
   /** NATIVE_CONTRACT 25.1. "Resume anyway" is active for this download. Absent means false. */
   allowedAnyway?: boolean;
+  /** The page a browser download was found on, or null. Without its query when that looked like a secret. */
+  pageUrl?: string | null;
   /** Bytes, or null while the server has not said. */
   size: number | null;
   downloaded: number;
@@ -588,6 +590,12 @@ export interface DownloadOptions {
   downLimitBps?: number;
   /** The user allowed the typed host even though it is on their own network. The module sends it as `allow_lan`. */
   allowLan?: boolean;
+  /**
+   * The page the link was found on (in-app browser). NATIVE_CONTRACT "Auto-refresh (2026-11-20)": the engine keeps it as
+   * `pageUrl` on the download so the app can load the page again when the link expires or is refused. Saved without
+   * its query when the query looks like a secret. Also accepted by `refreshDownloadUrl`, to update it.
+   */
+  pageUrl?: string;
   /** Save an HLS or DASH stream (NATIVE_CONTRACT 24.8). The link is the playlist. */
   stream?: StreamSelection;
 }
