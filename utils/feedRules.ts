@@ -42,8 +42,8 @@ const QUALITY_TAGS = new Set([
 ]);
 
 /**
- * Show name: the title text before the episode marker, lower case, ". _ -" as spaces, bracket groups, years and
- * quality/source tags dropped, spaces collapsed. Empty when there is no marker. Same rules as Kotlin FeedRuleMatcher.showName.
+ * Show name: the title text before the episode marker, lower case, ". _ -" as spaces, bracket groups, years (only when other words remain)
+ * and quality/source tags dropped, spaces collapsed. Empty when there is no marker. Same rules as Kotlin FeedRuleMatcher.showName.
  */
 export function showName(title: string): string {
   const starts = [SXXEYY, NXNN, ABSOLUTE].map((re) => re.exec(title)?.index).filter((i): i is number => i !== undefined);
@@ -54,10 +54,13 @@ export function showName(title: string): string {
     .toLowerCase()
     .replace(/[._-]+/g, ' ')
     .replace(SPACED_TAGS, (m) => m.replace(' ', ''));
-  return text
-    .split(/\s+/)
-    .filter((w) => w !== '' && !YEAR.test(w) && !QUALITY_TAGS.has(w))
-    .join(' ');
+  const words = text.split(/\s+/).filter((w) => w !== '');
+  const named = words.filter((w) => !QUALITY_TAGS.has(w));
+  // A year is dropped only when other words remain ("1923 S01E01" is the show "1923").
+  const noYear = named.filter((w) => !YEAR.test(w));
+  const kept = noYear.length > 0 ? noYear : named;
+  // Never reduce a titled release to nothing: fall back to the normalised words.
+  return (kept.length > 0 ? kept : words).join(' ');
 }
 
 /** "<show>|s1e2" (show may be empty), or null when the title has no episode. */
@@ -109,9 +112,9 @@ export function matchItem(rule: RuleMatchInput, title: string, seenEpisodes: rea
   let match = included && !excluded;
   const key = episodeIdentity(title);
   if (match && rule.episodes === 'new_only' && episode !== null && key !== null) {
-    // Old keys without a show ("s1e2") count only while no show-aware key exists for that episode.
-    if (seenEpisodes.includes(key)) match = false;
-    else if (seenEpisodes.includes(episode) && !seenEpisodes.some((k) => k.endsWith(`|${episode}`))) match = false;
+    // An old key without a show ("s1e2") belongs to an unknown show: it keeps suppressing that episode for
+    // every show and is never removed.
+    if (seenEpisodes.includes(key) || seenEpisodes.includes(episode)) match = false;
   }
   return { match, episode, key };
 }

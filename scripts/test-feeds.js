@@ -31,6 +31,10 @@ const names = [
   ['1080p.WEB-DL.Show.S01E02', 'show'],
   ['[SubsPlease] Frieren - 12v2 (1080p) [ABCD1234].mkv', 'frieren'],
   ['ubuntu-26.04-desktop-amd64.iso', ''],
+  ['1923 S01E01', '1923'],
+  ['Show 2024 S01E01', 'show'],
+  ['2024 S01E01', '2024'],
+  ['1080p.S01E02', '1080p'],
 ];
 for (const [title, want] of names) {
   if (showName(title) === want) passed++;

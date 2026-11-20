@@ -39,13 +39,36 @@ class FeedShowKeyTest {
         assertFalse(FeedRuleMatcher.matches(rule, "[Grp2] The Show 1x02 (480p)", seen))
     }
 
-    @Test fun oldKeyStillBlocksUntilANewKeyExists() {
+    @Test fun oldKeyKeepsSuppressingEveryShow() {
         assertFalse(FeedRuleMatcher.matches(rule, "Show A S01E02", listOf("s1e2")))
         assertFalse(FeedRuleMatcher.matches(rule, "Show B S01E02", listOf("s1e2")))
         assertTrue(FeedRuleMatcher.matches(rule, "Show B S01E03", listOf("s1e2")))
-        // A new-style key for the episode switches the rule to show-aware matching.
-        val mixed = listOf("s1e2", "show a|s1e2")
-        assertTrue(FeedRuleMatcher.matches(rule, "Show B S01E02", mixed))
+        // A new-style key for another show must not release the old key: show A's repost stays suppressed.
+        val mixed = listOf("s1e2", "show b|s1e2")
         assertFalse(FeedRuleMatcher.matches(rule, "Show A S01E02", mixed))
+        assertFalse(FeedRuleMatcher.matches(rule, "Show B S01E02", mixed))
+        assertFalse(FeedRuleMatcher.matches(rule, "Show C S01E02", mixed))
+    }
+
+    @Test fun twoShowsOnOneRuleWithNewKeys() {
+        assertTrue(FeedRuleMatcher.matches(rule, "Show B S01E02", listOf("show a|s1e2")))
+        val both = listOf("show a|s1e2", "show b|s1e2")
+        assertFalse(FeedRuleMatcher.matches(rule, "Show A S01E02", both))
+        assertFalse(FeedRuleMatcher.matches(rule, "Show B S01E02", both))
+        assertTrue(FeedRuleMatcher.matches(rule, "Show C S01E02", both))
+    }
+
+    @Test fun yearOnlyShowKeepsItsName() {
+        assertEquals("1923", FeedRuleMatcher.showName("1923 S01E01"))
+        assertEquals("1923|s1e1", FeedRuleMatcher.episodeIdentity("1923.S01E01.1080p"))
+        assertEquals("2024", FeedRuleMatcher.showName("2024 S01E01"))
+        assertEquals("1080p", FeedRuleMatcher.showName("1080p.S01E02"))
+    }
+
+    @Test fun yearDroppedOnlyWhenOtherWordsRemain() {
+        assertEquals("show", FeedRuleMatcher.showName("Show 2024 S01E01"))
+        assertEquals(FeedRuleMatcher.episodeIdentity("Show S01E01"), FeedRuleMatcher.episodeIdentity("Show 2024 S01E01"))
+        assertTrue(FeedRuleMatcher.matches(rule, "1923 S01E01", listOf("other|s1e1")))
+        assertFalse(FeedRuleMatcher.matches(rule, "1923 S01E01", listOf("1923|s1e1")))
     }
 }

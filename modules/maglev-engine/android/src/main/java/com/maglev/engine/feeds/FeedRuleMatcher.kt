@@ -52,15 +52,21 @@ object FeedRuleMatcher {
 
     /**
      * Show name of [title]: the text before the episode marker, lower case, `. _ -` as spaces, bracket groups
-     * (release groups), years and quality/source tags dropped, spaces collapsed. Empty when there is no marker
-     * or nothing is left.
+     * (release groups), years (only when other words remain) and quality/source tags dropped, spaces collapsed.
+     * Empty when there is no marker or no text before it.
      */
     fun showName(title: String): String {
         val at = markerStart(title)
         if (at < 0) return ""
         val text = title.substring(0, at).replace(bracketTags, " ").lowercase().replace(separators, " ")
             .replace(spacedTags) { it.value.replace(" ", "") }
-        return text.split(Regex("\\s+")).filter { it.isNotEmpty() && !year.matches(it) && it !in qualityTags }.joinToString(" ")
+        val words = text.split(Regex("\\s+")).filter { it.isNotEmpty() }
+        val named = words.filter { it !in qualityTags }
+        // A year is dropped only when other words remain ("1923 S01E01" is the show "1923").
+        val noYear = named.filter { !year.matches(it) }
+        val kept = if (noYear.isNotEmpty()) noYear else named
+        // Never reduce a titled release to nothing: fall back to the normalised words.
+        return (if (kept.isNotEmpty()) kept else words).joinToString(" ")
     }
 
     /** `<show>|s1e2` (show may be empty), or null when [title] has no episode marker. */
@@ -68,8 +74,8 @@ object FeedRuleMatcher {
 
     /**
      * True when [title] passes include and exclude, and (for new_only) its episode is not in [seenEpisodes].
-     * Seen keys are `<show>|s1e2`. An old key without a show ("s1e2") still counts, but only while no new-style
-     * key for that episode exists.
+     * Seen keys are `<show>|s1e2`. An old key without a show ("s1e2") belongs to an unknown show, so it keeps
+     * suppressing that episode for every show and is never removed (a duplicate download is worse than a skip).
      */
     fun matches(rule: FeedRule, title: String, seenEpisodes: Collection<String>): Boolean {
         if (!includeOk(rule.include, title)) return false
@@ -78,7 +84,7 @@ object FeedRuleMatcher {
             val key = episodeKey(title)
             if (key != null) {
                 if (seenEpisodes.contains("${showName(title)}|$key")) return false
-                if (seenEpisodes.contains(key) && seenEpisodes.none { it.endsWith("|$key") }) return false
+                if (seenEpisodes.contains(key)) return false
             }
         }
         return true
