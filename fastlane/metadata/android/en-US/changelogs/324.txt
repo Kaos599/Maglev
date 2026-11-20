@@ -1,0 +1,5 @@
+- Bookmarks, a start page and a long-press menu for videos in the browser.
+- Private browsing and Dark pages, in Settings > Browser.
+- Select a link in any app and choose Download with Maglev.
+- Export debug log in About, with links and keys removed.
+- Link downloads survive a Wi-Fi to mobile switch, and a refused link no longer asks you to sign in.
