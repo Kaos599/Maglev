@@ -32,7 +32,7 @@ import { lowSpaceWarning, usableFreeOf, type LowSpaceWarning } from '../../compo
 import { BlockBanner } from '../../components/transfers/BlockBanner';
 import { BlockContextProvider, queueLimitOf, useActiveBlocks } from '../../utils/blocks/useActiveBlocks';
 import * as DocumentPicker from 'expo-document-picker';
-import { maglevEngine, type DownloadSnapshot } from 'maglev-engine';
+import { maglevEngine, openQuickShare, type DownloadSnapshot } from 'maglev-engine';
 import { haptic } from '../../constants/haptics';
 import { useEngineActions, useEngineState, useEngineTelemetry, type TransferTelemetry } from '../../context/EngineContext';
 import { useSettings } from '../../context/SettingsContext';
@@ -45,7 +45,7 @@ import { BulkVerb, bulkSummary, selectionKey, splitSelection } from '../../utils
 import { useSearchPrefs } from '../../utils/prefs/search';
 import { TransferSort, loadTransferSort, saveTransferSort } from '../../utils/prefs/transfers';
 import { empty, notices, playCopy } from '../../constants/copy';
-import { clipboardRoute } from '../../constants/clipboardCopy';
+import { clipboardRoute, clipboardUsesCard } from '../../constants/clipboardCopy';
 import { dismissClip, isDismissedClip } from '../../utils/prefs/clipboard';
 import { openBrowser } from '../../utils/browser/openBrowser';
 
@@ -413,8 +413,14 @@ export default function TransfersScreen() {
   const goAdd = useCallback(() => router.push('/add-torrent'), [router]);
   const addClipboard = useCallback(() => {
     if (!clipboardMagnet) return;
+    // A plain file link opens the same quick share card as a share from another app: one tap to Download.
+    if (clipboardUsesCard(clipboardMagnet) && openQuickShare(clipboardMagnet)) {
+      dismissClip(clipboardMagnet);
+      clearClipboardMagnet();
+      return;
+    }
     router.push(clipboardRoute(clipboardMagnet));
-  }, [clipboardMagnet, router]);
+  }, [clipboardMagnet, clearClipboardMagnet, router]);
   const dismissClipboard = useCallback(() => {
     if (clipboardMagnet) dismissClip(clipboardMagnet);
     clearClipboardMagnet();

@@ -10,3 +10,4 @@ export * from './trackerUrl.ts';
 export * from './MaglevCookies.ts';
 export * from './downloadLink.ts';
 export * from './MaglevBrowser.tsx';
+export * from './MaglevQuickShare.ts';
