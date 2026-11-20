@@ -20,6 +20,7 @@ import { admit, pendingNeedOf, type AdmissionOutcome } from '../utils/admission'
 import { admissionCaption } from '../utils/admissionCopy';
 import { takePrefetchedMetadata } from '../components/search/metadataCache';
 import { banners, empty, mobileDataLine, notices } from '../constants/copy';
+import { pickFolderForThisDownload } from '../utils/downloadFolder';
 import { useSettings } from '../context/SettingsContext';
 import { fileKind } from '../utils/fileKind';
 import { SubtitlesAutoRow, useSubtitlesAuto } from '../components/search/SubtitlesAutoRow';
@@ -288,9 +289,14 @@ export default function AddTorrentScreen() {
   const handleChangeFolder = async () => {
     haptic('tap');
     try {
-      const res = await maglevEngine.pickDownloadFolder();
-      if ('cancelled' in res) return;
-      setFolder({ uri: res.uri, label: res.displayName });
+      // This download only: the default folder is untouched.
+      const res = await pickFolderForThisDownload(() => maglevEngine.pickFolder());
+      if (res.kind === 'cancelled') return;
+      if (res.kind === 'unsupported') {
+        setAddError(notices.inline.folderNotDirect);
+        return;
+      }
+      setFolder({ uri: res.path, label: res.label });
     } catch {
       setAddError(notices.inline.folderPickerFailed);
     }
@@ -326,7 +332,7 @@ export default function AddTorrentScreen() {
         : null;
     let res;
     try {
-      res = await maglevEngine.addTorrent(sourceRef.current, { onlyFiles, filePriorities, paused, outputFolder: null /* Kotlin fills output_folder from the persisted target set by pickDownloadFolder (handles direct + staging) */ });
+      res = await maglevEngine.addTorrent(sourceRef.current, { onlyFiles, filePriorities, paused, outputFolder: folder?.uri ?? null /* null: the default folder; a picked folder is this download only */ });
     } catch (e) {
       setAddError(e instanceof Error ? e.message : notices.addTorrent.addFailed);
       setPhase(meta ? 'preview' : 'timeout');
@@ -366,7 +372,7 @@ export default function AddTorrentScreen() {
     token.current++; // the pending resolveMetadata result (CANCELLED) is ignored
     let res;
     try {
-      res = await maglevEngine.addTorrent(source, { onlyFiles: null, filePriorities: null, outputFolder: null });
+      res = await maglevEngine.addTorrent(source, { onlyFiles: null, filePriorities: null, outputFolder: folder?.uri ?? null });
     } catch (e) {
       setStarting(false);
       setAddError(e instanceof Error ? e.message : notices.addTorrent.addFailed);

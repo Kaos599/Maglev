@@ -118,7 +118,7 @@ function plainEngineError(code: string): string {
     case 'FILES_MISSING': return 'Some files are missing.';
     case 'NOT_INITIALIZED':
     case 'ENGINE_UNAVAILABLE':
-    case 'NOT_READY': return "The download engine isn't ready yet. Try again in a moment.";
+    case 'NOT_READY': return "The downloader isn't ready yet. Try again in a moment.";
     case 'UNSUPPORTED':
     case 'INVALID_STATE': return "Can't do that while it is moving or checking. Try again when it finishes.";
     case 'LINK_EXPIRED': return 'The link has expired. Paste a fresh link.';

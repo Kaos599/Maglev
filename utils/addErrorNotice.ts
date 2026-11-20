@@ -1,7 +1,7 @@
 import { empty } from '../constants/copy.ts';
 
 /** Button labels (buttons are not sentences, so they live here and not in the copy voice lint). */
-export const START_ENGINE_LABEL = 'Start engine';
+export const START_ENGINE_LABEL = 'Start the downloader';
 const PICK_FOLDER_LABEL = 'Pick folder again';
 
 export interface AddNotice {
@@ -31,7 +31,7 @@ export function engineStoppedBody(e: unknown): string {
 
 /**
  * Maps an engine add failure to plain copy. Contract: Error carries `.code`.
- * `startEngine` (when given) becomes the "Start engine" button of the stopped-engine notice.
+ * `startEngine` (when given) becomes the "Start the downloader" button of the stopped-engine notice.
  */
 export function addErrorNotice(
   e: unknown,

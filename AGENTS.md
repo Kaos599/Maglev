@@ -62,7 +62,7 @@ docs/                    the law (see §3)
 
 These rules exist because Phase 1 was once marked "complete" while the engine was a simulator.
 
-1. **No simulation in release builds.** The mock engine (`MaglevMockEngine.ts`) runs only under `__DEV__` or on web. If the native engine fails to load in release, the app shows "Engine failed to start". It never shows fake data.
+1. **No simulation in release builds.** The mock engine (`MaglevMockEngine.ts`) runs only under `__DEV__` or on web. If the native engine fails to load in release, the app shows "The downloader didn't start". It never shows fake data.
 2. **No fabricated values in the bridge.** No hardcoded files, peers, trackers, sizes or speeds. Unknown is shown as unknown (for example `eta: -1`, shown as "—").
 3. **Contracts are the definition of done.** `npm run test:contracts` exits 1 while any P0 fails. A ledger or roadmap entry may say "Done" only with a green CI run and the passing contract IDs.
 4. **CI is the compiler.** Rust and Gradle are never installed locally. CI rejects a `.so` under 3 MB, a `.so` without librqbit symbols, or a `.so` without 16 KB page alignment.

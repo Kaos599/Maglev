@@ -17,6 +17,7 @@ import { Banner, Button, EmptyBlock, Screen, TextField } from '../components/ui'
 import { useDownloadAdmission } from '../utils/useDownloadAdmission';
 import { actionRoute, probeErrorView } from '../utils/downloadCopy';
 import { banners, empty, mobileDataLine, notices } from '../constants/copy';
+import { pickFolderForThisDownload } from '../utils/downloadFolder';
 import { useSettings } from '../context/SettingsContext';
 import { START_ENGINE_LABEL, engineStoppedBody, isEngineStopped } from '../utils/addErrorNotice';
 import { openBrowser } from '../utils/browser/openBrowser';
@@ -57,6 +58,7 @@ export default function AddDownloadScreen() {
   const [addError, setAddError] = useState<string | null>(null);
   const [addStopped, setAddStopped] = useState(false);
   const [folderLabel, setFolderLabel] = useState<string | null>(null);
+  const [folderPath, setFolderPath] = useState<string | null>(null);
   const [streamItem, setStreamItem] = useState<FoundItem | null>(null);
   const [baseName, setBaseName] = useState('');
   // Parts default to the Settings > Downloads pref; the chips below override it for this download only.
@@ -187,14 +189,18 @@ export default function AddDownloadScreen() {
     void submit(link);
   };
 
-  // The picked folder is stored by the engine as the active target, and EngineHost.addDownload
-  // fills `folder` from it, so nothing is passed to startDownload (same as Add torrent).
+  // "Change" picks a folder for this download only: the path goes to startDownload and the default folder is untouched.
   const handleChangeFolder = async () => {
     haptic('tap');
     try {
-      const res = await maglevEngine.pickDownloadFolder();
-      if ('cancelled' in res) return;
-      setFolderLabel(res.displayName);
+      const res = await pickFolderForThisDownload(() => maglevEngine.pickFolder());
+      if (res.kind === 'cancelled') return;
+      if (res.kind === 'unsupported') {
+        setAddError(notices.inline.folderNotDirect);
+        return;
+      }
+      setFolderPath(res.path);
+      setFolderLabel(res.label);
     } catch {
       setAddError(notices.inline.folderPickerFailed);
     }
@@ -213,6 +219,7 @@ export default function AddDownloadScreen() {
     const res = await startDownload(urlRef.current, {
       ...(allowLanRef.current ? { allowLan: true } : {}),
       ...(renamed ? { name: renamed } : {}),
+      ...(folderPath ? { folder: folderPath } : {}),
       segments: parts,
     });
     if (res.ok) {

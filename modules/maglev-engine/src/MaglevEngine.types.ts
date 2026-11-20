@@ -619,7 +619,8 @@ export interface StorageStatus {
   safLost: boolean;
 }
 
-export type PickFolderResult = ({ ok?: true } & DownloadFolder) | { cancelled: true };
+/** `path` is the plain folder path when Maglev can write there directly, null when the folder is staged. */
+export type PickFolderResult = ({ ok?: true; path?: string | null } & DownloadFolder) | { cancelled: true };
 
 export type NotificationPermission = 'granted' | 'denied' | 'undetermined';
 export interface NativePermissionStatus {
@@ -711,6 +712,13 @@ export type EngineStatus =
 export type Unsubscribe = () => void;
 
 /** Exact docs/NATIVE_CONTRACT.md section 6 API. Every method resolves a Result envelope. */
+/** Extra fields of a getEffectiveConfig result. Both are optional: an older downloader leaves them out. */
+export interface EffectiveConfigStatus {
+  /** True when saved network changes wait for a downloader restart. */
+  restartPending?: boolean;
+  blocklist?: { state: 'off' | 'on' | 'unreadable'; rules: number };
+}
+
 export interface MaglevEngineApi {
   // Engine
   init(config: NativeConfig): Promise<EngineResult>;
@@ -775,7 +783,9 @@ export interface MaglevEngineApi {
   openNotificationSettings(channel?: 'completed'): Promise<void>;
   setGlobalLimits(down: number, up: number): Promise<EngineResult>;
   applyConfig(config: NativeConfig): Promise<EngineResult<{ restartRequired: boolean }>>;
-  getEffectiveConfig(): Promise<EngineResult<NativeConfig>>;
+  getEffectiveConfig(): Promise<EngineResult<NativeConfig & EffectiveConfigStatus>>;
+  /** Restarts the native downloader with the saved settings. Optional until every build has it. */
+  restartEngine?(): Promise<void>;
   getPieceBitfield(id: string): Promise<number[]>;
   /** What this phone can decode and display (CodecProbe.kt). Cached natively for the process. */
   getPlaybackSupport(): Promise<PlaybackSupport>;

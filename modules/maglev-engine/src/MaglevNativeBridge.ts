@@ -301,7 +301,7 @@ export class MaglevEngineBridge implements MaglevEngineApi {
       }
       return this.fallbackOrFail(res.message, config);
     }
-    return this.fallbackOrFail('The native engine module is not installed in this build.', config);
+    return this.fallbackOrFail("The downloader isn't installed in this build.", config);
   }
 
   private async fallbackOrFail(reason: string, config: NativeConfig): Promise<EngineResult> {
@@ -388,7 +388,7 @@ export class MaglevEngineBridge implements MaglevEngineApi {
     if (!this.restartPromise) {
       this.restartPromise = (async () => {
         const res = await this.callNative<EngineResult>('init', config);
-        if (!res.ok) return res; // The caller shows the reason with a "Start engine" action; screens stay where they are.
+        if (!res.ok) return res; // The caller shows the reason with a "Start the downloader" action; screens stay where they are.
         this.setState({ status: { kind: 'ready', message: 'Native engine running.', simulated: false } });
         if (this.lastSettings) await this.pushGovernanceAndLimits(this.lastSettings, config);
         return res;
@@ -439,7 +439,7 @@ export class MaglevEngineBridge implements MaglevEngineApi {
       }
     }
     return (this.startPromise === null && this.status.kind === 'starting'
-      ? unavailable('Engine not started.', 'NOT_INITIALIZED')
+      ? unavailable('The downloader is not running.', 'NOT_INITIALIZED')
       : unavailable(this.status.message)) as T;
   }
 
@@ -718,7 +718,7 @@ export class MaglevEngineBridge implements MaglevEngineApi {
   private updateCall<T>(method: string, ...args: unknown[]): Promise<T> {
     if (NativeModule) return this.callNative<T>(method, ...args);
     const sim = simulatorIfAllowed();
-    if (!sim) return Promise.resolve(unavailable('The native engine module is not installed in this build.') as T);
+    if (!sim) return Promise.resolve(unavailable("The downloader isn't installed in this build.") as T);
     return (sim as unknown as Record<string, (...a: unknown[]) => Promise<T>>)[method](...args);
   }
   // ---- subtitles (NATIVE_CONTRACT 36.6) -------------------------------------------
@@ -736,7 +736,7 @@ export class MaglevEngineBridge implements MaglevEngineApi {
       }
     }
     const sim = simulatorIfAllowed();
-    if (!sim) throw subtitleError('UNSUPPORTED', 'The native engine module is not installed in this build.');
+    if (!sim) throw subtitleError('UNSUPPORTED', "The downloader isn't installed in this build.");
     return (sim[method] as (...a: unknown[]) => Promise<T>).apply(sim, args);
   }
   public subtitleHash(pathOrUri: string): Promise<SubtitleHashResult> {

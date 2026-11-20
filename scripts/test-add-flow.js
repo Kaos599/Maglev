@@ -33,7 +33,7 @@ check('placeholder is not a magnet URI', !/placeholder="magnet:/.test(addTorrent
 check('Open .torrent file is kept', addTorrent.includes('Open .torrent file'));
 
 check('add-download has a Save to row', addDownload.includes('Save to'));
-check('add-download can change the folder', /pickDownloadFolder/.test(addDownload) && /Change/.test(addDownload));
+check('add-download can change the folder', /maglevEngine\.pickFolder\(\)/.test(addDownload) && /Change/.test(addDownload));
 check('add-download keeps 44px row', /touch\.min/.test(addDownload));
 
 check('empty state copy mentions links and torrents', /Nothing downloading/.test(copy) && /link/i.test(copy.match(/none:\s*\{[^}]*\}/)[0]) && /torrent/i.test(copy.match(/none:\s*\{[^}]*\}/)[0]));  // 0.15: new title

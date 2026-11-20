@@ -9,6 +9,8 @@ import { FocusAnchor, rowKey } from '../settings/settingsFocus';
 export interface ListRowProps {
   title: string;
   subtitle?: string;
+  /** 'danger' paints the subtitle in the danger colour (an error the row can't fix itself). */
+  subtitleTone?: 'danger';
   icon?: PixelIconName;
   /** Muted trailing text; shown with a chevron when the row is pressable. */
   value?: string;
@@ -35,6 +37,7 @@ export function ListRow(props: ListRowProps) {
 function ListRowBody({
   title,
   subtitle,
+  subtitleTone,
   icon,
   value,
   accessory,
@@ -62,7 +65,7 @@ function ListRowBody({
           {title}
         </Text>
         {subtitle ? (
-          <Text style={styles.subtitle} numberOfLines={2}>
+          <Text style={[styles.subtitle, subtitleTone === 'danger' && { color: colors.danger }]} numberOfLines={2}>
             {subtitle}
           </Text>
         ) : null}

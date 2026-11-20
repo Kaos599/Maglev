@@ -984,10 +984,17 @@ export const SETTINGS_INDEX: SettingEntry[] = [
   ],
   ),
   e(
-    "network-port",
-    "Incoming port",
+    "network-advanced",
+    "Advanced",
     "network",
     "Network",
+    ["advanced", "port", "proxy", "dht", "upnp", "blocklist", "torrent", "peers"],
+  ),
+  e(
+    "network-port",
+    "Incoming port",
+    "network-advanced",
+    "Advanced network",
     [
     "port",
     "listening",
@@ -1000,8 +1007,8 @@ export const SETTINGS_INDEX: SettingEntry[] = [
   e(
     "network-upnp",
     "UPnP",
-    "network",
-    "Network",
+    "network-advanced",
+    "Advanced network",
     [
     "router",
     "port",
@@ -1016,8 +1023,8 @@ export const SETTINGS_INDEX: SettingEntry[] = [
   e(
     "network-dht",
     "DHT",
-    "network",
-    "Network",
+    "network-advanced",
+    "Advanced network",
     [
     "peers",
     "trackers",
@@ -1030,8 +1037,8 @@ export const SETTINGS_INDEX: SettingEntry[] = [
   e(
     "network-lsd",
     "Local peer discovery",
-    "network",
-    "Network",
+    "network-advanced",
+    "Advanced network",
     [
     "lan",
     "wifi",
@@ -1045,8 +1052,8 @@ export const SETTINGS_INDEX: SettingEntry[] = [
   e(
     "network-proxy-enable",
     "SOCKS5 proxy",
-    "network",
-    "Network",
+    "network-advanced",
+    "Advanced network",
     [
     "proxy",
     "socks",
@@ -1059,8 +1066,8 @@ export const SETTINGS_INDEX: SettingEntry[] = [
   e(
     "network-proxy-host",
     "Host",
-    "network",
-    "Network",
+    "network-advanced",
+    "Advanced network",
     [
     "proxy",
     "socks",
@@ -1074,8 +1081,8 @@ export const SETTINGS_INDEX: SettingEntry[] = [
   e(
     "network-proxy-port",
     "Port",
-    "network",
-    "Network",
+    "network-advanced",
+    "Advanced network",
     [
     "proxy",
     "socks",
@@ -1086,8 +1093,8 @@ export const SETTINGS_INDEX: SettingEntry[] = [
   e(
     "network-proxy-user",
     "Username",
-    "network",
-    "Network",
+    "network-advanced",
+    "Advanced network",
     [
     "proxy",
     "socks",
@@ -1100,8 +1107,8 @@ export const SETTINGS_INDEX: SettingEntry[] = [
   e(
     "network-proxy-pass",
     "Password",
-    "network",
-    "Network",
+    "network-advanced",
+    "Advanced network",
     [
     "proxy",
     "socks",
@@ -1114,8 +1121,8 @@ export const SETTINGS_INDEX: SettingEntry[] = [
   e(
     "network-ip-blocklist",
     "Block listed IPs",
-    "network",
-    "Network",
+    "network-advanced",
+    "Advanced network",
     [
     "ip filter",
     "blocklist",

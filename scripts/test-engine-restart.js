@@ -121,7 +121,7 @@ globalThis.__fake = { Platform: { OS: 'android' }, native };
   {
     const n = addErrorNotice({ code: 'NOT_INITIALIZED', message: "The download engine isn't running yet." });
     check('e: bare NOT_INITIALIZED gets the plain fallback body, no button without a handler',
-      n.notice.title === 'The download engine stopped' && n.notice.body === "It couldn't be started again." && !n.notice.actionLabel && !n.duplicate, n);
+      n.notice.title === 'The downloader stopped' && n.notice.body === "It couldn't be started again." && !n.notice.actionLabel && !n.duplicate, n);
     check('e: DUPLICATE still maps', addErrorNotice({ code: 'DUPLICATE' }).duplicate === true);
   }
 
@@ -136,8 +136,8 @@ globalThis.__fake = { Platform: { OS: 'android' }, native };
     const { notice } = addErrorNotice(err, () => {
       retried = b.restart().then(async (r) => (r.ok ? b.addTorrent('x') : r));
     });
-    check('f: notice shows the real reason with a Start engine button',
-      notice.title === 'The download engine stopped' && notice.body === 'The folder is not available.' && notice.actionLabel === 'Start engine' && typeof notice.onAction === 'function', notice);
+    check('f: notice shows the real reason with a Start the downloader button',
+      notice.title === 'The downloader stopped' && notice.body === 'The folder is not available.' && notice.actionLabel === 'Start the downloader' && typeof notice.onAction === 'function', notice);
     initResult = { ok: true }; // the user fixed the cause
     notice.onAction();
     const r = await retried;
@@ -154,7 +154,7 @@ globalThis.__fake = { Platform: { OS: 'android' }, native };
   {
     check('g: PERMISSION -> Pick folder again', engineFailureAction('PERMISSION').action === 'pickFolder' && engineFailureAction('PERMISSION').label === 'Pick folder again');
     check('g: DISK_FULL and STORAGE_UNAVAILABLE -> Pick folder again', engineFailureAction('DISK_FULL').action === 'pickFolder' && engineFailureAction('STORAGE_UNAVAILABLE').action === 'pickFolder');
-    check('g: other and unknown codes -> Start engine', engineFailureAction('INTERNAL').label === 'Start engine' && engineFailureAction(undefined).action === 'startEngine' && engineFailureAction('ENGINE_UNAVAILABLE').action === 'startEngine');
+    check('g: other and unknown codes -> Start the downloader', engineFailureAction('INTERNAL').label === 'Start the downloader' && engineFailureAction(undefined).action === 'startEngine' && engineFailureAction('ENGINE_UNAVAILABLE').action === 'startEngine');
   }
 
   // (h) boot failure: status carries the code; restart() starts the engine
