@@ -45,7 +45,7 @@ function interpolateTrack(progress: Animated.Value, t: GlyphTrack) {
       easing: t.ease ? Easing.out(Easing.cubic) : undefined,
     });
   }
-  const scale = t.prop === 'translateY' ? UNIT : 1;
+  const scale = t.prop === 'translateY' || t.prop === 'translateX' ? UNIT : 1;
   return progress.interpolate({ inputRange: t.inputRange, outputRange: t.outputRange.map((v) => v * scale) });
 }
 
@@ -53,7 +53,8 @@ function styleFor(progress: Animated.Value, t: GlyphTrack | undefined) {
   if (!t) return null;
   const v = interpolateTrack(progress, t);
   if (t.prop === 'opacity') return { opacity: v };
-  return { transform: [t.prop === 'rotate' ? { rotate: v } : { translateY: v }] };
+  if (t.prop === 'rotate') return { transform: [{ rotate: v }] };
+  return { transform: [t.prop === 'translateX' ? { translateX: v } : { translateY: v }] };
 }
 
 export interface TabGlyphProps {

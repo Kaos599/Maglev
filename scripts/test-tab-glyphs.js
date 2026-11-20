@@ -109,7 +109,7 @@ async function main() {
   check('settings: move matches the symmetry result', G.TAB_GLYPHS['tab-settings'].move === (symmetric ? 'spin' : 'wobble'));
 
   // Tracks: strictly valid and resting at the end.
-  const REST = { translateY: 0, rotate: 0, opacity: 1 };
+  const REST = { translateX: 0, translateY: 0, rotate: 0, opacity: 1 };
   for (const name of names) {
     const glyph = G.TAB_GLYPHS[name];
     const tracks = [...(glyph.parts.map((p) => p.track)), glyph.wrapTrack].filter(Boolean);
@@ -129,6 +129,15 @@ async function main() {
   const dot = feeds.parts.find((p) => p.id === 'dot');
   check('feeds: starts at dot only', dot && op0(dot) === 1 && feeds.parts.filter((p) => p.id !== 'dot').every((p) => op0(p) === 0));
 
+
+  // Transfers and Search play several pixel frames, not a one-step hop that is too small to see.
+  const positions = (t) => new Set(t ? t.outputRange : []).size;
+  const tr = G.TAB_GLYPHS['tab-transfers'];
+  check('transfers: pump, each arrow moves through 3 positions and 4 grid units', tr.move === 'pump' && tr.parts.every((p) => positions(p.track) >= 3 && Math.max(...p.track.outputRange.map(Math.abs)) === 4));
+  check('transfers: the down arrow starts half a beat after the up arrow', tr.parts.find((p) => p.id === 'down').track.outputRange[0] === 0 && tr.parts.find((p) => p.id === 'up').track.outputRange[0] !== 0);
+  const se = G.TAB_GLYPHS['tab-search'];
+  check('search: scan moves sideways and up (a loop, not a hop)', se.move === 'scan' && se.wrapTrack && se.wrapTrack.prop === 'translateX' && positions(se.wrapTrack) >= 3 && positions(se.parts[0].track) >= 2);
+  check('no tab uses the old hop', !Object.values(G.TAB_GLYPHS).some((g) => g.move === 'hop'));
   console.log(`\n${passed} passed, ${failed} failed`);
   process.exit(failed ? 1 : 0);
 }
