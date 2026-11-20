@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { maglevEngine, type FreeSpace } from 'maglev-engine';
 import { useMaglevEngine } from '../context/EngineContext';
 import { admit, pendingNeedOf, type AdmissionOutcome } from './admission';
+import { noSpaceBody } from './admissionCopy';
 
 /**
  * Free space and the SM-35 admission check for a web-link download (Add download and the browser's
@@ -12,6 +13,8 @@ export function useDownloadAdmission(size: number | null | undefined, active: bo
   free: FreeSpace | null;
   outcome: AdmissionOutcome | null;
   doesntFit: boolean;
+  /** Body for the "Not enough space" banner: the figures and the reason. Undefined unless `doesntFit`. */
+  noSpace: string | undefined;
 } {
   const { telemetry } = useMaglevEngine();
   const [free, setFree] = useState<FreeSpace | null>(null);
@@ -31,14 +34,16 @@ export function useDownloadAdmission(size: number | null | undefined, active: bo
     };
   }, [active]);
   const freeBytes = free ? Math.min(free.freeBytes, free.targetFreeBytes ?? free.freeBytes) : null;
+  const pendingNeed = pendingNeedOf(telemetry.torrents);
   const outcome =
     freeBytes !== null && size
       ? admit({
           freeBytes,
-          pendingNeed: pendingNeedOf(telemetry.torrents),
+          pendingNeed,
           stagingFactor: free?.mode === 'staging' ? 2 : 1,
           selectionBytes: size,
         })
       : null;
-  return { free, outcome, doesntFit: outcome?.result === 'DoesntFit' };
+  const doesntFit = outcome?.result === 'DoesntFit';
+  return { free, outcome, doesntFit, noSpace: doesntFit && outcome ? noSpaceBody(outcome, pendingNeed) : undefined };
 }

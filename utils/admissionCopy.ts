@@ -21,3 +21,13 @@ export function admissionCaption(out: AdmissionOutcome, pendingNeed: number): st
   }
   return null;
 }
+
+/**
+ * The body of the "Not enough space" banner on the link sheets: the figures, then what to do. With other
+ * downloads pending, the space they still need is why a file can be refused while the phone shows more free.
+ */
+export function noSpaceBody(out: AdmissionOutcome, pendingNeed: number): string {
+  const caption = admissionCaption(out, pendingNeed);
+  const next = pendingNeed > 0 ? "Free up some storage, or remove a download you don't need." : 'Free up some storage, then try again.';
+  return caption ? `${caption}. ${next}` : next;
+}

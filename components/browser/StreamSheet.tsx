@@ -95,7 +95,7 @@ export function StreamSheet({ item, pageTitle, userAgent = '', pageUrl = '', onC
   }, [url, tries, probeStream]);
 
   const variant = probe?.variants.find((v) => v.id === variantId) ?? null;
-  const { doesntFit } = useDownloadAdmission(variant?.estBytes ?? null, phase === 'ready');
+  const { doesntFit, noSpace } = useDownloadAdmission(variant?.estBytes ?? null, phase === 'ready');
 
   if (!it) return null;
   const adding = phase === 'adding';
@@ -196,7 +196,7 @@ export function StreamSheet({ item, pageTitle, userAgent = '', pageUrl = '', onC
         ) : null}
 
         {mobileNote ? <NoteRow text={mobileNote} /> : null}
-        {doesntFit ? <Banner tone="danger" title={banners.addDownload.notEnoughSpace.title} body={banners.addDownload.notEnoughSpace.body} /> : null}
+        {doesntFit ? <Banner tone="danger" title={banners.addDownload.notEnoughSpace.title} body={noSpace} /> : null}
         {message ? <Banner tone="danger" title={message} /> : null}
 
         <View style={styles.actions}>

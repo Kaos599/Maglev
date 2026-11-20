@@ -86,7 +86,7 @@ export function FoundDownloadSheet({ target, onClose, onView }: { target: Downlo
   }, [url, tries, probeUrl]);
 
   const size = probe?.size ?? t?.size ?? null;
-  const { doesntFit } = useDownloadAdmission(size, phase === 'ready');
+  const { doesntFit, noSpace } = useDownloadAdmission(size, phase === 'ready');
 
   if (!t) return null;
   const mobileNote = phase === 'ready' ? mobileDataLine(onMeteredNetwork, settings.network.wifiOnly, size) : null;
@@ -140,7 +140,7 @@ export function FoundDownloadSheet({ target, onClose, onView }: { target: Downlo
         <SaveToChoice value={sub} onChange={setSub} root={root} disabled={adding} />
         {mobileNote ? <NoteRow text={mobileNote} /> : null}
         {t.installer ? <Banner tone="warning" title={banners.browser.installer.title} body={banners.browser.installer.body} /> : null}
-        {doesntFit ? <Banner tone="danger" title={banners.addDownload.notEnoughSpace.title} body={banners.addDownload.notEnoughSpace.body} /> : null}
+        {doesntFit ? <Banner tone="danger" title={banners.addDownload.notEnoughSpace.title} body={noSpace} /> : null}
         {message ? <Banner tone="danger" title={message} /> : null}
         <View style={styles.actions}>
           <Button label="Cancel" variant="ghost" onPress={onClose} disabled={adding} />

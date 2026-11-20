@@ -55,6 +55,11 @@ export const PROBE_BLOCKED_BODY =
 export const AUTH_BODY =
   'This site wants you to sign in. Sign in on the site in your browser, copy the download link again, and paste it here.';
 
+/** The phone has no usable network (Kotlin's `offline` block, NATIVE_CONTRACT 35.4). */
+function isOffline(ctx: BlockContext): boolean {
+  return !!ctx.blocks?.some((b) => b.tag === 'offline');
+}
+
 /** Reasons the engine clears by itself. The card offers no Resume for them. */
 export function isGovernancePause(pausedBy: string | null | undefined): boolean {
   return !!pausedBy && pausedBy !== 'user' && pausedBy !== 'storage_full' && pausedBy !== 'storage_unavailable';
@@ -234,6 +239,8 @@ export function downloadStatus(
       return held(reasonFor('queued', ctx)!.short, 'muted');
     case 'downloading': {
       const situation = linkSituation(d, opts);
+      // No network: say so rather than blame the server. Data that still arrives wins (the tag can lag the network).
+      if (situation !== 'flowing' && isOffline(ctx)) return held(reasonFor('offline')!.short, 'muted');
       if (situation === 'waiting') return held(STALLED_TEXT, 'muted');
       if (situation === 'connecting') return mk(CONNECTING_SERVER_TEXT, 'muted', null, right.value, right.slot, right.full);
       const flowing = situation === 'flowing';
@@ -325,8 +332,12 @@ function errorLine(d: DownloadSnapshot): string {
 }
 
 /** A longer line the sheet shows (the card line is one row and may be cut). Null when there is none. */
-export function downloadCaption(d: DownloadSnapshot): string | null {
-  if (d.state === 'downloading' && d.stalled) return STALLED_TEXT;
+export function downloadCaption(d: DownloadSnapshot, ctx: BlockContext = {}): string | null {
+  if (d.state === 'downloading' && d.stalled) {
+    if (!isOffline(ctx)) return STALLED_TEXT;
+    const r = reasonFor('offline')!;
+    return `${r.title}. ${r.body}`;
+  }
   if (d.state === 'paused' && d.pausedBy === 'storage_unavailable') return FOLDER_GONE_TEXT;
   if (d.state === 'needs_link' && d.error?.code === 'AUTH_REQUIRED') return AUTH_BODY;
   if (d.state === 'error') {

@@ -173,7 +173,7 @@ export default function DownloadScreen() {
   // "Why it's paused" carries each rule's own settings button, so the generic one is not repeated.
   const mainActions = all.filter((a) => a.kind !== 'remove' && a.kind !== 'newLink' && !(showWhy && a.kind === 'openNetworkSettings' && a.route));
   const headerAction = all.find((a) => a.kind === 'pause' || a.kind === 'resume') ?? null;
-  const caption = downloadCaption(d);
+  const caption = downloadCaption(d, blockCtx);
   const status = downloadStatus(d, undefined, blockCtx, flow);
   const situation = linkSituation(d, flow);
   const whyModel =
