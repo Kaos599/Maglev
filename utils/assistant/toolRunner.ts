@@ -13,7 +13,7 @@
  * - Every string from the outside world is sanitised and sits in a `*_untrusted` field (§7.3).
  * - run() never throws. Failures become `{ok:false,error:{code,message}}` content.
  */
-import { formatBytes } from '../../constants/format.ts';
+import { formatBytes, formatSpeed } from '../../constants/format.ts';
 import type {
   Detail, DetailFile, DownloadSnapshot, EngineResult, FilePriorityEntry, FreeSpace, MaglevEngineApi, Metadata,
   MetadataFile, PlaybackSupport, Snapshot,
@@ -1317,7 +1317,7 @@ export function createToolRunner(deps: ToolRunnerDeps): ToolRunner {
         size_text: r.total > 0 ? formatBytes(r.total) : 'unknown',
         progress_pct: pct(r.done, r.total),
       };
-      if (r.bucket === 'active' && r.downBps > 0) row.speed_text = `${formatBytes(r.downBps)}/s`;
+      if (r.bucket === 'active' && r.downBps > 0) row.speed_text = formatSpeed(r.downBps);
       if (r.bucket === 'active' && r.downBps > 0 && r.etaSecs >= 0) row.eta_secs = r.etaSecs;
       if (r.pausedBy) row.paused_by = r.pausedBy;
       if (r.health) row.health = r.health;
@@ -1441,7 +1441,7 @@ export function createToolRunner(deps: ToolRunnerDeps): ToolRunner {
       trackers_failing: res.trackers.filter((t) => t.status === 'error').length,
       ratio: Math.round(snap.ratio * 100) / 100,
     };
-    if (snap.downBps > 0) data.speed_text = `${formatBytes(snap.downBps)}/s`;
+    if (snap.downBps > 0) data.speed_text = formatSpeed(snap.downBps);
     if (snap.etaSecs >= 0) data.eta_secs = snap.etaSecs;
     if (snap.resolvingSecs !== null) data.looking_for_files_secs = snap.resolvingSecs;
     // The engine's message can name device paths, so only the code and the app's plain text go out (§4.1).
