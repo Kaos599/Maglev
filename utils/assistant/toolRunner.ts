@@ -255,7 +255,7 @@ function succeed(data: Data, extra: Pick<ToolRunOutput, 'results' | 'detail'> = 
 
 
 /** "today", "2 days ago", "3 weeks ago", "5 months ago", "1 year ago". Undefined when the source gave no date. */
-export function ageText(publishedAt: number | undefined, now: number): string | undefined {
+function ageText(publishedAt: number | undefined, now: number): string | undefined {
   if (publishedAt === undefined || !Number.isFinite(publishedAt) || publishedAt <= 0) return undefined;
   const days = Math.floor((now - publishedAt) / DAY_MS);
   const unit = (n: number, word: string): string => `${n} ${word}${n === 1 ? '' : 's'} ago`;
@@ -281,7 +281,7 @@ const KIND_BY_EXT: ReadonlyMap<string, FileKind> = new Map(
 );
 
 /** What a file is, by its extension. */
-export function fileKindOf(path: string): FileKind {
+function fileKindOf(path: string): FileKind {
   const base = path.split(/[\\/]/).pop() ?? '';
   const dot = base.lastIndexOf('.');
   if (dot < 0) return 'other';

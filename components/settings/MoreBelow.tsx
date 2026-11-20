@@ -6,7 +6,7 @@ import { PixelIcon } from '../PixelIcon';
 import { PressableScale } from '../ui';
 import { useReduceMotion } from '../motion';
 
-export const MORE_BELOW_LABEL = 'More below';
+const MORE_BELOW_LABEL = 'More below';
 const FADE_HEIGHT = 72;
 const FADE_BANDS = 12;
 const BOB_CYCLES = 3;

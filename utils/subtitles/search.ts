@@ -10,9 +10,9 @@ import { subtitleFileName } from './naming.ts';
 import type { SubFormat, SubtitleCandidate, SubtitleProvider, SubtitleQuery } from './types.ts';
 
 /** Same per-source wait as search (SEARCH_CONTRACT section 4): 8 s unless told otherwise. */
-export const DEFAULT_WAIT_SECONDS = 8;
+const DEFAULT_WAIT_SECONDS = 8;
 /** A download is one request to one source; give it longer than a search. */
-export const DOWNLOAD_WAIT_SECONDS = 15;
+const DOWNLOAD_WAIT_SECONDS = 15;
 
 export type SubtitleSourceState = 'searching' | 'done' | 'empty' | 'timeout' | 'error' | 'challenge' | 'limit';
 

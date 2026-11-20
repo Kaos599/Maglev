@@ -42,9 +42,9 @@ export type ValidateResult =
   | { ok: false; error: { code: 'bad_args' | 'unknown_tool'; message: string } };
 
 /** The eight tools the model sees (docs/ASSISTANT_DESIGN.md, 0.11). Few tools, because free models call many tools badly. */
-export const READ_TOOL_NAMES = ['search_torrents', 'browse_torrents', 'get_result_details', 'list_transfers', 'ask_user', 'open_screen'] as const;
+const READ_TOOL_NAMES = ['search_torrents', 'browse_torrents', 'get_result_details', 'list_transfers', 'ask_user', 'open_screen'] as const;
 
-export const PROPOSAL_TOOL_NAMES = ['propose_add', 'propose_change', 'watch_title'] as const;
+const PROPOSAL_TOOL_NAMES = ['propose_add', 'propose_change', 'watch_title'] as const;
 
 /**
  * Tools the model no longer sees. The runner still builds its cards and answers from the same code, and
@@ -450,9 +450,6 @@ export const TOOLS: ToolDef[] = [
   ...PROPOSAL_TOOL_NAMES.map((name) => toolDef(name)),
 ];
 
-/** Every tool name the runner understands, model-facing or not. */
-export const ALL_TOOL_NAMES: readonly string[] = [...READ_TOOL_NAMES, ...PROPOSAL_TOOL_NAMES, ...LEGACY_TOOL_NAMES];
-
 function toolDef(name: ToolName): ToolDef {
   return {
     type: 'function',
@@ -509,7 +506,7 @@ function argsOf(name: ToolName): ToolArgInfo[] {
 }
 
 /** Every tool, or the one named, with its full description and argument summary. Generated from the same schemas the model sees. */
-export function describeTools(name?: string): { tools: ToolInfo[] } {
+function describeTools(name?: string): { tools: ToolInfo[] } {
   const names: ExposedToolName[] = [...READ_TOOL_NAMES, ...PROPOSAL_TOOL_NAMES];
   const pick = name === undefined ? names : names.filter((n) => n === name);
   return {

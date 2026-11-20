@@ -138,7 +138,7 @@ export const PRESETS: readonly ProviderPreset[] = [
   },
 ];
 
-export const ASSISTANT_PREFS_VERSION = 1;
+const ASSISTANT_PREFS_VERSION = 1;
 export const ASSISTANT_PREFS_KEY = 'maglev.assistant.prefs.v1';
 const MAX_MODEL_LENGTH = 120;
 const KEY_REF_PATTERN = /^[A-Za-z0-9._-]{1,64}$/;
@@ -213,7 +213,7 @@ export function isPrivateHost(hostname: string): boolean {
   return a === 10 || a === 127 || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168);
 }
 
-export const ADDRESS_COPY = 'That address must start with https://';
+const ADDRESS_COPY = 'That address must start with https://';
 
 /** R1-14: Android can't resolve mDNS (.local) names, so those addresses are refused with this line. */
 export const LOCAL_NAME_COPY = "Use the computer's address, like 192.168.1.20, not a .local name.";

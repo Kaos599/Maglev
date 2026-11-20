@@ -4,8 +4,8 @@ import { useTheme } from '../../context/ThemeContext';
 import { ThemeColors, monoSlotWidth, spacing, type } from '../../constants/theme';
 
 /** Status line font size; the value slot is sized in Space Mono glyphs at this size. */
-export const STATUS_SIZE = 12;
-export const STATUS_LINE = 18;
+const STATUS_SIZE = 12;
+const STATUS_LINE = 18;
 
 /**
  * Widest strings each value slot holds, in glyphs: "0.98 MB/s", "↑ 0.98 MB/s", "1023.9 GB". A speed is 3 significant

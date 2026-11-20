@@ -10,7 +10,7 @@ export interface TransferSort {
   dir: SortDir;
 }
 
-export const DEFAULT_SORT: TransferSort = { key: 'added', dir: 'desc' };
+const DEFAULT_SORT: TransferSort = { key: 'added', dir: 'desc' };
 export const SORT_KEYS: readonly SortKey[] = ['name', 'progress', 'downSpeed', 'upSpeed', 'eta', 'size', 'added', 'ratio'];
 
 const STORAGE_KEY = 'maglev.transfers.sort';

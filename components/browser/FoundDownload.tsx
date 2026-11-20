@@ -31,7 +31,7 @@ export interface DownloadTarget {
 type Phase = 'probing' | 'ready' | 'error' | 'adding';
 
 /** "https://host" for a page link, or '' when it has none. Sent as the Origin. */
-export function originOf(url: string): string {
+function originOf(url: string): string {
   const m = /^(https?:\/\/(?:[^/?#@]*@)?(?:\[[^\]]+\]|[^/?#]+))/i.exec((url ?? '').trim());
   return m ? m[1].replace(/\/\/[^/@]*@/, '//') : '';
 }

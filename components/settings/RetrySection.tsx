@@ -4,7 +4,7 @@ import { useSettings } from '../../context/SettingsContext';
 import { ListRow, Toggle } from '../ui';
 import { Caption, Card, ChipGroup } from './SettingsParts';
 
-export const retryCopy = {
+const retryCopy = {
   title: 'Retry failed downloads',
   keepTitle: 'Keep trying',
   keepSubtitle: 'Off: stop after 3 tries.',

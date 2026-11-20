@@ -4,16 +4,16 @@
  * missing `serial` or an unreadable file rejects the whole file.
  */
 
-export const SCHEMA_VERSION = 1;
+const SCHEMA_VERSION = 1;
 /** The file is capped at 256 KB (UTF-8 bytes). */
 export const MAX_FILE_BYTES = 256 * 1024;
-export const MAX_MIRRORS = 5;
-export const NOTE_MAX_CHARS = 140;
-export const REASON_MAX_CHARS = 140;
-export const TRACKERS_MIN = 3;
-export const TRACKERS_MAX = 40;
-export const BLOCKLIST_URLS_MIN = 1;
-export const BLOCKLIST_URLS_MAX = 5;
+const MAX_MIRRORS = 5;
+const NOTE_MAX_CHARS = 140;
+const REASON_MAX_CHARS = 140;
+const TRACKERS_MIN = 3;
+const TRACKERS_MAX = 40;
+const BLOCKLIST_URLS_MIN = 1;
+const BLOCKLIST_URLS_MAX = 5;
 
 export interface SourceEntry {
   /** https only, at most 5. */
@@ -70,7 +70,7 @@ export function isHttpsUrl(v: unknown): v is string {
 }
 
 /** udp, http, https and wss announce addresses. */
-export function isAnnounceUrl(v: unknown): v is string {
+function isAnnounceUrl(v: unknown): v is string {
   return typeof v === 'string' && /^(?:udp|https?|wss):\/\/[^\s/?#@]+(?:[/?#]\S*)?$/i.test(v);
 }
 

@@ -46,7 +46,7 @@ const auth = createOpenRouterAuth({
 });
 
 /** The Ollama preset has no default address (R1-14): the user types their computer's address. */
-export function defaultBaseUrlFor(preset: ProviderPreset): string {
+function defaultBaseUrlFor(preset: ProviderPreset): string {
   return preset.local ? '' : preset.baseUrl;
 }
 
@@ -68,7 +68,7 @@ function initialState(p: { presetId: PresetId; baseUrl: string; keyRef: string |
   return INITIAL_PROVIDER_STATE;
 }
 
-export const SIGN_IN_CODE_HINT = 'Paste the code OpenRouter shows you.';
+const SIGN_IN_CODE_HINT = 'Paste the code OpenRouter shows you.';
 const LOCAL_NAME = "Use the computer's address (like 192.168.1.20), not a .local name.";
 
 export function useProviderSetup(opts?: { onExpireCards?: () => void }) {

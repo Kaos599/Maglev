@@ -13,7 +13,7 @@ interface Props {
 
 /** One badge cell is 2 dp (NATIVE_CONTRACT 44.8). Rows run top to bottom, `#` is a filled cell. */
 const CELL = 2;
-export const BADGE_BITMAPS = {
+const BADGE_BITMAPS = {
   /** A check mark, 5 x 4 cells. */
   saved: ['....#', '...#.', '#.#..', '.#...'],
   /** A question mark, 3 x 5 cells. */

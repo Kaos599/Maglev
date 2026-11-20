@@ -403,7 +403,7 @@ export function base64ToBytes(b64: string): Uint8Array {
 }
 
 /** Text to UTF-8 bytes without a BOM (Hermes' TextEncoder isn't guaranteed). */
-export function encodeUtf8(text: string): Uint8Array {
+function encodeUtf8(text: string): Uint8Array {
   const out: number[] = [];
   for (let i = 0; i < text.length; i++) {
     let cp = text.charCodeAt(i);

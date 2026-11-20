@@ -24,7 +24,7 @@ export interface UpdatePrefs {
   showHighlights: boolean;
 }
 
-export const UPDATE_MODES: readonly UpdateMode[] = ['ask', 'download', 'auto'];
+const UPDATE_MODES: readonly UpdateMode[] = ['ask', 'download', 'auto'];
 const KEY = 'maglev.update.prefs.v1';
 
 export function defaultUpdatePrefs(): UpdatePrefs {

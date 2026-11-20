@@ -2,7 +2,7 @@ import { empty } from '../constants/copy.ts';
 
 /** Button labels (buttons are not sentences, so they live here and not in the copy voice lint). */
 export const START_ENGINE_LABEL = 'Start engine';
-export const PICK_FOLDER_LABEL = 'Pick folder again';
+const PICK_FOLDER_LABEL = 'Pick folder again';
 
 export interface AddNotice {
   tone: 'info' | 'danger';

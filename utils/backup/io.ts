@@ -42,7 +42,7 @@ function readPref(key: PrefKey): unknown {
   }
 }
 
-export async function collectBackup(opts: { includeStats?: boolean } = {}): Promise<Backup> {
+async function collectBackup(opts: { includeStats?: boolean } = {}): Promise<Backup> {
   const list = await maglevEngine.listTorrents();
   const torrents = list.ok ? list.torrents : [];
   const downloads = list.ok ? (list.downloads ?? []) : [];

@@ -1,7 +1,7 @@
 // Watch list persistence with an injected storage, so it runs in Node tests. The app binds expo-sqlite in store.ts.
 import { addWatch, normalizeWatches, type AddResult, type Watch, type WatchInput } from './logic.ts';
 
-export const WATCH_KEY = 'maglev.watch.v1';
+const WATCH_KEY = 'maglev.watch.v1';
 
 export interface SyncStorage {
   getItemSync(key: string): string | null;

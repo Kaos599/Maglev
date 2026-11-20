@@ -103,7 +103,7 @@ export interface PageOptions {
   form?: Record<string, string>;
 }
 
-export function formBody(form: Record<string, string>): string {
+function formBody(form: Record<string, string>): string {
   return Object.keys(form)
     .map((k) => `${encodeURIComponent(k)}=${encodeURIComponent(form[k])}`)
     .join('&');

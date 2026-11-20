@@ -47,7 +47,7 @@ export interface TrayView {
   action: TrayAction;
 }
 
-export function trayView(s: TrayState, phases?: Record<string, RequestPhase | undefined>): TrayView {
+function trayView(s: TrayState, phases?: Record<string, RequestPhase | undefined>): TrayView {
   return { title: trayTitle(s), line: trayLine(s), muted: trayTileMuted(s), action: trayAction(s, phases) };
 }
 

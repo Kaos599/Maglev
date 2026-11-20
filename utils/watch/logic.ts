@@ -11,8 +11,8 @@ export const MAX_WATCHES = 20;
 export const MAX_SEEN = 400;
 export const INTERVALS = [1, 6, 24] as const;
 export type IntervalHours = (typeof INTERVALS)[number];
-export const DEFAULT_INTERVAL: IntervalHours = 6;
-export const RESOLUTIONS = [480, 720, 1080, 2160] as const;
+const DEFAULT_INTERVAL: IntervalHours = 6;
+const RESOLUTIONS = [480, 720, 1080, 2160] as const;
 export type MinResolution = (typeof RESOLUTIONS)[number];
 
 const HOUR_MS = 3_600_000;
@@ -111,7 +111,7 @@ export function newWatch(input: WatchInput, now: number, rand: () => number = Ma
 }
 
 /** Repairs one stored row. Null when it is not a watch at all. */
-export function normalizeWatch(raw: unknown): Watch | null {
+function normalizeWatch(raw: unknown): Watch | null {
   const o = raw as Partial<Record<keyof Watch, unknown>> | null;
   if (!o || typeof o !== 'object' || typeof o.id !== 'string' || !o.id) return null;
   const query = cleanQuery(o.query);
@@ -145,8 +145,8 @@ export function sameWatch(a: { query: string; category: string }, b: { query: st
 
 export type AddResult = { ok: true; list: Watch[]; watch: Watch } | { ok: false; error: string };
 
-export const CAP_MESSAGE = `You can watch up to ${MAX_WATCHES} titles. Delete one first.`;
-export const DUPLICATE_MESSAGE = 'You are already watching that.';
+const CAP_MESSAGE = `You can watch up to ${MAX_WATCHES} titles. Delete one first.`;
+const DUPLICATE_MESSAGE = 'You are already watching that.';
 
 export function addWatch(list: readonly Watch[], input: WatchInput, now: number, rand?: () => number): AddResult {
   const w = newWatch(input, now, rand);
@@ -177,7 +177,7 @@ function resolutionOf(name: string): number | undefined {
   return parseRelease(name).resolution;
 }
 
-export function passesFilters(w: Watch, r: MergedResult): boolean {
+function passesFilters(w: Watch, r: MergedResult): boolean {
   if (w.minResolution !== undefined) {
     const res = resolutionOf(r.name);
     if (res === undefined || res < w.minResolution) return false;

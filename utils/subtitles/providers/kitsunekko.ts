@@ -116,7 +116,7 @@ export function rankDirectories(title: string, dirs: KkDirectory[], max = MAX_DI
 }
 
 /** The season and episode a file name states, when it states one: S01E02, "ep02", "E02", " - 02". */
-export function episodeMarker(name: string): { season?: number; episode: number } | null {
+function episodeMarker(name: string): { season?: number; episode: number } | null {
   const se = /\bs0*(\d{1,2})\s*e0*(\d{1,4})\b/i.exec(name);
   if (se) return { season: parseInt(se[1], 10), episode: parseInt(se[2], 10) };
   const ep = /(?:\bep(?:isode)?[ ._-]?|\be)0*(\d{1,4})\b/i.exec(name) ?? /\s-\s0*(\d{1,4})(?!\d)/.exec(name);

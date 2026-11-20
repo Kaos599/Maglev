@@ -604,7 +604,7 @@ function parseInner(raw: string): ParsedRelease {
 // and never change what the parser or the glossary report.
 
 /** Languages the assistant knows by name. Anything else the user asks for is matched as a plain word. */
-export const KNOWN_LANGUAGES = [
+const KNOWN_LANGUAGES = [
   'hindi', 'tamil', 'telugu', 'english', 'spanish', 'french', 'german', 'italian', 'japanese', 'korean', 'russian', 'portuguese', 'chinese',
 ] as const;
 export type KnownLanguage = (typeof KNOWN_LANGUAGES)[number];

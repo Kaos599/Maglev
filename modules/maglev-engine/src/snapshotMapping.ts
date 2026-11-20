@@ -134,23 +134,3 @@ export function detailToTorrentDetail(d: Detail, pieceBitfield?: number[]): Torr
     })),
   };
 }
-
-/** Plain-English text for engine error codes shown to users. Falls back to the engine's own message. */
-export function engineErrorMessage(code: string, fallback = 'Something went wrong.'): string {
-  switch (code) {
-    case 'UNSUPPORTED':
-      return "Secure (https) torrent links aren't supported yet. Download the .torrent file and open it instead.";
-    case 'INVALID_SOURCE':
-      return 'That is not a valid magnet link or .torrent file.';
-    case 'DUPLICATE':
-      return 'This torrent is already in your list.';
-    case 'METADATA_TIMEOUT':
-      return 'No peers answered in time. Try again later.';
-    case 'DISK_FULL':
-      return 'Not enough free storage.';
-    case 'PERMISSION':
-      return 'Maglev does not have permission to write to that folder.';
-    default:
-      return fallback;
-  }
-}

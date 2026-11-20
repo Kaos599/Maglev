@@ -60,7 +60,7 @@ export function useLiveBlockContext(): BlockContext {
 }
 
 /** The Transfers screen loads the blocks once and shares them with every card through this. */
-export const BlockContextContext = createContext<BlockContext>({});
+const BlockContextContext = createContext<BlockContext>({});
 
 export function useBlockContext(): BlockContext {
   return useContext(BlockContextContext);

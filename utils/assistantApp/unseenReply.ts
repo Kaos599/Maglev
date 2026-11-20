@@ -7,7 +7,7 @@ import { useSyncExternalStore } from 'react';
 let unseen = false;
 const listeners = new Set<() => void>();
 
-export function getUnseenReply(): boolean {
+function getUnseenReply(): boolean {
   return unseen;
 }
 
@@ -17,7 +17,7 @@ export function setUnseenReply(next: boolean): void {
   listeners.forEach((l) => l());
 }
 
-export function subscribeUnseenReply(listener: () => void): () => void {
+function subscribeUnseenReply(listener: () => void): () => void {
   listeners.add(listener);
   return () => {
     listeners.delete(listener);

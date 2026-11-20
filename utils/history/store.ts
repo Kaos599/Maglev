@@ -24,9 +24,9 @@ export type RecordResult = 'saved' | 'title' | 'skipped';
 /** The slice of BrowserPrefs the store reads. */
 export type HistoryPrefs = { saveHistory: boolean; suggestFromHistory: boolean; clearHistoryOnClose: boolean };
 
-export const RETENTION_DAYS = 90;
-export const MAX_ROWS = 10_000;
-export const PRUNE_EVERY_SAVES = 50;
+const RETENTION_DAYS = 90;
+const MAX_ROWS = 10_000;
+const PRUNE_EVERY_SAVES = 50;
 
 const DAY = 86_400_000;
 const HOUR = 3_600_000;
@@ -77,7 +77,7 @@ export function hostOf(host: string): string {
 }
 
 /** The address without its fragment, and its host, or null when it isn't an http(s) address. */
-export function parsePage(raw: string): { url: string; host: string } | null {
+function parsePage(raw: string): { url: string; host: string } | null {
   if (typeof raw !== 'string') return null;
   const trimmed = raw.trim();
   const m = /^https?:\/\/([^/?#\s]*)/i.exec(trimmed);

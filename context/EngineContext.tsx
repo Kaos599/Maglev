@@ -73,7 +73,7 @@ export interface EngineNotice {
 }
 
 /** How long an optimistic pause, resume or remove holds the row before telemetry is trusted again. */
-export const OVERRIDE_TIMEOUT_MS = 5000;
+const OVERRIDE_TIMEOUT_MS = 5000;
 /** How long "Removed X · Undo" stays before the engine delete runs. */
 export const UNDO_WINDOW_MS = UNDO_BASE_MS;
 const CACHE_SAVE_EVERY_MS = 5000;

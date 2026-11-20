@@ -68,7 +68,7 @@ const GOVERNANCE_TAGS: ReadonlySet<PausedBy | null> = new Set<PausedBy | null>([
 const DEFAULT_PAYLOAD_BYTES = 1_610_612_736; // 1.5 GiB when a magnet carries no xl=
 
 /** Thrown by the legacy synchronous `startTorrent`; carries the contract error code. */
-export class MaglevEngineError extends Error {
+class MaglevEngineError extends Error {
   code: EngineErrorCode;
   id?: string;
   constructor(code: EngineErrorCode, message: string, id?: string) {
@@ -163,7 +163,7 @@ function fnv1a(text: string, seed: number): number {
   return h >>> 0;
 }
 /** Reads a ZIP whose members are all stored (method 0), keeping subtitle members. The mock's fixture format. */
-export function mockUnzipSubtitles(base64: string): SubtitleZipEntry[] {
+function mockUnzipSubtitles(base64: string): SubtitleZipEntry[] {
   let zip: Uint8Array;
   try {
     zip = b64ToBytes(base64);

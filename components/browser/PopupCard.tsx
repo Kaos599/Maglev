@@ -14,7 +14,7 @@ const TITLES: Record<PopupKind, string> = {
 };
 
 /** The host the request goes to, or the scheme for an app address. */
-export function popupTarget(kind: PopupKind, url: string): string {
+function popupTarget(kind: PopupKind, url: string): string {
   if (kind === 'app') return `${(/^([a-z][a-z0-9+.-]*):/i.exec(url)?.[1] ?? '').toLowerCase()}:`;
   return hostFrom(url) || url;
 }

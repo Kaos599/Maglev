@@ -6,7 +6,7 @@ import { dayKey } from './time.ts';
 import type { DailyRow, DayCounts, MonthlyRow, StatsRecord } from './types.ts';
 import type { StatsPrefs } from './prefs.ts';
 
-export const RETENTION_MONTHS = 24;
+const RETENTION_MONTHS = 24;
 const CHUNK = 300;
 
 type RecRow = {

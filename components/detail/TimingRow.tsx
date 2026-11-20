@@ -72,7 +72,7 @@ export function TimingRow({ timing, onOpen }: { timing: TimingInput; onOpen?: ()
 }
 
 /** The Timing sheet's rows. Rows with nothing to say are left out. */
-export function TimingDetails({ timing }: { timing: TimingInput }) {
+function TimingDetails({ timing }: { timing: TimingInput }) {
   const { colors } = useTheme();
   const s = useMemo(() => makeStyles(colors), [colors]);
   const v = timingView(timing, Date.now());

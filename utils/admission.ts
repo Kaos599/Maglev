@@ -6,7 +6,7 @@
 /** Keep this much free for the system (NATIVE_CONTRACT 10.3). */
 export const ADMISSION_RESERVE_BYTES = 200 * 1024 * 1024;
 /** Tight is the band of less than this left over the budget. */
-export const ADMISSION_TIGHT_BAND_BYTES = 1024 * 1024 * 1024;
+const ADMISSION_TIGHT_BAND_BYTES = 1024 * 1024 * 1024;
 
 export type AdmissionResult = 'Fits' | 'Tight' | 'DoesntFit';
 
@@ -55,7 +55,7 @@ const RETRYABLE_STATUSES = [408, 429, 500, 502, 503, 504];
  * `error` will only when auto-retry would retry it. `finished`, `verifying` (everything is written),
  * `needs_link` (waits for the user) and any other error will not. NATIVE_CONTRACT 10.3.
  */
-export function downloadStillWrites(d: Pick<PendingDownload, 'state' | 'error'>): boolean {
+function downloadStillWrites(d: Pick<PendingDownload, 'state' | 'error'>): boolean {
   switch (d.state) {
     case 'queued':
     case 'resolving':

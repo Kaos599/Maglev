@@ -35,9 +35,9 @@ export interface StoredCandidate {
 }
 
 /** 46.4: at most this many candidates per run. */
-export const MAX_STORED = 2;
+const MAX_STORED = 2;
 /** 46.4: bulk saves run at most this many at a time. */
-export const BULK_CONCURRENT = 2;
+const BULK_CONCURRENT = 2;
 const REL_MAX = 120;
 
 /** 46.4: the top result per language (at most 2), the languages the user picked first. Nothing else is kept. */
@@ -90,7 +90,7 @@ export interface QualifyCtx {
 const MULTI_EPISODE = /s\d{1,2}[ ._-]?e\d{1,3}(?:[ ._-]?e\d{1,3}|[ ._-]?-[ ._-]?e?\d{1,3}|[ ._]*[+&][ ._]*e?\d{1,3})|\b\d{1,2}x\d{2,3}(?:-\d{2,3}|[ ._]?x\d{2,3})/i;
 
 /** A release name that states more than one episode ("S02E01E02", "S02E01-E03", "S02E01 S02E02"). */
-export function isMultiEpisode(releaseName: string): boolean {
+function isMultiEpisode(releaseName: string): boolean {
   return MULTI_EPISODE.test(releaseName) || episodePairs(releaseName).length > 1;
 }
 
@@ -112,7 +112,7 @@ export function qualifies(c: StoredCandidate | undefined, x: QualifyCtx): boolea
 const baseOf = (path: string): string => path.replace(/^.*[\\/]/, '');
 
 /** The show's name for a file: its own title, else the pack's title (without " · 23 episodes" or a season tag). */
-export function showTitle(fileName: string, askTitle: string): string {
+function showTitle(fileName: string, askTitle: string): string {
   const own = parseName(fileName).title;
   if (own) return own;
   return parseTyped(askTitle.split(' · ')[0].replace(/[()]/g, '')).title;
@@ -176,7 +176,7 @@ const pad2 = (n: number): string => String(n).padStart(2, '0');
 const EP_TOKEN = /(?:^|[^a-z0-9])(?:s\d{1,2}[ ._-]?e\d{1,3}(?:(?:[ ._-]?e\d{1,3})|(?:-\d{1,3}))*|\d{1,2}x\d{2,3})(?![a-z0-9])/i;
 
 /** The episode's own title from a file name ("Show.S02E01.Redemption.720p.mkv" gives "Redemption"), or "". */
-export function episodeTitle(fileName: string): string {
+function episodeTitle(fileName: string): string {
   const base = stripName(fileName).replace(/^\s*\[[^\]]*\]\s*/, '');
   const m = EP_TOKEN.exec(base);
   if (!m) return '';
@@ -237,7 +237,7 @@ export function episodeRows(entry: Pick<RequestEntry, 'files' | 'ask'>, langOf: 
 }
 
 /** Needs-you rows first, then the rest; each group in episode order, unreadable names last. */
-export function sortRows(rows: EpisodeRow[]): EpisodeRow[] {
+function sortRows(rows: EpisodeRow[]): EpisodeRow[] {
   const byEpisode = (a: EpisodeRow, b: EpisodeRow): number => {
     if (a.order && b.order) return a.order[0] - b.order[0] || a.order[1] - b.order[1] || a.fileKey.localeCompare(b.fileKey);
     if (a.order) return -1;

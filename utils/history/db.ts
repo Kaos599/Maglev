@@ -3,7 +3,7 @@ import * as SQLite from 'expo-sqlite';
 import type { HistoryDb } from './store.ts';
 
 /** Same name and folder the native wipe uses (modules/.../browser/HistoryWipe.kt). */
-export const HISTORY_DB_NAME = 'maglev-history.db';
+const HISTORY_DB_NAME = 'maglev-history.db';
 
 export async function openHistoryDb(): Promise<HistoryDb> {
   const db = await SQLite.openDatabaseAsync(HISTORY_DB_NAME);

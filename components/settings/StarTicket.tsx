@@ -9,7 +9,7 @@ import { useReduceMotion } from '../motion';
 
 export const REPO_URL = 'https://github.com/Kaos599/Maglev';
 
-export const starTicketCopy = {
+const starTicketCopy = {
   top: 'FREE · NO ADS · OPEN SOURCE',
   title: 'Like Maglev? Give it a star',
   body: 'It takes a second on GitHub and helps others find the app.',

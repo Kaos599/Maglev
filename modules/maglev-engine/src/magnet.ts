@@ -100,7 +100,7 @@ export function parseMagnet(uri: string): ParsedSource | null {
  * True when the whole text is a bare info hash: exactly 40 hex or 32 base32 characters.
  * A hash inside other text is not a bare hash.
  */
-export function isBareInfoHash(text: string): boolean {
+function isBareInfoHash(text: string): boolean {
   const t = (text ?? '').trim();
   return /^[0-9a-fA-F]{40}$/.test(t) || /^[2-7a-zA-Z]{32}$/.test(t);
 }

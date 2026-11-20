@@ -2,7 +2,7 @@
 export const SPEED_HOLD_MS = 5000;
 
 /** From this font scale up, the amount on the right shortens to what is downloaded ("1.23 GB"). */
-export const COMPACT_FONT_SCALE = 1.3;
+const COMPACT_FONT_SCALE = 1.3;
 
 export interface SpeedHoldState {
   /** When data last flowed (ms), or null if it has not since the card appeared. */

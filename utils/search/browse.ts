@@ -21,10 +21,7 @@ export type BrowseKind = 'movies' | 'tv' | 'anime' | 'books' | 'games' | 'music'
 export type BrowseOrder = 'new' | 'popular';
 export type BrowsePeriod = 'day' | 'week' | 'month' | 'year';
 
-export const BROWSE_KINDS: readonly BrowseKind[] = ['movies', 'tv', 'anime', 'books', 'games', 'music', 'apps'];
-export const BROWSE_ORDERS: readonly BrowseOrder[] = ['new', 'popular'];
-export const BROWSE_PERIODS: readonly BrowsePeriod[] = ['day', 'week', 'month', 'year'];
-
+const BROWSE_KINDS: readonly BrowseKind[] = ['movies', 'tv', 'anime', 'books', 'games', 'music', 'apps'];
 /** Length of each period in days. A month is 31 and a year 366 so the edges are never cut short. */
 export const PERIOD_DAYS: Readonly<Record<BrowsePeriod, number>> = { day: 1, week: 7, month: 31, year: 366 };
 
@@ -232,7 +229,7 @@ const nyaa: BrowseSource = {
 const SOURCES: readonly BrowseSource[] = [yts, knaben, tpb, nyaa];
 
 /** Ids of the sources that can list `kind` in `order`, before the user's prefs are applied. */
-export function browseSourceIds(kind: BrowseKind, order: BrowseOrder): string[] {
+function browseSourceIds(kind: BrowseKind, order: BrowseOrder): string[] {
   return SOURCES.filter((s) => s.use[kind]?.includes(order)).map((s) => s.id);
 }
 

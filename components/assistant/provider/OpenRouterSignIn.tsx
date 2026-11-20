@@ -8,7 +8,7 @@ import { Button } from '../../ui';
 import { Field } from './Field';
 
 /** OpenRouter's own page talks about a terminal; this is not one. */
-export const TERMINAL_NOTE = "OpenRouter's page may say to paste the code into a terminal. Paste it here in Maglev instead.";
+const TERMINAL_NOTE = "OpenRouter's page may say to paste the code into a terminal. Paste it here in Maglev instead.";
 
 /** Sign in with OpenRouter: the primary way to get a key (noKey, editing, invalid). */
 export function OpenRouterSignInButton({ onPress, primary = true }: { onPress: () => void; primary?: boolean }) {

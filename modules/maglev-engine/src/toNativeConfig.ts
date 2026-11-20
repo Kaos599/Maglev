@@ -18,7 +18,7 @@ function speedLimitBps(preset: MaglevSettings['bandwidth']['downloadPreset'], cu
 }
 
 /** True when a proxy is enabled but its type is not SOCKS5 (the engine accepts socks5/socks5h only). */
-export function proxyUnsupported(proxy: MaglevSettings['network']['proxy']): boolean {
+function proxyUnsupported(proxy: MaglevSettings['network']['proxy']): boolean {
   return proxy.enabled && proxy.type !== 'SOCKS5';
 }
 
@@ -26,7 +26,7 @@ export function proxyUnsupported(proxy: MaglevSettings['network']['proxy']): boo
  * Builds `socks5h://user:pass@host:port` (remote DNS) with URL-encoded credentials.
  * Null when the proxy is off or its type is unsupported; check `proxyUnsupported` to tell the user why.
  */
-export function buildProxyUrl(proxy: MaglevSettings['network']['proxy']): string | null {
+function buildProxyUrl(proxy: MaglevSettings['network']['proxy']): string | null {
   if (!proxy.enabled || proxyUnsupported(proxy) || !proxy.host.trim() || !(proxy.port > 0)) return null;
   const scheme = 'socks5h';
   const user = proxy.username ? encodeURIComponent(proxy.username) : '';

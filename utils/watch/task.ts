@@ -15,7 +15,7 @@ import { postWatchNotification, watchNetwork } from './native';
 import { onWatchesChanged } from './store';
 import { createWatchStore } from './storeCore';
 
-export const WATCH_TASK = 'maglev-watch-check';
+const WATCH_TASK = 'maglev-watch-check';
 
 /** Searches the way the Search tab does, never adult, and fails when no source answered. */
 async function searchOnce(query: string, category: Watch['category']) {
@@ -35,7 +35,7 @@ async function searchOnce(query: string, category: Watch['category']) {
   return update.results;
 }
 
-export function liveDeps(): CycleDeps {
+function liveDeps(): CycleDeps {
   const store = createWatchStore(Storage);
   return {
     now: () => Date.now(),
@@ -57,7 +57,7 @@ TaskManager.defineTask(WATCH_TASK, async () => {
 });
 
 /** Registers the job at the shortest active interval, or removes it when nothing is being watched. Safe to call often. */
-export async function syncWatchTask(list: Watch[]): Promise<void> {
+async function syncWatchTask(list: Watch[]): Promise<void> {
   try {
     if (hasActive(list)) {
       await BackgroundTask.registerTaskAsync(WATCH_TASK, { minimumInterval: jobIntervalMinutes(list) });

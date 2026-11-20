@@ -58,12 +58,6 @@ export function stateColor(state: TorrentState, c: ThemeColors): string {
   }
 }
 
-const MEDIA_EXT = /\.(mp4|mkv|avi|mov|webm|m4v|wmv|flv|ts|mpg|mpeg|mp3|flac|ogg|opus|wav|m4a|aac|wma)$/i;
-
-export function isMediaFile(path: string): boolean {
-  return MEDIA_EXT.test(path);
-}
-
 export function fileName(path: string): string {
   return path.split('/').pop() || path;
 }

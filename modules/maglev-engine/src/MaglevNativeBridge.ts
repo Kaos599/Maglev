@@ -119,7 +119,7 @@ function cleanBlocks(raw: unknown): ActiveBlock[] {
  *
  * A new bridge method must be added to one of the two lists (grep `this.route(`).
  */
-export const USER_ACTION_METHODS: readonly string[] = [
+const USER_ACTION_METHODS: readonly string[] = [
   // Add flow (a paste, share, search or feed add, including the preflight lookups)
   'addTorrent', 'addDownload', 'resolveMetadata', 'probeUrl', 'probeStream',
   // Torrents

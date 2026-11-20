@@ -27,7 +27,7 @@ function commit(next: Watch[]): Watch[] {
   return next;
 }
 
-export function getWatches(): Watch[] {
+function getWatches(): Watch[] {
   if (!cache) cache = core.list();
   return cache;
 }

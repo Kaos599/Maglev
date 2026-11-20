@@ -172,7 +172,7 @@ try {
 }
 
 /** True when the native browser view can render (Android with the engine module). */
-export const browserAvailable: boolean = Native != null;
+const browserAvailable: boolean = Native != null;
 
 const NativeBrowser: React.ComponentType<NativeProps & React.RefAttributes<MaglevBrowserRef>> | null =
   browserAvailable ? requireNativeViewManager<NativeProps>('MaglevEngine', 'MaglevBrowserView') : null;

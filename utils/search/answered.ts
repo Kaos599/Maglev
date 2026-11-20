@@ -5,7 +5,7 @@ import type { SourceStatus } from './types';
  * A source answered when it returned a list (with or without hits). A source that is still searching,
  * timed out, failed, was blocked or sits behind a Cloudflare check has not answered.
  */
-export function hasAnswered(s: SourceStatus): boolean {
+function hasAnswered(s: SourceStatus): boolean {
   return s.state === 'done' || s.state === 'empty';
 }
 
@@ -86,7 +86,7 @@ export function unansweredSources(sources: SourceStatus[], nameOf: (id: string) 
 }
 
 /** After the user closes the "needs a quick check" line, it stays away this long. */
-export const FIX_HINT_QUIET_MS = 24 * 60 * 60 * 1000;
+const FIX_HINT_QUIET_MS = 24 * 60 * 60 * 1000;
 
 /** Show the fix line when a source needs a check and the user has not closed it in the last 24 hours. */
 export function shouldShowFixHint(now: number, dismissedAt: number, needsCheck: number): boolean {

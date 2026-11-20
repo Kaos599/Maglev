@@ -4,7 +4,7 @@
  */
 
 export const RESERVE_FLOOR_BYTES = 500 * 1024 * 1024;
-export const RESERVE_HYSTERESIS_BYTES = 200 * 1024 * 1024;
+const RESERVE_HYSTERESIS_BYTES = 200 * 1024 * 1024;
 /** Largest reserve: 2% of a 256 GB phone is 5 GB, which paused every download on a phone with 4 GB free. */
 export const RESERVE_CAP_BYTES = 1024 * 1024 * 1024;
 

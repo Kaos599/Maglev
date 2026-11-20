@@ -59,10 +59,10 @@ export const DEFAULT_INPUT_BUDGET = 12000;
  * Per-message cost for role and framing. Chosen here; the design gives no number.
  * Providers add a few tokens per message. This is a rough allowance, not an exact count.
  */
-export const MESSAGE_OVERHEAD_TOKENS = 4;
+const MESSAGE_OVERHEAD_TOKENS = 4;
 
 /** Longest digest of one tool result (R1-11). */
-export const MAX_DIGEST_CHARS = 300;
+const MAX_DIGEST_CHARS = 300;
 
 function isWideCodePoint(cp: number): boolean {
   return (

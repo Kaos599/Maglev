@@ -7,7 +7,7 @@ import type { SubtitleCandidate, SubtitleQuery } from './types.ts';
 
 export type SubtitleGroup = 'fits' | 'probably' | 'maybe';
 
-export const GROUP_ORDER: readonly SubtitleGroup[] = ['fits', 'probably', 'maybe'];
+const GROUP_ORDER: readonly SubtitleGroup[] = ['fits', 'probably', 'maybe'];
 /** Group tags shown on the rows. */
 export const GROUP_LABEL: Record<SubtitleGroup, string> = {
   fits: 'Fits this file',
@@ -45,7 +45,7 @@ export function releasesMatch(fileName: string, releaseName: string): boolean {
 }
 
 /** The group of one candidate. */
-export function groupOf(c: SubtitleCandidate, o: Pick<RankOptions, 'fileName' | 'episodeConfidence'>): SubtitleGroup {
+function groupOf(c: SubtitleCandidate, o: Pick<RankOptions, 'fileName' | 'episodeConfidence'>): SubtitleGroup {
   if (c.matchedBy === 'hash') return 'fits';
   // Without a sure episode a matching release name proves nothing about which episode the subtitle is for.
   if (o.episodeConfidence !== 'sure') return 'maybe';

@@ -11,8 +11,8 @@
  * fetch are injected, so Node tests can run all of it.
  */
 
-export const OPENROUTER_AUTH_URL = 'https://openrouter.ai/auth';
-export const OPENROUTER_KEYS_URL = 'https://openrouter.ai/api/v1/auth/keys';
+const OPENROUTER_AUTH_URL = 'https://openrouter.ai/auth';
+const OPENROUTER_KEYS_URL = 'https://openrouter.ai/api/v1/auth/keys';
 /** SecureStore names allow [A-Za-z0-9._-] only. */
 export const VERIFIER_SECRET_NAME = 'assistant.openrouter.pkce';
 /** 32 random bytes encode to 43 base64url characters, the RFC 7636 minimum. */
@@ -47,7 +47,7 @@ export async function challengeFor(verifier: string, sha256Base64: (s: string) =
 }
 
 /** `key_label` names the key in the user's OpenRouter account (https://openrouter.ai/docs/guides/overview/auth/oauth, Optional Parameters). */
-export const KEY_LABEL = 'Maglev';
+const KEY_LABEL = 'Maglev';
 
 export function buildAuthUrl(challenge: string): string {
   return `${OPENROUTER_AUTH_URL}?code_challenge=${encodeURIComponent(challenge)}&code_challenge_method=S256&key_label=${encodeURIComponent(KEY_LABEL)}`;

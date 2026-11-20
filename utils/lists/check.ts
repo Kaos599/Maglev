@@ -28,7 +28,7 @@ export type TextFetch = (
   init: { signal?: AbortSignal; credentials?: 'omit' | 'same-origin' | 'include' },
 ) => Promise<{ ok: boolean; status: number; text(): Promise<string> }>;
 
-export class ListFetchError extends Error {
+class ListFetchError extends Error {
   readonly why: 'network' | 'http';
   constructor(why: 'network' | 'http') {
     super(why);
@@ -60,7 +60,7 @@ async function getText(fetchImpl: TextFetch, url: string, timeoutMs: number, max
 }
 
 /** Fetches the file and its signature together. Throws [ListFetchError]. */
-export async function fetchSources(fetchImpl: TextFetch, timeoutMs: number = FETCH_TIMEOUT_MS): Promise<{ body: string; sig: string }> {
+async function fetchSources(fetchImpl: TextFetch, timeoutMs: number = FETCH_TIMEOUT_MS): Promise<{ body: string; sig: string }> {
   const [body, sig] = await Promise.all([
     getText(fetchImpl, SOURCES_URL, timeoutMs, 512 * 1024),
     getText(fetchImpl, SIGNATURE_URL, timeoutMs, SIG_MAX_CHARS),
