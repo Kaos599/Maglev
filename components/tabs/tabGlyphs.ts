@@ -8,13 +8,13 @@ import { motion } from '../../constants/theme.ts';
  *
  * A track maps the move's progress (0 to 1) to one property. Steps use doubled stops so the
  * value jumps instead of easing. Every track ends at rest: 0 for translateY and rotate, 1 for
- * opacity. translateY is in grid units (the component converts to px, 1 unit = 20/24 px).
+ * opacity. translateX and translateY are in grid units (the component converts to px, 1 unit = 20/24 px).
  */
 
 export type TabGlyphName = 'tab-transfers' | 'tab-search' | 'tab-feeds' | 'tab-settings' | 'tab-assistant' | 'tab-browse';
 
 export interface GlyphTrack {
-  prop: 'translateY' | 'rotate' | 'opacity';
+  prop: 'translateX' | 'translateY' | 'rotate' | 'opacity';
   inputRange: number[];
   outputRange: number[];
   /** Ease the segments (rotate only). Everything else steps. */
@@ -28,21 +28,32 @@ export interface GlyphPart {
 }
 
 export interface TabGlyphDef {
-  move: 'hop' | 'draw' | 'spin' | 'wobble' | 'blink';
+  move: 'pump' | 'scan' | 'draw' | 'spin' | 'wobble' | 'blink';
   parts: GlyphPart[];
-  /** Applied to a wrapper around all parts (the gear's rotation). */
+  /** Applied to a wrapper around all parts (the gear's rotation, the lens's sideways steps). */
   wrapTrack?: GlyphTrack;
 }
 
 /** Whole move, ms. Under the 250 ms ceiling. */
 export const GLYPH_MOVE_MS = motion.duration.base;
 
-/** Hop by `units` for the first half, then back and still. */
-const hop = (units: number): GlyphTrack => ({
-  prop: 'translateY',
-  inputRange: [0, 0.0001, 0.5, 0.5001, 1],
-  outputRange: [0, units, units, 0, 0],
-});
+/**
+ * Pixel frames: each value is held for an equal share of the move, then the icon is at rest (0).
+ * Doubled stops make each change a jump, like sprite frames.
+ */
+export const frames = (prop: 'translateX' | 'translateY', values: number[]): GlyphTrack => {
+  const v = [...values, 0];
+  const seg = 1 / v.length;
+  const inputRange = [0];
+  const outputRange = [v[0]];
+  for (let i = 1; i < v.length; i++) {
+    inputRange.push(i * seg, i * seg + 0.0001);
+    outputRange.push(v[i - 1], v[i]);
+  }
+  inputRange.push(1);
+  outputRange.push(0);
+  return { prop, inputRange, outputRange };
+};
 
 /** Hidden until `at`, then visible. Rest is visible. */
 const appearAt = (at: number): GlyphTrack => ({
@@ -52,22 +63,25 @@ const appearAt = (at: number): GlyphTrack => ({
 });
 
 export const TAB_GLYPHS: Record<TabGlyphName, TabGlyphDef> = {
+  // The arrows pump past each other: up climbs two steps, down drops two steps half a beat behind, then both settle.
   'tab-transfers': {
-    move: 'hop',
+    move: 'pump',
     parts: [
-      { id: 'up', d: 'M6 4h2v16H6zM4 6h2v4H4zM2 8h2v2H2zM8 6h2v4H8zM10 8h2v2h-2z', track: hop(-2) },
-      { id: 'down', d: 'M16 4h2v16h-2zM14 14h2v4h-2zM12 14h2v2h-2zM18 14h2v4h-2zM20 14h2v2h-2z', track: hop(2) },
+      { id: 'up', d: 'M6 4h2v16H6zM4 6h2v4H4zM2 8h2v2H2zM8 6h2v4H8zM10 8h2v2h-2z', track: frames('translateY', [-2, -4, -2, 0]) },
+      { id: 'down', d: 'M16 4h2v16h-2zM14 14h2v4h-2zM12 14h2v2h-2zM18 14h2v4h-2zM20 14h2v2h-2z', track: frames('translateY', [0, 2, 4, 2]) },
     ],
   },
+  // The lens looks around in a small loop: left, up-left, up-right, right, home.
   'tab-search': {
-    move: 'hop',
+    move: 'scan',
     parts: [
       {
         id: 'glass',
         d: 'M22 22h-2v-2h2v2Zm-2-2h-2v-2h2v2Zm-6-2H6v-2h8v2Zm4 0h-2v-2h2v2ZM6 16H4v-2h2v2Zm10 0h-2v-2h2v2ZM4 14H2V6h2v8Zm14 0h-2V6h2v8ZM6 6H4V4h2v2Zm10 0h-2V4h2v2Zm-2-2H6V2h8v2Z',
-        track: hop(-2),
+        track: frames('translateY', [0, -2, -2, 0]),
       },
     ],
+    wrapTrack: frames('translateX', [-2, -2, 2, 2]),
   },
   'tab-feeds': {
     move: 'draw',
