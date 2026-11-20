@@ -25,6 +25,13 @@ installGlobalHandler();
 /** A route crash anywhere keeps the tab bar only if the tab has its own boundary; this one is the last resort. */
 export { ErrorBoundary } from '../components/ErrorScreen';
 
+/**
+ * A cold deep link (share, notification, maglev://) starts the stack at the link's screen. `anchor` puts the
+ * tab shell underneath it, so Back lands on Transfers with the tab bar instead of leaving the app.
+ * (expo-router build/layoutAnchor.js: `unstable_settings.anchor`; `initialRouteName` is the deprecated name.)
+ */
+export const unstable_settings = { anchor: '(tabs)' };
+
 SplashScreen.preventAutoHideAsync().catch(() => {});
 
 /** Safety net: if init never settles, stop waiting on the splash and show the engine error. */

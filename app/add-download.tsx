@@ -72,7 +72,7 @@ export default function AddDownloadScreen() {
 
   const close = useCallback(() => {
     if (router.canGoBack()) router.back();
-    else router.replace('/');
+    else router.dismissTo('/');
   }, [router]);
 
   const submit = useCallback(
@@ -225,12 +225,12 @@ export default function AddDownloadScreen() {
         // 44.15 D4: Settings auto is on and this screen's switch is off: "not this one".
         else if (!joined && !subs.on && subs.settingsOn) markNotThisOne([ask]);
       }
-      router.replace('/');
+      router.dismissTo('/');
       return;
     }
     if (res.code === 'DUPLICATE') {
       showNotice({ message: notices.addDownload.duplicate });
-      router.replace('/');
+      router.dismissTo('/');
       return;
     }
     haptic('fail');
