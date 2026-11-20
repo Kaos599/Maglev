@@ -271,6 +271,17 @@ async function main() {
   check('link quiet 5 s: Waiting for the server, percent, amount', left(d) === 'Waiting for the server · 34%' && d.value === '412 MB of 1.2 GB' && d.tone === 'muted', JSON.stringify(d));
   d = lq(0, { stalled: true });
   check('link stalled by the engine flag alone: Waiting for the server', left(d) === 'Waiting for the server · 34%' && d.value === '412 MB of 1.2 GB', JSON.stringify(d));
+  // Offline while still downloading (2026-11-20 phone test: Wi-Fi off said "Waiting for the server"). Same line as a torrent.
+  const off = { blocks: [{ tag: 'offline' }] };
+  d = copy.downloadStatus(dl({ downBps: 0, eta: -1 }), '—', off, { quietMs: 9000 });
+  check('link waiting while offline: No internet connection', left(d) === 'No internet connection · 34%' && d.tone === 'muted' && d.value === '412 MB of 1.2 GB', JSON.stringify(d));
+  d = copy.downloadStatus(dl({ downBps: 0, eta: -1, stalled: true }), '—', off, { quietMs: 0 });
+  check('link stalled while offline: No internet connection', left(d) === 'No internet connection · 34%', JSON.stringify(d));
+  d = copy.downloadStatus(dl({ downBps: 0, eta: -1, downloaded: 0 }), '—', off, { quietMs: 0 });
+  check('link connecting while offline: No internet connection', d.lead === 'No internet connection', JSON.stringify(d));
+  d = copy.downloadStatus(dl({ downBps: 8.4 * MB, downloaded: 460 * MB, eta: -1 }), '—', off);
+  check('link with data arriving keeps its speed even with the offline tag', d.slot === 'speed' && d.lead === 'Downloading', JSON.stringify(d));
+  check('page caption while offline says when it continues', copy.downloadCaption(dl({ stalled: true }), off) === "No internet connection. Transfers continue when you're back online.", String(copy.downloadCaption(dl({ stalled: true }), off)));
   d = copy.downloadStatus(dl({ downBps: 0, eta: -1 }), '—', {}, { quietMs: 9000, speedHold: true });
   check('link inside the hold counts as flowing', d.slot === 'speed' && d.lead === 'Downloading', JSON.stringify(d));
   d = copy.downloadStatus(dl({ state: 'paused', pausedBy: 'user', downBps: 0 }), '—', {}, { quietMs: 99999 });
