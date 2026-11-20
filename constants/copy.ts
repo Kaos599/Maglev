@@ -224,6 +224,8 @@ export const offSourcesSentence = (k: number): string => (k === 1 ? '1 more sour
 export const empty = {
   transfers: {
     none: { title: 'Nothing downloading', body: 'Add a link or a .torrent file, or find something.' },
+    /** Under the finder tiles: the Share route, which the screen's buttons don't cover. */
+    shareHint: 'In another app, tap "Share", then Maglev.',
     noMatch: { title: 'No matching transfers', body: 'Try a different search.' },
     noneInFilter: (filter: string | number) => ({
       title: `No ${toName(filter).toLowerCase()} transfers`,
