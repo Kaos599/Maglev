@@ -706,12 +706,27 @@ impl Downloads {
                     continue;
                 }
             }
+            // The body is collected per connection and written in 1 MiB blocks. `segs[idx].pos` (what the sidecar, the
+            // progress sum and the contiguous prefix read) moves only to `wb.written()`, after a write returned Ok,
+            // so no persisted position is ever ahead of the part file. `pos` below is that written position.
+            let mut wb = WriteBuf::new(pos);
+            let mut write = |b: &[u8], off: u64| tokio::task::block_in_place(|| write_all_at(&shared.file, b, off));
             loop {
                 let chunk = match tokio::time::timeout(STALL_TICK, resp.chunk()).await {
                     Ok(Ok(Some(c))) => c,
                     Ok(Ok(None)) | Ok(Err(_)) => break,
                     Err(_) => {
-                        // Nothing for a few seconds: the coordinator's stall rule judges the sum.
+                        // Nothing for a few seconds: the coordinator's stall rule judges the sum. Held bytes go to
+                        // disk now, so a quiet link does not sit on them and a pause finds them written.
+                        let flushed = wb.flush(&mut write);
+                        publish(shared, idx, &wb, &mut pos);
+                        if let Err(e) = flushed {
+                            let ev = io_event(&e, attempts);
+                            if matches!(ev, Event::Transient { .. }) {
+                                break;
+                            }
+                            return SegEnd::Fatal(ev);
+                        }
                         if self.state_of(id) != Some(State::Downloading) {
                             return SegEnd::Stopped;
                         }
@@ -719,25 +734,32 @@ impl Downloads {
                     }
                 };
                 let len = chunk.len() as u64;
-                // More than the range asked for: not the server we probed.
-                if pos.saturating_add(len) > end.saturating_add(1) {
+                // More than the range asked for: not the server we probed. The held bytes are dropped.
+                if wb.received().saturating_add(len) > end.saturating_add(1) {
                     return SegEnd::Fallback;
                 }
                 self.throttle_global(shared, chunk.len()).await;
-                let write = tokio::task::block_in_place(|| write_all_at(&shared.file, &chunk, pos));
-                if let Err(e) = write {
+                let now = Instant::now();
+                let mut stored = wb.push(&chunk, now, &mut write);
+                if stored.is_ok() && wb.due(now) {
+                    stored = wb.flush(&mut write);
+                }
+                publish(shared, idx, &wb, &mut pos);
+                if let Err(e) = stored {
                     let ev = io_event(&e, attempts);
                     if matches!(ev, Event::Transient { .. }) {
                         break;
                     }
                     return SegEnd::Fatal(ev);
                 }
-                pos += len;
-                shared.segs.lock()[idx].pos = pos;
+                // Speed and the stall clock count what arrived; progress counts what is written.
                 let so_far = shared.bytes.fetch_add(len, Ordering::Relaxed) + len;
                 attempts = 0;
                 self.pace_parts(shared, so_far).await;
             }
+            // The connection ended or broke: write what is held (a failure only means those bytes are asked for again).
+            let _ = wb.flush(&mut write);
+            publish(shared, idx, &wb, &mut pos);
             if pos > end {
                 return SegEnd::Done;
             }
@@ -746,6 +768,16 @@ impl Downloads {
                 return SegEnd::Exhausted;
             }
         }
+    }
+}
+
+/// Moves a segment's recorded position up to what is on disk. Never past it: `wb.written()` only advances after a
+/// successful write.
+fn publish(shared: &PartsShared, idx: usize, wb: &WriteBuf, pos: &mut u64) {
+    let written = wb.written();
+    if written != *pos {
+        *pos = written;
+        shared.segs.lock()[idx].pos = written;
     }
 }
 

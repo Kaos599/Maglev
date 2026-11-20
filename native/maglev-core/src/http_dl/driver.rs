@@ -753,6 +753,203 @@ fn write_all_at(f: &File, mut buf: &[u8], mut off: u64) -> io::Result<()> {
     Ok(())
 }
 
+/// How much one connection collects before it writes. One `pwrite` per network chunk (a few KiB) is thousands of
+/// calls a second, and on Android shared storage every one goes through FUSE. Memory is bounded by this times the
+/// connection count: at most `MAX_PARTS` (8) buffers, 8 MiB in the worst case, 1 MiB for a single connection.
+pub(super) const WRITE_BUF_BYTES: usize = 1024 * 1024;
+/// A part-filled buffer is written once it has waited this long, so a slow link still shows true progress and
+/// loses at most this much on an abort.
+pub(super) const WRITE_BUF_MAX_AGE: Duration = Duration::from_millis(250);
+
+/// Collects the body of one connection and writes it in large blocks at the right offsets.
+///
+/// Two positions: `written()` is what is on disk and is the only one that may be persisted for resume (sidecar,
+/// `held`, segment `pos`). `received()` counts the bytes taken off the wire and may drive speed and overrun checks.
+/// `written()` moves only after a write returned `Ok`, so it can never be ahead of the file.
+pub(super) struct WriteBuf {
+    buf: Vec<u8>,
+    /// File offset of `buf[0]`; equals the number of bytes safely written (counted from offset 0).
+    start: u64,
+    /// When the oldest unwritten byte arrived.
+    since: Option<Instant>,
+}
+
+impl WriteBuf {
+    pub(super) fn new(offset: u64) -> Self {
+        WriteBuf { buf: Vec::with_capacity(WRITE_BUF_BYTES), start: offset, since: None }
+    }
+
+    /// Bytes on disk up to here (a file offset). Safe to persist.
+    pub(super) fn written(&self) -> u64 {
+        self.start
+    }
+
+    /// Bytes taken off the wire up to here, written or not.
+    pub(super) fn received(&self) -> u64 {
+        self.start + self.buf.len() as u64
+    }
+
+    #[cfg(test)]
+    pub(super) fn pending(&self) -> usize {
+        self.buf.len()
+    }
+
+    /// Adds `data`; writes a full buffer. A write error leaves `written()` where it was.
+    pub(super) fn push<W>(&mut self, mut data: &[u8], now: Instant, write: &mut W) -> io::Result<()>
+    where
+        W: FnMut(&[u8], u64) -> io::Result<()>,
+    {
+        while !data.is_empty() {
+            if self.buf.is_empty() {
+                self.since = Some(now);
+            }
+            let take = (WRITE_BUF_BYTES - self.buf.len()).min(data.len());
+            self.buf.extend_from_slice(&data[..take]);
+            data = &data[take..];
+            if self.buf.len() >= WRITE_BUF_BYTES {
+                self.flush(write)?;
+            }
+        }
+        Ok(())
+    }
+
+    /// Writes whatever is held with one call at its start offset. On error nothing moves and the bytes stay held.
+    pub(super) fn flush<W>(&mut self, write: &mut W) -> io::Result<()>
+    where
+        W: FnMut(&[u8], u64) -> io::Result<()>,
+    {
+        if self.buf.is_empty() {
+            return Ok(());
+        }
+        write(&self.buf, self.start)?;
+        self.start += self.buf.len() as u64;
+        self.buf.clear();
+        self.since = None;
+        Ok(())
+    }
+
+    /// True when something is held and has waited `WRITE_BUF_MAX_AGE`.
+    pub(super) fn due(&self, now: Instant) -> bool {
+        self.since.map(|t| now.saturating_duration_since(t) >= WRITE_BUF_MAX_AGE).unwrap_or(false)
+    }
+}
+
+#[cfg(test)]
+mod write_buf_tests {
+    use super::*;
+
+    type Calls = Vec<(u64, usize)>;
+
+    fn sink<'a>(calls: &'a mut Calls, disk: &'a mut Vec<u8>) -> impl FnMut(&[u8], u64) -> io::Result<()> + 'a {
+        move |b, off| {
+            calls.push((off, b.len()));
+            let end = off as usize + b.len();
+            if disk.len() < end {
+                disk.resize(end, 0);
+            }
+            disk[off as usize..end].copy_from_slice(b);
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn a_full_buffer_is_written_in_one_call_at_its_start() {
+        let (mut calls, mut disk) = (Vec::new(), Vec::new());
+        let mut w = sink(&mut calls, &mut disk);
+        let mut b = WriteBuf::new(0);
+        let now = Instant::now();
+        let chunk = vec![7u8; 16 * 1024];
+        for _ in 0..(WRITE_BUF_BYTES / chunk.len() - 1) {
+            b.push(&chunk, now, &mut w).unwrap();
+        }
+        assert_eq!(b.written(), 0, "nothing written before the buffer is full");
+        b.push(&chunk, now, &mut w).unwrap();
+        assert_eq!(b.written(), WRITE_BUF_BYTES as u64);
+        assert_eq!(b.pending(), 0);
+        drop(w);
+        assert_eq!(calls, vec![(0, WRITE_BUF_BYTES)]);
+    }
+
+    #[test]
+    fn an_explicit_flush_writes_the_partial_buffer_and_an_empty_flush_writes_nothing() {
+        let (mut calls, mut disk) = (Vec::new(), Vec::new());
+        let mut w = sink(&mut calls, &mut disk);
+        let mut b = WriteBuf::new(0);
+        b.flush(&mut w).unwrap();
+        b.push(&[1, 2, 3], Instant::now(), &mut w).unwrap();
+        assert_eq!((b.written(), b.received()), (0, 3));
+        b.flush(&mut w).unwrap();
+        assert_eq!((b.written(), b.received()), (3, 3));
+        b.flush(&mut w).unwrap();
+        drop(w);
+        assert_eq!(calls, vec![(0, 3)]);
+        assert_eq!(disk, vec![1, 2, 3]);
+    }
+
+    #[test]
+    fn offsets_stay_right_across_partial_fills_and_a_resume_offset() {
+        let (mut calls, mut disk) = (Vec::new(), Vec::new());
+        let mut w = sink(&mut calls, &mut disk);
+        let mut b = WriteBuf::new(1000);
+        let now = Instant::now();
+        let data: Vec<u8> = (0..(WRITE_BUF_BYTES * 2 + 123)).map(|i| (i % 251) as u8).collect();
+        // Odd-sized pieces that straddle the buffer edge.
+        for piece in data.chunks(70_001) {
+            b.push(piece, now, &mut w).unwrap();
+        }
+        b.flush(&mut w).unwrap();
+        assert_eq!(b.written(), 1000 + data.len() as u64);
+        drop(w);
+        assert_eq!(calls, vec![(1000, WRITE_BUF_BYTES), (1000 + WRITE_BUF_BYTES as u64, WRITE_BUF_BYTES), (1000 + 2 * WRITE_BUF_BYTES as u64, 123)]);
+        assert_eq!(&disk[1000..], &data[..]);
+    }
+
+    #[test]
+    fn written_never_exceeds_what_reached_the_disk() {
+        use std::cell::Cell;
+        let disk_len = Cell::new(0u64);
+        let fail = Cell::new(false);
+        let mut w = |b: &[u8], off: u64| -> io::Result<()> {
+            if fail.get() {
+                return Err(io::Error::new(io::ErrorKind::Other, "disk"));
+            }
+            disk_len.set(disk_len.get().max(off + b.len() as u64));
+            Ok(())
+        };
+        let mut b = WriteBuf::new(0);
+        let now = Instant::now();
+        b.push(&vec![0u8; 500_000], now, &mut w).unwrap();
+        assert!(b.written() <= disk_len.get() && b.written() == 0);
+        b.push(&vec![0u8; 500_000], now, &mut w).unwrap();
+        assert_eq!(b.written(), 0, "1_000_000 bytes is still below 1 MiB, so still buffered");
+        // Fill past the edge while the disk fails: the persisted position must not move.
+        fail.set(true);
+        let before = b.written();
+        assert!(b.push(&vec![0u8; WRITE_BUF_BYTES], now, &mut w).is_err());
+        assert_eq!(b.written(), before);
+        assert!(b.flush(&mut w).is_err());
+        assert_eq!(b.written(), before);
+        fail.set(false);
+        b.flush(&mut w).unwrap();
+        assert_eq!(b.written(), b.received());
+        assert!(b.written() <= disk_len.get());
+    }
+
+    #[test]
+    fn a_waiting_buffer_becomes_due_after_the_max_age() {
+        let (mut calls, mut disk) = (Vec::new(), Vec::new());
+        let mut w = sink(&mut calls, &mut disk);
+        let mut b = WriteBuf::new(0);
+        let t0 = Instant::now();
+        assert!(!b.due(t0 + Duration::from_secs(10)), "empty is never due");
+        b.push(&[9], t0, &mut w).unwrap();
+        assert!(!b.due(t0 + WRITE_BUF_MAX_AGE - Duration::from_millis(1)));
+        assert!(b.due(t0 + WRITE_BUF_MAX_AGE));
+        b.flush(&mut w).unwrap();
+        assert!(!b.due(t0 + Duration::from_secs(10)));
+    }
+}
+
 fn read_headers(h: &HeaderMap) -> Headers {
     let text = |name: reqwest::header::HeaderName| {
         h.get(name)
@@ -2212,11 +2409,15 @@ impl Downloads {
         total: Option<u64>,
         clock: &mut StallClock,
     ) -> Streamed {
-        let mut pos = offset;
+        // `wb.received()` is what came off the wire (speed, limits, overrun). `wb.written()` is what is on disk, and
+        // it is the only position that is ever persisted or returned: the sidecar, `rec.held` and every `Streamed`
+        // value use it, so a resume point can never be ahead of the part file.
+        let mut wb = WriteBuf::new(offset);
+        let mut write = |b: &[u8], off: u64| tokio::task::block_in_place(|| write_all_at(file, b, off));
         let started = Instant::now();
         let mut last_report = Instant::now();
         let mut last_flush = Instant::now();
-        let mut report_pos = pos;
+        let mut report_pos = wb.received();
         let mut bps_smooth: f64 = 0.0;
         let mut limit = self.update(id, |r, _| r.down_limit_bps).unwrap_or(0);
         let (name, folder, url, validator, resumable) = match self.update(id, |r, _| {
@@ -2237,13 +2438,27 @@ impl Downloads {
                     clock.on_bytes(Instant::now(), c.len() as u64);
                     c
                 }
-                Ok(Ok(None)) => return Streamed::Done(pos),
+                Ok(Ok(None)) => {
+                    // The end of the body: everything held is written before the caller verifies or renames.
+                    return match wb.flush(&mut write) {
+                        Ok(()) => Streamed::Done(wb.written()),
+                        Err(e) => self.write_failed(id, &e, &mut side, &side_path, file, wb.written(), resumable),
+                    };
+                }
                 Ok(Err(_)) => {
+                    // Broken: keep what already arrived if the disk takes it; a failure here only costs a re-download.
+                    let _ = wb.flush(&mut write);
+                    let pos = wb.written();
                     self.flush_side(id, &mut side, &side_path, file, pos, resumable);
                     return Streamed::Broken(pos);
                 }
                 Err(_) => {
-                    // Nothing arrived for a few seconds: no speed to show, and the average starts over.
+                    // Nothing arrived for a few seconds: no speed to show, and the average starts over. Held bytes
+                    // are written now so a quiet link does not sit on them (and pause/cancel see them on disk).
+                    if let Err(e) = wb.flush(&mut write) {
+                        return self.write_failed(id, &e, &mut side, &side_path, file, wb.written(), resumable);
+                    }
+                    let pos = wb.written();
                     bps_smooth = 0.0;
                     self.update(id, |_, l| l.bps = 0);
                     if self.stall_step(id, limit, clock) {
@@ -2274,25 +2489,20 @@ impl Downloads {
                 clock.excuse(waiting_since.elapsed(), Instant::now());
             }
             // More bytes than the probe promised: the file changed. Nothing is finished from this.
-            if overruns(pos, chunk.len() as u64, total) {
-                self.flush_side(id, &mut side, &side_path, file, pos, resumable);
+            if overruns(wb.received(), chunk.len() as u64, total) {
+                // The held bytes are from the file that changed: they are dropped, not written.
+                self.flush_side(id, &mut side, &side_path, file, wb.written(), resumable);
                 self.dispatch(id, Event::ValidatorChanged);
                 return Streamed::Stopped;
             }
-            let write = tokio::task::block_in_place(|| write_all_at(file, &chunk, pos));
-            if let Err(e) = write {
-                let n = self.update(id, |_, l| l.attempts).unwrap_or(0);
-                self.flush_side(id, &mut side, &side_path, file, pos, resumable);
-                let ev = io_event(&e, n);
-                let (state, _) = self.dispatch(id, ev);
-                return if matches!(ev, Event::Transient { .. }) && state == State::Downloading {
-                    Streamed::Broken(pos)
-                } else {
-                    Streamed::Stopped
-                };
+            if let Err(e) = wb.push(&chunk, Instant::now(), &mut write) {
+                return self.write_failed(id, &e, &mut side, &side_path, file, wb.written(), resumable);
             }
-            pos += chunk.len() as u64;
             if self.stall_step(id, limit, clock) {
+                if let Err(e) = wb.flush(&mut write) {
+                    return self.write_failed(id, &e, &mut side, &side_path, file, wb.written(), resumable);
+                }
+                let pos = wb.written();
                 self.flush_side(id, &mut side, &side_path, file, pos, resumable);
                 self.update(id, |rec, _| rec.held = pos);
                 return Streamed::Stalled(pos);
@@ -2303,6 +2513,9 @@ impl Downloads {
                 last_space = Instant::now();
                 let free = tokio::task::block_in_place(|| free_space(&folder));
                 if !fits(None, 0, free) {
+                    // Storage is full: try to keep the held bytes, but a failed write only loses them.
+                    let _ = wb.flush(&mut write);
+                    let pos = wb.written();
                     self.flush_side(id, &mut side, &side_path, file, pos, resumable);
                     self.update(id, |rec, _| rec.held = pos);
                     self.dispatch(id, Event::Enospc);
@@ -2311,6 +2524,12 @@ impl Downloads {
             }
 
             if last_report.elapsed() >= REPORT_EVERY {
+                // Written before the count is published, so `rec.held` (which the store may save) is never ahead
+                // of the file. A report tick is 250 ms, so this is also the age bound for a slow link's buffer.
+                if let Err(e) = wb.flush(&mut write) {
+                    return self.write_failed(id, &e, &mut side, &side_path, file, wb.written(), resumable);
+                }
+                let pos = wb.written();
                 let dt = last_report.elapsed().as_secs_f64().max(0.001);
                 let inst = (pos - report_pos) as f64 / dt;
                 bps_smooth = if bps_smooth == 0.0 { inst } else { bps_smooth * 0.6 + inst * 0.4 };
@@ -2331,16 +2550,43 @@ impl Downloads {
             }
             if last_flush.elapsed() >= SIDECAR_FLUSH {
                 last_flush = Instant::now();
-                self.flush_side(id, &mut side, &side_path, file, pos, resumable);
+                if let Err(e) = wb.flush(&mut write) {
+                    return self.write_failed(id, &e, &mut side, &side_path, file, wb.written(), resumable);
+                }
+                self.flush_side(id, &mut side, &side_path, file, wb.written(), resumable);
             }
             if limit > 0 {
-                let wait = pace_delay(pos - offset, started.elapsed(), limit);
+                let wait = pace_delay(wb.received() - offset, started.elapsed(), limit);
                 if !wait.is_zero() {
                     let slept = wait.min(Duration::from_secs(2));
                     tokio::time::sleep(slept).await;
                     clock.excuse(slept, Instant::now());
                 }
             }
+        }
+    }
+
+    /// A write to the part file failed. The sidecar is saved at `written` (never past what is on disk), then the
+    /// error goes to the machine: a transient one retries from there, anything else stops the download.
+    #[allow(clippy::too_many_arguments)]
+    fn write_failed(
+        &self,
+        id: &str,
+        e: &io::Error,
+        side: &mut Sidecar,
+        side_path: &Path,
+        file: &File,
+        written: u64,
+        resumable: bool,
+    ) -> Streamed {
+        let n = self.update(id, |_, l| l.attempts).unwrap_or(0);
+        self.flush_side(id, side, side_path, file, written, resumable);
+        let ev = io_event(e, n);
+        let (state, _) = self.dispatch(id, ev);
+        if matches!(ev, Event::Transient { .. }) && state == State::Downloading {
+            Streamed::Broken(written)
+        } else {
+            Streamed::Stopped
         }
     }
 
