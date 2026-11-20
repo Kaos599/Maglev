@@ -51,5 +51,6 @@ check('newTab always opens a tab', /isBlank\(cur\) && params\.newTab !== '1'\) o
 const bm = read('app/browser-bookmarks.tsx');
 check('Open in new tab row passes newTab', /newTab: true/.test(bm));
 
+check('the Bookmarked icon sits in a fixed 16x16 box centred in the address bar', /style=\{styles\.savedIcon\}/.test(read('app/browser.tsx')) && /savedIcon: \{ width: 16, height: 16, alignSelf: 'center'/.test(read('app/browser.tsx')));
 if (failed) { console.error(`\n${failed} check(s) failed`); process.exit(1); }
 console.log('\nbrowser open repeat: all checks passed');
