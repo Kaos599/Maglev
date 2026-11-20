@@ -39,11 +39,11 @@ console.log('Kotlin and Rust');
 check('module exposes exportDebugLog off the main thread (io)', /AsyncFunction\("exportDebugLog"\)[\s\S]{0,120}io\(promise\)[\s\S]{0,60}EngineHost\.exportDebugLog\(\)/.test(mod));
 check('module exposes shareDebugLog through io', /AsyncFunction\("shareDebugLog"\)[\s\S]{0,140}EngineHost\.shareDebugLog\(uri\)/.test(mod));
 check('host only shares uris of its own FileProvider debug_log path', /FileActions\.authority\(c\)/.test(host) && /"debug_log"/.test(host));
-check('log file lives in cache/debug and replaces older ones', /File\(c\.cacheDir, DIR\)/.test(log) && /DIR = "debug"/.test(log) && /listFiles\(\)\?\.forEach \{ it\.delete\(\) \}/.test(log));
+check('log file lives in cache/debug and replaces older ones', /File\(c\.cacheDir, DIR\)/.test(log) && /DIR = "debug"/.test(log) && /listFiles\(\)\?\.forEach \{ if \(it\.name != file\.name\) it\.delete\(\) \}/.test(log));
 check('file holds version, device, Android, settings and 2,000 logcat lines',
   /info\.versionName/.test(log) && /Build\.MANUFACTURER/.test(log) && /Build\.MODEL/.test(log) && /Build\.VERSION\.SDK_INT/.test(log)
   && /MAX_LOGCAT_LINES = 2000/.test(log) && /"logcat", "-d", "-v", "threadtime", "--pid"/.test(log));
-check('size is capped near 2 MB and the text is redacted', /MAX_BYTES = 2 \* 1024 \* 1024/.test(log) && /capBytes\(DebugLogRedactor\.redact/.test(log));
+check('size is capped near 2 MB and the text is redacted', /MAX_BYTES = 2 \* 1024 \* 1024/.test(log) && /capBytes\(DebugLogRedactor\.redact\(logcat\(\)\)/.test(log));
 check('redactor covers query, Cookie, Authorization and sk- keys', /\\\?\[\^\\s"'<>\]\*/.test(log) && /Cookie/.test(log) && /Authorization/.test(log) && /sk-/.test(log));
 check('config secrets are removed by key name', /password\|passwd\|cookie\|api_\?key/.test(log));
 check('FileProvider has a cache-path for debug/', /<cache-path name="debug_log" path="debug\/" \/>/.test(paths));
