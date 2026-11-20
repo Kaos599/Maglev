@@ -180,6 +180,10 @@ class MaglevEngineModule : Module() {
         AsyncFunction("shutdown") { promise: Promise ->
             engine(promise) { EngineHost.shutdownEngine() }
         }
+        // Contract 41 (B4). Blocks for seconds (the session stops, then starts), so it runs off the serialized thread.
+        AsyncFunction("restartEngine") { promise: Promise ->
+            io(promise) { EngineHost.restartEngine() }
+        }
         AsyncFunction("resolveMetadata") { source: String, timeoutMs: Double, promise: Promise ->
             // Can block for the full timeout, so it must not hold up the serialized engine thread.
             EngineHost.ioScope.launch {

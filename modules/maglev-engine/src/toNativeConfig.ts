@@ -99,5 +99,7 @@ export function restartReasons(prev: NativeConfig, next: NativeConfig): string[]
   if (prev.enable_dht !== next.enable_dht) reasons.push('dht');
   if (prev.enable_upnp !== next.enable_upnp) reasons.push('upnp');
   if (prev.proxy_url !== next.proxy_url) reasons.push('proxy');
+  if (prev.enable_lsd !== next.enable_lsd) reasons.push('local peer discovery');
+  if (prev.ip_filter_path !== next.ip_filter_path) reasons.push('blocklist');
   return reasons;
 }

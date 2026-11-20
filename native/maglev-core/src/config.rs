@@ -165,6 +165,75 @@ impl NativeConfig {
     }
 }
 
+/// Contract section 41 (B3): what the IP blocklist setting is doing right now.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum BlocklistState {
+    /// No file chosen, or the setting is off.
+    Off,
+    /// A file with at least one rule is loaded.
+    On,
+    /// The setting is on but the file is missing, empty or holds no rule we can read.
+    Unreadable,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+pub struct BlocklistStatus {
+    pub state: BlocklistState,
+    pub rules: usize,
+}
+
+/// `file_usable` is false when the file is missing, not a file, or shorter than 2 bytes. `rules` is the number of
+/// rules read from it (`None` when it cannot be counted yet, for example a gzip file that no session has loaded).
+/// A readable file with zero rules is `Unreadable`: it is what a parse failure looks like. Never falls back to `On`.
+pub fn blocklist_status(has_path: bool, file_usable: bool, rules: Option<usize>) -> BlocklistStatus {
+    if !has_path {
+        return BlocklistStatus { state: BlocklistState::Off, rules: 0 };
+    }
+    if !file_usable {
+        return BlocklistStatus { state: BlocklistState::Unreadable, rules: 0 };
+    }
+    match rules {
+        Some(0) => BlocklistStatus { state: BlocklistState::Unreadable, rules: 0 },
+        Some(n) => BlocklistStatus { state: BlocklistState::On, rules: n },
+        None => BlocklistStatus { state: BlocklistState::On, rules: 0 },
+    }
+}
+
+/// True for a line librqbit's blocklist reader accepts (`name:start-end`, v4 or v6, both ends the same family).
+/// Mirrors `vendor/librqbit/src/ip_ranges.rs` `parse_ip_range`, which is not exported.
+fn is_blocklist_rule(line: &str) -> bool {
+    use std::net::IpAddr;
+    use std::str::FromStr;
+    let line = line.trim();
+    if line.is_empty() || line.starts_with('#') {
+        return false;
+    }
+    let is_ipv6 = line.matches(':').count() > 2;
+    let split = if is_ipv6 { line.split_once(':') } else { line.rsplit_once(':') };
+    let ips = match split {
+        Some((_, ips)) => ips,
+        None => return false,
+    };
+    let (start, end) = match ips.split_once('-') {
+        Some(p) => p,
+        None => return false,
+    };
+    matches!(
+        (IpAddr::from_str(start), IpAddr::from_str(end)),
+        (Ok(IpAddr::V4(_)), Ok(IpAddr::V4(_))) | (Ok(IpAddr::V6(_)), Ok(IpAddr::V6(_)))
+    )
+}
+
+/// Rules in a plain-text blocklist. `None` for a gzip file (this crate has no decoder; the session that loaded it
+/// knows the real count).
+pub fn count_plain_rules(bytes: &[u8]) -> Option<usize> {
+    if bytes.len() >= 2 && bytes[0] == 0x1F && bytes[1] == 0x8B {
+        return None;
+    }
+    Some(String::from_utf8_lossy(bytes).lines().filter(|l| is_blocklist_rule(l)).count())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -268,5 +337,50 @@ mod tests {
             change(&mut c);
             assert!(base.restart_required(&c));
         }
+    }
+
+    #[test]
+    fn restart_pending_compares_the_running_session_with_the_saved_config() {
+        // `restart_pending` is `session.restart_required(&saved)`: false when nothing changed, true once a
+        // session-level field differs, false again when the change is reverted.
+        let session = NativeConfig::default();
+        let mut saved = session.clone();
+        assert!(!session.restart_required(&saved));
+        saved.enable_lsd = false;
+        assert!(session.restart_required(&saved));
+        saved.enable_lsd = true;
+        saved.ip_filter_path = Some("/data/list.txt".into());
+        assert!(session.restart_required(&saved));
+        saved.ip_filter_path = None;
+        saved.max_active_downloads = 8;
+        assert!(!session.restart_required(&saved));
+    }
+
+    #[test]
+    fn blocklist_status_off_on_unreadable() {
+        assert_eq!(blocklist_status(false, true, Some(5)), BlocklistStatus { state: BlocklistState::Off, rules: 0 });
+        assert_eq!(blocklist_status(true, true, Some(12)), BlocklistStatus { state: BlocklistState::On, rules: 12 });
+        // Missing or empty file.
+        assert_eq!(blocklist_status(true, false, None).state, BlocklistState::Unreadable);
+        // Readable file, nothing parses: unreadable, never "on".
+        assert_eq!(blocklist_status(true, true, Some(0)).state, BlocklistState::Unreadable);
+        // Not counted yet (gzip before a session loaded it): on with an unknown (0) count.
+        assert_eq!(blocklist_status(true, true, None), BlocklistStatus { state: BlocklistState::On, rules: 0 });
+        let json = serde_json::to_value(blocklist_status(true, true, Some(3))).unwrap();
+        assert_eq!(json["state"], "on");
+        assert_eq!(json["rules"], 3);
+        assert_eq!(serde_json::to_value(blocklist_status(true, false, None)).unwrap()["state"], "unreadable");
+    }
+
+    #[test]
+    fn plain_rule_counting_matches_the_session_reader() {
+        let text = b"# comment\n\nlocal:192.168.1.1-192.168.1.255\nlocalv6:2001:db8::1-2001:db8::ffff\nmixed:1.2.3.4-2001:db8::1\nno range here\nname with: colon:10.0.0.1-10.0.0.9\n";
+        assert_eq!(count_plain_rules(text), Some(3));
+        // Parse failure: a wrong-format or binary file counts zero rules.
+        assert_eq!(count_plain_rules(b"<html>not a list</html>\n"), Some(0));
+        assert_eq!(count_plain_rules(&[0u8, 1, 2, 3, 255]), Some(0));
+        assert_eq!(count_plain_rules(b""), Some(0));
+        // Gzip is not counted here.
+        assert_eq!(count_plain_rules(&[0x1F, 0x8B, 8, 0]), None);
     }
 }

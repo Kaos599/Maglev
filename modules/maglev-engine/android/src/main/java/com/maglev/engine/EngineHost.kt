@@ -42,6 +42,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
@@ -50,6 +51,7 @@ import java.io.File
 import java.nio.ByteBuffer
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
 
 /** User-visible governance rules (contract section 6). */
@@ -88,6 +90,10 @@ object EngineHost {
     const val TAG_OFFLINE = "offline"
     const val ENGINE_PREFS = PREFS
     private const val REASON_FGS_TIMEOUT = "fgs_timeout"
+    /** Rust holds every transfer with this reason from `nativeInit` until the first governance pass (contract 41, B5). */
+    private const val REASON_STARTUP = "startup"
+    /** The VPN rule must hold this long before the session is rebuilt network-off (or back), so a flapping link does not cycle it. */
+    private const val NETWORK_OFF_DEBOUNCE_MS = 3_000L
     private const val SERVICE_RETRY_MS = 10_000L
     private const val TILE_REFRESH_MS = 2_000L
     private const val COPY_RETRY_MS = 60_000L
@@ -169,6 +175,11 @@ object EngineHost {
     /** Last metered flag pushed to the engine (contract section 34.1); null forces the next push. */
     private var lastMetered: Boolean? = null
     private var net: NetworkGovernanceManager? = null
+    /** True while a [restartEngine] runs. A second call fails with INVALID_STATE (contract 41, B4). */
+    private val restarting = AtomicBoolean(false)
+    /** Whether the running session was built network-off (no DHT, no listener) because the VPN rule blocked at the time. */
+    @Volatile private var networkOffApplied = false
+    private var networkOffJob: Job? = null
     private var power: PowerGovernanceManager? = null
 
     @Volatile private var holdForPaused = false
@@ -286,8 +297,14 @@ object EngineHost {
         }
         val target = StorageManager.activeTarget(c)
         val session = StorageManager.sessionDir(c).absolutePath
+        // Contract 41 (B5): the network watcher runs before the session exists, so the VPN rule is judged on a real
+        // reading. An unknown network blocks it. Blocked at start means the session is built network-off.
+        startGovernanceWatchers(c)
+        val networkOff = vpnBlockedNow()
+        call { NativeCore.nativeSetNetworkOff(networkOff) }
         val res = call { NativeCore.nativeInit(configJson, session, target.path) }
         if (!isOk(res)) return res
+        networkOffApplied = networkOff
 
         startWarning = (res["config_warning"] as? String)?.takeIf { it.isNotEmpty() }
         initialized = true
@@ -303,9 +320,11 @@ object EngineHost {
         lastPushedLimits = null
         scheduleLimitApplied = false
         scheduleIdleSince = 0L
-        startGovernanceWatchers(c)
+        // Rust holds every restored transfer ("startup") until this pass has judged the rules; only then do they run.
         evaluateGovernance(force = true)
+        call { NativeCore.nativeSetTransfersAllowed(true, REASON_STARTUP) }
         startPolling()
+        pollNow()
         emitStorageStatus()
         return LinkedHashMap(res).apply { put("storage", storageStatus()) }
     }
@@ -418,6 +437,80 @@ object EngineHost {
         }
     }
 
+    /**
+     * Contract 41 (B4): applies the restart-required settings now. Stops the Rust session the way a shutdown does (Rust
+     * saves resume data and checkpoints link downloads), then starts it again from the saved config. Transfers come
+     * back as they were: Rust's meta keeps who is paused by the user, so a paused download stays paused. The service,
+     * the governance watchers and the notification stay up. Fails with INVALID_STATE while another restart runs.
+     */
+    fun restartEngine(): Map<String, Any?> {
+        if (!restarting.compareAndSet(false, true)) {
+            return Json.failure("INVALID_STATE", "The downloader is already restarting")
+        }
+        try {
+            return synchronized(lifecycleLock) { cycleSessionLocked() }
+        } finally {
+            restarting.set(false)
+        }
+    }
+
+    /** Body of [restartEngine], and the network-off cycle. Runs under [lifecycleLock]. */
+    private fun cycleSessionLocked(): Map<String, Any?> {
+        if (!initialized) {
+            // Nothing running (an earlier restart failed, or the engine was never up): start from the saved config.
+            return startEngine("")
+        }
+        pollJob?.cancel()
+        pollJob = null
+        networkOffJob?.cancel()
+        networkOffJob = null
+        initialized = false
+        // Taking the poll lock waits for an in-flight poll. Later polls see initialized == false and return.
+        val stopped = synchronized(pollLock) { call { NativeCore.nativeShutdown() } }
+        if (!isOk(stopped)) Log.w(TAG, "restart: shutdown reported ${stopped["code"]}")
+        // "" makes Rust load the config it saved with the last applyConfig.
+        val res = startEngine("")
+        if (isOk(res)) {
+            forceEmit = true
+            pollNow()
+        }
+        return res
+    }
+
+    /**
+     * Contract 41 (B5): the VPN rule blocks unless the default network is known to be a VPN. No reading yet, no
+     * callback and no network at all count as blocked. Without "Only download over a VPN" it never blocks.
+     */
+    private fun vpnBlockedNow(): Boolean {
+        if (!governance.vpnOnly) return false
+        val n = net
+        return !(n != null && n.monitoring && n.connected && n.vpn)
+    }
+
+    /**
+     * librqbit cannot stop DHT or the listening socket on a live session. So while the VPN rule blocks, the session is
+     * rebuilt without them (network-off), and rebuilt again when the rule allows. [want] is the rule's current verdict.
+     */
+    private fun reconcileNetworkOff(want: Boolean) {
+        if (want == networkOffApplied) {
+            networkOffJob?.cancel()
+            networkOffJob = null
+            return
+        }
+        if (networkOffJob?.isActive == true) return
+        networkOffJob = scope.launch {
+            delay(NETWORK_OFF_DEBOUNCE_MS)
+            // The rule may have changed back during the wait; then there is nothing to do.
+            if (vpnBlockedNow() == networkOffApplied) return@launch
+            synchronized(lifecycleLock) {
+                if (initialized && vpnBlockedNow() != networkOffApplied) {
+                    val res = cycleSessionLocked()
+                    if (!isOk(res)) Log.w(TAG, "network-off cycle failed: ${res["code"]}")
+                }
+            }
+        }
+    }
+
     /** Stops the engine, the poller, the governance watchers and the service. */
     fun shutdownEngine(): Map<String, Any?> = synchronized(lifecycleLock) { shutdownEngineLocked() }
 
@@ -428,6 +521,8 @@ object EngineHost {
         startWarning = null
         pollJob?.cancel()
         pollJob = null
+        networkOffJob?.cancel()
+        networkOffJob = null
         net?.stop(); net = null
         power?.stop(); power = null
         holdForPaused = false
@@ -631,6 +726,8 @@ object EngineHost {
                     // Link downloads paused for a network blip (TAG_OFFLINE) stay wanted, so the service survives it.
                     TAG_OFFLINE -> { byRules++; unvalidatedPaused = true }
                     "vpn_required" -> { byRules++; vpnPaused = true }
+                    // The start-up hold lasts until the first governance pass; it still counts as a rule pause.
+                    REASON_STARTUP -> byRules++
                     "storage_full" -> { byRules++; spacePaused = true }
                     "storage_unavailable" -> { byRules++; volumePaused = true }
                     "schedule" -> bySchedule++
@@ -1272,7 +1369,8 @@ object EngineHost {
         val linkKnown = n != null && n.monitoring && n.connected
         // A sign-in page, not merely an unvalidated network (§21).
         val unvalidatedBlocked = linkKnown && n?.captivePortal == true
-        val vpnBlocked = g.vpnOnly && linkKnown && n?.vpn == false
+        // Contract 41 (B5): unlike the rules above, an unknown network counts as blocked for the VPN rule.
+        val vpnBlocked = vpnBlockedNow()
         val charging = p?.charging ?: true
         val level = p?.levelPct ?: 100
         val batteryBlocked = g.batteryCutoffPct > 0 && !charging && level < g.batteryCutoffPct
@@ -1294,6 +1392,7 @@ object EngineHost {
         send("charging_only", !chargingBlocked, force)
         send("network_unvalidated", !unvalidatedBlocked, force)
         send("vpn_required", !vpnBlocked, force)
+        reconcileNetworkOff(vpnBlocked)
         // Link downloads only (contract section 17): no network, or none Android validated, means "offline".
         // Unknown (callback not registered) is never offline. onChanged re-runs this on every network change.
         val offline = n != null && n.monitoring && (!n.connected || !n.validated)

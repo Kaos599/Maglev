@@ -94,13 +94,13 @@ async function main() {
   const banner = read('components/settings/NetworkRestartBanner.tsx');
   check('banner says "Restart the downloader to apply these changes" with a Restart action',
     /restartTitle: 'Restart the downloader to apply these changes'/.test(read('constants/copy.ts')) && /restartAction: 'Restart'/.test(read('constants/copy.ts')) && /copy\.restartTitle/.test(banner));
-  check('restart calls the module restartEngine only when it is a function', /typeof native === 'function'/.test(banner));
+  check('restart calls the module restartEngine when present and treats ok:false as a failure', /typeof maglevEngine\.restartEngine === 'function'/.test(banner) && /ok === false/.test(banner));
   check('restart has a busy state and notices for done and error', /setBusy\(true\)/.test(banner) && /copy\.restarted/.test(banner) && /copy\.restartFailed/.test(banner));
   check('banner appears on Network and Advanced', /NetworkRestartBanner/.test(network) && /NetworkRestartBanner/.test(advanced));
   check('old "Takes effect next launch" chip is gone', !/Takes effect next launch/.test(network + advanced + banner));
   check('block list row uses the danger subtitle tone', /subtitleTone=\{blocklistLine\.danger \? 'danger' : undefined\}/.test(advanced) && /subtitleTone === 'danger'/.test(read('components/ui/ListRow.tsx')));
   const types = read('modules/maglev-engine/src/MaglevEngine.types.ts');
-  check('types: restartPending and blocklist are optional', /restartPending\?: boolean/.test(types) && /blocklist\?: \{ state: 'off' \| 'on' \| 'unreadable'; rules: number \}/.test(types));
+  check('types: EffectiveConfig carries restartPending and the blocklist status', /restartPending: boolean/.test(types) && /export type BlocklistState = 'off' \| 'on' \| 'unreadable'/.test(types) && /restartEngine\(\): Promise<EngineResult>/.test(types));
 
   if (failed) {
     console.error(`\n${failed} check(s) failed`);

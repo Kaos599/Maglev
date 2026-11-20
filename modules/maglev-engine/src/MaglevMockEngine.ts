@@ -21,6 +21,8 @@ import type {
   MaglevEngineApi,
   Metadata,
   MoveTarget,
+  BlocklistStatus,
+  EffectiveConfig,
   NativeConfig,
   NativePermissionStatus,
   NotificationActionEvent,
@@ -205,6 +207,9 @@ export class MaglevMockEngine implements MaglevEngineApi {
   private blocksListeners: Set<(blocks: ActiveBlock[]) => void> = new Set();
   private activeBlocks: ActiveBlock[] = [];
   private nativeConfig: NativeConfig | null = null;
+  /** The config the simulated session started with; `restartPending` compares it with the saved one (contract 41). */
+  private sessionConfig: NativeConfig | null = null;
+  private restartRunning = false;
   private initialized = false;
 
   private torrents: Map<string, TorrentDetailData> = new Map();
@@ -740,7 +745,22 @@ export class MaglevMockEngine implements MaglevEngineApi {
   public async init(config: NativeConfig): Promise<EngineResult> {
     this.initialized = true;
     this.applyNativeConfig(config);
+    this.sessionConfig = { ...config };
     return ok();
+  }
+
+  /** Contract 41 (B4): the simulated session "restarts" and now matches the saved config. INVALID_STATE while one runs. */
+  public async restartEngine(): Promise<EngineResult> {
+    if (this.restartRunning) return fail('INVALID_STATE', 'The downloader is already restarting.');
+    this.restartRunning = true;
+    try {
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      this.sessionConfig = { ...(this.nativeConfig ?? toNativeConfig(this.settings)) };
+      this.broadcast();
+      return ok();
+    } finally {
+      this.restartRunning = false;
+    }
   }
 
   public async shutdown(): Promise<EngineResult> {
@@ -1258,8 +1278,17 @@ export class MaglevMockEngine implements MaglevEngineApi {
     return { ok: true, restartRequired: this.applyNativeConfig(config) };
   }
 
-  public async getEffectiveConfig(): Promise<EngineResult<NativeConfig>> {
-    return { ok: true, ...(this.nativeConfig ?? toNativeConfig(this.settings)) };
+  public async getEffectiveConfig(): Promise<EngineResult<EffectiveConfig>> {
+    const cfg = this.nativeConfig ?? toNativeConfig(this.settings);
+    const restartPending = this.sessionConfig ? restartReasons(this.sessionConfig, cfg).length > 0 : false;
+    // Contract 41 (B3). The simulator has no file to read: a chosen list with no rules counts as unreadable.
+    const rules = this.settings.network.ipFilterRulesCount;
+    const blocklist: BlocklistStatus = !cfg.ip_filter_path
+      ? { state: 'off', rules: 0 }
+      : rules > 0
+        ? { state: 'on', rules }
+        : { state: 'unreadable', rules: 0 };
+    return { ok: true, ...cfg, restartPending, blocklist };
   }
 
   /** Contract bitfield: 256 cells, 0 = missing, 1 = have, 2 = partial. */

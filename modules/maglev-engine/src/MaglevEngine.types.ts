@@ -260,6 +260,25 @@ export interface NativeConfig {
   ip_filter_path: string | null;
 }
 
+/** NATIVE_CONTRACT 41 (B3). `unreadable`: the setting is on but the file is missing, empty or has no rule we can read. */
+export type BlocklistState = 'off' | 'on' | 'unreadable';
+
+export interface BlocklistStatus {
+  state: BlocklistState;
+  /** Rules loaded. 0 unless `state` is `on` (and 0 on `on` for a gzip list not read yet). */
+  rules: number;
+}
+
+/**
+ * NATIVE_CONTRACT 41. What `getEffectiveConfig` answers: the saved config (snake_case, as `NativeConfig`) plus two
+ * camelCase fields. `restartPending` is true while the running session differs from the saved config in a
+ * restart-required field (proxy, listening port, UPnP, DHT, local peer discovery, blocklist, connections per torrent).
+ */
+export interface EffectiveConfig extends NativeConfig {
+  restartPending: boolean;
+  blocklist: BlocklistStatus;
+}
+
 export interface MetadataFile {
   index: number;
   path: string;
@@ -712,13 +731,6 @@ export type EngineStatus =
 export type Unsubscribe = () => void;
 
 /** Exact docs/NATIVE_CONTRACT.md section 6 API. Every method resolves a Result envelope. */
-/** Extra fields of a getEffectiveConfig result. Both are optional: an older downloader leaves them out. */
-export interface EffectiveConfigStatus {
-  /** True when saved network changes wait for a downloader restart. */
-  restartPending?: boolean;
-  blocklist?: { state: 'off' | 'on' | 'unreadable'; rules: number };
-}
-
 export interface MaglevEngineApi {
   // Engine
   init(config: NativeConfig): Promise<EngineResult>;
@@ -783,9 +795,14 @@ export interface MaglevEngineApi {
   openNotificationSettings(channel?: 'completed'): Promise<void>;
   setGlobalLimits(down: number, up: number): Promise<EngineResult>;
   applyConfig(config: NativeConfig): Promise<EngineResult<{ restartRequired: boolean }>>;
-  getEffectiveConfig(): Promise<EngineResult<NativeConfig & EffectiveConfigStatus>>;
-  /** Restarts the native downloader with the saved settings. Optional until every build has it. */
-  restartEngine?(): Promise<void>;
+  getEffectiveConfig(): Promise<EngineResult<EffectiveConfig>>;
+  /**
+   * NATIVE_CONTRACT 41 (B4). Applies the restart-required settings now: stops the session (resume data saved, link
+   * downloads checkpointed), starts it again from the saved config, and puts transfers back as they were (a paused one
+   * stays paused). Resolves when the session is up again. INVALID_STATE while another restart runs; ENGINE_UNAVAILABLE
+   * when the session can't start (call it again to retry). Telemetry refreshes the UI; `restartPending` is false after.
+   */
+  restartEngine(): Promise<EngineResult>;
   getPieceBitfield(id: string): Promise<number[]>;
   /** What this phone can decode and display (CodecProbe.kt). Cached natively for the process. */
   getPlaybackSupport(): Promise<PlaybackSupport>;

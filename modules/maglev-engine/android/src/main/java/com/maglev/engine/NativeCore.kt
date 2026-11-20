@@ -56,6 +56,7 @@ object NativeCore {
     @JvmStatic external fun nativeGetEffectiveConfig(): String
     @JvmStatic external fun nativeSetTransfersAllowed(allowed: Boolean, reason: String): String
     @JvmStatic external fun nativeSetNetworkMetered(metered: Boolean): String
+    @JvmStatic external fun nativeSetNetworkOff(off: Boolean): String
     @JvmStatic external fun nativeNetworkChanged(): String
     @JvmStatic external fun nativeGetPieceBitfield(id: String, out: ByteBuffer): Int
     @JvmStatic external fun nativeSetTorrentLimits(id: String, json: String): String

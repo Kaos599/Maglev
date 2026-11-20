@@ -515,6 +515,21 @@ pub extern "system" fn Java_com_maglev_engine_NativeCore_nativeSetNetworkMetered
     reply(&mut env, &out)
 }
 
+/// Contract section 41 (B5): the next `nativeInit` builds the session without DHT, the listening socket, local
+/// discovery and trackers (the VPN rule blocks transfers). Needs no engine: Kotlin sets it before it starts one.
+#[no_mangle]
+pub extern "system" fn Java_com_maglev_engine_NativeCore_nativeSetNetworkOff(
+    mut env: JNIEnv,
+    _class: JClass,
+    off: jboolean,
+) -> jstring {
+    let out = guarded(|| {
+        crate::engine::set_network_off(off != 0);
+        ok_empty()
+    });
+    reply(&mut env, &out)
+}
+
 /// Contract section 17.x: the default network changed to another live network. Link downloads reconnect.
 #[no_mangle]
 pub extern "system" fn Java_com_maglev_engine_NativeCore_nativeNetworkChanged(mut env: JNIEnv, _class: JClass) -> jstring {

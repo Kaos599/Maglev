@@ -38,10 +38,11 @@ export function useNetworkStatus() {
     if (busy) return;
     setBusy(true);
     try {
-      // The module's own restartEngine may not exist in an older build: then restart with the saved settings.
-      const native = (maglevEngine as unknown as { restartEngine?: () => Promise<void> }).restartEngine;
-      if (typeof native === 'function') await native.call(maglevEngine);
-      else if (!(await restartWithSettings())) throw new Error('restart failed');
+      // The module's own restartEngine (NATIVE_CONTRACT 41) resolves with a result, never throws on failure.
+      if (typeof maglevEngine.restartEngine === 'function') {
+        const res = await maglevEngine.restartEngine();
+        if (!res || (res as { ok?: boolean }).ok === false) throw new Error('restart failed');
+      } else if (!(await restartWithSettings())) throw new Error('restart failed');
       showNotice({ message: copy.restarted }, 4000);
     } catch {
       showNotice({ message: copy.restartFailed });

@@ -641,6 +641,23 @@ mod tests {
     }
 
     #[test]
+    fn startup_hold_pauses_restored_torrents_then_releases_them_but_keeps_user_pauses() {
+        let mut user = f("u", 1);
+        user.running = false;
+        user.paused_by = Some("user".into());
+        let facts = vec![user.clone(), f("r", 2), queued(f("q", 3))];
+        let held = vec!["startup".to_string()];
+        assert_eq!(plan(&facts, &cfg(), &held), vec![pause("r", "startup"), pause("q", "startup")]);
+        // Kotlin judged the rules and released the hold: the torrents the hold paused run again.
+        let mut r = f("r", 2);
+        r.running = false;
+        r.paused_by = Some("startup".into());
+        let actions = plan(&[user, r], &cfg(), &[]);
+        assert!(actions.contains(&Action::Resume { id: "r".into() }));
+        assert!(!actions.iter().any(|a| matches!(a, Action::Resume { id } if id == "u")));
+    }
+
+    #[test]
     fn governance_does_not_repause_already_tagged_torrents() {
         let mut t = f("a", 1);
         t.running = false;

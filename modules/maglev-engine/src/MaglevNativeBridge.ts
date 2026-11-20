@@ -23,6 +23,8 @@ import type {
   SubtitleHashResult,
   SubtitleSaveResult,
   SubtitleZipEntry,
+  BlocklistState,
+  EffectiveConfig,
   MaglevEngineApi,
   Metadata,
   MoveTarget,
@@ -88,6 +90,24 @@ const unavailable = (message: string, code: EngineErrorCode = 'ENGINE_UNAVAILABL
   message,
 });
 
+/**
+ * NATIVE_CONTRACT 41. The module answers the saved config plus `restart_pending` and `blocklist`. The config keeps
+ * snake_case; the two new fields are exposed as `restartPending` and `blocklist: { state, rules }`. A missing or odd
+ * `blocklist` reads as off; a missing `restart_pending` as false.
+ */
+export function toEffectiveConfig(snake: Record<string, unknown>): EngineResult<EffectiveConfig> {
+  const { restart_pending, blocklist, ...config } = snake;
+  const b = (blocklist ?? {}) as { state?: unknown; rules?: unknown };
+  const state: BlocklistState = b.state === 'on' || b.state === 'unreadable' ? b.state : 'off';
+  const rules = typeof b.rules === 'number' && b.rules > 0 ? Math.floor(b.rules) : 0;
+  return {
+    ...(config as unknown as NativeConfig),
+    ok: true,
+    restartPending: restart_pending === true,
+    blocklist: { state, rules },
+  } as EngineResult<EffectiveConfig>;
+}
+
 type StateListener = () => void;
 
 const BLOCK_TAGS: ReadonlySet<string> = new Set([
@@ -135,7 +155,7 @@ const USER_ACTION_METHODS: readonly string[] = [
   'runFeedCheckNow',
 ];
 export const READ_METHODS: readonly string[] = [
-  'shutdown', 'cancelResolve', 'getResolveActivity', 'listTorrents', 'getDetail', 'fileHealth', 'exportTorrent',
+  'shutdown', 'restartEngine', 'cancelResolve', 'getResolveActivity', 'listTorrents', 'getDetail', 'fileHealth', 'exportTorrent',
   'shareExportedTorrent', 'getFreeSpace', 'applyConfig', 'getEffectiveConfig', 'getPieceBitfield', 'streamUrl',
   'version', 'pickDownloadFolder', 'pickFolder', 'getPlaybackSupport', 'getStorageStatus', 'openFile', 'shareFile',
   'openFolder', 'openDownloadFolder', 'openDownload', 'shareDownload', 'getActiveBlocks', 'getNetworkState',
@@ -541,10 +561,13 @@ export class MaglevEngineBridge implements MaglevEngineApi {
     this.lastConfig = config;
     return this.route('applyConfig', config);
   }
-  public async getEffectiveConfig(): Promise<EngineResult<NativeConfig>> {
-    const res = await this.route<EngineResult<NativeConfig>>('getEffectiveConfig');
+  public async getEffectiveConfig(): Promise<EngineResult<EffectiveConfig>> {
+    const res = await this.route<EngineResult<EffectiveConfig>>('getEffectiveConfig');
     // The contract defines NativeConfig in snake_case; accept either casing from the module.
-    return res.ok ? (snakeizeKeys<EngineResult<NativeConfig>>(res)) : res;
+    return res.ok ? toEffectiveConfig(snakeizeKeys<Record<string, unknown>>(res)) : res;
+  }
+  public restartEngine(): Promise<EngineResult> {
+    return this.route('restartEngine');
   }
   public async getPieceBitfield(id: string): Promise<number[]> {
     const res = await this.route<number[] | EngineResult>('getPieceBitfield', id);
