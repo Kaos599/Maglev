@@ -197,6 +197,7 @@
       "./plugins/withSizeReduction.js",
       "./plugins/withShareIntents.js",
       "./plugins/withAppIcons.js",
+      "./plugins/withWindowBackground.js",
       "./plugins/withBackupRules.js",
       "./plugins/withCleartextLan.js",
       "./plugins/withReleaseSigning.js",
