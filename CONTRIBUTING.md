@@ -18,7 +18,9 @@ Bug fixes don't need approval first, but please link the bug report if there is 
 
 Use **About → Report a bug** in the app. It opens a GitHub issue with your Maglev version, Android version and phone filled in. You can also open one directly with the [bug report form](https://github.com/Kaos599/Maglev/issues/new?template=bug.yml).
 
-Security problems go through [private reporting](https://github.com/Kaos599/Maglev/security/advisories/new), not public issues.
+Security problems go through [private reporting](https://github.com/Kaos599/Maglev/security/advisories/new), not public issues. [SECURITY.md](SECURITY.md) says what to include.
+
+Everyone in issues and pull requests follows the [code of conduct](CODE_OF_CONDUCT.md).
 
 ## Setting up
 
