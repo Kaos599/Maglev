@@ -159,7 +159,7 @@ export default function AddDownloadScreen() {
   }, [params.url, params.source, params.from, submit, router]);
 
   // Free space refreshes when the preview opens.
-  const { doesntFit } = useDownloadAdmission(probe?.size ?? null, phase === 'ready');
+  const { doesntFit, noSpace } = useDownloadAdmission(probe?.size ?? null, phase === 'ready');
 
   const onChangeText = (next: string) => {
     token.current++;
@@ -353,7 +353,7 @@ export default function AddDownloadScreen() {
         {subs.node}
         <ChipGroup label="Parts" options={PART_OPTIONS} value={parts} onChange={(v) => setPartsOverride(v)} />
         {mobileNote ?<Banner tone="info" title={mobileNote} /> : null}
-        {doesntFit ? <Banner tone="danger" title={banners.addDownload.notEnoughSpace.title} body={banners.addDownload.notEnoughSpace.body} /> : null}
+        {doesntFit ? <Banner tone="danger" title={banners.addDownload.notEnoughSpace.title} body={noSpace} /> : null}
         {addError ? (
           addStopped ? (
             <Banner
