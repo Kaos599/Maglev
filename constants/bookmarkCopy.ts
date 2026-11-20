@@ -16,8 +16,9 @@ export const bookmarkCopy = {
   noResults: { title: 'No matches', body: 'Try another word or part of an address.' },
   moreLabel: (title: string | number) => `Options for ${title}`,
   empty: { title: 'No bookmarks yet', body: 'Open a page, then choose Add bookmark from the page menu.' },
+  savedIndicator: 'Bookmarked',
   tileHint: 'Opens the page. Long press for more.',
-  menu: { openNewTab: 'Open in new tab', rename: 'Rename', remove: 'Remove bookmark' },
+  menu: { openNewTab: 'Open in new tab', moveToTop: 'Move to top', rename: 'Rename', remove: 'Remove bookmark' },
   sheet: {
     addTitle: 'Add bookmark',
     editTitle: 'Edit bookmark',

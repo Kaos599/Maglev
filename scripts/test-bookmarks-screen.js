@@ -76,12 +76,23 @@ check('Bookmarks row sits outside the page-only block', (() => {
 const start = read('components/browser/StartPage.tsx');
 check('start page caps tiles at 8', /START_BOOKMARK_LIMIT\s*=\s*8/.test(start) && /bookmarks\.slice\(0,\s*START_BOOKMARK_LIMIT\)/.test(start));
 check('See all link goes to /browser-bookmarks', /router\.push\('\/browser-bookmarks'\)/.test(start));
-check('See all shows only above the cap', /bookmarks\.length\s*>\s*START_BOOKMARK_LIMIT/.test(start));
+check('See all shows whenever there is a bookmark', /bookmarks\.length\s*>\s*0\s*\?\s*\(\s*<PressableScale[\s\S]{0,200}browser-bookmarks/.test(start) && !/bookmarks\.length\s*>\s*START_BOOKMARK_LIMIT/.test(start));
 check('See all has its own label', /bookmarkCopy\.seeAllBookmarksLabel/.test(start));
 
 // 5. Copy.
 const copy = read('constants/bookmarkCopy.ts');
 for (const k of ['screenTitle', 'menuRow', 'searchPlaceholder', 'noResults', 'seeAllBookmarksLabel', 'moreLabel']) check(`bookmarkCopy.${k}`, new RegExp(`\\b${k}\\b`).test(copy));
+
+// 6. Move to top, Settings row, saved-state icon.
+check('copy has Move to top', /moveToTop:\s*'Move to top'/.test(copy));
+check('Bookmarks screen offers Move to top, hidden for the first', /M\.moveToTop/.test(screen) && /moveBookmark\(\w+\.id, 0\)/.test(screen) && /bookmarks\[0\]\?\.id !== /.test(screen));
+check('Start page offers Move to top, hidden for the first', /M\.moveToTop/.test(start) && /moveBookmark\(target\.id, 0\)/.test(start) && /bookmarks\[0\]\?\.id !== /.test(start));
+const sb = read('app/settings/browser.tsx');
+check('Settings has a Bookmarks row to /browser-bookmarks', /title=\{bookmarkCopy\.screenTitle\}[\s\S]{0,120}router\.push\('\/browser-bookmarks'\)/.test(sb));
+const idx = read('utils/settingsIndex.ts');
+check('settings index has the Bookmarks row', /"browser-open-bookmarks",\s*"Bookmarks"/.test(idx));
+check('address bar shows a Bookmarked indicator that opens the sheet', /findBookmark\(bookmarks, page\.url\)/.test(browser) && /accessibilityLabel=\{bookmarkCopy\.savedIndicator\}/.test(browser) && /<BookmarkSheet/.test(browser));
+check('indicator copy', /savedIndicator:\s*'Bookmarked'/.test(copy));
 
 if (failed) { console.error(`\n${failed} check(s) failed`); process.exit(1); }
 console.log('\nbookmarks screen: all checks passed');

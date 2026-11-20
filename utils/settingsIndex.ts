@@ -801,6 +801,22 @@ export const SETTINGS_INDEX: SettingEntry[] = [
     "History",
   ),
   e(
+    "browser-open-bookmarks",
+    "Bookmarks",
+    "browser",
+    "Browser",
+    [
+    "bookmark",
+    "bookmarks",
+    "saved pages",
+    "favourites",
+    "favorites",
+    "star",
+    "start page",
+  ],
+    "History",
+  ),
+  e(
     "browser-open-history",
     "History",
     "browser",

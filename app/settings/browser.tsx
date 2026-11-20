@@ -11,6 +11,7 @@ import { useTheme } from '../../context/ThemeContext';
 import { useMaglevEngine } from '../../context/EngineContext';
 import { ThemeColors, spacing, type } from '../../constants/theme';
 import { haptic } from '../../constants/haptics';
+import { bookmarkCopy } from '../../constants/bookmarkCopy';
 import { browserTabs, empty, historyCopy, listsCopy, notices, textSizeCopy } from '../../constants/copy';
 import { Button, EmptyBlock, IconButton, ListRow, RadioCard, SectionHeader, Toggle } from '../../components/ui';
 import { Card, Caption, ChipGroup, InputSheet, SettingsPage } from '../../components/settings/SettingsParts';
@@ -285,6 +286,7 @@ export default function BrowserSettings() {
             subtitle={historyCopy.settings.clearOnCloseSubtitle}
             accessory={<Toggle value={prefs.clearHistoryOnClose} onValueChange={(clearHistoryOnClose) => setPrefs({ clearHistoryOnClose })} accessibilityLabel={historyCopy.settings.clearOnClose} />}
           />
+          <ListRow icon="bookmark" title={bookmarkCopy.screenTitle} onPress={() => router.push('/browser-bookmarks')} />
           <ListRow icon="clock" title={historyCopy.settings.open} onPress={() => router.push('/browser-history')} />
           <ListRow
             icon="trash"

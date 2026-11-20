@@ -35,6 +35,8 @@ import { HistorySuggestions } from '../components/browser/HistorySuggestions';
 import { StartPage } from '../components/browser/StartPage';
 import { MediaMenu } from '../components/browser/MediaMenu';
 import { BookmarkToggle } from '../components/browser/BookmarkToggle';
+import { BookmarkSheet } from '../components/browser/BookmarkSheet';
+import { findBookmark, useBookmarks } from '../utils/browser/bookmarks';
 import { StreamSheet } from '../components/browser/StreamSheet';
 import { FoundDownloadSheet, downloadHeaders, type DownloadTarget } from '../components/browser/FoundDownload';
 import { BatchSheet } from '../components/browser/BatchSheet';
@@ -86,7 +88,7 @@ export default function BrowserScreen({ inTab = false }: { inTab?: boolean }) {
   const { colors, dark } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const router = useRouter();
-  const params = useLocalSearchParams<{ url?: string; prefill?: string }>();
+  const params = useLocalSearchParams<{ url?: string; prefill?: string; open?: string; newTab?: string }>();
   const { showNotice, downloads, probeUrl, startDownload } = useMaglevEngine();
   const [prefs] = useBrowserPrefs();
   const tabs = useTabs();
@@ -143,6 +145,8 @@ export default function BrowserScreen({ inTab = false }: { inTab?: boolean }) {
   const found = useMemo(() => visibleFound(foundAll, dismissed), [foundAll, dismissed]);
   const [trayOpen, setTrayOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  const bookmarks = useBookmarks();
+  const [bookmarkEditOpen, setBookmarkEditOpen] = useState(false);
   const [switcherOpen, setSwitcherOpen] = useState(false);
   // Find in page (contract section 28) acts on one tab's view: findTab is the tab it was opened on.
   const [findOpen, setFindOpen] = useState(false);
@@ -280,21 +284,21 @@ export default function BrowserScreen({ inTab = false }: { inTab?: boolean }) {
   const handled = useRef<string | null>(null);
   useEffect(() => {
     if (!ready) return;
-    const key = `${params.url ?? ''}|${params.prefill ?? ''}`;
-    if (key === '|' || key === handled.current) return;
+    const key = `${params.url ?? ''}|${params.prefill ?? ''}|${params.open ?? ''}`;
+    if (key === '||' || key === handled.current) return;
     handled.current = key;
     const cur = tabs.ref.current ? activeTab(tabs.ref.current) : null;
     if (typeof params.url === 'string' && params.url.trim()) {
       const t = toBrowserUrl(params.url, prefs.searchEngine);
       if (t.kind === 'magnet') return toAddTorrent(t.uri);
       if (t.kind === 'empty') return;
-      if (cur && isBlank(cur)) open(t.url);
+      if (cur && isBlank(cur) && params.newTab !== '1') open(t.url);
       else openTabChecked({ url: t.url });
     } else if (typeof params.prefill === 'string') {
       if (cur && !isBlank(cur)) openTabChecked({});
       setPrefillText(params.prefill);
     }
-  }, [ready, params.url, params.prefill, prefs.searchEngine, open, openTabChecked, toAddTorrent, tabs.ref]);
+  }, [ready, params.url, params.prefill, params.open, params.newTab, prefs.searchEngine, open, openTabChecked, toAddTorrent, tabs.ref]);
 
   // ---- tabs ----
   const closeWithUndo = useCallback(
@@ -753,6 +757,19 @@ export default function BrowserScreen({ inTab = false }: { inTab?: boolean }) {
           {prefs.privateBrowsing ? (
             <PixelIcon name="shield" size={16} color={colors.accent} accessibilityLabel={historyCopy.settings.privateIndicator} />
           ) : null}
+          {!editing && page?.url && findBookmark(bookmarks, page.url) ? (
+            <PressableScale
+              onPress={() => {
+                haptic('select');
+                setBookmarkEditOpen(true);
+              }}
+              accessibilityRole="button"
+              accessibilityLabel={bookmarkCopy.savedIndicator}
+              hitSlop={14}
+            >
+              <PixelIcon name="bookmark" size={16} color={colors.accent} />
+            </PressableScale>
+          ) : null}
           {!editing && page?.url ? (
             <PixelIcon
               name={page.secure ? 'lock' : 'warning'}
@@ -1102,6 +1119,7 @@ export default function BrowserScreen({ inTab = false }: { inTab?: boolean }) {
           onDismiss={() => setSwitcherOpen(false)}
         />
       ) : null}
+      <BookmarkSheet visible={bookmarkEditOpen} onClose={() => setBookmarkEditOpen(false)} url={page?.url ?? ''} title={page?.title ?? ''} />
     </SafeAreaView>
   );
 }

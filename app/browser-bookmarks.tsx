@@ -10,7 +10,7 @@ import { EmptyBlock, IconButton, ListRow, PressableScale, Screen, Sheet, TextFie
 import { BookmarkSheet } from '../components/browser/BookmarkSheet';
 import { afterSheetCloses } from '../components/browser/FloatingSheet';
 import { removeWithUndo } from '../components/browser/bookmarkActions';
-import { filterBookmarks, useBookmarks, type Bookmark } from '../utils/browser/bookmarks';
+import { filterBookmarks, moveBookmark, useBookmarks, type Bookmark } from '../utils/browser/bookmarks';
 import { openBrowser } from '../utils/browser/openBrowser';
 
 /** Every bookmark in stored order, with search. States: Empty (none saved), List, NoResults (search matched nothing). */
@@ -29,9 +29,9 @@ export default function BrowserBookmarksScreen() {
 
   // A page opens in the browser (a new tab unless the current one is blank), then this screen is left.
   const open = useCallback(
-    (url: string) => {
+    (url: string, newTab?: boolean) => {
       haptic('tap');
-      openBrowser(router, { url }, 'dismissTo');
+      openBrowser(router, newTab ? { url, newTab: true } : { url }, 'dismissTo');
     },
     [router],
   );
@@ -108,9 +108,20 @@ export default function BrowserBookmarksScreen() {
           onPress={() => {
             const b = menuFor;
             setMenuFor(null);
-            if (b) open(b.url);
+            if (b) open(b.url, true);
           }}
         />
+        {menuFor && bookmarks[0]?.id !== menuFor.id ? (
+          <ListRow
+            icon="arrow-up"
+            title={M.moveToTop}
+            onPress={() => {
+              const b = menuFor;
+              setMenuFor(null);
+              if (b) moveBookmark(b.id, 0);
+            }}
+          />
+        ) : null}
         <ListRow
           icon="pencil"
           title={M.rename}

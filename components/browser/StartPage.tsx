@@ -8,7 +8,7 @@ import { bookmarkCopy } from '../../constants/bookmarkCopy';
 import { haptic } from '../../constants/haptics';
 import { useBrowserPrefs } from '../../utils/prefs/browser';
 import { listHistory, useHistoryVersion, type HistoryEntry } from '../../utils/history';
-import { useBookmarks, type Bookmark } from '../../utils/browser/bookmarks';
+import { moveBookmark, useBookmarks, type Bookmark } from '../../utils/browser/bookmarks';
 import { frequentSites, type FrequentSite } from '../../utils/browser/frequentSites';
 import { EmptyBlock, ListRow, PressableScale } from '../ui';
 import { BookmarkSheet } from './BookmarkSheet';
@@ -108,7 +108,7 @@ export function StartPage({ onOpen, privateMode = false, frequent }: StartPagePr
         <Text style={styles.heading} accessibilityRole="header">
           {bookmarkCopy.section}
         </Text>
-        {bookmarks.length > START_BOOKMARK_LIMIT ? (
+        {bookmarks.length > 0 ? (
           <PressableScale
             onPress={() => router.push('/browser-bookmarks')}
             accessibilityRole="button"
@@ -186,6 +186,16 @@ export function StartPage({ onOpen, privateMode = false, frequent }: StartPagePr
             if (target) open(target.url, true);
           }}
         />
+        {target && bookmarks[0]?.id !== target.id ? (
+          <ListRow
+            icon="arrow-up"
+            title={M.moveToTop}
+            onPress={() => {
+              closeMenu();
+              moveBookmark(target.id, 0);
+            }}
+          />
+        ) : null}
         <ListRow
           icon="pencil"
           title={M.rename}
