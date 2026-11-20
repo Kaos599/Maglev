@@ -139,7 +139,7 @@ const makeStyles = (c: ThemeColors) =>
     },
     text: { flex: 1 },
     check: { width: 20, height: 20 },
-    title: { ...type.body, fontSize: 15 },
-    subtitle: { ...type.body, fontSize: 12, color: c.textMuted, marginTop: 2 },
-    value: { ...type.body, fontSize: 13, color: c.textMuted, maxWidth: '45%' },
+    title: { ...type.body, fontSize: type.size.lg },
+    subtitle: { ...type.body, fontSize: type.size.sm, color: c.textMuted, marginTop: 2 },
+    value: { ...type.body, fontSize: type.size.md, color: c.textMuted, maxWidth: '45%' },
   });

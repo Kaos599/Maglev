@@ -57,7 +57,7 @@ async function main() {
     const br = read('app/browser.tsx');
     check('tray has a Clear action wired to the screen', /onClear/.test(tray) && /onClear=\{/.test(br));
     check('tray has a per-item remove wired to the screen', /onRemove/.test(tray) && /onRemove=\{/.test(br));
-    check('remove button has a 44px target', /hitSlop/.test(tray) && /44/.test(tray));
+    check('remove button has a 44px target', /hitSlop/.test(tray) && /44|touch\.min/.test(tray));
     check('Clear label comes from copy', /foundTray\./.test(tray) && /foundTray/.test(read('constants/copy.ts')));
   }
 

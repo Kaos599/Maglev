@@ -79,10 +79,10 @@ const makeStyles = (c: ThemeColors) =>
     main: { flex: 1, justifyContent: 'center', alignItems: 'center' },
     hero: { alignItems: 'center', justifyContent: 'center', marginBottom: spacing.xxl },
     extra: { alignSelf: 'stretch' },
-    title: { ...type.bodyStrong, fontSize: 22, lineHeight: 28, color: c.text, textAlign: 'center' },
+    title: { ...type.bodyStrong, fontSize: type.size.xxl, lineHeight: 28, color: c.text, textAlign: 'center' },
     body: {
       ...type.body,
-      fontSize: 15,
+      fontSize: type.size.lg,
       lineHeight: 22,
       color: c.textMuted,
       textAlign: 'center',
@@ -92,7 +92,7 @@ const makeStyles = (c: ThemeColors) =>
     },
     detail: {
       ...type.body,
-      fontSize: 14,
+      fontSize: type.size.base,
       lineHeight: 20,
       color: c.textMuted,
       textAlign: 'center',

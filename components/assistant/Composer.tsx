@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
 import { useTheme } from '../../context/ThemeContext';
-import { ThemeColors, radius, spacing, type } from '../../constants/theme';
+import { ThemeColors, radius, spacing, type, touch } from '../../constants/theme';
 import { PixelIcon } from '../PixelIcon';
 
 export interface ComposerProps {
@@ -95,7 +95,7 @@ const makeStyles = (c: ThemeColors) =>
   StyleSheet.create({
     outer: { borderTopWidth: 1, borderTopColor: c.border, backgroundColor: c.bg },
     meta: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.sm, paddingHorizontal: spacing.lg },
-    model: { flexShrink: 1, minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
+    model: { flexShrink: 1, minHeight: touch.min, flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
     modelText: { ...type.mono, flexShrink: 1, fontSize: type.size.sm, color: c.textMuted },
     context: { ...type.mono, flexShrink: 0, fontSize: type.size.sm, color: c.textFaint },
     bar: {
@@ -108,18 +108,18 @@ const makeStyles = (c: ThemeColors) =>
     input: {
       ...type.body,
       flex: 1,
-      minHeight: 44,
+      minHeight: touch.min,
       paddingHorizontal: spacing.md,
       paddingVertical: spacing.sm,
-      fontSize: 15,
+      fontSize: type.size.lg,
       color: c.text,
       backgroundColor: c.surface,
       borderWidth: 1,
       borderColor: c.border,
       borderRadius: radius.md,
     },
-    action: { minWidth: 56, minHeight: 44, paddingHorizontal: spacing.xs, alignItems: 'center', justifyContent: 'center', borderRadius: radius.md },
-    actionText: { ...type.heading, fontSize: 13 },
+    action: { minWidth: 56, minHeight: touch.min, paddingHorizontal: spacing.xs, alignItems: 'center', justifyContent: 'center', borderRadius: radius.md },
+    actionText: { ...type.heading, fontSize: type.size.md },
     pressed: { backgroundColor: c.surfaceRaised },
     off: { opacity: 0.4 },
   });

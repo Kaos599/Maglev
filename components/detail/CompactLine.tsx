@@ -51,5 +51,5 @@ export function CompactLine({ down, up, etaSecs }: CompactLineProps) {
 
 const makeStyles = (c: ThemeColors) =>
   StyleSheet.create({
-    line: { ...type.mono, fontSize: 13, color: c.textMuted },
+    line: { ...type.mono, fontSize: type.size.md, color: c.textMuted },
   });

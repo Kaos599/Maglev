@@ -95,5 +95,5 @@ const makeStyles = (c: ThemeColors) =>
     list: { paddingBottom: spacing.sm, gap: spacing.xs },
     stepRow: { minHeight: 32, flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
     stepText: { ...type.body, fontSize: type.size.md, color: c.textMuted },
-    detail: { ...type.body, fontSize: type.size.md, lineHeight: 18, color: c.textFaint, paddingLeft: 24, paddingBottom: spacing.xs },
+    detail: { ...type.body, fontSize: type.size.md, lineHeight: 18, color: c.textFaint, paddingLeft: spacing.xxl, paddingBottom: spacing.xs },
   });

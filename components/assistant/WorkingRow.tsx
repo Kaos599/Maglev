@@ -1,7 +1,7 @@
 import React, { memo, useEffect, useMemo, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { useTheme } from '../../context/ThemeContext';
-import { ThemeColors, spacing, type } from '../../constants/theme';
+import { ThemeColors, spacing, type, touch } from '../../constants/theme';
 import { useReduceMotion } from '../motion';
 
 const STEP_MS = 320;
@@ -37,8 +37,8 @@ export const WorkingRow = memo(function WorkingRow({ label }: { label: string })
 
 const makeStyles = (c: ThemeColors) =>
   StyleSheet.create({
-    row: { minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
-    squares: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+    row: { minHeight: touch.min, flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+    squares: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
     square: { width: 6, height: 6, backgroundColor: c.accent },
     text: { ...type.body, fontSize: type.size.md, color: c.textMuted },
   });

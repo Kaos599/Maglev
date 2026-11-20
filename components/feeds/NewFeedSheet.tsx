@@ -72,7 +72,7 @@ const makeStyles = (c: ThemeColors) =>
   StyleSheet.create({
     input: {
       ...type.mono,
-      fontSize: 14,
+      fontSize: type.size.base,
       minHeight: 48,
       paddingHorizontal: spacing.lg,
       borderRadius: radius.md,
@@ -82,6 +82,6 @@ const makeStyles = (c: ThemeColors) =>
       color: c.text,
     },
     inputError: { borderColor: c.danger },
-    error: { ...type.body, fontSize: 13, color: c.danger, marginTop: spacing.sm },
+    error: { ...type.body, fontSize: type.size.md, color: c.danger, marginTop: spacing.sm },
     actions: { flexDirection: 'row', justifyContent: 'flex-end', gap: spacing.sm, marginTop: spacing.lg },
   });

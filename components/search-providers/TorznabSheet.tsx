@@ -98,18 +98,18 @@ export function TorznabSheet({
 const makeStyles = (c: ThemeColors) =>
   StyleSheet.create({
     group: { gap: spacing.xs, marginBottom: spacing.md },
-    label: { ...type.bodyStrong, fontSize: 12, color: c.textMuted },
+    label: { ...type.bodyStrong, fontSize: type.size.sm, color: c.textMuted },
     input: {
       ...type.mono,
       minHeight: touch.min,
       paddingHorizontal: spacing.md,
-      fontSize: 14,
+      fontSize: type.size.base,
       color: c.text,
       backgroundColor: c.bg,
       borderWidth: 1,
       borderColor: c.borderStrong,
       borderRadius: radius.md,
     },
-    error: { ...type.body, fontSize: 12, color: c.danger, marginBottom: spacing.sm },
+    error: { ...type.body, fontSize: type.size.sm, color: c.danger, marginBottom: spacing.sm },
     actions: { flexDirection: 'row', justifyContent: 'flex-end', gap: spacing.sm },
   });

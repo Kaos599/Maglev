@@ -3,7 +3,7 @@ import { StyleSheet, Text, View, useWindowDimensions, type LayoutChangeEvent } f
 import { GestureDetector, useExclusiveGestures, usePanGesture } from 'react-native-gesture-handler';
 import Animated, { cancelAnimation, useAnimatedStyle, useSharedValue, withSpring, withTiming } from 'react-native-reanimated';
 import { useTheme } from '../../context/ThemeContext';
-import { ThemeColors, radius, spacing, type } from '../../constants/theme';
+import { ThemeColors, radius, spacing, type, touch } from '../../constants/theme';
 import { haptic } from '../../constants/haptics';
 import { hostOf } from '../../utils/browserUrl';
 import { isBlank, type Tab } from '../../utils/browser/tabs';
@@ -148,7 +148,7 @@ export function AddressSwipe({ strip, activeId, enabled, onSelect, onOpenSwitche
 
 const makeStyles = (c: ThemeColors) =>
   StyleSheet.create({
-    root: { flex: 1, minWidth: 44, height: 44, overflow: 'hidden', borderRadius: radius.md },
+    root: { flex: 1, minWidth: touch.min, height: touch.min, overflow: 'hidden', borderRadius: radius.md },
     fill: { flex: 1, flexDirection: 'row' },
     hint: {
       ...StyleSheet.absoluteFill,

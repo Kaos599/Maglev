@@ -4,7 +4,7 @@ import * as Clipboard from 'expo-clipboard';
 import type { FoundItem } from 'maglev-engine';
 import { useTheme } from '../../context/ThemeContext';
 import { useMaglevEngine } from '../../context/EngineContext';
-import { ThemeColors, radius, spacing, type } from '../../constants/theme';
+import { ThemeColors, radius, spacing, type, touch } from '../../constants/theme';
 import { haptic } from '../../constants/haptics';
 import { banners, empty, foundTray, notices } from '../../constants/copy';
 import { useBrowserPrefs } from '../../utils/prefs/browser';
@@ -315,28 +315,28 @@ const makeStyles = (c: ThemeColors) =>
     chipRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingBottom: spacing.md },
     chipScroll: { flex: 1 },
     chips: { flexDirection: 'row', gap: spacing.sm },
-    clear: { minWidth: 44, minHeight: 44, paddingHorizontal: spacing.sm, alignItems: 'center', justifyContent: 'center' },
+    clear: { minWidth: touch.min, minHeight: touch.min, paddingHorizontal: spacing.sm, alignItems: 'center', justifyContent: 'center' },
     clearText: { ...type.mono, fontSize: type.size.md, color: c.danger },
     selectBar: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, paddingBottom: spacing.sm },
-    selectButton: { minWidth: 44, minHeight: 44, paddingHorizontal: spacing.sm, alignItems: 'center', justifyContent: 'center' },
+    selectButton: { minWidth: touch.min, minHeight: touch.min, paddingHorizontal: spacing.sm, alignItems: 'center', justifyContent: 'center' },
     selectText: { ...type.mono, fontSize: type.size.md, color: c.accent },
     selectSpacer: { flex: 1 },
     capNote: { ...type.mono, fontSize: type.size.sm, color: c.textMuted, paddingBottom: spacing.sm },
     hidden: { display: 'none' },
     thumbChecked: { backgroundColor: c.selBg, borderColor: c.selBorder },
-    undoRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, minHeight: 44, paddingBottom: spacing.sm },
+    undoRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, minHeight: touch.min, paddingBottom: spacing.sm },
     undoText: { ...type.body, flex: 1, minWidth: 0, fontSize: type.size.md, color: c.text },
-    undoButton: { minWidth: 44, minHeight: 44, paddingHorizontal: spacing.sm, alignItems: 'center', justifyContent: 'center' },
+    undoButton: { minWidth: touch.min, minHeight: touch.min, paddingHorizontal: spacing.sm, alignItems: 'center', justifyContent: 'center' },
     undoAction: { ...type.mono, fontSize: type.size.md, color: c.accent },
-    scanAgain: { minHeight: 44, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.sm, marginTop: spacing.sm },
+    scanAgain: { minHeight: touch.min, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.sm, marginTop: spacing.sm },
     scanAgainText: { ...type.mono, fontSize: type.size.md, color: c.accent },
     smallRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingBottom: spacing.sm },
-    hiddenButton: { minHeight: 44, paddingHorizontal: spacing.sm, justifyContent: 'center' },
+    hiddenButton: { minHeight: touch.min, paddingHorizontal: spacing.sm, justifyContent: 'center' },
     hiddenText: { ...type.mono, fontSize: type.size.sm, color: c.accent },
     rowWrap: { flexDirection: 'row', alignItems: 'center' },
-    rowMain: { flex: 1, minWidth: 44 },
+    rowMain: { flex: 1, minWidth: touch.min },
     row: { minHeight: 56, flexDirection: 'row', alignItems: 'center', gap: spacing.md, paddingVertical: spacing.sm },
-    remove: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
+    remove: { width: touch.min, height: touch.min, alignItems: 'center', justifyContent: 'center' },
     thumb: {
       width: 40,
       height: 40,
@@ -349,9 +349,9 @@ const makeStyles = (c: ThemeColors) =>
       overflow: 'hidden',
     },
     thumbImage: { width: 40, height: 40 },
-    main: { flex: 1, minWidth: 44 },
+    main: { flex: 1, minWidth: touch.min },
     name: { ...type.mono, fontSize: type.size.md, color: c.text },
     meta: { ...type.mono, fontSize: type.size.sm, color: c.textMuted, marginTop: 2 },
     tag: { ...type.mono, fontSize: type.size.sm, color: c.accent, marginTop: 2 },
-    warning: { ...type.body, fontSize: 12, lineHeight: 17, color: c.warning, marginTop: 2 },
+    warning: { ...type.body, fontSize: type.size.sm, lineHeight: 17, color: c.warning, marginTop: 2 },
   });

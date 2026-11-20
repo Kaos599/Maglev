@@ -180,7 +180,7 @@ function check(name, cond) {
   check('search keeps one slot with the banner', /trayHide\(\)/.test(search) && /dismiss\(\)/.test(search));
   check('search tracks adds in flight as a set', /useState<Set<string>>/.test(search) && /busyHashes/.test(search));
   check('search keeps the sessionAdded clean-up', /sessionAdded/.test(search) && /inList\.has\(h\)/.test(search));
-  check('row shows a spinner while adding', /ActivityIndicator/.test(row) && /colors\.download/.test(row));
+  check('row shows a spinner while adding', /ActivityIndicator|LoadingDots/.test(row) && /colors\.download/.test(row));
   check('row shows the added check in accentText', /icon="check" color=\{colors\.accentText\}/.test(row));
   check('add link screen has the row too', /SubtitlesAutoRow/.test(read('app/add-download.tsx')) && /d:\$\{res\.id\}/.test(read('app/add-download.tsx')) && /fileKind/.test(read('app/add-download.tsx')));
   check('add screen has a Subtitles row with a switch', /SubtitlesAutoRow/.test(addTorrent) && /autoNewVideos/.test(read('components/search/SubtitlesAutoRow.tsx')) && /askSubtitles\(/.test(addTorrent));

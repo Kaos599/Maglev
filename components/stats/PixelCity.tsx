@@ -14,7 +14,7 @@ import { Animated, Easing, LayoutChangeEvent, StyleSheet, Text, View, type Acces
 import { GestureDetector, useExclusiveGestures, usePanGesture, useTapGesture } from 'react-native-gesture-handler';
 import Svg, { Path, Text as SvgText } from 'react-native-svg';
 import { useTheme } from '../../context/ThemeContext';
-import { easeOutCubic, type ThemeColors, type as typeTokens } from '../../constants/theme';
+import { easeOutCubic, type ThemeColors, type as typeTokens, type } from '../../constants/theme';
 import { haptic } from '../../constants/haptics';
 import { MaglevMark } from '../brand/MaglevMark';
 import { MARK_FX_COMPACT, MARK_RATIO } from '../brand/markPaths';
@@ -414,6 +414,6 @@ const makeStyles = (c: ThemeColors) =>
   StyleSheet.create({
     train: { position: 'absolute', left: 0 },
     axis: { height: 16, marginTop: 2 },
-    axisText: { ...typeTokens.mono, position: 'absolute', top: 0, fontSize: 11, lineHeight: 14, color: c.textMuted },
+    axisText: { ...typeTokens.mono, position: 'absolute', top: 0, fontSize: type.size.xs, lineHeight: 14, color: c.textMuted },
     centre: { width: 32, textAlign: 'center' },
   });

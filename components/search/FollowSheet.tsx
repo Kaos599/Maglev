@@ -73,7 +73,7 @@ export function FollowSheet({ target, onClose, onDone }: FollowSheetProps) {
 const makeStyles = (c: ThemeColors) =>
   StyleSheet.create({
     body: { gap: spacing.md },
-    note: { ...type.body, fontSize: 13, lineHeight: 18, color: c.textMuted },
-    error: { ...type.body, fontSize: 13, color: c.danger },
+    note: { ...type.body, fontSize: type.size.md, lineHeight: 18, color: c.textMuted },
+    error: { ...type.body, fontSize: type.size.md, color: c.danger },
     actions: { gap: spacing.sm },
   });

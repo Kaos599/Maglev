@@ -164,11 +164,11 @@ export function RuleEditorSheet({ visible, rule, isNew, feeds, itemsByFeed, onCl
 
 const makeStyles = (c: ThemeColors) =>
   StyleSheet.create({
-    label: { ...type.body, fontSize: 13, color: c.textMuted, marginTop: spacing.md, marginBottom: spacing.sm },
+    label: { ...type.body, fontSize: type.size.md, color: c.textMuted, marginTop: spacing.md, marginBottom: spacing.sm },
     wrap: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
     input: {
       ...type.mono,
-      fontSize: 14,
+      fontSize: type.size.base,
       minHeight: 48,
       paddingHorizontal: spacing.lg,
       borderRadius: radius.md,
@@ -178,12 +178,12 @@ const makeStyles = (c: ThemeColors) =>
       color: c.text,
     },
     inputError: { borderColor: c.danger },
-    hint: { ...type.body, fontSize: 12, color: c.textMuted, marginTop: spacing.xs },
-    error: { ...type.body, fontSize: 13, color: c.danger, marginTop: spacing.xs },
+    hint: { ...type.body, fontSize: type.size.sm, color: c.textMuted, marginTop: spacing.xs },
+    error: { ...type.body, fontSize: type.size.md, color: c.danger, marginTop: spacing.xs },
     toggles: { marginTop: spacing.md },
     preview: { gap: spacing.xs, padding: spacing.md, borderRadius: radius.md, borderWidth: 1, borderColor: c.border, backgroundColor: c.bg },
-    previewCount: { ...type.bodyStrong, fontSize: 13, color: c.accentText },
-    previewItem: { ...type.mono, fontSize: 12, color: c.text },
+    previewCount: { ...type.bodyStrong, fontSize: type.size.md, color: c.accentText },
+    previewItem: { ...type.mono, fontSize: type.size.sm, color: c.text },
     actions: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginTop: spacing.xl },
     spacer: { flex: 1 },
   });

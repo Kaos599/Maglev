@@ -4,7 +4,7 @@ import Animated, { useAnimatedReaction, useAnimatedStyle, type SharedValue } fro
 import ReanimatedSwipeable, { SwipeDirection, type SwipeableMethods } from 'react-native-gesture-handler/ReanimatedSwipeable';
 import { scheduleOnRN } from 'react-native-worklets';
 import { useTheme } from '../../context/ThemeContext';
-import { ThemeColors, radius, spacing, type } from '../../constants/theme';
+import { ThemeColors, radius, spacing, type, touch } from '../../constants/theme';
 import { haptic } from '../../constants/haptics';
 import { PixelIcon, type PixelIconName } from '../PixelIcon';
 import type { SwipeRight } from './swipe';
@@ -164,6 +164,6 @@ const makeStyles = (_c: ThemeColors) =>
     panelLeft: { paddingLeft: spacing.lg },
     panelRight: { paddingRight: spacing.lg },
     fill: { flex: 1, justifyContent: 'center', borderRadius: radius.lg, paddingHorizontal: spacing.lg },
-    content: { alignItems: 'center', gap: 2, minWidth: 44 },
-    label: { ...type.mono, fontSize: 12, lineHeight: 16 },
+    content: { alignItems: 'center', gap: 2, minWidth: touch.min },
+    label: { ...type.mono, fontSize: type.size.sm, lineHeight: 16 },
   });

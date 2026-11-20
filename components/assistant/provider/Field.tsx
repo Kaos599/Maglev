@@ -49,12 +49,12 @@ export function Field({ label, value, onChangeText, placeholder, caption, secure
 const makeStyles = (c: ThemeColors) =>
   StyleSheet.create({
     wrap: { gap: spacing.xs },
-    label: { ...type.bodyStrong, fontSize: 14, color: c.text },
+    label: { ...type.bodyStrong, fontSize: type.size.base, color: c.text },
     input: {
       ...type.mono,
       minHeight: touch.min,
       paddingHorizontal: spacing.md,
-      fontSize: 14,
+      fontSize: type.size.base,
       color: c.text,
       backgroundColor: c.bg,
       borderWidth: 1,
@@ -62,5 +62,5 @@ const makeStyles = (c: ThemeColors) =>
       borderRadius: radius.md,
     },
     disabled: { opacity: 0.5 },
-    caption: { ...type.body, fontSize: 12, lineHeight: 17, color: c.textMuted },
+    caption: { ...type.body, fontSize: type.size.sm, lineHeight: 17, color: c.textMuted },
   });

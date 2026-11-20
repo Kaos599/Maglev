@@ -52,5 +52,5 @@ const makeStyles = (c: ThemeColors) =>
     fill: { height: 6 },
     line: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
     text: { ...type.mono, fontSize: type.size.sm, color: c.text },
-    sub: { ...type.mono, fontSize: type.size.sm, color: c.textMuted, paddingLeft: 20 },
+    sub: { ...type.mono, fontSize: type.size.sm, color: c.textMuted, paddingLeft: spacing.xl },
   });

@@ -78,5 +78,5 @@ const makeStyles = (c: ThemeColors) =>
       borderWidth: 1,
       borderColor: c.border,
     },
-    text: { ...type.bodyStrong, fontSize: 13, color: c.text },
+    text: { ...type.bodyStrong, fontSize: type.size.md, color: c.text },
   });

@@ -155,21 +155,21 @@ Screen gutters and card margins are `spacing.lg`. Cards use `radius.lg`. The min
 
 ### Motion
 
-Motion tokens are in `constants/theme.ts` (`motion`) and `components/motion/tokens.ts`.
+Motion tokens live in one place: `motion` in `constants/theme.ts`. `components/motion/tokens.ts` holds only the easing and helpers.
 
 | Token | ms | Use |
 |---|---|---|
-| `motion.duration.press` | 120 | Press feedback, both directions. |
-| `motion.duration.fast` | 150 | Small fades, such as the finish check. |
-| `motion.duration.base` | 220 | Bar fill, sheet in and out, spring back. |
+| `motion.duration.press` | 120 | Finger down, so a press reads as immediate. |
+| `motion.duration.fast` | 150 | Small fades and the toggle knob. |
+| `motion.duration.release` | 160 | Finger up on an icon button. |
+| `motion.duration.focus` | 180 | Tab icon, pill or selection change. |
+| `motion.duration.base` | 220 | Bar fill, sheet in and out, spring back, one-shot entrance (empty states), loading dots. |
 | `motion.duration.max` | 250 | Ceiling for any single animation. |
-| `duration.release` | 160 | Finger up on an icon button. |
-| `duration.focus` | 180 | Tab icon, pill or selection change. |
-| `duration.enter` | 220 | One-shot entrance, such as an empty state. |
+| `motion.sweep` | 1400 | One pass of an indeterminate bar. A loop, so it sits outside the ceiling. |
 
-Rules: ease-out only (`easeOut`, a cubic), nothing longer than `motion.duration.max`, no springs or bounce, no loops. Pressed scale is `motion.pressScale` (0.97). Bare pixel icons sink by `PRESS_SINK` (2 whole pixels) instead of scaling, because scaled pixels blur. Use `animateTo(value, to, ms, reduce)` from `components/motion/tokens.ts` so reduce motion is handled for you.
+Rules: ease-out only (`easeOut`, a cubic), nothing longer than `motion.duration.max` (bar and dot loops aside), no springs or bounce, no loops. Pressed scale is `motion.pressScale` (0.97). Bare pixel icons sink by `PRESS_SINK` (2 whole pixels) instead of scaling, because scaled pixels blur. Use `animateTo(value, to, ms, reduce)` from `components/motion/tokens.ts` so reduce motion is handled for you.
 
-With the system's reduce-motion setting on, nothing animates: values jump to their target. Read it with `useReduceMotion()` from `components/motion/useReduceMotion.ts`, or use `useMotion()` in `components/ui/useMotion.ts`, which builds the easings for you. Gate any animation of your own on it.
+With the system's reduce-motion setting on, nothing animates: values jump to their target. Read it with `useReduceMotion()` from `components/motion/useReduceMotion.ts`, or use `useMotion()` in `components/ui/useMotion.ts`, which builds the easings for you. Gate any animation of your own on it. Never write a bare number as an animation `duration`; `scripts/test-design-system.js` rejects it in `components/ui` and `components/motion`.
 
 ### Haptics
 
@@ -193,6 +193,7 @@ Import primitives from `components/ui`. Each one reads the theme, meets the 44 d
 | Component | Use it for | Don't use it for | Key props |
 |---|---|---|---|
 | `Button` | A text action. `primary` is the one main action per screen, then `secondary`, `ghost`, `danger`. | An icon-only action. Two primaries on one screen. | `label`, `onPress`, `variant`, `size` (`md`, `lg`), `icon`, `loading`, `disabled`, `fullWidth` |
+| `LoadingDots` | The loading mark: three small square dots, the one `Button` shows with `loading`. Use it for work in flight inside a row or sheet. Never `ActivityIndicator`. | A progress amount (use `ProgressBar`). | `color` |
 | `IconButton` | A bare icon action in a header or row. The icon itself turns accent on press. | A text action. A button with a filled box. | `icon`, `accessibilityLabel` (required), `onPress`, `size`, `selected`, `badge`, `dot` |
 | `ListRow` | A settings or menu row: title, optional subtitle, trailing value and chevron, or an accessory such as `Toggle`. | A transfer (use the transfer card). | `title`, `subtitle`, `icon`, `value`, `accessory`, `onPress`, `destructive`, `selected`, `disabled` |
 | `Toggle` | On or off. | Choosing among several options. | `value`, `onValueChange`, `accessibilityLabel` (required) |
@@ -205,6 +206,7 @@ Import primitives from `components/ui`. Each one reads the theme, meets the 44 d
 | `EmptyBlock` | An empty or error state: icon, title, one line, at most one primary action. | A loading state. | `icon`, `title`, `body`, `primary`, `secondary`, `error` |
 | `ProgressBar` | Progress of a transfer. | A percentage readout on its own. | `progress` (0 to 1), `tone` (`download`, `seed`, `paused`, `error`), `indeterminate`, `resetKey` |
 | `Screen` | The safe-area container with an optional header, back button and actions. | Nested inside another `Screen`. | `title`, `onBack`, `actions`, `scroll`, `edges`, `contentStyle` |
+| `TextField` | Any text input: search box, link, file name, rule editor, address. Optional `label`, `help`, `error`, `leadingIcon`, a "Clear" button. | A choice among fixed options (use `SegmentedControl` or `Chip`). | `label`, `help`, `error`, `leadingIcon`, `clearable`, `mono`, `size` (`md`, `lg`), `multiline`, `minLines`, `maxLines`, plus every `TextInput` prop |
 | `PressableScale` | Building a custom pressable with the standard press feel. | Anything a `Button`, `Chip` or `ListRow` already covers. | `style` (may take `pressed`), `scaleTo`, `feedback` (`scale` or `sink`), `haptic` |
 | `RadioCard` | A single choice that needs an icon and a description, such as an onboarding option. | A plain list of choices (use `SegmentedControl` or `ListRow`). | `title`, `description`, `icon`, `selected`, `onPress`, `dashed` |
 | `RangeSlider` | Choosing a low and high stop on a track. | One value (use `SegmentedControl` or a stepper row). | `steps`, `low`, `high`, `onChange`, `labelLow`, `labelHigh`, `valueText`, `minGap` |
@@ -272,6 +274,16 @@ Two rules apply to every user-facing setting:
 
 Use `FlatList` for anything that can grow. Rows keep a constant height: reserve space for numbers with `monoSlotWidth` and keep the status line present even when empty, so a row does not jump when the text changes. A recycled row must not animate from the previous item's state: pass `resetKey` to `ProgressBar`.
 
+### Text fields
+
+Use `TextField`, never a bare `TextInput`. It is 44 dp tall (`size="lg"`, 48 dp, for a search box), has a 1 px `borderStrong` hairline, and turns the border accent on focus and danger on error.
+
+- **`mono`** for filenames, URLs, paths, tokens and numbers (`type.mono`). It also turns off autocapitalize, autocorrect and spellcheck. Leave it off for words people write, such as a rule name or a chat message (`type.body`).
+- **`clearable`** on a search or filter box, or any field people retype often. The "Clear" button shows only while there is text, and puts the cursor back in the field.
+- **`error`** says what is wrong in plain words and what to do. It shows an icon and text, never colour alone, and is announced to screen readers. Clear it when the person edits. Use `help` for a quiet hint that is always true; an error replaces it.
+- **`label`** when the field has no visible context (rule editors, sheets). A search box with a `leadingIcon` and a placeholder needs no label; the placeholder is its accessibility label.
+- **`multiline`** for a pasted link or a list. Set `minLines` and `maxLines` so it does not push the page.
+
 ### Destructive actions and Undo
 
 Removing a transfer from the list is not destructive until the files go. Do it in two steps the person can see:
@@ -334,6 +346,8 @@ Words to avoid on screen: pipeline jargon, "Save configuration" buttons (setting
 
 - a hex or `rgb()`/`rgba()` literal appears in `app/`, `components/`, `context/` or `utils/` (outside `constants/` and `components/brand/`),
 - `fontFamily: 'monospace'` appears anywhere, or `fontWeight` or a `shadow*` or `elevation` key appears in `app/` or `components/`,
+- a `duration:` with a bare number appears in `components/ui` or `components/motion`,
+- a module-level `StyleSheet.create` or object in `app/` or `components/` reads `type.*` (it would freeze the font style from app start),
 - another icon library is imported,
 - this file names a `colors.<role>`, `spacing.<key>`, `radius.<key>` or `type.<slot>` that is not in `constants/theme.ts`, prints a spacing, radius or OLED colour value that differs from the code, or leaves out a colour role, a spacing or radius key, a type slot, or an export of `components/ui/index.ts`.
 

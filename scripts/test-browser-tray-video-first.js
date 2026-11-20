@@ -84,7 +84,7 @@ async function main() {
   check('tray reads and writes the pref', /useBrowserPrefs/.test(tray) && /hideSmallFiles/.test(tray));
   check('tray applies splitSmall', /splitSmall\(/.test(tray));
   check('tray labels come from copy', /foundTray\.hideSmall/.test(tray) && /foundTray\.hidden\(/.test(tray));
-  check('hidden control has a 44px target', /minHeight: 44/.test(tray));
+  check('hidden control has a 44px target', /minHeight: (?:44|touch\.min)/.test(tray));
 
   if (failed) {
     console.error(`\n${failed} failed`);

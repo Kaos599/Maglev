@@ -122,7 +122,7 @@ const makeStyles = (c: ThemeColors) =>
     head: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.sm },
     badge: { alignSelf: 'flex-start', paddingHorizontal: spacing.sm, paddingVertical: 2, borderRadius: radius.sm, backgroundColor: c.firstBg, borderWidth: 1, borderColor: c.firstBorder },
     badgeText: { ...type.bodyStrong, fontSize: type.size.sm, color: c.firstFg },
-    title: { ...type.bodyStrong, flex: 1, fontSize: 15, lineHeight: 20, color: c.text },
+    title: { ...type.bodyStrong, flex: 1, fontSize: type.size.lg, lineHeight: 20, color: c.text },
     chips: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center' },
     chipItem: { flexDirection: 'row', alignItems: 'center' },
     chipText: { ...type.mono, fontSize: type.size.md, color: c.accentText, textDecorationLine: 'underline', textDecorationStyle: 'dotted', textDecorationColor: c.accentText },

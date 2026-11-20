@@ -179,7 +179,7 @@ const makeStyles = (c: ThemeColors) =>
       backgroundColor: c.surfaceRaised,
       marginBottom: spacing.md,
     },
-    title: { ...type.bodyStrong, fontSize: 17, color: c.text },
+    title: { ...type.bodyStrong, fontSize: type.size.xl, color: c.text },
     content: { marginTop: spacing.sm },
     actions: { marginTop: spacing.lg, gap: spacing.sm },
   });

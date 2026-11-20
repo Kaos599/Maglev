@@ -267,11 +267,15 @@ export const fonts = type;
  */
 export const motion = {
   duration: {
-    /** Press feedback, both directions. */
+    /** Finger down: fast, so the press reads as immediate. */
     press: 120,
-    /** Small fades (the finish check). */
+    /** Small fades (the finish check, the toggle knob). */
     fast: 150,
-    /** Bar fill, sheet in/out, spring back. */
+    /** Finger up: a touch slower than press so the return is visible. */
+    release: 160,
+    /** Focus or selection change (tab icon, pill, label weight). */
+    focus: 180,
+    /** Bar fill, sheet in/out, spring back, one-shot entrance (empty states), loading dots. */
     base: 220,
     /** Hard ceiling for any single animation. */
     max: 250,
@@ -282,6 +286,8 @@ export const motion = {
   pressScale: 0.97,
   /** How long the lime check stays after a download finishes, before it fades (a hold, not motion). */
   finishHold: 900,
+  /** One pass of an indeterminate bar's sweep. A loop, so it sits outside the `duration.max` ceiling. */
+  sweep: 1400,
   sheet: {
     /** A release faster than this (points/s, downward) dismisses. */
     flingVelocity: 900,

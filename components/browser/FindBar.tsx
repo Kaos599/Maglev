@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { StyleSheet, Text, TextInput, View } from 'react-native';
 import { useTheme } from '../../context/ThemeContext';
-import { ThemeColors, radius, spacing, type } from '../../constants/theme';
+import { ThemeColors, radius, spacing, type, touch } from '../../constants/theme';
 import { haptic } from '../../constants/haptics';
 import { findCopy } from '../../constants/copy';
 import { PixelIcon } from '../PixelIcon';
@@ -122,8 +122,8 @@ const makeStyles = (c: ThemeColors) =>
     bar: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: spacing.xs, minHeight: 56 },
     field: {
       flex: 1,
-      minWidth: 44,
-      height: 44,
+      minWidth: touch.min,
+      height: touch.min,
       flexDirection: 'row',
       alignItems: 'center',
       gap: spacing.sm,
@@ -135,6 +135,6 @@ const makeStyles = (c: ThemeColors) =>
     },
     input: { ...type.mono, flex: 1, minWidth: 0, fontSize: type.size.md, color: c.text, paddingVertical: 0 },
     count: { ...type.mono, fontSize: type.size.sm, color: c.textMuted },
-    step: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
+    step: { width: touch.min, height: touch.min, alignItems: 'center', justifyContent: 'center' },
     dim: { opacity: 0.4 },
   });

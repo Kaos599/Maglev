@@ -214,7 +214,7 @@ const makeStyles = (c: ThemeColors) =>
     // The drag target: handle, title and subtitle. It reaches the sheet's side edges so it is easy to grab.
     dragArea: { marginHorizontal: -spacing.xl, paddingHorizontal: spacing.xl, paddingBottom: spacing.xs },
     grabber: { alignSelf: 'center', width: 36, height: 4, borderRadius: 2, backgroundColor: c.borderStrong, marginBottom: spacing.lg },
-    title: { ...type.bodyStrong, fontSize: 17, color: c.text },
-    subtitle: { ...type.body, fontSize: 13, color: c.textMuted, marginTop: 4 },
+    title: { ...type.bodyStrong, fontSize: type.size.xl, color: c.text },
+    subtitle: { ...type.body, fontSize: type.size.md, color: c.textMuted, marginTop: spacing.xs },
     content: { marginTop: spacing.lg, flexShrink: 1 },
   });

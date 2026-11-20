@@ -1,9 +1,9 @@
 import React, { useEffect, useMemo, useRef } from 'react';
 import { Animated, StyleSheet, Text, View } from 'react-native';
 import { useTheme } from '../../context/ThemeContext';
-import { ThemeColors, radius, spacing, type } from '../../constants/theme';
+import { ThemeColors, motion, radius, spacing, type } from '../../constants/theme';
 import { PixelIcon, PixelIconName } from '../PixelIcon';
-import { animateTo, duration, useReduceMotion } from '../motion';
+import { animateTo, useReduceMotion } from '../motion';
 import { Button } from './Button';
 
 export interface EmptyBlockAction {
@@ -45,7 +45,7 @@ export function EmptyBlock({ icon, title, body, primary, secondary, error, testI
   }).current;
 
   useEffect(() => {
-    animateTo(enter, 1, duration.enter, reduce);
+    animateTo(enter, 1, motion.duration.base, reduce);
     // Mount only: a later reduce-motion change must not replay the entrance.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -85,7 +85,7 @@ const makeStyles = (c: ThemeColors) =>
       justifyContent: 'center',
     },
     copy: { alignItems: 'center', alignSelf: 'stretch' },
-    title: { ...type.bodyStrong, fontSize: 17, color: c.text, marginTop: spacing.lg, textAlign: 'center' },
-    body: { ...type.body, fontSize: 13, lineHeight: 19, color: c.textMuted, marginTop: spacing.sm, textAlign: 'center', maxWidth: 300 },
+    title: { ...type.bodyStrong, fontSize: type.size.xl, color: c.text, marginTop: spacing.lg, textAlign: 'center' },
+    body: { ...type.body, fontSize: type.size.md, lineHeight: 19, color: c.textMuted, marginTop: spacing.sm, textAlign: 'center', maxWidth: 300 },
     actions: { marginTop: spacing.xl, alignItems: 'center', gap: spacing.sm },
   });

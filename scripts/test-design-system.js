@@ -201,5 +201,98 @@ if (design) {
   );
 }
 
+// ---------------------------------------------------------------------------------------------
+console.log('Live fonts and one motion set');
+
+// `type.*` reads the current font style at call time. A style built at module level freezes the font style from
+// app start, so it ignores a live Clean/Retro/Mono switch. Split a file into top-level statements and flag any
+// `const x = ...` that evaluates `type.` at load (a function or arrow before the `type.` runs per call: fine).
+function topLevelStatements(source) {
+  // Blank out comments (keeping newlines) so a leading doc comment never hides the statement under it.
+  const src = source.replace(/\/\*[\s\S]*?\*\/|(^|[^:'"`])\/\/[^\n]*/g, (m, p1) => (p1 === undefined ? '' : p1) + m.slice((p1 || '').length).replace(/[^\n]/g, ' '));
+  const out = [];
+  let depth = 0;
+  let start = 0;
+  let i = 0;
+  let line = 1;
+  let startLine = 1;
+  const n = src.length;
+  const push = (end) => {
+    out.push({ text: src.slice(start, end), line: startLine });
+    start = end;
+    startLine = line;
+  };
+  while (i < n) {
+    const ch = src[i];
+    if (ch === '\n') line++;
+    if (ch === '/' && src[i + 1] === '/') {
+      while (i < n && src[i] !== '\n') i++;
+      continue;
+    }
+    if (ch === '/' && src[i + 1] === '*') {
+      const e = src.indexOf('*/', i + 2);
+      const end = e < 0 ? n : e + 2;
+      line += (src.slice(i, end).match(/\n/g) || []).length;
+      i = end;
+      continue;
+    }
+    if (ch === '"' || ch === "'" || ch === '`') {
+      i++;
+      while (i < n && src[i] !== ch) {
+        if (src[i] === '\\') i++;
+        if (src[i] === '\n') line++;
+        i++;
+      }
+      i++;
+      continue;
+    }
+    if ('({['.includes(ch)) depth++;
+    else if (')}]'.includes(ch)) {
+      depth--;
+      if (depth === 0 && ch === '}' && /^\s*(export\s+)?(default\s+)?(async\s+)?(function|class|interface|enum)\b/.test(src.slice(start, i))) push(i + 1);
+    } else if (ch === ';' && depth === 0) push(i + 1);
+    i++;
+  }
+  push(n);
+  return out;
+}
+
+function moduleLevelTypeUse(src) {
+  const hits = [];
+  for (const s of topLevelStatements(src)) {
+    const t = s.text.replace(/^\s+/, '');
+    if (!/^(export\s+)?(const|let|var)\s/.test(t)) continue;
+    const eq = t.indexOf('=');
+    if (eq < 0) continue;
+    const body = t.slice(eq + 1);
+    const first = body.search(/\btype\./);
+    if (first < 0) continue;
+    if (/=>|\bfunction\b/.test(body.slice(0, first))) continue;
+    const lead = (s.text.slice(0, s.text.length - t.length).match(/\n/g) || []).length;
+    hits.push({ line: s.line + lead, head: t.split('\n')[0].trim().slice(0, 70) });
+  }
+  return hits;
+}
+
+{
+  const problems = [];
+  for (const d of ['app', 'components']) {
+    for (const f of walk(path.join(root, d))) {
+      const r = rel(f);
+      if (isGenerated(r)) continue;
+      for (const h of moduleLevelTypeUse(read(f))) problems.push(`${r}:${h.line}  module-level style reads type.*  ${h.head}`);
+    }
+  }
+  check('no module-level StyleSheet.create or object spreads type.* in app/ or components/ (use makeStyles(colors) in useMemo)', problems);
+}
+
+// Every animation length is a token from constants/theme.ts (`motion.duration`), never a bare number.
+check(
+  'no numeric duration: in components/ui or components/motion (use motion.duration.*)',
+  scan(['components/ui', 'components/motion'], {
+    test: (line) => (/\bduration:\s*\d/.test(line) ? 'numeric duration literal' : null),
+  }),
+);
+
 console.log(failed === 0 ? '\ndesign-system: all checks passed' : `\ndesign-system: ${failed} check(s) failed`);
 process.exit(failed === 0 ? 0 : 1);

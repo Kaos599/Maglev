@@ -60,6 +60,6 @@ const makeStyles = (c: ThemeColors) =>
       gap: spacing.md,
     },
     title: { ...type.heading, fontSize: type.size.md, color: c.text },
-    body: { ...type.body, fontSize: 14, color: c.text },
-    note: { ...type.body, fontSize: 13, color: c.textMuted },
+    body: { ...type.body, fontSize: type.size.base, color: c.text },
+    note: { ...type.body, fontSize: type.size.md, color: c.textMuted },
   });

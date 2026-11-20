@@ -181,7 +181,7 @@ const makeStyles = (c: ThemeColors) =>
   StyleSheet.create({
     content: { gap: spacing.lg, paddingBottom: spacing.sm },
     headRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
-    headText: { ...type.body, flex: 1, fontSize: 13, color: c.textMuted },
+    headText: { ...type.body, flex: 1, fontSize: type.size.md, color: c.textMuted },
     testRow: {
       flexDirection: 'row',
       alignItems: 'center',
@@ -192,14 +192,14 @@ const makeStyles = (c: ThemeColors) =>
       borderColor: c.border,
       backgroundColor: c.bg,
     },
-    testText: { ...type.body, flex: 1, fontSize: 13, color: c.text },
+    testText: { ...type.body, flex: 1, fontSize: type.size.md, color: c.text },
     group: { gap: spacing.sm },
-    label: { ...type.bodyStrong, fontSize: 12, color: c.textMuted },
+    label: { ...type.bodyStrong, fontSize: type.size.sm, color: c.textMuted },
     input: {
       ...type.mono,
       minHeight: touch.min,
       paddingHorizontal: spacing.md,
-      fontSize: 14,
+      fontSize: type.size.base,
       color: c.text,
       backgroundColor: c.bg,
       borderWidth: 1,
@@ -207,6 +207,6 @@ const makeStyles = (c: ThemeColors) =>
       borderRadius: radius.md,
     },
     hintRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
-    hint: { ...type.body, flex: 1, fontSize: 12, lineHeight: 17, color: c.textMuted },
+    hint: { ...type.body, flex: 1, fontSize: type.size.sm, lineHeight: 17, color: c.textMuted },
     wrap: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
   });

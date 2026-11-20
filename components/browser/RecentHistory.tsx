@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useTheme } from '../../context/ThemeContext';
-import { ThemeColors, spacing, type } from '../../constants/theme';
+import { ThemeColors, spacing, type, touch } from '../../constants/theme';
 import { historyCopy } from '../../constants/copy';
 import { useBrowserPrefs } from '../../utils/prefs/browser';
 import { listHistory, useHistoryVersion, type HistoryEntry } from '../../utils/history';
@@ -95,7 +95,7 @@ const makeStyles = (c: ThemeColors) =>
       paddingBottom: spacing.sm,
     },
     heading: { ...type.heading, fontSize: type.size.md, color: c.text },
-    seeAll: { minHeight: 44, minWidth: 44, justifyContent: 'center', alignItems: 'flex-end' },
+    seeAll: { minHeight: touch.min, minWidth: touch.min, justifyContent: 'center', alignItems: 'flex-end' },
     seeAllText: { ...type.body, fontSize: type.size.sm, color: c.accent },
     row: {
       minHeight: 56,

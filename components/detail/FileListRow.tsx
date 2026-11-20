@@ -137,7 +137,7 @@ const makeStyles = (c: ThemeColors) =>
     chipFirst: {
       flexDirection: 'row',
       alignItems: 'center',
-      gap: 4,
+      gap: spacing.xs,
       borderWidth: 1,
       borderColor: c.firstBorder,
       backgroundColor: c.firstBg,

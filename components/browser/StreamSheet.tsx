@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, StyleSheet, Text, TextInput, View } from 'react-native';
+import { StyleSheet, Text, TextInput, View } from 'react-native';
 import { sanitizeFileName, type FoundItem, type StreamProbe } from 'maglev-engine';
 import { useTheme } from '../../context/ThemeContext';
 import { useMaglevEngine } from '../../context/EngineContext';
@@ -9,7 +9,7 @@ import { banners, mobileDataLine, notices, streamSheet } from '../../constants/c
 import { probeErrorView } from '../../utils/downloadCopy';
 import { useDownloadAdmission } from '../../utils/useDownloadAdmission';
 import { hostOf } from '../../utils/browserUrl';
-import { Banner, Button, RadioCard } from '../ui';
+import { Banner, Button, LoadingDots, RadioCard } from '../ui';
 import { FloatingSheet, afterSheetCloses, NoteRow } from './FloatingSheet';
 import { useSettings } from '../../context/SettingsContext';
 import { downloadHeaders } from './FoundDownload';
@@ -134,7 +134,7 @@ export function StreamSheet({ item, pageTitle, userAgent = '', pageUrl = '', onC
       <View style={styles.body}>
         {phase === 'probing' ? (
           <View style={styles.reading} accessibilityLiveRegion="polite">
-            <ActivityIndicator color={colors.accent} />
+            <LoadingDots color={colors.accent} />
             <Text style={styles.meta}>{streamSheet.reading}</Text>
           </View>
         ) : null}

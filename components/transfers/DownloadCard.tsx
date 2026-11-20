@@ -3,7 +3,7 @@ import { StyleSheet, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import type { DownloadSnapshot } from 'maglev-engine';
 import { useTheme } from '../../context/ThemeContext';
-import { ThemeColors, alpha, radius, spacing, type } from '../../constants/theme';
+import { ThemeColors, alpha, radius, spacing, touch, type } from '../../constants/theme';
 import { formatEta } from '../../utils/rates';
 import { actionRoute, downloadAction, downloadProgress, downloadProgressLabel, downloadStatus, isIndeterminate, type DownloadAction } from '../../utils/downloadCopy';
 import { PixelIcon } from '../PixelIcon';
@@ -188,13 +188,13 @@ const makeStyles = (c: ThemeColors) =>
       flexDirection: 'row',
       gap: spacing.md,
       paddingLeft: spacing.lg,
-      paddingRight: 44 + spacing.sm,
+      paddingRight: touch.min + spacing.sm,
       paddingVertical: spacing.md,
     },
     rail: { width: 24, alignSelf: 'stretch', alignItems: 'center', justifyContent: 'center' },
     body: { flex: 1, gap: spacing.sm, justifyContent: 'space-between' },
-    actionAnchor: { position: 'absolute', right: spacing.sm, top: '50%', marginTop: -22, width: 44, height: 44 },
+    actionAnchor: { position: 'absolute', right: spacing.sm, top: '50%', marginTop: -22, width: touch.min, height: touch.min },
     subtitleAnchor: { position: 'absolute', right: spacing.sm + 8, top: 4, width: 28, height: 28 },
     cardSelected: { borderColor: c.accent, backgroundColor: alpha(c.accent, 0.08) },
-    name: { ...type.mono, fontSize: 13, lineHeight: 18, color: c.text, flex: 1 },
+    name: { ...type.mono, fontSize: type.size.md, lineHeight: 18, color: c.text, flex: 1 },
   });

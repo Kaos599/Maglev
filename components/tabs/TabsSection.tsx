@@ -227,8 +227,8 @@ export function TabsSection() {
 }
 
 const gripStyle = StyleSheet.create({
-  box: { gap: 3 },
-  line: { flexDirection: 'row', gap: 3 },
+  box: { gap: 3 }, // design-exception: drag-grip dot grid, 3 px matches the 3 px dots
+  line: { flexDirection: 'row', gap: 3 }, // design-exception: drag-grip dot grid, 3 px matches the 3 px dots
   dot: { width: 3, height: 3 },
 });
 
@@ -247,7 +247,7 @@ const makeStyles = (c: ThemeColors) =>
     },
     grip: { width: touch.min, height: touch.min, alignItems: 'center', justifyContent: 'center' },
     text: { flex: 1 },
-    title: { ...type.body, fontSize: 15, color: c.text },
-    subtitle: { ...type.body, fontSize: 12, color: c.textMuted, marginTop: 2 },
+    title: { ...type.body, fontSize: type.size.lg, color: c.text },
+    subtitle: { ...type.body, fontSize: type.size.sm, color: c.textMuted, marginTop: 2 },
     caption: { paddingHorizontal: spacing.lg, paddingBottom: spacing.sm, gap: spacing.xs },
   });

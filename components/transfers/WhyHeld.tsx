@@ -54,9 +54,9 @@ export function WhyHeld({ item, blocks, queueLimit, onNavigate }: WhyHeldProps) 
 const makeStyles = (c: ThemeColors) =>
   StyleSheet.create({
     wrap: { gap: spacing.md },
-    heading: { ...type.heading, fontSize: 16, color: c.text },
+    heading: { ...type.heading, fontSize: type.size.xl, color: c.text },
     item: { gap: 2 },
-    title: { ...type.bodyStrong, fontSize: 14, color: c.text },
-    body: { ...type.body, fontSize: 13, color: c.textMuted, lineHeight: 18 },
+    title: { ...type.bodyStrong, fontSize: type.size.base, color: c.text },
+    body: { ...type.body, fontSize: type.size.md, color: c.textMuted, lineHeight: 18 },
     action: { marginTop: spacing.sm, alignSelf: 'flex-start' },
   });

@@ -39,7 +39,7 @@ export function DensityThumb({ density }: { density: TelemetryDensity }) {
 // Every offset and size below is a multiple of 2 dp, measured inside the 2 dp outline.
 const makeStyles = (c: ThemeColors) =>
   StyleSheet.create({
-    card: { width: 44, height: 32, backgroundColor: c.surface, borderWidth: 2, borderColor: c.borderStrong, borderRadius: 3, overflow: 'hidden' },
+    card: { width: 44, height: 32, backgroundColor: c.surface, borderWidth: 2, borderColor: c.borderStrong, borderRadius: 3, overflow: 'hidden' }, // design-exception: thumbnail drawing: pixel geometry
     px: { position: 'absolute', borderRadius: 0 },
     title: { left: 2, top: 2, width: 12, height: 2, backgroundColor: c.textMuted },
     percent: { left: 28, top: 2, width: 8, height: 2, backgroundColor: c.text },

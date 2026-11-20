@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useTheme } from '../../context/ThemeContext';
-import { ThemeColors, radius, spacing, type } from '../../constants/theme';
+import { ThemeColors, radius, spacing, type, touch } from '../../constants/theme';
 import { Button, IconButton, PressableScale, Sheet } from '../ui';
 import { PixelIcon } from '../PixelIcon';
 import { parseTyped } from '../../utils/subtitles/parseName';
@@ -299,20 +299,20 @@ const makeStyles = (c: ThemeColors) =>
   StyleSheet.create({
     stack: { gap: spacing.sm },
     langLine: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-    hint: { ...type.body, fontSize: 13, lineHeight: 20, color: c.textMuted, flexShrink: 1 },
+    hint: { ...type.body, fontSize: type.size.md, lineHeight: 20, color: c.textMuted, flexShrink: 1 },
     summaryRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', columnGap: spacing.sm },
-    offLine: { minHeight: 44, justifyContent: 'center', alignSelf: 'flex-start' },
+    offLine: { minHeight: touch.min, justifyContent: 'center', alignSelf: 'flex-start' },
     summary: { ...type.bodyStrong, fontSize: type.size.md, color: c.text },
-    change: { minHeight: 44, minWidth: 44, justifyContent: 'center', alignItems: 'center', paddingHorizontal: spacing.sm },
+    change: { minHeight: touch.min, minWidth: touch.min, justifyContent: 'center', alignItems: 'center', paddingHorizontal: spacing.sm },
     changeText: { ...type.bodyStrong, fontSize: type.size.md, color: c.accentText },
     list: { maxHeight: 360 },
     row: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, minHeight: 56, paddingVertical: spacing.xs, borderBottomWidth: 1, borderBottomColor: c.border },
-    check: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
+    check: { width: touch.min, height: touch.min, alignItems: 'center', justifyContent: 'center' },
     main: { flex: 1, justifyContent: 'center' },
     episodeTap: { flex: 1, minHeight: 56, flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
     title: { ...type.bodyStrong, fontSize: type.size.lg, color: c.text },
-    detail: { ...type.body, fontSize: 13, color: c.textMuted },
-    phase: { ...type.bodyStrong, fontSize: 13, color: c.text },
+    detail: { ...type.body, fontSize: type.size.md, color: c.textMuted },
+    phase: { ...type.bodyStrong, fontSize: type.size.md, color: c.text },
     input: { ...type.mono, fontSize: type.size.md, minHeight: 48, paddingHorizontal: spacing.md, borderRadius: radius.md, borderWidth: 1, borderColor: c.borderStrong, backgroundColor: c.bg, color: c.text },
     inputError: { borderColor: c.danger },
   });

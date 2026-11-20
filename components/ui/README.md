@@ -6,6 +6,7 @@ Theme-driven primitives. Import from `components/ui`. The full design guide is [
 - Button: text actions (primary = one per screen, secondary, ghost, danger). IconButton: icon-only actions.
 - ListRow: settings and menu rows; trailing value + chevron, or an accessory such as Toggle.
 - Toggle: on/off. SegmentedControl: pick one of 2-5. Chip: filters and multi-select pills.
+- TextField: every text input (label, help, error, leading icon, clearable, `mono` for filenames and URLs). Never a bare `TextInput`.
 - Banner: inline status with an optional action. EmptyBlock: empty and error states.
 - Sheet: bottom sheet for pickers and forms. SectionHeader: group label. ProgressBar: transfers.
 - Screen: safe-area container with optional header. PressableScale: build custom pressables.

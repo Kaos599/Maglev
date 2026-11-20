@@ -48,5 +48,5 @@ const makeStyles = (c: ThemeColors) =>
       backgroundColor: c.bg,
     },
     speeds: { flexDirection: 'row', gap: spacing.lg, flexShrink: 1 },
-    speed: { ...type.monoBold, fontSize: 13 },
+    speed: { ...type.monoBold, fontSize: type.size.md },
   });

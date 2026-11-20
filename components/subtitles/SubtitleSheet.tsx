@@ -5,7 +5,7 @@ import { maglevEngine } from 'maglev-engine';
 import { useTheme } from '../../context/ThemeContext';
 import { useSettings } from '../../context/SettingsContext';
 import { useMaglevEngine } from '../../context/EngineContext';
-import { ThemeColors, alpha, radius, spacing, type } from '../../constants/theme';
+import { ThemeColors, alpha, radius, spacing, type, touch } from '../../constants/theme';
 import { Banner, Button, Chip, IconButton, ListRow, PressableScale, Sheet } from '../ui';
 import { useListsVersion } from '../../utils/lists/hooks';
 import { listSubtitleEntries } from '../../utils/lists';
@@ -560,7 +560,7 @@ const makeStyles = (c: ThemeColors) =>
     body: { ...type.body, fontSize: type.size.lg, color: c.text },
     heading: { ...type.bodyStrong, fontSize: type.size.lg, color: c.text },
     mono: { ...type.mono, fontSize: type.size.md, color: c.textMuted },
-    hint: { ...type.body, fontSize: 13, color: c.textMuted },
+    hint: { ...type.body, fontSize: type.size.md, color: c.textMuted },
     tabs: { gap: spacing.sm, paddingVertical: spacing.xs },
     skeleton: { height: 56, borderRadius: radius.md, backgroundColor: c.surface, borderWidth: 1, borderColor: c.border, opacity: 0.6 },
     box: { padding: spacing.md, borderRadius: radius.md, borderWidth: 1, borderColor: alpha(c.warning, 0.4), backgroundColor: alpha(c.warning, 0.1), marginBottom: spacing.sm, gap: 2 },
@@ -572,11 +572,11 @@ const makeStyles = (c: ThemeColors) =>
     release: { ...type.mono, fontSize: type.size.md, color: c.text },
     meta: { ...type.body, fontSize: type.size.sm, color: c.textMuted, marginTop: 2 },
     nameRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
-    nameText: { flex: 1, minHeight: 44, justifyContent: 'center' },
+    nameText: { flex: 1, minHeight: touch.min, justifyContent: 'center' },
     searchText: { ...type.mono, fontSize: type.size.md, color: c.text },
     nameActions: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: spacing.sm },
     input: { ...type.mono, fontSize: type.size.md, minHeight: 48, paddingHorizontal: spacing.lg, borderRadius: radius.md, borderWidth: 1, borderColor: c.borderStrong, backgroundColor: c.bg, color: c.text },
     inputError: { borderColor: c.danger },
-    problem: { ...type.body, fontSize: 13, color: c.danger },
-    problemsBtn: { minHeight: 44, justifyContent: 'center' },
+    problem: { ...type.body, fontSize: type.size.md, color: c.danger },
+    problemsBtn: { minHeight: touch.min, justifyContent: 'center' },
   });

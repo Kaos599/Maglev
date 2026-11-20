@@ -1,7 +1,7 @@
 import React, { useMemo } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { useTheme } from '../../context/ThemeContext';
-import { ThemeColors, radius, type } from '../../constants/theme';
+import { ThemeColors, radius, type, touch } from '../../constants/theme';
 import { PressableScale } from './PressableScale';
 
 export interface SegmentOption<T extends string> {
@@ -56,9 +56,9 @@ const makeStyles = (c: ThemeColors) =>
   StyleSheet.create({
     wrap: {
       flexDirection: 'row',
-      height: 44,
-      padding: 3,
-      gap: 3,
+      height: touch.min,
+      padding: 3, // design-exception: track inset 3 gives the active segment an even optical border with its radius
+      gap: 3, // design-exception: track inset 3 gives the active segment an even optical border with its radius
       borderRadius: radius.md,
       backgroundColor: c.surface,
       borderWidth: 1,
@@ -67,5 +67,5 @@ const makeStyles = (c: ThemeColors) =>
     seg: { flex: 1, alignItems: 'center', justifyContent: 'center', borderRadius: radius.sm + 1 },
     active: { backgroundColor: c.accent },
     pressed: { backgroundColor: c.surfaceRaised },
-    label: { ...type.bodyStrong, fontSize: 13 },
+    label: { ...type.bodyStrong, fontSize: type.size.md },
   });

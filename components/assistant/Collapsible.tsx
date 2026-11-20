@@ -1,7 +1,7 @@
 import React, { useMemo } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import { useTheme } from '../../context/ThemeContext';
-import { ThemeColors, spacing } from '../../constants/theme';
+import { ThemeColors, spacing, touch } from '../../constants/theme';
 import { PixelIcon } from '../PixelIcon';
 
 export interface CollapsibleProps {
@@ -38,7 +38,7 @@ export function Collapsible({ open, onToggle, accessibilityLabel, header, childr
 
 const makeStyles = (c: ThemeColors) =>
   StyleSheet.create({
-    head: { minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+    head: { minHeight: touch.min, flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
     headBody: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
     pressed: { backgroundColor: c.surfaceRaised },
     turned: { transform: [{ rotate: '180deg' }] },

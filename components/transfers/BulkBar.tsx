@@ -58,5 +58,5 @@ const makeStyles = (c: ThemeColors) =>
     cell: { flex: 1, minHeight: 52, alignItems: 'center', justifyContent: 'center', gap: 2, borderRadius: radius.md },
     cellPressed: { backgroundColor: c.surfaceRaised },
     cellDisabled: { opacity: 0.4 },
-    label: { ...type.bodyStrong, fontSize: 12 },
+    label: { ...type.bodyStrong, fontSize: type.size.sm },
   });

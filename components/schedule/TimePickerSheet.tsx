@@ -57,7 +57,7 @@ export function TimePickerSheet({ visible, title, value, onClose, onSubmit }: Ti
 
 const makeStyles = (c: ThemeColors) =>
   StyleSheet.create({
-    label: { ...type.body, fontSize: 13, color: c.textMuted, marginBottom: spacing.sm, marginTop: spacing.xs },
+    label: { ...type.body, fontSize: type.size.md, color: c.textMuted, marginBottom: spacing.sm, marginTop: spacing.xs },
     grid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginBottom: spacing.md },
     actions: { flexDirection: 'row', justifyContent: 'flex-end', gap: spacing.sm, marginTop: spacing.sm },
   });

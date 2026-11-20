@@ -4,7 +4,7 @@ import Animated, { useAnimatedStyle, useSharedValue, withDelay, withSequence, wi
 import { scheduleOnRN } from "react-native-worklets";
 import { useTheme } from "../context/ThemeContext";
 import type { TransferTelemetry } from "../context/EngineContext";
-import { ThemeColors, alpha, isFinishTransition, motion, radius, spacing, type } from "../constants/theme";
+import { ThemeColors, alpha, isFinishTransition, motion, radius, spacing, touch, type } from "../constants/theme";
 import { StatusLine } from "./transfers/StatusLine";
 import { useStatusOpts } from "./transfers/useStatusOpts";
 import { formatEta } from "../utils/rates";
@@ -173,7 +173,7 @@ function TransferCardImpl({
   // and stops taking presses. No spinner, no fake progress; the next engine update settles it.
   const actionBusy = !!t.pending || !!t.lastKnown;
   const canAct = !!action && !selectionMode && !actionBusy;
-  const playRight = spacing.sm + (action ? 44 : 0);
+  const playRight = spacing.sm + (action ? touch.min : 0);
   const a11yActions = [
     { name: "activate", label: selectionMode ? (selected ? "Deselect" : "Select") : "Open" },
     ...(canAct && action ? [{ name: action.kind, label: action.label }] : []),
@@ -227,7 +227,7 @@ function TransferCardImpl({
           }
         }}
         accessibilityState={{ selected: selectionMode ? selected : undefined }}
-        style={[styles.press, showPlay && { paddingRight: 44 + playRight }]}
+        style={[styles.press, showPlay && { paddingRight: touch.min + playRight }]}
       >
         {selectionMode ? (
           <View style={styles.rail}>
@@ -365,7 +365,7 @@ const makeStyles = (c: ThemeColors) =>
       flexDirection: "row",
       gap: spacing.md,
       paddingLeft: spacing.lg,
-      paddingRight: 44 + spacing.sm,
+      paddingRight: touch.min + spacing.sm,
       paddingVertical: spacing.md,
     },
     rail: { width: 24, alignSelf: "stretch", alignItems: "center", justifyContent: "center" },
@@ -375,8 +375,8 @@ const makeStyles = (c: ThemeColors) =>
       right: spacing.sm,
       top: "50%",
       marginTop: -22,
-      width: 44,
-      height: 44,
+      width: touch.min,
+      height: touch.min,
     },
     // Over the top of the action column (44 wide, right spacing.sm), above the button's own area.
     subtitleAnchor: { position: "absolute", right: spacing.sm + 8, top: 4, width: 28, height: 28 },
@@ -390,5 +390,5 @@ const makeStyles = (c: ThemeColors) =>
       gap: spacing.sm,
       minHeight: 36,
     },
-    name: { ...type.mono, fontSize: 13, lineHeight: 18, color: c.text, flex: 1 },
+    name: { ...type.mono, fontSize: type.size.md, lineHeight: 18, color: c.text, flex: 1 },
   });

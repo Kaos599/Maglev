@@ -80,14 +80,14 @@ const makeStyles = (c: ThemeColors) =>
   StyleSheet.create({
     scroll: { flexGrow: 0, flexShrink: 1 },
     body: { gap: spacing.md, paddingBottom: spacing.md },
-    label: { ...type.bodyStrong, fontSize: 14, color: c.text },
+    label: { ...type.bodyStrong, fontSize: type.size.base, color: c.text },
     gap: { marginTop: spacing.sm },
     row: { flexDirection: 'row', gap: spacing.md, alignItems: 'flex-start' },
     icon: { width: 20, minHeight: 20, alignItems: 'center', justifyContent: 'center', marginTop: 1 },
-    copy: { ...type.body, fontSize: 14, lineHeight: 20, color: c.text, flex: 1 },
+    copy: { ...type.body, fontSize: type.size.base, lineHeight: 20, color: c.text, flex: 1 },
     note: { marginTop: spacing.sm },
-    techLabel: { ...type.bodyStrong, fontSize: 14, color: c.textMuted },
+    techLabel: { ...type.bodyStrong, fontSize: type.size.base, color: c.textMuted },
     tech: { gap: spacing.sm, paddingBottom: spacing.sm },
-    techCopy: { ...type.body, fontSize: 13, lineHeight: 18, color: c.textMuted },
+    techCopy: { ...type.body, fontSize: type.size.md, lineHeight: 18, color: c.textMuted },
     footer: { marginTop: spacing.md },
   });
