@@ -25,12 +25,14 @@ const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 
   // ---- pure host logic ----
   const ph = require(path.join(root, 'utils/browser/privateHosts.ts'));
-  check('hostOf strips scheme, www, port and path', ph.hostOf('https://www.Example.com:8080/a?b#c') === 'example.com');
+  check('hostOf strips scheme, port and path but keeps www', ph.hostOf('https://www.Example.com:8080/a?b#c') === 'www.example.com');
   check('hostOf ignores non-web addresses', ['about:blank', 'data:text/html,x', 'magnet:?xt=1', 'file:///a', ''].every((u) => ph.hostOf(u) === ''));
   check('hostsToWipe adds parent domains', same(ph.hostsToWipe(['https://a.b.example.com/x'], []).sort(), ['a.b.example.com', 'b.example.com', 'example.com']));
+  check('hostsToWipe keeps the www host itself and its parent', same(ph.hostsToWipe(['https://www.site.com/'], []).sort(), ['site.com', 'www.site.com']));
+  check('hostsToWipe never targets a bare public suffix', same(ph.hostsToWipe(['https://www.shop.co.uk/'], []).sort(), ['shop.co.uk', 'www.shop.co.uk']), ph.hostsToWipe(['https://www.shop.co.uk/'], []).join(','));
   check('hostsToWipe skips IPs and single labels', ph.hostsToWipe(['http://192.168.1.2/', 'http://localhost/'], []).length === 0);
-  const kept = ph.hostsToWipe(['https://nyaa.si/', 'https://www.nyaa.si/x', 'https://cdn.nyaa.si/', 'https://other.org/'], ['nyaa.si']);
-  check('search hosts and their subdomains are never wiped', same(kept, ['other.org']), kept.join(','));
+  const kept = ph.hostsToWipe(['https://nyaa.si/', 'https://www.nyaa.si/x', 'https://cdn.nyaa.si/', 'https://www.other.org/'], ['nyaa.si']);
+  check('search hosts and their subdomains are never wiped', same(kept.sort(), ['other.org', 'www.other.org']), kept.join(','));
   check('a parent of a search host is not wiped either', same(ph.hostsToWipe(['https://x.example.com/'], ['mirror.example.com']), ['x.example.com']));
   const keep = ph.searchKeepHosts({
     enabledProviders: [{ homepage: 'https://nyaa.si', mirrors: ['https://nyaa.land'] }],
@@ -58,29 +60,44 @@ const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
   s1.note('https://site-a.com/other');
   s1.note('https://nyaa.si/');
   s1.note('about:blank');
-  check('hosts are remembered once each, web only', same(s1.pending().sort(), ['nyaa.si', 'site-a.com']));
+  check('hosts are remembered once each, web only', same(s1.pending().sort(), ['nyaa.si', 'site-a.com', 'www.site-a.com']));
   const persisted = JSON.parse(store.get(ph.PRIVATE_HOSTS_KEY));
-  check('the list is persisted as host names only', same(persisted.sort(), ['nyaa.si', 'site-a.com']) && !JSON.stringify(persisted).includes('/page'));
+  check('the list is persisted as host names only', same(persisted.sort(), ['nyaa.si', 'site-a.com', 'www.site-a.com']) && !JSON.stringify(persisted).includes('/page'));
   check('nothing is wiped before the browser is left', cleared.length === 0);
 
   // Simulated kill: a new session object (a fresh process) reads the persisted list and wipes it at start.
   const s2 = mk();
-  check('a new process sees the leftover hosts', same(s2.pending().sort(), ['nyaa.si', 'site-a.com']));
+  check('a new process sees the leftover hosts', same(s2.pending().sort(), ['nyaa.si', 'site-a.com', 'www.site-a.com']));
   const removed = await s2.wipe();
-  check('wipe expires cookies for the visited hosts only (search host skipped)', cleared.length === 1 && same(cleared[0], ['https://site-a.com/']), JSON.stringify(cleared));
-  check('wipe returns the count and empties the page cache', removed === 1 && cacheCleared === 1);
+  check('wipe expires cookies for the visited hosts only (search host skipped)', cleared.length === 1 && same(cleared[0].slice().sort(), ['https://site-a.com/', 'https://www.site-a.com/']), JSON.stringify(cleared));
+  check('wipe returns the count and empties the page cache', removed === 2 && cacheCleared === 1);
   check('the persisted list is deleted after the wipe', same(JSON.parse(store.get(ph.PRIVATE_HOSTS_KEY)), []) && s2.pending().length === 0);
   await s2.wipe();
   check('an empty list wipes nothing (no needless cache clear)', cleared.length === 1 && cacheCleared === 1);
   const s3 = mk();
   check('the next start finds nothing', s3.pending().length === 0);
 
-  const sFail = ph.createPrivateSession({
-    kvGet: () => null, kvSet: () => {}, clearCookies: async () => { throw new Error('x'); }, clearCache: async () => {}, keepHosts: () => [],
+  let cacheRuns = 0;
+  const fStore = new Map();
+  const mkFail = (cookieOk) => ph.createPrivateSession({
+    kvGet: (k) => (fStore.has(k) ? fStore.get(k) : null), kvSet: (k, v) => fStore.set(k, v),
+    clearCookies: async () => { if (!cookieOk) throw new Error('x'); return 1; }, clearCache: async () => { cacheRuns++; }, keepHosts: () => [],
   });
+  const sFail = mkFail(false);
   sFail.note('https://a.com/');
-  await sFail.wipe();
-  check('a failing wipe still drops the list (no retry loop) and does not throw', sFail.pending().length === 0);
+  let threw = false;
+  try { await sFail.wipe(); } catch { threw = true; }
+  check('a failing cookie clear does not throw and the cache is still emptied', !threw && cacheRuns === 1);
+  check('a failing cookie clear keeps the host list so the next start retries', sFail.pending().includes('a.com') && JSON.parse(fStore.get(ph.PRIVATE_HOSTS_KEY)).includes('a.com'));
+  const sRetry = mkFail(true);
+  await sRetry.wipe();
+  check('the retry succeeds and then drops the list', sRetry.pending().length === 0);
+  const sCacheFail = ph.createPrivateSession({
+    kvGet: () => null, kvSet: () => {}, clearCookies: async () => 1, clearCache: async () => { throw new Error('c'); }, keepHosts: () => [],
+  });
+  sCacheFail.note('https://b.com/');
+  await sCacheFail.wipe();
+  check('a failing cache clear does not keep the cookie list', sCacheFail.pending().length === 0);
 
   // ---- history gated ----
   const hs = read('utils/history/store.ts');
@@ -141,11 +158,12 @@ const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
   // ---- screen wiring ----
   const br = read('app/browser.tsx');
   check('hosts are noted only while private (page, found files, downloads)', (br.match(/getBrowserPrefs\(\)\.privateBrowsing/g) || []).length === 3 && /privateSession\.note\(e\.url\)/.test(br) && /privateSession\.note\(it\.url\)/.test(br));
-  check('leaving the browser wipes', /useFocusEffect\([\s\S]{0,400}privateSession\.wipe\(\)/.test(br));
+  check('leaving the browser (unmount) wipes, tab-bar blur does not', /useEffect\(\s*\(\) => \{[\s\S]{0,200}mountedScreens \+= 1[\s\S]{0,500}privateSession\.wipe\(\)/.test(br) && !/useFocusEffect\(\s*useCallback\(\s*\(\) => \(\) => \{\s*setTimeout/.test(br));
   check('app start wipes a killed session', /privateSession\.wipe\(\)/.test(read('app/_layout.tsx')));
   const sess = read('utils/browser/privateSession.ts');
   check('the wipe uses clearCookies, never the whole jar', /clearCookies/.test(sess) && !/cookies: true/.test(sess));
   check('the wipe keeps enabled search sources and site checks', /enabledProviders/.test(sess) && /clearances/.test(sess));
+  check('a failed cookie clear is not swallowed (the list stays)', /if \(cookiesOk\)/.test(read('utils/browser/privateHosts.ts')));
   check('the cache clear leaves cookies alone', /cookies: false, cache: true/.test(sess));
   check('indicator shown while private', /prefs\.privateBrowsing \? \(\s*<PixelIcon name="shield"/.test(br));
 
@@ -154,7 +172,10 @@ const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
   const idx = read('utils/settingsIndex.ts');
   check('settings index entry exists with keywords', /"browser-private-browsing",\s*"Private browsing"/.test(idx) && /"incognito"/.test(idx) && /"don't save"/.test(idx));
   const copy = read('constants/copy.ts');
-  check('copy says what it does in plain words', /Don't keep history or open tabs, and clear cookies from sites you visit when you leave the browser\./.test(copy));
+  check('copy says what it does and what it leaves', /Don't keep history or open tabs, and clear cookies and cached pages from sites you visit when you leave the browser\. Site storage and third-party cookies can stay\./.test(copy));
+  check('SECURITY.md states the limit', /Private browsing[^\n]*(site storage|third-party)/i.test(read('SECURITY.md')));
+  const kt2 = read('modules/maglev-engine/android/src/main/java/com/maglev/engine/MaglevEngineModule.kt');
+  check('native clearCookies expires host-only and Domain forms with Max-Age=0 and path variants', /Max-Age=0; Path=\$path; Secure/.test(kt2) && /Domain=\.\$host; Max-Age=0; Path=\$path/.test(kt2));
 
   if (failed) { console.error(`\n${failed} check(s) failed`); process.exit(1); }
   console.log('\nprivate browsing: all checks passed');

@@ -320,7 +320,7 @@ export const historyCopy = {
   settings: {
     section: 'History',
     private: 'Private browsing',
-    privateSubtitle: "Don't keep history or open tabs, and clear cookies from sites you visit when you leave the browser.",
+    privateSubtitle: "Don't keep history or open tabs, and clear cookies and cached pages from sites you visit when you leave the browser. Site storage and third-party cookies can stay.",
     privateIndicator: 'Private browsing is on',
     save: 'Save history',
     saveSubtitle: 'Keeps the pages you open on this phone.',

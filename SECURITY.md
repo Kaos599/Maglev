@@ -23,7 +23,7 @@ Examples of what to report:
 - A web page, link or torrent that can read or write files outside the download folder.
 - A way for another app on the phone, or a device on the same network, to control downloads, use the video streaming server without its session token, or read the browser's cookies.
 - Cookies, passwords or private links ending up in places they should not: logs, the debug log export, notifications, backups or other apps.
-- Private browsing keeping history, cookies or cache after you leave the browser.
+- Private browsing keeping history, first-party cookies or cache after you leave the browser. (Site storage such as localStorage, and third-party cookies, are known limits.)
 - Maglev sending data anywhere you did not ask it to, or anything the [privacy policy](https://harshdayal.dev/maglev/privacy) doesn't list.
 
 Not security problems (open a normal issue):

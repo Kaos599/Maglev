@@ -5,27 +5,38 @@
  * What it does, and what it cannot do:
  * - While private browsing is on, every host the browser loads (page navigations, found files, downloads the page
  *   starts) is remembered. When the user leaves the browser, the cookies of those hosts are expired through
- *   `clearCookies` and the page cache is emptied.
+ *   `clearCookies` and the page cache is emptied. The real host is kept (`www.site.com` is not `site.com`: the cookie
+ *   jar returns host-only cookies only for the exact host), and each parent domain is expired too, down to the
+ *   registrable domain (never a bare suffix such as `com` or `co.uk`).
  * - Android has ONE cookie jar for the whole app. The Cloudflare site checks of Search live in it
  *   (docs/SEARCH_CONTRACT.md section 8), so nothing here wipes the jar: only hosts that are not Search's are expired.
  * - The list of hosts is also written to kv, so a kill in the middle of a private session is cleaned up at the next
  *   start. Only host names are stored, never page addresses, and the list is deleted after the wipe.
- * - Not covered: localStorage and IndexedDB (clearing web storage is global and would also reset Search's sites), and
- *   cookies of third-party hosts the app never saw a request for.
+ * - Not covered: localStorage and IndexedDB (Android can only clear those for the whole app, which would also reset
+ *   Search's sites; the per-site clear runs inside one open page), cookies of third-party hosts the app never saw a
+ *   request for, and cookies set on a deeper path than the page the app saw. The setting's copy says so.
  */
 
-/** A bare lower-case host without `www.`, or '' when `urlOrHost` has none. */
+/** A lower-case host (`www.` kept), or '' when `urlOrHost` has none. */
 export function hostOf(urlOrHost: string): string {
   const s = (urlOrHost ?? '').trim().toLowerCase();
   if (!s) return '';
   const m = /^[a-z][a-z0-9+.-]*:\/\/(?:[^/?#@]*@)?([^/?#:]+)/.exec(s);
   const h = m ? m[1] : /^[a-z0-9.-]+$/.test(s) ? s : '';
-  return h.replace(/^www\./, '').replace(/\.$/, '');
+  return h.replace(/\.$/, '');
 }
 
 /** True when `a` is `b` or a subdomain of it, or the other way round (they can share cookies). */
 function related(a: string, b: string): boolean {
   return a === b || a.endsWith(`.${b}`) || b.endsWith(`.${a}`);
+}
+
+const SLD = new Set(['co', 'com', 'org', 'net', 'gov', 'edu', 'ac', 'or', 'ne', 'go']);
+
+/** How many labels the shortest wipeable domain of `labels` has: 2, or 3 under a country pair such as co.uk. */
+function minLabels(labels: string[]): number {
+  const n = labels.length;
+  return n >= 3 && labels[n - 1].length === 2 && SLD.has(labels[n - 2]) ? 3 : 2;
 }
 
 /**
@@ -39,7 +50,8 @@ export function hostsToWipe(visited: Iterable<string>, keep: Iterable<string>): 
     const h = hostOf(v);
     if (!h || /^[\d.]+$/.test(h) || !h.includes('.')) continue; // IPs and single labels have no parents worth expiring
     const labels = h.split('.');
-    for (let i = 0; i <= labels.length - 2; i++) {
+    const min = minLabels(labels);
+    for (let i = 0; i <= labels.length - min; i++) {
       const cand = labels.slice(i).join('.');
       if (keepHosts.some((k) => related(cand, k))) continue;
       out.add(cand);
@@ -116,7 +128,8 @@ export function createPrivateSession(deps: PrivateSessionDeps) {
       return [...load()];
     },
     /**
-     * Expires the cookies of the remembered hosts (minus Search's) and empties the page cache, then deletes the list.
+     * Expires the cookies of the remembered hosts (minus Search's) and empties the page cache (each step on its own),
+     * then deletes the list unless the cookie clear failed.
      * Safe to call at any time; does nothing when the list is empty. Returns how many cookies were removed.
      */
     async wipe(): Promise<number> {
@@ -125,14 +138,22 @@ export function createPrivateSession(deps: PrivateSessionDeps) {
       const snapshot = [...set];
       const targets = hostsToWipe(snapshot, deps.keepHosts());
       let removed = 0;
+      let cookiesOk = true;
       try {
         removed = await deps.clearCookies(targets.map((h) => `https://${h}/`));
+      } catch {
+        cookiesOk = false;
+      }
+      try {
         await deps.clearCache();
       } catch {
-        // Best effort: the list is dropped either way so a failing wipe does not retry forever.
+        // The cache is best effort; it never decides whether the cookie list is kept.
       }
-      for (const h of snapshot) set.delete(h);
-      save();
+      // A failed cookie clear keeps the list, so the next start tries again.
+      if (cookiesOk) {
+        for (const h of snapshot) set.delete(h);
+        save();
+      }
       return removed;
     },
   };

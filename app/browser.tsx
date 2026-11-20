@@ -77,6 +77,9 @@ const QUIET_NOTICE: Partial<Record<BrowserRefusalReason, string>> = {
 /** How long the Undo row stays after Remove, Clear or closing tabs. */
 const UNDO_MS = 5000;
 
+/** Browser screens currently mounted (the Browse tab and the /browser route can both be). */
+let mountedScreens = 0;
+
 /** inTab: shown inside the tab bar, which already pads for the system navigation area, so the bottom inset is skipped. */
 export default function BrowserScreen({ inTab = false }: { inTab?: boolean }) {
   const { colors, dark } = useTheme();
@@ -408,21 +411,19 @@ export default function BrowserScreen({ inTab = false }: { inTab?: boolean }) {
     }, [handleBack, instanceId]),
   );
 
-  // Private browsing: leaving the browser (screen blurred or unmounted) wipes the cookies of the hosts seen. The
-  // callback is stable on purpose: a changing one would run the cleanup in the middle of a session. The Browse tab and
-  // the /browser route share one tab set, so moving between them is not leaving: after a short wait, another instance
-  // that took the view owner token means the browser is still open and nothing is wiped (the list waits for next time).
-  useFocusEffect(
-    useCallback(
-      () => () => {
-        setTimeout(() => {
-          const owner = getViewOwner();
-          if (owner == null || owner === instanceId) void privateSession.wipe();
-        }, 300);
-      },
-      [instanceId],
-    ),
-  );
+  // Private browsing: really leaving the browser wipes the cookies of the hosts seen. Moving between the Browse tab and
+  // other tabs is not leaving (the tab screen stays mounted and its private tabs stay open), so this runs on unmount
+  // only, and only when no other browser screen is still mounted after a short wait (the Browse tab and the /browser
+  // route share one tab set). A session that is never left this way is wiped at the next app start (_layout.tsx).
+  useEffect(() => {
+    mountedScreens += 1;
+    return () => {
+      mountedScreens -= 1;
+      setTimeout(() => {
+        if (mountedScreens === 0) void privateSession.wipe();
+      }, 300);
+    };
+  }, []);
 
   // ---- found list (per active tab) ----
   useEffect(() => () => {

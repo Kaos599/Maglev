@@ -470,18 +470,33 @@ class MaglevEngineModule : Module() {
             promise.resolve(runCatching { android.webkit.CookieManager.getInstance().getCookie(url) }.getOrNull() ?: "")
         }
 
-        // Expires every cookie the jar holds for each URL (the hosts the user passed a check on). Returns how many were removed.
+        // Expires every cookie the jar returns for each URL (hosts the user passed a check on, or a private session
+        // visited). Returns how many names were expired.
+        // CookieManager.setCookie(url, value): "Any existing cookie with the same host, path and name will be replaced";
+        // an already-expired value (Max-Age=0) is how the Chromium jar deletes. getCookie(url) only returns cookies that
+        // match that URL (host-only cookies of www.site.com are NOT returned for https://site.com/), so callers pass
+        // each host they care about. Per name this expires the host-only form and the Domain=.host form, each at "/" and
+        // at every directory of the URL's own path, with Secure set so __Secure-/__Host- cookies are accepted.
+        // https://developer.android.com/reference/android/webkit/CookieManager#setCookie(java.lang.String,%20java.lang.String)
         AsyncFunction("clearCookies") { urls: List<String>, promise: Promise ->
             var removed = 0
             runCatching {
                 val cm = android.webkit.CookieManager.getInstance()
                 for (url in urls) {
-                    val host = Uri.parse(url).host ?: continue
-                    val names = cm.getCookie(url)?.split(";")?.map { it.substringBefore("=").trim() }?.filter { it.isNotEmpty() } ?: continue
+                    val parsed = Uri.parse(url)
+                    val host = parsed.host ?: continue
+                    val names = cm.getCookie(url)?.split(";")?.map { it.substringBefore("=").trim() }?.filter { it.isNotEmpty() }?.distinct() ?: continue
+                    val paths = linkedSetOf("/")
+                    var dir = ""
+                    for (seg in (parsed.path ?: "").split("/").filter { it.isNotEmpty() }.dropLast(1)) {
+                        dir += "/$seg"
+                        paths.add(dir)
+                    }
                     for (name in names) {
-                        // The jar matches on name, domain and path: expire both the host and its dotted domain.
-                        cm.setCookie(url, "$name=; Max-Age=0; Path=/")
-                        cm.setCookie(url, "$name=; Domain=.$host; Max-Age=0; Path=/")
+                        for (path in paths) {
+                            cm.setCookie(url, "$name=; Max-Age=0; Path=$path; Secure")
+                            cm.setCookie(url, "$name=; Domain=.$host; Max-Age=0; Path=$path; Secure")
+                        }
                         removed++
                     }
                 }
