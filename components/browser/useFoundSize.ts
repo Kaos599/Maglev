@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import type { FoundItem, StreamProbe } from 'maglev-engine';
+import type { DownloadOptions, FoundItem, StreamProbe } from 'maglev-engine';
 import { createSizeProber, fetchContentLength, isProbeable, streamEstimate } from '../../utils/foundSize';
 import { downloadHeaders } from './FoundDownload';
 
@@ -12,7 +12,7 @@ export interface FoundSize {
   height: number | null;
 }
 
-type ProbeStream = (url: string, options?: { headers?: Record<string, string> }) => Promise<{ ok: boolean } & Partial<StreamProbe>>;
+type ProbeStream = (url: string, options?: Pick<DownloadOptions, 'headers'>) => Promise<{ ok: boolean } & Partial<StreamProbe>>;
 
 // One prober for the whole app: sizes are cached per address, three requests at a time.
 const prober = createSizeProber();
@@ -39,7 +39,9 @@ export function useFoundSize(item: FoundItem, userAgent: string, probeStream: Pr
           const est = res.ok ? streamEstimate(res.variants ?? []) : null;
           return est ? { size: est.bytes, estimate: true, height: est.height } : UNKNOWN;
         }
-        return { size: await fetchContentLength(item.url, headers), estimate: false, height: null };
+        // A plain fetch takes string headers only: the per-host cookie list is for the engine's stream requests.
+        const { Cookies: _perHost, ...plain } = headers;
+        return { size: await fetchContentLength(item.url, plain as Record<string, string>), estimate: false, height: null };
       })
       .then((v) => live && setFound(v ?? UNKNOWN));
     return () => {

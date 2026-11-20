@@ -30,12 +30,37 @@ export interface DownloadTarget {
 
 type Phase = 'probing' | 'ready' | 'error' | 'adding';
 
-/** Headers that make the download look like the page asked for it (cookies, referer, user agent). */
+/** "https://host" for a page link, or '' when it has none. Sent as the Origin. */
+export function originOf(url: string): string {
+  const m = /^(https?:\/\/(?:[^/?#@]*@)?(?:\[[^\]]+\]|[^/?#]+))/i.exec((url ?? '').trim());
+  return m ? m[1].replace(/\/\/[^/@]*@/, '//') : '';
+}
+
+/**
+ * Headers that make the download look like the page asked for it: the cookies, the referer, the origin and the
+ * user agent. `Cookie` is the playlist link's own cookie; `Cookies` holds the WebView jar's cookies per host (the
+ * playlist host and the page host), and the engine sends each host its own on every playlist, key and segment
+ * request (NATIVE_CONTRACT 24.8, "Request headers").
+ */
 export async function downloadHeaders(t: Pick<DownloadTarget, 'url' | 'pageUrl' | 'userAgent'>): Promise<NonNullable<DownloadOptions['headers']>> {
   const headers: NonNullable<DownloadOptions['headers']> = {};
   const cookie = await getCookies(t.url);
   if (cookie) headers.Cookie = cookie;
-  if (t.pageUrl) headers.Referer = t.pageUrl;
+  const cookies: { host: string; cookie: string }[] = [];
+  const seen = new Set<string>();
+  for (const u of [t.url, t.pageUrl]) {
+    const host = hostOf(u);
+    if (!host || seen.has(host)) continue;
+    seen.add(host);
+    const c = u === t.url ? cookie : await getCookies(u);
+    if (c) cookies.push({ host, cookie: c });
+  }
+  if (cookies.length) headers.Cookies = cookies;
+  if (t.pageUrl) {
+    headers.Referer = t.pageUrl;
+    const origin = originOf(t.pageUrl);
+    if (origin) headers.Origin = origin;
+  }
   if (t.userAgent) headers['User-Agent'] = t.userAgent;
   return headers;
 }

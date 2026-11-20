@@ -108,7 +108,9 @@ impl Downloads {
             client,
             user_agent: l.user_agent.clone(),
             referer: l.referer.clone(),
+            origin: l.origin.clone(),
             cookie: l.cookie.clone(),
+            host_cookies: l.host_cookies.clone(),
             auth: l.auth.clone(),
             origin_host: host_of(&r.url),
         })
@@ -172,12 +174,15 @@ impl Downloads {
         }
         let (client, _) = self.scoped_client(clean.as_str(), opts.allow_lan).await?;
         let h = opts.headers.unwrap_or_default();
+        let host_cookies = h.host_cookies();
         let host = host_of(clean.as_str());
         let ctx = ReqCtx {
             client,
             user_agent: h.user_agent,
             referer: h.referer,
+            origin: h.origin,
             cookie: h.cookie,
+            host_cookies,
             auth,
             origin_host: host.clone(),
         };
@@ -219,12 +224,15 @@ impl Downloads {
         let spec = spec.ok_or_else(EngineError::not_found)?;
         let (client, pinned) = self.scoped_client(clean.as_str(), opts.allow_lan).await?;
         let h = opts.headers.clone().unwrap_or_default();
+        let host_cookies = h.host_cookies();
         let host = host_of(clean.as_str());
         let ctx = ReqCtx {
             client,
             user_agent: h.user_agent.clone(),
             referer: h.referer.clone(),
+            origin: h.origin.clone(),
             cookie: h.cookie.clone(),
+            host_cookies: host_cookies.clone(),
             auth: auth.clone(),
             origin_host: host.clone(),
         };
@@ -232,7 +240,7 @@ impl Downloads {
             .await
             .map_err(|e| probe_error(probe_fail_of(e, &host)))?;
         let same = known_total == 0 || resolved.total_items() == known_total;
-        let needs_login = auth.is_some() || h.cookie.is_some() || has_secret_query(clean.as_str());
+        let needs_login = auth.is_some() || h.cookie.is_some() || !host_cookies.is_empty() || has_secret_query(clean.as_str());
         self.update(id, |rec, live| {
             if !same {
                 delete_partial(rec);
@@ -251,6 +259,8 @@ impl Downloads {
             live.cookie = h.cookie;
             live.referer = h.referer;
             live.user_agent = h.user_agent;
+            live.origin = h.origin;
+            live.host_cookies = host_cookies;
             live.attempts = 0;
             live.denied = 0;
         });

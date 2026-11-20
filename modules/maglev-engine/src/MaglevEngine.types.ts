@@ -572,7 +572,15 @@ export interface DownloadOptions {
   paused?: boolean;
   /** 1 to 8. The engine downloads on one connection today. */
   segments?: number;
-  headers?: { Cookie?: string; Referer?: string; 'User-Agent'?: string };
+  headers?: {
+    Cookie?: string;
+    Referer?: string;
+    'User-Agent'?: string;
+    /** The page's origin ("https://host"). Streams send it on every request. */
+    Origin?: string;
+    /** WebView jar cookies per host. Streams send each host its own (NATIVE_CONTRACT 24.8). */
+    Cookies?: { host: string; cookie: string }[];
+  };
   /** Refused with UNSUPPORTED until the engine can check it. */
   expectedHash?: { alg: 'sha256'; hex: string };
   downLimitBps?: number;
