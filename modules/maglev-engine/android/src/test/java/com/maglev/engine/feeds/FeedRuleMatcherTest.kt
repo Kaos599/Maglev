@@ -36,6 +36,10 @@ class FeedRuleMatcherTest {
             val label = "vector $i (${v.optString("note")})"
             val expectedEpisode = if (expect.isNull("episode")) null else expect.getString("episode")
             assertEquals("$label episode", expectedEpisode, FeedRuleMatcher.episodeKey(title))
+            if (expect.has("key")) {
+                val expectedKey = if (expect.isNull("key")) null else expect.getString("key")
+                assertEquals("$label key", expectedKey, FeedRuleMatcher.episodeIdentity(title))
+            }
             assertEquals("$label match", expect.getBoolean("match"), FeedRuleMatcher.matches(rule, title, seen))
         }
     }

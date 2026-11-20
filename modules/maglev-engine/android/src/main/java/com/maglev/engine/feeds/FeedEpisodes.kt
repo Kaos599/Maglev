@@ -9,10 +9,10 @@ package com.maglev.engine.feeds
 object FeedEpisodes {
     /** Episode keys of queued adds for [ruleId]. */
     fun inFlight(pending: Collection<PendingAdd>, ruleId: String): Set<String> =
-        pending.filter { it.ruleId == ruleId }.mapNotNull { FeedRuleMatcher.episodeKey(it.title) }.toSet()
+        pending.filter { it.ruleId == ruleId }.mapNotNull { FeedRuleMatcher.episodeIdentity(it.title) }.toSet()
 
     /** Episode keys of completed adds, grouped by rule. */
     fun byRule(done: Collection<PendingAdd>): Map<String, Set<String>> =
-        done.groupBy { it.ruleId }.mapValues { (_, adds) -> adds.mapNotNull { FeedRuleMatcher.episodeKey(it.title) }.toSet() }
+        done.groupBy { it.ruleId }.mapValues { (_, adds) -> adds.mapNotNull { FeedRuleMatcher.episodeIdentity(it.title) }.toSet() }
             .filterValues { it.isNotEmpty() }
 }

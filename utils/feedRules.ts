@@ -13,6 +13,8 @@ export interface MatchResult {
   match: boolean;
   /** Episode key such as "s2e5", or null when the title has none. */
   episode: string | null;
+  /** Show-aware key "the show|s1e2", or null when the title has no episode. */
+  key: string | null;
 }
 
 const SXXEYY = /s(\d{1,3})\s?e(\d{1,4})/i;
@@ -28,6 +30,40 @@ export function parseEpisodeKey(title: string): string | null {
   m = ABSOLUTE.exec(title);
   if (m) return `s1e${parseInt(m[1], 10)}`;
   return null;
+}
+
+const BRACKET_TAGS = /\[[^\]]*\]|\([^)]*\)/g;
+const SPACED_TAGS = /\b(?:web ?dl|web ?rip|blu ?ray|h ?26[45]|x ?26[45])\b/g;
+const YEAR = /^(?:19|20)\d\d$/;
+const QUALITY_TAGS = new Set([
+  '480p', '576p', '720p', '1080p', '1440p', '2160p', '4k', 'uhd', 'hd', 'web', 'webdl', 'webrip', 'bluray',
+  'bdrip', 'brrip', 'hdrip', 'hdtv', 'dvdrip', 'remux', 'x264', 'x265', 'h264', 'h265', 'hevc', 'avc', 'xvid',
+  'aac', 'ac3', '10bit', 'hdr', 'proper', 'repack',
+]);
+
+/**
+ * Show name: the title text before the episode marker, lower case, ". _ -" as spaces, bracket groups, years and
+ * quality/source tags dropped, spaces collapsed. Empty when there is no marker. Same rules as Kotlin FeedRuleMatcher.showName.
+ */
+export function showName(title: string): string {
+  const starts = [SXXEYY, NXNN, ABSOLUTE].map((re) => re.exec(title)?.index).filter((i): i is number => i !== undefined);
+  if (starts.length === 0) return '';
+  const text = title
+    .slice(0, Math.min(...starts))
+    .replace(BRACKET_TAGS, ' ')
+    .toLowerCase()
+    .replace(/[._-]+/g, ' ')
+    .replace(SPACED_TAGS, (m) => m.replace(' ', ''));
+  return text
+    .split(/\s+/)
+    .filter((w) => w !== '' && !YEAR.test(w) && !QUALITY_TAGS.has(w))
+    .join(' ');
+}
+
+/** "<show>|s1e2" (show may be empty), or null when the title has no episode. */
+export function episodeIdentity(title: string): string | null {
+  const ep = parseEpisodeKey(title);
+  return ep === null ? null : `${showName(title)}|${ep}`;
 }
 
 /** Returns the pattern when the text is wrapped in /…/, else null. */
@@ -71,6 +107,11 @@ export function matchItem(rule: RuleMatchInput, title: string, seenEpisodes: rea
   const included = matchesSpec(rule.include, title, 'every');
   const excluded = matchesSpec(rule.exclude, title, 'some');
   let match = included && !excluded;
-  if (match && rule.episodes === 'new_only' && episode !== null && seenEpisodes.includes(episode)) match = false;
-  return { match, episode };
+  const key = episodeIdentity(title);
+  if (match && rule.episodes === 'new_only' && episode !== null && key !== null) {
+    // Old keys without a show ("s1e2") count only while no show-aware key exists for that episode.
+    if (seenEpisodes.includes(key)) match = false;
+    else if (seenEpisodes.includes(episode) && !seenEpisodes.some((k) => k.endsWith(`|${episode}`))) match = false;
+  }
+  return { match, episode, key };
 }

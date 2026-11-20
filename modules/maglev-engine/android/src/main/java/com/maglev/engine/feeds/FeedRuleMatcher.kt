@@ -22,6 +22,16 @@ object FeedRuleMatcher {
     private val nxnn = Regex("\\b(\\d{1,2})x(\\d{2,3})\\b", RegexOption.IGNORE_CASE)
     private val anime = Regex("\\s-\\s(\\d{1,4})(?:v\\d+)?(?=[\\s\\[(.]|$)")
 
+    /** Start index of the earliest episode marker in [title], or -1. */
+    private fun markerStart(title: String): Int {
+        val starts = listOfNotNull(
+            seasonEpisode.find(title)?.range?.first,
+            nxnn.find(title)?.range?.first,
+            anime.find(title)?.range?.first,
+        )
+        return starts.minOrNull() ?: -1
+    }
+
     /** `S01E02`, `1x02`, `S01E01-E03` (first episode) and anime ` - 12` / ` - 12v2`, as "s1e2". Null when absent. */
     fun episodeKey(title: String): String? {
         seasonEpisode.find(title)?.let { return "s${it.groupValues[1].toInt()}e${it.groupValues[2].toInt()}" }
@@ -30,13 +40,46 @@ object FeedRuleMatcher {
         return null
     }
 
-    /** True when [title] passes include and exclude, and (for new_only) its episode is not in [seenEpisodes]. */
+    private val bracketTags = Regex("\\[[^\\]]*]|\\([^)]*\\)")
+    private val separators = Regex("[._\\-]+")
+    private val spacedTags = Regex("\\b(?:web ?dl|web ?rip|blu ?ray|h ?26[45]|x ?26[45])\\b")
+    private val year = Regex("^(?:19|20)\\d\\d$")
+    private val qualityTags = setOf(
+        "480p", "576p", "720p", "1080p", "1440p", "2160p", "4k", "uhd", "hd", "web", "webdl", "webrip", "bluray",
+        "bdrip", "brrip", "hdrip", "hdtv", "dvdrip", "remux", "x264", "x265", "h264", "h265", "hevc", "avc", "xvid",
+        "aac", "ac3", "10bit", "hdr", "proper", "repack",
+    )
+
+    /**
+     * Show name of [title]: the text before the episode marker, lower case, `. _ -` as spaces, bracket groups
+     * (release groups), years and quality/source tags dropped, spaces collapsed. Empty when there is no marker
+     * or nothing is left.
+     */
+    fun showName(title: String): String {
+        val at = markerStart(title)
+        if (at < 0) return ""
+        val text = title.substring(0, at).replace(bracketTags, " ").lowercase().replace(separators, " ")
+            .replace(spacedTags) { it.value.replace(" ", "") }
+        return text.split(Regex("\\s+")).filter { it.isNotEmpty() && !year.matches(it) && it !in qualityTags }.joinToString(" ")
+    }
+
+    /** `<show>|s1e2` (show may be empty), or null when [title] has no episode marker. */
+    fun episodeIdentity(title: String): String? = episodeKey(title)?.let { "${showName(title)}|$it" }
+
+    /**
+     * True when [title] passes include and exclude, and (for new_only) its episode is not in [seenEpisodes].
+     * Seen keys are `<show>|s1e2`. An old key without a show ("s1e2") still counts, but only while no new-style
+     * key for that episode exists.
+     */
     fun matches(rule: FeedRule, title: String, seenEpisodes: Collection<String>): Boolean {
         if (!includeOk(rule.include, title)) return false
         if (excludeHit(rule.exclude, title)) return false
         if (rule.episodes == "new_only") {
             val key = episodeKey(title)
-            if (key != null && seenEpisodes.contains(key)) return false
+            if (key != null) {
+                if (seenEpisodes.contains("${showName(title)}|$key")) return false
+                if (seenEpisodes.contains(key) && seenEpisodes.none { it.endsWith("|$key") }) return false
+            }
         }
         return true
     }
