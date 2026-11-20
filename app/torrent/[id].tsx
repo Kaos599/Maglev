@@ -4,7 +4,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import * as Clipboard from 'expo-clipboard';
 import { maglevEngine, type DetailFile, type FilePriority, type TorrentLimits } from 'maglev-engine';
 import { useTheme } from '../../context/ThemeContext';
-import { useMaglevEngine } from '../../context/EngineContext';
+import { useEngineActions } from '../../context/EngineContext';
 import { ThemeColors, radius, spacing, type } from '../../constants/theme';
 import { formatProgressPercent, formatSpeed } from '../../constants/format';
 import { haptic } from '../../constants/haptics';
@@ -111,7 +111,7 @@ export default function TorrentDetailScreen() {
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
-  const { pauseTorrent, resumeTorrent, deleteTorrent } = useMaglevEngine();
+  const { pauseTorrent, resumeTorrent, deleteTorrent } = useEngineActions();
 
   const [tab, setTab] = useState<Tab>('files');
   const { detail, pieces, status, error, tick, retry } = useTorrentDetail(id, tab === 'pieces');

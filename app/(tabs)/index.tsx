@@ -35,7 +35,7 @@ import { BlockContextProvider, queueLimitOf, useActiveBlocks } from '../../utils
 import * as DocumentPicker from 'expo-document-picker';
 import { maglevEngine, type DownloadSnapshot } from 'maglev-engine';
 import { haptic } from '../../constants/haptics';
-import { useMaglevEngine, type TransferTelemetry } from '../../context/EngineContext';
+import { useEngineActions, useEngineState, useEngineTelemetry, type TransferTelemetry } from '../../context/EngineContext';
 import { useSettings } from '../../context/SettingsContext';
 import { useTheme } from '../../context/ThemeContext';
 import { ThemeColors, radius, spacing, type } from '../../constants/theme';
@@ -96,8 +96,9 @@ export default function TransfersScreen() {
   const router = useRouter();
   const { settings } = useSettings();
   const [searchPrefs] = useSearchPrefs();
+  const { telemetry: liveTelemetry, downloads: liveDownloads } = useEngineTelemetry();
+  const { clipboardMagnet } = useEngineState();
   const {
-    telemetry: liveTelemetry,
     pauseTorrent,
     resumeTorrent,
     pauseAll,
@@ -106,14 +107,12 @@ export default function TransfersScreen() {
     removeTransfers,
     // The notice banner is drawn by the global toast host in the root layout; here we only raise notices.
     showNotice,
-    clipboardMagnet,
     clearClipboardMagnet,
-    downloads: liveDownloads,
     pauseDownload,
     resumeDownload,
     removeDownload,
     getFreeSpace,
-  } = useMaglevEngine();
+  } = useEngineActions();
   const focused = useIsFocused();
   const downloadActions = useDownloadActions();
   const subtitleAvail = useSubtitleAvailability();
@@ -196,20 +195,11 @@ export default function TransfersScreen() {
   // moment, so the numbers agree with each other (and the text changes every 30 s, not every tick).
   // Read again when the unfinished set changes. Unknown free space shows nothing.
   const [lowSpace, setLowSpace] = useState<LowSpaceWarning | null>(null);
-  // Link downloads count too: a known size is what they still need, an unknown one needs nothing yet.
-  const needRows = useMemo(
-    () => [
-      ...all,
-      ...downloads.map((d) => ({
-        finished: d.state === 'finished',
-        includedBytes: d.size ?? 0,
-        downloadedBytes: d.downloaded,
-      })),
-    ],
-    [all, downloads],
-  );
-  const allRef = useRef(needRows);
-  allRef.current = needRows;
+  // Link downloads count too (SM-35): see pendingNeedOf for which states and sizes.
+  const allRef = useRef(all);
+  allRef.current = all;
+  const downloadsRef = useRef(downloads);
+  downloadsRef.current = downloads;
   const unfinishedKey = useMemo(
     () =>
       [...all.filter((t) => !t.finished).map((t) => t.id), ...downloads.filter((d) => d.state !== 'finished').map((d) => `d:${d.id}`)].join(','),
@@ -222,7 +212,7 @@ export default function TransfersScreen() {
       if (AppState.currentState === 'background') return;
       void getFreeSpace()
         .then((res) => {
-          if (alive) setLowSpace(lowSpaceWarning(res.ok ? usableFreeOf(res) : null, allRef.current));
+          if (alive) setLowSpace(lowSpaceWarning(res.ok ? usableFreeOf(res) : null, allRef.current, downloadsRef.current));
         })
         .catch(() => {
           if (alive) setLowSpace(null);
