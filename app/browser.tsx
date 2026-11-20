@@ -766,6 +766,7 @@ export default function BrowserScreen({ inTab = false }: { inTab?: boolean }) {
               accessibilityRole="button"
               accessibilityLabel={bookmarkCopy.savedIndicator}
               hitSlop={14}
+              style={styles.savedIcon}
             >
               <PixelIcon name="bookmark" size={16} color={colors.accent} />
             </PressableScale>
@@ -1141,6 +1142,8 @@ const makeStyles = (c: ThemeColors) =>
       borderColor: c.border,
       borderRadius: radius.md,
     },
+    // A fixed 16×16 box centred in the bar, so the tappable icon lines up with the shield and lock beside it.
+    savedIcon: { width: 16, height: 16, alignSelf: 'center', alignItems: 'center', justifyContent: 'center' },
     addressEditing: { borderColor: c.borderStrong },
     input: { fontSize: type.size.md, paddingVertical: 0 },
     tabButton: { width: touch.min, height: touch.min, alignItems: 'center', justifyContent: 'center' },
