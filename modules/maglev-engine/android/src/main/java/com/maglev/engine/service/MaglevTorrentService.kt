@@ -51,6 +51,20 @@ class MaglevTorrentService : Service() {
         private const val LOCK_TIMEOUT_MS = 15 * 60 * 1000L
         private const val LOCK_REFRESH_MS = 10 * 60 * 1000L
 
+        /** Seeding holds the locks only while upload is busy: above this speed within the last [UPLOAD_LOCK_HOLD_MS]. */
+        const val UPLOAD_LOCK_BPS = 32L * 1024
+        const val UPLOAD_LOCK_HOLD_MS = 60_000L
+
+        /**
+         * Locks are for moving bytes, not for waiting. Held while something downloads, resolves, hashes or streams,
+         * or while upload ran above [UPLOAD_LOCK_BPS] in the last [UPLOAD_LOCK_HOLD_MS]. Idle seeding holds nothing.
+         * [lastFastUpAt] is 0 when upload has not been fast yet.
+         */
+        fun wantsLocks(s: TransferSummary, lastFastUpAt: Long, now: Long): Boolean {
+            if (s.downloading > 0 || s.initializing > 0 || s.checking > 0 || s.streaming) return true
+            return lastFastUpAt != 0L && now - lastFastUpAt <= UPLOAD_LOCK_HOLD_MS
+        }
+
         @Volatile
         var instance: MaglevTorrentService? = null
             private set
@@ -60,6 +74,7 @@ class MaglevTorrentService : Service() {
     private var wakeLock: PowerManager.WakeLock? = null
     private var wifiLock: WifiManager.WifiLock? = null
     private var lockAcquiredAt = 0L
+    private var lastFastUpAt = 0L
     private var lastKey: String? = null
     private var lastNotifyAt = 0L
     private var summary = TransferSummary()
@@ -130,7 +145,9 @@ class MaglevTorrentService : Service() {
     fun onSummary(s: TransferSummary) {
         handler.post {
             summary = s
-            updateLocks(s.busy > 0)
+            val at = SystemClock.elapsedRealtime()
+            if (s.upBps > UPLOAD_LOCK_BPS) lastFastUpAt = at
+            updateLocks(wantsLocks(s, lastFastUpAt, at))
             val key = listOf(
                 Notifications.title(s), Notifications.text(s), s.downloadingPct, s.progressPct,
                 s.downloading > 0, s.busy > 0, s.pausedByUser > 0, s.singleTorrentId,
@@ -162,7 +179,10 @@ class MaglevTorrentService : Service() {
                 val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
                 wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "Maglev:transfer").apply { setReferenceCounted(false) }
             }
-            if (wifiLock == null) {
+            // API 34+ remaps WIFI_MODE_FULL_HIGH_PERF to LOW_LATENCY, which only works with the screen on and the app in
+            // front, and can lower throughput. A background transfer gains nothing from it, so no Wi-Fi lock there.
+            // https://developer.android.com/reference/android/net/wifi/WifiManager#WIFI_MODE_FULL_LOW_LATENCY
+            if (wifiLock == null && Build.VERSION.SDK_INT < 34) {
                 val wm = applicationContext.getSystemService(Context.WIFI_SERVICE) as? WifiManager
                 wifiLock = wm?.createWifiLock(WifiManager.WIFI_MODE_FULL_HIGH_PERF, "Maglev:wifi")?.apply { setReferenceCounted(false) }
             }
@@ -188,6 +208,7 @@ class MaglevTorrentService : Service() {
         } catch (_: Exception) {
         }
         lockAcquiredAt = 0L
+        lastFastUpAt = 0L
     }
 
     /** The app was swiped away while the service runs: empty the browser history if the user asked for that (contract 24.9). */

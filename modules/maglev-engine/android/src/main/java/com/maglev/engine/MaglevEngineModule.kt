@@ -168,6 +168,7 @@ class MaglevEngineModule : Module() {
         // The launcher icon switch waits until the app is out of sight (NATIVE_CONTRACT section 26).
         OnActivityEntersBackground {
             AppUpdater.inForeground = false
+            EngineHost.onBackground()
             context?.let { AppIconManager.applyPending(it) }
         }
 

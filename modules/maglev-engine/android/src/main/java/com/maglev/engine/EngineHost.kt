@@ -41,7 +41,8 @@ import kotlinx.coroutines.ExecutorCoroutineDispatcher
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.asCoroutineDispatcher
-import kotlinx.coroutines.delay
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.Dispatchers
@@ -94,6 +95,12 @@ object EngineHost {
     private const val DL_PREFIX = "dl:"
     private const val FEED_RESOLVE_MS = 20_000L
     private const val INIT_GIVE_UP_MS = 10 * 60_000L
+    /** Poll period while something is busy, and the floor for any poll. */
+    private const val BUSY_POLL_MS = 1000L
+    /** Poll period while nothing downloads, resolves, checks, streams or seeds. pollNow() wakes the loop at once. */
+    private const val IDLE_POLL_MS = 5000L
+    /** With the app out of sight, telemetry goes to JS at most this often. Coming back emits at once. */
+    private const val BACKGROUND_EMIT_MS = 5000L
 
     @Volatile private var ctx: Context? = null
 
@@ -118,6 +125,13 @@ object EngineHost {
      */
     @Volatile private var startWarning: String? = null
     private var pollJob: Job? = null
+    /** Wakes the poll loop out of its idle sleep so it re-reads the summary (something was added or resumed). */
+    private val pollWake = Channel<Unit>(Channel.CONFLATED)
+    @Volatile private var appInForeground = true
+    /** Set when the app comes to the front: the next poll emits telemetry whatever the background throttle says. */
+    @Volatile private var forceEmit = false
+    @Volatile private var lastEmitAt = 0L
+    @Volatile private var lastPollAt = 0L
     private val prevFinished = HashMap<String, Boolean>()
     private val prevState = HashMap<String, String?>()
     /** Info-hashes already handed to the media scanner for their current completion (contract 12.2). */
@@ -447,7 +461,15 @@ object EngineHost {
         }
     }
 
+    /** The activity left the screen: telemetry to JS slows to [BACKGROUND_EMIT_MS]. The service and governance are unaffected. */
+    fun onBackground() {
+        appInForeground = false
+    }
+
     fun onForeground() {
+        appInForeground = true
+        forceEmit = true
+        if (initialized) pollNow()
         holdForPaused = false
         val c = ctx ?: return
         onForegroundHealth()
@@ -479,7 +501,8 @@ object EngineHost {
         pollJob = pollScope.launch {
             while (isActive && initialized) {
                 val started = SystemClock.elapsedRealtime()
-                if (hasObserver()) {
+                // A wake-up right after pollNow() finds a fresh poll and only re-times the sleep.
+                if (hasObserver() && started - lastPollAt >= BUSY_POLL_MS - 100) {
                     try {
                         pollOnce()
                     } catch (t: Throwable) {
@@ -487,7 +510,9 @@ object EngineHost {
                     }
                 }
                 scheduleTick()
-                delay((1000 - (SystemClock.elapsedRealtime() - started)).coerceAtLeast(100))
+                val period = if (lastSummary?.let { it.busy == 0 } == true) IDLE_POLL_MS else BUSY_POLL_MS
+                val wait = (period - (SystemClock.elapsedRealtime() - started)).coerceAtLeast(100)
+                withTimeoutOrNull(wait) { pollWake.receive() }
             }
         }
     }
@@ -512,6 +537,8 @@ object EngineHost {
             } catch (t: Throwable) {
                 Log.w(TAG, "poll failed", t)
             }
+            // The loop may be in a 5 s idle sleep. Adds and resumes land here, so it drops back to 1 s at once.
+            pollWake.trySend(Unit)
         }
     }
 
@@ -526,6 +553,7 @@ object EngineHost {
             if (res["code"] == "NOT_INITIALIZED") initialized = false
             return
         }
+        lastPollAt = SystemClock.elapsedRealtime()
         ctx?.let { heartbeat(it) }
         val torrents = Json.list(res["torrents"])
         val downloads = Json.list(res["downloads"])
@@ -538,10 +566,15 @@ object EngineHost {
         val summary = summarize(transfers, res["streaming"] == true)
         lastSummary = summary
         refreshTile(summary)
-        @Suppress("UNCHECKED_CAST")
-        val body = LinkedHashMap(Json.camelize(res) as Map<String, Any?>)
-        body["serviceBlocked"] = serviceBlocked
-        emit("onTelemetry", body)
+        val nowMs = SystemClock.elapsedRealtime()
+        if (emitter != null && (appInForeground || forceEmit || nowMs - lastEmitAt >= BACKGROUND_EMIT_MS)) {
+            forceEmit = false
+            lastEmitAt = nowMs
+            @Suppress("UNCHECKED_CAST")
+            val body = LinkedHashMap(Json.camelize(res) as Map<String, Any?>)
+            body["serviceBlocked"] = serviceBlocked
+            emit("onTelemetry", body)
+        }
         driveService(summary)
         healthTick(torrents, summary)
         copyStagedTorrents(torrents)
