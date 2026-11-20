@@ -3,7 +3,7 @@ import { FlatList, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useTheme } from '../context/ThemeContext';
 import { useMaglevEngine } from '../context/EngineContext';
-import { ThemeColors, radius, spacing, type } from '../constants/theme';
+import { ThemeColors, radius, spacing, touch, type } from '../constants/theme';
 import { haptic } from '../constants/haptics';
 import { empty, historyCopy, notices } from '../constants/copy';
 import { PixelIcon } from '../components/PixelIcon';
@@ -334,7 +334,7 @@ const makeStyles = (c: ThemeColors) =>
       flexDirection: 'row',
       alignItems: 'center',
       gap: spacing.sm,
-      minHeight: 44,
+      minHeight: touch.min,
       marginHorizontal: spacing.lg,
       marginBottom: spacing.sm,
       paddingLeft: spacing.md,
@@ -343,7 +343,7 @@ const makeStyles = (c: ThemeColors) =>
       borderColor: c.border,
       borderRadius: radius.md,
     },
-    input: { ...type.body, flex: 1, minWidth: 0, fontSize: type.size.md, color: c.text, paddingVertical: 0, minHeight: 44 },
+    input: { ...type.body, flex: 1, minWidth: 0, fontSize: type.size.md, color: c.text, paddingVertical: 0, minHeight: touch.min },
     header: { ...type.heading, fontSize: type.size.md, color: c.textMuted, paddingHorizontal: spacing.lg, paddingTop: spacing.lg, paddingBottom: spacing.xs },
     row: { flexDirection: 'row', alignItems: 'center', paddingLeft: spacing.lg, paddingRight: spacing.xs },
     rowMain: { flex: 1, minHeight: 56, justifyContent: 'center', minWidth: 0 },

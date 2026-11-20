@@ -97,5 +97,5 @@ export default function SubtitleSourcesSettings() {
 const makeStyles = (c: ThemeColors) =>
   StyleSheet.create({
     section: { gap: spacing.sm },
-    empty: { ...type.body, fontSize: 13, color: c.textMuted, padding: spacing.lg },
+    empty: { ...type.body, fontSize: type.size.md, color: c.textMuted, padding: spacing.lg },
   });

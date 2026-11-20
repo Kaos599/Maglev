@@ -131,5 +131,5 @@ const makeStyles = (c: ThemeColors) =>
   StyleSheet.create({
     brand: { alignItems: 'center', gap: spacing.lg, paddingVertical: spacing.xxl },
     footer: { minHeight: touch.min, alignItems: 'center', justifyContent: 'center', paddingVertical: spacing.md },
-    footerText: { ...type.mono, fontSize: 13, color: c.textMuted, textAlign: 'center' },
+    footerText: { ...type.mono, fontSize: type.size.md, color: c.textMuted, textAlign: 'center' },
   });

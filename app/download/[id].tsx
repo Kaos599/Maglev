@@ -5,7 +5,7 @@ import * as Clipboard from 'expo-clipboard';
 import { isDownloadLink, normalizeIncoming, type DownloadSnapshot } from 'maglev-engine';
 import { useTheme } from '../../context/ThemeContext';
 import { useEngineActions, useEngineTelemetry } from '../../context/EngineContext';
-import { ThemeColors, radius, spacing, type } from '../../constants/theme';
+import { ThemeColors, radius, spacing, touch, type } from '../../constants/theme';
 import { formatBytes } from '../../constants/format';
 import { haptic } from '../../constants/haptics';
 import { empty, notices } from '../../constants/copy';
@@ -458,21 +458,21 @@ const makeStyles = (c: ThemeColors) =>
     stack: { gap: spacing.sm },
     row: { flexDirection: 'row', gap: spacing.sm },
     half: { flex: 1 },
-    hint: { ...type.body, fontSize: 13, color: c.textMuted },
+    hint: { ...type.body, fontSize: type.size.md, color: c.textMuted },
     hintTight: { marginTop: -spacing.xs, marginBottom: spacing.md },
     // Same look as WhyHeld: a heading, then each reason's title and text. No side stripe.
     why: { gap: spacing.md },
-    whyHeading: { ...type.heading, fontSize: 16, color: c.text },
+    whyHeading: { ...type.heading, fontSize: type.size.xl, color: c.text },
     whyItem: { gap: 2 },
-    whyTitle: { ...type.bodyStrong, fontSize: 14, color: c.text },
-    whyBody: { ...type.body, fontSize: 13, color: c.textMuted, lineHeight: 18 },
+    whyTitle: { ...type.bodyStrong, fontSize: type.size.base, color: c.text },
+    whyBody: { ...type.body, fontSize: type.size.md, color: c.textMuted, lineHeight: 18 },
     linkBox: { gap: spacing.sm, marginTop: spacing.md },
     label: { ...type.bodyStrong, fontSize: type.size.md, color: c.textMuted },
     field: {
       ...type.mono,
       fontSize: type.size.md,
       color: c.text,
-      minHeight: 44,
+      minHeight: touch.min,
       backgroundColor: c.surface,
       borderWidth: 1,
       borderColor: c.borderStrong,
@@ -480,5 +480,5 @@ const makeStyles = (c: ThemeColors) =>
       paddingHorizontal: spacing.md,
     },
     fieldInvalid: { borderColor: c.danger },
-    error: { ...type.body, fontSize: 13, color: c.danger },
+    error: { ...type.body, fontSize: type.size.md, color: c.danger },
   });

@@ -66,7 +66,7 @@ check('a window request opens a tab with this tab as opener', /onNewWindow: \(id
 console.log('tab button');
 check('beside the menu: count in a box, :D above 99', /tabCount > 99 \? browserTabs\.tabButtonMany : tabCount/.test(scr) && /browserTabs\.tabButtonLabel\(tabCount\)/.test(scr));
 check('tap opens the switcher, long press opens a new tab', /setSwitcherOpen\(true\)/.test(scr) && /onLongPress=\{newTab\}/.test(scr));
-check('the tab button is a 44 px target', /tabButton: \{ width: 44, height: 44/.test(scr));
+check('the tab button is a 44 px target', /tabButton: \{ width: (44|touch\.min), height: (44|touch\.min)/.test(scr));
 
 console.log('switcher');
 check('newest first through switcherOrder', /tabs=\{switcherOrder\(tabsState\)\}/.test(scr));

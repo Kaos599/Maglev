@@ -4,7 +4,7 @@ import { Stack } from 'expo-router';
 import { AccentName, AppearanceMode } from 'maglev-engine';
 import { useSettings } from '../../context/SettingsContext';
 import { useTheme } from '../../context/ThemeContext';
-import { ThemeColors, accents, radius, spacing, type } from '../../constants/theme';
+import { ThemeColors, accents, radius, spacing, touch, type } from '../../constants/theme';
 import { PixelIcon } from '../../components/PixelIcon';
 import { ListRow, PressableScale, RadioCard, SegmentedControl, Toggle } from '../../components/ui';
 import { Card, Caption, SettingsPage } from '../../components/settings/SettingsParts';
@@ -193,22 +193,22 @@ export default function InterfaceSettings() {
 const makeStyles = (c: ThemeColors) =>
   StyleSheet.create({
     block: { padding: spacing.lg, gap: spacing.sm },
-    sectionLabel: { ...type.bodyStrong, fontSize: 14, color: c.textMuted, paddingHorizontal: spacing.lg, paddingTop: spacing.lg, paddingBottom: spacing.xs },
-    label: { ...type.bodyStrong, fontSize: 14, color: c.text },
+    sectionLabel: { ...type.bodyStrong, fontSize: type.size.base, color: c.textMuted, paddingHorizontal: spacing.lg, paddingTop: spacing.lg, paddingBottom: spacing.xs },
+    label: { ...type.bodyStrong, fontSize: type.size.base, color: c.text },
     // Two rows of four: each item is a quarter of the row, so 8 swatches fit a 360dp screen.
     thumbWrap: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
     swatches: { flexDirection: 'row', flexWrap: 'wrap', rowGap: spacing.md },
-    swatchItem: { width: '25%', alignItems: 'center', gap: 4 },
-    swatchLabel: { ...type.body, fontSize: 12, color: c.textMuted },
+    swatchItem: { width: '25%', alignItems: 'center', gap: spacing.xs },
+    swatchLabel: { ...type.body, fontSize: type.size.sm, color: c.textMuted },
     // 44px outer target; the ring sits inside it so the swatch itself is 34px.
     swatchRing: {
-      width: 44,
-      height: 44,
-      borderRadius: radius.md + 2,
+      width: touch.min,
+      height: touch.min,
+      borderRadius: radius.md + 2, // design-exception: concentric with the 44 px swatch ring, 2 px over radius.md
       borderWidth: 2,
       borderColor: 'transparent',
       alignItems: 'center',
       justifyContent: 'center',
     },
-    swatch: { width: 34, height: 34, borderRadius: radius.md - 2, alignItems: 'center', justifyContent: 'center' },
+    swatch: { width: 34, height: 34, borderRadius: radius.md - 2, alignItems: 'center', justifyContent: 'center' }, // design-exception: swatch sits inside the 2 px ring, radius is concentric (radius.md - 2)
   });

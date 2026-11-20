@@ -38,7 +38,7 @@ import { haptic } from '../../constants/haptics';
 import { useEngineActions, useEngineState, useEngineTelemetry, type TransferTelemetry } from '../../context/EngineContext';
 import { useSettings } from '../../context/SettingsContext';
 import { useTheme } from '../../context/ThemeContext';
-import { ThemeColors, radius, spacing, type } from '../../constants/theme';
+import { ThemeColors, radius, spacing, touch, type } from '../../constants/theme';
 import { pickMainFile } from '../../utils/mainFile';
 import { takeNextShared } from '../../utils/shareQueue';
 import type { DownloadAction } from '../../utils/downloadCopy';
@@ -688,7 +688,7 @@ const makeStyles = (c: ThemeColors) =>
     clearRow: { paddingHorizontal: spacing.lg, paddingBottom: spacing.sm },
     searchWrap: { paddingHorizontal: spacing.lg, paddingTop: spacing.sm },
     searchField: {
-      minHeight: 44,
+      minHeight: touch.min,
       flexDirection: 'row',
       alignItems: 'center',
       gap: spacing.sm,
@@ -701,13 +701,13 @@ const makeStyles = (c: ThemeColors) =>
     searchInput: {
       ...type.mono,
       flex: 1,
-      fontSize: 13,
+      fontSize: type.size.md,
       color: c.text,
       paddingVertical: 0,
     },
     fileError: { paddingHorizontal: spacing.lg, paddingBottom: spacing.sm },
     noMatch: { flex: 1, justifyContent: 'center' },
-    listContent: { paddingTop: spacing.xs, paddingBottom: 96 },
+    listContent: { paddingTop: spacing.xs, paddingBottom: 96 }, // design-exception: bottom inset clears the floating add button
   });
 
 export { ErrorBoundary } from '../../components/ErrorScreen';

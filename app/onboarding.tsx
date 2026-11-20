@@ -291,6 +291,6 @@ const makeStyles = (c: ThemeColors) =>
       borderColor: c.border,
       backgroundColor: c.surface,
     },
-    folderText: { ...type.mono, fontSize: 13, color: c.text, flexShrink: 1 },
-    caption: { ...type.body, fontSize: 12, lineHeight: 17, color: c.textMuted, textAlign: 'center' },
+    folderText: { ...type.mono, fontSize: type.size.md, color: c.text, flexShrink: 1 },
+    caption: { ...type.body, fontSize: type.size.sm, lineHeight: 17, color: c.textMuted, textAlign: 'center' },
   });

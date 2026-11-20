@@ -49,7 +49,7 @@ const makeStyles = (c: ThemeColors) =>
     item: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.md, paddingHorizontal: spacing.lg, paddingVertical: spacing.md },
     divider: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: c.border },
     // A small square in the accent colour, in keeping with the pixel style; centred on the first line of text.
-    bullet: { width: 6, height: 6, marginTop: 8, backgroundColor: c.accent },
-    text: { ...type.body, flex: 1, fontSize: 15, lineHeight: 22, color: c.text },
+    bullet: { width: 6, height: 6, marginTop: spacing.sm, backgroundColor: c.accent },
+    text: { ...type.body, flex: 1, fontSize: type.size.lg, lineHeight: 22, color: c.text },
     empty: { padding: spacing.lg },
   });

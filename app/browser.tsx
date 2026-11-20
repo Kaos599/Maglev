@@ -14,7 +14,7 @@ import {
 } from 'maglev-engine';
 import { useTheme } from '../context/ThemeContext';
 import { useMaglevEngine } from '../context/EngineContext';
-import { ThemeColors, radius, spacing, type } from '../constants/theme';
+import { ThemeColors, radius, spacing, touch, type } from '../constants/theme';
 import { haptic } from '../constants/haptics';
 import { banners, browserTabs, empty, findCopy, foundTray, historyCopy, notices, textSizeCopy } from '../constants/copy';
 import { PixelIcon } from '../components/PixelIcon';
@@ -971,8 +971,8 @@ const makeStyles = (c: ThemeColors) =>
     bar: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: spacing.xs, minHeight: 56 },
     address: {
       flex: 1,
-      minWidth: 44,
-      height: 44,
+      minWidth: touch.min,
+      height: touch.min,
       flexDirection: 'row',
       alignItems: 'center',
       gap: spacing.sm,
@@ -984,9 +984,9 @@ const makeStyles = (c: ThemeColors) =>
     },
     addressEditing: { borderColor: c.borderStrong },
     input: { ...type.mono, flex: 1, minWidth: 0, fontSize: type.size.md, color: c.text, paddingVertical: 0 },
-    tabButton: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
+    tabButton: { width: touch.min, height: touch.min, alignItems: 'center', justifyContent: 'center' },
     tabBox: {
-      paddingHorizontal: 6,
+      paddingHorizontal: 6, // design-exception: count pill inside the 44 px tab glyph
       paddingVertical: 2,
       alignItems: 'center',
       justifyContent: 'center',
@@ -1012,7 +1012,7 @@ const makeStyles = (c: ThemeColors) =>
       gap: spacing.sm,
     },
     activeChip: {
-      minHeight: 44,
+      minHeight: touch.min,
       paddingHorizontal: spacing.md,
       justifyContent: 'center',
       borderRadius: radius.md,
@@ -1026,7 +1026,7 @@ const makeStyles = (c: ThemeColors) =>
     hint: {
       position: 'absolute',
       right: spacing.md,
-      bottom: spacing.md + 44 + spacing.sm,
+      bottom: spacing.md + touch.min + spacing.sm,
       maxWidth: '80%',
       paddingHorizontal: spacing.md,
       paddingVertical: spacing.sm,

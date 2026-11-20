@@ -1,10 +1,10 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Alert, AppState, StyleSheet, View } from 'react-native';
+import { AppState, StyleSheet, Text, View } from 'react-native';
 import { Stack } from 'expo-router';
 import { useTheme } from '../../context/ThemeContext';
-import { spacing } from '../../constants/theme';
+import { spacing, type } from '../../constants/theme';
 import { watchCopy } from '../../constants/copy';
-import { Button, ListRow, Toggle } from '../../components/ui';
+import { Button, Dialog, ListRow, Toggle } from '../../components/ui';
 import { Caption, Card, ChipGroup, SettingsPage } from '../../components/settings/SettingsParts';
 import { INTERVALS, filtersLine, lastCheckedText, type IntervalHours, type Watch } from '../../utils/watch/logic';
 import { refreshWatches, removeWatchFromStore, updateWatchInStore, useWatches } from '../../utils/watch/store';
@@ -15,10 +15,14 @@ function subtitleOf(w: Watch, now: number): string {
 }
 
 export default function WatchSettings() {
-  useTheme();
+  const { colors } = useTheme();
   const watches = useWatches();
   const [now, setNow] = useState(() => Date.now());
-  const styles = useMemo(() => StyleSheet.create({ block: { gap: spacing.sm } }), []);
+  const [pendingDelete, setPendingDelete] = useState<Watch | null>(null);
+  const styles = useMemo(
+    () => StyleSheet.create({ block: { gap: spacing.sm }, body: { ...type.body, color: colors.textMuted } }),
+    [colors],
+  );
 
   // The background job writes from another JS context. Read fresh when this screen opens and when the app returns.
   useEffect(() => {
@@ -33,12 +37,8 @@ export default function WatchSettings() {
     return () => sub.remove();
   }, []);
 
-  const confirmDelete = useCallback((w: Watch) => {
-    Alert.alert(watchCopy.deleteTitle, watchCopy.deleteBody, [
-      { text: 'Cancel', style: 'cancel' },
-      { text: watchCopy.delete, style: 'destructive', onPress: () => removeWatchFromStore(w.id) },
-    ]);
-  }, []);
+  const confirmDelete = useCallback((w: Watch) => setPendingDelete(w), []);
+  const closeDelete = useCallback(() => setPendingDelete(null), []);
 
   return (
     <SettingsPage title={watchCopy.title}>
@@ -80,6 +80,27 @@ export default function WatchSettings() {
         </View>
       ))}
       <Caption>{watchCopy.backgroundNote}</Caption>
+      <Dialog
+        visible={pendingDelete !== null}
+        onClose={closeDelete}
+        title={watchCopy.deleteTitle}
+        actions={
+          <>
+            <Button
+              label={watchCopy.delete}
+              variant="danger"
+              fullWidth
+              onPress={() => {
+                if (pendingDelete) removeWatchFromStore(pendingDelete.id);
+                closeDelete();
+              }}
+            />
+            <Button label="Cancel" variant="secondary" fullWidth onPress={closeDelete} />
+          </>
+        }
+      >
+        <Text style={styles.body}>{watchCopy.deleteBody}</Text>
+      </Dialog>
     </SettingsPage>
   );
 }

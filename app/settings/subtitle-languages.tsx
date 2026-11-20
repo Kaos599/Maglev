@@ -2,7 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { StyleSheet, Text, TextInput, View } from 'react-native';
 import { Stack } from 'expo-router';
 import { useTheme } from '../../context/ThemeContext';
-import { ThemeColors, radius, spacing, type } from '../../constants/theme';
+import { ThemeColors, radius, spacing, touch, type } from '../../constants/theme';
 import { IconButton, ListRow, SectionHeader } from '../../components/ui';
 import { PixelIcon } from '../../components/PixelIcon';
 import { Caption, Card, SettingsPage } from '../../components/settings/SettingsParts';
@@ -93,10 +93,10 @@ const makeStyles = (c: ThemeColors) =>
     section: { gap: spacing.sm },
     row: { flexDirection: 'row', alignItems: 'center', minHeight: 56, paddingHorizontal: spacing.md, gap: spacing.xs },
     divider: { borderTopWidth: 1, borderTopColor: c.border },
-    position: { ...type.mono, width: 18, fontSize: 12, color: c.textMuted, textAlign: 'center' },
+    position: { ...type.mono, width: 18, fontSize: type.size.sm, color: c.textMuted, textAlign: 'center' },
     texts: { flex: 1, gap: 2, marginLeft: spacing.xs },
-    name: { ...type.bodyStrong, fontSize: 15, color: c.text },
-    native: { ...type.body, fontSize: 12, color: c.textMuted },
+    name: { ...type.bodyStrong, fontSize: type.size.lg, color: c.text },
+    native: { ...type.body, fontSize: type.size.sm, color: c.textMuted },
     field: {
       flexDirection: 'row',
       alignItems: 'center',
@@ -108,6 +108,6 @@ const makeStyles = (c: ThemeColors) =>
       borderColor: c.border,
       backgroundColor: c.surface,
     },
-    input: { ...type.body, flex: 1, fontSize: 15, color: c.text, minHeight: 44 },
-    empty: { ...type.body, fontSize: 13, color: c.textMuted, padding: spacing.lg },
+    input: { ...type.body, flex: 1, fontSize: type.size.lg, color: c.text, minHeight: touch.min },
+    empty: { ...type.body, fontSize: type.size.md, color: c.textMuted, padding: spacing.lg },
   });
