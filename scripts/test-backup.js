@@ -53,6 +53,8 @@ async function main() {
     'maglev.assistant.prefs.v1': { presetId: 'openrouter', baseUrl: 'https://openrouter.ai/api/v1', model: 'm', keyRef: 'assistant.openrouter', tokensUsed: { input: 5, output: 6 }, enabled: true, apiKey: 'sk-LEAK' },
     'maglev.schedule.v1': { enabled: true, rules: [] },
     'maglev.tabs.prefs.v1': { order: ['index'], hidden: [] },
+    'maglev.browser.bookmarks.v1': [{ id: 'bm-1', url: 'https://a.example/x', title: 'A', host: 'a.example', addedAt: 5 }, { id: 'bm-2', url: 'https://b.example/', title: 'B', host: 'b.example', addedAt: 6 }],
+    'maglev.browser.history.v1': [{ url: 'https://secret.example/' }],
   };
   const deps = {
     appVersion: '0.19', now: () => 1763000000000, settings, readPref: (k) => prefs[k],
@@ -124,10 +126,19 @@ async function main() {
   check("import keeps this phone's folder and proxy login", merged.downloadFolder.uri === 'content://tree/x' && merged.network.proxy.password === 'hunter2' && merged.storage.customSafUri === 'content://tree/x');
   check('import does not change onboarding state', F.mergeDeviceBound({ ...b.settings, onboarded: true }, { ...settings, onboarded: false }).onboarded === false);
 
+  // ---- Bookmarks ----------------------------------------------------------------------------
+  const bms = b.prefs['maglev.browser.bookmarks.v1'];
+  check('bookmarks are exported and survive the round trip', Array.isArray(bms) && bms.length === 2 && bms[0].url === 'https://a.example/x');
+  check('bookmarks belong to the settings part', F.PART_PREFS.settings.includes('maglev.browser.bookmarks.v1'));
+  check('browsing history is never exported', !text.includes('secret.example') && !('maglev.browser.history.v1' in b.prefs));
+  check('preview counts bookmarks', F.previewCounts(b).bookmarks === 2 && /2 bookmarks/.test(F.previewSentence(F.previewCounts(b))));
+  const noBm = M.parseBackup(JSON.stringify({ format: 'maglev-backup', v: 1, prefs: { 'maglev.tabs.prefs.v1': { order: [] } } }));
+  check('an older backup without bookmarks parses and previews fine', noBm.ok && noBm.backup.prefs['maglev.browser.bookmarks.v1'] === undefined && F.previewCounts(noBm.backup).bookmarks === 0);
+
   // ---- Preview ------------------------------------------------------------------------------
   const p = F.previewCounts(b);
   check('preview counts', p.torrents === 3 && p.downloads === 1 && p.hasSettings && p.searchSources === 2 && p.feeds === 1 && p.hasSchedule && p.hasAssistant);
-  check('preview sentence', F.previewSentence(p) === 'This backup has 3 torrents, 1 download, your settings, 2 search sources and 1 feed.', F.previewSentence(p));
+  check('preview sentence', F.previewSentence(p) === 'This backup has 3 torrents, 1 download, your settings, 2 search sources, 1 feed and 2 bookmarks.', F.previewSentence(p));
   check('preview sentence for the spec example', F.previewSentence({ torrents: 12, downloads: 3, hasSettings: true, searchSources: 28, feeds: 0 }) === 'This backup has 12 torrents, 3 downloads, your settings and 28 search sources.');
   check('empty backup says so', F.previewSentence({ torrents: 0, downloads: 0, hasSettings: false, searchSources: 0, feeds: 0 }) === 'This backup is empty.');
 

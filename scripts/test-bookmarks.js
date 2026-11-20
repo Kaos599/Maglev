@@ -72,6 +72,31 @@ function check(name, cond, extra) {
   B.moveBookmark(B.listBookmarks()[0].id, 1);
   check('moveBookmark persists', JSON.parse(kv.kvGet(B.BOOKMARKS_KEY))[1].title === 'Uno');
 
+  console.log('[merge]');
+  const bm = (id, url, title = 't', addedAt = 1) => ({ id, url, title, host: 'h', addedAt });
+  const have = [bm('a', 'https://a.com/'), bm('b', 'https://b.com/p')];
+  const m1 = B.mergeBookmarks(have, [bm('x', 'https://B.com/p#frag'), bm('c', 'https://c.com/'), bm('d', 'https://d.com/')]);
+  check('merge keeps existing order, appends new ones, skips a duplicate address', m1.map((x) => x.id).join() === 'a,b,c,d');
+  check('merge with nothing new returns the same rows', B.mergeBookmarks(have, have).length === 2 && B.mergeBookmarks(have, []).length === 2);
+  check('merge into empty keeps incoming order', B.mergeBookmarks([], [bm('q', 'https://q.com'), bm('r', 'https://r.com')]).map((x) => x.id).join() === 'q,r');
+  check('merge drops corrupt rows', B.mergeBookmarks(have, [5, null, { id: 'n', url: 'ftp://n.com' }, { url: 'https://nid.com' }, bm('ok', 'https://ok.com')]).map((x) => x.id).join() === 'a,b,ok');
+  check('merge of a non-array changes nothing', B.mergeBookmarks(have, { a: 1 }).length === 2 && B.mergeBookmarks(have, 'x').length === 2);
+  check('merge dedupes inside the incoming list', B.mergeBookmarks([], [bm('1', 'https://z.com'), bm('2', 'https://Z.com/')]).length === 1);
+  check('merge gives a clashing id a new one', (() => { const r = B.mergeBookmarks(have, [bm('a', 'https://other.com')]); return r.length === 3 && new Set(r.map((x) => x.id)).size === 3; })());
+  const nearFull = [];
+  for (let i = 0; i < B.BOOKMARK_CAP - 1; i++) nearFull.push(bm(`e${i}`, `https://e${i}.com/`));
+  const capped = B.mergeBookmarks(nearFull, [bm('n1', 'https://n1.com'), bm('n2', 'https://n2.com')]);
+  check('merge respects the cap, existing first', capped.length === B.BOOKMARK_CAP && capped[B.BOOKMARK_CAP - 1].id === 'n1' && !capped.some((x) => x.id === 'n2'));
+  check('merge does not change its inputs', have.length === 2 && nearFull.length === B.BOOKMARK_CAP - 1);
+  kv.kvSet(B.BOOKMARKS_KEY, JSON.stringify([bm('k1', 'https://k1.com/')]));
+  B.resetBookmarksCache();
+  let notified = 0;
+  const unsub = B.subscribeBookmarks(() => { notified++; });
+  check('importBookmarks returns how many were added', B.importBookmarks([bm('k1', 'https://k1.com'), bm('k2', 'https://k2.com/')]) === 1);
+  check('importBookmarks updates the cache, kv and listeners', B.listBookmarks().length === 2 && JSON.parse(kv.kvGet(B.BOOKMARKS_KEY)).length === 2 && notified === 1);
+  check('importing the same list again adds nothing and stays quiet', B.importBookmarks(B.listBookmarks()) === 0 && notified === 1);
+  unsub();
+
   console.log('[frequent]');
   const rows = [
     { url: 'https://www.a.com/x', host: 'www.a.com', visits: 3 },
@@ -102,7 +127,9 @@ function check(name, cond, extra) {
   check('toggle swaps its label', /saved \? c\.remove : c\.add/.test(toggle));
   const icons = read('components/icons.generated.ts');
   check('bookmark icon exists', /"?bookmark"?:\s*"/.test(icons));
-  check('bookmarks are not in the backup key list (history is not either)', !/bookmarks/.test(read('utils/backup/format.ts')));
+  const fmt = read('utils/backup/format.ts');
+  check('bookmarks travel in the backup (the user\'s own choices), history does not', /bookmarks: 'maglev\.browser\.bookmarks\.v1'/.test(fmt) && !/history/i.test(fmt.replace(/Browsing history[^\n]*/g, '')));
+  check('backup restore merges bookmarks through the store', /importBookmarks/.test(read('utils/backup/io.ts')));
 
   if (failed) {
     console.error(`\n${failed} failed`);

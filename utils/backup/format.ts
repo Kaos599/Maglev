@@ -17,6 +17,8 @@ export const PREF_KEYS = {
   schedule: 'maglev.schedule.v1',
   tabs: 'maglev.tabs.prefs.v1',
   browser: 'maglev.browser.prefs.v1',
+  // Bookmarks are the user's own choices, so they travel. Browsing history is never in a backup.
+  bookmarks: 'maglev.browser.bookmarks.v1',
   assistant: 'maglev.assistant.prefs.v1',
 } as const;
 export type PrefKey = (typeof PREF_KEYS)[keyof typeof PREF_KEYS];
@@ -27,9 +29,9 @@ export type BackupPart = 'settings' | 'search' | 'feeds' | 'schedule' | 'assista
 export type RestorePart = BackupPart | 'stats';
 export const BACKUP_PARTS: readonly BackupPart[] = ['settings', 'search', 'feeds', 'schedule', 'assistant', 'torrents', 'downloads'];
 
-/** Which prefs belong to which part. `settings` also covers tab and browser prefs. */
+/** Which prefs belong to which part. `settings` also covers tab prefs, browser prefs and bookmarks. */
 export const PART_PREFS: Record<Exclude<BackupPart, 'torrents' | 'downloads'>, readonly PrefKey[]> = {
-  settings: [PREF_KEYS.tabs, PREF_KEYS.browser],
+  settings: [PREF_KEYS.tabs, PREF_KEYS.browser, PREF_KEYS.bookmarks],
   search: [PREF_KEYS.search],
   feeds: [PREF_KEYS.feeds, PREF_KEYS.feedAutomation],
   schedule: [PREF_KEYS.schedule],
@@ -200,6 +202,7 @@ export interface BackupPreview {
   feeds: number;
   hasSchedule: boolean;
   hasAssistant: boolean;
+  bookmarks?: number;
   created: number;
 }
 
@@ -217,6 +220,7 @@ export function previewCounts(b: Backup): BackupPreview {
     sources = ids.size || enabled + own;
   }
   const feeds = b.prefs[PREF_KEYS.feeds];
+  const marks = b.prefs[PREF_KEYS.bookmarks];
   return {
     torrents: b.torrents.length,
     downloads: b.downloads.length,
@@ -225,6 +229,7 @@ export function previewCounts(b: Backup): BackupPreview {
     feeds: Array.isArray(feeds) ? feeds.length : 0,
     hasSchedule: b.prefs[PREF_KEYS.schedule] !== undefined,
     hasAssistant: b.prefs[PREF_KEYS.assistant] !== undefined,
+    bookmarks: Array.isArray(marks) ? marks.length : 0,
     created: b.created,
   };
 }
@@ -238,6 +243,7 @@ export function previewSentence(p: BackupPreview): string {
   if (p.hasSettings) parts.push('your settings');
   if (p.searchSources) parts.push(n(p.searchSources, 'search source', 'search sources'));
   if (p.feeds) parts.push(n(p.feeds, 'feed', 'feeds'));
+  if (p.bookmarks) parts.push(n(p.bookmarks, 'bookmark', 'bookmarks'));
   if (parts.length === 0) return 'This backup is empty.';
   const last = parts.pop() as string;
   return `This backup has ${parts.length ? `${parts.join(', ')} and ${last}` : last}.`;

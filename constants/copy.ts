@@ -312,6 +312,7 @@ export const historyCopy = {
   loadMore: 'Loading more',
   retry: 'Retry',
   suggestionsLabel: 'Suggestions from history',
+  bookmarkHint: 'Bookmark',
   /** The ⋮ sheet title: with a page open, and on a blank tab (24.11). */
   menuTitlePage: 'This page',
   menuTitleBlank: 'Browser',
@@ -609,13 +610,13 @@ export const storageCopy = {
 // ---- backup (Settings > Backup and restore) ----
 export const backupCopy = {
   title: 'Backup and restore',
-  export: { title: 'Export backup', subtitle: 'Save your settings and lists to one file.' },
+  export: { title: 'Export backup', subtitle: 'Save your settings, bookmarks and lists to one file.' },
   restore: { title: 'Restore from backup', subtitle: 'Pick a backup file from this phone.' },
   includeStats: { title: 'Include stats', restore: 'Stats', note: 'Stats include the names of what you downloaded.' },
   last: (when: string) => `Last backup ${when}`,
   never: 'No backup yet',
   secrets: 'Passwords, API keys and tokens are never saved in a backup.',
-  notIncluded: 'Downloaded files, chat history and the crash log are not included.',
+  notIncluded: 'Downloaded files, browsing history, chat history and the crash log are not included.',
   exportDone: (name: string) => `Saved ${name}`,
   exportFailed: "Couldn't save the backup",
   readFailed: "Couldn't read that file",
@@ -633,7 +634,7 @@ export const backupCopy = {
   torrentsNote: 'Torrents and downloads are added paused. Files are not in the backup, so Maglev checks the saved folder first.',
   settingsConfirm: {
     title: 'Replace your settings?',
-    body: 'The settings in this backup replace the ones on this phone.',
+    body: 'The settings in this backup replace the ones on this phone. Bookmarks are added to yours.',
     action: 'Replace and restore',
   },
   restoreAction: 'Restore',

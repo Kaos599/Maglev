@@ -1,6 +1,7 @@
 /**
- * Browser bookmarks, persisted in the kv store (UI only: never sent to the engine, not part of a backup because
- * browser history isn't either) and read through a hook. The pure functions work on arrays so tests run them
+ * Browser bookmarks, persisted in the kv store (UI only: never sent to the engine) and read through a hook.
+ * Bookmarks are in a backup, because they are the user's own choices and should survive a reinstall or a new
+ * phone; restore merges them into what is already here. Browsing history is not in a backup. The pure functions work on arrays so tests run them
  * directly; the store functions below wrap them.
  */
 import { useSyncExternalStore } from 'react';
@@ -116,6 +117,29 @@ export function filterBookmarks(list: readonly Bookmark[], query: string): Bookm
   return list.filter((b) => b.title.toLowerCase().includes(q) || b.host.includes(q) || b.url.toLowerCase().includes(q));
 }
 
+/**
+ * Restore: keeps `existing` as it is, in order, then appends the incoming rows whose address isn't already there,
+ * up to BOOKMARK_CAP. Incoming rows go through parseBookmarks, so corrupt ones are dropped. A row whose id is
+ * taken gets a new id. Importing a list into the phone that wrote it adds nothing.
+ */
+export function mergeBookmarks(existing: readonly Bookmark[], incoming: unknown): Bookmark[] {
+  const out = [...existing];
+  if (!Array.isArray(incoming)) return out;
+  const keys = new Set(out.map((b) => normalizeUrl(b.url)));
+  const ids = new Set(out.map((b) => b.id));
+  for (const b of parseBookmarks(JSON.stringify(incoming))) {
+    if (out.length >= BOOKMARK_CAP) break;
+    const key = normalizeUrl(b.url);
+    if (keys.has(key)) continue;
+    keys.add(key);
+    let id = b.id;
+    for (let n = 1; ids.has(id); n++) id = `${b.id}-i${n}`;
+    ids.add(id);
+    out.push(id === b.id ? b : { ...b, id });
+  }
+  return out;
+}
+
 export const isBookmarkedIn = (list: readonly Bookmark[], url: string): boolean => {
   const key = normalizeUrl(url);
   return key !== '' && list.some((b) => normalizeUrl(b.url) === key);
@@ -193,7 +217,16 @@ export function removeBookmarkByUrl(url: string): { bookmark: Bookmark; index: n
   return b ? removeBookmark(b.id) : null;
 }
 
-function subscribe(l: () => void): () => void {
+/** Merges bookmarks from a backup into the list. Returns how many were added; screens refresh through the usual listeners. */
+export function importBookmarks(incoming: unknown): number {
+  const before = listBookmarks();
+  const next = mergeBookmarks(before, incoming);
+  if (next.length === before.length) return 0;
+  commit(next);
+  return next.length - before.length;
+}
+
+export function subscribeBookmarks(l: () => void): () => void {
   listeners.add(l);
   return () => {
     listeners.delete(l);
@@ -201,7 +234,7 @@ function subscribe(l: () => void): () => void {
 }
 
 export function useBookmarks(): Bookmark[] {
-  return useSyncExternalStore(subscribe, listBookmarks, listBookmarks);
+  return useSyncExternalStore(subscribeBookmarks, listBookmarks, listBookmarks);
 }
 
 /** Test hook: forget the in-memory copy so the next read goes to the kv store. */
