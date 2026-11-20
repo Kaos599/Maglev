@@ -8,7 +8,7 @@ export const TAU_MS = 5000;
 /** A longer gap between samples (app was in the background) resets the average. */
 export const RESET_GAP_MS = 15_000;
 /** Below this rate the time left is unknown. */
-export const MIN_ETA_BPS = 1024;
+const MIN_ETA_BPS = 1024;
 
 /** Exponential moving average of a rate. `prev` is null for the first sample. */
 export function smoothRate(prev: number | null | undefined, sample: number, dtMs: number): number {

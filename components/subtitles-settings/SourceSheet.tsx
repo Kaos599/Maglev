@@ -35,6 +35,6 @@ export function SourceSheet({ source, onClose }: { source: SourceRow | null; onC
 const makeStyles = (c: ThemeColors) =>
   StyleSheet.create({
     body: { gap: spacing.sm },
-    label: { ...type.bodyStrong, fontSize: 13, color: c.textMuted },
-    value: { ...type.body, fontSize: 15, color: c.text },
+    label: { ...type.bodyStrong, fontSize: type.size.md, color: c.textMuted },
+    value: { ...type.body, fontSize: type.size.lg, color: c.text },
   });

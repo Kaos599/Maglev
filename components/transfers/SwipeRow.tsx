@@ -4,10 +4,10 @@ import Animated, { useAnimatedReaction, useAnimatedStyle, type SharedValue } fro
 import ReanimatedSwipeable, { SwipeDirection, type SwipeableMethods } from 'react-native-gesture-handler/ReanimatedSwipeable';
 import { scheduleOnRN } from 'react-native-worklets';
 import { useTheme } from '../../context/ThemeContext';
-import { ThemeColors, radius, spacing, type } from '../../constants/theme';
+import { ThemeColors, radius, spacing, type, touch } from '../../constants/theme';
 import { haptic } from '../../constants/haptics';
 import { PixelIcon, type PixelIconName } from '../PixelIcon';
-import type { SwipeRight } from './swipe';
+import { panelOpacity, type SwipeRight } from './swipe';
 
 /** Width of the revealed panel, margin included (rows sit inside a spacing.lg margin). */
 const PANEL = spacing.lg + 96;
@@ -51,9 +51,10 @@ function Panel({
       if (was !== null && past !== was) scheduleOnRN(haptic, 'select');
     },
   );
-  const lit = useAnimatedStyle(() => ({ opacity: sign * translation.value >= TRIGGER ? 1 : 0.85 }));
+  const lit = useAnimatedStyle(() => ({ opacity: panelOpacity(sign * translation.value, TRIGGER) }));
   return (
-    <View style={[s.panel, sign === 1 ? s.panelLeft : s.panelRight]}>
+    // Always hidden from screen readers: the card itself exposes Pause, Resume and Remove as accessibility actions.
+    <View style={[s.panel, sign === 1 ? s.panelLeft : s.panelRight]} importantForAccessibility="no-hide-descendants" accessibilityElementsHidden>
       <Animated.View style={[s.fill, { backgroundColor: fill, alignItems: align }, lit]}>
         <View style={s.content}>
           <PixelIcon name={icon} size={24} color={ink} />
@@ -164,6 +165,6 @@ const makeStyles = (_c: ThemeColors) =>
     panelLeft: { paddingLeft: spacing.lg },
     panelRight: { paddingRight: spacing.lg },
     fill: { flex: 1, justifyContent: 'center', borderRadius: radius.lg, paddingHorizontal: spacing.lg },
-    content: { alignItems: 'center', gap: 2, minWidth: 44 },
-    label: { ...type.mono, fontSize: 12, lineHeight: 16 },
+    content: { alignItems: 'center', gap: 2, minWidth: touch.min },
+    label: { ...type.mono, fontSize: type.size.sm, lineHeight: 16 },
   });

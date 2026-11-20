@@ -1,10 +1,9 @@
 import React, { useMemo, useState } from 'react';
-import { StyleSheet, Text, TextInput, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 import { Stack } from 'expo-router';
 import { useTheme } from '../../context/ThemeContext';
-import { ThemeColors, radius, spacing, type } from '../../constants/theme';
-import { IconButton, ListRow, SectionHeader } from '../../components/ui';
-import { PixelIcon } from '../../components/PixelIcon';
+import { ThemeColors, spacing, type } from '../../constants/theme';
+import { IconButton, ListRow, SectionHeader, TextField } from '../../components/ui';
 import { Caption, Card, SettingsPage } from '../../components/settings/SettingsParts';
 import { useSubtitleSettings } from '../../components/subtitles-settings/useSubtitleSettings';
 import { languageInfo, languageName } from '../../utils/subtitles/languages';
@@ -60,20 +59,18 @@ export default function SubtitleLanguagesSettings() {
 
       <View style={s.section}>
         <SectionHeader title={copy.all} />
-        <View style={s.field}>
-          <PixelIcon name="search" size={20} color={colors.textMuted} />
-          <TextInput
-            style={s.input}
-            value={query}
-            onChangeText={setQuery}
-            placeholder={copy.search}
-            placeholderTextColor={colors.textFaint}
-            autoCapitalize="none"
-            autoCorrect={false}
-            accessibilityLabel={copy.search}
-          />
-          {query.length > 0 ? <IconButton icon="close" size={16} onPress={() => setQuery('')} accessibilityLabel="Clear search" /> : null}
-        </View>
+        <TextField
+          leadingIcon="search"
+          clearable
+          clearLabel="Clear search"
+          size="lg"
+          value={query}
+          onChangeText={setQuery}
+          placeholder={copy.search}
+          autoCapitalize="none"
+          autoCorrect={false}
+          accessibilityLabel={copy.search}
+        />
         {pickable.length === 0 ? (
           <Text style={s.empty}>{copy.noMatch(query.trim())}</Text>
         ) : (
@@ -93,21 +90,9 @@ const makeStyles = (c: ThemeColors) =>
     section: { gap: spacing.sm },
     row: { flexDirection: 'row', alignItems: 'center', minHeight: 56, paddingHorizontal: spacing.md, gap: spacing.xs },
     divider: { borderTopWidth: 1, borderTopColor: c.border },
-    position: { ...type.mono, width: 18, fontSize: 12, color: c.textMuted, textAlign: 'center' },
+    position: { ...type.mono, width: 18, fontSize: type.size.sm, color: c.textMuted, textAlign: 'center' },
     texts: { flex: 1, gap: 2, marginLeft: spacing.xs },
-    name: { ...type.bodyStrong, fontSize: 15, color: c.text },
-    native: { ...type.body, fontSize: 12, color: c.textMuted },
-    field: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: spacing.sm,
-      minHeight: 48,
-      paddingHorizontal: spacing.md,
-      borderRadius: radius.md,
-      borderWidth: 1,
-      borderColor: c.border,
-      backgroundColor: c.surface,
-    },
-    input: { ...type.body, flex: 1, fontSize: 15, color: c.text, minHeight: 44 },
-    empty: { ...type.body, fontSize: 13, color: c.textMuted, padding: spacing.lg },
+    name: { ...type.bodyStrong, fontSize: type.size.lg, color: c.text },
+    native: { ...type.body, fontSize: type.size.sm, color: c.textMuted },
+    empty: { ...type.body, fontSize: type.size.md, color: c.textMuted, padding: spacing.lg },
   });

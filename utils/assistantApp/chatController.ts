@@ -40,14 +40,14 @@ import { restoreItems, type ChatStore } from './chatStore.ts';
 /** R1-5: a read tool that has not finished after this long is answered "That took too long." */
 export const TOOL_TIMEOUT_MS = 60_000;
 /** SM-31: UI text updates are batched at 50 ms. */
-export const TEXT_BATCH_MS = 50;
+const TEXT_BATCH_MS = 50;
 /** Upper bound of the jitter added to a retry that had no Retry-After. SM-31 says "about 250 ms". */
-export const RETRY_JITTER_MS = 250;
+const RETRY_JITTER_MS = 250;
 /** Time a card may take to be built, and to be rechecked on Confirm. A hung engine call fails the card instead. */
-export const PREP_TIMEOUT_MS = 20_000;
-export const REVALIDATE_TIMEOUT_MS = 20_000;
+const PREP_TIMEOUT_MS = 20_000;
+const REVALIDATE_TIMEOUT_MS = 20_000;
 /** Time one confirmed action (or one plan step) may take. */
-export const EXECUTE_TIMEOUT_MS = 60_000;
+const EXECUTE_TIMEOUT_MS = 60_000;
 
 /** Shown when a saved chat was mid-turn and the process ended. Offers Retry, which asks the last question again. */
 export const INTERRUPTED = 'Interrupted. Tap Retry to ask again.';
@@ -134,7 +134,7 @@ const ERROR_RETRY: ReadonlySet<string> = new Set([
 ]);
 
 /** The one recovery an error offers: Settings, Retry, or none (the copy says what to change). */
-export function errorActionFor(message: string): 'settings' | 'retry' | undefined {
+function errorActionFor(message: string): 'settings' | 'retry' | undefined {
   return ERROR_SETTINGS.has(message) ? 'settings' : ERROR_RETRY.has(message) ? 'retry' : undefined;
 }
 
@@ -153,7 +153,7 @@ function withStop(text: string): string {
 }
 
 /** "Step 2 of 3 stopped: It no longer fits. Step 3 did not run." */
-export function planStopMessage(step: number, total: number, reason: string, notRun: readonly number[]): string {
+function planStopMessage(step: number, total: number, reason: string, notRun: readonly number[]): string {
   let out = `Step ${step + 1} of ${total} stopped: ${withStop(bareReason(reason))}`;
   if (notRun.length === 1) out += ` Step ${notRun[0] + 1} did not run.`;
   else if (notRun.length > 1) out += ` Steps ${notRun[0] + 1} to ${notRun[notRun.length - 1] + 1} did not run.`;
@@ -202,7 +202,7 @@ export function goneTargets(
  * The device language as an English name ("French"), or undefined for English, an unknown locale, or a runtime
  * without Intl.DisplayNames (Hermes may lack it). `locale` overrides the device locale for tests.
  */
-export function nonEnglishLanguage(locale?: string): string | undefined {
+function nonEnglishLanguage(locale?: string): string | undefined {
   try {
     const tag = locale ?? Intl.DateTimeFormat().resolvedOptions().locale;
     if (!tag || /^en(?:[-_]|$)/i.test(tag)) return undefined;

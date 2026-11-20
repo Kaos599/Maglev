@@ -12,6 +12,7 @@ import { Directory, File } from 'expo-file-system';
 import { maglevEngine, settingsStore } from 'maglev-engine';
 import { kvGet, kvSet } from '../prefs/kv';
 import { normalizeSearchPrefs, updateSearchPrefs } from '../prefs/search';
+import { importBookmarks } from '../browser/bookmarks';
 import { normalizeBrowserPrefs, updateBrowserPrefs } from '../prefs/browser';
 import { updateSchedule, syncScheduleToNative } from '../prefs/schedule';
 import { updateFeedAutomation, syncFeedAutomationToNative } from '../prefs/feedAutomation';
@@ -42,7 +43,7 @@ function readPref(key: PrefKey): unknown {
   }
 }
 
-export async function collectBackup(opts: { includeStats?: boolean } = {}): Promise<Backup> {
+async function collectBackup(opts: { includeStats?: boolean } = {}): Promise<Backup> {
   const list = await maglevEngine.listTorrents();
   const torrents = list.ok ? list.torrents : [];
   const downloads = list.ok ? (list.downloads ?? []) : [];
@@ -135,6 +136,10 @@ export function applyPref(key: PrefKey, value: unknown): void {
       return;
     case PREF_KEYS.browser:
       updateBrowserPrefs(normalizeBrowserPrefs(value));
+      return;
+    case PREF_KEYS.bookmarks:
+      // Merged, not replaced: what is on this phone stays, and the same page is never saved twice.
+      importBookmarks(value);
       return;
     case PREF_KEYS.assistant: {
       const n = normalizeAssistantPrefs(value);

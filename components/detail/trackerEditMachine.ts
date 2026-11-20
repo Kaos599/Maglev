@@ -178,8 +178,3 @@ export function trackerEditStep(state: TrackerEditState, event: TrackerEditEvent
     }
   }
 }
-
-/** Reducer form for React's useReducer: the state half of `trackerEditStep`. */
-export function trackerEditReducer(state: TrackerEditState, event: TrackerEditEvent): TrackerEditState {
-  return trackerEditStep(state, event).state;
-}

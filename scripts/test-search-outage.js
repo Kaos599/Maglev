@@ -70,6 +70,14 @@ function check(name, cond, extra) {
   check('summary: one unanswered', ans.resultsSummary(84, tally('done', 'error'), false) === "84 results · 1 didn't respond");
   check('summary: several unanswered', ans.resultsSummary(5, tally('done', 'error', 'timeout', 'blocked'), false) === "5 results · 3 didn't respond");
   check('summary: stopped prefix', ans.resultsSummary(2, tally('done'), true) === 'Stopped · 2 results');
+  // The line under the count (owner pick 2026-11-20): how many sources answered, or "No source answered".
+  // Nothing when all answered; a quick check counts as not answered (its own hint offers the check).
+  const line = (...states) => ans.sourcesLine(tally(...states));
+  check('sources line: all answered, none', line('done', 'empty') === null);
+  check('sources line: some missing', JSON.stringify(line('done', 'empty', 'error')) === JSON.stringify({ text: '2 of 3 sources', bad: false }));
+  check('sources line: a check counts as missing', line('done', 'challenge').text === '1 of 2 sources');
+  check('sources line: none answered is red', JSON.stringify(line('error', 'timeout')) === JSON.stringify({ text: 'No source answered', bad: true }));
+  check('sources line: no sources, none', line() === null);
   check('allFailed: only when nobody answered', ans.allFailed(tally('error', 'timeout')) && !ans.allFailed(tally('error', 'done')) && !ans.allFailed(tally()));
 
   // 4. Tap lists the names.
@@ -87,6 +95,7 @@ function check(name, cond, extra) {
   // 5. Wiring.
   const screen = read('app/(tabs)/search.tsx');
   check('search screen uses resultsSummary', /resultsSummary\(/.test(screen));
+  check('search screen shows sourcesLine under the count, not the long note', /sourcesLine\(tally\)/.test(screen) && /srcLine\.text/.test(screen) && !/`· \$\{unansweredNote\(tally\)\}`/.test(screen));
   check('search screen opens the sheet from the note', /UnansweredSheet/.test(screen) && fs.existsSync(path.join(root, 'components/search/UnansweredSheet.tsx')));
   const sheet = read('components/search/UnansweredSheet.tsx');
   check('sheet reuses Sheet and shows name + reason', /<Sheet\b/.test(sheet) && /\.name/.test(sheet) && /\.reason/.test(sheet));

@@ -163,7 +163,7 @@ function check(name, cond) {
   check('footnotes', copy.nonVideoOne('Abbey Road') === 'Abbey Road is music, so it gets no subtitles.' && copy.nonVideoMany(3) === '3 other adds are not videos, so they get no subtitles.');
   check('status words and summary', copy.PHASE_WORDS.queued === 'Waiting for the file' && copy.PHASE_WORDS['needs-pick'] === 'Close match · pick' && copy.statusSummary({ saved: 2, needsYou: 1, waiting: 0 }) === '2 saved · 1 needs you');
   const sheet = read('components/subtitles/MultiSubtitleSheet.tsx');
-  check('sheet: pencil, 44 dp checkbox, skip, no hex', /icon="pencil"/.test(sheet) && /width: 44, height: 44/.test(sheet) && /skipSubtitles/.test(sheet) && !/#[0-9A-Fa-f]{6}\b/.test(sheet));
+  check('sheet: pencil, 44 dp checkbox, skip, no hex', /icon="pencil"/.test(sheet) && /width: (?:44|touch\.min), height: (?:44|touch\.min)/.test(sheet) && /skipSubtitles/.test(sheet) && !/#[0-9A-Fa-f]{6}\b/.test(sheet));
   check('the runner is mounted once in the layout', (read('app/_layout.tsx').match(/<SubtitleRequestRunner \/>/g) || []).length === 1);
 
 

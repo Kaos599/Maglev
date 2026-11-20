@@ -13,7 +13,6 @@ import android.provider.Settings
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import com.maglev.engine.R
-import java.util.Locale
 
 /** Aggregate view of the torrent list used for the ongoing notification and service decisions. */
 data class TransferSummary(
@@ -183,15 +182,8 @@ object Notifications {
         else -> "${secs / 86_400} d ${(secs % 86_400) / 3600} h"
     }
 
-    fun speed(bps: Long): String {
-        val v = bps.toDouble()
-        return when {
-            v >= 1024.0 * 1024 * 1024 -> String.format(Locale.US, "%.1f GB/s", v / (1024.0 * 1024 * 1024))
-            v >= 1024.0 * 1024 -> String.format(Locale.US, "%.1f MB/s", v / (1024.0 * 1024))
-            v >= 1024.0 -> String.format(Locale.US, "%.0f KB/s", v / 1024.0)
-            else -> "$bps B/s"
-        }
-    }
+    /** The same text the app shows (`SpeedText`, twin of `formatSpeed`). */
+    fun speed(bps: Long): String = SpeedText.format(bps)
 
     /**
      * Content comes from [s] (latest telemetry). While something downloads the notification asks for promotion

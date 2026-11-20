@@ -1,7 +1,7 @@
 import React, { memo, useMemo } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { useTheme } from '../../context/ThemeContext';
-import { ThemeColors, alpha, radius, spacing, type } from '../../constants/theme';
+import { ThemeColors, alpha, radius, spacing, type, touch } from '../../constants/theme';
 import { questionLabel } from '../../utils/assistant/chatView';
 import { PressableScale } from '../ui/PressableScale';
 
@@ -50,12 +50,12 @@ export const Questionnaire = memo(function Questionnaire({ question, options, an
 const makeStyles = (c: ThemeColors) =>
   StyleSheet.create({
     card: { alignSelf: 'stretch', padding: spacing.md, gap: spacing.sm, backgroundColor: c.surface, borderWidth: 1, borderColor: c.border, borderRadius: radius.md },
-    question: { ...type.bodyStrong, fontSize: 15, lineHeight: 21, color: c.text },
+    question: { ...type.bodyStrong, fontSize: type.size.lg, lineHeight: 21, color: c.text },
     options: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
-    chip: { minHeight: 44, maxWidth: '100%', justifyContent: 'center', paddingHorizontal: spacing.lg, paddingVertical: spacing.xs, borderRadius: radius.pill, borderWidth: 1 },
+    chip: { minHeight: touch.min, maxWidth: '100%', justifyContent: 'center', paddingHorizontal: spacing.lg, paddingVertical: spacing.xs, borderRadius: radius.pill, borderWidth: 1 },
     idle: { backgroundColor: c.bg, borderColor: c.border },
     pressed: { backgroundColor: c.surfaceRaised, borderColor: c.border },
     chosen: { backgroundColor: alpha(c.accent, 0.15), borderColor: c.accent },
     dim: { opacity: 0.4 },
-    chipText: { ...type.bodyStrong, fontSize: 13 },
+    chipText: { ...type.bodyStrong, fontSize: type.size.md },
   });

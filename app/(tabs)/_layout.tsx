@@ -9,10 +9,10 @@ import { TabGlyph, useTabMove } from '../../components/tabs/TabGlyph';
 import { TAB_GLYPHS, type TabGlyphName } from '../../components/tabs/tabGlyphs';
 import { visibleTabs, type TabId } from '../../components/tabs/tabPrefs';
 import { useTabPrefs } from '../../components/tabs/tabPrefsStore';
-import { PRESS_SINK, animateTo, duration, useReduceMotion } from '../../components/motion';
+import { PRESS_SINK, animateTo, useReduceMotion } from '../../components/motion';
 import { useTheme } from '../../context/ThemeContext';
 import { useAssistantPrefs } from '../../utils/prefs/assistantApp';
-import { ThemeColors, fontFamily, withAlpha } from '../../constants/theme';
+import { ThemeColors, fontFamily, motion, spacing, type, withAlpha } from '../../constants/theme';
 import { badgeLabel, useFeedsNewCount } from '../../utils/feeds';
 import { startFeedsBadge } from '../../utils/feedsBadgeStart';
 import { useUnseenReply } from '../../utils/assistantApp/unseenReply';
@@ -74,7 +74,7 @@ function TabButton({
   }).current;
 
   useEffect(() => {
-    animateTo(focus, focused ? 1 : 0, duration.focus, reduce);
+    animateTo(focus, focused ? 1 : 0, motion.duration.focus, reduce);
   }, [focused, reduce, focus]);
 
   return (
@@ -83,11 +83,11 @@ function TabButton({
       aria-label={a11yLabel}
       style={[style, styles.button]}
       onPressIn={(e) => {
-        animateTo(sink, 1, duration.press, reduce);
+        animateTo(sink, 1, motion.duration.press, reduce);
         onPressIn?.(e);
       }}
       onPressOut={(e) => {
-        animateTo(sink, 0, duration.release, reduce);
+        animateTo(sink, 0, motion.duration.release, reduce);
         onPressOut?.(e);
       }}
     >
@@ -242,7 +242,7 @@ const makeStyles = (c: ThemeColors) =>
       position: 'absolute',
       width: PILL_W,
       height: PILL_H,
-      borderRadius: 8,
+      borderRadius: 8, // design-exception: half of the fixed 16 px badge height
       backgroundColor: withAlpha(c.accent, 0.16),
     },
     // Neutral pill (text on bg) so lime stays with the active tab. Sits on the icon's top-right.
@@ -252,18 +252,18 @@ const makeStyles = (c: ThemeColors) =>
       right: 2,
       minWidth: 16,
       height: 16,
-      paddingHorizontal: 4,
-      borderRadius: 8,
+      paddingHorizontal: spacing.xs,
+      borderRadius: 8, // design-exception: half of the fixed 16 px badge height
       alignItems: 'center',
       justifyContent: 'center',
       backgroundColor: c.text,
     },
     // A small square dot: a reply is waiting in the Assistant.
     dot: { position: 'absolute', top: -2, right: 6, width: 8, height: 8, backgroundColor: c.accent },
-    badgeText: { fontSize: 10, lineHeight: 12, fontFamily: fontFamily.bodyStrong, color: c.bg, fontVariant: ['tabular-nums'] },
+    badgeText: { fontSize: 10, lineHeight: 12, fontFamily: fontFamily.bodyStrong, color: c.bg, fontVariant: ['tabular-nums'] }, // design-exception: badge text in a fixed 16 px badge
     glyph: { width: ICON, height: ICON },
     labelWrap: { marginTop: 2, alignItems: 'center' },
-    label: { fontSize: 11, textAlign: 'center' },
+    label: { fontSize: type.size.xs, textAlign: 'center' },
     labelOn: { fontFamily: fontFamily.bodyStrong, color: c.text },
     labelOff: { position: 'absolute', left: 0, right: 0, top: 0, fontFamily: fontFamily.body, color: c.textMuted },
   });

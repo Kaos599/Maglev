@@ -66,7 +66,7 @@ export function directAddRoute(r: Pick<SearchResult, 'directUrl'>): { pathname: 
   return r.directUrl && /^https:\/\//i.test(r.directUrl) ? { pathname: '/add-download', params: { source: r.directUrl } } : null;
 }
 
-export function effectiveCategories(p: SearchProvider, prefs: Pick<ProviderPrefs, 'useFor' | 'adult'>): Category[] {
+function effectiveCategories(p: SearchProvider, prefs: Pick<ProviderPrefs, 'useFor' | 'adult'>): Category[] {
   const pick = prefs.useFor?.[p.id];
   let cats = pick ? p.categories.filter((c) => pick.includes(c)) : p.categories.slice();
   if (!prefs.adult) cats = cats.filter((c) => c !== 'adult');

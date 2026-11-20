@@ -15,23 +15,11 @@ export function downloadTapped(tapAgeMs: number | null, usesSoFar: number, userL
 }
 
 /** NATIVE_CONTRACT 39.2 B1: a tap vouches for downloads from the same document this long. Mirrors DownloadRules.VOUCH_MS. */
-export const DOWNLOAD_VOUCH_MS = 30_000;
+const DOWNLOAD_VOUCH_MS = 30_000;
 
 /** NATIVE_CONTRACT 39.2 B1: shown when a download is held (the view still lists it in Files). */
 export const DOWNLOAD_HELD_NOTICE = 'A download was held. Open Files to save it.';
 export const DOWNLOAD_HELD_ACTION = 'Open';
-
-/** NATIVE_CONTRACT 39.2 B2: gesture, first of its kind, within 1 s of a touch or key press. Mirrors NavRules.trustedJump. */
-export const JUMP_MS = 1000;
-export const trustedJump = (gesture: boolean, nthInGesture: number, inputAgeMs: number | null): boolean =>
-  gesture && nthInGesture === 0 && inputAgeMs != null && inputAgeMs >= 0 && inputAgeMs <= JUMP_MS;
-
-/** NATIVE_CONTRACT 39.2 B3: the https try falls back after this long. Mirrors HttpsFirst.TRY_MS / shouldFallBack. */
-export const HTTPS_TRY_MS = 8000;
-export function httpsShouldFallBack(errorCode: number, online: boolean): boolean {
-  if (errorCode === -11 || errorCode === -6 || errorCode === -7) return true;
-  return (errorCode === -8 || errorCode === -1) && online;
-}
 
 /** The save sheet opens only for a download the user asked for. An event with no `tapped` (an old build) counts as asked for. */
 export const opensSaveSheet = (tapped: boolean | undefined): boolean => tapped !== false;
@@ -135,7 +123,7 @@ export function upgradeToHttps(url: string, fallbackHosts: ReadonlySet<string>, 
 }
 
 const bare = (h: string | null): string | null => (h == null ? null : h.replace(/^www\./, ''));
-export const sameHost = (host: string | null | undefined, url: string | null | undefined): boolean =>
+const sameHost = (host: string | null | undefined, url: string | null | undefined): boolean =>
   host != null && bare(host) === bare(httpsHostOf(url));
 /** An error or certificate failure for `failedUrl` while the https try for `pendingHost` had not loaded. */
 export const isUpgradeFailure = sameHost;

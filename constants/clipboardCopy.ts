@@ -52,3 +52,9 @@ export function clipboardRoute(link: string): ClipboardRoute {
   if (MAGNET.test(t) || TORRENT_LINK.test(t)) return { pathname: '/add-torrent', params: { source: t } };
   return { pathname: '/add-download', params: { url: t } };
 }
+
+/** Plain web file links open the quick share card. Magnets and .torrent links keep going to Add torrent. */
+export function clipboardUsesCard(link: string): boolean {
+  const t = link.trim();
+  return !MAGNET.test(t) && !TORRENT_LINK.test(t) && /^https?:\/\//i.test(t);
+}

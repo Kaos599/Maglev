@@ -141,7 +141,7 @@ export function canDownload(s: SheetState): boolean {
 }
 
 /** The rows of the active tab that did not fail in this sheet. */
-export function untriedRows(s: Pick<SheetState, 'ranked' | 'language' | 'failedKeys'>): RankedSubtitle[] {
+function untriedRows(s: Pick<SheetState, 'ranked' | 'language' | 'failedKeys'>): RankedSubtitle[] {
   return rowsOf(s).filter((r) => !s.failedKeys.includes(rowKey(r)));
 }
 

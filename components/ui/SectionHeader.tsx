@@ -1,7 +1,7 @@
 import React, { useMemo } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useTheme } from '../../context/ThemeContext';
-import { ThemeColors, spacing, type } from '../../constants/theme';
+import { ThemeColors, spacing, type, touch } from '../../constants/theme';
 import { FocusAnchor, sectionKey } from '../settings/settingsFocus';
 
 export interface SectionHeaderProps {
@@ -38,7 +38,7 @@ export function SectionHeader({ title, actionLabel, onAction }: SectionHeaderPro
 const makeStyles = (c: ThemeColors) =>
   StyleSheet.create({
     row: {
-      minHeight: 44,
+      minHeight: touch.min,
       flexDirection: 'row',
       alignItems: 'flex-end',
       justifyContent: 'space-between',
@@ -47,11 +47,11 @@ const makeStyles = (c: ThemeColors) =>
     },
     title: {
       ...type.bodyStrong,
-      fontSize: 12,
+      fontSize: type.size.sm,
       color: c.textMuted,
       flexShrink: 1,
     },
     action: { minHeight: 20, justifyContent: 'center' },
     pressed: { opacity: 0.6 },
-    actionText: { ...type.bodyStrong, fontSize: 12, color: c.accentText },
+    actionText: { ...type.bodyStrong, fontSize: type.size.sm, color: c.accentText },
   });

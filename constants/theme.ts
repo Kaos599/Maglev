@@ -234,7 +234,11 @@ export const fontFamily = {
 
 export const type = {
   family: fontFamily,
-  size: { xs: 11, sm: 12, md: 13, lg: 15, xl: 17, xxl: 22 },
+  /**
+   * The only font sizes. `base` (14) is body copy in sheets and dialogs; `display` (32) is a hero number (Stats).
+   * A size off this scale needs a `// design-exception: <reason>` comment on its line (scripts/test-design-system.js).
+   */
+  size: { xs: 11, sm: 12, md: 13, base: 14, lg: 15, xl: 17, xxl: 22, display: 32 },
   /** The MAGLEV wordmark only. Silkscreen in every style. */
   get brand() { return { fontFamily: fontFamily.brand }; },
   /** Screen and sheet titles: Inter Bold (Clean), Silkscreen (Retro), Space Mono Bold (Mono). */
@@ -263,14 +267,33 @@ export const fonts = type;
  */
 export const motion = {
   duration: {
-    /** Press feedback, both directions. */
+    /** Finger down: fast, so the press reads as immediate. */
     press: 120,
-    /** Small fades (the finish check). */
+    /** Small fades (the finish check, the toggle knob). */
     fast: 150,
-    /** Bar fill, sheet in/out, spring back. */
+    /** Finger up: a touch slower than press so the return is visible. */
+    release: 160,
+    /** Focus or selection change (tab icon, pill, label weight). */
+    focus: 180,
+    /** Bar fill, sheet in/out, spring back, one-shot entrance (empty states), loading dots. */
     base: 220,
+    /** Anything leaving (a closing dialog, a dismissed tray, a fade-out): quicker than its entrance. */
+    exit: 120,
     /** Hard ceiling for any single animation. */
     max: 250,
+  },
+  /** Repeating animations: one pass or one step. Loops, so they sit outside the `duration.max` ceiling. */
+  loop: {
+    /** One pass of an indeterminate bar's sweep. */
+    sweep: 1400,
+    /** One fade of a skeleton or assistant shimmer (it runs there and back). */
+    shimmer: 900,
+    /** One leg of the "more below" hint bob. */
+    bob: 450,
+    /** The stagger between loading dots. */
+    dotStep: 160,
+    /** One step of the Assistant's "working" squares. */
+    step: 320,
   },
   /** Ease-out cubic as a CSS-style bezier; the same curve as Easing.out(Easing.cubic). */
   easeOutBezier: [0.33, 1, 0.68, 1] as const,

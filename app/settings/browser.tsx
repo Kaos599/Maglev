@@ -11,6 +11,7 @@ import { useTheme } from '../../context/ThemeContext';
 import { useMaglevEngine } from '../../context/EngineContext';
 import { ThemeColors, spacing, type } from '../../constants/theme';
 import { haptic } from '../../constants/haptics';
+import { bookmarkCopy } from '../../constants/bookmarkCopy';
 import { browserTabs, empty, historyCopy, listsCopy, notices, textSizeCopy } from '../../constants/copy';
 import { Button, EmptyBlock, IconButton, ListRow, RadioCard, SectionHeader, Toggle } from '../../components/ui';
 import { Card, Caption, ChipGroup, InputSheet, SettingsPage } from '../../components/settings/SettingsParts';
@@ -249,6 +250,11 @@ export default function BrowserSettings() {
 
       <Card>
         <ListRow
+          title={browserTabs.settings.darkPages}
+          subtitle={browserTabs.settings.darkPagesSubtitle}
+          accessory={<Toggle value={prefs.darkPages} onValueChange={(darkPages) => setPrefs({ darkPages })} accessibilityLabel={browserTabs.settings.darkPages} />}
+        />
+        <ListRow
           title="Desktop site"
           subtitle="Ask sites for their desktop version by default."
           accessory={<Toggle value={prefs.desktopMode} onValueChange={(desktopMode) => setPrefs({ desktopMode })} accessibilityLabel="Desktop site" />}
@@ -260,6 +266,11 @@ export default function BrowserSettings() {
       <View style={s.section}>
         <SectionHeader title={historyCopy.settings.section} />
         <Card>
+          <ListRow
+            title={historyCopy.settings.private}
+            subtitle={historyCopy.settings.privateSubtitle}
+            accessory={<Toggle value={prefs.privateBrowsing} onValueChange={(privateBrowsing) => setPrefs({ privateBrowsing })} accessibilityLabel={historyCopy.settings.private} />}
+          />
           <ListRow
             title={historyCopy.settings.save}
             subtitle={historyCopy.settings.saveSubtitle}
@@ -275,6 +286,7 @@ export default function BrowserSettings() {
             subtitle={historyCopy.settings.clearOnCloseSubtitle}
             accessory={<Toggle value={prefs.clearHistoryOnClose} onValueChange={(clearHistoryOnClose) => setPrefs({ clearHistoryOnClose })} accessibilityLabel={historyCopy.settings.clearOnClose} />}
           />
+          <ListRow icon="bookmark" title={bookmarkCopy.screenTitle} onPress={() => router.push('/browser-bookmarks')} />
           <ListRow icon="clock" title={historyCopy.settings.open} onPress={() => router.push('/browser-history')} />
           <ListRow
             icon="trash"

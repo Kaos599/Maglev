@@ -2,7 +2,7 @@ import React, { memo, useMemo } from 'react';
 import { useRouter } from 'expo-router';
 import { StyleSheet, Text, View } from 'react-native';
 import { useTheme } from '../../context/ThemeContext';
-import { ThemeColors, radius, spacing, type } from '../../constants/theme';
+import { ThemeColors, radius, spacing, type, touch } from '../../constants/theme';
 import { PixelIcon } from '../PixelIcon';
 import { PressableScale } from '../ui';
 import { useMaglevEngine } from '../../context/EngineContext';
@@ -170,13 +170,13 @@ const makeStyles = (c: ThemeColors) =>
       marginBottom: spacing.md,
     },
     cardRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, paddingVertical: spacing.sm, paddingLeft: spacing.lg, paddingRight: spacing.sm, minHeight: 56 },
-    moreButton: { minHeight: 44, paddingLeft: spacing.lg + 28 + spacing.md, paddingRight: spacing.md, justifyContent: 'center', alignSelf: 'flex-start' },
+    moreButton: { minHeight: touch.min, paddingLeft: spacing.lg + 28 + spacing.md, paddingRight: spacing.md, justifyContent: 'center', alignSelf: 'flex-start' },
     icon: { width: 28, height: 28, alignItems: 'center', justifyContent: 'center' },
-    ring: { position: 'absolute', width: 28, height: 28, borderRadius: 14, borderWidth: 1, borderStyle: 'dotted' },
+    ring: { position: 'absolute', width: 28, height: 28, borderRadius: radius.lg, borderWidth: 1, borderStyle: 'dotted' },
     text: { flex: 1, gap: 2 },
     label: { ...type.heading, fontSize: type.size.md, color: c.text },
-    line: { ...type.body, fontSize: 13, color: c.text },
+    line: { ...type.body, fontSize: type.size.md, color: c.text },
     // The button's hit area is at least 44 dp; tapping the row does the same.
-    button: { minWidth: 44, minHeight: 44, paddingHorizontal: spacing.md, alignItems: 'center', justifyContent: 'center' },
-    buttonText: { ...type.body, fontSize: 14, color: c.accentText },
+    button: { minWidth: touch.min, minHeight: touch.min, paddingHorizontal: spacing.md, alignItems: 'center', justifyContent: 'center' },
+    buttonText: { ...type.body, fontSize: type.size.base, color: c.accentText },
   });

@@ -24,11 +24,6 @@ function toStatus(native: NativePermissionStatus): PermissionStatus {
   };
 }
 
-/** Reads current permission status without prompting. */
-export async function checkMaglevPermissions(): Promise<PermissionStatus> {
-  return toStatus(await maglevEngine.getPermissionStatus());
-}
-
 /** Prompts for whatever is missing (notifications, legacy storage) and returns the re-read status. */
 export async function requestMaglevPermissions(): Promise<PermissionStatus> {
   const before = await maglevEngine.getPermissionStatus();

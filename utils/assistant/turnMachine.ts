@@ -240,16 +240,16 @@ function isDestructiveCall(name: string, args: Record<string, unknown>): boolean
   if (DESTRUCTIVE_TOOLS.has(name)) return true;
   return name === 'propose_change' && (args.action === 'remove_files' || args.action === 'delete');
 }
-export const MAX_PROPOSALS_PER_TURN = 2;
-export const MAX_DESTRUCTIVE_PER_TURN = 1;
-export const MAX_DETAILS_PER_TURN = 2;
+const MAX_PROPOSALS_PER_TURN = 2;
+const MAX_DESTRUCTIVE_PER_TURN = 1;
+const MAX_DETAILS_PER_TURN = 2;
 /** Card facts kept for the next message, and the length of one. */
-export const MAX_CARD_FACTS = 6;
-export const CARD_FACT_MAX = 200;
+const MAX_CARD_FACTS = 6;
+const CARD_FACT_MAX = 200;
 /** Retry delay when the provider sends no Retry-After. The runner adds jitter. */
-export const RETRY_DELAY_MS = 1000;
+const RETRY_DELAY_MS = 1000;
 /** A Retry-After longer than this is not waited for. */
-export const RETRY_AFTER_MAX_MS = 30_000;
+const RETRY_AFTER_MAX_MS = 30_000;
 
 // ---- helpers ------------------------------------------------------------------------------------
 
@@ -298,7 +298,7 @@ const TOO_MUCH_RE = /context[ _-]?(length|window)|too (long|large|many)|token li
 const TOOL_USE_FAILED_RE = /tool_use_failed/i;
 const DAILY_LIMIT_RE = /free-models-per-day|requests? per day|daily limit/i;
 /** A Retry-After longer than this on a 429 means "later", not "in a moment". */
-export const RATE_LIMIT_SHORT_MS = 60_000;
+const RATE_LIMIT_SHORT_MS = 60_000;
 
 function statusStep(s: TurnState, status: number, retryAfterMs?: number, body?: string): TurnStep {
   const text = sanitizeSnippet(body);

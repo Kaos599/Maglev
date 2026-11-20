@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef } from 'react';
 import { Animated, Easing, StyleSheet, View } from 'react-native';
 import { useTheme } from '../../context/ThemeContext';
-import { ThemeColors, spacing } from '../../constants/theme';
+import { ThemeColors, motion, spacing } from '../../constants/theme';
 import { steppedRanges } from '../brand/markMotion';
 import { useReduceMotion } from '../motion/useReduceMotion';
 
@@ -23,7 +23,8 @@ function Square({ state, style }: { state: 'done' | 'current' | 'todo'; style: o
       return;
     }
     clock.setValue(0);
-    const anim = Animated.timing(clock, { toValue: 1, duration: 160, easing: Easing.linear, useNativeDriver: true });
+    // Linear on purpose: the clock feeds a stepped scale (whole-pixel pops), so the steps carry the easing.
+    const anim = Animated.timing(clock, { toValue: 1, duration: motion.duration.release, easing: Easing.linear, useNativeDriver: true });
     anim.start();
     return () => anim.stop();
   }, [state, reduce, clock]);

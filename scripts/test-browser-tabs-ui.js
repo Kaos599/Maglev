@@ -43,7 +43,7 @@ check('state is module-level and read with useSyncExternalStore', /let state: Ta
 check('the hook holds no per-instance tab state', !/useState|useRef/.test(hook));
 check('every change is saved with scheduleSave', /deps\.scheduleSave\(rows, activeId\)/.test(store) && /scheduleSave: scheduleSaveTabs/.test(hook));
 check('tabs are flushed on blur and unmount', /flushTabs\(\)/.test(scr) && /tabStore\.flush\(\)/.test(hook));
-check('Save history off: memory only, saved rows deleted when it turns off', /if \(!deps\.saveHistory\(\)\) return/.test(store) && /deps\.deleteSaved\(\)/.test(store) && /subscribePrefs: subscribeBrowserPrefs/.test(hook) && /deleteSaved: deleteSavedTabs/.test(hook));
+check('Save history off: memory only, saved rows deleted when it turns off', /if \(!deps\.saveHistory\(\) \|\| isPriv\(\)\) return/.test(store) && /deps\.deleteSaved\(\)/.test(store) && /subscribePrefs: subscribeBrowserPrefs/.test(hook) && /deleteSaved: deleteSavedTabs/.test(hook));
 check('a screen mount checks the native wipe count', /tabStore\.checkWipe\(\)/.test(hook) && /wipeCount: getHistoryWipeCount/.test(hook));
 
 console.log('one screen, one tab set (section 30)');
@@ -66,7 +66,7 @@ check('a window request opens a tab with this tab as opener', /onNewWindow: \(id
 console.log('tab button');
 check('beside the menu: count in a box, :D above 99', /tabCount > 99 \? browserTabs\.tabButtonMany : tabCount/.test(scr) && /browserTabs\.tabButtonLabel\(tabCount\)/.test(scr));
 check('tap opens the switcher, long press opens a new tab', /setSwitcherOpen\(true\)/.test(scr) && /onLongPress=\{newTab\}/.test(scr));
-check('the tab button is a 44 px target', /tabButton: \{ width: 44, height: 44/.test(scr));
+check('the tab button is a 44 px target', /tabButton: \{ width: (44|touch\.min), height: (44|touch\.min)/.test(scr));
 
 console.log('switcher');
 check('newest first through switcherOrder', /tabs=\{switcherOrder\(tabsState\)\}/.test(scr));
@@ -127,14 +127,13 @@ const tabRoute = read('app/(tabs)/browse.tsx');
 check('in the tab bar the screen skips the bottom inset (the tab bar already pads for it)', /<BrowserScreen inTab \/>/.test(tabRoute) && /edges=\{inTab \? \['top', 'left', 'right'\] : \['top', 'left', 'right', 'bottom'\]\}/.test(scr));
 
 // 24.11 history from a blank tab
-const recentPath = path.join(root, 'components/browser/RecentHistory.tsx');
-const recent = fs.existsSync(recentPath) ? fs.readFileSync(recentPath, 'utf8') : '';
+const recent = read('components/browser/StartPage.tsx'); // the Recent list now lives in StartPage (RecentHistory.tsx is gone)
 check('⋮ is enabled on a blank tab (gated on ready, not on a page)', /icon="more" accessibilityLabel="More" disabled=\{!ready\}/.test(scr) && !/icon="more"[^\n]*disabled=\{!hasPage\}/.test(scr));
 check('with no page the sheet is titled Browser', /title=\{hasPage \? historyCopy\.menuTitlePage : historyCopy\.menuTitleBlank\}/.test(scr) && /menuTitleBlank: 'Browser'/.test(read('constants/copy.ts')));
-check('page-only rows sit behind hasPage; History and Browser settings do not', /\{hasPage \? \(\s*<>[\s\S]*?title="Forward"[\s\S]*?findCopy\.menuRow[\s\S]*?textSizeCopy\.menuRow[\s\S]*?Desktop site[\s\S]*?Copy page link[\s\S]*?<\/>\s*\) : null\}\s*<ListRow\s+icon="clock"/.test(scr));
-check('a blank tab shows Recent, falling back to the start block', /<RecentHistory[\s\S]{0,200}fallback=\{<EmptyBlock icon="network"/.test(scr));
-check('Recent lists 6 from history, refreshes on change, and links to the History screen', /listHistory\(\{ limit: RECENT_LIMIT \}\)/.test(recent) && /RECENT_LIMIT = 6/.test(recent) && /useHistoryVersion\(\)/.test(recent) && /\/browser-history/.test(recent) && /historyCopy\.recent\.seeAll/.test(recent));
-check('Recent shows nothing when Save history is off or the store fails', /saveHistory/.test(recent) && /\(\) => \{\s*if \(live\) setRows\(\[\]\)/.test(recent));
+check('page-only rows sit behind hasPage; Bookmarks, History and Browser settings do not', /\{hasPage \? \(\s*<>[\s\S]*?title="Forward"[\s\S]*?findCopy\.menuRow[\s\S]*?textSizeCopy\.menuRow[\s\S]*?Desktop site[\s\S]*?Copy page link[\s\S]*?<\/>\s*\) : null\}\s*<ListRow\s+icon="bookmark"[\s\S]*?<ListRow\s+icon="clock"/.test(scr));
+check('a blank tab shows the start page (Recent folded in, with its own empty state)', /<StartPage[\s\S]{0,200}onOpen=/.test(scr) && /<EmptyBlock icon="bookmark"/.test(recent));
+check('Recent lists 6 from history, refreshes on change, and links to the History screen', /listHistory\(\{ limit: HISTORY_SAMPLE \}\)/.test(recent) && /START_RECENT_LIMIT = 6/.test(recent) && /useHistoryVersion\(\)/.test(recent) && /\/browser-history/.test(recent) && /bookmarkCopy\.seeAll/.test(recent));
+check('Recent shows nothing when Save history is off or the store fails', /saveHistory/.test(recent) && /\(\) => live && setRows\(\[\]\)/.test(recent));
 
 if (failed) { console.error(`${failed} check(s) failed`); process.exit(1); }
 console.log('all passed');

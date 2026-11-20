@@ -31,8 +31,11 @@ pub enum ErrorCode {
     Cancelled,
     /// URL downloads (section 17): the server answered with a failing status (`http_status`).
     HttpStatus,
-    /// URL downloads: 401 or 403. The link needs a sign in or has expired.
+    /// URL downloads: 401, or 403 on a link that carried a user name and password. The link needs a sign in.
     AuthRequired,
+    /// URL downloads: 403 with no sign-in details. The site refused the link (missing page headers, or a token
+    /// that expired or belongs to another session). Never retried by itself.
+    LinkRefused,
     /// URL downloads: the link has expired (410) and needs a new one.
     LinkExpired,
     /// URL downloads: the file on the server is not the one that was started.
@@ -89,6 +92,7 @@ impl ErrorCode {
             ErrorCode::Cancelled => "CANCELLED",
             ErrorCode::HttpStatus => "HTTP_STATUS",
             ErrorCode::AuthRequired => "AUTH_REQUIRED",
+            ErrorCode::LinkRefused => "LINK_REFUSED",
             ErrorCode::LinkExpired => "LINK_EXPIRED",
             ErrorCode::FileChanged => "FILE_CHANGED",
             ErrorCode::NotAFile => "NOT_A_FILE",

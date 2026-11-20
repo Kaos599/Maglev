@@ -34,7 +34,10 @@ pub struct ProbeInfo {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ProbeVerdict {
     Ok(ProbeInfo),
+    /// 401: the link needs a sign in.
     Auth,
+    /// 403: the site refused the link. Whether that is a sign in depends on the link (user name and password).
+    Refused,
     /// Any other failing status.
     Status(u16),
     Html,
@@ -138,7 +141,8 @@ pub fn classify_probe(status: u16, h: &Headers, url: &str) -> ProbeVerdict {
             }),
             _ => ProbeVerdict::Status(416),
         },
-        401 | 403 => ProbeVerdict::Auth,
+        401 => ProbeVerdict::Auth,
+        403 => ProbeVerdict::Refused,
         other => ProbeVerdict::Status(other),
     }
 }
@@ -408,6 +412,19 @@ pub enum StallCheck {
 /// Has the server been quiet long enough to say so on the card?
 pub fn waiting_for_server(since_last_byte: Duration) -> bool {
     since_last_byte >= STALL_FLAG_AFTER
+}
+
+/// After this long without a byte the card shows no speed (contract 17.v): a fading average of a connection that
+/// went quiet reads like a live speed ("15 KB/s, 50 min left") while nothing moves (AGENTS reality rule 2).
+pub const SPEED_QUIET: Duration = Duration::from_secs(2);
+
+/// The speed to report: the smoothed average while bytes arrive, 0 once the transfer has been quiet `SPEED_QUIET`.
+pub fn shown_speed(smooth_bps: f64, since_last_byte: Duration) -> u64 {
+    if since_last_byte >= SPEED_QUIET || !smooth_bps.is_finite() || smooth_bps <= 0.0 {
+        0
+    } else {
+        smooth_bps as u64
+    }
 }
 
 /// The slowest average (bytes per second) that still counts as moving. A speed limit below 2 KiB/s lowers it, so
@@ -799,7 +816,7 @@ mod tests {
     #[test]
     fn probe_auth_and_status() {
         assert_eq!(classify_probe(401, &h(), "https://x.test/a.bin"), ProbeVerdict::Auth);
-        assert_eq!(classify_probe(403, &h(), "https://x.test/a.bin"), ProbeVerdict::Auth);
+        assert_eq!(classify_probe(403, &h(), "https://x.test/a.bin"), ProbeVerdict::Refused);
         assert_eq!(classify_probe(404, &h(), "https://x.test/a.bin"), ProbeVerdict::Status(404));
         assert_eq!(classify_probe(500, &h(), "https://x.test/a.bin"), ProbeVerdict::Status(500));
     }
@@ -980,6 +997,16 @@ mod tests {
         assert_eq!(check_stall(secs(40), secs(60), 10_000_000, STALL_MIN_BPS), StallCheck::Stalled);
         assert_eq!(check_stall(secs(40), secs(5), 10_000_000, STALL_MIN_BPS), StallCheck::Stalled);
         assert!(STALL_SILENCE_ABORT < Duration::from_secs(45), "must fire before the client's read timeout");
+    }
+
+    #[test]
+    fn a_quiet_transfer_shows_no_speed() {
+        assert_eq!(shown_speed(2_500_000.0, Duration::from_millis(1999)), 2_500_000);
+        assert_eq!(shown_speed(2_500_000.0, SPEED_QUIET), 0);
+        assert_eq!(shown_speed(15_200.0, secs(5)), 0, "the S4 case: a fading average after the parts went quiet");
+        assert_eq!(shown_speed(f64::NAN, Duration::ZERO), 0);
+        assert_eq!(shown_speed(-1.0, Duration::ZERO), 0);
+        assert!(SPEED_QUIET < STALL_FLAG_AFTER);
     }
 
     #[test]

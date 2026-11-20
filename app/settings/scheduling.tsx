@@ -149,6 +149,6 @@ export default function SchedulingSettings() {
 
 const makeStyles = (c: ThemeColors) =>
   StyleSheet.create({
-    status: { ...type.mono, fontSize: 13, color: c.textMuted, paddingHorizontal: spacing.xs },
+    status: { ...type.mono, fontSize: type.size.md, color: c.textMuted, paddingHorizontal: spacing.xs },
     section: { gap: spacing.sm },
   });

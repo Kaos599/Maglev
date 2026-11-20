@@ -1,7 +1,7 @@
 import React, { useMemo } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { useTheme } from '../../context/ThemeContext';
-import { ThemeColors, alpha, radius, spacing, type } from '../../constants/theme';
+import { ThemeColors, alpha, radius, spacing, type, touch } from '../../constants/theme';
 import { PressableScale } from './PressableScale';
 
 export interface ChipProps {
@@ -49,7 +49,7 @@ export function Chip({ label, selected = false, onPress, count, disabled = false
 const makeStyles = (c: ThemeColors) =>
   StyleSheet.create({
     chip: {
-      minHeight: 44,
+      minHeight: touch.min,
       flexDirection: 'row',
       alignItems: 'center',
       gap: spacing.sm,
@@ -62,16 +62,16 @@ const makeStyles = (c: ThemeColors) =>
     pressed: { backgroundColor: c.surfaceRaised, borderColor: c.border },
     selected: { backgroundColor: alpha(c.accent, 0.15), borderColor: c.accent },
     disabled: { opacity: 0.4 },
-    label: { ...type.bodyStrong, fontSize: 13, flexShrink: 1 },
+    label: { ...type.bodyStrong, fontSize: type.size.md, flexShrink: 1 },
     count: {
       minWidth: 20,
       height: 20,
-      paddingHorizontal: 5,
-      borderRadius: 4,
+      paddingHorizontal: 5, // design-exception: small chip tuned to its fixed height; side padding 5
+      borderRadius: 4, // design-exception: small chip radius 4 sits under half its height
       backgroundColor: c.surfaceRaised,
       alignItems: 'center',
       justifyContent: 'center',
     },
     countSelected: { backgroundColor: alpha(c.accent, 0.2) },
-    countText: { ...type.mono, fontSize: 11 },
+    countText: { ...type.mono, fontSize: type.size.xs },
   });

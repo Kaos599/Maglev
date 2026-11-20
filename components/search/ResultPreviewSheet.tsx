@@ -58,7 +58,7 @@ const makeStyles = (c: ThemeColors) =>
   StyleSheet.create({
     stack: { gap: spacing.sm },
     line: { flexDirection: 'row', justifyContent: 'space-between', gap: spacing.md },
-    key: { ...type.body, fontSize: 13, color: c.textMuted },
-    value: { ...type.mono, fontSize: 13, color: c.text, flexShrink: 1, textAlign: 'right' },
-    warn: { ...type.body, fontSize: 13, color: c.warning },
+    key: { ...type.body, fontSize: type.size.md, color: c.textMuted },
+    value: { ...type.mono, fontSize: type.size.md, color: c.text, flexShrink: 1, textAlign: 'right' },
+    warn: { ...type.body, fontSize: type.size.md, color: c.warning },
   });

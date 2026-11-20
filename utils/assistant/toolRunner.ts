@@ -13,7 +13,7 @@
  * - Every string from the outside world is sanitised and sits in a `*_untrusted` field (§7.3).
  * - run() never throws. Failures become `{ok:false,error:{code,message}}` content.
  */
-import { formatBytes } from '../../constants/format.ts';
+import { formatBytes, formatSpeed } from '../../constants/format.ts';
 import type {
   Detail, DetailFile, DownloadSnapshot, EngineResult, FilePriorityEntry, FreeSpace, MaglevEngineApi, Metadata,
   MetadataFile, PlaybackSupport, Snapshot,
@@ -118,11 +118,12 @@ function plainEngineError(code: string): string {
     case 'FILES_MISSING': return 'Some files are missing.';
     case 'NOT_INITIALIZED':
     case 'ENGINE_UNAVAILABLE':
-    case 'NOT_READY': return "The download engine isn't ready yet. Try again in a moment.";
+    case 'NOT_READY': return "The downloader isn't ready yet. Try again in a moment.";
     case 'UNSUPPORTED':
     case 'INVALID_STATE': return "Can't do that while it is moving or checking. Try again when it finishes.";
     case 'LINK_EXPIRED': return 'The link has expired. Paste a fresh link.';
     case 'AUTH_REQUIRED': return 'The site wants you to sign in first.';
+    case 'LINK_REFUSED': return 'The site refused this link. Open its page again, then retry.';
     case 'FILE_CHANGED': return 'The file on the server changed, so it has to start over.';
     case 'HTTP_STATUS': return 'The server refused the download.';
     case 'NOT_A_FILE': return 'That link is a web page, not a file.';
@@ -255,7 +256,7 @@ function succeed(data: Data, extra: Pick<ToolRunOutput, 'results' | 'detail'> = 
 
 
 /** "today", "2 days ago", "3 weeks ago", "5 months ago", "1 year ago". Undefined when the source gave no date. */
-export function ageText(publishedAt: number | undefined, now: number): string | undefined {
+function ageText(publishedAt: number | undefined, now: number): string | undefined {
   if (publishedAt === undefined || !Number.isFinite(publishedAt) || publishedAt <= 0) return undefined;
   const days = Math.floor((now - publishedAt) / DAY_MS);
   const unit = (n: number, word: string): string => `${n} ${word}${n === 1 ? '' : 's'} ago`;
@@ -281,7 +282,7 @@ const KIND_BY_EXT: ReadonlyMap<string, FileKind> = new Map(
 );
 
 /** What a file is, by its extension. */
-export function fileKindOf(path: string): FileKind {
+function fileKindOf(path: string): FileKind {
   const base = path.split(/[\\/]/).pop() ?? '';
   const dot = base.lastIndexOf('.');
   if (dot < 0) return 'other';
@@ -415,6 +416,7 @@ export function createToolRunner(deps: ToolRunnerDeps): ToolRunner {
     const downloads = listRes.ok ? (listRes.downloads ?? []) : [];
     const pendingNeed = pendingNeedOf(
       torrents.map((t) => ({ finished: t.finished, includedBytes: t.includedBytes, downloadedBytes: t.progressBytes })),
+      downloads,
     );
     const unfinished = torrents.filter((t) => !t.finished).length;
     if (!fsRes.ok || !listRes.ok) {
@@ -1317,7 +1319,7 @@ export function createToolRunner(deps: ToolRunnerDeps): ToolRunner {
         size_text: r.total > 0 ? formatBytes(r.total) : 'unknown',
         progress_pct: pct(r.done, r.total),
       };
-      if (r.bucket === 'active' && r.downBps > 0) row.speed_text = `${formatBytes(r.downBps)}/s`;
+      if (r.bucket === 'active' && r.downBps > 0) row.speed_text = formatSpeed(r.downBps);
       if (r.bucket === 'active' && r.downBps > 0 && r.etaSecs >= 0) row.eta_secs = r.etaSecs;
       if (r.pausedBy) row.paused_by = r.pausedBy;
       if (r.health) row.health = r.health;
@@ -1441,7 +1443,7 @@ export function createToolRunner(deps: ToolRunnerDeps): ToolRunner {
       trackers_failing: res.trackers.filter((t) => t.status === 'error').length,
       ratio: Math.round(snap.ratio * 100) / 100,
     };
-    if (snap.downBps > 0) data.speed_text = `${formatBytes(snap.downBps)}/s`;
+    if (snap.downBps > 0) data.speed_text = formatSpeed(snap.downBps);
     if (snap.etaSecs >= 0) data.eta_secs = snap.etaSecs;
     if (snap.resolvingSecs !== null) data.looking_for_files_secs = snap.resolvingSecs;
     // The engine's message can name device paths, so only the code and the app's plain text go out (§4.1).
@@ -1487,7 +1489,8 @@ export function createToolRunner(deps: ToolRunnerDeps): ToolRunner {
       if (!d) return fail('gone', GONE);
       if (d.error) {
         const fixes = d.error.code === 'LINK_EXPIRED' ? ['Paste a fresh link']
-          : d.error.code === 'AUTH_REQUIRED' ? ['Sign in on the site, then retry'] : ['Retry'];
+          : d.error.code === 'AUTH_REQUIRED' ? ['Sign in on the site, then retry']
+          : d.error.code === 'LINK_REFUSED' ? ['Open the page again, then paste a fresh link'] : ['Retry'];
         return succeed({ id: handle, cause: d.error.code, plain: plainEngineError(d.error.code), fixes, facts: { state: d.state } });
       }
       if (d.state === 'needs_link') return succeed({ id: handle, cause: 'needs_link', plain: 'The link stopped working.', fixes: ['Paste a fresh link'], facts: { state: d.state } });

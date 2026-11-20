@@ -9,7 +9,7 @@ import { useReduceMotion } from '../motion';
 
 export const REPO_URL = 'https://github.com/Kaos599/Maglev';
 
-export const starTicketCopy = {
+const starTicketCopy = {
   top: 'FREE · NO ADS · OPEN SOURCE',
   title: 'Like Maglev? Give it a star',
   body: 'It takes a second on GitHub and helps others find the app.',
@@ -21,7 +21,7 @@ export const starTicketCopy = {
 const NOTCH = 18;
 const DASHES = 9;
 const BURST_STEPS = 4;
-const BURST_MS = 480;
+const BURST_MS = 480; // design-exception: a one-off celebration burst, longer than the 250 ms ceiling on purpose; linear because the sprite steps carry the pace
 const BURST_REACH = 34;
 /** Eight directions, in whole-pixel steps. */
 const DIRS: readonly [number, number][] = [[0, -1], [1, -1], [1, 0], [1, 1], [0, 1], [-1, 1], [-1, 0], [-1, -1]];
@@ -136,13 +136,13 @@ const makeStyles = (c: ThemeColors, dark: boolean) =>
       minHeight: 96,
     },
     main: { flex: 1, paddingVertical: spacing.lg, paddingLeft: spacing.xl, paddingRight: spacing.md, gap: spacing.xs, justifyContent: 'center' },
-    top: { ...type.brand, fontSize: 9, letterSpacing: 0.5, color: c.onAccent, opacity: dark ? 0.7 : 1 },
-    title: { ...type.bodyStrong, fontSize: 16, color: c.onAccent },
-    body: { ...type.body, fontSize: 12, lineHeight: 16, color: c.onAccent, opacity: dark ? 0.8 : 1 },
+    top: { ...type.brand, fontSize: 9, letterSpacing: 0.5, color: c.onAccent, opacity: dark ? 0.7 : 1 }, // design-exception: ticket label in a fixed-size stub, 9 px Silkscreen
+    title: { ...type.bodyStrong, fontSize: type.size.xl, color: c.onAccent },
+    body: { ...type.body, fontSize: type.size.sm, lineHeight: 16, color: c.onAccent, opacity: dark ? 0.8 : 1 },
     dashes: { width: 2, marginVertical: spacing.md, justifyContent: 'space-between' },
     dash: { width: 2, height: 4, backgroundColor: c.onAccent, opacity: 0.45 },
     stub: { width: 76, alignItems: 'center', justifyContent: 'center', gap: spacing.xs },
-    stubLabel: { ...type.brand, fontSize: 11, color: c.onAccent },
+    stubLabel: { ...type.brand, fontSize: type.size.xs, color: c.onAccent },
     notch: { position: 'absolute', top: '50%', marginTop: -NOTCH / 2, width: NOTCH, height: NOTCH, borderRadius: NOTCH / 2, backgroundColor: c.bg },
     notchLeft: { left: -NOTCH / 2 },
     notchRight: { right: -NOTCH / 2 },

@@ -13,7 +13,7 @@ class TileModelTest {
         assertEquals(TileModel(TileUiState.INACTIVE, "No transfers", TileTap.OPEN_APP), m(TransferSummary()))
 
     @Test fun downloading() = assertEquals(
-        TileModel(TileUiState.ACTIVE, "2 downloading · 4.1 MB/s", TileTap.PAUSE_ALL),
+        TileModel(TileUiState.ACTIVE, "2 downloading · 4.10 MB/s", TileTap.PAUSE_ALL),
         m(TransferSummary(downloading = 2, downBps = (4.1 * 1024 * 1024).toLong())),
     )
 

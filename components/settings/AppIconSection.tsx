@@ -99,7 +99,7 @@ export function AppIconSection() {
 const makeStyles = (c: ThemeColors) =>
   StyleSheet.create({
     root: { padding: spacing.lg, gap: spacing.sm },
-    label: { ...type.bodyStrong, fontSize: 14, color: c.text },
+    label: { ...type.bodyStrong, fontSize: type.size.base, color: c.text },
     grid: { flexDirection: 'row', flexWrap: 'wrap', rowGap: spacing.md },
     cell: { width: '25%', minHeight: touch.min },
     item: { alignItems: 'center', gap: spacing.xs },

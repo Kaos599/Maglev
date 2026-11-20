@@ -127,8 +127,8 @@ export function ProviderSection({ onExpireCards }: { onExpireCards?: () => void 
 const makeStyles = (c: ThemeColors) =>
   StyleSheet.create({
     body: { padding: spacing.lg, gap: spacing.lg },
-    title: { ...type.bodyStrong, fontSize: 15, color: c.text },
-    mono: { ...type.mono, fontSize: 13, color: c.textMuted },
-    error: { ...type.body, fontSize: 12, color: c.danger },
+    title: { ...type.bodyStrong, fontSize: type.size.lg, color: c.text },
+    mono: { ...type.mono, fontSize: type.size.md, color: c.textMuted },
+    error: { ...type.body, fontSize: type.size.sm, color: c.danger },
     actions: { flexDirection: 'row', gap: spacing.sm, justifyContent: 'flex-end' },
   });

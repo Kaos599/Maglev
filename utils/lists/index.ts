@@ -39,7 +39,7 @@ function subscribe(l: () => void) {
   };
 }
 
-export function getListsState(): ListsState {
+function getListsState(): ListsState {
   return state;
 }
 export function useListsState(): ListsState {

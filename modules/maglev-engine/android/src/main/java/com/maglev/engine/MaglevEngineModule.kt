@@ -168,6 +168,7 @@ class MaglevEngineModule : Module() {
         // The launcher icon switch waits until the app is out of sight (NATIVE_CONTRACT section 26).
         OnActivityEntersBackground {
             AppUpdater.inForeground = false
+            EngineHost.onBackground()
             context?.let { AppIconManager.applyPending(it) }
         }
 
@@ -178,6 +179,10 @@ class MaglevEngineModule : Module() {
         }
         AsyncFunction("shutdown") { promise: Promise ->
             engine(promise) { EngineHost.shutdownEngine() }
+        }
+        // Contract 41 (B4). Blocks for seconds (the session stops, then starts), so it runs off the serialized thread.
+        AsyncFunction("restartEngine") { promise: Promise ->
+            io(promise) { EngineHost.restartEngine() }
         }
         AsyncFunction("resolveMetadata") { source: String, timeoutMs: Double, promise: Promise ->
             // Can block for the full timeout, so it must not hold up the serialized engine thread.
@@ -308,6 +313,13 @@ class MaglevEngineModule : Module() {
         }
         AsyncFunction("getEffectiveConfig") { promise: Promise ->
             native(promise) { NativeCore.nativeGetEffectiveConfig() }
+        }
+        // Contract 41 (Debug log). Runs logcat and writes a file, so off the serialized engine thread.
+        AsyncFunction("exportDebugLog") { promise: Promise ->
+            io(promise) { EngineHost.exportDebugLog() }
+        }
+        AsyncFunction("shareDebugLog") { uri: String, promise: Promise ->
+            io(promise) { EngineHost.shareDebugLog(uri) }
         }
         AsyncFunction("getPlaybackSupport") { promise: Promise ->
             EngineHost.scope.launch { promise.resolve(CodecProbe.get(context)) }
@@ -458,18 +470,33 @@ class MaglevEngineModule : Module() {
             promise.resolve(runCatching { android.webkit.CookieManager.getInstance().getCookie(url) }.getOrNull() ?: "")
         }
 
-        // Expires every cookie the jar holds for each URL (the hosts the user passed a check on). Returns how many were removed.
+        // Expires every cookie the jar returns for each URL (hosts the user passed a check on, or a private session
+        // visited). Returns how many names were expired.
+        // CookieManager.setCookie(url, value): "Any existing cookie with the same host, path and name will be replaced";
+        // an already-expired value (Max-Age=0) is how the Chromium jar deletes. getCookie(url) only returns cookies that
+        // match that URL (host-only cookies of www.site.com are NOT returned for https://site.com/), so callers pass
+        // each host they care about. Per name this expires the host-only form and the Domain=.host form, each at "/" and
+        // at every directory of the URL's own path, with Secure set so __Secure-/__Host- cookies are accepted.
+        // https://developer.android.com/reference/android/webkit/CookieManager#setCookie(java.lang.String,%20java.lang.String)
         AsyncFunction("clearCookies") { urls: List<String>, promise: Promise ->
             var removed = 0
             runCatching {
                 val cm = android.webkit.CookieManager.getInstance()
                 for (url in urls) {
-                    val host = Uri.parse(url).host ?: continue
-                    val names = cm.getCookie(url)?.split(";")?.map { it.substringBefore("=").trim() }?.filter { it.isNotEmpty() } ?: continue
+                    val parsed = Uri.parse(url)
+                    val host = parsed.host ?: continue
+                    val names = cm.getCookie(url)?.split(";")?.map { it.substringBefore("=").trim() }?.filter { it.isNotEmpty() }?.distinct() ?: continue
+                    val paths = linkedSetOf("/")
+                    var dir = ""
+                    for (seg in (parsed.path ?: "").split("/").filter { it.isNotEmpty() }.dropLast(1)) {
+                        dir += "/$seg"
+                        paths.add(dir)
+                    }
                     for (name in names) {
-                        // The jar matches on name, domain and path: expire both the host and its dotted domain.
-                        cm.setCookie(url, "$name=; Max-Age=0; Path=/")
-                        cm.setCookie(url, "$name=; Domain=.$host; Max-Age=0; Path=/")
+                        for (path in paths) {
+                            cm.setCookie(url, "$name=; Max-Age=0; Path=$path; Secure")
+                            cm.setCookie(url, "$name=; Domain=.$host; Max-Age=0; Path=$path; Secure")
+                        }
                         removed++
                     }
                 }
@@ -565,7 +592,7 @@ class MaglevEngineModule : Module() {
 
         View(MaglevBrowserView::class) {
             Events("onPage", "onFound", "onBlockedCount", "onDownloadRequest", "onMagnet", "onRefused", "onCrashed", "onPageNote",
-                "onNewWindow", "onPopupRequest", "onPopupBlocked", "onLongPress", "onFindResult")
+                "onNewWindow", "onPopupRequest", "onPopupBlocked", "onLongPress", "onFindResult", "onMediaHit")
 
             Prop("url") { view: MaglevBrowserView, url: String -> view.setUrl(url) }
             Prop("adBlock") { view: MaglevBrowserView, enabled: Boolean -> view.setAdBlock(enabled) }
@@ -575,6 +602,12 @@ class MaglevEngineModule : Module() {
             Prop("popupPolicy") { view: MaglevBrowserView, value: String -> view.setPopupPolicy(value) }
             Prop("popupAllowHosts") { view: MaglevBrowserView, hosts: List<String> -> view.setPopupAllowHosts(hosts) }
             Prop("textZoom") { view: MaglevBrowserView, value: Int -> view.setTextZoom(value) }
+            Prop("privateMode") { view: MaglevBrowserView, value: Boolean -> view.setPrivateMode(value) }
+            Prop("pullToRefresh") { view: MaglevBrowserView, value: Boolean -> view.setPullToRefresh(value) }
+            Prop("refreshColor") { view: MaglevBrowserView, value: String -> view.setRefreshColor(value) }
+            Prop("refreshBackground") { view: MaglevBrowserView, value: String -> view.setRefreshBackground(value) }
+            Prop("darkPages") { view: MaglevBrowserView, value: Boolean -> view.setDarkPages(value) }
+            Prop("mediaHitScript") { view: MaglevBrowserView, value: String -> view.setMediaHitScript(value) }
 
             AsyncFunction("goBack") { view: MaglevBrowserView -> view.goBack() }
             AsyncFunction("goForward") { view: MaglevBrowserView -> view.goForward() }
@@ -589,6 +622,7 @@ class MaglevEngineModule : Module() {
             AsyncFunction("followRedirect") { view: MaglevBrowserView, url: String, promise: Promise -> view.followRedirect(url, promise) }
             AsyncFunction("openApp") { view: MaglevBrowserView, url: String, promise: Promise -> view.openApp(url, promise) }
             AsyncFunction("clearHistoryList") { view: MaglevBrowserView -> view.clearHistoryList() }
+            AsyncFunction("clearSiteStorage") { view: MaglevBrowserView -> view.clearSiteStorage() }
             AsyncFunction("findInPage") { view: MaglevBrowserView, query: String, promise: Promise -> view.findInPage(query, promise) }
             AsyncFunction("findNext") { view: MaglevBrowserView, forward: Boolean, promise: Promise -> view.findNext(forward, promise) }
             AsyncFunction("clearFind") { view: MaglevBrowserView, promise: Promise -> view.clearFind(promise) }

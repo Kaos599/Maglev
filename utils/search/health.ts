@@ -1,7 +1,7 @@
 // In-memory provider health: 3 consecutive failures pause a provider for 5 minutes.
 
-export const FAILURE_LIMIT = 3;
-export const PAUSE_MS = 5 * 60 * 1000;
+const FAILURE_LIMIT = 3;
+const PAUSE_MS = 5 * 60 * 1000;
 
 interface Entry {
   failures: number;

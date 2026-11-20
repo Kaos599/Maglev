@@ -2,7 +2,7 @@
 import { useSyncExternalStore } from 'react';
 import { kvGet, kvSet } from './kv.ts';
 
-export const CATCH_KEY = 'maglev.clipboard.catch.v1';
+const CATCH_KEY = 'maglev.clipboard.catch.v1';
 export const DISMISSED_CLIP_KEY = 'maglev.clipboard.dismissed.v1';
 
 const listeners = new Set<() => void>();

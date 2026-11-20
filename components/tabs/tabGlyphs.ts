@@ -1,3 +1,5 @@
+import { motion } from '../../constants/theme.ts';
+
 /**
  * Pure data for the tab bar's signature moves. Each tab icon (24 grid, drawn at 20 px) is split
  * into named parts, written as absolute rects so they can be drawn and moved on their own. At
@@ -33,7 +35,7 @@ export interface TabGlyphDef {
 }
 
 /** Whole move, ms. Under the 250 ms ceiling. */
-export const GLYPH_MOVE_MS = 220;
+export const GLYPH_MOVE_MS = motion.duration.base;
 
 /** Hop by `units` for the first half, then back and still. */
 const hop = (units: number): GlyphTrack => ({

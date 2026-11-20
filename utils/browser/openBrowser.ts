@@ -6,7 +6,8 @@
 import { visibleTabs } from '../../components/tabs/tabPrefs.ts';
 import { getTabPrefs } from '../../components/tabs/tabPrefsStore.ts';
 
-export type OpenBrowserParams = { url?: string; prefill?: string };
+/** `newTab` always opens the url in a new tab, even when the current tab is blank. */
+export type OpenBrowserParams = { url?: string; prefill?: string; newTab?: boolean };
 export type OpenBrowserMode = 'push' | 'replace' | 'dismissTo';
 
 /** The slice of the expo-router `router` this needs. */
@@ -18,13 +19,20 @@ export interface BrowserRouter {
 }
 
 /** True when Browse is in the tab bar right now. */
-export const browseTabShown = (): boolean => visibleTabs(getTabPrefs(), { assistantEnabled: false }).includes('browse');
+const browseTabShown = (): boolean => visibleTabs(getTabPrefs(), { assistantEnabled: false }).includes('browse');
+
+let openCounter = 0;
 
 export function openBrowser(router: BrowserRouter, params?: OpenBrowserParams, mode: OpenBrowserMode = 'push'): void {
   const clean: Record<string, string> = {};
   if (params?.url) clean.url = params.url;
   if (params?.prefill) clean.prefill = params.prefill;
   const has = Object.keys(clean).length > 0;
+  if (has) {
+    // A fresh `open` value each time, so opening the same address again still reaches the mounted screen.
+    clean.open = `${Date.now().toString(36)}-${++openCounter}`;
+    if (params?.newTab && clean.url) clean.newTab = '1';
+  }
   if (browseTabShown()) {
     router.navigate(has ? { pathname: '/browse', params: clean } : '/browse');
     return;

@@ -1,17 +1,5 @@
 import { Animated, Easing } from 'react-native';
 
-/** Motion durations (ms). Everything sits in 120-220 ms. */
-export const duration = {
-  /** Finger down: fast, so the press reads as immediate. */
-  press: 120,
-  /** Finger up: a touch slower than press so the return is visible. */
-  release: 160,
-  /** Focus or selection change (tab icon, pill, label weight). */
-  focus: 180,
-  /** One-shot entrance (empty states). */
-  enter: 220,
-} as const;
-
 /** Ease-out cubic: starts fast, settles softly. No springs, no bounce. */
 export const easeOut = Easing.out(Easing.cubic);
 

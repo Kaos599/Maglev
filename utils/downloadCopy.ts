@@ -34,26 +34,35 @@ export interface DownloadAction {
 }
 
 /** The card line: short, so the percent and amount stay readable. */
-export const FOLDER_GONE_CARD = 'Folder not available';
-export const FOLDER_GONE_TEXT = "The folder isn't available. Is the SD card in?";
-export const TOO_BIG_TEXT = "This file is bigger than the card's format allows (4 GB). Use phone storage.";
-export const LOCAL_BLOCKED_TEXT = 'A redirect tried to send Maglev to a device on your network, so it stopped.';
-export const LAN_ADDRESS_TEXT = 'This address points to a device on your network.';
-export const LAN_ADDRESS_BODY = "If it's your own server, allow this device. Only do this for devices you trust.";
-export const POLICY_BLOCKED_TEXT = 'Blocked by your Wi-Fi-only or VPN setting.';
-export const PERMISSION_TEXT = "Maglev can't write to that folder.";
+const FOLDER_GONE_CARD = 'Folder not available';
+const FOLDER_GONE_TEXT = "The folder isn't available. Is the SD card in?";
+const TOO_BIG_TEXT = "This file is bigger than the card's format allows (4 GB). Use phone storage.";
+const LOCAL_BLOCKED_TEXT = 'A redirect tried to send Maglev to a device on your network, so it stopped.';
+const LAN_ADDRESS_TEXT = 'This address points to a device on your network.';
+const LAN_ADDRESS_BODY = "If it's your own server, allow this device. Only do this for devices you trust.";
+const POLICY_BLOCKED_TEXT = 'Blocked by your Wi-Fi-only or VPN setting.';
+const PERMISSION_TEXT = "Maglev can't write to that folder.";
 export const WIFI_ANYWAY_NOTE = 'Just this one. Wi-Fi only stays on.';
-export const NOT_A_FILE_BODY =
+const NOT_A_FILE_BODY =
   'This is a web page, not a file. On the page, long-press the download button, tap Copy link address, then paste it here.';
-export const STALLED_TEXT = 'Waiting for the server';
-export const CONNECTING_SERVER_TEXT = 'Connecting to the server';
-export const STALLED_ERROR_TEXT = 'The server stopped sending data.';
-export const AUTH_REQUIRED_TEXT = 'This link needs you to sign in again. Paste the link again.';
-export const NO_APP_TEXT = 'No app on this phone can open this file.';
-export const PROBE_BLOCKED_BODY =
+const STALLED_TEXT = 'Waiting for the server';
+const CONNECTING_SERVER_TEXT = 'Connecting to the server';
+const STALLED_ERROR_TEXT = 'The server stopped sending data.';
+const AUTH_REQUIRED_TEXT = 'This link needs you to sign in again. Paste the link again.';
+const NO_APP_TEXT = 'No app on this phone can open this file.';
+const PROBE_BLOCKED_BODY =
   'Your network settings block downloads right now. Open settings to change that, or add it anyway and it starts when downloads are allowed.';
-export const AUTH_BODY =
+const AUTH_BODY =
   'This site wants you to sign in. Sign in on the site in your browser, copy the download link again, and paste it here.';
+/** A 403 with no sign-in details (NATIVE_CONTRACT 17, LINK_REFUSED): the site refused the link itself. */
+const LINK_REFUSED_TEXT = 'The site refused this link. Open its page again, then retry.';
+const LINK_REFUSED_PROBE_BODY =
+  "The site refused this link. Open the page in Maglev's browser and start the download from there, or paste a fresh link.";
+
+/** The phone has no usable network (Kotlin's `offline` block, NATIVE_CONTRACT 35.4). */
+function isOffline(ctx: BlockContext): boolean {
+  return !!ctx.blocks?.some((b) => b.tag === 'offline');
+}
 
 /** Reasons the engine clears by itself. The card offers no Resume for them. */
 export function isGovernancePause(pausedBy: string | null | undefined): boolean {
@@ -72,6 +81,7 @@ type ErrorKind =
   | 'policyBlocked'
   | 'httpGone'
   | 'authRequired'
+  | 'linkRefused'
   | 'stalled'
   | 'network'
   | 'other';
@@ -98,6 +108,7 @@ function errorKind(code: string | undefined, httpStatus?: number | null): ErrorK
   if (c === 'LAN_ADDRESS') return 'lanAddress';
   if (c === 'BLOCKED') return 'policyBlocked';
   if (c === 'AUTH_REQUIRED') return 'authRequired';
+  if (c === 'LINK_REFUSED') return 'linkRefused';
   if (c === 'STALLED') return 'stalled';
   return 'other';
 }
@@ -128,20 +139,6 @@ export function downloadProgress(d: DownloadSnapshot): number {
   if (d.state === 'finished') return 1;
   if (!d.size || d.size <= 0) return 0;
   return Math.min(1, Math.max(0, d.downloaded / d.size));
-}
-
-/**
- * "412 MB of 1.2 GB · 34%" for a known size, "412 MB so far" when the server has not said, null when
- * nothing has arrived and no size is known. A stream's size is an estimate, so it reads "~1.2 GB".
- */
-export function downloadProgressText(d: DownloadSnapshot): string | null {
-  if (d.state === 'finished') return null;
-  if (d.size && d.size > 0) {
-    const raw = downloadProgress(d) * 100;
-    const pct = raw >= 100 ? 100 : Math.min(99, Math.round(raw));
-    return `${formatBytes(d.downloaded)} of ${d.stream ? '~' : ''}${formatBytes(d.size)} · ${pct}%`;
-  }
-  return d.downloaded > 0 ? `${formatBytes(d.downloaded)} so far` : null;
 }
 
 export type DownloadSlot = 'speed' | 'size' | 'amount';
@@ -234,6 +231,8 @@ export function downloadStatus(
       return held(reasonFor('queued', ctx)!.short, 'muted');
     case 'downloading': {
       const situation = linkSituation(d, opts);
+      // No network: say so rather than blame the server. Data that still arrives wins (the tag can lag the network).
+      if (situation !== 'flowing' && isOffline(ctx)) return held(reasonFor('offline')!.short, 'muted');
       if (situation === 'waiting') return held(STALLED_TEXT, 'muted');
       if (situation === 'connecting') return mk(CONNECTING_SERVER_TEXT, 'muted', null, right.value, right.slot, right.full);
       const flowing = situation === 'flowing';
@@ -262,7 +261,14 @@ export function downloadStatus(
     case 'finished':
       return d.size ? mk(doneLead(d.activeSecs, d.finishedAt), 'accent', null, formatBytes(d.size), 'size') : mk(doneLead(d.activeSecs, d.finishedAt), 'accent', null);
     case 'needs_link':
-      return held(d.error?.code === 'AUTH_REQUIRED' ? 'Needs sign-in · Paste new link' : 'Link expired · Paste new link', 'danger');
+      return held(
+        d.error?.code === 'AUTH_REQUIRED'
+          ? 'Needs sign-in · Paste new link'
+          : d.error?.code === 'LINK_REFUSED'
+            ? 'Site refused · Paste new link'
+            : 'Link expired · Paste new link',
+        'danger',
+      );
     case 'error':
       // The folder message is long; the card says it short and the full text stays for screen readers and the sheet.
       if (errorKind(d.error?.code, d.error?.httpStatus) === 'folderGone') return held(FOLDER_GONE_CARD, 'danger', FOLDER_GONE_TEXT);
@@ -317,6 +323,8 @@ function errorLine(d: DownloadSnapshot): string {
       return POLICY_BLOCKED_TEXT;
     case 'authRequired':
       return AUTH_REQUIRED_TEXT;
+    case 'linkRefused':
+      return LINK_REFUSED_TEXT;
     case 'stalled':
       return STALLED_ERROR_TEXT;
     default:
@@ -325,15 +333,20 @@ function errorLine(d: DownloadSnapshot): string {
 }
 
 /** A longer line the sheet shows (the card line is one row and may be cut). Null when there is none. */
-export function downloadCaption(d: DownloadSnapshot): string | null {
-  if (d.state === 'downloading' && d.stalled) return STALLED_TEXT;
+export function downloadCaption(d: DownloadSnapshot, ctx: BlockContext = {}): string | null {
+  if (d.state === 'downloading' && d.stalled) {
+    if (!isOffline(ctx)) return STALLED_TEXT;
+    const r = reasonFor('offline')!;
+    return `${r.title}. ${r.body}`;
+  }
   if (d.state === 'paused' && d.pausedBy === 'storage_unavailable') return FOLDER_GONE_TEXT;
   if (d.state === 'needs_link' && d.error?.code === 'AUTH_REQUIRED') return AUTH_BODY;
+  if (d.state === 'needs_link' && d.error?.code === 'LINK_REFUSED') return LINK_REFUSED_TEXT;
   if (d.state === 'error') {
     const k = errorKind(d.error?.code, d.error?.httpStatus);
     if (k === 'lanAddress') return `${LAN_ADDRESS_TEXT} ${LAN_ADDRESS_BODY}`;
     if (k === 'notAFile') return NOT_A_FILE_BODY;
-    if (k === 'permission' || k === 'folderGone' || k === 'tooBig' || k === 'localBlocked' || k === 'policyBlocked' || k === 'authRequired' || k === 'stalled') return errorLine(d);
+    if (k === 'permission' || k === 'folderGone' || k === 'tooBig' || k === 'localBlocked' || k === 'policyBlocked' || k === 'authRequired' || k === 'linkRefused' || k === 'stalled') return errorLine(d);
   }
   return null;
 }
@@ -389,6 +402,7 @@ export function downloadActions(d: DownloadSnapshot, ctx: BlockContext = {}): Do
         case 'httpGone':
           return [A.remove];
         case 'authRequired':
+        case 'linkRefused':
           return [A.newLink];
         case 'lanAddress':
           return [A.allowDevice, A.remove];
@@ -409,7 +423,7 @@ export function downloadActions(d: DownloadSnapshot, ctx: BlockContext = {}): Do
 
 /** True when the sheet should ask for a new link (the link expired, or the site wants a sign-in again). */
 export function needsNewLink(d: DownloadSnapshot): boolean {
-  return d.state === 'needs_link' || (d.state === 'error' && errorKind(d.error?.code, d.error?.httpStatus) === 'authRequired');
+  return d.state === 'needs_link' || (d.state === 'error' && ['authRequired', 'linkRefused'].includes(errorKind(d.error?.code, d.error?.httpStatus)));
 }
 
 /** What to tell the user when "Allow this device" fails. */
@@ -451,15 +465,11 @@ export function probeErrorView(
   if (k === 'BLOCKED') return { body: PROBE_BLOCKED_BODY, primary: 'blocked' };
   if (k === 'NOT_A_FILE') return { body: NOT_A_FILE_BODY, primary: 'pasteAnother' };
   if (k === 'AUTH_REQUIRED') return { body: AUTH_BODY, primary: 'pasteAnother' };
+  if (k === 'LINK_REFUSED') return { body: LINK_REFUSED_PROBE_BODY, primary: 'pasteAnother' };
   const body = message || 'Something went wrong.';
   // A missing file will not appear on a second try; a network drop or a busy server might.
   if (k === 'HTTP_STATUS' && isFinal4xx(httpStatus)) return { body, primary: 'pasteAnother' };
   return { body, primary: 'retry' };
-}
-
-/** True while the download is working or waiting to work. */
-export function isDownloadActive(d: DownloadSnapshot): boolean {
-  return d.state === 'downloading' || d.state === 'queued' || d.state === 'resolving' || d.state === 'verifying';
 }
 
 /** Sheet copy for removing a download. A finished one can keep its file; an unfinished one has only a partial file. */
@@ -495,6 +505,7 @@ export const CANT_RESUME_HINT = "This server can't resume. Pausing starts over."
  */
 export function linkProblem(d: DownloadSnapshot): { title: string; body: string } {
   if (d.error?.code === 'AUTH_REQUIRED') return { title: 'Needs sign-in', body: AUTH_BODY };
+  if (d.error?.code === 'LINK_REFUSED') return { title: 'Site refused', body: LINK_REFUSED_TEXT };
   return { title: 'Link expired', body: d.error?.message || 'The server no longer accepts this link.' };
 }
 

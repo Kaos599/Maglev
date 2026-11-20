@@ -2,7 +2,7 @@ import React, { createContext, useContext, useEffect, useMemo, useRef, useState 
 import { Animated, Easing, LayoutChangeEvent, StyleSheet, View } from 'react-native';
 import Reanimated, { cancelAnimation, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { useTheme } from '../../context/ThemeContext';
-import { ThemeColors, alpha, fillTranslateX } from '../../constants/theme';
+import { ThemeColors, alpha, fillTranslateX, motion as motionTokens } from '../../constants/theme';
 import { useReduceMotion } from '../motion';
 import { useMotion } from './useMotion';
 
@@ -57,7 +57,7 @@ export function ProgressBar({ progress = 0, tone = 'download', indeterminate = f
     if (!sweeping || w === 0) return;
     x.setValue(-seg);
     const loop = Animated.loop(
-      Animated.timing(x, { toValue: w, duration: 1400, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
+      Animated.timing(x, { toValue: w, duration: motionTokens.loop.sweep, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
       { iterations: sweeps ?? -1 },
     );
     loop.start(({ finished }) => {
@@ -125,10 +125,10 @@ function DeterminateFill({
   return <Reanimated.View style={[fillStyles.fill, { width, backgroundColor: color }, style]} />;
 }
 
-const fillStyles = StyleSheet.create({ fill: { height: 6, borderRadius: 3 } });
+const fillStyles = StyleSheet.create({ fill: { height: 6, borderRadius: 3 } }); // design-exception: bar geometry: 6 px track, radius stays half the height
 
 const makeStyles = (c: ThemeColors) =>
   StyleSheet.create({
-    track: { height: 6, borderRadius: 3, backgroundColor: c.surfaceRaised, overflow: 'hidden' },
-    fill: { height: 6, borderRadius: 3 },
+    track: { height: 6, borderRadius: 3, backgroundColor: c.surfaceRaised, overflow: 'hidden' }, // design-exception: bar geometry: 6 px track, radius stays half the height
+    fill: { height: 6, borderRadius: 3 }, // design-exception: bar geometry: 6 px track, radius stays half the height
   });

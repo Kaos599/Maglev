@@ -1,11 +1,12 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Animated, StyleProp, ViewStyle } from 'react-native';
+import { motion } from '../../constants/theme';
 import { easeOut } from './tokens';
 import { useReduceMotion } from './useReduceMotion';
 
-/** Enter and exit lengths (ms). Enter 150 ease-out; exit a touch quicker so the thing leaves softly. */
-export const REVEAL_IN_MS = 150;
-export const REVEAL_OUT_MS = 100;
+/** Enter and exit lengths (ms). Enter `fast`, ease-out; exit `exit`, a touch quicker so the thing leaves softly. */
+export const REVEAL_IN_MS = motion.duration.fast;
+export const REVEAL_OUT_MS = motion.duration.exit;
 /** Points the content rises while it fades in. */
 export const REVEAL_RISE = 4;
 

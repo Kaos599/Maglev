@@ -13,10 +13,10 @@ const NOT_VIDEO_CATEGORIES: ReadonlySet<string> = new Set(['music', 'apps', 'gam
 
 /** 44.15 D13: release tokens that mark a video even when the name has no year or episode. */
 const VIDEO_TOKENS = /\b(2160p|1080p|720p|blu-?ray|web-?dl|web-?rip|web|hdtv|x264|x265|hevc|hdr|remux)\b/i;
-export const hasVideoTokens = (name: string): boolean => VIDEO_TOKENS.test(name);
+const hasVideoTokens = (name: string): boolean => VIDEO_TOKENS.test(name);
 
 /** True when the name reads as a film (title and year) or as an episode or season. */
-export function nameReadsAsVideo(name: string): boolean {
+function nameReadsAsVideo(name: string): boolean {
   const p = parseName(name);
   if (p.extra || !p.title) return false;
   if (p.season !== undefined || p.episode !== undefined) return true;

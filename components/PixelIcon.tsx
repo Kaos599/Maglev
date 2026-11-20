@@ -4,7 +4,6 @@ import { useTheme } from '../context/ThemeContext';
 import { ICON_PATHS, ICON_VIEWBOX } from './icons.generated';
 
 export type PixelIconName = keyof typeof ICON_PATHS;
-export const ICON_NAMES = Object.keys(ICON_PATHS) as PixelIconName[];
 
 /** Allowed icon sizes (px). 24 is crisp 1:1 and the default; 48 is 2x. 16/20 only for inline stats. */
 export type PixelIconSize = 16 | 20 | 24 | 48;
@@ -19,10 +18,9 @@ export interface PixelIconProps {
 const crisp = { shapeRendering: 'crispEdges' } as object;
 
 /**
- * Unrestricted-size renderer. Only used by the legacy PixelIcons wrappers that
- * must keep their historical pixel sizes; new code uses <PixelIcon/>.
+ * Unrestricted-size renderer behind <PixelIcon/>.
  */
-export const PixelGlyph = memo(function PixelGlyph({
+const PixelGlyph = memo(function PixelGlyph({
   name,
   size,
   color,

@@ -39,7 +39,7 @@ export const LightText = memo(function LightText({ text, onTerm }: { text: strin
 const makeStyles = (c: ThemeColors) =>
   StyleSheet.create({
     wrap: { gap: spacing.sm },
-    text: { ...type.body, fontSize: 15, lineHeight: 21, color: c.text },
+    text: { ...type.body, fontSize: type.size.lg, lineHeight: 21, color: c.text },
     list: { gap: spacing.xs },
     item: { flexDirection: 'row', gap: spacing.sm, alignItems: 'flex-start' },
     marker: { minWidth: 16, color: c.textMuted },

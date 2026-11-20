@@ -58,7 +58,7 @@ export function getFeedAutomation(): FeedAutomationPrefs {
 }
 
 /** The config Kotlin receives: prefs plus the current feed list. A rule whose chosen feeds are all gone is sent disabled, never as "all feeds". */
-export function buildNativeConfig(p: FeedAutomationPrefs = getFeedAutomation()): FeedAutomationConfig {
+function buildNativeConfig(p: FeedAutomationPrefs = getFeedAutomation()): FeedAutomationConfig {
   const feeds = loadFeeds().map((f) => ({ id: f.id, url: f.url, name: f.name }));
   const ids = new Set(feeds.map((f) => f.id));
   const rules = p.rules.map((r) => {

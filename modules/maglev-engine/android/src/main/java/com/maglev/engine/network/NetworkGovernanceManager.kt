@@ -7,6 +7,43 @@ import android.net.NetworkCapabilities
 import android.net.wifi.WifiManager
 
 /**
+ * Which network is the default one, kept apart from Android so it can be unit tested.
+ *
+ * A running transfer holds a socket on the network that was the default when it connected. When the default network
+ * changes straight to another live one (Wi-Fi switched off with mobile data up, or the other way round), that socket
+ * is dead but nothing tells the transfer until a read timeout. [available] reports that change so the engine can
+ * reconnect (contract section 17.x).
+ */
+internal class DefaultNetworkTracker<N : Any> {
+    private var current: N? = null
+
+    /** The default network is [network]. Returns true when it replaced another live default network. */
+    @Synchronized
+    fun available(network: N): Boolean {
+        val switched = current != null && current != network
+        current = network
+        return switched
+    }
+
+    /**
+     * [network] was lost. Returns false for a network that is no longer the default: Android may report the old
+     * network's loss after the new default is already up, and that must not mark the new one as gone.
+     */
+    @Synchronized
+    fun lost(network: N): Boolean {
+        val cur = current
+        if (cur != null && cur != network) return false
+        current = null
+        return true
+    }
+
+    @Synchronized
+    fun reset() {
+        current = null
+    }
+}
+
+/**
  * Watches the default network and reports whether it is Wi-Fi or Ethernet, whether Android validated its internet
  * access (captive portal check), whether it is a VPN, and which SSID it carries.
  *
@@ -17,10 +54,12 @@ class NetworkGovernanceManager(
     context: Context,
     private val onChanged: () -> Unit,
     private val onGained: () -> Unit = {},
+    private val onSwitched: () -> Unit = {},
 ) {
     private val appContext = context.applicationContext
     private val cm = appContext.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
     private var callback: ConnectivityManager.NetworkCallback? = null
+    private val tracker = DefaultNetworkTracker<Network>()
 
     @Volatile
     var unmeteredLink: Boolean = false
@@ -63,6 +102,7 @@ class NetworkGovernanceManager(
             override fun onCapabilitiesChanged(network: Network, caps: NetworkCapabilities) =
                 update(network, caps, announce = true)
             override fun onLost(network: Network) {
+                if (!tracker.lost(network)) return
                 connected = false
                 unmeteredLink = false
                 validated = true
@@ -88,11 +128,13 @@ class NetworkGovernanceManager(
         } catch (_: Exception) {
         }
         callback = null
+        tracker.reset()
     }
 
     private fun refresh(network: Network?, announce: Boolean) {
         val caps = network?.let { cm?.getNetworkCapabilities(it) }
         if (network == null || caps == null) {
+            if (network == null) tracker.reset()
             connected = false
             unmeteredLink = false
             validated = true
@@ -105,6 +147,13 @@ class NetworkGovernanceManager(
     }
 
     private fun update(network: Network, caps: NetworkCapabilities, announce: Boolean) {
+        val switched = if (announce) {
+            tracker.available(network)
+        } else {
+            tracker.reset()
+            tracker.available(network)
+            false
+        }
         connected = true
         validated = caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
         captivePortal = caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_CAPTIVE_PORTAL)
@@ -116,6 +165,7 @@ class NetworkGovernanceManager(
                 caps.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET))
         onChanged()
         if (gained && announce) onGained()
+        if (switched) onSwitched()
     }
 
     /**

@@ -71,7 +71,7 @@ const makeStyles = (c: ThemeColors) =>
     bubble: { maxWidth: '92%', paddingHorizontal: spacing.md, paddingVertical: spacing.sm + 2, borderRadius: radius.md, borderWidth: 1 },
     user: { alignSelf: 'flex-end', borderColor: c.accent, backgroundColor: 'transparent' },
     assistant: { alignSelf: 'flex-start', borderColor: c.border, backgroundColor: c.surface },
-    text: { ...type.body, fontSize: 15, lineHeight: 21, color: c.text },
+    text: { ...type.body, fontSize: type.size.lg, lineHeight: 21, color: c.text },
     note: { ...type.body, fontSize: type.size.md, color: c.textMuted, alignSelf: 'flex-start', paddingHorizontal: spacing.xs },
     error: {
       alignSelf: 'stretch',
@@ -82,6 +82,6 @@ const makeStyles = (c: ThemeColors) =>
       backgroundColor: alpha(c.danger, 0.1),
     },
     errorRow: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.md },
-    errorText: { ...type.body, flex: 1, fontSize: 14, lineHeight: 20, color: c.text },
+    errorText: { ...type.body, flex: 1, fontSize: type.size.base, lineHeight: 20, color: c.text },
     errorAction: { marginTop: spacing.md, alignSelf: 'flex-start' },
   });

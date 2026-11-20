@@ -76,7 +76,7 @@ async function resolveFolder(folder: string | null, exists: ImportDeps['folderEx
   return ok ? { folder, fellBack: false } : { folder: null, fellBack: true };
 }
 
-export async function planTorrents(
+async function planTorrents(
   torrents: readonly BackupTorrent[],
   existingHashes: ReadonlySet<string>,
   folderExists: ImportDeps['folderExists'],
@@ -94,7 +94,7 @@ export async function planTorrents(
   return plan;
 }
 
-export async function planDownloads(
+async function planDownloads(
   downloads: readonly BackupDownload[],
   existingUrls: readonly string[],
   folderExists: ImportDeps['folderExists'],

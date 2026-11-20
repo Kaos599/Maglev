@@ -207,7 +207,7 @@ export function untrustedField(
 const MAX_DEPTH = 16;
 
 /** Deep-sanitise a JSON-like value: every string is sanitised, numbers, booleans and null pass through. */
-export function sanitizeValue(value: unknown, maxLen: number = NAME_MAX, depth = 0): unknown {
+function sanitizeValue(value: unknown, maxLen: number = NAME_MAX, depth = 0): unknown {
   if (depth > MAX_DEPTH) return null;
   if (typeof value === 'string') return sanitizeText(value, maxLen);
   if (typeof value === 'number') return Number.isFinite(value) ? value : null;

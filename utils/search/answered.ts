@@ -5,7 +5,7 @@ import type { SourceStatus } from './types';
  * A source answered when it returned a list (with or without hits). A source that is still searching,
  * timed out, failed, was blocked or sits behind a Cloudflare check has not answered.
  */
-export function hasAnswered(s: SourceStatus): boolean {
+function hasAnswered(s: SourceStatus): boolean {
   return s.state === 'done' || s.state === 'empty';
 }
 
@@ -36,6 +36,16 @@ export function unansweredNote(t: SourceTally): string {
   if (t.needsCheck > 0) parts.push(t.needsCheck === 1 ? '1 needs a quick check' : `${t.needsCheck} need a quick check`);
   if (t.failed > 0) parts.push(t.failed === 1 ? "1 didn't respond" : `${t.failed} didn't respond`);
   return parts.join(' · ');
+}
+
+/**
+ * The short line under the result count: "12 of 14 sources" when some did not answer, "No source answered" (bad)
+ * when none did, null when all did. A source behind a quick check counts as not answered; the fix hint offers it.
+ */
+export function sourcesLine(t: SourceTally): { text: string; bad: boolean } | null {
+  if (t.total === 0 || t.answered >= t.total) return null;
+  if (t.answered === 0) return { text: 'No source answered', bad: true };
+  return { text: `${t.answered} of ${t.total} sources`, bad: false };
 }
 
 /** True when no source answered at all (and there was at least one). */
@@ -76,7 +86,7 @@ export function unansweredSources(sources: SourceStatus[], nameOf: (id: string) 
 }
 
 /** After the user closes the "needs a quick check" line, it stays away this long. */
-export const FIX_HINT_QUIET_MS = 24 * 60 * 60 * 1000;
+const FIX_HINT_QUIET_MS = 24 * 60 * 60 * 1000;
 
 /** Show the fix line when a source needs a check and the user has not closed it in the last 24 hours. */
 export function shouldShowFixHint(now: number, dismissedAt: number, needsCheck: number): boolean {

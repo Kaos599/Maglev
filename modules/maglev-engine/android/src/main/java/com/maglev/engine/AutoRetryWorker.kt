@@ -42,7 +42,7 @@ object AutoRetry {
 
     /**
      * Error codes worth another try: the network failed, the server stopped sending data, or it answered with a
-     * temporary status (408, 429, 500, 502, 503, 504). Everything else needs the user: AUTH_REQUIRED, LINK_EXPIRED,
+     * temporary status (408, 429, 500, 502, 503, 504). Everything else needs the user: AUTH_REQUIRED, LINK_REFUSED, LINK_EXPIRED,
      * needs_link, DISK_FULL, STORAGE_UNAVAILABLE, FILE_TOO_LARGE, PERMISSION, FILE_CHANGED, NOT_A_FILE,
      * CHECKSUM_MISMATCH, LAN_ADDRESS, LOCAL_REDIRECT, BLOCKED, UNSUPPORTED, INTERNAL and any other status.
      */

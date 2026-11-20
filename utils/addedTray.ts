@@ -173,7 +173,7 @@ export function skipAsked(s: TrayState): { state: TrayState; keys: string[] } {
 }
 
 /** 44.15 F9: under TalkBack the message stops merging new adds after this long, so it never grows for hours. */
-export const SCREEN_READER_MERGE_MS = 60_000;
+const SCREEN_READER_MERGE_MS = 60_000;
 
 /** Whether a new add may join the message on screen. */
 export function trayMayMerge(s: TrayState | null, o: { now: number; screenReader: boolean; focused: boolean }): boolean {
@@ -213,7 +213,7 @@ export const askedAsks = (s: TrayState): SubtitleAsk[] => s.items.filter((x) => 
 // ---------------------------------------------------------------- words
 
 /** "{A}", "{A}, {B}", "{A}, {B} and {k} more". */
-export function nameList(names: readonly string[]): string {
+function nameList(names: readonly string[]): string {
   if (names.length <= 2) return names.join(', ');
   return `${names[0]}, ${names[1]} and ${names.length - 2} more`;
 }
@@ -222,14 +222,14 @@ export function nameList(names: readonly string[]): string {
  * 45.3: the names the message shows. Two adds that would read the same each get their distinguishing part in
  * parentheses: "Big Buck Bunny (2160p), Big Buck Bunny (BDRip)". Names that already differ are left alone.
  */
-export function itemNames(items: readonly TrayItem[]): string[] {
+function itemNames(items: readonly TrayItem[]): string[] {
   const count = new Map<string, number>();
   for (const x of items) count.set(x.display, (count.get(x.display) ?? 0) + 1);
   return items.map((x) => ((count.get(x.display) ?? 0) > 1 && x.tell ? `${x.display} (${x.tell})` : x.display));
 }
 
 /** True when the message is only about adds that were already in Transfers. */
-export const isAlreadyOnly = (s: TrayState): boolean => s.items.length === 0 && s.already.length > 0;
+const isAlreadyOnly = (s: TrayState): boolean => s.items.length === 0 && s.already.length > 0;
 
 /** Automatic mode shows its own title while any video in the message is getting subtitles. */
 function autoTitle(s: TrayState, c: TrayCounts): boolean {

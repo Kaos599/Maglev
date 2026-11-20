@@ -48,7 +48,7 @@ export function parseResponse(body: Uint8Array): N24Response {
 }
 
 /** The candidate id carries what the lookup needs again: `<hash>-<bytes>-<file name>`. */
-export function makeId(hash: string, bytes: number, fileName: string): string {
+function makeId(hash: string, bytes: number, fileName: string): string {
   return `${hash}-${Math.floor(bytes)}-${encodeURIComponent(fileName)}`;
 }
 

@@ -25,7 +25,7 @@ const STATES: readonly string[] = ['INITIALIZING', 'QUEUED', 'DOWNLOADING', 'SEE
 
 const num = (v: unknown): number => (typeof v === 'number' && Number.isFinite(v) && v >= 0 ? v : 0);
 
-export function toCached(t: TorrentTelemetry): CachedTorrent {
+function toCached(t: TorrentTelemetry): CachedTorrent {
   return {
     id: t.id,
     name: t.name,
@@ -41,7 +41,7 @@ export function toCached(t: TorrentTelemetry): CachedTorrent {
   };
 }
 
-export function parseCache(raw: string | null): CachedTorrent[] {
+function parseCache(raw: string | null): CachedTorrent[] {
   if (!raw) return [];
   try {
     const arr = JSON.parse(raw);
@@ -92,10 +92,6 @@ export function fromCached(c: CachedTorrent): TorrentTelemetry {
     ratio: c.ratio,
     addedAt: c.addedAt ?? undefined,
   };
-}
-
-export function loadTransferCache(): CachedTorrent[] {
-  return parseCache(kvGet(KEY));
 }
 
 /**

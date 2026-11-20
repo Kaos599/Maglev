@@ -35,7 +35,7 @@ export type TabsEnv = { now: number; newId?: () => string };
 
 let counter = 0;
 /** Default id: time plus a counter plus a random part. Unique within and across runs. */
-export const defaultNewId = (): string => `t${Date.now().toString(36)}${(counter++).toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+const defaultNewId = (): string => `t${Date.now().toString(36)}${(counter++).toString(36)}${Math.random().toString(36).slice(2, 6)}`;
 
 const idOf = (env: TabsEnv) => (env.newId ?? defaultNewId)();
 

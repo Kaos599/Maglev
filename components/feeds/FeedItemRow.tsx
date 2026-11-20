@@ -69,7 +69,7 @@ const makeStyles = (c: ThemeColors) =>
       borderColor: c.border,
     },
     text: { flex: 1, gap: spacing.xs },
-    title: { ...type.bodyStrong, fontSize: 14, lineHeight: 19, color: c.text },
-    newTag: { ...type.bodyStrong, fontSize: 11, color: c.accentText },
-    meta: { ...type.body, fontSize: 12, color: c.textMuted },
+    title: { ...type.bodyStrong, fontSize: type.size.base, lineHeight: 19, color: c.text },
+    newTag: { ...type.bodyStrong, fontSize: type.size.xs, color: c.accentText },
+    meta: { ...type.body, fontSize: type.size.sm, color: c.textMuted },
   });

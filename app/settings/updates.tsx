@@ -343,14 +343,14 @@ function UpdateCard({ state, notes, onClose }: { state: UpdateState; notes: stri
 const makeStyles = (c: ThemeColors) =>
   StyleSheet.create({
     block: { padding: spacing.lg, gap: spacing.sm },
-    label: { ...type.bodyStrong, fontSize: 14, color: c.text },
+    label: { ...type.bodyStrong, fontSize: type.size.base, color: c.text },
     versionEnd: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
-    versionText: { ...type.body, fontSize: 14, color: c.textMuted },
+    versionText: { ...type.body, fontSize: type.size.base, color: c.textMuted },
     badge: { backgroundColor: c.accent, borderRadius: radius.sm, paddingHorizontal: spacing.sm, paddingVertical: 2 },
-    badgeText: { ...type.bodyStrong, fontSize: 12, color: c.onAccent },
+    badgeText: { ...type.bodyStrong, fontSize: type.size.sm, color: c.onAccent },
     cardBody: { gap: spacing.md },
     notes: { maxHeight: 200 },
-    notesText: { ...type.body, fontSize: 14, color: c.textMuted },
-    status: { ...type.body, fontSize: 14, color: c.text },
+    notesText: { ...type.body, fontSize: type.size.base, color: c.textMuted },
+    status: { ...type.body, fontSize: type.size.base, color: c.text },
     actions: { gap: spacing.sm },
   });

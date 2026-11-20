@@ -28,11 +28,24 @@ object Json {
         }
     }
 
+    /** Keys repeat every poll, so each distinct key goes through the regex once. Guarded because several threads camelize. */
+    private val camelCache = HashMap<String, String>()
+
+    private fun camelKey(k: String): String {
+        synchronized(camelCache) { camelCache[k]?.let { return it } }
+        val c = snakeToCamel(k)
+        synchronized(camelCache) {
+            // Torrent ids or names as map keys would grow this without bound: cache only short, id-free keys.
+            if (camelCache.size < 2048 && k.length <= 48) camelCache[k] = c
+        }
+        return c
+    }
+
     /** Recursively renames snake_case keys to camelCase. Values are never touched. */
     fun camelize(value: Any?): Any? = when (value) {
         is Map<*, *> -> {
             val out = LinkedHashMap<String, Any?>(value.size)
-            for ((k, v) in value) out[snakeToCamel(k.toString())] = camelize(v)
+            for ((k, v) in value) out[camelKey(k.toString())] = camelize(v)
             out
         }
         is List<*> -> value.map { camelize(it) }

@@ -48,6 +48,7 @@ const MAP = {
   calendar: 'calendar-range',
   alarm: 'alarm-clock',
   link: 'link',
+  bookmark: 'bookmark',
   clipboard: 'clipboard',
   sort: 'arrow-down-wide-narrow',
   filter: 'filter',

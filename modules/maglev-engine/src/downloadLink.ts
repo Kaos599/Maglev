@@ -30,7 +30,7 @@ export function parseDownloadUrl(raw: string): UrlCheck {
 }
 
 /** True when the link points at a .torrent file. Those go through the torrent flow, not the download flow. */
-export function isTorrentUrl(url: string): boolean {
+function isTorrentUrl(url: string): boolean {
   return /\.torrent$/i.test(url.trim().split(/[?#]/)[0]);
 }
 

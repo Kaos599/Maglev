@@ -1,7 +1,7 @@
 import { useCallback, useMemo } from 'react';
 import { useRouter } from 'expo-router';
 import { maglevEngine, type DownloadSnapshot, type EngineResult } from 'maglev-engine';
-import { useMaglevEngine } from '../../context/EngineContext';
+import { useEngineActions } from '../../context/EngineContext';
 import { notices } from '../../constants/copy';
 import {
   OPEN_FOLDER_FAILED_TEXT,
@@ -46,7 +46,7 @@ export interface DownloadActions {
 
 export function useDownloadActions(): DownloadActions {
   const router = useRouter();
-  const { showNotice, pauseDownload, resumeDownload, retryDownload, removeDownload, setDownloadLimits, refreshDownloadUrl } = useMaglevEngine();
+  const { showNotice, pauseDownload, resumeDownload, retryDownload, removeDownload, setDownloadLimits, refreshDownloadUrl } = useEngineActions();
 
   const open = useCallback(
     (id: string) => {

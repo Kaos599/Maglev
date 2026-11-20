@@ -40,7 +40,7 @@ async function main() {
   // (speed if data flows, else the amount, else the size, else a dash).
   const left = (x) => (x.pct ? `${x.lead} · ${x.pct}` : x.lead);
   let s = model.torrentStatus(torrent(), '1 min');
-  check('downloading with time left: phrase, percent, speed', left(s) === '1 min left · 34%' && s.value === '3.2 MB/s' && s.slot === 'speed' && s.tone === 'download', JSON.stringify(s));
+  check('downloading with time left: phrase, percent, speed', left(s) === '1 min left · 34%' && s.value === '3.20 MB/s' && s.slot === 'speed' && s.tone === 'download', JSON.stringify(s));
   check('the amount is not on the left but stays in the screen-reader text', !/ of /.test(left(s)) && /412 MB of 1\.2 GB/.test(s.text), s.text);
   check('status has no second line', !('sub' in s));
   s = model.torrentStatus(torrent({ includedBytes: 600 * MB }), '1 min');
@@ -50,7 +50,7 @@ async function main() {
   s = model.torrentStatus(torrent({ downloadSpeedBytes: 0, etaSeconds: -1 }), '—');
   check('no data flowing: Downloading, percent, amount on the right', left(s) === 'Downloading · 34%' && s.value === '412 MB of 1.2 GB' && s.slot === 'amount', JSON.stringify(s));
   s = model.torrentStatus(torrent({ etaSeconds: -1 }), '—');
-  check('data flowing, no time left: speed on the right', left(s) === 'Downloading · 34%' && s.value === '3.2 MB/s', JSON.stringify(s));
+  check('data flowing, no time left: speed on the right', left(s) === 'Downloading · 34%' && s.value === '3.20 MB/s', JSON.stringify(s));
   s = model.torrentStatus(torrent({ downloadedBytes: 1.2 * GB - 1, progressPercent: 99.99 }), '1s');
   check('almost done never rounds up to 100%', s.pct === '99%', JSON.stringify(s));
   s = model.torrentStatus(torrent({ state: 'PAUSED', pausedBy: 'user', downloadSpeedBytes: 0 }), '—');
@@ -81,11 +81,11 @@ async function main() {
 
   console.log('link download status');
   let d = copy.downloadStatus(dl(), '1 min');
-  check('link with time left: phrase, percent, speed', left(d) === '1 min left · 34%' && d.value === '3.2 MB/s' && d.tone === 'download', JSON.stringify(d));
+  check('link with time left: phrase, percent, speed', left(d) === '1 min left · 34%' && d.value === '3.20 MB/s' && d.tone === 'download', JSON.stringify(d));
   check('link amount stays in the screen-reader text only', !/ of /.test(left(d)) && /412 MB of 1\.2 GB/.test(d.text), d.text);
   check('link has no second line', !('sub' in d));
   d = copy.downloadStatus(dl({ size: null }), '—');
-  check('unknown size: Downloading, no percent, speed', left(d) === 'Downloading' && d.value === '3.2 MB/s', JSON.stringify(d));
+  check('unknown size: Downloading, no percent, speed', left(d) === 'Downloading' && d.value === '3.20 MB/s', JSON.stringify(d));
   d = copy.downloadStatus(dl({ size: null, downBps: 0 }), '—');
   check('unknown size, no speed: bytes downloaded on the right', d.value === '412 MB' && d.slot === 'amount', JSON.stringify(d));
   d = copy.downloadStatus(dl({ stream: { kind: 'hls', segmentsDone: 3, segmentsTotal: 10 }, downBps: 0, eta: -1 }), '—');
@@ -209,21 +209,21 @@ async function main() {
   s = model.torrentStatus(torrent({ downloadSpeedBytes: 0, etaSeconds: -1 }), '—', {}, { quietMs: 9000, speedHold: true });
   check('inside the 5 s hold counts as flowing, not waiting', s.slot === 'speed' && s.lead === 'Downloading', JSON.stringify(s));
   s = model.torrentStatus(torrent({ etaSeconds: -1 }), '—');
-  check('flowing: amount then speed on the right, speed in the download colour', s.amount === '412 MB of 1.2 GB' && s.value === '3.2 MB/s' && s.slot === 'speed' && s.tone === 'download', JSON.stringify(s));
-  check('flowing: the screen-reader text reads the whole line, amount included', s.text === 'Downloading · 34% · 412 MB of 1.2 GB · 3.2 MB/s', s.text);
+  check('flowing: amount then speed on the right, speed in the download colour', s.amount === '412 MB of 1.2 GB' && s.value === '3.20 MB/s' && s.slot === 'speed' && s.tone === 'download', JSON.stringify(s));
+  check('flowing: the screen-reader text reads the whole line, amount included', s.text === 'Downloading · 34% · 412 MB of 1.2 GB · 3.20 MB/s', s.text);
   s = model.torrentStatus(torrent({ etaSeconds: -1 }), '—', {}, { shortAmount: true });
-  check('flowing, short: downloaded bytes and speed, full amount still read aloud', s.amount === '412 MB' && s.value === '3.2 MB/s' && /412 MB of 1\.2 GB/.test(s.text), JSON.stringify(s));
+  check('flowing, short: downloaded bytes and speed, full amount still read aloud', s.amount === '412 MB' && s.value === '3.20 MB/s' && /412 MB of 1\.2 GB/.test(s.text), JSON.stringify(s));
   s = model.torrentStatus(torrent({ etaSeconds: -1 }), '—', {}, { shortAmount: narrow(360) });
   check('flowing on a narrow card: shortens', s.amount === '412 MB', JSON.stringify(s));
   s = model.torrentStatus(torrent({ etaSeconds: -1 }), '—', {}, { shortAmount: narrow(900) });
   check('flowing on a wide card: full amount', s.amount === '412 MB of 1.2 GB', JSON.stringify(s));
   let seen = 0;
   model.torrentStatus(torrent({ etaSeconds: -1 }), '—', {}, { shortAmount: (n) => { seen = n; return false; } });
-  check('the narrow test sees the whole right text (amount, separator, speed)', seen === '412 MB of 1.2 GB · 3.2 MB/s'.length, String(seen));
+  check('the narrow test sees the whole right text (amount, separator, speed)', seen === '412 MB of 1.2 GB · 3.20 MB/s'.length, String(seen));
   // NATIVE_CONTRACT 45.2: the compact amount while data flows.
   const tight = (n) => (chars) => chars > n; // fits only when the right side is n characters or fewer
   s = model.torrentStatus(torrent({ etaSeconds: -1, downloadedBytes: 134 * MB, totalSizeBytes: 587 * MB }), '—', {}, { shortAmount: tight(25) });
-  check('45.2 same unit: "134/587 MB" then the speed, long form read aloud', s.amount === '134/587 MB' && s.value === '3.2 MB/s' && /134 MB of 587 MB/.test(s.text), JSON.stringify(s));
+  check('45.2 same unit: "134/587 MB" then the speed, long form read aloud', s.amount === '134/587 MB' && s.value === '3.20 MB/s' && /134 MB of 587 MB/.test(s.text), JSON.stringify(s));
   s = model.torrentStatus(torrent({ etaSeconds: -1, downloadedBytes: 820 * MB, totalSizeBytes: 2.1 * GB }), '—', {}, { shortAmount: tight(25) });
   check('45.2 different units: "820 MB/2.1 GB"', s.amount === '820 MB/2.1 GB', JSON.stringify(s));
   s = model.torrentStatus(torrent({ etaSeconds: -1, downloadedBytes: 3 * GB, totalSizeBytes: 12.4 * GB }), '—', {}, { shortAmount: tight(25) });
@@ -232,7 +232,7 @@ async function main() {
   check('45.2 the check runs again with the compact length: still too long, amount alone', s.amount === '134 MB', JSON.stringify(s));
   const lens = [];
   model.torrentStatus(torrent({ etaSeconds: -1, downloadedBytes: 134 * MB, totalSizeBytes: 587 * MB }), '—', {}, { shortAmount: (n) => { lens.push(n); return true; } });
-  check('45.2 the second check sees "134/587 MB · 3.2 MB/s"', lens.at(-1) === '134/587 MB · 3.2 MB/s'.length, JSON.stringify(lens));
+  check('45.2 the second check sees "134/587 MB · 3.20 MB/s"', lens.at(-1) === '134/587 MB · 3.20 MB/s'.length, JSON.stringify(lens));
   s = model.torrentStatus(torrent({ etaSeconds: -1, totalSizeBytes: 0, includedBytes: 0 }), '—', {}, { shortAmount: true });
   check('45.2 unknown size: the amount alone, no compact form', s.amount === '412 MB', JSON.stringify(s));
   d = copy.downloadStatus(dl({ downBps: 8.4 * MB, downloaded: 460 * MB, eta: -1 }), '—', {}, { shortAmount: tight(25) });
@@ -242,7 +242,7 @@ async function main() {
   s = model.torrentStatus(torrent({ downloadSpeedBytes: 0, etaSeconds: -1 }), '—', {}, { shortAmount: tight(5), quietMs: 0, speedHold: false });
   check('45.2 not flowing: the amount-only form is unchanged', /^412 MB$/.test(s.value), JSON.stringify(s));
   s = model.torrentStatus(torrent({ downloadedBytes: 0, progressPercent: 0, etaSeconds: -1 }), '—');
-  check('flowing with nothing downloaded yet: speed only, no amount', s.amount === undefined && s.value === '3.2 MB/s' && s.text === 'Downloading · 0% · 3.2 MB/s', JSON.stringify(s));
+  check('flowing with nothing downloaded yet: speed only, no amount', s.amount === undefined && s.value === '3.20 MB/s' && s.text === 'Downloading · 0% · 3.20 MB/s', JSON.stringify(s));
   s = model.torrentStatus(torrent({ downloadSpeedBytes: 0, etaSeconds: -1, downloadedBytes: 0, peersTotal: 5 }), '—', { blocks: [{ tag: 'offline' }] });
   check('offline keeps priority over Connecting', s.lead === 'No internet connection', JSON.stringify(s));
   for (const st of ['PAUSED', 'QUEUED', 'CHECKING', 'MOVING', 'SEEDING', 'COMPLETED', 'ERROR', 'INITIALIZING']) {
@@ -255,12 +255,12 @@ async function main() {
   console.log('link card (43.3)');
   const lq = (ms, o = {}) => copy.downloadStatus(dl({ downBps: 0, eta: -1, ...o }), '—', {}, { quietMs: ms });
   d = copy.downloadStatus(dl({ downBps: 8.4 * MB, downloaded: 460 * MB, eta: -1 }), '—');
-  check('link flowing: amount then speed', d.amount === '460 MB of 1.2 GB' && d.value === '8.4 MB/s' && d.slot === 'speed' && d.tone === 'download', JSON.stringify(d));
-  check('link flowing: whole line read aloud', d.text === 'Downloading · 37% · 460 MB of 1.2 GB · 8.4 MB/s', d.text);
+  check('link flowing: amount then speed', d.amount === '460 MB of 1.2 GB' && d.value === '8.40 MB/s' && d.slot === 'speed' && d.tone === 'download', JSON.stringify(d));
+  check('link flowing: whole line read aloud', d.text === 'Downloading · 37% · 460 MB of 1.2 GB · 8.40 MB/s', d.text);
   d = copy.downloadStatus(dl({ downBps: 8.4 * MB, downloaded: 460 * MB, eta: -1 }), '—', {}, { shortAmount: true });
-  check('link flowing, short: 460 MB and speed', d.amount === '460 MB' && d.value === '8.4 MB/s', JSON.stringify(d));
+  check('link flowing, short: 460 MB and speed', d.amount === '460 MB' && d.value === '8.40 MB/s', JSON.stringify(d));
   d = copy.downloadStatus(dl({ downBps: 8.4 * MB, downloaded: 460 * MB, size: null, eta: -1 }), '—');
-  check('link flowing, unknown size: 460 MB and speed', d.amount === '460 MB' && d.value === '8.4 MB/s' && !d.pct, JSON.stringify(d));
+  check('link flowing, unknown size: 460 MB and speed', d.amount === '460 MB' && d.value === '8.40 MB/s' && !d.pct, JSON.stringify(d));
   d = lq(0, { downloaded: 0 });
   check('link, nothing downloaded, not flowing: Connecting to the server, size on the right', d.lead === 'Connecting to the server' && d.value === '1.2 GB' && d.slot === 'size' && !d.pct, JSON.stringify(d));
   d = lq(0, { downloaded: 0, size: null });
@@ -271,6 +271,17 @@ async function main() {
   check('link quiet 5 s: Waiting for the server, percent, amount', left(d) === 'Waiting for the server · 34%' && d.value === '412 MB of 1.2 GB' && d.tone === 'muted', JSON.stringify(d));
   d = lq(0, { stalled: true });
   check('link stalled by the engine flag alone: Waiting for the server', left(d) === 'Waiting for the server · 34%' && d.value === '412 MB of 1.2 GB', JSON.stringify(d));
+  // Offline while still downloading (2026-11-20 phone test: Wi-Fi off said "Waiting for the server"). Same line as a torrent.
+  const off = { blocks: [{ tag: 'offline' }] };
+  d = copy.downloadStatus(dl({ downBps: 0, eta: -1 }), '—', off, { quietMs: 9000 });
+  check('link waiting while offline: No internet connection', left(d) === 'No internet connection · 34%' && d.tone === 'muted' && d.value === '412 MB of 1.2 GB', JSON.stringify(d));
+  d = copy.downloadStatus(dl({ downBps: 0, eta: -1, stalled: true }), '—', off, { quietMs: 0 });
+  check('link stalled while offline: No internet connection', left(d) === 'No internet connection · 34%', JSON.stringify(d));
+  d = copy.downloadStatus(dl({ downBps: 0, eta: -1, downloaded: 0 }), '—', off, { quietMs: 0 });
+  check('link connecting while offline: No internet connection', d.lead === 'No internet connection', JSON.stringify(d));
+  d = copy.downloadStatus(dl({ downBps: 8.4 * MB, downloaded: 460 * MB, eta: -1 }), '—', off);
+  check('link with data arriving keeps its speed even with the offline tag', d.slot === 'speed' && d.lead === 'Downloading', JSON.stringify(d));
+  check('page caption while offline says when it continues', copy.downloadCaption(dl({ stalled: true }), off) === "No internet connection. Transfers continue when you're back online.", String(copy.downloadCaption(dl({ stalled: true }), off)));
   d = copy.downloadStatus(dl({ downBps: 0, eta: -1 }), '—', {}, { quietMs: 9000, speedHold: true });
   check('link inside the hold counts as flowing', d.slot === 'speed' && d.lead === 'Downloading', JSON.stringify(d));
   d = copy.downloadStatus(dl({ state: 'paused', pausedBy: 'user', downBps: 0 }), '—', {}, { quietMs: 99999 });

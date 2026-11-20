@@ -25,10 +25,10 @@ export interface StarContext {
   foreground: boolean;
 }
 
-export const STAR_MIN_COMPLETED = 3;
-export const STAR_MIN_DAYS_SINCE_FIRST = 7;
-export const STAR_MIN_DAYS_SINCE_DISMISS = 30;
-export const STAR_MAX_DISMISSALS = 3;
+const STAR_MIN_COMPLETED = 3;
+const STAR_MIN_DAYS_SINCE_FIRST = 7;
+const STAR_MIN_DAYS_SINCE_DISMISS = 30;
+const STAR_MAX_DISMISSALS = 3;
 export const STAR_DELAY_MS = 2000;
 const DAY_MS = 24 * 60 * 60 * 1000;
 

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { AppState } from 'react-native';
 import { maglevEngine, type DetailFile } from 'maglev-engine';
-import { useMaglevEngine } from '../../context/EngineContext';
+import { useEngineState, useEngineStatus, useEngineTelemetry } from '../../context/EngineContext';
 import { useSettings } from '../../context/SettingsContext';
 import { useListsVersion } from '../../utils/lists/hooks';
 import { listSubtitleEntries } from '../../utils/lists';
@@ -84,7 +84,10 @@ type CardState = 'getting' | 'saved' | 'needs-look' | 'none' | 'clear';
  * without that OK waits.
  */
 export function useSubtitleRequests(): void {
-  const { telemetry, downloads, engineStatus, networkOnline, listsLive } = useMaglevEngine();
+  // Narrow hooks: this runs at the app root, so it must not subscribe to notices, actions or other engine state.
+  const { telemetry, downloads, listsLive } = useEngineTelemetry();
+  const { engineStatus } = useEngineStatus();
+  const { networkOnline } = useEngineState();
   const { settings } = useSettings();
   const listsVersion = useListsVersion();
   const reqVersion = useSyncExternalStore(subscribeRequests, getRequestsVersion, getRequestsVersion);

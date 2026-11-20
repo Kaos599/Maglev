@@ -31,7 +31,7 @@ export function providerEnabled(p: Pick<SubtitleProvider, 'id' | 'enabledByDefau
 }
 
 /** The provider with the list's mirrors in front (https only; validated when the list was read). */
-export function withListMirrors<P extends Pick<SubtitleProvider, 'id' | 'mirrors'>>(p: P, overrides: ListOverrides): P {
+function withListMirrors<P extends Pick<SubtitleProvider, 'id' | 'mirrors'>>(p: P, overrides: ListOverrides): P {
   const m = overrides?.[p.id]?.mirrors;
   return m && m.length > 0 ? { ...p, mirrors: m.slice() } : p;
 }

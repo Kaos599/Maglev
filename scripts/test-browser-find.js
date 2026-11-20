@@ -73,7 +73,7 @@ async function main() {
   check('Enter means next', /onSubmitEditing/.test(bar) && /step\(true\)/.test(bar));
   check('shows {active+1}/{total} or No matches', /findCopy\.count\(result\.active \+ 1, result\.total\)/.test(bar) && /findCopy\.noMatches/.test(bar));
   check('up, down and close have labels from copy', /findCopy\.previous/.test(bar) && /findCopy\.next/.test(bar) && /findCopy\.close/.test(bar) && /findCopy\.matchLabel/.test(bar));
-  check('buttons are 44 px', /step: \{ width: 44, height: 44/.test(bar) && /height: 44,/.test(bar));
+  check('buttons are 44 px', /step: \{ width: (?:44|touch\.min), height: (?:44|touch\.min)/.test(bar) && /height: (?:44|touch\.min),/.test(bar));
   check('no hex colours and no inline copy in the bar and sheet', !HEX.test(bar) && !HEX.test(sheet));
   check('the screen runs the commands on the tab find was opened on', /findTab\.current/.test(scr) && /view\(id\)\?\.findInPage\(q\)/.test(scr) && /view\(id\)\?\.findNext\(forward\)/.test(scr) && /view\(id\)\?\.clearFind\(\)/.test(scr));
   check('Back closes find before the switcher', /if \(findOpen\) \{\s*closeFind\(\);\s*return true;\s*\}\s*if \(switcherOpen\)/.test(scr));

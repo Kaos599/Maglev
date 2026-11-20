@@ -1,9 +1,10 @@
 import React, { useCallback, useEffect, useId, useMemo, useRef, useState, useSyncExternalStore } from 'react';
-import { AppState, BackHandler, Keyboard, StyleSheet, Text, TextInput, View } from 'react-native';
+import { AppState, BackHandler, Keyboard, Share, StyleSheet, Text, View } from 'react-native';
 import { useFocusEffect, useIsFocused, useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as Clipboard from 'expo-clipboard';
 import {
+  clearCookies,
   nameFromUrl,
   type BrowserDownloadRequestEvent,
   type BrowserLongPressEvent,
@@ -14,11 +15,12 @@ import {
 } from 'maglev-engine';
 import { useTheme } from '../context/ThemeContext';
 import { useMaglevEngine } from '../context/EngineContext';
-import { ThemeColors, radius, spacing, type } from '../constants/theme';
+import { ThemeColors, radius, spacing, touch, type } from '../constants/theme';
 import { haptic } from '../constants/haptics';
+import { bookmarkCopy } from '../constants/bookmarkCopy';
 import { banners, browserTabs, empty, findCopy, foundTray, historyCopy, notices, textSizeCopy } from '../constants/copy';
 import { PixelIcon } from '../components/PixelIcon';
-import { Banner, Button, EmptyBlock, IconButton, ListRow, PressableScale, ProgressBar, Sheet, Toggle } from '../components/ui';
+import { Banner, Button, Dialog, EmptyBlock, IconButton, ListRow, PressableScale, ProgressBar, Sheet, TextField, type TextFieldRef, Toggle } from '../components/ui';
 import { FoundTray } from '../components/browser/FoundTray';
 import { TabWebView, type TabHandlers } from '../components/browser/TabWebView';
 import { TabSwitcher } from '../components/browser/TabSwitcher';
@@ -30,7 +32,11 @@ import { PopupCard } from '../components/browser/PopupCard';
 import { useTabs } from '../components/browser/useTabs';
 import { afterSheetCloses } from '../components/browser/FloatingSheet';
 import { HistorySuggestions } from '../components/browser/HistorySuggestions';
-import { RecentHistory } from '../components/browser/RecentHistory';
+import { StartPage } from '../components/browser/StartPage';
+import { MediaMenu } from '../components/browser/MediaMenu';
+import { BookmarkToggle } from '../components/browser/BookmarkToggle';
+import { BookmarkSheet } from '../components/browser/BookmarkSheet';
+import { findBookmark, useBookmarks } from '../utils/browser/bookmarks';
 import { StreamSheet } from '../components/browser/StreamSheet';
 import { FoundDownloadSheet, downloadHeaders, type DownloadTarget } from '../components/browser/FoundDownload';
 import { BatchSheet } from '../components/browser/BatchSheet';
@@ -39,7 +45,10 @@ import { startFound } from '../components/browser/startFound';
 import { isInstaller, mergeFound, pruneToPage } from '../components/browser/foundFilter';
 import { activeLabel, activeSummary, matchTransfers } from '../components/browser/foundTransfers';
 import { dismissAllVisible, dismissIds, restoreIds, visibleFound } from '../components/browser/foundDismiss';
-import { updateBrowserPrefs, useBrowserPrefs } from '../utils/prefs/browser';
+import { getBrowserPrefs, updateBrowserPrefs, useBrowserPrefs } from '../utils/prefs/browser';
+import { keepHosts, privateSession } from '../utils/browser/privateSession';
+import { hostsToWipe } from '../utils/browser/privateHosts';
+import { buildMediaMenu, hasMenu, parseMediaHit, type MediaHit } from '../utils/browser/mediaHit';
 import { flushTabs, recordVisit } from '../utils/history';
 import { activeTab, backTarget, getTab, isBlank, liveTabs, switcherOrder } from '../utils/browser/tabs';
 import * as popupsApi from '../utils/browser/popups';
@@ -71,12 +80,15 @@ const QUIET_NOTICE: Partial<Record<BrowserRefusalReason, string>> = {
 /** How long the Undo row stays after Remove, Clear or closing tabs. */
 const UNDO_MS = 5000;
 
+/** Browser screens currently mounted (the Browse tab and the /browser route can both be). */
+let mountedScreens = 0;
+
 /** inTab: shown inside the tab bar, which already pads for the system navigation area, so the bottom inset is skipped. */
 export default function BrowserScreen({ inTab = false }: { inTab?: boolean }) {
-  const { colors } = useTheme();
+  const { colors, dark } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const router = useRouter();
-  const params = useLocalSearchParams<{ url?: string; prefill?: string }>();
+  const params = useLocalSearchParams<{ url?: string; prefill?: string; open?: string; newTab?: string }>();
   const { showNotice, downloads, probeUrl, startDownload } = useMaglevEngine();
   const [prefs] = useBrowserPrefs();
   const tabs = useTabs();
@@ -97,7 +109,7 @@ export default function BrowserScreen({ inTab = false }: { inTab?: boolean }) {
   // Shared per-tab data and pop-up prompts changed (any instance): render again.
   useSyncExternalStore(subscribeTabData, tabDataVersion, tabDataVersion);
 
-  const inputRef = useRef<React.ComponentRef<typeof TextInput>>(null);
+  const inputRef = useRef<TextFieldRef>(null);
   // One view ref per live tab.
   const viewRefs = useRef(new Map<string, React.RefObject<MaglevBrowserRef | null>>());
   const registerView = useCallback((id: string, r: React.RefObject<MaglevBrowserRef | null> | null) => {
@@ -133,6 +145,8 @@ export default function BrowserScreen({ inTab = false }: { inTab?: boolean }) {
   const found = useMemo(() => visibleFound(foundAll, dismissed), [foundAll, dismissed]);
   const [trayOpen, setTrayOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  const bookmarks = useBookmarks();
+  const [bookmarkEditOpen, setBookmarkEditOpen] = useState(false);
   const [switcherOpen, setSwitcherOpen] = useState(false);
   // Find in page (contract section 28) acts on one tab's view: findTab is the tab it was opened on.
   const [findOpen, setFindOpen] = useState(false);
@@ -140,6 +154,8 @@ export default function BrowserScreen({ inTab = false }: { inTab?: boolean }) {
   const findTab = useRef<string | null>(null);
   const [textSizeOpen, setTextSizeOpen] = useState(false);
   const [linkTarget, setLinkTarget] = useState<BrowserLongPressEvent | null>(null);
+  const [mediaHit, setMediaHit] = useState<MediaHit | null>(null);
+  const [clearSiteOpen, setClearSiteOpen] = useState(false);
   const [target, setTarget] = useState<DownloadTarget | null>(null);
   const [batchItems, setBatchItems] = useState<FoundItem[] | null>(null);
   const [streamItem, setStreamItem] = useState<FoundItem | null>(null);
@@ -181,6 +197,8 @@ export default function BrowserScreen({ inTab = false }: { inTab?: boolean }) {
 
   // Switching tabs dismisses the long-press menu and the found list's Undo (they belong to the tab you left).
   useEffect(() => {
+    setMediaHit(null);
+    setClearSiteOpen(false);
     setLinkTarget(null);
     setUndo(null);
   }, [activeId]);
@@ -266,21 +284,21 @@ export default function BrowserScreen({ inTab = false }: { inTab?: boolean }) {
   const handled = useRef<string | null>(null);
   useEffect(() => {
     if (!ready) return;
-    const key = `${params.url ?? ''}|${params.prefill ?? ''}`;
-    if (key === '|' || key === handled.current) return;
+    const key = `${params.url ?? ''}|${params.prefill ?? ''}|${params.open ?? ''}`;
+    if (key === '||' || key === handled.current) return;
     handled.current = key;
     const cur = tabs.ref.current ? activeTab(tabs.ref.current) : null;
     if (typeof params.url === 'string' && params.url.trim()) {
       const t = toBrowserUrl(params.url, prefs.searchEngine);
       if (t.kind === 'magnet') return toAddTorrent(t.uri);
       if (t.kind === 'empty') return;
-      if (cur && isBlank(cur)) open(t.url);
+      if (cur && isBlank(cur) && params.newTab !== '1') open(t.url);
       else openTabChecked({ url: t.url });
     } else if (typeof params.prefill === 'string') {
       if (cur && !isBlank(cur)) openTabChecked({});
       setPrefillText(params.prefill);
     }
-  }, [ready, params.url, params.prefill, prefs.searchEngine, open, openTabChecked, toAddTorrent, tabs.ref]);
+  }, [ready, params.url, params.prefill, params.open, params.newTab, prefs.searchEngine, open, openTabChecked, toAddTorrent, tabs.ref]);
 
   // ---- tabs ----
   const closeWithUndo = useCallback(
@@ -368,6 +386,10 @@ export default function BrowserScreen({ inTab = false }: { inTab?: boolean }) {
       setLinkTarget(null);
       return true;
     }
+    if (mediaHit) {
+      setMediaHit(null);
+      return true;
+    }
     if (prompt) {
       popupBlock();
       return true;
@@ -382,7 +404,7 @@ export default function BrowserScreen({ inTab = false }: { inTab?: boolean }) {
     if (next === 'leave') return false;
     tabs.close(activeId);
     return true;
-  }, [editing, findOpen, closeFind, switcherOpen, linkTarget, prompt, popupBlock, tabs, activeId, page?.canGoBack, view]);
+  }, [editing, findOpen, closeFind, switcherOpen, linkTarget, mediaHit, prompt, popupBlock, tabs, activeId, page?.canGoBack, view]);
   useFocusEffect(
     useCallback(() => {
       setViewOwner(instanceId);
@@ -393,6 +415,20 @@ export default function BrowserScreen({ inTab = false }: { inTab?: boolean }) {
       };
     }, [handleBack, instanceId]),
   );
+
+  // Private browsing: really leaving the browser wipes the cookies of the hosts seen. Moving between the Browse tab and
+  // other tabs is not leaving (the tab screen stays mounted and its private tabs stay open), so this runs on unmount
+  // only, and only when no other browser screen is still mounted after a short wait (the Browse tab and the /browser
+  // route share one tab set). A session that is never left this way is wiped at the next app start (_layout.tsx).
+  useEffect(() => {
+    mountedScreens += 1;
+    return () => {
+      mountedScreens -= 1;
+      setTimeout(() => {
+        if (mountedScreens === 0) void privateSession.wipe();
+      }, 300);
+    };
+  }, []);
 
   // ---- found list (per active tab) ----
   useEffect(() => () => {
@@ -470,6 +506,8 @@ export default function BrowserScreen({ inTab = false }: { inTab?: boolean }) {
       });
       // A new document drops the highlights with it, so the find bar closes.
       if (newDocument && id === findTab.current) closeFind();
+      // Private browsing: remember the host so its cookies are wiped when the browser is left (privateHosts.ts).
+      if (getBrowserPrefs().privateBrowsing) privateSession.note(e.url);
       // H1: only a finished load is recorded. The store skips non-web addresses, repeats and the off setting.
       if (e.loading === false && !skipRecord) {
         recordVisit({ url: e.url, title: e.title ?? '' }).catch(() => {});
@@ -483,9 +521,13 @@ export default function BrowserScreen({ inTab = false }: { inTab?: boolean }) {
         }
       }
     },
-    onFound: (id, e) => patch(id, (d) => void (d.found = mergeFound(d.found, e.items))),
+    onFound: (id, e) => {
+      if (getBrowserPrefs().privateBrowsing) for (const it of e.items) privateSession.note(it.url);
+      patch(id, (d) => void (d.found = mergeFound(d.found, e.items)));
+    },
     onBlockedCount: (id, e) => patch(id, (d) => void (d.blocked = e.page)),
     onDownloadRequest: (id, e) => {
+      if (getBrowserPrefs().privateBrowsing) privateSession.note(e.url);
       const d = getData(id);
       // The navigation became a download: the page is not loading any more.
       patch(id, (x) => void (x.page = x.page && x.page.loading ? { ...x.page, loading: false } : x.page));
@@ -533,6 +575,12 @@ export default function BrowserScreen({ inTab = false }: { inTab?: boolean }) {
     onFindResult: (id, e) => {
       if (id === findTab.current) setFindResult(e);
     },
+    // 24.10a: a long press over a video. The payload is checked in parseMediaHit; images stay on the link menu.
+    onMediaHit: (id, e) => {
+      if (id !== activeIdRef.current) return;
+      const hit = parseMediaHit(e.json);
+      if (hit && hit.kind === 'video' && hasMenu(buildMediaMenu(hit))) setMediaHit(hit);
+    },
   };
   const implRef = useRef(impl);
   implRef.current = impl;
@@ -563,6 +611,48 @@ export default function BrowserScreen({ inTab = false }: { inTab?: boolean }) {
     [],
   );
   const notify = useCallback((message: string) => showNotice({ message }, 2500), [showNotice]);
+  // A video manifest from the media menu goes through the same stream sheet as a found one.
+  const streamFromHit = useCallback((hit: MediaHit, url: string, kind: 'hls' | 'dash') => {
+    const d = getData(activeIdRef.current);
+    setStreamItem({
+      id: `media:${url}`,
+      url,
+      kind: 'video',
+      mime: null,
+      ext: null,
+      name: nameFromUrl(url),
+      size: null,
+      width: null,
+      height: null,
+      source: 'page',
+      stream: kind,
+      pageUrl: hit.pageUrl || d.page?.url || '',
+      pageTitle: d.page?.title ?? '',
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // 24.10a: "Clear this site's data". Cookies of the host and its parent domains (Search's hosts are left alone), then
+  // local and session storage in the page, then a reload.
+  const clearSiteData = useCallback(async () => {
+    setClearSiteOpen(false);
+    const id = activeIdRef.current;
+    const url = getData(id).page?.url ?? '';
+    const targets = hostsToWipe([url], keepHosts()).map((h) => `https://${h}/`);
+    try {
+      if (targets.length > 0) await clearCookies(targets);
+    } catch {
+      // Best effort: storage and reload still run.
+    }
+    try {
+      await view(id)?.clearSiteStorage();
+    } catch {
+      // VIEW_GONE: the page is already closed.
+    }
+    view(id)?.reload();
+    haptic('done');
+    showNotice({ message: browserTabs.thisPage.clearSiteDone }, 3000);
+  }, [view, showNotice]);
 
   // Each file goes through the single-download path. One failure never stops the rest; Retry runs the failed ones.
   const runBatchFor = useCallback(
@@ -664,6 +754,23 @@ export default function BrowserScreen({ inTab = false }: { inTab?: boolean }) {
           onOpenSwitcher={() => setSwitcherOpen(true)}
         >
         <View style={[styles.address, editing && styles.addressEditing]}>
+          {prefs.privateBrowsing ? (
+            <PixelIcon name="shield" size={16} color={colors.accent} accessibilityLabel={historyCopy.settings.privateIndicator} />
+          ) : null}
+          {!editing && page?.url && findBookmark(bookmarks, page.url) ? (
+            <PressableScale
+              onPress={() => {
+                haptic('select');
+                setBookmarkEditOpen(true);
+              }}
+              accessibilityRole="button"
+              accessibilityLabel={bookmarkCopy.savedIndicator}
+              hitSlop={14}
+              style={styles.savedIcon}
+            >
+              <PixelIcon name="bookmark" size={16} color={colors.accent} />
+            </PressableScale>
+          ) : null}
           {!editing && page?.url ? (
             <PixelIcon
               name={page.secure ? 'lock' : 'warning'}
@@ -672,7 +779,9 @@ export default function BrowserScreen({ inTab = false }: { inTab?: boolean }) {
               accessibilityLabel={page.secure ? 'Secure connection' : 'Not secure'}
             />
           ) : null}
-          <TextInput
+          <TextField
+            bare
+            mono
             ref={inputRef}
             value={editing ? draft : idleText}
             onChangeText={(t) => {
@@ -700,8 +809,6 @@ export default function BrowserScreen({ inTab = false }: { inTab?: boolean }) {
             autoCorrect={false}
             spellCheck={false}
             placeholder="Search or type an address"
-            placeholderTextColor={colors.textFaint}
-            selectionColor={colors.accent}
             style={styles.input}
             numberOfLines={1}
             accessibilityLabel="Address"
@@ -758,8 +865,13 @@ export default function BrowserScreen({ inTab = false }: { inTab?: boolean }) {
                     allowAdsHosts={prefs.allowAdsHosts}
                     desktopMode={desktop}
                     textZoom={prefs.browserTextZoom}
+                    privateMode={prefs.privateBrowsing}
                     popupPolicy={prefs.popupPolicy}
                     popupAllowHosts={prefs.popupAllowHosts}
+                    pullToRefresh
+                    refreshColor={colors.accent}
+                    refreshBackground={colors.surface}
+                    darkPages={prefs.darkPages && dark}
                     handlers={handlers}
                     register={registerView}
                   />
@@ -767,12 +879,13 @@ export default function BrowserScreen({ inTab = false }: { inTab?: boolean }) {
               })
           : null}
         {!hasPage ? (
-          <RecentHistory
-            onPick={(u) => {
+          <StartPage
+            privateMode={prefs.privateBrowsing}
+            onOpen={(url, o) => {
               haptic('tap');
-              go(u);
+              if (o?.newTab) openTabChecked({ url });
+              else go(url);
             }}
-            fallback={<EmptyBlock icon="network" title={empty.browser.start.title} body={empty.browser.start.body} />}
           />
         ) : null}
         {editing ? (
@@ -865,6 +978,19 @@ export default function BrowserScreen({ inTab = false }: { inTab?: boolean }) {
       />
 
       <LinkMenu target={linkTarget} onClose={() => setLinkTarget(null)} openInTab={openLinkInTab} download={downloadLink} addTorrent={toAddTorrent} notify={notify} />
+      <MediaMenu
+        hit={mediaHit}
+        onClose={() => setMediaHit(null)}
+        onSave={(_h, u) => downloadLink(u)}
+        onStream={streamFromHit}
+        onOpenNewTab={(u) => openLinkInTab(u, false)}
+        onCopy={(u) => void copy(u)}
+        onShare={(u) => {
+          Share.share({ message: u }).catch(() => {});
+        }}
+        onShowFound={() => setTrayOpen(true)}
+        onLinkOptions={(href) => setLinkTarget({ kind: 'link', url: href, imageUrl: null, text: null })}
+      />
       <PopupCard prompt={prompt} onOpen={popupOpen} onBlock={popupBlock} onAlwaysAllow={popupAlways} />
 
       <Sheet visible={menuOpen} onClose={() => setMenuOpen(false)} title={hasPage ? historyCopy.menuTitlePage : historyCopy.menuTitleBlank} subtitle={(hasPage && pageHost) || undefined}>
@@ -920,8 +1046,27 @@ export default function BrowserScreen({ inTab = false }: { inTab?: boolean }) {
             if (page?.url) void copy(page.url);
           }}
         />
+        <BookmarkToggle url={page?.url ?? tab?.url ?? ''} title={page?.title ?? tab?.title ?? ''} onDone={() => setMenuOpen(false)} />
+        {/^https?:\/\//i.test(page?.url ?? '') ? (
+          <ListRow
+            icon="trash"
+            title={browserTabs.thisPage.clearSiteRow}
+            onPress={() => {
+              setMenuOpen(false);
+              afterSheetCloses(() => setClearSiteOpen(true));
+            }}
+          />
+        ) : null}
           </>
         ) : null}
+        <ListRow
+          icon="bookmark"
+          title={bookmarkCopy.menuRow}
+          onPress={() => {
+            setMenuOpen(false);
+            router.push('/browser-bookmarks');
+          }}
+        />
         <ListRow
           icon="clock"
           title={historyCopy.menuRow}
@@ -939,6 +1084,20 @@ export default function BrowserScreen({ inTab = false }: { inTab?: boolean }) {
           }}
         />
       </Sheet>
+
+      <Dialog
+        visible={clearSiteOpen}
+        onClose={() => setClearSiteOpen(false)}
+        title={browserTabs.thisPage.clearSiteTitle}
+        actions={
+          <>
+            <Button label={browserTabs.thisPage.clearSiteAction} variant="danger" fullWidth onPress={() => void clearSiteData()} />
+            <Button label="Cancel" variant="secondary" fullWidth onPress={() => setClearSiteOpen(false)} />
+          </>
+        }
+      >
+        <Text style={styles.dialogBody}>{browserTabs.thisPage.clearSiteBody(pageHost)}</Text>
+      </Dialog>
 
       <TextSizeSheet
         visible={textSizeOpen}
@@ -961,6 +1120,7 @@ export default function BrowserScreen({ inTab = false }: { inTab?: boolean }) {
           onDismiss={() => setSwitcherOpen(false)}
         />
       ) : null}
+      <BookmarkSheet visible={bookmarkEditOpen} onClose={() => setBookmarkEditOpen(false)} url={page?.url ?? ''} title={page?.title ?? ''} />
     </SafeAreaView>
   );
 }
@@ -971,8 +1131,8 @@ const makeStyles = (c: ThemeColors) =>
     bar: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: spacing.xs, minHeight: 56 },
     address: {
       flex: 1,
-      minWidth: 44,
-      height: 44,
+      minWidth: touch.min,
+      height: touch.min,
       flexDirection: 'row',
       alignItems: 'center',
       gap: spacing.sm,
@@ -982,11 +1142,13 @@ const makeStyles = (c: ThemeColors) =>
       borderColor: c.border,
       borderRadius: radius.md,
     },
+    // A fixed 16×16 box centred in the bar, so the tappable icon lines up with the shield and lock beside it.
+    savedIcon: { width: 16, height: 16, alignSelf: 'center', alignItems: 'center', justifyContent: 'center' },
     addressEditing: { borderColor: c.borderStrong },
-    input: { ...type.mono, flex: 1, minWidth: 0, fontSize: type.size.md, color: c.text, paddingVertical: 0 },
-    tabButton: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
+    input: { fontSize: type.size.md, paddingVertical: 0 },
+    tabButton: { width: touch.min, height: touch.min, alignItems: 'center', justifyContent: 'center' },
     tabBox: {
-      paddingHorizontal: 6,
+      paddingHorizontal: 6, // design-exception: count pill inside the 44 px tab glyph
       paddingVertical: 2,
       alignItems: 'center',
       justifyContent: 'center',
@@ -996,6 +1158,7 @@ const makeStyles = (c: ThemeColors) =>
     },
     tabCount: { ...type.monoBold, fontSize: type.size.xs, lineHeight: 16, color: c.text },
     progress: { height: 3, overflow: 'hidden' },
+    dialogBody: { ...type.body, color: c.textMuted },
     body: { flex: 1 },
     web: { flex: 1 },
     floating: { position: 'absolute', left: spacing.md, right: spacing.md, top: spacing.md },
@@ -1012,7 +1175,7 @@ const makeStyles = (c: ThemeColors) =>
       gap: spacing.sm,
     },
     activeChip: {
-      minHeight: 44,
+      minHeight: touch.min,
       paddingHorizontal: spacing.md,
       justifyContent: 'center',
       borderRadius: radius.md,
@@ -1026,7 +1189,7 @@ const makeStyles = (c: ThemeColors) =>
     hint: {
       position: 'absolute',
       right: spacing.md,
-      bottom: spacing.md + 44 + spacing.sm,
+      bottom: spacing.md + touch.min + spacing.sm,
       maxWidth: '80%',
       paddingHorizontal: spacing.md,
       paddingVertical: spacing.sm,

@@ -1,8 +1,9 @@
 import React, { useMemo, useState } from 'react';
-import { Pressable, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
+import { Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { useTheme } from '../../context/ThemeContext';
-import { ThemeColors, radius, spacing, type } from '../../constants/theme';
+import { ThemeColors, radius, spacing, type, touch } from '../../constants/theme';
 import { PixelIcon } from '../PixelIcon';
+import { TextField } from '../ui';
 
 export interface ComposerProps {
   /** A turn is in flight: Send becomes Stop. */
@@ -53,18 +54,19 @@ export function Composer({ busy, onSend, onStop, modelText, onOpenModel, context
       </Text>
     </View>
     <View style={styles.bar}>
-      <TextInput
-        style={[styles.input, { maxHeight: 120 * Math.max(1, Math.min(fontScale, 2)) }]}
-        value={text}
-        onChangeText={setText}
-        placeholder="Ask about a download"
-        placeholderTextColor={colors.textFaint}
-        multiline
-        maxLength={4000}
-        accessibilityLabel="Message"
-        textAlignVertical="center"
-        selectionColor={colors.accent}
-      />
+      <View style={styles.inputWrap}>
+        <TextField
+          value={text}
+          onChangeText={setText}
+          placeholder="Ask about a download"
+          multiline
+          minLines={1}
+          maxLines={Math.round(5 * Math.max(1, Math.min(fontScale, 2)))}
+          size="lg"
+          maxLength={4000}
+          accessibilityLabel="Message"
+        />
+      </View>
       {busy ? (
         <Pressable
           onPress={onStop}
@@ -95,7 +97,7 @@ const makeStyles = (c: ThemeColors) =>
   StyleSheet.create({
     outer: { borderTopWidth: 1, borderTopColor: c.border, backgroundColor: c.bg },
     meta: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.sm, paddingHorizontal: spacing.lg },
-    model: { flexShrink: 1, minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
+    model: { flexShrink: 1, minHeight: touch.min, flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
     modelText: { ...type.mono, flexShrink: 1, fontSize: type.size.sm, color: c.textMuted },
     context: { ...type.mono, flexShrink: 0, fontSize: type.size.sm, color: c.textFaint },
     bar: {
@@ -105,21 +107,9 @@ const makeStyles = (c: ThemeColors) =>
       paddingHorizontal: spacing.lg,
       paddingBottom: spacing.sm,
     },
-    input: {
-      ...type.body,
-      flex: 1,
-      minHeight: 44,
-      paddingHorizontal: spacing.md,
-      paddingVertical: spacing.sm,
-      fontSize: 15,
-      color: c.text,
-      backgroundColor: c.surface,
-      borderWidth: 1,
-      borderColor: c.border,
-      borderRadius: radius.md,
-    },
-    action: { minWidth: 56, minHeight: 44, paddingHorizontal: spacing.xs, alignItems: 'center', justifyContent: 'center', borderRadius: radius.md },
-    actionText: { ...type.heading, fontSize: 13 },
+    inputWrap: { flex: 1 },
+    action: { minWidth: 56, minHeight: touch.min, paddingHorizontal: spacing.xs, alignItems: 'center', justifyContent: 'center', borderRadius: radius.md },
+    actionText: { ...type.heading, fontSize: type.size.md },
     pressed: { backgroundColor: c.surfaceRaised },
     off: { opacity: 0.4 },
   });

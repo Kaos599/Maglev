@@ -84,7 +84,7 @@ export interface RequestEntry {
 }
 
 /** 44.7: at most 100 entries, oldest dropped. */
-export const MAX_REQUESTS = 100;
+const MAX_REQUESTS = 100;
 /** 44.7: a first search by name, then one more with the fingerprint. */
 export const MAX_TRIES = 2;
 /** 44.7: at most 2 searches at a time. */
@@ -92,16 +92,16 @@ export const MAX_CONCURRENT = 2;
 /** 44.15 D8: a source that said limit is tried again after this wait. */
 export const LIMITED_RETRY_MS = 5 * 60_000;
 /** 44.15 D8: attempts in which no source answered; the third one ends as `failed`. */
-export const MAX_FAILS = 3;
+const MAX_FAILS = 3;
 /** 44.15 D8: the wait after the 1st and the 2nd failed attempt (2 min, then 10 min; the 3rd ends it). */
-export const FAIL_RETRY_MS: readonly number[] = [2 * 60_000, 10 * 60_000, 30 * 60_000];
+const FAIL_RETRY_MS: readonly number[] = [2 * 60_000, 10 * 60_000, 30 * 60_000];
 /** 44.15 F1: a failed getDetail waits 5 s, doubling, up to 60 s. */
-export const DETAIL_BACKOFF_START_MS = 5_000;
-export const DETAIL_BACKOFF_MAX_MS = 60_000;
+const DETAIL_BACKOFF_START_MS = 5_000;
+const DETAIL_BACKOFF_MAX_MS = 60_000;
 /** 44.15 F1: at most this many getDetail calls at once. */
 export const MAX_DETAIL_INFLIGHT = 3;
 /** The torrent's file list is read again at most this often while a video still needs something. */
-export const DETAIL_EVERY_MS = 5_000;
+const DETAIL_EVERY_MS = 5_000;
 /** An item missing from the lists this long was removed for good (the undo window is 5 s, longer with TalkBack). */
 export const REMOVAL_GRACE_MS = 30_000;
 
@@ -342,7 +342,7 @@ export function linkNameKind(name: string): 'video' | 'not-video' | 'unknown' {
 
 /** One map of running searches, shared by this module and the runner: request key and file to the controller. */
 const aborters = new Map<string, AbortController>();
-export const runKeyOf = (key: string, fileKey: string | null): string => `${key}\n${fileKey ?? ''}`;
+const runKeyOf = (key: string, fileKey: string | null): string => `${key}\n${fileKey ?? ''}`;
 export function registerRun(key: string, fileKey: string | null, ctl: AbortController): void {
   aborters.set(runKeyOf(key, fileKey), ctl);
 }
@@ -360,7 +360,7 @@ export function abortKey(key: string): void {
 export function abortWhere(pred: (key: string) => boolean): void {
   for (const [rk, c] of aborters) if (pred(rk.slice(0, rk.indexOf('\n')))) c.abort();
 }
-export function resetAbortersForTests(): void {
+function resetAbortersForTests(): void {
   aborters.forEach((c) => c.abort());
   aborters.clear();
 }
@@ -622,8 +622,6 @@ export function setAskSearchName(key: string, name: string | null): void {
 export function clearAskSearchNames(keys: readonly string[]): void {
   for (const k of keys) typedNames.delete(k);
 }
-export const typedNameFor = (key: string): string | undefined => typedNames.get(key);
-
 /**
  * Status mode: search again for this request with another name (NATIVE_CONTRACT 42). Null goes back to the file name.
  * 44.15 D12: aborts the running search and bumps the epoch, so a run that finishes late is dropped.

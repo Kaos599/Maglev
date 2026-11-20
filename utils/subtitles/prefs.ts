@@ -69,11 +69,11 @@ export interface SubtitleState {
 }
 
 /** A saved state hides 24 h after the save. */
-export const SAVED_VISIBLE_MS = 24 * 60 * 60 * 1000;
+const SAVED_VISIBLE_MS = 24 * 60 * 60 * 1000;
 /** A "needs a look" state hides after 24 h too. */
-export const NEEDS_LOOK_VISIBLE_MS = 24 * 60 * 60 * 1000;
+const NEEDS_LOOK_VISIBLE_MS = 24 * 60 * 60 * 1000;
 /** A "getting" state hides after 2 minutes: a download that long is gone (the app was killed). */
-export const GETTING_VISIBLE_MS = 2 * 60 * 1000;
+const GETTING_VISIBLE_MS = 2 * 60 * 1000;
 const STATE_KEY = 'subtitles.state';
 const MAX_STATES = 300;
 

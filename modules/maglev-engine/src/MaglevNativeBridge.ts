@@ -23,6 +23,8 @@ import type {
   SubtitleHashResult,
   SubtitleSaveResult,
   SubtitleZipEntry,
+  BlocklistState,
+  EffectiveConfig,
   MaglevEngineApi,
   Metadata,
   MoveTarget,
@@ -48,7 +50,6 @@ import type {
 } from './MaglevEngine.types.ts';
 import { subtitleError } from './MaglevEngine.types.ts';
 import type { MaglevSettings } from './MaglevSettings.types.ts';
-import { mockEngine } from './MaglevMockEngine.ts';
 import { ipFilter } from './MaglevIpFilter.ts';
 import { settingsStore } from './MaglevSettingsStore.ts';
 import { camelizeKeys, snakeizeKeys } from './snapshotMapping.ts';
@@ -67,7 +68,10 @@ const SIMULATOR_ALLOWED = __DEV__ || Platform.OS === 'web';
 
 /** Returns the simulator only where allowed. Never reachable in a release build on a device. */
 function simulatorIfAllowed(): MaglevEngineApi | null {
-  if (__DEV__ || Platform.OS === 'web') {
+  // A literal require inside a branch Metro folds to `false` in release (__DEV__ and process.env.EXPO_OS are both
+  // inlined per platform), so the mock engine never reaches the release bundle. Do not hoist it to an import.
+  if (__DEV__ || process.env.EXPO_OS === 'web') {
+    const { mockEngine } = require('./MaglevMockEngine.ts') as typeof import('./MaglevMockEngine.ts');
     return mockEngine;
   }
   return null;
@@ -85,6 +89,24 @@ const unavailable = (message: string, code: EngineErrorCode = 'ENGINE_UNAVAILABL
   code,
   message,
 });
+
+/**
+ * NATIVE_CONTRACT 41. The module answers the saved config plus `restart_pending` and `blocklist`. The config keeps
+ * snake_case; the two new fields are exposed as `restartPending` and `blocklist: { state, rules }`. A missing or odd
+ * `blocklist` reads as off; a missing `restart_pending` as false.
+ */
+export function toEffectiveConfig(snake: Record<string, unknown>): EngineResult<EffectiveConfig> {
+  const { restart_pending, blocklist, ...config } = snake;
+  const b = (blocklist ?? {}) as { state?: unknown; rules?: unknown };
+  const state: BlocklistState = b.state === 'on' || b.state === 'unreadable' ? b.state : 'off';
+  const rules = typeof b.rules === 'number' && b.rules > 0 ? Math.floor(b.rules) : 0;
+  return {
+    ...(config as unknown as NativeConfig),
+    ok: true,
+    restartPending: restart_pending === true,
+    blocklist: { state, rules },
+  } as EngineResult<EffectiveConfig>;
+}
 
 type StateListener = () => void;
 
@@ -117,7 +139,7 @@ function cleanBlocks(raw: unknown): ActiveBlock[] {
  *
  * A new bridge method must be added to one of the two lists (grep `this.route(`).
  */
-export const USER_ACTION_METHODS: readonly string[] = [
+const USER_ACTION_METHODS: readonly string[] = [
   // Add flow (a paste, share, search or feed add, including the preflight lookups)
   'addTorrent', 'addDownload', 'resolveMetadata', 'probeUrl', 'probeStream',
   // Torrents
@@ -133,8 +155,8 @@ export const USER_ACTION_METHODS: readonly string[] = [
   'runFeedCheckNow',
 ];
 export const READ_METHODS: readonly string[] = [
-  'shutdown', 'cancelResolve', 'getResolveActivity', 'listTorrents', 'getDetail', 'fileHealth', 'exportTorrent',
-  'shareExportedTorrent', 'getFreeSpace', 'applyConfig', 'getEffectiveConfig', 'getPieceBitfield', 'streamUrl',
+  'shutdown', 'restartEngine', 'cancelResolve', 'getResolveActivity', 'listTorrents', 'getDetail', 'fileHealth', 'exportTorrent',
+  'shareExportedTorrent', 'getFreeSpace', 'applyConfig', 'getEffectiveConfig', 'exportDebugLog', 'shareDebugLog', 'getPieceBitfield', 'streamUrl',
   'version', 'pickDownloadFolder', 'pickFolder', 'getPlaybackSupport', 'getStorageStatus', 'openFile', 'shareFile',
   'openFolder', 'openDownloadFolder', 'openDownload', 'shareDownload', 'getActiveBlocks', 'getNetworkState',
   'openStream', 'setSchedule', 'getScheduleStatus', 'setFeedAutomation', 'getFeedAutomationStatus', 'setGovernance',
@@ -299,7 +321,7 @@ export class MaglevEngineBridge implements MaglevEngineApi {
       }
       return this.fallbackOrFail(res.message, config);
     }
-    return this.fallbackOrFail('The native engine module is not installed in this build.', config);
+    return this.fallbackOrFail("The downloader isn't installed in this build.", config);
   }
 
   private async fallbackOrFail(reason: string, config: NativeConfig): Promise<EngineResult> {
@@ -328,15 +350,16 @@ export class MaglevEngineBridge implements MaglevEngineApi {
     this.usingNative = native;
     if (native) {
       this.impl = null; // native calls go through callNative
-      const sub = (name: string, fan: (payload: any) => void) => {
-        const s = NativeModule.addListener(name, (payload: unknown) => fan(camelizeKeys(payload)));
+      // `camelize` is false only for events Kotlin already ran through Json.camelize (EngineHost.kt: onTelemetry).
+      const sub = (name: string, fan: (payload: any) => void, camelize = true) => {
+        const s = NativeModule.addListener(name, (payload: unknown) => fan(camelize ? camelizeKeys(payload) : payload));
         this.detach.push(() => s.remove());
       };
       sub('onTelemetry', (p) => {
         const torrents: Snapshot[] = Array.isArray(p) ? p : (p?.torrents ?? []);
         const downloads: DownloadSnapshot[] = Array.isArray(p?.downloads) ? p.downloads : [];
         this.telemetryListeners.forEach((l) => l({ torrents, downloads }));
-      });
+      }, false);
       sub('onTorrentCompleted', (p) => this.completedListeners.forEach((l) => l(p)));
       sub('onNotificationAction', (p) => this.actionListeners.forEach((l) => l(p)));
       sub('onStorageStatus', (p) => this.storageListeners.forEach((l) => l(p)));
@@ -385,7 +408,7 @@ export class MaglevEngineBridge implements MaglevEngineApi {
     if (!this.restartPromise) {
       this.restartPromise = (async () => {
         const res = await this.callNative<EngineResult>('init', config);
-        if (!res.ok) return res; // The caller shows the reason with a "Start engine" action; screens stay where they are.
+        if (!res.ok) return res; // The caller shows the reason with a "Start the downloader" action; screens stay where they are.
         this.setState({ status: { kind: 'ready', message: 'Native engine running.', simulated: false } });
         if (this.lastSettings) await this.pushGovernanceAndLimits(this.lastSettings, config);
         return res;
@@ -436,7 +459,7 @@ export class MaglevEngineBridge implements MaglevEngineApi {
       }
     }
     return (this.startPromise === null && this.status.kind === 'starting'
-      ? unavailable('Engine not started.', 'NOT_INITIALIZED')
+      ? unavailable('The downloader is not running.', 'NOT_INITIALIZED')
       : unavailable(this.status.message)) as T;
   }
 
@@ -538,10 +561,19 @@ export class MaglevEngineBridge implements MaglevEngineApi {
     this.lastConfig = config;
     return this.route('applyConfig', config);
   }
-  public async getEffectiveConfig(): Promise<EngineResult<NativeConfig>> {
-    const res = await this.route<EngineResult<NativeConfig>>('getEffectiveConfig');
+  public async getEffectiveConfig(): Promise<EngineResult<EffectiveConfig>> {
+    const res = await this.route<EngineResult<EffectiveConfig>>('getEffectiveConfig');
     // The contract defines NativeConfig in snake_case; accept either casing from the module.
-    return res.ok ? (snakeizeKeys<EngineResult<NativeConfig>>(res)) : res;
+    return res.ok ? toEffectiveConfig(snakeizeKeys<Record<string, unknown>>(res)) : res;
+  }
+  public exportDebugLog(): Promise<EngineResult<{ uri: string }>> {
+    return this.route('exportDebugLog');
+  }
+  public shareDebugLog(uri: string): Promise<EngineResult> {
+    return this.route('shareDebugLog', uri);
+  }
+  public restartEngine(): Promise<EngineResult> {
+    return this.route('restartEngine');
   }
   public async getPieceBitfield(id: string): Promise<number[]> {
     const res = await this.route<number[] | EngineResult>('getPieceBitfield', id);
@@ -715,7 +747,7 @@ export class MaglevEngineBridge implements MaglevEngineApi {
   private updateCall<T>(method: string, ...args: unknown[]): Promise<T> {
     if (NativeModule) return this.callNative<T>(method, ...args);
     const sim = simulatorIfAllowed();
-    if (!sim) return Promise.resolve(unavailable('The native engine module is not installed in this build.') as T);
+    if (!sim) return Promise.resolve(unavailable("The downloader isn't installed in this build.") as T);
     return (sim as unknown as Record<string, (...a: unknown[]) => Promise<T>>)[method](...args);
   }
   // ---- subtitles (NATIVE_CONTRACT 36.6) -------------------------------------------
@@ -733,7 +765,7 @@ export class MaglevEngineBridge implements MaglevEngineApi {
       }
     }
     const sim = simulatorIfAllowed();
-    if (!sim) throw subtitleError('UNSUPPORTED', 'The native engine module is not installed in this build.');
+    if (!sim) throw subtitleError('UNSUPPORTED', "The downloader isn't installed in this build.");
     return (sim[method] as (...a: unknown[]) => Promise<T>).apply(sim, args);
   }
   public subtitleHash(pathOrUri: string): Promise<SubtitleHashResult> {

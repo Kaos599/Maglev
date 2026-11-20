@@ -18,7 +18,7 @@ import {
   type BackupTorrent,
 } from './format.ts';
 
-export const MESSAGES = {
+const MESSAGES = {
   notBackup: "That isn't a Maglev backup.",
   tooNew: 'This backup is from a newer Maglev. Update the app and try again.',
 } as const;
@@ -44,7 +44,7 @@ function indicesOf(v: unknown): number[] | null {
   return out.length ? out : null;
 }
 
-export function normalizeTorrent(raw: unknown): BackupTorrent | null {
+function normalizeTorrent(raw: unknown): BackupTorrent | null {
   if (!isPlainObject(raw)) return null;
   const hash = normalizeInfoHash(str(raw.infoHash));
   if (!hash) return null;
@@ -75,7 +75,7 @@ export function normalizeTorrent(raw: unknown): BackupTorrent | null {
   };
 }
 
-export function normalizeDownload(raw: unknown): BackupDownload | null {
+function normalizeDownload(raw: unknown): BackupDownload | null {
   if (!isPlainObject(raw)) return null;
   const url = str(raw.url).trim();
   if (!/^https?:\/\/[^\s/]+/i.test(url)) return null;
@@ -101,7 +101,7 @@ export function parseBackup(text: string): ParseResult {
 }
 
 /** Upgrades a parsed backup of any supported version to the current shape. */
-export function migrateBackup(raw: unknown): ParseResult {
+function migrateBackup(raw: unknown): ParseResult {
   if (!isPlainObject(raw) || raw.format !== BACKUP_FORMAT) return fail('not_backup');
   const v = raw.v;
   if (typeof v !== 'number' || !Number.isInteger(v) || v < 1) return fail('not_backup');

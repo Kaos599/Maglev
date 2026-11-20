@@ -183,5 +183,5 @@ export default function AutoDownloadSettings() {
 const makeStyles = (c: ThemeColors) =>
   StyleSheet.create({
     section: { gap: spacing.sm },
-    error: { ...type.body, fontSize: 13, color: c.danger },
+    error: { ...type.body, fontSize: type.size.md, color: c.danger },
   });

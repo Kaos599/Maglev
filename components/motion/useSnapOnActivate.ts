@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { Animated } from 'react-native';
-import { animateTo, duration, snapScale } from './tokens';
+import { motion } from '../../constants/theme';
+import { animateTo, snapScale } from './tokens';
 
 /**
  * Returns a scale that plays the pixel snap once each time `active` turns true.
@@ -16,7 +17,7 @@ export function useSnapOnActivate(active: boolean, reduce: boolean) {
     was.current = active;
     if (!turnedOn || reduce) return;
     progress.setValue(0);
-    animateTo(progress, 1, duration.focus, false);
+    animateTo(progress, 1, motion.duration.focus, false);
   }, [active, reduce, progress]);
 
   return scale;

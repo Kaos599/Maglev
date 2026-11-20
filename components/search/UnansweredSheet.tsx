@@ -1,7 +1,7 @@
 import React, { useMemo } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { useTheme } from '../../context/ThemeContext';
-import { ThemeColors, spacing, type } from '../../constants/theme';
+import { ThemeColors, spacing, type, touch } from '../../constants/theme';
 import type { UnansweredSource } from '../../utils/search/answered';
 import { Button, Sheet } from '../ui';
 
@@ -34,7 +34,7 @@ export function UnansweredSheet({ sources, onClose, returnFocusRef }: Unanswered
 const makeStyles = (c: ThemeColors) =>
   StyleSheet.create({
     stack: { gap: spacing.sm },
-    row: { minHeight: 44, justifyContent: 'center' },
-    name: { ...type.body, fontSize: 15, color: c.text },
-    reason: { ...type.body, fontSize: 13, color: c.textMuted },
+    row: { minHeight: touch.min, justifyContent: 'center' },
+    name: { ...type.body, fontSize: type.size.lg, color: c.text },
+    reason: { ...type.body, fontSize: type.size.md, color: c.textMuted },
   });

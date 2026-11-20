@@ -27,7 +27,7 @@ export function BatchSheet({ items, onClose, onStart }: { items: FoundItem[] | n
   if (items) last.current = items;
   const list = items ?? last.current;
   const totals = useMemo(() => batchTotals(list, knownSizeOf), [list]);
-  const { doesntFit } = useDownloadAdmission(totals.knownBytes, items != null);
+  const { doesntFit, noSpace } = useDownloadAdmission(totals.knownBytes, items != null);
   const installers = list.some((i) => isInstaller(i));
   const mobileNote = mobileDataLine(onMeteredNetwork, settings.network.wifiOnly, totals.unknownCount > 0 ? null : totals.knownBytes);
 
@@ -38,7 +38,7 @@ export function BatchSheet({ items, onClose, onStart }: { items: FoundItem[] | n
         {totals.unknownCount > 0 && totals.knownCount > 0 ? <NoteRow text={foundTray.unknownSizes(totals.unknownCount)} /> : null}
         {mobileNote ? <NoteRow text={mobileNote} /> : null}
         {installers ? <Banner tone="warning" title={banners.browser.installer.title} body={banners.browser.installer.body} /> : null}
-        {doesntFit ? <Banner tone="danger" title={banners.addDownload.notEnoughSpace.title} body={banners.addDownload.notEnoughSpace.body} /> : null}
+        {doesntFit ? <Banner tone="danger" title={banners.addDownload.notEnoughSpace.title} body={noSpace} /> : null}
         <View style={styles.actions}>
           <Button label="Cancel" variant="ghost" onPress={onClose} />
           <Button

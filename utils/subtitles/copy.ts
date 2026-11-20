@@ -61,9 +61,9 @@ export function privacyNotice(names: readonly string[]): string {
   return `Finding subtitles sends this video's file name and a fingerprint of the file to the sources you have on (${names.join(', ')}). They can see what you're watching.`;
 }
 
-export const AMBIGUOUS_PACK = "This file has subtitles for several episodes and Maglev can't tell which one is yours.";
-export const UNREADABLE_TEXT = "Maglev can't read this subtitle's text.";
-export const UNSUPPORTED_FILE = "This subtitle's file type isn't supported.";
+const AMBIGUOUS_PACK = "This file has subtitles for several episodes and Maglev can't tell which one is yours.";
+const UNREADABLE_TEXT = "Maglev can't read this subtitle's text.";
+const UNSUPPORTED_FILE = "This subtitle's file type isn't supported.";
 
 /** "1 video", "2 videos": the noun takes the singular for exactly 1 (46.1). */
 export const plural = (n: number, one: string, many = `${one}s`): string => (n === 1 ? one : many);
@@ -144,15 +144,12 @@ export const CARD_ICON_WORDS = {
   none: 'No subtitles found',
 } as const;
 
-/** 44.7: requests wait for the one-time notice (36.10) because nothing may be sent before it. */
-export const CONSENT_NOTICE_ACTION = NOTICE_CONTINUE;
-
 // 44.9 The multi-video sheet.
 /** 44.9 / 46.1: "Subtitles for 1 video", "Subtitles for 23 episodes". The singular is used for 1. */
 export const multiTitle = (n: number, episodes = false): string => `Subtitles for ${n} ${plural(n, episodes ? 'episode' : 'video')}`;
 export const USES_YOUR_LANGUAGES = 'Uses your subtitle languages';
 export const CHANGE_LANGUAGES = 'Change';
-export const MULTI_BUTTON_NONE = 'Get subtitles';
+const MULTI_BUTTON_NONE = 'Get subtitles';
 export const multiButton = (k: number): string => (k <= 0 ? MULTI_BUTTON_NONE : `Get subtitles for ${k}`);
 export const SKIP_LABEL = 'Skip';
 /** 44.15 D6: appended to a row whose title and detail match an earlier row's: " · 2nd", " · 3rd", " · 4th", " · 11th", " · 21st". */

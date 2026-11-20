@@ -15,8 +15,8 @@ export default function EngineErrorScreen() {
   const { engineStatus, retryEngine } = useMaglevEngine();
   const failure = engineFailureAction(engineStatus.kind === 'unavailable' ? engineStatus.code : undefined);
   const message = engineStatus.kind === 'starting'
-    ? 'The download engine took too long to start.'
-    : engineStatus.message || 'The engine did not report a reason.';
+    ? 'The downloader took too long to start.'
+    : engineStatus.message || "The downloader didn't say why.";
 
   const copyDetails = useCallback(async () => {
     const details = [

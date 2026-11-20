@@ -5,7 +5,7 @@
     },
     "name": "Maglev",
     "slug": "maglev",
-    "version": "0.31",
+    "version": "0.32",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "scheme": "maglev",
@@ -113,7 +113,7 @@
           ]
         }
       ],
-      "versionCode": 31
+      "versionCode": 32
     },
     "web": {
       "favicon": "./assets/favicon.png",
@@ -121,10 +121,83 @@
     },
     "plugins": [
       "expo-router",
+      [
+        "expo-font",
+        {
+          "android": {
+            "fonts": [
+              {
+                "fontFamily": "Silkscreen",
+                "fontDefinitions": [
+                  {
+                    "path": "./node_modules/@expo-google-fonts/silkscreen/400Regular/Silkscreen_400Regular.ttf",
+                    "weight": 400
+                  }
+                ]
+              },
+              {
+                "fontFamily": "SpaceMono",
+                "fontDefinitions": [
+                  {
+                    "path": "./node_modules/@expo-google-fonts/space-mono/400Regular/SpaceMono_400Regular.ttf",
+                    "weight": 400
+                  }
+                ]
+              },
+              {
+                "fontFamily": "SpaceMonoBold",
+                "fontDefinitions": [
+                  {
+                    "path": "./node_modules/@expo-google-fonts/space-mono/700Bold/SpaceMono_700Bold.ttf",
+                    "weight": 400
+                  }
+                ]
+              },
+              {
+                "fontFamily": "Inter",
+                "fontDefinitions": [
+                  {
+                    "path": "./node_modules/@expo-google-fonts/inter/400Regular/Inter_400Regular.ttf",
+                    "weight": 400
+                  }
+                ]
+              },
+              {
+                "fontFamily": "InterMedium",
+                "fontDefinitions": [
+                  {
+                    "path": "./node_modules/@expo-google-fonts/inter/500Medium/Inter_500Medium.ttf",
+                    "weight": 400
+                  }
+                ]
+              },
+              {
+                "fontFamily": "InterSemiBold",
+                "fontDefinitions": [
+                  {
+                    "path": "./node_modules/@expo-google-fonts/inter/600SemiBold/Inter_600SemiBold.ttf",
+                    "weight": 400
+                  }
+                ]
+              },
+              {
+                "fontFamily": "InterBold",
+                "fontDefinitions": [
+                  {
+                    "path": "./node_modules/@expo-google-fonts/inter/700Bold/Inter_700Bold.ttf",
+                    "weight": 400
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      ],
       "./plugins/withAbiSplits.js",
       "./plugins/withSizeReduction.js",
       "./plugins/withShareIntents.js",
       "./plugins/withAppIcons.js",
+      "./plugins/withWindowBackground.js",
       "./plugins/withBackupRules.js",
       "./plugins/withCleartextLan.js",
       "./plugins/withReleaseSigning.js",

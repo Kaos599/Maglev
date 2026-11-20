@@ -131,11 +131,11 @@ const makeStyles = (c: ThemeColors) =>
   StyleSheet.create({
     scroll: { flexGrow: 0, flexShrink: 1 },
     section: { marginTop: spacing.md },
-    caption: { ...type.body, fontSize: 12, lineHeight: 17, color: c.textMuted, paddingHorizontal: spacing.lg, marginBottom: spacing.sm },
-    readout: { ...type.mono, fontSize: 14, color: c.text, paddingHorizontal: spacing.lg, marginBottom: spacing.xs },
+    caption: { ...type.body, fontSize: type.size.sm, lineHeight: 17, color: c.textMuted, paddingHorizontal: spacing.lg, marginBottom: spacing.sm },
+    readout: { ...type.mono, fontSize: type.size.base, color: c.text, paddingHorizontal: spacing.lg, marginBottom: spacing.xs },
     slider: { paddingHorizontal: spacing.md },
     chips: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, paddingHorizontal: spacing.lg },
     footer: { marginTop: spacing.md, gap: spacing.sm },
-    count: { ...type.body, fontSize: 12, color: c.textMuted, paddingHorizontal: spacing.lg },
+    count: { ...type.body, fontSize: type.size.sm, color: c.textMuted, paddingHorizontal: spacing.lg },
     actions: { flexDirection: 'row', justifyContent: 'flex-end', gap: spacing.sm },
   });

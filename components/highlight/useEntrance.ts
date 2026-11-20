@@ -50,7 +50,7 @@ export function useEntrance(open: boolean = true): Entrance {
     clock.value = withTiming(M.totalMs, { duration: M.totalMs, easing: Easing.linear });
     gate.value = withDelay(
       IMPACT_MS,
-      withTiming(1, { duration: 1 }, (finished) => {
+      withTiming(1, { duration: 1 /* design-exception: a one-frame step, not motion */ }, (finished) => {
         if (finished) scheduleOnRN(onImpact);
       }),
     );

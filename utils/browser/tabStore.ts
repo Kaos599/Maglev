@@ -31,6 +31,11 @@ export type TabStoreDeps = {
   deleteSaved(): Promise<void>;
   /** The "Save history" setting right now. */
   saveHistory(): boolean;
+  /**
+   * Private browsing right now (optional). While on, tabs are never saved or restored; turning it on deletes the saved
+   * tabs, and turning it off drops the private tabs for one blank tab, so nothing from the session is written later.
+   */
+  isPrivate?(): boolean;
   /** Calls `fn` after every change to the browser prefs. */
   subscribePrefs(fn: () => void): () => void;
   /** How many times native emptied the history on close. */
@@ -54,13 +59,15 @@ export function createTabStore(initialDeps: TabStoreDeps = noDeps) {
   let state: TabsState | null = null;
   let restoring: Promise<void> | null = null;
   let lastSaveHistory: boolean | null = null;
+  let lastPrivate: boolean | null = null;
+  const isPriv = () => deps.isPrivate?.() === true;
   let lastWipe: number | null = null;
   const listeners = new Set<() => void>();
 
   const emit = () => listeners.forEach((l) => l());
 
   function persist(next: TabsState): void {
-    if (!deps.saveHistory()) return; // memory-only while "Save history" is off
+    if (!deps.saveHistory() || isPriv()) return; // memory-only while "Save history" is off or private browsing is on
     const { rows, activeId } = toRows(next);
     deps.scheduleSave(rows, activeId);
   }
@@ -73,6 +80,18 @@ export function createTabStore(initialDeps: TabStoreDeps = noDeps) {
 
   /** Reacts to the "Save history" setting: off deletes the saved rows, on saves the current tabs again. */
   function onPrefs(): void {
+    const priv = isPriv();
+    const wasPriv = lastPrivate;
+    lastPrivate = priv;
+    if (wasPriv !== null && wasPriv !== priv) {
+      if (priv) {
+        void deps.deleteSaved(); // nothing from before survives next to a private session
+      } else if (state) {
+        commit(createTabsState(env())); // the private tabs end with the session
+      }
+      lastSaveHistory = deps.saveHistory();
+      return;
+    }
     const on = deps.saveHistory();
     if (lastSaveHistory === on) return;
     const was = lastSaveHistory;
@@ -89,6 +108,7 @@ export function createTabStore(initialDeps: TabStoreDeps = noDeps) {
       unsubPrefs?.();
       deps = next;
       lastSaveHistory = deps.saveHistory();
+      lastPrivate = isPriv();
       unsubPrefs = deps.subscribePrefs(onPrefs);
     },
 
@@ -109,7 +129,7 @@ export function createTabStore(initialDeps: TabStoreDeps = noDeps) {
           let next: TabsState;
           try {
             // With "Save history" off nothing is read and nothing is written.
-            const saved = deps.saveHistory() ? await deps.load() : { tabs: [], activeId: null };
+            const saved = deps.saveHistory() && !isPriv() ? await deps.load() : { tabs: [], activeId: null };
             next = restoreTabs(saved.tabs, saved.activeId, env());
           } catch {
             next = createTabsState(env());

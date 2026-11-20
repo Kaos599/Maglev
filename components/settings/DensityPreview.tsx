@@ -3,7 +3,7 @@ import { LayoutChangeEvent, StyleSheet, Text, View } from 'react-native';
 import Svg, { Defs, LinearGradient, Rect, Stop } from 'react-native-svg';
 import type { TelemetryDensity } from 'maglev-engine';
 import { useTheme } from '../../context/ThemeContext';
-import { ThemeColors, spacing, type } from '../../constants/theme';
+import { ThemeColors, spacing, type, radius } from '../../constants/theme';
 import { formatProgressPercent } from '../../constants/format';
 import { PixelIcon } from '../PixelIcon';
 import { Button, ListRow } from '../ui';
@@ -130,10 +130,10 @@ function noop() {}
 
 const makeStyles = (c: ThemeColors) =>
   StyleSheet.create({
-    frame: { height: PREVIEW_H, borderRadius: 6, borderWidth: FRAME_BORDER, borderColor: c.border, overflow: 'hidden', backgroundColor: c.bg },
+    frame: { height: PREVIEW_H, borderRadius: radius.sm, borderWidth: FRAME_BORDER, borderColor: c.border, overflow: 'hidden', backgroundColor: c.bg },
     canvas: { position: 'absolute', top: 0, left: 0, width: CANVAS_W },
     header: { height: 56, flexDirection: 'row', alignItems: 'center', gap: spacing.md, paddingHorizontal: spacing.lg },
-    name: { ...type.heading, flex: 1, fontSize: 20, color: c.text },
+    name: { ...type.heading, flex: 1, fontSize: 20, color: c.text }, // design-exception: scaled replica of the real header, size is part of the preview geometry
     body: { paddingHorizontal: spacing.lg },
     block: { marginBottom: spacing.md },
     fade: { position: 'absolute', left: 0, right: 0, bottom: 0 },

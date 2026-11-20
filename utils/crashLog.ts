@@ -4,9 +4,9 @@
  */
 import { kvGet, kvSet } from './prefs/kv.ts';
 
-export const CRASH_LOG_KEY = 'maglev.crashLog.v1';
-export const MAX_CRASHES = 20;
-export const MAX_STACK_CHARS = 4096;
+const CRASH_LOG_KEY = 'maglev.crashLog.v1';
+const MAX_CRASHES = 20;
+const MAX_STACK_CHARS = 4096;
 
 export type CrashSource = 'global' | 'boundary';
 
@@ -134,7 +134,7 @@ export function formatReport(entries: CrashEntry[], env: CrashEnv = envProvider(
   return redact([...head, ...body].join('\n'));
 }
 
-export function buildCrashReport(entries: CrashEntry[] = getCrashLog()): string {
+function buildCrashReport(entries: CrashEntry[] = getCrashLog()): string {
   return formatReport(entries);
 }
 

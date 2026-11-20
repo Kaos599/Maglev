@@ -26,7 +26,7 @@ export function autoDownloadAllowed(net: UpdateNet | null, rules: { wifiOnly: bo
   return networkAllows(net, rules) && net !== null && !net.metered;
 }
 
-export const UPLOAD_QUIET_MS = 60_000;
+const UPLOAD_QUIET_MS = 60_000;
 
 export interface SafeFacts {
   now: number;

@@ -12,6 +12,7 @@ tabStore.bind({
   flush: flushTabs,
   deleteSaved: deleteSavedTabs,
   saveHistory: () => getBrowserPrefs().saveHistory,
+  isPrivate: () => getBrowserPrefs().privateBrowsing,
   subscribePrefs: subscribeBrowserPrefs,
   wipeCount: getHistoryWipeCount,
 });

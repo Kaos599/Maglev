@@ -8,7 +8,7 @@ import { pickAnchor } from './settingsFocusMatch';
 export { pickAnchor, rowKey, sectionKey } from './settingsFocusMatch';
 
 type ViewNode = React.ComponentRef<typeof View>;
-const FADE_MS = 1200;
+const FADE_MS = 1200; // design-exception: the found row glows then fades slowly so the eye can land on it; it is also the hold before the highlight clears
 
 interface FocusContextValue {
   register: (key: string, node: ViewNode | null) => void;

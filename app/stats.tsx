@@ -8,7 +8,7 @@ import { Stack, useRouter } from 'expo-router';
 import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { scheduleOnRN } from 'react-native-worklets';
 import { useTheme } from '../context/ThemeContext';
-import { ThemeColors, radius, spacing, type } from '../constants/theme';
+import { ThemeColors, motion, radius, spacing, type } from '../constants/theme';
 import { Button, IconButton, Screen, SegmentedControl, Sheet } from '../components/ui';
 import { useMotion } from '../components/ui/useMotion';
 import { PixelCity } from '../components/stats/PixelCity';
@@ -111,7 +111,7 @@ export default function StatsScreen() {
   const fadeStyle = useAnimatedStyle(() => ({ opacity: fade.value }));
   const commit = useCallback(() => setShown(pendingRange.current), []);
   useEffect(() => {
-    if (!m.disabled) fade.value = withTiming(1, { duration: 140, easing: m.easing });
+    if (!m.disabled) fade.value = withTiming(1, { duration: motion.duration.fast, easing: m.easing });
     // Fade back in once the new range is drawn.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [shown]);
@@ -124,7 +124,7 @@ export default function StatsScreen() {
         setShown(next);
         return;
       }
-      fade.value = withTiming(0, { duration: 90, easing: m.easing }, (done) => {
+      fade.value = withTiming(0, { duration: motion.duration.exit, easing: m.easing }, (done) => {
         if (done) scheduleOnRN(commit);
       });
     },
@@ -340,30 +340,30 @@ export default function StatsScreen() {
 const makeStyles = (c: ThemeColors) =>
   StyleSheet.create({
     content: { paddingHorizontal: spacing.lg, paddingBottom: spacing.xl },
-    rnav: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginHorizontal: -spacing.sm, marginVertical: 6 },
+    rnav: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginHorizontal: -spacing.sm, marginVertical: spacing.sm },
     flip: { transform: [{ scaleX: -1 }] },
-    rl: { ...type.bodyStrong, fontSize: 15, color: c.text, fontVariant: ['tabular-nums'] },
+    rl: { ...type.bodyStrong, fontSize: type.size.lg, color: c.text, fontVariant: ['tabular-nums'] },
     city: { backgroundColor: c.surface, borderWidth: 1, borderColor: c.border, borderRadius: radius.lg, overflow: 'hidden' },
-    hero: { paddingTop: 14, paddingHorizontal: 14, paddingBottom: 10, gap: 2 },
-    big: { ...type.heading, fontSize: 32, lineHeight: 37, color: c.text, fontVariant: ['tabular-nums'] },
-    lblRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: -8, marginRight: -10, marginBottom: -10 },
-    lbl: { ...type.body, fontSize: 13, color: c.textMuted, flex: 1 },
-    cap: { ...type.body, fontSize: 13, color: c.text, marginTop: 4 },
-    sentence: { ...type.body, fontSize: 15, lineHeight: 37, color: c.text },
-    vs: { ...type.body, fontSize: 13, color: c.textMuted, fontVariant: ['tabular-nums'] },
-    since: { ...type.body, fontSize: 12, color: c.textMuted },
-    readRow: { flexDirection: 'row', alignItems: 'center', borderTopWidth: 1, borderTopColor: c.border, paddingHorizontal: 2, minHeight: 64 },
-    readout: { flex: 1, paddingVertical: 10, paddingHorizontal: 4, alignItems: 'center', gap: 2 },
-    r1: { ...type.bodyStrong, fontSize: 14, color: c.text, textAlign: 'center' },
-    r2: { ...type.mono, fontSize: 12, color: c.textMuted, textAlign: 'center' },
-    hint: { ...type.body, fontSize: 12, color: c.textMuted, textAlign: 'center' },
-    offCard: { marginTop: spacing.xxl, backgroundColor: c.surface, borderWidth: 1, borderColor: c.border, borderRadius: radius.lg, padding: 14, gap: spacing.md },
-    offText: { ...type.body, fontSize: 14, lineHeight: 20, color: c.textMuted },
-    foot: { ...type.body, fontSize: 12, color: c.textFaint, paddingTop: 14, paddingHorizontal: spacing.xs },
-    trow: { minHeight: 48, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.md, paddingVertical: 10, borderTopWidth: 1, borderTopColor: c.border },
+    hero: { paddingTop: 14, paddingHorizontal: 14, paddingBottom: 10, gap: 2 }, // design-exception: hero padding is tuned to the 37 px big-number line height
+    big: { ...type.heading, fontSize: type.size.display, lineHeight: 37, color: c.text, fontVariant: ['tabular-nums'] },
+    lblRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: -spacing.sm, marginRight: -10, marginBottom: -10 }, // design-exception: negative offsets pull the label row tight against the big number
+    lbl: { ...type.body, fontSize: type.size.md, color: c.textMuted, flex: 1 },
+    cap: { ...type.body, fontSize: type.size.md, color: c.text, marginTop: spacing.xs },
+    sentence: { ...type.body, fontSize: type.size.lg, lineHeight: 37, color: c.text },
+    vs: { ...type.body, fontSize: type.size.md, color: c.textMuted, fontVariant: ['tabular-nums'] },
+    since: { ...type.body, fontSize: type.size.sm, color: c.textMuted },
+    readRow: { flexDirection: 'row', alignItems: 'center', borderTopWidth: 1, borderTopColor: c.border, paddingHorizontal: 2, minHeight: 64 }, // design-exception: 2 px optical inset for the readout dividers, 64 px row is chart geometry
+    readout: { flex: 1, paddingVertical: spacing.md, paddingHorizontal: spacing.xs, alignItems: 'center', gap: 2 },
+    r1: { ...type.bodyStrong, fontSize: type.size.base, color: c.text, textAlign: 'center' },
+    r2: { ...type.mono, fontSize: type.size.sm, color: c.textMuted, textAlign: 'center' },
+    hint: { ...type.body, fontSize: type.size.sm, color: c.textMuted, textAlign: 'center' },
+    offCard: { marginTop: spacing.xxl, backgroundColor: c.surface, borderWidth: 1, borderColor: c.border, borderRadius: radius.lg, padding: spacing.lg, gap: spacing.md },
+    offText: { ...type.body, fontSize: type.size.base, lineHeight: 20, color: c.textMuted },
+    foot: { ...type.body, fontSize: type.size.sm, color: c.textFaint, paddingTop: spacing.lg, paddingHorizontal: spacing.xs },
+    trow: { minHeight: 48, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.md, paddingVertical: spacing.md, borderTopWidth: 1, borderTopColor: c.border },
     trowFirst: { borderTopWidth: 0 },
-    tl: { ...type.body, fontSize: 13, color: c.textMuted, flexShrink: 0 },
-    tv: { ...type.mono, fontSize: 14, color: c.text, flexShrink: 1, textAlign: 'right' },
+    tl: { ...type.body, fontSize: type.size.md, color: c.textMuted, flexShrink: 0 },
+    tv: { ...type.mono, fontSize: type.size.base, color: c.text, flexShrink: 1, textAlign: 'right' },
     sact: { paddingTop: spacing.md },
   });
 

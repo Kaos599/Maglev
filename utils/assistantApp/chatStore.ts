@@ -11,7 +11,7 @@ export const CHAT_STORE_KEY = 'assistant.chat.v1';
 /** The newest items kept. Older ones are dropped first. */
 export const MAX_SAVED_ITEMS = 200;
 /** Size limit of the saved JSON (characters, close enough to bytes for this text). */
-export const MAX_SAVED_BYTES = 512 * 1024;
+const MAX_SAVED_BYTES = 512 * 1024;
 
 export interface ChatStorage {
   getItem(key: string): string | null;

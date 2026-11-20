@@ -3,12 +3,12 @@
  * The request carries no token and nothing but the app version in its User-Agent.
  */
 
-export const RELEASES_URL = 'https://api.github.com/repos/Kaos599/Maglev/releases/latest';
-export const ISSUES_URL = 'https://github.com/Kaos599/Maglev/issues/new';
-export const CHECK_TIMEOUT_MS = 15_000;
-export const NOTES_MAX_CHARS = 4000;
+const RELEASES_URL = 'https://api.github.com/repos/Kaos599/Maglev/releases/latest';
+const ISSUES_URL = 'https://github.com/Kaos599/Maglev/issues/new';
+const CHECK_TIMEOUT_MS = 15_000;
+const NOTES_MAX_CHARS = 4000;
 /** versionCode % 10 per plugins/withAbiSplits.js. */
-export const ABI_BY_DIGIT: Readonly<Record<number, Abi>> = { 4: 'arm64-v8a', 1: 'armeabi-v7a', 3: 'x86_64', 0: 'universal' };
+const ABI_BY_DIGIT: Readonly<Record<number, Abi>> = { 4: 'arm64-v8a', 1: 'armeabi-v7a', 3: 'x86_64', 0: 'universal' };
 
 export type Abi = 'arm64-v8a' | 'armeabi-v7a' | 'x86_64' | 'universal';
 
@@ -33,7 +33,7 @@ export interface Installed {
   versionCode: number;
 }
 
-export class CheckError extends Error {
+class CheckError extends Error {
   readonly kind: 'network' | 'status' | 'parse';
   constructor(kind: 'network' | 'status' | 'parse', message: string) {
     super(message);
@@ -76,7 +76,7 @@ interface RawAsset {
 }
 
 /** The asset `Maglev-<tag>-<abi>.apk` with a `sha256:<64 hex>` digest, or null. */
-export function chooseAsset(
+function chooseAsset(
   assets: unknown,
   tag: string,
   abi: Abi | null,

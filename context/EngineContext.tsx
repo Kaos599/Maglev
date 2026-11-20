@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useState, useCallback, useRef, useMemo } from 'react';
+import React, { createContext, useContext, useEffect, useState, useCallback, useRef, useMemo, useSyncExternalStore } from 'react';
 import { AccessibilityInfo, AppState, BackHandler, Platform } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
 import {
@@ -73,19 +73,14 @@ export interface EngineNotice {
 }
 
 /** How long an optimistic pause, resume or remove holds the row before telemetry is trusted again. */
-export const OVERRIDE_TIMEOUT_MS = 5000;
+const OVERRIDE_TIMEOUT_MS = 5000;
 /** How long "Removed X · Undo" stays before the engine delete runs. */
 export const UNDO_WINDOW_MS = UNDO_BASE_MS;
 const CACHE_SAVE_EVERY_MS = 5000;
 const ERROR_NOTICE_MS = 4000;
 
-export type FilterCategory = 'ALL' | 'DOWN' | 'UP' | 'PAUSED';
-
 interface EngineContextType {
   telemetry: TransferAggregate;
-  activeFilter: FilterCategory;
-  setActiveFilter: (filter: FilterCategory) => void;
-  filteredTorrents: TransferTelemetry[];
   clipboardMagnet: string | null;
   checkClipboard: () => Promise<void>;
   clearClipboardMagnet: () => void;
@@ -171,6 +166,57 @@ interface EngineContextType {
   refreshDownloadUrl: (id: string, url: string) => Promise<EngineResult>;
 }
 
+type ActionKeys =
+  | 'checkClipboard' | 'clearClipboardMagnet' | 'pauseTorrent' | 'resumeTorrent' | 'pauseAll' | 'resumeAll'
+  | 'deleteTorrent' | 'removeTorrents' | 'removeTransfers' | 'undoRemove' | 'dismissNotice' | 'showNotice'
+  | 'startTorrent' | 'addTorrent' | 'resolveMetadata' | 'setFilePriority' | 'setFilePriorities' | 'reannounce'
+  | 'getFreeSpace' | 'openLiveUpdateSettings' | 'getPieceBitfield' | 'getTorrentDetail' | 'watchDetail'
+  | 'startHttpStream' | 'refreshPermissions' | 'retryEngine' | 'restartEngine' | 'probeUrl' | 'probeStream'
+  | 'startDownload' | 'pauseDownload' | 'resumeDownload' | 'retryDownload' | 'setDownloadLimits'
+  | 'removeDownload' | 'refreshDownloadUrl';
+
+/** Every function the engine offers. Identities never change, so reading this never re-renders on a tick. */
+export type EngineActions = Pick<EngineContextType, ActionKeys>;
+/** Engine start state only. Changes at start, restart and failure, never on a telemetry tick. */
+export type EngineStatusValue = Pick<EngineContextType, 'engineStatus' | 'hasCachedList'>;
+/** Rows, link downloads and whether they came from the engine. Changes on a telemetry tick. */
+export type EngineTelemetryValue = Pick<EngineContextType, 'telemetry' | 'downloads' | 'listsLive'>;
+/** Slow-moving state: network, storage, permissions, clipboard. */
+export type EngineStateValue = Pick<
+  EngineContextType,
+  | 'clipboardMagnet' | 'onMeteredNetwork' | 'networkOnline' | 'isNative' | 'defaultStoragePath'
+  | 'storageStatus' | 'permissionStatus' | 'restartRequired' | 'configWarning'
+>;
+type EngineNoticeValue = Pick<EngineContextType, 'notice'>;
+type EngineCompletedValue = Pick<EngineContextType, 'lastCompleted'>;
+
+/**
+ * Detail refresh counter outside React state: bumping it re-renders only components that read
+ * `useDetailVersion()`, not the whole provider tree.
+ */
+const detailStore = (() => {
+  let version = 0;
+  const listeners = new Set<() => void>();
+  return {
+    subscribe(fn: () => void) {
+      listeners.add(fn);
+      return () => {
+        listeners.delete(fn);
+      };
+    },
+    getSnapshot: () => version,
+    bump() {
+      version++;
+      listeners.forEach((fn) => fn());
+    },
+  };
+})();
+
+/** Re-renders the caller each time cached detail was refreshed. Detail screens use it; nothing else should. */
+export function useDetailVersion(): number {
+  return useSyncExternalStore(detailStore.subscribe, detailStore.getSnapshot, detailStore.getSnapshot);
+}
+
 const EMPTY_AGGREGATE: TransferAggregate = {
   totalDownloadSpeedBytes: 0,
   totalUploadSpeedBytes: 0,
@@ -243,7 +289,12 @@ function smoothAggregate(agg: AggregatedTelemetry, memo: Map<string, Smoothed>, 
   return { ...agg, totalDownloadSpeedBytes: down, totalUploadSpeedBytes: up, torrents };
 }
 
-const EngineContext = createContext<EngineContextType | null>(null);
+const EngineActionsContext = createContext<EngineActions | null>(null);
+const EngineStatusContext = createContext<EngineStatusValue | null>(null);
+const EngineTelemetryContext = createContext<EngineTelemetryValue | null>(null);
+const EngineStateContext = createContext<EngineStateValue | null>(null);
+const EngineNoticeContext = createContext<EngineNoticeValue | null>(null);
+const EngineCompletedContext = createContext<EngineCompletedValue | null>(null);
 
 export { isAddableLink };
 
@@ -268,7 +319,6 @@ export const EngineProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const pendingRef = useRef<PendingMap>(EMPTY_PENDING);
   const [removing, setRemoving] = useState<readonly string[]>([]);
   const [notice, setNotice] = useState<EngineNotice | null>(null);
-  const [activeFilter, setActiveFilter] = useState<FilterCategory>('ALL');
   const [clipboardMagnet, setClipboardMagnet] = useState<string | null>(null);
   const [engineStatus, setEngineStatus] = useState<EngineStatus>(maglevEngine.engineStatus);
   const [restartRequired, setRestartRequired] = useState(maglevEngine.restartRequired);
@@ -277,7 +327,6 @@ export const EngineProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const [storageStatus, setStorageStatus] = useState<StorageStatus | null>(null);
   const [permissionStatus, setPermissionStatus] = useState<NativePermissionStatus | null>(null);
   const [lastCompleted, setLastCompleted] = useState<TorrentCompletedEvent | null>(null);
-  const [, setDetailVersion] = useState(0);
   const [allDownloads, setDownloads] = useState<DownloadSnapshot[]>([]);
   // Link downloads hidden while their undo window runs (or after a confirmed removal).
   const [removingDl, setRemovingDl] = useState<readonly string[]>([]);
@@ -422,7 +471,7 @@ export const EngineProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       const res = await maglevEngine.getDetail(id);
       if (res.ok) {
         detailCache.current.set(id, detailToTorrentDetail(res));
-        setDetailVersion((v) => v + 1);
+        detailStore.bump();
       } else if (res.code === 'NOT_FOUND') {
         detailCache.current.delete(id);
       }
@@ -620,22 +669,6 @@ export const EngineProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     console.log('[maglev-perf] engine-ready');
   }, [engineStatus.kind]);
 
-  const filteredTorrents = useMemo(() => {
-    switch (activeFilter) {
-      case 'DOWN':
-        return telemetry.torrents.filter(
-          (t) => t.state === 'DOWNLOADING' || t.state === 'QUEUED' || t.state === 'INITIALIZING' || t.state === 'CHECKING'
-        );
-      case 'UP':
-        return telemetry.torrents.filter((t) => t.state === 'SEEDING' || t.state === 'COMPLETED');
-      case 'PAUSED':
-        return telemetry.torrents.filter((t) => t.state === 'PAUSED');
-      case 'ALL':
-      default:
-        return telemetry.torrents;
-    }
-  }, [telemetry.torrents, activeFilter]);
-
   const nameOf = useCallback((id: string) => liveRef.current.torrents.find((t) => t.id === id)?.name ?? 'torrent', []);
 
   /** Shows the rows as `kind` now. Returns the group to confirm or fail when the engine answers. */
@@ -831,6 +864,9 @@ export const EngineProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   }, []);
 
   const defaultStoragePath = storageStatus?.path || settingsStore.getSettings().storage.defaultPath;
+  // Read through a ref so startTorrent keeps one identity when the storage path changes.
+  const defaultStoragePathRef = useRef(defaultStoragePath);
+  defaultStoragePathRef.current = defaultStoragePath;
 
   const addTorrent = useCallback(
     (source: string, options: AddTorrentOptions = {}) => maglevEngine.addTorrent(source, options),
@@ -846,14 +882,14 @@ export const EngineProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     async (magnetUri: string, savePath?: string, sequential: boolean = false, selectedFileIndices?: number[]) => {
       const res = await maglevEngine.addTorrent(magnetUri, {
         // The engine owns the default folder (storage policy); only pass an explicit override.
-        outputFolder: savePath && savePath !== defaultStoragePath ? savePath : null,
+        outputFolder: savePath && savePath !== defaultStoragePathRef.current ? savePath : null,
         sequential,
         onlyFiles: selectedFileIndices && selectedFileIndices.length > 0 ? selectedFileIndices : null,
       });
       if (res.ok === false) throw engineError(res.code, res.message, res.id, (res as { engineStopped?: boolean }).engineStopped);
       return res.id;
     },
-    [defaultStoragePath]
+    []
   );
 
   const setFilePriority = useCallback(
@@ -989,75 +1025,129 @@ export const EngineProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     return res.url;
   }, []);
 
+  // Actions: every dependency is a stable callback, so this object is created once.
+  const actions = useMemo<EngineActions>(
+    () => ({
+      checkClipboard,
+      clearClipboardMagnet,
+      pauseTorrent,
+      resumeTorrent,
+      pauseAll,
+      resumeAll,
+      deleteTorrent,
+      removeTorrents,
+      removeTransfers,
+      undoRemove,
+      dismissNotice,
+      showNotice,
+      startTorrent,
+      addTorrent,
+      resolveMetadata,
+      setFilePriority,
+      setFilePriorities,
+      reannounce,
+      getFreeSpace,
+      openLiveUpdateSettings,
+      getPieceBitfield,
+      getTorrentDetail,
+      watchDetail,
+      startHttpStream,
+      refreshPermissions,
+      retryEngine,
+      restartEngine,
+      probeUrl,
+      probeStream,
+      startDownload,
+      pauseDownload,
+      resumeDownload,
+      retryDownload,
+      setDownloadLimits,
+      removeDownload,
+      refreshDownloadUrl,
+    }),
+    [
+      checkClipboard, clearClipboardMagnet, pauseTorrent, resumeTorrent, pauseAll, resumeAll, deleteTorrent,
+      removeTorrents, removeTransfers, undoRemove, dismissNotice, showNotice, startTorrent, addTorrent,
+      resolveMetadata, setFilePriority, setFilePriorities, reannounce, getFreeSpace, openLiveUpdateSettings,
+      getPieceBitfield, getTorrentDetail, watchDetail, startHttpStream, refreshPermissions, retryEngine,
+      restartEngine, probeUrl, probeStream, startDownload, pauseDownload, resumeDownload, retryDownload,
+      setDownloadLimits, removeDownload, refreshDownloadUrl,
+    ]
+  );
+  const status = useMemo<EngineStatusValue>(() => ({ engineStatus, hasCachedList }), [engineStatus, hasCachedList]);
+  const telemetryValue = useMemo<EngineTelemetryValue>(() => ({ telemetry, downloads, listsLive }), [telemetry, downloads, listsLive]);
+  const noticeValue = useMemo<EngineNoticeValue>(() => ({ notice }), [notice]);
+  const completedValue = useMemo<EngineCompletedValue>(() => ({ lastCompleted }), [lastCompleted]);
+  const stateValue = useMemo<EngineStateValue>(
+    () => ({
+      clipboardMagnet, onMeteredNetwork, networkOnline, isNative, defaultStoragePath, storageStatus,
+      permissionStatus, restartRequired, configWarning,
+    }),
+    [clipboardMagnet, onMeteredNetwork, networkOnline, isNative, defaultStoragePath, storageStatus, permissionStatus, restartRequired, configWarning]
+  );
+
   return (
-    <EngineContext.Provider
-      value={{
-        telemetry,
-        activeFilter,
-        setActiveFilter,
-        filteredTorrents,
-        clipboardMagnet,
-        checkClipboard,
-        clearClipboardMagnet,
-        pauseTorrent,
-        resumeTorrent,
-        pauseAll,
-        resumeAll,
-        deleteTorrent,
-        removeTorrents,
-        removeTransfers,
-        undoRemove,
-        notice,
-        dismissNotice,
-        showNotice,
-        startTorrent,
-        addTorrent,
-        resolveMetadata,
-        setFilePriority,
-        setFilePriorities,
-        reannounce,
-        getFreeSpace,
-        onMeteredNetwork,
-        networkOnline,
-        listsLive,
-        openLiveUpdateSettings,
-        getPieceBitfield,
-        getTorrentDetail,
-        watchDetail,
-        startHttpStream,
-        isNative,
-        hasCachedList,
-        defaultStoragePath,
-        engineStatus,
-        storageStatus,
-        permissionStatus,
-        refreshPermissions,
-        restartRequired,
-        configWarning,
-        retryEngine,
-        restartEngine,
-        lastCompleted,
-        downloads,
-        probeUrl,
-        probeStream,
-        startDownload,
-        pauseDownload,
-        resumeDownload,
-        retryDownload,
-        setDownloadLimits,
-        removeDownload,
-        refreshDownloadUrl,
-      }}
-    >
-      {children}
-    </EngineContext.Provider>
+    <EngineActionsContext.Provider value={actions}>
+      <EngineStatusContext.Provider value={status}>
+        <EngineStateContext.Provider value={stateValue}>
+          <EngineNoticeContext.Provider value={noticeValue}>
+            <EngineCompletedContext.Provider value={completedValue}>
+              <EngineTelemetryContext.Provider value={telemetryValue}>{children}</EngineTelemetryContext.Provider>
+            </EngineCompletedContext.Provider>
+          </EngineNoticeContext.Provider>
+        </EngineStateContext.Provider>
+      </EngineStatusContext.Provider>
+    </EngineActionsContext.Provider>
   );
 };
 
+function useRequired<T>(ctx: React.Context<T | null>, hook: string): T {
+  const value = useContext(ctx);
+  if (!value) throw new Error(`${hook} must be used within an EngineProvider`);
+  return value;
+}
+
+/** Functions only. Never re-renders the caller on a telemetry tick. */
+export function useEngineActions(): EngineActions {
+  return useRequired(EngineActionsContext, 'useEngineActions');
+}
+
+/** Engine start state only (engineStatus, hasCachedList). */
+export function useEngineStatus(): EngineStatusValue {
+  return useRequired(EngineStatusContext, 'useEngineStatus');
+}
+
+/** Rows, link downloads and listsLive. Re-renders on every telemetry change. */
+export function useEngineTelemetry(): EngineTelemetryValue {
+  return useRequired(EngineTelemetryContext, 'useEngineTelemetry');
+}
+
+/** Network, storage, permissions, clipboard and the like. */
+export function useEngineState(): EngineStateValue {
+  return useRequired(EngineStateContext, 'useEngineState');
+}
+
+/** The bottom notice only. */
+export function useEngineNotice(): EngineNoticeValue {
+  return useRequired(EngineNoticeContext, 'useEngineNotice');
+}
+
+/** The last finished torrent only. */
+export function useEngineLastCompleted(): EngineCompletedValue {
+  return useRequired(EngineCompletedContext, 'useEngineLastCompleted');
+}
+
+/**
+ * Everything, same shape as before the split. Re-renders on every telemetry tick, so screens that
+ * need only part of it should use the narrow hooks above. Does not re-render on a detail refresh
+ * (read `useDetailVersion()` for that).
+ */
 export function useMaglevEngine(): EngineContextType {
-  const ctx = useContext(EngineContext);
-  if (!ctx) {
-    throw new Error('useMaglevEngine must be used within an EngineProvider');
-  }
-  return ctx;
+  const a = useRequired(EngineActionsContext, 'useMaglevEngine');
+  const s = useRequired(EngineStatusContext, 'useMaglevEngine');
+  const t = useRequired(EngineTelemetryContext, 'useMaglevEngine');
+  const st = useRequired(EngineStateContext, 'useMaglevEngine');
+  const n = useRequired(EngineNoticeContext, 'useMaglevEngine');
+  const c = useRequired(EngineCompletedContext, 'useMaglevEngine');
+  return useMemo(() => ({ ...a, ...s, ...t, ...st, ...n, ...c }), [a, s, t, st, n, c]);
 }
