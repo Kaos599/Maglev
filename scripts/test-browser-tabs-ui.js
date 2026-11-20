@@ -43,7 +43,7 @@ check('state is module-level and read with useSyncExternalStore', /let state: Ta
 check('the hook holds no per-instance tab state', !/useState|useRef/.test(hook));
 check('every change is saved with scheduleSave', /deps\.scheduleSave\(rows, activeId\)/.test(store) && /scheduleSave: scheduleSaveTabs/.test(hook));
 check('tabs are flushed on blur and unmount', /flushTabs\(\)/.test(scr) && /tabStore\.flush\(\)/.test(hook));
-check('Save history off: memory only, saved rows deleted when it turns off', /if \(!deps\.saveHistory\(\)\) return/.test(store) && /deps\.deleteSaved\(\)/.test(store) && /subscribePrefs: subscribeBrowserPrefs/.test(hook) && /deleteSaved: deleteSavedTabs/.test(hook));
+check('Save history off: memory only, saved rows deleted when it turns off', /if \(!deps\.saveHistory\(\) \|\| isPriv\(\)\) return/.test(store) && /deps\.deleteSaved\(\)/.test(store) && /subscribePrefs: subscribeBrowserPrefs/.test(hook) && /deleteSaved: deleteSavedTabs/.test(hook));
 check('a screen mount checks the native wipe count', /tabStore\.checkWipe\(\)/.test(hook) && /wipeCount: getHistoryWipeCount/.test(hook));
 
 console.log('one screen, one tab set (section 30)');

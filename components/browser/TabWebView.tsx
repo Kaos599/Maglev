@@ -45,6 +45,8 @@ export interface TabWebViewProps {
   desktopMode: boolean;
   /** Page text size in percent (applies to every live tab). */
   textZoom: number;
+  /** Private browsing: the view bypasses the page cache. */
+  privateMode: boolean;
   popupPolicy: PopupPolicy;
   popupAllowHosts: string[];
   handlers: TabHandlers;
@@ -56,7 +58,7 @@ export interface TabWebViewProps {
  * One native browser view for one tab. Stacked with the others by absolute fill; an inactive one is invisible and
  * ignores touches but stays mounted, so switching back is instant.
  */
-export function TabWebView({ id, url, active, adBlock, allowAdsHosts, desktopMode, textZoom, popupPolicy, popupAllowHosts, handlers: h, register }: TabWebViewProps) {
+export function TabWebView({ id, url, active, adBlock, allowAdsHosts, desktopMode, textZoom, privateMode, popupPolicy, popupAllowHosts, handlers: h, register }: TabWebViewProps) {
   const ref = useRef<MaglevBrowserRef>(null);
   useEffect(() => {
     register(id, ref);
@@ -72,6 +74,7 @@ export function TabWebView({ id, url, active, adBlock, allowAdsHosts, desktopMod
       allowAdsHosts={allowAdsHosts}
       desktopMode={desktopMode}
       textZoom={textZoom}
+      privateMode={privateMode}
       popupPolicy={popupPolicy}
       popupAllowHosts={popupAllowHosts}
       style={styles.fill}

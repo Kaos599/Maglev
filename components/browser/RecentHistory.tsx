@@ -25,7 +25,7 @@ export function RecentHistory({ onPick, fallback }: { onPick: (url: string) => v
   const [prefs] = useBrowserPrefs();
   const version = useHistoryVersion();
   const [rows, setRows] = useState<HistoryEntry[]>([]);
-  const enabled = prefs.saveHistory;
+  const enabled = prefs.saveHistory && !prefs.privateBrowsing; // recents are hidden while private
 
   useEffect(() => {
     let live = true;

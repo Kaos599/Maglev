@@ -22,7 +22,7 @@ export type HistoryRange = 'hour' | 'today' | 'week' | 'all';
 export type RecordResult = 'saved' | 'title' | 'skipped';
 
 /** The slice of BrowserPrefs the store reads. */
-export type HistoryPrefs = { saveHistory: boolean; suggestFromHistory: boolean; clearHistoryOnClose: boolean };
+export type HistoryPrefs = { saveHistory: boolean; suggestFromHistory: boolean; clearHistoryOnClose: boolean; privateBrowsing?: boolean };
 
 const RETENTION_DAYS = 90;
 const MAX_ROWS = 10_000;
@@ -160,7 +160,7 @@ export function createHistoryStore(db: HistoryDb, prefs: () => HistoryPrefs) {
   }
 
   async function recordVisit(input: { url: string; title: string }, now: number = Date.now()): Promise<RecordResult> {
-    if (!prefs().saveHistory) return 'skipped';
+    if (!prefs().saveHistory || prefs().privateBrowsing) return 'skipped'; // private browsing writes nothing
     const page = parsePage(input.url);
     if (!page) return 'skipped';
     await init(now);
@@ -215,7 +215,7 @@ export function createHistoryStore(db: HistoryDb, prefs: () => HistoryPrefs) {
   }
 
   async function suggest(text: string, limit = 6): Promise<HistoryEntry[]> {
-    if (!prefs().suggestFromHistory) return [];
+    if (!prefs().suggestFromHistory || prefs().privateBrowsing) return []; // old history stays hidden while private
     const typed = bare(text.trim());
     if (typed.length < 1) return [];
     await init();
@@ -294,7 +294,7 @@ export function createHistoryStore(db: HistoryDb, prefs: () => HistoryPrefs) {
     const job = tabsQueue.then(async () => {
       if (tabsBroken) return false;
       // With "Save history" off tabs stay in memory (section 30).
-      if (!prefs().saveHistory) return false;
+      if (!prefs().saveHistory || prefs().privateBrowsing) return false; // private: tabs stay in memory
       try {
         await init();
         for (const r of rows) {

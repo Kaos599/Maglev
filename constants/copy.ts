@@ -316,6 +316,9 @@ export const historyCopy = {
   recent: { title: 'Recent', label: 'Recent pages', seeAll: 'See all', seeAllLabel: 'See all history' },
   settings: {
     section: 'History',
+    private: 'Private browsing',
+    privateSubtitle: "Don't keep history or open tabs, and clear cookies from sites you visit when you leave the browser.",
+    privateIndicator: 'Private browsing is on',
     save: 'Save history',
     saveSubtitle: 'Keeps the pages you open on this phone.',
     suggest: 'Suggest from history',

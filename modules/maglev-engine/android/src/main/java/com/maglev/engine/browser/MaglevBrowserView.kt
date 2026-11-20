@@ -97,6 +97,8 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
     private var desktopMode = false
     // 28: text size in percent, 50..200. Applied again to every WebView this view creates.
     private var textZoom = 100
+    // Private browsing: the page cache is bypassed (LOAD_NO_CACHE). Cookies are wiped from JS when the browser is left.
+    private var privateMode = false
     private var pendingUrl: String? = null
     private var requestedUrl: String? = null
 
@@ -200,6 +202,13 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
         if (v == textZoom) return
         textZoom = v
         if (!destroyed) webView.settings.textZoom = v
+    }
+
+    /** Private browsing: stop reading the page cache while on. */
+    fun setPrivateMode(value: Boolean) {
+        if (value == privateMode) return
+        privateMode = value
+        if (!destroyed) webView.settings.cacheMode = if (value) WebSettings.LOAD_NO_CACHE else WebSettings.LOAD_DEFAULT
     }
 
     /** 28: highlight matches of [query] in the page. An empty query clears them. Results come as onFindResult. */
@@ -513,6 +522,7 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
         s.builtInZoomControls = true
         s.displayZoomControls = false
         s.textZoom = textZoom
+        s.cacheMode = if (privateMode) WebSettings.LOAD_NO_CACHE else WebSettings.LOAD_DEFAULT
         w.setFindListener { ordinal, total, done ->
             if (!destroyed) onFindResult(mapOf("active" to ordinal, "total" to total, "done" to done))
         }

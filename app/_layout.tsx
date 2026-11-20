@@ -14,6 +14,7 @@ import { HighlightSheet } from '../components/HighlightSheet';
 import { syncScheduleToNative } from '../utils/prefs/schedule';
 import { syncFeedAutomationToNative } from '../utils/prefs/feedAutomation';
 import { initHistory } from '../utils/history';
+import { privateSession } from '../utils/browser/privateSession';
 import { startUpdates } from '../utils/update';
 import { useSubtitleRequests } from '../components/subtitles/useSubtitleRequests';
 import { installGlobalHandler, setCurrentRoute } from '../utils/crashLog';
@@ -85,6 +86,8 @@ function AppNavigation() {
   // H4 cold start: open history, then wipe or prune. Never blocks render; the History screen waits on it itself.
   useEffect(() => {
     initHistory().catch(() => {});
+    // A private session that was killed leaves its host list behind: wipe those cookies now.
+    void privateSession.wipe();
   }, []);
 
   // Push the saved schedule and feed rules to Kotlin once the engine is up.

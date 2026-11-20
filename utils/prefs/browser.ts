@@ -36,6 +36,11 @@ export interface BrowserPrefs {
   browserTextZoom: number;
   /** Swipe the address bar to change tabs, or down to open the tab list. */
   swipeTabs: boolean;
+  /**
+   * Private browsing: no history written or suggested, tabs kept in memory only, and cookies of the sites visited
+   * wiped when the browser is left (utils/browser/privateSession.ts). UI only; never reaches the engine.
+   */
+  privateBrowsing: boolean;
 }
 
 export const TEXT_ZOOM_MIN = 50;
@@ -74,6 +79,7 @@ export function defaultBrowserPrefs(): BrowserPrefs {
     popupAllowHosts: [],
     browserTextZoom: TEXT_ZOOM_DEFAULT,
     swipeTabs: true,
+    privateBrowsing: false,
   };
 }
 
@@ -100,6 +106,7 @@ export function normalizeBrowserPrefs(raw: unknown): BrowserPrefs {
     popupAllowHosts: [...new Set(strings(o.popupAllowHosts).map((h) => h.toLowerCase()))],
     browserTextZoom: normalizeTextZoom(o.browserTextZoom),
     swipeTabs: o.swipeTabs !== false,
+    privateBrowsing: o.privateBrowsing === true,
   };
 }
 

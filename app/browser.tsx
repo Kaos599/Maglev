@@ -39,7 +39,8 @@ import { startFound } from '../components/browser/startFound';
 import { isInstaller, mergeFound, pruneToPage } from '../components/browser/foundFilter';
 import { activeLabel, activeSummary, matchTransfers } from '../components/browser/foundTransfers';
 import { dismissAllVisible, dismissIds, restoreIds, visibleFound } from '../components/browser/foundDismiss';
-import { updateBrowserPrefs, useBrowserPrefs } from '../utils/prefs/browser';
+import { getBrowserPrefs, updateBrowserPrefs, useBrowserPrefs } from '../utils/prefs/browser';
+import { privateSession } from '../utils/browser/privateSession';
 import { flushTabs, recordVisit } from '../utils/history';
 import { activeTab, backTarget, getTab, isBlank, liveTabs, switcherOrder } from '../utils/browser/tabs';
 import * as popupsApi from '../utils/browser/popups';
@@ -394,6 +395,22 @@ export default function BrowserScreen({ inTab = false }: { inTab?: boolean }) {
     }, [handleBack, instanceId]),
   );
 
+  // Private browsing: leaving the browser (screen blurred or unmounted) wipes the cookies of the hosts seen. The
+  // callback is stable on purpose: a changing one would run the cleanup in the middle of a session. The Browse tab and
+  // the /browser route share one tab set, so moving between them is not leaving: after a short wait, another instance
+  // that took the view owner token means the browser is still open and nothing is wiped (the list waits for next time).
+  useFocusEffect(
+    useCallback(
+      () => () => {
+        setTimeout(() => {
+          const owner = getViewOwner();
+          if (owner == null || owner === instanceId) void privateSession.wipe();
+        }, 300);
+      },
+      [instanceId],
+    ),
+  );
+
   // ---- found list (per active tab) ----
   useEffect(() => () => {
     if (undoTimer.current) clearTimeout(undoTimer.current);
@@ -470,6 +487,8 @@ export default function BrowserScreen({ inTab = false }: { inTab?: boolean }) {
       });
       // A new document drops the highlights with it, so the find bar closes.
       if (newDocument && id === findTab.current) closeFind();
+      // Private browsing: remember the host so its cookies are wiped when the browser is left (privateHosts.ts).
+      if (getBrowserPrefs().privateBrowsing) privateSession.note(e.url);
       // H1: only a finished load is recorded. The store skips non-web addresses, repeats and the off setting.
       if (e.loading === false && !skipRecord) {
         recordVisit({ url: e.url, title: e.title ?? '' }).catch(() => {});
@@ -483,9 +502,13 @@ export default function BrowserScreen({ inTab = false }: { inTab?: boolean }) {
         }
       }
     },
-    onFound: (id, e) => patch(id, (d) => void (d.found = mergeFound(d.found, e.items))),
+    onFound: (id, e) => {
+      if (getBrowserPrefs().privateBrowsing) for (const it of e.items) privateSession.note(it.url);
+      patch(id, (d) => void (d.found = mergeFound(d.found, e.items)));
+    },
     onBlockedCount: (id, e) => patch(id, (d) => void (d.blocked = e.page)),
     onDownloadRequest: (id, e) => {
+      if (getBrowserPrefs().privateBrowsing) privateSession.note(e.url);
       const d = getData(id);
       // The navigation became a download: the page is not loading any more.
       patch(id, (x) => void (x.page = x.page && x.page.loading ? { ...x.page, loading: false } : x.page));
@@ -664,6 +687,9 @@ export default function BrowserScreen({ inTab = false }: { inTab?: boolean }) {
           onOpenSwitcher={() => setSwitcherOpen(true)}
         >
         <View style={[styles.address, editing && styles.addressEditing]}>
+          {prefs.privateBrowsing ? (
+            <PixelIcon name="shield" size={16} color={colors.accent} accessibilityLabel={historyCopy.settings.privateIndicator} />
+          ) : null}
           {!editing && page?.url ? (
             <PixelIcon
               name={page.secure ? 'lock' : 'warning'}
@@ -758,6 +784,7 @@ export default function BrowserScreen({ inTab = false }: { inTab?: boolean }) {
                     allowAdsHosts={prefs.allowAdsHosts}
                     desktopMode={desktop}
                     textZoom={prefs.browserTextZoom}
+                    privateMode={prefs.privateBrowsing}
                     popupPolicy={prefs.popupPolicy}
                     popupAllowHosts={prefs.popupAllowHosts}
                     handlers={handlers}

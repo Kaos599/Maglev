@@ -96,6 +96,8 @@ export type MaglevBrowserProps = {
   desktopMode?: boolean;
   /** Page text size in percent, 50 to 200. Default 100. Pinch zoom is separate. */
   textZoom?: number;
+  /** Private browsing: the page cache is bypassed while true. */
+  privateMode?: boolean;
   style?: StyleProp<ViewStyle>;
   onPage?: (e: BrowserPageEvent) => void;
   onFound?: (e: BrowserFoundEvent) => void;
@@ -148,6 +150,7 @@ type NativeProps = {
   allowAdsHosts?: string[];
   desktopMode?: boolean;
   textZoom?: number;
+  privateMode?: boolean;
   style?: StyleProp<ViewStyle>;
   onPage?: (e: NativeEvent<BrowserPageEvent>) => void;
   onFound?: (e: NativeEvent<BrowserFoundEvent>) => void;

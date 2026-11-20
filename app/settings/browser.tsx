@@ -261,6 +261,11 @@ export default function BrowserSettings() {
         <SectionHeader title={historyCopy.settings.section} />
         <Card>
           <ListRow
+            title={historyCopy.settings.private}
+            subtitle={historyCopy.settings.privateSubtitle}
+            accessory={<Toggle value={prefs.privateBrowsing} onValueChange={(privateBrowsing) => setPrefs({ privateBrowsing })} accessibilityLabel={historyCopy.settings.private} />}
+          />
+          <ListRow
             title={historyCopy.settings.save}
             subtitle={historyCopy.settings.saveSubtitle}
             accessory={<Toggle value={prefs.saveHistory} onValueChange={(saveHistory) => setPrefs({ saveHistory })} accessibilityLabel={historyCopy.settings.save} />}
