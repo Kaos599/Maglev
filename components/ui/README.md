@@ -1,6 +1,6 @@
 # components/ui
 
-Theme-driven primitives. Import from `components/ui`.
+Theme-driven primitives. Import from `components/ui`. The full design guide is [DESIGN.md](../../DESIGN.md).
 
 ## Which one
 - Button: text actions (primary = one per screen, secondary, ghost, danger). IconButton: icon-only actions.

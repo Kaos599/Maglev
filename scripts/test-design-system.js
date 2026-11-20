@@ -1,0 +1,205 @@
+#!/usr/bin/env node
+// Design-system checks. Keeps the code honest to DESIGN.md and DESIGN.md honest to the code.
+// Plain node, no dependencies. Run: node scripts/test-design-system.js
+// Override the scanned root with MAGLEV_ROOT=<dir> (used to prove the checks fail on a bad copy).
+
+const fs = require('fs');
+const path = require('path');
+
+const root = process.env.MAGLEV_ROOT ? path.resolve(process.env.MAGLEV_ROOT) : path.join(__dirname, '..');
+let failed = 0;
+
+function check(name, problems) {
+  if (problems.length === 0) {
+    console.log(`  ok   ${name}`);
+    return;
+  }
+  failed++;
+  console.error(`  FAIL ${name}`);
+  for (const p of problems.slice(0, 40)) console.error(`       ${p}`);
+  if (problems.length > 40) console.error(`       ... and ${problems.length - 40} more`);
+}
+
+function walk(dir, out = []) {
+  if (!fs.existsSync(dir)) return out;
+  for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+    if (e.name === 'node_modules' || e.name.startsWith('.')) continue;
+    const full = path.join(dir, e.name);
+    if (e.isDirectory()) walk(full, out);
+    else if (/\.(ts|tsx)$/.test(e.name) && !/\.d\.ts$/.test(e.name)) out.push(full);
+  }
+  return out;
+}
+
+const rel = (f) => path.relative(root, f).split(path.sep).join('/');
+const read = (f) => fs.readFileSync(f, 'utf8');
+const isGenerated = (r) => /\.generated\.tsx?$/.test(r);
+const isCommentLine = (line) => /^\s*(\/\/|\/\*|\*)/.test(line);
+
+function scan(dirs, { skip = () => false, test }) {
+  const hits = [];
+  for (const d of dirs) {
+    for (const f of walk(path.join(root, d))) {
+      const r = rel(f);
+      if (isGenerated(r) || skip(r)) continue;
+      read(f).split('\n').forEach((line, i) => {
+        if (isCommentLine(line)) return;
+        const msg = test(line, r);
+        if (msg) hits.push(`${r}:${i + 1}  ${msg}  ${line.trim().slice(0, 80)}`);
+      });
+    }
+  }
+  return hits;
+}
+
+// Allowlist. Each entry says why it is there.
+const ALLOW = {
+  // ErrorScreen is the crash fallback. It renders outside the providers, with no custom fonts loaded,
+  // so its two fontWeight uses sit on system text, where fontWeight works.
+  // TODO: give it the Inter faces if the fallback ever loads fonts.
+  fontWeight: new Set(['components/ErrorScreen.tsx']),
+};
+
+// ---------------------------------------------------------------------------------------------
+console.log('Colours come from the theme');
+check(
+  'no hex or rgb/rgba/hsl literals in app, components, context, utils (constants/ and components/brand/ excluded)',
+  scan(['app', 'components', 'context', 'utils'], {
+    skip: (r) => r.startsWith('components/brand/'),
+    test: (line) => {
+      if (/['"`]#(?:[0-9a-fA-F]{8}|[0-9a-fA-F]{6}|[0-9a-fA-F]{3,4})['"`]/.test(line)) return 'hex colour';
+      if (/['"`]\s*(rgba?|hsla?)\(/.test(line)) return 'rgb/hsl colour';
+      return null;
+    },
+  }),
+);
+
+console.log('Fonts');
+check(
+  "no fontFamily: 'monospace' anywhere",
+  scan(['app', 'components', 'context', 'utils', 'constants'], {
+    test: (line) => (/fontFamily\s*:\s*['"]monospace['"]/.test(line) ? "fontFamily 'monospace'" : null),
+  }),
+);
+check(
+  'no fontWeight in app/ components/ (custom faces have no synthetic bold; use the Bold/SemiBold slot)',
+  scan(['app', 'components'], {
+    skip: (r) => ALLOW.fontWeight.has(r),
+    test: (line) => (/\bfontWeight\s*:/.test(line) ? 'fontWeight' : null),
+  }),
+);
+
+console.log('Flat surfaces');
+check(
+  'no shadow* or elevation style keys in app/ components/',
+  scan(['app', 'components'], {
+    test: (line) => (/\b(shadowColor|shadowOffset|shadowOpacity|shadowRadius|elevation)\s*:/.test(line) ? 'shadow/elevation' : null),
+  }),
+);
+
+console.log('One icon family');
+check(
+  'no other icon libraries imported in app/ components/ context/',
+  scan(['app', 'components', 'context'], {
+    test: (line) =>
+      /(from\s+|require\()\s*['"](@expo\/vector-icons|react-native-vector-icons|lucide[\w-]*|@tabler\/icons[\w-]*|react-native-heroicons|@fortawesome\/[\w-]+|phosphor-react-native)/.test(line)
+        ? 'other icon library'
+        : null,
+  }),
+);
+
+// ---------------------------------------------------------------------------------------------
+console.log('DESIGN.md matches the code');
+const designPath = path.join(root, 'DESIGN.md');
+const design = fs.existsSync(designPath) ? read(designPath) : '';
+check('DESIGN.md exists', design ? [] : ['DESIGN.md is missing']);
+
+function parseKeys(src, name) {
+  // `export const spacing = { xs: 4, ... }` -> { xs: 4, ... }
+  const m = src.match(new RegExp(`export const ${name}\\s*=\\s*\\{([^}]*)\\}`));
+  if (!m) return null;
+  const out = {};
+  for (const part of m[1].split(',')) {
+    const kv = part.split(':').map((s) => s.trim());
+    if (kv.length === 2 && kv[0]) out[kv[0]] = Number(kv[1]);
+  }
+  return out;
+}
+
+if (design) {
+  const theme = read(path.join(root, 'constants/theme.ts'));
+  const fontStyles = read(path.join(root, 'constants/fontStyles.ts'));
+  const spacing = parseKeys(theme, 'spacing');
+  const radius = parseKeys(theme, 'radius');
+
+  // ThemeColors keys
+  const ifaceBody = theme.match(/export interface ThemeColors\s*\{([\s\S]*?)\n\}/)[1];
+  const colorKeys = new Set([...ifaceBody.matchAll(/^\s*(\w+)\s*:/gm)].map((m) => m[1]));
+
+  const colorProblems = [];
+  for (const m of design.matchAll(/\bcolors\.(\w+)/g)) {
+    if (!colorKeys.has(m[1])) colorProblems.push(`colors.${m[1]} is not in ThemeColors`);
+  }
+  check('every colors.<role> in DESIGN.md exists in ThemeColors', [...new Set(colorProblems)]);
+
+  // Every role has a row in the colour table.
+  const missingRoles = [...colorKeys].filter((k) => !new RegExp(`\\|\\s*\`${k}\`\\s*\\|`).test(design));
+  check('every ThemeColors role has a row in the DESIGN.md colour table', missingRoles.map((k) => `no row for ${k}`));
+
+  // Oled values in the colour table.
+  const oledMatch = theme.match(/oled:\s*\{([\s\S]*?)\},\s*\n\s*dim:/);
+  const oled = {};
+  if (oledMatch) for (const m of oledMatch[1].matchAll(/(\w+):\s*'([^']+)'/g)) oled[m[1]] = m[2];
+  // accent-derived roles under the default (lime) accent
+  const lime = theme.match(/lime:\s*\{\s*bright:\s*'([^']+)'/);
+  if (lime) {
+    oled.accent = lime[1];
+    oled.accentText = lime[1];
+  }
+  const valueProblems = [];
+  for (const m of design.matchAll(/^\|\s*`(\w+)`\s*\|\s*`(#[0-9A-Fa-f]{6})`/gm)) {
+    const want = oled[m[1]];
+    if (want && want.toLowerCase() !== m[2].toLowerCase()) valueProblems.push(`${m[1]}: DESIGN.md says ${m[2]}, theme.ts oled is ${want}`);
+  }
+  check('oled colour values in DESIGN.md equal constants/theme.ts', valueProblems);
+
+  // Spacing and radius: keys exist, printed values match.
+  function scaleCheck(label, scale, tableName) {
+    const problems = [];
+    if (!scale) return [`could not parse ${label} from theme.ts`];
+    for (const m of design.matchAll(new RegExp(`\\b${tableName}\\.(\\w+)(?:\\s*\\(\\s*(\\d+)\\s*\\))?`, 'g'))) {
+      if (!(m[1] in scale)) problems.push(`${tableName}.${m[1]} is not in theme.ts`);
+      else if (m[2] !== undefined && Number(m[2]) !== scale[m[1]]) problems.push(`${tableName}.${m[1]}: DESIGN.md says ${m[2]}, code is ${scale[m[1]]}`);
+    }
+    // Every key appears in the scale table with its value: | `key` | value |
+    for (const [k, v] of Object.entries(scale)) {
+      const row = design.match(new RegExp(`^\\|\\s*\`${tableName}\\.${k}\`\\s*\\|\\s*(\\d+)\\s*\\|`, 'm'));
+      if (!row) problems.push(`no table row for ${tableName}.${k}`);
+      else if (Number(row[1]) !== v) problems.push(`${tableName}.${k}: table says ${row[1]}, code is ${v}`);
+    }
+    return problems;
+  }
+  check('spacing keys and values in DESIGN.md equal theme.ts', scaleCheck('spacing', spacing, 'spacing'));
+  check('radius keys and values in DESIGN.md equal theme.ts', scaleCheck('radius', radius, 'radius'));
+
+  // Type slots
+  const slots = [...fontStyles.matchAll(/export const FONT_SLOTS = \[([^\]]*)\]/g)][0][1].match(/'(\w+)'/g).map((s) => s.slice(1, -1));
+  const slotProblems = [];
+  for (const m of design.matchAll(/\btype\.(\w+)/g)) {
+    const ok = slots.includes(m[1]) || ['size', 'family', 'slotAdvance'].includes(m[1]);
+    if (!ok) slotProblems.push(`type.${m[1]} is not a slot in theme.ts`);
+  }
+  for (const s of slots) if (!new RegExp(`type\\.${s}\\b`).test(design)) slotProblems.push(`type.${s} is not mentioned`);
+  check('every type slot in DESIGN.md exists, and every slot is mentioned', [...new Set(slotProblems)]);
+
+  // Components
+  const index = read(path.join(root, 'components/ui/index.ts'));
+  const exported = [...index.matchAll(/^export \{ ([^}]+) \} from/gm)].flatMap((m) => m[1].split(',').map((s) => s.trim()));
+  check(
+    'every export of components/ui/index.ts is mentioned in DESIGN.md',
+    exported.filter((n) => !new RegExp(`\\b${n}\\b`).test(design)).map((n) => `${n} is not mentioned`),
+  );
+}
+
+console.log(failed === 0 ? '\ndesign-system: all checks passed' : `\ndesign-system: ${failed} check(s) failed`);
+process.exit(failed === 0 ? 0 : 1);

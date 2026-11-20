@@ -17,11 +17,11 @@ Maglev replaces a torrent client (LibreTorrent, Flud) and a separate download ma
 | Card / border | `#0D1117` / `#1F2937` | Surfaces with a 1px hairline border, no shadows |
 | Accent | `#CCFF00` (lime) | Primary actions, active state, done |
 | Accent 2 | `#00E5FF` (cyan) | Downloading, inbound speed |
-| Danger | `#FF3366` | Destructive actions, errors |
+| Danger | `#FF4D79` | Destructive actions, errors |
 | Muted | `#8B949E` | Telemetry, paused |
 | App icon | `#0B2A30` (deep teal) tile, pixel maglev train (lime `#A5FB48` body, cyan `#01E5EF` speed lines and rails) | Geometry and cruise sprite frames in `scripts/build-logo.py` → `assets/brand/maglev-mark.svg`, `maglev-icon.svg`, `readme-header.svg` (animated), `components/brand/markPaths.ts` (rendered by `components/brand/MaglevMark.tsx`); rasters from `node scripts/generate-icons.js`. |
 
-Colours are reached through `useTheme()` and never written as hex outside `constants/`. The user picks one of three font styles in Settings → Interface (`fontStyle`, default **Clean**, UI only, applies live; table in `constants/fontStyles.ts`). **Clean**: Inter Bold headings, Inter Medium/SemiBold for filenames and telemetry (`tabular-nums`). **Retro**: Silkscreen headings, Space Mono filenames and telemetry. **Mono**: Space Mono Bold headings, Space Mono filenames and telemetry. Copy is always Inter, and the MAGLEV wordmark is always Silkscreen (`type.brand`, used by `HeaderBar` only). Use `type.heading`, `type.mono`, `type.body` and never a font file name. **Never use `fontFamily: 'monospace'`.** Use one icon family only: **Pixelarticons** (MIT), rendered through `components/PixelIcon.tsx` from `components/icons.generated.ts` (`node scripts/gen-icons.js`). Default size is 24px.
+Colours are reached through `useTheme()` and never written as hex outside `constants/`. The user picks one of three font styles in Settings → Interface (`fontStyle`, default **Clean**, UI only, applies live; table in `constants/fontStyles.ts`). **Clean**: Inter Bold headings, Inter Medium/SemiBold for filenames and telemetry (`tabular-nums`). **Retro**: Silkscreen headings, Space Mono filenames and telemetry. **Mono**: Space Mono Bold headings, Space Mono filenames and telemetry. Copy is always Inter, and the MAGLEV wordmark is always Silkscreen (`type.brand`, used by `HeaderBar` only). Use `type.heading`, `type.mono`, `type.body` and never a font file name. **Never use `fontFamily: 'monospace'`.** The full guide for new screens is [DESIGN.md](DESIGN.md). Use one icon family only: **Pixelarticons** (MIT), rendered through `components/PixelIcon.tsx` from `components/icons.generated.ts` (`node scripts/gen-icons.js`). Default size is 24px.
 
 ---
 
@@ -52,7 +52,7 @@ docs/                    the law (see §3)
 | `docs/ROADMAP.md` | Phases, task list, state-machine priorities (P0/P1/P2), the phase-out list. **The only task list.** |
 | `docs/NATIVE_CONTRACT.md` | The exact Rust ⇄ Kotlin ⇄ TS boundary: JNI signatures, JSON shapes, error codes, state rules, storage policy. Change this file **first** whenever the boundary changes. |
 | `docs/STATE_MACHINES_AND_SCREENS.md` | Screens and state machines. Implement transitions 1:1 and never invent ad-hoc states. |
-| `docs/DESIGN_SYSTEM_TOKENS.md` | Tokens, type scale, component specs, anti-slop rules. |
+| `DESIGN.md` | Public design guide: tokens, components, patterns, copy voice, a checklist for new screens. Checked by `scripts/test-design-system.js`. |
 | `docs/ARCHITECTURE_AND_GOAL.md` | Layers, SLAs and the memory/battery budget. |
 | `LEDGER.md` | A dated log of what landed, with commit hash and CI run. Only history, never plans. |
 
