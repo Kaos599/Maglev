@@ -1239,6 +1239,7 @@ object EngineHost {
                 c,
                 onChanged = { scope.launch { evaluateGovernance(false) } },
                 onGained = { scope.launch { reannounceLiveTorrents() } },
+                onSwitched = { scope.launch { call { NativeCore.nativeNetworkChanged() } } },
             ).also { it.start() }
         }
         if (power == null) power = PowerGovernanceManager(c) { scope.launch { evaluateGovernance(false) } }.also { it.start() }
@@ -1693,13 +1694,8 @@ object EngineHost {
         val ownFree = Json.long(space["freeBytes"])
         val free = if (staged) (space["targetFreeBytes"] as? Number)?.toLong()?.coerceAtMost(ownFree) ?: ownFree else ownFree
         val list = call { NativeCore.nativeListTorrents() }
-        var pending = 0L
-        if (isOk(list)) {
-            for (t in Json.list(list["torrents"])) {
-                if (isFinished(t)) continue
-                pending += (Json.long(t["total_bytes"]) - Json.long(t["progress_bytes"])).coerceAtLeast(0L)
-            }
-        }
+        // Torrents and link downloads both still need space (SM-35, NATIVE_CONTRACT 10.3).
+        val pending = if (isOk(list)) Admission.pendingNeedFromList(list) else 0L
         val out = Admission.admit(free, pending, if (staged) 2 else 1, selection)
         if (out.result == Admission.Result.DoesntFit) Log.i(TAG, "feed match does not fit: need ${out.need}, budget ${out.budget}")
         return out.result != Admission.Result.DoesntFit

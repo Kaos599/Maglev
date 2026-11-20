@@ -87,6 +87,30 @@ pub struct HeaderOptions {
     pub referer: Option<String>,
     #[serde(rename = "User-Agent", alias = "user-agent", alias = "user_agent", alias = "userAgent")]
     pub user_agent: Option<String>,
+    /// The page's `Origin` (scheme and host). Streams send it on every request.
+    #[serde(rename = "Origin", alias = "origin")]
+    pub origin: Option<String>,
+    /// Cookies the app read from the WebView jar, per host. Streams send each host its own.
+    #[serde(rename = "Cookies", alias = "cookies")]
+    pub cookies: Vec<HostCookie>,
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(default)]
+pub struct HostCookie {
+    pub host: String,
+    pub cookie: String,
+}
+
+impl HeaderOptions {
+    /// The per-host cookies as `(host, cookie)` pairs for a stream request context.
+    pub fn host_cookies(&self) -> Vec<(String, String)> {
+        self.cookies
+            .iter()
+            .filter(|c| !c.host.is_empty() && !c.cookie.is_empty())
+            .map(|c| (c.host.clone(), c.cookie.clone()))
+            .collect()
+    }
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -232,6 +256,9 @@ struct Live {
     cookie: Option<String>,
     referer: Option<String>,
     user_agent: Option<String>,
+    /// Stream downloads only: the page's `Origin` and the per-host cookies (memory only, like `cookie`).
+    origin: Option<String>,
+    host_cookies: Vec<(String, String)>,
     task: Option<JoinHandle<()>>,
     attempts: u32,
     denied: u32,
@@ -1541,8 +1568,9 @@ impl Downloads {
             };
             let h = opts.headers.clone().unwrap_or_default();
             let mut rec = rec;
+            let host_cookies = h.host_cookies();
             // Sign-in details stay in memory. Only the fact that they are needed is saved.
-            rec.needs_login = auth.is_some() || h.cookie.is_some() || has_secret_query(&rec.url);
+            rec.needs_login = auth.is_some() || h.cookie.is_some() || !host_cookies.is_empty() || has_secret_query(&rec.url);
             inner.live.insert(
                 id.clone(),
                 Live {
@@ -1550,6 +1578,8 @@ impl Downloads {
                     cookie: h.cookie,
                     referer: h.referer,
                     user_agent: h.user_agent,
+                    origin: h.origin,
+                    host_cookies,
                     ..Live::default()
                 },
             );
@@ -1740,6 +1770,35 @@ impl Downloads {
     /// The engine's network word (section 34.1): metered or not. Only splits bytes; never pauses anything.
     pub fn set_metered(&self, metered: bool) {
         self.metered.store(metered, Ordering::Relaxed);
+    }
+
+    /// The default network changed from one live network to another (contract section 17.x). A socket opened on the
+    /// old network is dead, but nothing tells the transfer until a read timeout. Every working or probing download
+    /// (streams included) gets its task aborted and started again at once: the transfer resumes from the written
+    /// position (sidecar, Range) on the new network. No state change, no `paused_by`, no attempt counted.
+    pub fn network_changed(self: &Arc<Self>) {
+        let mut guard = self.inner.lock();
+        let inner = &mut *guard;
+        for (id, rec) in inner.records.iter() {
+            let resolving = match rec.state {
+                State::Downloading => false,
+                State::Resolving => true,
+                _ => continue,
+            };
+            // Cancel the old task first, so two tasks never write the same part file at once.
+            let live = inner.live.entry(id.clone()).or_default();
+            if let Some(old) = live.task.take() {
+                old.abort();
+            }
+            let me = self.clone();
+            let id2 = id.clone();
+            let jh = if resolving {
+                self.handle.spawn(async move { me.run_probe(id2).await })
+            } else {
+                self.handle.spawn(async move { me.transfer(id2).await })
+            };
+            live.task = Some(jh);
+        }
     }
 
     /// The one-second timing pass, called from the engine's governance tick (section 34.1). `elapsed` is the wall time
@@ -3324,6 +3383,31 @@ mod tests {
         // Both at once: the Wi-Fi reason is the one the user can act on.
         d.set_blocked(&tags(&["offline", "wifi_only"]));
         assert_eq!(tag_of(&d, "dl_a").as_deref(), Some("wifi_only"));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn network_changed_restarts_working_downloads_without_a_pause_or_an_attempt() {
+        let (rt, dir) = (rt(), tmp("netchange"));
+        let d = manager(&rt, &dir, &[]);
+        put(&d, "dl_a", State::Downloading, |_| {});
+        put(&d, "dl_p", State::Resolving, |_| {});
+        put(&d, "dl_u", State::Paused(PauseReason::User), |r| r.paused_tag = Some("user".into()));
+        d.inner.lock().live.get_mut("dl_a").unwrap().attempts = 2;
+        // Keep the one worker busy so the restarted tasks cannot run (and fail) before the checks.
+        rt.spawn(async { std::thread::sleep(Duration::from_millis(400)) });
+        std::thread::sleep(Duration::from_millis(100));
+        d.network_changed();
+        assert_eq!(d.state_of("dl_a"), Some(State::Downloading));
+        assert_eq!(d.state_of("dl_p"), Some(State::Resolving));
+        assert_eq!(d.state_of("dl_u"), Some(State::Paused(PauseReason::User)));
+        assert_eq!(tag_of(&d, "dl_a"), None);
+        let inner = d.inner.lock();
+        assert_eq!(inner.live["dl_a"].attempts, 2);
+        assert!(inner.live["dl_a"].task.is_some());
+        assert!(inner.live["dl_p"].task.is_some());
+        assert!(inner.live["dl_u"].task.is_none());
+        drop(inner);
         let _ = std::fs::remove_dir_all(&dir);
     }
 

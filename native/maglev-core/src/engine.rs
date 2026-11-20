@@ -2898,6 +2898,12 @@ impl MaglevEngine {
         self.downloads.set_metered(metered);
     }
 
+    /// Kotlin's word that the default network changed to another live one (contract section 17.x): link downloads
+    /// reconnect on it. Torrents are untouched (the BitTorrent session finds the new route itself).
+    pub fn network_changed(&self) {
+        self.downloads.network_changed();
+    }
+
     // ---- governance tick ------------------------------------------------------------------------
 
     fn start_tick_loop(self: &Arc<Self>) {

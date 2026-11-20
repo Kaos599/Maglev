@@ -515,6 +515,18 @@ pub extern "system" fn Java_com_maglev_engine_NativeCore_nativeSetNetworkMetered
     reply(&mut env, &out)
 }
 
+/// Contract section 17.x: the default network changed to another live network. Link downloads reconnect.
+#[no_mangle]
+pub extern "system" fn Java_com_maglev_engine_NativeCore_nativeNetworkChanged(mut env: JNIEnv, _class: JClass) -> jstring {
+    let out = guarded(|| {
+        with_engine(|e| {
+            e.network_changed();
+            result_envelope(Ok(()))
+        })
+    });
+    reply(&mut env, &out)
+}
+
 #[no_mangle]
 pub extern "system" fn Java_com_maglev_engine_NativeCore_nativeGetPieceBitfield(
     mut env: JNIEnv,
