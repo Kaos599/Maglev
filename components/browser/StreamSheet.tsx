@@ -14,6 +14,7 @@ import { FloatingSheet, afterSheetCloses, NoteRow } from './FloatingSheet';
 import { useSettings } from '../../context/SettingsContext';
 import { downloadHeaders } from './FoundDownload';
 import { SaveToRow } from './SaveToRow';
+import { pageUrlOption } from './pageUrlOption';
 import { audioLabel, buildSelection, defaultAudio, defaultVariant, needsAudioPicker, qualityLabel } from './streamChoice';
 
 type Phase = 'probing' | 'ready' | 'error' | 'adding';
@@ -110,6 +111,7 @@ export function StreamSheet({ item, pageTitle, userAgent = '', pageUrl = '', onC
     const headers = await downloadHeaders({ url: it.url, pageUrl: it.pageUrl || pageUrl, userAgent });
     const res = await startDownload(it.url, {
       headers,
+      ...pageUrlOption(it.pageUrl || pageUrl),
       ...(clean ? { name: clean } : {}),
       stream: buildSelection(probe.kind, probe, variant, audioId),
     });

@@ -15,6 +15,7 @@ import { FloatingSheet, afterSheetCloses, NoteRow } from './FloatingSheet';
 import { useSettings } from '../../context/SettingsContext';
 import { SaveToChoice } from './SaveToChoice';
 import { saveFolder } from './saveTo';
+import { pageUrlOption } from './pageUrlOption';
 
 /** A file the browser found, or one a page offered as a download. */
 export interface DownloadTarget {
@@ -126,7 +127,7 @@ export function FoundDownloadSheet({ target, onClose, onView }: { target: Downlo
     const clean = sanitizeFileName(name.trim());
     const edited = name.trim() !== '' && clean !== (probe?.name ?? t.name);
     const headers = await downloadHeaders(t);
-    const res = await startDownload(t.url, { headers, ...(edited ? { name: clean } : {}), ...(folder ? { folder } : {}) });
+    const res = await startDownload(t.url, { headers, ...pageUrlOption(t.pageUrl), ...(edited ? { name: clean } : {}), ...(folder ? { folder } : {}) });
     if (res.ok) {
       haptic('commit');
       // Close first: the sheet is a Modal (its own window), so a notice raised while it is still up is hidden under it.
