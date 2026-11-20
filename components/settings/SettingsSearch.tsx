@@ -1,33 +1,28 @@
 import React, { useMemo } from 'react';
-import { Keyboard, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Keyboard, StyleSheet, Text } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useTheme } from '../../context/ThemeContext';
-import { ThemeColors, radius, spacing, type } from '../../constants/theme';
-import { PixelIcon } from '../PixelIcon';
-import { IconButton, ListRow } from '../ui';
+import { ThemeColors, spacing, type } from '../../constants/theme';
+import { ListRow, TextField } from '../ui';
 import { Card } from './SettingsParts';
 import { SettingEntry, searchSettings } from '../../utils/settingsIndex';
 
 /** Search field for the Settings tab. */
 export function SettingsSearchField({ query, onChangeQuery }: { query: string; onChangeQuery: (q: string) => void }) {
-  const { colors } = useTheme();
-  const s = useMemo(() => makeStyles(colors), [colors]);
   return (
-    <View style={s.field}>
-      <PixelIcon name="search" size={20} color={colors.textMuted} />
-      <TextInput
-        style={s.input}
-        value={query}
-        onChangeText={onChangeQuery}
-        placeholder="Search settings"
-        placeholderTextColor={colors.textFaint}
-        autoCapitalize="none"
-        autoCorrect={false}
-        returnKeyType="search"
-        accessibilityLabel="Search settings"
-      />
-      {query.length > 0 ? <IconButton icon="close" size={16} onPress={() => onChangeQuery('')} accessibilityLabel="Clear search" /> : null}
-    </View>
+    <TextField
+      leadingIcon="search"
+      clearable
+      clearLabel="Clear search"
+      size="lg"
+      value={query}
+      onChangeText={onChangeQuery}
+      placeholder="Search settings"
+      autoCapitalize="none"
+      autoCorrect={false}
+      returnKeyType="search"
+      accessibilityLabel="Search settings"
+    />
   );
 }
 
@@ -63,25 +58,6 @@ function ResultRow({ entry }: { entry: SettingEntry }) {
 
 const makeStyles = (c: ThemeColors) =>
   StyleSheet.create({
-    field: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      minHeight: 48,
-      paddingLeft: spacing.lg,
-      paddingRight: spacing.xs,
-      gap: spacing.sm,
-      borderRadius: radius.md,
-      borderWidth: 1,
-      borderColor: c.borderStrong,
-      backgroundColor: c.surface,
-    },
-    input: {
-      ...type.body,
-      flex: 1,
-      minHeight: 48,
-      fontSize: type.size.lg,
-      color: c.text,
-    },
     empty: {
       ...type.body,
       fontSize: type.size.base,

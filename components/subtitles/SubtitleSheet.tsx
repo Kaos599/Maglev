@@ -1,12 +1,12 @@
 import React, { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
-import { ScrollView, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
+import { ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { useIsFocused, useRouter } from 'expo-router';
 import { maglevEngine } from 'maglev-engine';
 import { useTheme } from '../../context/ThemeContext';
 import { useSettings } from '../../context/SettingsContext';
 import { useMaglevEngine } from '../../context/EngineContext';
 import { ThemeColors, alpha, radius, spacing, type, touch } from '../../constants/theme';
-import { Banner, Button, Chip, IconButton, ListRow, PressableScale, Sheet } from '../ui';
+import { Banner, Button, Chip, IconButton, ListRow, PressableScale, Sheet, TextField } from '../ui';
 import { useListsVersion } from '../../utils/lists/hooks';
 import { listSubtitleEntries } from '../../utils/lists';
 import { enabledProviders } from '../../utils/subtitles/providers';
@@ -414,23 +414,19 @@ export function SubtitleSheet({ target, onClose, initial = 'results' }: Props) {
         {state.editing ? (
           <View style={styles.stack}>
             <Text style={styles.hint}>{SEARCHING_FOR_LABEL}</Text>
-            <TextInput
-              style={[styles.input, state.draft.trim() !== '' && !draftOk && styles.inputError]}
+            <TextField
+              onSurface
               value={state.draft}
               onChangeText={(t) => send({ type: 'DRAFT_CHANGE', draft: t })}
               placeholder={TYPE_A_TITLE}
-              placeholderTextColor={colors.textFaint}
+              mono
               returnKeyType="search"
               onSubmitEditing={submitName}
               autoCorrect={false}
               autoFocus
+              error={state.draft.trim() !== '' && !draftOk ? TYPE_A_TITLE : undefined}
               accessibilityLabel={SEARCHING_FOR_LABEL}
             />
-            {state.draft.trim() !== '' && !draftOk ? (
-              <Text style={styles.problem} accessibilityRole="alert">
-                {TYPE_A_TITLE}
-              </Text>
-            ) : null}
             <View style={styles.nameActions}>
               <Button label={SEARCH_BUTTON} variant="secondary" disabled={!draftOk} onPress={submitName} />
               {draftDiffers ? <Button label={USE_FILE_NAME} variant="ghost" icon="undo" onPress={() => send({ type: 'USE_FILE_NAME' })} /> : null}
@@ -575,8 +571,5 @@ const makeStyles = (c: ThemeColors) =>
     nameText: { flex: 1, minHeight: touch.min, justifyContent: 'center' },
     searchText: { ...type.mono, fontSize: type.size.md, color: c.text },
     nameActions: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: spacing.sm },
-    input: { ...type.mono, fontSize: type.size.md, minHeight: 48, paddingHorizontal: spacing.lg, borderRadius: radius.md, borderWidth: 1, borderColor: c.borderStrong, backgroundColor: c.bg, color: c.text },
-    inputError: { borderColor: c.danger },
-    problem: { ...type.body, fontSize: type.size.md, color: c.danger },
     problemsBtn: { minHeight: touch.min, justifyContent: 'center' },
   });

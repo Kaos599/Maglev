@@ -1,9 +1,9 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useTheme } from '../../context/ThemeContext';
-import { ThemeColors, radius, spacing, touch, type } from '../../constants/theme';
+import { ThemeColors, radius, spacing, type } from '../../constants/theme';
 import { PixelIcon } from '../PixelIcon';
-import { Banner, Button, Chip, Sheet, Toggle } from '../ui';
+import { Banner, Button, Chip, Sheet, TextField, Toggle } from '../ui';
 import { CATEGORY_LABEL, ProviderInfo, formatSeconds, methodLine } from '../search/meta';
 import { Monogram } from './ProviderRow';
 import type { SearchPrefs } from '../../utils/prefs/search';
@@ -126,16 +126,14 @@ export function ProviderSheet({
         </View>
 
         <View style={styles.group}>
-          <Text style={styles.label}>Address</Text>
-          <TextInput
+          <TextField
+            onSurface
+            label="Address"
             value={address}
             onChangeText={setAddress}
             onBlur={commitAddress}
-            style={styles.input}
-            autoCapitalize="none"
-            autoCorrect={false}
+            mono
             keyboardType="url"
-            selectionColor={colors.accent}
             accessibilityLabel={`${provider.name} address`}
           />
           <View style={styles.hintRow}>
@@ -195,17 +193,6 @@ const makeStyles = (c: ThemeColors) =>
     testText: { ...type.body, flex: 1, fontSize: type.size.md, color: c.text },
     group: { gap: spacing.sm },
     label: { ...type.bodyStrong, fontSize: type.size.sm, color: c.textMuted },
-    input: {
-      ...type.mono,
-      minHeight: touch.min,
-      paddingHorizontal: spacing.md,
-      fontSize: type.size.base,
-      color: c.text,
-      backgroundColor: c.bg,
-      borderWidth: 1,
-      borderColor: c.borderStrong,
-      borderRadius: radius.md,
-    },
     hintRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
     hint: { ...type.body, flex: 1, fontSize: type.size.sm, lineHeight: 17, color: c.textMuted },
     wrap: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },

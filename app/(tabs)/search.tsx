@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { AccessibilityInfo, AppState, Dimensions, ScrollView, StyleSheet, Text, TextInput, View, findNodeHandle, type LayoutChangeEvent, type NativeScrollEvent, type NativeSyntheticEvent } from 'react-native';
+import { AccessibilityInfo, AppState, Dimensions, ScrollView, StyleSheet, Text, View, findNodeHandle, type LayoutChangeEvent, type NativeScrollEvent, type NativeSyntheticEvent } from 'react-native';
 import { FlashList } from '@shopify/flash-list';
 import { useIsFocused, useLocalSearchParams, useRouter } from 'expo-router';
 import { useMaglevEngine } from '../../context/EngineContext';
@@ -7,7 +7,7 @@ import { useSettings } from '../../context/SettingsContext';
 import { useTheme } from '../../context/ThemeContext';
 import { ThemeColors, radius, spacing, touch, type } from '../../constants/theme';
 import { PixelIcon } from '../../components/PixelIcon';
-import { Button, Chip, EmptyBlock, IconButton, PressableScale, Screen, Sheet } from '../../components/ui';
+import { Button, Chip, EmptyBlock, IconButton, PressableScale, Screen, Sheet, TextField, type TextFieldRef } from '../../components/ui';
 import { ResultRow } from '../../components/search/ResultRow';
 import { SKELETON_FIRST_COUNT, SKELETON_MORE_COUNT, SkeletonRows } from '../../components/search/SkeletonRows';
 import { seenRowCount, stableOrder } from '../../components/search/stableOrder';
@@ -139,7 +139,7 @@ export default function SearchScreen() {
   // True while the user is working through the "needs a quick check" line: after one solve, the next opens.
   const fixing = useRef(false);
   const [focused, setFocused] = useState(false);
-  const inputRef = useRef<React.ComponentRef<typeof TextInput>>(null);
+  const inputRef = useRef<TextFieldRef>(null);
   const sortBtnRef = useRef<any>(null);
   const fixBtnRef = useRef<any>(null);
   const recentRows = useRef(new Map<string, any>());
@@ -841,28 +841,26 @@ export default function SearchScreen() {
       }
     >
       <View style={styles.pad}>
-        <View style={styles.field}>
-          <PixelIcon name="search" size={20} color={colors.textMuted} />
-          <TextInput
-            style={styles.input}
-            value={query}
-            onChangeText={setQuery}
-            onSubmitEditing={() => {
-              remember(query);
-              setRetryTick((n) => n + 1);
-            }}
-            placeholder="Name, show, file…"
-            placeholderTextColor={colors.textFaint}
-            autoCapitalize="none"
-            autoCorrect={false}
-            returnKeyType="search"
-            accessibilityLabel="Search torrents"
-            ref={inputRef}
-            onFocus={() => setFocused(true)}
-            onBlur={() => setFocused(false)}
-          />
-          {query.length > 0 ? <IconButton icon="close" size={16} onPress={() => setQuery('')} accessibilityLabel="Clear search" /> : null}
-        </View>
+        <TextField
+          leadingIcon="search"
+          clearable
+          clearLabel="Clear search"
+          size="lg"
+          value={query}
+          onChangeText={setQuery}
+          onSubmitEditing={() => {
+            remember(query);
+            setRetryTick((n) => n + 1);
+          }}
+          placeholder="Name, show, file…"
+          autoCapitalize="none"
+          autoCorrect={false}
+          returnKeyType="search"
+          accessibilityLabel="Search torrents"
+          ref={inputRef}
+          onFocus={() => setFocused(true)}
+          onBlur={() => setFocused(false)}
+        />
         <Reveal visible={showRecents}>
           {/* A scroll view with handled taps: a tap on a row registers before the field loses focus. */}
           <ScrollView keyboardShouldPersistTaps="handled" scrollEnabled={false} style={styles.recentsWrap}>
@@ -1013,19 +1011,6 @@ const makeStyles = (c: ThemeColors) =>
     pad: { paddingHorizontal: spacing.lg },
     confirmActions: { gap: spacing.sm },
     filterRow: { marginTop: spacing.md },
-    field: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      minHeight: 48,
-      paddingLeft: spacing.lg,
-      paddingRight: spacing.xs,
-      gap: spacing.sm,
-      borderRadius: radius.md,
-      borderWidth: 1,
-      borderColor: c.borderStrong,
-      backgroundColor: c.surface,
-    },
-    input: { ...type.body, flex: 1, minHeight: 48, fontSize: type.size.lg, color: c.text },
     catScroll: { flexGrow: 0, marginTop: spacing.md, marginBottom: spacing.sm },
     chips: { paddingHorizontal: spacing.lg, gap: spacing.sm },
     idle: { paddingHorizontal: spacing.lg, paddingTop: spacing.md, paddingBottom: spacing.xxxl, gap: spacing.xxl },

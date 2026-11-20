@@ -206,7 +206,7 @@ Import primitives from `components/ui`. Each one reads the theme, meets the 44 d
 | `EmptyBlock` | An empty or error state: icon, title, one line, at most one primary action. | A loading state. | `icon`, `title`, `body`, `primary`, `secondary`, `error` |
 | `ProgressBar` | Progress of a transfer. | A percentage readout on its own. | `progress` (0 to 1), `tone` (`download`, `seed`, `paused`, `error`), `indeterminate`, `resetKey` |
 | `Screen` | The safe-area container with an optional header, back button and actions. | Nested inside another `Screen`. | `title`, `onBack`, `actions`, `scroll`, `edges`, `contentStyle` |
-| `TextField` | Any text input: search box, link, file name, rule editor, address. Optional `label`, `help`, `error`, `leadingIcon`, a "Clear" button. | A choice among fixed options (use `SegmentedControl` or `Chip`). | `label`, `help`, `error`, `leadingIcon`, `clearable`, `mono`, `size` (`md`, `lg`), `multiline`, `minLines`, `maxLines`, plus every `TextInput` prop |
+| `TextField` | Any text input: search box, link, file name, rule editor, address. Optional `label`, `help`, `error`, `leadingIcon`, a "Clear" button. | A choice among fixed options (use `SegmentedControl` or `Chip`). | `label`, `help`, `error`, `leadingIcon`, `clearable`, `clearLabel`, `mono`, `size` (`md`, `lg`), `trailing`, `bare`, `onSurface`, `multiline`, `minLines`, `maxLines`, plus every `TextInput` prop |
 | `PressableScale` | Building a custom pressable with the standard press feel. | Anything a `Button`, `Chip` or `ListRow` already covers. | `style` (may take `pressed`), `scaleTo`, `feedback` (`scale` or `sink`), `haptic` |
 | `RadioCard` | A single choice that needs an icon and a description, such as an onboarding option. | A plain list of choices (use `SegmentedControl` or `ListRow`). | `title`, `description`, `icon`, `selected`, `onPress`, `dashed` |
 | `RangeSlider` | Choosing a low and high stop on a track. | One value (use `SegmentedControl` or a stepper row). | `steps`, `low`, `high`, `onChange`, `labelLow`, `labelHigh`, `valueText`, `minGap` |
@@ -279,9 +279,12 @@ Use `FlatList` for anything that can grow. Rows keep a constant height: reserve 
 Use `TextField`, never a bare `TextInput`. It is 44 dp tall (`size="lg"`, 48 dp, for a search box), has a 1 px `borderStrong` hairline, and turns the border accent on focus and danger on error.
 
 - **`mono`** for filenames, URLs, paths, tokens and numbers (`type.mono`). It also turns off autocapitalize, autocorrect and spellcheck. Leave it off for words people write, such as a rule name or a chat message (`type.body`).
-- **`clearable`** on a search or filter box, or any field people retype often. The "Clear" button shows only while there is text, and puts the cursor back in the field.
+- **`onSurface`** when the field sits inside a sheet or card (`surface` colour). The fill becomes `bg`, so the field reads as a sunken box instead of disappearing into the sheet. Fields on a screen (`bg`) leave it off and get the `surface` fill.
+- **`clearable`** on a search or filter box, or any field people retype often. The "Clear" button shows only while there is text, and puts the cursor back in the field. Pass `clearLabel` when a screen needs a more specific accessibility label, such as "Clear filter text".
 - **`error`** says what is wrong in plain words and what to do. It shows an icon and text, never colour alone, and is announced to screen readers. Clear it when the person edits. Use `help` for a quiet hint that is always true; an error replaces it.
 - **`label`** when the field has no visible context (rule editors, sheets). A search box with a `leadingIcon` and a placeholder needs no label; the placeholder is its accessibility label.
+- **`trailing`** puts a node inside the box after the input, such as a file extension next to a file name.
+- **`bare`** drops the box, label, help and error and renders only the styled input. Use it when the screen owns the container, as the browser address bar and find bar do (they keep their own swipe, count and step buttons). Fonts, placeholder, selection and cursor colours still come from the field.
 - **`multiline`** for a pasted link or a list. Set `minLines` and `maxLines` so it does not push the page.
 
 ### Destructive actions and Undo
@@ -348,6 +351,8 @@ Words to avoid on screen: pipeline jargon, "Save configuration" buttons (setting
 - `fontFamily: 'monospace'` appears anywhere, or `fontWeight` or a `shadow*` or `elevation` key appears in `app/` or `components/`,
 - a `duration:` with a bare number appears in `components/ui` or `components/motion`,
 - a module-level `StyleSheet.create` or object in `app/` or `components/` reads `type.*` (it would freeze the font style from app start),
+- a raw `<TextInput` appears in `app/` or `components/` outside `components/ui/` (use `TextField`),
+- a numeric `fontSize: <number>` appears in `app/` or `components/` without a `// design-exception:` comment on the same line (use `type.size.*`),
 - another icon library is imported,
 - this file names a `colors.<role>`, `spacing.<key>`, `radius.<key>` or `type.<slot>` that is not in `constants/theme.ts`, prints a spacing, radius or OLED colour value that differs from the code, or leaves out a colour role, a spacing or radius key, a type slot, or an export of `components/ui/index.ts`.
 

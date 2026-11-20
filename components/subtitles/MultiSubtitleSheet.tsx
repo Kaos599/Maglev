@@ -1,9 +1,9 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useTheme } from '../../context/ThemeContext';
-import { ThemeColors, radius, spacing, type, touch } from '../../constants/theme';
-import { Button, IconButton, PressableScale, Sheet } from '../ui';
+import { ThemeColors, spacing, type, touch } from '../../constants/theme';
+import { Button, IconButton, PressableScale, Sheet, TextField } from '../ui';
 import { PixelIcon } from '../PixelIcon';
 import { parseTyped } from '../../utils/subtitles/parseName';
 import { looksLikeAnime } from '../../utils/subtitles/offSources';
@@ -245,16 +245,17 @@ export function MultiSubtitleSheet({ visible, asks, mode, onConfirm, onClose, no
                 ) : null}
                 <View style={styles.main}>
                   {editingRow ? (
-                    <TextInput
+                    <TextField
+                      onSurface
                       value={draft}
                       onChangeText={setDraft}
                       autoFocus
+                      mono
                       returnKeyType="search"
                       onSubmitEditing={() => submit(a)}
                       accessibilityLabel={CHANGE_NAME_LABEL}
                       placeholder={TYPE_A_TITLE}
-                      placeholderTextColor={colors.textFaint}
-                      style={[styles.input, !draftOk && styles.inputError]}
+                      error={draftOk ? undefined : TYPE_A_TITLE}
                     />
                   ) : (
                     <>
@@ -313,6 +314,4 @@ const makeStyles = (c: ThemeColors) =>
     title: { ...type.bodyStrong, fontSize: type.size.lg, color: c.text },
     detail: { ...type.body, fontSize: type.size.md, color: c.textMuted },
     phase: { ...type.bodyStrong, fontSize: type.size.md, color: c.text },
-    input: { ...type.mono, fontSize: type.size.md, minHeight: 48, paddingHorizontal: spacing.md, borderRadius: radius.md, borderWidth: 1, borderColor: c.borderStrong, backgroundColor: c.bg, color: c.text },
-    inputError: { borderColor: c.danger },
   });

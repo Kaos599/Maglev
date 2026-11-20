@@ -1,10 +1,10 @@
 import React, { useMemo } from 'react';
-import { StyleSheet, Text, TextInput, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 import { useTheme } from '../../context/ThemeContext';
 import { useMaglevEngine } from '../../context/EngineContext';
-import { ThemeColors, radius, spacing, touch, type } from '../../constants/theme';
+import { ThemeColors, radius, spacing, type } from '../../constants/theme';
 import { saveTo } from '../../constants/copy';
-import { Chip } from '../ui';
+import { Chip, TextField } from '../ui';
 import { friendlyPath } from '../settings/SettingsParts';
 import { saveFolder, subfolderName } from './saveTo';
 
@@ -30,19 +30,15 @@ export function SaveToChoice({ value, onChange, root, disabled }: { value: strin
         <Chip label={saveTo.subfolder} role="radio" selected={value != null} disabled={disabled} onPress={() => onChange(value ?? '')} />
       </View>
       {value != null ? (
-        <TextInput
+        <TextField
+          onSurface
           value={value}
           onChangeText={(t) => onChange(t.replace(/[\\/]/g, ''))}
           onBlur={() => onChange(subfolderName(value))}
           editable={!disabled}
           placeholder={saveTo.namePlaceholder}
-          placeholderTextColor={colors.textFaint}
-          selectionColor={colors.accent}
-          autoCapitalize="none"
-          autoCorrect={false}
-          spellCheck={false}
+          mono
           maxLength={64}
-          style={styles.field}
           accessibilityLabel={saveTo.namePlaceholder}
         />
       ) : null}
@@ -57,15 +53,4 @@ const makeStyles = (c: ThemeColors) =>
     meta: { ...type.mono, fontSize: type.size.sm, color: c.textMuted },
     dest: { ...type.mono, fontSize: type.size.md, color: c.text },
     chips: { flexDirection: 'row', gap: spacing.sm, marginVertical: spacing.xs },
-    field: {
-      ...type.mono,
-      fontSize: type.size.md,
-      color: c.text,
-      minHeight: touch.min,
-      backgroundColor: c.bg,
-      borderWidth: 1,
-      borderColor: c.borderStrong,
-      borderRadius: radius.md,
-      paddingHorizontal: spacing.md,
-    },
   });

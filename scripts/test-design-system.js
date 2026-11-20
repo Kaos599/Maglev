@@ -294,5 +294,22 @@ check(
   }),
 );
 
+console.log('One text input, token font sizes');
+check(
+  'no raw <TextInput in app/ or components/ outside components/ui/ (use TextField)',
+  scan(['app', 'components'], {
+    skip: (r) => r.startsWith('components/ui/'),
+    test: (line) => (/<TextInput\b/.test(line) ? 'raw <TextInput' : null),
+  }),
+);
+// Sizes come from `type.size.*` (or a constant built from it). A bare number is allowed only for fixed geometry,
+// with `// design-exception: <why>` on the same line.
+check(
+  'no numeric fontSize: <number> in app/ or components/ without a // design-exception: on the line',
+  scan(['app', 'components'], {
+    test: (line) => (/\bfontSize:\s*\d/.test(line) && !/\/\/\s*design-exception:/.test(line) ? 'numeric fontSize' : null),
+  }),
+);
+
 console.log(failed === 0 ? '\ndesign-system: all checks passed' : `\ndesign-system: ${failed} check(s) failed`);
 process.exit(failed === 0 ? 0 : 1);

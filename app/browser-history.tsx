@@ -1,13 +1,12 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { FlatList, StyleSheet, Text, TextInput, View } from 'react-native';
+import { FlatList, StyleSheet, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useTheme } from '../context/ThemeContext';
 import { useMaglevEngine } from '../context/EngineContext';
-import { ThemeColors, radius, spacing, touch, type } from '../constants/theme';
+import { ThemeColors, spacing, type } from '../constants/theme';
 import { haptic } from '../constants/haptics';
 import { empty, historyCopy, notices } from '../constants/copy';
-import { PixelIcon } from '../components/PixelIcon';
-import { EmptyBlock, IconButton, ListRow, PressableScale, Screen, Sheet } from '../components/ui';
+import { EmptyBlock, IconButton, ListRow, PressableScale, Screen, Sheet, TextField } from '../components/ui';
 import { ClearHistorySheet } from '../components/browser/ClearHistorySheet';
 import { useBrowserPrefs } from '../utils/prefs/browser';
 import {
@@ -290,21 +289,19 @@ export default function BrowserHistoryScreen() {
       }
     >
       <View style={styles.search}>
-        <PixelIcon name="search" size={16} color={colors.textMuted} />
-        <TextInput
+        <TextField
+          leadingIcon="search"
+          clearable
+          clearLabel="Clear search"
           value={text}
           onChangeText={setText}
           placeholder={historyCopy.searchPlaceholder}
-          placeholderTextColor={colors.textFaint}
-          selectionColor={colors.accent}
-          style={styles.input}
           autoCapitalize="none"
           autoCorrect={false}
           spellCheck={false}
           returnKeyType="search"
           accessibilityLabel={historyCopy.searchLabel}
         />
-        {text ? <IconButton icon="close" accessibilityLabel="Clear search" onPress={() => setText('')} /> : null}
       </View>
       <View style={styles.fill}>{body()}</View>
 
@@ -330,20 +327,7 @@ export default function BrowserHistoryScreen() {
 const makeStyles = (c: ThemeColors) =>
   StyleSheet.create({
     fill: { flex: 1 },
-    search: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: spacing.sm,
-      minHeight: touch.min,
-      marginHorizontal: spacing.lg,
-      marginBottom: spacing.sm,
-      paddingLeft: spacing.md,
-      backgroundColor: c.surface,
-      borderWidth: 1,
-      borderColor: c.border,
-      borderRadius: radius.md,
-    },
-    input: { ...type.body, flex: 1, minWidth: 0, fontSize: type.size.md, color: c.text, paddingVertical: 0, minHeight: touch.min },
+    search: { marginHorizontal: spacing.lg, marginBottom: spacing.sm },
     header: { ...type.heading, fontSize: type.size.md, color: c.textMuted, paddingHorizontal: spacing.lg, paddingTop: spacing.lg, paddingBottom: spacing.xs },
     row: { flexDirection: 'row', alignItems: 'center', paddingLeft: spacing.lg, paddingRight: spacing.xs },
     rowMain: { flex: 1, minHeight: 56, justifyContent: 'center', minWidth: 0 },

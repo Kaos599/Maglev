@@ -24,6 +24,12 @@ check(
   'has label, help, error, leadingIcon, clearable, mono, size, minLines, maxLines',
   ['label', 'help', 'error', 'leadingIcon', 'clearable', 'mono', 'size', 'minLines', 'maxLines'].every((p) => new RegExp(`\\b${p}\\??:`).test(code)),
 );
+check('has trailing and bare props', /\btrailing\?:/.test(code) && /\bbare\?:/.test(code));
+check('trailing renders inside the box before the clear button', /\{trailing\b[^\n]*\{trailing\}[^\n]*\n\s*\{showClear/.test(code));
+check(
+  'bare returns only the TextInput, with theme placeholder and selection colours, and passes selection through',
+  /if \(bare\) \{\s*return \(\s*<TextInput[\s\S]*?placeholderTextColor=\{colors\.textFaint\}[\s\S]*?selectionColor=\{colors\.accent\}[\s\S]*?\{\.\.\.rest\}[\s\S]*?\/>\s*\);\s*\}/.test(code),
+);
 check('no hex or rgba literals', !/#[0-9a-fA-F]{3,8}\b|rgba?\(/.test(code));
 check('no raw spacing, radius or size numbers in styles', !/(padding\w*|margin\w*|gap|borderRadius|fontSize|minHeight|height|width):\s*\d{2,}/.test(styles));
 check('no shadows, system monospace or fontWeight', !/shadow|elevation|fontFamily:\s*'monospace'|fontWeight/.test(code));
@@ -45,7 +51,7 @@ check(
 );
 check(
   'clear button is an IconButton labelled "Clear", shown only with text',
-  /<IconButton[^>]*accessibilityLabel="Clear"/.test(code) && /showClear = clearable && editable && typeof value === 'string' && value\.length > 0/.test(code),
+  /<IconButton[^>]*accessibilityLabel=\{clearLabel\}/.test(code) && /clearLabel = 'Clear'/.test(code) && /showClear = clearable && editable && typeof value === 'string' && value\.length > 0/.test(code),
 );
 check('clear button keeps a 44x44 target (IconButton box)', /box: \{ width: (44|touch\.min), height: (44|touch\.min)/.test(read('components/ui/IconButton.tsx')));
 check(
@@ -56,6 +62,22 @@ check('help and error are announced via accessibilityHint', /accessibilityHint=\
 check('label feeds accessibilityLabel', /accessibilityLabel \?\? label \?\? placeholder/.test(code));
 check('visible label uses type.bodyStrong', /label: \{ \.\.\.type\.bodyStrong/.test(styles));
 check('disabled has no focus ring', /focused && !disabled/.test(code));
+check('onSurface fills the box with bg', /boxOnSurface: \{ backgroundColor: c\.bg \}/.test(styles) && /onSurface && styles\.boxOnSurface/.test(code));
+{
+  // Fields inside sheets and cards (surface) must pass onSurface, or they vanish into the sheet.
+  const onSurfaceSites = [
+    'components/assistant/provider/Field.tsx', 'components/browser/FoundDownload.tsx', 'components/browser/SaveToChoice.tsx',
+    'components/browser/StreamSheet.tsx', 'components/detail/TrackerSheets.tsx', 'components/feeds/NewFeedSheet.tsx',
+    'components/feeds/RuleEditorSheet.tsx', 'components/search-providers/ProviderSheet.tsx', 'components/search-providers/TorznabSheet.tsx',
+    'components/settings/SettingsParts.tsx', 'components/subtitles/MultiSubtitleSheet.tsx', 'components/subtitles/SubtitleSheet.tsx',
+  ];
+  const missing = onSurfaceSites.filter((p) => {
+    const src = read(p);
+    const fields = src.match(/<TextField\b[\s\S]*?\/>/g) || [];
+    return fields.length === 0 || fields.some((t) => !/\bonSurface\b/.test(t));
+  });
+  check(`fields in sheets pass onSurface${missing.length ? ' (missing: ' + missing.join(', ') + ')' : ''}`, missing.length === 0);
+}
 check('mentioned in DESIGN.md and README', /TextField/.test(read('DESIGN.md')) && /TextField/.test(read('components/ui/README.md')));
 console.log(failed === 0 ? '\ntextfield: all checks passed' : `\ntextfield: ${failed} check(s) failed`);
 process.exit(failed === 0 ? 0 : 1);

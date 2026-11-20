@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { AppState, BackHandler, Linking, StyleSheet, TextInput, View } from 'react-native';
+import { AppState, BackHandler, Linking, StyleSheet, View } from 'react-native';
 import { FlashList } from '@shopify/flash-list';
 import { useFocusEffect, useIsFocused, useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -25,8 +25,7 @@ import { playTorrentById } from '../../components/detail/playActions';
 import { SortSheet } from '../../components/transfers/SortSheet';
 import { TeachingEmptyState } from '../../components/transfers/TeachingEmptyState';
 import { FILTERS, TransferFilter, countByFilter, downloadMatchesFilter, finishedTransfers, isHeldByFiles, magnetHash, matchesFilter, mergeTransfers, sortTorrents, type TransferItem } from '../../components/transfers/model';
-import { PixelIcon } from '../../components/PixelIcon';
-import { Banner, Button, EmptyBlock, IconButton } from '../../components/ui/index';
+import { Banner, Button, EmptyBlock, IconButton, TextField } from '../../components/ui/index';
 import { ProgressMotionContext, type ProgressMotion } from '../../components/ui/ProgressBar';
 import { steadyResolvingSecs } from '../../components/transfers/snapshots';
 import { lowSpaceWarning, usableFreeOf, type LowSpaceWarning } from '../../components/transfers/lowSpace';
@@ -38,7 +37,7 @@ import { haptic } from '../../constants/haptics';
 import { useEngineActions, useEngineState, useEngineTelemetry, type TransferTelemetry } from '../../context/EngineContext';
 import { useSettings } from '../../context/SettingsContext';
 import { useTheme } from '../../context/ThemeContext';
-import { ThemeColors, radius, spacing, touch, type } from '../../constants/theme';
+import { ThemeColors, spacing } from '../../constants/theme';
 import { pickMainFile } from '../../utils/mainFile';
 import { takeNextShared } from '../../utils/shareQueue';
 import type { DownloadAction } from '../../utils/downloadCopy';
@@ -530,20 +529,19 @@ export default function TransfersScreen() {
 
       {searchOpen && !selectionMode ? (
         <View style={styles.searchWrap}>
-          <View style={styles.searchField}>
-            <PixelIcon name="search" size={16} color={colors.textMuted} />
-            <TextInput
-              style={styles.searchInput}
-              placeholder="Filter by name"
-              placeholderTextColor={colors.textFaint}
-              value={query}
-              onChangeText={setQuery}
-              autoFocus
-              returnKeyType="search"
-              accessibilityLabel="Filter transfers by name"
-            />
-            {query.length > 0 ? <IconButton icon="close" size={16} accessibilityLabel="Clear filter text" onPress={() => setQuery('')} /> : null}
-          </View>
+          <TextField
+            leadingIcon="search"
+            clearable
+            clearLabel="Clear filter text"
+            size="lg"
+            mono
+            placeholder="Filter by name"
+            value={query}
+            onChangeText={setQuery}
+            autoFocus
+            returnKeyType="search"
+            accessibilityLabel="Filter transfers by name"
+          />
         </View>
       ) : null}
 
@@ -687,24 +685,6 @@ const makeStyles = (c: ThemeColors) =>
     root: { flex: 1, backgroundColor: c.bg },
     clearRow: { paddingHorizontal: spacing.lg, paddingBottom: spacing.sm },
     searchWrap: { paddingHorizontal: spacing.lg, paddingTop: spacing.sm },
-    searchField: {
-      minHeight: touch.min,
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: spacing.sm,
-      paddingLeft: spacing.md,
-      backgroundColor: c.surface,
-      borderWidth: 1,
-      borderColor: c.border,
-      borderRadius: radius.md,
-    },
-    searchInput: {
-      ...type.mono,
-      flex: 1,
-      fontSize: type.size.md,
-      color: c.text,
-      paddingVertical: 0,
-    },
     fileError: { paddingHorizontal: spacing.lg, paddingBottom: spacing.sm },
     noMatch: { flex: 1, justifyContent: 'center' },
     listContent: { paddingTop: spacing.xs, paddingBottom: 96 }, // design-exception: bottom inset clears the floating add button

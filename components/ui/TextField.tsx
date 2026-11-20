@@ -16,6 +16,8 @@ export interface TextFieldProps extends TextInputProps {
   leadingIcon?: PixelIconName;
   /** Show a "Clear" button while there is text. */
   clearable?: boolean;
+  /** Accessibility label of the clear button. Default "Clear". Say what it clears when a screen has two fields. */
+  clearLabel?: string;
   /** Filenames, URLs, paths and numbers: `type.mono`, and no autocorrect or autocapitalize. */
   mono?: boolean;
   /** `md` is 44 dp tall, `lg` is 48 dp (search boxes). Multiline fields grow from `minLines`. */
@@ -24,6 +26,15 @@ export interface TextFieldProps extends TextInputProps {
   minLines?: number;
   /** Multiline only: tallest height, in lines, before the field scrolls. Default 8. */
   maxLines?: number;
+  /** Rendered inside the box after the input, before the clear button (for example a file extension). */
+  trailing?: React.ReactNode;
+  /**
+   * Only the styled input: no border, fill, fixed height, label, help or error. For a caller that owns its
+   * container (address bar, find bar). Font, placeholder, selection and cursor colours still come from here.
+   */
+  bare?: boolean;
+  /** The field sits on a `surface` container (a sheet or card): fill with `bg` so it stays visible. Screens leave it off. */
+  onSurface?: boolean;
   testID?: string;
 }
 
@@ -47,8 +58,12 @@ export const TextField = forwardRef<TextFieldRef, TextFieldProps>(function TextF
     error,
     leadingIcon,
     clearable = false,
+    clearLabel = 'Clear',
+    onSurface = false,
     mono = false,
     size = 'md',
+    trailing,
+    bare = false,
     minLines = DEFAULT_MIN_LINES,
     maxLines = DEFAULT_MAX_LINES,
     multiline = false,
@@ -106,13 +121,39 @@ export const TextField = forwardRef<TextFieldRef, TextFieldProps>(function TextF
     ? { minHeight: Math.max(minHeight, minLines * lineHeight + spacing.md * 2), maxHeight: maxLines * lineHeight + spacing.md * 2 }
     : { height: minHeight };
 
+  if (bare) {
+    return (
+      <TextInput
+        ref={inner}
+        value={value}
+        onChangeText={onChangeText}
+        onFocus={onFocus}
+        onBlur={onBlur}
+        editable={editable}
+        multiline={multiline}
+        placeholder={placeholder}
+        placeholderTextColor={colors.textFaint}
+        selectionColor={colors.accent}
+        cursorColor={colors.accent}
+        autoCapitalize={autoCapitalize ?? (mono ? 'none' : undefined)}
+        autoCorrect={autoCorrect ?? (mono ? false : undefined)}
+        spellCheck={spellCheck ?? (mono ? false : undefined)}
+        accessibilityLabel={accessibilityLabel ?? label ?? placeholder}
+        accessibilityHint={accessibilityHint}
+        testID={testID}
+        style={[mono ? styles.inputMono : styles.inputBody, { fontSize }, disabled && styles.inputDisabled, style]}
+        {...rest}
+      />
+    );
+  }
+
   const hint = invalid ? `Error: ${error}` : help ? help : undefined;
   const a11yLabel = accessibilityLabel ?? label ?? placeholder;
 
   return (
     <View style={styles.wrap}>
       {label ? <Text style={styles.label}>{label}</Text> : null}
-      <View style={[styles.box, boxHeight, multiline && styles.boxMulti, { borderColor }]}>
+      <View style={[styles.box, boxHeight, multiline && styles.boxMulti, onSurface && styles.boxOnSurface, { borderColor }]}>
         {leadingIcon ? (
           <View style={[styles.lead, multiline && styles.leadMulti]}>
             <PixelIcon name={leadingIcon} size={16} color={colors.textMuted} />
@@ -146,8 +187,9 @@ export const TextField = forwardRef<TextFieldRef, TextFieldProps>(function TextF
           ]}
           {...rest}
         />
+        {trailing ? <View style={[styles.lead, multiline && styles.leadMulti]}>{trailing}</View> : null}
         {showClear ? (
-          <IconButton icon="close" size={16} onPress={clear} accessibilityLabel="Clear" testID={testID ? `${testID}-clear` : undefined} />
+          <IconButton icon="close" size={16} onPress={clear} accessibilityLabel={clearLabel} testID={testID ? `${testID}-clear` : undefined} />
         ) : null}
       </View>
       {invalid ? (
@@ -177,6 +219,7 @@ const makeStyles = (c: ThemeColors) =>
       borderRadius: radius.md,
     },
     boxMulti: { alignItems: 'flex-start', paddingRight: spacing.md },
+    boxOnSurface: { backgroundColor: c.bg },
     lead: { justifyContent: 'center' },
     leadMulti: { paddingTop: spacing.md },
     inputBody: { ...type.body, flex: 1, minWidth: 0, color: c.text },

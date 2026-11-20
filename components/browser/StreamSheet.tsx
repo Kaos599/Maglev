@@ -1,15 +1,15 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { StyleSheet, Text, TextInput, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 import { sanitizeFileName, type FoundItem, type StreamProbe } from 'maglev-engine';
 import { useTheme } from '../../context/ThemeContext';
 import { useMaglevEngine } from '../../context/EngineContext';
-import { ThemeColors, radius, spacing, type } from '../../constants/theme';
+import { ThemeColors, spacing, type } from '../../constants/theme';
 import { haptic } from '../../constants/haptics';
 import { banners, mobileDataLine, notices, streamSheet } from '../../constants/copy';
 import { probeErrorView } from '../../utils/downloadCopy';
 import { useDownloadAdmission } from '../../utils/useDownloadAdmission';
 import { hostOf } from '../../utils/browserUrl';
-import { Banner, Button, LoadingDots, RadioCard } from '../ui';
+import { Banner, Button, LoadingDots, RadioCard, TextField } from '../ui';
 import { FloatingSheet, afterSheetCloses, NoteRow } from './FloatingSheet';
 import { useSettings } from '../../context/SettingsContext';
 import { downloadHeaders } from './FoundDownload';
@@ -177,17 +177,15 @@ export function StreamSheet({ item, pageTitle, userAgent = '', pageUrl = '', onC
                 </View>
               </>
             ) : null}
-            <Text style={styles.label}>{streamSheet.name}</Text>
-            <TextInput
+            <TextField
+              onSurface
+              label={streamSheet.name}
               value={name}
               onChangeText={setName}
-              style={styles.field}
-              autoCapitalize="none"
-              autoCorrect={false}
-              spellCheck={false}
+              mono
               multiline
-              selectionColor={colors.accent}
-              placeholderTextColor={colors.textFaint}
+              minLines={1}
+              size="lg"
               editable={!adding}
               accessibilityLabel="File name"
             />
@@ -218,18 +216,6 @@ const makeStyles = (c: ThemeColors) =>
     reading: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, minHeight: 48 },
     cards: { gap: spacing.sm },
     label: { ...type.bodyStrong, fontSize: type.size.md, color: c.textMuted },
-    field: {
-      ...type.mono,
-      fontSize: type.size.md,
-      color: c.text,
-      minHeight: 48,
-      textAlignVertical: 'top',
-      backgroundColor: c.bg,
-      borderWidth: 1,
-      borderColor: c.borderStrong,
-      borderRadius: radius.md,
-      padding: spacing.md,
-    },
     meta: { ...type.mono, fontSize: type.size.sm, color: c.textMuted },
     actions: { flexDirection: 'row', justifyContent: 'flex-end', gap: spacing.sm, marginTop: spacing.md },
   });

@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useId, useMemo, useRef, useState, useSyncExternalStore } from 'react';
-import { AppState, BackHandler, Keyboard, StyleSheet, Text, TextInput, View } from 'react-native';
+import { AppState, BackHandler, Keyboard, StyleSheet, Text, View } from 'react-native';
 import { useFocusEffect, useIsFocused, useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as Clipboard from 'expo-clipboard';
@@ -18,7 +18,7 @@ import { ThemeColors, radius, spacing, touch, type } from '../constants/theme';
 import { haptic } from '../constants/haptics';
 import { banners, browserTabs, empty, findCopy, foundTray, historyCopy, notices, textSizeCopy } from '../constants/copy';
 import { PixelIcon } from '../components/PixelIcon';
-import { Banner, Button, EmptyBlock, IconButton, ListRow, PressableScale, ProgressBar, Sheet, Toggle } from '../components/ui';
+import { Banner, Button, EmptyBlock, IconButton, ListRow, PressableScale, ProgressBar, Sheet, TextField, type TextFieldRef, Toggle } from '../components/ui';
 import { FoundTray } from '../components/browser/FoundTray';
 import { TabWebView, type TabHandlers } from '../components/browser/TabWebView';
 import { TabSwitcher } from '../components/browser/TabSwitcher';
@@ -97,7 +97,7 @@ export default function BrowserScreen({ inTab = false }: { inTab?: boolean }) {
   // Shared per-tab data and pop-up prompts changed (any instance): render again.
   useSyncExternalStore(subscribeTabData, tabDataVersion, tabDataVersion);
 
-  const inputRef = useRef<React.ComponentRef<typeof TextInput>>(null);
+  const inputRef = useRef<TextFieldRef>(null);
   // One view ref per live tab.
   const viewRefs = useRef(new Map<string, React.RefObject<MaglevBrowserRef | null>>());
   const registerView = useCallback((id: string, r: React.RefObject<MaglevBrowserRef | null> | null) => {
@@ -672,7 +672,9 @@ export default function BrowserScreen({ inTab = false }: { inTab?: boolean }) {
               accessibilityLabel={page.secure ? 'Secure connection' : 'Not secure'}
             />
           ) : null}
-          <TextInput
+          <TextField
+            bare
+            mono
             ref={inputRef}
             value={editing ? draft : idleText}
             onChangeText={(t) => {
@@ -700,8 +702,6 @@ export default function BrowserScreen({ inTab = false }: { inTab?: boolean }) {
             autoCorrect={false}
             spellCheck={false}
             placeholder="Search or type an address"
-            placeholderTextColor={colors.textFaint}
-            selectionColor={colors.accent}
             style={styles.input}
             numberOfLines={1}
             accessibilityLabel="Address"
@@ -983,7 +983,7 @@ const makeStyles = (c: ThemeColors) =>
       borderRadius: radius.md,
     },
     addressEditing: { borderColor: c.borderStrong },
-    input: { ...type.mono, flex: 1, minWidth: 0, fontSize: type.size.md, color: c.text, paddingVertical: 0 },
+    input: { fontSize: type.size.md, paddingVertical: 0 },
     tabButton: { width: touch.min, height: touch.min, alignItems: 'center', justifyContent: 'center' },
     tabBox: {
       paddingHorizontal: 6, // design-exception: count pill inside the 44 px tab glyph

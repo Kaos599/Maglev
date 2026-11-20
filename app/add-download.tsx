@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ChipGroup, friendlyPath } from '../components/settings/SettingsParts';
 import { DownloadParts, PART_CHOICES, useLinkDownloadPrefs } from '../utils/prefs/linkDownloads';
-import { StyleSheet, Text, TextInput, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import * as Clipboard from 'expo-clipboard';
 import { maglevEngine, infoHashToMagnet, isDownloadLink, isShareOpen, isTorrentSource, normalizeIncoming, type UrlProbe } from 'maglev-engine';
@@ -13,7 +13,7 @@ import { haptic } from '../constants/haptics';
 import { StreamSheet } from '../components/browser/StreamSheet';
 import { streamKindOfLink } from '../components/browser/streamChoice';
 import type { FoundItem } from 'maglev-engine';
-import { Banner, Button, EmptyBlock, Screen } from '../components/ui';
+import { Banner, Button, EmptyBlock, Screen, TextField } from '../components/ui';
 import { useDownloadAdmission } from '../utils/useDownloadAdmission';
 import { actionRoute, probeErrorView } from '../utils/downloadCopy';
 import { banners, empty, mobileDataLine, notices } from '../constants/copy';
@@ -320,21 +320,18 @@ export default function AddDownloadScreen() {
     const mobileNote = mobileDataLine(onMeteredNetwork, settings.network.wifiOnly, size);
     return (
       <Screen title="Add a link" onBack={close} scroll contentStyle={styles.content}>
-        <View style={[styles.nameRow, nameInvalid ? styles.fieldInvalid : null]}>
-          <TextInput
-            value={baseName}
-            onChangeText={setBaseName}
-            editable={!adding}
-            autoCapitalize="none"
-            autoCorrect={false}
-            spellCheck={false}
-            multiline
-            style={styles.nameInput}
-            accessibilityLabel="File name"
-          />
-          {splitName(probe.name).ext ? <Text style={styles.ext}>{splitName(probe.name).ext}</Text> : null}
-        </View>
-        {nameError ? <Text style={styles.nameError}>{nameError}</Text> : null}
+        <TextField
+          value={baseName}
+          onChangeText={setBaseName}
+          editable={!adding}
+          mono
+          multiline
+          minLines={1}
+          size="lg"
+          trailing={splitName(probe.name).ext ? <Text style={styles.ext}>{splitName(probe.name).ext}</Text> : null}
+          error={nameError ?? undefined}
+          accessibilityLabel="File name"
+        />
         <Text style={styles.meta}>{size != null ? formatBytes(size) : 'Size unknown'}</Text>
         <Text style={styles.meta} numberOfLines={2}>{probe.urlDisplay}</Text>
         <Text style={styles.meta}>
@@ -379,22 +376,19 @@ export default function AddDownloadScreen() {
   const canSubmit = text.trim().length > 0;
   return (
     <Screen title="Add a link" onBack={close} scroll contentStyle={styles.content}>
-      <Text style={styles.label}>Link to a file</Text>
-      <TextInput
+      <TextField
+        label="Link to a file"
         value={text}
         onChangeText={onChangeText}
         placeholder="https://…"
-        placeholderTextColor={colors.textFaint}
-        autoCapitalize="none"
-        autoCorrect={false}
-        spellCheck={false}
+        mono
+        multiline
+        minLines={3}
         returnKeyType="go"
         onSubmitEditing={() => canSubmit && void submit(text)}
-        multiline
-        style={[styles.field, message ? styles.fieldInvalid : null]}
+        error={message ?? undefined}
         accessibilityLabel="Link to a file"
       />
-      {message ? <Banner tone="danger" title={message} /> : null}
       <View style={styles.actions}>
         <Button label="Paste" icon="clipboard" variant="secondary" onPress={() => void handlePaste()} />
       </View>
@@ -409,37 +403,11 @@ export default function AddDownloadScreen() {
 const makeStyles = (c: ThemeColors) =>
   StyleSheet.create({
     content: { padding: spacing.lg, gap: spacing.md },
-    label: { ...type.bodyStrong, fontSize: type.size.md, color: c.textMuted },
-    field: {
-      ...type.mono,
-      fontSize: type.size.md,
-      color: c.text,
-      minHeight: 96,
-      textAlignVertical: 'top',
-      backgroundColor: c.surface,
-      borderWidth: 1,
-      borderColor: c.borderStrong,
-      borderRadius: radius.md,
-      padding: spacing.md,
-    },
-    fieldInvalid: { borderColor: c.danger },
     actions: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
     gap: { marginTop: spacing.sm },
     centered: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: spacing.lg, paddingHorizontal: spacing.xxxl },
     heading: { ...type.bodyStrong, fontSize: type.size.xl, color: c.text, textAlign: 'center' },
-    nameRow: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      backgroundColor: c.surface,
-      borderWidth: 1,
-      borderColor: c.borderStrong,
-      borderRadius: radius.md,
-      paddingHorizontal: spacing.md,
-      minHeight: touch.min,
-    },
-    nameInput: { ...type.mono, fontSize: type.size.lg, color: c.text, flexShrink: 1, flexGrow: 1, paddingVertical: spacing.sm },
-    ext: { ...type.mono, fontSize: type.size.lg, color: c.textMuted },
-    nameError: { ...type.body, fontSize: type.size.sm, color: c.danger },
+    ext: { ...type.mono, fontSize: type.size.lg, lineHeight: Math.round(type.size.lg * 1.4), color: c.textMuted },
     meta: { ...type.mono, fontSize: type.size.sm, color: c.textMuted },
     destRow: {
       flexDirection: 'row',

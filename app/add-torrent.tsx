@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { FlatList, StyleSheet, Text, TextInput, View } from 'react-native';
+import { FlatList, StyleSheet, Text, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Clipboard from 'expo-clipboard';
@@ -10,7 +10,7 @@ import { useMaglevEngine } from '../context/EngineContext';
 import { ThemeColors, radius, spacing, touch, type } from '../constants/theme';
 import { formatBytes } from '../constants/format';
 import { haptic } from '../constants/haptics';
-import { Banner, Button, Chip, EmptyBlock, Screen } from '../components/ui';
+import { Banner, Button, Chip, EmptyBlock, Screen, TextField } from '../components/ui';
 import { ResolveProgress } from '../components/add/ResolveProgress';
 import { AddFileRow } from '../components/add/AddFileRow';
 import { SpaceStrip } from '../components/add/SpaceStrip';
@@ -643,27 +643,20 @@ export default function AddTorrentScreen() {
   const canSubmit = text.trim().length > 0 && phase !== 'added';
   return (
     <Screen title="Add a link or torrent" onBack={close} scroll contentStyle={styles.inputContent}>
-      <Text style={styles.label}>Link, magnet or .torrent</Text>
-      <TextInput
+      <TextField
+        label="Link, magnet or .torrent"
         value={text}
         onChangeText={onChangeText}
         placeholder="Paste a link or magnet"
-        placeholderTextColor={colors.textFaint}
-        autoCapitalize="none"
-        autoCorrect={false}
-        spellCheck={false}
+        mono
+        multiline
+        minLines={3}
         returnKeyType="go"
         onSubmitEditing={() => canSubmit && submit(text)}
-        multiline
-        style={[styles.field, phase === 'invalid' && styles.fieldInvalid]}
+        help="Magnet link, .torrent link or info hash"
+        error={phase === 'invalid' && message ? message : undefined}
         accessibilityLabel="Link, magnet or .torrent"
       />
-      <Text style={styles.help}>Magnet link, .torrent link or info hash</Text>
-      {phase === 'invalid' && message ? (
-        <View style={styles.gap}>
-          <Banner tone="danger" title={message} />
-        </View>
-      ) : null}
 
       <View style={styles.actions}>
         <Button label="Paste" icon="clipboard" variant="secondary" onPress={handlePaste} />
@@ -680,21 +673,6 @@ export default function AddTorrentScreen() {
 const makeStyles = (c: ThemeColors) =>
   StyleSheet.create({
     inputContent: { padding: spacing.lg, gap: spacing.md },
-    label: { ...type.bodyStrong, fontSize: type.size.md, color: c.textMuted },
-    field: {
-      ...type.mono,
-      fontSize: type.size.md,
-      color: c.text,
-      minHeight: 96,
-      textAlignVertical: 'top',
-      backgroundColor: c.surface,
-      borderWidth: 1,
-      borderColor: c.borderStrong,
-      borderRadius: radius.md,
-      padding: spacing.md,
-    },
-    fieldInvalid: { borderColor: c.danger },
-    help: { ...type.body, fontSize: type.size.sm, color: c.textMuted },
     actions: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
     gap: { marginTop: spacing.sm },
     centered: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: spacing.lg, paddingHorizontal: spacing.xxxl },
