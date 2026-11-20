@@ -749,6 +749,15 @@ export class MaglevMockEngine implements MaglevEngineApi {
     return ok();
   }
 
+  /** Contract 41 (Debug log): dev and web only. A fake uri; nothing is written. */
+  public async exportDebugLog(): Promise<EngineResult<{ uri: string }>> {
+    return { ok: true, uri: 'content://maglev.mock/debug/maglev-log-mock.txt' };
+  }
+
+  public async shareDebugLog(_uri: string): Promise<EngineResult> {
+    return ok();
+  }
+
   /** Contract 41 (B4): the simulated session "restarts" and now matches the saved config. INVALID_STATE while one runs. */
   public async restartEngine(): Promise<EngineResult> {
     if (this.restartRunning) return fail('INVALID_STATE', 'The downloader is already restarting.');

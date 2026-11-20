@@ -5,7 +5,8 @@ import Constants from 'expo-constants';
 import { maglevEngine } from 'maglev-engine';
 import { ThemeColors, spacing, touch, type } from '../../constants/theme';
 import { useTheme } from '../../context/ThemeContext';
-import { ListRow, PressableScale } from '../../components/ui';
+import { Button, Dialog, ListRow, PressableScale } from '../../components/ui';
+import { useMaglevEngine } from '../../context/EngineContext';
 import { Card, SettingsPage } from '../../components/settings/SettingsParts';
 import { Wordmark } from '../../components/settings/Wordmark';
 import { MaglevMark } from '../../components/brand/MaglevMark';
@@ -60,6 +61,25 @@ export default function AboutSettings() {
   };
   const openUpdates = () => router.push('/settings/updates');
 
+  const { showNotice } = useMaglevEngine();
+  const [logWarning, setLogWarning] = useState(false);
+  const [sharing, setSharing] = useState(false);
+  const shareLog = async () => {
+    if (sharing) return;
+    setSharing(true);
+    try {
+      const made = await maglevEngine.exportDebugLog();
+      if (!made.ok) throw new Error(made.code);
+      const shared = await maglevEngine.shareDebugLog(made.uri);
+      if (!shared.ok) throw new Error(shared.code);
+    } catch {
+      showNotice({ message: aboutExtrasCopy.debugLog.failed });
+    } finally {
+      setSharing(false);
+      setLogWarning(false);
+    }
+  };
+
   return (
     <SettingsPage title="About">
       <Stack.Screen options={{ headerShown: false }} />
@@ -73,6 +93,12 @@ export default function AboutSettings() {
           <ListRow title={updateCopy.available(version)} icon="download" onPress={openUpdates} />
         ) : null}
         <ListRow title={updateCopy.report.title} subtitle={updateCopy.report.subtitle} icon="external" onPress={reportBug} />
+        <ListRow
+          title={aboutExtrasCopy.debugLog.title}
+          subtitle={aboutExtrasCopy.debugLog.subtitle}
+          icon="copy"
+          onPress={() => setLogWarning(true)}
+        />
         <ListRow
           title="Built by Kaos"
           subtitle="Source code on GitHub"
@@ -123,6 +149,24 @@ export default function AboutSettings() {
       >
         <Text style={s.footerText}>{`Version ${appVersion} · ${engine}`}</Text>
       </PressableScale>
+      <Dialog
+        visible={logWarning}
+        onClose={() => setLogWarning(false)}
+        title={aboutExtrasCopy.debugLog.dialogTitle}
+        actions={
+          <>
+            <Button label={aboutExtrasCopy.debugLog.share} fullWidth loading={sharing} onPress={() => void shareLog()} />
+            <Button
+              label={aboutExtrasCopy.debugLog.cancel}
+              variant="secondary"
+              fullWidth
+              onPress={() => setLogWarning(false)}
+            />
+          </>
+        }
+      >
+        <Text style={s.dialogBody}>{aboutExtrasCopy.debugLog.dialogBody}</Text>
+      </Dialog>
     </SettingsPage>
   );
 }
@@ -131,5 +175,6 @@ const makeStyles = (c: ThemeColors) =>
   StyleSheet.create({
     brand: { alignItems: 'center', gap: spacing.lg, paddingVertical: spacing.xxl },
     footer: { minHeight: touch.min, alignItems: 'center', justifyContent: 'center', paddingVertical: spacing.md },
+    dialogBody: { ...type.body, color: c.textMuted },
     footerText: { ...type.mono, fontSize: type.size.md, color: c.textMuted, textAlign: 'center' },
   });

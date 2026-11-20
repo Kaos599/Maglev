@@ -57,6 +57,13 @@ export const SETTINGS_INDEX: SettingEntry[] = [
   ],
   ),
   e(
+    "about-export-debug-log",
+    "Export debug log",
+    "about",
+    "About",
+    ["logs", "log", "debug", "bug report", "diagnostics", "support", "share"],
+  ),
+  e(
     "about-built-by",
     "Built by Kaos",
     "about",

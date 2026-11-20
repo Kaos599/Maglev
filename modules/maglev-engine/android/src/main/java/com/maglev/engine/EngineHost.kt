@@ -1692,6 +1692,30 @@ object EngineHost {
         return if (err == null) linkedMapOf("ok" to true) else Json.failure("UNSUPPORTED", err)
     }
 
+    /** JS exportDebugLog (contract 41): the text file lives in cache/debug and is shared by [shareDebugLog]. */
+    fun exportDebugLog(): Map<String, Any?> {
+        val c = requireCtx() ?: return Json.failure("ENGINE_UNAVAILABLE", "Module is not attached")
+        return try {
+            // The engine may not be up; the file is still useful without the settings part.
+            val cfg = try { NativeCore.nativeGetEffectiveConfig() } catch (_: Throwable) { "" }
+            DebugLog.export(c, cfg)
+        } catch (e: Exception) {
+            Log.w(TAG, "debug log failed: ${e.javaClass.simpleName}")
+            Json.failure("INTERNAL", "Couldn't make the debug log.")
+        }
+    }
+
+    /** JS shareDebugLog: only a uri from [exportDebugLog] (our FileProvider, cache/debug) is accepted. */
+    fun shareDebugLog(uri: String): Map<String, Any?> {
+        val c = requireCtx() ?: return Json.failure("ENGINE_UNAVAILABLE", "Module is not attached")
+        val parsed = Uri.parse(uri)
+        val ours = parsed.scheme == "content" && parsed.authority == FileActions.authority(c) &&
+            parsed.pathSegments.firstOrNull() == "debug_log"
+        if (!ours) return Json.failure("NOT_FOUND", "The saved file isn't there any more.")
+        val err = FileActions.shareUri(c, parsed, "maglev-log.txt")
+        return if (err == null) linkedMapOf("ok" to true) else Json.failure("UNSUPPORTED", err)
+    }
+
     // endregion
 
     // region Health (§18)

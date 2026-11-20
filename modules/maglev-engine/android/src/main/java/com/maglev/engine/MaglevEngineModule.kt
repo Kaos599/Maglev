@@ -314,6 +314,13 @@ class MaglevEngineModule : Module() {
         AsyncFunction("getEffectiveConfig") { promise: Promise ->
             native(promise) { NativeCore.nativeGetEffectiveConfig() }
         }
+        // Contract 41 (Debug log). Runs logcat and writes a file, so off the serialized engine thread.
+        AsyncFunction("exportDebugLog") { promise: Promise ->
+            io(promise) { EngineHost.exportDebugLog() }
+        }
+        AsyncFunction("shareDebugLog") { uri: String, promise: Promise ->
+            io(promise) { EngineHost.shareDebugLog(uri) }
+        }
         AsyncFunction("getPlaybackSupport") { promise: Promise ->
             EngineHost.scope.launch { promise.resolve(CodecProbe.get(context)) }
         }

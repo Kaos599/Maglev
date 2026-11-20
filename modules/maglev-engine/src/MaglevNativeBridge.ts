@@ -156,7 +156,7 @@ const USER_ACTION_METHODS: readonly string[] = [
 ];
 export const READ_METHODS: readonly string[] = [
   'shutdown', 'restartEngine', 'cancelResolve', 'getResolveActivity', 'listTorrents', 'getDetail', 'fileHealth', 'exportTorrent',
-  'shareExportedTorrent', 'getFreeSpace', 'applyConfig', 'getEffectiveConfig', 'getPieceBitfield', 'streamUrl',
+  'shareExportedTorrent', 'getFreeSpace', 'applyConfig', 'getEffectiveConfig', 'exportDebugLog', 'shareDebugLog', 'getPieceBitfield', 'streamUrl',
   'version', 'pickDownloadFolder', 'pickFolder', 'getPlaybackSupport', 'getStorageStatus', 'openFile', 'shareFile',
   'openFolder', 'openDownloadFolder', 'openDownload', 'shareDownload', 'getActiveBlocks', 'getNetworkState',
   'openStream', 'setSchedule', 'getScheduleStatus', 'setFeedAutomation', 'getFeedAutomationStatus', 'setGovernance',
@@ -565,6 +565,12 @@ export class MaglevEngineBridge implements MaglevEngineApi {
     const res = await this.route<EngineResult<EffectiveConfig>>('getEffectiveConfig');
     // The contract defines NativeConfig in snake_case; accept either casing from the module.
     return res.ok ? toEffectiveConfig(snakeizeKeys<Record<string, unknown>>(res)) : res;
+  }
+  public exportDebugLog(): Promise<EngineResult<{ uri: string }>> {
+    return this.route('exportDebugLog');
+  }
+  public shareDebugLog(uri: string): Promise<EngineResult> {
+    return this.route('shareDebugLog', uri);
   }
   public restartEngine(): Promise<EngineResult> {
     return this.route('restartEngine');

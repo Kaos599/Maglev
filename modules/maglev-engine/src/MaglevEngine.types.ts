@@ -797,6 +797,13 @@ export interface MaglevEngineApi {
   applyConfig(config: NativeConfig): Promise<EngineResult<{ restartRequired: boolean }>>;
   getEffectiveConfig(): Promise<EngineResult<EffectiveConfig>>;
   /**
+   * NATIVE_CONTRACT 41 (Debug log). Writes a text file to the app cache (version, phone, settings without secrets,
+   * the last 2,000 log lines, URL queries removed) and resolves with its content:// uri. Share it with `shareDebugLog`.
+   */
+  exportDebugLog(): Promise<EngineResult<{ uri: string }>>;
+  /** Opens the system share sheet for a uri `exportDebugLog` returned. */
+  shareDebugLog(uri: string): Promise<EngineResult>;
+  /**
    * NATIVE_CONTRACT 41 (B4). Applies the restart-required settings now: stops the session (resume data saved, link
    * downloads checkpointed), starts it again from the saved config, and puts transfers back as they were (a paused one
    * stays paused). Resolves when the session is up again. INVALID_STATE while another restart runs; ENGINE_UNAVAILABLE

@@ -55,6 +55,8 @@ pub extern "system" fn Java_com_maglev_engine_NativeCore_nativeInit(
     session_dir: JString,
     default_download_dir: JString,
 ) -> jstring {
+    // Core logs (info and above) go to logcat under the tag `MaglevCore`; once per process.
+    crate::android_log::init();
     let args = (
         read_str(&mut env, &config_json),
         read_str(&mut env, &session_dir),
