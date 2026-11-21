@@ -28,7 +28,7 @@ check('has trailing and bare props', /\btrailing\?:/.test(code) && /\bbare\?:/.t
 check('trailing renders inside the box before the clear button', /\{trailing\b[^\n]*\{trailing\}[^\n]*\n\s*\{showClear/.test(code));
 check(
   'bare returns only the TextInput, with theme placeholder and selection colours, and passes selection through',
-  /if \(bare\) \{\s*return \(\s*<TextInput[\s\S]*?placeholderTextColor=\{colors\.textFaint\}[\s\S]*?selectionColor=\{colors\.accent\}[\s\S]*?\{\.\.\.rest\}[\s\S]*?\/>\s*\);\s*\}/.test(code),
+  /if \(bare\) \{\s*return \(\s*<TextInput[\s\S]*?placeholderTextColor=\{colors\.textFaint\}[\s\S]*?selectionColor=\{alpha\(colors\.accent, 0\.35\)\}[\s\S]*?\{\.\.\.rest\}[\s\S]*?\/>\s*\);\s*\}/.test(code),
 );
 check('no hex or rgba literals', !/#[0-9a-fA-F]{3,8}\b|rgba?\(/.test(code));
 check('no raw spacing, radius or size numbers in styles', !/(padding\w*|margin\w*|gap|borderRadius|fontSize|minHeight|height|width):\s*\d{2,}/.test(styles));
@@ -38,7 +38,7 @@ check('focus border is colors.accent, error border colors.danger', /focused && !
 check(
   'placeholder, selection and text colours come from the theme',
   /placeholderTextColor=\{colors\.textFaint\}/.test(code) &&
-    /selectionColor=\{colors\.accent\}/.test(code) &&
+    /selectionColor=\{alpha\(colors\.accent, 0\.35\)\}/.test(code) &&
     /color: c\.text/.test(styles) &&
     /inputDisabled: \{ color: c\.textFaint/.test(styles),
 );
@@ -78,6 +78,7 @@ check('onSurface fills the box with bg', /boxOnSurface: \{ backgroundColor: c\.b
   });
   check(`fields in sheets pass onSurface${missing.length ? ' (missing: ' + missing.join(', ') + ')' : ''}`, missing.length === 0);
 }
+check('selected text stays readable: see-through highlight, solid handles, both inputs', (code.match(/selectionColor=\{alpha\(colors\.accent, 0\.35\)\}/g) || []).length === 2 && (code.match(/selectionHandleColor=\{colors\.accent\}/g) || []).length === 2 && !/selectionColor=\{colors\.accent\}/.test(code));
 check('mentioned in DESIGN.md and README', /TextField/.test(read('DESIGN.md')) && /TextField/.test(read('components/ui/README.md')));
 console.log(failed === 0 ? '\ntextfield: all checks passed' : `\ntextfield: ${failed} check(s) failed`);
 process.exit(failed === 0 ? 0 : 1);
