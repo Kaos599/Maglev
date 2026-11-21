@@ -163,6 +163,16 @@ jobs:
       # Everyday CI builds arm64 only (plugins/withAbiSplits.js). main and pull requests into main build all three;
       # main reuses a pull request's set when nothing changed (job reuse), and release-apk.yml reuses main's `apks` artifact (app-{universal,arm64-v8a,armeabi-v7a,x86_64}-release.apk).
       MAGLEV_ABIS: ${{ (github.ref == 'refs/heads/main' || github.base_ref == 'main') && 'arm64-v8a,armeabi-v7a,x86_64' || 'arm64-v8a' }}
+      # ccache for the C++ in React Native libraries (gesture-handler, reanimated, worklets, expo-modules-core, the app).
+      # NDK r27 reads NDK_CCACHE only as a CMake variable, not from the environment; CMake (3.17+) reads these two
+      # environment variables for every module, including third-party ones.
+      CMAKE_C_COMPILER_LAUNCHER: ccache
+      CMAKE_CXX_COMPILER_LAUNCHER: ccache
+      # The NDK is installed fresh each run, so the default mtime check would miss every time.
+      CCACHE_COMPILERCHECK: "string:ndk-27.1.12297006"
+      CCACHE_BASEDIR: ${{ github.workspace }}
+      # Codegen and prefab headers are regenerated each run with new mtimes but the same contents.
+      CCACHE_SLOPPINESS: include_file_mtime,include_file_ctime,time_macros
 
     steps:
       - name: Checkout repository
@@ -199,6 +209,13 @@ jobs:
             echo "NDK install attempt $i failed, retrying"; rm -rf "$ANDROID_HOME/ndk/27.1.12297006"; sleep 15
           done
           test -f "$ANDROID_HOME/ndk/27.1.12297006/source.properties" || { echo "NDK install failed"; exit 1; }
+
+      - name: Restore C++ compile cache (ccache)
+        uses: hendrikmuhs/ccache-action@v1.2.25
+        with:
+          # One cache per ABI set: arm64-only branch builds and three-ABI release builds don't evict each other.
+          key: android-${{ env.MAGLEV_ABIS }}
+          max-size: 2G
 
       - name: Download jniLibs
         uses: actions/download-artifact@v8
@@ -240,11 +257,18 @@ jobs:
           MAGLEV_KEYSTORE_PASSWORD: ${{ secrets.MAGLEV_KEYSTORE_PASSWORD }}
           MAGLEV_KEY_ALIAS: ${{ secrets.MAGLEV_KEY_ALIAS }}
           MAGLEV_KEY_PASSWORD: ${{ secrets.MAGLEV_KEY_PASSWORD }}
+          # Same condition as the APK set step below: build the AAB in this one Gradle run so the
+          # shared tasks (C++, R8, JS bundle) aren't configured and checked a second time.
+          WITH_BUNDLE: ${{ env.MAGLEV_KEYSTORE_PATH != '' && (github.ref == 'refs/heads/main' || github.base_ref == 'main' || startsWith(github.ref, 'refs/tags/')) }}
         run: |
           cd android
           chmod +x gradlew
+          TASKS="assembleRelease"
+          if [ "$WITH_BUNDLE" = true ]; then TASKS="$TASKS bundleRelease"; fi
+          echo "Gradle tasks: $TASKS"
           # --profile writes per-task timings to android/build/reports/profile (uploaded below).
-          ./gradlew assembleRelease --stacktrace --profile
+          ./gradlew $TASKS --stacktrace --profile
+          ccache --show-stats || true
 
       - name: Upload Gradle profile (per-task build times)
         if: always()
@@ -313,7 +337,7 @@ jobs:
           BUNDLETOOL_SHA256: a099cfa1543f55593bc2ed16a70a7c67fe54b1747bb7301f37fdfd6d91028e29
         run: |
           set -euo pipefail
-          (cd android && ./gradlew bundleRelease --stacktrace)
+          # Built by "Build release APKs" (WITH_BUNDLE).
           AAB=android/app/build/outputs/bundle/release/app-release.aab
           test -f "$AAB"
           JAR="$RUNNER_TEMP/bundletool.jar"
