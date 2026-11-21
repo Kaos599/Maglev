@@ -1,0 +1,1 @@
+- Search results no longer disappear after a search where some sources didn't respond.
