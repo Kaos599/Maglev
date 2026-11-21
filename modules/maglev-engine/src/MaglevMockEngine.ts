@@ -855,6 +855,13 @@ export class MaglevMockEngine implements MaglevEngineApi {
   public addDownload(url: string, options: DownloadOptions = {}): Promise<EngineResult<{ id: string }>> {
     return this.downloads.add(url, options);
   }
+  /** Dev and web only. The simulator can't read video pages, so it says so instead of inventing qualities. */
+  public videoSitesResolve(_url: string): Promise<EngineResult<{ json: string }>> {
+    return Promise.resolve({ ok: false, code: 'VIDEO_SITES_UNAVAILABLE', message: "Video sites aren't available in this build." });
+  }
+  public videoSitesVersion(): Promise<string | null> {
+    return Promise.resolve(null);
+  }
   public async pauseDownload(id: string): Promise<EngineResult> {
     return this.downloads.pause(id);
   }

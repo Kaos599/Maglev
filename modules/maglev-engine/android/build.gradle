@@ -61,6 +61,11 @@ dependencies {
     // https://developer.android.com/jetpack/androidx/releases/work
     implementation "androidx.work:work-runtime-ktx:2.12.0"
 
+    // Video sites (NATIVE_CONTRACT 48, prototype): yt-dlp for Android. Library module only (no ffmpeg, no aria2c). It needs
+    // extractNativeLibs=true, which expo.useLegacyPackaging=true (plugins/withSizeReduction.js) already gives.
+    // https://github.com/yausername/youtubedl-android#installation
+    implementation "io.github.junkfood02.youtubedl-android:library:0.18.1"
+
     // JVM unit tests: android.jar stubs org.json and org.xmlpull, so real implementations go on the test classpath.
     testImplementation "junit:junit:4.13.2"
     testImplementation "org.json:json:20240303"

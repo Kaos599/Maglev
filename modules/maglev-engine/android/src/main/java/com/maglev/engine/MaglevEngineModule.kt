@@ -25,6 +25,7 @@ import com.maglev.engine.subtitles.SubtitleZip
 import com.maglev.engine.update.AppUpdater
 import com.maglev.engine.update.InstallSource
 import com.maglev.engine.update.UpdateNotices
+import com.maglev.engine.videosites.VideoSites
 import com.maglev.engine.util.Json
 import expo.modules.interfaces.permissions.PermissionsResponseListener
 import expo.modules.kotlin.Promise
@@ -109,6 +110,25 @@ class MaglevEngineModule : Module() {
             } catch (t: Throwable) {
                 promise.reject("IO", t.message ?: "The subtitle call failed", null)
                 return@launch
+            }
+            promise.resolve(result)
+        }
+    }
+
+    /** Runs a video site lookup (section 48) off the main thread. Failures resolve as `{ ok: false, code, message }`. */
+    private fun videoSitesResolve(promise: Promise, url: String) {
+        val c = context
+        if (c == null) {
+            promise.resolve(Json.failure(VideoSites.UNAVAILABLE, "Video sites aren't available in this build."))
+            return
+        }
+        EngineHost.ioScope.launch {
+            val result: Map<String, Any?> = try {
+                linkedMapOf("ok" to true, "json" to VideoSites.resolve(c, url))
+            } catch (e: VideoSites.VideoSitesException) {
+                Json.failure(e.code, e.message ?: e.code)
+            } catch (t: Throwable) {
+                Json.failure(VideoSites.FAILED, "Couldn't read this video. Try again.")
             }
             promise.resolve(result)
         }
@@ -458,6 +478,21 @@ class MaglevEngineModule : Module() {
         AsyncFunction("requestLegacyStorage") { promise: Promise ->
             // Only API 28 and below use the runtime permission. Newer versions answer "n/a" in the status.
             requestRuntimePermission(promise, Manifest.permission.WRITE_EXTERNAL_STORAGE, 0, false, maxSdk = Build.VERSION_CODES.P)
+        }
+
+        // endregion
+
+        // region Video sites (docs/NATIVE_CONTRACT.md section 48, prototype)
+
+        // The page's video files as trimmed yt-dlp JSON text: `{ ok: true, json }`. Errors: SITE_NOT_SUPPORTED,
+        // SITE_NEEDS_LOGIN, SITE_FAILED, VIDEO_SITES_UNAVAILABLE. Starts the library on the first call, off the main thread.
+        AsyncFunction("videoSitesResolve") { url: String, promise: Promise ->
+            videoSitesResolve(promise, url)
+        }
+        // The yt-dlp version the library last downloaded itself, or null while the bundled one is in use.
+        AsyncFunction("videoSitesVersion") { promise: Promise ->
+            val c = context
+            promise.resolve(if (c == null) null else VideoSites.version(c))
         }
 
         // endregion

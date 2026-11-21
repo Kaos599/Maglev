@@ -634,6 +634,22 @@ export class MaglevEngineBridge implements MaglevEngineApi {
   public addDownload(url: string, options: DownloadOptions = {}): Promise<EngineResult<{ id: string }>> {
     return this.route('addDownload', url, options);
   }
+  // Video sites (NATIVE_CONTRACT 48, prototype). They do not need the engine, so they skip `route` and its restart rule.
+  public videoSitesResolve(url: string): Promise<EngineResult<{ json: string }>> {
+    if (NativeModule) return this.callNative('videoSitesResolve', url);
+    const sim = simulatorIfAllowed();
+    if (!sim) return Promise.resolve(unavailable("Video sites aren't available in this build.", 'VIDEO_SITES_UNAVAILABLE') as EngineResult<{ json: string }>);
+    return sim.videoSitesResolve(url);
+  }
+  public async videoSitesVersion(): Promise<string | null> {
+    if (!NativeModule || typeof NativeModule.videoSitesVersion !== 'function') return null;
+    try {
+      const v = await NativeModule.videoSitesVersion();
+      return typeof v === 'string' && v ? v : null;
+    } catch {
+      return null;
+    }
+  }
   public pauseDownload(id: string): Promise<EngineResult> {
     return this.route('pauseDownload', id);
   }
