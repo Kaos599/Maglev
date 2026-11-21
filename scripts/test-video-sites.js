@@ -121,6 +121,9 @@ const fixture = (n) => JSON.parse(read(`scripts/fixtures/video-sites/${n}.json`)
   check('screen reads video pages and shows the reading state', screen.includes('videoSitesResolve') && screen.includes('Reading the video…') && screen.includes('isVideoSiteUrl'));
   check('screen: Open in browser for login and unsupported errors', screen.includes('errorOffersBrowser') && screen.includes("label: 'Open in browser'"));
   check('screen: never says yt-dlp', !/yt-dlp|ytdlp/i.test(screen));
+  const share = read('modules/maglev-engine/android/src/main/java/com/maglev/engine/share/QuickShareActivity.kt');
+  check('shared video-site page goes straight to the add sheet', /WEB_PAGE && isVideoSite\(host\(cls\.source\)\)\)[\s\S]{0,120}maglev:\/\/add-download\?url=/.test(share));
+  check('share host list matches the app list', ['youtube.com', 'youtu.be', 'x.com', 'twitter.com', 'instagram.com', 'reddit.com', 'vimeo.com', 'tiktok.com'].every((h) => share.includes(`"${h}"`)));
 
   if (failed) {
     console.error(`\n${failed} check(s) failed`);
