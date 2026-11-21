@@ -87,8 +87,9 @@ export function appPath(path: string): string {
 }
 
 /**
- * `maglev://browser?url=` arrives as a router path. It prefills the address bar and never loads
- * (section 24.7): the route carries `prefill`, not `url`, and every other parameter is dropped.
+ * `maglev://browser?url=` arrives as a router path. It opens that http(s) page in a new tab, like any browser
+ * opening a link (owner decision 2026-11-21: "Find videos on this page" must load the page, not a blank tab with
+ * the address filled in). Only `url` is read; every other parameter is dropped.
  * Returns null when the path is not the browser route.
  */
 export function browserIntentRoute(path: string): string | null {
@@ -114,5 +115,5 @@ export function browserIntentRoute(path: string): string | null {
     break;
   }
   url = url.trim();
-  return /^https?:\/\/[^\s/?#]+\S*$/i.test(url) ? `/browser?prefill=${encodeURIComponent(url)}` : '/browser';
+  return /^https?:\/\/[^\s/?#]+\S*$/i.test(url) ? `/browser?url=${encodeURIComponent(url)}` : '/browser';
 }
