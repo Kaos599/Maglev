@@ -20,7 +20,7 @@ use crate::http_dl::redirect::SendError;
 use crate::http_dl::sidecar::{StreamSide, TrackSide};
 use crate::http_dl::stream::fetch::{self, FetchFail, ReqCtx};
 use crate::http_dl::stream::{
-    self, plan, ResolveFail, StreamProbe, TrackPlan, MAX_IN_FLIGHT, MAX_SEGMENT_BYTES,
+    self, plan, ResolveFail, Resolved, StreamProbe, TrackPlan, MAX_IN_FLIGHT, MAX_SEGMENT_BYTES,
 };
 
 pub(super) fn stream_dl_error(e: StreamError) -> DlError {
@@ -119,6 +119,18 @@ impl Downloads {
         .ok_or(ProbeFail::Net)
     }
 
+    /// The plan of a stream download. A `parts` download (contract section 48.2) has no playlist: its two links are in
+    /// memory only, so after a restart it asks for a new link (404/410 handling, `LINK_EXPIRED`).
+    async fn resolve_stream(&self, id: &str, ctx: &ReqCtx, url: &str, spec: &StreamSpec) -> Result<Resolved, ResolveFail> {
+        if spec.kind != StreamKind::Parts {
+            return stream::resolve(ctx, url, spec).await;
+        }
+        match self.update(id, |_, l| l.two_files.clone()).flatten() {
+            Some(p) => Ok(stream::parts_resolved(url, &p)),
+            None => Err(ResolveFail::Fetch(FetchFail::Status(410, None))),
+        }
+    }
+
     /// Reads the playlist, picks the file name once, and stores the estimate as the size.
     pub(super) async fn do_probe_stream(&self, id: &str) -> Result<(), ProbeFail> {
         let (url, st, requested) = self
@@ -130,7 +142,7 @@ impl Downloads {
         }
         let ctx = self.req_ctx(id)?;
         let host = host_of(&url);
-        let resolved = stream::resolve(&ctx, &url, &st.spec()).await.map_err(|e| probe_fail_of(e, &host))?;
+        let resolved = self.resolve_stream(id, &ctx, &url, &st.spec()).await.map_err(|e| probe_fail_of(e, &host))?;
         let base = plan::base_name(requested.as_deref(), &url);
         let wanted = sanitize_filename(&plan::output_name(&base, resolved.height, resolved.extension()));
         let total_items = resolved.total_items();
@@ -238,7 +250,11 @@ impl Downloads {
             auth: auth.clone(),
             origin_host: host.clone(),
         };
-        let resolved = stream::resolve(&ctx, clean.as_str(), &spec)
+        if let Some(p) = opts.parts.clone() {
+            self.update(id, |_, l| l.two_files = Some(p));
+        }
+        let resolved = self
+            .resolve_stream(id, &ctx, clean.as_str(), &spec)
             .await
             .map_err(|e| probe_error(with_link_login(probe_fail_of(e, &host), auth.is_some())))?;
         let same = known_total == 0 || resolved.total_items() == known_total;
@@ -384,7 +400,7 @@ impl Downloads {
             if self.state_of(&id) != Some(State::Downloading) {
                 return;
             }
-            match stream::resolve(&ctx, &url, &spec).await {
+            match self.resolve_stream(&id, &ctx, &url, &spec).await {
                 Ok(r) => break r,
                 Err(e) => match probe_fail_of(e, &typed_host) {
                     ProbeFail::Net => {

@@ -37,6 +37,8 @@ pub const MAX_SEGMENT_BYTES: u64 = 48 * 1024 * 1024;
 pub enum StreamKind {
     Hls,
     Dash,
+    /// Two plain files (video and audio) from a video site (contract section 48). Not a playlist.
+    Parts,
 }
 
 /// `options.stream` of `nativeAddDownload`: which variant (and audio track) to save.
@@ -48,6 +50,24 @@ pub struct StreamSpec {
     #[serde(default, alias = "audioId")]
     pub audio_id: Option<String>,
 }
+
+/// One file of `options.parts`: its link and, when the site states it exactly, its size in bytes.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+pub struct PartLink {
+    pub url: String,
+    #[serde(default)]
+    pub size: Option<u64>,
+}
+
+/// `options.parts` of `nativeAddDownload` (contract section 48.2): a video file and an audio file to join.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+pub struct PartsSpec {
+    pub video: PartLink,
+    pub audio: PartLink,
+}
+
+/// Size of one ranged request when a part's size is known.
+pub const PART_CHUNK: u64 = 8 * 1024 * 1024;
 
 /// What a download record keeps about its stream. Nothing secret: ids and counts only.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -181,6 +201,37 @@ impl Resolved {
 
     pub fn total_items(&self) -> usize {
         self.tracks.iter().map(|t| t.items.len()).sum()
+    }
+}
+
+/// The requests for one plain file: ranged chunks when the size is known, else one streamed whole file.
+fn part_items(url: &str, size: Option<u64>) -> Vec<Segment> {
+    match size {
+        Some(total) if total > 0 && (total.div_ceil(PART_CHUNK) as usize) <= MAX_SEGMENTS => (0..total.div_ceil(PART_CHUNK))
+            .map(|i| {
+                let offset = i * PART_CHUNK;
+                Segment { url: url.to_string(), range: Some((offset, PART_CHUNK.min(total - offset))), key: None, whole_file: false }
+            })
+            .collect(),
+        _ => vec![Segment { url: url.to_string(), range: None, key: None, whole_file: true }],
+    }
+}
+
+/// The download plan of `options.parts`: a video track and an audio track, joined by Kotlin afterwards.
+/// `video_url` is the link the download was added with. No request is made.
+pub fn parts_resolved(video_url: &str, parts: &PartsSpec) -> Resolved {
+    let est_bytes = match (parts.video.size, parts.audio.size) {
+        (Some(v), Some(a)) => Some(v + a),
+        _ => None,
+    };
+    Resolved {
+        tracks: vec![
+            TrackPlan { role: TrackRole::Video, items: part_items(video_url, parts.video.size), fmp4: true },
+            TrackPlan { role: TrackRole::Audio, items: part_items(&parts.audio.url, parts.audio.size), fmp4: true },
+        ],
+        duration_sec: 0.0,
+        est_bytes,
+        height: None,
     }
 }
 
@@ -383,5 +434,38 @@ mod tests {
         assert_eq!(two.extension(), "mp4");
         assert!(two.mux_needed());
         assert_eq!(two.total_items(), 2);
+    }
+
+    #[test]
+    fn parts_options_parse_with_or_without_sizes() {
+        let p: PartsSpec = serde_json::from_str(
+            r#"{"video":{"url":"https://v.test/v","size":20000000},"audio":{"url":"https://a.test/a","headers":{"X":"y"}}}"#,
+        )
+        .unwrap();
+        assert_eq!(p.video.size, Some(20_000_000));
+        assert_eq!(p.audio.size, None);
+        assert!(serde_json::from_str::<PartsSpec>(r#"{"video":{"url":"https://v.test/v"}}"#).is_err());
+        assert_eq!(serde_json::from_str::<StreamKind>("\"parts\"").unwrap(), StreamKind::Parts);
+    }
+
+    #[test]
+    fn parts_become_ranged_chunks_or_one_whole_file() {
+        let p = PartsSpec {
+            video: PartLink { url: "https://v.test/v".into(), size: Some(PART_CHUNK * 2 + 5) },
+            audio: PartLink { url: "https://a.test/a".into(), size: None },
+        };
+        let r = parts_resolved("https://v.test/v", &p);
+        assert!(r.mux_needed());
+        assert_eq!(r.extension(), "mp4");
+        assert_eq!(r.tracks[0].role, TrackRole::Video);
+        assert_eq!(r.tracks[1].role, TrackRole::Audio);
+        let ranges: Vec<_> = r.tracks[0].items.iter().map(|s| s.range).collect();
+        assert_eq!(ranges, vec![Some((0, PART_CHUNK)), Some((PART_CHUNK, PART_CHUNK)), Some((PART_CHUNK * 2, 5))]);
+        assert_eq!(r.tracks[1].items.len(), 1);
+        assert!(r.tracks[1].items[0].whole_file);
+        assert_eq!(r.tracks[1].items[0].url, "https://a.test/a");
+        assert_eq!(r.est_bytes, None);
+        let both = PartsSpec { audio: PartLink { url: "https://a.test/a".into(), size: Some(100) }, ..p };
+        assert_eq!(parts_resolved("https://v.test/v", &both).est_bytes, Some(PART_CHUNK * 2 + 105));
     }
 }

@@ -1,0 +1,1016 @@
+{
+ "title": "Big Buck Bunny 60fps 4K - Official Blender Foundation Short Film",
+ "thumbnail": "https://example.invalid/thumb.jpg",
+ "duration": 635,
+ "extractor_key": "Youtube",
+ "webpage_url": "https://www.youtube.com/watch?v=aqz-KE-bpKQ",
+ "formats": [
+  {
+   "format_id": "sb3",
+   "protocol": "mhtml",
+   "ext": "mhtml",
+   "height": 27,
+   "width": 48,
+   "vcodec": "none",
+   "acodec": "none",
+   "filesize": null,
+   "filesize_approx": null,
+   "tbr": null,
+   "http_headers": {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "en-us,en;q=0.5",
+    "Sec-Fetch-Mode": "navigate"
+   },
+   "url": "https://example.invalid/sb3"
+  },
+  {
+   "format_id": "sb2",
+   "protocol": "mhtml",
+   "ext": "mhtml",
+   "height": 45,
+   "width": 80,
+   "vcodec": "none",
+   "acodec": "none",
+   "filesize": null,
+   "filesize_approx": null,
+   "tbr": null,
+   "http_headers": {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "en-us,en;q=0.5",
+    "Sec-Fetch-Mode": "navigate"
+   },
+   "url": "https://example.invalid/sb2"
+  },
+  {
+   "format_id": "sb1",
+   "protocol": "mhtml",
+   "ext": "mhtml",
+   "height": 90,
+   "width": 160,
+   "vcodec": "none",
+   "acodec": "none",
+   "filesize": null,
+   "filesize_approx": null,
+   "tbr": null,
+   "http_headers": {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "en-us,en;q=0.5",
+    "Sec-Fetch-Mode": "navigate"
+   },
+   "url": "https://example.invalid/sb1"
+  },
+  {
+   "format_id": "sb0",
+   "protocol": "mhtml",
+   "ext": "mhtml",
+   "height": 180,
+   "width": 320,
+   "vcodec": "none",
+   "acodec": "none",
+   "filesize": null,
+   "filesize_approx": null,
+   "tbr": null,
+   "http_headers": {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "en-us,en;q=0.5",
+    "Sec-Fetch-Mode": "navigate"
+   },
+   "url": "https://example.invalid/sb0"
+  },
+  {
+   "format_id": "233",
+   "protocol": "m3u8_native",
+   "ext": "mp4",
+   "height": null,
+   "width": null,
+   "vcodec": "none",
+   "acodec": null,
+   "filesize": null,
+   "filesize_approx": null,
+   "tbr": null,
+   "http_headers": {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "en-us,en;q=0.5",
+    "Sec-Fetch-Mode": "navigate"
+   },
+   "url": "https://example.invalid/233"
+  },
+  {
+   "format_id": "234",
+   "protocol": "m3u8_native",
+   "ext": "mp4",
+   "height": null,
+   "width": null,
+   "vcodec": "none",
+   "acodec": null,
+   "filesize": null,
+   "filesize_approx": null,
+   "tbr": null,
+   "http_headers": {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "en-us,en;q=0.5",
+    "Sec-Fetch-Mode": "navigate"
+   },
+   "url": "https://example.invalid/234"
+  },
+  {
+   "format_id": "139-drc",
+   "protocol": "https",
+   "ext": "m4a",
+   "height": null,
+   "width": null,
+   "vcodec": "none",
+   "acodec": "mp4a.40.5",
+   "filesize": 3871021,
+   "filesize_approx": 3870998,
+   "tbr": 48.792,
+   "http_headers": {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "en-us,en;q=0.5",
+    "Sec-Fetch-Mode": "navigate"
+   },
+   "url": "https://example.invalid/139-drc"
+  },
+  {
+   "format_id": "249-drc",
+   "protocol": "https",
+   "ext": "webm",
+   "height": null,
+   "width": null,
+   "vcodec": "none",
+   "acodec": "opus",
+   "filesize": 3951579,
+   "filesize_approx": 3951501,
+   "tbr": 49.814,
+   "http_headers": {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "en-us,en;q=0.5",
+    "Sec-Fetch-Mode": "navigate"
+   },
+   "url": "https://example.invalid/249-drc"
+  },
+  {
+   "format_id": "250-drc",
+   "protocol": "https",
+   "ext": "webm",
+   "height": null,
+   "width": null,
+   "vcodec": "none",
+   "acodec": "opus",
+   "filesize": 5215640,
+   "filesize_approx": 5215626,
+   "tbr": 65.75,
+   "http_headers": {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "en-us,en;q=0.5",
+    "Sec-Fetch-Mode": "navigate"
+   },
+   "url": "https://example.invalid/250-drc"
+  },
+  {
+   "format_id": "139",
+   "protocol": "https",
+   "ext": "m4a",
+   "height": null,
+   "width": null,
+   "vcodec": "none",
+   "acodec": "mp4a.40.5",
+   "filesize": 3871021,
+   "filesize_approx": 3870998,
+   "tbr": 48.792,
+   "http_headers": {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "en-us,en;q=0.5",
+    "Sec-Fetch-Mode": "navigate"
+   },
+   "url": "https://example.invalid/139"
+  },
+  {
+   "format_id": "249",
+   "protocol": "https",
+   "ext": "webm",
+   "height": null,
+   "width": null,
+   "vcodec": "none",
+   "acodec": "opus",
+   "filesize": 3931453,
+   "filesize_approx": 3931432,
+   "tbr": 49.561,
+   "http_headers": {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "en-us,en;q=0.5",
+    "Sec-Fetch-Mode": "navigate"
+   },
+   "url": "https://example.invalid/249"
+  },
+  {
+   "format_id": "250",
+   "protocol": "https",
+   "ext": "webm",
+   "height": null,
+   "width": null,
+   "vcodec": "none",
+   "acodec": "opus",
+   "filesize": 5186043,
+   "filesize_approx": 5186038,
+   "tbr": 65.377,
+   "http_headers": {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "en-us,en;q=0.5",
+    "Sec-Fetch-Mode": "navigate"
+   },
+   "url": "https://example.invalid/250"
+  },
+  {
+   "format_id": "140-drc",
+   "protocol": "https",
+   "ext": "m4a",
+   "height": null,
+   "width": null,
+   "vcodec": "none",
+   "acodec": "mp4a.40.2",
+   "filesize": 10271496,
+   "filesize_approx": 10271468,
+   "tbr": 129.481,
+   "http_headers": {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "en-us,en;q=0.5",
+    "Sec-Fetch-Mode": "navigate"
+   },
+   "url": "https://example.invalid/140-drc"
+  },
+  {
+   "format_id": "251-drc",
+   "protocol": "https",
+   "ext": "webm",
+   "height": null,
+   "width": null,
+   "vcodec": "none",
+   "acodec": "opus",
+   "filesize": 10258925,
+   "filesize_approx": 10258880,
+   "tbr": 129.327,
+   "http_headers": {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "en-us,en;q=0.5",
+    "Sec-Fetch-Mode": "navigate"
+   },
+   "url": "https://example.invalid/251-drc"
+  },
+  {
+   "format_id": "140",
+   "protocol": "https",
+   "ext": "m4a",
+   "height": null,
+   "width": null,
+   "vcodec": "none",
+   "acodec": "mp4a.40.2",
+   "filesize": 10271496,
+   "filesize_approx": 10271468,
+   "tbr": 129.481,
+   "http_headers": {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "en-us,en;q=0.5",
+    "Sec-Fetch-Mode": "navigate"
+   },
+   "url": "https://example.invalid/140"
+  },
+  {
+   "format_id": "251",
+   "protocol": "https",
+   "ext": "webm",
+   "height": null,
+   "width": null,
+   "vcodec": "none",
+   "acodec": "opus",
+   "filesize": 10202210,
+   "filesize_approx": 10202162,
+   "tbr": 128.612,
+   "http_headers": {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "en-us,en;q=0.5",
+    "Sec-Fetch-Mode": "navigate"
+   },
+   "url": "https://example.invalid/251"
+  },
+  {
+   "format_id": "602",
+   "protocol": "m3u8_native",
+   "ext": "mp4",
+   "height": 144,
+   "width": 256,
+   "vcodec": "vp09.00.10.08",
+   "acodec": "none",
+   "filesize": null,
+   "filesize_approx": null,
+   "tbr": 93.236,
+   "http_headers": {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "en-us,en;q=0.5",
+    "Sec-Fetch-Mode": "navigate"
+   },
+   "url": "https://example.invalid/602"
+  },
+  {
+   "format_id": "269",
+   "protocol": "m3u8_native",
+   "ext": "mp4",
+   "height": 144,
+   "width": 256,
+   "vcodec": "avc1.4D400C",
+   "acodec": "none",
+   "filesize": null,
+   "filesize_approx": null,
+   "tbr": 169.684,
+   "http_headers": {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "en-us,en;q=0.5",
+    "Sec-Fetch-Mode": "navigate"
+   },
+   "url": "https://example.invalid/269"
+  },
+  {
+   "format_id": "160",
+   "protocol": "https",
+   "ext": "mp4",
+   "height": 144,
+   "width": 256,
+   "vcodec": "avc1.4D400C",
+   "acodec": "none",
+   "filesize": 4323893,
+   "filesize_approx": 4323853,
+   "tbr": 54.511,
+   "http_headers": {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "en-us,en;q=0.5",
+    "Sec-Fetch-Mode": "navigate"
+   },
+   "url": "https://example.invalid/160"
+  },
+  {
+   "format_id": "603",
+   "protocol": "m3u8_native",
+   "ext": "mp4",
+   "height": 144,
+   "width": 256,
+   "vcodec": "vp09.00.11.08",
+   "acodec": "none",
+   "filesize": null,
+   "filesize_approx": null,
+   "tbr": 163.17,
+   "http_headers": {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "en-us,en;q=0.5",
+    "Sec-Fetch-Mode": "navigate"
+   },
+   "url": "https://example.invalid/603"
+  },
+  {
+   "format_id": "278",
+   "protocol": "https",
+   "ext": "webm",
+   "height": 144,
+   "width": 256,
+   "vcodec": "vp9",
+   "acodec": "none",
+   "filesize": 5289812,
+   "filesize_approx": 5289742,
+   "tbr": 66.688,
+   "http_headers": {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "en-us,en;q=0.5",
+    "Sec-Fetch-Mode": "navigate"
+   },
+   "url": "https://example.invalid/278"
+  },
+  {
+   "format_id": "394",
+   "protocol": "https",
+   "ext": "mp4",
+   "height": 144,
+   "width": 256,
+   "vcodec": "av01.0.00M.08",
+   "acodec": "none",
+   "filesize": 4639733,
+   "filesize_approx": 4639708,
+   "tbr": 58.493,
+   "http_headers": {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "en-us,en;q=0.5",
+    "Sec-Fetch-Mode": "navigate"
+   },
+   "url": "https://example.invalid/394"
+  },
+  {
+   "format_id": "229",
+   "protocol": "m3u8_native",
+   "ext": "mp4",
+   "height": 240,
+   "width": 426,
+   "vcodec": "avc1.4D4015",
+   "acodec": "none",
+   "filesize": null,
+   "filesize_approx": null,
+   "tbr": 310.801,
+   "http_headers": {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "en-us,en;q=0.5",
+    "Sec-Fetch-Mode": "navigate"
+   },
+   "url": "https://example.invalid/229"
+  },
+  {
+   "format_id": "133",
+   "protocol": "https",
+   "ext": "mp4",
+   "height": 240,
+   "width": 426,
+   "vcodec": "avc1.4D4015",
+   "acodec": "none",
+   "filesize": 9323483,
+   "filesize_approx": 9323440,
+   "tbr": 117.541,
+   "http_headers": {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "en-us,en;q=0.5",
+    "Sec-Fetch-Mode": "navigate"
+   },
+   "url": "https://example.invalid/133"
+  },
+  {
+   "format_id": "604",
+   "protocol": "m3u8_native",
+   "ext": "mp4",
+   "height": 240,
+   "width": 426,
+   "vcodec": "vp09.00.20.08",
+   "acodec": "none",
+   "filesize": null,
+   "filesize_approx": null,
+   "tbr": 296.277,
+   "http_headers": {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "en-us,en;q=0.5",
+    "Sec-Fetch-Mode": "navigate"
+   },
+   "url": "https://example.invalid/604"
+  },
+  {
+   "format_id": "242",
+   "protocol": "https",
+   "ext": "webm",
+   "height": 240,
+   "width": 426,
+   "vcodec": "vp9",
+   "acodec": "none",
+   "filesize": 10198281,
+   "filesize_approx": 10198268,
+   "tbr": 128.57,
+   "http_headers": {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "en-us,en;q=0.5",
+    "Sec-Fetch-Mode": "navigate"
+   },
+   "url": "https://example.invalid/242"
+  },
+  {
+   "format_id": "395",
+   "protocol": "https",
+   "ext": "mp4",
+   "height": 240,
+   "width": 426,
+   "vcodec": "av01.0.00M.08",
+   "acodec": "none",
+   "filesize": 7576787,
+   "filesize_approx": 7576718,
+   "tbr": 95.52,
+   "http_headers": {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "en-us,en;q=0.5",
+    "Sec-Fetch-Mode": "navigate"
+   },
+   "url": "https://example.invalid/395"
+  },
+  {
+   "format_id": "230",
+   "protocol": "m3u8_native",
+   "ext": "mp4",
+   "height": 360,
+   "width": 640,
+   "vcodec": "avc1.4D401E",
+   "acodec": "none",
+   "filesize": null,
+   "filesize_approx": null,
+   "tbr": 813.45,
+   "http_headers": {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "en-us,en;q=0.5",
+    "Sec-Fetch-Mode": "navigate"
+   },
+   "url": "https://example.invalid/230"
+  },
+  {
+   "format_id": "134",
+   "protocol": "https",
+   "ext": "mp4",
+   "height": 360,
+   "width": 640,
+   "vcodec": "avc1.4D401E",
+   "acodec": "none",
+   "filesize": 18294110,
+   "filesize_approx": 18294061,
+   "tbr": 230.634,
+   "http_headers": {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "en-us,en;q=0.5",
+    "Sec-Fetch-Mode": "navigate"
+   },
+   "url": "https://example.invalid/134"
+  },
+  {
+   "format_id": "605",
+   "protocol": "m3u8_native",
+   "ext": "mp4",
+   "height": 360,
+   "width": 640,
+   "vcodec": "vp09.00.21.08",
+   "acodec": "none",
+   "filesize": null,
+   "filesize_approx": null,
+   "tbr": 739.728,
+   "http_headers": {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "en-us,en;q=0.5",
+    "Sec-Fetch-Mode": "navigate"
+   },
+   "url": "https://example.invalid/605"
+  },
+  {
+   "format_id": "243",
+   "protocol": "https",
+   "ext": "webm",
+   "height": 360,
+   "width": 640,
+   "vcodec": "vp9",
+   "acodec": "none",
+   "filesize": 24109536,
+   "filesize_approx": 24109462,
+   "tbr": 303.949,
+   "http_headers": {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "en-us,en;q=0.5",
+    "Sec-Fetch-Mode": "navigate"
+   },
+   "url": "https://example.invalid/243"
+  },
+  {
+   "format_id": "396",
+   "protocol": "https",
+   "ext": "mp4",
+   "height": 360,
+   "width": 640,
+   "vcodec": "av01.0.01M.08",
+   "acodec": "none",
+   "filesize": 15298808,
+   "filesize_approx": 15298751,
+   "tbr": 192.872,
+   "http_headers": {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "en-us,en;q=0.5",
+    "Sec-Fetch-Mode": "navigate"
+   },
+   "url": "https://example.invalid/396"
+  },
+  {
+   "format_id": "231",
+   "protocol": "m3u8_native",
+   "ext": "mp4",
+   "height": 480,
+   "width": 854,
+   "vcodec": "avc1.4D401F",
+   "acodec": "none",
+   "filesize": null,
+   "filesize_approx": null,
+   "tbr": 1291.038,
+   "http_headers": {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "en-us,en;q=0.5",
+    "Sec-Fetch-Mode": "navigate"
+   },
+   "url": "https://example.invalid/231"
+  },
+  {
+   "format_id": "135",
+   "protocol": "https",
+   "ext": "mp4",
+   "height": 480,
+   "width": 854,
+   "vcodec": "avc1.4D401F",
+   "acodec": "none",
+   "filesize": 28207144,
+   "filesize_approx": 28207093,
+   "tbr": 355.608,
+   "http_headers": {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "en-us,en;q=0.5",
+    "Sec-Fetch-Mode": "navigate"
+   },
+   "url": "https://example.invalid/135"
+  },
+  {
+   "format_id": "606",
+   "protocol": "m3u8_native",
+   "ext": "mp4",
+   "height": 480,
+   "width": 854,
+   "vcodec": "vp09.00.30.08",
+   "acodec": "none",
+   "filesize": null,
+   "filesize_approx": null,
+   "tbr": 1137.974,
+   "http_headers": {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "en-us,en;q=0.5",
+    "Sec-Fetch-Mode": "navigate"
+   },
+   "url": "https://example.invalid/606"
+  },
+  {
+   "format_id": "244",
+   "protocol": "https",
+   "ext": "webm",
+   "height": 480,
+   "width": 854,
+   "vcodec": "vp9",
+   "acodec": "none",
+   "filesize": 33138062,
+   "filesize_approx": 33137988,
+   "tbr": 417.772,
+   "http_headers": {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "en-us,en;q=0.5",
+    "Sec-Fetch-Mode": "navigate"
+   },
+   "url": "https://example.invalid/244"
+  },
+  {
+   "format_id": "397",
+   "protocol": "https",
+   "ext": "mp4",
+   "height": 480,
+   "width": 854,
+   "vcodec": "av01.0.04M.08",
+   "acodec": "none",
+   "filesize": 25998574,
+   "filesize_approx": 25998565,
+   "tbr": 327.765,
+   "http_headers": {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "en-us,en;q=0.5",
+    "Sec-Fetch-Mode": "navigate"
+   },
+   "url": "https://example.invalid/397"
+  },
+  {
+   "format_id": "311",
+   "protocol": "m3u8_native",
+   "ext": "mp4",
+   "height": 720,
+   "width": 1280,
+   "vcodec": "avc1.4D4020",
+   "acodec": "none",
+   "filesize": null,
+   "filesize_approx": null,
+   "tbr": 4553.846,
+   "http_headers": {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "en-us,en;q=0.5",
+    "Sec-Fetch-Mode": "navigate"
+   },
+   "url": "https://example.invalid/311"
+  },
+  {
+   "format_id": "298",
+   "protocol": "https",
+   "ext": "mp4",
+   "height": 720,
+   "width": 1280,
+   "vcodec": "avc1.4D4020",
+   "acodec": "none",
+   "filesize": 150524867,
+   "filesize_approx": 150524845,
+   "tbr": 1897.673,
+   "http_headers": {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "en-us,en;q=0.5",
+    "Sec-Fetch-Mode": "navigate"
+   },
+   "url": "https://example.invalid/298"
+  },
+  {
+   "format_id": "612",
+   "protocol": "m3u8_native",
+   "ext": "mp4",
+   "height": 720,
+   "width": 1280,
+   "vcodec": "vp09.00.40.08",
+   "acodec": "none",
+   "filesize": null,
+   "filesize_approx": null,
+   "tbr": 3042.627,
+   "http_headers": {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "en-us,en;q=0.5",
+    "Sec-Fetch-Mode": "navigate"
+   },
+   "url": "https://example.invalid/612"
+  },
+  {
+   "format_id": "302",
+   "protocol": "https",
+   "ext": "webm",
+   "height": 720,
+   "width": 1280,
+   "vcodec": "vp9",
+   "acodec": "none",
+   "filesize": 112676322,
+   "filesize_approx": 112676315,
+   "tbr": 1420.515,
+   "http_headers": {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "en-us,en;q=0.5",
+    "Sec-Fetch-Mode": "navigate"
+   },
+   "url": "https://example.invalid/302"
+  },
+  {
+   "format_id": "398",
+   "protocol": "https",
+   "ext": "mp4",
+   "height": 720,
+   "width": 1280,
+   "vcodec": "av01.0.08M.08",
+   "acodec": "none",
+   "filesize": 71283827,
+   "filesize_approx": 71283812,
+   "tbr": 898.678,
+   "http_headers": {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "en-us,en;q=0.5",
+    "Sec-Fetch-Mode": "navigate"
+   },
+   "url": "https://example.invalid/398"
+  },
+  {
+   "format_id": "312",
+   "protocol": "m3u8_native",
+   "ext": "mp4",
+   "height": 1080,
+   "width": 1920,
+   "vcodec": "avc1.64002A",
+   "acodec": "none",
+   "filesize": null,
+   "filesize_approx": null,
+   "tbr": 7417.746,
+   "http_headers": {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "en-us,en;q=0.5",
+    "Sec-Fetch-Mode": "navigate"
+   },
+   "url": "https://example.invalid/312"
+  },
+  {
+   "format_id": "299",
+   "protocol": "https",
+   "ext": "mp4",
+   "height": 1080,
+   "width": 1920,
+   "vcodec": "avc1.64002A",
+   "acodec": "none",
+   "filesize": 257619653,
+   "filesize_approx": 257619597,
+   "tbr": 3247.821,
+   "http_headers": {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "en-us,en;q=0.5",
+    "Sec-Fetch-Mode": "navigate"
+   },
+   "url": "https://example.invalid/299"
+  },
+  {
+   "format_id": "617",
+   "protocol": "m3u8_native",
+   "ext": "mp4",
+   "height": 1080,
+   "width": 1920,
+   "vcodec": "vp09.00.41.08",
+   "acodec": "none",
+   "filesize": null,
+   "filesize_approx": null,
+   "tbr": 5022.446,
+   "http_headers": {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "en-us,en;q=0.5",
+    "Sec-Fetch-Mode": "navigate"
+   },
+   "url": "https://example.invalid/617"
+  },
+  {
+   "format_id": "303",
+   "protocol": "https",
+   "ext": "webm",
+   "height": 1080,
+   "width": 1920,
+   "vcodec": "vp9",
+   "acodec": "none",
+   "filesize": 168736189,
+   "filesize_approx": 168736175,
+   "tbr": 2127.264,
+   "http_headers": {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "en-us,en;q=0.5",
+    "Sec-Fetch-Mode": "navigate"
+   },
+   "url": "https://example.invalid/303"
+  },
+  {
+   "format_id": "399",
+   "protocol": "https",
+   "ext": "mp4",
+   "height": 1080,
+   "width": 1920,
+   "vcodec": "av01.0.09M.08",
+   "acodec": "none",
+   "filesize": 124386876,
+   "filesize_approx": 124386834,
+   "tbr": 1568.15,
+   "http_headers": {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "en-us,en;q=0.5",
+    "Sec-Fetch-Mode": "navigate"
+   },
+   "url": "https://example.invalid/399"
+  },
+  {
+   "format_id": "623",
+   "protocol": "m3u8_native",
+   "ext": "mp4",
+   "height": 1440,
+   "width": 2560,
+   "vcodec": "vp09.00.50.08",
+   "acodec": "none",
+   "filesize": null,
+   "filesize_approx": null,
+   "tbr": 14050.349,
+   "http_headers": {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "en-us,en;q=0.5",
+    "Sec-Fetch-Mode": "navigate"
+   },
+   "url": "https://example.invalid/623"
+  },
+  {
+   "format_id": "308",
+   "protocol": "https",
+   "ext": "webm",
+   "height": 1440,
+   "width": 2560,
+   "vcodec": "vp9",
+   "acodec": "none",
+   "filesize": 473363704,
+   "filesize_approx": 473363629,
+   "tbr": 5967.715,
+   "http_headers": {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "en-us,en;q=0.5",
+    "Sec-Fetch-Mode": "navigate"
+   },
+   "url": "https://example.invalid/308"
+  },
+  {
+   "format_id": "400",
+   "protocol": "https",
+   "ext": "mp4",
+   "height": 1440,
+   "width": 2560,
+   "vcodec": "av01.0.12M.08",
+   "acodec": "none",
+   "filesize": 312554313,
+   "filesize_approx": 312554293,
+   "tbr": 3940.385,
+   "http_headers": {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "en-us,en;q=0.5",
+    "Sec-Fetch-Mode": "navigate"
+   },
+   "url": "https://example.invalid/400"
+  },
+  {
+   "format_id": "628",
+   "protocol": "m3u8_native",
+   "ext": "mp4",
+   "height": 2160,
+   "width": 3840,
+   "vcodec": "vp09.00.51.08",
+   "acodec": "none",
+   "filesize": null,
+   "filesize_approx": null,
+   "tbr": 27987.109,
+   "http_headers": {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "en-us,en;q=0.5",
+    "Sec-Fetch-Mode": "navigate"
+   },
+   "url": "https://example.invalid/628"
+  },
+  {
+   "format_id": "315",
+   "protocol": "https",
+   "ext": "webm",
+   "height": 2160,
+   "width": 3840,
+   "vcodec": "vp9",
+   "acodec": "none",
+   "filesize": 1362269481,
+   "filesize_approx": 1362269472,
+   "tbr": 17174.188,
+   "http_headers": {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "en-us,en;q=0.5",
+    "Sec-Fetch-Mode": "navigate"
+   },
+   "url": "https://example.invalid/315"
+  },
+  {
+   "format_id": "401",
+   "protocol": "https",
+   "ext": "mp4",
+   "height": 2160,
+   "width": 3840,
+   "vcodec": "av01.0.13M.08",
+   "acodec": "none",
+   "filesize": 712445280,
+   "filesize_approx": 712445254,
+   "tbr": 8981.827,
+   "http_headers": {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "en-us,en;q=0.5",
+    "Sec-Fetch-Mode": "navigate"
+   },
+   "url": "https://example.invalid/401"
+  }
+ ]
+}
