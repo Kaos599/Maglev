@@ -87,6 +87,28 @@ export function alpha(hex: string, a: number): string {
 /** Same as `alpha`; the name the tab bar spec uses ("accent at 16%"). */
 export const withAlpha = alpha;
 
+/** `fg` laid over `bg` at opacity `a`, as #RRGGBB (what the screen shows). */
+export function blend(fg: string, bg: string, a: number): string {
+  const ch = (h: string, i: number) => parseInt(h.slice(i, i + 2), 16);
+  return `#${[1, 3, 5].map((i) => Math.round(ch(fg, i) * a + ch(bg, i) * (1 - a)).toString(16).padStart(2, '0')).join('')}`;
+}
+
+/** How opaque the text-selection highlight is: the strongest step, up to 55%, that keeps selected text at 4.5:1. */
+export function selectionOpacity(c: Pick<ThemeColors, 'accent' | 'text' | 'surface' | 'bg'>): number {
+  for (let a = 0.55; a > 0.2; a = Math.round((a - 0.05) * 100) / 100) {
+    if ([c.surface, c.bg].every((field) => contrast(c.text, blend(c.accent, field, a)) >= 4.5)) return a;
+  }
+  return 0.2;
+}
+
+/**
+ * The text-selection highlight for fields: the accent, see-through, so selected text stays readable in every theme
+ * and accent (a solid accent hid white text). Handles and cursor use the solid accent.
+ */
+export function selectionColor(c: Pick<ThemeColors, 'accent' | 'text' | 'surface' | 'bg'>): string {
+  return alpha(c.accent, selectionOpacity(c));
+}
+
 interface Palette {
   bg: string;
   surface: string;
