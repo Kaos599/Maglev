@@ -650,6 +650,15 @@ export class MaglevEngineBridge implements MaglevEngineApi {
       return null;
     }
   }
+  public async videoSitesUpdate(): Promise<EngineResult<{ status: 'updated' | 'current' | 'failed'; version: string | null }>> {
+    type R = EngineResult<{ status: 'updated' | 'current' | 'failed'; version: string | null }>;
+    if (!NativeModule || typeof NativeModule.videoSitesUpdate !== 'function') {
+      const sim = simulatorIfAllowed();
+      if (sim) return sim.videoSitesUpdate();
+      return unavailable("Video sites aren't available in this build.", 'VIDEO_SITES_UNAVAILABLE') as R;
+    }
+    return this.callNative<R>('videoSitesUpdate');
+  }
   public pauseDownload(id: string): Promise<EngineResult> {
     return this.route('pauseDownload', id);
   }

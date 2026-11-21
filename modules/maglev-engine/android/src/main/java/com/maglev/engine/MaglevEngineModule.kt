@@ -489,10 +489,22 @@ class MaglevEngineModule : Module() {
         AsyncFunction("videoSitesResolve") { url: String, promise: Promise ->
             videoSitesResolve(promise, url)
         }
-        // The yt-dlp version the library last downloaded itself, or null while the bundled one is in use.
+        // Downloads the newest yt-dlp: `{ ok: true, status: 'updated' | 'current' | 'failed', version }`. Off the main thread.
+        AsyncFunction("videoSitesUpdate") { promise: Promise ->
+            val c = context
+            if (c == null) {
+                promise.resolve(Json.failure(VideoSites.UNAVAILABLE, "Video sites aren't available in this build."))
+            } else {
+                EngineHost.ioScope.launch {
+                    val r = VideoSites.update(c, true)
+                    promise.resolve(linkedMapOf("ok" to true, "status" to r.status, "version" to r.version))
+                }
+            }
+        }
+        // The yt-dlp version name the library last downloaded itself, or null while the bundled one is in use.
         AsyncFunction("videoSitesVersion") { promise: Promise ->
             val c = context
-            promise.resolve(if (c == null) null else VideoSites.version(c))
+            promise.resolve(if (c == null) null else VideoSites.versionLabel(c))
         }
 
         // endregion

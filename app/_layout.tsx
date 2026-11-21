@@ -7,6 +7,7 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SettingsProvider, useSettings } from '../context/SettingsContext';
 import { ThemeProvider, useTheme } from '../context/ThemeContext';
 import { EngineProvider, useEngineStatus } from '../context/EngineContext';
+import { useVideoSiteRefresh } from '../components/transfers/useVideoSiteRefresh';
 import NavigationBarSync from '../components/NavigationBarSync';
 import { NoticeHost } from '../components/ui/NoticeHost';
 import { StarPrompt } from '../components/StarPrompt';
@@ -49,6 +50,12 @@ const ENGINE_FIRST_ROUTE = /^\/(add-torrent|add-download|torrent\/|download\/)/;
 /** NATIVE_CONTRACT 44.7: runs the subtitle requests. Renders nothing; does no work while there are none. */
 function SubtitleRequestRunner() {
   useSubtitleRequests();
+  return null;
+}
+
+/** Renders nothing. Keeps its own telemetry subscription so the navigator doesn't re-render on every tick. */
+function VideoSiteRefresher() {
+  useVideoSiteRefresh();
   return null;
 }
 
@@ -122,6 +129,7 @@ function AppNavigation() {
     <>
       <StatusBar style={dark ? 'light' : 'dark'} />
       <NavigationBarSync />
+      {main ? <VideoSiteRefresher /> : null}
       <Stack screenOptions={screenOptions}>
         <Stack.Protected guard={unavailable}>
           <Stack.Screen name="engine-error" options={{ gestureEnabled: false, animation: 'none' }} />

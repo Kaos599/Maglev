@@ -862,6 +862,9 @@ export class MaglevMockEngine implements MaglevEngineApi {
   public videoSitesVersion(): Promise<string | null> {
     return Promise.resolve(null);
   }
+  public videoSitesUpdate(): Promise<EngineResult<{ status: 'updated' | 'current' | 'failed'; version: string | null }>> {
+    return Promise.resolve({ ok: true, status: 'current', version: '2026.10.26' });
+  }
   public async pauseDownload(id: string): Promise<EngineResult> {
     return this.downloads.pause(id);
   }

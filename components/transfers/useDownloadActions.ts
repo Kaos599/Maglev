@@ -4,6 +4,7 @@ import { maglevEngine, type DownloadSnapshot, type EngineResult } from 'maglev-e
 import { useEngineActions } from '../../context/EngineContext';
 import { notices } from '../../constants/copy';
 import {
+  FRESH_LINK_FAILED_TEXT,
   OPEN_FOLDER_FAILED_TEXT,
   SHARE_FAILED_TEXT,
   actionRoute,
@@ -11,6 +12,7 @@ import {
   openFailureText,
   type DownloadAction,
 } from '../../utils/downloadCopy';
+import { refreshVideoSiteDownload } from './useVideoSiteRefresh';
 import { downloadTarget, type SubtitleTarget } from '../subtitles/flow';
 
 /**
@@ -119,6 +121,12 @@ export function useDownloadActions(): DownloadActions {
         case 'newLink':
           openPage(d.id);
           break;
+        case 'freshLink':
+          // The same refresh the app tries by itself; when it can't, the card keeps its text and the page takes a pasted link.
+          void refreshVideoSiteDownload(d, refreshDownloadUrl).then((ok) => {
+            if (!ok) showNotice({ message: FRESH_LINK_FAILED_TEXT });
+          });
+          break;
         case 'open':
           open(d.id);
           break;
@@ -131,7 +139,7 @@ export function useDownloadActions(): DownloadActions {
         // 'remove' is the card's own sheet step (it calls onPress); the page has Remove in its menu.
       }
     },
-    [router, pause, resume, retry, openPage, open, allowDevice, resumeAnyway],
+    [router, pause, resume, retry, openPage, open, allowDevice, resumeAnyway, refreshDownloadUrl, showNotice],
   );
 
   return useMemo(

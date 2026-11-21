@@ -8,6 +8,7 @@ import { formatEta, smoothRate } from './rates.ts';
 import { doneLead } from './stats/format.ts';
 import { reasonFor, wifiOverrideAllowed, type BlockContext } from './blocks/reasons.ts';
 import { QUIET_MS } from '../components/transfers/flowClock.ts';
+import { offersFreshLink } from './videoSiteRefresh.ts';
 
 export type DownloadTone = 'muted' | 'accent' | 'danger' | 'download';
 export type DownloadActionKind =
@@ -17,6 +18,7 @@ export type DownloadActionKind =
   | 'retry'
   | 'restart'
   | 'newLink'
+  | 'freshLink'
   | 'allowDevice'
   | 'remove'
   | 'open'
@@ -54,6 +56,9 @@ const PROBE_BLOCKED_BODY =
   'Your network settings block downloads right now. Open settings to change that, or add it anyway and it starts when downloads are allowed.';
 const AUTH_BODY =
   'This site wants you to sign in. Sign in on the site in your browser, copy the download link again, and paste it here.';
+/** The fresh-link button could not get a new link (the site is still refusing, or there is no connection). */
+export const FRESH_LINK_FAILED_TEXT = "Couldn't get a fresh link. Try again, or paste a new link.";
+
 /** A 403 with no sign-in details (NATIVE_CONTRACT 17, LINK_REFUSED): the site refused the link itself. */
 const LINK_REFUSED_TEXT = 'The site refused this link. Open its page again, then retry.';
 const LINK_REFUSED_PROBE_BODY =
@@ -261,6 +266,7 @@ export function downloadStatus(
     case 'finished':
       return d.size ? mk(doneLead(d.activeSecs, d.finishedAt), 'accent', null, formatBytes(d.size), 'size') : mk(doneLead(d.activeSecs, d.finishedAt), 'accent', null);
     case 'needs_link':
+      if (offersFreshLink(d)) return held('Site refused · Get a fresh link', 'danger');
       return held(
         d.error?.code === 'AUTH_REQUIRED'
           ? 'Needs sign-in · Paste new link'
@@ -361,6 +367,7 @@ const A = {
   allowDevice: { kind: 'allowDevice', icon: 'link', label: 'Allow this device' },
   open: { kind: 'open', icon: 'external', label: 'Open' },
   newLink: { kind: 'newLink', icon: 'link', label: 'Paste new link' },
+  freshLink: { kind: 'freshLink', icon: 'retry', label: 'Get a fresh link' },
   remove: { kind: 'remove', icon: 'trash', label: 'Remove' },
   pickFolder: { kind: 'pickFolder', icon: 'folder', label: 'Pick folder again' },
   openSettings: { kind: 'openNetworkSettings', icon: 'settings', label: 'Open settings' },
@@ -388,7 +395,7 @@ export function downloadActions(d: DownloadSnapshot, ctx: BlockContext = {}): Do
       return [A.resume];
     }
     case 'needs_link':
-      return [A.newLink];
+      return offersFreshLink(d) ? [A.freshLink, A.newLink] : [A.newLink];
     case 'finished':
       return [A.open];
     case 'error':

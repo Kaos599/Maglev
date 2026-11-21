@@ -7,6 +7,19 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class VideoSitesTest {
+    private val day = 24L * 60 * 60 * 1000
+
+    @Test fun builtInYtDlpUpdatesAtOnceEvenOnMobileData() {
+        assertTrue(VideoSites.shouldAutoUpdate(bundled = true, lastCheckMs = 0, nowMs = 1, metered = true))
+    }
+
+    @Test fun anUpdatedYtDlpIsCheckedAfterAWeekOnUnmeteredOnly() {
+        val now = 100 * day
+        assertTrue(VideoSites.shouldAutoUpdate(false, now - 8 * day, now, metered = false))
+        assertFalse(VideoSites.shouldAutoUpdate(false, now - 8 * day, now, metered = true))
+        assertFalse(VideoSites.shouldAutoUpdate(false, now - 2 * day, now, metered = false))
+    }
+
     @Test fun unsupportedSite() =
         assertEquals(VideoSites.NOT_SUPPORTED, VideoSites.classify("ERROR: Unsupported URL: https://a.test/x").code)
 

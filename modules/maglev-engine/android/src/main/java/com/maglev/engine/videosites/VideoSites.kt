@@ -1,6 +1,7 @@
 package com.maglev.engine.videosites
 
 import android.content.Context
+import android.net.ConnectivityManager
 import com.yausername.youtubedl_android.YoutubeDL
 import com.yausername.youtubedl_android.YoutubeDLRequest
 import org.json.JSONArray
@@ -37,6 +38,78 @@ object VideoSites {
         null
     }
 
+    /** What the Settings row shows: the version name, else the tag, else null (the built-in yt-dlp). */
+    fun versionLabel(context: Context): String? = try {
+        YoutubeDL.versionName(context) ?: YoutubeDL.version(context)
+    } catch (t: Throwable) {
+        null
+    }
+
+    data class UpdateResult(val status: String, val version: String?)
+
+    const val UPDATED = "updated"
+    const val CURRENT = "current"
+    const val UPDATE_FAILED = "failed"
+    private const val PREFS = "maglev_video_sites"
+    private const val KEY_LAST_CHECK = "last_check_ms"
+    const val CHECK_EVERY_MS = 7L * 24 * 60 * 60 * 1000
+
+    private val updateLock = Any()
+
+    /**
+     * Downloads the newest yt-dlp (youtubedl-android `updateYoutubeDL`, a blocking network call). Never throws: any
+     * failure is `failed`. Two calls never run at once; the second waits and then finds it up to date.
+     * Library API: https://github.com/yausername/youtubedl-android (YoutubeDL.kt `updateYoutubeDL`, `UpdateStatus`).
+     */
+    fun update(context: Context, @Suppress("UNUSED_PARAMETER") force: Boolean): UpdateResult = synchronized(updateLock) {
+        try {
+            ensureInit(context)
+            val status = YoutubeDL.updateYoutubeDL(context, YoutubeDL.UpdateChannel.STABLE)
+            recordCheck(context)
+            UpdateResult(if (status == YoutubeDL.UpdateStatus.DONE) UPDATED else CURRENT, versionLabel(context))
+        } catch (t: Throwable) {
+            UpdateResult(UPDATE_FAILED, versionLabel(context))
+        }
+    }
+
+    /**
+     * Pure rule for the automatic update before a resolve: the built-in yt-dlp is too old for YouTube, so replace it
+     * at once on any network. Otherwise check about once a week, and only when the network isn't metered.
+     */
+    fun shouldAutoUpdate(bundled: Boolean, lastCheckMs: Long, nowMs: Long, metered: Boolean): Boolean {
+        if (bundled) return true
+        if (metered) return false
+        return nowMs - lastCheckMs > CHECK_EVERY_MS
+    }
+
+    private fun recordCheck(context: Context) {
+        try {
+            context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+                .putLong(KEY_LAST_CHECK, System.currentTimeMillis()).apply()
+        } catch (t: Throwable) {
+            // The next resolve checks again. Nothing else depends on it.
+        }
+    }
+
+    private fun lastCheck(context: Context): Long = try {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getLong(KEY_LAST_CHECK, 0L)
+    } catch (t: Throwable) {
+        0L
+    }
+
+    private fun isMetered(context: Context): Boolean = try {
+        (context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager).isActiveNetworkMetered
+    } catch (t: Throwable) {
+        true
+    }
+
+    private fun autoUpdate(context: Context) {
+        val bundled = try { YoutubeDL.version(context) == null } catch (t: Throwable) { true }
+        if (shouldAutoUpdate(bundled, lastCheck(context), System.currentTimeMillis(), isMetered(context))) {
+            update(context, false)
+        }
+    }
+
     private fun ensureInit(context: Context) {
         if (ready) return
         synchronized(this) {
@@ -53,6 +126,7 @@ object VideoSites {
     /** Runs yt-dlp for [url] and returns the trimmed JSON text (see [trim]). Throws [VideoSitesException]. */
     fun resolve(context: Context, url: String): String {
         ensureInit(context)
+        autoUpdate(context)
         val request = YoutubeDLRequest(url)
         request.addOption("--dump-single-json")
         request.addOption("--no-playlist")
