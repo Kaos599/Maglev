@@ -1,7 +1,7 @@
 import React, { forwardRef, useCallback, useImperativeHandle, useMemo, useRef, useState } from 'react';
 import { StyleSheet, Text, TextInput, TextInputProps, View } from 'react-native';
 import { useTheme } from '../../context/ThemeContext';
-import { ThemeColors, radius, spacing, touch, type } from '../../constants/theme';
+import { ThemeColors, radius, selectionColor, spacing, touch, type } from '../../constants/theme';
 import { PixelIcon, PixelIconName } from '../PixelIcon';
 import { IconButton } from './IconButton';
 
@@ -133,7 +133,9 @@ export const TextField = forwardRef<TextFieldRef, TextFieldProps>(function TextF
         multiline={multiline}
         placeholder={placeholder}
         placeholderTextColor={colors.textFaint}
-        selectionColor={colors.accent}
+        // A see-through highlight, so selected text stays readable; the handles and cursor stay solid.
+        selectionColor={selectionColor(colors)}
+        selectionHandleColor={colors.accent}
         cursorColor={colors.accent}
         autoCapitalize={autoCapitalize ?? (mono ? 'none' : undefined)}
         autoCorrect={autoCorrect ?? (mono ? false : undefined)}
@@ -169,7 +171,9 @@ export const TextField = forwardRef<TextFieldRef, TextFieldProps>(function TextF
           multiline={multiline}
           placeholder={placeholder}
           placeholderTextColor={colors.textFaint}
-          selectionColor={colors.accent}
+          // A see-through highlight, so selected text stays readable; the handles and cursor stay solid.
+          selectionColor={selectionColor(colors)}
+          selectionHandleColor={colors.accent}
           cursorColor={colors.accent}
           autoCapitalize={autoCapitalize ?? (mono ? 'none' : undefined)}
           autoCorrect={autoCorrect ?? (mono ? false : undefined)}
