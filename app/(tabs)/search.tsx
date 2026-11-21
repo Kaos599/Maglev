@@ -772,19 +772,21 @@ export default function SearchScreen() {
               <View style={styles.summaryText}>
                 <Text style={styles.count} numberOfLines={1}>{`${stopped ? 'Stopped · ' : ''}${shown.length} ${shown.length === 1 ? 'result' : 'results'}`}</Text>
                 {srcLine ? (
-                  <PressableScale
-                    pressableRef={noteBtnRef}
-                    onPress={() => setUnansweredOpen(true)}
-                    style={styles.noteBtn}
-                    hitSlop={{ top: 12, bottom: 12, left: 8, right: 8 }}
-                    accessibilityRole="button"
-                    accessibilityLabel={`${resultsSummary(shown.length, tally, stopped)}. Show which sources did not respond`}
-                  >
-                    <Text style={[styles.note, srcLine.bad && styles.noteBad]} numberOfLines={1}>
-                      {srcLine.text}
-                    </Text>
-                    <PixelIcon name="chevron-right" size={16} color={srcLine.bad ? colors.danger : colors.textMuted} />
-                  </PressableScale>
+                  <View style={styles.noteRow}>
+                    <PressableScale
+                      pressableRef={noteBtnRef}
+                      onPress={() => setUnansweredOpen(true)}
+                      style={styles.noteBtn}
+                      hitSlop={{ top: 12, bottom: 12, left: 8, right: 8 }}
+                      accessibilityRole="button"
+                      accessibilityLabel={`${resultsSummary(shown.length, tally, stopped)}. Show which sources did not respond`}
+                    >
+                      <Text style={[styles.note, srcLine.bad && styles.noteBad]} numberOfLines={1}>
+                        {srcLine.text}
+                      </Text>
+                      <PixelIcon name="chevron-right" size={16} color={srcLine.bad ? colors.danger : colors.textMuted} />
+                    </PressableScale>
+                  </View>
                 ) : null}
               </View>
               <View style={{ flexDirection: 'row', alignItems: 'center' }}>
@@ -1040,6 +1042,7 @@ const makeStyles = (c: ThemeColors) =>
     summaryRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.sm },
     summaryText: { flex: 1, minWidth: 0, justifyContent: 'center', minHeight: touch.min },
     count: { ...type.bodyStrong, fontVariant: ['tabular-nums'], fontSize: type.size.md, lineHeight: 18, color: c.text },
+    noteRow: { flexDirection: 'row' },
     noteBtn: { flexDirection: 'row', alignItems: 'center', gap: 2, alignSelf: 'flex-start' },
     note: { ...type.body, fontSize: type.size.sm, lineHeight: 17, color: c.textMuted },
     noteBad: { color: c.danger },
