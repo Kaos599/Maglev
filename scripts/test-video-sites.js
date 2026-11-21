@@ -131,6 +131,11 @@ const fixture = (n) => JSON.parse(read(`scripts/fixtures/video-sites/${n}.json`)
   const share = read('modules/maglev-engine/android/src/main/java/com/maglev/engine/share/QuickShareActivity.kt');
   check('shared video-site page goes straight to the add sheet', /WEB_PAGE && isVideoSite\(host\(cls\.source\)\)\)[\s\S]{0,120}maglev:\/\/add-download\?url=/.test(share));
   check('share host list matches the app list', ['youtube.com', 'youtu.be', 'x.com', 'twitter.com', 'instagram.com', 'reddit.com', 'vimeo.com', 'tiktok.com'].every((h) => share.includes(`"${h}"`)));
+  // Phone test 2026-11-21: R8 stripped commons-compress's reflectively registered zip classes and
+  // init failed with "class X is not a concrete class" ("Video sites aren't available in this build").
+  const rules = read('modules/maglev-engine/android/consumer-rules.pro');
+  check('R8 keeps the yt-dlp library and the commons-compress zip classes it registers by reflection',
+    rules.includes('-keep class com.yausername.** { *; }') && rules.includes('-keep class org.apache.commons.compress.archivers.zip.** { *; }'));
 
   if (failed) {
     console.error(`\n${failed} check(s) failed`);
