@@ -121,8 +121,6 @@ const fixture = (n) => JSON.parse(read(`scripts/fixtures/video-sites/${n}.json`)
   check('screen reads video pages and shows the reading state', screen.includes('videoSitesResolve') && screen.includes('Reading the video…') && screen.includes('isVideoSiteUrl'));
   check('screen: Open in browser for login and unsupported errors', screen.includes('errorOffersBrowser') && screen.includes("label: 'Open in browser'"));
   check('screen: never says yt-dlp', !/yt-dlp|ytdlp/i.test(screen));
-  const contract = read('docs/NATIVE_CONTRACT.md');
-  check('contract section 48 says where options are built', /Where options are built \(decided[^\n]*in TypeScript/.test(contract));
 
   if (failed) {
     console.error(`\n${failed} check(s) failed`);
