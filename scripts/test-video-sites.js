@@ -121,6 +121,13 @@ const fixture = (n) => JSON.parse(read(`scripts/fixtures/video-sites/${n}.json`)
   check('screen reads video pages and shows the reading state', screen.includes('videoSitesResolve') && screen.includes('Reading the video…') && screen.includes('isVideoSiteUrl'));
   check('screen: Open in browser for login and unsupported errors', screen.includes('errorOffersBrowser') && screen.includes("label: 'Open in browser'"));
   check('screen: never says yt-dlp', !/yt-dlp|ytdlp/i.test(screen));
+  const mh = await import('../utils/browser/mediaHit.ts');
+  const ytHit = { kind: 'video', url: null, unusable: 'blob', videoClass: 'blob', poster: null, linkHref: null, alt: '', pageUrl: 'https://m.youtube.com/watch?v=jNQXAC9IVRw' };
+  const ytMenu = mh.buildMediaMenu(ytHit);
+  check('long-press on a YouTube video offers Download this video for the page, no dead-end note', ytMenu.note === null && ytMenu.items[0]?.id === 'download-page-video' && ytMenu.items[0]?.url === ytHit.pageUrl);
+  const otherMenu = mh.buildMediaMenu({ ...ytHit, pageUrl: 'https://example.com/v' });
+  check('other blob videos keep the files-found note', otherMenu.note === mh.mediaMenuCopy.videoBlob && !otherMenu.items.some((i) => i.id === 'download-page-video'));
+  check('browser sends the page to the add sheet', /onDownloadPage=\{\(u\) => router\.push\(\{ pathname: '\/add-download', params: \{ url: u \} \}\)\}/.test(read('app/browser.tsx')));
   const share = read('modules/maglev-engine/android/src/main/java/com/maglev/engine/share/QuickShareActivity.kt');
   check('shared video-site page goes straight to the add sheet', /WEB_PAGE && isVideoSite\(host\(cls\.source\)\)\)[\s\S]{0,120}maglev:\/\/add-download\?url=/.test(share));
   check('share host list matches the app list', ['youtube.com', 'youtu.be', 'x.com', 'twitter.com', 'instagram.com', 'reddit.com', 'vimeo.com', 'tiktok.com'].every((h) => share.includes(`"${h}"`)));
