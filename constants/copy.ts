@@ -671,6 +671,8 @@ export const quickShareCopy = {
   close: 'Close',
   webPage: 'This is a web page, not a file',
   noLink: 'No link in what you shared',
+  copyDetails: 'Copy details',
+  detailsCopied: 'Copied. Paste it into your bug report.',
   alreadyIn: 'Already in Maglev',
   added: 'Added to Maglev',
   addedServiceLater: 'Added to Maglev. It starts when you open the app.',
