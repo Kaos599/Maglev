@@ -171,6 +171,14 @@ async function main() {
   check('routes: browser prefill and free space', /maglev:\/\/browser\?url=/.test(act) && /maglev:\/\/free-space/.test(act));
   check('Toast text', /Added to Maglev/.test(text));
   check('no Compose in the share code', !/androidx\.compose/.test(act + read(ENGINE_KT + 'share/QuickShareCard.kt')));
+  // Issue #162: Soul Browser's hand-off reached the card with "No link in what you shared" while the same link pasted worked.
+  check('#162 text extras are read as CharSequence (styled text kept the link from getStringExtra)',
+    /getCharSequenceExtra\(key\)/.test(act) && !/getStringExtra\(Intent\.EXTRA_TEXT\)/.test(act));
+  check('#162 every place a link can be: stream, text, clip data, subject, originating URI, link extras',
+    ['EXTRA_STREAM', 'EXTRA_TEXT', 'clipData', 'EXTRA_SUBJECT', 'EXTRA_ORIGINATING_URI', 'LINK_EXTRAS'].every((k) => act.includes(k)));
+  check('#162 the first candidate with a link wins (a shared file no longer hides the URL text)', /ShareClassify\.classifyFirst\(/.test(act));
+  check('#162 the No-link card offers Copy details with the hand-off shape, never values',
+    /CardAction\.COPY_DETAILS, QuickShareText\.COPY_DETAILS/.test(act) && /describeHandOff\(/.test(act) && /COPY_DETAILS = "Copy details"/.test(text));
   check('no system monospace', !/Typeface\.MONOSPACE|"monospace"/.test(read(ENGINE_KT + 'share/QuickShareCard.kt')));
 
   if (failed) {

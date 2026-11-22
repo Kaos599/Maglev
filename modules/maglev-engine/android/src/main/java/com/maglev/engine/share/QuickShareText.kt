@@ -16,6 +16,8 @@ object QuickShareText {
     const val CLOSE = "Close"
     const val WEB_PAGE = "This is a web page, not a file"
     const val NO_LINK = "No link in what you shared"
+    const val COPY_DETAILS = "Copy details"
+    const val DETAILS_COPIED = "Copied. Paste it into your bug report."
     const val ALREADY_IN = "Already in Maglev"
     const val ADDED = "Added to Maglev"
     const val ADDED_SERVICE_LATER = "Added to Maglev. It starts when you open the app."
