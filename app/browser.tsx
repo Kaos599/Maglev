@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useId, useMemo, useRef, useState, useSyn
 import { AppState, BackHandler, Keyboard, Share, StyleSheet, Text, View } from 'react-native';
 import { useFocusEffect, useIsFocused, useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { Pressable } from 'react-native-gesture-handler';
 import * as Clipboard from 'expo-clipboard';
 import {
   clearCookies,
@@ -762,6 +763,15 @@ export default function BrowserScreen({ inTab = false }: { inTab?: boolean }) {
   const loading = !!page?.loading;
   const tabCount = tabsState?.tabs.length ?? 1;
 
+  // 0.34 section 3 rule 5: the page menu's Reload row, which shows Stop while the page loads.
+  const reloadOrStop = () => {
+    haptic('tap');
+    if (loading) {
+      view()?.stop();
+      patch(activeId, (d) => void (d.page = d.page ? { ...d.page, loading: false } : d.page));
+    } else view()?.reload();
+  };
+
   const toggleAds = () => {
     const key = siteKey(pageHost);
     const nowAllowed = !allowedHere;
@@ -807,21 +817,44 @@ export default function BrowserScreen({ inTab = false }: { inTab?: boolean }) {
           onClose={closeFind}
         />
       ) : (
-      <View style={styles.bar}>
-        <IconButton
-          icon="back"
-          accessibilityLabel="Go back"
-          onPress={() => {
-            if (!handleBack()) leave();
-          }}
-        />
-        <AddressSwipe
-          strip={tabsState ? switcherOrder(tabsState) : []}
-          activeId={activeId}
-          enabled={prefs.swipeTabs && !editing && ready}
-          onSelect={selectTab}
-          onOpenSwitcher={() => setSwitcherOpen(true)}
-        >
+      <AddressSwipe
+        strip={tabsState ? switcherOrder(tabsState) : []}
+        activeId={activeId}
+        enabled={prefs.swipeTabs && !editing && ready}
+        canFocusAddress={!editing && ready}
+        onFocusAddress={() => inputRef.current?.focus()}
+        onSelect={selectTab}
+        onOpenSwitcher={() => setSwitcherOpen(true)}
+        trailing={
+          <>
+            <Pressable
+              onPress={() => {
+                haptic('select');
+                setSwitcherOpen(true);
+              }}
+              onLongPress={newTab}
+              accessibilityRole="button"
+              accessibilityLabel={browserTabs.tabButtonLabel(tabCount)}
+              disabled={!ready}
+              style={styles.tabButton}
+            >
+              <View style={styles.tabBox}>
+                <Text style={styles.tabCount} numberOfLines={1}>
+                  {tabCount > 99 ? browserTabs.tabButtonMany : tabCount}
+                </Text>
+              </View>
+            </Pressable>
+            <Pressable
+              onPress={() => setMenuOpen(true)}
+              accessibilityRole="button"
+              accessibilityLabel="More"
+              disabled={!ready}
+              style={styles.tabButton}
+            >
+              <PixelIcon name="more" size={20} color={colors.text} />
+            </Pressable>
+          </>
+        }>
         <View style={[styles.address, editing && styles.addressEditing]}>
           {prefs.privateBrowsing ? (
             <PixelIcon name="shield" size={16} color={colors.accent} accessibilityLabel={historyCopy.settings.privateIndicator} />
@@ -848,73 +881,44 @@ export default function BrowserScreen({ inTab = false }: { inTab?: boolean }) {
               accessibilityLabel={page.secure ? 'Secure connection' : 'Not secure'}
             />
           ) : null}
-          <TextField
-            bare
-            mono
-            ref={inputRef}
-            value={editing ? draft : idleText}
-            onChangeText={(t) => {
-              setSelection(undefined);
-              setDraft(t);
-            }}
-            onFocus={() => {
-              const full = page?.url || tab?.url || '';
-              setDraft(full);
-              setEditing(true);
-              setSelection({ start: 0, end: full.length });
-              setTimeout(() => setSelection(undefined), 100);
-            }}
-            onBlur={() => setEditing(false)}
-            onSubmitEditing={() => {
-              haptic('tap');
-              inputRef.current?.blur();
-              go(draft);
-            }}
-            selection={selection}
-            selectTextOnFocus
-            returnKeyType="go"
-            keyboardType="url"
-            autoCapitalize="none"
-            autoCorrect={false}
-            spellCheck={false}
-            placeholder="Search or type an address"
-            style={styles.input}
-            numberOfLines={1}
-            accessibilityLabel="Address"
-          />
-        </View>
-        </AddressSwipe>
-        <IconButton
-          icon={loading ? 'stop' : 'retry'}
-          accessibilityLabel={loading ? 'Stop loading' : 'Reload'}
-          disabled={!hasPage}
-          onPress={() => {
-            haptic('tap');
-            if (loading) {
-              view()?.stop();
-              patch(activeId, (d) => void (d.page = d.page ? { ...d.page, loading: false } : d.page));
-            } else view()?.reload();
-          }}
-        />
-        <PressableScale
-          onPress={() => {
-            haptic('select');
-            setSwitcherOpen(true);
-          }}
-          onLongPress={newTab}
-          accessibilityRole="button"
-          accessibilityLabel={browserTabs.tabButtonLabel(tabCount)}
-          disabled={!ready}
-          style={styles.tabButton}
-        >
-          <View style={styles.tabBox}>
-            <Text style={styles.tabCount} numberOfLines={1}>
-              {tabCount > 99 ? browserTabs.tabButtonMany : tabCount}
-            </Text>
+          <View pointerEvents={editing ? 'auto' : 'none'} style={styles.addressInput}>
+            <TextField
+              bare
+              mono
+              ref={inputRef}
+              value={editing ? draft : idleText}
+              onChangeText={(t) => {
+                setSelection(undefined);
+                setDraft(t);
+              }}
+              onFocus={() => {
+                const full = page?.url || tab?.url || '';
+                setDraft(full);
+                setEditing(true);
+                setSelection({ start: 0, end: full.length });
+                setTimeout(() => setSelection(undefined), 100);
+              }}
+              onBlur={() => setEditing(false)}
+              onSubmitEditing={() => {
+                haptic('tap');
+                inputRef.current?.blur();
+                go(draft);
+              }}
+              selection={selection}
+              selectTextOnFocus
+              returnKeyType="go"
+              keyboardType="url"
+              autoCapitalize="none"
+              autoCorrect={false}
+              spellCheck={false}
+              placeholder="Search or type an address"
+              style={styles.input}
+              numberOfLines={1}
+              accessibilityLabel="Address"
+            />
           </View>
-        </PressableScale>
-        <IconButton icon="more" accessibilityLabel="More" disabled={!ready} onPress={() => setMenuOpen(true)} />
-      </View>
+        </View>
+      </AddressSwipe>
       )}
       <View style={styles.progress}>{loading ? <ProgressBar progress={(page?.progress ?? 0) / 100} indeterminate={!page || page.progress <= 0} /> : null}</View>
 
@@ -939,6 +943,8 @@ export default function BrowserScreen({ inTab = false }: { inTab?: boolean }) {
                     popupPolicy={prefs.popupPolicy}
                     popupAllowHosts={prefs.popupAllowHosts}
                     popupBlockHosts={prefs.popupBlockHosts}
+                    blockThirdPartyCookies={prefs.blockThirdPartyCookies}
+                    httpsFirst={prefs.httpsFirst}
                     pullToRefresh={prefs.pullToRefresh}
                     refreshColor={colors.accent}
                     refreshBackground={colors.surface}
@@ -1066,17 +1072,37 @@ export default function BrowserScreen({ inTab = false }: { inTab?: boolean }) {
       <PopupCard prompt={prompt} onAllowOnce={popupOpen} onBlock={popupBlock} onAlwaysAllow={popupAlways} onDismiss={popupDismiss} />
 
       <Sheet visible={menuOpen} onClose={() => setMenuOpen(false)} title={hasPage ? historyCopy.menuTitlePage : historyCopy.menuTitleBlank} subtitle={(hasPage && pageHost) || undefined}>
+        <View style={styles.menuRow}>
+          <IconButton
+            icon="back"
+            accessibilityLabel="Go back"
+            disabled={!page?.canGoBack}
+            onPress={() => {
+              setMenuOpen(false);
+              if (!handleBack()) leave();
+            }}
+          />
+          <IconButton
+            icon="forward"
+            accessibilityLabel="Go forward"
+            disabled={!page?.canGoForward}
+            onPress={() => {
+              setMenuOpen(false);
+              view()?.goForward();
+            }}
+          />
+          <IconButton
+            icon={loading ? 'stop' : 'retry'}
+            accessibilityLabel={loading ? 'Stop loading' : 'Reload page'}
+            disabled={!hasPage}
+            onPress={() => {
+              setMenuOpen(false);
+              reloadOrStop();
+            }}
+          />
+        </View>
         {hasPage ? (
           <>
-        <ListRow
-          icon="forward"
-          title="Forward"
-          disabled={!page?.canGoForward}
-          onPress={() => {
-            setMenuOpen(false);
-            view()?.goForward();
-          }}
-        />
         <ListRow icon="search" title={findCopy.menuRow} onPress={openFind} />
         <ListRow
           icon="text-size"
@@ -1205,7 +1231,9 @@ export default function BrowserScreen({ inTab = false }: { inTab?: boolean }) {
 const makeStyles = (c: ThemeColors) =>
   StyleSheet.create({
     root: { flex: 1, backgroundColor: c.bg },
-    bar: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: spacing.xs, minHeight: 56 },
+    // The header bar itself lives in AddressSwipe. This is the text field's wrapper, which takes touches only while editing.
+    addressInput: { flex: 1, minWidth: 0, flexDirection: 'row' },
+    menuRow: { flexDirection: 'row', justifyContent: 'space-around', paddingVertical: spacing.sm },
     address: {
       flex: 1,
       minWidth: touch.min,

@@ -67,6 +67,7 @@ const read = (f) => fs.readFileSync(path.join(root, f), 'utf8');
 check('settings screen has the switch', read('app/settings/browser-gestures.tsx').includes('swipeTabs'));
 check('browser screen uses the swipe bar', read('app/browser.tsx').includes('AddressSwipe') && read('app/browser.tsx').includes('swipeTabs'));
 check('swipe component turns off while editing', /enabled/.test(read('components/browser/AddressSwipe.tsx')));
+check('swipe thresholds: horizontal 12 dp, fail after 30 dp vertical', /activeOffsetX: \[-12, 12\]/.test(read('components/browser/AddressSwipe.tsx')) && /failOffsetY: \[-30, 30\]/.test(read('components/browser/AddressSwipe.tsx')));
 
 if (failed) { console.error(`\n${failed} failed`); process.exit(1); }
 console.log('\nall tab swipe checks passed');
