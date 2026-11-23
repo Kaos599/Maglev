@@ -119,9 +119,9 @@ async function main() {
   const w = web[0] || { data: [], cats: [] };
   const mimes = w.data.map((d) => d['android:mimeType']).filter(Boolean);
   check('http(s) filter has both schemes', w.data.some((d) => d['android:scheme'] === 'http') && w.data.some((d) => d['android:scheme'] === 'https'));
-  check('http(s) filter lists the types', ['application/octet-stream', 'application/zip', 'application/x-7z-compressed', 'application/x-iso9660-image', 'application/x-bittorrent', 'video/*', 'audio/*'].every((t) => mimes.includes(t)), mimes.join(','));
+  check('http(s) filter lists the types', ['application/octet-stream', 'application/zip', 'application/x-7z-compressed', 'application/x-iso9660-image', 'application/x-bittorrent', 'application/pdf', 'application/x-msdownload', 'application/force-download', 'binary/octet-stream', 'application/gzip', 'application/x-gzip', 'application/x-tar', 'application/epub+zip', 'video/*', 'audio/*'].every((t) => mimes.includes(t)), mimes.join(','));
   check('no APK type', !mimes.some((t) => /android\.package-archive/.test(t)));
-  check('http(s) filter is not BROWSABLE', !w.cats.includes('BROWSABLE') && w.cats.includes('DEFAULT'));
+  check('typed http(s) filter is BROWSABLE and DEFAULT (contract 0.34 section 6)', w.cats.includes('BROWSABLE') && w.cats.includes('DEFAULT') && w.cats.length === 2);
 
   // Section 8.1: download manager pickers (issue #89). Kiwi and its forks list apps that answer
   // VIEW http://test.com/file.rar with no type, so a typed filter never shows up there.
@@ -145,7 +145,7 @@ async function main() {
 
   const allHttp = qf.concat(flat(main)).filter(isHttp);
   check('every http(s) filter has a mime type or file extension paths', allHttp.length === 2 && allHttp.every((f) => f.data.some((d) => d['android:mimeType']) || f.data.some((d) => d['android:pathPattern'])));
-  check('no http(s) filter is BROWSABLE', allHttp.every((f) => !f.cats.includes('BROWSABLE')));
+  check('the picker filter is not BROWSABLE, the typed filter is', allHttp.every((f) => f.data.some((d) => d['android:mimeType']) ? f.cats.includes('BROWSABLE') : !f.cats.includes('BROWSABLE')));
   check('MainActivity has no http(s) filter', flat(main).filter(isHttp).length === 0);
   const mf = flat(main);
   check('MainActivity lost SEND, SEND_MULTIPLE, magnet and torrent filters', mf.every((f) => !f.actions.some((a) => /^SEND/.test(a)) && !f.data.some((d) => d['android:scheme'] === 'magnet' || /torrent/.test(d['android:mimeType'] || '') || /torrent/.test(d['android:pathPattern'] || ''))));
