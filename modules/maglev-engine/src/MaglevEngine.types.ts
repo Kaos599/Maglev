@@ -554,6 +554,12 @@ export interface DownloadStream {
   segmentsTotal: number;
 }
 
+export interface StreamSubtitle {
+  lang: string;
+  name: string;
+  url: string;
+}
+
 /** Which quality (and audio track) of a stream to save. Ids come from `probeStream` or `pair`. */
 export interface StreamSelection {
   kind: StreamKind;
@@ -565,6 +571,7 @@ export interface StreamSelection {
   audioBytes?: number;
   height?: number | null;
   ext?: string;
+  subtitles?: StreamSubtitle[];
 }
 
 export interface StreamVariant {

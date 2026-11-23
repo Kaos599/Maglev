@@ -1606,6 +1606,7 @@ impl Downloads {
                     audio_bytes: s.audio_bytes,
                     height: s.height,
                     ext: s.ext.clone(),
+                    subtitles: s.subtitles.clone(),
                     segments_done: 0,
                     segments_total: 0,
                 }),

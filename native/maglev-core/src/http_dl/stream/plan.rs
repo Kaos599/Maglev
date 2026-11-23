@@ -312,6 +312,7 @@ mod tests {
             audio_bytes: None,
             height: None,
             ext: None,
+            subtitles: Vec::new(),
         }
     }
 

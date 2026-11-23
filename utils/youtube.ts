@@ -8,6 +8,7 @@ import type {
   EngineResult,
   StreamProbe,
   StreamSelection,
+  StreamSubtitle,
 } from '../modules/maglev-engine/src/MaglevEngine.types.ts';
 import { formatBytes } from '../constants/format.ts';
 
@@ -96,6 +97,16 @@ export interface YouTubeRawFormat {
   audioTrack?: YouTubeAudioTrackMeta;
 }
 
+export interface YouTubeCaptionTrackRaw {
+  baseUrl?: string;
+  languageCode?: string;
+  kind?: string;
+  name?: {
+    simpleText?: string;
+    runs?: { text?: string }[];
+  };
+}
+
 export interface YouTubePlayerResponse {
   playabilityStatus?: {
     status?: string;
@@ -107,6 +118,11 @@ export interface YouTubePlayerResponse {
     author?: string;
     lengthSeconds?: string;
     isLiveContent?: boolean;
+  };
+  captions?: {
+    playerCaptionsTracklistRenderer?: {
+      captionTracks?: YouTubeCaptionTrackRaw[];
+    };
   };
   streamingData?: {
     hlsManifestUrl?: string;
@@ -135,6 +151,7 @@ export interface YouTubeProbeResult {
   title: string;
   author: string;
   durationSecs: number;
+  subtitles: StreamSubtitle[];
   qualities: YouTubeQualityOption[];
 }
 
@@ -541,6 +558,52 @@ async function checkTailReadable(opt: YouTubeQualityOption, signal?: AbortSignal
   }
 }
 
+/** Extracts deduplicated YouTube subtitle tracks (manual preferred over auto-generated per language, formatted as srv3). */
+export function extractYouTubeSubtitles(player: YouTubePlayerResponse | null | undefined): StreamSubtitle[] {
+  const raw = player?.captions?.playerCaptionsTracklistRenderer?.captionTracks ?? [];
+  if (raw.length === 0) return [];
+  const manual = new Map<string, StreamSubtitle>();
+  const asr = new Map<string, StreamSubtitle>();
+
+  for (const t of raw) {
+    const baseUrl = (t.baseUrl ?? '').trim();
+    const lang = (t.languageCode ?? '').trim();
+    if (!baseUrl || !lang) continue;
+    const rawName = (t.name?.simpleText ?? t.name?.runs?.map((r) => r.text ?? '').join('') ?? '').trim();
+    const name = rawName || lang;
+    const url = /([?&])fmt=[^&]*/i.test(baseUrl)
+      ? baseUrl.replace(/([?&])fmt=[^&]*/i, '$1fmt=srv3')
+      : `${baseUrl}${baseUrl.includes('?') ? '&' : '?'}fmt=srv3`;
+    const key = lang.toLowerCase();
+    const entry: StreamSubtitle = { lang, name, url };
+    if (t.kind === 'asr') {
+      if (!asr.has(key)) asr.set(key, entry);
+    } else if (!manual.has(key)) {
+      manual.set(key, entry);
+    }
+  }
+
+  const out: StreamSubtitle[] = [...manual.values()];
+  for (const [key, entry] of asr) {
+    if (!manual.has(key)) out.push(entry);
+  }
+  return out.slice(0, 24);
+}
+
+function attachSubtitles(qualities: YouTubeQualityOption[], subtitles: StreamSubtitle[]): YouTubeQualityOption[] {
+  if (subtitles.length === 0) return qualities;
+  return qualities.map((q) => {
+    if (q.ext !== '.mp4' && q.ext !== '.m4a') return q;
+    return {
+      ...q,
+      streamSelection: {
+        ...q.streamSelection,
+        subtitles,
+      },
+    };
+  });
+}
+
 /**
  * Fetches YouTube video metadata and full downloadable quality ladder via InnerTube.
  */
@@ -557,14 +620,22 @@ export async function probeYouTube(
   let lastReason = "Couldn't load this YouTube video. Try again.";
   let fallbackResult: YouTubeProbeResult | null = null;
 
-  // Query IOS_PRODUCER (reliable 144p..1080p60 H.264, zero 403) and VISIONOS (adds 1440p/2160p 4K when available) in parallel.
+  // Query IOS_PRODUCER (reliable 144p..1080p60 H.264, zero 403), VISIONOS (adds 1440p/2160p 4K when available),
+  // and ANDROID (provides all multi-language captionTracks since IOS_PRODUCER omits captions) in parallel.
   const producerClient = INNERTUBE_CLIENTS[0];
   const visionClient = INNERTUBE_CLIENTS[1];
-  const [prodRes, visRes] = await Promise.all([
+  const androidClient = INNERTUBE_CLIENTS[3];
+  const [prodRes, visRes, capRes] = await Promise.all([
     fetchPlayerForClient(videoId, producerClient, signal),
     fetchPlayerForClient(videoId, visionClient, signal),
+    fetchPlayerForClient(videoId, androidClient, signal),
   ]);
   if (signal?.aborted) return { ok: false, message: 'Cancelled.' };
+
+  const subtitles = extractYouTubeSubtitles(capRes.ok ? capRes.data : null)
+    .length > 0
+    ? extractYouTubeSubtitles(capRes.ok ? capRes.data : null)
+    : extractYouTubeSubtitles(visRes.ok ? visRes.data : null);
 
   const prodQualities = prodRes.ok ? buildYouTubeQualities(prodRes.data, null, producerClient.userAgent) : [];
   const visQualities = visRes.ok ? buildYouTubeQualities(visRes.data, null, visionClient.userAgent) : [];
@@ -572,13 +643,14 @@ export async function probeYouTube(
   if (prodRes.ok && prodQualities.length > 0) {
     // Merge any >1080p (1440p / 2160p 4K) tiers from VISIONOS on top of IOS_PRODUCER's H.264 ladder.
     const extra4k = visQualities.filter((q) => q.kind === 'pair' && q.height != null && q.height > 1080);
-    const merged = [...extra4k, ...prodQualities];
+    const merged = attachSubtitles([...extra4k, ...prodQualities], subtitles);
     return {
       ok: true,
       videoId,
       title: (prodRes.data.videoDetails?.title || `youtube_${videoId}`).trim(),
       author: (prodRes.data.videoDetails?.author || '').trim(),
       durationSecs: Number(prodRes.data.videoDetails?.lengthSeconds ?? 0) || 0,
+      subtitles,
       qualities: merged,
     };
   }
@@ -589,20 +661,22 @@ export async function probeYouTube(
       title: (visRes.data.videoDetails?.title || `youtube_${videoId}`).trim(),
       author: (visRes.data.videoDetails?.author || '').trim(),
       durationSecs: Number(visRes.data.videoDetails?.lengthSeconds ?? 0) || 0,
-      qualities: visQualities,
+      subtitles,
+      qualities: attachSubtitles(visQualities, subtitles),
     };
   }
   if (!prodRes.ok) lastReason = prodRes.reason;
 
   // Fallback clients (only used if both IOS_PRODUCER and VISIONOS were unavailable).
   for (const client of INNERTUBE_CLIENTS.slice(2)) {
-    const res = await fetchPlayerForClient(videoId, client, signal);
+    const res = client === androidClient ? capRes : await fetchPlayerForClient(videoId, client, signal);
     if (!res.ok) {
       if (res.aborted) return { ok: false, message: 'Cancelled.' };
       lastReason = res.reason;
       continue;
     }
-    const qualities = buildYouTubeQualities(res.data, null, client.userAgent);
+    const clientSubs = subtitles.length > 0 ? subtitles : extractYouTubeSubtitles(res.data);
+    const qualities = attachSubtitles(buildYouTubeQualities(res.data, null, client.userAgent), clientSubs);
     if (qualities.length === 0) {
       lastReason = 'No downloadable qualities found for this video.';
       continue;
@@ -613,6 +687,7 @@ export async function probeYouTube(
       title: (res.data.videoDetails?.title || `youtube_${videoId}`).trim(),
       author: (res.data.videoDetails?.author || '').trim(),
       durationSecs: Number(res.data.videoDetails?.lengthSeconds ?? 0) || 0,
+      subtitles: clientSubs,
       qualities,
     };
     const topVideo = qualities.find((q) => q.kind !== 'audio');

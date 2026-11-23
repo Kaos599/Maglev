@@ -13,6 +13,7 @@
 pub mod dash;
 pub mod fetch;
 pub mod hls;
+pub mod mp4_mux;
 pub mod plan;
 
 pub use plan::StreamProbe;
@@ -42,6 +43,14 @@ pub enum StreamKind {
     Pair,
 }
 
+/// One subtitle track to fetch and embed as an MP4 `tx3g` (`sbtl`) track.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SubtitleSpec {
+    pub lang: String,
+    pub name: String,
+    pub url: String,
+}
+
 /// `options.stream` of `nativeAddDownload`: which variant (and audio track) to save.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 pub struct StreamSpec {
@@ -62,6 +71,8 @@ pub struct StreamSpec {
     pub height: Option<u32>,
     #[serde(default)]
     pub ext: Option<String>,
+    #[serde(default)]
+    pub subtitles: Vec<SubtitleSpec>,
 }
 
 /// What a download record keeps about its stream. Nothing secret: ids and counts only.
@@ -83,6 +94,8 @@ pub struct StreamRec {
     #[serde(default)]
     pub ext: Option<String>,
     #[serde(default)]
+    pub subtitles: Vec<SubtitleSpec>,
+    #[serde(default)]
     pub segments_done: usize,
     #[serde(default)]
     pub segments_total: usize,
@@ -100,6 +113,7 @@ impl StreamRec {
             audio_bytes: self.audio_bytes,
             height: self.height,
             ext: self.ext.clone(),
+            subtitles: self.subtitles.clone(),
         }
     }
 }

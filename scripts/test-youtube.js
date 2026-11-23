@@ -71,6 +71,23 @@ async function main() {
   check('Audio only uses original m4a pair single-track', qualities[4]?.label === 'Audio only' && qualities[4]?.ext === '.m4a' && qualities[4]?.streamSelection.videoUrl === 'https://cdn.example/en.m4a' && !qualities[4]?.streamSelection.audioUrl);
   check('default quality is 1080p60 (highest <= 1080p)', yt.defaultYouTubeQuality(qualities)?.id === qualities[1]?.id);
 
+  console.log('subtitles');
+  const subs = yt.extractYouTubeSubtitles({
+    captions: {
+      playerCaptionsTracklistRenderer: {
+        captionTracks: [
+          { languageCode: 'en', kind: 'asr', name: { simpleText: 'English (auto-generated)' }, baseUrl: 'https://yt.test/t?lang=en' },
+          { languageCode: 'en', name: { simpleText: 'English' }, baseUrl: 'https://yt.test/t?lang=en&manual=1' },
+          { languageCode: 'ms', name: { runs: [{ text: 'Malay' }] }, baseUrl: 'https://yt.test/t?lang=ms&fmt=vtt' },
+          { languageCode: 'ja', kind: 'asr', name: { simpleText: 'Japanese (auto-generated)' }, baseUrl: 'https://yt.test/t?lang=ja' },
+        ],
+      },
+    },
+  });
+  check('deduplicates and prefers manual over asr', subs.length === 3 && subs[0]?.lang === 'en' && subs[0]?.name === 'English');
+  check('rewrites fmt=vtt to fmt=srv3', subs[1]?.lang === 'ms' && subs[1]?.name === 'Malay' && subs[1]?.url.includes('fmt=srv3') && !subs[1]?.url.includes('fmt=vtt'));
+  check('keeps asr when no manual exists for language', subs[2]?.lang === 'ja' && subs[2]?.url.includes('fmt=srv3'));
+
   if (failed > 0) {
     console.error(`\n${failed} check(s) failed`);
     process.exit(1);

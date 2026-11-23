@@ -393,7 +393,9 @@ export default function AddDownloadScreen() {
   if ((phase === 'ytReady' || phase === 'ytAdding') && ytProbe && ytQuality) {
     const adding = phase === 'ytAdding';
     const duration = formatYouTubeDuration(ytProbe.durationSecs);
-    const infoLine = [ytProbe.author, duration].filter(Boolean).join(' · ');
+    const subCount = ytProbe.subtitles.length;
+    const subNote = subCount === 1 ? '1 subtitle embedded' : subCount > 1 ? `${subCount} subtitles embedded` : '';
+    const infoLine = [ytProbe.author, duration, subNote].filter(Boolean).join(' · ');
     const mobileNote = mobileDataLine(onMeteredNetwork, settings.network.wifiOnly, ytQuality.estBytes);
     return (
       <Screen title="Add a link" onBack={close} scroll contentStyle={styles.content}>

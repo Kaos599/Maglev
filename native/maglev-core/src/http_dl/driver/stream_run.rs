@@ -23,7 +23,7 @@ use crate::http_dl::redirect::SendError;
 use crate::http_dl::sidecar::{StreamSide, TrackSide};
 use crate::http_dl::stream::fetch::{self, FetchFail, ReqCtx};
 use crate::http_dl::stream::{
-    self, plan, ResolveFail, StreamKind, StreamProbe, TrackPlan, MAX_IN_FLIGHT, MAX_SEGMENT_BYTES, PAIR_IN_FLIGHT,
+    self, mp4_mux, plan, ResolveFail, StreamKind, StreamProbe, TrackPlan, MAX_IN_FLIGHT, MAX_SEGMENT_BYTES, PAIR_IN_FLIGHT,
 };
 
 pub(super) fn stream_dl_error(e: StreamError) -> DlError {
@@ -524,9 +524,104 @@ impl Downloads {
         }
 
         // Every segment of every track is on disk.
-        // Skip fsyncing temporary .video.part / .audio.part files right before muxing so Android flash
-        // doesn't stall for seconds before StreamMuxer reads them from hot OS page cache and deletes them.
+        let held: u64 = runs.iter().map(|r| r.bytes).sum();
         let mux = resolved.mux_needed();
+
+        // Fast pure-Rust MP4 muxing for direct `Pair` downloads (YouTube):
+        // avoids Android MediaExtractor/MediaMuxer frame-by-frame JNI overhead (finishes in < 0.5s)
+        // and embeds all available YouTube subtitle languages as standard `tx3g` (`sbtl`) tracks.
+        let want_rust_mux = spec.kind == StreamKind::Pair
+            && (mux || (!spec.subtitles.is_empty() && matches!(resolved.extension(), "mp4" | "m4a")));
+        if want_rust_mux {
+            // Drop open part file handles before reading/removing them.
+            drop(runs);
+
+            // Fetch all subtitle srv3 XML tracks in parallel (tiny 5-30 KB each; failures are ignored).
+            let parsed_subs: Vec<mp4_mux::SubtitleTrack> = if spec.subtitles.is_empty() {
+                Vec::new()
+            } else {
+                let mut sub_set: JoinSet<(usize, Option<mp4_mux::SubtitleTrack>)> = JoinSet::new();
+                for (si, sub) in spec.subtitles.iter().enumerate() {
+                    let cx = ctx.clone();
+                    let lang = sub.lang.clone();
+                    let sname = sub.name.clone();
+                    let surl = sub.url.clone();
+                    sub_set.spawn(async move {
+                        let fetched = tokio::time::timeout(Duration::from_secs(6), fetch::fetch_text(&cx, &surl)).await;
+                        let track = match fetched {
+                            Ok(Ok((xml, _))) => {
+                                let cues = mp4_mux::parse_srv3_xml(&xml);
+                                if cues.is_empty() { None } else { Some(mp4_mux::SubtitleTrack { lang, name: sname, cues }) }
+                            }
+                            _ => None,
+                        };
+                        (si, track)
+                    });
+                }
+                let mut ordered: Vec<(usize, mp4_mux::SubtitleTrack)> = Vec::new();
+                while let Some(Ok((si, Some(t)))) = sub_set.join_next().await {
+                    ordered.push((si, t));
+                }
+                ordered.sort_by_key(|(si, _)| *si);
+                ordered.into_iter().map(|(_, t)| t).collect()
+            };
+
+            let primary_part = folder.join(plan::part_file_name(&name, tracks[0].role));
+            let secondary_part = if tracks.len() > 1 {
+                Some(folder.join(plan::part_file_name(&name, tracks[1].role)))
+            } else {
+                None
+            };
+            let out_path = final_path(&folder, &name);
+            let p1 = primary_part.clone();
+            let p2 = secondary_part.clone();
+            let out_clone = out_path.clone();
+            let rust_mux_res = tokio::task::spawn_blocking(move || {
+                mp4_mux::mux_fmp4(&p1, p2.as_deref(), &parsed_subs, &out_clone)
+            })
+            .await;
+
+            if matches!(rust_mux_res, Ok(Ok(()))) {
+                let _ = std::fs::remove_file(&primary_part);
+                if let Some(p2) = &secondary_part {
+                    let _ = std::fs::remove_file(p2);
+                }
+                let final_len = std::fs::metadata(&out_path).map(|m| m.len()).unwrap_or(held);
+                self.update(&id, |r, _| {
+                    r.held = final_len;
+                    r.size = Some(final_len);
+                    // `mux_needed = true` tells `finish_files` that `<name>` is already in place.
+                    r.mux_needed = true;
+                    if let Some(s) = r.stream.as_mut() {
+                        s.segments_done = s.segments_total;
+                    }
+                });
+                if self.state_of(&id) == Some(State::Downloading) {
+                    self.dispatch(&id, Event::AllBytes);
+                }
+                if self.state_of(&id) == Some(State::Verifying) {
+                    self.dispatch(&id, Event::HashOk);
+                }
+                return;
+            }
+            // Fallback to Kotlin StreamMuxer (or plain rename) if the input wasn't fMP4 (e.g. WebM).
+            self.update(&id, |r, _| {
+                r.held = held;
+                r.size = Some(held);
+                r.mux_needed = mux;
+                if let Some(s) = r.stream.as_mut() {
+                    s.segments_done = s.segments_total;
+                }
+            });
+            if self.state_of(&id) == Some(State::Downloading) {
+                self.dispatch(&id, Event::AllBytes);
+            }
+            if !mux && self.state_of(&id) == Some(State::Verifying) {
+                self.dispatch(&id, Event::HashOk);
+            }
+            return;
+        }
+
         if !mux {
             tokio::task::block_in_place(|| {
                 for r in &runs {
@@ -534,7 +629,6 @@ impl Downloads {
                 }
             });
         }
-        let held: u64 = runs.iter().map(|r| r.bytes).sum();
         self.update(&id, |r, _| {
             r.held = held;
             r.size = Some(held);
@@ -812,51 +906,89 @@ impl Downloads {
                 let counter = live_bytes.clone();
                 let write_off = seg.write_offset.unwrap_or(0);
                 set.spawn(async move {
-                    let res = async {
-                        let mut resp = fetch::open_stream(&cx, &seg.url, seg.range).await?;
-                        let promised = seg.range.map(|(_, l)| l).or(seg.expected_len).or_else(|| resp.content_length());
-                        let mut pos = write_off;
-                        let mut written = 0u64;
-                        let mut buf: Vec<u8> = Vec::with_capacity(PAIR_WRITE_BUF);
+                    // Retry a single chunk up to 3 times on transient read/timeout blips without
+                    // aborting the other 7 active connections.
+                    const CHUNK_READ_TIMEOUT: Duration = Duration::from_secs(12);
+                    let mut last_err: Option<FetchFail> = None;
+                    for attempt in 0..3u8 {
+                        if attempt > 0 {
+                            tokio::time::sleep(Duration::from_millis(250 * u64::from(attempt))).await;
+                        }
+                        let mut attempt_added = 0u64;
+                        let res: Result<u64, FetchFail> = async {
+                            let mut resp = match tokio::time::timeout(CHUNK_READ_TIMEOUT, fetch::open_stream(&cx, &seg.url, seg.range)).await {
+                                Ok(r) => r?,
+                                Err(_) => return Err(FetchFail::Short),
+                            };
+                            let promised = seg.range.map(|(_, l)| l).or(seg.expected_len).or_else(|| resp.content_length());
+                            let mut pos = write_off;
+                            let mut written = 0u64;
+                            let mut buf: Vec<u8> = Vec::with_capacity(PAIR_WRITE_BUF);
 
-                        while let Some(chunk) = resp.chunk().await.map_err(FetchFail::Body)? {
-                            if chunk.is_empty() {
-                                continue;
+                            loop {
+                                let next_chunk = match tokio::time::timeout(CHUNK_READ_TIMEOUT, resp.chunk()).await {
+                                    Ok(Ok(Some(c))) => c,
+                                    Ok(Ok(None)) => break,
+                                    Ok(Err(e)) => return Err(FetchFail::Body(e)),
+                                    Err(_) => return Err(FetchFail::Short),
+                                };
+                                if next_chunk.is_empty() {
+                                    continue;
+                                }
+                                let clen = next_chunk.len() as u64;
+                                counter.fetch_add(clen, Ordering::Relaxed);
+                                attempt_added += clen;
+                                buf.extend_from_slice(&next_chunk);
+                                if buf.len() >= PAIR_WRITE_BUF {
+                                    let flush_buf = std::mem::replace(&mut buf, Vec::with_capacity(PAIR_WRITE_BUF));
+                                    let flush_pos = pos;
+                                    let flush_len = flush_buf.len() as u64;
+                                    pos += flush_len;
+                                    written += flush_len;
+                                    let f2 = f.clone();
+                                    tokio::task::spawn_blocking(move || write_all_at(&f2, &flush_buf, flush_pos))
+                                        .await
+                                        .map_err(|_| FetchFail::Short)?
+                                        .map_err(FetchFail::Sink)?;
+                                }
                             }
-                            counter.fetch_add(chunk.len() as u64, Ordering::Relaxed);
-                            buf.extend_from_slice(&chunk);
-                            if buf.len() >= PAIR_WRITE_BUF {
-                                let flush_buf = std::mem::replace(&mut buf, Vec::with_capacity(PAIR_WRITE_BUF));
+                            if !buf.is_empty() {
                                 let flush_pos = pos;
-                                let flush_len = flush_buf.len() as u64;
-                                pos += flush_len;
+                                let flush_len = buf.len() as u64;
                                 written += flush_len;
                                 let f2 = f.clone();
-                                tokio::task::spawn_blocking(move || write_all_at(&f2, &flush_buf, flush_pos))
+                                tokio::task::spawn_blocking(move || write_all_at(&f2, &buf, flush_pos))
                                     .await
                                     .map_err(|_| FetchFail::Short)?
                                     .map_err(FetchFail::Sink)?;
                             }
+                            if let Some(p) = promised {
+                                if written != p {
+                                    return Err(FetchFail::Short);
+                                }
+                            }
+                            Ok(written)
                         }
-                        if !buf.is_empty() {
-                            let flush_pos = pos;
-                            let flush_len = buf.len() as u64;
-                            written += flush_len;
-                            let f2 = f.clone();
-                            tokio::task::spawn_blocking(move || write_all_at(&f2, &buf, flush_pos))
-                                .await
-                                .map_err(|_| FetchFail::Short)?
-                                .map_err(FetchFail::Sink)?;
-                        }
-                        if let Some(p) = promised {
-                            if written != p {
-                                return Err(FetchFail::Short);
+                        .await;
+                        match res {
+                            Ok(w) => return (idx, Ok(w)),
+                            Err(e) => {
+                                // Roll back partial bytes from failed attempt before retrying this chunk.
+                                if attempt_added > 0 {
+                                    counter.fetch_sub(attempt_added, Ordering::Relaxed);
+                                }
+                                let retryable = matches!(
+                                    e,
+                                    FetchFail::Short | FetchFail::Body(_) | FetchFail::Status(408 | 429 | 500 | 502 | 503 | 504, _)
+                                );
+                                last_err = Some(e);
+                                if !retryable {
+                                    break;
+                                }
                             }
                         }
-                        Ok(written)
                     }
-                    .await;
-                    (idx, res)
+                    (idx, Err(last_err.unwrap_or(FetchFail::Short)))
                 });
             }
             if set.is_empty() {
@@ -1007,6 +1139,7 @@ mod tests {
                 audio_bytes: None,
                 height: None,
                 ext: None,
+                subtitles: Vec::new(),
                 segments_done: 9,
                 segments_total: 9,
             }),
