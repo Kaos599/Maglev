@@ -146,11 +146,15 @@ pub struct Segment {
     pub key: Option<SegKey>,
     /// A whole file that may be big: streamed to disk instead of held in memory. Never encrypted.
     pub whole_file: bool,
+    /// Exact byte offset in the output part file for out-of-order parallel chunked downloads (`Pair`).
+    pub write_offset: Option<u64>,
+    /// Expected byte length of this chunk when `write_offset` is set.
+    pub expected_len: Option<u64>,
 }
 
 impl Segment {
     pub fn plain(url: String) -> Segment {
-        Segment { url, range: None, key: None, whole_file: false }
+        Segment { url, range: None, key: None, whole_file: false, write_offset: None, expected_len: None }
     }
 }
 
@@ -233,9 +237,16 @@ impl Resolved {
 /// so CDN answers 200 OK at full network speed without single-stream throttling.
 pub fn chunked_segments(url: &str, total_bytes: u64) -> Vec<Segment> {
     if total_bytes == 0 {
-        return vec![Segment { url: url.to_string(), range: None, key: None, whole_file: true }];
+        return vec![Segment {
+            url: url.to_string(),
+            range: None,
+            key: None,
+            whole_file: true,
+            write_offset: None,
+            expected_len: None,
+        }];
     }
-    let chunk_size = (total_bytes / 8).clamp(256 * 1024, 2 * 1024 * 1024);
+    let chunk_size = (total_bytes / 8).clamp(256 * 1024, 4 * 1024 * 1024);
     let lower = url.to_ascii_lowercase();
     let yt_query_range = lower.contains("googlevideo.com/") || lower.contains("/videoplayback");
     let sep = if url.contains('?') { '&' } else { '?' };
@@ -250,6 +261,8 @@ pub fn chunked_segments(url: &str, total_bytes: u64) -> Vec<Segment> {
                 range: None,
                 key: None,
                 whole_file: false,
+                write_offset: Some(offset),
+                expected_len: Some(len),
             });
         } else {
             out.push(Segment {
@@ -257,6 +270,8 @@ pub fn chunked_segments(url: &str, total_bytes: u64) -> Vec<Segment> {
                 range: Some((offset, len)),
                 key: None,
                 whole_file: false,
+                write_offset: Some(offset),
+                expected_len: Some(len),
             });
         }
         offset += len;

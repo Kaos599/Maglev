@@ -159,6 +159,34 @@ async fn open(ctx: &ReqCtx, url: &str, range: Option<(u64, u64)>) -> Result<reqw
     }
 }
 
+/// Streams a chunk directly to a callback as packets arrive, checking expected length when known.
+pub async fn fetch_stream<F>(
+    ctx: &ReqCtx,
+    url: &str,
+    range: Option<(u64, u64)>,
+    expected: Option<u64>,
+    mut on_chunk: F,
+) -> Result<u64, FetchFail>
+where
+    F: FnMut(&[u8]) -> std::io::Result<()>,
+{
+    let mut resp = open(ctx, url, range).await?;
+    let promised = range.map(|(_, l)| l).or(expected).or_else(|| resp.content_length());
+    let mut written = 0u64;
+    while let Some(chunk) = resp.chunk().await.map_err(FetchFail::Body)? {
+        if !chunk.is_empty() {
+            on_chunk(&chunk).map_err(FetchFail::Sink)?;
+            written += chunk.len() as u64;
+        }
+    }
+    if let Some(p) = promised {
+        if written != p {
+            return Err(FetchFail::Short);
+        }
+    }
+    Ok(written)
+}
+
 /// The whole body in memory, at most `cap` bytes.
 pub async fn fetch_vec(ctx: &ReqCtx, url: &str, range: Option<(u64, u64)>, cap: u64) -> Result<Vec<u8>, FetchFail> {
     let mut resp = open(ctx, url, range).await?;

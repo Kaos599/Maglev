@@ -14,6 +14,9 @@
 //! Keys and links are never logged. AES keys live in the `keys` map of one transfer only.
 
 use std::collections::VecDeque;
+use std::sync::atomic::{AtomicU64, Ordering};
+
+use tokio::task::JoinSet;
 
 use super::*;
 use crate::http_dl::redirect::SendError;
@@ -581,6 +584,12 @@ impl Downloads {
             };
         }
 
+        // Parallel out-of-order chunked streaming for direct `Pair` downloads (e.g. YouTube):
+        // zero head-of-line blocking, direct pwrite to offset, real-time speed/progress ticks.
+        if c.max_in_flight == PAIR_IN_FLIGHT && !items.is_empty() && items.iter().all(|s| s.write_offset.is_some()) {
+            return self.run_pair_track(c, ti, runs, clock).await;
+        }
+
         let mut next = runs[ti].done;
         let mut window = Window(VecDeque::new());
         let mut limit = self.update(c.id, |r, _| r.down_limit_bps).unwrap_or(0);
@@ -736,6 +745,152 @@ impl Downloads {
         }
         self.flush_stream_side(c, runs);
         TrackEnd::Done
+    }
+
+    /// Streams `Pair` chunks across `PAIR_IN_FLIGHT` concurrent HTTP/1.1 connections with zero
+    /// head-of-line blocking: each worker writes directly to its exact byte offset (`write_all_at`)
+    /// as network packets arrive, keeping every connection saturated to match full link speed.
+    async fn run_pair_track(
+        self: &Arc<Self>,
+        c: &StreamCtx<'_>,
+        ti: usize,
+        runs: &mut Vec<TrackRun>,
+        clock: &mut StallClock,
+    ) -> TrackEnd {
+        let items = &c.tracks[ti].items;
+        let total = items.len();
+        let file = runs[ti].file.clone();
+        let start_done = runs[ti].done;
+        let other_bytes: u64 = runs.iter().enumerate().filter(|(i, _)| *i != ti).map(|(_, r)| r.bytes).sum();
+        let other_done: usize = runs.iter().enumerate().filter(|(i, _)| *i != ti).map(|(_, r)| r.done).sum();
+        let base_bytes = runs[ti].bytes;
+
+        let mut done_flags = vec![false; total];
+        for flag in done_flags.iter_mut().take(start_done) {
+            *flag = true;
+        }
+        let mut completed_count = start_done;
+        let mut next = start_done;
+
+        let live_bytes = Arc::new(AtomicU64::new(0));
+        let mut set: JoinSet<(usize, Result<u64, FetchFail>)> = JoinSet::new();
+        let mut tick = tokio::time::interval(REPORT_EVERY);
+        tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+
+        let mut limit = self.update(c.id, |r, _| r.down_limit_bps).unwrap_or(0);
+        let started = Instant::now();
+        let mut last_flush = Instant::now();
+        let mut last_space = Instant::now();
+        let mut last_report = Instant::now();
+        let mut last_streamed = 0u64;
+        let mut bps_smooth = 0.0_f64;
+
+        let outcome = loop {
+            while set.len() < c.max_in_flight && next < total {
+                let idx = next;
+                next += 1;
+                let seg = items[idx].clone();
+                let cx = c.ctx.clone();
+                let f = file.clone();
+                let counter = live_bytes.clone();
+                let write_off = seg.write_offset.unwrap_or(0);
+                set.spawn(async move {
+                    let mut pos = write_off;
+                    let res = fetch::fetch_stream(&cx, &seg.url, seg.range, seg.expected_len, |chunk| {
+                        tokio::task::block_in_place(|| write_all_at(&f, chunk, pos))?;
+                        pos += chunk.len() as u64;
+                        counter.fetch_add(chunk.len() as u64, Ordering::Relaxed);
+                        Ok(())
+                    })
+                    .await;
+                    (idx, res)
+                });
+            }
+            if set.is_empty() {
+                break TrackEnd::Done;
+            }
+            tokio::select! {
+                joined = set.join_next() => match joined {
+                    None => break TrackEnd::Done,
+                    Some(Err(_)) => break TrackEnd::Broken,
+                    Some(Ok((_, Err(FetchFail::Sink(e))))) => {
+                        let n = self.update(c.id, |_, l| l.attempts).unwrap_or(0);
+                        let ev = io_event(&e, n);
+                        break if matches!(ev, Event::Transient { .. }) { TrackEnd::Broken } else { TrackEnd::Fatal(ev) };
+                    }
+                    Some(Ok((_, Err(f)))) => break end_of_fail(f),
+                    Some(Ok((idx, Ok(_)))) => {
+                        done_flags[idx] = true;
+                        completed_count += 1;
+                        while runs[ti].done < total && done_flags[runs[ti].done] {
+                            let seg = &items[runs[ti].done];
+                            runs[ti].bytes += seg.expected_len.unwrap_or(0);
+                            runs[ti].done += 1;
+                        }
+                        if last_flush.elapsed() >= SIDECAR_FLUSH {
+                            last_flush = Instant::now();
+                            self.flush_stream_side(c, runs);
+                        }
+                    }
+                },
+                _ = tick.tick() => {
+                    let streamed = live_bytes.load(Ordering::Relaxed);
+                    let delta = streamed.saturating_sub(last_streamed);
+                    last_streamed = streamed;
+                    if delta > 0 {
+                        clock.on_bytes(Instant::now(), delta);
+                    }
+                    let held = other_bytes.saturating_add(base_bytes).saturating_add(streamed);
+                    let dt = last_report.elapsed().as_secs_f64().max(0.001);
+                    last_report = Instant::now();
+                    let inst = delta as f64 / dt;
+                    bps_smooth = if bps_smooth == 0.0 { inst } else { bps_smooth * 0.6 + inst * 0.4 };
+                    let alive = self.update(c.id, |rec, live| {
+                        rec.held = held;
+                        if rec.size.map(|s| s < held).unwrap_or(false) {
+                            rec.size = Some(held);
+                        }
+                        if let Some(s) = rec.stream.as_mut() {
+                            s.segments_done = other_done + completed_count;
+                        }
+                        live.bps = bps_smooth as u64;
+                        if delta > 0 {
+                            live.attempts = 0;
+                            live.denied = 0;
+                            live.stalled = false;
+                        }
+                        limit = rec.down_limit_bps;
+                        rec.state == State::Downloading
+                    });
+                    if alive != Some(true) {
+                        break TrackEnd::Stopped;
+                    }
+                    if self.stall_step(c.id, limit, clock) {
+                        break TrackEnd::Stalled;
+                    }
+                    if last_space.elapsed() >= SIDECAR_FLUSH {
+                        last_space = Instant::now();
+                        let free = tokio::task::block_in_place(|| free_space(c.folder));
+                        if !fits(None, 0, free) {
+                            break TrackEnd::Fatal(Event::Enospc);
+                        }
+                    }
+                    if limit > 0 {
+                        let wait = pace_delay(streamed, started.elapsed(), limit);
+                        if !wait.is_zero() {
+                            let slept = wait.min(Duration::from_secs(2));
+                            tokio::time::sleep(slept).await;
+                            clock.excuse(slept, Instant::now());
+                        }
+                    }
+                }
+            }
+        };
+
+        set.abort_all();
+        while set.join_next().await.is_some() {}
+        self.flush_stream_side(c, runs);
+        outcome
     }
 }
 

@@ -299,6 +299,7 @@ export default function AddDownloadScreen() {
     const fileName = cleanBase.endsWith(ytQuality.ext) ? cleanBase : `${cleanBase}${ytQuality.ext}`;
     const res = await startDownload(ytQuality.url, {
       name: fileName,
+      pageUrl: urlRef.current,
       ...(folderPath ? { folder: folderPath } : {}),
       ...(ytQuality.userAgent ? { headers: { 'User-Agent': ytQuality.userAgent } } : {}),
       stream: ytQuality.streamSelection,

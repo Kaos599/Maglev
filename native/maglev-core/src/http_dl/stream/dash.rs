@@ -282,7 +282,7 @@ fn list_src(lists: &[Node], base: &str) -> Result<SegSource, StreamError> {
                 Some(u) => resolve_url(base, u).ok_or(StreamError::Unsupported)?,
                 None => base.to_string(),
             };
-            Some(Segment { url, range: i.attribute("range").and_then(parse_range), key: None, whole_file: false })
+            Some(Segment { url, range: i.attribute("range").and_then(parse_range), key: None, whole_file: false, write_offset: None, expected_len: None })
         }
         None => None,
     };
@@ -296,7 +296,7 @@ fn list_src(lists: &[Node], base: &str) -> Result<SegSource, StreamError> {
             Some(m) => resolve_url(base, m).ok_or(StreamError::Unsupported)?,
             None => base.to_string(),
         };
-        items.push(Segment { url, range: s.attribute("mediaRange").and_then(parse_range), key: None, whole_file: false });
+        items.push(Segment { url, range: s.attribute("mediaRange").and_then(parse_range), key: None, whole_file: false, write_offset: None, expected_len: None });
     }
     if items.is_empty() {
         return Err(StreamError::Unsupported);
@@ -345,7 +345,7 @@ impl DashRep {
         match &self.src {
             SegSource::Single(url) => Ok(MediaPlan {
                 init: None,
-                segments: vec![Segment { url: url.clone(), range: None, key: None, whole_file: true }],
+                segments: vec![Segment { url: url.clone(), range: None, key: None, whole_file: true, write_offset: None, expected_len: None }],
                 duration_sec: self.period_dur,
                 fmp4: true,
             }),

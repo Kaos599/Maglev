@@ -145,40 +145,49 @@ export interface YouTubeProbeError {
 
 interface InnerTubeClient {
   name: string;
+  clientId: number;
+  clientVersion: string;
   userAgent: string;
+  /** True for clients known to enforce PO-token 403 cutoffs mid-stream; tail-checked before accepting. */
+  needsTailCheck?: boolean;
   context: Record<string, unknown>;
 }
 
-// ANDROID first: returns full adaptiveFormats (144p..2160p + original M4A audio) for both
-// regular videos and Shorts, and supports fast parallel &range= downloads at full network speed.
+// IOS_PRODUCER first: no GVS PO-token 403 cutoff, pure H.264 (avc1) + AAC (mp4a) up to 1080p60,
+// works across regular videos, Shorts, and long videos at full 8x parallel &range= speed.
+// VISIONOS second (and queried in parallel for 1440p/2160p 4K when available): no PO-token requirement.
 const INNERTUBE_CLIENTS: readonly InnerTubeClient[] = [
   {
-    name: 'ANDROID',
-    userAgent: 'com.google.android.youtube/20.10.38 (Linux; U; Android 14) gzip',
+    name: 'IOS_PRODUCER',
+    clientId: 92,
+    clientVersion: '0.147.945',
+    userAgent: 'com.google.ios.youtubeproducer/0.147.945 (iPhone16,2; U; CPU iOS 18_3_2 like Mac OS X;)',
     context: {
       client: {
-        clientName: 'ANDROID',
-        clientVersion: '20.10.38',
-        androidSdkVersion: 34,
-        osName: 'Android',
-        osVersion: '14',
+        clientName: 'IOS_PRODUCER',
+        clientVersion: '0.147.945',
+        deviceMake: 'Apple',
+        deviceModel: 'iPhone16,2',
+        osName: 'iPhone',
+        osVersion: '18.3.2.22D82',
         hl: 'en',
         gl: 'US',
       },
     },
   },
   {
-    name: 'ANDROID_VR',
-    userAgent: 'com.google.android.apps.youtube.vr.oculus/1.60.19 (Linux; U; Android 12L; eureka-user Build/SQ3A.220605.009.A1) gzip',
+    name: 'VISIONOS',
+    clientId: 101,
+    clientVersion: '1.02',
+    userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 15_7_3) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.0 Safari/605.1.15',
     context: {
       client: {
-        clientName: 'ANDROID_VR',
-        clientVersion: '1.60.19',
-        deviceMake: 'Oculus',
-        deviceModel: 'Quest 3',
-        androidSdkVersion: 32,
-        osName: 'Android',
-        osVersion: '12L',
+        clientName: 'VISIONOS',
+        clientVersion: '1.02',
+        deviceMake: 'Apple',
+        deviceModel: 'RealityDevice17,1',
+        osName: 'visionOS',
+        osVersion: '26.5.23O471',
         hl: 'en',
         gl: 'US',
       },
@@ -186,32 +195,58 @@ const INNERTUBE_CLIENTS: readonly InnerTubeClient[] = [
   },
   {
     name: 'IOS',
-    userAgent: 'com.google.ios.youtube/20.10.4 (iPhone16,2; U; CPU iOS 18_3_1 like Mac OS X;)',
+    clientId: 5,
+    clientVersion: '21.26.4',
+    userAgent: 'com.google.ios.youtube/21.26.4 (iPhone16,2; U; CPU iOS 18_3_2 like Mac OS X;)',
+    needsTailCheck: true,
     context: {
       client: {
         clientName: 'IOS',
-        clientVersion: '20.10.4',
+        clientVersion: '21.26.4',
         deviceMake: 'Apple',
         deviceModel: 'iPhone16,2',
         osName: 'iPhone',
-        osVersion: '18.3.1',
+        osVersion: '18.3.2.22D82',
         hl: 'en',
         gl: 'US',
       },
     },
   },
   {
-    name: 'TVHTML5_SIMPLY_EMBEDDED_PLAYER',
-    userAgent: 'Mozilla/5.0 (compatible; Maglev/1.0)',
+    name: 'ANDROID',
+    clientId: 3,
+    clientVersion: '21.26.364',
+    userAgent: 'com.google.android.youtube/21.26.364 (Linux; U; Android 11) gzip',
+    needsTailCheck: true,
     context: {
       client: {
-        clientName: 'TVHTML5_SIMPLY_EMBEDDED_PLAYER',
-        clientVersion: '2.0',
+        clientName: 'ANDROID',
+        clientVersion: '21.26.364',
+        androidSdkVersion: 30,
+        osName: 'Android',
+        osVersion: '11',
         hl: 'en',
         gl: 'US',
       },
-      thirdParty: {
-        embedUrl: 'https://www.youtube.com/',
+    },
+  },
+  {
+    name: 'ANDROID_VR',
+    clientId: 28,
+    clientVersion: '1.65.10',
+    userAgent: 'com.google.android.apps.youtube.vr.oculus/1.65.10 (Linux; U; Android 12L; eureka-user Build/SQ3A.220605.009.A1) gzip',
+    needsTailCheck: true,
+    context: {
+      client: {
+        clientName: 'ANDROID_VR',
+        clientVersion: '1.65.10',
+        deviceMake: 'Oculus',
+        deviceModel: 'Quest 3',
+        androidSdkVersion: 32,
+        osName: 'Android',
+        osVersion: '12L',
+        hl: 'en',
+        gl: 'US',
       },
     },
   },
@@ -435,6 +470,77 @@ export type ProbeStreamFn = (
   options?: { headers?: { 'User-Agent'?: string } },
 ) => Promise<EngineResult<StreamProbe>>;
 
+async function fetchPlayerForClient(
+  videoId: string,
+  client: InnerTubeClient,
+  signal?: AbortSignal,
+): Promise<{ ok: true; data: YouTubePlayerResponse } | { ok: false; reason: string; aborted?: boolean }> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 12_000);
+  const onAbort = () => controller.abort();
+  signal?.addEventListener('abort', onAbort, { once: true });
+  try {
+    const res = await fetch('https://www.youtube.com/youtubei/v1/player?prettyPrint=false', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'User-Agent': client.userAgent,
+        'X-YouTube-Client-Name': String(client.clientId),
+        'X-YouTube-Client-Version': client.clientVersion,
+      },
+      body: JSON.stringify({
+        videoId,
+        context: client.context,
+        contentCheckOk: true,
+        racyCheckOk: true,
+      }),
+      signal: controller.signal,
+    });
+    if (signal?.aborted) return { ok: false, reason: 'Cancelled.', aborted: true };
+    if (!res.ok) return { ok: false, reason: `YouTube returned HTTP ${res.status}.` };
+    const data = (await res.json()) as YouTubePlayerResponse;
+    const status = data.playabilityStatus?.status;
+    if (status && status !== 'OK') {
+      return { ok: false, reason: data.playabilityStatus?.reason || 'This video is unavailable.' };
+    }
+    return { ok: true, data };
+  } catch (err) {
+    if (signal?.aborted) return { ok: false, reason: 'Cancelled.', aborted: true };
+    const reason = err instanceof Error && err.name === 'AbortError'
+      ? 'YouTube took too long to respond. Try again.'
+      : "Couldn't reach YouTube. Check your connection and try again.";
+    return { ok: false, reason };
+  } finally {
+    clearTimeout(timer);
+    signal?.removeEventListener('abort', onAbort);
+  }
+}
+
+/** Verifies the tail byte of a stream returns 200 so PO-token 403 cutoffs are caught before download starts. */
+async function checkTailReadable(opt: YouTubeQualityOption, signal?: AbortSignal): Promise<boolean> {
+  const vBytes = opt.streamSelection.videoBytes ?? 0;
+  if (vBytes <= 0) return true;
+  const start = Math.max(0, vBytes - 4096);
+  const sep = opt.url.includes('?') ? '&' : '?';
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 5_000);
+  const onAbort = () => controller.abort();
+  signal?.addEventListener('abort', onAbort, { once: true });
+  try {
+    const res = await fetch(`${opt.url}${sep}range=${start}-${vBytes - 1}`, {
+      headers: opt.userAgent ? { 'User-Agent': opt.userAgent } : undefined,
+      signal: controller.signal,
+    });
+    res.body?.cancel?.();
+    return res.status === 200 || res.status === 206;
+  } catch {
+    return false;
+  } finally {
+    clearTimeout(timer);
+    signal?.removeEventListener('abort', onAbort);
+  }
+}
+
 /**
  * Fetches YouTube video metadata and full downloadable quality ladder via InnerTube.
  */
@@ -449,80 +555,77 @@ export async function probeYouTube(
   }
 
   let lastReason = "Couldn't load this YouTube video. Try again.";
+  let fallbackResult: YouTubeProbeResult | null = null;
 
-  for (const client of INNERTUBE_CLIENTS) {
-    try {
-      const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), 12_000);
-      const onAbort = () => controller.abort();
-      signal?.addEventListener('abort', onAbort, { once: true });
+  // Query IOS_PRODUCER (reliable 144p..1080p60 H.264, zero 403) and VISIONOS (adds 1440p/2160p 4K when available) in parallel.
+  const producerClient = INNERTUBE_CLIENTS[0];
+  const visionClient = INNERTUBE_CLIENTS[1];
+  const [prodRes, visRes] = await Promise.all([
+    fetchPlayerForClient(videoId, producerClient, signal),
+    fetchPlayerForClient(videoId, visionClient, signal),
+  ]);
+  if (signal?.aborted) return { ok: false, message: 'Cancelled.' };
 
-      let res: Response;
-      try {
-        res = await fetch('https://www.youtube.com/youtubei/v1/player?prettyPrint=false', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'User-Agent': client.userAgent,
-          },
-          body: JSON.stringify({
-            videoId,
-            context: client.context,
-            contentCheckOk: true,
-            racyCheckOk: true,
-          }),
-          signal: controller.signal,
-        });
-      } finally {
-        clearTimeout(timer);
-        signal?.removeEventListener('abort', onAbort);
-      }
+  const prodQualities = prodRes.ok ? buildYouTubeQualities(prodRes.data, null, producerClient.userAgent) : [];
+  const visQualities = visRes.ok ? buildYouTubeQualities(visRes.data, null, visionClient.userAgent) : [];
 
-      if (signal?.aborted) {
-        return { ok: false, message: 'Cancelled.' };
-      }
+  if (prodRes.ok && prodQualities.length > 0) {
+    // Merge any >1080p (1440p / 2160p 4K) tiers from VISIONOS on top of IOS_PRODUCER's H.264 ladder.
+    const extra4k = visQualities.filter((q) => q.kind === 'pair' && q.height != null && q.height > 1080);
+    const merged = [...extra4k, ...prodQualities];
+    return {
+      ok: true,
+      videoId,
+      title: (prodRes.data.videoDetails?.title || `youtube_${videoId}`).trim(),
+      author: (prodRes.data.videoDetails?.author || '').trim(),
+      durationSecs: Number(prodRes.data.videoDetails?.lengthSeconds ?? 0) || 0,
+      qualities: merged,
+    };
+  }
+  if (visRes.ok && visQualities.length > 0) {
+    return {
+      ok: true,
+      videoId,
+      title: (visRes.data.videoDetails?.title || `youtube_${videoId}`).trim(),
+      author: (visRes.data.videoDetails?.author || '').trim(),
+      durationSecs: Number(visRes.data.videoDetails?.lengthSeconds ?? 0) || 0,
+      qualities: visQualities,
+    };
+  }
+  if (!prodRes.ok) lastReason = prodRes.reason;
 
-      if (!res.ok) {
-        lastReason = `YouTube returned HTTP ${res.status}.`;
-        continue;
-      }
-
-      const data = (await res.json()) as YouTubePlayerResponse;
-      const status = data.playabilityStatus?.status;
-      if (status && status !== 'OK') {
-        lastReason = data.playabilityStatus?.reason || 'This video is unavailable.';
-        continue;
-      }
-
-      const qualities = buildYouTubeQualities(data, null, client.userAgent);
-      if (qualities.length === 0) {
-        lastReason = 'No downloadable qualities found for this video.';
-        continue;
-      }
-
-      // If this client only gave audio-only (no video), try the next client before settling.
-      const hasVideo = qualities.some((q) => q.kind !== 'audio');
-      if (!hasVideo && client !== INNERTUBE_CLIENTS[INNERTUBE_CLIENTS.length - 1]) {
-        continue;
-      }
-
-      return {
-        ok: true,
-        videoId,
-        title: (data.videoDetails?.title || `youtube_${videoId}`).trim(),
-        author: (data.videoDetails?.author || '').trim(),
-        durationSecs: Number(data.videoDetails?.lengthSeconds ?? 0) || 0,
-        qualities,
-      };
-    } catch (err) {
-      if (signal?.aborted) {
-        return { ok: false, message: 'Cancelled.' };
-      }
-      lastReason = err instanceof Error && err.name === 'AbortError'
-        ? 'YouTube took too long to respond. Try again.'
-        : "Couldn't reach YouTube. Check your connection and try again.";
+  // Fallback clients (only used if both IOS_PRODUCER and VISIONOS were unavailable).
+  for (const client of INNERTUBE_CLIENTS.slice(2)) {
+    const res = await fetchPlayerForClient(videoId, client, signal);
+    if (!res.ok) {
+      if (res.aborted) return { ok: false, message: 'Cancelled.' };
+      lastReason = res.reason;
+      continue;
     }
+    const qualities = buildYouTubeQualities(res.data, null, client.userAgent);
+    if (qualities.length === 0) {
+      lastReason = 'No downloadable qualities found for this video.';
+      continue;
+    }
+    const candidate: YouTubeProbeResult = {
+      ok: true,
+      videoId,
+      title: (res.data.videoDetails?.title || `youtube_${videoId}`).trim(),
+      author: (res.data.videoDetails?.author || '').trim(),
+      durationSecs: Number(res.data.videoDetails?.lengthSeconds ?? 0) || 0,
+      qualities,
+    };
+    const topVideo = qualities.find((q) => q.kind !== 'audio');
+    if (client.needsTailCheck && topVideo) {
+      const okTail = await checkTailReadable(topVideo, signal);
+      if (signal?.aborted) return { ok: false, message: 'Cancelled.' };
+      if (!okTail) {
+        fallbackResult ??= candidate;
+        continue;
+      }
+    }
+    return candidate;
   }
 
-  return { ok: false, message: lastReason };
+  return fallbackResult ?? { ok: false, message: lastReason };
 }

@@ -296,7 +296,7 @@ fn parse_media(lines: &[&str], base: &str) -> Result<MediaPlan, StreamError> {
                 last_range_end = Some((url.clone(), off + len));
             }
             let seg_key = key.as_ref().map(|k| SegKey { uri: k.uri.clone(), iv: k.iv.unwrap_or_else(|| iv_from_sequence(seq)) });
-            segments.push(Segment { url, range, key: seg_key, whole_file: false });
+            segments.push(Segment { url, range, key: seg_key, whole_file: false, write_offset: None, expected_len: None });
             duration += pending_dur;
             pending_dur = 0.0;
         }
@@ -313,7 +313,7 @@ fn parse_media(lines: &[&str], base: &str) -> Result<MediaPlan, StreamError> {
             // the segment that follows it.
             let seq = map_key_seq.unwrap_or(media_seq);
             let seg_key = k.map(|k| SegKey { uri: k.uri, iv: k.iv.unwrap_or_else(|| iv_from_sequence(seq)) });
-            Some(Segment { url, range, key: seg_key, whole_file: false })
+            Some(Segment { url, range, key: seg_key, whole_file: false, write_offset: None, expected_len: None })
         }
         None => None,
     };
