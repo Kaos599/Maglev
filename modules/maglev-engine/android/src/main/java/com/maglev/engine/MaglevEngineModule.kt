@@ -603,6 +603,7 @@ class MaglevEngineModule : Module() {
             Prop("active") { view: MaglevBrowserView, value: Boolean -> view.setActive(value) }
             Prop("popupPolicy") { view: MaglevBrowserView, value: String -> view.setPopupPolicy(value) }
             Prop("popupAllowHosts") { view: MaglevBrowserView, hosts: List<String> -> view.setPopupAllowHosts(hosts) }
+            Prop("popupBlockHosts") { view: MaglevBrowserView, hosts: List<String> -> view.setPopupBlockHosts(hosts) }
             Prop("textZoom") { view: MaglevBrowserView, value: Int -> view.setTextZoom(value) }
             Prop("privateMode") { view: MaglevBrowserView, value: Boolean -> view.setPrivateMode(value) }
             Prop("pullToRefresh") { view: MaglevBrowserView, value: Boolean -> view.setPullToRefresh(value) }

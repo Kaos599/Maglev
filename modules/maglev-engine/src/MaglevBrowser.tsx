@@ -71,8 +71,11 @@ export type PopupKind = 'window' | 'redirect' | 'app';
 export type BrowserNewWindowEvent = { url: string; gesture: boolean };
 /** The policy is `ask` and something the user didn't tap for wants to run. Nothing has happened yet. */
 export type BrowserPopupRequestEvent = { url: string; kind: PopupKind; sourceUrl: string };
-/** Refused under `block`, or by the always-refuse rules. Count it; never show a notice. */
-export type BrowserPopupBlockedEvent = { url: string; kind: PopupKind };
+/**
+ * Refused under `block`, by the block list, or by the always-refuse rules. Count it and log it; never show a notice here.
+ * `sourceUrl` is the page that tried to open `url` (0.34 section 2 rule 5). `url` is '' when the view could not learn it.
+ */
+export type BrowserPopupBlockedEvent = { url: string; kind: PopupKind; sourceUrl: string };
 /** A long press on a link or an image. `url` is an absolute http(s) address or `magnet:`; `imageUrl` an absolute http(s) address. */
 export type BrowserLongPressEvent = {
   kind: 'link' | 'image' | 'imageLink';
@@ -102,6 +105,8 @@ export type MaglevBrowserProps = {
   popupPolicy?: 'ask' | 'block' | 'allow';
   /** Sites allowed to open pop-ups and redirects, matched on the page host by suffix. */
   popupAllowHosts?: string[];
+  /** Sites whose untapped pop-ups, redirects and app hand-offs are always refused (0.34 section 2). A tapped window still opens. */
+  popupBlockHosts?: string[];
   adBlock?: boolean;
   allowAdsHosts?: string[];
   desktopMode?: boolean;
@@ -172,6 +177,7 @@ type NativeProps = {
   active?: boolean;
   popupPolicy?: 'ask' | 'block' | 'allow';
   popupAllowHosts?: string[];
+  popupBlockHosts?: string[];
   adBlock?: boolean;
   allowAdsHosts?: string[];
   desktopMode?: boolean;

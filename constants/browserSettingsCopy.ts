@@ -78,6 +78,13 @@ export const browserSettingsCopy = {
     blockedOn: (host: string) => `Pop-ups blocked on ${host}`,
     undo: 'Undo',
   },
+  /** The site's pop-up choice in the ⋮ page menu (contract 0.34 §2 rule 4). */
+  popupSite: {
+    ask: 'Ask',
+    allow: 'Allow',
+    block: 'Block',
+    hint: { ask: 'Asks each time', allow: 'Always allowed here', block: 'Always blocked here' },
+  },
   blockedPopups: {
     title: 'Blocked pop-ups',
     row: 'Blocked pop-ups',

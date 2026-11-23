@@ -66,6 +66,8 @@ export interface TabWebViewProps {
   privateMode: boolean;
   popupPolicy: PopupPolicy;
   popupAllowHosts: string[];
+  /** Sites whose pop-ups are always refused (0.34 section 2). */
+  popupBlockHosts: string[];
   /** Pull down at the top of the page to reload it. */
   pullToRefresh: boolean;
   /** Spinner colours (theme accent and surface). */
@@ -82,7 +84,7 @@ export interface TabWebViewProps {
  * One native browser view for one tab. Stacked with the others by absolute fill; an inactive one is invisible and
  * ignores touches but stays mounted, so switching back is instant.
  */
-export function TabWebView({ id, url, urlSource, active,adBlock, allowAdsHosts, desktopMode, textZoom, privateMode, popupPolicy, popupAllowHosts, pullToRefresh, refreshColor, refreshBackground, darkPages, handlers: h, register }: TabWebViewProps) {
+export function TabWebView({ id, url, urlSource, active,adBlock, allowAdsHosts, desktopMode, textZoom, privateMode, popupPolicy, popupAllowHosts, popupBlockHosts, pullToRefresh, refreshColor, refreshBackground, darkPages, handlers: h, register }: TabWebViewProps) {
   const ref = useRef<MaglevBrowserRef>(null);
   useEffect(() => {
     register(id, ref);
@@ -102,6 +104,7 @@ export function TabWebView({ id, url, urlSource, active,adBlock, allowAdsHosts, 
       privateMode={privateMode}
       popupPolicy={popupPolicy}
       popupAllowHosts={popupAllowHosts}
+      popupBlockHosts={popupBlockHosts}
       pullToRefresh={pullToRefresh}
       refreshColor={refreshColor}
       refreshBackground={refreshBackground}

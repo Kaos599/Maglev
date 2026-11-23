@@ -20,7 +20,7 @@ import { haptic } from '../constants/haptics';
 import { bookmarkCopy } from '../constants/bookmarkCopy';
 import { banners, browserTabs, empty, findCopy, foundTray, historyCopy, notices, textSizeCopy } from '../constants/copy';
 import { PixelIcon } from '../components/PixelIcon';
-import { Banner, Button, Dialog, EmptyBlock, IconButton, ListRow, PressableScale, ProgressBar, Sheet, TextField, type TextFieldRef, Toggle } from '../components/ui';
+import { Banner, Button, Chip, Dialog, EmptyBlock, IconButton, ListRow, PressableScale, ProgressBar, Sheet, TextField, type TextFieldRef, Toggle } from '../components/ui';
 import { FoundTray } from '../components/browser/FoundTray';
 import { TabWebView, type TabHandlers } from '../components/browser/TabWebView';
 import { ReloadStrip, type ReloadStripHandle } from '../components/browser/ReloadStrip';
@@ -70,6 +70,11 @@ import {
 import { DOWNLOAD_HELD_ACTION, DOWNLOAD_HELD_NOTICE, FOUND_HINT_MS, foundHintDue, foundHintText, opensSaveSheet } from '../utils/browser/hardening';
 import { hostAllowed, type PopupRequest, type PopupsState } from '../utils/browser/popups';
 import { hostOf, isAllowedHost, noticeAllowed, siteKey, toBrowserUrl, toggleAllowedHost } from '../utils/browserUrl';
+import { recordPopupBlockStored } from '../utils/browser/popupLog';
+import { browserSettingsCopy } from '../constants/browserSettingsCopy';
+
+/** The site's pop-up choice in the ⋮ menu: Ask (neither list), Allow (allow list), Block (block list). */
+type PopupSiteMode = 'ask' | 'allow' | 'block';
 
 /** A quiet notice for these, at most one every 5 seconds. */
 const QUIET_NOTICE: Partial<Record<BrowserRefusalReason, string>> = {
@@ -372,12 +377,34 @@ export default function BrowserScreen({ inTab = false }: { inTab?: boolean }) {
     setPopups(() => r.state);
     if (r.request) runRequest(id, r.request);
   }, [setPopups, runRequest]);
-  const popupBlock = useCallback(() => setPopups((p) => popupsApi.block(p, activeIdRef.current)), [setPopups]);
+  // Scrim and Back: block this once, remember nothing.
+  const popupDismiss = useCallback(() => setPopups((p) => popupsApi.dismiss(p, activeIdRef.current)), [setPopups]);
+  // Block: this request and the site's later ones are refused, and the site joins the block list (0.34 §2 rule 3).
+  const popupBlock = useCallback(() => {
+    const id = activeIdRef.current;
+    const r = popupsApi.blockForSite(getPopups(), id, getBrowserPrefs().popupBlockHosts);
+    setPopups(() => r.state);
+    const host = r.host;
+    if (!host) return;
+    updateBrowserPrefs((p) => ({ popupBlockHosts: popupsApi.addSiteHost(p.popupBlockHosts, host) }));
+    showNotice(
+      {
+        message: browserSettingsCopy.popupCard.blockedOn(host),
+        actionLabel: browserSettingsCopy.popupCard.undo,
+        onAction: () => updateBrowserPrefs((p) => ({ popupBlockHosts: popupsApi.undoBlockForSite(p.popupBlockHosts, host) })),
+      },
+      5000,
+    );
+  }, [setPopups, showNotice]);
   const popupAlways = useCallback(() => {
     const id = activeIdRef.current;
     const r = popupsApi.allowForSite(getPopups(), id, prefs.popupAllowHosts);
     setPopups(() => r.state);
-    if (r.host) updateBrowserPrefs(() => ({ popupAllowHosts: r.allowHosts }));
+    if (r.host) {
+      const host = r.host;
+      // Never in both lists: allowing a site takes it off the block list.
+      updateBrowserPrefs((p) => ({ popupAllowHosts: r.allowHosts, popupBlockHosts: popupsApi.removeSiteHost(p.popupBlockHosts, host) }));
+    }
     if (r.request) runRequest(id, r.request);
   }, [setPopups, runRequest, prefs.popupAllowHosts]);
 
@@ -584,7 +611,11 @@ export default function BrowserScreen({ inTab = false }: { inTab?: boolean }) {
     },
     onNewWindow: (id, e) => void openTabChecked({ url: e.url, opener: id }),
     onPopupRequest: (id, e) => setPopups((p) => popupsApi.request(p, id, { url: e.url, kind: e.kind, sourceUrl: e.sourceUrl })),
-    onPopupBlocked: (id) => setPopups((p) => popupsApi.noteBlocked(p, id)),
+    onPopupBlocked: (id, e) => {
+      setPopups((p) => popupsApi.noteBlocked(p, id));
+      // 0.34 section 2 rule 5: the link and its source site go to the blocked pop-ups log (never in Private browsing).
+      recordPopupBlockStored({ sourceUrl: e.sourceUrl, url: e.url, kind: e.kind, at: Date.now() }, getBrowserPrefs().privateBrowsing);
+    },
     onLongPress: (id, e) => {
       if (id === activeIdRef.current) setLinkTarget(e);
     },
@@ -726,6 +757,7 @@ export default function BrowserScreen({ inTab = false }: { inTab?: boolean }) {
   const idleText = page?.url || tab?.url ? pageHost : '';
   const allowedHere = isAllowedHost(prefs.allowAdsHosts, pageHost);
   const popupsAllowedHere = hostAllowed(pageHost, prefs.popupAllowHosts);
+  const popupsBlockedAtSite = hostAllowed(pageHost, prefs.popupBlockHosts);
   const popupsBlockedHere = popupsApi.blockedOnPage(popups, activeId);
   const loading = !!page?.loading;
   const tabCount = tabsState?.tabs.length ?? 1;
@@ -740,10 +772,22 @@ export default function BrowserScreen({ inTab = false }: { inTab?: boolean }) {
     view()?.reload();
   };
 
-  const togglePopups = () => {
-    updateBrowserPrefs((p) => ({ popupAllowHosts: toggleAllowedHost(p.popupAllowHosts, pageHost) }));
+  // 0.34 section 2 rule 4: the site's pop-up choice. A site is in at most one of the two lists.
+  const popupSiteMode: PopupSiteMode = popupsBlockedAtSite ? 'block' : popupsAllowedHere ? 'allow' : 'ask';
+  const popupChoices: { value: PopupSiteMode; label: string }[] = [
+    { value: 'ask', label: browserSettingsCopy.popupSite.ask },
+    { value: 'allow', label: browserSettingsCopy.popupSite.allow },
+    { value: 'block', label: browserSettingsCopy.popupSite.block },
+  ];
+  const setPopupSite = (mode: PopupSiteMode) => {
+    if (mode === popupSiteMode || !pageHost) return;
+    // Drop every entry that covers this page (a parent site too), then add this site to the chosen list.
+    const elsewhere = (list: string[]) => list.filter((e) => !popupsApi.hostAllowed(pageHost, [e]));
+    updateBrowserPrefs((p) => ({
+      popupAllowHosts: mode === 'allow' ? popupsApi.addSiteHost(elsewhere(p.popupAllowHosts), pageHost) : elsewhere(p.popupAllowHosts),
+      popupBlockHosts: mode === 'block' ? popupsApi.addSiteHost(elsewhere(p.popupBlockHosts), pageHost) : elsewhere(p.popupBlockHosts),
+    }));
     haptic('select');
-    setMenuOpen(false);
   };
 
   return (
@@ -894,6 +938,7 @@ export default function BrowserScreen({ inTab = false }: { inTab?: boolean }) {
                     privateMode={prefs.privateBrowsing}
                     popupPolicy={prefs.popupPolicy}
                     popupAllowHosts={prefs.popupAllowHosts}
+                    popupBlockHosts={prefs.popupBlockHosts}
                     pullToRefresh={prefs.pullToRefresh}
                     refreshColor={colors.accent}
                     refreshBackground={colors.surface}
@@ -1018,7 +1063,7 @@ export default function BrowserScreen({ inTab = false }: { inTab?: boolean }) {
         onShowFound={() => setTrayOpen(true)}
         onLinkOptions={(href) => setLinkTarget({ kind: 'link', url: href, imageUrl: null, text: null })}
       />
-      <PopupCard prompt={prompt} onOpen={popupOpen} onBlock={popupBlock} onAlwaysAllow={popupAlways} />
+      <PopupCard prompt={prompt} onAllowOnce={popupOpen} onBlock={popupBlock} onAlwaysAllow={popupAlways} onDismiss={popupDismiss} />
 
       <Sheet visible={menuOpen} onClose={() => setMenuOpen(false)} title={hasPage ? historyCopy.menuTitlePage : historyCopy.menuTitleBlank} subtitle={(hasPage && pageHost) || undefined}>
         {hasPage ? (
@@ -1056,13 +1101,18 @@ export default function BrowserScreen({ inTab = false }: { inTab?: boolean }) {
           />
         ) : null}
         {pageHost ? (
-          <ListRow
-            icon="external"
-            title={browserTabs.thisPage.popupsRow}
-            subtitle={popupsBlockedHere > 0 ? browserTabs.thisPage.blockedOnPage(popupsBlockedHere) : undefined}
-            accessory={<Toggle value={popupsAllowedHere} onValueChange={togglePopups} accessibilityLabel={browserTabs.thisPage.popupsRow} />}
-            onPress={togglePopups}
-          />
+          <>
+            <ListRow
+              icon="external"
+              title={browserTabs.thisPage.popupsRow}
+              subtitle={[browserSettingsCopy.popupSite.hint[popupSiteMode], popupsBlockedHere > 0 ? browserTabs.thisPage.blockedOnPage(popupsBlockedHere) : null].filter(Boolean).join(' · ')}
+            />
+            <View style={styles.popupChoices} accessibilityRole="radiogroup" accessibilityLabel={browserTabs.thisPage.popupsRow}>
+              {popupChoices.map((c) => (
+                <Chip key={c.value} label={c.label} role="radio" selected={popupSiteMode === c.value} onPress={() => setPopupSite(c.value)} />
+              ))}
+            </View>
+          </>
         ) : null}
         <ListRow
           icon="copy"
@@ -1226,4 +1276,5 @@ const makeStyles = (c: ThemeColors) =>
       backgroundColor: c.surface,
     },
     hintText: { ...type.body, fontSize: type.size.sm, color: c.textMuted },
+    popupChoices: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, paddingHorizontal: spacing.lg, paddingBottom: spacing.sm },
   });

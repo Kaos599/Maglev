@@ -117,6 +117,8 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
     private var active = true
     private var popupPolicy = "ask"
     private var popupAllowHosts: List<String> = emptyList()
+    // 0.34 §2: sites whose untapped pop-ups, redirects and app hand-offs are always refused. Main thread only.
+    private var popupBlockHosts: List<String> = emptyList()
     // The current document has finished loading at least once. Redirects during its first load are part of the page.
     private var loadedOnce = false
     // Section 30: a view mounted hidden finishes its first load before it is paused (a paused WebView may not load).
@@ -418,7 +420,11 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
     }
 
     fun setPopupAllowHosts(hosts: List<String>) {
-        popupAllowHosts = hosts.map { it.trim().lowercase().trimStart('.') }.filter { it.isNotEmpty() }
+        popupAllowHosts = hosts.map { PopupRules.normalizeSite(it) }.filter { it.isNotEmpty() }
+    }
+
+    fun setPopupBlockHosts(hosts: List<String>) {
+        popupBlockHosts = hosts.map { PopupRules.normalizeSite(it) }.filter { it.isNotEmpty() }
     }
 
     /** Called after all props of an update are set. Loads the url prop when it changed. */
@@ -1086,19 +1092,21 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
 
     private fun currentHost(): String? = webView.url?.let { Uri.parse(it).host } ?: pageHost
 
-    private fun hostAllowsPopups(host: String?): Boolean {
-        if (host == null) return false
-        val h = host.lowercase()
-        return popupAllowHosts.any { h == it || h.endsWith(".$it") }
-    }
+    private fun hostAllowsPopups(host: String?): Boolean = PopupRules.hostListed(host, popupAllowHosts)
 
-    private fun decide(gesture: Boolean, kind: String): String =
-        PopupRules.decide(popupPolicy, hostAllowsPopups(currentHost() ?: pageHost), gesture, kind)
+    private fun hostBlocksPopups(host: String?): Boolean = PopupRules.hostListed(host, popupBlockHosts)
+
+    /** T4 for the page now showing. [gesture] is the trusted-tap flag (see trustTap). */
+    private fun decide(gesture: Boolean, kind: String): String {
+        val page = currentHost() ?: pageHost
+        return PopupRules.decide(popupPolicy, hostAllowsPopups(page), hostBlocksPopups(page), gesture, kind)
+    }
 
     private fun sourceUrl(): String = webView.url ?: curUrl
 
+    /** onPopupBlocked {url, kind, sourceUrl}: sourceUrl is the page that tried to open the target (0.34 §2 rule 5). */
     private fun emitBlocked(url: String, kind: String) {
-        onPopupBlocked(mapOf("url" to url, "kind" to kind))
+        onPopupBlocked(mapOf("url" to url, "kind" to kind, "sourceUrl" to sourceUrl()))
     }
 
     private fun emitRequest(url: String, kind: String) {

@@ -110,8 +110,8 @@ check('order: address bar, switcher, menu, pop-up card, then the tab', ['editing
 
 console.log('This page menu');
 check('"Pop-ups" row sits under the ads row', scr.indexOf('toggleAds}') > 0 && scr.indexOf('browserTabs.thisPage.popupsRow') > scr.indexOf('toggleAds}'));
-check('subtitle is "N blocked on this page", hidden at 0', /popupsBlockedHere > 0 \? browserTabs\.thisPage\.blockedOnPage\(popupsBlockedHere\) : undefined/.test(scr));
-check('tapping toggles the site in popupAllowHosts', /popupAllowHosts: toggleAllowedHost\(p\.popupAllowHosts, pageHost\)/.test(scr));
+check('subtitle is "N blocked on this page", hidden at 0', /popupsBlockedHere > 0 \? browserTabs\.thisPage\.blockedOnPage\(popupsBlockedHere\) : null/.test(scr));
+check('Ask / Allow / Block chips move the site between the two lists, never both', /setPopupSite/.test(scr) && /popupAllowHosts: mode === 'allow'/.test(scr) && /popupBlockHosts: mode === 'block'/.test(scr));
 
 console.log('settings');
 check('section "Pop-ups and redirects"', /browserTabs\.settings\.section/.test(set));
