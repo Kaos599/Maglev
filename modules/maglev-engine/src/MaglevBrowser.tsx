@@ -82,6 +82,10 @@ export type BrowserLongPressEvent = {
 };
 /** A long press over a video the page script found (contract 24.10a). `json` is the payload; parse it with `parseMediaHit` (utils/browser/mediaHit.ts). */
 export type BrowserMediaHitEvent = { json: string };
+/** 0.34 section 4: drag progress of a pull to reload, 0 to 1.5 (0 when released without a reload). */
+export type BrowserPullProgressEvent = { progress: number };
+/** 0.34 section 4: a reload started (pull, menu or command) or ended. One end per start. */
+export type BrowserReloadStateEvent = { state: 'start' | 'end' };
 /** `active` is 0-based. `total` is 0 when nothing matches. `done` is false while the page is still being counted. */
 export type BrowserFindResultEvent = { active: number; total: number; done: boolean };
 export type OpenAppResult = { opened: boolean; fallbackUrl: string | null };
@@ -124,6 +128,8 @@ export type MaglevBrowserProps = {
   onLongPress?: (e: BrowserLongPressEvent) => void;
   onFindResult?: (e: BrowserFindResultEvent) => void;
   onMediaHit?: (e: BrowserMediaHitEvent) => void;
+  onPullProgress?: (e: BrowserPullProgressEvent) => void;
+  onReloadState?: (e: BrowserReloadStateEvent) => void;
 };
 
 export type MaglevBrowserRef = {
@@ -185,6 +191,8 @@ type NativeProps = {
   onLongPress?: (e: NativeEvent<BrowserLongPressEvent>) => void;
   onFindResult?: (e: NativeEvent<BrowserFindResultEvent>) => void;
   onMediaHit?: (e: NativeEvent<BrowserMediaHitEvent>) => void;
+  onPullProgress?: (e: NativeEvent<BrowserPullProgressEvent>) => void;
+  onReloadState?: (e: NativeEvent<BrowserReloadStateEvent>) => void;
 };
 
 let Native: any = null;
@@ -203,7 +211,7 @@ const NativeBrowser: React.ComponentType<NativeProps & React.RefAttributes<Magle
 const NOT_AVAILABLE = "The browser isn't available in this build.";
 
 export const MaglevBrowser = React.forwardRef<MaglevBrowserRef, MaglevBrowserProps>(function MaglevBrowser(
-  { onPage, onFound, onBlockedCount, onDownloadRequest, onMagnet, onRefused, onCrashed, onPageNote, onNewWindow, onPopupRequest, onPopupBlocked, onLongPress, onFindResult, onMediaHit, ...rest },
+  { onPage, onFound, onBlockedCount, onDownloadRequest, onMagnet, onRefused, onCrashed, onPageNote, onNewWindow, onPopupRequest, onPopupBlocked, onLongPress, onFindResult, onMediaHit, onPullProgress, onReloadState, ...rest },
   ref,
 ) {
   const nativeRef = React.useRef<MaglevBrowserRef | null>(null);
@@ -260,6 +268,8 @@ export const MaglevBrowser = React.forwardRef<MaglevBrowserRef, MaglevBrowserPro
       onLongPress={onLongPress ? (e) => onLongPress(e.nativeEvent) : undefined}
       onFindResult={onFindResult ? (e) => onFindResult(e.nativeEvent) : undefined}
       onMediaHit={onMediaHit ? (e) => onMediaHit(e.nativeEvent) : undefined}
+      onPullProgress={onPullProgress ? (e) => onPullProgress(e.nativeEvent) : undefined}
+      onReloadState={onReloadState ? (e) => onReloadState(e.nativeEvent) : undefined}
     />
   );
 });

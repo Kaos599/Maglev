@@ -592,7 +592,8 @@ class MaglevEngineModule : Module() {
 
         View(MaglevBrowserView::class) {
             Events("onPage", "onFound", "onBlockedCount", "onDownloadRequest", "onMagnet", "onRefused", "onCrashed", "onPageNote",
-                "onNewWindow", "onPopupRequest", "onPopupBlocked", "onLongPress", "onFindResult", "onMediaHit")
+                "onNewWindow", "onPopupRequest", "onPopupBlocked", "onLongPress", "onFindResult", "onMediaHit",
+                "onPullProgress", "onReloadState")
 
             Prop("url") { view: MaglevBrowserView, url: String -> view.setUrl(url) }
             Prop("adBlock") { view: MaglevBrowserView, enabled: Boolean -> view.setAdBlock(enabled) }

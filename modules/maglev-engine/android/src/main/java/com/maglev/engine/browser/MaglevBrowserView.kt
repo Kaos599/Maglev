@@ -18,6 +18,7 @@ import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import android.view.KeyEvent
 import android.view.MotionEvent
+import kotlin.math.abs
 import org.json.JSONObject
 import org.json.JSONTokener
 import android.view.View
@@ -80,6 +81,9 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
     private val onLongPress by EventDispatcher<Map<String, Any?>>()
     private val onMediaHit by EventDispatcher<Map<String, Any?>>()
     private val onFindResult by EventDispatcher<Map<String, Any?>>()
+    // 24.10a / 0.34 section 4: drag progress of a pull to reload (0..1.5), and reload start / end.
+    private val onPullProgress by EventDispatcher<Map<String, Any?>>()
+    private val onReloadState by EventDispatcher<Map<String, Any?>>()
 
     override val shouldUseAndroidLayout: Boolean = true
 
@@ -175,32 +179,90 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
     private val bridge = PageScanBridge { json -> onScanReport(json) }
 
     // 24.10a: pull to reload. The WebView sits inside this layout (https://developer.android.com/reference/androidx/swiperefreshlayout/widget/SwipeRefreshLayout).
+    // 0.34 section 4 (option A): the stock circle is hidden for good; RN draws the train from onPullProgress / onReloadState.
     private val refresh = SwipeRefreshLayout(context)
+    private val density = context.resources.displayMetrics.density
+    // SwipeRefreshLayout's trigger distance (72 dp), in px. Progress 1 is a drag of exactly this distance.
+    private val pullTriggerPx = PULL_TRIGGER_DP * density
     // 24.10a: a text selection or the find bar is active, so a downward drag must not reload. Main thread.
     private var selectionHold = false
     private var findActive = false
-    // The spinner stops once the reload it started has been seen loading and has finished. Main thread.
-    private var pullLoading = false
+    // 0.34 section 4: a pull is being tracked (started at the top of the page), its last sent progress and when it was sent.
+    private var pullTracking = false
+    private var pullDownX = 0f
+    private var pullDownY = 0f
+    private var pullSent = 0f
+    private var pullSentAt = 0L
+    // One reload from start to end: `start` is sent once and `end` once per start. Main thread.
+    private var reloadActive = false
+    // The page has been seen loading during this reload; its end (loading false) then ends the reload.
+    private var reloadSeenLoading = false
     // 24.10a: the injected script that finds media under a long press (prop mediaHitScript), and the dark pages switch.
     private var mediaHitJs = ""
     private var darkPages = false
-    private val pullSafety = Runnable { if (!destroyed) refresh.isRefreshing = false }
+    // Safety: a reload that never reports loaded ends after PULL_SAFETY_MS.
+    private val reloadSafety = Runnable { if (!destroyed) endReload() }
 
     init {
         BlocklistStore.warm(context)
         refresh.setOnRefreshListener {
-            pullLoading = false
             reload()
-            // Safety: never leave the spinner up if nothing started loading. One timer per pull, so a second
-            // pull isn't cut short by the first pull's timer.
-            mainHandler.removeCallbacks(pullSafety)
-            mainHandler.postDelayed(pullSafety, PULL_SAFETY_MS)
+            // A pull that could not reload (no page and no address) must not leave the layout refreshing.
+            if (!reloadActive) refresh.isRefreshing = false
         }
         refresh.setOnChildScrollUpCallback { _, _ -> selectionHold || findActive || webView.canScrollVertically(-1) }
+        // 0.34 section 4: the circle is never drawn. Transparent colours and an off-screen offset keep it invisible.
+        refresh.setColorSchemeColors(Color.TRANSPARENT)
+        refresh.setProgressBackgroundColorSchemeColor(Color.TRANSPARENT)
+        refresh.setProgressViewOffset(false, (-400 * density).toInt(), (-300 * density).toInt())
+        refresh.setDistanceToTriggerSync(pullTriggerPx.toInt())
         addView(refresh, ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
         webView = createWebView()
         refresh.addView(webView, ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
     }
+
+    // region Pull progress (0.34 section 4)
+
+    /**
+     * Tracks a pull that starts at the top of the page, for the train under the header. Progress is the drag
+     * (SwipeRefreshLayout's 0.5 drag rate) over the trigger distance, sent at most every 33 ms and only when it moved
+     * by 0.02. Released without a reload, it is sent as 0. The gesture itself is still handled by SwipeRefreshLayout.
+     */
+    override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
+        when (ev.actionMasked) {
+            MotionEvent.ACTION_DOWN -> {
+                pullTracking = !destroyed && refresh.isEnabled && !webView.canScrollVertically(-1) && !selectionHold && !findActive
+                pullDownX = ev.x
+                pullDownY = ev.y
+                pullSent = 0f
+                pullSentAt = 0L
+            }
+            MotionEvent.ACTION_MOVE -> if (pullTracking) {
+                // A mostly sideways drag (a carousel at the top of the page) is not a pull: SwipeRefreshLayout won't
+                // take it, so the train must not peek in either.
+                val dy = ev.y - pullDownY
+                val dragged = if (abs(dy) > abs(ev.x - pullDownX)) dy * PULL_DRAG_RATE else 0f
+                emitPull((dragged / pullTriggerPx).coerceIn(0f, 1.5f), force = false)
+            }
+        }
+        val handled = super.dispatchTouchEvent(ev)
+        if (ev.actionMasked == MotionEvent.ACTION_UP || ev.actionMasked == MotionEvent.ACTION_CANCEL) {
+            // After super: a release past the trigger has started a reload by now, and that one is not a zero.
+            if (pullTracking && !refresh.isRefreshing && !reloadActive) emitPull(0f, force = true)
+            pullTracking = false
+        }
+        return handled
+    }
+
+    private fun emitPull(progress: Float, force: Boolean) {
+        val now = SystemClock.uptimeMillis()
+        if (!force && (now - pullSentAt < PULL_EMIT_MS || abs(progress - pullSent) < PULL_EMIT_DELTA)) return
+        pullSentAt = now
+        pullSent = progress
+        if (!destroyed) onPullProgress(mapOf("progress" to progress.toDouble()))
+    }
+
+    // endregion
 
     // region Props and commands (called on the main thread)
 
@@ -246,20 +308,14 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
         if (!value) refresh.isRefreshing = false
     }
 
-    /** 24.10a: spinner colour (hex string). A bad value is ignored. */
+    /** 0.34 section 4: no-op. The stock spinner is hidden; the train is drawn in RN (ReloadStrip). Kept for old JS. */
+    @Suppress("UNUSED_PARAMETER")
     fun setRefreshColor(value: String) {
-        try {
-            refresh.setColorSchemeColors(Color.parseColor(value))
-        } catch (_: IllegalArgumentException) {
-        }
     }
 
-    /** 24.10a: spinner circle colour (hex string). A bad value is ignored. */
+    /** 0.34 section 4: no-op, see setRefreshColor. */
+    @Suppress("UNUSED_PARAMETER")
     fun setRefreshBackground(value: String) {
-        try {
-            refresh.setProgressBackgroundColorSchemeColor(Color.parseColor(value))
-        } catch (_: IllegalArgumentException) {
-        }
     }
 
     /** 24.10a: the script from utils/browser/mediaHitScript.ts, injected next to the page scan. */
@@ -384,7 +440,38 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
 
     fun reload() {
         if (destroyed) return
-        if (webView.url != null) webView.reload() else requestedUrl?.let { loadTyped(it) }
+        if (webView.url != null) {
+            beginReload()
+            webView.reload()
+        } else {
+            requestedUrl?.let {
+                beginReload()
+                loadTyped(it)
+            }
+        }
+    }
+
+    /**
+     * 0.34 section 4: a reload started (pull, menu or command). Sends `start` once; every call restarts the safety timer.
+     * The matching `end` comes from endReload(). Main thread.
+     */
+    private fun beginReload() {
+        mainHandler.removeCallbacks(reloadSafety)
+        mainHandler.postDelayed(reloadSafety, PULL_SAFETY_MS)
+        if (reloadActive) return
+        reloadActive = true
+        reloadSeenLoading = false
+        onReloadState(mapOf("state" to "start"))
+    }
+
+    /** Ends the reload started by beginReload (one `end` per `start`) and stops the spinner. Main thread. */
+    private fun endReload() {
+        mainHandler.removeCallbacks(reloadSafety)
+        if (refresh.isRefreshing) refresh.isRefreshing = false
+        if (!reloadActive) return
+        reloadActive = false
+        reloadSeenLoading = false
+        onReloadState(mapOf("state" to "end"))
     }
 
     fun stop() {
@@ -667,7 +754,7 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
         resetPageState()
         webView = createWebView()
         refresh.addView(webView, ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
-        refresh.isRefreshing = false
+        endReload()
         loadedOnce = false
         redirectInFlight = false
         history.clear()
@@ -691,12 +778,12 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
         val url = w.url ?: ""
         curUrl = url
         curTitle = w.title ?: ""
-        if (refresh.isRefreshing) {
+        // 0.34 section 4: the reload ends once the page it started has been seen loading and has finished.
+        if (reloadActive) {
             if (loading) {
-                pullLoading = true
-            } else if (pullLoading) {
-                pullLoading = false
-                refresh.isRefreshing = false
+                reloadSeenLoading = true
+            } else if (reloadSeenLoading) {
+                endReload()
             }
         }
         onPage(
@@ -1511,6 +1598,11 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
             java.util.Collections.newSetFromMap(java.util.concurrent.ConcurrentHashMap<String, Boolean>())
 
         private const val PULL_SAFETY_MS = 15_000L
+        /** SwipeRefreshLayout's trigger distance and drag rate (0.34 section 4). */
+        private const val PULL_TRIGGER_DP = 72f
+        private const val PULL_DRAG_RATE = 0.5f
+        private const val PULL_EMIT_MS = 33L
+        private const val PULL_EMIT_DELTA = 0.02f
         private const val MAX_MEDIA_HIT_CHARS = 20_000
 
         private const val MAX_CAPTURES = 3

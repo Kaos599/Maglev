@@ -23,6 +23,7 @@ import { PixelIcon } from '../components/PixelIcon';
 import { Banner, Button, Dialog, EmptyBlock, IconButton, ListRow, PressableScale, ProgressBar, Sheet, TextField, type TextFieldRef, Toggle } from '../components/ui';
 import { FoundTray } from '../components/browser/FoundTray';
 import { TabWebView, type TabHandlers } from '../components/browser/TabWebView';
+import { ReloadStrip, type ReloadStripHandle } from '../components/browser/ReloadStrip';
 import { TabSwitcher } from '../components/browser/TabSwitcher';
 import { AddressSwipe } from '../components/browser/AddressSwipe';
 import { FindBar, type FindResult } from '../components/browser/FindBar';
@@ -127,6 +128,11 @@ export default function BrowserScreen({ inTab = false }: { inTab?: boolean }) {
   const activeId = tab?.id ?? '';
   const activeIdRef = useRef(activeId);
   activeIdRef.current = activeId;
+  // 0.34 section 4: the reload train under the header. Fed only by the active tab; hidden when the tab changes.
+  const reloadRef = useRef<ReloadStripHandle>(null);
+  useEffect(() => {
+    reloadRef.current?.reset();
+  }, [activeId]);
   const data = getData(activeId);
   const page = data.page;
   const hasPage = !!tab && !isBlank(tab);
@@ -581,6 +587,15 @@ export default function BrowserScreen({ inTab = false }: { inTab?: boolean }) {
       const hit = parseMediaHit(e.json);
       if (hit && hit.kind === 'video' && hasMenu(buildMediaMenu(hit))) setMediaHit(hit);
     },
+    // 0.34 section 4: the train follows the active tab only.
+    onPullProgress: (id, e) => {
+      if (id === activeIdRef.current) reloadRef.current?.pull(e.progress);
+    },
+    onReloadState: (id, e) => {
+      if (id !== activeIdRef.current) return;
+      if (e.state === 'start') reloadRef.current?.reloadStart();
+      else reloadRef.current?.reloadEnd();
+    },
   };
   const implRef = useRef(impl);
   implRef.current = impl;
@@ -868,7 +883,7 @@ export default function BrowserScreen({ inTab = false }: { inTab?: boolean }) {
                     privateMode={prefs.privateBrowsing}
                     popupPolicy={prefs.popupPolicy}
                     popupAllowHosts={prefs.popupAllowHosts}
-                    pullToRefresh
+                    pullToRefresh={prefs.pullToRefresh}
                     refreshColor={colors.accent}
                     refreshBackground={colors.surface}
                     darkPages={prefs.darkPages && dark}
@@ -878,6 +893,7 @@ export default function BrowserScreen({ inTab = false }: { inTab?: boolean }) {
                 );
               })
           : null}
+        <ReloadStrip ref={reloadRef} />
         {!hasPage ? (
           <StartPage
             privateMode={prefs.privateBrowsing}

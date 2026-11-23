@@ -14,6 +14,8 @@ import {
   type BrowserPageEvent,
   type BrowserPopupBlockedEvent,
   type BrowserPopupRequestEvent,
+  type BrowserPullProgressEvent,
+  type BrowserReloadStateEvent,
   type BrowserRefusedEvent,
   type MaglevBrowserRef,
 } from 'maglev-engine';
@@ -42,6 +44,10 @@ export type TabHandlers = {
   onLongPress(id: string, e: BrowserLongPressEvent): void;
   onFindResult(id: string, e: BrowserFindResultEvent): void;
   onMediaHit(id: string, e: BrowserMediaHitEvent): void;
+  /** 0.34 section 4: drag progress of a pull to reload (0 to 1.5). */
+  onPullProgress(id: string, e: BrowserPullProgressEvent): void;
+  /** 0.34 section 4: a reload started or ended. */
+  onReloadState(id: string, e: BrowserReloadStateEvent): void;
 };
 
 export interface TabWebViewProps {
@@ -113,6 +119,8 @@ export function TabWebView({ id, url, active, adBlock, allowAdsHosts, desktopMod
       onLongPress={(e) => h.onLongPress(id, e)}
       onFindResult={(e) => h.onFindResult(id, e)}
       onMediaHit={(e) => h.onMediaHit(id, e)}
+      onPullProgress={(e) => h.onPullProgress(id, e)}
+      onReloadState={(e) => h.onReloadState(id, e)}
     />
     </View>
   );
