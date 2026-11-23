@@ -169,6 +169,8 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
     // What the user typed in the address bar (the url prop and loadUrl). Only those may open blocked or LAN pages.
     private var typedUrl: String? = null
     private var typedHost: String? = null
+    // Where the url prop came from: "link" (a maglev:// deep link or the card) loads through the link-tap refusals and is never typed.
+    private var urlFromLink = false
 
     // Fullscreen video.
     private var customView: View? = null
@@ -270,6 +272,11 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
         if (url == requestedUrl) return
         requestedUrl = url
         pendingUrl = url
+    }
+
+    /** NATIVE_CONTRACT 24.7: "link" for a deep link or card URL (not typed), anything else for the address bar. Applied with the url. */
+    fun setUrlSource(source: String) {
+        urlFromLink = source == "link"
     }
 
     fun setAdBlock(value: Boolean) {
@@ -418,7 +425,12 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
     fun applyProps() {
         val u = pendingUrl ?: return
         pendingUrl = null
-        loadTyped(u)
+        loadRequested(u)
+    }
+
+    /** Loads the url prop the way its source says: a link through the link-tap refusals, a typed address as typed. */
+    private fun loadRequested(url: String) {
+        if (urlFromLink) loadFromLink(url) else loadTyped(url)
     }
 
     fun goBack() {
@@ -446,7 +458,7 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
         } else {
             requestedUrl?.let {
                 beginReload()
-                loadTyped(it)
+                loadRequested(it)
             }
         }
     }
@@ -494,7 +506,30 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
         }
         typedUrl = url
         typedHost = uri.host?.lowercase()
-        // A new typed load: its own script redirects are part of the page until it has finished once.
+        startLoad(url)
+    }
+
+    /**
+     * NATIVE_CONTRACT 24.7: a deep link or card URL (maglev://browser?url=). It is not typed, so it gets the same
+     * main-frame refusals as a link tap (mainFrameRefusal: scheme, ad-blocked host, LAN host) and the refusal
+     * notice (onRefused). Any earlier typed allowance of this view is dropped first.
+     */
+    fun loadFromLink(raw: String) {
+        if (destroyed) return
+        val url = raw.trim()
+        typedUrl = null
+        typedHost = null
+        val reason = mainFrameRefusal(Uri.parse(url))
+        if (reason != null) {
+            refuse(url, reason)
+            return
+        }
+        startLoad(url)
+    }
+
+    /** The load itself, shared by typed and link loads. The caller has already checked the URL. */
+    private fun startLoad(url: String) {
+        // A new load: its own script redirects are part of the page until it has finished once.
         loadedOnce = false
         redirectInFlight = false
         pendingUserNav = true

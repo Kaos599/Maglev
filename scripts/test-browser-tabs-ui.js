@@ -60,7 +60,7 @@ const raw = [...walk('app'), ...walk('components')].filter((f) => /\.tsx?$/.test
 check('no raw push/replace/dismissTo to /browser outside the helper', raw.length === 0, raw.join());
 check('the helper goes to the Browse tab when shown, else the stack route', /visibleTabs\(getTabPrefs\(\)/.test(opener) && /includes\('browse'\)/.test(opener) && /pathname: '\/browse'/.test(opener) && /pathname: '\/browser'/.test(opener) && /params: clean/.test(opener));
 
-check('a route url opens a new active tab, prefill only fills the bar', /params\.url/.test(scr) && /openTabChecked\(\{ url: t\.url \}\)/.test(scr) && /setPrefillText\(params\.prefill\)/.test(scr));
+check('a route url opens a new active tab, and a deep link is a link (not typed)', /params\.url/.test(scr) && /openTabChecked\(\{ url: t\.url \}\)/.test(scr) && /params\.source === 'link'/.test(scr) && /urlSource=\{linkTabs\.current\.has\(t\.id\) \? 'link' : 'typed'\}/.test(scr) && !/prefill/i.test(scr));
 check('the cap shows the notice and opens nothing', /r\.result === 'cap'/.test(scr) && /browserTabs\.capNotice/.test(scr));
 check('a window request opens a tab with this tab as opener', /onNewWindow: \(id, e\) => void openTabChecked\(\{ url: e\.url, opener: id \}\)/.test(scr));
 

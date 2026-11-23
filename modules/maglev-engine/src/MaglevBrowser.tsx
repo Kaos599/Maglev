@@ -92,6 +92,11 @@ export type OpenAppResult = { opened: boolean; fallbackUrl: string | null };
 
 export type MaglevBrowserProps = {
   url?: string;
+  /**
+   * Where `url` came from (NATIVE_CONTRACT 24.7). 'typed': the address bar, loaded as typed (blocked and LAN hosts allowed).
+   * 'link': a deep link or card, loaded through the link-tap refusals (LAN and blocked hosts refused, onRefused).
+   */
+  urlSource?: 'typed' | 'link';
   /** False for a tab in the background: the view pauses its page and media. Default true. */
   active?: boolean;
   popupPolicy?: 'ask' | 'block' | 'allow';
@@ -163,6 +168,7 @@ export type MaglevBrowserRef = {
 type NativeEvent<T> = { nativeEvent: T };
 type NativeProps = {
   url?: string;
+  urlSource?: 'typed' | 'link';
   active?: boolean;
   popupPolicy?: 'ask' | 'block' | 'allow';
   popupAllowHosts?: string[];

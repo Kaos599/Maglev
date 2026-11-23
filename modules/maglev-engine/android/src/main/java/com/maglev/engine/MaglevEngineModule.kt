@@ -596,6 +596,7 @@ class MaglevEngineModule : Module() {
                 "onPullProgress", "onReloadState")
 
             Prop("url") { view: MaglevBrowserView, url: String -> view.setUrl(url) }
+            Prop("urlSource") { view: MaglevBrowserView, source: String -> view.setUrlSource(source) }
             Prop("adBlock") { view: MaglevBrowserView, enabled: Boolean -> view.setAdBlock(enabled) }
             Prop("allowAdsHosts") { view: MaglevBrowserView, hosts: List<String> -> view.setAllowAdsHosts(hosts) }
             Prop("desktopMode") { view: MaglevBrowserView, enabled: Boolean -> view.setDesktopMode(enabled) }

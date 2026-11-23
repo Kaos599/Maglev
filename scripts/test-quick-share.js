@@ -168,7 +168,7 @@ async function main() {
   check('add path reuses addTorrent and addDownload', /EngineHost\.addTorrent\(/.test(add) && /EngineHost\.addDownload\(/.test(add));
   check('add path starts the engine and the service', /EngineHost\.ensureStarted\(\)/.test(add) && /BackgroundStart\.start\(/.test(add));
   check('EngineHost exposes ensureStarted', /fun ensureStarted\(/.test(read(ENGINE_KT + 'EngineHost.kt')));
-  check('routes: browser prefill and free space', /maglev:\/\/browser\?url=/.test(act) && /maglev:\/\/free-space/.test(act));
+  check('routes: browser url and free space', /maglev:\/\/browser\?url=/.test(act) && /maglev:\/\/free-space/.test(act));
   check('Toast text', /Added to Maglev/.test(text));
   check('no Compose in the share code', !/androidx\.compose/.test(act + read(ENGINE_KT + 'share/QuickShareCard.kt')));
   // Issue #162: Soul Browser's hand-off reached the card with "No link in what you shared" while the same link pasted worked.

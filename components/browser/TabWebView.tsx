@@ -54,6 +54,8 @@ export interface TabWebViewProps {
   id: string;
   /** The address the view loads when it mounts. It never follows the page. */
   url: string;
+  /** 'link' when the address came from a deep link or card (never typed); 'typed' otherwise. Read at mount. */
+  urlSource: 'typed' | 'link';
   active: boolean;
   adBlock: boolean;
   allowAdsHosts: string[];
@@ -80,7 +82,7 @@ export interface TabWebViewProps {
  * One native browser view for one tab. Stacked with the others by absolute fill; an inactive one is invisible and
  * ignores touches but stays mounted, so switching back is instant.
  */
-export function TabWebView({ id, url, active, adBlock, allowAdsHosts, desktopMode, textZoom, privateMode, popupPolicy, popupAllowHosts, pullToRefresh, refreshColor, refreshBackground, darkPages, handlers: h, register }: TabWebViewProps) {
+export function TabWebView({ id, url, urlSource, active,adBlock, allowAdsHosts, desktopMode, textZoom, privateMode, popupPolicy, popupAllowHosts, pullToRefresh, refreshColor, refreshBackground, darkPages, handlers: h, register }: TabWebViewProps) {
   const ref = useRef<MaglevBrowserRef>(null);
   useEffect(() => {
     register(id, ref);
@@ -91,6 +93,7 @@ export function TabWebView({ id, url, active, adBlock, allowAdsHosts, desktopMod
     <MaglevBrowser
       ref={ref}
       url={url}
+      urlSource={urlSource}
       active={active}
       adBlock={adBlock}
       allowAdsHosts={allowAdsHosts}

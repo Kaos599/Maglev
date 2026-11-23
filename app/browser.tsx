@@ -89,7 +89,7 @@ export default function BrowserScreen({ inTab = false }: { inTab?: boolean }) {
   const { colors, dark } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const router = useRouter();
-  const params = useLocalSearchParams<{ url?: string; prefill?: string; open?: string; newTab?: string }>();
+  const params = useLocalSearchParams<{ url?: string; open?: string; newTab?: string; source?: string }>();
   const { showNotice, downloads, probeUrl, startDownload } = useMaglevEngine();
   const [prefs] = useBrowserPrefs();
   const tabs = useTabs();
@@ -141,7 +141,8 @@ export default function BrowserScreen({ inTab = false }: { inTab?: boolean }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState('');
   const [selection, setSelection] = useState<{ start: number; end: number } | undefined>(undefined);
-  const [prefillText, setPrefillText] = useState('');
+  // Tabs whose current load came from a deep link or the card (not typed). Read when the tab's view mounts (TabWebView urlSource).
+  const linkTabs = useRef(new Set<string>());
   const [desktop, setDesktop] = useState(prefs.desktopMode);
   const blocked = data.blocked;
   const foundAll = data.found;
@@ -242,8 +243,10 @@ export default function BrowserScreen({ inTab = false }: { inTab?: boolean }) {
   );
 
   // Loads an address in the active tab. A blank tab has no view yet, so it gets the address and mounts one.
+  // `fromLink` (a deep link or the card) only applies to a blank tab, which mounts its view with that source;
+  // an address in a tab that already has a view is always typed (view.loadUrl).
   const open = useCallback(
-    (url: string) => {
+    (url: string, fromLink = false) => {
       const id = activeIdRef.current;
       const cur = tabs.ref.current ? getTab(tabs.ref.current, id) : undefined;
       if (!cur) return;
@@ -251,9 +254,14 @@ export default function BrowserScreen({ inTab = false }: { inTab?: boolean }) {
         d.crashed = false;
         d.refused = null;
       });
-      setPrefillText('');
-      if (isBlank(cur)) tabs.update(id, { url });
-      else view(id)?.loadUrl(url);
+      if (isBlank(cur)) {
+        if (fromLink) linkTabs.current.add(id);
+        else linkTabs.current.delete(id);
+        tabs.update(id, { url });
+      } else {
+        linkTabs.current.delete(id);
+        view(id)?.loadUrl(url);
+      }
     },
     [tabs, patch, view],
   );
@@ -285,26 +293,29 @@ export default function BrowserScreen({ inTab = false }: { inTab?: boolean }) {
     [prefs.searchEngine, open, toAddTorrent],
   );
 
-  // `url` comes from this app (Add download, Open in browser) and opens in a new active tab (the active one when it is blank).
-  // `prefill` comes from maglev://browser and only fills the bar of a blank tab.
+  // `url` opens in a new active tab (the active one when it is blank). It comes from a deep link or the card
+  // (`source=link`, never typed: the view applies the link-tap refusals) or from this app (Add download, bookmarks,
+  // history, which keep the typed rules). Each deep link and each in-app open carries a fresh `open` nonce, so the
+  // same address handed over twice loads twice.
   const handled = useRef<string | null>(null);
   useEffect(() => {
     if (!ready) return;
-    const key = `${params.url ?? ''}|${params.prefill ?? ''}|${params.open ?? ''}`;
-    if (key === '||' || key === handled.current) return;
+    if (typeof params.url !== 'string' || !params.url.trim()) return;
+    const key = `${params.url}|${params.open ?? ''}`;
+    if (key === handled.current) return;
     handled.current = key;
+    const t = toBrowserUrl(params.url, prefs.searchEngine);
+    if (t.kind === 'magnet') return toAddTorrent(t.uri);
+    if (t.kind === 'empty') return;
+    const fromLink = params.source === 'link';
     const cur = tabs.ref.current ? activeTab(tabs.ref.current) : null;
-    if (typeof params.url === 'string' && params.url.trim()) {
-      const t = toBrowserUrl(params.url, prefs.searchEngine);
-      if (t.kind === 'magnet') return toAddTorrent(t.uri);
-      if (t.kind === 'empty') return;
-      if (cur && isBlank(cur) && params.newTab !== '1') open(t.url);
-      else openTabChecked({ url: t.url });
-    } else if (typeof params.prefill === 'string') {
-      if (cur && !isBlank(cur)) openTabChecked({});
-      setPrefillText(params.prefill);
+    if (cur && isBlank(cur) && params.newTab !== '1') {
+      open(t.url, fromLink);
+    } else {
+      const r = openTabChecked({ url: t.url });
+      if (fromLink && r.id) linkTabs.current.add(r.id);
     }
-  }, [ready, params.url, params.prefill, params.open, params.newTab, prefs.searchEngine, open, openTabChecked, toAddTorrent, tabs.ref]);
+  }, [ready, params.url, params.open, params.source, params.newTab, prefs.searchEngine, open, openTabChecked, toAddTorrent, tabs.ref]);
 
   // ---- tabs ----
   const closeWithUndo = useCallback(
@@ -330,7 +341,6 @@ export default function BrowserScreen({ inTab = false }: { inTab?: boolean }) {
   const selectTab = useCallback(
     (id: string) => {
       setSwitcherOpen(false);
-      setPrefillText('');
       tabs.select(id);
     },
     [tabs],
@@ -713,7 +723,7 @@ export default function BrowserScreen({ inTab = false }: { inTab?: boolean }) {
   };
 
   const pageHost = page ? hostOf(page.url) : tab?.url ? hostOf(tab.url) : '';
-  const idleText = page?.url ? pageHost : tab?.url ? pageHost : prefillText;
+  const idleText = page?.url || tab?.url ? pageHost : '';
   const allowedHere = isAllowedHost(prefs.allowAdsHosts, pageHost);
   const popupsAllowedHere = hostAllowed(pageHost, prefs.popupAllowHosts);
   const popupsBlockedHere = popupsApi.blockedOnPage(popups, activeId);
@@ -804,7 +814,7 @@ export default function BrowserScreen({ inTab = false }: { inTab?: boolean }) {
               setDraft(t);
             }}
             onFocus={() => {
-              const full = page?.url || tab?.url || prefillText;
+              const full = page?.url || tab?.url || '';
               setDraft(full);
               setEditing(true);
               setSelection({ start: 0, end: full.length });
@@ -875,6 +885,7 @@ export default function BrowserScreen({ inTab = false }: { inTab?: boolean }) {
                     key={t.id}
                     id={t.id}
                     url={initialUrls.get(t.id) ?? t.url}
+                    urlSource={linkTabs.current.has(t.id) ? 'link' : 'typed'}
                     active={focused && appForeground && t.id === activeId}
                     adBlock={prefs.adBlock}
                     allowAdsHosts={prefs.allowAdsHosts}
@@ -907,7 +918,7 @@ export default function BrowserScreen({ inTab = false }: { inTab?: boolean }) {
         {editing ? (
           <HistorySuggestions
             text={draft}
-            skip={page?.url || tab?.url || prefillText}
+            skip={page?.url || tab?.url || ''}
             onPick={(u) => {
               haptic('tap');
               inputRef.current?.blur();

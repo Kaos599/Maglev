@@ -88,13 +88,15 @@ export function appPath(path: string): string {
 
 /**
  * `maglev://browser?url=` arrives as a router path. It opens that http(s) page in a new tab, like any browser
- * opening a link (owner decision 2026-11-21: "Find videos on this page" must load the page, not a blank tab with
- * the address filled in). Only `url` is read; every other parameter is dropped.
+ * opening a link (NATIVE_CONTRACT 24.7 and 24.10; owner decision 2026-11-21: "Find videos on this page" must load
+ * the page, not a blank tab with the address filled in). Only `url` is read; every other parameter is dropped.
  * Returns null when the path is not the browser route.
  */
-export function browserIntentRoute(path: string): string | null {
+export function browserIntentRoute(path: string, now: number = Date.now()): string | null {
   const s = appPath((path ?? '').trim());
-  const m = /^\/?browser(?:\/)?(?:\?([^#]*))?(?:#.*)?$/i.exec(s);
+  // Both routes that render the browser screen: the /browser stack screen and the Browser tab (/browse, also
+  // reachable as /(tabs)/browse). An outside link to either must get the link rules, or it would load as typed.
+  const m = /^\/?(?:\(tabs\)\/)?browser?(?:\/)?(?:\?([^#]*))?(?:#.*)?$/i.exec(s);
   if (!m) return null;
   let url = '';
   for (const part of (m[1] ?? '').split('&')) {
@@ -115,5 +117,8 @@ export function browserIntentRoute(path: string): string | null {
     break;
   }
   url = url.trim();
-  return /^https?:\/\/[^\s/?#]+\S*$/i.test(url) ? `/browser?url=${encodeURIComponent(url)}` : '/browser';
+  if (!/^https?:\/\/[^\s/?#]+\S*$/i.test(url)) return '/browser';
+  // source=link: the page did not come from the address bar, so the view applies the link-tap refusals.
+  // open=<ms>: a fresh nonce per deep link, so the same page shared twice loads twice (app/browser.tsx).
+  return `/browser?url=${encodeURIComponent(url)}&source=link&open=${Math.floor(now)}`;
 }

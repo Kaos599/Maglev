@@ -29,7 +29,7 @@ Conventions since 0.28:
 - `subflows/clear-leftovers.yaml` runs after onboarding in every flow that uses Transfers: flows share one emulator session, and a transfer left by a failed flow makes the next magnet say "Already in Maglev" (no Download button).
 - `subflows/wait-for-app.yaml` relaunches the app (no state clearing) when the launcher is showing, because CI once saw a native Hermes crash at cold start.
 - Wi-Fi only is ON after onboarding (pre-selected), unlike the store default.
-- `maglev://browser?url=` only prefills the Browser address bar: flows tap "Address" and press Enter to load it.
+- `maglev://browser?url=` opens the page in a new tab (0.34), loaded as a link: LAN and blocked hosts are refused. Older flows that tap "Address" and press Enter still work (it reloads the same page).
 - Native Android dialogs (the watch delete alert) are matched by their ids (`android:id/button1`); a sheet or dialog hides the screen behind it, so its button is index 0.
 
 Each flow removes its transfer with "Remove and delete files". Transfer cards are matched by `id: "transfer-card"` (never by a "percent" regex: the status bar battery also says percent). `subflows/` holds shared steps and is not run by `maestro test .maestro/`.

@@ -32,7 +32,7 @@ check('url open carries an open nonce', typeof p1.open === 'string' && p1.open.l
 check('the same url twice gets different nonces', p1.open !== p2.open);
 check('url is kept', p1.url === 'https://a.com');
 openBrowser(router, { prefill: 'x' });
-check('prefill open carries a nonce', !!last().params.open);
+check('prefill is no longer a route param (plain route)', last() === '/browse');
 openBrowser(router);
 check('no params: plain path, no nonce', last() === '/browse');
 openBrowser(router, { url: 'https://a.com', newTab: true });
@@ -46,7 +46,7 @@ check('stack route also gets the nonce', calls[calls.length - 1][0] === 'dismiss
 const scr = read('app/browser.tsx');
 check('browser.tsx reads open and newTab params', /open\?: string/.test(scr) && /newTab\?: string/.test(scr));
 check('dedupe key includes the nonce', /params\.open/.test(scr.slice(scr.indexOf('const handled = useRef'), scr.indexOf('// ---- tabs ----'))));
-check('newTab always opens a tab', /isBlank\(cur\) && params\.newTab !== '1'\) open\(t\.url\);\s*else openTabChecked\(\{ url: t\.url \}\)/.test(scr));
+check('newTab always opens a tab', /isBlank\(cur\) && params\.newTab !== '1'\) \{\s*open\(t\.url, fromLink\);\s*\} else \{\s*const r = openTabChecked\(\{ url: t\.url \}\);/.test(scr));
 
 const bm = read('app/browser-bookmarks.tsx');
 check('Open in new tab row passes newTab', /newTab: true/.test(bm));
