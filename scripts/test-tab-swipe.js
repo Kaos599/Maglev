@@ -64,7 +64,7 @@ check('junk falls back to on', prefs.normalizeBrowserPrefs({ swipeTabs: 'no' }).
 console.log('wiring');
 const root = path.join(__dirname, '..');
 const read = (f) => fs.readFileSync(path.join(root, f), 'utf8');
-check('settings screen has the switch', read('app/settings/browser.tsx').includes('swipeTabs'));
+check('settings screen has the switch', read('app/settings/browser-gestures.tsx').includes('swipeTabs'));
 check('browser screen uses the swipe bar', read('app/browser.tsx').includes('AddressSwipe') && read('app/browser.tsx').includes('swipeTabs'));
 check('swipe component turns off while editing', /enabled/.test(read('components/browser/AddressSwipe.tsx')));
 

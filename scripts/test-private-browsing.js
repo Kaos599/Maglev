@@ -168,7 +168,7 @@ const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
   check('indicator shown while private', /prefs\.privateBrowsing \? \(\s*<PixelIcon name="shield"/.test(br));
 
   // ---- settings ----
-  check('settings row is a toggle on the browser page', /historyCopy\.settings\.private\}[\s\S]{0,200}prefs\.privateBrowsing/.test(read('app/settings/browser.tsx')));
+  check('settings row is a toggle on the privacy page', /historyCopy\.settings\.private\}[\s\S]{0,200}prefs\.privateBrowsing/.test(read('app/settings/browser-privacy.tsx')));
   const idx = read('utils/settingsIndex.ts');
   check('settings index entry exists with keywords', /"browser-private-browsing",\s*"Private browsing"/.test(idx) && /"incognito"/.test(idx) && /"don't save"/.test(idx));
   const copy = read('constants/copy.ts');

@@ -35,7 +35,7 @@ const tab = read('components/browser/TabWebView.tsx');
 const bar = read('components/browser/FindBar.tsx');
 const sheet = read('components/browser/TextSizeSheet.tsx');
 const scr = read('app/browser.tsx');
-const set = read('app/settings/browser.tsx');
+const set = read('app/settings/browser-general.tsx');
 const copy = read('constants/copy.ts');
 const pkg = read('package.json');
 

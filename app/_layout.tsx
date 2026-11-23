@@ -171,6 +171,15 @@ function AppNavigation() {
           <Stack.Screen name="settings/assistant" />
           <Stack.Screen name="settings/backup" />
           <Stack.Screen name="settings/browser" />
+          <Stack.Screen name="settings/browser-ad-sites" />
+          <Stack.Screen name="settings/browser-blocking" />
+          <Stack.Screen name="settings/browser-blocklists" />
+          <Stack.Screen name="settings/browser-general" />
+          <Stack.Screen name="settings/browser-gestures" />
+          <Stack.Screen name="settings/browser-media" />
+          <Stack.Screen name="settings/browser-popup-sites" />
+          <Stack.Screen name="settings/browser-privacy" />
+          <Stack.Screen name="settings/browser-start" />
           <Stack.Screen name="settings/downloads" />
           <Stack.Screen name="settings/feeds" />
           <Stack.Screen name="settings/interface" />

@@ -43,7 +43,19 @@ export interface BrowserPrefs {
   privateBrowsing: boolean;
   /** Darken pages that only have a light look while Maglev is dark (section 24.10a). UI only; the view gets it as a prop. */
   darkPages: boolean;
+  /** Start page: the frequent sites section (read from history). */
+  showFrequentSites: boolean;
+  /** Start page: the bookmark tiles. */
+  showBookmarksOnStart: boolean;
+  /** Which quality a video stream picks first: the highest, the highest at or below 1080p or 720p, or none (ask). */
+  streamQuality: StreamQuality;
+  /** Pull down at the top of a page to reload it. Read by the browser view (section 24.10a). */
+  pullToRefresh: boolean;
 }
+
+/** Quality a stream starts on. 'ask' preselects nothing, so the user picks in the stream sheet. */
+export type StreamQuality = 'best' | '1080' | '720' | 'ask';
+export const STREAM_QUALITIES: readonly StreamQuality[] = ['best', '1080', '720', 'ask'];
 
 export const TEXT_ZOOM_MIN = 50;
 export const TEXT_ZOOM_MAX = 200;
@@ -83,6 +95,10 @@ export function defaultBrowserPrefs(): BrowserPrefs {
     swipeTabs: true,
     privateBrowsing: false,
     darkPages: true,
+    showFrequentSites: true,
+    showBookmarksOnStart: true,
+    streamQuality: 'best',
+    pullToRefresh: true,
   };
 }
 
@@ -111,6 +127,10 @@ export function normalizeBrowserPrefs(raw: unknown): BrowserPrefs {
     swipeTabs: o.swipeTabs !== false,
     privateBrowsing: o.privateBrowsing === true,
     darkPages: o.darkPages !== false,
+    showFrequentSites: o.showFrequentSites !== false,
+    showBookmarksOnStart: o.showBookmarksOnStart !== false,
+    streamQuality: (STREAM_QUALITIES as readonly unknown[]).includes(o.streamQuality) ? (o.streamQuality as StreamQuality) : d.streamQuality,
+    pullToRefresh: o.pullToRefresh !== false,
   };
 }
 

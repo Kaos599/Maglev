@@ -20,7 +20,8 @@ const opener = read('utils/browser/openBrowser.ts');
 const sw = read('components/browser/TabSwitcher.tsx');
 const menu = read('components/browser/LinkMenu.tsx');
 const card = read('components/browser/PopupCard.tsx');
-const set = read('app/settings/browser.tsx');
+const set = read('app/settings/browser-blocking.tsx');
+const popupSites = read('app/settings/browser-popup-sites.tsx');
 const copy = read('constants/copy.ts');
 const pkg = read('package.json');
 
@@ -115,7 +116,7 @@ check('tapping toggles the site in popupAllowHosts', /popupAllowHosts: toggleAll
 console.log('settings');
 check('section "Pop-ups and redirects"', /browserTabs\.settings\.section/.test(set));
 check('radio rows Ask, Block without asking, Allow write popupPolicy', /browserTabs\.settings\.ask/.test(set) && /browserTabs\.settings\.block/.test(set) && /browserTabs\.settings\.allow/.test(set) && /setPrefs\(\{ popupPolicy: c\.value \}\)/.test(set) && /selected=\{prefs\.popupPolicy === c\.value\}/.test(set));
-check('"Sites allowed to open pop-ups" with Remove', /browserTabs\.settings\.allowedSites/.test(set) && /browserTabs\.settings\.remove/.test(set) && /popupAllowHosts: prefs\.popupAllowHosts\.filter/.test(set));
+check('"Sites allowed to open pop-ups" with Remove', /browserTabs\.settings\.allowedSites/.test(set) && /browserTabs\.settings\.remove/.test(popupSites) && /popupAllowHosts: prefs\.popupAllowHosts\.filter/.test(popupSites));
 
 console.log('copy and style');
 check('copy keys exist', ['tabButtonMany', 'capNotice', 'openedInNewTab', 'switchTo', 'closedTab', 'closedAll', 'popupsRow', 'blockedOnPage'].every((k) => copy.includes(k)));

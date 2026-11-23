@@ -19,7 +19,7 @@ const kt = read('modules/maglev-engine/android/src/main/java/com/maglev/engine/b
 const mod = read('modules/maglev-engine/android/src/main/java/com/maglev/engine/MaglevEngineModule.kt');
 const gradle = read('modules/maglev-engine/android/build.gradle');
 const prefs = read('utils/prefs/browser.ts');
-const settings = read('app/settings/browser.tsx');
+const settings = read('app/settings/browser-general.tsx');
 const index = read('utils/settingsIndex.ts');
 const copy = read('constants/copy.ts');
 
@@ -56,7 +56,7 @@ check('gradle: androidx.webkit dependency', /androidx\.webkit:webkit:/.test(grad
 check('pref: darkPages defaults on and only false turns it off', /darkPages: boolean;/.test(prefs) && /darkPages: true,/.test(prefs) && /darkPages: o\.darkPages !== false,/.test(prefs));
 check('screen: darkPages is the pref and the app being dark', /darkPages=\{prefs\.darkPages && dark\}/.test(scr) && /const \{ colors, dark \} = useTheme\(\)/.test(scr));
 check('settings: a Dark pages row with a caption', /browserTabs\.settings\.darkPages\}\s+subtitle=\{browserTabs\.settings\.darkPagesSubtitle\}/.test(settings) && /darkPages: 'Dark pages'/.test(copy) && /Darken pages that only have a light look, when Maglev is dark\./.test(copy));
-check('settings index: Dark pages with keywords', /"browser-dark-pages",\s*"Dark pages",\s*"browser",\s*"Browser",\s*\[[^\]]*"dark"[^\]]*"night"[^\]]*"pages"[^\]]*"websites"[^\]]*"theme"/.test(index));
+check('settings index: Dark pages with keywords', /"browser-dark-pages",\s*"Dark pages",\s*"browser-general",\s*"Browser · General",\s*\[[^\]]*"dark"[^\]]*"night"[^\]]*"pages"[^\]]*"websites"[^\]]*"theme"/.test(index));
 check('backup restores the pref through normalizeBrowserPrefs', /normalizeBrowserPrefs\(value\)/.test(read('utils/backup/io.ts')));
 
 // ---- clear this site's data ----
