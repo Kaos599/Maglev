@@ -4,7 +4,7 @@ import { DownloadParts, PART_CHOICES, useLinkDownloadPrefs } from '../utils/pref
 import { StyleSheet, Text, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import * as Clipboard from 'expo-clipboard';
-import { maglevEngine, infoHashToMagnet, isDownloadLink, isShareOpen, isTorrentSource, normalizeIncoming, type UrlProbe } from 'maglev-engine';
+import { maglevEngine, infoHashToMagnet, isDownloadLink, isShareOpen, isTorrentSource, normalizeIncoming, sanitizeFileName, type UrlProbe } from 'maglev-engine';
 import { useTheme } from '../context/ThemeContext';
 import { useMaglevEngine } from '../context/EngineContext';
 import { ThemeColors, radius, spacing, touch, type } from '../constants/theme';
@@ -13,7 +13,14 @@ import { haptic } from '../constants/haptics';
 import { StreamSheet } from '../components/browser/StreamSheet';
 import { streamKindOfLink } from '../components/browser/streamChoice';
 import type { FoundItem } from 'maglev-engine';
-import { Banner, Button, EmptyBlock, Screen, TextField } from '../components/ui';
+import { Banner, Button, EmptyBlock, RadioCard, Screen, TextField } from '../components/ui';
+import {
+  defaultYouTubeQuality,
+  formatYouTubeDuration,
+  isYouTubeUrl,
+  probeYouTube,
+  type YouTubeProbeResult,
+} from '../utils/youtube';
 import { useDownloadAdmission } from '../utils/useDownloadAdmission';
 import { actionRoute, probeErrorView } from '../utils/downloadCopy';
 import { banners, empty, mobileDataLine, notices } from '../constants/copy';
@@ -28,7 +35,7 @@ import { buildAsk } from '../utils/addedTray';
 import { joinTrayIfShowing } from '../components/search/AddedTray';
 
 /** Add a download from a web link: probe the link, show what it is, then start. */
-type Phase = 'input' | 'probing' | 'ready' | 'adding' | 'error';
+type Phase = 'input' | 'probing' | 'ready' | 'ytReady' | 'adding' | 'ytAdding' | 'error';
 
 /** Splits "movie.final.mp4" into "movie.final" and ".mp4". A leading dot or a long tail is not an extension. */
 function splitName(name: string): { base: string; ext: string } {
@@ -60,12 +67,17 @@ export default function AddDownloadScreen() {
   const [folderLabel, setFolderLabel] = useState<string | null>(null);
   const [folderPath, setFolderPath] = useState<string | null>(null);
   const [streamItem, setStreamItem] = useState<FoundItem | null>(null);
+  const [ytProbe, setYtProbe] = useState<YouTubeProbeResult | null>(null);
+  const [ytQualityId, setYtQualityId] = useState<string | null>(null);
+  const [ytPartsOverride, setYtPartsOverride] = useState<DownloadParts | null>(null);
   const [baseName, setBaseName] = useState('');
   // Parts default to the Settings > Downloads pref; the chips below override it for this download only.
   const [linkPrefs] = useLinkDownloadPrefs();
   const [partsOverride, setPartsOverride] = useState<DownloadParts | null>(null);
   const parts: DownloadParts = partsOverride ?? linkPrefs.downloadParts;
+  const ytParts: DownloadParts = ytPartsOverride ?? 8;
   const token = useRef(0);
+  const abortRef = useRef<AbortController | null>(null);
   const urlRef = useRef('');
   // NATIVE_CONTRACT 44.5 and 44.12: a video link gets the Subtitles row.
   const fullName = probe ? baseName.trim() + splitName(probe.name).ext : '';
@@ -97,11 +109,31 @@ export default function AddDownloadScreen() {
         return;
       }
       const mine = ++token.current;
+      abortRef.current?.abort();
+      const ac = new AbortController();
+      abortRef.current = ac;
       urlRef.current = input;
       allowLanRef.current = allowLan;
       setMessage(null);
       setAddError(null);
+      setYtProbe(null);
+      setYtQualityId(null);
       setPhase('probing');
+      if (isYouTubeUrl(input)) {
+        const yt = await probeYouTube(input, probeStream, ac.signal);
+        if (mine !== token.current) return;
+        if (yt.ok) {
+          setYtProbe(yt);
+          setYtQualityId(defaultYouTubeQuality(yt.qualities)?.id ?? null);
+          setBaseName(sanitizeFileName(yt.title));
+          setPhase('ytReady');
+          return;
+        }
+        setNotAFile(false);
+        setErrorView({ body: yt.message, primary: 'retry' });
+        setPhase('error');
+        return;
+      }
       // An .m3u8 or .mpd link is a stream: offer the same quality sheet the browser uses.
       // When the probe says it is not a stream, carry on as a plain file.
       const streamKind = streamKindOfLink(input);
@@ -160,14 +192,20 @@ export default function AddDownloadScreen() {
     setText(clean);
   }, [params.url, params.source, params.from, submit, router]);
 
+  const ytQuality = ytProbe?.qualities.find((q) => q.id === ytQualityId) ?? null;
+
   // Free space refreshes when the preview opens.
-  const { doesntFit, noSpace } = useDownloadAdmission(probe?.size ?? null, phase === 'ready');
+  const admissionSize = phase === 'ytReady' ? (ytQuality?.estBytes ?? null) : (probe?.size ?? null);
+  const { doesntFit, noSpace } = useDownloadAdmission(admissionSize, phase === 'ready' || phase === 'ytReady');
 
   const onChangeText = (next: string) => {
     token.current++;
+    abortRef.current?.abort();
     setText(next);
     setMessage(null);
     setProbe(null);
+    setYtProbe(null);
+    setYtQualityId(null);
     setPhase('input');
   };
 
@@ -253,13 +291,46 @@ export default function AddDownloadScreen() {
     setPhase('ready');
   };
 
+  const startYouTube = async () => {
+    if (!ytProbe || !ytQuality) return;
+    setPhase('ytAdding');
+    setAddError(null);
+    setAddStopped(false);
+    const cleanBase = sanitizeFileName(baseName.trim() || ytProbe.title);
+    const fileName = cleanBase.endsWith(ytQuality.ext) ? cleanBase : `${cleanBase}${ytQuality.ext}`;
+    const res = await startDownload(ytQuality.url, {
+      name: fileName,
+      ...(folderPath ? { folder: folderPath } : {}),
+      ...(ytQuality.userAgent ? { headers: { 'User-Agent': ytQuality.userAgent } } : {}),
+      ...(ytQuality.kind === 'hls' && ytQuality.streamSelection
+        ? { stream: ytQuality.streamSelection }
+        : { segments: ytParts }),
+    });
+    if (res.ok) {
+      haptic('commit');
+      router.dismissTo('/');
+      return;
+    }
+    if (res.code === 'DUPLICATE') {
+      showNotice({ message: notices.addDownload.duplicate });
+      router.dismissTo('/');
+      return;
+    }
+    haptic('fail');
+    const stopped = isEngineStopped(res);
+    const reason = stopped ? engineStoppedBody(res) : res.message;
+    setAddStopped(stopped);
+    setAddError(reason || notices.inline.startDownloadFailed);
+    setPhase('ytReady');
+  };
+
   // ---------- Probing ----------
   if (phase === 'probing') {
     return (
       <Screen title="Add a link" onBack={close}>
         <View style={styles.centered}>
           <Text style={styles.heading}>Checking the link…</Text>
-          <Button label="Cancel" variant="ghost" onPress={() => { token.current++; setPhase('input'); }} />
+          <Button label="Cancel" variant="ghost" onPress={() => { token.current++; abortRef.current?.abort(); setPhase('input'); }} />
         </View>
       </Screen>
     );
@@ -316,6 +387,79 @@ export default function AddDownloadScreen() {
               : { label: 'Back', onPress: () => setPhase('input') }
           }
         />
+      </Screen>
+    );
+  }
+
+  // ---------- YouTube Ready ----------
+  if ((phase === 'ytReady' || phase === 'ytAdding') && ytProbe && ytQuality) {
+    const adding = phase === 'ytAdding';
+    const duration = formatYouTubeDuration(ytProbe.durationSecs);
+    const infoLine = [ytProbe.author, duration].filter(Boolean).join(' · ');
+    const mobileNote = mobileDataLine(onMeteredNetwork, settings.network.wifiOnly, ytQuality.estBytes);
+    return (
+      <Screen title="Add a link" onBack={close} scroll contentStyle={styles.content}>
+        <TextField
+          value={baseName}
+          onChangeText={setBaseName}
+          editable={!adding}
+          mono
+          multiline
+          minLines={1}
+          size="lg"
+          trailing={<Text style={styles.ext}>{ytQuality.ext}</Text>}
+          error={nameError ?? undefined}
+          accessibilityLabel="File name"
+        />
+        {infoLine ? <Text style={styles.meta}>{infoLine}</Text> : null}
+        <Text style={styles.sectionLabel}>Quality</Text>
+        <View style={styles.cards} accessibilityRole="radiogroup">
+          {ytProbe.qualities.map((q) => (
+            <RadioCard
+              key={q.id}
+              title={q.label}
+              description={q.description}
+              icon={q.icon}
+              selected={q.id === ytQuality.id}
+              onPress={() => {
+                if (adding) return;
+                haptic('select');
+                setYtQualityId(q.id);
+              }}
+            />
+          ))}
+        </View>
+        <View style={styles.destRow}>
+          <View style={styles.destText}>
+            <Text style={styles.meta}>Save to</Text>
+            <Text style={styles.dest} numberOfLines={1} ellipsizeMode="middle" accessibilityLabel={`Save to ${friendlyPath(folderLabel ?? defaultStoragePath)}`}>
+              {friendlyPath(folderLabel ?? defaultStoragePath)}
+            </Text>
+          </View>
+          <Button label="Change" variant="secondary" disabled={adding} onPress={() => void handleChangeFolder()} />
+        </View>
+        {ytQuality.kind !== 'hls' ? (
+          <ChipGroup label="Parts" options={PART_OPTIONS} value={ytParts} onChange={(v) => setYtPartsOverride(v)} />
+        ) : null}
+        {mobileNote ? <Banner tone="info" title={mobileNote} /> : null}
+        {doesntFit ? <Banner tone="danger" title={banners.addDownload.notEnoughSpace.title} body={noSpace} /> : null}
+        {addError ? (
+          addStopped ? (
+            <Banner
+              tone="danger"
+              title={empty.engineStopped.title}
+              body={addError}
+              actionLabel={START_ENGINE_LABEL}
+              onAction={() => void restartEngine().then((ok) => { if (ok) void startYouTube(); })}
+            />
+          ) : (
+            <Banner tone="danger" title={addError} />
+          )
+        ) : null}
+        <View style={styles.gap}>
+          <Button label="Download" size="lg" fullWidth loading={adding} disabled={adding || doesntFit || nameInvalid} onPress={() => void startYouTube()} />
+          <Button label="Cancel" variant="ghost" size="lg" fullWidth disabled={adding} onPress={close} />
+        </View>
       </Screen>
     );
   }
@@ -384,7 +528,7 @@ export default function AddDownloadScreen() {
   return (
     <Screen title="Add a link" onBack={close} scroll contentStyle={styles.content}>
       <TextField
-        label="Link to a file"
+        label="Link to a file or YouTube"
         value={text}
         onChangeText={onChangeText}
         placeholder="https://…"
@@ -394,7 +538,7 @@ export default function AddDownloadScreen() {
         returnKeyType="go"
         onSubmitEditing={() => canSubmit && void submit(text)}
         error={message ?? undefined}
-        accessibilityLabel="Link to a file"
+        accessibilityLabel="Link to a file or YouTube"
       />
       <View style={styles.actions}>
         <Button label="Paste" icon="clipboard" variant="secondary" onPress={() => void handlePaste()} />
@@ -416,6 +560,8 @@ const makeStyles = (c: ThemeColors) =>
     heading: { ...type.bodyStrong, fontSize: type.size.xl, color: c.text, textAlign: 'center' },
     ext: { ...type.mono, fontSize: type.size.lg, lineHeight: Math.round(type.size.lg * 1.4), color: c.textMuted },
     meta: { ...type.mono, fontSize: type.size.sm, color: c.textMuted },
+    sectionLabel: { ...type.bodyStrong, fontSize: type.size.md, color: c.textMuted },
+    cards: { gap: spacing.sm },
     destRow: {
       flexDirection: 'row',
       alignItems: 'center',
