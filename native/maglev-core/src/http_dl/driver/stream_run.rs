@@ -529,11 +529,13 @@ impl Downloads {
         });
 
         let mux = resolved.mux_needed();
-        // Fast pure-Rust MP4 muxing for direct `Pair` downloads (YouTube):
-        // avoids Android MediaExtractor/MediaMuxer frame-by-frame JNI overhead (finishes in < 0.5s)
-        // and embeds all available YouTube subtitle languages as standard `tx3g` (`sbtl`) tracks.
+        let ext_kind = resolved.extension().to_string();
+        // Fast pure-Rust MP4/M4A muxing & +faststart conversion for direct `Pair` downloads (YouTube & Social Media):
+        // - `mux == true`: joins separate Video + Audio tracks into a fast-start `.mp4` (with `tx3g` subtitles).
+        // - `ext_kind == "m4a"`: strips video track from muxed `.mp4` sources and writes a clean fast-start `.m4a` audio file.
+        // - `ext_kind == "mp4"`: ensures `moov` is placed before `mdat` (`+faststart`) and embeds any subtitle tracks.
         let want_rust_mux = spec.kind == StreamKind::Pair
-            && (mux || (!spec.subtitles.is_empty() && matches!(resolved.extension(), "mp4" | "m4a")));
+            && (mux || matches!(ext_kind.as_str(), "mp4" | "m4a"));
 
         // Prefetch tiny YouTube subtitle srv3 XML tracks in parallel while video+audio download,
         // so muxing starts immediately at 100% with zero subtitle fetch wait.
@@ -696,8 +698,16 @@ impl Downloads {
             let p1 = primary_part.clone();
             let p2 = secondary_part.clone();
             let out_clone = out_path.clone();
+            let is_audio_only_m4a = ext_kind == "m4a" && p2.is_none();
+            let is_single_mp4 = ext_kind == "mp4" && p2.is_none();
             let rust_mux_res = tokio::task::spawn_blocking(move || {
-                mp4_mux::mux_fmp4(&p1, p2.as_deref(), &parsed_subs, &out_clone)
+                if is_audio_only_m4a {
+                    mp4_mux::extract_audio_only_m4a(&p1, &out_clone)
+                } else if is_single_mp4 {
+                    mp4_mux::ensure_faststart_mp4(&p1, &parsed_subs, &out_clone)
+                } else {
+                    mp4_mux::mux_fmp4(&p1, p2.as_deref(), &parsed_subs, &out_clone)
+                }
             })
             .await;
 
@@ -973,9 +983,10 @@ impl Downloads {
         clock: &mut StallClock,
     ) -> TrackEnd {
         const PAIR_WRITE_BUF: usize = 512 * 1024;
-        const PAIR_OPEN_TIMEOUT: Duration = Duration::from_secs(8);
-        const PAIR_READ_TIMEOUT: Duration = Duration::from_secs(7);
+        const PAIR_OPEN_TIMEOUT: Duration = Duration::from_secs(20);
+        const PAIR_READ_TIMEOUT: Duration = Duration::from_secs(20);
         const PAIR_MIN_STEAL_BYTES: u64 = 512 * 1024;
+        const PAIR_MAX_RETRIES: u8 = 6;
 
         let n_tracks = c.tracks.len();
         let track_totals: Vec<u64> = c.tracks.iter().map(|t| t.total_bytes.unwrap_or(0)).collect();
@@ -1119,18 +1130,23 @@ impl Downloads {
                                         | FetchFail::Body(_)
                                         | FetchFail::Status(408 | 429 | 500 | 502 | 503 | 504, _)
                                 );
-                                if retryable && retries < 4 {
+                                if retryable && retries < PAIR_MAX_RETRIES {
                                     retries += 1;
-                                    tokio::time::sleep(Duration::from_millis(150 * u64::from(retries))).await;
+                                    let wait = match e {
+                                        FetchFail::Status(429, Some(ra)) => ra.min(Duration::from_secs(15)),
+                                        _ => Duration::from_millis(200 * (1u64 << (retries - 1).min(5))),
+                                    };
+                                    tokio::time::sleep(wait).await;
                                     continue;
                                 }
                                 let _ = flush_all(&f, &mut buf, &mut buf_start, &mut pending_write, &mut written_cursor).await;
                                 break Err(e);
                             }
                             Err(_) => {
-                                if retries < 4 {
+                                if retries < PAIR_MAX_RETRIES {
                                     retries += 1;
-                                    tokio::time::sleep(Duration::from_millis(150 * u64::from(retries))).await;
+                                    let wait = Duration::from_millis(200 * (1u64 << (retries - 1).min(5)));
+                                    tokio::time::sleep(wait).await;
                                     continue;
                                 }
                                 let _ = flush_all(&f, &mut buf, &mut buf_start, &mut pending_write, &mut written_cursor).await;
@@ -1213,9 +1229,10 @@ impl Downloads {
                         }
                         if let Some(e) = read_err {
                             let retryable = matches!(e, FetchFail::Short | FetchFail::Body(_));
-                            if retryable && retries < 4 {
+                            if retryable && retries < PAIR_MAX_RETRIES {
                                 retries += 1;
-                                tokio::time::sleep(Duration::from_millis(150 * u64::from(retries))).await;
+                                let wait = Duration::from_millis(200 * (1u64 << (retries - 1).min(5)));
+                                tokio::time::sleep(wait).await;
                                 continue;
                             }
                             break Err(e);
@@ -1223,9 +1240,10 @@ impl Downloads {
                         // Check if stream ended short of `cur_end`; if so, reconnect from exact `cur`.
                         let (cur_after, end_after) = *job.range.lock();
                         if cur_after < end_after {
-                            if retries < 4 {
+                            if retries < PAIR_MAX_RETRIES {
                                 retries += 1;
-                                tokio::time::sleep(Duration::from_millis(150 * u64::from(retries))).await;
+                                let wait = Duration::from_millis(200 * (1u64 << (retries - 1).min(5)));
+                                tokio::time::sleep(wait).await;
                                 continue;
                             }
                             break Err(FetchFail::Short);

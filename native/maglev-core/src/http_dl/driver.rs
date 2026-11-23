@@ -1080,8 +1080,8 @@ pub(super) fn build_client(proxy: Option<&str>, scope: LanScope) -> Result<Clien
     });
     let mut b = Client::builder()
         .redirect(policy)
-        .connect_timeout(Duration::from_secs(15))
-        .read_timeout(Duration::from_secs(45))
+        .connect_timeout(Duration::from_secs(20))
+        .read_timeout(Duration::from_secs(60))
         .tcp_nodelay(true)
         .pool_max_idle_per_host(24)
         // Every connection, redirects included, goes through the address check. A proxy resolves names itself.

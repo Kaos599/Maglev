@@ -1762,6 +1762,14 @@ export const SETTINGS_INDEX: SettingEntry[] = [
     "Link downloads",
   ),
   e(
+    "downloads-social-cookies",
+    "Social login session",
+    "downloads",
+    "Adding and finishing",
+    ["netscape", "instagram", "tiktok", "reddit", "facebook", "threads", "pinterest", "sign in", "anti-block"],
+    "Link downloads",
+  ),
+  e(
     "licenses-read",
     "Read the licence",
     "licenses",

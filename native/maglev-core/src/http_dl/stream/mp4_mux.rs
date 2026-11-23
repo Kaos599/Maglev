@@ -322,7 +322,242 @@ fn read_box_header<R: Read>(r: &mut R) -> io::Result<Option<([u8; 4], u64, u64)>
     }
 }
 
+fn parse_stbl_samples(
+    stbl: &[u8],
+    file_len: u64,
+) -> io::Result<(Vec<SampleMeta>, Vec<FragChunk>, u64)> {
+    // 1. stsz (sample sizes)
+    let stsz = find_box(stbl, b"stsz")
+        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "missing stsz"))?;
+    if stsz.len() < 12 {
+        return Err(io::Error::new(io::ErrorKind::InvalidData, "short stsz"));
+    }
+    let fixed_size = u32_be(stbl_slice(stsz, 0, 12)?, 4)?;
+    let sample_count = u32_be(stsz, 8)? as usize;
+    if sample_count == 0 {
+        return Err(io::Error::new(io::ErrorKind::InvalidData, "zero samples in stsz"));
+    }
+    let mut sizes = Vec::with_capacity(sample_count);
+    if fixed_size > 0 {
+        sizes.resize(sample_count, fixed_size);
+    } else {
+        if stsz.len() < 12 + sample_count * 4 {
+            return Err(io::Error::new(io::ErrorKind::UnexpectedEof, "truncated stsz table"));
+        }
+        for i in 0..sample_count {
+            sizes.push(u32_be(stsz, 12 + i * 4)?);
+        }
+    }
+
+    // 2. stts (decoding time-to-sample deltas)
+    let stts = find_box(stbl, b"stts")
+        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "missing stts"))?;
+    if stts.len() < 8 {
+        return Err(io::Error::new(io::ErrorKind::InvalidData, "short stts"));
+    }
+    let stts_count = u32_be(stts, 4)? as usize;
+    let mut durations = Vec::with_capacity(sample_count);
+    let mut total_duration = 0u64;
+    for i in 0..stts_count {
+        let off = 8 + i * 8;
+        if off + 8 > stts.len() {
+            break;
+        }
+        let cnt = u32_be(stts, off)? as usize;
+        let delta = u32_be(stts, off + 4)?;
+        let take = cnt.min(sample_count.saturating_sub(durations.len()));
+        for _ in 0..take {
+            durations.push(delta);
+            total_duration += delta as u64;
+        }
+    }
+    while durations.len() < sample_count {
+        let last = durations.last().copied().unwrap_or(1024);
+        durations.push(last);
+        total_duration += last as u64;
+    }
+
+    // 3. ctts (optional composition time offsets)
+    let mut ctos = vec![0i32; sample_count];
+    if let Some(ctts) = find_box(stbl, b"ctts") {
+        if ctts.len() >= 8 {
+            let ver = ctts[0];
+            let entry_count = u32_be(ctts, 4)? as usize;
+            let mut idx = 0usize;
+            for i in 0..entry_count {
+                let off = 8 + i * 8;
+                if off + 8 > ctts.len() || idx >= sample_count {
+                    break;
+                }
+                let cnt = u32_be(ctts, off)? as usize;
+                let val = if ver == 0 {
+                    u32_be(ctts, off + 4)? as i32
+                } else {
+                    i32_be(ctts, off + 4)?
+                };
+                let take = cnt.min(sample_count - idx);
+                for j in 0..take {
+                    ctos[idx + j] = val;
+                }
+                idx += take;
+            }
+        }
+    }
+
+    // 4. stss (optional sync sample table; if absent, all samples are sync)
+    let mut is_sync = vec![true; sample_count];
+    if let Some(stss) = find_box(stbl, b"stss") {
+        if stss.len() >= 8 {
+            is_sync.fill(false);
+            let sync_count = u32_be(stss, 4)? as usize;
+            for i in 0..sync_count {
+                let off = 8 + i * 4;
+                if off + 4 > stss.len() {
+                    break;
+                }
+                let s_idx = (u32_be(stss, off)? as usize).saturating_sub(1);
+                if s_idx < sample_count {
+                    is_sync[s_idx] = true;
+                }
+            }
+        }
+    }
+
+    // 5. stco (32-bit) or co64 (64-bit) chunk offsets
+    let mut chunk_offsets: Vec<u64> = Vec::new();
+    if let Some(stco) = find_box(stbl, b"stco") {
+        if stco.len() >= 8 {
+            let cnt = u32_be(stco, 4)? as usize;
+            chunk_offsets.reserve(cnt);
+            for i in 0..cnt {
+                let off = 8 + i * 4;
+                if off + 4 > stco.len() {
+                    break;
+                }
+                chunk_offsets.push(u32_be(stco, off)? as u64);
+            }
+        }
+    } else if let Some(co64) = find_box(stbl, b"co64") {
+        if co64.len() >= 8 {
+            let cnt = u32_be(co64, 4)? as usize;
+            chunk_offsets.reserve(cnt);
+            for i in 0..cnt {
+                let off = 8 + i * 8;
+                if off + 8 > co64.len() {
+                    break;
+                }
+                chunk_offsets.push(u64_be(co64, off)?);
+            }
+        }
+    }
+    if chunk_offsets.is_empty() {
+        return Err(io::Error::new(io::ErrorKind::InvalidData, "missing stco/co64"));
+    }
+
+    // 6. stsc (sample-to-chunk RLE table)
+    let stsc = find_box(stbl, b"stsc")
+        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "missing stsc"))?;
+    if stsc.len() < 8 {
+        return Err(io::Error::new(io::ErrorKind::InvalidData, "short stsc"));
+    }
+    let stsc_count = u32_be(stsc, 4)? as usize;
+    let mut stsc_runs: Vec<(usize, u32)> = Vec::with_capacity(stsc_count);
+    for i in 0..stsc_count {
+        let off = 8 + i * 12;
+        if off + 12 > stsc.len() {
+            break;
+        }
+        let first_chunk = (u32_be(stsc, off)? as usize).saturating_sub(1);
+        let spc = u32_be(stsc, off + 4)?;
+        stsc_runs.push((first_chunk, spc));
+    }
+    if stsc_runs.is_empty() {
+        return Err(io::Error::new(io::ErrorKind::InvalidData, "empty stsc"));
+    }
+
+    let mut chunks: Vec<FragChunk> = Vec::with_capacity(chunk_offsets.len());
+    let mut sample_cursor = 0usize;
+    for (ci, &src_offset) in chunk_offsets.iter().enumerate() {
+        if sample_cursor >= sample_count {
+            break;
+        }
+        let mut spc = stsc_runs[0].1;
+        for &(fc, count) in &stsc_runs {
+            if ci >= fc {
+                spc = count;
+            } else {
+                break;
+            }
+        }
+        let take = (spc as usize).min(sample_count - sample_cursor);
+        if take == 0 {
+            continue;
+        }
+        let mut byte_len = 0u64;
+        for s in &sizes[sample_cursor..sample_cursor + take] {
+            byte_len += *s as u64;
+        }
+        if src_offset + byte_len > file_len {
+            return Err(io::Error::new(io::ErrorKind::UnexpectedEof, "stco chunk past EOF"));
+        }
+        chunks.push(FragChunk {
+            src_offset,
+            byte_len,
+            sample_count: take as u32,
+        });
+        sample_cursor += take;
+    }
+
+    let used_samples = sample_cursor.min(sample_count);
+    let mut samples = Vec::with_capacity(used_samples);
+    for i in 0..used_samples {
+        samples.push(SampleMeta {
+            size: sizes[i],
+            duration: durations[i],
+            cto: ctos[i],
+            is_sync: is_sync[i],
+        });
+    }
+    Ok((samples, chunks, total_duration))
+}
+
+fn stbl_slice(b: &[u8], start: usize, end: usize) -> io::Result<&[u8]> {
+    b.get(start..end)
+        .ok_or_else(|| io::Error::new(io::ErrorKind::UnexpectedEof, "stbl slice"))
+}
+
+fn find_trak_by_handler<'a>(moov: &'a [u8], want_handler: Option<&[u8; 4]>) -> Option<&'a [u8]> {
+    let mut first_trak: Option<&'a [u8]> = None;
+    for (typ, body) in iter_boxes(moov) {
+        if &typ != b"trak" {
+            continue;
+        }
+        if first_trak.is_none() {
+            first_trak = Some(body);
+        }
+        let Some(want) = want_handler else {
+            return Some(body);
+        };
+        if let Some(mdia) = find_box(body, b"mdia") {
+            if let Some(hdlr) = find_box(mdia, b"hdlr") {
+                if hdlr.len() >= 12 && &hdlr[8..12] == want {
+                    return Some(body);
+                }
+            }
+        }
+    }
+    if want_handler.is_none() {
+        first_trak
+    } else {
+        None
+    }
+}
+
 fn parse_fmp4(path: &Path) -> io::Result<ParsedFmp4> {
+    parse_fmp4_for_handler(path, None)
+}
+
+fn parse_fmp4_for_handler(path: &Path, want_handler: Option<&[u8; 4]>) -> io::Result<ParsedFmp4> {
     let mut f = File::open(path)?;
     let file_len = f.metadata()?.len();
 
@@ -348,7 +583,7 @@ fn parse_fmp4(path: &Path) -> io::Result<ParsedFmp4> {
         let body_len = (box_len - hdr_len) as usize;
 
         if &typ == b"moov" {
-            if body_len > 16 * 1024 * 1024 {
+            if body_len > 32 * 1024 * 1024 {
                 return Err(io::Error::new(io::ErrorKind::InvalidData, "moov too large"));
             }
             let mut buf = vec![0u8; body_len];
@@ -490,10 +725,8 @@ fn parse_fmp4(path: &Path) -> io::Result<ParsedFmp4> {
     }
 
     let moov = moov_bytes.ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "missing moov"))?;
-    if samples.is_empty() || chunks.is_empty() {
-        return Err(io::Error::new(io::ErrorKind::InvalidData, "no fMP4 samples found"));
-    }
-    let trak = find_box(&moov, b"trak").ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "missing trak"))?;
+    let trak = find_trak_by_handler(&moov, want_handler)
+        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "missing trak"))?;
     let tkhd = find_box(trak, b"tkhd").ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "missing tkhd"))?;
     let (matrix_off, wh_off) = if tkhd[0] == 1 { (52usize, 88usize) } else { (40usize, 76usize) };
     let mut matrix = [0u8; 36];
@@ -547,6 +780,11 @@ fn parse_fmp4(path: &Path) -> io::Result<ParsedFmp4> {
         return Err(io::Error::new(io::ErrorKind::InvalidData, "short hdlr"));
     }
     let hdlr_type = [hdlr[8], hdlr[9], hdlr[10], hdlr[11]];
+    if let Some(want) = want_handler {
+        if &hdlr_type != want {
+            return Err(io::Error::new(io::ErrorKind::InvalidData, "requested track handler not found"));
+        }
+    }
     let is_video = &hdlr_type == b"vide";
     let hdlr_name = hdlr[24..].to_vec();
 
@@ -560,6 +798,15 @@ fn parse_fmp4(path: &Path) -> io::Result<ParsedFmp4> {
     let stsd_raw = find_box_raw(stbl, b"stsd")
         .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "missing stsd"))?
         .to_vec();
+
+    // If no fMP4 `moof` fragments were present (or a specific track in a progressive MP4 was requested),
+    // parse sample tables directly from `stbl`.
+    if samples.is_empty() || chunks.is_empty() {
+        let (s, c, td) = parse_stbl_samples(stbl, file_len)?;
+        samples = s;
+        chunks = c;
+        total_duration = td;
+    }
 
     Ok(ParsedFmp4 {
         is_video,
@@ -1017,7 +1264,7 @@ fn build_sub_trak(sub: &CompiledSubTrack, track_id: u32, video_w_fp: u32, video_
     wrap_box(b"trak", &trak_body)
 }
 
-/// Muxes a primary fMP4 track (video or audio), an optional secondary fMP4 track (audio),
+/// Muxes a primary fMP4/MP4 track (video or audio), an optional secondary fMP4/MP4 track (audio),
 /// and any number of subtitle tracks into `output_path` via a temp file + atomic rename.
 pub fn mux_fmp4(
     primary_path: &Path,
@@ -1030,6 +1277,110 @@ pub fn mux_fmp4(
         Some(p) => Some(parse_fmp4(p)?),
         None => None,
     };
+    mux_parsed_tracks(primary_path, primary, secondary_path, secondary, subtitles, output_path)
+}
+
+/// Extracts only the `soun` audio track from an fMP4 or progressive muxed video+audio `.mp4`
+/// (e.g. TikTok, Instagram Reels, Facebook, Threads, Pinterest) and writes a clean,
+/// fast-start `.m4a` audio-only container to `output_path`.
+pub fn extract_audio_only_m4a(input_path: &Path, output_path: &Path) -> io::Result<()> {
+    let audio_track = parse_fmp4_for_handler(input_path, Some(b"soun"))
+        .or_else(|_| parse_fmp4_for_handler(input_path, None))?;
+    mux_parsed_tracks(input_path, audio_track, None, None, &[], output_path)
+}
+
+/// Ensures a downloaded single-file `.mp4` (progressive or fragmented) has its `moov` atom
+/// placed before `mdat` (`+faststart`) for instant progressive playback and seeking.
+/// If `input_path` is a muxed progressive MP4 (`vide` + `soun`), both tracks are preserved
+/// and re-muxed into a fast-start `.mp4`. If `moov` is already before `mdat` (and not fragmented),
+/// it performs a zero-copy atomic rename.
+pub fn ensure_faststart_mp4(
+    input_path: &Path,
+    subtitles: &[SubtitleTrack],
+    output_path: &Path,
+) -> io::Result<()> {
+    let mut f = File::open(input_path)?;
+    let file_len = f.metadata()?.len();
+    let mut seen_moov = false;
+    let mut seen_mdat = false;
+    let mut moov_before_mdat = false;
+    let mut has_moof = false;
+
+    let mut pos = 0u64;
+    while pos + 8 <= file_len {
+        f.seek(SeekFrom::Start(pos))?;
+        let Some((typ, hdr_len, raw_sz)) = read_box_header(&mut f)? else {
+            break;
+        };
+        let box_len = if raw_sz == 0 { file_len - pos } else { raw_sz };
+        if box_len < hdr_len || pos + box_len > file_len {
+            break;
+        }
+        if &typ == b"moov" {
+            seen_moov = true;
+            if !seen_mdat {
+                moov_before_mdat = true;
+            }
+        } else if &typ == b"mdat" {
+            seen_mdat = true;
+        } else if &typ == b"moof" {
+            has_moof = true;
+        }
+        pos += box_len;
+    }
+    drop(f);
+
+    if !seen_moov {
+        return Err(io::Error::new(io::ErrorKind::InvalidData, "not an MP4 file"));
+    }
+
+    // Already fast-start progressive MP4 with no subtitles to embed -> zero-copy atomic rename!
+    if moov_before_mdat && !has_moof && subtitles.is_empty() {
+        if input_path != output_path {
+            if output_path.exists() {
+                let _ = std::fs::remove_file(output_path);
+            }
+            std::fs::rename(input_path, output_path)?;
+        }
+        return Ok(());
+    }
+
+    // Remux into fast-start MP4 (preserving both `vide` and `soun` if muxed in one progressive file)
+    if !has_moof {
+        let vid = parse_fmp4_for_handler(input_path, Some(b"vide")).ok();
+        let aud = parse_fmp4_for_handler(input_path, Some(b"soun")).ok();
+        match (vid, aud) {
+            (Some(v), Some(a)) => {
+                return mux_parsed_tracks(
+                    input_path,
+                    v,
+                    Some(input_path),
+                    Some(a),
+                    subtitles,
+                    output_path,
+                );
+            }
+            (Some(v), None) => {
+                return mux_parsed_tracks(input_path, v, None, None, subtitles, output_path);
+            }
+            (None, Some(a)) => {
+                return mux_parsed_tracks(input_path, a, None, None, subtitles, output_path);
+            }
+            (None, None) => {}
+        }
+    }
+
+    mux_fmp4(input_path, None, subtitles, output_path)
+}
+
+fn mux_parsed_tracks(
+    primary_path: &Path,
+    primary: ParsedFmp4,
+    secondary_path: Option<&Path>,
+    secondary: Option<ParsedFmp4>,
+    subtitles: &[SubtitleTrack],
+    output_path: &Path,
+) -> io::Result<()> {
 
     let dur1_ms = (primary.total_duration as u128 * 1000 / primary.timescale as u128) as u64;
     let dur2_ms = secondary

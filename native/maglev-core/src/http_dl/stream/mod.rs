@@ -393,14 +393,60 @@ pub async fn probe(ctx: &fetch::ReqCtx, url: &str) -> Result<plan::StreamProbe, 
     }
 }
 
+/// Probes exact byte length of a direct media URL via a 1-byte `Range: bytes=0-0` request
+/// so social media links without pre-known `contentLength` still download in parallel 2 MiB chunks.
+async fn probe_pair_content_length(ctx: &fetch::ReqCtx, target_url: &str) -> u64 {
+    let (req_url, range) = pair_range_request(target_url, 0, 1);
+    let Ok(Ok(resp)) = tokio::time::timeout(
+        std::time::Duration::from_secs(4),
+        ctx.send(&req_url, range),
+    )
+    .await
+    else {
+        return 0;
+    };
+    let status = resp.status().as_u16();
+    if status == 206 {
+        if let Some(cr) = resp.headers().get(reqwest::header::CONTENT_RANGE).and_then(|v| v.to_str().ok()) {
+            // e.g. "bytes 0-0/15728640"
+            if let Some(slash) = cr.rfind('/') {
+                if let Ok(total) = cr[slash + 1..].trim().parse::<u64>() {
+                    if total > 1 {
+                        return total;
+                    }
+                }
+            }
+        }
+    } else if status == 200 && req_url != target_url {
+        // YouTube `&range=0-0` returns 200 for the slice only, not total length.
+        return 0;
+    }
+    0
+}
+
 /// Reads the playlists again for the variant (and audio track) the download was added with.
 pub async fn resolve(ctx: &fetch::ReqCtx, url: &str, spec: &StreamSpec) -> Result<Resolved, ResolveFail> {
     if spec.kind == StreamKind::Pair {
         let primary = spec.video_url.as_deref().filter(|s| !s.is_empty()).unwrap_or(url);
-        let v_bytes = spec.video_bytes.unwrap_or(0);
-        let a_bytes = spec.audio_bytes.unwrap_or(0);
+        let mut v_bytes = spec.video_bytes.unwrap_or(0);
+        let mut a_bytes = spec.audio_bytes.unwrap_or(0);
+        let audio_opt = spec.audio_url.as_deref().filter(|s| !s.is_empty());
+        if v_bytes == 0 && audio_opt.is_some() && a_bytes == 0 {
+            let (vb, ab) = tokio::join!(
+                probe_pair_content_length(ctx, primary),
+                probe_pair_content_length(ctx, audio_opt.unwrap())
+            );
+            v_bytes = vb;
+            a_bytes = ab;
+        } else if v_bytes == 0 {
+            v_bytes = probe_pair_content_length(ctx, primary).await;
+        } else if let Some(a_url) = audio_opt {
+            if a_bytes == 0 {
+                a_bytes = probe_pair_content_length(ctx, a_url).await;
+            }
+        }
         let mut tracks = Vec::new();
-        if let Some(audio) = spec.audio_url.as_deref().filter(|s| !s.is_empty()) {
+        if let Some(audio) = audio_opt {
             tracks.push(TrackPlan {
                 role: TrackRole::Video,
                 items: chunked_segments(primary, v_bytes),

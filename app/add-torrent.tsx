@@ -27,7 +27,7 @@ import { SubtitlesAutoRow, useSubtitlesAuto } from '../components/search/Subtitl
 import { askSubtitles, markNotThisOne } from '../utils/subtitles/requests';
 import { buildAsk } from '../utils/addedTray';
 import { START_ENGINE_LABEL, engineStoppedBody, isEngineStopped } from '../utils/addErrorNotice';
-import { isYouTubeUrl, normalizeYouTubeUrl } from '../utils/youtube';
+import { extractBulkUrls, isSocialOrYouTubeUrl, normalizeSocialUrl } from '../utils/social';
 
 /** SM-9 add flow states. */
 type Phase = 'input' | 'validating' | 'invalid' | 'resolving' | 'timeout' | 'error' | 'duplicate' | 'preview' | 'adding' | 'added';
@@ -178,10 +178,15 @@ export default function AddTorrentScreen() {
         void resolve(BARE_TORRENT_PATH.test(input) ? `file://${input}` : input);
         return;
       }
-      // A plain web link (not a .torrent) is a download from a link: hand it to that flow. The marker lets that
-      // screen run Get info at once, so the user doesn't tap it twice (an outside maglev:// link can't send it).
-      const webInput = normalizeYouTubeUrl(normalizeIncoming(input));
-      if (isYouTubeUrl(webInput) || isDownloadLink(webInput)) {
+      // A plain web link (not a .torrent) or bulk social/web URL list is a download from a link: hand it to that flow.
+      // The marker lets that screen run Get info at once, so the user doesn't tap it twice.
+      const bulkUrls = extractBulkUrls(input);
+      if (bulkUrls.length > 1) {
+        router.replace({ pathname: '/add-download', params: { url: bulkUrls.join('\n'), from: 'add-torrent' } });
+        return;
+      }
+      const webInput = normalizeSocialUrl(normalizeIncoming(input));
+      if (isSocialOrYouTubeUrl(webInput) || isDownloadLink(webInput)) {
         router.replace({ pathname: '/add-download', params: { url: webInput, from: 'add-torrent' } });
         return;
       }
