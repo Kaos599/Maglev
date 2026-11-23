@@ -285,6 +285,8 @@ struct Live {
     stalled: bool,
     /// The positions of a download that runs over several connections right now.
     parts: Option<Arc<PartsShared>>,
+    /// Active connections for parallel `Pair` stream downloads (0 when idle).
+    pair_active: u32,
     /// The last `held` the timing pass saw (section 34.1); bytes between two readings are what was downloaded.
     acct: Option<u64>,
 }
@@ -669,19 +671,49 @@ fn corrupt_backup_name(now: i64) -> String {
 
 // ---- resolving names ----------------------------------------------------------------------------------------------
 
+/// Short TTL for validated DNS lookups so parallel connections to the same CDN host coalesce cleanly
+/// without hammering Android `netd` with 12 identical queries at once.
+const DNS_CACHE_TTL: Duration = Duration::from_secs(10);
+
 /// reqwest's resolver, with every answer checked against the download's own `LanScope` (contract 17.w). Runs for the
 /// first request and for every redirect hop, so a public name that answers a private address is refused (DNS
 /// rebinding).
 struct GuardedResolver {
     scope: LanScope,
+    cache: Arc<Mutex<HashMap<String, (Instant, Vec<SocketAddr>)>>>,
+    /// Serializes cold-cache lookups so 12 parallel startup connections issue 1 DNS query instead of 12.
+    lookup_gate: Arc<tokio::sync::Mutex<()>>,
 }
 
 impl reqwest::dns::Resolve for GuardedResolver {
     fn resolve(&self, name: reqwest::dns::Name) -> reqwest::dns::Resolving {
         let host = name.as_str().trim_end_matches('.').to_ascii_lowercase();
         let scope = self.scope.clone();
+        let cache = self.cache.clone();
+        let gate = self.lookup_gate.clone();
         Box::pin(async move {
-            guarded_lookup(host, &scope).await.map(|v| Box::new(v.into_iter()) as reqwest::dns::Addrs)
+            let now = Instant::now();
+            if let Some(addrs) = cache.lock().get(&host).and_then(|(at, v)| {
+                (now.saturating_duration_since(*at) < DNS_CACHE_TTL).then(|| v.clone())
+            }) {
+                return Ok(Box::new(addrs.into_iter()) as reqwest::dns::Addrs);
+            }
+            let _guard = gate.lock().await;
+            let now2 = Instant::now();
+            if let Some(addrs) = cache.lock().get(&host).and_then(|(at, v)| {
+                (now2.saturating_duration_since(*at) < DNS_CACHE_TTL).then(|| v.clone())
+            }) {
+                return Ok(Box::new(addrs.into_iter()) as reqwest::dns::Addrs);
+            }
+            let v = guarded_lookup(host.clone(), &scope).await?;
+            if !v.is_empty() {
+                let mut g = cache.lock();
+                if g.len() >= 64 {
+                    g.clear();
+                }
+                g.insert(host, (Instant::now(), v.clone()));
+            }
+            Ok(Box::new(v.into_iter()) as reqwest::dns::Addrs)
         })
     }
 }
@@ -1051,9 +1083,13 @@ pub(super) fn build_client(proxy: Option<&str>, scope: LanScope) -> Result<Clien
         .connect_timeout(Duration::from_secs(15))
         .read_timeout(Duration::from_secs(45))
         .tcp_nodelay(true)
-        .pool_max_idle_per_host(16)
+        .pool_max_idle_per_host(24)
         // Every connection, redirects included, goes through the address check. A proxy resolves names itself.
-        .dns_resolver(Arc::new(GuardedResolver { scope }))
+        .dns_resolver(Arc::new(GuardedResolver {
+            scope,
+            cache: Arc::new(Mutex::new(HashMap::new())),
+            lookup_gate: Arc::new(tokio::sync::Mutex::new(())),
+        }))
         .user_agent(USER_AGENT_DEFAULT);
     if let Some(p) = proxy {
         b = b.proxy(reqwest::Proxy::all(p).map_err(|e| e.to_string())?);
@@ -1461,6 +1497,7 @@ impl Downloads {
         if next != State::Downloading {
             live.bps = 0;
             live.stalled = false;
+            live.pair_active = 0;
         }
 
         for e in &effects {
@@ -1831,6 +1868,7 @@ impl Downloads {
     /// (streams included) gets its task aborted and started again at once: the transfer resumes from the written
     /// position (sidecar, Range) on the new network. No state change, no `paused_by`, no attempt counted.
     pub fn network_changed(self: &Arc<Self>) {
+        self.clients.lock().clear();
         let mut guard = self.inner.lock();
         let inner = &mut *guard;
         for (id, rec) in inner.records.iter() {
@@ -1908,7 +1946,16 @@ impl Downloads {
                     "stalled": stalled,
                     "eta": eta,
                     "segments_active": if r.state == State::Downloading {
-                        inner.live.get(&r.id).and_then(|l| l.parts.as_ref()).map(|p| p.active()).unwrap_or(1)
+                        inner
+                            .live
+                            .get(&r.id)
+                            .map(|l| {
+                                l.parts
+                                    .as_ref()
+                                    .map(|p| p.active())
+                                    .unwrap_or_else(|| if l.pair_active > 0 { l.pair_active } else { 1 })
+                            })
+                            .unwrap_or(1)
                     } else {
                         0
                     },

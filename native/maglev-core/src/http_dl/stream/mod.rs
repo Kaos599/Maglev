@@ -30,8 +30,8 @@ pub const MAX_PLAYLIST_BYTES: u64 = 2 * 1024 * 1024;
 pub const MAX_SEGMENTS: usize = 20_000;
 /// Segments fetched at once; they are written strictly in order.
 pub const MAX_IN_FLIGHT: usize = 3;
-/// Segments fetched at once for direct chunked pair downloads (e.g. YouTube).
-pub const PAIR_IN_FLIGHT: usize = 8;
+/// Concurrent connections for direct chunked pair downloads (e.g. YouTube) with dynamic work-stealing.
+pub const PAIR_IN_FLIGHT: usize = 12;
 /// One segment is held in memory while it is fetched. A bigger one is refused (`STREAM_UNSUPPORTED`).
 pub const MAX_SEGMENT_BYTES: u64 = 48 * 1024 * 1024;
 
@@ -208,6 +208,10 @@ pub struct TrackPlan {
     /// The init segment (when there is one) first.
     pub items: Vec<Segment>,
     pub fmp4: bool,
+    /// Original un-ranged URL for `StreamKind::Pair` tracks (enables cursor-resumed retries & work-stealing).
+    pub base_url: Option<String>,
+    /// Exact total byte length for `StreamKind::Pair` tracks when known.
+    pub total_bytes: Option<u64>,
 }
 
 /// A stream ready to download: what to fetch, in which files.
@@ -246,9 +250,23 @@ impl Resolved {
     }
 }
 
-/// Slices a direct media URL into equal waves of parallel byte-range chunks for consistent full link speed.
-/// Uses up to 9 MiB chunks (inside YouTube's unthrottled burst window) in multiples of `PAIR_IN_FLIGHT`
-/// so all 8 connections stay saturated with zero lone-straggler tail slowdown.
+/// Builds the request URL and optional HTTP `Range` header `(offset, length)` for a direct `Pair` byte range.
+/// YouTube `googlevideo.com` URLs use `&range=start-end` query params (HTTP 200); other servers use `Range` headers.
+pub fn pair_range_request(base_url: &str, start: u64, len: u64) -> (String, Option<(u64, u64)>) {
+    let lower = base_url.to_ascii_lowercase();
+    let yt_query_range = lower.contains("googlevideo.com/") || lower.contains("/videoplayback");
+    if yt_query_range {
+        let sep = if base_url.contains('?') { '&' } else { '?' };
+        let end = start + len.saturating_sub(1);
+        (format!("{base_url}{sep}range={start}-{end}"), None)
+    } else {
+        (base_url.to_string(), Some((start, len)))
+    }
+}
+
+/// Slices a direct media URL into parallel byte-range chunks sized for consistent full link speed.
+/// Uses ~2 MiB chunks (safely inside YouTube's unthrottled burst window, small enough that paired
+/// dynamic work-stealing eliminates tail straggler drops across all `PAIR_IN_FLIGHT` connections).
 pub fn chunked_segments(url: &str, total_bytes: u64) -> Vec<Segment> {
     if total_bytes == 0 {
         return vec![Segment {
@@ -261,43 +279,30 @@ pub fn chunked_segments(url: &str, total_bytes: u64) -> Vec<Segment> {
         }];
     }
     const MIN_CHUNK: u64 = 256 * 1024;
-    const MAX_CHUNK: u64 = 9 * 1024 * 1024;
+    const TARGET_CHUNK: u64 = 2 * 1024 * 1024;
     let lanes = PAIR_IN_FLIGHT as u64;
-    let num_chunks = if total_bytes < MIN_CHUNK * lanes {
-        total_bytes.div_ceil(MIN_CHUNK).clamp(1, lanes)
+    let chunk_size = if total_bytes < MIN_CHUNK * lanes {
+        let n = total_bytes.div_ceil(MIN_CHUNK).clamp(1, lanes);
+        total_bytes.div_ceil(n)
+    } else if total_bytes < TARGET_CHUNK * lanes {
+        total_bytes.div_ceil(lanes)
     } else {
-        let wave_bytes = MAX_CHUNK * lanes;
-        let waves = total_bytes.div_ceil(wave_bytes);
-        waves * lanes
+        TARGET_CHUNK
     };
-    let chunk_size = total_bytes.div_ceil(num_chunks);
-    let lower = url.to_ascii_lowercase();
-    let yt_query_range = lower.contains("googlevideo.com/") || lower.contains("/videoplayback");
-    let sep = if url.contains('?') { '&' } else { '?' };
-    let mut out = Vec::with_capacity(num_chunks as usize);
+    let num_chunks = total_bytes.div_ceil(chunk_size) as usize;
+    let mut out = Vec::with_capacity(num_chunks);
     let mut offset = 0u64;
     while offset < total_bytes {
         let len = (total_bytes - offset).min(chunk_size);
-        let end = offset + len - 1;
-        if yt_query_range {
-            out.push(Segment {
-                url: format!("{url}{sep}range={offset}-{end}"),
-                range: None,
-                key: None,
-                whole_file: false,
-                write_offset: Some(offset),
-                expected_len: Some(len),
-            });
-        } else {
-            out.push(Segment {
-                url: url.to_string(),
-                range: Some((offset, len)),
-                key: None,
-                whole_file: false,
-                write_offset: Some(offset),
-                expected_len: Some(len),
-            });
-        }
+        let (req_url, range) = pair_range_request(url, offset, len);
+        out.push(Segment {
+            url: req_url,
+            range,
+            key: None,
+            whole_file: false,
+            write_offset: Some(offset),
+            expected_len: Some(len),
+        });
         offset += len;
     }
     out
@@ -365,7 +370,7 @@ async fn fetch_media(ctx: &fetch::ReqCtx, url: &str) -> Result<MediaPlan, Resolv
 }
 
 fn track_of(role: TrackRole, plan: &MediaPlan) -> TrackPlan {
-    TrackPlan { role, items: plan.items(), fmp4: plan.fmp4 }
+    TrackPlan { role, items: plan.items(), fmp4: plan.fmp4, base_url: None, total_bytes: None }
 }
 
 /// Reads the link the user is about to save: kinds, qualities, audio tracks, estimates.
@@ -400,17 +405,23 @@ pub async fn resolve(ctx: &fetch::ReqCtx, url: &str, spec: &StreamSpec) -> Resul
                 role: TrackRole::Video,
                 items: chunked_segments(primary, v_bytes),
                 fmp4: true,
+                base_url: Some(primary.to_string()),
+                total_bytes: (v_bytes > 0).then_some(v_bytes),
             });
             tracks.push(TrackPlan {
                 role: TrackRole::Audio,
                 items: chunked_segments(audio, a_bytes),
                 fmp4: true,
+                base_url: Some(audio.to_string()),
+                total_bytes: (a_bytes > 0).then_some(a_bytes),
             });
         } else {
             tracks.push(TrackPlan {
                 role: TrackRole::Main,
                 items: chunked_segments(primary, v_bytes),
                 fmp4: true,
+                base_url: Some(primary.to_string()),
+                total_bytes: (v_bytes > 0).then_some(v_bytes),
             });
         }
         let sum = v_bytes.saturating_add(a_bytes);
@@ -525,7 +536,7 @@ mod tests {
     #[test]
     fn extension_follows_the_tracks() {
         let seg = Segment::plain("https://a.test/a".into());
-        let t = |role, fmp4| TrackPlan { role, items: vec![seg.clone()], fmp4 };
+        let t = |role, fmp4| TrackPlan { role, items: vec![seg.clone()], fmp4, base_url: None, total_bytes: None };
         let one_ts = Resolved { tracks: vec![t(TrackRole::Main, false)], duration_sec: 1.0, est_bytes: None, height: None, ext_override: None };
         assert_eq!(one_ts.extension(), "ts");
         assert!(!one_ts.mux_needed());
@@ -541,15 +552,15 @@ mod tests {
 
     #[test]
     fn pair_chunks_use_query_range_for_googlevideo() {
-        let segs = chunked_segments("https://rr1.googlevideo.com/videoplayback?itag=137", 4 * 1024 * 1024);
-        assert_eq!(segs.len(), 8);
+        let segs = chunked_segments("https://rr1.googlevideo.com/videoplayback?itag=137", 6 * 1024 * 1024);
+        assert_eq!(segs.len(), PAIR_IN_FLIGHT);
         assert!(segs[0].url.ends_with("&range=0-524287"));
         assert!(segs[0].range.is_none());
-        assert!(segs[7].url.ends_with("&range=3670016-4194303"));
-        // 80 MiB splits into 2 full waves of 8 equal chunks (16 x 5 MiB) with no lone tail chunk.
+        assert!(segs[PAIR_IN_FLIGHT - 1].url.ends_with("&range=5767168-6291455"));
+        // 80 MiB splits into 40 x 2 MiB chunks well inside YouTube's unthrottled burst window.
         let big = chunked_segments("https://rr1.googlevideo.com/videoplayback?itag=137", 80 * 1024 * 1024);
-        assert_eq!(big.len(), 16);
-        assert_eq!(big[0].expected_len, Some(5 * 1024 * 1024));
-        assert_eq!(big[15].expected_len, Some(5 * 1024 * 1024));
+        assert_eq!(big.len(), 40);
+        assert_eq!(big[0].expected_len, Some(2 * 1024 * 1024));
+        assert_eq!(big[39].expected_len, Some(2 * 1024 * 1024));
     }
 }
