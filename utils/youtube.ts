@@ -21,9 +21,19 @@ const YT_HOSTS = new Set([
   'www.youtube-nocookie.com',
 ]);
 
+/** Normalizes bare YouTube links (e.g. "youtube.com/watch?v=...") to https://... */
+export function normalizeYouTubeUrl(raw: string): string {
+  const input = (raw ?? '').trim();
+  if (!input) return input;
+  if (/^(?:www\.|m\.|music\.)?(?:youtube\.com|youtu\.be|youtube-nocookie\.com)\//i.test(input)) {
+    return `https://${input}`;
+  }
+  return input;
+}
+
 /** Extracts the 11-character YouTube video ID from any standard YouTube URL, or null. */
 export function extractYouTubeId(raw: string): string | null {
-  const input = (raw ?? '').trim();
+  const input = normalizeYouTubeUrl(raw);
   if (!input) return null;
   let url: URL;
   try {
@@ -43,6 +53,14 @@ export function extractYouTubeId(raw: string): string | null {
 
   const v = url.searchParams.get('v');
   if (v && YT_ID_RE.test(v)) return v;
+
+  if (url.pathname === '/attribution_link') {
+    const u = url.searchParams.get('u');
+    if (u) {
+      const nested = extractYouTubeId(`https://www.youtube.com${u.startsWith('/') ? u : `/${u}`}`);
+      if (nested) return nested;
+    }
+  }
 
   const parts = url.pathname.split('/').filter(Boolean);
   if (parts.length >= 2 && (parts[0] === 'shorts' || parts[0] === 'live' || parts[0] === 'embed' || parts[0] === 'v')) {
@@ -135,6 +153,23 @@ const INNERTUBE_CLIENTS: readonly InnerTubeClient[] = [
         deviceModel: 'iPhone16,2',
         osName: 'iPhone',
         osVersion: '18.3.1',
+        hl: 'en',
+        gl: 'US',
+      },
+    },
+  },
+  {
+    name: 'ANDROID_VR',
+    userAgent: 'com.google.android.apps.youtube.vr.oculus/1.60.19 (Linux; U; Android 12L; eureka-user Build/SQ3A.220605.009.A1) gzip',
+    context: {
+      client: {
+        clientName: 'ANDROID_VR',
+        clientVersion: '1.60.19',
+        deviceMake: 'Oculus',
+        deviceModel: 'Quest 3',
+        androidSdkVersion: 32,
+        osName: 'Android',
+        osVersion: '12L',
         hl: 'en',
         gl: 'US',
       },
@@ -394,9 +429,30 @@ export async function probeYouTube(
       }
 
       let hlsProbe: StreamProbe | null = null;
-      if (hlsUrl && probeStream) {
-        const sp = await probeStream(hlsUrl, { headers: { 'User-Agent': client.userAgent } });
-        if (sp.ok) hlsProbe = sp;
+      const needDirectFallback = !hasDirect && client.name === 'IOS';
+      const vrClient = INNERTUBE_CLIENTS.find((c) => c.name === 'ANDROID_VR');
+
+      const [sp, vrData] = await Promise.all([
+        hlsUrl && probeStream
+          ? probeStream(hlsUrl, { headers: { 'User-Agent': client.userAgent } }).catch(() => null)
+          : Promise.resolve(null),
+        needDirectFallback && vrClient
+          ? fetch('https://www.youtube.com/youtubei/v1/player?prettyPrint=false', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', 'User-Agent': vrClient.userAgent },
+              body: JSON.stringify({ videoId, context: vrClient.context, contentCheckOk: true, racyCheckOk: true }),
+            })
+              .then((r) => (r.ok ? (r.json() as Promise<YouTubePlayerResponse>) : null))
+              .catch(() => null)
+          : Promise.resolve(null),
+      ]);
+
+      if (sp && sp.ok) hlsProbe = sp;
+      if (vrData?.streamingData?.formats?.length) {
+        data.streamingData = {
+          ...data.streamingData,
+          formats: vrData.streamingData.formats,
+        };
       }
 
       const qualities = buildYouTubeQualities(data, hlsProbe, client.userAgent);

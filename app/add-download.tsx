@@ -18,6 +18,7 @@ import {
   defaultYouTubeQuality,
   formatYouTubeDuration,
   isYouTubeUrl,
+  normalizeYouTubeUrl,
   probeYouTube,
   type YouTubeProbeResult,
 } from '../utils/youtube';
@@ -91,7 +92,7 @@ export default function AddDownloadScreen() {
 
   const submit = useCallback(
     async (raw: string, allowLan = false) => {
-      const input = normalizeIncoming(raw);
+      const input = normalizeYouTubeUrl(normalizeIncoming(raw));
       // A magnet or a .torrent link is a torrent: hand it to Add torrent instead of refusing it.
       if (isTorrentSource(input)) {
         router.replace({ pathname: '/add-torrent', params: { source: input } });
@@ -176,10 +177,10 @@ export default function AddDownloadScreen() {
     if (!incoming || incoming === lastIncoming.current) return;
     lastIncoming.current = incoming;
     const shared = isShareOpen({ url: params.url, from: params.from });
-    const clean = normalizeIncoming(incoming);
+    const clean = normalizeYouTubeUrl(normalizeIncoming(incoming));
     // Add torrent hands a plain web link over with `from=add-torrent` (also stripped from outside links):
     // the user already tapped Get info there, so run it once here instead of asking again.
-    const handoff = params.from === 'add-torrent' && isDownloadLink(clean);
+    const handoff = params.from === 'add-torrent' && (isYouTubeUrl(clean) || isDownloadLink(clean));
     if (shared || handoff) {
       setText(clean);
       void submit(clean);

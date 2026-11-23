@@ -4,7 +4,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Clipboard from 'expo-clipboard';
 import * as DocumentPicker from 'expo-document-picker';
-import { maglevEngine, isDownloadLink, infoHashToMagnet, parseSource, type FilePriority, type FreeSpace, type Metadata } from 'maglev-engine';
+import { maglevEngine, isDownloadLink, infoHashToMagnet, normalizeIncoming, parseSource, type FilePriority, type FreeSpace, type Metadata } from 'maglev-engine';
 import { useTheme } from '../context/ThemeContext';
 import { useMaglevEngine } from '../context/EngineContext';
 import { ThemeColors, radius, spacing, touch, type } from '../constants/theme';
@@ -27,6 +27,7 @@ import { SubtitlesAutoRow, useSubtitlesAuto } from '../components/search/Subtitl
 import { askSubtitles, markNotThisOne } from '../utils/subtitles/requests';
 import { buildAsk } from '../utils/addedTray';
 import { START_ENGINE_LABEL, engineStoppedBody, isEngineStopped } from '../utils/addErrorNotice';
+import { isYouTubeUrl, normalizeYouTubeUrl } from '../utils/youtube';
 
 /** SM-9 add flow states. */
 type Phase = 'input' | 'validating' | 'invalid' | 'resolving' | 'timeout' | 'error' | 'duplicate' | 'preview' | 'adding' | 'added';
@@ -179,8 +180,9 @@ export default function AddTorrentScreen() {
       }
       // A plain web link (not a .torrent) is a download from a link: hand it to that flow. The marker lets that
       // screen run Get info at once, so the user doesn't tap it twice (an outside maglev:// link can't send it).
-      if (isDownloadLink(input)) {
-        router.replace({ pathname: '/add-download', params: { url: input, from: 'add-torrent' } });
+      const webInput = normalizeYouTubeUrl(normalizeIncoming(input));
+      if (isYouTubeUrl(webInput) || isDownloadLink(webInput)) {
+        router.replace({ pathname: '/add-download', params: { url: webInput, from: 'add-torrent' } });
         return;
       }
       const parsed = parseSource(input);
