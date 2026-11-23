@@ -546,7 +546,7 @@ export interface DownloadSnapshot {
 }
 
 /** NATIVE_CONTRACT 24.8. */
-export type StreamKind = 'hls' | 'dash';
+export type StreamKind = 'hls' | 'dash' | 'pair';
 
 export interface DownloadStream {
   kind: StreamKind;
@@ -554,11 +554,17 @@ export interface DownloadStream {
   segmentsTotal: number;
 }
 
-/** Which quality (and audio track) of a stream to save. Ids come from `probeStream`. */
+/** Which quality (and audio track) of a stream to save. Ids come from `probeStream` or `pair`. */
 export interface StreamSelection {
   kind: StreamKind;
   variantId: string;
   audioId?: string | null;
+  videoUrl?: string;
+  audioUrl?: string;
+  videoBytes?: number;
+  audioBytes?: number;
+  height?: number | null;
+  ext?: string;
 }
 
 export interface StreamVariant {

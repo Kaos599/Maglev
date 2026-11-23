@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// YouTube link extraction, quality selection, and duration formatting tests.
+// YouTube link extraction, full-quality adaptive pairing, audio selection, and duration formatting tests.
 process.removeAllListeners('warning');
 
 let failed = 0;
@@ -22,6 +22,8 @@ async function main() {
     ['https://m.youtube.com/live/xyz-9876543?feature=share', 'xyz-9876543'],
     ['https://music.youtube.com/watch?v=dQw4w9WgXcQ&list=RD1', 'dQw4w9WgXcQ'],
     ['https://www.youtube.com/embed/dQw4w9WgXcQ', 'dQw4w9WgXcQ'],
+    ['youtube.com/watch?v=dQw4w9WgXcQ', 'dQw4w9WgXcQ'],
+    ['youtu.be/dQw4w9WgXcQ', 'dQw4w9WgXcQ'],
   ];
   for (const [url, id] of valid) {
     check(`extracts ${id} from ${url}`, yt.extractYouTubeId(url) === id && yt.isYouTubeUrl(url));
@@ -41,41 +43,33 @@ async function main() {
   check('formats 3661s as 1:01:01', yt.formatYouTubeDuration(3661) === '1:01:01');
   check('formats 0s as empty', yt.formatYouTubeDuration(0) === '');
 
-  console.log('qualities');
+  console.log('qualities & original audio selection');
   const player = {
-    videoDetails: { videoId: 'dQw4w9WgXcQ', title: 'Test Video', lengthSeconds: '120' },
+    videoDetails: { videoId: 'pnlQMuiWUoE', title: 'Test Short', lengthSeconds: '46' },
     streamingData: {
-      hlsManifestUrl: 'https://manifest.example/index.m3u8',
-      formats: [
-        { itag: 18, url: 'https://cdn.example/360.mp4', mimeType: 'video/mp4; codecs="avc1.42001E, mp4a.40.2"', height: 360, qualityLabel: '360p', contentLength: '10485760' },
-        { itag: 22, url: 'https://cdn.example/720.mp4', mimeType: 'video/mp4; codecs="avc1.64001F, mp4a.40.2"', height: 720, qualityLabel: '720p', contentLength: '31457280' },
-      ],
       adaptiveFormats: [
-        { itag: 140, url: 'https://cdn.example/audio.m4a', mimeType: 'audio/mp4; codecs="mp4a.40.2"', bitrate: 128000, contentLength: '1920000' },
-        { itag: 251, url: 'https://cdn.example/audio.webm', mimeType: 'audio/webm; codecs="opus"', bitrate: 160000, contentLength: '2400000' },
+        // Auto-dubbed Arabic comes first; original English is audioIsDefault: true
+        { itag: 140, url: 'https://cdn.example/ar.m4a', mimeType: 'audio/mp4; codecs="mp4a.40.2"', bitrate: 130000, contentLength: '650000', audioTrack: { id: 'ar.10', audioIsDefault: false, isAutoDubbed: true } },
+        { itag: 140, url: 'https://cdn.example/en.m4a', mimeType: 'audio/mp4; codecs="mp4a.40.2"', bitrate: 129000, contentLength: '652000', audioTrack: { id: 'en-US.4', audioIsDefault: true, isAutoDubbed: false } },
+        // Full vertical Shorts ladder (width x height swapped)
+        { itag: 401, url: 'https://cdn.example/2160.mp4', mimeType: 'video/mp4; codecs="av01.0.13M.08"', width: 2160, height: 3840, fps: 60, qualityLabel: '2160p60', contentLength: '26000000' },
+        { itag: 299, url: 'https://cdn.example/1080avc.mp4', mimeType: 'video/mp4; codecs="avc1.64002A"', width: 1080, height: 1920, fps: 60, qualityLabel: '1080p60', contentLength: '9800000' },
+        { itag: 399, url: 'https://cdn.example/1080av01.mp4', mimeType: 'video/mp4; codecs="av01.0.09M.08"', width: 1080, height: 1920, fps: 60, qualityLabel: '1080p60', contentLength: '4900000' },
+        { itag: 298, url: 'https://cdn.example/720.mp4', mimeType: 'video/mp4; codecs="avc1.640020"', width: 720, height: 1280, fps: 60, qualityLabel: '720p60', contentLength: '5400000' },
+        { itag: 135, url: 'https://cdn.example/480.mp4', mimeType: 'video/mp4; codecs="avc1.4D401F"', width: 480, height: 854, fps: 30, qualityLabel: '480p', contentLength: '2100000' },
       ],
     },
   };
-  const hlsProbe = {
-    kind: 'hls',
-    title: 'Test Video',
-    durationSec: 120,
-    variants: [
-      { id: 'v1080', height: 1080, width: 1920, bandwidth: 4_000_000, codecs: 'avc1.640028', estBytes: 60_000_000, audio: 'separate' },
-      { id: 'v720', height: 720, width: 1280, bandwidth: 2_000_000, codecs: 'avc1.4d401f', estBytes: 30_000_000, audio: 'separate' },
-      { id: 'v480', height: 480, width: 854, bandwidth: 1_000_000, codecs: 'avc1.4d401e', estBytes: 15_000_000, audio: 'separate' },
-    ],
-    audioTracks: [{ id: 'a0', lang: 'en', name: 'English', bandwidth: 128000 }],
-  };
 
-  const qualities = yt.buildYouTubeQualities(player, hlsProbe, 'TestUA');
-  check('has 5 options (1080p, 720p, 480p, 360p, Audio only)', qualities.length === 5, String(qualities.length));
-  check('sorted 1080p first', qualities[0]?.label === '1080p' && qualities[0]?.kind === 'hls');
-  check('prefers direct 720p over HLS 720p', qualities[1]?.label === '720p' && qualities[1]?.kind === 'direct');
-  check('includes 480p from HLS', qualities[2]?.label === '480p' && qualities[2]?.kind === 'hls');
-  check('includes 360p direct', qualities[3]?.label === '360p' && qualities[3]?.kind === 'direct');
-  check('prefers M4A for Audio only', qualities[4]?.label === 'Audio only' && qualities[4]?.ext === '.m4a');
-  check('default quality is 1080p', yt.defaultYouTubeQuality(qualities)?.id === qualities[0]?.id);
+  const qualities = yt.buildYouTubeQualities(player, null, 'TestUA');
+  check('has 5 options (2160p60, 1080p60, 720p60, 480p, Audio only)', qualities.length === 5, String(qualities.length));
+  check('2160p60 first (AV1)', qualities[0]?.label === '2160p60' && qualities[0]?.height === 2160 && qualities[0]?.streamSelection.kind === 'pair');
+  check('1080p60 prefers avc1 over av01', qualities[1]?.label === '1080p60' && qualities[1]?.url === 'https://cdn.example/1080avc.mp4');
+  check('pairs video with original (non-dubbed) audio', qualities[1]?.streamSelection.audioUrl === 'https://cdn.example/en.m4a');
+  check('720p60 present', qualities[2]?.label === '720p60' && qualities[2]?.height === 720);
+  check('480p present', qualities[3]?.label === '480p' && qualities[3]?.height === 480);
+  check('Audio only uses original m4a pair single-track', qualities[4]?.label === 'Audio only' && qualities[4]?.ext === '.m4a' && qualities[4]?.streamSelection.videoUrl === 'https://cdn.example/en.m4a' && !qualities[4]?.streamSelection.audioUrl);
+  check('default quality is 1080p60 (highest <= 1080p)', yt.defaultYouTubeQuality(qualities)?.id === qualities[1]?.id);
 
   if (failed > 0) {
     console.error(`\n${failed} check(s) failed`);

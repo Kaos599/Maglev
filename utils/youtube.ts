@@ -1,15 +1,15 @@
 /**
- * YouTube link detection, InnerTube player extraction, and quality selection.
+ * YouTube link detection, InnerTube player extraction, and full-quality selection.
+ * Uses chunked 8x parallel `pair` streams (Video + Audio muxed natively via StreamMuxer)
+ * so every quality (144p up to 2160p 4K + Audio only) downloads at full network speed.
  * Pure TypeScript (no react-native imports) so it can be unit-tested directly with Node.
  */
 import type {
   EngineResult,
   StreamProbe,
   StreamSelection,
-  StreamVariant,
 } from '../modules/maglev-engine/src/MaglevEngine.types.ts';
 import { formatBytes } from '../constants/format.ts';
-import { buildSelection, defaultAudio, qualityName } from '../components/browser/streamChoice.ts';
 
 const YT_ID_RE = /^[A-Za-z0-9_-]{11}$/;
 const YT_HOSTS = new Set([
@@ -75,6 +75,13 @@ export function isYouTubeUrl(raw: string): boolean {
   return extractYouTubeId(raw) !== null;
 }
 
+export interface YouTubeAudioTrackMeta {
+  displayName?: string;
+  id?: string;
+  audioIsDefault?: boolean;
+  isAutoDubbed?: boolean;
+}
+
 export interface YouTubeRawFormat {
   itag?: number;
   url?: string;
@@ -86,6 +93,7 @@ export interface YouTubeRawFormat {
   contentLength?: string;
   qualityLabel?: string;
   audioQuality?: string;
+  audioTrack?: YouTubeAudioTrackMeta;
 }
 
 export interface YouTubePlayerResponse {
@@ -114,10 +122,10 @@ export interface YouTubeQualityOption {
   ext: string;
   height: number | null;
   estBytes: number | null;
-  kind: 'direct' | 'hls' | 'audio';
+  kind: 'pair' | 'direct' | 'audio';
   url: string;
   userAgent?: string;
-  streamSelection?: StreamSelection;
+  streamSelection: StreamSelection;
   icon: 'play' | 'file';
 }
 
@@ -141,18 +149,19 @@ interface InnerTubeClient {
   context: Record<string, unknown>;
 }
 
+// ANDROID first: returns full adaptiveFormats (144p..2160p + original M4A audio) for both
+// regular videos and Shorts, and supports fast parallel &range= downloads at full network speed.
 const INNERTUBE_CLIENTS: readonly InnerTubeClient[] = [
   {
-    name: 'IOS',
-    userAgent: 'com.google.ios.youtube/20.10.4 (iPhone16,2; U; CPU iOS 18_3_1 like Mac OS X;)',
+    name: 'ANDROID',
+    userAgent: 'com.google.android.youtube/20.10.38 (Linux; U; Android 14) gzip',
     context: {
       client: {
-        clientName: 'IOS',
-        clientVersion: '20.10.4',
-        deviceMake: 'Apple',
-        deviceModel: 'iPhone16,2',
-        osName: 'iPhone',
-        osVersion: '18.3.1',
+        clientName: 'ANDROID',
+        clientVersion: '20.10.38',
+        androidSdkVersion: 34,
+        osName: 'Android',
+        osVersion: '14',
         hl: 'en',
         gl: 'US',
       },
@@ -176,15 +185,16 @@ const INNERTUBE_CLIENTS: readonly InnerTubeClient[] = [
     },
   },
   {
-    name: 'ANDROID',
-    userAgent: 'com.google.android.youtube/20.10.38 (Linux; U; Android 14) gzip',
+    name: 'IOS',
+    userAgent: 'com.google.ios.youtube/20.10.4 (iPhone16,2; U; CPU iOS 18_3_1 like Mac OS X;)',
     context: {
       client: {
-        clientName: 'ANDROID',
-        clientVersion: '20.10.38',
-        androidSdkVersion: 34,
-        osName: 'Android',
-        osVersion: '14',
+        clientName: 'IOS',
+        clientVersion: '20.10.4',
+        deviceMake: 'Apple',
+        deviceModel: 'iPhone16,2',
+        osName: 'iPhone',
+        osVersion: '18.3.1',
         hl: 'en',
         gl: 'US',
       },
@@ -239,107 +249,172 @@ export function formatYouTubeDuration(secs: number): string {
   return h > 0 ? `${h}:${mm}:${ss}` : `${mm}:${ss}`;
 }
 
+/** Picks the original/default M4A audio track (never an auto-dubbed track when default exists). */
+export function pickDefaultAudio(adaptive: readonly YouTubeRawFormat[]): YouTubeRawFormat | null {
+  const audios = adaptive.filter((f) => !!f.url && (f.mimeType ?? '').toLowerCase().startsWith('audio/'));
+  if (audios.length === 0) return null;
+
+  const score = (f: YouTubeRawFormat): number => {
+    const mime = (f.mimeType ?? '').toLowerCase();
+    const isM4a = mime.includes('audio/mp4') || mime.includes('mp4a') ? 1_000_000 : 0;
+    const isDefault = f.audioTrack?.audioIsDefault ? 500_000 : 0;
+    const notDubbed = f.audioTrack?.isAutoDubbed ? 0 : 250_000;
+    const noTrackMeta = !f.audioTrack ? 200_000 : 0;
+    const bitrate = Math.min(f.bitrate ?? 0, 199_999);
+    return isM4a + isDefault + notDubbed + noTrackMeta + bitrate;
+  };
+
+  return [...audios].sort((a, b) => score(b) - score(a))[0] ?? null;
+}
+
+function qualityResolution(f: YouTubeRawFormat): number | null {
+  if (typeof f.height === 'number' && f.height > 0 && typeof f.width === 'number' && f.width > 0) {
+    // Shorts are vertical (e.g. 1080x1920): the standard quality tier is min(width, height).
+    return Math.min(f.width, f.height);
+  }
+  if (typeof f.height === 'number' && f.height > 0) return f.height;
+  return null;
+}
+
 /**
- * Builds deduplicated, sorted quality options from a YouTube player response
- * plus an optional HLS StreamProbe. Direct MP4s are preferred over HLS at the same
- * resolution because multi-part HTTP downloads are faster and support pause/resume.
+ * Builds deduplicated, highest-first quality options from a YouTube player response.
+ * Every option uses Rust's `pair` stream engine (8x parallel `&range=` chunks + zero-re-encode MP4 muxing)
+ * so all qualities (4K/2K/1080p/720p/480p/360p/240p/144p + Audio only) download at full network speed.
  */
 export function buildYouTubeQualities(
   player: YouTubePlayerResponse,
-  hlsProbe: StreamProbe | null,
+  _hlsProbe: StreamProbe | null,
   userAgent: string,
 ): YouTubeQualityOption[] {
   const durationSecs = Number(player.videoDetails?.lengthSeconds ?? 0) || 0;
-  const hlsUrl = player.streamingData?.hlsManifestUrl ?? '';
-  const byHeight = new Map<number, YouTubeQualityOption>();
-  const extraVideo: YouTubeQualityOption[] = [];
+  const adaptive = player.streamingData?.adaptiveFormats ?? [];
+  const formats = player.streamingData?.formats ?? [];
 
-  // 1. Direct muxed formats (video + audio in one file, supports 8-part fast download).
-  for (const f of player.streamingData?.formats ?? []) {
-    if (!f.url) continue;
-    const height = typeof f.height === 'number' && f.height > 0 ? f.height : null;
-    const ext = extFromMime(f.mimeType, '.mp4');
-    const bytes = parseBytes(f.contentLength) ?? estimateBytes(f.bitrate, durationSecs);
-    const label = f.qualityLabel?.trim() || (height ? `${height}p` : 'Standard');
-    const sizePart = bytes ? formatBytes(bytes) : 'Fast direct';
-    const fpsPart = f.fps && f.fps > 30 ? ` · ${f.fps}fps` : '';
-    const opt: YouTubeQualityOption = {
-      id: `yt-direct-${f.itag ?? label}`,
-      label,
-      description: `${ext.slice(1).toUpperCase()}${fpsPart} · ${sizePart}`,
-      ext,
-      height,
-      estBytes: bytes,
-      kind: 'direct',
-      url: f.url,
-      userAgent,
-      icon: 'file',
-    };
-    if (height != null) {
-      const prev = byHeight.get(height);
-      if (!prev || (bytes ?? 0) > (prev.estBytes ?? 0)) byHeight.set(height, opt);
-    } else {
-      extraVideo.push(opt);
+  const bestAudio = pickDefaultAudio(adaptive);
+  const audioBytes = bestAudio
+    ? (parseBytes(bestAudio.contentLength) ?? estimateBytes(bestAudio.bitrate, durationSecs) ?? 0)
+    : 0;
+  const isM4aAudio = !!bestAudio && (bestAudio.mimeType ?? '').toLowerCase().includes('audio/mp4');
+
+  // 1. Adaptive MP4 video tracks paired with original M4A audio (full quality ladder: 144p..2160p).
+  // Prefer H.264 (avc1) for universal Android MediaMuxer/player compatibility; allow AV1 (av01) for 1440p/2160p.
+  const byTier = new Map<number, { format: YouTubeRawFormat; isAvc: boolean; fps: number; bytes: number }>();
+  if (bestAudio && isM4aAudio) {
+    for (const f of adaptive) {
+      if (!f.url) continue;
+      const mime = (f.mimeType ?? '').toLowerCase();
+      if (!mime.startsWith('video/mp4')) continue;
+      const isAvc = mime.includes('avc1');
+      const isAv01 = mime.includes('av01');
+      if (!isAvc && !isAv01) continue;
+      const tier = qualityResolution(f);
+      if (!tier) continue;
+      const bytes = parseBytes(f.contentLength) ?? estimateBytes(f.bitrate, durationSecs) ?? 0;
+      const fps = f.fps ?? 30;
+      const prev = byTier.get(tier);
+      if (!prev) {
+        byTier.set(tier, { format: f, isAvc, fps, bytes });
+      } else if (isAvc && !prev.isAvc) {
+        // Always prefer H.264 over AV1 at the same resolution for instant playback everywhere.
+        byTier.set(tier, { format: f, isAvc, fps, bytes });
+      } else if (isAvc === prev.isAvc && (fps > prev.fps || (fps === prev.fps && (f.bitrate ?? 0) > (prev.format.bitrate ?? 0)))) {
+        byTier.set(tier, { format: f, isAvc, fps, bytes });
+      }
     }
   }
 
-  // 2. HLS variants (covers 1080p, 1440p, 2160p, 480p, etc. via native StreamMuxer).
-  if (hlsProbe && hlsUrl) {
-    const audioId = defaultAudio(hlsProbe.audioTracks);
-    const seenHlsHeights = new Set<number>();
-    const variants: StreamVariant[] = hlsProbe.variants;
-    for (const v of variants) {
-      if (v.height == null || v.height <= 0) continue;
-      if (byHeight.has(v.height) || seenHlsHeights.has(v.height)) continue;
-      seenHlsHeights.add(v.height);
-      const label = qualityName(v, variants);
-      const bytes = v.estBytes && v.estBytes > 0 ? v.estBytes : null;
-      const desc = bytes ? `MP4 · about ${formatBytes(bytes)}` : `MP4 · ${(v.bandwidth / 1_000_000).toFixed(1)} Mbps`;
-      byHeight.set(v.height, {
-        id: `yt-hls-${v.id}`,
+  const videoOptions: YouTubeQualityOption[] = [];
+  for (const [tier, entry] of [...byTier.entries()].sort((a, b) => b[0] - a[0])) {
+    const f = entry.format;
+    const totalBytes = entry.bytes > 0 ? entry.bytes + audioBytes : null;
+    const label = f.qualityLabel?.trim() || `${tier}p${entry.fps > 30 ? entry.fps : ''}`;
+    const codecTag = entry.isAvc ? 'MP4' : 'MP4 · AV1';
+    const sizePart = totalBytes ? formatBytes(totalBytes) : 'HD';
+    const variantId = `yt-${f.itag ?? tier}`;
+    videoOptions.push({
+      id: variantId,
+      label,
+      description: `${codecTag} · ${sizePart}`,
+      ext: '.mp4',
+      height: tier,
+      estBytes: totalBytes,
+      kind: 'pair',
+      url: f.url!,
+      userAgent,
+      streamSelection: {
+        kind: 'pair',
+        variantId,
+        audioId: String(bestAudio!.itag ?? 'audio'),
+        videoUrl: f.url!,
+        audioUrl: bestAudio!.url!,
+        videoBytes: entry.bytes,
+        audioBytes,
+        height: tier,
+        ext: 'mp4',
+      },
+      icon: 'file',
+    });
+  }
+
+  // 2. Fallback: direct muxed formats if adaptive pairing produced no video tracks.
+  if (videoOptions.length === 0) {
+    for (const f of formats) {
+      if (!f.url) continue;
+      const tier = qualityResolution(f);
+      const ext = extFromMime(f.mimeType, '.mp4');
+      const bytes = parseBytes(f.contentLength) ?? estimateBytes(f.bitrate, durationSecs) ?? 0;
+      const label = f.qualityLabel?.trim() || (tier ? `${tier}p` : 'Standard');
+      const variantId = `yt-direct-${f.itag ?? label}`;
+      videoOptions.push({
+        id: variantId,
         label,
-        description: desc,
-        ext: '.mp4',
-        height: v.height,
-        estBytes: bytes,
-        kind: 'hls',
-        url: hlsUrl,
+        description: `${ext.slice(1).toUpperCase()} · ${bytes > 0 ? formatBytes(bytes) : 'Direct'}`,
+        ext,
+        height: tier,
+        estBytes: bytes > 0 ? bytes : null,
+        kind: 'direct',
+        url: f.url,
         userAgent,
-        streamSelection: buildSelection(hlsProbe.kind, hlsProbe, v, audioId),
+        streamSelection: {
+          kind: 'pair',
+          variantId,
+          videoUrl: f.url,
+          videoBytes: bytes,
+          height: tier,
+          ext: ext.slice(1),
+        },
         icon: 'file',
       });
     }
+    videoOptions.sort((a, b) => (b.height ?? 0) - (a.height ?? 0));
   }
 
-  const videoOptions = [...byHeight.values()].sort((a, b) => (b.height ?? 0) - (a.height ?? 0));
-  const result: YouTubeQualityOption[] = [...videoOptions, ...extraVideo];
+  const result: YouTubeQualityOption[] = [...videoOptions];
 
-  // 3. Best audio-only stream (M4A preferred, fast direct download).
-  const audioFormats = (player.streamingData?.adaptiveFormats ?? []).filter(
-    (f) => !!f.url && (f.mimeType ?? '').toLowerCase().startsWith('audio/'),
-  );
-  if (audioFormats.length > 0) {
-    audioFormats.sort((a, b) => {
-      const aM4a = (a.mimeType ?? '').toLowerCase().includes('audio/mp4') ? 1 : 0;
-      const bM4a = (b.mimeType ?? '').toLowerCase().includes('audio/mp4') ? 1 : 0;
-      if (aM4a !== bM4a) return bM4a - aM4a;
-      return (b.bitrate ?? 0) - (a.bitrate ?? 0);
-    });
-    const bestAudio = audioFormats[0];
+  // 3. Audio only (original/default M4A or WebM, downloaded via fast chunked pair single-track).
+  if (bestAudio) {
     const ext = extFromMime(bestAudio.mimeType, '.m4a');
-    const bytes = parseBytes(bestAudio.contentLength) ?? estimateBytes(bestAudio.bitrate, durationSecs);
     const kbps = bestAudio.bitrate ? `${Math.round(bestAudio.bitrate / 1000)} kbps` : '';
-    const descParts = [ext.slice(1).toUpperCase(), kbps, bytes ? formatBytes(bytes) : ''].filter(Boolean);
+    const descParts = [ext.slice(1).toUpperCase(), kbps, audioBytes > 0 ? formatBytes(audioBytes) : ''].filter(Boolean);
+    const variantId = `yt-audio-${bestAudio.itag ?? 'best'}`;
     result.push({
-      id: `yt-audio-${bestAudio.itag ?? 'best'}`,
+      id: variantId,
       label: 'Audio only',
       description: descParts.join(' · '),
       ext,
       height: null,
-      estBytes: bytes,
+      estBytes: audioBytes > 0 ? audioBytes : null,
       kind: 'audio',
       url: bestAudio.url!,
       userAgent,
+      streamSelection: {
+        kind: 'pair',
+        variantId,
+        videoUrl: bestAudio.url!,
+        videoBytes: audioBytes,
+        height: null,
+        ext: ext.slice(1),
+      },
       icon: 'play',
     });
   }
@@ -361,12 +436,11 @@ export type ProbeStreamFn = (
 ) => Promise<EngineResult<StreamProbe>>;
 
 /**
- * Fetches YouTube video metadata and downloadable qualities via InnerTube.
- * Pass `probeStream` from EngineContext so HD HLS qualities can also be offered.
+ * Fetches YouTube video metadata and full downloadable quality ladder via InnerTube.
  */
 export async function probeYouTube(
   rawUrl: string,
-  probeStream?: ProbeStreamFn,
+  _probeStream?: ProbeStreamFn,
   signal?: AbortSignal,
 ): Promise<YouTubeProbeResult | YouTubeProbeError> {
   const videoId = extractYouTubeId(rawUrl);
@@ -420,44 +494,15 @@ export async function probeYouTube(
         continue;
       }
 
-      const hasDirect = (data.streamingData?.formats ?? []).some((f) => !!f.url);
-      const hasAudio = (data.streamingData?.adaptiveFormats ?? []).some((f) => !!f.url);
-      const hlsUrl = data.streamingData?.hlsManifestUrl;
-      if (!hasDirect && !hasAudio && !hlsUrl) {
-        lastReason = 'No downloadable streams found for this video.';
+      const qualities = buildYouTubeQualities(data, null, client.userAgent);
+      if (qualities.length === 0) {
+        lastReason = 'No downloadable qualities found for this video.';
         continue;
       }
 
-      let hlsProbe: StreamProbe | null = null;
-      const needDirectFallback = !hasDirect && client.name === 'IOS';
-      const vrClient = INNERTUBE_CLIENTS.find((c) => c.name === 'ANDROID_VR');
-
-      const [sp, vrData] = await Promise.all([
-        hlsUrl && probeStream
-          ? probeStream(hlsUrl, { headers: { 'User-Agent': client.userAgent } }).catch(() => null)
-          : Promise.resolve(null),
-        needDirectFallback && vrClient
-          ? fetch('https://www.youtube.com/youtubei/v1/player?prettyPrint=false', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json', 'User-Agent': vrClient.userAgent },
-              body: JSON.stringify({ videoId, context: vrClient.context, contentCheckOk: true, racyCheckOk: true }),
-            })
-              .then((r) => (r.ok ? (r.json() as Promise<YouTubePlayerResponse>) : null))
-              .catch(() => null)
-          : Promise.resolve(null),
-      ]);
-
-      if (sp && sp.ok) hlsProbe = sp;
-      if (vrData?.streamingData?.formats?.length) {
-        data.streamingData = {
-          ...data.streamingData,
-          formats: vrData.streamingData.formats,
-        };
-      }
-
-      const qualities = buildYouTubeQualities(data, hlsProbe, client.userAgent);
-      if (qualities.length === 0) {
-        lastReason = 'No downloadable qualities found for this video.';
+      // If this client only gave audio-only (no video), try the next client before settling.
+      const hasVideo = qualities.some((q) => q.kind !== 'audio');
+      if (!hasVideo && client !== INNERTUBE_CLIENTS[INNERTUBE_CLIENTS.length - 1]) {
         continue;
       }
 

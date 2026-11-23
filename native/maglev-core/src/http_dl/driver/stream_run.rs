@@ -20,7 +20,7 @@ use crate::http_dl::redirect::SendError;
 use crate::http_dl::sidecar::{StreamSide, TrackSide};
 use crate::http_dl::stream::fetch::{self, FetchFail, ReqCtx};
 use crate::http_dl::stream::{
-    self, plan, ResolveFail, StreamProbe, TrackPlan, MAX_IN_FLIGHT, MAX_SEGMENT_BYTES,
+    self, plan, ResolveFail, StreamKind, StreamProbe, TrackPlan, MAX_IN_FLIGHT, MAX_SEGMENT_BYTES, PAIR_IN_FLIGHT,
 };
 
 pub(super) fn stream_dl_error(e: StreamError) -> DlError {
@@ -100,6 +100,7 @@ struct StreamCtx<'a> {
     url: &'a str,
     est: Option<u64>,
     tracks: &'a [TrackPlan],
+    max_in_flight: usize,
 }
 
 impl Downloads {
@@ -471,7 +472,8 @@ impl Downloads {
             }
         });
 
-        let c = StreamCtx { id: &id, ctx: &ctx, folder: &folder, name: &name, url: &url, est, tracks };
+        let max_in_flight = if spec.kind == StreamKind::Pair { PAIR_IN_FLIGHT } else { MAX_IN_FLIGHT };
+        let c = StreamCtx { id: &id, ctx: &ctx, folder: &folder, name: &name, url: &url, est, tracks, max_in_flight };
         let mut keys: HashMap<String, [u8; 16]> = HashMap::new();
         let mut clock = StallClock::new(Instant::now());
         for ti in 0..tracks.len() {
@@ -594,7 +596,7 @@ impl Downloads {
             if self.state_of(c.id) != Some(State::Downloading) {
                 return TrackEnd::Stopped;
             }
-            while window.0.len() < MAX_IN_FLIGHT && next < total {
+            while window.0.len() < c.max_in_flight && next < total {
                 let seg = items[next].clone();
                 let cx = c.ctx.clone();
                 window.0.push_back(
@@ -784,6 +786,12 @@ mod tests {
                 kind: crate::http_dl::stream::StreamKind::Hls,
                 variant_id: "v1".into(),
                 audio_id: None,
+                video_url: None,
+                audio_url: None,
+                video_bytes: None,
+                audio_bytes: None,
+                height: None,
+                ext: None,
                 segments_done: 9,
                 segments_total: 9,
             }),

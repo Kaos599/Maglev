@@ -70,13 +70,11 @@ export default function AddDownloadScreen() {
   const [streamItem, setStreamItem] = useState<FoundItem | null>(null);
   const [ytProbe, setYtProbe] = useState<YouTubeProbeResult | null>(null);
   const [ytQualityId, setYtQualityId] = useState<string | null>(null);
-  const [ytPartsOverride, setYtPartsOverride] = useState<DownloadParts | null>(null);
   const [baseName, setBaseName] = useState('');
   // Parts default to the Settings > Downloads pref; the chips below override it for this download only.
   const [linkPrefs] = useLinkDownloadPrefs();
   const [partsOverride, setPartsOverride] = useState<DownloadParts | null>(null);
   const parts: DownloadParts = partsOverride ?? linkPrefs.downloadParts;
-  const ytParts: DownloadParts = ytPartsOverride ?? 8;
   const token = useRef(0);
   const abortRef = useRef<AbortController | null>(null);
   const urlRef = useRef('');
@@ -303,9 +301,7 @@ export default function AddDownloadScreen() {
       name: fileName,
       ...(folderPath ? { folder: folderPath } : {}),
       ...(ytQuality.userAgent ? { headers: { 'User-Agent': ytQuality.userAgent } } : {}),
-      ...(ytQuality.kind === 'hls' && ytQuality.streamSelection
-        ? { stream: ytQuality.streamSelection }
-        : { segments: ytParts }),
+      stream: ytQuality.streamSelection,
     });
     if (res.ok) {
       haptic('commit');
@@ -439,9 +435,6 @@ export default function AddDownloadScreen() {
           </View>
           <Button label="Change" variant="secondary" disabled={adding} onPress={() => void handleChangeFolder()} />
         </View>
-        {ytQuality.kind !== 'hls' ? (
-          <ChipGroup label="Parts" options={PART_OPTIONS} value={ytParts} onChange={(v) => setYtPartsOverride(v)} />
-        ) : null}
         {mobileNote ? <Banner tone="info" title={mobileNote} /> : null}
         {doesntFit ? <Banner tone="danger" title={banners.addDownload.notEnoughSpace.title} body={noSpace} /> : null}
         {addError ? (

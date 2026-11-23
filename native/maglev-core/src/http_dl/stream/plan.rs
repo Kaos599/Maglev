@@ -261,7 +261,7 @@ pub fn base_name(requested: Option<&str>, url: &str) -> String {
     };
     let raw = requested.map(str::to_string).filter(|n| !n.trim().is_empty()).or_else(from_url).unwrap_or_else(|| "Video".to_string());
     let lower = raw.to_ascii_lowercase();
-    for ext in [".m3u8", ".mpd", ".mp4", ".m4v", ".ts", ".mkv", ".webm"] {
+    for ext in [".m3u8", ".mpd", ".mp4", ".m4v", ".m4a", ".ts", ".mkv", ".webm"] {
         if lower.ends_with(ext) && raw.len() > ext.len() {
             return raw[..raw.len() - ext.len()].trim().to_string();
         }
@@ -302,7 +302,17 @@ mod tests {
     use super::*;
 
     fn spec(kind: StreamKind, v: &str, a: Option<&str>) -> StreamSpec {
-        StreamSpec { kind, variant_id: v.to_string(), audio_id: a.map(str::to_string) }
+        StreamSpec {
+            kind,
+            variant_id: v.to_string(),
+            audio_id: a.map(str::to_string),
+            video_url: None,
+            audio_url: None,
+            video_bytes: None,
+            audio_bytes: None,
+            height: None,
+            ext: None,
+        }
     }
 
     fn master(text: &str) -> Master {

@@ -62,7 +62,7 @@ export function buildSelection(kind: StreamKind, probe: Pick<StreamProbe, 'audio
 }
 
 /** "hls" for a `.m3u8` address, "dash" for `.mpd`, else null. Looks at the path only (no network). */
-export function streamKindOfLink(url: string): StreamKind | null {
+export function streamKindOfLink(url: string): 'hls' | 'dash' | null {
   const path = (url ?? '').split(/[?#]/)[0].toLowerCase();
   return path.endsWith('.m3u8') ? 'hls' : path.endsWith('.mpd') ? 'dash' : null;
 }

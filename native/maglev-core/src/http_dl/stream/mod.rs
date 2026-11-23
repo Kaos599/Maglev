@@ -29,6 +29,8 @@ pub const MAX_PLAYLIST_BYTES: u64 = 2 * 1024 * 1024;
 pub const MAX_SEGMENTS: usize = 20_000;
 /// Segments fetched at once; they are written strictly in order.
 pub const MAX_IN_FLIGHT: usize = 3;
+/// Segments fetched at once for direct chunked pair downloads (e.g. YouTube).
+pub const PAIR_IN_FLIGHT: usize = 8;
 /// One segment is held in memory while it is fetched. A bigger one is refused (`STREAM_UNSUPPORTED`).
 pub const MAX_SEGMENT_BYTES: u64 = 48 * 1024 * 1024;
 
@@ -37,6 +39,7 @@ pub const MAX_SEGMENT_BYTES: u64 = 48 * 1024 * 1024;
 pub enum StreamKind {
     Hls,
     Dash,
+    Pair,
 }
 
 /// `options.stream` of `nativeAddDownload`: which variant (and audio track) to save.
@@ -47,6 +50,18 @@ pub struct StreamSpec {
     pub variant_id: String,
     #[serde(default, alias = "audioId")]
     pub audio_id: Option<String>,
+    #[serde(default, alias = "videoUrl")]
+    pub video_url: Option<String>,
+    #[serde(default, alias = "audioUrl")]
+    pub audio_url: Option<String>,
+    #[serde(default, alias = "videoBytes")]
+    pub video_bytes: Option<u64>,
+    #[serde(default, alias = "audioBytes")]
+    pub audio_bytes: Option<u64>,
+    #[serde(default)]
+    pub height: Option<u32>,
+    #[serde(default)]
+    pub ext: Option<String>,
 }
 
 /// What a download record keeps about its stream. Nothing secret: ids and counts only.
@@ -56,6 +71,18 @@ pub struct StreamRec {
     pub variant_id: String,
     pub audio_id: Option<String>,
     #[serde(default)]
+    pub video_url: Option<String>,
+    #[serde(default)]
+    pub audio_url: Option<String>,
+    #[serde(default)]
+    pub video_bytes: Option<u64>,
+    #[serde(default)]
+    pub audio_bytes: Option<u64>,
+    #[serde(default)]
+    pub height: Option<u32>,
+    #[serde(default)]
+    pub ext: Option<String>,
+    #[serde(default)]
     pub segments_done: usize,
     #[serde(default)]
     pub segments_total: usize,
@@ -63,7 +90,17 @@ pub struct StreamRec {
 
 impl StreamRec {
     pub fn spec(&self) -> StreamSpec {
-        StreamSpec { kind: self.kind, variant_id: self.variant_id.clone(), audio_id: self.audio_id.clone() }
+        StreamSpec {
+            kind: self.kind,
+            variant_id: self.variant_id.clone(),
+            audio_id: self.audio_id.clone(),
+            video_url: self.video_url.clone(),
+            audio_url: self.audio_url.clone(),
+            video_bytes: self.video_bytes,
+            audio_bytes: self.audio_bytes,
+            height: self.height,
+            ext: self.ext.clone(),
+        }
     }
 }
 
@@ -162,6 +199,7 @@ pub struct Resolved {
     pub duration_sec: f64,
     pub est_bytes: Option<u64>,
     pub height: Option<u32>,
+    pub ext_override: Option<String>,
 }
 
 impl Resolved {
@@ -170,8 +208,14 @@ impl Resolved {
         self.tracks.len() > 1
     }
 
-    /// `ts` only for a single MPEG-TS track; everything else ends up as `mp4`.
-    pub fn extension(&self) -> &'static str {
+    /// Explicit extension when provided (e.g. `m4a` for audio-only), else `ts` for a single MPEG-TS track, else `mp4`.
+    pub fn extension(&self) -> &str {
+        if let Some(ext) = self.ext_override.as_deref() {
+            let clean = ext.trim().trim_start_matches('.');
+            if !clean.is_empty() {
+                return clean;
+            }
+        }
         if self.mux_needed() || self.tracks.iter().any(|t| t.fmp4) {
             "mp4"
         } else {
@@ -182,6 +226,42 @@ impl Resolved {
     pub fn total_items(&self) -> usize {
         self.tracks.iter().map(|t| t.items.len()).sum()
     }
+}
+
+/// Slices a direct media URL into parallel byte-range chunks for maximum throughput.
+/// For YouTube (`googlevideo.com` / `videoplayback`), uses `&range=start-end` query params
+/// so CDN answers 200 OK at full network speed without single-stream throttling.
+pub fn chunked_segments(url: &str, total_bytes: u64) -> Vec<Segment> {
+    if total_bytes == 0 {
+        return vec![Segment { url: url.to_string(), range: None, key: None, whole_file: true }];
+    }
+    let chunk_size = (total_bytes / 8).clamp(256 * 1024, 2 * 1024 * 1024);
+    let lower = url.to_ascii_lowercase();
+    let yt_query_range = lower.contains("googlevideo.com/") || lower.contains("/videoplayback");
+    let sep = if url.contains('?') { '&' } else { '?' };
+    let mut out = Vec::new();
+    let mut offset = 0u64;
+    while offset < total_bytes {
+        let len = (total_bytes - offset).min(chunk_size);
+        let end = offset + len - 1;
+        if yt_query_range {
+            out.push(Segment {
+                url: format!("{url}{sep}range={offset}-{end}"),
+                range: None,
+                key: None,
+                whole_file: false,
+            });
+        } else {
+            out.push(Segment {
+                url: url.to_string(),
+                range: Some((offset, len)),
+                key: None,
+                whole_file: false,
+            });
+        }
+        offset += len;
+    }
+    out
 }
 
 /// `rel` resolved against `base`. `None` when either is not a valid link.
@@ -271,6 +351,38 @@ pub async fn probe(ctx: &fetch::ReqCtx, url: &str) -> Result<plan::StreamProbe, 
 
 /// Reads the playlists again for the variant (and audio track) the download was added with.
 pub async fn resolve(ctx: &fetch::ReqCtx, url: &str, spec: &StreamSpec) -> Result<Resolved, ResolveFail> {
+    if spec.kind == StreamKind::Pair {
+        let primary = spec.video_url.as_deref().filter(|s| !s.is_empty()).unwrap_or(url);
+        let v_bytes = spec.video_bytes.unwrap_or(0);
+        let a_bytes = spec.audio_bytes.unwrap_or(0);
+        let mut tracks = Vec::new();
+        if let Some(audio) = spec.audio_url.as_deref().filter(|s| !s.is_empty()) {
+            tracks.push(TrackPlan {
+                role: TrackRole::Video,
+                items: chunked_segments(primary, v_bytes),
+                fmp4: true,
+            });
+            tracks.push(TrackPlan {
+                role: TrackRole::Audio,
+                items: chunked_segments(audio, a_bytes),
+                fmp4: true,
+            });
+        } else {
+            tracks.push(TrackPlan {
+                role: TrackRole::Main,
+                items: chunked_segments(primary, v_bytes),
+                fmp4: true,
+            });
+        }
+        let sum = v_bytes.saturating_add(a_bytes);
+        return Ok(Resolved {
+            tracks,
+            duration_sec: 0.0,
+            est_bytes: (sum > 0).then_some(sum),
+            height: spec.height,
+            ext_override: spec.ext.clone(),
+        });
+    }
     let (text, final_url) = fetch::fetch_text(ctx, url).await?;
     let found = detect(&text)?;
     let want = match found {
@@ -297,7 +409,7 @@ pub async fn resolve(ctx: &fetch::ReqCtx, url: &str, spec: &StreamSpec) -> Resul
                     }
                     None => tracks.push(track_of(TrackRole::Main, &video)),
                 }
-                Ok(Resolved { tracks, duration_sec: video.duration_sec, est_bytes: est, height: sel.height })
+                Ok(Resolved { tracks, duration_sec: video.duration_sec, est_bytes: est, height: sel.height, ext_override: None })
             }
             hls::Doc::Media(p) => {
                 if spec.variant_id != plan::SINGLE_VARIANT_ID {
@@ -308,6 +420,7 @@ pub async fn resolve(ctx: &fetch::ReqCtx, url: &str, spec: &StreamSpec) -> Resul
                     duration_sec: p.duration_sec,
                     est_bytes: None,
                     height: None,
+                    ext_override: None,
                 })
             }
         },
@@ -328,7 +441,7 @@ pub async fn resolve(ctx: &fetch::ReqCtx, url: &str, spec: &StreamSpec) -> Resul
                 }
                 None => tracks.push(track_of(TrackRole::Main, &vp)),
             }
-            Ok(Resolved { tracks, duration_sec: d.duration_sec, est_bytes: est, height: video.height })
+            Ok(Resolved { tracks, duration_sec: d.duration_sec, est_bytes: est, height: video.height, ext_override: None })
         }
     }
 }
@@ -374,14 +487,25 @@ mod tests {
     fn extension_follows_the_tracks() {
         let seg = Segment::plain("https://a.test/a".into());
         let t = |role, fmp4| TrackPlan { role, items: vec![seg.clone()], fmp4 };
-        let one_ts = Resolved { tracks: vec![t(TrackRole::Main, false)], duration_sec: 1.0, est_bytes: None, height: None };
+        let one_ts = Resolved { tracks: vec![t(TrackRole::Main, false)], duration_sec: 1.0, est_bytes: None, height: None, ext_override: None };
         assert_eq!(one_ts.extension(), "ts");
         assert!(!one_ts.mux_needed());
         let one_mp4 = Resolved { tracks: vec![t(TrackRole::Main, true)], ..one_ts.clone() };
         assert_eq!(one_mp4.extension(), "mp4");
+        let audio_m4a = Resolved { tracks: vec![t(TrackRole::Main, true)], ext_override: Some("m4a".into()), ..one_ts.clone() };
+        assert_eq!(audio_m4a.extension(), "m4a");
         let two = Resolved { tracks: vec![t(TrackRole::Video, false), t(TrackRole::Audio, false)], ..one_ts.clone() };
         assert_eq!(two.extension(), "mp4");
         assert!(two.mux_needed());
         assert_eq!(two.total_items(), 2);
+    }
+
+    #[test]
+    fn pair_chunks_use_query_range_for_googlevideo() {
+        let segs = chunked_segments("https://rr1.googlevideo.com/videoplayback?itag=137", 4 * 1024 * 1024);
+        assert_eq!(segs.len(), 8);
+        assert!(segs[0].url.ends_with("&range=0-524287"));
+        assert!(segs[0].range.is_none());
+        assert!(segs[7].url.ends_with("&range=3670016-4194303"));
     }
 }
