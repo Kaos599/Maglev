@@ -524,13 +524,17 @@ impl Downloads {
         }
 
         // Every segment of every track is on disk.
-        tokio::task::block_in_place(|| {
-            for r in &runs {
-                let _ = r.file.sync_all();
-            }
-        });
-        let held: u64 = runs.iter().map(|r| r.bytes).sum();
+        // Skip fsyncing temporary .video.part / .audio.part files right before muxing so Android flash
+        // doesn't stall for seconds before StreamMuxer reads them from hot OS page cache and deletes them.
         let mux = resolved.mux_needed();
+        if !mux {
+            tokio::task::block_in_place(|| {
+                for r in &runs {
+                    let _ = r.file.sync_data();
+                }
+            });
+        }
+        let held: u64 = runs.iter().map(|r| r.bytes).sum();
         self.update(&id, |r, _| {
             r.held = held;
             r.size = Some(held);
@@ -938,13 +942,14 @@ impl Downloads {
 
         set.abort_all();
         while set.join_next().await.is_some() {}
-        // Trim any out-of-order pre-allocated tail back to contiguous written bytes if stopped/errored mid-track.
+        // Only trim and flush sidecar on non-Done exits; when Done, transfer_stream proceeds straight
+        // to muxing/finalization without redundant fdatasync stalls on temporary part files.
         if !matches!(outcome, TrackEnd::Done) {
             let trim_len = runs[ti].bytes;
             let f_trim = file.clone();
             let _ = tokio::task::spawn_blocking(move || f_trim.set_len(trim_len)).await;
+            self.flush_stream_side(c, runs);
         }
-        self.flush_stream_side(c, runs);
         outcome
     }
 }

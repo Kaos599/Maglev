@@ -70,7 +70,7 @@ object SafStorageManager {
         val target = dir.createFile(mimeFor(name), name) ?: return "Could not create $name"
         return try {
             context.contentResolver.openOutputStream(target.uri, "wt")?.use { out ->
-                source.inputStream().use { it.copyTo(out, 256 * 1024) }
+                source.inputStream().use { it.copyTo(out, 1024 * 1024) }
             } ?: return "Could not write $name"
             if (target.length() != source.length()) "Copy of $name is incomplete" else null
         } catch (e: Exception) {
@@ -100,7 +100,7 @@ object SafStorageManager {
         }
         return try {
             context.contentResolver.openOutputStream(target.uri, "wt")?.use { out ->
-                source.inputStream().use { it.copyTo(out, 256 * 1024) }
+                source.inputStream().use { it.copyTo(out, 1024 * 1024) }
             } ?: return fail("Could not write $finalName")
             if (target.length() != source.length()) fail("Copy of $finalName is incomplete") else CopyOutcome(null, target.uri, target.name ?: finalName)
         } catch (e: Exception) {
