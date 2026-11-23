@@ -159,32 +159,14 @@ async fn open(ctx: &ReqCtx, url: &str, range: Option<(u64, u64)>) -> Result<reqw
     }
 }
 
-/// Streams a chunk directly to a callback as packets arrive, checking expected length when known.
-pub async fn fetch_stream<F>(
+/// Opens a segment response and verifies HTTP 200 (or 206 for a byte range), returning the live
+/// response stream so callers can buffer and offload disk writes without blocking Tokio workers.
+pub async fn open_stream(
     ctx: &ReqCtx,
     url: &str,
     range: Option<(u64, u64)>,
-    expected: Option<u64>,
-    mut on_chunk: F,
-) -> Result<u64, FetchFail>
-where
-    F: FnMut(&[u8]) -> std::io::Result<()>,
-{
-    let mut resp = open(ctx, url, range).await?;
-    let promised = range.map(|(_, l)| l).or(expected).or_else(|| resp.content_length());
-    let mut written = 0u64;
-    while let Some(chunk) = resp.chunk().await.map_err(FetchFail::Body)? {
-        if !chunk.is_empty() {
-            on_chunk(&chunk).map_err(FetchFail::Sink)?;
-            written += chunk.len() as u64;
-        }
-    }
-    if let Some(p) = promised {
-        if written != p {
-            return Err(FetchFail::Short);
-        }
-    }
-    Ok(written)
+) -> Result<reqwest::Response, FetchFail> {
+    open(ctx, url, range).await
 }
 
 /// The whole body in memory, at most `cap` bytes.

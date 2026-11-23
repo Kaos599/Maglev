@@ -1050,6 +1050,8 @@ pub(super) fn build_client(proxy: Option<&str>, scope: LanScope) -> Result<Clien
         .redirect(policy)
         .connect_timeout(Duration::from_secs(15))
         .read_timeout(Duration::from_secs(45))
+        .tcp_nodelay(true)
+        .pool_max_idle_per_host(16)
         // Every connection, redirects included, goes through the address check. A proxy resolves names itself.
         .dns_resolver(Arc::new(GuardedResolver { scope }))
         .user_agent(USER_AGENT_DEFAULT);

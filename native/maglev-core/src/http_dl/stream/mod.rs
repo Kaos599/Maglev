@@ -232,9 +232,9 @@ impl Resolved {
     }
 }
 
-/// Slices a direct media URL into parallel byte-range chunks for maximum throughput.
-/// For YouTube (`googlevideo.com` / `videoplayback`), uses `&range=start-end` query params
-/// so CDN answers 200 OK at full network speed without single-stream throttling.
+/// Slices a direct media URL into equal waves of parallel byte-range chunks for consistent full link speed.
+/// Uses up to 9 MiB chunks (inside YouTube's unthrottled burst window) in multiples of `PAIR_IN_FLIGHT`
+/// so all 8 connections stay saturated with zero lone-straggler tail slowdown.
 pub fn chunked_segments(url: &str, total_bytes: u64) -> Vec<Segment> {
     if total_bytes == 0 {
         return vec![Segment {
@@ -246,11 +246,21 @@ pub fn chunked_segments(url: &str, total_bytes: u64) -> Vec<Segment> {
             expected_len: None,
         }];
     }
-    let chunk_size = (total_bytes / 8).clamp(256 * 1024, 4 * 1024 * 1024);
+    const MIN_CHUNK: u64 = 256 * 1024;
+    const MAX_CHUNK: u64 = 9 * 1024 * 1024;
+    let lanes = PAIR_IN_FLIGHT as u64;
+    let num_chunks = if total_bytes < MIN_CHUNK * lanes {
+        total_bytes.div_ceil(MIN_CHUNK).clamp(1, lanes)
+    } else {
+        let wave_bytes = MAX_CHUNK * lanes;
+        let waves = total_bytes.div_ceil(wave_bytes);
+        waves * lanes
+    };
+    let chunk_size = total_bytes.div_ceil(num_chunks);
     let lower = url.to_ascii_lowercase();
     let yt_query_range = lower.contains("googlevideo.com/") || lower.contains("/videoplayback");
     let sep = if url.contains('?') { '&' } else { '?' };
-    let mut out = Vec::new();
+    let mut out = Vec::with_capacity(num_chunks as usize);
     let mut offset = 0u64;
     while offset < total_bytes {
         let len = (total_bytes - offset).min(chunk_size);
@@ -522,5 +532,10 @@ mod tests {
         assert!(segs[0].url.ends_with("&range=0-524287"));
         assert!(segs[0].range.is_none());
         assert!(segs[7].url.ends_with("&range=3670016-4194303"));
+        // 80 MiB splits into 2 full waves of 8 equal chunks (16 x 5 MiB) with no lone tail chunk.
+        let big = chunked_segments("https://rr1.googlevideo.com/videoplayback?itag=137", 80 * 1024 * 1024);
+        assert_eq!(big.len(), 16);
+        assert_eq!(big[0].expected_len, Some(5 * 1024 * 1024));
+        assert_eq!(big[15].expected_len, Some(5 * 1024 * 1024));
     }
 }

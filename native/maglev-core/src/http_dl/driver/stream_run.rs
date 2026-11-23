@@ -748,8 +748,9 @@ impl Downloads {
     }
 
     /// Streams `Pair` chunks across `PAIR_IN_FLIGHT` concurrent HTTP/1.1 connections with zero
-    /// head-of-line blocking: each worker writes directly to its exact byte offset (`write_all_at`)
-    /// as network packets arrive, keeping every connection saturated to match full link speed.
+    /// head-of-line blocking, 512 KiB buffered `spawn_blocking` disk writes (never starving Tokio's
+    /// network reactor), pre-allocated file length, no mid-transfer `fdatasync` stalls, and a
+    /// 1-second rolling speed window for smooth, full-line-speed downloads.
     async fn run_pair_track(
         self: &Arc<Self>,
         c: &StreamCtx<'_>,
@@ -757,6 +758,7 @@ impl Downloads {
         runs: &mut Vec<TrackRun>,
         clock: &mut StallClock,
     ) -> TrackEnd {
+        const PAIR_WRITE_BUF: usize = 512 * 1024;
         let items = &c.tracks[ti].items;
         let total = items.len();
         let file = runs[ti].file.clone();
@@ -764,6 +766,17 @@ impl Downloads {
         let other_bytes: u64 = runs.iter().enumerate().filter(|(i, _)| *i != ti).map(|(_, r)| r.bytes).sum();
         let other_done: usize = runs.iter().enumerate().filter(|(i, _)| *i != ti).map(|(_, r)| r.done).sum();
         let base_bytes = runs[ti].bytes;
+        let track_total: u64 = items.iter().filter_map(|s| s.expected_len).sum();
+
+        // Pre-allocate the part file once so parallel out-of-order pwrite never contends on file-size metadata.
+        if track_total > 0 {
+            let f_pre = file.clone();
+            if let Ok(Err(e)) = tokio::task::spawn_blocking(move || f_pre.set_len(track_total)).await {
+                let n = self.update(c.id, |_, l| l.attempts).unwrap_or(0);
+                let ev = io_event(&e, n);
+                return if matches!(ev, Event::Transient { .. }) { TrackEnd::Broken } else { TrackEnd::Fatal(ev) };
+            }
+        }
 
         let mut done_flags = vec![false; total];
         for flag in done_flags.iter_mut().take(start_done) {
@@ -779,11 +792,11 @@ impl Downloads {
 
         let mut limit = self.update(c.id, |r, _| r.down_limit_bps).unwrap_or(0);
         let started = Instant::now();
-        let mut last_flush = Instant::now();
         let mut last_space = Instant::now();
-        let mut last_report = Instant::now();
         let mut last_streamed = 0u64;
-        let mut bps_smooth = 0.0_f64;
+        // 1-second rolling window (4 x 250ms ticks) for stable, accurate speed display.
+        let mut speed_win: VecDeque<(Instant, u64)> = VecDeque::with_capacity(8);
+        speed_win.push_back((Instant::now(), 0));
 
         let outcome = loop {
             while set.len() < c.max_in_flight && next < total {
@@ -795,13 +808,49 @@ impl Downloads {
                 let counter = live_bytes.clone();
                 let write_off = seg.write_offset.unwrap_or(0);
                 set.spawn(async move {
-                    let mut pos = write_off;
-                    let res = fetch::fetch_stream(&cx, &seg.url, seg.range, seg.expected_len, |chunk| {
-                        tokio::task::block_in_place(|| write_all_at(&f, chunk, pos))?;
-                        pos += chunk.len() as u64;
-                        counter.fetch_add(chunk.len() as u64, Ordering::Relaxed);
-                        Ok(())
-                    })
+                    let res = async {
+                        let mut resp = fetch::open_stream(&cx, &seg.url, seg.range).await?;
+                        let promised = seg.range.map(|(_, l)| l).or(seg.expected_len).or_else(|| resp.content_length());
+                        let mut pos = write_off;
+                        let mut written = 0u64;
+                        let mut buf: Vec<u8> = Vec::with_capacity(PAIR_WRITE_BUF);
+
+                        while let Some(chunk) = resp.chunk().await.map_err(FetchFail::Body)? {
+                            if chunk.is_empty() {
+                                continue;
+                            }
+                            counter.fetch_add(chunk.len() as u64, Ordering::Relaxed);
+                            buf.extend_from_slice(&chunk);
+                            if buf.len() >= PAIR_WRITE_BUF {
+                                let flush_buf = std::mem::replace(&mut buf, Vec::with_capacity(PAIR_WRITE_BUF));
+                                let flush_pos = pos;
+                                let flush_len = flush_buf.len() as u64;
+                                pos += flush_len;
+                                written += flush_len;
+                                let f2 = f.clone();
+                                tokio::task::spawn_blocking(move || write_all_at(&f2, &flush_buf, flush_pos))
+                                    .await
+                                    .map_err(|_| FetchFail::Short)?
+                                    .map_err(FetchFail::Sink)?;
+                            }
+                        }
+                        if !buf.is_empty() {
+                            let flush_pos = pos;
+                            let flush_len = buf.len() as u64;
+                            written += flush_len;
+                            let f2 = f.clone();
+                            tokio::task::spawn_blocking(move || write_all_at(&f2, &buf, flush_pos))
+                                .await
+                                .map_err(|_| FetchFail::Short)?
+                                .map_err(FetchFail::Sink)?;
+                        }
+                        if let Some(p) = promised {
+                            if written != p {
+                                return Err(FetchFail::Short);
+                            }
+                        }
+                        Ok(written)
+                    }
                     .await;
                     (idx, res)
                 });
@@ -827,24 +876,24 @@ impl Downloads {
                             runs[ti].bytes += seg.expected_len.unwrap_or(0);
                             runs[ti].done += 1;
                         }
-                        if last_flush.elapsed() >= SIDECAR_FLUSH {
-                            last_flush = Instant::now();
-                            self.flush_stream_side(c, runs);
-                        }
                     }
                 },
                 _ = tick.tick() => {
+                    let now = Instant::now();
                     let streamed = live_bytes.load(Ordering::Relaxed);
                     let delta = streamed.saturating_sub(last_streamed);
                     last_streamed = streamed;
                     if delta > 0 {
-                        clock.on_bytes(Instant::now(), delta);
+                        clock.on_bytes(now, delta);
                     }
+                    speed_win.push_back((now, streamed));
+                    while speed_win.len() > 2 && now.duration_since(speed_win.front().unwrap().0) > Duration::from_secs(1) {
+                        speed_win.pop_front();
+                    }
+                    let (old_t, old_b) = speed_win.front().copied().unwrap_or((now, streamed));
+                    let win_dt = now.duration_since(old_t).as_secs_f64().max(0.05);
+                    let bps = (streamed.saturating_sub(old_b) as f64 / win_dt) as u64;
                     let held = other_bytes.saturating_add(base_bytes).saturating_add(streamed);
-                    let dt = last_report.elapsed().as_secs_f64().max(0.001);
-                    last_report = Instant::now();
-                    let inst = delta as f64 / dt;
-                    bps_smooth = if bps_smooth == 0.0 { inst } else { bps_smooth * 0.6 + inst * 0.4 };
                     let alive = self.update(c.id, |rec, live| {
                         rec.held = held;
                         if rec.size.map(|s| s < held).unwrap_or(false) {
@@ -853,7 +902,7 @@ impl Downloads {
                         if let Some(s) = rec.stream.as_mut() {
                             s.segments_done = other_done + completed_count;
                         }
-                        live.bps = bps_smooth as u64;
+                        live.bps = bps;
                         if delta > 0 {
                             live.attempts = 0;
                             live.denied = 0;
@@ -889,6 +938,12 @@ impl Downloads {
 
         set.abort_all();
         while set.join_next().await.is_some() {}
+        // Trim any out-of-order pre-allocated tail back to contiguous written bytes if stopped/errored mid-track.
+        if !matches!(outcome, TrackEnd::Done) {
+            let trim_len = runs[ti].bytes;
+            let f_trim = file.clone();
+            let _ = tokio::task::spawn_blocking(move || f_trim.set_len(trim_len)).await;
+        }
         self.flush_stream_side(c, runs);
         outcome
     }

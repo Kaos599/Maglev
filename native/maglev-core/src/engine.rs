@@ -655,7 +655,7 @@ impl MaglevEngine {
         let network_off = NETWORK_OFF.load(Ordering::SeqCst);
 
         let runtime = tokio::runtime::Builder::new_multi_thread()
-            .worker_threads(2)
+            .worker_threads(4)
             .thread_name("maglev-rt")
             .enable_all()
             .build()
