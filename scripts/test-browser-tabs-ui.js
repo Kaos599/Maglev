@@ -94,8 +94,8 @@ check('only the active tab opens the menu', /if \(id === activeIdRef\.current\) 
 console.log('pop-up card');
 check('is a FloatingSheet with a title per kind', /<FloatingSheet visible=\{prompt != null\}/.test(card) && /browserTabs\.popup\.windowTitle/.test(card) && /browserTabs\.popup\.redirectTitle/.test(card) && /browserTabs\.popup\.appTitle/.test(card));
 check('body shows the target host (scheme for an app) and "and N more blocked"', /kind === 'app'/.test(card) && /browserTabs\.popup\.moreBlocked\(p\.more\)/.test(card));
-check('buttons Open, Block and "Always allow on {sourceHost}"', /browserTabs\.popup\.open/.test(card) && /browserTabs\.popup\.block/.test(card) && /browserTabs\.popup\.alwaysAllow\(sourceHost\)/.test(card));
-check('scrim and Back count as Block', /onClose=\{onBlock\}/.test(card));
+check('buttons Block, Allow once and "Always allow on {sourceHost}"', /browserSettingsCopy\.popupCard/.test(card) && /copy\.block\b/.test(card) && /copy\.allowOnce\b/.test(card) && /copy\.alwaysAllow\(sourceHost\)/.test(card));
+check('scrim and Back dismiss (block once, remember nothing)', /onClose=\{onDismiss \?\? onBlock\}/.test(card));
 check('Open: window opens a tab with the opener, redirect follows, app opens the app', /req\.kind === 'window'[\s\S]{0,120}opener: id/.test(scr) && /followRedirect\(req\.url\)/.test(scr) && /openApp\(req\.url\)/.test(scr));
 check('an app that does not open falls back or says no app', /r\.fallbackUrl[\s\S]{0,120}followRedirect\(r\.fallbackUrl\)/.test(scr) && /browserTabs\.popup\.noApp/.test(scr));
 check('the card state is the T5 queue (request, noteBlocked, drop)', /popupsApi\.request\(/.test(scr) && /popupsApi\.noteBlocked\(/.test(scr) && /popupsApi\.drop\(p, id, 'navigated'\)/.test(scr) && /popupsApi\.drop\(p, id, 'closed'\)/.test(scr));

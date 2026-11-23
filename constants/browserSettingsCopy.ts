@@ -68,6 +68,35 @@ export const browserSettingsCopy = {
     noMatch: 'No sites match',
     noMatchBody: 'Try another part of the address.',
     popupEmpty: { title: 'No sites allowed', body: 'Sites you let open pop-ups show up here.' },
+    blockInstead: 'Block instead',
+  },
+  popupCard: {
+    block: 'Block',
+    allowOnce: 'Allow once',
+    alwaysAllow: (host: string) => `Always allow on ${host}`,
+    /** The 5 s notice after Block. */
+    blockedOn: (host: string) => `Pop-ups blocked on ${host}`,
+    undo: 'Undo',
+  },
+  blockedPopups: {
+    title: 'Blocked pop-ups',
+    row: 'Blocked pop-ups',
+    none: 'None',
+    empty: { title: 'Nothing blocked yet', body: 'Pop-ups you block show up here, with the sites they came from.' },
+    countLine: (n: number, last: string) => (last ? `${n} blocked · last ${last}` : `${n} blocked`),
+    alwaysBlocked: 'Always blocked',
+    /** What a blocked link was: a new window, a redirect, or another app. */
+    kinds: { window: 'Pop-up', redirect: 'Redirect', app: 'Opens another app' } as Record<string, string>,
+    siteTitle: 'Blocked links',
+    siteEmpty: { title: 'No blocked links', body: 'This site has no blocked pop-ups saved.' },
+    copyHint: 'Press and hold a link to copy it.',
+    copied: 'Link copied.',
+    unblock: 'Unblock',
+    unblockBody: 'This site is no longer always blocked. Its pop-ups will ask you again.',
+    allowInstead: 'Allow instead',
+    allowInsteadBody: 'Pop-ups from this site will be allowed to open.',
+    clearLog: 'Clear log',
+    clearLogBody: 'Removes the blocked links saved for this site. The block itself stays.',
   },
 } as const;
 

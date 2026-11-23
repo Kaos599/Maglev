@@ -5,6 +5,7 @@
 import { useSyncExternalStore } from 'react';
 import { kvGet, kvSet } from './kv.ts';
 import { SEARCH_ENGINES, type SearchEngine } from '../browserUrl.ts';
+import { normalizeSiteHost } from '../browser/popups.ts';
 
 export { toBrowserUrl, SEARCH_ENGINES } from '../browserUrl.ts';
 export type { SearchEngine, BrowserTarget } from '../browserUrl.ts';
@@ -30,8 +31,13 @@ export interface BrowserPrefs {
   clearHistoryOnClose: boolean;
   /** What to do with pop-ups and redirects the user didn't tap for (section 24.10). */
   popupPolicy: PopupPolicy;
-  /** Sites allowed to open pop-ups and redirects, without `www.`. */
+  /** Sites allowed to open pop-ups and redirects, normalised (no `www.` or `m.`; matched by suffix). */
   popupAllowHosts: string[];
+  /**
+   * Sites whose pop-ups and redirects are always blocked, normalised the same way. Precedence: block list > allow list >
+   * policy (utils/browser/popups.ts `decideNewWindow`). Set by the card's Block button and Settings › Blocked pop-ups.
+   */
+  popupBlockHosts: string[];
   /** Page text size in percent (section 28). Always one of the values `normalizeTextZoom` returns. */
   browserTextZoom: number;
   /** Swipe the address bar to change tabs, or down to open the tab list. */
@@ -91,6 +97,7 @@ export function defaultBrowserPrefs(): BrowserPrefs {
     clearHistoryOnClose: false,
     popupPolicy: 'ask',
     popupAllowHosts: [],
+    popupBlockHosts: [],
     browserTextZoom: TEXT_ZOOM_DEFAULT,
     swipeTabs: true,
     privateBrowsing: false,
@@ -104,6 +111,11 @@ export function defaultBrowserPrefs(): BrowserPrefs {
 
 function strings(v: unknown): string[] {
   return Array.isArray(v) ? v.filter((s): s is string => typeof s === 'string' && s.trim() !== '').map((s) => s.trim()) : [];
+}
+
+/** A stored list of sites in normalised form: junk dropped, no duplicates. Old blobs without the field give []. */
+function normalizeSiteList(v: unknown): string[] {
+  return [...new Set(strings(v).map(normalizeSiteHost).filter((h) => h !== ''))];
 }
 
 /** Tolerant parse: unknown or missing fields fall back to defaults. */
@@ -122,7 +134,8 @@ export function normalizeBrowserPrefs(raw: unknown): BrowserPrefs {
     suggestFromHistory: o.suggestFromHistory !== false,
     clearHistoryOnClose: o.clearHistoryOnClose === true,
     popupPolicy: POPUP_POLICIES.includes(o.popupPolicy as PopupPolicy) ? (o.popupPolicy as PopupPolicy) : 'ask',
-    popupAllowHosts: [...new Set(strings(o.popupAllowHosts).map((h) => h.toLowerCase()))],
+    popupAllowHosts: normalizeSiteList(o.popupAllowHosts),
+    popupBlockHosts: normalizeSiteList(o.popupBlockHosts),
     browserTextZoom: normalizeTextZoom(o.browserTextZoom),
     swipeTabs: o.swipeTabs !== false,
     privateBrowsing: o.privateBrowsing === true,

@@ -1,9 +1,10 @@
-import React from 'react';
-import { Stack, useRouter } from 'expo-router';
+import React, { useCallback, useState } from 'react';
+import { Stack, useFocusEffect, useRouter } from 'expo-router';
 import { browserTabs } from '../../constants/copy';
 import { browserSettingsCopy } from '../../constants/browserSettingsCopy';
 import { ListRow, SectionHeader, Toggle } from '../../components/ui';
 import { Card, SettingsPage } from '../../components/settings/SettingsParts';
+import { blockedSiteRows, loadPopupLog, type PopupLog } from '../../utils/browser/popupLog';
 import { useBrowserPrefs, type PopupPolicy } from '../../utils/prefs/browser';
 
 const POPUP_CHOICES: { value: PopupPolicy; title: string }[] = [
@@ -15,10 +16,17 @@ const POPUP_CHOICES: { value: PopupPolicy; title: string }[] = [
 /** Trailing text for a site list row: the count, or None. */
 const countText = (n: number) => (n === 0 ? 'None' : String(n));
 
+/** Subtitle of the Blocked pop-ups row: "None", "1 site" or "N sites". */
+const siteCountText = (n: number) => (n === 0 ? browserSettingsCopy.blockedPopups.none : n === 1 ? '1 site' : `${n} sites`);
+
 export default function BrowserBlockingSettings() {
   const router = useRouter();
   const [prefs, setPrefs] = useBrowserPrefs();
+  const [log, setLog] = useState<PopupLog>(() => loadPopupLog());
   const copy = browserSettingsCopy.blocking;
+  // The log changes on the list and detail screens, so read it again whenever this screen comes back.
+  useFocusEffect(useCallback(() => setLog(loadPopupLog()), []));
+  const blockedSites = blockedSiteRows(prefs.popupBlockHosts, log).length;
 
   return (
     <SettingsPage title={browserSettingsCopy.sections.blocking}>
@@ -54,6 +62,11 @@ export default function BrowserBlockingSettings() {
         ))}
       </Card>
       <Card>
+        <ListRow
+          title={browserSettingsCopy.blockedPopups.row}
+          subtitle={siteCountText(blockedSites)}
+          onPress={() => router.push('/settings/browser-blocked-popups' as never)}
+        />
         <ListRow
           title={browserTabs.settings.allowedSites}
           value={countText(prefs.popupAllowHosts.length)}
