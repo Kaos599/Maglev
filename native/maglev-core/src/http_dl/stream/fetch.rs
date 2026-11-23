@@ -14,7 +14,7 @@
 use std::time::Duration;
 
 use aes::cipher::{block_padding::Pkcs7, BlockDecryptMut, KeyIvInit};
-use reqwest::header::{ACCEPT_ENCODING, COOKIE, ORIGIN, RANGE, REFERER, RETRY_AFTER, USER_AGENT};
+use reqwest::header::{ACCEPT_ENCODING, CONTENT_RANGE, COOKIE, ORIGIN, RANGE, REFERER, RETRY_AFTER, USER_AGENT};
 use reqwest::Client;
 
 use super::{StreamError, MAX_PLAYLIST_BYTES};
@@ -148,13 +148,34 @@ fn retry_after(resp: &reqwest::Response) -> Option<Duration> {
     super::super::rules::parse_retry_after(Some(v))
 }
 
-/// Sends the request and checks the status. `Ok` means 200, or 206 when a range was asked.
+/// True when this 206 (sent for a request without `Range`) carries the whole file: contract 24.8, issue #168.
+pub fn whole_body_206(resp: &reqwest::Response) -> bool {
+    let cr = resp.headers().get(CONTENT_RANGE).and_then(|v| v.to_str().ok());
+    super::super::rules::is_whole_body_206(cr, resp.content_length())
+}
+
+/// True when this 206 starts at `offset` and ends at the last byte of `(offset, length)`, the range that was asked.
+fn range_206_matches(resp: &reqwest::Response, offset: u64, length: u64) -> bool {
+    let Some(end) = offset.checked_add(length.saturating_sub(1)) else {
+        return false;
+    };
+    let cr = resp.headers().get(CONTENT_RANGE).and_then(|v| v.to_str().ok());
+    matches!(
+        cr.and_then(super::super::rules::parse_content_range),
+        Some((Some(s), Some(e), _)) if s == offset && e == end
+    )
+}
+
+/// Sends the request and checks the status. `Ok` means 200 for a request without `Range`, or a 206 that is the whole
+/// file (issue #168), or a 206 for exactly the range asked. Anything else that is a 200 or 206 is `RangeIgnored`.
 async fn open(ctx: &ReqCtx, url: &str, range: Option<(u64, u64)>) -> Result<reqwest::Response, FetchFail> {
     let resp = ctx.send(url, range).await.map_err(FetchFail::Send)?;
     let status = resp.status().as_u16();
-    match (status, range.is_some()) {
-        (206, true) | (200, false) => Ok(resp),
-        (200, true) | (206, false) => Err(FetchFail::RangeIgnored),
+    match (status, range) {
+        (200, None) => Ok(resp),
+        (206, None) if whole_body_206(&resp) => Ok(resp),
+        (206, Some((offset, length))) if range_206_matches(&resp, offset, length) => Ok(resp),
+        (200 | 206, _) => Err(FetchFail::RangeIgnored),
         _ => Err(FetchFail::Status(status, retry_after(&resp))),
     }
 }
