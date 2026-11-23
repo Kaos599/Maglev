@@ -607,6 +607,8 @@ class MaglevEngineModule : Module() {
             Prop("textZoom") { view: MaglevBrowserView, value: Int -> view.setTextZoom(value) }
             Prop("privateMode") { view: MaglevBrowserView, value: Boolean -> view.setPrivateMode(value) }
             Prop("pullToRefresh") { view: MaglevBrowserView, value: Boolean -> view.setPullToRefresh(value) }
+            Prop("blockThirdPartyCookies") { view: MaglevBrowserView, value: Boolean -> view.setBlockThirdPartyCookies(value) }
+            Prop("httpsFirst") { view: MaglevBrowserView, value: Boolean -> view.setHttpsFirst(value) }
             Prop("refreshColor") { view: MaglevBrowserView, value: String -> view.setRefreshColor(value) }
             Prop("refreshBackground") { view: MaglevBrowserView, value: String -> view.setRefreshBackground(value) }
             Prop("darkPages") { view: MaglevBrowserView, value: Boolean -> view.setDarkPages(value) }

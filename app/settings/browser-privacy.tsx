@@ -45,6 +45,14 @@ export default function BrowserPrivacySettings() {
 
       <Card>
         <ListRow
+          title={browserSettingsCopy.privacy.blockCookies}
+          subtitle={browserSettingsCopy.privacy.blockCookiesSubtitle}
+          accessory={<Toggle value={prefs.blockThirdPartyCookies} onValueChange={(blockThirdPartyCookies) => setPrefs({ blockThirdPartyCookies })} accessibilityLabel={browserSettingsCopy.privacy.blockCookies} />}
+        />
+      </Card>
+
+      <Card>
+        <ListRow
           icon="trash"
           title={historyCopy.settings.clear}
           destructive

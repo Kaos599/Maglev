@@ -6,7 +6,7 @@
 import type { BrowserPrefs, PopupPolicy } from '../utils/prefs/browser';
 import type { SearchEngine } from '../utils/browserUrl';
 
-export type HubSection = 'general' | 'startPage' | 'privacy' | 'blocking' | 'media' | 'gestures';
+export type HubSection = 'general' | 'startPage' | 'privacy' | 'blocking' | 'media' | 'gestures' | 'advanced';
 
 export const searchEngineNames: Record<SearchEngine, string> = {
   duckduckgo: 'DuckDuckGo',
@@ -27,6 +27,15 @@ export const browserSettingsCopy = {
     blocklists: 'Block lists',
     media: 'Downloads and media',
     gestures: 'Tabs and gestures',
+    advanced: 'Advanced',
+  },
+  privacy: {
+    blockCookies: 'Block cookies from other sites',
+    blockCookiesSubtitle: 'Stops other sites from following you across pages.',
+  },
+  advanced: {
+    httpsFirst: 'Try https first',
+    httpsFirstSubtitle: 'Opens the secure version of a site when there is one.',
   },
   general: {
     desktopSite: 'Desktop site by default',
@@ -124,5 +133,6 @@ export function hubSummaries(p: BrowserPrefs): Record<HubSection, string> {
     blocking: `${p.adBlock ? 'Ads blocked' : 'Ads allowed'} · Pop-ups: ${popupShort[p.popupPolicy]}`,
     media: `${p.hideSmallFiles ? 'Hide small files' : 'Show small files'} · ${qualityText[p.streamQuality]}`,
     gestures: `${p.swipeTabs ? 'Swipe header' : 'Swipe off'} · ${p.pullToRefresh ? 'Pull to reload' : 'No pull to reload'}`,
+    advanced: p.httpsFirst ? 'HTTPS first' : 'HTTPS first off',
   };
 }

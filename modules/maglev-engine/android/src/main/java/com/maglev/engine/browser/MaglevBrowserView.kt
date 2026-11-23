@@ -108,6 +108,11 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
     private var desktopMode = false
     // 28: text size in percent, 50..200. Applied again to every WebView this view creates.
     private var textZoom = 100
+    // 0.34 section 5: third-party cookies are blocked unless the user turns "Block cookies from other sites" off.
+    // Declared before init, which builds the first WebView and reads it.
+    private var blockThirdPartyCookies = true
+    // 0.34 section 5: "Try https first". Off: http:// addresses load as they are, with no https try.
+    private var httpsFirst = true
     // Private browsing: the page cache is bypassed (LOAD_NO_CACHE). Cookies are wiped from JS when the browser is left.
     private var privateMode = false
     private var pendingUrl: String? = null
@@ -302,6 +307,20 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
         if (v == textZoom) return
         textZoom = v
         if (!destroyed) webView.settings.textZoom = v
+    }
+
+    /**
+     * 0.34 section 5: "Block cookies from other sites". On (the default) means third-party cookies are refused. Applied to
+     * the live WebView now and to every WebView created later (createWebView).
+     */
+    fun setBlockThirdPartyCookies(value: Boolean) {
+        blockThirdPartyCookies = value
+        if (!destroyed) CookieManager.getInstance().setAcceptThirdPartyCookies(webView, !value)
+    }
+
+    /** 0.34 section 5: "Try https first". Read at each load, so it takes effect on the next load. */
+    fun setHttpsFirst(value: Boolean) {
+        httpsFirst = value
     }
 
     /** Private browsing: stop reading the page cache while on. */
@@ -540,12 +559,16 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
         redirectInFlight = false
         pendingUserNav = true
         // 24.11 HTTPS-first: a typed http:// address is tried as https:// first.
-        val https = HttpsFirst.upgrade(url, httpsFallbackHosts)
+        val https = httpsTryFor(url)
         val host = HttpsFirst.hostOf(https)
         upgrade = if (https != null && host != null) HttpsTry(host, https, url) else null
         armUpgradeTimeout()
         webView.loadUrl(https ?: url)
     }
+
+    /** 0.34 section 5: the https try for [url], or null when "Try https first" is off. Every other HttpsFirst rule still applies. */
+    private fun httpsTryFor(url: String, method: String = "GET"): String? =
+        if (httpsFirst) HttpsFirst.upgrade(url, httpsFallbackHosts, method) else null
 
     /**
      * 24.10: loads a held redirect the user said yes to. Not typed, so the 24.5 refusals (scheme, blocked host, LAN)
@@ -745,7 +768,7 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
 
         val cookies = CookieManager.getInstance()
         cookies.setAcceptCookie(true)
-        cookies.setAcceptThirdPartyCookies(w, false)
+        cookies.setAcceptThirdPartyCookies(w, !blockThirdPartyCookies)
 
         w.addJavascriptInterface(bridge, PageScan.BRIDGE_NAME)
         w.webViewClient = browserClient()
@@ -1326,7 +1349,7 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
                     mainHandler.removeCallbacks(upgradeTimeout)
                 } else {
                     // NATIVE_CONTRACT 39.2 B3: never upgrade a request that is not GET.
-                    val https = HttpsFirst.upgrade(uri.toString(), httpsFallbackHosts, request.method ?: "GET")
+                    val https = httpsTryFor(uri.toString(), request.method ?: "GET")
                     val host = HttpsFirst.hostOf(https)
                     if (https != null && host != null) {
                         upgrade = HttpsTry(host, https, uri.toString())

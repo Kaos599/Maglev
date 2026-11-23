@@ -70,6 +70,10 @@ export interface TabWebViewProps {
   popupBlockHosts: string[];
   /** Pull down at the top of the page to reload it. */
   pullToRefresh: boolean;
+  /** Refuse third-party cookies (Settings › Browser › Privacy). Optional: defaults to true, today's behaviour. */
+  blockThirdPartyCookies?: boolean;
+  /** Try https:// first for http:// addresses (Settings › Browser › Advanced). Optional: defaults to true. */
+  httpsFirst?: boolean;
   /** Spinner colours (theme accent and surface). */
   refreshColor: string;
   refreshBackground: string;
@@ -84,7 +88,7 @@ export interface TabWebViewProps {
  * One native browser view for one tab. Stacked with the others by absolute fill; an inactive one is invisible and
  * ignores touches but stays mounted, so switching back is instant.
  */
-export function TabWebView({ id, url, urlSource, active,adBlock, allowAdsHosts, desktopMode, textZoom, privateMode, popupPolicy, popupAllowHosts, popupBlockHosts, pullToRefresh, refreshColor, refreshBackground, darkPages, handlers: h, register }: TabWebViewProps) {
+export function TabWebView({ id, url, urlSource, active,adBlock, allowAdsHosts, desktopMode, textZoom, privateMode, popupPolicy, popupAllowHosts, popupBlockHosts, pullToRefresh, blockThirdPartyCookies = true, httpsFirst = true, refreshColor, refreshBackground, darkPages, handlers: h, register }: TabWebViewProps) {
   const ref = useRef<MaglevBrowserRef>(null);
   useEffect(() => {
     register(id, ref);
@@ -106,6 +110,8 @@ export function TabWebView({ id, url, urlSource, active,adBlock, allowAdsHosts, 
       popupAllowHosts={popupAllowHosts}
       popupBlockHosts={popupBlockHosts}
       pullToRefresh={pullToRefresh}
+      blockThirdPartyCookies={blockThirdPartyCookies}
+      httpsFirst={httpsFirst}
       refreshColor={refreshColor}
       refreshBackground={refreshBackground}
       darkPages={darkPages}

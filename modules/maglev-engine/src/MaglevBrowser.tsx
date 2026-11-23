@@ -116,6 +116,10 @@ export type MaglevBrowserProps = {
   privateMode?: boolean;
   /** Pull down at the top of a page to reload it (24.10a). Default true. */
   pullToRefresh?: boolean;
+  /** Refuse third-party cookies (0.34 section 5, "Block cookies from other sites"). Default true. */
+  blockThirdPartyCookies?: boolean;
+  /** Try the https:// twin of an http:// address first (0.34 section 5, "Try https first"). Default true. */
+  httpsFirst?: boolean;
   /** Spinner colours for pull to reload (hex). */
   refreshColor?: string;
   refreshBackground?: string;
@@ -184,6 +188,8 @@ type NativeProps = {
   textZoom?: number;
   privateMode?: boolean;
   pullToRefresh?: boolean;
+  blockThirdPartyCookies?: boolean;
+  httpsFirst?: boolean;
   refreshColor?: string;
   refreshBackground?: string;
   darkPages?: boolean;

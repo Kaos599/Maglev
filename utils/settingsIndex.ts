@@ -1922,6 +1922,20 @@ export const SETTINGS_INDEX: SettingEntry[] = [
     ["reload", "refresh", "pull", "swipe down", "gesture", "page", "update"],
   ),
   e(
+    "browser-block-cookies",
+    "Block cookies from other sites",
+    "browser-privacy",
+    "Browser · Privacy and site data",
+    ["cookies", "third-party", "third party", "tracking", "tracker", "track", "follow", "privacy", "cross-site", "other sites"],
+  ),
+  e(
+    "browser-https-first",
+    "Try https first",
+    "browser-advanced",
+    "Browser · Advanced",
+    ["https", "secure", "ssl", "http", "tls", "encrypted", "padlock", "security", "upgrade"],
+  ),
+  e(
     "browser-hub-general",
     "General",
     "browser",
@@ -1962,6 +1976,13 @@ export const SETTINGS_INDEX: SettingEntry[] = [
     "browser",
     "Browser",
     ["swipe", "pull", "reload", "refresh", "tabs", "gesture", "header"],
+  ),
+  e(
+    "browser-hub-advanced",
+    "Advanced",
+    "browser",
+    "Browser",
+    ["https", "secure", "ssl", "http", "advanced"],
   ),
   // Site lists (list screens with a search field; the rows that open them are indexed on Blocking).
   e(

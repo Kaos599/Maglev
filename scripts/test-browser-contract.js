@@ -86,7 +86,8 @@ check('WebView settings', () => {
   assert(/allowFileAccess\s*=\s*false/.test(view), 'allowFileAccess = false');
   assert(/allowContentAccess\s*=\s*false/.test(view), 'allowContentAccess = false');
   assert(view.includes('setSafeBrowsingEnabled(true)'), 'safe browsing on');
-  assert(/setAcceptThirdPartyCookies\(\w+, false\)/.test(view), 'third-party cookies off');
+  assert(/setAcceptThirdPartyCookies\(\w+, !blockThirdPartyCookies\)/.test(view), 'third-party cookies follow the Block cookies pref (default on)');
+  assert(/blockThirdPartyCookies = true/.test(view), 'block third-party cookies is on by default');
 });
 
 check('onReceivedSslError cancels and reports ssl', () => {

@@ -57,6 +57,10 @@ export interface BrowserPrefs {
   streamQuality: StreamQuality;
   /** Pull down at the top of a page to reload it. Read by the browser view (section 24.10a). */
   pullToRefresh: boolean;
+  /** Refuse cookies set by other sites than the one in the address bar. Read by the browser view (0.34 section 5). */
+  blockThirdPartyCookies: boolean;
+  /** Try the https:// address of an http:// page first. Read by the browser view (0.34 section 5). */
+  httpsFirst: boolean;
 }
 
 /** Quality a stream starts on. 'ask' preselects nothing, so the user picks in the stream sheet. */
@@ -106,6 +110,8 @@ export function defaultBrowserPrefs(): BrowserPrefs {
     showBookmarksOnStart: true,
     streamQuality: 'best',
     pullToRefresh: true,
+    blockThirdPartyCookies: true,
+    httpsFirst: true,
   };
 }
 
@@ -144,6 +150,8 @@ export function normalizeBrowserPrefs(raw: unknown): BrowserPrefs {
     showBookmarksOnStart: o.showBookmarksOnStart !== false,
     streamQuality: (STREAM_QUALITIES as readonly unknown[]).includes(o.streamQuality) ? (o.streamQuality as StreamQuality) : d.streamQuality,
     pullToRefresh: o.pullToRefresh !== false,
+    blockThirdPartyCookies: o.blockThirdPartyCookies !== false,
+    httpsFirst: o.httpsFirst !== false,
   };
 }
 

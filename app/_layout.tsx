@@ -172,6 +172,7 @@ function AppNavigation() {
           <Stack.Screen name="settings/backup" />
           <Stack.Screen name="settings/browser" />
           <Stack.Screen name="settings/browser-ad-sites" />
+          <Stack.Screen name="settings/browser-advanced" />
           <Stack.Screen name="settings/browser-blocked-popups" />
           <Stack.Screen name="settings/browser-blocked-popups-site" />
           <Stack.Screen name="settings/browser-blocking" />
