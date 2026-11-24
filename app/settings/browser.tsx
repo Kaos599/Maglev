@@ -25,7 +25,6 @@ export default function BrowserSettings() {
         <ListRow icon="lock" title={sections.privacy} subtitle={summary.privacy} onPress={go('/settings/browser-privacy')} />
         <ListRow icon="shield" title={sections.blocking} subtitle={summary.blocking} onPress={go('/settings/browser-blocking')} />
         <ListRow icon="file-video" title={sections.media} subtitle={summary.media} onPress={go('/settings/browser-media')} />
-        <ListRow icon="move" title={sections.gestures} subtitle={summary.gestures} onPress={go('/settings/browser-gestures')} />
         <ListRow icon="settings" title={sections.advanced} subtitle={summary.advanced} onPress={go('/settings/browser-advanced')} />
       </Card>
 

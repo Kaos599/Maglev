@@ -841,7 +841,7 @@ export default function BrowserScreen({ inTab = false }: { inTab?: boolean }) {
       <AddressSwipe
         strip={tabsState ? switcherOrder(tabsState) : []}
         activeId={activeId}
-        enabled={prefs.swipeTabs && !editing && ready}
+        enabled={!editing && ready}
         canFocusAddress={!editing && ready}
         onFocusAddress={() => startEditing()}
         onSelect={selectTab}
@@ -976,7 +976,7 @@ export default function BrowserScreen({ inTab = false }: { inTab?: boolean }) {
                     popupBlockHosts={prefs.popupBlockHosts}
                     blockThirdPartyCookies={prefs.blockThirdPartyCookies}
                     httpsFirst={prefs.httpsFirst}
-                    pullToRefresh={prefs.pullToRefresh}
+                    pullToRefresh
                     refreshColor={colors.accent}
                     refreshBackground={colors.surface}
                     darkPages={prefs.darkPages && dark}

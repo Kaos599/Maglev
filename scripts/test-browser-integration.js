@@ -47,7 +47,7 @@ check('Kotlin: the WebView sits in a SwipeRefreshLayout', /import androidx\.swip
 check('Kotlin: a pull reloads, and the child-scroll callback blocks it off the top, in find and in a selection', /refresh\.setOnRefreshListener/.test(kt) && /setOnChildScrollUpCallback \{ _, _ -> selectionHold \|\| findActive \|\| webView\.canScrollVertically\(-1\) \}/.test(kt));
 check('Kotlin: the spinner stops when the load ends and has a safety timeout', /refresh\.isRefreshing = false/.test(kt) && /PULL_SAFETY_MS/.test(kt));
 check('Kotlin: props pullToRefresh, refreshColor and refreshBackground', /Prop\("pullToRefresh"/.test(mod) && /Prop\("refreshColor"/.test(mod) && /Prop\("refreshBackground"/.test(mod) && /setColorSchemeColors/.test(kt) && /setProgressBackgroundColorSchemeColor/.test(kt));
-check('TS: the screen passes pullToRefresh and theme colours', /pullToRefresh=\{prefs\.pullToRefresh\}\s+refreshColor=\{colors\.accent\}\s+refreshBackground=\{colors\.surface\}/.test(scr) && /pullToRefresh\?: boolean;/.test(wrap));
+check('TS: the screen passes pullToRefresh and theme colours', /pullToRefresh\s+refreshColor=\{colors\.accent\}\s+refreshBackground=\{colors\.surface\}/.test(scr) && /pullToRefresh\?: boolean;/.test(wrap));
 check('gradle: swiperefreshlayout dependency', /androidx\.swiperefreshlayout:swiperefreshlayout:1\.1\.0/.test(gradle));
 
 // ---- dark pages ----

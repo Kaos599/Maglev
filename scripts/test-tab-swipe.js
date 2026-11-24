@@ -55,17 +55,11 @@ check('unknown width rejects', s.swipeStartsAtEdge(200, NaN) === true);
 check('down swipe opens the switcher', s.decideVertical(60, 0) === 'switcher' && s.decideVertical(20, 800) === 'switcher');
 check('up swipe and short pull do not', s.decideVertical(-80, -900) === 'none' && s.decideVertical(10, 100) === 'none');
 
-console.log('pref');
-check('default on', prefs.defaultBrowserPrefs().swipeTabs === true);
-check('missing field is on', prefs.normalizeBrowserPrefs({}).swipeTabs === true);
-check('false is kept', prefs.normalizeBrowserPrefs({ swipeTabs: false }).swipeTabs === false);
-check('junk falls back to on', prefs.normalizeBrowserPrefs({ swipeTabs: 'no' }).swipeTabs === true);
 
 console.log('wiring');
 const root = path.join(__dirname, '..');
 const read = (f) => fs.readFileSync(path.join(root, f), 'utf8');
-check('settings screen has the switch', read('app/settings/browser-gestures.tsx').includes('swipeTabs'));
-check('browser screen uses the swipe bar', read('app/browser.tsx').includes('AddressSwipe') && read('app/browser.tsx').includes('swipeTabs'));
+check('browser screen uses the swipe bar', read('app/browser.tsx').includes('AddressSwipe'));
 check('swipe component turns off while editing', /enabled/.test(read('components/browser/AddressSwipe.tsx')));
 check('swipe thresholds: horizontal 12 dp, fail after 30 dp vertical', /activeOffsetX: \[-12, 12\]/.test(read('components/browser/AddressSwipe.tsx')) && /failOffsetY: \[-30, 30\]/.test(read('components/browser/AddressSwipe.tsx')));
 

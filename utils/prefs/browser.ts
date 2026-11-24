@@ -40,8 +40,6 @@ export interface BrowserPrefs {
   popupBlockHosts: string[];
   /** Page text size in percent (section 28). Always one of the values `normalizeTextZoom` returns. */
   browserTextZoom: number;
-  /** Swipe the address bar to change tabs, or down to open the tab list. */
-  swipeTabs: boolean;
   /**
    * Private browsing: no history written or suggested, tabs kept in memory only, and cookies of the sites visited
    * wiped when the browser is left (utils/browser/privateSession.ts). UI only; never reaches the engine.
@@ -55,8 +53,6 @@ export interface BrowserPrefs {
   showBookmarksOnStart: boolean;
   /** Which quality a video stream picks first: the highest, the highest at or below 1080p or 720p, or none (ask). */
   streamQuality: StreamQuality;
-  /** Pull down at the top of a page to reload it. Read by the browser view (section 24.10a). */
-  pullToRefresh: boolean;
   /** Refuse cookies set by other sites than the one in the address bar. Read by the browser view (0.34 section 5). */
   blockThirdPartyCookies: boolean;
   /** Try the https:// address of an http:// page first. Read by the browser view (0.34 section 5). */
@@ -103,13 +99,11 @@ export function defaultBrowserPrefs(): BrowserPrefs {
     popupAllowHosts: [],
     popupBlockHosts: [],
     browserTextZoom: TEXT_ZOOM_DEFAULT,
-    swipeTabs: true,
     privateBrowsing: false,
     darkPages: true,
     showFrequentSites: true,
     showBookmarksOnStart: true,
     streamQuality: 'best',
-    pullToRefresh: true,
     blockThirdPartyCookies: true,
     httpsFirst: true,
   };
@@ -143,13 +137,11 @@ export function normalizeBrowserPrefs(raw: unknown): BrowserPrefs {
     popupAllowHosts: normalizeSiteList(o.popupAllowHosts),
     popupBlockHosts: normalizeSiteList(o.popupBlockHosts),
     browserTextZoom: normalizeTextZoom(o.browserTextZoom),
-    swipeTabs: o.swipeTabs !== false,
     privateBrowsing: o.privateBrowsing === true,
     darkPages: o.darkPages !== false,
     showFrequentSites: o.showFrequentSites !== false,
     showBookmarksOnStart: o.showBookmarksOnStart !== false,
     streamQuality: (STREAM_QUALITIES as readonly unknown[]).includes(o.streamQuality) ? (o.streamQuality as StreamQuality) : d.streamQuality,
-    pullToRefresh: o.pullToRefresh !== false,
     blockThirdPartyCookies: o.blockThirdPartyCookies !== false,
     httpsFirst: o.httpsFirst !== false,
   };

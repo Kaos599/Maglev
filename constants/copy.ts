@@ -405,8 +405,6 @@ export const browserTabs = {
     allow: 'Allow',
     allowedSites: 'Sites allowed to open pop-ups',
     remove: 'Remove',
-    swipeTabs: 'Swipe the header to switch tabs',
-    swipeTabsSubtitle: 'Swipe left or right on the header to move between tabs, or down to see all tabs.',
     darkPages: 'Dark pages',
     darkPagesSubtitle: 'Darken pages that only have a light look, when Maglev is dark.',
   },

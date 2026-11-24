@@ -6,7 +6,7 @@
 import type { BrowserPrefs, PopupPolicy } from '../utils/prefs/browser';
 import type { SearchEngine } from '../utils/browserUrl';
 
-export type HubSection = 'general' | 'startPage' | 'privacy' | 'blocking' | 'media' | 'gestures' | 'advanced';
+export type HubSection = 'general' | 'startPage' | 'privacy' | 'blocking' | 'media' | 'advanced';
 
 export const searchEngineNames: Record<SearchEngine, string> = {
   duckduckgo: 'DuckDuckGo',
@@ -26,7 +26,6 @@ export const browserSettingsCopy = {
     blocking: 'Blocking',
     blocklists: 'Block lists',
     media: 'Downloads and media',
-    gestures: 'Tabs and gestures',
     advanced: 'Advanced',
   },
   privacy: {
@@ -65,12 +64,6 @@ export const browserSettingsCopy = {
     streamQuality: 'Video quality for streams',
     streamQualityCaption: 'Ask lets you pick a quality each time you start a stream.',
     qualities: { best: 'Best', '1080': '1080p', '720': '720p', ask: 'Ask' },
-  },
-  gestures: {
-    swipeTabs: 'Swipe the header to switch tabs',
-    swipeTabsSubtitle: 'Swipe left or right on the header to move between tabs, or down to see all tabs.',
-    pullToRefresh: 'Pull down to reload',
-    pullToRefreshSubtitle: 'Pull down at the top of a page to reload it.',
   },
   sites: {
     search: 'Search sites',
@@ -132,7 +125,6 @@ export function hubSummaries(p: BrowserPrefs): Record<HubSection, string> {
     privacy: `${p.privateBrowsing ? 'Private browsing on' : 'Private browsing off'} · ${p.saveHistory ? 'History saved' : 'History not saved'}`,
     blocking: `${p.adBlock ? 'Ads blocked' : 'Ads allowed'} · Pop-ups: ${popupShort[p.popupPolicy]}`,
     media: `${p.hideSmallFiles ? 'Hide small files' : 'Show small files'} · ${qualityText[p.streamQuality]}`,
-    gestures: `${p.swipeTabs ? 'Swipe header' : 'Swipe off'} · ${p.pullToRefresh ? 'Pull to reload' : 'No pull to reload'}`,
     advanced: p.httpsFirst ? 'HTTPS first' : 'HTTPS first off',
   };
 }

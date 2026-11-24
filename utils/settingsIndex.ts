@@ -1842,13 +1842,6 @@ export const SETTINGS_INDEX: SettingEntry[] = [
     ["file icon", "file type", "icon", "icons", "media", "video", "audio", "kind of file", "transfers", "downloads"],
   ),
   e(
-    "browser-swipe-tabs",
-    "Swipe the header to switch tabs",
-    "browser-gestures",
-    "Browser · Tabs and gestures",
-    ["swipe", "gesture", "slide", "address bar", "url bar", "tabs", "switch tab", "next tab", "all tabs"],
-  ),
-  e(
     "browser-dark-pages",
     "Dark pages",
     "browser-general",
@@ -1915,13 +1908,6 @@ export const SETTINGS_INDEX: SettingEntry[] = [
     ["quality", "resolution", "1080p", "720p", "hd", "stream", "hls", "dash", "best quality", "ask", "video"],
   ),
   e(
-    "browser-pull-reload",
-    "Pull down to reload",
-    "browser-gestures",
-    "Browser · Tabs and gestures",
-    ["reload", "refresh", "pull", "swipe down", "gesture", "page", "update"],
-  ),
-  e(
     "browser-block-cookies",
     "Block cookies from other sites",
     "browser-privacy",
@@ -1969,13 +1955,6 @@ export const SETTINGS_INDEX: SettingEntry[] = [
     "browser",
     "Browser",
     ["videos", "found files", "small files", "stream", "quality", "downloads", "media"],
-  ),
-  e(
-    "browser-hub-gestures",
-    "Tabs and gestures",
-    "browser",
-    "Browser",
-    ["swipe", "pull", "reload", "refresh", "tabs", "gesture", "header"],
   ),
   e(
     "browser-hub-advanced",
