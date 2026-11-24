@@ -32,6 +32,7 @@ import expo.modules.interfaces.permissions.PermissionsResponseListener
 import expo.modules.kotlin.Promise
 import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
+import expo.modules.kotlin.modules.ModuleDefinitionBuilder
 import kotlinx.coroutines.launch
 import java.io.File
 
@@ -484,47 +485,7 @@ class MaglevEngineModule : Module() {
         // endregion
 
         // region Video sites (docs/NATIVE_CONTRACT.md section 48, prototype)
-
-        // The page's video files as trimmed yt-dlp JSON text: `{ ok: true, json }`. Errors: SITE_NOT_SUPPORTED,
-        // SITE_NEEDS_LOGIN, SITE_FAILED, VIDEO_SITES_UNAVAILABLE. Starts the library on the first call, off the main thread.
-        AsyncFunction("videoSitesResolve") { url: String, promise: Promise ->
-            videoSitesResolve(promise, url)
-        }
-        // Downloads the newest yt-dlp: `{ ok: true, status: 'updated' | 'current' | 'failed', version }`. Off the main thread.
-        AsyncFunction("videoSitesUpdate") { promise: Promise ->
-            val c = context
-            if (c == null) {
-                promise.resolve(Json.failure(VideoSites.UNAVAILABLE, "Video sites aren't available in this build."))
-            } else {
-                EngineHost.ioScope.launch {
-                    val r = VideoSites.update(c, true)
-                    promise.resolve(linkedMapOf("ok" to true, "status" to r.status, "version" to r.version))
-                }
-            }
-        }
-        // The yt-dlp version name the library last downloaded itself, or null while the bundled one is in use.
-        AsyncFunction("videoSitesVersion") { promise: Promise ->
-            val c = context
-            promise.resolve(if (c == null) null else VideoSites.versionLabel(c))
-        }
-        // What the Settings row shows: `{ version, lastCheckAt }` (version null while the bundled yt-dlp is in use,
-        // lastCheckAt epoch ms or null when never checked).
-        AsyncFunction("videoSitesStatus") { promise: Promise ->
-            val c = context
-            if (c == null) {
-                promise.resolve(linkedMapOf("version" to null, "lastCheckAt" to null))
-            } else {
-                EngineHost.ioScope.launch {
-                    val last = VideoSites.lastCheck(c)
-                    promise.resolve(linkedMapOf("version" to VideoSites.versionLabel(c), "lastCheckAt" to (if (last > 0L) last else null)))
-                }
-            }
-        }
-        // Schedules (enabled) or cancels the daily background yt-dlp update. `mobileData` allows a metered network.
-        AsyncFunction("videoSitesConfigure") { enabled: Boolean, mobileData: Boolean ->
-            context?.let { VideoSitesUpdater.apply(it, enabled, mobileData) }
-            true
-        }
+        videoSitesFunctions()
 
         // endregion
 
@@ -705,6 +666,94 @@ class MaglevEngineModule : Module() {
         // endregion
 
         // region In-app updates (docs/NATIVE_CONTRACT.md section 27)
+        updateFunctions()
+
+        // endregion
+
+        // region Governance
+
+        AsyncFunction("setGovernance") { rules: Map<String, Any?>, promise: Promise ->
+            engine(promise) {
+                @Suppress("UNCHECKED_CAST")
+                val ssids = (rules["ssidWhitelist"] as? List<Any?>)?.mapNotNull { it?.toString() } ?: emptyList()
+                // §19: read headless by RestartEntry after a reboot or update, so it lives in SharedPreferences.
+                context?.let { RestartPrefs.setResumeAfterRestart(it, rules["resumeAfterRestart"] != false) }
+                // Quick share reads these headless, in its own activity (docs/contracts-0.19/quick-share.md section 6).
+                context?.let { com.maglev.engine.share.QuickSharePrefs.save(it, rules) }
+                // Hide from gallery and automatic retry are read in Kotlin only (never sent to Rust).
+                context?.let { c ->
+                    com.maglev.engine.storage.GalleryHide.save(c, rules)
+                    AutoRetry.save(c, rules)
+                    EngineHost.ioScope.launch { com.maglev.engine.storage.GalleryHide.apply(c) }
+                }
+                EngineHost.setGovernance(
+                    Governance(
+                        wifiOnly = rules["wifiOnly"] == true,
+                        ssidWhitelist = ssids,
+                        chargingOnly = rules["chargingOnly"] == true,
+                        batteryCutoffPct = (rules["batteryCutoffPct"] as? Number)?.toInt() ?: 0,
+                        autoExitOnComplete = rules["autoExitOnComplete"] == true,
+                        vpnOnly = rules["vpnOnly"] == true,
+                        seedOnMobileData = rules["seedOnMobileData"] == true,
+                    ),
+                )
+            }
+        }
+
+        // endregion
+    }
+
+    // region Definition parts
+    // definition() hit the JVM 64 KB method limit (MethodTooLargeException in CI run 45378913724): every
+    // AsyncFunction lambda is inlined into it. These member extensions move groups of functions into their own
+    // methods. Called from definition(); behaviour is unchanged.
+
+    private fun ModuleDefinitionBuilder.videoSitesFunctions() {
+
+        // The page's video files as trimmed yt-dlp JSON text: `{ ok: true, json }`. Errors: SITE_NOT_SUPPORTED,
+        // SITE_NEEDS_LOGIN, SITE_FAILED, VIDEO_SITES_UNAVAILABLE. Starts the library on the first call, off the main thread.
+        AsyncFunction("videoSitesResolve") { url: String, promise: Promise ->
+            videoSitesResolve(promise, url)
+        }
+        // Downloads the newest yt-dlp: `{ ok: true, status: 'updated' | 'current' | 'failed', version }`. Off the main thread.
+        AsyncFunction("videoSitesUpdate") { promise: Promise ->
+            val c = context
+            if (c == null) {
+                promise.resolve(Json.failure(VideoSites.UNAVAILABLE, "Video sites aren't available in this build."))
+            } else {
+                EngineHost.ioScope.launch {
+                    val r = VideoSites.update(c, true)
+                    promise.resolve(linkedMapOf("ok" to true, "status" to r.status, "version" to r.version))
+                }
+            }
+        }
+        // The yt-dlp version name the library last downloaded itself, or null while the bundled one is in use.
+        AsyncFunction("videoSitesVersion") { promise: Promise ->
+            val c = context
+            promise.resolve(if (c == null) null else VideoSites.versionLabel(c))
+        }
+        // What the Settings row shows: `{ version, lastCheckAt }` (version null while the bundled yt-dlp is in use,
+        // lastCheckAt epoch ms or null when never checked).
+        AsyncFunction("videoSitesStatus") { promise: Promise ->
+            val c = context
+            if (c == null) {
+                promise.resolve(linkedMapOf("version" to null, "lastCheckAt" to null))
+            } else {
+                EngineHost.ioScope.launch {
+                    val last = VideoSites.lastCheck(c)
+                    promise.resolve(linkedMapOf("version" to VideoSites.versionLabel(c), "lastCheckAt" to (if (last > 0L) last else null)))
+                }
+            }
+        }
+        // Schedules (enabled) or cancels the daily background yt-dlp update. `mobileData` allows a metered network.
+        AsyncFunction("videoSitesConfigure") { enabled: Boolean, mobileData: Boolean ->
+            context?.let { VideoSitesUpdater.apply(it, enabled, mobileData) }
+            true
+        }
+
+    }
+
+    private fun ModuleDefinitionBuilder.updateFunctions() {
 
         AsyncFunction("getInstallSource") { promise: Promise ->
             val c = context
@@ -769,40 +818,9 @@ class MaglevEngineModule : Module() {
             promise.resolve(mapOf("ok" to true))
         }
 
-        // endregion
-
-        // region Governance
-
-        AsyncFunction("setGovernance") { rules: Map<String, Any?>, promise: Promise ->
-            engine(promise) {
-                @Suppress("UNCHECKED_CAST")
-                val ssids = (rules["ssidWhitelist"] as? List<Any?>)?.mapNotNull { it?.toString() } ?: emptyList()
-                // §19: read headless by RestartEntry after a reboot or update, so it lives in SharedPreferences.
-                context?.let { RestartPrefs.setResumeAfterRestart(it, rules["resumeAfterRestart"] != false) }
-                // Quick share reads these headless, in its own activity (docs/contracts-0.19/quick-share.md section 6).
-                context?.let { com.maglev.engine.share.QuickSharePrefs.save(it, rules) }
-                // Hide from gallery and automatic retry are read in Kotlin only (never sent to Rust).
-                context?.let { c ->
-                    com.maglev.engine.storage.GalleryHide.save(c, rules)
-                    AutoRetry.save(c, rules)
-                    EngineHost.ioScope.launch { com.maglev.engine.storage.GalleryHide.apply(c) }
-                }
-                EngineHost.setGovernance(
-                    Governance(
-                        wifiOnly = rules["wifiOnly"] == true,
-                        ssidWhitelist = ssids,
-                        chargingOnly = rules["chargingOnly"] == true,
-                        batteryCutoffPct = (rules["batteryCutoffPct"] as? Number)?.toInt() ?: 0,
-                        autoExitOnComplete = rules["autoExitOnComplete"] == true,
-                        vpnOnly = rules["vpnOnly"] == true,
-                        seedOnMobileData = rules["seedOnMobileData"] == true,
-                    ),
-                )
-            }
-        }
-
-        // endregion
     }
+
+    // endregion
 
     // region helpers
 
