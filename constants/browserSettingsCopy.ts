@@ -75,6 +75,7 @@ export const browserSettingsCopy = {
   popupCard: {
     block: 'Block',
     allowOnce: 'Allow once',
+    alwaysAllowShort: 'Always allow',
     alwaysAllow: (host: string) => `Always allow on ${host}`,
     /** The 5 s notice after Block. */
     blockedOn: (host: string) => `Pop-ups blocked on ${host}`,

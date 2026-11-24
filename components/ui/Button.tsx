@@ -6,7 +6,7 @@ import { PixelIcon, PixelIconName } from '../PixelIcon';
 import { PressableScale } from './PressableScale';
 import { useReduceMotion } from '../motion';
 
-export type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger';
+export type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger' | 'dangerFilled';
 export type ButtonSize = 'md' | 'lg';
 
 export interface ButtonProps {
@@ -75,7 +75,7 @@ export function Button({
   const inactive = disabled || loading;
 
   const fg =
-    variant === 'primary'
+    variant === 'primary' || variant === 'dangerFilled'
       ? colors.onAccent
       : variant === 'danger'
         ? colors.danger
@@ -134,5 +134,7 @@ const makeStyles = (c: ThemeColors) =>
     ghostPressed: { backgroundColor: c.surfaceRaised },
     danger: { backgroundColor: 'transparent', borderColor: c.danger },
     dangerPressed: { backgroundColor: c.surfaceRaised, borderColor: c.danger },
+    dangerFilled: { backgroundColor: c.danger, borderColor: c.danger },
+    dangerFilledPressed: { backgroundColor: c.danger, opacity: 0.88 },
     disabled: { opacity: 0.4 },
   });

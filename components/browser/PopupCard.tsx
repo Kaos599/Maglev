@@ -55,10 +55,19 @@ export function PopupCard({ prompt, onBlock, onAllowOnce, onAlwaysAllow, onDismi
         </Text>
         {p.more > 0 ? <Text style={styles.more}>{browserTabs.popup.moreBlocked(p.more)}</Text> : null}
         <View style={styles.actions}>
-          <Button label={copy.block} variant="secondary" onPress={onBlock} />
-          {allowOnce ? <Button label={copy.allowOnce} onPress={allowOnce} /> : null}
+          <View style={styles.leftGroup}>
+            {sourceHost ? (
+              <Button
+                label={copy.alwaysAllowShort}
+                variant="ghost"
+                accessibilityLabel={copy.alwaysAllow(sourceHost)}
+                onPress={onAlwaysAllow}
+              />
+            ) : null}
+            {allowOnce ? <Button label={copy.allowOnce} variant="secondary" onPress={allowOnce} /> : null}
+          </View>
+          <Button label={copy.block} variant="dangerFilled" onPress={onBlock} />
         </View>
-        {sourceHost ? <Button label={copy.alwaysAllow(sourceHost)} variant="ghost" fullWidth onPress={onAlwaysAllow} /> : null}
       </View>
     </FloatingSheet>
   );
@@ -69,5 +78,6 @@ const makeStyles = (c: ThemeColors) =>
     body: { gap: spacing.sm },
     target: { ...type.mono, fontSize: type.size.md, color: c.text },
     more: { ...type.body, fontSize: type.size.sm, color: c.textMuted },
-    actions: { flexDirection: 'row', justifyContent: 'flex-end', gap: spacing.sm, marginTop: spacing.sm },
+    actions: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: spacing.sm },
+    leftGroup: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, flexShrink: 1 },
   });
