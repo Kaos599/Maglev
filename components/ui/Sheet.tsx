@@ -15,6 +15,8 @@ export interface SheetProps {
   onClose: () => void;
   title: string;
   subtitle?: string;
+  /** Hide the title and subtitle. The title stays as the TalkBack heading on the drag handle. */
+  hideTitle?: boolean;
   children?: React.ReactNode;
   testID?: string;
   /** The control that opened the sheet. TalkBack focus goes back to it after the sheet closes. */
@@ -31,7 +33,7 @@ export interface SheetProps {
  * A Modal is its own native window on Android, outside the app's root gesture view, so the sheet
  * brings its own GestureHandlerRootView.
  */
-export function Sheet({ visible, onClose, title, subtitle, children, testID, returnFocusRef }: SheetProps) {
+export function Sheet({ visible, onClose, title, subtitle, hideTitle, children, testID, returnFocusRef }: SheetProps) {
   const { colors } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const insets = useSafeAreaInsets();
@@ -180,11 +182,19 @@ export function Sheet({ visible, onClose, title, subtitle, children, testID, ret
           >
             <GestureDetector gesture={pan}>
               <View style={styles.dragArea}>
-                <View style={styles.grabber} />
-                <Text ref={titleRef} style={styles.title} accessibilityRole="header">
-                  {title}
-                </Text>
-                {subtitle ? <Text style={styles.subtitle}>{subtitle}</Text> : null}
+                {hideTitle ? (
+                  <View ref={titleRef} accessible accessibilityRole="header" accessibilityLabel={title} style={styles.grabberOnly}>
+                    <View style={styles.grabber} />
+                  </View>
+                ) : (
+                  <>
+                    <View style={styles.grabber} />
+                    <Text ref={titleRef} style={styles.title} accessibilityRole="header">
+                      {title}
+                    </Text>
+                    {subtitle ? <Text style={styles.subtitle}>{subtitle}</Text> : null}
+                  </>
+                )}
               </View>
             </GestureDetector>
             <View style={styles.content}>{children}</View>
@@ -213,6 +223,8 @@ const makeStyles = (c: ThemeColors) =>
     },
     // The drag target: handle, title and subtitle. It reaches the sheet's side edges so it is easy to grab.
     dragArea: { marginHorizontal: -spacing.xl, paddingHorizontal: spacing.xl, paddingBottom: spacing.xs },
+    // Title hidden: the handle alone is the drag target, tall enough (44 dp) to grab.
+    grabberOnly: { minHeight: 44, justifyContent: 'center', marginBottom: -spacing.sm },
     grabber: { alignSelf: 'center', width: 36, height: 4, borderRadius: 2, backgroundColor: c.borderStrong, marginBottom: spacing.lg },
     title: { ...type.bodyStrong, fontSize: type.size.xl, color: c.text },
     subtitle: { ...type.body, fontSize: type.size.md, color: c.textMuted, marginTop: spacing.xs },

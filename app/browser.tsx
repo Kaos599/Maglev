@@ -1156,7 +1156,7 @@ export default function BrowserScreen({ inTab = false }: { inTab?: boolean }) {
       />
       <PopupCard prompt={prompt} onAllowOnce={popupOpen} onBlock={popupBlock} onAlwaysAllow={popupAlways} onDismiss={popupDismiss} />
 
-      <Sheet visible={menuOpen} onClose={() => setMenuOpen(false)} title={hasPage ? historyCopy.menuTitlePage : historyCopy.menuTitleBlank} subtitle={(hasPage && pageHost) || undefined}>
+      <Sheet visible={menuOpen} onClose={() => setMenuOpen(false)} title={hasPage ? historyCopy.menuTitlePage : historyCopy.menuTitleBlank} hideTitle>
         <PageMenuActions
           actions={[
             {
@@ -1167,26 +1167,6 @@ export default function BrowserScreen({ inTab = false }: { inTab?: boolean }) {
               onPress: () => {
                 setMenuOpen(false);
                 if (!handleBack()) leave();
-              },
-            },
-            {
-              key: 'forward',
-              icon: 'forward',
-              label: pageMenuCopy.forward,
-              disabled: !page?.canGoForward,
-              onPress: () => {
-                setMenuOpen(false);
-                view()?.goForward();
-              },
-            },
-            {
-              key: 'reload',
-              icon: loading ? 'stop' : 'retry',
-              label: loading ? pageMenuCopy.stop : pageMenuCopy.reload,
-              disabled: !hasPage,
-              onPress: () => {
-                setMenuOpen(false);
-                reloadOrStop();
               },
             },
             {
@@ -1210,6 +1190,16 @@ export default function BrowserScreen({ inTab = false }: { inTab?: boolean }) {
               },
             },
             {
+              key: 'reload',
+              icon: loading ? 'stop' : 'retry',
+              label: loading ? pageMenuCopy.stop : pageMenuCopy.reload,
+              disabled: !hasPage,
+              onPress: () => {
+                setMenuOpen(false);
+                reloadOrStop();
+              },
+            },
+            {
               key: 'share',
               icon: 'share',
               label: pageMenuCopy.share,
@@ -1217,6 +1207,16 @@ export default function BrowserScreen({ inTab = false }: { inTab?: boolean }) {
               onPress: () => {
                 setMenuOpen(false);
                 Share.share({ message: pageUrl, title: pageTitle }).catch(() => {});
+              },
+            },
+            {
+              key: 'forward',
+              icon: 'forward',
+              label: pageMenuCopy.forward,
+              disabled: !page?.canGoForward,
+              onPress: () => {
+                setMenuOpen(false);
+                view()?.goForward();
               },
             },
           ]}
