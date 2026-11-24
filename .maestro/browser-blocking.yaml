@@ -1,4 +1,4 @@
-# Ad blocking in the Browser: the per-site switch in "This page" and the global "Ad blocking" setting.
+# Ad blocking in the Browser: the per-site switch in Site settings and the global "Ad blocking" setting.
 # Ad blocking UI exists (app/browser.tsx:383 per-site row, app/settings/browser.tsx:119 global toggle), so this file is kept.
 # Test page: https://test-videos.co.uk/bigbuckbunny/mp4-h264 (no ads expected, so the "N blocked" count is not asserted).
 appId: com.maglev
@@ -17,22 +17,26 @@ name: browser-blocking
     visible: ".*test-videos\\.co\\.uk.*" # the bar shows the host once idle, or the full address while it has focus
     timeout: 60000
 - tapOn: "More"
+- tapOn: "Site settings" # the ⋮ menu row (0.35); opens the Site settings sheet
+# The Ads toggle "Block ads on this site" is on by default. Its title and the switch share the label, so index 1 is the switch.
 - extendedWaitUntil:
-    visible: "Allow ads on this site" # app/browser.tsx:386, shown when this site is not allowed (default)
+    visible: "Block ads on this site"
     timeout: 30000
-# Allow ads here, then the row flips (toggleAds, app/browser.tsx:207; notice copy.ts:107).
-- tapOn: "Allow ads on this site"
+- tapOn:
+    text: "Block ads on this site"
+    index: 1
 - extendedWaitUntil:
-    visible: "Ads allowed on .*" # constants/copy.ts:107
+    visible: "Ads allowed on .*" # constants/copy.ts notices.browser.adsAllowed
     timeout: 15000
 - tapOn: "More"
-- assertVisible: "Block ads on this site" # app/browser.tsx:386, now allowed here
-- tapOn: "Block ads on this site"
+- tapOn: "Site settings"
+- tapOn:
+    text: "Block ads on this site"
+    index: 1
 - extendedWaitUntil:
-    visible: "Blocking ads on .*" # constants/copy.ts:108
+    visible: "Blocking ads on .*" # constants/copy.ts notices.browser.adsBlocked
     timeout: 15000
 - tapOn: "More"
-- assertVisible: "Allow ads on this site" # back to the default
 - tapOn: "Browser settings" # app/browser.tsx:401 pushes /settings/browser
 - extendedWaitUntil:
     visible: "Ad blocking" # app/settings/browser.tsx:119 row title
@@ -44,8 +48,14 @@ name: browser-blocking
     index: 1
 - tapOn: "Go back" # in-app back; hardware Back after toggling a setting left the app in the 0.28 CI run
 - tapOn: "More"
-# With ad blocking off the per-site row is hidden (app/browser.tsx:383).
-- assertNotVisible: "Allow ads on this site|Block ads on this site"
+# With ad blocking off the Ads section of Site settings is hidden (SiteSettingsSheet adBlockOn).
+- tapOn: "Site settings"
+- extendedWaitUntil:
+    visible: "Pop-ups and redirects"
+    timeout: 15000
+- assertNotVisible: "Block ads on this site"
+- pressKey: Back
+- tapOn: "More"
 - tapOn: "Browser settings"
 - extendedWaitUntil:
     visible: "Ad blocking"
@@ -56,5 +66,6 @@ name: browser-blocking
     index: 1
 - tapOn: "Go back" # in-app back; hardware Back after toggling a setting left the app in the 0.28 CI run
 - tapOn: "More"
-- assertVisible: "Allow ads on this site"
+- tapOn: "Site settings"
+- assertVisible: "Block ads on this site" # back to the default
 - pressKey: Back
