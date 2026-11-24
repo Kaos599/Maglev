@@ -15,9 +15,6 @@ const read = (p) => fs.readFileSync(path.join(root, p), "utf8");
 // Rows that are not settings. Keyed "page: title". Keep short, one reason each.
 const ALLOW = {
   // Read-only values, not controls.
-  "browser: Domains": "block list size, read-only",
-  "browser: Status": "block list state, read-only",
-  "browser: Source": "block list origin, read-only",
   "feeds: Last checked": "feed status, read-only",
   "feeds: Added so far": "feed status, read-only",
   "feeds: Waiting to be added": "feed status, read-only",
@@ -36,8 +33,8 @@ const ALLOW = {
   "watch: w.paused ? `${w.query} · ${watchCopy.paused}` : w.query": "one row per watched title",
   // Fixed choice lists whose options are each indexed (the stale check keeps them honest).
   "backup: copy.parts[part]": "restore parts, indexed as 'What to restore' entries",
-  "browser: c.title": "pop-up choices, indexed as Ask, Block, Allow",
-  "browser: copy.ranges[r]": "time ranges inside the Clear data sheet",
+  "browser-blocking: c.title": "pop-up choices, indexed as Ask, Block, Allow",
+  "browser-privacy: copy.ranges[r]": "time ranges inside the Clear data sheet",
 };
 // Row component props that hold a user-facing label.
 const LABEL_PROP = { ListRow: "title", ChipGroup: "label" };

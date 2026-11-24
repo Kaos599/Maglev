@@ -20,7 +20,8 @@ const opener = read('utils/browser/openBrowser.ts');
 const sw = read('components/browser/TabSwitcher.tsx');
 const menu = read('components/browser/LinkMenu.tsx');
 const card = read('components/browser/PopupCard.tsx');
-const set = read('app/settings/browser.tsx');
+const set = read('app/settings/browser-blocking.tsx');
+const popupSites = read('app/settings/browser-popup-sites.tsx');
 const copy = read('constants/copy.ts');
 const pkg = read('package.json');
 
@@ -59,7 +60,7 @@ const raw = [...walk('app'), ...walk('components')].filter((f) => /\.tsx?$/.test
 check('no raw push/replace/dismissTo to /browser outside the helper', raw.length === 0, raw.join());
 check('the helper goes to the Browse tab when shown, else the stack route', /visibleTabs\(getTabPrefs\(\)/.test(opener) && /includes\('browse'\)/.test(opener) && /pathname: '\/browse'/.test(opener) && /pathname: '\/browser'/.test(opener) && /params: clean/.test(opener));
 
-check('a route url opens a new active tab, prefill only fills the bar', /params\.url/.test(scr) && /openTabChecked\(\{ url: t\.url \}\)/.test(scr) && /setPrefillText\(params\.prefill\)/.test(scr));
+check('a route url opens a new active tab, and a deep link is a link (not typed)', /params\.url/.test(scr) && /openTabChecked\(\{ url: t\.url \}\)/.test(scr) && /params\.source === 'link'/.test(scr) && /urlSource=\{linkTabs\.current\.has\(t\.id\) \? 'link' : 'typed'\}/.test(scr) && !/prefill/i.test(scr));
 check('the cap shows the notice and opens nothing', /r\.result === 'cap'/.test(scr) && /browserTabs\.capNotice/.test(scr));
 check('a window request opens a tab with this tab as opener', /onNewWindow: \(id, e\) => void openTabChecked\(\{ url: e\.url, opener: id \}\)/.test(scr));
 
@@ -93,8 +94,8 @@ check('only the active tab opens the menu', /if \(id === activeIdRef\.current\) 
 console.log('pop-up card');
 check('is a FloatingSheet with a title per kind', /<FloatingSheet visible=\{prompt != null\}/.test(card) && /browserTabs\.popup\.windowTitle/.test(card) && /browserTabs\.popup\.redirectTitle/.test(card) && /browserTabs\.popup\.appTitle/.test(card));
 check('body shows the target host (scheme for an app) and "and N more blocked"', /kind === 'app'/.test(card) && /browserTabs\.popup\.moreBlocked\(p\.more\)/.test(card));
-check('buttons Open, Block and "Always allow on {sourceHost}"', /browserTabs\.popup\.open/.test(card) && /browserTabs\.popup\.block/.test(card) && /browserTabs\.popup\.alwaysAllow\(sourceHost\)/.test(card));
-check('scrim and Back count as Block', /onClose=\{onBlock\}/.test(card));
+check('buttons Block, Allow once and "Always allow on {sourceHost}"', /browserSettingsCopy\.popupCard/.test(card) && /copy\.block\b/.test(card) && /copy\.allowOnce\b/.test(card) && /copy\.alwaysAllow\(sourceHost\)/.test(card));
+check('scrim and Back dismiss (block once, remember nothing)', /onClose=\{onDismiss \?\? onBlock\}/.test(card));
 check('Open: window opens a tab with the opener, redirect follows, app opens the app', /req\.kind === 'window'[\s\S]{0,120}opener: id/.test(scr) && /followRedirect\(req\.url\)/.test(scr) && /openApp\(req\.url\)/.test(scr));
 check('an app that does not open falls back or says no app', /r\.fallbackUrl[\s\S]{0,120}followRedirect\(r\.fallbackUrl\)/.test(scr) && /browserTabs\.popup\.noApp/.test(scr));
 check('the card state is the T5 queue (request, noteBlocked, drop)', /popupsApi\.request\(/.test(scr) && /popupsApi\.noteBlocked\(/.test(scr) && /popupsApi\.drop\(p, id, 'navigated'\)/.test(scr) && /popupsApi\.drop\(p, id, 'closed'\)/.test(scr));
@@ -109,13 +110,13 @@ check('order: address bar, switcher, menu, pop-up card, then the tab', ['editing
 
 console.log('This page menu');
 check('"Pop-ups" row sits under the ads row', scr.indexOf('toggleAds}') > 0 && scr.indexOf('browserTabs.thisPage.popupsRow') > scr.indexOf('toggleAds}'));
-check('subtitle is "N blocked on this page", hidden at 0', /popupsBlockedHere > 0 \? browserTabs\.thisPage\.blockedOnPage\(popupsBlockedHere\) : undefined/.test(scr));
-check('tapping toggles the site in popupAllowHosts', /popupAllowHosts: toggleAllowedHost\(p\.popupAllowHosts, pageHost\)/.test(scr));
+check('subtitle is "N blocked on this page", hidden at 0', /popupsBlockedHere > 0 \? browserTabs\.thisPage\.blockedOnPage\(popupsBlockedHere\) : null/.test(scr));
+check('Ask / Allow / Block chips move the site between the two lists, never both', /setPopupSite/.test(scr) && /popupAllowHosts: mode === 'allow'/.test(scr) && /popupBlockHosts: mode === 'block'/.test(scr));
 
 console.log('settings');
 check('section "Pop-ups and redirects"', /browserTabs\.settings\.section/.test(set));
 check('radio rows Ask, Block without asking, Allow write popupPolicy', /browserTabs\.settings\.ask/.test(set) && /browserTabs\.settings\.block/.test(set) && /browserTabs\.settings\.allow/.test(set) && /setPrefs\(\{ popupPolicy: c\.value \}\)/.test(set) && /selected=\{prefs\.popupPolicy === c\.value\}/.test(set));
-check('"Sites allowed to open pop-ups" with Remove', /browserTabs\.settings\.allowedSites/.test(set) && /browserTabs\.settings\.remove/.test(set) && /popupAllowHosts: prefs\.popupAllowHosts\.filter/.test(set));
+check('"Sites allowed to open pop-ups" with Remove', /browserTabs\.settings\.allowedSites/.test(set) && /browserTabs\.settings\.remove/.test(popupSites) && /popupAllowHosts: prefs\.popupAllowHosts\.filter/.test(popupSites));
 
 console.log('copy and style');
 check('copy keys exist', ['tabButtonMany', 'capNotice', 'openedInNewTab', 'switchTo', 'closedTab', 'closedAll', 'popupsRow', 'blockedOnPage'].every((k) => copy.includes(k)));
@@ -128,9 +129,9 @@ check('in the tab bar the screen skips the bottom inset (the tab bar already pad
 
 // 24.11 history from a blank tab
 const recent = read('components/browser/StartPage.tsx'); // the Recent list now lives in StartPage (RecentHistory.tsx is gone)
-check('⋮ is enabled on a blank tab (gated on ready, not on a page)', /icon="more" accessibilityLabel="More" disabled=\{!ready\}/.test(scr) && !/icon="more"[^\n]*disabled=\{!hasPage\}/.test(scr));
+check('⋮ is enabled on a blank tab (gated on ready, not on a page)', /accessibilityLabel="More"[\s\S]{0,40}disabled=\{!ready\}/.test(scr) && !/accessibilityLabel="More"[\s\S]{0,40}disabled=\{!hasPage\}/.test(scr));
 check('with no page the sheet is titled Browser', /title=\{hasPage \? historyCopy\.menuTitlePage : historyCopy\.menuTitleBlank\}/.test(scr) && /menuTitleBlank: 'Browser'/.test(read('constants/copy.ts')));
-check('page-only rows sit behind hasPage; Bookmarks, History and Browser settings do not', /\{hasPage \? \(\s*<>[\s\S]*?title="Forward"[\s\S]*?findCopy\.menuRow[\s\S]*?textSizeCopy\.menuRow[\s\S]*?Desktop site[\s\S]*?Copy page link[\s\S]*?<\/>\s*\) : null\}\s*<ListRow\s+icon="bookmark"[\s\S]*?<ListRow\s+icon="clock"/.test(scr));
+check('page-only rows sit behind hasPage; Bookmarks, History and Browser settings do not', /\{hasPage \? \(\s*<>[\s\S]*?findCopy\.menuRow[\s\S]*?textSizeCopy\.menuRow[\s\S]*?Desktop site[\s\S]*?Copy page link[\s\S]*?<\/>\s*\) : null\}\s*<ListRow\s+icon="bookmark"[\s\S]*?<ListRow\s+icon="clock"/.test(scr));
 check('a blank tab shows the start page (Recent folded in, with its own empty state)', /<StartPage[\s\S]{0,200}onOpen=/.test(scr) && /<EmptyBlock icon="bookmark"/.test(recent));
 check('Recent lists 6 from history, refreshes on change, and links to the History screen', /listHistory\(\{ limit: HISTORY_SAMPLE \}\)/.test(recent) && /START_RECENT_LIMIT = 6/.test(recent) && /useHistoryVersion\(\)/.test(recent) && /\/browser-history/.test(recent) && /bookmarkCopy\.seeAll/.test(recent));
 check('Recent shows nothing when Save history is off or the store fails', /saveHistory/.test(recent) && /\(\) => live && setRows\(\[\]\)/.test(recent));

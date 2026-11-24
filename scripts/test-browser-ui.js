@@ -47,12 +47,17 @@ async function main() {
 
   console.log('maglev://browser');
   const r = u.browserIntentRoute;
-  check('url is prefilled, never loaded', r('/browser?url=' + encodeURIComponent('https://x.test/a')) === '/browser?prefill=' + encodeURIComponent('https://x.test/a'));
-  check('other params are dropped', r('browser?go=1&url=https%3A%2F%2Fx.test&prefill=https%3A%2F%2Fevil.test') === '/browser?prefill=https%3A%2F%2Fx.test');
-  check('non-web url is dropped', r('/browser?url=javascript%3Aalert(1)') === '/browser' && r('/browser?url=file%3A%2F%2F%2Fa') === '/browser');
+  const NOW = 1700000000000;
+  // Every deep link opens as a link (never typed) with a fresh open nonce.
+  const linkRoute = (url) => '/browser?url=' + encodeURIComponent(url) + '&source=link&open=' + NOW;
+  check('url opens the page as a link, with a nonce', r('/browser?url=' + encodeURIComponent('https://x.test/a'), NOW) === linkRoute('https://x.test/a'));
+  check('other params are dropped', r('browser?go=1&url=https%3A%2F%2Fx.test&prefill=https%3A%2F%2Fevil.test', NOW) === linkRoute('https://x.test'));
+  check('a page cannot pick its source', r('/browser?url=https%3A%2F%2Fx.test&source=typed&open=5', NOW) === linkRoute('https://x.test'));
+  check('non-web url is dropped', r('/browser?url=javascript%3Aalert(1)', NOW) === '/browser' && r('/browser?url=file%3A%2F%2F%2Fa', NOW) === '/browser');
+  check('each deep link gets its own nonce', r('/browser?url=https%3A%2F%2Fx.test', NOW) !== r('/browser?url=https%3A%2F%2Fx.test', NOW + 1));
   const enc = encodeURIComponent('https://x.test/a');
-  check('full maglev://browser?url= only prefills', r('maglev://browser?url=' + enc) === '/browser?prefill=' + enc);
-  check('maglev:///browser?url= only prefills', r('maglev:///browser?url=' + enc) === '/browser?prefill=' + enc);
+  check('full maglev://browser?url= opens the page', r('maglev://browser?url=' + enc, NOW) === linkRoute('https://x.test/a'));
+  check('maglev:///browser?url= opens the page', r('maglev:///browser?url=' + enc, NOW) === linkRoute('https://x.test/a'));
   check('full url, no param, is the bare route', r('maglev://browser') === '/browser' && r('MAGLEV://browser/') === '/browser');
   check('full url, evil scheme dropped', r('maglev://browser?url=javascript%3Aalert(1)') === '/browser');
   check('appPath leaves other schemes', u.appPath('magnet:?xt=1') === 'magnet:?xt=1' && u.appPath('https://a.test/x') === 'https://a.test/x');

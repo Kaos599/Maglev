@@ -42,12 +42,36 @@ export function sameSite(a: string, b: string): boolean {
   return x !== '' && x === registrablePart(b);
 }
 
-/** Suffix match on a label boundary: `m.example.com` is allowed by `example.com`. A leading "www." on either side is ignored. */
+/**
+ * The form a site is stored in, in the allow and block lists: lower case, no port, no leading "www." or "m.", no leading
+ * dots. Accepts an address or a bare host. Returns '' when nothing is left.
+ */
+export function normalizeSiteHost(input: string): string {
+  return hostFrom(input ?? '')
+    .replace(/^\.+/, '')
+    .replace(/^(www|m)\./, '')
+    .replace(/^\.+/, '');
+}
+
+/** Adds a site to a list in normalised form. No duplicates, junk ignored. */
+export function addSiteHost(list: readonly string[], input: string): string[] {
+  const h = normalizeSiteHost(input);
+  if (!h) return [...list];
+  return list.some((x) => normalizeSiteHost(x) === h) ? [...list] : [...list, h];
+}
+
+/** Removes a site from a list, matching on the normalised form. */
+export function removeSiteHost(list: readonly string[], input: string): string[] {
+  const h = normalizeSiteHost(input);
+  return list.filter((x) => normalizeSiteHost(x) !== h);
+}
+
+/** Suffix match on a label boundary: `m.example.com` is allowed by `example.com`. A leading "www." or "m." on either side is ignored. */
 export function hostAllowed(host: string, allowHosts: readonly string[]): boolean {
-  const h = hostFrom(host);
+  const h = normalizeSiteHost(host);
   if (!h) return false;
   return allowHosts.some((a) => {
-    const n = hostFrom(a);
+    const n = normalizeSiteHost(a);
     return n !== '' && (h === n || h.endsWith('.' + n));
   });
 }
@@ -77,17 +101,22 @@ export function trustedTap(args: { gesture: boolean; sameSite: boolean; onMatchi
 export type NewWindowDecision = 'newTab' | 'blocked' | 'ask' | 'openApp';
 
 /**
- * T4. `allowed` is `hostAllowed(pageHost, popupAllowHosts)`. For `window` and `redirect`, 'newTab' means "go ahead"
- * (a new tab for a window, `followRedirect` for a redirect). An untapped `app` is blocked whatever the policy says.
+ * T4. Precedence: block list > allow list > policy. `blocked` is `hostAllowed(pageHost, popupBlockHosts)` and `allowed` is
+ * `hostAllowed(pageHost, popupAllowHosts)`. A listed (blocked) host is 'blocked' whatever the tap, so it never raises a card.
+ * For `window` and `redirect`, 'newTab' means "go ahead" (a new tab for a window, `followRedirect` for a redirect).
+ * An untapped `app` is blocked whatever the policy says.
  */
-export function decideNewWindow(args: { policy: PopupPolicy; allowed: boolean; gesture: boolean; kind: PopupKind }): NewWindowDecision {
-  const { policy, allowed, gesture, kind } = args;
+export function decideNewWindow(args: { policy: PopupPolicy; allowed: boolean; gesture: boolean; kind: PopupKind; blocked?: boolean }): NewWindowDecision {
+  const { policy, allowed, gesture, kind, blocked = false } = args;
+  // Contract 0.34 §2 rule 2: block list > allow list > policy. A link the user really tapped is not a pop-up, so a
+  // tapped new window still opens; the block list stops untapped windows and every app hand-off from that site.
   if (kind === 'app') {
-    if (!gesture) return 'blocked';
+    if (!gesture || blocked) return 'blocked';
     if (policy === 'allow' || allowed) return 'openApp';
     return policy === 'block' ? 'blocked' : 'ask';
   }
   if (gesture) return 'newTab';
+  if (blocked) return 'blocked';
   if (policy === 'allow' || allowed) return 'newTab';
   return policy === 'block' ? 'blocked' : 'ask';
 }
@@ -142,12 +171,34 @@ export function open(s: PopupsState, tabId: string): Resolution {
   return { state: cur.more ? noteBlocked(next, tabId, cur.more) : next, request: cur.first };
 }
 
-/** Block: the first and the later ones all count as blocked. */
-export function block(s: PopupsState, tabId: string): PopupsState {
+/**
+ * Dismiss: the first and the later ones all count as blocked, once. Nothing is remembered. The card's scrim and Back use it.
+ * Use `blockForSite` for the Block button, which also remembers the site.
+ */
+export function dismiss(s: PopupsState, tabId: string): PopupsState {
   const cur = s.prompts[tabId];
   if (!cur) return s;
   return noteBlocked({ ...s, prompts: without(s.prompts, tabId) }, tabId, 1 + cur.more);
 }
+
+/** Same as `dismiss`. Kept under its old name for callers that predate the remembered Block. */
+export const block = dismiss;
+
+export type BlockResult = { state: PopupsState; blockHosts: string[]; host: string | null };
+
+/**
+ * The card's Block button: the first and the later ones count as blocked (as `dismiss`), and the source host joins the
+ * block list (normalised, no duplicates), so the site raises no card again.
+ */
+export function blockForSite(s: PopupsState, tabId: string, blockHosts: readonly string[]): BlockResult {
+  const cur = s.prompts[tabId];
+  if (!cur) return { state: s, blockHosts: [...blockHosts], host: null };
+  const host = normalizeSiteHost(cur.first.sourceUrl) || null;
+  return { state: dismiss(s, tabId), blockHosts: host ? addSiteHost(blockHosts, host) : [...blockHosts], host };
+}
+
+/** Undo of `blockForSite` (the 5 s notice): the host leaves the block list. The blocked count stays as it was. */
+export const undoBlockForSite = (blockHosts: readonly string[], host: string): string[] => removeSiteHost(blockHosts, host);
 
 export type AllowResult = Resolution & { allowHosts: string[]; host: string | null };
 
@@ -155,8 +206,8 @@ export type AllowResult = Resolution & { allowHosts: string[]; host: string | nu
 export function allowForSite(s: PopupsState, tabId: string, allowHosts: readonly string[]): AllowResult {
   const cur = s.prompts[tabId];
   if (!cur) return { state: s, request: null, allowHosts: [...allowHosts], host: null };
-  const host = hostFrom(cur.first.sourceUrl) || null;
-  const list = host && !hostAllowed(host, allowHosts) ? [...allowHosts, host] : [...allowHosts];
+  const host = normalizeSiteHost(cur.first.sourceUrl) || null;
+  const list = host ? addSiteHost(allowHosts, host) : [...allowHosts];
   return { ...open(s, tabId), allowHosts: list, host };
 }
 

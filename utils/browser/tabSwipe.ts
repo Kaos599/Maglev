@@ -1,5 +1,5 @@
 /**
- * Swiping the address bar to change tabs. Pure decisions only, so they can be tested without a device.
+ * Swiping the browser header to change tabs. Pure decisions only, so they can be tested without a device.
  * Positions are in dp, velocities in dp per second. Indexes are positions in the tab strip (TabSwitcher order).
  */
 

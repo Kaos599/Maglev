@@ -171,6 +171,17 @@ function AppNavigation() {
           <Stack.Screen name="settings/assistant" />
           <Stack.Screen name="settings/backup" />
           <Stack.Screen name="settings/browser" />
+          <Stack.Screen name="settings/browser-ad-sites" />
+          <Stack.Screen name="settings/browser-advanced" />
+          <Stack.Screen name="settings/browser-blocked-popups" />
+          <Stack.Screen name="settings/browser-blocked-popups-site" />
+          <Stack.Screen name="settings/browser-blocking" />
+          <Stack.Screen name="settings/browser-blocklists" />
+          <Stack.Screen name="settings/browser-general" />
+          <Stack.Screen name="settings/browser-media" />
+          <Stack.Screen name="settings/browser-popup-sites" />
+          <Stack.Screen name="settings/browser-privacy" />
+          <Stack.Screen name="settings/browser-start" />
           <Stack.Screen name="settings/downloads" />
           <Stack.Screen name="settings/feeds" />
           <Stack.Screen name="settings/interface" />
@@ -186,6 +197,7 @@ function AppNavigation() {
           <Stack.Screen name="settings/subtitle-languages" />
           <Stack.Screen name="settings/subtitle-sources" />
           <Stack.Screen name="settings/subtitles" />
+          <Stack.Screen name="settings/tips" />
           <Stack.Screen name="settings/updates" />
           <Stack.Screen name="settings/whats-new" />
           <Stack.Screen name="settings/watch" />

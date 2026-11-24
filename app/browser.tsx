@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useId, useMemo, useRef, useState, useSyn
 import { AppState, BackHandler, Keyboard, Share, StyleSheet, Text, View } from 'react-native';
 import { useFocusEffect, useIsFocused, useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { Pressable } from 'react-native-gesture-handler';
 import * as Clipboard from 'expo-clipboard';
 import {
   clearCookies,
@@ -20,9 +21,10 @@ import { haptic } from '../constants/haptics';
 import { bookmarkCopy } from '../constants/bookmarkCopy';
 import { banners, browserTabs, empty, findCopy, foundTray, historyCopy, notices, textSizeCopy } from '../constants/copy';
 import { PixelIcon } from '../components/PixelIcon';
-import { Banner, Button, Dialog, EmptyBlock, IconButton, ListRow, PressableScale, ProgressBar, Sheet, TextField, type TextFieldRef, Toggle } from '../components/ui';
+import { Banner, Button, Chip, Dialog, EmptyBlock, IconButton, ListRow, PressableScale, ProgressBar, Sheet, TextField, type TextFieldRef, Toggle } from '../components/ui';
 import { FoundTray } from '../components/browser/FoundTray';
 import { TabWebView, type TabHandlers } from '../components/browser/TabWebView';
+import { ReloadStrip, type ReloadStripHandle } from '../components/browser/ReloadStrip';
 import { TabSwitcher } from '../components/browser/TabSwitcher';
 import { AddressSwipe } from '../components/browser/AddressSwipe';
 import { FindBar, type FindResult } from '../components/browser/FindBar';
@@ -69,6 +71,11 @@ import {
 import { DOWNLOAD_HELD_ACTION, DOWNLOAD_HELD_NOTICE, FOUND_HINT_MS, foundHintDue, foundHintText, opensSaveSheet } from '../utils/browser/hardening';
 import { hostAllowed, type PopupRequest, type PopupsState } from '../utils/browser/popups';
 import { hostOf, isAllowedHost, noticeAllowed, siteKey, toBrowserUrl, toggleAllowedHost } from '../utils/browserUrl';
+import { recordPopupBlockStored } from '../utils/browser/popupLog';
+import { browserSettingsCopy } from '../constants/browserSettingsCopy';
+
+/** The site's pop-up choice in the ⋮ menu: Ask (neither list), Allow (allow list), Block (block list). */
+type PopupSiteMode = 'ask' | 'allow' | 'block';
 
 /** A quiet notice for these, at most one every 5 seconds. */
 const QUIET_NOTICE: Partial<Record<BrowserRefusalReason, string>> = {
@@ -88,7 +95,7 @@ export default function BrowserScreen({ inTab = false }: { inTab?: boolean }) {
   const { colors, dark } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const router = useRouter();
-  const params = useLocalSearchParams<{ url?: string; prefill?: string; open?: string; newTab?: string }>();
+  const params = useLocalSearchParams<{ url?: string; open?: string; newTab?: string; source?: string }>();
   const { showNotice, downloads, probeUrl, startDownload } = useMaglevEngine();
   const [prefs] = useBrowserPrefs();
   const tabs = useTabs();
@@ -127,6 +134,11 @@ export default function BrowserScreen({ inTab = false }: { inTab?: boolean }) {
   const activeId = tab?.id ?? '';
   const activeIdRef = useRef(activeId);
   activeIdRef.current = activeId;
+  // 0.34 section 4: the reload train under the header. Fed only by the active tab; hidden when the tab changes.
+  const reloadRef = useRef<ReloadStripHandle>(null);
+  useEffect(() => {
+    reloadRef.current?.reset();
+  }, [activeId]);
   const data = getData(activeId);
   const page = data.page;
   const hasPage = !!tab && !isBlank(tab);
@@ -135,7 +147,27 @@ export default function BrowserScreen({ inTab = false }: { inTab?: boolean }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState('');
   const [selection, setSelection] = useState<{ start: number; end: number } | undefined>(undefined);
-  const [prefillText, setPrefillText] = useState('');
+  const fullUrlRef = useRef('');
+  fullUrlRef.current = page?.url || tab?.url || '';
+  // Rule 8: the address TextInput is mounted only while editing, so Android can never hand it focus on its own.
+  const startEditing = useCallback((url?: string) => {
+    const full = url ?? fullUrlRef.current;
+    setDraft(full);
+    setSelection({ start: 0, end: full.length });
+    setEditing(true);
+    setTimeout(() => setSelection(undefined), 100);
+  }, []);
+  // A tab switch ends editing cleanly; a new tab (newTab) opens already editing and keeps it.
+  const editTabRef = useRef(activeId);
+  const keepEditingOnSwitch = useRef(false);
+  useEffect(() => {
+    if (editTabRef.current === activeId) return;
+    editTabRef.current = activeId;
+    if (keepEditingOnSwitch.current) keepEditingOnSwitch.current = false;
+    else setEditing(false);
+  }, [activeId]);
+  // Tabs whose current load came from a deep link or the card (not typed). Read when the tab's view mounts (TabWebView urlSource).
+  const linkTabs = useRef(new Set<string>());
   const [desktop, setDesktop] = useState(prefs.desktopMode);
   const blocked = data.blocked;
   const foundAll = data.found;
@@ -236,8 +268,10 @@ export default function BrowserScreen({ inTab = false }: { inTab?: boolean }) {
   );
 
   // Loads an address in the active tab. A blank tab has no view yet, so it gets the address and mounts one.
+  // `fromLink` (a deep link or the card) only applies to a blank tab, which mounts its view with that source;
+  // an address in a tab that already has a view is always typed (view.loadUrl).
   const open = useCallback(
-    (url: string) => {
+    (url: string, fromLink = false) => {
       const id = activeIdRef.current;
       const cur = tabs.ref.current ? getTab(tabs.ref.current, id) : undefined;
       if (!cur) return;
@@ -245,9 +279,14 @@ export default function BrowserScreen({ inTab = false }: { inTab?: boolean }) {
         d.crashed = false;
         d.refused = null;
       });
-      setPrefillText('');
-      if (isBlank(cur)) tabs.update(id, { url });
-      else view(id)?.loadUrl(url);
+      if (isBlank(cur)) {
+        if (fromLink) linkTabs.current.add(id);
+        else linkTabs.current.delete(id);
+        tabs.update(id, { url });
+      } else {
+        linkTabs.current.delete(id);
+        view(id)?.loadUrl(url);
+      }
     },
     [tabs, patch, view],
   );
@@ -279,26 +318,29 @@ export default function BrowserScreen({ inTab = false }: { inTab?: boolean }) {
     [prefs.searchEngine, open, toAddTorrent],
   );
 
-  // `url` comes from this app (Add download, Open in browser) and opens in a new active tab (the active one when it is blank).
-  // `prefill` comes from maglev://browser and only fills the bar of a blank tab.
+  // `url` opens in a new active tab (the active one when it is blank). It comes from a deep link or the card
+  // (`source=link`, never typed: the view applies the link-tap refusals) or from this app (Add download, bookmarks,
+  // history, which keep the typed rules). Each deep link and each in-app open carries a fresh `open` nonce, so the
+  // same address handed over twice loads twice.
   const handled = useRef<string | null>(null);
   useEffect(() => {
     if (!ready) return;
-    const key = `${params.url ?? ''}|${params.prefill ?? ''}|${params.open ?? ''}`;
-    if (key === '||' || key === handled.current) return;
+    if (typeof params.url !== 'string' || !params.url.trim()) return;
+    const key = `${params.url}|${params.open ?? ''}`;
+    if (key === handled.current) return;
     handled.current = key;
+    const t = toBrowserUrl(params.url, prefs.searchEngine);
+    if (t.kind === 'magnet') return toAddTorrent(t.uri);
+    if (t.kind === 'empty') return;
+    const fromLink = params.source === 'link';
     const cur = tabs.ref.current ? activeTab(tabs.ref.current) : null;
-    if (typeof params.url === 'string' && params.url.trim()) {
-      const t = toBrowserUrl(params.url, prefs.searchEngine);
-      if (t.kind === 'magnet') return toAddTorrent(t.uri);
-      if (t.kind === 'empty') return;
-      if (cur && isBlank(cur) && params.newTab !== '1') open(t.url);
-      else openTabChecked({ url: t.url });
-    } else if (typeof params.prefill === 'string') {
-      if (cur && !isBlank(cur)) openTabChecked({});
-      setPrefillText(params.prefill);
+    if (cur && isBlank(cur) && params.newTab !== '1') {
+      open(t.url, fromLink);
+    } else {
+      const r = openTabChecked({ url: t.url });
+      if (fromLink && r.id) linkTabs.current.add(r.id);
     }
-  }, [ready, params.url, params.prefill, params.open, params.newTab, prefs.searchEngine, open, openTabChecked, toAddTorrent, tabs.ref]);
+  }, [ready, params.url, params.open, params.source, params.newTab, prefs.searchEngine, open, openTabChecked, toAddTorrent, tabs.ref]);
 
   // ---- tabs ----
   const closeWithUndo = useCallback(
@@ -318,13 +360,13 @@ export default function BrowserScreen({ inTab = false }: { inTab?: boolean }) {
     if (r.result !== 'ok') return;
     setSwitcherOpen(false);
     haptic('select');
-    setTimeout(() => inputRef.current?.focus(), 150);
-  }, [openTabChecked]);
+    keepEditingOnSwitch.current = true;
+    startEditing('');
+  }, [openTabChecked, startEditing]);
 
   const selectTab = useCallback(
     (id: string) => {
       setSwitcherOpen(false);
-      setPrefillText('');
       tabs.select(id);
     },
     [tabs],
@@ -356,12 +398,34 @@ export default function BrowserScreen({ inTab = false }: { inTab?: boolean }) {
     setPopups(() => r.state);
     if (r.request) runRequest(id, r.request);
   }, [setPopups, runRequest]);
-  const popupBlock = useCallback(() => setPopups((p) => popupsApi.block(p, activeIdRef.current)), [setPopups]);
+  // Scrim and Back: block this once, remember nothing.
+  const popupDismiss = useCallback(() => setPopups((p) => popupsApi.dismiss(p, activeIdRef.current)), [setPopups]);
+  // Block: this request and the site's later ones are refused, and the site joins the block list (0.34 §2 rule 3).
+  const popupBlock = useCallback(() => {
+    const id = activeIdRef.current;
+    const r = popupsApi.blockForSite(getPopups(), id, getBrowserPrefs().popupBlockHosts);
+    setPopups(() => r.state);
+    const host = r.host;
+    if (!host) return;
+    updateBrowserPrefs((p) => ({ popupBlockHosts: popupsApi.addSiteHost(p.popupBlockHosts, host) }));
+    showNotice(
+      {
+        message: browserSettingsCopy.popupCard.blockedOn(host),
+        actionLabel: browserSettingsCopy.popupCard.undo,
+        onAction: () => updateBrowserPrefs((p) => ({ popupBlockHosts: popupsApi.undoBlockForSite(p.popupBlockHosts, host) })),
+      },
+      5000,
+    );
+  }, [setPopups, showNotice]);
   const popupAlways = useCallback(() => {
     const id = activeIdRef.current;
     const r = popupsApi.allowForSite(getPopups(), id, prefs.popupAllowHosts);
     setPopups(() => r.state);
-    if (r.host) updateBrowserPrefs(() => ({ popupAllowHosts: r.allowHosts }));
+    if (r.host) {
+      const host = r.host;
+      // Never in both lists: allowing a site takes it off the block list.
+      updateBrowserPrefs((p) => ({ popupAllowHosts: r.allowHosts, popupBlockHosts: popupsApi.removeSiteHost(p.popupBlockHosts, host) }));
+    }
     if (r.request) runRequest(id, r.request);
   }, [setPopups, runRequest, prefs.popupAllowHosts]);
 
@@ -371,6 +435,7 @@ export default function BrowserScreen({ inTab = false }: { inTab?: boolean }) {
   const handleBack = useCallback((): boolean => {
     if (editing) {
       inputRef.current?.blur();
+      setEditing(false);
       Keyboard.dismiss();
       return true;
     }
@@ -568,7 +633,11 @@ export default function BrowserScreen({ inTab = false }: { inTab?: boolean }) {
     },
     onNewWindow: (id, e) => void openTabChecked({ url: e.url, opener: id }),
     onPopupRequest: (id, e) => setPopups((p) => popupsApi.request(p, id, { url: e.url, kind: e.kind, sourceUrl: e.sourceUrl })),
-    onPopupBlocked: (id) => setPopups((p) => popupsApi.noteBlocked(p, id)),
+    onPopupBlocked: (id, e) => {
+      setPopups((p) => popupsApi.noteBlocked(p, id));
+      // 0.34 section 2 rule 5: the link and its source site go to the blocked pop-ups log (never in Private browsing).
+      recordPopupBlockStored({ sourceUrl: e.sourceUrl, url: e.url, kind: e.kind, at: Date.now() }, getBrowserPrefs().privateBrowsing);
+    },
     onLongPress: (id, e) => {
       if (id === activeIdRef.current) setLinkTarget(e);
     },
@@ -580,6 +649,15 @@ export default function BrowserScreen({ inTab = false }: { inTab?: boolean }) {
       if (id !== activeIdRef.current) return;
       const hit = parseMediaHit(e.json);
       if (hit && hit.kind === 'video' && hasMenu(buildMediaMenu(hit))) setMediaHit(hit);
+    },
+    // 0.34 section 4: the train follows the active tab only.
+    onPullProgress: (id, e) => {
+      if (id === activeIdRef.current) reloadRef.current?.pull(e.progress);
+    },
+    onReloadState: (id, e) => {
+      if (id !== activeIdRef.current) return;
+      if (e.state === 'start') reloadRef.current?.reloadStart();
+      else reloadRef.current?.reloadEnd();
     },
   };
   const implRef = useRef(impl);
@@ -698,12 +776,22 @@ export default function BrowserScreen({ inTab = false }: { inTab?: boolean }) {
   };
 
   const pageHost = page ? hostOf(page.url) : tab?.url ? hostOf(tab.url) : '';
-  const idleText = page?.url ? pageHost : tab?.url ? pageHost : prefillText;
+  const idleText = page?.url || tab?.url ? pageHost : '';
   const allowedHere = isAllowedHost(prefs.allowAdsHosts, pageHost);
   const popupsAllowedHere = hostAllowed(pageHost, prefs.popupAllowHosts);
+  const popupsBlockedAtSite = hostAllowed(pageHost, prefs.popupBlockHosts);
   const popupsBlockedHere = popupsApi.blockedOnPage(popups, activeId);
   const loading = !!page?.loading;
   const tabCount = tabsState?.tabs.length ?? 1;
+
+  // 0.34 section 3 rule 5: the page menu's Reload row, which shows Stop while the page loads.
+  const reloadOrStop = () => {
+    haptic('tap');
+    if (loading) {
+      view()?.stop();
+      patch(activeId, (d) => void (d.page = d.page ? { ...d.page, loading: false } : d.page));
+    } else view()?.reload();
+  };
 
   const toggleAds = () => {
     const key = siteKey(pageHost);
@@ -715,10 +803,22 @@ export default function BrowserScreen({ inTab = false }: { inTab?: boolean }) {
     view()?.reload();
   };
 
-  const togglePopups = () => {
-    updateBrowserPrefs((p) => ({ popupAllowHosts: toggleAllowedHost(p.popupAllowHosts, pageHost) }));
+  // 0.34 section 2 rule 4: the site's pop-up choice. A site is in at most one of the two lists.
+  const popupSiteMode: PopupSiteMode = popupsBlockedAtSite ? 'block' : popupsAllowedHere ? 'allow' : 'ask';
+  const popupChoices: { value: PopupSiteMode; label: string }[] = [
+    { value: 'ask', label: browserSettingsCopy.popupSite.ask },
+    { value: 'allow', label: browserSettingsCopy.popupSite.allow },
+    { value: 'block', label: browserSettingsCopy.popupSite.block },
+  ];
+  const setPopupSite = (mode: PopupSiteMode) => {
+    if (mode === popupSiteMode || !pageHost) return;
+    // Drop every entry that covers this page (a parent site too), then add this site to the chosen list.
+    const elsewhere = (list: string[]) => list.filter((e) => !popupsApi.hostAllowed(pageHost, [e]));
+    updateBrowserPrefs((p) => ({
+      popupAllowHosts: mode === 'allow' ? popupsApi.addSiteHost(elsewhere(p.popupAllowHosts), pageHost) : elsewhere(p.popupAllowHosts),
+      popupBlockHosts: mode === 'block' ? popupsApi.addSiteHost(elsewhere(p.popupBlockHosts), pageHost) : elsewhere(p.popupBlockHosts),
+    }));
     haptic('select');
-    setMenuOpen(false);
   };
 
   return (
@@ -738,21 +838,44 @@ export default function BrowserScreen({ inTab = false }: { inTab?: boolean }) {
           onClose={closeFind}
         />
       ) : (
-      <View style={styles.bar}>
-        <IconButton
-          icon="back"
-          accessibilityLabel="Go back"
-          onPress={() => {
-            if (!handleBack()) leave();
-          }}
-        />
-        <AddressSwipe
-          strip={tabsState ? switcherOrder(tabsState) : []}
-          activeId={activeId}
-          enabled={prefs.swipeTabs && !editing && ready}
-          onSelect={selectTab}
-          onOpenSwitcher={() => setSwitcherOpen(true)}
-        >
+      <AddressSwipe
+        strip={tabsState ? switcherOrder(tabsState) : []}
+        activeId={activeId}
+        enabled={!editing && ready}
+        canFocusAddress={!editing && ready}
+        onFocusAddress={() => startEditing()}
+        onSelect={selectTab}
+        onOpenSwitcher={() => setSwitcherOpen(true)}
+        trailing={
+          <>
+            <Pressable
+              onPress={() => {
+                haptic('select');
+                setSwitcherOpen(true);
+              }}
+              onLongPress={newTab}
+              accessibilityRole="button"
+              accessibilityLabel={browserTabs.tabButtonLabel(tabCount)}
+              disabled={!ready}
+              style={styles.tabButton}
+            >
+              <View style={styles.tabBox}>
+                <Text style={styles.tabCount} numberOfLines={1}>
+                  {tabCount > 99 ? browserTabs.tabButtonMany : tabCount}
+                </Text>
+              </View>
+            </Pressable>
+            <Pressable
+              onPress={() => setMenuOpen(true)}
+              accessibilityRole="button"
+              accessibilityLabel="More"
+              disabled={!ready}
+              style={styles.tabButton}
+            >
+              <PixelIcon name="more" size={20} color={colors.text} />
+            </Pressable>
+          </>
+        }>
         <View style={[styles.address, editing && styles.addressEditing]}>
           {prefs.privateBrowsing ? (
             <PixelIcon name="shield" size={16} color={colors.accent} accessibilityLabel={historyCopy.settings.privateIndicator} />
@@ -779,73 +902,54 @@ export default function BrowserScreen({ inTab = false }: { inTab?: boolean }) {
               accessibilityLabel={page.secure ? 'Secure connection' : 'Not secure'}
             />
           ) : null}
-          <TextField
-            bare
-            mono
-            ref={inputRef}
-            value={editing ? draft : idleText}
-            onChangeText={(t) => {
-              setSelection(undefined);
-              setDraft(t);
-            }}
-            onFocus={() => {
-              const full = page?.url || tab?.url || prefillText;
-              setDraft(full);
-              setEditing(true);
-              setSelection({ start: 0, end: full.length });
-              setTimeout(() => setSelection(undefined), 100);
-            }}
-            onBlur={() => setEditing(false)}
-            onSubmitEditing={() => {
-              haptic('tap');
-              inputRef.current?.blur();
-              go(draft);
-            }}
-            selection={selection}
-            selectTextOnFocus
-            returnKeyType="go"
-            keyboardType="url"
-            autoCapitalize="none"
-            autoCorrect={false}
-            spellCheck={false}
-            placeholder="Search or type an address"
-            style={styles.input}
-            numberOfLines={1}
-            accessibilityLabel="Address"
-          />
-        </View>
-        </AddressSwipe>
-        <IconButton
-          icon={loading ? 'stop' : 'retry'}
-          accessibilityLabel={loading ? 'Stop loading' : 'Reload'}
-          disabled={!hasPage}
-          onPress={() => {
-            haptic('tap');
-            if (loading) {
-              view()?.stop();
-              patch(activeId, (d) => void (d.page = d.page ? { ...d.page, loading: false } : d.page));
-            } else view()?.reload();
-          }}
-        />
-        <PressableScale
-          onPress={() => {
-            haptic('select');
-            setSwitcherOpen(true);
-          }}
-          onLongPress={newTab}
-          accessibilityRole="button"
-          accessibilityLabel={browserTabs.tabButtonLabel(tabCount)}
-          disabled={!ready}
-          style={styles.tabButton}
-        >
-          <View style={styles.tabBox}>
-            <Text style={styles.tabCount} numberOfLines={1}>
-              {tabCount > 99 ? browserTabs.tabButtonMany : tabCount}
-            </Text>
+          {!editing ? (
+            // Rule 8: idle, the address is a plain label that can never take focus. AddressSwipe's tap calls startEditing.
+            <View pointerEvents="none" style={styles.addressInput}>
+              <Text
+                style={[styles.idleLabel, !idleText && styles.idlePlaceholder]}
+                numberOfLines={1}
+                accessibilityRole="button"
+                accessibilityLabel="Address"
+                accessibilityHint="Double tap to type an address"
+              >
+                {idleText || 'Search or type an address'}
+              </Text>
+            </View>
+          ) : (
+          <View style={styles.addressInput}>
+            <TextField
+              bare
+              mono
+              autoFocus
+              ref={inputRef}
+              value={draft}
+              onChangeText={(t) => {
+                setSelection(undefined);
+                setDraft(t);
+              }}
+              onBlur={() => setEditing(false)}
+              onSubmitEditing={() => {
+                haptic('tap');
+                inputRef.current?.blur();
+                setEditing(false);
+                go(draft);
+              }}
+              selection={selection}
+              selectTextOnFocus
+              returnKeyType="go"
+              keyboardType="url"
+              autoCapitalize="none"
+              autoCorrect={false}
+              spellCheck={false}
+              placeholder="Search or type an address"
+              style={styles.input}
+              numberOfLines={1}
+              accessibilityLabel="Address"
+            />
           </View>
-        </PressableScale>
-        <IconButton icon="more" accessibilityLabel="More" disabled={!ready} onPress={() => setMenuOpen(true)} />
-      </View>
+          )}
+        </View>
+      </AddressSwipe>
       )}
       <View style={styles.progress}>{loading ? <ProgressBar progress={(page?.progress ?? 0) / 100} indeterminate={!page || page.progress <= 0} /> : null}</View>
 
@@ -860,6 +964,7 @@ export default function BrowserScreen({ inTab = false }: { inTab?: boolean }) {
                     key={t.id}
                     id={t.id}
                     url={initialUrls.get(t.id) ?? t.url}
+                    urlSource={linkTabs.current.has(t.id) ? 'link' : 'typed'}
                     active={focused && appForeground && t.id === activeId}
                     adBlock={prefs.adBlock}
                     allowAdsHosts={prefs.allowAdsHosts}
@@ -868,6 +973,9 @@ export default function BrowserScreen({ inTab = false }: { inTab?: boolean }) {
                     privateMode={prefs.privateBrowsing}
                     popupPolicy={prefs.popupPolicy}
                     popupAllowHosts={prefs.popupAllowHosts}
+                    popupBlockHosts={prefs.popupBlockHosts}
+                    blockThirdPartyCookies={prefs.blockThirdPartyCookies}
+                    httpsFirst={prefs.httpsFirst}
                     pullToRefresh
                     refreshColor={colors.accent}
                     refreshBackground={colors.surface}
@@ -878,6 +986,7 @@ export default function BrowserScreen({ inTab = false }: { inTab?: boolean }) {
                 );
               })
           : null}
+        <ReloadStrip ref={reloadRef} />
         {!hasPage ? (
           <StartPage
             privateMode={prefs.privateBrowsing}
@@ -891,10 +1000,11 @@ export default function BrowserScreen({ inTab = false }: { inTab?: boolean }) {
         {editing ? (
           <HistorySuggestions
             text={draft}
-            skip={page?.url || tab?.url || prefillText}
+            skip={page?.url || tab?.url || ''}
             onPick={(u) => {
               haptic('tap');
               inputRef.current?.blur();
+              setEditing(false);
               Keyboard.dismiss();
               go(u);
             }}
@@ -991,20 +1101,40 @@ export default function BrowserScreen({ inTab = false }: { inTab?: boolean }) {
         onShowFound={() => setTrayOpen(true)}
         onLinkOptions={(href) => setLinkTarget({ kind: 'link', url: href, imageUrl: null, text: null })}
       />
-      <PopupCard prompt={prompt} onOpen={popupOpen} onBlock={popupBlock} onAlwaysAllow={popupAlways} />
+      <PopupCard prompt={prompt} onAllowOnce={popupOpen} onBlock={popupBlock} onAlwaysAllow={popupAlways} onDismiss={popupDismiss} />
 
       <Sheet visible={menuOpen} onClose={() => setMenuOpen(false)} title={hasPage ? historyCopy.menuTitlePage : historyCopy.menuTitleBlank} subtitle={(hasPage && pageHost) || undefined}>
+        <View style={styles.menuRow}>
+          <IconButton
+            icon="back"
+            accessibilityLabel="Go back"
+            disabled={!page?.canGoBack}
+            onPress={() => {
+              setMenuOpen(false);
+              if (!handleBack()) leave();
+            }}
+          />
+          <IconButton
+            icon="forward"
+            accessibilityLabel="Go forward"
+            disabled={!page?.canGoForward}
+            onPress={() => {
+              setMenuOpen(false);
+              view()?.goForward();
+            }}
+          />
+          <IconButton
+            icon={loading ? 'stop' : 'retry'}
+            accessibilityLabel={loading ? 'Stop loading' : 'Reload page'}
+            disabled={!hasPage}
+            onPress={() => {
+              setMenuOpen(false);
+              reloadOrStop();
+            }}
+          />
+        </View>
         {hasPage ? (
           <>
-        <ListRow
-          icon="forward"
-          title="Forward"
-          disabled={!page?.canGoForward}
-          onPress={() => {
-            setMenuOpen(false);
-            view()?.goForward();
-          }}
-        />
         <ListRow icon="search" title={findCopy.menuRow} onPress={openFind} />
         <ListRow
           icon="text-size"
@@ -1029,13 +1159,18 @@ export default function BrowserScreen({ inTab = false }: { inTab?: boolean }) {
           />
         ) : null}
         {pageHost ? (
-          <ListRow
-            icon="external"
-            title={browserTabs.thisPage.popupsRow}
-            subtitle={popupsBlockedHere > 0 ? browserTabs.thisPage.blockedOnPage(popupsBlockedHere) : undefined}
-            accessory={<Toggle value={popupsAllowedHere} onValueChange={togglePopups} accessibilityLabel={browserTabs.thisPage.popupsRow} />}
-            onPress={togglePopups}
-          />
+          <>
+            <ListRow
+              icon="external"
+              title={browserTabs.thisPage.popupsRow}
+              subtitle={[browserSettingsCopy.popupSite.hint[popupSiteMode], popupsBlockedHere > 0 ? browserTabs.thisPage.blockedOnPage(popupsBlockedHere) : null].filter(Boolean).join(' · ')}
+            />
+            <View style={styles.popupChoices} accessibilityRole="radiogroup" accessibilityLabel={browserTabs.thisPage.popupsRow}>
+              {popupChoices.map((c) => (
+                <Chip key={c.value} label={c.label} role="radio" selected={popupSiteMode === c.value} onPress={() => setPopupSite(c.value)} />
+              ))}
+            </View>
+          </>
         ) : null}
         <ListRow
           icon="copy"
@@ -1128,7 +1263,9 @@ export default function BrowserScreen({ inTab = false }: { inTab?: boolean }) {
 const makeStyles = (c: ThemeColors) =>
   StyleSheet.create({
     root: { flex: 1, backgroundColor: c.bg },
-    bar: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: spacing.xs, minHeight: 56 },
+    // The header bar itself lives in AddressSwipe. This is the text field's wrapper, which takes touches only while editing.
+    addressInput: { flex: 1, minWidth: 0, flexDirection: 'row' },
+    menuRow: { flexDirection: 'row', justifyContent: 'space-around', paddingVertical: spacing.sm },
     address: {
       flex: 1,
       minWidth: touch.min,
@@ -1146,6 +1283,8 @@ const makeStyles = (c: ThemeColors) =>
     savedIcon: { width: 16, height: 16, alignSelf: 'center', alignItems: 'center', justifyContent: 'center' },
     addressEditing: { borderColor: c.borderStrong },
     input: { fontSize: type.size.md, paddingVertical: 0 },
+    idleLabel: { ...type.mono, flex: 1, minWidth: 0, color: c.text, fontSize: type.size.md, paddingVertical: 0 },
+    idlePlaceholder: { color: c.textFaint },
     tabButton: { width: touch.min, height: touch.min, alignItems: 'center', justifyContent: 'center' },
     tabBox: {
       paddingHorizontal: 6, // design-exception: count pill inside the 44 px tab glyph
@@ -1199,4 +1338,5 @@ const makeStyles = (c: ThemeColors) =>
       backgroundColor: c.surface,
     },
     hintText: { ...type.body, fontSize: type.size.sm, color: c.textMuted },
+    popupChoices: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, paddingHorizontal: spacing.lg, paddingBottom: spacing.sm },
   });

@@ -592,18 +592,23 @@ class MaglevEngineModule : Module() {
 
         View(MaglevBrowserView::class) {
             Events("onPage", "onFound", "onBlockedCount", "onDownloadRequest", "onMagnet", "onRefused", "onCrashed", "onPageNote",
-                "onNewWindow", "onPopupRequest", "onPopupBlocked", "onLongPress", "onFindResult", "onMediaHit")
+                "onNewWindow", "onPopupRequest", "onPopupBlocked", "onLongPress", "onFindResult", "onMediaHit",
+                "onPullProgress", "onReloadState")
 
             Prop("url") { view: MaglevBrowserView, url: String -> view.setUrl(url) }
+            Prop("urlSource") { view: MaglevBrowserView, source: String -> view.setUrlSource(source) }
             Prop("adBlock") { view: MaglevBrowserView, enabled: Boolean -> view.setAdBlock(enabled) }
             Prop("allowAdsHosts") { view: MaglevBrowserView, hosts: List<String> -> view.setAllowAdsHosts(hosts) }
             Prop("desktopMode") { view: MaglevBrowserView, enabled: Boolean -> view.setDesktopMode(enabled) }
             Prop("active") { view: MaglevBrowserView, value: Boolean -> view.setActive(value) }
             Prop("popupPolicy") { view: MaglevBrowserView, value: String -> view.setPopupPolicy(value) }
             Prop("popupAllowHosts") { view: MaglevBrowserView, hosts: List<String> -> view.setPopupAllowHosts(hosts) }
+            Prop("popupBlockHosts") { view: MaglevBrowserView, hosts: List<String> -> view.setPopupBlockHosts(hosts) }
             Prop("textZoom") { view: MaglevBrowserView, value: Int -> view.setTextZoom(value) }
             Prop("privateMode") { view: MaglevBrowserView, value: Boolean -> view.setPrivateMode(value) }
             Prop("pullToRefresh") { view: MaglevBrowserView, value: Boolean -> view.setPullToRefresh(value) }
+            Prop("blockThirdPartyCookies") { view: MaglevBrowserView, value: Boolean -> view.setBlockThirdPartyCookies(value) }
+            Prop("httpsFirst") { view: MaglevBrowserView, value: Boolean -> view.setHttpsFirst(value) }
             Prop("refreshColor") { view: MaglevBrowserView, value: String -> view.setRefreshColor(value) }
             Prop("refreshBackground") { view: MaglevBrowserView, value: String -> view.setRefreshBackground(value) }
             Prop("darkPages") { view: MaglevBrowserView, value: Boolean -> view.setDarkPages(value) }

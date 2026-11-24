@@ -35,7 +35,7 @@ const tab = read('components/browser/TabWebView.tsx');
 const bar = read('components/browser/FindBar.tsx');
 const sheet = read('components/browser/TextSizeSheet.tsx');
 const scr = read('app/browser.tsx');
-const set = read('app/settings/browser.tsx');
+const set = read('app/settings/browser-general.tsx');
 const copy = read('constants/copy.ts');
 const pkg = read('package.json');
 
@@ -67,7 +67,7 @@ async function main() {
   check('every live tab view gets textZoom and a tab-id onFindResult', /textZoom=\{textZoom\}/.test(tab) && /onFindResult=\{\(e\) => h\.onFindResult\(id, e\)\}/.test(tab) && /textZoom=\{prefs\.browserTextZoom\}/.test(scr));
 
   console.log('find bar');
-  check('the bar replaces the address row while find is open', /\{findOpen \? \(\s*<FindBar[\s\S]*?\) : \(\s*<View style=\{styles\.bar\}>/.test(scr));
+  check('the bar replaces the address row while find is open', /\{findOpen \? \(\s*<FindBar[\s\S]*?\) : \(\s*<AddressSwipe/.test(scr));
   check('the input autofocuses', /autoFocus/.test(bar));
   check('typing is debounced 150 ms', /FIND_DEBOUNCE_MS = 150/.test(bar) && /setTimeout\([\s\S]{0,120}FIND_DEBOUNCE_MS\)/.test(bar));
   check('Enter means next', /onSubmitEditing/.test(bar) && /step\(true\)/.test(bar));

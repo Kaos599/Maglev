@@ -1,9 +1,9 @@
 import React, { useCallback, useMemo, useRef, useState } from 'react';
 import { StyleSheet, Text, View, useWindowDimensions, type LayoutChangeEvent } from 'react-native';
-import { GestureDetector, useExclusiveGestures, usePanGesture } from 'react-native-gesture-handler';
+import { GestureDetector, useExclusiveGestures, usePanGesture, useTapGesture } from 'react-native-gesture-handler';
 import Animated, { cancelAnimation, useAnimatedStyle, useSharedValue, withSpring, withTiming } from 'react-native-reanimated';
 import { useTheme } from '../../context/ThemeContext';
-import { ThemeColors, motion, radius, spacing, type, touch } from '../../constants/theme';
+import { ThemeColors, motion, radius, spacing, touch, type } from '../../constants/theme';
 import { useReduceMotion } from '../motion/useReduceMotion';
 import { haptic } from '../../constants/haptics';
 import { hostOf } from '../../utils/browserUrl';
@@ -15,21 +15,38 @@ export interface AddressSwipeProps {
   /** Tabs in strip order (the order TabSwitcher shows). */
   strip: Tab[];
   activeId: string;
-  /** Off while the address is being edited, with one tab or when the pref is off. */
+  /** Off while the address is being edited, or when the pref is off. Sideways swipes also need 2+ tabs. */
   enabled: boolean;
+  /** A still tap on the address focuses it. Only true while it is not being edited and the page is ready. */
+  canFocusAddress: boolean;
+  onFocusAddress: () => void;
   onSelect: (id: string) => void;
   onOpenSwitcher: () => void;
+  /** The address field. Its taps are handled by this component, so the field itself takes no touches. */
   children: React.ReactNode;
+  /** The tab-count and ⋮ buttons. They sit inside the bar, so a swipe that starts on them still switches tabs. */
+  trailing: React.ReactNode;
 }
 
 const SPRING = { damping: 22, stiffness: 320, mass: 0.6 } as const;
 
 /**
- * Wraps the address field. A horizontal drag moves to the next or previous tab, a downward drag opens the tab list.
- * It never touches the page. The tab button stays the visible way to do the same, so nothing is gesture-only.
- * Gesture API: react-native-gesture-handler 3.x usePanGesture (activeOffsetX, failOffsetY, onBegin, onUpdate, onDeactivate).
+ * Wraps the whole header bar (0.34 section 3). A horizontal drag moves to the next or previous tab, a downward drag
+ * opens the tab list. A still tap on the address focuses it; a sloppy swipe never does (the tap fails on movement).
+ * The tab-count and ⋮ buttons stay the visible way to do the same, so nothing is gesture-only.
+ * Gesture API: react-native-gesture-handler 3.3 usePanGesture, useTapGesture and useExclusiveGestures.
  */
-export function AddressSwipe({ strip, activeId, enabled, onSelect, onOpenSwitcher, children }: AddressSwipeProps) {
+export function AddressSwipe({
+  strip,
+  activeId,
+  enabled,
+  canFocusAddress,
+  onFocusAddress,
+  onSelect,
+  onOpenSwitcher,
+  children,
+  trailing,
+}: AddressSwipeProps) {
   // The tab slide uses the base motion token and is instant when the system asks for less motion.
   const reduceMotion = useReduceMotion();
   const slideMs = reduceMotion ? 0 : motion.duration.base;
@@ -41,12 +58,13 @@ export function AddressSwipe({ strip, activeId, enabled, onSelect, onOpenSwitche
   const [hint, setHint] = useState<Tab | null>(null);
 
   // Gesture callbacks run on the JS thread and read the latest props through a ref.
-  const live = useRef({ strip, activeId, screenW, onSelect, onOpenSwitcher, startOk: false, hintId: '' });
+  const live = useRef({ strip, activeId, screenW, onSelect, onOpenSwitcher, onFocusAddress, startOk: false, hintId: '' });
   live.current.strip = strip;
   live.current.activeId = activeId;
   live.current.screenW = screenW;
   live.current.onSelect = onSelect;
   live.current.onOpenSwitcher = onOpenSwitcher;
+  live.current.onFocusAddress = onFocusAddress;
 
   const indexNow = () => live.current.strip.findIndex((t) => t.id === live.current.activeId);
 
@@ -92,11 +110,12 @@ export function AddressSwipe({ strip, activeId, enabled, onSelect, onOpenSwitche
     }, slideMs);
   };
 
+  // Swiping between tabs needs a second tab. Opening the list (downward) works with one tab too.
   const horizontal = usePanGesture({
     runOnJS: true,
-    enabled,
-    activeOffsetX: [-20, 20],
-    failOffsetY: [-10, 10],
+    enabled: enabled && strip.length > 1,
+    activeOffsetX: [-12, 12],
+    failOffsetY: [-30, 30],
     onBegin: (e) => begin(e.absoluteX),
     onUpdate: (e) => drag(e.translationX),
     onDeactivate: (e) => finishHorizontal(e.translationX, e.velocityX),
@@ -117,6 +136,15 @@ export function AddressSwipe({ strip, activeId, enabled, onSelect, onOpenSwitche
   });
   const gesture = useExclusiveGestures(horizontal, vertical);
 
+  // A still tap on the address. It only starts while the pans have not activated: the tap fails once the finger
+  // moves 10 dp, and the horizontal pan needs 12 dp before it activates.
+  const focusTap = useTapGesture({
+    runOnJS: true,
+    enabled: canFocusAddress,
+    maxDistance: 10,
+    onActivate: () => live.current.onFocusAddress(),
+  });
+
   const barStyle = useAnimatedStyle(() => ({ transform: [{ translateX: tx.value }] }));
   const hintStyle = useAnimatedStyle(() => {
     const w = width.value;
@@ -132,18 +160,25 @@ export function AddressSwipe({ strip, activeId, enabled, onSelect, onOpenSwitche
 
   return (
     <GestureDetector gesture={gesture}>
-      <View style={styles.root} onLayout={(e: LayoutChangeEvent) => (width.value = e.nativeEvent.layout.width)}>
-        <Animated.View style={[styles.fill, barStyle]}>{children}</Animated.View>
-        <Animated.View pointerEvents="none" style={[styles.hint, hintStyle]} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
-          <Text style={styles.hintTitle} numberOfLines={1}>
-            {hintTitle}
-          </Text>
-          {hintHost && hintHost !== hintTitle ? (
-            <Text style={styles.hintHost} numberOfLines={1}>
-              {hintHost}
+      <View style={styles.bar}>
+        <View style={styles.slot} onLayout={(e: LayoutChangeEvent) => (width.value = e.nativeEvent.layout.width)}>
+          <Animated.View style={[styles.fill, barStyle]}>
+            <GestureDetector gesture={focusTap}>
+              <View style={styles.fill}>{children}</View>
+            </GestureDetector>
+          </Animated.View>
+          <Animated.View pointerEvents="none" style={[styles.hint, hintStyle]} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
+            <Text style={styles.hintTitle} numberOfLines={1}>
+              {hintTitle}
             </Text>
-          ) : null}
-        </Animated.View>
+            {hintHost && hintHost !== hintTitle ? (
+              <Text style={styles.hintHost} numberOfLines={1}>
+                {hintHost}
+              </Text>
+            ) : null}
+          </Animated.View>
+        </View>
+        {trailing}
       </View>
     </GestureDetector>
   );
@@ -151,7 +186,8 @@ export function AddressSwipe({ strip, activeId, enabled, onSelect, onOpenSwitche
 
 const makeStyles = (c: ThemeColors) =>
   StyleSheet.create({
-    root: { flex: 1, minWidth: touch.min, height: touch.min, overflow: 'hidden', borderRadius: radius.md },
+    bar: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: spacing.xs, minHeight: 56 },
+    slot: { flex: 1, minWidth: touch.min, height: touch.min, overflow: 'hidden', borderRadius: radius.md },
     fill: { flex: 1, flexDirection: 'row' },
     hint: {
       ...StyleSheet.absoluteFill,
