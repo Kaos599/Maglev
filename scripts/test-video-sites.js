@@ -156,23 +156,32 @@ const fixture = (n) => JSON.parse(read(`scripts/fixtures/video-sites/${n}.json`)
   check('refresh: not for sign-in, other states, other sites or no page', !R.shouldRefresh(dl({ error: { code: 'AUTH_REQUIRED' } }), undefined, t0)
     && !R.shouldRefresh(dl({ state: 'error' }), undefined, t0) && !R.shouldRefresh(dl({ pageUrl: 'https://example.com/a' }), undefined, t0) && !R.shouldRefresh(dl({ pageUrl: null }), undefined, t0));
   const DC = await import('../utils/downloadCopy.ts');
-  check('card: says Get a fresh link for a refused video-site download', DC.downloadStatus(dl({})).lead === 'Site refused · Get a fresh link');
-  check('card: the button is Get a fresh link, then Paste new link', DC.downloadActions(dl({})).map((a) => a.label).join() === 'Get a fresh link,Paste new link');
+  check('card: says Video sites need an update for a refused video-site download', DC.downloadStatus(dl({})).lead === 'Video sites need an update');
+  check('card: the button is Update, then Paste new link', DC.downloadActions(dl({})).map((a) => a.label).join() === 'Update,Paste new link');
   check('card: other sites keep Paste new link', DC.downloadActions(dl({ pageUrl: 'https://example.com/a' })).map((a) => a.label).join() === 'Paste new link');
 
   // ---- yt-dlp stays current
   check('kotlin updates yt-dlp from the stable channel', /updateYoutubeDL\(context, YoutubeDL\.UpdateChannel\.STABLE\)/.test(kt));
-  check('kotlin: resolve updates first when the built-in yt-dlp is in use', /fun resolve[\s\S]*?autoUpdate\(context\)[\s\S]*?YoutubeDL\.execute/.test(kt) && /fun shouldAutoUpdate\(bundled: Boolean[\s\S]*?if \(bundled\) return true/.test(kt));
-  check('kotlin: weekly check skips mobile data, one update at a time', kt.includes('isActiveNetworkMetered') && kt.includes('CHECK_EVERY_MS = 7L') && /synchronized\(updateLock\)/.test(kt) && kt.includes('last_check_ms'));
+  const resolveBody = kt.slice(kt.indexOf('fun resolve'), kt.indexOf('fun classify'));
+  check('kotlin: resolve never updates or waits on an update', !/update|autoUpdate/i.test(resolveBody.replace(/\/\/.*$/gm, '')) && !kt.includes('shouldAutoUpdate'));
+  check('kotlin: one update at a time', /synchronized\(updateLock\)/.test(kt) && kt.includes('last_check_ms'));
+  const upd = read('modules/maglev-engine/android/src/main/java/com/maglev/engine/videosites/VideoSitesUpdater.kt');
+  check('kotlin: daily unique periodic work, unmetered unless mobile data is allowed, cancelled when off',
+    /PeriodicWorkRequest\.Builder\(VideoSitesUpdateWorker::class\.java, 1, TimeUnit\.DAYS\)/.test(upd) && upd.includes('ExistingPeriodicWorkPolicy.KEEP') && /if \(mobileData\) NetworkType\.CONNECTED else NetworkType\.UNMETERED/.test(upd) && upd.includes('cancelUniqueWork(UNIQUE_PERIODIC)'));
+  check('module exposes videoSitesStatus and videoSitesConfigure', mod.includes('AsyncFunction("videoSitesStatus")') && mod.includes('AsyncFunction("videoSitesConfigure")') && /public async videoSitesConfigure/.test(bridge));
   check('module exposes videoSitesUpdate off the main thread', /AsyncFunction\("videoSitesUpdate"\)[\s\S]*?EngineHost\.ioScope\.launch/.test(mod) && mod.includes('VideoSites.versionLabel'));
   check('bridge and mock expose videoSitesUpdate', /public async videoSitesUpdate/.test(bridge) && /videoSitesUpdate\(\)[\s\S]{0,200}status: 'current'/.test(mock) && read('modules/maglev-engine/src/MaglevEngine.types.ts').includes('videoSitesUpdate()'));
   check('refreshDownloadUrl passes options through', /refreshDownloadUrl = useCallback\(\(id: string, url: string, options: DownloadOptions = \{\}\) => maglevEngine\.refreshDownloadUrl\(id, url, options\)/.test(read('context/EngineContext.tsx')));
   const hook = read('components/transfers/useVideoSiteRefresh.ts');
-  check('hook: update, read the page, same quality, new links with parts', hook.includes('videoSitesUpdate()') && hook.includes('pickSameOption') && hook.includes('partsOption(option)') && hook.includes('refreshDownloadUrl(d.id'));
+  check('hook: read the page, same quality, new links with parts; update only when asked', hook.includes('if (updateFirst) await maglevEngine.videoSitesUpdate()') && hook.includes('pickSameOption') && hook.includes('partsOption(option)') && hook.includes('refreshDownloadUrl(d.id'));
   check('hook is mounted once, in the root layout', read('app/_layout.tsx').includes('useVideoSiteRefresh()') && !read('app/(tabs)/_layout.tsx').includes('useVideoSiteRefresh'));
   const dset = read('app/settings/downloads.tsx');
-  check('settings row: Video sites with yt-dlp version and Update now', dset.includes('title="Video sites"') && dset.includes('yt-dlp built in') && dset.includes('videoSitesUpdate()') && dset.includes("Couldn't update yt-dlp. Check your connection."));
-  check('settings row is searchable', read('utils/settingsIndex.ts').includes('"video-sites-update"'));
+  const uset = read('app/settings/updates.tsx');
+  const idx = read('utils/settingsIndex.ts');
+  check('settings: Video sites moved from Downloads to Updates, after Lists', !dset.includes('Video sites') && !dset.includes('VideoSitesRow')
+    && uset.indexOf('<SectionHeader title="Lists" />') < uset.indexOf('<VideoSitesSection />') && uset.includes('title="Video site reader"') && uset.includes('Keep video sites working') && uset.includes('Update on mobile data') && uset.includes('videoSitesUpdate()'));
+  check('settings: prefs default on / off and reach native', /videoSitesAuto: true, videoSitesMobile: false/.test(read('utils/prefs/update.ts')) && hook.includes('videoSitesConfigure(videoSitesAuto, videoSitesMobile)'));
+  check('settings rows are searchable', ['video-sites-auto', 'video-sites-mobile', 'video-sites-reader'].every((id) => idx.includes(`"${id}"`)));
 
   if (failed) {
     console.error(`\n${failed} check(s) failed`);

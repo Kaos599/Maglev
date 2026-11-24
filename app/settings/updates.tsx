@@ -1,10 +1,11 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Linking, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Stack } from 'expo-router';
 import Constants from 'expo-constants';
-import { getBlocklistInfo, type BlocklistInfo } from 'maglev-engine';
+import { getBlocklistInfo, maglevEngine, type BlocklistInfo } from 'maglev-engine';
 import { ThemeColors, radius, spacing, type } from '../../constants/theme';
 import { useTheme } from '../../context/ThemeContext';
+import { useMaglevEngine } from '../../context/EngineContext';
 import { Button, ListRow, RadioCard, SectionHeader, Sheet, Toggle } from '../../components/ui';
 import { Caption, Card, SettingsPage } from '../../components/settings/SettingsParts';
 import { highlightCopy, listsCopy, updateCopy } from '../../constants/copy';
@@ -77,6 +78,86 @@ function failureText(code: string): string {
   if (code === 'STORAGE_FULL') return n.storageFull;
   if (code === 'BLOCKED') return n.blocked;
   return code === 'INSTALL_FAILED' || code === 'INSTALL_CANCELLED' ? n.installFailed : n.downloadFailed;
+}
+
+/** Notice text for the video site reader's Check now button. */
+function readerNotice(status: string, version: string | null): string {
+  if (status === 'updated') return `Updated yt-dlp to ${version ?? 'the newest version'}`;
+  if (status === 'current') return `yt-dlp is up to date${version ? ` (${version})` : ''}`;
+  return "Couldn't update yt-dlp. Check your connection.";
+}
+
+const VIDEO_SITES_CAPTION = "The reader behind YouTube, X and Instagram links. It downloads yt-dlp's newest release from GitHub in the background.";
+
+/** "Video sites": the reader behind video page links changes often, so the app keeps it current (browser contract 7). */
+function VideoSitesSection() {
+  const { showNotice } = useMaglevEngine();
+  const [prefs, setPrefs] = useUpdatePrefs();
+  const [status, setStatus] = useState<{ version: string | null; lastCheckAt: number | null } | null>(null);
+  const [checking, setChecking] = useState(false);
+  useEffect(() => {
+    let alive = true;
+    void maglevEngine.videoSitesStatus().then((r) => {
+      if (alive) setStatus(r);
+    });
+    return () => {
+      alive = false;
+    };
+  }, []);
+  const check = useCallback(async () => {
+    setChecking(true);
+    const res = await maglevEngine.videoSitesUpdate();
+    const next = await maglevEngine.videoSitesStatus();
+    setChecking(false);
+    setStatus(next);
+    showNotice({ message: readerNotice(res.ok ? res.status : 'failed', res.ok ? res.version : null) }, 3000);
+  }, [showNotice]);
+  const subtitle = status
+    ? `yt-dlp ${status.version ?? 'built in'} · ${status.lastCheckAt ? `checked ${relativeTime(status.lastCheckAt)}` : 'not checked yet'}`
+    : ' ';
+  return (
+    <>
+      <SectionHeader title="Video sites" />
+      <Caption>{VIDEO_SITES_CAPTION}</Caption>
+      <Card>
+        <ListRow
+          title="Keep video sites working"
+          subtitle="Update the reader once a day, in the background, on Wi-Fi."
+          accessory={
+            <Toggle
+              value={prefs.videoSitesAuto}
+              onValueChange={(videoSitesAuto) => setPrefs({ videoSitesAuto })}
+              accessibilityLabel="Keep video sites working"
+            />
+          }
+        />
+        <ListRow
+          title="Update on mobile data"
+          subtitle="Also update when you are not on Wi-Fi."
+          accessory={
+            <Toggle
+              value={prefs.videoSitesMobile}
+              onValueChange={(videoSitesMobile) => setPrefs({ videoSitesMobile })}
+              accessibilityLabel="Update on mobile data"
+            />
+          }
+        />
+        <ListRow
+          title="Video site reader"
+          subtitle={subtitle}
+          accessory={
+            <Button
+              label={listsCopy.checkNow}
+              variant="secondary"
+              loading={checking}
+              onPress={() => void check()}
+              accessibilityLabel="Check now: Video site reader"
+            />
+          }
+        />
+      </Card>
+    </>
+  );
 }
 
 export default function UpdatesSettings() {
@@ -251,6 +332,7 @@ export default function UpdatesSettings() {
           }
         />
       </Card>
+      <VideoSitesSection />
       <Sheet
         visible={cardOpen && info !== null}
         onClose={() => setCardOpen(false)}

@@ -3,20 +3,24 @@ import { AppState } from 'react-native';
 import { maglevEngine, type DownloadSnapshot, type EngineResult } from 'maglev-engine';
 import { useEngineActions, useEngineState, useEngineTelemetry } from '../../context/EngineContext';
 import { useSettings } from '../../context/SettingsContext';
+import { useUpdatePrefs } from '../../utils/prefs/update';
 import { buildVideoSiteInfo, engineHeaders, partsOption } from '../../utils/videoSites';
 import { pickSameOption, shouldRefresh } from '../../utils/videoSiteRefresh';
 
 type RefreshUrl = (id: string, url: string, options?: import('maglev-engine').DownloadOptions) => Promise<EngineResult>;
 
 /**
- * Gets fresh links for a video-site download whose link was refused or expired: updates yt-dlp, reads the page again,
- * and gives the download the same quality's new links. Returns true when the download took them. Never throws.
+ * Gets fresh links for a video-site download whose link was refused or expired: reads the page again and gives the
+ * download the same quality's new links. Returns true when the download took them. Never throws.
+ *
+ * The automatic try never updates yt-dlp first (a refused link must not wait on a download). When that try fails the
+ * card says "Video sites need an update"; its Update button passes `updateFirst` and does the update, then this again.
  */
-export async function refreshVideoSiteDownload(d: DownloadSnapshot, refreshDownloadUrl: RefreshUrl): Promise<boolean> {
+export async function refreshVideoSiteDownload(d: DownloadSnapshot, refreshDownloadUrl: RefreshUrl, updateFirst = false): Promise<boolean> {
   const pageUrl = d.pageUrl;
   if (!pageUrl) return false;
   try {
-    await maglevEngine.videoSitesUpdate();
+    if (updateFirst) await maglevEngine.videoSitesUpdate();
     const res = await maglevEngine.videoSitesResolve(pageUrl);
     if (!res.ok) return false;
     const option = pickSameOption(buildVideoSiteInfo(JSON.parse(res.json)), d.name);
@@ -34,7 +38,7 @@ export async function refreshVideoSiteDownload(d: DownloadSnapshot, refreshDownl
 }
 
 /**
- * Mounted once (tabs layout). While the app is in the foreground, every video-site download that needs a link because
+ * Mounted once (root layout). While the app is in the foreground, every video-site download that needs a link because
  * the site refused it gets one automatic try per hour. On mobile data it waits when "Wi-Fi only" is on.
  */
 export function useVideoSiteRefresh(): void {
@@ -42,6 +46,7 @@ export function useVideoSiteRefresh(): void {
   const { onMeteredNetwork } = useEngineState();
   const { refreshDownloadUrl } = useEngineActions();
   const { settings } = useSettings();
+  const [updatePrefs] = useUpdatePrefs();
   const tries = useRef(new Map<string, number>());
   const blocked = settings.network.wifiOnly && onMeteredNetwork;
 
@@ -61,4 +66,11 @@ export function useVideoSiteRefresh(): void {
   useEffect(() => {
     run(downloads);
   }, [downloads, run]);
+
+  // "Keep video sites working" and "Update on mobile data" reach the daily background update (WorkManager) here, at
+  // start and on every change. Off cancels it.
+  const { videoSitesAuto, videoSitesMobile } = updatePrefs;
+  useEffect(() => {
+    void maglevEngine.videoSitesConfigure(videoSitesAuto, videoSitesMobile);
+  }, [videoSitesAuto, videoSitesMobile]);
 }

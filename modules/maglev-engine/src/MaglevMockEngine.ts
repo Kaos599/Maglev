@@ -862,6 +862,12 @@ export class MaglevMockEngine implements MaglevEngineApi {
   public videoSitesVersion(): Promise<string | null> {
     return Promise.resolve(null);
   }
+  public videoSitesStatus(): Promise<{ version: string | null; lastCheckAt: number | null }> {
+    return Promise.resolve({ version: null, lastCheckAt: null });
+  }
+  public videoSitesConfigure(_enabled: boolean, _mobileData: boolean): Promise<void> {
+    return Promise.resolve();
+  }
   public videoSitesUpdate(): Promise<EngineResult<{ status: 'updated' | 'current' | 'failed'; version: string | null }>> {
     return Promise.resolve({ ok: true, status: 'current', version: '2026.10.26' });
   }

@@ -57,7 +57,11 @@ const PROBE_BLOCKED_BODY =
 const AUTH_BODY =
   'This site wants you to sign in. Sign in on the site in your browser, copy the download link again, and paste it here.';
 /** The fresh-link button could not get a new link (the site is still refusing, or there is no connection). */
-export const FRESH_LINK_FAILED_TEXT = "Couldn't get a fresh link. Try again, or paste a new link.";
+export const FRESH_LINK_FAILED_TEXT = "Couldn't update. Check your connection, or paste a new link.";
+
+/** A video-site download refused again after the one automatic re-read of its page (browser contract 7, rule 3). */
+export const VIDEO_SITES_UPDATE_LEAD = 'Video sites need an update';
+const VIDEO_SITES_UPDATE_TEXT = 'Video sites need an update. Tap Update to get the newest reader and try again.';
 
 /** A 403 with no sign-in details (NATIVE_CONTRACT 17, LINK_REFUSED): the site refused the link itself. */
 const LINK_REFUSED_TEXT = 'The site refused this link. Open its page again, then retry.';
@@ -266,7 +270,7 @@ export function downloadStatus(
     case 'finished':
       return d.size ? mk(doneLead(d.activeSecs, d.finishedAt), 'accent', null, formatBytes(d.size), 'size') : mk(doneLead(d.activeSecs, d.finishedAt), 'accent', null);
     case 'needs_link':
-      if (offersFreshLink(d)) return held('Site refused · Get a fresh link', 'danger');
+      if (offersFreshLink(d)) return held(d.error?.code === 'LINK_REFUSED' ? VIDEO_SITES_UPDATE_LEAD : 'Link expired · Update', 'danger');
       return held(
         d.error?.code === 'AUTH_REQUIRED'
           ? 'Needs sign-in · Paste new link'
@@ -347,7 +351,7 @@ export function downloadCaption(d: DownloadSnapshot, ctx: BlockContext = {}): st
   }
   if (d.state === 'paused' && d.pausedBy === 'storage_unavailable') return FOLDER_GONE_TEXT;
   if (d.state === 'needs_link' && d.error?.code === 'AUTH_REQUIRED') return AUTH_BODY;
-  if (d.state === 'needs_link' && d.error?.code === 'LINK_REFUSED') return LINK_REFUSED_TEXT;
+  if (d.state === 'needs_link' && d.error?.code === 'LINK_REFUSED') return offersFreshLink(d) ? VIDEO_SITES_UPDATE_TEXT : LINK_REFUSED_TEXT;
   if (d.state === 'error') {
     const k = errorKind(d.error?.code, d.error?.httpStatus);
     if (k === 'lanAddress') return `${LAN_ADDRESS_TEXT} ${LAN_ADDRESS_BODY}`;
@@ -367,7 +371,7 @@ const A = {
   allowDevice: { kind: 'allowDevice', icon: 'link', label: 'Allow this device' },
   open: { kind: 'open', icon: 'external', label: 'Open' },
   newLink: { kind: 'newLink', icon: 'link', label: 'Paste new link' },
-  freshLink: { kind: 'freshLink', icon: 'retry', label: 'Get a fresh link' },
+  freshLink: { kind: 'freshLink', icon: 'retry', label: 'Update' },
   remove: { kind: 'remove', icon: 'trash', label: 'Remove' },
   pickFolder: { kind: 'pickFolder', icon: 'folder', label: 'Pick folder again' },
   openSettings: { kind: 'openNetworkSettings', icon: 'settings', label: 'Open settings' },

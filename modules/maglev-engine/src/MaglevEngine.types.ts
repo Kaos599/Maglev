@@ -902,6 +902,10 @@ export interface MaglevEngineApi {
   videoSitesResolve(url: string): Promise<EngineResult<{ json: string }>>;
   /** NATIVE_CONTRACT 48.1. The yt-dlp version the app downloaded itself, or null while the bundled one is in use. */
   videoSitesVersion(): Promise<string | null>;
+  /** The yt-dlp version in use (null while the bundled one is) and when it was last checked (epoch ms, null if never). */
+  videoSitesStatus(): Promise<{ version: string | null; lastCheckAt: number | null }>;
+  /** Schedules (enabled) or cancels the daily background yt-dlp update; `mobileData` also allows a metered network. */
+  videoSitesConfigure(enabled: boolean, mobileData: boolean): Promise<void>;
   /** NATIVE_CONTRACT 48.1. Downloads the newest yt-dlp. `failed` is a normal answer (no network), not an error. */
   videoSitesUpdate(): Promise<EngineResult<{ status: 'updated' | 'current' | 'failed'; version: string | null }>>;
   pauseDownload(id: string): Promise<EngineResult>;

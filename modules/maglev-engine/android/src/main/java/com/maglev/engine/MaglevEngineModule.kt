@@ -26,6 +26,7 @@ import com.maglev.engine.update.AppUpdater
 import com.maglev.engine.update.InstallSource
 import com.maglev.engine.update.UpdateNotices
 import com.maglev.engine.videosites.VideoSites
+import com.maglev.engine.videosites.VideoSitesUpdater
 import com.maglev.engine.util.Json
 import expo.modules.interfaces.permissions.PermissionsResponseListener
 import expo.modules.kotlin.Promise
@@ -505,6 +506,24 @@ class MaglevEngineModule : Module() {
         AsyncFunction("videoSitesVersion") { promise: Promise ->
             val c = context
             promise.resolve(if (c == null) null else VideoSites.versionLabel(c))
+        }
+        // What the Settings row shows: `{ version, lastCheckAt }` (version null while the bundled yt-dlp is in use,
+        // lastCheckAt epoch ms or null when never checked).
+        AsyncFunction("videoSitesStatus") { promise: Promise ->
+            val c = context
+            if (c == null) {
+                promise.resolve(linkedMapOf("version" to null, "lastCheckAt" to null))
+            } else {
+                EngineHost.ioScope.launch {
+                    val last = VideoSites.lastCheck(c)
+                    promise.resolve(linkedMapOf("version" to VideoSites.versionLabel(c), "lastCheckAt" to (if (last > 0L) last else null)))
+                }
+            }
+        }
+        // Schedules (enabled) or cancels the daily background yt-dlp update. `mobileData` allows a metered network.
+        AsyncFunction("videoSitesConfigure") { enabled: Boolean, mobileData: Boolean ->
+            context?.let { VideoSitesUpdater.apply(it, enabled, mobileData) }
+            true
         }
 
         // endregion

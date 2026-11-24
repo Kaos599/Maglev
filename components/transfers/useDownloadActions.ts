@@ -122,8 +122,8 @@ export function useDownloadActions(): DownloadActions {
           openPage(d.id);
           break;
         case 'freshLink':
-          // The same refresh the app tries by itself; when it can't, the card keeps its text and the page takes a pasted link.
-          void refreshVideoSiteDownload(d, refreshDownloadUrl).then((ok) => {
+          // The Update button: update yt-dlp, then the refresh the app already tried by itself; when it can't, the card keeps its text and the page takes a pasted link.
+          void refreshVideoSiteDownload(d, refreshDownloadUrl, true).then((ok) => {
             if (!ok) showNotice({ message: FRESH_LINK_FAILED_TEXT });
           });
           break;
