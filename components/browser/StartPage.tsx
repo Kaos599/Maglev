@@ -5,6 +5,7 @@ import { useTheme } from '../../context/ThemeContext';
 import { useMaglevEngine } from '../../context/EngineContext';
 import { ThemeColors, radius, spacing, touch, type } from '../../constants/theme';
 import { bookmarkCopy } from '../../constants/bookmarkCopy';
+import { browserSettingsCopy } from '../../constants/browserSettingsCopy';
 import { haptic } from '../../constants/haptics';
 import { useBrowserPrefs } from '../../utils/prefs/browser';
 import { listHistory, useHistoryVersion, type HistoryEntry } from '../../utils/history';
@@ -76,10 +77,11 @@ export function StartPage({ onOpen, privateMode = false, frequent }: StartPagePr
 
   const recent = readHistory ? rows.slice(0, START_RECENT_LIMIT) : [];
   const frequentList = useMemo(
-    () => (privateMode ? [] : frequent ?? (readHistory ? frequentSites(rows, START_FREQUENT_LIMIT) : [])),
-    [privateMode, frequent, readHistory, rows],
+    () => (privateMode ? [] : !prefs.showFrequentSites ? [] : frequent ?? (readHistory ? frequentSites(rows, START_FREQUENT_LIMIT) : [])),
+    [privateMode, prefs.showFrequentSites, frequent, readHistory, rows],
   );
-  const nothing = bookmarks.length === 0 && frequentList.length === 0 && recent.length === 0;
+  const showBookmarks = prefs.showBookmarksOnStart;
+  const nothing = (!showBookmarks || bookmarks.length === 0) && frequentList.length === 0 && recent.length === 0;
 
   const open = (url: string, newTab?: boolean) => {
     haptic('tap');
@@ -95,37 +97,43 @@ export function StartPage({ onOpen, privateMode = false, frequent }: StartPagePr
   const M = bookmarkCopy.menu;
 
   if (nothing) {
+    // Bookmarks switched off in Settings: say so, rather than asking for a bookmark the page will not show.
+    const empty = showBookmarks ? bookmarkCopy.empty : browserSettingsCopy.startPage.allHidden;
     return (
       <View style={styles.empty}>
-        <EmptyBlock icon="bookmark" title={bookmarkCopy.empty.title} body={bookmarkCopy.empty.body} />
+        <EmptyBlock icon="bookmark" title={empty.title} body={empty.body} />
       </View>
     );
   }
 
   return (
     <ScrollView style={styles.root} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-      <View style={styles.headerRow}>
-        <Text style={styles.heading} accessibilityRole="header">
-          {bookmarkCopy.section}
-        </Text>
-        {bookmarks.length > 0 ? (
-          <PressableScale
-            onPress={() => router.push('/browser-bookmarks')}
-            accessibilityRole="button"
-            accessibilityLabel={bookmarkCopy.seeAllBookmarksLabel}
-            hitSlop={8}
-            style={styles.seeAll}
-          >
-            <Text style={styles.seeAllText}>{bookmarkCopy.seeAll}</Text>
-          </PressableScale>
-        ) : null}
-      </View>
-      {bookmarks.length === 0 ? <Text style={styles.hint}>{bookmarkCopy.empty.body}</Text> : null}
-      <View style={styles.grid} accessibilityLabel={bookmarkCopy.sectionLabel}>
-        {bookmarks.slice(0, START_BOOKMARK_LIMIT).map((b) => (
-          <Tile key={b.id} title={b.title} sub={b.host} glyph={siteInitial(b.host)} styles={styles} onPress={() => open(b.url)} onLongPress={() => openMenu(b)} hint={bookmarkCopy.tileHint} />
-        ))}
-      </View>
+      {showBookmarks ? (
+        <>
+          <View style={styles.headerRow}>
+            <Text style={styles.heading} accessibilityRole="header">
+              {bookmarkCopy.section}
+            </Text>
+            {bookmarks.length > 0 ? (
+              <PressableScale
+                onPress={() => router.push('/browser-bookmarks')}
+                accessibilityRole="button"
+                accessibilityLabel={bookmarkCopy.seeAllBookmarksLabel}
+                hitSlop={8}
+                style={styles.seeAll}
+              >
+                <Text style={styles.seeAllText}>{bookmarkCopy.seeAll}</Text>
+              </PressableScale>
+            ) : null}
+          </View>
+          {bookmarks.length === 0 ? <Text style={styles.hint}>{bookmarkCopy.empty.body}</Text> : null}
+          <View style={styles.grid} accessibilityLabel={bookmarkCopy.sectionLabel}>
+            {bookmarks.slice(0, START_BOOKMARK_LIMIT).map((b) => (
+              <Tile key={b.id} title={b.title} sub={b.host} glyph={siteInitial(b.host)} styles={styles} onPress={() => open(b.url)} onLongPress={() => openMenu(b)} hint={bookmarkCopy.tileHint} />
+            ))}
+          </View>
+        </>
+      ) : null}
 
       {frequentList.length > 0 ? (
         <>

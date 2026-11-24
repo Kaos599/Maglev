@@ -486,9 +486,6 @@ async function main() {
     ["swipe to remove a download", "appearance-swipe-actions"],
     ["file icon", "appearance-file-icons"],
     ["file type icons", "appearance-file-icons"],
-    ["address bar", "browser-swipe-tabs"],
-    ["swipe address bar", "browser-swipe-tabs"],
-    ["url bar tabs", "browser-swipe-tabs"],
     ["backup stats", "backup-include-stats"],
     ["export statistics", "backup-include-stats"],
   ]) {

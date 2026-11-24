@@ -14,6 +14,8 @@ import {
   type BrowserPageEvent,
   type BrowserPopupBlockedEvent,
   type BrowserPopupRequestEvent,
+  type BrowserPullProgressEvent,
+  type BrowserReloadStateEvent,
   type BrowserRefusedEvent,
   type MaglevBrowserRef,
 } from 'maglev-engine';
@@ -42,12 +44,18 @@ export type TabHandlers = {
   onLongPress(id: string, e: BrowserLongPressEvent): void;
   onFindResult(id: string, e: BrowserFindResultEvent): void;
   onMediaHit(id: string, e: BrowserMediaHitEvent): void;
+  /** 0.34 section 4: drag progress of a pull to reload (0 to 1.5). */
+  onPullProgress(id: string, e: BrowserPullProgressEvent): void;
+  /** 0.34 section 4: a reload started or ended. */
+  onReloadState(id: string, e: BrowserReloadStateEvent): void;
 };
 
 export interface TabWebViewProps {
   id: string;
   /** The address the view loads when it mounts. It never follows the page. */
   url: string;
+  /** 'link' when the address came from a deep link or card (never typed); 'typed' otherwise. Read at mount. */
+  urlSource: 'typed' | 'link';
   active: boolean;
   adBlock: boolean;
   allowAdsHosts: string[];
@@ -58,8 +66,14 @@ export interface TabWebViewProps {
   privateMode: boolean;
   popupPolicy: PopupPolicy;
   popupAllowHosts: string[];
+  /** Sites whose pop-ups are always refused (0.34 section 2). */
+  popupBlockHosts: string[];
   /** Pull down at the top of the page to reload it. */
   pullToRefresh: boolean;
+  /** Refuse third-party cookies (Settings › Browser › Privacy). Optional: defaults to true, today's behaviour. */
+  blockThirdPartyCookies?: boolean;
+  /** Try https:// first for http:// addresses (Settings › Browser › Advanced). Optional: defaults to true. */
+  httpsFirst?: boolean;
   /** Spinner colours (theme accent and surface). */
   refreshColor: string;
   refreshBackground: string;
@@ -74,7 +88,7 @@ export interface TabWebViewProps {
  * One native browser view for one tab. Stacked with the others by absolute fill; an inactive one is invisible and
  * ignores touches but stays mounted, so switching back is instant.
  */
-export function TabWebView({ id, url, active, adBlock, allowAdsHosts, desktopMode, textZoom, privateMode, popupPolicy, popupAllowHosts, pullToRefresh, refreshColor, refreshBackground, darkPages, handlers: h, register }: TabWebViewProps) {
+export function TabWebView({ id, url, urlSource, active,adBlock, allowAdsHosts, desktopMode, textZoom, privateMode, popupPolicy, popupAllowHosts, popupBlockHosts, pullToRefresh, blockThirdPartyCookies = true, httpsFirst = true, refreshColor, refreshBackground, darkPages, handlers: h, register }: TabWebViewProps) {
   const ref = useRef<MaglevBrowserRef>(null);
   useEffect(() => {
     register(id, ref);
@@ -85,6 +99,7 @@ export function TabWebView({ id, url, active, adBlock, allowAdsHosts, desktopMod
     <MaglevBrowser
       ref={ref}
       url={url}
+      urlSource={urlSource}
       active={active}
       adBlock={adBlock}
       allowAdsHosts={allowAdsHosts}
@@ -93,7 +108,10 @@ export function TabWebView({ id, url, active, adBlock, allowAdsHosts, desktopMod
       privateMode={privateMode}
       popupPolicy={popupPolicy}
       popupAllowHosts={popupAllowHosts}
+      popupBlockHosts={popupBlockHosts}
       pullToRefresh={pullToRefresh}
+      blockThirdPartyCookies={blockThirdPartyCookies}
+      httpsFirst={httpsFirst}
       refreshColor={refreshColor}
       refreshBackground={refreshBackground}
       darkPages={darkPages}
@@ -113,6 +131,8 @@ export function TabWebView({ id, url, active, adBlock, allowAdsHosts, desktopMod
       onLongPress={(e) => h.onLongPress(id, e)}
       onFindResult={(e) => h.onFindResult(id, e)}
       onMediaHit={(e) => h.onMediaHit(id, e)}
+      onPullProgress={(e) => h.onPullProgress(id, e)}
+      onReloadState={(e) => h.onReloadState(id, e)}
     />
     </View>
   );

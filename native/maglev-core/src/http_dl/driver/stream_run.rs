@@ -579,7 +579,9 @@ impl Downloads {
                 Err(e) => return TrackEnd::Send(e),
             };
             let status = resp.status().as_u16();
-            if status != 200 {
+            // A 206 is read like a 200 when it is the whole file (contract 24.8, issue #168).
+            let whole = status == 206 && fetch::whole_body_206(&resp);
+            if status != 200 && !whole {
                 return TrackEnd::Status(status, None);
             }
             return match self.stream_body(c.id, resp, &file, 0, None, clock).await {

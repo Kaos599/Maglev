@@ -19,7 +19,7 @@ const kt = read('modules/maglev-engine/android/src/main/java/com/maglev/engine/b
 const mod = read('modules/maglev-engine/android/src/main/java/com/maglev/engine/MaglevEngineModule.kt');
 const gradle = read('modules/maglev-engine/android/build.gradle');
 const prefs = read('utils/prefs/browser.ts');
-const settings = read('app/settings/browser.tsx');
+const settings = read('app/settings/browser-general.tsx');
 const index = read('utils/settingsIndex.ts');
 const copy = read('constants/copy.ts');
 
@@ -36,7 +36,7 @@ check('TS: the view gets mediaHitScript(\'\') (no nonce is needed)', /mediaHitSc
 check('screen: only a video hit for the active tab opens the media menu', /onMediaHit: \(id, e\) => \{\s*if \(id !== activeIdRef\.current\) return;\s*const hit = parseMediaHit\(e\.json\);\s*if \(hit && hit\.kind === 'video' && hasMenu\(buildMediaMenu\(hit\)\)\) setMediaHit\(hit\);/.test(scr));
 check('screen: MediaMenu is wired to save, stream, tab, copy, share, files and link options', /<MediaMenu[\s\S]*?onSave=[\s\S]*?onStream=\{streamFromHit\}[\s\S]*?onOpenNewTab=[\s\S]*?onCopy=[\s\S]*?onShare=[\s\S]*?Share\.share[\s\S]*?onShowFound=\{\(\) => setTrayOpen\(true\)\}[\s\S]*?onLinkOptions=/.test(scr));
 check('screen: Back closes the media menu', /if \(mediaHit\) \{\s*setMediaHit\(null\);\s*return true;/.test(scr));
-check('Kotlin: onMediaHit is registered in the view events and as a dispatcher', /"onFindResult", "onMediaHit"\)/.test(mod) && /private val onMediaHit by EventDispatcher/.test(kt));
+check('Kotlin: onMediaHit is registered in the view events and as a dispatcher', /"onFindResult", "onMediaHit",\s*"onPullProgress", "onReloadState"\)/.test(mod) && /private val onMediaHit by EventDispatcher/.test(kt));
 check('Kotlin: the long press asks the page for __maglevMediaHit and emits the decoded payload', /evaluateJavascript\("window\.__maglevMediaHit && window\.__maglevMediaHit\(\)"\)/.test(kt) && /JSONTokener\(value\)\.nextValue\(\) as\? String/.test(kt) && /optString\("type"\) != "maglev-media-hit"/.test(kt) && /onMediaHit\(mapOf\("json" to payload\)\)/.test(kt));
 check('Kotlin: text selection is kept (the listener returns false for a non-image, non-link hit)', /askMediaHit\(w\)\s*return false/.test(kt));
 check('Kotlin: the media script is injected at both PageScan call sites', (kt.match(/if \(mediaHitJs\.isNotEmpty\(\)\) (?:webView|view)\.evaluateJavascript\(mediaHitJs, null\)/g) || []).length === 2 && /Prop\("mediaHitScript"/.test(mod));
@@ -56,7 +56,7 @@ check('gradle: androidx.webkit dependency', /androidx\.webkit:webkit:/.test(grad
 check('pref: darkPages defaults on and only false turns it off', /darkPages: boolean;/.test(prefs) && /darkPages: true,/.test(prefs) && /darkPages: o\.darkPages !== false,/.test(prefs));
 check('screen: darkPages is the pref and the app being dark', /darkPages=\{prefs\.darkPages && dark\}/.test(scr) && /const \{ colors, dark \} = useTheme\(\)/.test(scr));
 check('settings: a Dark pages row with a caption', /browserTabs\.settings\.darkPages\}\s+subtitle=\{browserTabs\.settings\.darkPagesSubtitle\}/.test(settings) && /darkPages: 'Dark pages'/.test(copy) && /Darken pages that only have a light look, when Maglev is dark\./.test(copy));
-check('settings index: Dark pages with keywords', /"browser-dark-pages",\s*"Dark pages",\s*"browser",\s*"Browser",\s*\[[^\]]*"dark"[^\]]*"night"[^\]]*"pages"[^\]]*"websites"[^\]]*"theme"/.test(index));
+check('settings index: Dark pages with keywords', /"browser-dark-pages",\s*"Dark pages",\s*"browser-general",\s*"Browser · General",\s*\[[^\]]*"dark"[^\]]*"night"[^\]]*"pages"[^\]]*"websites"[^\]]*"theme"/.test(index));
 check('backup restores the pref through normalizeBrowserPrefs', /normalizeBrowserPrefs\(value\)/.test(read('utils/backup/io.ts')));
 
 // ---- clear this site's data ----

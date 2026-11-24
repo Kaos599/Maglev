@@ -16,7 +16,8 @@ function check(name, cond, extra) {
 const read = (rel) => fs.readFileSync(path.join(root, rel), 'utf8');
 
 const browser = read('app/browser.tsx');
-const settings = read('app/settings/browser.tsx');
+// The history toggles and clear rows live on the privacy screen; the History quick link is on the hub.
+const settings = read('app/settings/browser-privacy.tsx') + read('app/settings/browser.tsx');
 const layout = read('app/_layout.tsx');
 const screen = read('app/browser-history.tsx');
 const sheet = read('components/browser/ClearHistorySheet.tsx');

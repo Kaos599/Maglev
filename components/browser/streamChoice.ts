@@ -4,6 +4,7 @@
  */
 import type { StreamAudioTrack, StreamKind, StreamProbe, StreamSelection, StreamVariant } from '../../modules/maglev-engine/src/MaglevEngine.types';
 import { formatBytes } from '../../constants/format.ts';
+import type { StreamQuality } from '../../utils/prefs/browser.ts';
 
 /** The tallest variant; without heights, the one with the most bandwidth. Null when there are none. */
 export function defaultVariant(variants: readonly StreamVariant[]): StreamVariant | null {
@@ -12,6 +13,25 @@ export function defaultVariant(variants: readonly StreamVariant[]): StreamVarian
     if (!best || (v.height ?? -1) > (best.height ?? -1) || ((v.height ?? -1) === (best.height ?? -1) && v.bandwidth > best.bandwidth)) best = v;
   }
   return best;
+}
+
+/**
+ * The variant the stream sheet preselects for the "Video quality for streams" setting. 'best' is defaultVariant.
+ * '1080' and '720' take the tallest variant at or below that height; when every variant is taller, the shortest one.
+ * Without any heights, the lowest bandwidth picture. 'ask' preselects nothing (null), so the user picks.
+ */
+export function pickStreamVariant(variants: readonly StreamVariant[], quality: StreamQuality): StreamVariant | null {
+  if (quality === 'ask') return null;
+  if (quality === 'best' || variants.length === 0) return defaultVariant(variants);
+  const cap = Number(quality);
+  const sized = variants.filter((v) => v.height != null);
+  if (sized.length === 0) {
+    const pictures = variants.filter((v) => !isAudioOnly(v));
+    return (pictures.length ? pictures : variants).reduce((a, b) => (b.bandwidth < a.bandwidth ? b : a));
+  }
+  const under = sized.filter((v) => (v.height as number) <= cap);
+  if (under.length) return defaultVariant(under);
+  return sized.reduce((a, b) => ((b.height as number) < (a.height as number) ? b : a));
 }
 
 const VIDEO_CODEC = /(^|,)\s*(avc[1-4]|hvc1|hev1|vp0?[89]|av01|dv[ah][1e]|mp4v|theora)/i;

@@ -22,6 +22,8 @@ import { useUpdatePrefs } from '../../utils/prefs/update';
 import { useStatsPrefs } from '../../utils/stats/prefs';
 import { useLinkDownloadPrefs } from '../../utils/prefs/linkDownloads';
 import { useSubtitleSettings } from '../../components/subtitles-settings/useSubtitleSettings';
+import { tipsCopy } from '../../constants/tipsCopy';
+import { visibleTips } from '../../components/tips/tipsLogic';
 import { SettingsSearchField, SettingsSearchResults } from '../../components/settings/SettingsSearch';
 
 const ACCENT_LABEL = {
@@ -211,6 +213,7 @@ export default function SettingsIndex() {
     { icon: 'power', title: 'Power', value: power, route: 'power' },
     { icon: 'network', title: 'Browser', value: browserPrefs.adBlock ? 'Ad blocking on' : 'Ad blocking off', route: 'browser' },
   ];
+  const tipsRow: RowSpec = { icon: 'card-text', title: tipsCopy.title, value: tipsCopy.rowValue(visibleTips().length), route: 'tips' };
   const appRows: RowSpec[] = [
     { icon: 'about', title: 'About', value: APP_VERSION, route: 'about' },
     { icon: 'download', title: 'Updates', value: updatePrefs.updateAutoCheck ? 'Checks daily' : 'Manual', route: 'updates' },
@@ -273,6 +276,7 @@ export default function SettingsIndex() {
             <View style={styles.section}>
               <SectionHeader title="App" />
               <Card>
+                <SettingsRow {...tipsRow} />
                 {appRows.map((r) => (
                   <SettingsRow key={r.route} {...r} />
                 ))}

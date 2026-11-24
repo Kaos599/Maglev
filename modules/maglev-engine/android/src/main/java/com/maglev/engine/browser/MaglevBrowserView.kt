@@ -18,6 +18,7 @@ import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import android.view.KeyEvent
 import android.view.MotionEvent
+import kotlin.math.abs
 import org.json.JSONObject
 import org.json.JSONTokener
 import android.view.View
@@ -80,6 +81,9 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
     private val onLongPress by EventDispatcher<Map<String, Any?>>()
     private val onMediaHit by EventDispatcher<Map<String, Any?>>()
     private val onFindResult by EventDispatcher<Map<String, Any?>>()
+    // 24.10a / 0.34 section 4: drag progress of a pull to reload (0..1.5), and reload start / end.
+    private val onPullProgress by EventDispatcher<Map<String, Any?>>()
+    private val onReloadState by EventDispatcher<Map<String, Any?>>()
 
     override val shouldUseAndroidLayout: Boolean = true
 
@@ -104,6 +108,11 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
     private var desktopMode = false
     // 28: text size in percent, 50..200. Applied again to every WebView this view creates.
     private var textZoom = 100
+    // 0.34 section 5: third-party cookies are blocked unless the user turns "Block cookies from other sites" off.
+    // Declared before init, which builds the first WebView and reads it.
+    private var blockThirdPartyCookies = true
+    // 0.34 section 5: "Try https first". Off: http:// addresses load as they are, with no https try.
+    private var httpsFirst = true
     // Private browsing: the page cache is bypassed (LOAD_NO_CACHE). Cookies are wiped from JS when the browser is left.
     private var privateMode = false
     private var pendingUrl: String? = null
@@ -113,6 +122,8 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
     private var active = true
     private var popupPolicy = "ask"
     private var popupAllowHosts: List<String> = emptyList()
+    // 0.34 §2: sites whose untapped pop-ups, redirects and app hand-offs are always refused. Main thread only.
+    private var popupBlockHosts: List<String> = emptyList()
     // The current document has finished loading at least once. Redirects during its first load are part of the page.
     private var loadedOnce = false
     // Section 30: a view mounted hidden finishes its first load before it is paused (a paused WebView may not load).
@@ -165,6 +176,8 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
     // What the user typed in the address bar (the url prop and loadUrl). Only those may open blocked or LAN pages.
     private var typedUrl: String? = null
     private var typedHost: String? = null
+    // Where the url prop came from: "link" (a maglev:// deep link or the card) loads through the link-tap refusals and is never typed.
+    private var urlFromLink = false
 
     // Fullscreen video.
     private var customView: View? = null
@@ -175,32 +188,90 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
     private val bridge = PageScanBridge { json -> onScanReport(json) }
 
     // 24.10a: pull to reload. The WebView sits inside this layout (https://developer.android.com/reference/androidx/swiperefreshlayout/widget/SwipeRefreshLayout).
+    // 0.34 section 4 (option A): the stock circle is hidden for good; RN draws the train from onPullProgress / onReloadState.
     private val refresh = SwipeRefreshLayout(context)
+    private val density = context.resources.displayMetrics.density
+    // SwipeRefreshLayout's trigger distance (72 dp), in px. Progress 1 is a drag of exactly this distance.
+    private val pullTriggerPx = PULL_TRIGGER_DP * density
     // 24.10a: a text selection or the find bar is active, so a downward drag must not reload. Main thread.
     private var selectionHold = false
     private var findActive = false
-    // The spinner stops once the reload it started has been seen loading and has finished. Main thread.
-    private var pullLoading = false
+    // 0.34 section 4: a pull is being tracked (started at the top of the page), its last sent progress and when it was sent.
+    private var pullTracking = false
+    private var pullDownX = 0f
+    private var pullDownY = 0f
+    private var pullSent = 0f
+    private var pullSentAt = 0L
+    // One reload from start to end: `start` is sent once and `end` once per start. Main thread.
+    private var reloadActive = false
+    // The page has been seen loading during this reload; its end (loading false) then ends the reload.
+    private var reloadSeenLoading = false
     // 24.10a: the injected script that finds media under a long press (prop mediaHitScript), and the dark pages switch.
     private var mediaHitJs = ""
     private var darkPages = false
-    private val pullSafety = Runnable { if (!destroyed) refresh.isRefreshing = false }
+    // Safety: a reload that never reports loaded ends after PULL_SAFETY_MS.
+    private val reloadSafety = Runnable { if (!destroyed) endReload() }
 
     init {
         BlocklistStore.warm(context)
         refresh.setOnRefreshListener {
-            pullLoading = false
             reload()
-            // Safety: never leave the spinner up if nothing started loading. One timer per pull, so a second
-            // pull isn't cut short by the first pull's timer.
-            mainHandler.removeCallbacks(pullSafety)
-            mainHandler.postDelayed(pullSafety, PULL_SAFETY_MS)
+            // A pull that could not reload (no page and no address) must not leave the layout refreshing.
+            if (!reloadActive) refresh.isRefreshing = false
         }
         refresh.setOnChildScrollUpCallback { _, _ -> selectionHold || findActive || webView.canScrollVertically(-1) }
+        // 0.34 section 4: the circle is never drawn. Transparent colours and an off-screen offset keep it invisible.
+        refresh.setColorSchemeColors(Color.TRANSPARENT)
+        refresh.setProgressBackgroundColorSchemeColor(Color.TRANSPARENT)
+        refresh.setProgressViewOffset(false, (-400 * density).toInt(), (-300 * density).toInt())
+        refresh.setDistanceToTriggerSync(pullTriggerPx.toInt())
         addView(refresh, ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
         webView = createWebView()
         refresh.addView(webView, ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
     }
+
+    // region Pull progress (0.34 section 4)
+
+    /**
+     * Tracks a pull that starts at the top of the page, for the train under the header. Progress is the drag
+     * (SwipeRefreshLayout's 0.5 drag rate) over the trigger distance, sent at most every 33 ms and only when it moved
+     * by 0.02. Released without a reload, it is sent as 0. The gesture itself is still handled by SwipeRefreshLayout.
+     */
+    override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
+        when (ev.actionMasked) {
+            MotionEvent.ACTION_DOWN -> {
+                pullTracking = !destroyed && refresh.isEnabled && !webView.canScrollVertically(-1) && !selectionHold && !findActive
+                pullDownX = ev.x
+                pullDownY = ev.y
+                pullSent = 0f
+                pullSentAt = 0L
+            }
+            MotionEvent.ACTION_MOVE -> if (pullTracking) {
+                // A mostly sideways drag (a carousel at the top of the page) is not a pull: SwipeRefreshLayout won't
+                // take it, so the train must not peek in either.
+                val dy = ev.y - pullDownY
+                val dragged = if (abs(dy) > abs(ev.x - pullDownX)) dy * PULL_DRAG_RATE else 0f
+                emitPull((dragged / pullTriggerPx).coerceIn(0f, 1.5f), force = false)
+            }
+        }
+        val handled = super.dispatchTouchEvent(ev)
+        if (ev.actionMasked == MotionEvent.ACTION_UP || ev.actionMasked == MotionEvent.ACTION_CANCEL) {
+            // After super: a release past the trigger has started a reload by now, and that one is not a zero.
+            if (pullTracking && !refresh.isRefreshing && !reloadActive) emitPull(0f, force = true)
+            pullTracking = false
+        }
+        return handled
+    }
+
+    private fun emitPull(progress: Float, force: Boolean) {
+        val now = SystemClock.uptimeMillis()
+        if (!force && (now - pullSentAt < PULL_EMIT_MS || abs(progress - pullSent) < PULL_EMIT_DELTA)) return
+        pullSentAt = now
+        pullSent = progress
+        if (!destroyed) onPullProgress(mapOf("progress" to progress.toDouble()))
+    }
+
+    // endregion
 
     // region Props and commands (called on the main thread)
 
@@ -208,6 +279,11 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
         if (url == requestedUrl) return
         requestedUrl = url
         pendingUrl = url
+    }
+
+    /** NATIVE_CONTRACT 24.7: "link" for a deep link or card URL (not typed), anything else for the address bar. Applied with the url. */
+    fun setUrlSource(source: String) {
+        urlFromLink = source == "link"
     }
 
     fun setAdBlock(value: Boolean) {
@@ -233,6 +309,20 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
         if (!destroyed) webView.settings.textZoom = v
     }
 
+    /**
+     * 0.34 section 5: "Block cookies from other sites". On (the default) means third-party cookies are refused. Applied to
+     * the live WebView now and to every WebView created later (createWebView).
+     */
+    fun setBlockThirdPartyCookies(value: Boolean) {
+        blockThirdPartyCookies = value
+        if (!destroyed) CookieManager.getInstance().setAcceptThirdPartyCookies(webView, !value)
+    }
+
+    /** 0.34 section 5: "Try https first". Read at each load, so it takes effect on the next load. */
+    fun setHttpsFirst(value: Boolean) {
+        httpsFirst = value
+    }
+
     /** Private browsing: stop reading the page cache while on. */
     fun setPrivateMode(value: Boolean) {
         if (value == privateMode) return
@@ -246,20 +336,14 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
         if (!value) refresh.isRefreshing = false
     }
 
-    /** 24.10a: spinner colour (hex string). A bad value is ignored. */
+    /** 0.34 section 4: no-op. The stock spinner is hidden; the train is drawn in RN (ReloadStrip). Kept for old JS. */
+    @Suppress("UNUSED_PARAMETER")
     fun setRefreshColor(value: String) {
-        try {
-            refresh.setColorSchemeColors(Color.parseColor(value))
-        } catch (_: IllegalArgumentException) {
-        }
     }
 
-    /** 24.10a: spinner circle colour (hex string). A bad value is ignored. */
+    /** 0.34 section 4: no-op, see setRefreshColor. */
+    @Suppress("UNUSED_PARAMETER")
     fun setRefreshBackground(value: String) {
-        try {
-            refresh.setProgressBackgroundColorSchemeColor(Color.parseColor(value))
-        } catch (_: IllegalArgumentException) {
-        }
     }
 
     /** 24.10a: the script from utils/browser/mediaHitScript.ts, injected next to the page scan. */
@@ -355,14 +439,23 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
     }
 
     fun setPopupAllowHosts(hosts: List<String>) {
-        popupAllowHosts = hosts.map { it.trim().lowercase().trimStart('.') }.filter { it.isNotEmpty() }
+        popupAllowHosts = hosts.map { PopupRules.normalizeSite(it) }.filter { it.isNotEmpty() }
+    }
+
+    fun setPopupBlockHosts(hosts: List<String>) {
+        popupBlockHosts = hosts.map { PopupRules.normalizeSite(it) }.filter { it.isNotEmpty() }
     }
 
     /** Called after all props of an update are set. Loads the url prop when it changed. */
     fun applyProps() {
         val u = pendingUrl ?: return
         pendingUrl = null
-        loadTyped(u)
+        loadRequested(u)
+    }
+
+    /** Loads the url prop the way its source says: a link through the link-tap refusals, a typed address as typed. */
+    private fun loadRequested(url: String) {
+        if (urlFromLink) loadFromLink(url) else loadTyped(url)
     }
 
     fun goBack() {
@@ -384,7 +477,38 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
 
     fun reload() {
         if (destroyed) return
-        if (webView.url != null) webView.reload() else requestedUrl?.let { loadTyped(it) }
+        if (webView.url != null) {
+            beginReload()
+            webView.reload()
+        } else {
+            requestedUrl?.let {
+                beginReload()
+                loadRequested(it)
+            }
+        }
+    }
+
+    /**
+     * 0.34 section 4: a reload started (pull, menu or command). Sends `start` once; every call restarts the safety timer.
+     * The matching `end` comes from endReload(). Main thread.
+     */
+    private fun beginReload() {
+        mainHandler.removeCallbacks(reloadSafety)
+        mainHandler.postDelayed(reloadSafety, PULL_SAFETY_MS)
+        if (reloadActive) return
+        reloadActive = true
+        reloadSeenLoading = false
+        onReloadState(mapOf("state" to "start"))
+    }
+
+    /** Ends the reload started by beginReload (one `end` per `start`) and stops the spinner. Main thread. */
+    private fun endReload() {
+        mainHandler.removeCallbacks(reloadSafety)
+        if (refresh.isRefreshing) refresh.isRefreshing = false
+        if (!reloadActive) return
+        reloadActive = false
+        reloadSeenLoading = false
+        onReloadState(mapOf("state" to "end"))
     }
 
     fun stop() {
@@ -407,17 +531,44 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
         }
         typedUrl = url
         typedHost = uri.host?.lowercase()
-        // A new typed load: its own script redirects are part of the page until it has finished once.
+        startLoad(url)
+    }
+
+    /**
+     * NATIVE_CONTRACT 24.7: a deep link or card URL (maglev://browser?url=). It is not typed, so it gets the same
+     * main-frame refusals as a link tap (mainFrameRefusal: scheme, ad-blocked host, LAN host) and the refusal
+     * notice (onRefused). Any earlier typed allowance of this view is dropped first.
+     */
+    fun loadFromLink(raw: String) {
+        if (destroyed) return
+        val url = raw.trim()
+        typedUrl = null
+        typedHost = null
+        val reason = mainFrameRefusal(Uri.parse(url))
+        if (reason != null) {
+            refuse(url, reason)
+            return
+        }
+        startLoad(url)
+    }
+
+    /** The load itself, shared by typed and link loads. The caller has already checked the URL. */
+    private fun startLoad(url: String) {
+        // A new load: its own script redirects are part of the page until it has finished once.
         loadedOnce = false
         redirectInFlight = false
         pendingUserNav = true
         // 24.11 HTTPS-first: a typed http:// address is tried as https:// first.
-        val https = HttpsFirst.upgrade(url, httpsFallbackHosts)
+        val https = httpsTryFor(url)
         val host = HttpsFirst.hostOf(https)
         upgrade = if (https != null && host != null) HttpsTry(host, https, url) else null
         armUpgradeTimeout()
         webView.loadUrl(https ?: url)
     }
+
+    /** 0.34 section 5: the https try for [url], or null when "Try https first" is off. Every other HttpsFirst rule still applies. */
+    private fun httpsTryFor(url: String, method: String = "GET"): String? =
+        if (httpsFirst) HttpsFirst.upgrade(url, httpsFallbackHosts, method) else null
 
     /**
      * 24.10: loads a held redirect the user said yes to. Not typed, so the 24.5 refusals (scheme, blocked host, LAN)
@@ -617,7 +768,7 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
 
         val cookies = CookieManager.getInstance()
         cookies.setAcceptCookie(true)
-        cookies.setAcceptThirdPartyCookies(w, false)
+        cookies.setAcceptThirdPartyCookies(w, !blockThirdPartyCookies)
 
         w.addJavascriptInterface(bridge, PageScan.BRIDGE_NAME)
         w.webViewClient = browserClient()
@@ -667,7 +818,7 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
         resetPageState()
         webView = createWebView()
         refresh.addView(webView, ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
-        refresh.isRefreshing = false
+        endReload()
         loadedOnce = false
         redirectInFlight = false
         history.clear()
@@ -691,12 +842,12 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
         val url = w.url ?: ""
         curUrl = url
         curTitle = w.title ?: ""
-        if (refresh.isRefreshing) {
+        // 0.34 section 4: the reload ends once the page it started has been seen loading and has finished.
+        if (reloadActive) {
             if (loading) {
-                pullLoading = true
-            } else if (pullLoading) {
-                pullLoading = false
-                refresh.isRefreshing = false
+                reloadSeenLoading = true
+            } else if (reloadSeenLoading) {
+                endReload()
             }
         }
         onPage(
@@ -964,19 +1115,21 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
 
     private fun currentHost(): String? = webView.url?.let { Uri.parse(it).host } ?: pageHost
 
-    private fun hostAllowsPopups(host: String?): Boolean {
-        if (host == null) return false
-        val h = host.lowercase()
-        return popupAllowHosts.any { h == it || h.endsWith(".$it") }
-    }
+    private fun hostAllowsPopups(host: String?): Boolean = PopupRules.hostListed(host, popupAllowHosts)
 
-    private fun decide(gesture: Boolean, kind: String): String =
-        PopupRules.decide(popupPolicy, hostAllowsPopups(currentHost() ?: pageHost), gesture, kind)
+    private fun hostBlocksPopups(host: String?): Boolean = PopupRules.hostListed(host, popupBlockHosts)
+
+    /** T4 for the page now showing. [gesture] is the trusted-tap flag (see trustTap). */
+    private fun decide(gesture: Boolean, kind: String): String {
+        val page = currentHost() ?: pageHost
+        return PopupRules.decide(popupPolicy, hostAllowsPopups(page), hostBlocksPopups(page), gesture, kind)
+    }
 
     private fun sourceUrl(): String = webView.url ?: curUrl
 
+    /** onPopupBlocked {url, kind, sourceUrl}: sourceUrl is the page that tried to open the target (0.34 §2 rule 5). */
     private fun emitBlocked(url: String, kind: String) {
-        onPopupBlocked(mapOf("url" to url, "kind" to kind))
+        onPopupBlocked(mapOf("url" to url, "kind" to kind, "sourceUrl" to sourceUrl()))
     }
 
     private fun emitRequest(url: String, kind: String) {
@@ -1196,7 +1349,7 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
                     mainHandler.removeCallbacks(upgradeTimeout)
                 } else {
                     // NATIVE_CONTRACT 39.2 B3: never upgrade a request that is not GET.
-                    val https = HttpsFirst.upgrade(uri.toString(), httpsFallbackHosts, request.method ?: "GET")
+                    val https = httpsTryFor(uri.toString(), request.method ?: "GET")
                     val host = HttpsFirst.hostOf(https)
                     if (https != null && host != null) {
                         upgrade = HttpsTry(host, https, uri.toString())
@@ -1511,6 +1664,11 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
             java.util.Collections.newSetFromMap(java.util.concurrent.ConcurrentHashMap<String, Boolean>())
 
         private const val PULL_SAFETY_MS = 15_000L
+        /** SwipeRefreshLayout's trigger distance and drag rate (0.34 section 4). */
+        private const val PULL_TRIGGER_DP = 72f
+        private const val PULL_DRAG_RATE = 0.5f
+        private const val PULL_EMIT_MS = 33L
+        private const val PULL_EMIT_DELTA = 0.02f
         private const val MAX_MEDIA_HIT_CHARS = 20_000
 
         private const val MAX_CAPTURES = 3

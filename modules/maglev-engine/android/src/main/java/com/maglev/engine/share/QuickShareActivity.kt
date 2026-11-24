@@ -69,7 +69,9 @@ class QuickShareActivity : Activity() {
             return
         }
         val addable = cls.kind == ShareKind.MAGNET || cls.kind == ShareKind.TORRENT_FILE || cls.kind == ShareKind.FILE_LINK
-        if (addable && QuickSharePrefs.addWithoutAsking(applicationContext)) {
+        // Contract 0.34 §6 rule 4: a web page can start a BROWSABLE VIEW, so that one always shows the card.
+        val fromBrowser = original.action == Intent.ACTION_VIEW && original.hasCategory(Intent.CATEGORY_BROWSABLE)
+        if (addable && !fromBrowser && QuickSharePrefs.addWithoutAsking(applicationContext)) {
             setContentView(View(this))
             addWithoutCard()
             return

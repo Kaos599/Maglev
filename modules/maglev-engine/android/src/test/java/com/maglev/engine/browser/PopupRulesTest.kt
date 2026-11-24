@@ -31,7 +31,7 @@ class PopupRulesTest {
     }
 
     @Test fun untrustedTapFollowsThePolicy() {
-        assertEquals(PopupRules.ASK, PopupRules.decide("ask", false, false, "window"))
-        assertEquals(PopupRules.BLOCK, PopupRules.decide("block", false, false, "redirect"))
+        assertEquals(PopupRules.ASK, PopupRules.decide("ask", false, false, false, "window"))
+        assertEquals(PopupRules.BLOCK, PopupRules.decide("block", false, false, false, "redirect"))
     }
 }

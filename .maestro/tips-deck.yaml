@@ -1,0 +1,55 @@
+# Settings > Tips: open the deck, swipe to the second card, change topic from the picker, tap a card's action and land on the
+# screen it names, then come back. The deck remembers the last topic and card (a convenience), so the flow picks its topic first.
+# Copy: constants/tipsCopy.ts. Screen: app/settings/tips.tsx ("Make it yours" has 6 tips, "Data and battery" has 4; its first card opens Network).
+# Topic rows are labelled "<name>, <n> tips" for a screen reader, so they are matched with a trailing ".*". Pages are left with the in-app "Go back".
+appId: com.maglev
+name: tips-deck
+---
+- runFlow: subflows/onboard-if-needed.yaml
+- tapOn: "Settings"
+- runFlow:
+    file: subflows/open-settings-row.yaml
+    env:
+      ROW: "Tips"
+- extendedWaitUntil:
+    visible:
+      id: "tips-topic-button"
+    timeout: 20000
+# Start from a known topic: the first card of "Make it yours".
+- tapOn:
+    id: "tips-topic-button"
+- assertVisible: "Topics"
+- tapOn: "Make it yours.*"
+- assertVisible: "1 / 6"
+- assertVisible: "Pick a font style"
+- takeScreenshot: tips-first-card
+# Swipe left: the second card.
+- swipe:
+    start: 85%, 55%
+    end: 15%, 55%
+- assertVisible: "2 / 6"
+- assertVisible: "Choose an accent colour"
+- takeScreenshot: tips-second-card
+# The arrows do the same as the swipe.
+- tapOn:
+    id: "tips-prev"
+- assertVisible: "1 / 6"
+# Topic picker: another topic starts at its first card.
+- tapOn:
+    id: "tips-topic-button"
+- tapOn: "Data and battery.*"
+- assertVisible: "1 / 4"
+- assertVisible: "Wi-Fi only"
+- takeScreenshot: tips-data-topic
+# The action opens the screen it names (Settings > Network), with the row highlighted.
+- tapOn:
+    id: "tip-action"
+- extendedWaitUntil:
+    visible: "Only download over a VPN"
+    timeout: 20000
+- takeScreenshot: tips-action-network
+- tapOn: "Go back"
+- assertVisible: "1 / 4"
+# Back to the Settings list.
+- tapOn: "Go back"
+- assertVisible: "Tips"
