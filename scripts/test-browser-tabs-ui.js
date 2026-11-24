@@ -109,12 +109,13 @@ const back = scr.slice(scr.indexOf('const handleBack'), scr.indexOf('useFocusEff
 check('order: address bar, switcher, menu, pop-up card, then the tab', ['editing', 'switcherOpen', 'linkTarget', 'prompt', 'backTarget'].map((k) => back.indexOf(k)).every((v, i, a) => v >= 0 && (i === 0 || v > a[i - 1])));
 
 console.log('This page menu');
-check('"Pop-ups" row sits under the ads row', scr.indexOf('toggleAds}') > 0 && scr.indexOf('browserTabs.thisPage.popupsRow') > scr.indexOf('toggleAds}'));
-check('subtitle is "N blocked on this page", hidden at 0', /popupsBlockedHere > 0 \? browserTabs\.thisPage\.blockedOnPage\(popupsBlockedHere\) : null/.test(scr));
+const site = read('components/browser/SiteSettingsSheet.tsx');
+check('Site settings sheet: Pop-ups and redirects sits under the Ads toggle', site.indexOf('c.adsToggle') > 0 && site.indexOf('c.popupsSection') > site.indexOf('c.adsToggle') && /onToggleAds=\{toggleAds\}/.test(scr));
+check('subtitle is "N blocked on this page", hidden at 0', /popupsBlockedCount > 0 \? <Text style=\{styles\.count\}>\{c\.blockedOnPage\(popupsBlockedCount\)\}/.test(site));
 check('Ask / Allow / Block chips move the site between the two lists, never both', /setPopupSite/.test(scr) && /popupAllowHosts: mode === 'allow'/.test(scr) && /popupBlockHosts: mode === 'block'/.test(scr));
 
 console.log('settings');
-check('section "Pop-ups and redirects"', /browserTabs\.settings\.section/.test(set));
+check('section "Pop-ups and redirects"', /title=\{h\.popups\}/.test(set));
 check('radio rows Ask, Block without asking, Allow write popupPolicy', /browserTabs\.settings\.ask/.test(set) && /browserTabs\.settings\.block/.test(set) && /browserTabs\.settings\.allow/.test(set) && /setPrefs\(\{ popupPolicy: c\.value \}\)/.test(set) && /selected=\{prefs\.popupPolicy === c\.value\}/.test(set));
 check('"Sites allowed to open pop-ups" with Remove', /browserTabs\.settings\.allowedSites/.test(set) && /browserTabs\.settings\.remove/.test(popupSites) && /popupAllowHosts: prefs\.popupAllowHosts\.filter/.test(popupSites));
 
@@ -131,7 +132,7 @@ check('in the tab bar the screen skips the bottom inset (the tab bar already pad
 const recent = read('components/browser/StartPage.tsx'); // the Recent list now lives in StartPage (RecentHistory.tsx is gone)
 check('⋮ is enabled on a blank tab (gated on ready, not on a page)', /accessibilityLabel="More"[\s\S]{0,40}disabled=\{!ready\}/.test(scr) && !/accessibilityLabel="More"[\s\S]{0,40}disabled=\{!hasPage\}/.test(scr));
 check('with no page the sheet is titled Browser', /title=\{hasPage \? historyCopy\.menuTitlePage : historyCopy\.menuTitleBlank\}/.test(scr) && /menuTitleBlank: 'Browser'/.test(read('constants/copy.ts')));
-check('page-only rows sit behind hasPage; Bookmarks, History and Browser settings do not', /\{hasPage \? \(\s*<>[\s\S]*?findCopy\.menuRow[\s\S]*?textSizeCopy\.menuRow[\s\S]*?Desktop site[\s\S]*?Copy page link[\s\S]*?<\/>\s*\) : null\}\s*<ListRow\s+icon="bookmark"[\s\S]*?<ListRow\s+icon="clock"/.test(scr));
+check('page-only rows sit behind hasPage; Bookmarks, History and Browser settings do not', /\{hasPage \? \(\s*<>[\s\S]*?findCopy\.menuRow[\s\S]*?pageMenuCopy\.desktopSite[\s\S]*?pageMenuCopy\.siteSettings[\s\S]*?<\/>\s*\) : null\}\s*<ListRow\s+icon="bookmark"[\s\S]*?<ListRow\s+icon="clock"/.test(scr));
 check('a blank tab shows the start page (Recent folded in, with its own empty state)', /<StartPage[\s\S]{0,200}onOpen=/.test(scr) && /<EmptyBlock icon="bookmark"/.test(recent));
 check('Recent lists 6 from history, refreshes on change, and links to the History screen', /listHistory\(\{ limit: HISTORY_SAMPLE \}\)/.test(recent) && /START_RECENT_LIMIT = 6/.test(recent) && /useHistoryVersion\(\)/.test(recent) && /\/browser-history/.test(recent) && /bookmarkCopy\.seeAll/.test(recent));
 check('Recent shows nothing when Save history is off or the store fails', /saveHistory/.test(recent) && /\(\) => live && setRows\(\[\]\)/.test(recent));

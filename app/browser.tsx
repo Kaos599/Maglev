@@ -19,16 +19,17 @@ import { useMaglevEngine } from '../context/EngineContext';
 import { ThemeColors, radius, spacing, touch, type } from '../constants/theme';
 import { haptic } from '../constants/haptics';
 import { bookmarkCopy } from '../constants/bookmarkCopy';
-import { addressCopy, banners, browserTabs, empty, findCopy, foundTray, historyCopy, notices, textSizeCopy } from '../constants/copy';
+import { addressCopy, banners, browserTabs, empty, findCopy, foundTray, historyCopy, notices, pageMenuCopy, siteSheetCopy } from '../constants/copy';
 import { PixelIcon } from '../components/PixelIcon';
-import { Banner, Button, Chip, Dialog, EmptyBlock, IconButton, ListRow, PressableScale, ProgressBar, Sheet, TextField, type TextFieldRef, Toggle } from '../components/ui';
+import { Banner, Button, Dialog, EmptyBlock, IconButton, ListRow, PressableScale, ProgressBar, Sheet, TextField, type TextFieldRef, Toggle } from '../components/ui';
 import { FoundTray } from '../components/browser/FoundTray';
 import { TabWebView, type TabHandlers } from '../components/browser/TabWebView';
 import { ReloadStrip, type ReloadStripHandle } from '../components/browser/ReloadStrip';
 import { TabSwitcher } from '../components/browser/TabSwitcher';
 import { AddressSwipe } from '../components/browser/AddressSwipe';
 import { FindBar, type FindResult } from '../components/browser/FindBar';
-import { TextSizeSheet } from '../components/browser/TextSizeSheet';
+import { SiteSettingsSheet } from '../components/browser/SiteSettingsSheet';
+import { PageMenuActions } from '../components/browser/PageMenuActions';
 import { LinkMenu } from '../components/browser/LinkMenu';
 import { PopupCard } from '../components/browser/PopupCard';
 import { useTabs } from '../components/browser/useTabs';
@@ -36,7 +37,7 @@ import { afterSheetCloses } from '../components/browser/FloatingSheet';
 import { HistorySuggestions } from '../components/browser/HistorySuggestions';
 import { StartPage } from '../components/browser/StartPage';
 import { MediaMenu } from '../components/browser/MediaMenu';
-import { BookmarkToggle } from '../components/browser/BookmarkToggle';
+import { addWithNotice } from '../components/browser/bookmarkActions';
 import { BookmarkSheet } from '../components/browser/BookmarkSheet';
 import { findBookmark, useBookmarks } from '../utils/browser/bookmarks';
 import { StreamSheet } from '../components/browser/StreamSheet';
@@ -196,7 +197,7 @@ export default function BrowserScreen({ inTab = false }: { inTab?: boolean }) {
   const [findOpen, setFindOpen] = useState(false);
   const [findResult, setFindResult] = useState<FindResult | null>(null);
   const findTab = useRef<string | null>(null);
-  const [textSizeOpen, setTextSizeOpen] = useState(false);
+  const [siteOpen, setSiteOpen] = useState(false);
   const [linkTarget, setLinkTarget] = useState<BrowserLongPressEvent | null>(null);
   const [mediaHit, setMediaHit] = useState<MediaHit | null>(null);
   const [clearSiteOpen, setClearSiteOpen] = useState(false);
@@ -810,17 +811,26 @@ export default function BrowserScreen({ inTab = false }: { inTab?: boolean }) {
     updateBrowserPrefs((p) => ({ allowAdsHosts: toggleAllowedHost(p.allowAdsHosts, pageHost) }));
     haptic('select');
     setMenuOpen(false);
+    setSiteOpen(false);
     showNotice({ message: nowAllowed ? notices.browser.adsAllowed(key) : notices.browser.adsBlocked(key) }, 3000);
     view()?.reload();
   };
 
   // 0.34 section 2 rule 4: the site's pop-up choice. A site is in at most one of the two lists.
   const popupSiteMode: PopupSiteMode = popupsBlockedAtSite ? 'block' : popupsAllowedHere ? 'allow' : 'ask';
-  const popupChoices: { value: PopupSiteMode; label: string }[] = [
-    { value: 'ask', label: browserSettingsCopy.popupSite.ask },
-    { value: 'allow', label: browserSettingsCopy.popupSite.allow },
-    { value: 'block', label: browserSettingsCopy.popupSite.block },
-  ];
+  const pageUrl = page?.url ?? tab?.url ?? '';
+  const pageTitle = page?.title ?? tab?.title ?? '';
+  const isWebPage = /^https?:\/\//i.test(page?.url ?? '');
+  const savedHere = pageUrl ? findBookmark(bookmarks, pageUrl) : undefined;
+  // The Site settings row's live summary: "Ads blocked · Pop-ups: Ask · 3 blocked here".
+  const blockedHereTotal = blocked + popupsBlockedHere;
+  const siteSummary = [
+    prefs.adBlock ? (allowedHere ? pageMenuCopy.adsAllowed : pageMenuCopy.adsBlocked) : null,
+    pageMenuCopy.popupsSummary(popupSiteMode === 'allow' ? 'Allow' : popupSiteMode === 'block' ? 'Block' : 'Ask'),
+    blockedHereTotal > 0 ? pageMenuCopy.blockedHere(blockedHereTotal) : null,
+  ]
+    .filter(Boolean)
+    .join(' · ');
   const setPopupSite = (mode: PopupSiteMode) => {
     if (mode === popupSiteMode || !pageHost) return;
     // Drop every entry that covers this page (a parent site too), then add this site to the chosen list.
@@ -957,13 +967,20 @@ export default function BrowserScreen({ inTab = false }: { inTab?: boolean }) {
               <PixelIcon name="bookmark" size={16} color={colors.accent} />
             </PressableScale>
           ) : null}
+          {/* 0.35: a still tap opens Site settings. Like the tab count and ⋮, it is a gesture-handler press, so a swipe that starts here still switches tabs. */}
           {page?.url ? (
-            <PixelIcon
-              name={page.secure ? 'lock' : 'warning'}
-              size={16}
-              color={page.secure ? colors.textMuted : colors.warning}
-              accessibilityLabel={page.secure ? 'Secure connection' : 'Not secure'}
-            />
+            <Pressable
+              onPress={() => {
+                haptic('select');
+                setSiteOpen(true);
+              }}
+              accessibilityRole="button"
+              accessibilityLabel={`${siteSheetCopy.padlockLabel}, ${page.secure ? siteSheetCopy.secure : siteSheetCopy.notSecure}`}
+              hitSlop={{ top: 0, bottom: 0, left: 8, right: 8 }}
+              style={styles.padlock}
+            >
+              <PixelIcon name={page.secure ? 'lock' : 'warning'} size={16} color={page.secure ? colors.textMuted : colors.warning} />
+            </Pressable>
           ) : null}
           {/* Rule 8: idle, the address is a plain label that can never take focus. AddressSwipe's tap calls startEditing. */}
           <View pointerEvents="none" style={styles.addressInput}>
@@ -1140,94 +1157,89 @@ export default function BrowserScreen({ inTab = false }: { inTab?: boolean }) {
       <PopupCard prompt={prompt} onAllowOnce={popupOpen} onBlock={popupBlock} onAlwaysAllow={popupAlways} onDismiss={popupDismiss} />
 
       <Sheet visible={menuOpen} onClose={() => setMenuOpen(false)} title={hasPage ? historyCopy.menuTitlePage : historyCopy.menuTitleBlank} subtitle={(hasPage && pageHost) || undefined}>
-        <View style={styles.menuRow}>
-          <IconButton
-            icon="back"
-            accessibilityLabel="Go back"
-            disabled={!page?.canGoBack}
-            onPress={() => {
-              setMenuOpen(false);
-              if (!handleBack()) leave();
-            }}
-          />
-          <IconButton
-            icon="forward"
-            accessibilityLabel="Go forward"
-            disabled={!page?.canGoForward}
-            onPress={() => {
-              setMenuOpen(false);
-              view()?.goForward();
-            }}
-          />
-          <IconButton
-            icon={loading ? 'stop' : 'retry'}
-            accessibilityLabel={loading ? 'Stop loading' : 'Reload page'}
-            disabled={!hasPage}
-            onPress={() => {
-              setMenuOpen(false);
-              reloadOrStop();
-            }}
-          />
-        </View>
+        <PageMenuActions
+          actions={[
+            {
+              key: 'back',
+              icon: 'back',
+              label: pageMenuCopy.back,
+              disabled: !page?.canGoBack,
+              onPress: () => {
+                setMenuOpen(false);
+                if (!handleBack()) leave();
+              },
+            },
+            {
+              key: 'forward',
+              icon: 'forward',
+              label: pageMenuCopy.forward,
+              disabled: !page?.canGoForward,
+              onPress: () => {
+                setMenuOpen(false);
+                view()?.goForward();
+              },
+            },
+            {
+              key: 'reload',
+              icon: loading ? 'stop' : 'retry',
+              label: loading ? pageMenuCopy.stop : pageMenuCopy.reload,
+              disabled: !hasPage,
+              onPress: () => {
+                setMenuOpen(false);
+                reloadOrStop();
+              },
+            },
+            {
+              key: 'bookmark',
+              icon: 'bookmark',
+              label: pageMenuCopy.bookmark,
+              active: !!savedHere,
+              disabled: !isWebPage,
+              // Unsaved: save it. Saved: open the edit sheet (rename, move, remove). A long press does the same.
+              onPress: () => {
+                haptic('select');
+                setMenuOpen(false);
+                if (savedHere) afterSheetCloses(() => setBookmarkEditOpen(true));
+                else addWithNotice(pageUrl, pageTitle, showNotice);
+              },
+              onLongPress: () => {
+                if (!savedHere) return;
+                haptic('select');
+                setMenuOpen(false);
+                afterSheetCloses(() => setBookmarkEditOpen(true));
+              },
+            },
+            {
+              key: 'share',
+              icon: 'share',
+              label: pageMenuCopy.share,
+              disabled: !isWebPage,
+              onPress: () => {
+                setMenuOpen(false);
+                Share.share({ message: pageUrl, title: pageTitle }).catch(() => {});
+              },
+            },
+          ]}
+        />
         {hasPage ? (
           <>
-        <ListRow icon="search" title={findCopy.menuRow} onPress={openFind} />
-        <ListRow
-          icon="text-size"
-          title={textSizeCopy.menuRow}
-          value={textSizeCopy.value(prefs.browserTextZoom)}
-          onPress={() => {
-            setMenuOpen(false);
-            afterSheetCloses(() => setTextSizeOpen(true));
-          }}
-        />
-        <ListRow
-          icon="interface"
-          title="Desktop site"
-          accessory={<Toggle value={desktop} onValueChange={setDesktop} accessibilityLabel="Desktop site" />}
-        />
-        {prefs.adBlock && pageHost ? (
-          <ListRow
-            icon="shield"
-            title={allowedHere ? 'Block ads on this site' : 'Allow ads on this site'}
-            subtitle={allowedHere ? 'Ads are allowed here' : blocked > 0 ? `${blocked} blocked on this page` : undefined}
-            onPress={toggleAds}
-          />
-        ) : null}
-        {pageHost ? (
-          <>
+            <ListRow icon="search" title={findCopy.menuRow} onPress={openFind} />
             <ListRow
-              icon="external"
-              title={browserTabs.thisPage.popupsRow}
-              subtitle={[browserSettingsCopy.popupSite.hint[popupSiteMode], popupsBlockedHere > 0 ? browserTabs.thisPage.blockedOnPage(popupsBlockedHere) : null].filter(Boolean).join(' · ')}
+              icon="interface"
+              title={pageMenuCopy.desktopSite}
+              accessory={<Toggle value={desktop} onValueChange={setDesktop} accessibilityLabel={pageMenuCopy.desktopSite} />}
             />
-            <View style={styles.popupChoices} accessibilityRole="radiogroup" accessibilityLabel={browserTabs.thisPage.popupsRow}>
-              {popupChoices.map((c) => (
-                <Chip key={c.value} label={c.label} role="radio" selected={popupSiteMode === c.value} onPress={() => setPopupSite(c.value)} />
-              ))}
-            </View>
-          </>
-        ) : null}
-        <ListRow
-          icon="copy"
-          title="Copy page link"
-          disabled={!page?.url}
-          onPress={() => {
-            setMenuOpen(false);
-            if (page?.url) void copy(page.url);
-          }}
-        />
-        <BookmarkToggle url={page?.url ?? tab?.url ?? ''} title={page?.title ?? tab?.title ?? ''} onDone={() => setMenuOpen(false)} />
-        {/^https?:\/\//i.test(page?.url ?? '') ? (
-          <ListRow
-            icon="trash"
-            title={browserTabs.thisPage.clearSiteRow}
-            onPress={() => {
-              setMenuOpen(false);
-              afterSheetCloses(() => setClearSiteOpen(true));
-            }}
-          />
-        ) : null}
+            {pageHost ? (
+              <ListRow
+                icon="shield"
+                title={pageMenuCopy.siteSettings}
+                subtitle={siteSummary}
+                onPress={() => {
+                  setMenuOpen(false);
+                  afterSheetCloses(() => setSiteOpen(true));
+                }}
+              />
+            ) : null}
           </>
         ) : null}
         <ListRow
@@ -1248,13 +1260,35 @@ export default function BrowserScreen({ inTab = false }: { inTab?: boolean }) {
         />
         <ListRow
           icon="settings"
-          title="Browser settings"
+          title={pageMenuCopy.browserSettings}
           onPress={() => {
             setMenuOpen(false);
             router.push('/settings/browser');
           }}
         />
       </Sheet>
+
+      <SiteSettingsSheet
+        visible={siteOpen}
+        onClose={() => setSiteOpen(false)}
+        host={pageHost}
+        secure={!!page?.secure}
+        adBlockOn={prefs.adBlock}
+        adsAllowed={allowedHere}
+        adsBlockedCount={blocked}
+        onToggleAds={toggleAds}
+        popupMode={popupSiteMode}
+        onPopupMode={setPopupSite}
+        popupsBlockedCount={popupsBlockedHere}
+        onClear={
+          isWebPage
+            ? () => {
+                setSiteOpen(false);
+                afterSheetCloses(() => setClearSiteOpen(true));
+              }
+            : undefined
+        }
+      />
 
       <Dialog
         visible={clearSiteOpen}
@@ -1269,13 +1303,6 @@ export default function BrowserScreen({ inTab = false }: { inTab?: boolean }) {
       >
         <Text style={styles.dialogBody}>{browserTabs.thisPage.clearSiteBody(pageHost)}</Text>
       </Dialog>
-
-      <TextSizeSheet
-        visible={textSizeOpen}
-        value={prefs.browserTextZoom}
-        onChange={(browserTextZoom) => updateBrowserPrefs({ browserTextZoom })}
-        onClose={() => setTextSizeOpen(false)}
-      />
 
       {switcherOpen && tabsState ? (
         <TabSwitcher
@@ -1301,7 +1328,6 @@ const makeStyles = (c: ThemeColors) =>
     root: { flex: 1, backgroundColor: c.bg },
     // The header bar itself lives in AddressSwipe. This is the text field's wrapper, which takes touches only while editing.
     addressInput: { flex: 1, minWidth: 0, flexDirection: 'row' },
-    menuRow: { flexDirection: 'row', justifyContent: 'space-around', paddingVertical: spacing.sm },
     address: {
       flex: 1,
       minWidth: touch.min,
@@ -1316,6 +1342,7 @@ const makeStyles = (c: ThemeColors) =>
       borderRadius: radius.md,
     },
     // A fixed 16×16 box centred in the bar, so the tappable icon lines up with the shield and lock beside it.
+    padlock: { width: 24, height: touch.min, alignItems: 'center', justifyContent: 'center' },
     savedIcon: { width: 16, height: 16, alignSelf: 'center', alignItems: 'center', justifyContent: 'center' },
     addressEditing: { borderColor: c.borderStrong },
     // While editing the bar is Back arrow, field, Clear: no tab count, no menu.
@@ -1377,5 +1404,4 @@ const makeStyles = (c: ThemeColors) =>
       backgroundColor: c.surface,
     },
     hintText: { ...type.body, fontSize: type.size.sm, color: c.textMuted },
-    popupChoices: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, paddingHorizontal: spacing.lg, paddingBottom: spacing.sm },
   });

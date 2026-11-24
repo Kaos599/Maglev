@@ -27,8 +27,8 @@ const copy = read('constants/copy.ts');
 check('a blank tab mounts StartPage', /<StartPage[\s\S]{0,300}privateMode=\{prefs\.privateBrowsing\}/.test(scr) && /\{!hasPage \? \(\s*<StartPage/.test(scr));
 check('StartPage opens a new tab or the current one', /o\?\.newTab\) openTabChecked\(\{ url \}\)[\s\S]{0,40}else go\(url\)/.test(scr));
 check('RecentHistory is gone', !fs.existsSync(path.join(root, 'components/browser/RecentHistory.tsx')) && !/RecentHistory/.test(scr));
-check('the page menu has the bookmark toggle', /<BookmarkToggle url=\{page\?\.url \?\? tab\?\.url \?\? ''\} title=\{page\?\.title \?\? tab\?\.title \?\? ''\} onDone=\{\(\) => setMenuOpen\(false\)\} \/>/.test(scr));
-check('the toggle sits after Copy page link, inside the page-only rows', /Copy page link[\s\S]*?<BookmarkToggle[\s\S]*?<\/>\s*\) : null\}/.test(scr));
+check('the page menu has the bookmark action in its icon row (save, or edit when saved)', /key: 'bookmark'[\s\S]*?addWithNotice\(pageUrl, pageTitle, showNotice\)/.test(scr) && /afterSheetCloses\(\(\) => setBookmarkEditOpen\(true\)\)/.test(scr));
+check('the bookmark action sits in the icon row, before the page-only rows', /key: 'bookmark'[\s\S]*?\{hasPage \? \(/.test(scr));
 
 // ---- media long press ----
 check('TS: onMediaHit is a wrapper prop and a native event', /onMediaHit\?: \(e: BrowserMediaHitEvent\) => void;/.test(wrap) && /onMediaHit\?: \(e: NativeEvent<BrowserMediaHitEvent>\) => void;/.test(wrap) && /onMediaHit=\{onMediaHit \? \(e\) => onMediaHit\(e\.nativeEvent\)/.test(wrap));
@@ -64,7 +64,7 @@ check('Kotlin: clearSiteStorage clears local and session storage and is a view c
 check('TS: clearSiteStorage is on the ref', /clearSiteStorage\(\): Promise<void>;/.test(wrap) && /clearSiteStorage: \(\) => nativeRef\.current\?\.clearSiteStorage\(\)/.test(wrap));
 check('screen: cookies of the host and parents, minus Search hosts, then storage, then reload, then the notice', /hostsToWipe\(\[url\], keepHosts\(\)\)[\s\S]*?clearCookies\(targets\)[\s\S]*?clearSiteStorage\(\)[\s\S]*?\.reload\(\)[\s\S]*?clearSiteDone/.test(scr) && /export function keepHosts/.test(read('utils/browser/privateSession.ts')));
 check('screen: the row asks first, in a Dialog, with a danger Clear and Cancel', /<Dialog\s+visible=\{clearSiteOpen\}[\s\S]*?clearSiteTitle[\s\S]*?clearSiteAction\}\s+variant="danger"[\s\S]*?Cancel/.test(scr) && /clearSiteBody\(pageHost\)/.test(scr));
-check('screen: the row is for http(s) pages and opens the Dialog, not the action', /\^https\?:\\\/\\\/\/i\.test\(page\?\.url \?\? ''\)[\s\S]{0,200}clearSiteRow[\s\S]{0,160}setClearSiteOpen\(true\)/.test(scr));
+check('screen: Clear data is for http(s) pages and opens the Dialog, not the action', /isWebPage = \/\^https\?:\\\/\\\//.test(scr) && /onClear=\{\s*isWebPage[\s\S]{0,200}setClearSiteOpen\(true\)/.test(scr));
 check('copy follows the contract', /clearSiteRow: "Clear this site's data"/.test(copy) && /clearSiteDone: "Cleared this site's data"/.test(copy) && /clearSiteBody: \(host: string\) => `You'll be signed out of \$\{host\}\.`/.test(copy));
 
 // ---- motion and accessibility ----

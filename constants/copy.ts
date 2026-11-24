@@ -916,3 +916,39 @@ export const networkAdvancedCopy = {
   rules: (count: number) => (count === 1 ? '1 rule' : `${toName(count)} rules`),
 } as const;
 // endregion network advanced
+
+/** The browser's ⋮ page menu (0.35): icon-row labels and the Site settings row. */
+export const pageMenuCopy = {
+  back: 'Back',
+  forward: 'Forward',
+  reload: 'Reload',
+  stop: 'Stop',
+  bookmark: 'Bookmark',
+  share: 'Share',
+  desktopSite: 'Desktop site',
+  siteSettings: 'Site settings',
+  browserSettings: 'Browser settings',
+  adsBlocked: 'Ads blocked',
+  adsAllowed: 'Ads allowed',
+  popupsSummary: (mode: 'Ask' | 'Allow' | 'Block') => `Pop-ups: ${mode}`,
+  blockedHere: (n: number | string) => `${n} blocked here`,
+} as const;
+
+/** The Site settings sheet (0.35): opens from the ⋮ menu and from the padlock in the address bar. */
+export const siteSheetCopy = {
+  title: 'Site settings',
+  secure: 'Secure connection',
+  notSecure: 'Not secure',
+  adsSection: 'Ads',
+  adsToggle: 'Block ads on this site',
+  popupsSection: 'Pop-ups and redirects',
+  blockedOnPage: (n: number | string) => `${n} blocked on this page`,
+  ask: 'Ask',
+  allow: 'Allow',
+  block: 'Block',
+  askHint: 'A card asks before a pop-up opens.',
+  allowHint: 'Pop-ups from this site open in a new tab.',
+  blockHint: 'Pop-ups from this site never open.',
+  clear: 'Clear data for this site',
+  padlockLabel: 'Site settings',
+} as const;
