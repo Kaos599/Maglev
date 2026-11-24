@@ -297,6 +297,23 @@ export const empty = {
 } as const;
 
 /** Labels for browser history (NATIVE_CONTRACT 24.9): the screen, the suggestions, the clear sheet and its settings. */
+/** The full-screen address surface while the address bar is being edited (0.35 browser contract section 3 rule 9). */
+export const addressCopy = {
+  back: 'Back',
+  clear: 'Clear',
+  thisPage: 'This page',
+  copyLink: 'Copy link',
+  share: 'Share',
+  edit: 'Edit address',
+  bookmarks: 'Bookmarks',
+  recent: 'Recent',
+  surfaceLabel: 'Address suggestions',
+  searchFor: (engine: string, text: string) => `Search ${engine} for \u201c${text}\u201d`,
+  goTo: (address: string) => `Go to ${address}`,
+  addMagnet: 'Add this magnet link',
+  fill: (title: string) => `Put ${title} in the address bar`,
+} as const;
+
 export const historyCopy = {
   title: 'History',
   menuRow: 'History',
