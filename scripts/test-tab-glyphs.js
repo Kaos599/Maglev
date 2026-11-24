@@ -84,6 +84,7 @@ const count = (g) => g.flat().reduce((s, v) => s + v, 0);
 async function main() {
   const { ICON_PATHS } = await import('../components/icons.generated.ts');
   const G = await import('../components/tabs/tabGlyphs.ts');
+  const tracksOf = G.tracksOf;
   const names = ['tab-transfers', 'tab-search', 'tab-feeds', 'tab-settings', 'tab-assistant', 'tab-browse'];
   // The Browser tab animates the plain 'network' icon.
   const source = (name) => ICON_PATHS[name === 'tab-browse' ? 'network' : name];
@@ -109,10 +110,10 @@ async function main() {
   check('settings: move matches the symmetry result', G.TAB_GLYPHS['tab-settings'].move === (symmetric ? 'spin' : 'wobble'));
 
   // Tracks: strictly valid and resting at the end.
-  const REST = { translateX: 0, translateY: 0, rotate: 0, opacity: 1 };
+  const REST = { translateX: 0, translateY: 0, rotate: 0, opacity: 1, scale: 1 };
   for (const name of names) {
     const glyph = G.TAB_GLYPHS[name];
-    const tracks = [...(glyph.parts.map((p) => p.track)), glyph.wrapTrack].filter(Boolean);
+    const tracks = [...glyph.parts.flatMap((p) => tracksOf(p)), glyph.wrapTrack].filter(Boolean);
     for (const t of tracks) {
       const inR = t.inputRange, outR = t.outputRange;
       check(`${name}: ${t.prop} track lengths match`, inR.length === outR.length);
@@ -135,8 +136,18 @@ async function main() {
   const tr = G.TAB_GLYPHS['tab-transfers'];
   check('transfers: pump, each arrow moves through 3 positions and 4 grid units', tr.move === 'pump' && tr.parts.every((p) => positions(p.track) >= 3 && Math.max(...p.track.outputRange.map(Math.abs)) === 4));
   check('transfers: the down arrow starts half a beat after the up arrow', tr.parts.find((p) => p.id === 'down').track.outputRange[0] === 0 && tr.parts.find((p) => p.id === 'up').track.outputRange[0] !== 0);
+  // Search: the loupe. The lens swells about (10,10) in four frames, the handle slides out diagonally with it.
   const se = G.TAB_GLYPHS['tab-search'];
-  check('search: scan moves sideways and up (a loop, not a hop)', se.move === 'scan' && se.wrapTrack && se.wrapTrack.prop === 'translateX' && positions(se.wrapTrack) >= 3 && positions(se.parts[0].track) >= 2);
+  const lens = se.parts.find((p) => p.id === 'lens');
+  const handle = se.parts.find((p) => p.id === 'handle');
+  const hx = tracksOf(handle).find((t) => t.prop === 'translateX');
+  const hy = tracksOf(handle).find((t) => t.prop === 'translateY');
+  check('search: loupe move, no wrap track', se.move === 'loupe' && !se.wrapTrack);
+  const same1 = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+  // Five equal holds: 1.25, 1.5, 1.5, 1.25, then rest. Each value is a jump: its start and end stops are doubled.
+  check('search: lens scales [1.25, 1.5, 1.5, 1.25] then rest 1, about (10,10)', lens.track && lens.track.prop === 'scale' && same1(lens.track.origin, [10, 10]) && same1(lens.track.outputRange, [1.25, 1.25, 1.5, 1.5, 1.5, 1.5, 1.25, 1.25, 1, 1]));
+  check('search: handle slides x and y [2, 4, 4, 2] then rest 0', hx && hy && same1(hx.outputRange, [2, 2, 4, 4, 4, 4, 2, 2, 0, 0]) && same1(hy.outputRange, hx.outputRange));
+  check('search: loupe frames are 5 equal holds across the move', lens.track.inputRange.length === 10 && Math.abs(lens.track.inputRange[1] - 0.2) < 1e-9 && Math.abs(lens.track.inputRange[3] - 0.4) < 1e-9 && Math.abs(lens.track.inputRange[7] - 0.8) < 1e-9);
   check('no tab uses the old hop', !Object.values(G.TAB_GLYPHS).some((g) => g.move === 'hop'));
   console.log(`\n${passed} passed, ${failed} failed`);
   process.exit(failed ? 1 : 0);
