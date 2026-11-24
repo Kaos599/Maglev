@@ -2,12 +2,11 @@ import { TIPS, TIP_TOPICS, type Tip, type TipTopic, type TipTopicId } from '../.
 import { kvGet, kvSet } from '../../utils/prefs/kv';
 
 /**
- * Whether the video-site feature (yt-dlp, PR #156) is in this build. It is not on this branch: no module, no
- * screen. Flip this when `utils/videoSites.ts` lands; until then the two cards that need it stay hidden, so no
- * card points at something that does not exist.
+ * Whether the video-site feature (yt-dlp, PR #156) is in this build. It is, since #156 merged; kept as one switch
+ * so the two cards that need it can be hidden again if the feature is ever pulled.
  */
 export function isVideoSitesAvailable(): boolean {
-  return false;
+  return true;
 }
 
 function available(tip: Tip): boolean {

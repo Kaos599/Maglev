@@ -1099,6 +1099,7 @@ export default function BrowserScreen({ inTab = false }: { inTab?: boolean }) {
           Share.share({ message: u }).catch(() => {});
         }}
         onShowFound={() => setTrayOpen(true)}
+        onDownloadPage={(u) => router.push({ pathname: '/add-download', params: { url: u } })}
         onLinkOptions={(href) => setLinkTarget({ kind: 'link', url: href, imageUrl: null, text: null })}
       />
       <PopupCard prompt={prompt} onAllowOnce={popupOpen} onBlock={popupBlock} onAlwaysAllow={popupAlways} onDismiss={popupDismiss} />

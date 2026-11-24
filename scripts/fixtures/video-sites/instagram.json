@@ -1,0 +1,189 @@
+{
+ "title": "Video by instagram",
+ "thumbnail": "https://example.invalid/thumb.jpg",
+ "duration": null,
+ "extractor_key": "Instagram",
+ "webpage_url": "https://www.instagram.com/reel/Chunk8-jurw/",
+ "formats": [
+  {
+   "format_id": "0",
+   "protocol": "https",
+   "ext": "mp4",
+   "height": null,
+   "width": null,
+   "vcodec": null,
+   "acodec": "none",
+   "filesize": null,
+   "filesize_approx": null,
+   "tbr": null,
+   "http_headers": {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "en-us,en;q=0.5",
+    "Sec-Fetch-Mode": "navigate",
+    "Referer": "https://www.instagram.com/"
+   },
+   "url": "https://example.invalid/0"
+  },
+  {
+   "format_id": "1",
+   "protocol": "https",
+   "ext": "mp4",
+   "height": null,
+   "width": null,
+   "vcodec": null,
+   "acodec": "none",
+   "filesize": null,
+   "filesize_approx": null,
+   "tbr": null,
+   "http_headers": {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "en-us,en;q=0.5",
+    "Sec-Fetch-Mode": "navigate",
+    "Referer": "https://www.instagram.com/"
+   },
+   "url": "https://example.invalid/1"
+  },
+  {
+   "format_id": "2",
+   "protocol": "https",
+   "ext": "mp4",
+   "height": null,
+   "width": null,
+   "vcodec": null,
+   "acodec": "none",
+   "filesize": null,
+   "filesize_approx": null,
+   "tbr": null,
+   "http_headers": {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "en-us,en;q=0.5",
+    "Sec-Fetch-Mode": "navigate",
+    "Referer": "https://www.instagram.com/"
+   },
+   "url": "https://example.invalid/2"
+  },
+  {
+   "format_id": "dash-747962539633307v",
+   "protocol": "https",
+   "ext": "mp4",
+   "height": 840,
+   "width": 472,
+   "vcodec": "avc1.64001F",
+   "acodec": "none",
+   "filesize": null,
+   "filesize_approx": null,
+   "tbr": 102.873,
+   "http_headers": {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "en-us,en;q=0.5",
+    "Sec-Fetch-Mode": "navigate",
+    "Referer": "https://www.instagram.com/"
+   },
+   "url": "https://example.invalid/dash-747962539633307v"
+  },
+  {
+   "format_id": "dash-2162089093995799v",
+   "protocol": "https",
+   "ext": "mp4",
+   "height": 1280,
+   "width": 720,
+   "vcodec": "avc1.64001F",
+   "acodec": "none",
+   "filesize": null,
+   "filesize_approx": null,
+   "tbr": 239.705,
+   "http_headers": {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "en-us,en;q=0.5",
+    "Sec-Fetch-Mode": "navigate",
+    "Referer": "https://www.instagram.com/"
+   },
+   "url": "https://example.invalid/dash-2162089093995799v"
+  },
+  {
+   "format_id": "dash-389862563296509v",
+   "protocol": "https",
+   "ext": "mp4",
+   "height": 1280,
+   "width": 720,
+   "vcodec": "avc1.64001F",
+   "acodec": "none",
+   "filesize": null,
+   "filesize_approx": null,
+   "tbr": 510.666,
+   "http_headers": {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "en-us,en;q=0.5",
+    "Sec-Fetch-Mode": "navigate",
+    "Referer": "https://www.instagram.com/"
+   },
+   "url": "https://example.invalid/dash-389862563296509v"
+  },
+  {
+   "format_id": "dash-381042170865427v",
+   "protocol": "https",
+   "ext": "mp4",
+   "height": 1280,
+   "width": 720,
+   "vcodec": "avc1.64001F",
+   "acodec": "none",
+   "filesize": null,
+   "filesize_approx": null,
+   "tbr": 1036.605,
+   "http_headers": {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "en-us,en;q=0.5",
+    "Sec-Fetch-Mode": "navigate",
+    "Referer": "https://www.instagram.com/"
+   },
+   "url": "https://example.invalid/dash-381042170865427v"
+  },
+  {
+   "format_id": "dash-5586132858113159v",
+   "protocol": "https",
+   "ext": "mp4",
+   "height": 1280,
+   "width": 720,
+   "vcodec": "avc1.64001F",
+   "acodec": "none",
+   "filesize": null,
+   "filesize_approx": null,
+   "tbr": 1966.337,
+   "http_headers": {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "en-us,en;q=0.5",
+    "Sec-Fetch-Mode": "navigate",
+    "Referer": "https://www.instagram.com/"
+   },
+   "url": "https://example.invalid/dash-5586132858113159v"
+  },
+  {
+   "format_id": "dash-841320813455671v",
+   "protocol": "https",
+   "ext": "mp4",
+   "height": 1280,
+   "width": 720,
+   "vcodec": "avc1.64001F",
+   "acodec": "none",
+   "filesize": null,
+   "filesize_approx": null,
+   "tbr": 3140.618,
+   "http_headers": {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "en-us,en;q=0.5",
+    "Sec-Fetch-Mode": "navigate",
+    "Referer": "https://www.instagram.com/"
+   },
+   "url": "https://example.invalid/dash-841320813455671v"
+  }
+ ]
+}

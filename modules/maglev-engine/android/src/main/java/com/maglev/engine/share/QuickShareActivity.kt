@@ -62,6 +62,12 @@ class QuickShareActivity : Activity() {
             Log.i(TAG, "No link in a hand-off:\n$shape")
         }
         if (original.action == Intent.ACTION_VIEW) cls = ShareClassify.withHandOffName(cls, handOffName(original))
+        // Video sites (contract 48, prototype): a shared YouTube, X or Instagram page goes straight to the add sheet, which
+        // reads the video and lists qualities. Same host list as utils/videoSites.ts VIDEO_SITE_HOSTS.
+        if (cls.kind == ShareKind.WEB_PAGE && isVideoSite(host(cls.source))) {
+            openMaglev(Uri.parse("maglev://add-download?url=" + Uri.encode(cls.source ?: "")))
+            return
+        }
         val addable = cls.kind == ShareKind.MAGNET || cls.kind == ShareKind.TORRENT_FILE || cls.kind == ShareKind.FILE_LINK
         // Contract 0.34 §6 rule 4: a web page can start a BROWSABLE VIEW, so that one always shows the card.
         val fromBrowser = original.action == Intent.ACTION_VIEW && original.hasCategory(Intent.CATEGORY_BROWSABLE)
@@ -163,6 +169,11 @@ class QuickShareActivity : Activity() {
     // endregion
 
     // region state
+
+    private fun isVideoSite(host: String?): Boolean {
+        val h = host?.lowercase() ?: return false
+        return VIDEO_SITE_HOSTS.any { h == it || h.endsWith(".$it") }
+    }
 
     private fun host(url: String?): String? = url?.let { Regex("^https?://([^/?#]+)", RegexOption.IGNORE_CASE).find(it)?.groupValues?.get(1)?.substringAfterLast('@') }
 
@@ -354,6 +365,8 @@ class QuickShareActivity : Activity() {
     // endregion
 
     private companion object {
+        val VIDEO_SITE_HOSTS = listOf("youtube.com", "youtu.be", "x.com", "twitter.com", "instagram.com", "reddit.com", "vimeo.com", "tiktok.com")
+
         const val TAG = "MaglevShare"
 
         /** Extras download managers (1DM, ADM) and some browsers use for the link (issue #162). Read only as text. */

@@ -6,6 +6,7 @@
  * The page script is utils/browser/mediaHitScript.ts. Everything it sends is untrusted: every field is checked here.
  */
 import { streamKindOfLink } from '../../components/browser/streamChoice.ts';
+import { isVideoSiteUrl } from '../videoSites.ts';
 
 export type MediaKind = 'image' | 'video';
 /** direct: a plain http(s) file. hls / dash: a manifest, handed to the stream path. blob: MediaSource or a blob: address. data: inline. none: no address at all. */
@@ -31,6 +32,7 @@ export type MenuItemId =
   | 'save-image'
   | 'download-video'
   | 'download-stream'
+  | 'download-page-video'
   | 'save-poster'
   | 'open-tab'
   | 'copy'
@@ -65,6 +67,7 @@ export const mediaMenuCopy = {
   showFound: 'Show files found on this page',
   linkOptions: 'Link options',
   imageInline: "This image is part of the page, so Maglev can't save it from here.",
+  downloadPageVideo: 'Download this video',
   videoBlob: "This video plays in a way Maglev can't save directly. Try the files found on this page.",
   videoInline: "This video is part of the page, so Maglev can't save it from here.",
   videoNone: 'This video has no address Maglev can save.',
@@ -192,7 +195,11 @@ export function buildMediaMenu(hit: MediaHit): MediaMenu {
     const cls = hit.videoClass;
     if (hit.url && cls === 'direct') items.push({ id: 'download-video', title: C.downloadVideo, icon: 'download', url: hit.url });
     else if (hit.url && (cls === 'hls' || cls === 'dash')) items.push({ id: 'download-stream', title: C.downloadVideo, icon: 'stream', url: hit.url });
-    else {
+    else if (isVideoSiteUrl(hit.pageUrl)) {
+      // Video sites (contract 48, prototype): YouTube, X, Instagram play through blob: streams with no file address.
+      // The add sheet reads the page itself and lists qualities.
+      items.push({ id: 'download-page-video', title: C.downloadPageVideo, icon: 'download', url: hit.pageUrl });
+    } else {
       if (hit.poster) items.push({ id: 'save-poster', title: C.savePoster, icon: 'download', url: hit.poster });
       note = cls === 'blob' ? C.videoBlob : cls === 'data' ? C.videoInline : C.videoNone;
       items.push({ id: 'show-found', title: C.showFound, icon: 'folder', url: null });
