@@ -90,6 +90,9 @@ export const SETTINGS_INDEX: SettingEntry[] = [
   ],
   ),
 
+  // Tips (the deck at app/settings/tips.tsx)
+  e("tips-open", "Tips", "tips", "Tips", ["tips", "help", "how to", "guide", "tutorial", "learn", "what can maglev do"], "App"),
+
   // Updates (new page)
   e(
     "updates-check",

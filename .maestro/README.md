@@ -22,6 +22,7 @@ End-to-end flows for the Android app (package `com.maglev`). Docs: https://docs.
 | `browser-detect.yaml` | Browser on a public test page: Files list with sizes, download one, shows in Transfers, removed with files |
 | `browser-clear.yaml` | Browser: remove one found file, Clear all, list empty; next page starts without the old files |
 | `browser-blocking.yaml` | Browser: per-site ad switch in "This page" and the global "Ad blocking" setting toggle |
+| `tips-deck.yaml` | Settings, Tips: swipe to the second card, arrows, topic picker, a card's action opens Network |
 
 Conventions since 0.28:
 - Opening a magnet or link shows the native quick share card (not an in-app screen). `subflows/add-from-card.yaml` (env `LINK`) taps "Download", waits for the card to close, brings Maglev forward (`launchApp` with `stopApp: false`) and waits for a `transfer-card`.
