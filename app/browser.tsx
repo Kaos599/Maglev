@@ -147,6 +147,25 @@ export default function BrowserScreen({ inTab = false }: { inTab?: boolean }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState('');
   const [selection, setSelection] = useState<{ start: number; end: number } | undefined>(undefined);
+  const fullUrlRef = useRef('');
+  fullUrlRef.current = page?.url || tab?.url || '';
+  // Rule 8: the address TextInput is mounted only while editing, so Android can never hand it focus on its own.
+  const startEditing = useCallback((url?: string) => {
+    const full = url ?? fullUrlRef.current;
+    setDraft(full);
+    setSelection({ start: 0, end: full.length });
+    setEditing(true);
+    setTimeout(() => setSelection(undefined), 100);
+  }, []);
+  // A tab switch ends editing cleanly; a new tab (newTab) opens already editing and keeps it.
+  const editTabRef = useRef(activeId);
+  const keepEditingOnSwitch = useRef(false);
+  useEffect(() => {
+    if (editTabRef.current === activeId) return;
+    editTabRef.current = activeId;
+    if (keepEditingOnSwitch.current) keepEditingOnSwitch.current = false;
+    else setEditing(false);
+  }, [activeId]);
   // Tabs whose current load came from a deep link or the card (not typed). Read when the tab's view mounts (TabWebView urlSource).
   const linkTabs = useRef(new Set<string>());
   const [desktop, setDesktop] = useState(prefs.desktopMode);
@@ -341,8 +360,9 @@ export default function BrowserScreen({ inTab = false }: { inTab?: boolean }) {
     if (r.result !== 'ok') return;
     setSwitcherOpen(false);
     haptic('select');
-    setTimeout(() => inputRef.current?.focus(), 150);
-  }, [openTabChecked]);
+    keepEditingOnSwitch.current = true;
+    startEditing('');
+  }, [openTabChecked, startEditing]);
 
   const selectTab = useCallback(
     (id: string) => {
@@ -415,6 +435,7 @@ export default function BrowserScreen({ inTab = false }: { inTab?: boolean }) {
   const handleBack = useCallback((): boolean => {
     if (editing) {
       inputRef.current?.blur();
+      setEditing(false);
       Keyboard.dismiss();
       return true;
     }
@@ -822,7 +843,7 @@ export default function BrowserScreen({ inTab = false }: { inTab?: boolean }) {
         activeId={activeId}
         enabled={prefs.swipeTabs && !editing && ready}
         canFocusAddress={!editing && ready}
-        onFocusAddress={() => inputRef.current?.focus()}
+        onFocusAddress={() => startEditing()}
         onSelect={selectTab}
         onOpenSwitcher={() => setSwitcherOpen(true)}
         trailing={
@@ -881,27 +902,36 @@ export default function BrowserScreen({ inTab = false }: { inTab?: boolean }) {
               accessibilityLabel={page.secure ? 'Secure connection' : 'Not secure'}
             />
           ) : null}
-          <View pointerEvents={editing ? 'auto' : 'none'} style={styles.addressInput}>
+          {!editing ? (
+            // Rule 8: idle, the address is a plain label that can never take focus. AddressSwipe's tap calls startEditing.
+            <View pointerEvents="none" style={styles.addressInput}>
+              <Text
+                style={[styles.idleLabel, !idleText && styles.idlePlaceholder]}
+                numberOfLines={1}
+                accessibilityRole="button"
+                accessibilityLabel="Address"
+                accessibilityHint="Double tap to type an address"
+              >
+                {idleText || 'Search or type an address'}
+              </Text>
+            </View>
+          ) : (
+          <View style={styles.addressInput}>
             <TextField
               bare
               mono
+              autoFocus
               ref={inputRef}
-              value={editing ? draft : idleText}
+              value={draft}
               onChangeText={(t) => {
                 setSelection(undefined);
                 setDraft(t);
-              }}
-              onFocus={() => {
-                const full = page?.url || tab?.url || '';
-                setDraft(full);
-                setEditing(true);
-                setSelection({ start: 0, end: full.length });
-                setTimeout(() => setSelection(undefined), 100);
               }}
               onBlur={() => setEditing(false)}
               onSubmitEditing={() => {
                 haptic('tap');
                 inputRef.current?.blur();
+                setEditing(false);
                 go(draft);
               }}
               selection={selection}
@@ -917,6 +947,7 @@ export default function BrowserScreen({ inTab = false }: { inTab?: boolean }) {
               accessibilityLabel="Address"
             />
           </View>
+          )}
         </View>
       </AddressSwipe>
       )}
@@ -973,6 +1004,7 @@ export default function BrowserScreen({ inTab = false }: { inTab?: boolean }) {
             onPick={(u) => {
               haptic('tap');
               inputRef.current?.blur();
+              setEditing(false);
               Keyboard.dismiss();
               go(u);
             }}
@@ -1251,6 +1283,8 @@ const makeStyles = (c: ThemeColors) =>
     savedIcon: { width: 16, height: 16, alignSelf: 'center', alignItems: 'center', justifyContent: 'center' },
     addressEditing: { borderColor: c.borderStrong },
     input: { fontSize: type.size.md, paddingVertical: 0 },
+    idleLabel: { ...type.mono, flex: 1, minWidth: 0, color: c.text, fontSize: type.size.md, paddingVertical: 0 },
+    idlePlaceholder: { color: c.textFaint },
     tabButton: { width: touch.min, height: touch.min, alignItems: 'center', justifyContent: 'center' },
     tabBox: {
       paddingHorizontal: 6, // design-exception: count pill inside the 44 px tab glyph
