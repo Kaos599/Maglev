@@ -19,7 +19,7 @@ import { useMaglevEngine } from '../context/EngineContext';
 import { ThemeColors, radius, spacing, touch, type } from '../constants/theme';
 import { haptic } from '../constants/haptics';
 import { bookmarkCopy } from '../constants/bookmarkCopy';
-import { banners, browserTabs, empty, findCopy, foundTray, historyCopy, notices, textSizeCopy } from '../constants/copy';
+import { addressCopy, banners, browserTabs, empty, findCopy, foundTray, historyCopy, notices, textSizeCopy } from '../constants/copy';
 import { PixelIcon } from '../components/PixelIcon';
 import { Banner, Button, Chip, Dialog, EmptyBlock, IconButton, ListRow, PressableScale, ProgressBar, Sheet, TextField, type TextFieldRef, Toggle } from '../components/ui';
 import { FoundTray } from '../components/browser/FoundTray';
@@ -155,6 +155,18 @@ export default function BrowserScreen({ inTab = false }: { inTab?: boolean }) {
     setDraft(full);
     setSelection({ start: 0, end: full.length });
     setEditing(true);
+    setTimeout(() => setSelection(undefined), 100);
+  }, []);
+  // Rule 9: editing ends only on Back, the Back arrow, submit, picking a row or a tab switch. Blur alone does not end it.
+  const leaveEditing = useCallback(() => {
+    setEditing(false);
+    Keyboard.dismiss();
+  }, []);
+  // Puts an address in the field without opening it (the fill arrow, Edit): caret at the end, keyboard up.
+  const fillAddress = useCallback((url: string) => {
+    setDraft(url);
+    setSelection({ start: url.length, end: url.length });
+    inputRef.current?.focus();
     setTimeout(() => setSelection(undefined), 100);
   }, []);
   // A tab switch ends editing cleanly; a new tab (newTab) opens already editing and keeps it.
@@ -434,9 +446,8 @@ export default function BrowserScreen({ inTab = false }: { inTab?: boolean }) {
   // find in page, the switcher, the long-press menu or the pop-up card, then go back in the page, then close a tab that has an opener, then leave.
   const handleBack = useCallback((): boolean => {
     if (editing) {
-      inputRef.current?.blur();
-      setEditing(false);
-      Keyboard.dismiss();
+      // The keyboard takes the first Back by itself; this runs when it is already down (or hidden by a scroll).
+      leaveEditing();
       return true;
     }
     if (findOpen) {
@@ -469,7 +480,7 @@ export default function BrowserScreen({ inTab = false }: { inTab?: boolean }) {
     if (next === 'leave') return false;
     tabs.close(activeId);
     return true;
-  }, [editing, findOpen, closeFind, switcherOpen, linkTarget, mediaHit, prompt, popupBlock, tabs, activeId, page?.canGoBack, view]);
+  }, [editing, leaveEditing, findOpen, closeFind, switcherOpen, linkTarget, mediaHit, prompt, popupBlock, tabs, activeId, page?.canGoBack, view]);
   useFocusEffect(
     useCallback(() => {
       setViewOwner(instanceId);
@@ -837,12 +848,64 @@ export default function BrowserScreen({ inTab = false }: { inTab?: boolean }) {
           }}
           onClose={closeFind}
         />
+      ) : editing ? (
+      <View style={styles.editBar}>
+        <IconButton icon="back" size={24} color={colors.text} accessibilityLabel={addressCopy.back} onPress={leaveEditing} />
+        <View style={[styles.address, styles.addressEditing]}>
+          {prefs.privateBrowsing ? (
+            <PixelIcon name="shield" size={16} color={colors.accent} accessibilityLabel={historyCopy.settings.privateIndicator} />
+          ) : null}
+          <View style={styles.addressInput}>
+            <TextField
+              bare
+              mono
+              autoFocus
+              ref={inputRef}
+              value={draft}
+              onChangeText={(t) => {
+                setSelection(undefined);
+                setDraft(t);
+              }}
+              onSubmitEditing={() => {
+                haptic('tap');
+                leaveEditing();
+                go(draft);
+              }}
+              selection={selection}
+              selectTextOnFocus
+              returnKeyType="go"
+              keyboardType="url"
+              autoCapitalize="none"
+              autoCorrect={false}
+              spellCheck={false}
+              placeholder="Search or type an address"
+              style={styles.input}
+              numberOfLines={1}
+              accessibilityLabel="Address"
+            />
+          </View>
+          {draft !== '' ? (
+            <Pressable
+              onPress={() => {
+                setDraft('');
+                inputRef.current?.focus();
+              }}
+              accessibilityRole="button"
+              accessibilityLabel={addressCopy.clear}
+              hitSlop={{ top: 0, bottom: 0, left: 8, right: 8 }}
+              style={styles.clearButton}
+            >
+              <PixelIcon name="close" size={20} color={colors.textMuted} />
+            </Pressable>
+          ) : null}
+        </View>
+      </View>
       ) : (
       <AddressSwipe
         strip={tabsState ? switcherOrder(tabsState) : []}
         activeId={activeId}
-        enabled={!editing && ready}
-        canFocusAddress={!editing && ready}
+        enabled={ready}
+        canFocusAddress={ready}
         onFocusAddress={() => startEditing()}
         onSelect={selectTab}
         onOpenSwitcher={() => setSwitcherOpen(true)}
@@ -876,11 +939,11 @@ export default function BrowserScreen({ inTab = false }: { inTab?: boolean }) {
             </Pressable>
           </>
         }>
-        <View style={[styles.address, editing && styles.addressEditing]}>
+        <View style={styles.address}>
           {prefs.privateBrowsing ? (
             <PixelIcon name="shield" size={16} color={colors.accent} accessibilityLabel={historyCopy.settings.privateIndicator} />
           ) : null}
-          {!editing && page?.url && findBookmark(bookmarks, page.url) ? (
+          {page?.url && findBookmark(bookmarks, page.url) ? (
             <PressableScale
               onPress={() => {
                 haptic('select');
@@ -894,7 +957,7 @@ export default function BrowserScreen({ inTab = false }: { inTab?: boolean }) {
               <PixelIcon name="bookmark" size={16} color={colors.accent} />
             </PressableScale>
           ) : null}
-          {!editing && page?.url ? (
+          {page?.url ? (
             <PixelIcon
               name={page.secure ? 'lock' : 'warning'}
               size={16}
@@ -902,54 +965,20 @@ export default function BrowserScreen({ inTab = false }: { inTab?: boolean }) {
               accessibilityLabel={page.secure ? 'Secure connection' : 'Not secure'}
             />
           ) : null}
-          {!editing ? (
-            // Rule 8: idle, the address is a plain label that can never take focus. AddressSwipe's tap calls startEditing.
-            <View pointerEvents="none" style={styles.addressInput}>
-              <Text
-                style={[styles.idleLabel, !idleText && styles.idlePlaceholder]}
-                numberOfLines={1}
-                accessibilityRole="button"
-                accessibilityLabel="Address"
-                accessibilityHint="Double tap to type an address"
-              >
-                {idleText || 'Search or type an address'}
-              </Text>
-            </View>
-          ) : (
-          <View style={styles.addressInput}>
-            <TextField
-              bare
-              mono
-              autoFocus
-              ref={inputRef}
-              value={draft}
-              onChangeText={(t) => {
-                setSelection(undefined);
-                setDraft(t);
-              }}
-              onBlur={() => setEditing(false)}
-              onSubmitEditing={() => {
-                haptic('tap');
-                inputRef.current?.blur();
-                setEditing(false);
-                go(draft);
-              }}
-              selection={selection}
-              selectTextOnFocus
-              returnKeyType="go"
-              keyboardType="url"
-              autoCapitalize="none"
-              autoCorrect={false}
-              spellCheck={false}
-              placeholder="Search or type an address"
-              style={styles.input}
+          {/* Rule 8: idle, the address is a plain label that can never take focus. AddressSwipe's tap calls startEditing. */}
+          <View pointerEvents="none" style={styles.addressInput}>
+            <Text
+              style={[styles.idleLabel, !idleText && styles.idlePlaceholder]}
               numberOfLines={1}
+              accessibilityRole="button"
               accessibilityLabel="Address"
-            />
+              accessibilityHint="Double tap to type an address"
+            >
+              {idleText || 'Search or type an address'}
+            </Text>
           </View>
-          )}
         </View>
-      </AddressSwipe>
+        </AddressSwipe>
       )}
       <View style={styles.progress}>{loading ? <ProgressBar progress={(page?.progress ?? 0) / 100} indeterminate={!page || page.progress <= 0} /> : null}</View>
 
@@ -994,19 +1023,6 @@ export default function BrowserScreen({ inTab = false }: { inTab?: boolean }) {
               haptic('tap');
               if (o?.newTab) openTabChecked({ url });
               else go(url);
-            }}
-          />
-        ) : null}
-        {editing ? (
-          <HistorySuggestions
-            text={draft}
-            skip={page?.url || tab?.url || ''}
-            onPick={(u) => {
-              haptic('tap');
-              inputRef.current?.blur();
-              setEditing(false);
-              Keyboard.dismiss();
-              go(u);
             }}
           />
         ) : null}
@@ -1071,6 +1087,25 @@ export default function BrowserScreen({ inTab = false }: { inTab?: boolean }) {
           <View style={styles.hint} pointerEvents="none" accessibilityLiveRegion="polite">
             <Text style={styles.hintText}>{foundHintText(found.length)}</Text>
           </View>
+        ) : null}
+        {editing ? (
+          <HistorySuggestions
+            text={draft}
+            skip={page?.url || tab?.url || ''}
+            pageTitle={page?.title}
+            pageUrl={hasPage ? page?.url || tab?.url || '' : ''}
+            onPick={(u) => {
+              haptic('tap');
+              leaveEditing();
+              go(u);
+            }}
+            onFill={fillAddress}
+            onCopy={(u) => void copy(u)}
+            onShare={(u) => {
+              Share.share({ message: u }).catch(() => {});
+            }}
+            onEdit={() => fillAddress(fullUrlRef.current)}
+          />
         ) : null}
       </View>
 
@@ -1282,6 +1317,9 @@ const makeStyles = (c: ThemeColors) =>
     // A fixed 16×16 box centred in the bar, so the tappable icon lines up with the shield and lock beside it.
     savedIcon: { width: 16, height: 16, alignSelf: 'center', alignItems: 'center', justifyContent: 'center' },
     addressEditing: { borderColor: c.borderStrong },
+    // While editing the bar is Back arrow, field, Clear: no tab count, no menu.
+    editBar: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: spacing.xs, paddingRight: spacing.md, minHeight: 56 },
+    clearButton: { width: touch.min, height: touch.min, marginRight: -spacing.md, alignItems: 'center', justifyContent: 'center' },
     input: { fontSize: type.size.md, paddingVertical: 0 },
     idleLabel: { ...type.mono, flex: 1, minWidth: 0, color: c.text, fontSize: type.size.md, paddingVertical: 0 },
     idlePlaceholder: { color: c.textFaint },
