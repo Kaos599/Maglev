@@ -555,6 +555,7 @@ export const SETTINGS_INDEX: SettingEntry[] = [
     "ad block",
     "privacy",
   ],
+    "Ads",
   ),
   e(
     "browser-add-list",
@@ -609,6 +610,7 @@ export const SETTINGS_INDEX: SettingEntry[] = [
     "ads",
     "exception",
   ],
+    "Ads",
   ),
   e(
     "browser-engine-duckduckgo",
@@ -664,6 +666,7 @@ export const SETTINGS_INDEX: SettingEntry[] = [
     "desktop mode",
     "mode",
   ],
+    "Pages",
   ),
   e(
     "browser-text-size",
@@ -680,6 +683,7 @@ export const SETTINGS_INDEX: SettingEntry[] = [
     "big",
     "small",
   ],
+    "Text size",
   ),
   e(
     "browser-popups-ask",
@@ -711,6 +715,7 @@ export const SETTINGS_INDEX: SettingEntry[] = [
     "browser-blocking",
     "Browser · Blocking",
     ["pop-up", "popup", "redirect", "allow", "exception"],
+    "Pop-ups and redirects",
   ),
   e(
     "browser-clear-data",
@@ -726,6 +731,7 @@ export const SETTINGS_INDEX: SettingEntry[] = [
     "site data",
     "privacy",
   ],
+    "Cookies and site data",
   ),
   e(
     "browser-private-browsing",
@@ -812,6 +818,7 @@ export const SETTINGS_INDEX: SettingEntry[] = [
     "star",
     "start page",
   ],
+    "Your pages",
   ),
   e(
     "browser-open-history",
@@ -824,6 +831,7 @@ export const SETTINGS_INDEX: SettingEntry[] = [
     "visited",
     "log",
   ],
+    "Your pages",
   ),
   e(
     "browser-clear-history",
@@ -1874,6 +1882,7 @@ export const SETTINGS_INDEX: SettingEntry[] = [
     "browser-general",
     "Browser · General",
     ["dark", "night", "pages", "websites", "theme", "dark mode", "darken", "browser"],
+    "Pages",
   ),
   e(
     "browser-start-frequent",
@@ -1881,6 +1890,7 @@ export const SETTINGS_INDEX: SettingEntry[] = [
     "browser-start",
     "Browser · Start page",
     ["start page", "frequent", "often visited", "most visited", "top sites", "history", "tiles", "home"],
+    "On a blank tab",
   ),
   e(
     "browser-start-bookmarks",
@@ -1888,6 +1898,7 @@ export const SETTINGS_INDEX: SettingEntry[] = [
     "browser-start",
     "Browser · Start page",
     ["start page", "bookmarks", "saved pages", "tiles", "favourites", "favorites", "home"],
+    "On a blank tab",
   ),
   e(
     "browser-block-lists",
@@ -1895,6 +1906,7 @@ export const SETTINGS_INDEX: SettingEntry[] = [
     "browser-blocking",
     "Browser · Blocking",
     ["block list", "blocklist", "hosts", "trackers", "lists", "update", "filter"],
+    "Ads",
   ),
   e(
     "browser-list-domains",
@@ -1926,6 +1938,7 @@ export const SETTINGS_INDEX: SettingEntry[] = [
     "browser-media",
     "Browser · Downloads and media",
     ["hide small", "small files", "videos", "find videos", "found files", "audio", "images", "icons", "tray", "size"],
+    "Found files",
   ),
   e(
     "browser-stream-quality",
@@ -1933,6 +1946,7 @@ export const SETTINGS_INDEX: SettingEntry[] = [
     "browser-media",
     "Browser · Downloads and media",
     ["quality", "resolution", "1080p", "720p", "hd", "stream", "hls", "dash", "best quality", "ask", "video"],
+    "Video streams",
   ),
   e(
     "browser-block-cookies",
@@ -1940,6 +1954,7 @@ export const SETTINGS_INDEX: SettingEntry[] = [
     "browser-privacy",
     "Browser · Privacy and site data",
     ["cookies", "third-party", "third party", "tracking", "tracker", "track", "follow", "privacy", "cross-site", "other sites"],
+    "Cookies and site data",
   ),
   e(
     "browser-https-first",
@@ -1947,6 +1962,7 @@ export const SETTINGS_INDEX: SettingEntry[] = [
     "browser-advanced",
     "Browser · Advanced",
     ["https", "secure", "ssl", "http", "tls", "encrypted", "padlock", "security", "upgrade"],
+    "Security",
   ),
   e(
     "browser-hub-general",
@@ -1954,6 +1970,7 @@ export const SETTINGS_INDEX: SettingEntry[] = [
     "browser",
     "Browser",
     ["search engine", "text size", "zoom", "dark pages", "desktop site", "settings"],
+    "Browsing",
   ),
   e(
     "browser-hub-start",
@@ -1961,6 +1978,7 @@ export const SETTINGS_INDEX: SettingEntry[] = [
     "browser",
     "Browser",
     ["home", "new tab", "frequent", "bookmarks", "recent", "tiles"],
+    "Browsing",
   ),
   e(
     "browser-hub-privacy",
@@ -1968,6 +1986,7 @@ export const SETTINGS_INDEX: SettingEntry[] = [
     "browser",
     "Browser",
     ["privacy", "history", "cookies", "clear", "incognito", "site data", "private"],
+    "Privacy and safety",
   ),
   e(
     "browser-hub-blocking",
@@ -1975,6 +1994,7 @@ export const SETTINGS_INDEX: SettingEntry[] = [
     "browser",
     "Browser",
     ["adblock", "pop-ups", "popups", "block lists", "trackers", "redirects"],
+    "Privacy and safety",
   ),
   e(
     "browser-hub-media",
@@ -1982,6 +2002,7 @@ export const SETTINGS_INDEX: SettingEntry[] = [
     "browser",
     "Browser",
     ["videos", "found files", "small files", "stream", "quality", "downloads", "media"],
+    "Downloads",
   ),
   e(
     "browser-hub-advanced",
@@ -1989,6 +2010,7 @@ export const SETTINGS_INDEX: SettingEntry[] = [
     "browser",
     "Browser",
     ["https", "secure", "ssl", "http", "advanced"],
+    "More",
   ),
   // Site lists (list screens with a search field; the rows that open them are indexed on Blocking).
   e(
@@ -2018,6 +2040,7 @@ export const SETTINGS_INDEX: SettingEntry[] = [
     "browser-blocking",
     "Browser · Blocking",
     ["pop-up", "popup", "blocked", "remember", "log", "unblock", "always block", "block list"],
+    "Pop-ups and redirects",
   ),
   // Actions on one site of the Blocked pop-ups list (the site screen has no rows).
   e(

@@ -8,8 +8,8 @@ import { ThemeColors, spacing, type } from '../../constants/theme';
 import { haptic } from '../../constants/haptics';
 import { browserSettingsCopy } from '../../constants/browserSettingsCopy';
 import { listsCopy, notices } from '../../constants/copy';
-import { Button, IconButton, ListRow, SectionHeader } from '../../components/ui';
-import { Caption, Card, InputSheet, SettingsPage } from '../../components/settings/SettingsParts';
+import { Button, IconButton, ListRow } from '../../components/ui';
+import { Card, InputSheet, Section, SettingsPage } from '../../components/settings/SettingsParts';
 import { useBrowserPrefs } from '../../utils/prefs/browser';
 import { getDefaultBlocklistUrls } from '../../utils/prefs/lists';
 import { updateAdList } from '../../utils/lists';
@@ -87,8 +87,7 @@ export default function BrowserBlocklistSettings() {
     <SettingsPage title={browserSettingsCopy.sections.blocklists}>
       <Stack.Screen options={{ headerShown: false }} />
 
-      <View style={s.section}>
-        <SectionHeader title="Block list" />
+      <Section title={browserSettingsCopy.headers.blockList} caption={unavailable ? browserSettingsCopy.blocklists.unavailable : undefined}>
         <Card>
           <ListRow title="Domains" value={info ? info.domains.toLocaleString() : '—'} />
           <ListRow title="Status" value={status} />
@@ -97,11 +96,9 @@ export default function BrowserBlocklistSettings() {
             <Button label="Update now" icon="download" loading={updating} disabled={unavailable || updating} onPress={() => void update()} />
           </View>
         </Card>
-        {unavailable ? <Caption>{browserSettingsCopy.blocklists.unavailable}</Caption> : null}
-      </View>
+      </Section>
 
-      <View style={s.section}>
-        <SectionHeader title="List addresses" />
+      <Section title={browserSettingsCopy.headers.listAddresses} caption={browserSettingsCopy.blocklists.addressesCaption}>
         <Card>
           {prefs.blocklistUrls.map((u) => (
             <View key={u} style={s.urlRow}>
@@ -122,8 +119,7 @@ export default function BrowserBlocklistSettings() {
           <ListRow icon="plus" title="Add list address" onPress={() => setAddOpen(true)} />
           <ListRow icon="retry" title="Reset to built-in list" onPress={() => void reset()} />
         </Card>
-        <Caption>{browserSettingsCopy.blocklists.addressesCaption}</Caption>
-      </View>
+      </Section>
 
       <InputSheet
         visible={addOpen}
@@ -146,7 +142,6 @@ export default function BrowserBlocklistSettings() {
 
 const makeStyles = (c: ThemeColors) =>
   StyleSheet.create({
-    section: { gap: spacing.sm },
     actions: { padding: spacing.lg, flexDirection: 'row' },
     urlRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingLeft: spacing.lg, paddingRight: spacing.xs, minHeight: 56 },
     url: { ...type.mono, flex: 1, fontSize: type.size.sm, color: c.text },

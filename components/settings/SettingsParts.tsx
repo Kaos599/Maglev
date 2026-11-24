@@ -5,7 +5,7 @@ import { SETTINGS_INDEX } from '../../utils/settingsIndex';
 import { FocusAnchor, SettingsFocusProvider, rowKey } from './settingsFocus';
 import { useTheme } from '../../context/ThemeContext';
 import { ThemeColors, radius, spacing, type } from '../../constants/theme';
-import { Button, Chip, Screen, Sheet, TextField } from '../ui';
+import { Button, Chip, Screen, SectionHeader, Sheet, TextField } from '../ui';
 
 /** Sub-screen shell: header with back, scrolling body, instant-apply content. */
 export function SettingsPage({ title, children }: { title: string; children: React.ReactNode }) {
@@ -54,6 +54,19 @@ export function Caption({ children, tone }: { children: React.ReactNode; tone?: 
   const s = useMemo(() => makeStyles(colors), [colors]);
   return <Text style={[s.caption, tone === 'warning' && { color: colors.warning }]}>{children}</Text>;
 }
+
+/** SectionHeader, then one or more cards, then an optional caption directly under them. Same spacing as the Settings root. */
+export function Section({ title, caption, children }: { title: string; caption?: string; children: React.ReactNode }) {
+  return (
+    <View style={sectionStyle}>
+      <SectionHeader title={title} />
+      {children}
+      {caption ? <Caption>{caption}</Caption> : null}
+    </View>
+  );
+}
+
+const sectionStyle: StyleProp<ViewStyle> = { gap: spacing.sm };
 
 /** A labelled group of Chips for picking one value. */
 export function ChipGroup<T extends string | number>({

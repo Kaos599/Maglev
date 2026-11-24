@@ -28,6 +28,30 @@ export const browserSettingsCopy = {
     media: 'Downloads and media',
     advanced: 'Advanced',
   },
+  /** Hub group headers, then the section headers on each screen. */
+  groups: { browsing: 'Browsing', privacySafety: 'Privacy and safety', downloads: 'Downloads', pages: 'Your pages', more: 'More' },
+  headers: {
+    searchEngine: 'Search engine',
+    textSize: 'Text size',
+    pages: 'Pages',
+    ads: 'Ads',
+    popups: 'Pop-ups and redirects',
+    history: 'History',
+    cookies: 'Cookies and site data',
+    blankTab: 'On a blank tab',
+    foundFiles: 'Found files',
+    streams: 'Video streams',
+    security: 'Security',
+    blockList: 'Block list',
+    listAddresses: 'List addresses',
+  },
+  /** One line under each pop-up choice. */
+  popupLines: {
+    ask: 'A card asks before a pop-up opens.',
+    block: 'Pop-ups never open; the \u22EE menu counts them.',
+    allow: 'Pop-ups open in a new tab.',
+  },
+  textPreview: 'The quick brown fox jumps over the lazy dog.',
   privacy: {
     blockCookies: 'Block cookies from other sites',
     blockCookiesSubtitle: 'Stops other sites from following you across pages.',
