@@ -8,41 +8,67 @@ import { motion } from '../../constants/theme.ts';
  *
  * A track maps the move's progress (0 to 1) to one property. Steps use doubled stops so the
  * value jumps instead of easing. Every track ends at rest: 0 for translateY and rotate, 1 for
- * opacity. translateY is in grid units (the component converts to px, 1 unit = 20/24 px).
+ * opacity, 1 for scale. translateX and translateY are in grid units (the component converts to px, 1 unit = 20/24 px).
+ * A scale track may name an origin (grid units); the component keeps that point fixed while the part grows.
  */
 
 export type TabGlyphName = 'tab-transfers' | 'tab-search' | 'tab-feeds' | 'tab-settings' | 'tab-assistant' | 'tab-browse';
 
 export interface GlyphTrack {
-  prop: 'translateY' | 'rotate' | 'opacity';
+  prop: 'translateX' | 'translateY' | 'rotate' | 'opacity' | 'scale';
   inputRange: number[];
   outputRange: number[];
   /** Ease the segments (rotate only). Everything else steps. */
   ease?: boolean;
+  /** Scale only: the grid point that stays where it is while the part scales. */
+  origin?: [number, number];
 }
 
 export interface GlyphPart {
   id: string;
   d: string;
-  track?: GlyphTrack;
+  /** One track, or several that the part plays together (the loupe's handle slides in x and y). */
+  track?: GlyphTrack | GlyphTrack[];
 }
 
 export interface TabGlyphDef {
-  move: 'hop' | 'draw' | 'spin' | 'wobble' | 'blink';
+  move: 'pump' | 'loupe' | 'draw' | 'spin' | 'wobble' | 'blink';
   parts: GlyphPart[];
   /** Applied to a wrapper around all parts (the gear's rotation). */
   wrapTrack?: GlyphTrack;
 }
 
+/** Every track a part plays, as a list. */
+export const tracksOf = (part: GlyphPart): GlyphTrack[] => {
+  if (!part.track) return [];
+  return Array.isArray(part.track) ? part.track : [part.track];
+};
+
 /** Whole move, ms. Under the 250 ms ceiling. */
 export const GLYPH_MOVE_MS = motion.duration.base;
 
-/** Hop by `units` for the first half, then back and still. */
-const hop = (units: number): GlyphTrack => ({
-  prop: 'translateY',
-  inputRange: [0, 0.0001, 0.5, 0.5001, 1],
-  outputRange: [0, units, units, 0, 0],
-});
+/**
+ * Pixel frames: each value is held for an equal share of the move, then the part is at rest
+ * (0, or 1 for scale). Doubled stops make each change a jump, like sprite frames.
+ */
+export const frames = (
+  prop: 'translateX' | 'translateY' | 'scale',
+  values: number[],
+  origin?: [number, number],
+): GlyphTrack => {
+  const rest = prop === 'scale' ? 1 : 0;
+  const v = [...values, rest];
+  const seg = 1 / v.length;
+  const inputRange = [0];
+  const outputRange = [v[0]];
+  for (let i = 1; i < v.length; i++) {
+    inputRange.push(i * seg, i * seg + 0.0001);
+    outputRange.push(v[i - 1], v[i]);
+  }
+  inputRange.push(1);
+  outputRange.push(rest);
+  return origin ? { prop, inputRange, outputRange, origin } : { prop, inputRange, outputRange };
+};
 
 /** Hidden until `at`, then visible. Rest is visible. */
 const appearAt = (at: number): GlyphTrack => ({
@@ -52,20 +78,27 @@ const appearAt = (at: number): GlyphTrack => ({
 });
 
 export const TAB_GLYPHS: Record<TabGlyphName, TabGlyphDef> = {
+  // The arrows pump past each other: up climbs two steps, down drops two steps half a beat behind, then both settle.
   'tab-transfers': {
-    move: 'hop',
+    move: 'pump',
     parts: [
-      { id: 'up', d: 'M6 4h2v16H6zM4 6h2v4H4zM2 8h2v2H2zM8 6h2v4H8zM10 8h2v2h-2z', track: hop(-2) },
-      { id: 'down', d: 'M16 4h2v16h-2zM14 14h2v4h-2zM12 14h2v2h-2zM18 14h2v4h-2zM20 14h2v2h-2z', track: hop(2) },
+      { id: 'up', d: 'M6 4h2v16H6zM4 6h2v4H4zM2 8h2v2H2zM8 6h2v4H8zM10 8h2v2h-2z', track: frames('translateY', [-2, -4, -2, 0]) },
+      { id: 'down', d: 'M16 4h2v16h-2zM14 14h2v4h-2zM12 14h2v2h-2zM18 14h2v4h-2zM20 14h2v2h-2z', track: frames('translateY', [0, 2, 4, 2]) },
     ],
   },
+  // The loupe: the lens swells about its centre (10,10) and the handle slides out diagonally to stay attached, then both snap home.
   'tab-search': {
-    move: 'hop',
+    move: 'loupe',
     parts: [
       {
-        id: 'glass',
-        d: 'M22 22h-2v-2h2v2Zm-2-2h-2v-2h2v2Zm-6-2H6v-2h8v2Zm4 0h-2v-2h2v2ZM6 16H4v-2h2v2Zm10 0h-2v-2h2v2ZM4 14H2V6h2v8Zm14 0h-2V6h2v8ZM6 6H4V4h2v2Zm10 0h-2V4h2v2Zm-2-2H6V2h8v2Z',
-        track: hop(-2),
+        id: 'lens',
+        d: 'M6 2h8v2H6zM4 4h2v2H4zM14 4h2v2h-2zM2 6h2v8H2zM16 6h2v8h-2zM4 14h2v2H4zM14 14h2v2h-2zM6 16h8v2H6z',
+        track: frames('scale', [1.25, 1.5, 1.5, 1.25], [10, 10]),
+      },
+      {
+        id: 'handle',
+        d: 'M16 16h2v2h-2zM18 18h2v2h-2zM20 20h2v2h-2z',
+        track: [frames('translateX', [2, 4, 4, 2]), frames('translateY', [2, 4, 4, 2])],
       },
     ],
   },
