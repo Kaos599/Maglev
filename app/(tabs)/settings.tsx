@@ -276,11 +276,11 @@ export default function SettingsIndex() {
             <View style={styles.section}>
               <SectionHeader title="App" />
               <Card>
-                <SettingsRow {...tipsRow} />
                 {appRows.map((r) => (
                   <SettingsRow key={r.route} {...r} />
                 ))}
                 <StatsRow />
+                <SettingsRow {...tipsRow} />
               </Card>
             </View>
             <View style={styles.section}>

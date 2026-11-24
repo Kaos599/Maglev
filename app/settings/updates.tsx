@@ -80,8 +80,12 @@ function failureText(code: string): string {
   return code === 'INSTALL_FAILED' || code === 'INSTALL_CANCELLED' ? n.installFailed : n.downloadFailed;
 }
 
+/** The library's version name already reads "yt-dlp 2026.11.23"; keep only the number so the copy says yt-dlp once. */
+const bareVersion = (v: string | null | undefined): string | null => (v ? v.replace(/^yt-dlp\s+/i, '') : null);
+
 /** Notice text for the video site reader's Check now button. */
-function readerNotice(status: string, version: string | null): string {
+function readerNotice(status: string, rawVersion: string | null): string {
+  const version = bareVersion(rawVersion);
   if (status === 'updated') return `Updated yt-dlp to ${version ?? 'the newest version'}`;
   if (status === 'current') return `yt-dlp is up to date${version ? ` (${version})` : ''}`;
   return "Couldn't update yt-dlp. Check your connection.";
@@ -113,7 +117,7 @@ function VideoSitesSection() {
     showNotice({ message: readerNotice(res.ok ? res.status : 'failed', res.ok ? res.version : null) }, 3000);
   }, [showNotice]);
   const subtitle = status
-    ? `yt-dlp ${status.version ?? 'built in'} · ${status.lastCheckAt ? `checked ${relativeTime(status.lastCheckAt)}` : 'not checked yet'}`
+    ? `yt-dlp ${bareVersion(status.version) ?? 'built in'} · ${status.lastCheckAt ? `checked ${relativeTime(status.lastCheckAt)}` : 'not checked yet'}`
     : ' ';
   return (
     <>

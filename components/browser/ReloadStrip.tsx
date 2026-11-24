@@ -44,6 +44,14 @@ const LOAD_MAX_MS = 600000; // design-exception: a spin clock, not a transition
 const TRIGGER_Y = MAX_PULL * (1 - Math.exp(-TRIGGER_DP / MAX_PULL));
 /** A held release (armed, waiting for the reload to start) gives up after this long. */
 const HOLD_MS = 400;
+/**
+ * Pull events that arrive this soon after a reload ended are stragglers from the same gesture (a cached page can
+ * finish reloading before the last throttled move event lands). Acting on one would restart the drag after the
+ * exit began and strand the disc, because native sends no closing pull 0 once a reload started (phone, 2026-11-24).
+ */
+const STALE_PULL_MS = 600; // design-exception: an event guard, not a transition
+/** A drag that hears nothing for this long springs back by itself, so the disc can never stay on screen. */
+const DRAG_WATCHDOG_MS = 2500; // design-exception: a safety timer, not a transition
 
 const IDLE = 0;
 const DRAG = 1;
@@ -176,6 +184,8 @@ export const ReloadStrip = forwardRef<ReloadStripHandle, object>(function Reload
 
   const flags = useRef({ dragging: false, pulled: false, armed: false, loading: false, lastPullY: 0 });
   const holdTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const watchdog = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const endedAt = useRef(0);
 
   useImperativeHandle(
     ref,
@@ -183,6 +193,8 @@ export const ReloadStrip = forwardRef<ReloadStripHandle, object>(function Reload
       const clearHold = () => {
         if (holdTimer.current) clearTimeout(holdTimer.current);
         holdTimer.current = null;
+        if (watchdog.current) clearTimeout(watchdog.current);
+        watchdog.current = null;
       };
       const stopAll = () => {
         cancelAnimation(y);
@@ -222,6 +234,7 @@ export const ReloadStrip = forwardRef<ReloadStripHandle, object>(function Reload
         pull(progress: number) {
           const f = flags.current;
           if (f.loading) return;
+          if (!f.dragging && Date.now() - endedAt.current < STALE_PULL_MS) return;
           if (progress <= 0) {
             if (!f.dragging) return;
             if (f.armed) {
@@ -234,6 +247,7 @@ export const ReloadStrip = forwardRef<ReloadStripHandle, object>(function Reload
             return;
           }
           clearHold();
+          watchdog.current = setTimeout(release, DRAG_WATCHDOG_MS);
           if (!f.dragging) {
             f.dragging = true;
             f.pulled = true;
@@ -285,6 +299,7 @@ export const ReloadStrip = forwardRef<ReloadStripHandle, object>(function Reload
           if (!f.loading) return;
           f.loading = false;
           f.pulled = false;
+          endedAt.current = Date.now();
           clearHold();
           if (reduceNow.current) {
             fadeOut(true, 1);
@@ -331,6 +346,7 @@ export const ReloadStrip = forwardRef<ReloadStripHandle, object>(function Reload
   useEffect(
     () => () => {
       if (holdTimer.current) clearTimeout(holdTimer.current);
+      if (watchdog.current) clearTimeout(watchdog.current);
     },
     [],
   );
