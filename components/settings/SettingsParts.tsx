@@ -20,7 +20,16 @@ export function SettingsPage({ title, children }: { title: string; children: Rea
   }, [focus]);
   const scrollTo = useCallback((y: number, animated: boolean) => scrollRef.current?.scrollTo({ y, animated }), []);
   // Clear the param so coming back to this page does not scroll again.
-  const onDone = useCallback(() => router.setParams({ focus: undefined } as never), [router]);
+  // A cold start can still be mounting the root navigator when the highlight ends; setParams then throws and closed the
+  // app (phone 2026-11-26, "Attempted to navigate before mounting the Root Layout", stack top setParams). Clearing the
+  // param only stops a second scroll on return, so skipping it once is harmless.
+  const onDone = useCallback(() => {
+    try {
+      router.setParams({ focus: undefined } as never);
+    } catch {
+      // Not mounted yet.
+    }
+  }, [router]);
   return (
     <Screen title={title} onBack={() => router.back()} edges={['top', 'left', 'right', 'bottom']}>
       <ScrollView ref={scrollRef} style={pageFill} keyboardShouldPersistTaps="handled">
