@@ -161,6 +161,7 @@ export function TabWebView({ id, url, urlSource, active, slot, offset, pageWidth
       ref={ref}
       url={url}
       urlSource={urlSource}
+      tabId={id}
       active={active}
       adBlock={adBlock}
       allowAdsHosts={allowAdsHosts}

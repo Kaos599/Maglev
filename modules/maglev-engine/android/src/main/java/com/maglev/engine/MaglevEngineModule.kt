@@ -13,6 +13,7 @@ import com.maglev.engine.browser.BlocklistStore
 import com.maglev.engine.browser.BrowserData
 import com.maglev.engine.browser.HistoryWipe
 import com.maglev.engine.browser.MaglevBrowserView
+import com.maglev.engine.browser.TabStates
 import com.maglev.engine.feeds.FeedScheduler
 import com.maglev.engine.permissions.PermissionHelper
 import com.maglev.engine.schedule.ScheduleManager
@@ -179,7 +180,11 @@ class MaglevEngineModule : Module() {
         // "Clear history when I close Maglev": only when the activity is really finishing, not on a rotation (contract 24.9).
         OnActivityDestroys {
             val a = appContext.currentActivity
-            if (a != null && a.isFinishing) context?.let { HistoryWipe.wipeIfArmed(it) }
+            if (a != null && a.isFinishing) {
+                context?.let { HistoryWipe.wipeIfArmed(it) }
+                // 0.35 W-C: Maglev is closing; drop the slept tabs' page states saved so far.
+                TabStates.clear()
+            }
         }
 
         OnActivityEntersForeground {
@@ -617,6 +622,18 @@ class MaglevEngineModule : Module() {
             promise.resolve(if (c == null) 0 else HistoryWipe.wipeCount(c))
         }
 
+        // 0.35 W-C: keep only the saved page states of these tabs (every tab that still exists). JS calls it on each tab change.
+        AsyncFunction("retainTabStates") { ids: List<String>, promise: Promise ->
+            TabStates.retain(ids)
+            promise.resolve(null)
+        }
+
+        // 0.35 W-C: forget every saved page state (history cleared).
+        AsyncFunction("clearTabStates") { promise: Promise ->
+            TabStates.clear()
+            promise.resolve(null)
+        }
+
         View(MaglevBrowserView::class) {
             Events("onPage", "onFound", "onBlockedCount", "onDownloadRequest", "onMagnet", "onRefused", "onCrashed", "onPageNote",
                 "onNewWindow", "onPopupRequest", "onPopupBlocked", "onLongPress", "onFindResult", "onMediaHit",
@@ -624,6 +641,7 @@ class MaglevEngineModule : Module() {
 
             Prop("url") { view: MaglevBrowserView, url: String -> view.setUrl(url) }
             Prop("urlSource") { view: MaglevBrowserView, source: String -> view.setUrlSource(source) }
+            Prop("tabId") { view: MaglevBrowserView, id: String -> view.setTabId(id) }
             Prop("adBlock") { view: MaglevBrowserView, enabled: Boolean -> view.setAdBlock(enabled) }
             Prop("allowAdsHosts") { view: MaglevBrowserView, hosts: List<String> -> view.setAllowAdsHosts(hosts) }
             Prop("desktopMode") { view: MaglevBrowserView, enabled: Boolean -> view.setDesktopMode(enabled) }

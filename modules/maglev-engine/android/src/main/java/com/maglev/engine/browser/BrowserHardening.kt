@@ -70,6 +70,9 @@ class HistoryFlags {
     private val made = ArrayList<Boolean>()
     private var index = -1
 
+    /** A copy of the flags, kept with a slept tab's saved page state (0.35 W-C, TabStates). */
+    class Snapshot(val urls: List<String>, val made: List<Boolean>, val index: Int)
+
     /** One flag per entry, oldest first. */
     fun flags(): List<Boolean> = made
 
@@ -77,6 +80,17 @@ class HistoryFlags {
         urls.clear()
         made.clear()
         index = -1
+    }
+
+    fun snapshot(): Snapshot = Snapshot(ArrayList(urls), ArrayList(made), index)
+
+    /** Puts back what [snapshot] copied, for a WebView whose back/forward list was restored from the same moment. */
+    fun restore(s: Snapshot) {
+        clear()
+        if (s.urls.size != s.made.size) return
+        urls.addAll(s.urls)
+        made.addAll(s.made)
+        index = s.index
     }
 
     /**
