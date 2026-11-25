@@ -128,6 +128,22 @@ function sizeOf(f: RawFormat): number | null {
   return num(f.filesize) ?? num(f.filesize_approx);
 }
 
+/**
+ * X lists each plain mp4 with a bitrate that is the peak the encoder was allowed (the 270p file says 288 kbps), so
+ * yt-dlp's size from it is about twice the real file. The playlist version of the same picture reports the average
+ * bitrate, which matches the real file within a few percent. Used only when both the playlist bitrate and the
+ * duration are known; otherwise the size stays unknown.
+ */
+function xSizeOf(f: RawFormat, formats: RawFormat[], durationSec: number | null): number | null {
+  const exact = num(f.filesize);
+  if (exact) return exact;
+  const h = num(f.height);
+  if (!h || !durationSec) return null;
+  const hls = formats.find((x) => num(x.height) === h && x.vcodec !== 'none' && x.protocol === 'm3u8_native' && num(x.tbr));
+  const kbps = hls ? num(hls.tbr) : null;
+  return kbps ? Math.round((kbps * 1000 * durationSec) / 8) : null;
+}
+
 function labelFor(prefix: string, est: number | null): string {
   return est ? `${prefix} · about ${formatBytes(est)}` : prefix;
 }
@@ -135,6 +151,8 @@ function labelFor(prefix: string, est: number | null): string {
 /** The quality list for a page, from the trimmed format list. Never invents a size. */
 export function buildVideoSiteInfo(raw: unknown): VideoSiteInfo {
   const r = (raw ?? {}) as Record<string, unknown>;
+  const rawFormats: RawFormat[] = Array.isArray(r.formats) ? (r.formats as RawFormat[]) : [];
+  const isX = r.extractor_key === 'Twitter';
   const all: Cand[] = (Array.isArray(r.formats) ? (r.formats as RawFormat[]) : [])
     .map((fmt, index) => ({ fmt, index }))
     .filter((c) => c.fmt && isFile(c.fmt));
@@ -154,7 +172,7 @@ export function buildVideoSiteInfo(raw: unknown): VideoSiteInfo {
     const video = single ? null : best(videos.filter((c) => num(c.fmt.height) === h));
     const prefix = h ? `${h}p` : 'Video';
     if (single) {
-      const est = sizeOf(single.fmt);
+      const est = isX ? xSizeOf(single.fmt, rawFormats, num(r.duration)) : sizeOf(single.fmt);
       options.push({
         id: String(single.fmt.format_id ?? `single-${single.index}`),
         label: labelFor(prefix, est),

@@ -57,9 +57,9 @@ const fixture = (n) => JSON.parse(read(`scripts/fixtures/video-sites/${n}.json`)
   const x = V.buildVideoSiteInfo(fixture('x'));
   check('x: two single files, tallest first', x.options.map((o) => `${o.height}:${o.id}`).join() === '360:http-832,180:http-256', x.options.map((o) => o.id));
   check('x: no second file', x.options.every((o) => o.audio === null));
-  check('x: size is an estimate only (no exact size to range on)', x.options[0].video.size === null && x.options[0].estBytes === 11572912);
+  check('x: size is an estimate only (no exact size to range on), from the playlist average bitrate', x.options[0].video.size === null && x.options[0].estBytes === 4843570);
   check('x: HLS formats are skipped, no Audio only', !x.options.some((o) => o.id.startsWith('hls') || o.label.startsWith('Audio')));
-  check('x: label', x.options[0].label === '360p · about 11.0 MB', x.options[0].label);
+  check('x: label', x.options[0].label === '360p · about 4.6 MB', x.options[0].label);
 
   // ---- Instagram: formats 0/1/2 are plain files; the dash-*v video-only ones have no audio partner and are skipped
   const ig = V.buildVideoSiteInfo(fixture('instagram'));
