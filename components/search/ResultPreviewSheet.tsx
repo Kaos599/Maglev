@@ -40,6 +40,8 @@ export function ResultPreviewSheet({ result, onClose, onAdd, onOpenInBrowser, li
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const [busy, setBusy] = useState<Action | null>(null);
   const [failed, setFailed] = useState(false);
+  // Dots and the "Getting…" line only after a short wait, so a link that is already known doesn't flash them.
+  const [slow, setSlow] = useState(false);
   const ctl = useRef<AbortController | null>(null);
   const open = !!result;
   // Closing the sheet (or showing another result) drops any fetch in flight.
@@ -48,6 +50,7 @@ export function ResultPreviewSheet({ result, onClose, onAdd, onOpenInBrowser, li
       ctl.current?.abort();
       ctl.current = null;
       setBusy(null);
+      setSlow(false);
       setFailed(false);
     };
   }, [open, result?.name]);
@@ -58,6 +61,7 @@ export function ResultPreviewSheet({ result, onClose, onAdd, onOpenInBrowser, li
       const wait = new AbortController();
       ctl.current = wait;
       const timer = setTimeout(() => wait.abort(), 15000);
+      const slowTimer = setTimeout(() => setSlow(true), 200);
       setBusy(action);
       setFailed(false);
       try {
@@ -80,6 +84,8 @@ export function ResultPreviewSheet({ result, onClose, onAdd, onOpenInBrowser, li
         }
       } finally {
         clearTimeout(timer);
+        clearTimeout(slowTimer);
+        setSlow(false);
       }
     },
     [busy, linkKind, getLink, onCopied],
@@ -111,21 +117,21 @@ export function ResultPreviewSheet({ result, onClose, onAdd, onOpenInBrowser, li
             {linkKind ? (
               <>
                 <View style={styles.cell}>
-                  <Button label="Share" icon="share" variant="secondary" fullWidth loading={busy === 'share'} disabled={!!busy && busy !== 'share'} accessibilityLabel={`Share ${noun}`} onPress={() => void run('share')} />
+                  <Button label="Share" icon="share" variant="secondary" fullWidth stacked loading={busy === 'share' && slow} disabled={!!busy && busy !== 'share'} accessibilityLabel={`Share ${noun}`} onPress={() => void run('share')} />
                 </View>
                 <View style={styles.cell}>
-                  <Button label="Copy" icon="copy" variant="secondary" fullWidth loading={busy === 'copy'} disabled={!!busy && busy !== 'copy'} accessibilityLabel={`Copy ${noun}`} onPress={() => void run('copy')} />
+                  <Button label="Copy" icon="copy" variant="secondary" fullWidth stacked loading={busy === 'copy' && slow} disabled={!!busy && busy !== 'copy'} accessibilityLabel={`Copy ${noun}`} onPress={() => void run('copy')} />
                 </View>
               </>
             ) : null}
             {result?.detailUrl ? (
               <View style={styles.cell}>
-                <Button label="Open page" icon="network" variant="secondary" fullWidth accessibilityLabel="Open source page in browser" onPress={onOpenInBrowser} />
+                <Button label="Open page" icon="network" variant="secondary" fullWidth stacked accessibilityLabel="Open source page in browser" onPress={onOpenInBrowser} />
               </View>
             ) : null}
           </View>
         ) : null}
-        {busy ? <Text style={styles.note}>Getting the {noun}…</Text> : failed ? <Text style={styles.fail}>Couldn't get the {noun}. Try again.</Text> : null}
+        {busy && slow ? <Text style={styles.note}>Getting the {noun}…</Text> : failed ? <Text style={styles.fail}>Couldn't get the {noun}. Try again.</Text> : null}
       </View>
     </Sheet>
   );

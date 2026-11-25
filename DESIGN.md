@@ -201,7 +201,7 @@ Import primitives from `components/ui`. Each one reads the theme, meets the 44 d
 
 | Component | Use it for | Don't use it for | Key props |
 |---|---|---|---|
-| `Button` | A text action. `primary` is the one main action per screen, then `secondary`, `ghost`, `danger`. | An icon-only action. Two primaries on one screen. | `label`, `onPress`, `variant`, `size` (`md`, `lg`), `icon`, `loading`, `disabled`, `fullWidth` |
+| `Button` | A text action. `primary` is the one main action per screen, then `secondary`, `ghost`, `danger`. | An icon-only action. Two primaries on one screen. | `label`, `onPress`, `variant`, `size` (`md`, `lg`), `icon`, `loading`, `disabled`, `fullWidth`, `stacked` (icon above a smaller label, for two or three equal buttons in one row) |
 | `LoadingDots` | The loading mark: three small square dots, the one `Button` shows with `loading`. Use it for work in flight inside a row or sheet. Never `ActivityIndicator`. | A progress amount (use `ProgressBar`). | `color` |
 | `IconButton` | A bare icon action in a header or row. The icon itself turns accent on press. | A text action. A button with a filled box. | `icon`, `accessibilityLabel` (required), `onPress`, `size`, `selected`, `badge`, `dot` |
 | `ListRow` | A settings or menu row: title, optional subtitle, trailing value and chevron, or an accessory such as `Toggle`. | A transfer (use the transfer card). | `title`, `subtitle`, `icon`, `value`, `accessory`, `onPress`, `destructive`, `selected`, `disabled` |
