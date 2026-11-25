@@ -8,7 +8,7 @@ name: onboarding
     file: subflows/wait-for-app.yaml
     env:
       TEXT: "Get started"
-- assertVisible: "Torrents, web links and videos in one place."
+- assertVisible: "Share it to Maglev, or paste it here. Torrents work too."
 - runFlow: subflows/onboarding-steps.yaml
 - extendedWaitUntil:
     visible: "Add a link"

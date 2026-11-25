@@ -91,7 +91,7 @@ function readerNotice(status: string, rawVersion: string | null): string {
   return "Couldn't update yt-dlp. Check your connection.";
 }
 
-const VIDEO_SITES_CAPTION = "The reader behind YouTube, X and Instagram links. It downloads yt-dlp's newest release from GitHub in the background.";
+const VIDEO_SITES_CAPTION = "The part that reads video links from YouTube, X, Instagram and more. It downloads yt-dlp's newest release from GitHub in the background.";
 
 /** "Video sites": the reader behind video page links changes often, so the app keeps it current (browser contract 7). */
 function VideoSitesSection() {

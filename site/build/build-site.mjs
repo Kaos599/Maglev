@@ -87,9 +87,9 @@ const icon = (name, cls = 'px') => {
   return `<svg class="${cls}" viewBox="0 0 24 24" width="24" height="24" aria-hidden="true" focusable="false"><path fill="currentColor" d="${ICONS[name]}"/></svg>`;
 };
 
-const TITLE = 'Maglev: free Android downloader for videos, links and torrents';
+const TITLE = 'Maglev: free Android downloader for almost any link';
 const DESC =
-  'Maglev is a free, open source Android downloader with no ads. Save videos from web pages, HLS streams, ordinary links and torrents. Android 7 and up.';
+  'Paste or share almost any link and Maglev downloads it: video pages like YouTube, X and Instagram, files, magnets and torrents. Free, open source, no ads. Android 7 and up.';
 const OG_ALT = 'The Maglev pixel train logo next to the words: Videos, links and torrents. One small app.';
 const ldBlock = (o) => `<script type="application/ld+json">\n${JSON.stringify(o, null, 2).replace(/</g, '\\u003c')}\n</script>`;
 // Same @id as the Person on harshdayal.dev, so the two graphs join.
@@ -299,7 +299,7 @@ function indexLd() {
         '@id': `${SITE_URL}#app`,
         name: 'Maglev',
         description:
-          'A small, fast Android downloader for videos on web pages, HLS and DASH streams, ordinary links and torrents. Free, open source and without ads.',
+          'A small Android downloader for almost any link: video pages, files, magnets and torrents. Free, open source, no ads.',
         url: SITE_URL,
         applicationCategory: 'UtilitiesApplication',
         applicationSubCategory: 'Download manager',
@@ -388,8 +388,8 @@ ${header(A, HOME, { compare: !!cmp })}
   <div class="wrap hero-in">
     <div class="hero-copy">
       <p class="wordmark"><img src="${A}assets/wordmark.svg" width="280" height="56" alt="Maglev"></p>
-      <h1 id="hero-title">Download videos, links and torrents on Android</h1>
-      <p class="lede">A free, open source Android downloader. Save videos from web pages through an ad-free browser, download any link with pause and resume, and run torrents, in one small app with no ads.</p>
+      <h1 id="hero-title">Download almost any link on Android</h1>
+      <p class="lede">Paste or share a link: a video page, a file, a magnet or a torrent. Maglev downloads it, with pause, resume and a quality picker for videos. Free, open source, no ads.</p>
       <div class="ctas">
         ${dlButton()}
         <a class="btn" href="${OBTAINIUM}" rel="noopener">${icon('retry')}<span>Get updates with Obtainium</span></a>
@@ -410,8 +410,8 @@ ${header(A, HOME, { compare: !!cmp })}
 
 <section id="features" class="features" aria-labelledby="features-title">
   <div class="wrap">
-    <h2 id="features-title" class="h2">An Android downloader for videos, links and torrents</h2>
-    <p class="section-lede">A video saver, a download manager and a torrent client in one app, so you don't need three. Here is what each part does.</p>
+    <h2 id="features-title" class="h2">What Maglev can download</h2>
+    <p class="section-lede">One app for video pages, files, magnets and torrents. Here is what each part does.</p>
     <div class="ft-list">
 ${C.features.map(featureRow).join('\n')}
     </div>
@@ -840,14 +840,14 @@ Sitemap: ${abs('sitemap.xml')}
 
 const llms = (cmp) => `# Maglev
 
-> Maglev is a free, open source Android downloader with no ads. It saves videos from web pages (including on-demand HLS and DASH streams), downloads ordinary links with pause and resume, and runs torrents, in one app. Android 7 and later. Version ${VERSION}.
+> Maglev is a free, open source Android app that downloads almost any link. Paste or share a video page (YouTube, X, Instagram and more), a file, a magnet link or a .torrent file, and Maglev gets it, with a quality picker for videos and pause and resume for everything. It also has a browser that finds videos on a page, search across torrent sources, feeds and subtitles. No ads, no tracking, no account. Android 7 and later. Version ${VERSION}.
 
 Made by ${MAKER.name} (${MAKER.url}, GitHub: ${MAKER.github}). License: GPL-3.0.
 
 ## Key facts
 
 ${C.features.map((x) => `- ${x.title}: ${plain(x.text)} ${x.specs.map(plain).join('. ')}.`).join('\n')}
-- Maglev never gets around DRM. Protected video, live streams and YouTube-style players can't be saved.
+- Maglev never gets around DRM. Protected video and live streams can't be saved.
 - Release signing certificate SHA-256: ${FINGERPRINT}
 
 ## How it works

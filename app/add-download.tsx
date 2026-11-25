@@ -41,7 +41,7 @@ function splitName(name: string): { base: string; ext: string } {
   return { base: name.slice(0, i), ext: name.slice(i) };
 }
 
-const INVALID_TEXT = "That isn't a web link. Use a link that starts with http or https.";
+const INVALID_TEXT = "That isn't a link. Use a link that starts with http or https.";
 
 const PART_OPTIONS: { value: DownloadParts; label: string }[] = PART_CHOICES.map((n) => ({ value: n, label: String(n) }));
 
@@ -547,7 +547,7 @@ export default function AddDownloadScreen() {
         label="Link to a file"
         value={text}
         onChangeText={onChangeText}
-        placeholder="https://…"
+        placeholder="Paste a link"
         mono
         multiline
         minLines={3}

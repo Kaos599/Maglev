@@ -132,7 +132,7 @@ object Notifications {
 
     /** Contract section 10.4 table. */
     fun title(s: TransferSummary): String {
-        val name = s.primaryName?.takeIf { it.isNotBlank() } ?: "Torrent"
+        val name = s.primaryName?.takeIf { it.isNotBlank() } ?: "Download"
         return when {
             s.downloading == 1 -> name
             s.downloading > 1 -> "$name +${s.downloading - 1} more"
