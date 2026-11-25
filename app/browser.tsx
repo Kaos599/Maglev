@@ -53,6 +53,7 @@ import { keepHosts, privateSession } from '../utils/browser/privateSession';
 import { hostsToWipe } from '../utils/browser/privateHosts';
 import { buildMediaMenu, hasMenu, parseMediaHit, type MediaHit } from '../utils/browser/mediaHit';
 import { flushTabs, recordVisit } from '../utils/history';
+import { isVideoSiteUrl } from '../utils/videoSites';
 import { activeTab, backTarget, getTab, isBlank, liveTabs, switcherOrder } from '../utils/browser/tabs';
 import * as popupsApi from '../utils/browser/popups';
 import {
@@ -766,6 +767,13 @@ export default function BrowserScreen({ inTab = false }: { inTab?: boolean }) {
 
   const pickFile = (item: FoundItem) => {
     setTrayOpen(false);
+    // A video found on a video site (YouTube, X, Instagram): its address is the page or a stream the site guards, not
+    // a file. The add sheet reads the page through Video sites and lists qualities, like long-press does (mediaHit.ts).
+    const sitePage = isVideoSiteUrl(item.url) ? item.url : isVideoSiteUrl(item.pageUrl || page?.url || '') ? item.pageUrl || page?.url || '' : '';
+    if (item.kind === 'video' && sitePage) {
+      router.push({ pathname: '/add-download', params: { url: sitePage } });
+      return;
+    }
     setTarget({
       url: item.url,
       name: item.name,
