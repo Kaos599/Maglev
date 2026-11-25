@@ -110,7 +110,7 @@ export default function DownloadScreen() {
       if (!d) return;
       const text = normalizeIncoming(raw);
       if (!isDownloadLink(text)) {
-        setLinkError("That isn't a web link.");
+        setLinkError("That isn't a link.");
         return;
       }
       setBusy(true);

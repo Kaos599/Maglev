@@ -33,7 +33,7 @@ const sheet = add.match(/<StreamSheet[\s\S]*?\/>\s*\n/);
 check(!!sheet && !/onClose=\{[^}]*close\(\)/.test(sheet[0]), 'add-download: dismissing the quality sheet does not call close()');
 check(!!sheet && /onStarted=/.test(sheet[0]), 'add-download: a started stream still leaves the screen');
 check(!/title="Add download"/.test(add) && /title="Add a link"/.test(add), 'add-download title is "Add a link"');
-check(/title="Add a link or torrent"/.test(read('app/add-torrent.tsx')), 'add-torrent entry title is "Add a link or torrent"');
+check(/title="Add a link"/.test(read('app/add-torrent.tsx')), 'add-torrent entry title is "Add a link"');
 
 
 (async () => {

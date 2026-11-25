@@ -223,7 +223,7 @@ export const offSourcesSentence = (k: number): string => (k === 1 ? '1 more sour
 
 export const empty = {
   transfers: {
-    none: { title: 'Nothing downloading', body: 'Add a link or a .torrent file, or find something.' },
+    none: { title: 'Nothing downloading', body: 'Paste a link to a video, file, magnet or torrent, or find something.' },
     /** Under the finder tiles: the Share route, which the screen's buttons don't cover. */
     shareHint: 'In another app, tap "Share", then Maglev.',
     noMatch: { title: 'No matching transfers', body: 'Try a different search.' },
@@ -247,7 +247,7 @@ export const empty = {
     }),
   },
   feeds: {
-    none: { title: 'No feeds yet', body: 'Follow an RSS or Atom feed to see new torrents here.' },
+    none: { title: 'No feeds yet', body: 'Follow a feed to see new releases here.' },
     nothingNew: { title: 'Nothing new yet', body: 'Pull down to check for new releases.' },
   },
   addTorrent: {
@@ -482,8 +482,8 @@ export const streamSheet = {
 // ---------------------------------------------------------------------------------------------
 export const onboarding = {
   welcome: {
-    title: 'Maglev',
-    body: 'Torrents, web links and videos in one place.',
+    title: 'Download almost any link',
+    body: 'Share it to Maglev, or paste it here. Torrents work too.',
     detail: 'Search many sources at once, find videos in the browser, and follow feeds for new releases.',
   },
   notifications: {
@@ -508,7 +508,7 @@ export const addMenu = {
   title: 'Add',
   magnet: 'Magnet link',
   copyFirst: 'Copy a link first',
-  typeHint: 'Enter a web link or magnet link',
+  typeHint: 'Enter any link, including a magnet link',
   fileHint: 'Pick one from your phone',
   searchHint: 'Look in your sources',
   browseHint: 'Find a file or video on a web page',

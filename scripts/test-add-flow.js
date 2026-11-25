@@ -26,10 +26,10 @@ const fab = read('components', 'FloatingActionButton.tsx');
 
 const inputStart = addTorrent.indexOf('// ---------- Input');
 const inputBlock = inputStart >= 0 ? addTorrent.slice(inputStart) : addTorrent.slice(-2500);
-check('entry screen is titled "Add a link or torrent"', /<Screen title="Add a link or torrent"/.test(inputBlock));
+check('entry screen is titled "Add a link"', /<Screen title="Add a link"/.test(inputBlock));
 check('entry screen is not titled "Add torrent"', !/<Screen title="Add torrent"/.test(inputBlock));
 check('input label is "Link, magnet or .torrent"', addTorrent.includes('Link, magnet or .torrent') && !addTorrent.includes('Magnet, torrent or file link'));
-check('placeholder is not a magnet URI', !/placeholder="magnet:/.test(addTorrent) && /placeholder="Paste a link or magnet"/.test(addTorrent));
+check('placeholder is not a magnet URI', !/placeholder="magnet:/.test(addTorrent) && /placeholder="Paste a link"/.test(addTorrent));
 check('Open .torrent file is kept', addTorrent.includes('Open .torrent file'));
 
 check('add-download has a Save to row', addDownload.includes('Save to'));

@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/brand/readme-header.svg" alt="Maglev, an open-source download manager, video downloader and torrent client for Android" width="100%">
+  <img src="assets/brand/readme-header.svg" alt="Maglev, an open-source Android app that downloads almost any link: videos, files and torrents" width="100%">
 </p>
 
 <p align="center">
@@ -16,7 +16,7 @@
   <a href="https://www.opensourcealternatives.to"><img src="https://www.opensourcealternatives.to/badge-osa.svg" alt="As seen on Open Source Alternatives" height="40"></a>
 </p>
 
-<h3 align="center">Maglev: open-source download manager, video downloader and torrent client for Android</h3>
+<h3 align="center">Maglev: paste almost any link, get the video, file or torrent</h3>
 
 ## Table of contents
 
@@ -38,9 +38,7 @@
 
 ## Intro
 
-Maglev is a free, open-source download manager for Android. It saves videos from websites (including HLS and m3u8 streams), downloads ordinary links with pause and resume, and works as a torrent client for magnet links and `.torrent` files. It also finds subtitles for the videos you've downloaded.
-
-It replaces a torrent client, a download manager and a video downloader with one small app that has no ads, no tracking and no account. It runs on Android 7 and later, and its source is under the GPL-3.0 licence.
+Maglev is a free, open-source Android app that downloads almost any link. Paste or share a video page (YouTube, X, Instagram and more), a file, a magnet link or a `.torrent` file, and Maglev gets it, with a quality picker for videos and pause and resume for everything. It also has a browser that finds videos on a page, search across torrent sources, feeds and subtitles. No ads, no tracking, no account. Android 7 and later, GPL-3.0.
 
 ## Screenshots
 
@@ -99,19 +97,24 @@ It prints `OK` for each file that matches. On Windows, `Get-FileHash <file> -Alg
 - Keeps going with the screen off, and picks up again if Android closes the app.
 - Stop seeding at a ratio or time you choose.
 
-### Download manager for any link
-- Paste or share a link to download the file.
+### Video sites
+- Share or paste a YouTube, X, Instagram or other video link, then pick a quality.
+- Maglev keeps its video-site support up to date by itself (Settings › Updates › Video sites).
+- A video behind a sign-in may not download. Maglev shows a "needs sign-in" message when that happens.
+
+### Any link
+- Paste or share a link. A video page gets a quality picker, a file starts at once, and a magnet link or `.torrent` file opens Add torrent.
 - Pause, resume and retry, even after a restart.
 - Split a file into several parts that download at once (Parts per download), where the server allows it.
 - An expired link asks for a fresh one and carries on where it stopped.
 
-### A browser that saves videos (HLS, m3u8 and DASH)
+### A browser that finds videos on a page
 - Blocks ads and trackers before they load.
 - Play a video and Maglev lists it, along with the page's other files.
 - Saves streaming video (HLS and DASH) as one file, at the quality you pick.
 - Tabs (swipe the address bar to switch), history and pop-up blocking.
 - Downloads that start without a tap go to the tray, pages can't fill your Back history, known crypto-mining scripts are blocked, and pages open over HTTPS when the site supports it.
-- Doesn't get around DRM. Netflix-style video, live streams and YouTube-style players can't be saved, and Maglev says so.
+- Doesn't get around DRM. Netflix-style video and live streams can't be saved, and Maglev says so.
 
 ### Subtitles for your videos
 - Find subtitles for a video you've downloaded, from 21 free sources, with no account.
@@ -158,7 +161,7 @@ Looking for a 1DM alternative, an IDM-style download manager for Android, or an 
 
 What carries over:
 
-- Download ordinary links in several parts at once, with pause, resume and retry, even after a restart.
+- Download links in several parts at once, with pause, resume and retry, even after a restart.
 - A built-in browser that finds the videos and files on a page.
 - Torrents and magnet links in the same app.
 - Wi-Fi only, speed limits, a schedule and a pause on low battery.
@@ -187,7 +190,7 @@ What carries over:
 
 What differs:
 
-- Maglev also downloads ordinary links and saves videos from web pages, so you don't need a second app.
+- Maglev also downloads video links and files, so you don't need a second app.
 - Search runs across 40+ public sources with duplicates merged. You can add your own Jackett or Prowlarr indexer.
 - It finds subtitles for the videos you download, from 21 free sources.
 - It has no ads and no tracking. Maglev is open source, as LibreTorrent is. Flud's source isn't published.
@@ -251,7 +254,11 @@ What you download, and following the law where you live, is up to you.
 
 ### Is Maglev a 1DM alternative?
 
-Yes. Like 1DM+, Maglev downloads web links and torrents and has a browser that finds videos on a page. Maglev is open source and has no ads. See [Maglev vs 1DM+](https://harshdayal.dev/maglev/1dm-alternative).
+Yes. Like 1DM+, Maglev downloads links and torrents and has a browser that finds videos on a page. Maglev is open source and has no ads. See [Maglev vs 1DM+](https://harshdayal.dev/maglev/1dm-alternative).
+
+### Can Maglev download YouTube videos?
+
+Yes. Paste or share a YouTube link, pick a quality, and Maglev saves the video. X, Instagram and other video links work the same way. Maglev keeps its video-site support up to date by itself (Settings › Updates › Video sites). A video behind a sign-in may not download, and Maglev says so. It can't save live streams or DRM-protected video.
 
 ### Is there an open-source download manager for Android?
 

@@ -61,7 +61,7 @@ export function TeachingEmptyState({ onAdd, onOpenFile, onSearch, onBrowse, sear
       </View>
       <View style={styles.finders}>
         <FinderTile icon="search" title="Search" subtitle={`${searchSources} ${searchSources === 1 ? 'source' : 'sources'} at once`} onPress={onSearch} />
-        <FinderTile icon="network" title="Browser" subtitle="Save videos from pages" onPress={onBrowse} />
+        <FinderTile icon="network" title="Browser" subtitle="Find videos on a page" onPress={onBrowse} />
       </View>
       <View style={styles.hint} accessible accessibilityLabel={hint}>
         <PixelIcon name="share" size={16} color={colors.textMuted} />

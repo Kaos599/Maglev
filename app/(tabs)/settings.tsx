@@ -197,7 +197,7 @@ export default function SettingsIndex() {
     { icon: 'interface', title: 'Appearance', value: interfaceValue, route: 'interface' },
     { icon: 'assistant', title: 'Assistant', value: assistant.enabled ? 'Experimental · On' : 'Experimental · Off', route: 'assistant' },
     { icon: 'bell', title: 'Notifications', value: alerts, route: 'notifications' },
-    { icon: 'upload', title: 'Backup and restore', value: 'Settings and torrents', route: 'backup' },
+    { icon: 'upload', title: 'Backup and restore', value: 'Settings and downloads', route: 'backup' },
   ];
   const findRows: RowSpec[] = [
     { icon: 'search', title: 'Search sources', value: providers, route: 'search-providers' },
