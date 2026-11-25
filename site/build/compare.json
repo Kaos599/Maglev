@@ -758,7 +758,7 @@
         "newpipe": "NewPipe is a YouTube client. Its page lists downloading videos, audio and subtitles.",
         "1dm": "Its Play page says downloading from YouTube is not supported.",
         "fdm": "Its Play page says downloading from YouTube is not supported.",
-        "maglev": "Through yt-dlp, with Video sites."
+        "maglev": "Through yt-dlp, with Video sites. Public Instagram and X videos can work the same way; a video behind a sign-in may not download."
       }
     },
     {

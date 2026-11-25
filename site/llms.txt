@@ -1,8 +1,23 @@
 # Maglev
 
-> Maglev is a free, open source Android app that downloads almost any link. Paste or share a video page (YouTube, X, Instagram and more), a file, a magnet link or a .torrent file, and Maglev gets it, with a quality picker for videos and pause and resume for everything. It also has a browser that finds videos on a page, search across torrent sources, feeds and subtitles. No ads, no tracking, no account. Android 7 and later. Version 0.33.
+> Maglev is a free, open source Android app that downloads almost any link. Paste or share a YouTube, X (Twitter) or Instagram video link, a file, a magnet link or a .torrent file, and Maglev gets it, with a quality picker for videos and pause and resume for everything. It also has a browser that finds videos on a page, search across torrent sources, feeds and subtitles. No ads, no tracking, no account. Android 7 and later. Version 0.33.
 
 Made by Harsh Dayal (https://harshdayal.dev, GitHub: https://github.com/Kaos599). License: GPL-3.0.
+
+## Video sites
+
+- Maglev downloads YouTube videos and Shorts, Instagram Reels and videos, and X (Twitter) videos on Android.
+- Share or paste a YouTube, X or Instagram link. Reddit, Vimeo and TikTok links are recognised too. Maglev reads the video with yt-dlp on the phone and shows up to 6 qualities. You pick one, and it downloads with pause and resume into Download/Maglev.
+- In Maglev's browser, long-press a video on YouTube, X or Instagram and choose Download.
+- yt-dlp updates itself once a day on Wi-Fi. In Settings > Updates > Video sites you can turn this off or allow mobile data.
+- A video behind a sign-in (private accounts, many Instagram posts, age-gated videos) may not download. Maglev says "needs sign-in". Public Reels and posts are the ones that can work.
+- Maglev never gets around DRM. Live streams and protected video can't be saved.
+- Maglev is free, open source (GPL-3.0), has no ads, no tracking and no account, and needs Android 7 or later. The arm64 APK is about 43 MB because Python and yt-dlp are bundled.
+- Install from GitHub releases or with Obtainium. Maglev is not on Google Play.
+- Download only what you have the right to.
+- [YouTube downloader for Android](https://harshdayal.dev/maglev/youtube-downloader-android): Maglev is a free, open source YouTube downloader for Android. Share or paste a YouTube video or Shorts link, and Maglev reads it with yt-dlp on your phone and shows up to 6 qualities. Pick one and it downloads, with pause and resume, into Download/Maglev. No ads, no account.
+- [Instagram Reels downloader for Android](https://harshdayal.dev/maglev/instagram-reels-downloader): Maglev is a free, open source Instagram Reels downloader for Android. Share or paste the link of a public Reel or video, and Maglev reads it with yt-dlp on your phone and shows up to 6 qualities. Pick one and it downloads into Download/Maglev. Posts that need a sign-in may not download.
+- [X (Twitter) video downloader for Android](https://harshdayal.dev/maglev/twitter-video-downloader): Maglev is a free, open source X (Twitter) video downloader for Android. Share or paste the link of a post with a video, and Maglev reads it with yt-dlp on your phone and shows up to 6 qualities. Pick one and it downloads into Download/Maglev. Videos that need a sign-in may not download.
 
 ## Key facts
 
@@ -27,6 +42,9 @@ Made by Harsh Dayal (https://harshdayal.dev, GitHub: https://github.com/Kaos599)
 
 - [Website](https://harshdayal.dev/maglev)
 - [Maglev vs LibreTorrent and other Android download apps (comparison with LibreTorrent, BiglyBT (Android), Seal, YTDLnis, NewPipe, Flud, 1DM+, Advanced Download Manager (ADM), Free Download Manager (FDM))](https://harshdayal.dev/maglev/compare)
+- [YouTube downloader for Android](https://harshdayal.dev/maglev/youtube-downloader-android)
+- [Instagram Reels downloader for Android](https://harshdayal.dev/maglev/instagram-reels-downloader)
+- [X (Twitter) video downloader for Android](https://harshdayal.dev/maglev/twitter-video-downloader)
 - [Download (latest release)](https://github.com/Kaos599/Maglev/releases/latest)
 - [Source code](https://github.com/Kaos599/Maglev)
 - [Report a bug](https://github.com/Kaos599/Maglev/issues)
@@ -142,11 +160,23 @@ DRM-protected streams and live streams, and some players that hide their video i
 
 ### Can Maglev download YouTube videos?
 
-Yes. Paste or share the link, pick a quality, and Maglev saves the video. This works through Video sites, and Maglev keeps that support up to date by itself (Settings > Updates > Video sites). Live streams and Netflix-style protected video can't be saved. A video behind a sign-in may not download, and Maglev says so.
+Yes. Paste or share the link, pick a quality, and Maglev saves the video. Maglev reads it with yt-dlp on your phone and shows up to 6 qualities. It updates yt-dlp by itself once a day on Wi-Fi (Settings > Updates > Video sites). Live streams and Netflix-style protected video can't be saved. A video behind a sign-in may not download, and Maglev says so. See the YouTube downloader guide.
 
 ### Can Maglev download subtitles?
 
 Yes, for videos you have already downloaded. Tap Find subtitles on a finished download, or on a video in a torrent's Files tab. Maglev searches 21 free sources with no account and groups the results by how well they fit the file. The subtitle is saved next to the video, so players pick it up. Two sources match by file fingerprint (Subtis for Spanish, Napisy24 for Polish); the rest match by name. Maglev doesn't fetch subtitles by itself when a download finishes.
+
+### Can Maglev download Instagram Reels?
+
+Public Reels and posts, often yes. Paste or share the link, pick a quality, and Maglev reads the video with yt-dlp on your phone. Instagram asks many posts for a sign-in, and those may not download. Maglev says "needs sign-in" when that happens. See the Instagram Reels downloader guide.
+
+### Can Maglev download X (Twitter) videos?
+
+Public videos, often yes. Paste or share the post's link, pick a quality, and Maglev saves the video. A video behind a sign-in may not download, and Maglev says so. See the X (Twitter) video downloader guide.
+
+### Can Maglev download YouTube Shorts?
+
+Yes. Paste or share a Shorts link like any YouTube link and pick a quality. See the YouTube downloader guide.
 
 ### Can Maglev save Instagram or X videos?
 
