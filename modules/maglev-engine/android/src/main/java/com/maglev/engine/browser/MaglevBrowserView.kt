@@ -10,6 +10,7 @@ import android.graphics.Color
 import android.net.Uri
 import android.net.http.SslError
 import android.os.Build
+import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.os.Message
@@ -178,6 +179,10 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
     private var typedHost: String? = null
     // Where the url prop came from: "link" (a maglev:// deep link or the card) loads through the link-tap refusals and is never typed.
     private var urlFromLink = false
+    // 0.35 W-C: the tab this view shows (prop tabId), '' when unknown. Its page state is saved in TabStates when the view
+    // is destroyed and restored instead of the first load when the tab wakes. restoreTried: only before the first load.
+    private var tabId = ""
+    private var restoreTried = false
 
     // Fullscreen video.
     private var customView: View? = null
@@ -284,6 +289,11 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
     /** NATIVE_CONTRACT 24.7: "link" for a deep link or card URL (not typed), anything else for the address bar. Applied with the url. */
     fun setUrlSource(source: String) {
         urlFromLink = source == "link"
+    }
+
+    /** 0.35 W-C: the tab id, read before the first load to find a saved page state (TabStates). */
+    fun setTabId(value: String) {
+        tabId = value
     }
 
     fun setAdBlock(value: Boolean) {
@@ -450,7 +460,64 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
     fun applyProps() {
         val u = pendingUrl ?: return
         pendingUrl = null
+        // 0.35 W-C: a woken tab takes back its history and scroll position instead of loading the url again.
+        if (!restoreTried) {
+            restoreTried = true
+            if (restoreSaved()) return
+        }
         loadRequested(u)
+    }
+
+    /**
+     * 0.35 W-C: restores the page state this tab saved when its view was destroyed. Must run before any load on the new
+     * WebView: restoreState "should be called" before the WebView "has had a chance to build state (load pages, create a
+     * back/forward list, etc.)" (https://developer.android.com/reference/android/webkit/WebView#restoreState(android.os.Bundle)).
+     * True when WebView took it; false (nothing saved, or restoreState returned null) means the caller loads the url.
+     */
+    private fun restoreSaved(): Boolean {
+        if (destroyed || tabId.isEmpty()) return false
+        val saved = TabStates.take(tabId) ?: return false
+        if (webView.url != null || webView.copyBackForwardList().size > 0) return false
+        val list = try {
+            webView.restoreState(saved.bundle)
+        } catch (_: Throwable) {
+            null
+        }
+        if (list == null || list.size == 0) return false
+        typedUrl = saved.typedUrl
+        typedHost = saved.typedHost
+        history.restore(saved.history)
+        pendingUserNav = false
+        loadedOnce = false
+        redirectInFlight = false
+        upgrade = null
+        mainHandler.removeCallbacks(upgradeTimeout)
+        emitPage()
+        return true
+    }
+
+    /**
+     * 0.35 W-C: saves this tab's page state (back/forward list, with each entry's scroll position) for when it wakes.
+     * A view with no page drops any older state instead. Called before the WebView is torn down. Main thread.
+     * https://developer.android.com/reference/android/webkit/WebView#saveState(android.os.Bundle)
+     */
+    private fun saveForWake() {
+        if (tabId.isEmpty()) return
+        try {
+            if (webView.copyBackForwardList().size == 0) {
+                TabStates.drop(tabId)
+                return
+            }
+            val bundle = Bundle()
+            val list = webView.saveState(bundle)
+            if (list == null || list.size == 0) {
+                TabStates.drop(tabId)
+            } else {
+                TabStates.put(tabId, TabStates.Saved(bundle, typedUrl, typedHost, history.snapshot()))
+            }
+        } catch (_: Throwable) {
+            TabStates.drop(tabId)
+        }
     }
 
     /** Loads the url prop the way its source says: a link through the link-tap refusals, a typed address as typed. */
@@ -554,6 +621,8 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
 
     /** The load itself, shared by typed and link loads. The caller has already checked the URL. */
     private fun startLoad(url: String) {
+        // 0.35 W-C: once the view has loaded something, a saved state may no longer be restored.
+        restoreTried = true
         // A new load: its own script redirects are part of the page until it has finished once.
         loadedOnce = false
         redirectInFlight = false
@@ -694,6 +763,7 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
     /** Called by React Native when the view is dropped (OnViewDestroys). */
     fun destroyBrowser() {
         if (destroyed) return
+        saveForWake()
         destroyed = true
         mainHandler.removeCallbacksAndMessages(null)
         for (c in captures.toList()) destroyCapture(c)

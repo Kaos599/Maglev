@@ -100,6 +100,11 @@ export type MaglevBrowserProps = {
    * 'link': a deep link or card, loaded through the link-tap refusals (LAN and blocked hosts refused, onRefused).
    */
   urlSource?: 'typed' | 'link';
+  /**
+   * The tab this view shows (0.35 W-C). When the view is destroyed it keeps the page's back/forward list and scroll
+   * position in memory under this id; a later view with the same id restores it instead of loading `url`.
+   */
+  tabId?: string;
   /** False for a tab in the background: the view pauses its page and media. Default true. */
   active?: boolean;
   popupPolicy?: 'ask' | 'block' | 'allow';
@@ -178,6 +183,7 @@ type NativeEvent<T> = { nativeEvent: T };
 type NativeProps = {
   url?: string;
   urlSource?: 'typed' | 'link';
+  tabId?: string;
   active?: boolean;
   popupPolicy?: 'ask' | 'block' | 'allow';
   popupAllowHosts?: string[];
@@ -353,6 +359,27 @@ export const resetBlocklist = () => call<BlocklistInfo>('resetBlocklist');
  * `clearHistoryRange('all')` in utils/history. Works without the browser screen open.
  */
 export const clearBrowserData = (options: BrowserClearOptions = { cookies: true, cache: true }) => call<object>('clearBrowserData', options);
+
+/**
+ * 0.35 W-C: keeps the saved page states of these tabs only (every tab that still exists) and forgets the rest, so a
+ * closed tab's state goes. Resolves quietly where there is no native module.
+ */
+export async function retainTabStates(ids: string[]): Promise<void> {
+  try {
+    if (typeof Native?.retainTabStates === 'function') await Native.retainTabStates(ids);
+  } catch {
+    // Nothing saved to drop.
+  }
+}
+
+/** 0.35 W-C: forgets every saved page state (for example after the history is cleared). */
+export async function clearTabStates(): Promise<void> {
+  try {
+    if (typeof Native?.clearTabStates === 'function') await Native.clearTabStates();
+  } catch {
+    // Nothing saved to drop.
+  }
+}
 
 /** Tells native whether to empty the history when Maglev closes (contract 24.9). Resolves quietly where there is no native module. */
 export async function setHistoryWipeOnClose(enabled: boolean): Promise<void> {

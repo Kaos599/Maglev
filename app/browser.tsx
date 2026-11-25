@@ -8,6 +8,7 @@ import * as Clipboard from 'expo-clipboard';
 import {
   clearCookies,
   nameFromUrl,
+  retainTabStates,
   type BrowserDownloadRequestEvent,
   type BrowserLongPressEvent,
   type BrowserPageEvent,
@@ -260,6 +261,13 @@ export default function BrowserScreen({ inTab = false }: { inTab?: boolean }) {
     const ids = new Set([...Object.keys(getPopups().prompts), ...Object.keys(getPopups().blocked)]);
     for (const id of ids) if (!live.has(id)) setPopups((p) => popupsApi.drop(p, id, 'closed').state);
   }, [tabsState, setPopups]);
+
+  // 0.35 W-C: a slept tab's saved page state (kept in native memory) lives as long as the tab; a closed tab's goes.
+  const tabIdsKey = tabsState ? tabsState.tabs.map((t) => t.id).join(' ') : null;
+  useEffect(() => {
+    if (tabIdsKey === null) return;
+    void retainTabStates(tabIdsKey === '' ? [] : tabIdsKey.split(' '));
+  }, [tabIdsKey]);
 
   // Switching tabs dismisses the long-press menu and the found list's Undo (they belong to the tab you left).
   useEffect(() => {
