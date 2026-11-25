@@ -22,6 +22,27 @@ export function isVideoSiteUrl(url: string): boolean {
   return videoSiteHost(url) !== null;
 }
 
+/** Paths that are one video on each video site (a watch page, a Reel, a post), not a feed, profile or home page. */
+const VIDEO_PAGE_PATHS: Record<string, RegExp> = {
+  'youtube.com': /^\/(watch\b|shorts\/[\w-]+|live\/[\w-]+)/,
+  'youtu.be': /^\/[\w-]{6,}/,
+  'x.com': /^\/[^/]+\/status\/\d+/,
+  'twitter.com': /^\/[^/]+\/status\/\d+/,
+  'instagram.com': /^\/(?:[^/]+\/)?(reels?|p|tv)\/[\w-]+/,
+  'reddit.com': /^\/r\/[^/]+\/comments\/\w+/,
+  'vimeo.com': /^\/(?:[^/]+\/)*\d{5,}/,
+  'tiktok.com': /^\/@[^/]+\/video\/\d+/,
+};
+
+/** True for the page of one video on a video site, so the browser can offer that page's video even when the site plays it as a stream the page scan can't see. */
+export function isVideoPageUrl(url: string): boolean {
+  const host = videoSiteHost(url);
+  if (!host) return false;
+  const m = /^https?:\/\/[^/?#]+(\/[^?#]*)?/i.exec((url ?? '').trim());
+  const path = m?.[1] || '/';
+  return VIDEO_PAGE_PATHS[host]?.test(path) ?? false;
+}
+
 /** One file to fetch. `size` is set only when the site states it exactly (it lets the engine fetch in ranged chunks). */
 export interface VideoSitePart {
   url: string;

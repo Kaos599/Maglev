@@ -56,7 +56,7 @@ import { keepHosts, privateSession } from '../utils/browser/privateSession';
 import { hostsToWipe } from '../utils/browser/privateHosts';
 import { buildMediaMenu, hasMenu, parseMediaHit, type MediaHit } from '../utils/browser/mediaHit';
 import { flushTabs, recordVisit } from '../utils/history';
-import { isVideoSiteUrl } from '../utils/videoSites';
+import { isVideoPageUrl, isVideoSiteUrl } from '../utils/videoSites';
 import { activeTab, backTarget, getTab, isBlank, liveTabs, switcherOrder } from '../utils/browser/tabs';
 import * as popupsApi from '../utils/browser/popups';
 import {
@@ -209,7 +209,19 @@ export default function BrowserScreen({ inTab = false }: { inTab?: boolean }) {
   const dismissed = data.dismissed;
   const [undo, setUndo] = useState<{ message: string; ids: string[] } | null>(null);
   const undoTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const found = useMemo(() => visibleFound(foundAll, dismissed), [foundAll, dismissed]);
+  // On one video's page of a video site (a Reel, an X post, a YouTube watch page) the site often plays the video as a
+  // stream the page scan can't see, so the list would hold only images. The page itself is the video: offer it first.
+  // Picking it opens the add sheet with the page link (pickFile), which reads the qualities through Video sites.
+  const scanUrl = page?.url ?? '';
+  const scanTitle = page?.title ?? '';
+  const found = useMemo(() => {
+    const list = visibleFound(foundAll, dismissed);
+    if (!isVideoPageUrl(scanUrl) || list.some((f) => f.kind === 'video')) return list;
+    const id = `page-video:${scanUrl}`;
+    if (dismissed.has(id)) return list;
+    const own: FoundItem = { id, url: scanUrl, kind: 'video', mime: null, ext: null, name: scanTitle || 'Video on this page', size: null, width: null, height: null, source: 'page', stream: null, pageUrl: scanUrl, pageTitle: scanTitle };
+    return [own, ...list];
+  }, [foundAll, dismissed, scanUrl, scanTitle]);
   const [trayOpen, setTrayOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const bookmarks = useBookmarks();
