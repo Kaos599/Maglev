@@ -1,0 +1,28 @@
+# Share a search result's magnet link without adding it: Copy shows the notice, Transfers stays empty.
+appId: com.maglev
+name: search-share
+---
+- runFlow: subflows/onboard-if-needed.yaml
+- runFlow: subflows/clear-leftovers.yaml
+- tapOn: "Search"
+- tapOn:
+    text: "Search torrents"
+- inputText: "Sintel"
+- pressKey: Enter
+- extendedWaitUntil:
+    visible: "Add .*"
+    timeout: 90000
+- tapOn:
+    text: "Sintel.*"
+    index: 0
+- extendedWaitUntil:
+    visible: "Share magnet link"
+    timeout: 10000
+- assertVisible: "Copy magnet link"
+- tapOn: "Copy magnet link"
+- extendedWaitUntil:
+    visible: "Magnet link copied"
+    timeout: 20000
+- tapOn: "Transfers"
+- assertNotVisible:
+    id: "transfer-card"

@@ -101,6 +101,7 @@ export const TIPS: readonly Tip[] = [
   { id: 'search', topic: 'finding', icon: 'search', title: 'Search many sources at once', body: 'The Search tab asks many torrent sources together and sorts what they find. Adult sources stay hidden until you turn them on.', where: 'The Search tab', action: { label: 'Open Search', route: '/search' } },
   { id: 'watch', topic: 'finding', icon: 'alarm', title: 'Watch for a title', body: 'Watch a search and Maglev checks in the background. It tells you when a new copy shows up.', where: 'Search › Watch. Saved: Settings › Watches', action: { label: 'Open Watches', route: '/settings/watch' } },
   { id: 'feeds', topic: 'finding', icon: 'feeds', title: 'New episodes on their own', body: 'Add a feed and a rule, and new episodes download by themselves.', where: 'The Feeds tab', action: { label: 'Open Feeds', route: '/feeds' } },
+  { id: 'share-magnet', topic: 'finding', icon: 'share', title: 'Share without adding', body: 'Tap a search result, then Share or Copy to pass on its magnet link.', where: 'Search › tap a result', action: { label: 'Open Search', route: '/search' } },
   { id: 'jackett', topic: 'finding', icon: 'link', title: 'Bring Jackett or Prowlarr', body: 'Already run Jackett or Prowlarr? Connect it and its results join Search.', where: 'Settings › Search sources', action: { label: 'Connect one', route: '/settings/search-providers', focus: 'search-jackett' } },
 
   // Subtitles
