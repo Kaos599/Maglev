@@ -92,7 +92,7 @@ const icon = (name, cls = 'px') => {
 const TITLE = 'Maglev: free video, link and torrent downloader for Android';
 const DESC =
   'Free Android app that downloads YouTube, Instagram and X videos, files, magnets and torrents from a link. Open source, no ads, no account. Android 7+.';
-const OG_ALT = 'The Maglev pixel train logo next to the words: Videos, links and torrents. One small app.';
+const OG_ALT = 'The Maglev pixel train logo next to the words: Download almost any link. One small app.';
 const ldBlock = (o) => `<script type="application/ld+json">\n${JSON.stringify(o, null, 2).replace(/</g, '\\u003c')}\n</script>`;
 // Same @id as the Person on harshdayal.dev, so the two graphs join.
 const PERSON = { '@type': 'Person', '@id': 'https://harshdayal.dev/#person', name: MAKER.name, url: MAKER.url, sameAs: [MAKER.url, MAKER.github] };
