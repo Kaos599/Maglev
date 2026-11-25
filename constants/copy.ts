@@ -952,3 +952,9 @@ export const siteSheetCopy = {
   clear: 'Clear data for this site',
   padlockLabel: 'Site settings',
 } as const;
+
+/** Detail screens: when a download was added and when it finished. Unknown times hide their row. */
+export const timeRowsCopy = {
+  started: 'Started',
+  finished: 'Finished',
+} as const;
