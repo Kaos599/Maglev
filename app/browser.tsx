@@ -1,5 +1,6 @@
-import React, { useCallback, useEffect, useId, useMemo, useRef, useState, useSyncExternalStore } from 'react';
-import { AppState, BackHandler, Keyboard, Share, StyleSheet, Text, View } from 'react-native';
+import React, { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import { AppState, BackHandler, Keyboard, Share, StyleSheet, Text, View, type LayoutChangeEvent } from 'react-native';
+import { useSharedValue } from 'react-native-reanimated';
 import { useFocusEffect, useIsFocused, useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Pressable } from 'react-native-gesture-handler';
@@ -23,7 +24,8 @@ import { addressCopy, banners, browserTabs, empty, findCopy, foundTray, historyC
 import { PixelIcon } from '../components/PixelIcon';
 import { Banner, Button, Dialog, EmptyBlock, IconButton, ListRow, PressableScale, ProgressBar, Sheet, TextField, type TextFieldRef, Toggle } from '../components/ui';
 import { FoundTray } from '../components/browser/FoundTray';
-import { TabWebView, type TabHandlers } from '../components/browser/TabWebView';
+import { PageSlot, TabWebView, type PageSlotName, type TabHandlers } from '../components/browser/TabWebView';
+import { TabPlaceholder } from '../components/browser/TabPlaceholder';
 import { ReloadStrip, type ReloadStripHandle } from '../components/browser/ReloadStrip';
 import { TabSwitcher } from '../components/browser/TabSwitcher';
 import { AddressSwipe } from '../components/browser/AddressSwipe';
@@ -141,6 +143,24 @@ export default function BrowserScreen({ inTab = false }: { inTab?: boolean }) {
   useEffect(() => {
     reloadRef.current?.reset();
   }, [activeId]);
+  // docs/contracts-0.35/tab-switch.md: one offset moves the header bar and the pages together. `pageWidth` is the width
+  // the pages actually occupy (the body), measured on layout.
+  const swipeX = useSharedValue(0);
+  const pageWidth = useSharedValue(0);
+  // Rule 3 and 6: the offset goes back to 0 in the same commit that makes the new tab active (the pages change slot in
+  // their own layout effects in this commit too), so the new page is already in place and nothing flashes.
+  useLayoutEffect(() => {
+    swipeX.value = 0;
+  }, [activeId, swipeX]);
+  const strip = useMemo(() => (tabsState ? switcherOrder(tabsState) : []), [tabsState]);
+  const stripIndex = strip.findIndex((t) => t.id === activeId);
+  const prevTab = stripIndex > 0 ? strip[stripIndex - 1] : null;
+  const nextTab = stripIndex >= 0 && stripIndex + 1 < strip.length ? strip[stripIndex + 1] : null;
+  // Pages show only while this screen is focused and the app is in front, as before; the neighbours sit beside the active
+  // page and appear only mid-swipe.
+  const showPages = focused && appForeground;
+  const slotOf = (id: string): PageSlotName =>
+    !showPages ? 'hidden' : id === activeId ? 'active' : id === prevTab?.id ? 'prev' : id === nextTab?.id ? 'next' : 'hidden';
   const data = getData(activeId);
   const page = data.page;
   const hasPage = !!tab && !isBlank(tab);
@@ -384,6 +404,16 @@ export default function BrowserScreen({ inTab = false }: { inTab?: boolean }) {
       tabs.select(id);
     },
     [tabs],
+  );
+  // A swipe that lands on a tab that has gone meanwhile changes nothing, so the reset on activeId never runs: put the
+  // pages back here instead.
+  const selectFromSwipe = useCallback(
+    (id: string) => {
+      const cur = tabs.ref.current;
+      if (!cur || id === activeIdRef.current || !getTab(cur, id)) swipeX.value = 0;
+      selectTab(id);
+    },
+    [tabs, selectTab, swipeX],
   );
 
   // ---- pop-up card (T5) ----
@@ -920,12 +950,14 @@ export default function BrowserScreen({ inTab = false }: { inTab?: boolean }) {
       </View>
       ) : (
       <AddressSwipe
-        strip={tabsState ? switcherOrder(tabsState) : []}
+        strip={strip}
         activeId={activeId}
         enabled={ready}
         canFocusAddress={ready}
         onFocusAddress={() => startEditing()}
-        onSelect={selectTab}
+        onSelect={selectFromSwipe}
+        offset={swipeX}
+        pageWidth={pageWidth}
         onOpenSwitcher={() => setSwitcherOpen(true)}
         trailing={
           <>
@@ -1007,7 +1039,7 @@ export default function BrowserScreen({ inTab = false }: { inTab?: boolean }) {
       )}
       <View style={styles.progress}>{loading ? <ProgressBar progress={(page?.progress ?? 0) / 100} indeterminate={!page || page.progress <= 0} /> : null}</View>
 
-      <View style={styles.body}>
+      <View style={styles.body} onLayout={(e: LayoutChangeEvent) => (pageWidth.value = e.nativeEvent.layout.width)}>
         {tabsState && isOwner
           ? liveTabs(tabsState)
               .filter((t) => !isBlank(t))
@@ -1020,6 +1052,9 @@ export default function BrowserScreen({ inTab = false }: { inTab?: boolean }) {
                     url={initialUrls.get(t.id) ?? t.url}
                     urlSource={linkTabs.current.has(t.id) ? 'link' : 'typed'}
                     active={focused && appForeground && t.id === activeId}
+                    slot={slotOf(t.id)}
+                    offset={swipeX}
+                    pageWidth={pageWidth}
                     adBlock={prefs.adBlock}
                     allowAdsHosts={prefs.allowAdsHosts}
                     desktopMode={desktop}
@@ -1040,17 +1075,29 @@ export default function BrowserScreen({ inTab = false }: { inTab?: boolean }) {
                 );
               })
           : null}
+        {/* Rule 2: a neighbour that is asleep or blank has no page to show mid-swipe, so a placeholder stands in. */}
+        {isOwner
+          ? [prevTab, nextTab].map((t) =>
+              t && (t.state !== 'live' || isBlank(t)) ? (
+                <TabPlaceholder key={`placeholder-${t.id}`} tab={t} slot={slotOf(t.id)} offset={swipeX} pageWidth={pageWidth} />
+              ) : null,
+            )
+          : null}
         <ReloadStrip ref={reloadRef} />
-        {!hasPage ? (
-          <StartPage
-            privateMode={prefs.privateBrowsing}
-            onOpen={(url, o) => {
-              haptic('tap');
-              if (o?.newTab) openTabChecked({ url });
-              else go(url);
-            }}
-          />
-        ) : null}
+        {/* A blank tab's page is the start page; it moves with the swipe like any other page. The slot stays mounted so
+            it changes in the same commit as the tab views; without a start page it is hidden and takes no touches. */}
+        <PageSlot slot={hasPage ? 'hidden' : 'active'} offset={swipeX} pageWidth={pageWidth} pointerEvents={hasPage ? 'none' : 'auto'}>
+          {!hasPage ? (
+            <StartPage
+              privateMode={prefs.privateBrowsing}
+              onOpen={(url, o) => {
+                haptic('tap');
+                if (o?.newTab) openTabChecked({ url });
+                else go(url);
+              }}
+            />
+          ) : null}
+        </PageSlot>
         {data.refused ? (
           <View style={styles.floating}>
             <Banner

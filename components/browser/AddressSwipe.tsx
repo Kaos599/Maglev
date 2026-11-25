@@ -1,7 +1,7 @@
 import React, { useCallback, useMemo, useRef, useState } from 'react';
 import { StyleSheet, Text, View, useWindowDimensions, type LayoutChangeEvent } from 'react-native';
 import { GestureDetector, useExclusiveGestures, usePanGesture, useTapGesture } from 'react-native-gesture-handler';
-import Animated, { cancelAnimation, useAnimatedStyle, useSharedValue, withSpring, withTiming } from 'react-native-reanimated';
+import Animated, { Easing, cancelAnimation, useAnimatedStyle, useSharedValue, withSpring, withTiming, type SharedValue } from 'react-native-reanimated';
 import { useTheme } from '../../context/ThemeContext';
 import { ThemeColors, motion, radius, spacing, touch, type } from '../../constants/theme';
 import { useReduceMotion } from '../motion/useReduceMotion';
@@ -26,9 +26,24 @@ export interface AddressSwipeProps {
   children: React.ReactNode;
   /** The tab-count and ⋮ buttons. They sit inside the bar, so a swipe that starts on them still switches tabs. */
   trailing: React.ReactNode;
+  /**
+   * The swipe offset in page pixels, owned by the screen and shared with the pages (docs/contracts-0.35/tab-switch.md
+   * rule 1). This component never puts it back to 0 after a switch: the screen does that when the active tab changes.
+   */
+  offset: SharedValue<number>;
+  /** The width the pages occupy. A switch slides the offset to minus or plus this width. */
+  pageWidth: SharedValue<number>;
 }
 
-const SPRING = { damping: 22, stiffness: 320, mass: 0.6 } as const;
+// Clamped so a spring back never crosses 0 and flashes the tab on the other side.
+const SPRING = { damping: 22, stiffness: 320, mass: 0.6, overshootClamping: true } as const;
+const SLIDE_EASING = Easing.out(Easing.cubic);
+
+/** The bar is narrower than the page when it has margins; it moves by the same share of its own width. */
+function toBar(offset: number, barWidth: number, pageWidth: number): number {
+  'worklet';
+  return barWidth > 0 && pageWidth > 0 ? (offset * barWidth) / pageWidth : offset;
+}
 
 /**
  * Wraps the whole header bar (0.34 section 3). A horizontal drag moves to the next or previous tab, a downward drag
@@ -46,6 +61,8 @@ export function AddressSwipe({
   onOpenSwitcher,
   children,
   trailing,
+  offset,
+  pageWidth,
 }: AddressSwipeProps) {
   // The tab slide uses the base motion token and is instant when the system asks for less motion.
   const reduceMotion = useReduceMotion();
@@ -53,12 +70,11 @@ export function AddressSwipe({
   const { colors } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const { width: screenW } = useWindowDimensions();
-  const tx = useSharedValue(0);
   const width = useSharedValue(0);
   const [hint, setHint] = useState<Tab | null>(null);
 
   // Gesture callbacks run on the JS thread and read the latest props through a ref.
-  const live = useRef({ strip, activeId, screenW, onSelect, onOpenSwitcher, onFocusAddress, startOk: false, hintId: '' });
+  const live = useRef({ strip, activeId, screenW, onSelect, onOpenSwitcher, onFocusAddress, startOk: false, hintId: '', committing: false });
   live.current.strip = strip;
   live.current.activeId = activeId;
   live.current.screenW = screenW;
@@ -76,37 +92,54 @@ export function AddressSwipe({
   }, []);
 
   const begin = (absoluteX: number) => {
-    cancelAnimation(tx);
+    // A switch already sliding finishes on its own; a new touch neither stops it nor drags.
+    if (live.current.committing) {
+      live.current.startOk = false;
+      return;
+    }
+    cancelAnimation(offset);
     live.current.startOk = !swipeStartsAtEdge(absoluteX, live.current.screenW);
   };
 
+  // With a neighbour the pages follow the finger 1:1 up to a full page; at an end of the strip the pull stays small.
   const drag = (dx: number) => {
-    if (!live.current.startOk) return;
-    const n = neighbourIndex(dx, indexNow(), live.current.strip.length);
-    tx.value = dragOffset(dx, n != null);
-    showHint(n != null ? live.current.strip[n] : null);
+    const l = live.current;
+    if (!l.startOk || l.committing) return;
+    const n = neighbourIndex(dx, indexNow(), l.strip.length);
+    offset.value = n != null ? dragOffset(dx, true, pageWidth.value || l.screenW) : dragOffset(dx, false);
+    showHint(n != null ? l.strip[n] : null);
   };
 
   const settle = () => {
-    tx.value = withSpring(0, SPRING);
+    offset.value = withSpring(0, SPRING);
+    clearHintLater();
+  };
+
+  // The hint text goes once the bar is back in place, unless a new drag has shown another hint meanwhile.
+  const clearHintLater = () => {
     live.current.hintId = '';
-    setTimeout(() => setHint(null), motion.duration.release);
+    setTimeout(() => {
+      if (live.current.hintId === '') setHint(null);
+    }, motion.duration.release);
   };
 
   const finishHorizontal = (dx: number, vx: number) => {
     const l = live.current;
+    if (l.committing) return;
     if (!l.startOk) return settle();
     const i = indexNow();
     const d = decideSwipe(dx, vx, i, l.strip.length);
     if (d === 'none') return settle();
     const target = l.strip[d === 'next' ? i + 1 : i - 1];
     haptic('select');
-    tx.value = withTiming((d === 'next' ? -1 : 1) * width.value, { duration: slideMs });
+    const to = (d === 'next' ? -1 : 1) * (pageWidth.value || l.screenW);
+    l.committing = true;
+    offset.value = slideMs > 0 ? withTiming(to, { duration: slideMs, easing: SLIDE_EASING }) : to;
+    // No reset here (contract rule 3): the screen puts the offset back to 0 in the commit that makes the target active.
     setTimeout(() => {
+      l.committing = false;
       l.onSelect(target.id);
-      tx.value = 0;
-      l.hintId = '';
-      setHint(null);
+      clearHintLater();
     }, slideMs);
   };
 
@@ -145,13 +178,14 @@ export function AddressSwipe({
     onActivate: () => live.current.onFocusAddress(),
   });
 
-  const barStyle = useAnimatedStyle(() => ({ transform: [{ translateX: tx.value }] }));
+  const barStyle = useAnimatedStyle(() => ({ transform: [{ translateX: toBar(offset.value, width.value, pageWidth.value) }] }));
   const hintStyle = useAnimatedStyle(() => {
     const w = width.value;
-    const side = tx.value < 0 ? w : -w;
+    const x = toBar(offset.value, w, pageWidth.value);
+    const side = x < 0 ? w : -w;
     return {
-      opacity: Math.min(1, Math.abs(tx.value) / 24),
-      transform: [{ translateX: tx.value + side }],
+      opacity: Math.min(1, Math.abs(x) / 24),
+      transform: [{ translateX: x + side }],
     };
   });
 
