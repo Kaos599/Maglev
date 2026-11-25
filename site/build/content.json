@@ -216,11 +216,23 @@
     ],
     [
       "Can Maglev download YouTube videos?",
-      "Yes. Paste or share the link, pick a quality, and Maglev saves the video. This works through Video sites, and Maglev keeps that support up to date by itself (Settings > Updates > Video sites). Live streams and Netflix-style protected video can't be saved. A video behind a sign-in may not download, and Maglev says so."
+      "Yes. Paste or share the link, pick a quality, and Maglev saves the video. Maglev reads it with yt-dlp on your phone and shows up to 6 qualities. It updates yt-dlp by itself once a day on Wi-Fi (Settings > Updates > Video sites). Live streams and Netflix-style protected video can't be saved. A video behind a sign-in may not download, and Maglev says so. See the [YouTube downloader guide](youtube-downloader-android)."
     ],
     [
       "Can Maglev download subtitles?",
       "Yes, for videos you have already downloaded. Tap Find subtitles on a finished download, or on a video in a torrent's Files tab. Maglev searches 21 free sources with no account and groups the results by how well they fit the file. The subtitle is saved next to the video, so players pick it up. Two sources match by file fingerprint (Subtis for Spanish, Napisy24 for Polish); the rest match by name. Maglev doesn't fetch subtitles by itself when a download finishes."
+    ],
+    [
+      "Can Maglev download Instagram Reels?",
+      "Public Reels and posts, often yes. Paste or share the link, pick a quality, and Maglev reads the video with yt-dlp on your phone. Instagram asks many posts for a sign-in, and those may not download. Maglev says \"needs sign-in\" when that happens. See the [Instagram Reels downloader guide](instagram-reels-downloader)."
+    ],
+    [
+      "Can Maglev download X (Twitter) videos?",
+      "Public videos, often yes. Paste or share the post's link, pick a quality, and Maglev saves the video. A video behind a sign-in may not download, and Maglev says so. See the [X (Twitter) video downloader guide](twitter-video-downloader)."
+    ],
+    [
+      "Can Maglev download YouTube Shorts?",
+      "Yes. Paste or share a Shorts link like any YouTube link and pick a quality. See the [YouTube downloader guide](youtube-downloader-android)."
     ],
     [
       "Can Maglev save Instagram or X videos?",

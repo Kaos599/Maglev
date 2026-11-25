@@ -1,0 +1,197 @@
+{
+  "_note": "Intent landing pages for video-site downloading. Built by build-site.mjs (guidePage). Links as [text](url). Facts only from utils/videoSites.ts and the Video sites settings; never say Instagram or X always work.",
+  "guides": [
+    {
+      "slug": "youtube-downloader-android",
+      "short": "YouTube",
+      "title": "YouTube downloader for Android, free and open source",
+      "description": "Download YouTube videos and Shorts on Android with Maglev. Paste a link, pick a quality, save. Free, open source, no ads, no account.",
+      "h1": "YouTube downloader for Android",
+      "answer": "Maglev is a free, open source YouTube downloader for Android. Share or paste a YouTube video or Shorts link, and Maglev reads it with yt-dlp on your phone and shows up to 6 qualities. Pick one and it downloads, with pause and resume, into Download/Maglev. No ads, no account.",
+      "stepsTitle": "How to download a YouTube video on Android",
+      "steps": [
+        [
+          "Install Maglev",
+          "Get the APK from [GitHub releases](https://github.com/Kaos599/Maglev/releases/latest), or add Maglev to Obtainium. Maglev needs Android 7 or later."
+        ],
+        [
+          "Share or paste the link",
+          "In the YouTube app, tap Share and choose Maglev. Or copy the link, open Maglev, tap + and paste it. Shorts links work the same way."
+        ],
+        [
+          "Pick a quality",
+          "Maglev reads the video on your phone with yt-dlp and shows up to 6 qualities. Tap the one you want."
+        ],
+        [
+          "Watch it download",
+          "The video downloads with pause and resume, and lands in Download/Maglev, where any file manager or video player finds it."
+        ]
+      ],
+      "extra": {
+        "heading": "Or use the browser",
+        "body": [
+          "Open YouTube in Maglev's own browser, long-press a video and choose Download. The browser blocks ads and trackers while you browse.",
+          "Maglev updates yt-dlp once a day on Wi-Fi, so it keeps up when YouTube changes. In Settings → Updates → Video sites you can turn this off or allow mobile data."
+        ]
+      },
+      "limits": [
+        "Live streams can't be saved.",
+        "Protected video can't be saved. Maglev never gets around DRM.",
+        "A video behind a sign-in, such as an age-gated or private one, may not download. Maglev says \"needs sign-in\" when that happens.",
+        "Maglev is not on Google Play. Install it from GitHub, Obtainium or another source listed on the home page."
+      ],
+      "faq": [
+        [
+          "Is this YouTube downloader free?",
+          "Yes. Maglev is free, with no ads, no tracking and no account. It is open source under the GPL-3.0."
+        ],
+        [
+          "Is Maglev safe, and is it open source?",
+          "The source code is public on GitHub under the GPL-3.0, and release APKs are built by GitHub Actions and signed with one key. Download it only from the official [GitHub releases](https://github.com/Kaos599/Maglev/releases/latest) page or Obtainium."
+        ],
+        [
+          "What quality can I pick?",
+          "Maglev reads the video and shows up to 6 qualities. You pick one before the download starts. What is on offer depends on the video."
+        ],
+        [
+          "Can Maglev download YouTube Shorts?",
+          "Yes. Share or paste a Shorts link the same way as any YouTube link, then pick a quality."
+        ],
+        [
+          "Can it download private or age-restricted videos?",
+          "Not reliably. A video behind a sign-in may not download, and Maglev tells you it needs sign-in. Live streams and protected video can't be saved."
+        ],
+        [
+          "Where are the videos saved?",
+          "In the Download/Maglev folder on your phone, where any file manager can open them. You can choose another folder in Settings."
+        ]
+      ]
+    },
+    {
+      "slug": "instagram-reels-downloader",
+      "short": "Instagram",
+      "title": "Instagram Reels downloader for Android, free",
+      "description": "Download public Instagram Reels and videos on Android with Maglev. Paste a link, pick a quality. Free, open source, no ads, no account.",
+      "h1": "Instagram Reels downloader for Android",
+      "answer": "Maglev is a free, open source Instagram Reels downloader for Android. Share or paste the link of a public Reel or video, and Maglev reads it with yt-dlp on your phone and shows up to 6 qualities. Pick one and it downloads into Download/Maglev. Posts that need a sign-in may not download.",
+      "stepsTitle": "How to download an Instagram Reel on Android",
+      "steps": [
+        [
+          "Install Maglev",
+          "Get the APK from [GitHub releases](https://github.com/Kaos599/Maglev/releases/latest), or add Maglev to Obtainium. Maglev needs Android 7 or later."
+        ],
+        [
+          "Share or paste the link",
+          "In Instagram, tap Share on the Reel, then copy the link. Open Maglev, tap + and paste it. You can also share the link to Maglev from another app."
+        ],
+        [
+          "Pick a quality",
+          "Maglev reads the video on your phone with yt-dlp and shows up to 6 qualities. Tap the one you want."
+        ],
+        [
+          "Watch it download",
+          "The video downloads with pause and resume, and lands in Download/Maglev."
+        ]
+      ],
+      "extra": {
+        "heading": "Or use the browser",
+        "body": [
+          "Open the Reel on instagram.com in Maglev's browser, long-press the video and choose Download."
+        ]
+      },
+      "limits": [
+        "Many Instagram posts need a sign-in. Those may not download, and Maglev says \"needs sign-in\".",
+        "Private accounts can't be downloaded.",
+        "Live streams and protected video can't be saved. Maglev never gets around DRM.",
+        "Results vary by post. Public Reels and posts are the ones that can work."
+      ],
+      "faq": [
+        [
+          "Can Maglev download Instagram Reels?",
+          "Public Reels and posts, often yes. Paste the link, pick a quality and Maglev saves the video. Instagram asks many posts for a sign-in, and those may not download. Maglev says \"needs sign-in\" when that happens."
+        ],
+        [
+          "Is this Instagram downloader free?",
+          "Yes. Maglev is free, with no ads, no tracking and no account. It is open source under the GPL-3.0."
+        ],
+        [
+          "Can I download videos from a private account?",
+          "No. A private account's videos need a sign-in, and Maglev may not be able to download them."
+        ],
+        [
+          "Is Maglev safe, and is it open source?",
+          "The source code is public on GitHub under the GPL-3.0, and release APKs are built by GitHub Actions and signed with one key. Download it only from the official [GitHub releases](https://github.com/Kaos599/Maglev/releases/latest) page or Obtainium."
+        ],
+        [
+          "Where are the videos saved?",
+          "In the Download/Maglev folder on your phone, where any file manager can open them."
+        ],
+        [
+          "Does it also work for Instagram posts, not only Reels?",
+          "Public videos in posts can work the same way: paste the link and pick a quality. Whether a post downloads depends on whether Instagram asks for a sign-in."
+        ]
+      ]
+    },
+    {
+      "slug": "twitter-video-downloader",
+      "short": "X (Twitter)",
+      "title": "X (Twitter) video downloader for Android, free",
+      "description": "Download X (Twitter) videos on Android with Maglev. Paste the post link, pick a quality. Free, open source, no ads, no account.",
+      "h1": "X (Twitter) video downloader for Android",
+      "answer": "Maglev is a free, open source X (Twitter) video downloader for Android. Share or paste the link of a post with a video, and Maglev reads it with yt-dlp on your phone and shows up to 6 qualities. Pick one and it downloads into Download/Maglev. Videos that need a sign-in may not download.",
+      "stepsTitle": "How to download a Twitter video on Android",
+      "steps": [
+        [
+          "Install Maglev",
+          "Get the APK from [GitHub releases](https://github.com/Kaos599/Maglev/releases/latest), or add Maglev to Obtainium. Maglev needs Android 7 or later."
+        ],
+        [
+          "Share or paste the link",
+          "In X, tap Share on the post and copy its link, or share it to Maglev. In Maglev, tap + and paste the link."
+        ],
+        [
+          "Pick a quality",
+          "Maglev reads the video on your phone with yt-dlp and shows up to 6 qualities. Tap the one you want."
+        ],
+        [
+          "Watch it download",
+          "The video downloads with pause and resume, and lands in Download/Maglev."
+        ]
+      ],
+      "extra": {
+        "heading": "Or use the browser",
+        "body": [
+          "Open the post on x.com in Maglev's browser, long-press the video and choose Download."
+        ]
+      },
+      "limits": [
+        "A video behind a sign-in may not download. Maglev says \"needs sign-in\" when that happens.",
+        "Live streams and protected video can't be saved. Maglev never gets around DRM.",
+        "Results vary by post and by video."
+      ],
+      "faq": [
+        [
+          "Can Maglev download X (Twitter) videos?",
+          "Public videos, often yes. Paste the post link, pick a quality and Maglev saves the video. A video behind a sign-in may not download, and Maglev says so."
+        ],
+        [
+          "Is this Twitter video downloader free?",
+          "Yes. Maglev is free, with no ads, no tracking and no account. It is open source under the GPL-3.0."
+        ],
+        [
+          "Does it work with x.com and twitter.com links?",
+          "Maglev recognises both x.com and twitter.com links, so share or paste the post link and it reads the video. If a link isn't read, open the post in Maglev's browser, long-press the video and choose Download."
+        ],
+        [
+          "Is Maglev safe, and is it open source?",
+          "The source code is public on GitHub under the GPL-3.0, and release APKs are built by GitHub Actions and signed with one key. Download it only from the official [GitHub releases](https://github.com/Kaos599/Maglev/releases/latest) page or Obtainium."
+        ],
+        [
+          "Where are the videos saved?",
+          "In the Download/Maglev folder on your phone, where any file manager can open them."
+        ]
+      ]
+    }
+  ],
+  "respect": "Download only what you have the right to. Maglev is a tool, and what you save is up to you."
+}

@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Maglev: free Android downloader for almost any link</title>
-<meta name="description" content="Paste or share almost any link and Maglev downloads it: video pages like YouTube, X and Instagram, files, magnets and torrents. Free, open source, no ads. Android 7 and up.">
+<title>Maglev: free video, link and torrent downloader for Android</title>
+<meta name="description" content="Free Android app that downloads YouTube, Instagram and X videos, files, magnets and torrents from a link. Open source, no ads, no account. Android 7+.">
 <link rel="canonical" href="https://harshdayal.dev/maglev">
 <meta name="theme-color" content="#05070A">
 <meta name="color-scheme" content="dark">
@@ -19,8 +19,8 @@
 <link rel="stylesheet" href="/maglev/assets/site.css">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="Maglev">
-<meta property="og:title" content="Maglev: free Android downloader for almost any link">
-<meta property="og:description" content="Paste or share almost any link and Maglev downloads it: video pages like YouTube, X and Instagram, files, magnets and torrents. Free, open source, no ads. Android 7 and up.">
+<meta property="og:title" content="Maglev: free video, link and torrent downloader for Android">
+<meta property="og:description" content="Free Android app that downloads YouTube, Instagram and X videos, files, magnets and torrents from a link. Open source, no ads, no account. Android 7+.">
 <meta property="og:url" content="https://harshdayal.dev/maglev">
 <meta property="og:image" content="https://harshdayal.dev/maglev/assets/og.png">
 <meta property="og:image:width" content="1200">
@@ -28,8 +28,8 @@
 <meta property="og:image:alt" content="The Maglev pixel train logo next to the words: Videos, links and torrents. One small app.">
 <meta property="og:locale" content="en_US">
 <meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:title" content="Maglev: free Android downloader for almost any link">
-<meta name="twitter:description" content="Paste or share almost any link and Maglev downloads it: video pages like YouTube, X and Instagram, files, magnets and torrents. Free, open source, no ads. Android 7 and up.">
+<meta name="twitter:title" content="Maglev: free video, link and torrent downloader for Android">
+<meta name="twitter:description" content="Free Android app that downloads YouTube, Instagram and X videos, files, magnets and torrents from a link. Open source, no ads, no account. Android 7+.">
 <meta name="twitter:image" content="https://harshdayal.dev/maglev/assets/og.png">
 <meta name="twitter:image:alt" content="The Maglev pixel train logo next to the words: Videos, links and torrents. One small app.">
 <script src="/maglev/assets/site.js" defer></script>
@@ -52,8 +52,8 @@
       "@type": "WebPage",
       "@id": "https://harshdayal.dev/maglev#webpage",
       "url": "https://harshdayal.dev/maglev",
-      "name": "Maglev: free Android downloader for almost any link",
-      "description": "Paste or share almost any link and Maglev downloads it: video pages like YouTube, X and Instagram, files, magnets and torrents. Free, open source, no ads. Android 7 and up.",
+      "name": "Maglev: free video, link and torrent downloader for Android",
+      "description": "Free Android app that downloads YouTube, Instagram and X videos, files, magnets and torrents from a link. Open source, no ads, no account. Android 7+.",
       "isPartOf": {
         "@id": "https://harshdayal.dev/maglev#website"
       },
@@ -67,7 +67,7 @@
         "height": 630
       },
       "datePublished": "2026-11-12",
-      "dateModified": "2026-11-21",
+      "dateModified": "2026-11-25",
       "author": {
         "@id": "https://harshdayal.dev/#person"
       },
@@ -90,14 +90,14 @@
       ],
       "@id": "https://harshdayal.dev/maglev#app",
       "name": "Maglev",
-      "description": "A small Android downloader for almost any link: video pages, files, magnets and torrents. Free, open source, no ads.",
+      "description": "A small Android downloader for almost any link: YouTube, Instagram and X videos, files, magnets and torrents. Free, open source, no ads, no account.",
       "url": "https://harshdayal.dev/maglev",
       "applicationCategory": "UtilitiesApplication",
       "applicationSubCategory": "Download manager",
       "operatingSystem": "Android 7.0 or later",
       "softwareVersion": "0.33",
       "datePublished": "2026-11-12",
-      "dateModified": "2026-11-21",
+      "dateModified": "2026-11-25",
       "offers": {
         "@type": "Offer",
         "price": "0",
@@ -273,7 +273,7 @@
       "name": "Can Maglev download YouTube videos?",
       "acceptedAnswer": {
         "@type": "Answer",
-        "text": "Yes. Paste or share the link, pick a quality, and Maglev saves the video. This works through Video sites, and Maglev keeps that support up to date by itself (Settings > Updates > Video sites). Live streams and Netflix-style protected video can't be saved. A video behind a sign-in may not download, and Maglev says so."
+        "text": "Yes. Paste or share the link, pick a quality, and Maglev saves the video. Maglev reads it with yt-dlp on your phone and shows up to 6 qualities. It updates yt-dlp by itself once a day on Wi-Fi (Settings > Updates > Video sites). Live streams and Netflix-style protected video can't be saved. A video behind a sign-in may not download, and Maglev says so. See the YouTube downloader guide."
       }
     },
     {
@@ -282,6 +282,30 @@
       "acceptedAnswer": {
         "@type": "Answer",
         "text": "Yes, for videos you have already downloaded. Tap Find subtitles on a finished download, or on a video in a torrent's Files tab. Maglev searches 21 free sources with no account and groups the results by how well they fit the file. The subtitle is saved next to the video, so players pick it up. Two sources match by file fingerprint (Subtis for Spanish, Napisy24 for Polish); the rest match by name. Maglev doesn't fetch subtitles by itself when a download finishes."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Can Maglev download Instagram Reels?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Public Reels and posts, often yes. Paste or share the link, pick a quality, and Maglev reads the video with yt-dlp on your phone. Instagram asks many posts for a sign-in, and those may not download. Maglev says \"needs sign-in\" when that happens. See the Instagram Reels downloader guide."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Can Maglev download X (Twitter) videos?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Public videos, often yes. Paste or share the post's link, pick a quality, and Maglev saves the video. A video behind a sign-in may not download, and Maglev says so. See the X (Twitter) video downloader guide."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Can Maglev download YouTube Shorts?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Yes. Paste or share a Shorts link like any YouTube link and pick a quality. See the YouTube downloader guide."
       }
     },
     {
@@ -503,15 +527,15 @@
   <div class="wrap hero-in">
     <div class="hero-copy">
       <p class="wordmark"><img src="/maglev/assets/wordmark.svg" width="280" height="56" alt="Maglev"></p>
-      <h1 id="hero-title">Download almost any link on Android</h1>
-      <p class="lede">Paste or share a link: a video page, a file, a magnet or a torrent. Maglev downloads it, with pause, resume and a quality picker for videos. Free, open source, no ads.</p>
+      <h1 id="hero-title">Download videos, files and torrents on Android</h1>
+      <p class="lede">Paste or share a YouTube, Instagram or X video link, a file, a magnet or a torrent. Maglev downloads it, with pause, resume and a quality picker for videos. Free, open source, no ads.</p>
       <div class="ctas">
         <a class="btn primary" href="https://github.com/Kaos599/Maglev/releases/download/v0.33/Maglev-v0.33-universal.apk" data-dl="main" title="Download Maglev 0.33" aria-label="Download Maglev 0.33" rel="noopener"><svg class="px" viewBox="0 0 24 24" width="24" height="24" aria-hidden="true" focusable="false"><path fill="currentColor" d="M21 15v4h-2v-4zm-2 4v2H5v-2zM5 15v4H3v-4zm8-12v14h-2V3zM7 11v2h10v-2zm2 2v2h2v-2zm4 0v2h2v-2zM15 11v2h2v-2z"/></svg><span data-dl-label>Download latest</span></a>
         <a class="btn" href="https://apps.obtainium.imranr.dev/redirect?r=obtainium://add/https://github.com/Kaos599/Maglev" rel="noopener"><svg class="px" viewBox="0 0 24 24" width="24" height="24" aria-hidden="true" focusable="false"><path fill="currentColor" d="M16 4h2v6h-2zm-2-2h2v2h-2zm0 2h2v8h-2zM4 8H2v5h2zM4 6h16v2H4zm4 14H6v-6h2zm2 2H8v-2h2zm0-2H8v-8h2zm10-4h2v-5h-2zM20 18H4v-2h16z"/></svg><span>Get updates with Obtainium</span></a>
       </div>
       <p class="cta-note" data-dl-note>The button picks the right file for your phone, and you can choose another one after you tap it.</p>
       <p class="cta-note" data-dl-note-desktop hidden>Maglev is an Android app. Click Download, then scan the code that appears with your phone.</p>
-      <p class="meta">v0.33 · updated <time datetime="2026-11-21">21 November 2026</time> · by <a href="https://harshdayal.dev" rel="author">Harsh Dayal</a></p>
+      <p class="meta">v0.33 · updated <time datetime="2026-11-25">25 November 2026</time> · by <a href="https://harshdayal.dev" rel="author">Harsh Dayal</a></p>
       <ul class="facts" aria-label="At a glance">
         <li>Free</li><li>No ads</li><li>Open source, GPL-3.0</li><li>Android 7 and up</li>
       </ul>
@@ -692,6 +716,7 @@
       </ul>
     </article>
     </div>
+    <p class="switch-links">Video guides: <a href="/maglev/youtube-downloader-android">YouTube downloader for Android</a> · <a href="/maglev/instagram-reels-downloader">Instagram Reels downloader for Android</a> · <a href="/maglev/twitter-video-downloader">X (Twitter) video downloader for Android</a></p>
   </div>
 </section>
 
@@ -823,11 +848,23 @@
     </details>
     <details>
       <summary><span class="q">Can Maglev download YouTube videos?</span><svg class="px chev" viewBox="0 0 24 24" width="24" height="24" aria-hidden="true" focusable="false"><path fill="currentColor" d="M13 16h-2v-2h2v2Zm-2-2H9v-2h2v2Zm4 0h-2v-2h2v2Zm-6-2H7v-2h2v2Zm8 0h-2v-2h2v2ZM7 10H5V8h2v2Zm12 0h-2V8h2v2Z"/></svg></summary>
-      <div class="a"><p>Yes. Paste or share the link, pick a quality, and Maglev saves the video. This works through Video sites, and Maglev keeps that support up to date by itself (Settings &gt; Updates &gt; Video sites). Live streams and Netflix-style protected video can't be saved. A video behind a sign-in may not download, and Maglev says so.</p></div>
+      <div class="a"><p>Yes. Paste or share the link, pick a quality, and Maglev saves the video. Maglev reads it with yt-dlp on your phone and shows up to 6 qualities. It updates yt-dlp by itself once a day on Wi-Fi (Settings &gt; Updates &gt; Video sites). Live streams and Netflix-style protected video can't be saved. A video behind a sign-in may not download, and Maglev says so. See the <a href="/maglev/youtube-downloader-android" rel="noopener">YouTube downloader guide</a>.</p></div>
     </details>
     <details>
       <summary><span class="q">Can Maglev download subtitles?</span><svg class="px chev" viewBox="0 0 24 24" width="24" height="24" aria-hidden="true" focusable="false"><path fill="currentColor" d="M13 16h-2v-2h2v2Zm-2-2H9v-2h2v2Zm4 0h-2v-2h2v2Zm-6-2H7v-2h2v2Zm8 0h-2v-2h2v2ZM7 10H5V8h2v2Zm12 0h-2V8h2v2Z"/></svg></summary>
       <div class="a"><p>Yes, for videos you have already downloaded. Tap Find subtitles on a finished download, or on a video in a torrent's Files tab. Maglev searches 21 free sources with no account and groups the results by how well they fit the file. The subtitle is saved next to the video, so players pick it up. Two sources match by file fingerprint (Subtis for Spanish, Napisy24 for Polish); the rest match by name. Maglev doesn't fetch subtitles by itself when a download finishes.</p></div>
+    </details>
+    <details>
+      <summary><span class="q">Can Maglev download Instagram Reels?</span><svg class="px chev" viewBox="0 0 24 24" width="24" height="24" aria-hidden="true" focusable="false"><path fill="currentColor" d="M13 16h-2v-2h2v2Zm-2-2H9v-2h2v2Zm4 0h-2v-2h2v2Zm-6-2H7v-2h2v2Zm8 0h-2v-2h2v2ZM7 10H5V8h2v2Zm12 0h-2V8h2v2Z"/></svg></summary>
+      <div class="a"><p>Public Reels and posts, often yes. Paste or share the link, pick a quality, and Maglev reads the video with yt-dlp on your phone. Instagram asks many posts for a sign-in, and those may not download. Maglev says &quot;needs sign-in&quot; when that happens. See the <a href="/maglev/instagram-reels-downloader" rel="noopener">Instagram Reels downloader guide</a>.</p></div>
+    </details>
+    <details>
+      <summary><span class="q">Can Maglev download X (Twitter) videos?</span><svg class="px chev" viewBox="0 0 24 24" width="24" height="24" aria-hidden="true" focusable="false"><path fill="currentColor" d="M13 16h-2v-2h2v2Zm-2-2H9v-2h2v2Zm4 0h-2v-2h2v2Zm-6-2H7v-2h2v2Zm8 0h-2v-2h2v2ZM7 10H5V8h2v2Zm12 0h-2V8h2v2Z"/></svg></summary>
+      <div class="a"><p>Public videos, often yes. Paste or share the post's link, pick a quality, and Maglev saves the video. A video behind a sign-in may not download, and Maglev says so. See the <a href="/maglev/twitter-video-downloader" rel="noopener">X (Twitter) video downloader guide</a>.</p></div>
+    </details>
+    <details>
+      <summary><span class="q">Can Maglev download YouTube Shorts?</span><svg class="px chev" viewBox="0 0 24 24" width="24" height="24" aria-hidden="true" focusable="false"><path fill="currentColor" d="M13 16h-2v-2h2v2Zm-2-2H9v-2h2v2Zm4 0h-2v-2h2v2Zm-6-2H7v-2h2v2Zm8 0h-2v-2h2v2ZM7 10H5V8h2v2Zm12 0h-2V8h2v2Z"/></svg></summary>
+      <div class="a"><p>Yes. Paste or share a Shorts link like any YouTube link and pick a quality. See the <a href="/maglev/youtube-downloader-android" rel="noopener">YouTube downloader guide</a>.</p></div>
     </details>
     <details>
       <summary><span class="q">Can Maglev save Instagram or X videos?</span><svg class="px chev" viewBox="0 0 24 24" width="24" height="24" aria-hidden="true" focusable="false"><path fill="currentColor" d="M13 16h-2v-2h2v2Zm-2-2H9v-2h2v2Zm4 0h-2v-2h2v2Zm-6-2H7v-2h2v2Zm8 0h-2v-2h2v2ZM7 10H5V8h2v2Zm12 0h-2V8h2v2Z"/></svg></summary>
@@ -946,7 +983,7 @@
       <li><a href="/maglev/privacy">Privacy</a></li>
       <li><a href="https://github.com/Kaos599/Maglev/blob/main/LICENSE" rel="noopener">GPL-3.0 licence</a></li>
     </ul>
-    <p class="fine">Icons are <a href="https://github.com/halfmage/pixelarticons" rel="noopener">Pixelarticons</a> by Gerrit Halfmann (MIT). Fonts are Inter and Silkscreen (SIL Open Font License), served from this site. Maglev v0.33, page updated 21 November 2026.</p>
+    <p class="fine">Icons are <a href="https://github.com/halfmage/pixelarticons" rel="noopener">Pixelarticons</a> by Gerrit Halfmann (MIT). Fonts are Inter and Silkscreen (SIL Open Font License), served from this site. Maglev v0.33, page updated 25 November 2026.</p>
   </div>
 </footer>
 </body>
