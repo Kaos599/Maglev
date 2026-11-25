@@ -5,6 +5,7 @@ import { useTheme } from '../../context/ThemeContext';
 import { ThemeColors, spacing, type } from '../../constants/theme';
 import { formatBytes } from '../../constants/format';
 import { haptic } from '../../constants/haptics';
+import { dismissClip } from '../../utils/prefs/clipboard';
 import { Button, Sheet } from '../ui';
 import { sharingBadge, sharingWords } from './sharing';
 
@@ -76,6 +77,8 @@ export function ResultPreviewSheet({ result, onClose, onAdd, onOpenInBrowser, li
           await Share.share({ message: link }).catch(() => {});
         } else {
           await Clipboard.setStringAsync(link);
+          // Copied to pass on, not to add: Transfers shouldn't then offer "Download the copied link?" for it.
+          dismissClip(link);
           haptic('done');
           setBusy(null);
           onCopied(linkKind);
