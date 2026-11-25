@@ -43,7 +43,7 @@ Maglev is a free, open-source Android app that downloads YouTube, Instagram and 
 
 ## Download YouTube, Instagram Reels and X videos on Android
 
-Maglev is a free YouTube, Instagram Reels and X (Twitter) video downloader for Android. Share or paste the video's link, and Maglev reads it with yt-dlp on your phone and shows up to 6 qualities. Pick one and it downloads, with pause and resume, into `Download/Maglev`. Reddit, Vimeo and TikTok links are recognised too.
+Maglev is a free YouTube, Instagram Reels and X (Twitter) video downloader for Android. Share or paste the video's link, and Maglev reads it with yt-dlp on your phone and shows up to 6 qualities. Pick one and it downloads, with pause and resume, into `Download/Maglev`. Other sites may work when yt-dlp can read them without signing in; Vimeo and Reddit now ask for an account, so Maglev says so and offers to open the page.
 
 1. Share the link to Maglev from YouTube, X or Instagram, or copy it and tap **+** in Maglev to paste it.
 2. Pick a quality.
