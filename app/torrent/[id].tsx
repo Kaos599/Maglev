@@ -27,6 +27,7 @@ import { PiecesMatrix } from '../../components/PiecesMatrix';
 import { StateBadge } from '../../components/detail/StateBadge';
 import { TorrentStats } from '../../components/detail/TorrentStats';
 import { CompactLine } from '../../components/detail/CompactLine';
+import { TimeRows } from '../../components/detail/TimeRows';
 import { ProgressCard } from '../../components/detail/ProgressCard';
 import { useSettings } from '../../context/SettingsContext';
 import { PeerRow, TrackerRow } from '../../components/detail/rows';
@@ -959,6 +960,12 @@ export default function TorrentDetailScreen() {
             onPress={() => void openSavedFolder()}
             accessibilityLabel={`Saved to ${friendlyPath(snap.outputFolder)}. Opens the folder.`}
           />
+        </View>
+      ) : null}
+
+      {(snap.addedAt ?? 0) > 0 || (snap.finishedAt ?? 0) > 0 ? (
+        <View style={styles.block}>
+          <TimeRows addedAt={snap.addedAt} finishedAt={snap.finishedAt} />
         </View>
       ) : null}
 
