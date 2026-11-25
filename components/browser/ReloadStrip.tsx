@@ -1,4 +1,4 @@
-import React, { forwardRef, useEffect, useImperativeHandle, useRef } from 'react';
+import React, { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react';
 import { StyleSheet } from 'react-native';
 import Animated, {
   Easing,
@@ -32,6 +32,7 @@ const MAX_PULL = 120;
 /** Where the disc sits while loading (dp of travel under the bar). */
 const REST = 56;
 const CLOSE_MS = 150; // design-exception: 0.35 section 4 sets the ring close at 150 ms
+const BACK_HIDE_MS = 900; // design-exception: a safe upper bound for SPRING_BACK to settle before the disc unmounts
 const EXIT_MS = 220; // design-exception: 0.35 section 4 sets the exit at 220 ms
 const FADE_MS = 200; // design-exception: reduce-motion fade-out and early-release fade
 const POP_MS = 200; // design-exception: arrowhead pop at the trigger, from the canvas board
@@ -192,6 +193,11 @@ export const ReloadStrip = forwardRef<ReloadStripHandle, object>(function Reload
   // completion callbacks: on the phone the callback chain stalled and left a full ring on screen for good
   // (phone check 2026-11-25). The last timer always returns the disc to idle, whatever the animations did.
   const seqTimers = useRef<ReturnType<typeof setTimeout>[]>([]);
+  // The disc is mounted only while it has something to show. Its shared values alone are not enough: on a page that
+  // has finished loading nothing else redraws the screen, and the last animated frame stayed painted although the
+  // disc was already idle (phone check 2026-11-26, example.com: arc still drawn at 18 s, gone on the next React
+  // render). Unmounting it is a normal React commit, which always reaches the screen.
+  const [shown, setShown] = useState(false);
 
   useImperativeHandle(
     ref,
@@ -208,6 +214,11 @@ export const ReloadStrip = forwardRef<ReloadStripHandle, object>(function Reload
       };
       const later = (fn: () => void, ms: number) => {
         seqTimers.current.push(setTimeout(fn, ms));
+      };
+      /** Unmounts the disc unless a new pull or reload has started meanwhile. */
+      const hide = () => {
+        const f = flags.current;
+        if (!f.dragging && !f.loading) setShown(false);
       };
       const stopAll = () => {
         clearSeq();
@@ -226,6 +237,7 @@ export const ReloadStrip = forwardRef<ReloadStripHandle, object>(function Reload
         fadeP.value = withTiming(1, { duration: FADE_MS, easing: Easing.linear });
         later(() => {
           phase.value = IDLE;
+          hide();
         }, FADE_MS + SEQ_SLACK_MS);
       };
       const release = () => {
@@ -244,6 +256,8 @@ export const ReloadStrip = forwardRef<ReloadStripHandle, object>(function Reload
             y.value = 0;
           }
         });
+        // The spring settles well inside this; then the disc leaves the tree whatever the callback did.
+        later(hide, BACK_HIDE_MS);
       };
       return {
         pull(progress: number) {
@@ -267,6 +281,7 @@ export const ReloadStrip = forwardRef<ReloadStripHandle, object>(function Reload
             f.dragging = true;
             f.pulled = true;
             stopAll();
+            setShown(true);
             fadeP.value = 0;
             pop.value = 1;
             phase.value = DRAG;
@@ -295,6 +310,7 @@ export const ReloadStrip = forwardRef<ReloadStripHandle, object>(function Reload
           f.loading = true;
           f.dragging = false;
           f.armed = false;
+          setShown(true);
           const pulled = f.pulled;
           fromPull.value = pulled && !reduceNow.current;
           rot0.value = pulled && !reduceNow.current ? pullStart(f.lastPullY) : 0;
@@ -337,6 +353,7 @@ export const ReloadStrip = forwardRef<ReloadStripHandle, object>(function Reload
             cancelAnimation(y);
             phase.value = IDLE;
             y.value = 0;
+            hide();
           }, CLOSE_MS + EXIT_MS + SEQ_SLACK_MS);
         },
         reset() {
@@ -346,6 +363,7 @@ export const ReloadStrip = forwardRef<ReloadStripHandle, object>(function Reload
           flags.current = { dragging: false, pulled: false, armed: false, loading: false, lastPullY: 0 };
           phase.value = IDLE;
           y.value = 0;
+          setShown(false);
         },
       };
     },
@@ -443,6 +461,7 @@ export const ReloadStrip = forwardRef<ReloadStripHandle, object>(function Reload
 
   return (
     <Animated.View pointerEvents="none" style={styles.strip}>
+      {shown ? (
       <Animated.View
         style={[styles.disc, { backgroundColor: colors.surface, borderColor: colors.border }, discStyle]}
       >
@@ -464,6 +483,7 @@ export const ReloadStrip = forwardRef<ReloadStripHandle, object>(function Reload
           </Svg>
         </Animated.View>
       </Animated.View>
+      ) : null}
     </Animated.View>
   );
 });
