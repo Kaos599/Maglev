@@ -51,6 +51,8 @@ const HOLD_MS = 400;
  */
 const STALE_PULL_MS = 600; // design-exception: an event guard, not a transition
 /** A drag that hears nothing for this long springs back by itself, so the disc can never stay on screen. */
+// Extra time before the closing timer sets idle, so the exit animation is finished by then.
+const SEQ_SLACK_MS = 60; // design-exception: a sequencing margin, not a transition
 const DRAG_WATCHDOG_MS = 2500; // design-exception: a safety timer, not a transition
 
 const IDLE = 0;
@@ -186,6 +188,10 @@ export const ReloadStrip = forwardRef<ReloadStripHandle, object>(function Reload
   const holdTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const watchdog = useRef<ReturnType<typeof setTimeout> | null>(null);
   const endedAt = useRef(0);
+  // The end of a reload (ring close, exit, idle) and the fade are sequenced by JS timers, not by animation
+  // completion callbacks: on the phone the callback chain stalled and left a full ring on screen for good
+  // (phone check 2026-11-25). The last timer always returns the disc to idle, whatever the animations did.
+  const seqTimers = useRef<ReturnType<typeof setTimeout>[]>([]);
 
   useImperativeHandle(
     ref,
@@ -196,7 +202,15 @@ export const ReloadStrip = forwardRef<ReloadStripHandle, object>(function Reload
         if (watchdog.current) clearTimeout(watchdog.current);
         watchdog.current = null;
       };
+      const clearSeq = () => {
+        for (const t of seqTimers.current) clearTimeout(t);
+        seqTimers.current = [];
+      };
+      const later = (fn: () => void, ms: number) => {
+        seqTimers.current.push(setTimeout(fn, ms));
+      };
       const stopAll = () => {
+        clearSeq();
         cancelAnimation(y);
         cancelAnimation(loadT);
         cancelAnimation(closeP);
@@ -209,9 +223,10 @@ export const ReloadStrip = forwardRef<ReloadStripHandle, object>(function Reload
         fadeFull.value = full;
         o0.value = from;
         fadeP.value = 0;
-        fadeP.value = withTiming(1, { duration: FADE_MS, easing: Easing.linear }, (finished) => {
-          if (finished) phase.value = IDLE;
-        });
+        fadeP.value = withTiming(1, { duration: FADE_MS, easing: Easing.linear });
+        later(() => {
+          phase.value = IDLE;
+        }, FADE_MS + SEQ_SLACK_MS);
       };
       const release = () => {
         clearHold();
@@ -305,30 +320,24 @@ export const ReloadStrip = forwardRef<ReloadStripHandle, object>(function Reload
             fadeOut(true, 1);
             return;
           }
-          // Freeze the spin where it is, close the ring, then shrink and lift.
+          // Freeze the spin where it is, close the ring, then shrink and lift, then idle.
+          clearSeq();
           cancelAnimation(loadT);
           cancelAnimation(exitP);
           phase.value = DONE;
           closeP.value = 0;
-          closeP.value = withTiming(
-            1,
-            { duration: CLOSE_MS, easing: Easing.out(Easing.cubic) },
-            (finished) => {
-              if (!finished) return;
-              phase.value = EXIT;
-              yExit0.value = y.value;
-              exitP.value = 0;
-              exitP.value = withTiming(
-                1,
-                { duration: EXIT_MS, easing: Easing.in(Easing.cubic) },
-                (done) => {
-                  if (!done) return;
-                  phase.value = IDLE;
-                  y.value = 0;
-                },
-              );
-            },
-          );
+          closeP.value = withTiming(1, { duration: CLOSE_MS, easing: Easing.out(Easing.cubic) });
+          later(() => {
+            phase.value = EXIT;
+            yExit0.value = y.value;
+            exitP.value = 0;
+            exitP.value = withTiming(1, { duration: EXIT_MS, easing: Easing.in(Easing.cubic) });
+          }, CLOSE_MS);
+          later(() => {
+            cancelAnimation(y);
+            phase.value = IDLE;
+            y.value = 0;
+          }, CLOSE_MS + EXIT_MS + SEQ_SLACK_MS);
         },
         reset() {
           clearHold();
@@ -347,6 +356,7 @@ export const ReloadStrip = forwardRef<ReloadStripHandle, object>(function Reload
     () => () => {
       if (holdTimer.current) clearTimeout(holdTimer.current);
       if (watchdog.current) clearTimeout(watchdog.current);
+      for (const t of seqTimers.current) clearTimeout(t);
     },
     [],
   );
