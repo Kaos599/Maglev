@@ -374,10 +374,10 @@ fn parse_http_url(raw: &str) -> Result<(reqwest::Url, Option<(String, String)>),
     if effects.contains(&Effect::RejectInvalidSource) {
         return Err(EngineError::new(
             ErrorCode::InvalidSource,
-            "That isn't a web link. Use a link that starts with http or https.",
+            "That isn't a link. Use a link that starts with http or https.",
         ));
     }
-    let u = parsed.map_err(|_| EngineError::new(ErrorCode::InvalidSource, "That isn't a web link."))?;
+    let u = parsed.map_err(|_| EngineError::new(ErrorCode::InvalidSource, "That link doesn't look right."))?;
     Ok(split_credentials(u))
 }
 

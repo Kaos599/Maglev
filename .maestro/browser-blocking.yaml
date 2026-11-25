@@ -37,9 +37,13 @@ name: browser-blocking
     visible: "Blocking ads on .*" # constants/copy.ts notices.browser.adsBlocked
     timeout: 15000
 - tapOn: "More"
-- tapOn: "Browser settings" # app/browser.tsx:401 pushes /settings/browser
+- tapOn: "Browser settings" # the menu row pushes the Browser settings hub (app/settings/browser.tsx)
 - extendedWaitUntil:
-    visible: "Ad blocking" # app/settings/browser.tsx:119 row title
+    visible: "Blocking" # hub row (0.35: the hub lists sections, the Ad blocking switch is one screen in)
+    timeout: 30000
+- tapOn: "Blocking"
+- extendedWaitUntil:
+    visible: "Ad blocking" # app/settings/browser-blocking.tsx row title
     timeout: 30000
 # Global switch. The Toggle carries accessibilityLabel "Ad blocking" too (app/settings/browser.tsx:121),
 # so index 1 picks the switch, not the title. Assumption: verify on device.
@@ -47,6 +51,7 @@ name: browser-blocking
     text: "Ad blocking"
     index: 1
 - tapOn: "Go back" # in-app back; hardware Back after toggling a setting left the app in the 0.28 CI run
+- tapOn: "Go back" # from the hub to the page
 - tapOn: "More"
 # With ad blocking off the Ads section of Site settings is hidden (SiteSettingsSheet adBlockOn).
 - tapOn: "Site settings"
@@ -58,6 +63,10 @@ name: browser-blocking
 - tapOn: "More"
 - tapOn: "Browser settings"
 - extendedWaitUntil:
+    visible: "Blocking"
+    timeout: 30000
+- tapOn: "Blocking"
+- extendedWaitUntil:
     visible: "Ad blocking"
     timeout: 30000
 # Turn it back on so the next run starts from the default.
@@ -65,6 +74,7 @@ name: browser-blocking
     text: "Ad blocking"
     index: 1
 - tapOn: "Go back" # in-app back; hardware Back after toggling a setting left the app in the 0.28 CI run
+- tapOn: "Go back" # from the hub to the page
 - tapOn: "More"
 - tapOn: "Site settings"
 - assertVisible: "Block ads on this site" # back to the default
