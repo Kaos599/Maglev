@@ -17,6 +17,7 @@ import com.maglev.engine.browser.TabStates
 import com.maglev.engine.feeds.FeedScheduler
 import com.maglev.engine.permissions.PermissionHelper
 import com.maglev.engine.schedule.ScheduleManager
+import com.maglev.engine.share.TrustedShare
 import com.maglev.engine.service.Notifications
 import com.maglev.engine.storage.SafStorageManager
 import com.maglev.engine.storage.StorageManager
@@ -495,6 +496,12 @@ class MaglevEngineModule : Module() {
         // endregion
 
         // region Site checks (docs/SEARCH_CONTRACT.md section 8)
+
+        // True once if the quick share card just handed the app exactly this link (see TrustedShare), so the add screen
+        // can read a shared link without a tap while an outside maglev:// link still waits.
+        AsyncFunction("consumeTrustedShare") { url: String, promise: Promise ->
+            promise.resolve(TrustedShare.consume(url))
+        }
 
         // Cookies the shared WebView jar holds for a URL ("a=1; b=2"), or "" when none.
         // CookieManager.getCookie includes HttpOnly cookies such as cf_clearance.
