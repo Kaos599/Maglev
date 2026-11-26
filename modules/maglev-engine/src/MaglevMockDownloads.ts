@@ -166,7 +166,7 @@ export class MockDownloads {
     const bad = this.checkOptions(options);
     if (bad) return bad;
     const check = parseDownloadUrl(url);
-    if (!check.ok) return fail('INVALID_SOURCE', 'That isn\'t a web link. Use a link that starts with http or https.');
+    if (!check.ok) return fail('INVALID_SOURCE', 'That link doesn\'t start with http or https.');
     const f = probeFailure(check.url);
     if (f) return fail(f.code, f.message, f.httpStatus !== undefined ? { httpStatus: f.httpStatus } : {});
     return {
@@ -182,7 +182,7 @@ export class MockDownloads {
     const bad = this.checkOptions(options);
     if (bad) return bad;
     const check = parseDownloadUrl(url);
-    if (!check.ok) return fail('INVALID_SOURCE', 'That isn\'t a web link. Use a link that starts with http or https.');
+    if (!check.ok) return fail('INVALID_SOURCE', 'That link doesn\'t start with http or https.');
     const folder = options?.folder || this.hooks.folder();
     for (const i of this.items.values()) {
       if (i.url === check.url && i.folder === folder && i.state !== 'finished') {
@@ -294,7 +294,7 @@ export class MockDownloads {
     const bad = this.checkOptions(options);
     if (bad) return bad;
     const check = parseDownloadUrl(url);
-    if (!check.ok) return fail('INVALID_SOURCE', 'That isn\'t a web link. Use a link that starts with http or https.');
+    if (!check.ok) return fail('INVALID_SOURCE', 'That link doesn\'t start with http or https.');
     const i = this.items.get(id);
     if (!i) return fail('NOT_FOUND', "That download isn't in your list");
     if (i.state !== 'needs_link') return fail('INVALID_STATE', "This download doesn't need a new link");

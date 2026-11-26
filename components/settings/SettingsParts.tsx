@@ -5,7 +5,7 @@ import { SETTINGS_INDEX } from '../../utils/settingsIndex';
 import { FocusAnchor, SettingsFocusProvider, rowKey } from './settingsFocus';
 import { useTheme } from '../../context/ThemeContext';
 import { ThemeColors, radius, spacing, type } from '../../constants/theme';
-import { Button, Chip, Screen, Sheet, TextField } from '../ui';
+import { Button, Chip, Screen, SectionHeader, Sheet, TextField } from '../ui';
 
 /** Sub-screen shell: header with back, scrolling body, instant-apply content. */
 export function SettingsPage({ title, children }: { title: string; children: React.ReactNode }) {
@@ -20,7 +20,16 @@ export function SettingsPage({ title, children }: { title: string; children: Rea
   }, [focus]);
   const scrollTo = useCallback((y: number, animated: boolean) => scrollRef.current?.scrollTo({ y, animated }), []);
   // Clear the param so coming back to this page does not scroll again.
-  const onDone = useCallback(() => router.setParams({ focus: undefined } as never), [router]);
+  // A cold start can still be mounting the root navigator when the highlight ends; setParams then throws and closed the
+  // app (phone 2026-11-26, "Attempted to navigate before mounting the Root Layout", stack top setParams). Clearing the
+  // param only stops a second scroll on return, so skipping it once is harmless.
+  const onDone = useCallback(() => {
+    try {
+      router.setParams({ focus: undefined } as never);
+    } catch {
+      // Not mounted yet.
+    }
+  }, [router]);
   return (
     <Screen title={title} onBack={() => router.back()} edges={['top', 'left', 'right', 'bottom']}>
       <ScrollView ref={scrollRef} style={pageFill} keyboardShouldPersistTaps="handled">
@@ -54,6 +63,19 @@ export function Caption({ children, tone }: { children: React.ReactNode; tone?: 
   const s = useMemo(() => makeStyles(colors), [colors]);
   return <Text style={[s.caption, tone === 'warning' && { color: colors.warning }]}>{children}</Text>;
 }
+
+/** SectionHeader, then one or more cards, then an optional caption directly under them. Same spacing as the Settings root. */
+export function Section({ title, caption, children }: { title: string; caption?: string; children: React.ReactNode }) {
+  return (
+    <View style={sectionStyle}>
+      <SectionHeader title={title} />
+      {children}
+      {caption ? <Caption>{caption}</Caption> : null}
+    </View>
+  );
+}
+
+const sectionStyle: StyleProp<ViewStyle> = { gap: spacing.sm };
 
 /** A labelled group of Chips for picking one value. */
 export function ChipGroup<T extends string | number>({

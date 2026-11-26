@@ -49,7 +49,7 @@ if (exists) {
 
 const sugg = read('components/browser/HistorySuggestions.tsx');
 check('component uses filterBookmarks and mergeSuggestions', /filterBookmarks\(/.test(sugg) && /mergeSuggestions\(/.test(sugg));
-check('bookmark rows use the bookmark PixelIcon', /<PixelIcon name=\{[^}]*'bookmark'/.test(sugg));
+check('bookmark rows use the bookmark PixelIcon', /icon: r\.kind === 'bookmark' \? 'bookmark'/.test(sugg) && /<PixelIcon name=\{r\.icon\}/.test(sugg));
 check('history is still hidden while private', /prefs\.suggestFromHistory && !prefs\.privateBrowsing/.test(sugg));
 check('history is only queried when history is on', /historyOn/.test(sugg) && /suggestHistory\(query, 6\)/.test(sugg));
 check('bookmark and history rows share one onPick call', (sugg.match(/onPick\(/g) || []).length === 1);

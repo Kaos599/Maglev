@@ -3,6 +3,9 @@ import { normalizeUrl, type Bookmark } from '../../utils/browser/bookmarks';
 /** Most bookmarks shown above the history results. */
 export const MAX_BOOKMARK_SUGGESTIONS = 3;
 
+/** Most bookmarks shown on the surface before anything is typed. */
+export const MAX_IDLE_BOOKMARKS = 4;
+
 export interface Suggestion {
   kind: 'bookmark' | 'history';
   url: string;
@@ -13,11 +16,15 @@ export interface Suggestion {
 type HistoryLike = { url: string; title: string; host: string };
 
 /**
- * Up to 3 matching bookmarks first, then the history results, minus any address already shown as a bookmark
+ * Up to 3 (or `maxBookmarks`) matching bookmarks first, then the history results, minus any address already shown as a bookmark
  * (compared by the bookmark store's normalised address).
  */
-export function mergeSuggestions(bookmarks: readonly Bookmark[], history: readonly HistoryLike[]): Suggestion[] {
-  const top = bookmarks.slice(0, MAX_BOOKMARK_SUGGESTIONS);
+export function mergeSuggestions(
+  bookmarks: readonly Bookmark[],
+  history: readonly HistoryLike[],
+  maxBookmarks: number = MAX_BOOKMARK_SUGGESTIONS,
+): Suggestion[] {
+  const top = bookmarks.slice(0, maxBookmarks);
   const seen = new Set(top.map((b) => normalizeUrl(b.url)));
   const rows: Suggestion[] = top.map((b) => ({ kind: 'bookmark', url: b.url, title: b.title, host: b.host }));
   for (const h of history) {

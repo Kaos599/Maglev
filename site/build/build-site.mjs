@@ -55,6 +55,8 @@ const human = (iso) => new Date(`${iso}T12:00:00Z`).toLocaleDateString('en-GB', 
 const UPDATED_HUMAN = human(UPDATED);
 
 const C = JSON.parse(fs.readFileSync(path.join(HERE, 'content.json'), 'utf8'));
+/** Intent landing pages (YouTube, Instagram Reels, X). */
+const G = JSON.parse(fs.readFileSync(path.join(HERE, 'guides.json'), 'utf8'));
 
 // ---------------------------------------------------------------- helpers
 
@@ -87,10 +89,10 @@ const icon = (name, cls = 'px') => {
   return `<svg class="${cls}" viewBox="0 0 24 24" width="24" height="24" aria-hidden="true" focusable="false"><path fill="currentColor" d="${ICONS[name]}"/></svg>`;
 };
 
-const TITLE = 'Maglev: free Android downloader for videos, links and torrents';
+const TITLE = 'Maglev: free video, link and torrent downloader for Android';
 const DESC =
-  'Maglev is a free, open source Android downloader with no ads. Save videos from web pages, HLS streams, ordinary links and torrents. Android 7 and up.';
-const OG_ALT = 'The Maglev pixel train logo next to the words: Videos, links and torrents. One small app.';
+  'Free Android app that downloads YouTube, Instagram and X videos, files, magnets and torrents from a link. Open source, no ads, no account. Android 7+.';
+const OG_ALT = 'The Maglev pixel train logo next to the words: Download almost any link. One small app.';
 const ldBlock = (o) => `<script type="application/ld+json">\n${JSON.stringify(o, null, 2).replace(/</g, '\\u003c')}\n</script>`;
 // Same @id as the Person on harshdayal.dev, so the two graphs join.
 const PERSON = { '@type': 'Person', '@id': 'https://harshdayal.dev/#person', name: MAKER.name, url: MAKER.url, sameAs: [MAKER.url, MAKER.github] };
@@ -299,7 +301,7 @@ function indexLd() {
         '@id': `${SITE_URL}#app`,
         name: 'Maglev',
         description:
-          'A small, fast Android downloader for videos on web pages, HLS and DASH streams, ordinary links and torrents. Free, open source and without ads.',
+          'A small Android downloader for almost any link: YouTube, Instagram and X videos, files, magnets and torrents. Free, open source, no ads, no account.',
         url: SITE_URL,
         applicationCategory: 'UtilitiesApplication',
         applicationSubCategory: 'Download manager',
@@ -388,8 +390,8 @@ ${header(A, HOME, { compare: !!cmp })}
   <div class="wrap hero-in">
     <div class="hero-copy">
       <p class="wordmark"><img src="${A}assets/wordmark.svg" width="280" height="56" alt="Maglev"></p>
-      <h1 id="hero-title">Download videos, links and torrents on Android</h1>
-      <p class="lede">A free, open source Android downloader. Save videos from web pages through an ad-free browser, download any link with pause and resume, and run torrents, in one small app with no ads.</p>
+      <h1 id="hero-title">Download videos, files and torrents on Android</h1>
+      <p class="lede">Paste or share a YouTube, Instagram or X video link, a file, a magnet or a torrent. Maglev downloads it, with pause, resume and a quality picker for videos. Free, open source, no ads.</p>
       <div class="ctas">
         ${dlButton()}
         <a class="btn" href="${OBTAINIUM}" rel="noopener">${icon('retry')}<span>Get updates with Obtainium</span></a>
@@ -410,11 +412,12 @@ ${header(A, HOME, { compare: !!cmp })}
 
 <section id="features" class="features" aria-labelledby="features-title">
   <div class="wrap">
-    <h2 id="features-title" class="h2">An Android downloader for videos, links and torrents</h2>
-    <p class="section-lede">A video saver, a download manager and a torrent client in one app, so you don't need three. Here is what each part does.</p>
+    <h2 id="features-title" class="h2">What Maglev can download</h2>
+    <p class="section-lede">One app for video pages, files, magnets and torrents. Here is what each part does.</p>
     <div class="ft-list">
 ${C.features.map(featureRow).join('\n')}
     </div>
+    <p class="switch-links">Video guides: ${G.guides.map((g) => `<a href="${BASE_PATH}/${esc(g.slug)}">${esc(g.h1)}</a>`).join(' · ')}</p>
   </div>
 </section>
 
@@ -732,6 +735,120 @@ ${footer(HOME)}
 `;
 }
 
+// ---------------------------------------------------------------- video-site guide pages
+
+/** One intent landing page (YouTube, Instagram Reels, X). Content comes from guides.json. */
+function guidePage(g) {
+  const url = abs(g.slug);
+  const faq = g.faq;
+  const others = G.guides.filter((x) => x.slug !== g.slug);
+  const app = indexLd()['@graph'].find((n) => n['@id'] === `${SITE_URL}#app`);
+  const appNode = { ...app };
+  delete appNode.screenshot;
+  const ld = {
+    '@context': 'https://schema.org',
+    '@graph': [
+      {
+        '@type': 'WebPage',
+        '@id': `${url}#webpage`,
+        url,
+        name: g.title,
+        description: g.description,
+        isPartOf: { '@id': `${SITE_URL}#website` },
+        about: { '@id': `${SITE_URL}#app` },
+        datePublished: UPDATED,
+        dateModified: UPDATED,
+        author: PERSON_REF,
+        breadcrumb: { '@id': `${url}#breadcrumb` },
+        inLanguage: 'en',
+      },
+      {
+        '@type': 'BreadcrumbList',
+        '@id': `${url}#breadcrumb`,
+        itemListElement: [
+          { '@type': 'ListItem', position: 1, name: 'Maglev', item: SITE_URL },
+          { '@type': 'ListItem', position: 2, name: g.h1, item: url },
+        ],
+      },
+      appNode,
+      PERSON,
+    ],
+  };
+  const howTo = {
+    '@context': 'https://schema.org',
+    '@type': 'HowTo',
+    name: g.stepsTitle,
+    description: plain(g.answer),
+    step: g.steps.map(([name, text], i) => ({ '@type': 'HowToStep', position: i + 1, name, text: plain(text) })),
+  };
+  return `${head({ title: g.title, desc: g.description, base: A, canonical: url })}
+${ogTags({ title: g.title, desc: g.description, url })}
+${ldBlock(ld)}
+${ldBlock(howTo)}
+${ldBlock(faqLd(faq))}
+</head>
+<body>
+${header(A, HOME)}
+<script src="${A}assets/site.js" defer></script>
+<script src="${A}assets/download.js" defer></script>
+<main id="main">
+<section class="page-head" aria-labelledby="page-title">
+  <div class="grid-bg" aria-hidden="true"></div>
+  <div class="wrap">
+    <nav class="crumbs" aria-label="Breadcrumb"><ol><li><a href="${HOME}">Maglev</a></li><li aria-current="page">${esc(g.h1)}</li></ol></nav>
+    <h1 id="page-title">${esc(g.h1)}</h1>
+    <p class="lede">${md(g.answer)}</p>
+    <div class="ctas">${dlButton()}<a class="btn" href="${HOME}#install">How to install</a></div>
+    <p class="meta">Free, GPL-3.0, no ads, no tracking, no account. Android 7 and up. Version ${esc(VERSION)}, updated <time datetime="${UPDATED}">${esc(UPDATED_HUMAN)}</time>.</p>
+  </div>
+</section>
+
+<section class="install" aria-labelledby="steps-title">
+  <div class="wrap">
+    <h2 id="steps-title" class="h2">${esc(g.stepsTitle)}</h2>
+    <ol class="steps">
+${g.steps.map(([name, text], i) => `      <li class="card"><span class="n">${i + 1}</span><h3>${esc(name)}</h3><p>${md(text)}</p></li>`).join('\n')}
+    </ol>
+  </div>
+</section>
+
+<section class="prose-sec" aria-label="More about ${esc(g.short)} downloads">
+  <div class="wrap narrow prose">
+    <h2 class="h2">${esc(g.extra.heading)}</h2>
+${g.extra.body.map((b) => `    <p>${md(b)}</p>`).join('\n')}
+    <h2 class="h2">What doesn't work</h2>
+    <ul class="specs">
+${g.limits.map((x) => `      <li>${md(x)}</li>`).join('\n')}
+    </ul>
+    <p>${md(G.respect)}</p>
+    <p>Maglev also downloads files, magnet links and torrents. See the <a href="${COMPARE}">comparison with other Android download apps</a>.</p>
+  </div>
+</section>
+
+<section id="faq" class="faq" aria-labelledby="faq-title">
+  <div class="wrap narrow">
+    <h2 id="faq-title" class="h2">Questions about ${esc(g.short)} downloads</h2>
+${faqList(faq)}
+  </div>
+</section>
+
+<section class="maker">
+  <div class="wrap narrow">
+    <div class="card cta-card">
+      <h2 class="h3">Try Maglev</h2>
+      <p>Free, open source and without ads. Android 7 and up.</p>
+      <div class="ctas">${dlButton()}<a class="btn" href="${COMPARE}">Compare apps</a></div>
+      <p class="switch-links">Also: ${others.map((x) => `<a href="${BASE_PATH}/${esc(x.slug)}">${esc(x.h1)}</a>`).join(' · ')}</p>
+    </div>
+  </div>
+</section>
+</main>
+${footer(HOME)}
+</body>
+</html>
+`;
+}
+
 // ---------------------------------------------------------------- privacy/index.html
 
 function privacyPage(p, cmp) {
@@ -824,7 +941,11 @@ const sitemap = (cmp) => `<?xml version="1.0" encoding="UTF-8"?>
   <url>
     <loc>${abs(x.slug)}</loc>
     <lastmod>${cmp.checkedOn > UPDATED ? cmp.checkedOn : UPDATED}</lastmod>
-  </url>`).join('') : ''}${C.privacy ? `
+  </url>`).join('') : ''}${G.guides.map((x) => `
+  <url>
+    <loc>${abs(x.slug)}</loc>
+    <lastmod>${UPDATED}</lastmod>
+  </url>`).join('')}${C.privacy ? `
   <url>
     <loc>${abs('privacy')}</loc>
     <lastmod>${C.privacy.updated}</lastmod>
@@ -840,14 +961,27 @@ Sitemap: ${abs('sitemap.xml')}
 
 const llms = (cmp) => `# Maglev
 
-> Maglev is a free, open source Android downloader with no ads. It saves videos from web pages (including on-demand HLS and DASH streams), downloads ordinary links with pause and resume, and runs torrents, in one app. Android 7 and later. Version ${VERSION}.
+> Maglev is a free, open source Android app that downloads almost any link. Paste or share a YouTube, X (Twitter) or Instagram video link, a file, a magnet link or a .torrent file, and Maglev gets it, with a quality picker for videos and pause and resume for everything. It also has a browser that finds videos on a page, search across torrent sources, feeds and subtitles. No ads, no tracking, no account. Android 7 and later. Version ${VERSION}.
 
 Made by ${MAKER.name} (${MAKER.url}, GitHub: ${MAKER.github}). License: GPL-3.0.
+
+## Video sites
+
+- Maglev downloads YouTube videos and Shorts, Instagram Reels and videos, and X (Twitter) videos on Android.
+- Share or paste a YouTube, X or Instagram link. Reddit, Vimeo and TikTok links are recognised too. Maglev reads the video with yt-dlp on the phone and shows up to 6 qualities. You pick one, and it downloads with pause and resume into Download/Maglev.
+- In Maglev's browser, long-press a video on YouTube, X or Instagram and choose Download.
+- yt-dlp updates itself once a day on Wi-Fi. In Settings > Updates > Video sites you can turn this off or allow mobile data.
+- A video behind a sign-in (private accounts, many Instagram posts, age-gated videos) may not download. Maglev says "needs sign-in". Public Reels and posts are the ones that can work.
+- Maglev never gets around DRM. Live streams and protected video can't be saved.
+- Maglev is free, open source (GPL-3.0), has no ads, no tracking and no account, and needs Android 7 or later. The arm64 APK is about 43 MB because Python and yt-dlp are bundled.
+- Install from GitHub releases or with Obtainium. Maglev is not on Google Play.
+- Download only what you have the right to.
+${G.guides.map((x) => `- [${x.h1}](${abs(x.slug)}): ${plain(x.answer)}`).join('\n')}
 
 ## Key facts
 
 ${C.features.map((x) => `- ${x.title}: ${plain(x.text)} ${x.specs.map(plain).join('. ')}.`).join('\n')}
-- Maglev never gets around DRM. Protected video, live streams and YouTube-style players can't be saved.
+- Maglev never gets around DRM. Protected video and live streams can't be saved.
 - Release signing certificate SHA-256: ${FINGERPRINT}
 
 ## How it works
@@ -857,6 +991,7 @@ ${C.howItWorks.map((h) => `- ${h.title}: ${plain(h.text)}`).join('\n')}
 ## Links
 
 - [Website](${SITE_URL})${cmp ? `\n- [${cmp.page.title} (comparison with ${cmp.apps.filter((a) => a.id !== 'maglev').map((a) => a.name).join(', ')})](${abs('compare')})` : ''}
+${G.guides.map((x) => `- [${x.h1}](${abs(x.slug)})`).join('\n')}
 - [Download (latest release)](${RELEASES})
 - [Source code](${REPO})
 - [Report a bug](${ISSUES})
@@ -892,6 +1027,7 @@ const files = {
 };
 if (cmp) files['compare/index.html'] = comparePage(cmp);
 if (cmp) for (const alt of cmp.alternatives || []) files[`${alt.slug}/index.html`] = alternativePage(cmp, alt);
+for (const g of G.guides) files[`${g.slug}/index.html`] = guidePage(g);
 if (C.privacy) files['privacy/index.html'] = privacyPage(C.privacy, cmp);
 else fs.rmSync(path.join(SITE, 'compare'), { recursive: true, force: true });
 for (const [name, body] of Object.entries(files)) {

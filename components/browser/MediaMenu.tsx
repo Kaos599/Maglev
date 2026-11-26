@@ -18,12 +18,14 @@ export interface MediaMenuProps {
   onShare: (url: string) => void;
   /** Opens the Files tray for this page. */
   onShowFound: () => void;
+  /** Video sites (contract 48): opens the add sheet for the page, which reads the video. */
+  onDownloadPage?: (pageUrl: string) => void;
   /** Opens the link menu for the link around the media. The row is left out when not given. */
   onLinkOptions?: (linkHref: string) => void;
 }
 
 /** The long-press menu for an image or a video. Every action closes the menu first, like LinkMenu. */
-export function MediaMenu({ hit, onClose, onSave, onStream, onOpenNewTab, onCopy, onShare, onShowFound, onLinkOptions }: MediaMenuProps) {
+export function MediaMenu({ hit, onClose, onSave, onStream, onOpenNewTab, onCopy, onShare, onShowFound, onDownloadPage, onLinkOptions }: MediaMenuProps) {
   const last = useRef<MediaHit | null>(hit);
   if (hit) last.current = hit;
   const h = hit ?? last.current;
@@ -54,6 +56,9 @@ export function MediaMenu({ hit, onClose, onSave, onStream, onOpenNewTab, onCopy
       case 'share':
         if (url) onShare(url);
         break;
+      case 'download-page-video':
+        if (url) onDownloadPage?.(url);
+        break;
       case 'show-found':
         onShowFound();
         break;
@@ -63,7 +68,7 @@ export function MediaMenu({ hit, onClose, onSave, onStream, onOpenNewTab, onCopy
     }
   };
 
-  const items = menu.items.filter((i) => i.id !== 'link-options' || onLinkOptions);
+  const items = menu.items.filter((i) => (i.id !== 'link-options' || onLinkOptions) && (i.id !== 'download-page-video' || onDownloadPage));
   return (
     <FloatingSheet visible={hit != null} onClose={onClose} title={middleTruncate(h.url ?? h.poster ?? (h.alt || (h.kind === 'video' ? 'Video' : 'Image')))}>
       {menu.note ? <NoteRow text={menu.note} /> : null}

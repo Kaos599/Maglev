@@ -35,14 +35,44 @@ object PopupRules {
     const val ASK = "ask"
 
     /**
-     * [policy] is "ask", "block" or "allow". [allowed] is true when the page host is in popupAllowHosts.
-     * [kind] is "window", "redirect" or "app". An untapped app request is always blocked.
+     * Mirrors decideNewWindow in utils/browser/popups.ts (contract 0.34 §2 rule 2): block list > allow list > policy.
+     * [policy] is "ask", "block" or "allow". [allowed] is true when the page host is in popupAllowHosts, [blocked] when
+     * it is in popupBlockHosts. [kind] is "window", "redirect" or "app". An untapped app request is always blocked, and
+     * so is any app request from a blocked site. OPEN means "go ahead" (a new tab for a window, the load for a redirect,
+     * the app for an app). [gesture] must already be the trusted tap (see trusted()).
      */
-    fun decide(policy: String, allowed: Boolean, gesture: Boolean, kind: String): String {
+    fun decide(policy: String, allowed: Boolean, blocked: Boolean, gesture: Boolean, kind: String): String {
         if (kind == "app" && !gesture) return BLOCK
-        if (kind == "window" && gesture) return OPEN
+        if (kind == "app" && blocked) return BLOCK
+        // A window or redirect the user really tapped is not a pop-up: it goes ahead whatever the lists say.
+        if (kind != "app" && gesture) return OPEN
+        if (blocked) return BLOCK
         if (allowed || policy == "allow") return OPEN
         return if (policy == "block") BLOCK else ASK
+    }
+
+    /**
+     * The form a site is kept in (mirrors normalizeSiteHost): trimmed, lower case, no dots at the ends and no single
+     * leading "www." or "m.". Returns "" when nothing is left.
+     */
+    fun normalizeSite(input: String?): String {
+        var h = input?.trim()?.lowercase()?.trim('.') ?: return ""
+        h = when {
+            h.startsWith("www.") -> h.substring(4)
+            h.startsWith("m.") -> h.substring(2)
+            else -> h
+        }
+        return h.trimStart('.')
+    }
+
+    /** True when [host] is one of [list] or under one, on a label boundary (mirrors hostAllowed). Both sides normalised. */
+    fun hostListed(host: String?, list: List<String>): Boolean {
+        val h = normalizeSite(host)
+        if (h.isEmpty()) return false
+        return list.any { entry ->
+            val n = normalizeSite(entry)
+            n.isNotEmpty() && (h == n || h.endsWith(".$n"))
+        }
     }
 
     /** How long a tap vouches for a link, in ms. Mirrors TAP_MS in utils/browser/popups.ts. */

@@ -163,7 +163,7 @@ interface EngineContextType {
   /** Limit for one link download in bytes per second, 0 = no limit. */
   setDownloadLimits: (id: string, downLimitBps: number) => Promise<boolean>;
   removeDownload: (id: string, deleteFiles: boolean) => Promise<boolean>;
-  refreshDownloadUrl: (id: string, url: string) => Promise<EngineResult>;
+  refreshDownloadUrl: (id: string, url: string, options?: DownloadOptions) => Promise<EngineResult>;
 }
 
 type ActionKeys =
@@ -1017,7 +1017,7 @@ export const EngineProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     },
     [downloadCall, removeTransfers]
   );
-  const refreshDownloadUrl = useCallback((id: string, url: string) => maglevEngine.refreshDownloadUrl(id, url, {}), []);
+  const refreshDownloadUrl = useCallback((id: string, url: string, options: DownloadOptions = {}) => maglevEngine.refreshDownloadUrl(id, url, options), []);
 
   const startHttpStream = useCallback(async (id: string, fileIndex: number) => {
     const res = await maglevEngine.streamUrl(id, fileIndex);

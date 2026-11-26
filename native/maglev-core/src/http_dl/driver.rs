@@ -44,7 +44,7 @@ use super::rules::{
 use super::sidecar::{final_path, part_path, safe_url, sidecar_path, Sidecar};
 use super::redirect::{send_following, CookiePicker};
 use super::stream::fetch::{host_lower, pick_cookie};
-use super::stream::{StreamError, StreamRec, StreamSpec};
+use super::stream::{PartsSpec, StreamError, StreamKind, StreamRec, StreamSpec};
 use crate::error::{EngineError, ErrorCode};
 use crate::meta::write_atomic;
 use crate::timing::{gained, Timing};
@@ -141,6 +141,8 @@ pub struct DownloadOptions {
     pub page_url: Option<String>,
     /// Save an HLS or DASH stream (contract 24.8): which variant and audio track.
     pub stream: Option<StreamSpec>,
+    /// Save a video and an audio file from a video site and join them (contract section 48.2). Not with `stream`.
+    pub parts: Option<PartsSpec>,
 }
 
 fn parse_options(json: &str) -> Result<DownloadOptions, EngineError> {
@@ -275,6 +277,8 @@ struct Live {
     /// Stream downloads only: the page's `Origin` and the per-host cookies (memory only, like `cookie`).
     origin: Option<String>,
     host_cookies: Vec<(String, String)>,
+    /// `options.parts` of a video-site download (the audio link is signed, so it is memory only).
+    two_files: Option<PartsSpec>,
     task: Option<JoinHandle<()>>,
     attempts: u32,
     denied: u32,
@@ -370,10 +374,10 @@ fn parse_http_url(raw: &str) -> Result<(reqwest::Url, Option<(String, String)>),
     if effects.contains(&Effect::RejectInvalidSource) {
         return Err(EngineError::new(
             ErrorCode::InvalidSource,
-            "That isn't a web link. Use a link that starts with http or https.",
+            "That isn't a link. Use a link that starts with http or https.",
         ));
     }
-    let u = parsed.map_err(|_| EngineError::new(ErrorCode::InvalidSource, "That isn't a web link."))?;
+    let u = parsed.map_err(|_| EngineError::new(ErrorCode::InvalidSource, "That link doesn't look right."))?;
     Ok(split_credentials(u))
 }
 
@@ -1541,8 +1545,17 @@ impl Downloads {
 
     /// Starts a download. Returns at once; the probe runs on the runtime.
     pub fn add(self: &Arc<Self>, url: &str, options_json: &str) -> Result<AddedDownload, EngineError> {
-        let opts = parse_options(options_json)?;
+        let mut opts = parse_options(options_json)?;
         let (clean, auth) = parse_http_url(url)?;
+        // Video and audio from a video site run as a stream of two plain files (contract section 48.2).
+        let two_files = opts.parts.take();
+        if let Some(p) = two_files.as_ref() {
+            if opts.stream.is_some() {
+                return Err(EngineError::new(ErrorCode::InvalidArgument, "Those download options aren't valid"));
+            }
+            parse_http_url(&p.audio.url)?;
+            opts.stream = Some(StreamSpec { kind: StreamKind::Parts, variant_id: "parts".to_string(), audio_id: None });
+        }
         let folder = opts
             .folder
             .clone()
@@ -1618,6 +1631,7 @@ impl Downloads {
                     user_agent: h.user_agent,
                     origin: h.origin,
                     host_cookies,
+                    two_files,
                     ..Live::default()
                 },
             );
@@ -3154,6 +3168,20 @@ mod tests {
         assert_eq!(o.down_limit_bps, Some(1000));
         assert!(parse_options("").unwrap().name.is_none());
         assert!(parse_options("null").is_ok());
+    }
+
+    #[test]
+    fn options_accept_video_site_parts() {
+        let o = parse_options(
+            r#"{"parts":{"video":{"url":"https://v.test/v","size":1000,"headers":{"User-Agent":"UA"}},"audio":{"url":"https://a.test/a"}},
+                "headers":{"User-Agent":"UA"}}"#,
+        )
+        .unwrap();
+        let p = o.parts.unwrap();
+        assert_eq!(p.video.size, Some(1000));
+        assert_eq!(p.audio.url, "https://a.test/a");
+        assert!(parse_options("{}").unwrap().parts.is_none());
+        assert_eq!(parse_options(r#"{"parts":{"video":{"url":"https://v.test/v"}}}"#).unwrap_err().code, ErrorCode::InvalidArgument);
     }
 
     #[test]

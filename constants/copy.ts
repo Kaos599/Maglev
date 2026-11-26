@@ -223,7 +223,7 @@ export const offSourcesSentence = (k: number): string => (k === 1 ? '1 more sour
 
 export const empty = {
   transfers: {
-    none: { title: 'Nothing downloading', body: 'Add a link or a .torrent file, or find something.' },
+    none: { title: 'Nothing downloading', body: 'Paste a link to a video, file, magnet or torrent, or find something.' },
     /** Under the finder tiles: the Share route, which the screen's buttons don't cover. */
     shareHint: 'In another app, tap "Share", then Maglev.',
     noMatch: { title: 'No matching transfers', body: 'Try a different search.' },
@@ -247,7 +247,7 @@ export const empty = {
     }),
   },
   feeds: {
-    none: { title: 'No feeds yet', body: 'Follow an RSS or Atom feed to see new torrents here.' },
+    none: { title: 'No feeds yet', body: 'Follow a feed to see new releases here.' },
     nothingNew: { title: 'Nothing new yet', body: 'Pull down to check for new releases.' },
   },
   addTorrent: {
@@ -297,6 +297,23 @@ export const empty = {
 } as const;
 
 /** Labels for browser history (NATIVE_CONTRACT 24.9): the screen, the suggestions, the clear sheet and its settings. */
+/** The full-screen address surface while the address bar is being edited (0.35 browser contract section 3 rule 9). */
+export const addressCopy = {
+  back: 'Back',
+  clear: 'Clear',
+  thisPage: 'This page',
+  copyLink: 'Copy link',
+  share: 'Share',
+  edit: 'Edit address',
+  bookmarks: 'Bookmarks',
+  recent: 'Recent',
+  surfaceLabel: 'Address suggestions',
+  searchFor: (engine: string, text: string) => `Search ${engine} for \u201c${text}\u201d`,
+  goTo: (address: string) => `Go to ${address}`,
+  addMagnet: 'Add this magnet link',
+  fill: (title: string) => `Put ${title} in the address bar`,
+} as const;
+
 export const historyCopy = {
   title: 'History',
   menuRow: 'History',
@@ -405,8 +422,6 @@ export const browserTabs = {
     allow: 'Allow',
     allowedSites: 'Sites allowed to open pop-ups',
     remove: 'Remove',
-    swipeTabs: 'Swipe the address bar to switch tabs',
-    swipeTabsSubtitle: 'Swipe left or right on the address bar to move between tabs, or down to see all tabs.',
     darkPages: 'Dark pages',
     darkPagesSubtitle: 'Darken pages that only have a light look, when Maglev is dark.',
   },
@@ -467,8 +482,8 @@ export const streamSheet = {
 // ---------------------------------------------------------------------------------------------
 export const onboarding = {
   welcome: {
-    title: 'Maglev',
-    body: 'Torrents, web links and videos in one place.',
+    title: 'Download almost any link',
+    body: 'Share it to Maglev, or paste it here. Torrents work too.',
     detail: 'Search many sources at once, find videos in the browser, and follow feeds for new releases.',
   },
   notifications: {
@@ -493,7 +508,7 @@ export const addMenu = {
   title: 'Add',
   magnet: 'Magnet link',
   copyFirst: 'Copy a link first',
-  typeHint: 'Enter a web link or magnet link',
+  typeHint: 'Enter any link, including a magnet link',
   fileHint: 'Pick one from your phone',
   searchHint: 'Look in your sources',
   browseHint: 'Find a file or video on a web page',
@@ -671,6 +686,8 @@ export const quickShareCopy = {
   close: 'Close',
   webPage: 'This is a web page, not a file',
   noLink: 'No link in what you shared',
+  copyDetails: 'Copy details',
+  detailsCopied: 'Copied. Paste it into your bug report.',
   alreadyIn: 'Already in Maglev',
   added: 'Added to Maglev',
   addedServiceLater: 'Added to Maglev. It starts when you open the app.',
@@ -899,3 +916,45 @@ export const networkAdvancedCopy = {
   rules: (count: number) => (count === 1 ? '1 rule' : `${toName(count)} rules`),
 } as const;
 // endregion network advanced
+
+/** The browser's ⋮ page menu (0.35): icon-row labels and the Site settings row. */
+export const pageMenuCopy = {
+  back: 'Back',
+  forward: 'Forward',
+  reload: 'Reload',
+  stop: 'Stop',
+  bookmark: 'Bookmark',
+  share: 'Share',
+  desktopSite: 'Desktop site',
+  siteSettings: 'Site settings',
+  browserSettings: 'Browser settings',
+  adsBlocked: 'Ads blocked',
+  adsAllowed: 'Ads allowed',
+  popupsSummary: (mode: 'Ask' | 'Allow' | 'Block') => `Pop-ups: ${mode}`,
+  blockedHere: (n: number | string) => `${n} blocked here`,
+} as const;
+
+/** The Site settings sheet (0.35): opens from the ⋮ menu and from the padlock in the address bar. */
+export const siteSheetCopy = {
+  title: 'Site settings',
+  secure: 'Secure connection',
+  notSecure: 'Not secure',
+  adsSection: 'Ads',
+  adsToggle: 'Block ads on this site',
+  popupsSection: 'Pop-ups and redirects',
+  blockedOnPage: (n: number | string) => `${n} blocked on this page`,
+  ask: 'Ask',
+  allow: 'Allow',
+  block: 'Block',
+  askHint: 'A card asks before a pop-up opens.',
+  allowHint: 'Pop-ups from this site open in a new tab.',
+  blockHint: 'Pop-ups from this site never open.',
+  clear: 'Clear data for this site',
+  padlockLabel: 'Site settings',
+} as const;
+
+/** Detail screens: when a download was added and when it finished. Unknown times hide their row. */
+export const timeRowsCopy = {
+  started: 'Started',
+  finished: 'Finished',
+} as const;

@@ -17,7 +17,7 @@ const { execFileSync } = require('child_process');
 const root = path.resolve(__dirname, '..');
 const NOTES_DIR = path.join(root, 'release-notes');
 const SECTIONS = ["What's new", "What's changed", "What's fixed"];
-const TAGLINE = 'Download anything on Android: videos from web pages, ordinary links and torrents.';
+const TAGLINE = 'Download almost any link on Android: video pages, files and torrents.';
 
 const appVersion = () => JSON.parse(fs.readFileSync(path.join(root, 'app.json'), 'utf8')).expo.version;
 const notesPath = (version) => path.join(NOTES_DIR, `${version}.md`);

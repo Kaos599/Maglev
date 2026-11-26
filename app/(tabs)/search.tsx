@@ -24,7 +24,7 @@ import { admit, oneTapDecision, pendingNeedOf } from '../../utils/admission';
 import { formatBytes } from '../../constants/format';
 import { riskySources } from '../../utils/search/safety';
 import { addRecentSearch, clearRecentSearches, getSearchPrefs, removeRecentSearch, useSearchPrefs } from '../../utils/prefs/search';
-import { availableCategories, directAddRoute, eligibleProviders, mergeInto, rerunProvider, resolveResult, searchAll } from '../../utils/search/aggregate';
+import { PROVIDERS, availableCategories, directAddRoute, eligibleProviders, mergeInto, rerunProvider, resolveResult, searchAll } from '../../utils/search/aggregate';
 import { CloudflareSolverSheet } from '../../components/search/CloudflareSolverSheet';
 import { nextNeedsCheck, resultsSummary, shouldShowFixHint, sourcesLine, tallySources, unansweredSources } from '../../utils/search/answered';
 import { formatAgeLong } from '../../utils/search/age';
@@ -340,6 +340,22 @@ export default function SearchScreen() {
     return sessionAdded.has(h) || inList.has(h);
   }, [sessionAdded, inList]);
 
+  // Magnets fetched from a detail page, by info hash, so Share, Copy and Add never fetch the same result twice.
+  const resolvedMagnets = useRef(new Map<string, string>());
+  const previewRef = useRef<MergedResult | null>(null);
+  previewRef.current = preview;
+  const getShareLink = useCallback(async (signal: AbortSignal): Promise<string> => {
+    const r = previewRef.current;
+    if (!r) throw new Error('No result');
+    if (r.magnet) return r.magnet;
+    if (r.directUrl) return r.directUrl;
+    const hit = resolvedMagnets.current.get(r.infoHash);
+    if (hit) return hit;
+    const ready = await resolveResult(r, signal);
+    resolvedMagnets.current.set(r.infoHash, ready.magnet);
+    return ready.magnet;
+  }, []);
+
   const handleAdd = useCallback(
     async (r: MergedResult, skipMobileAsk = false) => {
       const direct = directAddRoute(r);
@@ -361,7 +377,9 @@ export default function SearchScreen() {
       const timer = setTimeout(() => wait.abort(), 15000);
       try {
         // Some sources only show the magnet on a detail page: read it now.
-        const ready = await resolveResult(r, wait.signal);
+        const cached = r.magnet ? undefined : resolvedMagnets.current.get(r.infoHash);
+        const ready = cached ? { ...r, magnet: cached } : await resolveResult(r, wait.signal);
+        if (!r.magnet && !cached && ready.magnet) resolvedMagnets.current.set(r.infoHash, ready.magnet);
         // Stats (NATIVE_CONTRACT 34.2): remember which source this came from for when it finishes.
         noteOrigin(ready.magnet, { source: r.sources?.[0] ?? r.providerId, category: (r.category ?? category) === 'all' ? null : (r.category ?? category) });
         // SM-35: the metadata size is not known before the add, so the search result's size decides.
@@ -969,6 +987,12 @@ export default function SearchScreen() {
             : null
         }
         onClose={() => setPreview(null)}
+        linkKind={preview ? (preview.directUrl && !preview.magnet ? 'file' : preview.magnet || PROVIDERS.find((p) => p.id === preview.providerId)?.resolveMagnet ? 'magnet' : null) : null}
+        getLink={getShareLink}
+        onCopied={(kind) => {
+          setPreview(null);
+          show({ tone: 'success', title: kind === 'file' ? 'Link copied' : 'Magnet link copied' });
+        }}
         onAdd={() => {
           const r = preview;
           setPreview(null);

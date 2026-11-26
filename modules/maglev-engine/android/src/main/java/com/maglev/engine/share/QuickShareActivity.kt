@@ -1,12 +1,16 @@
 package com.maglev.engine.share
 
 import android.app.Activity
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.util.Log
 import android.view.View
 import android.widget.Toast
 import androidx.core.view.WindowCompat
@@ -39,6 +43,7 @@ class QuickShareActivity : Activity() {
     @Volatile private var adding = false
     @Volatile private var addError = false
     @Volatile private var displayName: String? = null
+    private var shape: String = ""
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -50,11 +55,23 @@ class QuickShareActivity : Activity() {
             openMaglev(null)
             return
         }
-        val (text, mime) = extract(original)
-        cls = ShareClassify.classify(text, mime)
+        val (texts, mime) = candidates(original)
+        cls = ShareClassify.classifyFirst(texts, mime)
+        if (cls.kind == ShareKind.NONE) {
+            shape = handOffShape(original)
+            Log.i(TAG, "No link in a hand-off:\n$shape")
+        }
         if (original.action == Intent.ACTION_VIEW) cls = ShareClassify.withHandOffName(cls, handOffName(original))
+        // Video sites (contract 48, prototype): a shared YouTube, X or Instagram page goes straight to the add sheet, which
+        // reads the video and lists qualities. Same host list as utils/videoSites.ts VIDEO_SITE_HOSTS.
+        if (cls.kind == ShareKind.WEB_PAGE && isVideoSite(host(cls.source))) {
+            openMaglev(Uri.parse("maglev://add-download?url=" + Uri.encode(cls.source ?: "")))
+            return
+        }
         val addable = cls.kind == ShareKind.MAGNET || cls.kind == ShareKind.TORRENT_FILE || cls.kind == ShareKind.FILE_LINK
-        if (addable && QuickSharePrefs.addWithoutAsking(applicationContext)) {
+        // Contract 0.34 §6 rule 4: a web page can start a BROWSABLE VIEW, so that one always shows the card.
+        val fromBrowser = original.action == Intent.ACTION_VIEW && original.hasCategory(Intent.CATEGORY_BROWSABLE)
+        if (addable && !fromBrowser && QuickSharePrefs.addWithoutAsking(applicationContext)) {
             setContentView(View(this))
             addWithoutCard()
             return
@@ -73,18 +90,52 @@ class QuickShareActivity : Activity() {
 
     // region intent
 
+    /**
+     * Every place a hand-off can carry the link, in order (issue #162). Text extras are read as CharSequence: a browser
+     * that sends styled text (a SpannableString) gets null from getStringExtra, and the link was lost. A shared file
+     * no longer hides the URL text next to it: [ShareClassify.classifyFirst] keeps the first candidate with a link.
+     */
     @Suppress("DEPRECATION")
-    private fun extract(i: Intent): Pair<String?, String?> {
-        val stream: Uri? = if (i.action == Intent.ACTION_SEND) {
-            if (Build.VERSION.SDK_INT >= 33) i.getParcelableExtra(Intent.EXTRA_STREAM, Uri::class.java) else i.getParcelableExtra<Uri>(Intent.EXTRA_STREAM)
-        } else null
-        return when (i.action) {
-            Intent.ACTION_SEND -> (stream?.toString() ?: i.getStringExtra(Intent.EXTRA_TEXT)) to i.type
-            Intent.ACTION_VIEW -> i.dataString to i.type
+    private fun candidates(i: Intent): Pair<List<String?>, String?> {
+        val out = ArrayList<String?>()
+        fun text(key: String) = try { i.getCharSequenceExtra(key)?.toString() } catch (e: Exception) { null }
+        fun uri(key: String) = try {
+            if (Build.VERSION.SDK_INT >= 33) i.getParcelableExtra(key, Uri::class.java)?.toString() else i.getParcelableExtra<Uri>(key)?.toString()
+        } catch (e: Exception) { null }
+        fun plain(key: String) = try { i.extras?.get(key)?.toString() } catch (e: Exception) { null }
+        when (i.action) {
+            Intent.ACTION_SEND -> { out += uri(Intent.EXTRA_STREAM); out += text(Intent.EXTRA_TEXT) }
+            Intent.ACTION_VIEW -> out += i.dataString
             // Text-selection menu: the selected text, read only. We never return replacement text, so the selection stays as it was.
-            Intent.ACTION_PROCESS_TEXT -> i.getCharSequenceExtra(Intent.EXTRA_PROCESS_TEXT)?.toString() to null
-            else -> null to null
+            Intent.ACTION_PROCESS_TEXT -> return listOf(text(Intent.EXTRA_PROCESS_TEXT)) to null
+            else -> return emptyList<String?>() to null
         }
+        val clip = i.clipData
+        if (clip != null) for (n in 0 until clip.itemCount) {
+            val item = clip.getItemAt(n)
+            out += item.uri?.toString()
+            out += item.text?.toString()
+        }
+        out += text(Intent.EXTRA_TEXT)
+        out += text(Intent.EXTRA_SUBJECT)
+        out += uri(Intent.EXTRA_ORIGINATING_URI)
+        for (k in LINK_EXTRAS) out += plain(k)
+        return out to i.type
+    }
+
+    /** The hand-off's shape for "Copy details" and the log: names and value types only (ShareClassify.describeHandOff). */
+    @Suppress("DEPRECATION")
+    private fun handOffShape(i: Intent): String {
+        val extras = try {
+            i.extras?.keySet()?.sorted()?.map { k -> k to (i.extras?.get(k)?.javaClass?.simpleName ?: "null") } ?: emptyList()
+        } catch (e: Exception) { emptyList() }
+        val clip = i.clipData
+        val items = if (clip == null) emptyList() else (0 until clip.itemCount).map { n ->
+            val item = clip.getItemAt(n)
+            listOfNotNull(item.uri?.scheme?.let { s -> "uri $s" }, item.text?.let { t -> "text ${t.javaClass.simpleName}" }, item.intent?.let { "intent" })
+                .joinToString(" + ").ifEmpty { "empty" }
+        }
+        return ShareClassify.describeHandOff(i.action, i.type, i.data?.scheme, extras, items)
     }
 
     /** The file name a browser sends with a download hand-off (contract 8.1): ADM's extra first, then the generic one. */
@@ -119,6 +170,11 @@ class QuickShareActivity : Activity() {
 
     // region state
 
+    private fun isVideoSite(host: String?): Boolean {
+        val h = host?.lowercase() ?: return false
+        return VIDEO_SITE_HOSTS.any { h == it || h.endsWith(".$it") }
+    }
+
     private fun host(url: String?): String? = url?.let { Regex("^https?://([^/?#]+)", RegexOption.IGNORE_CASE).find(it)?.groupValues?.get(1)?.substringAfterLast('@') }
 
     private fun folderName(): String {
@@ -148,7 +204,10 @@ class QuickShareActivity : Activity() {
         val open = CardButton(CardAction.OPEN_IN_MAGLEV, QuickShareText.OPEN_IN_MAGLEV)
         val close = CardButton(CardAction.CLOSE, QuickShareText.CLOSE)
         return when (cls.kind) {
-            ShareKind.NONE -> CardState(Glyph.WARNING, QuickShareText.NO_LINK, null, null, null, close, null)
+            ShareKind.NONE -> CardState(
+                Glyph.WARNING, QuickShareText.NO_LINK, null, null, null, close,
+                CardButton(CardAction.COPY_DETAILS, QuickShareText.COPY_DETAILS),
+            )
             ShareKind.WEB_PAGE -> CardState(
                 Glyph.PAGE, QuickShareText.WEB_PAGE, host(cls.source), null, null,
                 CardButton(CardAction.FIND_VIDEOS, QuickShareText.FIND_VIDEOS), close,
@@ -226,6 +285,18 @@ class QuickShareActivity : Activity() {
             CardAction.FREE_UP_SPACE -> openMaglev(Uri.parse("maglev://free-space"))
             CardAction.FIND_VIDEOS -> openMaglev(Uri.parse("maglev://browser?url=" + Uri.encode(cls.source ?: "")))
             CardAction.DOWNLOAD, CardAction.DOWNLOAD_ANYWAY -> download()
+            CardAction.COPY_DETAILS -> copyDetails()
+        }
+    }
+
+    /** Copies the hand-off's shape (no values) so a bug report can say how the other app sent it (issue #162). */
+    private fun copyDetails() {
+        try {
+            val cm = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+            cm.setPrimaryClip(ClipData.newPlainText("Maglev share details", shape))
+            Toast.makeText(this, QuickShareText.DETAILS_COPIED, Toast.LENGTH_SHORT).show()
+        } catch (e: Exception) {
+            // Nothing else to do: the card stays.
         }
     }
 
@@ -292,4 +363,13 @@ class QuickShareActivity : Activity() {
     }
 
     // endregion
+
+    private companion object {
+        val VIDEO_SITE_HOSTS = listOf("youtube.com", "youtu.be", "x.com", "twitter.com", "instagram.com", "reddit.com", "vimeo.com", "tiktok.com")
+
+        const val TAG = "MaglevShare"
+
+        /** Extras download managers (1DM, ADM) and some browsers use for the link (issue #162). Read only as text. */
+        val LINK_EXTRAS = listOf("url", "link", "uri", "android.intent.extra.URL", "com.android.browser.application_id_url")
+    }
 }

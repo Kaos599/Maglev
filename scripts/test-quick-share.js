@@ -119,9 +119,9 @@ async function main() {
   const w = web[0] || { data: [], cats: [] };
   const mimes = w.data.map((d) => d['android:mimeType']).filter(Boolean);
   check('http(s) filter has both schemes', w.data.some((d) => d['android:scheme'] === 'http') && w.data.some((d) => d['android:scheme'] === 'https'));
-  check('http(s) filter lists the types', ['application/octet-stream', 'application/zip', 'application/x-7z-compressed', 'application/x-iso9660-image', 'application/x-bittorrent', 'video/*', 'audio/*'].every((t) => mimes.includes(t)), mimes.join(','));
+  check('http(s) filter lists the types', ['application/octet-stream', 'application/zip', 'application/x-7z-compressed', 'application/x-iso9660-image', 'application/x-bittorrent', 'application/pdf', 'application/x-msdownload', 'application/force-download', 'binary/octet-stream', 'application/gzip', 'application/x-gzip', 'application/x-tar', 'application/epub+zip', 'video/*', 'audio/*'].every((t) => mimes.includes(t)), mimes.join(','));
   check('no APK type', !mimes.some((t) => /android\.package-archive/.test(t)));
-  check('http(s) filter is not BROWSABLE', !w.cats.includes('BROWSABLE') && w.cats.includes('DEFAULT'));
+  check('typed http(s) filter is BROWSABLE and DEFAULT (contract 0.34 section 6)', w.cats.includes('BROWSABLE') && w.cats.includes('DEFAULT') && w.cats.length === 2);
 
   // Section 8.1: download manager pickers (issue #89). Kiwi and its forks list apps that answer
   // VIEW http://test.com/file.rar with no type, so a typed filter never shows up there.
@@ -145,7 +145,7 @@ async function main() {
 
   const allHttp = qf.concat(flat(main)).filter(isHttp);
   check('every http(s) filter has a mime type or file extension paths', allHttp.length === 2 && allHttp.every((f) => f.data.some((d) => d['android:mimeType']) || f.data.some((d) => d['android:pathPattern'])));
-  check('no http(s) filter is BROWSABLE', allHttp.every((f) => !f.cats.includes('BROWSABLE')));
+  check('the picker filter is not BROWSABLE, the typed filter is', allHttp.every((f) => f.data.some((d) => d['android:mimeType']) ? f.cats.includes('BROWSABLE') : !f.cats.includes('BROWSABLE')));
   check('MainActivity has no http(s) filter', flat(main).filter(isHttp).length === 0);
   const mf = flat(main);
   check('MainActivity lost SEND, SEND_MULTIPLE, magnet and torrent filters', mf.every((f) => !f.actions.some((a) => /^SEND/.test(a)) && !f.data.some((d) => d['android:scheme'] === 'magnet' || /torrent/.test(d['android:mimeType'] || '') || /torrent/.test(d['android:pathPattern'] || ''))));
@@ -168,9 +168,17 @@ async function main() {
   check('add path reuses addTorrent and addDownload', /EngineHost\.addTorrent\(/.test(add) && /EngineHost\.addDownload\(/.test(add));
   check('add path starts the engine and the service', /EngineHost\.ensureStarted\(\)/.test(add) && /BackgroundStart\.start\(/.test(add));
   check('EngineHost exposes ensureStarted', /fun ensureStarted\(/.test(read(ENGINE_KT + 'EngineHost.kt')));
-  check('routes: browser prefill and free space', /maglev:\/\/browser\?url=/.test(act) && /maglev:\/\/free-space/.test(act));
+  check('routes: browser url and free space', /maglev:\/\/browser\?url=/.test(act) && /maglev:\/\/free-space/.test(act));
   check('Toast text', /Added to Maglev/.test(text));
   check('no Compose in the share code', !/androidx\.compose/.test(act + read(ENGINE_KT + 'share/QuickShareCard.kt')));
+  // Issue #162: Soul Browser's hand-off reached the card with "No link in what you shared" while the same link pasted worked.
+  check('#162 text extras are read as CharSequence (styled text kept the link from getStringExtra)',
+    /getCharSequenceExtra\(key\)/.test(act) && !/getStringExtra\(Intent\.EXTRA_TEXT\)/.test(act));
+  check('#162 every place a link can be: stream, text, clip data, subject, originating URI, link extras',
+    ['EXTRA_STREAM', 'EXTRA_TEXT', 'clipData', 'EXTRA_SUBJECT', 'EXTRA_ORIGINATING_URI', 'LINK_EXTRAS'].every((k) => act.includes(k)));
+  check('#162 the first candidate with a link wins (a shared file no longer hides the URL text)', /ShareClassify\.classifyFirst\(/.test(act));
+  check('#162 the No-link card offers Copy details with the hand-off shape, never values',
+    /CardAction\.COPY_DETAILS, QuickShareText\.COPY_DETAILS/.test(act) && /describeHandOff\(/.test(act) && /COPY_DETAILS = "Copy details"/.test(text));
   check('no system monospace', !/Typeface\.MONOSPACE|"monospace"/.test(read(ENGINE_KT + 'share/QuickShareCard.kt')));
 
   if (failed) {

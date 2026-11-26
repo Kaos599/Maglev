@@ -13,6 +13,7 @@ import com.maglev.engine.browser.BlocklistStore
 import com.maglev.engine.browser.BrowserData
 import com.maglev.engine.browser.HistoryWipe
 import com.maglev.engine.browser.MaglevBrowserView
+import com.maglev.engine.browser.TabStates
 import com.maglev.engine.feeds.FeedScheduler
 import com.maglev.engine.permissions.PermissionHelper
 import com.maglev.engine.schedule.ScheduleManager
@@ -25,11 +26,14 @@ import com.maglev.engine.subtitles.SubtitleZip
 import com.maglev.engine.update.AppUpdater
 import com.maglev.engine.update.InstallSource
 import com.maglev.engine.update.UpdateNotices
+import com.maglev.engine.videosites.VideoSites
+import com.maglev.engine.videosites.VideoSitesUpdater
 import com.maglev.engine.util.Json
 import expo.modules.interfaces.permissions.PermissionsResponseListener
 import expo.modules.kotlin.Promise
 import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
+import expo.modules.kotlin.modules.ModuleDefinitionBuilder
 import kotlinx.coroutines.launch
 import java.io.File
 
@@ -114,6 +118,25 @@ class MaglevEngineModule : Module() {
         }
     }
 
+    /** Runs a video site lookup (section 48) off the main thread. Failures resolve as `{ ok: false, code, message }`. */
+    private fun videoSitesResolve(promise: Promise, url: String) {
+        val c = context
+        if (c == null) {
+            promise.resolve(Json.failure(VideoSites.UNAVAILABLE, "Video sites aren't available in this build."))
+            return
+        }
+        EngineHost.ioScope.launch {
+            val result: Map<String, Any?> = try {
+                linkedMapOf("ok" to true, "json" to VideoSites.resolve(c, url))
+            } catch (e: VideoSites.VideoSitesException) {
+                Json.failure(e.code, e.message ?: e.code)
+            } catch (t: Throwable) {
+                Json.failure(VideoSites.FAILED, "Couldn't read this video. Try again.")
+            }
+            promise.resolve(result)
+        }
+    }
+
     private fun decodeBase64(b64: String): ByteArray = try {
         android.util.Base64.decode(b64, android.util.Base64.DEFAULT)
     } catch (e: IllegalArgumentException) {
@@ -157,7 +180,11 @@ class MaglevEngineModule : Module() {
         // "Clear history when I close Maglev": only when the activity is really finishing, not on a rotation (contract 24.9).
         OnActivityDestroys {
             val a = appContext.currentActivity
-            if (a != null && a.isFinishing) context?.let { HistoryWipe.wipeIfArmed(it) }
+            if (a != null && a.isFinishing) {
+                context?.let { HistoryWipe.wipeIfArmed(it) }
+                // 0.35 W-C: Maglev is closing; drop the slept tabs' page states saved so far.
+                TabStates.clear()
+            }
         }
 
         OnActivityEntersForeground {
@@ -462,6 +489,11 @@ class MaglevEngineModule : Module() {
 
         // endregion
 
+        // region Video sites (docs/NATIVE_CONTRACT.md section 48, prototype)
+        videoSitesFunctions()
+
+        // endregion
+
         // region Site checks (docs/SEARCH_CONTRACT.md section 8)
 
         // Cookies the shared WebView jar holds for a URL ("a=1; b=2"), or "" when none.
@@ -590,20 +622,38 @@ class MaglevEngineModule : Module() {
             promise.resolve(if (c == null) 0 else HistoryWipe.wipeCount(c))
         }
 
+        // 0.35 W-C: keep only the saved page states of these tabs (every tab that still exists). JS calls it on each tab change.
+        AsyncFunction("retainTabStates") { ids: List<String>, promise: Promise ->
+            TabStates.retain(ids)
+            promise.resolve(null)
+        }
+
+        // 0.35 W-C: forget every saved page state (history cleared).
+        AsyncFunction("clearTabStates") { promise: Promise ->
+            TabStates.clear()
+            promise.resolve(null)
+        }
+
         View(MaglevBrowserView::class) {
             Events("onPage", "onFound", "onBlockedCount", "onDownloadRequest", "onMagnet", "onRefused", "onCrashed", "onPageNote",
-                "onNewWindow", "onPopupRequest", "onPopupBlocked", "onLongPress", "onFindResult", "onMediaHit")
+                "onNewWindow", "onPopupRequest", "onPopupBlocked", "onLongPress", "onFindResult", "onMediaHit",
+                "onPullProgress", "onReloadState")
 
             Prop("url") { view: MaglevBrowserView, url: String -> view.setUrl(url) }
+            Prop("urlSource") { view: MaglevBrowserView, source: String -> view.setUrlSource(source) }
+            Prop("tabId") { view: MaglevBrowserView, id: String -> view.setTabId(id) }
             Prop("adBlock") { view: MaglevBrowserView, enabled: Boolean -> view.setAdBlock(enabled) }
             Prop("allowAdsHosts") { view: MaglevBrowserView, hosts: List<String> -> view.setAllowAdsHosts(hosts) }
             Prop("desktopMode") { view: MaglevBrowserView, enabled: Boolean -> view.setDesktopMode(enabled) }
             Prop("active") { view: MaglevBrowserView, value: Boolean -> view.setActive(value) }
             Prop("popupPolicy") { view: MaglevBrowserView, value: String -> view.setPopupPolicy(value) }
             Prop("popupAllowHosts") { view: MaglevBrowserView, hosts: List<String> -> view.setPopupAllowHosts(hosts) }
+            Prop("popupBlockHosts") { view: MaglevBrowserView, hosts: List<String> -> view.setPopupBlockHosts(hosts) }
             Prop("textZoom") { view: MaglevBrowserView, value: Int -> view.setTextZoom(value) }
             Prop("privateMode") { view: MaglevBrowserView, value: Boolean -> view.setPrivateMode(value) }
             Prop("pullToRefresh") { view: MaglevBrowserView, value: Boolean -> view.setPullToRefresh(value) }
+            Prop("blockThirdPartyCookies") { view: MaglevBrowserView, value: Boolean -> view.setBlockThirdPartyCookies(value) }
+            Prop("httpsFirst") { view: MaglevBrowserView, value: Boolean -> view.setHttpsFirst(value) }
             Prop("refreshColor") { view: MaglevBrowserView, value: String -> view.setRefreshColor(value) }
             Prop("refreshBackground") { view: MaglevBrowserView, value: String -> view.setRefreshBackground(value) }
             Prop("darkPages") { view: MaglevBrowserView, value: Boolean -> view.setDarkPages(value) }
@@ -634,6 +684,94 @@ class MaglevEngineModule : Module() {
         // endregion
 
         // region In-app updates (docs/NATIVE_CONTRACT.md section 27)
+        updateFunctions()
+
+        // endregion
+
+        // region Governance
+
+        AsyncFunction("setGovernance") { rules: Map<String, Any?>, promise: Promise ->
+            engine(promise) {
+                @Suppress("UNCHECKED_CAST")
+                val ssids = (rules["ssidWhitelist"] as? List<Any?>)?.mapNotNull { it?.toString() } ?: emptyList()
+                // §19: read headless by RestartEntry after a reboot or update, so it lives in SharedPreferences.
+                context?.let { RestartPrefs.setResumeAfterRestart(it, rules["resumeAfterRestart"] != false) }
+                // Quick share reads these headless, in its own activity (docs/contracts-0.19/quick-share.md section 6).
+                context?.let { com.maglev.engine.share.QuickSharePrefs.save(it, rules) }
+                // Hide from gallery and automatic retry are read in Kotlin only (never sent to Rust).
+                context?.let { c ->
+                    com.maglev.engine.storage.GalleryHide.save(c, rules)
+                    AutoRetry.save(c, rules)
+                    EngineHost.ioScope.launch { com.maglev.engine.storage.GalleryHide.apply(c) }
+                }
+                EngineHost.setGovernance(
+                    Governance(
+                        wifiOnly = rules["wifiOnly"] == true,
+                        ssidWhitelist = ssids,
+                        chargingOnly = rules["chargingOnly"] == true,
+                        batteryCutoffPct = (rules["batteryCutoffPct"] as? Number)?.toInt() ?: 0,
+                        autoExitOnComplete = rules["autoExitOnComplete"] == true,
+                        vpnOnly = rules["vpnOnly"] == true,
+                        seedOnMobileData = rules["seedOnMobileData"] == true,
+                    ),
+                )
+            }
+        }
+
+        // endregion
+    }
+
+    // region Definition parts
+    // definition() hit the JVM 64 KB method limit (MethodTooLargeException in CI run 45378913724): every
+    // AsyncFunction lambda is inlined into it. These member extensions move groups of functions into their own
+    // methods. Called from definition(); behaviour is unchanged.
+
+    private fun ModuleDefinitionBuilder.videoSitesFunctions() {
+
+        // The page's video files as trimmed yt-dlp JSON text: `{ ok: true, json }`. Errors: SITE_NOT_SUPPORTED,
+        // SITE_NEEDS_LOGIN, SITE_FAILED, VIDEO_SITES_UNAVAILABLE. Starts the library on the first call, off the main thread.
+        AsyncFunction("videoSitesResolve") { url: String, promise: Promise ->
+            videoSitesResolve(promise, url)
+        }
+        // Downloads the newest yt-dlp: `{ ok: true, status: 'updated' | 'current' | 'failed', version }`. Off the main thread.
+        AsyncFunction("videoSitesUpdate") { promise: Promise ->
+            val c = context
+            if (c == null) {
+                promise.resolve(Json.failure(VideoSites.UNAVAILABLE, "Video sites aren't available in this build."))
+            } else {
+                EngineHost.ioScope.launch {
+                    val r = VideoSites.update(c, true)
+                    promise.resolve(linkedMapOf("ok" to true, "status" to r.status, "version" to r.version))
+                }
+            }
+        }
+        // The yt-dlp version name the library last downloaded itself, or null while the bundled one is in use.
+        AsyncFunction("videoSitesVersion") { promise: Promise ->
+            val c = context
+            promise.resolve(if (c == null) null else VideoSites.versionLabel(c))
+        }
+        // What the Settings row shows: `{ version, lastCheckAt }` (version null while the bundled yt-dlp is in use,
+        // lastCheckAt epoch ms or null when never checked).
+        AsyncFunction("videoSitesStatus") { promise: Promise ->
+            val c = context
+            if (c == null) {
+                promise.resolve(linkedMapOf("version" to null, "lastCheckAt" to null))
+            } else {
+                EngineHost.ioScope.launch {
+                    val last = VideoSites.lastCheck(c)
+                    promise.resolve(linkedMapOf("version" to VideoSites.versionLabel(c), "lastCheckAt" to (if (last > 0L) last else null)))
+                }
+            }
+        }
+        // Schedules (enabled) or cancels the daily background yt-dlp update. `mobileData` allows a metered network.
+        AsyncFunction("videoSitesConfigure") { enabled: Boolean, mobileData: Boolean ->
+            context?.let { VideoSitesUpdater.apply(it, enabled, mobileData) }
+            true
+        }
+
+    }
+
+    private fun ModuleDefinitionBuilder.updateFunctions() {
 
         AsyncFunction("getInstallSource") { promise: Promise ->
             val c = context
@@ -698,40 +836,9 @@ class MaglevEngineModule : Module() {
             promise.resolve(mapOf("ok" to true))
         }
 
-        // endregion
-
-        // region Governance
-
-        AsyncFunction("setGovernance") { rules: Map<String, Any?>, promise: Promise ->
-            engine(promise) {
-                @Suppress("UNCHECKED_CAST")
-                val ssids = (rules["ssidWhitelist"] as? List<Any?>)?.mapNotNull { it?.toString() } ?: emptyList()
-                // §19: read headless by RestartEntry after a reboot or update, so it lives in SharedPreferences.
-                context?.let { RestartPrefs.setResumeAfterRestart(it, rules["resumeAfterRestart"] != false) }
-                // Quick share reads these headless, in its own activity (docs/contracts-0.19/quick-share.md section 6).
-                context?.let { com.maglev.engine.share.QuickSharePrefs.save(it, rules) }
-                // Hide from gallery and automatic retry are read in Kotlin only (never sent to Rust).
-                context?.let { c ->
-                    com.maglev.engine.storage.GalleryHide.save(c, rules)
-                    AutoRetry.save(c, rules)
-                    EngineHost.ioScope.launch { com.maglev.engine.storage.GalleryHide.apply(c) }
-                }
-                EngineHost.setGovernance(
-                    Governance(
-                        wifiOnly = rules["wifiOnly"] == true,
-                        ssidWhitelist = ssids,
-                        chargingOnly = rules["chargingOnly"] == true,
-                        batteryCutoffPct = (rules["batteryCutoffPct"] as? Number)?.toInt() ?: 0,
-                        autoExitOnComplete = rules["autoExitOnComplete"] == true,
-                        vpnOnly = rules["vpnOnly"] == true,
-                        seedOnMobileData = rules["seedOnMobileData"] == true,
-                    ),
-                )
-            }
-        }
-
-        // endregion
     }
+
+    // endregion
 
     // region helpers
 

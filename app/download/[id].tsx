@@ -36,6 +36,7 @@ import { WhyStuck } from '../../components/detail/WhyStuck';
 import { useFlowClock } from '../../components/transfers/useStatusOpts';
 import { useSettings } from '../../context/SettingsContext';
 import { WhyHeld } from '../../components/transfers/WhyHeld';
+import { TimeRows } from '../../components/detail/TimeRows';
 import { DownloadStats } from '../../components/transfers/DownloadStats';
 import { useDownloadActions } from '../../components/transfers/useDownloadActions';
 import { SubtitleSheet } from '../../components/subtitles/SubtitleSheet';
@@ -110,7 +111,7 @@ export default function DownloadScreen() {
       if (!d) return;
       const text = normalizeIncoming(raw);
       if (!isDownloadLink(text)) {
-        setLinkError("That isn't a web link.");
+        setLinkError("That isn't a link.");
         return;
       }
       setBusy(true);
@@ -366,6 +367,7 @@ export default function DownloadScreen() {
             accessibilityLabel={`Saved to ${friendlyPath(d.folder)}. Opens the folder.`}
           />
         ) : null}
+        <TimeRows addedAt={d.addedAt} finishedAt={d.finishedAt} />
         {/* NATIVE_CONTRACT 41.1: in Compact the Speed limit row moves into the ⋮ menu. 41.2: Detailed keeps the row. */}
         {!compact ? (
           <ListRow

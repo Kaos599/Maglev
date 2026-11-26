@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { DownloadOptions, FoundItem, StreamProbe } from 'maglev-engine';
+import { isVideoSiteUrl } from '../../utils/videoSites';
 import { createSizeProber, fetchContentLength, isProbeable, streamEstimate } from '../../utils/foundSize';
 import { downloadHeaders } from './FoundDownload';
 
@@ -29,7 +30,8 @@ export function useFoundSize(item: FoundItem, userAgent: string, probeStream: Pr
   const [found, setFound] = useState<FoundSize>(() => prober.peek<FoundSize>(key) ?? UNKNOWN);
 
   useEffect(() => {
-    if (own != null || !isProbeable(item.url)) return;
+    // A video site's page (the tray's own "this page's video" entry) is HTML, never the file: its size would be wrong.
+    if (own != null || !isProbeable(item.url) || isVideoSiteUrl(item.url)) return;
     let live = true;
     void prober
       .run<FoundSize>(key, async () => {

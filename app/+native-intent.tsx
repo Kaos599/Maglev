@@ -26,7 +26,7 @@ function isTorrentLocation(url: string): boolean {
 export function redirectSystemPath({ path }: { path: string; initial: boolean }): string {
   try {
     const raw = (path ?? '').trim();
-    // maglev://browser?url= fills the address bar and never loads (NATIVE_CONTRACT 24.7).
+    // maglev://browser?url= opens that page in a new tab, through the link-tap refusals (NATIVE_CONTRACT 24.7).
     const browser = browserIntentRoute(raw);
     // With the Browser tab on, it opens in that tab (tab bar stays); otherwise the /browser stack screen.
     if (browser) return shareBrowserRoute(browser, visibleTabs(getTabPrefs(), { assistantEnabled: false }).includes('browse'));

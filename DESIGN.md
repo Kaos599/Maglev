@@ -4,7 +4,7 @@ This guide is for people designing or building a new screen in Maglev. It descri
 
 Read [CONTRIBUTING.md](CONTRIBUTING.md) first for the process. Open an issue before building a new screen.
 
-Maglev is an Android app that downloads videos from web pages, ordinary links and torrents. It is meant to feel minimal, quick and a little playful, with a retro touch that stays readable for anyone.
+Maglev is an Android app that downloads almost any link: video pages, files, magnets and torrents. It is meant to feel minimal, quick and a little playful, with a retro touch that stays readable for anyone.
 
 ## Principles
 
@@ -201,7 +201,7 @@ Import primitives from `components/ui`. Each one reads the theme, meets the 44 d
 
 | Component | Use it for | Don't use it for | Key props |
 |---|---|---|---|
-| `Button` | A text action. `primary` is the one main action per screen, then `secondary`, `ghost`, `danger`. | An icon-only action. Two primaries on one screen. | `label`, `onPress`, `variant`, `size` (`md`, `lg`), `icon`, `loading`, `disabled`, `fullWidth` |
+| `Button` | A text action. `primary` is the one main action per screen, then `secondary`, `ghost`, `danger`. | An icon-only action. Two primaries on one screen. | `label`, `onPress`, `variant`, `size` (`md`, `lg`), `icon`, `loading`, `disabled`, `fullWidth`, `stacked` (icon above a smaller label, for two or three equal buttons in one row) |
 | `LoadingDots` | The loading mark: three small square dots, the one `Button` shows with `loading`. Use it for work in flight inside a row or sheet. Never `ActivityIndicator`. | A progress amount (use `ProgressBar`). | `color` |
 | `IconButton` | A bare icon action in a header or row. The icon itself turns accent on press. | A text action. A button with a filled box. | `icon`, `accessibilityLabel` (required), `onPress`, `size`, `selected`, `badge`, `dot` |
 | `ListRow` | A settings or menu row: title, optional subtitle, trailing value and chevron, or an accessory such as `Toggle`. | A transfer (use the transfer card). | `title`, `subtitle`, `icon`, `value`, `accessory`, `onPress`, `destructive`, `selected`, `disabled` |
@@ -320,7 +320,7 @@ All strings for notices, banners and empty states live in `constants/copy.ts`. `
 | Empty states: title up to 5 words, no period; one line saying how to fill it | "Nothing downloading" / "Add a link or a .torrent file, or find something." | "Oops! No downloads yet" |
 | Errors name the cause and offer an action | "Couldn't reach the list. Check your connection." | "Error: ECONNRESET" |
 
-One word per thing. A *transfer* is any item in the Transfers list. A *torrent* comes from a magnet link or a .torrent file. A *download* comes from a web link. Say *magnet link*, never "magnet URL"; *folder*, never "directory" or "path"; *source*, never "provider" or "indexer". The `glossary` in `constants/copy.ts` holds the patterns the test rejects.
+One word per thing. A *transfer* is any item in the Transfers list. A *torrent* comes from a magnet link or a .torrent file. A *download* comes from a link to a video or a file. Say *magnet link*, never "magnet URL"; *folder*, never "directory" or "path"; *source*, never "provider" or "indexer". The `glossary` in `constants/copy.ts` holds the patterns the test rejects.
 
 Words to avoid on screen: pipeline jargon, "Save configuration" buttons (settings save as they change), marketing claims, and raw hashes. Write labels as the words a person would say aloud.
 

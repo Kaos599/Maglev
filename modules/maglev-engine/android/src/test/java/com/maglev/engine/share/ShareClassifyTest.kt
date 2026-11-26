@@ -76,4 +76,32 @@ class ShareClassifyTest {
     }
 
     @Test fun nullTextIsNone() = assertEquals(ShareKind.NONE, ShareClassify.classify(null, null).kind)
+
+    // Issue #162: a file next to the link, a blank text, or the link only in a later place.
+    @Test fun firstCandidateWithALinkWins() {
+        val url = "https://github.com/Kaos599/Maglev/releases/download/v0.33/Maglev-v0.33-arm64-v8a.apk"
+        val got = ShareClassify.classifyFirst(listOf("content://com.soul/file/1", null, "", url), "text/plain")
+        assertEquals(url, got.source)
+        assertTrue(got.kind != ShareKind.NONE)
+    }
+
+    @Test fun firstCandidateKeepsTheEarlierLink() {
+        val magnet = "magnet:?xt=urn:btih:0123456789abcdef0123456789abcdef01234567&dn=x"
+        val got = ShareClassify.classifyFirst(listOf(magnet, "https://example.com/a.zip"), null)
+        assertEquals(ShareKind.MAGNET, got.kind)
+    }
+
+    @Test fun noCandidateIsNone() =
+        assertEquals(ShareKind.NONE, ShareClassify.classifyFirst(listOf(null, "", "hello", "content://x/y"), "text/plain").kind)
+
+    @Test fun handOffShapeHasNamesAndTypesOnly() {
+        val s = ShareClassify.describeHandOff(
+            "android.intent.action.SEND", "text/plain", null,
+            listOf("android.intent.extra.TEXT" to "SpannableString"), listOf("text SpannableString"),
+        )
+        assertTrue(s.contains("action: android.intent.action.SEND"))
+        assertTrue(s.contains("android.intent.extra.TEXT: SpannableString"))
+        assertTrue(s.contains("data: none"))
+        assertTrue(!s.contains("http"))
+    }
 }
