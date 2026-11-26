@@ -28,7 +28,7 @@ const inputStart = addTorrent.indexOf('// ---------- Input');
 const inputBlock = inputStart >= 0 ? addTorrent.slice(inputStart) : addTorrent.slice(-2500);
 check('entry screen is titled "Add a link"', /<Screen title="Add a link"/.test(inputBlock));
 check('entry screen is not titled "Add torrent"', !/<Screen title="Add torrent"/.test(inputBlock));
-check('input label is "Link, magnet or .torrent"', addTorrent.includes('Link, magnet or .torrent') && !addTorrent.includes('Magnet, torrent or file link'));
+check('input label is "Link" and the help names videos, pages, files and torrents', /label="Link"/.test(addTorrent) && /help="A video, web page, file, magnet or \.torrent link"/.test(addTorrent) && !addTorrent.includes('info hash"'));
 check('placeholder is not a magnet URI', !/placeholder="magnet:/.test(addTorrent) && /placeholder="Paste a link"/.test(addTorrent));
 check('Open .torrent file is kept', addTorrent.includes('Open .torrent file'));
 

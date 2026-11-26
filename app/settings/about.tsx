@@ -86,6 +86,7 @@ export default function AboutSettings() {
       <View style={s.brand}>
         <MaglevMark height={64} cruising tappable />
         <Wordmark />
+        <Text style={s.tagline}>{aboutExtrasCopy.tagline}</Text>
       </View>
       <StarTicket />
       <Card>
@@ -174,6 +175,7 @@ export default function AboutSettings() {
 const makeStyles = (c: ThemeColors) =>
   StyleSheet.create({
     brand: { alignItems: 'center', gap: spacing.lg, paddingVertical: spacing.xxl },
+    tagline: { ...type.body, fontSize: type.size.base, color: c.textMuted, textAlign: 'center', paddingHorizontal: spacing.lg },
     footer: { minHeight: touch.min, alignItems: 'center', justifyContent: 'center', paddingVertical: spacing.md },
     dialogBody: { ...type.body, color: c.textMuted },
     footerText: { ...type.mono, fontSize: type.size.md, color: c.textMuted, textAlign: 'center' },
