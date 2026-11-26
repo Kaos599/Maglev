@@ -26,6 +26,7 @@ export const SORT_LABELS: Record<SortKey, string> = {
   eta: 'ETA',
   size: 'Size',
   added: 'Date added',
+  recent: 'Newest first',
   ratio: 'Ratio',
 };
 
@@ -102,9 +103,33 @@ function value(t: TorrentTelemetry, key: SortKey): number {
   }
 }
 
+/**
+ * When an item last became new to the user: the time it finished, or the time it was added while it is still
+ * running. Null when neither is known, so such items sort last in either direction instead of looking
+ * oldest (ascending) or newest (descending).
+ */
+function recentTime(finishedAt: number | undefined, addedAt: number | undefined): number | null {
+  if (finishedAt && finishedAt > 0) return finishedAt;
+  return addedAt && addedAt > 0 ? addedAt : null;
+}
+
+/** Orders two optional times so an unknown one is last. Returns null when both are known and the caller compares them. */
+function unknownLast(a: number | null, b: number | null): number | null {
+  if (a === null && b === null) return 0;
+  if (a === null) return 1;
+  if (b === null) return -1;
+  return null;
+}
+
 export function sortTorrents<T extends TorrentTelemetry>(list: readonly T[], sort: TransferSort): T[] {
   const mul = sort.dir === 'asc' ? 1 : -1;
   return [...list].sort((a, b) => {
+    if (sort.key === 'recent') {
+      const ta = recentTime(a.finishedAt, a.addedAt);
+      const tb = recentTime(b.finishedAt, b.addedAt);
+      const cmp = unknownLast(ta, tb) ?? ((ta as number) - (tb as number)) * mul;
+      return cmp !== 0 ? cmp : (b.addedAt ?? 0) - (a.addedAt ?? 0) || a.id.localeCompare(b.id);
+    }
     const cmp =
       sort.key === 'name'
         ? a.name.localeCompare(b.name, undefined, { sensitivity: 'base', numeric: true })
@@ -434,7 +459,16 @@ export function mergeTransfers<T extends TorrentTelemetry>(
   ];
   const nameOf = (i: TransferItem<T>) => (i.kind === 'torrent' ? i.torrent.name : i.download.name);
   const valueOf = (i: TransferItem<T>) => (i.kind === 'torrent' ? value(i.torrent, sort.key) : downloadValue(i.download, sort.key));
+  const recentOf = (i: TransferItem<T>) =>
+    i.kind === 'torrent' ? recentTime(i.torrent.finishedAt, i.torrent.addedAt) : recentTime(i.download.finishedAt, i.download.addedAt);
+  const addedOf = (i: TransferItem<T>) => (i.kind === 'torrent' ? i.torrent.addedAt : i.download.addedAt) ?? 0;
   return items.sort((a, b) => {
+    if (sort.key === 'recent') {
+      const ta = recentOf(a);
+      const tb = recentOf(b);
+      const cmp = unknownLast(ta, tb) ?? ((ta as number) - (tb as number)) * mul;
+      return cmp !== 0 ? cmp : addedOf(b) - addedOf(a) || a.key.localeCompare(b.key);
+    }
     const cmp =
       sort.key === 'name'
         ? nameOf(a).localeCompare(nameOf(b), undefined, { sensitivity: 'base', numeric: true })
