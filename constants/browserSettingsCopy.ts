@@ -1,5 +1,5 @@
 /**
- * Copy for Settings › Browser: the hub, its section screens and the site lists (docs/contracts-0.34/browser.md §5).
+ * Copy for Settings › Browser: the hub, its section screens and the site lists.
  * Kept apart from copy.ts so the browser settings land in one place. Titles are the visible labels the settings
  * search index matches (utils/settingsIndex.ts).
  */
@@ -105,7 +105,7 @@ export const browserSettingsCopy = {
     blockedOn: (host: string) => `Pop-ups blocked on ${host}`,
     undo: 'Undo',
   },
-  /** The site's pop-up choice in the ⋮ page menu (contract 0.34 §2 rule 4). */
+  /** The site's pop-up choice in the ⋮ page menu. */
   popupSite: {
     ask: 'Ask',
     allow: 'Allow',
@@ -141,7 +141,7 @@ const qualityText: Record<BrowserPrefs['streamQuality'], string> = {
   ask: 'Ask for quality',
 };
 
-/** The live one-line summaries the hub shows under each section (contract §5, "Hub design"). */
+/** The live one-line summaries the hub shows under each section. */
 export function hubSummaries(p: BrowserPrefs): Record<HubSection, string> {
   const start = [p.showFrequentSites && 'Often visited sites', p.showBookmarksOnStart && 'Bookmarks'].filter(Boolean);
   return {

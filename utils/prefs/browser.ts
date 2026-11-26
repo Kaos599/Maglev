@@ -53,9 +53,9 @@ export interface BrowserPrefs {
   showBookmarksOnStart: boolean;
   /** Which quality a video stream picks first: the highest, the highest at or below 1080p or 720p, or none (ask). */
   streamQuality: StreamQuality;
-  /** Refuse cookies set by other sites than the one in the address bar. Read by the browser view (0.34 section 5). */
+  /** Refuse cookies set by other sites than the one in the address bar. Read by the browser view. */
   blockThirdPartyCookies: boolean;
-  /** Try the https:// address of an http:// page first. Read by the browser view (0.34 section 5). */
+  /** Try the https:// address of an http:// page first. Read by the browser view. */
   httpsFirst: boolean;
 }
 

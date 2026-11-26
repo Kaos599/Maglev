@@ -59,7 +59,7 @@ const AUTH_BODY =
 /** The fresh-link button could not get a new link (the site is still refusing, or there is no connection). */
 export const FRESH_LINK_FAILED_TEXT = "Couldn't update. Check your connection, or paste a new link.";
 
-/** A video-site download refused again after the one automatic re-read of its page (browser contract 7, rule 3). */
+/** A video-site download refused again after the one automatic re-read of its page. */
 export const VIDEO_SITES_UPDATE_LEAD = 'Video sites need an update';
 const VIDEO_SITES_UPDATE_TEXT = 'Video sites need an update. Tap Update to get the newest reader and try again.';
 

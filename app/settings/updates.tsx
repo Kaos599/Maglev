@@ -93,7 +93,7 @@ function readerNotice(status: string, rawVersion: string | null): string {
 
 const VIDEO_SITES_CAPTION = "The part that reads video links from YouTube, X, Instagram and more. Experimental: some sites may fail. It downloads yt-dlp's newest release from GitHub in the background.";
 
-/** "Video sites": the reader behind video page links changes often, so the app keeps it current (browser contract 7). */
+/** "Video sites": the reader behind video page links changes often, so the app keeps it current. */
 function VideoSitesSection() {
   const { showNotice } = useMaglevEngine();
   const [prefs, setPrefs] = useUpdatePrefs();

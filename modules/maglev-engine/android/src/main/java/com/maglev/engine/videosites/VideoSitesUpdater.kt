@@ -14,7 +14,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
 /**
- * Keeps yt-dlp current in the background (docs/contracts-0.34/browser.md section 7, rule 2). A resolve never waits on
+ * Keeps yt-dlp current in the background. A resolve never waits on
  * an update. One unique periodic work, daily, on an unmetered network unless "Update on mobile data" is on. It exists
  * only while "Keep video sites working" is on.
  *

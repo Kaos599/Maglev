@@ -196,7 +196,7 @@ export function buildMediaMenu(hit: MediaHit): MediaMenu {
     if (hit.url && cls === 'direct') items.push({ id: 'download-video', title: C.downloadVideo, icon: 'download', url: hit.url });
     else if (hit.url && (cls === 'hls' || cls === 'dash')) items.push({ id: 'download-stream', title: C.downloadVideo, icon: 'stream', url: hit.url });
     else if (isVideoSiteUrl(hit.pageUrl)) {
-      // Video sites (contract 48, prototype): YouTube, X, Instagram play through blob: streams with no file address.
+      // Video sites (prototype): YouTube, X, Instagram play through blob: streams with no file address.
       // The add sheet reads the page itself and lists qualities.
       items.push({ id: 'download-page-video', title: C.downloadPageVideo, icon: 'download', url: hit.pageUrl });
     } else {

@@ -69,8 +69,8 @@ pub fn parse_content_range(v: &str) -> Option<(Option<u64>, Option<u64>, Option<
     Some((Some(a.trim().parse().ok()?), Some(b.trim().parse().ok()?), total))
 }
 
-/// True when a 206 that was not asked for still carries the whole file, so it can be read like a 200 (contract
-/// 24.8 "Whole-body 206", issue #168). `Content-Range` must be `bytes 0-E/T` with `E + 1 == T`, or `bytes 0-E/*` with
+/// True when a 206 that was not asked for still carries the whole file, so it can be read like a 200
+/// (issue #168). `Content-Range` must be `bytes 0-E/T` with `E + 1 == T`, or `bytes 0-E/*` with
 /// `Content-Length == E + 1`. Any other 206 is a broken server.
 pub fn is_whole_body_206(content_range: Option<&str>, content_length: Option<u64>) -> bool {
     match content_range.and_then(parse_content_range) {

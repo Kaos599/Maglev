@@ -141,7 +141,7 @@ pub struct DownloadOptions {
     pub page_url: Option<String>,
     /// Save an HLS or DASH stream (contract 24.8): which variant and audio track.
     pub stream: Option<StreamSpec>,
-    /// Save a video and an audio file from a video site and join them (contract section 48.2). Not with `stream`.
+    /// Save a video and an audio file from a video site and join them. Not with `stream`.
     pub parts: Option<PartsSpec>,
 }
 
@@ -1547,7 +1547,7 @@ impl Downloads {
     pub fn add(self: &Arc<Self>, url: &str, options_json: &str) -> Result<AddedDownload, EngineError> {
         let mut opts = parse_options(options_json)?;
         let (clean, auth) = parse_http_url(url)?;
-        // Video and audio from a video site run as a stream of two plain files (contract section 48.2).
+        // Video and audio from a video site run as a stream of two plain files.
         let two_files = opts.parts.take();
         if let Some(p) = two_files.as_ref() {
             if opts.stream.is_some() {

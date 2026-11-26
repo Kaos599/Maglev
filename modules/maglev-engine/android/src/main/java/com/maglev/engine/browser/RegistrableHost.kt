@@ -35,7 +35,7 @@ object PopupRules {
     const val ASK = "ask"
 
     /**
-     * Mirrors decideNewWindow in utils/browser/popups.ts (contract 0.34 §2 rule 2): block list > allow list > policy.
+     * Mirrors decideNewWindow in utils/browser/popups.ts: block list > allow list > policy.
      * [policy] is "ask", "block" or "allow". [allowed] is true when the page host is in popupAllowHosts, [blocked] when
      * it is in popupBlockHosts. [kind] is "window", "redirect" or "app". An untapped app request is always blocked, and
      * so is any app request from a blocked site. OPEN means "go ahead" (a new tab for a window, the load for a redirect,

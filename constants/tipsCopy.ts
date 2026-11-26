@@ -1,5 +1,5 @@
 /**
- * Settings › Tips (0.35, docs/contracts-0.35/tips.md). Copy comes from docs/contracts-0.35/tips-catalog.md.
+ * Settings › Tips.
  * `focus` is the settings search id of the row to scroll to and highlight (utils/settingsIndex.ts, the same
  * mechanism a search result uses). A card whose feature is only on the video-sites branch carries `needs`.
  */

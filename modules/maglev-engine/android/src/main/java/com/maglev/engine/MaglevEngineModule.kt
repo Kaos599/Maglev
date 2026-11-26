@@ -118,7 +118,7 @@ class MaglevEngineModule : Module() {
         }
     }
 
-    /** Runs a video site lookup (section 48) off the main thread. Failures resolve as `{ ok: false, code, message }`. */
+    /** Runs a video site lookup off the main thread. Failures resolve as `{ ok: false, code, message }`. */
     private fun videoSitesResolve(promise: Promise, url: String) {
         val c = context
         if (c == null) {
@@ -182,7 +182,7 @@ class MaglevEngineModule : Module() {
             val a = appContext.currentActivity
             if (a != null && a.isFinishing) {
                 context?.let { HistoryWipe.wipeIfArmed(it) }
-                // 0.35 W-C: Maglev is closing; drop the slept tabs' page states saved so far.
+                // Maglev is closing; drop the slept tabs' page states saved so far.
                 TabStates.clear()
             }
         }
@@ -489,7 +489,7 @@ class MaglevEngineModule : Module() {
 
         // endregion
 
-        // region Video sites (docs/NATIVE_CONTRACT.md section 48, prototype)
+        // region Video sites (prototype)
         videoSitesFunctions()
 
         // endregion
@@ -622,13 +622,13 @@ class MaglevEngineModule : Module() {
             promise.resolve(if (c == null) 0 else HistoryWipe.wipeCount(c))
         }
 
-        // 0.35 W-C: keep only the saved page states of these tabs (every tab that still exists). JS calls it on each tab change.
+        // Keep only the saved page states of these tabs (every tab that still exists). JS calls it on each tab change.
         AsyncFunction("retainTabStates") { ids: List<String>, promise: Promise ->
             TabStates.retain(ids)
             promise.resolve(null)
         }
 
-        // 0.35 W-C: forget every saved page state (history cleared).
+        // Forget every saved page state (history cleared).
         AsyncFunction("clearTabStates") { promise: Promise ->
             TabStates.clear()
             promise.resolve(null)
@@ -694,9 +694,9 @@ class MaglevEngineModule : Module() {
             engine(promise) {
                 @Suppress("UNCHECKED_CAST")
                 val ssids = (rules["ssidWhitelist"] as? List<Any?>)?.mapNotNull { it?.toString() } ?: emptyList()
-                // §19: read headless by RestartEntry after a reboot or update, so it lives in SharedPreferences.
+                // Read headless by RestartEntry after a reboot or update, so it lives in SharedPreferences.
                 context?.let { RestartPrefs.setResumeAfterRestart(it, rules["resumeAfterRestart"] != false) }
-                // Quick share reads these headless, in its own activity (docs/contracts-0.19/quick-share.md section 6).
+                // Quick share reads these headless, in its own activity.
                 context?.let { com.maglev.engine.share.QuickSharePrefs.save(it, rules) }
                 // Hide from gallery and automatic retry are read in Kotlin only (never sent to Rust).
                 context?.let { c ->

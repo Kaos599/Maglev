@@ -18,7 +18,7 @@ export interface MediaMenuProps {
   onShare: (url: string) => void;
   /** Opens the Files tray for this page. */
   onShowFound: () => void;
-  /** Video sites (contract 48): opens the add sheet for the page, which reads the video. */
+  /** Video sites: opens the add sheet for the page, which reads the video. */
   onDownloadPage?: (pageUrl: string) => void;
   /** Opens the link menu for the link around the media. The row is left out when not given. */
   onLinkOptions?: (linkHref: string) => void;

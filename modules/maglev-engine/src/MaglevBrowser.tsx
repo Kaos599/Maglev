@@ -73,7 +73,7 @@ export type BrowserNewWindowEvent = { url: string; gesture: boolean };
 export type BrowserPopupRequestEvent = { url: string; kind: PopupKind; sourceUrl: string };
 /**
  * Refused under `block`, by the block list, or by the always-refuse rules. Count it and log it; never show a notice here.
- * `sourceUrl` is the page that tried to open `url` (0.34 section 2 rule 5). `url` is '' when the view could not learn it.
+ * `sourceUrl` is the page that tried to open `url`. `url` is '' when the view could not learn it.
  */
 export type BrowserPopupBlockedEvent = { url: string; kind: PopupKind; sourceUrl: string };
 /** A long press on a link or an image. `url` is an absolute http(s) address or `magnet:`; `imageUrl` an absolute http(s) address. */
@@ -85,7 +85,7 @@ export type BrowserLongPressEvent = {
 };
 /** A long press over a video the page script found (contract 24.10a). `json` is the payload; parse it with `parseMediaHit` (utils/browser/mediaHit.ts). */
 export type BrowserMediaHitEvent = { json: string };
-/** 0.34 section 4: a reload started (pull, menu or command) or ended. One end per start. */
+/** A reload started (pull, menu or command) or ended. One end per start. */
 export type BrowserReloadStateEvent = { state: 'start' | 'end' };
 /** `active` is 0-based. `total` is 0 when nothing matches. `done` is false while the page is still being counted. */
 export type BrowserFindResultEvent = { active: number; total: number; done: boolean };
@@ -94,12 +94,12 @@ export type OpenAppResult = { opened: boolean; fallbackUrl: string | null };
 export type MaglevBrowserProps = {
   url?: string;
   /**
-   * Where `url` came from (NATIVE_CONTRACT 24.7). 'typed': the address bar, loaded as typed (blocked and LAN hosts allowed).
+   * Where `url` came from. 'typed': the address bar, loaded as typed (blocked and LAN hosts allowed).
    * 'link': a deep link or card, loaded through the link-tap refusals (LAN and blocked hosts refused, onRefused).
    */
   urlSource?: 'typed' | 'link';
   /**
-   * The tab this view shows (0.35 W-C). When the view is destroyed it keeps the page's back/forward list and scroll
+   * The tab this view shows. When the view is destroyed it keeps the page's back/forward list and scroll
    * position in memory under this id; a later view with the same id restores it instead of loading `url`.
    */
   tabId?: string;
@@ -108,7 +108,7 @@ export type MaglevBrowserProps = {
   popupPolicy?: 'ask' | 'block' | 'allow';
   /** Sites allowed to open pop-ups and redirects, matched on the page host by suffix. */
   popupAllowHosts?: string[];
-  /** Sites whose untapped pop-ups, redirects and app hand-offs are always refused (0.34 section 2). A tapped window still opens. */
+  /** Sites whose untapped pop-ups, redirects and app hand-offs are always refused. A tapped window still opens. */
   popupBlockHosts?: string[];
   adBlock?: boolean;
   allowAdsHosts?: string[];
@@ -119,9 +119,9 @@ export type MaglevBrowserProps = {
   privateMode?: boolean;
   /** Pull down at the top of a page to reload it (24.10a). Default true. */
   pullToRefresh?: boolean;
-  /** Refuse third-party cookies (0.34 section 5, "Block cookies from other sites"). Default true. */
+  /** Refuse third-party cookies ("Block cookies from other sites"). Default true. */
   blockThirdPartyCookies?: boolean;
-  /** Try the https:// twin of an http:// address first (0.34 section 5, "Try https first"). Default true. */
+  /** Try the https:// twin of an http:// address first ("Try https first"). Default true. */
   httpsFirst?: boolean;
   /** Spinner colours for pull to reload (hex). */
   refreshColor?: string;
@@ -356,7 +356,7 @@ export const resetBlocklist = () => call<BlocklistInfo>('resetBlocklist');
 export const clearBrowserData = (options: BrowserClearOptions = { cookies: true, cache: true }) => call<object>('clearBrowserData', options);
 
 /**
- * 0.35 W-C: keeps the saved page states of these tabs only (every tab that still exists) and forgets the rest, so a
+ * Keeps the saved page states of these tabs only (every tab that still exists) and forgets the rest, so a
  * closed tab's state goes. Resolves quietly where there is no native module.
  */
 export async function retainTabStates(ids: string[]): Promise<void> {
@@ -367,7 +367,7 @@ export async function retainTabStates(ids: string[]): Promise<void> {
   }
 }
 
-/** 0.35 W-C: forgets every saved page state (for example after the history is cleared). */
+/** Forgets every saved page state (for example after the history is cleared). */
 export async function clearTabStates(): Promise<void> {
   try {
     if (typeof Native?.clearTabStates === 'function') await Native.clearTabStates();

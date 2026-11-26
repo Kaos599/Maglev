@@ -1,4 +1,4 @@
-# The ⋮ page menu and the Site settings sheet (0.35, docs/contracts-0.35/browser-menu-settings.md).
+# The ⋮ page menu and the Site settings sheet.
 # Test page: https://test-videos.co.uk/bigbuckbunny/mp4-h264 (no pop-ups expected, only the controls are checked).
 appId: com.maglev
 name: browser-menu

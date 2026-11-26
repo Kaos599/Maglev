@@ -18,7 +18,7 @@ export interface IconAction {
   destructive?: boolean;
 }
 
-/** The icon row at the top of a ⋮ menu (0.35): evenly spaced 48 dp targets with a small label under each. */
+/** The icon row at the top of a ⋮ menu: evenly spaced 48 dp targets with a small label under each. */
 export function IconActionRow({ actions }: { actions: IconAction[] }) {
   const { colors } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);

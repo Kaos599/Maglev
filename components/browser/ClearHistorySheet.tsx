@@ -55,7 +55,7 @@ export function ClearHistorySheet({ visible, mode, onClose }: { visible: boolean
     try {
       if (mode === 'range') {
         await clearHistoryRange(range as ClearRange);
-        // 0.35 W-C: slept tabs keep their back/forward lists in memory; cleared history must not come back through them.
+        // Slept tabs keep their back/forward lists in memory; cleared history must not come back through them.
         await clearTabStates();
       } else {
         if (data.cookies || data.cache) {

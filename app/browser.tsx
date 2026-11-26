@@ -137,11 +137,11 @@ export default function BrowserScreen({ inTab = false }: { inTab?: boolean }) {
   const activeId = tab?.id ?? '';
   const activeIdRef = useRef(activeId);
   activeIdRef.current = activeId;
-  // docs/contracts-0.35/tab-switch.md: one offset moves the header bar and the pages together. `pageWidth` is the width
+  // One offset moves the header bar and the pages together. `pageWidth` is the width
   // the pages actually occupy (the body), measured on layout.
   const swipeX = useSharedValue(0);
   const pageWidth = useSharedValue(0);
-  // Rule 3 and 6: the offset goes back to 0 in the same commit that makes the new tab active (the pages change slot in
+  // The offset goes back to 0 in the same commit that makes the new tab active (the pages change slot in
   // their own layout effects in this commit too), so the new page is already in place and nothing flashes.
   useLayoutEffect(() => {
     swipeX.value = 0;
@@ -165,7 +165,7 @@ export default function BrowserScreen({ inTab = false }: { inTab?: boolean }) {
   const [selection, setSelection] = useState<{ start: number; end: number } | undefined>(undefined);
   const fullUrlRef = useRef('');
   fullUrlRef.current = page?.url || tab?.url || '';
-  // Rule 8: the address TextInput is mounted only while editing, so Android can never hand it focus on its own.
+  // The address TextInput is mounted only while editing, so Android can never hand it focus on its own.
   const startEditing = useCallback((url?: string) => {
     const full = url ?? fullUrlRef.current;
     setDraft(full);
@@ -173,7 +173,7 @@ export default function BrowserScreen({ inTab = false }: { inTab?: boolean }) {
     setEditing(true);
     setTimeout(() => setSelection(undefined), 100);
   }, []);
-  // Rule 9: editing ends only on Back, the Back arrow, submit, picking a row or a tab switch. Blur alone does not end it.
+  // Editing ends only on Back, the Back arrow, submit, picking a row or a tab switch. Blur alone does not end it.
   const leaveEditing = useCallback(() => {
     setEditing(false);
     Keyboard.dismiss();
@@ -267,7 +267,7 @@ export default function BrowserScreen({ inTab = false }: { inTab?: boolean }) {
     for (const id of ids) if (!live.has(id)) setPopups((p) => popupsApi.drop(p, id, 'closed').state);
   }, [tabsState, setPopups]);
 
-  // 0.35 W-C: a slept tab's saved page state (kept in native memory) lives as long as the tab; a closed tab's goes.
+  // A slept tab's saved page state (kept in native memory) lives as long as the tab; a closed tab's is dropped.
   const tabIdsKey = tabsState ? tabsState.tabs.map((t) => t.id).join(' ') : null;
   useEffect(() => {
     if (tabIdsKey === null) return;
@@ -457,7 +457,7 @@ export default function BrowserScreen({ inTab = false }: { inTab?: boolean }) {
   }, [setPopups, runRequest]);
   // Scrim and Back: block this once, remember nothing.
   const popupDismiss = useCallback(() => setPopups((p) => popupsApi.dismiss(p, activeIdRef.current)), [setPopups]);
-  // Block: this request and the site's later ones are refused, and the site joins the block list (0.34 §2 rule 3).
+  // Block: this request and the site's later ones are refused, and the site joins the block list.
   const popupBlock = useCallback(() => {
     const id = activeIdRef.current;
     const r = popupsApi.blockForSite(getPopups(), id, getBrowserPrefs().popupBlockHosts);
@@ -691,7 +691,7 @@ export default function BrowserScreen({ inTab = false }: { inTab?: boolean }) {
     onPopupRequest: (id, e) => setPopups((p) => popupsApi.request(p, id, { url: e.url, kind: e.kind, sourceUrl: e.sourceUrl })),
     onPopupBlocked: (id, e) => {
       setPopups((p) => popupsApi.noteBlocked(p, id));
-      // 0.34 section 2 rule 5: the link and its source site go to the blocked pop-ups log (never in Private browsing).
+      // The link and its source site go to the blocked pop-ups log (never in Private browsing).
       recordPopupBlockStored({ sourceUrl: e.sourceUrl, url: e.url, kind: e.kind, at: Date.now() }, getBrowserPrefs().privateBrowsing);
     },
     onLongPress: (id, e) => {
@@ -838,7 +838,7 @@ export default function BrowserScreen({ inTab = false }: { inTab?: boolean }) {
   const loading = !!page?.loading;
   const tabCount = tabsState?.tabs.length ?? 1;
 
-  // 0.34 section 3 rule 5: the page menu's Reload row, which shows Stop while the page loads.
+  // The page menu's Reload row, which shows Stop while the page loads.
   const reloadOrStop = () => {
     haptic('tap');
     if (loading) {
@@ -858,7 +858,7 @@ export default function BrowserScreen({ inTab = false }: { inTab?: boolean }) {
     view()?.reload();
   };
 
-  // 0.34 section 2 rule 4: the site's pop-up choice. A site is in at most one of the two lists.
+  // The site's pop-up choice. A site is in at most one of the two lists.
   const popupSiteMode: PopupSiteMode = popupsBlockedAtSite ? 'block' : popupsAllowedHere ? 'allow' : 'ask';
   const pageUrl = page?.url ?? tab?.url ?? '';
   const pageTitle = page?.title ?? tab?.title ?? '';
@@ -1011,7 +1011,7 @@ export default function BrowserScreen({ inTab = false }: { inTab?: boolean }) {
               <PixelIcon name="bookmark" size={16} color={colors.accent} />
             </PressableScale>
           ) : null}
-          {/* 0.35: a still tap opens Site settings. Like the tab count and ⋮, it is a gesture-handler press, so a swipe that starts here still switches tabs. */}
+          {/* A still tap opens Site settings. Like the tab count and ⋮, it is a gesture-handler press, so a swipe that starts here still switches tabs. */}
           {page?.url ? (
             <Pressable
               onPress={() => {
@@ -1026,7 +1026,7 @@ export default function BrowserScreen({ inTab = false }: { inTab?: boolean }) {
               <PixelIcon name={page.secure ? 'lock' : 'warning'} size={16} color={page.secure ? colors.textMuted : colors.warning} />
             </Pressable>
           ) : null}
-          {/* Rule 8: idle, the address is a plain label that can never take focus. AddressSwipe's tap calls startEditing. */}
+          {/* Idle, the address is a plain label that can never take focus. AddressSwipe's tap calls startEditing. */}
           <View pointerEvents="none" style={styles.addressInput}>
             <Text
               style={[styles.idleLabel, !idleText && styles.idlePlaceholder]}
@@ -1079,7 +1079,7 @@ export default function BrowserScreen({ inTab = false }: { inTab?: boolean }) {
                 );
               })
           : null}
-        {/* Rule 2: a neighbour that is asleep or blank has no page to show mid-swipe, so a placeholder stands in. */}
+        {/* A neighbour that is asleep or blank has no page to show mid-swipe, so a placeholder stands in. */}
         {isOwner
           ? [prevTab, nextTab].map((t) =>
               t && (t.state !== 'live' || isBlank(t)) ? (

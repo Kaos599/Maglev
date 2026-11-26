@@ -66,7 +66,7 @@ export default function AddDownloadScreen() {
   const [folderPath, setFolderPath] = useState<string | null>(null);
   const [streamItem, setStreamItem] = useState<FoundItem | null>(null);
   const [baseName, setBaseName] = useState('');
-  // A link to a video page (NATIVE_CONTRACT 48): the qualities found on it, and the one picked.
+  // A link to a video page: the qualities found on it, and the one picked.
   const [site, setSite] = useState<VideoSiteInfo | null>(null);
   const [optionId, setOptionId] = useState<string | null>(null);
   // Parts default to the Settings > Downloads pref; the chips below override it for this download only.

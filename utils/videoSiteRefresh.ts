@@ -1,4 +1,4 @@
-// Video sites: retry a refused download with fresh links (docs/NATIVE_CONTRACT.md section 48). Pure helpers; the hook
+// Video sites: retry a refused download with fresh links. Pure helpers; the hook
 // in components/transfers/useVideoSiteRefresh.ts does the work. Plain node can import this file.
 import type { DownloadSnapshot } from 'maglev-engine';
 import { isVideoSiteUrl, type VideoSiteInfo, type VideoSiteOption } from './videoSites.ts';

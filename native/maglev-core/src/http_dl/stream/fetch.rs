@@ -148,7 +148,7 @@ fn retry_after(resp: &reqwest::Response) -> Option<Duration> {
     super::super::rules::parse_retry_after(Some(v))
 }
 
-/// True when this 206 (sent for a request without `Range`) carries the whole file: contract 24.8, issue #168.
+/// True when this 206 (sent for a request without `Range`) carries the whole file (issue #168).
 pub fn whole_body_206(resp: &reqwest::Response) -> bool {
     let cr = resp.headers().get(CONTENT_RANGE).and_then(|v| v.to_str().ok());
     super::super::rules::is_whole_body_206(cr, resp.content_length())
