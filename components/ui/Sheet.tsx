@@ -160,6 +160,8 @@ export function Sheet({ visible, onClose, title, subtitle, hideTitle, children, 
 
   if (!mounted) return null;
 
+  const contentStyle = hideTitle ? [styles.content, styles.contentNoTitle] : styles.content;
+
   return (
     <Modal
       visible
@@ -190,7 +192,7 @@ export function Sheet({ visible, onClose, title, subtitle, hideTitle, children, 
               <View style={styles.dragArea}>
                 {hideTitle ? (
                   <View ref={titleRef} accessible accessibilityRole="header" accessibilityLabel={title} style={styles.grabberOnly}>
-                    <View style={styles.grabber} />
+                    <View style={[styles.grabber, styles.grabberNoMargin]} />
                   </View>
                 ) : (
                   <>
@@ -205,7 +207,7 @@ export function Sheet({ visible, onClose, title, subtitle, hideTitle, children, 
             </GestureDetector>
             {scroll ? (
               <ScrollView
-                style={styles.content}
+                style={contentStyle}
                 keyboardShouldPersistTaps="handled"
                 bounces={false}
                 showsVerticalScrollIndicator
@@ -214,7 +216,7 @@ export function Sheet({ visible, onClose, title, subtitle, hideTitle, children, 
                 {children}
               </ScrollView>
             ) : (
-              <View style={styles.content}>{children}</View>
+              <View style={contentStyle}>{children}</View>
             )}
           </Animated.View>
           </View>
@@ -241,10 +243,14 @@ const makeStyles = (c: ThemeColors) =>
     },
     // The drag target: handle, title and subtitle. It reaches the sheet's side edges so it is easy to grab.
     dragArea: { marginHorizontal: -spacing.xl, paddingHorizontal: spacing.xl, paddingBottom: spacing.xs },
-    // Title hidden: the handle alone is the drag target, tall enough (44 dp) to grab.
-    grabberOnly: { minHeight: 44, justifyContent: 'center', marginBottom: -spacing.sm },
+    // Title hidden: a 20 dp box holds the 4 dp handle (8 dp above and below). With dragArea's 4 dp and
+    // contentNoTitle's 4 dp, the handle sits 16 dp above the content, like handle to title on a titled sheet.
+    // Not a tap target (the title is its TalkBack label), so the 44 dp rule does not apply.
+    grabberOnly: { height: 20, justifyContent: 'center' },
+    grabberNoMargin: { marginBottom: 0 },
     grabber: { alignSelf: 'center', width: 36, height: 4, borderRadius: 2, backgroundColor: c.borderStrong, marginBottom: spacing.lg },
     title: { ...type.bodyStrong, fontSize: type.size.xl, color: c.text },
     subtitle: { ...type.body, fontSize: type.size.md, color: c.textMuted, marginTop: spacing.xs },
     content: { marginTop: spacing.lg, flexShrink: 1 },
+    contentNoTitle: { marginTop: spacing.xs },
   });
