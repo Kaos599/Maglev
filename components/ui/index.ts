@@ -1,3 +1,4 @@
+export { ExperimentalTag } from './ExperimentalTag';
 export { Button, LoadingDots } from './Button';
 export type { ButtonProps, ButtonVariant, ButtonSize } from './Button';
 export { IconButton } from './IconButton';

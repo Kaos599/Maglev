@@ -8,7 +8,7 @@ import { ThemeColors, motion, radius, spacing, type } from '../constants/theme';
 import { highlightCopy } from '../constants/copy';
 import { HIGHLIGHTS, type Highlight } from '../constants/highlights';
 import Animated from 'react-native-reanimated';
-import { Button, Dialog } from './ui';
+import { Button, Dialog, ExperimentalTag } from './ui';
 import { DIALOG_GUTTER, DIALOG_MAX_WIDTH } from './ui/Dialog';
 import { PixelIcon } from './PixelIcon';
 import { Station } from './highlight/Station';
@@ -131,7 +131,9 @@ function Body({ highlight, version, open, onExited, onTry, onNotNow, onNotes }: 
       }
     >
       <Animated.View style={bodyIn}>
+        {highlight.experimental ? <View style={s.tagRow}><ExperimentalTag /></View> : null}
         <Text style={s.text}>{highlight.body}</Text>
+        {highlight.note ? <Text style={s.note}>{highlight.note}</Text> : null}
         <Text style={s.footer}>{highlightCopy.footer}</Text>
       </Animated.View>
     </Dialog>
@@ -161,5 +163,7 @@ const makeStyles = (c: ThemeColors) =>
   StyleSheet.create({
     tile: { width: 48, height: 48, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: c.border, borderRadius: radius.md, backgroundColor: c.surfaceRaised, marginBottom: spacing.md },
     text: { ...type.body, fontSize: type.size.lg, color: c.text },
+    tagRow: { marginBottom: spacing.sm },
+    note: { ...type.body, fontSize: type.size.sm, color: c.textMuted, marginTop: spacing.sm },
     footer: { ...type.body, fontSize: type.size.sm, color: c.textMuted, marginTop: spacing.sm },
   });

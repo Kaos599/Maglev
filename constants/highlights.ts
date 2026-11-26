@@ -11,6 +11,10 @@ export interface Highlight {
   /** Where the primary button goes. */
   tryRoute: string;
   tryLabel: string;
+  /** Shows the Experimental tag under the title. */
+  experimental?: boolean;
+  /** One muted line after the body text. */
+  note?: string;
 }
 
 export const HIGHLIGHTS: Record<string, Highlight> = {
@@ -27,5 +31,7 @@ export const HIGHLIGHTS: Record<string, Highlight> = {
     icon: 'link',
     tryRoute: '/add-torrent',
     tryLabel: 'Try a link',
+    experimental: true,
+    note: 'Video links are new and some sites may fail. If one does, tell us with Report a bug in Settings › About.',
   },
 };

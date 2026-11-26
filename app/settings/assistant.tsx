@@ -4,7 +4,7 @@ import { ListRow, Toggle } from '../../components/ui';
 import { View } from 'react-native';
 import { Card, Caption, SettingsPage } from '../../components/settings/SettingsParts';
 import { spacing } from '../../constants/theme';
-import { ExperimentalTag } from '../../components/assistant/provider/ExperimentalTag';
+import { ExperimentalTag } from '../../components/ui';
 import { assistantPrefs, useAssistantPrefs } from '../../utils/prefs/assistantApp';
 import { ProviderSection } from '../../components/assistant/provider/ProviderSection';
 import { SectionHeader } from '../../components/ui';

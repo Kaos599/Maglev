@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ChipGroup, friendlyPath } from '../components/settings/SettingsParts';
 import { DownloadParts, PART_CHOICES, useLinkDownloadPrefs } from '../utils/prefs/linkDownloads';
-import { StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import * as Clipboard from 'expo-clipboard';
 import { maglevEngine, infoHashToMagnet, isDownloadLink, isShareOpen, isTorrentSource, normalizeIncoming, sanitizeFileName, type UrlProbe } from 'maglev-engine';
@@ -13,7 +13,8 @@ import { haptic } from '../constants/haptics';
 import { StreamSheet } from '../components/browser/StreamSheet';
 import { streamKindOfLink } from '../components/browser/streamChoice';
 import type { FoundItem } from 'maglev-engine';
-import { Banner, Button, EmptyBlock, RadioCard, Screen, TextField } from '../components/ui';
+import { Banner, Button, EmptyBlock, ExperimentalTag, RadioCard, Screen, TextField } from '../components/ui';
+import { openBugReport } from '../utils/update/reportBug';
 import { useDownloadAdmission } from '../utils/useDownloadAdmission';
 import { actionRoute, probeErrorView } from '../utils/downloadCopy';
 import { banners, empty, mobileDataLine, notices } from '../constants/copy';
@@ -431,7 +432,10 @@ export default function AddDownloadScreen() {
           error={nameError ?? undefined}
           accessibilityLabel="File name"
         />
-        <Text style={styles.meta}>Quality</Text>
+        <View style={styles.labelRow}>
+          <Text style={styles.meta}>Quality</Text>
+          <ExperimentalTag />
+        </View>
         <View style={styles.cards} accessibilityRole="radiogroup">
           {site.options.map((o) => (
             <RadioCard
@@ -447,6 +451,18 @@ export default function AddDownloadScreen() {
               }}
             />
           ))}
+        </View>
+        <View style={styles.captionRow}>
+          <Text style={styles.caption}>Video links are experimental. If this one fails,</Text>
+          <Pressable
+            onPress={openBugReport}
+            hitSlop={{ top: 14, bottom: 14, left: 8, right: 8 }}
+            accessibilityRole="link"
+            accessibilityLabel="Report a bug"
+          >
+            <Text style={styles.captionLink}>report it</Text>
+          </Pressable>
+          <Text style={styles.caption}>.</Text>
         </View>
         <View style={styles.destRow}>
           <View style={styles.destText}>
@@ -573,6 +589,10 @@ const makeStyles = (c: ThemeColors) =>
     actions: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
     gap: { marginTop: spacing.sm },
     cards: { gap: spacing.sm },
+    labelRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+    captionRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center' },
+    caption: { ...type.body, fontSize: type.size.sm, color: c.textMuted },
+    captionLink: { ...type.bodyStrong, fontSize: type.size.sm, color: c.accentText, marginLeft: 4 },
     centered: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: spacing.lg, paddingHorizontal: spacing.xxxl },
     heading: { ...type.bodyStrong, fontSize: type.size.xl, color: c.text, textAlign: 'center' },
     ext: { ...type.mono, fontSize: type.size.lg, lineHeight: Math.round(type.size.lg * 1.4), color: c.textMuted },
