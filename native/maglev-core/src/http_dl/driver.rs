@@ -2557,11 +2557,24 @@ impl Downloads {
     async fn stream_body(
         self: &Arc<Self>,
         id: &str,
+        resp: reqwest::Response,
+        file: &File,
+        offset: u64,
+        total: Option<u64>,
+        clock: &mut StallClock,
+    ) -> Streamed {
+        self.stream_body_with_base(id, resp, file, offset, total, clock, 0).await
+    }
+
+    async fn stream_body_with_base(
+        self: &Arc<Self>,
+        id: &str,
         mut resp: reqwest::Response,
         file: &File,
         offset: u64,
         total: Option<u64>,
         clock: &mut StallClock,
+        base_held: u64,
     ) -> Streamed {
         // `wb.received()` is what came off the wire (speed, limits, overrun). `wb.written()` is what is on disk, and
         // it is the only position that is ever persisted or returned: the sidecar, `rec.held` and every `Streamed`
@@ -2617,7 +2630,7 @@ impl Downloads {
                     self.update(id, |_, l| l.bps = 0);
                     if self.stall_step(id, limit, clock) {
                         self.flush_side(id, &mut side, &side_path, file, pos, resumable);
-                        self.update(id, |rec, _| rec.held = pos);
+                        self.update(id, |rec, _| rec.held = base_held.saturating_add(pos));
                         return Streamed::Stalled(pos);
                     }
                     if self.state_of(id) != Some(State::Downloading) {
@@ -2658,7 +2671,7 @@ impl Downloads {
                 }
                 let pos = wb.written();
                 self.flush_side(id, &mut side, &side_path, file, pos, resumable);
-                self.update(id, |rec, _| rec.held = pos);
+                self.update(id, |rec, _| rec.held = base_held.saturating_add(pos));
                 return Streamed::Stalled(pos);
             }
 
@@ -2671,7 +2684,7 @@ impl Downloads {
                     let _ = wb.flush(&mut write);
                     let pos = wb.written();
                     self.flush_side(id, &mut side, &side_path, file, pos, resumable);
-                    self.update(id, |rec, _| rec.held = pos);
+                    self.update(id, |rec, _| rec.held = base_held.saturating_add(pos));
                     self.dispatch(id, Event::Enospc);
                     return Streamed::Stopped;
                 }
@@ -2690,7 +2703,7 @@ impl Downloads {
                 report_pos = pos;
                 last_report = Instant::now();
                 let alive = self.update(id, |rec, live| {
-                    rec.held = pos;
+                    rec.held = base_held.saturating_add(pos);
                     live.bps = bps_smooth as u64;
                     live.stalled = false;
                     live.attempts = 0;

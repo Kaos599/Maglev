@@ -251,6 +251,7 @@ impl Downloads {
             origin_host: host.clone(),
         };
         if let Some(p) = opts.parts.clone() {
+            parse_http_url(&p.audio.url)?;
             self.update(id, |_, l| l.two_files = Some(p));
         }
         let resolved = self
@@ -582,17 +583,42 @@ impl Downloads {
             // A 206 is read like a 200 when it is the whole file (issue #168).
             let whole = status == 206 && fetch::whole_body_206(&resp);
             if status != 200 && !whole {
-                return TrackEnd::Status(status, None);
+                let ra = resp
+                    .headers()
+                    .get(RETRY_AFTER)
+                    .and_then(|v| v.to_str().ok())
+                    .and_then(|v| crate::http_dl::rules::parse_retry_after(Some(v)));
+                return TrackEnd::Status(status, ra);
             }
-            return match self.stream_body(c.id, resp, &file, 0, None, clock).await {
+            let prior_bytes: u64 = runs.iter().enumerate().filter(|(i, _)| *i != ti).map(|(_, r)| r.bytes).sum();
+            return match self.stream_body_with_base(c.id, resp, &file, 0, None, clock, prior_bytes).await {
                 Streamed::Done(pos) => {
                     let _ = tokio::task::block_in_place(|| file.set_len(pos));
                     runs[ti].bytes = pos;
                     runs[ti].done = 1;
+                    let held: u64 = runs.iter().map(|r| r.bytes).sum();
+                    let done_sum: usize = runs.iter().map(|r| r.done).sum();
+                    self.update(c.id, |rec, _| {
+                        rec.held = held;
+                        if rec.size.map(|s| s < held).unwrap_or(false) {
+                            rec.size = Some(held);
+                        }
+                        if let Some(s) = rec.stream.as_mut() {
+                            s.segments_done = done_sum;
+                        }
+                    });
                     TrackEnd::Done
                 }
-                Streamed::Broken(_) => TrackEnd::Broken,
-                Streamed::Stalled(_) => TrackEnd::Stalled,
+                Streamed::Broken(_) => {
+                    let held: u64 = runs.iter().map(|r| r.bytes).sum();
+                    self.update(c.id, |rec, _| rec.held = held);
+                    TrackEnd::Broken
+                }
+                Streamed::Stalled(_) => {
+                    let held: u64 = runs.iter().map(|r| r.bytes).sum();
+                    self.update(c.id, |rec, _| rec.held = held);
+                    TrackEnd::Stalled
+                }
                 Streamed::Stopped => TrackEnd::Stopped,
             };
         }

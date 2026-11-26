@@ -48,6 +48,8 @@ export function useVideoSiteRefresh(): void {
   const { settings } = useSettings();
   const [updatePrefs] = useUpdatePrefs();
   const tries = useRef(new Map<string, number>());
+  const downloadsRef = useRef(downloads);
+  downloadsRef.current = downloads;
   const blocked = settings.network.wifiOnly && onMeteredNetwork;
 
   const run = useCallback(
@@ -66,6 +68,13 @@ export function useVideoSiteRefresh(): void {
   useEffect(() => {
     run(downloads);
   }, [downloads, run]);
+
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (next) => {
+      if (next === 'active') run(downloadsRef.current);
+    });
+    return () => sub.remove();
+  }, [run]);
 
   // "Keep video sites working" and "Update on mobile data" reach the daily background update (WorkManager) here, at
   // start and on every change. Off cancels it.

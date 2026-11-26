@@ -64,6 +64,7 @@ export default function AddDownloadScreen() {
   const [notAFile, setNotAFile] = useState(false);
   // The page has no video: the error shows its message with Back only.
   const [noVideo, setNoVideo] = useState(false);
+  const [siteBlocked, setSiteBlocked] = useState(false);
   const [addError, setAddError] = useState<string | null>(null);
   const [addStopped, setAddStopped] = useState(false);
   const [folderLabel, setFolderLabel] = useState<string | null>(null);
@@ -83,6 +84,7 @@ export default function AddDownloadScreen() {
   const fullName = probe ? baseName.trim() + splitName(probe.name).ext : '';
   const subs = useSubtitlesAuto(!!probe && fileKind(fullName || probe.name) === 'video');
   const allowLanRef = useRef(false);
+  const startingRef = useRef(false);
 
   const close = useCallback(() => {
     if (router.canGoBack()) router.back();
@@ -92,6 +94,7 @@ export default function AddDownloadScreen() {
   // Back to a blank slate for a new link, so nothing from the last one (an error, a quality list, a picked name) shows through.
   const resetState = useCallback(() => {
     token.current++;
+    startingRef.current = false;
     setMessage(null);
     setErrorView(null);
     setProbe(null);
@@ -100,6 +103,7 @@ export default function AddDownloadScreen() {
     setBaseName('');
     setNotAFile(false);
     setNoVideo(false);
+    setSiteBlocked(false);
     setAddError(null);
     setAddStopped(false);
     setStreamItem(null);
@@ -170,6 +174,12 @@ export default function AddDownloadScreen() {
       allowLanRef.current = allowLan;
       // A video page (YouTube, X, Instagram...) has no file to probe: read the page for its videos.
       if (isVideoSiteUrl(input)) {
+        if (settings.network.wifiOnly && onMeteredNetwork) {
+          setSiteBlocked(true);
+          setErrorView({ body: 'Waiting for Wi-Fi. Turn on Wi-Fi or allow mobile data in Settings.', primary: 'retry' });
+          setPhase('error');
+          return;
+        }
         await readSite(input, mine, false);
         return;
       }
@@ -199,13 +209,21 @@ export default function AddDownloadScreen() {
       }
       setProbe(null);
       // A web page that isn't a known video site may still hold a video: try it before giving up.
-      if ((res.code ?? '').toUpperCase() === 'NOT_A_FILE' && (await readSite(input, mine, true))) return;
+      if ((res.code ?? '').toUpperCase() === 'NOT_A_FILE') {
+        if (settings.network.wifiOnly && onMeteredNetwork) {
+          setSiteBlocked(true);
+          setErrorView({ body: 'Waiting for Wi-Fi. Turn on Wi-Fi or allow mobile data in Settings.', primary: 'retry' });
+          setPhase('error');
+          return;
+        }
+        if (await readSite(input, mine, true)) return;
+      }
       if (mine !== token.current) return;
       setNotAFile((res.code ?? '').toUpperCase() === 'NOT_A_FILE');
       setErrorView(probeErrorView(res.code, res.message, res.httpStatus));
       setPhase('error');
     },
-    [probeUrl, probeStream, router, readSite, resetState],
+    [probeUrl, probeStream, router, readSite, resetState, settings.network.wifiOnly, onMeteredNetwork],
   );
 
   // The `url` or `source` param (a share, a maglev:// link, or another screen) fills the field.
@@ -216,7 +234,11 @@ export default function AddDownloadScreen() {
   useEffect(() => {
     const raw = params.url || params.source;
     const incoming = typeof raw === 'string' ? raw.trim() : '';
-    if (!incoming || incoming === lastIncoming.current) return;
+    if (!incoming) {
+      lastIncoming.current = null;
+      return;
+    }
+    if (incoming === lastIncoming.current) return;
     lastIncoming.current = incoming;
     // A new link while this screen is open (an error, the quality list or anything else showing) starts over.
     resetState();
@@ -300,78 +322,89 @@ export default function AddDownloadScreen() {
   const alreadyNote = already ? <Banner tone="info" title={notices.addDownload.alreadyDownloaded} body={already.name} /> : null;
 
   const start = async (fromError = false) => {
-    setPhase('adding');
-    setAddError(null);
-    setAddStopped(false);
-    const renamed = !fromError && probe && !nameInvalid && baseName.trim() + splitName(probe.name).ext !== probe.name
-      ? baseName.trim() + splitName(probe.name).ext
-      : null;
-    const res = await startDownload(urlRef.current, {
-      ...(allowLanRef.current ? { allowLan: true } : {}),
-      ...(renamed ? { name: renamed } : {}),
-      ...(folderPath ? { folder: folderPath } : {}),
-      segments: parts,
-    });
-    if (res.ok) {
-      haptic('commit');
-      if (probe && subs.show) {
-        const ask = buildAsk({ infoHash: '', key: `d:${res.id}`, name: renamed ?? probe.name, sizeBytes: probe.size ?? undefined });
-        // A link added while the Added message is on screen joins it (44.12); otherwise Auto asks on its own.
-        const joined = joinTrayIfShowing({ hash: ask.key, name: renamed ?? probe.name, ask, auto: subs.on });
-        if (!joined && subs.on) askSubtitles([ask], { auto: true });
-        // 44.15 D4: Settings auto is on and this screen's switch is off: "not this one".
-        else if (!joined && !subs.on && subs.settingsOn) markNotThisOne([ask]);
+    if (startingRef.current) return;
+    startingRef.current = true;
+    try {
+      setPhase('adding');
+      setAddError(null);
+      setAddStopped(false);
+      const renamed = !fromError && probe && !nameInvalid && baseName.trim() + splitName(probe.name).ext !== probe.name
+        ? baseName.trim() + splitName(probe.name).ext
+        : null;
+      const res = await startDownload(urlRef.current, {
+        ...(allowLanRef.current ? { allowLan: true } : {}),
+        ...(renamed ? { name: renamed } : {}),
+        ...(folderPath ? { folder: folderPath } : {}),
+        segments: parts,
+      });
+      if (res.ok) {
+        haptic('commit');
+        if (probe && subs.show) {
+          const ask = buildAsk({ infoHash: '', key: `d:${res.id}`, name: renamed ?? probe.name, sizeBytes: probe.size ?? undefined });
+          // A link added while the Added message is on screen joins it (44.12); otherwise Auto asks on its own.
+          const joined = joinTrayIfShowing({ hash: ask.key, name: renamed ?? probe.name, ask, auto: subs.on });
+          if (!joined && subs.on) askSubtitles([ask], { auto: true });
+          // 44.15 D4: Settings auto is on and this screen's switch is off: "not this one".
+          else if (!joined && !subs.on && subs.settingsOn) markNotThisOne([ask]);
+        }
+        router.dismissTo('/');
+        return;
       }
-      router.dismissTo('/');
-      return;
+      if (res.code === 'DUPLICATE') {
+        showNotice({ message: notices.addDownload.duplicate });
+        router.dismissTo('/');
+        return;
+      }
+      haptic('fail');
+      const stopped = isEngineStopped(res);
+      const reason = stopped ? engineStoppedBody(res) : res.message;
+      if (fromError) {
+        setErrorView({ body: reason || "Couldn't start this download.", primary: 'retry' });
+        setPhase('error');
+        return;
+      }
+      setAddStopped(stopped);
+      setAddError(reason || notices.inline.startDownloadFailed);
+      setPhase('ready');
+    } finally {
+      startingRef.current = false;
     }
-    if (res.code === 'DUPLICATE') {
-      showNotice({ message: notices.addDownload.duplicate });
-      router.dismissTo('/');
-      return;
-    }
-    haptic('fail');
-    const stopped = isEngineStopped(res);
-    const reason = stopped ? engineStoppedBody(res) : res.message;
-    if (fromError) {
-      setErrorView({ body: reason || "Couldn't start this download.", primary: 'retry' });
-      setPhase('error');
-      return;
-    }
-    setAddStopped(stopped);
-    setAddError(reason || notices.inline.startDownloadFailed);
-    setPhase('ready');
   };
 
   // A video page: add the picked quality. Two files (video and audio) are fetched and joined by the engine.
   const startSite = async () => {
-    if (!site || !picked) return;
-    setPhase('adding');
-    setAddError(null);
-    setAddStopped(false);
-    const joined = partsOption(picked);
-    const res = await startDownload(picked.video.url, {
-      headers: engineHeaders(picked.video),
-      pageUrl: urlRef.current,
-      name: `${sanitizeFileName(baseName.trim()) || 'Video'}.${picked.ext}`,
-      ...(folderPath ? { folder: folderPath } : {}),
-      ...(joined ? { parts: joined } : { segments: parts }),
-    });
-    if (res.ok) {
-      haptic('commit');
-      router.dismissTo('/');
-      return;
+    if (!site || !picked || startingRef.current) return;
+    startingRef.current = true;
+    try {
+      setPhase('adding');
+      setAddError(null);
+      setAddStopped(false);
+      const joined = partsOption(picked);
+      const res = await startDownload(picked.video.url, {
+        headers: engineHeaders(picked.video),
+        pageUrl: urlRef.current,
+        name: `${sanitizeFileName(baseName.trim()) || 'Video'}.${picked.ext}`,
+        ...(folderPath ? { folder: folderPath } : {}),
+        ...(joined ? { parts: joined } : { segments: parts }),
+      });
+      if (res.ok) {
+        haptic('commit');
+        router.dismissTo('/');
+        return;
+      }
+      if (res.code === 'DUPLICATE') {
+        showNotice({ message: notices.addDownload.duplicate });
+        router.dismissTo('/');
+        return;
+      }
+      haptic('fail');
+      const stopped = isEngineStopped(res);
+      setAddStopped(stopped);
+      setAddError((stopped ? engineStoppedBody(res) : res.message) || notices.inline.startDownloadFailed);
+      setPhase('ready');
+    } finally {
+      startingRef.current = false;
     }
-    if (res.code === 'DUPLICATE') {
-      showNotice({ message: notices.addDownload.duplicate });
-      router.dismissTo('/');
-      return;
-    }
-    haptic('fail');
-    const stopped = isEngineStopped(res);
-    setAddStopped(stopped);
-    setAddError((stopped ? engineStoppedBody(res) : res.message) || notices.inline.startDownloadFailed);
-    setPhase('ready');
   };
 
   // ---------- Reading a video page ----------
@@ -399,6 +432,20 @@ export default function AddDownloadScreen() {
   }
 
   // ---------- Error ----------
+  if (phase === 'error' && siteBlocked) {
+    return (
+      <Screen title="Add a link" onBack={close}>
+        <EmptyBlock
+          icon="warning"
+          error
+          title={empty.addDownload.waitingForNetwork.title}
+          body={errorView?.body}
+          primary={{ label: 'Open settings', onPress: () => router.push(actionRoute('openNetworkSettings') ?? '/settings/network') }}
+          secondary={{ label: 'Try again', onPress: () => void submit(urlRef.current) }}
+        />
+      </Screen>
+    );
+  }
   if (phase === 'error' && errorView?.primary === 'blocked') {
     return (
       <Screen title="Add a link" onBack={close}>

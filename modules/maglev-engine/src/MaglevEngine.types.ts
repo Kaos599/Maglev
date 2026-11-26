@@ -220,6 +220,7 @@ export type EngineErrorCode =
   /** Video sites (prototype). */
   | 'SITE_NOT_SUPPORTED'
   | 'SITE_NEEDS_LOGIN'
+  | 'SITE_NO_VIDEO'
   | 'SITE_FAILED'
   | 'VIDEO_SITES_UNAVAILABLE';
 
