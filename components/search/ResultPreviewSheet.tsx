@@ -5,6 +5,7 @@ import { useTheme } from '../../context/ThemeContext';
 import { ThemeColors, spacing, type } from '../../constants/theme';
 import { formatBytes } from '../../constants/format';
 import { haptic } from '../../constants/haptics';
+import { dismissClip } from '../../utils/prefs/clipboard';
 import { Button, Sheet } from '../ui';
 import { sharingBadge, sharingWords } from './sharing';
 
@@ -43,6 +44,9 @@ export function ResultPreviewSheet({ result, onClose, onAdd, onOpenInBrowser, li
   // Dots and the "Getting…" line only after a short wait, so a link that is already known doesn't flash them.
   const [slow, setSlow] = useState(false);
   const ctl = useRef<AbortController | null>(null);
+  // Set synchronously on the first tap and held until the share sheet closes: two quick taps read the same `busy`
+  // state, and `busy` is cleared before the sheet opens, so without this a double tap opened two sheets (phone 2026-11-26).
+  const inFlight = useRef(false);
   const open = !!result;
   // Closing the sheet (or showing another result) drops any fetch in flight.
   useEffect(() => {
@@ -57,7 +61,8 @@ export function ResultPreviewSheet({ result, onClose, onAdd, onOpenInBrowser, li
 
   const run = useCallback(
     async (action: Action) => {
-      if (busy || !linkKind) return;
+      if (inFlight.current || !linkKind) return;
+      inFlight.current = true;
       const wait = new AbortController();
       ctl.current = wait;
       const timer = setTimeout(() => wait.abort(), 15000);
@@ -69,9 +74,11 @@ export function ResultPreviewSheet({ result, onClose, onAdd, onOpenInBrowser, li
         if (ctl.current !== wait) return;
         if (action === 'share') {
           setBusy(null);
-          Share.share({ message: link }).catch(() => {});
+          await Share.share({ message: link }).catch(() => {});
         } else {
           await Clipboard.setStringAsync(link);
+          // Copied to pass on, not to add: Transfers shouldn't then offer "Download the copied link?" for it.
+          dismissClip(link);
           haptic('done');
           setBusy(null);
           onCopied(linkKind);
@@ -83,12 +90,13 @@ export function ResultPreviewSheet({ result, onClose, onAdd, onOpenInBrowser, li
           setFailed(true);
         }
       } finally {
+        inFlight.current = false;
         clearTimeout(timer);
         clearTimeout(slowTimer);
         setSlow(false);
       }
     },
-    [busy, linkKind, getLink, onCopied],
+    [linkKind, getLink, onCopied],
   );
 
   const noun = linkKind === 'file' ? 'link' : 'magnet link';
