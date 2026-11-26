@@ -113,7 +113,7 @@
           ]
         }
       ],
-      "versionCode": 1000
+      "versionCode": 10000
     },
     "web": {
       "favicon": "./assets/favicon.png",
