@@ -79,8 +79,8 @@ const row = (o = {}) => ({
   check('resumeAll uses resumableIds', /resumableIds\(liveRef\.current\.torrents/.test(ctx));
   check('selection mode skips held torrents', /isHeldByFiles\(t\)/.test(read('app/(tabs)/index.tsx')) && /skipTorrent/.test(read('app/(tabs)/index.tsx')));
   const more = read('components/detail/TorrentMoreSheet.tsx');
-  check('the ⋮ menu hides Resume when held', /heldByFiles && !running \? null/.test(more));
-  check('the detail page passes the hold to the menu and hides the header Resume', /heldByFiles=\{heldByFiles\}/.test(read('app/torrent/[id].tsx')) && /MOVING' \|\| heldByFiles \? null/.test(read('app/torrent/[id].tsx')));
+  check('the ⋮ menu has no Resume row (the header button does it)', !/Resume|onTogglePause/.test(more));
+  check('the detail page hides the header Resume when held', /MOVING' \|\| heldByFiles \? null/.test(read('app/torrent/[id].tsx')));
   const kt = read('modules/maglev-engine/android/src/main/java/com/maglev/engine/EngineHost.kt');
   const ra = kt.slice(kt.indexOf('fun resumeAll()'), kt.indexOf('fun resumeAll()') + 1200);
   check('Kotlin resumeAll (app and notification) skips file-health holds', /heldByFiles/.test(ra) && /files_changed/.test(ra) && /files_missing/.test(ra) && /!heldByFiles/.test(ra));

@@ -41,6 +41,7 @@ export function DensitySheet({ visible, onClose, value, onChange }: DensitySheet
       title="Download page"
       subtitle="How much you see when you tap a download in Transfers. The buttons and files are the same in both."
       testID="density-sheet"
+      scroll={false}
     >
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={s.content}>
         <View style={s.previewRow}>

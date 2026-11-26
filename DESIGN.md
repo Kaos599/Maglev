@@ -209,7 +209,8 @@ Import primitives from `components/ui`. Each one reads the theme, meets the 44 d
 | `SegmentedControl` | Pick one of 2 to 5 short options. | More than 5 options (use a `Sheet`). | `options`, `value`, `onChange`, `accessibilityLabel` |
 | `Chip` | A filter or a pill in a group. | A button with an action. | `label`, `selected`, `onPress`, `count`, `role` (`button` or `radio`) |
 | `Banner` | A status that stays in the page, with at most one action. | A message that should vanish (use a notice). | `tone` (`info`, `warning`, `danger`, `success`, `neutral`), `title`, `body`, `actionLabel`, `onAction`, `onDismiss` |
-| `Sheet` | A bottom sheet for a picker, a form or a destructive choice. Drag down to close. | A short message with one button (use `Dialog`). | `visible`, `onClose`, `title`, `subtitle`, `children`, `returnFocusRef` |
+| `Sheet` | A bottom sheet for a picker, a form or a destructive choice. Drag down to close. | A short message with one button (use `Dialog`). | `visible`, `onClose`, `title`, `subtitle`, `children`, `returnFocusRef`, `scroll` |
+| `IconActionRow` | The 3 to 5 most-used actions at the top of a ⋮ menu: an icon with a one-line label under it. `destructive` paints one in the danger colour; Delete may sit here because it always confirms. | More than 5 actions, or an action that needs a subtitle (use a `ListRow`). | `actions` (`key`, `icon`, `label`, `onPress`, `disabled`, `active`, `destructive`) |
 | `Dialog` | A short centred message above the app that goes away. | A form or a long list. | `visible`, `onClose`, `title`, `icon`, `children`, `actions` |
 | `SectionHeader` | The label above a group of rows, with an optional action. | A screen title (use `Screen`). | `title`, `actionLabel`, `onAction` |
 | `EmptyBlock` | An empty or error state: icon, title, one line, at most one primary action. | A loading state. | `icon`, `title`, `body`, `primary`, `secondary`, `error` |
@@ -262,7 +263,7 @@ Do: put the reason a transfer is not moving in the phrase ("Waiting for Wi-Fi").
 
 Notices are raised through the engine context (`showNotice`) and drawn by the one `NoticeHost`, so every screen and sheet shares one place and one look. Their text lives in `constants/copy.ts` under `notices`. A notice with an action (Undo, Retry, Open settings) stays until it times out; a plain one has a dismiss button. Do not build a second toast.
 
-Sheets close by dragging down, the backdrop, back, or their own buttons. Give a sheet a `title`, and pass `returnFocusRef` so a screen reader returns to the control that opened it. Keep one primary button in it.
+A sheet scrolls when its content is taller than the screen allows, and shows its scrollbar on Android. A sheet that puts its own `ScrollView` or `FlatList` inside passes `scroll={false}`, so one vertical scroller is never nested in another. Sheets close by dragging down, the backdrop, back, or their own buttons. Give a sheet a `title`, and pass `returnFocusRef` so a screen reader returns to the control that opened it. Keep one primary button in it.
 
 ### Empty and error states
 

@@ -12,6 +12,8 @@ export { Chip } from './Chip';
 export type { ChipProps } from './Chip';
 export { Banner } from './Banner';
 export type { BannerProps, BannerTone } from './Banner';
+export { IconActionRow } from './IconActionRow';
+export type { IconAction } from './IconActionRow';
 export { Sheet } from './Sheet';
 export type { SheetProps } from './Sheet';
 export { Dialog } from './Dialog';

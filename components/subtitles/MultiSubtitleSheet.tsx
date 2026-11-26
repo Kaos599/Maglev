@@ -131,7 +131,7 @@ export function MultiSubtitleSheet({ visible, asks, mode, onConfirm, onClose, no
   const foot = nonVideo && nonVideo.length > 0 ? (nonVideo.length === 1 ? nonVideoOne(nonVideo[0]) : nonVideoMany(nonVideo.length)) : '';
 
   return (
-    <Sheet visible={visible} onClose={onClose} title={multiTitle(mode === 'status' ? rows.length : asks.length, allEpisodes)} testID="multi-subtitle-sheet">
+    <Sheet visible={visible} onClose={onClose} title={multiTitle(mode === 'status' ? rows.length : asks.length, allEpisodes)} testID="multi-subtitle-sheet" scroll={false}>
       <View style={styles.stack}>
         <View style={styles.langLine}>
           <Text style={styles.hint}>{USES_YOUR_LANGUAGES}</Text>

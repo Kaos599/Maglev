@@ -97,7 +97,7 @@ export function ProviderSheet({
   const modified = !custom && !!prefs.mirrorOverride[provider.id];
 
   return (
-    <Sheet visible onClose={done} title={provider.name} subtitle={methodLine(provider.method)}>
+    <Sheet visible onClose={done} title={provider.name} subtitle={methodLine(provider.method)} scroll={false}>
       <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.content}>
         {provider.unsafeReason ? <Banner tone="warning" title={banners.sources.unsafe.title} body={provider.unsafeReason} /> : null}
 

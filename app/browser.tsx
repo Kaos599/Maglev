@@ -23,7 +23,7 @@ import { haptic } from '../constants/haptics';
 import { bookmarkCopy } from '../constants/bookmarkCopy';
 import { addressCopy, banners, browserTabs, empty, findCopy, foundTray, historyCopy, notices, pageMenuCopy, siteSheetCopy } from '../constants/copy';
 import { PixelIcon } from '../components/PixelIcon';
-import { Banner, Button, Dialog, EmptyBlock, IconButton, ListRow, PressableScale, ProgressBar, Sheet, TextField, type TextFieldRef, Toggle } from '../components/ui';
+import { Banner, Button, Dialog, EmptyBlock, IconActionRow, IconButton, ListRow, PressableScale, ProgressBar, Sheet, TextField, type TextFieldRef, Toggle } from '../components/ui';
 import { FoundTray } from '../components/browser/FoundTray';
 import { PageSlot, TabWebView, type PageSlotName, type TabHandlers } from '../components/browser/TabWebView';
 import { TabPlaceholder } from '../components/browser/TabPlaceholder';
@@ -32,7 +32,6 @@ import { TabSwitcher } from '../components/browser/TabSwitcher';
 import { AddressSwipe } from '../components/browser/AddressSwipe';
 import { FindBar, type FindResult } from '../components/browser/FindBar';
 import { SiteSettingsSheet } from '../components/browser/SiteSettingsSheet';
-import { PageMenuActions } from '../components/browser/PageMenuActions';
 import { LinkMenu } from '../components/browser/LinkMenu';
 import { PopupCard } from '../components/browser/PopupCard';
 import { useTabs } from '../components/browser/useTabs';
@@ -1232,7 +1231,7 @@ export default function BrowserScreen({ inTab = false }: { inTab?: boolean }) {
       <PopupCard prompt={prompt} onAllowOnce={popupOpen} onBlock={popupBlock} onAlwaysAllow={popupAlways} onDismiss={popupDismiss} />
 
       <Sheet visible={menuOpen} onClose={() => setMenuOpen(false)} title={hasPage ? historyCopy.menuTitlePage : historyCopy.menuTitleBlank} hideTitle>
-        <PageMenuActions
+        <IconActionRow
           actions={[
             {
               key: 'back',

@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { AccessibilityInfo, KeyboardAvoidingView, LayoutChangeEvent, Modal, Platform, Pressable, StyleSheet, Text, View, findNodeHandle, useWindowDimensions } from 'react-native';
+import { AccessibilityInfo, KeyboardAvoidingView, LayoutChangeEvent, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View, findNodeHandle, useWindowDimensions } from 'react-native';
 import { GestureDetector, GestureHandlerRootView, usePanGesture } from 'react-native-gesture-handler';
 import Animated, { cancelAnimation, useAnimatedStyle, useSharedValue, withSpring, withTiming } from 'react-native-reanimated';
 import { scheduleOnRN } from 'react-native-worklets';
@@ -21,6 +21,12 @@ export interface SheetProps {
   testID?: string;
   /** The control that opened the sheet. TalkBack focus goes back to it after the sheet closes. */
   returnFocusRef?: React.RefObject<any>;
+  /**
+   * Wrap the content in a vertical ScrollView so a tall sheet can be scrolled to its last row (default true).
+   * A sheet whose content fits looks the same. Pass false when the content has its own ScrollView or FlatList,
+   * so one vertical scroller is never nested in another.
+   */
+  scroll?: boolean;
 }
 
 /**
@@ -33,7 +39,7 @@ export interface SheetProps {
  * A Modal is its own native window on Android, outside the app's root gesture view, so the sheet
  * brings its own GestureHandlerRootView.
  */
-export function Sheet({ visible, onClose, title, subtitle, hideTitle, children, testID, returnFocusRef }: SheetProps) {
+export function Sheet({ visible, onClose, title, subtitle, hideTitle, children, testID, returnFocusRef, scroll = true }: SheetProps) {
   const { colors } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const insets = useSafeAreaInsets();
@@ -197,7 +203,19 @@ export function Sheet({ visible, onClose, title, subtitle, hideTitle, children, 
                 )}
               </View>
             </GestureDetector>
-            <View style={styles.content}>{children}</View>
+            {scroll ? (
+              <ScrollView
+                style={styles.content}
+                keyboardShouldPersistTaps="handled"
+                bounces={false}
+                showsVerticalScrollIndicator
+                persistentScrollbar
+              >
+                {children}
+              </ScrollView>
+            ) : (
+              <View style={styles.content}>{children}</View>
+            )}
           </Animated.View>
           </View>
         </KeyboardAvoidingView>
