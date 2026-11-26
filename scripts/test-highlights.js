@@ -77,7 +77,7 @@ function check(name, cond, extra) {
   check('every way of closing records the installed version', /const close = useCallback\(\(\) => \{\s*setLastSeenVersion\(INSTALLED\)/.test(sheet) && /tryIt[\s\S]*close\(\)/.test(sheet) && /notes = useCallback\(\(\) => \{\s*if \(!shown\?\.open\) return;\s*close\(\)/.test(sheet));
   check('it asks the plan once per launch, and only for an onboarded user on a plain launch', /decided \|\| plain !== true \|\| !onboarded/.test(sheet) && /highlightPlan\(INSTALLED, getLastSeenVersion\(\), false, prefs\.showHighlights\)/.test(sheet) && /advanceSilently\) setLastSeenVersion/.test(sheet));
   check('a launch link, at start or later, keeps it from showing', /Linking\.getInitialURL/.test(sheet) && /isPlainLaunch\(url\)/.test(sheet) && /addEventListener\('url', \(\) => \{[\s\S]*?setPlain\(false\)/.test(sheet));
-  check('a return from the background with no new link counts as a plain launch', /AppState\.addEventListener\('change'/.test(sheet) && /wasBackground && !linkSinceBackground\) \{\s*setPlain\(true\)/.test(sheet));
+  check('a return from the background with no new link counts as a plain launch', /AppState\.addEventListener\('change'/.test(sheet) && /wasBackground && !linkSinceBackground\)/.test(sheet) && /if \(!linkSinceBackground\) setPlain\(true\)/.test(sheet));
   console.log('[entrance]');
   const B = await import('../components/highlight/burst.ts');
   const TM = await import('../components/highlight/timing.ts');
