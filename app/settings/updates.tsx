@@ -6,7 +6,7 @@ import { getBlocklistInfo, maglevEngine, type BlocklistInfo } from 'maglev-engin
 import { ThemeColors, radius, spacing, type } from '../../constants/theme';
 import { useTheme } from '../../context/ThemeContext';
 import { useMaglevEngine } from '../../context/EngineContext';
-import { Button, ListRow, RadioCard, SectionHeader, Sheet, Toggle } from '../../components/ui';
+import { Button, ExperimentalTag, ListRow, RadioCard, SectionHeader, Sheet, Toggle } from '../../components/ui';
 import { Caption, Card, SettingsPage } from '../../components/settings/SettingsParts';
 import { highlightCopy, listsCopy, updateCopy } from '../../constants/copy';
 import { updateInfoOf, useHasUpdate } from '../../components/settings/updates/useHasUpdate';
@@ -91,7 +91,7 @@ function readerNotice(status: string, rawVersion: string | null): string {
   return "Couldn't update yt-dlp. Check your connection.";
 }
 
-const VIDEO_SITES_CAPTION = "The part that reads video links from YouTube, X, Instagram and more. It downloads yt-dlp's newest release from GitHub in the background.";
+const VIDEO_SITES_CAPTION = "The part that reads video links from YouTube, X, Instagram and more. Experimental: some sites may fail. It downloads yt-dlp's newest release from GitHub in the background.";
 
 /** "Video sites": the reader behind video page links changes often, so the app keeps it current (browser contract 7). */
 function VideoSitesSection() {
@@ -121,7 +121,7 @@ function VideoSitesSection() {
     : ' ';
   return (
     <>
-      <SectionHeader title="Video sites" />
+      <SectionHeader title="Video sites" trailing={<ExperimentalTag />} />
       <Caption>{VIDEO_SITES_CAPTION}</Caption>
       <Card>
         <ListRow

@@ -212,7 +212,8 @@ Import primitives from `components/ui`. Each one reads the theme, meets the 44 d
 | `Sheet` | A bottom sheet for a picker, a form or a destructive choice. Drag down to close. | A short message with one button (use `Dialog`). | `visible`, `onClose`, `title`, `subtitle`, `children`, `returnFocusRef`, `scroll` |
 | `IconActionRow` | The 3 to 5 most-used actions at the top of a ⋮ menu: an icon with a one-line label under it. `destructive` paints one in the danger colour; Delete may sit here because it always confirms. | More than 5 actions, or an action that needs a subtitle (use a `ListRow`). | `actions` (`key`, `icon`, `label`, `onPress`, `disabled`, `active`, `destructive`) |
 | `Dialog` | A short centred message above the app that goes away. | A form or a long list. | `visible`, `onClose`, `title`, `icon`, `children`, `actions` |
-| `SectionHeader` | The label above a group of rows, with an optional action. | A screen title (use `Screen`). | `title`, `actionLabel`, `onAction` |
+| `SectionHeader` | The label above a group of rows, with an optional action or trailing tag. | A screen title (use `Screen`). | `title`, `actionLabel`, `onAction`, `trailing` |
+| `ExperimentalTag` | A small pill that marks a feature as experimental (Assistant, video links). | Status or counts; use `Chip`. | none |
 | `EmptyBlock` | An empty or error state: icon, title, one line, at most one primary action. | A loading state. | `icon`, `title`, `body`, `primary`, `secondary`, `error` |
 | `ProgressBar` | Progress of a transfer. | A percentage readout on its own. | `progress` (0 to 1), `tone` (`download`, `seed`, `paused`, `error`), `indeterminate`, `resetKey` |
 | `Screen` | The safe-area container with an optional header, back button and actions. | Nested inside another `Screen`. | `title`, `onBack`, `actions`, `scroll`, `edges`, `contentStyle` |

@@ -1,4 +1,4 @@
-- Maglev now downloads almost any link. Share or paste a YouTube, X or Instagram video link, pick a quality and save it. Files, magnets and torrents work as before.
+- Maglev now downloads almost any link (video links are experimental). Share or paste a YouTube, X or Instagram video link, pick a quality and save it. Files, magnets and torrents work as before.
 - Long-press a video in the browser and choose Download.
 - Swipe the address bar to switch tabs.
 - A shorter page menu, Site settings and pop-up control in the browser.

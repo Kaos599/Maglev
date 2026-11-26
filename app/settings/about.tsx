@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Linking, Platform, StyleSheet, Text, View } from 'react-native';
+import { Linking, StyleSheet, Text, View } from 'react-native';
 import { Stack, useRouter, type Href } from 'expo-router';
 import Constants from 'expo-constants';
 import { maglevEngine } from 'maglev-engine';
@@ -14,17 +14,10 @@ import { errorScreenCopy, updateCopy } from '../../constants/copy';
 import { clearCrashLog, copyCrashReport, getCrashLog } from '../../utils/crashLog';
 import { REPO_URL, StarTicket } from '../../components/settings/StarTicket';
 import { aboutExtrasCopy } from '../../constants/aboutCopy';
-import { buildIssueUrl, deviceLabel } from '../../utils/update/check';
+import { openBugReport } from '../../utils/update/reportBug';
 import { useHasUpdate } from '../../components/settings/updates/useHasUpdate';
 
 type Extra = { homepage?: string; privacyUrl?: string };
-
-/** Phone details for the bug form (Android only; other platforms send what they have). */
-function phoneDetails() {
-  const c = (Platform.constants ?? {}) as { Release?: string; Model?: string; Manufacturer?: string };
-  const device = deviceLabel(c.Manufacturer, c.Model);
-  return { android: String(c.Release ?? Platform.Version ?? ''), device };
-}
 
 export default function AboutSettings() {
   const { colors } = useTheme();
@@ -55,10 +48,6 @@ export default function AboutSettings() {
     extra.privacyUrl && { title: 'Privacy policy', url: extra.privacyUrl },
   ].filter(Boolean) as { title: string; url: string }[];
 
-  const reportBug = () => {
-    const { android, device } = phoneDetails();
-    void Linking.openURL(buildIssueUrl({ version: appVersion, android, device }));
-  };
   const openUpdates = () => router.push('/settings/updates');
 
   const { showNotice } = useMaglevEngine();
@@ -93,7 +82,7 @@ export default function AboutSettings() {
         {hasUpdate && version ? (
           <ListRow title={updateCopy.available(version)} icon="download" onPress={openUpdates} />
         ) : null}
-        <ListRow title={updateCopy.report.title} subtitle={updateCopy.report.subtitle} icon="external" onPress={reportBug} />
+        <ListRow title={updateCopy.report.title} subtitle={updateCopy.report.subtitle} icon="external" onPress={openBugReport} />
         <ListRow
           title={aboutExtrasCopy.debugLog.title}
           subtitle={aboutExtrasCopy.debugLog.subtitle}

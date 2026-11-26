@@ -8,9 +8,11 @@ export interface SectionHeaderProps {
   title: string;
   actionLabel?: string;
   onAction?: () => void;
+  /** Small element after the title, such as a tag. */
+  trailing?: React.ReactNode;
 }
 
-export function SectionHeader({ title, actionLabel, onAction }: SectionHeaderProps) {
+export function SectionHeader({ title, actionLabel, onAction, trailing }: SectionHeaderProps) {
   const { colors } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   return (
@@ -19,6 +21,7 @@ export function SectionHeader({ title, actionLabel, onAction }: SectionHeaderPro
         <Text style={styles.title} accessibilityRole="header" numberOfLines={1}>
           {title}
         </Text>
+        {trailing ? <View style={styles.trailing}>{trailing}</View> : null}
         {actionLabel && onAction ? (
           <Pressable
             onPress={onAction}
@@ -51,6 +54,7 @@ const makeStyles = (c: ThemeColors) =>
       color: c.textMuted,
       flexShrink: 1,
     },
+    trailing: { marginLeft: spacing.sm, marginRight: 'auto' },
     action: { minHeight: 20, justifyContent: 'center' },
     pressed: { opacity: 0.6 },
     actionText: { ...type.bodyStrong, fontSize: type.size.sm, color: c.accentText },
