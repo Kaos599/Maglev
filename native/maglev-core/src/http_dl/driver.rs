@@ -44,7 +44,7 @@ use super::rules::{
 use super::sidecar::{final_path, part_path, safe_url, sidecar_path, Sidecar};
 use super::redirect::{send_following, CookiePicker};
 use super::stream::fetch::{host_lower, pick_cookie};
-use super::stream::{PartsSpec, StreamError, StreamKind, StreamRec, StreamSpec};
+use super::stream::{PartsSpec, StreamError, StreamKind, StreamRec, StreamSpec, PART_CHUNK};
 use crate::error::{EngineError, ErrorCode};
 use crate::meta::write_atomic;
 use crate::timing::{gained, Timing};
@@ -746,6 +746,22 @@ async fn resolve_ips(host: &str) -> Result<Vec<String>, EngineError> {
 
 fn host_of(url: &str) -> String {
     reqwest::Url::parse(url).ok().and_then(|u| u.host_str().map(str::to_string)).unwrap_or_default()
+}
+
+/// The size of one ranged request for a link that must not be fetched with a single long request, or `None`.
+/// YouTube's media servers (`googlevideo.com/videoplayback`) slow one long request for an adaptive (DASH) format
+/// to a crawl, and that includes a plain request for a small audio file. yt-dlp avoids it by asking for 10 MiB
+/// ranges (`http_chunk_size`). A progressive format carries `ratebypass=yes` and needs nothing.
+fn chunk_span(url: &str) -> Option<u64> {
+    let u = reqwest::Url::parse(url).ok()?;
+    let host = u.host_str()?.to_ascii_lowercase();
+    if !(host == "googlevideo.com" || host.ends_with(".googlevideo.com")) || u.path() != "/videoplayback" {
+        return None;
+    }
+    if u.query_pairs().any(|(k, v)| k == "ratebypass" && v == "yes") {
+        return None;
+    }
+    Some(PART_CHUNK)
 }
 
 /// Does a link to the same file match what was stored? Size must agree; validators must agree when both exist,
@@ -2257,7 +2273,7 @@ impl Downloads {
             if self.state_of(&id) != Some(State::Downloading) {
                 return;
             }
-            let Some((builder, picker, ranged, total, validator)) = self.build_get(&id, &client, held) else {
+            let Some((builder, picker, ranged, total, validator, chunked)) = self.build_get(&id, &client, held) else {
                 return;
             };
             let resp = match send_following(&client, builder, &picker).await {
@@ -2274,8 +2290,14 @@ impl Downloads {
                 }
             };
             let status = resp.status().as_u16();
-            let headers = read_headers(resp.headers());
-            match judge_get(status, &headers, held, total, validator.as_deref(), ranged) {
+            let mut headers = read_headers(resp.headers());
+            if chunked && status == 206 {
+                // `Content-Length` is the length of this range, not of the file the probe measured.
+                headers.content_length = None;
+            }
+            // A server that answers a chunk request with the whole file (200) is read like an unranged request.
+            let judged_ranged = ranged && !(chunked && status == 200);
+            match judge_get(status, &headers, held, total, validator.as_deref(), judged_ranged) {
                 Reply::Body { offset, total: learned } => {
                     if offset == 0 {
                         held = 0;
@@ -2320,6 +2342,12 @@ impl Downloads {
                                 });
                                 self.finish(&id, &file);
                                 return;
+                            }
+                            if chunked && pos > offset {
+                                // One range arrived whole: ask for the next one on a fresh request.
+                                held = pos;
+                                self.update(&id, |rec, _| rec.held = pos);
+                                continue;
                             }
                             // The server closed early: treat it as a broken connection.
                             held = self.resume_point(&id, pos);
@@ -2491,7 +2519,7 @@ impl Downloads {
         id: &str,
         client: &Client,
         held: u64,
-    ) -> Option<(reqwest::RequestBuilder, CookiePicker, bool, Option<u64>, Option<String>)> {
+    ) -> Option<(reqwest::RequestBuilder, CookiePicker, bool, Option<u64>, Option<String>, bool)> {
         self.update(id, |rec, live| {
             let hdrs = LinkHeaders::from_live(live);
             let mut b = hdrs.apply(client.get(rec.url.as_str()).header(ACCEPT_ENCODING, "identity"), rec.url.as_str());
@@ -2499,13 +2527,28 @@ impl Downloads {
                 b = b.basic_auth(u, Some(p));
             }
             let mut ranged = false;
-            if held > 0 {
-                if let Some(v) = rec.validator.as_deref().and_then(|v| HeaderValue::from_str(v).ok()) {
-                    b = b.header(RANGE, format!("bytes={held}-")).header(IF_RANGE, v);
+            let mut chunked = false;
+            let validator = rec.validator.as_deref().and_then(|v| HeaderValue::from_str(v).ok());
+            match (chunk_span(rec.url.as_str()), rec.size) {
+                // Always a bounded range, even from byte 0, so the server never sees one long request.
+                (Some(span), Some(total)) if held < total => {
+                    let end = held.saturating_add(span).min(total) - 1;
+                    b = b.header(RANGE, format!("bytes={held}-{end}"));
+                    if let (true, Some(v)) = (held > 0, validator) {
+                        b = b.header(IF_RANGE, v);
+                    }
                     ranged = true;
+                    chunked = true;
                 }
+                _ if held > 0 => {
+                    if let Some(v) = validator {
+                        b = b.header(RANGE, format!("bytes={held}-")).header(IF_RANGE, v);
+                        ranged = true;
+                    }
+                }
+                _ => {}
             }
-            (b, hdrs.picker(rec.url.as_str()), ranged, rec.size, rec.validator.clone())
+            (b, hdrs.picker(rec.url.as_str()), ranged, rec.size, rec.validator.clone(), chunked)
         })
     }
 
