@@ -140,6 +140,8 @@ export const notices = {
   },
   addDownload: {
     duplicate: 'This link is already in Transfers.',
+    /** Shown on Add a link above the name of the finished download that has the same link. */
+    alreadyDownloaded: 'You already downloaded this.',
   },
   addTorrent: {
     addedWaiting: 'Added. You can choose files once its details arrive.',
