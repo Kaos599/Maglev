@@ -121,6 +121,11 @@ function unknownLast(a: number | null, b: number | null): number | null {
   return null;
 }
 
+/** Tie-break for every sort: the more recent item first, an unknown time last. */
+function newestFirst(ta: number | null, tb: number | null): number {
+  return unknownLast(ta, tb) ?? (tb as number) - (ta as number);
+}
+
 export function sortTorrents<T extends TorrentTelemetry>(list: readonly T[], sort: TransferSort): T[] {
   const mul = sort.dir === 'asc' ? 1 : -1;
   return [...list].sort((a, b) => {
@@ -134,7 +139,8 @@ export function sortTorrents<T extends TorrentTelemetry>(list: readonly T[], sor
       sort.key === 'name'
         ? a.name.localeCompare(b.name, undefined, { sensitivity: 'base', numeric: true })
         : value(a, sort.key) - value(b, sort.key);
-    return cmp !== 0 ? cmp * mul : a.id.localeCompare(b.id);
+    if (cmp !== 0) return cmp * mul;
+    return newestFirst(recentTime(a.finishedAt, a.addedAt), recentTime(b.finishedAt, b.addedAt)) || a.id.localeCompare(b.id);
   });
 }
 
@@ -473,6 +479,7 @@ export function mergeTransfers<T extends TorrentTelemetry>(
       sort.key === 'name'
         ? nameOf(a).localeCompare(nameOf(b), undefined, { sensitivity: 'base', numeric: true })
         : valueOf(a) - valueOf(b);
-    return cmp !== 0 ? cmp * mul : a.key.localeCompare(b.key);
+    if (cmp !== 0) return cmp * mul;
+    return newestFirst(recentOf(a), recentOf(b)) || a.key.localeCompare(b.key);
   });
 }

@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Linking, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import { AppState, Linking, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { useRouter } from 'expo-router';
 import Constants from 'expo-constants';
 import { useTheme } from '../context/ThemeContext';
@@ -25,29 +25,55 @@ const EXIT_MS = motion.duration.exit;
 const INSTALLED = Constants.expoConfig?.version ?? '';
 
 /**
- * Tells whether this process started from a plain launch. A share, magnet, file or deep link hands the app a URL
- * at start (or while it runs): the highlight then waits for the next plain launch (docs/NATIVE_CONTRACT.md 37.2).
- * `null` while the start URL is still unknown.
+ * Tells whether the app is being opened plainly. A share, magnet, file or deep link hands the app a URL at start
+ * (or while it runs): the highlight then waits. `null` while the start URL is still unknown.
+ *
+ * The start URL is read from the activity's first intent, and Android never replaces that intent when a later one
+ * arrives, so a process restored with an old share or notification intent keeps reporting it. A start URL
+ * therefore only postpones the card for this stay in the foreground: the next time the app comes back from the
+ * background without a new link, the launch counts as plain.
  */
 function usePlainLaunch(): boolean | null {
   const [plain, setPlain] = useState<boolean | null>(null);
   useEffect(() => {
     let alive = true;
+    let wasBackground = false;
+    let linkSinceBackground = false;
+    let plainTimer: ReturnType<typeof setTimeout> | null = null;
     void Linking.getInitialURL()
       .then((url) => alive && setPlain((prev) => (prev === false ? false : isPlainLaunch(url))))
       .catch(() => alive && setPlain((prev) => (prev === false ? false : true)));
-    // A link that arrives while the app runs counts too: this launch wasn't a plain one.
-    const sub = Linking.addEventListener('url', () => setPlain(false));
+    // A link that arrives while the app runs counts too: this visit wasn't a plain one.
+    const link = Linking.addEventListener('url', () => {
+      linkSinceBackground = true;
+      setPlain(false);
+    });
+    // Android delivers a new link before the app returns to the foreground, so a return with none is a plain one.
+    const app = AppState.addEventListener('change', (next) => {
+      if (next === 'background') {
+        wasBackground = true;
+        linkSinceBackground = false;
+      } else if (next === 'active' && wasBackground && !linkSinceBackground) {
+        // Wait a moment: on some phones the link event lands just after the app turns active, and the card must
+        // never open over a share.
+        if (plainTimer) clearTimeout(plainTimer);
+        plainTimer = setTimeout(() => {
+          if (!linkSinceBackground) setPlain(true);
+        }, 800);
+      }
+    });
     return () => {
       alive = false;
-      sub.remove();
+      link.remove();
+      app.remove();
+      if (plainTimer) clearTimeout(plainTimer);
     };
   }, []);
   return plain;
 }
 
 /**
- * The new-feature dialog (section 37). Mounted once at the app root, after onboarding. On a plain launch it shows
+ * The new-feature dialog. Mounted once at the app root, after onboarding. On a plain launch it shows
  * the newest entry between the last seen and the installed version; any way of closing it records the installed
  * version. With no entry (or the switch off) the version moves forward without a sound.
  */
