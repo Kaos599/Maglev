@@ -25,7 +25,7 @@ export const HIGHLIGHTS: Record<string, Highlight> = {
     tryRoute: '/settings/subtitles',
     tryLabel: 'Set up subtitles',
   },
-  '0.35': {
+  '1.0': {
     title: 'Download almost any link',
     body: 'Share or paste a YouTube, X or Instagram link and pick a quality. Files, magnets and torrents work as before.',
     icon: 'link',

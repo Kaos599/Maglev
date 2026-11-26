@@ -3,7 +3,7 @@
  * Release notes: one file per version in release-notes/<version>.md (see release-notes/README.md).
  *
  *   node scripts/release-notes.js check [version]   validate the notes for app.json's version (or the one given)
- *   node scripts/release-notes.js build <tag>        print the GitHub release text for a tag such as v0.14-beta
+ *   node scripts/release-notes.js build <tag>        print the GitHub release text for a tag such as v1.0
  *   node scripts/release-notes.js draft              list commits since the last tag, sorted into the sections
  *
  * A release shows only the sections its file has: What's new, What's changed, What's fixed.

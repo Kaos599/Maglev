@@ -27,8 +27,8 @@ for (const f of fs.readdirSync(path.join(root, 'release-notes')).filter((f) => /
   t(`release-notes/${f} parses`, parse(fs.readFileSync(path.join(root, 'release-notes', f), 'utf8')).errors.length === 0);
 }
 
-const body = build(`v${version}-beta`);
-t('release text has the title and tagline', body.startsWith(`# Maglev v${version}-beta`) && body.includes('Beta build.'));
+const body = build(`v${version}`);
+t('release text has the title and tagline', body.startsWith(`# Maglev v${version}`) && !body.includes('Beta build.'));
 t('release text has install steps', body.includes('## Which APK?') && body.includes('## Install'));
 t('no old torrent-client tagline', !/minimal[^\n]{0,20}torrent client/i.test(body));
 t('only sections the file has', (() => {
