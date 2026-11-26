@@ -34,7 +34,7 @@ Paste or share almost any link and Maglev downloads it: a video page, a file, a 
 <ul>
 <li>Find subtitles for a video you've downloaded, from 21 free sources with no account. Open a finished download or a video in a torrent's Files tab and tap Find subtitles.</li>
 <li>Results are grouped by how well they fit the file. The subtitle is saved next to the video, so players pick it up.</li>
-<li>Choose your languages and turn sources on or off in Settings (Subtitle sources). Two sources match by file fingerprint; the rest match by name.</li>
+<li>Choose your languages and turn sources on or off in Settings (Subtitles). Two sources match by file fingerprint; the rest match by name.</li>
 </ul>
 
 <b>Search and feeds</b>
