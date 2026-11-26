@@ -119,7 +119,7 @@ export const TextField = forwardRef<TextFieldRef, TextFieldProps>(function TextF
   const minHeight = size === 'lg' ? touch.min + spacing.xs : touch.min;
   const boxHeight = multiline
     ? { minHeight: Math.max(minHeight, minLines * lineHeight + spacing.md * 2), maxHeight: maxLines * lineHeight + spacing.md * 2 }
-    : { height: minHeight };
+    : { minHeight };
 
   if (bare) {
     return (

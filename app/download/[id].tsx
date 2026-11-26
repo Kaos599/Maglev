@@ -47,6 +47,8 @@ import { downloadEntryMode, entrySubtitle, type SubtitleTarget } from '../../com
 import { FIND_SUBTITLES } from '../../utils/subtitles/copy';
 import { useLiveBlockContext } from '../../utils/blocks/useActiveBlocks';
 import { reasonsForItem } from '../../utils/blocks/reasons';
+import { afterSheetCloses } from '../../components/browser/FloatingSheet';
+import { dismissClip } from '../../utils/prefs/clipboard';
 
 type RemoveStep = 'closed' | 'choose' | 'confirmDelete';
 
@@ -143,6 +145,7 @@ export default function DownloadScreen() {
   const copyLink = useCallback(async () => {
     if (!d) return;
     try {
+      dismissClip(d.urlDisplay);
       await Clipboard.setStringAsync(d.urlDisplay);
       haptic('done');
       showNotice({ message: LINK_COPIED_TEXT }, 2500);
@@ -401,7 +404,7 @@ export default function DownloadScreen() {
             value={limitText}
             onPress={() => {
               setMoreOpen(false);
-              setLimitOpen(true);
+              afterSheetCloses(() => setLimitOpen(true));
             }}
             accessibilityLabel={`Speed limit, ${limitText}. Opens the speed limit options.`}
           />
@@ -412,7 +415,7 @@ export default function DownloadScreen() {
           destructive
           onPress={() => {
             setMoreOpen(false);
-            setRemoveStep('choose');
+            afterSheetCloses(() => setRemoveStep('choose'));
           }}
         />
       </Sheet>
@@ -421,7 +424,16 @@ export default function DownloadScreen() {
         <View style={styles.stack}>
           <Text style={styles.hint}>{copy.subtitle}</Text>
           <Button label={copy.keepLabel} variant="secondary" fullWidth onPress={() => removeNow(false)} />
-          <Button label={copy.deleteLabel} variant="danger" icon="trash" fullWidth onPress={() => setRemoveStep('confirmDelete')} />
+          <Button
+            label={copy.deleteLabel}
+            variant="danger"
+            icon="trash"
+            fullWidth
+            onPress={() => {
+              setRemoveStep('closed');
+              afterSheetCloses(() => setRemoveStep('confirmDelete'));
+            }}
+          />
           <Button label="Cancel" variant="ghost" fullWidth onPress={() => setRemoveStep('closed')} />
         </View>
       </Sheet>
