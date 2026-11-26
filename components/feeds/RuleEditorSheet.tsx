@@ -51,7 +51,7 @@ export function RuleEditorSheet({ visible, rule, isNew, feeds, itemsByFeed, onCl
   const canSave = !noInclude && !badInclude && !badExclude;
 
   return (
-    <Sheet visible={visible} onClose={onClose} title={isNew ? 'New rule' : 'Edit rule'}>
+    <Sheet visible={visible} onClose={onClose} title={isNew ? 'New rule' : 'Edit rule'} scroll={false}>
       <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
         <View style={styles.field}>
           <TextField

@@ -25,7 +25,7 @@ export function TopicPicker({
   const s = useMemo(() => makeStyles(colors), [colors]);
   const total = topics.reduce((sum, t) => sum + t.tips.length, 0);
   return (
-    <Sheet visible={visible} onClose={onClose} title={tipsCopy.topicsTitle} subtitle={tipsCopy.tipCount(total)} testID="tips-topics">
+    <Sheet visible={visible} onClose={onClose} title={tipsCopy.topicsTitle} subtitle={tipsCopy.tipCount(total)} testID="tips-topics" scroll={false}>
       <ScrollView style={s.list} contentContainerStyle={s.listContent}>
         {topics.map((t) => {
           const on = t.id === current;
@@ -67,7 +67,7 @@ export function StepsSheet({
   const shown = tip ?? last.current;
   const steps = shown?.action.steps ?? [];
   return (
-    <Sheet visible={tip != null} onClose={onClose} title={shown?.title ?? ''} testID="tips-steps">
+    <Sheet visible={tip != null} onClose={onClose} title={shown?.title ?? ''} testID="tips-steps" scroll={false}>
       <ScrollView style={s.list} contentContainerStyle={s.stepsContent}>
         {steps.map((text, i) => (
           <View key={text} style={s.step}>

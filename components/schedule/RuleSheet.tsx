@@ -63,7 +63,7 @@ export function RuleSheet({ visible, rule, isNew, onClose, onSave, onDelete }: R
       : null;
 
   return (
-    <Sheet visible={visible} onClose={onClose} title={isNew ? 'New rule' : 'Edit rule'}>
+    <Sheet visible={visible} onClose={onClose} title={isNew ? 'New rule' : 'Edit rule'} scroll={false}>
       <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
         <Text style={styles.label}>Days</Text>
         <View style={styles.wrap}>

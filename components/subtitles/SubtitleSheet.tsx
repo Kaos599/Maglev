@@ -544,7 +544,7 @@ export function SubtitleSheet({ target, onClose, initial = 'results' }: Props) {
   };
 
   return (
-    <Sheet visible={visible} onClose={close} title={SHEET_TITLE} subtitle={target?.fileName}>
+    <Sheet visible={visible} onClose={close} title={SHEET_TITLE} subtitle={target?.fileName} scroll={false}>
       {body()}
     </Sheet>
   );

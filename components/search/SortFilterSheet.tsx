@@ -62,7 +62,7 @@ export function SortFilterSheet({
   const dirty = sourceFilter !== null || sizeRange.low !== 0 || sizeRange.high !== LAST_STOP || hideNoShare;
 
   return (
-    <Sheet visible={visible} onClose={onClose} title="Sort and filter" returnFocusRef={returnFocusRef}>
+    <Sheet visible={visible} onClose={onClose} title="Sort and filter" returnFocusRef={returnFocusRef} scroll={false}>
       <ScrollView style={styles.scroll} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
         <SectionHeader title="Sort by" />
         <View accessibilityRole="radiogroup" accessibilityLabel="Sort by">
