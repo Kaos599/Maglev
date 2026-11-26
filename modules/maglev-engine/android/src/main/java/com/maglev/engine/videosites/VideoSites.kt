@@ -18,10 +18,11 @@ object VideoSites {
 
     const val NOT_SUPPORTED = "SITE_NOT_SUPPORTED"
     const val NEEDS_LOGIN = "SITE_NEEDS_LOGIN"
+    const val NO_VIDEO = "SITE_NO_VIDEO"
     const val FAILED = "SITE_FAILED"
     const val UNAVAILABLE = "VIDEO_SITES_UNAVAILABLE"
 
-    private val TOP_KEYS = listOf("title", "thumbnail", "duration", "extractor_key", "webpage_url")
+    private val TOP_KEYS = listOf("id", "title", "thumbnail", "duration", "extractor_key", "webpage_url")
     private val FORMAT_KEYS = listOf(
         "format_id", "url", "ext", "vcodec", "acodec", "height", "width", "filesize", "filesize_approx",
         "tbr", "abr", "protocol", "http_headers", "language",
@@ -126,6 +127,8 @@ object VideoSites {
         return when {
             m.contains("unsupported url") ->
                 VideoSitesException(NOT_SUPPORTED, "Maglev can't read this site. Open it in the browser to find the video.")
+            NO_VIDEO_HINTS.any { m.contains(it) } ->
+                VideoSitesException(NO_VIDEO, "No video found in this post.")
             LOGIN_HINTS.any { m.contains(it) } ->
                 VideoSitesException(
                     NEEDS_LOGIN,
@@ -134,6 +137,14 @@ object VideoSites {
             else -> VideoSitesException(FAILED, "Couldn't read this video. Try again.")
         }
     }
+
+    /**
+     * What yt-dlp says when the page is real but holds no video, for example a text or picture post on X
+     * ("No video could be found in this tweet", "There's no video in this tweet") or "No video formats found".
+     */
+    private val NO_VIDEO_HINTS = listOf(
+        "no video could be found", "no video in this", "no video formats found", "no media found", "there is no video",
+    )
 
     private val LOGIN_HINTS = listOf(
         "login", "log in", "sign in", "cookies", "private video", "members-only", "confirm your age", "age-restricted",

@@ -66,7 +66,7 @@ const fixture = (n) => JSON.parse(read(`scripts/fixtures/video-sites/${n}.json`)
   check('instagram: one single-file option (no height known)', ig.options.length === 1 && ig.options[0].audio === null && ig.options[0].height === null, ig.options.map((o) => o.id));
   check('instagram: the best (last) plain file wins', ig.options[0].id === '2', ig.options[0].id);
   check('instagram: dash video-only files are never offered', !ig.options.some((o) => o.id.startsWith('dash')));
-  check('instagram: label without a size', ig.options[0].label === 'Video');
+  check('instagram: label shows a dash when the size is unknown', ig.options[0].label === 'Video · —', ig.options[0].label);
 
   // ---- odd input
   const empty = V.buildVideoSiteInfo({});
@@ -80,7 +80,7 @@ const fixture = (n) => JSON.parse(read(`scripts/fixtures/video-sites/${n}.json`)
   // ---- names, headers, `parts` options
   check('base name has the height', V.suggestedBaseName(yt, top) === `${yt.title} 1080p`);
   check('base name without a height is the title', V.suggestedBaseName(yt, aud) === yt.title);
-  check('base name falls back to Video', V.suggestedBaseName({ ...ig, title: '' }, ig.options[0]) === 'Video');
+  check('base name falls back to the site and id, then Video', V.suggestedBaseName({ ...ig, title: '', id: 'abc' }, ig.options[0]) === 'Instagram abc' && V.suggestedBaseName({ ...ig, title: '', id: '', site: '' }, ig.options[0]) === 'Video');
   const hdr = V.engineHeaders({ url: 'https://a.test', size: null, headers: { 'user-agent': 'UA', Referer: 'https://r.test', Accept: 'x', 'Sec-Fetch-Mode': 'navigate' } });
   check('only the headers the engine understands are sent', JSON.stringify(hdr) === JSON.stringify({ 'User-Agent': 'UA', Referer: 'https://r.test' }), hdr);
   const parts = V.partsOption(top);
@@ -99,8 +99,8 @@ const fixture = (n) => JSON.parse(read(`scripts/fixtures/video-sites/${n}.json`)
 
   // ---- wiring (source checks)
   const kt = read('modules/maglev-engine/android/src/main/java/com/maglev/engine/videosites/VideoSites.kt');
-  for (const code of Object.keys(M).filter((c) => c !== 'SITE_NO_VIDEO')) check(`kotlin has ${code}`, kt.includes(`"${code}"`));
-  for (const code of ['SITE_NOT_SUPPORTED', 'SITE_NEEDS_LOGIN', 'SITE_FAILED', 'VIDEO_SITES_UNAVAILABLE']) {
+  for (const code of Object.keys(M).filter((c) => c !== 'SITE_NO_FORMAT')) check(`kotlin has ${code}`, kt.includes(`"${code}"`));
+  for (const code of ['SITE_NOT_SUPPORTED', 'SITE_NEEDS_LOGIN', 'SITE_NO_VIDEO', 'SITE_FAILED', 'VIDEO_SITES_UNAVAILABLE']) {
     check(`kotlin message for ${code} matches the app copy`, kt.includes(JSON.stringify(M[code]).slice(1, -1)));
   }
   check('kotlin runs yt-dlp with --dump-single-json and --no-playlist', kt.includes('--dump-single-json') && kt.includes('--no-playlist'));
