@@ -36,7 +36,7 @@ check('TS: the view gets mediaHitScript(\'\') (no nonce is needed)', /mediaHitSc
 check('screen: only a video hit for the active tab opens the media menu', /onMediaHit: \(id, e\) => \{\s*if \(id !== activeIdRef\.current\) return;\s*const hit = parseMediaHit\(e\.json\);\s*if \(hit && hit\.kind === 'video' && hasMenu\(buildMediaMenu\(hit\)\)\) setMediaHit\(hit\);/.test(scr));
 check('screen: MediaMenu is wired to save, stream, tab, copy, share, files and link options', /<MediaMenu[\s\S]*?onSave=[\s\S]*?onStream=\{streamFromHit\}[\s\S]*?onOpenNewTab=[\s\S]*?onCopy=[\s\S]*?onShare=[\s\S]*?Share\.share[\s\S]*?onShowFound=\{\(\) => setTrayOpen\(true\)\}[\s\S]*?onLinkOptions=/.test(scr));
 check('screen: Back closes the media menu', /if \(mediaHit\) \{\s*setMediaHit\(null\);\s*return true;/.test(scr));
-check('Kotlin: onMediaHit is registered in the view events and as a dispatcher', /"onFindResult", "onMediaHit",\s*"onPullProgress", "onReloadState"\)/.test(mod) && /private val onMediaHit by EventDispatcher/.test(kt));
+check('Kotlin: onMediaHit is registered in the view events and as a dispatcher', /"onFindResult", "onMediaHit",\s*"onReloadState"\)/.test(mod) && /private val onMediaHit by EventDispatcher/.test(kt));
 check('Kotlin: the long press asks the page for __maglevMediaHit and emits the decoded payload', /evaluateJavascript\("window\.__maglevMediaHit && window\.__maglevMediaHit\(\)"\)/.test(kt) && /JSONTokener\(value\)\.nextValue\(\) as\? String/.test(kt) && /optString\("type"\) != "maglev-media-hit"/.test(kt) && /onMediaHit\(mapOf\("json" to payload\)\)/.test(kt));
 check('Kotlin: text selection is kept (the listener returns false for a non-image, non-link hit)', /askMediaHit\(w\)\s*return false/.test(kt));
 check('Kotlin: the media script is injected at both PageScan call sites', (kt.match(/if \(mediaHitJs\.isNotEmpty\(\)\) (?:webView|view)\.evaluateJavascript\(mediaHitJs, null\)/g) || []).length === 2 && /Prop\("mediaHitScript"/.test(mod));
@@ -47,7 +47,7 @@ check('Kotlin: the WebView sits in a SwipeRefreshLayout', /import androidx\.swip
 check('Kotlin: a pull reloads, and the child-scroll callback blocks it off the top, in find and in a selection', /refresh\.setOnRefreshListener/.test(kt) && /setOnChildScrollUpCallback \{ _, _ -> selectionHold \|\| findActive \|\| webView\.canScrollVertically\(-1\) \}/.test(kt));
 check('Kotlin: the spinner stops when the load ends and has a safety timeout', /refresh\.isRefreshing = false/.test(kt) && /PULL_SAFETY_MS/.test(kt));
 check('Kotlin: props pullToRefresh, refreshColor and refreshBackground', /Prop\("pullToRefresh"/.test(mod) && /Prop\("refreshColor"/.test(mod) && /Prop\("refreshBackground"/.test(mod) && /setColorSchemeColors/.test(kt) && /setProgressBackgroundColorSchemeColor/.test(kt));
-check('TS: the screen passes pullToRefresh and theme colours', /pullToRefresh\s+refreshColor=\{colors\.accent\}\s+refreshBackground=\{colors\.surface\}/.test(scr) && /pullToRefresh\?: boolean;/.test(wrap));
+check('TS: the screen passes pullToRefresh and theme colours', /pullToRefresh\s+refreshColor=\{colors\.accent\}\s+refreshBackground=\{dark \? colors\.surfaceRaised : colors\.surface\}/.test(scr) && /pullToRefresh\?: boolean;/.test(wrap));
 check('gradle: swiperefreshlayout dependency', /androidx\.swiperefreshlayout:swiperefreshlayout:1\.1\.0/.test(gradle));
 
 // ---- dark pages ----

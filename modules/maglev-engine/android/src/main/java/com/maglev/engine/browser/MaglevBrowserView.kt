@@ -19,7 +19,6 @@ import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import android.view.KeyEvent
 import android.view.MotionEvent
-import kotlin.math.abs
 import org.json.JSONObject
 import org.json.JSONTokener
 import android.view.View
@@ -82,8 +81,7 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
     private val onLongPress by EventDispatcher<Map<String, Any?>>()
     private val onMediaHit by EventDispatcher<Map<String, Any?>>()
     private val onFindResult by EventDispatcher<Map<String, Any?>>()
-    // 24.10a / 0.34 section 4: drag progress of a pull to reload (0..1.5), and reload start / end.
-    private val onPullProgress by EventDispatcher<Map<String, Any?>>()
+    // 24.10a / 0.34 section 4: reload start / end.
     private val onReloadState by EventDispatcher<Map<String, Any?>>()
 
     override val shouldUseAndroidLayout: Boolean = true
@@ -193,7 +191,7 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
     private val bridge = PageScanBridge { json -> onScanReport(json) }
 
     // 24.10a: pull to reload. The WebView sits inside this layout (https://developer.android.com/reference/androidx/swiperefreshlayout/widget/SwipeRefreshLayout).
-    // 0.34 section 4 (option A): the stock circle is hidden for good; RN draws the train from onPullProgress / onReloadState.
+    // 0.35: the stock progress circle is shown and follows the finger on the UI thread; colours come from the refreshColor / refreshBackground props.
     private val refresh = SwipeRefreshLayout(context)
     private val density = context.resources.displayMetrics.density
     // SwipeRefreshLayout's trigger distance (72 dp), in px. Progress 1 is a drag of exactly this distance.
@@ -201,12 +199,6 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
     // 24.10a: a text selection or the find bar is active, so a downward drag must not reload. Main thread.
     private var selectionHold = false
     private var findActive = false
-    // 0.34 section 4: a pull is being tracked (started at the top of the page), its last sent progress and when it was sent.
-    private var pullTracking = false
-    private var pullDownX = 0f
-    private var pullDownY = 0f
-    private var pullSent = 0f
-    private var pullSentAt = 0L
     // One reload from start to end: `start` is sent once and `end` once per start. Main thread.
     private var reloadActive = false
     // The page has been seen loading during this reload; its end (loading false) then ends the reload.
@@ -225,58 +217,14 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
             if (!reloadActive) refresh.isRefreshing = false
         }
         refresh.setOnChildScrollUpCallback { _, _ -> selectionHold || findActive || webView.canScrollVertically(-1) }
-        // 0.34 section 4: the circle is never drawn. Transparent colours and an off-screen offset keep it invisible.
-        refresh.setColorSchemeColors(Color.TRANSPARENT)
-        refresh.setProgressBackgroundColorSchemeColor(Color.TRANSPARENT)
-        refresh.setProgressViewOffset(false, (-400 * density).toInt(), (-300 * density).toInt())
+        // 0.35: dark-theme defaults (surfaceRaised disc, lime arc) until the refreshBackground / refreshColor props arrive.
+        refresh.setProgressBackgroundColorSchemeColor(DEFAULT_REFRESH_DISC)
+        refresh.setColorSchemeColors(DEFAULT_REFRESH_ARC)
         refresh.setDistanceToTriggerSync(pullTriggerPx.toInt())
         addView(refresh, ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
         webView = createWebView()
         refresh.addView(webView, ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
     }
-
-    // region Pull progress (0.34 section 4)
-
-    /**
-     * Tracks a pull that starts at the top of the page, for the train under the header. Progress is the drag
-     * (SwipeRefreshLayout's 0.5 drag rate) over the trigger distance, sent at most every 33 ms and only when it moved
-     * by 0.02. Released without a reload, it is sent as 0. The gesture itself is still handled by SwipeRefreshLayout.
-     */
-    override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
-        when (ev.actionMasked) {
-            MotionEvent.ACTION_DOWN -> {
-                pullTracking = !destroyed && refresh.isEnabled && !webView.canScrollVertically(-1) && !selectionHold && !findActive
-                pullDownX = ev.x
-                pullDownY = ev.y
-                pullSent = 0f
-                pullSentAt = 0L
-            }
-            MotionEvent.ACTION_MOVE -> if (pullTracking) {
-                // A mostly sideways drag (a carousel at the top of the page) is not a pull: SwipeRefreshLayout won't
-                // take it, so the train must not peek in either.
-                val dy = ev.y - pullDownY
-                val dragged = if (abs(dy) > abs(ev.x - pullDownX)) dy * PULL_DRAG_RATE else 0f
-                emitPull((dragged / pullTriggerPx).coerceIn(0f, 1.5f), force = false)
-            }
-        }
-        val handled = super.dispatchTouchEvent(ev)
-        if (ev.actionMasked == MotionEvent.ACTION_UP || ev.actionMasked == MotionEvent.ACTION_CANCEL) {
-            // After super: a release past the trigger has started a reload by now, and that one is not a zero.
-            if (pullTracking && !refresh.isRefreshing && !reloadActive) emitPull(0f, force = true)
-            pullTracking = false
-        }
-        return handled
-    }
-
-    private fun emitPull(progress: Float, force: Boolean) {
-        val now = SystemClock.uptimeMillis()
-        if (!force && (now - pullSentAt < PULL_EMIT_MS || abs(progress - pullSent) < PULL_EMIT_DELTA)) return
-        pullSentAt = now
-        pullSent = progress
-        if (!destroyed) onPullProgress(mapOf("progress" to progress.toDouble()))
-    }
-
-    // endregion
 
     // region Props and commands (called on the main thread)
 
@@ -346,14 +294,16 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
         if (!value) refresh.isRefreshing = false
     }
 
-    /** 0.34 section 4: no-op. The stock spinner is hidden; the train is drawn in RN (ReloadStrip). Kept for old JS. */
-    @Suppress("UNUSED_PARAMETER")
+    /** 0.35: the arc colour of the pull circle, `#RRGGBB`. A bad value keeps the previous colour. */
     fun setRefreshColor(value: String) {
+        val color = try { Color.parseColor(value) } catch (e: IllegalArgumentException) { return }
+        refresh.setColorSchemeColors(color)
     }
 
-    /** 0.34 section 4: no-op, see setRefreshColor. */
-    @Suppress("UNUSED_PARAMETER")
+    /** 0.35: the disc colour behind the arc, `#RRGGBB`. A bad value keeps the previous colour. */
     fun setRefreshBackground(value: String) {
+        val color = try { Color.parseColor(value) } catch (e: IllegalArgumentException) { return }
+        refresh.setProgressBackgroundColorSchemeColor(color)
     }
 
     /** 24.10a: the script from utils/browser/mediaHitScript.ts, injected next to the page scan. */
@@ -565,6 +515,8 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
         if (reloadActive) return
         reloadActive = true
         reloadSeenLoading = false
+        // A reload from the menu or a command shows the circle too (a pull already has it showing).
+        if (refresh.isEnabled && !refresh.isRefreshing) refresh.isRefreshing = true
         onReloadState(mapOf("state" to "start"))
     }
 
@@ -1734,11 +1686,10 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
             java.util.Collections.newSetFromMap(java.util.concurrent.ConcurrentHashMap<String, Boolean>())
 
         private const val PULL_SAFETY_MS = 15_000L
-        /** SwipeRefreshLayout's trigger distance and drag rate (0.34 section 4). */
+        /** SwipeRefreshLayout's trigger distance. */
         private const val PULL_TRIGGER_DP = 72f
-        private const val PULL_DRAG_RATE = 0.5f
-        private const val PULL_EMIT_MS = 33L
-        private const val PULL_EMIT_DELTA = 0.02f
+        private const val DEFAULT_REFRESH_DISC = 0xFF161B22.toInt()
+        private const val DEFAULT_REFRESH_ARC = 0xFFCCFF00.toInt()
         private const val MAX_MEDIA_HIT_CHARS = 20_000
 
         private const val MAX_CAPTURES = 3

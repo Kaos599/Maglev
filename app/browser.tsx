@@ -27,7 +27,6 @@ import { Banner, Button, Dialog, EmptyBlock, IconActionRow, IconButton, ListRow,
 import { FoundTray } from '../components/browser/FoundTray';
 import { PageSlot, TabWebView, type PageSlotName, type TabHandlers } from '../components/browser/TabWebView';
 import { TabPlaceholder } from '../components/browser/TabPlaceholder';
-import { ReloadStrip, type ReloadStripHandle } from '../components/browser/ReloadStrip';
 import { TabSwitcher } from '../components/browser/TabSwitcher';
 import { AddressSwipe } from '../components/browser/AddressSwipe';
 import { FindBar, type FindResult } from '../components/browser/FindBar';
@@ -138,11 +137,6 @@ export default function BrowserScreen({ inTab = false }: { inTab?: boolean }) {
   const activeId = tab?.id ?? '';
   const activeIdRef = useRef(activeId);
   activeIdRef.current = activeId;
-  // 0.34 section 4: the reload train under the header. Fed only by the active tab; hidden when the tab changes.
-  const reloadRef = useRef<ReloadStripHandle>(null);
-  useEffect(() => {
-    reloadRef.current?.reset();
-  }, [activeId]);
   // docs/contracts-0.35/tab-switch.md: one offset moves the header bar and the pages together. `pageWidth` is the width
   // the pages actually occupy (the body), measured on layout.
   const swipeX = useSharedValue(0);
@@ -712,15 +706,6 @@ export default function BrowserScreen({ inTab = false }: { inTab?: boolean }) {
       const hit = parseMediaHit(e.json);
       if (hit && hit.kind === 'video' && hasMenu(buildMediaMenu(hit))) setMediaHit(hit);
     },
-    // 0.34 section 4: the train follows the active tab only.
-    onPullProgress: (id, e) => {
-      if (id === activeIdRef.current) reloadRef.current?.pull(e.progress);
-    },
-    onReloadState: (id, e) => {
-      if (id !== activeIdRef.current) return;
-      if (e.state === 'start') reloadRef.current?.reloadStart();
-      else reloadRef.current?.reloadEnd();
-    },
   };
   const implRef = useRef(impl);
   implRef.current = impl;
@@ -1086,7 +1071,7 @@ export default function BrowserScreen({ inTab = false }: { inTab?: boolean }) {
                     httpsFirst={prefs.httpsFirst}
                     pullToRefresh
                     refreshColor={colors.accent}
-                    refreshBackground={colors.surface}
+                    refreshBackground={dark ? colors.surfaceRaised : colors.surface}
                     darkPages={prefs.darkPages && dark}
                     handlers={handlers}
                     register={registerView}
@@ -1102,7 +1087,6 @@ export default function BrowserScreen({ inTab = false }: { inTab?: boolean }) {
               ) : null,
             )
           : null}
-        <ReloadStrip ref={reloadRef} />
         {/* A blank tab's page is the start page; it moves with the swipe like any other page. The slot stays mounted so
             it changes in the same commit as the tab views; without a start page it is hidden and takes no touches. */}
         <PageSlot slot={hasPage ? 'hidden' : 'active'} offset={swipeX} pageWidth={pageWidth} pointerEvents={hasPage ? 'none' : 'auto'}>
