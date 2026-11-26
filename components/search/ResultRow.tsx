@@ -1,4 +1,4 @@
-import React, { memo, useMemo } from 'react';
+import React, { memo, useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useTheme } from '../../context/ThemeContext';
 import { ThemeColors, radius, spacing, type, touch } from '../../constants/theme';
@@ -54,9 +54,18 @@ function ResultRowImpl({ name, category, sizeBytes, seeders, leechers, age, via,
   const leechWords = leechers === undefined ? 'downloaders unknown' : `${leechers.toLocaleString('en-US')} downloading`;
   const label = `${MEDIA_WORD[kind]}, ${size}, ${seedWords}, ${leechWords}${age ? `, uploaded ${age}` : ''}, via ${via}`;
   const badge = sharingBadge(seeders);
+  // The whole card lights up while a finger is on it (same colour as a pressed ListRow), and stays lit while held.
+  const [pressed, setPressed] = useState(false);
   return (
-    <View style={[styles.row, isLowShare(seeders) && !added && styles.dim]}>
-      <Pressable style={styles.main} onPress={onOpen} accessibilityRole="button" accessibilityLabel={`${name}. ${label}. Show details`}>
+    <View style={[styles.row, pressed && styles.pressed, isLowShare(seeders) && !added && styles.dim]}>
+      <Pressable
+        style={styles.main}
+        onPress={onOpen}
+        onPressIn={() => setPressed(true)}
+        onPressOut={() => setPressed(false)}
+        accessibilityRole="button"
+        accessibilityLabel={`${name}. ${label}. Show details`}
+      >
         <View style={styles.tile} importantForAccessibility="no-hide-descendants">
           <PixelIcon name={KIND_ICON[kind]} size={20} color={colors.text} />
         </View>
@@ -134,6 +143,7 @@ const makeStyles = (c: ThemeColors) =>
       borderWidth: 1,
       borderColor: c.border,
     },
+    pressed: { backgroundColor: c.surfaceRaised, borderColor: c.borderStrong },
     dim: { opacity: 0.6 },
     adding: { width: touch.min, height: touch.min, alignItems: 'center', justifyContent: 'center' },
     badge: { alignSelf: 'flex-start', paddingHorizontal: spacing.sm, paddingVertical: 2, borderRadius: radius.sm, borderWidth: 1, borderColor: c.border },

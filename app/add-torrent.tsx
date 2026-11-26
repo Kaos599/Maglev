@@ -650,7 +650,7 @@ export default function AddTorrentScreen() {
   return (
     <Screen title="Add a link" onBack={close} scroll contentStyle={styles.inputContent}>
       <TextField
-        label="Link, magnet or .torrent"
+        label="Link"
         value={text}
         onChangeText={onChangeText}
         placeholder="Paste a link"
@@ -659,9 +659,9 @@ export default function AddTorrentScreen() {
         minLines={3}
         returnKeyType="go"
         onSubmitEditing={() => canSubmit && submit(text)}
-        help="Magnet link, .torrent link or info hash"
+        help="A video, web page, file, magnet or .torrent link"
         error={phase === 'invalid' && message ? message : undefined}
-        accessibilityLabel="Link, magnet or .torrent"
+        accessibilityLabel="Link"
       />
 
       <View style={styles.actions}>
