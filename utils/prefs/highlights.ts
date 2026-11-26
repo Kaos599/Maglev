@@ -1,4 +1,4 @@
-/** kv `highlights.lastSeenVersion` (docs/NATIVE_CONTRACT.md section 37.1). */
+/** kv `highlights.lastSeenVersion`. */
 import { kvGet, kvSet } from './kv.ts';
 
 const KEY = 'highlights.lastSeenVersion';

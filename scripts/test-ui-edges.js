@@ -80,7 +80,7 @@ function check(name, cond, extra) {
   const rx = /\.test\(appPath\(raw\)/.exec(ni) ? new RegExp('^\\/?from\\/(tile|notification)\\/?$', 'i') : null;
   check('the tile and notification markers open Transfers (native intent maps them to "/")', !!rx && /from\\\/\(tile\|notification\)/.test(ni) && /return '\/';/.test(ni.slice(ni.indexOf('from\\/(tile|notification)'))) && ['/from/tile', '/from/notification'].every((p) => rx.test(p)));
   const sh = read('components/HighlightSheet.tsx');
-  check('a link that arrives while running also blocks it', /addEventListener\('url', \(\) => setPlain\(false\)\)/.test(sh));
+  check('a link that arrives while running also blocks it', /addEventListener\('url', \(\) => \{[\s\S]*?setPlain\(false\)/.test(sh));
 
   console.log('[13 closing mid-entrance]');
   const ent = read('components/highlight/useEntrance.ts');
