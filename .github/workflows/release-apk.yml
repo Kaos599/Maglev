@@ -7,7 +7,6 @@ on:
   push:
     tags:
       - 'v*'
-      - '*beta*'
   workflow_dispatch:
 
 permissions:
@@ -347,6 +346,6 @@ jobs:
             build-artifacts/Maglev-${{ github.ref_name }}.apks
             build-artifacts/SHA256SUMS
           draft: false
-          # Beta is in the tag name; a normal release is what GitHub shows in the repo sidebar.
+          # A normal release is what GitHub shows in the repo sidebar.
           prerelease: false
           make_latest: true

@@ -20,7 +20,8 @@ assert.strictEqual(versionCode('1.0'), 1000);
 assert(versionCode(bump('0.999', 'major')) > versionCode('0.999'));
 assert.throws(() => bump('0.999', 'minor'), /above 999/);
 
-assert.strictEqual(releaseTag('0.1'), 'v0.1-beta');
+assert.strictEqual(releaseTag('0.1'), 'v0.1');
+assert.strictEqual(releaseTag('0.1', true), 'v0.1-beta');
 assert.strictEqual(releaseTag('1.0', false), 'v1.0');
 assert.strictEqual(checkTag('v0.1-beta', '0.1'), true);
 assert.strictEqual(checkTag('v0.1', '0.1'), true);

@@ -4,7 +4,7 @@
  *   expo.version              "0.1"
  *   expo.android.versionCode  major*1000 + minor  (ABI splits then use code*10 + abi digit)
  * package.json mirrors it as semver "<major>.<minor>.0" because npm requires three parts.
- * Release tags are v<major>.<minor>-beta while in beta, v<major>.<minor> after.
+ * Release tags were v0.x-beta during the beta; from 1.0 they are v<major>.<minor>.
  *
  * Usage:
  *   node scripts/bump-version.js minor     0.1 -> 0.2
@@ -39,13 +39,13 @@ function versionCode(v) {
   return major * 1000 + minor;
 }
 
-function releaseTag(v, beta = true) {
+function releaseTag(v, beta = false) {
   parseVersion(v);
   return `v${v}${beta ? '-beta' : ''}`;
 }
 
 function checkTag(tag, v) {
-  return tag === releaseTag(v, true) || tag === releaseTag(v, false);
+  return tag === releaseTag(v, false) || tag === releaseTag(v, true);
 }
 
 function main(argv) {
@@ -58,7 +58,7 @@ function main(argv) {
 
   if (cmd === 'check') {
     if (!checkTag(arg, current)) {
-      console.error(`Tag ${arg} does not match app.json version ${current} (expected ${releaseTag(current)} or ${releaseTag(current, false)})`);
+      console.error(`Tag ${arg} does not match app.json version ${current} (expected ${releaseTag(current)})`);
       process.exit(1);
     }
     console.log(`Tag ${arg} matches version ${current}`);
