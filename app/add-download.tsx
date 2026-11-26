@@ -4,7 +4,7 @@ import { DownloadParts, PART_CHOICES, useLinkDownloadPrefs } from '../utils/pref
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import * as Clipboard from 'expo-clipboard';
-import { maglevEngine, infoHashToMagnet, isDownloadLink, isShareOpen, isTorrentSource, normalizeIncoming, sanitizeFileName, type UrlProbe } from 'maglev-engine';
+import { consumeTrustedShare, maglevEngine, infoHashToMagnet, isDownloadLink, isShareOpen, isTorrentSource, normalizeIncoming, sanitizeFileName, type UrlProbe } from 'maglev-engine';
 import { useTheme } from '../context/ThemeContext';
 import { useMaglevEngine } from '../context/EngineContext';
 import { ThemeColors, radius, spacing, touch, type } from '../constants/theme';
@@ -235,6 +235,13 @@ export default function AddDownloadScreen() {
       return;
     }
     setText(clean);
+    // The share card records the link it opens this screen with. If Android confirms it, this was a real share
+    // whose `from` marker did not survive, so read it now. An outside maglev:// link has no record and waits.
+    if (typeof params.url === 'string') {
+      void consumeTrustedShare(incoming).then((trusted) => {
+        if (trusted && lastIncoming.current === incoming) void submit(clean);
+      });
+    }
   }, [params.url, params.source, params.from, submit, router, resetState]);
 
   // Free space refreshes when the preview opens.

@@ -65,6 +65,9 @@ class QuickShareActivity : Activity() {
         // Video sites (prototype): a shared YouTube, X or Instagram page goes straight to the add sheet, which
         // reads the video and lists qualities. Same host list as utils/videoSites.ts VIDEO_SITE_HOSTS.
         if (cls.kind == ShareKind.WEB_PAGE && isVideoSite(host(cls.source))) {
+            // Mark this exact link as ours, so the add screen reads it at once. A maglev:// link from a web page or
+            // another app never gets a mark and still waits for a tap.
+            cls.source?.let { TrustedShare.record(it) }
             openMaglev(Uri.parse("maglev://add-download?url=" + Uri.encode(cls.source ?: "")))
             return
         }
