@@ -37,7 +37,7 @@ object MaglevShareIntent {
     }
 
     private fun textSource(intent: Intent): String? {
-        val text = intent.getStringExtra(Intent.EXTRA_TEXT) ?: return null
+        val text = intent.getCharSequenceExtra(Intent.EXTRA_TEXT)?.toString() ?: return null
         return MAGNET.find(text)?.value
             ?: TORRENT_URL.find(text)?.value
             ?: WEB_URL.find(text)?.value?.trimEnd('.', ',', ';', ':', '!', '?', ')', ']', '}')

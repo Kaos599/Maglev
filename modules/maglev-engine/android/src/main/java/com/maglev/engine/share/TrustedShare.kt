@@ -1,5 +1,7 @@
 package com.maglev.engine.share
 
+import android.os.SystemClock
+
 /**
  * Remembers the one link the quick share card is about to hand to the app, so the add screen can tell a real share
  * from a maglev://add-download link that a web page or another app opened. Only this process can set it, and a link
@@ -16,7 +18,7 @@ object TrustedShare {
     fun record(url: String) {
         synchronized(lock) {
             link = url.trim()
-            recordedAt = System.currentTimeMillis()
+            recordedAt = SystemClock.elapsedRealtime()
         }
     }
 
@@ -24,7 +26,7 @@ object TrustedShare {
     fun consume(url: String): Boolean {
         synchronized(lock) {
             val stored = link
-            val fresh = System.currentTimeMillis() - recordedAt in 0..WINDOW_MS
+            val fresh = SystemClock.elapsedRealtime() - recordedAt in 0..WINDOW_MS
             val ok = stored != null && fresh && stored == url.trim()
             if (ok) link = null
             return ok

@@ -152,11 +152,16 @@ class QuickShareActivity : Activity() {
     private fun openMaglev(uri: Uri?) {
         val main = packageManager.getLaunchIntentForPackage(packageName)?.component
         if (main == null) { finish(); return }
-        val link = cls.source
+        val link = if (::cls.isInitialized) cls.source else null
+        val isLocalUri = link != null && (link.startsWith("content://", true) || link.startsWith("file://", true))
         val i = when {
             uri != null -> Intent(Intent.ACTION_VIEW, uri)
             // MainActivity does not read PROCESS_TEXT: hand it the link that was found in the selection.
             original.action == Intent.ACTION_PROCESS_TEXT && link != null -> Intent(Intent.ACTION_VIEW, Uri.parse(link))
+            // Hand over the extracted link directly (e.g. from SpannableString, clipData, EXTRA_SUBJECT, LINK_EXTRAS,
+            // or EXTRA_TEXT alongside a preview image EXTRA_STREAM) so MainActivity does not re-parse and lose it.
+            // Keep Intent(original) for content:// and file:// URIs so stream/clipData URI grants stay intact.
+            link != null && !isLocalUri -> Intent(Intent.ACTION_VIEW, Uri.parse(link))
             else -> Intent(original)
         }
         i.component = main
@@ -178,7 +183,14 @@ class QuickShareActivity : Activity() {
         return VIDEO_SITE_HOSTS.any { h == it || h.endsWith(".$it") }
     }
 
-    private fun host(url: String?): String? = url?.let { Regex("^https?://([^/?#]+)", RegexOption.IGNORE_CASE).find(it)?.groupValues?.get(1)?.substringAfterLast('@') }
+    private fun host(url: String?): String? = url?.let {
+        val h = Regex("^https?://([^/?#]+)", RegexOption.IGNORE_CASE).find(it)?.groupValues?.get(1)?.substringAfterLast('@')
+            ?: return@let null
+        when {
+            h.startsWith('[') -> h.indexOf(']').takeIf { i -> i > 0 }?.let { i -> h.substring(0, i + 1) } ?: h
+            else -> h.substringBefore(':')
+        }.takeIf { it.isNotEmpty() }
+    }
 
     private fun folderName(): String {
         val t = StorageManager.activeTarget(applicationContext)
