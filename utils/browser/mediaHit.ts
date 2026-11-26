@@ -198,7 +198,8 @@ export function buildMediaMenu(hit: MediaHit): MediaMenu {
     else if (isVideoSiteUrl(hit.pageUrl)) {
       // Video sites (prototype): YouTube, X, Instagram play through blob: streams with no file address.
       // The add sheet reads the page itself and lists qualities.
-      items.push({ id: 'download-page-video', title: C.downloadPageVideo, icon: 'download', url: hit.pageUrl });
+      const videoUrl = hit.linkHref && isVideoSiteUrl(hit.linkHref) ? hit.linkHref : hit.pageUrl;
+      items.push({ id: 'download-page-video', title: C.downloadPageVideo, icon: 'download', url: videoUrl });
     } else {
       if (hit.poster) items.push({ id: 'save-poster', title: C.savePoster, icon: 'download', url: hit.poster });
       note = cls === 'blob' ? C.videoBlob : cls === 'data' ? C.videoInline : C.videoNone;

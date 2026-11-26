@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { StyleSheet, Text, View, useWindowDimensions, type LayoutChangeEvent } from 'react-native';
 import { GestureDetector, useExclusiveGestures, usePanGesture, useTapGesture } from 'react-native-gesture-handler';
 import Animated, { Easing, cancelAnimation, useAnimatedStyle, useSharedValue, withSpring, withTiming, type SharedValue } from 'react-native-reanimated';
@@ -115,10 +115,22 @@ export function AddressSwipe({
     clearHintLater();
   };
 
+  const hintTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const commitTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(
+    () => () => {
+      if (hintTimer.current) clearTimeout(hintTimer.current);
+      if (commitTimer.current) clearTimeout(commitTimer.current);
+    },
+    [],
+  );
+
   // The hint text goes once the bar is back in place, unless a new drag has shown another hint meanwhile.
   const clearHintLater = () => {
     live.current.hintId = '';
-    setTimeout(() => {
+    if (hintTimer.current) clearTimeout(hintTimer.current);
+    hintTimer.current = setTimeout(() => {
+      hintTimer.current = null;
       if (live.current.hintId === '') setHint(null);
     }, motion.duration.release);
   };
@@ -136,7 +148,9 @@ export function AddressSwipe({
     l.committing = true;
     offset.value = slideMs > 0 ? withTiming(to, { duration: slideMs, easing: SLIDE_EASING }) : to;
     // No reset here: the screen puts the offset back to 0 in the commit that makes the target active.
-    setTimeout(() => {
+    if (commitTimer.current) clearTimeout(commitTimer.current);
+    commitTimer.current = setTimeout(() => {
+      commitTimer.current = null;
       l.committing = false;
       l.onSelect(target.id);
       clearHintLater();

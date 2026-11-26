@@ -452,7 +452,7 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
      * https://developer.android.com/reference/android/webkit/WebView#saveState(android.os.Bundle)
      */
     private fun saveForWake() {
-        if (tabId.isEmpty()) return
+        if (tabId.isEmpty() || privateMode) return
         try {
             if (webView.copyBackForwardList().size == 0) {
                 TabStates.drop(tabId)
@@ -535,6 +535,8 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
         webView.stopLoading()
         // stopLoading does not always end with onPageFinished; the bar must not stay on Stop.
         loading = false
+        cancelUpgrade()
+        endReload()
         emitPage()
     }
 
@@ -589,7 +591,8 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
 
     /** The https try for [url], or null when "Try https first" is off. Every other HttpsFirst rule still applies. */
     private fun httpsTryFor(url: String, method: String = "GET"): String? =
-        if (httpsFirst) HttpsFirst.upgrade(url, httpsFallbackHosts, method) else null
+        if (privateMode) (if (httpsFirst) HttpsFirst.upgrade(url, emptySet(), method) else null)
+        else if (httpsFirst) HttpsFirst.upgrade(url, httpsFallbackHosts, method) else null
 
     /**
      * 24.10: loads a held redirect the user said yes to. Not typed, so the 24.5 refusals (scheme, blocked host, LAN)
@@ -605,8 +608,18 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
         if (reason != null) {
             refuse(url, reason)
         } else {
-            followAllowUrl = url
-            webView.loadUrl(url)
+            cancelUpgrade()
+            val https = httpsTryFor(url)
+            val host = HttpsFirst.hostOf(https)
+            if (https != null && host != null) {
+                upgrade = HttpsTry(host, https, url)
+                armUpgradeTimeout()
+                followAllowUrl = https
+                webView.loadUrl(https)
+            } else {
+                followAllowUrl = url
+                webView.loadUrl(url)
+            }
         }
         promise.resolve(null)
     }
@@ -1072,12 +1085,17 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
         history.visited(url, index, userMade)
     }
 
+    /** Cancels any pending https-first upgrade and its timeout. */
+    private fun cancelUpgrade() {
+        upgrade = null
+        mainHandler.removeCallbacks(upgradeTimeout)
+    }
+
     /** The https try failed (error, certificate or a redirect back to http): load the http address once, and never upgrade this host again this session. */
     private fun fallBackToHttp() {
         val up = upgrade ?: return
-        upgrade = null
-        mainHandler.removeCallbacks(upgradeTimeout)
-        httpsFallbackHosts.add(up.host)
+        cancelUpgrade()
+        if (!privateMode) httpsFallbackHosts.add(up.host)
         // The failed https page must not be a Back stop, and the http load is still the user's request.
         history.skipIfUrl(up.httpsUrl)
         pendingUserNav = true
@@ -1362,13 +1380,14 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
                 redirectInFlight = false
                 return true
             }
+            // 24.11 HTTPS-first: navigating to a different host cancels any pending upgrade.
+            if (upgrade != null && !HttpsFirst.sameHost(upgrade?.host, uri.toString())) cancelUpgrade()
             // 24.11 HTTPS-first: try the https twin of an http address. A redirect from it back to http on the same host is a loop.
             if (scheme == "http") {
                 val pending = upgrade
                 if (pending != null && HttpsFirst.isLoop(pending.host, uri.toString())) {
-                    httpsFallbackHosts.add(pending.host)
-                    upgrade = null
-                    mainHandler.removeCallbacks(upgradeTimeout)
+                    if (!privateMode) httpsFallbackHosts.add(pending.host)
+                    cancelUpgrade()
                 } else {
                     // NATIVE_CONTRACT 39.2 B3: never upgrade a request that is not GET.
                     val https = httpsTryFor(uri.toString(), request.method ?: "GET")
@@ -1401,6 +1420,7 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
 
         override fun onPageStarted(view: WebView, url: String?, favicon: Bitmap?) {
             if (destroyed) return
+            if (upgrade != null && !HttpsFirst.sameHost(upgrade?.host, url)) cancelUpgrade()
             pageHost = url?.let { Uri.parse(it).host?.lowercase() }
             docUrl = url
             // A new top-level load starts a new document; a server redirect hop continues the current load.
@@ -1519,7 +1539,6 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
             // Section 30: at most MAX_CAPTURES at once. Returning false without sending resultMsg is valid
             // (WebChromeClient.onCreateWindow: "Otherwise, return false"; window.open then returns null).
             if (captures.size >= MAX_CAPTURES) {
-                emitBlocked("", "window")
                 return false
             }
             val capture = WebView(view.context)

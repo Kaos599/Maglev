@@ -69,7 +69,7 @@ export function HostList({ hosts, empty, removeLabel, onRemove, action, subtitle
           {shown.map((h) => {
             const sub = subtitle?.(h);
             const body = (
-              <>
+              <View style={s.text}>
                 <Text style={s.host} numberOfLines={1}>
                   {h}
                 </Text>
@@ -78,7 +78,7 @@ export function HostList({ hosts, empty, removeLabel, onRemove, action, subtitle
                     {sub}
                   </Text>
                 ) : null}
-              </>
+              </View>
             );
             return (
               <View key={h} style={s.row}>
@@ -90,11 +90,11 @@ export function HostList({ hosts, empty, removeLabel, onRemove, action, subtitle
                     onPress={() => onOpen(h)}
                   >
                     {body}
+                    <PixelIcon name="chevron-right" size={20} color={colors.textMuted} />
                   </Pressable>
                 ) : (
                   <View style={s.main}>{body}</View>
                 )}
-                {onOpen ? <PixelIcon name="chevron-right" size={20} color={colors.textMuted} /> : null}
                 {action ? <Button label={action.label} variant="ghost" onPress={() => action.onPress(h)} /> : null}
                 {onRemove && removeLabel ? (
                   <IconButton
@@ -118,7 +118,8 @@ export function HostList({ hosts, empty, removeLabel, onRemove, action, subtitle
 const makeStyles = (c: ThemeColors) =>
   StyleSheet.create({
     row: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, paddingLeft: spacing.lg, paddingRight: spacing.xs, minHeight: 56 },
-    main: { flex: 1, paddingVertical: spacing.sm, justifyContent: 'center' },
+    main: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: spacing.xs, paddingVertical: spacing.sm },
+    text: { flex: 1, justifyContent: 'center' },
     host: { ...type.mono, fontSize: type.size.sm, color: c.text },
     sub: { ...type.body, fontSize: type.size.xs, color: c.textMuted, marginTop: 2 },
   });

@@ -78,6 +78,6 @@ const makeStyles = (c: ThemeColors) =>
     body: { gap: spacing.sm },
     target: { ...type.mono, fontSize: type.size.md, color: c.text },
     more: { ...type.body, fontSize: type.size.sm, color: c.textMuted },
-    actions: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: spacing.sm },
+    actions: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', gap: spacing.sm, marginTop: spacing.sm },
     leftGroup: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, flexShrink: 1 },
   });

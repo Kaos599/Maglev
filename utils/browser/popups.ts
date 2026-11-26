@@ -13,7 +13,13 @@ export function hostFrom(input: string): string {
   if (m) s = m[1];
   const at = s.lastIndexOf('@');
   if (at >= 0) s = s.slice(at + 1);
-  s = s.replace(/^\[|\]$/g, '').replace(/:\d*$/, '').toLowerCase().replace(/\.$/, '');
+  if (s.startsWith('[')) {
+    const end = s.indexOf(']');
+    s = end >= 0 ? s.slice(1, end) : s.slice(1);
+  } else if (s.indexOf(':') === s.lastIndexOf(':')) {
+    s = s.replace(/:\d*$/, '');
+  }
+  s = s.toLowerCase().replace(/\.$/, '');
   return s.replace(/^www\./, '');
 }
 

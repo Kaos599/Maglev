@@ -25,7 +25,10 @@ object RegistrableHost {
     }
 
     /** True when both hosts share the same registrable part. */
-    fun same(a: String?, b: String?): Boolean = of(a) == of(b)
+    fun same(a: String?, b: String?): Boolean {
+        val x = of(a)
+        return x.isNotEmpty() && x == of(b)
+    }
 }
 
 /** Pop-up policy decisions (24.10 state machine T4), mirrored from `utils/browser/popups.ts`. Pure. */
