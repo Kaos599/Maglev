@@ -108,7 +108,7 @@ export type NewWindowDecision = 'newTab' | 'blocked' | 'ask' | 'openApp';
  */
 export function decideNewWindow(args: { policy: PopupPolicy; allowed: boolean; gesture: boolean; kind: PopupKind; blocked?: boolean }): NewWindowDecision {
   const { policy, allowed, gesture, kind, blocked = false } = args;
-  // Contract 0.34 §2 rule 2: block list > allow list > policy. A link the user really tapped is not a pop-up, so a
+  // Block list > allow list > policy. A link the user really tapped is not a pop-up, so a
   // tapped new window still opens; the block list stops untapped windows and every app hand-off from that site.
   if (kind === 'app') {
     if (!gesture || blocked) return 'blocked';

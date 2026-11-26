@@ -62,7 +62,7 @@ export interface TabWebViewProps {
   privateMode: boolean;
   popupPolicy: PopupPolicy;
   popupAllowHosts: string[];
-  /** Sites whose pop-ups are always refused (0.34 section 2). */
+  /** Sites whose pop-ups are always refused. */
   popupBlockHosts: string[];
   /** Pull down at the top of the page to reload it. */
   pullToRefresh: boolean;
@@ -78,7 +78,7 @@ export interface TabWebViewProps {
   handlers: TabHandlers;
   /** Hands the screen this tab's view ref (and null again on unmount). */
   register: (id: string, ref: React.RefObject<MaglevBrowserRef | null> | null) => void;
-  /** Where the page sits during a tab swipe (docs/contracts-0.35/tab-switch.md). Only 'active' takes touches. */
+  /** Where the page sits during a tab swipe. Only 'active' takes touches. */
   slot: PageSlotName;
   /** The swipe offset in page pixels, shared with the header bar. */
   offset?: SharedValue<number>;

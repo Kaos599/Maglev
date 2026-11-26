@@ -121,7 +121,7 @@ async function main() {
   check('http(s) filter has both schemes', w.data.some((d) => d['android:scheme'] === 'http') && w.data.some((d) => d['android:scheme'] === 'https'));
   check('http(s) filter lists the types', ['application/octet-stream', 'application/zip', 'application/x-7z-compressed', 'application/x-iso9660-image', 'application/x-bittorrent', 'application/pdf', 'application/x-msdownload', 'application/force-download', 'binary/octet-stream', 'application/gzip', 'application/x-gzip', 'application/x-tar', 'application/epub+zip', 'video/*', 'audio/*'].every((t) => mimes.includes(t)), mimes.join(','));
   check('no APK type', !mimes.some((t) => /android\.package-archive/.test(t)));
-  check('typed http(s) filter is BROWSABLE and DEFAULT (contract 0.34 section 6)', w.cats.includes('BROWSABLE') && w.cats.includes('DEFAULT') && w.cats.length === 2);
+  check('typed http(s) filter is BROWSABLE and DEFAULT', w.cats.includes('BROWSABLE') && w.cats.includes('DEFAULT') && w.cats.length === 2);
 
   // Section 8.1: download manager pickers (issue #89). Kiwi and its forks list apps that answer
   // VIEW http://test.com/file.rar with no type, so a typed filter never shows up there.

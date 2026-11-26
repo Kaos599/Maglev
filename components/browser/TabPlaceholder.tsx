@@ -18,7 +18,7 @@ export interface TabPlaceholderProps {
 
 /**
  * Stands in for a neighbouring tab that has no page to show during a swipe: one that is asleep or blank
- * (docs/contracts-0.35/tab-switch.md rule 2). The host and title, centred on the page background. No spinner.
+ * The host and title, centred on the page background. No spinner.
  */
 export function TabPlaceholder({ tab, slot, offset, pageWidth }: TabPlaceholderProps) {
   const { colors } = useTheme();

@@ -70,7 +70,7 @@ class HistoryFlags {
     private val made = ArrayList<Boolean>()
     private var index = -1
 
-    /** A copy of the flags, kept with a slept tab's saved page state (0.35 W-C, TabStates). */
+    /** A copy of the flags, kept with a slept tab's saved page state (TabStates). */
     class Snapshot(val urls: List<String>, val made: List<Boolean>, val index: Int)
 
     /** One flag per entry, oldest first. */

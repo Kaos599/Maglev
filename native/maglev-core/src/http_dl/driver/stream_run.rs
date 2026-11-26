@@ -119,7 +119,7 @@ impl Downloads {
         .ok_or(ProbeFail::Net)
     }
 
-    /// The plan of a stream download. A `parts` download (contract section 48.2) has no playlist: its two links are in
+    /// The plan of a stream download. A `parts` download has no playlist: its two links are in
     /// memory only, so after a restart it asks for a new link (404/410 handling, `LINK_EXPIRED`).
     async fn resolve_stream(&self, id: &str, ctx: &ReqCtx, url: &str, spec: &StreamSpec) -> Result<Resolved, ResolveFail> {
         if spec.kind != StreamKind::Parts {
@@ -579,7 +579,7 @@ impl Downloads {
                 Err(e) => return TrackEnd::Send(e),
             };
             let status = resp.status().as_u16();
-            // A 206 is read like a 200 when it is the whole file (contract 24.8, issue #168).
+            // A 206 is read like a 200 when it is the whole file (issue #168).
             let whole = status == 206 && fetch::whole_body_206(&resp);
             if status != 200 && !whole {
                 return TrackEnd::Status(status, None);

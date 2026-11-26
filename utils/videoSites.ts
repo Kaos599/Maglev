@@ -1,4 +1,4 @@
-// Video sites (docs/NATIVE_CONTRACT.md section 48, prototype). Pure helpers: which links are video pages, and the
+// Video sites (prototype). Pure helpers: which links are video pages, and the
 // quality list built from the format list the native side reads from the page. Plain node can import this file.
 import { formatBytes } from '../constants/format.ts';
 
@@ -260,7 +260,7 @@ export function engineHeaders(p: VideoSitePart): { Cookie?: string; Referer?: st
   return out;
 }
 
-/** `options.parts` of `addDownload` (section 48.2), or null for a single file. */
+/** `options.parts` of `addDownload`, or null for a single file. */
 export function partsOption(option: VideoSiteOption): { video: { url: string; size?: number }; audio: { url: string; size?: number } } | null {
   if (!option.audio) return null;
   const side = (p: VideoSitePart) => (p.size ? { url: p.url, size: p.size } : { url: p.url });

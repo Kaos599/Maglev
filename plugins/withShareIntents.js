@@ -143,7 +143,7 @@ function quickShareFilters() {
     // Other browsers, typed downloads. BROWSABLE + DEFAULT because Firefox and android-components browsers list external
     // download managers with CATEGORY_BROWSABLE (Browsers.findResolvers), and Android only matches filters that declare
     // every category the intent carries. A plain link tap has no type, so it still never matches. A page can start a
-    // BROWSABLE VIEW, so QuickShareActivity always shows the card for it (contract 0.34 section 6, issue #171).
+    // BROWSABLE VIEW, so QuickShareActivity always shows the card for it (issue #171).
     // https://github.com/mozilla-firefox/firefox/blob/main/mobile/android/android-components/components/support/utils/src/main/java/mozilla/components/support/utils/Browsers.kt
     filter(['VIEW'], ['BROWSABLE', 'DEFAULT'], [
       { scheme: 'http' }, { scheme: 'https' },

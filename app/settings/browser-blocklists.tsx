@@ -53,7 +53,7 @@ export default function BrowserBlocklistSettings() {
   const update = async () => {
     haptic('tap');
     setUpdating(true);
-    // Update now always downloads in full (conditional: false), unlike the daily check (contract 31.2).
+    // Update now always downloads in full (conditional: false), unlike the daily check.
     const res = await updateAdList({ conditional: false });
     setUpdating(false);
     if (res.ok) {
@@ -69,7 +69,7 @@ export default function BrowserBlocklistSettings() {
   const reset = async () => {
     haptic('tap');
     const res = await resetBlocklist();
-    // The default address now in force: the source list's, else the built-in one (contract 31.1).
+    // The default address now in force: the source list's, else the built-in one.
     setPrefs({ blocklistUrls: getDefaultBlocklistUrls() });
     if (res.ok) {
       setInfo(res);

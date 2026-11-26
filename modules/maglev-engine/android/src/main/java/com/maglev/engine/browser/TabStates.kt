@@ -3,7 +3,7 @@ package com.maglev.engine.browser
 import android.os.Bundle
 
 /**
- * 0.35 W-C: the page state of tabs that went to sleep, kept in process memory only (never on disk) and keyed by tab id.
+ * The page state of tabs that went to sleep, kept in process memory only (never on disk) and keyed by tab id.
  * A view saves its WebView's back/forward list (WebView.saveState) when it is destroyed and takes it back once, before
  * its first load, when the same tab wakes (WebView.restoreState). Process death loses it, and the tab loads its URL.
  * https://developer.android.com/reference/android/webkit/WebView#saveState(android.os.Bundle)

@@ -1,5 +1,5 @@
 /**
- * The blocked pop-ups log (docs/contracts-0.34/browser.md §2 rule 5). One kv blob, separate from the browser prefs and left
+ * The blocked pop-ups log. One kv blob, separate from the browser prefs and left
  * out of backups (utils/backup/format.ts exports only the keys it lists). Pure functions here; `loadPopupLog` and
  * `savePopupLog` are the only parts that touch the kv store. Nothing is recorded in Private browsing.
  */

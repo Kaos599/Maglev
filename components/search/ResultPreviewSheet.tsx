@@ -45,7 +45,7 @@ export function ResultPreviewSheet({ result, onClose, onAdd, onOpenInBrowser, li
   const [slow, setSlow] = useState(false);
   const ctl = useRef<AbortController | null>(null);
   // Set synchronously on the first tap and held until the share sheet closes: two quick taps read the same `busy`
-  // state, and `busy` is cleared before the sheet opens, so without this a double tap opened two sheets (phone 2026-11-26).
+  // state, and `busy` is cleared before the sheet opens, so without this a double tap opened two sheets.
   const inFlight = useRef(false);
   const open = !!result;
   // Closing the sheet (or showing another result) drops any fetch in flight.

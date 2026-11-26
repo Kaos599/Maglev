@@ -217,7 +217,7 @@ export type EngineErrorCode =
   | 'STREAM_LIVE'
   | 'STREAM_UNSUPPORTED'
   | 'MUX_FAILED'
-  /** NATIVE_CONTRACT 48 (video sites, prototype). */
+  /** Video sites (prototype). */
   | 'SITE_NOT_SUPPORTED'
   | 'SITE_NEEDS_LOGIN'
   | 'SITE_FAILED'
@@ -623,7 +623,7 @@ export interface DownloadOptions {
   /** Save an HLS or DASH stream (NATIVE_CONTRACT 24.8). The link is the playlist. */
   stream?: StreamSelection;
   /**
-   * A video file and an audio file from a video site, joined at the end (NATIVE_CONTRACT 48.2). The link passed to
+   * A video file and an audio file from a video site, joined at the end. The link passed to
    * `addDownload` is the video file's. `size` is set only when the site states it exactly. Not with `stream`.
    */
   parts?: { video: { url: string; size?: number }; audio: { url: string; size?: number } };
@@ -898,15 +898,15 @@ export interface MaglevEngineApi {
   /** NATIVE_CONTRACT 24.8. Errors: STREAM_PROTECTED, STREAM_LIVE, STREAM_UNSUPPORTED, plus the probeUrl ones. */
   probeStream(url: string, options: DownloadOptions, timeoutMs: number): Promise<EngineResult<StreamProbe>>;
   addDownload(url: string, options: DownloadOptions): Promise<EngineResult<{ id: string }>>;
-  /** NATIVE_CONTRACT 48.1 (prototype). The page's files as trimmed yt-dlp JSON text. Never throws. */
+  /** (Prototype.) The page's files as trimmed yt-dlp JSON text. Never throws. */
   videoSitesResolve(url: string): Promise<EngineResult<{ json: string }>>;
-  /** NATIVE_CONTRACT 48.1. The yt-dlp version the app downloaded itself, or null while the bundled one is in use. */
+  /** The yt-dlp version the app downloaded itself, or null while the bundled one is in use. */
   videoSitesVersion(): Promise<string | null>;
   /** The yt-dlp version in use (null while the bundled one is) and when it was last checked (epoch ms, null if never). */
   videoSitesStatus(): Promise<{ version: string | null; lastCheckAt: number | null }>;
   /** Schedules (enabled) or cancels the daily background yt-dlp update; `mobileData` also allows a metered network. */
   videoSitesConfigure(enabled: boolean, mobileData: boolean): Promise<void>;
-  /** NATIVE_CONTRACT 48.1. Downloads the newest yt-dlp. `failed` is a normal answer (no network), not an error. */
+  /** Downloads the newest yt-dlp. `failed` is a normal answer (no network), not an error. */
   videoSitesUpdate(): Promise<EngineResult<{ status: 'updated' | 'current' | 'failed'; version: string | null }>>;
   pauseDownload(id: string): Promise<EngineResult>;
   resumeDownload(id: string): Promise<EngineResult>;

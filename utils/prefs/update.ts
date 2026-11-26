@@ -22,7 +22,7 @@ export interface UpdatePrefs {
   notifiedVersion: string | null;
   /** "Show new features after updates" (section 37), on by default. UI only. */
   showHighlights: boolean;
-  /** "Keep video sites working" (browser contract 7): a daily background yt-dlp update. On by default. */
+  /** "Keep video sites working": a daily background yt-dlp update. On by default. */
   videoSitesAuto: boolean;
   /** "Update on mobile data": lets that update use a metered network. Off by default. */
   videoSitesMobile: boolean;

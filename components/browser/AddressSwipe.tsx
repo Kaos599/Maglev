@@ -27,8 +27,8 @@ export interface AddressSwipeProps {
   /** The tab-count and ⋮ buttons. They sit inside the bar, so a swipe that starts on them still switches tabs. */
   trailing: React.ReactNode;
   /**
-   * The swipe offset in page pixels, owned by the screen and shared with the pages (docs/contracts-0.35/tab-switch.md
-   * rule 1). This component never puts it back to 0 after a switch: the screen does that when the active tab changes.
+   * The swipe offset in page pixels, owned by the screen and shared with the pages.
+   * This component never puts it back to 0 after a switch: the screen does that when the active tab changes.
    */
   offset: SharedValue<number>;
   /** The width the pages occupy. A switch slides the offset to minus or plus this width. */
@@ -46,7 +46,7 @@ function toBar(offset: number, barWidth: number, pageWidth: number): number {
 }
 
 /**
- * Wraps the whole header bar (0.34 section 3). A horizontal drag moves to the next or previous tab, a downward drag
+ * Wraps the whole header bar. A horizontal drag moves to the next or previous tab, a downward drag
  * opens the tab list. A still tap on the address focuses it; a sloppy swipe never does (the tap fails on movement).
  * The tab-count and ⋮ buttons stay the visible way to do the same, so nothing is gesture-only.
  * Gesture API: react-native-gesture-handler 3.3 usePanGesture, useTapGesture and useExclusiveGestures.
@@ -135,7 +135,7 @@ export function AddressSwipe({
     const to = (d === 'next' ? -1 : 1) * (pageWidth.value || l.screenW);
     l.committing = true;
     offset.value = slideMs > 0 ? withTiming(to, { duration: slideMs, easing: SLIDE_EASING }) : to;
-    // No reset here (contract rule 3): the screen puts the offset back to 0 in the commit that makes the target active.
+    // No reset here: the screen puts the offset back to 0 in the commit that makes the target active.
     setTimeout(() => {
       l.committing = false;
       l.onSelect(target.id);

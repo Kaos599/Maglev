@@ -62,14 +62,14 @@ class QuickShareActivity : Activity() {
             Log.i(TAG, "No link in a hand-off:\n$shape")
         }
         if (original.action == Intent.ACTION_VIEW) cls = ShareClassify.withHandOffName(cls, handOffName(original))
-        // Video sites (contract 48, prototype): a shared YouTube, X or Instagram page goes straight to the add sheet, which
+        // Video sites (prototype): a shared YouTube, X or Instagram page goes straight to the add sheet, which
         // reads the video and lists qualities. Same host list as utils/videoSites.ts VIDEO_SITE_HOSTS.
         if (cls.kind == ShareKind.WEB_PAGE && isVideoSite(host(cls.source))) {
             openMaglev(Uri.parse("maglev://add-download?url=" + Uri.encode(cls.source ?: "")))
             return
         }
         val addable = cls.kind == ShareKind.MAGNET || cls.kind == ShareKind.TORRENT_FILE || cls.kind == ShareKind.FILE_LINK
-        // Contract 0.34 §6 rule 4: a web page can start a BROWSABLE VIEW, so that one always shows the card.
+        // A web page can start a BROWSABLE VIEW, so that one always shows the card.
         val fromBrowser = original.action == Intent.ACTION_VIEW && original.hasCategory(Intent.CATEGORY_BROWSABLE)
         if (addable && !fromBrowser && QuickSharePrefs.addWithoutAsking(applicationContext)) {
             setContentView(View(this))

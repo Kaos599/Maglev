@@ -88,7 +88,7 @@ export function appPath(path: string): string {
 
 /**
  * `maglev://browser?url=` arrives as a router path. It opens that http(s) page in a new tab, like any browser
- * opening a link (NATIVE_CONTRACT 24.7 and 24.10; owner decision 2026-11-21: "Find videos on this page" must load
+ * opening a link, so "Find videos on this page" must load
  * the page, not a blank tab with the address filled in). Only `url` is read; every other parameter is dropped.
  * Returns null when the path is not the browser route.
  */

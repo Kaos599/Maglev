@@ -28,7 +28,7 @@ export interface SiteSettingsSheetProps {
 }
 
 /**
- * The per-site controls (0.35 contract, browser-menu-settings section 2). A view over state that lives in app/browser.tsx:
+ * The per-site controls. A view over state that lives in app/browser.tsx:
  * every change goes through the same handlers the page menu used before, and applies at once.
  */
 export function SiteSettingsSheet({

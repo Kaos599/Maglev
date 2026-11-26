@@ -6,8 +6,8 @@ import { ListRow } from '../ui';
 
 /**
  * "Started" (when it was added) and "Finished" (when it first completed), as two info rows on a detail screen.
- * Times come from the engine (`addedAt`, `finishedAt`, unix seconds; NATIVE_CONTRACT 34.1). A time the engine does not
- * know (an item from before 0.26, or one not finished yet) hides its row instead of showing a guess.
+ * Times come from the engine (`addedAt`, `finishedAt`, unix seconds). A time the engine does not
+ * know (an item added by an older version, or one not finished yet) hides its row instead of showing a guess.
  */
 export function TimeRows({ addedAt, finishedAt }: { addedAt?: number; finishedAt?: number }) {
   const started = fullWhen(addedAt);

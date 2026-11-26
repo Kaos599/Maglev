@@ -7,7 +7,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 
 /**
- * Video sites (docs/NATIVE_CONTRACT.md section 48, prototype). yt-dlp, through youtubedl-android, only finds the
+ * Video sites (prototype). yt-dlp, through youtubedl-android, only finds the
  * file addresses of a video page. Maglev's own downloader fetches them. The library is initialised on the first
  * resolve, never on the main thread (the caller runs [resolve] on an IO thread).
  *
@@ -120,7 +120,7 @@ object VideoSites {
         return trim(raw).toString()
     }
 
-    /** Maps yt-dlp's error text to a contract error (section 48.1). */
+    /** Maps yt-dlp's error text to an app error code. */
     fun classify(message: String?): VideoSitesException {
         val m = (message ?: "").lowercase()
         return when {

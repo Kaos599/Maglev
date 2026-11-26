@@ -283,7 +283,7 @@ async function main() {
   check('App rows are About, then Updates', appAt > 0 && about > appAt && updates > about);
   check('Stats comes after the appRows', map > updates && statsRow > map);
   check('nothing sits between the appRows and Stats', !/<SettingsRow|<\w+Row \/>/.test(settings.slice(map, statsRow).replace('<SettingsRow key={r.route} {...r} />', '')));
-  // 0.35: Tips closes the App card, right after Stats (owner, 2026-11-24).
+  // Tips closes the App card, right after Stats.
   check('Stats is followed only by Tips at the end of the App card', /<StatsRow \/>\s*<SettingsRow \{\.\.\.tipsRow\} \/>\s*<\/Card>/.test(settings.slice(statsRow - 5, statsRow + 100)));
 
   if (failed) {

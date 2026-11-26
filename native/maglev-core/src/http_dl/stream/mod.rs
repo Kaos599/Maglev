@@ -37,7 +37,7 @@ pub const MAX_SEGMENT_BYTES: u64 = 48 * 1024 * 1024;
 pub enum StreamKind {
     Hls,
     Dash,
-    /// Two plain files (video and audio) from a video site (contract section 48). Not a playlist.
+    /// Two plain files (video and audio) from a video site. Not a playlist.
     Parts,
 }
 
@@ -59,7 +59,7 @@ pub struct PartLink {
     pub size: Option<u64>,
 }
 
-/// `options.parts` of `nativeAddDownload` (contract section 48.2): a video file and an audio file to join.
+/// `options.parts` of `nativeAddDownload`: a video file and an audio file to join.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 pub struct PartsSpec {
     pub video: PartLink,

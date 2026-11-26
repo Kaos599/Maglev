@@ -106,7 +106,7 @@ const makeStyles = (c: ThemeColors) =>
     back: { width: 48, height: 48, alignItems: 'center', justifyContent: 'center', borderRadius: radius.md },
     topicOuter: { flexShrink: 1 },
     topicButton: { minHeight: 48, flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingHorizontal: spacing.sm, borderRadius: radius.md },
-    topicName: { ...type.heading, fontSize: 20, color: c.text, flexShrink: 1 }, // design-exception: the contract sets the topic title at 20, between the 17 and 22 steps
+    topicName: { ...type.heading, fontSize: 20, color: c.text, flexShrink: 1 }, // design-exception: the topic title is set at 20, between the 17 and 22 steps
     count: { ...type.mono, fontSize: type.size.md, color: c.textMuted, marginLeft: 'auto' },
     bar: { height: 88, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: spacing.lg },
     nav: {

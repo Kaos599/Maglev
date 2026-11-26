@@ -297,7 +297,7 @@ export const empty = {
 } as const;
 
 /** Labels for browser history (NATIVE_CONTRACT 24.9): the screen, the suggestions, the clear sheet and its settings. */
-/** The full-screen address surface while the address bar is being edited (0.35 browser contract section 3 rule 9). */
+/** The full-screen address surface while the address bar is being edited. */
 export const addressCopy = {
   back: 'Back',
   clear: 'Clear',
@@ -917,7 +917,7 @@ export const networkAdvancedCopy = {
 } as const;
 // endregion network advanced
 
-/** The browser's ⋮ page menu (0.35): icon-row labels and the Site settings row. */
+/** The browser's ⋮ page menu: icon-row labels and the Site settings row. */
 export const pageMenuCopy = {
   back: 'Back',
   forward: 'Forward',
@@ -934,7 +934,7 @@ export const pageMenuCopy = {
   blockedHere: (n: number | string) => `${n} blocked here`,
 } as const;
 
-/** The Site settings sheet (0.35): opens from the ⋮ menu and from the padlock in the address bar. */
+/** The Site settings sheet: opens from the ⋮ menu and from the padlock in the address bar. */
 export const siteSheetCopy = {
   title: 'Site settings',
   secure: 'Secure connection',

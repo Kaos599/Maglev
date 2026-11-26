@@ -51,7 +51,7 @@ export interface HistorySuggestionsProps {
 
 /**
  * The full-screen surface under the address bar while it is being edited, like Chrome and Firefox on Android
- * (0.35 browser contract section 3 rule 9). Opaque, so the page behind it stays mounted but hidden.
+ * Opaque, so the page behind it stays mounted but hidden.
  * Nothing typed: a This page row (Copy link, Share, Edit), up to 4 bookmarks, then up to 6 recent pages.
  * Typing: a Search or Go to row first, then up to 3 matching bookmarks and up to 6 saved pages from history.
  * History is hidden when Suggest from history is off, in private browsing, or when the store fails. Bookmarks stay

@@ -17,7 +17,7 @@ name: browser-blocking
     visible: ".*test-videos\\.co\\.uk.*" # the bar shows the host once idle, or the full address while it has focus
     timeout: 60000
 - tapOn: "More"
-- tapOn: "Site settings" # the ⋮ menu row (0.35); opens the Site settings sheet
+- tapOn: "Site settings" # the ⋮ menu row; opens the Site settings sheet
 # The Ads toggle "Block ads on this site" is on by default. Its title and the switch share the label, so index 1 is the switch.
 - extendedWaitUntil:
     visible: "Block ads on this site"
@@ -39,7 +39,7 @@ name: browser-blocking
 - tapOn: "More"
 - tapOn: "Browser settings" # the menu row pushes the Browser settings hub (app/settings/browser.tsx)
 - extendedWaitUntil:
-    visible: "Blocking" # hub row (0.35: the hub lists sections, the Ad blocking switch is one screen in)
+    visible: "Blocking" # hub row (the hub lists sections, the Ad blocking switch is one screen in)
     timeout: 30000
 - tapOn: "Blocking"
 - extendedWaitUntil:

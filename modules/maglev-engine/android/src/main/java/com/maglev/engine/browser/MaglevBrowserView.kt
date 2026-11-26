@@ -81,7 +81,7 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
     private val onLongPress by EventDispatcher<Map<String, Any?>>()
     private val onMediaHit by EventDispatcher<Map<String, Any?>>()
     private val onFindResult by EventDispatcher<Map<String, Any?>>()
-    // 24.10a / 0.34 section 4: reload start / end.
+    // Reload start / end.
     private val onReloadState by EventDispatcher<Map<String, Any?>>()
 
     override val shouldUseAndroidLayout: Boolean = true
@@ -107,10 +107,10 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
     private var desktopMode = false
     // 28: text size in percent, 50..200. Applied again to every WebView this view creates.
     private var textZoom = 100
-    // 0.34 section 5: third-party cookies are blocked unless the user turns "Block cookies from other sites" off.
+    // Third-party cookies are blocked unless the user turns "Block cookies from other sites" off.
     // Declared before init, which builds the first WebView and reads it.
     private var blockThirdPartyCookies = true
-    // 0.34 section 5: "Try https first". Off: http:// addresses load as they are, with no https try.
+    // "Try https first". Off: http:// addresses load as they are, with no https try.
     private var httpsFirst = true
     // Private browsing: the page cache is bypassed (LOAD_NO_CACHE). Cookies are wiped from JS when the browser is left.
     private var privateMode = false
@@ -121,7 +121,7 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
     private var active = true
     private var popupPolicy = "ask"
     private var popupAllowHosts: List<String> = emptyList()
-    // 0.34 §2: sites whose untapped pop-ups, redirects and app hand-offs are always refused. Main thread only.
+    // Sites whose untapped pop-ups, redirects and app hand-offs are always refused. Main thread only.
     private var popupBlockHosts: List<String> = emptyList()
     // The current document has finished loading at least once. Redirects during its first load are part of the page.
     private var loadedOnce = false
@@ -177,7 +177,7 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
     private var typedHost: String? = null
     // Where the url prop came from: "link" (a maglev:// deep link or the card) loads through the link-tap refusals and is never typed.
     private var urlFromLink = false
-    // 0.35 W-C: the tab this view shows (prop tabId), '' when unknown. Its page state is saved in TabStates when the view
+    // The tab this view shows (prop tabId), '' when unknown. Its page state is saved in TabStates when the view
     // is destroyed and restored instead of the first load when the tab wakes. restoreTried: only before the first load.
     private var tabId = ""
     private var restoreTried = false
@@ -191,7 +191,7 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
     private val bridge = PageScanBridge { json -> onScanReport(json) }
 
     // 24.10a: pull to reload. The WebView sits inside this layout (https://developer.android.com/reference/androidx/swiperefreshlayout/widget/SwipeRefreshLayout).
-    // 0.35: the stock progress circle is shown and follows the finger on the UI thread; colours come from the refreshColor / refreshBackground props.
+    // The stock progress circle is shown and follows the finger on the UI thread; colours come from the refreshColor / refreshBackground props.
     private val refresh = SwipeRefreshLayout(context)
     private val density = context.resources.displayMetrics.density
     // SwipeRefreshLayout's trigger distance (72 dp), in px. Progress 1 is a drag of exactly this distance.
@@ -217,7 +217,7 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
             if (!reloadActive) refresh.isRefreshing = false
         }
         refresh.setOnChildScrollUpCallback { _, _ -> selectionHold || findActive || webView.canScrollVertically(-1) }
-        // 0.35: dark-theme defaults (surfaceRaised disc, lime arc) until the refreshBackground / refreshColor props arrive.
+        // Dark-theme defaults (surfaceRaised disc, lime arc) until the refreshBackground / refreshColor props arrive.
         refresh.setProgressBackgroundColorSchemeColor(DEFAULT_REFRESH_DISC)
         refresh.setColorSchemeColors(DEFAULT_REFRESH_ARC)
         refresh.setDistanceToTriggerSync(pullTriggerPx.toInt())
@@ -234,12 +234,12 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
         pendingUrl = url
     }
 
-    /** NATIVE_CONTRACT 24.7: "link" for a deep link or card URL (not typed), anything else for the address bar. Applied with the url. */
+    /** "link" for a deep link or card URL (not typed), anything else for the address bar. Applied with the url. */
     fun setUrlSource(source: String) {
         urlFromLink = source == "link"
     }
 
-    /** 0.35 W-C: the tab id, read before the first load to find a saved page state (TabStates). */
+    /** The tab id, read before the first load to find a saved page state (TabStates). */
     fun setTabId(value: String) {
         tabId = value
     }
@@ -268,7 +268,7 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
     }
 
     /**
-     * 0.34 section 5: "Block cookies from other sites". On (the default) means third-party cookies are refused. Applied to
+     * "Block cookies from other sites". On (the default) means third-party cookies are refused. Applied to
      * the live WebView now and to every WebView created later (createWebView).
      */
     fun setBlockThirdPartyCookies(value: Boolean) {
@@ -276,7 +276,7 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
         if (!destroyed) CookieManager.getInstance().setAcceptThirdPartyCookies(webView, !value)
     }
 
-    /** 0.34 section 5: "Try https first". Read at each load, so it takes effect on the next load. */
+    /** "Try https first". Read at each load, so it takes effect on the next load. */
     fun setHttpsFirst(value: Boolean) {
         httpsFirst = value
     }
@@ -294,13 +294,13 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
         if (!value) refresh.isRefreshing = false
     }
 
-    /** 0.35: the arc colour of the pull circle, `#RRGGBB`. A bad value keeps the previous colour. */
+    /** The arc colour of the pull circle, `#RRGGBB`. A bad value keeps the previous colour. */
     fun setRefreshColor(value: String) {
         val color = try { Color.parseColor(value) } catch (e: IllegalArgumentException) { return }
         refresh.setColorSchemeColors(color)
     }
 
-    /** 0.35: the disc colour behind the arc, `#RRGGBB`. A bad value keeps the previous colour. */
+    /** The disc colour behind the arc, `#RRGGBB`. A bad value keeps the previous colour. */
     fun setRefreshBackground(value: String) {
         val color = try { Color.parseColor(value) } catch (e: IllegalArgumentException) { return }
         refresh.setProgressBackgroundColorSchemeColor(color)
@@ -410,7 +410,7 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
     fun applyProps() {
         val u = pendingUrl ?: return
         pendingUrl = null
-        // 0.35 W-C: a woken tab takes back its history and scroll position instead of loading the url again.
+        // A woken tab takes back its history and scroll position instead of loading the url again.
         if (!restoreTried) {
             restoreTried = true
             if (restoreSaved()) return
@@ -419,7 +419,7 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
     }
 
     /**
-     * 0.35 W-C: restores the page state this tab saved when its view was destroyed. Must run before any load on the new
+     * Restores the page state this tab saved when its view was destroyed. Must run before any load on the new
      * WebView: restoreState "should be called" before the WebView "has had a chance to build state (load pages, create a
      * back/forward list, etc.)" (https://developer.android.com/reference/android/webkit/WebView#restoreState(android.os.Bundle)).
      * True when WebView took it; false (nothing saved, or restoreState returned null) means the caller loads the url.
@@ -447,7 +447,7 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
     }
 
     /**
-     * 0.35 W-C: saves this tab's page state (back/forward list, with each entry's scroll position) for when it wakes.
+     * Saves this tab's page state (back/forward list, with each entry's scroll position) for when it wakes.
      * A view with no page drops any older state instead. Called before the WebView is torn down. Main thread.
      * https://developer.android.com/reference/android/webkit/WebView#saveState(android.os.Bundle)
      */
@@ -506,7 +506,7 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
     }
 
     /**
-     * 0.34 section 4: a reload started (pull, menu or command). Sends `start` once; every call restarts the safety timer.
+     * A reload started (pull, menu or command). Sends `start` once; every call restarts the safety timer.
      * The matching `end` comes from endReload(). Main thread.
      */
     private fun beginReload() {
@@ -554,7 +554,7 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
     }
 
     /**
-     * NATIVE_CONTRACT 24.7: a deep link or card URL (maglev://browser?url=). It is not typed, so it gets the same
+     * A deep link or card URL (maglev://browser?url=). It is not typed, so it gets the same
      * main-frame refusals as a link tap (mainFrameRefusal: scheme, ad-blocked host, LAN host) and the refusal
      * notice (onRefused). Any earlier typed allowance of this view is dropped first.
      */
@@ -573,7 +573,7 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
 
     /** The load itself, shared by typed and link loads. The caller has already checked the URL. */
     private fun startLoad(url: String) {
-        // 0.35 W-C: once the view has loaded something, a saved state may no longer be restored.
+        // Once the view has loaded something, a saved state may no longer be restored.
         restoreTried = true
         // A new load: its own script redirects are part of the page until it has finished once.
         loadedOnce = false
@@ -587,7 +587,7 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
         webView.loadUrl(https ?: url)
     }
 
-    /** 0.34 section 5: the https try for [url], or null when "Try https first" is off. Every other HttpsFirst rule still applies. */
+    /** The https try for [url], or null when "Try https first" is off. Every other HttpsFirst rule still applies. */
     private fun httpsTryFor(url: String, method: String = "GET"): String? =
         if (httpsFirst) HttpsFirst.upgrade(url, httpsFallbackHosts, method) else null
 
@@ -864,7 +864,7 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
         val url = w.url ?: ""
         curUrl = url
         curTitle = w.title ?: ""
-        // 0.34 section 4: the reload ends once the page it started has been seen loading and has finished.
+        // The reload ends once the page it started has been seen loading and has finished.
         if (reloadActive) {
             if (loading) {
                 reloadSeenLoading = true
@@ -1149,7 +1149,7 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
 
     private fun sourceUrl(): String = webView.url ?: curUrl
 
-    /** onPopupBlocked {url, kind, sourceUrl}: sourceUrl is the page that tried to open the target (0.34 §2 rule 5). */
+    /** onPopupBlocked {url, kind, sourceUrl}: sourceUrl is the page that tried to open the target. */
     private fun emitBlocked(url: String, kind: String) {
         onPopupBlocked(mapOf("url" to url, "kind" to kind, "sourceUrl" to sourceUrl()))
     }

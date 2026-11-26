@@ -7,7 +7,7 @@ import { useMotion } from '../ui/useMotion';
 import { swipeDirection } from './tipsLogic';
 
 /**
- * Holds the current page and lets a horizontal drag move to the next or previous one (docs/contracts-0.35/tips.md).
+ * Holds the current page and lets a horizontal drag move to the next or previous one.
  * The page follows the finger, a fling or a drag past 30% of the width commits, anything less springs back, and a
  * page with nothing beyond it only gives a little. The new page settles in with a spring. With reduce motion the
  * page does not follow and the switch is instant. The buttons in TipsBar do the same, so nothing is swipe-only.
