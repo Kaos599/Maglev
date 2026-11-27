@@ -34,19 +34,20 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           INPUT_RUN: ${{ inputs.run_id }}
+          REF: ${{ github.ref }}
         run: |
           try_run() {
-            local r="$1"
+            local r="$1" quiet="${2:-1}"
             [ -n "$r" ] || return 1
             rm -rf ci-apks; mkdir -p ci-apks
-            if ! gh run download "$r" --name apks --dir ci-apks 2>/dev/null; then
-              return 1
+            if [ "$quiet" = "1" ]; then
+              gh run download "$r" --name apks --dir ci-apks 2>/dev/null || return 1
+            else
+              gh run download "$r" --name apks --dir ci-apks || return 1
             fi
             local found
             found=$(find ci-apks -type f -name 'app-x86_64-release.apk' | head -n 1)
-            if [ -z "$found" ]; then
-              return 1
-            fi
+            [ -n "$found" ] || return 1
             APK="$found"
             PICKED_RUN="$r"
             return 0
@@ -54,19 +55,28 @@ jobs:
 
           APK=""
           PICKED_RUN=""
+          PICKED_SHA=""
           if [ -n "$INPUT_RUN" ]; then
-            if ! try_run "$INPUT_RUN"; then
+            if ! try_run "$INPUT_RUN" 0; then
               echo "::notice::CI run $INPUT_RUN has no live x86_64 APK; skipping E2E."
               exit 0
             fi
+            PICKED_SHA=$(gh run view "$PICKED_RUN" --json headSha --jq '.headSha // empty' 2>/dev/null || true)
           else
-            # Try a CI run for this exact commit first; release tags on main often reuse a PR's APKs,
-            # so fall back to the newest successful CI run on main that carries an x86_64 APK.
-            EXACT=$(gh run list --workflow ci.yml --commit "$GITHUB_SHA" --status success --limit 1 --json databaseId --jq '.[0].databaseId // empty')
-            if ! try_run "$EXACT"; then
+            # Try CI runs for this exact commit first (an arm64-only run can finish after an x86_64 run).
+            for r in $(gh run list --workflow ci.yml --commit "$GITHUB_SHA" --status success --limit 5 --json databaseId --jq '.[].databaseId'); do
+              if try_run "$r" 1; then
+                PICKED_SHA="$GITHUB_SHA"
+                break
+              fi
+            done
+            # Release tags on main often reuse a PR's APKs, so on main or v* tags fall back to the newest
+            # successful CI run on main that carries an x86_64 APK. Other refs skip rather than testing main.
+            if [ -z "$APK" ] && [[ "$REF" == "refs/heads/main" || "$REF" == refs/tags/* ]]; then
               for r in $(gh run list --workflow ci.yml --branch main --status success --limit 10 --json databaseId --jq '.[].databaseId'); do
-                if try_run "$r"; then
-                  echo "::notice::No x86_64 APK on commit $GITHUB_SHA; using CI run $r from main."
+                if try_run "$r" 1; then
+                  PICKED_SHA=$(gh run view "$r" --json headSha --jq '.headSha // empty' 2>/dev/null || true)
+                  echo "::notice::No x86_64 APK on commit $GITHUB_SHA; using CI run $r from main (${PICKED_SHA:-unknown})."
                   break
                 fi
               done
@@ -78,6 +88,7 @@ jobs:
           fi
           echo "apk=$APK" >> "$GITHUB_OUTPUT"
           echo "run_id=$PICKED_RUN" >> "$GITHUB_OUTPUT"
+          echo "run_sha=$PICKED_SHA" >> "$GITHUB_OUTPUT"
 
       - name: Enable KVM
         if: steps.apk.outputs.apk != ''
@@ -125,9 +136,16 @@ jobs:
         if: always() && steps.apk.outputs.apk != ''
         env:
           OUTCOME: ${{ steps.flows.outcome }}
+          RUN_ID: ${{ steps.apk.outputs.run_id }}
+          RUN_SHA: ${{ steps.apk.outputs.run_sha }}
         run: |
           {
             echo "## Maestro flows"
+            echo "APK from CI run \`$RUN_ID\` (commit \`${RUN_SHA:-unknown}\`)."
+            if [ -n "$RUN_SHA" ] && [ "$RUN_SHA" != "$GITHUB_SHA" ]; then
+              echo "> Note: tested APK commit \`$RUN_SHA\` differs from ref commit \`$GITHUB_SHA\`."
+            fi
+            echo ""
             if [ "$OUTCOME" = "success" ]; then echo "All flows passed."; else echo "**Some flows failed.** See the maestro-output artifact (report, screenshots, logcat)."; fi
             if [ -f maestro-report.xml ]; then
               echo ""
