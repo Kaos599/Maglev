@@ -216,7 +216,8 @@ Import primitives from `components/ui`. Each one reads the theme, meets the 44 d
 | `ExperimentalTag` | A small pill that marks a feature as experimental (Assistant, video links). | Status or counts; use `Chip`. | none |
 | `EmptyBlock` | An empty or error state: icon, title, one line, at most one primary action. | A loading state. | `icon`, `title`, `body`, `primary`, `secondary`, `error` |
 | `ProgressBar` | Progress of a transfer. | A percentage readout on its own. | `progress` (0 to 1), `tone` (`download`, `seed`, `paused`, `error`), `indeterminate`, `resetKey` |
-| `Screen` | The safe-area container with an optional header, back button and actions. | Nested inside another `Screen`. | `title`, `onBack`, `actions`, `scroll`, `edges`, `contentStyle` |
+| `Screen` | The safe-area container with an optional header, back button and actions. Leave out `title` when the screen draws its own heading (the detail screens show the name under the header). | Nested inside another `Screen`. | `title`, `onBack`, `actions`, `scroll`, `edges`, `contentStyle` |
+| `LongName` | A transfer's whole name: up to 3 lines, then a "Show more" text button that opens the rest in place. The top of a detail screen (`size="title"`, `heading`) and the selection bar (`size="line"`). | A name in a list row (use `numberOfLines`). | `name`, `maxLines`, `size` (`title`, `line`), `heading`, `accessibilityLabel` |
 | `TextField` | Any text input: search box, link, file name, rule editor, address. Optional `label`, `help`, `error`, `leadingIcon`, a "Clear" button. | A choice among fixed options (use `SegmentedControl` or `Chip`). | `label`, `help`, `error`, `leadingIcon`, `clearable`, `clearLabel`, `mono`, `size` (`md`, `lg`), `trailing`, `bare`, `onSurface`, `multiline`, `minLines`, `maxLines`, plus every `TextInput` prop |
 | `PressableScale` | Building a custom pressable with the standard press feel. | Anything a `Button`, `Chip` or `ListRow` already covers. | `style` (may take `pressed`), `scaleTo`, `feedback` (`scale` or `sink`), `haptic` |
 | `RadioCard` | A single choice that needs an icon and a description, such as an onboarding option. | A plain list of choices (use `SegmentedControl` or `ListRow`). | `title`, `description`, `icon`, `selected`, `onPress`, `dashed` |
@@ -245,7 +246,7 @@ To add an icon: open `scripts/gen-icons.js`, add `ourName: 'pixelarticons-file-n
 
 A transfer is a card (`components/transfers/DownloadCard.tsx`): `colors.surface`, a 1px `colors.border` hairline, `radius.lg`, `spacing.lg` margins. It holds, top to bottom:
 
-1. The file name in `type.mono`, one line, ellipsized.
+1. The file name in `type.mono`, ending in "…" after the lines chosen in Settings, Appearance, "Transfer name lines" (1, 2, 3 or Full name; 2 by default). The card keeps the height of that many lines, so short names do not change its height.
 2. A `ProgressBar` whose `tone` matches the state.
 3. **One status line** (`components/transfers/StatusLine.tsx`): 12 px mono on an 18 px line, always present, so rows never change height.
 

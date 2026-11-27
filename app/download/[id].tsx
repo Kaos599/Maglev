@@ -28,7 +28,7 @@ import {
 } from '../../utils/downloadCopy';
 import { friendlyPath, formatLimit } from '../../components/settings/SettingsParts';
 import { SpeedLimitSheet } from '../../components/detail/SpeedLimitSheet';
-import { Banner, Button, EmptyBlock, IconButton, ListRow, Screen, Sheet, TextField, type ProgressTone } from '../../components/ui';
+import { Banner, Button, EmptyBlock, IconButton, ListRow, LongName, Screen, Sheet, TextField, type ProgressTone } from '../../components/ui';
 import { toneColor } from '../../components/transfers/StatusLine';
 import { ProgressBadge, ProgressCard } from '../../components/detail/ProgressCard';
 import { CompactLine } from '../../components/detail/CompactLine';
@@ -223,14 +223,17 @@ export default function DownloadScreen() {
 
   return (
     <Screen
-      title={d.name}
-      titleAccessibilityLabel={`${d.name}, ${status.text}`}
       onBack={goBack}
       actions={headerActions}
       scroll
       contentStyle={styles.content}
       testID="download-page"
     >
+      {/* The whole name, under back and the actions. It is the page's heading, and says the state too, as the header did. */}
+      <View style={styles.nameRow}>
+        <LongName name={d.name} heading accessibilityLabel={`${d.name}, ${status.text}`} testID="detail-name" />
+      </View>
+
       {/* NATIVE_CONTRACT 40.2 Progress card: the state in the card's words and colour, the percent, then the bar. */}
       <ProgressCard
         badge={<ProgressBadge label={status.lead} tint={tint} />}
@@ -465,6 +468,7 @@ const makeStyles = (c: ThemeColors) =>
   StyleSheet.create({
     content: { paddingHorizontal: spacing.lg, paddingBottom: spacing.xxxl },
     block: { marginBottom: spacing.md },
+    nameRow: { paddingTop: spacing.xs, marginBottom: spacing.md },
     stack: { gap: spacing.sm },
     row: { flexDirection: 'row', gap: spacing.sm },
     half: { flex: 1 },

@@ -25,6 +25,8 @@ export { EmptyBlock } from './EmptyBlock';
 export type { EmptyBlockProps, EmptyBlockAction } from './EmptyBlock';
 export { ProgressBar } from './ProgressBar';
 export type { ProgressBarProps, ProgressTone } from './ProgressBar';
+export { LongName } from './LongName';
+export type { LongNameProps } from './LongName';
 export { Screen } from './Screen';
 export type { ScreenProps } from './Screen';
 export { PressableScale } from './PressableScale';
