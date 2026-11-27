@@ -30,18 +30,21 @@ Colours are reached through `useTheme()` and never written as hex outside `const
 ```
 app/                     expo-router screens (tabs, add-torrent, torrent/[id], onboarding, settings/*)
 components/              UI components and PixelIcons
-constants/               design tokens, theme palettes, haptics
+constants/               design tokens, theme palettes, copy, haptics
 context/                 EngineContext, SettingsContext
-utils/                   permissions, formatting
+utils/                   feature logic: search, browser, assistant, subtitles, stats, watches, updates
 modules/maglev-engine/
   src/                   TS bridge (MaglevNativeBridge), mock engine (dev/web only), settings store, toNativeConfig
-  android/               Kotlin: NativeCore (JNI), MaglevEngineModule, foreground service, storage, governance
+  android/               Kotlin: NativeCore (JNI), MaglevEngineModule, foreground service, storage, share card
 native/maglev-core/      Rust: librqbit session, scheduler (pure), JNI exports, stream server
-plugins/                 Expo config plugins (ABI splits)
-scripts/                 contract tests (test-p3-reality-contracts.js, test-abi-splits.js)
-docs/                    the law (see §3)
-.github/workflows/       ci.yml (every push), release-apk.yml (tags), _rust-android.yml (reusable)
+plugins/                 Expo config plugins (ABI splits, share intents, signing)
+specs/                   TLA+ state machines, one folder per feature, checked by `npm run models`
+handbook/                how Maglev works and how to contribute (start at handbook/README.md)
+scripts/                 checks (`npm run check` explains each one), icon and licence generators
+.github/workflows/       ci.yml (every push), checks.yml (models, private references), release-apk.yml (tags)
 ```
+
+The maintainer keeps private planning notes in a gitignored folder. They are not part of the project: never cite them in code, comments, tests or docs, and write the rule itself instead.
 
 ---
 
@@ -49,27 +52,33 @@ docs/                    the law (see §3)
 
 | File | Purpose |
 |---|---|
-| `docs/ROADMAP.md` | Phases, task list, state-machine priorities (P0/P1/P2), the phase-out list. **The only task list.** |
-| `docs/NATIVE_CONTRACT.md` | The exact Rust ⇄ Kotlin ⇄ TS boundary: JNI signatures, JSON shapes, error codes, state rules, storage policy. Change this file **first** whenever the boundary changes. |
-| `docs/STATE_MACHINES_AND_SCREENS.md` | Screens and state machines. Implement transitions 1:1 and never invent ad-hoc states. |
-| `DESIGN.md` | Public design guide: tokens, components, patterns, copy voice, a checklist for new screens. Checked by `scripts/test-design-system.js`. |
-| `docs/ARCHITECTURE_AND_GOAL.md` | Layers, SLAs and the memory/battery budget. |
-| `LEDGER.md` | A dated log of what landed, with commit hash and CI run. Only history, never plans. |
+| [handbook/architecture.md](handbook/architecture.md) | The three layers, how a download flows, where state lives, the service and process death. |
+| [handbook/engine-boundary.md](handbook/engine-boundary.md) | The exact TS ⇄ Kotlin ⇄ Rust boundary: bridge functions, events, JNI exports, JSON shapes, error codes. Change this page **first** whenever the boundary changes. |
+| [handbook/state-machines.md](handbook/state-machines.md) + [specs/](specs/) | How each feature moves between states, written as a lean TLA+ model and checked by TLC. Implement transitions 1:1 and never invent ad-hoc states. |
+| [handbook/feature-map.md](handbook/feature-map.md) | Every feature: screens, code, states, model, checks. Also the list of models still wanted. |
+| [handbook/testing.md](handbook/testing.md) | What every check proves, when to run it, and what CI runs. |
+| [handbook/contributing-well.md](handbook/contributing-well.md) | What a good and a verifiable PR looks like. |
+| [handbook/maintaining.md](handbook/maintaining.md) | Branches, versions, tags, releases, signing, store channels. |
+| [DESIGN.md](DESIGN.md) | Tokens, components, patterns, copy voice, a checklist for new screens. Checked by `scripts/test-design-system.js`. |
+
+Planned work lives in GitHub issues. History lives in git and in `release-notes/`.
 
 ---
 
 ## 4. Reality rules (non-negotiable)
 
-These rules exist because Phase 1 was once marked "complete" while the engine was a simulator.
+These rules exist because an early phase was once marked "complete" while the engine was a simulator.
 
 1. **No simulation in release builds.** The mock engine (`MaglevMockEngine.ts`) runs only under `__DEV__` or on web. If the native engine fails to load in release, the app shows "The downloader didn't start". It never shows fake data.
 2. **No fabricated values in the bridge.** No hardcoded files, peers, trackers, sizes or speeds. Unknown is shown as unknown (for example `eta: -1`, shown as "—").
-3. **Contracts are the definition of done.** `npm run test:contracts` exits 1 while any P0 fails. A ledger or roadmap entry may say "Done" only with a green CI run and the passing contract IDs.
-4. **CI is the compiler.** Rust and Gradle are never installed locally. CI rejects a `.so` under 3 MB, a `.so` without librqbit symbols, or a `.so` without 16 KB page alignment.
+3. **Checks are the definition of done.** `npm run test:contracts` exits 1 while any P0 check fails. Work is "done" only with a green CI run.
+4. **CI is the compiler.** Rust and Gradle need not be installed locally. CI rejects a `.so` under 3 MB, a `.so` without librqbit symbols, or a `.so` without 16 KB page alignment.
 5. **Native binaries are never committed.** `jniLibs/` is gitignored. CI builds the binaries on every push.
-6. **Settings must round-trip.** Every user-facing setting is persisted (expo-sqlite kv-store) and reaches Rust through `toNativeConfig`. `nativeGetEffectiveConfig` proves it. A toggle that does nothing must not ship.
+6. **Settings must reach the code they control.** Every user-facing setting is persisted (expo-sqlite kv-store) and reaches the code it controls: Rust through `toNativeConfig` (proved by `nativeGetEffectiveConfig`), Kotlin through `toGovernance`, or the screen itself for UI-only settings such as the font style. A toggle that does nothing must not ship.
 7. **Settings must be searchable.** Every user-facing setting row gets an entry in `utils/settingsIndex.ts` (title = the visible label, with keywords people would type). `ListRow` and `ChipGroup` already wrap themselves in `FocusAnchor` by title, so a search result scrolls to and highlights the row. `scripts/test-settings-coverage.js` fails on a row with no entry and on an entry with no row.
-8. **Errors are plain English and recoverable.** Each error code in `NATIVE_CONTRACT.md` maps to a message and an action (Retry, Recheck, Pick folder again, Open settings).
+8. **Errors are plain English and recoverable.** Each error code in [handbook/engine-boundary.md](handbook/engine-boundary.md) maps to a message and an action (Retry, Recheck, Pick folder again, Open settings).
+9. **State machines first.** A new feature, or a change to how one moves between states, starts with a model in `specs/<feature>/` (copy `specs/_template/`). Its rules (invariants) are the PR's acceptance rules, and `npm run models` must pass. Layout, copy and pure functions need no model.
+10. **Comments stand on their own.** Explain why in the comment itself. `npm run check:refs` fails on new lines that point at private notes.
 
 ---
 
@@ -91,39 +100,38 @@ Work containing any of the following is rejected:
 
 - **Storage:** default to `Download/Maglev`, which is visible in file managers. A custom folder goes through the SAF picker, using direct POSIX writes when possible and otherwise staging plus copy-on-complete. Never request `MANAGE_EXTERNAL_STORAGE` in the Play build.
 - **Permissions** are requested during onboarding, each with a reason screen. `POST_NOTIFICATIONS` is requested on API 33+. Battery optimization goes through the system settings intent. Every denial must have a recovery path.
-- **Foreground service:** type `specialUse` on API 34+ (no 6-hour cap) and `dataSync` below it. A future Play build flips back to `dataSync` and its `onTimeout` handling. The service runs only while a torrent is downloading or seeding, restarts headless after process death (`NATIVE_CONTRACT.md` §8), and offers Pause all / Resume all / Shut down. On API 36+ the notification is a promoted Live Update while downloading (§10.4).
+- **Foreground service:** type `specialUse` on API 34+ (no 6-hour cap) and `dataSync` below it. A future Play build flips back to `dataSync` and its `onTimeout` handling. The service runs only while there is work (see [handbook/architecture.md](handbook/architecture.md)), restarts headless after process death, and offers Pause all / Resume all / Shut down. On API 36+ the notification is a promoted Live Update while downloading.
 - **Release APKs:** universal, arm64-v8a, armeabi-v7a and x86_64, all from one build (`plugins/withAbiSplits.js`). No x86.
 
 ---
 
 ## 7. Git workflow
 
-- Branch from `dev` as `feature/<phase>-<task>` (for example `feature/p2-onboarding`). Merge to `dev` when CI and the phase contracts pass. Release with a tag on `main`.
-- **Versions are `<major>.<minor>` for a feature release and `<major>.<minor>.<patch>` for a fix release** (for example 1.0, 1.0.1, 1.1). Bump with `npm run version:patch` (fixes only), `npm run version:minor` or `npm run version:major`, which writes `app.json` (version and `android.versionCode = major*10000 + minor*100 + patch`, so 1.0 is 10000, 1.0.1 is 10001 and 1.1 is 10100; ABI splits use code*10 + digit) and mirrors `package.json` as `x.y.z`. A minor or major bump resets the patch. Release tags are `v<major>.<minor>` or `v<major>.<minor>.<patch>` (1.0 onward; 0.x releases were tagged `v0.x-beta`); the release workflow refuses a tag that doesn't match `app.json`. A fix release needs `release-notes/<x.y.z>.md`. The in-app updater reads the 20 most recent releases and offers the highest one it can install, so a draft, a prerelease or a tag it can't read never hides a good one. Apps from 1.1 on understand patch tags; 1.0 reads only `v<major>.<minor>`, which is why the fixes after 1.0 shipped as 1.1. Apps up to 1.0 read only GitHub's latest release, so a patch tag is published without the latest mark and the latest release is always a `v<major>.<minor>` tag. Before building, the release workflow runs `node scripts/check-updater-reach.js <tag>`. It loads the updater from the previous release tag and fails the release if apps on that version wouldn't be offered the new one. For a `v<major>.<minor>` tag it also checks every earlier updater that reads only the latest release (0.23 to 1.0). Override only on purpose, by running the workflow by hand with `allow_unreachable`.
+- Branch from `dev` as `feature/<area>-<task>` or `fix/<area>-<task>`. Open the pull request against `dev`. `main` holds releases, tagged.
+- **Versions are `<major>.<minor>` for a feature release and `<major>.<minor>.<patch>` for a fix release** (for example 1.0, 1.0.1, 1.1). Bump with `npm run version:patch` (fixes only), `npm run version:minor` or `npm run version:major`, which writes `app.json` (version and `android.versionCode = major*10000 + minor*100 + patch`, so 1.0 is 10000, 1.0.1 is 10001 and 1.1 is 10100; ABI splits use code*10 + digit) and mirrors `package.json` as `x.y.z`. A minor or major bump resets the patch. Release tags are `v<major>.<minor>` or `v<major>.<minor>.<patch>` (1.0 onward; 0.x releases were tagged `v0.x-beta`); the release workflow refuses a tag that doesn't match `app.json`. A fix release needs `release-notes/<x.y.z>.md`. The in-app updater reads the 20 most recent releases and offers the highest one it can install, so a draft, a prerelease or a tag it can't read never hides a good one. Apps from 1.1 on understand patch tags; 1.0 reads only `v<major>.<minor>`, which is why the fixes after 1.0 shipped as 1.1. Apps up to 1.0 read only GitHub's latest release, so a patch tag is published without the latest mark and the latest release is always a `v<major>.<minor>` tag. Before building, the release workflow runs `node scripts/check-updater-reach.js <tag>`. It loads the updater from the previous release tag and fails the release if apps on that version wouldn't be offered the new one. For a `v<major>.<minor>` tag it also checks every earlier updater that reads only the latest release (0.23 to 1.0). Override only on purpose, by running the workflow by hand with `allow_unreachable`. Details: [handbook/maintaining.md](handbook/maintaining.md).
 - Use Conventional Commits: `feat|fix|refactor|test|docs|ci(<scope>): …`. Keep commits atomic.
-- After a merge, append to `LEDGER.md`: date, task IDs, commit, CI run URL, and the contract IDs that turned green.
-- **Release signing:** `plugins/withReleaseSigning.js` signs release builds (v2+v3) from repo secrets `MAGLEV_KEYSTORE_B64`, `MAGLEV_KEYSTORE_PASSWORD`, `MAGLEV_KEY_ALIAS`, `MAGLEV_KEY_PASSWORD`. Without them the build falls back to debug signing, so forks and PRs still build. CI fails a push to `main` or a tag if any APK still carries the Android debug certificate (other branches warn). With the secrets, main and tags also produce a signed bundletool APK set, uploaded as artifact `accrescent-apks` and attached to the release as `Maglev-<tag>.apks`. Owner steps: `docs/RELEASE_SIGNING.md`.
+- **Release signing:** `plugins/withReleaseSigning.js` signs release builds (v2+v3) from repo secrets `MAGLEV_KEYSTORE_B64`, `MAGLEV_KEYSTORE_PASSWORD`, `MAGLEV_KEY_ALIAS`, `MAGLEV_KEY_PASSWORD`. Without them the build falls back to debug signing, so forks and PRs still build. CI fails a push to `main` or a tag if any APK still carries the Android debug certificate (other branches warn).
 
 ---
 
-## 8. Orchestration protocol (multi-agent)
+## 8. Working with several agents
 
-The lead agent (orchestrator) writes specs and reviews. Worker agents write code.
+If you split work across several AI agents:
 
-1. **Contract first.** The orchestrator writes or updates the contract (a `NATIVE_CONTRACT.md` section, state machine, or contract test) **before** dispatching any work.
-2. **Workers run on cheaper models.** Code-writing agents use Sonnet, or Haiku for mechanical work such as CI and renames. Each gets **one contract scope** and an explicit list of files it owns. Two agents never own the same file in one wave.
-3. **Ground unfamiliar APIs.** Workers verify every library API against its real source or docs (librqbit tag source, expo-modules-core, expo-router) and cite URLs in their report.
-4. **Review is mandatory.** The orchestrator reads the diff, runs the contract and unit tests, and checks CI before accepting. Compiler errors from CI go back to the owning agent.
-5. **Workers never commit or push.** The orchestrator commits atomically per contract scope.
+1. **Spec first.** Write the model (`specs/`), the boundary change ([handbook/engine-boundary.md](handbook/engine-boundary.md)) or the acceptance rules before any agent writes code.
+2. **One owner per file.** Give each agent one scope and an explicit list of files it owns. Two agents never edit the same file at once.
+3. **Ground unfamiliar APIs.** Check every library API against its real source or docs (librqbit, expo-modules-core, expo-router) and cite the URL.
+4. **Review everything.** Read the whole diff, run the checks, and wait for CI before calling it done. A human who opens the PR has read every line.
 
 ---
 
-## 9. Skills
+## 9. Before you call it done
 
-| Skill | When |
-|---|---|
-| `superpowers:test-driven-development` | Every contract change: red, then green |
-| `code-review` / `nemesis-review` agent | Before merging a phase |
-| `anti-slop-writing` | UI copy, release notes, docs |
-| `make-interfaces-feel-better`, `unslop` | Phase 2 UI work |
-| `building-components` | New RN components (accessible, composable) |
+```bash
+npm run check        # every check, one line each, with what it covers
+npx tsc --noEmit     # types
+npm run check:refs   # no new references to private notes
+npm run models       # when you touched a model or a feature's states (needs Java 11+)
+```
+
+The whole process, from spec sheet to device test and evidence, is [handbook/verifying.md](handbook/verifying.md). CI runs these (the models always) plus the Rust tests and an APK build. [handbook/testing.md](handbook/testing.md) explains each one and how to read a failure.
