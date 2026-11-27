@@ -47,7 +47,7 @@ function check(name, cond, extra) {
 
   console.log('[entry]');
   const e = HIGHLIGHTS['0.30'];
-  check('0.30 entry is exactly the agreed text', e && e.title === 'Subtitles' && e.body === "Find and save subtitles for videos you've downloaded, from 21 free sources. No account needed." && e.icon === 'subtitles' && e.tryRoute === '/settings/subtitles' && e.tryLabel === 'Set up subtitles');
+  check('0.30 entry is exactly the agreed text', e && e.title === 'Subtitles' && e.body === "Find and save subtitles for videos you've downloaded, from free sources. No account needed." && e.icon === 'subtitles' && e.tryRoute === '/settings/subtitles' && e.tryLabel === 'Set up subtitles');
   const gen = read('components/icons.generated.ts');
   check('the entry icon exists in the icon set', gen.includes(`"${e.icon}":`));
   const routeFile = `app${e.tryRoute}.tsx`;

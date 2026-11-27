@@ -90,7 +90,7 @@ export function downloadUrl(base: string, id: string): string | null {
 export const vladoon: SubtitleProvider = {
   id: ID,
   name: 'Vladoon',
-  homepage: 'https://vladoon.com/subs',
+  homepage: 'https://vladoon.com',
   mirrors: ['https://vladoon.com'],
   languages: ['bg'],
   kinds: ['movie', 'episode'],

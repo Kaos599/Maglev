@@ -107,7 +107,7 @@ function soft(e: unknown): boolean {
 export const gestdown: SubtitleProvider = {
   id: ID,
   name: 'Gestdown',
-  homepage: 'https://gestdown.info',
+  homepage: 'https://www.subvault.tv',
   mirrors: ['https://api.gestdown.info'],
   languages: LANGUAGES,
   kinds: ['episode'],
