@@ -117,7 +117,7 @@ Only numbers the code enforces. `scripts/test-power-budget.js` checks the servic
 |---|---|---|
 | Poll while busy | 1 s | `EngineHost.kt` `BUSY_POLL_MS` |
 | Poll while idle (seeding only, or nothing) | 5 s | `IDLE_POLL_MS` |
-| Telemetry to JS with the app in the background | at most every 5 s; once at once on return | `BACKGROUND_EMIT_MS` |
+| Telemetry to JS with the app in the background | at most every 5 s, and one right away when you come back | `BACKGROUND_EMIT_MS` |
 | Wake lock and Wi-Fi lock | Held only while something downloads, resolves, checks or streams, or upload ran above 32 KiB/s in the last 60 s. Idle seeding holds none. | `MaglevTorrentService.wantsLocks` |
 | Wi-Fi lock | Only below API 34 | `MaglevTorrentService.kt` |
 | Lock timeout | 15 min, refreshed every 10 min | `LOCK_TIMEOUT_MS`, `LOCK_REFRESH_MS` |

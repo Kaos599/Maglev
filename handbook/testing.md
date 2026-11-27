@@ -1,6 +1,6 @@
 # Testing
 
-Maglev has about 190 automated checks. Almost all of them are plain Node scripts in `scripts/` that finish in under a second. You can run all of them in about ten seconds.
+Maglev has about 190 automated checks. Almost all of them are plain Node scripts in `scripts/` that finish in under a second. You can run all of them in 10 to 15 seconds.
 
 ## Run them
 
@@ -8,9 +8,9 @@ Maglev has about 190 automated checks. Almost all of them are plain Node scripts
 node scripts/run-checks.js
 ```
 
-(`npm run check` does the same once the script line is in `package.json`.)
+`npm run check` runs the same script.
 
-It runs what CI runs on every push: `tsc --noEmit`, everything `npm test` chains, and everything `npm run test:assistant` chains. It prints one line per check with PASS, FAIL or SKIP, the seconds, and one sentence saying what the check covers. A short summary follows. It exits 1 if anything fails.
+It runs what CI runs on every push: `tsc --noEmit`, everything `npm test` chains, and everything `npm run test:assistant` chains. It prints one line per check with PASS, FAIL or SKIP, the seconds, and one sentence saying what the check covers. A short summary follows. It exits 1 if anything fails. A check still running after two minutes is stopped and shown as `FAIL` with `timed out`.
 
 ```
 node scripts/run-checks.js --area search      only the checks for one area (tsc always runs)
@@ -29,7 +29,7 @@ The one-sentence description of every check is in that table and in the output. 
 
 `npm test` stops at the first script that exits non-zero and says nothing about the rest. `run-checks.js` runs every check, reads the output as well as the exit code, and lists every failure at the end. It matters for two cases:
 
-- **A check can print FAIL and still exit 0.** The reality contracts (`test-p3-reality-contracts.js`) exit 1 only when a P0 contract fails. A failing P1 or P2 contract prints a red line and exits 0, so `npm test` and the CI step pass. The runner treats a line that starts with `FAIL` or `❌` as a failure even when the exit code is 0, and marks it `[exit 0 but printed FAIL]`.
+- **A check can print FAIL and still exit 0.** The reality contracts (`test-p3-reality-contracts.js`) exit 1 only when a P0 contract fails. A failing P1 or P2 contract prints a red line and exits 0, so `npm test` and the CI step pass. The runner treats a line that starts with `FAIL`, `❌` or `not ok` as a failure even when the exit code is 0, and marks it `[exit 0 but printed FAIL]`.
 - **A check can skip part of itself.** See [Checks that skip](#checks-that-skip).
 
 ## Which checks for which change
@@ -56,7 +56,7 @@ Run the area that matches what you touched, then the full run before you open th
 
 A check can belong to more than one area. `--list` shows the areas.
 
-Speed: `tsc` takes about six seconds and is the slowest. `test-browser-found-files` and `test-p3-reality-contracts` take one to two seconds. Every other check runs in under a second on a laptop. All of them in a row take about 25 seconds, and four at a time take about ten.
+Speed: `tsc` takes about eight seconds and is the slowest. `test-browser-found-files` and `test-p3-reality-contracts` take about a second each. Every other check runs in under a second on a laptop. All of them in a row take about 30 seconds, and four at a time (the default) take 10 to 15.
 
 ## What the checks look like
 
@@ -86,9 +86,10 @@ It skips what it cannot see on a dev machine: the compiled `.so` is gitignored, 
 | `e2e.yml` | a `v*` tag, manual | **Maestro flows** | The flows in `.maestro/` on an API 34 x86_64 emulator, against the APK CI built. Report-only: a failing flow warns and writes a summary but never turns the run red |
 | `audit.yml` | Mondays 04:17 UTC, manual, and pull requests that change a lockfile | **cargo audit**, **npm audit** | Known advisories in Rust and npm dependencies. npm fails on high severity, production dependencies only |
 | `release-apk.yml` | a `v*` tag, manual | **Reuse CI APKs**, **Build Android APK**, **Publish release** | Checks the tag against `app.json` (`bump-version.js check`) and that the release notes build, then reuses or builds the APKs and publishes. It adds no tests of its own |
-| `checks.yml` | pull requests, pushes to `dev` and `main` | **Models**, **No private references** | See [Models](#models) and the line below |
+| `checks.yml` | pull requests, pushes to `dev` and `main`, manual | **Models**, **No private references** | See [Models](#models) and the line below |
+| `pr-evidence.yml` | every pull request: opened, edited, new commits, ready for review | **PR evidence** | Warns, never blocks, when the description leaves an evidence section empty. See [the PR evidence check](#the-pr-evidence-check) |
 
-`checks.yml` is added in the same wave as this page. **Models** installs Java and runs `npm run models`. **No private references** runs `scripts/check-private-refs.js` over the lines your PR adds, and fails if a comment, doc or label cites a private design document. Run `npm run check:refs` before you push.
+**Models** installs Java and runs `npm run models` on every pull request and every push to `dev` and `main`. **No private references** runs only on pull requests into `dev`. It runs `scripts/check-private-refs.js` over the lines your PR adds, and fails if a comment, doc or label cites a private design document. A file you only moved adds no lines. Run `npm run check:refs` before you push. Each job stops after 15 minutes, and TLC stops after 5 minutes on one model.
 
 The Rust and Kotlin tests, the APK build, the signing check and the `.so` gate run only in CI. Nobody installs Rust or Gradle locally. If CI reports a compiler error, fix it from the log.
 
@@ -100,7 +101,7 @@ Some checks exist and are not in `npm test`, so CI never runs them. You need to 
 - **`test-ux-027`** is chained only by `npm run test:update`.
 - **`test-browser-tabs-native`** is listed in no npm script.
 
-`node scripts/run-checks.js --all` runs all three groups. When this page was written, `test-ux-027` and `test-browser-tabs-native` failed, because the code moved and nobody updated them. Fix or delete a stale check you find; do not leave it red and unlisted.
+`node scripts/run-checks.js --all` runs all three groups. `test-ux-027` and `test-browser-tabs-native` currently fail, because the code they read moved and the checks weren't updated. CI doesn't run them, so they don't block a pull request. Fix or delete a stale check you find; don't leave it red and unlisted.
 
 ## Reading a failure
 
@@ -126,11 +127,11 @@ To read logs for FAIL lines, use `grep -n FAIL`.
 
 ## Checks that skip
 
-Some private design documents are not in this repository. They sit in `docs/`, which is gitignored and lives in a separate private repository. A few checks compare code to those documents.
+The maintainer keeps some design notes in a gitignored `docs/` folder, so they aren't in this repository. A few checks compare code to those notes.
 
 `scripts/lib/privateDocs.js` handles it:
 
-- **No `docs/` folder** (a public checkout, any contributor's clone, and CI): the document comparison is skipped with the line `skip document checks: docs/ is private and not in this checkout`. The rest of that script still runs.
+- **No `docs/` folder** (a public checkout, any contributor's clone, and CI): the document comparison is skipped with a line that starts `skip document checks:`. The rest of that script still runs.
 - **A `docs/` folder that lacks the document**: the check throws. A partial checkout is never mistaken for a pass. Under `CI=1` it skips instead.
 
 `run-checks.js` shows these as `SKIP` with the reason and ends with a list. `SKIP` here means "part of this check did not run". Everything in the same script that does not need the document still ran and passed, because a script that failed would be `FAIL`.
@@ -141,7 +142,7 @@ Is a skipping run still worth anything? Yes. The skipped part only checks that p
 
 ## Models
 
-State machines are modelled in TLA+ under `specs/`. `npm run models` (script `scripts/check-models.js`) downloads `tla2tools.jar` once into `.cache/tla/`, verifies its checksum, and runs TLC on every `.cfg` file under `specs/`. Each cfg's first line says whether it should pass or should fail on a named invariant, and the run fails when the result differs. It needs Java 11 or newer and says so if Java is missing. `run-checks.js` does not run it, because it needs Java and a download. CI runs it in the **Models** job of `checks.yml`.
+State machines are modelled in TLA+ under `specs/`. `npm run models` (script `scripts/check-models.js`) downloads `tla2tools.jar` once into `.cache/tla/`, verifies its checksum, and runs TLC on every `.cfg` file under `specs/`. Each cfg's first line says whether it should pass or should fail on a named rule (and, optionally, after how many steps), and the run fails when the result differs. It needs Java 11 or newer and says so if Java is missing. Offline, it needs the jar already in `.cache/tla/`. `run-checks.js` does not run it, because it needs Java and a download. CI runs it in the **Models** job of `checks.yml`.
 
 Run it when you change a state machine or add a feature that moves between states. See [state-machines.md](state-machines.md) for when a change needs a model and how to write one.
 
@@ -174,4 +175,13 @@ A PR that changes something on screen should list the steps a reviewer can repea
 | `npm run eval:assistant` | The Assistant eval above |
 | `npm run e2e:phone` | The Maestro flows on a phone |
 
-Before you push, run `node scripts/run-checks.js`, plus `npm run models` if you touched a state machine.
+Before you push, run `npm run check`, `npx tsc --noEmit` and `npm run check:refs`, plus `npm run models` when you touched a model or a feature's states. CI always runs the models.
+
+## The PR evidence check
+
+Every pull request runs `scripts/check-pr-evidence.js` (workflow **PR evidence**). It warns, and never blocks, when:
+- "How a reviewer can check it" is empty;
+- "Screens" is empty, or says "none", while the change touches `app/`, `components/`, `constants/`, `assets/` or Android resources;
+- "Rules this keeps" is empty while the change touches `specs/`, code named in a model's actions table, or carries the `needs-model` label.
+
+Edit the description and the check runs again. Drafts and bot PRs are skipped. Run it locally with `PR_BODY="$(cat body.md)" node scripts/check-pr-evidence.js --files changed.txt`.

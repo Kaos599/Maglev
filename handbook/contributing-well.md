@@ -1,6 +1,6 @@
 # Contributing well
 
-[CONTRIBUTING.md](../CONTRIBUTING.md) covers the mechanics: open an issue, set up, branch, run the checks. This page is about the pull request itself: what makes one easy to merge, what gets one closed, and how to write it so that anyone can check it.
+[CONTRIBUTING.md](../CONTRIBUTING.md) covers the mechanics: open an issue, set up, branch, run the checks. This page is about the pull request itself: what makes one easy to merge, what gets one closed, and how to write it so that anyone can check it. The whole build-and-verify process, from spec sheet to device test, is in [verifying.md](verifying.md).
 
 "Anyone" means the maintainer, another contributor, or an AI agent asked to review the change. None of them can see your phone or know what you tried. A pull request has to carry its own proof: the rules it keeps, the commands that show it works, and steps someone else can repeat. If a reviewer has to guess, the review stalls.
 
@@ -11,9 +11,9 @@
 - **It fixes the cause.** "Lower qualities sometimes show bigger sizes, so I hide sizes that look out of order" treats a symptom. "The wrong size came from `tbr × duration`, and this site reports the encoder's peak bitrate, so I read `filesize` first and show — when it's missing" fixes the cause. It says which field was wrong and how you know.
 - **Copy is plain English.** "Waiting for Wi-Fi", not "Network policy gate". No raw hashes on normal screens. [DESIGN.md](../DESIGN.md) has the voice rules.
 - **Colours, fonts and icons come from the theme.** `useTheme()`, `type.heading`, `type.body`, `type.mono`, and Pixelarticons through `components/PixelIcon.tsx`. Touch targets are at least 44 × 44.
-- **Every setting does something.** A new setting is saved, reaches the engine through `toNativeConfig`, shows up in the engine's effective config, and has an entry in `utils/settingsIndex.ts` so search finds it. [The engine boundary](engine-boundary.md) shows the round trip.
-- **State changes come with a model.** If your change adds a feature or changes how something moves between states (a download pausing and resuming, a share handing off to the app, an update installing), write or update a small TLA+ model in `specs/<feature>/`. [State machines](state-machines.md) explains why and walks you through one in about 100 lines. Layout, copy and pure functions don't need one.
-- **A reviewer can check every claim.** The next section is how.
+- **Every setting does something.** A new setting is saved, reaches the code it controls (Rust through `toNativeConfig`, Kotlin through `toGovernance`, or the screen itself), and has an entry in `utils/settingsIndex.ts` so search finds it. [The engine boundary](engine-boundary.md) shows the round trip.
+- **State changes come with a model.** A new feature, or a fix that changes how something moves between states (a download pausing and resuming, a share handing off to the app, an update installing), updates its model in `specs/<feature>/`. A bug fix adds a `.cfg` that fails on the old design. [State machines](state-machines.md) explains why and walks you through a model in about 100 lines. Layout, copy and pure functions need no model.
+- **A reviewer can check every claim.** See the next section.
 
 ## How to make a pull request verifiable
 
@@ -23,11 +23,11 @@ The [pull request template](../.github/pull_request_template.md) has a section f
 
 1. **Name the rules it keeps.** Write the things that must stay true after your change, one per line: "A paused download never starts again on its own." A reviewer checks the code against these, not against your intentions. For a state change, link the model and name its invariants instead. The invariants are the rules.
 2. **Link the model**, if there is one, and say that `npm run models` passes.
-3. **List the checks you ran, with their output.** Paste the lines that matter: the pass count, the check that failed before your fix and passes after it. "Tests pass" on its own can't be checked. [Testing](testing.md) says which checks to run for each part of the app, and `npm run check` runs them all with one line per check.
+3. **List the checks you ran, with their output.** Paste the lines that matter: the pass count, and the check that covers your change. "Tests pass" on its own can't be checked. [Testing](testing.md) says which checks to run for each part of the app. `npm run check` runs what CI runs, one line per check. Also run `npm run check:refs`, and `npm run models` when you touched a model or a feature's states.
 4. **Give steps someone can repeat on a phone.** Numbered, each with what they should see. Name the phone or emulator and the Android version. If the steps need a particular link or file, give it, or say how to get one.
-5. **Show anything on screen.** Before and after screenshots, or a short recording. For a bug, attach the debug log from Settings → About → Export debug log.
+5. **Show anything on screen.** Before and after screenshots, or a short recording. For a bug, put the debug log (Settings → About → Export debug log) under "How a reviewer can check it".
 
-Unit tests show the code does what you meant. Real data shows that what you meant is right. A change people see on screen needs both. If a test builds its own input, make the input something the real site, tracker or Android could produce. A test that only proves the code handles a case you made up proves very little.
+Evidence here is the existing checks plus a run on real data or a device. Don't add new unit-test scripts; if a user flow is worth automating, add a Maestro flow in `.maestro/` ([verifying.md](verifying.md)). Whatever you feed a check or a device, make it something the real site, tracker or Android could produce. A case you made up proves very little.
 
 ### Example: the description
 
@@ -41,7 +41,7 @@ The reviewer doesn't know which bug, what "properly" means, or why the scheduler
 
 **Strong**
 
-> Closes #412.
+> Closes #123.
 >
 > **Cause.** With Wi-Fi only on, a link download added while the phone was on mobile data started at once. The network check ran when the engine's state changed, and adding a download doesn't change it, so the new download was never checked.
 >
@@ -64,23 +64,24 @@ Each rule is something a reviewer can test, and the cause says which code to rea
 
 > **Commands**
 > ```
-> $ npm test
+> $ npm run check
 > ...
->   ok   Wi-Fi only holds a download added on mobile data    (failed on dev: "started")
+> PASS  0.4s  test-blocks  Why a transfer is held: one copy table, banner order, overrides, per-item lines.
 > ...
-> $ npx tsc --noEmit
-> (no output)
+> $ npm run check:refs
+> No private references in lines added since origin/dev (9f495c5).
 > ```
+> The device steps below carry the proof for this fix: on `dev`, step 2 shows the download starting on mobile data.
 >
-> **On a phone** (Pixel 7, Android 15, debug build from this branch):
+> **On a phone** (Pixel 7, Android 15, the CI APK from this PR):
 > 1. Settings → Network → turn on Wi-Fi only. Turn Wi-Fi off so the phone is on mobile data.
-> 2. Share any direct file link to Maglev and add it. The card shows "Waiting for Wi-Fi", and the speed stays at 0.
+> 2. Share any direct file link to Maglev and add it. The card shows "Waiting for Wi-Fi", and the speed stays at 0. (On `dev`, the download starts here.)
 > 3. Turn Wi-Fi on. Within a few seconds the download starts.
 > 4. Turn Wi-Fi only off, turn Wi-Fi off, and add another link. It starts on mobile data.
 >
 > **Screens:** before and after screenshots of the card in step 2, and a 20-second recording of steps 2 and 3.
 
-Someone with no context can run the commands, follow the steps and see the same thing you did. That's the bar.
+Someone with no context can run the commands, follow the steps and see the same thing you did.
 
 ## What gets a pull request closed
 

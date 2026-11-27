@@ -33,9 +33,9 @@ See handbook/contributing-well.md for an example.
 ## Checklist
 
 - [ ] Opened against `dev`, not `main`, with Conventional Commit messages (`feat(browser): …`, `fix(search): …`)
-- [ ] `npm test` and `npx tsc --noEmit` pass (and `npm run test:search` if you touched search)
+- [ ] `npm run check`, `npx tsc --noEmit` and `npm run check:refs` pass, and `npm run models` if you touched a model or a feature's states
 - [ ] Colours, fonts and icons come from the theme and Pixelarticons ([DESIGN.md](https://github.com/Kaos599/Maglev/blob/dev/DESIGN.md))
 - [ ] Copy is plain English, and every new setting row has an entry in `utils/settingsIndex.ts`
 - [ ] Touch targets are at least 44 × 44
 - [ ] No tracking, analytics or new network calls the user didn't ask for
-- [ ] If this changes how something moves between states, the model in `specs/` is added or updated and `npm run models` passes
+- [ ] If this changes how something moves between states, the model in `specs/` is added or updated

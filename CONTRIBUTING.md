@@ -53,13 +53,13 @@ Debug builds use a mock engine until the native library is present. For the real
 ## Before you open a pull request
 
 ```bash
-npm test                 # unit and contract checks
+npm run check            # every check, one line each, with what it covers
 npx tsc --noEmit         # types
-npm run test:search      # search parsers against saved pages, if you touched search
-npm run models           # the state-machine models in specs/, if you added or changed one (needs Java 11+)
+npm run check:refs       # no new references to private notes
+npm run models           # when you touched a model or a feature's states (needs Java 11+)
 ```
 
-CI runs these plus the Rust tests and an APK build. A pull request needs CI green before it can merge.
+CI runs these plus the Rust tests and an APK build. It always runs the models. A pull request needs CI green before it can merge.
 
 [Testing](handbook/testing.md) explains what each check proves, which ones to run for the part of the app you changed, and why a few of them skip on your machine.
 
@@ -74,7 +74,7 @@ In the description, say what you ran and paste the output that matters, and give
 - **One icon set:** Pixelarticons, through `components/PixelIcon.tsx`.
 - **Touch targets of at least 44 × 44.**
 - **No analytics, ads or tracking libraries,** and nothing that sends data anywhere except where the user asked.
-- **Every setting has to do something.** A toggle that isn't wired to the engine won't be merged.
+- **Every setting has to do something.** It is saved and reaches the code it controls: the Rust engine, the Kotlin side, or the screen itself for a display-only setting such as the font style. A toggle that changes nothing won't be merged.
 - **State changes come with a model.** A new feature, or a change to how something moves between states, needs a small TLA+ model in `specs/<feature>/` that passes `npm run models`. Layout, copy and pure functions don't. [State machines](handbook/state-machines.md) shows how to write one.
 - **Comments say the rule, not where it came from.** Explain why the code does what it does in a sentence. Don't point at planning documents that aren't in this repository; `npm run check:refs` catches those.
 

@@ -1,13 +1,16 @@
 ------------------------------- MODULE Feature -------------------------------
 (* Copy this folder to specs/<your-feature>/, rename Feature.tla, Feature.cfg
    and the MODULE line above to match, then replace the example below.
+   ForgetsPaused.cfg shows how a rejected design is kept: replace it with your
+   own, or delete it.
 
    The example: downloads you can pause. Android may close Maglev whenever it
    is not on screen, and Maglev restarts the downloads it remembers when it
    opens again. The rule worth checking: a download you paused stays paused. *)
 
 CONSTANTS
-  Downloads   \* a few example downloads; the .cfg sets it, e.g. {"a", "b"}
+  Downloads,  \* a few example downloads; the .cfg sets it, e.g. {"a", "b"}
+  DESIGN      \* which design to check: "remembersPaused" (Feature.cfg) or "forgetsPaused" (ForgetsPaused.cfg)
 
 VARIABLES
   app,        \* where Maglev is: "front", "back" or "closed"
@@ -76,9 +79,11 @@ AndroidKillsMaglev ==
   /\ UNCHANGED <<added, paused, finished>>
 
 \* You open Maglev again. After it was closed, it restarts what it remembers.
+\* The rejected design forgets which downloads you paused.
 YouOpenMaglev ==
   /\ app \in {"back", "closed"}
-  /\ LET waiting == added \ (paused \cup finished)
+  /\ LET waiting == IF DESIGN = "forgetsPaused" THEN added \ finished
+                    ELSE added \ (paused \cup finished)
      IN running' = IF app = "closed" THEN waiting ELSE running
   /\ app' = "front"
   /\ UNCHANGED <<added, paused, finished>>

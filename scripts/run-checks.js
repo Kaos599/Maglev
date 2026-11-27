@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // One command for the checks CI runs on every push: tsc, `npm test` and `npm run test:assistant`.
 //
-//   node scripts/run-checks.js                  everything CI runs (about two minutes)
+//   node scripts/run-checks.js                  everything CI runs (10 to 15 seconds, four at a time)
 //   node scripts/run-checks.js --area search    only the checks for one area (comma list allowed)
 //   node scripts/run-checks.js --list           print the areas and what each one runs
 //   node scripts/run-checks.js --all            also the checks `npm test` leaves out (search providers, updater, unlisted files)
@@ -234,10 +234,14 @@ test-browser-tabs-native|browser,engine|Browser tabs, link menu, pop-ups and red
 }, {});
 
 // Output lines that mean a check failed even if the exit code says otherwise. Anchored to the start of the
-// line so a passing test that merely mentions the word FAIL does not trip it.
-const FAIL_LINE = /^\s*(?:[✗✘❌x]\s*)?(?:FAIL|FAILED|Error:)\b|^\s*❌/;
-// Output lines that mean part of a check did not run.
-const SKIP_LINE = /^\s*(?:⏭️?\s*)?skip(?:ped)?\b/i;
+// line so a passing test that merely mentions the word FAIL does not trip it. "not ok" is the TAP form.
+const FAIL_LINE = /^\s*(?:[✗✘❌x]\s*)?(?:FAIL|FAILED|Error:)\b|^\s*❌|^\s*not ok\b/;
+// Output lines that mean part of a check did not run. Only the two skip markers the checks print count:
+// "skip <what>: <why>" (scripts/lib/privateDocs.js and test-private-docs) and "⏭️  SKIP: <why>" (the reality
+// contracts). A test name that contains the word "skip" is not one.
+const SKIP_LINE = /^\s*(?:⏭️?\s*SKIP:\s|skip [\w -]+:\s)/;
+// A check that runs longer than this is stuck. Every check finishes in seconds; tsc takes the longest.
+const CHECK_TIMEOUT_MS = 120 * 1000;
 
 function chain(script) {
   return (pkg.scripts[script] || '')
@@ -250,9 +254,10 @@ function chain(script) {
 
 const args = process.argv.slice(2);
 const flag = (n) => args.includes(n);
+// The word after a flag. Another flag there means the value is missing, so `--area --quiet` is an error.
 const value = (n, d) => {
   const i = args.indexOf(n);
-  return i >= 0 && args[i + 1] ? args[i + 1] : d;
+  return i >= 0 && args[i + 1] && !args[i + 1].startsWith('-') ? args[i + 1] : d;
 };
 
 const inTest = new Set([...chain('test'), ...chain('test:assistant')]);
@@ -307,10 +312,21 @@ function run(check) {
     const t0 = Date.now();
     const p = spawn(check.cmd[0], check.cmd.slice(1), { cwd: root, env: process.env });
     let out = '';
+    let timedOut = false;
+    const timer = setTimeout(() => {
+      timedOut = true;
+      p.kill('SIGKILL');
+    }, CHECK_TIMEOUT_MS);
     p.stdout.on('data', (d) => (out += d));
     p.stderr.on('data', (d) => (out += d));
-    p.on('error', (e) => resolve({ check, code: 1, out: String(e), secs: 0 }));
-    p.on('close', (code) => resolve({ check, code, out, secs: (Date.now() - t0) / 1000 }));
+    p.on('error', (e) => {
+      clearTimeout(timer);
+      resolve({ check, code: 1, out: String(e), secs: 0 });
+    });
+    p.on('close', (code) => {
+      clearTimeout(timer);
+      resolve({ check, code, out, timedOut, secs: (Date.now() - t0) / 1000 });
+    });
   });
 }
 
@@ -318,12 +334,15 @@ function judge(r) {
   const lines = r.out.split('\n');
   const failLines = lines.filter((l) => FAIL_LINE.test(l));
   const skipLines = lines.filter((l) => SKIP_LINE.test(l));
+  if (r.timedOut) return { status: 'FAIL', note: `timed out after ${CHECK_TIMEOUT_MS / 1000}s`, evidence: lines.filter(Boolean).slice(-6) };
   if (r.code !== 0) return { status: 'FAIL', note: `exit ${r.code}`, evidence: failLines.length ? failLines : lines.filter(Boolean).slice(-6) };
   // tsc prints errors as "file(1,2): error TS..." and exits non-zero, so exit 0 is enough for it.
   if (failLines.length) return { status: 'FAIL', note: 'exit 0 but printed FAIL', evidence: failLines };
   if (skipLines.length) {
     const first = skipLines[0].trim();
-    const note = /docs\//.test(first) ? 'private docs not checked out' : first.replace(/^\S*\s*skip(ped)?:?\s*/i, '').slice(0, 60);
+    const note = /is private and not in this checkout/.test(first)
+      ? 'private notes not checked out'
+      : first.replace(/^\S*\s*SKIP:\s*/, '').replace(/^\s*skip\s*/, '').slice(0, 60);
     return { status: 'SKIP', note, evidence: [] };
   }
   return { status: 'PASS', note: '', evidence: [] };

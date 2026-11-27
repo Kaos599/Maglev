@@ -75,7 +75,7 @@ Three things catch people out:
 Walk through [`specs/_template/Feature.tla`](../specs/_template/Feature.tla) from top to bottom. It models downloads you can pause, and Android closing Maglev in between.
 
 1. **Copy the folder** to `specs/<your-feature>/`. Rename `Feature.tla` and the `MODULE` line inside it to the same name, for example `WatchCheck`. TLC refuses a file whose name differs from its module.
-2. **Constants** are small sets of example things: `Downloads = {"a", "b"}`. Their values go in the `.cfg`, so one model can be checked with different values.
+2. **Constants** are small sets of example things: `Downloads = {"a", "b"}`. Their values go in the `.cfg`, so one model can be checked with different values. The template's `DESIGN` constant picks between the design that ships and one that was rejected, so both live in one `.tla`.
 3. **Variables** hold the state. Comment each one with the values it takes. Put in only what decides what happens next, and say whether it lives in memory or on disk. That difference decides what survives when Android closes the app:
 
    ```tla
@@ -102,7 +102,7 @@ Walk through [`specs/_template/Feature.tla`](../specs/_template/Feature.tla) fro
 
 7. **`Next`** is every action joined with `\/`, so any one of them can be the next step. `\E d \in Downloads : ...` tries the action for each download. **`Spec`** is always `Init /\ [][Next]_vars`; copy it as it is.
 8. **Rules** go last, as invariants, each with a one-line comment in plain English.
-9. **The `.cfg`** sets the constants and lists the invariants to check. Its first line says what you expect: `\* expect: pass`.
+9. **The `.cfg`** sets the constants and lists the invariants to check. Its first line says what you expect: `\* expect: pass`, or for a rejected design `\* expect: fail PausedStaysPaused in 5 steps` (the step count is optional; when it's there, it must match). A `.cfg` that lists no invariant fails, because TLC would pass it without checking anything.
 10. **Run it:** `node scripts/check-models.js specs/<your-feature>`.
 
 Then fill in the folder's `README.md` from the template: what the feature is, a Mermaid state chart of the design that passes, the rules, the designs you tried, and the code each action stands for.
@@ -135,7 +135,7 @@ NothingLost == app = "front" => added \subseteq (running \cup paused \cup finish
 
 Sometimes no variable holds what the rule is about. Then add one. The share model has `owed`, the newest thing you opened that Maglev hasn't shown yet, so that "Maglev shows the newest thing you opened" becomes `app = "front" => owed = None`. It also has `cardOnShare`, which turns TRUE once the What's New card opens over a shared link and stays TRUE. A variable like that records that something happened, so a rule can talk about it.
 
-Never weaken a rule to make TLC pass. If a rule turns out to be wrong, change it in the `.tla` and the README, and say why in the pull request.
+Never weaken a rule to make TLC pass. A rule changes only when the maintainer agrees it was wrong. Then change it in the `.tla` and the README, and give the reason in the pull request.
 
 ## Model "Android closes the app" and "you leave"
 
@@ -169,13 +169,14 @@ When you add these actions, the guard is the part to get right. "Android can clo
 
 ## Read a counterexample
 
-Change one line of the template so a restart forgets which downloads you paused:
+The template holds a second, rejected design: when Maglev opens after Android closed it, it restarts every download that isn't finished, and forgets which ones you paused. `DESIGN` in the `.cfg` picks the design:
 
 ```tla
-LET waiting == added \ finished          \* was: added \ (paused \cup finished)
+LET waiting == IF DESIGN = "forgetsPaused" THEN added \ finished
+               ELSE added \ (paused \cup finished)
 ```
 
-`node scripts/check-models.js specs/_template` then prints (trimmed):
+Set `DESIGN = "forgetsPaused"` in `Feature.cfg`, and `node scripts/check-models.js specs/_template` prints (trimmed):
 
 ```
 FAIL _template/Feature.cfg: expected no rule to break, but PausedStaysPaused breaks after 5 steps
@@ -186,26 +187,28 @@ FAIL _template/Feature.cfg: expected no rule to break, but PausedStaysPaused bre
     /\ running = {}
     /\ app = "front"
 
-    State 2: <YouAdd line 40, col 3 to line 44, col 40 of module Feature>
+    State 2: <YouAdd line 41, col 3 to line 45, col 40 of module Feature>
     /\ paused = {}
     /\ running = {"a"}
     /\ app = "front"
 
-    State 3: <YouPause line 47, col 3 to line 51, col 39 of module Feature>
+    State 3: <YouPause line 48, col 3 to line 52, col 39 of module Feature>
     /\ paused = {"a"}
     /\ running = {}
 
-    State 4: <YouGoHome line 67, col 3 to line 69, col 51 of module Feature>
+    State 4: <YouGoHome line 68, col 3 to line 70, col 51 of module Feature>
     /\ app = "back"
 
-    State 5: <AndroidKillsMaglev line 73, col 3 to line 76, col 42 of module Feature>
+    State 5: <AndroidKillsMaglev line 74, col 3 to line 77, col 42 of module Feature>
     /\ app = "closed"
 
-    State 6: <YouOpenMaglev line 80, col 3 to line 84, col 42 of module Feature>
+    State 6: <YouOpenMaglev line 82, col 3 to line 87, col 42 of module Feature>
     /\ paused = {"a"}
     /\ running = {"a"}
     /\ app = "front"
 ```
+
+The template keeps this design in `ForgetsPaused.cfg`, whose first line is `\* expect: fail PausedStaysPaused in 5 steps`. There the break is the expected result, so the run passes and prints one line. The trace appears only when a result differs from its `expect:` line.
 
 How to read it:
 
@@ -232,7 +235,7 @@ Every model's README has a table mapping each action to the file and function th
 
 - **The rules are the pull request's acceptance criteria.** The PR description lists the rules it keeps and links the model. A reviewer reads the README's chart and rules first, then checks the code against the action table.
 - **Every counterexample becomes a check on a phone.** A path TLC found, including one for a rejected design, is a sequence of steps someone can repeat on a phone against the shipped design. For "Android closes Maglev", go home and run `adb shell am kill com.maglev`. If the phone doesn't behave as the model says, assume the model is wrong until shown otherwise, and fix it.
-- **Rejected designs stay.** Their `.cfg` keeps `\* expect: fail <Rule>`, so the reason a design was dropped is checked on every run, and nobody brings it back by accident.
+- **Rejected designs stay.** Their `.cfg` keeps `\* expect: fail <Rule> in <N> steps`, so the reason a design was dropped is checked on every run, and nobody brings it back by accident.
 - **Agents write the model first.** An AI agent working on a state change updates or writes the model before the code, runs `npm run models`, and reports in the PR which `.cfg` files pass and which fail as expected. Changing an `expect:` line to get a green run needs a sentence in the PR saying why.
 - **CI runs the same command.** A pull request whose models don't give their expected results doesn't merge.
 

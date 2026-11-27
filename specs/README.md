@@ -32,10 +32,11 @@ specs/<feature>/
   README.md          the feature, a state chart, the rules, the designs tried, and the code each action maps to
 ```
 
-- A `.cfg` checks the `.tla` with the same name, or else the only `.tla` in its folder.
+- A `.cfg` checks the `.tla` named on its second line as `\* module: <Name>`, else the `.tla` with the same name, else the only `.tla` in its folder. A folder with helper modules needs the `module:` line.
 - The first line of every `.cfg` says what TLC should find:
   - `\* expect: pass`: no rule breaks.
-  - `\* expect: fail LatestShown`: this rule breaks. Use it for a design you tried and rejected, so the reason stays checked.
+  - `\* expect: fail LatestShown in 4 steps`: this rule breaks, on a shortest path of 4 steps. Use it for a design you tried and rejected, so the reason stays checked. The step count is optional; when it's there, it must match.
+- Every `.cfg` lists at least one rule under `INVARIANTS` (or `PROPERTIES`). One with none fails, because TLC would pass it without checking anything.
 - Keep constants small, such as two links and one magnet. A model that TLC finishes in a few seconds gets run; a slow one gets skipped.
 
 Start from [`_template/`](_template/). It is a working model, so `npm run models` checks it too.
@@ -45,4 +46,4 @@ Start from [`_template/`](_template/). It is a working model, so `npm run models
 | Folder | Feature |
 |---|---|
 | [`share-handoff/`](share-handoff/) | How a shared link, a magnet or a notification tap reaches the right screen when Android closes, rebuilds or updates Maglev in between. |
-| [`_template/`](_template/) | Pausable downloads. The example to copy. |
+| [`_template/`](_template/) | Pausable downloads. The example to copy, with one design that passes and one that was rejected. |

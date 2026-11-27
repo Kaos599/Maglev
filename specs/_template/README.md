@@ -42,11 +42,12 @@ stateDiagram-v2
 
 ## Designs tried
 
-<!-- Each design is a .cfg. Keep the rejected ones with "\* expect: fail <Rule>", and say here what broke. -->
+<!-- Each design is a .cfg. Keep the rejected ones with "\* expect: fail <Rule> in <N> steps", and say here what broke. -->
 
 | Design | What it did | Result |
 |---|---|---|
 | `Feature.cfg` | On start, restart every download that is neither paused nor finished. | All rules hold in all 48 reachable states. |
+| `ForgetsPaused.cfg` | On start, restart every download that isn't finished, paused or not. | `PausedStaysPaused` breaks in 5 steps: you add a download, pause it, go home, Android closes Maglev, you open Maglev, and it runs again. |
 
 ## Actions and the code they stand for
 

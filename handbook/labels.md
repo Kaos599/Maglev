@@ -7,16 +7,16 @@ Labels say where an issue stands and what part of the app it touches. The mainta
 | Label | Colour | Meaning |
 |---|---|---|
 | `approved` | `#0E8A16` | The idea fits Maglev. A pull request is welcome, following any notes in the issue. Features need this before code. |
-| `needs-model` | `#FBCA04` | The change moves something between states, so the pull request needs a model in `specs/` first. See [state machines](state-machines.md). |
+| `needs-model` | `#FBCA04` | To be created. The change moves something between states, so the pull request needs a model in `specs/` first. See [state machines](state-machines.md). |
 | `good first issue` | `#7057FF` | Small, well described and in one place. A good way in if you're new to the code. |
 | `help wanted` | `#008672` | The maintainer would like someone else to take this. Comment before you start, so two people don't do the same work. |
-| `translation` | `#C5DEF5` | Translating Maglev into another language. |
+| `translation` | `#0E8A16` | Translating Maglev into another language. It has this colour on GitHub today, the same as `approved`; the owner may change it. |
 
 `approved` and `needs-model` can both be on one issue. That means the idea is welcome and the model comes first: open a pull request with the spec, agree on it, then write the code.
 
 ## Area
 
-All area labels share one colour, `#BFD4F2`, so they read as a group.
+None of the area labels exist yet; they are to be created. All of them will share one colour, `#BFD4F2`, so they read as a group.
 
 | Label | Covers |
 |---|---|

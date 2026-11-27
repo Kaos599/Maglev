@@ -1,5 +1,7 @@
 # Share hand-off
 
+The code this model maps to lands with pull request #232 (`fix/1.0.1-share-handoff`). Until that merges, the files and functions named below are on that branch, not on `dev`.
+
 How a link reaches the right screen. A link can come from a share, from a magnet or `.torrent` opened in another app, or from a tap on one of Maglev's own notifications or its Quick Settings tile. The model checks that it lands on the right screen even when Android closes Maglev, rebuilds its task from Recents, or installs an update in between.
 
 The trouble starts with how Android treats a start intent. It keeps the intent that started a task and hands it to the app again every time it rebuilds that task. In Maglev 1.0 a shared link was the start intent. So a link you had already added came back later, when you opened Maglev from its icon after Android had closed it.

@@ -74,7 +74,7 @@ These rules exist because an early phase was once marked "complete" while the en
 3. **Checks are the definition of done.** `npm run test:contracts` exits 1 while any P0 check fails. Work is "done" only with a green CI run.
 4. **CI is the compiler.** Rust and Gradle need not be installed locally. CI rejects a `.so` under 3 MB, a `.so` without librqbit symbols, or a `.so` without 16 KB page alignment.
 5. **Native binaries are never committed.** `jniLibs/` is gitignored. CI builds the binaries on every push.
-6. **Settings must round-trip.** Every user-facing setting is persisted (expo-sqlite kv-store) and reaches Rust through `toNativeConfig`. `nativeGetEffectiveConfig` proves it. A toggle that does nothing must not ship.
+6. **Settings must reach the code they control.** Every user-facing setting is persisted (expo-sqlite kv-store) and reaches the code it controls: Rust through `toNativeConfig` (proved by `nativeGetEffectiveConfig`), Kotlin through `toGovernance`, or the screen itself for UI-only settings such as the font style. A toggle that does nothing must not ship.
 7. **Settings must be searchable.** Every user-facing setting row gets an entry in `utils/settingsIndex.ts` (title = the visible label, with keywords people would type). `ListRow` and `ChipGroup` already wrap themselves in `FocusAnchor` by title, so a search result scrolls to and highlights the row. `scripts/test-settings-coverage.js` fails on a row with no entry and on an entry with no row.
 8. **Errors are plain English and recoverable.** Each error code in [handbook/engine-boundary.md](handbook/engine-boundary.md) maps to a message and an action (Retry, Recheck, Pick folder again, Open settings).
 9. **State machines first.** A new feature, or a change to how one moves between states, starts with a model in `specs/<feature>/` (copy `specs/_template/`). Its rules (invariants) are the PR's acceptance rules, and `npm run models` must pass. Layout, copy and pure functions need no model.
@@ -130,8 +130,8 @@ If you split work across several AI agents:
 ```bash
 npm run check        # every check, one line each, with what it covers
 npx tsc --noEmit     # types
-npm run models       # TLA+ models, if you touched a feature's states (needs Java)
 npm run check:refs   # no new references to private notes
+npm run models       # when you touched a model or a feature's states (needs Java 11+)
 ```
 
-The whole process, from spec sheet to device test and evidence, is [handbook/verifying.md](handbook/verifying.md). CI runs these plus the Rust tests and an APK build. [handbook/testing.md](handbook/testing.md) explains each one and how to read a failure.
+The whole process, from spec sheet to device test and evidence, is [handbook/verifying.md](handbook/verifying.md). CI runs these (the models always) plus the Rust tests and an APK build. [handbook/testing.md](handbook/testing.md) explains each one and how to read a failure.
