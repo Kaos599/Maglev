@@ -76,6 +76,6 @@ Each design is a `.cfg` that sets `DESIGN`. The rejected ones stay, with the rul
 
 ## What the model leaves out
 
-- **`charging_only`, `offline`, `network_unvalidated`:** `charging_only` behaves identically to `battery` (exemptable); `offline` and `network_unvalidated` behave identically to `vpn_required` (non-exemptable). Keeping one representative of each class plus the phase-specific tags (`seed_metered`, `storage_full`, `startup`) exercises every branch of `tag_blocks` without multiplying the state space.
+- **`charging_only`, `offline`, `network_unvalidated`:** `charging_only` behaves identically to `battery` (exemptable); `network_unvalidated` behaves identically to `vpn_required` (non-exemptable); `offline` is non-exemptable for link downloads and is filtered out for torrents (`engine.rs` `torrent_blocked`). Keeping one representative of each class plus the phase-specific tags (`seed_metered`, `storage_full`, `startup`) exercises every branch of `tag_blocks` without multiplying the state space.
 - **Per-torrent queue slots and seed limits:** covered separately by the Torrents model (`scheduler.rs` queue/park logic).
 - **Network-off session rebuild debounce (`NETWORK_OFF_DEBOUNCE_MS`):** affects DHT/listener teardown when VPN drops; transfers themselves pause immediately via `vpn_required`.
