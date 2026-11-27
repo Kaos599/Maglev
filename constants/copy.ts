@@ -728,6 +728,11 @@ export const watchCopy = {
   noneNew: 'Nothing new yet',
   every: 'Check every',
   backgroundNote: 'Android decides the exact time, so a check can come later than you chose. It does not run after you force-stop Maglev, until you open it again.',
+  riskyRow: 'Download from risky sources',
+  riskyHint: 'Off: a new copy only on a source known for fakes or malware opens Search, where you see the warning.',
+  riskyHintNoWarnings: 'Turn on "Warn about risky sources" in Settings, Search sources first.',
+  /** The Add screen banner for a copy a watch found only on risky sources. Same words as the Search row. */
+  riskyBanner: (names: string) => `Risky source: ${names}`,
 } as const;
 // endregion watch
 

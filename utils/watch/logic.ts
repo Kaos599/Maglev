@@ -198,16 +198,18 @@ export interface Evaluation {
   matches: MergedResult[];
   /** Matches not seen before. Empty on the first run. */
   fresh: MergedResult[];
-  /** The fresh match with the most sharing. */
+  /** The fresh match with the most sharing, preferring one that is not only on risky sources. */
   best?: MergedResult;
   nextSeen: string[];
 }
 
 /**
  * Decides what is new for one watch. Title matching reuses the assistant's scoring (scoring.ts), so "prime time"
- * matches "Primetime", a sequel or a cinema recording does not, then the watch's own filters apply.
+ * matches "Primetime", a sequel or a cinema recording does not, then the watch's own filters apply. When [isRisky]
+ * is given, a fresh copy on a safe source wins over a risky one with more sharing, so the notification offers the
+ * safer copy.
  */
-export function evaluateWatch(w: Watch, results: readonly MergedResult[], now: number): Evaluation {
+export function evaluateWatch(w: Watch, results: readonly MergedResult[], now: number, isRisky?: (r: MergedResult) => boolean): Evaluation {
   const parsed = parseQuery(w.query);
   const scored = scoreResults(results, {
     profile: 'phone',
@@ -224,7 +226,8 @@ export function evaluateWatch(w: Watch, results: readonly MergedResult[], now: n
   const first = w.lastCheckedAt === 0 && w.seen.length === 0;
   const known = new Set(w.seen);
   const fresh = first ? [] : matches.filter((r) => !resultKeys(r).some((k) => known.has(k)));
-  const best = fresh.slice().sort((x, y) => (y.seeders ?? -1) - (x.seeders ?? -1))[0];
+  const bySharing = fresh.slice().sort((x, y) => (y.seeders ?? -1) - (x.seeders ?? -1));
+  const best = (isRisky && bySharing.find((r) => !isRisky(r))) || bySharing[0];
   const added = (first ? matches : fresh).flatMap(resultKeys);
   const nextSeen = [...w.seen, ...added.filter((k) => !known.has(k))].slice(-MAX_SEEN);
   return { first, matches, fresh, best, nextSeen };
@@ -259,13 +262,21 @@ export function networkAllows(w: Watch, net: NetworkState): boolean {
 
 const plural = (n: number, one: string, many: string) => (n === 1 ? one : many);
 
-export function watchNotificationText(w: Watch, r: MergedResult): { title: string; text: string } {
+/**
+ * How a notification treats a copy that only risky sources list. 'none': not risky. 'held': no Download, the title
+ * says "on a risky source" and the tap opens Search, where the row carries its warning. 'marked': Download is offered
+ * because the user allowed it, and the text says "risky source".
+ */
+export type RiskHandling = 'none' | 'held' | 'marked';
+
+export function watchNotificationText(w: Watch, r: MergedResult, risk: RiskHandling = 'none'): { title: string; text: string } {
   const p = parseRelease(r.name);
   const name = (p.title ?? '').trim() || w.query;
-  const title = `${name}${p.resolution ? ` ${p.resolution}p` : ''} is up`;
+  const title = `${name}${p.resolution ? ` ${p.resolution}p` : ''} is up${risk === 'held' ? ' on a risky source' : ''}`;
   const parts: string[] = [];
   if (r.sizeBytes !== undefined && r.sizeBytes > 0) parts.push(formatBytes(r.sizeBytes));
   if (r.seeders !== undefined && r.seeders >= 0) parts.push(`${r.seeders} sharing`);
+  if (risk === 'marked') parts.push('risky source');
   return { title, text: parts.length > 0 ? parts.join(' · ') : 'New result' };
 }
 
@@ -273,9 +284,53 @@ export function openUrl(w: Pick<Watch, 'query' | 'category'>): string {
   return `maglev://search?q=${encodeURIComponent(w.query)}&c=${w.category}`;
 }
 
-/** The Add screen, which runs the usual space and safety checks. Nothing is added from the notification itself. */
-export function downloadUrl(r: Pick<MergedResult, 'magnet'>): string | undefined {
-  return /^magnet:\?/i.test(r.magnet ?? '') ? `maglev://add-torrent?source=${encodeURIComponent(r.magnet)}` : undefined;
+/**
+ * The Add screen, which runs the usual space and safety checks. Nothing is added from the notification itself.
+ * [riskyIds] are the sources of a copy only risky sources list. They ride in the route itself, so the Add screen's
+ * warning survives Android closing Maglev between the tap and the screen (the route waits on disk until then).
+ */
+export function downloadUrl(r: Pick<MergedResult, 'magnet'>, riskyIds?: readonly string[] | null): string | undefined {
+  if (!/^magnet:\?/i.test(r.magnet ?? '')) return undefined;
+  const risky = riskyIds && riskyIds.length > 0 ? `&risky=${encodeURIComponent(riskyIds.join(','))}` : '';
+  return `maglev://add-torrent?source=${encodeURIComponent(r.magnet)}${risky}`;
+}
+
+/** What a watch needs to judge a copy the way Search does. Built from the search prefs for each background run. */
+export interface WatchSafety {
+  /** The ids of the sources behind [r] when Search would mark it "Risky source", else null. */
+  riskyOf(r: MergedResult): string[] | null;
+  /** The Watches setting "Download from risky sources". */
+  allowRisky: boolean;
+}
+
+/** Judges nothing risky. Only for callers that have no search prefs; the background job always passes real ones. */
+export const NO_RISK: WatchSafety = { riskyOf: () => null, allowRisky: false };
+
+/** The notification for a fresh copy: text, Open (Search for the title) and, unless the copy is held, Download. */
+export function notificationFor(w: Watch, r: MergedResult, safety: WatchSafety): { title: string; text: string; openUrl: string; downloadUrl?: string } {
+  const riskyIds = safety.riskyOf(r);
+  const risk: RiskHandling = !riskyIds ? 'none' : safety.allowRisky ? 'marked' : 'held';
+  const note: { title: string; text: string; openUrl: string; downloadUrl?: string } = { ...watchNotificationText(w, r, risk), openUrl: openUrl(w) };
+  if (risk !== 'held') {
+    const dl = downloadUrl(r, riskyIds);
+    if (dl) note.downloadUrl = dl;
+  }
+  return note;
+}
+
+/**
+ * The Add screen's banner for a route that carries `risky=<ids>`: the names of the sources and the reason Search gives
+ * for them. Ids that are unknown, or no longer flagged, are dropped; null when none is left, so a made-up link
+ * cannot put a banner on screen for a source Maglev does not flag.
+ */
+export function riskyNotice(
+  param: unknown,
+  providers: ReadonlyMap<string, { name: string; unsafeReason?: string }>,
+): { names: string[]; reason: string } | null {
+  if (typeof param !== 'string' || !param) return null;
+  const flagged = [...new Set(param.split(','))].map((id) => providers.get(id.trim())).filter((p): p is { name: string; unsafeReason: string } => !!p?.unsafeReason);
+  if (flagged.length === 0) return null;
+  return { names: flagged.map((p) => p.name), reason: flagged[0].unsafeReason };
 }
 
 /** Same as Kotlin: 7000 + (String.hashCode() and 0xFFFF). */

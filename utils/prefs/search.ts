@@ -24,6 +24,11 @@ export interface SearchPrefs {
   trustedUploadersOnly: boolean;
   /** Mark results whose every source is known for fake or harmful uploads. */
   warnUnsafe: boolean;
+  /**
+   * Watches offer Download for a new copy that only risky sources list. Off by default: such a copy is still
+   * announced, but the notification opens Search, where it carries its warning.
+   */
+  watchRiskySources: boolean;
   waitSeconds: 5 | 8 | 15;
   limit: 25 | 50 | 100;
   hideDead: boolean;
@@ -68,6 +73,7 @@ function defaults(): SearchPrefs {
     adult: false,
     trustedUploadersOnly: true,
     warnUnsafe: true,
+    watchRiskySources: false,
     waitSeconds: 8,
     limit: 50,
     hideDead: true,
@@ -137,6 +143,7 @@ export function normalizeSearchPrefs(raw: unknown, legacyRecents: string[]): Sea
     adult: o.adult === true,
     trustedUploadersOnly: o.trustedUploadersOnly !== false,
     warnUnsafe: o.warnUnsafe !== false,
+    watchRiskySources: o.watchRiskySources === true,
     waitSeconds: o.waitSeconds === 5 || o.waitSeconds === 15 ? o.waitSeconds : 8,
     limit: o.limit === 25 || o.limit === 100 ? o.limit : 50,
     hideDead: o.hideDead !== false,
