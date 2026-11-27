@@ -24,7 +24,7 @@ import { admit, oneTapDecision, pendingNeedOf } from '../../utils/admission';
 import { formatBytes } from '../../constants/format';
 import { riskySources } from '../../utils/search/safety';
 import { addRecentSearch, clearRecentSearches, getSearchPrefs, removeRecentSearch, useSearchPrefs } from '../../utils/prefs/search';
-import { PROVIDERS, availableCategories, directAddRoute, eligibleProviders, mergeInto, rerunProvider, resolveResult, searchAll } from '../../utils/search/aggregate';
+import { PROVIDERS, availableCategories, directAddRoute, eligibleProviders, mergeInto, rerunProvider, resolveResult, searchAll, sortResults } from '../../utils/search/aggregate';
 import { CloudflareSolverSheet } from '../../components/search/CloudflareSolverSheet';
 import { nextNeedsCheck, resultsSummary, shouldShowFixHint, sourcesLine, tallySources, unansweredSources } from '../../utils/search/answered';
 import { formatAgeLong } from '../../utils/search/age';
@@ -71,22 +71,6 @@ interface FixHintItem {
 }
 type ListItem = MergedResult | FixHintItem;
 const FIX_AFTER = 3;
-
-/** Missing numbers sort last in every numeric order. */
-function sortResults(list: MergedResult[], sort: SortKey): MergedResult[] {
-  const num = (a: number | undefined, b: number | undefined) => (b ?? -1) - (a ?? -1);
-  const copy = [...list];
-  switch (sort) {
-    case 'seeders':
-      return copy.sort((a, b) => num(a.seeders, b.seeders));
-    case 'newest':
-      return copy.sort((a, b) => num(a.publishedAt, b.publishedAt));
-    case 'size':
-      return copy.sort((a, b) => num(a.sizeBytes, b.sizeBytes));
-    case 'name':
-      return copy.sort((a, b) => a.name.localeCompare(b.name));
-  }
-}
 
 export default function SearchScreen() {
   const { colors } = useTheme();
@@ -212,7 +196,7 @@ export default function SearchScreen() {
   );
 
   // Anything that changes what a search asks for restarts it. Sort and recents do not.
-  const searchKey = JSON.stringify([prefs.enabled, prefs.useFor, prefs.mirrorOverride, prefs.adult, prefs.waitSeconds, prefs.limit, prefs.hideDead, prefs.torznab]);
+  const searchKey = JSON.stringify([prefs.enabled, prefs.useFor, prefs.mirrorOverride, prefs.adult, prefs.adultInAll, prefs.waitSeconds, prefs.limit, prefs.hideDead, prefs.torznab]);
 
   useEffect(() => {
     reqId.current += 1;
@@ -511,10 +495,10 @@ export default function SearchScreen() {
     const base = update?.results ?? [];
     const bySource = sourceFilter ? base.filter((r) => r.sources.includes(sourceFilter)) : base;
     const filtered = bySource.filter((r) => passesResultFilter(r, { hideDead: hideNoShare, ...toFilter(sizeRange.low, sizeRange.high) }));
-    const ranked = sortResults(filtered, prefs.sort);
+    const ranked = sortResults(filtered, prefs.sort, trimmed);
     if (lastRankKey.current !== rankKey) return ranked;
     return stableOrder(shownKeys.current, ranked, seenRowCount(highWater.current), keyOfResult);
-  }, [update, sourceFilter, prefs.sort, rankKey, hideNoShare, sizeRange]);
+  }, [update, sourceFilter, prefs.sort, trimmed, rankKey, hideNoShare, sizeRange]);
   useEffect(() => {
     if (lastRankKey.current !== rankKey) {
       lastRankKey.current = rankKey;

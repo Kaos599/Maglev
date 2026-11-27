@@ -83,4 +83,4 @@ export interface SearchUpdate {
   done: boolean;
 }
 
-export type SortKey = 'seeders' | 'newest' | 'size' | 'name';
+export type SortKey = 'best' | 'seeders' | 'newest' | 'size' | 'name';

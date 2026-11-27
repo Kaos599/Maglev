@@ -1374,6 +1374,14 @@ export const SETTINGS_INDEX: SettingEntry[] = [
     "What sources to show",
   ),
   e(
+    "search-adult-in-all",
+    "Include adult results in All",
+    "search-providers",
+    "Search sources",
+    ["adult", "nsfw", "porn", "18+", "explicit", "all", "mixed", "chip", "results"],
+    "What sources to show",
+  ),
+  e(
     "search-warn-unsafe",
     "Warn about risky sources",
     "search-providers",

@@ -27,7 +27,7 @@ const check = (name, cond) => {
   const { LATER_DEFAULTS } = await import(path.join(root, 'utils/prefs/search.ts'));
   const on = PROVIDERS.filter((p) => p.enabledByDefault).map((p) => p.id).sort();
   // Defaults are only safe, trusted sources. Open-upload sites and DHT/aggregator indexes stay off.
-  check('defaults are archive, gutenberg, knaben, librivox, nyaa, torrentscsv, yts', on.join() === 'archive,gutenberg,knaben,librivox,nyaa,torrentscsv,yts', on.join());
+  check('defaults are archive, gutenberg, knaben, librivox, nyaa, yts', on.join() === 'archive,gutenberg,knaben,librivox,nyaa,yts', on.join());
   check('tpb, bitsearch and torrentdownload stay off', ['tpb', 'bitsearch', 'torrentdownload'].every((id) => PROVIDERS.find((p) => p.id === id)?.enabledByDefault === false));
   check('no nsfw source is on by default', PROVIDERS.every((p) => !p.enabledByDefault || !p.nsfw));
   check('every later default is also a default', LATER_DEFAULTS.every((id) => on.includes(id)));

@@ -8,6 +8,7 @@
 
 import { eligibleProviders, mergeResults } from './aggregate.ts';
 import type { ProviderPrefs } from './aggregate.ts';
+import { looksAdult } from './adultName.ts';
 import { pausedFor, recordFailure, recordSuccess } from './health.ts';
 import { httpText, joinUrl, ProviderError } from './http.ts';
 import { parse as parseKnaben } from './providers/knaben.ts';
@@ -308,7 +309,7 @@ async function runSource(
 
   try {
     let rows = await Promise.race([work, gate]);
-    rows = rows.filter((r) => r.category !== 'adult');
+    rows = rows.filter((r) => r.category === 'movies' || r.category === 'tv' || (r.category !== 'adult' && !looksAdult(r.name)));
     if (opts.hideDead ?? true) rows = rows.filter((r) => r.seeders !== 0);
     recordSuccess(src.id);
     return finish(rows.length ? 'done' : 'empty', rows);
