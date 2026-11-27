@@ -38,7 +38,7 @@ fn probe_fail_of(r: ResolveFail, typed_host: &str) -> ProbeFail {
         ResolveFail::Fetch(f) => match f {
             FetchFail::Status(401, _) => ProbeFail::Auth(401),
             FetchFail::Status(403, _) => ProbeFail::Refused(403),
-            FetchFail::Status(s, _) => ProbeFail::Status(s),
+            FetchFail::Status(s, ra) => ProbeFail::Status(s, ra),
             FetchFail::Send(e) => match refusal(&e, typed_host) {
                 Some(Refusal::LanAddress) => ProbeFail::LanAddress,
                 Some(Refusal::Redirect) => ProbeFail::LocalRedirect,
@@ -357,8 +357,13 @@ impl Downloads {
                             return;
                         }
                     }
-                    Err(ProbeFail::Auth(s)) | Err(ProbeFail::Refused(s)) | Err(ProbeFail::Status(s)) => {
+                    Err(ProbeFail::Auth(s)) | Err(ProbeFail::Refused(s)) => {
                         if !self.handle_status(&id, s, None).await {
+                            return;
+                        }
+                    }
+                    Err(ProbeFail::Status(s, ra)) => {
+                        if !self.handle_status(&id, s, ra).await {
                             return;
                         }
                     }
@@ -409,8 +414,13 @@ impl Downloads {
                             return;
                         }
                     }
-                    ProbeFail::Auth(s) | ProbeFail::Refused(s) | ProbeFail::Status(s) => {
+                    ProbeFail::Auth(s) | ProbeFail::Refused(s) => {
                         if !self.handle_status(&id, s, None).await {
+                            return;
+                        }
+                    }
+                    ProbeFail::Status(s, ra) => {
+                        if !self.handle_status(&id, s, ra).await {
                             return;
                         }
                     }
@@ -802,7 +812,12 @@ mod tests {
         let st = |s| ResolveFail::Fetch(FetchFail::Status(s, None));
         assert!(matches!(probe_fail_of(st(401), "h"), ProbeFail::Auth(401)));
         assert!(matches!(probe_fail_of(st(403), "h"), ProbeFail::Refused(403)));
-        assert!(matches!(probe_fail_of(st(404), "h"), ProbeFail::Status(404)));
+        assert!(matches!(probe_fail_of(st(404), "h"), ProbeFail::Status(404, None)));
+        let ra = Duration::from_secs(7);
+        assert!(matches!(
+            probe_fail_of(ResolveFail::Fetch(FetchFail::Status(429, Some(ra))), "h"),
+            ProbeFail::Status(429, Some(d)) if d == ra
+        ));
         assert!(matches!(probe_fail_of(ResolveFail::Fetch(FetchFail::TooBig), "h"), ProbeFail::Stream(StreamError::Unsupported)));
         assert!(matches!(probe_fail_of(ResolveFail::Fetch(FetchFail::Short), "h"), ProbeFail::Net));
         assert!(matches!(probe_fail_of(ResolveFail::Stream(StreamError::Live), "h"), ProbeFail::Stream(StreamError::Live)));
