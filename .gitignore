@@ -65,3 +65,6 @@ store/out/
 
 __pycache__/
 e2e-out/
+
+# TLC (tla2tools.jar) and its working files, downloaded by scripts/check-models.js
+.cache/
