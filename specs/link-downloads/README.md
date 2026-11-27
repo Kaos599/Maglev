@@ -1,8 +1,8 @@
 # Link downloads
 
-A link download moves through `resolving`, `queued`, `downloading`, `paused`, `verifying`, `finished`, `needs_link`, `error`, and `gone` (`native/maglev-core/src/http_dl/machine.rs`). While each single row of `step(state, event)` has a Rust unit test, multi-step paths cross process death (which drops in-memory cookies and signed links), governance blocks, user pauses, and automatic retries.
+Direct HTTP/HTTPS and stream downloads move through Rust's pure state machine (`http_dl/machine.rs`), driven by `http_dl/driver.rs` and Kotlin's background `AutoRetryWorker`. Process death drops in-memory cookies, passwords and signed links (`SecretsLost` → `needs_link`), governance rules can block and clear at any time, and user pauses must always win over governance clears and auto-retries.
 
-The model checks that a download needing in-memory secrets never runs after process death until given a new link, a user pause survives governance clears, retries obey their budget, and downloading never runs while governance blocks.
+The model checks every reachable path through `http_dl/machine.rs`, including process restarts, retry budgets, mux retries, and governance/user-pause races.
 
 Check it:
 
@@ -16,44 +16,40 @@ The chart shows the shipped design (`LinkDownloads.cfg`).
 
 ```mermaid
 stateDiagram-v2
-  state "Resolving" as Resolving
+  state "Resolving (probing)" as Resolving
   state "Queued" as Queued
   state "Downloading" as Downloading
   state "Paused by user" as PausedUser
   state "Paused by rule" as PausedGov
-  state "Verifying" as Verifying
-  state "Finished" as Finished
+  state "Verifying / muxing" as Verifying
   state "Needs new link" as NeedsLink
-  state "Error" as Error
-  state "Gone" as Gone
+  state "Error (network)" as ErrorNet
+  state "Error (mux failed)" as ErrorMux
+  state "Finished" as Finished
+  state "Gone (removed)" as Gone
 
-  [*] --> Resolving: add [rules allow]
-  [*] --> PausedGov: add [rule blocks]
-  Resolving --> Downloading: probe ok [slot free, rules allow]
-  Resolving --> Queued: probe ok [no slot or rule blocks]
+  [*] --> Resolving: add link [rules allow]
+  [*] --> PausedGov: add link [rules block]
+  Resolving --> Downloading: probe ok [rules allow]
+  Resolving --> Queued: probe ok [no slot or rules block]
   Resolving --> NeedsLink: 401/403
-  Resolving --> Error: HTTP/network error
+  Resolving --> ErrorNet: network error
   Queued --> Downloading: slot free [rules allow]
   Downloading --> Verifying: all bytes
+  Downloading --> ErrorNet: retries exhausted
   Verifying --> Finished: hash ok
-  Verifying --> Error: hash mismatch
-  Downloading --> NeedsLink: auth expired
-  Downloading --> Error: retries exhausted
-  Resolving --> PausedUser: you pause
-  Queued --> PausedUser: you pause
+  Verifying --> ErrorMux: mux failed
+  ErrorMux --> Verifying: retry mux
   Downloading --> PausedUser: you pause
-  PausedGov --> PausedUser: you pause
+  Queued --> PausedUser: you pause
+  PausedGov --> PausedUser: Pause all
   PausedUser --> Queued: you resume
-  Resolving --> PausedGov: rule blocks
-  Queued --> PausedGov: rule blocks
-  Downloading --> PausedGov: rule blocks
+  Downloading --> PausedGov: rule turns on
   PausedGov --> Queued: rule clears
-  Downloading --> Queued: process restarts [no secrets]
-  Downloading --> NeedsLink: process restarts [secrets lost]
-  NeedsLink --> Queued: you give matching link
-  NeedsLink --> Error: new link mismatch
-  Error --> Resolving: retry [rules allow]
-  Error --> PausedGov: retry [rule blocks]
+  ErrorNet --> Resolving: retry [rules allow]
+  ErrorNet --> PausedGov: retry [rules block]
+  Downloading --> NeedsLink: restart drops secrets
+  NeedsLink --> Queued: new link supplied
   Finished --> Gone: remove
 ```
 
@@ -63,10 +59,10 @@ Each rule is an invariant in `LinkDownloads.tla`. TLC checks it in every state i
 
 | Rule | In plain words |
 |---|---|
-| `NoWorkWithoutSecrets` | A download that relies on in-memory cookies or a signed URL never resolves or downloads after process death until you supply a new link. |
-| `UserPauseStaysPaused` | A download you paused never wakes up when a governance rule clears. |
-| `RetryBudgetRespected` | Transient failures never exceed the retry budget without transitioning to **Error**. |
-| `RespectsGovernance` | A download never actively downloads while a governance rule is blocking. |
+| `UserPauseWins` | A download you paused never wakes up on a governance clear, process restore, or background auto-retry. |
+| `NoTransferWithoutSecrets` | Once a restart drops in-memory cookies or a signed link, the download waits in `needs_link` and never resolves or downloads until you supply a new link. |
+| `GovBlocksDownload` | While a governance rule blocks, no download actively transfers bytes. |
+| `AttemptsBounded` | Transient retries never exceed `MAX_ATTEMPTS`. |
 | `TypeOK` | Every variable holds the kind of value its comment promises. |
 
 ## Designs tried
@@ -75,29 +71,28 @@ Each design is a `.cfg` that sets `DESIGN`. The rejected ones stay, with the rul
 
 | Design | What it did | Result |
 |---|---|---|
-| `LinkDownloads.cfg` | Shipped design (`machine.rs` + `driver.rs`): `SecretsLost` routes secret-bearing downloads to `NeedsLink` on restart, `GovClear` never wakes `Paused(User)`, and `attempts < MAX_ATTEMPTS` bounds retries. | All rules hold in all reachable states. |
-| `RetryWithoutSecrets.cfg` | On process restart, queued secret-bearing downloads instead of emitting `SecretsLost`. | `NoWorkWithoutSecrets` breaks: a secret-bearing download is added, process restarts, and a free slot starts downloading without cookies/headers. |
-| `GovClearWakesUserPause.cfg` | `GovClear` moved `Paused(User)` back to `Queued`. | `UserPauseStaysPaused` breaks: you pause a download while a rule is on, the rule clears, and the download queues again. |
-| `InfiniteRetries.cfg` | Ignored `MAX_ATTEMPTS` on transient failures. | `RetryBudgetRespected` breaks: transient failures increment `attempts` past the budget without moving to `Error`. |
+| `LinkDownloads.cfg` | Shipped design (`http_dl/machine.rs`): `SecretsLost` moves secret-bearing downloads to `needs_link` on restart, `Paused(User)` ignores `GovClear`, and `UserRetryBlocked` pauses retries while governance blocks. | All rules hold in all reachable states. |
+| `RestoreIgnoresSecrets.cfg` | Treated a secret-bearing download like a plain download on restart (`Restore` → `queued` instead of `SecretsLost` → `needs_link`). | `NoTransferWithoutSecrets` breaks in 2 steps: add a secret link, process restarts, and it queues without its cookies/token. |
+| `GovClearWakesUserPause.cfg` | Let `GovClear` resume `Paused(User)` along with `Paused(gov)`. | `UserPauseWins` breaks: a user-paused download wakes up into `queued` when governance clears. |
+| `AutoRetryIgnoresGov.cfg` | Let a retry from `Error(Network)` jump straight to `downloading` even while governance blocks. | `GovBlocksDownload` breaks: a failed download starts transferring while a governance rule is active. |
 
 ## Actions and the code they stand for
 
 | Action | Code |
 |---|---|
-| `AddDownload` | `machine.rs` `Event::Add` / `Event::AddBlocked`. |
-| `ProbeOk`, `ProbeAuth`, `ProbeFail` | `machine.rs` `Event::ProbeOk`, `Event::ProbeAuth`, `Event::ProbeStatus` / `NetErr`. |
-| `SlotFree` | `machine.rs` `Event::SlotFree`. |
-| `TransientFail`, `DownloadAuthFail` | `machine.rs` `Event::Transient` / `Event::Stalled`, `Event::Auth`. |
-| `AllBytes`, `VerifyOk`, `VerifyBad` | `machine.rs` `Event::AllBytes`, `Event::HashOk`, `Event::HashBad`. |
-| `YouPause`, `YouResume` | `machine.rs` `Event::UserPause`, `Event::UserResume`. |
-| `GovTurnsOn`, `GovClears` | `machine.rs` `Event::GovBlock`, `Event::GovClear`. |
-| `YouGiveNewLink` | `machine.rs` `Event::NewLink`. |
-| `RetryFromError` | `machine.rs` `Event::UserRetry` / `Event::UserRetryBlocked` (and `AutoRetryWorker.kt`). |
-| `ProcessRestarts` | `machine.rs` `Event::Restore` / `Event::SecretsLost` (`driver.rs` startup restore). |
-| `YouRemove` | `machine.rs` `Event::Remove`. |
+| `Add` | `http_dl/machine.rs` `Event::Add` / `Event::AddBlocked`. |
+| `ProbeOk`, `ProbeAuth`, `ProbeNetErr` | `http_dl/machine.rs` `Event::ProbeOk`, `Event::ProbeAuth`, `Event::NetErr`. |
+| `SlotFree`, `TransientFail`, `AllBytes` | `http_dl/machine.rs` `Event::SlotFree`, `Event::Transient`, `Event::AllBytes`. |
+| `HashOk`, `MuxFailed`, `RetryMux` | `http_dl/machine.rs` `Event::HashOk`, `Event::MuxFailed`, `Event::RetryMux`. |
+| `UserPause`, `UserResume` | `http_dl/machine.rs` `Event::UserPause`, `Event::UserResume`. |
+| `GovTurnsOn`, `GovTurnsOff` | `http_dl/machine.rs` `Event::GovBlock`, `Event::GovClear`. |
+| `RetryError` | `http_dl/machine.rs` `Event::UserRetry` / `Event::UserRetryBlocked` (`AutoRetryWorker.kt` + UI Retry). |
+| `NewLink` | `http_dl/machine.rs` `Event::NewLink`. |
+| `ProcessRestart` | `http_dl/machine.rs` `Event::SecretsLost` / `Event::Restore`. |
+| `Remove` | `http_dl/machine.rs` `Event::Remove`. |
 
 ## What the model leaves out
 
-- **Distinct `DlError` codes and stream muxing (`MuxFailed` / `RetryMux`):** all error codes share the same retry/remove transitions from `Error`; stream muxing is a self-loop `Verifying ↔ Error(MuxFailed)` that never touches the network.
-- **Full `MAX_ATTEMPTS = 10` / `MAX_STALL_ATTEMPTS = 5`:** bounded to `MaxAttempts = 2` so TLC explores every state in under a second while proving the exact budget boundary.
-- **Per-item "Resume anyway" override:** modelled in [`specs/transfer-rules/`](../transfer-rules/).
+- **Fatal probe/transfer errors (`HttpFatal`, `NotAFile`, `LocalRedirect`, `LanAddress`, `FileTooLarge`, `StreamProtected`):** all transition to `Error(_)` with the same retry/remove semantics as `error_net`.
+- **`MAX_ATTEMPTS = 10` and `MAX_STALL_ATTEMPTS = 5`:** scaled to `MaxAttempts = 2` so TLC explores every boundary (below limit, at limit, and reset on retry) in under a second.
+- **Multiple concurrent downloads competing for slots:** slot contention is modelled in [`specs/torrents/`](../torrents/); here `SlotFree` models waiting for a slot.
