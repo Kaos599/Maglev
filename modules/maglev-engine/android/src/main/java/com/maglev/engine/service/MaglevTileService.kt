@@ -9,9 +9,10 @@ import android.service.quicksettings.TileService
 import android.util.Log
 import androidx.core.content.ContextCompat
 import com.maglev.engine.EngineHost
+import com.maglev.engine.share.ShareHandoff
 
 /**
- * Quick Settings tile: shows transfer state, taps to Pause all / Resume all (contract 13.3).
+ * Quick Settings tile: shows transfer state, taps to Pause all / Resume all.
  * An active tile (ACTIVE_TILE meta-data): the system binds it on a click, and [EngineHost] asks for an
  * update with [TileService.requestListeningState] when the summary changes.
  */
@@ -50,10 +51,9 @@ class MaglevTileService : TileService() {
     }
 
     private fun openApp() {
-        // maglev://from/tile opens Transfers and counts as a non-plain launch (no new-feature dialog).
-        val launch = Intent(Intent.ACTION_VIEW, Uri.parse("maglev://from/tile"))
-            .setPackage(packageName)
-            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        // maglev://from/tile opens Transfers and counts as a non-plain launch (no new-feature dialog). It reaches the app
+        // through the one-shot store, so it is never the start intent of the task.
+        val launch = ShareHandoff.routeIntent(this, "maglev://from/tile")
         if (Build.VERSION.SDK_INT >= 34) {
             startActivityAndCollapse(PendingIntent.getActivity(this, 0, launch, PendingIntent.FLAG_IMMUTABLE))
         } else {

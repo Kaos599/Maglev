@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// NATIVE_CONTRACT 41 (Debug log): exportDebugLog across TS types, bridge, mock, Kotlin wiring, Rust logcat init,
+// Debug log: exportDebugLog across TS types, bridge, mock, Kotlin wiring, Rust logcat init,
 // the About row and its Dialog copy, and the settings index. Static checks; Rust and Gradle run in CI.
 const fs = require('fs');
 const path = require('path');

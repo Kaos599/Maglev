@@ -5,6 +5,8 @@
  * returns `string | Promise<string | null> | null`; a falsy value means no redirect).
  */
 
+import { takeStartLink } from '../utils/shareHandoff';
+import { settingsStore } from '../modules/maglev-engine/src/MaglevSettingsStore';
 import { parsePackedShare, setShareQueue } from '../utils/shareQueue';
 import { appPath, browserIntentRoute } from '../utils/browserUrl';
 import { visibleTabs } from '../components/tabs/tabPrefs';
@@ -23,8 +25,15 @@ function isTorrentLocation(url: string): boolean {
   return /\.torrent$/i.test(pathPart);
 }
 
-export function redirectSystemPath({ path }: { path: string; initial: boolean }): string {
+export function redirectSystemPath({ path, initial }: { path: string; initial: boolean }): string {
   try {
+    // At start-up a link waiting in the store is routed as if it had come in as the start intent, and it wins over the
+    // start URL: a restored task reports the intent it was first started with, which may be long stale. Before onboarding
+    // is done the store is left alone; the main screens take it when they mount.
+    if (initial && settingsStore.getSettings().onboarded) {
+      const shared = takeStartLink();
+      if (shared) return redirectSystemPath({ path: shared, initial: false });
+    }
     const raw = (path ?? '').trim();
     // maglev://browser?url= opens that page in a new tab, through the link-tap refusals.
     const browser = browserIntentRoute(raw);
@@ -41,7 +50,7 @@ export function redirectSystemPath({ path }: { path: string; initial: boolean })
     if (/^content:\/\//i.test(raw) || /^file:\/\//i.test(raw)) return addRoute(raw);
     if (/^https?:\/\//i.test(raw) && isTorrentLocation(raw)) return addRoute(raw);
     // A shared web link (the share rewrite in plugins/withShareIntents.js hands it over as the intent data).
-    // No VIEW filter exists for http(s), so this only ever comes from a share (NATIVE_CONTRACT 17).
+    // No VIEW filter exists for http(s), so this only ever comes from a share.
     // Only this branch adds `from=share`, which lets the screen check the link at once. A maglev:// link
     // (any app or web page can send one) reaches the last line, where every `from` parameter is stripped.
     if (/^https?:\/\//i.test(raw)) return sharedDownloadRoute(raw);
@@ -49,7 +58,7 @@ export function redirectSystemPath({ path }: { path: string; initial: boolean })
     // maglev://from/notification: the app shows Transfers, and the launch isn't a plain one (the new-feature dialog waits).
     if (/^\/?from\/(tile|notification)\/?$/i.test(appPath(raw).split(/[?#]/)[0])) return '/';
     // A completed download's notification opens maglev://torrent/dl_<id>.
-    // NATIVE_CONTRACT 40.1: it opens that download's own page.
+    // It opens that download's own page.
     const dl = /^\/?torrent\/(dl_[0-9a-f]+)$/i.exec(appPath(raw).split(/[?#]/)[0]);
     if (dl) return `/download/${dl[1]}`;
     // Some launchers hand a file:// intent over with the scheme stripped: a bare absolute path.

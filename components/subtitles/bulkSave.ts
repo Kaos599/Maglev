@@ -25,7 +25,7 @@ import { downloadAndSave, hashIfComplete, torrentTarget, type SubtitleTarget } f
 import { forgetOwnerState, recordOwnerState, recordVideoState } from './stateStore';
 
 /**
- * NATIVE_CONTRACT 46.3 and 46.4: "Use the best match". The loop and its rules are in utils/subtitles/season.ts; this
+ * "Use the best match". The loop and its rules are in utils/subtitles/season.ts; this
  * file gives them the engine, the sources and the store. One bulk runs at a time. It only happens on the user's tap.
  */
 
@@ -176,7 +176,7 @@ async function bulkOnce(keys: readonly string[], env: BulkEnv): Promise<string |
     },
   });
 
-  // 44.15 D7: the pack card follows the roll-up of its episodes.
+  // The pack card follows the roll-up of its episodes.
   for (const key of involved) {
     const files = getRequests()[key]?.files;
     const any = [...targets.entries()].find(([k]) => k.startsWith(`${key}\n`))?.[1];
@@ -195,7 +195,7 @@ async function bulkOnce(keys: readonly string[], env: BulkEnv): Promise<string |
 }
 
 export interface SeasonBulk {
-  /** 46.3: how many needs-pick episode runs of these requests have a best stored candidate that qualifies. */
+  /** How many needs-pick episode runs of these requests have a best stored candidate that qualifies. */
   best(keys: readonly string[]): number;
   /** Set while a bulk save runs for any of these keys: how many have ended and how many there are. */
   progress(keys: readonly string[]): { done: number; total: number } | null;

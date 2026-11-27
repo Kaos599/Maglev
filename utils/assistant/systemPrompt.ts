@@ -1,5 +1,5 @@
-// System prompt for the assistant (ASSISTANT_DESIGN §7.1, updated for review round 1: R1-1, R1-9, R1-15).
-// Pure TypeScript: no React, no IO. The prompt is guidance, not a control (§7.3): the code enforces the same rules.
+// System prompt for the assistant.
+// Pure TypeScript: no React, no IO. The prompt is guidance, not a control: the code enforces the same rules.
 
 import { sanitizeText } from './sanitize.ts';
 import { toolsOverview } from './tools.ts';

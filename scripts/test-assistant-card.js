@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// SM-38 Proposal card machine. One assertion per row of the transition table, on {state.kind, effects}.
+// Proposal card machine. One assertion per row of the transition table, on {state.kind, effects}.
 // Needs Node 22.18+ (runs the TypeScript sources directly via type stripping).
 process.removeAllListeners('warning');
 
@@ -30,7 +30,7 @@ async function main() {
     check(name, got === JSON.stringify({ kind, effects }), got);
   };
 
-  // Rows of the SM-38 table, in order.
+  // Rows of the transition table, in order.
   expectStep('proposed + CONFIRM revalidates the card', at('proposed'), { type: 'CONFIRM' }, 'confirming', [
     { type: 'revalidate', cardId: id },
   ]);
@@ -78,7 +78,7 @@ async function main() {
   const err = m.cardStep(at('executing'), { type: 'EXEC_ERR', code: 'x', message: 'Storage full.' }).state;
   check('failed card carries the message', err.error === 'Storage full.', JSON.stringify(err));
 
-  // A card stays confirmable after a failed revalidation (R1-3): the turn machine keeps it pending and the
+  // A card stays confirmable after a failed revalidation: the turn machine keeps it pending and the
   // card shows a live Confirm button, so CONFIRM must work again.
   {
     let st = m.cardStep(at('proposed'), { type: 'CONFIRM' }).state;

@@ -2,9 +2,9 @@
  * Matches found files against Transfers, and sums the running downloads for the footer chip.
  * Pure: no React, no native modules.
  *
- * The downloads snapshot carries `urlDisplay` only: scheme, host and path, never the query (NATIVE_CONTRACT 17).
+ * The downloads snapshot carries `urlDisplay` only: scheme, host and path, never the query.
  * So a link is compared on those three parts, with the lower-casing and fragment rules of the native
- * `FoundClassifier.normalize` (24.3). A row whose link has a query (other than `range` or `bytes`, which the
+ * `FoundClassifier.normalize`. A row whose link has a query (other than `range` or `bytes`, which the
  * native dedupe drops) is never matched: two files can differ only by `?id=`, and a wrong "In Transfers" is worse
  * than none.
  */

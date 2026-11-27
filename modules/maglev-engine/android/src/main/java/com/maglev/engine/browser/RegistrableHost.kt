@@ -1,7 +1,7 @@
 package com.maglev.engine.browser
 
 /**
- * The "registrable part" of a host (docs/NATIVE_CONTRACT.md section 24.10), a heuristic with no public suffix list:
+ * The "registrable part" of a host, a heuristic with no public suffix list:
  * the last two labels, or the last three when the last is a 2-letter country code and the second-to-last is one of
  * [SECOND_LEVEL] (`co.uk`, `com.au`). IP addresses are returned whole. Pure, no Android types.
  */
@@ -31,7 +31,7 @@ object RegistrableHost {
     }
 }
 
-/** Pop-up policy decisions (24.10 state machine T4), mirrored from `utils/browser/popups.ts`. Pure. */
+/** Pop-up policy decisions, mirrored from `utils/browser/popups.ts`. Pure. */
 object PopupRules {
     const val OPEN = "open"
     const val BLOCK = "block"

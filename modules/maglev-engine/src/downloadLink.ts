@@ -1,7 +1,7 @@
 /**
- * Pure helpers for links that start a download (NATIVE_CONTRACT 17). Shared by the add screen, the share
+ * Pure helpers for links that start a download. Shared by the add screen, the share
  * handler and the simulator, so all three accept and refuse the same text. The engine repeats the check:
- * only `http` and `https` start a download (SM-30, the first two rows).
+ * only `http` and `https` start a download.
  */
 
 export type UrlCheck = { ok: true; url: string; display: string } | { ok: false; code: 'INVALID_SOURCE' };

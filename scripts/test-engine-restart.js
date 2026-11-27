@@ -171,7 +171,7 @@ globalThis.__fake = { Platform: { OS: 'android' }, native };
   }
 
   console.log(failed ? `\n${failed} FAILED` : '\nall passed');
-  process.exit(failed ? 1 : 0);
+  process.exit(failed || process.exitCode ? 1 : 0);
 })();
 
 // Notification and tile actions start the engine first when Android killed it (Pause all / Resume all).
@@ -244,11 +244,12 @@ globalThis.__fake = { Platform: { OS: 'android' }, native };
   const notif = fs.readFileSync(path.join(dir, 'Notifications.kt'), 'utf8');
   const ok = (n, c) => { if (!c) { console.error(`  FAIL ${n}`); process.exitCode = 1; } else console.log(`  ok   ${n}`); };
   const open = tile.slice(tile.indexOf('private fun openApp()'));
-  ok('tile opens maglev://from/tile with ACTION_VIEW, package and NEW_TASK',
-    /Intent\(Intent\.ACTION_VIEW, Uri\.parse\("maglev:\/\/from\/tile"\)\)\s*\.setPackage\(packageName\)\s*\.addFlags\(Intent\.FLAG_ACTIVITY_NEW_TASK\)/.test(open) && tile.includes('import android.net.Uri'));
+  // The tap reaches the app through the one-shot store (the card puts the route there and starts the app plainly), so
+  // the route is the card intent's allowlisted extra rather than the app's own VIEW intent.
+  ok('tile opens maglev://from/tile through the one-shot store', /ShareHandoff\.routeIntent\(this, "maglev:\/\/from\/tile"\)/.test(open));
   ok('tile keeps the API 34 PendingIntent branch', /SDK_INT >= 34[\s\S]*startActivityAndCollapse\(PendingIntent\.getActivity\(/.test(open) && /startActivityAndCollapse\(launch\)/.test(open));
   ok('tile no longer uses the launcher intent', !tile.includes('getLaunchIntentForPackage'));
-  ok('no-route notification tap opens maglev://from/notification', /Intent\(Intent\.ACTION_VIEW, Uri\.parse\("maglev:\/\/from\/notification"\)\)\.setPackage\(context\.packageName\)/.test(notif) && !notif.includes('getLaunchIntentForPackage'));
+  ok('no-route notification tap opens maglev://from/notification through the one-shot store', /else -> "maglev:\/\/from\/notification"/.test(notif) && /ShareHandoff\.routeIntent\(context, link\)/.test(notif) && !notif.includes('getLaunchIntentForPackage'));
   const nat = fs.readFileSync(path.join(__dirname, '../app/+native-intent.tsx'), 'utf8');
   ok('JS maps both hosts to "/"', /from\\\/\(tile\|notification\)/.test(nat));
 }

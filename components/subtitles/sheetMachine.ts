@@ -1,5 +1,5 @@
 /**
- * The subtitle sheet as a pure state machine (docs/NATIVE_CONTRACT.md 36.5, 36.10). The sheet component only
+ * The subtitle sheet as a pure state machine. The sheet component only
  * dispatches events and runs the effects for the phase it is in; every rule (default selection, tabs, name taken,
  * errors) lives here so Node tests cover it without rendering.
  *
@@ -19,7 +19,7 @@ export type SheetPhase = 'closed' | 'notice' | 'searching' | 'results' | 'downlo
 
 export interface SheetState {
   phase: SheetPhase;
-  /** Language tabs in preference order (36.2). */
+  /** Language tabs in preference order. */
   languages: string[];
   /** The active tab. */
   language: string;
@@ -43,13 +43,13 @@ export interface SheetState {
   /** Set on saved. */
   savedName: string | null;
   savedLang: string | null;
-  /** Rows whose download failed in this sheet; Pick another and the default selection skip them (39.1 S7). */
+  /** Rows whose download failed in this sheet; Pick another and the default selection skip them. */
   failedKeys: string[];
-  /** Every row of the active tab already failed, so Pick another has nothing left (39.1 S7). */
+  /** Every row of the active tab already failed, so Pick another has nothing left. */
   noneLeft: boolean;
-  /** Copies .2 to .9 all exist: only Replace or Cancel are offered (39.1 S8). */
+  /** Copies .2 to .9 all exist: only Replace or Cancel are offered. */
   copiesFull: boolean;
-  /** NATIVE_CONTRACT 42.3: the typed text the search uses instead of the file name, or null for the file name. Lives only while the sheet is open. */
+  /** The typed text the search uses instead of the file name, or null for the file name. Lives only while the sheet is open. */
   searchName: string | null;
   /** The "Searching for" row is a text field. */
   editing: boolean;
@@ -58,7 +58,7 @@ export interface SheetState {
 }
 
 export type SheetEvent =
-  /** `editName`: open with the 42 name field already open, holding this text (44.14 "Edit name"). */
+  /** `editName`: open with the 42 name field already open, holding this text. */
   | { type: 'OPEN'; languages: string[]; needsNotice: boolean; editName?: string }
   | { type: 'NOTICE_CONTINUE' }
   | { type: 'NOTICE_NOT_NOW' }
@@ -145,7 +145,7 @@ function untriedRows(s: Pick<SheetState, 'ranked' | 'language' | 'failedKeys'>):
   return rowsOf(s).filter((r) => !s.failedKeys.includes(rowKey(r)));
 }
 
-// NATIVE_CONTRACT 39.1 S7: the default selection never lands on a row that already failed.
+// The default selection never lands on a row that already failed.
 function withDefault(s: SheetState): SheetState {
   if (s.picked) return s;
   const rows = untriedRows(s);
@@ -161,7 +161,7 @@ function startSearch(s: SheetState): SheetState {
 }
 
 /**
- * NATIVE_CONTRACT 42.3: Search is allowed only when the typed text has a title. `detected` is the file name's own
+ * Search is allowed only when the typed text has a title. `detected` is the file name's own
  * words in typing form; typing that back is the same as "Use file name" (no typed name, so the fingerprint is used).
  */
 export function draftTitleOk(draft: string): boolean {
@@ -173,7 +173,7 @@ export function searchText(fileName: string, searchName: string | null, typing =
   return parsedText(searchName ? parseTyped(searchName) : parseName(fileName), typing);
 }
 
-/** NATIVE_CONTRACT 42.5: the one muted line under the results, or null. */
+/** The one muted line under the results, or null. */
 export function searchNote(s: Pick<SheetState, 'searchName'>, fileComplete: boolean): string | null {
   if (!fileComplete) return NOTE_MATCHED_BY_NAME;
   return s.searchName ? NOTE_MATCHED_BY_TYPED : null;
@@ -191,7 +191,7 @@ export function sheetReducer(s: SheetState, e: SheetEvent): SheetState {
     case 'NOTICE_NOT_NOW':
     case 'CLOSE':
       return CLOSED;
-    // NATIVE_CONTRACT 42.3: the "Searching for" row. Only while there is a search step to edit.
+    // The "Searching for" row. Only while there is a search step to edit.
     case 'EDIT_NAME':
       return s.phase === 'results' || s.phase === 'searching' ? { ...s, editing: true, draft: e.draft } : s;
     case 'DRAFT_CHANGE':
@@ -221,7 +221,7 @@ export function sheetReducer(s: SheetState, e: SheetEvent): SheetState {
     case 'SELECT':
       return { ...s, selectedKey: e.key, picked: true, error: null, noneLeft: false };
     case 'PICK_ANOTHER': {
-      // NATIVE_CONTRACT 39.1 S7: the next row that has not failed; none left says so.
+      // The next row that has not failed; none left says so.
       if (s.phase !== 'results' && s.phase !== 'searching') return s;
       const open = untriedRows(s);
       return open.length > 0
@@ -238,16 +238,16 @@ export function sheetReducer(s: SheetState, e: SheetEvent): SheetState {
     case 'NAME_TAKEN':
       return s.phase === 'downloading' ? { ...s, phase: 'name-taken', takenName: e.fileName, copiesFull: false } : s;
     case 'COPIES_FULL':
-      // NATIVE_CONTRACT 39.1 S8
+      // After copy 9 there is no free name left, so only Replace or Cancel are offered.
       return s.phase === 'downloading' ? { ...s, phase: 'name-taken', takenName: e.fileName, copiesFull: true, keepBothNote: false } : s;
     case 'CHOOSE':
-      // NATIVE_CONTRACT 39.1 S5: after "belongs to another app", Keep both saves the second copy from the results.
+      // After "belongs to another app", Keep both saves the second copy from the results.
       if (s.phase === 'results' && s.error?.code === 'REPLACE_DENIED' && e.choice === 'keep-both') {
         return { ...s, phase: 'downloading', pendingChoice: 'keep-both', keepBothNote: true, takenName: null, error: null };
       }
       if (s.phase !== 'name-taken') return s;
       if (e.choice === 'cancel') return { ...s, phase: 'results', takenName: null, error: null, copiesFull: false };
-      // Nothing left to keep beside (S8): Keep both is not an answer then.
+      // Nothing left to keep beside: Keep both is not an answer then.
       if (e.choice === 'keep-both' && s.copiesFull) return s;
       return { ...s, phase: 'downloading', pendingChoice: e.choice, keepBothNote: e.choice === 'keep-both', takenName: null, error: null, copiesFull: false };
     case 'SAVED':

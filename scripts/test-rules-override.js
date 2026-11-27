@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Rule pauses: "Resume anyway" per item, and seeding on mobile data (static contract, NATIVE_CONTRACT section 25).
+ * Rule pauses: "Resume anyway" per item, and seeding on mobile data (static checks).
  */
 const fs = require('fs');
 const path = require('path');

@@ -23,13 +23,13 @@ serde_json = "1"
 parking_lot = "0.13"
 bytes = "1"
 tracing = "0.1"
-# URL downloads (docs/NATIVE_CONTRACT.md section 17). Same major as the reqwest librqbit pulls in, so cargo
+# URL downloads. Same major as the reqwest librqbit pulls in, so cargo
 # resolves one copy. Only `rustls` (already on through librqbit) and `socks` (proxy, also on through librqbit) are
 # selected; `Response::chunk` needs no feature. The rustls-platform-verifier patch below applies to this copy too.
 reqwest = { version = "0.13", default-features = false, features = ["rustls", "socks"] }
 # statvfs for the free-space check of URL downloads (no helper existed). Already in the graph through tokio and librqbit.
 libc = "0.2"
-# HLS and DASH downloads (docs/NATIVE_CONTRACT.md section 24.8). `roxmltree` parses the MPD: read-only, no unsafe, no
+# HLS and DASH downloads. `roxmltree` parses the MPD: read-only, no unsafe, no
 # dependencies, MIT/Apache-2.0. `aes` + `cbc` (RustCrypto, MIT/Apache-2.0) decrypt HLS METHOD=AES-128 segments;
 # `cbc` needs `alloc` for the `*_vec_mut` helpers. Versions are pinned exactly (cipher 0.4 generation).
 roxmltree = "=0.21.2"
@@ -62,6 +62,6 @@ jni-bridge = []
 opt-level = "s"
 lto = true
 codegen-units = 1
-# No panic = "abort": the contract maps panics to {"ok":false,"code":"INTERNAL"} through
+# No panic = "abort": the JNI boundary maps panics to {"ok":false,"code":"INTERNAL"} through
 # catch_unwind, and a panic inside a tokio task must not take the whole app down.
 strip = true

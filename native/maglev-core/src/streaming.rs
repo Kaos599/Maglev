@@ -1,6 +1,6 @@
 //! Loopback HTTP server that streams torrent files to the media player.
 //!
-//! `GET /stream/<id>/<file>` with HTTP Range support, backed by librqbit's per-file
+//! `GET /stream/<token>/<id>/<file>` with HTTP Range support, backed by librqbit's per-file
 //! `ManagedTorrent::stream`, which prioritises the pieces under the read position.
 //! A minimal HTTP/1.1 implementation over tokio is used instead of hyper to keep the binary small.
 //! The server only listens on 127.0.0.1.
@@ -26,7 +26,7 @@ const READ_TIMEOUT: Duration = Duration::from_secs(120);
 const WRITE_TIMEOUT: Duration = Duration::from_secs(60);
 const CHUNK: usize = 64 * 1024;
 
-/// How long after the last served byte a stream still counts as active (contract section 21).
+/// How long after the last served byte a stream still counts as active.
 pub const STREAM_ACTIVE_WINDOW_MS: u64 = 60_000;
 
 /// Wall clock time of the last chunk written to a player, in ms since the epoch. 0 means never.

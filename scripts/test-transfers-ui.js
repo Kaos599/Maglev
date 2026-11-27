@@ -36,7 +36,7 @@ async function main() {
   const { selectionKey, parseSelectionKey, splitSelection } = await import('../utils/bulkSummary.ts');
 
   console.log('torrent status');
-  // Owner rule 2026-11-18: left = one phrase then the percent last, never an amount; right = one value
+  // Rule: left = one phrase then the percent last, never an amount; right = one value
   // (speed if data flows, else the amount, else the size, else a dash).
   const left = (x) => (x.pct ? `${x.lead} · ${x.pct}` : x.lead);
   let s = model.torrentStatus(torrent(), '1 min');
@@ -164,7 +164,7 @@ async function main() {
   d = copy.downloadStatus(dl({ state: 'paused', pausedBy: 'user', downBps: 0 }), undefined, {}, { shortAmount: narrow(360) });
   check('narrow card: link shows downloaded bytes only', d.value === '412 MB' && /412 MB of 1\.2 GB/.test(d.text), JSON.stringify(d));
 
-  // NATIVE_CONTRACT 43: say what a download is doing, and why it isn't moving.
+  // Say what a download is doing, and why it isn't moving.
   console.log('flow clock and stuck states (43)');
   const fc = await import('../components/transfers/flowClock.ts');
   check('QUIET_MS is the same 5 s as the speed hold', fc.QUIET_MS === 5000 && fc.QUIET_MS === hold.SPEED_HOLD_MS);
@@ -190,7 +190,7 @@ async function main() {
   check('flow clock store: forget', fc.peekFlow('x') === undefined);
   check('flow clock is pure: no Date.now in it', !/Date\.now|new Date/.test(fs.readFileSync(path.join(__dirname, '../components/transfers/flowClock.ts'), 'utf8').replace(/\/\*[\s\S]*?\*\/|\/\/.*$/gm, '')));
 
-  console.log('torrent card (43.2)');
+  console.log('torrent card');
   const quiet = (ms, o = {}) => model.torrentStatus(torrent({ downloadSpeedBytes: 0, etaSeconds: -1, ...o }), '—', {}, { quietMs: ms });
   s = model.torrentStatus(torrent({ downloadedBytes: 0, progressPercent: 0, downloadSpeedBytes: 0, etaSeconds: -1, peersTotal: 0 }), '—');
   check('connecting with 0 peers: no "found"', s.lead === 'Connecting to peers' && s.value === '1.2 GB' && s.slot === 'size', JSON.stringify(s));
@@ -220,27 +220,27 @@ async function main() {
   let seen = 0;
   model.torrentStatus(torrent({ etaSeconds: -1 }), '—', {}, { shortAmount: (n) => { seen = n; return false; } });
   check('the narrow test sees the whole right text (amount, separator, speed)', seen === '412 MB of 1.2 GB · 3.20 MB/s'.length, String(seen));
-  // NATIVE_CONTRACT 45.2: the compact amount while data flows.
+  // The compact amount while data flows.
   const tight = (n) => (chars) => chars > n; // fits only when the right side is n characters or fewer
   s = model.torrentStatus(torrent({ etaSeconds: -1, downloadedBytes: 134 * MB, totalSizeBytes: 587 * MB }), '—', {}, { shortAmount: tight(25) });
-  check('45.2 same unit: "134/587 MB" then the speed, long form read aloud', s.amount === '134/587 MB' && s.value === '3.20 MB/s' && /134 MB of 587 MB/.test(s.text), JSON.stringify(s));
+  check('same unit: "134/587 MB" then the speed, long form read aloud', s.amount === '134/587 MB' && s.value === '3.20 MB/s' && /134 MB of 587 MB/.test(s.text), JSON.stringify(s));
   s = model.torrentStatus(torrent({ etaSeconds: -1, downloadedBytes: 820 * MB, totalSizeBytes: 2.1 * GB }), '—', {}, { shortAmount: tight(25) });
-  check('45.2 different units: "820 MB/2.1 GB"', s.amount === '820 MB/2.1 GB', JSON.stringify(s));
+  check('different units: "820 MB/2.1 GB"', s.amount === '820 MB/2.1 GB', JSON.stringify(s));
   s = model.torrentStatus(torrent({ etaSeconds: -1, downloadedBytes: 3 * GB, totalSizeBytes: 12.4 * GB }), '—', {}, { shortAmount: tight(25) });
-  check('45.2 done drops a trailing ".0"', s.amount === '3/12.4 GB', JSON.stringify(s));
+  check('done drops a trailing ".0"', s.amount === '3/12.4 GB', JSON.stringify(s));
   s = model.torrentStatus(torrent({ etaSeconds: -1, downloadedBytes: 134 * MB, totalSizeBytes: 587 * MB }), '—', {}, { shortAmount: tight(5) });
-  check('45.2 the check runs again with the compact length: still too long, amount alone', s.amount === '134 MB', JSON.stringify(s));
+  check('the check runs again with the compact length: still too long, amount alone', s.amount === '134 MB', JSON.stringify(s));
   const lens = [];
   model.torrentStatus(torrent({ etaSeconds: -1, downloadedBytes: 134 * MB, totalSizeBytes: 587 * MB }), '—', {}, { shortAmount: (n) => { lens.push(n); return true; } });
-  check('45.2 the second check sees "134/587 MB · 3.20 MB/s"', lens.at(-1) === '134/587 MB · 3.20 MB/s'.length, JSON.stringify(lens));
+  check('the second check sees "134/587 MB · 3.20 MB/s"', lens.at(-1) === '134/587 MB · 3.20 MB/s'.length, JSON.stringify(lens));
   s = model.torrentStatus(torrent({ etaSeconds: -1, totalSizeBytes: 0, includedBytes: 0 }), '—', {}, { shortAmount: true });
-  check('45.2 unknown size: the amount alone, no compact form', s.amount === '412 MB', JSON.stringify(s));
+  check('unknown size: the amount alone, no compact form', s.amount === '412 MB', JSON.stringify(s));
   d = copy.downloadStatus(dl({ downBps: 8.4 * MB, downloaded: 460 * MB, eta: -1 }), '—', {}, { shortAmount: tight(25) });
-  check('45.2 links use the same rule', d.amount === '460 MB/1.2 GB' && /460 MB of 1\.2 GB/.test(d.text), JSON.stringify(d));
+  check('links use the same rule', d.amount === '460 MB/1.2 GB' && /460 MB of 1\.2 GB/.test(d.text), JSON.stringify(d));
   d = copy.downloadStatus(dl({ downBps: 8.4 * MB, downloaded: 460 * MB, eta: -1 }), '—', {}, { shortAmount: tight(5) });
-  check('45.2 links fall back to the amount alone when compact does not fit', d.amount === '460 MB', JSON.stringify(d));
+  check('links fall back to the amount alone when compact does not fit', d.amount === '460 MB', JSON.stringify(d));
   s = model.torrentStatus(torrent({ downloadSpeedBytes: 0, etaSeconds: -1 }), '—', {}, { shortAmount: tight(5), quietMs: 0, speedHold: false });
-  check('45.2 not flowing: the amount-only form is unchanged', /^412 MB$/.test(s.value), JSON.stringify(s));
+  check('not flowing: the amount-only form is unchanged', /^412 MB$/.test(s.value), JSON.stringify(s));
   s = model.torrentStatus(torrent({ downloadedBytes: 0, progressPercent: 0, etaSeconds: -1 }), '—');
   check('flowing with nothing downloaded yet: speed only, no amount', s.amount === undefined && s.value === '3.20 MB/s' && s.text === 'Downloading · 0% · 3.20 MB/s', JSON.stringify(s));
   s = model.torrentStatus(torrent({ downloadSpeedBytes: 0, etaSeconds: -1, downloadedBytes: 0, peersTotal: 5 }), '—', { blocks: [{ tag: 'offline' }] });
@@ -252,7 +252,7 @@ async function main() {
   s = model.torrentStatus({ ...torrent({ downloadSpeedBytes: 0, downloadedBytes: 0 }), lastKnown: true }, '—');
   check('saved numbers (lastKnown) never claim Connecting', !/Connecting/.test(s.lead), s.lead);
 
-  console.log('link card (43.3)');
+  console.log('link card');
   const lq = (ms, o = {}) => copy.downloadStatus(dl({ downBps: 0, eta: -1, ...o }), '—', {}, { quietMs: ms });
   d = copy.downloadStatus(dl({ downBps: 8.4 * MB, downloaded: 460 * MB, eta: -1 }), '—');
   check('link flowing: amount then speed', d.amount === '460 MB of 1.2 GB' && d.value === '8.40 MB/s' && d.slot === 'speed' && d.tone === 'download', JSON.stringify(d));
@@ -271,7 +271,7 @@ async function main() {
   check('link quiet 5 s: Waiting for the server, percent, amount', left(d) === 'Waiting for the server · 34%' && d.value === '412 MB of 1.2 GB' && d.tone === 'muted', JSON.stringify(d));
   d = lq(0, { stalled: true });
   check('link stalled by the engine flag alone: Waiting for the server', left(d) === 'Waiting for the server · 34%' && d.value === '412 MB of 1.2 GB', JSON.stringify(d));
-  // Offline while still downloading (2026-11-20 phone test: Wi-Fi off said "Waiting for the server"). Same line as a torrent.
+  // Offline while still downloading (Wi-Fi off said "Waiting for the server"). Same line as a torrent.
   const off = { blocks: [{ tag: 'offline' }] };
   d = copy.downloadStatus(dl({ downBps: 0, eta: -1 }), '—', off, { quietMs: 9000 });
   check('link waiting while offline: No internet connection', left(d) === 'No internet connection · 34%' && d.tone === 'muted' && d.value === '412 MB of 1.2 GB', JSON.stringify(d));
@@ -287,7 +287,7 @@ async function main() {
   d = copy.downloadStatus(dl({ state: 'paused', pausedBy: 'user', downBps: 0 }), '—', {}, { quietMs: 99999 });
   check('a paused link is untouched', left(d) === 'Paused · 34%');
 
-  console.log('why block (43.4, 43.5)');
+  console.log('why block');
   const sit = (o, opts, ctx) => model.torrentSituation({ state: 'DOWNLOADING', downloadSpeedBytes: 0, downloadedBytes: 0, ...o }, opts, ctx);
   check('why: nothing downloaded, no data: connecting', sit({}) === 'connecting');
   check('why: some downloaded, quiet < 5 s: no block', sit({ downloadedBytes: 5 }, { quietMs: 4900 }) === 'quiet');
@@ -308,14 +308,14 @@ async function main() {
   check('why waiting: stats, none sending, last data ago', w.stats.map((x) => `${x.label}=${x.value}`).join('|') === 'Peers found=24|Connected=2, none sending|Last data=2 min ago', JSON.stringify(w.stats));
   w = copy.torrentWhy({ ...base, situation: 'waiting', peerTimeoutMins: 0, peers: [{ downBps: 0 }, { downBps: 100 }], lastDataAgoMs: null, quietMs: 12000 });
   check('why waiting: setting Never drops the sentence; a sending peer drops "none sending"; unseen last data is a dash', w.sentence === 'No data for 12 s. The peers it had stopped sending. Maglev keeps looking.' && w.stats[1].value === '2' && w.stats[2].value === '—', JSON.stringify(w));
-  // NATIVE_CONTRACT 45.1: the block while the torrent has no file list.
+  // The block while the torrent has no file list.
   let rw = copy.torrentResolvingWhy({ peersTotal: 0, trackers: [], resolvingSecs: 75 });
-  check('45.1 title, no peers: sentence plus "No one sharing it has been found yet."', rw.title === "Why it hasn't started" && rw.sentence === "Maglev needs this torrent's file list from someone who has it. No one sharing it has been found yet.", rw.sentence);
-  check('45.1 stats with no trackers: Peers found and Trying for (m:ss) only', rw.stats.map((x) => `${x.label}=${x.value}`).join('|') === 'Peers found=0|Trying for=1:15', JSON.stringify(rw.stats));
+  check('title, no peers: sentence plus "No one sharing it has been found yet."', rw.title === "Why it hasn't started" && rw.sentence === "Maglev needs this torrent's file list from someone who has it. No one sharing it has been found yet.", rw.sentence);
+  check('stats with no trackers: Peers found and Trying for (m:ss) only', rw.stats.map((x) => `${x.label}=${x.value}`).join('|') === 'Peers found=0|Trying for=1:15', JSON.stringify(rw.stats));
   rw = copy.torrentResolvingWhy({ peersTotal: 7, trackers: [{ status: 'working' }, { status: 'error' }], resolvingSecs: 9 });
-  check('45.1 with peers: "Asking the 7 it found."', rw.sentence === "Maglev needs this torrent's file list from someone who has it. Asking the 7 it found.", rw.sentence);
-  check('45.1 Trackers replied shows "{working} of {total}"', rw.stats.map((x) => `${x.label}=${x.value}`).join('|') === 'Peers found=7|Trackers replied=1 of 2|Trying for=0:09', JSON.stringify(rw.stats));
-  check('45.1 no Ask trackers button: the engine refuses reannounce until the torrent is downloading or seeding', rw.askTrackers === false && rw.kind === 'resolving');
+  check('with peers: "Asking the 7 it found."', rw.sentence === "Maglev needs this torrent's file list from someone who has it. Asking the 7 it found.", rw.sentence);
+  check('Trackers replied shows "{working} of {total}"', rw.stats.map((x) => `${x.label}=${x.value}`).join('|') === 'Peers found=7|Trackers replied=1 of 2|Trying for=0:09', JSON.stringify(rw.stats));
+  check('no Ask trackers button: the engine refuses reannounce until the torrent is downloading or seeding', rw.askTrackers === false && rw.kind === 'resolving');
   check('stop-waiting limit words come from the setting', copy.peerLimitText(10) === '10 min' && copy.peerLimitText(60) === '1 hour' && copy.peerLimitText(360) === '6 hours' && copy.peerLimitText(0) === null);
   let lw = copy.linkWhy({ situation: 'connecting', host: 'x.test', resumable: true, quietMs: 7000, lastDataAgoMs: null });
   check('link why connecting: sentence and stats, no button', lw.sentence === 'Waiting for x.test to send the file.' && lw.stats.map((x) => `${x.label}=${x.value}`).join('|') === 'Server=x.test|Trying for=0:07' && lw.askTrackers === false && lw.title === "Why it hasn't started", JSON.stringify(lw));
@@ -330,9 +330,9 @@ async function main() {
   const linkPage = read('app/download/[id].tsx');
   check('WhyStuck: reannounce icon, secondary button, disabled while the cool-down runs, themed, no hex', /icon="reannounce"/.test(whySrc) && /variant="secondary"/.test(whySrc) && /disabled=\{waiting/.test(whySrc) && /useTheme\(\)/.test(whySrc) && !/#[0-9a-fA-F]{3,8}\b/.test(whySrc));
   check('torrent page: the block sits right under the progress card, outside the Compact/Detailed switch, and reuses handleReannounce', /<\/ProgressCard>\s*\{\/\*[^*]*\*\/\}\s*\{whyModel \? <WhyStuck[^>]*onAskTrackers=\{\(\) => void handleReannounce\(\)\}[^>]*retryInSecs=\{retryInSecs\}/.test(torrentPage) && (torrentPage.match(/maglevEngine\.reannounce/g) ?? []).length === 1);
-  check("45.1 torrent page: the block also shows for INITIALIZING with resolvingSecs, from torrentResolvingWhy", /snap\?\.state === 'INITIALIZING' && snap\.resolvingSecs != null\s*\?\s*torrentResolvingWhy\(/.test(torrentPage));
-  check('45.1 the card keeps its resolving line', /resolvingLine\(t\.peersTotal, t\.resolvingSecs\)/.test(read('components/transfers/model.ts')));
-  check('45.2 compact helper lives in constants/format', /export function formatCompactAmount/.test(read('constants/format.ts')));
+  check("torrent page: the block also shows for INITIALIZING with resolvingSecs, from torrentResolvingWhy", /snap\?\.state === 'INITIALIZING' && snap\.resolvingSecs != null\s*\?\s*torrentResolvingWhy\(/.test(torrentPage));
+  check('the card keeps its resolving line', /resolvingLine\(t\.peersTotal, t\.resolvingSecs\)/.test(read('components/transfers/model.ts')));
+  check('compact helper lives in constants/format', /export function formatCompactAmount/.test(read('constants/format.ts')));
   check('link page: the block has no button and the hint is not repeated', /<WhyStuck model=\{whyModel\} \/>/.test(linkPage) && /!whyModel\?\.note/.test(linkPage));
   check('cards and pages feed the one flow clock', /feedFlow/.test(read('components/transfers/useStatusOpts.ts')) && /useFlowClock/.test(torrentPage) && /useFlowClock/.test(linkPage) && /}, t\.state === "DOWNLOADING" && !t\.lastKnown\)/.test(read('components/TransferCard.tsx')));
   check('status line draws the amount in the muted telemetry colour before the speed', /colors\.textMuted/.test(read('components/transfers/StatusLine.tsx')) && /status\.amount/.test(read('components/transfers/StatusLine.tsx')));

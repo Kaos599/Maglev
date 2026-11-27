@@ -1,5 +1,5 @@
 /**
- * Regenerates modules/maglev-engine/android/src/main/assets/miners.txt (docs/NATIVE_CONTRACT.md section 24.4a).
+ * Regenerates modules/maglev-engine/android/src/main/assets/miners.txt.
  *
  *   node scripts/build-miners.js            fetch the upstream list once and write the asset
  *   node scripts/build-miners.js <file>     build from a local copy of the hosts file instead

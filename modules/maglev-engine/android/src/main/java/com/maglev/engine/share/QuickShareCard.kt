@@ -48,7 +48,7 @@ class CardPalette(
 
 /**
  * The bottom card, drawn with plain Android Views (no Compose): void dim, surface card, 1px hairline, no shadow,
- * accent primary button, 44dp targets (docs/contracts-0.19/quick-share.md section 4).
+ * accent primary button, 44dp targets.
  */
 class QuickShareCard(
     private val context: Context,

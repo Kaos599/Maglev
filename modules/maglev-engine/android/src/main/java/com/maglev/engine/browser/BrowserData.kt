@@ -8,7 +8,7 @@ import android.webkit.WebStorage
 import android.webkit.WebView
 
 /**
- * Clears what the browser keeps (docs/NATIVE_CONTRACT.md section 24.9).
+ * Clears what the browser keeps.
  * History is not cleared here: the JS store owns it, and the screen's back/forward list is cleared by the view.
  */
 object BrowserData {

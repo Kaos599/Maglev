@@ -2,7 +2,7 @@ import { maglevEngine, type NativePermissionStatus } from 'maglev-engine';
 
 /**
  * Typed permission status built on the engine module's getPermissionStatus
- * (docs/NATIVE_CONTRACT.md section 6, Permissions). Always check the specific field: this is an object, never a boolean.
+ * Always check the specific field: this is an object, never a boolean.
  */
 export interface PermissionStatus extends NativePermissionStatus {
   /** POST_NOTIFICATIONS is granted (always true below Android 13 where the module reports "granted"). */

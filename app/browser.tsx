@@ -105,7 +105,7 @@ export default function BrowserScreen({ inTab = false }: { inTab?: boolean }) {
   const tabsState = tabs.state;
   const ready = tabsState != null;
 
-  // Section 30: the Browse tab and the /browser stack route can both exist and share one tab set. Only the focused
+  // The Browse tab and the /browser stack route can both exist and share one tab set. Only the focused
   // instance mounts native views (it takes the owner token on focus), and a blurred or backgrounded browser pauses them.
   const instanceId = useId();
   const focused = useIsFocused();
@@ -223,7 +223,7 @@ export default function BrowserScreen({ inTab = false }: { inTab?: boolean }) {
   const bookmarks = useBookmarks();
   const [bookmarkEditOpen, setBookmarkEditOpen] = useState(false);
   const [switcherOpen, setSwitcherOpen] = useState(false);
-  // Find in page (contract section 28) acts on one tab's view: findTab is the tab it was opened on.
+  // Find in page acts on one tab's view: findTab is the tab it was opened on.
   const [findOpen, setFindOpen] = useState(false);
   const [findResult, setFindResult] = useState<FindResult | null>(null);
   const findTab = useRef<string | null>(null);
@@ -234,7 +234,7 @@ export default function BrowserScreen({ inTab = false }: { inTab?: boolean }) {
   const [target, setTarget] = useState<DownloadTarget | null>(null);
   const [batchItems, setBatchItems] = useState<FoundItem[] | null>(null);
   const [streamItem, setStreamItem] = useState<FoundItem | null>(null);
-  // 24.11: a one-line "Maglev found N files" note, once per page, until the tray opens or a few seconds pass.
+  // A one-line "Maglev found N files" note, once per page, until the tray opens or a few seconds pass.
   const [hintTab, setHintTab] = useState<string | null>(null);
   const hintShown = hintTab === activeId && data.hint === 'shown' && found.length > 0 && !trayOpen;
   useEffect(() => {
@@ -253,7 +253,7 @@ export default function BrowserScreen({ inTab = false }: { inTab?: boolean }) {
   const popups = getPopups();
   const setPopups = useCallback((fn: (p: PopupsState) => PopupsState) => setPopupsState(fn(getPopups())), []);
   const lastNoticeAt = useRef(0);
-  // H1: a refused page and a crash page are never recorded. Both clear when the next page starts loading (kept per tab in `crashed` and `refused`).
+  // A refused page and a crash page are never recorded. Both clear when the next page starts loading (kept per tab in `crashed` and `refused`).
 
   const leave = useCallback(() => {
     if (router.canGoBack()) router.back();
@@ -347,7 +347,7 @@ export default function BrowserScreen({ inTab = false }: { inTab?: boolean }) {
   const openTransfer = useCallback(
     (id: string) => {
       setTrayOpen(false);
-      // NATIVE_CONTRACT 40.1: "go to the download" opens its page.
+      // "go to the download" opens its page.
       router.push({ pathname: '/download/[id]', params: { id } });
     },
     [router],
@@ -432,7 +432,7 @@ export default function BrowserScreen({ inTab = false }: { inTab?: boolean }) {
     [tabs, selectTab, swipeX],
   );
 
-  // ---- pop-up card (T5) ----
+  // ---- pop-up card ----
   const prompt = popupsApi.promptFor(popups, activeId);
   const runRequest = useCallback(
     (id: string, req: PopupRequest) => {
@@ -647,7 +647,7 @@ export default function BrowserScreen({ inTab = false }: { inTab?: boolean }) {
       if (newDocument && id === findTab.current) closeFind();
       // Private browsing: remember the host so its cookies are wiped when the browser is left (privateHosts.ts).
       if (getBrowserPrefs().privateBrowsing) privateSession.note(e.url);
-      // H1: only a finished load is recorded. The store skips non-web addresses, repeats and the off setting.
+      // Only a finished load is recorded. The store skips non-web addresses, repeats and the off setting.
       if (e.loading === false && !skipRecord) {
         recordVisit({ url: e.url, title: e.title ?? '' }).catch(() => {});
       }
@@ -670,9 +670,9 @@ export default function BrowserScreen({ inTab = false }: { inTab?: boolean }) {
       const d = getData(id);
       // The navigation became a download: the page is not loading any more.
       patch(id, (x) => void (x.page = x.page && x.page.loading ? { ...x.page, loading: false } : x.page));
-      // 24.11: a download the page started without a tap only joins the Files list (the view already added it).
+      // A download the page started without a tap only joins the Files list (the view already added it).
       if (!opensSaveSheet(e.tapped)) {
-        // NATIVE_CONTRACT 39.2 B1: a held download is never silent; the notice opens the Files tray where it was listed.
+        // A held download is never silent; the notice opens the Files tray where it was listed.
         if (id === activeIdRef.current) {
           showNotice({ message: DOWNLOAD_HELD_NOTICE, actionLabel: DOWNLOAD_HELD_ACTION, onAction: () => setTrayOpen(true) }, 6000);
         }
@@ -721,7 +721,7 @@ export default function BrowserScreen({ inTab = false }: { inTab?: boolean }) {
     onFindResult: (id, e) => {
       if (id === findTab.current) setFindResult(e);
     },
-    // 24.10a: a long press over a video. The payload is checked in parseMediaHit; images stay on the link menu.
+    // A long press over a video. The payload is checked in parseMediaHit; images stay on the link menu.
     onMediaHit: (id, e) => {
       if (id !== activeIdRef.current) return;
       const hit = parseMediaHit(e.json);
@@ -778,7 +778,7 @@ export default function BrowserScreen({ inTab = false }: { inTab?: boolean }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // 24.10a: "Clear this site's data". Cookies of the host and its parent domains (Search's hosts are left alone), then
+  // "Clear this site's data". Cookies of the host and its parent domains (Search's hosts are left alone), then
   // local and session storage in the page, then a reload.
   const clearSiteData = useCallback(async () => {
     setClearSiteOpen(false);

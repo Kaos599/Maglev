@@ -2,7 +2,7 @@ package com.maglev.engine.service
 
 import java.util.Locale
 
-/** Pure rules and text for the "Download finished" notification (contract 13.2). */
+/** Pure rules and text for the "Download finished" notification. */
 object CompletionPolicy {
     /**
      * Notify on the `finished` false to true edge, and only when this torrent was seen DOWNLOADING since it was

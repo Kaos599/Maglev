@@ -1,5 +1,5 @@
 //! The pure decisions of the URL download driver: how to read a probe answer, what a resume answer means,
-//! retry timing and pacing (contract section 17). No IO, no clock, no randomness (the caller passes the jitter).
+//! retry timing and pacing. No IO, no clock, no randomness (the caller passes the jitter).
 
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 use std::time::{Duration, Instant};
@@ -254,7 +254,7 @@ pub fn overruns(pos: u64, len: u64, total: Option<u64>) -> bool {
     total.map(|t| pos.saturating_add(len) > t).unwrap_or(false)
 }
 
-/// Free space kept back for the system and the user (contract section 10.3).
+/// Free space kept back for the system and the user.
 pub const RESERVE_BYTES: u64 = 200 * 1024 * 1024;
 
 /// Does the rest of the file fit with the reserve left over? `free` of `None` (unknown) says yes.
@@ -318,7 +318,7 @@ pub fn is_lan_host(host: &str) -> bool {
     }
 }
 
-/// Which local addresses a download's connections may use (contract 17.w). Chosen from the download's own typed
+/// Which local addresses a download's connections may use. Chosen from the download's own typed
 /// host, never from a list shared between downloads.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum LanScope {
@@ -434,7 +434,7 @@ pub fn waiting_for_server(since_last_byte: Duration) -> bool {
     since_last_byte >= STALL_FLAG_AFTER
 }
 
-/// After this long without a byte the card shows no speed (contract 17.v): a fading average of a connection that
+/// After this long without a byte the card shows no speed: a fading average of a connection that
 /// went quiet reads like a live speed ("15 KB/s, 50 min left") while nothing moves (AGENTS reality rule 2).
 pub const SPEED_QUIET: Duration = Duration::from_secs(2);
 
@@ -589,7 +589,7 @@ pub fn keep_resolved(lan_ok: bool, addrs: &[IpAddr]) -> Vec<IpAddr> {
 // ---- secrets in a link ----
 
 /// Does the query of this link look like it carries a token or a signature? Such a link is never saved with its
-/// query (contract section 17.y).
+/// query.
 pub fn has_secret_query(url: &str) -> bool {
     let Ok(u) = reqwest::Url::parse(url) else {
         return false;

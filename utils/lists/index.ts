@@ -1,5 +1,5 @@
 /**
- * Lists that update themselves (docs/NATIVE_CONTRACT.md section 31): wiring. The pure parts live in schema.ts,
+ * Lists that update themselves: wiring. The pure parts live in schema.ts,
  * machine.ts, check.ts and store.ts. This file owns the one store the About screen reads and the triggers: the
  * app becoming active (at most once every 24 h) and the "Check now" buttons.
  */

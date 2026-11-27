@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Subtitle sources, batch 1 (docs/NATIVE_CONTRACT.md section 36.12): gestdown, napisy24, regielive, subtis, vladoon.
+// Subtitle sources, batch 1: gestdown, napisy24, regielive, subtis, vladoon.
 // Parse functions run on recorded responses, see scripts/fixtures/subtitles/<id>/SOURCES.txt. No network.
 // Needs Node 22.18+ (runs the TypeScript source directly).
 process.removeAllListeners('warning');

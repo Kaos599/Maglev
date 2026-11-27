@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Batch download from the found-files tray (docs/BROWSER_DOWNLOAD_GAPS.md R4): long-press to select, Select all
+// Batch download from the found-files tray: long-press to select, Select all
 // skips streams and installers, one admission check for the summed known sizes, cap of 25, one failing item does
 // not stop the rest, one summary notice. Needs Node 22.18+ (runs TypeScript source directly).
 process.removeAllListeners('warning');

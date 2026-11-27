@@ -18,7 +18,7 @@ export function useSubtitleAvailability(): { master: boolean; sourcesOn: number 
   );
 }
 
-/** NATIVE_CONTRACT 45.5: the sources that are off and cover the user's languages. Settings only; nothing is fetched. */
+/** The sources that are off and cover the user's languages. Settings only; nothing is fetched. */
 export function useSubtitleOffSources(anime = false): OffSources {
   const { settings } = useSettings();
   const listsVersion = useListsVersion();

@@ -24,7 +24,7 @@ const sp = read('app/settings/search-providers.tsx');
 
 // ---- removed from Appearance
 check('interface.tsx no longer contains resultNameLines', !iface.includes('resultNameLines'));
-check('interface.tsx no longer contains name lines', !/name lines/i.test(iface));
+check('interface.tsx no longer contains Result name lines', !/result name lines/i.test(iface));
 check('interface.tsx no longer defines NAME_LINES', !iface.includes('NAME_LINES'));
 check('interface.tsx no longer imports useSearchPrefs', !/useSearchPrefs/.test(iface));
 

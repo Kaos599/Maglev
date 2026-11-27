@@ -70,7 +70,7 @@ export function StarTicket() {
       Animated.timing(progress, { toValue: 1, duration: BURST_MS, easing: Easing.linear, useNativeDriver: true }).start();
     }
     void Linking.openURL(REPO_URL);
-    // Starring from About also stops the star prompt (contract 33).
+    // Starring from About also stops the star prompt.
     updateStarState(afterStarred);
   };
 

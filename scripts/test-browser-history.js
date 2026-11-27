@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Browser history (NATIVE_CONTRACT 24.9): store logic over node:sqlite, prefs, index wiring, and static checks on the Kotlin.
+// Browser history: store logic over node:sqlite, prefs, index wiring, and static checks on the Kotlin.
 // Needs Node 22.18+ (runs the TypeScript source directly).
 process.removeAllListeners('warning');
 const fs = require('fs');

@@ -2,7 +2,7 @@ package com.maglev.engine.browser
 
 import java.security.MessageDigest
 
-/** One file the page loads or links to (docs/NATIVE_CONTRACT.md section 24.2 `FoundItem`). */
+/** One file the page loads or links to (`FoundItem`). */
 data class FoundItem(
     val id: String,
     val url: String,
@@ -31,7 +31,7 @@ data class FoundItem(
 data class Classified(val kind: String, val ext: String?, val stream: String?, val installer: Boolean)
 
 /**
- * Turns URLs into kinds (docs/NATIVE_CONTRACT.md section 24.3). Pure Kotlin, no Android classes.
+ * Turns URLs into kinds. Pure Kotlin, no Android classes.
  */
 object FoundClassifier {
     private val video = setOf("mp4", "m4v", "webm", "mkv", "mov", "avi", "ts")
@@ -143,7 +143,7 @@ object FoundClassifier {
     }
 
     /**
-     * A request the WebView made (section 24.3 rule 1). Video, audio and streams only: images are not taken from
+     * A request the WebView made. Video, audio and streams only: images are not taken from
      * the network. `.ts` counts only when no HLS playlist has been seen on this page ([hlsSeen]), because then it is a
      * segment. When the path has no known extension, an `Accept` that names video/ or audio/ on a ranged request
      * decides ([accept], [hasRange]).
@@ -166,7 +166,7 @@ object FoundClassifier {
     }
 
     /**
-     * A URL the page scan found (section 24.3 rule 2). [hint] is the kind the tag implies (`video`, `audio`, `image`);
+     * A URL the page scan found. [hint] is the kind the tag implies (`video`, `audio`, `image`);
      * with a hint an unknown extension still gives that kind. Without one (an `<a href>`) only known extensions count.
      */
     fun classifyPage(url: String, hint: String? = null): Classified? {

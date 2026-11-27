@@ -1,5 +1,6 @@
 // Fan-out search across providers with per-provider timeout, mirrors, health, merge and sort.
-// Contract: docs/SEARCH_CONTRACT.md sections 1 and 4.
+// Each source answers on its own: one slow or broken source never holds up the rest, and the same result from
+// several sources merges into one row keyed by info hash.
 
 import { PROVIDERS } from './providers/index.ts';
 import { createTorznabProvider } from './providers/torznab.ts';
@@ -41,7 +42,7 @@ export interface SearchOptions extends ProviderPrefs {
 }
 
 /**
- * Built-in providers carry the applied source list's mirrors and warning (docs/NATIVE_CONTRACT.md section 31.1).
+ * Built-in providers carry the applied source list's mirrors and warning.
  * Mirror precedence: the user's own override (runProvider), then the file's mirrors, then the built-in ones.
  */
 function lookup(id: string, extra?: SearchProvider[]): SearchProvider | undefined {
@@ -54,7 +55,7 @@ function lookup(id: string, extra?: SearchProvider[]): SearchProvider | undefine
  * Throws a ProviderError (for example 'challenge' when the site wants its check again).
  */
 export async function resolveResult<T extends SearchResult>(r: T, signal: AbortSignal, extra?: SearchProvider[]): Promise<T> {
-  if (r.magnet || r.directUrl) return r; // a direct file has nothing to resolve (SEARCH_CONTRACT section 9)
+  if (r.magnet || r.directUrl) return r; // a direct file has nothing to resolve
   const p = lookup(r.providerId, extra);
   if (!p?.resolveMagnet) throw new ProviderError('parse', 'No magnet link for this result');
   const { magnet, infoHash } = await p.resolveMagnet(r, signal);

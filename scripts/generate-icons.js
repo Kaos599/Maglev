@@ -11,7 +11,7 @@
  * Outputs: assets/icon.png            1024x1024  tile + mark, full bleed (Android masks it)
  *          assets/adaptive-icon.png   1024x1024  transparent, mark only, inside the 66% safe zone
  *          assets/adaptive-icon-monochrome.png  1024x1024  white train silhouette on transparent, same scale (Android 13+ themed icon)
- *          assets/splash.png          1284x2778  transparent, mark centered, 288px wide
+ *          assets/splash-icon.png     1024x1024  transparent, mark spans the full width (expo-splash-screen scales it to imageWidth)
  *          assets/favicon.png         48x48      tile + mark
  */
 const { execFileSync } = require('child_process');
@@ -53,11 +53,15 @@ magick('-size', '1024x1024', 'xc:none', monoMark, '-gravity', 'center', '-compos
   path.join(assets, 'adaptive-icon-monochrome.png'));
 require('fs').rmSync(monoMark, { force: true });
 
-// 3. Splash: mark 420px wide on a transparent portrait canvas
+// 3. Splash icon (Android 12+ system splash, via the expo-splash-screen plugin in app.json)
+// Square and transparent: the plugin fits the whole image into an imageWidth x imageWidth box on a 288 dp canvas, and
+// Android clips that canvas to a circle 2/3 as wide (192 dp). The mark fills the image width, so with imageWidth 160 its
+// corner is 86.6 dp from the centre, inside the 96 dp circle radius. Keep imageWidth <= 176 in app.json or the nose
+// and speed lines start to clip.
 const splashMark = path.join(assets, '.splash-mark.tmp.png');
-rasterize(MARK_SVG, MARK_H, Math.round((420 * MARK_H) / MARK_W), splashMark);
-magick('-size', '1284x2778', 'xc:none', splashMark, '-gravity', 'center', '-composite',
-  path.join(assets, 'splash.png'));
+rasterize(MARK_SVG, MARK_H, Math.round((1024 * MARK_H) / MARK_W), splashMark);
+magick('-size', '1024x1024', 'xc:none', splashMark, '-gravity', 'center', '-composite',
+  path.join(assets, 'splash-icon.png'));
 
 // 4. Favicon
 rasterize(ICON_SVG, 1024, 48, path.join(assets, 'favicon.png'));

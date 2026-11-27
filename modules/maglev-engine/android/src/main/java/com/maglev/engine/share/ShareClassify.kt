@@ -2,7 +2,7 @@ package com.maglev.engine.share
 
 import java.net.URLDecoder
 
-/** What a share is (docs/contracts-0.19/quick-share.md section 3). */
+/** What a share is. */
 enum class ShareKind { MAGNET, TORRENT_FILE, FILE_LINK, WEB_PAGE, NONE }
 
 data class ShareClass(val kind: ShareKind, val source: String?, val name: String?, val infoHash: String?)
@@ -155,7 +155,7 @@ object ShareClassify {
     }
 
     /**
-     * A download a browser handed over by name (contract quick-share 8.1, issue #89). Kiwi and its forks send
+     * A download a browser handed over by name (issue #89). Kiwi and its forks send
      * VIEW <url> with no type and the name in `com.android.extra.filename`, so `/dl?id=5` would read as a web page.
      * The name wins only when the link has none; only its last path segment is used. Magnets are left alone.
      */

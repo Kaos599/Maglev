@@ -10,7 +10,7 @@ const STATUS_LINE = 18;
 /**
  * Widest strings each value slot holds, in glyphs: "0.98 MB/s", "↑ 0.98 MB/s", "1023.9 GB". A speed is 3 significant
  * digits and changes unit at 1000 (`formatSpeed`), so it is never wider than 9; a wider slot left a gap between the
- * amount's dot and the speed (owner report 2026-11-20).
+ * amount's dot and the speed.
  * A fixed minimum width means a speed that gains a digit never shifts the text beside it.
  * An amount ("320 MB of 2.1 GB") has no fixed width: it takes what it needs and the left side gives way.
  */
@@ -22,7 +22,7 @@ export interface StatusLineModel {
   lead: string;
   pct?: string;
   value?: string;
-  /** While data flows: the amount, in the normal telemetry colour, before the speed (NATIVE_CONTRACT 43.2). */
+  /** While data flows: the amount, in the normal telemetry colour, before the speed. */
   amount?: string;
   slot?: keyof typeof SLOT_CHARS;
   tone: LineTone;

@@ -19,7 +19,7 @@ export interface TorrentStatsProps {
 }
 
 /**
- * NATIVE_CONTRACT 41.2: the torrent page's Detailed numbers (the six boxes and the Timing row), as one component so the
+ * The torrent page's Detailed numbers (the six boxes and the Timing row), as one component so the
  * page and the preview in the Download page sheet draw the same thing. The row sits under the grid with the grid's own gap.
  */
 export function TorrentStats(p: TorrentStatsProps) {

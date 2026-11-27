@@ -1,4 +1,4 @@
-// Plain-English glossary for the release-name tokens (docs/ASSISTANT_DESIGN.md section 2.11).
+// Plain-English glossary for the release-name tokens (BluRay, WEB-DL, x265 and so on).
 // Pure TypeScript: no React, no engine, no network.
 // Every key the parser can emit (TOKEN_KEYS in releaseName.ts) has one entry here.
 // Quality tokens set chip: true and show as chips. Other keys set chip: false so the UI hides them.

@@ -1,5 +1,5 @@
 /**
- * State machine L1 for the self-updating lists (docs/NATIVE_CONTRACT.md section 31.6). Pure: no React Native
+ * State machine for the self-updating lists. Pure: no React Native
  * imports, so Node tests run it. Two halves report on their own, so one failing never blocks the other:
  *
  *   sources: Idle -> Checking -> Verifying -> Applied(changed n) | Unchanged | Rejected(signature|schema|serial)
@@ -74,13 +74,13 @@ export function reduce(state: ListsState, e: ListsEvent): ListsState {
   }
 }
 
-/** The 24 h gate for the automatic check (31.3). A clock that went backwards counts as due. */
+/** The 24 h gate for the automatic check. A clock that went backwards counts as due. */
 export function autoCheckDue(args: { now: number; lastListCheckAt: number | null; autoCheck: boolean }): boolean {
   if (!args.autoCheck) return false;
   return args.lastListCheckAt === null || args.lastListCheckAt > args.now || args.now - args.lastListCheckAt >= CHECK_INTERVAL_MS;
 }
 
-/** What a fetched, verified file means for the stored serial (31.1 "Rollback protection"). */
+/** What a fetched, verified file means for the stored serial: a serial that goes backwards is rejected. */
 export function serialDecision(fileSerial: number, appliedSerial: number): 'apply' | 'unchanged' | 'rollback' {
   if (fileSerial > appliedSerial) return 'apply';
   return fileSerial === appliedSerial ? 'unchanged' : 'rollback';

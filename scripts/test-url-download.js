@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// URL downloads (NATIVE_CONTRACT 17, SM-30): link parsing, card copy and actions, and the simulator's
+// URL downloads: link parsing, card copy and actions, and the simulator's
 // validation and transitions. The Rust side is covered by `cargo test` (http_dl/*).
 // Needs Node 22.18+ (runs the TypeScript source directly via type stripping).
 
@@ -40,7 +40,7 @@ async function main() {
   check('sanitiser strips paths and bad characters', link.sanitizeFileName('../../a:b*c.txt') === 'a_b_c.txt');
   check('sanitiser never returns empty', link.sanitizeFileName('...') === 'download');
 
-  // ---- card copy (SM-30 Copy) ----
+  // ---- card copy ----
   console.log('copy');
   const base = {
     id: 'dl_1', urlDisplay: 'https://x.test/a.bin', name: 'a.bin', state: 'downloading', pausedBy: null, size: 1000,
@@ -66,7 +66,7 @@ async function main() {
   check('storage full pause offers Free up space (resuming cannot work until space is freed)', copy.downloadAction(d({ state: 'paused', pausedBy: 'storage_full' }))?.kind === 'freeSpace');
   check('rule pause offers Resume anyway (0.14)', copy.downloadAction(d({ state: 'paused', pausedBy: 'schedule' }))?.kind === 'resumeAnyway');
   check('governance pause with nothing to override or change has no button', copy.downloadAction(d({ state: 'paused', pausedBy: 'network_unvalidated' })) === null && copy.downloadAction(d({ state: 'paused', pausedBy: 'offline' })) === null);
-  check('a background stop offers a plain Resume (NATIVE_CONTRACT 35.2)', copy.downloadAction(d({ state: 'paused', pausedBy: 'fgs_timeout' }))?.kind === 'resume');
+  check('a background stop offers a plain Resume', copy.downloadAction(d({ state: 'paused', pausedBy: 'fgs_timeout' }))?.kind === 'resume');
   check('needs link offers a new link', copy.downloadAction(d({ state: 'needs_link' }))?.kind === 'newLink');
   check('file changed offers restart', copy.downloadAction(d({ state: 'error', error: { code: 'FILE_CHANGED', message: '' } }))?.kind === 'restart');
   check('other errors offer retry', copy.downloadAction(d({ state: 'error', error: { code: 'NETWORK', message: '' } }))?.kind === 'retry');

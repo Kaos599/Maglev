@@ -41,7 +41,7 @@ function groupValue(bps: number, customPicked: boolean): number {
   return PRESETS.some((p) => p.value === bps) ? bps : CUSTOM;
 }
 
-/** Per-torrent download and upload limits (NATIVE_CONTRACT 11.2). The overall limit still applies. */
+/** Per-torrent download and upload limits. The overall limit still applies. */
 export function SpeedLimitSheet({ visible, onClose, limits, onChange, mode = 'both' }: Props) {
   const [custom, setCustom] = useState<Dir | null>(null);
   const [customPicked, setCustomPicked] = useState<Record<Dir, boolean>>({ down: false, up: false });

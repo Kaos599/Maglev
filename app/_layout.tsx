@@ -12,6 +12,7 @@ import NavigationBarSync from '../components/NavigationBarSync';
 import { NoticeHost } from '../components/ui/NoticeHost';
 import { StarPrompt } from '../components/StarPrompt';
 import { HighlightSheet } from '../components/HighlightSheet';
+import { ShareHandoff } from '../components/ShareHandoff';
 import { syncScheduleToNative } from '../utils/prefs/schedule';
 import { syncFeedAutomationToNative } from '../utils/prefs/feedAutomation';
 import { initHistory } from '../utils/history';
@@ -47,7 +48,7 @@ const ENGINE_RESOLVE_TIMEOUT_MS = 15000;
  */
 const ENGINE_FIRST_ROUTE = /^\/(add-torrent|add-download|torrent\/|download\/)/;
 
-/** NATIVE_CONTRACT 44.7: runs the subtitle requests. Renders nothing; does no work while there are none. */
+/** Runs the subtitle requests. Renders nothing; does no work while there are none. */
 function SubtitleRequestRunner() {
   useSubtitleRequests();
   return null;
@@ -112,7 +113,7 @@ function AppNavigation() {
     void syncFeedAutomationToNative();
   }, [engineReady]);
 
-  // In-app updates (contract 27): the daily check when the app becomes active, and the download and install triggers.
+  // In-app updates: the daily check when the app becomes active, and the download and install triggers.
   useEffect(() => {
     if (!engineReady) return;
     return startUpdates();
@@ -155,7 +156,7 @@ function AppNavigation() {
               headerShown: false,
             }}
           />
-          {/* NATIVE_CONTRACT 40.1: the page of a link download, registered like the torrent page. */}
+          {/* The page of a link download, registered like the torrent page. */}
           <Stack.Screen
             name="download/[id]"
             options={{
@@ -216,6 +217,8 @@ function AppNavigation() {
       {main ? <NoticeHost /> : null}
       {main ? <StarPrompt /> : null}
       {main ? <HighlightSheet /> : null}
+      {/* After HighlightSheet: its effect must be listening before a waiting link is taken. */}
+      {main ? <ShareHandoff /> : null}
     </>
   );
 }

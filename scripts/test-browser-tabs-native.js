@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Browser tabs, link menu, pop-ups and redirects (NATIVE_CONTRACT 24.10): static checks on the Kotlin.
+// Browser tabs, link menu, pop-ups and redirects: static checks on the Kotlin.
 const fs = require('fs');
 const path = require('path');
 const root = path.join(__dirname, '..');
@@ -28,18 +28,18 @@ check('no loadUrl with the popup target anywhere (openPopupTarget removed)', !vi
 const nw = body('handleNewWindow');
 check('handleNewWindow drops empty and about:blank', /isEmpty\(\)/.test(nw) && /about:blank/.test(nw));
 check('handleNewWindow runs mainFrameRefusal then refuse', /mainFrameRefusal\(/.test(nw) && /refuse\(url, reason\)/.test(nw));
-check('handleNewWindow: gesture emits onNewWindow gesture true', /if \(gesture\)[\s\S]*?onNewWindow\(mapOf\("url" to url, "gesture" to true\)\)/.test(nw));
+check('handleNewWindow: a trusted tap emits onNewWindow gesture true', /if \(trustTap\(gesture,[^\n]*\{\s*onNewWindow\(mapOf\("url" to url, "gesture" to true\)\)/.test(nw));
 check('handleNewWindow: untapped follows the policy (open, ask, block)', /onNewWindow\(mapOf\("url" to url, "gesture" to false\)\)/.test(nw) && /emitRequest\(url, "window"\)/.test(nw) && /emitBlocked\(url, "window"\)/.test(nw));
 check('the capture handler calls handleNewWindow', /handleNewWindow\(url, isUserGesture\)/.test(create));
 
 console.log('redirects');
 const sou = fn(view, /override fun shouldOverrideUrlLoading[\s\S]*?\n        \}\n/);
-check('held redirect: !request.hasGesture()', /!request\.hasGesture\(\)/.test(sou));
+check('held redirect: a tap only frees it when trusted for that host', /!trustTap\(request\.hasGesture\(\), uri\.host, jump = true\)/.test(sou));
 check('held redirect: !request.isRedirect', /!request\.isRedirect/.test(sou));
 check('held redirect: loadedOnce', /&&\s*loadedOnce/.test(sou));
 check('held redirect: registrable part differs', /!RegistrableHost\.same\(uri\.host, currentHost\(\)\)/.test(sou));
 check('held redirect: kind "redirect" for ask and block', /emitRequest\(uri\.toString\(\), "redirect"\)/.test(sou) && /emitBlocked\(uri\.toString\(\), "redirect"\)/.test(sou));
-check('allowed or allow lets the redirect load (return false)', /PopupRules\.OPEN -> return false/.test(sou));
+check('allowed or allow lets the redirect load (return false)', /PopupRules\.OPEN -> \{[\s\S]*?return false/.test(sou));
 check('loadedOnce is set in onPageFinished', /onPageFinished[\s\S]*?loadedOnce = true/.test(view));
 check('loadedOnce resets in onPageStarted only for a non-redirect load', /if \(!redirectInFlight\) loadedOnce = false/.test(view));
 check('followRedirect uses mainFrameRefusal and a one-shot allowance', /fun followRedirect[\s\S]*?mainFrameRefusal[\s\S]*?followAllowUrl = url/.test(view) && /followAllowUrl == uri\.toString\(\)/.test(sou));
@@ -68,7 +68,7 @@ console.log('long press');
 check('setOnLongClickListener', /setOnLongClickListener/.test(view));
 const lp = body('onLongPressed');
 for (const t of ['SRC_ANCHOR_TYPE', 'IMAGE_TYPE', 'SRC_IMAGE_ANCHOR_TYPE']) check(`hit test type ${t}`, lp.includes(`WebView.HitTestResult.${t}`));
-check('other types return false', /else -> return false/.test(lp));
+check('other types answer false and ask the page script about a video', /else -> \{[\s\S]*?askMediaHit\(w\)\s*return false/.test(lp));
 check('inactive or destroyed views ignore long presses', /destroyed \|\| !active/.test(lp));
 check('imageLink href comes from requestFocusNodeHref "url"', /requestFocusNodeHref/.test(view) && /getString\("url"\)/.test(view));
 check('only http(s) and magnet for links', /s == "http" \|\| s == "https" \|\| \(allowMagnet && s == "magnet"\)/.test(view));
@@ -81,14 +81,14 @@ check('inactive: onPause and media paused (pauseNow)', /webView\.onPause\(\)/.te
 check('active: onResume', /webView\.onResume\(\)/.test(act));
 check('never pauseTimers', !/pauseTimers\s*\(/.test(view));
 
-console.log('section 30: intent sanitising');
+console.log('intent sanitising');
 check('launch flags cleared, then only NEW_TASK', /intent\.flags = 0\s*\n\s*intent\.addFlags\(Intent\.FLAG_ACTIVITY_NEW_TASK\)/.test(start) && !/addFlags\(Intent\.FLAG_(?!ACTIVITY_NEW_TASK)/.test(start));
 check('clipData, component, selector null', /intent\.clipData = null/.test(start) && /intent\.component = null/.test(start) && /intent\.selector = null/.test(start));
 check('browser_fallback_url extra removed after it was read', /removeExtra\("browser_fallback_url"\)/.test(start) && start.indexOf('getStringExtra("browser_fallback_url")') < start.indexOf('removeExtra("browser_fallback_url")'));
 check('refuses package == context.packageName', /intent\.`package` == context\.packageName/.test(start));
 check('refuses the maglev data scheme', /dataScheme == "maglev"/.test(start));
 
-console.log('section 30: pop-up captures');
+console.log('pop-up captures');
 check('at most 3 captures: constant', /MAX_CAPTURES = 3/.test(view));
 check('over the cap: onCreateWindow emits onPopupBlocked window and returns false without sending resultMsg', /captures\.size >= MAX_CAPTURES[\s\S]{0,160}emitBlocked\("", "window"\)\s*\n\s*return false/.test(create));
 check('a capture is tracked when created', /captures\.add\(capture\)/.test(create));
@@ -98,7 +98,7 @@ const dbr = body('destroyBrowser');
 check('destroyBrowser destroys every capture', /for \(c in captures\.toList\(\)\) destroyCapture\(c\)/.test(dbr));
 check('destroyCapture stops, destroys and forgets', /captures\.remove\(c\)/.test(body('destroyCapture')) && /c\.destroy\(\)/.test(body('destroyCapture')));
 
-console.log('section 30: background first load');
+console.log('background first load');
 check('hidden view pauses after the first onPageFinished', /if \(!firstLoadDone\) \{\s*firstLoadDone = true\s*\n\s*if \(!active && pausePending\) pauseNow\(\)/.test(view));
 check('or after 10 s', /FIRST_LOAD_PAUSE_MS = 10_000L/.test(view) && /postDelayed\(\{ if \(pausePending && !destroyed && !active\) pauseNow\(\) \}, FIRST_LOAD_PAUSE_MS\)/.test(view));
 check('applyActive defers when the first load is not done', /else if \(firstLoadDone\) \{\s*pauseNow\(\)/.test(act) && /pausePending = true/.test(act));

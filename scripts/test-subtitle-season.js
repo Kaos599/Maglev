@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// NATIVE_CONTRACT 46: subtitles for a season. Plurals, one row per file in status mode, the qualification rule for
+// Subtitles for a season. Plurals, one row per file in status mode, the qualification rule for
 // "Use the best match", stored candidates, bulk save with its single retry, and the page row's button. Pure: no rendering.
 process.removeAllListeners('warning');
 const fs = require('fs');
@@ -25,7 +25,7 @@ function check(name, cond) {
   const ctx = { show: 'The Mentalist', season: 2, episode: 1, languages: EN };
   const cand = (o = {}) => ({ p: 'os', id: 'a1', rel: 'The.Mentalist.S02E01.720p.HDTV.x264-CTU', l: 'en', t: 'The Mentalist', s: 2, e: 1, ...o });
 
-  console.log('[46.1 plural rules]');
+  console.log('[plural rules]');
   check('1 video / 2 videos', copy.multiTitle(1) === 'Subtitles for 1 video' && copy.multiTitle(2) === 'Subtitles for 2 videos');
   check('1 episode / 23 episodes', copy.multiTitle(1, true) === 'Subtitles for 1 episode' && copy.multiTitle(23, true) === 'Subtitles for 23 episodes');
   check('0 takes the plural', copy.multiTitle(0) === 'Subtitles for 0 videos');
@@ -36,7 +36,7 @@ function check(name, cond) {
   check('bulk copy: button, progress, result', copy.useBestMatchFor(18) === 'Use the best match for 18' && copy.bulkProgress(3, 18) === 'Saving 3 of 18…' && copy.USE_BEST_MATCH === 'Use best match');
   check('bulk result: second part left out at 0, "1 still needs you" at 1', copy.bulkResult(18, 0) === 'Saved 18.' && copy.bulkResult(18, 5) === 'Saved 18. 5 still need you.' && copy.bulkResult(22, 1) === 'Saved 22. 1 still needs you.');
 
-  console.log('[46.1 a pack gives one row per file]');
+  console.log('[a pack gives one row per file]');
   const files = {
     'The Mentalist S02/The.Mentalist.S02E03.Red.Tide.720p.HDTV.x264-CTU.mkv': { phase: 'saved', tries: 1, bytes: 1_200_000_000, vp: '/d/e3.mkv' },
     'The Mentalist S02/The.Mentalist.S02E01.Redemption.720p.HDTV.x264-CTU.mkv': { phase: 'needs-pick', tries: 1, bytes: 1_100_000_000 },
@@ -60,7 +60,7 @@ function check(name, cond) {
   check('phase counts feed the summary', JSON.stringify(S.phaseCounts(rows.map((r) => r.phase))) === JSON.stringify({ saved: 1, needsYou: 1, waiting: 1 }));
   check('23 files: 21 saved and 2 need you', copy.statusSummary(S.phaseCounts([...Array(21).fill('saved'), 'needs-pick', 'needs-pick'])) === '21 saved · 2 need you');
 
-  console.log('[46.3 qualification]');
+  console.log('[qualification]');
   check('the right show, season, episode and language qualifies', S.qualifies(cand(), ctx));
   check('wrong episode: no', !S.qualifies(cand({ e: 2, rel: 'The.Mentalist.S02E02.720p' }), ctx));
   check('wrong season: no', !S.qualifies(cand({ s: 3, rel: 'The.Mentalist.S03E01.720p' }), ctx));
@@ -75,7 +75,7 @@ function check(name, cond) {
   check('a language of the user\'s list (not the first) qualifies', S.qualifies(cand({ l: 'de' }), { ...ctx, languages: ['en', 'de'] }));
   check('nothing stored: no', !S.qualifies(undefined, ctx));
 
-  console.log('[46.3 which runs count (k)]');
+  console.log('[which runs count (k)]');
   const mk = (n, o = {}) => ({ phase: 'needs-pick', tries: 1, cands: [cand({ e: n, rel: `The.Mentalist.S02E0${n}.720p.HDTV-CTU` })], ...o });
   const pk = (over) => ({
     ask: { key: 't:abc', title: 'The Mentalist S02 · 6 episodes', detail: '' },
@@ -96,7 +96,7 @@ function check(name, cond) {
   check('the context needs a sure season and episode in the file name', S.runCtx('Show - 047.mkv', 'Show', EN) === null && S.runCtx('The.Mentalist.S02E07.mkv', 'The Mentalist S02 · 6 episodes', EN).episode === 7);
   check('a file with no show in its name uses the pack title', S.runCtx('S02E07.mkv', 'The Mentalist S02 · 6 episodes', EN).show === 'The Mentalist');
 
-  console.log('[46.5 the page row]');
+  console.log('[the page row]');
   check('k >= 1: "Use best match"; k = 0: "See all"', S.pageRowAction(1) === 'use-best' && S.pageRowAction(5) === 'use-best' && S.pageRowAction(0) === 'see-all');
   const base = { fileListKnown: true, started: true, canOpenSheet: false, phase: 'needs-pick', pack: { total: 23, saved: 0, needYou: 23 } };
   let m = M.rowModel({ ...base, bestK: 4 });
@@ -112,7 +112,7 @@ function check(name, cond) {
   m = M.rowModel({ ...base, bestK: 4, bulk: { done: 4, total: 4 } });
   check('progress never passes k', m.button.label === 'Saving 4 of 4…');
 
-  console.log('[46.4 stored candidates]');
+  console.log('[stored candidates]');
   const rk = (language, group, id, releaseName) => ({ group, candidate: { providerId: 'os', id, language, releaseName: releaseName ?? `The.Mentalist.S02E01.${id}.720p-X`, matchedBy: 'title', hearingImpaired: true, format: 'srt', downloads: 99 } });
   const st = S.toStored([rk('de', 'fits', 'a'), rk('en', 'probably', 'b'), rk('en', 'maybe', 'c'), rk('fr', 'maybe', 'd')], ['en', 'de']);
   check('at most 2, one per language, the user\'s languages first', st.length === 2 && st[0].l === 'de' && st[1].l === 'en' && st[1].id === 'b');
@@ -127,7 +127,7 @@ function check(name, cond) {
   check(`a run's two candidates take about ${bytesOf} bytes of kv (under 600)`, bytesOf < 600);
   check('stored candidates read back clean; junk is dropped', S.cleanStored([one, { p: 1 }, null, 'x']).length === 1 && S.cleanStored('no') === undefined && S.cleanStored([]) === undefined);
 
-  console.log('[46.4 the store keeps them with the run]');
+  console.log('[the store keeps them with the run]');
   R.resetRequestsForTests();
   R.askSubtitles([{ key: 't:pack', title: 'The Mentalist S02 · 2 episodes', detail: '' }], { auto: false });
   const p1 = 'S/The.Mentalist.S02E01.mkv';
@@ -149,7 +149,7 @@ function check(name, cond) {
   R.renameRequest('t:pack', 'Mentalist');
   check('a rename starts the runs again without candidates, size kept', !R.getRequests()['t:pack'].files[p2].cands && R.getRequests()['t:pack'].files[p2].bytes === 222);
 
-  console.log('[46.3 bulk save marks saved and leaves the rest]');
+  console.log('[bulk save marks saved and leaves the rest]');
   R.resetRequestsForTests();
   R.askSubtitles([{ key: 't:pack', title: 'The Mentalist S02 · 4 episodes', detail: '' }], { auto: false });
   const names = [1, 2, 3, 4].map((n) => `S/The.Mentalist.S02E0${n}.mkv`);
@@ -189,7 +189,7 @@ function check(name, cond) {
   check('progress counts ended runs up to k', progress.join() === '1/3,2/3,3/3' && S.bulkIndex(0, 3) === 1 && S.bulkIndex(3, 3) === 3);
   check('a second pass finds nothing left to do', S.qualifyingRuns(R.getRequests()['t:pack'], EN).length === 0);
 
-  console.log('[46.4 an expired link is searched again once]');
+  console.log('[an expired link is searched again once]');
   const mkRun = (n) => ({ askKey: 't:x', fileKey: `S/The.Mentalist.S02E0${n}.mkv`, cand: cand({ e: n, id: `old${n}` }), ctx: { ...ctx, episode: n } });
   const saves = [];
   let researched = 0;

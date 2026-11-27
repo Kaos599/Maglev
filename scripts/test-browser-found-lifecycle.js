@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Found-list lifecycle (NATIVE_CONTRACT 24.6a), native side: resetFound, and same-document navigation resets the tracker.
+// Found-list lifecycle, native side: resetFound, and same-document navigation resets the tracker.
 // Static: reads Kotlin and TS source, plus the pure dismiss helpers and the screen wiring (Scan again, dismiss, Undo).
 process.removeAllListeners('warning');
 const fs = require('fs');

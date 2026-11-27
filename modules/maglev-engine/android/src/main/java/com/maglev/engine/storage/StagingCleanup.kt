@@ -4,7 +4,7 @@ import java.io.File
 
 /**
  * Frees a staging torrent's files once the user's folder holds a verified copy. Pure JVM, no android.* imports.
- * Seeding reads from staging (docs/NATIVE_CONTRACT.md section 5), so callers must only run this when the
+ * Seeding reads from staging, so callers must only run this when the
  * torrent is removed or seeding has stopped. Never touches anything outside [stagingRoot].
  */
 object StagingCleanup {

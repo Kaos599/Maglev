@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Browser tabs and pop-ups (NATIVE_CONTRACT 24.10): pure state machines T1, T2, T4, T5, tab persistence over node:sqlite, prefs.
+// Browser tabs and pop-ups: pure state machines (tab lifecycle, switcher, new-window policy, pop-up prompt), tab persistence over node:sqlite, prefs.
 // Needs Node 22.18+ (runs the TypeScript source directly).
 process.removeAllListeners('warning');
 const path = require('path');
@@ -46,7 +46,7 @@ async function main() {
   const ids = (s) => s.tabs.map((t) => t.id);
   const liveIds = (s) => T.liveTabs(s).map((t) => t.id).sort();
 
-  console.log('T1 lifecycle');
+  console.log('Tab lifecycle');
   check('constants', T.MAX_LIVE === 3 && T.MAX_TABS === 50);
   let s = T.createTabsState(env(1));
   check('starts with one blank live active tab', s.tabs.length === 1 && s.tabs[0].url === '' && s.tabs[0].state === 'live' && s.activeId === s.tabs[0].id);
@@ -79,7 +79,7 @@ async function main() {
   check('cap returns "cap" and opens nothing', capped.result === 'cap' && capped.id === null && capped.state === big);
   check('cap also stops background tabs', T.openTab(big, { background: true }, env()).result === 'cap');
 
-  console.log('T2 switcher actions');
+  console.log('Tab switcher actions');
   s = T.createTabsState(env(1)); const first = s.activeId;
   s = T.openTab(s, { url: 'https://one.test/' }, env(2)).state;
   const second = s.activeId;
@@ -172,7 +172,7 @@ async function main() {
   check('hostAllowed suffix', P.hostAllowed('m.example.com', ['example.com']) && P.hostAllowed('example.com', ['www.example.com']));
   check('hostAllowed needs a label boundary', !P.hostAllowed('badexample.com', ['example.com']) && !P.hostAllowed('example.com', []));
 
-  console.log('T4 new-window policy');
+  console.log('New-window policy');
   const dn = (policy, allowed, gesture, kind) => P.decideNewWindow({ policy, allowed, gesture, kind });
   check('tapped window opens a tab under every policy', ['ask', 'block', 'allow'].every((p) => dn(p, false, true, 'window') === 'newTab'));
   check('untapped window: ask', dn('ask', false, false, 'window') === 'ask');
@@ -183,7 +183,7 @@ async function main() {
   check('tapped app: ask / block / allow / allowed', dn('ask', false, true, 'app') === 'ask' && dn('block', false, true, 'app') === 'blocked' && dn('allow', false, true, 'app') === 'openApp' && dn('ask', true, true, 'app') === 'openApp');
   check('untapped app is blocked always', ['ask', 'block', 'allow'].every((p) => dn(p, true, false, 'app') === 'blocked'));
 
-  console.log('T4 tap trust (click-jack and window bursts)');
+  console.log('Tap trust (click-jack and window bursts)');
   const tt = (gesture, same, link, nth = 0) => P.trustedTap({ gesture, sameSite: same, onMatchingLink: link, nthInGesture: nth });
   check('no gesture is never trusted', !tt(false, true, true));
   check('tap on a link to that site is trusted', tt(true, false, true));
@@ -195,7 +195,7 @@ async function main() {
   check('untrusted tap redirect: ask / block', dn('ask', false, tt(true, false, false), 'redirect') === 'ask' && dn('block', false, tt(true, false, false), 'redirect') === 'blocked');
   check('TAP_MS matches Kotlin', P.TAP_MS === 3000 && /TAP_MS = 3000L/.test(require('fs').readFileSync(require('path').join(__dirname, '..', 'modules/maglev-engine/android/src/main/java/com/maglev/engine/browser/RegistrableHost.kt'), 'utf8')));
 
-  console.log('T5 pop-up prompt');
+  console.log('Pop-up prompt');
   const rq = (url, kind = 'window', sourceUrl = 'https://www.Source.com/page') => ({ url, kind, sourceUrl });
   let ps = P.emptyPopups();
   ps = P.request(ps, 'A', rq('https://ad1.test/'));
@@ -291,7 +291,7 @@ async function main() {
   await createHistoryStore(db, () => ({ ...p2, clearHistoryOnClose: true })).init(30);
   check('wipe leaves other meta keys', db.raw.prepare("SELECT value FROM meta WHERE key='other'").all().length === 1);
 
-  console.log('Undo after use (section 30)');
+  console.log('Undo after use');
   {
     let u = T.createTabsState(env(1));
     u = T.openTab(u, { url: 'https://u1.test/' }, env(2)).state;
@@ -304,7 +304,7 @@ async function main() {
     check('undo still drops the blank tab while it is blank', !T.getTab(back2, blankId) && back2.tabs.length === 2);
   }
 
-  console.log('Tab store (section 30)');
+  console.log('Tab store');
   {
     const { createTabStore } = await import('../utils/browser/tabStore.ts');
     const mk = (opts = {}) => {
@@ -376,7 +376,7 @@ async function main() {
     check('and the count is remembered', w.store.getState().tabs.length === 2);
   }
 
-  console.log('Tab rows deletion (section 30)');
+  console.log('Tab rows deletion');
   {
     const dbx = nodeDb();
     const pr = { saveHistory: true, suggestFromHistory: true, clearHistoryOnClose: false };

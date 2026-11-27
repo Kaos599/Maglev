@@ -1,4 +1,4 @@
-//! Files changed outside Maglev (contract section 18.3, SM-32). Pure logic, no session.
+//! Files changed outside Maglev. Pure logic, no session.
 //!
 //! Two parts:
 //! - the sidecar `maglev-filehealth.json`: per torrent, the size and modified time of every included
@@ -59,7 +59,7 @@ pub struct FileProbe {
 
 /// The state of one file. `finished` enables the size comparison; `snap` is the stamp taken when the
 /// torrent finished (None when there is no snapshot yet, which never counts as a change). Only a
-/// different size counts as changed (section 47.1): the media scanner, file managers and players touch
+/// different size counts as changed: the media scanner, file managers and players touch
 /// timestamps without touching the contents. `refresh_mtimes` brings such stamps up to date.
 pub fn classify_file(p: &FileProbe, finished: bool, snap: Option<&FileStamp>) -> FileState {
     if p.padding || !p.included {
@@ -158,7 +158,7 @@ pub fn is_file_health_tag(tag: &str) -> bool {
     tag == HEALTH_FILES_CHANGED || tag == HEALTH_FILES_MISSING
 }
 
-/// The end of a Recheck (section 47.2), once librqbit has checked every piece. The health tag goes, and
+/// The end of a Recheck, once librqbit has checked every piece. The health tag goes, and
 /// so does the pause it left behind (`paused_by` set to a file health tag), so the planner may start the
 /// torrent. A pause by the user or a seed limit stays. Returns true when the caller must take the file
 /// snapshot now: every piece is valid (`finished`), so the files on disk are the finished torrent. With bad
@@ -353,7 +353,7 @@ mod tests {
         let p = probe(0, OnDisk::Present(stamp(10, 200)));
         let snap = stamp(9, 100);
         assert_eq!(classify_file(&p, true, Some(&snap)), FileState::Changed);
-        // Same size and time: fine. Size differs: changed. Time differs alone: fine (section 47.1).
+        // Same size and time: fine. Size differs: changed. Time differs alone: fine.
         assert_eq!(classify_file(&p, true, Some(&stamp(10, 200))), FileState::Ok);
         assert_eq!(classify_file(&p, true, Some(&stamp(11, 200))), FileState::Changed);
         assert_eq!(classify_file(&p, true, Some(&stamp(10, 100))), FileState::Ok);
@@ -530,7 +530,7 @@ mod tests {
         assert!(!dir.join("maglev-filehealth.json.tmp").exists());
 
         let raw = std::fs::read_to_string(dir.join(SIDECAR_FILE)).unwrap();
-        // The shape in the contract: id -> files -> index -> {size, mtime_ms}.
+        // The saved shape: id -> files -> index -> {size, mtime_ms}.
         let v: serde_json::Value = serde_json::from_str(&raw).unwrap();
         assert_eq!(v["abc"]["files"]["0"]["size"], 100);
         assert_eq!(v["abc"]["files"]["2"]["mtime_ms"], -5);

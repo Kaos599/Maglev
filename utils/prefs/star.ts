@@ -1,5 +1,5 @@
 /**
- * Star prompt prefs (docs/NATIVE_CONTRACT.md section 33): counts and answers, kept on the phone in the kv store.
+ * Star prompt prefs: counts and answers, kept on the phone in the kv store.
  */
 import { kvGet, kvSet } from './kv.ts';
 import { defaultStarState, withFirstSeen, type StarState } from '../star.ts';

@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Tool schemas and argument validation (SM-31 amendment, ASSISTANT_DESIGN §4, §7.3).
+// Tool schemas and argument validation.
 // Pure TS, no network. Needs Node 22.18+ (runs the TypeScript source directly via type stripping).
 
 process.removeAllListeners('warning');
@@ -296,7 +296,7 @@ async function main() {
   check('select with nothing to include or skip gives bad_args', isBad(bad('propose_select_files', { transfer_id: 't1', reason: REASON })));
   check('file both included and skipped gives bad_args', isBad(bad('propose_select_files', { transfer_id: 't1', include: [1], skip: [1], reason: REASON })));
 
-  console.log('tools: removed tools (R1-1) and plans (R1-2)');
+  console.log('tools: removed tools and plans');
   check('propose_url_download is gone', isBad(bad('propose_url_download', { url: 'https://example.com/a', reason: REASON }), 'unknown_tool'));
   check('propose_setting_change is gone', isBad(bad('propose_setting_change', { key: 'wifi_only', value: true, reason: REASON }), 'unknown_tool'));
   check('no tool definition mentions the removed tools', !/url_download|setting_change/.test(JSON.stringify(TOOLS)));
@@ -322,7 +322,7 @@ async function main() {
   const badStepMsg = bad('propose_plan', { reason: REASON, steps: [step, { tool: 'propose_pause_resume', args: { transfer_id: 't99', action: 'pause', reason: REASON } }] });
   check('plan error names the failing step', !badStepMsg.ok && badStepMsg.error.message.startsWith('Step 2:'), badStepMsg);
 
-  console.log('handles: hash-keyed results (R1-11 / handles.ts)');
+  console.log('handles: hash-keyed results');
   {
     const h = new HandleRegistry();
     const a = h.issue('result', HASH);

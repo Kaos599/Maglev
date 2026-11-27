@@ -10,8 +10,9 @@ import android.os.Build
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import com.maglev.engine.R
+import com.maglev.engine.share.ShareHandoff
 
-/** The "Updates" notification channel and the three update notices (docs/NATIVE_CONTRACT.md section 27.3 and 27.5). */
+/** The "Updates" notification channel and the three update notices. */
 object UpdateNotices {
     const val CH_UPDATES = "maglev_updates"
     private const val ID_AVAILABLE = 4201
@@ -29,8 +30,7 @@ object UpdateNotices {
 
     /** Opens Updates, where the update card is. */
     private fun aboutIntent(context: Context): PendingIntent {
-        val i = Intent(Intent.ACTION_VIEW, Uri.parse("maglev://settings/updates")).setPackage(context.packageName)
-        i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+        val i = ShareHandoff.routeIntent(context, "maglev://settings/updates")
         return PendingIntent.getActivity(context, 4201, i, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
     }
 
@@ -57,7 +57,7 @@ object UpdateNotices {
 
     /**
      * The Install action of a "ready" notice: a broadcast to [UpdateInstallReceiver] that starts the install
-     * (section 30). The tap on the body still opens About.
+     * The tap on the body still opens About.
      */
     private fun installAction(context: Context, version: String, path: String, sha256: String): PendingIntent {
         val i = Intent(context, UpdateInstallReceiver::class.java).setAction(UpdateInstallReceiver.ACTION_INSTALL)

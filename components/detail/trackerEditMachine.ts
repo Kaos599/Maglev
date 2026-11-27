@@ -1,4 +1,4 @@
-// SM-28 Tracker edit (NATIVE_CONTRACT 15). Pure: no React, no IO. The component runs the effects.
+// Tracker edit. Pure: no React, no IO. The component runs the effects.
 // Anything not in the transition table is a no-op. The engine still checks every address; this only
 // catches obvious mistakes before a call is made.
 
@@ -89,7 +89,7 @@ function plural(n: number): string {
   return n === 1 ? 'tracker' : 'trackers';
 }
 
-/** One step of the SM-28 machine. Returns the next state and the effects to run. */
+/** One step of the tracker-edit machine. Returns the next state and the effects to run. */
 export function trackerEditStep(state: TrackerEditState, event: TrackerEditEvent): TrackerEditStep {
   const same: TrackerEditStep = { state, effects: [] };
   switch (state.kind) {

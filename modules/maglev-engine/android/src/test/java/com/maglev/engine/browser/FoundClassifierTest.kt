@@ -88,7 +88,7 @@ class FoundClassifierTest {
 
     @Test fun extensionDotInQueryDoesNotCount() = assertNull(FoundClassifier.extensionOf("https://e.com/watch?v=a.mp4"))
 
-    // ---- page scan: every extension of section 24.3 ----
+    // ---- page scan: every file extension the scan recognises ----
 
     @Test fun pageDocumentExtensions() {
         for (e in listOf("pdf", "epub", "mobi", "djvu", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "odt", "ods", "odp", "txt", "rtf", "csv", "md")) {
