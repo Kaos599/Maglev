@@ -4,12 +4,13 @@ name: E2E (Maestro, report-only)
 # Report-only: nothing waits on this workflow, and release-apk.yml does not depend on it. Failing flows never fail the
 # job (owner decision 2026-11-19), so a commit is not marked red for them. They are reported as a warning and in the
 # job summary instead. Check this run after every push to main or a tag.
-# CI builds x86_64 only on main (ci.yml MAGLEV_ABIS). On other refs the artifact has no x86_64 APK and this job exits green with a notice.
+# CI builds x86_64 only on main (ci.yml MAGLEV_ABIS). On tags, a missing APK or unrun flows fail the job with an error;
+# on other refs without an x86_64 APK, the job exits green with a warning in the summary.
 on:
   workflow_dispatch:
     inputs:
       run_id:
-        description: 'CI run id to take the apks artifact from (default: the latest successful CI run for this commit)'
+        description: 'CI run id to take the apks artifact from (default: wait for this commit''s main CI run on main/tags, or find a successful run for this commit)'
         required: false
   push:
     tags:
@@ -23,12 +24,12 @@ jobs:
   maestro:
     name: Maestro flows
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 75
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
         with:
-          # Full history so git merge-base --is-ancestor can verify any fallback APK comes from an ancestor commit.
+          # Full history so git merge-base --is-ancestor and git diff can verify any docs-only fallback APK.
           fetch-depth: 0
 
       - name: Find the CI run and download the x86_64 APK
@@ -46,21 +47,27 @@ jobs:
           IS_MAIN_OR_TAG=0
           [[ "$REF" == "refs/heads/main" || "$IS_TAG" = "1" ]] && IS_MAIN_OR_TAG=1
 
-          finish_skip() {
-            local reason="$1"
-            {
-              echo "## Maestro flows"
-              echo "**No flows ran.** $reason"
-              if [ -s "$ERR_LOG" ]; then
+          write_err_log() {
+            if [ -s "$ERR_LOG" ]; then
+              {
                 echo ""
-                echo "<details><summary>gh lookup log</summary>"
+                echo "<details><summary>APK lookup log</summary>"
                 echo ""
                 echo '```'
                 cat "$ERR_LOG"
                 echo '```'
                 echo "</details>"
-              fi
+              } >> "$GITHUB_STEP_SUMMARY"
+            fi
+          }
+
+          finish_skip() {
+            local reason="$1"
+            {
+              echo "## Maestro flows"
+              echo "**No flows ran.** $reason"
             } >> "$GITHUB_STEP_SUMMARY"
+            write_err_log
             if [ "$IS_TAG" = "1" ]; then
               echo "::error::No flows ran on tag $REF: $reason"
               exit 1
@@ -91,35 +98,38 @@ jobs:
           APK=""
           PICKED_RUN=""
           PICKED_SHA=""
+          EXACT_RUN=""
           if [ -n "$INPUT_RUN" ]; then
             if ! try_run "$INPUT_RUN"; then
               finish_skip "CI run $INPUT_RUN has no live x86_64 APK."
             fi
             PICKED_SHA=$(gh run view "$PICKED_RUN" --json headSha --jq '.headSha // empty' 2>>"$ERR_LOG" || true)
           else
-            # On main and v* tags, wait for this commit's own push CI run (the tag often lands while CI is still running).
+            # On main and v* tags, wait for this commit's own main push CI run (the tag often lands while CI is still running).
             if [ "$IS_MAIN_OR_TAG" = "1" ]; then
-              EXACT_RUN=""
               for i in 1 2 3 4 5 6; do
-                EXACT_RUN=$(gh run list --workflow ci.yml --commit "$GITHUB_SHA" --event push --limit 10 \
+                EXACT_RUN=$(gh run list --workflow ci.yml --branch main --commit "$GITHUB_SHA" --event push --limit 10 \
                   --json databaseId,conclusion --jq '[.[] | select(.conclusion != "cancelled")][0].databaseId // empty' 2>>"$ERR_LOG" || true)
                 [ -n "$EXACT_RUN" ] && break
-                echo "No ci.yml push run for $GITHUB_SHA yet (attempt $i/6)" >> "$ERR_LOG"
+                echo "No ci.yml main push run for $GITHUB_SHA yet (attempt $i/6)" >> "$ERR_LOG"
                 sleep 15
               done
               if [ -n "$EXACT_RUN" ]; then
                 STATUS=$(gh run view "$EXACT_RUN" --json status --jq '.status // empty' 2>>"$ERR_LOG" || true)
                 if [ "$STATUS" != "completed" ]; then
-                  echo "Waiting up to 20 min for CI run $EXACT_RUN ($STATUS)..."
-                  timeout 1200 gh run watch "$EXACT_RUN" --interval 30 >/dev/null 2>>"$ERR_LOG" || true
+                  echo "Waiting up to 40 min for CI run $EXACT_RUN ($STATUS)..."
+                  timeout 2400 gh run watch "$EXACT_RUN" --interval 30 >/dev/null 2>>"$ERR_LOG" || true
                 fi
                 read -r STATUS CONCLUSION < <(gh run view "$EXACT_RUN" --json status,conclusion --jq '[.status, .conclusion] | join(" ")' 2>>"$ERR_LOG" || echo "unknown unknown")
                 if [ "$STATUS" = "completed" ] && [ "$CONCLUSION" = "success" ]; then
                   if try_run "$EXACT_RUN"; then
                     PICKED_SHA=$(gh run view "$EXACT_RUN" --json headSha --jq '.headSha // empty' 2>>"$ERR_LOG" || true)
+                  else
+                    finish_skip "CI run $EXACT_RUN for $GITHUB_SHA succeeded but has no live x86_64 APK."
                   fi
                 else
                   echo "CI run $EXACT_RUN ended with $STATUS/$CONCLUSION" >> "$ERR_LOG"
+                  finish_skip "CI run $EXACT_RUN for $GITHUB_SHA ended with $STATUS/$CONCLUSION; refusing to test an older APK."
                 fi
               fi
             else
@@ -132,17 +142,22 @@ jobs:
               done
             fi
 
-            # Ancestor-only fallback on main/v* tags: only accept a main push run whose headSha is an ancestor of $GITHUB_SHA.
-            if [ -z "$APK" ] && [ "$IS_MAIN_OR_TAG" = "1" ]; then
+            # Ancestor-only fallback on main/v* tags ONLY when no ci.yml main push run exists for $GITHUB_SHA
+            # (docs-only push skipped by ci.yml paths-ignore). Require that every diff since the ancestor is ignored by ci.yml.
+            if [ -z "$APK" ] && [ "$IS_MAIN_OR_TAG" = "1" ] && [ -z "$EXACT_RUN" ]; then
               while read -r r sha; do
                 [ -n "$r" ] && [ -n "$sha" ] || continue
                 if ! git merge-base --is-ancestor "$sha" "$GITHUB_SHA" 2>/dev/null; then
                   continue
                 fi
+                if ! git diff --quiet "$sha" "$GITHUB_SHA" -- . ':(exclude)**/*.md' ':(exclude)docs/**' ':(exclude)screens/**' ':(exclude)LICENSE' 2>/dev/null; then
+                  echo "skipping ancestor run $r ($sha): non-docs files changed since $sha" >> "$ERR_LOG"
+                  continue
+                fi
                 if try_run "$r"; then
                   PICKED_SHA="$sha"
                   if [ "$PICKED_SHA" != "$GITHUB_SHA" ]; then
-                    echo "::warning::No x86_64 APK on commit $GITHUB_SHA; using ancestor CI run $r from main ($PICKED_SHA)."
+                    echo "::warning::Docs-only commit $GITHUB_SHA skipped CI; using identical ancestor APK from main run $r ($PICKED_SHA)."
                   fi
                   break
                 fi
@@ -157,6 +172,7 @@ jobs:
           if [ -z "$PICKED_SHA" ]; then
             echo "::warning::Could not read headSha for CI run $PICKED_RUN."
           fi
+          write_err_log
           echo "apk=$APK" >> "$GITHUB_OUTPUT"
           echo "run_id=$PICKED_RUN" >> "$GITHUB_OUTPUT"
           echo "run_sha=$PICKED_SHA" >> "$GITHUB_OUTPUT"
@@ -209,15 +225,24 @@ jobs:
           OUTCOME: ${{ steps.flows.outcome }}
           RUN_ID: ${{ steps.apk.outputs.run_id }}
           RUN_SHA: ${{ steps.apk.outputs.run_sha }}
+          REF: ${{ github.ref }}
         run: |
+          IS_TAG=0
+          [[ "$REF" == refs/tags/* ]] && IS_TAG=1
           {
             echo "## Maestro flows"
             echo "APK from CI run \`$RUN_ID\` (commit \`${RUN_SHA:-unknown}\`)."
             if [ -n "$RUN_SHA" ] && [ "$RUN_SHA" != "$GITHUB_SHA" ]; then
-              echo "> Note: tested APK commit \`$RUN_SHA\` differs from ref commit \`$GITHUB_SHA\`."
+              echo "> Note: tested APK commit \`$RUN_SHA\` differs from ref commit \`$GITHUB_SHA\` (docs-only diff verified)."
             fi
             echo ""
-            if [ "$OUTCOME" = "success" ]; then echo "All flows passed."; else echo "**Some flows failed.** See the maestro-output artifact (report, screenshots, logcat)."; fi
+            if [ ! -f maestro-report.xml ]; then
+              echo "**Flows did not run.** No \`maestro-report.xml\` was produced (emulator boot or \`adb install\` failed)."
+            elif [ "$OUTCOME" = "success" ]; then
+              echo "All flows passed."
+            else
+              echo "**Some flows failed.** See the maestro-output artifact (report, screenshots, logcat)."
+            fi
             if [ -f maestro-report.xml ]; then
               echo ""
               grep -o '<testcase [^>]*name="[^"]*"' maestro-report.xml | sed 's/.*name="\([^"]*\)"/- \1/' || true
@@ -226,7 +251,15 @@ jobs:
               echo "Failed flows: ${FAILED:-0}"
             fi
           } >> "$GITHUB_STEP_SUMMARY"
-          if [ "$OUTCOME" != "success" ]; then echo "::warning title=Maestro flows failed::Report-only. Open this run's summary and the maestro-output artifact."; fi
+          if [ ! -f maestro-report.xml ]; then
+            if [ "$IS_TAG" = "1" ]; then
+              echo "::error::Flows did not run on tag $REF (maestro-report.xml missing)."
+              exit 1
+            fi
+            echo "::warning title=Maestro flows did not run::No maestro-report.xml was produced."
+          elif [ "$OUTCOME" != "success" ]; then
+            echo "::warning title=Maestro flows failed::Report-only. Open this run's summary and the maestro-output artifact."
+          fi
 
       - name: Upload Maestro output
         if: always() && steps.apk.outputs.apk != ''

@@ -20,8 +20,8 @@ End-to-end flows for the Android app (package `com.maglev`). Docs: https://docs.
 | `feeds-add-remove.yaml` | Follow a public archive.org RSS feed, check items load, remove it |
 | `feeds-rule.yaml` | Follow the same feed, create an auto-download rule, check it is listed, delete it, remove the feed |
 | `browser-detect.yaml` | Browser on a public test page: Files list with sizes, download one, shows in Transfers, removed with files |
-| `browser-clear.yaml` | Browser: remove one found file, Clear all, list empty; next page starts without the old files |
-| `browser-blocking.yaml` | Browser: per-site ad switch in "This page" and the global "Ad blocking" setting toggle |
+| `browser-clear.yaml` | Browser: remove one found file and Clear all until the tray shows "No files found yet" |
+| `browser-blocking.yaml` | Browser: per-site ad switch in Site settings and the global "Ad blocking" setting toggle |
 | `browser-menu.yaml` | Browser: the ⋮ menu shows 5 icons and 6 rows without scrolling, Site settings opens, Pop-ups to Block and back, the padlock opens the same sheet |
 | `tips-deck.yaml` | Settings, Tips: swipe to the second card, arrows, topic picker, a card's action opens Network |
 
