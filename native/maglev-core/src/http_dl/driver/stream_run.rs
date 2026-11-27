@@ -554,6 +554,10 @@ impl Downloads {
         if self.state_of(&id) == Some(State::Downloading) {
             self.dispatch(&id, Event::AllBytes);
         }
+        if mux {
+            // The start of the wait, so the join's own timing lines in the log can be measured from here.
+            tracing::info!("stream {}: all parts in ({} KiB), waiting for the join", id, held / 1024);
+        }
         // Separate parts wait in `verifying` until Kotlin has joined them (`finish_mux`).
         if !mux && self.state_of(&id) == Some(State::Verifying) {
             self.dispatch(&id, Event::HashOk);
