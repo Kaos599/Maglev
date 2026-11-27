@@ -7,6 +7,7 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SettingsProvider, useSettings } from '../context/SettingsContext';
 import { ThemeProvider, useTheme } from '../context/ThemeContext';
 import { EngineProvider, useEngineStatus } from '../context/EngineContext';
+import { useVideoSiteRefresh } from '../components/transfers/useVideoSiteRefresh';
 import NavigationBarSync from '../components/NavigationBarSync';
 import { NoticeHost } from '../components/ui/NoticeHost';
 import { StarPrompt } from '../components/StarPrompt';
@@ -49,6 +50,12 @@ const ENGINE_FIRST_ROUTE = /^\/(add-torrent|add-download|torrent\/|download\/)/;
 /** NATIVE_CONTRACT 44.7: runs the subtitle requests. Renders nothing; does no work while there are none. */
 function SubtitleRequestRunner() {
   useSubtitleRequests();
+  return null;
+}
+
+/** Renders nothing. Keeps its own telemetry subscription so the navigator doesn't re-render on every tick. */
+function VideoSiteRefresher() {
+  useVideoSiteRefresh();
   return null;
 }
 
@@ -122,6 +129,7 @@ function AppNavigation() {
     <>
       <StatusBar style={dark ? 'light' : 'dark'} />
       <NavigationBarSync />
+      {main ? <VideoSiteRefresher /> : null}
       <Stack screenOptions={screenOptions}>
         <Stack.Protected guard={unavailable}>
           <Stack.Screen name="engine-error" options={{ gestureEnabled: false, animation: 'none' }} />
@@ -171,6 +179,17 @@ function AppNavigation() {
           <Stack.Screen name="settings/assistant" />
           <Stack.Screen name="settings/backup" />
           <Stack.Screen name="settings/browser" />
+          <Stack.Screen name="settings/browser-ad-sites" />
+          <Stack.Screen name="settings/browser-advanced" />
+          <Stack.Screen name="settings/browser-blocked-popups" />
+          <Stack.Screen name="settings/browser-blocked-popups-site" />
+          <Stack.Screen name="settings/browser-blocking" />
+          <Stack.Screen name="settings/browser-blocklists" />
+          <Stack.Screen name="settings/browser-general" />
+          <Stack.Screen name="settings/browser-media" />
+          <Stack.Screen name="settings/browser-popup-sites" />
+          <Stack.Screen name="settings/browser-privacy" />
+          <Stack.Screen name="settings/browser-start" />
           <Stack.Screen name="settings/downloads" />
           <Stack.Screen name="settings/feeds" />
           <Stack.Screen name="settings/interface" />
@@ -186,6 +205,7 @@ function AppNavigation() {
           <Stack.Screen name="settings/subtitle-languages" />
           <Stack.Screen name="settings/subtitle-sources" />
           <Stack.Screen name="settings/subtitles" />
+          <Stack.Screen name="settings/tips" />
           <Stack.Screen name="settings/updates" />
           <Stack.Screen name="settings/whats-new" />
           <Stack.Screen name="settings/watch" />

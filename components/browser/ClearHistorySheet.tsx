@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { clearBrowserData } from 'maglev-engine';
+import { clearBrowserData, clearTabStates } from 'maglev-engine';
 import { useTheme } from '../../context/ThemeContext';
 import { useMaglevEngine } from '../../context/EngineContext';
 import { ThemeColors, radius, spacing, type } from '../../constants/theme';
@@ -55,6 +55,8 @@ export function ClearHistorySheet({ visible, mode, onClose }: { visible: boolean
     try {
       if (mode === 'range') {
         await clearHistoryRange(range as ClearRange);
+        // Slept tabs keep their back/forward lists in memory; cleared history must not come back through them.
+        await clearTabStates();
       } else {
         if (data.cookies || data.cache) {
           const res = await clearBrowserData({ cookies: data.cookies, cache: data.cache });
@@ -62,7 +64,10 @@ export function ClearHistorySheet({ visible, mode, onClose }: { visible: boolean
           // The Cloudflare checks live in the same cookies, so Search forgets them too.
           if (data.cookies) clearSiteChecks();
         }
-        if (data.history) await clearHistoryRange('all');
+        if (data.history) {
+          await clearHistoryRange('all');
+          await clearTabStates();
+        }
       }
     } catch {
       haptic('fail');

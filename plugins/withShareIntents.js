@@ -37,7 +37,7 @@ object MaglevShareIntent {
     }
 
     private fun textSource(intent: Intent): String? {
-        val text = intent.getStringExtra(Intent.EXTRA_TEXT) ?: return null
+        val text = intent.getCharSequenceExtra(Intent.EXTRA_TEXT)?.toString() ?: return null
         return MAGNET.find(text)?.value
             ?: TORRENT_URL.find(text)?.value
             ?: WEB_URL.find(text)?.value?.trimEnd('.', ',', ';', ':', '!', '?', ')', ']', '}')
@@ -88,7 +88,9 @@ const TORRENT_TYPES = ['application/x-bittorrent', 'application/x-torrent'];
 const WEB_MIME_TYPES = [
   'application/octet-stream', 'application/zip', 'application/x-zip-compressed', 'application/x-7z-compressed',
   'application/vnd.rar', 'application/x-rar-compressed', 'application/x-iso9660-image',
-  'application/x-bittorrent', 'video/*', 'audio/*',
+  'application/x-bittorrent', 'application/pdf', 'application/x-msdownload', 'application/force-download',
+  'binary/octet-stream', 'application/gzip', 'application/x-gzip', 'application/x-tar', 'application/epub+zip',
+  'video/*', 'audio/*',
 ];
 
 /**
@@ -138,12 +140,17 @@ function quickShareFilters() {
     // Text-selection menu in other apps. The card only reads the selection and never returns replacement text.
     // https://developer.android.com/reference/android/content/Intent#ACTION_PROCESS_TEXT
     filter(['PROCESS_TEXT'], ['DEFAULT'], [{ mimeType: 'text/plain' }], PROCESS_TEXT_LABEL),
-    // Other browsers: DEFAULT only (not BROWSABLE), so a web page cannot start it.
-    filter(['VIEW'], ['DEFAULT'], [
+    // Other browsers, typed downloads. BROWSABLE + DEFAULT because Firefox and android-components browsers list external
+    // download managers with CATEGORY_BROWSABLE (Browsers.findResolvers), and Android only matches filters that declare
+    // every category the intent carries. A plain link tap has no type, so it still never matches. A page can start a
+    // BROWSABLE VIEW, so QuickShareActivity always shows the card for it (issue #171).
+    // https://github.com/mozilla-firefox/firefox/blob/main/mobile/android/android-components/components/support/utils/src/main/java/mozilla/components/support/utils/Browsers.kt
+    filter(['VIEW'], ['BROWSABLE', 'DEFAULT'], [
       { scheme: 'http' }, { scheme: 'https' },
       ...WEB_MIME_TYPES.map((mimeType) => ({ mimeType })),
     ]),
-    // Download manager pickers: no type, file paths only. DEFAULT only, so a web page cannot start it.
+    // Download manager pickers (Kiwi, issue #89): no type, file paths only. DEFAULT only, never BROWSABLE: a BROWSABLE
+    // filter would offer "Open in Maglev" on every .zip or .mp4 link a page opens.
     filter(['VIEW'], ['DEFAULT'], pickerData()),
   ];
 }

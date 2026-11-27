@@ -7,6 +7,7 @@ process.removeAllListeners("warning");
 
 const fs = require("fs");
 const path = require("path");
+const { pathToFileURL } = require("url");
 const root = path.join(__dirname, "..");
 const read = (p) => fs.readFileSync(path.join(root, p), "utf8");
 const exists = (p) => fs.existsSync(path.join(root, p));
@@ -27,9 +28,10 @@ async function main() {
     check("utils/settingsIndex.ts exists", false);
     process.exit(1);
   }
-  const { SETTINGS_INDEX, searchSettings, SYNONYM_GROUPS } = await import(indexPath);
+  const { SETTINGS_INDEX, searchSettings, SYNONYM_GROUPS } = await import(pathToFileURL(indexPath).href);
 
-  // Pages: every app/settings/*.tsx except redirects must have at least one entry.
+  // Pages: every app/settings/*.tsx except redirects and host-parameterized detail screens must have at least one entry.
+  const paramPages = new Set(["browser-blocked-popups-site"]);
   const settingsDir = path.join(root, "app/settings");
   const pages = fs
     .readdirSync(settingsDir)
@@ -59,6 +61,10 @@ async function main() {
   for (const p of pages) {
     if (redirects.includes(p)) {
       check(`${p} is a redirect (no entries needed)`, true);
+      continue;
+    }
+    if (paramPages.has(p)) {
+      check(`${p} is a parameterized detail screen (indexed via parent)`, true);
       continue;
     }
     check(`page "${p}" has at least one entry`, indexedPages.has(p));
@@ -486,9 +492,6 @@ async function main() {
     ["swipe to remove a download", "appearance-swipe-actions"],
     ["file icon", "appearance-file-icons"],
     ["file type icons", "appearance-file-icons"],
-    ["address bar", "browser-swipe-tabs"],
-    ["swipe address bar", "browser-swipe-tabs"],
-    ["url bar tabs", "browser-swipe-tabs"],
     ["backup stats", "backup-include-stats"],
     ["export statistics", "backup-include-stats"],
   ]) {

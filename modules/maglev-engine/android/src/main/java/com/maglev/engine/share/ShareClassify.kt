@@ -126,6 +126,35 @@ object ShareClassify {
     }
 
     /**
+     * Issue #162: a hand-off can carry the link in more than one place, and some places can hold something that is not a
+     * link (a content:// file next to the URL text, a blank subject). Classifies each candidate in order and keeps the
+     * first one that is a magnet, torrent, file link or page. All blank or link-free gives NONE.
+     */
+    fun classifyFirst(candidates: List<String?>, mime: String?): ShareClass {
+        for (c in candidates) {
+            val got = classify(c, mime)
+            if (got.kind != ShareKind.NONE) return got
+        }
+        return none()
+    }
+
+    /**
+     * What a hand-off looked like, for the "Copy details" button and the log (issue #162): the action, the type, the
+     * data's scheme, and each extra's name with its value's type. Never a value, so no link or cookie is copied.
+     */
+    fun describeHandOff(action: String?, type: String?, dataScheme: String?, extras: List<Pair<String, String>>, clipItems: List<String>): String {
+        val ex = if (extras.isEmpty()) "none" else extras.joinToString(", ") { "${it.first}: ${it.second}" }
+        val clip = if (clipItems.isEmpty()) "none" else clipItems.joinToString(", ")
+        return listOf(
+            "action: ${action ?: "none"}",
+            "type: ${type ?: "none"}",
+            "data: ${dataScheme ?: "none"}",
+            "extras: $ex",
+            "clip: $clip",
+        ).joinToString("\n")
+    }
+
+    /**
      * A download a browser handed over by name (contract quick-share 8.1, issue #89). Kiwi and its forks send
      * VIEW <url> with no type and the name in `com.android.extra.filename`, so `/dl?id=5` would read as a web page.
      * The name wins only when the link has none; only its last path segment is used. Magnets are left alone.

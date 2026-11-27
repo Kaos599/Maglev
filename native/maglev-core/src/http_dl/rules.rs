@@ -69,6 +69,17 @@ pub fn parse_content_range(v: &str) -> Option<(Option<u64>, Option<u64>, Option<
     Some((Some(a.trim().parse().ok()?), Some(b.trim().parse().ok()?), total))
 }
 
+/// True when a 206 that was not asked for still carries the whole file, so it can be read like a 200
+/// (issue #168). `Content-Range` must be `bytes 0-E/T` with `E + 1 == T`, or `bytes 0-E/*` with
+/// `Content-Length == E + 1`. Any other 206 is a broken server.
+pub fn is_whole_body_206(content_range: Option<&str>, content_length: Option<u64>) -> bool {
+    match content_range.and_then(parse_content_range) {
+        Some((Some(0), Some(e), Some(t))) => e.checked_add(1) == Some(t),
+        Some((Some(0), Some(e), None)) => content_length.map(|l| e.checked_add(1) == Some(l)).unwrap_or(false),
+        _ => false,
+    }
+}
+
 /// Last path segment has a short extension that is not a web page one.
 pub fn url_looks_like_file(url: &str) -> bool {
     let Some(name) = super::content_disposition::filename_from_url(url) else {
@@ -178,8 +189,17 @@ pub fn judge_response(status: u16, h: &Headers, held: u64, total: Option<u64>, r
             }
             _ => Reply::Event(Event::ValidatorChanged),
         },
-        // A 206 we did not ask for is a broken server.
-        206 => Reply::Event(Event::ValidatorChanged),
+        // A 206 we did not ask for is a broken server, unless it is the whole file (issue #168): then it is read
+        // like a 200.
+        206 => {
+            let cr = h.content_range.as_deref();
+            if is_whole_body_206(cr, h.content_length) {
+                let total = cr.and_then(parse_content_range).and_then(|(_, _, t)| t).or(h.content_length);
+                Reply::Body { offset: 0, total }
+            } else {
+                Reply::Event(Event::ValidatorChanged)
+            }
+        }
         // 200 on a ranged request: the If-Range validator no longer matches, or ranges are ignored.
         200 if ranged => Reply::Event(Event::Got200OnResume),
         200 => Reply::Body { offset: 0, total: h.content_length },

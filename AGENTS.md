@@ -1,6 +1,6 @@
 # AGENTS.md: Operating Guide for AI Agents and Engineers
 
-> **Project:** Maglev, an Android app that downloads videos from web pages, ordinary links and torrents
+> **Project:** Maglev, an Android app that downloads almost any link: video pages, files and torrents
 > **Stack:** React Native 0.88 + Expo SDK 58 (expo-router, Hermes, new arch) · Kotlin Expo Module · Rust (`librqbit` 9.x)
 > **Integration branch:** `dev` · **Releases:** `main` (tags)
 > **Rule 0:** Zero bloat, zero jargon, pure utility. **Rule 1:** Nothing is "done" until a contract proves it on real code.
@@ -9,7 +9,7 @@
 
 ## 1. Identity
 
-Maglev replaces a torrent client (LibreTorrent, Flud) and a separate download manager on a phone: torrents, ordinary links and the videos on a web page, in one app. It should feel minimal, quick and playful, with a retro feel that stays modern and readable for a general audience.
+Maglev downloads almost any link on a phone: a video page, a file, a magnet link or a torrent, in one app. It replaces a torrent client (LibreTorrent, Flud) and a download manager. It should feel minimal, quick and playful, with a retro feel that stays modern and readable for a general audience.
 
 | Token | Value | Use |
 |---|---|---|
@@ -99,7 +99,7 @@ Work containing any of the following is rejected:
 ## 7. Git workflow
 
 - Branch from `dev` as `feature/<phase>-<task>` (for example `feature/p2-onboarding`). Merge to `dev` when CI and the phase contracts pass. Release with a tag on `main`.
-- **Versions are `<major>.<minor>`** (for example 0.1, 0.2, 1.0). Bump with `npm run version:minor` or `npm run version:major`, which writes `app.json` (version and `android.versionCode = major*1000 + minor`) and mirrors `package.json` as `x.y.0`. Release tags are `v<major>.<minor>-beta` during the beta and `v<major>.<minor>` after; the release workflow refuses a tag that doesn't match `app.json`.
+- **Versions are `<major>.<minor>`** (for example 0.1, 0.2, 1.0). Bump with `npm run version:minor` or `npm run version:major`, which writes `app.json` (version and `android.versionCode = major*10000 + minor*100 + patch`, patch 0 for now, so 1.0 is 10000 and 1.1 is 10100; ABI splits use code*10 + digit`) and mirrors `package.json` as `x.y.0`. Release tags are `v<major>.<minor>` (1.0 onward; 0.x releases were tagged `v0.x-beta`); the release workflow refuses a tag that doesn't match `app.json`.
 - Use Conventional Commits: `feat|fix|refactor|test|docs|ci(<scope>): …`. Keep commits atomic.
 - After a merge, append to `LEDGER.md`: date, task IDs, commit, CI run URL, and the contract IDs that turned green.
 - **Release signing:** `plugins/withReleaseSigning.js` signs release builds (v2+v3) from repo secrets `MAGLEV_KEYSTORE_B64`, `MAGLEV_KEYSTORE_PASSWORD`, `MAGLEV_KEY_ALIAS`, `MAGLEV_KEY_PASSWORD`. Without them the build falls back to debug signing, so forks and PRs still build. CI fails a push to `main` or a tag if any APK still carries the Android debug certificate (other branches warn). With the secrets, main and tags also produce a signed bundletool APK set, uploaded as artifact `accrescent-apks` and attached to the release as `Maglev-<tag>.apks`. Owner steps: `docs/RELEASE_SIGNING.md`.

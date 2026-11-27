@@ -44,7 +44,7 @@ use super::rules::{
 use super::sidecar::{final_path, part_path, safe_url, sidecar_path, Sidecar};
 use super::redirect::{send_following, CookiePicker};
 use super::stream::fetch::{host_lower, pick_cookie};
-use super::stream::{StreamError, StreamRec, StreamSpec};
+use super::stream::{PartsSpec, StreamError, StreamKind, StreamRec, StreamSpec, PART_CHUNK};
 use crate::error::{EngineError, ErrorCode};
 use crate::meta::write_atomic;
 use crate::timing::{gained, Timing};
@@ -141,6 +141,8 @@ pub struct DownloadOptions {
     pub page_url: Option<String>,
     /// Save an HLS or DASH stream (contract 24.8): which variant and audio track.
     pub stream: Option<StreamSpec>,
+    /// Save a video and an audio file from a video site and join them. Not with `stream`.
+    pub parts: Option<PartsSpec>,
 }
 
 fn parse_options(json: &str) -> Result<DownloadOptions, EngineError> {
@@ -275,6 +277,8 @@ struct Live {
     /// Stream downloads only: the page's `Origin` and the per-host cookies (memory only, like `cookie`).
     origin: Option<String>,
     host_cookies: Vec<(String, String)>,
+    /// `options.parts` of a video-site download (the audio link is signed, so it is memory only).
+    two_files: Option<PartsSpec>,
     task: Option<JoinHandle<()>>,
     attempts: u32,
     denied: u32,
@@ -370,10 +374,10 @@ fn parse_http_url(raw: &str) -> Result<(reqwest::Url, Option<(String, String)>),
     if effects.contains(&Effect::RejectInvalidSource) {
         return Err(EngineError::new(
             ErrorCode::InvalidSource,
-            "That isn't a web link. Use a link that starts with http or https.",
+            "That isn't a link. Use a link that starts with http or https.",
         ));
     }
-    let u = parsed.map_err(|_| EngineError::new(ErrorCode::InvalidSource, "That isn't a web link."))?;
+    let u = parsed.map_err(|_| EngineError::new(ErrorCode::InvalidSource, "That link doesn't look right."))?;
     Ok(split_credentials(u))
 }
 
@@ -742,6 +746,22 @@ async fn resolve_ips(host: &str) -> Result<Vec<String>, EngineError> {
 
 fn host_of(url: &str) -> String {
     reqwest::Url::parse(url).ok().and_then(|u| u.host_str().map(str::to_string)).unwrap_or_default()
+}
+
+/// The size of one ranged request for a link that must not be fetched with a single long request, or `None`.
+/// YouTube's media servers (`googlevideo.com/videoplayback`) slow one long request for an adaptive (DASH) format
+/// to a crawl, and that includes a plain request for a small audio file. yt-dlp avoids it by asking for 10 MiB
+/// ranges (`http_chunk_size`). A progressive format carries `ratebypass=yes` and needs nothing.
+fn chunk_span(url: &str) -> Option<u64> {
+    let u = reqwest::Url::parse(url).ok()?;
+    let host = u.host_str()?.to_ascii_lowercase();
+    if !(host == "googlevideo.com" || host.ends_with(".googlevideo.com")) || u.path() != "/videoplayback" {
+        return None;
+    }
+    if u.query_pairs().any(|(k, v)| k == "ratebypass" && v == "yes") {
+        return None;
+    }
+    Some(PART_CHUNK)
 }
 
 /// Does a link to the same file match what was stored? Size must agree; validators must agree when both exist,
@@ -1541,8 +1561,17 @@ impl Downloads {
 
     /// Starts a download. Returns at once; the probe runs on the runtime.
     pub fn add(self: &Arc<Self>, url: &str, options_json: &str) -> Result<AddedDownload, EngineError> {
-        let opts = parse_options(options_json)?;
+        let mut opts = parse_options(options_json)?;
         let (clean, auth) = parse_http_url(url)?;
+        // Video and audio from a video site run as a stream of two plain files.
+        let two_files = opts.parts.take();
+        if let Some(p) = two_files.as_ref() {
+            if opts.stream.is_some() {
+                return Err(EngineError::new(ErrorCode::InvalidArgument, "Those download options aren't valid"));
+            }
+            parse_http_url(&p.audio.url)?;
+            opts.stream = Some(StreamSpec { kind: StreamKind::Parts, variant_id: "parts".to_string(), audio_id: None });
+        }
         let folder = opts
             .folder
             .clone()
@@ -1618,6 +1647,7 @@ impl Downloads {
                     user_agent: h.user_agent,
                     origin: h.origin,
                     host_cookies,
+                    two_files,
                     ..Live::default()
                 },
             );
@@ -2243,7 +2273,7 @@ impl Downloads {
             if self.state_of(&id) != Some(State::Downloading) {
                 return;
             }
-            let Some((builder, picker, ranged, total, validator)) = self.build_get(&id, &client, held) else {
+            let Some((builder, picker, ranged, total, validator, chunked)) = self.build_get(&id, &client, held) else {
                 return;
             };
             let resp = match send_following(&client, builder, &picker).await {
@@ -2260,8 +2290,14 @@ impl Downloads {
                 }
             };
             let status = resp.status().as_u16();
-            let headers = read_headers(resp.headers());
-            match judge_get(status, &headers, held, total, validator.as_deref(), ranged) {
+            let mut headers = read_headers(resp.headers());
+            if chunked && status == 206 {
+                // `Content-Length` is the length of this range, not of the file the probe measured.
+                headers.content_length = None;
+            }
+            // A server that answers a chunk request with the whole file (200) is read like an unranged request.
+            let judged_ranged = ranged && !(chunked && status == 200);
+            match judge_get(status, &headers, held, total, validator.as_deref(), judged_ranged) {
                 Reply::Body { offset, total: learned } => {
                     if offset == 0 {
                         held = 0;
@@ -2306,6 +2342,12 @@ impl Downloads {
                                 });
                                 self.finish(&id, &file);
                                 return;
+                            }
+                            if chunked && pos > offset {
+                                // One range arrived whole: ask for the next one on a fresh request.
+                                held = pos;
+                                self.update(&id, |rec, _| rec.held = pos);
+                                continue;
                             }
                             // The server closed early: treat it as a broken connection.
                             held = self.resume_point(&id, pos);
@@ -2477,7 +2519,7 @@ impl Downloads {
         id: &str,
         client: &Client,
         held: u64,
-    ) -> Option<(reqwest::RequestBuilder, CookiePicker, bool, Option<u64>, Option<String>)> {
+    ) -> Option<(reqwest::RequestBuilder, CookiePicker, bool, Option<u64>, Option<String>, bool)> {
         self.update(id, |rec, live| {
             let hdrs = LinkHeaders::from_live(live);
             let mut b = hdrs.apply(client.get(rec.url.as_str()).header(ACCEPT_ENCODING, "identity"), rec.url.as_str());
@@ -2485,13 +2527,28 @@ impl Downloads {
                 b = b.basic_auth(u, Some(p));
             }
             let mut ranged = false;
-            if held > 0 {
-                if let Some(v) = rec.validator.as_deref().and_then(|v| HeaderValue::from_str(v).ok()) {
-                    b = b.header(RANGE, format!("bytes={held}-")).header(IF_RANGE, v);
+            let mut chunked = false;
+            let validator = rec.validator.as_deref().and_then(|v| HeaderValue::from_str(v).ok());
+            match (chunk_span(rec.url.as_str()), rec.size) {
+                // Always a bounded range, even from byte 0, so the server never sees one long request.
+                (Some(span), Some(total)) if held < total => {
+                    let end = held.saturating_add(span).min(total) - 1;
+                    b = b.header(RANGE, format!("bytes={held}-{end}"));
+                    if let (true, Some(v)) = (held > 0, validator) {
+                        b = b.header(IF_RANGE, v);
+                    }
                     ranged = true;
+                    chunked = true;
                 }
+                _ if held > 0 => {
+                    if let Some(v) = validator {
+                        b = b.header(RANGE, format!("bytes={held}-")).header(IF_RANGE, v);
+                        ranged = true;
+                    }
+                }
+                _ => {}
             }
-            (b, hdrs.picker(rec.url.as_str()), ranged, rec.size, rec.validator.clone())
+            (b, hdrs.picker(rec.url.as_str()), ranged, rec.size, rec.validator.clone(), chunked)
         })
     }
 
@@ -2500,11 +2557,24 @@ impl Downloads {
     async fn stream_body(
         self: &Arc<Self>,
         id: &str,
+        resp: reqwest::Response,
+        file: &File,
+        offset: u64,
+        total: Option<u64>,
+        clock: &mut StallClock,
+    ) -> Streamed {
+        self.stream_body_with_base(id, resp, file, offset, total, clock, 0).await
+    }
+
+    async fn stream_body_with_base(
+        self: &Arc<Self>,
+        id: &str,
         mut resp: reqwest::Response,
         file: &File,
         offset: u64,
         total: Option<u64>,
         clock: &mut StallClock,
+        base_held: u64,
     ) -> Streamed {
         // `wb.received()` is what came off the wire (speed, limits, overrun). `wb.written()` is what is on disk, and
         // it is the only position that is ever persisted or returned: the sidecar, `rec.held` and every `Streamed`
@@ -2560,7 +2630,7 @@ impl Downloads {
                     self.update(id, |_, l| l.bps = 0);
                     if self.stall_step(id, limit, clock) {
                         self.flush_side(id, &mut side, &side_path, file, pos, resumable);
-                        self.update(id, |rec, _| rec.held = pos);
+                        self.update(id, |rec, _| rec.held = base_held.saturating_add(pos));
                         return Streamed::Stalled(pos);
                     }
                     if self.state_of(id) != Some(State::Downloading) {
@@ -2601,7 +2671,7 @@ impl Downloads {
                 }
                 let pos = wb.written();
                 self.flush_side(id, &mut side, &side_path, file, pos, resumable);
-                self.update(id, |rec, _| rec.held = pos);
+                self.update(id, |rec, _| rec.held = base_held.saturating_add(pos));
                 return Streamed::Stalled(pos);
             }
 
@@ -2614,7 +2684,7 @@ impl Downloads {
                     let _ = wb.flush(&mut write);
                     let pos = wb.written();
                     self.flush_side(id, &mut side, &side_path, file, pos, resumable);
-                    self.update(id, |rec, _| rec.held = pos);
+                    self.update(id, |rec, _| rec.held = base_held.saturating_add(pos));
                     self.dispatch(id, Event::Enospc);
                     return Streamed::Stopped;
                 }
@@ -2633,7 +2703,7 @@ impl Downloads {
                 report_pos = pos;
                 last_report = Instant::now();
                 let alive = self.update(id, |rec, live| {
-                    rec.held = pos;
+                    rec.held = base_held.saturating_add(pos);
                     live.bps = bps_smooth as u64;
                     live.stalled = false;
                     live.attempts = 0;
@@ -3154,6 +3224,20 @@ mod tests {
         assert_eq!(o.down_limit_bps, Some(1000));
         assert!(parse_options("").unwrap().name.is_none());
         assert!(parse_options("null").is_ok());
+    }
+
+    #[test]
+    fn options_accept_video_site_parts() {
+        let o = parse_options(
+            r#"{"parts":{"video":{"url":"https://v.test/v","size":1000,"headers":{"User-Agent":"UA"}},"audio":{"url":"https://a.test/a"}},
+                "headers":{"User-Agent":"UA"}}"#,
+        )
+        .unwrap();
+        let p = o.parts.unwrap();
+        assert_eq!(p.video.size, Some(1000));
+        assert_eq!(p.audio.url, "https://a.test/a");
+        assert!(parse_options("{}").unwrap().parts.is_none());
+        assert_eq!(parse_options(r#"{"parts":{"video":{"url":"https://v.test/v"}}}"#).unwrap_err().code, ErrorCode::InvalidArgument);
     }
 
     #[test]

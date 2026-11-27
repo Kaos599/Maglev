@@ -15,7 +15,8 @@ import { useSettings } from '../../context/SettingsContext';
 import { downloadHeaders } from './FoundDownload';
 import { SaveToRow } from './SaveToRow';
 import { pageUrlOption } from './pageUrlOption';
-import { audioLabel, buildSelection, defaultAudio, defaultVariant, needsAudioPicker, qualityLabel } from './streamChoice';
+import { audioLabel, buildSelection, defaultAudio, needsAudioPicker, pickStreamVariant, qualityLabel } from './streamChoice';
+import { getBrowserPrefs } from '../../utils/prefs/browser';
 
 type Phase = 'probing' | 'ready' | 'error' | 'adding';
 
@@ -75,7 +76,7 @@ export function StreamSheet({ item, pageTitle, userAgent = '', pageUrl = '', onC
       if (mine !== token.current) return;
       if (res.ok) {
         setProbe(res);
-        setVariantId(defaultVariant(res.variants)?.id ?? null);
+        setVariantId(pickStreamVariant(res.variants, getBrowserPrefs().streamQuality)?.id ?? null);
         setAudioId(defaultAudio(res.audioTracks));
         setName((n) => n || sanitizeFileName((res.title || '').trim()));
         setPhase('ready');

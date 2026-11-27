@@ -5,7 +5,7 @@
     },
     "name": "Maglev",
     "slug": "maglev",
-    "version": "0.33",
+    "version": "1.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "scheme": "maglev",
@@ -113,7 +113,7 @@
           ]
         }
       ],
-      "versionCode": 33
+      "versionCode": 10000
     },
     "web": {
       "favicon": "./assets/favicon.png",

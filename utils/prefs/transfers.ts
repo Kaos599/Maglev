@@ -3,15 +3,15 @@
  * Uses expo-sqlite/kv-store's synchronous API; falls back to memory when the
  * native module is missing (Node tests, Expo Go without it, web).
  */
-export type SortKey = 'name' | 'progress' | 'downSpeed' | 'upSpeed' | 'eta' | 'size' | 'added' | 'ratio';
+export type SortKey = 'name' | 'progress' | 'downSpeed' | 'upSpeed' | 'eta' | 'size' | 'added' | 'recent' | 'ratio';
 export type SortDir = 'asc' | 'desc';
 export interface TransferSort {
   key: SortKey;
   dir: SortDir;
 }
 
-const DEFAULT_SORT: TransferSort = { key: 'added', dir: 'desc' };
-export const SORT_KEYS: readonly SortKey[] = ['name', 'progress', 'downSpeed', 'upSpeed', 'eta', 'size', 'added', 'ratio'];
+const DEFAULT_SORT: TransferSort = { key: 'recent', dir: 'desc' };
+export const SORT_KEYS: readonly SortKey[] = ['name', 'progress', 'downSpeed', 'upSpeed', 'eta', 'size', 'added', 'recent', 'ratio'];
 
 const STORAGE_KEY = 'maglev.transfers.sort';
 

@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { AccessibilityInfo, KeyboardAvoidingView, LayoutChangeEvent, Modal, Platform, Pressable, StyleSheet, Text, View, findNodeHandle, useWindowDimensions } from 'react-native';
+import { AccessibilityInfo, KeyboardAvoidingView, LayoutChangeEvent, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View, findNodeHandle, useWindowDimensions } from 'react-native';
 import { GestureDetector, GestureHandlerRootView, usePanGesture } from 'react-native-gesture-handler';
 import Animated, { cancelAnimation, useAnimatedStyle, useSharedValue, withSpring, withTiming } from 'react-native-reanimated';
 import { scheduleOnRN } from 'react-native-worklets';
@@ -15,10 +15,18 @@ export interface SheetProps {
   onClose: () => void;
   title: string;
   subtitle?: string;
+  /** Hide the title and subtitle. The title stays as the TalkBack heading on the drag handle. */
+  hideTitle?: boolean;
   children?: React.ReactNode;
   testID?: string;
   /** The control that opened the sheet. TalkBack focus goes back to it after the sheet closes. */
   returnFocusRef?: React.RefObject<any>;
+  /**
+   * Wrap the content in a vertical ScrollView so a tall sheet can be scrolled to its last row (default true).
+   * A sheet whose content fits looks the same. Pass false when the content has its own ScrollView or FlatList,
+   * so one vertical scroller is never nested in another.
+   */
+  scroll?: boolean;
 }
 
 /**
@@ -31,7 +39,7 @@ export interface SheetProps {
  * A Modal is its own native window on Android, outside the app's root gesture view, so the sheet
  * brings its own GestureHandlerRootView.
  */
-export function Sheet({ visible, onClose, title, subtitle, children, testID, returnFocusRef }: SheetProps) {
+export function Sheet({ visible, onClose, title, subtitle, hideTitle, children, testID, returnFocusRef, scroll = true }: SheetProps) {
   const { colors } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const insets = useSafeAreaInsets();
@@ -51,6 +59,9 @@ export function Sheet({ visible, onClose, title, subtitle, children, testID, ret
   const pendingOpen = useRef(true);
   const titleRef = useRef<any>(null);
   const focusTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const snapBackTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const visibleRef = useRef(visible);
+  visibleRef.current = visible;
   const returnRef = useRef(returnFocusRef);
   returnRef.current = returnFocusRef;
 
@@ -61,7 +72,10 @@ export function Sheet({ visible, onClose, title, subtitle, children, testID, ret
       if (tag) AccessibilityInfo.setAccessibilityFocus(tag);
     }, delay);
   }, []);
-  useEffect(() => () => { if (focusTimer.current) clearTimeout(focusTimer.current); }, []);
+  useEffect(() => () => {
+    if (focusTimer.current) clearTimeout(focusTimer.current);
+    if (snapBackTimer.current) clearTimeout(snapBackTimer.current);
+  }, []);
 
   const open = useCallback(() => {
     cancelAnimation(offset);
@@ -91,6 +105,10 @@ export function Sheet({ visible, onClose, title, subtitle, children, testID, ret
       return;
     }
     if (!mounted) return;
+    if (snapBackTimer.current) {
+      clearTimeout(snapBackTimer.current);
+      snapBackTimer.current = null;
+    }
     cancelAnimation(offset);
     const to = sheetH.value > 0 ? sheetH.value : height;
     if (m.disabled) {
@@ -121,6 +139,19 @@ export function Sheet({ visible, onClose, title, subtitle, children, testID, ret
   const reduce = m.disabled;
   const base = m.base;
   const easing = m.easing;
+  // A sheet whose owner ignores onClose while busy must not be left invisible over a live Modal; wait out the slide-out first.
+  const requestCloseFromDrag = useCallback(() => {
+    onClose();
+    if (snapBackTimer.current) clearTimeout(snapBackTimer.current);
+    snapBackTimer.current = setTimeout(() => {
+      snapBackTimer.current = null;
+      if (visibleRef.current) {
+        cancelAnimation(offset);
+        offset.value = reduce ? 0 : withSpring(0, { duration: motion.duration.base, dampingRatio: 1 });
+      }
+    }, reduce ? 150 : base + 150);
+  }, [onClose, offset, reduce, base]);
+
   const pan = usePanGesture({
     enabled: visible,
     // Vertical only: a sideways swipe on the title is left alone.
@@ -136,7 +167,7 @@ export function Sheet({ visible, onClose, title, subtitle, children, testID, ret
       if (shouldDismissSheet(offset.value, e.velocityY, h)) {
         const to = h > 0 ? h : height;
         offset.value = reduce ? to : withTiming(to, { duration: base, easing });
-        scheduleOnRN(onClose);
+        scheduleOnRN(requestCloseFromDrag);
         return;
       }
       offset.value = reduce
@@ -151,6 +182,8 @@ export function Sheet({ visible, onClose, title, subtitle, children, testID, ret
   }));
 
   if (!mounted) return null;
+
+  const contentStyle = hideTitle ? [styles.content, styles.contentNoTitle] : styles.content;
 
   return (
     <Modal
@@ -180,14 +213,34 @@ export function Sheet({ visible, onClose, title, subtitle, children, testID, ret
           >
             <GestureDetector gesture={pan}>
               <View style={styles.dragArea}>
-                <View style={styles.grabber} />
-                <Text ref={titleRef} style={styles.title} accessibilityRole="header">
-                  {title}
-                </Text>
-                {subtitle ? <Text style={styles.subtitle}>{subtitle}</Text> : null}
+                {hideTitle ? (
+                  <View ref={titleRef} accessible accessibilityRole="header" accessibilityLabel={title} style={styles.grabberOnly}>
+                    <View style={[styles.grabber, styles.grabberNoMargin]} />
+                  </View>
+                ) : (
+                  <>
+                    <View style={styles.grabber} />
+                    <Text ref={titleRef} style={styles.title} accessibilityRole="header">
+                      {title}
+                    </Text>
+                    {subtitle ? <Text style={styles.subtitle}>{subtitle}</Text> : null}
+                  </>
+                )}
               </View>
             </GestureDetector>
-            <View style={styles.content}>{children}</View>
+            {scroll ? (
+              <ScrollView
+                style={contentStyle}
+                keyboardShouldPersistTaps="handled"
+                bounces={false}
+                showsVerticalScrollIndicator
+                persistentScrollbar
+              >
+                {children}
+              </ScrollView>
+            ) : (
+              <View style={contentStyle}>{children}</View>
+            )}
           </Animated.View>
           </View>
         </KeyboardAvoidingView>
@@ -213,8 +266,14 @@ const makeStyles = (c: ThemeColors) =>
     },
     // The drag target: handle, title and subtitle. It reaches the sheet's side edges so it is easy to grab.
     dragArea: { marginHorizontal: -spacing.xl, paddingHorizontal: spacing.xl, paddingBottom: spacing.xs },
+    // Title hidden: a 20 dp box holds the 4 dp handle (8 dp above and below). With dragArea's 4 dp and
+    // contentNoTitle's 4 dp, the handle sits 16 dp above the content, like handle to title on a titled sheet.
+    // Not a tap target (the title is its TalkBack label), so the 44 dp rule does not apply.
+    grabberOnly: { height: 20, justifyContent: 'center' },
+    grabberNoMargin: { marginBottom: 0 },
     grabber: { alignSelf: 'center', width: 36, height: 4, borderRadius: 2, backgroundColor: c.borderStrong, marginBottom: spacing.lg },
     title: { ...type.bodyStrong, fontSize: type.size.xl, color: c.text },
     subtitle: { ...type.body, fontSize: type.size.md, color: c.textMuted, marginTop: spacing.xs },
     content: { marginTop: spacing.lg, flexShrink: 1 },
+    contentNoTitle: { marginTop: spacing.xs },
   });

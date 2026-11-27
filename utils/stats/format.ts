@@ -198,3 +198,9 @@ export function timingView(t: TimingInput, nowMs: number, tz?: number) {
     uploaded: t.uploaded != null && t.uploaded > 0 ? fmtSize(t.uploaded) : null,
   };
 }
+
+/** "26 Nov 2026, 14:05" in the phone's language and zone. Empty when the time is unknown (0 or less). */
+export function fullWhen(unixSecs: number | undefined): string {
+  if (!(unixSecs != null && unixSecs > 0)) return '';
+  return new Date(unixSecs * 1000).toLocaleString(undefined, { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+}

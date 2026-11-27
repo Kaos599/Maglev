@@ -5,6 +5,7 @@
 import { useSyncExternalStore } from 'react';
 import { kvGet, kvSet } from './kv.ts';
 import { SEARCH_ENGINES, type SearchEngine } from '../browserUrl.ts';
+import { normalizeSiteHost } from '../browser/popups.ts';
 
 export { toBrowserUrl, SEARCH_ENGINES } from '../browserUrl.ts';
 export type { SearchEngine, BrowserTarget } from '../browserUrl.ts';
@@ -30,12 +31,15 @@ export interface BrowserPrefs {
   clearHistoryOnClose: boolean;
   /** What to do with pop-ups and redirects the user didn't tap for (section 24.10). */
   popupPolicy: PopupPolicy;
-  /** Sites allowed to open pop-ups and redirects, without `www.`. */
+  /** Sites allowed to open pop-ups and redirects, normalised (no `www.` or `m.`; matched by suffix). */
   popupAllowHosts: string[];
+  /**
+   * Sites whose pop-ups and redirects are always blocked, normalised the same way. Precedence: block list > allow list >
+   * policy (utils/browser/popups.ts `decideNewWindow`). Set by the card's Block button and Settings › Blocked pop-ups.
+   */
+  popupBlockHosts: string[];
   /** Page text size in percent (section 28). Always one of the values `normalizeTextZoom` returns. */
   browserTextZoom: number;
-  /** Swipe the address bar to change tabs, or down to open the tab list. */
-  swipeTabs: boolean;
   /**
    * Private browsing: no history written or suggested, tabs kept in memory only, and cookies of the sites visited
    * wiped when the browser is left (utils/browser/privateSession.ts). UI only; never reaches the engine.
@@ -43,7 +47,21 @@ export interface BrowserPrefs {
   privateBrowsing: boolean;
   /** Darken pages that only have a light look while Maglev is dark (section 24.10a). UI only; the view gets it as a prop. */
   darkPages: boolean;
+  /** Start page: the frequent sites section (read from history). */
+  showFrequentSites: boolean;
+  /** Start page: the bookmark tiles. */
+  showBookmarksOnStart: boolean;
+  /** Which quality a video stream picks first: the highest, the highest at or below 1080p or 720p, or none (ask). */
+  streamQuality: StreamQuality;
+  /** Refuse cookies set by other sites than the one in the address bar. Read by the browser view. */
+  blockThirdPartyCookies: boolean;
+  /** Try the https:// address of an http:// page first. Read by the browser view. */
+  httpsFirst: boolean;
 }
+
+/** Quality a stream starts on. 'ask' preselects nothing, so the user picks in the stream sheet. */
+export type StreamQuality = 'best' | '1080' | '720' | 'ask';
+export const STREAM_QUALITIES: readonly StreamQuality[] = ['best', '1080', '720', 'ask'];
 
 export const TEXT_ZOOM_MIN = 50;
 export const TEXT_ZOOM_MAX = 200;
@@ -79,15 +97,25 @@ export function defaultBrowserPrefs(): BrowserPrefs {
     clearHistoryOnClose: false,
     popupPolicy: 'ask',
     popupAllowHosts: [],
+    popupBlockHosts: [],
     browserTextZoom: TEXT_ZOOM_DEFAULT,
-    swipeTabs: true,
     privateBrowsing: false,
     darkPages: true,
+    showFrequentSites: true,
+    showBookmarksOnStart: true,
+    streamQuality: 'best',
+    blockThirdPartyCookies: true,
+    httpsFirst: true,
   };
 }
 
 function strings(v: unknown): string[] {
   return Array.isArray(v) ? v.filter((s): s is string => typeof s === 'string' && s.trim() !== '').map((s) => s.trim()) : [];
+}
+
+/** A stored list of sites in normalised form: junk dropped, no duplicates. Old blobs without the field give []. */
+function normalizeSiteList(v: unknown): string[] {
+  return [...new Set(strings(v).map(normalizeSiteHost).filter((h) => h !== ''))];
 }
 
 /** Tolerant parse: unknown or missing fields fall back to defaults. */
@@ -106,11 +134,16 @@ export function normalizeBrowserPrefs(raw: unknown): BrowserPrefs {
     suggestFromHistory: o.suggestFromHistory !== false,
     clearHistoryOnClose: o.clearHistoryOnClose === true,
     popupPolicy: POPUP_POLICIES.includes(o.popupPolicy as PopupPolicy) ? (o.popupPolicy as PopupPolicy) : 'ask',
-    popupAllowHosts: [...new Set(strings(o.popupAllowHosts).map((h) => h.toLowerCase()))],
+    popupAllowHosts: normalizeSiteList(o.popupAllowHosts),
+    popupBlockHosts: normalizeSiteList(o.popupBlockHosts),
     browserTextZoom: normalizeTextZoom(o.browserTextZoom),
-    swipeTabs: o.swipeTabs !== false,
     privateBrowsing: o.privateBrowsing === true,
     darkPages: o.darkPages !== false,
+    showFrequentSites: o.showFrequentSites !== false,
+    showBookmarksOnStart: o.showBookmarksOnStart !== false,
+    streamQuality: (STREAM_QUALITIES as readonly unknown[]).includes(o.streamQuality) ? (o.streamQuality as StreamQuality) : d.streamQuality,
+    blockThirdPartyCookies: o.blockThirdPartyCookies !== false,
+    httpsFirst: o.httpsFirst !== false,
   };
 }
 

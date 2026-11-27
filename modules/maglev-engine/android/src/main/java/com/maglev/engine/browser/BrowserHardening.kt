@@ -1,7 +1,7 @@
 package com.maglev.engine.browser
 
 /**
- * Pure rules for downloads without a tap, Back-button hijacking and HTTPS-first (docs/NATIVE_CONTRACT.md section 24.11).
+ * Pure rules for downloads without a tap, Back-button hijacking and HTTPS-first.
  * Mirrored in `utils/browser/hardening.ts`. No Android types.
  */
 object DownloadRules {
@@ -70,6 +70,9 @@ class HistoryFlags {
     private val made = ArrayList<Boolean>()
     private var index = -1
 
+    /** A copy of the flags, kept with a slept tab's saved page state (TabStates). */
+    class Snapshot(val urls: List<String>, val made: List<Boolean>, val index: Int)
+
     /** One flag per entry, oldest first. */
     fun flags(): List<Boolean> = made
 
@@ -77,6 +80,17 @@ class HistoryFlags {
         urls.clear()
         made.clear()
         index = -1
+    }
+
+    fun snapshot(): Snapshot = Snapshot(ArrayList(urls), ArrayList(made), index)
+
+    /** Puts back what [snapshot] copied, for a WebView whose back/forward list was restored from the same moment. */
+    fun restore(s: Snapshot) {
+        clear()
+        if (s.urls.size != s.made.size) return
+        urls.addAll(s.urls)
+        made.addAll(s.made)
+        index = s.index
     }
 
     /**
@@ -130,7 +144,7 @@ object HttpsFirst {
      * local name, a port other than 80, a user name in the address, or a host in [fallbackHosts].
      */
     fun upgrade(url: String, fallbackHosts: Set<String>, method: String = "GET"): String? {
-        // NATIVE_CONTRACT 39.2 B3: only GET is ever upgraded.
+        // Only GET is ever upgraded: a form post must not be replayed on another scheme.
         if (!method.equals("GET", ignoreCase = true)) return null
         val m = http.matchEntire(url.trim()) ?: return null
         val authority = m.groupValues[1]
@@ -147,31 +161,20 @@ object HttpsFirst {
         return "https://$hostPart$rest"
     }
 
-    /** NATIVE_CONTRACT 39.2 B3: an https try that has not committed after this long falls back to http. */
-    const val TRY_MS = 8000L
-
-    // WebViewClient error codes (https://developer.android.com/reference/android/webkit/WebViewClient#ERROR_CONNECT).
-    private const val ERROR_UNKNOWN = -1
-    private const val ERROR_CONNECT = -6
-    private const val ERROR_IO = -7
-    private const val ERROR_TIMEOUT = -8
-    private const val ERROR_FAILED_SSL_HANDSHAKE = -11
-
-    /**
-     * NATIVE_CONTRACT 39.2 B3: whether a failed https try falls back to http and puts its host on the fallback list. TLS failures,
-     * connection refused, reset or closed (connect and I/O errors) always do. A timeout or an unknown error does only while
-     * [online]. No internet and name not resolved (ERROR_HOST_LOOKUP, -2) never do.
-     */
-    fun shouldFallBack(errorCode: Int, online: Boolean): Boolean = when (errorCode) {
-        ERROR_FAILED_SSL_HANDSHAKE, ERROR_CONNECT, ERROR_IO -> true
-        ERROR_TIMEOUT, ERROR_UNKNOWN -> online
-        else -> false
-    }
-
-    /** The 8 second timeout (B3) counts as a timeout error. */
-    fun timeoutFallsBack(online: Boolean): Boolean = shouldFallBack(ERROR_TIMEOUT, online)
+    /** An https try that has not committed after this long falls back to http (Chrome's HTTPS-Upgrades uses 3 s too). */
+    const val TRY_MS = 3000L
 
     private fun bare(host: String?): String? = host?.removePrefix("www.")
+
+    /** [host] without a leading www., for comparing the hosts a try has touched. */
+    fun bareHost(host: String): String = host.removePrefix("www.")
+
+    /** [url] for matching history entries: WebView records `https://host` as `https://host/`, so a bare root gets its slash. */
+    fun historyKey(url: String): String {
+        val u = url.trim()
+        val m = Regex("^([a-z][a-z0-9+.-]*://[^/?#]*)$", RegexOption.IGNORE_CASE).matchEntire(u) ?: return u
+        return m.groupValues[1] + "/"
+    }
 
     /** [url] is on [host] (or its www. twin). */
     fun sameHost(host: String?, url: String?): Boolean = host != null && bare(host) == bare(hostOf(url))

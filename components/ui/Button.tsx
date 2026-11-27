@@ -6,7 +6,7 @@ import { PixelIcon, PixelIconName } from '../PixelIcon';
 import { PressableScale } from './PressableScale';
 import { useReduceMotion } from '../motion';
 
-export type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger';
+export type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger' | 'dangerFilled';
 export type ButtonSize = 'md' | 'lg';
 
 export interface ButtonProps {
@@ -18,6 +18,8 @@ export interface ButtonProps {
   loading?: boolean;
   disabled?: boolean;
   fullWidth?: boolean;
+  /** Icon above a smaller label, for two or three equal buttons in one row where a side-by-side label would wrap. */
+  stacked?: boolean;
   accessibilityLabel?: string;
   testID?: string;
   /** Ref to the button, e.g. to return screen reader focus to it. */
@@ -66,6 +68,7 @@ export function Button({
   loading = false,
   disabled = false,
   fullWidth = false,
+  stacked = false,
   accessibilityLabel,
   testID,
   buttonRef,
@@ -75,7 +78,7 @@ export function Button({
   const inactive = disabled || loading;
 
   const fg =
-    variant === 'primary'
+    variant === 'primary' || variant === 'dangerFilled'
       ? colors.onAccent
       : variant === 'danger'
         ? colors.danger
@@ -96,13 +99,14 @@ export function Button({
         styles.base,
         size === 'lg' ? styles.lg : styles.md,
         fullWidth && styles.full,
+        stacked && styles.stacked,
         styles[variant],
         pressed && !inactive && styles[`${variant}Pressed` as const],
         disabled && styles.disabled,
       ]}
     >
-      {loading ? <LoadingDots color={fg} /> : icon ? <PixelIcon name={icon} size={20} color={fg} /> : null}
-      <Text style={[styles.label, { color: fg }]}>
+      {loading ? (stacked ? <View style={styles.dotsBox}><LoadingDots color={fg} /></View> : <LoadingDots color={fg} />) : icon ? <PixelIcon name={icon} size={20} color={fg} /> : null}
+      <Text style={[styles.label, stacked && styles.stackedLabel, { color: fg }]} numberOfLines={stacked ? 1 : undefined}>
         {label}
       </Text>
     </PressableScale>
@@ -125,6 +129,9 @@ const makeStyles = (c: ThemeColors) =>
     md: { minHeight: touch.min },
     lg: { minHeight: 52 },
     full: { alignSelf: 'stretch' },
+    stacked: { flexDirection: 'column', gap: spacing.xs, paddingHorizontal: spacing.sm, paddingVertical: spacing.sm },
+    stackedLabel: { fontSize: type.size.base },
+    dotsBox: { height: 20, justifyContent: 'center' },
     label: { ...type.bodyStrong, fontSize: type.size.lg, flexShrink: 1, textAlign: 'center' },
     primary: { backgroundColor: c.accent, borderColor: c.accent },
     primaryPressed: { backgroundColor: c.accent, opacity: 0.88 },
@@ -134,5 +141,7 @@ const makeStyles = (c: ThemeColors) =>
     ghostPressed: { backgroundColor: c.surfaceRaised },
     danger: { backgroundColor: 'transparent', borderColor: c.danger },
     dangerPressed: { backgroundColor: c.surfaceRaised, borderColor: c.danger },
+    dangerFilled: { backgroundColor: c.danger, borderColor: c.danger },
+    dangerFilledPressed: { backgroundColor: c.danger, opacity: 0.88 },
     disabled: { opacity: 0.4 },
   });

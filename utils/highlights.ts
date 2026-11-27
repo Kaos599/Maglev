@@ -1,6 +1,4 @@
-/**
- * When the new-feature highlight shows (docs/NATIVE_CONTRACT.md section 37.2). Pure: no React Native imports.
- */
+/** When the new-feature highlight shows. Pure: no React Native imports. */
 import { HIGHLIGHTS, type Highlight } from '../constants/highlights.ts';
 
 /** "0.28" or "0.28.0" as [major, minor], or null when it isn't a version. */
@@ -43,7 +41,7 @@ export function highlightPlan(
   return { show: null, advanceSilently: true };
 }
 
-/** The entry to show now, or null (37.2). */
+/** The entry to show now, or null. */
 export function highlightToShow(
   installed: string,
   lastSeen: string | null | undefined,

@@ -32,7 +32,7 @@ import { START_ENGINE_LABEL, engineStoppedBody, isEngineStopped } from '../utils
 type Phase = 'input' | 'validating' | 'invalid' | 'resolving' | 'timeout' | 'error' | 'duplicate' | 'preview' | 'adding' | 'added';
 
 const RESOLVE_TIMEOUT_MS = 60_000;
-const INVALID_TEXT = "That isn't a magnet link, torrent file or web link.";
+const INVALID_TEXT = "That isn't a link, magnet link or torrent file.";
 /** Android hands VIEW intents over as file:// or content:// URIs; Kotlin reads both. */
 const LOCAL_SOURCE = /^(file|content):\/\//i;
 /** The same file with its scheme stripped on the way in: an absolute path ending in .torrent. */
@@ -648,20 +648,20 @@ export default function AddTorrentScreen() {
   // ---------- Input (and Invalid, Added) ----------
   const canSubmit = text.trim().length > 0 && phase !== 'added';
   return (
-    <Screen title="Add a link or torrent" onBack={close} scroll contentStyle={styles.inputContent}>
+    <Screen title="Add a link" onBack={close} scroll contentStyle={styles.inputContent}>
       <TextField
-        label="Link, magnet or .torrent"
+        label="Link"
         value={text}
         onChangeText={onChangeText}
-        placeholder="Paste a link or magnet"
+        placeholder="Paste a link"
         mono
         multiline
         minLines={3}
         returnKeyType="go"
         onSubmitEditing={() => canSubmit && submit(text)}
-        help="Magnet link, .torrent link or info hash"
+        help="A video, web page, file, magnet or .torrent link"
         error={phase === 'invalid' && message ? message : undefined}
-        accessibilityLabel="Link, magnet or .torrent"
+        accessibilityLabel="Link"
       />
 
       <View style={styles.actions}>

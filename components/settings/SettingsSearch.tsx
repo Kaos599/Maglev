@@ -1,6 +1,6 @@
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Keyboard, StyleSheet, Text } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useRootNavigationState, useRouter } from 'expo-router';
 import { useTheme } from '../../context/ThemeContext';
 import { ThemeColors, spacing, type } from '../../constants/theme';
 import { ListRow, TextField } from '../ui';
@@ -45,13 +45,27 @@ export function SettingsSearchResults({ query }: { query: string }) {
 
 function ResultRow({ entry }: { entry: SettingEntry }) {
   const router = useRouter();
+  // On a cold start a tap can land before the root layout has mounted; pushing then throws. Wait for it.
+  const ready = Boolean(useRootNavigationState()?.key);
+  const [pending, setPending] = useState(false);
   const subtitle = entry.section ? `${entry.pageTitle} · ${entry.section}` : entry.pageTitle;
-  const onPress = () => {
+  const open = () => {
     Keyboard.dismiss();
     router.push({
       pathname: `/settings/${entry.page}` as never,
       params: { focus: entry.id },
     });
+  };
+  useEffect(() => {
+    if (pending && ready) {
+      setPending(false);
+      open();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pending, ready]);
+  const onPress = () => {
+    if (ready) open();
+    else setPending(true);
   };
   return <ListRow title={entry.title} subtitle={subtitle} onPress={onPress} />;
 }

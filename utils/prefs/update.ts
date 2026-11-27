@@ -22,13 +22,17 @@ export interface UpdatePrefs {
   notifiedVersion: string | null;
   /** "Show new features after updates" (section 37), on by default. UI only. */
   showHighlights: boolean;
+  /** "Keep video sites working": a daily background yt-dlp update. On by default. */
+  videoSitesAuto: boolean;
+  /** "Update on mobile data": lets that update use a metered network. Off by default. */
+  videoSitesMobile: boolean;
 }
 
 const UPDATE_MODES: readonly UpdateMode[] = ['ask', 'download', 'auto'];
 const KEY = 'maglev.update.prefs.v1';
 
 export function defaultUpdatePrefs(): UpdatePrefs {
-  return { updateMode: 'download', updateAutoCheck: true, lastCheckAt: null, skippedVersion: null, pending: null, available: null, notifiedVersion: null, showHighlights: true };
+  return { updateMode: 'download', updateAutoCheck: true, lastCheckAt: null, skippedVersion: null, pending: null, available: null, notifiedVersion: null, showHighlights: true, videoSitesAuto: true, videoSitesMobile: false };
 }
 
 function normalizeInfo(raw: unknown): UpdateInfo | null {
@@ -67,6 +71,8 @@ export function normalizeUpdatePrefs(raw: unknown): UpdatePrefs {
     available: normalizeInfo(o.available),
     notifiedVersion: typeof o.notifiedVersion === 'string' && o.notifiedVersion !== '' ? o.notifiedVersion : null,
     showHighlights: o.showHighlights !== false,
+    videoSitesAuto: o.videoSitesAuto !== false,
+    videoSitesMobile: o.videoSitesMobile === true,
   };
 }
 

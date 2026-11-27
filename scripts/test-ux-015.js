@@ -18,13 +18,13 @@ const emptyState = read('components/transfers/TeachingEmptyState.tsx');
 const copy = read('constants/copy.ts');
 const index = read('app/(tabs)/index.tsx');
 check('empty title is "Nothing downloading"', /title: 'Nothing downloading'/.test(copy));
-check('empty body names a link, a .torrent file and finding something', /Add a link or a \.torrent file, or find something\./.test(copy));
+check('empty body names a link, a .torrent file and finding something', /Paste a link to a video, file, magnet or torrent, or find something\./.test(copy));
 check('empty state has a primary "Add a link" button', /label="Add a link"[^>]*icon="link"|icon="link"[^>]*label="Add a link"/.test(emptyState) && /fullWidth/.test(emptyState));
 check('empty state has "Open a .torrent file"', /label="Open a \.torrent file"/.test(emptyState));
 check('empty state has no "Paste link" or "Copy a link first"', !/Paste link|Copy a link first/.test(emptyState + index.slice(index.indexOf('<TeachingEmptyState'), index.indexOf('<TeachingEmptyState') + 400)));
 // A fragment, so it lives in the component: copy.ts strings must be full sentences (test-copy-voice.js).
 check('empty state divider says "or find something"', />or find something</.test(emptyState.replace(/\s+/g, ' ').replace(/> or/, '>or').replace(/something </, 'something<')));
-check('empty state has Search and Browser tiles', /title="Search"/.test(emptyState) && /title="Browser"/.test(emptyState) && /Save videos from pages/.test(emptyState) && /at once/.test(emptyState));
+check('empty state has Search and Browser tiles', /title="Search"/.test(emptyState) && /title="Browser"/.test(emptyState) && /Find videos on a page/.test(emptyState) && /at once/.test(emptyState));
 check('Search tile counts enabled sources', /searchSources=\{searchPrefs\.enabled\.length\}/.test(index));
 check('empty state centres tile content', /finder: \{[^}]*alignItems: 'center'/.test(emptyState) && /textAlign: 'center'/.test(emptyState));
 check('empty state uses no raw hex', !/#[0-9a-fA-F]{3,8}\b/.test(emptyState));

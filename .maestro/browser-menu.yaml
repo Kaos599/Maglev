@@ -1,0 +1,59 @@
+# The ⋮ page menu and the Site settings sheet.
+# Test page: https://test-videos.co.uk/bigbuckbunny/mp4-h264 (no pop-ups expected, only the controls are checked).
+appId: com.maglev
+name: browser-menu
+---
+- runFlow: subflows/onboard-if-needed.yaml
+- openLink: "maglev://browser?url=https%3A%2F%2Ftest-videos.co.uk%2Fbigbuckbunny%2Fmp4-h264"
+- extendedWaitUntil:
+    visible: "Address"
+    timeout: 30000
+# maglev://browser?url= only prefills the address bar, so submit it.
+- tapOn: "Address"
+- pressKey: Enter
+- extendedWaitUntil:
+    visible: ".*test-videos\\.co\\.uk.*"
+    timeout: 60000
+# The menu: five icons (Back, Bookmark, Reload, Share, Forward) and six rows, all on screen without scrolling.
+- tapOn: "More"
+- assertNotVisible: "This page" # the menu has no title (Sheet hideTitle)
+- assertVisible: "Back" # icon row: pageMenuCopy in constants/copy.ts
+- assertVisible: "Forward"
+- assertVisible: "Reload"
+- assertVisible: "Bookmark"
+- assertVisible: "Share"
+- assertVisible: "Find in page"
+- assertVisible: "Desktop site"
+- assertVisible: "Site settings"
+- assertVisible: "Bookmarks"
+- assertVisible: "History"
+- assertVisible: "Browser settings"
+# The rows that moved into Site settings or Settings are gone from the menu.
+- assertNotVisible: "Copy page link"
+- assertNotVisible: "Text size"
+- assertNotVisible: "Clear this site's data"
+# Site settings: Pop-ups, Block.
+- tapOn: "Site settings"
+- extendedWaitUntil:
+    visible: "Pop-ups and redirects"
+    timeout: 15000
+- assertVisible: "Clear data for this site"
+- tapOn: "Block" # RadioCard title in components/browser/SiteSettingsSheet.tsx
+- assertVisible: "Pop-ups from this site never open."
+# Close, then the menu row summary says Block.
+- pressKey: Back
+- tapOn: "More"
+- assertVisible: ".*Pop-ups: Block.*"
+- pressKey: Back
+# Put it back to Ask so the next run starts from the default.
+- tapOn: "More"
+- tapOn: "Site settings"
+- tapOn: "Ask"
+- pressKey: Back
+# The padlock at the start of the idle address bar opens the same sheet.
+- tapOn: "Site settings, Secure connection" # padlock accessibilityLabel (app/browser.tsx)
+- extendedWaitUntil:
+    visible: "Pop-ups and redirects"
+    timeout: 15000
+- assertVisible: "Secure connection"
+- pressKey: Back

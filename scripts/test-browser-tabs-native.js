@@ -117,9 +117,9 @@ for (const e of ['onNewWindow', 'onPopupRequest', 'onPopupBlocked', 'onLongPress
   check(`${e} in Events(...)`, !!events && events[1].includes(`"${e}"`));
   check(`${e} has an EventDispatcher`, new RegExp(`private val ${e} by EventDispatcher`).test(view));
 }
-for (const p of ['active', 'popupPolicy', 'popupAllowHosts']) check(`Prop ${p}`, new RegExp(`Prop\\("${p}"\\)`).test(mod));
+for (const p of ['active', 'popupPolicy', 'popupAllowHosts', 'popupBlockHosts']) check(`Prop ${p}`, new RegExp(`Prop\\("${p}"\\)`).test(mod));
 for (const c of ['followRedirect', 'openApp']) check(`AsyncFunction ${c}`, new RegExp(`AsyncFunction\\("${c}"\\)\\s*\\{\\s*view:`).test(mod));
-check('popupAllowHosts matched by suffix', /h == it \|\| h\.endsWith\("\.\$it"\)/.test(view) && /popupAllowHosts\.any/.test(view));
+check('popupAllowHosts and popupBlockHosts matched by suffix (PopupRules.hostListed)', /h\.endsWith\(".\$n"\)/.test(host) && /hostListed\(host, popupAllowHosts\)/.test(view) && /hostListed\(host, popupBlockHosts\)/.test(view));
 
 if (failed) { console.error(`\n${failed} check(s) failed`); process.exit(1); }
 console.log('\nall browser tabs native checks passed');

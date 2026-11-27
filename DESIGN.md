@@ -4,7 +4,7 @@ This guide is for people designing or building a new screen in Maglev. It descri
 
 Read [CONTRIBUTING.md](CONTRIBUTING.md) first for the process. Open an issue before building a new screen.
 
-Maglev is an Android app that downloads videos from web pages, ordinary links and torrents. It is meant to feel minimal, quick and a little playful, with a retro touch that stays readable for anyone.
+Maglev is an Android app that downloads almost any link: video pages, files, magnets and torrents. It is meant to feel minimal, quick and a little playful, with a retro touch that stays readable for anyone.
 
 ## Principles
 
@@ -201,7 +201,7 @@ Import primitives from `components/ui`. Each one reads the theme, meets the 44 d
 
 | Component | Use it for | Don't use it for | Key props |
 |---|---|---|---|
-| `Button` | A text action. `primary` is the one main action per screen, then `secondary`, `ghost`, `danger`. | An icon-only action. Two primaries on one screen. | `label`, `onPress`, `variant`, `size` (`md`, `lg`), `icon`, `loading`, `disabled`, `fullWidth` |
+| `Button` | A text action. `primary` is the one main action per screen, then `secondary`, `ghost`, `danger`. | An icon-only action. Two primaries on one screen. | `label`, `onPress`, `variant`, `size` (`md`, `lg`), `icon`, `loading`, `disabled`, `fullWidth`, `stacked` (icon above a smaller label, for two or three equal buttons in one row) |
 | `LoadingDots` | The loading mark: three small square dots, the one `Button` shows with `loading`. Use it for work in flight inside a row or sheet. Never `ActivityIndicator`. | A progress amount (use `ProgressBar`). | `color` |
 | `IconButton` | A bare icon action in a header or row. The icon itself turns accent on press. | A text action. A button with a filled box. | `icon`, `accessibilityLabel` (required), `onPress`, `size`, `selected`, `badge`, `dot` |
 | `ListRow` | A settings or menu row: title, optional subtitle, trailing value and chevron, or an accessory such as `Toggle`. | A transfer (use the transfer card). | `title`, `subtitle`, `icon`, `value`, `accessory`, `onPress`, `destructive`, `selected`, `disabled` |
@@ -209,9 +209,11 @@ Import primitives from `components/ui`. Each one reads the theme, meets the 44 d
 | `SegmentedControl` | Pick one of 2 to 5 short options. | More than 5 options (use a `Sheet`). | `options`, `value`, `onChange`, `accessibilityLabel` |
 | `Chip` | A filter or a pill in a group. | A button with an action. | `label`, `selected`, `onPress`, `count`, `role` (`button` or `radio`) |
 | `Banner` | A status that stays in the page, with at most one action. | A message that should vanish (use a notice). | `tone` (`info`, `warning`, `danger`, `success`, `neutral`), `title`, `body`, `actionLabel`, `onAction`, `onDismiss` |
-| `Sheet` | A bottom sheet for a picker, a form or a destructive choice. Drag down to close. | A short message with one button (use `Dialog`). | `visible`, `onClose`, `title`, `subtitle`, `children`, `returnFocusRef` |
+| `Sheet` | A bottom sheet for a picker, a form or a destructive choice. Drag down to close. | A short message with one button (use `Dialog`). | `visible`, `onClose`, `title`, `subtitle`, `children`, `returnFocusRef`, `scroll` |
+| `IconActionRow` | The 3 to 5 most-used actions at the top of a ⋮ menu: an icon with a one-line label under it. `destructive` paints one in the danger colour; Delete may sit here because it always confirms. | More than 5 actions, or an action that needs a subtitle (use a `ListRow`). | `actions` (`key`, `icon`, `label`, `onPress`, `disabled`, `active`, `destructive`) |
 | `Dialog` | A short centred message above the app that goes away. | A form or a long list. | `visible`, `onClose`, `title`, `icon`, `children`, `actions` |
-| `SectionHeader` | The label above a group of rows, with an optional action. | A screen title (use `Screen`). | `title`, `actionLabel`, `onAction` |
+| `SectionHeader` | The label above a group of rows, with an optional action or trailing tag. | A screen title (use `Screen`). | `title`, `actionLabel`, `onAction`, `trailing` |
+| `ExperimentalTag` | A small pill that marks a feature as experimental (Assistant, video links). | Status or counts; use `Chip`. | none |
 | `EmptyBlock` | An empty or error state: icon, title, one line, at most one primary action. | A loading state. | `icon`, `title`, `body`, `primary`, `secondary`, `error` |
 | `ProgressBar` | Progress of a transfer. | A percentage readout on its own. | `progress` (0 to 1), `tone` (`download`, `seed`, `paused`, `error`), `indeterminate`, `resetKey` |
 | `Screen` | The safe-area container with an optional header, back button and actions. | Nested inside another `Screen`. | `title`, `onBack`, `actions`, `scroll`, `edges`, `contentStyle` |
@@ -262,7 +264,7 @@ Do: put the reason a transfer is not moving in the phrase ("Waiting for Wi-Fi").
 
 Notices are raised through the engine context (`showNotice`) and drawn by the one `NoticeHost`, so every screen and sheet shares one place and one look. Their text lives in `constants/copy.ts` under `notices`. A notice with an action (Undo, Retry, Open settings) stays until it times out; a plain one has a dismiss button. Do not build a second toast.
 
-Sheets close by dragging down, the backdrop, back, or their own buttons. Give a sheet a `title`, and pass `returnFocusRef` so a screen reader returns to the control that opened it. Keep one primary button in it.
+A sheet scrolls when its content is taller than the screen allows, and shows its scrollbar on Android. A sheet that puts its own `ScrollView` or `FlatList` inside passes `scroll={false}`, so one vertical scroller is never nested in another. Sheets close by dragging down, the backdrop, back, or their own buttons. Give a sheet a `title`, and pass `returnFocusRef` so a screen reader returns to the control that opened it. Keep one primary button in it.
 
 ### Empty and error states
 
@@ -320,7 +322,7 @@ All strings for notices, banners and empty states live in `constants/copy.ts`. `
 | Empty states: title up to 5 words, no period; one line saying how to fill it | "Nothing downloading" / "Add a link or a .torrent file, or find something." | "Oops! No downloads yet" |
 | Errors name the cause and offer an action | "Couldn't reach the list. Check your connection." | "Error: ECONNRESET" |
 
-One word per thing. A *transfer* is any item in the Transfers list. A *torrent* comes from a magnet link or a .torrent file. A *download* comes from a web link. Say *magnet link*, never "magnet URL"; *folder*, never "directory" or "path"; *source*, never "provider" or "indexer". The `glossary` in `constants/copy.ts` holds the patterns the test rejects.
+One word per thing. A *transfer* is any item in the Transfers list. A *torrent* comes from a magnet link or a .torrent file. A *download* comes from a link to a video or a file. Say *magnet link*, never "magnet URL"; *folder*, never "directory" or "path"; *source*, never "provider" or "indexer". The `glossary` in `constants/copy.ts` holds the patterns the test rejects.
 
 Words to avoid on screen: pipeline jargon, "Save configuration" buttons (settings save as they change), marketing claims, and raw hashes. Write labels as the words a person would say aloud.
 

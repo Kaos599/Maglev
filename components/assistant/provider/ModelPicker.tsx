@@ -97,7 +97,7 @@ export function ModelPicker({
         accessibilityHint="Opens the list of models"
         testID="assistant-model-picker"
       />
-      <Sheet visible={open} onClose={() => setOpen(false)} title="Choose a model" subtitle="Free models may be slower and have daily limits.">
+      <Sheet visible={open} onClose={() => setOpen(false)} title="Choose a model" subtitle="Free models may be slower and have daily limits." scroll={false}>
         <View style={s.sheetBody}>
           <Field label="Search" value={query} onChangeText={setQuery} placeholder="Name or provider/name" testID="assistant-model-search" />
           <SegmentedControl
@@ -135,6 +135,6 @@ export function ModelPicker({
 const makeStyles = (c: ThemeColors) =>
   StyleSheet.create({
     wrap: { gap: spacing.sm },
-    sheetBody: { gap: spacing.md },
+    sheetBody: { gap: spacing.md, flexShrink: 1 },
     empty: { ...type.body, fontSize: type.size.md, color: c.textMuted, paddingVertical: spacing.lg },
   });

@@ -27,6 +27,7 @@ import { PiecesMatrix } from '../../components/PiecesMatrix';
 import { StateBadge } from '../../components/detail/StateBadge';
 import { TorrentStats } from '../../components/detail/TorrentStats';
 import { CompactLine } from '../../components/detail/CompactLine';
+import { TimeRows } from '../../components/detail/TimeRows';
 import { ProgressCard } from '../../components/detail/ProgressCard';
 import { useSettings } from '../../context/SettingsContext';
 import { PeerRow, TrackerRow } from '../../components/detail/rows';
@@ -52,7 +53,9 @@ import { reasonsForItem } from '../../utils/blocks/reasons';
 import { WhyHeld } from '../../components/transfers/WhyHeld';
 import { useLiveBlockContext } from '../../utils/blocks/useActiveBlocks';
 import { WIFI_ANYWAY_NOTE, torrentResolvingWhy, torrentWhy } from '../../utils/downloadCopy';
-import { TorrentMoreSheet } from '../../components/detail/TorrentMoreSheet';
+import { FixProblemsSheet, TorrentMoreSheet } from '../../components/detail/TorrentMoreSheet';
+import { afterSheetCloses } from '../../components/browser/FloatingSheet';
+import { dismissClip } from '../../utils/prefs/clipboard';
 import { SpeedLimitSheet } from '../../components/detail/SpeedLimitSheet';
 import { MoveSheet } from '../../components/detail/MoveSheet';
 import { useTorrentDetail } from '../../components/detail/useTorrentDetail';
@@ -117,6 +120,7 @@ export default function TorrentDetailScreen() {
   const { detail, pieces, status, error, tick, retry } = useTorrentDetail(id, tab === 'pieces');
 
   const [moreOpen, setMoreOpen] = useState(false);
+  const [fixOpen, setFixOpen] = useState(false);
   const [speedOpen, setSpeedOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleteBusy, setDeleteBusy] = useState(false);
@@ -448,6 +452,7 @@ export default function TorrentDetailScreen() {
 
   const handleReannounce = useCallback(async () => {
     setMoreOpen(false);
+    setFixOpen(false);
     if (!id) return;
     const res = await maglevEngine.reannounce(id);
     if (res.ok) {
@@ -465,7 +470,9 @@ export default function TorrentDetailScreen() {
     setMoreOpen(false);
     if (!id || !snap) return;
     try {
-      await Clipboard.setStringAsync(buildMagnet(id, snap.name, trackers.map((t) => t.url)));
+      const link = buildMagnet(id, snap.name, trackers.map((t) => t.url));
+      dismissClip(link);
+      await Clipboard.setStringAsync(link);
       haptic('done');
       showNotice({ tone: 'info', text: notices.detail.magnetCopied });
     } catch {
@@ -543,6 +550,7 @@ export default function TorrentDetailScreen() {
 
   const handleRecheck = useCallback(async () => {
     setMoreOpen(false);
+    setFixOpen(false);
     if (!id) return;
     const res = await maglevEngine.recheck(id);
     showNotice(res.ok ? { tone: 'info', text: notices.detail.checking } : { tone: 'danger', text: res.message });
@@ -962,6 +970,12 @@ export default function TorrentDetailScreen() {
         </View>
       ) : null}
 
+      {(snap.addedAt ?? 0) > 0 || (snap.finishedAt ?? 0) > 0 ? (
+        <View style={styles.block}>
+          <TimeRows addedAt={snap.addedAt} finishedAt={snap.finishedAt} />
+        </View>
+      ) : null}
+
       <View style={styles.block}>
         <PressableScale
           onPress={() => setSpeedOpen((v) => !v)}
@@ -1139,41 +1153,47 @@ export default function TorrentDetailScreen() {
         visible={moreOpen}
         onClose={() => setMoreOpen(false)}
         state={snap.state}
-        pausedBy={snap.pausedBy}
-        heldByFiles={heldByFiles}
-        retryInSecs={retryInSecs}
-        onTogglePause={() => {
-          setMoreOpen(false);
-          void handlePlayPause();
-        }}
-        onRecheck={handleRecheck}
-        onReannounce={handleReannounce}
         onCopyMagnet={handleCopyMagnet}
         onShareMagnet={handleShareMagnet}
         onSaveTorrent={handleSaveTorrent}
+        onFixProblems={() => {
+          setMoreOpen(false);
+          afterSheetCloses(() => setFixOpen(true));
+        }}
         subtitles={torrentSubtitles.mode}
         onFindSubtitles={() => {
           setMoreOpen(false);
-          if (torrentSubtitles.file) setSubtitleTarget(torrentTarget(id, snap.outputFolder, torrentSubtitles.file, downloadedFiles));
+          if (torrentSubtitles.file) {
+            const target = torrentTarget(id, snap.outputFolder, torrentSubtitles.file, downloadedFiles);
+            afterSheetCloses(() => setSubtitleTarget(target));
+          }
         }}
-        storageGone={storageGone}
         limitSummary={limitSummary}
         onSpeedLimit={() => {
           setMoreOpen(false);
-          setLimitOpen(true);
+          afterSheetCloses(() => setLimitOpen(true));
         }}
         onMove={() => {
           setMoreOpen(false);
           setMoveError(null);
-          setMoveOpen(true);
+          afterSheetCloses(() => setMoveOpen(true));
         }}
         onOpenFolder={handleOpenFolder}
         onDelete={() => {
           setMoreOpen(false);
           setDeleteError(null);
           haptic('warn');
-          setDeleteOpen(true);
+          afterSheetCloses(() => setDeleteOpen(true));
         }}
+      />
+      <FixProblemsSheet
+        visible={fixOpen}
+        onClose={() => setFixOpen(false)}
+        state={snap.state}
+        retryInSecs={retryInSecs}
+        storageGone={storageGone}
+        onRecheck={handleRecheck}
+        onReannounce={handleReannounce}
       />
       <DeleteSheet
         visible={deleteOpen}

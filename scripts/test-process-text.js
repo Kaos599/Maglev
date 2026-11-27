@@ -29,7 +29,8 @@ const read = (p) => fs.readFileSync(path.join(root, p), 'utf8');
   assert.strictEqual(again['intent-filter'].length, quick['intent-filter'].length, 'idempotent');
 
   const kt = read('modules/maglev-engine/android/src/main/java/com/maglev/engine/share/QuickShareActivity.kt');
-  assert(/Intent\.ACTION_PROCESS_TEXT\s*->\s*i\.getCharSequenceExtra\(Intent\.EXTRA_PROCESS_TEXT\)/.test(kt), 'reads EXTRA_PROCESS_TEXT');
+  // #162: text extras go through text(key), which reads getCharSequenceExtra (styled selections keep their text).
+  assert(/Intent\.ACTION_PROCESS_TEXT\s*->\s*return listOf\(text\(Intent\.EXTRA_PROCESS_TEXT\)\)/.test(kt) && /fun text\(key: String\) = try \{ i\.getCharSequenceExtra\(key\)/.test(kt), 'reads EXTRA_PROCESS_TEXT');
   assert(!/setResult|EXTRA_PROCESS_TEXT_READONLY/.test(kt), 'never returns text');
   assert(/original\.action == Intent\.ACTION_PROCESS_TEXT && link != null/.test(kt), 'Open in Maglev hands over the found link');
 

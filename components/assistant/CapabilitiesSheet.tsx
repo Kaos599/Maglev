@@ -28,7 +28,7 @@ export function CapabilitiesSheet({ visible, onClose, modelName, providerName }:
   const facts = useMemo(() => capabilitiesFacts({ modelName, providerName }), [modelName, providerName]);
 
   return (
-    <Sheet visible={visible} onClose={onClose} title={CAPABILITIES_TITLE}>
+    <Sheet visible={visible} onClose={onClose} title={CAPABILITIES_TITLE} scroll={false}>
       <ScrollView style={styles.scroll} contentContainerStyle={styles.body}>
         <Text style={styles.label}>It can</Text>
         {CAN_DO.map((t) => (

@@ -24,7 +24,7 @@ check('the overlay lets touches through to the page', /styles\.overlay\} pointer
 check('the overlay sits inside the body, above the web view', scr.indexOf('<TabWebView') < scr.indexOf('styles.overlay}') && scr.indexOf('styles.overlay}') < scr.indexOf('<FoundTray'));
 check('Files label and accessibility label are unchanged', /label=\{`Files · \$\{found\.length\}`\}/.test(scr) && /accessibilityLabel=\{`Files, \$\{found\.length\} found`\}/.test(scr));
 check('the blocked count is not an overlay pill', !/blockedPill/.test(scr));
-check('the blocked count shows in the This page menu, on the ads row', /subtitle=\{allowedHere \? [^}]*blocked > 0 \? `\$\{blocked\} blocked on this page`/.test(scr));
+check('the blocked count shows in Site settings (ads toggle subtitle) and in the menu summary', /adsBlockedCount > 0 \? c\.blockedOnPage\(adsBlockedCount\)/.test(read('components/browser/SiteSettingsSheet.tsx')) && /blockedHereTotal > 0 \? pageMenuCopy\.blockedHere\(blockedHereTotal\)/.test(scr));
 check('the downloading chip keeps its accessibility label', /foundTray\.downloadingLabel\(activeLabel\(active\)\)/.test(scr));
 const pills = ['overlay', 'activeChip'].map((k) => styleBlock(scr, k)).join('');
 check('the pills have a card background and a hairline border', /backgroundColor: c\.surface/.test(styleBlock(scr, 'activeChip')) && /borderWidth: 1/.test(pills));

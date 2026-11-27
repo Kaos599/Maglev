@@ -1,0 +1,123 @@
+{
+ "title": "Lis Power - Holy shit, Shep is on a roll today.   In just 2 minutes Shep dismantl...",
+ "thumbnail": "https://example.invalid/thumb.jpg",
+ "duration": 111.278,
+ "extractor_key": "Twitter",
+ "webpage_url": "https://x.com/LisPower1/status/1001551623938805763",
+ "formats": [
+  {
+   "format_id": "hls-audio-32000-Audio",
+   "protocol": "m3u8_native",
+   "ext": "mp4",
+   "height": null,
+   "width": null,
+   "vcodec": "none",
+   "acodec": null,
+   "filesize": null,
+   "filesize_approx": null,
+   "tbr": 32,
+   "http_headers": {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "en-us,en;q=0.5",
+    "Sec-Fetch-Mode": "navigate"
+   },
+   "url": "https://example.invalid/hls-audio-32000-Audio"
+  },
+  {
+   "format_id": "hls-audio-64000-Audio",
+   "protocol": "m3u8_native",
+   "ext": "mp4",
+   "height": null,
+   "width": null,
+   "vcodec": "none",
+   "acodec": null,
+   "filesize": null,
+   "filesize_approx": null,
+   "tbr": 64,
+   "http_headers": {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "en-us,en;q=0.5",
+    "Sec-Fetch-Mode": "navigate"
+   },
+   "url": "https://example.invalid/hls-audio-64000-Audio"
+  },
+  {
+   "format_id": "http-256",
+   "protocol": "https",
+   "ext": "mp4",
+   "height": 180,
+   "width": 240,
+   "vcodec": null,
+   "acodec": null,
+   "filesize": null,
+   "filesize_approx": 3560896,
+   "tbr": 256,
+   "http_headers": {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "en-us,en;q=0.5",
+    "Sec-Fetch-Mode": "navigate"
+   },
+   "url": "https://example.invalid/http-256"
+  },
+  {
+   "format_id": "hls-126",
+   "protocol": "m3u8_native",
+   "ext": "mp4",
+   "height": 180,
+   "width": 240,
+   "vcodec": "avc1.42C00C",
+   "acodec": "none",
+   "filesize": null,
+   "filesize_approx": null,
+   "tbr": 126.337,
+   "http_headers": {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "en-us,en;q=0.5",
+    "Sec-Fetch-Mode": "navigate"
+   },
+   "url": "https://example.invalid/hls-126"
+  },
+  {
+   "format_id": "http-832",
+   "protocol": "https",
+   "ext": "mp4",
+   "height": 360,
+   "width": 480,
+   "vcodec": null,
+   "acodec": null,
+   "filesize": null,
+   "filesize_approx": 11572912,
+   "tbr": 832,
+   "http_headers": {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "en-us,en;q=0.5",
+    "Sec-Fetch-Mode": "navigate"
+   },
+   "url": "https://example.invalid/http-832"
+  },
+  {
+   "format_id": "hls-348",
+   "protocol": "m3u8_native",
+   "ext": "mp4",
+   "height": 360,
+   "width": 480,
+   "vcodec": "avc1.42C01E",
+   "acodec": "none",
+   "filesize": null,
+   "filesize_approx": null,
+   "tbr": 348.214,
+   "http_headers": {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "en-us,en;q=0.5",
+    "Sec-Fetch-Mode": "navigate"
+   },
+   "url": "https://example.invalid/hls-348"
+  }
+ ]
+}

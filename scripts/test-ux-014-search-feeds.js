@@ -45,7 +45,7 @@ check('row label says sharing, not seeds', !/seeds/.test(row.replace(/\/\*[\s\S]
 check('preview sheet exists', exists('components/search/ResultPreviewSheet.tsx'));
 if (exists('components/search/ResultPreviewSheet.tsx')) {
   const p = read('components/search/ResultPreviewSheet.tsx');
-  check('preview has Add and Open in browser', /Add/.test(p) && /Open in browser/.test(p));
+  check('preview has Add and Open page', /Add/.test(p) && /Open page/.test(p));
 }
 check('search wires the preview', /ResultPreviewSheet/.test(search));
 check('added feedback names Transfers with a View action', /Added to Transfers/.test(read('utils/addedTray.ts')) && /useAddedTray\(/.test(search) && />View</.test(read('components/search/AddedTray.tsx')));

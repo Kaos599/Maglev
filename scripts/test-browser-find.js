@@ -35,7 +35,7 @@ const tab = read('components/browser/TabWebView.tsx');
 const bar = read('components/browser/FindBar.tsx');
 const sheet = read('components/browser/TextSizeSheet.tsx');
 const scr = read('app/browser.tsx');
-const set = read('app/settings/browser.tsx');
+const set = read('app/settings/browser-general.tsx');
 const copy = read('constants/copy.ts');
 const pkg = read('package.json');
 
@@ -67,7 +67,7 @@ async function main() {
   check('every live tab view gets textZoom and a tab-id onFindResult', /textZoom=\{textZoom\}/.test(tab) && /onFindResult=\{\(e\) => h\.onFindResult\(id, e\)\}/.test(tab) && /textZoom=\{prefs\.browserTextZoom\}/.test(scr));
 
   console.log('find bar');
-  check('the bar replaces the address row while find is open', /\{findOpen \? \(\s*<FindBar[\s\S]*?\) : \(\s*<View style=\{styles\.bar\}>/.test(scr));
+  check('the bar replaces the address row while find is open', /\{findOpen \? \(\s*<FindBar[\s\S]*?\) : \(\s*<AddressSwipe/.test(scr));
   check('the input autofocuses', /autoFocus/.test(bar));
   check('typing is debounced 150 ms', /FIND_DEBOUNCE_MS = 150/.test(bar) && /setTimeout\([\s\S]{0,120}FIND_DEBOUNCE_MS\)/.test(bar));
   check('Enter means next', /onSubmitEditing/.test(bar) && /step\(true\)/.test(bar));
@@ -79,7 +79,7 @@ async function main() {
   check('Back closes find before the switcher', /if \(findOpen\) \{\s*closeFind\(\);\s*return true;\s*\}\s*if \(switcherOpen\)/.test(scr));
   check('switching tabs closes find', /findTab\.current !== activeId\) closeFind\(\)/.test(scr));
   check('a new document closes find', /newDocument && id === findTab\.current\) closeFind\(\)/.test(scr));
-  check('the menu has Find in page and Text size rows', /findCopy\.menuRow/.test(scr) && /textSizeCopy\.menuRow/.test(scr));
+  check('the menu has a Find in page row (Text size lives in Settings, Browser, General)', /findCopy\.menuRow/.test(scr));
   check('copy: find and text size strings', /export const findCopy/.test(copy) && /'Find in page'/.test(copy) && /'No matches'/.test(copy) && /`Match \$\{n\} of \$\{total\}`/.test(copy) && /'Previous match'/.test(copy) && /'Next match'/.test(copy) && /'Close find'/.test(copy) && /export const textSizeCopy/.test(copy));
 
   console.log('text size');
@@ -93,7 +93,6 @@ async function main() {
   check('the prefs parse keeps and normalizes browserTextZoom', P.normalizeBrowserPrefs({ browserTextZoom: 130 }).browserTextZoom === 130 && P.normalizeBrowserPrefs({ browserTextZoom: 4000 }).browserTextZoom === 200);
   check('Settings has the chip row 80 90 100 115 130 150 175 200', /\[80, 90, 100, 115, 130, 150, 175, 200\]/.test(set) && /<ChipGroup label=\{textSizeCopy\.settingsLabel\}/.test(set) && /browserTextZoom/.test(set));
   check('the sheet steps by 10 between 50 and 200 with Reset', /TEXT_ZOOM_STEP/.test(sheet) && P.TEXT_ZOOM_STEP === 10 && P.TEXT_ZOOM_MIN === 50 && P.TEXT_ZOOM_MAX === 200 && /textSizeCopy\.reset/.test(sheet) && /FloatingSheet/.test(sheet));
-  check('the sheet changes the global pref', /updateBrowserPrefs\(\{ browserTextZoom \}\)/.test(scr));
 
   console.log('wiring');
   check('chained in npm test after test-browser-tabs-ui.js', /test-browser-tabs-ui\.js && node scripts\/test-browser-find\.js/.test(pkg));

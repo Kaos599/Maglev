@@ -10,6 +10,7 @@ import android.graphics.Color
 import android.net.Uri
 import android.net.http.SslError
 import android.os.Build
+import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.os.Message
@@ -80,6 +81,8 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
     private val onLongPress by EventDispatcher<Map<String, Any?>>()
     private val onMediaHit by EventDispatcher<Map<String, Any?>>()
     private val onFindResult by EventDispatcher<Map<String, Any?>>()
+    // Reload start / end.
+    private val onReloadState by EventDispatcher<Map<String, Any?>>()
 
     override val shouldUseAndroidLayout: Boolean = true
 
@@ -104,8 +107,16 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
     private var desktopMode = false
     // 28: text size in percent, 50..200. Applied again to every WebView this view creates.
     private var textZoom = 100
+    // Third-party cookies are blocked unless the user turns "Block cookies from other sites" off.
+    // Declared before init, which builds the first WebView and reads it.
+    private var blockThirdPartyCookies = true
+    // "Try https first". Off: http:// addresses load as they are, with no https try.
+    private var httpsFirst = true
     // Private browsing: the page cache is bypassed (LOAD_NO_CACHE). Cookies are wiped from JS when the browser is left.
     private var privateMode = false
+    // Hosts whose https try failed in this view while private. Never shared with normal tabs; forgotten when private mode changes or the view is destroyed.
+    private val privateFallbackHosts: MutableSet<String> =
+        java.util.Collections.newSetFromMap(java.util.concurrent.ConcurrentHashMap<String, Boolean>())
     private var pendingUrl: String? = null
     private var requestedUrl: String? = null
 
@@ -113,6 +124,8 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
     private var active = true
     private var popupPolicy = "ask"
     private var popupAllowHosts: List<String> = emptyList()
+    // Sites whose untapped pop-ups, redirects and app hand-offs are always refused. Main thread only.
+    private var popupBlockHosts: List<String> = emptyList()
     // The current document has finished loading at least once. Redirects during its first load are part of the page.
     private var loadedOnce = false
     // Section 30: a view mounted hidden finishes its first load before it is paused (a paused WebView may not load).
@@ -134,10 +147,24 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
     private var pendingUserNav = false
     private var entryTapUses = 0
     private var dlTapUses = 0
-    // 24.11 HTTPS-first: the https try that has not loaded yet (cleared once it shows or fails).
-    private class HttpsTry(val host: String, val httpsUrl: String, val httpUrl: String)
+    // The https try that has not loaded yet. It ends only when its https page commits, it falls back, or a new
+    // navigation replaces it. host/httpUrl are the address the user asked for (what a fallback loads and remembers);
+    // hosts are every host the try has touched through redirects, so a failure or commit on any of them is its own;
+    // seen are the http addresses already upgraded in this try, to spot a redirect loop.
+    private class HttpsTry(val host: String, val httpsUrl: String, val httpUrl: String) {
+        val hosts = mutableSetOf(HttpsFirst.bareHost(host))
+        val seen = mutableSetOf(httpUrl)
+        // The https address this try is loading now (the first one, or the latest redirect hop).
+        var lastHttps = httpsUrl
+        fun owns(url: String?): Boolean = HttpsFirst.hostOf(url)?.let { HttpsFirst.bareHost(it) in hosts } == true
+    }
     private var upgrade: HttpsTry? = null
-    // NATIVE_CONTRACT 39.2 B3: an https try that has not committed after HttpsFirst.TRY_MS falls back to http.
+    // Failed https addresses whose error page WebView has not put in its history yet. The error page commits a moment
+    // after the fallback starts, so it is marked "skip on Back" when it is recorded, not when the fallback begins.
+    // Cleared once the http page that replaced them is recorded.
+    private val failedHttpsPending = mutableSetOf<String>()
+    private var fallbackHttpPending: String? = null
+    // One timer per try, so a server that never answers https still falls back to http.
     private val upgradeTimeout = Runnable { onUpgradeTimeout() }
     // NATIVE_CONTRACT 39.2 B1: which main-frame document the last tap vouches for. docEpoch changes with every new document.
     private var docEpoch = 0
@@ -165,6 +192,12 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
     // What the user typed in the address bar (the url prop and loadUrl). Only those may open blocked or LAN pages.
     private var typedUrl: String? = null
     private var typedHost: String? = null
+    // Where the url prop came from: "link" (a maglev:// deep link or the card) loads through the link-tap refusals and is never typed.
+    private var urlFromLink = false
+    // The tab this view shows (prop tabId), '' when unknown. Its page state is saved in TabStates when the view
+    // is destroyed and restored instead of the first load when the tab wakes. restoreTried: only before the first load.
+    private var tabId = ""
+    private var restoreTried = false
 
     // Fullscreen video.
     private var customView: View? = null
@@ -175,28 +208,36 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
     private val bridge = PageScanBridge { json -> onScanReport(json) }
 
     // 24.10a: pull to reload. The WebView sits inside this layout (https://developer.android.com/reference/androidx/swiperefreshlayout/widget/SwipeRefreshLayout).
+    // The stock progress circle is shown and follows the finger on the UI thread; colours come from the refreshColor / refreshBackground props.
     private val refresh = SwipeRefreshLayout(context)
+    private val density = context.resources.displayMetrics.density
+    // SwipeRefreshLayout's trigger distance (72 dp), in px. Progress 1 is a drag of exactly this distance.
+    private val pullTriggerPx = PULL_TRIGGER_DP * density
     // 24.10a: a text selection or the find bar is active, so a downward drag must not reload. Main thread.
     private var selectionHold = false
     private var findActive = false
-    // The spinner stops once the reload it started has been seen loading and has finished. Main thread.
-    private var pullLoading = false
+    // One reload from start to end: `start` is sent once and `end` once per start. Main thread.
+    private var reloadActive = false
+    // The page has been seen loading during this reload; its end (loading false) then ends the reload.
+    private var reloadSeenLoading = false
     // 24.10a: the injected script that finds media under a long press (prop mediaHitScript), and the dark pages switch.
     private var mediaHitJs = ""
     private var darkPages = false
-    private val pullSafety = Runnable { if (!destroyed) refresh.isRefreshing = false }
+    // Safety: a reload that never reports loaded ends after PULL_SAFETY_MS.
+    private val reloadSafety = Runnable { if (!destroyed) endReload() }
 
     init {
         BlocklistStore.warm(context)
         refresh.setOnRefreshListener {
-            pullLoading = false
             reload()
-            // Safety: never leave the spinner up if nothing started loading. One timer per pull, so a second
-            // pull isn't cut short by the first pull's timer.
-            mainHandler.removeCallbacks(pullSafety)
-            mainHandler.postDelayed(pullSafety, PULL_SAFETY_MS)
+            // A pull that could not reload (no page and no address) must not leave the layout refreshing.
+            if (!reloadActive) refresh.isRefreshing = false
         }
         refresh.setOnChildScrollUpCallback { _, _ -> selectionHold || findActive || webView.canScrollVertically(-1) }
+        // Dark-theme defaults (surfaceRaised disc, lime arc) until the refreshBackground / refreshColor props arrive.
+        refresh.setProgressBackgroundColorSchemeColor(DEFAULT_REFRESH_DISC)
+        refresh.setColorSchemeColors(DEFAULT_REFRESH_ARC)
+        refresh.setDistanceToTriggerSync(pullTriggerPx.toInt())
         addView(refresh, ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
         webView = createWebView()
         refresh.addView(webView, ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
@@ -208,6 +249,16 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
         if (url == requestedUrl) return
         requestedUrl = url
         pendingUrl = url
+    }
+
+    /** "link" for a deep link or card URL (not typed), anything else for the address bar. Applied with the url. */
+    fun setUrlSource(source: String) {
+        urlFromLink = source == "link"
+    }
+
+    /** The tab id, read before the first load to find a saved page state (TabStates). */
+    fun setTabId(value: String) {
+        tabId = value
     }
 
     fun setAdBlock(value: Boolean) {
@@ -233,10 +284,25 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
         if (!destroyed) webView.settings.textZoom = v
     }
 
+    /**
+     * "Block cookies from other sites". On (the default) means third-party cookies are refused. Applied to
+     * the live WebView now and to every WebView created later (createWebView).
+     */
+    fun setBlockThirdPartyCookies(value: Boolean) {
+        blockThirdPartyCookies = value
+        if (!destroyed) CookieManager.getInstance().setAcceptThirdPartyCookies(webView, !value)
+    }
+
+    /** "Try https first". Read at each load, so it takes effect on the next load. */
+    fun setHttpsFirst(value: Boolean) {
+        httpsFirst = value
+    }
+
     /** Private browsing: stop reading the page cache while on. */
     fun setPrivateMode(value: Boolean) {
         if (value == privateMode) return
         privateMode = value
+        privateFallbackHosts.clear()
         if (!destroyed) webView.settings.cacheMode = if (value) WebSettings.LOAD_NO_CACHE else WebSettings.LOAD_DEFAULT
     }
 
@@ -246,20 +312,16 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
         if (!value) refresh.isRefreshing = false
     }
 
-    /** 24.10a: spinner colour (hex string). A bad value is ignored. */
+    /** The arc colour of the pull circle, `#RRGGBB`. A bad value keeps the previous colour. */
     fun setRefreshColor(value: String) {
-        try {
-            refresh.setColorSchemeColors(Color.parseColor(value))
-        } catch (_: IllegalArgumentException) {
-        }
+        val color = try { Color.parseColor(value) } catch (e: IllegalArgumentException) { return }
+        refresh.setColorSchemeColors(color)
     }
 
-    /** 24.10a: spinner circle colour (hex string). A bad value is ignored. */
+    /** The disc colour behind the arc, `#RRGGBB`. A bad value keeps the previous colour. */
     fun setRefreshBackground(value: String) {
-        try {
-            refresh.setProgressBackgroundColorSchemeColor(Color.parseColor(value))
-        } catch (_: IllegalArgumentException) {
-        }
+        val color = try { Color.parseColor(value) } catch (e: IllegalArgumentException) { return }
+        refresh.setProgressBackgroundColorSchemeColor(color)
     }
 
     /** 24.10a: the script from utils/browser/mediaHitScript.ts, injected next to the page scan. */
@@ -355,14 +417,80 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
     }
 
     fun setPopupAllowHosts(hosts: List<String>) {
-        popupAllowHosts = hosts.map { it.trim().lowercase().trimStart('.') }.filter { it.isNotEmpty() }
+        popupAllowHosts = hosts.map { PopupRules.normalizeSite(it) }.filter { it.isNotEmpty() }
+    }
+
+    fun setPopupBlockHosts(hosts: List<String>) {
+        popupBlockHosts = hosts.map { PopupRules.normalizeSite(it) }.filter { it.isNotEmpty() }
     }
 
     /** Called after all props of an update are set. Loads the url prop when it changed. */
     fun applyProps() {
         val u = pendingUrl ?: return
         pendingUrl = null
-        loadTyped(u)
+        // A woken tab takes back its history and scroll position instead of loading the url again.
+        if (!restoreTried) {
+            restoreTried = true
+            if (restoreSaved()) return
+        }
+        loadRequested(u)
+    }
+
+    /**
+     * Restores the page state this tab saved when its view was destroyed. Must run before any load on the new
+     * WebView: restoreState "should be called" before the WebView "has had a chance to build state (load pages, create a
+     * back/forward list, etc.)" (https://developer.android.com/reference/android/webkit/WebView#restoreState(android.os.Bundle)).
+     * True when WebView took it; false (nothing saved, or restoreState returned null) means the caller loads the url.
+     */
+    private fun restoreSaved(): Boolean {
+        if (destroyed || tabId.isEmpty()) return false
+        val saved = TabStates.take(tabId) ?: return false
+        if (webView.url != null || webView.copyBackForwardList().size > 0) return false
+        val list = try {
+            webView.restoreState(saved.bundle)
+        } catch (_: Throwable) {
+            null
+        }
+        if (list == null || list.size == 0) return false
+        typedUrl = saved.typedUrl
+        typedHost = saved.typedHost
+        history.restore(saved.history)
+        pendingUserNav = false
+        loadedOnce = false
+        redirectInFlight = false
+        upgrade = null
+        mainHandler.removeCallbacks(upgradeTimeout)
+        emitPage()
+        return true
+    }
+
+    /**
+     * Saves this tab's page state (back/forward list, with each entry's scroll position) for when it wakes.
+     * A view with no page drops any older state instead. Called before the WebView is torn down. Main thread.
+     * https://developer.android.com/reference/android/webkit/WebView#saveState(android.os.Bundle)
+     */
+    private fun saveForWake() {
+        if (tabId.isEmpty() || privateMode) return
+        try {
+            if (webView.copyBackForwardList().size == 0) {
+                TabStates.drop(tabId)
+                return
+            }
+            val bundle = Bundle()
+            val list = webView.saveState(bundle)
+            if (list == null || list.size == 0) {
+                TabStates.drop(tabId)
+            } else {
+                TabStates.put(tabId, TabStates.Saved(bundle, typedUrl, typedHost, history.snapshot()))
+            }
+        } catch (_: Throwable) {
+            TabStates.drop(tabId)
+        }
+    }
+
+    /** Loads the url prop the way its source says: a link through the link-tap refusals, a typed address as typed. */
+    private fun loadRequested(url: String) {
+        if (urlFromLink) loadFromLink(url) else loadTyped(url)
     }
 
     fun goBack() {
@@ -373,18 +501,56 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
             return
         }
         if (!webView.canGoBack()) return
-        // 24.11: Back steps over entries the page added without a tap, to the last one the user made.
+        cancelUpgrade()
+        // Back steps over entries the page added without a tap, to the last one the user made.
         val steps = BackRules.steps(history.flags(), webView.copyBackForwardList().currentIndex)
         if (steps > 1) webView.goBackOrForward(-steps) else webView.goBack()
     }
 
     fun goForward() {
-        if (!destroyed && webView.canGoForward()) webView.goForward()
+        if (destroyed || !webView.canGoForward()) return
+        cancelUpgrade()
+        webView.goForward()
     }
 
     fun reload() {
         if (destroyed) return
-        if (webView.url != null) webView.reload() else requestedUrl?.let { loadTyped(it) }
+        // A reload during an https try reloads the https address: give it a fresh clock so it can still fall back.
+        armUpgradeTimeout()
+        if (webView.url != null) {
+            beginReload()
+            webView.reload()
+        } else {
+            requestedUrl?.let {
+                beginReload()
+                loadRequested(it)
+            }
+        }
+    }
+
+    /**
+     * A reload started (pull, menu or command). Sends `start` once; every call restarts the safety timer.
+     * The matching `end` comes from endReload(). Main thread.
+     */
+    private fun beginReload() {
+        mainHandler.removeCallbacks(reloadSafety)
+        mainHandler.postDelayed(reloadSafety, PULL_SAFETY_MS)
+        if (reloadActive) return
+        reloadActive = true
+        reloadSeenLoading = false
+        // A reload from the menu or a command shows the circle too (a pull already has it showing).
+        if (refresh.isEnabled && !refresh.isRefreshing) refresh.isRefreshing = true
+        onReloadState(mapOf("state" to "start"))
+    }
+
+    /** Ends the reload started by beginReload (one `end` per `start`) and stops the spinner. Main thread. */
+    private fun endReload() {
+        mainHandler.removeCallbacks(reloadSafety)
+        if (refresh.isRefreshing) refresh.isRefreshing = false
+        if (!reloadActive) return
+        reloadActive = false
+        reloadSeenLoading = false
+        onReloadState(mapOf("state" to "end"))
     }
 
     fun stop() {
@@ -392,6 +558,8 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
         webView.stopLoading()
         // stopLoading does not always end with onPageFinished; the bar must not stay on Stop.
         loading = false
+        cancelUpgrade()
+        endReload()
         emitPage()
     }
 
@@ -407,20 +575,54 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
         }
         typedUrl = url
         typedHost = uri.host?.lowercase()
-        // A new typed load: its own script redirects are part of the page until it has finished once.
+        startLoad(url)
+    }
+
+    /**
+     * A deep link or card URL (maglev://browser?url=). It is not typed, so it gets the same
+     * main-frame refusals as a link tap (mainFrameRefusal: scheme, ad-blocked host, LAN host) and the refusal
+     * notice (onRefused). Any earlier typed allowance of this view is dropped first.
+     */
+    fun loadFromLink(raw: String) {
+        if (destroyed) return
+        val url = raw.trim()
+        typedUrl = null
+        typedHost = null
+        val reason = mainFrameRefusal(Uri.parse(url))
+        if (reason != null) {
+            refuse(url, reason)
+            return
+        }
+        startLoad(url)
+    }
+
+    /** The load itself, shared by typed and link loads. The caller has already checked the URL. */
+    private fun startLoad(url: String) {
+        // Once the view has loaded something, a saved state may no longer be restored.
+        restoreTried = true
+        // A new load: its own script redirects are part of the page until it has finished once.
         loadedOnce = false
         redirectInFlight = false
         pendingUserNav = true
-        // 24.11 HTTPS-first: a typed http:// address is tried as https:// first.
-        val https = HttpsFirst.upgrade(url, httpsFallbackHosts)
+        failedHttpsPending.clear()
+        fallbackHttpPending = null
+        // A typed http:// address is tried as https:// first; this load replaces any earlier try.
+        val https = httpsTryFor(url)
         val host = HttpsFirst.hostOf(https)
         upgrade = if (https != null && host != null) HttpsTry(host, https, url) else null
         armUpgradeTimeout()
         webView.loadUrl(https ?: url)
     }
 
+    /** The https try for [url], or null when "Try https first" is off. Every other HttpsFirst rule still applies. */
+    private fun httpsTryFor(url: String, method: String = "GET"): String? =
+        if (httpsFirst) HttpsFirst.upgrade(url, fallbackHostsInUse(), method) else null
+
+    /** Private tabs keep their own fallback hosts so normal tabs can't observe what was visited. */
+    private fun fallbackHostsInUse(): MutableSet<String> = if (privateMode) privateFallbackHosts else httpsFallbackHosts
+
     /**
-     * 24.10: loads a held redirect the user said yes to. Not typed, so the 24.5 refusals (scheme, blocked host, LAN)
+     * Loads a held redirect the user said yes to. Not typed, so the refusals (scheme, blocked host, LAN)
      * still apply. The redirect rule does not hold this exact URL again.
      */
     fun followRedirect(raw: String, promise: Promise) {
@@ -433,8 +635,18 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
         if (reason != null) {
             refuse(url, reason)
         } else {
-            followAllowUrl = url
-            webView.loadUrl(url)
+            cancelUpgrade()
+            val https = httpsTryFor(url)
+            val host = HttpsFirst.hostOf(https)
+            if (https != null && host != null) {
+                upgrade = HttpsTry(host, https, url)
+                armUpgradeTimeout()
+                followAllowUrl = https
+                webView.loadUrl(https)
+            } else {
+                followAllowUrl = url
+                webView.loadUrl(url)
+            }
         }
         promise.resolve(null)
     }
@@ -543,7 +755,9 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
     /** Called by React Native when the view is dropped (OnViewDestroys). */
     fun destroyBrowser() {
         if (destroyed) return
+        saveForWake()
         destroyed = true
+        privateFallbackHosts.clear()
         mainHandler.removeCallbacksAndMessages(null)
         for (c in captures.toList()) destroyCapture(c)
         exitFullscreen()
@@ -617,7 +831,7 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
 
         val cookies = CookieManager.getInstance()
         cookies.setAcceptCookie(true)
-        cookies.setAcceptThirdPartyCookies(w, false)
+        cookies.setAcceptThirdPartyCookies(w, !blockThirdPartyCookies)
 
         w.addJavascriptInterface(bridge, PageScan.BRIDGE_NAME)
         w.webViewClient = browserClient()
@@ -667,13 +881,15 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
         resetPageState()
         webView = createWebView()
         refresh.addView(webView, ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
-        refresh.isRefreshing = false
+        endReload()
         loadedOnce = false
         redirectInFlight = false
         history.clear()
         pendingUserNav = false
         upgrade = null
         mainHandler.removeCallbacks(upgradeTimeout)
+        failedHttpsPending.clear()
+        fallbackHttpPending = null
         if (!active) webView.onPause()
         loading = false
         progress = 0
@@ -691,12 +907,12 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
         val url = w.url ?: ""
         curUrl = url
         curTitle = w.title ?: ""
-        if (refresh.isRefreshing) {
+        // The reload ends once the page it started has been seen loading and has finished.
+        if (reloadActive) {
             if (loading) {
-                pullLoading = true
-            } else if (pullLoading) {
-                pullLoading = false
-                refresh.isRefreshing = false
+                reloadSeenLoading = true
+            } else if (reloadSeenLoading) {
+                endReload()
             }
         }
         onPage(
@@ -892,6 +1108,19 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
     /** Writes the history entry WebView just made, with whether the user made it (24.11). */
     private fun recordHistory(url: String) {
         val index = webView.copyBackForwardList().currentIndex
+        val key = HttpsFirst.historyKey(url)
+        if (key in failedHttpsPending) {
+            // The failed https try's error page: never a Back stop, and it must not use up the user's navigation,
+            // which belongs to the http page loading next.
+            failedHttpsPending.remove(key)
+            history.visited(url, index, false)
+            history.skipIfUrl(url)
+            return
+        }
+        if (fallbackHttpPending == key) {
+            fallbackHttpPending = null
+            failedHttpsPending.clear()
+        }
         // NATIVE_CONTRACT 39.2 B5: user-made when any user activation happened since the previous entry, not only within 3 s.
         val activated = activation.take()
         val userMade = pendingUserNav || activated
@@ -899,19 +1128,43 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
         history.visited(url, index, userMade)
     }
 
-    /** The https try failed (error, certificate or a redirect back to http): load the http address once, and never upgrade this host again this session. */
-    private fun fallBackToHttp() {
+    /**
+     * The try is done only when an https page on one of its hosts shows. A late callback for the previous http page
+     * says nothing about the try and must leave it (and its timer) alone.
+     */
+    private fun endTryIfCommitted(url: String?) {
         val up = upgrade ?: return
+        if (url != null && url.startsWith("https://", ignoreCase = true) && up.owns(url)) cancelUpgrade()
+    }
+
+    /** Cancels any pending https-first upgrade and its timeout. */
+    private fun cancelUpgrade() {
         upgrade = null
         mainHandler.removeCallbacks(upgradeTimeout)
-        httpsFallbackHosts.add(up.host)
-        // The failed https page must not be a Back stop, and the http load is still the user's request.
-        history.skipIfUrl(up.httpsUrl)
+    }
+
+    /**
+     * The https try failed (error, certificate, timeout or a redirect loop): load the original http address and, when
+     * the device is online, never upgrade that host again this session. An offline failure says nothing about the
+     * site, so the host is not remembered. The posted loadUrl does not go through shouldOverrideUrlLoading or
+     * startLoad, so this http load is not upgraded a second time and cannot loop.
+     */
+    private fun fallBackToHttp(failedUrl: String? = null) {
+        val up = upgrade ?: return
+        cancelUpgrade()
+        if (isOnline()) fallbackHostsInUse().add(up.host)
+        // The failed https page (the first try or a redirect hop) must not be a Back stop, and the http load is still
+        // the user's request.
+        for (u in setOfNotNull(up.httpsUrl, up.lastHttps, failedUrl)) {
+            history.skipIfUrl(u)
+            failedHttpsPending.add(HttpsFirst.historyKey(u))
+        }
+        fallbackHttpPending = HttpsFirst.historyKey(up.httpUrl)
         pendingUserNav = true
         mainHandler.post { if (!destroyed) webView.loadUrl(up.httpUrl) }
     }
 
-    /** NATIVE_CONTRACT 39.2 B3: starts the 8 second clock for the https try in [upgrade] (none when there is no try). */
+    /** Starts the clock for the https try in [upgrade] (none when there is no try). Redirect hops do not restart it. */
     private fun armUpgradeTimeout() {
         mainHandler.removeCallbacks(upgradeTimeout)
         if (upgrade != null) mainHandler.postDelayed(upgradeTimeout, HttpsFirst.TRY_MS)
@@ -919,12 +1172,7 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
 
     private fun onUpgradeTimeout() {
         if (destroyed || upgrade == null) return
-        if (HttpsFirst.timeoutFallsBack(isOnline())) {
-            fallBackToHttp()
-        } else {
-            // Offline: the timeout says nothing about the site, so the host is not put on the fallback list and http is not tried.
-            upgrade = null
-        }
+        fallBackToHttp()
     }
 
     /**
@@ -964,19 +1212,21 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
 
     private fun currentHost(): String? = webView.url?.let { Uri.parse(it).host } ?: pageHost
 
-    private fun hostAllowsPopups(host: String?): Boolean {
-        if (host == null) return false
-        val h = host.lowercase()
-        return popupAllowHosts.any { h == it || h.endsWith(".$it") }
-    }
+    private fun hostAllowsPopups(host: String?): Boolean = PopupRules.hostListed(host, popupAllowHosts)
 
-    private fun decide(gesture: Boolean, kind: String): String =
-        PopupRules.decide(popupPolicy, hostAllowsPopups(currentHost() ?: pageHost), gesture, kind)
+    private fun hostBlocksPopups(host: String?): Boolean = PopupRules.hostListed(host, popupBlockHosts)
+
+    /** T4 for the page now showing. [gesture] is the trusted-tap flag (see trustTap). */
+    private fun decide(gesture: Boolean, kind: String): String {
+        val page = currentHost() ?: pageHost
+        return PopupRules.decide(popupPolicy, hostAllowsPopups(page), hostBlocksPopups(page), gesture, kind)
+    }
 
     private fun sourceUrl(): String = webView.url ?: curUrl
 
+    /** onPopupBlocked {url, kind, sourceUrl}: sourceUrl is the page that tried to open the target. */
     private fun emitBlocked(url: String, kind: String) {
-        onPopupBlocked(mapOf("url" to url, "kind" to kind))
+        onPopupBlocked(mapOf("url" to url, "kind" to kind, "sourceUrl" to sourceUrl()))
     }
 
     private fun emitRequest(url: String, kind: String) {
@@ -1180,48 +1430,66 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
                 !RegistrableHost.same(uri.host, currentHost()) && !trustTap(request.hasGesture(), uri.host, jump = true)
             if (held) {
                 when (decide(false, "redirect")) {
-                    PopupRules.OPEN -> return false
+                    PopupRules.OPEN -> {
+                        // The page goes elsewhere, so a pending https try is replaced and its timer must not fire.
+                        cancelUpgrade()
+                        return false
+                    }
                     PopupRules.ASK -> emitRequest(uri.toString(), "redirect")
                     else -> emitBlocked(uri.toString(), "redirect")
                 }
                 redirectInFlight = false
                 return true
             }
-            // 24.11 HTTPS-first: try the https twin of an http address. A redirect from it back to http on the same host is a loop.
+            // Like Chrome's HTTPS-Upgrades: a redirect hop stays inside the pending try; any other new navigation replaces it.
+            val pending = upgrade
+            val url = uri.toString()
             if (scheme == "http") {
-                val pending = upgrade
-                if (pending != null && HttpsFirst.isLoop(pending.host, uri.toString())) {
-                    httpsFallbackHosts.add(pending.host)
-                    upgrade = null
-                    mainHandler.removeCallbacks(upgradeTimeout)
-                } else {
-                    // NATIVE_CONTRACT 39.2 B3: never upgrade a request that is not GET.
-                    val https = HttpsFirst.upgrade(uri.toString(), httpsFallbackHosts, request.method ?: "GET")
+                if (request.isRedirect && pending != null) {
+                    if (pending.hosts.any { HttpsFirst.isLoop(it, url) } || url in pending.seen) {
+                        // https sent us back to http, or the same http address came round again: give up on https.
+                        fallBackToHttp()
+                        return true
+                    }
+                    val https = httpsTryFor(url, request.method ?: "GET")
                     val host = HttpsFirst.hostOf(https)
                     if (https != null && host != null) {
-                        upgrade = HttpsTry(host, https, uri.toString())
-                        armUpgradeTimeout()
+                        // The hop joins the same try; its timer keeps running and a fallback still loads the original address.
+                        pending.seen.add(url)
+                        pending.hosts.add(HttpsFirst.bareHost(host))
+                        pending.lastHttps = https
                         redirectInFlight = false
                         mainHandler.post { if (!destroyed) webView.loadUrl(https) }
                         return true
                     }
+                    // A hop that can't be upgraded (excluded host) loads as http; the try ends because the page went elsewhere.
+                    cancelUpgrade()
+                    return false
                 }
+                // Only GET is ever upgraded. A new http navigation starts its own try and replaces any pending one.
+                val https = httpsTryFor(url, request.method ?: "GET")
+                val host = HttpsFirst.hostOf(https)
+                if (https != null && host != null) {
+                    upgrade = HttpsTry(host, https, url)
+                    armUpgradeTimeout()
+                    redirectInFlight = false
+                    mainHandler.post { if (!destroyed) webView.loadUrl(https) }
+                    return true
+                }
+            }
+            if (pending != null) {
+                // An https hop inside the try keeps it (its failure or commit is recognised); anything else replaces it.
+                if (request.isRedirect && scheme == "https") HttpsFirst.hostOf(url)?.let { pending.hosts.add(HttpsFirst.bareHost(it)) }
+                else cancelUpgrade()
             }
             return false
         }
 
         override fun onReceivedError(view: WebView, request: WebResourceRequest, error: WebResourceError) {
             val pending = upgrade ?: return
-            if (request.isForMainFrame && HttpsFirst.isUpgradeFailure(pending.host, request.url?.toString())) {
-                // NATIVE_CONTRACT 39.2 B3: only TLS, refused/reset/closed and online timeouts fall back and poison the host.
-                // https://developer.android.com/reference/android/webkit/WebResourceError#getErrorCode()
-                if (HttpsFirst.shouldFallBack(error.errorCode, isOnline())) {
-                    fallBackToHttp()
-                } else {
-                    upgrade = null
-                    mainHandler.removeCallbacks(upgradeTimeout)
-                }
-            }
+            // Like Chrome, any main-frame failure of the try falls back, whatever the error code (an empty reply
+            // arrives as ERROR_UNKNOWN). An http error status never gets here: the server answered.
+            if (request.isForMainFrame && pending.owns(request.url?.toString())) fallBackToHttp(request.url?.toString())
         }
 
         override fun onPageStarted(view: WebView, url: String?, favicon: Bitmap?) {
@@ -1249,10 +1517,7 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
 
         override fun onPageCommitVisible(view: WebView, url: String?) {
             if (destroyed) return
-            if (HttpsFirst.sameHost(upgrade?.host, url)) {
-                upgrade = null
-                mainHandler.removeCallbacks(upgradeTimeout) // NATIVE_CONTRACT 39.2 B3: committed in time
-            }
+            endTryIfCommitted(url)
             injectScripts(view)
             emitPage()
         }
@@ -1262,7 +1527,7 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
             loading = false
             progress = 100
             loadedOnce = true
-            if (HttpsFirst.sameHost(upgrade?.host, url)) upgrade = null
+            endTryIfCommitted(url)
             if (!firstLoadDone) {
                 firstLoadDone = true
                 if (!active && pausePending) pauseNow()
@@ -1303,9 +1568,9 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
 
         override fun onReceivedSslError(view: WebView, handler: SslErrorHandler, error: SslError) {
             handler.cancel()
-            // 24.11: a certificate problem on the https try is not shown as a refusal; the http address loads once instead.
-            if (HttpsFirst.isUpgradeFailure(upgrade?.host, error.url)) {
-                fallBackToHttp()
+            // A certificate problem on the https try is not shown as a refusal; the http address loads instead.
+            if (upgrade?.owns(error.url) == true) {
+                fallBackToHttp(error.url)
                 return
             }
             sslFailed = true
@@ -1344,6 +1609,7 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
             // Section 30: at most MAX_CAPTURES at once. Returning false without sending resultMsg is valid
             // (WebChromeClient.onCreateWindow: "Otherwise, return false"; window.open then returns null).
             if (captures.size >= MAX_CAPTURES) {
+                // The address is not known yet, so this only counts the blocked pop-up.
                 emitBlocked("", "window")
                 return false
             }
@@ -1506,11 +1772,15 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
         private val DANGEROUS_SCHEMES = setOf("file", "content", "javascript", "data", "blob")
         private val NEVER_START_SCHEMES = DANGEROUS_SCHEMES + setOf("http", "https", "about")
 
-        /** Hosts whose https try failed this app session (24.11). They are not upgraded again. */
+        /** Hosts whose https try failed this app session while online. They are not upgraded again. */
         private val httpsFallbackHosts: MutableSet<String> =
             java.util.Collections.newSetFromMap(java.util.concurrent.ConcurrentHashMap<String, Boolean>())
 
         private const val PULL_SAFETY_MS = 15_000L
+        /** SwipeRefreshLayout's trigger distance. */
+        private const val PULL_TRIGGER_DP = 72f
+        private const val DEFAULT_REFRESH_DISC = 0xFF161B22.toInt()
+        private const val DEFAULT_REFRESH_ARC = 0xFFCCFF00.toInt()
         private const val MAX_MEDIA_HIT_CHARS = 20_000
 
         private const val MAX_CAPTURES = 3

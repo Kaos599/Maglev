@@ -23,7 +23,7 @@ import androidx.core.view.WindowInsetsCompat
 import com.maglev.engine.R
 
 /** What a button on the card does. The activity decides how. */
-enum class CardAction { DOWNLOAD, DOWNLOAD_ANYWAY, OPEN_IN_MAGLEV, FREE_UP_SPACE, FIND_VIDEOS, CLOSE }
+enum class CardAction { DOWNLOAD, DOWNLOAD_ANYWAY, OPEN_IN_MAGLEV, FREE_UP_SPACE, FIND_VIDEOS, CLOSE, COPY_DETAILS }
 
 enum class Glyph { MAGNET, FILE, PAGE, WARNING }
 

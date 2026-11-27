@@ -48,9 +48,10 @@
     {
       "id": "transfers",
       "title": "Every download in one list",
-      "text": "Torrents, ordinary links and saved streams sit in the same list, each with its size, progress, speed and time left, such as 412 MB of 1.2 GB. A queue decides how many run at once. Pause, resume and retry survive a restart, and downloads keep going with the screen off.",
+      "text": "Torrents, files and videos sit in the same list, each with its size, progress, speed and time left, such as 412 MB of 1.2 GB. A queue decides how many run at once. Pause, resume and retry survive a restart, and downloads keep going with the screen off.",
       "specs": [
         "One + button for a link you paste or type, a .torrent file, Search or the browser",
+        "Paste or share a YouTube, X, Instagram or other video link, then pick a quality (Video sites)",
         "Share a magnet, a .torrent file or a file link to Maglev from any app, or open .torrent files from your file manager",
         "Transfers says why a download is held (Wi-Fi only, battery, schedule, storage full and more), with a button to change that setting",
         "Swipe a row right to pause or resume it, or left to remove it from the list (files are kept). You can turn this off",
@@ -199,7 +200,7 @@
     ],
     [
       "How do I download videos from websites on Android?",
-      "Open the page in Maglev's browser and play the video. Maglev lists it in the Files tray with the page's other files. Tap it to download. Files that need the site's session still work, because Maglev uses the page's cookies for that download."
+      "Paste or share the page's link to Maglev, pick a quality, and Maglev saves the video. If the site isn't read directly, open the page in Maglev's browser and play the video. Maglev lists it in the Files tray with the page's other files. Tap it to download. Files that need the site's session still work, because Maglev uses the page's cookies for that download."
     ],
     [
       "How do I save an HLS or m3u8 stream on Android?",
@@ -211,19 +212,31 @@
     ],
     [
       "Which streams can't Maglev save?",
-      "DRM-protected streams, live streams and players that hide their video inside the page. That includes HLS that uses SAMPLE-AES, Netflix-style protected video and YouTube-style players. Maglev never gets around DRM, and when it can't save something, it tells you why."
+      "DRM-protected streams and live streams, and some players that hide their video inside the page. That includes HLS that uses SAMPLE-AES and Netflix-style protected video. Maglev never gets around DRM, and when it can't save something, it tells you why."
     ],
     [
       "Can Maglev download YouTube videos?",
-      "No. YouTube-style players hide their video inside the page in a way Maglev can't save, and Maglev says so when you try. The same goes for Netflix-style protected video and live streams."
+      "Yes. Paste or share the link, pick a quality, and Maglev saves the video. Maglev reads it with yt-dlp on your phone and shows up to 6 qualities. It updates yt-dlp by itself once a day on Wi-Fi (Settings > Updates > Video sites). Live streams and Netflix-style protected video can't be saved. A video behind a sign-in may not download, and Maglev says so. See the [YouTube downloader guide](youtube-downloader-android)."
     ],
     [
       "Can Maglev download subtitles?",
       "Yes, for videos you have already downloaded. Tap Find subtitles on a finished download, or on a video in a torrent's Files tab. Maglev searches 21 free sources with no account and groups the results by how well they fit the file. The subtitle is saved next to the video, so players pick it up. Two sources match by file fingerprint (Subtis for Spanish, Napisy24 for Polish); the rest match by name. Maglev doesn't fetch subtitles by itself when a download finishes."
     ],
     [
-      "Can Maglev save Instagram, TikTok or X videos?",
-      "Sometimes. Maglev has no special support for any one site. It saves video files and on-demand HLS or DASH streams that a page loads while you play them. Some players stream in a way Maglev can't save, and protected video never saves, so results vary by site and by video."
+      "Can Maglev download Instagram Reels?",
+      "Public Reels and posts, often yes. Paste or share the link, pick a quality, and Maglev reads the video with yt-dlp on your phone. Instagram asks many posts for a sign-in, and those may not download. Maglev says \"needs sign-in\" when that happens. See the [Instagram Reels downloader guide](instagram-reels-downloader)."
+    ],
+    [
+      "Can Maglev download X (Twitter) videos?",
+      "Public videos, often yes. Paste or share the post's link, pick a quality, and Maglev saves the video. A video behind a sign-in may not download, and Maglev says so. See the [X (Twitter) video downloader guide](twitter-video-downloader)."
+    ],
+    [
+      "Can Maglev download YouTube Shorts?",
+      "Yes. Paste or share a Shorts link like any YouTube link and pick a quality. See the [YouTube downloader guide](youtube-downloader-android)."
+    ],
+    [
+      "Can Maglev save Instagram or X videos?",
+      "Yes, for most public videos. Paste or share the link from Instagram, X or another video site and pick a quality. A video behind a sign-in may not download, and Maglev says so. For other pages, open the page in Maglev's browser and play the video: Maglev saves the video files and on-demand HLS or DASH streams it loads. Protected video never saves, so results vary by site and by video."
     ],
     [
       "Is there an ad-free browser for Android that downloads videos?",
@@ -235,7 +248,7 @@
     ],
     [
       "Is Maglev a good LibreTorrent or Flud alternative?",
-      "It can be. Like LibreTorrent and Flud, Maglev downloads torrents and magnet links and follows RSS feeds. It also downloads ordinary links with resume, saves videos from web pages through an ad-free browser, and searches 40 built-in sources. The [comparison page](compare/) lists what each app's own page says."
+      "It can be. Like LibreTorrent and Flud, Maglev downloads torrents and magnet links and follows RSS feeds. It also downloads video links and files with resume, finds videos on web pages through an ad-free browser, and searches 40 built-in sources. The [comparison page](compare/) lists what each app's own page says."
     ],
     [
       "Can Maglev open magnet links and .torrent files?",
@@ -271,7 +284,7 @@
     ],
     [
       "Can I pause and resume downloads?",
-      "Yes. Pause, resume and retry work for torrents and for ordinary links, and they survive a restart. If a link has expired, Maglev asks for a fresh one and continues where it stopped."
+      "Yes. Pause, resume and retry work for torrents and for links, and they survive a restart. If a link has expired, Maglev asks for a fresh one and continues where it stopped."
     ],
     [
       "Do downloads keep going in the background?",
@@ -321,7 +334,7 @@
     },
     {
       "title": "Links and streams",
-      "text": "The same Rust engine downloads ordinary links and stream pieces, keeps resume data next to the file, and checks free space before it starts."
+      "text": "The same Rust engine downloads links and stream pieces, keeps resume data next to the file, and checks free space before it starts."
     },
     {
       "title": "Browser",
@@ -360,6 +373,7 @@
         "body": [
           "A search sends your search words to the sources you have turned on in Settings → Search sources. Feeds fetch the addresses you added. A link downloads from its own server, and the browser loads pages like any other browser. Each of those sites sees your IP address and follows its own privacy policy.",
           "Find subtitles sends the video's file name to the subtitle sources you have turned on in Settings → Finding things → Subtitle sources. Two of them, Subtis and Napisy24, also get a fingerprint of the file: its size and a hash of its first and last 64 KB. Nothing is sent until you tap Find subtitles. Each source sees your IP address and follows its own privacy policy.",
+          "A video link (YouTube, X, Instagram and others) is read on the phone by yt-dlp, which asks that site for the video the way a browser would. The site sees your IP address and follows its own privacy policy. To keep that working, Maglev checks GitHub once a day for a newer yt-dlp and downloads it on Wi-Fi unless you allow mobile data (Settings → Updates → Video sites, where you can turn it off). GitHub sees your IP address.",
           "Ad blocking downloads a public blocklist from GitHub (raw.githubusercontent.com). GitHub sees an ordinary download request."
         ]
       },

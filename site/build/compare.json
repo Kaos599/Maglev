@@ -10,7 +10,7 @@
       "sources": [
         "https://github.com/Kaos599/Maglev"
       ],
-      "summary": "Torrents, ordinary links and a built-in browser that saves streams, in one free, open source Android app with no ads."
+      "summary": "Almost any link, from video pages to files and torrents, in one free, open source Android app with no ads."
     },
     {
       "id": "libretorrent",
@@ -312,8 +312,8 @@
     {
       "id": "plain-links",
       "group": "Downloads",
-      "label": "Plain web links (http/https)",
-      "help": "Downloads an ordinary file from a web address, not a torrent.",
+      "label": "Plain file links (http/https)",
+      "help": "Downloads a file from a web address, not a torrent.",
       "values": {
         "maglev": "Yes",
         "libretorrent": "No",
@@ -334,7 +334,7 @@
       "id": "link-pause",
       "group": "Downloads",
       "label": "Pause and resume for links",
-      "help": "Stop an ordinary download and pick it up later, even after a restart.",
+      "help": "Stop a download and pick it up later, even after a restart.",
       "values": {
         "maglev": "Yes",
         "libretorrent": "No",
@@ -741,7 +741,7 @@
       "label": "YouTube downloads",
       "help": "Saves videos from YouTube itself.",
       "values": {
-        "maglev": "Not yet",
+        "maglev": "Yes",
         "libretorrent": "No",
         "biglybt": "No",
         "seal": "Yes",
@@ -758,7 +758,7 @@
         "newpipe": "NewPipe is a YouTube client. Its page lists downloading videos, audio and subtitles.",
         "1dm": "Its Play page says downloading from YouTube is not supported.",
         "fdm": "Its Play page says downloading from YouTube is not supported.",
-        "maglev": "Not yet. It may come in a later version."
+        "maglev": "Through yt-dlp, with Video sites. Public Instagram and X videos can work the same way; a video behind a sign-in may not download."
       }
     },
     {
@@ -1186,21 +1186,21 @@
   ],
   "page": {
     "title": "Maglev vs LibreTorrent and other Android download apps",
-    "description": "Maglev is a free, open source Android app for torrents, web links and streams, with an ad-free browser. Here is how it compares with other apps.",
-    "intro": "Maglev is one Android app for torrents, ordinary links and the videos on a web page. This page compares it with other Android apps, using only what each app's own pages say.",
+    "description": "Maglev is a free, open source Android app that downloads almost any link: videos, files and torrents. Here is how it compares with other apps.",
+    "intro": "Maglev is one Android app that downloads almost any link: video pages, files, magnets and torrents. This page compares it with other Android apps, using only what each app's own pages say.",
     "sections": [
       {
         "heading": "What Maglev is",
         "body": [
-          "Maglev puts four things in one app: a torrent client, a download manager for ordinary links, a browser that lists the files on a page, and a way to save streaming video as one file. It is free, open source under GPL-3.0, and has no ads.",
-          "It does not download YouTube, and it does not save live streams or DRM-protected video. When a page is one it cannot save, Maglev says so."
+          "Maglev downloads almost any link: video pages, files, magnets and torrents. It also has a browser that lists the files on a page, search across torrent sources, feeds and subtitles. It is free, open source under GPL-3.0, and has no ads.",
+          "It does not save live streams or DRM-protected video, and a video behind a sign-in may not download. When a page is one it cannot save, Maglev says so."
         ]
       },
       {
         "heading": "Compared with torrent apps",
         "body": [
           "LibreTorrent, BiglyBT and Flud are dedicated torrent clients. They handle magnet links, file selection and RSS feeds, and they do not include a browser or a streaming saver. LibreTorrent is open source, and BiglyBT is open source and ad-free. Flud's Play listing says it contains ads.",
-          "If you only download torrents and want a mature client with no extras, one of these is a reasonable pick. Maglev adds ordinary link downloads, a browser and a search across 40 sources, which these apps do not list."
+          "If you only download torrents and want a mature client with no extras, one of these is a reasonable pick. Maglev adds video and file link downloads, a browser and a search across 40 sources, which these apps do not list."
         ]
       },
       {
@@ -1214,8 +1214,8 @@
         "heading": "Compared with video downloaders",
         "body": [
           "Seal and YTDLnis are open source Android front ends for yt-dlp. They can download from many sites, including YouTube, and they offer format choices and editing tools. NewPipe is an open source YouTube client that can save videos and audio.",
-          "These apps are the better choice if YouTube is what you want. Maglev does not download YouTube, and its browser and stream saver work on the other sites you open. Maglev saves HLS and DASH streams with a quality and audio language choice, which the video downloaders here do not list.",
-          "For YouTube, use Seal or NewPipe. For everything else on the web, links and torrents, use Maglev. Many people keep both."
+          "Maglev also uses yt-dlp for video links, so you can paste or share a YouTube, X or Instagram link and pick a quality. Seal and YTDLnis are built only for video sites, with format choices and editing tools. Maglev also saves HLS and DASH streams from pages you open in its browser, with a quality and audio language choice, which the video downloaders here do not list.",
+          "If video sites are all you need, Seal or YTDLnis are built for it. If you also want files and torrents in the same app, use Maglev."
         ]
       },
       {
@@ -1228,7 +1228,7 @@
       {
         "heading": "When another app is the better pick",
         "body": [
-          "Pick Seal, YTDLnis or NewPipe if you mainly want YouTube or music from YouTube. Pick LibreTorrent or BiglyBT if you want a torrent client with nothing else. Pick 1DM+ or ADM if you want a closed source download manager and do not mind its ads or purchases. Pick FDM if you want a desktop-style manager that also runs on Android.",
+          "Pick Seal, YTDLnis or NewPipe if you mainly want YouTube or music from YouTube and want their extra video options. Pick LibreTorrent or BiglyBT if you want a torrent client with nothing else. Pick 1DM+ or ADM if you want a closed source download manager and do not mind its ads or purchases. Pick FDM if you want a desktop-style manager that also runs on Android.",
           "Maglev is not on Google Play yet, so you install it from GitHub Releases or with Obtainium."
         ]
       }
@@ -1240,11 +1240,11 @@
       },
       {
         "q": "Is Maglev a good LibreTorrent alternative?",
-        "a": "Yes, if you want torrents with RSS and file selection. Maglev also downloads ordinary links, saves streams from web pages and searches 40 built-in sources. LibreTorrent is a dedicated torrent client, and it has been around longer."
+        "a": "Yes, if you want torrents with RSS and file selection. Maglev also downloads links, including video links, and searches 40 built-in sources. LibreTorrent is a dedicated torrent client, and it has been around longer."
       },
       {
         "q": "Can Maglev download YouTube videos like Seal or YTDLnis?",
-        "a": "No. Maglev does not download YouTube. Seal and YTDLnis can, because they use yt-dlp, and NewPipe saves YouTube videos too. If YouTube is your main use, one of those apps is the better pick."
+        "a": "Yes. Maglev uses yt-dlp, like Seal and YTDLnis. Paste or share the link and pick a quality. Seal and YTDLnis are built only for video sites and have more video options. Maglev also does torrents and files."
       },
       {
         "q": "Does Maglev have ads, and do the other apps?",
@@ -1265,13 +1265,13 @@
       "slug": "1dm-alternative",
       "app": "1dm",
       "title": "Maglev as an alternative to 1DM+",
-      "description": "Maglev and 1DM+ both download links and torrents with no ads. Maglev is open source and saves DASH streams. 1DM+ is on Google Play.",
-      "answer": "Maglev and 1DM+ both download ordinary web links and torrents with no ads. Maglev is open source under GPL-3.0, saves DASH streams as well as HLS, and searches torrent sites from one box. 1DM+ is on Google Play, and Maglev is not there yet.",
+      "description": "Maglev and 1DM+ both download links and torrents with no ads. Maglev is open source, saves DASH streams and reads video links from YouTube, X and Instagram. 1DM+ is on Google Play.",
+      "answer": "Maglev and 1DM+ both download links and torrents with no ads. Maglev is open source under GPL-3.0, reads video links from YouTube, X and Instagram, saves DASH streams as well as HLS, and searches torrent sites from one box. 1DM+ is on Google Play, and Maglev is not there yet.",
       "sections": [
         {
           "heading": "What is the same",
           "body": [
-            "Both apps download ordinary web links and torrents. Both have a browser with an ad blocker, both schedule downloads, both limit speed and both keep downloads running in the background with a notification. 1DM+'s Play page calls the app ad free. Maglev's browser blocks ads and trackers before they load, using a list of over 42,000 domains.",
+            "Both apps download links and torrents. Both have a browser with an ad blocker, both schedule downloads, both limit speed and both keep downloads running in the background with a notification. 1DM+'s Play page calls the app ad free. Maglev's browser blocks ads and trackers before they load, using a list of over 42,000 domains.",
             "Both apps open magnet links for torrents."
           ]
         },
@@ -1313,7 +1313,7 @@
         },
         {
           "q": "Can Maglev download YouTube videos like 1DM+?",
-          "a": "No. Maglev cannot save players that hide their video in the page, such as YouTube's, and it says so when it meets one. The 1DM+ Play page also says YouTube downloads are not supported."
+          "a": "Yes. Maglev reads YouTube links with yt-dlp: paste or share the link and pick a quality. The 1DM+ Play page says YouTube downloads are not supported."
         },
         {
           "q": "Is Maglev on Google Play?",
@@ -1330,12 +1330,12 @@
       "app": "adm",
       "title": "Maglev as an alternative to ADM",
       "description": "Maglev and ADM both download links and torrents with a browser. Maglev has no ads and is open source. ADM's Play listing says it contains ads.",
-      "answer": "Maglev and ADM both download ordinary web links and torrents, with a browser and a battery cut-off. ADM's Play listing says it contains ads and in-app purchases. Maglev has no ads, and its code is open under GPL-3.0.",
+      "answer": "Maglev and ADM both download links and torrents, with a browser and a battery cut-off. ADM's Play listing says it contains ads and in-app purchases. Maglev has no ads, and its code is open under GPL-3.0.",
       "sections": [
         {
           "heading": "What is the same",
           "body": [
-            "Both apps download ordinary web links with pause and resume, run torrents, and have a browser. Both keep downloads going in the background with a notification, and both can pause when the battery is low.",
+            "Both apps download links with pause and resume, run torrents, and have a browser. Both keep downloads going in the background with a notification, and both can pause when the battery is low.",
             "Both can pick the files inside a torrent and schedule downloads."
           ]
         },
@@ -1389,8 +1389,8 @@
       "slug": "libretorrent-alternative",
       "app": "libretorrent",
       "title": "Maglev as an alternative to LibreTorrent",
-      "description": "Maglev runs torrents like LibreTorrent, and both are open source. Maglev also downloads web links, saves videos from web pages and searches torrent sites in one box.",
-      "answer": "Maglev runs torrents the way LibreTorrent does, and both are open source under GPL-3.0 with no ads. Maglev also downloads ordinary web links, saves videos from web pages and searches torrent sites in one box. LibreTorrent's pages do not list web file downloads or a browser.",
+      "description": "Maglev runs torrents like LibreTorrent, and both are open source. Maglev also downloads video links and files, and searches torrent sources in one box.",
+      "answer": "Maglev runs torrents the way LibreTorrent does, and both are open source under GPL-3.0 with no ads. Maglev also downloads video links and files, and searches torrent sources in one box. LibreTorrent's pages do not list web file downloads or a browser.",
       "sections": [
         {
           "heading": "What is the same",
@@ -1402,7 +1402,7 @@
         {
           "heading": "What Maglev adds",
           "body": [
-            "Maglev downloads ordinary web links with pause, resume and retry that survive a restart. LibreTorrent's pages describe HTTP support only for links to .torrent files.",
+            "Maglev downloads links with pause, resume and retry that survive a restart. LibreTorrent's pages describe HTTP support only for links to .torrent files.",
             "Maglev has a built-in browser that lists the videos and files on a page, and it saves HLS and DASH streams as one file. LibreTorrent's pages do not list either.",
             "One search box covers more than 40 public torrent sources, and Maglev can follow a show from the results. LibreTorrent's pages do not list a torrent search.",
             "Maglev can download only over a VPN and pauses on low battery. LibreTorrent's pages do not list a VPN option. LibreTorrent's pages mention battery settings but do not say what they do.",
@@ -1428,7 +1428,7 @@
       "faq": [
         {
           "q": "Is Maglev a good LibreTorrent alternative?",
-          "a": "Yes, if you want torrents together with web links and videos in one app. If you only want torrents, LibreTorrent is a good pick, and it is on F-Droid."
+          "a": "Yes, if you want torrents together with links and videos in one app. If you only want torrents, LibreTorrent is a good pick, and it is on F-Droid."
         },
         {
           "q": "Does Maglev support magnet links?",
@@ -1465,7 +1465,7 @@
         {
           "heading": "What Maglev adds",
           "body": [
-            "Maglev downloads ordinary web links with pause and resume. Flud's Play page does not list plain web downloads.",
+            "Maglev downloads links with pause and resume. Flud's Play page does not list plain web downloads.",
             "Maglev has a browser that blocks ads and trackers, lists the videos and files a page plays, and saves HLS and DASH streams as one file. Flud's page lists none of these.",
             "Maglev has speed limits for everything or for one download, and a schedule for when downloads run or slow down. Flud's Play page says there are no speed limits on downloads or uploads, and it does not list a schedule.",
             "One Maglev search box covers more than 40 public torrent sources. Flud's page does not list a torrent search.",

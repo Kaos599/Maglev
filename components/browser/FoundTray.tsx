@@ -178,7 +178,7 @@ export function FoundTray({ visible, items, onClose, onPick, onPickStream, onRem
   };
 
   return (
-    <Sheet visible={visible} onClose={close} title={foundTray.title} subtitle={items.length ? foundTray.count(items.length) : undefined}>
+    <Sheet visible={visible} onClose={close} title={foundTray.title} subtitle={items.length ? foundTray.count(items.length) : undefined} scroll={false}>
       {undo ? (
         <View style={styles.undoRow} accessibilityLiveRegion="polite">
           <Text style={styles.undoText} numberOfLines={1}>

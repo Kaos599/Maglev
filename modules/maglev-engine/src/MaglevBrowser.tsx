@@ -71,8 +71,11 @@ export type PopupKind = 'window' | 'redirect' | 'app';
 export type BrowserNewWindowEvent = { url: string; gesture: boolean };
 /** The policy is `ask` and something the user didn't tap for wants to run. Nothing has happened yet. */
 export type BrowserPopupRequestEvent = { url: string; kind: PopupKind; sourceUrl: string };
-/** Refused under `block`, or by the always-refuse rules. Count it; never show a notice. */
-export type BrowserPopupBlockedEvent = { url: string; kind: PopupKind };
+/**
+ * Refused under `block`, by the block list, or by the always-refuse rules. Count it and log it; never show a notice here.
+ * `sourceUrl` is the page that tried to open `url`. `url` is '' when the view could not learn it.
+ */
+export type BrowserPopupBlockedEvent = { url: string; kind: PopupKind; sourceUrl: string };
 /** A long press on a link or an image. `url` is an absolute http(s) address or `magnet:`; `imageUrl` an absolute http(s) address. */
 export type BrowserLongPressEvent = {
   kind: 'link' | 'image' | 'imageLink';
@@ -82,17 +85,31 @@ export type BrowserLongPressEvent = {
 };
 /** A long press over a video the page script found (contract 24.10a). `json` is the payload; parse it with `parseMediaHit` (utils/browser/mediaHit.ts). */
 export type BrowserMediaHitEvent = { json: string };
+/** A reload started (pull, menu or command) or ended. One end per start. */
+export type BrowserReloadStateEvent = { state: 'start' | 'end' };
 /** `active` is 0-based. `total` is 0 when nothing matches. `done` is false while the page is still being counted. */
 export type BrowserFindResultEvent = { active: number; total: number; done: boolean };
 export type OpenAppResult = { opened: boolean; fallbackUrl: string | null };
 
 export type MaglevBrowserProps = {
   url?: string;
+  /**
+   * Where `url` came from. 'typed': the address bar, loaded as typed (blocked and LAN hosts allowed).
+   * 'link': a deep link or card, loaded through the link-tap refusals (LAN and blocked hosts refused, onRefused).
+   */
+  urlSource?: 'typed' | 'link';
+  /**
+   * The tab this view shows. When the view is destroyed it keeps the page's back/forward list and scroll
+   * position in memory under this id; a later view with the same id restores it instead of loading `url`.
+   */
+  tabId?: string;
   /** False for a tab in the background: the view pauses its page and media. Default true. */
   active?: boolean;
   popupPolicy?: 'ask' | 'block' | 'allow';
   /** Sites allowed to open pop-ups and redirects, matched on the page host by suffix. */
   popupAllowHosts?: string[];
+  /** Sites whose untapped pop-ups, redirects and app hand-offs are always refused. A tapped window still opens. */
+  popupBlockHosts?: string[];
   adBlock?: boolean;
   allowAdsHosts?: string[];
   desktopMode?: boolean;
@@ -102,6 +119,10 @@ export type MaglevBrowserProps = {
   privateMode?: boolean;
   /** Pull down at the top of a page to reload it (24.10a). Default true. */
   pullToRefresh?: boolean;
+  /** Refuse third-party cookies ("Block cookies from other sites"). Default true. */
+  blockThirdPartyCookies?: boolean;
+  /** Try the https:// twin of an http:// address first ("Try https first"). Default true. */
+  httpsFirst?: boolean;
   /** Spinner colours for pull to reload (hex). */
   refreshColor?: string;
   refreshBackground?: string;
@@ -124,6 +145,7 @@ export type MaglevBrowserProps = {
   onLongPress?: (e: BrowserLongPressEvent) => void;
   onFindResult?: (e: BrowserFindResultEvent) => void;
   onMediaHit?: (e: BrowserMediaHitEvent) => void;
+  onReloadState?: (e: BrowserReloadStateEvent) => void;
 };
 
 export type MaglevBrowserRef = {
@@ -157,15 +179,20 @@ export type MaglevBrowserRef = {
 type NativeEvent<T> = { nativeEvent: T };
 type NativeProps = {
   url?: string;
+  urlSource?: 'typed' | 'link';
+  tabId?: string;
   active?: boolean;
   popupPolicy?: 'ask' | 'block' | 'allow';
   popupAllowHosts?: string[];
+  popupBlockHosts?: string[];
   adBlock?: boolean;
   allowAdsHosts?: string[];
   desktopMode?: boolean;
   textZoom?: number;
   privateMode?: boolean;
   pullToRefresh?: boolean;
+  blockThirdPartyCookies?: boolean;
+  httpsFirst?: boolean;
   refreshColor?: string;
   refreshBackground?: string;
   darkPages?: boolean;
@@ -185,6 +212,7 @@ type NativeProps = {
   onLongPress?: (e: NativeEvent<BrowserLongPressEvent>) => void;
   onFindResult?: (e: NativeEvent<BrowserFindResultEvent>) => void;
   onMediaHit?: (e: NativeEvent<BrowserMediaHitEvent>) => void;
+  onReloadState?: (e: NativeEvent<BrowserReloadStateEvent>) => void;
 };
 
 let Native: any = null;
@@ -203,7 +231,7 @@ const NativeBrowser: React.ComponentType<NativeProps & React.RefAttributes<Magle
 const NOT_AVAILABLE = "The browser isn't available in this build.";
 
 export const MaglevBrowser = React.forwardRef<MaglevBrowserRef, MaglevBrowserProps>(function MaglevBrowser(
-  { onPage, onFound, onBlockedCount, onDownloadRequest, onMagnet, onRefused, onCrashed, onPageNote, onNewWindow, onPopupRequest, onPopupBlocked, onLongPress, onFindResult, onMediaHit, ...rest },
+  { onPage, onFound, onBlockedCount, onDownloadRequest, onMagnet, onRefused, onCrashed, onPageNote, onNewWindow, onPopupRequest, onPopupBlocked, onLongPress, onFindResult, onMediaHit, onReloadState, ...rest },
   ref,
 ) {
   const nativeRef = React.useRef<MaglevBrowserRef | null>(null);
@@ -260,6 +288,7 @@ export const MaglevBrowser = React.forwardRef<MaglevBrowserRef, MaglevBrowserPro
       onLongPress={onLongPress ? (e) => onLongPress(e.nativeEvent) : undefined}
       onFindResult={onFindResult ? (e) => onFindResult(e.nativeEvent) : undefined}
       onMediaHit={onMediaHit ? (e) => onMediaHit(e.nativeEvent) : undefined}
+      onReloadState={onReloadState ? (e) => onReloadState(e.nativeEvent) : undefined}
     />
   );
 });
@@ -325,6 +354,27 @@ export const resetBlocklist = () => call<BlocklistInfo>('resetBlocklist');
  * `clearHistoryRange('all')` in utils/history. Works without the browser screen open.
  */
 export const clearBrowserData = (options: BrowserClearOptions = { cookies: true, cache: true }) => call<object>('clearBrowserData', options);
+
+/**
+ * Keeps the saved page states of these tabs only (every tab that still exists) and forgets the rest, so a
+ * closed tab's state goes. Resolves quietly where there is no native module.
+ */
+export async function retainTabStates(ids: string[]): Promise<void> {
+  try {
+    if (typeof Native?.retainTabStates === 'function') await Native.retainTabStates(ids);
+  } catch {
+    // Nothing saved to drop.
+  }
+}
+
+/** Forgets every saved page state (for example after the history is cleared). */
+export async function clearTabStates(): Promise<void> {
+  try {
+    if (typeof Native?.clearTabStates === 'function') await Native.clearTabStates();
+  } catch {
+    // Nothing saved to drop.
+  }
+}
 
 /** Tells native whether to empty the history when Maglev closes (contract 24.9). Resolves quietly where there is no native module. */
 export async function setHistoryWipeOnClose(enabled: boolean): Promise<void> {

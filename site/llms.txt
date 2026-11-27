@@ -1,12 +1,27 @@
 # Maglev
 
-> Maglev is a free, open source Android downloader with no ads. It saves videos from web pages (including on-demand HLS and DASH streams), downloads ordinary links with pause and resume, and runs torrents, in one app. Android 7 and later. Version 0.30.
+> Maglev is a free, open source Android app that downloads almost any link. Paste or share a YouTube, X (Twitter) or Instagram video link, a file, a magnet link or a .torrent file, and Maglev gets it, with a quality picker for videos and pause and resume for everything. It also has a browser that finds videos on a page, search across torrent sources, feeds and subtitles. No ads, no tracking, no account. Android 7 and later. Version 1.0.
 
 Made by Harsh Dayal (https://harshdayal.dev, GitHub: https://github.com/Kaos599). License: GPL-3.0.
 
+## Video sites
+
+- Maglev downloads YouTube videos and Shorts, Instagram Reels and videos, and X (Twitter) videos on Android.
+- Share or paste a YouTube, X or Instagram link. Reddit, Vimeo and TikTok links are recognised too. Maglev reads the video with yt-dlp on the phone and shows up to 6 qualities. You pick one, and it downloads with pause and resume into Download/Maglev.
+- In Maglev's browser, long-press a video on YouTube, X or Instagram and choose Download.
+- yt-dlp updates itself once a day on Wi-Fi. In Settings > Updates > Video sites you can turn this off or allow mobile data.
+- A video behind a sign-in (private accounts, many Instagram posts, age-gated videos) may not download. Maglev says "needs sign-in". Public Reels and posts are the ones that can work.
+- Maglev never gets around DRM. Live streams and protected video can't be saved.
+- Maglev is free, open source (GPL-3.0), has no ads, no tracking and no account, and needs Android 7 or later. The arm64 APK is about 43 MB because Python and yt-dlp are bundled.
+- Install from GitHub releases or with Obtainium. Maglev is not on Google Play.
+- Download only what you have the right to.
+- [YouTube downloader for Android](https://harshdayal.dev/maglev/youtube-downloader-android): Maglev is a free, open source YouTube downloader for Android. Share or paste a YouTube video or Shorts link, and Maglev reads it with yt-dlp on your phone and shows up to 6 qualities. Pick one and it downloads, with pause and resume, into Download/Maglev. No ads, no account.
+- [Instagram Reels downloader for Android](https://harshdayal.dev/maglev/instagram-reels-downloader): Maglev is a free, open source Instagram Reels downloader for Android. Share or paste the link of a public Reel or video, and Maglev reads it with yt-dlp on your phone and shows up to 6 qualities. Pick one and it downloads into Download/Maglev. Posts that need a sign-in may not download.
+- [X (Twitter) video downloader for Android](https://harshdayal.dev/maglev/twitter-video-downloader): Maglev is a free, open source X (Twitter) video downloader for Android. Share or paste the link of a post with a video, and Maglev reads it with yt-dlp on your phone and shows up to 6 qualities. Pick one and it downloads into Download/Maglev. Videos that need a sign-in may not download.
+
 ## Key facts
 
-- Every download in one list: Torrents, ordinary links and saved streams sit in the same list, each with its size, progress, speed and time left, such as 412 MB of 1.2 GB. A queue decides how many run at once. Pause, resume and retry survive a restart, and downloads keep going with the screen off. One + button for a link you paste or type, a .torrent file, Search or the browser. Share a magnet, a .torrent file or a file link to Maglev from any app, or open .torrent files from your file manager. Transfers says why a download is held (Wi-Fi only, battery, schedule, storage full and more), with a button to change that setting. Swipe a row right to pause or resume it, or left to remove it from the list (files are kept). You can turn this off. A file type icon on each card (a torrent's comes from its biggest file), which you can turn off. Play a video while it downloads, from its card or its screen. Open any download's folder in one tap, and share a finished file. On mobile data, the add screen shows the size before you start. Pause all, Resume all and Shut down from the notification. A live chip in the status bar on Android 16 and later. Unknown times show as unknown, never guessed.
+- Every download in one list: Torrents, files and videos sit in the same list, each with its size, progress, speed and time left, such as 412 MB of 1.2 GB. A queue decides how many run at once. Pause, resume and retry survive a restart, and downloads keep going with the screen off. One + button for a link you paste or type, a .torrent file, Search or the browser. Paste or share a YouTube, X, Instagram or other video link, then pick a quality (Video sites). Share a magnet, a .torrent file or a file link to Maglev from any app, or open .torrent files from your file manager. Transfers says why a download is held (Wi-Fi only, battery, schedule, storage full and more), with a button to change that setting. Swipe a row right to pause or resume it, or left to remove it from the list (files are kept). You can turn this off. A file type icon on each card (a torrent's comes from its biggest file), which you can turn off. Play a video while it downloads, from its card or its screen. Open any download's folder in one tap, and share a finished file. On mobile data, the add screen shows the size before you start. Pause all, Resume all and Shut down from the notification. A live chip in the status bar on Android 16 and later. Unknown times show as unknown, never guessed.
 - A browser that blocks ads and finds the files on a page: Open any page inside Maglev. Ads and trackers are blocked before they load. Play a video and Maglev lists it, together with the page's other files, in a tray you can filter by type. Tap one to download it with the page's cookies, so files behind a sign-in still work. Over 42,000 blocked domains from StevenBlack/hosts, refreshed once a day on its own. Add your own lists and they refresh too. Tabs with a long-press menu on links and images: new tab, background tab, copy, share or download. Pop-ups and redirects you didn't tap for wait until you choose Open, Block or Always allow on this site. Find in page and text size. A history you can search, with suggestions as you type and recent pages on every new tab. It can clear itself when you close Maglev. App installers come with a warning. Swipe the address bar left or right to switch tabs, or down to see all tabs. Downloads that start without a tap go to the found-files tray instead, pages can't fill your Back history to keep you on them, known crypto-mining scripts are blocked, and pages open over HTTPS when the site supports it.
 - Streaming video, saved as one file: Many sites play video as hundreds of small pieces listed in a playlist: HLS (.m3u8) or DASH. Maglev reads the playlist, lets you pick the quality and audio language, downloads the pieces and joins them into one video file. On-demand HLS and DASH, including HLS with standard AES-128 encryption. DRM-protected video and live streams are refused, and Maglev says why. Separate video and audio are joined without re-encoding.
 - Subtitles for the videos you download: Open a finished download, or a video inside a torrent, and tap Find subtitles. Maglev asks 21 free sources, with no account, and groups what it finds as Fits this file, Probably fits and May be out of sync. The subtitle is saved next to the video, so your player picks it up. Open a finished link download's menu in Transfers, a torrent's options, or the ⋯ next to a video in its Files tab. Saved as <video name>.<lang>.srt (or .ass or .vtt). If that name exists, you choose Replace or Keep both. Pick and order languages, set a hearing-impaired preference and turn each source on or off in Settings > Finding things > Subtitle sources. Two sources match by file fingerprint: Subtis for Spanish and Napisy24 for Polish. The rest match by name, so check the fit. The source list updates itself from Maglev's signed list. Nothing is looked up until you tap Find subtitles.
@@ -14,19 +29,22 @@ Made by Harsh Dayal (https://harshdayal.dev, GitHub: https://github.com/Kaos599)
 - Feeds that download new episodes for you: Follow a show from Search, or add any RSS feed. When a new item matches your rule, Maglev adds it to your downloads. Items that don't match are left alone. Works with any RSS feed. Rules decide what gets added. Watch for a title: Maglev checks every 1, 6 or 24 hours (Wi-Fi only unless you allow mobile data) and tells you when something new turns up.
 - An assistant that asks first (optional): Ask in plain words, like "find the latest season of this show in 1080p" or "what's eating my storage?". It searches, compares results, checks size and free space, and shows what it wants to add. Nothing is added or changed until you confirm. Runs on your own OpenRouter key, kept in the phone's secure storage. Can use free models. Keeps working when you switch tabs or leave the app. Chats are saved and come back after a restart. Turn it off and its tab disappears.
 - You stay in control: Rules for when and how Maglev downloads, so it fits your data plan, your battery and your storage. Maglev updates itself: a daily check and Check for updates in About. It downloads on Wi-Fi and asks before installing, or installs on its own if you choose. F-Droid and Obtainium installs keep their own updates. The ad block list, search sources and default trackers refresh once a day without an app update, or when you tap Check now. Download only on Wi-Fi, only over a VPN, or only while charging. Pause when the battery runs low. Speed limits for everything or for one download. A schedule for when downloads run or slow down. Pick the files in a torrent and mark one to download first. Pause all, Resume all and Shut down from the notification, and a Quick Settings tile. Files land in Download/Maglev, where any file manager finds them, or in any folder you choose. Move a torrent's files mid-download, and stream video before it finishes. Pauses before the phone runs out of space, keeping 500 MB to 1 GB free, and resumes when space comes back. Backup and restore in Settings: your settings, search sources, torrents and downloads in one file, and your stats if you tick Include stats. API keys are never included. Search your settings from the top of Settings. After an update, a short sheet shows the main new feature, and you can turn it off in Settings > Updates. No analytics or ads SDKs.
-- Maglev never gets around DRM. Protected video, live streams and YouTube-style players can't be saved.
+- Maglev never gets around DRM. Protected video and live streams can't be saved.
 - Release signing certificate SHA-256: c8e15bd47fb39fb2248d8b501a677e61be564d52ba535e31a1608564e35df3c4
 
 ## How it works
 
 - Torrents: A modified copy of librqbit, written in Rust, with DHT, trackers, local peer discovery and web seeds.
-- Links and streams: The same Rust engine downloads ordinary links and stream pieces, keeps resume data next to the file, and checks free space before it starts.
+- Links and streams: The same Rust engine downloads links and stream pieces, keeps resume data next to the file, and checks free space before it starts.
 - Browser: Android's own WebView inside a native view that sees every request, so it can block ads and notice the video a player loads. No browser engine is bundled.
 
 ## Links
 
 - [Website](https://harshdayal.dev/maglev)
 - [Maglev vs LibreTorrent and other Android download apps (comparison with LibreTorrent, BiglyBT (Android), Seal, YTDLnis, NewPipe, Flud, 1DM+, Advanced Download Manager (ADM), Free Download Manager (FDM))](https://harshdayal.dev/maglev/compare)
+- [YouTube downloader for Android](https://harshdayal.dev/maglev/youtube-downloader-android)
+- [Instagram Reels downloader for Android](https://harshdayal.dev/maglev/instagram-reels-downloader)
+- [X (Twitter) video downloader for Android](https://harshdayal.dev/maglev/twitter-video-downloader)
 - [Download (latest release)](https://github.com/Kaos599/Maglev/releases/latest)
 - [Source code](https://github.com/Kaos599/Maglev)
 - [Report a bug](https://github.com/Kaos599/Maglev/issues)
@@ -44,7 +62,7 @@ Made by Harsh Dayal (https://harshdayal.dev, GitHub: https://github.com/Kaos599)
 - Follow a show from search: Maglev Yes; LibreTorrent No; BiglyBT (Android) No; Seal No; YTDLnis No; NewPipe No; Flud No; 1DM+ No; Advanced Download Manager (ADM) No; Free Download Manager (FDM) No
 - RSS feeds with auto-download rules: Maglev Yes; LibreTorrent Yes; BiglyBT (Android) Yes; Seal No; YTDLnis Partial; NewPipe No; Flud Yes; 1DM+ No; Advanced Download Manager (ADM) No; Free Download Manager (FDM) No
 - Pick files inside a torrent: Maglev Yes; LibreTorrent Yes; BiglyBT (Android) Yes; Seal No; YTDLnis No; NewPipe No; Flud Yes; 1DM+ No; Advanced Download Manager (ADM) Yes; Free Download Manager (FDM) Yes
-- Plain web links (http/https): Maglev Yes; LibreTorrent No; BiglyBT (Android) No; Seal No; YTDLnis No; NewPipe No; Flud No; 1DM+ Yes; Advanced Download Manager (ADM) Yes; Free Download Manager (FDM) Yes
+- Plain file links (http/https): Maglev Yes; LibreTorrent No; BiglyBT (Android) No; Seal No; YTDLnis No; NewPipe No; Flud No; 1DM+ Yes; Advanced Download Manager (ADM) Yes; Free Download Manager (FDM) Yes
 - Pause and resume for links: Maglev Yes; LibreTorrent No; BiglyBT (Android) No; Seal No; YTDLnis No; NewPipe No; Flud No; 1DM+ Partial; Advanced Download Manager (ADM) Yes; Free Download Manager (FDM) Yes
 - Background downloads with a notification: Maglev Yes; LibreTorrent No; BiglyBT (Android) Yes; Seal No; YTDLnis Partial; NewPipe No; Flud No; 1DM+ Yes; Advanced Download Manager (ADM) Yes; Free Download Manager (FDM) No
 - Play while downloading: Maglev Yes; LibreTorrent Yes; BiglyBT (Android) No; Seal No; YTDLnis No; NewPipe No; Flud Partial; 1DM+ No; Advanced Download Manager (ADM) No; Free Download Manager (FDM) No
@@ -64,7 +82,7 @@ Made by Harsh Dayal (https://harshdayal.dev, GitHub: https://github.com/Kaos599)
 - Saves AES-128 encrypted HLS: Maglev Yes; LibreTorrent No; BiglyBT (Android) No; Seal No; YTDLnis No; NewPipe No; Flud No; 1DM+ No; Advanced Download Manager (ADM) No; Free Download Manager (FDM) No
 - Picks stream quality and audio language: Maglev Yes; LibreTorrent No; BiglyBT (Android) No; Seal No; YTDLnis Partial; NewPipe No; Flud No; 1DM+ No; Advanced Download Manager (ADM) No; Free Download Manager (FDM) No
 - Saves live streams: Maglev Not yet; LibreTorrent No; BiglyBT (Android) No; Seal No; YTDLnis No; NewPipe No; Flud No; 1DM+ No; Advanced Download Manager (ADM) No; Free Download Manager (FDM) No
-- YouTube downloads: Maglev Not yet; LibreTorrent No; BiglyBT (Android) No; Seal Yes; YTDLnis Yes; NewPipe Yes; Flud No; 1DM+ No; Advanced Download Manager (ADM) No; Free Download Manager (FDM) No
+- YouTube downloads: Maglev Yes; LibreTorrent No; BiglyBT (Android) No; Seal Yes; YTDLnis Yes; NewPipe Yes; Flud No; 1DM+ No; Advanced Download Manager (ADM) No; Free Download Manager (FDM) No
 - Wi-Fi only option: Maglev Yes; LibreTorrent Yes; BiglyBT (Android) No; Seal No; YTDLnis No; NewPipe No; Flud Yes; 1DM+ Yes; Advanced Download Manager (ADM) Yes; Free Download Manager (FDM) Yes
 - Speed limits: Maglev Yes; LibreTorrent Yes; BiglyBT (Android) No; Seal No; YTDLnis No; NewPipe No; Flud No; 1DM+ Yes; Advanced Download Manager (ADM) Yes; Free Download Manager (FDM) Partial
 - Download scheduling: Maglev Yes; LibreTorrent Yes; BiglyBT (Android) No; Seal No; YTDLnis Yes; NewPipe No; Flud No; 1DM+ Yes; Advanced Download Manager (ADM) Yes; Free Download Manager (FDM) Yes
@@ -85,9 +103,9 @@ Made by Harsh Dayal (https://harshdayal.dev, GitHub: https://github.com/Kaos599)
 
 ## Switching from another app
 
-- [Maglev as an alternative to 1DM+](https://harshdayal.dev/maglev/1dm-alternative): Maglev and 1DM+ both download ordinary web links and torrents with no ads. Maglev is open source under GPL-3.0, saves DASH streams as well as HLS, and searches torrent sites from one box. 1DM+ is on Google Play, and Maglev is not there yet.
-- [Maglev as an alternative to ADM](https://harshdayal.dev/maglev/adm-alternative): Maglev and ADM both download ordinary web links and torrents, with a browser and a battery cut-off. ADM's Play listing says it contains ads and in-app purchases. Maglev has no ads, and its code is open under GPL-3.0.
-- [Maglev as an alternative to LibreTorrent](https://harshdayal.dev/maglev/libretorrent-alternative): Maglev runs torrents the way LibreTorrent does, and both are open source under GPL-3.0 with no ads. Maglev also downloads ordinary web links, saves videos from web pages and searches torrent sites in one box. LibreTorrent's pages do not list web file downloads or a browser.
+- [Maglev as an alternative to 1DM+](https://harshdayal.dev/maglev/1dm-alternative): Maglev and 1DM+ both download links and torrents with no ads. Maglev is open source under GPL-3.0, reads video links from YouTube, X and Instagram, saves DASH streams as well as HLS, and searches torrent sites from one box. 1DM+ is on Google Play, and Maglev is not there yet.
+- [Maglev as an alternative to ADM](https://harshdayal.dev/maglev/adm-alternative): Maglev and ADM both download links and torrents, with a browser and a battery cut-off. ADM's Play listing says it contains ads and in-app purchases. Maglev has no ads, and its code is open under GPL-3.0.
+- [Maglev as an alternative to LibreTorrent](https://harshdayal.dev/maglev/libretorrent-alternative): Maglev runs torrents the way LibreTorrent does, and both are open source under GPL-3.0 with no ads. Maglev also downloads video links and files, and searches torrent sources in one box. LibreTorrent's pages do not list web file downloads or a browser.
 - [Maglev as an alternative to Flud](https://harshdayal.dev/maglev/flud-alternative): Maglev and Flud both run torrents, with magnet links, RSS feeds and file selection. Maglev has no ads, and Flud's Google Play listing says it contains ads and in-app purchases. Maglev is open source. Flud's Play page does not say it is.
 
 ## FAQ
@@ -126,7 +144,7 @@ Yes. Maglev runs on Android 7 and every later version. On Android 16 and later, 
 
 ### How do I download videos from websites on Android?
 
-Open the page in Maglev's browser and play the video. Maglev lists it in the Files tray with the page's other files. Tap it to download. Files that need the site's session still work, because Maglev uses the page's cookies for that download.
+Paste or share the page's link to Maglev, pick a quality, and Maglev saves the video. If the site isn't read directly, open the page in Maglev's browser and play the video. Maglev lists it in the Files tray with the page's other files. Tap it to download. Files that need the site's session still work, because Maglev uses the page's cookies for that download.
 
 ### How do I save an HLS or m3u8 stream on Android?
 
@@ -138,19 +156,31 @@ Maglev is one free, open source option. It finds HLS (.m3u8) and DASH streams wh
 
 ### Which streams can't Maglev save?
 
-DRM-protected streams, live streams and players that hide their video inside the page. That includes HLS that uses SAMPLE-AES, Netflix-style protected video and YouTube-style players. Maglev never gets around DRM, and when it can't save something, it tells you why.
+DRM-protected streams and live streams, and some players that hide their video inside the page. That includes HLS that uses SAMPLE-AES and Netflix-style protected video. Maglev never gets around DRM, and when it can't save something, it tells you why.
 
 ### Can Maglev download YouTube videos?
 
-No. YouTube-style players hide their video inside the page in a way Maglev can't save, and Maglev says so when you try. The same goes for Netflix-style protected video and live streams.
+Yes. Paste or share the link, pick a quality, and Maglev saves the video. Maglev reads it with yt-dlp on your phone and shows up to 6 qualities. It updates yt-dlp by itself once a day on Wi-Fi (Settings > Updates > Video sites). Live streams and Netflix-style protected video can't be saved. A video behind a sign-in may not download, and Maglev says so. See the YouTube downloader guide.
 
 ### Can Maglev download subtitles?
 
 Yes, for videos you have already downloaded. Tap Find subtitles on a finished download, or on a video in a torrent's Files tab. Maglev searches 21 free sources with no account and groups the results by how well they fit the file. The subtitle is saved next to the video, so players pick it up. Two sources match by file fingerprint (Subtis for Spanish, Napisy24 for Polish); the rest match by name. Maglev doesn't fetch subtitles by itself when a download finishes.
 
-### Can Maglev save Instagram, TikTok or X videos?
+### Can Maglev download Instagram Reels?
 
-Sometimes. Maglev has no special support for any one site. It saves video files and on-demand HLS or DASH streams that a page loads while you play them. Some players stream in a way Maglev can't save, and protected video never saves, so results vary by site and by video.
+Public Reels and posts, often yes. Paste or share the link, pick a quality, and Maglev reads the video with yt-dlp on your phone. Instagram asks many posts for a sign-in, and those may not download. Maglev says "needs sign-in" when that happens. See the Instagram Reels downloader guide.
+
+### Can Maglev download X (Twitter) videos?
+
+Public videos, often yes. Paste or share the post's link, pick a quality, and Maglev saves the video. A video behind a sign-in may not download, and Maglev says so. See the X (Twitter) video downloader guide.
+
+### Can Maglev download YouTube Shorts?
+
+Yes. Paste or share a Shorts link like any YouTube link and pick a quality. See the YouTube downloader guide.
+
+### Can Maglev save Instagram or X videos?
+
+Yes, for most public videos. Paste or share the link from Instagram, X or another video site and pick a quality. A video behind a sign-in may not download, and Maglev says so. For other pages, open the page in Maglev's browser and play the video: Maglev saves the video files and on-demand HLS or DASH streams it loads. Protected video never saves, so results vary by site and by video.
 
 ### Is there an ad-free browser for Android that downloads videos?
 
@@ -162,7 +192,7 @@ A torrent is a way to share a file between many people at once. Instead of downl
 
 ### Is Maglev a good LibreTorrent or Flud alternative?
 
-It can be. Like LibreTorrent and Flud, Maglev downloads torrents and magnet links and follows RSS feeds. It also downloads ordinary links with resume, saves videos from web pages through an ad-free browser, and searches 40 built-in sources. The comparison page lists what each app's own page says.
+It can be. Like LibreTorrent and Flud, Maglev downloads torrents and magnet links and follows RSS feeds. It also downloads video links and files with resume, finds videos on web pages through an ad-free browser, and searches 40 built-in sources. The comparison page lists what each app's own page says.
 
 ### Can Maglev open magnet links and .torrent files?
 
@@ -198,7 +228,7 @@ Yes. You can choose any folder for your downloads. You can even move a torrent's
 
 ### Can I pause and resume downloads?
 
-Yes. Pause, resume and retry work for torrents and for ordinary links, and they survive a restart. If a link has expired, Maglev asks for a fresh one and continues where it stopped.
+Yes. Pause, resume and retry work for torrents and for links, and they survive a restart. If a link has expired, Maglev asks for a fresh one and continues where it stopped.
 
 ### Do downloads keep going in the background?
 

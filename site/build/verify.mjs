@@ -86,8 +86,36 @@ function altSlugs() {
   return (JSON.parse(fs.readFileSync(file, 'utf8')).alternatives || []).map((a) => a.slug);
 }
 
+/** The video-site intent pages (guides.json). */
+function guideList() {
+  const file = path.join(HERE, 'guides.json');
+  return fs.existsSync(file) ? JSON.parse(fs.readFileSync(file, 'utf8')).guides : [];
+}
+
+/** Title at most 60 characters, description at most 155, a direct answer of 40 to 60 words, HowTo and FAQ JSON-LD, no absolute claims. */
+function checkGuide(g) {
+  const name = `${g.slug}/index.html`;
+  const html = fs.readFileSync(path.join(SITE, name), 'utf8');
+  const title = decode((html.match(/<title>([\s\S]*?)<\/title>/) || [])[1] || '');
+  const desc = decode((html.match(/<meta name="description" content="([^"]*)"/) || [])[1] || '');
+  if (title.length > 60) fail(`${name}: title is ${title.length} characters (max 60)`);
+  if (desc.length > 155) fail(`${name}: description is ${desc.length} characters (max 155)`);
+  const lede = decode((html.match(/<p class="lede">([\s\S]*?)<\/p>/) || [])[1] || '');
+  const words = lede.trim().split(/\s+/).length;
+  if (words < 40 || words > 60) fail(`${name}: direct answer is ${words} words (want 40 to 60)`);
+  const types = [...html.matchAll(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/g)].map((m) => { try { return JSON.parse(m[1]); } catch { return {}; } });
+  const howTo = types.find((o) => o['@type'] === 'HowTo');
+  if (!howTo || howTo.step.length < 3 || howTo.step.length > 5) fail(`${name}: HowTo with 3 to 5 steps missing`);
+  const faq = types.find((o) => o['@type'] === 'FAQPage');
+  if (!faq || faq.mainEntity.length < 4 || faq.mainEntity.length > 6) fail(`${name}: FAQPage needs 4 to 6 questions`);
+  if (!types.some((o) => (o['@graph'] || []).some((n) => [].concat(n['@type']).includes('SoftwareApplication')))) fail(`${name}: no SoftwareApplication JSON-LD`);
+  if (/\balways\b|\b100%|\bbest\b|\b#1\b/i.test(decode(html.replace(/<script[\s\S]*?<\/script>/g, '')))) fail(`${name}: absolute or superlative claim`);
+  for (const other of guideList()) if (other.slug !== g.slug && !html.includes(`href="/maglev/${other.slug}"`)) fail(`${name}: no link to ${other.slug}`);
+  if (!html.includes('href="/maglev/compare"')) fail(`${name}: no link to the compare page`);
+}
+
 function staticChecks() {
-  const pages = ['index.html', 'compare/index.html', 'privacy/index.html', ...altSlugs().map((s) => `${s}/index.html`)].filter((p) => fs.existsSync(path.join(SITE, p)));
+  const pages = ['index.html', 'compare/index.html', 'privacy/index.html', ...altSlugs().map((s) => `${s}/index.html`), ...guideList().map((g) => `${g.slug}/index.html`)].filter((p) => fs.existsSync(path.join(SITE, p)));
   if (!pages.includes('compare/index.html')) fail('compare/index.html missing (is site/build/compare.json there?)');
   if (!pages.includes('privacy/index.html')) fail('privacy/index.html missing (content.json needs a privacy section)');
   for (const name of pages) {
@@ -98,6 +126,7 @@ function staticChecks() {
     if (!canon || canon.endsWith('/')) fail(`${name}: canonical missing or ends with a slash: ${canon}`);
     console.log(`static: ${name}: ${f.blocks} JSON-LD blocks, ${f.faq} FAQ items, ${n} links and sources`);
   }
+  for (const g of guideList()) { if (pages.includes(`${g.slug}/index.html`)) checkGuide(g); else fail(`${g.slug}/index.html missing`); }
   checkLinks('404.html', fs.readFileSync(path.join(SITE, '404.html'), 'utf8'));
   // One h1 each, and every <img> has alt, width and height.
   for (const name of [...pages, '404.html']) {
@@ -113,6 +142,7 @@ function staticChecks() {
   if (pages.includes('compare/index.html') && !sm.includes('/maglev/compare</loc>')) fail('sitemap.xml lacks /maglev/compare');
   if (pages.includes('privacy/index.html') && !sm.includes('/maglev/privacy</loc>')) fail('sitemap.xml lacks /maglev/privacy');
   for (const s of altSlugs()) if (pages.includes(`${s}/index.html`) && !sm.includes(`/maglev/${s}</loc>`)) fail(`sitemap.xml lacks /maglev/${s}`);
+  for (const g of guideList()) if (!sm.includes(`/maglev/${g.slug}</loc>`)) fail(`sitemap.xml lacks /maglev/${g.slug}`);
   if (/<loc>[^<]*\/<\/loc>/.test(sm)) fail('sitemap.xml has a URL with a trailing slash');
 }
 
@@ -159,7 +189,7 @@ async function browserChecks(outDir) {
   const srv = await serve();
   const base = `http://localhost:${srv.address().port}${BASE_PATH}`;
 
-  const targets = [['index', base], ['compare', `${base}/compare`], ['privacy', `${base}/privacy`], ...altSlugs().map((s) => [s, `${base}/${s}`]), ['404', `${base}/no/such/page`]];
+  const targets = [['index', base], ['compare', `${base}/compare`], ['privacy', `${base}/privacy`], ...altSlugs().map((s) => [s, `${base}/${s}`]), ...guideList().map((g) => [g.slug, `${base}/${g.slug}`]), ['404', `${base}/no/such/page`]];
   for (const [name, url] of targets) {
     for (const vp of [{ width: 390, height: 844 }, { width: 1440, height: 900 }]) {
       const ctx = await browser.newContext({ viewport: vp });

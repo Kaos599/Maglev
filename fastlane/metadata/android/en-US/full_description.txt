@@ -1,4 +1,4 @@
-Maglev downloads torrents, ordinary links and the videos and files on a web page, all in one list. It is a small Android app with a pixel-art look and no ads.
+Paste or share almost any link and Maglev downloads it: a video page, a file, a magnet link or a .torrent file, all in one list. It is a small Android app with a pixel-art look and no ads.
 
 <b>Torrents</b>
 <ul>
@@ -8,9 +8,16 @@ Maglev downloads torrents, ordinary links and the videos and files on a web page
 <li>Downloads keep going with the screen off. If Android closes the app, Maglev comes back and carries on.</li>
 </ul>
 
-<b>Any link</b>
+<b>Video sites</b>
 <ul>
-<li>Paste or share a web link and Maglev downloads the file, with pause, resume and retry that survive a restart.</li>
+<li>Paste or share a YouTube, X, Instagram or other video link, pick a quality, and Maglev saves the video.</li>
+<li>Maglev keeps its video-site support up to date by itself (Settings > Updates > Video sites).</li>
+<li>A video behind a sign-in may not download. Maglev shows a "needs sign-in" message when that happens.</li>
+</ul>
+
+<b>File links</b>
+<ul>
+<li>Paste or share a link to a file and Maglev downloads it, with pause, resume and retry that survive a restart.</li>
 <li>Links that point at devices on your own network are stopped unless you allow them.</li>
 </ul>
 
@@ -20,14 +27,14 @@ Maglev downloads torrents, ordinary links and the videos and files on a web page
 <li>Videos, audio, images and documents on the page show up in a tray. Tap one to download it.</li>
 <li>Downloads that start without a tap go to the tray, pages can't fill your Back history, crypto-mining scripts are blocked, and pages open over HTTPS when the site supports it.</li>
 <li>Streaming videos (HLS and DASH) are saved as one file. Pick the quality and audio language first.</li>
-<li>Maglev does not get around DRM. Protected video, live streams and players that hide their video can't be saved, and Maglev says so.</li>
+<li>Maglev does not get around DRM. Protected video and live streams can't be saved, and Maglev says so.</li>
 </ul>
 
 <b>Subtitles</b>
 <ul>
 <li>Find subtitles for a video you've downloaded, from 21 free sources with no account. Open a finished download or a video in a torrent's Files tab and tap Find subtitles.</li>
 <li>Results are grouped by how well they fit the file. The subtitle is saved next to the video, so players pick it up.</li>
-<li>Choose your languages and turn sources on or off in Settings (Subtitle sources). Two sources match by file fingerprint; the rest match by name.</li>
+<li>Choose your languages and turn sources on or off in Settings (Subtitles). Two sources match by file fingerprint; the rest match by name.</li>
 </ul>
 
 <b>Search and feeds</b>
@@ -54,4 +61,4 @@ Maglev talks only to the sources you search, the subtitle sources you turn on, t
 
 Maglev doesn't host or index any content. What you download, and following the law where you live, is up to you.
 
-Maglev is free software under the GPL-3.0. It is in beta.
+Maglev is free software under the GPL-3.0.

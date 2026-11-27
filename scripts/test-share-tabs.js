@@ -18,7 +18,7 @@ async function main() {
   const { shareBrowserRoute } = await import('../utils/browser/shareRoute.ts');
   const { browserIntentRoute } = await import('../utils/browserUrl.ts');
   const r = browserIntentRoute('maglev://browser?url=' + encodeURIComponent('https://example.com/a?b=1'));
-  check('card route is the stack route', r.startsWith('/browser?prefill='));
+  check('card route is the stack route and loads the page', r.startsWith('/browser?url='));
   check('tab shown: /browse with same params', shareBrowserRoute(r, true) === r.replace('/browser', '/browse'));
   check('tab hidden: stack route kept', shareBrowserRoute(r, false) === r);
   check('bare /browser goes to /browse', shareBrowserRoute('/browser', true) === '/browse');
