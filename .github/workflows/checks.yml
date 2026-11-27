@@ -1,0 +1,74 @@
+name: Checks
+
+# Fast checks that don't need the app built: the state-machine models in specs/, and a guard against
+# comments and docs that point at planning documents outside this repository.
+on:
+  pull_request:
+  push:
+    branches: [main, dev]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: checks-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  models:
+    name: Models
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: '22.18'
+
+      - name: Setup Java
+        # TLC, the TLA+ model checker, runs on Java 11 or newer.
+        uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Cache the model checker
+        # check-models.js downloads tla2tools.jar into .cache/tla and checks its sha256. The key follows the
+        # script, so pinning a new jar version there fetches it again.
+        uses: actions/cache@v6
+        with:
+          path: .cache/tla
+          key: tla-${{ hashFiles('scripts/check-models.js') }}
+
+      - name: Check every model
+        run: node scripts/check-models.js
+
+  private-refs:
+    name: No private references
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          # The check compares this branch with where it left its base, so it needs the full history.
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: '22.18'
+
+      - name: Check added lines
+        # Pull requests compare with their base branch (GITHUB_BASE_REF). A push compares with the commit the
+        # branch pointed at before the push, so a merge into dev or main is checked once more.
+        env:
+          BEFORE: ${{ github.event.before }}
+        run: |
+          if [ "$GITHUB_EVENT_NAME" = "push" ] && [ -n "$BEFORE" ] && [ "$BEFORE" != "0000000000000000000000000000000000000000" ]; then
+            node scripts/check-private-refs.js --base "$BEFORE"
+          else
+            node scripts/check-private-refs.js
+          fi

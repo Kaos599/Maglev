@@ -6,11 +6,29 @@ Closes #
 
 ## Why
 
-<!-- The problem this solves. Features and behaviour changes need an approved issue first (see [CONTRIBUTING.md](https://github.com/Kaos599/Maglev/blob/dev/CONTRIBUTING.md)). -->
+<!-- The problem this solves. Features and behaviour changes need an approved issue first (see [CONTRIBUTING.md](https://github.com/Kaos599/Maglev/blob/dev/CONTRIBUTING.md)). For a bug, the cause you found, not only the symptom. -->
 
-## How you tested it
+## Rules this keeps
 
-<!-- Phone or emulator, Android version, and what you tried. Screenshots or a short recording for anything on screen. -->
+<!--
+The things that must stay true after this change, one per line, in plain words. A reviewer checks the code against these.
+  - A paused download never starts again on its own.
+  - Sizes we can't read from the site show "—", never a guess.
+If the change moves something between states, link its model instead and name the invariants: specs/<feature>/ (see handbook/state-machines.md).
+-->
+
+## How a reviewer can check it
+
+<!--
+1. Commands you ran, with the lines of output that matter (pass counts, the failing line before your fix).
+2. Steps on a phone that someone else can repeat, each with what they should see.
+3. The phone or emulator and Android version you used.
+See handbook/contributing-well.md for an example.
+-->
+
+## Screens
+
+<!-- Before and after screenshots, or a short recording, for anything on screen. Write "none" if nothing on screen changed. -->
 
 ## Checklist
 
@@ -20,3 +38,4 @@ Closes #
 - [ ] Copy is plain English, and every new setting row has an entry in `utils/settingsIndex.ts`
 - [ ] Touch targets are at least 44 × 44
 - [ ] No tracking, analytics or new network calls the user didn't ask for
+- [ ] If this changes how something moves between states, the model in `specs/` is added or updated and `npm run models` passes

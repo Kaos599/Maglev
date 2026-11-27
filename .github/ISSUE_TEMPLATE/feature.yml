@@ -21,3 +21,13 @@ body:
     id: idea
     attributes:
       label: Your idea, if you have one
+  - type: textarea
+    id: states
+    attributes:
+      label: What states does it move through?
+      description: Optional. The steps the feature goes through and what moves it along, including what happens if you leave the app or Android closes it. A list is fine.
+      placeholder: |
+        Downloading → you tap Pause → Paused
+        Paused → you tap Resume → Downloading
+        Downloading → Wi-Fi drops and "Wi-Fi only" is on → Waiting for Wi-Fi
+        Android closes Maglev while Downloading → what should happen?

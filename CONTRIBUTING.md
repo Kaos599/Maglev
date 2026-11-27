@@ -2,12 +2,21 @@
 
 Bug reports, fixes and ideas are welcome. This page covers what you need to send a pull request that can be merged.
 
+The [handbook](handbook/) goes further:
+
+- [Contributing well](handbook/contributing-well.md): what makes a pull request easy to merge, what gets one closed, and how to write one a reviewer can check.
+- [State machines](handbook/state-machines.md): the small TLA+ models we ask for when a change moves something between states.
+- [Testing](handbook/testing.md): every check, what it proves and when to run it.
+- [Architecture](handbook/architecture.md) and [the engine boundary](handbook/engine-boundary.md): how the app, the Kotlin module and the Rust core fit together.
+- [Feature map](handbook/feature-map.md): every feature, its code, and whether it has a model yet.
+- [Labels](handbook/labels.md) and [maintaining](handbook/maintaining.md): how issues are sorted, and how releases are made.
+
 ## Open an issue first
 
 For anything other than a small bug fix or a typo, **open an issue before you write code**: a new feature, a change to how something works, a new search source, a new setting, a redesign or a refactor.
 
 1. [Open a feature request](https://github.com/Kaos599/Maglev/issues/new?template=feature.yml) that says what you want to change and why. Screenshots or a rough sketch help.
-2. Wait for the maintainer to reply. If the idea fits, the issue gets the `approved` label, sometimes with notes on how it should work.
+2. Wait for the maintainer to reply. If the idea fits, the issue gets the `approved` label, sometimes with notes on how it should work. If it also gets `needs-model`, the change moves something between states, and the pull request starts with a model in `specs/` (see [State machines](handbook/state-machines.md)).
 3. Then open your pull request against `dev`, and link the issue in it (`Closes #123`).
 
 Pull requests for features or changes that don't have an approved issue may be closed without review, however good the code is. This saves you from building something that can't be merged.
@@ -46,11 +55,14 @@ Debug builds use a mock engine until the native library is present. For the real
 npm test                 # unit and contract checks
 npx tsc --noEmit         # types
 npm run test:search      # search parsers against saved pages, if you touched search
+npm run models           # the state-machine models in specs/, if you added or changed one (needs Java 11+)
 ```
 
 CI runs these plus the Rust tests and an APK build. A pull request needs CI green before it can merge.
 
-Some checks read design documents that aren't in this repository. Those checks skip themselves when the documents are missing, so a clean run on your machine is still meaningful.
+[Testing](handbook/testing.md) explains what each check proves, which ones to run for the part of the app you changed, and why a few of them skip on your machine.
+
+In the description, say what you ran and paste the output that matters, and give steps someone else can repeat on a phone. The [pull request template](.github/pull_request_template.md) has a section for each, and [Contributing well](handbook/contributing-well.md#how-to-make-a-pull-request-verifiable) shows a good one.
 
 ## What gets merged
 
@@ -62,6 +74,8 @@ Some checks read design documents that aren't in this repository. Those checks s
 - **Touch targets of at least 44 × 44.**
 - **No analytics, ads or tracking libraries,** and nothing that sends data anywhere except where the user asked.
 - **Every setting has to do something.** A toggle that isn't wired to the engine won't be merged.
+- **State changes come with a model.** A new feature, or a change to how something moves between states, needs a small TLA+ model in `specs/<feature>/` that passes `npm run models`. Layout, copy and pure functions don't. [State machines](handbook/state-machines.md) shows how to write one.
+- **Comments say the rule, not where it came from.** Explain why the code does what it does in a sentence. Don't point at planning documents that aren't in this repository; `npm run check:refs` catches those.
 
 Small, focused pull requests get reviewed fastest. Anything beyond a bug fix needs an approved issue first (see [Open an issue first](#open-an-issue-first)).
 
