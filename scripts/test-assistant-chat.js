@@ -940,7 +940,7 @@ async function main() {
     check('TargetGone while a card is being built: it is dropped', !s.chat().items.some((i) => i.kind === 'card'), s.chat().items.map((i) => i.kind));
   }
 
-  // ---- askAbout shows the title, not the handle (item 6) -----------------------------------------------------
+  // ---- askAbout shows the title, not the handle -----------------------------------------------------
   {
     const s = setup();
     s.fetch.queue.push({ chunks: sseTools([{ id: 'k1', name: 'search_torrents', args: { query: 'The Last Harbor' } }]) });
@@ -957,7 +957,7 @@ async function main() {
     check('askAbout: no bubble shows a bare handle', !s.chat().items.some((i) => i.kind === 'user' && /\b[rt]\d+\b/.test(i.text)));
   }
 
-  // ---- Retry re-runs the last turn, no second user message, no old error (item 2) ------------------------------
+  // ---- Retry re-runs the last turn, no second user message, no old error ------------------------------
   {
     const s = setup();
     s.fetch.queue.push({ status: 500, chunks: [] });
@@ -980,7 +980,7 @@ async function main() {
     check('retry with nothing failed does nothing', s.fetch.requests.length === 3 && kinds(s.chat()).join() === 'user,assistant', s.fetch.requests.length);
   }
 
-  // ---- card results reach the model on the next message (item 3) -----------------------------------------------
+  // ---- card results reach the model on the next message -----------------------------------------------
   {
     const s = setup();
     const card = await proposalTurn(s);
@@ -1020,7 +1020,7 @@ async function main() {
     check('failed card: the model is told why', lastReqMsgs(s.fetch).at(-1).content.includes(`${card.id} failed: Storage full.`), lastReqMsgs(s.fetch).at(-1).content);
   }
 
-  // ---- Gemini thought signature goes back on the assistant tool call (item 4) -------------------------------------
+  // ---- Gemini thought signature goes back on the assistant tool call -------------------------------------
   {
     const s = setup();
     const sig = { google: { thought_signature: 'SIG-123' } };
@@ -1036,7 +1036,7 @@ async function main() {
     check('second request: tool call carries extra_content.google.thought_signature unchanged', asst && asst.tool_calls[0].extra_content.google.thought_signature === 'SIG-123' && asst.tool_calls[0].id === 'function-call-1', asst);
   }
 
-  // ---- usage counted once through retries and rounds (item 5) -----------------------------------------------------
+  // ---- usage counted once through retries and rounds -----------------------------------------------------
   {
     const s = setup();
     // Round 1 gets cut off after its usage chunk (a stall), the retry runs the tool, round 2 answers.

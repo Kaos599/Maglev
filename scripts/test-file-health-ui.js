@@ -124,7 +124,7 @@ async function main() {
   for (const [tag, label] of Object.entries(labels)) check(`label for ${tag}`, m.healthLabel(tag) === label, m.healthLabel(tag));
   check('no label for other tags', m.healthLabel('user') === undefined && m.healthLabel(null) === undefined);
 
-  // Banner copy, last group
+  // Elapsed time and the "Looking for peers" line while a magnet resolves
   check('elapsed seconds', m.formatElapsed(45) === '45s');
   check('elapsed minutes', m.formatElapsed(185) === '3m 05s', m.formatElapsed(185));
   check('elapsed hours', m.formatElapsed(3720) === '1h 02m', m.formatElapsed(3720));

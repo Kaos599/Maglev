@@ -1,6 +1,6 @@
 /**
- * Admission check for adding a torrent. Pure: no React, no react-native. The budget is free space minus what other unfinished downloads still need,
- * minus a 200 MB reserve; "Tight" leaves under 1 GB over it.
+ * Admission check for adding a torrent. Pure: no React, no react-native. The budget is free space minus what other
+ * unfinished downloads still need, minus a 200 MB reserve; "Tight" leaves under 1 GB over it.
  * Kotlin port `Admission.kt` must match `scripts/fixtures/admission-vectors.json`.
  */
 
@@ -54,7 +54,7 @@ const RETRYABLE_STATUSES = [408, 429, 500, 502, 503, 504];
 /**
  * Will this link download still write bytes? queued, resolving, downloading and paused (any `pausedBy`) will.
  * `error` will only when auto-retry would retry it. `finished`, `verifying` (everything is written),
- * `needs_link` (waits for the user) and any other error will not. Streams count with their estimated size, and an unknown size counts as 0.
+ * `needs_link` (waits for the user) and any other error will not.
  */
 function downloadStillWrites(d: Pick<PendingDownload, 'state' | 'error'>): boolean {
   switch (d.state) {
@@ -76,6 +76,7 @@ function downloadStillWrites(d: Pick<PendingDownload, 'state' | 'error'>): boole
 /**
  * pendingNeed: sum of max(0, includedBytes - progressBytes) over unfinished torrents, plus
  * max(0, size - downloaded) over link downloads that will still write and have a known size.
+ * Streams count with their estimated size, and an unknown size counts as 0.
  * Both lists are required: leaving the downloads out lets two big links be admitted against the same free space.
  * No staging factor here, for either kind: only the new selection is doubled.
  */

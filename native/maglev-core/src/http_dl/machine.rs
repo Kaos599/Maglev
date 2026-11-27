@@ -1,4 +1,5 @@
-//! State machine for one link download (queued, downloading, paused, verifying, done, error).
+//! State machine for one link download (resolving, queued, downloading, paused, verifying, finished, needs a new
+//! link, error, gone).
 //!
 //! Pure: `step(state, event)` returns the next state and the effects the driver must run. No IO, no clock.
 //! Every row of the transition table has a unit test at the bottom of this file.

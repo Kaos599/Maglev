@@ -47,7 +47,7 @@ check('tabs are flushed on blur and unmount', /flushTabs\(\)/.test(scr) && /tabS
 check('Save history off: memory only, saved rows deleted when it turns off', /if \(!deps\.saveHistory\(\) \|\| isPriv\(\)\) return/.test(store) && /deps\.deleteSaved\(\)/.test(store) && /subscribePrefs: subscribeBrowserPrefs/.test(hook) && /deleteSaved: deleteSavedTabs/.test(hook));
 check('a screen mount checks the native wipe count', /tabStore\.checkWipe\(\)/.test(hook) && /wipeCount: getHistoryWipeCount/.test(hook));
 
-console.log('one screen, one tab set (section 30)');
+console.log('one screen, one tab set');
 check('only the owner instance renders TabWebView', /tabsState && isOwner\s*\?\s*liveTabs\(tabsState\)/.test(scr));
 check('the owner token is set on focus and released on unmount', /setViewOwner\(instanceId\)/.test(scr) && /releaseViewOwner\(instanceId\)/.test(scr) && /export function setViewOwner/.test(shared));
 check('a blur alone does not release the token (a blurred browser keeps its pages)', !/blur[\s\S]{0,80}releaseViewOwner/.test(scr));
@@ -98,7 +98,7 @@ check('buttons Block, Allow once and "Always allow on {sourceHost}"', /browserSe
 check('scrim and Back dismiss (block once, remember nothing)', /onClose=\{onDismiss \?\? onBlock\}/.test(card));
 check('Open: window opens a tab with the opener, redirect follows, app opens the app', /req\.kind === 'window'[\s\S]{0,120}opener: id/.test(scr) && /followRedirect\(req\.url\)/.test(scr) && /openApp\(req\.url\)/.test(scr));
 check('an app that does not open falls back or says no app', /r\.fallbackUrl[\s\S]{0,120}followRedirect\(r\.fallbackUrl\)/.test(scr) && /browserTabs\.popup\.noApp/.test(scr));
-check('the card state is the T5 queue (request, noteBlocked, drop)', /popupsApi\.request\(/.test(scr) && /popupsApi\.noteBlocked\(/.test(scr) && /popupsApi\.drop\(p, id, 'navigated'\)/.test(scr) && /popupsApi\.drop\(p, id, 'closed'\)/.test(scr));
+check('the card state is the pop-up queue (request, noteBlocked, drop)', /popupsApi\.request\(/.test(scr) && /popupsApi\.noteBlocked\(/.test(scr) && /popupsApi\.drop\(p, id, 'navigated'\)/.test(scr) && /popupsApi\.drop\(p, id, 'closed'\)/.test(scr));
 check('Always allow adds the source host to the allow list', /allowForSite\(/.test(scr) && /popupAllowHosts: r\.allowHosts/.test(scr));
 check('the card shows for the active tab', /promptFor\(popups, activeId\)/.test(scr) && /<PopupCard prompt=\{prompt\}/.test(scr));
 
@@ -128,7 +128,7 @@ check('the test is chained after test-browser-tabs.js', /node scripts\/test-brow
 const tabRoute = read('app/(tabs)/browse.tsx');
 check('in the tab bar the screen skips the bottom inset (the tab bar already pads for it)', /<BrowserScreen inTab \/>/.test(tabRoute) && /edges=\{inTab \? \['top', 'left', 'right'\] : \['top', 'left', 'right', 'bottom'\]\}/.test(scr));
 
-// 24.11 history from a blank tab
+// History from a blank tab
 const recent = read('components/browser/StartPage.tsx'); // the Recent list now lives in StartPage (RecentHistory.tsx is gone)
 check('⋮ is enabled on a blank tab (gated on ready, not on a page)', /accessibilityLabel="More"[\s\S]{0,40}disabled=\{!ready\}/.test(scr) && !/accessibilityLabel="More"[\s\S]{0,40}disabled=\{!hasPage\}/.test(scr));
 check('with no page the sheet is titled Browser', /title=\{hasPage \? historyCopy\.menuTitlePage : historyCopy\.menuTitleBlank\}/.test(scr) && /menuTitleBlank: 'Browser'/.test(read('constants/copy.ts')));

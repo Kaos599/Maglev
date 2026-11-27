@@ -135,8 +135,7 @@ contract('C-ENG-2', 'P0',
   'Given the shipped arm64 .so, When its size and strings are inspected, Then it is >= 3 MB and embeds librqbit/dht code',
   () => {
     const dir = 'modules/maglev-engine/android/src/main/jniLibs';
-    // Binaries are never committed (a committed binary would go stale). With no local build, the CI gate in
-    // .github/workflows/_rust-android.yml enforces the same rule on every push.
+    // Binaries are never committed (jniLibs/ is gitignored and CI builds the .so files on every push).
     if (!exists(`${dir}/arm64-v8a/libmaglev_core.so`)) {
       skip('no local .so (gitignored); enforced by CI _rust-android size/reality/16KB gate');
       return;
@@ -494,7 +493,7 @@ contract('C-SEARCH-1', 'P1', 'Search engine files exist and the search contract 
   assert(r.status === 0, 'node scripts/test-search.js exits 0');
 });
 
-contract('C-W3-1', 'P1', 'Wave 3 JS side: file priority, reannounce, free space, Live Updates', () => {
+contract('C-W3-1', 'P1', 'File priority, reannounce, free space, Live Updates', () => {
   const bridge = read('modules/maglev-engine/src/MaglevNativeBridge.ts');
   const mock = read('modules/maglev-engine/src/MaglevMockEngine.ts');
   const add = read('app/add-torrent.tsx') + read('components/add/SpaceStrip.tsx');
@@ -506,7 +505,7 @@ contract('C-W3-1', 'P1', 'Wave 3 JS side: file priority, reannounce, free space,
   assert(/Keep at least one file/.test(mock) && /every\(\(e\) => e\.priority === 'skip'\)/.test(mock), 'mock rejects an all-skip priority list');
   assert(/60_000/.test(mock) && /retryAfterSecs/.test(mock), 'mock rate-limits reannounce to once per 60 s');
   assert(/getFreeSpace/.test(add), 'add-torrent reads getFreeSpace');
-  assert(/admit\(/.test(add) && /'DoesntFit'/.test(add) && /Add paused/.test(add) && /doAdd\(false, doesntFit\)/.test(add), 'add-torrent runs the SM-35 space budget and adds paused when it does not fit');
+  assert(/admit\(/.test(add) && /'DoesntFit'/.test(add) && /Add paused/.test(add) && /doAdd\(false, doesntFit\)/.test(add), 'add-torrent checks the free-space budget and adds paused when it does not fit');
   assert(/file_priorities|filePriorities/.test(add), 'add-torrent sends file priorities');
   assert(/reannounce/.test(detail) && /Find more peers/.test(detail), 'detail has Find more peers (reannounce)');
   assert(/Download first/.test(detail) && /setFilePriorities/.test(detail) && /notices\.detail\.keepOneFile/.test(detail) && /keepOneFile: 'Keep at least one file\.'/.test(read('constants/copy.ts')), 'detail has the priority sheet and blocks all-skip');

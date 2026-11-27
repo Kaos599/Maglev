@@ -1,4 +1,4 @@
-//! The JSON shapes the engine returns to Kotlin (snapshots, summaries, trackers).
+//! The JSON shapes the engine exchanges with Kotlin: snapshots, details (files, peers, trackers), metadata and add options.
 
 use serde::{Deserialize, Serialize};
 

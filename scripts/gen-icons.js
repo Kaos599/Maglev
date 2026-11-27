@@ -41,7 +41,7 @@ const MAP = {
   folder: 'folder',
   file: 'file',
   share: 'share',
-  // newer icons
+  // speed limit, move, rules, schedule, clipboard, sort, filter and selection, copy and link icons
   'speed-limit': 'speed-medium',
   move: 'move',
   rule: 'filter',
@@ -86,7 +86,7 @@ const MAP = {
   sun: 'sun',
   moon: 'moon',
   'power-off': 'power',
-  // older icons
+  // torrent actions (recheck, reannounce, download first) and the file-type icons
   recheck: 'check-double',
   reannounce: 'radio',
   'priority-first': 'arrow-bar-up',

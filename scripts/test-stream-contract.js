@@ -71,7 +71,7 @@ const CODES = [
   ['MUX_FAILED', 'MUX_FAILED_MSG', "Couldn't join the video and audio. Try again."],
 ];
 
-check('error codes and messages in error.rs match section 24.8', () => {
+check('error codes and messages in error.rs match the contract', () => {
   for (const [code, constName, message] of CODES) {
     if (sec !== null) assert(sec.includes(`\`${code}\``) && sec.includes(message), `${code} or its message is missing from the contract`);
     assert(errorRs.includes(`"${code}"`), `${code} missing in error.rs as_str`);

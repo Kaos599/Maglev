@@ -1,4 +1,4 @@
-// Some tests compare the code with notes kept in a separate private repository, checked out into docs/
+// Some tests compare the code with notes that aren't in this repository, checked out into docs/
 // (gitignored). A public checkout (CI or an outside contributor's clone) has no docs/ at all. Tests read those
 // notes through here: on a machine with docs/ the checks run; without docs/ they are skipped with a note, and the
 // code checks in the same test still run. A checkout that has docs/ but is missing the file itself still fails

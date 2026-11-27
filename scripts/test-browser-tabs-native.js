@@ -81,14 +81,14 @@ check('inactive: onPause and media paused (pauseNow)', /webView\.onPause\(\)/.te
 check('active: onResume', /webView\.onResume\(\)/.test(act));
 check('never pauseTimers', !/pauseTimers\s*\(/.test(view));
 
-console.log('section 30: intent sanitising');
+console.log('intent sanitising');
 check('launch flags cleared, then only NEW_TASK', /intent\.flags = 0\s*\n\s*intent\.addFlags\(Intent\.FLAG_ACTIVITY_NEW_TASK\)/.test(start) && !/addFlags\(Intent\.FLAG_(?!ACTIVITY_NEW_TASK)/.test(start));
 check('clipData, component, selector null', /intent\.clipData = null/.test(start) && /intent\.component = null/.test(start) && /intent\.selector = null/.test(start));
 check('browser_fallback_url extra removed after it was read', /removeExtra\("browser_fallback_url"\)/.test(start) && start.indexOf('getStringExtra("browser_fallback_url")') < start.indexOf('removeExtra("browser_fallback_url")'));
 check('refuses package == context.packageName', /intent\.`package` == context\.packageName/.test(start));
 check('refuses the maglev data scheme', /dataScheme == "maglev"/.test(start));
 
-console.log('section 30: pop-up captures');
+console.log('pop-up captures');
 check('at most 3 captures: constant', /MAX_CAPTURES = 3/.test(view));
 check('over the cap: onCreateWindow emits onPopupBlocked window and returns false without sending resultMsg', /captures\.size >= MAX_CAPTURES[\s\S]{0,160}emitBlocked\("", "window"\)\s*\n\s*return false/.test(create));
 check('a capture is tracked when created', /captures\.add\(capture\)/.test(create));
@@ -98,7 +98,7 @@ const dbr = body('destroyBrowser');
 check('destroyBrowser destroys every capture', /for \(c in captures\.toList\(\)\) destroyCapture\(c\)/.test(dbr));
 check('destroyCapture stops, destroys and forgets', /captures\.remove\(c\)/.test(body('destroyCapture')) && /c\.destroy\(\)/.test(body('destroyCapture')));
 
-console.log('section 30: background first load');
+console.log('background first load');
 check('hidden view pauses after the first onPageFinished', /if \(!firstLoadDone\) \{\s*firstLoadDone = true\s*\n\s*if \(!active && pausePending\) pauseNow\(\)/.test(view));
 check('or after 10 s', /FIRST_LOAD_PAUSE_MS = 10_000L/.test(view) && /postDelayed\(\{ if \(pausePending && !destroyed && !active\) pauseNow\(\) \}, FIRST_LOAD_PAUSE_MS\)/.test(view));
 check('applyActive defers when the first load is not done', /else if \(firstLoadDone\) \{\s*pauseNow\(\)/.test(act) && /pausePending = true/.test(act));

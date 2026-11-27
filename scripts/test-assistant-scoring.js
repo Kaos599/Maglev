@@ -102,7 +102,7 @@ async function main() {
   const top = out.ranked[0];
   check('top row is recommended', top.tier === 'recommended', top.tier);
 
-  // ---------------------------------------------------------------- item 2: CAM/TS never shortlisted
+  // ---------------------------------------------------------------- CAM/TS never shortlisted
   const exIds = out.excluded.map((e) => e.id);
   check('CAM row is in excluded as cam_source', out.excluded.some((e) => e.id === idOf('cam') && e.reason === 'cam_source'));
   check('TS row is in excluded as cam_source', out.excluded.some((e) => e.id === idOf('ts') && e.reason === 'cam_source'));
@@ -115,12 +115,12 @@ async function main() {
   const tc = scoreResults([row('The.Last.Harbor.2023.TC.x264-GRP', 1.4 * GB, 10), row('The.Last.Harbor.2023.DVDSCR.x264-GRP', 1.4 * GB, 10)], baseCtx());
   check('TC and SCR are excluded too', tc.excluded.length === 2 && tc.ranked.length === 0);
 
-  // ---------------------------------------------------------------- item 3: 150 MB "1080p"
+  // ---------------------------------------------------------------- 150 MB "1080p"
   const fake = out.ranked.find((r) => r.id === idOf('fake'));
   check('150 MB 1080p gets too_small_for_claim', fake.flags.includes('too_small_for_claim'), fake.flags.join(','));
   check('150 MB 1080p is "avoid" and never shortlisted', fake.tier === 'avoid' && !out.shortlist.includes(fake));
 
-  // ---------------------------------------------------------------- item 4: risky sources
+  // ---------------------------------------------------------------- risky sources
   const hash = '9'.repeat(40);
   const both = { ...row('The.Last.Harbor.2023.1080p.WEB-DL.x265-GRP', 2.1 * GB, 500, ['knaben', 'tpb']), infoHash: hash };
   const onlyTpb = row('The.Last.Harbor.2023.1080p.WEB-DL.x265-TPB', 2.1 * GB, 500, ['tpb']);
@@ -141,7 +141,7 @@ async function main() {
   const r4d = scoreResults([onlyTpb], baseCtx());
   check('only risky rows: still listed, never recommended', r4d.ranked.length === 1 && r4d.ranked[0].tier !== 'recommended');
 
-  // ---------------------------------------------------------------- item 5: DoesntFit and partial packs
+  // ---------------------------------------------------------------- DoesntFit and partial packs
   for (const k of ['uhd', 'remux']) {
     const r = out.ranked.find((x) => x.id === idOf(k));
     check(`${k}: DoesntFit and tier avoid`, r.admission.result === 'DoesntFit' && r.tier === 'avoid', `${r.admission.result}/${r.tier}`);
@@ -164,7 +164,7 @@ async function main() {
   const fitsPack = scoreResults([row('Harbor.Light.S01.1080p.WEB-DL.x265-GRP', 12 * GB, 100)], pctx).ranked[0];
   check('pack: a fitting pack has no partial flag', !fitsPack.flags.includes('partial_fits'));
 
-  // ---------------------------------------------------------------- item 6: reasons[0] template
+  // ---------------------------------------------------------------- reasons[0] template
   for (const r of out.ranked) {
     check(`reasons[0] matches template (${r.id})`, REASON_RE.test(r.reasons[0]), r.reasons[0]);
   }
@@ -196,7 +196,7 @@ async function main() {
   check('2160p resolution points: 10 on phone, 12 on tv', q('tv') - q('phone') === 2, `${q('phone')} ${q('tv')}`);
   const hc = scoreResults([row('The.Last.Harbor.2023.1080p.WEB-DL.x265.HC-GRP', 2 * GB, 50)], baseCtx()).ranked[0];
   check('hardcoded subs: -2 and flagged', hc.breakdown.playability === 9 && hc.flags.includes('hardcoded_subs'), JSON.stringify(hc.breakdown));
-  // Playback is the real PlaybackSupport shape and goes through playbackVerdict (R1 item 7).
+  // Playback is the real PlaybackSupport shape and goes through playbackVerdict.
   const PROBE = { avc: 'hardware', hevc: 'hardware', hevc10: 'hardware', av1: 'none', av1_10: 'none', vp9: 'hardware', dolbyVision: 'hardware', hdr10: true, hdr10plus: false, hlg: true };
   const hwHevc = scoreResults([rows.webdl265], baseCtx({ playback: PROBE })).ranked[0];
   check('probe says hardware HEVC: playability 18', hwHevc.breakdown.playability === 18 && !hwHevc.flags.includes('playback_unknown'), String(hwHevc.breakdown.playability));
@@ -267,7 +267,7 @@ async function main() {
   check('no Fits at all: shortlist can still hold a Tight best-quality row',
     (() => { const t = scoreResults([row('The.Last.Harbor.2023.1080p.WEB-DL.x265-GRP', 19 * GB, 50)], baseCtx()); return t.shortlist.length === 1 && t.shortlist[0].label === 'best-quality'; })());
 
-  // ---------------------------------------------------------------- item 7: fake-file fixtures
+  // ---------------------------------------------------------------- fake-file fixtures
   const movie = (files, name = 'The.Last.Harbor.2023.1080p.WEB-DL.x265') => checkFileSafety({ name, category: 'movie', files });
   const mkv = { path: 'Harbor/Harbor.2023.1080p.mkv', sizeBytes: 2.1 * GB };
   check('fake files: exe is red', movie([mkv, { path: 'Harbor/Setup.exe', sizeBytes: MB }]).level === 'red');

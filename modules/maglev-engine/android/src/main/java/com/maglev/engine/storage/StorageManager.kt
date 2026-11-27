@@ -8,7 +8,10 @@ import android.os.Environment
 import androidx.core.content.ContextCompat
 import java.io.File
 
-/** Where the engine writes new torrents. By default that is `Download/Maglev`, visible in file managers. A custom folder is written directly when Maglev can write to its path, and otherwise staged and copied when the torrent completes. */
+/**
+ * Where the engine writes new torrents. By default that is `Download/Maglev`, visible in file managers. A custom folder
+ * is written directly when Maglev can write to its path, and otherwise staged and copied when the torrent completes.
+ */
 data class DownloadTarget(
     /** Absolute POSIX directory handed to Rust as the output folder. */
     val path: String,

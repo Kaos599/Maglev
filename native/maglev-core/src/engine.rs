@@ -2799,7 +2799,8 @@ impl MaglevEngine {
         // The MOVING marker is removed when the guard drops, after the outcome is saved.
     }
 
-    /// Moves the torrent's files and re-adds it at the new folder: pause, rename each file (copy and remove across volumes), forget and re-add, then check. A failure moves the files back. Holds the tick lock for the whole move.
+    /// Moves the torrent's files and re-adds it at the new folder: pause, rename each file (copy and remove across
+    /// volumes), forget and re-add, then check. A failure moves the files back. Holds the tick lock for the whole move.
     async fn do_move(&self, job: &MoveJob) -> Result<(), EngineError> {
         let _tick = self.tick_lock.lock().await;
         let old = job.old_folder.to_string_lossy().into_owned();
@@ -2984,7 +2985,7 @@ impl MaglevEngine {
     }
 
     /// Kotlin's word on the active network: metered (mobile data) or not. Used only to split the bytes an item moved
-    ///; it never pauses anything. Unknown counts as unmetered, so Kotlin sends false then.
+    /// by network. It never pauses anything. Unknown counts as unmetered, so Kotlin sends false then.
     pub fn set_network_metered(&self, metered: bool) {
         self.network_metered.store(metered, Ordering::Relaxed);
         self.downloads.set_metered(metered);
@@ -3203,8 +3204,8 @@ impl MaglevEngine {
                 if stats.progress_bytes > m.max_progress_bytes {
                     m.max_progress_bytes = stats.progress_bytes;
                 }
-                // A full disk stops a torrent with a write error. Show it as a health state, not an error
-                //: the planner keeps it stopped until the space is back.
+                // A full disk stops a torrent with a write error. Show it as a health state, not an error:
+                // the planner keeps it stopped until the space is back.
                 if m.health.is_none()
                     && m.last_error.is_none()
                     && !matches!(

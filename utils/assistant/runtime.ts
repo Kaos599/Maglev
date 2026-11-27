@@ -234,7 +234,7 @@ export interface ToolRunner {
   prepareCard(cardId: string, tool: string, args: Record<string, unknown>): Promise<ProposalCardView | { error: string }>;
   /** On Confirm: target still exists, indices in range, admit() again with fresh free space. */
   revalidate(cardId: string, signal?: AbortSignal): Promise<RevalidateResult>;
-  /** Run the confirmed action against the engine. `message` is plain English (the plain-English copy for the code). */
+  /** Run the confirmed action against the engine. `message` is plain English, written for the user. */
   execute(cardId: string): Promise<ExecuteResult>;
   /** The transfer or result handle a card acts on, for TargetGone and "newer card for the same target". */
   cardTarget(cardId: string): string | undefined;

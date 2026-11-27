@@ -9,7 +9,8 @@
  *   jar returns host-only cookies only for the exact host), and each parent domain is expired too, down to the
  *   registrable domain (never a bare suffix such as `com` or `co.uk`).
  * - Android has ONE cookie jar for the whole app. The Cloudflare site checks of Search live in it
- * (a host the user passed a check on keeps its clearance), so nothing here wipes the jar: only hosts that are not Search's are expired.
+ *   (a host the user passed a check on keeps its clearance), so nothing here wipes the jar: only hosts that are not
+ *   Search's are expired.
  * - The list of hosts is also written to kv, so a kill in the middle of a private session is cleaned up at the next
  *   start. Only host names are stored, never page addresses, and the list is deleted after the wipe.
  * - Not covered: localStorage and IndexedDB (Android can only clear those for the whole app, which would also reset

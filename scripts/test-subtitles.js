@@ -39,7 +39,7 @@ const utf8 = (s) => Uint8Array.from(Buffer.from(s, 'utf8'));
   const types = await import('../modules/maglev-engine/src/MaglevSettings.types.ts');
   const Store = await import('../modules/maglev-engine/src/MaglevSettingsStore.ts');
 
-  // ------------------------------------------------------------------ parseName (36.4)
+  // ------------------------------------------------------------------ parseName
   console.log('[parseName]');
   const P = pn.parseName;
   let r = P('Show.Name.S01E02.1080p.WEB-DL.DDP5.1.H.264-NTB.mkv');
@@ -94,7 +94,7 @@ const utf8 = (s) => Uint8Array.from(Buffer.from(s, 'utf8'));
   check('default languages: English phone gives just English; unknown gives English', eq(lang.defaultLanguages('en-US'), ['en']) && eq(lang.defaultLanguages(null), ['en']) && eq(lang.defaultLanguages('xx'), ['en']));
   check('language rank: exact, same base, none', lang.languageRank('pt-BR', ['en', 'pt-BR']) === 1 && lang.languageRank('pt', ['en', 'pt-BR']) === 1.5 && lang.languageRank('de', ['en']) === Infinity);
 
-  // ------------------------------------------------------------------ rank (36.5)
+  // ------------------------------------------------------------------ rank
   console.log('[rank]');
   const cand = (o) => ({ providerId: 'p1', id: String(Math.random()), language: 'en', releaseName: 'Other.Release', matchedBy: 'release', ...o });
   const file = 'Show.S01E02.1080p.WEB-DL.DDP5.1.H.264-NTB.mkv';
@@ -130,7 +130,7 @@ const utf8 = (s) => Uint8Array.from(Buffer.from(s, 'utf8'));
   check('default selection: none when the first row does not fit', rank.defaultSelection(rank.rankCandidates([cand({}), cand({})], opt)) === null && rank.defaultSelection(rank.rankCandidates([cand({ releaseName: 'Show.S01E02.1080p.WEB-DL-NTB' })], opt)) === null && rank.defaultSelection([]) === null);
   check('forLanguage filters a tab', rank.forLanguage(rank.rankCandidates([cand({ language: 'de' }), cand({ releaseName: 'Z' })], opt), 'de').length === 1);
 
-  // ------------------------------------------------------------------ zip member choice (36.7)
+  // ------------------------------------------------------------------ zip member choice
   console.log('[zip member]');
   const mem = (name, n = 100) => ({ name, bytes: new Uint8Array(n).fill(65) });
   const want = { fileName: 'Show.S01E03.1080p.WEB-DL.x264-NTB.mkv', season: 1, episode: 3 };
@@ -153,7 +153,7 @@ const utf8 = (s) => Uint8Array.from(Buffer.from(s, 'utf8'));
   pick = pay.pickZipMember([mem('[Grp] Show - 046.ass'), mem('[Grp] Show - 047.ass', 5), mem('[Grp] Show - 048.ass')], { fileName: '[Grp] Show - 047 [1080p].mkv', absoluteEpisode: 47 });
   check('absolute episode matches anime packs', pick.ok && pick.member.name.includes('047'));
 
-  // ------------------------------------------------------------------ text (36.7)
+  // ------------------------------------------------------------------ text
   console.log('[text]');
   const dec = (b, l) => pay.decodeSubtitleText(b, l);
   check('UTF-8 with BOM, BOM removed', dec(bytes(0xef, 0xbb, 0xbf, utf8('1\nCafé 😀')), 'fr').text === '1\nCafé 😀');
@@ -219,7 +219,7 @@ const utf8 = (s) => Uint8Array.from(Buffer.from(s, 'utf8'));
   check('base64 and UTF-8 helpers round-trip', (() => { const s = 'Zażółć 😀 — ✓\r\n'; const b = pay.textToBase64(s); return b === Buffer.from(s, 'utf8').toString('base64') && Buffer.from(pay.base64ToBytes(b)).toString('utf8') === s && Buffer.from(pay.bytesToBase64(bytes(1, 2, 3, 4, 5))).length > 0 && pay.bytesToBase64(bytes(1, 2, 3, 4, 5)) === Buffer.from([1, 2, 3, 4, 5]).toString('base64'); })());
   check('archive kinds by magic bytes', pay.archiveKind(bytes(0x50, 0x4b, 3, 4)) === 'zip' && pay.archiveKind(ascii('Rar!\x1a\x07\x00')) === 'rar' && pay.archiveKind(bytes(0x37, 0x7a, 0xbc, 0xaf, 0x27, 0x1c)) === '7z' && pay.archiveKind(ascii('1\n00:00')) === null);
 
-  // ------------------------------------------------------------------ naming (36.8)
+  // ------------------------------------------------------------------ naming
   console.log('[naming]');
   const NM = naming.subtitleFileName;
   check('<base>.<lang>.<ext>', NM('Show.S01E03.1080p.mkv', 'en', 'srt') === 'Show.S01E03.1080p.en.srt');
@@ -257,7 +257,7 @@ const utf8 = (s) => Uint8Array.from(Buffer.from(s, 'utf8'));
   }
   { let got = null; try { await naming.saveWithChoice(failWith('NOT_FOUND'), { video: '/v/F.mkv', language: 'en', format: 'srt', base64: '' }); } catch (e) { got = e.code; } check('NOT_FOUND is "the video isn\'t there any more"', got === 'missing'); }
 
-  // ------------------------------------------------------------------ copy (36.10)
+  // ------------------------------------------------------------------ copy
   console.log('[copy]');
   const EC = copy.errorCopy;
   check('offline', eq(EC('offline'), { message: "You're offline.", action: 'Retry' }));
@@ -271,7 +271,7 @@ const utf8 = (s) => Uint8Array.from(Buffer.from(s, 'utf8'));
   const jargon = Object.values(copy).filter((v) => typeof v === 'string').join(' ');
   check('no cryptic words in the copy', !/\b(hash|http|429|api|md5)\b/i.test(jargon.replace(/fingerprint/g, '')));
 
-  // ------------------------------------------------------------------ settings and prefs (36.2)
+  // ------------------------------------------------------------------ settings and prefs
   console.log('[settings]');
   const d = types.DEFAULT_SETTINGS.subtitles;
   check('defaults: on, phone language, show both, no overrides, notice not accepted', d.enabled === true && eq(d.languages, []) && d.hearingImpaired === 'both' && eq(d.sourceEnabled, {}) && d.privacyAck === false);
@@ -289,14 +289,14 @@ const utf8 = (s) => Uint8Array.from(Buffer.from(s, 'utf8'));
   const nativeCfg = read('modules/maglev-engine/src/toNativeConfig.ts');
   check('UI only: toNativeConfig never reads the subtitle settings', !/subtitle/i.test(nativeCfg));
   const bridge = read('modules/maglev-engine/src/MaglevNativeBridge.ts');
-  check('UI only: the settings types say so', /UI only/.test(read('modules/maglev-engine/src/MaglevSettings.types.ts')) && !/subtitles\.(enabled|languages|privacyAck)/.test(bridge));
+  check('UI only: the settings types say so', /Subtitles\. UI only/.test(read('modules/maglev-engine/src/MaglevSettings.types.ts')) && !/subtitles\.(enabled|languages|privacyAck)/.test(bridge));
   check('languages: phone language then English, or the user pick', eq(prefs.effectiveLanguages({ languages: [] }, 'fr-FR'), ['fr', 'en']) && eq(prefs.effectiveLanguages({ languages: ['it'] }, 'fr-FR'), ['it']));
   check('privacyAck gate: needed until accepted', prefs.needsPrivacyNotice({ privacyAck: false }) && !prefs.needsPrivacyNotice({ privacyAck: true }) && prefs.privacyAckPatch().privacyAck === true);
   check('source switch and language move helpers', eq(prefs.withSourceEnabled({ sourceEnabled: { a: true } }, 'b', false), { a: true, b: false }) && eq(prefs.withLanguageAt(['en', 'de', 'fr'], 'fr', 0), ['fr', 'en', 'de']) && eq(prefs.withLanguageAt(['en'], 'de', 9), ['en', 'de']));
   console.log('[state]');
   const now = 1_700_000_000_000;
   check('saved shows for 24 h, then hides', prefs.stateVisible({ lang: 'en', file: 'a.srt', savedAt: now, state: 'saved' }, now + 24 * 3600 * 1000 - 1) && !prefs.stateVisible({ lang: 'en', file: 'a.srt', savedAt: now, state: 'saved' }, now + 24 * 3600 * 1000));
-  check('getting hides after 2 minutes and needs-look after 24 h (39.1 S3)', prefs.stateVisible({ lang: 'en', file: '', savedAt: now, state: 'getting' }, now + 60e3) && !prefs.stateVisible({ lang: 'en', file: '', savedAt: now, state: 'getting' }, now + 121e3) && prefs.stateVisible({ lang: 'en', file: 'a', savedAt: now, state: 'needs-look' }, now + 23 * 3600e3) && !prefs.stateVisible({ lang: 'en', file: 'a', savedAt: now, state: 'needs-look' }, now + 25 * 3600e3) && !prefs.stateVisible(null, now));
+  check('getting hides after 2 minutes and needs-look after 24 h', prefs.stateVisible({ lang: 'en', file: '', savedAt: now, state: 'getting' }, now + 60e3) && !prefs.stateVisible({ lang: 'en', file: '', savedAt: now, state: 'getting' }, now + 121e3) && prefs.stateVisible({ lang: 'en', file: 'a', savedAt: now, state: 'needs-look' }, now + 23 * 3600e3) && !prefs.stateVisible({ lang: 'en', file: 'a', savedAt: now, state: 'needs-look' }, now + 25 * 3600e3) && !prefs.stateVisible(null, now));
   const key = 'content://tree/Film.mkv';
   check('nothing stored gives null', prefs.getSubtitleState(key) === null);
   prefs.setSubtitleState(key, { lang: 'pt-BR', file: 'Film.pt-BR.srt', savedAt: now, state: 'saved' });
@@ -319,7 +319,7 @@ const utf8 = (s) => Uint8Array.from(Buffer.from(s, 'utf8'));
   check('the master switch off means no provider at all', reg.enabledProviders({ enabled: false, sourceEnabled: { a: true } }, null, [A, B, Cc]).length === 0);
   check('the list mirrors replace the built-in ones', eq(reg.enabledProviders({ enabled: true, sourceEnabled: {} }, { a: { mirrors: ['https://m1.example', 'https://m2.example'] } }, [A])[0].mirrors, ['https://m1.example', 'https://m2.example']) && eq(A.mirrors, ['https://a.example']));
 
-  // ------------------------------------------------------------------ signed list (36.9)
+  // ------------------------------------------------------------------ signed list
   console.log('[list subtitles]');
   const base = (over = {}) => ({ schema: 1, serial: 2026111802, generatedAt: '2026-11-18T10:00:00Z', sources: {}, ...over });
   const knownSub = new Set(['a', 'b']);

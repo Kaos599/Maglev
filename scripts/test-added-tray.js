@@ -61,20 +61,20 @@ function check(name, cond) {
   check('every add restarts the timer', s.deadline === 4000 + t.TRAY_MS);
   check('note hidden once there are two adds', !t.trayLine(add(add(null, 'aa', PRESTIGE, { note: 'x' }), 'bb', INCEPTION)).includes('x'));
 
-  console.log('[45.3 same name, told apart]');
+  console.log('[same name, told apart]');
   const BBB_A = 'Big.Buck.Bunny.2160p.x265';
   const BBB_B = 'Big.Buck.Bunny.BDRip.x264';
   let tw = add(null, 'b1', BBB_A, { now: 1000 });
   tw = add(tw, 'b2', BBB_B, { now: 2000 });
-  check('45.3 two adds 1 s apart with identical parsed titles: Added 2 to Transfers, distinct names', t.trayTitle(tw) === 'Added 2 to Transfers' && t.trayLine(tw) === 'Big Buck Bunny (2160p), Big Buck Bunny (BDRip)', t.trayLine(tw));
-  check('45.3 the announcement uses the same names', t.trayAnnouncement(tw) === 'Added 2 to Transfers. Big Buck Bunny (2160p), Big Buck Bunny (BDRip)');
-  check('45.3 resolution first, then source, then release group, then size', t.tellApart('Film.2160p.BluRay-GRP', 5) === '2160p' && t.tellApart('Film.WEB-DL-GRP', 5) === 'WEB-DL' && t.tellApart('Film-GRP', 5) === 'grp' && t.tellApart('Film', 2.1 * 1024 ** 3) === '2.1 GB' && t.tellApart('Film') === '');
+  check('two adds 1 s apart with identical parsed titles: Added 2 to Transfers, distinct names', t.trayTitle(tw) === 'Added 2 to Transfers' && t.trayLine(tw) === 'Big Buck Bunny (2160p), Big Buck Bunny (BDRip)', t.trayLine(tw));
+  check('the announcement uses the same names', t.trayAnnouncement(tw) === 'Added 2 to Transfers. Big Buck Bunny (2160p), Big Buck Bunny (BDRip)');
+  check('resolution first, then source, then release group, then size', t.tellApart('Film.2160p.BluRay-GRP', 5) === '2160p' && t.tellApart('Film.WEB-DL-GRP', 5) === 'WEB-DL' && t.tellApart('Film-GRP', 5) === 'grp' && t.tellApart('Film', 2.1 * 1024 ** 3) === '2.1 GB' && t.tellApart('Film') === '');
   let tz = t.mergeAdd(null, { hash: 'z1', name: 'Film', ask: null, auto: false, sizeBytes: 1024 ** 3 }, 1000);
   tz = t.mergeAdd(tz, { hash: 'z2', name: 'Film', ask: null, auto: false, sizeBytes: 2 * 1024 ** 3 }, 2000);
-  check('45.3 the size tells two bare names apart', t.trayLine(tz) === 'Film (1.0 GB), Film (2.0 GB)', t.trayLine(tz));
-  check('45.3 names that already differ are left alone', t.trayLine(add(add(null, 'a1', BBB_A), 'a2', INCEPTION, { now: 2000 })) === 'Big Buck Bunny, Inception (2010)');
-  check('45.3 a single add is never changed', t.trayLine(add(null, 'a1', BBB_A)) === 'Big Buck Bunny');
-  check('45.3 the Search screen hands the size to the tray', /sizeBytes: size/.test(read('app/(tabs)/search.tsx')));
+  check('the size tells two bare names apart', t.trayLine(tz) === 'Film (1.0 GB), Film (2.0 GB)', t.trayLine(tz));
+  check('names that already differ are left alone', t.trayLine(add(add(null, 'a1', BBB_A), 'a2', INCEPTION, { now: 2000 })) === 'Big Buck Bunny, Inception (2010)');
+  check('a single add is never changed', t.trayLine(add(null, 'a1', BBB_A)) === 'Big Buck Bunny');
+  check('the Search screen hands the size to the tray', /sizeBytes: size/.test(read('app/(tabs)/search.tsx')));
 
   console.log('[non-video adds count in n, never in v]');
   let m = add(null, 'aa', PRESTIGE);
@@ -184,7 +184,7 @@ function check(name, cond) {
   check('row shows the added check in accentText', /icon="check" color=\{colors\.accentText\}/.test(row));
   check('add link screen has the row too', /SubtitlesAutoRow/.test(read('app/add-download.tsx')) && /d:\$\{res\.id\}/.test(read('app/add-download.tsx')) && /fileKind/.test(read('app/add-download.tsx')));
   check('add screen has a Subtitles row with a switch', /SubtitlesAutoRow/.test(addTorrent) && /autoNewVideos/.test(read('components/search/SubtitlesAutoRow.tsx')) && /askSubtitles\(/.test(addTorrent));
-  check('tray calls the interface from 44.1', /askSubtitles\(/.test(tray) && /skipSubtitles/.test(tray) && /MultiSubtitleSheet/.test(tray));
+  check('tray calls the subtitle request interface', /askSubtitles\(/.test(tray) && /skipSubtitles/.test(tray) && /MultiSubtitleSheet/.test(tray));
   check('tray slides in on motion.duration.focus and honours reduce motion', /motion\.duration\.focus/.test(tray) && /useReduceMotion/.test(tray));
   check('tray has no hex colours', !/#[0-9A-Fa-f]{3,8}\b/.test(tray));
 

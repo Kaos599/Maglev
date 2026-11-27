@@ -1083,13 +1083,13 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
         }
     }
 
-    /** A key press reached the page (hardware key or IME). Enter and D-pad centre are user activation and count as input for the jump rule. */
+    /** A key press reached the page (hardware key or IME). Enter and D-pad centre are user activation and count as input for the 1 s gesture rule for main-frame jumps. */
     private fun noteKey(keyCode: Int) {
         keyAt = SystemClock.uptimeMillis()
         if (ActivationLatch.isActivationKey(keyCode)) {
             activation.arm() // counts as user activation for Back history
             vouchEpoch = docEpoch // the tap vouches for this document
-            tapUses = 0 // a new key press is a new input for the jump rule
+            tapUses = 0 // a new key press is a new input for the 1 s gesture rule for main-frame jumps
         }
     }
 

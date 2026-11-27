@@ -82,7 +82,7 @@ object StorageHealth {
 
 /** Background notice for a torrent that fails while the app is closed. */
 object ErrorNotice {
-    /** Fires once on the edge into ERROR, never for a torrent first seen already in ERROR, never with the app in front. */
+    /** Fires once on the edge into ERROR, never for a torrent first seen already in ERROR, and only while the app is not in front. */
     fun shouldNotify(prevState: String?, state: String?, seenBefore: Boolean, appInFront: Boolean): Boolean =
         !appInFront && seenBefore && state == "ERROR" && prevState != "ERROR"
 

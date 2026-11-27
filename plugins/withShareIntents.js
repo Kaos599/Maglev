@@ -1,7 +1,8 @@
 // Expo config plugin: accept Android share (ACTION_SEND / ACTION_SEND_MULTIPLE) of magnet text and .torrent files.
-// Expo only forwards `intent.data` to JS, and a share carries its payload in extras. So MainActivity
-// rewrites a share intent into a VIEW intent in place (before React reads it); app/+native-intent.tsx
-// then handles it like any other VIEW. The share, magnet and .torrent intent filters are declared in app.json for MainActivity, then moved to the quick share card by applyQuickShareManifest below. Several sources are packed as maglev://share?u=...&u=...
+// Expo only forwards `intent.data` to JS, and a share carries its payload in extras. So MainActivity rewrites a share
+// intent into a VIEW intent in place (before React reads it); app/+native-intent.tsx then handles it like any other
+// VIEW. The share, magnet and .torrent intent filters are declared in app.json for MainActivity, then moved to the
+// quick share card by applyQuickShareManifest below. Several sources are packed as maglev://share?u=...&u=...
 // Android docs: https://developer.android.com/training/sharing/receive
 const PACKAGE = 'com.maglev';
 const MARKER = 'MaglevShareIntent.rewrite';

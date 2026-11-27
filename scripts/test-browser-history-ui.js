@@ -24,7 +24,7 @@ const sheet = read('components/browser/ClearHistorySheet.tsx');
 const sugg = read('components/browser/HistorySuggestions.tsx');
 const copy = read('constants/copy.ts');
 
-console.log('recording (H1)');
+console.log('recording');
 check('recordVisit is called from onPage', /onPage: \(id, e\) =>[\s\S]{0,1500}recordVisit\(/.test(browser));
 check('recordVisit is guarded by loading === false', /e\.loading === false[^)]*\)\s*\{[^}]*recordVisit\(/.test(browser));
 check('refused and crashed pages are never recorded', /!skipRecord\) \{[^}]*recordVisit/.test(browser) && /skipRecord = d\.crashed \|\| d\.refused != null/.test(browser) && /d\.refused = e\.reason/.test(browser) && /d\.crashed = true/.test(browser));
@@ -48,7 +48,7 @@ check('Clear history row opens the range sheet', /setClearMode\('range'\)/.test(
 check('Clear browsing data uses the shared sheet in browsing-data mode', /setClearMode\('browsing-data'\)/.test(settings) && /<ClearHistorySheet/.test(settings));
 check('the old confirm sheet and wording are gone', !/saved pages and history/i.test(settings + copy) && !/confirmOpen/.test(settings) && !/clearBrowserData/.test(settings));
 
-console.log('clear sheet (H3)');
+console.log('clear sheet');
 check('three checkboxes', /accessibilityRole="checkbox"/.test(sheet) && /copy\.history/.test(sheet) && /copy\.cookies/.test(sheet) && /copy\.cache/.test(sheet));
 check('all three start ticked', /useState<Data>\(\{ history: true, cookies: true, cache: true \}\)/.test(sheet));
 check('Clear is disabled when nothing is ticked', /data\.history \|\| data\.cookies \|\| data\.cache/.test(sheet) && /disabled=\{!chosen \|\| busy\}/.test(sheet));
@@ -58,7 +58,7 @@ check('cookies and cache go through the bridge', /clearBrowserData\(\{ cookies: 
 check('Done shows a notice, Failed offers Retry', /notices\.browser\.historyCleared/.test(sheet) && /notices\.browser\.dataCleared/.test(sheet) && /phase === 'failed' \? copy\.retry/.test(sheet));
 check('copy has both notices', /historyCleared: 'History cleared\.'/.test(copy) && /dataCleared: 'Browsing data cleared\.'/.test(copy));
 
-console.log('history screen (H2)');
+console.log('history screen');
 check('screen is registered', /<Stack\.Screen name="browser-history" \/>/.test(layout));
 check('initHistory is called in _layout', /import \{ initHistory \} from '\.\.\/utils\/history'/.test(layout) && /initHistory\(\)\.catch/.test(layout));
 check('rows page 100 at a time', /const PAGE = 100/.test(screen) && /before: last\.lastVisited/.test(screen));

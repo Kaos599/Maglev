@@ -1,4 +1,5 @@
-// One background pass over the watches: pure, with every outside call injected. A watch is checked only when it is due, and only on a network its settings allow.
+// One background pass over the watches: pure, with every outside call injected. A watch is checked only when it is due,
+// and only on a network its settings allow.
 import { evaluateWatch, isDue, networkAllows, notificationId, openUrl, downloadUrl, watchNotificationText, type NetworkState, type Watch } from './logic.ts';
 import type { MergedResult } from '../search/types.ts';
 

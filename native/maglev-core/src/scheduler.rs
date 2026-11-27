@@ -4,9 +4,10 @@
 //! Output: the actions the engine must apply. Nothing here touches a session, so it is
 //! unit tested on its own.
 //!
-//! Vocabulary for `paused_by`: `"user"`, `"seed_limit"`, or any other string, which is treated
-//! as a governance tag (`"wifi_only"`, `"battery"`, `"charging_only"`). The health tags
-//! (`"files_missing"`, `"files_changed"`, `"storage_full"`, `"storage_unavailable"`, `"no_peers"`) are governance tags too, set by a torrent's own `health` field.
+//! Vocabulary for `paused_by`: `"user"`, `"seed_limit"`, or any other string, which is treated as a governance tag
+//! (`"wifi_only"`, `"battery"`, `"charging_only"`). The health tags (`"files_missing"`, `"files_changed"`,
+//! `"storage_full"`, `"storage_unavailable"`, `"no_peers"`) are governance tags too, set by a torrent's own `health`
+//! field.
 
 use serde::{Deserialize, Serialize};
 
@@ -20,7 +21,7 @@ pub const EXEMPTABLE_TAGS: [&str; 5] = ["wifi_only", "battery", "charging_only",
 /// Pause tag for seeding on a metered link. It applies to finished torrents only.
 pub const TAG_SEED_METERED: &str = "seed_metered";
 
-/// Governance tag for the low-storage reserve . Same string as
+/// Governance tag for the low-storage reserve. Same string as
 /// `HEALTH_STORAGE_FULL`, so a paused transfer shows the one "Storage full" state either way.
 pub const TAG_STORAGE_FULL: &str = HEALTH_STORAGE_FULL;
 

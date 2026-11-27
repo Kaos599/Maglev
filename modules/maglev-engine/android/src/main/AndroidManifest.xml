@@ -68,7 +68,7 @@
             </intent-filter>
         </receiver>
 
-        <!-- DirectBootAware only so LOCKED_BOOT_COMPLETED is delivered (and ignored) before unlock. -->
+        <!-- Restarts downloads after a reboot or an app update. directBootAware only so LOCKED_BOOT_COMPLETED is delivered (and ignored) before unlock. -->
         <receiver
             android:name=".BootReceiver"
             android:directBootAware="true"

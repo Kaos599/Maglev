@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-// Stream assembly and recorded fixtures
-//. Runs the TypeScript source directly (Node 22.18+ type stripping).
+// Stream assembly and recorded fixtures.
+// Runs the TypeScript source directly (Node 22.18+ type stripping).
 // Every fixture is fed whole, then split at every character boundary, then one character at a time;
 // all three must give identical events and outcome. Also checks CRLF and UTF-8 byte splits.
 

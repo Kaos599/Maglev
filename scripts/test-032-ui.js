@@ -19,8 +19,8 @@ function check(name, cond, extra) {
 }
 
 async function main() {
-  // 1. Per-download folder (B1)
-  console.log('B1: Change folder is for this download only');
+  // 1. Per-download folder
+  console.log('Change folder is for this download only');
   const F = await import('../utils/downloadFolder.ts');
   const fail = () => { throw new Error('must not be called'); };
   check('cancelled pick', (await F.pickFolderForThisDownload(async () => ({ cancelled: true }))).kind === 'cancelled');

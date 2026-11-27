@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Checks that compare code with the private notes read them through lib/privateDocs.
-// A public checkout has no private notes (they live in a separate repository), and those checks skip with a
+// A public checkout has no private notes (they are notes that aren't in this repository), and those checks skip with a
 // note so `npm test` still passes. A checkout that has the notes folder but is missing the file itself fails
 // loudly. Recreates both cases and checks each.
 

@@ -31,7 +31,7 @@ const mod = stripKotlinComments(read(`${ENGINE}/android/src/main/java/com/maglev
 const ts = read(`${ENGINE}/src/MaglevBrowser.tsx`);
 const scan = read(`${BROWSER}/PageScan.kt`);
 
-// Section 24.2
+// The events, commands, props and module functions the browser view exposes.
 const EVENTS = ['onPage', 'onFound', 'onBlockedCount', 'onDownloadRequest', 'onMagnet', 'onRefused', 'onCrashed'];
 const COMMANDS = ['goBack', 'goForward', 'reload', 'stop', 'loadUrl', 'scan', 'clearData'];
 const PROPS = ['url', 'adBlock', 'allowAdsHosts', 'desktopMode'];
@@ -82,7 +82,7 @@ check('WebView settings', () => {
   assert(view.includes('setSupportMultipleWindows(true)'), 'setSupportMultipleWindows(true)');
   assert(view.includes('MIXED_CONTENT_NEVER_ALLOW'), 'MIXED_CONTENT_NEVER_ALLOW');
   assert(/mediaPlaybackRequiresUserGesture\s*=\s*true/.test(view), 'mediaPlaybackRequiresUserGesture = true');
-  assert(/javaScriptCanOpenWindowsAutomatically\s*=\s*true/.test(view), 'javaScriptCanOpenWindowsAutomatically = true (24.10 supersedes 24.5)');
+  assert(/javaScriptCanOpenWindowsAutomatically\s*=\s*true/.test(view), 'javaScriptCanOpenWindowsAutomatically = true (untapped window.open reaches the pop-up policy)');
   assert(/allowFileAccess\s*=\s*false/.test(view), 'allowFileAccess = false');
   assert(/allowContentAccess\s*=\s*false/.test(view), 'allowContentAccess = false');
   assert(view.includes('setSafeBrowsingEnabled(true)'), 'safe browsing on');
@@ -135,7 +135,7 @@ check('fullscreen video uses the custom view callbacks', () => {
 
 check('popups use a capture view and need a user gesture', () => {
   assert(view.includes('onCreateWindow') && view.includes('WebViewTransport'), 'onCreateWindow with transport');
-  assert(/handleNewWindow[\s\S]*?gesture[\s\S]*?onPopupBlocked|decide\(false, "window"\)/.test(view), 'untapped popup follows the policy (24.10 supersedes 24.5)');
+  assert(/handleNewWindow[\s\S]*?gesture[\s\S]*?onPopupBlocked|decide\(false, "window"\)/.test(view), 'untapped popup follows the policy');
 });
 
 check('the WebView is destroyed when the view is dropped', () => {

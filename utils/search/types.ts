@@ -15,7 +15,10 @@ export interface SearchResult {
   publishedAt?: number;
   category?: Category;
   detailUrl?: string;
-  /** A plain https file instead of a torrent. A result has a magnet or a `directUrl`, never neither. Then `magnet` is '' and `infoHash` is a `<providerId>:<id>` stand-in. */
+  /**
+   * A plain https file instead of a torrent. A result has a magnet or a `directUrl`, never neither. Then `magnet` is ''
+   * and `infoHash` is a `<providerId>:<id>` stand-in.
+   */
   directUrl?: string;
 }
 

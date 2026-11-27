@@ -1,6 +1,6 @@
 /**
  * Quality scoring and shortlist for the assistant. A result scores 0 to 100: quality 40, playability 20, health 20,
- * size sanity 10 and fit 10, minus penalties. Hard rules (wrong title, early sources, adult content) run before any score.
+ * size sanity 10 and fit 10, minus penalties. Hard rules (wrong title, early sources, adult content, a size too small for a video) run before any score.
  *
  * Pure: no React, no react-native, no engine, no clock unless the caller omits
  * `ctx.now`. Free space and pending need come in as arguments. The model never
@@ -52,7 +52,7 @@ export interface ScoreContext {
   category?: Category;
   /** Extra. CAM/TS/TC/SCR show only if the user says "earliest possible". */
   allowEarlySources?: boolean;
-  /** Extra. Playability gets +1 when the name lists multiple audio tracks and the user asked for a language. */
+  /** Extra. The user asked for dual or multi audio; a multi-audio name then gets +1 playability. */
   wantsMultiAudio?: boolean;
   /**
    * Extra. The audio language the user asked for, from normalizeLanguage ("hindi", "multi" for dual audio, or a plain
@@ -408,8 +408,8 @@ function wrongTitle(parsed: ParsedRelease, q: ScoreContext['query'], browse = fa
     const have = titleTokens(parsed.title ?? '');
     if (have.length === 0) return { reason: 'The name does not show a title.', partial };
     const missing = missingTokens(want, have);
-    // Exclude when more than one word is missing. One missing word is a partial match only in a title of 3+ words
-    // (an existing rule): in a two-word one it is the other film ("Prime Suspect" is not "Prime Time").
+    // Exclude when more than one word is missing. One missing word is a partial match only in a title of 3+ words:
+    // in a two-word one it is the other film ("Prime Suspect" is not "Prime Time").
     if (missing.length > 1 || (missing.length === 1 && want.length < 3)) {
       return { reason: `The title does not match "${q.title}".`, partial };
     }
@@ -496,7 +496,7 @@ function playabilityOf(parsed: ParsedRelease, ctx: ScoreContext, flags: string[]
   }
   if (parsed.hdr.includes('dv') && parsed.dvFallback !== true) {
     flags.push('dv_no_fallback');
-    // "Subtract 8: dv without confirmed fallback and probe says no DV" (the verdict already caps a confirmed no-fallback case).
+    // Dolby Vision with no confirmed fallback, on a phone that reports no DV support, loses 8 points (the verdict already caps a confirmed no-fallback case).
     if (ctx.playback?.dolbyVision === 'none' && advice.verdict !== 'needs_other_player') pts -= 8;
   }
   const audio = parsed.audio;
@@ -508,7 +508,7 @@ function playabilityOf(parsed: ParsedRelease, ctx: ScoreContext, flags: string[]
     pts -= 2; // hardcoded subtitles
     flags.push('hardcoded_subs');
   }
-  if (parsed.multiAudio && (ctx.wantsMultiAudio || ctx.audioLanguage !== undefined)) pts += 1; // the user asked for a language the name lists
+  if (parsed.multiAudio && (ctx.wantsMultiAudio || ctx.audioLanguage !== undefined)) pts += 1; // a multi-audio release, and the user asked for dual audio or a language
   return Math.max(0, Math.min(20, pts));
 }
 
