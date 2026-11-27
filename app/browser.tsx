@@ -709,8 +709,11 @@ export default function BrowserScreen({ inTab = false }: { inTab?: boolean }) {
     onPopupRequest: (id, e) => setPopups((p) => popupsApi.request(p, id, { url: e.url, kind: e.kind, sourceUrl: e.sourceUrl })),
     onPopupBlocked: (id, e) => {
       setPopups((p) => popupsApi.noteBlocked(p, id));
-      // The link and its source site go to the blocked pop-ups log (never in Private browsing).
-      recordPopupBlockStored({ sourceUrl: e.sourceUrl, url: e.url, kind: e.kind, at: Date.now() }, getBrowserPrefs().privateBrowsing);
+      // The link and its source site go to the blocked pop-ups log (never in Private browsing). A pop-up refused
+      // past the capture cap has no address yet: it is counted, but a row with no link would be useless.
+      if (e.url) {
+        recordPopupBlockStored({ sourceUrl: e.sourceUrl, url: e.url, kind: e.kind, at: Date.now() }, getBrowserPrefs().privateBrowsing);
+      }
     },
     onLongPress: (id, e) => {
       if (id === activeIdRef.current) setLinkTarget(e);

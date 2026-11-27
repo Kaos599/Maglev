@@ -112,7 +112,7 @@ check('kotlin: download event carries tapped, from the rule', /"tapped" to tappe
 check('kotlin: Back uses BackRules over a history list and goBackOrForward', /BackRules\.steps\(history\.flags\(\), webView\.copyBackForwardList\(\)\.currentIndex\)/.test(view) && /goBackOrForward\(-steps\)/.test(view));
 check('kotlin: history is recorded from doUpdateVisitedHistory, not for reloads', /if \(url != null && !isReload\) recordHistory\(url\)/.test(view));
 check('kotlin: canGoBack still comes from the WebView', /"canGoBack" to \(customView != null \|\| w\.canGoBack\(\)\)/.test(view));
-check('kotlin: https-first on typed loads and link or redirect navigations', /httpsTryFor\(url\)/.test(view) && /httpsTryFor\(uri\.toString\(\), /.test(view) && /if \(httpsFirst\) HttpsFirst\.upgrade\(url, httpsFallbackHosts, method\)/.test(view));
+check('kotlin: https-first on typed loads and link or redirect navigations', /httpsTryFor\(url\)/.test(view) && /httpsTryFor\(uri\.toString\(\), /.test(view) && /if \(httpsFirst\) HttpsFirst\.upgrade\(url, fallbackHostsInUse\(\), method\)/.test(view));
 check('kotlin: the fallback runs before the SSL refusal and only for the upgrade', (() => {
   const i = view.indexOf('override fun onReceivedSslError');
   const body = view.slice(i, i + 700);

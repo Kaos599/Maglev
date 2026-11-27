@@ -114,6 +114,9 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
     private var httpsFirst = true
     // Private browsing: the page cache is bypassed (LOAD_NO_CACHE). Cookies are wiped from JS when the browser is left.
     private var privateMode = false
+    // Hosts whose https try failed in this view while private. Never shared with normal tabs; forgotten when private mode changes or the view is destroyed.
+    private val privateFallbackHosts: MutableSet<String> =
+        java.util.Collections.newSetFromMap(java.util.concurrent.ConcurrentHashMap<String, Boolean>())
     private var pendingUrl: String? = null
     private var requestedUrl: String? = null
 
@@ -285,6 +288,7 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
     fun setPrivateMode(value: Boolean) {
         if (value == privateMode) return
         privateMode = value
+        privateFallbackHosts.clear()
         if (!destroyed) webView.settings.cacheMode = if (value) WebSettings.LOAD_NO_CACHE else WebSettings.LOAD_DEFAULT
     }
 
@@ -591,8 +595,10 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
 
     /** The https try for [url], or null when "Try https first" is off. Every other HttpsFirst rule still applies. */
     private fun httpsTryFor(url: String, method: String = "GET"): String? =
-        if (privateMode) (if (httpsFirst) HttpsFirst.upgrade(url, emptySet(), method) else null)
-        else if (httpsFirst) HttpsFirst.upgrade(url, httpsFallbackHosts, method) else null
+        if (httpsFirst) HttpsFirst.upgrade(url, fallbackHostsInUse(), method) else null
+
+    /** Private tabs keep their own fallback hosts so normal tabs can't observe what was visited. */
+    private fun fallbackHostsInUse(): MutableSet<String> = if (privateMode) privateFallbackHosts else httpsFallbackHosts
 
     /**
      * 24.10: loads a held redirect the user said yes to. Not typed, so the 24.5 refusals (scheme, blocked host, LAN)
@@ -730,6 +736,7 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
         if (destroyed) return
         saveForWake()
         destroyed = true
+        privateFallbackHosts.clear()
         mainHandler.removeCallbacksAndMessages(null)
         for (c in captures.toList()) destroyCapture(c)
         exitFullscreen()
@@ -1095,7 +1102,7 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
     private fun fallBackToHttp() {
         val up = upgrade ?: return
         cancelUpgrade()
-        if (!privateMode) httpsFallbackHosts.add(up.host)
+        fallbackHostsInUse().add(up.host)
         // The failed https page must not be a Back stop, and the http load is still the user's request.
         history.skipIfUrl(up.httpsUrl)
         pendingUserNav = true
@@ -1386,7 +1393,7 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
             if (scheme == "http") {
                 val pending = upgrade
                 if (pending != null && HttpsFirst.isLoop(pending.host, uri.toString())) {
-                    if (!privateMode) httpsFallbackHosts.add(pending.host)
+                    fallbackHostsInUse().add(pending.host)
                     cancelUpgrade()
                 } else {
                     // NATIVE_CONTRACT 39.2 B3: never upgrade a request that is not GET.
@@ -1539,6 +1546,8 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
             // Section 30: at most MAX_CAPTURES at once. Returning false without sending resultMsg is valid
             // (WebChromeClient.onCreateWindow: "Otherwise, return false"; window.open then returns null).
             if (captures.size >= MAX_CAPTURES) {
+                // The address is not known yet, so this only counts the blocked pop-up.
+                emitBlocked("", "window")
                 return false
             }
             val capture = WebView(view.context)
