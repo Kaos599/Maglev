@@ -6,6 +6,8 @@ import { FocusAnchor, SettingsFocusProvider, rowKey } from './settingsFocus';
 import { useTheme } from '../../context/ThemeContext';
 import { ThemeColors, radius, spacing, type } from '../../constants/theme';
 import { Button, Chip, Screen, SectionHeader, Sheet, TextField } from '../ui';
+import type { TextFieldRef } from '../ui/TextField';
+import { useMotion } from '../ui/useMotion';
 
 /** Sub-screen shell: header with back, scrolling body, instant-apply content. */
 export function SettingsPage({ title, children }: { title: string; children: React.ReactNode }) {
@@ -151,6 +153,19 @@ export function InputSheet({
       setTouched(false);
     }
   }, [visible, initial]);
+  // autoFocus runs while the sheet's window is still sliding in, and Android then focuses the field without raising
+  // the keyboard. Focus by ref once the slide-in is over instead. Sheet gives no "opened" callback, so wait its slide
+  // time plus a little for the first layout. Closing blurs the field so the keyboard leaves with the sheet.
+  const fieldRef = useRef<TextFieldRef>(null);
+  const m = useMotion();
+  useEffect(() => {
+    if (!visible) {
+      fieldRef.current?.blur();
+      return;
+    }
+    const t = setTimeout(() => fieldRef.current?.focus(), (m.disabled ? 0 : m.base) + 120);
+    return () => clearTimeout(t);
+  }, [visible, m.disabled, m.base]);
   const error = validate(text.trim());
   const submit = () => {
     setTouched(true);
@@ -160,6 +175,7 @@ export function InputSheet({
   return (
     <Sheet visible={visible} onClose={onClose} title={title} subtitle={subtitle}>
       <TextField
+        ref={fieldRef}
         onSurface
         value={text}
         onChangeText={(t) => {
@@ -171,7 +187,6 @@ export function InputSheet({
         secureTextEntry={secure}
         autoCapitalize="none"
         autoCorrect={false}
-        autoFocus
         placeholder={placeholder}
         trailing={unit ? <Text style={s.unit}>{unit}</Text> : undefined}
         error={touched && error ? error : undefined}
