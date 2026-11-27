@@ -6,7 +6,7 @@ import { PROVIDERS } from '../search/aggregate.ts';
 import { clearAllClearances, hydrateClearances, listClearances, onClearancesChange } from '../search/clearance.ts';
 import type { Clearance } from '../search/clearance.ts';
 
-/** Contract: docs/SEARCH_CONTRACT.md section 5. */
+/** One user-added Torznab source. */
 export interface TorznabConfig {
   /** Bare uuid. The provider id used in `enabled` / `useFor` is `torznab:<id>`. */
   id: string;
@@ -33,7 +33,7 @@ export interface SearchPrefs {
   lastCategory: Category;
   recents: string[];
   torznab: TorznabConfig[];
-  /** Hosts the user passed a Cloudflare check on (SEARCH_CONTRACT section 8). Cookies live in the WebView jar, never here. */
+  /** Hosts the user passed a Cloudflare check on. Cookies live in the WebView jar, never here. */
   clearances: Clearance[];
   /** Sources that last answered with a Cloudflare check; they need the user to open the site once. */
   needsCheck: string[];
@@ -269,7 +269,7 @@ export function clearRecentSearches(): string[] {
 
 // ---- Torznab API keys (expo-secure-store) ----
 
-/** SecureStore keys allow only [A-Za-z0-9._-], so the contract's `torznab:<id>` is stored as `torznab.<id>`. */
+/** SecureStore keys allow only [A-Za-z0-9._-], so the key `torznab:<id>` is stored as `torznab.<id>`. */
 function torznabKeyName(id: string): string {
   return `torznab.${id.replace(/[^A-Za-z0-9._-]/g, '_')}`;
 }

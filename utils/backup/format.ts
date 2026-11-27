@@ -1,5 +1,5 @@
 /**
- * Backup file format (docs/contracts-0.19/backup.md). Pure TypeScript, no React or expo imports,
+ * Backup file format: one JSON file with a `format` tag and a version. Pure TypeScript, no React or expo imports,
  * so node tests run it directly.
  */
 import type { MaglevSettings } from '../../modules/maglev-engine/src/MaglevSettings.types.ts';
@@ -70,7 +70,7 @@ export interface Backup {
   prefs: Partial<Record<PrefKey, unknown>>;
   torrents: BackupTorrent[];
   downloads: BackupDownload[];
-  /** Local stats (NATIVE_CONTRACT 34.2). Present only when the user ticked it at backup time. */
+  /** Local stats. Present only when the user ticked it at backup time. */
   stats?: StatsSection;
 }
 

@@ -8,7 +8,7 @@ import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
 
 /**
- * The small native surface the watch background task needs (docs/contracts-0.19/watch.md section 7):
+ * The small native surface the watch background task needs:
  * the network the job is running on, and the notification. Register it in modules/maglev-engine/expo-module.config.json.
  */
 class MaglevWatchModule : Module() {

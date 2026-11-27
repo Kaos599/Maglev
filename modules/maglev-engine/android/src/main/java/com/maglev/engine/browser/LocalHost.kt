@@ -1,8 +1,8 @@
 package com.maglev.engine.browser
 
 /**
- * "Is this host on the local network?" for main-frame navigation (docs/NATIVE_CONTRACT.md section 24.5).
- * Mirrors `is_lan_host` / `is_local_ip` / `looks_like_lan_name` in native/maglev-core/src/http_dl/rules.rs (section 17.w).
+ * "Is this host on the local network?" for main-frame navigation.
+ * Mirrors `is_lan_host` / `is_local_ip` / `looks_like_lan_name` in native/maglev-core/src/http_dl/rules.rs.
  * Pure Kotlin. It never resolves names: a public name that points at a LAN address is not caught here.
  */
 object LocalHost {

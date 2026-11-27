@@ -19,7 +19,7 @@ export interface Choice {
 }
 
 export interface Version {
-  /** ISO 639-1 / regional tag as in 36.2. */
+  /** ISO 639-1 code or a regional tag such as pt-BR. */
   language: string;
   releaseName: string;
   /** Site-root path, "/subtitles/1004/download". */

@@ -1,5 +1,5 @@
 /**
- * Steady speed and time-left helpers (docs/UI_SPEC_PHASE2.md S10.2).
+ * Steady speed and time-left helpers.
  * Pure functions with no imports so Node can run them directly in tests.
  */
 

@@ -28,7 +28,7 @@ import { askSubtitles, markNotThisOne } from '../utils/subtitles/requests';
 import { buildAsk } from '../utils/addedTray';
 import { START_ENGINE_LABEL, engineStoppedBody, isEngineStopped } from '../utils/addErrorNotice';
 
-/** SM-9 add flow states. */
+/** The add flow states. */
 type Phase = 'input' | 'validating' | 'invalid' | 'resolving' | 'timeout' | 'error' | 'duplicate' | 'preview' | 'adding' | 'added';
 
 const RESOLVE_TIMEOUT_MS = 60_000;
@@ -74,7 +74,7 @@ export default function AddTorrentScreen() {
   const [firsts, setFirsts] = useState<Set<number>>(new Set());
   const [prioIndex, setPrioIndex] = useState<number | null>(null);
   const [starting, setStarting] = useState(false);
-  // NATIVE_CONTRACT 44.5: the Subtitles row, for a torrent with a video among the chosen files.
+  // The Subtitles row, for a torrent with a video among the chosen files.
   const videoFiles = meta ? meta.files.filter((f) => selected.has(f.index) && fileKind(f.path) === 'video') : [];
   const subs = useSubtitlesAuto(videoFiles.length > 0);
 
@@ -341,7 +341,7 @@ export default function AddTorrentScreen() {
     if (res.ok) {
       if (meta && subs.show && videoFiles.length > 0) {
         const ask = buildAsk({ infoHash: meta.infoHash, name: meta.name, sizeBytes: meta.totalBytes, videoCount: videoFiles.length });
-        // 44.15 D4: Settings auto is on and this screen's switch is off: "not this one", so automatic mode leaves it alone.
+        // Settings auto is on and this screen's switch is off: "not this one", so automatic mode leaves it alone.
         if (subs.on) askSubtitles([ask], { auto: true });
         else if (subs.settingsOn) markNotThisOne([ask]);
       }
@@ -357,7 +357,7 @@ export default function AddTorrentScreen() {
     setPhase(meta ? 'preview' : 'timeout');
   };
 
-  /** 12.1: stop the wait, add the magnet with every file, and let Transfers show it. */
+  /** Stop the wait, add the magnet with every file, and let Transfers show it. */
   const startNow = async () => {
     lastAdd.current = () => void startNow();
     const source = sourceRef.current;

@@ -29,7 +29,7 @@ interface Entry {
 }
 
 /**
- * One banner above the Transfers list: why transfers are held right now (NATIVE_CONTRACT 35.3).
+ * One banner above the Transfers list: why transfers are held right now.
  * The first reason shows with its setting button; "+N more" opens a sheet with every reason.
  */
 export function BlockBanner({ blocks, hasUnfinished, hasSeedEligible, lowSpace, onFreeSpace }: BlockBannerProps) {

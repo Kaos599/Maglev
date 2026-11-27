@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// NATIVE_CONTRACT 36.5, 36.7, 36.8, 36.10: the subtitle flow in the app. Entry-point rules, the hash gate, name taken,
+// The subtitle flow in the app. Entry-point rules, the hash gate, name taken,
 // every error's copy and action, the sheet's state machine, the card icon, and the wiring. Pure: no rendering.
 // Needs Node 22.18+ (runs the TypeScript source directly).
 process.removeAllListeners('warning');
@@ -44,19 +44,19 @@ const nativeErr = (code) => Object.assign(new Error(code), { code });
   console.log('[entry points: files]');
   const folder = '/storage/emulated/0/Download/Maglev';
   check('finished video row: enabled', F.fileEntryMode(vid(), { ...on, folder }) === 'enabled');
-  check('partly downloaded video row: enabled (42.1)', F.fileEntryMode(vid({ progressBytes: 10 }), { ...on, folder }) === 'enabled');
+  check('partly downloaded video row: enabled', F.fileEntryMode(vid({ progressBytes: 10 }), { ...on, folder }) === 'enabled');
   check('video row with nothing on disk: disabled', F.fileEntryMode(vid({ progressBytes: 0 }), { ...on, folder }) === 'disabled');
-  check('disabled row says "When this file starts" (42.1)', F.DISABLED_ENTRY_SUBTITLE === 'When this file starts');
+  check('disabled row says "When this file starts"', F.DISABLED_ENTRY_SUBTITLE === 'When this file starts');
   check('non-video row: hidden', F.fileEntryMode(vid({ path: 'a/readme.txt' }), { ...on, folder }) === 'hidden');
   check('master off: hidden', F.fileEntryMode(vid(), { master: false, sourcesOn: 3, folder }) === 'hidden');
   check('no source on: hidden', F.fileEntryMode(vid(), { master: true, sourcesOn: 0, folder }) === 'hidden');
-  check('a file-picker folder shows the row disabled with the reason (39.1 S6)', F.fileEntryMode(vid(), { ...on, folder: 'content://x' }) === 'unavailable' && F.entrySubtitle('unavailable') === 'Not available yet for folders picked with the file picker' && F.fileEntryMode(vid(), { ...on, folder: 'Download' }) === 'hidden');
+  check('a file-picker folder shows the row disabled with the reason', F.fileEntryMode(vid(), { ...on, folder: 'content://x' }) === 'unavailable' && F.entrySubtitle('unavailable') === 'Not available yet for folders picked with the file picker' && F.fileEntryMode(vid(), { ...on, folder: 'Download' }) === 'hidden');
 
   console.log('[entry points: torrent card menu]');
   const done = { finished: true, folder };
   check('finished, one video: enabled and names the file', (() => { const r = F.torrentEntryMode(done, [vid(), vid({ index: 1, path: 'Show/info.nfo' })], on); return r.mode === 'enabled' && r.file.index === 0; })());
   check('finished, two videos: hidden', F.torrentEntryMode(done, [vid(), vid({ index: 1, path: 'Show/b.mkv' })], on).mode === 'hidden');
-  check('unfinished, one video with bytes on disk: enabled (42.1)', F.torrentEntryMode({ finished: false, folder }, [vid({ progressBytes: 5 })], on).mode === 'enabled');
+  check('unfinished, one video with bytes on disk: enabled', F.torrentEntryMode({ finished: false, folder }, [vid({ progressBytes: 5 })], on).mode === 'enabled');
   check('unfinished, one video, nothing on disk: disabled', F.torrentEntryMode({ finished: false, folder }, [vid({ progressBytes: 0 })], on).mode === 'disabled');
   check('no video: hidden', F.torrentEntryMode(done, [vid({ path: 'a.txt' })], on).mode === 'hidden');
   check('a skipped second video does not count', F.torrentEntryMode(done, [vid(), vid({ index: 1, path: 'b.mkv', included: false })], on).mode === 'enabled');
@@ -67,7 +67,7 @@ const nativeErr = (code) => Object.assign(new Error(code), { code });
   const dl = (o) => ({ state: 'finished', name: 'Clip.mp4', folder, ...o });
   check('finished video link: enabled', F.downloadEntryMode(dl(), on) === 'enabled');
   check('downloading video link, nothing yet: disabled', F.downloadEntryMode(dl({ state: 'downloading' }), on) === 'disabled');
-  check('downloading video link with bytes: enabled (42.1)', F.downloadEntryMode(dl({ state: 'downloading', downloaded: 100 }), on) === 'enabled');
+  check('downloading video link with bytes: enabled', F.downloadEntryMode(dl({ state: 'downloading', downloaded: 100 }), on) === 'enabled');
   check('stream joining with bytes: still hidden', F.downloadEntryMode(dl({ state: 'downloading', downloaded: 100, muxNeeded: true }), on) === 'hidden');
   check('stream still joining: hidden', F.downloadEntryMode(dl({ state: 'verifying', muxNeeded: true }), on) === 'hidden');
   check('stream joining flag alone: hidden', F.downloadEntryMode(dl({ muxNeeded: true }), on) === 'hidden');
@@ -128,7 +128,7 @@ const nativeErr = (code) => Object.assign(new Error(code), { code });
   const kb3 = await run(textProvider, { save: async (v, n) => { if (!/\.3\.srt$/.test(n)) throw nativeErr('NAME_TAKEN'); return { path: n }; } }, { choice: 'keep-both' });
   check('Keep both goes on to .3 when .2 is taken too', kb3.fileName === 'Show.S01E02.1080p.en.3.srt');
   check('the keep-both note says players may not load it', /may not load/.test(C.KEEP_BOTH_NOTE));
-  check('name-taken title is the contract sentence', C.NAME_TAKEN_TITLE === 'A subtitle with this name already exists.' && C.NAME_TAKEN_ACTIONS.replace === 'Replace' && C.NAME_TAKEN_ACTIONS.keepBoth === 'Keep both' && C.NAME_TAKEN_ACTIONS.cancel === 'Cancel');
+  check('name-taken title is the exact sentence', C.NAME_TAKEN_TITLE === 'A subtitle with this name already exists.' && C.NAME_TAKEN_ACTIONS.replace === 'Replace' && C.NAME_TAKEN_ACTIONS.keepBoth === 'Keep both' && C.NAME_TAKEN_ACTIONS.cancel === 'Cancel');
 
   console.log('[every error is one sentence and one action]');
   const expectErr = async (name, outcome, code, message, action, kind) => {
@@ -220,7 +220,7 @@ const nativeErr = (code) => Object.assign(new Error(code), { code });
   const entry = (state, savedAt = now) => ({ lang: 'en', file: '', savedAt, state });
   check('no state: no icon', F.cardIconModel(null, now) === null);
   check('getting shows', F.cardIconModel(entry('getting'), now).state === 'getting');
-  check('needs-look shows within 24 h and hides after (39.1 S3)', F.cardIconModel(entry('needs-look', now - 5 * 3600000), now).state === 'needs-look' && F.cardIconModel(entry('needs-look', now - 5 * 86400000), now) === null);
+  check('needs-look shows within 24 h and hides after', F.cardIconModel(entry('needs-look', now - 5 * 3600000), now).state === 'needs-look' && F.cardIconModel(entry('needs-look', now - 5 * 86400000), now) === null);
   check('saved shows within 24 h', F.cardIconModel(entry('saved', now - 3600000), now).state === 'saved');
   check('saved hides 24 h after the save', F.cardIconModel(entry('saved', now - 24 * 3600000 - 1), now) === null);
   check('TalkBack label: saved + language', F.cardIconLabel({ state: 'saved', lang: 'en' }).startsWith('Subtitles saved'));

@@ -12,6 +12,7 @@ import NavigationBarSync from '../components/NavigationBarSync';
 import { NoticeHost } from '../components/ui/NoticeHost';
 import { StarPrompt } from '../components/StarPrompt';
 import { HighlightSheet } from '../components/HighlightSheet';
+import { ShareHandoff } from '../components/ShareHandoff';
 import { syncScheduleToNative } from '../utils/prefs/schedule';
 import { syncFeedAutomationToNative } from '../utils/prefs/feedAutomation';
 import { initHistory } from '../utils/history';
@@ -216,6 +217,8 @@ function AppNavigation() {
       {main ? <NoticeHost /> : null}
       {main ? <StarPrompt /> : null}
       {main ? <HighlightSheet /> : null}
+      {/* After HighlightSheet: its effect must be listening before a waiting link is taken. */}
+      {main ? <ShareHandoff /> : null}
     </>
   );
 }

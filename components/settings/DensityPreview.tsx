@@ -21,11 +21,11 @@ const GB = 1024 * MB;
 /** The width of the page the preview draws (a 412 dp phone), then scales down to the card's inner width. */
 const CANVAS_W = 412;
 const FRAME_BORDER = 1;
-/** NATIVE_CONTRACT 41.4: the preview is about 236 dp high and fades to the background over its last 48 dp. */
+/** The preview is about 236 dp high and fades to the background over its last 48 dp. */
 const PREVIEW_H = 236;
 const FADE_H = 48;
 
-// NATIVE_CONTRACT 41.4: fixed sample data, never live data.
+// Fixed sample data, never live data.
 const LINK_SAMPLE: DownloadStatsInput = {
   state: 'downloading',
   downBps: 8.4 * MB,
@@ -54,7 +54,7 @@ const TORRENT_SAMPLE = {
 };
 
 /**
- * NATIVE_CONTRACT 41.4: the page as it looks in one density, drawn from the real page parts (ProgressCard, CompactLine,
+ * The page as it looks in one density, drawn from the real page parts (ProgressCard, CompactLine,
  * DownloadStats, TorrentStats, Button, ListRow) with the sample data above, scaled down to fit its card.
  * Hidden from screen readers and from touches; the card around it carries the words.
  */

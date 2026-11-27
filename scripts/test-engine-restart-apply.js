@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// NATIVE_CONTRACT 41 (0.32): restartEngine, the blocklist status and the VPN rule at start. Static checks on the TS,
+// restartEngine, the blocklist status and the VPN rule at start. Static checks on the TS,
 // Kotlin and Rust sources (Rust and Gradle are never run locally; CI compiles them). Rust unit tests cover the logic.
 const fs = require('fs');
 const path = require('path');

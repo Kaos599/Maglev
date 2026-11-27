@@ -1,7 +1,7 @@
 // Magnet and info-hash helpers.
 import { listTrackers } from '../lists/store.ts';
 
-/** The built-in trackers. A signed source list (docs/NATIVE_CONTRACT.md section 31) can replace them: see defaultTrackers(). */
+/** The built-in trackers. A signed source list can replace them: see defaultTrackers(). */
 export const DEFAULT_TRACKERS = [
   'udp://tracker.opentrackr.org:1337/announce',
   'udp://open.demonii.com:1337/announce',

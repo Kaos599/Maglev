@@ -54,16 +54,16 @@ import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
 
-/** User-visible governance rules (contract section 6). */
+/** User-visible governance rules. */
 data class Governance(
     val wifiOnly: Boolean = false,
     val ssidWhitelist: List<String> = emptyList(),
     val chargingOnly: Boolean = false,
     val batteryCutoffPct: Int = 0,
     val autoExitOnComplete: Boolean = false,
-    /** Contract section 21: pause while the active network is not a VPN. */
+    /** Pause while the active network is not a VPN. */
     val vpnOnly: Boolean = false,
-    /** Contract section 25.2: seeding torrents keep going on mobile data. Off by default. */
+    /** Seeding torrents keep going on mobile data. Off by default. */
     val seedOnMobileData: Boolean = false,
 )
 
@@ -90,7 +90,7 @@ object EngineHost {
     const val TAG_OFFLINE = "offline"
     const val ENGINE_PREFS = PREFS
     private const val REASON_FGS_TIMEOUT = "fgs_timeout"
-    /** Rust holds every transfer with this reason from `nativeInit` until the first governance pass (contract 41, B5). */
+    /** Rust holds every transfer with this reason from `nativeInit` until the first governance pass. */
     private const val REASON_STARTUP = "startup"
     /** The VPN rule must hold this long before the session is rebuilt network-off (or back), so a flapping link does not cycle it. */
     private const val NETWORK_OFF_DEBOUNCE_MS = 3_000L
@@ -142,7 +142,7 @@ object EngineHost {
     @Volatile private var lastPollAt = 0L
     private val prevFinished = HashMap<String, Boolean>()
     private val prevState = HashMap<String, String?>()
-    /** Info-hashes already handed to the media scanner for their current completion (contract 12.2). */
+    /** Info-hashes already handed to the media scanner for their current completion. */
     private val mediaScanned = ConcurrentHashMap.newKeySet<String>()
     private val pollLock = Any()
 
@@ -152,7 +152,7 @@ object EngineHost {
      * Order: lifecycleLock, then pollLock. Nothing holding pollLock may call these four. It is a JVM monitor, so it is reentrant on one thread.
      */
     private val lifecycleLock = Any()
-    /** Raised by every shutdown. A headless start queued before a shutdown must not bring the engine back (contract 8.1). */
+    /** Raised by every shutdown. A headless start queued before a shutdown must not bring the engine back. */
     private val shutdownEpoch = AtomicLong(0)
     private var initOnlySince = 0L
     private val cancelledCopies = ConcurrentHashMap.newKeySet<String>()
@@ -161,12 +161,12 @@ object EngineHost {
     /** Torrents whose staged copy was freed at the seed limit in this process. */
     private val seedLimitFreed = ConcurrentHashMap.newKeySet<String>()
     private var sawDownloading = false
-    /** Per torrent: seen DOWNLOADING since it was last unfinished (contract 13.2). Guarded by [prevFinished]. */
+    /** Per torrent: seen DOWNLOADING since it was last unfinished. Guarded by [prevFinished]. */
     private val sawDownloadingById = HashMap<String, Boolean>()
     /** Per torrent: when the user removed files from it while it was finished (elapsedRealtime). Guarded by [prevFinished]. */
     private val quietCompletion = HashMap<String, Long>()
     private const val QUIET_COMPLETION_MS = 30_000L
-    /** Latest summary for the Quick Settings tile (contract 13.3). Null until the first poll after init. */
+    /** Latest summary for the Quick Settings tile. Null until the first poll after init. */
     @Volatile private var lastSummary: TransferSummary? = null
     private var lastTileModel: TileModel? = null
     private var lastTileAt = 0L
@@ -174,10 +174,10 @@ object EngineHost {
 
     @Volatile private var governance = Governance()
     private val lastAllowed = HashMap<String, Boolean>()
-    /** Last metered flag pushed to the engine (contract section 34.1); null forces the next push. */
+    /** Last metered flag pushed to the engine; null forces the next push. */
     private var lastMetered: Boolean? = null
     private var net: NetworkGovernanceManager? = null
-    /** True while a [restartEngine] runs. A second call fails with INVALID_STATE (contract 41, B4). */
+    /** True while a [restartEngine] runs. A second call fails with INVALID_STATE. */
     private val restarting = AtomicBoolean(false)
     /** Whether the running session was built network-off (no DHT, no listener) because the VPN rule blocked at the time. */
     @Volatile private var networkOffApplied = false
@@ -188,7 +188,7 @@ object EngineHost {
 
     @Volatile private var holdForPaused = false
 
-    // Scheduler (contract 11.5). Global limits are the user's values, never the schedule-adjusted ones.
+    // Scheduler. Global limits are the user's values, never the schedule-adjusted ones.
     @Volatile private var globalDown = 0L
     @Volatile private var globalUp = 0L
     private var scheduleLimitApplied = false
@@ -301,7 +301,7 @@ object EngineHost {
         }
         val target = StorageManager.activeTarget(c)
         val session = StorageManager.sessionDir(c).absolutePath
-        // Contract 41 (B5): the network watcher runs before the session exists, so the VPN rule is judged on a real
+        // The network watcher runs before the session exists, so the VPN rule is judged on a real
         // reading. An unknown network blocks it. Blocked at start means the session is built network-off.
         startGovernanceWatchers(c)
         val networkOff = vpnBlockedNow()
@@ -409,7 +409,7 @@ object EngineHost {
     }
 
     /**
-     * Quick share (docs/contracts-0.19/quick-share.md section 5): starts the engine from Rust's saved config when no
+     * Quick share: starts the engine from Rust's saved config when no
      * JS and no service did. Blocking, so call it off the main thread. Safe when already running (returns ok), because
      * `nativeInit` is idempotent.
      */
@@ -442,7 +442,7 @@ object EngineHost {
     }
 
     /**
-     * Contract 41 (B4): applies the restart-required settings now. Stops the Rust session the way a shutdown does (Rust
+     * Applies the restart-required settings now. Stops the Rust session the way a shutdown does (Rust
      * saves resume data and checkpoints link downloads), then starts it again from the saved config. Transfers come
      * back as they were: Rust's meta keeps who is paused by the user, so a paused download stays paused. The service,
      * the governance watchers and the notification stay up. Fails with INVALID_STATE while another restart runs.
@@ -518,7 +518,7 @@ object EngineHost {
     }
 
     /**
-     * Contract 41 (B5): the VPN rule blocks unless the default network is known to be a VPN. No reading yet, no
+     * The VPN rule blocks unless the default network is known to be a VPN. No reading yet, no
      * callback and no network at all count as blocked. Without "Only download over a VPN" it never blocks.
      */
     private fun vpnBlockedNow(): Boolean {
@@ -714,7 +714,7 @@ object EngineHost {
         val downloads = Json.list(res["downloads"])
         detectCompletions(torrents)
         detectDownloadCompletions(downloads)
-        // URL downloads count as transfers: they keep the service up and show in the notification (section 17).
+        // URL downloads count as transfers: they keep the service up and show in the notification.
         val transfers = allTransfers(torrents, downloads)
         notifyNeedsLink(downloads)
         ctx?.let { AutoRetry.onDownloads(it, downloads) }
@@ -733,7 +733,7 @@ object EngineHost {
         driveService(summary)
         healthTick(torrents, summary)
         copyStagedTorrents(torrents)
-        // Joining video and audio parts comes first: the copy into the user's folder only sees `finished` (§24.8).
+        // Joining video and audio parts comes first: the copy into the user's folder only sees `finished`.
         runPendingMuxes(downloads)
         copyStagedDownloads(downloads)
         freeStagedAtSeedLimit(torrents)
@@ -754,7 +754,7 @@ object EngineHost {
         var seedId: String? = null
         var wifiPaused = false; var batteryPaused = false; var chargingPaused = false
         var unvalidatedPaused = false; var vpnPaused = false; var seedMeteredPaused = false
-        // §18.5: storage-paused torrents keep the service alive so the free-space poll and media receiver keep running.
+        // Storage-paused torrents keep the service alive so the free-space poll and media receiver keep running.
         var spacePaused = false; var volumePaused = false
         var primary: Map<String, Any?>? = null
         var latest: Map<String, Any?>? = null
@@ -780,7 +780,7 @@ object EngineHost {
                     "wifi_only" -> { byRules++; wifiPaused = true }
                     "battery" -> { byRules++; batteryPaused = true }
                     "charging_only" -> { byRules++; chargingPaused = true }
-                    // Contract section 25.2: seeding waits for Wi-Fi.
+                    // Seeding waits for Wi-Fi.
                     "seed_metered" -> { byRules++; seedMeteredPaused = true }
                     "network_unvalidated" -> { byRules++; unvalidatedPaused = true }
                     // Link downloads paused for a network blip (TAG_OFFLINE) stay wanted, so the service survives it.
@@ -887,7 +887,7 @@ object EngineHost {
     }
 
     /**
-     * Posts the "Download finished" notification (contract 13.2). Reads the detail for the size of the included
+     * Posts the "Download finished" notification. Reads the detail for the size of the included
      * files and, with exactly one included file, a content URI for the Open action. Runs on IO.
      */
     private fun announceCompletion(c: Context, id: String, name: String) {
@@ -931,7 +931,7 @@ object EngineHost {
     /** Summary for the Quick Settings tile, or null when the engine is not running. */
     fun tileSummary(): TransferSummary? = if (initialized) lastSummary else null
 
-    /** Asks the system to rebind the tile when its content changed, at most every 2 s (contract 13.3). */
+    /** Asks the system to rebind the tile when its content changed, at most every 2 s. */
     private fun refreshTile(s: TransferSummary) {
         val c = ctx ?: return
         val model = TileModel.from(s)
@@ -949,7 +949,7 @@ object EngineHost {
     }
 
     /**
-     * Makes finished files visible to Photos and music apps (contract 12.2). Public shared storage only.
+     * Makes finished files visible to Photos and music apps. Public shared storage only.
      * At most once per completion unless [force] (after a move). Runs on IO because it reads the detail.
      */
     private fun scanMedia(id: String, force: Boolean) {
@@ -996,7 +996,7 @@ object EngineHost {
         if (s.active == 0 && s.pausedByUser == 0) holdForPaused = false
         val svc = MaglevTorrentService.instance
         val others = s.busy > 0 || s.pausedByRules > 0 || (holdForPaused && s.pausedByUser > 0)
-        // Schedule pause: keep the service ~10 s, then stop it and persist scheduleHeld (contract 11.5).
+        // Schedule pause: keep the service ~10 s, then stop it and persist scheduleHeld.
         var scheduleGrace = false
         if (!others && s.pausedBySchedule > 0) {
             val now = SystemClock.elapsedRealtime()
@@ -1131,7 +1131,7 @@ object EngineHost {
         var n = 0
         for (t in Json.list(list["torrents"])) {
             val by = t["paused_by"]
-            // A torrent held by a file health tag needs Recheck, not Resume (contract 47.4): skip it.
+            // A torrent held by a file health tag needs Recheck, not Resume: skip it.
             val health = t["health"]
             val heldByFiles = health == "files_changed" || health == "files_missing"
             if (t["state"] == "PAUSED" && (by == null || by == "user") && !heldByFiles) {
@@ -1165,7 +1165,7 @@ object EngineHost {
         return res
     }
 
-    /** Polled by the Add screen while a magnet resolves (contract 12.1). Does not wait for the resolve. */
+    /** Polled by the Add screen while a magnet resolves. Does not wait for the resolve. */
     fun resolveActivity(infoHash: String): Map<String, Any?> = call { NativeCore.nativeResolveActivity(infoHash) }
 
     fun cancelResolve(infoHash: String): Map<String, Any?> = call { NativeCore.nativeCancelResolve(infoHash) }
@@ -1182,7 +1182,7 @@ object EngineHost {
     }
 
     fun deleteTorrent(id: String, deleteFiles: Boolean): Map<String, Any?> {
-        // Contract section 21: keeping the files of a staged torrent means the copy in the user's folder is the
+        // Keeping the files of a staged torrent means the copy in the user's folder is the
         // one that stays, so the staged copy goes. The paths must be read before the torrent is gone.
         val staged = if (!deleteFiles) stagedFilesOf(id) else null
         val res = call { NativeCore.nativeDelete(id, deleteFiles) }
@@ -1221,7 +1221,7 @@ object EngineHost {
         }
     }
 
-    /** Staged torrents that hit their seed limit have their staged copy freed once (contract section 21). */
+    /** Staged torrents that hit their seed limit have their staged copy freed once. */
     private fun freeStagedAtSeedLimit(torrents: List<Map<String, Any?>>) {
         val c = ctx ?: return
         val treeStr = StorageManager.customUri(c) ?: return
@@ -1258,7 +1258,7 @@ object EngineHost {
 
     // endregion
 
-    // region wave 3 (contract section 10)
+    // region file priorities and removing files
 
     /** [priorities] is a list of {index, priority}. Rust validates indices and the empty include set. */
     fun setFilePriorities(id: String, priorities: List<Map<String, Any?>>): Map<String, Any?> {
@@ -1269,7 +1269,7 @@ object EngineHost {
     }
 
     /**
-     * Removes the data of the files at [indices] (contract section 14). Rust stops downloading them, deletes
+     * Removes the data of the files at [indices]. Rust stops downloading them, deletes
      * them from the output folder and drops the have bits. The result carries `freed_bytes` (`freedBytes` in JS).
      * For a staging torrent that was already copied into the user's SAF folder, the copy is deleted here,
      * through the same layer that wrote it.
@@ -1375,8 +1375,8 @@ object EngineHost {
     }
 
     /**
-     * Contract section 21: a validated network was gained, so peers and trackers are asked again. Rust refuses a
-     * torrent that announced less than 60 s ago (section 10) and one that is not running, so errors are ignored.
+     * A validated network was gained, so peers and trackers are asked again. Rust refuses a
+     * torrent that announced less than 60 s ago and one that is not running, so errors are ignored.
      */
     private fun reannounceLiveTorrents() {
         if (!initialized) return
@@ -1410,7 +1410,7 @@ object EngineHost {
         val p = power
 
         var wifiBlocked = false
-        // Contract section 35.1: why wifi_only is on. "metered" is mobile data, "ssid" is a Wi-Fi not in the list.
+        // Why wifi_only is on. "metered" is mobile data, "ssid" is a Wi-Fi not in the list.
         var wifiCause: String? = null
         if (g.wifiOnly && n != null && n.monitoring) {
             wifiBlocked = !n.unmeteredLink
@@ -1424,22 +1424,22 @@ object EngineHost {
                 }
             }
         }
-        // Contract section 21. Only judged while the callback is registered and a network exists: no network at
+        // Only judged while the callback is registered and a network exists: no network at
         // all is "offline", which these rules do not turn into a pause.
         val linkKnown = n != null && n.monitoring && n.connected
-        // A sign-in page, not merely an unvalidated network (§21).
+        // A sign-in page, not merely an unvalidated network.
         val unvalidatedBlocked = linkKnown && n?.captivePortal == true
-        // Contract 41 (B5): unlike the rules above, an unknown network counts as blocked for the VPN rule.
+        // Unlike the rules above, an unknown network counts as blocked for the VPN rule.
         val vpnBlocked = vpnBlockedNow()
         val charging = p?.charging ?: true
         val level = p?.levelPct ?: 100
         val batteryBlocked = g.batteryCutoffPct > 0 && !charging && level < g.batteryCutoffPct
         val chargingBlocked = g.chargingOnly && !charging
 
-        // Contract section 25.2. Same link check as Wi-Fi only (`unmeteredLink`); only judged while the link is known.
+        // Same link check as Wi-Fi only (`unmeteredLink`); only judged while the link is known.
         val seedMeteredBlocked = !g.seedOnMobileData && n != null && n.monitoring && n.connected && !n.unmeteredLink
         send("seed_metered", !seedMeteredBlocked, force)
-        // Contract section 34.1: the engine only splits bytes by network with this; it never pauses anything.
+        // The engine only splits bytes by network with this; it never pauses anything.
         // Unknown (no callback, no network) counts as unmetered.
         val metered = n != null && n.monitoring && n.connected && !n.unmeteredLink
         if (force || lastMetered != metered) {
@@ -1453,12 +1453,12 @@ object EngineHost {
         send("network_unvalidated", !unvalidatedBlocked, force)
         send("vpn_required", !vpnBlocked, force)
         reconcileNetworkOff(networkOffWanted())
-        // Link downloads only (contract section 17): no network, or none Android validated, means "offline".
+        // Link downloads only: no network, or none Android validated, means "offline".
         // Unknown (callback not registered) is never offline. onChanged re-runs this on every network change.
         val offline = n != null && n.monitoring && (!n.connected || !n.validated)
         send(TAG_OFFLINE, !offline, force)
 
-        // Contract section 35.1: the blocks that are ON, with detail. Compared by value; emitted only on a change.
+        // The blocks that are ON, with detail. Compared by value; emitted only on a change.
         var blocksChanged = false
         blocksChanged = setBlock("storage_full", storageReserveBlocked, null) or blocksChanged
         blocksChanged = setBlock("offline", offline, null) or blocksChanged
@@ -1581,7 +1581,7 @@ object EngineHost {
         return call { NativeCore.nativeSetGlobalLimits(d, u) }
     }
 
-    // region wave 4 (contract section 11)
+    // region per-torrent limits, moving storage and streaming
 
     /** JS setTorrentLimits. Values below 0 are treated as 0 (no limit). Rust clamps above u32::MAX. */
     fun setTorrentLimits(id: String, limits: Map<String, Any?>): Map<String, Any?> {
@@ -1645,7 +1645,7 @@ object EngineHost {
         true
     }
 
-    /** "Play with" chooser for a stream URL (contract 11.4). */
+    /** "Play with" chooser for a stream URL. */
     fun openStream(url: String, mime: String, title: String): Map<String, Any?> {
         val c = requireCtx() ?: return Json.failure("ENGINE_UNAVAILABLE", "Module is not attached")
         val view = Intent(Intent.ACTION_VIEW).setDataAndType(android.net.Uri.parse(url), mime)
@@ -1663,7 +1663,7 @@ object EngineHost {
         }
     }
 
-    // region trackers and .torrent export (contract section 15)
+    // region trackers and .torrent export
 
     /** [urls] are announce URLs, one per entry. Rust validates them all and changes nothing unless every one is valid. */
     fun addTrackers(id: String, urls: List<String>): Map<String, Any?> =
@@ -1752,7 +1752,7 @@ object EngineHost {
         return if (err == null) linkedMapOf("ok" to true) else Json.failure("UNSUPPORTED", err)
     }
 
-    /** JS exportDebugLog (contract 41): the text file lives in cache/debug and is shared by [shareDebugLog]. */
+    /** JS exportDebugLog: the text file lives in cache/debug and is shared by [shareDebugLog]. */
     fun exportDebugLog(): Map<String, Any?> {
         val c = requireCtx() ?: return Json.failure("ENGINE_UNAVAILABLE", "Module is not attached")
         return try {
@@ -1778,7 +1778,7 @@ object EngineHost {
 
     // endregion
 
-    // region Health (§18)
+    // region Health
 
     /** [tag] is `files_missing`, `files_changed`, `storage_full`, `storage_unavailable`, `no_peers`, or "" to clear it. */
     fun setHealth(id: String, tag: String): Map<String, Any?> {
@@ -1864,7 +1864,7 @@ object EngineHost {
     }
 
     /**
-     * Admission check (SM-35, `Admission.kt`) for a feed match. Reads the size from the torrent's metadata; a source
+     * Admission check for a feed match. Reads the size from the torrent's metadata; a source
      * whose size cannot be read in time (a magnet with no peers yet) is let through, as it was before.
      */
     private fun feedFits(source: String): Boolean {
@@ -1877,7 +1877,7 @@ object EngineHost {
         val ownFree = Json.long(space["freeBytes"])
         val free = if (staged) (space["targetFreeBytes"] as? Number)?.toLong()?.coerceAtMost(ownFree) ?: ownFree else ownFree
         val list = call { NativeCore.nativeListTorrents() }
-        // Torrents and link downloads both still need space (SM-35, NATIVE_CONTRACT 10.3).
+        // Torrents and link downloads both still need space.
         val pending = if (isOk(list)) Admission.pendingNeedFromList(list) else 0L
         val out = Admission.admit(free, pending, if (staged) 2 else 1, selection)
         if (out.result == Admission.Result.DoesntFit) Log.i(TAG, "feed match does not fit: need ${out.need}, budget ${out.budget}")
@@ -1906,7 +1906,7 @@ object EngineHost {
                 for (p in pending) {
                     val fits = feedFits(p.source)
                     val res = addTorrent(p.source, mapOf("paused" to (p.startPaused || !fits)))
-                    // Contract section 21: a match that does not fit is kept, paused, and marked as out of space.
+                    // A match that does not fit is kept, paused, and marked as out of space.
                     if (!fits && isOk(res)) (res["id"] as? String)?.let { setHealth(it, "storage_full") }
                     val code = res["code"]
                     when {
@@ -1942,7 +1942,7 @@ object EngineHost {
 
     // endregion
 
-    // region URL downloads (§17)
+    // region URL downloads
 
     /** Per download: its last seen state, to find the edge to `finished`. Guarded by itself. */
     private val prevDownloadState = HashMap<String, String>()
@@ -1950,7 +1950,7 @@ object EngineHost {
     fun probeUrl(url: String, options: Map<String, Any?>, timeoutMs: Long): Map<String, Any?> =
         call { NativeCore.nativeProbeUrl(url, Json.toJson(Json.snakeify(options)), timeoutMs) }
 
-    /** Reads an HLS or DASH link: qualities, audio tracks and size estimates (contract 24.8). */
+    /** Reads an HLS or DASH link: qualities, audio tracks and size estimates. */
     fun probeStream(url: String, options: Map<String, Any?>, timeoutMs: Long): Map<String, Any?> =
         call { NativeCore.nativeProbeStream(url, Json.toJson(Json.snakeify(options)), timeoutMs) }
 
@@ -1961,7 +1961,7 @@ object EngineHost {
     private var joinWorkSwept = false
 
     /**
-     * A stream download with separate video and audio parts waits in `verifying` with `mux_needed` (contract 24.8).
+     * A stream download with separate video and audio parts waits in `verifying` with `mux_needed`.
      * Joins them once per wait on an IO thread (no re-encode), then tells Rust. Runs before the copy into a chosen
      * folder, which only looks at `finished`. A failure goes to Rust as `MUX_FAILED`; Retry makes the state
      * `verifying` again and this joins again. After a process restart the wait is still there and starts again
@@ -2020,10 +2020,10 @@ object EngineHost {
     fun pauseDownload(id: String) = call { NativeCore.nativePauseDownload(id) }.also { pollNow() }
     fun resumeDownload(id: String) = call { NativeCore.nativeResumeDownload(id) }.also { pollNow() }
 
-    /** Contract section 25.1: resume one torrent and exempt it from the rule pauses. */
+    /** Resume one torrent and exempt it from the rule pauses. */
     fun resumeAnyway(id: String): Map<String, Any?> = resumeExempt { NativeCore.nativeResumeAnyway(id) }
 
-    /** Contract section 25.1: the same for a link download. */
+    /** The same for a link download. */
     fun resumeDownloadAnyway(id: String): Map<String, Any?> = resumeExempt { NativeCore.nativeResumeDownloadAnyway(id) }
 
     /**
@@ -2077,7 +2077,7 @@ object EngineHost {
         if (isOk(res)) {
             val key = DL_PREFIX + id
             ctx?.let { StorageManager.clearCopied(it, key) }
-            // Delete file also removes the copy in the chosen folder (contract 17.z).
+            // Delete file also removes the copy in the chosen folder.
             if (copyUri != null) {
                 try { ctx?.let { SafStorageManager.deleteDocument(it, android.net.Uri.parse(copyUri)) } }
                 catch (t: Throwable) { Log.w(TAG, "could not delete the copy", t) }
@@ -2102,7 +2102,7 @@ object EngineHost {
     fun setDownloadLimits(id: String, limits: Map<String, Any?>) =
         call { NativeCore.nativeSetDownloadLimits(id, Json.toJson(Json.snakeify(limits))) }
 
-    /** Torrents plus active link downloads: the list [summarize] and every service decision must use (section 17). */
+    /** Torrents plus active link downloads: the list [summarize] and every service decision must use. */
     private fun allTransfers(
         torrents: List<Map<String, Any?>>,
         downloads: List<Map<String, Any?>>,
@@ -2345,7 +2345,7 @@ object EngineHost {
     fun shareFile(id: String, fileIndex: Int) = fileAction(id, fileIndex, FileActions::shareFile)
 
     /**
-     * Opens a finished link download with the app the phone picks (contract 17.y). Same file resolution as
+     * Opens a finished link download with the app the phone picks. Same file resolution as
      * [openFile]: FileProvider for a POSIX path, else the SAF tree once the staged copy was moved there.
      * Errors: NOT_FOUND (unknown id, or the file is gone), INVALID_STATE (not finished), NO_APP.
      */
@@ -2446,7 +2446,7 @@ object EngineHost {
 
     // endregion
 
-    // region Restart and storage (§18.5, §19)
+    // region Restart and storage
 
     /** Per-poll hook: storage health, background error notice, restart bookkeeping, resolve retry work. */
     private fun healthTick(torrents: List<Map<String, Any?>>, summary: TransferSummary) {
@@ -2463,7 +2463,7 @@ object EngineHost {
         if (initialized) scope.launch { scanFileHealth() }
     }
 
-    /** Clears every no_peers tag so the 10 minute resolve window starts again (contract 20). Starts the engine if needed. */
+    /** Clears every no_peers tag so the 10 minute resolve window starts again. Starts the engine if needed. */
     fun resolveRetry() {
         scope.launch {
             val c = ctx ?: return@launch

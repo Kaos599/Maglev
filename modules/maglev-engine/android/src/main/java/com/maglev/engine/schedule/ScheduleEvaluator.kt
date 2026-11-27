@@ -1,9 +1,9 @@
 package com.maglev.engine.schedule
 
 /**
- * Pure schedule logic (contract section 11.5). No android.* imports, so it runs on the plain JVM.
+ * Pure schedule logic. No android.* imports, so it runs on the plain JVM.
  *
- * The contract names java.time.LocalDateTime. minSdk is 24 and java.time needs API 26, and this build does not
+ * java.time.LocalDateTime would be the natural model, but minSdk is 24 and java.time needs API 26, and this build does not
  * enable core library desugaring, so time is modelled as minutes of the week instead: [WallTime].
  * Day numbers are 0 = Monday ... 6 = Sunday.
  */

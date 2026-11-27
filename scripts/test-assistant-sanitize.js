@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Tool-result sanitiser and session handle registry (SM-31, ASSISTANT_DESIGN §4.1, §7.3).
+// Tool-result sanitiser and session handle registry.
 // Fixtures: scripts/fixtures/assistant/injection.json. Pure TS, no network.
 // Needs Node 22.18+ (runs the TypeScript source directly via type stripping).
 

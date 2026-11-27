@@ -48,7 +48,7 @@ jobs:
       - name: Stage site without build sources
         run: rsync -a --exclude build/ site/ _site/
 
-      # Signs lists/sources.json (docs/NATIVE_CONTRACT.md section 31.1) and publishes it at /lists/. Skipped without the
+      # Signs lists/sources.json and publishes it at /lists/. Skipped without the
       # LISTS_SIGNING_KEY secret (an ECDSA P-256 private key, PEM): nothing is published and apps keep what they have.
       # The key goes to RUNNER_TEMP, never under _site, and is deleted right after signing.
       - name: Sign source lists

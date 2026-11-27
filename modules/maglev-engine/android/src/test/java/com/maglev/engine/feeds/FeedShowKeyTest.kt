@@ -6,7 +6,7 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/** "Skip episodes I already have" is keyed by show and episode (contract section 41, Feeds B2). */
+/** "Skip episodes I already have" is keyed by show and episode. */
 class FeedShowKeyTest {
     private val rule = FeedRule("r", "Rule", emptySet(), "", "", "new_only", startPaused = false, enabled = true)
 

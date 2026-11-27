@@ -1,5 +1,5 @@
 /**
- * Pop-ups and redirects: pure logic (docs/NATIVE_CONTRACT.md section 24.10, machines T4 and T5).
+ * Pop-ups and redirects: pure logic.
  * `decideNewWindow` and `registrablePart` are mirrored in Kotlin. No React, no native imports.
  */
 

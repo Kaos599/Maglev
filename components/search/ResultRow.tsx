@@ -115,7 +115,7 @@ function ResultRowImpl({ name, category, sizeBytes, seeders, leechers, age, via,
       {added ? (
         <IconButton icon="check" color={colors.accentText} accessibilityLabel={`${name}, added`} disabled />
       ) : busy ? (
-        // NATIVE_CONTRACT 44.4: the add is in flight. Same 44 dp slot as the button, so the row does not shift.
+        // The add is in flight. Same 44 dp slot as the button, so the row does not shift.
         <View style={styles.adding} accessible accessibilityRole="progressbar" accessibilityLabel={`Adding ${name}`} accessibilityState={{ busy: true }}>
           <LoadingDots color={colors.download} />
         </View>

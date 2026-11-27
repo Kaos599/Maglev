@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Progress and "already have it" in the browser (docs/BROWSER_DOWNLOAD_GAPS.md R3): the downloads chip, the
+// Progress and "already have it" in the browser: the downloads chip, the
 // "In Transfers" tag matched on the normalized link, and the View action on the "Added to Transfers" notice.
 // The snapshot only carries urlDisplay (scheme, host, path; no query), so a link with a query never matches.
 // Needs Node 22.18+ (runs TypeScript source directly).

@@ -1,6 +1,6 @@
-// SM-39 Plan card (multi-step, one Confirm). Pure: no React, no IO. The component runs the effects.
-// A plan is an ordered list of steps; each step is a proposal card body (SM-38 execute per step).
-// Review round 1 (R1-2): each step is revalidate(i), wait for STEP_REVALIDATED, then execute(i). A retry first
+// Plan card state machine (multi-step, one Confirm). Pure: no React, no IO. The component runs the effects.
+// A plan is an ordered list of steps; each step is a proposal card body (executed per step like a single card).
+// Each step is revalidate(i), wait for STEP_REVALIDATED, then execute(i). A retry first
 // rechecks the step (recheck(i), STEP_STATE) so a step that already ran is never run twice.
 // Anything not in the transition table is a no-op. Never add states.
 
@@ -19,7 +19,7 @@ export interface PlanState {
   total: number;
   /** Where the running step is: revalidating, executing, or rechecking after a RETRY. */
   phase?: 'revalidating' | 'executing' | 'rechecking';
-  /** Index of the running or failed step (SM-39 running(i) / halted(i, reason)). */
+  /** Index of the running or failed step (running(i) / halted(i, reason)). */
   index?: number;
   /** Steps that failed revalidation on the last Confirm, with their reasons. */
   invalid?: { step: number; reason?: string }[];
@@ -63,7 +63,7 @@ export function planInitial(total: number): PlanState {
   return { kind: 'proposed', total };
 }
 
-/** Indices that have not run yet after a halt at `step` (SM-39 "Not run"). */
+/** Indices that have not run yet after a halt at `step` ("Not run"). */
 function planNotRun(total: number, step: number): number[] {
   const out: number[] = [];
   for (let i = step + 1; i < total; i++) out.push(i);
@@ -89,7 +89,7 @@ function halt(total: number, i: number, message: string): PlanStep {
   };
 }
 
-/** One step of the SM-39 machine. Returns the next state and the effects to run. */
+/** One step of the plan machine. Returns the next state and the effects to run. */
 export function planStep(state: PlanState, event: PlanEvent): PlanStep {
   const same: PlanStep = { state, effects: [] };
   const { total } = state;

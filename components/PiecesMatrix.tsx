@@ -4,7 +4,7 @@ import { useTheme } from '../context/ThemeContext';
 import { ThemeColors, alpha, radius, spacing, type } from '../constants/theme';
 
 interface PiecesMatrixProps {
-  /** 256 cells, contract values: 0 missing, 1 have, 2 partial. */
+  /** 256 cells, as the engine reports them: 0 missing, 1 have, 2 partial. */
   cells: ArrayLike<number> | null;
   totalPieces: number;
 }

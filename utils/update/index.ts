@@ -1,5 +1,5 @@
 /**
- * In-app updates, wiring (docs/NATIVE_CONTRACT.md section 27). The pure parts live in check.ts, machine.ts and
+ * In-app updates, wiring. The pure parts live in check.ts, machine.ts and
  * rules.ts. This file owns the one store the About screen reads, and the triggers: the app becoming active,
  * telemetry (safe-to-install), and the native download and install events.
  */
@@ -26,12 +26,12 @@ let telemetry: { torrents: { state: string; upBps?: number }[]; downloads: { sta
 let wifiTimer: ReturnType<typeof setInterval> | null = null;
 let playerOpen = false;
 
-/** The in-app player screen is open: an automatic install waits (docs/NATIVE_CONTRACT.md section 30). */
+/** The in-app player screen is open: an automatic install waits. */
 export function setPlayerOpen(open: boolean): void {
   playerOpen = open;
 }
 
-/** A manual check while another app owns updates can still say a newer version exists (27.1). */
+/** A manual check while another app owns updates can still say a newer version exists. */
 export type ManagedCheck = { status: 'idle' | 'checking' | 'upToDate' | 'failed' } | { status: 'newer'; info: UpdateInfo };
 let managedCheck: ManagedCheck = { status: 'idle' };
 
@@ -59,7 +59,7 @@ export function getUpdateState(): UpdateState {
 export function getManagedCheck(): ManagedCheck {
   return managedCheck;
 }
-/** True when something other than Maglev installed it, so the first update needs a tap (27.5). */
+/** True when something other than Maglev installed it, so the first update needs a tap. */
 export function firstUpdateAsks(): boolean {
   return installer !== 'com.maglev';
 }
@@ -132,7 +132,7 @@ export async function checkNow(opts: { manual: boolean }): Promise<boolean> {
   try {
     const info = await runCheck();
     dispatch({ type: 'checked', info, skippedVersion: getUpdatePrefs().skippedVersion, manual: opts.manual });
-    // Keep what was found, so a restart re-routes it (section 30).
+    // Keep what was found, so a restart re-routes it.
     updateUpdatePrefs({ available: state.kind === 'available' ? state.info : null });
     if (!opts.manual) await routeFound();
   } catch {
@@ -149,7 +149,7 @@ async function runCheck(): Promise<UpdateInfo | null> {
   );
 }
 
-/** After an automatic check found a version: route it by mode and network (27.3). */
+/** After an automatic check found a version: route it by mode and network. */
 async function routeFound(): Promise<void> {
   if (state.kind !== 'available') return;
   const prefs = getUpdatePrefs();
@@ -182,7 +182,7 @@ async function pollWifi(): Promise<void> {
 export async function downloadNow(): Promise<void> {
   const next = dispatch({ type: 'download' });
   if (next.kind !== 'downloading') return;
-  // The network rules cover a download the user started too (section 30).
+  // The network rules cover a download the user started too.
   if (!networkAllows(await readNet(), rules())) {
     dispatch({ type: 'downloadFailed', code: 'BLOCKED' });
     return;
@@ -279,7 +279,7 @@ async function onActive(): Promise<void> {
 
 /**
  * A version an earlier check found but nothing downloaded yet: put it back as Available and route it by mode and
- * network again (Waiting, WaitingForWifi or Downloading), instead of waiting 24 h for the next check (section 30).
+ * network again (Waiting, WaitingForWifi or Downloading), instead of waiting 24 h for the next check.
  */
 async function restoreAvailable(): Promise<void> {
   const found = getUpdatePrefs().available;
@@ -294,8 +294,8 @@ export function startUpdates(): () => void {
   if (started) return () => {};
   started = true;
   const subs: (() => void)[] = [];
-  // The lists (ad block list, search sources, trackers) share this foreground hook but keep their own gate and prefs
-  // (section 31.3). Store installs still get them: the lists are data, not the app.
+  // The lists (ad block list, search sources, trackers) share this foreground hook but keep their own gate and prefs.
+  // Store installs still get them: the lists are data, not the app.
   subs.push(startListUpdates());
   void (async () => {
     await loadSource();

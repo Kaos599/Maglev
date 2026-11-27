@@ -16,7 +16,7 @@ export type ClearMode = 'range' | 'browsing-data';
 
 const RANGES: ClearRange[] = ['hour', 'today', 'week', 'all'];
 
-/** Machine H3 (NATIVE_CONTRACT 24.9): Choosing, then Clearing, then Done or Failed. */
+/** Choosing, then Clearing, then Done or Failed. */
 type Phase = 'choosing' | 'clearing' | 'failed';
 
 interface Data {

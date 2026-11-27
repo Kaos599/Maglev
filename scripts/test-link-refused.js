@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// LINK_REFUSED (NATIVE_CONTRACT 17, 2026-11-20): a 403 with no sign-in details is "the site refused this link", not a
+// LINK_REFUSED: a 403 with no sign-in details is "the site refused this link", not a
 // sign-in. Checks the TS mapping, the copy, the action, the auto-retry exclusion and the Rust source shape. The Rust
 // behaviour itself runs under `cargo test` in CI (http_dl/driver.rs `link_refused_tests`).
 // Needs Node 22.18+ (runs the TypeScript source directly).

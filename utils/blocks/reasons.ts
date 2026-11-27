@@ -1,5 +1,5 @@
 /**
- * The one place that says why a transfer is held (NATIVE_CONTRACT 35.2). Every `pausedBy` value, every
+ * The one place that says why a transfer is held. Every `pausedBy` value, every
  * active-block tag and "queued" map to a card line, a banner title and body, the setting that fixes it,
  * and whether "Resume anyway" is allowed. Cards, detail screens and the Transfers banner read from here.
  * Pure: no React, no react-native.
@@ -33,7 +33,7 @@ export interface BlockContext {
   nowMs?: number;
 }
 
-/** Everything a card or banner can be held for, in the order a banner shows them (NATIVE_CONTRACT 35.3). */
+/** Everything a card or banner can be held for, in the order a banner shows them. */
 export const BANNER_ORDER: readonly ActiveBlockTag[] = [
   'storage_full',
   'offline',
@@ -67,7 +67,7 @@ export function reasonFor(key: string | null | undefined, ctx: BlockContext = {}
       if (block?.cause === 'ssid') {
         return fixed(key, 'Waiting for an allowed Wi-Fi', 'Waiting for an allowed Wi-Fi', "This Wi-Fi isn't in your allowed networks.", { label: 'Allowed Wi-Fi networks', route: '/settings/network' }, false);
       }
-      // NATIVE_CONTRACT 39.3 E2: metered is not always mobile data (hotspot, metered Wi-Fi). The short form stays short.
+      // Metered is not always mobile data (hotspot, metered Wi-Fi). The short form stays short.
       return fixed(key, 'Waiting for Wi-Fi', 'Waiting for Wi-Fi', 'Wi-Fi only is on, and this connection is metered.', { label: 'Wi-Fi only', route: '/settings/network' }, true);
     }
     case 'battery': {
@@ -83,7 +83,7 @@ export function reasonFor(key: string | null | undefined, ctx: BlockContext = {}
     case 'charging_only':
       return fixed(key, 'Waiting for the charger', 'Waiting for the charger', 'Charging only is on.', { label: 'Charging only', route: '/settings/power' }, true);
     case 'network_unvalidated':
-      // NATIVE_CONTRACT 39.3 E2: also fires when the router has no internet; a sign-in page is only a possibility.
+      // Also fires when the router has no internet; a sign-in page is only a possibility.
       return fixed(key, 'Waiting for internet', 'Waiting for internet', "This network can't reach the internet. If it has a sign-in page, open it.", null, false);
     case 'vpn_required':
       return fixed(key, 'Waiting for VPN', 'Waiting for VPN', 'VPN only is on, and no VPN is connected.', { label: 'VPN only', route: '/settings/network' }, false);
@@ -113,7 +113,7 @@ export function reasonFor(key: string | null | undefined, ctx: BlockContext = {}
         false,
       );
     }
-    // Not held by a rule: the user's own pause, the seeding limit, and the health tags (NATIVE_CONTRACT 18.2).
+    // Not held by a rule: the user's own pause, the seeding limit, and the health tags.
     case 'user':
       return fixed(key, 'Paused', 'Paused', 'You paused this.', null, false);
     case 'seed_limit':

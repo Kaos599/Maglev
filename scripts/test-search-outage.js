@@ -70,7 +70,7 @@ function check(name, cond, extra) {
   check('summary: one unanswered', ans.resultsSummary(84, tally('done', 'error'), false) === "84 results · 1 didn't respond");
   check('summary: several unanswered', ans.resultsSummary(5, tally('done', 'error', 'timeout', 'blocked'), false) === "5 results · 3 didn't respond");
   check('summary: stopped prefix', ans.resultsSummary(2, tally('done'), true) === 'Stopped · 2 results');
-  // The line under the count (owner pick 2026-11-20): how many sources answered, or "No source answered".
+  // The line under the count: how many sources answered, or "No source answered".
   // Nothing when all answered; a quick check counts as not answered (its own hint offers the check).
   const line = (...states) => ans.sourcesLine(tally(...states));
   check('sources line: all answered, none', line('done', 'empty') === null);

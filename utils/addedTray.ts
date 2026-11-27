@@ -1,5 +1,5 @@
 /**
- * The "Added" message after an add from Search (docs/NATIVE_CONTRACT.md section 44.3). Pure: no React, no IO.
+ * The "Added" message after an add from Search. Pure: no React, no IO.
  * Merging adds, counts, the words, the timer deadline and which action shows all live here so they can be tested.
  * The component and the hook that use it are components/search/AddedTray.tsx.
  */
@@ -23,11 +23,11 @@ export interface TrayItem {
   /** The add has a subtitle ask: a video, with subtitles available. Never true for music, apps and the like. */
   ask: SubtitleAsk | null;
   sub: TraySub;
-  /** 44.15 D1: who asked. Only items the tray asked for in automatic mode are skipped by the tray's Skip. */
+  /** Who asked. Only items the tray asked for in automatic mode are skipped by the tray's Skip. */
   via?: 'auto' | 'manual';
   /** A short note on the add itself ("Leaves 2 GB free"). Shown only when the message has this one add. */
   note?: string;
-  /** 45.3: what tells this add apart from another with the same name: "2160p", "BDRip", a release group or a size. */
+  /** What tells this add apart from another with the same name: "2160p", "BDRip", a release group or a size. */
   tell?: string;
 }
 
@@ -40,7 +40,7 @@ export interface TrayState {
   auto: boolean;
   /** Epoch ms when the message goes away. */
   deadline: number;
-  /** Epoch ms of the first add in this message (44.15 F9: under TalkBack it stops merging after 60 s). */
+  /** Epoch ms of the first add in this message (under TalkBack it stops merging after 60 s). */
   startedAt?: number;
 }
 
@@ -53,9 +53,9 @@ export interface TrayAdd {
   alreadyThere?: boolean;
   auto: boolean;
   note?: string;
-  /** Size in bytes, when known. The last thing 45.3 uses to tell two adds with the same name apart. */
+  /** Size in bytes, when known. The last thing the message uses to tell two adds with the same name apart. */
   sizeBytes?: number;
-  /** 44.15 F9: the phase of a request already held for this key, if any. A skipped or saved one never says "Getting". */
+  /** The phase of a request already held for this key, if any. A skipped or saved one never says "Getting". */
   phase?: RequestPhase;
 }
 
@@ -93,7 +93,7 @@ export function isSeasonPack(name: string): boolean {
 }
 
 /**
- * The ask handed to `askSubtitles` (section 44.1). `title` is the parsed name; a season pack adds its video count
+ * The ask handed to `askSubtitles`. `title` is the parsed name; a season pack adds its video count
  * when known ("Severance S01 · 10 episodes"). `detail` is "1080p · YTS · 2.1 GB" with unknown parts left out.
  */
 export function buildAsk(i: { infoHash: string; name: string; sizeBytes?: number; sourceName?: string; videoCount?: number; key?: string }): SubtitleAsk {
@@ -105,7 +105,7 @@ export function buildAsk(i: { infoHash: string; name: string; sizeBytes?: number
   return { key: i.key ?? `t:${i.infoHash.toLowerCase()}`, title, detail };
 }
 
-/** 45.3: the source as written in the name ("BDRip", "WEB-DL"), or null. */
+/** The source as written in the name ("BDRip", "WEB-DL"), or null. */
 function sourceToken(name: string): string | null {
   const n = stripName(name);
   for (const [, re] of SOURCE_PATTERNS) {
@@ -116,7 +116,7 @@ function sourceToken(name: string): string | null {
 }
 
 /**
- * 45.3: the part that tells an add apart from another with the same name. The resolution if there is one, otherwise
+ * The part that tells an add apart from another with the same name. The resolution if there is one, otherwise
  * the source or release group, otherwise the size. Empty when the name and size say nothing.
  */
 export function tellApart(name: string, sizeBytes?: number): string {
@@ -140,7 +140,7 @@ export function mergeAdd(prev: TrayState | null, add: TrayAdd, now: number): Tra
     if (!next.already.some((x) => x.hash === hash)) next.already = [...next.already, { hash, display, short }];
     return next;
   }
-  // 44.15 F9: a key that is already skipped, saved or has its subtitles is not "Getting" and offers no ask.
+  // A key that is already skipped, saved or has its subtitles is not "Getting" and offers no ask.
   const settled = add.phase === 'skipped' || add.phase === 'saved' || add.phase === 'has-already';
   const item: TrayItem = {
     hash,
@@ -163,7 +163,7 @@ export function markAsked(s: TrayState, keys: readonly string[]): TrayState {
 }
 
 /**
- * Skip (44.15 D1): only the videos the tray asked for in automatic mode become skipped. A video asked for with
+ * Skip: only the videos the tray asked for in automatic mode become skipped. A video asked for with
  * "Get subtitles" is never touched. Returns the keys to hand to `skipSubtitles`.
  */
 export function skipAsked(s: TrayState): { state: TrayState; keys: string[] } {
@@ -172,7 +172,7 @@ export function skipAsked(s: TrayState): { state: TrayState; keys: string[] } {
   return { state: { ...s, items: s.items.map((x) => (mine(x) ? { ...x, sub: 'skipped' as const } : x)) }, keys };
 }
 
-/** 44.15 F9: under TalkBack the message stops merging new adds after this long, so it never grows for hours. */
+/** Under TalkBack the message stops merging new adds after this long, so it never grows for hours. */
 const SCREEN_READER_MERGE_MS = 60_000;
 
 /** Whether a new add may join the message on screen. */
@@ -182,7 +182,7 @@ export function trayMayMerge(s: TrayState | null, o: { now: number; screenReader
   return true;
 }
 
-/** 44.15 F7: a banner waits for an open sheet; it never closes it. */
+/** A banner waits for an open sheet; it never closes it. */
 export const bannerPlan = (o: { sheetOpen: boolean }): 'now' | 'wait' => (o.sheetOpen ? 'wait' : 'now');
 
 // ---------------------------------------------------------------- counts
@@ -219,7 +219,7 @@ function nameList(names: readonly string[]): string {
 }
 
 /**
- * 45.3: the names the message shows. Two adds that would read the same each get their distinguishing part in
+ * The names the message shows. Two adds that would read the same each get their distinguishing part in
  * parentheses: "Big Buck Bunny (2160p), Big Buck Bunny (BDRip)". Names that already differ are left alone.
  */
 function itemNames(items: readonly TrayItem[]): string[] {
@@ -272,7 +272,7 @@ export interface TrayAction {
 
 const gettingLabel = (asked: number) => (asked === 1 ? 'Getting subtitles' : `Getting subtitles for ${asked}`);
 
-/** 44.15 F9: the action row's words for the videos asked for, from their live phases. */
+/** The action row's words for the videos asked for, from their live phases. */
 export function liveLabel(askedKeys: readonly string[], phases: Record<string, RequestPhase | undefined>): string {
   const ps = askedKeys.map((k) => phases[k]);
   const n = ps.length;

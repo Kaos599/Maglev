@@ -1,5 +1,5 @@
 /**
- * Update prefs (docs/NATIVE_CONTRACT.md section 27.3): persisted in the kv store, read through a hook.
+ * Update prefs: persisted in the kv store, read through a hook.
  * `pending` is the downloaded update (its info and file path), kept so a restart can offer Install.
  */
 import { useSyncExternalStore } from 'react';
@@ -16,11 +16,11 @@ export interface UpdatePrefs {
   /** A version the automatic check ignores. The manual check still shows it. */
   skippedVersion: string | null;
   pending: { info: UpdateInfo; path: string } | null;
-  /** The release the last check found, kept so a restart re-routes it instead of waiting 24 h (section 30). */
+  /** The release the last check found, kept so a restart re-routes it instead of waiting 24 h. */
   available: UpdateInfo | null;
   /** `<kind>:<version>` of the last notice posted, so a restored update doesn't post again. */
   notifiedVersion: string | null;
-  /** "Show new features after updates" (section 37), on by default. UI only. */
+  /** "Show new features after updates", on by default. UI only. */
   showHighlights: boolean;
   /** "Keep video sites working": a daily background yt-dlp update. On by default. */
   videoSitesAuto: boolean;

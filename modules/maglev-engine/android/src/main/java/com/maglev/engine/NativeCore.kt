@@ -3,7 +3,7 @@ package com.maglev.engine
 import java.nio.ByteBuffer
 
 /**
- * JNI holder. Symbols resolve to `Java_com_maglev_engine_NativeCore_<name>` (docs/NATIVE_CONTRACT.md section 2).
+ * JNI holder. Symbols resolve to `Java_com_maglev_engine_NativeCore_<name>`.
  * Every call takes and returns UTF-8 JSON, except the bitfield buffer.
  * Call these only from a background dispatcher, never from the JS or main thread.
  */
@@ -66,7 +66,7 @@ object NativeCore {
     @JvmStatic external fun nativeFileHealth(id: String): String
     @JvmStatic external fun nativeResolveFiles(id: String, action: String, indicesJson: String, dir: String): String
     @JvmStatic external fun nativeStreamUrl(id: String, fileIndex: Int): String
-    // URL downloads (docs/NATIVE_CONTRACT.md section 17)
+    // URL downloads
     @JvmStatic external fun nativeProbeUrl(url: String, optionsJson: String, timeoutMs: Long): String
     @JvmStatic external fun nativeAddDownload(url: String, optionsJson: String): String
     @JvmStatic external fun nativePauseDownload(id: String): String
@@ -77,7 +77,7 @@ object NativeCore {
     @JvmStatic external fun nativeRefreshDownloadUrl(id: String, url: String, optionsJson: String): String
     @JvmStatic external fun nativeSetDownloadLimits(id: String, json: String): String
     @JvmStatic external fun nativeAllowLanHost(id: String): String
-    // Stream downloads, HLS and DASH (docs/NATIVE_CONTRACT.md section 24.8). `errorMessage` is "" when there is none.
+    // Stream downloads, HLS and DASH. `errorMessage` is "" when there is none.
     @JvmStatic external fun nativeProbeStream(url: String, optionsJson: String, timeoutMs: Long): String
     @JvmStatic external fun nativeFinishMux(id: String, ok: Boolean, errorMessage: String): String
     @JvmStatic external fun nativeVersion(): String

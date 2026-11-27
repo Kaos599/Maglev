@@ -1,6 +1,6 @@
-// React hook for the assistant chat (build step 13). Thin: wires real prefs, the secure-store key, expo/fetch and
+// React hook for the assistant chat. Thin: wires real prefs, the secure-store key, expo/fetch and
 // AppState into createChatController. The controller is kept per runner so the chat survives leaving the screen
-// (SM-42; the chat is also saved to the kv-store and restored when the controller is created).
+// (the chat is also saved to the kv-store and restored when the controller is created).
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { useIsFocused } from 'expo-router';
 import { fetch as expoFetch } from 'expo/fetch'; // Streaming fetch: response.body.getReader() (SDK 52+).
@@ -74,7 +74,7 @@ export function useAssistantChat(runner: ToolRunner): AssistantChat {
     controller.setFocused(focused);
   }, [controller, focused]);
 
-  // R1-3: a card whose download was removed elsewhere expires instead of looking valid until Confirm.
+  // A card whose download was removed elsewhere expires instead of looking valid until Confirm.
   const { telemetry, downloads } = useMaglevEngine();
   const seen = useRef(new Set<string>());
   useEffect(() => {

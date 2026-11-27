@@ -1,5 +1,5 @@
 /**
- * The one way to open the browser (docs/NATIVE_CONTRACT.md section 30). It goes to the Browse tab when that tab is
+ * The one way to open the browser. It goes to the Browse tab when that tab is
  * shown in the tab bar, so the tab set the user already has stays in one screen, and uses the /browser stack route
  * only when the tab is hidden. Params (`url`, `newTab`) reach the screen either way.
  */

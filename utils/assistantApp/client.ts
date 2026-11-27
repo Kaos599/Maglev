@@ -1,5 +1,5 @@
-// Provider HTTP client for the assistant (ASSISTANT_DESIGN §8.1, §8.2, §8.6, SM-31, SM-41).
-// Sends one OpenAI-compatible streaming request and turns the response into SM-31 TurnEvents.
+// Provider HTTP client for the assistant.
+// Sends one OpenAI-compatible streaming request and turns the response into turn events.
 // No React, no react-native, no `expo/fetch` import: the fetch is injected (useAssistantChat.ts passes expo/fetch),
 // so Node tests run this file with a fake.
 
@@ -33,7 +33,7 @@ export interface StreamParams {
 /** Runs one request and reports TurnEvents through `onEvent`. Resolves when the stream is over. Never rejects. */
 export type StreamFn = (params: StreamParams, onEvent: (event: TurnEvent) => void, signal: AbortSignal) => Promise<void>;
 
-/** SM-31 / §8.6: abort when nothing arrives for this long. */
+/** Abort when nothing arrives for this long. */
 const FIRST_BYTE_TIMEOUT_MS = 20_000;
 /** Abort a stream that goes quiet for this long after the first byte (SSE comments count as bytes). */
 const IDLE_TIMEOUT_MS = 45_000;
@@ -41,13 +41,13 @@ const IDLE_TIMEOUT_MS = 45_000;
 const ERROR_BODY_MAX_BYTES = 8 * 1024;
 
 /**
- * Providers whose docs (§8.2) list parallel_tool_calls as a request parameter. Groq is left out: its gpt-oss
+ * Providers whose docs list parallel_tool_calls as a request parameter. Groq is left out: its gpt-oss
  * models "support tools but not parallel tool use" and may refuse the field. Gemini's compat page and Ollama
  * do not list it. The turn machine caps calls per round-trip in code, so omitting it is safe.
  */
 const SENDS_PARALLEL_FLAG: ReadonlySet<PresetId> = new Set<PresetId>(['openrouter', 'openai', 'anthropic']);
 
-/** Gemini's compat layer and Ollama document `max_tokens`. The others take `max_completion_tokens` (§8.4). */
+/** Gemini's compat layer and Ollama document `max_tokens`. The others take `max_completion_tokens`. */
 const USES_MAX_TOKENS: ReadonlySet<PresetId> = new Set<PresetId>(['gemini', 'custom']);
 
 export function buildRequestBody(p: StreamParams): Record<string, unknown> {

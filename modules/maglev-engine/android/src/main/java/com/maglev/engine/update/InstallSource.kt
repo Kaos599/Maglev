@@ -4,7 +4,7 @@ import android.content.Context
 import android.os.Build
 
 /**
- * Who installed Maglev (docs/NATIVE_CONTRACT.md section 27.1).
+ * Who installed Maglev.
  * When [managedBy] is not null another app owns updates, and Maglev never downloads or installs one.
  */
 object InstallSource {
@@ -18,7 +18,7 @@ object InstallSource {
     private const val OBTAINIUM = "dev.imranr.obtainium"
     private const val PLAY = "com.android.vending"
     private const val ACCRESCENT = "app.accrescent.client"
-    /** Other app stores that own updates (docs/NATIVE_CONTRACT.md section 30). A sideload is never in this set. */
+    /** Other app stores that own updates. A sideload is never in this set. */
     private val STORES = setOf(
         "com.aurora.store",
         "com.sec.android.app.samsungapps",

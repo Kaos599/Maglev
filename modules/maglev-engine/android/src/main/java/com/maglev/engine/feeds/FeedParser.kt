@@ -6,7 +6,7 @@ import org.xmlpull.v1.XmlPullParser
 data class FeedItem(val title: String, val guid: String, val source: String?)
 
 /**
- * RSS 2.0 and Atom parser over XmlPullParser (contract section 11.6).
+ * RSS 2.0 and Atom parser over XmlPullParser.
  * The caller creates the parser (Xml.newPullParser() on Android, KXmlParser in JVM tests) and sets its input.
  * Names are compared without their namespace prefix, so this works whether or not the parser is namespace aware.
  */

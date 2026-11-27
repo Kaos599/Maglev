@@ -250,7 +250,7 @@ def m_keycap(tile, outline, side, face, m):
     ring = outer + " " + cells_path(KEY_SIDE, u, o, o + u)
     return layers, [(ring, True, ""), (mp, False, "")], "keycap"
 
-# ---- the catalogue: the 20 icons the owner chose, in picker order -----------------------------
+# ---- the catalogue: the 20 icons offered, in picker order -----------------------------
 TEAL, VOID, CARD, BORDER, MUTED = "#0B2A30", "#05070A", "#0D1117", "#1F2937", "#8B949E"
 LIME, CYAN = "#A5FB48", "#01E5EF"
 ICONS = [

@@ -5,9 +5,9 @@ import { decodeEntities, extractBlocks, tagText } from '../text.ts';
 export const ID = 'gutenberg';
 
 /**
- * Project Gutenberg's official OPDS search feed. Public-domain books, so the result is a plain EPUB (SEARCH_CONTRACT
- * section 9): `directUrl` points at the EPUB3 with images, `magnet` is empty and `infoHash` is `gutenberg:<book id>`.
- * The search feed has no acquisition links, only the book id; the EPUB path is the one the book's own OPDS page lists.
+ * Project Gutenberg's official OPDS search feed. Public-domain books, so the result is a plain EPUB (a direct file
+ * result): `directUrl` points at the EPUB3 with images, `magnet` is empty and `infoHash` is `gutenberg:<book id>`. The
+ * search feed has no acquisition links, only the book id; the EPUB path is the one the book's own OPDS page lists.
  */
 export function parse(body: string, ctx: ParseContext): SearchResult[] {
   if (!/<feed[\s>]/i.test(body)) throw new ProviderError('parse', 'Unexpected response');

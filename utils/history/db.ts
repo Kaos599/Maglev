@@ -1,4 +1,4 @@
-/** expo-sqlite binding for the history store (docs/NATIVE_CONTRACT.md section 24.9). */
+/** expo-sqlite binding for the history store. */
 import * as SQLite from 'expo-sqlite';
 import type { HistoryDb } from './store.ts';
 

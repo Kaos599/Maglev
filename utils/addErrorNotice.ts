@@ -30,7 +30,7 @@ export function engineStoppedBody(e: unknown): string {
 }
 
 /**
- * Maps an engine add failure to plain copy. Contract: Error carries `.code`.
+ * Maps an engine add failure to plain copy. The Error carries `.code`.
  * `startEngine` (when given) becomes the "Start the downloader" button of the stopped-engine notice.
  */
 export function addErrorNotice(
@@ -63,7 +63,7 @@ export type EngineFailureAction = 'startEngine' | 'pickFolder';
 
 /**
  * What the "engine failed to start" screen offers first. A permission or storage failure goes to the folder
- * picker (NATIVE_CONTRACT: PERMISSION and storage errors map to "Pick folder again"); everything else restarts.
+ * picker ("Pick folder again"); everything else restarts.
  */
 export function engineFailureAction(code?: string): { action: EngineFailureAction; label: string } {
   if (code === 'PERMISSION' || code === 'DISK_FULL' || code === 'STORAGE_UNAVAILABLE') {

@@ -4,7 +4,7 @@ enum class TileUiState { ACTIVE, INACTIVE }
 
 enum class TileTap { PAUSE_ALL, RESUME_ALL, OPEN_APP }
 
-/** What the Quick Settings tile shows and does for a [TransferSummary] (contract 13.3). Pure, no Android types. */
+/** What the Quick Settings tile shows and does for a [TransferSummary]. Pure, no Android types. */
 data class TileModel(val state: TileUiState, val subtitle: String, val tapAction: TileTap) {
     companion object {
         /** A null summary means the engine is not running. */

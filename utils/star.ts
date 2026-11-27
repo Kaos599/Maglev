@@ -1,5 +1,5 @@
 /**
- * Star prompt decision (docs/NATIVE_CONTRACT.md section 33). Pure: no storage, no clock, no UI.
+ * Star prompt decision. Pure: no storage, no clock, no UI.
  */
 export interface StarState {
   /** Epoch ms of the first run of this code, or null before it. */

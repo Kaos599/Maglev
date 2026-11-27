@@ -1,5 +1,5 @@
 /**
- * Reading a video file name (docs/NATIVE_CONTRACT.md section 36.4). Pure.
+ * Reading a video file name. Pure.
  *   sure : S01E02, S01E02E03 (first episode), 1x02
  *   guess: anime absolute numbering, "[Group] Show - 047 [1080p]"
  *   none : anything else, and sample / trailer / extras / featurette files
@@ -30,7 +30,7 @@ const EXTRA = /(?:^|[^a-z0-9])(sample|trailer|extras?|featurettes?)(?![a-z0-9])/
 const TAGS =
   /(?:^|[^a-z0-9])(?:\d{3,4}x\d{3,4}|480p|576p|720p|1080p|1080i|2160p|4k|uhd|hdr10?|dv|bluray|blu-ray|bdrip|brrip|bdremux|remux|webrip|web-dl|webdl|web|hdtv|pdtv|dvdrip|dvd|hdrip|x264|x265|h\.?264|h\.?265|hevc|avc|xvid|divx|aac|ac3|dts|ddp?\d?|atmos|proper|repack|extended|unrated|remastered|multi|dual|internal)(?![a-z0-9])/i;
 
-/** The release tags the title stops at (`tidyTitle`); also where an episode title ends (NATIVE_CONTRACT 46.1). */
+/** The release tags the title stops at (`tidyTitle`); also where an episode title ends. */
 export const RELEASE_TAGS = TAGS;
 
 /** The file name without folders and without a video or subtitle extension. */
@@ -112,7 +112,7 @@ export function parseName(fileName: string): ParsedName {
   return out;
 }
 
-// ---------------------------------------------------------------- typed names (NATIVE_CONTRACT 42.3)
+// ---------------------------------------------------------------- typed names
 
 const SEASON_ONLY = /^(.*\S)[\s._-]+s(\d{1,2})$/i;
 
@@ -121,7 +121,6 @@ const SEASON_ONLY = /^(.*\S)[\s._-]+s(\d{1,2})$/i;
  * adds the one shape a file name never has: a season with no episode. Only typed text goes through here, so what
  * `parseName` makes of real file names does not change.
  */
-// NATIVE_CONTRACT 42.3
 export function parseTyped(text: string): ParsedName {
   const t = text.trim();
   const p = parseName(t);
@@ -138,7 +137,6 @@ const pad2 = (n: number): string => String(n).padStart(2, '0');
  * A parsed name written as words. `typing` false is the plain read-out ("Casino Royale (2006)", "Severance S02E03");
  * true is the form to put in the field ("Casino Royale 2006"), which `parseTyped` reads back to the same result.
  */
-// NATIVE_CONTRACT 42.3
 export function parsedText(p: ParsedName, typing = false): string {
   const parts = [p.title];
   if (p.year !== undefined) parts.push(typing ? String(p.year) : `(${p.year})`);

@@ -41,7 +41,7 @@ function originOf(url: string): string {
  * Headers that make the download look like the page asked for it: the cookies, the referer, the origin and the
  * user agent. `Cookie` is the playlist link's own cookie; `Cookies` holds the WebView jar's cookies per host (the
  * playlist host and the page host), and the engine sends each host its own on every playlist, key and segment
- * request (NATIVE_CONTRACT 24.8, "Request headers").
+ * request.
  */
 export async function downloadHeaders(t: Pick<DownloadTarget, 'url' | 'pageUrl' | 'userAgent'>): Promise<NonNullable<DownloadOptions['headers']>> {
   const headers: NonNullable<DownloadOptions['headers']> = {};

@@ -1,5 +1,5 @@
 /**
- * Local stats schema (docs/NATIVE_CONTRACT.md section 34.2). Pure: the database is injected.
+ * Local stats schema. Pure: the database is injected.
  * Its own file (`maglev-stats.db`): the browser history wipe deletes `maglev-history.db`, and a wipe must never take stats with it.
  */
 

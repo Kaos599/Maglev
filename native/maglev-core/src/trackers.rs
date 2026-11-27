@@ -1,4 +1,4 @@
-//! Tracker editing and `.torrent` export (contract section 15).
+//! Tracker editing and `.torrent` export.
 //!
 //! Pure helpers plus the JSON sidecar `<sessionDir>/maglev-trackers.json`, keyed by info-hash.
 //! The sidecar holds only what the user changed: URLs added and URLs removed. librqbit re-adds a

@@ -16,7 +16,7 @@ import { refreshVideoSiteDownload } from './useVideoSiteRefresh';
 import { downloadTarget, type SubtitleTarget } from '../subtitles/flow';
 
 /**
- * NATIVE_CONTRACT 40.4: the one set of handlers for a link download. Transfers (card buttons) and the download page
+ * The one set of handlers for a link download. Transfers (card buttons) and the download page
  * (`app/download/[id].tsx`) both use it, so a failure gives the same notice text wherever the button was.
  *
  * Every handler takes the download's id. Failures are shown as a notice (the global toast), never thrown.

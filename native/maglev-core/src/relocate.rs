@@ -1,4 +1,4 @@
-//! Moving a torrent's files to another folder (contract section 11.3).
+//! Moving a torrent's files to another folder.
 //!
 //! Path planning, progress math and the file operations live here and are unit tested on any host.
 //! The engine glue (pausing, forget + re-add, rollback of the torrent) is in `engine.rs`.

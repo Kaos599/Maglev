@@ -1,5 +1,5 @@
 /**
- * Words and numbers for the Stats screen (docs/NATIVE_CONTRACT.md section 34.2). Pure. Sizes are binary (1 GB = 1024 MB),
+ * Words and numbers for the Stats screen. Pure. Sizes are binary (1 GB = 1024 MB),
  * the same as the rest of the app. Unknown stays unknown: callers show "—" for null.
  */
 import { CATEGORY_LABELS, dayLabelOf, rangeHolds, shortDateOf, spanLabelOf, type Bucket, type StatsRange } from './insights.ts';
@@ -144,7 +144,7 @@ export function bucketReadout(b: Pick<Bucket, 'downloaded' | 'finished' | 'faile
   return parts.join(' · ');
 }
 
-/** A finished row's status lead: "Done in 2 min 41 s" when the engine timed it (NATIVE_CONTRACT 34.1), else "Done". */
+/** A finished row's status lead: "Done in 2 min 41 s" when the engine timed it, else "Done". */
 export const doneLead = (activeSecs?: number, finishedAt?: number): string =>
   (finishedAt ?? 0) > 0 && (activeSecs ?? 0) > 0 ? `Done in ${fmtTook(activeSecs!)}` : 'Done';
 
@@ -174,7 +174,7 @@ export interface TimingInput {
 }
 
 /**
- * What the detail screen's timing row and sheet show (NATIVE_CONTRACT 34.1). Null means unknown ("—"); an item from before
+ * What the detail screen's timing row and sheet show. Null means unknown ("—"); an item from before
  * 0.26 has no timing at all. The two parts of the strip add up to the time from added to finished.
  */
 export function timingView(t: TimingInput, nowMs: number, tz?: number) {

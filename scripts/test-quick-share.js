@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Quick share (docs/contracts-0.19/quick-share.md): plugin manifest output, the setting round trip, link classification
+// Quick share: plugin manifest output, the setting round trip, link classification
 // (shared fixture with the Kotlin test) and the native wiring. Needs Node 22.18+ (runs the TypeScript source directly).
 process.removeAllListeners('warning');
 const fs = require('fs');
@@ -123,7 +123,7 @@ async function main() {
   check('no APK type', !mimes.some((t) => /android\.package-archive/.test(t)));
   check('typed http(s) filter is BROWSABLE and DEFAULT', w.cats.includes('BROWSABLE') && w.cats.includes('DEFAULT') && w.cats.length === 2);
 
-  // Section 8.1: download manager pickers (issue #89). Kiwi and its forks list apps that answer
+  // Download manager pickers (issue #89). Kiwi and its forks list apps that answer
   // VIEW http://test.com/file.rar with no type, so a typed filter never shows up there.
   const hand = qf.filter((f) => isHttp(f) && !f.data.some((d) => d['android:mimeType']));
   check('one untyped http(s) filter, for download manager pickers', hand.length === 1);
@@ -157,7 +157,7 @@ async function main() {
   console.log('native wiring');
   {
     const qa = read('modules/maglev-engine/android/src/main/java/com/maglev/engine/share/QuickShareActivity.kt');
-    check('VIEW hand-offs use the browser file name (8.1)', /ACTION_VIEW\) cls = ShareClassify\.withHandOffName\(cls, handOffName\(original\)\)/.test(qa) && /"com\.android\.extra\.filename"/.test(qa));
+    check('VIEW hand-offs use the browser file name', /ACTION_VIEW\) cls = ShareClassify\.withHandOffName\(cls, handOffName\(original\)\)/.test(qa) && /"com\.android\.extra\.filename"/.test(qa));
   }
   const styles = read('modules/maglev-engine/android/src/main/res/values/quick_share.xml');
   check('theme resource', /name="MaglevQuickShare"/.test(styles) && /windowIsTranslucent/.test(styles));

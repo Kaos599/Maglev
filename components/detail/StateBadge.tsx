@@ -14,7 +14,7 @@ interface Props {
   resumesAt?: string | null;
   /** Active blocks and queue size, so the label can say why a torrent is held. */
   blocks?: BlockContext;
-  /** SM-37: set while a magnet looks for its metadata. */
+  /** Set while a magnet looks for its metadata. */
   resolving?: { peersSeen: number; secs: number } | null;
 }
 

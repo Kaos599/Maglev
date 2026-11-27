@@ -103,7 +103,7 @@ class StorageHealthTest {
         assertNull(HealthTorrent.from(mapOf("id" to "y"))!!.health)
     }
 
-    // SM-36 background error notice
+    // Background error notice
 
     @Test fun errorNoticeOnEdgeWhenAppIsAway() =
         assertTrue(ErrorNotice.shouldNotify("DOWNLOADING", "ERROR", seenBefore = true, appInFront = false))

@@ -120,7 +120,7 @@ export function parseFiles(body: string, baseUrl: string): FileRow[] {
 
 const KNOWN: SubFormat[] = ['srt', 'ass', 'ssa', 'vtt'];
 
-/** One candidate per file. RAR and 7z files are dropped (36.3). */
+/** One candidate per file. RAR and 7z files are dropped. */
 export function candidatesFromFiles(files: FileRow[], release: ReleaseRow): SubtitleCandidate[] {
   const out: SubtitleCandidate[] = [];
   for (const f of files) {

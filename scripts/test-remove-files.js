@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// SM-27 Remove files machine (NATIVE_CONTRACT 14). One assertion per row of the transition table, on {kind, effects}.
+// Remove files machine. One assertion per row of the transition table, on {kind, effects}.
 // Needs Node 22.18+ (runs the TypeScript sources directly via type stripping).
 process.removeAllListeners('warning');
 

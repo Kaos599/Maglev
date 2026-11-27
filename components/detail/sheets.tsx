@@ -18,7 +18,7 @@ interface DeleteSheetProps {
   onClose: () => void;
   onRemove: () => void;
   onDeleteFiles: () => void;
-  /** SM-33: the SD card is gone, so deleting files is off. */
+  /** The SD card is gone, so deleting files is off. */
   storageGone?: boolean;
 }
 
@@ -50,7 +50,7 @@ interface RemoveFilesSheetProps {
   onConfirm: () => void;
 }
 
-/** Confirm sheet for removing files' data from a torrent (NATIVE_CONTRACT 14). There is no undo. */
+/** Confirm sheet for removing files' data from a torrent. There is no undo. */
 export function RemoveFilesSheet({ visible, count, bytes, busy, error, onClose, onConfirm }: RemoveFilesSheetProps) {
   const { colors } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -74,7 +74,7 @@ interface SavedTorrentSheetProps {
   onClose: () => void;
 }
 
-/** Shown after "Save .torrent file": where it went, and a Share button (NATIVE_CONTRACT 15). */
+/** Shown after "Save .torrent file": where it went, and a Share button. */
 export function SavedTorrentSheet({ saved, onClose }: SavedTorrentSheetProps) {
   const { colors } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -116,12 +116,12 @@ interface FileSheetProps {
   onResume: () => Promise<boolean>;
   onNotice: (text: string) => void;
   onClose: () => void;
-  /** Find subtitles… (36.10): hidden, disabled with "When this file starts" (nothing on disk yet), or enabled (42.1). Default hidden. */
+  /** Find subtitles…: hidden, disabled with "When this file starts" (nothing on disk yet), or enabled. Default hidden. */
   subtitles?: EntryMode;
   onFindSubtitles?: (file: DetailFile) => void;
 }
 
-/** Open and Share for finished files; Stream for video and audio, finished or not (NATIVE_CONTRACT 11.4). */
+/** Open and Share for finished files; Stream for video and audio, finished or not. */
 export function FileActionsSheet({ id, file, torrentState, pausedBy, onResume, onNotice, onClose, subtitles = 'hidden', onFindSubtitles }: FileSheetProps) {
   const { colors } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);

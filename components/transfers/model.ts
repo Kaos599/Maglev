@@ -156,7 +156,7 @@ export type StatusTone = 'muted' | 'accent' | 'danger' | 'download';
 export type StatusSlot = 'speed' | 'upload' | 'size' | 'amount';
 
 /**
- * One status line (owner rule 2026-11-18). Left: one phrase for what is happening ("12 min left", "Downloading",
+ * One status line. Left: one phrase for what is happening ("12 min left", "Downloading",
  * "Paused", "Checking files") and, last, the percent while the file is not done. Never an amount, never a trailing "…".
  * Right: exactly one value, in order: speed while data flows, else the amount ("320 MB of 2.1 GB"), else the size, else "—".
  */
@@ -193,7 +193,7 @@ export function torrentProgressPercent(t: Pick<TorrentTelemetry, 'includedBytes'
   return Math.min(100, Math.max(0, t.progressPercent || 0));
 }
 
-/** Every byte of the target is here (NATIVE_CONTRACT 47.3). The engine's `finished` flag counts too. */
+/** Every byte of the target is here. The engine's `finished` flag counts too. */
 function isFinished(t: Pick<TorrentTelemetry, 'includedBytes' | 'totalSizeBytes' | 'downloadedBytes'> & { finished?: boolean }): boolean {
   const target = targetBytes(t);
   return t.finished === true || (target > 0 && t.downloadedBytes >= target);
@@ -201,7 +201,7 @@ function isFinished(t: Pick<TorrentTelemetry, 'includedBytes' | 'totalSizeBytes'
 
 /**
  * Whole percent, or null when the size is unknown. An unfinished torrent never rounds up to 100 (cap 99);
- * one the engine says is finished is 100 (NATIVE_CONTRACT 47.3), and the card shows no percent for it.
+ * one the engine says is finished is 100, and the card shows no percent for it.
  */
 function wholePercent(t: Pick<TorrentTelemetry, 'includedBytes' | 'totalSizeBytes' | 'downloadedBytes' | 'progressPercent'> & { finished?: boolean }): number | null {
   if (!(targetBytes(t) > 0)) return null;
@@ -226,7 +226,7 @@ export interface StatusOpts {
   speedHold?: boolean;
   /** The amount shortens to what is downloaded. A function gets the full amount's length, for a narrow card. */
   shortAmount?: boolean | ((fullChars: number) => boolean);
-  /** NATIVE_CONTRACT 43.1: how long the current run of 0 speed has lasted (ms), from the flow clock. */
+  /** How long the current run of 0 speed has lasted (ms), from the flow clock. */
   quietMs?: number;
 }
 
@@ -241,7 +241,7 @@ function amountOrSize(t: StatusRow, shortOpt: StatusOpts['shortAmount'] = false,
     // `extraChars` is what sits beside the amount on the right (" · 2.1 MB/s"), so the narrow-card test sees the whole text.
     const short = typeof shortOpt === 'function' ? shortOpt(full.length + extraChars) : shortOpt;
     if (!short) return { value: full, slot: 'amount' };
-    // NATIVE_CONTRACT 45.2: while data flows, "134/587 MB" first; the amount alone only when that does not fit either.
+    // While data flows, "134/587 MB" first; the amount alone only when that does not fit either.
     if (compact) {
       const text = formatCompactAmount(t.downloadedBytes, target);
       if (typeof shortOpt === 'function' && !shortOpt(text.length + extraChars)) return { value: text, slot: 'amount', full };
@@ -265,7 +265,7 @@ const WAITING_TEXT = 'Waiting for peers';
 export type TorrentSituation = 'flowing' | 'connecting' | 'waiting' | 'quiet';
 
 /**
- * NATIVE_CONTRACT 43.2. Flowing: speed above 0 or inside the 5 s hold. Connecting: nothing downloaded and not flowing.
+ * Flowing: speed above 0 or inside the 5 s hold. Connecting: nothing downloaded and not flowing.
  * Waiting: some downloaded and no data for QUIET_MS. Quiet: some downloaded, no data for less than QUIET_MS.
  * Null when the torrent is not downloading, the numbers are the saved ones, or the offline block already says why.
  */
@@ -288,7 +288,7 @@ export function torrentStatus(t: StatusRow, etaLabel: string, ctx: BlockContext 
   const held = (lead: string, tone: StatusTone) => line(lead, tone, startedPct(t), right.value, right.slot, right.full);
   switch (t.state) {
     case 'DOWNLOADING': {
-      // Torrents never carry `offline`: the engine's block list is how a stalled torrent says why (NATIVE_CONTRACT 35.4).
+      // Torrents never carry `offline`: the engine's block list is how a stalled torrent says why.
       if (!t.lastKnown && ctx.blocks?.some((b) => b.tag === 'offline')) return held(reasonFor('offline')!.short, 'muted');
       const situation = torrentSituation(t, opts, ctx);
       const flowing = situation === 'flowing';
@@ -301,7 +301,7 @@ export function torrentStatus(t: StatusRow, etaLabel: string, ctx: BlockContext 
       const pct = hasEta || flowing ? wholePercent(t) : startedPct(t);
       const lead = hasEta ? `${etaLabel} left` : 'Downloading';
       if (flowing) {
-        // Right side: the amount in the telemetry colour, then the speed (NATIVE_CONTRACT 43.2).
+        // Right side: the amount in the telemetry colour, then the speed.
         const speed = t.downloadSpeedBytes > 0 ? formatSpeed(t.downloadSpeedBytes) : '—';
         const amt = amountOrSize(t, opts.shortAmount, speed.length + 3, true);
         const full = amountOrSize(t);
@@ -315,12 +315,12 @@ export function torrentStatus(t: StatusRow, etaLabel: string, ctx: BlockContext 
     case 'PAUSED':
       if (t.pausedBy === 'seed_metered') return line(`Done · ${pausedReason(t.pausedBy, ctx)}`, 'accent', null, total, 'size');
       if (t.pausedBy === 'seed_limit') return line(doneLead(t.activeSecs, t.finishedAt), 'accent', null, total, 'size');
-      // NATIVE_CONTRACT 47.3: a finished torrent never reads 99%. "Done · {reason}", no percent, the size on the right.
+      // A finished torrent never reads 99%. "Done · {reason}", no percent, the size on the right.
       if (t.pausedBy !== 'storage_full' && isFinished(t)) {
         const fileTag = t.health === 'files_changed' || t.health === 'files_missing' ? t.health : null;
         return line(`Done · ${pausedReason(fileTag ?? t.pausedBy, ctx)}`, 'muted', null, total, 'size');
       }
-      // Storage full: the card's button ("Free up space") is the way out (docs/contracts-0.19/play-and-storage.md section 2).
+      // Storage full: the card's button ("Free up space") is the way out.
       if (t.pausedBy === 'storage_full') return held(pausedReason(t.pausedBy, ctx), 'danger');
       return held(pausedReason(t.pausedBy, ctx), 'muted');
     case 'COMPLETED':
@@ -363,7 +363,7 @@ export function clearFinishedCopy(count: number): { title: string; body: string;
 
 // ---- Resume anyway ----
 
-/** Whether one tap may override the rule for this torrent only. The table decides (NATIVE_CONTRACT 35.2). */
+/** Whether one tap may override the rule for this torrent only. The table decides. */
 export function canResumeAnyway(pausedBy: string | null | undefined, ctx: BlockContext = {}): boolean {
   if (pausedBy === 'wifi_only' && !wifiOverrideAllowed(ctx.blocks)) return false;
   return !!reasonFor(pausedBy, ctx)?.override;
@@ -402,12 +402,12 @@ export function torrentCardAction(t: Pick<TorrentTelemetry, 'state' | 'pausedBy'
       return { icon: 'pause', label: 'Pause', kind: 'pause' };
     case 'PAUSED': {
       const by = t.pausedBy;
-      // NATIVE_CONTRACT 47.4: a file health tag needs Recheck, never Resume, even when the user paused it first.
+      // A file health tag needs Recheck, never Resume, even when the user paused it first.
       if (isHeldByFiles(t)) return null;
       if (by === 'no_peers') return { icon: 'retry', label: 'Keep trying', kind: 'keepTrying' };
       // Finished by the seed limit: the button opens the file. Seed again lives in the detail screen.
       if (by === 'seed_limit') return { icon: 'external', label: 'Open', kind: 'open' };
-      // Storage full: the card's button opens the list of finished downloads to remove (play-and-storage section 3).
+      // Storage full: the card's button opens the list of finished downloads to remove.
       if (by === 'storage_full') return { icon: 'trash', label: 'Free up space', kind: 'freeSpace' };
       if (by === 'files_missing' || by === 'files_changed' || by === 'storage_unavailable') return null;
       if (canResumeAnyway(by, ctx)) return { icon: 'play', label: resumeAnywayLabel(by), kind: 'resumeAnyway' };

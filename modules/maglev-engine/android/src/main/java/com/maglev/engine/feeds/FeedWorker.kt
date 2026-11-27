@@ -13,7 +13,7 @@ import java.net.HttpURLConnection
 import java.net.URL
 
 /**
- * Fetches feeds, matches rules and queues adds (contract section 11.6). Runs with the app closed.
+ * Fetches feeds, matches rules and queues adds. Runs with the app closed.
  * Never throws: a bad feed sets lastError and the other feeds still run.
  */
 class FeedWorker(context: Context, params: WorkerParameters) : CoroutineWorker(context, params) {
