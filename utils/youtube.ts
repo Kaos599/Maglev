@@ -138,7 +138,7 @@ export interface YouTubeQualityOption {
   ext: string;
   height: number | null;
   estBytes: number | null;
-  kind: 'pair' | 'direct' | 'audio';
+  kind: 'pair' | 'direct' | 'audio' | 'hls';
   url: string;
   userAgent?: string;
   streamSelection: StreamSelection;

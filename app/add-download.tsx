@@ -434,11 +434,31 @@ export default function AddDownloadScreen() {
     const renamed = !fromError && probe && !nameInvalid && baseName.trim() + splitName(probe.name).ext !== probe.name
       ? baseName.trim() + splitName(probe.name).ext
       : null;
+    const directExt = probe
+      ? splitName(renamed ?? probe.name).ext.toLowerCase().replace(/^\./, '')
+      : '';
+    const useParallelDirectVideo = Boolean(
+      partsOverride !== 1 &&
+        probe?.resumable &&
+        (probe.size == null || probe.size >= 512 * 1024) &&
+        (directExt === 'mp4' || directExt === 'm4a' || directExt === 'm4v'),
+    );
     const res = await startDownload(urlRef.current, {
       ...(allowLanRef.current ? { allowLan: true } : {}),
       ...(renamed ? { name: renamed } : {}),
       ...(folderPath ? { folder: folderPath } : {}),
       segments: parts,
+      ...(useParallelDirectVideo
+        ? {
+            stream: {
+              kind: 'pair',
+              variantId: 'direct-video',
+              videoUrl: urlRef.current,
+              ...(probe?.size && probe.size > 0 ? { videoBytes: probe.size } : {}),
+              ext: directExt,
+            },
+          }
+        : {}),
     });
     if (res.ok) {
       haptic('commit');
@@ -520,7 +540,7 @@ export default function AddDownloadScreen() {
           ...(folderPath ? { folder: folderPath } : {}),
           ...(headers ? { headers } : {}),
           segments: parts,
-          ...(q.kind === 'pair' || q.kind === 'audio'
+          ...(q.kind === 'pair' || q.kind === 'audio' || q.kind === 'hls'
             ? { stream: q.streamSelection }
             : {}),
         });
@@ -775,6 +795,7 @@ export default function AddDownloadScreen() {
   if (phase === 'error') {
     const errTitle = socialError ? socialError.title : empty.addDownload.badLink.title;
     const errBody = socialError ? socialError.message : errorView?.body;
+    const offerBrowser = notAFile || socialError?.category === 'auth_blocked';
     return (
       <Screen title="Add a link" onBack={close} scroll contentStyle={styles.content}>
         <EmptyBlock
@@ -783,14 +804,14 @@ export default function AddDownloadScreen() {
           title={errTitle}
           body={errBody}
           primary={
-            notAFile
+            offerBrowser
               ? { label: 'Open in browser', onPress: () => openBrowser(router, { url: urlRef.current }, 'replace') }
               : errorView?.primary === 'pasteAnother'
                 ? { label: 'Paste another link', onPress: () => { setText(''); void handlePaste(); } }
                 : { label: 'Try again', onPress: () => void submit(urlRef.current) }
           }
           secondary={
-            notAFile
+            offerBrowser
               ? { label: 'Paste another link', onPress: () => { setText(''); void handlePaste(); } }
               : { label: 'Back', onPress: () => setPhase('input') }
           }

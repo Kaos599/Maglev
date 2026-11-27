@@ -30,8 +30,8 @@ pub const MAX_PLAYLIST_BYTES: u64 = 2 * 1024 * 1024;
 pub const MAX_SEGMENTS: usize = 20_000;
 /// Segments fetched at once; they are written strictly in order.
 pub const MAX_IN_FLIGHT: usize = 3;
-/// Concurrent connections for direct chunked pair downloads (e.g. YouTube) with dynamic work-stealing.
-pub const PAIR_IN_FLIGHT: usize = 12;
+/// Concurrent connections for direct chunked pair downloads (e.g. YouTube & social videos) with dynamic work-stealing.
+pub const PAIR_IN_FLIGHT: usize = 24;
 /// One segment is held in memory while it is fetched. A bigger one is refused (`STREAM_UNSUPPORTED`).
 pub const MAX_SEGMENT_BYTES: u64 = 48 * 1024 * 1024;
 
@@ -278,7 +278,7 @@ pub fn chunked_segments(url: &str, total_bytes: u64) -> Vec<Segment> {
             expected_len: None,
         }];
     }
-    const MIN_CHUNK: u64 = 256 * 1024;
+    const MIN_CHUNK: u64 = 128 * 1024;
     const TARGET_CHUNK: u64 = 2 * 1024 * 1024;
     let lanes = PAIR_IN_FLIGHT as u64;
     let chunk_size = if total_bytes < MIN_CHUNK * lanes {
@@ -394,32 +394,85 @@ pub async fn probe(ctx: &fetch::ReqCtx, url: &str) -> Result<plan::StreamProbe, 
 }
 
 /// Probes exact byte length of a direct media URL via a 1-byte `Range: bytes=0-0` request
-/// so social media links without pre-known `contentLength` still download in parallel 2 MiB chunks.
+/// (and `HEAD` fallback) so social media and direct video links without pre-known `contentLength`
+/// still download across all `PAIR_IN_FLIGHT` parallel work-stealing connections.
 async fn probe_pair_content_length(ctx: &fetch::ReqCtx, target_url: &str) -> u64 {
     let (req_url, range) = pair_range_request(target_url, 0, 1);
-    let Ok(Ok(resp)) = tokio::time::timeout(
-        std::time::Duration::from_secs(4),
+    if let Ok(Ok(resp)) = tokio::time::timeout(
+        std::time::Duration::from_secs(8),
         ctx.send(&req_url, range),
     )
     .await
-    else {
-        return 0;
-    };
-    let status = resp.status().as_u16();
-    if status == 206 {
-        if let Some(cr) = resp.headers().get(reqwest::header::CONTENT_RANGE).and_then(|v| v.to_str().ok()) {
-            // e.g. "bytes 0-0/15728640"
-            if let Some(slash) = cr.rfind('/') {
-                if let Ok(total) = cr[slash + 1..].trim().parse::<u64>() {
-                    if total > 1 {
-                        return total;
+    {
+        let status = resp.status().as_u16();
+        if status == 206 {
+            if let Some(cr) = resp.headers().get(reqwest::header::CONTENT_RANGE).and_then(|v| v.to_str().ok()) {
+                // e.g. "bytes 0-0/15728640"
+                if let Some(slash) = cr.rfind('/') {
+                    if let Ok(total) = cr[slash + 1..].trim().parse::<u64>() {
+                        if total > 1 {
+                            return total;
+                        }
+                    }
+                }
+            }
+        } else if status == 200 && req_url == target_url {
+            // Non-YouTube server answered 200 to Range: bytes=0-0; check if Accept-Ranges: bytes is still advertised.
+            let accepts_bytes = resp
+                .headers()
+                .get(reqwest::header::ACCEPT_RANGES)
+                .and_then(|v| v.to_str().ok())
+                .map(|v| v.to_ascii_lowercase().contains("bytes"))
+                .unwrap_or(false);
+            if accepts_bytes {
+                if let Some(cl) = resp.content_length() {
+                    if cl > 1 {
+                        return cl;
                     }
                 }
             }
         }
-    } else if status == 200 && req_url != target_url {
-        // YouTube `&range=0-0` returns 200 for the slice only, not total length.
-        return 0;
+    }
+
+    // Fallback HEAD probe when Range: bytes=0-0 lacked Content-Range total.
+    let picker = crate::http_dl::redirect::CookiePicker {
+        host_cookies: ctx.host_cookies.clone(),
+        link_cookie: ctx.cookie.clone(),
+        link_host: ctx.origin_host.clone(),
+    };
+    let mut head_req = ctx.client.head(target_url);
+    if let Some(ua) = ctx.user_agent.as_deref().and_then(|v| reqwest::header::HeaderValue::from_str(v).ok()) {
+        head_req = head_req.header(reqwest::header::USER_AGENT, ua);
+    }
+    if let Some(r) = ctx.referer.as_deref().and_then(|v| reqwest::header::HeaderValue::from_str(v).ok()) {
+        head_req = head_req.header(reqwest::header::REFERER, r);
+    }
+    if let Ok(Ok(hresp)) = tokio::time::timeout(
+        std::time::Duration::from_secs(8),
+        crate::http_dl::redirect::send_following(&ctx.client, head_req, &picker),
+    )
+    .await
+    {
+        if hresp.status().is_success() {
+            let not_none = hresp
+                .headers()
+                .get(reqwest::header::ACCEPT_RANGES)
+                .and_then(|v| v.to_str().ok())
+                .map(|v| !v.to_ascii_lowercase().contains("none"))
+                .unwrap_or(true);
+            if not_none {
+                if let Some(cl) = hresp
+                    .headers()
+                    .get(reqwest::header::CONTENT_LENGTH)
+                    .and_then(|v| v.to_str().ok())
+                    .and_then(|s| s.trim().parse::<u64>().ok())
+                {
+                    if cl > 1 {
+                        return cl;
+                    }
+                }
+            }
+        }
     }
     0
 }
@@ -508,7 +561,7 @@ pub async fn resolve(ctx: &fetch::ReqCtx, url: &str, spec: &StreamSpec) -> Resul
                 Ok(Resolved { tracks, duration_sec: video.duration_sec, est_bytes: est, height: sel.height, ext_override: None })
             }
             hls::Doc::Media(p) => {
-                if spec.variant_id != plan::SINGLE_VARIANT_ID {
+                if spec.variant_id != plan::SINGLE_VARIANT_ID && spec.variant_id != "auto" {
                     return Err(StreamError::Unsupported.into());
                 }
                 Ok(Resolved {
@@ -598,11 +651,11 @@ mod tests {
 
     #[test]
     fn pair_chunks_use_query_range_for_googlevideo() {
-        let segs = chunked_segments("https://rr1.googlevideo.com/videoplayback?itag=137", 6 * 1024 * 1024);
+        let segs = chunked_segments("https://rr1.googlevideo.com/videoplayback?itag=137", 12 * 1024 * 1024);
         assert_eq!(segs.len(), PAIR_IN_FLIGHT);
         assert!(segs[0].url.ends_with("&range=0-524287"));
         assert!(segs[0].range.is_none());
-        assert!(segs[PAIR_IN_FLIGHT - 1].url.ends_with("&range=5767168-6291455"));
+        assert!(segs[PAIR_IN_FLIGHT - 1].url.ends_with("&range=12058624-12582911"));
         // 80 MiB splits into 40 x 2 MiB chunks well inside YouTube's unthrottled burst window.
         let big = chunked_segments("https://rr1.googlevideo.com/videoplayback?itag=137", 80 * 1024 * 1024);
         assert_eq!(big.len(), 40);

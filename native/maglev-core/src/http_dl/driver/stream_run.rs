@@ -982,10 +982,10 @@ impl Downloads {
         runs: &mut Vec<TrackRun>,
         clock: &mut StallClock,
     ) -> TrackEnd {
-        const PAIR_WRITE_BUF: usize = 512 * 1024;
-        const PAIR_OPEN_TIMEOUT: Duration = Duration::from_secs(20);
-        const PAIR_READ_TIMEOUT: Duration = Duration::from_secs(20);
-        const PAIR_MIN_STEAL_BYTES: u64 = 512 * 1024;
+        const PAIR_WRITE_BUF: usize = 1024 * 1024;
+        const PAIR_OPEN_TIMEOUT: Duration = Duration::from_secs(8);
+        const PAIR_READ_TIMEOUT: Duration = Duration::from_secs(8);
+        const PAIR_MIN_STEAL_BYTES: u64 = 256 * 1024;
         const PAIR_MAX_RETRIES: u8 = 6;
 
         let n_tracks = c.tracks.len();

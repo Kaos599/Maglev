@@ -32,7 +32,7 @@ use crate::http_dl::rules::{parse_content_range, parse_retry_after, pick_validat
 use crate::http_dl::sidecar::{contiguous_prefix, held_of, Segment};
 
 /// Below this size a download is never split.
-pub(super) const MIN_SPLIT_BYTES: u64 = 8 * 1024 * 1024;
+pub(super) const MIN_SPLIT_BYTES: u64 = 1024 * 1024;
 /// The most connections one download may use (the options accept 1 to 8).
 pub(super) const MAX_PARTS: u32 = 8;
 

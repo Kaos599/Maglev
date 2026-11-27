@@ -701,6 +701,116 @@ function decodeHtmlEntities(input: string): string {
     .replace(/\\\//g, '/');
 }
 
+/**
+ * Converts an Instagram shortcode (e.g. `C9xYz12345`) into its numeric `media_id`
+ * so `i.instagram.com/api/v1/media/<id>/info/` can be queried directly.
+ */
+export function shortcodeToInstagramMediaId(shortcode: string): string | null {
+  const clean = (shortcode ?? '').trim();
+  if (!clean || typeof BigInt === 'undefined') return null;
+  const alphabet =
+    'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
+  let id = BigInt(0);
+  for (const ch of clean) {
+    const idx = alphabet.indexOf(ch);
+    if (idx < 0) return null;
+    id = id * BigInt(64) + BigInt(idx);
+  }
+  return id.toString();
+}
+
+/**
+ * True when the URL path/host unambiguously identifies a video/Reel/Watch post
+ * (meaning a thumbnail `.jpg` MUST NEVER be returned instead of the video).
+ */
+export function isExplicitVideoUrl(
+  platform: SocialPlatform | null,
+  rawUrl: string,
+): boolean {
+  if (!platform || !rawUrl) return false;
+  try {
+    const u = new URL(normalizeSocialUrl(rawUrl));
+    const host = u.hostname.toLowerCase().replace(/^www\./, '');
+    const path = u.pathname.toLowerCase();
+    switch (platform) {
+      case 'youtube':
+        return true;
+      case 'instagram':
+        return (
+          /\/(?:reel|reels|tv)\//.test(path) ||
+          /\/share\/(?:reel|reels)\//.test(path)
+        );
+      case 'tiktok':
+        return /\/video\//.test(path);
+      case 'facebook':
+        return (
+          host === 'fb.watch' ||
+          /\/(?:reel|reels|watch|videos)\//.test(path) ||
+          path === '/watch' ||
+          /\/share\/(?:v|r)\//.test(path)
+        );
+      case 'reddit':
+        return host === 'v.redd.it';
+      case 'pinterest':
+      case 'threads':
+        return false;
+    }
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * True when fetched HTML or embedded JSON metadata indicates the post contains video,
+ * so fallback thumbnail `og:image` / `display_url` / `EmbeddedMediaImage` must not be treated as a photo post.
+ */
+export function htmlIndicatesVideo(html: string): boolean {
+  if (!html) return false;
+  return (
+    /"is_video"\s*:\s*true/i.test(html) ||
+    /"media_type"\s*:\s*2\b/.test(html) ||
+    /"product_type"\s*:\s*"(?:clips|igtv|feed_video)"/i.test(html) ||
+    /"video_versions"\s*:/.test(html) ||
+    /"video_url"\s*:/.test(html) ||
+    /"video_list"\s*:/.test(html) ||
+    /"browser_native_(?:hd|sd)_url"\s*:/.test(html) ||
+    /"playable_url(?:_quality_hd)?"\s*:/.test(html) ||
+    /EmbeddedVideo/i.test(html) ||
+    /<video[\s>]/i.test(html) ||
+    /<meta[^>]+property=["']og:video/i.test(html) ||
+    /<meta[^>]+property=["']og:type["'][^>]+content=["']video/i.test(html) ||
+    /pinimg\.com\/videos\//i.test(html) ||
+    /v\.redd\.it\//i.test(html)
+  );
+}
+
+/** Extracts unique HTTPS `.mp4` URLs from raw HTML or JSON-escaped script blobs. */
+export function extractAllMp4Urls(html: string): string[] {
+  if (!html) return [];
+  const out: string[] = [];
+  const seen = new Set<string>();
+  const add = (raw: string) => {
+    const clean = unescapeJsonString(raw).replace(/\\u0026/g, '&');
+    if (
+      clean.startsWith('https://') &&
+      /\.mp4(?:[?#]|$)/i.test(clean) &&
+      !clean.includes('avatar') &&
+      !clean.includes('profile_pic') &&
+      !seen.has(clean)
+    ) {
+      seen.add(clean);
+      out.push(clean);
+    }
+  };
+  for (const m of html.matchAll(/https:\/\/[^"'\\<>\s]+\.mp4[^"'\\<>\s]*/gi)) {
+    add(m[0]);
+  }
+  for (const m of html.matchAll(/https:\\\/\\\/[^"'<>\s]+\.mp4[^"'<>\s]*/gi)) {
+    add(m[0]);
+  }
+  return out;
+}
+
 function buildPlatformHeaders(
   platform: SocialPlatform,
   pageUrl: string,
@@ -716,8 +826,18 @@ function buildPlatformHeaders(
     // ignore
   }
   if (platform === 'tiktok') {
-    referer = 'https://www.tiktok.com/';
-    origin = 'https://www.tiktok.com';
+    const primaryMedia = extraMediaUrls.find(Boolean) ?? '';
+    if (primaryMedia.includes('tikwm.com')) {
+      referer = 'https://www.tikwm.com/';
+      origin = 'https://www.tikwm.com';
+    } else if (/tiktokcdn|akamaized|musical\.ly|byteoversea/i.test(primaryMedia)) {
+      // Direct TikTok CDNs respond faster without cross-site tikwm Referer/Origin headers.
+      referer = '';
+      origin = '';
+    } else {
+      referer = 'https://www.tiktok.com/';
+      origin = 'https://www.tiktok.com';
+    }
   } else if (platform === 'instagram') {
     referer = 'https://www.instagram.com/';
     origin = 'https://www.instagram.com';
@@ -835,17 +955,12 @@ async function probeTikTok(
             subtitles: [],
             qualities,
             items,
-            headers: {
-              ...buildPlatformHeaders(
-                'tiktok',
-                rawUrl,
-                ua,
-                items.map((i) => i.url),
-              ),
-              ...(items[0]?.url.includes('tikwm.com')
-                ? { referer: 'https://www.tikwm.com/', origin: 'https://www.tikwm.com' }
-                : {}),
-            },
+            headers: buildPlatformHeaders(
+              'tiktok',
+              rawUrl,
+              ua,
+              items.map((i) => i.url),
+            ),
           };
         }
 
@@ -918,15 +1033,10 @@ async function probeTikTok(
             subtitles: [],
             qualities,
             items: [item],
-            headers: {
-              ...buildPlatformHeaders('tiktok', rawUrl, ua, [
-                primaryVideoUrl,
-                musicUrl,
-              ]),
-              ...(primaryVideoUrl.includes('tikwm.com')
-                ? { referer: 'https://www.tikwm.com/', origin: 'https://www.tikwm.com' }
-                : {}),
-            },
+            headers: buildPlatformHeaders('tiktok', rawUrl, ua, [
+              primaryVideoUrl,
+              musicUrl,
+            ]),
           };
         }
       }
@@ -971,9 +1081,16 @@ async function probeTikTok(
             .slice(0, 110) || `tiktok_${postId}`;
         const durationSecs = Number(itemStruct.video?.duration || 0) || 0;
 
-        // Check photo post
+        // Check photo post (never treat explicit `/video/` URLs as photo slideshows)
         const imageList = itemStruct.imagePost?.images;
-        if (Array.isArray(imageList) && imageList.length > 0) {
+        const tikTokIsVideoUrl =
+          isExplicitVideoUrl('tiktok', pageRes.url) ||
+          isExplicitVideoUrl('tiktok', rawUrl);
+        if (
+          !tikTokIsVideoUrl &&
+          Array.isArray(imageList) &&
+          imageList.length > 0
+        ) {
           const items: SocialMediaItem[] = [];
           imageList.forEach((imgObj: any, idx: number) => {
             const u = imgObj?.imageURL?.urlList?.[0];
@@ -1027,7 +1144,17 @@ async function probeTikTok(
           ? itemStruct.video.bitrateInfo
           : [];
         for (const b of bitrateInfo) {
-          const u = b?.PlayAddr?.UrlList?.[0];
+          const urls: unknown[] = Array.isArray(b?.PlayAddr?.UrlList)
+            ? b.PlayAddr.UrlList
+            : [];
+          const cleanUrl = urls.find(
+            (cand): cand is string =>
+              typeof cand === 'string' &&
+              cand.startsWith('http') &&
+              !/watermark/i.test(cand),
+          );
+          const u =
+            cleanUrl || (typeof urls[0] === 'string' ? urls[0] : '');
           const h = Math.min(
             Number(b?.PlayAddr?.Height || 0),
             Number(b?.PlayAddr?.Width || 0),
@@ -1111,9 +1238,9 @@ async function probeTikTok(
     ok: false,
     platform: 'tiktok',
     category: 'auth_blocked',
-    title: 'Blocked or login required (update cookies)',
+    title: 'TikTok video temporarily blocked',
     message:
-      'TikTok blocked anonymous extraction for this link. Import cookies.txt or try again.',
+      'TikTok blocked direct extraction for this link. Tap Open in browser or try again.',
   };
 }
 
@@ -1385,23 +1512,122 @@ async function probeInstagram(
     };
   };
 
-  if (gqlRes.ok && gqlRes.text) {
-    try {
-      const data = JSON.parse(gqlRes.text);
-      const media =
-        data?.data?.xdt_api__v1__media__shortcode__web_info?.items?.[0] ||
-        data?.data?.shortcode_media;
-      const built = tryBuildFromIgNode(media);
-      if (built) return built;
-    } catch {
-      // Fall through to Source 2
+  let forceVideoOnly = isExplicitVideoUrl('instagram', rawUrl);
+
+  // Source 1: Fetch public Reel/Post page HTML to extract `lsd` token and scan embedded `data-sjs` JSON
+  const pageHtmlUrl = forceVideoOnly
+    ? `https://www.instagram.com/reel/${shortcode}/`
+    : `https://www.instagram.com/p/${shortcode}/`;
+  const pageRes = await fetchWithResilience(pageHtmlUrl, {
+    signal,
+    userAgent: USER_AGENTS.desktopChrome,
+    referer: 'https://www.instagram.com/',
+    maxRetries: 1,
+  });
+  const pageHtml = pageRes.ok ? pageRes.text : '';
+  if (htmlIndicatesVideo(pageHtml)) {
+    forceVideoOnly = true;
+  }
+  if (pageHtml) {
+    const parsedPage = parseInstagramHtmlMedia(
+      pageHtml,
+      rawUrl,
+      shortcode,
+      ua,
+      forceVideoOnly,
+      tryBuildFromIgNode,
+    );
+    if (parsedPage) return parsedPage;
+  }
+
+  const lsd =
+    pageHtml.match(/"LSD"\s*,\s*\[\s*\]\s*,\s*\{\s*"token"\s*:\s*"([^"]+)"/)?.[1] ||
+    pageHtml.match(/name=["']lsd["'][^>]+value=["']([^"']+)["']/i)?.[1] ||
+    'AVqbxe3J_YA';
+
+  // Source 2: Instagram GraphQL endpoints with extracted `X-FB-LSD` token
+  for (const docId of ['8845758582119845', '10015901848480474', '24368985919465001']) {
+    const graphqlBody = new URLSearchParams({
+      lsd,
+      variables: JSON.stringify({ shortcode }),
+      doc_id: docId,
+    }).toString();
+
+    const gqlRes = await fetchWithResilience(
+      'https://www.instagram.com/graphql/query',
+      {
+        method: 'POST',
+        signal,
+        userAgent: USER_AGENTS.desktopChrome,
+        referer: pageHtmlUrl,
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'X-IG-App-ID': '936619743392459',
+          'X-FB-LSD': lsd,
+          'X-ASBD-ID': '129477',
+          'X-Requested-With': 'XMLHttpRequest',
+        },
+        body: graphqlBody,
+        maxRetries: 0,
+        timeoutMs: 10_000,
+      },
+    );
+
+    if (gqlRes.ok && gqlRes.text) {
+      try {
+        const data = JSON.parse(gqlRes.text);
+        const media =
+          data?.data?.xdt_api__v1__media__shortcode__web_info?.items?.[0] ||
+          data?.data?.xdt_shortcode_media ||
+          data?.data?.shortcode_media;
+        if (media?.is_video || media?.product_type === 'clips' || media?.media_type === 2) {
+          forceVideoOnly = true;
+        }
+        const built = tryBuildFromIgNode(media);
+        if (built && (!forceVideoOnly || built.items.some((it) => it.kind === 'video'))) {
+          return built;
+        }
+      } catch {
+        // try next doc_id
+      }
     }
   }
 
-  // Source 2: Instagram `/p/<shortcode>/embed/captioned/` & `/reel/<shortcode>/embed/captioned/` (cookie-less)
+  // Source 3: Instagram Mobile API (`i.instagram.com/api/v1/media/<media_id>/info/`)
+  const mediaId = shortcodeToInstagramMediaId(shortcode);
+  if (mediaId) {
+    const mobRes = await fetchWithResilience(
+      `https://i.instagram.com/api/v1/media/${mediaId}/info/`,
+      {
+        signal,
+        userAgent: ua,
+        referer: 'https://www.instagram.com/',
+        headers: {
+          'X-IG-App-ID': '936619743392459',
+        },
+        maxRetries: 0,
+        timeoutMs: 8_000,
+      },
+    );
+    if (mobRes.ok && mobRes.text) {
+      try {
+        const mJson = JSON.parse(mobRes.text);
+        const mItem = mJson?.items?.[0];
+        const built = tryBuildFromIgNode(mItem);
+        if (built && (!forceVideoOnly || built.items.some((it) => it.kind === 'video'))) {
+          return built;
+        }
+      } catch {
+        // ignore
+      }
+    }
+  }
+
+  // Source 4: Instagram `/reel/<shortcode>/embed/captioned/`, `/p/<shortcode>/embed/captioned/`, `/p/<shortcode>/embed/`
   for (const embedPath of [
-    `https://www.instagram.com/p/${shortcode}/embed/captioned/`,
     `https://www.instagram.com/reel/${shortcode}/embed/captioned/`,
+    `https://www.instagram.com/p/${shortcode}/embed/captioned/`,
+    `https://www.instagram.com/p/${shortcode}/embed/`,
   ]) {
     const embedRes = await fetchWithResilience(embedPath, {
       signal,
@@ -1410,39 +1636,30 @@ async function probeInstagram(
       maxRetries: 1,
     });
     if (embedRes.ok && embedRes.text) {
-      // Check embedded `contextJSON` / `shortcode_media` / `EmbeddedMediaImage`
-      const vUrlMatch = embedRes.text.match(/"video_url"\s*:\s*"([^"]+)"/);
-      const dUrlMatch = embedRes.text.match(/"display_url"\s*:\s*"([^"]+)"/);
-      const imgTagMatch = embedRes.text.match(
-        /<img[^>]+class=["'][^"']*EmbeddedMediaImage[^"']*["'][^>]+src=["']([^"']+)["']/i,
-      );
-      const userMatch = embedRes.text.match(/"username"\s*:\s*"([^"]+)"/);
-      if (vUrlMatch || dUrlMatch || imgTagMatch) {
-        const vUrl = vUrlMatch ? unescapeJsonString(vUrlMatch[1]) : '';
-        const dUrl = dUrlMatch
-          ? unescapeJsonString(dUrlMatch[1])
-          : imgTagMatch
-            ? decodeHtmlEntities(imgTagMatch[1])
-            : '';
-        const author = userMatch ? userMatch[1] : 'Instagram';
-        const title = `instagram_${shortcode}`;
-        const built = tryBuildFromIgNode({
-          id: shortcode,
-          owner: { username: author },
-          ...(vUrl ? { video_url: vUrl } : {}),
-          ...(dUrl ? { display_url: dUrl } : {}),
-        });
-        if (built) return built;
+      if (htmlIndicatesVideo(embedRes.text)) {
+        forceVideoOnly = true;
       }
+      const parsedEmb = parseInstagramHtmlMedia(
+        embedRes.text,
+        rawUrl,
+        shortcode,
+        ua,
+        forceVideoOnly,
+        tryBuildFromIgNode,
+      );
+      if (parsedEmb) return parsedEmb;
     }
   }
 
-  // Source 3: Multi-source cookie-less fallback via OpenGraph preview mirrors & bot User-Agent
+  // Source 5: Multi-source cookie-less fallback via OpenGraph video mirrors
+  // CRITICAL: For Reels or video-flagged posts, ONLY accept if `og:video` or `.mp4` is found — NEVER `og:image` thumbnails!
   const igFallbacks: { url: string; ua: string }[] = [
+    { url: `https://www.instagram.com/reel/${shortcode}/`, ua: 'TelegramBot (like TwitterBot)' },
     { url: `https://www.instagram.com/p/${shortcode}/`, ua: 'WhatsApp/2.23.20.0' },
     { url: `https://www.ddinstagram.com/p/${shortcode}`, ua: 'TelegramBot (like TwitterBot)' },
     { url: `https://www.vxinstagram.com/p/${shortcode}`, ua: 'TelegramBot (like TwitterBot)' },
     { url: `https://www.eeinstagram.com/p/${shortcode}`, ua: 'TelegramBot (like TwitterBot)' },
+    { url: `https://www.kkinstagram.com/p/${shortcode}`, ua: 'TelegramBot (like TwitterBot)' },
   ];
   for (const fb of igFallbacks) {
     const mirrorRes = await fetchWithResilience(fb.url, {
@@ -1452,23 +1669,29 @@ async function probeInstagram(
       timeoutMs: 8_000,
     });
     if (mirrorRes.ok && mirrorRes.text) {
+      if (htmlIndicatesVideo(mirrorRes.text)) {
+        forceVideoOnly = true;
+      }
       const ogVideo =
         mirrorRes.text.match(
-          /<meta[^>]+property=["']og:video(?::secure_url)?["'][^>]+content=["']([^"']+)["']/i,
+          /<meta[^>]+property=["'](?:og:video(?::secure_url)?|twitter:player:stream)["'][^>]+content=["']([^"']+)["']/i,
         )?.[1] ||
         mirrorRes.text.match(
-          /<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:video(?::secure_url)?["']/i,
+          /<meta[^>]+content=["']([^"']+)["'][^>]+property=["'](?:og:video(?::secure_url)?|twitter:player:stream)["']/i,
         )?.[1];
-      const ogImage =
-        mirrorRes.text.match(
-          /<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)["']/i,
-        )?.[1];
-      const ogDesc =
-        mirrorRes.text.match(
-          /<meta[^>]+property=["']og:description["'][^>]+content=["']([^"']+)["']/i,
-        )?.[1];
-      if (ogVideo || ogImage) {
-        const cleanVideo = ogVideo ? decodeHtmlEntities(ogVideo) : '';
+      const mp4Fallback = extractAllMp4Urls(mirrorRes.text)[0] ?? '';
+      const cleanVideo = ogVideo ? decodeHtmlEntities(ogVideo) : mp4Fallback;
+
+      const ogImage = !forceVideoOnly
+        ? mirrorRes.text.match(
+            /<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)["']/i,
+          )?.[1]
+        : undefined;
+      const ogDesc = mirrorRes.text.match(
+        /<meta[^>]+property=["']og:description["'][^>]+content=["']([^"']+)["']/i,
+      )?.[1];
+
+      if (cleanVideo || (!forceVideoOnly && ogImage)) {
         const cleanImage = ogImage ? decodeHtmlEntities(ogImage) : '';
         const title =
           (ogDesc ? decodeHtmlEntities(ogDesc).slice(0, 100) : '') ||
@@ -1477,9 +1700,11 @@ async function probeInstagram(
           id: shortcode,
           caption: { text: title },
           ...(cleanVideo ? { video_url: cleanVideo } : {}),
-          ...(cleanImage ? { display_url: cleanImage } : {}),
+          ...(!cleanVideo && cleanImage ? { display_url: cleanImage } : {}),
         });
-        if (built) return built;
+        if (built && (!forceVideoOnly || built.items.some((it) => it.kind === 'video'))) {
+          return built;
+        }
       }
     }
   }
@@ -1488,10 +1713,126 @@ async function probeInstagram(
     ok: false,
     platform: 'instagram',
     category: 'auth_blocked',
-    title: 'Post unavailable',
-    message:
-      'Could not extract media from this Instagram link. It may be private or temporarily rate-limited.',
+    title: forceVideoOnly ? 'Reel video blocked' : 'Post unavailable',
+    message: forceVideoOnly
+      ? 'Instagram hid the video stream from direct scraping on this link. Tap Open in browser to play and download the video directly.'
+      : 'Could not extract media from this Instagram link. Tap Open in browser to view and save it directly.',
   };
+}
+
+/**
+ * Pure HTML/JSON extractor shared by `probeInstagram` (also unit-tested directly).
+ * Enforces `forceVideoOnly`: when the URL is a Reel/TV or the HTML contains video indicators,
+ * thumbnail `.jpg` images (`display_url` / `EmbeddedMediaImage`) are NEVER returned as the media!
+ */
+export function parseInstagramHtmlMedia(
+  html: string,
+  rawUrl: string,
+  shortcode: string,
+  ua: string,
+  forceVideoOnly: boolean,
+  tryBuildFromIgNode?: (node: any) => SocialProbeResult | null,
+): SocialProbeResult | null {
+  if (!html) return null;
+  const builder =
+    tryBuildFromIgNode ??
+    ((mediaNode: any): SocialProbeResult | null => {
+      const single = parseInstagramMediaNode(
+        mediaNode,
+        0,
+        `instagram_${shortcode}`,
+        ua,
+      );
+      if (!single) return null;
+      return {
+        ok: true,
+        platform: 'instagram',
+        platformLabel: PLATFORM_LABELS.instagram,
+        postId: shortcode,
+        title: `instagram_${shortcode}`,
+        author: String(mediaNode?.owner?.username || 'Instagram'),
+        durationSecs: 0,
+        mediaKind: single.kind === 'video' ? 'video' : 'image',
+        noWatermark: true,
+        streamableFastStart: true,
+        subtitles: [],
+        qualities: single.qualities,
+        items: [single],
+        headers: buildPlatformHeaders('instagram', rawUrl, ua, [single.url]),
+      };
+    });
+
+  const isVideo = forceVideoOnly || htmlIndicatesVideo(html);
+  const userMatch = html.match(/"username"\s*:\s*"([^"]+)"/);
+  const author = userMatch ? userMatch[1] : 'Instagram';
+
+  // 1. Structured `"video_versions": [...]` array inside JSON/script blobs
+  const videoVersions: { url: string; width?: number; height?: number }[] = [];
+  const seenUrls = new Set<string>();
+  for (const m of html.matchAll(/"video_versions"\s*:\s*\[([\s\S]*?)\]/g)) {
+    for (const um of m[1].matchAll(/"url"\s*:\s*"([^"]+)"/g)) {
+      const u = unescapeJsonString(um[1]);
+      if (u.startsWith('http') && !seenUrls.has(u)) {
+        seenUrls.add(u);
+        videoVersions.push({ url: u, height: 1080 });
+      }
+    }
+  }
+
+  // 2. Direct `"video_url":"..."`, `<video src="...">`, `<source src="...">`, or raw CDN `.mp4` URLs
+  const vUrlMatch = html.match(/"video_url"\s*:\s*"([^"]+)"/);
+  if (vUrlMatch) {
+    const u = unescapeJsonString(vUrlMatch[1]);
+    if (u.startsWith('http') && !seenUrls.has(u)) {
+      seenUrls.add(u);
+      videoVersions.push({ url: u, height: 1080 });
+    }
+  }
+  for (const m of html.matchAll(/<(?:video|source)[^>]+src=["']([^"']+\.mp4[^"']*)["']/gi)) {
+    const u = decodeHtmlEntities(m[1]);
+    if (u.startsWith('http') && !seenUrls.has(u)) {
+      seenUrls.add(u);
+      videoVersions.push({ url: u, height: 1080 });
+    }
+  }
+  for (const mp4 of extractAllMp4Urls(html)) {
+    if (!seenUrls.has(mp4)) {
+      seenUrls.add(mp4);
+      videoVersions.push({ url: mp4, height: 1080 });
+    }
+  }
+
+  if (videoVersions.length > 0) {
+    return builder({
+      id: shortcode,
+      owner: { username: author },
+      video_versions: videoVersions,
+    });
+  }
+
+  // NEVER return a .jpg cover thumbnail when the link/page is a Reel or video post!
+  if (isVideo) {
+    return null;
+  }
+
+  // 3. Genuine photo post (`display_url` / `EmbeddedMediaImage`)
+  const dUrlMatch = html.match(/"display_url"\s*:\s*"([^"]+)"/);
+  const imgTagMatch = html.match(
+    /<img[^>]+class=["'][^"']*EmbeddedMediaImage[^"']*["'][^>]+src=["']([^"']+)["']/i,
+  );
+  const dUrl = dUrlMatch
+    ? unescapeJsonString(dUrlMatch[1])
+    : imgTagMatch
+      ? decodeHtmlEntities(imgTagMatch[1])
+      : '';
+  if (dUrl) {
+    return builder({
+      id: shortcode,
+      owner: { username: author },
+      display_url: dUrl,
+    });
+  }
+  return null;
 }
 
 // ============================================================================
@@ -1639,12 +1980,21 @@ async function probeReddit(
           timeoutMs: 8_000,
         });
         if (mRes.ok && mRes.text) {
-          const ogVid = mRes.text.match(
-            /<meta[^>]+property=["']og:video(?::secure_url)?["'][^>]+content=["']([^"']+)["']/i,
-          )?.[1];
-          const ogImg = mRes.text.match(
-            /<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)["']/i,
-          )?.[1];
+          const ogVid =
+            mRes.text.match(
+              /<meta[^>]+property=["']og:video(?::secure_url)?["'][^>]+content=["']([^"']+)["']/i,
+            )?.[1] ??
+            mRes.text.match(
+              /<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:video(?::secure_url)?["']/i,
+            )?.[1] ??
+            extractAllMp4Urls(mRes.text)[0];
+          const ogImg =
+            mRes.text.match(
+              /<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)["']/i,
+            )?.[1] ??
+            mRes.text.match(
+              /<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:image["']/i,
+            )?.[1];
           const ogTitle = mRes.text.match(
             /<meta[^>]+property=["']og:title["'][^>]+content=["']([^"']+)["']/i,
           )?.[1];
@@ -1680,7 +2030,11 @@ async function probeReddit(
               headers: buildPlatformHeaders('reddit', targetUrl, ua, [cleanV]),
             };
           }
-          if (ogImg) {
+          const redditMirrorIsVideo =
+            isExplicitVideoUrl('reddit', targetUrl) ||
+            isExplicitVideoUrl('reddit', rawUrl) ||
+            htmlIndicatesVideo(mRes.text);
+          if (ogImg && !redditMirrorIsVideo) {
             const cleanI = decodeHtmlEntities(ogImg);
             const opt = buildOriginalImageOption({ id: 'reddit-mirror-img', imageUrl: cleanI, userAgent: ua });
             return {
@@ -1833,6 +2187,44 @@ async function probeReddit(
   }
 
   // Case C: Single Reddit Image (`url_overridden_by_dest` or `preview.images[0].source`)
+  const postHint = String(postData.post_hint || '').toLowerCase();
+  const redditPostIsVideo =
+    Boolean(postData.is_video) ||
+    postHint.includes('video') ||
+    String(postData.domain || '').toLowerCase() === 'v.redd.it' ||
+    isExplicitVideoUrl('reddit', rawUrl);
+
+  if (redditPostIsVideo) {
+    const previewMp4 = postData.preview?.reddit_video_preview?.fallback_url;
+    if (typeof previewMp4 === 'string' && previewMp4.startsWith('http')) {
+      const cleanMp4 = decodeHtmlEntities(previewMp4).split('?')[0];
+      const opt = buildDirectVideoQualityOption({
+        id: `reddit-vid-${postId}`,
+        height: Number(postData.preview?.reddit_video_preview?.height || 720),
+        videoUrl: cleanMp4,
+        badge: 'No watermark',
+        userAgent: ua,
+      });
+      const aOpt = buildSoundOnlyOption({ sourceUrl: cleanMp4, userAgent: ua });
+      return {
+        ok: true,
+        platform: 'reddit',
+        platformLabel: PLATFORM_LABELS.reddit,
+        postId,
+        title,
+        author,
+        durationSecs: 0,
+        mediaKind: 'video',
+        noWatermark: true,
+        streamableFastStart: true,
+        subtitles: [],
+        qualities: [opt, aOpt],
+        items: [{ id: postId, index: 0, kind: 'video', title, ext: '.mp4', url: cleanMp4, qualities: [opt, aOpt] }],
+        headers: buildPlatformHeaders('reddit', rawUrl, ua, [cleanMp4]),
+      };
+    }
+  }
+
   const directDest = String(postData.url_overridden_by_dest || postData.url || '');
   const previewSrc = postData.preview?.images?.[0]?.source;
   const imgUrl =
@@ -1842,7 +2234,7 @@ async function probeReddit(
         ? decodeHtmlEntities(previewSrc.url)
         : '';
 
-  if (imgUrl) {
+  if (!redditPostIsVideo && imgUrl) {
     const opt = buildOriginalImageOption({
       id: `reddit-img-${postId}`,
       imageUrl: imgUrl,
@@ -2037,9 +2429,13 @@ async function probeFacebook(
     html.match(/"browser_native_sd_url"\s*:\s*"([^"]+)"/) ||
     html.match(/"playable_url"\s*:\s*"([^"]+)"/) ||
     html.match(/"sd_src(?:_no_ratelimit)?"\s*:\s*"([^"]+)"/);
-  const ogVideoMatch = html.match(
-    /<meta[^>]+property=["']og:video(?::secure_url)?["'][^>]+content=["']([^"']+)["']/i,
-  );
+  const ogVideoMatch =
+    html.match(
+      /<meta[^>]+property=["']og:video(?::secure_url)?["'][^>]+content=["']([^"']+)["']/i,
+    ) ||
+    html.match(
+      /<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:video(?::secure_url)?["']/i,
+    );
 
   const hdUrl = hdMatch ? unescapeJsonString(hdMatch[1]) : '';
   const sdUrl = sdMatch
@@ -2070,6 +2466,33 @@ async function probeFacebook(
         userAgent: ua,
       }),
     );
+  }
+  if (qualities.length === 0) {
+    const rawMp4s = extractAllMp4Urls(html).filter(
+      (u) => !/static\.xx\.fbcdn\.net|\/rsrc\.php/i.test(u),
+    );
+    if (rawMp4s.length > 0) {
+      qualities.push(
+        buildDirectVideoQualityOption({
+          id: 'fb-hd-1080p',
+          height: 1080,
+          videoUrl: rawMp4s[0],
+          badge: 'HD · No watermark',
+          userAgent: ua,
+        }),
+      );
+      if (rawMp4s[1] && rawMp4s[1] !== rawMp4s[0]) {
+        qualities.push(
+          buildDirectVideoQualityOption({
+            id: 'fb-sd-480p',
+            height: 480,
+            videoUrl: rawMp4s[1],
+            badge: 'SD · No watermark',
+            userAgent: ua,
+          }),
+        );
+      }
+    }
   }
 
   if (qualities.length > 0) {
@@ -2109,11 +2532,19 @@ async function probeFacebook(
     };
   }
 
-  // Shared Photo fallback (`og:image`)
-  const ogImgMatch = html.match(
-    /<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)["']/i,
-  );
-  if (ogImgMatch && !html.includes('login_form')) {
+  // Shared Photo fallback (`og:image`): NEVER return cover image for Reels/Watch/video posts
+  const fbIsVideoPost =
+    isExplicitVideoUrl('facebook', rawUrl) ||
+    isExplicitVideoUrl('facebook', res.url) ||
+    htmlIndicatesVideo(html);
+  const ogImgMatch =
+    html.match(
+      /<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)["']/i,
+    ) ||
+    html.match(
+      /<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:image["']/i,
+    );
+  if (ogImgMatch && !fbIsVideoPost && !html.includes('login_form')) {
     const imgUrl = decodeHtmlEntities(ogImgMatch[1]);
     const opt = buildOriginalImageOption({
       id: `fb-img-${postId}`,
@@ -2152,9 +2583,11 @@ async function probeFacebook(
     ok: false,
     platform: 'facebook',
     category: 'auth_blocked',
-    title: 'Blocked or login required (update cookies)',
+    title: fbIsVideoPost
+      ? 'Facebook video unavailable directly'
+      : 'Facebook post unavailable directly',
     message:
-      'Facebook requires an authenticated session for this post. Import your cookies.txt file to download it.',
+      'Tap Open in browser to load this Facebook post cleanly, or try again.',
   };
 }
 
@@ -2232,9 +2665,13 @@ async function probeThreads(
       videoUrls.push(clean);
     }
   }
-  const ogVid = combined.match(
-    /<meta[^>]+property=["']og:video(?::secure_url)?["'][^>]+content=["']([^"']+)["']/i,
-  );
+  const ogVid =
+    combined.match(
+      /<meta[^>]+property=["']og:video(?::secure_url)?["'][^>]+content=["']([^"']+)["']/i,
+    ) ||
+    combined.match(
+      /<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:video(?::secure_url)?["']/i,
+    );
   if (ogVid) {
     const clean = decodeHtmlEntities(ogVid[1]);
     if (clean.startsWith('http') && !seenV.has(clean)) {
@@ -2242,25 +2679,57 @@ async function probeThreads(
       videoUrls.push(clean);
     }
   }
-
-  // Extract high-res image URLs
-  const imageUrls: string[] = [];
-  const seenI = new Set<string>();
-  for (const m of combined.matchAll(/<img[^>]+class=["'][^"']*SingleMediaImage[^"']*["'][^>]+src=["']([^"']+)["']/gi)) {
-    const clean = decodeHtmlEntities(m[1]);
-    if (clean.startsWith('http') && !seenI.has(clean)) {
-      seenI.add(clean);
-      imageUrls.push(clean);
+  if (videoUrls.length === 0) {
+    for (const u of extractAllMp4Urls(combined)) {
+      if (!seenV.has(u)) {
+        seenV.add(u);
+        videoUrls.push(u);
+      }
     }
   }
-  if (videoUrls.length === 0 && imageUrls.length === 0) {
-    const ogImg = combined.match(
-      /<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)["']/i,
-    );
-    if (ogImg) {
-      const clean = decodeHtmlEntities(ogImg[1]);
-      if (clean.startsWith('http') && !clean.includes(' threads_logo')) {
+
+  const threadsIsVideo =
+    videoUrls.length > 0 ||
+    htmlIndicatesVideo(combined) ||
+    isExplicitVideoUrl('threads', rawUrl);
+
+  // Extract high-res image URLs ONLY when the post is NOT a video/reel
+  const imageUrls: string[] = [];
+  const seenI = new Set<string>();
+  if (!threadsIsVideo) {
+    for (const m of combined.matchAll(
+      /"image_versions2"\s*:\s*\{\s*"candidates"\s*:\s*\[\s*\{\s*"[^"]*"\s*:\s*[^,]+,\s*"url"\s*:\s*"([^"]+)"/g,
+    )) {
+      const clean = unescapeJsonString(m[1]);
+      if (
+        clean.startsWith('http') &&
+        !clean.includes('s150x150') &&
+        !seenI.has(clean)
+      ) {
+        seenI.add(clean);
         imageUrls.push(clean);
+      }
+    }
+    for (const m of combined.matchAll(/<img[^>]+class=["'][^"']*SingleMediaImage[^"']*["'][^>]+src=["']([^"']+)["']/gi)) {
+      const clean = decodeHtmlEntities(m[1]);
+      if (clean.startsWith('http') && !seenI.has(clean)) {
+        seenI.add(clean);
+        imageUrls.push(clean);
+      }
+    }
+    if (imageUrls.length === 0) {
+      const ogImg =
+        combined.match(
+          /<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)["']/i,
+        ) ||
+        combined.match(
+          /<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:image["']/i,
+        );
+      if (ogImg) {
+        const clean = decodeHtmlEntities(ogImg[1]);
+        if (clean.startsWith('http') && !clean.includes('threads_logo')) {
+          imageUrls.push(clean);
+        }
       }
     }
   }
@@ -2348,9 +2817,11 @@ async function probeThreads(
     ok: false,
     platform: 'threads',
     category: 'auth_blocked',
-    title: 'Blocked or login required (update cookies)',
+    title: threadsIsVideo
+      ? 'Threads video unavailable directly'
+      : 'Threads post unavailable directly',
     message:
-      'Threads blocked anonymous access to this post. Import your Meta/Instagram cookies.txt to download it.',
+      'Tap Open in browser to load this Threads post cleanly, or try again.',
   };
 }
 
@@ -2397,14 +2868,12 @@ async function probePinterest(
           .slice(0, 100)
       : '') || `pinterest_${postId}`;
 
-  // Extract direct `.mp4` streams from Pinterest `video_list` (`V_1080P`, `V_720P`, `V_EXP7`, etc.)
+  // Extract direct `.mp4` streams from Pinterest `video_list` (`v.pinimg.com`, `v1.pinimg.com`, `v2.pinimg.com`, etc.)
   const mp4Candidates: { url: string; height: number }[] = [];
   const seenMp4 = new Set<string>();
-  for (const m of html.matchAll(
-    /https:\/\/v1\.pinimg\.com\/videos\/[^\s"'\\]+\.mp4/gi,
-  )) {
-    const u = unescapeJsonString(m[0]);
-    if (!seenMp4.has(u)) {
+  const addPinMp4 = (rawCand: string) => {
+    const u = unescapeJsonString(rawCand);
+    if (!seenMp4.has(u) && u.startsWith('https://')) {
       seenMp4.add(u);
       const h = u.includes('1080p')
         ? 1080
@@ -2415,6 +2884,14 @@ async function probePinterest(
             : 720;
       mp4Candidates.push({ url: u, height: h });
     }
+  };
+  for (const u of extractAllMp4Urls(html)) {
+    if (/pinimg\.com/i.test(u)) addPinMp4(u);
+  }
+  for (const m of html.matchAll(
+    /https?:\/\/v\d*\.pinimg\.com\/videos\/[^\s"'\\<>]+\.mp4[^\s"'\\<>]*/gi,
+  )) {
+    addPinMp4(m[0]);
   }
 
   if (mp4Candidates.length > 0) {
@@ -2469,7 +2946,67 @@ async function probePinterest(
     };
   }
 
-  // Extract highest-resolution original image (`i.pinimg.com/originals/...`)
+  // Fallback for HLS-only Pinterest video pins (`.m3u8` without progressive `.mp4`)
+  const hlsUrls: string[] = [];
+  const seenHls = new Set<string>();
+  for (const m of html.matchAll(
+    /https?:(?:\/\/|\\\/\\\/)v\d*\.pinimg\.com\/videos\/[^\s"'\\<>]+\.m3u8[^\s"'\\<>]*/gi,
+  )) {
+    const clean = unescapeJsonString(m[0]);
+    if (clean.startsWith('https://') && !seenHls.has(clean)) {
+      seenHls.add(clean);
+      hlsUrls.push(clean);
+    }
+  }
+  if (hlsUrls.length > 0) {
+    const hlsOpt: YouTubeQualityOption = {
+      id: 'pin-hls-auto',
+      label: 'Best video (HLS)',
+      description: 'HLS stream · Fast-start MP4 · No watermark',
+      ext: '.mp4',
+      height: 1080,
+      estBytes: null,
+      kind: 'hls',
+      url: hlsUrls[0],
+      userAgent: ua,
+      streamSelection: {
+        kind: 'hls',
+        variantId: 'auto',
+        ext: 'mp4',
+      },
+      icon: 'play',
+    };
+    return {
+      ok: true,
+      platform: 'pinterest',
+      platformLabel: PLATFORM_LABELS.pinterest,
+      postId,
+      title,
+      author: 'Pinterest',
+      durationSecs: 0,
+      mediaKind: 'video',
+      noWatermark: true,
+      streamableFastStart: true,
+      subtitles: [],
+      qualities: [hlsOpt],
+      items: [
+        {
+          id: postId,
+          index: 0,
+          kind: 'video',
+          title,
+          ext: '.mp4',
+          url: hlsUrls[0],
+          qualities: [hlsOpt],
+        },
+      ],
+      headers: buildPlatformHeaders('pinterest', res.url, ua, hlsUrls),
+    };
+  }
+
+  const pinIsVideo = htmlIndicatesVideo(html);
+
+  // Extract highest-resolution original image (`i.pinimg.com/originals/...`) — NEVER for video pins
   const origMatches = [
     ...html.matchAll(
       /https:\/\/i\.pinimg\.com\/originals\/[^\s"'\\]+\.(?:jpg|jpeg|png|webp|gif)/gi,
@@ -2488,7 +3025,7 @@ async function probePinterest(
     );
   }
 
-  if (bestImg) {
+  if (!pinIsVideo && bestImg) {
     const uniqueImgs = [...new Set([bestImg, ...origMatches])].slice(0, 12);
     const items: SocialMediaItem[] = uniqueImgs.map((u, idx) => {
       const opt = buildOriginalImageOption({
@@ -2528,9 +3065,13 @@ async function probePinterest(
   return {
     ok: false,
     platform: 'pinterest',
-    category: 'deleted_private',
-    title: 'Deleted or private post',
-    message: 'Could not find a downloadable video or image on this Pinterest pin.',
+    category: pinIsVideo ? 'auth_blocked' : 'deleted_private',
+    title: pinIsVideo
+      ? 'Pinterest video unavailable directly'
+      : 'Deleted or private post',
+    message: pinIsVideo
+      ? 'Tap Open in browser to load this Pinterest video cleanly, or try again.'
+      : 'Could not find a downloadable video or image on this Pinterest pin.',
   };
 }
 

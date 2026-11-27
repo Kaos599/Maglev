@@ -169,6 +169,99 @@ async function main() {
       social.classifyErrorFromStatus(200, 'This post is private').category === 'deleted_private',
   );
 
+  // 6. Instagram shortcode -> media ID, video-vs-thumbnail guards & HTML/MP4 extraction
+  check(
+    'converts Instagram base64 shortcode to numeric media ID',
+    social.shortcodeToInstagramMediaId('BA') === '64' &&
+      social.shortcodeToInstagramMediaId('CxYz12345') === '780159164317241' &&
+      social.shortcodeToInstagramMediaId('') === null &&
+      social.shortcodeToInstagramMediaId('bad*char') === null,
+    String(social.shortcodeToInstagramMediaId('CxYz12345')),
+  );
+  check(
+    'isExplicitVideoUrl flags Reels/Watch/Video URLs and leaves photo/post URLs flexible',
+    social.isExplicitVideoUrl('instagram', 'https://www.instagram.com/reel/C9xYz123/') &&
+      social.isExplicitVideoUrl('instagram', 'https://www.instagram.com/reels/C9xYz123/') &&
+      !social.isExplicitVideoUrl('instagram', 'https://www.instagram.com/p/C9xYz123/') &&
+      social.isExplicitVideoUrl('tiktok', 'https://www.tiktok.com/@u/video/123') &&
+      !social.isExplicitVideoUrl('tiktok', 'https://www.tiktok.com/@u/photo/123') &&
+      social.isExplicitVideoUrl('facebook', 'https://fb.watch/abc/') &&
+      social.isExplicitVideoUrl('facebook', 'https://www.facebook.com/reel/123') &&
+      social.isExplicitVideoUrl('reddit', 'https://v.redd.it/abc123') &&
+      !social.isExplicitVideoUrl('reddit', 'https://www.reddit.com/r/pics/comments/abc/hi/'),
+  );
+  check(
+    'htmlIndicatesVideo detects embedded video metadata without false positives on photos',
+    social.htmlIndicatesVideo('{"is_video":true,"display_url":"https://cdn/thumb.jpg"}') &&
+      social.htmlIndicatesVideo('<meta property="og:video" content="https://cdn/v.mp4">') &&
+      social.htmlIndicatesVideo('"video_list":{"V_HLSV4":{"url":"https://v1.pinimg.com/videos/iht/hls/a.m3u8"}}') &&
+      !social.htmlIndicatesVideo('<img class="EmbeddedMediaImage" src="https://cdn/photo.jpg">'),
+  );
+  const extractedMp4s = social.extractAllMp4Urls(
+    '{"video_url":"https:\\/\\/scontent.cdninstagram.com\\/v\\/t50.mp4?efg=1\\u0026_nc=2","avatar":"https://cdn/avatar_v2.mp4"}',
+  );
+  check(
+    'extractAllMp4Urls unescapes JSON video URLs and skips avatars',
+    extractedMp4s.length === 1 &&
+      extractedMp4s[0] === 'https://scontent.cdninstagram.com/v/t50.mp4?efg=1&_nc=2',
+    JSON.stringify(extractedMp4s),
+  );
+
+  // Critical regression guard: Reel or video page with only thumbnail .jpg MUST NOT return .jpg
+  const reelThumbOnlyHtml = `
+    <html>
+      <meta property="og:image" content="https://scontent.cdninstagram.com/reel_cover.jpg" />
+      <img class="EmbeddedMediaImage" src="https://scontent.cdninstagram.com/reel_cover.jpg" />
+    </html>
+  `;
+  check(
+    'parseInstagramHtmlMedia NEVER returns .jpg thumbnail for /reel/ links',
+    social.parseInstagramHtmlMedia(
+      reelThumbOnlyHtml,
+      'https://www.instagram.com/reel/C9xYz123/',
+      'C9xYz123',
+      'MaglevTest/1.0',
+      true,
+    ) === null,
+  );
+  check(
+    'parseInstagramHtmlMedia NEVER returns .jpg thumbnail when HTML indicates video',
+    social.parseInstagramHtmlMedia(
+      '{"is_video":true,"display_url":"https://scontent.cdninstagram.com/cover.jpg"}',
+      'https://www.instagram.com/p/C9xYz123/',
+      'C9xYz123',
+      'MaglevTest/1.0',
+      false,
+    ) === null,
+  );
+  const reelVideoParsed = social.parseInstagramHtmlMedia(
+    '{"username":"creator","video_versions":[{"url":"https:\\/\\/scontent.cdninstagram.com\\/v\\/reel_hd.mp4?a=1\\u0026b=2"}]}',
+    'https://www.instagram.com/reel/C9xYz123/',
+    'C9xYz123',
+    'MaglevTest/1.0',
+    true,
+  );
+  check(
+    'parseInstagramHtmlMedia extracts .mp4 video from escaped Instagram HTML/JSON',
+    reelVideoParsed !== null &&
+      reelVideoParsed.mediaKind === 'video' &&
+      reelVideoParsed.items[0].ext === '.mp4' &&
+      reelVideoParsed.items[0].url === 'https://scontent.cdninstagram.com/v/reel_hd.mp4?a=1&b=2',
+  );
+  const photoParsed = social.parseInstagramHtmlMedia(
+    '<img class="EmbeddedMediaImage" src="https://scontent.cdninstagram.com/photo_full.jpg" />',
+    'https://www.instagram.com/p/C9xYz123/',
+    'C9xYz123',
+    'MaglevTest/1.0',
+    false,
+  );
+  check(
+    'parseInstagramHtmlMedia still extracts genuine photo posts cleanly',
+    photoParsed !== null &&
+      photoParsed.mediaKind === 'image' &&
+      photoParsed.items[0].ext === '.jpg',
+  );
+
   if (failed > 0) {
     console.error(`\n${failed} social check(s) failed`);
     process.exit(1);

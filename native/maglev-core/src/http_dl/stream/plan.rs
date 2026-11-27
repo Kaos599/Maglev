@@ -150,11 +150,14 @@ pub struct Selected {
 /// The variant for `spec.variant_id` (`v<index>`), and its audio track: the one asked for when its group has it
 /// (or one with the same language), else the default, else the first. A variant with no audio group has none.
 pub fn select_hls(m: &Master, spec: &StreamSpec) -> Result<Selected, StreamError> {
-    let v = m
-        .variants
-        .iter()
-        .find(|v| format!("v{}", v.index) == spec.variant_id)
-        .ok_or(StreamError::Unsupported)?;
+    let v = if spec.variant_id == "auto" {
+        best_hls_variant(m).ok_or(StreamError::Unsupported)?
+    } else {
+        m.variants
+            .iter()
+            .find(|v| format!("v{}", v.index) == spec.variant_id)
+            .ok_or(StreamError::Unsupported)?
+    };
     let group = group_audio(m, v);
     let audio_uri = if group.is_empty() {
         None
