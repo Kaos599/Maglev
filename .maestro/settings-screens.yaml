@@ -110,6 +110,6 @@ name: settings-screens
     file: subflows/open-settings-row.yaml
     env:
       ROW: "Browser"
-- assertVisible: "Ad blocking"
+- assertVisible: "Blocking"
 - takeScreenshot: settings-browser
 - tapOn: "Go back"

@@ -10,9 +10,6 @@ name: browser-detect
 - extendedWaitUntil:
     visible: "Address" # app/browser.tsx:268 TextInput accessibilityLabel="Address"
     timeout: 30000
-# maglev://browser?url= only PREFILLS the address bar since 0.19 (app/browser.tsx: an external link never loads by itself), so submit it.
-- tapOn: "Address"
-- pressKey: Enter
 # Found-files indicator: "Files · N" (app/browser.tsx:344), accessibilityLabel "Files, N found" (:347).
 - extendedWaitUntil:
     visible: "Files . [1-9][0-9]*" # app/browser.tsx:344
@@ -38,12 +35,12 @@ name: browser-detect
 - extendedWaitUntil:
     visible: "Added to Transfers." # constants/copy.ts:106 notices.browser.addedToTransfers
     timeout: 30000
-# Leave the browser stack screen (it covers the tabs). "Go back" is app/browser.tsx:220.
+# Leave the browser stack screen (it covers the tabs).
 - repeat:
     while:
       notVisible: "Transfers" # the tab label, constants/copy.ts:349 tabsCopy.names.index
     commands:
-      - tapOn: "Go back"
+      - pressKey: Back
 - tapOn: "Transfers"
 # A browser download is a link download, so it renders as DownloadCard, which has no "transfer-card"
 # testID (only torrents' TransferCard does): match by name, as transfers-link-download.yaml does.

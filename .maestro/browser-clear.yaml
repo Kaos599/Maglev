@@ -9,9 +9,6 @@ name: browser-clear
 - extendedWaitUntil:
     visible: "Address" # app/browser.tsx:268
     timeout: 30000
-# maglev://browser?url= only PREFILLS the address bar since 0.19 (app/browser.tsx: an external link never loads by itself), so submit it.
-- tapOn: "Address"
-- pressKey: Enter
 - extendedWaitUntil:
     visible: "Files . [1-9][0-9]*" # app/browser.tsx:344 "Files · N"
     timeout: 90000

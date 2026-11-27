@@ -29,9 +29,8 @@ name: search-watch
 - extendedWaitUntil:
     visible: "Delete this watch\\?"                 # from constants/copy.ts:510 (watchCopy.deleteTitle)
     timeout: 10000
-# The native Alert (title "Delete this watch?") hides the card behind it, so its DELETE button (id android:id/button1) is the only match.
-- tapOn:
-    id: "android:id/button1"
+# The in-app Dialog (title "Delete this watch?") covers the screen behind it, so its danger "Delete" button is the only match.
+- tapOn: "Delete"
 - extendedWaitUntil:
     notVisible: "Sintel"                            # from app/settings/watch.tsx:52: row gone after delete
     timeout: 10000

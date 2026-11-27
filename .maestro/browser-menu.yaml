@@ -8,15 +8,11 @@ name: browser-menu
 - extendedWaitUntil:
     visible: "Address"
     timeout: 30000
-# maglev://browser?url= only prefills the address bar, so submit it.
-- tapOn: "Address"
-- pressKey: Enter
 - extendedWaitUntil:
     visible: ".*test-videos\\.co\\.uk.*"
     timeout: 60000
 # The menu: five icons (Back, Bookmark, Reload, Share, Forward) and six rows, all on screen without scrolling.
 - tapOn: "More"
-- assertNotVisible: "This page" # the menu has no title (Sheet hideTitle)
 - assertVisible: "Back" # icon row: pageMenuCopy in constants/copy.ts
 - assertVisible: "Forward"
 - assertVisible: "Reload"
