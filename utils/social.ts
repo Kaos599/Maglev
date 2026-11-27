@@ -835,12 +835,17 @@ async function probeTikTok(
             subtitles: [],
             qualities,
             items,
-            headers: buildPlatformHeaders(
-              'tiktok',
-              rawUrl,
-              ua,
-              items.map((i) => i.url),
-            ),
+            headers: {
+              ...buildPlatformHeaders(
+                'tiktok',
+                rawUrl,
+                ua,
+                items.map((i) => i.url),
+              ),
+              ...(items[0]?.url.includes('tikwm.com')
+                ? { referer: 'https://www.tikwm.com/', origin: 'https://www.tikwm.com' }
+                : {}),
+            },
           };
         }
 
@@ -913,10 +918,15 @@ async function probeTikTok(
             subtitles: [],
             qualities,
             items: [item],
-            headers: buildPlatformHeaders('tiktok', rawUrl, ua, [
-              primaryVideoUrl,
-              musicUrl,
-            ]),
+            headers: {
+              ...buildPlatformHeaders('tiktok', rawUrl, ua, [
+                primaryVideoUrl,
+                musicUrl,
+              ]),
+              ...(primaryVideoUrl.includes('tikwm.com')
+                ? { referer: 'https://www.tikwm.com/', origin: 'https://www.tikwm.com' }
+                : {}),
+            },
           };
         }
       }
