@@ -8,7 +8,7 @@ import React, { useMemo, useRef, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { useTheme } from '../../context/ThemeContext';
 import { ThemeColors, radius, spacing, type } from '../../constants/theme';
-import { fmtSize, fmtTook, timingView, type TimingInput } from '../../utils/stats/format';
+import { fmtSize, timingView, type TimingInput } from '../../utils/stats/format';
 import { PixelIcon } from '../PixelIcon';
 import { PressableScale, Sheet } from '../ui';
 
@@ -84,10 +84,10 @@ function TimingDetails({ timing }: { timing: TimingInput }) {
         <Strip
           s={s}
           title="From added to finished"
-          total={fmtTook(v.span.total)}
+          total={v.span.totalLabel}
           parts={[
-            { label: 'Downloading', value: fmtTook(v.span.downloading), n: v.span.downloading, color: colors.download },
-            { label: 'Queued, paused or waiting', value: fmtTook(v.span.waiting), n: v.span.waiting, color: colors.borderStrong },
+            { label: 'Downloading', value: v.span.downloadingLabel, n: v.span.total === 0 ? 1 : v.span.downloading, color: colors.download },
+            { label: 'Queued, paused or waiting', value: v.span.waitingLabel, n: v.span.waiting, color: colors.borderStrong },
           ]}
         />
       ) : null}

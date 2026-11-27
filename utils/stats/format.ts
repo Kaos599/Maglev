@@ -144,9 +144,9 @@ export function bucketReadout(b: Pick<Bucket, 'downloaded' | 'finished' | 'faile
   return parts.join(' · ');
 }
 
-/** A finished row's status lead: "Done in 2 min 41 s" when the engine timed it, else "Done". */
+/** A finished row's status lead: "Done in 2 min 41 s" (or "Done in under 1 s") when the engine timed it, else "Done". */
 export const doneLead = (activeSecs?: number, finishedAt?: number): string =>
-  (finishedAt ?? 0) > 0 && (activeSecs ?? 0) > 0 ? `Done in ${fmtTook(activeSecs!)}` : 'Done';
+  (finishedAt ?? 0) > 0 ? `Done in ${(activeSecs ?? 0) > 0 ? fmtTook(activeSecs!) : 'under 1 s'}` : 'Done';
 
 /** "Today 14:05", "Yesterday 22:03", "Nov 14 22:03". `tz` minutes east of UTC; omitted means the phone's zone. */
 export function whenLabel(unixSecs: number, nowMs: number, tz?: number): string {
@@ -181,18 +181,31 @@ export function timingView(t: TimingInput, nowMs: number, tz?: number) {
   const active = t.activeSecs ?? 0;
   const done = (t.finishedAt ?? 0) > 0;
   const known = active > 0 || done;
-  const avg = active > 0 && (t.sessionBytes ?? 0) > 0 ? (t.sessionBytes ?? 0) / active : null;
-  const span = done && (t.addedAt ?? 0) > 0 ? Math.max(active, t.finishedAt! - t.addedAt!) : null;
+  const wall = done && (t.addedAt ?? 0) > 0 ? Math.max(0, t.finishedAt! - t.addedAt!) : null;
+  const span = wall != null ? Math.max(active, wall) : null;
+  const avgSecs = active > 0 ? active : wall != null && wall > 0 ? wall : 0;
+  const avg = avgSecs > 0 && (t.sessionBytes ?? 0) > 0 ? (t.sessionBytes ?? 0) / avgSecs : null;
+  const took = active > 0 ? fmtTook(active) : done ? 'under 1 s' : null;
   const wifi = t.bytesWifi ?? 0;
   const mobile = t.bytesMobile ?? 0;
   return {
     known,
     tookLabel: done ? 'Took' : 'Downloading for',
-    took: active > 0 ? fmtTook(active) : null,
+    took,
     avg: avg != null ? fmtSpeed(avg) : null,
     added: (t.addedAt ?? 0) > 0 ? whenLabel(t.addedAt!, nowMs, tz) : null,
     finished: done ? whenLabel(t.finishedAt!, nowMs, tz) : null,
-    span: span != null ? { total: span, downloading: active, waiting: Math.max(0, span - active) } : null,
+    span:
+      span != null
+        ? {
+            total: span,
+            downloading: active,
+            waiting: Math.max(0, span - active),
+            totalLabel: span > 0 ? fmtTook(span) : 'under 1 s',
+            downloadingLabel: active > 0 ? fmtTook(active) : 'under 1 s',
+            waitingLabel: fmtTook(Math.max(0, span - active)),
+          }
+        : null,
     network: wifi + mobile > 0 ? { wifi, mobile } : null,
     seeding: (t.seedingSecs ?? 0) > 0 ? fmtTook(t.seedingSecs!) : null,
     uploaded: t.uploaded != null && t.uploaded > 0 ? fmtSize(t.uploaded) : null,
