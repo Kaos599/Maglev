@@ -29,8 +29,9 @@ name: search-watch
 - extendedWaitUntil:
     visible: "Delete this watch\\?"                 # from constants/copy.ts:510 (watchCopy.deleteTitle)
     timeout: 10000
-# The in-app Dialog (title "Delete this watch?") covers the screen behind it, so its danger "Delete" button is the only match.
-- tapOn: "Delete"
+# The in-app Dialog (app/settings/watch.tsx) has a dedicated testID on its Delete button so it cannot match the card behind it.
+- tapOn:
+    id: "watch-delete-confirm"
 - extendedWaitUntil:
     notVisible: "Sintel"                            # from app/settings/watch.tsx:52: row gone after delete
     timeout: 10000

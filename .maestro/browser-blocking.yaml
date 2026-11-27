@@ -1,5 +1,5 @@
-# Ad blocking in the Browser: the per-site switch in Site settings and the global "Ad blocking" setting.
-# Ad blocking UI exists (app/browser.tsx:383 per-site row, app/settings/browser.tsx:119 global toggle), so this file is kept.
+# Ad blocking in the Browser: the per-site switch in Site settings and the global "Ad blocking" setting
+# (app/browser.tsx per-site row, app/settings/browser-blocking.tsx global toggle).
 # Test page: https://test-videos.co.uk/bigbuckbunny/mp4-h264 (no ads expected, so the "N blocked" count is not asserted).
 appId: com.maglev
 name: browser-blocking
@@ -42,8 +42,7 @@ name: browser-blocking
 - extendedWaitUntil:
     visible: "Ad blocking" # app/settings/browser-blocking.tsx row title
     timeout: 30000
-# Global switch. The Toggle carries accessibilityLabel "Ad blocking" too (app/settings/browser.tsx:121),
-# so index 1 picks the switch, not the title. Assumption: verify on device.
+# Global switch (app/settings/browser-blocking.tsx). The Toggle shares accessibilityLabel "Ad blocking" with the row title, so index 1 picks the switch.
 - tapOn:
     text: "Ad blocking"
     index: 1

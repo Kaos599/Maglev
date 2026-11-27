@@ -32,7 +32,8 @@ Conventions since 0.28:
 - `subflows/wait-for-app.yaml` relaunches the app (no state clearing) when the launcher is showing, because CI once saw a native Hermes crash at cold start.
 - Wi-Fi only is ON after onboarding (pre-selected), unlike the store default.
 - `maglev://browser?url=` opens the page in a new tab and loads it immediately: LAN and blocked hosts are refused. Do not follow it with `tapOn: "Address"` + `pressKey: Enter` (that races the address editor).
-- In-app `Dialog` modals (such as the watch delete confirmation) cover the screen behind them, so match their button label directly (e.g. `tapOn: "Delete"`), not `android:id/button1`.
+- In-app `Dialog` modals (such as the watch delete confirmation) use an explicit `testID` (e.g. `watch-delete-confirm`) when a button behind the modal shares the same label, rather than `android:id/button1`.
+- The `browser-*` flows depend on live third-party sites (`test-videos.co.uk`), so a failure or timeout there may be the external site rather than Maglev.
 
 Each flow removes its transfer with "Remove and delete files". Transfer cards are matched by `id: "transfer-card"` (never by a "percent" regex: the status bar battery also says percent). `subflows/` holds shared steps and is not run by `maestro test .maestro/`.
 The content is the public Sintel torrent (Blender Foundation, CC BY). Flows wait for progress above 0, never for completion.

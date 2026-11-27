@@ -35,8 +35,9 @@ name: browser-detect
 - extendedWaitUntil:
     visible: "Added to Transfers." # constants/copy.ts:106 notices.browser.addedToTransfers
     timeout: 30000
-# Leave the browser stack screen (it covers the tabs).
+# Leave the browser stack screen (it covers the tabs). Bounded to 5 presses so Back never loops forever.
 - repeat:
+    times: 5
     while:
       notVisible: "Transfers" # the tab label, constants/copy.ts:349 tabsCopy.names.index
     commands:

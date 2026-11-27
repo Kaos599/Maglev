@@ -13,6 +13,7 @@ name: browser-menu
     timeout: 60000
 # The menu: five icons (Back, Bookmark, Reload, Share, Forward) and six rows, all on screen without scrolling.
 - tapOn: "More"
+- assertNotVisible: "This page" # the menu has no title (Sheet hideTitle)
 - assertVisible: "Back" # icon row: pageMenuCopy in constants/copy.ts
 - assertVisible: "Forward"
 - assertVisible: "Reload"

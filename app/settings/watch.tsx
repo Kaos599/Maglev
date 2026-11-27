@@ -87,6 +87,7 @@ export default function WatchSettings() {
         actions={
           <>
             <Button
+              testID="watch-delete-confirm"
               label={watchCopy.delete}
               variant="danger"
               fullWidth

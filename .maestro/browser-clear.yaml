@@ -30,13 +30,9 @@ name: browser-clear
 # Clear all: button "Clear" with accessibilityLabel "Clear the list of found files" (foundTray.clearLabel). No confirmation, an Undo line appears.
 - tapOn: "Clear the list of found files"
 - assertVisible: "No files found yet" # constants/copy.ts empty.browser.noFiles.title (FoundTray.tsx)
-# Close the tray and open the next page in the address bar. Address field is app/browser.tsx:268.
-# Assumption: Back closes the open Sheet (components/ui/Sheet.tsx) before the browser's own back handler runs. Verify on device.
+# Close the tray and open the next page via deep link (avoids racing the address bar editor).
 - pressKey: Back
-- tapOn: "Address"
-- eraseText: 200
-- inputText: "https://test-videos.co.uk/jellyfish/mp4-h264"
-- pressKey: Enter
+- openLink: "maglev://browser?url=https%3A%2F%2Ftest-videos.co.uk%2Fjellyfish%2Fmp4-h264"
 - extendedWaitUntil:
     visible: "Files . [1-9][0-9]*"
     timeout: 90000
