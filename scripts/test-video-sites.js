@@ -77,6 +77,28 @@ const fixture = (n) => JSON.parse(read(`scripts/fixtures/video-sites/${n}.json`)
   const http = V.buildVideoSiteInfo({ formats: [{ format_id: 'a', url: 'http://a.test/a.mp4', ext: 'mp4', protocol: 'https', height: 360 }] });
   check('a plain http address is not offered', http.options.length === 0);
 
+  // ---- #217: filesize -> filesize_approx -> tbr * duration & monotonic sizes
+  const fallbackAndMonotonic = V.buildVideoSiteInfo({
+    duration: 100,
+    extractor_key: 'Youtube',
+    formats: [
+      { format_id: '140', url: 'https://a.test/140.m4a', ext: 'm4a', protocol: 'https', vcodec: 'none', acodec: 'mp4a.40.2', filesize: null, filesize_approx: null, tbr: 128 },
+      { format_id: '160', url: 'https://a.test/160.mp4', ext: 'mp4', protocol: 'https', vcodec: 'avc1.4D400C', acodec: 'none', height: 144, width: 256, filesize: null, filesize_approx: 30_000_000, tbr: 50 },
+      { format_id: '133', url: 'https://a.test/133.mp4', ext: 'mp4', protocol: 'https', vcodec: 'avc1.4D4015', acodec: 'none', height: 240, width: 426, filesize: null, filesize_approx: null, tbr: 2800 },
+      { format_id: '18', url: 'https://a.test/18.mp4', ext: 'mp4', protocol: 'https', vcodec: 'avc1.42001E', acodec: 'mp4a.40.2', height: 360, width: 640, filesize: 20_000_000, tbr: 1600 },
+      { format_id: '135', url: 'https://a.test/135.mp4', ext: 'mp4', protocol: 'https', vcodec: 'avc1.4D401F', acodec: 'none', height: 480, width: 854, filesize: null, filesize_approx: 25_000_000, tbr: 2000 },
+    ],
+  });
+  const byH = Object.fromEntries(fallbackAndMonotonic.options.map((o) => [o.height ?? 'audio', o]));
+  // 140 uses tbr * duration: 128 * 1000 * 100 / 8 = 1_600_000
+  check('217: audio falls back to tbr * duration', byH.audio.estBytes === 1_600_000, byH.audio.estBytes);
+  // 480p uses filesize_approx (25M) + audio tbr*dur (1.6M) = 26.6M (> 360p exact 20M)
+  check('217: pair uses filesize_approx + audio tbr*duration', byH[480].estBytes === 26_600_000, byH[480].estBytes);
+  check('217: 360p uses exact filesize', byH[360].estBytes === 20_000_000, byH[360].estBytes);
+  // 240p (tbr*dur = 35M + 1.6M = 36.6M) and 144p (approx 30M + 1.6M = 31.6M) are > 360p (20M), so both become unknown ("—")
+  check('217: inflated 240p estimate is cleared to unknown', byH[240].estBytes === null && byH[240].label === '240p · —', byH[240].label);
+  check('217: inflated 144p estimate is cleared to unknown', byH[144].estBytes === null && byH[144].label === '144p · —', byH[144].label);
+
   // ---- names, headers, `parts` options
   check('base name has the height', V.suggestedBaseName(yt, top) === `${yt.title} 1080p`);
   check('base name without a height is the title', V.suggestedBaseName(yt, aud) === yt.title);
