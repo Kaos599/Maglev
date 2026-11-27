@@ -33,7 +33,8 @@ import { ResultPreviewSheet } from '../../components/search/ResultPreviewSheet';
 import { UnansweredSheet } from '../../components/search/UnansweredSheet';
 import { MobileDataSheet } from '../../components/search/MobileDataSheet';
 import { passesResultFilter } from '../../components/search/sharing';
-import { SIZE_STOPS, toFilter } from '../../components/search/sizeRange';
+import { hasSizeFilter, type SizeFilter } from '../../components/search/sizeRange';
+import { SizeFilterChip } from '../../components/search/SizeFilterChip';
 import { oneTapAddNote } from '../../utils/addChecks';
 import { SEARCH_TURN_ON_MORE, empty, watchCopy } from '../../constants/copy';
 import { countOffSources } from '../../utils/search/offSources';
@@ -101,7 +102,8 @@ export default function SearchScreen() {
   // One switch with Settings > Search sources > Hide dead torrents: the sheet shows and changes the saved setting.
   const hideNoShare = prefs.hideDead;
   const setHideNoShare = useCallback((hideDead: boolean) => updatePrefs({ hideDead }), [updatePrefs]);
-  const [sizeRange, setSizeRange] = useState({ low: 0, high: SIZE_STOPS.length - 1 });
+  // Session-only: it lives in this screen, which the tab bar keeps alive, so it survives tab switches and new searches.
+  const [sizeFilter, setSizeFilter] = useState<SizeFilter>({});
   const [preview, setPreview] = useState<MergedResult | null>(null);
   const [mobileAsk, setMobileAsk] = useState<{ result: MergedResult; note: string } | null>(null);
   const [recents, setRecents] = useState<string[]>(() => prefs.recents);
@@ -489,16 +491,16 @@ export default function SearchScreen() {
 
   // Rows the user has had on screen keep their slots while later sources answer; new rows are ranked
   // below them. A new sort, source filter or search ranks everything again (and the list starts at the top).
-  const rankKey = `${prefs.sort}|${sourceFilter ?? ''}|${rankTick}|${hideNoShare}|${sizeRange.low}-${sizeRange.high}`;
+  const rankKey = `${prefs.sort}|${sourceFilter ?? ''}|${rankTick}|${hideNoShare}|${sizeFilter.minBytes ?? ''}-${sizeFilter.maxBytes ?? ''}`;
   const lastRankKey = useRef(rankKey);
   const shown = useMemo(() => {
     const base = update?.results ?? [];
     const bySource = sourceFilter ? base.filter((r) => r.sources.includes(sourceFilter)) : base;
-    const filtered = bySource.filter((r) => passesResultFilter(r, { hideDead: hideNoShare, ...toFilter(sizeRange.low, sizeRange.high) }));
+    const filtered = bySource.filter((r) => passesResultFilter(r, { hideDead: hideNoShare, ...sizeFilter }));
     const ranked = sortResults(filtered, prefs.sort, trimmed);
     if (lastRankKey.current !== rankKey) return ranked;
     return stableOrder(shownKeys.current, ranked, seenRowCount(highWater.current), keyOfResult);
-  }, [update, sourceFilter, prefs.sort, trimmed, rankKey, hideNoShare, sizeRange]);
+  }, [update, sourceFilter, prefs.sort, trimmed, rankKey, hideNoShare, sizeFilter]);
   useEffect(() => {
     if (lastRankKey.current !== rankKey) {
       lastRankKey.current = rankKey;
@@ -812,6 +814,11 @@ export default function SearchScreen() {
               </View>
             </View>
           )}
+          {hasSizeFilter(sizeFilter) ? (
+            <View style={styles.chipRow}>
+              <SizeFilterChip filter={sizeFilter} onRemove={() => setSizeFilter({})} />
+            </View>
+          ) : null}
         </View>
         {list}
       </>
@@ -943,15 +950,15 @@ export default function SearchScreen() {
         sources={sourceCounts.map(([id, count]) => ({ id, name: nameOf(id), count }))}
         sourceFilter={sourceFilter}
         onSourceChange={setSourceFilter}
-        sizeRange={sizeRange}
-        onSizeRangeChange={(low, high) => setSizeRange({ low, high })}
+        sizeFilter={sizeFilter}
+        onSizeFilterChange={setSizeFilter}
         hideNoShare={hideNoShare}
         onHideNoShareChange={setHideNoShare}
         shownCount={shown.length}
         totalCount={update?.results.length ?? 0}
         onReset={() => {
           setSourceFilter(null);
-          setSizeRange({ low: 0, high: SIZE_STOPS.length - 1 });
+          setSizeFilter({});
           setHideNoShare(true);
         }}
       />
@@ -1051,6 +1058,7 @@ const makeStyles = (c: ThemeColors) =>
     summaryText: { flex: 1, minWidth: 0, justifyContent: 'center', minHeight: touch.min },
     count: { ...type.bodyStrong, fontVariant: ['tabular-nums'], fontSize: type.size.md, lineHeight: 18, color: c.text },
     noteRow: { flexDirection: 'row' },
+    chipRow: { flexDirection: 'row' },
     noteBtn: { flexDirection: 'row', alignItems: 'center', gap: 2, alignSelf: 'flex-start' },
     note: { ...type.body, fontSize: type.size.sm, lineHeight: 17, color: c.textMuted },
     noteBad: { color: c.danger },

@@ -971,3 +971,27 @@ export const timeRowsCopy = {
   started: 'Started',
   finished: 'Finished',
 } as const;
+
+/** Search: the Custom size sheet under the size slider. */
+export const customSizeCopy = {
+  button: 'Custom size',
+  title: 'Custom size',
+  subtitle: 'Files of unknown size always show.',
+  smallest: 'Smallest',
+  largest: 'Largest',
+  noMinimum: 'No minimum',
+  noMaximum: 'No maximum',
+  clearSmallest: 'Clear smallest',
+  clearLargest: 'Clear largest',
+  smallestUnit: 'Smallest unit',
+  largestUnit: 'Largest unit',
+  apply: 'Apply',
+  cancel: 'Cancel',
+  removeChip: 'Remove size filter',
+  errors: {
+    bad: 'Enter a number, like 1.5',
+    over: "That's more than 1024 TB",
+    zero: 'Largest must be more than 0',
+    order: 'Smallest must be less than largest',
+  },
+} as const;

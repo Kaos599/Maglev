@@ -1,0 +1,48 @@
+stateDiagram-v2
+  state "Search screen" as Screen {
+    state "Size filter in use" as Filter {
+      state "Any size, no chip" as Any
+      state "Slider range, chip shown" as Preset
+      state "Custom range, chip shown" as Custom
+      [*] --> Any
+      Any --> Preset: you drag the slider
+      Custom --> Preset: you drag the slider, the other thumb's stop is saved too
+      Any --> Custom: you press Apply
+      Preset --> Custom: you press Apply
+      Preset --> Any: you remove the chip or press Reset
+      Custom --> Any: you remove the chip or press Reset
+    }
+    --
+    state "What is open" as Open {
+      state "Results" as Results
+      state "Sort and filter sheet" as Sheet
+      state "Custom size sheet" as CustomSheet {
+        state "Apply on" as Valid
+        state "Apply off, error shown" as Invalid
+        [*] --> Valid: the fields start from the filter in use
+        Valid --> Invalid: you type or change a unit, and the sizes are not a range
+        Invalid --> Valid: you type or change a unit, and they are
+      }
+      [*] --> Results
+      Results --> Sheet: you open Sort and filter
+      Sheet --> Results: you close it
+      Sheet --> CustomSheet: you tap Custom size
+      CustomSheet --> Sheet: you press Apply, Cancel or Back
+    }
+  }
+  [*] --> Screen
+  Screen --> [*]: Android closes Maglev or you swipe it away, and the filter is forgotten
+
+  note right of Filter
+    Every row of known size on screen is inside the filter.
+    Rows of unknown size always show.
+    A new search keeps the filter.
+    Apply on sizes that land exactly on stops is the same as a slider range.
+    Apply with both fields empty is Any size.
+  end note
+  note right of Open
+    Typing only changes the fields.
+    The results follow the filter in use, never the fields.
+    Apply is on only while Smallest is less than Largest.
+    Cancel and Back drop the fields and keep the filter.
+  end note

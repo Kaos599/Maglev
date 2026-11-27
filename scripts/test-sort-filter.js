@@ -25,9 +25,9 @@ for (const [t, c] of [
 for (const s of ['Sort by', 'Source', 'Size']) check(`section label "${s}"`, comp.includes(`title="${s}"`) || comp.includes(`'${s}'`));
 check('source caption', comp.includes('Show results from one source.'));
 check('size caption', comp.includes('Files of unknown size always show.'));
-check('size section uses the range slider', /<RangeSlider\b/.test(comp) && comp.includes('rangeLabel('));
+check('size section uses the range slider', /<RangeSlider\b/.test(comp) && comp.includes('sizeLabel('));
 check('size chips are gone', !comp.includes('Over 100 MB') && !comp.includes('MIN_SIZES'));
-check('dirty covers the size range', /sizeRange\.low !== 0 \|\| sizeRange\.high !== LAST_STOP/.test(comp));
+check('dirty covers the size filter and a changed no-one-sharing switch', /hasSizeFilter\(sizeFilter\)/.test(comp) && /!hideNoShare/.test(comp) && !/\|\| hideNoShare;/.test(comp));
 check('toggle title', comp.includes('Hide torrents no one is sharing'));
 check('toggle subtitle', comp.includes('They rarely finish.'));
 check('Toggle used', /<Toggle\b/.test(comp));
@@ -35,7 +35,7 @@ check('footer count line', comp.includes('Showing ') && comp.includes(' results'
 check('Done button', comp.includes('label="Done"'));
 check('Reset button', comp.includes('label="Reset"') && comp.includes('ghost'));
 check('Reset only when not default', /showReset|isDirty|dirty/.test(comp));
-check('search.tsx resets the size range to full', /setSizeRange\(\{ low: 0, high: SIZE_STOPS\.length - 1 \}\)/.test(search));
+check('search.tsx resets the size filter to none', /setSizeFilter\(\{\}\)/.test(search));
 check('radiogroup roles', (comp.match(/accessibilityRole="radiogroup"/g) || []).length >= 2);
 const sortBlock = (comp.match(/SORT_ORDER\.map[\s\S]*?\n\s+\)\)\}/) || [''])[0];
 check('sort block found', sortBlock.length > 20);
