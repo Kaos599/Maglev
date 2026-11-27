@@ -752,13 +752,13 @@ class MaglevEngineModule : Module() {
                 }
             }
         }
-        // The yt-dlp version name the library last downloaded itself, or null while the bundled one is in use.
+        // The version of the yt-dlp that runs (read from the file), or null before the first read put one in place.
         AsyncFunction("videoSitesVersion") { promise: Promise ->
             val c = context
             promise.resolve(if (c == null) null else VideoSites.versionLabel(c))
         }
-        // What the Settings row shows: `{ version, lastCheckAt }` (version null while the bundled yt-dlp is in use,
-        // lastCheckAt epoch ms or null when never checked).
+        // What the Settings row shows: `{ version, lastCheckAt }` (version of the yt-dlp that runs, null before the
+        // first read put one in place; lastCheckAt epoch ms or null when never checked).
         AsyncFunction("videoSitesStatus") { promise: Promise ->
             val c = context
             if (c == null) {
