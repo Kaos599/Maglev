@@ -112,7 +112,7 @@ export function FixProblemsSheet({ visible, onClose, state, retryInSecs, onReche
         title="Recheck files"
         subtitle={storageGone ? "The SD card isn't there." : 'Checks every piece against the torrent'}
         icon="recheck"
-        disabled={state === 'MOVING' || storageGone}
+        disabled={state === 'INITIALIZING' || state === 'CHECKING' || state === 'MOVING' || storageGone}
         onPress={onRecheck}
       />
       <ListRow title="Find more peers" subtitle={peersSubtitle} icon="reannounce" disabled={!canReannounce || waiting} onPress={onReannounce} />

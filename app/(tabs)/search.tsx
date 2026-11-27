@@ -1063,7 +1063,7 @@ const makeStyles = (c: ThemeColors) =>
     fixTitle: { ...type.bodyStrong, fontVariant: ['tabular-nums'], fontSize: type.size.md, color: c.text },
     fixBody: { ...type.body, fontSize: type.size.sm, color: c.textMuted },
     sources: { paddingHorizontal: spacing.lg, paddingBottom: spacing.sm, gap: spacing.sm },
-    summaryRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.sm },
+    summaryRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: spacing.sm },
     summaryText: { flex: 1, minWidth: 0, justifyContent: 'center', minHeight: touch.min },
     count: { ...type.bodyStrong, fontVariant: ['tabular-nums'], fontSize: type.size.md, lineHeight: 18, color: c.text },
     noteRow: { flexDirection: 'row' },

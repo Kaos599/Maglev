@@ -13,7 +13,7 @@ export const REFRESH_COOLDOWN_MS = 60 * 60 * 1000;
 export function qualityOfName(name: string): { height: number | null; audioOnly: boolean } {
   const n = (name ?? '').trim();
   const audioOnly = /\.(m4a|aac|mp3|opus|ogg)$/i.test(n);
-  const stem = n.replace(/\.[A-Za-z0-9]{1,5}$/, '');
+  const stem = n.replace(/\.[A-Za-z0-9]{1,5}$/, '').replace(/ \(\d+\)$/, '');
   const m = /(?:^|\s)(\d{3,4})p$/.exec(stem);
   return { height: !audioOnly && m ? Number(m[1]) : null, audioOnly };
 }

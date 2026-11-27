@@ -1,8 +1,10 @@
 import React, { useCallback, useEffect, useState } from 'react';
+import { StyleSheet, View } from 'react-native';
 import { Stack, useFocusEffect, useRouter } from 'expo-router';
 import { getBlocklistInfo } from 'maglev-engine';
 import { browserTabs } from '../../constants/copy';
 import { browserSettingsCopy } from '../../constants/browserSettingsCopy';
+import { spacing } from '../../constants/theme';
 import { ListRow, RadioCard, Toggle } from '../../components/ui';
 import { Card, Section, SettingsPage } from '../../components/settings/SettingsParts';
 import { FocusAnchor, rowKey } from '../../components/settings/settingsFocus';
@@ -70,17 +72,19 @@ export default function BrowserBlockingSettings() {
       </Section>
 
       <Section title={h.popups}>
-        {POPUP_CHOICES.map((c) => (
-          <FocusAnchor key={c.value} anchorKey={rowKey(c.title)}>
-            <RadioCard
-              icon={c.icon}
-              title={c.title}
-              description={c.line}
-              selected={prefs.popupPolicy === c.value}
-              onPress={() => setPrefs({ popupPolicy: c.value })}
-            />
-          </FocusAnchor>
-        ))}
+        <View accessibilityRole="radiogroup" style={styles.radioGroup}>
+          {POPUP_CHOICES.map((c) => (
+            <FocusAnchor key={c.value} anchorKey={rowKey(c.title)}>
+              <RadioCard
+                icon={c.icon}
+                title={c.title}
+                description={c.line}
+                selected={prefs.popupPolicy === c.value}
+                onPress={() => setPrefs({ popupPolicy: c.value })}
+              />
+            </FocusAnchor>
+          ))}
+        </View>
         <Card>
           <ListRow
             title={browserSettingsCopy.blockedPopups.row}
@@ -97,3 +101,7 @@ export default function BrowserBlockingSettings() {
     </SettingsPage>
   );
 }
+
+const styles = StyleSheet.create({
+  radioGroup: { gap: spacing.sm },
+});

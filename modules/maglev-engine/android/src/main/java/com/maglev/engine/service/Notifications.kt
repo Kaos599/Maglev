@@ -141,7 +141,7 @@ object Notifications {
             rulesOnly(s) && s.ruleReason == "storage_full" -> StorageGuard.PAUSED_TITLE
             rulesOnly(s) -> "Paused: waiting for ${reasonLabel(s.ruleReason)}"
             s.busy == 0 && s.pausedBySchedule > 0 -> "Scheduled pause"
-            s.busy == 0 && s.pausedByUser > 0 -> "Paused \u00B7 ${s.pausedByUser} downloads"
+            s.busy == 0 && s.pausedByUser > 0 -> if (s.pausedByUser == 1) "Paused \u00B7 1 download" else "Paused \u00B7 ${s.pausedByUser} downloads"
             else -> "Maglev"
         }
     }

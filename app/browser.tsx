@@ -197,6 +197,9 @@ export default function BrowserScreen({ inTab = false }: { inTab?: boolean }) {
   // Tabs whose current load came from a deep link or the card (not typed). Read when the tab's view mounts (TabWebView urlSource).
   const linkTabs = useRef(new Set<string>());
   const [desktop, setDesktop] = useState(prefs.desktopMode);
+  useEffect(() => {
+    setDesktop(prefs.desktopMode);
+  }, [prefs.desktopMode]);
   const blocked = data.blocked;
   const foundAll = data.found;
   const dismissed = data.dismissed;
@@ -460,8 +463,16 @@ export default function BrowserScreen({ inTab = false }: { inTab?: boolean }) {
   // Block: this request and the site's later ones are refused, and the site joins the block list.
   const popupBlock = useCallback(() => {
     const id = activeIdRef.current;
-    const r = popupsApi.blockForSite(getPopups(), id, getBrowserPrefs().popupBlockHosts);
+    const cur = popupsApi.promptFor(getPopups(), id);
+    const bp = getBrowserPrefs();
+    const r = popupsApi.blockForSite(getPopups(), id, bp.popupBlockHosts);
     setPopups(() => r.state);
+    if (cur) {
+      recordPopupBlockStored(
+        { sourceUrl: cur.first.sourceUrl, url: cur.first.url, kind: cur.first.kind, at: Date.now() },
+        bp.privateBrowsing,
+      );
+    }
     const host = r.host;
     if (!host) return;
     updateBrowserPrefs((p) => ({ popupBlockHosts: popupsApi.addSiteHost(p.popupBlockHosts, host) }));
@@ -512,7 +523,7 @@ export default function BrowserScreen({ inTab = false }: { inTab?: boolean }) {
       return true;
     }
     if (prompt) {
-      popupBlock();
+      popupDismiss();
       return true;
     }
     const cur = tabs.ref.current;
@@ -525,7 +536,7 @@ export default function BrowserScreen({ inTab = false }: { inTab?: boolean }) {
     if (next === 'leave') return false;
     tabs.close(activeId);
     return true;
-  }, [editing, leaveEditing, findOpen, closeFind, switcherOpen, linkTarget, mediaHit, prompt, popupBlock, tabs, activeId, page?.canGoBack, view]);
+  }, [editing, leaveEditing, findOpen, closeFind, switcherOpen, linkTarget, mediaHit, prompt, popupDismiss, tabs, activeId, page?.canGoBack, view]);
   useFocusEffect(
     useCallback(() => {
       setViewOwner(instanceId);
@@ -536,6 +547,13 @@ export default function BrowserScreen({ inTab = false }: { inTab?: boolean }) {
       };
     }, [handleBack, instanceId]),
   );
+
+  // Private browsing: turning Private browsing off wipes private cookies and cache immediately, even while the Browse tab stays mounted.
+  const prevPrivateRef = useRef(prefs.privateBrowsing);
+  useEffect(() => {
+    if (prevPrivateRef.current && !prefs.privateBrowsing) void privateSession.wipe();
+    prevPrivateRef.current = prefs.privateBrowsing;
+  }, [prefs.privateBrowsing]);
 
   // Private browsing: really leaving the browser wipes the cookies of the hosts seen. Moving between the Browse tab and
   // other tabs is not leaving (the tab screen stays mounted and its private tabs stay open), so this runs on unmount
@@ -691,8 +709,11 @@ export default function BrowserScreen({ inTab = false }: { inTab?: boolean }) {
     onPopupRequest: (id, e) => setPopups((p) => popupsApi.request(p, id, { url: e.url, kind: e.kind, sourceUrl: e.sourceUrl })),
     onPopupBlocked: (id, e) => {
       setPopups((p) => popupsApi.noteBlocked(p, id));
-      // The link and its source site go to the blocked pop-ups log (never in Private browsing).
-      recordPopupBlockStored({ sourceUrl: e.sourceUrl, url: e.url, kind: e.kind, at: Date.now() }, getBrowserPrefs().privateBrowsing);
+      // The link and its source site go to the blocked pop-ups log (never in Private browsing). A pop-up refused
+      // past the capture cap has no address yet: it is counted, but a row with no link would be useless.
+      if (e.url) {
+        recordPopupBlockStored({ sourceUrl: e.sourceUrl, url: e.url, kind: e.kind, at: Date.now() }, getBrowserPrefs().privateBrowsing);
+      }
     },
     onLongPress: (id, e) => {
       if (id === activeIdRef.current) setLinkTarget(e);
@@ -1020,7 +1041,7 @@ export default function BrowserScreen({ inTab = false }: { inTab?: boolean }) {
               }}
               accessibilityRole="button"
               accessibilityLabel={`${siteSheetCopy.padlockLabel}, ${page.secure ? siteSheetCopy.secure : siteSheetCopy.notSecure}`}
-              hitSlop={{ top: 0, bottom: 0, left: 8, right: 8 }}
+              hitSlop={{ top: 0, bottom: 0, left: 10, right: 10 }}
               style={styles.padlock}
             >
               <PixelIcon name={page.secure ? 'lock' : 'warning'} size={16} color={page.secure ? colors.textMuted : colors.warning} />
@@ -1201,16 +1222,16 @@ export default function BrowserScreen({ inTab = false }: { inTab?: boolean }) {
       <MediaMenu
         hit={mediaHit}
         onClose={() => setMediaHit(null)}
-        onSave={(_h, u) => downloadLink(u)}
+        onSave={(_h, u) => afterSheetCloses(() => downloadLink(u))}
         onStream={streamFromHit}
         onOpenNewTab={(u) => openLinkInTab(u, false)}
-        onCopy={(u) => void copy(u)}
+        onCopy={(u) => afterSheetCloses(() => void copy(u))}
         onShare={(u) => {
           Share.share({ message: u }).catch(() => {});
         }}
         onShowFound={() => setTrayOpen(true)}
         onDownloadPage={(u) => router.push({ pathname: '/add-download', params: { url: u } })}
-        onLinkOptions={(href) => setLinkTarget({ kind: 'link', url: href, imageUrl: null, text: null })}
+        onLinkOptions={(href) => afterSheetCloses(() => setLinkTarget({ kind: 'link', url: href, imageUrl: null, text: null }))}
       />
       <PopupCard prompt={prompt} onAllowOnce={popupOpen} onBlock={popupBlock} onAlwaysAllow={popupAlways} onDismiss={popupDismiss} />
 

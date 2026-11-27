@@ -104,6 +104,8 @@ const fixture = (n) => JSON.parse(read(`scripts/fixtures/video-sites/${n}.json`)
     check(`kotlin message for ${code} matches the app copy`, kt.includes(JSON.stringify(M[code]).slice(1, -1)));
   }
   check('kotlin runs yt-dlp with --dump-single-json and --no-playlist', kt.includes('--dump-single-json') && kt.includes('--no-playlist'));
+  check('kotlin validates URL before running yt-dlp', /Regex\("\^https\?:\/\/"/.test(kt) && kt.includes('isWhitespace()') && kt.includes('host.isNullOrBlank()') && !kt.includes('addOption("--")'));
+  check('kotlin picks first carousel entry with formats', /for \(i in 0 until entries\.length\(\)\)[\s\S]{0,200}optJSONArray\("formats"\)/.test(kt));
   const mod = read('modules/maglev-engine/android/src/main/java/com/maglev/engine/MaglevEngineModule.kt');
   check('module exposes videoSitesResolve and videoSitesVersion', mod.includes('AsyncFunction("videoSitesResolve")') && mod.includes('AsyncFunction("videoSitesVersion")'));
   check('module resolves off the main thread', /private fun videoSitesResolve[\s\S]*?EngineHost\.ioScope\.launch/.test(mod));
@@ -140,6 +142,7 @@ const fixture = (n) => JSON.parse(read(`scripts/fixtures/video-sites/${n}.json`)
   // ---- fresh links for a refused download (yt-dlp update, same quality again)
   const R = await import('../utils/videoSiteRefresh.ts');
   check('quality: "Title 1080p.mp4" is 1080', JSON.stringify(R.qualityOfName('Big Buck Bunny 1080p.mp4')) === JSON.stringify({ height: 1080, audioOnly: false }));
+  check('quality: deduplicated "Title 1080p (2).mp4" is 1080', JSON.stringify(R.qualityOfName('Title 1080p (2).mp4')) === JSON.stringify({ height: 1080, audioOnly: false }));
   check('quality: a name with no height has none', R.qualityOfName('Clip.mp4').height === null && !R.qualityOfName('Clip.mp4').audioOnly);
   check('quality: .m4a is audio only', R.qualityOfName('Song.m4a').audioOnly === true && R.qualityOfName('Song.m4a').height === null);
   check('quality: a 4-digit height in the title is not taken from the middle', R.qualityOfName('Top 720p Moments 480p.mp4').height === 480);

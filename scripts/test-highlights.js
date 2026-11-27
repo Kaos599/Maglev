@@ -52,6 +52,10 @@ function check(name, cond, extra) {
   check('the entry icon exists in the icon set', gen.includes(`"${e.icon}":`));
   const routeFile = `app${e.tryRoute}.tsx`;
   check('the entry route is a real screen, registered in the layout', exists(routeFile) && read('app/_layout.tsx').includes(`name="${e.tryRoute.slice(1)}"`));
+  const e10 = HIGHLIGHTS['1.0'];
+  check('1.0 entry has icon, route, experimental and note', e10 && e10.icon === 'link' && e10.tryRoute === '/add-torrent' && e10.experimental === true && typeof e10.note === 'string' && e10.note.length > 0);
+  check('1.0 entry icon exists in the icon set', e10 && gen.includes(`"${e10.icon}":`));
+  check('1.0 entry route is a real screen, registered in the layout', e10 && exists(`app${e10.tryRoute}.tsx`) && read('app/_layout.tsx').includes(`name="${e10.tryRoute.slice(1)}"`));
   check('every entry key is major.minor', Object.keys(HIGHLIGHTS).every((k) => /^\d+\.\d+$/.test(k)));
 
   console.log('[setting]');

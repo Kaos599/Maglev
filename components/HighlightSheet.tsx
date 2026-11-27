@@ -167,7 +167,7 @@ function Body({ highlight, version, open, onExited, onTry, onNotNow, onNotes }: 
 }
 
 /** The highlight as it looks after an update, with no launch or version checks, for review on web or in a dev build. Closing it offers to show it again. */
-export function HighlightPreview({ version = '0.30' }: { version?: string }) {
+export function HighlightPreview({ version = '1.0' }: { version?: string }) {
   const [open, setOpen] = useState(true);
   const [gone, setGone] = useState(false);
   const [run, setRun] = useState(0);

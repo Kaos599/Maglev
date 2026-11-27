@@ -34,6 +34,7 @@ export default function BrowserBlockedPopupsSite() {
   const site = log[host];
   const items = site?.items ?? [];
   const listed = prefs.popupBlockHosts.some((h) => normalizeSiteHost(h) === host);
+  const allowed = prefs.popupAllowHosts.some((h) => normalizeSiteHost(h) === host);
   const now = Date.now();
 
   const copyLink = async (url: string) => {
@@ -83,7 +84,9 @@ export default function BrowserBlockedPopupsSite() {
                 key={`${item.at}-${i}`}
                 style={s.item}
                 accessibilityRole="button"
-                accessibilityLabel={`${item.url}. Press and hold to copy.`}
+                accessibilityLabel={item.url}
+                accessibilityHint="Copies this link"
+                onPress={() => void copyLink(item.url)}
                 onLongPress={() => void copyLink(item.url)}
                 delayLongPress={400}
               >
@@ -106,8 +109,12 @@ export default function BrowserBlockedPopupsSite() {
             <Text style={s.caption}>{copy.unblockBody}</Text>
           </>
         ) : null}
-        <Button label={copy.allowInstead} variant="secondary" fullWidth onPress={allowInstead} />
-        <Text style={s.caption}>{copy.allowInsteadBody}</Text>
+        {host.length > 0 && !allowed ? (
+          <>
+            <Button label={copy.allowInstead} variant="secondary" fullWidth onPress={allowInstead} />
+            <Text style={s.caption}>{copy.allowInsteadBody}</Text>
+          </>
+        ) : null}
         {site ? (
           <>
             <Button label={copy.clearLog} variant="danger" fullWidth onPress={clearLog} />

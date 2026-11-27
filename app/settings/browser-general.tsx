@@ -27,17 +27,19 @@ export default function BrowserGeneralSettings() {
       <Stack.Screen options={{ headerShown: false }} />
 
       <Section title={h.searchEngine} caption={browserSettingsCopy.general.engineCaption}>
-        {ENGINES.map((e) => (
-          <FocusAnchor key={e} anchorKey={rowKey(searchEngineNames[e])}>
-            <RadioCard
-              icon="search"
-              title={searchEngineNames[e]}
-              description={hostOf(SEARCH_URLS[e])}
-              selected={prefs.searchEngine === e}
-              onPress={() => setPrefs({ searchEngine: e })}
-            />
-          </FocusAnchor>
-        ))}
+        <View accessibilityRole="radiogroup" style={s.radioGroup}>
+          {ENGINES.map((e) => (
+            <FocusAnchor key={e} anchorKey={rowKey(searchEngineNames[e])}>
+              <RadioCard
+                icon="search"
+                title={searchEngineNames[e]}
+                description={hostOf(SEARCH_URLS[e])}
+                selected={prefs.searchEngine === e}
+                onPress={() => setPrefs({ searchEngine: e })}
+              />
+            </FocusAnchor>
+          ))}
+        </View>
       </Section>
 
       <Section title={h.textSize}>
@@ -69,6 +71,7 @@ export default function BrowserGeneralSettings() {
 
 const makeStyles = (c: ThemeColors) =>
   StyleSheet.create({
+    radioGroup: { gap: spacing.sm },
     // Fixed height so the card does not jump while the size changes; long lines wrap inside it.
     preview: { paddingHorizontal: spacing.lg, paddingBottom: spacing.lg, minHeight: 64 },
     previewText: { ...type.body, color: c.textMuted },

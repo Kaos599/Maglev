@@ -48,7 +48,7 @@ export const browserSettingsCopy = {
   /** One line under each pop-up choice. */
   popupLines: {
     ask: 'A card asks before a pop-up opens.',
-    block: 'Pop-ups never open; the \u22EE menu counts them.',
+    block: 'Pop-ups never open. Site settings and Blocked pop-ups count them.',
     allow: 'Pop-ups open in a new tab.',
   },
   textPreview: 'The quick brown fox jumps over the lazy dog.',
@@ -123,7 +123,7 @@ export const browserSettingsCopy = {
     kinds: { window: 'Pop-up', redirect: 'Redirect', app: 'Opens another app' } as Record<string, string>,
     siteTitle: 'Blocked links',
     siteEmpty: { title: 'No blocked links', body: 'This site has no blocked pop-ups saved.' },
-    copyHint: 'Press and hold a link to copy it.',
+    copyHint: 'Tap or press and hold a link to copy it.',
     copied: 'Link copied.',
     unblock: 'Unblock',
     unblockBody: 'This site is no longer always blocked. Its pop-ups will ask you again.',

@@ -1,4 +1,4 @@
-import { useCallback, useMemo } from 'react';
+import { useCallback, useMemo, useRef } from 'react';
 import { useRouter } from 'expo-router';
 import { maglevEngine, type DownloadSnapshot, type EngineResult } from 'maglev-engine';
 import { useEngineActions } from '../../context/EngineContext';
@@ -49,6 +49,7 @@ export interface DownloadActions {
 export function useDownloadActions(): DownloadActions {
   const router = useRouter();
   const { showNotice, pauseDownload, resumeDownload, retryDownload, removeDownload, setDownloadLimits, refreshDownloadUrl } = useEngineActions();
+  const inFlightRef = useRef(new Set<string>());
 
   const open = useCallback(
     (id: string) => {
@@ -122,10 +123,16 @@ export function useDownloadActions(): DownloadActions {
           openPage(d.id);
           break;
         case 'freshLink':
+          if (inFlightRef.current.has(d.id)) break;
+          inFlightRef.current.add(d.id);
           // The Update button: update yt-dlp, then the refresh the app already tried by itself; when it can't, the card keeps its text and the page takes a pasted link.
-          void refreshVideoSiteDownload(d, refreshDownloadUrl, true).then((ok) => {
-            if (!ok) showNotice({ message: FRESH_LINK_FAILED_TEXT });
-          });
+          void refreshVideoSiteDownload(d, refreshDownloadUrl, true)
+            .then((ok) => {
+              if (!ok) showNotice({ message: FRESH_LINK_FAILED_TEXT });
+            })
+            .finally(() => {
+              inFlightRef.current.delete(d.id);
+            });
           break;
         case 'open':
           open(d.id);

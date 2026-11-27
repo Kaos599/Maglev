@@ -1,6 +1,6 @@
 - Maglev 1.0: the first stable release.
 - Maglev now downloads almost any link (video links are experimental). Share or paste a YouTube, X or Instagram video link, pick a quality and save it. Files, magnets and torrents work as before.
-- Long-press a video in the browser and choose Download.
+- Long-press a video in the browser and choose Download this video.
 - Swipe the address bar to switch tabs.
 - A shorter page menu, Site settings and pop-up control in the browser.
-- 46 short tips in Settings > Tips.
+- 47 short tips in Settings > Tips.

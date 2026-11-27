@@ -49,7 +49,7 @@ Maglev is a free YouTube, Instagram Reels and X (Twitter) video downloader for A
 2. Pick a quality.
 3. Watch it download. The file lands in `Download/Maglev`.
 
-In Maglev's browser you can also long-press a video on YouTube, X or Instagram and choose **Download**. Guides: [YouTube downloader for Android](https://harshdayal.dev/maglev/youtube-downloader-android), [Instagram Reels downloader](https://harshdayal.dev/maglev/instagram-reels-downloader) and [X (Twitter) video downloader](https://harshdayal.dev/maglev/twitter-video-downloader).
+In Maglev's browser you can also long-press a video on YouTube, X or Instagram and choose **Download this video**. Guides: [YouTube downloader for Android](https://harshdayal.dev/maglev/youtube-downloader-android), [Instagram Reels downloader](https://harshdayal.dev/maglev/instagram-reels-downloader) and [X (Twitter) video downloader](https://harshdayal.dev/maglev/twitter-video-downloader).
 
 What to expect:
 
@@ -140,7 +140,7 @@ It prints `OK` for each file that matches. On Windows, `Get-FileHash <file> -Alg
 - Open a finished link download's menu in Transfers, a torrent's options, or the ⋯ next to a video in its Files tab, then tap **Find subtitles**.
 - Results are grouped as "Fits this file", "Probably fits" and "May be out of sync".
 - The subtitle is saved next to the video as `<video name>.<lang>.srt` (or `.ass` or `.vtt`), so players pick it up. If one is already there, you choose Replace or Keep both.
-- In Settings > Finding things > Subtitle sources you pick and order languages, set a hearing-impaired preference and turn each source on or off. The source list updates itself from Maglev's signed list.
+- In Settings > Finding things > Subtitles you pick and order languages, set a hearing-impaired preference and turn each source on or off. The source list updates itself from Maglev's signed list.
 - Two sources match by file fingerprint: Subtis for Spanish and Napisy24 for Polish. The rest match by name.
 - Maglev sends the video's name to the sources you turn on, and for those two a fingerprint of the file (its size and a hash of its first and last 64 KB). Nothing else, and nothing until you tap Find subtitles.
 
@@ -221,7 +221,7 @@ Side-by-side guides:
 
 ## What's next
 
-- Bookmarks, and sign-in prompts for routers and NAS pages. (The rest of Browser basics, from 0.25, has shipped: a new-tab page, file upload on web forms, and site dialogs.)
+- Sign-in prompts for routers and NAS pages. (The rest of Browser basics, from 0.25, has shipped: bookmarks, a new-tab page, file upload on web forms, and site dialogs.)
 - Search inside the browser's found files, and keeping a page's file list after you leave it.
 - Choosing which ad-block lists to combine, and per-site rules beyond "allow ads here".
 - A Google Play build.
@@ -301,7 +301,7 @@ Yes, on-demand HLS (`.m3u8`) and DASH streams, including HLS with standard AES-1
 
 ### Can Maglev download subtitles?
 
-Yes, for videos you have already downloaded. Tap **Find subtitles** on a finished download, or on a video in a torrent's Files tab. Maglev searches 21 free sources, with no account, and groups the results by how well they fit the file. The subtitle is saved next to the video, so players pick it up. Two sources match by file fingerprint (Subtis for Spanish, Napisy24 for Polish). The rest match by name, so check the fit. It doesn't fetch subtitles by itself when a download finishes.
+Yes, for videos you have already downloaded. Tap **Find subtitles** on a finished download, or on a video in a torrent's Files tab. Maglev searches 21 free sources, with no account, and groups the results by how well they fit the file. The subtitle is saved next to the video, so players pick it up. Two sources match by file fingerprint (Subtis for Spanish, Napisy24 for Polish). The rest match by name, so check the fit. To fetch subtitles automatically when you add a video, turn on **Get subtitles for new videos** in Settings → Subtitles.
 
 ### Can Maglev download torrents and magnet links?
 
@@ -313,7 +313,7 @@ No. The app has no ads, no analytics SDKs and no account. The built-in browser b
 
 ### Can I back up Maglev and restore it on a new phone?
 
-Yes. In Settings > Backup, export one file with your settings, search sources, torrents and downloads, and your stats if you tick Include stats. API keys are never included. On the new phone, open the file in Settings > Backup and choose what to restore.
+Yes. In Settings > Backup and restore, export one file with your settings, search sources, torrents and downloads, and your stats if you tick Include stats. API keys are never included. On the new phone, open the file in Settings > Backup and restore and choose what to restore.
 
 ### Which Android versions does Maglev support?
 

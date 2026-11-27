@@ -55,6 +55,7 @@ import { useLiveBlockContext } from '../../utils/blocks/useActiveBlocks';
 import { WIFI_ANYWAY_NOTE, torrentResolvingWhy, torrentWhy } from '../../utils/downloadCopy';
 import { FixProblemsSheet, TorrentMoreSheet } from '../../components/detail/TorrentMoreSheet';
 import { afterSheetCloses } from '../../components/browser/FloatingSheet';
+import { dismissClip } from '../../utils/prefs/clipboard';
 import { SpeedLimitSheet } from '../../components/detail/SpeedLimitSheet';
 import { MoveSheet } from '../../components/detail/MoveSheet';
 import { useTorrentDetail } from '../../components/detail/useTorrentDetail';
@@ -469,7 +470,9 @@ export default function TorrentDetailScreen() {
     setMoreOpen(false);
     if (!id || !snap) return;
     try {
-      await Clipboard.setStringAsync(buildMagnet(id, snap.name, trackers.map((t) => t.url)));
+      const link = buildMagnet(id, snap.name, trackers.map((t) => t.url));
+      dismissClip(link);
+      await Clipboard.setStringAsync(link);
       haptic('done');
       showNotice({ tone: 'info', text: notices.detail.magnetCopied });
     } catch {
@@ -1160,24 +1163,27 @@ export default function TorrentDetailScreen() {
         subtitles={torrentSubtitles.mode}
         onFindSubtitles={() => {
           setMoreOpen(false);
-          if (torrentSubtitles.file) setSubtitleTarget(torrentTarget(id, snap.outputFolder, torrentSubtitles.file, downloadedFiles));
+          if (torrentSubtitles.file) {
+            const target = torrentTarget(id, snap.outputFolder, torrentSubtitles.file, downloadedFiles);
+            afterSheetCloses(() => setSubtitleTarget(target));
+          }
         }}
         limitSummary={limitSummary}
         onSpeedLimit={() => {
           setMoreOpen(false);
-          setLimitOpen(true);
+          afterSheetCloses(() => setLimitOpen(true));
         }}
         onMove={() => {
           setMoreOpen(false);
           setMoveError(null);
-          setMoveOpen(true);
+          afterSheetCloses(() => setMoveOpen(true));
         }}
         onOpenFolder={handleOpenFolder}
         onDelete={() => {
           setMoreOpen(false);
           setDeleteError(null);
           haptic('warn');
-          setDeleteOpen(true);
+          afterSheetCloses(() => setDeleteOpen(true));
         }}
       />
       <FixProblemsSheet

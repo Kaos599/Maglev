@@ -413,12 +413,10 @@ export default function TransfersScreen() {
   const goAdd = useCallback(() => router.push('/add-torrent'), [router]);
   const addClipboard = useCallback(() => {
     if (!clipboardMagnet) return;
+    dismissClip(clipboardMagnet);
+    clearClipboardMagnet();
     // A plain file link opens the same quick share card as a share from another app: one tap to Download.
-    if (clipboardUsesCard(clipboardMagnet) && openQuickShare(clipboardMagnet)) {
-      dismissClip(clipboardMagnet);
-      clearClipboardMagnet();
-      return;
-    }
+    if (clipboardUsesCard(clipboardMagnet) && openQuickShare(clipboardMagnet)) return;
     router.push(clipboardRoute(clipboardMagnet));
   }, [clipboardMagnet, clearClipboardMagnet, router]);
   const dismissClipboard = useCallback(() => {

@@ -9,6 +9,7 @@ process.removeAllListeners("warning");
 
 const fs = require("fs");
 const path = require("path");
+const { pathToFileURL } = require("url");
 const root = path.join(__dirname, "..");
 const read = (p) => fs.readFileSync(path.join(root, p), "utf8");
 
@@ -92,7 +93,7 @@ async function main() {
   for (const f of fs.readdirSync(path.join(root, "constants")).filter((f) => f.endsWith(".ts"))) {
     const name = f.replace(/\.ts$/, "");
     try {
-      mods[name] = await import(path.join(root, "constants", f));
+      mods[name] = await import(pathToFileURL(path.join(root, "constants", f)).href);
     } catch {
       // The module imports a component or other file Node cannot load: drop the imports, stub their names.
       let src = read(`constants/${f}`);
@@ -118,7 +119,7 @@ async function main() {
     }
     return undefined;
   };
-  const { SETTINGS_INDEX } = await import(path.join(root, "utils/settingsIndex.ts"));
+  const { SETTINGS_INDEX } = await import(pathToFileURL(path.join(root, "utils/settingsIndex.ts")).href);
 
   const pages = fs.readdirSync(path.join(root, "app/settings")).filter((f) => f.endsWith(".tsx")).map((f) => f.replace(/\.tsx$/, ""));
   const errors = [];

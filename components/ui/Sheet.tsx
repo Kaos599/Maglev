@@ -59,6 +59,9 @@ export function Sheet({ visible, onClose, title, subtitle, hideTitle, children, 
   const pendingOpen = useRef(true);
   const titleRef = useRef<any>(null);
   const focusTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const snapBackTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const visibleRef = useRef(visible);
+  visibleRef.current = visible;
   const returnRef = useRef(returnFocusRef);
   returnRef.current = returnFocusRef;
 
@@ -69,7 +72,10 @@ export function Sheet({ visible, onClose, title, subtitle, hideTitle, children, 
       if (tag) AccessibilityInfo.setAccessibilityFocus(tag);
     }, delay);
   }, []);
-  useEffect(() => () => { if (focusTimer.current) clearTimeout(focusTimer.current); }, []);
+  useEffect(() => () => {
+    if (focusTimer.current) clearTimeout(focusTimer.current);
+    if (snapBackTimer.current) clearTimeout(snapBackTimer.current);
+  }, []);
 
   const open = useCallback(() => {
     cancelAnimation(offset);
@@ -99,6 +105,10 @@ export function Sheet({ visible, onClose, title, subtitle, hideTitle, children, 
       return;
     }
     if (!mounted) return;
+    if (snapBackTimer.current) {
+      clearTimeout(snapBackTimer.current);
+      snapBackTimer.current = null;
+    }
     cancelAnimation(offset);
     const to = sheetH.value > 0 ? sheetH.value : height;
     if (m.disabled) {
@@ -129,6 +139,19 @@ export function Sheet({ visible, onClose, title, subtitle, hideTitle, children, 
   const reduce = m.disabled;
   const base = m.base;
   const easing = m.easing;
+  // A sheet whose owner ignores onClose while busy must not be left invisible over a live Modal; wait out the slide-out first.
+  const requestCloseFromDrag = useCallback(() => {
+    onClose();
+    if (snapBackTimer.current) clearTimeout(snapBackTimer.current);
+    snapBackTimer.current = setTimeout(() => {
+      snapBackTimer.current = null;
+      if (visibleRef.current) {
+        cancelAnimation(offset);
+        offset.value = reduce ? 0 : withSpring(0, { duration: motion.duration.base, dampingRatio: 1 });
+      }
+    }, reduce ? 150 : base + 150);
+  }, [onClose, offset, reduce, base]);
+
   const pan = usePanGesture({
     enabled: visible,
     // Vertical only: a sideways swipe on the title is left alone.
@@ -144,7 +167,7 @@ export function Sheet({ visible, onClose, title, subtitle, hideTitle, children, 
       if (shouldDismissSheet(offset.value, e.velocityY, h)) {
         const to = h > 0 ? h : height;
         offset.value = reduce ? to : withTiming(to, { duration: base, easing });
-        scheduleOnRN(onClose);
+        scheduleOnRN(requestCloseFromDrag);
         return;
       }
       offset.value = reduce

@@ -102,8 +102,18 @@ object VideoSites {
 
     /** Runs yt-dlp for [url] and returns the trimmed JSON text (see [trim]). Throws [VideoSitesException]. */
     fun resolve(context: Context, url: String): String {
+        val clean = url.trim()
+        val hasBadChar = clean.any { it.code < 0x20 || it.code == 0x7F || it.isWhitespace() }
+        val host = if (!hasBadChar && Regex("^https?://", RegexOption.IGNORE_CASE).containsMatchIn(clean)) {
+            android.net.Uri.parse(clean).host
+        } else {
+            null
+        }
+        if (host.isNullOrBlank()) {
+            throw VideoSitesException(FAILED, "Couldn't read this video. Try again.")
+        }
         ensureInit(context) // never updates here: a resolve must not wait on a download (VideoSitesUpdater does it in the background)
-        val request = YoutubeDLRequest(url)
+        val request = YoutubeDLRequest(clean)
         request.addOption("--dump-single-json")
         request.addOption("--no-playlist")
         request.addOption("--no-warnings")
@@ -156,8 +166,21 @@ object VideoSites {
      */
     fun trim(raw: JSONObject): JSONObject {
         val entries = raw.optJSONArray("entries")
-        val first = entries?.optJSONObject(0)
-        val src = if (!raw.has("formats") && first != null) first else raw
+        val picked = if (!raw.has("formats") && entries != null) {
+            var found: JSONObject? = null
+            for (i in 0 until entries.length()) {
+                val entry = entries.optJSONObject(i) ?: continue
+                val fmts = entry.optJSONArray("formats")
+                if (fmts != null && fmts.length() > 0) {
+                    found = entry
+                    break
+                }
+            }
+            found ?: entries.optJSONObject(0)
+        } else {
+            null
+        }
+        val src = picked ?: raw
         val out = JSONObject()
         for (k in TOP_KEYS) {
             if (src.has(k) && !src.isNull(k)) out.put(k, src.get(k))

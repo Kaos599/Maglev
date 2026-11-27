@@ -135,6 +135,6 @@ export function ModelPicker({
 const makeStyles = (c: ThemeColors) =>
   StyleSheet.create({
     wrap: { gap: spacing.sm },
-    sheetBody: { gap: spacing.md },
+    sheetBody: { gap: spacing.md, flexShrink: 1 },
     empty: { ...type.body, fontSize: type.size.md, color: c.textMuted, paddingVertical: spacing.lg },
   });
