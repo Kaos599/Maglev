@@ -226,7 +226,7 @@ test-sources-books|search|Gutenberg and LibriVox providers.
 test-sources-feeds|search,feeds|ShowRSS, DistroWatch and the trusted-uploader filter.
 test-sources-anime-adult-games|search|acgrip and u3c3 providers.
 test-ux-027|updates,ui|Add torrent hands a plain web link to Add a link, which runs Get info once.
-test-browser-tabs-native|browser,engine|Browser tabs, link menu, pop-ups and redirects in the Kotlin source (not in any npm script).
+test-browser-tabs-native|browser,engine|Browser tabs, link menu, pop-ups and redirects in the Kotlin source.
 `.trim().split('\n').reduce((m, l) => {
   const [name, areas, desc] = l.split('|');
   m[name] = { areas: areas.split(','), desc };
