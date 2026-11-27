@@ -50,6 +50,9 @@ class QuickShareActivity : Activity() {
         WindowCompat.setDecorFitsSystemWindows(window, false)
         EngineHost.attach(applicationContext)
         original = intent ?: Intent()
+        // The Watch notification's Download action: straight to the Add screen, through the one-shot store.
+        // The card is exported, so only the Add link of that action is accepted, never an arbitrary string.
+        original.getStringExtra(ShareHandoff.EXTRA_OPEN_ADD)?.takeIf { it.startsWith("maglev://add-torrent?") }?.let { launchApp(it); return }
         if (original.action == Intent.ACTION_SEND_MULTIPLE) {
             // Several torrent files: MainActivity queues them (utils/shareQueue.ts).
             openMaglev(null)
@@ -150,39 +153,74 @@ class QuickShareActivity : Activity() {
 
     /** MainActivity with the original intent, or with [uri] when given. Then this card goes away. */
     private fun openMaglev(uri: Uri?) {
+        val link = if (::cls.isInitialized) cls.source else null
+        val isLocalUri = link != null && (link.startsWith("content://", true) || link.startsWith("file://", true))
+        when {
+            uri != null -> launchApp(uri.toString())
+            // MainActivity does not read PROCESS_TEXT: hand it the link that was found in the selection.
+            original.action == Intent.ACTION_PROCESS_TEXT && link != null -> launchApp(link)
+            // Several torrent files, or one local file: copy each while this card still holds the read grant.
+            original.action == Intent.ACTION_SEND_MULTIPLE -> keepLocalTorrents(streamUris(original), true)
+            link != null && isLocalUri -> keepLocalTorrents(listOf(link), false)
+            // Hand over the extracted link directly (e.g. from SpannableString, clipData, EXTRA_SUBJECT, LINK_EXTRAS,
+            // or EXTRA_TEXT alongside a preview image EXTRA_STREAM) so MainActivity does not re-parse and lose it.
+            link != null -> launchApp(link)
+            else -> launchApp(null)
+        }
+    }
+
+    /** The link waits in the one-shot store and the app starts with no data. Null starts the app with nothing waiting. */
+    private fun launchApp(link: String?) {
         val launcher = packageManager.getLaunchIntentForPackage(packageName)
         val main = launcher?.component
         if (launcher == null || main == null) { finish(); return }
-        val link = if (::cls.isInitialized) cls.source else null
-        val isLocalUri = link != null && (link.startsWith("content://", true) || link.startsWith("file://", true))
-        val handOver: String? = when {
-            uri != null -> uri.toString()
-            // MainActivity does not read PROCESS_TEXT: hand it the link that was found in the selection.
-            original.action == Intent.ACTION_PROCESS_TEXT && link != null -> link
-            // Hand over the extracted link directly (e.g. from SpannableString, clipData, EXTRA_SUBJECT, LINK_EXTRAS,
-            // or EXTRA_TEXT alongside a preview image EXTRA_STREAM) so MainActivity does not re-parse and lose it.
-            link != null && !isLocalUri -> link
-            // A local file (content://, file://) keeps the original intent so stream/clipData URI grants stay intact.
-            // Known gap: that intent is the task's start intent, so it can replay after the process dies; the grant has
-            // usually expired by then and the screen shows its normal error.
-            else -> null
-        }
-        val i = if (handOver != null) {
-            // The link waits in the one-shot store and the app starts with no data, so a later start from the launcher
-            // icon is never mistaken for this share. JS takes the link when it starts or comes back to the front.
-            ShareHandoff.put(applicationContext, handOver)
-            Intent(launcher)
-        } else {
-            Intent(original)
-        }
+        // A link carried as the start intent would come back whenever Android rebuilt the task. Kept in the store, it is
+        // read once and gone, so a later start from the launcher icon is never mistaken for this share.
+        if (link != null) ShareHandoff.put(applicationContext, link)
+        val i = Intent(launcher)
         i.component = main
-        i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         try {
             startActivity(i)
         } catch (e: Exception) {
             // Nothing to show: the card still closes.
         }
         finish()
+    }
+
+    /**
+     * Copies each local .torrent into the cache (off the main thread) and hands over the copies, because the read grant
+     * of the original dies with this card. Several files travel as one packed maglev://share link, like before. A file
+     * that cannot be kept is skipped; if none can, the card says so and nothing opens.
+     */
+    private fun keepLocalTorrents(sources: List<String>, packed: Boolean) {
+        val app = applicationContext
+        worker.execute {
+            val kept = sources.take(ShareHandoff.MAX_FILES).mapNotNull { ShareHandoff.keepLocalTorrent(app, it) }
+            ui.post {
+                if (isDestroyed) return@post
+                when {
+                    kept.isEmpty() -> { toast(QuickShareText.COULD_NOT_ADD); finish() }
+                    !packed && kept.size == 1 -> launchApp(kept[0])
+                    else -> launchApp("maglev://share?" + kept.joinToString("&") { "u=" + Uri.encode(it) })
+                }
+            }
+        }
+    }
+
+    @Suppress("DEPRECATION")
+    private fun streamUris(i: Intent): List<String> {
+        val out = ArrayList<String>()
+        try {
+            val list: List<Uri>? = if (Build.VERSION.SDK_INT >= 33) i.getParcelableArrayListExtra(Intent.EXTRA_STREAM, Uri::class.java)
+            else i.getParcelableArrayListExtra<Uri>(Intent.EXTRA_STREAM)
+            list?.forEach { out += it.toString() }
+        } catch (e: Exception) {
+            // A sender can put any type under the key: fall through to the clip.
+        }
+        val clip = i.clipData
+        if (out.isEmpty() && clip != null) for (n in 0 until clip.itemCount) clip.getItemAt(n).uri?.let { out += it.toString() }
+        return out
     }
 
     // endregion

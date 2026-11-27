@@ -1,9 +1,9 @@
 import { useEffect } from 'react';
-import { AppState } from 'react-native';
+import { AppState, Linking } from 'react-native';
 import { useRouter, type Href } from 'expo-router';
 import { redirectSystemPath } from '../app/+native-intent';
 import { appPath } from '../utils/browserUrl';
-import { takeSharedLink } from '../utils/shareHandoff';
+import { dropPendingShare, takeSharedLink } from '../utils/shareHandoff';
 
 /**
  * Opens a link the share card left while the app was already running. At start the same link is read by the start-up
@@ -23,7 +23,12 @@ export function ShareHandoff() {
     const sub = AppState.addEventListener('change', (next) => {
       if (next === 'active') open();
     });
-    return () => sub.remove();
+    // A link that reaches the app another way while it runs is newer than one waiting in the store: drop that one.
+    const url = Linking.addEventListener('url', dropPendingShare);
+    return () => {
+      sub.remove();
+      url.remove();
+    };
   }, [router]);
   return null;
 }

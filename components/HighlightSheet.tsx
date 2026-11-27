@@ -16,7 +16,7 @@ import { useEntrance, useStagger } from './highlight/useEntrance';
 import { cardAt, scrimAt } from './highlight/timeline';
 import { cardUnit } from './highlight/timing';
 import { highlightPlan, isPlainLaunch } from '../utils/highlights';
-import { onSharedLinkTaken, startedWithSharedLink } from '../utils/shareHandoff';
+import { clearSharedLaunch, onSharedLinkTaken, sharedLaunchFlag } from '../utils/shareHandoff';
 import { getLastSeenVersion, setLastSeenVersion } from '../utils/prefs/highlights';
 import { useUpdatePrefs } from '../utils/prefs/update';
 
@@ -44,8 +44,8 @@ function usePlainLaunch(): boolean | null {
     void Linking.getInitialURL()
       // A share card hands its link over through a native store, so the start URL is empty for it: a launch that
       // took a link from the store is not plain either, or the card would open over the shared link's screen.
-      .then((url) => alive && setPlain((prev) => (prev === false ? false : isPlainLaunch(url) && !startedWithSharedLink())))
-      .catch(() => alive && setPlain((prev) => (prev === false ? false : !startedWithSharedLink())));
+      .then((url) => alive && setPlain((prev) => (prev === false ? false : isPlainLaunch(url) && !sharedLaunchFlag())))
+      .catch(() => alive && setPlain((prev) => (prev === false ? false : !sharedLaunchFlag())));
     // A link that arrives while the app runs counts too: this visit wasn't a plain one.
     const link = Linking.addEventListener('url', () => {
       linkSinceBackground = true;
@@ -59,6 +59,7 @@ function usePlainLaunch(): boolean | null {
     // Android delivers a new link before the app returns to the foreground, so a return with none is a plain one.
     const app = AppState.addEventListener('change', (next) => {
       if (next === 'background') {
+        clearSharedLaunch();
         wasBackground = true;
         linkSinceBackground = false;
       } else if (next === 'active' && wasBackground && !linkSinceBackground) {

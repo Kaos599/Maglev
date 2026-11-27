@@ -6,6 +6,8 @@
  */
 
 import { takeStartLink } from '../utils/shareHandoff';
+import { isPlainLaunch } from '../utils/highlights';
+import { settingsStore } from '../modules/maglev-engine/src/MaglevSettingsStore';
 import { parsePackedShare, setShareQueue } from '../utils/shareQueue';
 import { appPath, browserIntentRoute } from '../utils/browserUrl';
 import { visibleTabs } from '../components/tabs/tabPrefs';
@@ -26,10 +28,11 @@ function isTorrentLocation(url: string): boolean {
 
 export function redirectSystemPath({ path, initial }: { path: string; initial: boolean }): string {
   try {
-    // A link the share card left for the app wins over whatever the start intent says: the card starts the app with
-    // no data, and the link is routed here exactly as if it had come in as the intent.
-    if (initial) {
-      const shared = takeStartLink();
+    // At start-up a link waiting in the store is routed as if it had come in as the start intent, but only when the
+    // start URL is plain: a real start URL (a tile, a notification, a magnet) is newer, so it wins and the link is
+    // dropped. Before onboarding is done the store is left alone; the main screens take it when they mount.
+    if (initial && settingsStore.getSettings().onboarded) {
+      const shared = takeStartLink(isPlainLaunch(path));
       if (shared) return redirectSystemPath({ path: shared, initial: false });
     }
     const raw = (path ?? '').trim();
