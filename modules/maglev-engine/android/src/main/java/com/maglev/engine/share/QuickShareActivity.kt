@@ -23,7 +23,9 @@ import kotlin.math.pow
 /**
  * The quick share card (docs/contracts-0.19/quick-share.md). A translucent activity that floats over the app the user
  * shared from. It receives magnet, .torrent, text and http(s) file links, shows what they are, and adds them to the
- * engine without opening Maglev's own window. "Open in Maglev" hands the original intent to MainActivity.
+ * engine without opening Maglev's own window. "Open in Maglev" leaves the link in [ShareHandoff] and starts MainActivity
+ * plainly. The same activity is the way in for Maglev's own notification and tile taps ([ShareHandoff.routeIntent]), so
+ * that no page link is ever the start intent of the task.
  */
 class QuickShareActivity : Activity() {
     private val ui = Handler(Looper.getMainLooper())
@@ -50,9 +52,13 @@ class QuickShareActivity : Activity() {
         WindowCompat.setDecorFitsSystemWindows(window, false)
         EngineHost.attach(applicationContext)
         original = intent ?: Intent()
-        // The Watch notification's Download action: straight to the Add screen, through the one-shot store.
-        // The card is exported, so only the Add link of that action is accepted, never an arbitrary string.
-        original.getStringExtra(ShareHandoff.EXTRA_OPEN_ADD)?.takeIf { it.startsWith("maglev://add-torrent?") }?.let { launchApp(it); return }
+        // Maglev's own notification and tile taps: no card, straight to the app through the one-shot store. The card is
+        // exported, so only an allowlisted route is accepted; a rejected one just closes.
+        if (original.hasExtra(ShareHandoff.EXTRA_OPEN_ROUTE)) {
+            val route = original.getStringExtra(ShareHandoff.EXTRA_OPEN_ROUTE)
+            if (route != null && ShareHandoff.allowedRoute(route)) launchApp(route) else finish()
+            return
+        }
         if (original.action == Intent.ACTION_SEND_MULTIPLE) {
             // Several torrent files: MainActivity queues them (utils/shareQueue.ts).
             openMaglev(null)
@@ -68,10 +74,9 @@ class QuickShareActivity : Activity() {
         // Video sites (prototype): a shared YouTube, X or Instagram page goes straight to the add sheet, which
         // reads the video and lists qualities. Same host list as utils/videoSites.ts VIDEO_SITE_HOSTS.
         if (cls.kind == ShareKind.WEB_PAGE && isVideoSite(host(cls.source))) {
-            // Mark this exact link as ours, so the add screen reads it at once. A maglev:// link from a web page or
-            // another app never gets a mark and still waits for a tap.
-            cls.source?.let { TrustedShare.record(it) }
-            openMaglev(Uri.parse("maglev://add-download?url=" + Uri.encode(cls.source ?: "")))
+            // The stored entry carries this exact link as trusted, so the add screen reads it at once. A maglev:// link
+            // from a web page or another app never gets a mark and still waits for a tap.
+            launchApp("maglev://add-download?url=" + Uri.encode(cls.source ?: ""), cls.source)
             return
         }
         val addable = cls.kind == ShareKind.MAGNET || cls.kind == ShareKind.TORRENT_FILE || cls.kind == ShareKind.FILE_LINK
@@ -170,13 +175,13 @@ class QuickShareActivity : Activity() {
     }
 
     /** The link waits in the one-shot store and the app starts with no data. Null starts the app with nothing waiting. */
-    private fun launchApp(link: String?) {
+    private fun launchApp(link: String?, trustedUrl: String? = null) {
         val launcher = packageManager.getLaunchIntentForPackage(packageName)
         val main = launcher?.component
         if (launcher == null || main == null) { finish(); return }
         // A link carried as the start intent would come back whenever Android rebuilt the task. Kept in the store, it is
         // read once and gone, so a later start from the launcher icon is never mistaken for this share.
-        if (link != null) ShareHandoff.put(applicationContext, link)
+        if (link != null) ShareHandoff.put(applicationContext, link, trustedUrl)
         val i = Intent(launcher)
         i.component = main
         i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
@@ -190,19 +195,23 @@ class QuickShareActivity : Activity() {
 
     /**
      * Copies each local .torrent into the cache (off the main thread) and hands over the copies, because the read grant
-     * of the original dies with this card. Several files travel as one packed maglev://share link, like before. A file
-     * that cannot be kept is skipped; if none can, the card says so and nothing opens.
+     * of the original dies with this card. Several files travel as one packed maglev://share link. A file that cannot be
+     * kept is skipped and a toast says how many were kept; if none can, the card says so and nothing opens.
      */
     private fun keepLocalTorrents(sources: List<String>, packed: Boolean) {
         val app = applicationContext
         worker.execute {
-            val kept = sources.take(ShareHandoff.MAX_FILES).mapNotNull { ShareHandoff.keepLocalTorrent(app, it) }
+            val tried = sources.take(ShareHandoff.MAX_FILES)
+            val kept = tried.mapNotNull { ShareHandoff.keepLocalTorrent(app, it, original.type) }
             ui.post {
                 if (isDestroyed) return@post
                 when {
                     kept.isEmpty() -> { toast(QuickShareText.COULD_NOT_ADD); finish() }
                     !packed && kept.size == 1 -> launchApp(kept[0])
-                    else -> launchApp("maglev://share?" + kept.joinToString("&") { "u=" + Uri.encode(it) })
+                    else -> {
+                        if (kept.size < tried.size) toast(QuickShareText.someKept(kept.size, tried.size))
+                        launchApp("maglev://share?" + kept.joinToString("&") { "u=" + Uri.encode(it) })
+                    }
                 }
             }
         }

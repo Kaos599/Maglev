@@ -23,4 +23,7 @@ object QuickShareText {
     const val ADDED_SERVICE_LATER = "Added to Maglev. It starts when you open the app."
     const val COULD_NOT_ADD = "Couldn't add that. Try again."
     const val ENGINE_FAILED = "Maglev couldn't start. Open the app and try again."
+
+    /** Some files of a share were skipped (not torrents, too big or unreadable). Mirrors `quickShareCopy.someKept`. */
+    fun someKept(kept: Int, total: Int) = "Opened $kept of $total files. The rest weren't torrents or were too big."
 }

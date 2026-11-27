@@ -44,8 +44,16 @@ function usePlainLaunch(): boolean | null {
     void Linking.getInitialURL()
       // A share card hands its link over through a native store, so the start URL is empty for it: a launch that
       // took a link from the store is not plain either, or the card would open over the shared link's screen.
-      .then((url) => alive && setPlain((prev) => (prev === false ? false : isPlainLaunch(url) && !sharedLaunchFlag())))
-      .catch(() => alive && setPlain((prev) => (prev === false ? false : !sharedLaunchFlag())));
+      .then((url) => {
+        const fromLink = sharedLaunchFlag();
+        clearSharedLaunch(); // decided: the next start-up judges itself
+        if (alive) setPlain((prev) => (prev === false ? false : isPlainLaunch(url) && !fromLink));
+      })
+      .catch(() => {
+        const fromLink = sharedLaunchFlag();
+        clearSharedLaunch();
+        if (alive) setPlain((prev) => (prev === false ? false : !fromLink));
+      });
     // A link that arrives while the app runs counts too: this visit wasn't a plain one.
     const link = Linking.addEventListener('url', () => {
       linkSinceBackground = true;
@@ -59,7 +67,6 @@ function usePlainLaunch(): boolean | null {
     // Android delivers a new link before the app returns to the foreground, so a return with none is a plain one.
     const app = AppState.addEventListener('change', (next) => {
       if (next === 'background') {
-        clearSharedLaunch();
         wasBackground = true;
         linkSinceBackground = false;
       } else if (next === 'active' && wasBackground && !linkSinceBackground) {

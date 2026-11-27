@@ -13,8 +13,9 @@ class MaglevQuickShareModule : Module() {
         Name("MaglevQuickShare")
 
         // The link the share card left for the app, once (see ShareHandoff). Null when none is waiting.
-        Function("takePendingShare") {
-            appContext.reactContext?.let { ShareHandoff.take(it) }
+        // startUp is true for the start-up take (reads the disk and sweeps old copies) and false for a take while running.
+        Function("takePendingShare") { startUp: Boolean ->
+            appContext.reactContext?.let { ShareHandoff.take(it, startUp) }
         }
 
         Function("open") { url: String ->

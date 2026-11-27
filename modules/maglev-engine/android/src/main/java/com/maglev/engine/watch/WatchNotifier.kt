@@ -4,18 +4,16 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
-import android.content.Intent
-import android.net.Uri
 import android.os.Build
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import com.maglev.engine.R
-import com.maglev.engine.share.QuickShareActivity
 import com.maglev.engine.share.ShareHandoff
 
 /**
- * Posts "<title> is up" for a watch (docs/contracts-0.19/watch.md section 7). Open and Download are deep links
- * (maglev://search?..., maglev://add-torrent?source=...), so nothing is added without the Add screen's checks.
+ * Posts "<title> is up" for a watch (docs/contracts-0.19/watch.md section 7). Open and Download are routes
+ * (maglev://search?..., maglev://add-torrent?source=...) that reach the app through the one-shot store, so nothing is
+ * added without the Add screen's checks and a later start from the icon never replays them.
  */
 object WatchNotifier {
     const val CHANNEL = "maglev_watches"
@@ -32,23 +30,8 @@ object WatchNotifier {
         nm.createNotificationChannel(ch)
     }
 
-    private fun link(c: Context, url: String, requestCode: Int): PendingIntent {
-        val i = Intent(Intent.ACTION_VIEW, Uri.parse(url))
-            .setPackage(c.packageName)
-            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
-        return PendingIntent.getActivity(c, requestCode, i, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
-    }
-
-    /**
-     * The Download action. The Add link goes through the app's one-shot store, so it is never the start intent of the
-     * task: a later start from the icon cannot replay it. The share card does the hand-over without showing itself.
-     */
-    private fun addLink(c: Context, url: String, requestCode: Int): PendingIntent {
-        val i = Intent(c, QuickShareActivity::class.java)
-            .putExtra(ShareHandoff.EXTRA_OPEN_ADD, url)
-            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        return PendingIntent.getActivity(c, requestCode, i, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
-    }
+    private fun link(c: Context, route: String, requestCode: Int): PendingIntent =
+        PendingIntent.getActivity(c, requestCode, ShareHandoff.routeIntent(c, route), PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
 
     /** True when the notification was handed to the system. False when notifications are off or the input is bad. */
     fun notify(c: Context, n: Map<String, Any?>): Boolean {
@@ -68,7 +51,7 @@ object WatchNotifier {
                 .setCategory(NotificationCompat.CATEGORY_RECOMMENDATION)
                 .setContentIntent(link(c, openUrl, nid))
                 .addAction(0, "Open", link(c, openUrl, nid))
-            if (!downloadUrl.isNullOrEmpty()) b.addAction(0, "Download", addLink(c, downloadUrl, nid + 0x10000))
+            if (!downloadUrl.isNullOrEmpty()) b.addAction(0, "Download", link(c, downloadUrl, nid + 0x10000))
             val nm = NotificationManagerCompat.from(c)
             if (!nm.areNotificationsEnabled()) return false
             nm.notify(nid, b.build())

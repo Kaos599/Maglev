@@ -20,12 +20,13 @@ export function openQuickShare(url: string): boolean {
 
 /**
  * The link the share card left for the app, once, or null (nothing waiting, older than ten minutes, web, mock or any
- * error). The card hands a link over this way instead of as the start intent, so a later start from the launcher icon
+ * error). [startUp] is true for the take at start-up, which also tidies old copies; a take while running does no disk
+ * work when nothing waits. Maglev's own taps and the card hand a link over this way instead of as the start intent, so a later start from the launcher icon
  * never brings an old share back.
  */
-export function takePendingShare(): string | null {
+export function takePendingShare(startUp: boolean): string | null {
   try {
-    const link = Native?.takePendingShare?.();
+    const link = Native?.takePendingShare?.(startUp);
     return typeof link === 'string' && link.length > 0 ? link : null;
   } catch {
     return null;

@@ -9,39 +9,41 @@ let sharedLaunch = false;
 const listeners = new Set<() => void>();
 
 /**
- * Reads and clears the store at start-up. Returns the stored link only when the start URL is plain; a real start URL
- * (a tile, a notification, any maglev:// route) is newer, so it wins and the stored link is dropped. Sets the
- * "this launch came from a share" flag for the What's New decision, and clears it first so a runtime that started
- * before cannot leave it set.
+ * Reads and clears the store at start-up. A stored entry (under ten minutes old) wins over the start URL: a restored task
+ * reports the intent it was first started with, which may be long stale, while the store always holds the newest thing
+ * Maglev itself opened. Sets the "this launch came from a link in the store" flag for the What's New decision, and
+ * clears it first so a runtime that started before cannot leave it set.
  */
-export function takeStartLink(startUrlIsPlain: boolean): string | null {
+export function takeStartLink(): string | null {
   sharedLaunch = false;
-  const link = takePendingShare();
-  if (!link || !startUrlIsPlain) return null;
-  sharedLaunch = true;
+  const link = takePendingShare(true);
+  if (link) sharedLaunch = true;
   return link;
 }
 
-/** True when this launch was started by a stored share link. Read by the What's New decision; reset when the app goes to the background. */
+/**
+ * True when this launch was started by a stored link. Read by the What's New decision. It stays set until that decision
+ * has read it ([clearSharedLaunch]), not merely until the app goes to the background.
+ */
 export function sharedLaunchFlag(): boolean {
   return sharedLaunch;
 }
 
-/** The app went to the background: the next start-up or return is judged on its own. */
+/** The What's New decision has read the flag: the next start-up or return is judged on its own. */
 export function clearSharedLaunch(): void {
   sharedLaunch = false;
 }
 
 /** A link left for the running app, or null. Tells the listeners, so the What's New decision can wait. */
 export function takeSharedLink(): string | null {
-  const link = takePendingShare();
+  const link = takePendingShare(false);
   if (link) listeners.forEach((l) => l());
   return link;
 }
 
 /** A link arrived another way while the app runs; it is newer than anything waiting, so what waits is dropped. */
 export function dropPendingShare(): void {
-  takePendingShare();
+  takePendingShare(false);
 }
 
 /** Calls [cb] whenever a link is taken while the app runs. Returns the way to stop. */

@@ -63,6 +63,15 @@ object QuickShareAdd {
         }
     }
 
+    /** The file name a content URI reports, as it is. Null when it does not say. */
+    fun fileName(c: Context, source: String): String? = try {
+        c.contentResolver.query(Uri.parse(source), arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use {
+            if (it.moveToFirst()) it.getString(0) else null
+        }
+    } catch (e: Exception) {
+        null
+    }
+
     /** The file name a content URI reports, without `.torrent`. Null when it does not say. */
     fun displayName(c: Context, source: String): String? = try {
         c.contentResolver.query(Uri.parse(source), arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use {
