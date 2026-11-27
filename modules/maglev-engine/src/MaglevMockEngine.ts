@@ -70,7 +70,7 @@ import { MockDownloads } from './MaglevMockDownloads.ts';
 const GOVERNANCE_TAGS: ReadonlySet<PausedBy | null> = new Set<PausedBy | null>(['wifi_only', 'battery', 'charging_only', 'network_unvalidated', 'vpn_required', 'seed_metered']);
 const DEFAULT_PAYLOAD_BYTES = 1_610_612_736; // 1.5 GiB when a magnet carries no xl=
 
-/** Thrown by the legacy synchronous `startTorrent`; carries the contract error code. */
+/** Thrown by the legacy synchronous `startTorrent`; carries the engine error code. */
 class MaglevEngineError extends Error {
   code: EngineErrorCode;
   id?: string;
@@ -84,7 +84,7 @@ class MaglevEngineError extends Error {
 
 interface TorrentMeta {
   pausedBy: PausedBy | null;
-  /** NATIVE_CONTRACT 25.1: "Resume anyway" is active. */
+  /** "Resume anyway" is active. */
   allowedAnyway?: boolean;
   /** Granted while already complete (seeding), so finishing does not clear it. */
   allowedSeeding?: boolean;
@@ -95,11 +95,11 @@ interface TorrentMeta {
   /** Simulated move (dev only): progress 0 to 1 and destination folder. */
   moveProgress?: number;
   moveDest?: string;
-  /** NATIVE_CONTRACT 18.2. While set the torrent stays paused. */
+  /** While set the torrent stays paused. */
   health?: HealthTag | null;
-  /** NATIVE_CONTRACT 18.3 (dev only): files the simulator treats as deleted or changed outside Maglev. */
+  /** Dev only: files the simulator treats as deleted or changed outside Maglev. */
   fileStates?: Map<number, 'missing' | 'changed'>;
-  /** NATIVE_CONTRACT 34.1 timing: milliseconds downloading, first finish (unix seconds, 0 = not yet) and bytes by network. */
+  /** Timing: milliseconds downloading, first finish (unix seconds, 0 = not yet) and bytes by network. */
   activeMs?: number;
   finishedAt?: number;
   sessionBytes?: number;
@@ -140,10 +140,10 @@ type Listener = (telemetry: AggregatedTelemetry) => void;
 
 /**
  * Dev and web simulator. Implements the same `MaglevEngineApi` as the native module and enforces the
- * contract's validation and state rules. It also keeps a legacy synchronous surface (startTorrent,
+ * native engine's validation and state rules. It also keeps a legacy synchronous surface (startTorrent,
  * getAggregatedTelemetry, stepSimulation, ...) used by the Node test suites.
  */
-// ---- subtitles (NATIVE_CONTRACT 36.6): dev and web only ----------------------------------------------------------
+// ---- subtitles: dev and web only ----------------------------------------------------------
 function b64ToBytes(b64: string): Uint8Array {
   const bin = atob(b64);
   const out = new Uint8Array(bin.length);
@@ -208,7 +208,7 @@ export class MaglevMockEngine implements MaglevEngineApi {
   private blocksListeners: Set<(blocks: ActiveBlock[]) => void> = new Set();
   private activeBlocks: ActiveBlock[] = [];
   private nativeConfig: NativeConfig | null = null;
-  /** The config the simulated session started with; `restartPending` compares it with the saved one (contract 41). */
+  /** The config the simulated session started with; `restartPending` compares it with the saved one. */
   private sessionConfig: NativeConfig | null = null;
   private restartRunning = false;
   private initialized = false;
@@ -219,7 +219,7 @@ export class MaglevMockEngine implements MaglevEngineApi {
   private timer: any = null;
   private defaultStoragePath = '/storage/emulated/0/Android/data/com.maglev/files/Download';
 
-  /** URL downloads (NATIVE_CONTRACT 17). They follow the same governance as torrents. */
+  /** URL downloads. They follow the same governance as torrents. */
   private downloads: MockDownloads = new MockDownloads({
     blockedReason: () => {
       if (this.socketsClamped) return 'wifi_only';
@@ -411,7 +411,7 @@ export class MaglevMockEngine implements MaglevEngineApi {
     }
     const id = parsed.infoHash;
     if (this.torrents.has(id)) {
-      // NATIVE_CONTRACT 21: the new source's trackers are merged into the existing torrent.
+      // The new source's trackers are merged into the existing torrent.
       const t = this.torrents.get(id)!;
       const have = new Set(t.trackers.map((tr) => trackerKey(tr.url)));
       const fresh: string[] = [];
@@ -622,7 +622,7 @@ export class MaglevMockEngine implements MaglevEngineApi {
     return true;
   }
 
-  /** Legacy matrix (2 = verified, 1 = in flight). The contract API `getPieceBitfield` swaps to 1 = have, 2 = partial. */
+  /** Legacy matrix (2 = verified, 1 = in flight). The API `getPieceBitfield` swaps to 1 = have, 2 = partial. */
   public getPieceMatrix(id: string): Uint8Array {
     let matrix = this.pieceMatrices.get(id);
     if (!matrix) {
@@ -649,7 +649,7 @@ export class MaglevMockEngine implements MaglevEngineApi {
   }
 
   // ---------------------------------------------------------------------------
-  // MaglevEngineApi (docs/NATIVE_CONTRACT.md section 6)
+  // MaglevEngineApi
   // ---------------------------------------------------------------------------
 
   private metaOf(id: string): TorrentMeta {
@@ -667,7 +667,7 @@ export class MaglevMockEngine implements MaglevEngineApi {
       id: t.id,
       name: t.name,
       state: t.state,
-      // The finished edge never fires while files are missing (NATIVE_CONTRACT 18.3).
+      // The finished edge never fires while files are missing.
       finished: t.totalSizeBytes > 0 && t.downloadedBytes >= t.totalSizeBytes && m.health !== 'files_missing',
       pausedBy: t.state === 'PAUSED' ? m.pausedBy : null,
       allowedAnyway: m.allowedAnyway === true,
@@ -701,7 +701,7 @@ export class MaglevMockEngine implements MaglevEngineApi {
     };
   }
 
-  /** NATIVE_CONTRACT 34.1: adds active time and bytes; the network split follows the simulated link type. */
+  /** Adds active time and bytes; the network split follows the simulated link type. */
   private countTiming(id: string, ms: number, downBytes: number, upBytes: number): void {
     const m = this.metaOf(id);
     m.activeMs = (m.activeMs ?? 0) + ms;
@@ -750,7 +750,7 @@ export class MaglevMockEngine implements MaglevEngineApi {
     return ok();
   }
 
-  /** Contract 41 (Debug log): dev and web only. A fake uri; nothing is written. */
+  /** Debug log: dev and web only. A fake uri; nothing is written. */
   public async exportDebugLog(): Promise<EngineResult<{ uri: string }>> {
     return { ok: true, uri: 'content://maglev.mock/debug/maglev-log-mock.txt' };
   }
@@ -759,7 +759,7 @@ export class MaglevMockEngine implements MaglevEngineApi {
     return ok();
   }
 
-  /** Contract 41 (B4): the simulated session "restarts" and now matches the saved config. INVALID_STATE while one runs. */
+  /** Restart: the simulated session "restarts" and now matches the saved config. INVALID_STATE while one runs. */
   public async restartEngine(): Promise<EngineResult> {
     if (this.restartRunning) return fail('INVALID_STATE', 'The downloader is already restarting.');
     this.restartRunning = true;
@@ -845,7 +845,7 @@ export class MaglevMockEngine implements MaglevEngineApi {
     return { ok: true, torrents: this.snapshots(), downloads: this.downloads.snapshots() };
   }
 
-  // ---- URL downloads (NATIVE_CONTRACT 17) ----
+  // ---- URL downloads ----
   public probeUrl(url: string, options: DownloadOptions = {}, _timeoutMs = 15_000): Promise<EngineResult<UrlProbe>> {
     return this.downloads.probeUrl(url, options);
   }
@@ -964,7 +964,7 @@ export class MaglevMockEngine implements MaglevEngineApi {
     return this.resumeTorrent(id) ? ok() : fail('NOT_FOUND', 'Torrent not found.');
   }
 
-  /** NATIVE_CONTRACT 25.1. */
+  /** Resumes the torrent and exempts it from the rule pauses until it finishes, is removed or is paused. */
   public async resumeAnyway(id: string): Promise<EngineResult> {
     const t = this.torrents.get(id);
     if (!t) return fail('NOT_FOUND', 'Torrent not found.');
@@ -1024,7 +1024,7 @@ export class MaglevMockEngine implements MaglevEngineApi {
   }
 
   /**
-   * Mirrors `nativeRemoveFiles` (NATIVE_CONTRACT 14): same validation and error codes as the Rust engine.
+   * Mirrors `nativeRemoveFiles`: same validation and error codes as the Rust engine.
    * The mock tracks progress for the whole torrent, so a removed file frees `length * progress` bytes and
    * leaves the totals (and `finished`) consistent. Dev and web builds only.
    */
@@ -1061,7 +1061,7 @@ export class MaglevMockEngine implements MaglevEngineApi {
   }
 
   // ---------------------------------------------------------------------------
-  // Health (NATIVE_CONTRACT 18). Dev and web builds only: there is no disk here, so a file is "missing"
+  // Health. Dev and web builds only: there is no disk here, so a file is "missing"
   // or "changed" only after `simulateFileChange` says so.
   // ---------------------------------------------------------------------------
 
@@ -1307,7 +1307,7 @@ export class MaglevMockEngine implements MaglevEngineApi {
   public async getEffectiveConfig(): Promise<EngineResult<EffectiveConfig>> {
     const cfg = this.nativeConfig ?? toNativeConfig(this.settings);
     const restartPending = this.sessionConfig ? restartReasons(this.sessionConfig, cfg).length > 0 : false;
-    // Contract 41 (B3). The simulator has no file to read: a chosen list with no rules counts as unreadable.
+    // The simulator has no file to read: a chosen list with no rules counts as unreadable.
     const rules = this.settings.network.ipFilterRulesCount;
     const blocklist: BlocklistStatus = !cfg.ip_filter_path
       ? { state: 'off', rules: 0 }
@@ -1317,7 +1317,7 @@ export class MaglevMockEngine implements MaglevEngineApi {
     return { ok: true, ...cfg, restartPending, blocklist };
   }
 
-  /** Contract bitfield: 256 cells, 0 = missing, 1 = have, 2 = partial. */
+  /** Piece bitfield: 256 cells, 0 = missing, 1 = have, 2 = partial. */
   public async getPieceBitfield(id: string): Promise<number[]> {
     if (!this.torrents.has(id)) return new Array(256).fill(0);
     const legacy = this.getPieceMatrix(id);
@@ -1477,7 +1477,7 @@ export class MaglevMockEngine implements MaglevEngineApi {
     return ok();
   }
 
-  // Subtitles (NATIVE_CONTRACT 36.6). Deterministic and in memory; nothing touches a disk.
+  // Subtitles. Deterministic and in memory; nothing touches a disk.
   private savedSubtitles = new Map<string, string>();
   public async subtitleHash(pathOrUri: string): Promise<SubtitleHashResult> {
     if (!pathOrUri) throw subtitleError('NOT_FOUND', 'The video was not found');
@@ -1500,7 +1500,7 @@ export class MaglevMockEngine implements MaglevEngineApi {
     return mockUnzipSubtitles(base64);
   }
 
-  // In-app updates (NATIVE_CONTRACT 27). Dev and web only: never pretends to download or install.
+  // In-app updates. Dev and web only: never pretends to download or install.
   public async getInstallSource(): Promise<InstallSource> {
     return { installer: null, managedBy: null, versionCode: null };
   }
@@ -1590,7 +1590,7 @@ export class MaglevMockEngine implements MaglevEngineApi {
     };
   }
 
-  /** NATIVE_CONTRACT 35. Same rules as Kotlin's evaluateGovernance, from the mock's own settings. */
+  /** Same rules as Kotlin's evaluateGovernance, from the mock's own settings. */
   public async getActiveBlocks(): Promise<ActiveBlock[]> {
     return this.activeBlocks.map((b) => ({ ...b }));
   }
@@ -1651,7 +1651,7 @@ export class MaglevMockEngine implements MaglevEngineApi {
     const pwr = this.settings.power;
     const bw = this.settings.bandwidth;
 
-    // 1. Evaluate Network Safety (CONTRACT-2.1)
+    // 1. Evaluate Network Safety
     let shouldClampNetwork = false;
 
     if (net.networkType === 'NONE') {
@@ -1667,7 +1667,7 @@ export class MaglevMockEngine implements MaglevEngineApi {
 
     this.socketsClamped = shouldClampNetwork;
 
-    // 2. Evaluate Battery & Power Governance (CONTRACT-2.3)
+    // 2. Evaluate Battery & Power Governance
     let shouldPausePower = false;
 
     if (!pwr.isCharging) {
@@ -1691,7 +1691,7 @@ export class MaglevMockEngine implements MaglevEngineApi {
     this.torrents.forEach((t) => {
       const m = this.metaOf(t.id);
       if (t.state === 'ERROR') return;
-      // NATIVE_CONTRACT 25: seed_metered touches finished torrents only; an exempt torrent ignores the rule
+      // Seed_metered touches finished torrents only; an exempt torrent ignores the rule
       // tags (a missing network is not a rule).
       const exempt = m.allowedAnyway === true && net.networkType !== 'NONE';
       const own: PausedBy | null = exempt ? null : (govReason ?? (seedMetered && t.progressPercent >= 100 ? 'seed_metered' : null));
@@ -1740,7 +1740,7 @@ export class MaglevMockEngine implements MaglevEngineApi {
       });
     }
 
-    // Seed slots (contract section 9): finished torrents beyond max_active_seeds are COMPLETED, never QUEUED.
+    // Seed slots: finished torrents beyond max_active_seeds are COMPLETED, never QUEUED.
     const maxSeeds = bw.maxActiveUploads > 0 ? bw.maxActiveUploads : Number.MAX_SAFE_INTEGER;
     let seedSlots = 0;
     this.torrents.forEach((t) => {
@@ -1811,7 +1811,7 @@ export class MaglevMockEngine implements MaglevEngineApi {
 
   private startTelemetryLoop(): void {
     if (this.timer) clearInterval(this.timer);
-    // Contract: telemetry once per second
+    // Telemetry once per second, like the native engine
     this.timer = setInterval(() => {
       this.stepSimulation(); // each step advances 0.5 s of simulated transfer
       this.stepSimulation();
@@ -1893,7 +1893,7 @@ export class MaglevMockEngine implements MaglevEngineApi {
       const delta = Math.floor(t.downloadSpeedBytes * 0.5);
       const before = t.downloadedBytes;
       t.downloadedBytes = Math.min(t.totalSizeBytes, t.downloadedBytes + delta);
-      // NATIVE_CONTRACT 34.1: only a torrent that is downloading counts time and bytes.
+      // Only a torrent that is downloading counts time and bytes.
       this.countTiming(t.id, STEP_MS, t.downloadedBytes - before, 0);
       t.progressPercent = parseFloat(((t.downloadedBytes / t.totalSizeBytes) * 100).toFixed(1));
 
@@ -1935,7 +1935,7 @@ export class MaglevMockEngine implements MaglevEngineApi {
       }
     });
 
-    // Apply Token-Bucket Clamping to Seeding Torrents & Seeding Governance (CONTRACT-2.5)
+    // Apply Token-Bucket Clamping to Seeding Torrents & Seeding Governance
     const targetUpPerTorrent =
       effectiveUpLimit > 0 && seedingTorrents.length > 0
         ? Math.floor(effectiveUpLimit / seedingTorrents.length)

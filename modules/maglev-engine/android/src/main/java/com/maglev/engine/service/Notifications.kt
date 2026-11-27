@@ -44,7 +44,7 @@ data class TransferSummary(
     val pausedBySchedule: Int = 0,
     /** "HH:MM" when the schedule next changes, for the scheduled-pause notification. */
     val scheduleResumeAt: String? = null,
-    /** Contract section 21: a player was fed stream bytes in the last 60 s. Counts as real work. */
+    /** A player was fed stream bytes in the last 60 s. Counts as real work. */
     val streaming: Boolean = false,
 ) {
     val active: Int get() = downloading + seeding
@@ -131,7 +131,7 @@ object Notifications {
         else -> "Wi-Fi"
     }
 
-    /** Contract section 10.4 table. */
+    /** Foreground notification title per state. */
     fun title(s: TransferSummary): String {
         val name = s.primaryName?.takeIf { it.isNotBlank() } ?: "Download"
         return when {
@@ -218,7 +218,7 @@ object Notifications {
         } else if (s.progressPct >= 0) {
             b.setProgress(100, s.progressPct, false)
         }
-        // Contract 8.2: Pause all only when something runs, Resume all only when the user paused something,
+        // Pause all only when something runs, Resume all only when the user paused something,
         // and Shut down always, because this notification is the foreground service's.
         if (showPauseAll(s)) {
             b.addAction(0, "Pause all", serviceAction(context, MaglevTorrentService.ACTION_PAUSE_ALL, 1))
@@ -245,7 +245,7 @@ object Notifications {
     }
 
     /**
-     * "Download finished" (contract 13.2). [openFile] is non-null only for a single-file torrent.
+     * "Download finished". [openFile] is non-null only for a single-file torrent.
      * Two or more showing at once get a group summary.
      */
     fun notifyCompleted(context: Context, id: String, name: String, sizeBytes: Long, openFile: PendingIntent?) {
@@ -327,7 +327,7 @@ object Notifications {
         )
     }
 
-    /** Background-start refused for a schedule resume (contract 11.5). */
+    /** Background-start refused for a schedule resume. */
     fun notifyScheduleReady(context: Context) {
         post(
             context, ID_SCHEDULE_READY,
@@ -342,7 +342,7 @@ object Notifications {
         )
     }
 
-    /** Background-start refused for a feed drain (contract 11.6). One notification per rule. */
+    /** Background-start refused for a feed drain. One notification per rule. */
     fun notifyFeedMatches(context: Context, ruleId: String, ruleName: String, count: Int) {
         post(
             context, 6000 + (ruleId.hashCode() and 0xFFFF),
@@ -364,7 +364,7 @@ object Notifications {
     const val GROUP_ERRORS = "maglev_errors"
     const val ID_ERRORS_SUMMARY = 4998
 
-    /** SM-33: "Storage full · 2 downloads paused" and "SD card removed · 2 downloads paused". Tap opens the app. */
+    /** "Storage full · 2 downloads paused" and "SD card removed · 2 downloads paused". Tap opens the app. */
     fun notifyStorage(context: Context, id: Int, title: String) {
         post(
             context, id,
@@ -379,7 +379,7 @@ object Notifications {
         )
     }
 
-    /** SM-34: the background start was not possible. Tapping opens the app, which starts the service. */
+    /** The background start was not possible. Tapping opens the app, which starts the service. */
     fun notifyContinue(context: Context, count: Int) {
         post(
             context, ID_CONTINUE,
@@ -413,7 +413,7 @@ object Notifications {
         )
     }
 
-    /** SM-36: "{name} stopped: {message}" on the Completed channel, grouped. Tap opens the torrent. */
+    /** "{name} stopped: {message}" on the Completed channel, grouped. Tap opens the torrent. */
     fun notifyTorrentError(context: Context, id: String, title: String) {
         val nid = 7000 + (id.hashCode() and 0xFFFF)
         post(
