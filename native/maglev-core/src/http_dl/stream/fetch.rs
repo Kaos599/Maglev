@@ -176,8 +176,43 @@ async fn open(ctx: &ReqCtx, url: &str, range: Option<(u64, u64)>) -> Result<reqw
         (206, None) if whole_body_206(&resp) => Ok(resp),
         (206, Some((offset, length))) if range_206_matches(&resp, offset, length) => Ok(resp),
         (200 | 206, _) => Err(FetchFail::RangeIgnored),
-        _ => Err(FetchFail::Status(status, retry_after(&resp))),
+        _ => {
+            let ra = retry_after(&resp);
+            record_diag(ctx, url, resp).await;
+            Err(FetchFail::Status(status, ra))
+        }
     }
+}
+
+// DIAGNOSTIC BUILD ONLY (issue 169): what a refused stream request sent and got back.
+static DIAG: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
+
+async fn record_diag(ctx: &ReqCtx, url: &str, resp: reqwest::Response) {
+    let host = host_lower(url);
+    let final_host = host_lower(resp.url().as_str());
+    let status = resp.status().as_u16();
+    let version = format!("{:?}", resp.version());
+    let remote = resp.remote_addr().map(|a| a.to_string()).unwrap_or_else(|| "?".into());
+    let hv = |k: &str| resp.headers().get(k).and_then(|v| v.to_str().ok()).unwrap_or("-").chars().take(80).collect::<String>();
+    let (server, ct, cl, sc) = (hv("server"), hv("content-type"), hv("content-length"), hv("set-cookie"));
+    let body = resp.text().await.unwrap_or_default();
+    let body: String = body.chars().filter(|c| !c.is_control()).take(160).collect();
+    let ua = ctx.user_agent.clone().unwrap_or_else(|| "(none: default Maglev)".into());
+    let cookie = ctx.cookie_for(&host).map(|c| format!("{} names: {}", c.len(), c.split(';').filter_map(|p| p.split('=').next()).map(str::trim).collect::<Vec<_>>().join(","))).unwrap_or_else(|| "none".into());
+    let query = url.split_once('?').map(|(_, q)| q.split('&').filter_map(|p| p.split('=').next()).collect::<Vec<_>>().join(",")).unwrap_or_default();
+    let d = format!(
+        "DIAG {status} {version} from {host} (final {final_host}, ip {remote}) server={server} ct={ct} cl={cl} set-cookie={sc} body=[{body}] | SENT ua=[{ua}] referer=[{}] origin=[{}] cookie=[{cookie}] query-keys=[{query}]",
+        ctx.referer.as_deref().unwrap_or("none"),
+        ctx.origin.as_deref().unwrap_or("none"),
+    );
+    if let Ok(mut g) = DIAG.lock() {
+        *g = Some(d);
+    }
+}
+
+/// DIAGNOSTIC BUILD ONLY: the last refused request, taken once.
+pub fn take_diag() -> Option<String> {
+    DIAG.lock().ok().and_then(|mut g| g.take())
 }
 
 /// The whole body in memory, at most `cap` bytes.

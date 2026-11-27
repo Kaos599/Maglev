@@ -200,7 +200,14 @@ impl Downloads {
             auth,
             origin_host: host.clone(),
         };
-        stream::probe(&ctx, clean.as_str()).await.map_err(|e| probe_error(probe_fail_of(e, &host)))
+        stream::probe(&ctx, clean.as_str()).await.map_err(|e| {
+            let mut err = probe_error(probe_fail_of(e, &host));
+            // DIAGNOSTIC BUILD ONLY (issue 169).
+            if let Some(d) = stream::fetch::take_diag() {
+                err.message = d;
+            }
+            err
+        })
     }
 
     /// Kotlin finished (or failed) joining `<name>.video.part` and `<name>.audio.part` into `<name>`.
