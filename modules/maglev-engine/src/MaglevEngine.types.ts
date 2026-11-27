@@ -457,6 +457,12 @@ export interface NetworkState {
   connected: boolean;
 }
 
+/** Pushed whenever the default network changes while a listener is attached. Same meaning as {@link NetworkState}. */
+export interface NetworkChangeEvent {
+  connected: boolean;
+  metered: boolean;
+}
+
 export interface GovernanceConfig {
   wifiOnly: boolean;
   ssidWhitelist: string[];
@@ -932,6 +938,8 @@ export interface MaglevEngineApi {
   onTorrentCompleted(listener: (event: TorrentCompletedEvent) => void): Unsubscribe;
   onNotificationAction(listener: (event: NotificationActionEvent) => void): Unsubscribe;
   onStorageStatus(listener: (event: StorageStatus) => void): Unsubscribe;
+  /** Online/offline and Wi-Fi/mobile-data changes. Native watches the network only while a listener is attached. */
+  onNetworkChanged(listener: (event: NetworkChangeEvent) => void): Unsubscribe;
   onUpdateProgress(listener: (event: UpdateProgressEvent) => void): Unsubscribe;
   onUpdateResult(listener: (event: UpdateResultEvent) => void): Unsubscribe;
 }

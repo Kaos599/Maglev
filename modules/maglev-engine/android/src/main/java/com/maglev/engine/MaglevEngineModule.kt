@@ -15,6 +15,7 @@ import com.maglev.engine.browser.HistoryWipe
 import com.maglev.engine.browser.MaglevBrowserView
 import com.maglev.engine.browser.TabStates
 import com.maglev.engine.feeds.FeedScheduler
+import com.maglev.engine.network.NetworkWatcher
 import com.maglev.engine.permissions.PermissionHelper
 import com.maglev.engine.schedule.ScheduleManager
 import com.maglev.engine.share.TrustedShare
@@ -47,6 +48,9 @@ class MaglevEngineModule : Module() {
     companion object {
         private const val REQ_PICK_FOLDER = 7421
     }
+
+    @Volatile
+    private var networkWatcher: NetworkWatcher? = null
 
     private var pendingPick: Promise? = null
     /** False for pickFolder (Move): return the folder without making it the default download folder. */
@@ -159,7 +163,14 @@ class MaglevEngineModule : Module() {
     override fun definition() = ModuleDefinition {
         Name("MaglevEngine")
 
-        Events("onTelemetry", "onTorrentCompleted", "onNotificationAction", "onStorageStatus", "onUpdateProgress", "onUpdateResult", "onBlocksChanged")
+        Events("onTelemetry", "onTorrentCompleted", "onNotificationAction", "onStorageStatus", "onUpdateProgress", "onUpdateResult", "onBlocksChanged", "onNetworkChanged")
+
+        // Network changes are pushed only while JS listens for them.
+        OnStartObserving("onNetworkChanged") {
+            val watcher = networkWatcher ?: context?.let { c -> NetworkWatcher(c) { n, b -> sendEvent(n, b) } }?.also { networkWatcher = it }
+            watcher?.start()
+        }
+        OnStopObserving("onNetworkChanged") { networkWatcher?.stop() }
 
         OnCreate {
             context?.let {
@@ -172,6 +183,7 @@ class MaglevEngineModule : Module() {
         }
 
         OnDestroy {
+            networkWatcher?.stop()
             context?.let { AppIconManager.applyPending(it) }
             EngineHost.emitter = null
             pendingPick?.resolve(mapOf("ok" to true, "cancelled" to true))

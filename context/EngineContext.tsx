@@ -915,33 +915,50 @@ export const EngineProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const reannounce = useCallback((id: string) => maglevEngine.reannounce(id), []);
   const getFreeSpace = useCallback(() => maglevEngine.getFreeSpace(), []);
 
-  // Mobile data: asked once at start and again each time the app becomes active. Unknown counts as not metered.
+  // Mobile data: asked once at start, again each time the app becomes active, and kept live by the native network
+  // event while this screen tree is mounted. Unknown counts as not metered.
   const [onMeteredNetwork, setOnMeteredNetwork] = useState(false);
   const [networkOnline, setNetworkOnline] = useState(true);
+  const refreshNetwork = useRef<() => void>(() => {});
   useEffect(() => {
     let alive = true;
+    // An event that lands while a read is in flight is newer than that read, so the read must not overwrite it.
+    let eventSeq = 0;
+    const offNetwork = maglevEngine.onNetworkChanged((e) => {
+      eventSeq += 1;
+      if (!alive) return;
+      setOnMeteredNetwork(e.metered && e.connected);
+      setNetworkOnline(e.connected);
+    });
     const refresh = () => {
+      const seq = eventSeq;
       void maglevEngine
         .getNetworkState()
         .then((res) => {
-          if (alive && res.ok) {
+          if (alive && res.ok && seq === eventSeq) {
             setOnMeteredNetwork(res.metered && res.connected);
             setNetworkOnline(res.connected !== false);
           }
         })
         .catch(() => {});
     };
+    refreshNetwork.current = refresh;
     refresh();
     const sub = AppState.addEventListener('change', (next) => {
       if (next === 'active') refresh();
     });
-    // Offline only: look again every 10 s so waiting work (subtitles) notices the way back.
-    const poll = networkOnline ? null : setInterval(refresh, 10_000);
     return () => {
       alive = false;
+      offNetwork();
       sub.remove();
-      if (poll) clearInterval(poll);
     };
+  }, []);
+  // Offline only: look again every 10 s. The event normally reports the way back; this covers a phone where the
+  // native network callback could not be registered.
+  useEffect(() => {
+    if (networkOnline) return;
+    const poll = setInterval(() => refreshNetwork.current(), 10_000);
+    return () => clearInterval(poll);
   }, [networkOnline]);
   const openLiveUpdateSettings = useCallback(() => maglevEngine.openLiveUpdateSettings(), []);
 
